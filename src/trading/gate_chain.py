@@ -1,42 +1,17 @@
-"""
-src/trading/gate_chain.py — Operator-approved TA gate cleanup, Step 2.
+"""GateChain framework for evaluating the SCRUM and FOLD trigger gates.
 
-Per docs/audits/2026-05-20_ta_gate_logic_audit.md §6, this module provides
-the GateChain framework that will eventually replace the 1,000+ lines of
-inline gate evaluation currently spread across ScrummingBot.tick()
-(~lines 4540-5980).
+Each gate is a stateless class with an ``evaluate(ctx) -> GateResult``
+method; ``GateContext`` carries every input a gate can read. A
+``GateChain`` evaluates every gate in its list — never short-circuits —
+so its blocker list is the exact inverse of what fired, by
+construction. Override gates declare, in ``overrides``, which other
+gates they force-pass when they themselves pass; the chain applies
+overrides in a second pass after the initial evaluation.
 
-DESIGN PRINCIPLES:
-  • Each gate is a class with an evaluate(ctx) -> GateResult method.
-  • Gates are stateless — all inputs flow through GateContext.
-  • The chain evaluates every gate (not short-circuited) so the
-    diagnostic blocker list IS the inverse of the trigger conjunction
-    BY CONSTRUCTION — drift between trigger and diagnostic is
-    architecturally impossible.
-  • Override gates (MEM-196 ripe-harvest) are first-class — they
-    declare which gates they can override, and the chain applies the
-    override AFTER initial evaluation.
-
-CURRENT STATUS (v3.18.11):
-  Framework + 14 gate classes lands as PURE ADDITIVE code. ScrummingBot
-  is NOT yet rewired to consume this. The Step 3 parity test
-  (tests/test_gate_chain_parity.py — Phase 3 of the roadmap) is what
-  validates the framework against the v3.18.9 baseline fixture before
-  any cutover (Step 4).
-
-  When the parity test passes bit-identically across the 200-tick
-  baseline fixture, ScrummingBot.tick() can be refactored to call
-  self._scrum_chain.evaluate(ctx) / self._fold_chain.evaluate(ctx).
-  Until then, this module is dead code — present but unused by
-  production tick().
-
-WHY ADDITIVE FIRST:
-  Section 7 of the audit doc lays out the safe-by-construction migration:
-  Step 2 (this module, additive) → Step 3 (parity test) → Step 4
-  (cutover, gated by Step 3) → Step 5 (retire patchwork). The audit's
-  bit-identical regression fixture from v3.18.9 is the safety net.
-
-Patent flag: this is engineering hygiene, not a new mechanism.
+ScrummingBot builds one SCRUM chain and one FOLD chain at construction
+(``self._scrum_chain``, ``self._fold_chain``) and calls
+``evaluate(ctx)`` on each every tick. ``ChainResult.should_fire``
+directly gates whether that tick's SCRUM or FOLD trade executes.
 """
 
 from __future__ import annotations
@@ -54,16 +29,11 @@ from typing import Literal, Optional
 class GateContext:
     """All inputs every gate evaluator sees. Pure data — no methods.
 
-    Constructed once per tick from ScrummingBot state + computed
-    TA primitives. Then fed into both the SCRUM chain and the FOLD
-    chain (gates declare which side they apply to).
-
-    Field names mirror the local variable names in ScrummingBot.tick()
-    so the cutover (Step 4) is a near-mechanical rename:
-      _eff_is_bullish    → ctx.eff_is_bullish
-      _eff_trend_hold    → ctx.eff_trend_hold
-      _bb_above_upper_dt → ctx.bb_above_upper_dt
-      etc.
+    Built once per tick from ScrummingBot state and computed TA
+    primitives, then fed into both the SCRUM chain and the FOLD chain
+    (each gate declares which side it applies to). Field names mirror
+    ScrummingBot.tick()'s local variable names, e.g. ``_eff_is_bullish``
+    becomes ``ctx.eff_is_bullish``.
     """
 
     # ── Symbol + market data ──
@@ -85,7 +55,7 @@ class GateContext:
     trend_strength: float
     eff_direction_name: str  # "BULLISH"/"BEARISH"/"NEUTRAL"
 
-    # ── Effective values after v3.16.15 operator-toggle flags ──
+    # ── Effective values after operator-toggle flags ──
     eff_is_bullish: bool
     eff_is_bearish: bool
     eff_trend_hold: bool
@@ -115,7 +85,7 @@ class GateContext:
     hyst_armed_fold_side: bool
     hyst_ref_scrum_side: float  # pivot price (diagnostic)
     hyst_ref_fold_side: float
-    mem253_at_ceiling: bool  # MEM-244 / MEM-253 Smart Ceiling
+    mem253_at_ceiling: bool
     mem253_smart_ceiling_usd: float
     mem253_current_pos: float
     has_fold_tranches: bool
@@ -134,38 +104,17 @@ class GateContext:
     ripe_scrum: bool = False
     deep_fold: bool = False
 
-    # ── v3.19.16 (Part 6 L4 second-half closure) ──
-    # ADX trend strength reading from Wilder DMI computation. Populated by
-    # ScrummingBot.tick() from the VotingSummary's ADX value when available;
-    # defaults to 0.0 (no-trend) so the ADXTrendSuppressionGate trivially
-    # passes when the call site hasn't been wired yet — additive landing
-    # pattern from v3.18.11. Production wiring of the field by call sites
-    # is a follow-up (operator decides ship cadence).
+    # Populated each tick by ScrummingBot.tick(); 0.0 means not
+    # populated, and ADXTrendSuppressionGate passes trivially on it.
     adx: float = 0.0
 
-    # ── v3.19.17 (Trading-Discipline Arc #2 — Part 6 L3.b closure) ──
-    # Perry Kaufman Efficiency Ratio reading [0.0, 1.0]. Populated by
-    # ScrummingBot.tick() from the VotingSummary's Kaufman ER value when
-    # available; defaults to 0.0 (sentinel — no-data) so the
-    # EfficiencyRatioRegimeGate trivially passes when the call site hasn't
-    # been wired yet — additive landing pattern from v3.18.11. The
-    # "ER is the Anti-pattern substitute" claim in Part 6 L3 was false at
-    # write time (class existed, no caller); this field + the gate close
-    # the substitution.
+    # Populated each tick by ScrummingBot.tick(); 0.0 means not
+    # populated, and EfficiencyRatioRegimeGate passes trivially on it.
     efficiency_ratio: float = 0.0
 
-    # ── v3.20.7 (Trading-Discipline Arc — v3.19.17 forward-work #3) ──
-    # Statistical-extremity reading from ZScoreIndicator. Real z-scores
-    # range roughly [−4, +4] in normal markets, with |z| > 2.0 considered
-    # the "strong" mean-reversion threshold. Populated by
-    # ScrummingBot.tick() from the VotingSummary's `zscore` signal's
-    # `details["z"]`. The default 0.0 doubles as both "field not
-    # populated" sentinel and "exactly at mean" — in either case the
-    # ZScoreExtremityGate trivially passes (since |0| < 2 always), so
-    # no special sentinel branch is needed. The audit doc
-    # (docs/audits/2026-05-23_indicator_voting_panel_audit.md #5
-    # cross-cutting) flagged this gate as queued from the v3.19.17 plan
-    # but never shipped; v3.20.7 closes that gap.
+    # Populated each tick by ScrummingBot.tick(); 0.0 means not
+    # populated or exactly at mean, and ZScoreExtremityGate passes
+    # trivially either way.
     z_score: float = 0.0
 
 
@@ -175,20 +124,19 @@ class GateResult:
 
     passed: bool
     blocker_message: str = ""
-    # Override gates set this to the names of OTHER gates they're
-    # forcing-pass. The chain handles the actual override application.
+    # Names the other gates this result force-passes; GateChain applies
+    # the override in its second pass.
     override_gates: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass
 class ChainResult:
-    """Final result of evaluating a GateChain on a GateContext.
+    """Final verdict from evaluating a GateChain on one GateContext.
 
-    ``should_fire`` is the inverse of the existing 10-clause AND chain
-    in ScrummingBot.tick(). ``blocked`` is the human-readable
-    inverse — the SAME source-of-truth, by construction. The current
-    inline code has the trigger conjunction and the diagnostic blocker
-    list as two separate code paths that must stay in sync manually.
+    ``should_fire`` is True exactly when no regular gate remains
+    blocked after overrides are applied. ``blocked`` is produced in
+    the same evaluation pass, so it can never drift out of sync with
+    ``should_fire`` — there is no separate trigger-only code path.
     """
 
     should_fire: bool
@@ -207,8 +155,8 @@ class Gate(ABC):
 
     name: str = "<unnamed>"
     side: Literal["scrum", "fold", "both"] = "both"
-    # If non-empty, this gate can OVERRIDE the listed gates when it passes.
-    # The chain applies overrides AFTER initial evaluation pass.
+    # Non-empty means this gate overrides the listed gates when it
+    # passes; GateChain applies the override after the initial pass.
     overrides: tuple[str, ...] = ()
 
     @abstractmethod
@@ -217,10 +165,6 @@ class Gate(ABC):
 
 # ─────────────────────────────────────────────────────────────────────
 # Gate implementations
-#
-# Each one mirrors the corresponding inline check in ScrummingBot.tick().
-# Variable names + return logic are 1:1 with the live code so the Step 3
-# parity test can prove bit-identical evaluation.
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -237,12 +181,12 @@ class DeltaPositiveGate(Gate):
 
 
 class IntervalGate(Gate):
-    """Both sides: |Δ%| must be ≥ scrumming_interval_pct."""
+    """SCRUM-only: |Δ%| must be ≥ scrumming_interval_pct."""
 
     name = "interval"
-    side = "scrum"  # FOLD trigger doesn't include below_interval check
-    # at the trigger line; it's checked one level up
-    # and skipped if no tranches queued
+    side = "scrum"
+    # FOLD checks below_interval one level up, skipped when no
+    # tranches are queued.
 
     def evaluate(self, ctx: GateContext) -> GateResult:
         if not ctx.below_interval:
@@ -266,8 +210,8 @@ class TranchesQueuedGate(Gate):
 
 
 class TADirectionGate(Gate):
-    """Both sides: TA direction must match the side (with operator
-    toggle override). Mirrors the v3.16.15 flag application:
+    """Usable on either side: TA direction must match the side, subject
+    to the operator toggle flags:
       SCRUM: eff_is_bullish = is_bullish if flag_require_ta_bullish else True
       FOLD : eff_is_bearish = is_bearish if flag_fold_require_ta_bearish else True
     """
@@ -308,14 +252,14 @@ class TrendHoldGate(Gate):
 
 
 class MidlineGate(Gate):
-    """Both sides: BB midline gate.
-      SCRUM: scrum_ok (bb_pos > 0.50 or MEM-196 override)
-      FOLD : fold_ok_midline (bb_pos < 0.50 or MEM-196 override)
+    """Usable on either side: BB midline gate.
+      SCRUM: scrum_ok (bb_pos > 0.50, unmodified by any override)
+      FOLD : fold_ok_midline (bb_pos < 0.50, unmodified by any override)
 
-    The MEM-196 ripe-harvest override is applied UPSTREAM in
-    ScrummingBot.tick() — scrum_ok/fold_ok_midline are passed
-    into the context already overridden. So this gate just
-    reads the effective value.
+    evaluate() reads the raw value. When this gate is blocked,
+    GateChain's own override pass can still move it to passed via
+    RipeHarvestScrumOverride or DeepFoldOverride, without touching
+    ctx.scrum_ok / ctx.fold_ok_midline.
     """
 
     def __init__(self, side: Literal["scrum", "fold"]):
@@ -347,9 +291,9 @@ class TargetFiresGate(Gate):
 
 
 class BBProximityGate(Gate):
-    """Both sides: BB position past the detect threshold.
-    SCRUM: bb_above_upper_dt
-    FOLD : bb_below_lower_dt
+    """Usable on either side: BB position past the detect threshold.
+    SCRUM: passes on ctx.bb_above_upper_dt
+    FOLD : passes on ctx.bb_below_lower_dt
     """
 
     def __init__(self, side: Literal["scrum", "fold"]):
@@ -380,7 +324,9 @@ class BBProximityGate(Gate):
 
 
 class CircuitBreakerGate(Gate):
-    """Both sides: soft Circuit Breaker must not be tripped on this side."""
+    """Usable on either side: passes unless the soft Circuit Breaker is
+    tripped on this instance's side.
+    """
 
     def __init__(self, side: Literal["scrum", "fold"]):
         self.side = side
@@ -394,9 +340,9 @@ class CircuitBreakerGate(Gate):
 
 
 class HTFDeferGate(Gate):
-    """Both sides: higher-TF phantom defer.
-    SCRUM blocked when HTF says BULLISH (don't sell into confirmed uptrend)
-    FOLD  blocked when HTF says BEARISH (don't buy into confirmed downtrend)
+    """Usable on either side: higher-timeframe defer.
+    SCRUM blocked when HTF says BULLISH (don't sell into a confirmed uptrend)
+    FOLD  blocked when HTF says BEARISH (don't buy into a confirmed downtrend)
     """
 
     def __init__(self, side: Literal["scrum", "fold"]):
@@ -416,11 +362,12 @@ class HTFDeferGate(Gate):
 
 
 class HysteresisGate(Gate):
-    """Both sides: OTD (Minimum Opposing Trade Distance) hysteresis.
-    Mirrors v3.15.77 (gate added) + v3.18.1 (consumed at autonomous
-    trigger) — the gate is True (clear-to-trade) when EITHER the
-    side is disarmed OR price has moved by interval+fee from the
-    pivot captured at arming.
+    """Usable on either side: OTD (Minimum Opposing Trade Distance)
+    hysteresis. Passes when EITHER the side is disarmed OR price has
+    moved by interval+fee from the pivot price captured at arming.
+    ctx.hyst_ok_scrum_side / ctx.hyst_ok_fold_side already carry that
+    computed verdict; this gate reads it and builds the blocker
+    message from the pivot when blocked.
     """
 
     def __init__(self, side: Literal["scrum", "fold"]):
@@ -458,11 +405,10 @@ class HysteresisGate(Gate):
 
 
 class SmartCeilingGate(Gate):
-    """FOLD-only: MEM-244 / MEM-253 Smart Ceiling.
-
-    When position_ceiling_enabled and current position ≥ anchor ×
-    position_ceiling_multiple, FOLD is hard-stopped. Computed
-    upstream into ctx.mem253_at_ceiling.
+    """FOLD-only: hard-stops FOLD once position reaches the smart
+    ceiling. Blocks when ctx.mem253_at_ceiling is True, computed
+    upstream from position_ceiling_enabled and current position ≥
+    anchor × position_ceiling_multiple.
     """
 
     name = "smart_ceiling"
@@ -475,23 +421,20 @@ class SmartCeilingGate(Gate):
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Override gates — first-class modeling of MEM-196 ripe-harvest /
-# deep-fold pattern.
+# Override gates — force-pass other gates when ripe-harvest / deep-fold
+# conditions hold.
 # ─────────────────────────────────────────────────────────────────────
 
 
 class RipeHarvestScrumOverride(Gate):
-    """MEM-196 v3 + MEM-202 fix: when ripe-scrum conditions hold
-    (delta > 0, above upper detect threshold), force-pass:
-      - midline_scrum
-      - target_fires
-      - trend_hold
-      - ta_bullish
+    """SCRUM-side override: when ripe-scrum conditions hold (delta > 0,
+    price already above the upper detect threshold), force-passes
+    every gate named in ``overrides`` even if it blocked on the raw
+    context.
 
-    The current inline code does these rewrites at line 5323+ in
-    ScrummingBot.tick(). This gate exposes the pattern as a first-
-    class override declared up front, so the chain semantics are
-    transparent rather than buried.
+    GateChain applies the override in its second evaluation pass; the
+    target gates' own evaluate() methods are unaffected and still read
+    the unmodified GateContext.
     """
 
     name = "ripe_harvest_override"
@@ -505,13 +448,13 @@ class RipeHarvestScrumOverride(Gate):
 
 
 class DeepFoldOverride(Gate):
-    """MEM-196 v3 deep-fold override: when deep-fold conditions hold
-    (delta < 0, below lower detect threshold), force-pass:
-      - midline_fold
-      - ta_bearish
+    """FOLD-side override: when deep-fold conditions hold (delta < 0,
+    price already below the lower detect threshold), force-passes
+    every gate named in ``overrides`` even if it blocked on the raw
+    context.
 
-    MEM-171 per-tranche initial_buy_price floor is preserved
-    (not in the override list — see audit doc §6a).
+    The per-tranche initial_buy_price floor is not one of the
+    overridden gates, so it is unaffected by this override.
     """
 
     name = "deep_fold_override"
@@ -524,63 +467,16 @@ class DeepFoldOverride(Gate):
         return GateResult(passed=False, blocker_message="not-deep")
 
 
-# ─────────────────────────────────────────────────────────────────────
-# v3.19.16 — Part 6 L4 second-half closure
-# ─────────────────────────────────────────────────────────────────────
-
-
 class ADXTrendSuppressionGate(Gate):
-    """SCRUM-only: ADX-based strong-trend MR suppression.
+    """SCRUM-only: blocks SCRUM when Wilder ADX shows a strong trend.
 
-    Wilder's classical interpretation: ADX > 25 indicates a trending
-    market; ADX > 30 is a strong trend; ADX > 50 is an extreme trend.
-    Mean-reversion strategies bleed in trending markets — fading the
-    band-touch loses on every pullback because the "mean" is moving
-    faster than the reversion. The Department Leads' L4 (Oscillators)
-    pushback (Part 6 / Part 6 L4) explicitly requested this gate.
-
-    The first half of P2.9 (wiring ADXIndicator into VotingEngine) was
-    closed by MEM-200. This gate is the second half: an explicit
-    SCRUM-side suppressor that blocks the trigger when ADX shows strong
-    trend regime, regardless of TA voting direction.
-
-    Threshold default ``adx_threshold=30.0`` is the textbook Wilder
-    strong-trend value, and it now means what it says.
-
-    HISTORY, because the number moved twice. v3.19.16 set 30 from the
-    textbook. That blocked 100% of every baseline fixture, because
-    ``ADXIndicator._wilder_smooth`` accumulated instead of averaging and
-    returned ~14x the real ADX. v3.20.22 responded by recalibrating the
-    THRESHOLD to 500.0 against the inflated distribution (62-681,
-    median 239) rather than fixing the indicator — operator-approved as
-    Option 1 of `docs/audits/2026-05-25_audit_gate_activity_baseline_
-    fixtures.md`, with Option 2 (fix the smoothing) left open.
-
-    v3.24.83 took Option 2. `_wilder_smooth` now averages, so ADX is
-    back inside its definitional [0, 100] and the textbook reading
-    (>25 trending, >30 strong, >50 extreme) applies directly. That
-    docstring carried an explicit instruction for this moment — "If a
-    future ship replaces ``_wilder_smooth`` with textbook averaging
-    Wilder (audit Option 2), this threshold MUST be reset to 30" — and
-    the two changes ship together. Landing the indicator fix alone
-    would have left a gate that can never fire, since the new ADX
-    cannot reach 500.
-
-    Do NOT divide by 14 to compare against the textbook any more; the
-    prior note told readers to and it is no longer true.
-
-    ADDITIVE LANDING (v3.18.11 pattern):
-      ``GateContext.adx`` defaults to 0.0 — the gate trivially passes
-      until the production call site (ScrummingBot.tick()) is wired
-      to populate ``ctx.adx`` from the VotingSummary's ADX reading.
-      The gate is structurally correct, tested, and present in the
-      canonical SCRUM chain at landing; production wiring of the
-      input field is a separate follow-up.
-
-    sadp: R28 R42 R55 R76  # additive-first landing per the
-                       # v3.18.11 GateChain framework migration
-                       # discipline; v3.20.22 R76 DMW empirical
-                       # recalibration with documented rationale
+    Mean-reversion strategies lose in a strongly trending market — the
+    "mean" moves faster than price can revert to it. This gate blocks
+    SCRUM when ``ctx.adx >= adx_threshold`` (default 30.0, Wilder's
+    textbook strong-trend value) and passes when ``ctx.adx <
+    adx_threshold``. ``ctx.adx <= 0.0`` is the "field not populated"
+    sentinel and always passes. ScrummingBot.tick() populates
+    ``ctx.adx`` each tick from the VotingSummary's ADX signal detail.
     """
 
     name = "adx_trend_suppression"
@@ -590,9 +486,8 @@ class ADXTrendSuppressionGate(Gate):
         self.adx_threshold = adx_threshold
 
     def evaluate(self, ctx: GateContext) -> GateResult:
-        # ADX of 0.0 is the "field not populated" sentinel — the gate
-        # passes (does not block). Once the production call site
-        # populates ctx.adx, the gate becomes active.
+        # adx <= 0.0 is the not-populated sentinel: treated as
+        # no-trend, so the gate passes.
         if ctx.adx <= 0.0:
             return GateResult(passed=True)
         if ctx.adx < self.adx_threshold:
@@ -606,46 +501,20 @@ class ADXTrendSuppressionGate(Gate):
         )
 
 
-# ─────────────────────────────────────────────────────────────────────
-# v3.19.17 — Part 6 L3.b second-half closure (Kaufman Efficiency Ratio)
-# ─────────────────────────────────────────────────────────────────────
-
-
 class EfficiencyRatioRegimeGate(Gate):
-    """SCRUM-only: Kaufman Efficiency Ratio regime classifier.
+    """SCRUM-only: blocks SCRUM at either extreme of Kaufman's
+    Efficiency Ratio (ER = |net price change| / sum(|bar changes|),
+    Kaufman 1995).
 
-    Perry Kaufman's Efficiency Ratio (1995) measures market quality:
-    ER = |net price change| / sum(|individual bar changes|). ER → 1.0
-    means efficient trending; ER → 0.0 means noisy/choppy. The
-    Department Leads' L3 pushback (Part 6 / Part 6 L3) named this
-    metric as the Anti-pattern suppressor — but until v3.19.17 the
-    KaufmanERIndicator class existed without any consumer. This gate
-    closes that L3.b finding from the v3.19.16 indicator-coverage
-    audit.
-
-    Behavior:
-      ER ≥ 0.70 → strong-trend regime, MR strategy bleeds → block SCRUM
-      ER ≤ 0.05 → no-edge market (essentially flat) → block SCRUM
-      otherwise → pass (normal accumulation regime)
-
-    The two-sided suppression matches Kaufman's regime taxonomy:
-    SCRUM mean-reversion needs price oscillation. Strong trends move
-    the mean faster than reversion can catch; flat no-edge markets
-    have no oscillation amplitude to harvest. Both should suppress
-    the trigger.
-
-    Threshold defaults (operator-tunable):
-      ``upper_threshold=0.70`` — Kaufman's "highly efficient trend"
-      ``lower_threshold=0.05`` — empirical "no-edge" floor
-
-    ADDITIVE LANDING (v3.18.11 pattern):
-      ``GateContext.efficiency_ratio`` defaults to 0.0 — interpreted
-      as "field not populated" rather than "no edge." The gate
-      passes trivially until the production call site populates
-      ctx.efficiency_ratio from the VotingSummary's KaufmanER reading.
-
-    sadp: R28 R42 R55  # additive-first landing per the v3.18.11
-                       # GateChain framework migration discipline
+    Blocks when ``ctx.efficiency_ratio >= upper_threshold`` (default
+    0.70 — strong-trend regime, MR strategy bleeds) or when
+    ``ctx.efficiency_ratio <= lower_threshold`` (default 0.05 —
+    no-edge, flat market with nothing to harvest). Passes between the
+    two thresholds. ``ctx.efficiency_ratio <= 0.0`` is the "field not
+    populated" sentinel and always passes (real ER values from
+    KaufmanERIndicator are > 0 whenever there is any price motion).
+    ScrummingBot.tick() populates the field each tick from the
+    VotingSummary's Kaufman ER signal detail.
     """
 
     name = "efficiency_ratio_regime"
@@ -658,12 +527,8 @@ class EfficiencyRatioRegimeGate(Gate):
         self.lower_threshold = lower_threshold
 
     def evaluate(self, ctx: GateContext) -> GateResult:
-        # ER of 0.0 is the "field not populated" sentinel — pass.
-        # Real ER values from KaufmanERIndicator are bounded strictly
-        # in (0, 1] when there is any price motion at all (path_length
-        # is summed with epsilon 1e-9). A true zero ER would require
-        # identical close prices across all N+1 bars, which the
-        # sentinel safely represents as "no data."
+        # Real ER is always > 0 given any price motion, so <= 0.0 is
+        # unambiguous as the not-populated sentinel.
         if ctx.efficiency_ratio <= 0.0:
             return GateResult(passed=True)
         if ctx.efficiency_ratio >= self.upper_threshold:
@@ -689,56 +554,22 @@ class EfficiencyRatioRegimeGate(Gate):
         return GateResult(passed=True)
 
 
-# ─────────────────────────────────────────────────────────────────────
-# v3.20.7 — Trading-Discipline Arc #3 — ZScoreExtremityGate
-# (queued from v3.19.17 plan, audit doc 2026-05-23 flagged as never
-# shipped; cross-cutting finding #5 closure)
-# ─────────────────────────────────────────────────────────────────────
-
-
 class ZScoreExtremityGate(Gate):
-    """ASYMMETRIC two-sided gate: contrarian filter at statistical extremes.
+    """Contrarian filter at statistical price extremes; behavior depends
+    on which side it is instantiated for.
 
-    At extreme z-scores, short-term mean-reversion is the dominant
-    force. The accumulation strategy doesn't want to be caught on the
-    WRONG SIDE of that reversion:
+      side="scrum": blocks SCRUM when z < -lower_threshold (default
+        2.0) — price is extreme-low, so mean-reversion should pull it
+        back up and folding (not scrumming) is the trade.
+      side="fold" : blocks FOLD when z > +upper_threshold (default
+        2.0) — price is extreme-high, so mean-reversion should pull it
+        back down and scrumming (not folding) is the trade.
 
-      • z > +upper (price extreme HIGH)  → mean-reversion will pull
-        price DOWN. The bot must NOT FOLD into that drop — buying at
-        the statistical top is fighting the reversion. SCRUM is
-        actually MORE attractive here (sell the top before it falls).
-
-      • z < −lower (price extreme LOW)   → mean-reversion will pull
-        price UP. The bot must NOT SCRUM into that rebound — selling
-        at the statistical bottom is fighting the reversion. FOLD is
-        MORE attractive here.
-
-    The gate's behavior is DIRECTIONAL — it blocks based on which
-    side it's instantiated on:
-
-      ZScoreExtremityGate(side="scrum")  → blocks SCRUM when z < −lower
-      ZScoreExtremityGate(side="fold")   → blocks FOLD when z > +upper
-
-    Sentinel handling. Unlike ADX (which is always ≥ 0) and KER
-    (which is always > 0 with any price motion), z-score *can* be
-    exactly 0.0 at the population mean. The 0.0 default doubles as
-    "field not populated" AND "exactly at mean" — but in either
-    case |z| = 0 < upper/lower thresholds, so the gate trivially
-    passes. No special sentinel branch needed.
-
-    Threshold defaults match the audit's recommendation and standard
-    statistical convention:
-      ``upper_threshold = 2.0`` — "strong high" per the ZScoreIndicator
-      ``lower_threshold = 2.0`` — symmetric (operator-tunable to make
-                                  asymmetric if needed)
-
-    Same additive-landing discipline as ADX + KER gates: lands as
-    structurally correct + tested + in canonical chains, with
-    ScrummingBot.tick() call-site wiring landing in the same ship
-    (v3.20.7 unlike v3.19.16's two-step landing — the pattern is now
-    established enough to wire end-to-end in one cascade).
-
-    sadp: R28 FL  R55 GOV  R62 FRG  R68 DPA
+    ctx.z_score doubles as "field not populated" and "exactly at the
+    mean" — both read as 0.0, and |0| is always inside the threshold,
+    so the gate passes on either. ScrummingBot.tick() populates
+    ctx.z_score each tick from the VotingSummary's zscore signal
+    detail.
     """
 
     name = "zscore_extremity"
@@ -833,26 +664,20 @@ class GateChain:
         for gate in self._override_gates:
             result = gate.evaluate(ctx)
             if not result.passed:
-                # Override gate didn't fire — its own status doesn't
-                # appear in either passed/blocked. It's a meta-gate
-                # whose ONLY job is to unblock others.
+                # An override gate's own pass/fail never appears in
+                # passed or blocked; it only unblocks other gates.
                 continue
             for target_name in result.override_gates:
                 if target_name in blocked_index:
                     idx = blocked_index.pop(target_name)
-                    # Mark blocked entry as override-cleared. We move
-                    # the gate name from blocked → passed and track it
-                    # in overrides_applied so the operator can see in
-                    # diagnostics that the gate would have blocked but
-                    # was unblocked by the override.
+                    # Marks the entry override-cleared and records it
+                    # in overrides_applied for diagnostics.
                     _name, _msg = blocked[idx]
                     blocked[idx] = (_name, f"OVERRIDDEN_BY:{gate.name}({_msg})")
                     overrides_applied.append(target_name)
 
-        # Final pass: split blocked entries that were overridden out
-        # of the blocked list and into passed. The OVERRIDDEN_BY
-        # marker stays in the chain result for diagnostics (an
-        # operator-readable trail).
+        # Moves override-cleared entries from blocked to passed; the
+        # OVERRIDDEN_BY marker stays in the message for diagnostics.
         final_blocked: list[tuple[str, str]] = []
         for name, msg in blocked:
             if msg.startswith("OVERRIDDEN_BY:"):
@@ -883,19 +708,11 @@ class GateChain:
 
 
 def build_scrumming_scrum_chain() -> GateChain:
-    """Construct the SCRUM-side chain matching ScrummingBot.tick()
-    line 5475-5478. Order is operator-meaningful in diagnostic logs;
-    matches the current _scrum_blockers append order at line 5415-5450.
-
-    v3.19.16 adds ``ADXTrendSuppressionGate`` (P2.9 second-half closure
-    per Part 6 L4). Additive landing: ``ctx.adx`` defaults to 0.0 so
-    the gate trivially passes until the call site (ScrummingBot.tick())
-    is wired to populate it.
-
-    v3.19.17 adds ``EfficiencyRatioRegimeGate`` (Part 6 L3.b closure
-    per the v3.19.16 indicator-coverage audit). Same additive-landing
-    discipline: ``ctx.efficiency_ratio`` defaults to 0.0 so the gate
-    trivially passes until call-site wiring lands.
+    """Construct the SCRUM-side chain ScrummingBot.tick() evaluates each
+    tick via self._scrum_chain.evaluate(ctx); should_fire on the result
+    directly gates whether a SCRUM trade executes. Gate order
+    determines where each blocked gate's message appears in
+    ChainResult.blocked.
     """
     return GateChain(
         gates=[
@@ -909,20 +726,19 @@ def build_scrumming_scrum_chain() -> GateChain:
             CircuitBreakerGate(side="scrum"),
             HTFDeferGate(side="scrum"),
             HysteresisGate(side="scrum"),
-            ADXTrendSuppressionGate(),  # v3.19.16 — Part 6 L4 closure
-            EfficiencyRatioRegimeGate(),  # v3.19.17 — Part 6 L3.b closure
-            ZScoreExtremityGate(
-                side="scrum"
-            ),  # v3.20.7 — extreme-low SCRUM contrarian filter
-            RipeHarvestScrumOverride(),  # last — runs in pass 2
+            ADXTrendSuppressionGate(),
+            EfficiencyRatioRegimeGate(),
+            ZScoreExtremityGate(side="scrum"),  # extreme-low SCRUM contrarian filter
+            RipeHarvestScrumOverride(),  # runs in pass 2 regardless of list position
         ],
         side="scrum",
     )
 
 
 def build_scrumming_fold_chain() -> GateChain:
-    """Construct the FOLD-side chain matching ScrummingBot.tick()
-    line 6083-6086. Matches _fold_blockers append order at line 5941-5970.
+    """Construct the FOLD-side chain ScrummingBot.tick() evaluates each
+    tick via self._fold_chain.evaluate(ctx); should_fire on the result
+    directly gates whether a FOLD trade executes.
     """
     return GateChain(
         gates=[
@@ -934,9 +750,7 @@ def build_scrumming_fold_chain() -> GateChain:
             CircuitBreakerGate(side="fold"),
             HTFDeferGate(side="fold"),
             HysteresisGate(side="fold"),
-            ZScoreExtremityGate(
-                side="fold"
-            ),  # v3.20.7 — extreme-high FOLD contrarian filter
+            ZScoreExtremityGate(side="fold"),  # extreme-high FOLD contrarian filter
             DeepFoldOverride(),
         ],
         side="fold",
