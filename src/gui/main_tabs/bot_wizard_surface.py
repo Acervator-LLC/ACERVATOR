@@ -513,6 +513,7 @@ POOL_BASES = tuple(label for label, _value in COMBO_FIELDS["pool_base"])
 BASE_CURRENCIES = tuple(label for label, _value in COMBO_FIELDS["base"])
 TA_TIMEFRAMES = tuple(value for _label, value in COMBO_FIELDS["ta_timeframe"])
 TA_TIMEFRAME_DEFAULT = "1h"
+TA_COMBO_NAME = "ta_timeframe"
 
 TEXT_FIELDS: dict[str, str] = {"profit_route_bot_id": EMPTY_TEXT}
 PLACEHOLDERS = {"profit_route_bot_id": "leave blank unless route = cross_bot"}
@@ -549,6 +550,83 @@ GROUP_TITLES = {
     ),
     "lock_group": "Higher-TF Lock Duration",
 }
+GROUP_ROWS = {
+    "mode_group": (
+        "visibility",
+        "aggressive",
+        "stack_mode",
+        "split_distance",
+        "stack_count",
+        "stack_spacing",
+        "personal_hold_qty",
+    ),
+    "scrum_group": (
+        "scrumming_interval",
+        "bb_tolerance",
+        "ls_candles",
+        "ta_timeframe",
+        "target_balance",
+        "max_entry_px",
+        "min_entry_px",
+        "trading_fee",
+        "max_target_growth_pct",
+        "scrum_fold_pct",
+    ),
+    "adv_group": (
+        "scrum_detect_pct",
+        "scrum_fire_pct",
+        "bb_midline_gate",
+        "scrum_read_rate",
+        "band_travel_pct",
+        "bb_bullseye",
+        "wire_inflow_stack_pct",
+    ),
+    "hedge_group": ("hedge_rebalance", "hedge_amount"),
+    "cb_group": (
+        "cb_soft_pct",
+        "cb_hard_pct",
+        "cb_cooldown",
+        "max_cartridge_pct",
+        "cartridge_smart_chk",
+        "cartridge_smart_ceiling",
+    ),
+    "risk_group": (
+        "position_ceiling_enabled",
+        "position_ceiling_multiple",
+        "detonation_enabled",
+        "detonation_timeframe",
+        "detonation_confidence_min",
+    ),
+    "gates_group": (
+        "gate_scrum_ta_chk",
+        "gate_scrum_uptrend_chk",
+        "gate_scrum_htf_chk",
+        "gate_fold_ta_chk",
+        "gate_fold_htf_chk",
+    ),
+    "routing_group": ("profit_route", "profit_route_bot_id"),
+    "extractor_group": (
+        "ext_chunk_size_usd",
+        "ext_artillery_size_usd",
+        "ext_scan_top_n",
+        "ext_scan_refresh",
+        "ext_pool_reserve",
+        "ext_exit_pct",
+        "ext_max_tier",
+        "ext_max_cost_basis",
+        "ext_direction",
+        "ext_standing_alt_units",
+        "ext_correction_skip",
+        "ext_drawdown_threshold",
+        "ext_hedge_budget",
+        "ext_trend_strength",
+    ),
+    "fold_mode_group": ("fold_equal", "fold_log"),
+    "fold_target_group": ("fold_all", "fold_x", "fold_x_count", "fold_recent"),
+    "dist_target_group": ("dist_all", "dist_x", "dist_x_count", "dist_recent"),
+    "lock_group": ("lock_candles",),
+}
+
 SCRUM_GROUPS = (
     "mode_group",
     "scrum_group",
@@ -560,6 +638,25 @@ SCRUM_GROUPS = (
     "routing_group",
 )
 EXTRACTOR_GROUPS = ("extractor_group",)
+FOLDING_GROUPS = ("fold_mode_group", "fold_target_group", "dist_target_group")
+PHANTOM_GROUPS = ("lock_group",)
+
+PAGE_GROUPS = {
+    ASSET: (),
+    MODE: (),
+    PARAMS: SCRUM_GROUPS + EXTRACTOR_GROUPS,
+    FOLDING: FOLDING_GROUPS,
+    PHANTOM: PHANTOM_GROUPS,
+    EXTRACTOR_POOL: (),
+}
+PAGE_ROWS = {
+    ASSET: ("exchange", "base", "target"),
+    MODE: MODES,
+    PARAMS: (),
+    FOLDING: ("folding_active",),
+    PHANTOM: ("phantom_enable",),
+    EXTRACTOR_POOL: ("exchange", "pool_base"),
+}
 
 ROW_LABELS = {
     "exchange": "Exchange:",
@@ -1140,6 +1237,7 @@ REFUSAL_TOO_LARGE = "this number is too large for the field to hold"
 REFUSAL_NOT_A_WHOLE_NUMBER = "a whole-number field cannot hold {kind}"
 REFUSAL_UNKNOWN_FIELD = "no field is named {name}"
 REFUSAL_UNKNOWN_PAGE = "no page is named {name}"
+REFUSAL_UNKNOWN_ALT = "no alt sits at position {position}"
 
 INT32_MIN = -2147483648
 INT32_MAX = 2147483647
@@ -1399,8 +1497,42 @@ def list_position(index: Any, count: int) -> int:
     return -1
 
 
+def readable_list(value: Any) -> Optional[list]:
+    """The entries a list carries, nothing where the value is not a list."""
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return None
+
+
+def readable_bag(value: Any) -> dict:
+    """The pairs a bag carries, empty where the value is not a bag."""
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def readable_markets(markets: Any) -> dict:
+    """Every venue's market rows, with anything that is not a row left out."""
+    return {
+        name: [readable_bag(one) for one in (readable_list(rows) or [])]
+        for name, rows in readable_bag(markets).items()
+    }
+
+
+def bag_text(bag: Any, key: str) -> str:
+    """The text one bag carries at ``key``, empty where it carries none."""
+    found = readable_bag(bag).get(key, EMPTY_TEXT)
+    return found if type(found) is str else EMPTY_TEXT
+
+
+def bag_number(bag: Any, key: str) -> Optional[float]:
+    """The number one bag carries at ``key``, nothing where it carries none."""
+    found = readable_bag(bag).get(key)
+    return float(found) if type(found) in (int, float) else None
+
+
 def volume_text(volume: Any) -> str:
-    """The short volume the pair list shows, empty below one thousand."""
+    """The short volume the pair list shows, empty below one thousand or unread."""
+    if type(volume) not in (int, float):
+        return NO_VOLUME_TEXT
     if volume >= VOLUME_BILLION:
         return VOLUME_BILLION_FORMAT.format(value=volume / VOLUME_BILLION)
     if volume >= VOLUME_MILLION:
@@ -1412,11 +1544,11 @@ def volume_text(volume: Any) -> str:
 
 def pair_label(market: dict) -> str:
     """One pair's entry on the asset page, with volume and volatility."""
-    text = volume_text(market.get(MARKET_VOLUME_KEY, 0))
+    text = volume_text(bag_number(market, MARKET_VOLUME_KEY))
     parts = [VOLUME_PART_FORMAT.format(text=text)] if text else []
     if market.get(MARKET_VOLATILITY_KEY, 0) > 0:
         parts.append(VOLATILITY_PART_FORMAT.format(value=market[MARKET_VOLATILITY_KEY]))
-    base = market[MARKET_BASE_KEY]
+    base = bag_text(market, MARKET_BASE_KEY)
     if not parts:
         return base
     return LABEL_WITH_PARTS_FORMAT.format(base=base, parts=PART_SEPARATOR.join(parts))
@@ -1424,8 +1556,8 @@ def pair_label(market: dict) -> str:
 
 def alt_label(market: dict) -> str:
     """One alt's entry on the pool page, with its volume."""
-    text = volume_text(market.get(MARKET_VOLUME_KEY, 0.0))
-    base = market[MARKET_BASE_KEY]
+    text = volume_text(bag_number(market, MARKET_VOLUME_KEY))
+    base = bag_text(market, MARKET_BASE_KEY)
     if not text:
         return base
     return ALT_LABEL_WITH_VOLUME_FORMAT.format(base=base, text=text)
@@ -1443,9 +1575,10 @@ def available_timeframes(exchange_id: Any, supported: Any = None) -> tuple:
     so a venue offering a timeframe the wizard never listed still shows
     it. ``exchange_id`` names the venue the list belongs to.
     """
-    if supported is None:
+    offered = readable_list(supported)
+    if offered is None:
         return TA_TIMEFRAMES
-    return tuple(supported)
+    return tuple(offered)
 
 
 def next_page_id(page_id: Any, mode: str) -> int:
@@ -1478,14 +1611,13 @@ class BotWizardModel:
     ) -> None:
         """Lay out the six pages from the venue list and the stored defaults."""
         self.calls: list[list] = []
-        self.exchanges = [dict(one) for one in (exchanges or [])]
-        self.defaults = dict(defaults or {})
-        self.markets = {
-            name: [dict(one) for one in rows]
-            for name, rows in dict(markets or {}).items()
-        }
+        self.exchanges = [readable_bag(one) for one in (readable_list(exchanges) or [])]
+        self.defaults = readable_bag(defaults)
+        self.markets = readable_markets(markets)
         self.timeframes = {
-            name: list(found) for name, found in dict(timeframes or {}).items()
+            name: offered
+            for name, found in readable_bag(timeframes).items()
+            if (offered := readable_list(found)) is not None
         }
         self.descriptions: dict[str, str] = {}
         self.mode = SCRUMMING_MODE
@@ -1676,10 +1808,20 @@ class BotWizardModel:
 
     # -- the asset page ------------------------------------------------
 
+    def exchange_items(self) -> list:
+        """Every venue drop-down entry, its wording beside the id behind it."""
+        return [
+            [
+                bag_text(one, EXCHANGE_DISPLAY_KEY) or bag_text(one, EXCHANGE_ID_KEY),
+                bag_text(one, EXCHANGE_ID_KEY),
+            ]
+            for one in self.exchanges
+        ]
+
     def exchange_id_at(self, index: int) -> Optional[str]:
         """The venue id at one position in the venue list."""
         if 0 <= index < len(self.exchanges):
-            return self.exchanges[index].get(EXCHANGE_ID_KEY, EMPTY_TEXT)
+            return bag_text(self.exchanges[index], EXCHANGE_ID_KEY)
         return None
 
     def set_exchange_index(self, value: Any) -> None:
@@ -1710,17 +1852,22 @@ class BotWizardModel:
         base = self.combo_text("base").strip().upper()
         rows = self.markets.get(found, [])
         self.calls.append([COMBO_CLEAR, "asset_target"])
-        kept = [row for row in rows if row.get(MARKET_QUOTE_KEY) == base]
-        kept.sort(key=lambda row: row.get(MARKET_VOLUME_KEY, 0), reverse=True)
+        kept = [
+            row
+            for row in rows
+            if row.get(MARKET_QUOTE_KEY) == base and bag_text(row, MARKET_BASE_KEY)
+        ]
+        kept.sort(
+            key=lambda row: bag_number(row, MARKET_VOLUME_KEY) or 0.0, reverse=True
+        )
         self.target_items = []
         self.target_hues = []
         for row in kept:
             label = pair_label(row)
-            self.target_items.append([label, row[MARKET_BASE_KEY]])
-            self.target_hues.append(icon_hue(row[MARKET_BASE_KEY]))
-            self.calls.append(
-                [COMBO_ADD_ITEM, "asset_target", label, row[MARKET_BASE_KEY]]
-            )
+            named = bag_text(row, MARKET_BASE_KEY)
+            self.target_items.append([label, named])
+            self.target_hues.append(icon_hue(named))
+            self.calls.append([COMBO_ADD_ITEM, "asset_target", label, named])
         if not kept:
             self.target_items.append([NO_PAIRS_TEXT, NO_PAIRS_DATA])
             self.calls.append(
@@ -1729,7 +1876,7 @@ class BotWizardModel:
         self.target_index = 0 if self.target_items else -1
         sorted_note = (
             SORTED_BY_VOLUME_SUFFIX
-            if any(row.get(MARKET_VOLUME_KEY, 0) > 0 for row in kept)
+            if any((bag_number(row, MARKET_VOLUME_KEY) or 0.0) > 0 for row in kept)
             else EMPTY_TEXT
         )
         self.asset_status = (
@@ -1781,9 +1928,7 @@ class BotWizardModel:
     def pool_exchange_id(self) -> Optional[str]:
         """The venue id the pool page shows."""
         if 0 <= self.pool_exchange_index < len(self.exchanges):
-            return self.exchanges[self.pool_exchange_index].get(
-                EXCHANGE_ID_KEY, EMPTY_TEXT
-            )
+            return bag_text(self.exchanges[self.pool_exchange_index], EXCHANGE_ID_KEY)
         return None
 
     def set_pool_exchange_index(self, value: Any) -> None:
@@ -1814,22 +1959,31 @@ class BotWizardModel:
         base = self.combo_text("pool_base").strip().upper()
         rows = self.markets.get(found, [])
         self.calls.append([LIST_CLEAR, "alt_list"])
-        kept = [row for row in rows if row.get(MARKET_QUOTE_KEY) == base]
-        kept.sort(key=lambda row: row.get(MARKET_VOLUME_KEY, 0.0), reverse=True)
+        kept = [
+            row
+            for row in rows
+            if row.get(MARKET_QUOTE_KEY) == base
+            and bag_text(row, MARKET_BASE_KEY)
+            and bag_text(row, MARKET_SYMBOL_KEY)
+        ]
+        kept.sort(
+            key=lambda row: bag_number(row, MARKET_VOLUME_KEY) or 0.0, reverse=True
+        )
         self.alt_items = []
         self.alt_checked = []
         for row in kept:
             label = alt_label(row)
-            self.alt_items.append([label, row[MARKET_SYMBOL_KEY]])
+            named = bag_text(row, MARKET_SYMBOL_KEY)
+            self.alt_items.append([label, named])
             self.alt_checked.append(False)
-            self.calls.append(
-                [LIST_ADD_ITEM, "alt_list", label, row[MARKET_SYMBOL_KEY], False]
-            )
+            self.calls.append([LIST_ADD_ITEM, "alt_list", label, named, False])
         self.pool_status = POOL_PAIR_COUNT_FORMAT.format(count=len(kept), base=base)
         self.calls.append([LABEL_SET_TEXT, "pool_status", self.pool_status])
 
     def set_alt_checked(self, position: int, value: Any) -> None:
         """Tick or clear one alt in the list."""
+        if not 0 <= position < len(self.alt_checked):
+            raise IndexError(REFUSAL_UNKNOWN_ALT.format(position=position))
         wanted = check_value(value)
         self.alt_checked[position] = wanted
         self.calls.append([LIST_SET_CHECK_STATE, "alt_list", position, wanted])
@@ -1914,7 +2068,8 @@ class BotWizardModel:
     def set_phantom_exchange_id(self, exchange_id: Any, supported: Any = None) -> None:
         """Grey out the phantom timeframes the picked venue does not offer."""
         self.exchange_id = exchange_id
-        allowed = set(PHANTOM_TIMEFRAMES if supported is None else supported)
+        offered = readable_list(supported)
+        allowed = set(PHANTOM_TIMEFRAMES if offered is None else offered)
         named = exchange_id or PHANTOM_UNKNOWN_EXCHANGE
         for found in PHANTOM_TIMEFRAMES:
             offered = found in allowed
@@ -2088,6 +2243,7 @@ class BotWizardModel:
         the line to show. ``keep_going`` is the operator pressing
         Continue anyway on the warning box.
         """
+        self.warning_box = None
         if self.current_page != PHANTOM:
             return True
         if not self.checks["phantom_enable"]:
@@ -2258,16 +2414,11 @@ CONFIG_FIELDS = (
 def _apply_venue_steps(model: BotWizardModel, steps: dict) -> None:
     """Take the mode, the venue list and the venue each page shows."""
     if steps.get("descriptions") is not None:
-        model.descriptions = dict(steps["descriptions"])
+        model.descriptions = readable_bag(steps["descriptions"])
     if steps.get("mode") is not None:
         model.select_mode(steps["mode"] == EXTRACTOR_MODE)
     if steps.get("markets") is not None:
-        model.markets.update(
-            {
-                name: [dict(one) for one in rows]
-                for name, rows in dict(steps["markets"]).items()
-            }
-        )
+        model.markets.update(readable_markets(steps["markets"]))
     if steps.get("exchange_index") is not None:
         model.set_exchange_index(steps["exchange_index"])
     if steps.get("pool_exchange_index") is not None:
@@ -2285,11 +2436,11 @@ def _apply_field_steps(model: BotWizardModel, steps: dict) -> None:
         ("phantom_timeframes", model.set_phantom_timeframe),
     )
     for key, setter in setters:
-        for name, value in dict(steps.get(key) or {}).items():
+        for name, value in readable_bag(steps.get(key)).items():
             setter(name, value)
     if steps.get("target_index") is not None:
         model.set_target_index(steps["target_index"])
-    for position, value in dict(steps.get("alt_checks") or {}).items():
+    for position, value in readable_bag(steps.get("alt_checks")).items():
         model.set_alt_checked(int(position), value)
     if steps.get("select_all"):
         model.select_all_alts()
@@ -2298,11 +2449,7 @@ def _apply_field_steps(model: BotWizardModel, steps: dict) -> None:
 
 
 def drive_model(model: BotWizardModel, steps: dict) -> BotWizardModel:
-    """Run one set of steps over , in the order a person works.
-
-    The mode, then the venue, then the fields, then the alt list, then
-    the venue's timeframes, then the walk through the pages.
-    """
+    """Run one set of steps over the model, in the order a person works."""
     _apply_venue_steps(model, steps)
     _apply_field_steps(model, steps)
     if steps.get("exchange_id") is not None:
@@ -2408,6 +2555,7 @@ def refusal_catalogue() -> dict:
         "not_a_whole_number": REFUSAL_NOT_A_WHOLE_NUMBER,
         "unknown_field": REFUSAL_UNKNOWN_FIELD,
         "unknown_page": REFUSAL_UNKNOWN_PAGE,
+        "unknown_alt": REFUSAL_UNKNOWN_ALT,
         "none": REFUSAL_NONE,
         "api_load": REFUSAL_API_LOAD,
         "not_final": REFUSAL_NOT_FINAL,
@@ -2446,6 +2594,8 @@ def page_state(model: BotWizardModel) -> dict:
         "titles": dict(PAGE_TITLES),
         "subtitles": dict(PAGE_SUBTITLES),
         "unreachable": list(UNREACHABLE_PAGES),
+        "groups": {name: list(found) for name, found in PAGE_GROUPS.items()},
+        "rows": {name: list(found) for name, found in PAGE_ROWS.items()},
         "current": model.current_page,
         "current_id": model.current_page_id(),
         "history": list(model.history),
@@ -2475,6 +2625,7 @@ def asset_page_state(model: BotWizardModel) -> dict:
     """The venue, the pair list and the info button on the asset page."""
     return {
         "exchange_index": model.exchange_index,
+        "exchange_items": model.exchange_items(),
         "target_items": [list(one) for one in model.target_items],
         "target_hues": list(model.target_hues),
         "target_index": model.target_index,
@@ -2493,6 +2644,7 @@ def pool_page_state(model: BotWizardModel) -> dict:
     """The venue, the pool base and the alt list on the pool page."""
     return {
         "exchange_index": model.pool_exchange_index,
+        "exchange_items": model.exchange_items(),
         "alt_items": [list(one) for one in model.alt_items],
         "alt_checked": list(model.alt_checked),
         "status": model.pool_status,
@@ -2561,6 +2713,9 @@ def build_view_model(
             "titles": dict(GROUP_TITLES),
             "scrum": list(SCRUM_GROUPS),
             "extractor": list(EXTRACTOR_GROUPS),
+            "folding": list(FOLDING_GROUPS),
+            "phantom": list(PHANTOM_GROUPS),
+            "rows": {name: list(found) for name, found in GROUP_ROWS.items()},
             "visible": dict(model.group_visible),
             "params_subtitle": model.params_subtitle,
             "params_subtitle_scrumming": PARAMS_SUBTITLE_SCRUMMING,
@@ -2581,6 +2736,7 @@ def build_view_model(
             "offered": {name: list(found) for name, found in model.timeframes.items()},
             "ta": list(TA_TIMEFRAMES),
             "ta_default": TA_TIMEFRAME_DEFAULT,
+            "ta_combo": TA_COMBO_NAME,
             "ta_items": [list(one) for one in model.ta_timeframe_items],
             "base_currencies": list(BASE_CURRENCIES),
         },

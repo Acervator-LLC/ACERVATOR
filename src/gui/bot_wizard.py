@@ -46,6 +46,16 @@ from src.gui.qt_safe_events import safe_process_events
 from src.exchange.lazy_singleton import LazySingleton, ThrottledFault
 
 
+def _market_text(value) -> str:
+    """The text one market row carries, empty where it carries no text."""
+    return value if type(value) is str else ""
+
+
+def _market_number(value):
+    """The number one market row carries, nothing where it carries no number."""
+    return float(value) if type(value) in (int, float) else None
+
+
 def _build_asset_manager():
     """Construct the AssetManager. Import deferred to keep GUI imports cheap."""
     from src.exchange.crypto_assets import AssetManager
@@ -134,10 +144,8 @@ if _HAS_QT:
 
             self._exchange = QComboBox()
             for exch in exchanges:
-                self._exchange.addItem(
-                    exch.get("display_name", exch.get("exchange_id", "")),
-                    exch.get("exchange_id", ""),
-                )
+                eid = _market_text(exch.get("exchange_id"))
+                self._exchange.addItem(exch.get("display_name", eid), eid)
             self._exchange.currentIndexChanged.connect(self._on_exchange_changed)
             form.addRow("Exchange:", self._exchange)
 
@@ -284,37 +292,48 @@ if _HAS_QT:
             base = self._base.currentText().strip().upper()
             markets = self._markets_cache.get(eid, [])
             self._target.clear()
-            filtered = [m for m in markets if m["quote"] == base]
-            # Cached volume only. A network fetch here blocks the GUI thread.
-            filtered.sort(key=lambda m: m.get("volume", 0), reverse=True)
+            filtered = [
+                m
+                for m in markets
+                if m.get("quote") == base and _market_text(m.get("base"))
+            ]
+            # Cached volume only, since a network fetch here blocks the GUI thread.
+            filtered.sort(
+                key=lambda m: _market_number(m.get("volume")) or 0.0, reverse=True
+            )
             for m in filtered:
-                vol = m.get("volume", 0)
-                vol_s = (
-                    f"${vol/1e9:.1f}B"
-                    if vol >= 1e9
-                    else (
-                        f"${vol/1e6:.1f}M"
-                        if vol >= 1e6
-                        else f"${vol/1e3:.0f}K" if vol >= 1e3 else ""
+                vol = _market_number(m.get("volume"))
+                vol_s = ""
+                if vol is not None:
+                    vol_s = (
+                        f"${vol/1e9:.1f}B"
+                        if vol >= 1e9
+                        else (
+                            f"${vol/1e6:.1f}M"
+                            if vol >= 1e6
+                            else f"${vol/1e3:.0f}K" if vol >= 1e3 else ""
+                        )
                     )
-                )
                 parts = [f"Vol: {vol_s}"] if vol_s else []
                 if m.get("volatility", 0) > 0:
                     parts.append(f"Volat: {m['volatility']:.1f}%")
-                label = m["base"] + (f"  ({', '.join(parts)})" if parts else "")
-                # Cache only: no network on the GUI thread.
-                icon = _get_coin_icon(m["base"], download=False)
+                named = _market_text(m.get("base"))
+                label = named + (f"  ({', '.join(parts)})" if parts else "")
+                # The cached icon only, since a download here blocks the GUI thread.
+                icon = _get_coin_icon(named, download=False)
                 if icon:
-                    self._target.addItem(icon, label, m["base"])
+                    self._target.addItem(icon, label, named)
                 else:
-                    self._target.addItem(label, m["base"])
+                    self._target.addItem(label, named)
             if not filtered:
                 self._target.addItem("No pairs found", "")
             self._status.setText(
                 f"{len(filtered)} {base} pairs"
                 + (
                     " (sorted by volume)"
-                    if any(m.get("volume", 0) > 0 for m in filtered)
+                    if any(
+                        (_market_number(m.get("volume")) or 0.0) > 0 for m in filtered
+                    )
                     else ""
                 )
             )
@@ -418,10 +437,8 @@ if _HAS_QT:
 
             self._exchange = QComboBox()
             for exch in exchanges:
-                self._exchange.addItem(
-                    exch.get("display_name", exch.get("exchange_id", "")),
-                    exch.get("exchange_id", ""),
-                )
+                eid = _market_text(exch.get("exchange_id"))
+                self._exchange.addItem(exch.get("display_name", eid), eid)
             self._exchange.currentIndexChanged.connect(self._on_exchange_changed)
             self._exchange.setToolTip(
                 "Exchange this pool trades on. Changing it re-scans that "
@@ -549,12 +566,22 @@ if _HAS_QT:
             base = self._base.currentText().strip().upper()
             markets = self._markets_cache.get(eid, [])
             self._alt_list.clear()
-            filtered = [m for m in markets if m.get("quote") == base]
+            filtered = [
+                m
+                for m in markets
+                if m.get("quote") == base
+                and _market_text(m.get("base"))
+                and _market_text(m.get("symbol"))
+            ]
             # Descending volume matches the auto-scan top-N order.
-            filtered.sort(key=lambda m: m.get("volume", 0.0), reverse=True)
+            filtered.sort(
+                key=lambda m: _market_number(m.get("volume")) or 0.0, reverse=True
+            )
             for m in filtered:
-                vol = m.get("volume", 0.0)
-                if vol >= 1e9:
+                vol = _market_number(m.get("volume"))
+                if vol is None:
+                    vol_s = ""
+                elif vol >= 1e9:
                     vol_s = f"${vol/1e9:.1f}B"
                 elif vol >= 1e6:
                     vol_s = f"${vol/1e6:.1f}M"
@@ -562,9 +589,10 @@ if _HAS_QT:
                     vol_s = f"${vol/1e3:.0f}K"
                 else:
                     vol_s = ""
-                label = f"{m['base']}  ({vol_s})" if vol_s else m["base"]
+                named = _market_text(m.get("base"))
+                label = f"{named}  ({vol_s})" if vol_s else named
                 item = QListWidgetItem(label)
-                item.setData(Qt.UserRole, m["symbol"])
+                item.setData(Qt.UserRole, _market_text(m.get("symbol")))
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                 item.setCheckState(Qt.Unchecked)
                 self._alt_list.addItem(item)

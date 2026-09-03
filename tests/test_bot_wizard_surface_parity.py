@@ -81,7 +81,7 @@ SIGNAL_NEIGHBOUR = REPO_ROOT / "src" / "gui" / "usb_auth_widget.py"
 BUS_NEIGHBOUR = REPO_ROOT / "src" / "gui" / "bot_visualizer.py"
 
 SHIPPED_CLASS_TOTAL = 7
-SHIPPED_FUNCTION_TOTAL = 35
+SHIPPED_FUNCTION_TOTAL = 37
 SOURCE_CONNECT_TOTAL = 10
 RUNTIME_CONNECT_TOTAL = 10
 SIGNAL_BUILD_TOTAL = 0
@@ -1675,6 +1675,107 @@ def test_every_group_carries_the_title_the_widget_carries(name):
     assert carried == surface.GROUP_TITLES[name], name
 
 
+def venue_combo_items(combo):
+    """Every entry one venue drop-down holds, its wording beside its id."""
+    return [[combo.itemText(at), combo.itemData(at)] for at in range(combo.count())]
+
+
+@pytest.mark.parametrize("page", ["asset", "pool"])
+def test_the_venue_list_the_payload_carries_is_the_list_the_combo_holds(page):
+    """The venue drop-down the operator picks from never reaches the payload."""
+    with QtSeams(markets=MARKETS) as seams:
+        wizard = shipped.BotCreationWizard(EXCHANGES, {})
+        holder = wizard._asset_page if page == "asset" else wizard._extractor_pool_page
+        held = venue_combo_items(holder._exchange)
+    assert seams.restored() is True
+    model = surface.BotWizardModel(EXCHANGES, {}, MARKETS)
+    assert model.exchange_items() == held, page
+
+
+def test_the_venue_list_check_would_see_a_venue_the_combo_never_held():
+    """The venue list is the same whatever venues the model was given."""
+    model = surface.BotWizardModel([], {}, {})
+    assert model.exchange_items() == []
+
+
+def widget_field_names():
+    """Every field name, keyed by the page and attribute its widget sits at."""
+    found = {}
+    for source in (
+        NUMBER_WIDGETS,
+        CHECK_WIDGETS,
+        RADIO_WIDGETS,
+        COMBO_WIDGETS,
+        TEXT_WIDGETS,
+    ):
+        for name, where in source.items():
+            found[where] = name
+    return found
+
+
+def laid_out_groups():
+    """Every group box the wizard builds, keyed by the title it carries."""
+    from PySide6.QtWidgets import QGroupBox
+
+    with QtSeams(markets=MARKETS) as seams:
+        wizard = shipped.BotCreationWizard(EXCHANGES, {})
+        pages = {
+            "params": wizard._params_page,
+            "folding": wizard._folding_page,
+            "phantom": wizard._phantom_page,
+        }
+        named = widget_field_names()
+        by_widget = {}
+        for page, holder in pages.items():
+            for where, name in named.items():
+                if where[0] == page:
+                    by_widget[id(getattr(holder, where[1]))] = name
+        found = {}
+        for holder in pages.values():
+            for box in holder.findChildren(QGroupBox):
+                found[box.title()] = [
+                    by_widget[id(one)]
+                    for one in box.findChildren(object)
+                    if id(one) in by_widget
+                ]
+    assert seams.restored() is True
+    return found
+
+
+@pytest.mark.parametrize("name", sorted(surface.GROUP_ROWS))
+def test_every_group_holds_the_fields_the_widget_holds_in_that_order(name):
+    """A group's fields moved, or changed order, on one side only."""
+    laid_out = laid_out_groups()
+    title = surface.GROUP_TITLES[name]
+    assert title in laid_out, sorted(laid_out)
+    assert laid_out[title] == list(surface.GROUP_ROWS[name]), name
+
+
+def test_the_group_row_reader_finds_a_field_the_shipped_page_lays_out():
+    """The row walk finds no field at all, so every group compares empty."""
+    laid_out = laid_out_groups()
+    every = sorted(one for found in laid_out.values() for one in found)
+    assert len(every) == len(set(every)), every
+    assert "target_balance" in every, every
+
+
+def test_every_field_the_wizard_carries_is_laid_out_once_or_named_on_a_page():
+    """A field the wizard carries reaches no group and no page of its own."""
+    every = set(surface.NUMBER_FIELDS) | set(surface.CHECK_FIELDS)
+    every |= set(surface.RADIO_FIELDS) | set(surface.COMBO_FIELDS)
+    every |= set(surface.TEXT_FIELDS)
+    placed = {one for found in surface.GROUP_ROWS.values() for one in found}
+    placed |= {one for found in surface.PAGE_ROWS.values() for one in found}
+    assert sorted(every - placed) == [], sorted(every - placed)
+
+
+def test_the_placement_check_would_see_a_field_nobody_laid_out():
+    """The placement check counts a name no field carries as placed."""
+    placed = {one for found in surface.GROUP_ROWS.values() for one in found}
+    placed |= {one for found in surface.PAGE_ROWS.values() for one in found}
+    assert "no_such_field" not in placed
+
+
 def test_the_info_button_carries_the_wording_the_widget_carries():
     """The info button's wording moved on one side only.
 
@@ -1763,6 +1864,11 @@ PAYLOAD_KEYS = {
     "GROUP_TITLES": "groups.titles",
     "SCRUM_GROUPS": "groups.scrum",
     "EXTRACTOR_GROUPS": "groups.extractor",
+    "FOLDING_GROUPS": "groups.folding",
+    "PHANTOM_GROUPS": "groups.phantom",
+    "GROUP_ROWS": "groups.rows",
+    "PAGE_GROUPS": "pages.groups",
+    "PAGE_ROWS": "pages.rows",
     "PARAMS_SUBTITLE_SCRUMMING": "groups.params_subtitle_scrumming",
     "PARAMS_SUBTITLE_EXTRACTOR": "groups.params_subtitle_extractor",
     "PARAMS_SUBTITLE_GRID": "groups.params_subtitle_grid",
@@ -1790,6 +1896,7 @@ PAYLOAD_KEYS = {
     "FOLD_HOLD_IN_DOWNTREND": "folding_page.fold_hold_in_downtrend",
     "TA_TIMEFRAMES": "timeframes.ta",
     "TA_TIMEFRAME_DEFAULT": "timeframes.ta_default",
+    "TA_COMBO_NAME": "timeframes.ta_combo",
     "BASE_CURRENCIES": "timeframes.base_currencies",
     "OUTER_MARGINS": "layout.outer_margins",
     "OUTER_SPACING_PX": "layout.outer_spacing_px",
@@ -1861,6 +1968,7 @@ PAYLOAD_KEYS = {
     "REFUSAL_NOT_A_WHOLE_NUMBER": "refusals.not_a_whole_number",
     "REFUSAL_UNKNOWN_FIELD": "refusals.unknown_field",
     "REFUSAL_UNKNOWN_PAGE": "refusals.unknown_page",
+    "REFUSAL_UNKNOWN_ALT": "refusals.unknown_alt",
     "REFUSAL_NONE": "refusals.none",
     "REFUSAL_API_LOAD": "refusals.api_load",
     "REFUSAL_NOT_FINAL": "refusals.not_final",
@@ -2801,14 +2909,9 @@ def test_a_stored_true_volatility_prints_as_one_percent():
     assert printed == "AAA  (Volat: 1.0%)", printed
 
 
-@pytest.mark.parametrize("value", ["abc", "12.7"])
-def test_a_market_reading_that_is_text_stops_the_whole_pair_list(value):
-    """Text in one market's volume is handled, or it stops the pair list.
-
-    One unusable reading ends the refill and the operator sees no pairs
-    at all, not one row missing.
-    """
-    rows = {
+def text_volume_rows(value):
+    """Two pairs, the first carrying ``value`` where a volume belongs."""
+    return {
         "coinbase": [
             {
                 "symbol": "AAA/USDT",
@@ -2826,12 +2929,172 @@ def test_a_market_reading_that_is_text_stops_the_whole_pair_list(value):
             },
         ]
     }
+
+
+@pytest.mark.parametrize("value", ["abc", "12.7"])
+def test_a_market_reading_that_is_text_leaves_the_rest_of_the_pair_list(value):
+    """One unusable volume ends the refill and the operator sees no pairs."""
+    rows = text_volume_rows(value)
     with QtSeams(markets=rows) as seams:
-        with pytest.raises(TypeError) as old_refusal:
-            shipped.AssetSelectionPage(EXCHANGES)
+        page = shipped.AssetSelectionPage(EXCHANGES)
+        printed = [page._target.itemText(at) for at in range(page._target.count())]
     assert seams.restored() is True
-    with pytest.raises(type(old_refusal.value)):
-        surface.BotWizardModel(EXCHANGES, {}, rows)
+    model = surface.BotWizardModel(EXCHANGES, {}, rows)
+    assert printed == ["BBB  (Vol: $5.0M)", "AAA"], printed
+    assert [one[0] for one in model.target_items] == printed
+
+
+@pytest.mark.parametrize("value", ["abc", "12.7"])
+def test_a_market_reading_that_is_text_carries_no_volume_of_its_own(value):
+    """An unreadable volume prints as a figure the venue never reported."""
+    rows = text_volume_rows(value)
+    model = surface.BotWizardModel(EXCHANGES, {}, rows)
+    named = dict(zip([one[1] for one in model.target_items], model.target_items))
+    assert named["AAA"][0] == "AAA", named["AAA"]
+    assert value not in named["AAA"][0], named["AAA"]
+
+
+def test_the_unreadable_volume_check_still_prints_a_volume_it_can_read():
+    """A volume the venue did report is dropped along with the unreadable one."""
+    rows = text_volume_rows(2.5e9)
+    model = surface.BotWizardModel(EXCHANGES, {}, rows)
+    named = dict(zip([one[1] for one in model.target_items], model.target_items))
+    assert named["AAA"][0] == "AAA  (Vol: $2.5B)", named["AAA"]
+
+
+def test_a_venue_answering_with_text_names_no_timeframe_of_its_own():
+    """One letter of a venue's answer becomes one timeframe the venue never offered."""
+    assert surface.available_timeframes("coinbase", "1h") == surface.TA_TIMEFRAMES
+
+
+def test_a_venue_answering_with_a_list_still_replaces_the_wizard_list():
+    """A venue that does name its timeframes is ignored."""
+    offered = ["1h", "4h", "1d"]
+    assert surface.available_timeframes("coinbase", offered) == tuple(offered)
+
+
+def test_a_venue_answering_with_text_greys_out_no_phantom_timeframe():
+    """A venue's one-letter answer greys out every phantom timeframe."""
+    model = surface.BotWizardModel(EXCHANGES, {})
+    model.set_phantom_exchange_id("coinbase", "1h")
+    greyed = [one for one, on in model.phantom_enabled_timeframes.items() if not on]
+    assert greyed == [], greyed
+
+
+def test_a_venue_naming_two_phantom_timeframes_greys_out_the_rest():
+    """A venue that names two timeframes leaves every other one open."""
+    model = surface.BotWizardModel(EXCHANGES, {})
+    model.set_phantom_exchange_id("coinbase", ["1h", "1d"])
+    open_now = [one for one, on in model.phantom_enabled_timeframes.items() if on]
+    assert open_now == ["1h", "1d"], open_now
+
+
+def rows_missing(key):
+    """One good pair and one the venue sent without ``key``."""
+    good = {"symbol": "AAA/USDT", "base": "AAA", "quote": "USDT", "volume": 1.0}
+    short = {"symbol": "BBB/USDT", "base": "BBB", "quote": "USDT", "volume": 2.0}
+    short.pop(key)
+    return {"coinbase": [short, good]}
+
+
+def test_a_pair_the_venue_sent_with_no_asset_leaves_the_rest_of_the_list():
+    """A pair with no asset name stops the whole pair list."""
+    model = surface.BotWizardModel(EXCHANGES, {}, rows_missing("base"))
+    assert [one[1] for one in model.target_items] == ["AAA"]
+
+
+def test_the_nameless_pair_check_still_keeps_a_pair_that_has_its_asset():
+    """A pair carrying its asset name is dropped with the nameless one."""
+    rows = {"coinbase": [{"symbol": "B/USDT", "base": "BBB", "quote": "USDT"}]}
+    model = surface.BotWizardModel(EXCHANGES, {}, rows)
+    assert [one[1] for one in model.target_items] == ["BBB"]
+
+
+def test_an_alt_the_venue_sent_with_no_symbol_leaves_the_rest_of_the_list():
+    """An alt with no symbol stops the whole alt list."""
+    rows = {
+        "coinbase": [
+            {"base": "BBB", "quote": "BTC", "volume": 2.0},
+            {"symbol": "AAA/BTC", "base": "AAA", "quote": "BTC", "volume": 1.0},
+        ]
+    }
+    model = surface.BotWizardModel(EXCHANGES, {}, rows)
+    model.set_combo_index("pool_base", 0)
+    assert [one[1] for one in model.alt_items] == ["AAA/BTC"]
+
+
+def test_the_symbol_less_alt_check_still_keeps_an_alt_that_has_its_symbol():
+    """An alt carrying its symbol is dropped with the symbol-less one."""
+    rows = {"coinbase": [{"symbol": "AAA/BTC", "base": "AAA", "quote": "BTC"}]}
+    model = surface.BotWizardModel(EXCHANGES, {}, rows)
+    model.set_combo_index("pool_base", 0)
+    assert [one[1] for one in model.alt_items] == ["AAA/BTC"]
+
+
+def pool_model():
+    """A model whose pool page holds two alts, in volume order."""
+    rows = {
+        "coinbase": [
+            {"symbol": "AAA/BTC", "base": "AAA", "quote": "BTC", "volume": 3.0},
+            {"symbol": "BBB/BTC", "base": "BBB", "quote": "BTC", "volume": 2.0},
+        ]
+    }
+    model = surface.BotWizardModel(EXCHANGES, {}, rows)
+    model.set_combo_index("pool_base", 0)
+    return model
+
+
+def test_a_tick_at_a_position_before_the_first_alt_reaches_no_alt_at_all():
+    """A tick at minus one reaches the last alt instead of refusing."""
+    model = pool_model()
+    with pytest.raises(IndexError):
+        model.set_alt_checked(-1, True)
+    assert model.alt_checked == [False, False], model.alt_checked
+
+
+def test_a_tick_at_a_position_the_alt_list_holds_still_reaches_that_alt():
+    """A tick at a position the list holds is refused with the bad ones."""
+    model = pool_model()
+    model.set_alt_checked(0, True)
+    assert model.alt_checked == [True, False], model.alt_checked
+
+
+def phantom_model():
+    """A model sitting on the phantom page with one timeframe ticked."""
+    model = surface.BotWizardModel(EXCHANGES, {})
+    model.set_check("phantom_enable", True)
+    model.set_phantom_timeframe("1h", True)
+    model.current_page = surface.PHANTOM
+    model.exchange_id = "coinbase"
+    return model
+
+
+def test_a_refusal_the_operator_answered_leaves_no_warning_standing():
+    """A warning about a set the operator already reduced is still published."""
+    model = phantom_model()
+    model.validate_page((False, "too many"), False)
+    model.validate_page((True, ""), False)
+    assert model.warning_box is None, model.warning_box
+
+
+def test_the_standing_warning_check_still_sees_the_refusal_itself():
+    """A refusal publishes no warning for the operator to read."""
+    model = phantom_model()
+    model.validate_page((False, "too many"), False)
+    assert model.warning_box is not None
+    assert model.warning_box[0] == surface.API_WARNING_TITLE
+
+
+def test_a_venue_whose_id_is_not_text_names_no_venue_at_all():
+    """A venue id that is not text stops the whole wizard."""
+    payload = surface.build_view_model([{"exchange_id": 5}], {}, {})
+    assert payload["asset_page"]["config"]["exchange_id"] == ""
+
+
+def test_the_venue_id_check_still_reads_a_venue_id_that_is_text():
+    """A venue id that is text is read as no venue."""
+    payload = surface.build_view_model(EXCHANGES, {}, {})
+    assert payload["asset_page"]["config"]["exchange_id"] == "coinbase"
 
 
 # ---------------------------------------------------------------------
