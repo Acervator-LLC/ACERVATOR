@@ -1452,8 +1452,12 @@ COMPARED_KEYS = (
 
 COVERED_ELSEWHERE = {
     "actions": "test_the_surface_names_one_action_for_every_connection_it_counts",
+    "banner": "test_the_banner_line_is_published_as_the_pieces_that_build_it",
     "bus": "test_the_dialog_touches_no_event_bus",
+    "button_names": "test_every_button_word_is_published_beside_the_name_it_wires",
     "buttons": "test_both_sides_paint_the_same_dialog",
+    "connect_order": "test_the_two_volume_connections_are_published_in_run_order",
+    "text_rows": "test_the_row_list_names_every_labelled_text_row_the_dialog_draws",
     "call_names": "test_every_recorded_step_carries_a_name_the_surface_names",
     "calls": "test_every_recorded_step_carries_a_name_the_surface_names",
     "connections": "test_the_built_dialog_holds_one_connection_for_every_action_named",
@@ -2441,13 +2445,14 @@ class DialogBuilder:
             layout.addStretch()
             return
         if role == surface.BANNER:
-            if self.view["wing"] == surface.STOCK_WING:
+            banner = self.view["banner"]
+            if banner["shown"]:
                 self.add(
                     layout,
                     self.plain_label(
-                        surface.STOCK_BANNER_TEXT,
-                        surface.STOCK_BANNER_STYLE,
-                        wrap=True,
+                        banner["text"],
+                        banner["style_sheet"],
+                        wrap=banner["word_wrap"],
                     ),
                 )
             return
@@ -2910,3 +2915,326 @@ def test_one_bad_stored_value_stops_the_whole_dialog(monkeypatch, capsys):
 
     tabs = dialog.findChildren(QTabWidget)[0]
     assert tabs.count() == len(surface.TAB_TITLES), tabs.count()
+
+
+# --- the repairs this unit made -------------------------------------------
+
+BUTTON_WORDS = ("Press this", "And this")
+VOLUME_HANDLERS = ("update_volume_label", "sfx_volume_changed")
+EIGHT_DIGIT_COLOUR = "#6699ff55"
+HEX_MARK = "#"
+HEX_LETTERS = "0123456789abcdefABCDEF"
+EIGHT_DIGITS = 8
+BLOCK_OPEN = "{"
+HOVER_SHEET = (
+    "QLabel { color: "
+    + surface.BANNER_TINT
+    + "; } QLabel:hover { color: "
+    + EIGHT_DIGIT_COLOUR
+    + "; }"
+)
+
+
+def stock_view():
+    """One built payload for the stock wing, where the banner shows."""
+    return surface.build_view_model(surface_model(case(wing="stock")))
+
+
+def test_the_button_bag_carries_the_words_the_dialog_wires(monkeypatch):
+    """Both button words move with the constants the layout wires."""
+    test_words, add_words = BUTTON_WORDS
+    monkeypatch.setattr(surface, "TEST_BUTTON_TEXT", test_words)
+    monkeypatch.setattr(surface, "ADD_BUTTON_TEXT", add_words)
+    buttons = surface.build_view_model(surface_model(case()))["buttons"]
+    assert buttons["test"] == test_words, buttons
+    assert buttons["add"] == add_words, buttons
+
+
+def test_the_button_word_check_reads_the_shipped_words_when_nothing_moves():
+    """With nothing moved the payload carries the words the dialog draws."""
+    buttons = surface.build_view_model(surface_model(case()))["buttons"]
+    assert buttons["test"] == surface.TEST_BUTTON_TEXT, buttons
+    assert buttons["add"] == surface.ADD_BUTTON_TEXT, buttons
+    assert surface.BUTTON_NAMES_BY_TEXT[buttons["test"]] == "test_btn", buttons
+    assert surface.BUTTON_NAMES_BY_TEXT[buttons["add"]] == "add_btn", buttons
+
+
+def test_the_banner_line_is_published_as_the_pieces_that_build_it():
+    """The banner's emphasis is a mark and its words are published apart."""
+    banner = stock_view()["banner"]
+    marks = banner["marks"]
+    rebuilt = (
+        marks["strong_open"] + banner["lead"] + marks["strong_close"] + banner["tail"]
+    )
+    assert rebuilt == banner["text"], banner
+    assert banner["pieces"] == [banner["lead"], banner["tail"]], banner
+    opener = marks["strong_open"][0]
+    marked = [one for one in banner["pieces"] if opener in one]
+    assert marked == [], f"a published piece still carries a tag: {marked}"
+
+
+def test_the_banner_piece_check_would_see_a_piece_that_moved():
+    """A piece changed on its own no longer builds the published line."""
+    banner = stock_view()["banner"]
+    marks = banner["marks"]
+    moved = (
+        marks["strong_open"]
+        + banner["lead"].upper()
+        + marks["strong_close"]
+        + banner["tail"]
+    )
+    assert moved != banner["text"], banner
+
+
+def test_the_banner_shows_on_the_stock_wing_and_nowhere_else():
+    """The banner is drawn for the wing whose brokers are not wired up."""
+    assert stock_view()["banner"]["shown"] is True
+    crypto = surface.build_view_model(surface_model(case()))["banner"]
+    assert crypto["shown"] is False
+
+
+def published_sheets(view):
+    """Every style rule this dialog publishes, from each place it carries one."""
+    found = list(view["styles"].values())
+    found.append(view["banner"]["style_sheet"])
+    found.append(view["buttons"]["save_style"])
+    found.append(view["buttons"]["ai_test_style"])
+    found.append(view["headings"]["sms_gateway_style"])
+    found.append(view["headings"]["ai_info_style"])
+    found.extend(surface.FEEDBACK_COLORS.values())
+    found.append(surface.FEEDBACK_FALLBACK_COLOR)
+    found.append(surface.feedback_style(surface.ERROR_LEVEL))
+    found.append(surface.feedback_style(None))
+    found.append(surface.AI_ERROR_STYLE)
+    found.append(surface.AI_OK_STYLE)
+    found.append(surface.AI_STATUS_STYLE)
+    found.append(surface.AI_HASH_STYLE)
+    found.append(surface.FONT_PREVIEW_STYLE)
+    found.append(surface.font_preview_style(surface.FONT_FAMILIES[0], 11))
+    return [one for one in found if one]
+
+
+def colours_in(sheet):
+    """Every hex colour in one whole sheet, state blocks read as well."""
+    text = str(sheet)
+    found = []
+    at = 0
+    while at < len(text):
+        if text[at] != HEX_MARK:
+            at += 1
+            continue
+        end = at + 1
+        while end < len(text) and text[end] in HEX_LETTERS:
+            end += 1
+        found.append(text[at:end])
+        at = end
+    return found
+
+
+def base_block_of(sheet):
+    """One rule's first block alone, which is what a base walk reads."""
+    return str(sheet).split(BLOCK_OPEN)[1] if BLOCK_OPEN in str(sheet) else str(sheet)
+
+
+def eight_digit_colours(sheet):
+    """Every colour in one rule written with the digits Qt reads alpha-first."""
+    return [
+        one for one in colours_in(sheet) if len(one) == len(HEX_MARK) + EIGHT_DIGITS
+    ]
+
+
+def test_no_colour_this_dialog_paints_is_written_with_eight_hex_digits():
+    """Qt reads eight hex digits alpha-first and a browser reads them alpha-last."""
+    found = {}
+    for sheet in published_sheets(stock_view()):
+        carried = eight_digit_colours(sheet)
+        if carried:
+            found[sheet] = carried
+    assert found == {}, f"these rules carry a colour the two sides read apart: {found}"
+
+
+def test_the_eight_digit_sweep_names_a_colour_written_that_way():
+    """The sweep answers nothing whatever a rule carries."""
+    written = surface.STOCK_BANNER_STYLE_FORMAT.format(
+        fill=surface.banner_colour(surface.BANNER_FILL_ALPHA),
+        tint=surface.BANNER_TINT,
+        width=surface.BANNER_BORDER_WIDTH_PX,
+        kind=surface.BANNER_BORDER_KIND,
+        edge=EIGHT_DIGIT_COLOUR,
+        padding=surface.BANNER_PADDING_PX,
+        radius=surface.BANNER_RADIUS_PX,
+    )
+    assert eight_digit_colours(written) == [EIGHT_DIGIT_COLOUR], written
+    assert eight_digit_colours(surface.STOCK_BANNER_STYLE) == []
+    assert colours_in(surface.STOCK_BANNER_STYLE) == [surface.BANNER_TINT]
+
+
+def test_the_colour_sweep_reads_a_colour_inside_a_hover_block():
+    """A colour Qt paints on hover sits where a base-block walk never looks."""
+    assert eight_digit_colours(HOVER_SHEET) == [EIGHT_DIGIT_COLOUR], HOVER_SHEET
+    assert eight_digit_colours(base_block_of(HOVER_SHEET)) == [], HOVER_SHEET
+    assert colours_in(base_block_of(HOVER_SHEET)) == [surface.BANNER_TINT]
+
+
+def test_the_banner_edge_carries_the_tint_the_banner_text_carries():
+    """The border and the words are the one blue, at two published alphas."""
+    banner = stock_view()["banner"]
+    edge = surface.banner_colour(banner["alpha"]["edge"])
+    fill = surface.banner_colour(banner["alpha"]["fill"])
+    assert edge in banner["style_sheet"], banner["style_sheet"]
+    assert fill in banner["style_sheet"], banner["style_sheet"]
+    assert banner["tint"] in banner["style_sheet"], banner["style_sheet"]
+    assert banner["alpha"]["edge"] != banner["alpha"]["fill"], banner["alpha"]
+    for one in banner["rgb"]:
+        assert str(one) in edge, edge
+
+
+def test_the_published_alpha_reciprocal_turns_the_scale_into_one():
+    """The reciprocal is what a browser multiplies a whole-number alpha by."""
+    alpha = stock_view()["banner"]["alpha"]
+    assert alpha["scale"] * alpha["reciprocal"] == 1.0, alpha
+    assert alpha["edge"] * alpha["reciprocal"] < 1.0, alpha
+    assert alpha["edge"] * alpha["reciprocal"] > 0.0, alpha
+
+
+def test_the_row_list_names_every_labelled_text_row_the_dialog_draws():
+    """The row list and the text-row labels name the same rows in one order."""
+    view = stock_view()
+    named = [row[3] for row in view["rows"]]
+    drawn = [one for one in named if one in surface.TEXT_ROW_LABELS]
+    assert drawn == list(surface.TEXT_ROW_LABELS), drawn
+    assert len(view["text_rows"]) == len(surface.TEXT_ROW_LABELS), view["text_rows"]
+    controls = [one for one in named if one not in surface.TEXT_ROW_LABELS]
+    assert "username" in controls, controls
+
+
+def test_the_row_list_check_would_see_a_labelled_text_row_nobody_named():
+    """A text row dropped from the row list is reported, never passed."""
+    view = stock_view()
+    named = [row[3] for row in view["rows"] if row[3] != "font_preview"]
+    short = [one for one in named if one in surface.TEXT_ROW_LABELS]
+    assert short != list(surface.TEXT_ROW_LABELS), short
+
+
+@pytest.mark.qt_no_exception_capture
+def test_the_shipped_theme_tab_labels_the_preview_row_the_row_list_names(
+    monkeypatch, capsys
+):
+    """The Font Settings form draws a labelled Preview row the list names."""
+    from PySide6.QtWidgets import QFormLayout, QGroupBox, QLabel
+
+    dialog, _store, _log = shipped_dialog(monkeypatch, case())
+    settings_lines(capsys)
+    boxes = [
+        one
+        for one in dialog.findChildren(QGroupBox)
+        if one.title() == surface.FONT_GROUP_TITLE
+    ]
+    assert boxes, "the shipped dialog draws no Font Settings box"
+    form = boxes[0].layout()
+    drawn = []
+    for at in range(form.rowCount()):
+        item = form.itemAt(at, QFormLayout.ItemRole.LabelRole)
+        if item is not None and isinstance(item.widget(), QLabel):
+            drawn.append(item.widget().text())
+    named = [row[2] for row in stock_view()["rows"] if row[3] == "font_preview"]
+    assert named, "the row list names no Preview row"
+    assert named[0] in drawn, drawn
+    assert surface.spec_for("font_family")["label"] in drawn, drawn
+
+
+def test_the_two_volume_connections_are_published_in_run_order():
+    """The volume slider carries two connections, and only a list holds order."""
+    order = stock_view()["connect_order"]
+    volume = [pair for pair in order if pair[0].startswith("sound_volume.")]
+    assert [pair[1] for pair in volume] == list(VOLUME_HANDLERS), volume
+    assert len(order) == surface.connection_counts()["run_time"], len(order)
+    assert len({pair[0] for pair in order}) == len(order), order
+
+
+def test_moving_the_volume_slider_runs_the_label_before_the_engine():
+    """The figure is printed before the sound engine is handed the volume."""
+    model = surface_model(case())
+    before = len(model.calls)
+    model.edit("sound_volume", 42)
+    ran = [one[0] for one in model.calls[before:] if one[0] in VOLUME_HANDLERS]
+    assert ran == list(VOLUME_HANDLERS), model.calls[before:]
+
+
+def test_the_run_order_follows_the_published_list_and_not_the_handler_names(
+    monkeypatch,
+):
+    """The two volume connections run in the order the list publishes."""
+    monkeypatch.setattr(
+        surface, "SOUND_CONNECTIONS", tuple(reversed(surface.SOUND_CONNECTIONS))
+    )
+    model = surface_model(case())
+    before = len(model.calls)
+    model.edit("sound_volume", 42)
+    ran = [one[0] for one in model.calls[before:] if one[0] in VOLUME_HANDLERS]
+    assert ran == list(reversed(VOLUME_HANDLERS)), model.calls[before:]
+
+
+def test_the_action_bag_names_every_pair_the_order_list_carries():
+    """The bag is built from the list, so it can name no signal the list omits."""
+    order = stock_view()["connect_order"]
+    wired = stock_view()["actions"]
+    assert sorted(wired) == sorted(pair[0] for pair in order), sorted(wired)
+    for signal, handler in order:
+        assert wired[signal] == handler, signal
+
+
+def test_the_checks_completed_row_is_a_count_nothing_ever_fills():
+    """Nothing writes the ai_checks figure, so it stays as it was built."""
+    view = stock_view()
+    assert view["texts"]["ai_checks"] == surface.AI_CHECKS_LABEL, view["texts"]
+    filled = [one for one in view["calls"] if one[0] == "test_ai_handshake"]
+    assert filled == [], filled
+    model = surface_model(case())
+    model.values["ai_api_key"] = "sk-ant-api03-x"
+    model.values["ai_connect_phrase"] = "hello"
+    model.values["ai_confirm_phrase"] = "there"
+    model.test_ai_handshake()
+    assert model.texts["ai_checks"] == surface.AI_CHECKS_LABEL, model.texts
+    assert model.texts["ai_status"] == surface.AI_SAVED_TEXT, model.texts
+
+
+def test_every_button_word_is_published_beside_the_name_it_wires():
+    """Each button's words are published beside the name the dialog wires."""
+    named = stock_view()["button_names"]
+    words = [pair[0] for pair in named]
+    assert sorted(words) == sorted(surface.BUTTON_NAMES_BY_TEXT), words
+    for one, name in named:
+        assert surface.BUTTON_NAMES_BY_TEXT[one] == name, one
+    view = stock_view()
+    for key in ("cancel", "save", "remove", "test", "add", "ai_test"):
+        assert view["buttons"][key] in words, key
+
+
+def test_the_button_name_check_would_see_a_word_nobody_wires():
+    """A button word with no name beside it is reported, never passed."""
+    named = [pair for pair in stock_view()["button_names"] if pair[1] != "test_btn"]
+    words = [pair[0] for pair in named]
+    assert sorted(words) != sorted(surface.BUTTON_NAMES_BY_TEXT), words
+
+
+@pytest.mark.qt_no_exception_capture
+def test_the_stock_wing_greys_the_buttons_the_published_names_carry(
+    monkeypatch, capsys
+):
+    """The disabled Test and Add buttons are named on both sides alike."""
+    from PySide6.QtWidgets import QPushButton
+
+    dialog, _store, _log = shipped_dialog(monkeypatch, case(wing="stock"))
+    settings_lines(capsys)
+    view = stock_view()
+    by_words = dict(view["button_names"])
+    greyed = []
+    for one in dialog.findChildren(QPushButton):
+        if one.text() in by_words and not one.isEnabled():
+            greyed.append(by_words[one.text()])
+    assert sorted(greyed) == sorted(
+        name for name in greyed if view["enabled"][name] is False
+    ), greyed
+    assert "test_btn" in greyed, greyed
+    assert "add_btn" in greyed, greyed

@@ -140,9 +140,11 @@ if _HAS_QT:
                     "Use the Crypto Wing for active trading today."
                 )
                 _banner.setWordWrap(True)
+                # Qt reads eight hex digits alpha-first, so the edge is
+                # written rgba and draws the tint it names.
                 _banner.setStyleSheet(
                     "background: rgba(102, 153, 255, 30); "
-                    "color: #6699ff; border: 1px solid #6699ff55; "
+                    "color: #6699ff; border: 1px solid rgba(102, 153, 255, 85); "
                     "padding: 8px; border-radius: 4px;"
                 )
                 layout.addWidget(_banner)

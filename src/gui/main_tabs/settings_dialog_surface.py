@@ -116,17 +116,57 @@ CRYPTO_EXCHANGE_ITEMS = (
 
 EQUITY_ITEM_FORMAT = "{name} (planned, not yet live)"
 
-STOCK_BANNER_TEXT = (
-    "<b>Stock Wing:</b> equity-broker integration is "
+STRONG_OPEN = "<b>"
+STRONG_CLOSE = "</b>"
+STRONG_WEIGHT = "bold"
+
+STOCK_BANNER_LEAD = "Stock Wing:"
+STOCK_BANNER_TAIL = (
+    " equity-broker integration is "
     "queued — no live brokers are wired up yet. The "
     "list below shows the planned brokers; Add / Test "
     "are disabled until the broker connectors ship. "
     "Use the Crypto Wing for active trading today."
 )
-STOCK_BANNER_STYLE = (
-    "background: rgba(102, 153, 255, 30); "
-    "color: #6699ff; border: 1px solid #6699ff55; "
-    "padding: 8px; border-radius: 4px;"
+STOCK_BANNER_PIECES = (STOCK_BANNER_LEAD, STOCK_BANNER_TAIL)
+STOCK_BANNER_TEXT = STRONG_OPEN + STOCK_BANNER_LEAD + STRONG_CLOSE + STOCK_BANNER_TAIL
+STOCK_BANNER_WORD_WRAP = True
+
+ALPHA_SCALE = 255
+ALPHA_RECIPROCAL = 1.0 / ALPHA_SCALE
+COLOUR_OPEN = "rgba("
+COLOUR_JOIN = ", "
+COLOUR_CLOSE = ")"
+
+BANNER_TINT = "#6699ff"
+BANNER_TINT_RGB = (102, 153, 255)
+BANNER_FILL_ALPHA = 30
+BANNER_EDGE_ALPHA = 85
+BANNER_BORDER_WIDTH_PX = 1
+BANNER_BORDER_KIND = "solid"
+BANNER_PADDING_PX = 8
+BANNER_RADIUS_PX = 4
+
+
+def banner_colour(alpha: Any) -> str:
+    """The banner tint at `alpha`, on the whole-number scale Qt reads."""
+    parts = [str(one) for one in BANNER_TINT_RGB] + [str(alpha)]
+    return COLOUR_OPEN + COLOUR_JOIN.join(parts) + COLOUR_CLOSE
+
+
+STOCK_BANNER_STYLE_FORMAT = (
+    "background: {fill}; "
+    "color: {tint}; border: {width}px {kind} {edge}; "
+    "padding: {padding}px; border-radius: {radius}px;"
+)
+STOCK_BANNER_STYLE = STOCK_BANNER_STYLE_FORMAT.format(
+    fill=banner_colour(BANNER_FILL_ALPHA),
+    tint=BANNER_TINT,
+    width=BANNER_BORDER_WIDTH_PX,
+    kind=BANNER_BORDER_KIND,
+    edge=banner_colour(BANNER_EDGE_ALPHA),
+    padding=BANNER_PADDING_PX,
+    radius=BANNER_RADIUS_PX,
 )
 STOCK_DISABLED_TIP = (
     "Stock broker connector integration is queued; "
@@ -1192,28 +1232,98 @@ GROUPS = (
     (AI_TAB, AI_STATUS_GROUP_TITLE),
 )
 
-STATUS_ROWS = (
-    ("Status:", "ai_status", AI_STATUS_LABEL, AI_STATUS_STYLE),
-    ("Journal hash:", "ai_hash", AI_HASH_LABEL, AI_HASH_STYLE),
-    ("Checks completed:", "ai_checks", AI_CHECKS_LABEL, ""),
+NO_STYLE = ""
+
+TEXT_ROWS = (
+    (
+        THEME_TAB,
+        FONT_GROUP_TITLE,
+        "Preview:",
+        "font_preview",
+        FONT_PREVIEW_TEXT,
+        FONT_PREVIEW_STYLE,
+    ),
+    (
+        AI_TAB,
+        AI_STATUS_GROUP_TITLE,
+        "Status:",
+        "ai_status",
+        AI_STATUS_LABEL,
+        AI_STATUS_STYLE,
+    ),
+    (
+        AI_TAB,
+        AI_STATUS_GROUP_TITLE,
+        "Journal hash:",
+        "ai_hash",
+        AI_HASH_LABEL,
+        AI_HASH_STYLE,
+    ),
+    (
+        AI_TAB,
+        AI_STATUS_GROUP_TITLE,
+        "Checks completed:",
+        "ai_checks",
+        AI_CHECKS_LABEL,
+        NO_STYLE,
+    ),
 )
 
-ACTION_HANDLERS = {
-    "cancel_btn.clicked": "reject",
-    "save_btn.clicked": "save",
-    "new_exchange.currentIndexChanged": "on_exchange_changed",
-    "pp_check.toggled": "show_passphrase",
-    "test_btn.clicked": "test_api_connection",
-    "add_btn.clicked": "add_exchange",
-    "remove_btn.clicked": "remove_exchange",
-    "font_family.currentTextChanged": "update_font_preview",
-    "font_size.valueChanged": "update_font_preview",
-    "sound_volume.valueChanged": "update_volume_label",
-    "sound_volume.valueChanged.2": "sfx_volume_changed",
-    "ai_test_btn.clicked": "test_ai_handshake",
-}
+STATUS_ROWS = tuple(
+    (label, name, text, style)
+    for tab, _group, label, name, text, style in TEXT_ROWS
+    if tab == AI_TAB
+)
+
+EXCHANGE_CONNECTIONS = (
+    ("new_exchange.currentIndexChanged", "on_exchange_changed"),
+    ("pp_check.toggled", "show_passphrase"),
+    ("test_btn.clicked", "test_api_connection"),
+    ("add_btn.clicked", "add_exchange"),
+    ("remove_btn.clicked", "remove_exchange"),
+)
+THEME_CONNECTIONS = (
+    ("font_family.currentTextChanged", "update_font_preview"),
+    ("font_size.valueChanged", "update_font_preview"),
+)
+SOUND_CONNECTIONS = (
+    ("sound_volume.valueChanged", "update_volume_label"),
+    ("sound_volume.valueChanged.2", "sfx_volume_changed"),
+)
+AI_CONNECTIONS = (("ai_test_btn.clicked", "test_ai_handshake"),)
+FOOTER_CONNECTIONS = (
+    ("cancel_btn.clicked", "reject"),
+    ("save_btn.clicked", "save"),
+)
 TA_SLIDER_HANDLER = "update_weight_label"
 SOUND_BUTTON_HANDLER = "test_sound"
+TA_SLIDER_SIGNAL_FORMAT = "ta_slider[{name}].valueChanged"
+SOUND_BUTTON_SIGNAL_FORMAT = "sound_test[{name}].clicked"
+
+
+def connect_order() -> tuple:
+    """Every signal connected, with its handler, in the order wired."""
+    found = list(EXCHANGE_CONNECTIONS)
+    for name, _weight in TA_INDICATOR_WEIGHTS:
+        found.append((TA_SLIDER_SIGNAL_FORMAT.format(name=name), TA_SLIDER_HANDLER))
+    found.extend(THEME_CONNECTIONS)
+    found.extend(SOUND_CONNECTIONS)
+    for _text, name, _tip in SOUND_TEST_BUTTONS:
+        found.append(
+            (SOUND_BUTTON_SIGNAL_FORMAT.format(name=name), SOUND_BUTTON_HANDLER)
+        )
+    found.extend(AI_CONNECTIONS)
+    found.extend(FOOTER_CONNECTIONS)
+    return tuple(found)
+
+
+ACTION_HANDLERS = dict(
+    EXCHANGE_CONNECTIONS
+    + THEME_CONNECTIONS
+    + SOUND_CONNECTIONS
+    + AI_CONNECTIONS
+    + FOOTER_CONNECTIONS
+)
 
 
 HORIZONTAL_BAR_OFF_TABS = (SMS_TAB,)
@@ -1531,10 +1641,7 @@ PAINTED_KIND = {
 SILENT_KINDS = ("spin", "double_spin", "slider", "list")
 
 TEXT_ROW_LABELS = {
-    "font_preview": "Preview:",
-    "ai_status": "Status:",
-    "ai_hash": "Journal hash:",
-    "ai_checks": "Checks completed:",
+    name: label for _tab, _group, label, name, _text, _style in TEXT_ROWS
 }
 
 
@@ -1568,6 +1675,41 @@ def list_label_for(wing: str) -> str:
 def add_group_title(wing: str) -> str:
     """The title of the box holding the Add-exchange form."""
     return STOCK_ADD_GROUP if wing == STOCK_WING else CRYPTO_ADD_GROUP
+
+
+def banner_of(wing: str) -> dict:
+    """The stock-wing banner, its words, its pieces and its colours."""
+    return {
+        "shown": wing == STOCK_WING,
+        "text": STOCK_BANNER_TEXT,
+        "lead": STOCK_BANNER_LEAD,
+        "tail": STOCK_BANNER_TAIL,
+        "pieces": list(STOCK_BANNER_PIECES),
+        "word_wrap": STOCK_BANNER_WORD_WRAP,
+        "style_sheet": STOCK_BANNER_STYLE,
+        "marks": {
+            "strong_open": STRONG_OPEN,
+            "strong_close": STRONG_CLOSE,
+            "strong_weight": STRONG_WEIGHT,
+        },
+        "tint": BANNER_TINT,
+        "rgb": list(BANNER_TINT_RGB),
+        "alpha": {
+            "scale": ALPHA_SCALE,
+            "reciprocal": ALPHA_RECIPROCAL,
+            "fill": BANNER_FILL_ALPHA,
+            "edge": BANNER_EDGE_ALPHA,
+        },
+        "colour_marks": {
+            "open": COLOUR_OPEN,
+            "join": COLOUR_JOIN,
+            "close": COLOUR_CLOSE,
+        },
+        "border_width_px": BANNER_BORDER_WIDTH_PX,
+        "border_kind": BANNER_BORDER_KIND,
+        "padding_px": BANNER_PADDING_PX,
+        "radius_px": BANNER_RADIUS_PX,
+    }
 
 
 def feedback_style(level: Any) -> str:
@@ -1792,14 +1934,10 @@ def actions() -> dict:
     """Every signal the dialog connects, and what each one runs.
 
     One entry is one connection a built dialog holds. The volume slider
-    carries two, and each indicator weight carries its own.
+    carries two, and each indicator weight carries its own. Built from
+    ``connect_order`` so the bag cannot name a signal the list omits.
     """
-    wired = dict(ACTION_HANDLERS)
-    for name, _weight in TA_INDICATOR_WEIGHTS:
-        wired[f"ta_slider[{name}].valueChanged"] = TA_SLIDER_HANDLER
-    for text, name, _tip in SOUND_TEST_BUTTONS:
-        wired[f"sound_test[{name}].clicked"] = SOUND_BUTTON_HANDLER
-    return wired
+    return dict(connect_order())
 
 
 def connection_counts() -> dict:
@@ -1975,7 +2113,9 @@ class SettingsDialogModel:
                 self.rows.append([spec["tab"], spec["group"], spec["label"], name])
         for button in BUTTON_NAMES_BY_TEXT.values():
             self.enabled[button] = True
-        self.values["new_exchange_items"] = list(exchange_items(self.wing))
+        self.values["new_exchange_items"] = [
+            list(one) for one in exchange_items(self.wing)
+        ]
         self.values["ta_rows"] = [list(one) for one in ta_rows()]
         self.values["phantom_timeframes"] = [
             [tf, tf in PHANTOM_TIMEFRAMES_ON] for tf in PHANTOM_TIMEFRAMES
@@ -1983,12 +2123,10 @@ class SettingsDialogModel:
         self.texts["vol_label"] = volume_label_text(spec_for("sound_volume")["value"])
         self.texts["api_feedback"] = ""
         self.styles["api_feedback"] = ""
-        self.texts["font_preview"] = FONT_PREVIEW_TEXT
-        self.styles["font_preview"] = FONT_PREVIEW_STYLE
-        for label, name, text, style in STATUS_ROWS:
+        for tab, group, label, name, text, style in TEXT_ROWS:
             self.texts[name] = text
             self.styles[name] = style
-            self.rows.append([AI_TAB, AI_STATUS_GROUP_TITLE, label, name])
+            self.rows.append([tab, group, label, name])
         self.texts["list_label"] = list_label_for(self.wing)
         self.texts["add_group"] = add_group_title(self.wing)
         self.texts["banner"] = STOCK_BANNER_TEXT if self.wing == STOCK_WING else ""
@@ -2450,7 +2588,7 @@ class SettingsDialogModel:
         signal = signal_for(spec)
         if signal is None:
             return
-        for wired, handler in sorted(actions().items()):
+        for wired, handler in connect_order():
             head = wired.split(".")
             if head[0] != name or head[1] != signal:
                 continue
@@ -2574,9 +2712,11 @@ class _Walker:
 
 
 def _plain(node: Any) -> Any:
-    """`node` as nested lists, so the payload carries no tuples."""
+    """`node` as nested lists and bags, so the payload carries no tuples."""
     if isinstance(node, tuple):
         return [_plain(one) for one in node]
+    if isinstance(node, dict):
+        return {key: _plain(value) for key, value in node.items()}
     return node
 
 
@@ -2598,7 +2738,7 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "enabled": dict(model.enabled),
         "visible": dict(model.visible),
         "tooltips": dict(model.tooltips),
-        "control_specs": [dict(one) for one in CONTROL_SPECS],
+        "control_specs": [_plain(dict(one)) for one in CONTROL_SPECS],
         "exchange_items": [list(one) for one in exchange_items(model.wing)],
         "ta_rows": [list(one) for one in ta_rows()],
         "phantom_timeframes": [
@@ -2618,8 +2758,8 @@ def build_view_model(model: SettingsDialogModel) -> dict:
             "save": SAVE_BUTTON_TEXT,
             "save_style": SAVE_BUTTON_STYLE,
             "remove": REMOVE_BUTTON_TEXT,
-            "test": "Test Connection",
-            "add": "Test and Add Exchange",
+            "test": TEST_BUTTON_TEXT,
+            "add": ADD_BUTTON_TEXT,
             "ai_test": AI_TEST_BUTTON_TEXT,
             "ai_test_style": AI_TEST_BUTTON_STYLE,
         },
@@ -2636,6 +2776,10 @@ def build_view_model(model: SettingsDialogModel) -> dict:
             "ai_info": AI_INFO_TEXT,
             "ai_info_style": AI_INFO_STYLE,
         },
+        "banner": banner_of(model.wing),
+        "button_names": [[words, name] for words, name in BUTTON_NAMES_BY_TEXT.items()],
+        "text_rows": [list(one) for one in TEXT_ROWS],
+        "connect_order": [list(one) for one in connect_order()],
         "listed_exchanges": list(model.listed_exchanges),
         "calls": [list(one) for one in model.calls],
         "call_names": sorted(
