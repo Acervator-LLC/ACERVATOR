@@ -1,37 +1,4 @@
-"""
-history_tab.py — Acervator History tab.
-
-v3.23.71 rebuild (2026-07-31) per operator directive: deprecate the
-hallucinated fetch + join logic from the v3.17.0-era file; import
-the sound pieces from ``src.exchange.history_helpers`` instead. Fixes:
-
-  * H1 — default From date pinned to 2026-04-01 (platform launch).
-  * H2 — Gate column renamed "Gates"; per-row mouseover explains
-    every scrum/fold blocker at trade time.
-  * H3 — Grade + Gates + Voting columns all carry rich HTML
-    tooltips. Voting tooltip enumerates each indicator's direction,
-    confidence, timeframe, and weight (data was already captured in
-    voting.log; the old cell surfaced only the compressed marker).
-  * H4 — refresh emits ``history_refreshed(list)`` signal so the
-    Simulator (v3.23.72 rebuild) can front-load YTD ticks without
-    a second network round-trip.
-  * H5 — trade fetch is a chunked-window walk (30-day windows, per-
-    id dedupe, backwards to the From date) instead of a single
-    ``limit=500`` call. Fixes the operator-reported "fewer trades in
-    History than boot-up YTD data pull" gap for any bot exceeding
-    the exchange's per-time-range cap (RAVE had 881 YTD; old fetcher
-    dropped 381).
-
-Chrome (filter bar, table, pagination, CSV export) preserved.
-
-Issue #128 R6 (2026-08-26): the ``QTableWidget`` is a ``HistoryWebTable``
--- React inside the Chromium PySide6 ships. Every cell string, colour,
-tooltip and gate light comes from ``src.exchange.history_read_contract``.
-The controls around it stay Qt: the bridge is one-way, so the page cannot
-deliver a click back to Python.
-
-sadp: R28 (fail-loud display), R44 (exchange truth), R70 RCN
-"""
+"""History tab: fetches exchange trade rows, filters, pages and exports them."""
 
 from __future__ import annotations
 
@@ -59,65 +26,17 @@ try:
         QPushButton,
         QVBoxLayout,
         QWidget,
-    )  # v3.19.12 removed unused QSpacerItem
+    )
 
     _HAS_QT = True
 except ImportError:
-    # The form bot_visualizer.py and nine other src/gui modules use:
-    # without PySide6 there is no Qt name and no widget class, so
-    # importing this module still succeeds and the module-level helpers
-    # below stay usable. Asking for the widget then fails by name, as an
-    # ImportError at the import site, which main_window.py catches and
-    # logs as "History tab unavailable".
-    #
-    # Binding the missing names to None instead would defer the failure
-    # to the first call and raise TypeError from inside a render.
     _HAS_QT = False
 
 logger = logging.getLogger("acervator.gui.history")
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Trade normalization + chunked fetch moved to src.exchange.history_helpers
-# (v3.23.71 rebuild). This module holds only the widget + its callbacks.
-# ─────────────────────────────────────────────────────────────────────
-
-
-# ─────────────────────────────────────────────────────────────────────
-# History fetcher — retired v3.23.71 (dropped trades > 500 per symbol
-# because it made a single get_my_trades() call). Replaced by
-# src.exchange.history_helpers.fetch_all_history_chunked which walks in
-# 30-day windows with per-id dedupe. The old async _fetch_all_history
-# function and its inline _normalize_trade helper both move to that
-# module — this file no longer holds fetch logic.
-# ─────────────────────────────────────────────────────────────────────
-
-
 def _resolve_bot_label(bot_manager, exchange_id: str, symbol: str) -> str:
-    """Find the bot (if any) whose configured symbol matches this row.
-    Returns 'TICKER/last4' label, or empty string if no match.
-
-    ``exchange_id`` IS AN UNBUILT FILTER, NOT A DEAD PARAMETER, and the
-    docstring above used to hide that by claiming an "(exchange,
-    symbol) pair" match. The loop below has only ever compared
-    ``cfg.symbol``. The field to compare the argument against exists
-    (``BotConfig.exchange_id``, src/trading/bot_container.py:101) and
-    both call sites already pass the trade row's exchange, so the
-    argument is wired end to end and simply never read.
-
-    It stays unbuilt HERE on purpose. The sibling resolver
-    ``history_helpers.resolve_bot_id_for_row`` (line 320) picks the bot
-    for the Gates and Voting columns using the same symbol-only match.
-    Narrowing this one alone would let the Bot column and the Gates
-    column name different bots on the same row whenever one symbol is
-    traded on two exchanges. Both resolvers have to narrow in one
-    change, and that change moves labels on screen; this unit is
-    structural and moves nothing.
-
-    Discarded with ``del`` rather than renamed, so the parameter keeps
-    the name the eventual filter needs. Same form as the deliberately
-    unused parameters at bot_visualizer.py:56.
-    """
+    """Return the 'TICKER/last4' label of the bot whose symbol matches."""
     del exchange_id
     if bot_manager is None:
         return ""
@@ -137,91 +56,54 @@ def _resolve_bot_label(bot_manager, exchange_id: str, symbol: str) -> str:
             if not ticker:
                 ticker = symbol.split("/")[0] if "/" in symbol else symbol
             return f"{ticker}/{bot_id[-4:]}" if bot_id else ticker
-        except Exception as _bot_exc:  # noqa: BLE001 - best-effort label
+        except Exception as _bot_exc:  # noqa: BLE001
             logger.debug("history_tab bot-label lookup skipped one bot: %s", _bot_exc)
             continue
     return ""
 
 
-# ─────────────────────────────────────────────────────────────────────
-# History tab widget
-# ─────────────────────────────────────────────────────────────────────
-
 if _HAS_QT:
 
     class HistoryTab(QWidget):
-        """v3.23.71 — exchange-truth trade history tab, rebuild-refactor.
-
-        Fetch + gate/voting join + tooltip builders isolated into
-        ``src.exchange.history_helpers`` (pure, testable). See module
-        docstring for the H1-H5 fix map.
-
-        Public surface (used by main_window):
-          • __init__(parent=None)
-          • set_bot_manager(bot_manager)
-          • refresh()  — manual refresh (called by tab-activated event)
-        """
+        """Fetches exchange trade history, filters it, pages it and exports CSV."""
 
         PAGE_SIZE = 100
 
-        # v3.23.71 H4: emit the freshly-fetched trade list so the Simulator
-        # tab (v3.23.72 rebuild) can front-load YTD ticks without a second
-        # network round-trip. Consumer subscribes in main_window.
         history_refreshed = Signal(list)
 
         def __init__(self, parent=None) -> None:
             super().__init__(parent)
             self._bot_manager = None
-            self._all_trades: list[dict] = []  # full unfiltered fetch
-            self._filtered: list[dict] = []  # post-filter view
+            self._all_trades: list[dict] = []
+            self._filtered: list[dict] = []
             self._page = 0
             self._fetch_in_flight = False
             self._last_fetched_ts: float = 0.0
-            # v3.23.10 D-01 — per-page gate/voting joiner caches. Built once
-            # per _render_page (NOT per row) so the read-time join is O(1)
-            # per row. Bucket key = (bot_id, int(ts) // 60) so the ±60s
-            # tolerance window catches adjacent buckets via a 3-bucket scan.
             self._page_gate_index: dict = {}
             self._page_voting_index: dict = {}
             self._build_ui()
 
-        # ── Public API ────────────────────────────────────────────────────
         def set_bot_manager(self, bot_manager) -> None:
             self._bot_manager = bot_manager
 
         def refresh(self) -> None:
-            """Trigger an async fetch + re-render. Called from operator's
-            Refresh button and on tab-activated event."""
+            """Start an async trade fetch and re-render when it lands."""
             self._kick_async_fetch()
 
         def get_history_callback(self):
-            """Backward-compat shim. The old TradeHistoryTab exposed a
-            push-callback that the connector invoked on each trade event
-            (`conn.set_history_callback(cb)` in main_window.py). The
-            v3.17.0 rebuild uses pull instead — `exchange.get_my_trades()`
-            on Refresh — so this callback is a no-op. Returning a no-op
-            lambda lets the existing connector wiring complete without
-            error during the transition. Safe to remove once all
-            `conn.set_history_callback(...)` call sites in main_window.py
-            are deleted (queued for v3.17.1+).
-            """
+            """Return a no-op callable; the tab pulls history instead."""
             return lambda *_a, **_kw: None
 
-        # ── UI construction ───────────────────────────────────────────────
         def _build_ui(self) -> None:
             outer = QVBoxLayout(self)
             outer.setContentsMargins(8, 8, 8, 8)
             outer.setSpacing(6)
 
-            # ── Filter bar ────────────────────────────────────────────────
             filt = QGroupBox("Filters")
             fl = QHBoxLayout(filt)
             fl.setContentsMargins(8, 6, 8, 6)
 
-            # Date range — v3.23.71 H1: default From = 2026-04-01 launch date.
-            # Construct as local-time QDateTime so the widget renders the
-            # exact "2026-04-01 00:00" label regardless of the operator's
-            # timezone offset. Convert to UTC unix seconds at fetch time.
+            # Local-time QDateTime so _default_from reads 2026-04-01 00:00 anywhere.
             from PySide6.QtCore import QDate, QTime
 
             fl.addWidget(QLabel("From:"))
@@ -244,21 +126,18 @@ if _HAS_QT:
             self._to_dt.setMinimumWidth(150)
             fl.addWidget(self._to_dt)
 
-            # Exchange filter
             fl.addWidget(QLabel("Exchange:"))
             self._exch_combo = QComboBox()
             self._exch_combo.addItem("(all)")
             self._exch_combo.setMinimumWidth(120)
             fl.addWidget(self._exch_combo)
 
-            # Symbol filter
             fl.addWidget(QLabel("Symbol:"))
             self._sym_combo = QComboBox()
             self._sym_combo.addItem("(all)")
             self._sym_combo.setMinimumWidth(120)
             fl.addWidget(self._sym_combo)
 
-            # Side filter
             fl.addWidget(QLabel("Side:"))
             self._side_combo = QComboBox()
             self._side_combo.addItems(["(all)", "BUY", "SELL"])
@@ -266,7 +145,6 @@ if _HAS_QT:
 
             fl.addStretch(1)
 
-            # Apply / Reset / Refresh buttons
             self._apply_btn = QPushButton("Apply")
             self._apply_btn.setToolTip("Apply current filters to the loaded history.")
             self._apply_btn.clicked.connect(self._apply_filters)
@@ -286,26 +164,15 @@ if _HAS_QT:
 
             outer.addWidget(filt)
 
-            # ── Summary line ─────────────────────────────────────────────
             self._summary = QLabel("No history loaded yet — click Refresh.")
             self._summary.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; padding: 2px 6px;")
             outer.addWidget(self._summary)
 
-            # ── Trades table ─────────────────────────────────────────────
-            # Issue #128 R6 — the thirteen-column list is drawn by React
-            # inside QWebEngineView. The column set, every cell string,
-            # every colour, every tooltip and the nineteen gate lights
-            # come from src.exchange.history_read_contract; this tab
-            # chooses the rows and pushes them.
-            #
-            # The controls around it stay Qt because the bridge is
-            # one-way: the page cannot deliver a click back to Python.
             from .react_history_panel import HistoryWebTable
 
             self._table = HistoryWebTable(self)
             outer.addWidget(self._table, stretch=1)
 
-            # ── Footer bar (pagination + export) ─────────────────────────
             foot = QHBoxLayout()
             foot.setContentsMargins(0, 0, 0, 0)
 
@@ -339,17 +206,14 @@ if _HAS_QT:
 
             outer.addLayout(foot)
 
-        # ── Async fetch + result handling ─────────────────────────────────
         def _kick_async_fetch(self) -> None:
             if self._fetch_in_flight:
                 return
             if self._bot_manager is None:
                 self._summary.setText("Bot manager unavailable — cannot fetch history.")
                 return
-            # Compute since_ts from the From filter (UTC unix seconds)
             try:
                 qdt = self._from_dt.dateTime()
-                # Treat as local time, convert to UTC unix seconds
                 since_ts = qdt.toSecsSinceEpoch()
             except Exception:
                 since_ts = time.time() - 30 * 86400
@@ -367,9 +231,6 @@ if _HAS_QT:
             self._summary.setText("Fetching trade history from exchanges…")
 
             try:
-                # v3.23.71 H5: chunked-window walk instead of the single
-                # limit=500 call that dropped trades for any bot with
-                # more than the exchange's per-time-range cap.
                 from src.exchange.history_helpers import fetch_all_history_chunked
 
                 future = asyncio.run_coroutine_threadsafe(
@@ -403,45 +264,9 @@ if _HAS_QT:
                             logger.warning("history fetch raised: %s", rx)
                             return
                         self._all_trades = list(result or [])
-                        # The rows are stored and the fetch is over.
-                        # Stop the clock HERE, above the admissibility
-                        # count and above the emitter block, so
-                        # instrumentation is not billed to the fetch.
                         _dur_elapsed = time.monotonic() - start_ts
-                        # 05.002 -- WHAT LANDED IN `_all_trades`, NEVER
-                        # WHAT THE FETCH SAID IT RETURNED.
-                        #
-                        # `fetch_all_history_chunked` admits a row on two
-                        # rules and drops it on either
-                        # (history_helpers.py:282-288): the row is at or
-                        # after `since_ts`, and its
-                        # (exchange, symbol, id) key has not been seen on
-                        # an earlier (exchange, symbol) pair. Both are
-                        # enforced inside the helper's own loop and
-                        # NOTHING downstream re-checks them, so a row that
-                        # breaks either one is displayed, graded,
-                        # exported, and handed to the Simulator through
-                        # `history_refreshed` exactly like a good one.
-                        #
-                        # `actual` counts the rows in the STORED list that
-                        # still satisfy both rules. `expected` is how many
-                        # rows that list holds. Two different expressions,
-                        # so a duplicate that survived the per-pair dedupe
-                        # or a row older than the From date drives them
-                        # apart and `ok` goes False. Reporting
-                        # `len(result)` back would echo the request as
-                        # though it were the result and could never fail.
-                        #
-                        # THE DURATION IS THE OPERATOR-VISIBLE FETCH
-                        # LATENCY, and it is honest about its own
-                        # resolution: the future is observed by a 400 ms
-                        # poll, so a reading is the true fetch time plus
-                        # up to one poll interval. `poll_interval_s` rides
-                        # in the context so a reader of item 17 sees the
-                        # quantum rather than infers it. The bracket opens
-                        # at `start_ts`, one line below the schedule, and
-                        # closes above -- it spans the fetch and nothing
-                        # else.
+                        # _admissible re-counts _all_trades against since_ts
+                        # and (exchange, symbol, id) uniqueness.
                         _seen_keys: set = set()
                         _admissible = 0
                         for _row in self._all_trades:
@@ -473,7 +298,6 @@ if _HAS_QT:
                                 },
                             )
                         self._last_fetched_ts = time.time()
-                        # v3.23.71 H4: emit for Simulator's front-load.
                         if self.history_refreshed is not None:
                             try:
                                 self.history_refreshed.emit(list(self._all_trades))
@@ -484,7 +308,6 @@ if _HAS_QT:
                         self._populate_filter_options()
                         self._apply_filters()
                         return
-                    # 60s sanity timeout
                     if time.monotonic() - start_ts > 60.0:
                         poll_timer.stop()
                         self._fetch_in_flight = False
@@ -504,22 +327,9 @@ if _HAS_QT:
             poll_timer.timeout.connect(_check)
             poll_timer.start()
 
-        # ── Filter handling ──────────────────────────────────────────────
         def _populate_filter_options(self) -> None:
             """Refresh the exchange/symbol comboboxes from the loaded data."""
-            # 10.3 -- THE BRACKET OPENS HERE AND CLOSES ON THE SECOND
-            # `blockSignals(False)`, so it spans THE REBUILD OF THE TWO
-            # COMBOS and nothing else. The read-back below is this pin's
-            # own bookkeeping; folding it in would time the check
-            # instead of the work.
-            #
-            # The rebuild is O(loaded trades): two set comprehensions
-            # over `_all_trades`, two sorts and two `addItem` loops, all
-            # on the GUI thread. That is the operation this
-            # postcondition asserts about, and it is the number item 17
-            # reads when the History tab goes heavy.
             _build_t0 = time.monotonic()
-            # Exchanges
             cur_exch = self._exch_combo.currentText()
             self._exch_combo.blockSignals(True)
             self._exch_combo.clear()
@@ -533,7 +343,6 @@ if _HAS_QT:
                 self._exch_combo.setCurrentIndex(idx)
             self._exch_combo.blockSignals(False)
 
-            # Symbols
             cur_sym = self._sym_combo.currentText()
             self._sym_combo.blockSignals(True)
             self._sym_combo.clear()
@@ -546,29 +355,6 @@ if _HAS_QT:
             self._sym_combo.blockSignals(False)
             _build_s = time.monotonic() - _build_t0
 
-            # 05.003 -- READ BOTH COMBOS BACK OUT, ENTRY BY ENTRY.
-            #
-            # Not `count()`. A count agrees with a set of the right SIZE
-            # holding the wrong members, and both lists are rebuilt from
-            # scratch on every fetch behind `blockSignals`, which is the
-            # state where a wrong member is least visible: the operator
-            # sees a plausible dropdown and filters against a symbol the
-            # fetch never returned.
-            #
-            # `actual` is the symmetric difference, summed over the two
-            # lists, between what the widget now offers and the distinct
-            # values `_all_trades` actually holds. `expected` is zero --
-            # the declared intent that the dropdown offers every loaded
-            # value and invents none. Both terms are non-negative so they
-            # cannot cancel: an exchange list short by one is not hidden
-            # by a symbol list long by one.
-            #
-            # The `(all)` sentinel is discounted on the widget side
-            # because it is chrome, not data. An exchange or a symbol
-            # literally spelled `(all)` would be discounted with it; no
-            # venue names one that way, and the alternative -- trusting
-            # index 0 to be the sentinel -- would silently pass a list
-            # that had lost it.
             _want_exch = {r["exchange"] for r in self._all_trades if r.get("exchange")}
             _want_sym = {r["symbol"] for r in self._all_trades if r.get("symbol")}
             _have_exch = {
@@ -596,20 +382,7 @@ if _HAS_QT:
                 )
 
         def _apply_filters(self) -> None:
-            # v3.20.36 — operator-reported 2026-05-31: pressing Apply with
-            # a valid filter range produced "0 of 0 trades · no fetch yet"
-            # forever, because Apply only filters local data — it never
-            # triggers a fetch. The companion gap was that the History
-            # tab's documented "auto-refresh on tab activation" (file
-            # docstring line 21) was never wired in main_window. Together
-            # the two gaps meant the only path to a fetch was the operator
-            # explicitly clicking Refresh — but the natural UX intent of
-            # setting filters + clicking Apply is "show me those trades."
-            # Fix: if no prior fetch has occurred, treat Apply as
-            # implicit-Refresh-then-Apply. The fetch's completion handler
-            # already calls _apply_filters() recursively on success
-            # (_kick_async_fetch line ~477), so the filter pass runs
-            # automatically once data arrives.
+            # Apply with no prior fetch starts one; its poll re-enters here.
             if (
                 self._last_fetched_ts == 0
                 and not self._fetch_in_flight
@@ -630,16 +403,6 @@ if _HAS_QT:
             sym_f = self._sym_combo.currentText()
             side_f = self._side_combo.currentText()
 
-            # 10.3 -- THE BRACKET SPANS THE FILTER PASS ONLY.
-            #
-            # It opens above the loop and closes on the assignment to
-            # `self._filtered`, so it covers the single O(loaded trades)
-            # walk that IS the operation. It excludes the widget reads
-            # above it, which are five Qt property fetches, and it
-            # excludes the verification loop below it, which walks the
-            # RETAINED set to judge this one. Timing the check with the
-            # work would leave a reader unable to tell a slow filter
-            # from a slow verifier.
             _filter_t0 = time.monotonic()
             out: list[dict] = []
             for r in self._all_trades:
@@ -657,25 +420,8 @@ if _HAS_QT:
                 out.append(r)
             self._filtered = out
             _filter_s = time.monotonic() - _filter_t0
-            # 05.004 -- RE-READ THE RETAINED SET AGAINST THE WIDGETS.
-            #
-            # The predicates below are read back from the COMBOS, not
-            # from the `exch_f` / `sym_f` / `side_f` locals the loop
-            # above used. That is the whole difference between a check
-            # and an echo: a block that compared against the wrong
-            # widget, or that was skipped entirely, agrees with those
-            # locals and disagrees with the operator's actual selection.
-            # Five filters read from three combos and two date edits is
-            # exactly the shape where one gets wired to its neighbour.
-            #
-            # `actual` is how many RETAINED rows break at least one
-            # active filter. `expected` is zero. A row that should have
-            # been excluded and was not makes the two differ, and `ok`
-            # goes False.
-            #
-            # An inactive filter -- `(all)`, or a date edit that yielded
-            # nothing -- excludes nothing and is not checked, so widening
-            # a filter is never read as a violation.
+            # Re-read from the combos, not the loop's locals, so a mis-wired
+            # predicate disagrees.
             _v_exch = self._exch_combo.currentText()
             _v_sym = self._sym_combo.currentText()
             _v_side = self._side_combo.currentText()
@@ -714,7 +460,6 @@ if _HAS_QT:
             self._render_page()
 
         def _reset_filters(self) -> None:
-            # v3.23.71 H1: reset From = 2026-04-01 (matches init default).
             from PySide6.QtCore import QDate, QTime
 
             self._from_dt.setDateTime(QDateTime(QDate(2026, 4, 1), QTime(0, 0, 0)))
@@ -724,16 +469,14 @@ if _HAS_QT:
             self._side_combo.setCurrentIndex(0)
             self._apply_filters()
 
-        # ── Pagination + rendering ───────────────────────────────────────
         def _current_filters(self):
-            """The five filter values, read off the two date edits and
-            the three combos, as the contract's filter record."""
+            """The five filter values from the two date edits and three combos."""
             from src.exchange import history_read_contract as hrc
 
             try:
                 from_ts = self._from_dt.dateTime().toSecsSinceEpoch()
                 to_ts = self._to_dt.dateTime().toSecsSinceEpoch()
-            except Exception:  # R28-OK: a torn-down date edit
+            except Exception:  # a torn-down date edit
                 from_ts, to_ts = 0, 0
             return hrc.HistoryFilters(
                 from_ts=int(from_ts),
@@ -756,14 +499,8 @@ if _HAS_QT:
             end = min(start + self.PAGE_SIZE, total)
             rows = self._filtered[start:end]
 
-            # v3.23.10 D-01 — build gate/voting indexes ONCE per page render
-            # (NOT per row) so the joiner stays O(rows) instead of O(rows*N).
-            # Lazy-imports the live_log_reader inside the helper so an
-            # absent log dir / unwritable env doesn't break the GUI render.
             self._build_joiner_indexes_for_page(rows)
 
-            # The indexes are handed in, so build_page reads no log of its
-            # own and the pin above still measures the only read there is.
             model = build_view_model(
                 self._all_trades,
                 self._current_filters(),
@@ -777,36 +514,7 @@ if _HAS_QT:
             )
             self._table.set_model(model)
 
-            # 05.005 -- COUNT THE ROWS THE BROWSER ITSELF DREW.
-            #
-            # It counts `#panel-rows tr` in the live DOM, read back
-            # through the same one-way bridge the push travels. Not the
-            # length of the pushed page: a payload that was built and
-            # never rendered -- a page that failed to load, a push that
-            # raised inside React -- agrees with itself and could never
-            # fail. The predecessor counted the rows a QTableWidget had
-            # cells in, for the same reason.
-            #
-            # THE READ IS ASYNCHRONOUS and the pin fires from its
-            # callback. `runJavaScript` answers through a callback, and
-            # the synchronous alternative is a nested event loop on the
-            # GUI thread, which would re-enter this render.
-            #
-            # `expected` is the pagination arithmetic recomputed from
-            # `total` and the CLAMPED page, independently of the `rows`
-            # slice that fed the push. So a clamp that disagrees with the
-            # slice, an off-by-one in `end`, or a page left beyond the
-            # last one shows up here rather than as an empty table.
-            #
-            # A count that cannot be read records -1, which equals no row
-            # count and therefore reports `ok` False. UNVERIFIED IS NOT
-            # VERIFIED, and `readback` in the context says which of the
-            # two happened. The CSV pin at 05.007 records an unread
-            # artifact the same way.
-            #
-            # NO DURATION. The bracket would have to span the joiner
-            # build, which has its own pin below and its own log I/O, and
-            # one number covering both would be attributable to neither.
+            # _want_rows recomputes the slice from total and the clamped page.
             _want_rows = min(
                 self.PAGE_SIZE, max(0, total - self._page * self.PAGE_SIZE)
             )
@@ -837,7 +545,6 @@ if _HAS_QT:
             if not self._table.row_count(_emit_drawn):
                 _emit_drawn(-1)
 
-            # Page label
             if total == 0:
                 self._page_label.setText("No matches")
             else:
@@ -847,7 +554,6 @@ if _HAS_QT:
             self._prev_btn.setEnabled(self._page > 0)
             self._next_btn.setEnabled(self._page < max_page)
 
-            # Summary
             if self._last_fetched_ts > 0:
                 age_s = int(time.time() - self._last_fetched_ts)
                 fetched_str = f"fetched {age_s}s ago"
@@ -869,62 +575,19 @@ if _HAS_QT:
                 f"{fetched_str}"
             )
 
-        # ── Trade grading (v3.20.78) ─────────────────────────────────────
         def _grade_row(self, row_i: int, page_rows: list, r: dict) -> str:
-            """Grade one trade row. Delegates to the read contract.
-
-            ``history_read_contract.grade_row`` holds the whole rule: the
-            page is newest-first, so a LOWER index is a LATER trade, the
-            reference price is the median of the five nearest prior
-            same-symbol prices on this page, and the MFE/MAE window is the
-            ten nearest following ones. Read-only -- a grade never feeds
-            back into trading decisions.
-
-            The page render reaches the same rule through
-            ``build_row``; this method is the tab's named entry to it, and
-            it delegates rather than repeating the rule so the two cannot
-            drift.
-            """
+            """Return the A-to-F grade for one row, delegating to grade_row."""
             from src.exchange.history_read_contract import grade_row
 
             return grade_row(row_i, page_rows, r)
 
-        # ── Read-time joiner (v3.23.10 D-01) ─────────────────────────────
         def _build_joiner_indexes_for_page(self, page_rows: list) -> None:
-            """Build per-page (bot_id, 60s-bucket) → entries dicts for
-            gate.log + voting.log so the per-row joiner is O(1).
-
-            Strategy:
-              1. Determine the page's time window from page_rows. Use the
-                 min trade timestamp minus the radius (60s) as the ``since``
-                 cutoff so the live-log iterators don't scan back further
-                 than necessary.
-
-                 v3.24.24 — this claim is now TRUE. Until then ``since`` was
-                 applied after ``json.loads``, so the cutoff discarded work
-                 already done and a narrow page window still paid a full
-                 parse of all 165,062 rows / 262 MB. ``live_log_reader`` now
-                 skips rotated files by mtime and rejects lines by raw-text
-                 ISO prefix before parsing: a 30-day cutoff measured
-                 1.726 s -> 0.004 s.
-              2. Lazy-import sadp._tools.live_log_reader so an absent log
-                 dir doesn't break import-time wiring (matches the
-                 precedent set by _grade_row's trade_grader import at
-                 line ~703).
-              3. Bucket each entry by ``(bot_id, int(ts) // 60)``. The
-                 per-row lookup then probes the bucket plus its two
-                 neighbors so the ±60s tolerance window is fully covered.
-              4. Fail-soft — any exception in the build collapses the
-                 indexes to empty so the per-row renderer falls back to
-                 '—' rather than breaking the GUI.
-            """
-            # Reset to empty regardless — graceful degrade default.
+            """Bucket the page log entries by (bot_id, 60s) for the row joiner."""
             self._page_gate_index = {}
             self._page_voting_index = {}
             if not page_rows:
                 return
             try:
-                # Earliest trade ts on the page, minus a 60s safety margin.
                 min_ts = min(
                     float(r.get("timestamp", 0) or 0)
                     for r in page_rows
@@ -937,8 +600,6 @@ if _HAS_QT:
             except (ValueError, TypeError):
                 since = None
 
-            # Lazy import — matches _grade_row's pattern (line ~703) and
-            # keeps the GUI importable even if sadp._tools is unavailable.
             try:
                 from src.trading.live_log_reader import (
                     live_gate_decisions,
@@ -947,27 +608,6 @@ if _HAS_QT:
             except Exception:
                 return
 
-            # 10.3 -- THE BRACKET SPANS BOTH READER LOOPS AND NOTHING
-            # ELSE.
-            #
-            # It opens below the lazy import and closes after the voting
-            # loop's fail-soft handler, so it covers the two log reads
-            # and the bucketing that IS the joiner build. This is the
-            # only disk I/O on the render path -- `live_gate_decisions`
-            # and `live_voting_panel_snapshots` walk gate.log and
-            # voting.log -- so it is the number that moves when the
-            # operator's log ladder grows.
-            #
-            # IT IS MEASURED ON THE FAIL-SOFT PATH TOO. Both handlers
-            # empty their index and fall through to here, so a reader
-            # that threw on line 90,000 still reports how long it ran
-            # before it threw. A duration taken only on the clean path
-            # would go silent in exactly the case this pin exists to
-            # make visible.
-            #
-            # THE TWO EARLY RETURNS ABOVE ARE OUTSIDE IT, and they emit
-            # nothing at all, so neither one can report a duration for a
-            # build that never started.
             _join_t0 = time.monotonic()
             _gate_accepted = 0
             try:
@@ -982,8 +622,6 @@ if _HAS_QT:
                     self._page_gate_index.setdefault(key, []).append(entry)
                     _gate_accepted += 1
             except Exception:
-                # Fail-soft — any reader exception collapses gate joins
-                # to '—' so the GUI keeps rendering trade rows.
                 self._page_gate_index = {}
 
             _voting_accepted = 0
@@ -1002,29 +640,7 @@ if _HAS_QT:
                 self._page_voting_index = {}
             _join_s = time.monotonic() - _join_t0
 
-            # 05.006 -- THE FAIL-SOFT COLLAPSE, MADE VISIBLE.
-            #
-            # Both blocks above discard the WHOLE index on any reader
-            # exception. That is the right behaviour for the GUI and it
-            # is invisible to the operator: every Gates and Voting cell
-            # then renders the same em dash it renders when no log entry
-            # exists, so "the reader threw on line 90,000" and "this bot
-            # never traded" look identical on screen. Two joined columns
-            # can go dark without one symptom.
-            #
-            # `actual` is what the two indexes NOW HOLD, summed over
-            # their buckets and read back out of the dicts the per-row
-            # joiner will use next. `expected` is how many entries the
-            # two loops accepted. They agree exactly while the build
-            # completes; a mid-iteration exception empties an index and
-            # leaves its counter standing, so `actual` collapses,
-            # `expected` does not, and `ok` goes False with the two
-            # halves named in the context.
-            #
-            # THE TWO EARLY RETURNS ABOVE EMIT NOTHING, and neither is a
-            # gap: an empty page has no window to read for, and a failed
-            # `live_log_reader` import means the join was never attempted
-            # rather than attempted and lost.
+            # An emptied index collapses _bucketed while its counter stands.
             _bucketed = sum(len(v) for v in self._page_gate_index.values()) + sum(
                 len(v) for v in self._page_voting_index.values()
             )
@@ -1047,8 +663,7 @@ if _HAS_QT:
 
         @staticmethod
         def _parse_entry_ts(s: str) -> Optional[float]:
-            """Parse an ISO-8601 log-entry timestamp into unix seconds.
-            Returns None on parse failure (fail-soft per R28 FL)."""
+            """Parse an ISO-8601 timestamp into unix seconds, or None."""
             if not s:
                 return None
             try:
@@ -1058,11 +673,6 @@ if _HAS_QT:
             except (ValueError, TypeError):
                 return None
 
-        # _resolve_bot_id_for_row + _lookup_gate_marker + _lookup_voting_marker
-        # removed v3.23.71. Their logic moved to src.exchange.history_helpers where
-        # it is pure/testable; the render path in _render_page now calls the
-        # module-level helpers directly (see the v3.23.71 H2/H3 block above).
-
         def _prev_page(self) -> None:
             self._page -= 1
             self._render_page()
@@ -1071,7 +681,6 @@ if _HAS_QT:
             self._page += 1
             self._render_page()
 
-        # ── CSV export ───────────────────────────────────────────────────
         def _export_csv(self) -> None:
             if not self._filtered:
                 QMessageBox.information(
@@ -1088,19 +697,7 @@ if _HAS_QT:
             )
             if not path:
                 return
-            # 10.3 -- THE BRACKET OPENS BELOW THE FILE DIALOG.
-            #
-            # `QFileDialog.getSaveFileName` blocks until the operator
-            # picks a path. That wait is human time, it is unbounded,
-            # and it is not export cost. Including it would put a
-            # coffee break on the record as disk latency, and item 17
-            # reads this number as latency.
-            #
-            # What the bracket DOES span is the write and the read-back:
-            # both touch the same file, both are the export, and a slow
-            # or full disk shows in either. `readback` in the context
-            # already says whether the second half ran, so a reader can
-            # tell a whole reading from a half one.
+            # _export_t0 starts below the blocking file dialog, excluding operator wait.
             _export_t0 = time.monotonic()
             try:
                 with open(path, "w", newline="", encoding="utf-8") as f:
@@ -1145,28 +742,7 @@ if _HAS_QT:
                                 r.get("id", ""),
                             ]
                         )
-                # 05.007 -- COUNT THE FILE'S OWN ROWS, NOT THE ROWS
-                # THAT WERE HANDED TO THE WRITER.
-                #
-                # The message box below already reports
-                # `len(self._filtered)`, which is the ASK. Nothing has
-                # ever read the artifact. A row whose formatting raised,
-                # a short write, a full disk, a path that resolved
-                # somewhere else -- each of those leaves the operator
-                # with a confident "Wrote N rows" and a file holding
-                # fewer.
-                #
-                # Read back through `csv.reader`, the same module and
-                # dialect that wrote it, so a quoted field carrying a
-                # comma or a newline counts as one record and not as
-                # two. Minus one for the header row.
-                #
-                # A read-back that itself fails records -1, which equals
-                # no row count and therefore reports `ok` False. That is
-                # deliberate: UNVERIFIED IS NOT VERIFIED, and `readback`
-                # in the context says which of the two happened. It is
-                # caught separately from the write so an unreadable file
-                # is never reported to the operator as a failed export.
+                # _written counts the file's own records, minus the header row.
                 _written = -1
                 try:
                     with open(path, "r", newline="", encoding="utf-8") as _rf:
