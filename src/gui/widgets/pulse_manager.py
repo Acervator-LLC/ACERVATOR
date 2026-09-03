@@ -12,9 +12,7 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
-    # Pulsation style injection
-    # ---------------------------------------------------------------
+    # PULSE_CSS is carried here and applied by nothing that imports it.
     PULSE_CSS = """
     @keyframes pulse { 0% { opacity: 1.0; } 50% { opacity: 0.7; } 100% { opacity: 1.0; } }
     QPushButton[accent="true"], QTabBar::tab:selected, QProgressBar::chunk,
@@ -23,7 +21,7 @@ if _HAS_QT:
     }
     """
 
-    # PySide6 doesn't support CSS keyframes. We use QTimer-based opacity pulse instead.
+    # Qt runs no CSS keyframes, so PulseManager steps the opacity on a QTimer.
     class PulseManager:
         """Manages a subtle opacity pulse on accent widgets."""
 
@@ -44,11 +42,10 @@ if _HAS_QT:
             # Subtle pulse between 0.85 and 1.0 opacity
             opacity = 0.925 + 0.075 * math.sin(self._phase)
             for w in self._widgets:
-                try:  # noqa: SIM105
-                    (
-                        w.setWindowOpacity(opacity)
-                        if hasattr(w, "setWindowOpacity")
-                        else None
-                    )
+                setter = getattr(w, "setWindowOpacity", None)
+                if setter is None:
+                    continue
+                try:
+                    setter(opacity)
                 except RuntimeError:
                     pass

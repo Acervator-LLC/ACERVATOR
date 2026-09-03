@@ -34,6 +34,15 @@ STYLE_SHEET_APPLIED = False
 TIMER_NAME = "opacity_pulse"
 TIMER_INTERVAL_MS = 50
 
+
+def runs_in(window_ms, interval_ms) -> int:
+    """How many opacity_pulse runs one window of milliseconds covers."""
+    return window_ms // interval_ms
+
+
+# One minute of the opacity_pulse timer, the most runs one request may ask for.
+RUN_CAP = runs_in(60 * 1000, TIMER_INTERVAL_MS)
+
 TIMERS = {TIMER_NAME: TIMER_INTERVAL_MS}
 TIMER_DELAYS_MS = (TIMER_INTERVAL_MS,)
 ACTIONS = {"opacity_pulse.timeout": "tick"}
@@ -133,8 +142,8 @@ class PulseModel:
         self.calls.append(TARGET_REGISTERED)
 
     def ticks_for(self, elapsed_ms: float) -> int:
-        """The number of fires `elapsed_ms` covers at this timer's delay."""
-        return int(elapsed_ms // self.interval_ms)
+        """The opacity_pulse runs `elapsed_ms` covers at this timer's delay."""
+        return int(runs_in(elapsed_ms, self.interval_ms))
 
     def advance(self, elapsed_ms: float) -> int:
         """Fire once for each whole delay in `elapsed_ms`, and say how many."""
@@ -204,6 +213,7 @@ def build_view_model(model: PulseModel) -> dict:
         "opacity_ceiling": OPACITY_CEILING,
         "setter": OPACITY_SETTER,
         "swallows": SWALLOWED_ERROR,
+        "run_cap": RUN_CAP,
         "registered": len(model.targets),
         "applied": list(model.applied),
         "skipped": list(model.skipped),
@@ -222,22 +232,39 @@ def build_view_model(model: PulseModel) -> dict:
     }
 
 
-def view_model(params: dict) -> dict:
-    """Bridge handler for ``pulse_manager.state``.
+def as_count(value, field: str) -> float:
+    """The number `field` carries, refusing text or a flag where a count belongs."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{field} must be a number, not {type(value).__name__}")
+    return value
 
-    Registers the widgets the request names, runs the fires it asks for
-    -- a count, or an elapsed time turned into a count -- and returns the
-    state those fires left. ``stop`` stops the timer before they run.
-    """
+
+def as_targets(value) -> list:
+    """The widgets a request names, refusing anything that is not a list."""
+    if not isinstance(value, (list, tuple)):
+        raise TypeError(f"targets must be a list, not {type(value).__name__}")
+    return list(value)
+
+
+def runs_asked(model: "PulseModel", asked: dict) -> int:
+    """How many runs a request asks for, refusing more than ``RUN_CAP``."""
+    if "elapsed_ms" in asked:
+        runs = model.ticks_for(as_count(asked["elapsed_ms"], "elapsed_ms"))
+    else:
+        runs = int(as_count(asked.get("ticks", 0), "ticks"))
+    if runs > RUN_CAP:
+        raise ValueError(f"a request may ask for at most {RUN_CAP} runs, not {runs}")
+    return runs
+
+
+def view_model(params: dict) -> dict:
+    """Answer ``pulse_manager.state`` after running what one request asks for."""
     asked = params or {}
     model = PulseModel()
-    for name in asked.get("targets", []):
+    for name in as_targets(asked.get("targets", ())):
         model.register(OpacityTarget(name))
     if asked.get("stop"):
         model.stop()
-    if "elapsed_ms" in asked:
-        model.advance(asked["elapsed_ms"])
-    else:
-        for _ in range(int(asked.get("ticks", 0))):
-            model.tick()
+    for _ in range(runs_asked(model, asked)):
+        model.tick()
     return build_view_model(model)

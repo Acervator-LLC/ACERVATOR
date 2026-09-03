@@ -40,8 +40,8 @@ WIDGET_TOTAL = 0
 SHIPPED_CLASS_TOTAL = 1
 SHIPPED_SIGNAL_TOTAL = 0
 SHIPPED_METHOD_TOTAL = 3
-PAYLOAD_KEY_TOTAL = 27
-CONSTANT_TOTAL = 30
+PAYLOAD_KEY_TOTAL = 28
+CONSTANT_TOTAL = 31
 TRACE_KEY_TOTAL = 6
 CALL_NAME_TOTAL = 9
 
@@ -1054,6 +1054,10 @@ EXTRA_SURFACE_FUNCTIONS = {
     "seen_by_targets": "what each registered widget received",
     "build_view_model": "the whole state as one dict for the renderer",
     "view_model": "the bridge handler",
+    "runs_in": "how many runs one window of milliseconds covers",
+    "as_count": "the count a request carries, refused when it is not a number",
+    "as_targets": "the widgets a request names, refused when it is not a list",
+    "runs_asked": "how many runs a request asks for, refused above the cap",
 }
 EXTRA_SURFACE_CLASSES = {
     "OpacityTarget": "the widget the shipped driver is handed",
@@ -1205,6 +1209,7 @@ PAYLOAD_KEYS = {
     "OPACITY_CEILING": f"{BUILT}:opacity_ceiling",
     "OPACITY_SETTER": f"{BUILT}:setter",
     "SWALLOWED_ERROR": f"{BUILT}:swallows",
+    "RUN_CAP": f"{BUILT}:run_cap",
     "CALL_NAMES": f"{BUILT}:call_names",
 }
 
@@ -1245,6 +1250,7 @@ OUTSIDE_THE_QT_TRACE = {
     "opacity_ceiling": "test_the_floor_and_the_ceiling_are_the_midpoint_either_side_of_the_swing",
     "setter": "test_a_real_deleted_widget_raises_the_error_the_driver_swallows",
     "swallows": "test_a_widget_that_refuses_with_another_error_ends_the_fire_on_both_sides",
+    "run_cap": "test_the_cap_is_one_minute_of_the_delay_the_timer_runs_at",
     "applied": "test_a_widget_with_no_setter_is_passed_over_and_the_rest_still_run",
     "skipped": "test_a_widget_with_no_setter_is_passed_over_and_the_rest_still_run",
     "failed": "test_a_widget_whose_object_is_gone_is_passed_over_and_the_rest_still_run",
@@ -1322,7 +1328,7 @@ def test_every_value_the_surface_exports_reaches_the_snapshot():
     assert len(constants) == CONSTANT_TOTAL, sorted(constants)
     found = unaccounted_constants(named_payloads(), constants)
     assert found == [], found
-    assert len(PAYLOAD_KEYS) == 21
+    assert len(PAYLOAD_KEYS) == 22
     assert len(CALL_CONSTANTS) == CALL_NAME_TOTAL
     assert len(CALL_CONSTANTS) == len(surface.CALL_NAMES)
 
@@ -1673,10 +1679,14 @@ def test_the_bridge_reports_a_request_the_surface_cannot_run():
     """A request the surface refuses came back as an answer."""
     answer = bridge_answer({"ticks": "three"})
     assert answer["ok"] is False
-    assert answer["error"]["type"] == "ValueError"
+    assert answer["error"]["type"] == "TypeError"
+    looks_like_a_number = bridge_answer({"ticks": "3"})
+    assert looks_like_a_number["ok"] is False
+    assert looks_like_a_number["error"]["type"] == "TypeError"
     bad_time = bridge_answer({"elapsed_ms": "later"})
     assert bad_time["ok"] is False
     assert bad_time["error"]["type"] == "TypeError"
+    assert bridge_answer({"ticks": 3})["ok"] is True
 
 
 def test_the_bridge_answer_is_json_serialisable():
@@ -1728,3 +1738,84 @@ def test_the_qt_probe_can_report_qt():
     loaded = run_probe("import PySide6.QtCore;")
     assert loaded["qt"] is True
     assert loaded["frame"]["ok"] is True
+
+
+class WidgetWhoseSetterIsNothing:
+    """A registered object whose opacity setter answers as nothing at all."""
+
+    setWindowOpacity = None
+
+    def __init__(self, name) -> None:
+        self.name = name
+        self.opacities: list = []
+
+
+def test_a_widget_whose_setter_is_nothing_is_passed_over_on_both_sides():
+    """One side stopped the whole pulse where the other passed the widget over."""
+    app()
+    from src.gui.widgets.pulse_manager import PulseManager
+
+    shipped = PulseManager()
+    shipped._timer.stop()
+    shipped.register(WidgetWhoseSetterIsNothing("no setter of its own"))
+    shipped.register(RecordingWidget("after it"))
+    shipped._tick()
+    assert shipped._widgets[1].opacities == [
+        surface.opacity_at(surface.PHASE_START + surface.PHASE_STEP)
+    ], shipped._widgets[1].opacities
+
+    model = surface.PulseModel()
+    model.stop()
+    model.register(WidgetWhoseSetterIsNothing("no setter of its own"))
+    model.register(RecordingWidget("after it"))
+    model.tick()
+    assert model.skipped == [0], model.skipped
+    assert len(model.applied) == 1, model.applied
+
+    healthy = PulseManager()
+    healthy._timer.stop()
+    healthy.register(RecordingWidget("takes the value"))
+    healthy._tick()
+    assert len(healthy._widgets[0].opacities) == 1, healthy._widgets[0].opacities
+
+
+def test_a_request_naming_its_targets_as_text_is_refused():
+    """Text where a list of widgets belongs was read one letter per widget."""
+    with pytest.raises(TypeError) as refused:
+        surface.view_model({"targets": "BTC"})
+    assert "targets" in str(refused.value), str(refused.value)
+    with pytest.raises(TypeError):
+        surface.view_model({"targets": {"a": 1, "b": 2}})
+    answered = surface.view_model({"targets": ["BTC"]})
+    assert answered["registered"] == 1
+    assert [one["target"] for one in answered["seen"]] == ["BTC"]
+
+
+def test_a_count_written_as_text_is_refused_rather_than_read_as_a_number():
+    """Text that looks like a number was read as that many ticks."""
+    for asked in ({"ticks": "3"}, {"ticks": "three"}, {"ticks": True}):
+        with pytest.raises(TypeError):
+            surface.view_model(asked)
+    with pytest.raises(TypeError):
+        surface.view_model({"elapsed_ms": "500"})
+    answered = surface.view_model({"targets": ["a"], "ticks": 3})
+    assert len(answered["seen"][0]["opacities"]) == 3
+
+
+def test_a_request_asking_for_more_runs_than_a_minute_of_the_timer_is_refused():
+    """A request asked for more runs than any caller can wait for."""
+    for asked in ({"ticks": 10**24}, {"elapsed_ms": 10**24}):
+        with pytest.raises(ValueError) as refused:
+            surface.view_model(asked)
+        assert str(surface.RUN_CAP) in str(refused.value), str(refused.value)
+    at_the_cap = surface.view_model({"ticks": surface.RUN_CAP})
+    assert at_the_cap["phase"] == pytest.approx(
+        surface.PHASE_START + surface.RUN_CAP * surface.PHASE_STEP
+    )
+    assert at_the_cap["run_cap"] == surface.RUN_CAP
+
+
+def test_the_cap_is_one_minute_of_the_delay_the_timer_runs_at():
+    """The cap stopped naming the delay it is counted in."""
+    assert surface.RUN_CAP * surface.TIMER_INTERVAL_MS == 60_000
+    assert surface.view_model({})["run_cap"] == surface.RUN_CAP
