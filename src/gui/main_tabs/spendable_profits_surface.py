@@ -1,23 +1,8 @@
-"""spendable_profits_surface.py -- the spendable-profits strip as plain data.
-
-Describes the strip under the main window header: the framed panel, its
-five stat columns, the thin separator between them, the privacy dot under
-every amount and the layout numbers that place them. Colours, paddings and
-fonts come from ``design_system`` tokens, so a page carries the values the
-Qt strip paints rather than a second palette.
-
-It also holds the behaviour the strip owns rather than describes: the money
-and count text each cell renders, the privacy mask every amount passes
-through, the muted skin and tooltip an unknown amount gains, the colour a
-negative amount takes, and the re-render a dot toggle triggers.
-
-``src.core.desktop_bridge`` registers ``view_model`` as the handler for the
-``spendable_profits.state`` method, which is how the Electron renderer
-reaches it. Nothing here imports Qt, so the same code serves any frontend.
-"""
+"""The spendable-profits strip as plain data, with no Qt behind it."""
 
 from __future__ import annotations
 
+import math
 from typing import Any, Optional
 
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
@@ -29,6 +14,9 @@ METHOD = "spendable_profits.state"
 EMPTY_TEXT = "—"
 MONEY_PREFIX = "$"
 MONEY_FORMAT = ",.2f"
+
+#: Qt writes an rgba alpha over this scale, which a page needs to paint one.
+ALPHA_SCALE = 255
 
 FRAME_SHAPE = "StyledPanel"
 FRAME_STYLE = (
@@ -65,15 +53,14 @@ SEPARATOR_STYLE = f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
 SEPARATOR_TEXT = "|"
 
 SPENDABLE_TOOLTIP = (
-    "Estimated expendable liquidity from positions filled 30+ days.\n"
-    "Passive income safely withdrawable without disrupting positions."
+    "Cash balance pulled from the exchange, across the bots sharing one wallet."
 )
 SPENDABLE_UNKNOWN_TOOLTIP = (
-    "Spendable amount is not derivable from current data "
-    "sources. Requires exchange-pulled position-age data "
-    "(see P0a in NEXT_SESSION_ORDERS.md)."
+    "This amount is not in the data the strip was given for this refresh."
 )
-SPENDABLE_INITIAL_TEXT = "$0.00"
+UNREADABLE_TOOLTIP = (
+    "This amount did not arrive as a number, so nothing is shown for it."
+)
 
 DOT_STYLE = (
     "PrivacyDot { "
@@ -90,8 +77,8 @@ DOT_MASKED_GLYPH = "○"
 DOT_REVEALED_STATE = "REVEALED. Click to mask."
 DOT_MASKED_STATE = "MASKED. Click to reveal."
 
-REALISED_DEFAULT = 0
-EXCHANGE_COUNT_DEFAULT = 0
+REALISED_DEFAULT = None
+EXCHANGE_COUNT_DEFAULT = None
 
 COLUMNS = (
     {
@@ -102,8 +89,8 @@ COLUMNS = (
         "field_id": "kpi.spendable",
         "source_key": "spendable",
         "default": None,
-        "initial_text": SPENDABLE_INITIAL_TEXT,
-        "initial_style": VALUE_STYLE_HIGHLIGHT,
+        "initial_text": EMPTY_TEXT,
+        "initial_style": VALUE_STYLE_MUTED,
     },
     {
         "key": "total_realised",
@@ -161,6 +148,7 @@ BUS_TOPICS: tuple = ()
 
 UPDATE = "update_profits"
 SPENDABLE_UNKNOWN = "spendable_unknown"
+SPENDABLE_UNREADABLE = "spendable_unreadable"
 SPENDABLE_POSITIVE = "spendable_positive"
 SPENDABLE_NEGATIVE = "spendable_negative"
 PRIVACY_TOGGLED = "privacy_toggled"
@@ -170,6 +158,7 @@ DOTS_REFRESHED = "dots_refreshed"
 CALL_NAMES = (
     UPDATE,
     SPENDABLE_UNKNOWN,
+    SPENDABLE_UNREADABLE,
     SPENDABLE_POSITIVE,
     SPENDABLE_NEGATIVE,
     PRIVACY_TOGGLED,
@@ -178,18 +167,27 @@ CALL_NAMES = (
 )
 
 
-def money_text(value: Any) -> str:
-    """Render one amount as the strip's money string.
+def money_amount(value: Any) -> Any:
+    """The finite number a payload value carries, unconverted, or ``None``."""
+    if type(value) is int:
+        return value
+    if type(value) is float and math.isfinite(value):
+        return value
+    return None
 
-    ``None`` renders as the empty marker rather than a fabricated number.
-    """
-    if value is None:
+
+def money_text(value: Any) -> str:
+    """Render one amount as money text, or as the strip's empty marker."""
+    amount = money_amount(value)
+    if amount is None:
         return EMPTY_TEXT
-    return f"{MONEY_PREFIX}{value:{MONEY_FORMAT}}"
+    return f"{MONEY_PREFIX}{amount:{MONEY_FORMAT}}"
 
 
 def count_text(value: Any) -> str:
-    """Render the exchange count as the strip's plain string."""
+    """Render a whole exchange count, or the strip's empty marker."""
+    if type(value) is not int:
+        return EMPTY_TEXT
     return str(value)
 
 
@@ -215,31 +213,40 @@ def privacy_dot(field_id: str, masked: Optional[bool] = None) -> dict:
 
 
 def spendable_cell(value: Any) -> dict:
-    """The SPENDABLE cell's text, skin and tooltip for one amount.
-
-    An unknown amount paints muted and explains itself, a negative one
-    paints in the error colour, and zero or above in the success colour.
-    """
+    """The SPENDABLE cell's text, skin and tooltip for one amount."""
     if value is None:
         return {
             "text": mask_or(EMPTY_TEXT, "kpi.spendable"),
             "style_sheet": VALUE_STYLE_MUTED,
             "tooltip": SPENDABLE_UNKNOWN_TOOLTIP,
         }
-    style = VALUE_STYLE_HIGHLIGHT if value >= 0 else VALUE_STYLE_NEGATIVE
+    amount = money_amount(value)
+    if amount is None:
+        return {
+            "text": mask_or(EMPTY_TEXT, "kpi.spendable"),
+            "style_sheet": VALUE_STYLE_MUTED,
+            "tooltip": UNREADABLE_TOOLTIP,
+        }
+    style = VALUE_STYLE_HIGHLIGHT if amount >= 0 else VALUE_STYLE_NEGATIVE
     return {
-        "text": mask_or(money_text(value), "kpi.spendable"),
+        "text": mask_or(money_text(amount), "kpi.spendable"),
         "style_sheet": style,
         "tooltip": "",
     }
 
 
-def initial_cells() -> dict:
-    """Every cell as the strip is built, before any payload arrives.
+def spendable_branch(value: Any) -> str:
+    """The call name the SPENDABLE amount earns from its own value."""
+    if value is None:
+        return SPENDABLE_UNKNOWN
+    amount = money_amount(value)
+    if amount is None:
+        return SPENDABLE_UNREADABLE
+    return SPENDABLE_POSITIVE if amount >= 0 else SPENDABLE_NEGATIVE
 
-    The built texts skip the privacy mask, so a masked field still shows
-    its placeholder until the first payload is rendered.
-    """
+
+def initial_cells() -> dict:
+    """Every cell as the strip is built, before any payload arrives."""
     return {
         column["key"]: {
             "text": column["initial_text"],
@@ -251,11 +258,7 @@ def initial_cells() -> dict:
 
 
 class SpendableProfitsModel:
-    """The strip's state between payloads, with no Qt object behind it.
-
-    Holds the last payload so a privacy-dot toggle re-renders the same
-    numbers, the rendered cell for every column, and the dot under each.
-    """
+    """The strip's cells, dots and last payload between refreshes."""
 
     def __init__(self) -> None:
         self.last_data: dict = {}
@@ -266,55 +269,44 @@ class SpendableProfitsModel:
         self.calls: list = []
 
     def update_profits(self, data: dict) -> None:
-        """Render every cell from one payload.
-
-        Keeps the payload first, then writes the cells in the order the
-        strip writes them, so a payload that cannot be rendered leaves the
-        same cells written as the strip leaves.
-        """
-        self.last_data = dict(data) if isinstance(data, dict) else {}
-        self.calls.append(UPDATE)
+        """Render every cell from one payload, then keep that payload."""
+        kept = dict(data) if isinstance(data, dict) else {}
         first, last = COLUMNS[0], COLUMNS[-1]
         amount = data.get(first["source_key"], first["default"])
-        if amount is None:
-            self.calls.append(SPENDABLE_UNKNOWN)
-        elif amount >= 0:
-            self.calls.append(SPENDABLE_POSITIVE)
-        else:
-            self.calls.append(SPENDABLE_NEGATIVE)
-        self.cells[first["key"]] = spendable_cell(amount)
+        rendered = {first["key"]: spendable_cell(amount)}
         for column in COLUMNS[1:-1]:
             raw = data.get(column["source_key"], column["default"])
-            self.cells[column["key"]] = {
+            rendered[column["key"]] = {
                 "text": mask_or(money_text(raw), column["field_id"]),
                 "style_sheet": VALUE_STYLE_DEFAULT,
                 "tooltip": "",
             }
         count = data.get(last["source_key"], last["default"])
-        self.cells[last["key"]] = {
+        rendered[last["key"]] = {
             "text": mask_or(count_text(count), last["field_id"]),
             "style_sheet": VALUE_STYLE_DEFAULT,
             "tooltip": "",
         }
+        self.cells.update(rendered)
+        self.last_data = kept
+        self.calls.append(UPDATE)
+        self.calls.append(spendable_branch(amount))
 
     def privacy_toggled(self) -> None:
-        """Re-render the cells from the kept payload after a dot toggle.
-
-        A model that has rendered no payload has nothing to re-render.
-        """
-        if self.last_data:
-            self.calls.append(PRIVACY_TOGGLED)
-            self.update_profits(self.last_data)
-        else:
+        """Re-render the cells from the kept payload after a dot toggle."""
+        if not self.last_data:
             self.calls.append(PRIVACY_TOGGLE_SKIPPED)
+            return
+        self.update_profits(self.last_data)
+        self.calls.append(PRIVACY_TOGGLED)
 
     def refresh_privacy_dots(self) -> None:
         """Repaint every dot from the registry, then re-render the cells."""
-        self.calls.append(DOTS_REFRESHED)
         for field_id in self.dots:
             self.dots[field_id] = privacy_dot(field_id)
         if self.last_data:
             self.update_profits(self.last_data)
+        self.calls.append(DOTS_REFRESHED)
 
 
 def layout_items() -> list:
@@ -330,10 +322,12 @@ def layout_items() -> list:
 
 
 def build_view_model(model: Optional[SpendableProfitsModel] = None) -> dict:
-    """Return the whole strip state as one serialisable dict."""
+    """The whole strip state as one serialisable dict, both lengths named."""
     state = SpendableProfitsModel() if model is None else model
+    items = layout_items()
     return {
         "frame": {"style_sheet": FRAME_STYLE, "frame_shape": FRAME_SHAPE},
+        "alpha_scale": ALPHA_SCALE,
         "layout": {
             "margins_px": list(OUTER_MARGINS_PX),
             "spacing_px": OUTER_SPACING_PX,
@@ -348,9 +342,11 @@ def build_view_model(model: Optional[SpendableProfitsModel] = None) -> dict:
             "style_sheet": SEPARATOR_STYLE,
             "align": SEPARATOR_ALIGN,
         },
-        "items": layout_items(),
+        "items": items,
+        "item_count": len(items),
         "order": list(COLUMN_ORDER),
         "field_ids": dict(FIELD_ID_BY_KEY),
+        "column_count": len(COLUMNS),
         "columns": [
             {
                 **column,
@@ -364,16 +360,13 @@ def build_view_model(model: Optional[SpendableProfitsModel] = None) -> dict:
         "timer_delays_ms": list(TIMER_DELAYS_MS),
         "bus_topics": list(BUS_TOPICS),
         "call_names": list(CALL_NAMES),
+        "calls": list(state.calls),
         "method": METHOD,
     }
 
 
 def view_model(params: dict) -> dict:
-    """Bridge handler for ``spendable_profits.state``.
-
-    Renders the payload under ``profits`` when the request carries one,
-    and repaints every dot when the request asks for it.
-    """
+    """Bridge handler for ``spendable_profits.state``."""
     asked = params or {}
     state = SpendableProfitsModel()
     profits = asked.get("profits")

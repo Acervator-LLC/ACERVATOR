@@ -1,18 +1,4 @@
-"""The main window paints the same colours after the token migration.
-
-A failure means a `design_system` token edit, or a change to
-`src/gui/main_window.py`, moved pixels in the operator's live GUI.
-
-Every expected colour is the LITERAL the file shipped before the tokens
-replaced it. An assertion fed by the token it measures cannot falsify
-that token: both sides move together and a wrong colour passes.
-
-Colours are read off the RENDER. A stylesheet string reports what a
-widget was told to paint, not what reached the screen. `MainWindow`
-itself is never rendered whole: two instances built from one source
-produce different images, so its chrome is located by exact stylesheet
-text and each owning child widget is rendered on its own.
-"""
+"""The main window paints the same colours after the token migration."""
 
 import os
 from types import SimpleNamespace
@@ -27,12 +13,7 @@ from tests.fixtures.quiet_news_ticker import install_quiet_ticker  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def quiet_ticker(monkeypatch):
-    """Render the tab with a news strip that opens no socket.
-
-    ``ExchangeTab`` starts the real strip, which fetches ten RSS feeds
-    on a parentless QThread. The teardown sweep then destroys the tab
-    and leaves that thread running into the tests that follow.
-    """
+    """Render the tab with a news strip that opens no socket."""
     yield install_quiet_ticker(monkeypatch)
 
 
@@ -80,8 +61,7 @@ API_DEFAULT = "#cccccc"
 EXCHANGE_BADGE = "#7fb3ff"
 EXCHANGE_DIM = "#a8a8c5"
 
-# TradeChartsTab and CapitalRegistryPanel read no design_system token;
-# these are the Qt palette colours they ship with.
+# The charts and registry read no token, so these are their Qt palette colours.
 CHARTS_GROUND = "#efefef"
 CHARTS_FRAME = "#b8b8b8"
 REGISTRY_ROW = "#ffffff"
@@ -221,7 +201,18 @@ def build_privacy_dot(module):
 
 
 def build_spendable_profits(module):
-    return module.SpendableProfitsWidget(), (420, 160)
+    """The strip driven with one measured amount, which the green skin needs."""
+    widget = module.SpendableProfitsWidget()
+    widget.update_profits(
+        {
+            "spendable": 12.5,
+            "total_realised": 1.0,
+            "locked": None,
+            "mature": None,
+            "exchange_count": 1,
+        }
+    )
+    return widget, (420, 160)
 
 
 def build_bot_status_table(module):

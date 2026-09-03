@@ -50,4 +50,5 @@ window.ACERVATOR_MODULES = [
   "capital_registry.js",
   "preflight_check.js",
   "pulse_manager.js",
+  "spendable_profits.js",
 ];

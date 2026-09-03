@@ -1,10 +1,4 @@
-"""The Qt spendable-profits strip and the Qt-free surface, side by side.
-
-A failure means the view model describes a different column, a different
-colour, a different amount, a different privacy dot, a different tooltip,
-a different layout number or a different branch than
-``SpendableProfitsWidget`` builds on the same payload.
-"""
+"""The Qt spendable-profits strip and the Qt-free surface, side by side."""
 
 from __future__ import annotations
 
@@ -46,9 +40,9 @@ PIXEL_SIZE = (900, 110)
 
 CONNECT_TOTAL = 0
 SHIPPED_CLASS_TOTAL = 1
-SHIPPED_METHOD_TOTAL = 4
-PAYLOAD_KEY_TOTAL = 13
-CONSTANT_TOTAL = 47
+SHIPPED_METHOD_TOTAL = 7
+PAYLOAD_KEY_TOTAL = 17
+CONSTANT_TOTAL = 49
 TRACE_KEY_TOTAL = 5
 OUTER_ITEM_TOTAL = 18
 
@@ -60,7 +54,7 @@ KPI_FIELD_IDS = (
     "kpi.exch",
 )
 
-# The test owns this map so neither side is named from the other.
+# The test owns this column key map so neither side names the other.
 COLUMN_KEY_BY_FIELD_ID = {
     "kpi.spendable": "spendable",
     "kpi.realised": "total_realised",
@@ -94,22 +88,10 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
-# The privacy registry is process-wide. Both sides read it, so every
-# test is given a fresh one and the process singleton is put back.
-# ---------------------------------------------------------------------
-
-
+# A fresh privacy registry per test, because the process one is shared.
 @pytest.fixture(autouse=True)
 def own_privacy_registry(tmp_path, monkeypatch):
-    """Give this test its own registry and restore the process one after.
-
-    ``get_privacy_mask_registry`` returns one object for the whole
-    process, and both sides reach it through that one function, so a mask
-    a test leaves set would decide what a later test renders. Autosave is
-    off and the path is a temporary one, so no test writes a settings
-    file.
-    """
+    """Give this test its own registry and restore the process one after."""
     from src.core import privacy_mask_registry as registry_module
 
     fresh = registry_module.PrivacyMaskRegistry(
@@ -135,10 +117,6 @@ def set_masks(field_ids) -> None:
     for field_id in field_ids:
         live.set_masked(field_id, True)
 
-
-# ---------------------------------------------------------------------
-# The inputs. One scenario drives both sides.
-# ---------------------------------------------------------------------
 
 LONG_TEXT = "L" * 200
 MARKUP_TEXT = '<b onclick="x">bold &amp; "quoted"</b>'
@@ -280,19 +258,11 @@ SCENARIOS = [
 SCENARIO_NAMES = [spec["name"] for spec in SCENARIOS]
 BY_NAME = {spec["name"]: spec for spec in SCENARIOS}
 
+#: Only a payload that is not a mapping refuses; every value renders.
 REFUSING_SCENARIOS = (
-    "text_where_a_number_belongs",
-    "text_where_the_realised_amount_belongs",
-    "text_where_the_locked_amount_belongs",
-    "text_where_the_mature_amount_belongs",
     "the_payload_is_a_list",
     "the_payload_is_missing",
 )
-
-
-# ---------------------------------------------------------------------
-# Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def drive_old(spec):
@@ -326,11 +296,6 @@ def drive_new(spec):
     elif spec["then"] == "refresh":
         model.refresh_privacy_dots()
     return model
-
-
-# ---------------------------------------------------------------------
-# Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def column_from_qt(column_layout):
@@ -457,11 +422,6 @@ def new_outcome(spec):
     return outcome(lambda: surface_trace(surface.build_view_model(drive_new(spec))))
 
 
-# ---------------------------------------------------------------------
-# The two sides, value for value and by hash
-# ---------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
 def test_the_two_sides_describe_the_same_strip(name):
     """A column, colour, amount, dot, tooltip or layout number differs."""
@@ -553,11 +513,6 @@ def test_a_dot_click_masks_the_amount_and_re_renders_both_sides():
     assert mine["text"] == after["text"]
 
 
-# ---------------------------------------------------------------------
-# The enumeration: connect sites, classes, methods, timers, bus topics
-# ---------------------------------------------------------------------
-
-
 def dotted(node) -> str:
     parts = []
     while isinstance(node, ast.Attribute):
@@ -589,12 +544,7 @@ def connect_sites(path) -> list:
 
 
 def test_the_strip_connects_no_signal_and_the_counter_can_report():
-    """The strip connects a signal the surface names no action for.
-
-    The strip holds none, so the counter is pointed at the dot widget it
-    builds, which really does connect one. A counter that returned
-    nothing on both would be no measurement.
-    """
+    """The strip connects a signal the surface names no action for."""
     sites = connect_sites(WIDGET_SOURCE)
     assert sites == [], sites
     assert len(sites) == CONNECT_TOTAL
@@ -610,6 +560,9 @@ SHIPPED_METHODS = {
     "update_profits": "SpendableProfitsModel.update_profits",
     "_on_privacy_toggle": "SpendableProfitsModel.privacy_toggled",
     "refresh_privacy_dots": "SpendableProfitsModel.refresh_privacy_dots",
+    "_amount_of": "money_amount",
+    "_money_text": "money_text",
+    "_count_text": "count_text",
 }
 
 SURFACE_CLASSES = {"SpendableProfitsModel": "SpendableProfitsWidget"}
@@ -641,8 +594,9 @@ def test_every_shipped_class_and_method_has_a_counterpart():
     assert found == sorted(SHIPPED_METHODS), found
     assert len(found) == SHIPPED_METHOD_TOTAL
     for counterpart in SHIPPED_METHODS.values():
-        holder, _, attribute = counterpart.partition(".")
-        assert callable(getattr(getattr(surface, holder), attribute)), counterpart
+        owner, _, attribute = counterpart.partition(".")
+        named = getattr(surface, owner)
+        assert callable(getattr(named, attribute) if attribute else named), counterpart
 
 
 def test_every_surface_class_names_what_it_replaces():
@@ -657,12 +611,7 @@ def test_every_surface_class_names_what_it_replaces():
 
 
 def test_the_method_reader_counts_no_signal_as_a_method():
-    """A signal is callable, so the counter reports one method too many.
-
-    The shipped class declares four methods and inherits every Qt signal
-    it uses, so a reader that walked the whole type would report far more
-    than four.
-    """
+    """A signal is callable, so the counter reports one method too many."""
     from src.gui.widgets.spendable_profits import SpendableProfitsWidget
 
     assert "customContextMenuRequested" not in shipped_methods()
@@ -716,33 +665,36 @@ def test_the_strip_subscribes_to_no_bus_topic_and_the_counter_can_report():
     assert "wire.created" in neighbour
 
 
-# ---------------------------------------------------------------------
-# The completeness check
-# ---------------------------------------------------------------------
+def rendered(amounts) -> dict:
+    """One view model, built from a model driven with ``amounts`` once."""
+    model = surface.SpendableProfitsModel()
+    model.update_profits(amounts)
+    return surface.build_view_model(model)
 
 
 def named_payloads() -> dict:
-    """The four view models the completeness check reads."""
+    """The six view models the completeness check reads."""
     built = surface.build_view_model()
-    negative = surface.SpendableProfitsModel()
-    negative.update_profits(payload(spendable=-5.0))
-    unknown = surface.SpendableProfitsModel()
-    unknown.update_profits(payload(spendable=None))
+    negative = rendered(payload(spendable=-5.0))
+    unknown = rendered(payload(spendable=None))
+    unreadable = rendered(payload(spendable="lots"))
+    happy = rendered(payload())
     set_masks(KPI_FIELD_IDS)
-    masked = surface.SpendableProfitsModel()
-    masked.update_profits(payload())
-    masked_model = surface.build_view_model(masked)
+    masked = rendered(payload())
     set_masks(())
     return {
         "built": built,
-        "negative": surface.build_view_model(negative),
-        "unknown": surface.build_view_model(unknown),
-        "masked": masked_model,
+        "happy": happy,
+        "negative": negative,
+        "unknown": unknown,
+        "unreadable": unreadable,
+        "masked": masked,
     }
 
 
 PAYLOAD_KEYS = {
     "ACTIONS": "built:actions",
+    "ALPHA_SCALE": "built:alpha_scale",
     "BUS_TOPICS": "built:bus_topics",
     "CALL_NAMES": "built:call_names",
     "COLUMN_MARGINS_PX": "built:layout.column_margins_px",
@@ -766,16 +718,16 @@ PAYLOAD_KEYS = {
     "SEPARATOR_GAP_PX": "built:layout.separator_gap_px",
     "SEPARATOR_STYLE": "built:separator.style_sheet",
     "SEPARATOR_TEXT": "built:separator.text",
-    "SPENDABLE_INITIAL_TEXT": "built:columns.0.initial_text",
     "SPENDABLE_LABEL_STYLE": "built:columns.0.label_style",
     "SPENDABLE_TOOLTIP": "built:columns.0.label_tooltip",
     "SPENDABLE_UNKNOWN_TOOLTIP": "unknown:columns.0.tooltip",
     "TIMERS": "built:timers",
     "TIMER_DELAYS_MS": "built:timer_delays_ms",
     "TRAILING_STRETCH": "built:layout.trailing_stretch",
+    "UNREADABLE_TOOLTIP": "unreadable:columns.0.tooltip",
     "VALUE_STYLE_DEFAULT": "built:columns.1.initial_style",
-    "VALUE_STYLE_HIGHLIGHT": "built:columns.0.initial_style",
-    "VALUE_STYLE_MUTED": "unknown:columns.0.style_sheet",
+    "VALUE_STYLE_HIGHLIGHT": "happy:columns.0.style_sheet",
+    "VALUE_STYLE_MUTED": "built:columns.0.initial_style",
     "VALUE_STYLE_NEGATIVE": "negative:columns.0.style_sheet",
 }
 
@@ -783,13 +735,14 @@ PAYLOAD_KEYS = {
 TEXT_INSIDE = {
     "DOT_MASKED_STATE": "masked:columns.0.dot.tooltip",
     "DOT_REVEALED_STATE": "built:columns.0.dot.tooltip",
-    "MONEY_PREFIX": "built:columns.0.initial_text",
+    "MONEY_PREFIX": "happy:columns.0.text",
 }
 
-# The seven branch markers, each carried inside call_names.
+# The eight call constants, each carried inside the published call names.
 CALL_CONSTANTS = (
     "UPDATE",
     "SPENDABLE_UNKNOWN",
+    "SPENDABLE_UNREADABLE",
     "SPENDABLE_POSITIVE",
     "SPENDABLE_NEGATIVE",
     "PRIVACY_TOGGLED",
@@ -805,8 +758,13 @@ NOT_IN_THE_SNAPSHOT = {
     "MONEY_FORMAT": "test_the_money_format_gives_two_places_and_thousands_marks",
 }
 
-# The one snapshot key built from other values rather than carrying one.
-DERIVED_KEYS = {"items": "test_the_two_sides_describe_the_same_strip"}
+# The snapshot keys built from other values rather than carrying one.
+DERIVED_KEYS = {
+    "items": "test_the_two_sides_describe_the_same_strip",
+    "column_count": "test_both_published_counts_match_the_lists_beside_them",
+    "item_count": "test_both_published_counts_match_the_lists_beside_them",
+    "calls": "test_every_branch_marker_fires_and_ties_to_what_the_operator_sees",
+}
 
 
 def at_path(payloads, path):
@@ -844,12 +802,7 @@ def as_json_shape(value):
 
 
 def unaccounted_constants(payloads, constants) -> list:
-    """The exported values that reach no snapshot and no named check.
-
-    A value counts as accounted when a snapshot path holds it, when a
-    snapshot path contains it, when it is a branch marker, when it is the
-    declared column table, or when a named check covers it.
-    """
+    """The exported values that reach no snapshot and no named check."""
     unaccounted = []
     for name, value in constants.items():
         if name in PAYLOAD_KEYS:
@@ -883,20 +836,32 @@ def unbacked_keys(built) -> set:
 
 
 def test_every_value_the_surface_exports_reaches_the_snapshot():
-    """A value the surface exports is in no snapshot the tests read.
-
-    A comparison that reads some of the values passes whether the rest
-    match or not.
-    """
+    """A value the surface exports is in no snapshot the tests read."""
     constants = surface_constants()
     assert len(constants) == CONSTANT_TOTAL, sorted(constants)
     found = unaccounted_constants(named_payloads(), constants)
     assert found == [], found
-    assert len(PAYLOAD_KEYS) == 35
+    assert len(PAYLOAD_KEYS) == 36
     assert len(TEXT_INSIDE) == 3
-    assert len(CALL_CONSTANTS) == 7
+    assert len(CALL_CONSTANTS) == 8
     assert len(DECLARED_TABLE) == 1
     assert len(NOT_IN_THE_SNAPSHOT) == 1
+
+
+def test_both_published_counts_match_the_lists_beside_them():
+    """A count and its list disagree, so a page pairing them would fail."""
+    for name, built in named_payloads().items():
+        assert built["column_count"] == len(built["columns"]), name
+        assert built["item_count"] == len(built["items"]), name
+        assert built["column_count"] == len(surface.COLUMNS), name
+        assert built["item_count"] == OUTER_ITEM_TOTAL, name
+
+
+def test_the_count_check_reads_a_list_one_entry_shorter():
+    """A count check that never compares would pass on a shortened list."""
+    built = surface.build_view_model()
+    built["columns"] = built["columns"][:-1]
+    assert built["column_count"] != len(built["columns"])
 
 
 def test_every_snapshot_key_carries_a_value_the_surface_holds():
@@ -910,14 +875,7 @@ def test_every_snapshot_key_carries_a_value_the_surface_holds():
 
 
 def test_both_completeness_checks_report_what_they_are_given():
-    """Both completeness checks passed because they look at nothing.
-
-    A value the surface exports that reaches no snapshot must land in the
-    unaccounted list, and a snapshot key no value backs must land in the
-    unbacked set. Neither is shown by removing anything from the product:
-    an invented value and an invented key are handed to the same two
-    readers the checks above call.
-    """
+    """Both completeness checks passed because they look at nothing."""
     payloads = named_payloads()
     constants = dict(surface_constants())
     constants["INVENTED_CONSTANT"] = "never in any snapshot"
@@ -958,26 +916,90 @@ def test_every_branch_marker_fires_and_ties_to_what_the_operator_sees():
     unknown = drive_new(BY_NAME["unknown_amounts"])
     assert unknown.calls.count(surface.SPENDABLE_UNKNOWN) == 1
     assert unknown.cells["spendable"]["tooltip"] == surface.SPENDABLE_UNKNOWN_TOOLTIP
+    unreadable = drive_new(BY_NAME["text_where_a_number_belongs"])
+    assert unreadable.calls.count(surface.SPENDABLE_UNREADABLE) == 1
+    assert unreadable.cells["spendable"]["tooltip"] == surface.UNREADABLE_TOOLTIP
     negative = drive_new(BY_NAME["negative_everywhere"])
     assert negative.calls.count(surface.SPENDABLE_NEGATIVE) == 1
     assert negative.cells["spendable"]["style_sheet"] == surface.VALUE_STYLE_NEGATIVE
     skipped = drive_new(BY_NAME["a_toggle_with_no_payload_rendered"])
     assert skipped.calls == [surface.PRIVACY_TOGGLE_SKIPPED]
-    assert skipped.cells["spendable"]["text"] == surface.SPENDABLE_INITIAL_TEXT
+    assert skipped.cells["spendable"]["text"] == surface.EMPTY_TEXT
 
 
-# ---------------------------------------------------------------------
-# The surface carries its own values
-# ---------------------------------------------------------------------
+def test_a_refused_payload_records_neither_a_marker_nor_the_payload():
+    """A marker or figure kept for a render that never ran is a figure invented."""
+    model = surface.SpendableProfitsModel()
+    with pytest.raises(AttributeError):
+        model.update_profits([("spendable", 1.0)])
+    assert model.calls == [], model.calls
+    assert model.last_data == {}, model.last_data
+    assert model.cells == surface.initial_cells()
+
+
+def test_the_refusal_check_sees_the_marker_a_rendered_payload_records():
+    """The same reading after a payload the strip did render."""
+    model = surface.SpendableProfitsModel()
+    model.update_profits(payload())
+    assert model.calls == [surface.UPDATE, surface.SPENDABLE_POSITIVE]
+    assert model.last_data == payload()
+
+
+FILE_SUFFIXES = ("md", "txt", "py", "js", "json", "html", "css", "yml", "toml", "log")
+
+
+def named_files(text) -> list:
+    """Every word in one shown string that reads as a document name."""
+    found = []
+    for word in str(text).replace("(", " ").replace(")", " ").split():
+        stripped = word.strip(".,;:'\"")
+        if "." in stripped and stripped.rsplit(".", 1)[-1] in FILE_SUFFIXES:
+            found.append(stripped)
+    return found
+
+
+def shown_strings() -> list:
+    """Every label, tooltip and cell text the strip can show an operator."""
+    written = []
+    for spec in SCENARIOS:
+        if spec["name"] in REFUSING_SCENARIOS:
+            continue
+        model = surface.build_view_model(drive_new(spec))
+        for column in model["columns"]:
+            written.extend(
+                [
+                    column["label"],
+                    column["label_tooltip"],
+                    column["text"],
+                    column["tooltip"],
+                    column["dot"]["tooltip"],
+                ]
+            )
+    return written
+
+
+def test_no_string_the_strip_shows_names_a_file_that_is_not_there():
+    """A tooltip pointing at a missing document sends the operator nowhere."""
+    missing = []
+    for text in shown_strings():
+        for name in named_files(text):
+            if not list(REPO_ROOT.rglob(name)):
+                missing.append((name, text[:60]))
+    assert missing == [], missing
+
+
+def test_the_file_name_scan_reads_a_name_out_of_a_tooltip():
+    """A scan that found no name at all would pass on any tooltip."""
+    assert named_files("see P0a in NEXT_SESSION_ORDERS.md.") == [
+        "NEXT_SESSION_ORDERS.md"
+    ]
+    assert not list(REPO_ROOT.rglob("NEXT_SESSION_ORDERS.md"))
+    assert named_files("see the file main.py now") == ["main.py"]
+    assert list(REPO_ROOT.rglob("main.py"))
 
 
 def test_the_surface_does_not_follow_a_value_moved_in_the_shipped_strip(monkeypatch):
-    """The surface read its values off the strip it replaces.
-
-    A surface that read the shipped strip would follow it, and the whole
-    comparison above would be one side read twice. A style the shipped
-    class declares is moved and the surface must not move with it.
-    """
+    """The surface read its values off the strip it replaces."""
     app()
     from src.gui.widgets import spendable_profits as shipped
 
@@ -1031,11 +1053,6 @@ def test_the_field_ids_are_the_ones_the_privacy_registry_knows():
     assert inverted == COLUMN_KEY_BY_FIELD_ID
 
 
-# ---------------------------------------------------------------------
-# The colours
-# ---------------------------------------------------------------------
-
-
 def canonical(colour):
     """One colour as a full six-digit value, so short forms compare."""
     from PySide6.QtGui import QColor
@@ -1076,12 +1093,7 @@ def test_a_channel_swap_is_reported_where_the_channels_differ():
 
 
 def test_the_muted_grey_is_compared_as_text_because_its_channels_are_equal():
-    """A colour with three equal channels was left to a colour check.
-
-    ``#888`` reads the same with any two channels swapped, so no colour
-    check can report a swap in it. Both the label skin and the unknown
-    amount's skin carry it, and both are compared as exact text.
-    """
+    """A colour with three equal channels was left to a colour check."""
     from src.gui import design_system as ds
 
     assert canonical(ds.CARD_METRIC_LABEL) == "#888888"
@@ -1094,18 +1106,9 @@ def test_the_muted_grey_is_compared_as_text_because_its_channels_are_equal():
     assert new["columns"][1]["label_style"] == old["columns"][1]["label_style"]
 
 
-# ---------------------------------------------------------------------
-# The pictures
-# ---------------------------------------------------------------------
-
-
 @functools.lru_cache(maxsize=1)
 def rebuilt_types():
-    """The two classes a rebuilt strip needs, named for the type selectors.
-
-    Both style sheets select by class name, so a frame or a dot of any
-    other class is painted without its skin.
-    """
+    """The two classes a rebuilt strip needs, named for the type selectors."""
     from PySide6.QtWidgets import QFrame, QPushButton
 
     class SpendableProfitsWidget(QFrame):
@@ -1218,12 +1221,7 @@ def test_the_two_sides_paint_one_picture(name):
 
 
 def test_the_frame_chrome_reaches_the_picture_only_under_its_own_class_name():
-    """A style sheet that selects by class name reaches no rebuilt element.
-
-    Both style sheets select by class name, so an element of any other
-    class is painted with none of its skin, and the picture check is what
-    reports it. Two real classes, one payload.
-    """
+    """A style sheet that selects by class name reaches no rebuilt element."""
     app()
     from PySide6.QtWidgets import QFrame, QPushButton
 
@@ -1244,13 +1242,7 @@ def test_the_frame_chrome_reaches_the_picture_only_under_its_own_class_name():
 
 
 def test_the_picture_comparison_can_report_a_difference():
-    """The picture check passes whatever the second side paints.
-
-    Two real payloads, one driven into each side. The happy one shows a
-    positive amount in the success colour, the other a negative amount in
-    the error colour, so a pass proves the comparison reports a strip
-    painted differently.
-    """
+    """The picture check passes whatever the second side paints."""
     app()
     assert HAPPY["spendable"] > 0
     assert BY_NAME["negative_everywhere"]["data"]["spendable"] < 0
@@ -1347,18 +1339,8 @@ def test_the_mask_marker_and_its_label_measure_different_widths():
     assert QLabel(marker).sizeHint().width() != QLabel(label).sizeHint().width()
 
 
-# ---------------------------------------------------------------------
-# What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
-
-
 def test_the_values_no_picture_carries_are_read_off_both_sides():
-    """A value that reaches no pixel was left to the render to report.
-
-    A tooltip, a privacy field id and the frame shape paint nothing.
-    Each is read off the shipped strip and off the surface directly, not
-    through a picture.
-    """
+    """A value that reaches no pixel was left to the render to report."""
     app()
     spec = BY_NAME["unknown_amounts"]
     old = qt_trace(drive_old(spec))
@@ -1374,11 +1356,6 @@ def test_the_values_no_picture_carries_are_read_off_both_sides():
         assert new["columns"][index]["dot"]["tooltip"] == (
             old["columns"][index]["dot"]["tooltip"]
         )
-
-
-# ---------------------------------------------------------------------
-# The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):
@@ -1410,20 +1387,59 @@ def test_the_bridge_renders_a_payload_it_is_given():
     texts = [column["text"] for column in result["columns"]]
     assert texts == ["$1,234.56", "$9,876.54", "$250.00", "$42.50", "3"]
     blank = bridge_answer({})["result"]
-    assert [column["text"] for column in blank["columns"]] == [
-        surface.SPENDABLE_INITIAL_TEXT,
-        surface.EMPTY_TEXT,
-        surface.EMPTY_TEXT,
-        surface.EMPTY_TEXT,
-        surface.EMPTY_TEXT,
-    ]
+    assert [column["text"] for column in blank["columns"]] == [surface.EMPTY_TEXT] * 5
+
+
+def test_the_bridge_draws_no_money_before_a_payload_arrives():
+    """A built strip showed a dollar figure nothing measured."""
+    blank = bridge_answer({})["result"]
+    written = [column["text"] for column in blank["columns"]]
+    assert surface.MONEY_PREFIX not in "".join(written), written
+    assert blank["columns"][0]["initial_style"] == surface.VALUE_STYLE_MUTED
+
+
+def test_the_money_scan_reads_the_dollar_sign_a_rendered_strip_shows():
+    """A scan that saw no dollar sign anywhere would pass on any strip."""
+    drawn = bridge_answer({"profits": HAPPY})["result"]
+    written = [column["text"] for column in drawn["columns"]]
+    assert surface.MONEY_PREFIX in "".join(written), written
+
+
+def test_a_payload_missing_a_key_draws_the_empty_marker_not_a_zero():
+    """A key the caller never sent must not read as a measured zero."""
+    result = bridge_answer({"profits": {}})["result"]
+    written = [column["text"] for column in result["columns"]]
+    assert written == [surface.EMPTY_TEXT] * len(surface.COLUMNS), written
+
+
+def test_the_missing_key_check_reads_a_zero_the_caller_did_send():
+    """A zero the caller did send is drawn, so the check is not looking away."""
+    sent = {
+        "spendable": 0,
+        "total_realised": 0,
+        "locked": 0,
+        "mature": 0,
+        "exchange_count": 0,
+    }
+    result = bridge_answer({"profits": sent})["result"]
+    written = [column["text"] for column in result["columns"]]
+    assert written == ["$0.00", "$0.00", "$0.00", "$0.00", "0"], written
+
+
+def test_the_bridge_draws_an_unreadable_amount_rather_than_refusing():
+    """A word where an amount belongs stopped the whole strip."""
+    answer = bridge_answer({"profits": {"spendable": "lots"}})
+    assert answer["ok"] is True, answer
+    column = answer["result"]["columns"][0]
+    assert column["text"] == surface.EMPTY_TEXT
+    assert column["tooltip"] == surface.UNREADABLE_TOOLTIP
 
 
 def test_the_bridge_reports_a_payload_it_cannot_render():
     """A payload the strip refuses came back as an answer."""
-    answer = bridge_answer({"profits": {"spendable": "lots"}})
+    answer = bridge_answer({"profits": [("spendable", 1.0)]})
     assert answer["ok"] is False
-    assert answer["error"]["type"] == "TypeError"
+    assert answer["error"]["type"] == "AttributeError"
 
 
 def test_the_bridge_answer_is_json_serialisable():
