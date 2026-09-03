@@ -1021,27 +1021,36 @@ def test_view_model_defaults_every_missing_parameter():
     ]
 
 
-def test_a_bot_ids_value_the_surface_cannot_read_becomes_an_error_frame():
+def test_a_bot_ids_value_the_surface_cannot_read_still_answers_the_request():
     """A malformed fleet list took the bridge session down."""
     from src.core import desktop_bridge
 
     registry = desktop_bridge.build_registry()
-    answer = desktop_bridge.handle_line(
-        json.dumps(
-            {
-                "id": 31,
-                "method": surface.METHOD,
-                "params": {
-                    "action": surface.REANCHOR,
-                    "bot_id": "bot-a",
-                    "bot_ids": 7,
-                },
-            }
-        ),
-        registry,
-    )
-    assert answer["ok"] is False
-    assert answer["error"]["type"] == "TypeError"
+
+    def answered(bot_ids):
+        return desktop_bridge.handle_line(
+            json.dumps(
+                {
+                    "id": 31,
+                    "method": surface.METHOD,
+                    "params": {
+                        "action": surface.REANCHOR,
+                        "bot_id": "bot-a",
+                        "bot_ids": bot_ids,
+                    },
+                }
+            ),
+            registry,
+        )
+
+    healthy = answered(["bot-a"])
+    assert healthy["ok"] is True, healthy
+    assert healthy["result"]["bot_ids"] == ["bot-a"], healthy
+    answer = answered(7)
+    assert answer["ok"] is True, answer
+    assert answer["result"]["bot_ids"] == [], answer
+    assert answer["result"]["plan"]["target_row"] is None, answer
+    assert desktop_bridge.encode_frame(answer).endswith(b"\n")
 
 
 def test_the_helper_raises_on_the_same_malformed_fleet_list():
@@ -1132,3 +1141,132 @@ def test_the_qt_probe_can_report_qt():
     loaded = run_probe("import PySide6.QtCore;")
     assert loaded["qt"] is True
     assert loaded["frame"]["ok"] is True
+
+
+HOSTILE_FLEET = ["bot-a", "bot-b"]
+HOSTILE_ANCHOR = "bot-b"
+HOSTILE_ROW = 1
+
+
+def hostile(**params):
+    """The whole view model for one request, with the fleet already named."""
+    asked = {
+        "action": REANCHOR,
+        "bot_id": HOSTILE_ANCHOR,
+        "bot_ids": list(HOSTILE_FLEET),
+    }
+    asked.update(params)
+    return surface.view_model(asked)
+
+
+def test_a_fleet_that_is_not_a_list_names_no_row():
+    """A number sent as the fleet stopped the whole request."""
+    healthy = hostile()
+    assert healthy["bot_ids"] == HOSTILE_FLEET, healthy
+    answered = hostile(bot_ids=10**24)
+    assert answered["bot_ids"] == [], answered
+    assert answered["plan"]["target_row"] is None, answered
+
+
+def test_a_word_sent_as_the_fleet_is_not_read_as_one_row_per_letter():
+    """The letters of a word became rows a bot could be found on."""
+    healthy = hostile(bot_ids=["a", "b", "c"], bot_id="c", filled_rows=[2])
+    assert healthy["plan"]["target_row"] == 2, healthy
+    answered = hostile(bot_ids="abc", bot_id="c", filled_rows=[2])
+    assert answered["bot_ids"] == [], answered
+    assert answered["plan"]["target_row"] is None, answered
+
+
+def test_a_filled_row_count_that_is_not_a_list_names_no_row():
+    """A number sent as the filled rows stopped the whole request."""
+    healthy = hostile(filled_rows=[HOSTILE_ROW])
+    assert healthy["filled_rows"] == [HOSTILE_ROW], healthy
+    answered = hostile(filled_rows=10**24)
+    assert answered["filled_rows"] == [], answered
+    assert answered["plan"]["target_row"] is None, answered
+
+
+def test_a_word_among_the_filled_rows_is_dropped_and_the_rest_still_answer():
+    """One word among the row numbers stopped the whole request."""
+    healthy = hostile(filled_rows=[0, HOSTILE_ROW])
+    assert healthy["filled_rows"] == [0, HOSTILE_ROW], healthy
+    answered = hostile(filled_rows=[HOSTILE_ROW, "not a row"])
+    assert answered["filled_rows"] == [HOSTILE_ROW], answered
+    assert answered["plan"]["target_row"] == HOSTILE_ROW, answered
+
+
+def test_a_missing_row_among_the_filled_rows_is_dropped():
+    """A null among the row numbers stopped the whole request."""
+    healthy = hostile(filled_rows=[HOSTILE_ROW])
+    assert healthy["filled_rows"] == [HOSTILE_ROW], healthy
+    answered = hostile(filled_rows=[None, HOSTILE_ROW])
+    assert answered["filled_rows"] == [HOSTILE_ROW], answered
+
+
+def test_a_flag_among_the_filled_rows_names_no_row():
+    """A true flag was read as row one and highlighted that bot."""
+    healthy = surface.view_model(
+        {
+            "action": SELECT_FOR_BOT,
+            "bot_id": HOSTILE_ANCHOR,
+            "bot_ids": list(HOSTILE_FLEET),
+            "filled_rows": [HOSTILE_ROW],
+        }
+    )
+    assert healthy["plan"]["target_row"] == HOSTILE_ROW, healthy
+    answered = surface.view_model(
+        {
+            "action": SELECT_FOR_BOT,
+            "bot_id": HOSTILE_ANCHOR,
+            "bot_ids": list(HOSTILE_FLEET),
+            "filled_rows": [True],
+        }
+    )
+    assert answered["filled_rows"] == [], answered
+    assert answered["plan"]["target_row"] is None, answered
+
+
+@pytest.mark.parametrize("wide", [float("inf"), float("-inf"), float("nan")])
+def test_a_row_number_json_cannot_write_is_dropped(wide):
+    """A row number with no JSON spelling reached the frontend as null."""
+    healthy = hostile(filled_rows=[HOSTILE_ROW])
+    assert json.dumps(healthy, allow_nan=False)
+    answered = hostile(filled_rows=[wide, HOSTILE_ROW])
+    assert answered["filled_rows"] == [HOSTILE_ROW], answered
+    assert json.dumps(answered, allow_nan=False)
+
+
+def test_the_published_filled_rows_are_the_rows_the_plan_read():
+    """The published rows and the rows the plan read were two lists."""
+    listed = surface.build_view_model(
+        REANCHOR, HOSTILE_ANCHOR, list(HOSTILE_FLEET), "", [HOSTILE_ROW]
+    )
+    assert listed["filled_rows"] == [HOSTILE_ROW], listed
+    assert listed["plan"]["target_row"] == HOSTILE_ROW, listed
+    once = surface.build_view_model(
+        REANCHOR, HOSTILE_ANCHOR, list(HOSTILE_FLEET), "", iter([HOSTILE_ROW])
+    )
+    named = once["plan"]["target_row"]
+    assert (named is None) == (once["filled_rows"] == []), once
+
+
+@pytest.mark.parametrize("asked", [None, 5, "params", [], 10**24])
+def test_a_request_whose_params_are_not_an_object_answers_a_plan(asked):
+    """Params that were not an object stopped the whole request."""
+    healthy = hostile()
+    assert healthy["plan"]["calls"], healthy
+    answered = surface.view_model(asked)
+    assert answered["plan"]["calls"] == [], answered
+    assert answered["bot_ids"] == [], answered
+
+
+def test_the_row_number_filter_keeps_a_row_written_as_a_decimal():
+    """A row number written with a decimal point stopped naming its row."""
+    assert surface.row_indices([1.0]) == [1.0]
+    assert surface.row_indices([]) == []
+
+
+def test_the_fleet_filter_keeps_a_tuple_and_refuses_a_bag():
+    """A fleet sent as a tuple stopped naming its rows."""
+    assert surface.row_names(("a", "b")) == ["a", "b"]
+    assert surface.row_names({"a": 1}) == []

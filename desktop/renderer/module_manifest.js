@@ -52,4 +52,5 @@ window.ACERVATOR_MODULES = [
   "pulse_manager.js",
   "spendable_profits.js",
   "bot_wizard.js",
+  "bot_selection.js",
 ];
