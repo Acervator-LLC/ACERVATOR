@@ -1,9 +1,9 @@
 """An Extractor Tranche's return must ARRIVE ATOMICALLY, not in halves.
 
 THE TWO HALVES ARE THE TWO TERMS OF ONE SUBTRACTION
-The tick computes ``current_value = _current_holdings * ticker.last *
-_quote_to_usd`` (`scrumming_bot.py:6247`) and then ``delta =
-current_value - _target_balance`` (`scrumming_bot.py:7072`). An arrival
+``ScrummingBot.tick`` (`src/trading/scrumming_bot.py`) computes
+``current_value = _current_holdings * ticker.last * _quote_to_usd``
+and then ``delta = current_value - _target_balance``. An arrival
 moves BOTH terms. Apply one half without the other and delta moves, in
 whichever direction the missing half was:
 
@@ -188,7 +188,10 @@ def _bot(*, target=200.0, anchor=200.0, holdings=1.0, price=200.0, quote_to_usd=
 
 
 def _delta(bot, price):
-    """The shipped decision quantity: scrumming_bot.py:6247 + :7072."""
+    """The shipped decision quantity.
+
+    From ``ScrummingBot.tick`` in ``src/trading/scrumming_bot.py``.
+    """
     current_value = bot._current_holdings * price * float(bot._quote_to_usd or 1.0)
     return current_value - bot._target_balance
 

@@ -8,8 +8,8 @@ The cell read::
                else "auto scrum")
 
 ``operator_initiated`` is written at ONE site, the SCRUM branch of
-``_execute_manual_rebalance`` (``scrumming_bot.py:12398``), and its
-value comes from that method's intent map (``:12153``)::
+``_execute_manual_rebalance`` (``src/trading/scrumming/execution.py``),
+and its value comes from that method's own intent map::
 
     "manual_button": ("MANUAL_SCRUM", "MANUAL_FOLD", True)
     "wire_stack":    ("WIRE_STACK_SCRUM", "WIRE_STACK_FOLD", False)

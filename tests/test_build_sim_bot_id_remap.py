@@ -10,7 +10,7 @@ so the sim fleet has always run under ids that exist nowhere else.
 Smart Wires are keyed by the persisted id. `get_outgoing_wires(source_id)`
 looks up `self._wires.get(source_id, {})` (smart_wire.py:344-346) and
 `distribute_fold_profit` is called with `source_id=self.bot_id`
-(scrumming_bot.py:8706). Import 40 wires keyed by live ids, register 40
+(`src/trading/smart_wire.py`). Import 40 wires keyed by live ids, register 40
 bots keyed by uuid4s, and the two never meet: `import_wires` does no
 existence check (smart_wire.py:456-478), so it cheerfully reports 40 while
 `_route_scrum_proceeds_via_wires` takes its early return
@@ -27,7 +27,8 @@ excluded from the dropped-keys debug log by the underscore filter at
 fleet_replay_controller.py:304-306, so its uselessness was invisible.
 
 Live's own restore is the mechanism being mirrored here, not a new
-invention: bot_container.py:3160-3161 `# Preserve original bot ID` /
+invention: `BotManager.restore_bots_from_state` in
+`src/trading/container/restore.py`, `# Preserve original bot ID` /
 `bot.bot_id = bid`, which is precisely why live's `import_wires` works.
 
 SCOPE. This file pins the id only. Whether wires actually route is a

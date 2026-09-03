@@ -13,8 +13,9 @@ something that already exists, certain to drift from it. The sim mounts
 the SAME CLASS and feeds it through an adapter.
 
 THE IMPORT IS DEFERRED ON PURPOSE. `main_window` imports
-`simulator_tab` (main_window.py:3971), so a module-scope import back
-the other way is a cycle. `SimulatorTab` is only ever constructed BY
+`simulator_tab` at module scope (`src/gui/main_window.py`), so a
+module-scope import back the other way is a cycle. `SimulatorTab` is
+only ever constructed BY
 `main_window`, so resolving the class inside a method is safe -- and
 returning None when it cannot be resolved keeps a headless import of
 this panel a legitimate caller.

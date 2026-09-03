@@ -10,9 +10,9 @@ Pins the semantic cases:
 WHAT v3.25.9 CORRECTED
 `new_target` reaches this method from the Target Balance spinbox,
 which shows `cfg.target_balance` and is deliberately NOT repointed at
-the grown runtime value — see the hazard note at
-`bot_live_settings.py:3736` and the pins in
-`tests/test_compounding_surface_is_visible.py`. The spinbox is
+the grown runtime value — see the HAZARD note in
+`_create_settings_tab` (`src/gui/live_settings/settings_tab.py`) and
+the pins in `tests/test_compounding_surface_is_visible.py`. The spinbox is
 therefore ANCHOR-denominated. The branch nevertheless compared it
 against the GROWN `_target_balance`, so any top-up smaller than the
 accrued growth fell into the collapse branch.

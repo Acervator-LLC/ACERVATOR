@@ -437,7 +437,9 @@ def test_hazard_the_listing_leaves_the_parents_own_books_untouched():
 
 
 def test_hazard_1_fold_gate_inputs_do_not_see_an_extractor_tranche():
-    """`scrumming_bot.py:8609-8610` -> `gate_chain.TranchesQueuedGate`.
+    """`ScrummingBot.tick`'s `GateContext(has_fold_tranches=...,
+    n_fold_tranches=...)` build (`src/trading/scrumming_bot.py`) ->
+    `gate_chain.TranchesQueuedGate`.
 
     THE CENTRAL HAZARD. One Extractor Tranche in `_fold_tranches` would
     make the FOLD gate report "queued" while the parent has zero real
@@ -452,7 +454,8 @@ def test_hazard_1_fold_gate_inputs_do_not_see_an_extractor_tranche():
 
 
 def test_hazard_2_the_fold_buy_eligible_set_is_empty():
-    """`scrumming_bot.py:9492-9495` — this IS the fold buy set."""
+    """`_fold_eligible_tranches` (`src/trading/scrumming/fold_tranches.py`)
+    — this IS the fold buy set."""
     parent, _ = _family()
     parent.open_extractor_tranches()
     otd_factor = 0.98
@@ -466,8 +469,9 @@ def test_hazard_2_the_fold_buy_eligible_set_is_empty():
 
 
 def test_hazard_3_cycle_cap_packing_sees_no_extractor_usd():
-    """`scrumming_bot.py:9548-9562` — an Extractor Tranche must not
-    consume fold budget and defer a genuine tranche to a later cycle."""
+    """`_plan_fold_consumption` (`src/trading/scrumming/fold_tranches.py`)
+    — an Extractor Tranche must not consume fold budget and defer a
+    genuine tranche to a later cycle."""
     parent, _ = _family()
     parent.open_extractor_tranches()
     packed = sum(float(t.get("usd", 0)) for t in parent._fold_tranches)
@@ -475,9 +479,10 @@ def test_hazard_3_cycle_cap_packing_sees_no_extractor_usd():
 
 
 def test_hazard_4_main_lots_gains_no_fabricated_cost_basis():
-    """`scrumming_bot.py:9744-9750` — a rebuy inherits
-    `initial_buy_price` from the tranche it discharges. A fabricated
-    basis here would corrupt MEM-171 protection permanently."""
+    """`_execute_manual_rebalance` (`src/trading/scrumming/execution.py`)
+    — a rebuy inherits `initial_buy_price` from the tranche it
+    discharges. A fabricated basis here would corrupt MEM-171
+    protection permanently."""
     parent, _ = _family()
     parent.open_extractor_tranches()
     assert parent._main_lots == []
@@ -494,8 +499,10 @@ def test_hazard_6_wire_income_is_not_divided_into_an_extractor_tranche():
 
 
 def test_hazard_7_manual_rebalance_sort_finds_no_extractor_tranche():
-    """`scrumming_bot.py:11113-11160` — sorts on a bare `t["ref"]`,
-    which an Extractor Tranche does not have, and would consume it."""
+    """`_fold_discharge_order` (`src/trading/scrumming/fold_tranches.py`),
+    which `_execute_manual_rebalance` calls to order the queue by
+    `ref` — an Extractor Tranche has no `ref` and would be consumed
+    alongside real tranches."""
     parent, _ = _family()
     parent.open_extractor_tranches()
     # The sort the real method performs. Raises KeyError if an entry
@@ -504,7 +511,8 @@ def test_hazard_7_manual_rebalance_sort_finds_no_extractor_tranche():
 
 
 def test_hazard_8_the_manual_fire_index_still_maps_to_fold_tranches():
-    """`scrumming_bot.py:3196` with `bot_live_settings.py:1500-1544`.
+    """`scrumming_bot.py:3196` with `_on_fire_tranche_clicked`
+    (`src/gui/live_settings/fold_tranches_tab.py`).
 
     Manual fire is POSITION-indexed into `_fold_tranches`. If an
     Extractor Tranche shifted that mapping, the operator's Fire button
@@ -536,9 +544,11 @@ def test_hazard_8_the_manual_fire_index_still_maps_to_fold_tranches():
 
 
 def test_hazard_9_no_extractor_tranche_is_dropped_as_malformed():
-    """`scrumming_bot.py:9425-9443` — the filter deletes anything
-    failing `ref > 0` and counts it as corrupt. An Extractor Tranche has
-    no `ref` and would be silently deleted and mislabelled."""
+    """`_drop_malformed_fold_tranches`
+    (`src/trading/scrumming/fold_tranches.py`) — the filter deletes
+    anything failing `ref > 0` and counts it as corrupt. An Extractor
+    Tranche has no `ref` and would be silently deleted and
+    mislabelled."""
     parent, _ = _family()
     parent.open_extractor_tranches()
     kept = [t for t in parent._fold_tranches if t.get("ref", 0) > 0]
@@ -553,7 +563,9 @@ def test_hazard_9_no_extractor_tranche_is_dropped_as_malformed():
 
 
 def test_hazard_10_clearing_fold_tranches_does_not_destroy_the_record():
-    """`scrumming_bot.py:11366-11418` and the detonation paths all do
+    """`clear_fold_tranches` (`src/trading/scrumming/fold_tranches.py`)
+    and `self_destruct`'s detonation paths
+    (`src/trading/scrumming_bot.py`) all do
     `self._fold_tranches = []`. None of them can reach a child's live
     position, so the parent's record of it survives."""
     parent, _ = _family()
@@ -566,8 +578,10 @@ def test_hazard_10_clearing_fold_tranches_does_not_destroy_the_record():
 
 
 def test_hazard_11_fold_queue_usd_sum_excludes_the_extractor_tranche():
-    """`scrumming_bot.py:5016` and six sibling sites, several of which
-    use a bare `t["usd"]` and would raise on an entry lacking it."""
+    """`_execute_manual_rebalance` (`src/trading/scrumming/execution.py`)
+    and several sibling sites across `src/trading/scrumming/`, several
+    of which use a bare `t["usd"]` and would raise on an entry lacking
+    it."""
     parent, _ = _family()
     parent.open_extractor_tranches()
     assert sum(t["usd"] for t in parent._fold_tranches) == 0.0
@@ -588,19 +602,23 @@ def test_hazard_12_prospective_surplus_preview_is_unmoved():
 
 
 def test_hazard_13_the_min_ref_diagnostic_finds_no_extractor_tranche():
-    """`scrumming_bot.py:10052-10054` — a bare subscript inside the
-    HOLD-FOLD diagnostic, which raises on a missing key."""
+    """`_tick_fold_diagnostics`
+    (`src/trading/scrumming/tick_phases.py`) — a bare subscript inside
+    the HOLD-FOLD diagnostic, which raises on a missing key."""
     parent, _ = _family()
     parent.open_extractor_tranches()
     assert parent._fold_tranches == []  # min() is never reached
 
 
 def test_hazard_17_current_holdings_excludes_the_leased_units():
-    """`scrumming_bot.py:6497` — THE decision itself.
+    """`ScrummingBot.tick` (`src/trading/scrumming_bot.py`) — THE
+    decision itself.
 
     `current_value = _current_holdings x price x quote_to_usd`, and the
     delta against Target Balance is what makes the bot SCRUM or FOLD.
-    Since v3.23.43 `_current_holdings` derives from `_main_lots` alone,
+    `_current_holdings` derives from `_main_lots` alone (recomputed by
+    `_tick_initialise` and `_book_reconciliation_lot` in
+    `src/trading/scrumming/`),
     so putting an Extractor Tranche in `_main_lots` would make the
     parent count units it does not hold AND SELL THEM. This is the
     precise failure item 4 had to avoid.
@@ -617,8 +635,9 @@ def test_hazard_17_current_holdings_excludes_the_leased_units():
 
 
 def test_hazard_18_capital_reservation_total_holdings_not_inflated():
-    """`scrumming_bot.py:12137-12141` — the sell allowance is computed
-    against `total_holdings=self._current_holdings`. Inflating it would
+    """`_execute_sell` (`src/trading/scrumming/execution.py`) — the
+    sell allowance is computed against
+    `total_holdings=self._current_holdings`. Inflating it would
     widen the parent's own sell allowance against the very asset the
     child reserved, and the check fails open, so the mistake would not
     be caught."""

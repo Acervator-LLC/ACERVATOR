@@ -98,7 +98,7 @@ def _rows(n: int = TAPE_CANDLES, px0: float = 1.0) -> list[list[float]]:
     file's floor is ONE FILL, so the tape has to be able to produce one
     from a trading decision: a sawtooth of about 10%, two orders of
     magnitude outside the MEM-258 dust band (0.1% of target,
-    scrumming_bot.py:7144).
+    ``at_target_dust_band`` in ``src/trading/target_bands.py``).
     """
     out: list[list[float]] = []
     px = px0

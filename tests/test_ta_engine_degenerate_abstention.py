@@ -246,9 +246,10 @@ def test_bollinger_abstains_at_every_peg(peg: float) -> None:
 def test_no_landing_strip_at_any_peg(peg: float) -> None:
     """The fabricated `mid * 0.01` band made a bandless market produce a
     landing strip on the "upper" side while the same object reported
-    bb_position 0.0. That flag is read at scrumming_bot.py:8127-8130,
-    which sets `is_bullish = True` WITHOUT consulting the confidence
-    floor, so a failure here reaches a trade decision directly."""
+    bb_position 0.0. That flag is read in `ScrummingBot.tick`
+    (`src/trading/scrumming_bot.py`), which sets `is_bullish = True`
+    WITHOUT consulting the confidence floor, so a failure here reaches
+    a trade decision directly."""
     candles = candles_from_raw(flat_rows(400, peg))
     prox = detect_bb_proximity(candles)
     assert not prox.landing_strip, (peg, prox)

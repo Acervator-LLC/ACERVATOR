@@ -7,12 +7,14 @@ THE DEFECT THIS PINS
     self._current_holdings = min(
         max(0.0, _units), _tracked_units_bootstrap)
 
-(``scrumming_bot.py:5491``). ``min`` can pull the SCALAR down to the
+(``bootstrap_exchange_state``, ``src/trading/scrumming/reconciliation.py``).
+``min`` can pull the SCALAR down to the
 wallet. It can never pull the LOT LIST down with it, and it can never
 leave the scalar above the lot sum. So the divergence it creates runs in
 exactly one direction.
 
-``_reconcile_holdings`` then read ``internal_units =
+``_reconcile_holdings`` (``src/trading/scrumming/reconciliation.py``)
+then read ``internal_units =
 self._current_holdings`` -- the very number the clamp had already set
 equal to the wallet. For ORCA that compared 48.73 against 48.73,
 reported alignment, and never looked at the 5.32 units stranded in
@@ -46,10 +48,10 @@ Coinbase reports TWO numbers per coin. ``total`` is every coin owned.
 ``free`` is only the coins not tied up in a resting order:
 ``free = total - used``.
 
-``_reconcile_holdings`` read ``balance.free``. The startup handshake
-reads ``total`` (``scrumming_bot.py:6162``, MEM-255) and so does
-``bootstrap_exchange_state`` (``:5465``). One wallet, three readers, and
-one of them on a different field.
+``_reconcile_holdings`` read ``balance.free``. The startup handshake,
+``_tick_initialise`` (``src/trading/scrumming/tick_phases.py``), reads
+``total`` (MEM-255) and so does ``bootstrap_exchange_state``. One
+wallet, three readers, and one of them on a different field.
 
 That was inert while the rescale almost never ran. U2 makes it run, and
 the rescale multiplies EVERY lot by ``venue / internal``: on a bot with

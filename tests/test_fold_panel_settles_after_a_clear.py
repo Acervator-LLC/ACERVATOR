@@ -21,11 +21,13 @@ so the handler printed a disclaimer instead — and the disclaimer opened
 with "No order was placed", which is REASSURANCE standing where a
 RESULT belongs, after a button that appeared to have done nothing.
 
-Neither clear reached disk. ``clear_fold_tranches`` and
-``clear_pending_wire_credits`` both write memory only
-(``scrumming_bot.py:13273`` and ``:13350``) and leave the write to the
-60-second rolling save at ``main.py:1343``. Clear, then close inside
-that window, and every record the operator destroyed came back.
+Neither clear reached disk. ``clear_fold_tranches``
+(``src/trading/scrumming/fold_tranches.py``) and
+``clear_pending_wire_credits`` (``src/trading/scrumming/wire_routing.py``)
+both write memory only, and leave the write to the 60-second rolling
+save -- the ``periodic_save`` closure inside ``main()``, in ``main.py``.
+Clear, then close inside that window, and every record the operator
+destroyed came back.
 
 WHAT THIS FILE PROVES
 =====================

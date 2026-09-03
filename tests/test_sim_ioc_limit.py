@@ -17,7 +17,8 @@ not the other looks like a finding.
 
 THIS IS NOT WAITING ON STACK MODE
 The cascade plan says C40a (Stack Mode, unshipped) is what depends on
-IOC_LIMIT. It is already live: `scrumming_bot.py:10529` selects
+IOC_LIMIT. It is already live: `_open_stack_from_scrum`
+(`src/trading/scrumming_bot.py`) selects
 `OrderType.IOC_LIMIT` whenever Aggressive mode is on. So a bot the
 operator can enable today cannot be replayed in Fleet at all, and is
 replayed wrongly in Nuclear.

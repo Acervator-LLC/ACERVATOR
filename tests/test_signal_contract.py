@@ -111,8 +111,9 @@ class TestItCatchesTheLieItWasBuiltFor:
     """POSITIVE CONTROL FOR THE ENTIRE DESIGN.
 
     Reproduces the measured Nuclear defect in miniature: a tick loop whose
-    TA is throttled to 1-in-12 by the read-rate skip at
-    scrumming_bot.py:5046, against a claim that TA runs every tick.
+    TA is throttled to 1-in-12 by the read-rate skip in
+    `ScrummingBot.tick` (`src/trading/scrumming_bot.py`), against a
+    claim that TA runs every tick.
     """
 
     def test_the_record_set_falsifies_per_candle_ta(self, sink):

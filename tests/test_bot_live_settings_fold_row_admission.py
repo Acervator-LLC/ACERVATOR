@@ -384,7 +384,7 @@ class TestTheDialogOpens:
 #
 # `_valid_tranche` stores `operator_initiated: False`. That value is
 # written at ONE site, the SCRUM branch of `_execute_manual_rebalance`
-# (`src/trading/scrumming_bot.py:12398`), and `False` there means the
+# (`src/trading/scrumming/execution.py`), and `False` there means the
 # caller was `wire_stack` or `max_cartridge` - an AUTONOMOUS rebalance
 # fire. The ordinary scrum cycle and the DIST re-fold write no
 # `operator_initiated` key at all, and THAT absence is what "auto

@@ -17,12 +17,14 @@ A sim audit on 2026-08-07 concluded that because `abs()` makes slippage
 one-directional, a LIMIT placed at the slipped price ALWAYS crosses, and
 called that a defect in the resting-order model.
 
-The chain is real; the conclusion is not. `scrumming_bot.py:10929`
-documents it: "For LIMIT orders the exec_price below already includes a
--0.1% drift for FAST FILL". The bot deliberately places a MARKETABLE
-limit to guarantee execution, and `verify_hit` is the cap that cancels
-the order when that drift exceeds per-asset-class tolerance. Limits
-crossing is the intended consequence, not a bug.
+The chain is real; the conclusion is not. `_execute_sell`
+(`src/trading/scrumming/execution.py`) places LIMIT orders at
+`verify_hit`'s returned price, and `fill_price`'s docstring
+(`src/core/execution_discipline.py`) documents it: that is
+intentional ("-0.1% drift for fast fill"). The bot deliberately places
+a MARKETABLE limit to guarantee execution, and `verify_hit` is the cap
+that cancels the order when that drift exceeds per-asset-class
+tolerance. Limits crossing is the intended consequence, not a bug.
 
 Removing the `abs()` would make live orders less likely to fill — a
 strategy change degrading execution on a live fleet, dressed as a fix.

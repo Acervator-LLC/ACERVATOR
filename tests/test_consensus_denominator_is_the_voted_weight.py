@@ -24,8 +24,9 @@ denominator:
      200         0.06%         25.64%            3 / 406
      400         0.14%         41.03%            6 / 406
 
-The live fetch is 100 candles (``scrumming_bot.py:7500``), where only a
-degenerate book abstains. A bot that has just spawned holds the short
+The live fetch is 100 candles (``ScrummingBot.tick``'s
+``_get_ohlcv(..., limit=100)`` call, ``src/trading/scrumming_bot.py``),
+where only a degenerate book abstains. A bot that has just spawned holds the short
 tape while it makes its first decisions, and there a third of the
 denominator was weight that had measured nothing.
 

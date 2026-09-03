@@ -23,7 +23,8 @@ would have shipped.
    as the PRECEDENT TO COPY. That line is the leak — bus-less, while the
    sim bots around it are fail-closed onto private buses
    (scrumming_bot.py:393-394). The model is live's own:
-   bot_container.py:1621 `SmartWireManager(bus=self._bus)`.
+   `BotManager.__init__` in `src/trading/bot_container.py`,
+   `SmartWireManager(bus=self._bus)`.
 
 Note there is no single "sim bus" to borrow — each sim bot constructs its
 own `EventBus()` — so the controller owns a dedicated one.
@@ -123,9 +124,9 @@ class TestTheWiresActuallyRoute:
         seen = []
         tgt.apply_wire_income = lambda usd, source, **kw: seen.append((usd, source))
 
-        # v3.24.82 -- sim ids are `simulated_<live id>`, and the bot
-        # itself calls `distribute_fold_profit(source_id=self.bot_id)`
-        # (scrumming_bot.py:8706). So the SIM id is the production
+        # Sim ids are `simulated_<live id>`, and the bot itself calls
+        # `distribute_fold_profit(source_id=self.bot_id)`
+        # (`src/trading/smart_wire.py`). So the SIM id is the production
         # lookup key; using the raw live id here would test a path no
         # bot takes. Verified: $20.00 delivered at the wire's 20%.
         src = next(b for b in ctl._bots if b.config.symbol == "BTC/USD")
