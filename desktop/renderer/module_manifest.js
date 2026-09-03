@@ -48,4 +48,5 @@ window.ACERVATOR_MODULES = [
   "crypto_news_ticker.js",
   "settings_dialog.js",
   "capital_registry.js",
+  "preflight_check.js",
 ];

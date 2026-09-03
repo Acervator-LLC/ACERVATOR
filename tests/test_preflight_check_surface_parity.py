@@ -71,6 +71,8 @@ CALLER_SKIP_LOG = (
 )
 CALLER_MODULE_MISSING_LOG = "Pre-flight check skipped (module unavailable)"
 CALLER_ERRORED_LOG = "Pre-flight check errored: {}: {} — continuing anyway"
+# Qt plain text format, so a symbol carrying tags reaches the operator whole.
+CALLER_TEXT_FORMAT_VALUE = 0
 
 FULL_MARKET = {
     "active": True,
@@ -454,8 +456,17 @@ def record_box(box, name):
     )
 
 
-def build_box(icon_value, title, body, buttons_value, default_value, style_sheet=""):
-    """One real QMessageBox, built from five plain values and a skin."""
+def build_box(
+    icon_value,
+    title,
+    body,
+    buttons_value,
+    default_value,
+    text_format_value,
+    style_sheet="",
+):
+    """One real QMessageBox, built from six plain values and a skin."""
+    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QMessageBox
 
     app()
@@ -465,6 +476,7 @@ def build_box(icon_value, title, body, buttons_value, default_value, style_sheet
         body,
         QMessageBox.StandardButton(buttons_value),
     )
+    box.setTextFormat(Qt.TextFormat(text_format_value))
     if default_value != surface.NO_DEFAULT_BUTTON_VALUE:
         box.setDefaultButton(QMessageBox.StandardButton(default_value))
     if style_sheet:
@@ -487,6 +499,7 @@ def old_failure_box(report):
         CALLER_FAILURE_BODY.format(report),
         QMessageBox.StandardButton.Ok.value,
         surface.NO_DEFAULT_BUTTON_VALUE,
+        CALLER_TEXT_FORMAT_VALUE,
     )
 
 
@@ -500,6 +513,7 @@ def old_warning_box(report):
         CALLER_WARNING_BODY.format(report),
         (QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No).value,
         QMessageBox.StandardButton.No.value,
+        CALLER_TEXT_FORMAT_VALUE,
     )
 
 
@@ -521,6 +535,7 @@ def new_box(payload):
         payload["box_body"],
         properties["buttons_value"],
         properties["default_button_value"],
+        properties["text_format_value"],
         properties["style_sheet"],
     )
 
@@ -1135,6 +1150,8 @@ def test_the_check_strings_are_the_shipped_checks_own():
         "Exchange: ",
         "Symbol: ",
         "Market active: ",
+        surface.ACTIVE_NOT_REPORTED,
+        surface.PRICE_UNREAD_LINE,
         "Current price: $",
         "Min order amount: ",
         "Min order cost: $",
@@ -1542,13 +1559,13 @@ def test_the_result_schema_matches_the_shipped_dataclass():
     """A field appeared on one result and not on the other."""
     fields = dataclasses.fields(shipped.PreflightResult)
     assert tuple(field.name for field in fields) == surface.RESULT_FIELDS
-    assert len(surface.RESULT_FIELDS) == 12
+    assert len(surface.RESULT_FIELDS) == 14
     defaults = {}
     for field in fields:
         if field.default is not dataclasses.MISSING:
             defaults[field.name] = field.default
     assert defaults == surface.RESULT_DEFAULTS
-    assert len(surface.RESULT_DEFAULTS) == 7
+    assert len(surface.RESULT_DEFAULTS) == 9
     required = [
         field.name
         for field in fields
@@ -1560,6 +1577,8 @@ def test_the_result_schema_matches_the_shipped_dataclass():
     assert list(blank) == list(surface.RESULT_FIELDS)
     assert blank["warnings"] == []
     assert blank["market_active"] is False
+    assert blank["active_reported"] is False
+    assert blank["price_read"] is False
     assert blank["elapsed_ms"] == 0.0
     first = surface.preflight_result(True, "e", "s", "m")
     first["warnings"].append("only mine")
