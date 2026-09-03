@@ -39,22 +39,26 @@ RESULT_FIELDS = (
     "symbol",
     "message",
     "market_active",
+    "active_reported",
     "min_order_amount",
     "min_order_cost",
     "price_precision",
     "amount_precision",
     "last_price",
+    "price_read",
     "elapsed_ms",
     "warnings",
 )
 
 RESULT_DEFAULTS: dict[str, Any] = {
     "market_active": False,
+    "active_reported": False,
     "min_order_amount": 0.0,
     "min_order_cost": 0.0,
     "price_precision": 0,
     "amount_precision": 0,
     "last_price": 0.0,
+    "price_read": False,
     "elapsed_ms": 0.0,
 }
 
@@ -114,7 +118,9 @@ SYMBOL_LINE_FORMAT = "Symbol: {symbol}"
 ACTIVE_LINE_FORMAT = "Market active: {active_word}"
 ACTIVE_YES = "Yes"
 ACTIVE_NO = "No"
+ACTIVE_NOT_REPORTED = "not reported"
 PRICE_LINE_FORMAT = "Current price: ${last_price:.8f}"
+PRICE_UNREAD_LINE = "Current price: not read"
 MIN_AMOUNT_LINE_FORMAT = (
     "Min order amount: {min_order_amount} ({amount_precision} decimals)"
 )
@@ -127,6 +133,15 @@ REPORT_JOIN = "\n"
 
 FAILURE_BOX = "failure_box"
 WARNING_BOX = "warning_box"
+
+FAILURE_WIDGET_FIELD = "failure_widget"
+WARNING_WIDGET_FIELD = "warning_widget"
+
+BOXES = (FAILURE_BOX, WARNING_BOX)
+BOX_WIDGETS = {
+    FAILURE_BOX: FAILURE_WIDGET_FIELD,
+    WARNING_BOX: WARNING_WIDGET_FIELD,
+}
 
 FAILURE_TITLE = "Pre-flight check failed"
 WARNING_TITLE = "Pre-flight check — warnings"
@@ -171,8 +186,8 @@ STAYS_ON_TOP = False
 DEFAULT_SIZE_PX = (640, 480)
 STYLE_SHEET = ""
 SKIN: dict[str, str] = {}
-TEXT_FORMAT = "AutoText"
-TEXT_FORMAT_VALUE = 2
+TEXT_FORMAT = "PlainText"
+TEXT_FORMAT_VALUE = 0
 
 FAILURE_WIDGET = {
     "accessible_name": ACCESSIBLE_NAME,
@@ -353,6 +368,42 @@ BOX_CLOSE = "box.close"
 STATUS_LOG = "status.log"
 GATE_OUTCOME = "gate.outcome"
 
+CALL_NAMES = (
+    CHECK_START,
+    CCXT_IMPORT,
+    CCXT_MISSING,
+    EXCHANGE_LOOKUP,
+    EXCHANGE_MISSING,
+    CONFIG_BUILD,
+    EXCHANGE_CREATE,
+    MARKETS_LOAD,
+    SYMBOL_ALTERNATIVES,
+    SYMBOL_CASING,
+    SYMBOL_MISSING,
+    MARKET_READ,
+    PRECISION_READ,
+    TICKER_FETCH,
+    TICKER_FAILED,
+    WARNING_ADD,
+    RESULT_RETURN,
+    CHECK_ERROR,
+    REPORT_LINES,
+    REPORT_RETURN,
+    BOX_CREATE,
+    BOX_SET_WINDOW_TITLE,
+    BOX_SET_TEXT,
+    BOX_SET_ICON,
+    BOX_SET_STANDARD_BUTTONS,
+    BOX_SET_DEFAULT_BUTTON,
+    BOX_EXEC,
+    BOX_ANSWER,
+    BOX_CLOSE,
+    STATUS_LOG,
+    GATE_OUTCOME,
+)
+
+BUTTON_NAMES = (OK, YES, NO)
+
 ModelCall = list[object]
 
 
@@ -381,6 +432,18 @@ def preflight_result(
 def exchange_name(exchange_id: Any) -> str:
     """The exchange name as the operator reads it in the messages."""
     return str(exchange_id).capitalize()
+
+
+def report_lines(text: str) -> list[str]:
+    """The lines one report block carries, empty for a report never written."""
+    return text.split(REPORT_JOIN) if text else []
+
+
+def active_word(result: dict) -> str:
+    """The word the report draws for a market the exchange may not have described."""
+    if not result["active_reported"]:
+        return ACTIVE_NOT_REPORTED
+    return ACTIVE_YES if result["market_active"] else ACTIVE_NO
 
 
 def symbol_alternatives(symbol: str) -> list[str]:
@@ -553,6 +616,7 @@ class PreflightModel:
         if symbol not in markets:
             return self._unlisted(start, exchange_id, symbol, markets)
         market = markets[symbol]
+        active_reported = "active" in market
         active = bool(market.get("active", MARKET_ACTIVE_DEFAULT))
         limits = market.get("limits", {}) or {}
         amount_limits = limits.get("amount", {}) or {}
@@ -574,9 +638,11 @@ class PreflightModel:
             last_price = float(
                 ticker.get("last", MISSING_LAST_PRICE) or MISSING_LAST_PRICE
             )
+            price_read = True
             self.calls.append([TICKER_FETCH, last_price])
         except Exception:
             last_price = MISSING_LAST_PRICE
+            price_read = False
             self.calls.append([TICKER_FAILED])
         warnings = self._capacity_warnings(
             exchange_id, active, min_cost, target_balance
@@ -590,11 +656,13 @@ class PreflightModel:
                     exchange_name=exchange_name(exchange_id)
                 ),
                 market_active=active,
+                active_reported=active_reported,
                 min_order_amount=min_amount,
                 min_order_cost=min_cost,
                 price_precision=price_precision,
                 amount_precision=amount_precision,
                 last_price=last_price,
+                price_read=price_read,
                 elapsed_ms=elapsed_since(start, time.monotonic()),
                 warnings=warnings,
             )
@@ -676,11 +744,11 @@ class PreflightModel:
                 exchange_name=exchange_name(result["exchange_id"])
             ),
             SYMBOL_LINE_FORMAT.format(symbol=result["symbol"]),
-            ACTIVE_LINE_FORMAT.format(
-                active_word=ACTIVE_YES if result["market_active"] else ACTIVE_NO
-            ),
+            ACTIVE_LINE_FORMAT.format(active_word=active_word(result)),
         ]
-        if result["last_price"] > 0:
+        if not result["price_read"]:
+            lines.append(PRICE_UNREAD_LINE)
+        elif result["last_price"] > 0:
             lines.append(PRICE_LINE_FORMAT.format(last_price=result["last_price"]))
         if result["min_order_amount"] > 0:
             lines.append(
@@ -897,6 +965,9 @@ def build_view_model(
     if run:
         model.run_gate(dict(config or {}), exchange_id, button, closed)
     return {
+        "method": METHOD,
+        "boxes": list(BOXES),
+        "box_widgets": dict(BOX_WIDGETS),
         "failure_widget": dict(FAILURE_WIDGET),
         "warning_widget": dict(WARNING_WIDGET),
         "layout": dict(LAYOUT),
@@ -910,6 +981,7 @@ def build_view_model(
             }
             for name in BUTTON_VALUES
         },
+        "button_names": list(BUTTON_NAMES),
         "failure_buttons": list(FAILURE_BUTTONS),
         "warning_buttons": list(WARNING_BUTTONS),
         "actions": dict(ACTIONS),
@@ -930,16 +1002,20 @@ def build_view_model(
         "skin": dict(SKIN),
         "result": dict(model.result),
         "result_fields": list(RESULT_FIELDS),
+        "warning_count": len(model.result.get("warnings", ())),
         "report": model.report,
+        "report_lines": report_lines(model.report),
         "box": model.box,
         "box_title": model.box_title,
         "box_body": model.box_body,
+        "box_body_lines": report_lines(model.box_body),
         "box_buttons": list(model.box_buttons),
         "status_line": model.status_line,
         "status_level": model.status_level,
         "answered": model.answered,
         "outcome": model.outcome,
         "checked": model.checked,
+        "call_names": list(CALL_NAMES),
         "calls": [list(call) for call in model.calls],
     }
 

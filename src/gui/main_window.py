@@ -44,7 +44,7 @@ try:
         QPlainTextEdit,
         QMessageBox,
     )
-    from PySide6.QtCore import QTimer, Slot
+    from PySide6.QtCore import Qt, QTimer, Slot
     from PySide6.QtGui import QIcon
 
     from .main_tabs.bot_swarm_tab import BotSwarmTabMixin
@@ -3832,11 +3832,16 @@ if _HAS_QT:
                             _pf_text = format_result_for_user(_pf)
                         if _pf is not None:
                             if not _pf.success:
-                                QMessageBox.critical(
-                                    self,
+                                # Plain text: a symbol carrying tags is words, not markup.
+                                _pf_box = QMessageBox(
+                                    QMessageBox.Critical,
                                     "Pre-flight check failed",
                                     f"{_pf_text}\n\nBot creation aborted.",
+                                    QMessageBox.Ok,
+                                    self,
                                 )
+                                _pf_box.setTextFormat(Qt.PlainText)
+                                _pf_box.exec()
                                 self._status_log.log(
                                     f"Pre-flight FAILED for {_pf_symbol} on "
                                     f"{_pf_exchange}: {_pf.message}",
@@ -3844,13 +3849,16 @@ if _HAS_QT:
                                 )
                                 return
                             if _pf.warnings:
-                                _pf_reply = QMessageBox.question(
-                                    self,
+                                _pf_ask = QMessageBox(
+                                    QMessageBox.Question,
                                     "Pre-flight check — warnings",
                                     f"{_pf_text}\n\nProceed with bot creation?",
                                     QMessageBox.Yes | QMessageBox.No,
-                                    QMessageBox.No,
+                                    self,
                                 )
+                                _pf_ask.setTextFormat(Qt.PlainText)
+                                _pf_ask.setDefaultButton(QMessageBox.No)
+                                _pf_reply = _pf_ask.exec()
                                 if _pf_reply != QMessageBox.Yes:
                                     self._status_log.log(
                                         f"Bot creation declined at pre-flight "

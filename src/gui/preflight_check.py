@@ -40,11 +40,15 @@ class PreflightResult:
     message: str
     # Market details (populated on success)
     market_active: bool = False
+    # False when the market carried no active field, so market_active is a default.
+    active_reported: bool = False
     min_order_amount: float = 0.0  # in base units
     min_order_cost: float = 0.0  # in quote units (USD for USD-quoted pairs)
     price_precision: int = 0
     amount_precision: int = 0
     last_price: float = 0.0
+    # False when fetch_ticker raised, so last_price is a default and not a price.
+    price_read: bool = False
     elapsed_ms: float = 0.0
     warnings: list = field(default_factory=list)
 
@@ -146,6 +150,7 @@ def check_symbol(
         market = markets[symbol]
 
         # Step 2: extract constraints
+        active_reported = "active" in market
         active = bool(market.get("active", True))
         limits = market.get("limits", {}) or {}
         amt_limits = limits.get("amount", {}) or {}
@@ -165,8 +170,10 @@ def check_symbol(
         try:
             ticker = exch.fetch_ticker(symbol)
             last_price = float(ticker.get("last", 0) or 0)
+            price_read = True
         except Exception:
             last_price = 0.0
+            price_read = False
 
         warnings = []
         if not active:
@@ -196,11 +203,13 @@ def check_symbol(
             symbol=symbol,
             message=f"Symbol verified on {exchange_id.capitalize()}.",
             market_active=active,
+            active_reported=active_reported,
             min_order_amount=min_amt,
             min_order_cost=min_cost,
             price_precision=price_prec,
             amount_precision=amt_prec,
             last_price=last_price,
+            price_read=price_read,
             elapsed_ms=elapsed,
             warnings=warnings,
         )
@@ -226,14 +235,20 @@ def format_result_for_user(result: PreflightResult) -> str:
             f"Elapsed: {result.elapsed_ms:.0f} ms"
         )
 
+    if result.active_reported:
+        active_word = "Yes" if result.market_active else "No"
+    else:
+        active_word = "not reported"
     lines = [
         "✓ Pre-flight check passed",
         "",
         f"Exchange: {result.exchange_id.capitalize()}",
         f"Symbol: {result.symbol}",
-        f"Market active: {'Yes' if result.market_active else 'No'}",
+        f"Market active: {active_word}",
     ]
-    if result.last_price > 0:
+    if not result.price_read:
+        lines.append("Current price: not read")
+    elif result.last_price > 0:
         lines.append(f"Current price: ${result.last_price:.8f}")
     if result.min_order_amount > 0:
         lines.append(
