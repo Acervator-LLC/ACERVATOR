@@ -44,4 +44,5 @@ window.ACERVATOR_MODULES = [
   "stack_tranches_tab.js",
   "phantom_bots_tab.js",
   "positions_held.js",
+  "tradingview_chart.js",
 ];
