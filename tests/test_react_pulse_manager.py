@@ -957,16 +957,19 @@ def test_this_screen_builds_no_widget_and_the_counter_can_report(qapp):
 
 
 def test_a_label_would_have_read_a_name_carrying_markup_as_markup(qapp):
-    """A QLabel asks a narrower width for markup than for the characters given."""
+    """A QLabel asks a narrower width for one name than a plain widget does."""
     assert qapp is not None
-    from PySide6.QtWidgets import QLabel
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QLabel, QPushButton
 
-    as_markup = QLabel(MARKUP_NAME).sizeHint().width()
-    as_characters = QLabel(LONG_NAME).sizeHint().width()
-    plain = QLabel("bold")
-    assert as_markup != as_characters
-    assert as_markup > plain.sizeHint().width()
-    assert QLabel(MARKUP_NAME).text() == MARKUP_NAME
+    label = QLabel(MARKUP_NAME)
+    as_markup = label.sizeHint().width()
+    plain = QLabel(MARKUP_NAME)
+    plain.setTextFormat(Qt.TextFormat.PlainText)
+    as_characters = plain.sizeHint().width()
+    assert as_markup < as_characters, (as_markup, as_characters)
+    assert QPushButton(MARKUP_NAME).sizeHint().width() > as_markup
+    assert label.text() == MARKUP_NAME
 
 
 # ---------------------------------------------------------------------
