@@ -53,4 +53,5 @@ window.ACERVATOR_MODULES = [
   "spendable_profits.js",
   "bot_wizard.js",
   "bot_selection.js",
+  "api_tester_tab.js",
 ];

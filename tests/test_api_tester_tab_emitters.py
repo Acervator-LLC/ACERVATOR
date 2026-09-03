@@ -840,15 +840,10 @@ def test_a_test_that_ran_is_green(qapp: QApplication, connector_class: type) -> 
     assert "symbol" not in rec.context
 
 
-def test_an_ok_headline_for_a_test_that_never_ran_is_reported(
+def test_a_test_that_never_ran_reads_as_not_run_and_never_as_ok(
     qapp: QApplication, connector_class: type
 ) -> None:
-    """THE FALSIFIER for `16-003`, and the arm is live in the source.
-
-    The dispatch chain's last arm answers a name it does not know with
-    an empty dict and falls straight through to the success log, so the
-    operator reads `<test> OK` for a call that never happened.
-    """
+    """A name no arm answered reached no venue, so the headline says NOT RUN."""
     with _collect() as sink, _tab(qapp) as tab:
         tab._api_key.setText("k")
         tab._api_secret.setText("s")
@@ -856,17 +851,36 @@ def test_an_ok_headline_for_a_test_that_never_ran_is_reported(
         tab._run_test("fetch_everything")
         rec = _only(sink, RAN)
 
-        # THE FALSE GREEN ON SCREEN, before the pin is read.
-        assert tab._result_info.text().startswith("fetch_everything OK")
+        shown = tab._result_info.text()
+        assert shown.startswith("fetch_everything NOT RUN"), shown
+        assert " OK" not in shown, shown
         assert tab._connector._ccxt_sync.calls == []
 
-    assert rec.ok is False
+    assert rec.ok is True
     assert rec.actual is False
-    assert rec.expected is True
+    assert rec.expected is False
     assert rec.context["test"] == "fetch_everything"
     assert rec.context["result_entries"] == 0
     # NO DURATION on the arm that ran nothing.
     assert rec.duration is None
+
+
+def test_a_real_test_still_reads_as_ok_after_the_not_run_headline_landed(
+    qapp: QApplication, connector_class: type
+) -> None:
+    """A headline that always read NOT RUN would pass the check above."""
+    with _collect() as sink, _tab(qapp) as tab:
+        tab._api_key.setText("k")
+        tab._api_secret.setText("s")
+        tab._do_connect()
+        tab._symbol_input.setText("BTC/USDT")
+        tab._run_test("fetch_ticker")
+        shown = tab._result_info.text()
+        rec = _only(sink, RAN)
+    assert shown.startswith("fetch_ticker OK"), shown
+    assert "NOT RUN" not in shown, shown
+    assert rec.actual is True
+    assert rec.expected is True
 
 
 def test_a_failed_test_writes_no_success_record(
@@ -1114,15 +1128,14 @@ def test_a_declared_outage_is_still_a_green_verdict(
     assert rec.context["level_shown"] == "error"
 
 
-def test_a_missing_indicator_painted_as_an_outage_is_reported(
+def test_a_missing_indicator_is_recorded_and_never_painted_as_an_outage(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """THE FALSIFIER for `16-005`.
+    """A document with no indicator is amber, never the red it used to paint.
 
-    The document carries a `status` block with no `indicator`. The
-    tab's own `get` supplies "unknown", the mapping sends everything
-    outside none/minor to red, and the operator is shown an outage the
-    venue never declared.
+    The word is still off the vocabulary, so `16-005` still reports it.
+    What changed is the colour: an outage the venue never declared is
+    no longer shown as one.
     """
     with _collect() as sink, _tab(qapp) as tab:
         _status(
@@ -1130,13 +1143,12 @@ def test_a_missing_indicator_painted_as_an_outage_is_reported(
         )
         tab._check_exchange_status()
         rec = _only(sink, INDICATOR)
-
-        # THE FALSE RED ON SCREEN, before the pin is read.
         assert tab._result_info.text().startswith("STATUS: ?")
 
     assert rec.ok is False
     assert rec.actual == ""
-    assert rec.context["level_shown"] == "error"
+    assert rec.context["level_shown"] == "warning"
+    assert rec.context["level_shown"] != "error"
 
 
 def test_an_untrusted_indicator_is_capped_before_it_is_recorded(
