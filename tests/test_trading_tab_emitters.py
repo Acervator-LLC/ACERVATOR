@@ -84,7 +84,7 @@ does not take, a log that takes nothing -- and asserts `ok` False.
 
 NOTHING HERE TOUCHES `~/.acervator` OR `~/.acervator_logs`. The window is
 constructed with `settings_manager=None`, which makes
-`_verify_exchanges_on_startup` return before it reads any stored
+`_report_stored_credentials_on_startup` return before it reads any stored
 exchange record, and the settings object the sync tests use is a local
 fake holding two exchange ids and no credential field of any kind.
 """
@@ -241,7 +241,7 @@ def _window(qapp: QApplication) -> Iterator[Any]:
     `bot_manager=None, settings_manager=None` is the construction
     `tests/test_suite_integrity.py` already runs and verified writes
     nothing to the operator's tree: with no settings manager,
-    `_verify_exchanges_on_startup` returns before it reads a single
+    `_report_stored_credentials_on_startup` returns before it reads a single
     stored exchange record.
 
     Teardown does two things the application never has to. It stops
@@ -536,7 +536,7 @@ def test_notification_relay_is_reported(qapp: QApplication) -> None:
     """The stub kept for its signature still delivers.
 
     Construction already notifies once, through
-    `_verify_exchanges_on_startup`, so the record under test is the last
+    `_report_stored_credentials_on_startup`, so the record under test is the last
     one rather than the only one.
     """
     with _collect() as sink, _window(qapp) as win:
