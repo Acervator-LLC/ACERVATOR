@@ -1040,6 +1040,28 @@ class TestAgainstRealGitRepositories:
         assert got["branch"] == "current"
         assert got["tracked_count"] == 2
 
+    def test_a_slot_with_no_tree_named_reports_absent(self) -> None:
+        """`--desktop` is optional, and an unnamed slot measures nothing."""
+        got = measure_tree("desktop", None)
+        assert got["exists"] is False
+        assert got["path"] == ""
+        assert "no tree was named" in got["reason"]
+        assert "head" not in got
+
+    def test_the_unnamed_slot_does_not_read_the_current_directory(
+        self,
+        repo: Path,
+    ) -> None:
+        """The control for the test above.
+
+        `Path("")` is `Path(".")`, so an empty argument measured the primary
+        tree a second time and the two-tree comparison agreed with itself.
+        """
+        named = measure_tree("desktop", repo)
+        assert named["exists"] is True
+        assert len(named["head"]) == 40
+        assert measure_tree("desktop", None)["exists"] is False
+
     def test_it_reads_a_real_gate_stamp_and_binds_it_to_head(
         self,
         repo: Path,

@@ -10,9 +10,9 @@ the suite watches. Four of them fail SILENTLY, which is the whole problem:
   `.githooks/pre-push` then never runs. The gate-stamp refusal stops
   guarding and nothing announces it. This is the highest-value single check
   in this file.
-* TWO working trees each carry their own `origin`. Updating one and not the
-  other leaves the operator pushing to, or building from, the wrong place.
-  He builds from the Desktop tree, so the stale one is the dangerous one.
+* A second working tree carries its own `origin`. Updating one and not the
+  other leaves a push, or a build, going to the wrong place. `--desktop`
+  names that tree; with no argument only the primary tree is measured.
 * `.gate_stamp.json` binds a commit SHA. A transfer preserves SHAs; a
   history rewrite does not, and the stamp then proves a commit that no
   longer exists.
@@ -101,13 +101,9 @@ from typing import Any, Protocol
 
 SCHEMA = "acervator.migration_baseline/1"
 
-#: The second tree. He builds from this one, so a stale remote here is
-#: worse than a stale remote in the primary tree.
-DESKTOP_TREE = (
-    "C:/Users/brown/OneDrive/Desktop/ACERTAVOR PRODUCT DOCUMENTATION/"
-    "acervator_session27_CLOSE_hop5_v3_25_8/"
-    "acervator_session27_CLOSE_hop5_v3_25_8"
-)
+#: No second tree unless `--desktop` names one. A stale remote in a build
+#: tree is worse than one in the primary tree, so it is worth naming.
+NO_SECOND_TREE = ""
 
 #: Never read, never written. The tool has no business in either.
 FORBIDDEN_DIRS = (".acervator", ".acervator_logs")
@@ -682,10 +678,21 @@ def tracked_files(tree: Path, runner: Runner | None = None) -> list[str]:
 
 def measure_tree(
     label: str,
-    tree: Path,
+    tree: Path | None,
     runner: Runner | None = None,
 ) -> dict[str, Any]:
-    """Every fact this tool holds about one working tree."""
+    """Every fact this tool holds about one working tree.
+
+    `tree` is None when no tree was named. Reporting that as absent keeps
+    the two-tree comparison from reading one tree twice and agreeing.
+    """
+    if tree is None:
+        return {
+            "label": label,
+            "path": "",
+            "exists": False,
+            "reason": "no tree was named for this slot",
+        }
     if not (tree / ".git").exists():
         return {
             "label": label,
@@ -824,7 +831,7 @@ def repo_slug(url: str) -> str:
 
 def capture(
     primary: Path,
-    desktop: Path,
+    desktop: Path | None,
     reader: GitHubReader | None,
     branch: str = "main",
     depth: int = 60,
@@ -1429,8 +1436,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--desktop",
-        default=DESKTOP_TREE,
-        help="the second working tree",
+        default=NO_SECOND_TREE,
+        help="a second working tree to check, empty for none",
     )
     parser.add_argument(
         "--branch",
@@ -1512,7 +1519,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Entry point. Exit 0 GREEN, 1 RED, 2 refused, 3 not-green."""
     args = build_parser().parse_args(argv)
     primary = Path(args.primary).resolve()
-    desktop = Path(args.desktop)
+    desktop = Path(args.desktop) if args.desktop else None
 
     if args.mode == "capture":
         out = Path(args.out).resolve()
