@@ -42,6 +42,9 @@ TICK_SETTLE_MS = 1800
 HOST_WIDTH_CSS = "1200px"
 
 EIGHT_DIGIT = re.compile(r"#[0-9a-fA-F]{8}\b")
+
+#: The header border written back to front, the shape Qt and CSS disagree on.
+SWAPPED_BORDER_HEX = "#ffcc4444"
 RGBA_CALL = re.compile(r"rgba\(([^)]*)\)")
 ALPHA_SCALE = 255
 FIELD_COUNT = 4
@@ -352,35 +355,44 @@ def fault_rows(js: JsRuntime) -> set:
     return {(one["where"], one["field"], one["fault"]) for one in js.answer("faults")}
 
 
-def test_the_surface_publishes_the_eight_digit_border_qt_reads_back_to_front():
+def swapped_border_payload() -> dict:
+    """One payload whose header border is written as eight hex digits."""
+    payload = state_payload("fresh")
+    card = screen_of(payload)["header_card"]
+    card["style"] = card["style"].replace(nmp.HEADER_CARD_BORDER, SWAPPED_BORDER_HEX)
+    return payload
+
+
+def test_the_surface_publishes_no_border_qt_reads_back_to_front():
     sheet = screen_of(state_payload("fresh"))["header_card"]["style"]
-    assert EIGHT_DIGIT.findall(sheet) == ["#ffcc4444"]
+    assert EIGHT_DIGIT.findall(sheet) == []
+    assert nmp.HEADER_CARD_BORDER in sheet
 
 
-def test_the_module_refuses_the_eight_digit_border_and_names_it(js: JsRuntime):
+def test_the_module_names_no_colour_fault_on_the_shipped_border(js: JsRuntime):
     js.push(state_payload("fresh"))
+    assert [one for one in js.answer("faults") if one["fault"] == "qt-colour"] == []
+
+
+def test_the_refusal_returns_when_the_border_carries_eight_digits(js: JsRuntime):
+    js.push(swapped_border_payload())
     named = [one for one in js.answer("faults") if one["fault"] == "qt-colour"]
     assert named == [
         {
             "where": "header_card",
             "field": "border",
             "fault": "qt-colour",
-            "detail": "1px solid #ffcc4444",
+            "detail": "1px solid " + SWAPPED_BORDER_HEX,
         }
     ], named
 
 
-def test_the_refusal_lifts_when_the_border_carries_six_digits(js: JsRuntime):
-    payload = state_payload("fresh")
-    card = screen_of(payload)["header_card"]
-    card["style"] = card["style"].replace("#ffcc4444", "#ffcc44")
-    js.push(payload)
-    assert [one for one in js.answer("faults") if one["fault"] == "qt-colour"] == []
-
-
-def test_the_border_the_browser_would_misread_is_never_painted(js: JsRuntime):
+def test_the_border_reaches_the_page_and_a_swapped_one_does_not(js: JsRuntime):
     sheet = screen_of(state_payload("fresh"))["header_card"]["style"]
-    assert "border" not in js.of("styleOf", sheet)
+    written = "1px solid " + nmp.HEADER_CARD_BORDER
+    assert js.of("styleOf", sheet)["border"] == fraction_alpha(written)
+    swapped = screen_of(swapped_border_payload())["header_card"]["style"]
+    assert "border" not in js.of("styleOf", swapped)
 
 
 def test_the_alpha_scale_the_module_publishes_is_the_widest_qt_byte(js: JsRuntime):
@@ -389,7 +401,9 @@ def test_the_alpha_scale_the_module_publishes_is_the_widest_qt_byte(js: JsRuntim
 
 def test_the_header_alpha_byte_is_repainted_as_the_fraction_css_reads(js: JsRuntime):
     js.push(state_payload("fresh"))
-    rewritten = js.answer("alphaRewrites")
+    rewritten = [
+        one for one in js.answer("alphaRewrites") if one["property"] == "background"
+    ]
     assert len(rewritten) == 1, rewritten
     one = rewritten[0]
     assert one["where"] == "header_card"
@@ -402,12 +416,16 @@ def test_a_fractional_alpha_is_left_exactly_as_the_surface_wrote_it(js: JsRuntim
     card = screen_of(payload)["header_card"]
     card["style"] = card["style"].replace("80,8)", "80,0.5)")
     js.push(payload)
-    assert js.answer("alphaRewrites") == []
+    assert [
+        one for one in js.answer("alphaRewrites") if one["property"] == "background"
+    ] == []
 
 
 def test_the_module_writes_the_alpha_the_surface_meant(js: JsRuntime):
     js.push(state_payload("fresh"))
-    painted = js.answer("alphaRewrites")[0]["painted"]
+    painted = [
+        one for one in js.answer("alphaRewrites") if one["property"] == "background"
+    ][0]["painted"]
     assert float(RGBA_CALL.search(painted).group(1).split(",")[3]) == 8 / ALPHA_SCALE
 
 
@@ -1049,11 +1067,17 @@ def test_each_card_paints_the_declarations_the_surface_wrote(
     sheet_agrees(only(parts, path), probe(browser, sheet), where)
 
 
-def test_the_header_card_paints_no_border_the_browser_would_misread(
-    browser: Browser,
-):
+def test_the_header_card_paints_the_faint_gold_border_qt_paints(browser: Browser):
     parts = draw_panel(browser, state_payload(FULL_STATE))
-    assert only(parts, HEADER)["style"]["borderTopStyle"] == "none"
+    wanted = browser.parsed(
+        "window.probeStyle("
+        + json.dumps("border:" + fraction_alpha("1px solid " + nmp.HEADER_CARD_BORDER))
+        + ', ["borderTopColor", "borderTopStyle"])'
+    )
+    drawn = only(parts, HEADER)["style"]
+    assert drawn["borderTopStyle"] == wanted["borderTopStyle"] == "solid"
+    assert drawn["borderTopColor"] == wanted["borderTopColor"]
+    assert wanted["borderTopColor"] != "rgb(255, 204, 68)"
 
 
 def test_the_header_card_paints_the_faint_gold_qt_paints(browser: Browser):

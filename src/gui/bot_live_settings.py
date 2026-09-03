@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 
 from . import design_system as ds
+from .color_alpha import rgba
 from .live_settings.fold_tokens import (
     ARBITER_COLUMN_HEADER,
     ARBITER_COLUMN_INDEX,
@@ -168,6 +169,8 @@ __all__ = [
 ]
 
 logger = logging.getLogger("acervator.gui")
+
+STATE_BACKGROUND_ALPHA = 34
 
 try:
     from PySide6.QtWidgets import (
@@ -382,24 +385,20 @@ if _HAS_QT:
             hdr_row.addWidget(hdr)
 
             state = bot.state.value
-            # The background rule below appends an alpha pair, so a
-            # value used there has to keep its digit count: `#666` and
-            # `#ccc` widened to six digits would make Qt read a valid
-            # 8-digit #AARRGGBB where it now reads an invalid 5-digit
-            # string and drops the fill.
             state_colors = {
                 "running": ds.SUCCESS,
                 "idle": ds.CARD_METRIC_LABEL,
                 "paused": ds.WARNING,
                 "error": ds.ERROR,
-                "stopped": "#666",
+                "stopped": ds.TEXT_MUTED,
                 "cooldown": ds.WARNING,
             }
+            state_colour = state_colors.get(state, ds.TEXT_NEUTRAL)
             state_lbl = QLabel(f"  {state.upper()}")
             state_lbl.setStyleSheet(
                 f"font-size: 14px; font-weight: bold; "
-                f"color: {state_colors.get(state, ds.TEXT_NEUTRAL)}; "
-                f"background: {state_colors.get(state, '#ccc')}22; "
+                f"color: {state_colour}; "
+                f"background: {rgba(state_colour, STATE_BACKGROUND_ALPHA)}; "
                 f"padding: 2px 8px; border-radius: 4px;"
             )
             hdr_row.addWidget(state_lbl)

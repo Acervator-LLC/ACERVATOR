@@ -387,13 +387,14 @@
     return hexWord(value).length === HEX_ARGB.length ? HEX_ARGB : undefined;
   }
 
-  // The four rgba fields of a value whose alpha Qt counts in bytes.
+  // The four rgba fields of a byte-alpha value, with the text around the call.
   function byteAlpha(value) {
     var parts = afterFirst(value, RGBA_OPEN);
     if (!parts.length) {
       return undefined;
     }
-    var fields = String(parts.shift()).split(CLOSE).shift().split(COMMA);
+    var rest = String(parts.shift());
+    var fields = rest.split(CLOSE).shift().split(COMMA);
     if (fields.length !== THREE + ONE) {
       return undefined;
     }
@@ -402,7 +403,15 @@
       return undefined;
     }
     var count = Number(alpha);
-    return isNumber(count) ? { fields: fields, alpha: count } : undefined;
+    if (!isNumber(count)) {
+      return undefined;
+    }
+    return {
+      fields: fields,
+      alpha: count,
+      before: String(value).split(RGBA_OPEN).shift(),
+      after: afterFirst(rest, CLOSE).join(CLOSE),
+    };
   }
 
   // cssValue rewrites a Qt rgba so a browser paints the alpha Qt painted.
@@ -415,7 +424,7 @@
       return String(one).trim();
     });
     head.push(String(cssAlpha(found.alpha)));
-    return RGBA_OPEN + head.join(COMMA) + CLOSE;
+    return found.before + RGBA_OPEN + head.join(COMMA) + CLOSE + found.after;
   }
 
   // The sheet without the declaration CSS would read as another colour.
@@ -1081,6 +1090,11 @@
     });
   }
 
+  // A colour is written as hex digits or as an rgba call.
+  function carriesColour(value) {
+    return carries(value, HASH) || carries(value, RGBA_OPEN);
+  }
+
   // Every published style sheet, named by the bag that carries it.
   function sheetNames(model) {
     var screen = objectField(model, SCREEN);
@@ -1089,7 +1103,7 @@
       var card = objectField(screen, name);
       Object.keys(card).forEach(function (inner) {
         var value = card[inner];
-        if (typeof value === STRING_KIND && carries(value, HASH)) {
+        if (typeof value === STRING_KIND && carriesColour(value)) {
           found.push({ where: name, field: inner, value: value });
           return;
         }

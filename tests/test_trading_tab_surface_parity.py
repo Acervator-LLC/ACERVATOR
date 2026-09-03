@@ -231,6 +231,13 @@ def card_order(card_layout) -> list:
     return names
 
 
+def accent_of(sheet: str) -> str:
+    """The layer accent the card's border carries, read back out of its rgba."""
+    written = sheet.split("1px solid ")[1].split(";")[0].strip()
+    fields = written[len("rgba(") : -1].split(",")
+    return "#" + "".join(f"{int(one.strip()):02x}" for one in fields[:3])
+
+
 def layer_trace(host, index) -> dict:
     """One built layer page, read back as plain data."""
     page = host._trading_stack.widget(index)
@@ -248,7 +255,7 @@ def layer_trace(host, index) -> dict:
     return {
         "key": corner.text().split()[-2].lower(),
         "label": corner.text().split()[-2],
-        "accent": card.styleSheet().split("1px solid ")[1][:7],
+        "accent": accent_of(card.styleSheet()),
         "page_layout": {
             "margins_px": margins(page_layout),
             "children": ["tab_widget"],
