@@ -115,6 +115,9 @@ INVENTORY: tuple[tuple[str, bool], ...] = (
     # Reads the runtime trees read-only and writes one snapshot under
     # `_logs/`. Its parser carries a capture and a compare mode.
     ("capture_live_baseline", True),
+    # Judges every comment a branch adds, carrying a parser over the base
+    # ref and the paths, so it is True.
+    ("check_added_comments", True),
     ("deps", True),
     # Moved in from the repository root as EXCHANGE_DIAGNOSTIC.py. The move
     # also gave it the `main()` and `__main__` guard it never had: importing

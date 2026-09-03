@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import ast
 import io
 import re
@@ -33,6 +34,11 @@ BANNED_WORDS = (
 
 BASE_REF = "origin/current"
 
+PROGRAM = "check_added_comments"
+PURPOSE = "Judge every comment a branch adds against the comment rule."
+BASE_HELP = "the ref the branch is diffed against"
+PATHS_HELP = "restrict the judgement to these files"
+
 PYTHON_SUFFIX = ".py"
 JS_SUFFIX = ".js"
 CHECKED_SUFFIXES = (PYTHON_SUFFIX, JS_SUFFIX)
@@ -48,7 +54,7 @@ COMMENT_KIND = "comment"
 DOCSTRING_KIND = "docstring"
 
 
-def changed_files(root: Path) -> list:
+def changed_files(root: Path, base: str = BASE_REF) -> list:
     """Every file this branch adds or changes, discovered from git alone."""
     found: set = set()
     for line in _git("status", "--porcelain").splitlines():
@@ -56,7 +62,7 @@ def changed_files(root: Path) -> list:
         if RENAME_ARROW in name:
             name = name.split(RENAME_ARROW)[-1]
         found.add(name)
-    for line in _git("diff", "--name-only", "--diff-filter=d", BASE_REF).splitlines():
+    for line in _git("diff", "--name-only", "--diff-filter=d", base).splitlines():
         found.add(line.strip())
     return sorted(
         one
@@ -65,9 +71,9 @@ def changed_files(root: Path) -> list:
     )
 
 
-def added_lines(name: str, root: Path) -> set:
+def added_lines(name: str, root: Path, base: str = BASE_REF) -> set:
     """The line numbers this branch added to one file."""
-    diff = _git("diff", "-U0", BASE_REF, "--", name)
+    diff = _git("diff", "-U0", base, "--", name)
     if not diff.strip():
         text = (root / name).read_text(encoding="utf-8", errors="replace")
         return set(range(1, len(text.splitlines()) + 1))
@@ -182,12 +188,15 @@ def breaks(text: str) -> list:
     return found
 
 
-def check(root: Path) -> list:
+def check(root: Path, base: str = BASE_REF, paths: list | None = None) -> list:
     """Every added comment that breaks the rule, across the whole branch."""
     reported = []
-    for name in changed_files(root):
+    wanted = set(paths or ())
+    for name in changed_files(root, base):
+        if wanted and name not in wanted:
+            continue
         source = (root / name).read_text(encoding="utf-8", errors="replace")
-        lines = added_lines(name, root)
+        lines = added_lines(name, root, base)
         if not lines:
             continue
         read = python_comments if name.endswith(PYTHON_SUFFIX) else js_comments
@@ -203,12 +212,21 @@ def check(root: Path) -> list:
     return sorted(reported)
 
 
-def main() -> int:
+def parsed(argv: list | None = None) -> argparse.Namespace:
+    """The base ref and the paths one run judges."""
+    parser = argparse.ArgumentParser(prog=PROGRAM, description=PURPOSE)
+    parser.add_argument("--base", default=BASE_REF, help=BASE_HELP)
+    parser.add_argument("paths", nargs="*", help=PATHS_HELP)
+    return parser.parse_args(argv)
+
+
+def main(argv: list | None = None) -> int:
     """Print every break and answer 1 when the branch carries one."""
+    asked = parsed(argv)
     root = Path(_git("rev-parse", "--show-toplevel"))
-    names = changed_files(root)
+    names = changed_files(root, asked.base)
     print(f"[added-comments] {len(names)} changed file(s) discovered from git")
-    reported = check(root)
+    reported = check(root, asked.base, asked.paths)
     for name, at, kind, reason in reported:
         print(f"{name}:{at} [{kind}] {reason}")
     print(f"[added-comments] {len(reported)} break(s)")
