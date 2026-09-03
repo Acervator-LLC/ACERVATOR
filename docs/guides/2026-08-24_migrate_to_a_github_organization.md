@@ -125,24 +125,28 @@ that name, or a fork in the same network. **[GitHub docs]**
 
 ---
 
-## 3. `core.hooksPath` points at a hook that is not here
+## 3. The pre-push hook was retired. CI is the gate.
 
-**The pre-push hook this section was written around does not exist.**
-`core.hooksPath` is set to `.githooks` in the primary tree, and there is no
-`.githooks` directory on disk and no hook file tracked in git. `git
-ls-files .githooks` returns nothing. `.gate_stamp.json` is not in the tree
-either. **[measured 2026-09-03]**
+**This section described a hook that no longer exists, and its removal was
+deliberate.** `.githooks/pre-push` refused to push a commit the release
+gate had not stamped. It was removed in `8b7097b` on 2026-08-26:
 
-No push from this machine has ever been refused by a gate-stamp check, and
-no clone can inherit one: the hook was never committed, and
-`core.hooksPath` is local config that no transfer carries.
+> remove the pre-push gate hook; CI replaces it
+>
+> `.github/workflows/ci.yml` runs lint and both test lanes on every push
+> and pull request. The local hook only bound a clone that opted in.
 
-Git looks for a hook, finds none, and pushes. Nothing reports it.
+`.gate_stamp.json` went with it. `tools/gate.py` still runs the gate on
+demand; nothing reads a stamp from it any more. **[measured 2026-09-03]**
 
-**A transfer neither causes nor fixes this.** Building the hook is separate
-work. Until it exists, treat `.github/workflows/ci.yml` as the only gate
-that actually runs, and read section 6's `core.hooksPath` steps as
-preparation for a hook that has yet to be written.
+`core.hooksPath` is still set to `.githooks` in the primary tree and now
+points at a directory that is not there. Git finds no hook and pushes.
+That is the intended state, not a fault.
+
+**A transfer does not touch any of this.** `.github/workflows/ci.yml` is
+the gate. Confirm after the move that the workflow still triggers on the
+new remote; ignore section 6's `core.hooksPath` steps, which predate the
+removal.
 
 ---
 
@@ -152,8 +156,8 @@ preparation for a hook that has yet to be written.
       2026-08-24. Do not migrate mid-merge.
 - [ ] **4.2** Both trees clean: `git status` shows nothing you care about.
 - [ ] **4.3** Get a green gate: `python -m tools.gate`. No stamp file to
-      compare it against — `.gate_stamp.json` is not in the tree, and
-      neither is the pre-push hook that would read it. See section 3.
+      compare it against — the stamp and the pre-push hook that read it
+      were retired in `8b7097b`. See section 3.
       **[measured 2026-09-03]**
 - [ ] **4.4** Make `gh` REACHABLE, so the baseline can record your
       issues. Without issue data the verifier cannot answer the single
@@ -310,10 +314,10 @@ What it checks:
 
 | Check | Goes RED when |
 |---|---|
-| `hooks_path_primary` / `hooks_path_desktop` | `core.hooksPath` is unset, or points where no `pre-push` lives |
+| `hooks_path_primary` / `hooks_path_desktop` | `core.hooksPath` is unset, or points where no `pre-push` lives. Both go RED now by design: the hook was retired in `8b7097b` |
 | `remote_primary` / `remote_desktop` | a tree still carries the old URL, or not the expected one |
 | `remotes_agree_between_trees` | the two trees point at different repositories |
-| `gate_stamp_binds_head` | the stamp names a commit other than HEAD |
+| `gate_stamp_binds_head` | the stamp names a commit other than HEAD. Reports UNKNOWN now: `.gate_stamp.json` went with the hook |
 | `history_preserved` | the tree no longer holds the commit recorded at capture, so somebody rewrote history |
 | `tracked_files` | the tracked file count moved |
 | `issue_numbers_preserved` | the repository lost an issue that existed at capture |
@@ -380,7 +384,7 @@ and the hook stops being the only guard.
 
 - [ ] **10.1** Push a trivial commit from the **primary** tree. Confirm it
       reaches the new URL and that `.github/workflows/ci.yml` triggers.
-      No pre-push hook exists to print anything — see section 3.
+      No pre-push hook prints anything; it was retired. See section 3.
 - [ ] **10.2** Push from the second tree, if you have one. Same check.
 - [ ] **10.3** Re-run the verifier. Expect exit 0.
 - [ ] **10.4** Keep `migration_baseline.json`. It holds the only record of
