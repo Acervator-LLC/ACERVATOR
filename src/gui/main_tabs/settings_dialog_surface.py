@@ -123,9 +123,12 @@ STOCK_BANNER_TEXT = (
     "are disabled until the broker connectors ship. "
     "Use the Crypto Wing for active trading today."
 )
+STOCK_BANNER_COLOR = "#6699ff"
+STOCK_BANNER_BORDER = "rgba(102,153,255,85)"
 STOCK_BANNER_STYLE = (
     "background: rgba(102, 153, 255, 30); "
-    "color: #6699ff; border: 1px solid #6699ff55; "
+    f"color: {STOCK_BANNER_COLOR}; "
+    f"border: 1px solid {STOCK_BANNER_BORDER}; "
     "padding: 8px; border-radius: 4px;"
 )
 STOCK_DISABLED_TIP = (

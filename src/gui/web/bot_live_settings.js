@@ -444,6 +444,56 @@
     return String(parts.shift()).trim().split(GAP).shift();
   }
 
+  // A three and a six digit colour, whose lengths the reading below measures.
+  var HEX_SHORT = "rgb";
+  var HEX_LONG = "rrggbb";
+  var CHANNEL_WIDTH = HEX_BYTE_MAX.length;
+
+  // The three channels one written colour carries, hex or rgba alike.
+  function channelsOf(value) {
+    var word = hexWord(value);
+    if (word.length === HEX_SHORT.length) {
+      word = word
+        .split(EMPTY)
+        .map(function (one) {
+          return one + one;
+        })
+        .join(EMPTY);
+    }
+    if (word.length >= HEX_LONG.length) {
+      var digits = [];
+      var at = ZERO;
+      while (digits.length * CHANNEL_WIDTH < HEX_LONG.length) {
+        digits.push(Number(HEX_PREFIX + word.slice(at, at + CHANNEL_WIDTH)));
+        at = at + CHANNEL_WIDTH;
+      }
+      return digits;
+    }
+    var parts = afterFirst(value, RGBA_OPEN);
+    if (!parts.length) {
+      return undefined;
+    }
+    var fields = String(parts.shift()).split(CLOSE).shift().split(COMMA);
+    if (fields.length <= HEX_SHORT.length) {
+      return undefined;
+    }
+    var numbers = [];
+    fields.slice(ZERO, HEX_SHORT.length).forEach(function (one) {
+      numbers.push(Number(String(one).trim()));
+    });
+    return numbers;
+  }
+
+  // Whether two written colours carry the same three channels.
+  function sameChannels(one, other) {
+    var here = channelsOf(one);
+    var there = channelsOf(other);
+    if (here === undefined || there === undefined) {
+      return false;
+    }
+    return here.join(COMMA) === there.join(COMMA);
+  }
+
   // Whether one value counts its alpha in bytes, as Qt does and CSS does not.
   function byteAlpha(value) {
     var parts = afterFirst(value, RGBA_OPEN);
@@ -463,13 +513,30 @@
 
   // The reason CSS would read one value as a different colour.
   function qtColour(value) {
-    if (hexWord(value).length === HEX_ARGB.length) {
-      return HEX_ARGB;
+    return hexWord(value).length === HEX_ARGB.length ? HEX_ARGB : undefined;
+  }
+
+  // One Qt rgba rewritten so a browser paints the alpha Qt painted.
+  function cssValue(value) {
+    if (!byteAlpha(value)) {
+      return value;
     }
-    if (byteAlpha(value)) {
-      return RGBA_OPEN;
-    }
-    return undefined;
+    var written = String(value);
+    var rest = afterFirst(written, RGBA_OPEN).join(RGBA_OPEN);
+    var fields = rest.split(CLOSE).shift().split(COMMA);
+    var alpha = fields.pop();
+    var head = [];
+    fields.forEach(function (one) {
+      head.push(String(one).trim());
+    });
+    head.push(String(alphaFraction(Number(String(alpha).trim()))));
+    return (
+      written.split(RGBA_OPEN).shift() +
+      RGBA_OPEN +
+      head.join(COMMA) +
+      CLOSE +
+      afterFirst(rest, CLOSE).join(CLOSE)
+    );
   }
 
   // The sheet without the declarations CSS would read as another colour.
@@ -477,7 +544,7 @@
     var kept = [];
     declarations(sheet).forEach(function (one) {
       if (qtColour(one.value) === undefined) {
-        kept.push(one.property + COLON + one.value);
+        kept.push(one.property + COLON + cssValue(one.value));
       }
     });
     return kept.join(SEMICOLON);
@@ -1085,10 +1152,7 @@
     if (fill === undefined || words === undefined) {
       return;
     }
-    if (hexWord(fill).length !== HEX_ARGB.length) {
-      return;
-    }
-    if (!opensWith(fill, String(words))) {
+    if (!sameChannels(fill, String(words))) {
       windowFaults.push(fault(STATE_BADGE_PART, FILL_PROPERTY, DISAGREES_FAULT, words));
     }
   }

@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from .. import design_system as ds
+from ..color_alpha import rgba
 
 METHOD = "bot_live_settings.state"
 
@@ -49,9 +50,10 @@ STATE_LABEL_FORMAT = "  {state}"
 STATE_STYLE_FORMAT = (
     "font-size: 14px; font-weight: bold; "
     "color: {fg_hex}; "
-    "background: {bg_hex}22; "
+    "background: {bg_rgba}; "
     "padding: 2px 8px; border-radius: 4px;"
 )
+STATE_BACKGROUND_ALPHA = 34
 
 STATE_RUNNING = "running"
 STATE_IDLE = "idle"
@@ -60,20 +62,18 @@ STATE_ERROR = "error"
 STATE_STOPPED = "stopped"
 STATE_COOLDOWN = "cooldown"
 
-# Every colour below stays as written. The style rule appends an alpha
-# pair, so a three-digit value widened to six makes Qt read a valid
-# eight-digit #AARRGGBB where it now reads an invalid five-digit string
-# and drops the fill.
 STATE_COLORS = {
     STATE_RUNNING: ds.SUCCESS,
     STATE_IDLE: ds.CARD_METRIC_LABEL,
     STATE_PAUSED: ds.WARNING,
     STATE_ERROR: ds.ERROR,
-    STATE_STOPPED: "#666",
+    STATE_STOPPED: ds.TEXT_MUTED,
     STATE_COOLDOWN: ds.WARNING,
 }
+# The badge foreground and its tinted ground are one colour, so an
+# unknown state names the same token twice.
 STATE_UNKNOWN_FG = ds.TEXT_NEUTRAL
-STATE_UNKNOWN_BG = "#ccc"
+STATE_UNKNOWN_BG = ds.TEXT_NEUTRAL
 
 NAV_BUTTON_STYLE = (
     f"QPushButton {{ background: {ds.SURFACE_CONTROL}; color: {ds.PRIMARY}; "
@@ -403,7 +403,10 @@ def state_style(state: Any) -> str:
     """The colours on the state badge for one bot state."""
     return STATE_STYLE_FORMAT.format(
         fg_hex=STATE_COLORS.get(state, STATE_UNKNOWN_FG),
-        bg_hex=STATE_COLORS.get(state, STATE_UNKNOWN_BG),
+        bg_rgba=rgba(
+            STATE_COLORS.get(state, STATE_UNKNOWN_BG),
+            STATE_BACKGROUND_ALPHA,
+        ),
     )
 
 

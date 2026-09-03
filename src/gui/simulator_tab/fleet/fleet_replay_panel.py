@@ -15,7 +15,12 @@ import threading
 import time
 from typing import Any, Callable, Optional
 
+from ...color_alpha import rgba
+
 logger = logging.getLogger("acervator.simulator.fleet.panel")
+
+HEADER_BORDER_COLOR = "#00cccc"
+HEADER_BORDER_ALPHA = 68
 
 
 # Advisory: a telemetry failure never breaks the feature it watches.
@@ -167,7 +172,8 @@ if _HAS_QT:
             header = QFrame()
             header.setStyleSheet(
                 "QFrame{background:rgba(0,255,204,10);"
-                "border:1px solid #00cccc44;border-radius:6px;}"
+                f"border:1px solid {rgba(HEADER_BORDER_COLOR, HEADER_BORDER_ALPHA)};"
+                "border-radius:6px;}"
             )
             hlay = QVBoxLayout(header)
             title = QLabel("Fleet Replay — sim the live fleet against YTD data")

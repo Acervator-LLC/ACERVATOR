@@ -56,7 +56,13 @@ from src.simulator.nuclear_fleet_controller import (
     NuclearFleetController,
 )
 
+from ..color_alpha import rgba
+
 logger = logging.getLogger("acervator.nuclear_panel")
+
+HEADER_CARD_BORDER_COLOR = "#ffcc44"
+HEADER_CARD_BORDER_ALPHA = 68
+HEADER_CARD_BORDER = rgba(HEADER_CARD_BORDER_COLOR, HEADER_CARD_BORDER_ALPHA)
 
 
 _STATUS_FIELDS: tuple[tuple[str, str], ...] = (
@@ -125,7 +131,8 @@ class NuclearModePanel(QWidget):
         header_card = QFrame()
         header_card.setStyleSheet(
             "QFrame{background:rgba(255,200,80,8);"
-            "border:1px solid #ffcc4444;border-radius:6px;}"
+            f"border:1px solid {HEADER_CARD_BORDER};"
+            "border-radius:6px;}"
         )
         header_lay = QVBoxLayout(header_card)
         header_lay.setSpacing(4)
