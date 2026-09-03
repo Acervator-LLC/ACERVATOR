@@ -205,8 +205,18 @@ _HISTORY = (
 #      Prose cannot route a call, so a stale comment disables no check.
 #   2. THIS file. Its controls import the old path deliberately, to prove the
 #      old path is gone. Without them the whole file could pass vacuously.
+#   3. The session handoffs. HOP8 names the old path once, in a table of dead
+#      commands, to say it is dead and give the replacement; HOP7 is a
+#      superseded handoff kept as written. Each is listed by name rather than
+#      by a glob, so a later HOP has to be judged on its own contents.
 _ALLOWED_PREFIXES = ("dev_harness/",)
-_ALLOWED_EXACT = frozenset({"tests/test_harness_is_reachable.py"})
+_ALLOWED_EXACT = frozenset(
+    {
+        "tests/test_harness_is_reachable.py",
+        "ACERVATOR_HOP7.md",
+        "ACERVATOR_HOP8.md",
+    }
+)
 
 
 def probe_import(module_name: str, class_name: str) -> tuple[bool, str]:
