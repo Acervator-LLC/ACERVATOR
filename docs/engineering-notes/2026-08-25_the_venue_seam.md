@@ -35,16 +35,16 @@ actually reaches the exchange. Every other difference is a defect.
 
 ## Does Paper exist?
 
-**No.** There is no Paper venue, no Paper backend, no Paper bot, no Paper source file.
+**No.** No Paper venue, no Paper backend, no Paper bot and no Paper source file exist.
 
 What exists is: one concept document that says Paper is not built and is gated behind
 Sim and Nuclear; four attributes in the main window that are set to `None` and never
 reassigned; a "Paper Swarm" tab in the Bot Swarm view that displays rows and computes
-nothing; and one import of a file that does not exist. There is no Paper mode value in
+nothing; and one import of a file that does not exist. No Paper mode value exists in
 any enum. `BotMode` has exactly two members, `scrumming` and `extractor`.
 
-So the three-venue comparison this audit was asked for is, in fact, a **two-venue**
-comparison. Paper contributes zero rows to the table because Paper contributes zero code
+The three-venue comparison this audit was asked for is, therefore, in fact a
+**two-venue** comparison. Paper contributes zero rows to the table because Paper contributes zero code
 to the tree. That is itself the first violation: a venue the design requires is absent.
 
 ## The five worst findings, in plain language
@@ -53,8 +53,8 @@ to the tree. That is itself the first violation: a venue the design requires is 
 Measured on the same tape, the same call: a Live bot receives **100 candles**, a
 Simulator bot receives **300 candles**. This is not a small drift. The project's own test
 file proves that 100 candles and 300 candles produce a *different vote* from the
-indicator engine. So the Simulator's buy and sell decisions are computed from a different
-input than Live's, on identical data. Cause: Live routes every candle read through a
+indicator engine. The Simulator's buy and sell decisions are therefore computed from a
+different input than Live's, on identical data. Cause: Live routes every candle read through a
 shared cache (`MarketDataPool`) that trims the result to the requested size; the
 Simulator has no such cache and receives the exchange's untrimmed page.
 
@@ -73,7 +73,7 @@ price, and refuses what it cannot serve.
 **4. The Simulator will accept a negative order size and run the ledger backwards.**
 Measured: a market buy for **minus one unit** returned a *filled* order and moved the
 wallet in the wrong direction. A real venue rejects this outright. A zero-size order is
-likewise reported as filled. There is a guard higher up that catches this before it
+likewise reported as filled. A guard higher up catches this before it
 reaches the venue on the normal path — but the venue itself does not refuse it, and
 Live's venue does.
 
@@ -88,7 +88,7 @@ the exchange refuses the second.
 
 Three structural causes, each verified rather than assumed.
 
-**The contract describes shapes, not behaviour.** `src/exchange/base.py` is 273 lines. It
+**The contract describes shapes, not behaviour.** `src/exchange/base.py` is 282 lines. It
 names methods and the types they return. It contains **one** statement about what happens
 when something fails (`get_my_trades` raises `NotImplementedError` if unimplemented).
 Nothing in it says what a venue does when funds are short, when a symbol is unknown, when
@@ -102,7 +102,7 @@ attaches underneath the live connector through `attach_backend`. Nothing type-ch
 nothing enforces its shape, and the 14 members it must provide are listed only in a
 docstring.
 
-**There are three Simulator venue classes, and two of them are dead.**
+**Three Simulator venue classes exist, and two of them are dead.**
 `FleetSimExchange` and `NuclearSimExchange` both *do* subclass `ExchangeInterface`, both
 implement all 17 methods, and both are instantiated **nowhere** in the product. Every one
 of their instantiations is in a test. Meanwhile the class the Simulator does run,
@@ -226,21 +226,21 @@ on purpose** when it knows it is a simulator.
 
 ## 3.2 Layer 1 — the `ExchangeInterface` surface (17 members)
 
-Declared at `src/exchange/base.py:153-273`. Consumed by the bot as follows.
+Declared at `src/exchange/base.py:159-282`. Consumed by the bot as follows.
 
 | Member | Called from | Line(s) |
 | --- | --- | --- |
-| `get_ticker` | `ScrummingBot._get_ticker` | `scrumming_bot.py:4074` |
-| `get_ohlcv` | `ScrummingBot._get_ohlcv`, `_fetch_candles` | `scrumming_bot.py:4099, 13657` |
+| `get_ticker` | `ScrummingBot._get_ticker` | `scrumming_bot.py:1798` |
+| `get_ohlcv` | `ScrummingBot._get_ohlcv`, `_check_detonation_trigger` | `scrumming_bot.py:1820, 4236` |
 | `get_orderbook` | `VolumeGuard` | `volume_guard.py` |
-| `get_balance` | `ScrummingBot._get_balance`, `BuySafety` | `scrumming_bot.py:4127`; `buy_safety.py` |
-| `get_balances` | `ScrummingBot` | `scrumming_bot.py:13338` |
-| `place_order` | `BotContainer.guarded_place_order` | `bot_container.py:1583` |
+| `get_balance` | `ScrummingBot._get_balance`, `BuySafety` | `scrumming_bot.py:1831`; `buy_safety.py` |
+| `get_balances` | `ScrummingBot` | `src/trading/scrumming/execution.py:977` |
+| `place_order` | `BotContainer.guarded_place_order` | `bot_container.py:145` |
 | `cancel_order` | `SmartOrders`, `Reconciliation` | `smart_orders.py`, `reconciliation.py` |
-| `get_order` | `ScrummingBot` | `scrumming_bot.py:12516, 14561` |
-| `get_open_orders` | `ScrummingBot` | `scrumming_bot.py:5753, 14545, 14942, 15324` |
-| `get_my_trades` | `ScrummingBot` (position health, window P/L) | `scrumming_bot.py:5688, 5832` |
-| `get_markets` | `BotContainer._get_market_limits`, `ExtractorBot` | `bot_container.py:1323` |
+| `get_order` | `ScrummingBot` | `scrumming_bot.py:4636`; `src/trading/scrumming/execution.py:217` |
+| `get_open_orders` | `ScrummingBot` | `scrumming_bot.py:4620`; `src/trading/scrumming/execution.py:1516, 1859`; `src/trading/scrumming/reconciliation.py:114` |
+| `get_my_trades` | `ScrummingBot` (position health, window P/L) | `src/trading/scrumming/reconciliation.py:66, 174` |
+| `get_markets` | `BotContainer._get_market_limits`, `ExtractorBot` | `bot_container.py:110` |
 | `get_asset_logo_url` | GUI | — |
 | `connect` / `disconnect` / `is_connected` | `LiveBotWindow`, `main_window` | — |
 | `exchange_id` / `display_name` | throughout | — |
@@ -267,7 +267,7 @@ shape-only comparison never found them.
 
 These are the replay control surface. The Simulator's controller drives them; no bot
 touches them. That is by design and is documented at
-`fleet_replay_controller.py:906-910`. **One of them is not benign: `on_trade` is a
+`src/simulator/fleet/fleet_replay_controller.py:1004-1006`. **One of them is not benign: `on_trade` is a
 callback the venue makes *into* the application, and Live has no such thing** (row J1).
 
 **Live-only**: everything else on a ccxt exchange object — `fetch_status`,
@@ -279,13 +279,13 @@ authentication path. None of it is reached by the bot, so none of it appears in 
 | Class | File | Subclasses `ExchangeInterface`? | Surface | Instantiated in `src/`? | Verdict |
 | --- | --- | --- | --- | --- | --- |
 | `CCXTConnector` | `src/exchange/ccxt_connector.py:239` | **Yes** | Layer 1 | yes (live and sim) | **ALIVE — both venues** |
-| `TabletBackend` | `src/exchange/tablet_backend.py:102` | **No** | Layer 2 (raw ccxt) | yes, `fleet_replay_controller.py:912` | **ALIVE — the Simulator's venue** |
-| `FleetSimExchange` | `src/gui/simulator_tab/fleet/sim_exchange.py:58` | Yes | Layer 1 | **no — zero instantiations** | **DEAD** (replaced v3.24.84) |
-| `NuclearSimExchange` | `src/gui/simulator_tab/nuclear_sim_exchange.py:85` | Yes | Layer 1 | one, at `nuclear_controller.py:274` — and `NuclearController` itself has no importer outside `tests/` | **DEAD** (two hops from anything running) |
+| `TabletBackend` | `src/exchange/tablet_backend.py:103` | **No** | Layer 2 (raw ccxt) | yes, `src/simulator/fleet/fleet_replay_controller.py:1007` | **ALIVE — the Simulator's venue** |
+| `FleetSimExchange` | `src/simulator/fleet/sim_exchange.py:70` | Yes | Layer 1 | **no — zero instantiations** | **DEAD** (replaced v3.24.84) |
+| `NuclearSimExchange` | `src/simulator/nuclear_sim_exchange.py:91` | Yes | Layer 1 | one, at `src/simulator/nuclear_controller.py:278` — and `NuclearController` itself has no importer outside `tests/` | **DEAD** (two hops from anything running) |
 | *Paper backend* | — | — | — | — | **DOES NOT EXIST** |
 
 `FleetSimExchange`'s module is still loaded on the live Simulator path, but only for the
-helper function `make_symbol_series_map` (`fleet_replay_controller.py:56`). The class
+helper function `make_symbol_series_map` (`src/simulator/fleet/fleet_replay_controller.py:58`). The class
 itself is used by 11 test files and by nothing else.
 
 ---
@@ -308,7 +308,7 @@ contract. `[S]` source reading. Verdict: **VIOLATION** or **LEGITIMATE**.
 | A2 | The venue is covered by the declared contract | `CCXTConnector(ExchangeInterface)` | `TabletBackend` subclasses **nothing**; its required surface is a docstring at `ccxt_connector.py:1003` | — | [S] | **VIOLATION** |
 | A3 | Number of Simulator venue implementations | 1 | **3** (`TabletBackend` alive, `FleetSimExchange` dead, `NuclearSimExchange` dead) | — | [S] | **VIOLATION** |
 | A4 | Dead venues still carry the parity tests | — | 11 test files import `FleetSimExchange`; 5 import `NuclearSimExchange`; both are instantiated zero times in `src/` | — | [S] | **VIOLATION** |
-| A5 | The contract states failure behaviour | `base.py` is 273 lines and contains **one** statement of failure behaviour (`base.py:263`, `get_my_trades` → `NotImplementedError`). Nothing states what a venue does on insufficient funds, unknown symbol, unknown order, or missing price | — | — | [S] | **VIOLATION** — this is the root cause of Group E |
+| A5 | The contract states failure behaviour | `base.py` is 282 lines and contains **one** statement of failure behaviour (`base.py:271`, `get_my_trades` → `NotImplementedError`). Nothing states what a venue does on insufficient funds, unknown symbol, unknown order, or missing price | — | — | [S] | **VIOLATION** — this is the root cause of Group E |
 
 ## GROUP B — Connection lifecycle (5 rows, 3 violations, 2 legitimate)
 
@@ -323,8 +323,8 @@ contract. `[S]` source reading. Verdict: **VIOLATION** or **LEGITIMATE**.
 ## GROUP C — Market metadata (6 rows, 6 violations)
 
 The Simulator's controller builds `TabletBackend` **without** a `markets` argument
-(`fleet_replay_controller.py:912-916`). Every symbol therefore receives the single
-hardcoded template at `tablet_backend.py:196-215`.
+(`src/simulator/fleet/fleet_replay_controller.py:1007-1013`). Every symbol therefore receives the single
+hardcoded template at `tablet_backend.py:201-218`.
 
 | # | The fact | Live | Simulator | Ev | Verdict |
 | --- | --- | --- | --- | --- | --- |
@@ -343,7 +343,7 @@ hardcoded template at `tablet_backend.py:196-215`.
 | D2 | Order book | 20 levels of real depth | **[M]** one level, price = last close, size `1e9` on both sides | [M] | **VIOLATION** |
 | D3 | Unknown symbol on `get_ticker` / `get_ohlcv` / `get_orderbook` | `ccxt.BadSymbol` **[M]** (`"coinbase does not have market symbol NOPE/USD"`) | **[M]** `ValueError("no candles for 'NOPE/USD'")` | [M] | **VIOLATION** — different exception type; a handler written for one will not catch the other |
 | D4 | Timeframe with no series | the venue serves any supported timeframe | **[M]** `ValueError("no 1h series for 'CHIP/USD'...")`. A Simulator fleet whose bots use a non-5m TA timeframe cannot run at all unless `tf_rows` were supplied | [M] | **VIOLATION** |
-| D5 | `TabletNotStarted` | no analogue | a Simulator-only exception class (`tablet_backend.py:92`), raised on read before a tape opens, and caught nowhere in the connector or the bot | [S] | **VIOLATION** |
+| D5 | `TabletNotStarted` | no analogue | a Simulator-only exception class (`tablet_backend.py:93`), raised on read before a tape opens, and caught nowhere in the connector or the bot | [S] | **VIOLATION** |
 | D6 | `fetch_tickers` on a not-yet-started symbol | returns every listed symbol | silently omits the symbol | [S] | **LEGITIMATE** — a symbol with no data cannot be priced; this is the data source |
 
 ## GROUP E — Order writes (11 rows, 11 violations)
@@ -360,7 +360,7 @@ This is the group #111A lived in, and it is still the largest.
 | E6 | Partial fills and slippage | routine | **[M]** a 1,000,000-unit market buy filled **100%** at exactly the candle close. Slippage `0.0`. The Simulator has never produced a partial fill | [M] | **VIOLATION** |
 | E7 | Duplicate `client_order_id` | the venue refuses the duplicate (Coinbase 409, Binance −2010) — the entire point of `src/exchange/idempotency.py` | **[M]** same coid twice → two distinct order ids, **two fills, 2.0 CHIP booked** | [M]/[C] | **VIOLATION** |
 | E8 | Funds held by a resting order | held at placement; visible as `used`, removed from `free` | **[M]** resting BUY for 5 units at 50: `free` **unchanged** at 1000.0, `used` **0.0**, `_reserved` map **empty**. `used` is never written anywhere in `TabletBackend` | [M] | **VIOLATION** — the Simulator can commit the same money twice |
-| E9 | A resting order that cannot fund when the sweep crosses it | unreachable in Live (funds were held at placement) | **[M]** backend marks it `rejected`; a later `get_order` returns `Order(status=FAILED, filled=0.0, average=0.0)` — a state Live cannot produce. Documented and accepted at `tablet_backend.py:569-572` | [M] | **VIOLATION** |
+| E9 | A resting order that cannot fund when the sweep crosses it | unreachable in Live (funds were held at placement) | **[M]** backend marks it `rejected`; a later `get_order` returns `Order(status=FAILED, filled=0.0, average=0.0)` — a state Live cannot produce. Documented and accepted at `tablet_backend.py:595-599` | [M] | **VIOLATION** |
 | E10 | Unknown order on `cancel_order` / `get_order` | `ccxt.OrderNotFound` | **[M]** `ValueError("no such order 'nope'")` | [M]/[C] | **VIOLATION** |
 | E11 | `Order.raw` / `info` content | the venue's response | `{"sim": True, "params": {...}}` | [M] | **VIOLATION** (low impact; any consumer reading `raw` sees different content) |
 
@@ -372,7 +372,7 @@ with the shortfall arithmetic in the message. This is issue #111A's fix and it h
 
 | # | The fact | Live | Simulator | Ev | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| F1 | Fee side on a market (taker) order | taker rate | **[M]** charged `0.63` on `105.0` notional = **0.6%**, the *maker* rate, while its own market dict declares taker `1.2%`. `TabletBackend._fee_rate` returns one number regardless of side (`tablet_backend.py:455-457`) | [M] | **VIOLATION** — every simulated trade is cheaper than the same live trade |
+| F1 | Fee side on a market (taker) order | taker rate | **[M]** charged `0.63` on `105.0` notional = **0.6%**, the *maker* rate, while its own market dict declares taker `1.2%`. `TabletBackend._fee_rate` returns one number regardless of side (`tablet_backend.py:469-470`) | [M] | **VIOLATION** — every simulated trade is cheaper than the same live trade |
 | F2 | Fee structure | maker/taker split, volume tiers, per-symbol | one flat rate per symbol from `bot_state`, default `0.006` | [S] | **VIOLATION** |
 
 ## GROUP G — Error handling and retry (2 rows, 2 violations)
@@ -386,10 +386,10 @@ with the shortfall arithmetic in the message. This is issue #111A's fix and it h
 
 | # | The fact | Live | Simulator | Ev | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| H1 | `MarketDataPool` | wired: `main.py:940-941` → `BotManager.set_data_pool` → every bot (`bot_container.py:2286-2288, 2935`) | **never wired.** `fleet_replay_controller.py:350-354` states so explicitly | [M] | **VIOLATION — the largest measured divergence.** See H1-detail below |
+| H1 | `MarketDataPool` | wired: `main.py:628-629` → `BotManager.set_data_pool` (`src/trading/bot_container.py:767-773`) → every bot, plus a late-join site for a bot added after wiring (`src/trading/container/registry.py:115-118`) | **never wired.** `src/simulator/fleet/fleet_replay_controller.py:358-362` states so explicitly | [M] | **VIOLATION — the largest measured divergence.** See H1-detail below |
 | H2 | Balance freshness | pool cache, 10 s TTL (`data_pool.py:84-86`) | read fresh from the venue on every call. **[M]** 5 reads → 5 backend calls in sim, 1 in live | [M] | **VIOLATION** |
-| H3 | `VolumeGuard` | constructed on the live manager only (`main.py:935-936`) | never constructed | [M] | **LATENT, not a divergence today** — `VolumeGuard.enabled` hard-returns `False` (`volume_guard.py:182-190`, MEM-259), so both venues take the direct path. It becomes a divergence the moment it is re-enabled, and the guarded path builds a *synthetic* `Order` (`id="vg_..."`) and raises a bare `Exception` instead of `InsufficientFunds` (`bot_container.py:1528-1554`) |
-| H4 | Wallet seeding | a real account balance | `Σ target_balance` with **no fee headroom** (`fleet_replay_controller.py:830-841`). A lot-less bot must buy its opening position at `target_balance × (1 + fee)`, so the last bot in the fleet is always short — issue **#111B, unfixed** | [S] | **VIOLATION, open** |
+| H3 | `VolumeGuard` | constructed on the live manager only (`main.py:623-624`) | never constructed | [M] | **LATENT, not a divergence today** — `VolumeGuard.enabled` hard-returns `False` (`src/trading/volume_guard.py:188-196`, MEM-259), so both venues take the direct path. It becomes a divergence the moment it is re-enabled, and the guarded path builds a *synthetic* `Order` (`id="vg_..."`) and raises a bare `Exception` instead of `InsufficientFunds` (`src/trading/bot_container.py:259-277`) |
+| H4 | Wallet seeding | a real account balance | `Σ target_balance` with **no fee headroom** (`src/simulator/fleet/fleet_replay_controller.py:923-934`). A lot-less bot must buy its opening position at `target_balance × (1 + fee)`, so the last bot in the fleet is always short — issue **#111B, unfixed** | [S] | **VIOLATION, open** |
 | H5 | Capital-reservation registry | process-wide singleton persisted to `~/.acervator/reservation_state.json` | injected private non-persisting instance (`scrumming_bot.py:509`) | [S] | **LEGITIMATE** — persisting to the operator's live state file is a real-world write |
 
 **H1-detail — the measurement.** Probe 4 built one `TabletBackend` with 400 candles,
@@ -402,35 +402,36 @@ configuration) and once without (the Simulator's configuration):
 | **LIVE** (pool wired) | **100** | 1 | 1 |
 | **SIM** (no pool) | **300** | 5 | 5 |
 
-The bot's TA path asks for `limit=100` (`scrumming_bot.py:7771-7772, 7965-7966`). The
+The bot's TA path asks for `limit=100` (`src/trading/scrumming/tick_phases.py:787` and
+`src/trading/scrumming_bot.py:2826-2829`). The
 pool returns `entry.candles[-limit:]` — exactly 100. The direct connector call returns
-300, because of the documented `since`-slot defect. So **Live's indicators run on 100
-candles and the Simulator's run on 300, from the same tape, on the same call.**
+300, because of the documented `since`-slot defect. **Live's indicators therefore run on
+100 candles and the Simulator's run on 300, from the same tape, on the same call.**
 
 `tests/test_sim_live_ohlcv_parity.py:139-151` independently proves that 100 and 300
 produce a different `net_score` from `VotingEngine`. The gate decisions differ.
 
 ## GROUP I — The bot's own simulator branches (7 rows, 6 violations, 1 legitimate)
 
-`ScrummingBot.__init__` takes `sim_mode: bool` (`scrumming_bot.py:472`). The bot is
+`ScrummingBot.__init__` takes `sim_mode: bool` (`src/trading/scrumming_bot.py:323`). The bot is
 therefore **not** the same code in both venues.
 
 | # | The fact | Live | Simulator | Ev | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| I1 | The event bus | the process-wide `EventBus` singleton | a **private** `EventBus` (`scrumming_bot.py:510-538`). Every bus consumer — `LogManager`, `trade.log`, `gate.log`, the sound engine, the GUI — is disconnected in the Simulator. Construction **fails closed** if the private bus cannot be made | [S] | **VIOLATION** (the isolation is necessary; the *mechanism* means the Simulator exercises none of the emit path) |
-| I2 | Capital reservation resolution | resolves the process-wide registry | `_crr()` returns **`None`** when no registry was injected (`scrumming_bot.py:1287-1292`). Reservation is unavailable rather than simulated | [S] | **VIOLATION** |
-| I3 | First reservation's drift assertion | holdings are passed and checked | `_total_holdings = None` on the first reserve only (`scrumming_bot.py:1409-1410`), skipping the assertion | [S] | **VIOLATION** |
-| I4 | `PhantomBalance` cadence | sleeps `min(candle_seconds, 60)` wall-clock | awaits the stop event and breaks (`phantom_balance.py:257-259`); driven by `tick_for_cursor` instead | [S] | **VIOLATION** |
-| I5 | `sim_run_log` | not written | written, gated on `_sim_mode` (`sim_run_log.py:531`) | [S] | **LEGITIMATE** — an extra Simulator artefact, not a change to bot behaviour |
-| I6 | `nuclear_verification` | skips | gated on `_sim_mode` (`nuclear_verification.py:219`) | [S] | **VIOLATION** (low) |
-| I7 | `indicator_panel` | live branch | `_sim_mode` branches at `indicator_panel.py:898, 1406` | [S] | **VIOLATION** (low, GUI) |
+| I1 | The event bus | the process-wide `EventBus` singleton | a **private** `EventBus` (`src/trading/scrumming_bot.py:341-357`). Every bus consumer — `LogManager`, `trade.log`, `gate.log`, the sound engine, the GUI — is disconnected in the Simulator. Construction **fails closed** if the private bus cannot be made | [S] | **VIOLATION** (the isolation is necessary; the *mechanism* means the Simulator exercises none of the emit path) |
+| I2 | Capital reservation resolution | resolves the process-wide registry | `_crr()` returns **`None`** when no registry was injected (`src/trading/scrumming/capital_reservation_mixin.py:35-43`). Reservation is unavailable rather than simulated | [S] | **VIOLATION** |
+| I3 | First reservation's drift assertion | holdings are passed and checked | `_total_holdings = None` on the first reserve only (`src/trading/scrumming/capital_reservation_mixin.py:113-114`), skipping the assertion | [S] | **VIOLATION** |
+| I4 | `PhantomBalance` cadence | sleeps `min(candle_seconds, 60)` wall-clock | awaits the stop event and breaks (`src/trading/phantom_balance.py:275-277`); driven by `tick_for_cursor` instead | [S] | **VIOLATION** |
+| I5 | `sim_run_log` | not written | written, gated on `_sim_mode` (`src/trading/sim_run_log.py:554`) | [S] | **LEGITIMATE** — an extra Simulator artefact, not a change to bot behaviour |
+| I6 | `nuclear_verification` | skips | gated on `_sim_mode` (`src/trading/nuclear_verification.py:222`) | [S] | **VIOLATION** (low) |
+| I7 | `indicator_panel` | live branch | `_sim_mode` branches at `src/gui/indicator_panel.py:923, 1461` | [S] | **VIOLATION** (low, GUI) |
 
 ## GROUP J — Venue-to-application callbacks (2 rows, 2 violations)
 
 | # | The fact | Live | Simulator | Ev | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| J1 | `on_trade` | **no such thing.** Live's fill accounting comes from the event bus | the venue calls **into** the application on every fill (`tablet_backend.py:299, 608`). Not declared in `ExchangeInterface`. `scrumming_bot.py:535` states the Simulator counts fills through this callback and *not* the bus | [M] | **VIOLATION** — an entire feedback channel exists on one side only |
-| J2 | The callback's argument shape | — | `TabletBackend` passes a **dict** (ms timestamps, `side` a lowercase string). `FleetSimExchange` passes a **`Trade` object** (seconds, `side` an enum). Both shapes are still handled at `fleet_replay_controller.py:1418-1432` | [M] | **VIOLATION** — this is issue #110's exact home, still two-shaped |
+| J1 | `on_trade` | **no such thing.** Live's fill accounting comes from the event bus | the venue calls **into** the application on every fill (`tablet_backend.py:303, 643`). Not declared in `ExchangeInterface`. `scrumming_bot.py:535` states the Simulator counts fills through this callback and *not* the bus | [M] | **VIOLATION** — an entire feedback channel exists on one side only |
+| J2 | The callback's argument shape | — | `TabletBackend` passes a **dict** (ms timestamps, `side` a lowercase string). `FleetSimExchange` passes a **`Trade` object** (seconds, `side` an enum). Both shapes are still handled at `src/simulator/fleet/fleet_replay_controller.py:1640-1654` | [M] | **VIOLATION** — this is issue #110's exact home, still two-shaped |
 
 ## 4.1 The tally
 
@@ -552,7 +553,8 @@ live rows (I1-I7). **GAP 4 contains the largest unfixed measured divergence (H1)
 - Everything wrapped around the connector that a bot's read passes through:
   `MarketDataPool`, `VolumeGuard`, `guarded_place_order`, the idempotency layer, the
   capital registry, wallet seeding.
-- Every `sim_mode` branch in `src/` outside `src/gui/simulator_tab/`.
+- Every `sim_mode` branch in `src/` outside `src/gui/simulator_tab/` and
+  `src/simulator/`.
 - All four backend classes, with liveness determined by instantiation-site census.
 - The complete absence of Paper, established by filename search, full-tree grep with
   every hit classified, venue-discriminator search, and the concept document's own status.
@@ -645,30 +647,30 @@ All four were run with `python -m pytest <file> -p no:randomly -q -s`, so
 
 | Subject | Location |
 | --- | --- |
-| The contract (shape only) | `src/exchange/base.py:153-273`; its one failure statement at `:263` |
+| The contract (shape only) | `src/exchange/base.py:159-282`; its one failure statement at `:271` |
 | Live connector | `src/exchange/ccxt_connector.py:239` |
 | The injection point | `src/exchange/ccxt_connector.py:968` (`_ex`), `:999` (`attach_backend`), `:1013` (marks connected), `:1027` (rate limiter to 0) |
 | Retry decorator | `src/exchange/ccxt_connector.py:207-233` |
 | `get_ohlcv` `since`-slot defect | `src/exchange/ccxt_connector.py:1095-1152` |
 | `get_markets` precision read | `src/exchange/ccxt_connector.py:1339` |
-| Simulator's venue | `src/exchange/tablet_backend.py:102` |
-| Hardcoded market template | `src/exchange/tablet_backend.py:196-215` |
-| Fee rate (one number, no side) | `src/exchange/tablet_backend.py:455-457` |
-| `create_order` and the #111A fix | `src/exchange/tablet_backend.py:459-530` |
-| Sweep leaves `rejected` | `src/exchange/tablet_backend.py:559-582, 619-641` |
-| `on_trade` invocation | `src/exchange/tablet_backend.py:299, 605-616` |
-| Simulator wiring | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:912-926` |
-| Wallet seeding (#111B) | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:830-841, 1119-1136` |
-| Pool absent in sim, stated | `src/gui/simulator_tab/fleet/fleet_replay_controller.py:350-354` |
-| Pool wired in live | `main.py:940-941`; `src/trading/bot_container.py:2284-2290, 2935` |
+| Simulator's venue | `src/exchange/tablet_backend.py:103` |
+| Hardcoded market template | `src/exchange/tablet_backend.py:201-218` |
+| Fee rate (one number, no side) | `src/exchange/tablet_backend.py:469-470` |
+| `create_order` and the #111A fix | `src/exchange/tablet_backend.py:473-556` |
+| Sweep leaves `rejected` | `src/exchange/tablet_backend.py:586-609, 654-675` |
+| `on_trade` invocation | `src/exchange/tablet_backend.py:303, 640-651` |
+| Simulator wiring | `src/simulator/fleet/fleet_replay_controller.py:1007-1026` |
+| Wallet seeding (#111B) | `src/simulator/fleet/fleet_replay_controller.py:923-934, 1240-1256` |
+| Pool absent in sim, stated | `src/simulator/fleet/fleet_replay_controller.py:358-362` |
+| Pool wired in live | `main.py:628-629`; `src/trading/bot_container.py:767-773`; late-join site `src/trading/container/registry.py:115-118` |
 | Pool trims to `limit` | `src/exchange/data_pool.py` (`get_or_fetch_ohlcv`, `entry.candles[-limit:]`) |
-| `guarded_place_order` | `src/trading/bot_container.py:1348-1590` |
-| `_get_market_limits` | `src/trading/bot_container.py:1304-1346` |
-| VolumeGuard force-disabled | `src/trading/volume_guard.py:182-190` |
-| `sim_mode` branches | `src/trading/scrumming_bot.py:472, 495, 510, 1287, 1409`; `src/trading/phantom_balance.py:257`; `src/trading/sim_run_log.py:531`; `src/trading/nuclear_verification.py:219`; `src/gui/indicator_panel.py:898, 1406` |
-| Bot TA asks for 100 candles | `src/trading/scrumming_bot.py:7771-7772, 7965-7966` |
-| Dead venue 1 | `src/gui/simulator_tab/fleet/sim_exchange.py:58` |
-| Dead venue 2 | `src/gui/simulator_tab/nuclear_sim_exchange.py:85` |
-| Paper: the concept doc | `docs/engineering-notes/2026-08-05_paper_trader_concept_spec.md` |
-| Paper: permanently-None attributes | `src/gui/main_window.py:5395-5401` |
-| Paper: import of a file that does not exist | `src/gui/stock_main_window.py:363` |
+| `guarded_place_order` | `src/trading/bot_container.py:145-303` |
+| `_get_market_limits` | `src/trading/bot_container.py:110-141` |
+| VolumeGuard force-disabled | `src/trading/volume_guard.py:188-196` |
+| `sim_mode` branches | `src/trading/scrumming_bot.py:323, 339, 341-357`; `src/trading/scrumming/capital_reservation_mixin.py:35-43, 113-114`; `src/trading/phantom_balance.py:275`; `src/trading/sim_run_log.py:554`; `src/trading/nuclear_verification.py:222`; `src/gui/indicator_panel.py:923, 1461` |
+| Bot TA asks for 100 candles | `src/trading/scrumming/tick_phases.py:787`; `src/trading/scrumming_bot.py:2826-2829` |
+| Dead venue 1 | `src/simulator/fleet/sim_exchange.py:70` |
+| Dead venue 2 | `src/simulator/nuclear_sim_exchange.py:91` |
+| Paper: the concept doc | **`docs/engineering-notes/2026-08-05_paper_trader_concept_spec.md` no longer exists anywhere in the tree.** It moved to that path from `docs/audits/` in commit `fc0d778`, then was removed in a later merge (`d1bf755`, cleanup/remove-non-documentation-from-docs) that did not carry across this branch's copy. No replacement doc states Paper's status. |
+| Paper: permanently-None attributes | `src/gui/main_tabs/retired_tabs.py:11-16` |
+| Paper: import of a file that does not exist | `src/gui/stock_main_window.py:396` |

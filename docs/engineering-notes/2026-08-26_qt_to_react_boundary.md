@@ -42,8 +42,10 @@ worth a lot. It means the engine does not have to be rewritten, only re-plugged.
 **But there are three walls, and none of them is React work.** They must be cleared before a
 single line of React is worth writing:
 
-1. **A Qt timer is currently your trading engine's heartbeat.** `main.py:687` sets up a
-   50-millisecond timer. That timer is the only thing that advances the loop that reaches
+1. **A Qt timer is currently your trading engine's heartbeat.** `main.py:401`
+   (`_make_async_pump_timer`, interval from `ASYNC_PUMP_INTERVAL_MS = 50` at `:384`, started
+   at `:946`) sets up a 50-millisecond timer. That timer is the only thing that advances the
+   loop that reaches
    `bot.tick()`. Delete Qt today and nothing trades. This is not a display detail. It is the
    clock.
 2. **9,580 lines of engine code are filed in the wrong folder.** The whole Simulator engine,
@@ -97,9 +99,10 @@ If those move to JavaScript unexamined, you will have the same defect in a langu
 cannot run your Python gates against.
 
 **The second risk is a chart widget that writes to your bot file.**
-`src/gui/bot_visualizer.py:3085` writes directly to `~/.acervator/bot_state.json`. Its own
-docstring is headed "SECOND WRITER WARNING" and says the two writers "have never been
-reconciled". A picture of your bots can change your bots. That must not survive the port.
+`src/gui/bot_visualizer.py:1626` (`_save_bot_state_dict`) writes directly to
+`~/.acervator/bot_state.json`. Its own docstring is headed "SECOND WRITER WARNING" and says
+the two writers "have never been reconciled". A picture of your bots can change your bots.
+That must not survive the port.
 
 ## The order it happens in
 
@@ -405,9 +408,9 @@ docstrings or comments. Two of them say the words "Not a QThread".
 class built on `threading` and `dataclasses`, with `dict[str, list[_Subscriber]]` callbacks.
 It is not a Qt Signal. It can feed a WebSocket unchanged.
 
-**The emitter network is Qt-free.** `src/core/signal_contract.py` (2,704 lines) writes frozen
-`Signal` dataclasses with 14 fields to `~/.acervator_logs/signals/session.jsonl`. It is
-already a JSON stream.
+**The emitter network is Qt-free.** `src/core/signal_contract.py` (1,272 lines; 2,704 at
+measurement time, before a later comment sweep) writes frozen `Signal` dataclasses with 14
+fields to `~/.acervator_logs/signals/session.jsonl`. It is already a JSON stream.
 
 **The instance guard is Qt-free.** `src/core/instance_guard.py` (924 lines) uses a filesystem
 lease, and its own docstring records that it deliberately uses "no `QSharedMemory`, no
@@ -437,7 +440,7 @@ asyncio thread: this timer is the ONLY thing that advances the loop, so its cade
 the loop's cadence.
 ```
 
-That loop is what reaches `src/trading/bot_container.py:1718`
+That loop is what reaches `src/trading/bot_container.py:323`
 (`asyncio.create_task(self._run_with_guard())`), which is the trading loop. **The engine runs
 on a widget's heartbeat.**
 
@@ -466,23 +469,23 @@ gives 16 raw and 6 live — **62.5%** false positives, all six being docstrings.
 
 | # | Site | What it does |
 | ---: | --- | --- |
-| 1 | `main.py:687` | A 50 ms `Qt.PreciseTimer` is the sole driver of the asyncio loop, therefore of every `bot.tick()`. |
-| 2 | `src/gui/bot_visualizer.py:3085`, write at `:3130` | A chart widget renames a temp file over `~/.acervator/bot_state.json`. Its docstring is headed **"SECOND WRITER WARNING"** and says the two writers "have never been reconciled". |
-| 3 | `src/gui/main_window.py:9721` | `force_fire(bot_id, aggressive=True)` — the Fire button makes the next tick place a MARKET order sized to the delta, bypassing the TA and BB gates. |
-| 4 | `src/gui/bot_live_settings.py:2204` | `self._bot.self_destruct(confirmation_token=...)` — a settings dialog liquidates and destroys a live bot. |
-| 5 | `src/gui/bot_live_settings.py:2541` | `manual_fire_position(pair)` — a dialog closes an Extractor position at market. |
-| 6 | `src/gui/bot_live_settings.py:5153` | `manual_fire_tranche(idx)` — a dialog fires one fold tranche back to market. |
-| 7 | `src/gui/bot_live_settings.py:2120` | `setattr(cfg, field, value)` — the dialog writes an arbitrary named field onto a live `BotConfig`. Untyped, unvalidated, persisted 60 s later. |
-| 8 | `src/gui/bot_live_settings.py:2078-2093` | The `_RUNTIME_ROUTED` dict. *Which* config fields need a runtime hook is policy, and it lives in a Qt dialog. |
+| 1 | `main.py:946` (built at `:387-401`) | A 50 ms `Qt.PreciseTimer` is the sole driver of the asyncio loop, therefore of every `bot.tick()`. |
+| 2 | `src/gui/bot_visualizer.py:1626`, write at `:1653` | A chart widget writes over `~/.acervator/bot_state.json` through the shared `atomic_write_json` helper. Its docstring is headed **"SECOND WRITER WARNING"** and says the two writers "have never been reconciled". |
+| 3 | `src/gui/main_window.py:2584` | `force_fire(bot_id, aggressive=True)` — the Fire button makes the next tick place a MARKET order sized to the delta, bypassing the TA and BB gates. |
+| 4 | `src/gui/live_settings/settings_tab.py:179` | `self._bot.self_destruct(confirmation_token=...)` — a settings dialog liquidates and destroys a live bot. |
+| 5 | `src/gui/live_settings/positions_held_tab.py:259` | `manual_fire_position(pair)` — a dialog closes an Extractor position at market. |
+| 6 | `src/gui/live_settings/fold_tranches_tab.py:2258` | `manual_fire_tranche(idx)` — a dialog fires one fold tranche back to market. |
+| 7 | `src/gui/bot_live_settings.py:877` | `setattr(cfg, field, value)` — the dialog writes an arbitrary named field onto a live `BotConfig`. Untyped, unvalidated, persisted 60 s later. |
+| 8 | `src/gui/bot_live_settings.py:836` | The `_RUNTIME_ROUTED` dict. *Which* config fields need a runtime hook is policy, and it lives in a Qt dialog. |
 | 9 | `src/gui/native_chart.py:276-424` | A second full indicator suite inside a `QWidget`: Bollinger(20,2), EMA12/26, Vortex(14), MACD(12,26,9), StochRSI, Ichimoku(9,26,52). |
 | 10 | `src/gui/main_window.py:114-305` | `_compose_ammo_cell` decides Scrum versus Fold territory, computes the dust band `max(target*0.001, 0.01)`, and predicts whether Manual Fire will no-op. |
-| 11 | `main.py:1631,1641,1643,1647` | The fleet start-all sequencer is a `QTimer.singleShot` state machine calling `_on_bot_command(bot_id, "start")` on real live bots. |
-| 12 | `main.py:1679` | `QTimer.singleShot(9500, _trigger_auto_restart)` — the whole fleet's auto-start hangs off the splash screen's fade-out finishing. |
-| 13 | `main.py:1467` | `save_timer.timeout.connect(periodic_save)` calls `save_all_state()` every 60 s. Position persistence is on a Qt timer. |
-| 14 | `src/gui/main_window.py:9185` | `bot._coordinator._lock_timeframe = tf` — a GUI handler reaches through two private attributes on every bot in the fleet. |
-| 15 | `src/gui/main_window.py:9929` | `bot._user_verified = True` — the real-money consent flag is set by the dialog directly on the bot, immediately before `bot.start()` at `:9933`. |
-| 16 | `src/gui/main_window.py:9667` | `bot.exchange = connector` — the GUI swaps a live bot's exchange object. |
-| 17 | `src/gui/main_window.py:9012-9014` | A "Reset all errors" button zeroes `total_errors`, `consecutive_errors` and `last_error` on every bot. |
+| 11 | `main.py:1078,1088,1090,1092` | The fleet start-all sequencer is a `QTimer.singleShot` state machine calling `_on_bot_command(bot_id, "start")` on real live bots. |
+| 12 | `main.py:1107` | `QTimer.singleShot(9500, _trigger_auto_restart)` — the whole fleet's auto-start hangs off the splash screen's fade-out finishing. |
+| 13 | `main.py:959` | `save_timer.timeout.connect(periodic_save)` calls `save_all_state()` every 60 s. Position persistence is on a Qt timer. |
+| 14 | `src/gui/main_window.py:2172` | `bot._coordinator._lock_timeframe = tf` — a GUI handler reaches through two private attributes on every bot in the fleet. |
+| 15 | `src/gui/main_window.py:2729` | `bot._user_verified = True` — the real-money consent flag is set by the dialog directly on the bot, immediately before `bot.start()` at `:2732`. |
+| 16 | `src/gui/main_window.py:2544` | `bot.exchange = connector` — the GUI swaps a live bot's exchange object. |
+| 17 | `src/gui/main_window.py:2073-2075` | A "Reset all errors" button zeroes `total_errors`, `consecutive_errors` and `last_error` on every bot. |
 | 18 | `investor_screen.py:115-142` | The scrum/fold strategy re-implemented: sell surplus at +2%, buy back at -0.6%, top up at -3%, 0.999 fee factor. |
 | 19 | `cartoon_screen.py:125-165` | The same strategy again. A third implementation. |
 | 20 | `src/gui/indicator_panel.py:1729-1770` | A Qt panel imports the real `VotingEngine` and runs `compute_all` over 60 md5-seeded synthetic candles, labelled with a real bot's symbol. Reachable from `QTimer.singleShot(3000, self._auto_init_demo)` at `:811`. |
@@ -506,16 +509,16 @@ Following each timer one hop into its slot:
 
 | Site | Interval | What it drives |
 | --- | ---: | --- |
-| `main.py:687` | 50 ms | **the asyncio pump — the engine's clock** |
-| `main.py:1467` | 60 s | `bot_manager.save_all_state()` |
-| `main.py:1631`, `:1641`, `:1643`, `:1647` | 250 ms poll / 2 s gap | the start-all sequencer, starting live bots |
-| `main.py:1679` | 9.5 s one-shot | fleet auto-restart |
-| `src/gui/bot_live_settings.py:5271` | 500 ms | polls the manual-fire future |
-| `src/gui/shared_testnet.py:162` | 250 ms | testnet queue drain |
-| `src/gui/shared_testnet.py:169` | 500 ms | testnet persist |
-| `src/gui/history_tab.py:561` | 400 ms | polls a trade-fetch future |
-| `src/gui/indicator_panel.py:811` | 3 s one-shot | runs the real `VotingEngine` |
-| `src/gui/main_window.py:7199` | 2 s | `_refresh_dashboard`, which at `:8014` calls `check_live_monitor()` |
+| `main.py:401` | 50 ms | **the asyncio pump — the engine's clock** |
+| `main.py:959` | 60 s | `bot_manager.save_all_state()` |
+| `main.py:1078`, `:1088`, `:1090`, `:1092` | 250 ms poll / 2 s gap | the start-all sequencer, starting live bots |
+| `main.py:1107` | 9.5 s one-shot | fleet auto-restart |
+| `src/gui/live_settings/fold_tranches_tab.py:2376` | 500 ms | polls the manual-fire future |
+| `src/gui/shared_testnet.py:164` | 250 ms | testnet queue drain |
+| `src/gui/shared_testnet.py:171` | 500 ms | testnet persist |
+| `src/gui/history_tab.py:327` | 400 ms | polls a trade-fetch future |
+| `src/gui/indicator_panel.py:808` | 3 s one-shot | runs the real `VotingEngine` |
+| `src/gui/main_window.py:696` | 2 s | `_refresh_dashboard`, which at `:1330` calls `check_live_monitor()` |
 
 That last one is the subtle case. It is nominally a display refresh, and it crosses into the
 trading side once every two seconds.
@@ -633,7 +636,7 @@ Plus **30 `QTimer.singleShot` sites**.
 
 **Dead timers (5):** `audio_suite.py:630`, `screen_recorder.py:197`, `screen_recorder.py:678`,
 `testnet_tab.py:148`, `stock_main_window.py:514`. Hosts are nulled at
-`main_window.py:5980` and `:6011`, or never constructed.
+`src/gui/main_tabs/retired_tabs.py:45` and `:76`, or never constructed.
 
 **A documented timer that does not exist.** `src/gui/main_window.py:965` states "The
 MainWindow wires a QTimer at 300000ms intervals." Grep for `300000|300_000` in that file
@@ -642,7 +645,7 @@ returns exactly **one hit — that sentence**. Its owning class `CapitalRegistry
 
 ### 4.3 The 2-second dashboard — the trunk contract
 
-`src/gui/main_window.py:7198-7200` fires `_refresh_dashboard` at `:7600`, **424 lines**. Per
+`src/gui/main_window.py:694-697` fires `_refresh_dashboard` at `:1051`, **424 lines**. Per
 tick:
 
 | Call | Site | Payload |
@@ -662,7 +665,7 @@ tick:
 Sub-cadences ride the same 2 s tick: 4 s tab refresh (`:7994`), 10 s analytics snapshot
 (`:7973`), 30 s crash-recovery snapshot (`:7980`).
 
-**Measured cost.** `BotContainer.get_status()` (`src/trading/bot_container.py:1863`) runs
+**Measured cost.** `BotContainer.get_status()` (`src/trading/bot_container.py:434`) runs
 `N_bots x 2 + N_bots_in_tabs` times per tick. At the operator's measured fleet of 35 bots on
 one exchange tab that is **105 dict-builds every 2 seconds**, each producing a **28
 top-level plus 15 nested = 43-field** dict.
@@ -713,7 +716,7 @@ payloads. Both sweeps agree at 27.
 **0 dynamic topics. 0 positional payload arguments. The whole surface is statically
 enumerable — a TypeScript union can be generated from the AST.**
 
-**GUI subscribers: 16 sites in 5 files** — `main_window.py:5063-5076` (6),
+**GUI subscribers: 16 sites in 5 files** — `main_window.py:197-205` (6),
 `live_bot_window.py:282-285` (4), `bot_visualizer.py:1329-1330` (2),
 `nuclear_controller.py:321-323` (3), `start_all_progress_dialog.py:97` (1).
 
@@ -735,7 +738,7 @@ ratio is **297 Qt to 27 bus**. Most GUI wiring is Qt-native and does not survive
   Five nested, five flat, and one flat variant carries an extra `usd` field. A React client
   cannot type this. **Normalise before serving.**
 - **3 dangling subscriptions** — `exchange.request`, `exchange.response`
-  (`live_bot_window.py:284-285`), `profit.cross_bot` (`bot_container.py:2245`). No producer.
+  (`live_bot_window.py:284-285`), `profit.cross_bot` (`src/trading/bot_container.py:640`). No producer.
 - **16 of 27 topics have no subscriber.** Only **11 (41%) are live end to end.**
 - `src/core/emit_contracts.py:119-153` declares **4 of the 27 topics (15%)**.
 - **3 of 5 GUI subscriber files discard the unsubscribe closure** returned by
@@ -743,14 +746,18 @@ ratio is **297 Qt to 27 bus**. Most GUI wiring is Qt-native and does not survive
 
 **Surface B — the signal_contract pins. Do NOT port this as a UI feed.**
 
-`src/core/signal_contract.py:2473` (`emit`), `:1497` (`SignalSink`), `:1073` (frozen `Signal`
+`src/core/signal_contract.py:1146` (`emit`), `:635` (`SignalSink`), `:471` (frozen `Signal`
 dataclass, **14 fields**: `name, site, actual, expected, ok, seq, ts, context, module, kind,
-count, dt, nth, duration`). **78 pins**, registry `docs/EMITTER_IDENTIFICATION.md`, enforced
-by `tools/emitter_registry_check.py` (verified today: 78/78, controls OK, **exit 0**).
+count, dt, nth, duration`). **The 78-pin count, `docs/EMITTER_IDENTIFICATION.md` and
+`tools/emitter_registry_check.py` are stale.** Both the registry doc and the check tool were
+removed in the "remove the 'pin' system" commit (`e3054e4`) and its follow-up (`2b01465`).
+`src/core/emit_contracts.py` is the current mechanism, and it is a topic-keyed contract, not
+a line-numbered pin count — the 78/78 verification cannot be re-run as this paragraph
+describes it.
 
 It has **zero subscribers**. It writes JSONL to
 `~/.acervator_logs/signals/session.jsonl` and retains `RETAIN_ROWS = 350_000` in memory. The
-Console **polls** it: `_drain_signals` (`main_window.py:6613`) calls `sink.since(watermark)`
+Console **polls** it: `_drain_signals` (`main_window.py:342`) calls `sink.since(watermark)`
 every 500 ms and renders the newest 200 into a `setMaximumBlockCount(2000)` view.
 
 This is a verification instrument, not a data feed. **Its value in the migration is as the
@@ -782,8 +789,9 @@ is SMA-seeded, so 100 versus 300 changes live gate decisions.
 > `set_candles` stores the whole list (`native_chart.py:261`).
 
 **Cadence — push, parent-driven, two rates.** Repaint plus overlays every **2,000 ms**
-(`main_window.py:7695` calls `update_charts` at `:1270`, which calls `panel.chart.update()`
-at `:1517`). Candle data at **30 s or slower per panel** (`main_window.py:7943` calls
+(`main_window.py:1112` calls `update_charts` at `src/gui/widgets/trade_charts_tab.py:54`,
+which calls `panel.chart.update()` at `:223`). Candle data at **30 s or slower per panel**
+(`main_window.py:1273` calls
 `fetch_chart_data` at `:1636`, throttle at `:1669`). **60 repaints per data refresh.** The
 only upward signal is `timeframe_changed = Signal(str)` (`native_chart.py:93`).
 
@@ -811,7 +819,7 @@ verified/raw = 41/41 = 1.00.** Every site was opened and read. By class: `QTable
 2. **Both `QTreeWidget`s are flat** — `setRootIsDecorated(False)`, `addTopLevelItem` only, no
    `addChild` anywhere. No hierarchical view exists to port.
 
-**18 of 41 (44%) are dead.** Hosts are nulled at `main_window.py:5974-6029` ("REMOVED per
+**18 of 41 (44%) are dead.** Hosts are nulled at `src/gui/main_tabs/retired_tabs.py:9-94` ("REMOVED per
 P1.7 / MEM-178").
 
 **The 23 live surfaces:**
@@ -828,7 +836,7 @@ P1.7 / MEM-178").
 | Market Inspector signals | `market_inspector.py:161` | 6 | `inspector.last_signals` |
 | Market Inspector pairs | `market_inspector.py:178` | 4 | `inspector.last_pairs` |
 | Topology bots / wires | `market_inspector_topologies.py:139` / `:175` | 4 / 4 | proposal dicts |
-| Error dialog, two tables | `main_window.py:8942` / `:8963` | 4 / 5 | `deque(maxlen=200)` |
+| Error dialog, two tables | `main_window.py:2012` / `:2031` | 4 / 5 | `deque(maxlen=200)` |
 | `bot_live_settings.py`, eight tables | `:2436, :4298, :5869, :5926, :5982, :6070, :7796, :7874` | 9, 11, 3, 3, 4, 5, 7, 4 | bot, tranches, wires, phantom, coordinator |
 
 **Full rebuild per tick.** `setRowCount(len(...))` then every cell rewritten
@@ -910,8 +918,8 @@ plus an import sweep. It changes no behaviour, it fixes the `topology_stress.py`
 and it makes those lines visible to coverage for the first time (`pyproject.toml:229` excludes
 `src/gui/*`). **Worth doing whether or not React ever happens.**
 
-**Step 1 — give the engine its own clock.** `main.py:687` (50 ms pump), `main.py:1467` (60 s
-save), `main.py:1631-1647` (start-all sequencer), `main.py:1679` (auto-restart). Four sites.
+**Step 1 — give the engine its own clock.** `main.py:401` (50 ms pump), `main.py:959` (60 s
+save), `main.py:1078-1092` (start-all sequencer), `main.py:1107` (auto-restart). Four sites.
 This item already has its own arc. The React migration makes it blocking rather than optional.
 
 **Step 2 — build the read API.** Seven feeds (section 4.8). This is where a framework decision
