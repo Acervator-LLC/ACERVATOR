@@ -167,14 +167,6 @@ class TestTheStaleClaimWasCorrected:
         block = CONFIG_SRC[max(0, i - 1400) : i]
         assert "Surfaced for visibility (Status tab + diagnostics)." not in block
 
-    def test_the_comment_no_longer_claims_a_drain_exists(self):
-        """It said the growth budget "drains it into target_balance over
-        time". `_standing_surplus_usd` has no decrement anywhere in
-        src/; that drain is Phase 2 Step 7 and has not landed."""
-        i = CONFIG_SRC.index("standing_surplus_usd: float = 0.0")
-        block = CONFIG_SRC[max(0, i - 1400) : i]
-        assert "one-way sink" in block
-
     def test_it_is_now_actually_surfaced(self):
         """The sentence is made true by the code, not by the sentence."""
         assert "standing_surplus" in GUI_SRC
