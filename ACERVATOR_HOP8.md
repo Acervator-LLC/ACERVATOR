@@ -258,12 +258,16 @@ invention.** Static gates cannot catch runtime hallucination.
 
 ## THE QUEUE
 
-**His stated priority order, 2026-09-03:**
+**#128 IS THE OPERATOR'S. HE TOOK OWNERSHIP 2026-09-03.** Do not open a
+conversion unit, do not dispatch one, do not touch a React surface unless he
+hands you a specific piece of it. The section below is context for reading his
+work, not a work order.
 
-1. **#128 Stage 3** — convert the whole UI to React.
-2. **#319** — full code base comment compliance sweep.
-3. **Fixes** — defects found during 1 and 2.
-4. **#331 local CI/CD** — explicitly afterwards.
+**What is yours, in order:**
+
+1. **#319** — full code base comment compliance sweep.
+2. **Fixes** — defects found during the sweep, and the open issues below.
+3. **#331 local CI/CD** — explicitly afterwards.
 
 The GitHub issues are the queue now, not HOP7's item numbers.
 
@@ -291,7 +295,7 @@ Trading, Charts, Bot Swarm, Market Inspector, Simulator, History, Console.
 
 ---
 
-## #128 — THE CONVERSION. RESUME HERE.
+## #128 — THE CONVERSION. HIS, NOT YOURS. CONTEXT ONLY.
 
 **Measured 2026-09-03 on `origin/current`:**
 
@@ -338,13 +342,19 @@ Python analyzers cannot parse JS. Measured baselines exist for
 `bot_swarm_list.js`, `design_tokens.js`, `theme_engine.js`. Compare against the
 file's own baseline, never against zero.
 
-**Unit shape:** one TAB per unit, each gated on CI, tests tight and focused,
-shell first. A prior attempt spent 10 hours on one tab and produced 3,618 test
-lines against 1,702 code lines. Do not repeat that ratio.
+**Unit shape, if he hands you a piece:** one TAB per unit, each gated on CI,
+tests tight and focused, shell first. A prior attempt spent 10 hours on one tab
+and produced 3,618 test lines against 1,702 code lines. Do not repeat that
+ratio.
+
+**A comment sweep may still touch `src/gui`.** That is #319 work and it is
+allowed — it changes no executable line. Keep clear of his conversion branches,
+and check `git branch -r` before taking a worktree so you do not collide with
+one.
 
 ---
 
-## #319 — THE COMMENT AUDIT. RESUME HERE.
+## #319 — THE COMMENT AUDIT. THIS IS THE ACTIVE ITEM.
 
 His framing: *"I would wager that having all of this mess in these files is
 contributing to drift when you re-read the nonsense."*
@@ -544,7 +554,7 @@ nan is False. `type(inf) is float` is True; `math.isfinite(10**400)` raises.
 ## SESSION OPENING PROTOCOL
 
 1. `git fetch origin`; check `origin/current..origin/main` and the remote
-   branch list for work the CTO already did.
+   branch list for work already pushed there.
 2. Prove the harness is live — both fixture halves, then confirm an
    `[archetype-gate]` line appears on an edit.
 3. Merge PR #365 and #366 if CI is green.
