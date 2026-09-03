@@ -99,3 +99,6 @@ tools/.island_ledger.jsonl
 .claude/*
 # Shared guidance is not a hook and carries no permissions, so it is tracked.
 !.claude/rules/
+
+# Agent working files never enter the tree.
+scratchpad/

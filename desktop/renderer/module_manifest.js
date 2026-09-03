@@ -4,6 +4,7 @@
 
 window.ACERVATOR_MODULES = [
   "design_tokens.js",
+  "design_system.js",
   "theme_engine.js",
   "shared_widgets.js",
   "table_cells.js",

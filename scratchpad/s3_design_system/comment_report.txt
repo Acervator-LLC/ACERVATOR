@@ -1,2 +1,0 @@
-git named 20 changed file(s)
-checked 17 file(s), 0 fault(s)
