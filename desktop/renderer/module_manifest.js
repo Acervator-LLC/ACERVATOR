@@ -45,4 +45,5 @@ window.ACERVATOR_MODULES = [
   "phantom_bots_tab.js",
   "positions_held.js",
   "tradingview_chart.js",
+  "crypto_news_ticker.js",
 ];
