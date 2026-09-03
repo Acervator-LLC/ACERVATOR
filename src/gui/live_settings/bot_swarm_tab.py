@@ -71,7 +71,12 @@ class BotSwarmTabMixin:
         transactions = getattr(mgr, "_transactions", []) or []
         getattr(mgr, "_bot_refs", {}) or {}
 
-        outbound = dict(wires_dict.get(bot_id, {}))  # {target_id: pct}
+        # The key is kept when the percentage is refused, the same way
+        # the inbound side keeps it.
+        outbound = {
+            tgt_id: _as_finite_float(pct)
+            for tgt_id, pct in dict(wires_dict.get(bot_id, {})).items()
+        }
         inbound: dict = {}
         for src_id, targets in wires_dict.items():
             if isinstance(targets, dict) and bot_id in targets:
@@ -192,9 +197,20 @@ class BotSwarmTabMixin:
 
             prov_dict = dict(getattr(ledger, "provenance", {}) or {})
             if prov_dict:
+                # Largest admitted amount first, then the funders whose
+                # amount no reading admits, by name.
+                prov_read: list = []
+                prov_refused: list = []
+                for _src, _amt in prov_dict.items():
+                    _read = _as_finite_float(_amt)
+                    if _read is None:
+                        prov_refused.append(_src)
+                    else:
+                        prov_read.append((_src, _read))
+                prov_read.sort(key=lambda kv: (-kv[1], str(kv[0])))
                 prov_str = ", ".join(
-                    f"{k}: ${v:,.2f}"
-                    for k, v in sorted(prov_dict.items(), key=lambda kv: -kv[1])
+                    [f"{k}: ${v:,.2f}" for k, v in prov_read]
+                    + [f"{k}: —" for k in sorted(prov_refused, key=str)]
                 )
                 prov_label = QLabel(prov_str)
                 prov_label.setWordWrap(True)
@@ -242,7 +258,9 @@ class BotSwarmTabMixin:
                     tgt_asset = getattr(tgt_ledger, "asset", "") or ""
                 label = f"{tgt_id}" + (f" ({tgt_asset})" if tgt_asset else "")
                 out_tbl.setItem(row, 0, QTableWidgetItem(label))
-                out_tbl.setItem(row, 1, QTableWidgetItem(f"{pct:.2f}%"))
+                out_tbl.setItem(
+                    row, 1, QTableWidgetItem("—" if pct is None else f"{pct:.2f}%")
+                )
                 lifetime = out_lifetime.get(tgt_id, 0.0)
                 out_tbl.setItem(
                     row,

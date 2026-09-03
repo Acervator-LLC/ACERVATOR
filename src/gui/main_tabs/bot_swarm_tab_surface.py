@@ -86,8 +86,15 @@ SEED_SOURCE = "SEED"
 MATURE_RATIO_FALLBACK_PCT = 70
 MATURE_RATIO_ZERO = 0.0
 
-NOT_ACTIVE_TEXT = (
-    "<b>Bot Swarm not active for this bot.</b><br><br>"
+STRONG_OPEN_TAG = "<b>"
+STRONG_CLOSE_TAG = "</b>"
+LINE_BREAK_TAG = "<br>"
+STRONG_WEIGHT = "bold"
+
+NOT_ACTIVE_LEAD = ""
+NOT_ACTIVE_STRONG = "Bot Swarm not active for this bot."
+NOT_ACTIVE_BREAKS = 2
+NOT_ACTIVE_TAIL = (
     "Smart Wire manager has not been attached. The "
     "bot is operating standalone — no wire connections "
     "can fire to/from it. To enable Bot Swarm "
@@ -95,6 +102,14 @@ NOT_ACTIVE_TEXT = (
     "the platform's Smart Wire manager (typically "
     "automatic for scrumming bots created via the "
     "Bot Wizard with Smart Wire enabled)."
+)
+NOT_ACTIVE_TEXT = (
+    NOT_ACTIVE_LEAD
+    + STRONG_OPEN_TAG
+    + NOT_ACTIVE_STRONG
+    + STRONG_CLOSE_TAG
+    + LINE_BREAK_TAG * NOT_ACTIVE_BREAKS
+    + NOT_ACTIVE_TAIL
 )
 NOT_ACTIVE_STYLE = f"color: {ds.TEXT_INACTIVE}; padding: 12px;"
 NOT_ACTIVE_WORD_WRAP = True
@@ -133,6 +148,7 @@ INBOUND_COUNT_FORMAT = "{count} source(s)"
 MONEY_FORMAT = "${value:,.4f}"
 SIGNED_MONEY_FORMAT = "${value:+,.4f}"
 PROVENANCE_MONEY_FORMAT = "{source}: ${value:,.2f}"
+PROVENANCE_REFUSED_FORMAT = "{source}: {value}"
 PROVENANCE_JOIN = ", "
 MATURE_TOTAL_ROW_FORMAT = "Mature profit total ({pct}% of P&L):"
 PCT_FORMAT = "{value:.2f}%"
@@ -248,6 +264,28 @@ def mature_ratio_pct() -> int:
         return int(round(BotLedger.MATURE_RATIO * 100))
     except Exception:
         return MATURE_RATIO_FALLBACK_PCT
+
+
+def provenance_entries(provenance: dict) -> list:
+    """Each funder paired with its drawn line, biggest amount first."""
+    admitted = []
+    refused = []
+    for source, value in provenance.items():
+        amount = as_finite_float(value)
+        if amount is None:
+            refused.append(source)
+        else:
+            admitted.append((source, amount))
+    admitted.sort(key=lambda pair: (-pair[1], str(pair[0])))
+    drawn = [
+        [str(source), PROVENANCE_MONEY_FORMAT.format(source=source, value=amount)]
+        for source, amount in admitted
+    ]
+    drawn += [
+        [str(source), PROVENANCE_REFUSED_FORMAT.format(source=source, value=NO_VALUE)]
+        for source in sorted(refused, key=str)
+    ]
+    return drawn
 
 
 def format_age(seconds: float) -> str:
@@ -414,6 +452,7 @@ class TabState:
         self.provenance_rows: list = []
         self.provenance_styles: list = []
         self.provenance_wraps: list = []
+        self.provenance_breakdown: list = []
         self.mature_ratio_pct = MATURE_RATIO_FALLBACK_PCT
         self.mature_refused = False
         self.predominant_refused = False
@@ -483,7 +522,10 @@ class BotSwarmTabModel:
         wires = getattr(fleet, WIRES_ATTRIBUTE, {}) or {}
         ledgers = getattr(fleet, LEDGERS_ATTRIBUTE, {}) or {}
         transactions = getattr(fleet, TRANSACTIONS_ATTRIBUTE, []) or []
-        outbound = dict(wires.get(bot_id, {}))
+        outbound = {
+            target_id: as_finite_float(pct)
+            for target_id, pct in dict(wires.get(bot_id, {})).items()
+        }
         inbound: dict = {}
         for source_id, targets in wires.items():
             if isinstance(targets, dict) and bot_id in targets:
@@ -644,14 +686,11 @@ class BotSwarmTabModel:
         provenance = dict(getattr(ledger, LEDGER_PROVENANCE_FIELD, {}) or {})
         if provenance:
             self._record(STEP_PROVENANCE_BREAKDOWN)
+            entries = provenance_entries(provenance)
+            self.state.provenance_breakdown = entries
             self._add_provenance(
                 PROVENANCE_ROW_LABEL,
-                PROVENANCE_JOIN.join(
-                    PROVENANCE_MONEY_FORMAT.format(source=source, value=value)
-                    for source, value in sorted(
-                        provenance.items(), key=lambda pair: -pair[1]
-                    )
-                ),
+                PROVENANCE_JOIN.join(drawn for _source, drawn in entries),
                 PROVENANCE_STYLE,
                 PROVENANCE_WORD_WRAP,
             )
@@ -692,7 +731,7 @@ class BotSwarmTabModel:
             self.state.outbound_rows.append(
                 [
                     self._wire_label(target_id, ledgers),
-                    PCT_FORMAT.format(value=pct),
+                    NO_VALUE if pct is None else PCT_FORMAT.format(value=pct),
                     (
                         NO_VALUE
                         if target_id in unreadable
@@ -837,6 +876,7 @@ def payload_formats() -> dict:
         "money": MONEY_FORMAT,
         "signed_money": SIGNED_MONEY_FORMAT,
         "provenance_money": PROVENANCE_MONEY_FORMAT,
+        "provenance_refused": PROVENANCE_REFUSED_FORMAT,
         "mature_total_row": MATURE_TOTAL_ROW_FORMAT,
         "pct": PCT_FORMAT,
         "asset_suffix": ASSET_SUFFIX_FORMAT,
@@ -947,6 +987,16 @@ def payload_attributes() -> dict:
     }
 
 
+def payload_marks() -> dict:
+    """Every tag the not-active line is written with."""
+    return {
+        "strong_open": STRONG_OPEN_TAG,
+        "strong_close": STRONG_CLOSE_TAG,
+        "line_break": LINE_BREAK_TAG,
+        "strong_weight": STRONG_WEIGHT,
+    }
+
+
 def payload_tables() -> dict:
     """Every table property the tab sets, before any row is filled."""
     return {
@@ -980,6 +1030,16 @@ def build_view_model(model: BotSwarmTabModel) -> dict:
             "text": NOT_ACTIVE_TEXT,
             "style_sheet": NOT_ACTIVE_STYLE,
             "word_wrap": NOT_ACTIVE_WORD_WRAP,
+            "lead": NOT_ACTIVE_LEAD,
+            "strong": NOT_ACTIVE_STRONG,
+            "breaks": NOT_ACTIVE_BREAKS,
+            "tail": NOT_ACTIVE_TAIL,
+            "marks": [
+                NOT_ACTIVE_LEAD,
+                NOT_ACTIVE_STRONG,
+                NOT_ACTIVE_BREAKS,
+                NOT_ACTIVE_TAIL,
+            ],
         },
         "summary_group": {
             "shown": model.state.summary_shown,
@@ -996,6 +1056,7 @@ def build_view_model(model: BotSwarmTabModel) -> dict:
             "styles": list(model.state.provenance_styles),
             "word_wraps": list(model.state.provenance_wraps),
             "word_wrap_when_shown": PROVENANCE_WORD_WRAP,
+            "breakdown": [list(one) for one in model.state.provenance_breakdown],
             "mature_ratio_pct": model.state.mature_ratio_pct,
             "mature_refused": model.state.mature_refused,
             "predominant_refused": model.state.predominant_refused,
@@ -1034,6 +1095,7 @@ def build_view_model(model: BotSwarmTabModel) -> dict:
             "word_wrap": EMPTY_WORD_WRAP,
         },
         "tables": payload_tables(),
+        "marks": payload_marks(),
         "labels": payload_labels(),
         "texts": payload_texts(),
         "titles": payload_titles(),
