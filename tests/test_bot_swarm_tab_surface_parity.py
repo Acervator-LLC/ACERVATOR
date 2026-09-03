@@ -1475,10 +1475,11 @@ def test_a_refused_predominant_funder_reads_as_a_seed_funded_bot(monkeypatch):
     """A refused funder lookup is told apart from a seed-funded bot."""
     spec = BY_NAME["a_predominant_funder_that_refuses"]
     rows = dict(traced_qt(spec, monkeypatch)["provenance"]["rows"])
-    assert rows[surface.PREDOMINANT_ROW_LABEL] == surface.NO_PREDOMINANT_TEXT
+    assert rows[surface.PREDOMINANT_ROW_LABEL] == surface.NO_VALUE
     seeded = scenario("seeded", fleet=mine_with(asset="B", provenance={"SEED": 10.0}))
     seeded_rows = dict(traced_qt(seeded, monkeypatch)["provenance"]["rows"])
     assert seeded_rows[surface.PREDOMINANT_ROW_LABEL] == surface.NO_PREDOMINANT_TEXT
+    assert rows[surface.PREDOMINANT_ROW_LABEL] != seeded_rows[surface.PREDOMINANT_ROW_LABEL]
     assert build_surface(spec).state.predominant_refused is True
     assert build_surface(seeded).state.predominant_refused is False
 

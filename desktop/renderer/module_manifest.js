@@ -55,4 +55,5 @@ window.ACERVATOR_MODULES = [
   "bot_wizard.js",
   "bot_selection.js",
   "api_tester_tab.js",
+  "bot_swarm_tab.js",
 ];

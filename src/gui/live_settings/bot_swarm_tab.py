@@ -153,11 +153,15 @@ class BotSwarmTabMixin:
             )
 
             pred_src = None
+            pred_refused = False
             try:
                 pred_src = ledger.predominant_source
             except Exception:  # R28-OK: defensive accessor probe
+                pred_refused = True
                 pred_src = None
-            if pred_src:
+            if pred_refused:
+                pf.addRow("Predominant funder (PPS):", QLabel("—"))
+            elif pred_src:
                 pf.addRow("Predominant funder (PPS):", QLabel(str(pred_src)))
             else:
                 pf.addRow("Predominant funder (PPS):", QLabel("— (SEED-funded only)"))
