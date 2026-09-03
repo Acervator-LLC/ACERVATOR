@@ -59,7 +59,7 @@ import re
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from dev_harness.harness.report import (
     REPO_ROOT,
@@ -70,7 +70,15 @@ from dev_harness.harness.report import (
     scan_rule_modules,
 )
 
-__all__ = ["ArchetypeReport", "CodingArchetype", "Finding", "main"]
+__all__ = [
+    "HANDLED_LANGUAGES",
+    "UNKNOWN_LANGUAGE",
+    "ArchetypeReport",
+    "CodingArchetype",
+    "Finding",
+    "detect_language",
+    "main",
+]
 
 
 # `Finding` and `ArchetypeReport` now live in tools/harness/report.py.
@@ -78,6 +86,152 @@ __all__ = ["ArchetypeReport", "CodingArchetype", "Finding", "main"]
 # the drifts shipped a green report for a run that checked nothing.
 # Re-exported above so `from dev_harness.harness.coding_archetype import
 # ArchetypeReport` keeps working.
+
+
+# ---------------------------------------------------------------------------
+# LANGUAGE DETECTION
+#
+# Every analyzer this archetype drives is a Python analyzer, and none of
+# them refuses a file that is not Python. MEASURED on one JavaScript
+# file, src/gui/web/bot_swarm_list.js: ruff emitted 3,089 findings, 6 of
+# them HIGH, and vulture raised "unterminated string literal" after
+# reading a `//` comment containing an apostrophe as an unclosed Python
+# string. The verdict was passed=False for reasons that described
+# nothing in the file. Sixty-two JavaScript files in this tree were
+# ungateable that way.
+#
+# A file whose language has no toolchain here is reported UNHANDLED, a
+# verdict distinct from both passed and failed: nothing ran, so the
+# report says nothing about the code. `ArchetypeReport.passed` refuses
+# it, so the gate cannot be satisfied by a file it never examined.
+#
+# NO JAVASCRIPT TOOLCHAIN IS INTRODUCED. There is no Node on this
+# machine. Detecting JavaScript and declining it is the whole change.
+#
+# FALSIFICATION: this block is wrong if a `.py` file reaches any path
+# other than the analyzers below; if a file the analyzers cannot parse
+# still reaches them; or if an unhandled verdict is ever readable as a
+# pass.
+# ---------------------------------------------------------------------------
+
+UNKNOWN_LANGUAGE = "unknown"
+
+# The languages this archetype carries analyzers for. Adding a name here
+# is a claim that the runners below can read that language.
+HANDLED_LANGUAGES: frozenset[str] = frozenset({"python"})
+
+# The suffix decides whenever it is mapped, because the runtimes that
+# consume these files dispatch on it -- Python's import machinery on
+# `.py`, Node's resolver on `.js`, `.mjs` and `.cjs`. A suffix is a
+# contract, not a hint, so no content check may overturn one; that is
+# what keeps the Python path identical.
+_LANGUAGE_BY_SUFFIX: dict[str, str] = {
+    ".py": "python",
+    ".pyi": "python",
+    ".pyw": "python",
+    # A PyInstaller spec is Python that PyInstaller execs. Measured on
+    # Acervator_win.spec before this map existed: every analyzer read it
+    # and returned 52 findings, so leaving it unmapped would drop real
+    # coverage rather than stop a fabrication.
+    ".spec": "python",
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".json": "json",
+    ".jsonl": "json",
+    ".html": "html",
+    ".htm": "html",
+    ".css": "css",
+    ".md": "markdown",
+    ".markdown": "markdown",
+    ".rst": "restructuredtext",
+    ".sh": "shell",
+    ".bash": "shell",
+    ".zsh": "shell",
+    ".ps1": "powershell",
+    ".bat": "batch",
+    ".cmd": "batch",
+    ".yml": "yaml",
+    ".yaml": "yaml",
+    ".toml": "toml",
+    ".ini": "ini",
+    ".cfg": "ini",
+    ".sql": "sql",
+    ".sol": "solidity",
+    ".xml": "xml",
+    ".svg": "xml",
+    ".csv": "csv",
+    ".txt": "text",
+    ".log": "text",
+}
+
+# The interpreter a shebang names, for a file whose suffix carries no
+# contract. `env` is skipped by reading the words right to left.
+_LANGUAGE_BY_INTERPRETER: dict[str, str] = {
+    "python": "python",
+    "node": "javascript",
+    "nodejs": "javascript",
+    "deno": "javascript",
+    "sh": "shell",
+    "bash": "shell",
+    "zsh": "shell",
+    "dash": "shell",
+    "ksh": "shell",
+    "ruby": "ruby",
+    "perl": "perl",
+}
+
+_SHEBANG_RE = re.compile(r"^#!\s*(?P<first>\S+)(?:\s+(?P<second>\S+))?")
+
+# `python3`, `python3.14` and `python` are one interpreter.
+_INTERPRETER_VERSION_RE = re.compile(r"[\d.]+$")
+
+# A minified bundle is one very long line; the shebang, if any, is in
+# the first few bytes.
+_SHEBANG_READ_LIMIT = 256
+
+
+def _shebang_language(path: Path) -> str:
+    """Name the language a file's shebang declares, or "" for none.
+
+    Reads the first line only, and answers "" on any read failure, so a
+    binary or unreadable file falls through to the unknown verdict
+    rather than raising out of `review`.
+    """
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            first_line = handle.readline(_SHEBANG_READ_LIMIT)
+    except OSError:
+        return ""
+    match = _SHEBANG_RE.match(first_line)
+    if match is None:
+        return ""
+    words = [w for w in (match.group("first"), match.group("second")) if w]
+    for word in reversed(words):
+        stem = _INTERPRETER_VERSION_RE.sub("", PurePosixPath(word).name)
+        language = _LANGUAGE_BY_INTERPRETER.get(stem)
+        if language:
+            return language
+    return ""
+
+
+def detect_language(path: Path) -> str:
+    """Name the language of one file, for `CodingArchetype.review`.
+
+    The suffix answers whenever it is mapped. Content -- the shebang --
+    answers only for a suffix that names no language, which is where the
+    suffix is absent or lies by carrying no information at all. A file
+    neither can place is `UNKNOWN_LANGUAGE`, which is unhandled, so an
+    unplaceable file is declined rather than parsed as Python.
+    """
+    language = _LANGUAGE_BY_SUFFIX.get(path.suffix.lower())
+    if language:
+        return language
+    return _shebang_language(path) or UNKNOWN_LANGUAGE
+
 
 
 # ---------------------------------------------------------------------------
@@ -453,6 +607,16 @@ class CodingArchetype:
             report.falsification = self._build_falsification(report)
             return report
 
+        # A directory has no single language, and every analyzer below
+        # self-filters to `.py` when handed one, so a mixed tree needs
+        # no gate here.
+        if target.is_file():
+            report.language = detect_language(target)
+            if report.language not in HANDLED_LANGUAGES:
+                report.unhandled = True
+                report.falsification = self._unhandled_falsification(report)
+                return report
+
         # Past this line the analyzers actually run over the target.
         # `scanned` stays False on the early return above, so an empty
         # report can no longer answer passed=True.
@@ -509,6 +673,21 @@ class CodingArchetype:
 
         report.falsification = self._build_falsification(report)
         return report
+
+    @staticmethod
+    def _unhandled_falsification(report: ArchetypeReport) -> str:
+        """State what would prove an `unhandled` verdict wrong.
+
+        Says plainly that no analyzer ran, because the one way this
+        verdict can do harm is being read as a pass.
+        """
+        return (
+            f"This report is wrong if {report.target!r} is not "
+            f"{report.language}, or if this archetype in fact carries an "
+            f"analyzer that reads {report.language}. NO ANALYZER RAN, so "
+            f"this report says nothing about the file's quality and is not "
+            f"a pass; it records that the file type has no checker here."
+        )
 
     def _build_falsification(self, report: ArchetypeReport) -> str:
         """State the concrete conditions under which this report is wrong.
