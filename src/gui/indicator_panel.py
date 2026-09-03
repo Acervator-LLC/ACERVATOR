@@ -1,6 +1,6 @@
 """
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-indicator_panel.py — Indicator Voting Window v1.1
+indicator_panel.py — Indicator Voting Window
 ===================================================
 Persistent GUI panel showing which indicators are signalling bullish or
 bearish across multiple timeframes.  Updates in real-time as the TA
@@ -33,11 +33,8 @@ from pathlib import Path
 
 from ..core.io_utils import atomic_write_json
 
-# v3.23.7 — privacy-mask buttons arc. The IVP bot selector readout is
-# the only IVP-side field registered in the mask registry; TA columns
-# (BB/VTX/MACD/SRsi/Ichi/Vol/Sling/ADX/STrd/ZSc/KER/RSI/Net/Conf) get
-# NO privacy wiring — they're anonymous in isolation. The TA-leak-guard
-# test in tests/test_privacy_mask_v3_23_7.py pins this constraint.
+# ivp.bot_selector is the only IVP field in the privacy mask registry;
+# TA columns carry no privacy wiring.
 from ..core.privacy_mask_registry import (
     get_privacy_mask_registry,
     mask_or,
@@ -47,48 +44,22 @@ logger = logging.getLogger("acervator.gui")
 
 
 # ---------------------------------------------------------------------------
-# UNIT 1 — the TA snapshot store.
-#
-# WHAT WAS BROKEN. The panel is fed from `bot._last_summary`, a value the
-# TRADING tick leaves behind as a by-product of deciding whether to
-# trade (assigned at scrumming_bot.py:7269 and :7513, both behind
-# `len(candles) >= 30`). It lives ONLY on the bot object, so it dies
-# with the process. Measured 2026-08-13: BTC emitted
-# "TA Vote: BEARISH (conf=0.13, B:2/N:5/S:5)" at 22:00:26 and the
-# restart at 22:35 threw it away; the operator then watched a blank
-# panel for a bot that had a perfectly good reading half an hour old.
-# A bot parked in its dust band never replaces it either, because the
-# tick returns at scrumming_bot.py:6660 before the TA block.
-#
-# WHY A SIDECAR RATHER THAN bot_state.json. `~/.acervator/` is the
-# per-bot durable store and `StateManager` (src/core/state_manager.py:31)
-# owns it, but the per-bot record inside `bot_state.json` is composed by
-# `BotContainer.get_full_state` — the trading layer. The GUI already has
-# a precedent for a durable sidecar BESIDE that file, resolved off the
-# LIVE StateManager's directory rather than a re-derived default:
-# `MainWindow._snapshot_wires_for_adopt`. This reuses that mechanism
-# exactly — same directory root, same atomic write, same bounded
-# retention, same "never raise" contract — so a TA snapshot can never
-# corrupt or contend with the state file that holds the money.
-#
-# COST. Zero API calls and zero TA computation. Everything written here
-# was already computed by the tick and already handed to the panel;
-# this only stops it being discarded.
+# UNIT 1 — durable per-bot TA reads, stored outside bot_state.json.
 # ---------------------------------------------------------------------------
 
 #: Sidecar directory name, created under the live StateManager's dir.
 _TA_SNAPSHOT_DIRNAME = "ta_snapshots"
 
-#: Payload shape version. A reader that does not recognise the value
-#: treats the file as absent rather than guessing at its fields.
+#: Payload shape version. An unrecognised value is treated as absent,
+#: never guessed at.
 _TA_SNAPSHOT_SCHEMA = 1
 
-#: Retention bound. The fleet is ~37 bots; this leaves generous room for
-#: renamed and deleted bots without letting the directory grow forever.
+#: Retention bound for _TA_SNAPSHOT_KEEP; ~37 live bots need far fewer
+#: than 400 files.
 _TA_SNAPSHOT_KEEP = 400
 
-#: Characters kept verbatim in a snapshot filename. Everything else is
-#: replaced, so a bot_id can never walk out of the snapshot directory.
+#: Characters kept verbatim in a snapshot filename; everything else
+#: becomes "_", preventing directory traversal.
 _SAFE_ID_CHARS = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
 )
@@ -114,8 +85,8 @@ def _safe_snapshot_stem(bot_id: str) -> str:
     """
     raw = str(bot_id)
     cleaned = "".join(c if c in _SAFE_ID_CHARS else "_" for c in raw)[:48]
-    # blake2b with a short digest: this is a filename disambiguator, not
-    # a security primitive, and it never leaves the local disk.
+    # blake2b digest disambiguates filenames; not a security primitive,
+    # never leaves local disk.
     digest = hashlib.blake2b(raw.encode("utf-8"), digest_size=4).hexdigest()
     return f"{cleaned or 'bot'}.{digest}"
 
@@ -134,33 +105,24 @@ def _json_safe(value: object) -> object:
     unserialisable leaf would otherwise abort the whole write and lose
     the reading this unit exists to keep.
     """
-    # EXACT types for the scalars. `isinstance` would let a bool through
-    # the int arm and a numpy float64 through the float arm, and the
-    # numpy value then reaches json.dumps as an object it cannot encode
-    # — which is the failure this helper exists to prevent. Container
-    # checks stay on isinstance because a dict subclass should still be
-    # walked.
+    # `kind is type(value)` plus `isinstance` satisfies the exactness
+    # check and the type checkers without a suppression comment.
     kind = type(value)
     if value is None or kind is str or kind is bool or kind is int:
         return value
     if kind is float and isinstance(value, float):
-        # `kind is float` is the exactness the guard wants; `isinstance`
-        # beside it is what narrows the type for the checkers, so
-        # neither needs a suppression to stay quiet.
+        # `kind is float` plus `isinstance` narrows the type for the
+        # checkers without a suppression comment.
         #
-        # NaN and the infinities are not valid JSON. json.dumps emits
-        # them anyway and json.loads on the way back is fine with them,
-        # but nothing downstream can render them, so drop them here.
+        # NaN and the infinities are not valid JSON; json.dumps would
+        # emit them anyway, so they are dropped here.
         return value if math.isfinite(value) else None
     if isinstance(value, dict):
         return {str(k): _json_safe(v) for k, v in value.items()}
     if isinstance(value, (list, tuple, set, frozenset)):
         return [_json_safe(v) for v in value]
-    # Anything left is a numpy scalar, a Decimal, an enum member or
-    # some other object. Going through str() keeps the argument typed
-    # for the checkers and gives the right answer for all three: a
-    # numpy float64 and a Decimal both round-trip, and an enum member
-    # raises ValueError and falls through to its own text.
+    # Remaining values (numpy scalars, Decimal, enums) round-trip
+    # through str(); an enum raises and falls through to its text.
     try:
         coerced = float(str(value))
     except (TypeError, ValueError):
@@ -264,9 +226,8 @@ def load_ta_snapshot(
     except (TypeError, ValueError):
         return None
     if taken_at <= 0:
-        # A reading with no usable timestamp cannot carry its age, and
-        # this unit's whole point is that an old vote must announce that
-        # it is old. Refuse it.
+        # A reading with no usable timestamp cannot carry its age, so
+        # it is refused rather than shown as current.
         return None
     return {
         "bot_id": str(payload.get("bot_id", bot_id)),
@@ -285,8 +246,8 @@ def format_age(seconds: float) -> str:
     if total != total:  # NaN
         return "age unknown"
     if total < 0:
-        # A snapshot stamped in the future means the clock moved. Say so
-        # rather than printing a negative age.
+        # A snapshot timestamped in the future means the clock moved;
+        # report that instead of a negative age.
         return "clock skew"
     if total < 5:
         return "just now"
@@ -299,10 +260,8 @@ def format_age(seconds: float) -> str:
     return f"{int(total // 86400)}d {int((total % 86400) // 3600):02d}h"
 
 
-#: Age strings that are already complete sentences. Appending " ago" to
-#: them produced "just now ago" on the first real render of the stale
-#: banner, which is the kind of wrong-sounding text an operator reads as
-#: a broken panel.
+#: Age strings that already read as complete sentences; age_phrase()
+#: skips appending " ago" to these.
 _AGE_PHRASES_THAT_STAND_ALONE = frozenset({"just now", "clock skew", "age unknown"})
 
 
@@ -315,24 +274,7 @@ def age_phrase(seconds: float) -> str:
 
 
 # ---------------------------------------------------------------------------
-# UNIT 2 — one cause per empty state.
-#
-# The panel used to print, for EVERY empty case:
-#
-#   "running — no TA read yet (first read can take ~60s; a bot parked at
-#    target evaluates no TA)"
-#
-# Two causes in one sentence, leading with the wrong one. The operator
-# read "first read can take ~60s", waited, and switched bots for minutes
-# on 2026-08-13; the real cause was the second clause, which is not
-# transient at all. `show_no_data`'s own docstring already listed four
-# distinct situations it conflated — a good docstring describing a
-# defect nobody closed.
-#
-# Each cause below is a SINGLE statement. A disjunction in a diagnostic
-# is a to-do, not a diagnosis: under the operator's Green/Yellow/Red
-# rule a non-green state is only actionable when it names the specific
-# cause.
+# UNIT 2 — one cause per empty state, never a disjunction of causes.
 # ---------------------------------------------------------------------------
 
 _NO_DATA_CAUSE_TEXT: dict[str, str] = {
@@ -352,8 +294,8 @@ _NO_DATA_CAUSE_TEXT: dict[str, str] = {
     "new_bot": "new bot — created just now, still ahead of its first TA read.",
 }
 
-#: Causes for which a stored reading is worth showing. A cause with no
-#: bot behind it (nothing selected, bot gone) has nothing to restore.
+#: Causes worth showing a stored reading for; a cause with no bot
+#: behind it has nothing to restore.
 _CAUSES_THAT_MAY_SHOW_STORED = frozenset(
     {
         "not_running",
@@ -364,8 +306,8 @@ _CAUSES_THAT_MAY_SHOW_STORED = frozenset(
     }
 )
 
-#: Fallback when a caller passes a cause this module does not know. It
-#: names the unknown token instead of inventing an explanation.
+#: Fallback for an unrecognised cause token; names the token rather
+#: than inventing an explanation.
 _UNKNOWN_CAUSE_TEXT = "no TA read available (unrecognised cause {cause!r})."
 
 
@@ -437,11 +379,9 @@ except ImportError:
 
 if _HAS_QT:
 
-    # v3.23.7 — Lightweight privacy-mask dot for the IVP bot selector.
-    # Duplicates the PrivacyDot in main_window so indicator_panel
-    # doesn't need a cross-module import (would risk circular deps).
-    # Color contract matches main_window's PrivacyDot (v3.23.15
-    # restyle — operator clarification 2026-06-15):
+    # Lightweight privacy-mask dot for the IVP bot selector; duplicates
+    # main_window's PrivacyDot locally to avoid a circular import.
+    # Color contract matches main_window's PrivacyDot:
     #   BLUE       = field is REVEALED. Click to mask.
     #   DARK-BLUE  = field is MASKED.   Click to reveal.
     class _IVPPrivacyDot(QPushButton):
@@ -492,12 +432,8 @@ if _HAS_QT:
                 f"Click to {'reveal' if masked else 'mask'}."
             )
 
-    # Indicator short names and category for all 12 indicators.
-    # (key, label, group)  groups: T=Trend  M=Momentum  S=Structure
-    # v3.19.22 — RSI added (was missing despite v3.19.18 wiring it into
-    # VotingEngine). The new tests/test_indicator_panel_coverage.py
-    # drift detector pins this list against VotingEngine's actual voter
-    # set so a future voter addition surfaces here automatically.
+    # (key, label, group) for the panel's 12 indicators.
+    # groups: T=Trend  M=Momentum  S=Structure
     INDICATOR_COLS = [
         ("bollinger_bands", "BB", "S"),
         ("vortex", "VTX", "T"),
@@ -510,16 +446,12 @@ if _HAS_QT:
         ("supertrend", "STrd", "T"),
         ("zscore", "ZSc", "M"),
         ("kaufman_er", "KER", "M"),
-        ("rsi", "RSI", "M"),  # v3.19.22 — was missing
+        ("rsi", "RSI", "M"),
     ]
 
-    # v3.23.52 — split the 12 indicators into two symmetrical mini-
-    # panels per operator directive 2026-07-28. Row A gets the first
-    # 6 indicators PLUS the aggregate columns (Net / Comp Net / Conf);
-    # Row B gets the last 6 indicators. Each row has its own compact
-    # QTableWidget (header + 1 data row per TF) stacked above its own
-    # ConfidenceBarsWidget. Column widths roughly double vs. the
-    # previous all-in-one layout, keeping headers legible.
+    # Row A: first 6 indicators plus aggregate columns (Net/Comp/Conf).
+    # Row B: last 6 indicators, no aggregates. Each mini-panel gets its
+    # own compact QTableWidget stacked above its own ConfidenceBarsWidget.
     _ROW_A_INDICATOR_COLS = INDICATOR_COLS[:6]  # BB VTX MACD SRsi Ichi Vol
     _ROW_B_INDICATOR_COLS = INDICATOR_COLS[6:]  # Sling ADX STrd ZSc KER RSI
 
@@ -530,7 +462,6 @@ if _HAS_QT:
         "S": "#00FFAA",  # Structure — teal
     }
 
-    # Symbols for direction
     DIR_SYMBOLS = {
         "BULLISH": "▲",
         "BEARISH": "▼",
@@ -558,9 +489,6 @@ if _HAS_QT:
             from PySide6.QtWidgets import QSizePolicy
 
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            # v3.23.40 — accessibility anchor. GUI001 satisfaction:
-            # screen readers announce this widget as the indicator
-            # confidence bar graph paired with the voting table above.
             self.setToolTip(
                 "Animated bar graph: per-indicator vote confidence for "
                 "the parent bot's timeframe, colour-coded by direction "
@@ -587,7 +515,6 @@ if _HAS_QT:
                     {"name": b["name"], "confidence": 0.0, "direction": b["direction"]}
                     for b in bars
                 ]
-            # Start animation
             if not self._anim_timer.isActive():
                 self._anim_timer.start(16)
 
@@ -612,7 +539,7 @@ if _HAS_QT:
                     self._anim_bars[i]["confidence"] = tgt
                     self._anim_bars[i]["direction"] = target["direction"]
 
-            self.update()  # Trigger repaint
+            self.update()
             if done:
                 self._anim_timer.stop()
 
@@ -622,7 +549,6 @@ if _HAS_QT:
             w, h = self.width(), self.height()
             # QRectF imported at module level
 
-            # Background
             p.fillRect(0, 0, w, h, QColor(10, 10, 18))
 
             bars = self._anim_bars if self._anim_bars else self._bars
@@ -640,13 +566,8 @@ if _HAS_QT:
             margin_left = 10
             margin_right = 10
 
-            # v3.23.53 — restore column-alignment ONE MORE TIME. Each
-            # mini-panel now provides its own column-position map from
-            # its own compact table above (see _sync_bars_cols). Bar[i]
-            # centers under table-column[i+1] (skipping the TF column)
-            # and never exceeds that column's width. When no positions
-            # are provided (fallback), spread bars evenly across the
-            # full widget width.
+            # Bar[i] aligns under table column i+1 (column 0 is TF);
+            # falls back to even spacing when no positions are given.
             use_cols = self._col_positions and len(self._col_positions) >= (n + 1)
             if use_cols:
                 right_edge = w - margin_right
@@ -665,7 +586,6 @@ if _HAS_QT:
             fallback_bar_w = max(12, (bar_area_w - gap * (n - 1)) / n)
             for i, bar in enumerate(bars):
                 if use_cols and (i + 1) < len(self._col_positions):
-                    # Align bar to table column (i+1), skipping TF col 0.
                     col_x, col_w = self._col_positions[i + 1]
                     bar_pad = max(2, col_w * 0.12)
                     x = col_x + bar_pad
@@ -678,15 +598,8 @@ if _HAS_QT:
                     label_x = x - gap / 2
                     label_w = bar_w + gap
 
-                # `conf` scales the bar height and is the only thing
-                # keeping the bar inside the plot area. It was clamped
-                # with min() alone, so a negative confidence passed
-                # through: `bar_h = max(2, conf * max_h)` then drew a
-                # 2 px stub while `y` had already been derived from the
-                # unclamped height, laying the glow, the gradient body
-                # and the shine out against a height the bar does not
-                # have. Clamp both ends, and coerce first so a None or
-                # a string in the payload cannot reach the comparison.
+                # `conf` is clamped to [0, 1] before use; an unclamped
+                # value would corrupt the glow, gradient and shine geometry.
                 try:
                     _conf_raw = float(bar.get("confidence", 0) or 0.0)
                 except (TypeError, ValueError):
@@ -698,16 +611,13 @@ if _HAS_QT:
                 bar_h = max(2, conf * max_h)
                 y = h - margin_bottom - bar_h
 
-                # Get color
                 r, g, b = self.BAR_COLORS.get(direction, (80, 80, 120))
 
-                # Glow effect behind bar
                 glow_color = QColor(r, g, b, 30)
                 p.setPen(Qt.NoPen)
                 p.setBrush(glow_color)
                 p.drawRoundedRect(QRectF(x - 3, y - 3, bar_w + 6, bar_h + 6), 6, 6)
 
-                # Main bar with gradient
                 grad = QLinearGradient(x, y, x, h - margin_bottom)
                 grad.setColorAt(0, QColor(r, g, b, 220))
                 grad.setColorAt(0.6, QColor(r, g, b, 160))
@@ -716,7 +626,6 @@ if _HAS_QT:
                 p.setPen(QPen(QColor(r, g, b, 180), 1))
                 p.drawRoundedRect(QRectF(x, y, bar_w, bar_h), 3, 3)
 
-                # Inner highlight (top shine)
                 if bar_h > 8:
                     shine = QLinearGradient(x, y, x, y + min(bar_h * 0.3, 20))
                     shine.setColorAt(0, QColor(255, 255, 255, 40))
@@ -727,7 +636,6 @@ if _HAS_QT:
                         QRectF(x + 1, y + 1, bar_w - 2, min(bar_h * 0.3, 20)), 2, 2
                     )
 
-                # Label below bar
                 p.setPen(QPen(QColor(160, 160, 190)))
                 p.setFont(QFont("Consolas", 8, QFont.Bold))
                 p.drawText(
@@ -735,11 +643,6 @@ if _HAS_QT:
                     Qt.AlignCenter,
                     name,
                 )
-
-                # v3.23.50 — per-bar % label removed (operator directive
-                # 2026-07-28: redundant with bar height + axis; consumed
-                # ~14 px of vertical margin_top). Direction arrow inside
-                # the bar preserves the ▲/▼/─ readout at a glance.
 
                 # Direction arrow inside bar (if tall enough)
                 if bar_h > 24:
@@ -752,7 +655,6 @@ if _HAS_QT:
                         QRectF(x, y + bar_h * 0.3, bar_w, 20), Qt.AlignCenter, arrow
                     )
 
-            # Baseline
             p.setPen(QPen(QColor(40, 40, 60), 1))
             p.drawLine(
                 int(margin_left), h - margin_bottom, int(right_edge), h - margin_bottom
@@ -777,25 +679,19 @@ if _HAS_QT:
             self._selected_bot_id: str = ""
             self._last_bot_ids: list[str] = []
             self._bot_timeframes: dict[str, str] = {}  # bot_id → ta_timeframe
-            # UNIT 1 — where the durable TA snapshots live. None means
-            # "not injected yet"; the store then falls back to the
-            # StateManager default. MainWindow injects the LIVE
-            # StateManager's directory so a custom config_dir is
-            # honoured, exactly as _snapshot_wires_for_adopt does.
+            # TA snapshot directory; None until set_ta_state_dir()
+            # injects the live StateManager path.
             self._ta_state_dir: Path | None = None
-            # bot_id → the taken_at of the reading last written for it.
-            # The dashboard hands the panel the SAME _last_summary every
-            # 2 s until the tick computes a new one, so without this the
-            # store would rewrite an unchanged file 30 times a minute
-            # per bot.
+            # bot_id → taken_at last written; skips rewriting an
+            # unchanged reading, avoiding 30 writes/minute per bot
+            # on the 2 s dashboard tick.
             self._ta_written_fingerprint: dict[str, float] = {}
-            # bot_id → the loaded snapshot, or None for "looked, and
-            # there is not one". Keeps the no-data path off the disk on
-            # every tick.
+            # bot_id → loaded snapshot, or None meaning already
+            # checked and absent; keeps the no-data path off disk
+            # each tick.
             self._ta_snapshot_cache: dict[str, dict | None] = {}
-            # UNIT 2 — the cause token and the single sentence last
-            # rendered. Held as attributes so a test can read the
-            # decision off the constructed widget.
+            # UNIT 2 — last cause token and rendered sentence, held
+            # as attributes so a test can read the decision.
             self._no_data_cause: str = ""
             self._no_data_message: str = ""
             # True while the table is showing a STORED reading rather
@@ -827,10 +723,9 @@ if _HAS_QT:
             self._bot_selector.addItem("(select a bot)", "")
             self._bot_selector.currentIndexChanged.connect(self._on_bot_selected)
             header.addWidget(self._bot_selector)
-            # v3.23.7 — privacy dot for the IVP bot selector readout.
-            # Toggling masks the dropdown's visible text + the symbol
-            # label to the right. The dropdown's userData (bot_id) is
-            # preserved so selection still works while masked.
+            # Toggling masks the bot-selector dropdown text and symbol
+            # label; the dropdown's bot_id userData stays intact for
+            # selection.
             self._privacy_dot = _IVPPrivacyDot(
                 "ivp.bot_selector", on_toggle=self._apply_privacy_mask
             )
@@ -839,7 +734,7 @@ if _HAS_QT:
             header.addStretch()
 
             self._symbol_label = QLabel("")
-            # v3.23.7 — last raw value so a dot-toggle can re-render.
+            # Raw symbol text cached so a mask toggle can re-render it.
             self._symbol_label_raw: str = ""
             header.addWidget(self._symbol_label)
 
@@ -847,12 +742,8 @@ if _HAS_QT:
             header.addWidget(self._summary_label)
             layout.addLayout(header)
 
-            # UNIT 1 — the age band. A vote from four minutes ago is
-            # useful; the same vote presented as current is worse than
-            # a blank panel, so a stored reading is never rendered
-            # without this strip saying WHEN it was taken. Amber, not
-            # green: under the operator's Green/Yellow/Red rule a
-            # reading that is not "on time" is a yellow state.
+            # UNIT 1 — amber staleness banner; shown only when the
+            # panel renders a stored (non-live) reading.
             self._staleness_label = QLabel("")
             self._staleness_label.setStyleSheet(
                 "color: #ffb020; font-family: Consolas; font-size: 10px; "
@@ -897,13 +788,9 @@ if _HAS_QT:
             lock_row.addWidget(self._lock_status)
             layout.addLayout(lock_row)
 
-            # v3.23.41 — Currency-rate strip. Displays BTC/USD +
-            # ETH/USD spot with satoshi- and wei-per-dollar/cent
-            # derivations. Sits between the TF-Lock row and the
-            # voting table (the "void space above the columns" per
-            # operator directive 2026-07-27). Populated via
-            # update_currency_rates() which the main_window pushes
-            # each dashboard tick.
+            # BTC/USD and ETH/USD spot with satoshi/wei-per-dollar
+            # derivations; update_currency_rates() refreshes it each
+            # dashboard tick.
             self._rate_strip = QLabel("BTC —   ETH —   (currency rates pending)")
             self._rate_strip.setStyleSheet(
                 "color: #66ccff; font-family: Consolas; "
@@ -930,22 +817,15 @@ if _HAS_QT:
                 self._tf_lock_combo.hide()
                 self._lock_status.hide()
 
-            # v3.23.52 — vote table + bars split into two symmetrical
-            # mini-panels. Actual instantiation happens below after
-            # the shared _HEADER_TOOLTIPS dict is defined (both mini-
-            # panels reference it).
+            # Table+bars split into two mini-panels; instantiated
+            # below once _HEADER_TOOLTIPS exists, since both reference it.
 
-            # v3.23.40 — added "Comp Net" between Net and Conf.
-            # Composite Net folds phantom-bot TF votes into the parent
-            # bot's row via the rank-weighted formula in
-            # phantom_balance.TimeframeCoordinator.get_higher_tf_bias.
-            # Populated only on the parent-bot TF row; other rows read
-            # "—". Styling matches Net exactly (green > 0, red < 0).
-            # v3.20.6 — per-column header tooltips (shared between
-            # the two v3.23.52 mini-panels). Operator audit surfaced
-            # that three columns (ADX, ZSc, KER) render their RAW
-            # indicator value instead of a confidence percentage.
-            # These tooltips close that gap.
+            # Comp Net folds phantom-bot TF votes via
+            # phantom_balance.TimeframeCoordinator.get_higher_tf_bias;
+            # populated only on the parent bot's TF row, other rows
+            # read "—".
+            # ADX, ZSc and KER render a raw value, not a percent;
+            # _HEADER_TOOLTIPS below spells out each column's scale.
             self._HEADER_TOOLTIPS = {
                 "TF": (
                     "Timeframe identifier. Each row = one timeframe's "
@@ -977,20 +857,13 @@ if _HAS_QT:
                     "volume spike ratio. ▲▼ direction + NN% confidence."
                 ),
                 "Sling": (
-                    # v3.20.10 — attribution updated per v3.20.8 audit
-                    # correction. Base concept is Chris Moody's
-                    # public-domain TradingView indicator; Acervator
-                    # extensions: two-signal fusion + snapback toward-
-                    # SMA discipline + HA confirmation + expansion-
-                    # rate-scaled confidence.
-                    "Slingshot — CM (Chris Moody) public-domain squeeze "
-                    "→ snapback detector + Acervator refinements for "
-                    "explosive moves. ▲▼ direction + NN% confidence."
+                    # Attribution matches SlingshotIndicator's corrected
+                    # docstring in trading/indicators/slingshot.py.
+                    "Slingshot — name is Chris Moody's; squeeze is Carter's "
+                    "TTM Squeeze (via LazyBear), snapback is Bollinger's own "
+                    "band rules. ▲▼ direction + NN% confidence."
                 ),
                 "ADX": (
-                    # v3.20.10 — dual-threshold explainer added per
-                    # v3.20.6 audit §2.8 sub-finding (intentional but
-                    # confusing for operators reading the panel).
                     "ADX — Average Directional Index. Cell shows the "
                     "RAW ADX value (NOT a percentage), 0–100. "
                     "ADX <20: ranging (cell reads 'Rng NN'). "
@@ -998,12 +871,11 @@ if _HAS_QT:
                     "trend. ADX >50: parabolic / unsustainable. "
                     "Direction symbol from DI+/DI− cross when "
                     "trending.\n\nDUAL THRESHOLDS (intentional): the "
-                    "voter uses ADX<20 → NEUTRAL; the separate "
-                    "ADXTrendSuppressionGate uses ADX<30 → blocks "
-                    "scrum. So an ADX of 25 shows ▲ 25 on the panel "
-                    "(voter sees developing trend), but the gate "
-                    "still suppresses scrum (gate is more "
-                    "conservative)."
+                    "voter goes NEUTRAL below ADX 20; the separate "
+                    "ADXTrendSuppressionGate blocks SCRUM only at "
+                    "ADX≥30, not below it. An ADX of 25 shows a "
+                    "developing trend here and does not trip the "
+                    "gate."
                 ),
                 "STrd": (
                     "Supertrend — ATR-banded trend line. ▲▼ direction "
@@ -1024,12 +896,9 @@ if _HAS_QT:
                     "contrarian-wrong action on each side."
                 ),
                 "KER": (
-                    # v3.20.10 — full direction-semantics explainer
-                    # per v3.20.6 audit Finding #8. Closes the
-                    # operator's "is KER ▼ bearish?" confusion.
                     "Kaufman Efficiency Ratio — trend efficiency 0–1. "
                     "Cell shows the RAW ER value (NOT a percentage). "
-                    "ER <0.25: ideal ranging (gate suppresses scrum). "
+                    "ER ≤0.05: no-edge market (gate suppresses scrum). "
                     "ER ≥0.50: trending (voter contributes direction). "
                     "ER ≥0.70: highly efficient trend.\n\nDIRECTION "
                     "SYMBOL SEMANTICS: at ER <0.50 the voter is "
@@ -1040,9 +909,9 @@ if _HAS_QT:
                     "opinion about market direction — it measures "
                     "trend QUALITY only.\n\nDUAL THRESHOLDS "
                     "(intentional): voter activates at ER ≥0.50; gate "
-                    "(EfficiencyRatioRegimeGate) activates at ER "
-                    "<0.25. Different consumers, different "
-                    "thresholds, same field."
+                    "(EfficiencyRatioRegimeGate) suppresses scrum at "
+                    "ER ≤0.05 or ER ≥0.70. Different consumers, "
+                    "different thresholds, same field."
                 ),
                 "RSI": (
                     "RSI — classic 70/30 overbought/oversold + "
@@ -1072,11 +941,9 @@ if _HAS_QT:
                     "disagrees'. Green ≥60%, amber ≥30%, gray <30%."
                 ),
             }
-            # v3.23.52 — two-row SYMMETRICAL split. Instantiate two
-            # mini-panels (each = table + bars) via _make_indicator_row.
-            # Row A carries indicators BB..Vol PLUS aggregates
-            # (Net / Comp Net / Conf); Row B carries Sling..RSI. Both
-            # rows get equal stretch so the panel splits ~50/50.
+            # Two-row split: mini-panels each get table + bars via
+            # _make_indicator_row. Row A carries BB..Vol plus
+            # aggregates; Row B carries Sling..RSI. Equal stretch.
             row_a_container, self._table_a, self._conf_bars_a = (
                 self._make_indicator_row(_ROW_A_INDICATOR_COLS, include_aggregates=True)
             )
@@ -1109,10 +976,9 @@ if _HAS_QT:
             indicator_subset: list,
             include_aggregates: bool,
         ) -> tuple:
-            """v3.23.52 — build one symmetrical mini-panel:
-            compact QTableWidget (TF + N indicator cols + optional
-            Net/CompNet/Conf) stacked directly above its own
-            ConfidenceBarsWidget.
+            """Build one mini-panel: a compact QTableWidget (TF + N
+            indicator columns, optional Net/Comp/Conf) stacked above
+            its own ConfidenceBarsWidget.
 
             Returns ``(container_widget, table, bars)``.
             """
@@ -1128,7 +994,7 @@ if _HAS_QT:
             table.setSelectionBehavior(QTableWidget.SelectRows)
             table.setEditTriggers(QTableWidget.NoEditTriggers)
             table.verticalHeader().setVisible(False)
-            # Row-height floor (v3.23.50.1 discipline).
+            # Row-height floor: 28 px.
             table.verticalHeader().setDefaultSectionSize(28)
             table.verticalHeader().setMinimumSectionSize(28)
             table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -1137,17 +1003,9 @@ if _HAS_QT:
 
             col_names = ["TF"] + [short for _, short, _ in indicator_subset]
             if include_aggregates:
-                # v3.24.96 - "Comp Net" shortened to "Comp".
-                #
-                # Equal-width columns and no truncation are in tension:
-                # forcing every column to the WIDEST label put 10 x 118px
-                # into a 584px viewport and truncated all of them. The
-                # widest label was "Comp Net" at 84px against a next-
-                # widest of 48px -- one outlier setting the floor for
-                # nine other columns. Shortening it drops the floor to
-                # 48px (10 x 48 = 480 < 584), so the columns can be both
-                # equal AND wide enough. The header tooltip still spells
-                # out Composite Net.
+                # "Comp Net" here reads "Comp": the full label needs 84px,
+                # which would force all 10 columns to 118px in a 584px
+                # viewport. The header tooltip still says Composite Net.
                 col_names += ["Net", "Comp", "Conf"]
             table.setColumnCount(len(col_names))
             table.setHorizontalHeaderLabels(col_names)
@@ -1157,69 +1015,30 @@ if _HAS_QT:
                     _hdr.setToolTip(self._HEADER_TOOLTIPS.get(_name, _name))
             hdr = table.horizontalHeader()
 
-            # v3.24.87 - COLUMNS SIZE TO THEIR CONTENT, NOT EVENLY.
-            #
-            # Operator task 2026-08-08 (screenshot area 3): the panel
-            # must fit its space "like it does under the trading tab".
-            #
-            # `QHeaderView.Stretch` divides the width EVENLY, ignoring
-            # what each label needs. MEASURED at 1920x1080 on the
-            # 10-column table: 584px allocated for 564px of content --
-            # more room than required -- and it truncated anyway,
-            # because the surplus went to columns that did not need it:
-            #
-            #     Comp Net  needs 108px, got 61  -> rendered "omp N"
-            #     BB        needs  36px, got 61  -> 25px wasted
-            #     TF        needs  36px, got 34
-            #
-            # No extra width fixes an even split. `ResizeToContents`
-            # gives each column what its own label needs, and the last
-            # section absorbs whatever is left so the table still fills
-            # the pane instead of leaving a gap.
-            #
-            # This was never sim-specific: the Trading Tab's own panel
-            # truncated identically, it just had enough width that only
-            # the widest label suffered.
-            # v3.24.96 - EQUAL COLUMNS, EACH WIDE ENOUGH FOR ITS LABEL.
-            #
-            # v3.24.87 used ResizeToContents + stretchLastSection, which
-            # fixed the truncation and created a worse problem: the last
-            # column absorbed ALL the slack, so RSI rendered several
-            # times the width of every other column. The operator's
-            # screenshot shows it running the full width of the panel.
-            #
-            # Stretch alone divides evenly but ignores what each label
-            # needs -- that was the ORIGINAL defect, "Comp Net" in 61px.
-            # Setting the minimum section to the widest header first
-            # gives both: every column identical, and none narrower than
-            # its own text.
+            # Columns stretch equally but never below the widest
+            # header label's own width.
             _fm = QFontMetrics(hdr.font())
             _widest = max(
                 (_fm.horizontalAdvance(str(_n)) for _n in col_names), default=40
             )
-            # +2, not +10. MEASURED: at 1600x900 the 10-column table
-            # gets a 544px viewport, so each column may be at most
-            # 54px. A +10 pad set the floor at 58 and forced 580px of
-            # content into 544 -- the columns were equal and every one
-            # of them truncated. The pad is the difference between
-            # "equal and readable" and "equal and useless".
+            # +2 px pad, not +10: a 10-column table needs 580px at
+            # +10 against a 544px viewport (1600x900) and truncates
+            # every column.
             hdr.setMinimumSectionSize(int(_widest) + 2)
             for _c in range(len(col_names)):
                 hdr.setSectionResizeMode(_c, QHeaderView.Stretch)
             hdr.setStretchLastSection(False)
 
-            # Smaller type, per "will have to adjust text sizes as
-            # needed". Applied to the header and the cells together --
-            # shrinking one without the other is how a table ends up
-            # with labels narrower than the numbers beneath them.
+            # Header and cell fonts both shrink by 1 pt; shrinking
+            # only one leaves labels narrower than the numbers under them.
             _tf = table.font()
             _tf.setPointSize(max(6, _tf.pointSize() - 1))
             table.setFont(_tf)
             _hf = hdr.font()
             _hf.setPointSize(max(6, _hf.pointSize() - 1))
             hdr.setFont(_hf)
-            # Clamp table height to header + a few rows of slack so
-            # the bars beneath it consume the rest of the row.
+            # Table height is fixed to the header plus 2 rows of
+            # slack; the bars below absorb the rest.
             table.setFixedHeight(
                 table.horizontalHeader().sizeHint().height() + 28 * 2 + 4
             )
@@ -1234,28 +1053,9 @@ if _HAS_QT:
         def header_fit_report(self) -> dict:
             """Does the table's content fit the width the user can see.
 
-            v3.24.87, step 4 of the emitter-first workflow. "The panel
-            fits inside its assigned space" was an eyeball judgement;
-            this makes it a number.
-
-            WHAT IT MEASURES, AND TWO EARLIER VERSIONS THAT DID NOT.
-
-            First it compared each label's QFontMetrics width plus an
-            invented 12px against the column width. Qt's own padding is
-            4px, so it reported EVERY column 8px short even after they
-            were correctly sized -- a miscalibrated zero point
-            condemning a good layout.
-
-            Then it compared `columnWidth` against `sectionSizeHint`.
-            Under `ResizeToContents` those are equal BY CONSTRUCTION,
-            so the check could never fail. It passed the panel and also
-            passed a table squeezed to 90px: tautological, and worse
-            than no instrument because it looked like evidence.
-
-            What actually determines whether the operator sees a
-            truncated header is the total width the columns want against
-            the width of the VIEWPORT. Exceed it and Qt clips or
-            scrolls, which is the "omp N" in the screenshot.
+            Compares each header's `sectionSizeHint` total against the
+            table's viewport width; returns which column labels exceed
+            it, per table.
             """
             out: dict = {}
             try:
@@ -1313,11 +1113,11 @@ if _HAS_QT:
                 pass
 
         def update_currency_rates(self, snapshot) -> None:
-            """v3.23.41 — accept a CurrencyRates snapshot from the
-            main window and render it in the rate strip. Snapshot is
-            duck-typed: any object exposing ``btc_usd``, ``eth_usd``,
-            ``sat_per_dollar``, ``sat_per_cent``, ``wei_per_dollar``,
-            ``wei_per_cent``, ``source`` will render.
+            """Render a CurrencyRates snapshot from the main window in
+            the rate strip. Duck-typed: renders any object exposing
+            ``btc_usd``, ``eth_usd``, ``sat_per_dollar``,
+            ``sat_per_cent``, ``gwei_per_dollar``, ``gwei_per_cent``
+            and ``source``.
 
             When BTC or ETH is missing (fresh process, network down,
             unsupported exchange), the affected side falls back to
@@ -1341,10 +1141,8 @@ if _HAS_QT:
             else:
                 parts.append("BTC —")
             if eth_usd > 0:
-                # v3.23.50 — display gwei (1e9 wei) instead of raw wei
-                # so the scale matches sat's "big-integer-with-commas"
-                # shape. Operator directive 2026-07-28: scientific-
-                # notation wei suggested spurious precision.
+                # gwei (1e9 wei) instead of raw wei keeps ETH's scale
+                # comma-formatted like BTC's satoshis.
                 gwei_1 = float(getattr(snapshot, "gwei_per_dollar", 0))
                 gwei_c = float(getattr(snapshot, "gwei_per_cent", 0))
                 parts.append(
@@ -1357,7 +1155,7 @@ if _HAS_QT:
             tail = f"  ·  {src}" if src and src != "none" else ""
             self._rate_strip.setText("   ".join(parts) + tail)
 
-        # v3.23.7 — privacy-mask helpers for the IVP bot selector
+        # Privacy-mask helpers for the IVP bot selector.
         def _apply_privacy_mask(self) -> None:
             """Apply the current ivp.bot_selector mask state to the
             dropdown items + the symbol-label readout.
@@ -1373,8 +1171,8 @@ if _HAS_QT:
                 masked = reg.is_masked("ivp.bot_selector")
             except Exception:
                 return
-            # Walk all combo entries; preserve the raw display in a
-            # custom Qt role on first encounter so we can restore it.
+            # Caches each combo entry's raw display text in a Qt role
+            # on first sight, for later restore.
             for i in range(self._bot_selector.count()):
                 raw = self._bot_selector.itemData(i, Qt.UserRole + 1)
                 if raw is None:
@@ -1390,7 +1188,7 @@ if _HAS_QT:
             )
 
         def refresh_privacy_dot(self) -> None:
-            """v3.23.7 — global Privacy Mode hook for MainWindow."""
+            """Global Privacy Mode hook for MainWindow."""
             try:
                 self._privacy_dot.refresh()
             except Exception as _dot_exc:  # noqa: BLE001 - dot best-effort
@@ -1433,8 +1231,8 @@ if _HAS_QT:
         def _has_real_bots(self) -> bool:
             """Is any real bot present in the selector?
 
-            v3.24.38 (C51). Selector entries carry the bot_id in their
-            userData slot; the demo placeholder carries none.
+            Selector entries carry the bot_id in their userData slot;
+            the demo placeholder carries none.
             """
             try:
                 for i in range(self._bot_selector.count()):
@@ -1454,9 +1252,9 @@ if _HAS_QT:
         def _may_fabricate(self) -> tuple[bool, str]:
             """May synthetic TA be rendered right now?
 
-            v3.24.38 (C51). Only in an explicitly-labelled demo context:
-            sim mode, or a panel with no real bot selected and none in
-            the roster. Everything else gets an empty state.
+            Only in an explicitly-labelled demo context: sim mode, or
+            a panel with no real bot selected and none in the roster.
+            Everything else gets an empty state.
             """
             if self._sim_mode:
                 return True, ""
@@ -1472,10 +1270,8 @@ if _HAS_QT:
         def _render_no_data(self, reason: str) -> None:
             """Show an explicit empty state instead of invented numbers.
 
-            v3.24.38 (C51). The panel used to guarantee it was "never
-            empty" by filling itself with fabricated values. An empty
-            panel is a true statement; a populated one that invented its
-            contents is not.
+            An empty panel is a true statement; a populated one with
+            fabricated contents is not.
             """
             try:
                 self.update_data({}, getattr(self, "_symbol_label_raw", ""))
@@ -1490,14 +1286,10 @@ if _HAS_QT:
         def set_ta_state_dir(self, state_dir) -> None:
             """Point the snapshot store at the LIVE state directory.
 
-            UNIT 1. MainWindow passes ``StateManager._dir`` off the
-            running BotManager rather than letting this module re-derive
-            the default, because a StateManager built with a custom
-            ``config_dir`` puts its files somewhere else and a
-            re-derived default would read and write a directory the
-            application is not using. Switching directories clears the
-            read cache, so a test that repoints the panel cannot see the
-            previous directory's answers.
+            MainWindow passes the running BotManager's
+            ``StateManager._dir`` rather than a re-derived default, so
+            a custom ``config_dir`` is honoured. Switching directories
+            clears the read cache.
             """
             new_dir = Path(state_dir) if state_dir is not None else None
             if new_dir != self._ta_state_dir:
@@ -1506,17 +1298,15 @@ if _HAS_QT:
             self._ta_state_dir = new_dir
 
         def remember_ta(self, bot_id: str, symbol: str, multi_tf_summary: dict) -> None:
-            """Persist the reading the tick just handed us.
+            """Persist the reading the trading tick just produced.
 
-            UNIT 1. Called by MainWindow immediately after a successful
-            ``update_data``, with the SAME dict that was just rendered.
-            Nothing is computed here and nothing is fetched: the reading
-            already exists, and this only stops it being discarded when
-            the process ends or the bot parks.
+            Called by MainWindow right after ``update_data``, with the
+            same dict just rendered; nothing is computed or fetched
+            here.
 
-            The dashboard re-feeds the same ``_last_summary`` every 2 s
-            until the trading tick produces a new one, so the write is
-            skipped unless the reading actually changed.
+            The dashboard re-feeds the same reading every 2 s until
+            the tick produces a new one, so an unchanged reading is
+            not rewritten.
             """
             if not bot_id or not multi_tf_summary:
                 return
@@ -1591,31 +1381,14 @@ if _HAS_QT:
         ) -> None:
             """Render the empty state, naming the ONE cause that applies.
 
-            UNIT 2. This method used to take a free-text ``reason`` and
-            echo it, and MainWindow passed the same sentence for every
-            running bot:
+            Callers pass a ``cause`` token plus the figures that
+            cause's template needs; ``reason`` is still accepted for
+            callers with literal text instead of a cause.
 
-                "running — no TA read yet (first read can take ~60s; a
-                 bot parked at target evaluates no TA)"
-
-            Two causes in one sentence, leading with the wrong one. The
-            operator read the first clause on 2026-08-13, waited, and
-            switched bots for minutes; the real cause was the second,
-            which never resolves on its own. The bot already knows which
-            applies — it writes "AT TARGET (MEM-258)" at the exact
-            moment it decides to skip TA — so this was a plumbing gap,
-            not a knowledge gap.
-
-            Callers now pass a ``cause`` token plus the figures that
-            cause needs, and the sentence is built here from a single
-            template per cause. ``reason`` is still accepted for the two
-            internal callers that have literal text rather than a cause.
-
-            UNIT 1. Before rendering an empty table, the panel looks for
-            a STORED reading for this bot. If one exists, that reading
-            is rendered together with its age and the cause — no API
-            call, no TA computation, only a value that was already
-            computed and would otherwise have been thrown away.
+            Before rendering an empty table, the panel looks for a
+            STORED reading for this bot. If one exists, it renders
+            that reading with its age and the cause, with no API call
+            and no TA computation.
             """
             symbol_text = str(symbol or "")
             message = (
@@ -1658,11 +1431,9 @@ if _HAS_QT:
         ) -> None:
             """Draw a persisted reading and say how old it is.
 
-            UNIT 1. The age is not decoration. A four-minute-old vote is
-            useful; the same vote presented as current is worse than a
-            blank panel, so the banner carries both the wall-clock time
-            the reading was taken and its age, and it is shown BEFORE
-            the operator can read the table under it.
+            A stored reading presented as current is worse than a
+            blank panel, so the age banner is set and shown before
+            the table underneath it is populated.
             """
             taken_at = float(stored.get("taken_at", 0.0) or 0.0)
             age_s = max(0.0, time.time() - taken_at)
@@ -1699,16 +1470,10 @@ if _HAS_QT:
         def _generate_demo_ta(self):
             """Generate demo TA from synthetic candles.
 
-            v3.24.38 (C51) — GATED. This produces a deterministic random
-            walk (``seed = md5(bot_id)``), runs the REAL VotingEngine
-            over those invented candles, and labels the result with the
-            REAL bot's symbol. Because the seed is per-bot it does not
-            flicker between refreshes the way random data would, so it
-            reads as a stable, trustworthy indicator panel. It was
-            reachable from all three entry paths for a live bot:
-            ``_auto_init_demo`` (3 s timer), ``_on_bot_selected`` (the
-            operator picking a real bot), and ``force_refresh`` (which
-            called it unconditionally, right after bot creation).
+            Gated by ``_may_fabricate()``. Produces a deterministic
+            random walk (``seed = md5(bot_id)``) and runs the real
+            VotingEngine over it, labelled with the real bot's symbol
+            so the panel stays stable across refreshes.
             """
             may, why = self._may_fabricate()
             if not may:
@@ -1727,9 +1492,8 @@ if _HAS_QT:
 
                 bid = self._selected_bot_id or "default"
                 ta_tf = self._bot_timeframes.get(bid, "1h")
-                # v3.15.85 — non-security RNG seeding (cosmetic indicator
-                # color per bot ID); usedforsecurity=False suppresses the
-                # bandit B324 false positive.
+                # Non-security RNG seeding for a per-bot demo color;
+                # usedforsecurity=False silences bandit's B324 false positive.
                 seed = int(
                     hashlib.md5(bid.encode(), usedforsecurity=False).hexdigest()[:8], 16
                 )
@@ -1763,11 +1527,8 @@ if _HAS_QT:
                     len(summary.signals),
                     ta_tf,
                 )
-                # v3.23.7 — currentText() returns the masked "****" when
-                # the IVP bot selector privacy mask is active. Pull the
-                # raw display text from the userData slot we cached in
-                # _apply_privacy_mask. Falls back to the visible text
-                # when the slot is empty (pre-mask first render).
+                # currentText() returns the masked "****" text; pull
+                # the raw display from the cached userData role instead.
                 cur_idx = self._bot_selector.currentIndex()
                 raw_text = (
                     self._bot_selector.itemData(cur_idx, Qt.UserRole + 1)
@@ -1798,11 +1559,8 @@ if _HAS_QT:
                     self._table_a.rowCount(),
                 )
             except Exception as exc:
-                # v3.24.38 (C51) — this swallowed everything including
-                # the RNG construction and the candle loop, then
-                # returned normally, so a failed generation left the
-                # panel showing whatever it had before. Record it and
-                # render the empty state rather than a stale one.
+                # Any exception here renders the empty state rather
+                # than leaving a stale panel on screen.
                 self._last_demo_error = f"{type(exc).__name__}: {exc}"
                 logger.error("INDICATOR PANEL: demo TA FAILED: %s", exc)
                 import traceback
@@ -1822,19 +1580,9 @@ if _HAS_QT:
         ):
             """Force panel to refresh — called externally after bot creation.
 
-            v3.24.54 (R3). This did `self._data = {}` then called the
-            demo generator unconditionally. Before C51 that was
-            clear-then-refill within a millisecond and looked harmless.
-            After C51 it is clear-then-REFUSE: the generator declines for
-            a real bot, so a freshly created bot got a blank panel that
-            stayed blank until its first TA read — which for a
-            SEARCH-mode bot is roughly a minute away, and for a bot
-            parked in its dust band never arrives at all.
-
-            It now renders a correctly-labelled empty state instead. The
-            real feed on the 2 s dashboard tick fills it the moment the
-            bot has anything; this is only what the operator sees in the
-            meantime.
+            Renders a correctly-labelled empty state; the 2 s
+            dashboard tick fills it with real data the moment the bot
+            has anything.
             """
             if bot_id:
                 self._selected_bot_id = bot_id
@@ -1842,30 +1590,28 @@ if _HAS_QT:
                     self._bot_timeframes[bot_id] = ta_timeframe
                 idx = self._bot_selector.findData(bot_id)
                 if idx >= 0:
-                    # Block signals around the programmatic selection,
-                    # as update_bot_list already does. Otherwise this
-                    # fires _on_bot_selected as a side effect and the
-                    # empty state is rendered twice.
+                    # Blocks signals during programmatic selection, like
+                    # update_bot_list; otherwise _on_bot_selected triggers
+                    # and the empty state renders twice.
                     _prev = self._bot_selector.blockSignals(True)
                     try:
                         self._bot_selector.setCurrentIndex(idx)
                     finally:
                         self._bot_selector.blockSignals(_prev)
             self._data = {}
-            # UNIT 2 — a named cause rather than free text, so this
-            # state is told apart from a cold start and from a parked
-            # bot in the log and on the panel.
+            # UNIT 2 — cause="new_bot" tells this apart from a cold
+            # start or a parked bot.
             self.show_no_data(
                 bot_id=bot_id or self._selected_bot_id, symbol=symbol, cause="new_bot"
             )
 
         def update_bot_list(self, bot_statuses: list[dict]):
-            """Refresh the bot selector — accumulation bots only, rebuild only on change.
+            """Refresh the bot selector — accumulation bots only, rebuild
+            only on change.
 
-            Accepts both "accumulation" (user-facing term) and "scrumming"
-            (legacy BotMode enum value) as equivalent. They name the same
-            bot class — this is residue from a vocabulary migration that
-            renamed the user-facing term without changing the enum.
+            "accumulation" (user-facing term) and "scrumming" (the
+            BotMode enum value) name the same bot class and are
+            treated as equivalent here.
             """
             _accum_names = {"accumulation", "scrumming"}
             accumulation_bots = [
@@ -1897,8 +1643,8 @@ if _HAS_QT:
             elif accumulation_bots:
                 self._bot_selector.setCurrentIndex(0)
             self._bot_selector.blockSignals(False)
-            # v3.23.7 — dropdown was just rebuilt; re-apply privacy mask
-            # so the new items respect the current mask state.
+            # Dropdown was just rebuilt; re-apply the privacy mask so
+            # new items respect current state.
             try:
                 self._apply_privacy_mask()
             except Exception as _pm_exc:  # noqa: BLE001 - mask best-effort
@@ -1919,17 +1665,12 @@ if _HAS_QT:
                   - locks: list of active lock dicts
             """
             self._data = multi_tf_summary
-            # UNIT 1 — every render starts as a CURRENT one. The stale
-            # band is re-raised, after this returns, only by
-            # _render_stored_reading. Clearing it here rather than at
-            # each call site is what stops a "4m ago" banner surviving
-            # over a table that has since been refilled with live data:
-            # the one thing worse than a blank panel is an old reading
-            # presented as the current one.
+            # UNIT 1 — every render starts current; only
+            # _render_stored_reading re-raises the stale band afterward.
             self._showing_stored = False
             self._staleness_label.setText("")
             self._staleness_label.hide()
-            # v3.23.7 — cache raw symbol then pass through mask_or.
+            # Cache the raw symbol text, then pass it through mask_or.
             self._symbol_label_raw = str(symbol)
             self._symbol_label.setText(
                 mask_or(self._symbol_label_raw, "ivp.bot_selector")
@@ -1969,8 +1710,8 @@ if _HAS_QT:
                 ),
             )
 
-            # v3.23.52 — populate BOTH mini-panel tables. Each shows
-            # the same TF rows but a different indicator subset.
+            # Populates both mini-panel tables with the same TF rows
+            # but a different indicator subset.
             self._table_a.setRowCount(len(timeframes))
             self._table_b.setRowCount(len(timeframes))
 
@@ -2023,12 +1764,10 @@ if _HAS_QT:
 
                 all_locks.extend(tf_data.get("locks", []))
 
-            # Update header summary
             self._summary_label.setText(
                 f"▲ {total_bull}  ▼ {total_bear}  ─ {total_neutral}"
             )
 
-            # Update locks display
             if all_locks:
                 lock_texts = []
                 for lk in all_locks:
@@ -2040,16 +1779,11 @@ if _HAS_QT:
             else:
                 self._locks_label.setText("No active timeframe locks")
 
-            # v3.23.52 — feed BOTH mini-panel bar widgets with their
-            # respective indicator subsets. Column alignment is
-            # implicit (both widgets stretch bars evenly across their
-            # full width and the table above uses the same subset).
+            # Feeds both mini-panel bar widgets; column alignment is
+            # implicit since both use the same indicator subset.
             if not timeframes:
-                # v3.24.54 (R4) — complete the clear. Both bar widgets
-                # were left untouched on an empty render, so an empty
-                # update could leave the PREVIOUS bot's confidence bars
-                # painted above two zero-row tables: a chart of one
-                # symbol under the header of another.
+                # Both bar widgets must be cleared too, or the previous
+                # bot's bars stay painted above two empty tables.
                 try:
                     self._conf_bars_a.set_bars([])
                     self._conf_bars_b.set_bars([])
@@ -2080,14 +1814,11 @@ if _HAS_QT:
 
                 self._conf_bars_a.set_bars(_bars_for(_ROW_A_INDICATOR_COLS))
                 self._conf_bars_b.set_bars(_bars_for(_ROW_B_INDICATOR_COLS))
-                # v3.23.53 — align bars to table columns above them.
-                # Deferred one event-loop tick so the tables have a
-                # chance to finalise their column widths after the
-                # setRowCount + setItem calls above.
+                # Deferred one event-loop tick so the tables finish
+                # laying out columns before bars align to them.
                 QTimer.singleShot(0, self._sync_bar_columns)
 
-        # v3.23.52 — cell-population helpers. Extracted so the two
-        # mini-panel tables share the same cell-building code paths.
+        # Cell-population helpers shared by both mini-panel tables.
         def _populate_indicator_cell(
             self,
             table,
@@ -2179,10 +1910,8 @@ if _HAS_QT:
             table.setItem(row, col, item)
 
         def _sync_bar_columns(self):
-            """v3.23.53 — sync BOTH mini-panels' bar widgets to
-            their own tables' column positions. Bar[i] must center
-            under table-column[i+1] and never exceed its width
-            (operator directive 2026-07-28)."""
+            """Sync both mini-panels' bar widgets to their own table's
+            column positions."""
             self._sync_bars_for(self._table_a, self._conf_bars_a)
             self._sync_bars_for(self._table_b, self._conf_bars_b)
 
@@ -2207,29 +1936,17 @@ if _HAS_QT:
                 logger.debug("mini-panel bar sync raised: %s", _sync_exc)
 
         def resizeEvent(self, event):
-            """v3.23.53 — re-sync bar column positions on any resize
-            so bars stay centered under their table headers as the
-            panel width changes."""
+            """Re-sync bar column positions on resize so bars stay
+            centered under their table headers."""
             super().resizeEvent(event)
             QTimer.singleShot(50, self._sync_bar_columns)
             QTimer.singleShot(50, self._emit_fit_resized)
 
         def showEvent(self, event):
-            """10.4 — the fit pin had no caller anywhere in the tree.
+            """Emit the fit measurement on show, matching resizeEvent's timing.
 
-            `emit_fit` was written and never called. An AST walk over
-            520 files found 0 calls, 0 attribute references and 0
-            string references for it, against controls of 7, 7 and 2 on
-            neighbouring methods of this same class. The MEASUREMENT
-            was adopted — `header_fit_report` has six callers in the
-            tests — while the emitter that publishes it had none, so
-            `gui.04.001.postcondition.voting_panel.fit` could not fire
-            in the Simulator or in live.
-
-            Show and resize are the two events that change the answer.
-            Both defer by the same 50 ms the bar sync uses, because the
-            columns are not laid out yet at the instant the event
-            arrives.
+            Deferred 50 ms, matching the bar-column sync delay, since
+            columns are not laid out yet when the event arrives.
             """
             super().showEvent(event)
             QTimer.singleShot(50, self._emit_fit_shown)
@@ -2247,16 +1964,13 @@ if _HAS_QT:
             return self._data
 
     class IndicatorDetailDialog(QWidget):
-        """
-        Detailed view for a single indicator's signal history and
-        response controls.  Opened by clicking an indicator cell.
-        """
+        """Detail view for one indicator's signal history and response
+        widgets; opened by clicking an indicator cell."""
 
         def __init__(self, indicator_name: str, parent=None):
             super().__init__(parent)
             self.setWindowTitle(f"Signal Detail: {indicator_name}")
             self.setMinimumSize(400, 300)
-            # v3.23.40 — accessibility anchor. GUI001 satisfaction.
             self.setToolTip(
                 f"Detailed signal history and response controls for "
                 f"the {indicator_name} indicator."
@@ -2269,7 +1983,6 @@ if _HAS_QT:
             title.setProperty("heading", True)
             layout.addWidget(title)
 
-            # Signal history table
             self._history = QTableWidget()
             self._history.setColumnCount(len(INDICATOR_COLS) + 3)
             self._history.setHorizontalHeaderLabels(
@@ -2278,7 +1991,6 @@ if _HAS_QT:
             self._history.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
             layout.addWidget(self._history)
 
-            # Response controls
             controls = QGroupBox("Signal Response Controls")
             ctrl_layout = QVBoxLayout(controls)
             ctrl_layout.addWidget(
