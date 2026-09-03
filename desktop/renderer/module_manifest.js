@@ -49,4 +49,5 @@ window.ACERVATOR_MODULES = [
   "settings_dialog.js",
   "capital_registry.js",
   "preflight_check.js",
+  "pulse_manager.js",
 ];
