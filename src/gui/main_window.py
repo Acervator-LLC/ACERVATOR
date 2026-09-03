@@ -1,6 +1,6 @@
 """
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-main_window.py - Primary application window
+MainWindow builds the tab shell, header strip, status bar and dashboard timer.
 """
 
 from __future__ import annotations
@@ -112,82 +112,11 @@ __all__ = [
 if _HAS_QT:
 
     def _set_console_paused(window: MainWindow, *, paused: bool) -> None:
-        """Set the flag the signals pane's drain is gated on.
-
-        `_drain_signals` has always read
-        `getattr(self, "_console_paused", False)`, and its docstring has
-        always said it "honours the same Pause the log pane uses, so one
-        control quiets both". NOTHING IN THE TREE EVER ASSIGNED THAT
-        ATTRIBUTE, so the `False` default won every read: the operator
-        pressed Pause, `_QtLogHandler.set_paused` stopped the log pane,
-        and the signals pane under it went on scrolling. Driven on the
-        real widgets before this repair -- 10 blocks on the signals pane
-        at the press, 51 four drain ticks later, while the log pane held
-        at 10.
-
-        THE DOCSTRING IS THE SPECIFICATION AND THE CODE DISAGREED WITH
-        IT. The repair makes the code do what the prose says. Rewriting
-        the prose to describe the broken behaviour would have deleted
-        the only record of what the button is for.
-
-        IT IS A MODULE-LEVEL FUNCTION, resolved through globals on every
-        call, for the same reason `_reanchor_bot_selection`
-        and `_select_row_for_bot` are. The falsifier for
-        `console.14.004` has to be able to put the pre-repair tree back
-        for the length of one drive. Written inline as
-        `self._console_paused = paused` the assignment is unreachable
-        from a test, the pin's red condition becomes unreachable with
-        it, and a pin that cannot be driven to red is a pin nobody can
-        read when it is green.
-
-        `bool()` because `console.14.004` reads this value back and
-        compares it against the button's own `isChecked()`, which is a
-        bool. A truthy int here would report green about a different
-        type.
-
-        KEYWORD-ONLY, because the argument is a bare bool.
-        `paused=paused` at the one call site says what the value means;
-        a positional `True` would say only which function it belongs
-        to. The falsifier's stand-in carries the same signature, so a
-        call that went back to positional raises there rather than
-        patching a function nobody calls.
-        """
+        """Set `window._console_paused`; `_drain_signals` reads it before rendering."""
         window._console_paused = bool(paused)
 
     def _signal_gap_marker_text(skipped: int) -> str:
-        """Return the line the signals pane draws over a skipped stretch.
-
-        It is the operator's requirement in his own words: "The Emitter Network just needs to work. No part should
-        get back logged or clogged or fall out of sync."
-
-        THE PANE IS ONE CONSUMER FALLING BEHIND AND IT IS NOT DATA
-        LOSS, AND THE WORDING SAYS SO. `SignalSink` appends and flushes
-        on every emit, so every record this pass steps over is already
-        on disk in `~/.acervator_logs/signals/session.jsonl`. A marker
-        reading "not shown" alone would send the operator hunting a
-        defect that is not there; this one names the file, so the next
-        move is `Get-Content`, not a bug report.
-
-        "SKIPPED TO STAY CURRENT" IS THE OTHER HALF OF THE SENTENCE.
-        The alternative design -- advance the watermark only as far as
-        the render reached -- would leave the pane falling further
-        behind under sustained load, showing older and older records
-        while the sink races ahead, with nothing on the screen to say
-        whether it is a live monitor or a historical one. The pane
-        stays current and draws the gap instead, and the marker states
-        which of the two it chose.
-
-        `NOT LOST` IS UPPER CASE ON PURPOSE. It is the one clause a
-        reader scanning a scrolling pane has to catch.
-
-        The count is the FIRST number in the line so the eye finds it
-        without reading the sentence, and it is the same quantity
-        `console.14.001` reports as `lost_to_slice`.
-
-        Split out from `_draw_signal_gap_marker` so a test can assert
-        the WORDING without a widget, and so the drawing test and the
-        wording test fail separately when they fail.
-        """
+        """Return the marker line naming how many signal records the pane skipped."""
         return (
             f"──── [SIGNALS GAP] {skipped} earlier records skipped "
             f"to stay current · NOT LOST · on disk in "
@@ -195,39 +124,7 @@ if _HAS_QT:
         )
 
     def _draw_signal_gap_marker(view: QPlainTextEdit, *, skipped: int) -> int:
-        """Draw one gap marker into the signals pane. Returns blocks added.
-
-        The return value is the number of BLOCKS this call
-        put on the pane, and `_drain_signals` adds it to
-        `_signal_markers`, which `console.14.002` then counts as part
-        of what the drain wrote. A marker line IS a block, so leaving
-        it out of that ledger would paint `14-002` red for drawing the
-        very thing that makes the skip visible.
-
-        `skipped <= 0` DRAWS NOTHING AND RETURNS ZERO. A pass that kept
-        every record must leave no trace at all, or the marker becomes
-        pane furniture the operator learns to read past.
-
-        IT IS A MODULE-LEVEL FUNCTION, resolved through globals on
-        every call, for the same reason `_set_console_paused`,
-        `_reanchor_bot_selection` and `_select_row_for_bot` are: `_without_the_gap_marker`
-        has to be able to put the pre-repair tree back for the length
-        of one drive. Written inline in the drain, the pre-repair
-        behaviour is unreachable from a test and the tests below would
-        be asserting about arithmetic rather than about this code.
-
-        ESCAPED, like every other line the drain appends. `appendHtml`
-        parses its input and the count is interpolated into it; the
-        escape is here so this line can never become the one place a
-        payload reaches the parser.
-
-        AMBER ON A DARK GROUND, and the only line in the pane that
-        carries a background colour. `OK`/`FAIL`/`--` records are green,
-        red and grey text on `#05050a`; nothing else paints its own
-        ground, so the marker cannot be misread as a record even at the
-        10 px this pane renders at. The rules on both ends do the same
-        work in a plain-text copy, where the colour is gone.
-        """
+        """Append an escaped gap marker to `view`; returns 1, or 0 if `skipped <= 0`."""
         if skipped <= 0:
             return 0
         from html import escape as _esc
@@ -252,12 +149,10 @@ if _HAS_QT:
         QMainWindow,
     ):
 
-        # Annotated, not assigned: the tick reads `hasattr` to tell a first
-        # equity snapshot from a ten-second one.
+        # Annotated, not assigned: the dashboard tick reads `hasattr` on the first pass.
         _last_equity_snap: float
 
-        # Annotated, not assigned: `_drain_signals` reads this through
-        # `getattr` with a False default until the first press.
+        # Annotated only: `_drain_signals` reads it by `getattr`, default False.
         _console_paused: bool
 
         def __init__(self, bot_manager=None, settings_manager=None, parent=None):
@@ -271,8 +166,6 @@ if _HAS_QT:
             self._async_loop = None
             self._exchange_connectors: dict[str, object] = {}
 
-            # Built on the GUI thread so Qt queues a bot worker's confirmation
-            # request into this thread's event loop.
             try:
                 from .buy_confirmation_dialog import get_broker as _get_bcd_broker
 
@@ -333,14 +226,14 @@ if _HAS_QT:
             self._report_stored_credentials_on_startup()
 
         def set_async_loop(self, loop) -> None:
-            """Set the persistent asyncio event loop from main.py."""
+            """Store the asyncio loop and pass it to the Simulator tab when present."""
             self._async_loop = loop
             try:
                 if getattr(self, "_simulator", None) is not None and hasattr(
                     self._simulator, "set_async_loop"
                 ):
                     self._simulator.set_async_loop(loop)
-            except Exception as _exc:  # R28-OK: propagation best-effort
+            except Exception as _exc:
                 logger.warning(
                     "set_async_loop: SimulatorTab propagation failed: %s", _exc
                 )
@@ -368,8 +261,6 @@ if _HAS_QT:
         def _setup_ui(self) -> None:
             main_layout = self._build_header_strip()
 
-            # Installed before the tabs are built: a tab that wants chain state
-            # finds it on the window.
             try:
                 from .shared_testnet import SharedTestnetBridge
 
@@ -395,8 +286,7 @@ if _HAS_QT:
             self._build_history_tab()
             self._build_console_tab()
 
-            # The per-tab builders run in construction order. One reorder pass
-            # at the end puts each named tab in its slot.
+            # The builders above add tabs in construction order; the reorder fixes it.
             CANONICAL_TAB_ORDER = [
                 "Trading",
                 "Market Inspector",
@@ -413,15 +303,7 @@ if _HAS_QT:
             main_layout.addWidget(self._main_tabs, 1)
 
         def _reorder_main_tabs(self, desired: list[str]) -> None:
-            """Move tabs into the canonical order the
-            operator specified. Tabs whose labels are NOT in
-            ``desired`` keep their relative position at the end (so
-            future tab additions don't get silently reordered until
-            they're listed here).
-
-            Uses QTabBar.moveTab so widget instances + connected
-            signals are preserved; only the visual index changes.
-            """
+            """Move each label in ``desired`` to its index; unlisted tabs stay put."""
             tab_bar = self._main_tabs.tabBar()
             for target_idx, name in enumerate(desired):
                 for cur_idx in range(self._main_tabs.count()):
@@ -431,24 +313,10 @@ if _HAS_QT:
                         break
 
         def _on_main_tab_changed(self, index: int) -> None:
-            """Toggle the window-level header strip's
-            visibility based on the active tab. Hidden on Simulator
-            and Paper Trader (the isolated tabs that carry their own
-            inline stat strips). Visible everywhere else.
-
-            It also closes the History-tab auto-fetch wiring gap. The HistoryTab docstring (history_tab.py line 21)
-            promised "Manual refresh + auto-refresh on tab activation"
-            but the activation hook was never wired here. Operator
-            reported that setting filters and clicking Apply
-            produced "0 of 0 trades · no fetch yet" forever because
-            no fetch ever kicked off. The Apply-side fallback fix
-            lives in history_tab.py::_apply_filters; this is the
-            primary fix — when the operator selects the History tab,
-            trigger a refresh if none has occurred yet.
-            """
+            """Hide the header strip on the isolated tabs; refresh History if stale."""
             try:
                 tab_name = self._main_tabs.tabText(index)
-            except Exception:  # R28-OK: defensive — tab index race during teardown
+            except Exception:
                 return
             isolated_tabs = {"Simulator", "Paper Trader"}
             container = getattr(self, "_header_strip_container", None)
@@ -466,43 +334,15 @@ if _HAS_QT:
                         is_stale = last_ts == 0 or _t.time() - last_ts > 300
                         if is_stale and not in_flight:
                             hist.refresh()
-                    except Exception as _hexc:  # R28-OK: defensive
+                    except Exception as _hexc:
                         logger.debug(
                             "History auto-refresh on tab-activate " "skipped: %s", _hexc
                         )
 
         def _drain_signals(self) -> None:
-            """Poll the signal sink and render new records.
-
-            Reads only records NEWER than the last watermark, so
-            the cost is proportional to what arrived, not to the run.
-
-            Never raises: instrumentation display must not be able to take
-            down the window it is displayed in. Honours the same Pause the
-            log pane uses, so one control quiets both.
-
-            The flag that Pause is spelled with is `_console_paused`, and
-            `_set_console_paused` -- called by `_toggle_console_pause` --
-            is the only thing that writes it. A paused drain
-            advances NO watermark, so the sink keeps every record for the
-            resume: see the note on `_signal_read` below for what the
-            resume pass then does with a backlog.
-
-            THE PANE STAYS CURRENT AND DRAWS THE GAP. Two
-            paths reach the same slice: a long pause and then a resume,
-            and a live burst of more than 200 records inside one 500 ms
-            window with no pause at all. On both, the watermark moves to
-            `new[-1].seq` and the render keeps the newest 200 -- so this
-            consumer steps over the rest. It is NOT data loss: the sink
-            appends and flushes on every emit, and every stepped-over
-            record is on disk in
-            `~/.acervator_logs/signals/session.jsonl`. What was missing
-            was any sign of it ON THE SCREEN, and
-            `_draw_signal_gap_marker` is that sign.
-            """
+            """Render sink records past `_signal_seq`, keeping the newest 200."""
             try:
-                # Counts invocations of this slot. Counted lower down it would count
-                # records arriving, and a quiet sink would read like a stopped timer.
+                # Counts invocations, not records: a quiet sink is not a stopped timer.
                 self._signal_drain_ticks = getattr(self, "_signal_drain_ticks", 0) + 1
                 if getattr(self, "_console_paused", False):
                     return
@@ -520,8 +360,7 @@ if _HAS_QT:
                 if not new:
                     return
                 self._signal_seq = new[-1].seq
-                # The watermark has already passed every record in `new`, including
-                # the ones the slice drops. `_signal_read` counts what it consumed.
+                # The watermark passed all of `new`, including what the slice drops.
                 _shown = new[-200:]
                 _skipped = len(new) - len(_shown)
                 self._signal_read = getattr(self, "_signal_read", 0) + len(new)
@@ -529,8 +368,7 @@ if _HAS_QT:
                     getattr(self, "_signal_slice_dropped", 0) + _skipped
                 )
                 self._signal_rendered = getattr(self, "_signal_rendered", 0)
-                # Drawn above the slice: the skipped records are older than the 200
-                # about to be drawn.
+                # Drawn above the slice: skipped records are older than the 200 below.
                 self._signal_markers = getattr(
                     self, "_signal_markers", 0
                 ) + _draw_signal_gap_marker(view, skipped=_skipped)
@@ -554,28 +392,14 @@ if _HAS_QT:
                         f'<span style="color:{ds.TEXT_LOG_MINT}">  '
                         f"got={_esc(render(r.actual))}{exp}</span>"
                     )
-                    # After the append: a raise inside `appendHtml` leaves the count
-                    # truthful about what is on the pane.
+                    # Incremented after the append, so a raise leaves the count true.
                     self._signal_rendered += 1
-            except Exception as exc:  # noqa: BLE001 - display is best-effort
+            except Exception as exc:  # noqa: BLE001
                 logger.debug("signal drain failed: %s", exc)
 
         def _toggle_console_pause(self) -> None:
-            """Toggle the Console log handler's pause state.
-
-            10.7 -- `console.14.004` and `console.14.005`. BOTH ARE
-            TOGGLE PINS. They fire when the operator presses this
-            button and at no other time, so silence from either says
-            nothing about the tab's health; only the three cadence pins
-            in `_emit_console_health` may be read that way.
-
-            Neither reads `paused` back out as though the argument were
-            the result. 004 asks the flag the SIGNAL drain consults;
-            005 asks the console widget how many blocks it now holds.
-            """
+            """Pause or resume the log pane and the signals drain together."""
             paused = self._console_pause_btn.isChecked()
-            # Two panes, two mechanisms, one press. Both slots run on the Qt GUI
-            # thread, so nothing interleaves.
             _set_console_paused(self, paused=paused)
             handler = getattr(self, "_console_log_handler", None)
             if handler is None:
@@ -583,8 +407,7 @@ if _HAS_QT:
             import contextlib
             import time as _pause_clock
 
-            # Read before the resume empties the buffer. An empty
-            # QPlainTextEdit reports blockCount() == 1, so an empty pane is 0 lines.
+            # Read before resume drains it; an empty QPlainTextEdit reports one block.
             _console = getattr(self, "_console", None)
             _held = 0
             _dropped = 0
@@ -598,7 +421,7 @@ if _HAS_QT:
                         if _console.document().isEmpty()
                         else int(_console.blockCount())
                     )
-            except Exception:  # noqa: BLE001 - observation only
+            except Exception:  # noqa: BLE001
                 _console = None
             _t0 = _pause_clock.monotonic()
             handler.set_paused(paused)
@@ -648,7 +471,7 @@ if _HAS_QT:
                     )
 
         def _refresh_console_pause_indicator(self) -> None:
-            """While paused, update the buffered-count display every 500ms."""
+            """Show the buffered count in `_console_pause_indicator` while paused."""
             handler = getattr(self, "_console_log_handler", None)
             if handler is None or not handler._paused:
                 return
@@ -662,61 +485,7 @@ if _HAS_QT:
             self._console_pause_indicator.setText(msg)
 
         def _emit_console_health(self) -> None:
-            """Report the signal drain FROM OUTSIDE THE DRAIN.
-
-            10.7 -- `console.14.001`, `console.14.002` and
-            `console.14.003`.
-
-            WHY THIS METHOD EXISTS AT ALL, rather than three pins inside
-            `_drain_signals`. The Console is a CONSUMER of the sink the
-            emitter network writes to. A pin on the drain path writes a
-            record into the collection it is draining; the next tick
-            reads that record, renders it and emits again, so the pin's
-            own rate becomes a function of the quantity it measures.
-            `every=` reduces that rate and does not break the coupling,
-            and the synchroniser never folds a FAILING check -- so the
-            one state worth reporting is the one state that would run
-            un-throttled.
-
-            THE COUPLING IS BROKEN BY MAKING THE EMISSION RATE
-            INDEPENDENT OF THE SINK. This method is driven by its own
-            5000 ms QTimer, so it writes at most three records per
-            interval whatever the sink holds: a constant slope, exactly
-            like every other cadence pin in the tree. `_drain_signals`
-            only counts.
-
-            THE THREE QUANTITIES ARE ALSO CHOSEN SO A CONSOLE RECORD
-            MOVES BOTH SIDES OF EVERY COMPARISON BY THE SAME AMOUNT. A
-            record written here is read once and rendered once, so
-            `read - rendered` is unchanged by it; it adds one block and
-            one rendered line, so the pane's count and the ledger's
-            count move together. No verdict here can be driven by this
-            method's own traffic. `evicted` is the one quantity that
-            does grow with it, which is why it rides in `context` as a
-            number and is not part of any expectation.
-
-            WHAT CHANGED ABOUT `14-002`, STATED AND NOT LEFT
-            TO DRIFT. The drain now draws two kinds of line: records,
-            and a gap marker over a stretch the slice stepped over. The
-            pin still asks whether the pane holds what the drain drew,
-            but "what the drain drew" is now `_signal_rendered +
-            _signal_markers` rather than `_signal_rendered` alone, and
-            `gap_markers` rides in `context` so a reader of
-            `session.jsonl` can take the two apart. `14-001` is
-            UNCHANGED: it asks whether every record the watermark
-            consumed reached the pane, a marker is not a record, and a
-            Console that quietly keeps up must stay distinguishable in
-            the record stream from one that quietly skips.
-
-            THE ONE THING IT CANNOT REPORT IS ITS OWN SILENCE. If the
-            GUI thread wedges, this timer stops with the drain and
-            nothing is written at all. That is the seam the Watchdog arc
-            takes: the sink's JSONL is append-only, and a cadence pin
-            that stops writing is readable from outside the process when
-            nothing inside it can still speak.
-
-            Never raises, for the reason `_drain_signals` never does.
-            """
+            """Emit the three console.14 invariants over read, rendered and blocks."""
             try:
                 view = getattr(self, "_signal_view", None)
                 if view is None:
@@ -727,7 +496,7 @@ if _HAS_QT:
 
                 _ticks = getattr(self, "_signal_drain_ticks", 0)
                 _seen = getattr(self, "_signal_health_ticks_seen", 0)
-                # Advanced on every invocation, admitted or folded.
+                # Advanced every call, so `console.14.003` compares `_ticks` to `_seen`.
                 self._signal_health_ticks_seen = _ticks
                 _read = getattr(self, "_signal_read", 0)
                 _rendered = getattr(self, "_signal_rendered", 0)
@@ -736,8 +505,7 @@ if _HAS_QT:
                 _cap = int(view.maximumBlockCount())
                 _timer = getattr(self, "_signal_timer", None)
                 _look = getattr(self, "_console_health_timer", None)
-                # An empty QPlainTextEdit reports one block, so the floor is 1. A gap
-                # marker is a block too, so `_markers` counts into the want.
+                # An empty QPlainTextEdit reports one block; a gap marker adds one.
                 _want = max(_rendered + _markers, 1)
                 if _cap > 0:
                     _want = min(_want, _cap)
@@ -786,7 +554,7 @@ if _HAS_QT:
                             ),
                         },
                     )
-            except Exception as exc:  # noqa: BLE001 - display is best-effort
+            except Exception as exc:  # noqa: BLE001
                 logger.debug("console health emit failed: %s", exc)
 
         def _setup_status_bar(self) -> None:
@@ -794,7 +562,6 @@ if _HAS_QT:
             status.showMessage("Ready")
 
             # Worst-case calls per minute on the busiest connected exchange.
-            # Amber above 50 %, red above the monitor's own safety threshold.
             self._api_load_label = QLabel("API: —")
             self._api_load_label.setStyleSheet(
                 f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; padding: 0 8px; "
@@ -825,8 +592,7 @@ if _HAS_QT:
 
             self.setStatusBar(status)
 
-        # Class attributes: process lifetime, the same as the singletons they
-        # speak for.
+        # Class attributes: one ThrottledFault per pump, shared by every MainWindow.
         from ..exchange.lazy_singleton import ThrottledFault
 
         _currency_pump_fault = ThrottledFault(
@@ -842,12 +608,7 @@ if _HAS_QT:
         )
 
         def _pump_currency_rates(self) -> None:
-            """Schedule a lazy CurrencyRateMonitor refresh
-            and push the current snapshot into the Indicator Voting
-            Panel. Lazy: the monitor's ``refresh_from_connectors``
-            short-circuits when its snapshot is still fresh (60 s
-            cadence), so this fires at 2 s tick without hammering
-            the exchange."""
+            """Refresh CurrencyRateMonitor and push its snapshot to the voting panel."""
             try:
                 from ..exchange.currency_rate_monitor import get_currency_monitor
 
@@ -860,17 +621,11 @@ if _HAS_QT:
                 if hasattr(self, "_indicator_panel"):
                     self._indicator_panel.update_currency_rates(mon.snapshot())
                 self._currency_pump_fault.note_success()
-            except Exception as exc:  # noqa: BLE001 - pump best-effort
+            except Exception as exc:  # noqa: BLE001
                 self._currency_pump_fault.note_failure(exc)
 
         def _pump_market_pairs_scout(self) -> None:
-            """Schedule a lazy MarketPairsScout refresh so
-            every bot, and the Bot Details Status tab, has
-            a fresh view of all pairs trading each target asset on
-            each connected exchange. Lazy: the scout's own
-            ``refresh_from_connectors`` short-circuits when its per-
-            exchange snapshot is still fresh (10 s cadence), so this
-            fires safely at every dashboard tick."""
+            """Refresh MarketPairsScout for connected exchanges, one at a time."""
             try:
                 from ..exchange.market_pairs_scout import get_scout
 
@@ -886,12 +641,11 @@ if _HAS_QT:
                         scout.refresh_from_connectors(connectors)
                     )
                 self._scout_pump_fault.note_success()
-            except Exception as exc:  # noqa: BLE001 - pump best-effort
+            except Exception as exc:  # noqa: BLE001
                 self._scout_pump_fault.note_failure(exc)
 
         def _refresh_api_load_pill(self) -> None:
-            """Update the status-bar API-load pill from api_load_monitor.
-            Reports the worst-loaded connected exchange."""
+            """Set the API-load pill from the worst-loaded connected exchange."""
             try:
                 from ..exchange.api_load_monitor import get_load_monitor
 
@@ -929,8 +683,8 @@ if _HAS_QT:
                     f"color: {colour}; font-size: 10px; padding: 0 8px; "
                     f"font-family: Consolas;"
                 )
-            except Exception as _pill_exc:  # noqa: BLE001 - pill best-effort
-                # A timer would flood the warning stream once a second.
+            except Exception as _pill_exc:  # noqa: BLE001
+                # Logged at debug: the 2 s dashboard tick would flood a warning stream.
                 logger.debug(
                     "API-load pill refresh skipped: %s: %s",
                     type(_pill_exc).__name__,
@@ -943,13 +697,12 @@ if _HAS_QT:
             self._timer.start(2000)
 
         def _setup_pulse(self) -> None:
-            """Subtle pulsation on accent elements using QGraphicsOpacityEffect.
-            This approach does NOT interfere with theme stylesheets."""
+            """Animate accent widgets with QGraphicsOpacityEffect on an 80 ms timer."""
             from PySide6.QtWidgets import QGraphicsOpacityEffect
 
             self._pulse_phase = 0.0
             self._pulse_effects: list[QGraphicsOpacityEffect] = []
-            # Blur radius of each armed Fire button's glow, animated by the pulse.
+            # Drop-shadow of each armed Fire button; `_pulse_tick` animates its blur.
             self._fire_glow_effects: list = []
 
             pulse_targets = [
@@ -970,14 +723,7 @@ if _HAS_QT:
             self._pulse_timer.start(80)
 
         def _register_fire_glow(self, effect) -> None:
-            """Called from BotStatusTable when it creates a
-            new QGraphicsDropShadowEffect for an ARMED Fire button.
-            The pulse ticker then animates its blur radius for a
-            throbbing glow.
-
-            Prunes dead references on each call so the registry doesn't
-            grow unbounded across refresh cycles (BotStatusTable
-            recreates widgets per refresh; old effects become dangling)."""
+            """Add `effect` to `_fire_glow_effects` and drop the deleted Qt objects."""
             # Calling a method on a deleted Qt object raises RuntimeError.
             live = []
             for e in self._fire_glow_effects:
@@ -1018,20 +764,14 @@ if _HAS_QT:
                 ]
 
         def refresh_all_privacy_widgets(self) -> None:
-            """Repaint every dot + re-render every masked value after a
-            registry mutation (typically the global Privacy Mode flip).
-
-            Walks the widget tree once and calls the per-widget refresh
-            hooks where they exist. Tolerates missing hooks: components
-            that haven't opted into the privacy contract are skipped.
-            """
+            """Call every privacy refresh hook on the cards, tabs and panels."""
             try:
                 if (
                     hasattr(self, "_spendable_widget")
                     and self._spendable_widget is not None
                 ):
                     self._spendable_widget.refresh_privacy_dots()
-            except Exception:  # R28-OK  # noqa: S110
+            except Exception:  # noqa: S110
                 pass
             for attr_name in (
                 "_stat_scrummed",
@@ -1044,7 +784,7 @@ if _HAS_QT:
                     card = getattr(self, attr_name, None)
                     if card is not None and hasattr(card, "refresh_privacy_dot"):
                         card.refresh_privacy_dot()
-                except Exception:  # R28-OK  # noqa: S110
+                except Exception:  # noqa: S110
                     pass
             try:
                 for tab in getattr(self, "_exchange_tabs", {}).values():
@@ -1056,9 +796,9 @@ if _HAS_QT:
                                 tab.exchange_id
                             )
                             tab.update_bots(statuses)
-                    except Exception:  # R28-OK  # noqa: S110
+                    except Exception:  # noqa: S110
                         pass
-            except Exception:  # R28-OK  # noqa: S110
+            except Exception:  # noqa: S110
                 pass
             try:
                 if (
@@ -1067,11 +807,11 @@ if _HAS_QT:
                     and hasattr(self._indicator_panel, "refresh_privacy_dot")
                 ):
                     self._indicator_panel.refresh_privacy_dot()
-            except Exception:  # R28-OK  # noqa: S110
+            except Exception:  # noqa: S110
                 pass
 
         def _setup_tooltips(self) -> None:
-            """Apply tooltips for all abbreviated and technical terms. Rescans periodically."""
+            """Build `_abbreviation_tooltips` and rescan widgets every 5000 ms."""
             from PySide6.QtWidgets import QApplication
 
             app = QApplication.instance()
@@ -1127,7 +867,7 @@ if _HAS_QT:
             self._tooltip_timer.start(5000)
 
         def _apply_abbreviation_tooltips(self) -> None:
-            """Scan all widgets and set tooltips for matching abbreviated terms."""
+            """Set a tooltip on each QLabel, QPushButton and QGroupBox lacking one."""
             for label in self.findChildren(QLabel):
                 text = label.text()
                 if not text or label.toolTip():
@@ -1156,9 +896,8 @@ if _HAS_QT:
                         break
 
         def _on_api_event(self, entry: dict) -> None:
-            """Handle incoming API interaction log entry and display in UI."""
+            """Append one API entry to `_api_log_view`, refusing off-thread calls."""
             # Touching a widget off the GUI thread ends the process through Qt.
-            # Detect the wrong thread and refuse instead.
             import threading as _threading
 
             current = _threading.current_thread().name
@@ -1182,7 +921,7 @@ if _HAS_QT:
                             f"qFatal. Entry action={entry.get('action')}.\n"
                         )
                 except Exception:
-                    # No widget is touched here: this branch runs on the offending thread.
+                    # No widget is touched here: this branch runs on the wrong thread.
                     logger.exception(
                         "_on_api_event called on thread=%s "
                         "(origin=%s) - REFUSED to avoid Qt qFatal; "
@@ -1359,8 +1098,7 @@ if _HAS_QT:
                     if s.get("bot_id") not in seen_ids:
                         all_statuses.append(s)
 
-                # Unconditional: `update_bots([])` drops every widget, which is how
-                # the last deleted bot leaves the Swarm.
+                # Unconditional: `update_bots([])` drops every widget when all bots go.
                 try:
                     self._bot_viz.update_bots(all_statuses)
                 except Exception as e:
@@ -1644,8 +1382,7 @@ if _HAS_QT:
             if target_tabs is self._exchange_tabs:
                 self._exchange_tabs[exchange_id] = tab
 
-            # `actual` asks the two layer widgets which is holding the new tab.
-            # Neither reads `target_widget`, which is the argument that went in.
+            # `_landed` asks both layer widgets, never `target_widget`, the argument.
             _landed = "none"
             if self._stock_tab_widget.indexOf(tab) >= 0:
                 _landed = "stock"
@@ -1670,18 +1407,7 @@ if _HAS_QT:
                 )
 
         def _on_bot_error_for_log(self, event) -> None:
-            """Capture bot.error events into a rolling buffer for the
-            Errors-card click dialog.
-
-            Never raises out of this slot: every failure inside is
-            caught and logged. Suppression audit H6:
-            "must not raise" and "must not record" are different
-            requirements, and this handler used to do both. A
-            non-numeric "consecutive" field raises ValueError on
-            the int() below, which dropped the WHOLE error record
-            in silence, so the Errors card under-reported with
-            nothing anywhere to say that it had.
-            """
+            """Append (timestamp, bot_id, error, consecutive) to `_error_log_buffer`."""
             try:
                 from datetime import datetime as _dt
 
@@ -1698,7 +1424,7 @@ if _HAS_QT:
                 )
                 _consec = int(getattr(event, "data", {}).get("consecutive", 0) or 0)
                 self._error_log_buffer.append((_ts, _bot_id, _err, _consec))
-            except Exception:  # R28-OK: telemetry capture must never raise
+            except Exception:
                 logger.exception(
                     "bot.error capture failed; this error record "
                     "was dropped and the Errors card under-reports "
@@ -1707,13 +1433,7 @@ if _HAS_QT:
 
         @Slot()
         def _show_error_log_dialog(self) -> None:
-            """Open the Error Log dialog. Shows:
-              (a) rolling buffer of bot.error events captured this session
-              (b) per-bot snapshot of total_errors / consecutive_errors /
-                  last_error read live from BotStats
-            Operator directive: 'Need to be able to click on
-            the errors read out and open an error log display.'
-            """
+            """Open the Error Log dialog built by `_build_error_log_dialog`."""
             try:
                 dlg = self._build_error_log_dialog()
                 dlg.exec()
@@ -1721,12 +1441,7 @@ if _HAS_QT:
                 logger.exception("Error Log dialog raised: %s", exc)
 
         def _wire_manager(self):
-            """The live SmartWireManager, or None.
-
-            C06c. The adopt path talks to the wire engine
-            only by emitting on the bus, which is fire-and-forget, so
-            it could never read back what the engine actually holds.
-            """
+            """Return `self._bot_manager.smart_wire_manager`, or None if unreachable."""
             try:
                 mgr = getattr(self._bot_manager, "smart_wire_manager", None)
             except Exception as exc:  # noqa: BLE001
@@ -1735,25 +1450,7 @@ if _HAS_QT:
             return mgr
 
         def _wire_is_registered(self, src_id: str, tgt_id: str) -> bool:
-            """Did the engine actually take this wire?
-
-            Closed over four inputs. Only the last row moved.
-
-              manager absent  -> True. The caller is confirming an
-                  emit it already made, and a missing engine is
-                  not evidence the wire was rejected. Answering
-                  False here would report a healthy adopt as
-                  refused.
-              read-back holds tgt_id -> True.
-              read-back lacks tgt_id, or returns None -> False.
-              read-back raises -> False. Suppression audit H2.
-                  This row used to answer True,
-                  so a renamed manager interface raising
-                  AttributeError counted as "the engine took it"
-                  and reinstated the false success this verifier
-                  exists to stop. An engine that is present and
-                  unreadable has confirmed nothing.
-            """
+            """True when `tgt_id` is in the source's outgoing wires, or no manager."""
             mgr = self._wire_manager()
             if mgr is None:
                 return True
@@ -1771,14 +1468,7 @@ if _HAS_QT:
         def _topology_wire_collisions(
             self, wires: list, asset_to_bot: dict
         ) -> list[dict]:
-            """Which proposal wires land on a pair that is ALREADY wired.
-
-            Only existing-to-existing pairs can appear here: a bot the
-            wizard has not created yet has no wires, so a collision is
-            impossible for it. Returns [] rather than raising � a
-            pre-flight that can abort the adopt is worse than one that
-            discloses nothing, and the caller says so either way.
-            """
+            """Return one dict per proposal wire whose bot pair is already wired."""
             mgr = self._wire_manager()
             if mgr is None:
                 return []
@@ -1809,13 +1499,7 @@ if _HAS_QT:
             return out
 
         def _snapshot_wires_for_adopt(self, title: str):
-            """Copy the wire registry aside BEFORE an adopt mutates it.
-
-            Same shape as StateManager.preflight_snapshot: a dated file
-            in its own subdirectory, bounded retention, never raises.
-            This is the data rollback for an adopt that has already been
-            applied. Returns the path written, or None.
-            """
+            """Write the wires to a dated JSON file, keep the newest 20, return it."""
             import json
             from datetime import datetime
 
@@ -1828,8 +1512,7 @@ if _HAS_QT:
                 logger.warning("C06c: export_wires failed: %s", exc)
                 return None
             try:
-                # Ask the live StateManager where it keeps state: it may hold a custom
-                # config_dir, and a second one would resolve to the default.
+                # Read the StateManager's `_dir`, which may differ from `_DEFAULT_DIR`.
                 sm = getattr(self._bot_manager, "_state_manager", None)
                 base = getattr(sm, "_dir", None)
                 if base is None:
@@ -1858,19 +1541,7 @@ if _HAS_QT:
                 return None
 
         def _wire_ivp_snapshot_dir(self) -> None:
-            """Point the Indicator Panel's TA snapshot store at the LIVE
-            state directory.
-
-            UNIT 1. Same rule as ``_snapshot_wires_for_adopt``: ask the
-            running StateManager where it keeps state rather than
-            re-deriving the default. A StateManager built with a custom
-            ``config_dir`` puts its files elsewhere, and a panel that
-            re-derived the default would read and write a directory the
-            application is not using — the snapshots would be written,
-            and never found again.
-
-            Idempotent and cheap; safe to call on every dashboard tick.
-            """
+            """Point the Indicator Panel's TA snapshots at the live state directory."""
             if getattr(self, "_ivp_snapshot_dir_wired", False):
                 return
             panel = getattr(self, "_indicator_panel", None)
@@ -1894,15 +1565,7 @@ if _HAS_QT:
                 )
 
         def _ivp_cached_candle_count(self, bot) -> int | None:
-            """Rows the shared MarketDataPool ALREADY holds for this bot.
-
-            UNIT 2. Reads the pool's in-memory cache dict. It performs no
-            fetch, awaits nothing and cannot reach the network: the only
-            operation is a dictionary lookup on data some earlier tick
-            already paid for. Returns None when there is no cache slot
-            at all, which is a different statement from "the slot holds
-            zero candles" and must not be collapsed into it.
-            """
+            """Candles MarketDataPool holds for this bot; None when it has no slot."""
             try:
                 pool = _ammo_price_pool()
                 if pool is None:
@@ -1923,44 +1586,7 @@ if _HAS_QT:
                 return None
 
         def _ivp_empty_state_cause(self, bot, bot_id: str = "") -> tuple:
-            """The ONE reason this bot is showing no TA. Never a list.
-
-            UNIT 2. Returns ``(cause_token, detail_dict)`` for
-            ``IndicatorVotingPanel.show_no_data``, which owns the
-            wording. Kept as its own method, off the 700-line dashboard
-            body, so the decision can be driven directly.
-
-            ORDER MATTERS, and it is not arbitrary:
-
-              1. no bot object       — nothing else can be established.
-              2. idle / stopped      — a bot that is not running
-                                       evaluates nothing, whatever its
-                                       candles look like.
-              3. ERROR               — it stopped, and the message is
-                                       the actionable part.
-              4. parked at target    — the bot's OWN record of the
-                                       decision. ``_at_target_counter``
-                                       is incremented on the dust-band
-                                       return in ScrummingBot.tick and
-                                       reset to 0 the moment the tick
-                                       gets past that check, so a
-                                       non-zero value means the last
-                                       tick exited before the TA block.
-                                       This is checked BEFORE candles
-                                       because a parked bot returns
-                                       before it would even ask for
-                                       candles, so its cache slot is
-                                       whatever the last unparked tick
-                                       left there.
-              5. too few candles     — a cache slot exists and holds
-                                       fewer than the 30 rows both
-                                       ``_last_summary`` assignments
-                                       require.
-              6. cold start          — running, nothing above applies,
-                                       no reading yet.
-
-            Reads only fields already in memory. No API call, no TA.
-            """
+            """Return one (cause_token, detail) pair saying why this bot shows no TA."""
             if bot is None:
                 return "bot_missing", {"bot_id": str(bot_id or "")}
 
@@ -2013,15 +1639,7 @@ if _HAS_QT:
             return "cold_start", detail
 
         def _report_adopt_orphans(self, created_ids: list) -> None:
-            """Name the bots an aborted adopt left behind.
-
-            The adopt has always left already-created bots in place on
-            abort (its own docstring says so), but never said WHICH, so
-            the operator was told "aborted" and left to find them by
-            eye. They are not deleted here � destroying a bot the
-            operator may have wanted is a worse failure than leaving
-            one, and it is their call.
-            """
+            """Log the bot ids an aborted adopt created and left unwired."""
             if not created_ids:
                 return
             self._status_log.log(
@@ -2034,25 +1652,7 @@ if _HAS_QT:
             )
 
         def _adopt_topology_proposal(self, proposal: dict) -> None:
-            """Hand a topology proposal from the Market
-            Inspector right pane into the live bot roster.
-
-            Flow (per design doc § 5):
-              1. Confirmation summary (last-guard before any state change).
-              2. For each proposal bot with empty ``existing_bot_id``:
-                 open the Bot Wizard pre-filled with the suggested
-                 target USD. Snapshot ``BotManager.list_bots()`` before
-                 and after to capture the newly-created bot_id. If the
-                 operator cancels the wizard → abort adoption entirely
-                 (leaving any already-created bots in place but drawing
-                 NO wires — R70 audit-trail discipline).
-              3. Resolve each proposal wire's source + target bot_ids
-                 (from ``existing_bot_id`` or the freshly-created map).
-              4. Emit ``wire.created`` per wire — BotManager's existing
-                 handler calls ``SmartWireManager.register_wire`` and
-                 the Bot Swarm tab repaints (both are already subscribed
-                 to that event).
-            """
+            """Confirm, open the wizard for each new bot, then emit `wire.created`."""
             from PySide6.QtWidgets import QMessageBox
 
             if not isinstance(proposal, dict) or not proposal.get("bots"):
@@ -2152,7 +1752,7 @@ if _HAS_QT:
                         exchange_id="",
                         defaults_override={"default_target_balance": target_usd},
                     )
-                except Exception as _cb_exc:  # noqa: BLE001 - wizard surface
+                except Exception as _cb_exc:  # noqa: BLE001
                     logger.exception("Topology adopt: _create_bot raised: %s", _cb_exc)
                     self._status_log.log(
                         f"Topology adopt aborted: bot creation raised "
@@ -2171,11 +1771,10 @@ if _HAS_QT:
                     )
                     self._report_adopt_orphans(created_ids)
                     return
-                # The wizard can create more than one bot; the first id is the mapped one.
+                # The wizard can create several bots; the lowest sorted id is mapped.
                 chosen = sorted(new_ids)[0]
 
-                # The wizard is opened with exchange_id="" and only the target balance
-                # overridden, so the symbol is neither pre-filled nor constrained.
+                # The wizard opens with exchange_id="" and only the target balance set.
                 made: dict = next(
                     (s for s in after if str(s.get("bot_id", "")) == chosen), {}
                 )
@@ -2240,11 +1839,10 @@ if _HAS_QT:
                     self._bus.emit(
                         "wire.created", source_id=src_id, target_id=tgt_id, pct=pct
                     )
-                except Exception as _emit_exc:  # noqa: BLE001 - bus surface
+                except Exception as _emit_exc:  # noqa: BLE001
                     logger.exception("Topology adopt: wire emit raised: %s", _emit_exc)
                     continue
-                # `register_wire` refuses a non-numeric, <= 0 or > 100 pct and the bus
-                # handler discards that refusal, so count what the engine accepted.
+                # Counted from the engine read-back: the emit above reports no refusal.
                 if self._wire_is_registered(src_id, tgt_id):
                     wires_drawn += 1
                 else:
@@ -2274,17 +1872,12 @@ if _HAS_QT:
                 logger.warning("Topology adopt: spool notify failed: %s", _spool_exc)
 
         def _build_topology_proposals(self) -> list[dict]:
-            """Assemble live topology-detector context and
-            return the ranked proposals. Wired to the Market Inspector
-            right pane via ``set_proposal_source``. Runs on the GUI
-            thread inside the pane's Refresh + auto-timer callbacks;
-            keep it cheap (all detectors are pure over the fixture).
-            """
+            """Build detector context from scout, roster and inspector, then rank."""
             try:
                 from ..trading.topology_proposals import detect_all_topologies
                 from ..trading.market_inspector import get_shared_inspector
                 from ..exchange.market_pairs_scout import get_scout
-            except Exception as _imp_exc:  # noqa: BLE001 - import guard
+            except Exception as _imp_exc:  # noqa: BLE001
                 logger.debug("topology proposals unavailable: %s", _imp_exc)
                 return []
 
@@ -2310,7 +1903,7 @@ if _HAS_QT:
                                 "last": float(getattr(snap, "last", 0.0) or 0.0),
                                 "existing_bot_id": "",
                             }
-            except Exception as _scout_exc:  # noqa: BLE001 - scout best-effort
+            except Exception as _scout_exc:  # noqa: BLE001
                 logger.debug("topology: scout snapshot unavailable: %s", _scout_exc)
 
             bots_snapshot: list[dict] = []
@@ -2340,7 +1933,7 @@ if _HAS_QT:
                                 ),
                             }
                         )
-            except Exception as _bot_exc:  # noqa: BLE001 - manager surface
+            except Exception as _bot_exc:  # noqa: BLE001
                 logger.debug("topology: bot snapshot unavailable: %s", _bot_exc)
 
             opposing: list[dict] = []
@@ -2362,11 +1955,10 @@ if _HAS_QT:
                             "corr": float(op.correlation_30d),
                         }
                     )
-            except Exception as _op_exc:  # noqa: BLE001 - inspector surface
+            except Exception as _op_exc:  # noqa: BLE001
                 logger.debug("topology: opposing-pairs unavailable: %s", _op_exc)
 
-            # The opposing table holds no positive correlations, so momentum never
-            # fires here. Distance-to-band, mean-reversion and sector still do.
+            # Left empty: no correlation source is assembled here.
             correlations: dict[tuple[str, str], float] = {}
 
             ctx = {
@@ -2377,14 +1969,12 @@ if _HAS_QT:
             }
             try:
                 return detect_all_topologies(ctx)
-            except Exception as _det_exc:  # noqa: BLE001 - detector surface
+            except Exception as _det_exc:  # noqa: BLE001
                 logger.exception("topology: detect_all_topologies raised: %s", _det_exc)
                 return []
 
         def _build_error_log_dialog(self):
-            """Construct the dialog. Separated from the click slot so
-            tests can introspect the contents without running .exec().
-            """
+            """Build and return the Error Log QDialog without executing it."""
             from PySide6.QtWidgets import (
                 QDialog,
                 QVBoxLayout,
@@ -2406,7 +1996,7 @@ if _HAS_QT:
             try:
                 agg = self._bot_manager.get_aggregate_stats()
                 _life = int(agg.get("total_errors_lifetime", 0) or 0)
-            except Exception:  # R28-OK: best-effort header read
+            except Exception:
                 _life = 0
             hdr = QLabel(
                 f"<b>Errors:</b> {_life} &nbsp;·&nbsp; "
@@ -2447,7 +2037,7 @@ if _HAS_QT:
             snap.setEditTriggers(QAbstractItemView.NoEditTriggers)
             try:
                 _bots = list(self._bot_manager._bots.values())
-            except Exception:  # R28-OK: probe; empty fallback
+            except Exception:
                 _bots = []
             snap.setRowCount(len(_bots))
             for row, bot in enumerate(_bots):
@@ -2457,7 +2047,7 @@ if _HAS_QT:
                     _tot = int(getattr(bot.stats, "total_errors", 0) or 0)
                     _con = int(getattr(bot.stats, "consecutive_errors", 0) or 0)
                     _last = str(getattr(bot.stats, "last_error", "") or "—")
-                except Exception:  # R28-OK: row probe; partial fallback
+                except Exception:
                     _bid, _asset, _tot, _con, _last = "?", "?", 0, 0, "?"
                 snap.setItem(row, 0, QTableWidgetItem(_bid))
                 snap.setItem(row, 1, QTableWidgetItem(_asset))
@@ -2483,11 +2073,7 @@ if _HAS_QT:
                             _bot.stats.total_errors = 0
                             _bot.stats.consecutive_errors = 0
                             _bot.stats.last_error = ""
-                        except (
-                            Exception
-                        ) as _bot_reset_exc:  # noqa: BLE001 - per-bot best-effort
-                            # The header card keeps counting a fault the operator believes cleared.
-                            # The bot is not named: its stats object is what just failed.
+                        except Exception as _bot_reset_exc:  # noqa: BLE001
                             logger.warning(
                                 "Reset all errors: one bot's counters "
                                 "were NOT cleared (%s: %s); the error "
@@ -2496,11 +2082,9 @@ if _HAS_QT:
                                 _bot_reset_exc,
                             )
                             continue
-                    # Persist, or the next launch restores the old counters.
                     try:
                         self._bot_manager.save_all_state()
                     except Exception as _save_exc:  # noqa: BLE001
-                        # The screen shows zero while disk still holds the old counters.
                         logger.warning(
                             "Reset all errors: state was cleared in "
                             "memory but NOT saved (%s: %s); a restart "
@@ -2509,7 +2093,6 @@ if _HAS_QT:
                             _save_exc,
                         )
                 except Exception as _reset_exc:  # noqa: BLE001
-                    # The roster could not be walked, so the reset did not run at all.
                     logger.warning(
                         "Reset all errors: the bot roster could not be "
                         "walked (%s: %s); per-bot counters were left "
@@ -2528,21 +2111,7 @@ if _HAS_QT:
             return dlg
 
         def _on_bot_log(self, event) -> None:
-            """Log bot messages to the activity log.
-
-            Prefix the message with [TICKER/idsuffix] so the
-            operator can see which bot emitted each line. Without this
-            prefix the activity log becomes ambiguous the moment two
-            bots run at once — operator has to reverse-engineer which
-            bot is which from the numbers alone (target, price, delta).
-
-            Format: '[TICKER/last4]' where:
-              TICKER  — bot.config.target_asset (e.g. 'BONK', 'RAVE')
-              last4   — last 4 chars of bot_id, disambiguates when two
-                        bots share the same ticker with different targets
-            Fallback: if bot lookup fails for any reason, use
-            '[bot_id_last8]' so the line is still attributable.
-            """
+            """Prefix each bot log line with [TICKER/last4] for the activity log."""
             message = event.data.get("message", "")
             if not (message and self._status_log):
                 return
@@ -2569,40 +2138,7 @@ if _HAS_QT:
             self._status_log.log(prefix + message, "info")
 
         def _on_wire_created(self, event) -> None:
-            """Report wire creation. Does NOT modify bot config.
-
-            C39f. This handler used to execute
-
-                bot.config.profit_folding_active = True
-
-            on every ``wire.created`` event. Three things made that
-            indefensible rather than merely convenient:
-
-            1. It rewrote PERSISTED TRADING CONFIG from a GUI event
-               handler. The 60-second save then wrote it to disk, so an
-               operator who deliberately turned Profit Folding OFF found
-               it back on with no record of who changed it.
-            2. ``bot_container.py:2404`` re-emits ``wire.created`` for
-               every stored wire on EVERY BOOT. So the override was not
-               a one-time convenience at draw time — it re-applied at
-               every launch, permanently. Turning the setting off was
-               impossible to make stick.
-            3. The setting is load-bearing: it gates target growth
-               (``scrumming_bot.py:1356``) and the DIST tranche rebuild
-               (``:8688``).
-
-            If a wire needs folding enabled to be useful, the correct
-            behaviour is to SAY SO and let the operator decide. That is
-            what this now does. Persisted configuration changes when the
-            operator changes it, and at no other time.
-
-            Note for anyone tempted to restore the override "so wires
-            work": the DOMINANT wire flow does not depend on this flag.
-            ``_route_scrum_proceeds_via_wires`` (scrum-time routing, the
-            primary path) never reads it. Only the secondary
-            fold-compound route is gated, indirectly via
-            ``_growth_applied``.
-            """
+            """Log whether the source bot has profit folding on; writes no config."""
             source_id = event.data.get("source_id", "")
             if not self._bot_manager:
                 return
@@ -2625,7 +2161,7 @@ if _HAS_QT:
                 )
 
         def _on_tf_lock_changed(self, event) -> None:
-            """Propagate TF lock from Indicator Panel to all Accumulation Bot coordinators."""
+            """Set `_lock_timeframe` on each ScrummingBot coordinator from the event."""
             tf = event.data.get("timeframe", "")
             if not self._bot_manager:
                 return
@@ -2660,7 +2196,7 @@ if _HAS_QT:
                 )
 
         def _on_ai_feedback(self, event) -> None:
-            """Handle AI feedback received from LiveMonitor."""
+            """Update the AI status label, log the feedback, journal it when enabled."""
             data = event.data if hasattr(event, "data") else {}
             feedback = data.get("feedback", "")
             authenticated = data.get("authenticated", False)
@@ -2732,25 +2268,21 @@ if _HAS_QT:
                 if saved_geometry is not None:
                     try:  # noqa: SIM105
                         dlg.setGeometry(saved_geometry)
-                    except (
-                        Exception
-                    ):  # R28-OK: geometry restore is best-effort UX polish  # noqa: S110
+                    except Exception:  # noqa: S110
                         pass
                 if saved_tab_index is not None:
                     try:  # noqa: SIM105
                         dlg._tabs.setCurrentIndex(int(saved_tab_index))
-                    except (
-                        Exception
-                    ):  # R28-OK: tab-restore is best-effort UX polish  # noqa: S110
+                    except Exception:  # noqa: S110
                         pass
                 dlg.exec()
                 try:
                     saved_geometry = dlg.geometry()
-                except Exception:  # R28-OK: geometry capture is best-effort UX polish
+                except Exception:
                     saved_geometry = None
                 try:
                     saved_tab_index = dlg.active_tab_index()
-                except Exception:  # R28-OK: tab capture is best-effort UX polish
+                except Exception:
                     saved_tab_index = None
                 target_id = getattr(dlg, "_pending_navigate_to", None)
                 if not target_id:
@@ -2761,7 +2293,7 @@ if _HAS_QT:
                 current_bot = next_bot
 
         def _on_live_settings_changed(self, bot_id: str, changes: dict):
-            """Handle live settings changes from the detail dialog."""
+            """Log the changed live-settings fields and play the state-change sound."""
             self._status_log.log(
                 f"Bot {bot_id[:8]}: settings updated live — "
                 f"{', '.join(f'{k}={v}' for k, v in changes.items())}",
@@ -2772,13 +2304,7 @@ if _HAS_QT:
             get_sound_engine().play_state_change()
 
         def _schedule_async(self, coro):
-            """Schedule a coroutine on the persistent asyncio loop.
-
-            Returns the ``concurrent.futures.Future`` so
-            callers that need per-slot coalescing (chart fetch,
-            scout refresh) can cancel the previous instance before
-            spawning the next. Returns ``None`` when running in the
-            fallback thread-pool path (rare / test-only)."""
+            """Run `coro` on `_async_loop`, returning its Future or None on fallback."""
             if self._async_loop:
                 return asyncio.run_coroutine_threadsafe(coro, self._async_loop)
             import concurrent.futures
@@ -2789,9 +2315,7 @@ if _HAS_QT:
 
         @staticmethod
         def _cancel_if_pending(fut) -> None:
-            """Cancel a Future/Task if it exists and is
-            not yet done. Silent on any failure — the caller is
-            about to schedule its replacement anyway."""
+            """Cancel `fut` when it exists and is not done; failures log at debug."""
             if fut is None:
                 return
             try:
@@ -2805,10 +2329,7 @@ if _HAS_QT:
                 )
 
         def _connect_exchange_for_bot(self, bot) -> tuple[bool, str]:
-            """
-            Create a real exchange connector for a bot, replacing the placeholder.
-            Returns (success, message).
-            """
+            """Build a CCXTConnector from stored credentials; returns (ok, message)."""
             from ..exchange.api_logger import get_api_log
 
             _log = get_api_log()
@@ -2862,8 +2383,7 @@ if _HAS_QT:
                 master = f"qat_{self._settings.get('username', 'user')}_vault"
                 api_key = decrypt(exch_config["api_key_enc"], master)
                 api_secret = decrypt(exch_config["api_secret_enc"], master)
-                # None means the exchange stores no passphrase, which is not the same
-                # as an empty one. The connector still receives "" for the absent case.
+                # None means no stored passphrase; `sync_connect` still receives "".
                 passphrase: str | None = None
                 if exch_config.get("passphrase_enc"):
                     passphrase = decrypt(exch_config["passphrase_enc"], master)
@@ -2881,8 +2401,7 @@ if _HAS_QT:
 
                 connector = CCXTConnector(eid)
 
-                # Registered before `sync_connect`: the scan thread spawns inside it
-                # with whatever `_scan_symbols` holds at that moment.
+                # Registered before `sync_connect`, which starts the scan thread.
                 try:
                     connector.add_scan_symbol(bot.config.symbol)
                     if (
@@ -2922,8 +2441,7 @@ if _HAS_QT:
                     else {}
                 )
                 base_free = float(free_bals.get(base, 0) or 0)
-                # Extractor base is what it accumulates and its target is the "*" pool
-                # sigil; Scrumming base is what it spends and target is what it holds.
+                # Extractor mode passes no target asset to `check_start_balance`.
                 from ..trading.bot_container import BotMode as _BM
                 from src.trading.start_balance_check import check_start_balance
 
@@ -3009,8 +2527,6 @@ if _HAS_QT:
                 )
 
                 if not _sufficient:
-                    # `check_start_balance` pairs a None reason with sufficient=True only,
-                    # so this fallback does not fire today. It keeps "None" off the screen.
                     _start_reason = _start_msg or (
                         f"Insufficient balance on {eid.capitalize()} to "
                         f"start trading. {bal_summary}"
@@ -3061,14 +2577,7 @@ if _HAS_QT:
                 return False, msg
 
         def _on_bot_fire(self, bot_id: str) -> None:
-            """Manual Fire button handler.
-
-            Manual Fire is an AGGRESSIVE
-            rebalance-to-target. Calls BotManager.force_fire with
-            aggressive=True; next tick the scrumming bot executes a
-            MARKET order sized to the current delta, bypassing
-            TA and Bollinger gates. Plays the fire SFX on success.
-            """
+            """Call `force_fire(bot_id, aggressive=True)` and play the fire sound."""
             if not self._bot_manager:
                 return
             try:
@@ -3097,25 +2606,7 @@ if _HAS_QT:
                 )
 
         def _on_trade_filled_sfx(self, event) -> None:
-            """Auto-play Fire SFX on scrum/fold/dist fills.
-
-            Additionally: coins-in-bucket on profit > 0,
-            water drip on FOLD events (accumulation moment).
-
-            Operator directives: "Try to synthesize a sniper rifle
-            shot for the Fire sound." and "Coins dropping into a
-            bucket for P/L increases. Dripping water for accumulation."
-
-            Routing rules (all three can fire on the same event):
-              - ttype in (SCRUM, FOLD, DIST)  → rifle
-              - profit > 0 (from event.data)  → coins
-              - ttype == FOLD                  → drip (accumulation)
-
-            "Accumulation" in Acervator is the accumulation event:
-            units gained by buying back more asset than was sold.
-            That happens on FOLD. SCRUM and DIST convert direction
-            but don't accumulate; they stay silent on drip.
-            """
+            """Rifle on SCRUM/FOLD/DIST, coins on profit above zero, drip on FOLD."""
             try:
                 ttype = (event.data.get("type") or "").upper()
                 profit = event.data.get("profit", 0) or 0
@@ -3132,20 +2623,7 @@ if _HAS_QT:
                 pass
 
         def _dispatch_tracking_beep(self, statuses: list) -> None:
-            """Pace tracking beeps by scrum phase.
-
-            Scans status dicts for scrum_target_mode. The "hottest"
-            phase among all bots drives the beep cadence:
-              - any bot in FIRE  → 200ms cadence (fast)
-              - else any in TRACK → 800ms cadence (slow)
-              - else              → silent
-
-            Only one beep per cadence period regardless of bot count —
-            overlapping beeps would just sound like noise.
-
-            State (lazily initialised on first call):
-              self._beep_last_ts: timestamp of last beep emitted
-            """
+            """Beep every 200 ms when a scrumming bot is in FIRE, 800 ms in TRACK."""
             import time
 
             hottest = None
@@ -3194,8 +2672,7 @@ if _HAS_QT:
             sound = get_sound_engine()
 
             if command == "start":
-                # Synchronous connect on the GUI thread: the window freezes for the
-                # 5-15 s of `sync_connect` plus `fetch_balance`, and does not crash.
+                # Synchronous connect on the GUI thread: the window freezes until done.
                 eid_display = bot.config.exchange_id.capitalize()
                 self._status_log.log(
                     f"⏳ Starting bot {bot_id}... Connecting to {eid_display} "
@@ -3320,8 +2797,7 @@ if _HAS_QT:
                     QMessageBox.Yes | QMessageBox.No,
                 )
                 if confirm == QMessageBox.Yes:
-                    # `unregister` releases the reservation and detaches the wires; it
-                    # never sets the stop event and never cancels an open order.
+                    # Scheduled before `unregister` so the bot is told to stop first.
                     try:
                         self._schedule_async(bot.stop())
                     except Exception as exc:
@@ -3406,7 +2882,7 @@ if _HAS_QT:
             self._status_log.log("Settings saved.", "success")
 
         def _reset_settings(self) -> None:
-            """Reset all settings to defaults and clear stored exchanges."""
+            """Confirm, then call `reset_defaults` and tell the operator to restart."""
             confirm = QMessageBox.question(
                 self,
                 "Reset All Settings",
@@ -3430,18 +2906,7 @@ if _HAS_QT:
                 )
 
         def _toggle_trading_mode(self):
-            """Switch between Crypto and Stock trading layers.
-
-            Duplex architecture: flips the Trading-tab QStackedWidget AND
-            the Paper Trader stack together. Both tabs swap atomically
-            so the user is always in one wing of the duplex, never
-            straddling.
-
-            The Multi-Scale Paper Trader was removed as redundant
-            with the Paper Trader. The
-            Multi-Scale flip code is gone; sentinel checks remain
-            harmless because the attrs are None.
-            """
+            """Flip the Trading stack and the Paper Trader stack together."""
             if self._trading_mode == "crypto":
                 self._trading_mode = "stock"
                 self._mode_btn.setText("Stock Mode")
@@ -3478,8 +2943,7 @@ if _HAS_QT:
                 )
             self._update_mode_btn_style()
 
-            # `actual` is the stack page owning the alias widget, found through the
-            # widget's real parent. Neither branch assigns it, so it cannot echo them.
+            # `_alias_page` comes from `_tab_widget`'s parent, not from either branch.
             _alias_host = self._tab_widget.parentWidget() if self._tab_widget else None
             _alias_page = (
                 self._trading_stack.indexOf(_alias_host)
@@ -3516,10 +2980,7 @@ if _HAS_QT:
                 )
 
         def _update_mode_btn_style(self):
-            """Update mode button and layer tab headers to reflect the active layer.
-            Tab widget tinting is skipped if the stack hasn't been built yet
-            (safe to call early during _setup_ui before the trading stack exists).
-            """
+            """Restyle the mode button, and tint the layer tab bars once both exist."""
             tabs_ready = hasattr(self, "_crypto_tab_widget") and hasattr(
                 self, "_stock_tab_widget"
             )
@@ -3567,10 +3028,7 @@ if _HAS_QT:
             self._sync_exchange_tabs()
 
         def _sync_exchange_tabs(self) -> None:
-            """Create tabs for any exchanges in settings that don't have tabs yet.
-            Routes each exchange to the correct layer (crypto or stock)
-            regardless of which layer is currently visible.
-            """
+            """Add a tab for each configured exchange missing one, in its own layer."""
             if not self._settings:
                 return
             _wanted: list[str] = []
@@ -3593,7 +3051,7 @@ if _HAS_QT:
                         "success",
                     )
 
-            # Asks the layer tab bar, not the store the loop above just wrote.
+            # `_missing` asks the layer tab bar, not the store the loop above wrote.
             _missing = 0
             for _eid in _wanted:
                 if self._is_equity_exchange(_eid):
@@ -3628,24 +3086,7 @@ if _HAS_QT:
             base_currency: str,
             exchange_id: str,
         ) -> bool:
-            """Refuse this Extractor if nothing can parent it.
-
-            Returns True when creation must stop. The caller returns on
-            True and has already been told everything it needs; the
-            operator has been shown the reason and the refusal is on
-            both the activity log and the API record.
-
-            This lives beside `_create_bot` rather than inside it
-            because that function is already far past every size limit
-            the checkers set, and a refusal that reports itself is a
-            whole paragraph of reporting.
-
-            The refusal is worded like the pre-flight refusal above it —
-            a critical box the operator must dismiss, an error line in
-            the activity log, and no bot — because it is the same kind
-            of event: a check that ran before anything was built and
-            said no.
-            """
+            """Show the `_extractor_parent_refusal` reason; True when creation stops."""
             reason = self._extractor_parent_refusal(base_currency, exchange_id)
             if reason is None:
                 return False
@@ -3679,40 +3120,7 @@ if _HAS_QT:
             base_currency: str,
             exchange_id: str,
         ) -> str | None:
-            """Say why an Extractor may not be created here, or nothing.
-
-            THE REQUIREMENT, in the operator's words: "Given the design
-            change of the Extractor bot as a sibling of the Scrumming
-            Bot, it would seem logical to require a Scrumming Bot
-            first."
-
-            An Extractor works in one base currency and hands that
-            currency back when it closes a position. It goes to the
-            Scrumming Bot that HOLDS that currency, which raises its
-            target balance to keep the gain. With no such bot the money
-            has nowhere to go. Requiring the holder to exist BEFORE the
-            Extractor is created removes that case by construction,
-            instead of meeting it later with a live position open.
-
-            REFUSED AT CREATION, TOLERATED AT RESTORE. This is the
-            creation side and it refuses. The restore path in
-            `BotManager.restore_bots_from_state` does NOT, deliberately:
-            an Extractor whose parent was deleted after the fact still
-            holds a real position, and refusing to load it would leave
-            that position unmanaged. A rejected form costs nothing; a
-            stranded position costs money.
-
-            TWO REASONS, NEVER ONE. `find_parent_bot_for_base_currency`
-            answers nothing both when NO bot holds the currency and when
-            TWO OR MORE do -- it will not guess an owner. The remedies
-            are opposite, so the two are never collapsed into one
-            message: the first wants a Scrumming Bot created, the second
-            wants one of several existing ones designated, which is the
-            operator's call and not this window's.
-
-            Returns the reason as operator-facing text, or None when
-            creation may go ahead.
-            """
+            """Operator-facing text when no single Scrumming Bot holds this currency."""
             _asset = (base_currency or "").strip().upper() or "?"
             _venue = (exchange_id or "").strip() or "this exchange"
             manager = self._bot_manager
@@ -3768,13 +3176,7 @@ if _HAS_QT:
             exchange_id: str = "",
             defaults_override: Optional[dict] = None,
         ) -> None:
-            """Open the Bot Creation Wizard.
-
-            ``defaults_override`` merges into the settings-
-            based defaults dict passed to the wizard, so callers (the
-            topology-proposal Adopt handoff) can pre-fill fields such
-            as ``default_target_balance``.
-            """
+            """Open the Bot Creation Wizard; ``defaults_override`` merges in."""
             self._status_log.log(f"Creating new bot for {exchange_id}...")
             from ..exchange.api_logger import get_api_log
 
@@ -3817,8 +3219,7 @@ if _HAS_QT:
                             format_result_for_user,
                         )
 
-                        # Bound before the branch: the pre-flight failure message below reads
-                        # both names, and the Extractor path never enters the else that binds them.
+                        # Bound early: the Extractor path skips the else binding them.
                         _pf_symbol = "(no single symbol)"
                         _pf_exchange = str(exchange_id or "the exchange")
                         if config.get("mode") == "extractor":
@@ -3903,8 +3304,6 @@ if _HAS_QT:
                         "exchange_id": config.get("exchange_id", exchange_id),
                         "base_currency": config.get("base_currency", "USDT"),
                         "target_asset": config.get("target_asset", _ta_default),
-                        # Shared on the dataclass, manifest-grouped as Scrumming-only, so the
-                        # factory rejects them in `_scrum_kwargs`.
                         "target_balance": config.get(
                             "target_balance",
                             (
@@ -3992,7 +3391,6 @@ if _HAS_QT:
                             _mode, **_shared_kwargs, **_mode_kwargs
                         )
                     except (ValueError, TypeError) as _bc_err:
-                        # Operator-visible: a malformed config fails at construction.
                         msg = (
                             f"Bot creation REJECTED — mode-shape "
                             f"violation: {_bc_err}"
@@ -4015,8 +3413,7 @@ if _HAS_QT:
                                 "warning",
                             )
 
-                    # Checked after the config is shaped and before the bot is built, so a
-                    # refusal leaves nothing written to undo.
+                    # Checked after the config is shaped and before the bot is built.
                     if (
                         bot_config.mode == BotMode.EXTRACTOR
                         and self._refuse_extractor_without_parent(
@@ -4044,7 +3441,7 @@ if _HAS_QT:
                         )
 
                     if self._bot_manager:
-                        # `register` returns (granted, reason); it refuses on over-allocation.
+                        # `register` may return a bool or a (granted, reason) tuple.
                         _reg_result = self._bot_manager.register(bot)
                         if isinstance(_reg_result, tuple):
                             _granted, _refuse_reason = _reg_result
