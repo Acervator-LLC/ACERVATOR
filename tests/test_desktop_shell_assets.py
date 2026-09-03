@@ -1,12 +1,23 @@
-"""The desktop shell's own files: its JavaScript parses, and the page
-asks for assets that exist.
+"""Every JavaScript file the application ships parses, and the page asks
+for assets that exist.
 
 Node is not installed on this machine, so nothing here starts Electron.
-What it does instead is parse the shell's JavaScript with the engine
-PySide6 already ships and resolve every asset path the page names, which
-catches a syntax error and a missing file without a Node toolchain. The
-broken control below is what makes the parse result evidence: an engine
-that accepted anything would report the same pass on every file.
+What it does instead is parse the JavaScript with the engine PySide6
+already ships and resolve every asset path the page names, which catches
+a syntax error and a missing file without a Node toolchain.
+
+The subjects are discovered, never written down. ``shipped_javascript``
+walks ``src/gui/web`` for the React modules and adds the three shell
+scripts, so a module a later unit adds is parsed with no edit here. A
+hand-written list of three files is what left all 39 React modules
+unparsed by anything.
+
+Two broken sources make the parse result evidence. One is a bare
+statement, which shows the engine reports an error at all. The other
+sits inside ``(function (global) { ... })(window)`` -- the shape every
+React module has -- which shows the engine still reports an error at the
+depth the modules' real code occupies, rather than skipping nested
+function bodies.
 """
 
 from __future__ import annotations
@@ -21,6 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DESKTOP = REPO_ROOT / "desktop"
 RENDERER = DESKTOP / "renderer"
 INDEX_HTML = RENDERER / "index.html"
+WEB_MODULES = REPO_ROOT / "src" / "gui" / "web"
 
 SHELL_SCRIPTS = (
     DESKTOP / "main.js",
@@ -28,10 +40,30 @@ SHELL_SCRIPTS = (
     RENDERER / "boot.js",
 )
 
+
+def web_modules() -> tuple:
+    """Every React module under ``src/gui/web``, third-party ``vendor`` left out.
+
+    ``vendor`` holds React itself, which this repository does not author
+    and has no standing to judge.
+    """
+    return tuple(
+        path for path in sorted(WEB_MODULES.rglob("*.js")) if "vendor" not in path.parts
+    )
+
+
+def shipped_javascript() -> tuple:
+    """Every JavaScript file the application ships, discovered from disk."""
+    return SHELL_SCRIPTS + web_modules()
+
+
+SHIPPED_JS = shipped_javascript()
+
 WRAPPER_HEAD = "(function(require, module, exports, process, window, document){"
 WRAPPER_TAIL = "})"
 
 BROKEN_SOURCE = "var = ;"
+BROKEN_MODULE_SOURCE = "(function (global) { var = ; })(window);"
 
 
 @pytest.fixture()
@@ -63,10 +95,54 @@ def test_the_parser_rejects_broken_javascript(js_engine):
     assert parse_error(js_engine, BROKEN_SOURCE, "control") is not None
 
 
-@pytest.mark.parametrize("path", SHELL_SCRIPTS, ids=lambda p: p.name)
-def test_every_shell_script_parses(path, js_engine):
+def test_the_parser_rejects_a_syntax_error_inside_a_module_body(js_engine):
+    """A parser that skipped nested function bodies would pass every
+    React module without reading a line of it, because each module keeps
+    all of its code inside ``(function (global) { ... })(window)``."""
+    error = parse_error(js_engine, BROKEN_MODULE_SOURCE, "module-control")
+    assert error is not None, (
+        "a syntax error inside a module-shaped function was not reported, "
+        "so the parse result below says nothing about module bodies"
+    )
+
+
+@pytest.mark.parametrize("path", SHIPPED_JS, ids=lambda p: p.name)
+def test_every_shipped_script_parses(path, js_engine):
     error = parse_error(js_engine, path.read_text(encoding="utf-8"), path.name)
     assert error is None, path.name + ": " + str(error)
+
+
+def modules_the_page_loads() -> set:
+    """The ``src/gui/web`` module names the page's script tags name."""
+    return {
+        resolved.name
+        for _, resolved in referenced_assets()
+        if resolved.suffix == ".js" and resolved.parent == WEB_MODULES
+    }
+
+
+def test_the_parse_check_covers_every_module_the_page_loads():
+    """``index.html`` is written by hand and is not the source this
+    discovery walks, so it answers whether the walk actually reached the
+    modules rather than agreeing with itself."""
+    covered = {path.name for path in SHIPPED_JS}
+    missing = sorted(modules_the_page_loads() - covered)
+    assert not missing, (
+        str(len(missing))
+        + " modules the page loads are never parsed: "
+        + ", ".join(missing)
+    )
+
+
+def test_the_page_loads_every_module_on_disk():
+    """A module that ships but reaches no script tag is dead weight the
+    page never runs."""
+    unloaded = sorted({p.name for p in web_modules()} - modules_the_page_loads())
+    assert not unloaded, (
+        str(len(unloaded))
+        + " modules ship but no script tag names them: "
+        + ", ".join(unloaded)
+    )
 
 
 def referenced_assets() -> list:
@@ -115,10 +191,11 @@ def test_the_package_entry_point_exists():
     assert "electron" in manifest["devDependencies"]
 
 
-def test_the_shell_declares_no_http_listener():
-    """The reverted loopback server is not coming back through the shell.
-    Nothing here may open a port or speak HTTP."""
-    for path in SHELL_SCRIPTS:
-        source = path.read_text(encoding="utf-8")
-        for banned in ("http.createServer", 'require("http")', "listen(", "fetch("):
-            assert banned not in source, path.name + " contains " + banned
+@pytest.mark.parametrize("path", SHIPPED_JS, ids=lambda p: p.name)
+def test_no_shipped_script_declares_an_http_listener(path):
+    """The reverted loopback server is not coming back, through the shell
+    or through a React module. The backend is a child process on a pipe,
+    so no shipped file may open a port or speak HTTP."""
+    source = path.read_text(encoding="utf-8")
+    for banned in ("http.createServer", 'require("http")', "listen(", "fetch("):
+        assert banned not in source, path.name + " contains " + banned
