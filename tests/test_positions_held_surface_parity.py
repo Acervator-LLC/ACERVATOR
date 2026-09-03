@@ -50,8 +50,8 @@ CONNECT_TOTAL = 1
 SHIPPED_CLASS_TOTAL = 1
 SHIPPED_METHOD_TOTAL = 1
 SHIPPED_FUNCTION_TOTAL = 3
-PAYLOAD_KEY_TOTAL = 38
-CONSTANT_TOTAL = 131
+PAYLOAD_KEY_TOTAL = 43
+CONSTANT_TOTAL = 174
 
 
 def app():
@@ -318,6 +318,13 @@ def position(**named):
     return fields
 
 
+def position_without(dropped):
+    """One open position with the named reading left out entirely."""
+    found = position()
+    del found[dropped]
+    return found
+
+
 LONG_TEXT = "L" * 200
 MARKUP_TEXT = '<b onclick="x">bold &amp; "quoted"</b>'
 UNICODE_TEXT = "₿ éèê BTC 交易 \U0001f680"
@@ -561,6 +568,22 @@ SCENARIOS = [
         fire_answer="yes",
         schedule_raises=RuntimeError("loop is closed"),
     ),
+    scenario(
+        "one_unreadable_among_three",
+        positions=[
+            POSITIONS_HAPPY[0],
+            position(pair="BAD/BTC", alt_units="cheap"),
+            POSITIONS_HAPPY[2],
+        ],
+    ),
+    scenario("no_current_value", positions=[position_without("current_usd_approx")]),
+    scenario(
+        "two_rows_on_one_pair",
+        positions=[
+            position(opened_at=1.0),
+            position(opened_at=2.0, tier=5),
+        ],
+    ),
 ]
 
 SCENARIO_NAMES = [spec["name"] for spec in SCENARIOS]
@@ -665,8 +688,8 @@ def drive_new(spec):
     model = surface.PositionsHeldTabModel(bot, new_manager(spec), sink)
     model.build()
     if spec["fire_row"] is not None:
-        pair = model.fire_pairs[spec["fire_row"]]
-        model.fire_handler(pair)(surface_answer_value(spec))
+        identity = model.fire_identities[spec["fire_row"]]
+        model.fire_handler(identity)(surface_answer_value(spec))
     return {"model": model, "bot": bot, "sink": sink}
 
 
@@ -883,7 +906,7 @@ def surface_trace(driven):
             if footer["shown"]
             else {"shown": False}
         ),
-        "boxes": payload["boxes"],
+        "boxes": plain_boxes(payload["boxes"]),
         "scheduled": len(driven["sink"].scheduled),
         "fired": list(driven["bot"].fired),
         "table_stretch": table["stretch"] if table["shown"] else 0,
@@ -891,6 +914,21 @@ def surface_trace(driven):
 
 
 STANDIN_NAMES = {"BotSource": "Bot", "ManagerSource": "Manager"}
+
+#: The five box fields the Qt recorder can see. The surface adds the
+#: wrap and the pieces, which no QMessageBox call carries.
+RECORDED_BOX_FIELDS = (
+    "icon",
+    "title",
+    "text",
+    "buttons_value",
+    "default_button_value",
+)
+
+
+def plain_boxes(boxes) -> list:
+    """Every box down to the five fields both sides carry."""
+    return [{name: box[name] for name in RECORDED_BOX_FIELDS} for box in boxes]
 
 
 def plain_message(text: str) -> str:
@@ -940,13 +978,19 @@ def test_the_two_sides_describe_the_same_tab(name):
     assert digest(new["value"]) == digest(old["value"]), name
 
 
+#: The two inputs that still stop the tab. Both are read before any
+#: row is built: the summary chunk numbers and the bot's own config.
 REFUSING_SCENARIOS = (
+    "text_where_a_chunk_number_belongs",
+    "no_config_on_the_bot",
+)
+
+#: The five inputs that used to stop the whole tab and now draw a row.
+ONCE_REFUSING_SCENARIOS = (
     "text_where_a_number_belongs",
     "text_where_a_whole_number_belongs",
-    "text_where_a_chunk_number_belongs",
     "none_where_a_number_belongs",
     "infinity_where_a_whole_number_belongs",
-    "no_config_on_the_bot",
     "pool_color_is_a_number",
 )
 
@@ -1102,7 +1146,9 @@ def test_a_bot_that_refuses_the_close_is_swallowed_by_the_qt_event_loop():
         old = drive_old(spec)
     assert [kind.__name__ for kind, _value, _trace in caught] == ["ValueError"], caught
     assert [str(value) for _kind, value, _trace in caught] == [BOT_REFUSAL]
-    assert old["boxes"] == [surface.confirm_box(POSITIONS_HAPPY[0]["pair"])]
+    assert old["boxes"] == plain_boxes(
+        [surface.confirm_box(POSITIONS_HAPPY[0]["pair"])]
+    )
     assert old["scheduled"] == 0
     with pytest.raises(ValueError) as reported:
         drive_new(spec)
@@ -1433,11 +1479,17 @@ PAYLOAD_KEYS = {
     "DELTA_UP_COLOR": "colors.delta_up",
     "DISPATCHED_TEXT_FORMAT": "formats.dispatched_text",
     "DISPATCHED_TITLE": "titles.dispatched",
+    "DISPATCHED_LEAD": "pieces.dispatched_lead",
+    "DISPATCHED_TAIL": "pieces.dispatched_tail",
+    "DISPATCHED_WRAP": "pieces.dispatched_wrap",
     "DRAWDOWN_COLOR": "colors.drawdown",
     "EDIT_TRIGGERS": "positions_table.edit_triggers",
+    "EMPTY_LEAD": "pieces.empty_lead",
     "EMPTY_STYLE": "empty_label.style_sheet",
+    "EMPTY_TAIL": "pieces.empty_tail",
     "EMPTY_TEXT": "empty_label.text",
     "EMPTY_WORD_WRAP": "empty_label.word_wrap",
+    "EMPTY_WRAP": "empty_label.wrap",
     "ENTRY_FORMAT": "formats.entry",
     "ENTRY_KEY": "keys.entry",
     "EXTRACTED_ROW_FORMAT": "formats.extracted_row",
@@ -1447,11 +1499,43 @@ PAYLOAD_KEYS = {
     "FIRE_BUTTON_STYLE": "fire_button.style_sheet",
     "FIRE_BUTTON_TEXT": "fire_button.text",
     "FIRE_COLUMN": "positions_table.fire_column",
+    "FOOTER_PIECES": "footer_label.pieces",
+    "FOOTER_STRONG": "pieces.footer_strong",
     "FOOTER_STYLE": "footer_label.style_sheet",
+    "FOOTER_TAIL": "pieces.footer_tail",
     "FOOTER_TEXT": "footer_label.text",
     "FOOTER_WORD_WRAP": "footer_label.word_wrap",
+    "FOOTER_WRAP": "footer_label.wrap",
     "HEADER_RESIZE_MODE": "positions_table.header_resize_mode",
     "INFORMATION_ICON": "icons.information",
+    "ITALIC_CLOSE": "marks.italic_close",
+    "ITALIC_OPEN": "marks.italic_open",
+    "ITALIC_STYLE": "marks.italic_style",
+    "MARK_TAGS": "marks",
+    "BREAK_TAG": "marks.break_tag",
+    "NO_PIECE": "marks.no_piece",
+    "PIECE_KINDS": "piece_kinds",
+    "STRONG_CLOSE": "marks.strong_close",
+    "STRONG_OPEN": "marks.strong_open",
+    "STRONG_WEIGHT": "marks.strong_weight",
+    "WRAP_KINDS": "wrap_kinds",
+    "UNREADABLE_COLOR": "colors.unreadable",
+    "UNREADABLE_COLUMNS": "unreadable.columns",
+    "UNREADABLE_TEXT": "unreadable.text",
+    "OPENED_AT_KEY": "keys.opened_at",
+    "DEFAULT_OPENED_AT": "defaults.opened_at",
+    "READ_FAILED_LEAD": "pieces.read_failed_lead",
+    "READ_FAILED_PIECES": "pieces.read_failed",
+    "READ_FAILED_STRONG": "pieces.read_failed_strong",
+    "READ_FAILED_TAIL": "pieces.read_failed_tail",
+    "READ_FAILED_TEXT": "texts.read_failed",
+    "CONFIRM_BREAKS": "pieces.confirm_breaks",
+    "CONFIRM_LEAD": "pieces.confirm_lead",
+    "CONFIRM_TAIL_ONE": "pieces.confirm_tail_one",
+    "CONFIRM_TAIL_THREE": "pieces.confirm_tail_three",
+    "CONFIRM_TAIL_TWO": "pieces.confirm_tail_two",
+    "CONFIRM_WRAP": "pieces.confirm_wrap",
+    "POOL_WRAP": "pool_label.wrap",
     "NO_BUTTON_VALUE": "button_values.no",
     "NO_CELL_COLOR": "no_cell_color",
     "NO_DEFAULT_BUTTON_VALUE": "button_values.no_default",
@@ -1488,6 +1572,11 @@ PAYLOAD_KEYS = {
 
 # The values carried as one member of a list the payload holds.
 LIST_MEMBERS = {
+    "PLAIN_PIECE": "piece_kinds",
+    "STRONG_PIECE": "piece_kinds",
+    "BREAK_PIECE": "piece_kinds",
+    "NO_WRAP": "wrap_kinds",
+    "ITALIC_WRAP": "wrap_kinds",
     "POOL_GREEN": "pool_names",
     "POOL_YELLOW": "pool_names",
     "POOL_RED": "pool_names",
@@ -1595,8 +1684,8 @@ def test_every_value_the_surface_exports_reaches_the_snapshot():
         else:
             unaccounted.append(name)
     assert unaccounted == [], unaccounted
-    assert len(PAYLOAD_KEYS) == 99
-    assert len(LIST_MEMBERS) == 9
+    assert len(PAYLOAD_KEYS) == 137
+    assert len(LIST_MEMBERS) == 14
     assert len(CALL_CONSTANTS) == 21
     assert len(NOT_IN_THE_SNAPSHOT) == 2
 
@@ -2140,7 +2229,7 @@ def test_the_message_box_texts_are_read_off_both_sides():
     for name in ("fire_declined", "fire_without_a_manager", "fire_schedule_failed"):
         old = drive_old(BY_NAME[name])
         new = drive_new(BY_NAME[name])
-        assert old["boxes"] == new["model"].boxes, name
+        assert old["boxes"] == plain_boxes(new["model"].boxes), name
         assert old["boxes"], name
     dispatched = drive_old(BY_NAME["fire_dispatched"])
     assert dispatched["boxes"][1]["title"] == surface.DISPATCHED_TITLE
@@ -2270,7 +2359,7 @@ def test_the_bridge_runs_the_fire_path():
             "reset": True,
             "bot": BRIDGE_BOT,
             "manager": {"async_loop": "a loop"},
-            "fire_pair": POSITIONS_HAPPY[0]["pair"],
+            "fire_identity": [POSITIONS_HAPPY[0]["pair"], ""],
             "fire_answer": surface.YES_BUTTON_VALUE,
         }
     )
@@ -2281,7 +2370,7 @@ def test_the_bridge_runs_the_fire_path():
             "reset": True,
             "bot": BRIDGE_BOT,
             "manager": {"async_loop": "a loop"},
-            "fire_pair": POSITIONS_HAPPY[0]["pair"],
+            "fire_identity": [POSITIONS_HAPPY[0]["pair"], ""],
             "fire_answer": surface.NO_BUTTON_VALUE,
         }
     )
@@ -2350,3 +2439,228 @@ def test_the_qt_probe_can_report_qt():
     loaded = run_probe("import PySide6.QtCore;")
     assert loaded["qt"] is True
     assert loaded["frame"]["ok"] is True
+
+
+# ---------------------------------------------------------------------
+# One check for each repair, each of which fails without it
+# ---------------------------------------------------------------------
+
+
+UNREADABLE_ROW = 1
+ALT_UNITS_COLUMN = 3
+CURRENT_COLUMN = 5
+DELTA_COLUMN = 6
+
+
+@pytest.mark.parametrize("name", ONCE_REFUSING_SCENARIOS)
+def test_five_inputs_that_stopped_the_whole_tab_now_draw_it(name):
+    """Each of these raised out of the build, so the operator saw no tab."""
+    old = old_outcome(BY_NAME[name])
+    new = new_outcome(BY_NAME[name])
+    assert old["outcome"] == "answered", (name, old)
+    assert new["outcome"] == "answered", (name, new)
+
+
+def test_one_unreadable_position_costs_no_other_row():
+    """A reading nobody can take blanked every row, on both sides."""
+    spec = BY_NAME["one_unreadable_among_three"]
+    old = qt_trace(drive_old(spec))
+    new = surface_trace(drive_new(spec))
+    table = old["positions_table"]
+    assert table["row_count"] == 3
+    assert new["positions_table"] == table
+    assert table["rows"][UNREADABLE_ROW][ALT_UNITS_COLUMN] == surface.UNREADABLE_TEXT
+    assert (
+        table["row_colors"][UNREADABLE_ROW][ALT_UNITS_COLUMN]
+        == surface.UNREADABLE_COLOR
+    )
+    kept = qt_trace(drive_old(BY_NAME["happy"]))["positions_table"]["rows"]
+    assert table["rows"][0] == kept[0]
+    assert table["rows"][2] == kept[2]
+
+
+def test_the_unreadable_reading_check_reads_a_row_that_is_whole():
+    """Every row of the happy scenario is readable, so nothing is marked."""
+    table = qt_trace(drive_old(BY_NAME["happy"]))["positions_table"]
+    for row in table["rows"]:
+        assert surface.UNREADABLE_TEXT not in row
+    for painted in table["row_colors"]:
+        assert surface.UNREADABLE_COLOR not in painted
+    model = drive_new(BY_NAME["happy"])["model"]
+    assert model.row_unreadable == [[], [], []]
+
+
+def test_a_pool_colour_that_is_not_text_still_builds_the_tab():
+    """The capitals were taken outside the guard, so the whole tab refused."""
+    spec = BY_NAME["pool_color_is_a_number"]
+    old = qt_trace(drive_old(spec))
+    new = surface_trace(drive_new(spec))
+    assert old["summary_rows"][0][1] == new["summary_rows"][0][1]
+    assert old["summary_rows"][0][1] == surface.pool_text(spec["pool_color"])
+    assert str(spec["pool_color"]) in old["summary_rows"][0][1]
+
+
+def test_a_current_value_the_bot_never_supplied_is_not_reported_as_zero():
+    """A missing current value printed real money as zero on both sides."""
+    spec = BY_NAME["no_current_value"]
+    old = qt_trace(drive_old(spec))
+    new = surface_trace(drive_new(spec))
+    row = old["positions_table"]["rows"][0]
+    assert new["positions_table"]["rows"][0] == row
+    assert row[CURRENT_COLUMN] == surface.UNREADABLE_TEXT
+    assert row[CURRENT_COLUMN] != surface.CURRENT_FORMAT.format(current_usd=0.0)
+    assert (
+        old["positions_table"]["row_colors"][0][CURRENT_COLUMN]
+        == surface.UNREADABLE_COLOR
+    )
+
+
+def test_a_measured_zero_is_still_drawn_as_zero():
+    """A guard that marked every zero unreadable would change what it means."""
+    row = qt_trace(drive_old(BY_NAME["zero_everywhere"]))["positions_table"]["rows"][0]
+    assert row[CURRENT_COLUMN] == surface.CURRENT_FORMAT.format(current_usd=0.0)
+    assert row[ALT_UNITS_COLUMN] == surface.ALT_UNITS_FORMAT.format(alt_units=0.0)
+    assert surface.UNREADABLE_TEXT not in row
+
+
+def test_a_failed_position_read_says_so_and_claims_no_pool_colour():
+    """The failed read drew a line asserting a pool colour nobody measured."""
+    failed = qt_trace(drive_old(BY_NAME["no_positions_reading"]))
+    new_failed = surface_trace(drive_new(BY_NAME["no_positions_reading"]))
+    assert failed["empty_label"]["text"] == new_failed["empty_label"]["text"]
+    assert failed["empty_label"]["text"] == surface.READ_FAILED_TEXT
+    assert surface.pool_name(surface.POOL_GREEN) not in failed["empty_label"]["text"]
+    assert surface.READ_FAILED_STRONG in failed["empty_label"]["text"]
+
+
+def test_a_true_empty_pool_names_the_colour_that_was_measured():
+    """The empty line named one fixed colour whatever the pool reported."""
+    empty = qt_trace(drive_old(BY_NAME["empty_positions"]))
+    new_empty = surface_trace(drive_new(BY_NAME["empty_positions"]))
+    measured = surface.pool_name(BY_NAME["empty_positions"]["pool_color"])
+    assert empty["empty_label"]["text"] == new_empty["empty_label"]["text"]
+    assert measured in empty["empty_label"]["text"]
+    assert empty["empty_label"]["text"] != surface.READ_FAILED_TEXT
+    assert surface.pool_name(surface.POOL_GREEN) != measured
+
+
+def test_each_fire_handler_is_bound_to_a_whole_position_identity():
+    """Two rows on one pair were told apart by nothing at all."""
+    model = drive_new(BY_NAME["two_rows_on_one_pair"])["model"]
+    assert model.fire_pairs[0] == model.fire_pairs[1]
+    assert model.fire_identities[0] != model.fire_identities[1]
+    assert [one[0] for one in model.fire_identities] == model.fire_pairs
+    assert model.fire_identities[1][1] != model.fire_identities[0][1]
+    model.fire_handler(model.fire_identities[1])(surface.NO_BUTTON_VALUE)
+    assert model.outcome == surface.OUTCOME_DECLINED
+
+
+def test_the_identity_check_reads_two_rows_that_are_already_apart():
+    """Three different pairs give three identities that already differ."""
+    model = drive_new(BY_NAME["happy"])["model"]
+    assert len(set(tuple(one) for one in model.fire_identities)) == 3
+
+
+def test_the_footer_stays_out_of_the_branch_that_draws_no_button():
+    """The footer explains a Fire button, and neither branch draws one."""
+    for name in ("empty_positions", "no_positions_reading"):
+        old = qt_trace(drive_old(BY_NAME[name]))
+        new = surface_trace(drive_new(BY_NAME[name]))
+        assert old["footer_label"] == {"shown": False}, name
+        assert new["footer_label"] == old["footer_label"], name
+    filled = qt_trace(drive_old(BY_NAME["happy"]))
+    assert filled["footer_label"]["shown"] is True
+
+
+def rebuilt(wrap, pieces) -> str:
+    """The text one wrapped list of pieces builds, rebuilt here rather than read."""
+    body = ""
+    for kind, piece in pieces:
+        if kind == surface.STRONG_PIECE:
+            body += surface.STRONG_OPEN + str(piece) + surface.STRONG_CLOSE
+        elif kind == surface.BREAK_PIECE:
+            body += surface.BREAK_TAG * int(piece)
+        else:
+            body += str(piece)
+    if wrap == surface.ITALIC_WRAP:
+        return surface.ITALIC_OPEN + body + surface.ITALIC_CLOSE
+    return body
+
+
+MARKED_LINES = ("pool_label", "empty_label", "footer_label")
+
+
+@pytest.mark.parametrize("name", ("happy", "empty_positions", "no_positions_reading"))
+def test_every_marked_line_is_rebuilt_by_the_pieces_it_publishes(name):
+    """A line whose pieces build another text would draw one and check another."""
+    payload = surface.build_view_model(drive_new(BY_NAME[name])["model"])
+    for field in MARKED_LINES:
+        line = payload[field]
+        assert rebuilt(line["wrap"], line["pieces"]) == line["text"], (name, field)
+
+
+def test_the_rebuild_check_reads_a_piece_that_was_changed():
+    """A rebuild that answered the text whatever the pieces held proves nothing."""
+    payload = surface.build_view_model(surface.PositionsHeldTabModel())
+    line = payload["footer_label"]
+    changed = [list(one) for one in line["pieces"]]
+    changed[0][1] = LONG_TEXT
+    assert rebuilt(line["wrap"], changed) != line["text"]
+
+
+@pytest.mark.parametrize(
+    "name", ("fire_declined", "fire_without_a_manager", "fire_schedule_failed")
+)
+def test_every_message_box_is_rebuilt_by_the_pieces_it_publishes(name):
+    """A box the operator reads is drawn from pieces that must build it back."""
+    boxes = drive_new(BY_NAME[name])["model"].boxes
+    assert boxes, name
+    for box in boxes:
+        assert rebuilt(box["wrap"], box["pieces"]) == box["text"], name
+
+
+def test_the_marked_pieces_hold_the_words_qt_draws_in_bold():
+    """The emphasis is a piece of its own, so no side reads a tag as words."""
+    payload = surface.build_view_model(drive_new(BY_NAME["happy"])["model"])
+    strong = [
+        piece
+        for kind, piece in payload["pool_label"]["pieces"]
+        if kind == surface.STRONG_PIECE
+    ]
+    assert strong == [surface.pool_name(BY_NAME["happy"]["pool_color"])]
+    assert surface.STRONG_OPEN not in strong[0]
+    footer = payload["footer_label"]["pieces"]
+    assert [kind for kind, _piece in footer] == [
+        surface.STRONG_PIECE,
+        surface.PLAIN_PIECE,
+    ]
+
+
+def test_the_bridge_reaches_the_fourth_fire_path():
+    """The renderer could ask for three of the four paths and no more."""
+    answer = bridge_answer(
+        {
+            "reset": True,
+            "bot": BRIDGE_BOT,
+            "manager": {"async_loop": "a loop"},
+            "schedule_error": "loop is closed",
+            "fire_identity": [POSITIONS_HAPPY[0]["pair"], ""],
+            "fire_answer": surface.YES_BUTTON_VALUE,
+        }
+    )
+    assert answer["ok"] is True
+    assert answer["result"]["fire_outcome"] == surface.OUTCOME_SCHEDULE_FAILED
+
+
+def test_the_fourth_path_check_reads_a_hand_off_that_did_not_refuse():
+    """A run with no schedule_error must reach the dispatched path instead."""
+    answer = bridge_answer(
+        {
+            "reset": True,
+            "bot": BRIDGE_BOT,
+            "manager": {"async_loop": "a loop"},
+            "fire_identity": [POSITIONS_HAPPY[0]["pair"], ""],
+            "fire_answer": surface.YES_BUTTON_VALUE,
+        }
+    )
+    assert answer["result"]["fire_outcome"] == surface.OUTCOME_DISPATCHED

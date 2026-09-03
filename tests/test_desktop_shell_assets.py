@@ -141,14 +141,15 @@ def test_the_parse_check_covers_every_module_the_page_loads():
     )
 
 
-def test_the_page_loads_every_module_on_disk():
-    """A module that ships but reaches no script tag is dead weight the
-    page never runs."""
-    unloaded = sorted({p.name for p in web_modules()} - modules_the_page_loads())
+def test_no_module_on_disk_goes_unloaded_by_tag_or_manifest():
+    """A module reaches the page two ways: its own script tag, or the
+    manifest the loader injects. Either counts; neither is dead weight."""
+    reached = modules_the_page_loads() | set(manifest_names())
+    unloaded = sorted({p.name for p in web_modules()} - reached)
     assert not unloaded, (
         str(len(unloaded))
-        + " modules ship but no script tag names them: "
-        + ", ".join(unloaded)
+        + " modules ship but neither a script tag nor the manifest names "
+        "them: " + ", ".join(unloaded)
     )
 
 

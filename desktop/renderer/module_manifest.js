@@ -41,5 +41,7 @@ window.ACERVATOR_MODULES = [
   "fold_tokens.js",
   "fold_chrome.js",
   "fold_tranches_tab.js",
+  "stack_tranches_tab.js",
   "phantom_bots_tab.js",
+  "positions_held.js",
 ];
