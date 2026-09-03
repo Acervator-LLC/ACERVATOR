@@ -40,7 +40,7 @@ class TradeRecord:
 
     @property
     def record_hash(self) -> str:
-        # sadp: R28 R33  # audit record: fail-loudly(R28) append-only(R33)
+        # Hashes only this record's fields; TradeJournal.record adds the chain link.
         return hashlib.sha256(
             json.dumps(asdict(self), sort_keys=True, default=str).encode()
         ).hexdigest()
@@ -76,7 +76,7 @@ class TradeJournal:
                 self._s["trades"] += 1
 
     def record(self, trade: TradeRecord) -> str:
-        # sadp: R28 R33  # audit record: fail-loudly(R28) append-only(R33)
+        # Builds the next chain link and appends it; the journal is never rewritten.
         ch = hashlib.sha256(
             f"{self._last_hash}:{trade.record_hash}".encode()
         ).hexdigest()
@@ -110,7 +110,7 @@ class TradeJournal:
         return ch
 
     def verify(self) -> tuple[bool, int]:
-        # sadp: R28 R33  # audit verify: fail-loudly(R28) read-only(R33)
+        # Counts journal lines only; does not recompute or check the hash chain.
         if not self._path.exists():
             return True, 0
         n = 0
@@ -131,8 +131,6 @@ class TradeJournal:
     def record_count(self):
         return self._seq
 
-    # sadp: R28 R33  # audit record: fail-loudly(R28) append-only(R33)
-
 
 class ReportGenerator:
     def __init__(self, reports_dir="reports"):
@@ -148,7 +146,7 @@ class ReportGenerator:
             with open(rr[-1]) as f:
                 return json.load(f).get("report_hash", "GENESIS")
         except Exception:
-            return "GENESIS"  # R28-OK: prior-hash probe; GENESIS is the safe seed
+            return "GENESIS"  # matches TradeJournal's own default chain-start value
 
     def generate(
         self,
@@ -160,7 +158,7 @@ class ReportGenerator:
         bots=None,
         env="live",
     ):
-        # sadp: R24 R28  # report generation: PDF-output(R24) fail-loudly(R28)
+        # Builds the report dict; ReportGenerator.save writes it as JSON, not PDF.
         from src import __version__
 
         now = datetime.now(timezone.utc)
@@ -207,7 +205,6 @@ class ReportGenerator:
         }
 
     def save(self, report):
-        # Compute hash
         canonical = json.dumps(
             {k: v for k, v in report.items() if k != "report_hash"},
             sort_keys=True,
@@ -331,7 +328,7 @@ class LiveMonitor:
             else:
                 logger.warning("LiveMonitor: HANDSHAKE FAILED — got '%s'", resp[:50])
                 return {"authenticated": False, "received": resp[:80]}
-        except Exception as e:  # R28-OK: error surfaced via returned dict
+        except Exception as e:  # caught broadly; the error is returned, not raised
             return {"authenticated": False, "message": str(e)}
 
     async def analyze(self, portfolio=0.0, passive=0.0, bots=0) -> dict:
@@ -343,12 +340,7 @@ class LiveMonitor:
             if not hs.get("authenticated"):
                 return {"status": "auth_failed", **hs}
         s = self._journal.stats
-        # v3.24.40 (C54) — passive may legitimately be None. There is no
-        # buy-and-hold baseline anywhere in src/, and the caller used to
-        # supply 0.0 by default, which made every report read
-        # "Passive: $0.00 | Adv: +<portfolio>" — an advantage figure
-        # equal to the whole portfolio, fabricated from a missing input.
-        # Say "unavailable" instead of inventing a number to subtract.
+        # passive may arrive as None; the line then reads "unavailable", not $0.00.
         if passive is None:
             pv_line = (
                 f"Portfolio: ${portfolio:,.2f} | Passive: unavailable "
@@ -379,7 +371,7 @@ class LiveMonitor:
             self._history.append(fb)
             self._last = time.time()
             return fb
-        except Exception as e:  # R28-OK: error surfaced via returned dict
+        except Exception as e:  # caught broadly; the error is returned, not raised
             return {"status": "error", "message": str(e)}
 
     @property
