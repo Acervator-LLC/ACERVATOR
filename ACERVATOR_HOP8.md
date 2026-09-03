@@ -634,3 +634,18 @@ nan is False. `type(inf) is float` is True; `math.isfinite(10**400)` raises.
 against the repo root, so they check out from here. The one path it flags as
 absent is `tools/island.py` — correct, and this file says so. **Do not "fix"
 that by deleting the citation.**
+
+**Run `python -m tools.hop_check` at the start and end of every session.** It
+measures drift instead of trusting memory: commits landed since this file was
+last written, cited paths that no longer exist, cited commits that no longer
+resolve. Exit 1 means rewrite what moved.
+
+## CITED AS ABSENT
+
+These paths are named above **because they are gone**. That is the fact being
+carried forward, so `tools/hop_check` excuses them. Do not delete the citations
+and do not recreate the files.
+
+- `tools/island.py` — islands are retired; git worktrees replaced them.
+- `docs/audits` — sorted into engineering notes and `harness_fixtures/` by
+  `fc0d778`.
