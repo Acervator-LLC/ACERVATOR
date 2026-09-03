@@ -1,7 +1,7 @@
 # The Venue Seam — the complete list of ways Simulator, Paper and Live differ
 
 Audit date: 2026-08-25. Repository version `3.26.0`, branch `current`, HEAD `a51756b`.
-Clone under audit: `C:/Users/brown/AppData/Local/Temp/seam`.
+Clone under audit: a throwaway clone (`seam`) outside the repository.
 Auditor role: read-only. No production file was changed. No fix is proposed.
 
 ---
@@ -147,8 +147,8 @@ redirected all log and state writes away from the operator's live tree.
 Exit codes were read on every run. None was 139 (SIGSEGV) or 127.
 
 The probe files were removed from the clone after the runs and preserved at
-`C:/Users/brown/AppData/Local/Temp/seam_probes/`. Their raw JSON output is at
-`C:/Users/brown/AppData/Local/Temp/seam_probe_out{,2,3,4}.json`.
+a scratch directory (`seam_probes/`) outside the repository. Their raw JSON output is at
+`seam_probe_out{,2,3,4}.json` beside it.
 
 The live-tree guard reported `created 0` on every run. It reported `modified 3-4` and
 declared itself DEGRADED, because a live `Acervator.exe` was running and writing its own
@@ -623,7 +623,7 @@ contract rather than on a measurement.
 # APPENDIX A — Probe sources and raw output
 
 Probe files, removed from the clone after use and preserved at
-`C:/Users/brown/AppData/Local/Temp/seam_probes/`:
+a scratch directory (`seam_probes/`) outside the repository:
 
 - `test_zz_seam_probe.py` — surface presence and signatures; local-member behaviour
   against real ccxt; sim success paths; 15 sim failure paths; resting-order refusal;
@@ -634,7 +634,7 @@ Probe files, removed from the clone after use and preserved at
 - `test_zz_seam_probe3.py` — the pre-flight gate under both market-metadata shapes.
 - `test_zz_seam_probe4.py` — the `MarketDataPool` seam (H1).
 
-Raw JSON output: `C:/Users/brown/AppData/Local/Temp/seam_probe_out.json`,
+Raw JSON output: `seam_probe_out.json`,
 `seam_probe_out2.json`, `seam_probe_out3.json`, `seam_probe_out4.json`.
 
 All four were run with `python -m pytest <file> -p no:randomly -q -s`, so

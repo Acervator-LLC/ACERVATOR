@@ -101,9 +101,11 @@ the move, then compares them after. Measure this. Do not trust the step.
 | Project site URLs are not redirected | **[GitHub docs]** |
 | Calls to a GitHub **Action** hosted by the repository are not redirected; workflows using it fail with `repository not found` | **[GitHub docs]** |
 
-**The Actions row does not apply to you.** This repository has no
-`.github/` directory and no workflows. **[measured]** Nothing here
-publishes an Action, and nothing here runs one.
+**The Actions row applies in part.** `.github/workflows/ci.yml` runs on
+this repository, so a transfer must be followed by a CI run to confirm the
+workflow still triggers. Nothing here **publishes** an Action for another
+repository to call, so the `repository not found` failure that row
+describes cannot reach anyone else. **[measured]**
 
 ### Local clones
 
@@ -123,37 +125,24 @@ that name, or a fork in the same network. **[GitHub docs]**
 
 ---
 
-## 3. The thing that will break silently: `core.hooksPath`
+## 3. `core.hooksPath` points at a hook that is not here
 
-**This is the highest-value item in this document.** Read it even if you
-skip everything else.
+**The pre-push hook this section was written around does not exist.**
+`core.hooksPath` is set to `.githooks` in the primary tree, and there is no
+`.githooks` directory on disk and no hook file tracked in git. `git
+ls-files .githooks` returns nothing. `.gate_stamp.json` is not in the tree
+either. **[measured 2026-09-03]**
 
-`.githooks/pre-push` refuses to push a commit that the release gate has not
-stamped. That hook enforces the rule "code does not leave the branch until
-the gates pass".
+No push from this machine has ever been refused by a gate-stamp check, and
+no clone can inherit one: the hook was never committed, and
+`core.hooksPath` is local config that no transfer carries.
 
-**One line of LOCAL CONFIG makes that hook run.** `core.hooksPath` lives in
-`.git/config`. `.git/config` holds **no repository content**. It does not
-travel in a clone. The transfer does not carry it. No commit contains it.
+Git looks for a hook, finds none, and pushes. Nothing reports it.
 
-Measured on your two trees, today, **before any migration**:
-
-| Tree | `core.hooksPath` |
-|---|---|
-| `Documents\...\acervator_session27_CLOSE_hop5_v3_25_8` | `.githooks` |
-| `Desktop\ACERTAVOR PRODUCT DOCUMENTATION\...` | **UNSET** |
-
-**[measured]**
-
-**The Desktop tree has no hook today.** You build from that tree. It has
-pushed without the gate-stamp check for its whole life. Call this a live
-defect, not a migration risk. The migration only helps it spread.
-
-Nothing reports this state. Git looks for hooks, finds none, and pushes.
-The guard does not fail. The guard stops existing.
-
-Fix both trees in section 6. Any fresh clone you ever make needs the same
-line.
+**A transfer neither causes nor fixes this.** Building the hook is separate
+work. Until it exists, treat `.github/workflows/ci.yml` as the only gate
+that actually runs, and read section 6's `core.hooksPath` steps as
+preparation for a hook that has yet to be written.
 
 ---
 
@@ -162,12 +151,10 @@ line.
 - [ ] **4.1** Land or park in-flight work. Issue #101 was in flight on
       2026-08-24. Do not migrate mid-merge.
 - [ ] **4.2** Both trees clean: `git status` shows nothing you care about.
-- [ ] **4.3** Get a green gate, and check that the stamp names HEAD.
-      Compare `commit` in `.gate_stamp.json` against `git rev-parse HEAD`.
-      They differ whenever a merge lands after the last gate run, and the
-      pre-push hook then refuses every push. Run `python -m tools.gate` to
-      re-stamp. At the time of writing the stamp reads `de16ee7`, v3.26.0,
-      7897 tests, and matches HEAD. **[measured]**
+- [ ] **4.3** Get a green gate: `python -m tools.gate`. No stamp file to
+      compare it against — `.gate_stamp.json` is not in the tree, and
+      neither is the pre-push hook that would read it. See section 3.
+      **[measured 2026-09-03]**
 - [ ] **4.4** Make `gh` REACHABLE, so the baseline can record your
       issues. Without issue data the verifier cannot answer the single
       most important question after the move.
@@ -203,7 +190,7 @@ line.
 - [ ] **4.5** **Capture the baseline. Do this BEFORE the transfer.**
 
       ```
-      cd "C:\Users\brown\OneDrive\Documents\acervator_session27_CLOSE_hop5_v3_25_8"
+      cd <your working tree>
       python -m tools.migration_verifier capture --out ..\migration_baseline.json
       ```
 
@@ -263,26 +250,26 @@ reports nothing.
 - [ ] **6.1** Primary tree, remote:
 
       ```
-      git -C "C:\Users\brown\OneDrive\Documents\acervator_session27_CLOSE_hop5_v3_25_8" remote set-url origin NEW_URL
+      git -C <your working tree> remote set-url origin NEW_URL
       ```
 
 - [ ] **6.2** Desktop tree, remote:
 
       ```
-      git -C "C:\Users\brown\OneDrive\Desktop\ACERTAVOR PRODUCT DOCUMENTATION\acervator_session27_CLOSE_hop5_v3_25_8\acervator_session27_CLOSE_hop5_v3_25_8" remote set-url origin NEW_URL
+      git -C <your second working tree> remote set-url origin NEW_URL
       ```
 
 - [ ] **6.3** Primary tree, hook:
 
       ```
-      git -C "C:\Users\brown\OneDrive\Documents\acervator_session27_CLOSE_hop5_v3_25_8" config core.hooksPath .githooks
+      git -C <your working tree> config core.hooksPath .githooks
       ```
 
 - [ ] **6.4** Desktop tree, hook. **This tree has no value today. You are
       setting it for the first time, not resetting it.**
 
       ```
-      git -C "C:\Users\brown\OneDrive\Desktop\ACERTAVOR PRODUCT DOCUMENTATION\acervator_session27_CLOSE_hop5_v3_25_8\acervator_session27_CLOSE_hop5_v3_25_8" config core.hooksPath .githooks
+      git -C <your second working tree> config core.hooksPath .githooks
       ```
 
 - [ ] **6.5** Update the three tracked files that hardcode the old URL.
@@ -299,7 +286,7 @@ reports nothing.
 ## 7. Verify. Do not hope.
 
 ```
-cd "C:\Users\brown\OneDrive\Documents\acervator_session27_CLOSE_hop5_v3_25_8"
+cd <your working tree>
 python -m tools.migration_verifier verify --baseline ..\migration_baseline.json --expect-remote NEW_URL
 ```
 
@@ -391,10 +378,10 @@ and the hook stops being the only guard.
 
 ## 10. After
 
-- [ ] **10.1** Push a trivial commit from the **primary** tree. Confirm the
-      pre-push hook prints its line. If it prints nothing, 6.3 did not take.
-- [ ] **10.2** Push from the **Desktop** tree. Same check. This tree has
-      never had the hook, so this is the first time you will see it fire.
+- [ ] **10.1** Push a trivial commit from the **primary** tree. Confirm it
+      reaches the new URL and that `.github/workflows/ci.yml` triggers.
+      No pre-push hook exists to print anything — see section 3.
+- [ ] **10.2** Push from the second tree, if you have one. Same check.
 - [ ] **10.3** Re-run the verifier. Expect exit 0.
 - [ ] **10.4** Keep `migration_baseline.json`. It holds the only record of
       correct. You will want it if something looks wrong in a month.

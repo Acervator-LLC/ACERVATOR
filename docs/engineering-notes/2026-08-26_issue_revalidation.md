@@ -3,7 +3,7 @@
 **Date:** 2026-08-26
 **Auditor role:** re-verify only. No production code was written. No file in the
 repository was changed except this report.
-**Clone:** `C:/Users/brown/AppData/Local/Temp/reval`
+**Clone:** a throwaway clone (`reval`) outside the repository
 **Tree measured at:** `2c1bef3` — *R5: the tick pump is pluggable and Qt-free*
 **Original audit measured at:** `a51756b`. 156 commits separate the two.
 **Live application:** running throughout. It was never started, stopped, attached

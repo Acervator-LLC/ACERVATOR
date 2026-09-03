@@ -5,7 +5,7 @@
 Audit date: 2026-08-25. Read-only. No production file was changed. No fix is proposed.
 
 - Repository under audit: clone of `acervator_session27_CLOSE_hop5_v3_25_8` at HEAD `cb58d9d`, branch `current`.
-- Clone path: `C:/Users/brown/AppData/Local/Temp/subsys`.
+- Clone path: a throwaway clone (`subsys`) outside the repository.
 - The only file this audit added is this one.
 
 ---

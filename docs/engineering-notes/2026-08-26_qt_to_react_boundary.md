@@ -6,7 +6,7 @@ Audit date: 2026-08-26. Read-only. No production file was changed. No code was w
 
 - Issue under audit: **#128 — "Convert UI from qt to React"**, filed by the CTO (`waldnzwrld`).
 - Repository under audit: clone of `acervator_session27_CLOSE_hop5_v3_25_8` at HEAD `ad63de1`, branch `current`, version **3.27.0**.
-- Clone path: `C:/Users/brown/AppData/Local/Temp/react`.
+- Clone path: a throwaway clone (`react`) outside the repository.
 - The only file this audit added is this one. Nothing was committed.
 
 ---
@@ -152,7 +152,7 @@ This audit did not re-do that census. It checked whether the census still holds.
 
 > **Note — that file does not exist in this repository.** It is **untracked in git**. The only
 > copy sits in the operator's working tree, at the absolute path
-> `C:/Users/brown/OneDrive/Documents/acervator_session27_CLOSE_hop5_v3_25_8/docs/engineering-notes/2026-08-25_subsystem_capability_matrix.md`.
+> `docs/engineering-notes/2026-08-25_subsystem_capability_matrix.md`.
 > It is in no commit, so it did not arrive in this clone, and it was read in place. This
 > report deliberately avoids writing it as a repository-relative path, because such a path
 > would not resolve for any other reader. **It should be committed.** An uncommitted
