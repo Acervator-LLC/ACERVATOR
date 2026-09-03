@@ -258,16 +258,18 @@ invention.** Static gates cannot catch runtime hallucination.
 
 ## THE QUEUE
 
-**#128 IS THE OPERATOR'S. HE TOOK OWNERSHIP 2026-09-03.** Do not open a
-conversion unit, do not dispatch one, do not touch a React surface unless he
-hands you a specific piece of it. The section below is context for reading his
-work, not a work order.
+**He leads #128 as of 2026-09-03.** He picks which surface goes next and when.
+You do not open a conversion unit uninvited — but the section below carries
+everything needed to resume one the moment he names a surface, and you keep the
+measurement current so he is choosing from real numbers.
 
-**What is yours, in order:**
+**Order of work:**
 
-1. **#319** — full code base comment compliance sweep.
-2. **Fixes** — defects found during the sweep, and the open issues below.
-3. **#331 local CI/CD** — explicitly afterwards.
+1. **#128** — conversion, on his call, surface by surface.
+2. **#319** — comment compliance sweep. Runs continuously between conversion
+   units; it changes no executable line, so it does not collide.
+3. **Fixes** — defects found during either, and the open issues below.
+4. **#331 local CI/CD** — explicitly afterwards.
 
 The GitHub issues are the queue now, not HOP7's item numbers.
 
@@ -295,15 +297,70 @@ Trading, Charts, Bot Swarm, Market Inspector, Simulator, History, Console.
 
 ---
 
-## #128 — THE CONVERSION. HIS, NOT YOURS. CONTEXT ONLY.
+## #128 — THE CONVERSION. RESUME HERE.
 
-**Measured 2026-09-03 on `origin/current`:**
+**Measured 2026-09-03 on `current`, `d9937ef`. Refresh before you act:**
+
+```bash
+python C:/Users/brown/AppData/Local/Temp/claude/conversion_state.py
+```
 
 ```
-60   JS surfaces          find src/gui/web desktop/renderer -name '*.js' -not -path '*vendor*'
-72   src/gui files still importing PySide6      grep -rl PySide6 src/gui --include=*.py
-158  total .py files in src/gui
+60   React modules, vendor excluded
+72   src/gui .py importing PySide6
+41     of those, a .js of the same name exists
+31     of those, NO React counterpart   <- the remaining surface
 ```
+
+**What that instrument does and does not prove.** It matches file stems. A
+`.py` and a `.js` sharing a name means a React module was written for that
+surface; it does **not** prove the React one is live or the Qt one retired.
+Treat 41 as "started", never as "done", and confirm at the surface itself. Its
+control is `bot_swarm_list`, which must land in `paired`; `theme_engine` and
+`design_tokens` correctly report "no .py at all" because they were born React.
+
+**The 31 with no React counterpart, largest first — this is the work:**
+
+| lines | file |
+|---|---|
+| 3,550 | `src/gui/main_window.py` |
+| 2,000 | `src/gui/indicator_panel.py` |
+| 1,560 | `src/gui/live_settings/settings_tab.py` |
+| 1,430 | `src/gui/main_tabs/stock_main_window_surface.py` |
+| 1,213 | `src/gui/main_tabs/audio_suite_surface.py` |
+| 777 | `src/gui/history_tab.py` |
+| 753 | `src/gui/main_tabs/buy_confirmation_surface.py` |
+| 716 | `src/gui/stock_main_window.py` |
+| 671 | `src/gui/main_tabs/tradingview_chart_surface.py` |
+| 648 | `src/gui/testnet_tab.py` |
+| 643 | `src/gui/audio_suite.py` |
+| 627 | `src/gui/usb_auth_widget.py` |
+| 423 | `src/gui/live_bot_window.py` |
+| 379 | `src/gui/risk_tab.py` |
+| 378 | `src/gui/shared_testnet.py` |
+| 355 | `src/gui/competition_tab.py` |
+| 331 | `src/gui/alerts_tab.py` |
+| 326 | `src/gui/react_history_panel.py` |
+| 322 | `src/gui/analytics_tab.py` |
+| 306 | `src/gui/live_settings/positions_held_tab.py` |
+| 286 | `src/gui/instance_consent_dialog.py` |
+| 276 | `src/gui/buy_confirmation_dialog.py` |
+| 272 | `src/gui/init_wizard.py` |
+| 234 | `src/gui/main_tabs/console_log_handler.py` |
+| 233 | `src/gui/start_all_progress_dialog.py` |
+| 221 | `src/gui/widgets/__init__.py` |
+| 211 | `src/gui/launcher.py` |
+| 145 | `src/gui/visualizer/themes.py` |
+| 131 | `src/gui/live_settings/status_tab.py` |
+| 88 | `src/gui/qt_safe_events.py` |
+| 77 | `src/gui/widgets/capital_registry_panel.py` |
+
+**Ranked by live use, not by size.** The measured live tab set is Trading,
+Charts, Bot Swarm, Market Inspector, Simulator, History, Console. `history_tab`
+and `indicator_panel` are on it. `competition_tab`, `testnet_tab`,
+`stock_main_window` and the audio suite are shelved — a finding there is one
+line folded into its owning item, never an issue, and never a conversion unit
+ahead of a live surface.
 
 **Two conditions gate Qt's removal, not one.** Operator, 2026-08-31: preserve
 Qt until React+Electron **runs** AND the operational logs **verify** it. A
