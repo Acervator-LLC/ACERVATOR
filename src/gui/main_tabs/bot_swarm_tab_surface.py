@@ -650,10 +650,13 @@ class BotSwarmTabModel:
         except Exception:
             self.state.predominant_refused = True
             predominant = None
-        self._add_provenance(
-            PREDOMINANT_ROW_LABEL,
-            str(predominant) if predominant else NO_PREDOMINANT_TEXT,
-        )
+        if self.state.predominant_refused:
+            predominant_text = NO_VALUE
+        elif predominant:
+            predominant_text = str(predominant)
+        else:
+            predominant_text = NO_PREDOMINANT_TEXT
+        self._add_provenance(PREDOMINANT_ROW_LABEL, predominant_text)
 
         try:
             mature_total = float(ledger.mature_profit_total)
