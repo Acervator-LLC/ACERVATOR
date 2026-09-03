@@ -434,8 +434,8 @@ class SmartWireManager:
             except Exception as exc:
                 # The overlay writes field by field, so an exception here
                 # leaves the row partially applied to an existing ledger.
-                # container/restore.py:92-100 catches anything that escapes
-                # this call, so narrowing here would drop every later row too.
+                # BotManager.restore_smart_wires_from_state catches anything
+                # escaping this call; narrowing drops every later row too.
                 dropped += 1
                 logger.warning(
                     "SmartWire: import DROPPED ledger row for %s "
@@ -506,9 +506,8 @@ class SmartWireManager:
             tgt = w.get("target_id")
             # float() can raise OverflowError (not just TypeError/ValueError)
             # on an int literal too large for a double. An uncaught raise here
-            # returns 0 from BotManager.restore_smart_wires_from_state at
-            # container/restore.py:87, before the ledger import (:92-100) and
-            # the wire.created re-emit (:105-114) that follow it run.
+            # returns 0 from BotManager.restore_smart_wires_from_state before
+            # its import_ledgers overlay and its wire.created re-emit run.
             try:
                 pct = float(w.get("pct", 0))
             except Exception as exc:
@@ -807,9 +806,8 @@ class SmartWireManager:
                             RuntimeError,
                             ValueError,
                         ) as _emit_exc:
-                            # Narrowed: EventBus.emit already swallows
-                            # subscriber errors (event_bus.py:251-255); the
-                            # except block below still runs this iteration.
+                            # Narrowed: EventBus.emit already swallows a
+                            # subscriber error; the except below still runs.
                             logger.warning(
                                 "SmartWire: target-refused notice for "
                                 "%s -> %s ($%.4f) did not reach the "
