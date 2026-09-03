@@ -58,4 +58,5 @@ window.ACERVATOR_MODULES = [
   "bot_swarm_tab.js",
   "start_all_progress.js",
   "visualizer_themes.js",
+  "buy_confirmation.js",
 ];
