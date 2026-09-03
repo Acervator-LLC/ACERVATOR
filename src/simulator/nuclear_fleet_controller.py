@@ -223,6 +223,8 @@ class NuclearFleetController:
         # out; _run_cycle drains this in a finally.
         self._live_fleets: list = []
         self._log = None
+        # Finished cycles, buffered for the run log's closing summary.
+        self._cycle_records: list[dict] = []
         # Declared up front so a feature that never runs reports
         # UNVERIFIED instead of being absent from the report.
         self._verifier = None
@@ -771,14 +773,15 @@ class NuclearFleetController:
             logger.warning("nuclear: run log unavailable: %s", exc)
 
     def _record_cycle(self, cyc: NuclearCycle) -> None:
+        """Buffer one finished cycle for the run log's closing summary.
+
+        ``SimRunLog`` has no per-row API for arbitrary payloads:
+        ``record_gate`` keeps only the gate fields it names. The whole
+        cycle therefore travels in the summary ``finish_run`` persists.
+        """
         if self._log is None:
             return
-        try:
-            self._log.record_gate(
-                bot_id="nuclear", symbol="", payload={"nuclear_cycle": cyc.to_dict()}
-            )
-        except Exception as exc:  # noqa: BLE001 - advisory
-            logger.debug("nuclear: cycle record failed: %s", exc)
+        self._cycle_records.append(cyc.to_dict())
 
     def _teardown(self) -> None:
         if self._osc is not None:
@@ -786,20 +789,15 @@ class NuclearFleetController:
                 self._osc.stop()
             except Exception as exc:  # noqa: BLE001
                 logger.debug("nuclear: oscillator stop failed: %s", exc)
-        if self._log is not None:
-            try:
-                self._log.finish_run(
-                    summary={
-                        "cycles_completed": self.state.cycles_completed,
-                        "total_candles": self.state.total_candles,
-                        "total_trades": self.state.total_trades,
-                        "total_exceptions": self.state.total_exceptions,
-                        "failed_cycles": sum(1 for c in self.state.cycles if not c.ok),
-                        "uptime_s": round(self.state.uptime_s, 1),
-                    }
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("nuclear: log close failed: %s", exc)
+        summary: dict = {
+            "cycles_completed": self.state.cycles_completed,
+            "total_candles": self.state.total_candles,
+            "total_trades": self.state.total_trades,
+            "total_exceptions": self.state.total_exceptions,
+            "failed_cycles": sum(1 for c in self.state.cycles if not c.ok),
+            "uptime_s": round(self.state.uptime_s, 1),
+            "cycles": self._cycle_records,
+        }
         if self._emit_obs is not None:
             try:
                 from src.core.emit_contracts import format_observer_lines
@@ -807,12 +805,7 @@ class NuclearFleetController:
                 self._emit_obs.finish()
                 for line in format_observer_lines(self._emit_obs):
                     self._perf(line)
-                if self._log is not None:
-                    self._log.record_gate(
-                        bot_id="nuclear",
-                        symbol="",
-                        payload={"emit_contracts": self._emit_obs.to_dict()},
-                    )
+                summary["emit_contracts"] = self._emit_obs.to_dict()
             except Exception as exc:  # noqa: BLE001
                 logger.debug("nuclear: emit report failed: %s", exc)
         if self._verifier is not None:
@@ -821,14 +814,16 @@ class NuclearFleetController:
 
                 for line in format_coverage_lines(self._verifier.report):
                     self._perf(line)
-                if self._log is not None:
-                    self._log.record_gate(
-                        bot_id="nuclear",
-                        symbol="",
-                        payload={"coverage": self._verifier.report.to_dict()},
-                    )
+                summary["coverage"] = self._verifier.report.to_dict()
             except Exception as exc:  # noqa: BLE001
                 logger.debug("nuclear: coverage report failed: %s", exc)
+        if self._log is not None:
+            # finish_run closes the log, so it comes last: the summary
+            # must be complete before this call.
+            try:
+                self._log.finish_run(summary=summary)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("nuclear: log close failed: %s", exc)
         self.state.running = False
         self.stopped_event.set()
         self._activity(
