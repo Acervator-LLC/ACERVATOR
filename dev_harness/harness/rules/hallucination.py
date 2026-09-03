@@ -29,6 +29,14 @@ ArchetypeReport schema in tools.harness.coding_archetype:
         (their availability is validated by pip / interpreter at
         install time).
 
+    H004 (medium) — CITATION PAST THE END OF THE FILE IT NAMES
+        Prose citing ``some/file.py:1234`` or ``some/file.py line
+        1234`` where that file holds fewer than 1234 lines. The line
+        cannot be what the prose claims, so neither can the claim.
+        Silent when the cited file cannot be resolved to exactly one
+        file on disk — an unresolvable name is H001's job, not this
+        one's.
+
 FALSIFICATION — this rule module is wrong if:
   (a) H001 fires on a path that exists via a case-sensitivity
       quirk (Windows FS is case-insensitive; the check is
@@ -218,6 +226,55 @@ def _find_dead_imports(tree: ast.AST, repo_root: Path) -> list[tuple[int, str]]:
 # --------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------- #
+# H004 — citation past the end of the file it names                     #
+# --------------------------------------------------------------------- #
+
+# Both spellings a citation uses: a colon before the number, or the
+# word "line". A range is caught by its first number.
+_CITED_LINE = re.compile(
+    r"([a-zA-Z0-9_\-./\\]+\.(?:py|md|markdown|js|html|toml|yaml|yml))"
+    r"(?::|\s+line\s+)(\d{1,6})\b",
+)
+
+
+def _resolve_cited(raw: str, repo_root: Path) -> Path | None:
+    """Return the file a citation names, or None when it names none."""
+    norm = raw.replace("\\", "/")
+    candidate = repo_root / norm
+    if candidate.is_file():
+        return candidate
+    matches = list(repo_root.rglob(norm.rsplit("/", 1)[-1]))
+    return matches[0] if len(matches) == 1 else None
+
+
+def _find_out_of_range_citations(
+    source: str,
+    repo_root: Path,
+) -> list[tuple[int, str, int, int]]:
+    """Find citations naming a line beyond the end of the cited file."""
+    hits: list[tuple[int, str, int, int]] = []
+    lengths: dict[str, int] = {}
+    for i, line in enumerate(source.splitlines(), start=1):
+        for match in _CITED_LINE.finditer(line):
+            raw, number = match.group(1), int(match.group(2))
+            if raw not in lengths:
+                found = _resolve_cited(raw, repo_root)
+                if found is None:
+                    lengths[raw] = -1
+                else:
+                    try:
+                        text = found.read_text(encoding="utf-8", errors="replace")
+                    except OSError:
+                        lengths[raw] = -1
+                    else:
+                        lengths[raw] = len(text.splitlines())
+            total = lengths[raw]
+            if total > 0 and number > total:
+                hits.append((i, raw, number, total))
+    return hits
+
+
 def _find_repo_root(start: Path) -> Path:
     """Walk parents until we find one containing pyproject.toml OR
     src/ + tools/ (repo markers). Fall back to start's parent."""
@@ -275,6 +332,21 @@ def scan(target: Path, source: str) -> list[Any]:
                     f"reference to retired subsystem {token!r} outside "
                     "an exempt archive/audits directory. This name no "
                     "longer exists in the current tree."
+                ),
+            )
+        )
+
+    for line, cited, number, total in _find_out_of_range_citations(source, repo_root):
+        findings.append(
+            Finding(
+                tool="hallucination",
+                severity="medium",
+                file=str(target),
+                line=line,
+                rule_id="H004",
+                message=(
+                    f"citation names {cited}:{number}, but that file holds "
+                    f"{total} lines. The line cannot be what this claims."
                 ),
             )
         )
