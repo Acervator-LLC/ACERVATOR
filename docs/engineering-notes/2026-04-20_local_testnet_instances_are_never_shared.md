@@ -34,15 +34,17 @@ use and dead under Nuclear.
 `src/gui/shared_testnet.py` — `SharedTestnetBridge.install_on` builds
 ONE `LocalTestnet`, attaches it to the MainWindow as `_local_testnet`,
 and persists to `~/.acervator/testnet_chain.json` (schema 1, 500 ms
-debounce). It is installed at `src/gui/main_window.py:5304`, before tab
+debounce). It is installed at `src/gui/main_window.py:267`, before tab
 construction. Writes are enqueued from any thread and applied on the Qt
 main thread; reads are direct.
 
 The two symptom surfaces are both gone independently. `nuclear_live`
-was retired in v3.18.3 and its round handler with it
+was retired along with its round handler
 (`src/trading/poa_tournament.py:11`). The TestNet tab is not built:
-`src/gui/main_window.py:6021` sets `_testnet_tab = None`, and
-`TestnetTab` has no construction site in `src/`, `tests/` or `main.py`.
+`src/gui/main_tabs/retired_tabs.py:45` sets `_testnet_tab = None`. The
+class is declared at `src/gui/testnet_tab.py:125` and has no construction
+site in `src/` or `main.py`; the only callers are
+`tests/test_testnet_tab_surface_parity.py:795` and `:1843`.
 
 ## 4. Residual — the thread-safety half is convention, not mechanism
 

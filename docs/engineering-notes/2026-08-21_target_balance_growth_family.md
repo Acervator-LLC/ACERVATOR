@@ -52,10 +52,12 @@ turns positive, and the bot folds the excess. The growth gets sold.
 
 Any top-up smaller than accrued growth does this. Six live bots qualify.
 
-The GUI documents the reference split at `src/gui/bot_live_settings.py:3736`.
 The spinbox keeps showing the anchor on purpose, because a spinbox holding
 the grown value would register an edit on every panel open. The comparison
-never got aligned to that decision.
+never got aligned to that decision. `src/gui/bot_live_settings.py:858`
+routes the live edit and reports `runtime+anchor synced`. **The prose
+documenting the split, cited here when this was written, is no longer in
+that file; "anchor" appears in it once, on that line.**
 
 Repair: compare against `old_a`. The spinbox is anchor denominated, so the
 comparison must be too. A withdrawal below the anchor still clears growth,
@@ -71,9 +73,10 @@ frozen cap. IMU is +27.1% and still caps each Fold at $0.50.
 
 Three sites compute the per-cycle growth cap from the anchor:
 
-- `src/trading/scrumming_bot.py:1702` applies the growth
-- `src/trading/scrumming_bot.py:1951` sizes the preview
-- `src/trading/scrumming_bot.py:9850` admits the eligibility queue
+- `src/trading/scrumming_bot.py:765` applies the growth
+  (`_apply_fold_target_growth`)
+- `src/trading/scrumming_bot.py:2499` sizes the preview
+- `src/trading/scrumming/execution.py:1906` admits the buy
 
 Each reads `self._anchor_target_balance * (_cap_pct / 100.0)`. The anchor
 moves only on operator input, wire income, or tranche arrival. A Fold never
@@ -96,15 +99,19 @@ The cap already holds money back. `standing_surplus_usd` collects profit that
 exceeded the cap. CAP holds $7.79 against a $0.50 cap, which is fifteen
 Folds of growth waiting behind a frozen number. The fleet holds $14.35.
 
-Coupled consumer: `src/gui/main_window.py:1314` draws the ceiling line at
-`anchor_px x (1 + cap_pct/100)`. Enforcement at
-`src/trading/scrumming_bot.py:11932` uses `_target_balance` instead. The
-drawn line and the enforced line already disagree. On IMU the chart shows
-$50.50 where the bot enforces $64.17. Any cap change must land this too.
+Coupled consumer: the ceiling line is drawn at `anchor_px x (1 +
+cap_pct/100)`. Enforcement at `src/trading/scrumming/tick_phases.py:1767`
+uses `_target_balance` instead. The drawn line and the enforced line already
+disagree. On IMU the chart shows $50.50 where the bot enforces $64.17. Any
+cap change must land this too. **The drawing site named here when this was
+written is no longer in `src/gui/main_window.py`; the ceiling values now
+reach `src/gui/widgets/bot_status_table.py:467`, which is a table cell and
+not the chart line this describes. Locate the drawer before acting on this
+paragraph.**
 
-Constraint to honour: MEM-249 at `src/trading/bot_container.py:2206` states
-that fold surplus is the only legitimate mechanism that may grow the target,
-bounded per event. Changing the base of the bound keeps that rule intact.
+Constraint to honour: `src/trading/bot_container.py:727` states that fold
+surplus is the only legitimate mechanism that may grow the target, bounded
+per event. Changing the base of the bound keeps that rule intact.
 
 ## Defect 3 — detonation can fire twice on one bull run
 
