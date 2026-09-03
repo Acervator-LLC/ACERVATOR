@@ -1,16 +1,7 @@
 """
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-ccxt_connector.py — CCXT-based exchange connector
-===================================================
-Implements :class:`ExchangeInterface` on top of the ``ccxt.async_support``
-library, providing unified access to 100+ crypto exchanges.
 
-Features:
-  • Async I/O via ``ccxt.async_support``
-  • Automatic rate limiting with per-exchange backoff
-  • Retry logic for transient failures (network, rate-limit)
-  • Symbol normalisation and precision enforcement
-  • Logo URL resolution via CoinGecko or CryptoCompare CDN
+CCXT-backed :class:`ExchangeInterface` for the venues in ``SUPPORTED_EXCHANGES``.
 """
 
 from __future__ import annotations
@@ -29,76 +20,27 @@ from concurrent.futures import ThreadPoolExecutor
 from src.core.trade_historian import HistoryAnalysis, scan_on_connect
 from typing import Any, Optional
 
-# Signature of the per-symbol callback registered through
-# `set_history_callback`. The historian thread invokes it as
-# `cb(symbol, analysis)` and discards the result, so the return type
-# is `object`: a callback that returns something is accepted and its
-# value ignored, exactly as before.
+# The historian thread calls it as cb(symbol, analysis) and discards the result.
 HistoryCallback = Callable[[str, HistoryAnalysis], object]
 
 
-# ─────────────────────────────────────────────────────────────────
-# MEM-220 — sync-CCXT serialization constants + exceptions
-# ─────────────────────────────────────────────────────────────────
-# CCXT's sync methods are not thread-safe. Prior to MEM-220 every
-# caller used `asyncio.to_thread(self._ex.fetch_X, ...)` which put
-# each call on Python's default ThreadPoolExecutor (up to 32 workers).
-# Multiple concurrent callers (bot.tick + dashboard refresh +
-# market_map refresh) all hammered the same sync CCXT instance,
-# triggering an access violation in urllib3/OpenSSL C extensions.
-#
-# Fix: single-worker dedicated executor per CCXTConnector.
-# Every sync call goes through `self._call_sync(fn, ...)` which:
-#   1. Enforces a queue-depth cap (refuses excess with QueueFullError)
-#   2. Submits to the single worker (inherent serialization)
-#   3. Awaits with a timeout slightly longer than CCXT's own timeout
-#      so CCXT can abort cleanly before our timeout fires
-#
-# See also: tests/test_mem220_ccxt_serialization.py
-
-# Queue cap chosen for ~5 calls per 2-second cycle + 3x safety margin.
-# If exceeded, network or exchange is degraded; fail fast is correct.
+# Submissions past this depth are refused rather than queued.
 MEM_220_QUEUE_CAP: int = 8
 
 # sync_connect market-load budget: 3 tries, waiting 2s then 4s.
 CONNECT_ATTEMPTS: int = 3
 CONNECT_BACKOFF_STEP_S: float = 2.0
 
-# Slightly above CCXT's 20-second default so CCXT's own timeout
-# aborts the request before our outer wait_for cancels the awaiter.
-# Net effect: outer callers always see TimeoutError either from CCXT
-# (clean, connection released) or from us (worker thread leaks,
-# logged).
+# Outer wait_for budget for one sync CCXT call.
 MEM_220_CALL_TIMEOUT_SEC: float = 25.0
 
 
-# v3.24.83 — THE NUMBER OF CANDLES A LIVE CALL ACTUALLY RETURNS.
-#
-# Not the number requested. `get_ohlcv` passes `limit` into ccxt's
-# `since` slot (see the KNOWN DEFECT note on that method), so every live
-# caller receives the exchange's default page size no matter what it
-# asked for. Coinbase's default is 300.
-#
-# This exists so the Simulator can reproduce live's real behaviour
-# instead of its documented intent. `FleetSimExchange` carries a
-# matching constant, deliberately duplicated rather than imported —
-# the sim must not import from the live exchange layer — and
-# `test_sim_live_ohlcv_parity.py` fails if the two ever disagree.
-#
-# When the underlying defect is fixed in its own gated cascade, this
-# constant and the sim's copy move together, and that test is what
-# forces it.
+# Candles a live fetch_ohlcv returns: the venue page size, not the requested limit.
 EFFECTIVE_OHLCV_PAGE_SIZE = 300
 
 
 class CCXTQueueFullError(RuntimeError):
-    """Raised by _call_sync when the per-connector queue is at capacity.
-
-    Callers should treat this as a transient network/rate-limit signal
-    (log, skip this iteration, retry next tick). It is strictly
-    preferable to the alternative (native access violation from
-    concurrent CCXT access).
-    """
+    """Raised by ``_call_sync`` when the connector's queue is at capacity."""
 
 
 from .base import (
@@ -132,20 +74,12 @@ SUPPORTED_EXCHANGES: dict[str, str] = {
     "mexc": "mexc",
     "bitfinex": "bitfinex",
     "gemini": "gemini",
-    "poloniex": "poloniex",  # NOT available to US users since Nov 2019
+    "poloniex": "poloniex",
     "bitstamp": "bitstamp",
     "cryptocom": "cryptocom",
 }
 
-# CCXT has renamed several exchange classes over its lifetime. The registry
-# above keeps the historical id (e.g. "gateio", "huobi") because that is what
-# the rest of Acervator — settings, saved bot state, logs — has always used;
-# newer CCXT exposes those venues under a new class name ("gate", "htx") and
-# drops the old one. Without a fallback, `getattr(ccxt, "gateio")` returns
-# None on current CCXT and the connector raises "CCXT does not have class
-# 'gateio'", so gateio and huobi cannot connect at all. This map lets
-# resolution try the historical id first, then the rename — working on both
-# old and new CCXT.
+# Historical registry ids mapped to the class names newer CCXT uses.
 CCXT_CLASS_ALIASES: dict[str, str] = {
     "gateio": "gate",
     "huobi": "htx",
@@ -153,13 +87,7 @@ CCXT_CLASS_ALIASES: dict[str, str] = {
 
 
 def resolve_ccxt_class(ccxt_module: Any, ccxt_id: str) -> Any:
-    """Return the CCXT exchange class for ``ccxt_id`` from ``ccxt_module``.
-
-    Tries the registry id first, then its documented rename from
-    ``CCXT_CLASS_ALIASES``. Returns ``None`` when neither name resolves, so
-    callers can report which id failed rather than crashing on a bare
-    ``getattr``. Works against both ``ccxt`` and ``ccxt.async_support``.
-    """
+    """Return the CCXT class for ``ccxt_id``, trying its alias, or ``None``."""
     cls = getattr(ccxt_module, ccxt_id, None)
     if cls is None:
         alias = CCXT_CLASS_ALIASES.get(ccxt_id)
@@ -168,30 +96,23 @@ def resolve_ccxt_class(ccxt_module: Any, ccxt_id: str) -> Any:
     return cls
 
 
-# Exchanges that require a user-chosen API passphrase in addition to key+secret.
-# In CCXT this is passed as the 'password' parameter.
+# Exchanges needing an API passphrase, passed to CCXT as 'password'.
 PASSPHRASE_EXCHANGES: set[str] = {
     "kucoin",
     "okx",
     "bitget",
 }
 
-# Date of the last public-endpoint measurement behind the three venue
-# facts below: IP block, timeframe availability, market metadata.
+# Date the venue facts below were last measured.
 VENUE_MEASUREMENT_DATE: str = "2026-08-28"
 
-# Venues whose PUBLIC endpoints refuse a request from a US IP. Measured
-# by requesting each PREFLIGHT_URLS entry from Oregon, United States on
-# VENUE_MEASUREMENT_DATE: binance answered HTTP 451, bybit HTTP 403.
-# A venue here cannot be reached at all, with or without credentials.
+# Venues whose public endpoints refused a US IP at VENUE_MEASUREMENT_DATE.
 US_IP_BLOCKED_EXCHANGES: set[str] = {
     "binance",
     "bybit",
 }
 
-# Venues whose public endpoints answer from a US IP but whose own terms
-# refuse a US account. Not measurable without opening an account there,
-# so this set is sourced from venue documentation, not from a probe.
+# Venues reachable from a US IP whose terms refuse a US account.
 US_ACCOUNT_RESTRICTED_EXCHANGES: set[str] = {
     "poloniex",
     "huobi",
@@ -202,9 +123,7 @@ US_RESTRICTED_EXCHANGES: set[str] = (
     US_IP_BLOCKED_EXCHANGES | US_ACCOUNT_RESTRICTED_EXCHANGES
 )
 
-# Venues Acervator has actually traded on. Every other entry in
-# SUPPORTED_EXCHANGES is a registry declaration whose order placement,
-# fills, balance reads and order lifecycle have never been exercised.
+# Venues Acervator has actually traded on.
 VERIFIED_EXCHANGES: set[str] = {
     "coinbase",
 }
@@ -245,11 +164,7 @@ DISABLE_FETCH_CURRENCIES: set[str] = {
     "coinbase",  # v2/currencies deprecated for CDP keys
 }
 
-# CCXT's precisionMode values. A market's `precision` dict means a
-# DIFFERENT THING under each, and CCXT publishes these as module-level
-# integers rather than an enum. Mirrored here because ccxt is imported
-# lazily inside the connect path; test_exchange_registry pins them
-# against the installed ccxt so a renumbering cannot pass silently.
+# CCXT precisionMode values — precision means a different thing under each.
 CCXT_DECIMAL_PLACES: int = 2
 CCXT_SIGNIFICANT_DIGITS: int = 3
 CCXT_TICK_SIZE: int = 4
@@ -264,17 +179,8 @@ def precision_to_decimals(
 ) -> int:
     """Convert one CCXT market ``precision`` entry to a count of decimal places.
 
-    ``AssetInfo.price_precision`` and ``AssetInfo.amount_precision`` are
-    consumed as decimal places — ``BotContainer`` truncates an order size
-    to that many places before its minimum-size check — but CCXT only
-    reports decimal places under ``DECIMAL_PLACES`` mode. Under
-    ``TICK_SIZE``, which is what nearly every venue uses, the same field
-    carries a step size such as ``1e-06``, and reading it as a count is
-    wrong for every venue including Coinbase.
-
     Returns ``default`` when the value is missing, unparseable, or in
-    ``SIGNIFICANT_DIGITS`` mode, where a decimal-place count does not
-    exist independently of the number being rounded.
+    ``SIGNIFICANT_DIGITS`` mode, where no decimal-place count exists.
     """
     if value is None:
         return default
@@ -295,7 +201,6 @@ def precision_to_decimals(
     return max(0, -dec.normalize().as_tuple().exponent)
 
 
-# Logo CDN fallback
 _LOGO_CDN = "https://assets.coingecko.com/coins/images/{id}/small/{symbol}.png"
 _LOGO_FALLBACK = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
 
@@ -304,25 +209,18 @@ _LOGO_FALLBACK = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
 # Retry decorator for transient failures
 # ---------------------------------------------------------------------------
 def _with_retry(max_retries: int = 3, base_delay: float = 1.0):
-    """Bind :func:`src.core.retry.with_retry` to this module's logger.
-
-    Keeps the retry warning on the ``acervator.exchange`` logger.
-    """
+    """Bind :func:`src.core.retry.with_retry` to this module's logger."""
     return with_retry(max_retries=max_retries, base_delay=base_delay, log=logger)
 
 
-# ---------------------------------------------------------------------------
-# CCXT connector
-# ---------------------------------------------------------------------------
 class CCXTConnector(ExchangeInterface):
-    """
-    Production exchange connector built on ``ccxt.async_support``.
+    """Exchange connector for live trading on ``ccxt.async_support``.
 
     Usage::
 
-        conn = CCXTConnector("binance")
+        conn = CCXTConnector("coinbase")
         await conn.connect(api_key="...", api_secret="...")
-        ticker = await conn.get_ticker("BTC/USDT")
+        ticker = await conn.get_ticker("BTC/USD")
         await conn.disconnect()
     """
 
@@ -334,53 +232,29 @@ class CCXTConnector(ExchangeInterface):
             )
         self._exchange_id = exchange_id
         self._ccxt_id = SUPPORTED_EXCHANGES[exchange_id]
-        # Non-None only when a backend is attached (Simulator / Paper).
-        # Live never sets it, so `_ex` resolves exactly as before.
+        # Set only when a backend is attached; live leaves it None.
         self._injected_ex: Any = None
         self._ccxt: Any = None  # ccxt.async_support exchange instance
         self._ccxt_sync: Any = None  # ccxt (sync) exchange instance
         self._connected = False
         self._markets_cache: list[AssetInfo] | None = None
         self._last_request_time: float = 0.0
-        self._min_request_interval: float = 0.1  # 100ms default rate limit
+        self._min_request_interval: float = 0.1
 
-        # MEM-218 (Session 24, 2026-04-22) — trade-historian attributes.
-        # These three were missing from __init__ but referenced from
-        # _scan_trade_history (background thread spawned on every
-        # successful sync_connect) and _on_history_result (fires as
-        # each symbol's scan completes). An uninitialised set()/dict
-        # causes AttributeError on first access from that thread,
-        # which the MEM-216 threading.excepthook surfaced in the
-        # operator's 2026-04-22 23:47:48 session:
-        #   UNCAUGHT EXCEPTION in thread trade-historian:
-        #   AttributeError: 'CCXTConnector' object has no attribute
-        #   '_scan_symbols'
-        # Initialising them here means the background thread can
-        # run cleanly (or exit early if no symbols registered) and
-        # the history callback branch is a no-op until set.
         self._scan_symbols: set[str] = set()
         self._history_analyses: dict = {}
         self._on_history_ready: Optional[HistoryCallback] = None
 
-        # MEM-220 (Session 24, 2026-04-22) — serialization for sync CCXT.
-        # Single-worker executor means all sync CCXT calls serialize
-        # through one thread, eliminating the urllib3/OpenSSL race
-        # that was producing Windows access violations. See module
-        # docstring and test_mem220 for full context.
+        # One worker serialises every sync CCXT call on this connector.
         self._sync_executor: Optional[ThreadPoolExecutor] = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix=f"ccxt-{exchange_id}",
         )
-        # Tracks in-flight + queued calls for cap enforcement.
-        # Incremented BEFORE submit, decremented in finally regardless
-        # of outcome. Accessed from the asyncio loop thread only.
+        # In-flight plus queued calls; touched only on the asyncio loop thread.
         self._sync_queue_depth: int = 0
-        # Lock only needed because disconnect() may run on a different
-        # thread than _call_sync. Not hot-path (~never contended).
+        # disconnect() may run on a different thread than _call_sync.
         self._sync_executor_lock = threading.Lock()
-        # v3.24.95 — serialises history scans. `add_scan_symbol`
-        # spawns one daemon thread per symbol; without this they
-        # all fetch at once.
+        # Serialises history scans; add_scan_symbol spawns one thread per symbol.
         self._history_scan_lock = threading.Lock()
 
     # -- Properties -----------------------------------------------------
@@ -400,50 +274,15 @@ class CCXTConnector(ExchangeInterface):
     async def connect(
         self, api_key: str, api_secret: str, passphrase: str = ""
     ) -> None:
-        """Connect without holding the calling thread.
+        """Run ``sync_connect`` on the single-worker executor, off the caller's thread.
 
-        ``sync_connect`` is synchronous by design and by name, and its
-        contract is unchanged: :mod:`src.exchange.api_validator` calls it
-        directly and legitimately wants a blocking connect.
-
-        What was wrong here is that this coroutine *awaited nothing*.  It
-        called ``sync_connect`` inline, so awaiting it never yielded and
-        the caller's thread sat inside the entire connect.  Every
-        coroutine in this application runs on the Qt GUI thread (see the
-        pump timer in ``main.py``), so that is a frozen window.
-
-        THREE calls inside ``sync_connect`` block, not one:
-
-            the pre-flight ``safe_urlopen(..., timeout=15)``  up to  15 s
-            ``sync_exchange.load_markets()``                  up to  30 s
-                                                             x 3 attempts
-            ``time.sleep(2 * (attempt + 1))`` between attempts    2 s + 4 s
-
-        Worst case is therefore about 111 s, and wrapping only
-        ``load_markets`` would leave roughly 21 s of it on the caller.
-        The whole call moves instead, its body untouched.
-
-        The mechanism is this file's own, taken from :meth:`_call_sync`:
-        the single-worker ``_sync_executor`` plus ``run_in_executor``
-        with ``functools.partial``.  Reusing that executor is deliberate,
-        not incidental — MEM-220 exists because concurrent sync CCXT
-        calls on one instance produced Windows access violations, and
-        routing connect through the same one-worker queue keeps that
-        serialization true while a connect is in flight.
-
-        It deliberately does NOT route through :meth:`_call_sync`, whose
-        ``MEM_220_CALL_TIMEOUT_SEC`` is 25 s: a legitimate three-attempt
-        connect runs far longer than that, so borrowing the timeout would
-        turn a slow connect into a spurious ``TimeoutError``.  For the
-        same reason ``_sync_queue_depth`` is left alone — that counter is
-        cap accounting for ``_call_sync`` alone.
-
-        Exceptions are unchanged.  ``run_in_executor`` re-raises whatever
-        ``sync_connect`` raised, in the awaiting coroutine.
+        ``sync_connect`` blocks for up to about 111 s: a 15 s pre-flight plus
+        three 30 s ``load_markets`` attempts spaced 2 s and 4 s apart. It does
+        not use :meth:`_call_sync`, whose 25 s budget is shorter than a
+        legitimate connect, and does not count against ``_sync_queue_depth``.
         """
-        # Grab the executor under the lock, exactly as `_call_sync`
-        # does, so a `disconnect()` on another thread cannot shut it
-        # down between the check and the submit.
+        # Under the lock so disconnect() cannot close the executor before the
+        # submit.
         with self._sync_executor_lock:
             executor = self._sync_executor
             if executor is None:
@@ -466,14 +305,9 @@ class CCXTConnector(ExchangeInterface):
         api_secret: str,
         passphrase: Optional[str] = None,
     ) -> None:
-        """Connect using SYNCHRONOUS CCXT (uses requests, not aiohttp).
-
-        This avoids Windows asyncio ProactorEventLoop incompatibilities
-        with aiohttp that cause silent connection failures.
-        """
+        """Connect with synchronous CCXT, which uses requests rather than aiohttp."""
         if self._injected_ex is not None:
-            # A backend is serving this connector; there is no network
-            # session to open and no credentials to consume.
+            # A backend serves this connector: no session to open, no credentials.
             self._connected = True
             return
         try:
@@ -513,7 +347,7 @@ class CCXTConnector(ExchangeInterface):
                 config["secret"] = api_secret
 
             is_cdp = api_key.startswith("organizations/")
-            # sadp: R28 — TD-013: do NOT log key prefix. Last-4 only, banking convention.
+            # Log the last four characters only, never the key prefix.
             _key_tail = api_key[-4:] if len(api_key) >= 4 else "****"
             _log.record(
                 exchange=self._exchange_id,
@@ -645,9 +479,7 @@ class CCXTConnector(ExchangeInterface):
                 self._ccxt.markets_by_id = sync_exchange.markets_by_id
                 self._ccxt.currencies = sync_exchange.currencies
                 self._ccxt.symbols = sync_exchange.symbols
-            except (
-                Exception
-            ):  # R28-OK: field-copy fallback; whole exchange swap is the recovery
+            except Exception:  # Fall back to the sync exchange when async fails
                 self._ccxt = sync_exchange
 
             _log.record(
@@ -663,10 +495,7 @@ class CCXTConnector(ExchangeInterface):
             )
             logger.info("Connected to %s (%d markets)", self.display_name, market_count)
 
-            # ── Trade history scan on connect (R29 — idempotent) ──────
-            # Runs in a background thread so it never delays GUI startup.
-            # Results are stored in self._history_analyses and reported
-            # via self._on_history_ready callback if set.
+            # Background thread so the scan never delays startup.
             import threading
 
             threading.Thread(
@@ -699,46 +528,21 @@ class CCXTConnector(ExchangeInterface):
                 on_failure=_note_load_failure,
             )
         except Exception as exc:
-            # `from None` keeps the operator-facing traceback single-frame,
-            # as it was when the loop fell through to this raise.
+            # `from None` keeps the traceback single-frame.
             raise ConnectionError(self._format_exchange_error(exc)) from None
 
-    # ── MEM-220: Sync CCXT serialization ────────────────────────────────────
+    # ── Sync CCXT serialization ─────────────────────────────────────────────
 
     async def _call_sync(self, fn, *args, **kwargs):
-        """Single choke point for all sync CCXT calls.
-
-        All ``self._ex.fetch_*`` / ``self._ex.create_*`` / etc. MUST go
-        through this method.  Rationale:
-
-        1.  CCXT's sync methods are not thread-safe.  Multiple concurrent
-            callers against the same sync instance produced Windows
-            access violations in urllib3 / OpenSSL C code.
-        2.  The per-connector single-worker ``_sync_executor`` guarantees
-            serialization without adding an explicit lock around each
-            caller (locks around blocking I/O cause other bugs).
-        3.  The queue-depth cap (``MEM_220_QUEUE_CAP``) is fail-fast
-            backpressure: if the 2-second dashboard timer + bot ticks
-            ever produce a backlog, we reject further submissions
-            with :class:`CCXTQueueFullError` rather than letting
-            calls queue unboundedly.
-        4.  ``wait_for`` enforces an outer timeout slightly above
-            CCXT's own (20s default).  Normal case: CCXT times out
-            first, worker finishes cleanly.  Pathological case: our
-            outer timeout fires, awaiter sees TimeoutError, worker
-            thread leaks for up to a few more seconds until CCXT
-            finishes on its own.  Leaks are logged.
+        """Run one sync CCXT call on the single worker, with a queue cap and a timeout.
 
         Raises:
-            CCXTQueueFullError: queue is at cap; caller should retry later.
-            TimeoutError: the call exceeded MEM_220_CALL_TIMEOUT_SEC.
-            asyncio.CancelledError: awaiter was cancelled (app shutdown,
-                caller gave up).  The worker thread continues running
-                in the background; its result is discarded.
+            CCXTQueueFullError: queue depth is at ``MEM_220_QUEUE_CAP``.
+            TimeoutError: the call exceeded ``MEM_220_CALL_TIMEOUT_SEC``.
+            asyncio.CancelledError: the awaiter was cancelled; the worker runs on.
             Any CCXT exception: propagated unchanged.
         """
-        # Queue depth check.  No lock needed — we only read/write from
-        # the asyncio loop thread.  Fail-fast semantics.
+        # Read and written only on the asyncio loop thread, so no lock.
         if self._sync_queue_depth >= MEM_220_QUEUE_CAP:
             raise CCXTQueueFullError(
                 f"CCXT call queue at capacity ({self._sync_queue_depth}/"
@@ -747,8 +551,8 @@ class CCXTConnector(ExchangeInterface):
                 f"Call: {getattr(fn, '__name__', repr(fn))}"
             )
 
-        # Grab executor under lock so a disconnect() on another thread
-        # cannot shutdown() the executor between our check and submit().
+        # Under the lock so disconnect() cannot close the executor before the
+        # submit.
         with self._sync_executor_lock:
             executor = self._sync_executor
             if executor is None:
@@ -775,10 +579,7 @@ class CCXTConnector(ExchangeInterface):
                 result = await asyncio.wait_for(fut, timeout=MEM_220_CALL_TIMEOUT_SEC)
                 return result
             except asyncio.TimeoutError:
-                # CCXT should have timed out first; our outer timeout
-                # only fires if CCXT's timeout logic is broken or the
-                # underlying syscall is stuck in C code.  Worker thread
-                # leaks — log so we know.
+                # The worker thread runs on until CCXT returns; log the leak.
                 logger.warning(
                     "MEM-220: sync CCXT call exceeded outer timeout "
                     "(%ss) for %s on %s; worker thread is leaked until "
@@ -789,11 +590,7 @@ class CCXTConnector(ExchangeInterface):
                 )
                 raise
             except asyncio.CancelledError:
-                # Awaiter cancelled (e.g., app shutdown).  Worker keeps
-                # running until CCXT returns; we don't try to stop it.
-                # This is the correct behaviour — abandoning a HTTP
-                # request mid-flight would leave connection state
-                # inconsistent.
+                # The worker keeps running until CCXT returns.
                 raise
         finally:
             self._sync_queue_depth = max(0, self._sync_queue_depth - 1)
@@ -801,49 +598,14 @@ class CCXTConnector(ExchangeInterface):
     # ── Trade history scanning ───────────────────────────────────────────────
 
     def set_history_callback(self, callback: HistoryCallback) -> None:
-        """
-        Register a callback that receives (symbol, HistoryAnalysis) as
-        each symbol's history scan completes.  Called from the background
-        thread — use Qt signals if updating the GUI from this callback.
-        """
+        """Register a callback the historian thread calls as ``(symbol, analysis)``."""
         self._on_history_ready = callback
 
     def _scan_trade_history(self, symbols=None) -> None:
-        """
-        Background thread entry point.  Called automatically after every
-        successful connect / reconnect.
-
-        Scans all active symbols (derived from loaded markets and any
-        bots currently running).  Safe to call multiple times (R29).
-        """
+        """Scan trade history for *symbols*, or for the registered set when None."""
         if not self._ccxt_sync:
             return
 
-        # Collect symbols to scan — use BATTERY_ASSETS as a fallback set
-        # when no bots are running yet.  In production the BotManager will
-        # add its active symbols via add_scan_symbol().
-        # v3.24.95 - SYMBOLS COME IN AS AN ARGUMENT, NOT VIA THE FIELD.
-        #
-        # `refresh_history(symbol)` used to do this:
-        #     orig = self._scan_symbols.copy()
-        #     self._scan_symbols = {symbol}
-        #     self._scan_trade_history()
-        #     self._scan_symbols = orig
-        # and `add_scan_symbol` calls it in a DAEMON THREAD PER SYMBOL.
-        #
-        # 37 threads racing on one mutable set: each replaced it, and
-        # this method then iterated whatever happened to be there --
-        # frequently another thread's restored snapshot of every symbol.
-        # Each thread therefore scanned up to N symbols instead of 1.
-        #
-        # MEASURED on the operator's 3.24.94 launch: 37 distinct symbols,
-        # 1,294 scans, exactly 35.0 per symbol where 1 is correct. N^2
-        # for N=37 is 1,369. 200 fetches in the first 24 seconds, no
-        # pacing, so Coinbase rate-limited and 1,708 fetch failures were
-        # logged as TradeHistorian errors.
-        #
-        # Passing the list in removes the shared mutable state, and with
-        # it the race.
         symbols = (
             [str(x) for x in symbols]
             if symbols is not None
@@ -859,34 +621,10 @@ class CCXTConnector(ExchangeInterface):
             len(symbols),
             symbols,
         )
-        # v3.24.95 - SERIALISED AND PACED.
-        #
-        # `TradeHistorian._fetch_sync` calls the RAW ccxt object, so it
-        # bypasses this connector's `_rate_limit()`, its single-worker
-        # `_call_sync` executor and its retry decorator -- every guard
-        # built to keep this exchange happy. Concurrent daemon threads
-        # then hit it with no spacing at all.
-        #
-        # The lock makes concurrent scans queue instead of pile up; the
-        # pace is the connector's own configured interval, so history
-        # fetches obey the same limit as every other call.
+        # The lock queues concurrent scans; pace_s is this connector's own interval.
         with self._history_scan_lock:
             try:
-                # 10.3 phase 2 — BRACKET THE SCAN, NOT THE QUEUEING.
-                #
-                # The timer starts INSIDE `_history_scan_lock` on purpose.
-                # That lock makes concurrent scans queue rather than pile
-                # up, so a caller can wait a long time before its own scan
-                # begins. Starting the clock before the `with` would fold
-                # lock-wait and fetch time into one number, and a reader
-                # could no longer tell "the venue was slow" from "this
-                # scan waited its turn" -- two different causes behind one
-                # value, which is the disjunction defect this repo has
-                # been bitten by before.
-                #
-                # So this measures what `scan_complete` actually observes:
-                # the scan. Queue depth, if it is ever wanted, is a
-                # separate observation and would be its own emitter.
+                # Timed inside the lock so the duration excludes waiting for a turn.
                 _dur_t0 = time.monotonic()
                 results = scan_on_connect(
                     exchange=self._ccxt_sync,
@@ -910,10 +648,9 @@ class CCXTConnector(ExchangeInterface):
                         duration=_dur_elapsed,
                         context={"symbols": len(symbols)},
                     )
-                except Exception:  # noqa: BLE001,S110 - advisory
+                except Exception:  # noqa: BLE001,S110
                     pass
             except Exception as e:
-                # R28: fail loudly — log at ERROR, do not swallow
                 logger.error("TradeHistorian: scan failed: %s", e)
 
     def _on_history_result(
@@ -930,23 +667,11 @@ class CCXTConnector(ExchangeInterface):
                 logger.warning("history callback error: %s", e)
 
     def add_scan_symbol(self, symbol: str):
-        """Register a symbol to be included in the next history scan.
-
-        MEM-248 (Session 26 operator report): Trade Historian was silently
-        skipping every post-connect bot. Order-of-ops bug: connector connects
-        -> _scan_trade_history runs with empty _scan_symbols -> logs 'no
-        symbols registered — skipping' -> nothing ever re-scans when bots
-        register later. Fix: if we're already connected when a new symbol is
-        registered, kick off a targeted scan for JUST that symbol. Cheap
-        (one symbol's history ~1 API call + analysis) and restores the
-        advertised Trade Historian behavior.
-        """
+        """Register *symbol* for history scans, scanning it now if already connected."""
         if symbol in self._scan_symbols:
             return  # idempotent — already registered
         self._scan_symbols.add(symbol)
-        # Post-connect late registration: spawn a targeted scan for this
-        # symbol immediately so the GUI surfaces trade history without
-        # waiting for the next connect/reconnect.
+        # Scan now rather than waiting for the next connect.
         if self._ccxt_sync is not None:
             try:
                 import threading
@@ -962,7 +687,7 @@ class CCXTConnector(ExchangeInterface):
                     "spawning targeted scan in background",
                     symbol,
                 )
-            except Exception as exc:  # sadp: R28 — surface
+            except Exception as exc:
                 logger.warning(
                     "TradeHistorian: late-scan spawn failed for %s: %s", symbol, exc
                 )
@@ -975,12 +700,7 @@ class CCXTConnector(ExchangeInterface):
         return self._history_analyses.get(symbol)
 
     def refresh_history(self, symbol: str | None = None):
-        """
-        Trigger a fresh history scan.  If symbol is None, re-scans all
-        registered symbols.  Safe to call from GUI 'Refresh' button.
-        """
-        # v3.24.95 — pass it down instead of swapping the field out
-        # from under 36 other threads. See `_scan_trade_history`.
+        """Re-scan *symbol*, or every registered symbol when None."""
         if symbol:
             self._scan_trade_history(symbols=[symbol])
         else:
@@ -991,8 +711,7 @@ class CCXTConnector(ExchangeInterface):
         """Extract every available detail from a CCXT exception."""
         parts = [f"{type(exc).__name__}: {exc}"]
 
-        # CCXT exceptions carry HTTP details under various attribute names
-        # depending on the version. Try all known ones.
+        # CCXT puts HTTP details under different attribute names per version.
         http_code = None
         for attr in ("http_status", "http_code", "status_code", "code"):
             val = getattr(exc, attr, None)
@@ -1098,11 +817,7 @@ class CCXTConnector(ExchangeInterface):
         self._connected = False
         self._markets_cache = None
 
-        # MEM-220: tear down the single-worker sync executor under lock.
-        # Any _call_sync in flight will either already have submitted
-        # (its worker runs to completion) or will see None and raise
-        # RuntimeError cleanly.  wait=True ensures worker cleanup
-        # before we return — matters for tests and clean shutdown.
+        # Shut the executor down under the lock; in-flight calls run to completion.
         with self._sync_executor_lock:
             executor = self._sync_executor
             self._sync_executor = None
@@ -1116,74 +831,30 @@ class CCXTConnector(ExchangeInterface):
     def _ensure_connected(self) -> None:
         if not self._connected:
             raise RuntimeError(f"Not connected to {self.display_name}")
-        # v3.24.84 — resolve through `_ex`, the single point that knows
-        # about an attached backend. Reading `_ccxt_sync`/`_ccxt`
-        # directly bypassed the injection and rejected every call on a
-        # backend-served connector, which is the same class of bug as a
-        # guard that verifies its own path instead of the property.
+        # Through `_ex`, so an attached backend is not rejected.
         if self._ex is None:
             raise RuntimeError(f"No exchange instance for {self.display_name}")
 
     @property
     def _ex(self):
-        """Return the best available exchange instance (sync preferred).
-
-        v3.24.84 — SINGLE INJECTION POINT FOR A NON-CCXT BACKEND.
-
-        Operator directive 2026-08-09: the Simulator must process Stone
-        Tablet and YTD data "in the exact same manner that Live Mode
-        processes API pulls from the exchange... just a different data
-        source."
-
-        Previously the Simulator satisfied that by RE-IMPLEMENTING this
-        connector — `FleetSimExchange` carried its own ticker, balance
-        ledger, order settlement, market metadata and fee arithmetic. Two
-        implementations of one behaviour cannot be kept in agreement:
-        a seam-by-seam audit found 16 divergences on the fields the bot
-        actually reads, and each one fixed only reopens when live moves.
-
-        The seam belongs BELOW this class, not beside it. Everything in
-        `CCXTConnector` — normalisation, fee reading, Order and Trade
-        construction, and the documented ccxt quirks the bots have been
-        calibrated against — now runs unmodified against tablets, because
-        the only thing that changes is the object this property returns.
-
-        Live is untouched: with nothing injected this is the original
-        expression, evaluated in the original order.
-        """
+        """Return the attached backend, else the sync CCXT instance, else the async."""
         injected = getattr(self, "_injected_ex", None)
         if injected is not None:
             return injected
         return getattr(self, "_ccxt_sync", None) or self._ccxt
 
     def attach_backend(self, backend: Any) -> None:
-        """Serve every ccxt call from *backend* instead of the network.
+        """Serve every ccxt call from *backend* and mark the connector connected.
 
-        `backend` must implement the ccxt surface this connector
-        actually uses — the 14 members reached through `self._ex`:
-        fetch_ohlcv, fetch_ticker, fetch_tickers, fetch_balance,
-        create_order, cancel_order, fetch_order, fetch_open_orders,
-        fetch_my_trades, fetch_order_book, markets, market,
-        amount_to_precision, price_to_precision.
-
-        Marks the connector connected: there is no network handshake to
-        perform, and every read path guards on `_ensure_connected`.
+        *backend* must provide the fifteen ccxt members reached through ``_ex``:
+        fetch_ohlcv, fetch_ticker, fetch_tickers, fetch_balance, create_order,
+        cancel_order, fetch_order, fetch_open_orders, fetch_my_trades,
+        fetch_order_book, markets, market, precisionMode, amount_to_precision
+        and price_to_precision.
         """
         self._injected_ex = backend
         self._connected = True
-        # NO NETWORK, SO NO RATE LIMIT.
-        #
-        # `_min_request_interval` is 0.1s, enforced by `_rate_limit()`
-        # before every call, because Coinbase will throttle a caller
-        # that goes faster. A Stone Tablet will not.
-        #
-        # MEASURED before this line existed: 107 ms per call, 5,942x
-        # slower than the exchange it replaces. A 35-bot / 15,000-candle
-        # replay would have spent ~31 HOURS asleep in the rate limiter.
-        #
-        # This changes no computed value. The replay's clock is the
-        # tape's timestamps, not wall time, so every price, indicator
-        # and gate decision is identical -- only the waiting is gone.
+        # A backend has no venue to throttle, so no interval is enforced.
         self._min_request_interval = 0.0
 
     # -- Rate limiting --------------------------------------------------
@@ -1225,18 +896,10 @@ class CCXTConnector(ExchangeInterface):
         return ticker
 
     async def get_all_tickers(self) -> dict:
-        """Fetch all tickers for this exchange in one bulk call.
+        """Return the raw CCXT tickers dict for every symbol in one call.
 
-        MEM-220: previously market_map.py reached directly into
-        ``connector._ex.fetch_tickers()`` which bypassed the
-        serialization executor.  This method exists so external
-        callers have an API boundary and all sync CCXT traffic
-        goes through ``_call_sync``.
-
-        Returns the raw CCXT tickers dict (symbol → ticker info).
-        Does not normalise into ``Ticker`` dataclasses — callers
-        (market_map) need the raw 24h percentage data that
-        ``Ticker`` doesn't model.
+        Not normalised into :class:`Ticker`, which does not carry the 24h
+        percentage change callers need.
         """
         self._ensure_connected()
         await self._rate_limit()
@@ -1262,47 +925,19 @@ class CCXTConnector(ExchangeInterface):
         limit: int = 100,
         since: Optional[int] = None,
     ) -> list[list[float]]:
-        """Fetch OHLCV candles.
+        """Fetch OHLCV candles; ``since`` is epoch milliseconds.
 
-        ``since`` (epoch MILLISECONDS) was added v3.24.33 for the Stone
-        Tablet auto-updater, which must ask for candles AFTER a known
-        timestamp rather than "the most recent page". Without it the
-        tablet fetcher raised TypeError on every call — see
-        stone_tablets/fetcher.py.
-
-        KNOWN DEFECT, DELIBERATELY NOT CHANGED HERE
-        ===========================================
-        The legacy call below passes ``limit`` as ccxt's THIRD
-        positional argument, and ccxt's signature is::
-
-            fetch_ohlcv(symbol, timeframe='1m', since=None, limit=None, ...)
-
-        so ``limit`` has always landed in the ``since`` slot and the
-        requested limit has never been applied on any live call — the
-        exchange returns its own default page size instead (Coinbase:
-        300). Every live caller (data_pool, chart_data,
-        market_inspector_fetcher, phantom_balance) asks for a specific
-        limit and silently gets that default.
-
-        Fixing it is NOT a free correction: Heikin-Ashi is a forward
-        recurrence seeded at index 0 (ta_engine.py:2522) and EMA is
-        SMA-seeded, so feeding TA 100 candles instead of 300 changes
-        indicator values and therefore live gate decisions. That is an
-        operator-visible behaviour change and needs its own gated
-        cascade, not a drive-by fix inside a tablet-updater task.
-
-        So: when ``since`` is None the call is byte-identical to before,
-        preserving live behaviour exactly. When ``since`` is supplied —
-        only the tablet updater does — both arguments are passed in
-        their correct slots.
+        KNOWN DEFECT: with ``since`` unset, ``limit`` is passed in ccxt's
+        ``since`` slot, so the venue returns its own page size
+        (``EFFECTIVE_OHLCV_PAGE_SIZE``) and the requested limit is ignored.
+        Changing it moves live indicator values, so it is left as it is.
         """
         self._ensure_connected()
         await self._rate_limit()
         _log = get_api_log()
         start = time.monotonic()
         if since is None:
-            # Legacy path — unchanged, including the positional quirk
-            # documented above. Live callers land here.
+            # Live callers land here, with the positional quirk documented above.
             data = await self._call_sync(self._ex.fetch_ohlcv, symbol, timeframe, limit)
         else:
             data = await self._call_sync(
@@ -1365,46 +1000,29 @@ class CCXTConnector(ExchangeInterface):
 
     @_with_retry()
     async def get_balance(self, currency: str) -> Balance:
-        # Distinguish "exchange said zero" from "exchange omitted this
-        # currency from the response." The old code fabricated
-        # Balance(free=0.0) for both cases. Defense-in-depth alongside the
-        # MEM-259 VolumeGuard-disable fix for phantom-rebuy.
+        # Tell "exchange said zero" apart from "exchange omitted this currency".
         balances = await self.get_balances()
         if currency in balances:
             return balances[currency]
 
-        # get_balances filters out currencies with total <= 0, so a missing
-        # key can mean EITHER "omitted" OR "present but zero". Re-check the
-        # raw response to differentiate.
+        # get_balances drops totals <= 0, so re-read raw to tell the two apart.
         self._ensure_connected()
         await self._rate_limit()
         raw = await self._call_sync(self._ex.fetch_balance)
         total_map = raw.get("total", {}) or {}
         if currency in total_map:
-            # Exchange explicitly reported this currency, value was zero
-            # (or a rounding-down to zero). Treat as a legitimate zero.
+            # The exchange reported it as zero.
             return Balance(
                 currency=currency, free=0.0, used=0.0, total=0.0, absent=False
             )
 
-        # Currency not in raw response at all — the exchange did NOT
-        # report it. Caller must decide whether to trust this as real.
+        # The exchange did not report this currency at all.
         return Balance(currency=currency, free=0.0, used=0.0, total=0.0, absent=True)
 
     # -- Orders ---------------------------------------------------------
-    # TD-014: NO @_with_retry on order submission. Rationale: create_order
-    # is NOT idempotent on any exchange without a client_order_id. If the
-    # exchange accepted the order but the response got lost (network flake,
-    # 500 after accept), a naive retry books the SAME order again. Operator
-    # ends up with 2-3x position. Fail-closed is the correct posture: on
-    # any submission-path exception, halt and surface, let the caller (the
-    # bot) decide whether to retry after reconciling exchange state.
-    #
-    # For true idempotent retry, callers can pass `client_order_id` and the
-    # exchange-side dedup handles duplicate submissions (Binance:
-    # newClientOrderId, Coinbase: client_order_id, Kraken: userref). When
-    # retry idempotency is added, it must query exchange order history by
-    # this id before resubmitting.
+
+    # Submission is never retried: create_order is not idempotent without a
+    # client_order_id.
     async def place_order(
         self,
         symbol: str,
@@ -1417,11 +1035,7 @@ class CCXTConnector(ExchangeInterface):
         self._ensure_connected()
         await self._rate_limit()
 
-        # v3.15.98 — TD-003 closure. Per-(exchange, symbol) circuit breaker
-        # short-circuits during outages, preventing retry-storm rate-limit
-        # depletion. Failure threshold + cooldown defaults are tuned for
-        # spot trading; tighter thresholds for low-volume venues are an
-        # operator-tunable next-session item.
+        # Per-(exchange, symbol) breaker short-circuits while a venue is failing.
         from .circuit_breaker import get_breaker_registry, CircuitBreakerOpenError
 
         _breaker_key = f"{self._exchange_id}:{symbol}"
@@ -1434,9 +1048,7 @@ class CCXTConnector(ExchangeInterface):
         self._ex.market(symbol)
         amount = self._ex.amount_to_precision(symbol, amount)
 
-        # Coinbase (and some other exchanges) require a price for market BUY
-        # orders on spot to calculate total cost (amount * price).
-        # If price is None for a market buy, fetch current price.
+        # Coinbase needs a price on a spot market BUY to compute total cost.
         exec_price = price
         if (
             order_type == OrderType.MARKET
@@ -1448,8 +1060,8 @@ class CCXTConnector(ExchangeInterface):
                 exec_price = float(ticker.get("last", 0) or ticker.get("ask", 0) or 0)
                 if exec_price <= 0:
                     exec_price = None  # Fall back to no price
-            except Exception:  # R28-OK: market-buy price probe; exchange handles None
-                exec_price = None  # Exchange may not need it
+            except Exception:  # The exchange accepts None here
+                exec_price = None
 
         if exec_price is not None:
             exec_price = float(self._ex.price_to_precision(symbol, exec_price))
@@ -1472,14 +1084,7 @@ class CCXTConnector(ExchangeInterface):
             data_usage="Order will be tracked for fill status; fills trigger profit folding or grid cycling",
         )
 
-        # v3.16.12 FIX — operator-reported 2026-04-28: Coinbase rejected
-        # `newClientOrderId` with proto-strict error:
-        #   {"error":"unknown","error_details":"proto: (line 1:150):
-        #    unknown field \"newClientOrderId\""}
-        # The v3.15.98 idempotency layer set ALL common aliases assuming
-        # CCXT would filter unknowns. Coinbase Advanced Trade is
-        # protobuf-strict and rejects the order on unknown fields.
-        # Pick the EXCHANGE-SPECIFIC field only.
+        # Coinbase Advanced Trade is protobuf-strict: send only its own field name.
         extra_params: dict = {}
         if client_order_id:
             _eid = (self._exchange_id or "").lower()
@@ -1494,10 +1099,7 @@ class CCXTConnector(ExchangeInterface):
                 # Default to ccxt canonical; CCXT translates per-exchange
                 extra_params["clientOrderId"] = client_order_id
 
-        # v3.23.28 — Translate IOC_LIMIT to ccxt's "limit" + timeInForce=IOC
-        # since ccxt has no native ioc_limit type. The extra param travels
-        # via extra_params so it flows through the create_order call below
-        # regardless of the client_order_id branch.
+        # ccxt has no ioc_limit type: send limit with timeInForce=IOC.
         _ccxt_type = order_type.value
         if order_type == OrderType.IOC_LIMIT:
             _ccxt_type = "limit"
@@ -1525,9 +1127,7 @@ class CCXTConnector(ExchangeInterface):
                     exec_price,
                 )
         except Exception as _exc:
-            # v3.15.98 — record failure with the breaker. The breaker will
-            # OPEN after threshold consecutive failures; subsequent calls
-            # short-circuit until cooldown.
+            # The breaker opens after enough consecutive failures.
             _breaker.record_failure(_exc)
             raise
         elapsed = (time.monotonic() - start) * 1000
@@ -1568,12 +1168,6 @@ class CCXTConnector(ExchangeInterface):
         raw_list = await self._call_sync(self._ex.fetch_open_orders, symbol)
         return [self._parse_order(r) for r in raw_list]
 
-    # v3.16.46 — Trade history fetch for exchange-truth migration.
-    # Operator directive 2026-05-10: position health data should be
-    # exchange-pulled, not locally derived. This method exposes ccxt's
-    # fetch_my_trades so the bot can compute avg_entry and realized
-    # P/L from authoritative trade records instead of approximations
-    # like ticker.last-at-init or internal accumulators.
     @_with_retry()
     async def get_my_trades(
         self,
@@ -1582,13 +1176,7 @@ class CCXTConnector(ExchangeInterface):
         limit: Optional[int] = None,
         params: Optional[dict] = None,
     ) -> list:
-        """Fetch executed trades. Accepts an optional ``params`` dict
-        that forwards to ccxt (per-exchange overrides). v3.23.57
-        callers use ``params={'paginate': True}`` for automatic
-        cursor-based multi-page fetch on exchanges like Coinbase
-        Advanced Trade whose fills endpoint returns "most recent
-        N within window" rather than oldest-first — our manual
-        forward-cursor loop can't paginate that shape."""
+        """Fetch executed trades; ``params`` forwards per-exchange overrides to ccxt."""
         from .base import Trade, OrderSide
 
         self._ensure_connected()
@@ -1673,27 +1261,10 @@ class CCXTConnector(ExchangeInterface):
     # -- Helpers --------------------------------------------------------
     @staticmethod
     def _parse_order(raw: dict) -> Order:
-        """Convert CCXT order dict to our Order dataclass.
+        """Convert a CCXT order dict to an :class:`Order`.
 
-        MEM-224 (2026-04-22): CCXT returns ``{"type": None}`` on Coinbase for
-        market orders and certain advanced order configurations. The old
-        pattern ``raw.get("type", "limit")`` returns ``None`` when the key
-        exists with a ``None`` value — the default ONLY fires when the key
-        is absent. ``OrderType(None)`` then throws ``ValueError: None is not
-        a valid OrderType``.
-
-        The exception was raised AFTER the order had been submitted via
-        ``create_order``, so every trade that hit this path executed on the
-        exchange but was reported upstream as a failure. Internal bot state
-        (main_lots, _current_holdings, cost basis) was never updated; only
-        the periodic ``_reconcile_holdings`` drift-detection caught the
-        position changes 1-90 minutes later. Net result: the bot placed
-        16+ invisible real-money trades on 2026-04-22 across RAVE and BONK.
-
-        Fix: use ``or`` short-circuit so any falsy value (None, "") falls
-        through to the documented safe default. Applied to side, type, and
-        status for defence in depth (same pattern, same class of latent
-        bug). Numeric fields already used ``or 0`` and are unaffected.
+        Side, type and status use ``or`` rather than a ``get`` default: CCXT
+        returns an explicit ``None`` for them, which a default never replaces.
         """
         status_map = {
             "open": OrderStatus.OPEN,
@@ -1704,22 +1275,7 @@ class CCXTConnector(ExchangeInterface):
             "rejected": OrderStatus.FAILED,
         }
         fee_info = raw.get("fee") or {}
-        # v3.24.xx — `average` was declared on the Order dataclass
-        # (base.py:90) for exactly this purpose and then never populated
-        # here. This is the ONLY place the connector builds an Order, so
-        # `order.average` was 0.0 on every live order ever placed.
-        #
-        # Eleven call sites read it as the PRIMARY fill price --
-        # scrumming_bot.py:2952/9334/9533/10042/10359,
-        # extractor_bot.py:1043/1242/1402, volume_guard.py:493/530/584 --
-        # and each has an `or` fallback to a reference or tick price, so
-        # the omission never raised. It just meant every fill price
-        # booked in live trading was an estimate. sim_exchange.py:440
-        # DOES set it, so the simulator had real fill prices and live
-        # never did.
-        #
-        # Fall back to cost/filled: CCXT populates `cost` (= filled x
-        # average) on venues that omit `average` outright.
+        # CCXT omits `average` on some venues; derive it from cost / filled.
         _avg = raw.get("average")
         _filled = float(raw.get("filled", 0) or 0)
         if _avg in (None, "", 0) and _filled > 0:
@@ -1743,22 +1299,13 @@ class CCXTConnector(ExchangeInterface):
         )
 
 
-# ---------------------------------------------------------------------------
-# Factory
-# ---------------------------------------------------------------------------
 def create_connector(exchange_id: str) -> CCXTConnector:
-    """Factory function to create a connector by exchange ID."""
+    """Return a connector for *exchange_id*."""
     return CCXTConnector(exchange_id)
 
 
 def list_supported_exchanges() -> list[dict[str, str | bool]]:
-    """Return every registry entry with its name, credential shape and status.
-
-    ``verified`` says whether Acervator has ever traded on the venue.
-    ``us_ip_blocked`` says whether its public endpoints refused a US IP at
-    ``VENUE_MEASUREMENT_DATE``. Both are False for most of the registry,
-    which is the point: the registry is a declaration, not a record of use.
-    """
+    """Return every registry entry with its name, credential shape and status."""
     return [
         {
             "id": eid,
@@ -1773,13 +1320,7 @@ def list_supported_exchanges() -> list[dict[str, str | bool]]:
 
 
 def exchange_label(exchange_id: str) -> str:
-    """Return the picker label for an exchange, carrying its status.
-
-    Follows the equity-broker wording already used in the settings
-    dialog: a venue that cannot be reached or has never been traded on
-    says so in the list, so it is not offered as the equal of one that
-    has.
-    """
+    """Return the picker label for *exchange_id*, carrying its status notes."""
     label = exchange_id.capitalize()
     notes: list[str] = []
     if exchange_id in US_IP_BLOCKED_EXCHANGES:
