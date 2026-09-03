@@ -86,8 +86,9 @@ git fetch origin && git log --oneline origin/current..origin/main
 ```
 
 Run this before starting any issue. On 2026-08-28 three fixes were built twice
-for want of it. Check the remote branch list too — the CTO ships without
-announcing.
+for want of it. Check the remote branch list too — `origin/main` is a separate,
+unrelated history and branches from the 2026-08 period may carry work nobody
+announced.
 
 ```bash
 python -m tools.queue_state
