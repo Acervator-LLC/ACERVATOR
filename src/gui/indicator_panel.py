@@ -1497,9 +1497,7 @@ if _HAS_QT:
                 seed = int(
                     hashlib.md5(bid.encode(), usedforsecurity=False).hexdigest()[:8], 16
                 )
-                rng = random.Random(
-                    seed
-                )  # noqa: S311 - deterministic demo data, not cryptographic
+                rng = random.Random(seed)
                 price = 100.0
                 candles = []
                 for i in range(60):
