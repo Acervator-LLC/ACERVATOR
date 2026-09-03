@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from ...core.privacy_mask_registry import mask_or
 
 from .. import design_system as ds
@@ -20,24 +22,8 @@ except ImportError:
 if _HAS_QT:
 
     class SpendableProfitsWidget(QFrame):
-        """Estimated expendable liquidity across all bots/exchanges.
+        """One labelled column per KPI, divided by thin vertical rules."""
 
-        v3.19.29 — column-per-stat layout per operator UX request
-        2026-05-22: "We should put the labels on top for this panels data
-        fields as this will match the styling of the other top components
-        and allow for larger number entries in the future."
-
-        Each stat is a vertical column with:
-          • SMALL UPPERCASE LABEL on top (muted color)
-          • Larger numeric value below (stat-appropriate accent color)
-        Columns separated by thin vertical dividers. The "Spendable"
-        column is highlighted with the bright accent; other columns use
-        a more muted palette.
-        """
-
-        # Style tokens — kept as class attributes so contract tests can
-        # introspect the styling intent without re-parsing the literal
-        # stylesheet strings each refactor.
         _LABEL_STYLE = (
             f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; "
             "letter-spacing: 1px; font-weight: 600;"
@@ -57,6 +43,12 @@ if _HAS_QT:
         _SEPARATOR_STYLE = (
             f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
         )
+        _SPENDABLE_ABSENT_TIP = (
+            "This amount is not in the data the strip was given for this refresh."
+        )
+        _UNREADABLE_TIP = (
+            "This amount did not arrive as a number, so nothing is shown for it."
+        )
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -72,17 +64,12 @@ if _HAS_QT:
             outer.setContentsMargins(12, 6, 12, 6)
             outer.setSpacing(0)
 
-            # v3.23.7 — last-known payload so a dot-toggle can re-render
-            # the displayed values from the same data the dashboard
-            # passed in. Without this, clicking a dot between dashboard
-            # ticks would leave the cell showing the old value formatting.
+            # A dot toggle re-renders from this last data, not the next tick.
             self._last_data: dict = {}
 
-            # v3.23.7 — track privacy dots so set_all-style global flips
-            # can refresh every dot at once from the parent MainWindow.
+            # refresh_privacy_dots repaints every dot in this list at once.
             self._privacy_dots: list = []
 
-            # Spendable — featured column with bright accent
             spend_col = QVBoxLayout()
             spend_col.setSpacing(2)
             spend_col.setContentsMargins(0, 0, 0, 0)
@@ -92,16 +79,14 @@ if _HAS_QT:
                 "font-weight: 700;"
             )
             self._spend_label.setToolTip(
-                "Estimated expendable liquidity from positions filled 30+ days.\n"
-                "Passive income safely withdrawable without disrupting positions."
+                "Cash balance pulled from the exchange, across the bots "
+                "sharing one wallet."
             )
             spend_col.addWidget(self._spend_label)
-            self._amount = QLabel("$0.00")
-            self._amount.setStyleSheet(self._VALUE_STYLE_HIGHLIGHT)
+            self._amount = QLabel("—")
+            self._amount.setStyleSheet(self._VALUE_STYLE_MUTED)
             spend_col.addWidget(self._amount)
-            # v3.23.7 privacy dot — toggles kpi.spendable mask. Lives
-            # at index 2 in the VBox so the v3.19.29 layout pin
-            # (label at index 0, value at index 1) still passes.
+            # The dot sits at index 2, keeping label at 0 and value at 1.
             self._spend_dot = PrivacyDot(
                 "kpi.spendable", on_toggle=self._on_privacy_toggle
             )
@@ -109,9 +94,7 @@ if _HAS_QT:
             spend_col.addWidget(self._spend_dot, alignment=Qt.AlignHCenter)
             outer.addLayout(spend_col)
 
-            # v3.23.7 — field id per KPI column. Spendable handled above
-            # (it has the featured-style accent label); the rest share
-            # the same label-row-with-dot pattern.
+            # Spendable is built above; these four share one KPI field shape.
             _KPI_FIELD_BY_KEY = {
                 "total_realised": "kpi.realised",
                 "locked": "kpi.locked",
@@ -119,16 +102,13 @@ if _HAS_QT:
                 "exchanges": "kpi.exch",
             }
 
-            # Build a column per remaining stat
             self._stats = {}
-            self._kpi_dots: dict = {}
             for label_text, key in [
                 ("REALISED", "total_realised"),
                 ("LOCKED", "locked"),
                 ("MATURE", "mature"),
                 ("EXCH", "exchanges"),
             ]:
-                # Vertical separator between columns
                 sep = QLabel("|")
                 sep.setStyleSheet(self._SEPARATOR_STYLE)
                 sep.setAlignment(Qt.AlignVCenter)
@@ -146,75 +126,78 @@ if _HAS_QT:
                 val.setStyleSheet(self._VALUE_STYLE_DEFAULT)
                 self._stats[key] = val
                 col.addWidget(val)
-                # v3.23.7 privacy dot per KPI column. Placed at index 2
-                # (after the label at index 0 and the value at index 1)
-                # so the v3.19.29 column-VBox layout contract still
-                # holds: itemAt(0).widget() is QLabel, itemAt(1).widget()
-                # is QLabel.
                 dot = PrivacyDot(
                     _KPI_FIELD_BY_KEY[key], on_toggle=self._on_privacy_toggle
                 )
                 self._privacy_dots.append(dot)
-                self._kpi_dots[key] = dot
                 col.addWidget(dot, alignment=Qt.AlignHCenter)
                 outer.addLayout(col)
 
             outer.addStretch()
 
-        def update_profits(self, data: dict) -> None:
-            # v3.16.46 — None-aware rendering. If a field is None it
-            # means "not currently derivable from a trustworthy source"
-            # — display "—" rather than fabricate a value (operator
-            # directive: stop displaying fictional numbers).
-            # v3.19.29 — uses class style tokens so the column layout
-            # styling stays consistent.
-            # v3.23.7 — each value passes through mask_or() so the
-            # privacy dot per column can hide the number on demand.
-            # We keep the original styling logic (color by sign for
-            # Spendable, "—" for None) and only swap the FINAL string.
-            self._last_data = dict(data) if isinstance(data, dict) else {}
-            sp = data.get("spendable")
-            if sp is None:
-                raw_sp = "—"
-                self._amount.setStyleSheet(self._VALUE_STYLE_MUTED)
-                self._amount.setToolTip(
-                    "Spendable amount is not derivable from current data "
-                    "sources. Requires exchange-pulled position-age data "
-                    "(see P0a in NEXT_SESSION_ORDERS.md)."
-                )
-            else:
-                style = (
-                    self._VALUE_STYLE_HIGHLIGHT
-                    if sp >= 0
-                    else self._VALUE_STYLE_NEGATIVE
-                )
-                raw_sp = f"${sp:,.2f}"
-                self._amount.setStyleSheet(style)
-                self._amount.setToolTip("")
-            self._amount.setText(mask_or(raw_sp, "kpi.spendable"))
+        @staticmethod
+        def _amount_of(value):
+            """The finite number a payload value carries, unconverted."""
+            if type(value) is int:
+                return value
+            if type(value) is float and math.isfinite(value):
+                return value
+            return None
 
-            tr = data.get("total_realised", 0)
-            raw_tr = f"${tr:,.2f}" if tr is not None else "—"
-            self._stats["total_realised"].setText(mask_or(raw_tr, "kpi.realised"))
-            lk = data.get("locked")
-            raw_lk = f"${lk:,.2f}" if lk is not None else "—"
-            self._stats["locked"].setText(mask_or(raw_lk, "kpi.locked"))
-            mt = data.get("mature")
-            raw_mt = f"${mt:,.2f}" if mt is not None else "—"
-            self._stats["mature"].setText(mask_or(raw_mt, "kpi.mature"))
-            raw_ex = str(data.get("exchange_count", 0))
-            self._stats["exchanges"].setText(mask_or(raw_ex, "kpi.exch"))
+        @staticmethod
+        def _money_text(value) -> str:
+            """Render one amount as money text, or as the empty marker."""
+            amount = SpendableProfitsWidget._amount_of(value)
+            if amount is None:
+                return "—"
+            return f"${amount:,.2f}"
+
+        @staticmethod
+        def _count_text(value) -> str:
+            """Render a whole exchange count, or the empty marker."""
+            if type(value) is not int:
+                return "—"
+            return str(value)
+
+        def update_profits(self, data: dict) -> None:
+            """Draw every column from one payload, then keep that payload."""
+            kept = dict(data) if isinstance(data, dict) else {}
+            sp = data.get("spendable")
+            amount = self._amount_of(sp)
+            if sp is None:
+                skin, tip = self._VALUE_STYLE_MUTED, self._SPENDABLE_ABSENT_TIP
+            elif amount is None:
+                skin, tip = self._VALUE_STYLE_MUTED, self._UNREADABLE_TIP
+            elif amount >= 0:
+                skin, tip = self._VALUE_STYLE_HIGHLIGHT, ""
+            else:
+                skin, tip = self._VALUE_STYLE_NEGATIVE, ""
+            drawn = {
+                "spendable": self._money_text(sp),
+                "total_realised": self._money_text(data.get("total_realised")),
+                "locked": self._money_text(data.get("locked")),
+                "mature": self._money_text(data.get("mature")),
+                "exchanges": self._count_text(data.get("exchange_count")),
+            }
+            self._amount.setStyleSheet(skin)
+            self._amount.setToolTip(tip)
+            self._amount.setText(mask_or(drawn["spendable"], "kpi.spendable"))
+            for key, field_id in (
+                ("total_realised", "kpi.realised"),
+                ("locked", "kpi.locked"),
+                ("mature", "kpi.mature"),
+                ("exchanges", "kpi.exch"),
+            ):
+                self._stats[key].setText(mask_or(drawn[key], field_id))
+            self._last_data = kept
 
         def _on_privacy_toggle(self) -> None:
-            """v3.23.7 — re-render values with the last payload so a
-            dot toggle takes effect immediately without waiting for the
-            5-second dashboard refresh tick."""
+            """Re-draw the kept payload so a dot toggle shows at once."""
             if self._last_data:
                 self.update_profits(self._last_data)
 
         def refresh_privacy_dots(self) -> None:
-            """v3.23.7 — global Privacy Mode button calls this on every
-            child widget so all dots repaint after a set_all() flip."""
+            """Repaint every dot, then re-draw the kept payload."""
             for d in self._privacy_dots:
                 try:  # noqa: SIM105
                     d.refresh()

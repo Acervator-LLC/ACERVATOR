@@ -1,24 +1,8 @@
-"""header_strip_surface.py -- the header stat strip view model served to a frontend.
-
-Describes the strip across the top of the main window as plain data: the
-spendable panel with its five KPI columns, the five counter cards, the
-hidden P/L card, the mode button, the privacy dot under every value and
-the container that holds them. Colours, paddings and fonts come from
-``design_system`` tokens, so a page carries the values the Qt strip
-paints rather than a second palette.
-
-It also holds the behaviours the strip owns rather than describes: the
-money and count text every cell renders, the privacy mask each value
-passes through, the tooltip a card gains when it becomes clickable, the
-mode button's two skins and the tab names that hide the strip.
-
-``src.core.desktop_bridge`` registers ``view_model`` as the handler for
-the ``header.strip`` method, which is how the Electron renderer reaches
-it. Nothing here imports Qt, so the same code serves any frontend.
-"""
+"""header_strip_surface.py -- the header stat strip view model served to a frontend."""
 
 from __future__ import annotations
 
+import math
 from typing import Any, Optional
 
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
@@ -93,13 +77,13 @@ SEPARATOR_STYLE = f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
 SEPARATOR = {"text": "|", "style_sheet": SEPARATOR_STYLE}
 
 SPENDABLE_TOOLTIP = (
-    "Estimated expendable liquidity from positions filled 30+ days.\n"
-    "Passive income safely withdrawable without disrupting positions."
+    "Cash balance pulled from the exchange, across the bots sharing one wallet."
 )
 SPENDABLE_UNKNOWN_TOOLTIP = (
-    "Spendable amount is not derivable from current data "
-    "sources. Requires exchange-pulled position-age data "
-    "(see P0a in NEXT_SESSION_ORDERS.md)."
+    "This amount is not in the data the strip was given for this refresh."
+)
+UNREADABLE_TOOLTIP = (
+    "This amount did not arrive as a number, so nothing is shown for it."
 )
 
 KPI_COLUMNS = (
@@ -109,8 +93,8 @@ KPI_COLUMNS = (
         "label_style": SPENDABLE_LABEL_STYLE,
         "label_tooltip": SPENDABLE_TOOLTIP,
         "field_id": "kpi.spendable",
-        "initial_text": "$0.00",
-        "initial_style": VALUE_STYLE_HIGHLIGHT,
+        "initial_text": EMPTY_TEXT,
+        "initial_style": VALUE_STYLE_MUTED,
     },
     {
         "key": "total_realised",
@@ -192,11 +176,7 @@ ERRORS_CLICK_TOOLTIP = "Click to open the error log."
 
 
 def click_tooltip(base: Any, suffix: Any) -> str:
-    """Render the tooltip a card carries once it becomes clickable.
-
-    An empty suffix, or one the base already holds, leaves the base
-    unchanged; otherwise the two are joined by a blank line and stripped.
-    """
+    """Render the tooltip a card carries once it becomes clickable."""
     text = "" if base is None else str(base)
     tail = "" if suffix is None else str(suffix)
     if not tail or tail in text:
@@ -339,15 +319,32 @@ ACTIONS = {
 }
 
 
+def money_amount(value: Any) -> Any:
+    """The finite number a payload value carries, unconverted, or ``None``."""
+    if type(value) is int:
+        return value
+    if type(value) is float and math.isfinite(value):
+        return value
+    return None
+
+
 def money_text(value: Any) -> str:
-    """Render one KPI amount. ``None`` renders as the empty marker."""
-    if value is None:
+    """Render one KPI amount, or the strip's empty marker."""
+    amount = money_amount(value)
+    if amount is None:
         return EMPTY_TEXT
-    return f"{MONEY_PREFIX}{value:{MONEY_FORMAT}}"
+    return f"{MONEY_PREFIX}{amount:{MONEY_FORMAT}}"
 
 
 def count_text(value: Any) -> str:
-    """Render one counter as the strip's plain string."""
+    """Render one counter card as the strip's plain string."""
+    return str(value)
+
+
+def exchange_count_text(value: Any) -> str:
+    """Render a whole exchange count, or the strip's empty marker."""
+    if type(value) is not int:
+        return EMPTY_TEXT
     return str(value)
 
 
@@ -379,37 +376,35 @@ def privacy_dot(field_id: str, masked: Optional[bool] = None) -> dict:
 
 
 def spendable_cell(value: Any) -> dict:
-    """The SPENDABLE cell's text, skin and tooltip for one amount.
-
-    A missing amount paints muted and explains itself; a negative one
-    paints in the error colour, and zero or above in the success colour.
-    """
+    """The SPENDABLE cell's text, skin and tooltip for one amount."""
     if value is None:
         return {
             "text": mask_or(EMPTY_TEXT, "kpi.spendable"),
             "style_sheet": VALUE_STYLE_MUTED,
             "tooltip": SPENDABLE_UNKNOWN_TOOLTIP,
         }
-    style = VALUE_STYLE_HIGHLIGHT if value >= 0 else VALUE_STYLE_NEGATIVE
+    amount = money_amount(value)
+    if amount is None:
+        return {
+            "text": mask_or(EMPTY_TEXT, "kpi.spendable"),
+            "style_sheet": VALUE_STYLE_MUTED,
+            "tooltip": UNREADABLE_TOOLTIP,
+        }
+    style = VALUE_STYLE_HIGHLIGHT if amount >= 0 else VALUE_STYLE_NEGATIVE
     return {
-        "text": mask_or(money_text(value), "kpi.spendable"),
+        "text": mask_or(money_text(amount), "kpi.spendable"),
         "style_sheet": style,
         "tooltip": "",
     }
 
 
 def kpi_cells(profits: Optional[dict]) -> dict:
-    """Every KPI cell the spendable panel shows for one payload.
-
-    ``total_realised`` falls back to zero when the payload omits it; the
-    other amounts fall back to the empty marker, and the exchange count
-    falls back to zero.
-    """
+    """Every KPI cell the spendable panel shows for one payload."""
     data = profits if isinstance(profits, dict) else {}
     return {
         "spendable": spendable_cell(data.get("spendable")),
         "total_realised": {
-            "text": mask_or(money_text(data.get("total_realised", 0)), "kpi.realised"),
+            "text": mask_or(money_text(data.get("total_realised")), "kpi.realised"),
             "style_sheet": VALUE_STYLE_DEFAULT,
             "tooltip": "",
         },
@@ -424,7 +419,9 @@ def kpi_cells(profits: Optional[dict]) -> dict:
             "tooltip": "",
         },
         "exchanges": {
-            "text": mask_or(count_text(data.get("exchange_count", 0)), "kpi.exch"),
+            "text": mask_or(
+                exchange_count_text(data.get("exchange_count")), "kpi.exch"
+            ),
             "style_sheet": VALUE_STYLE_DEFAULT,
             "tooltip": "",
         },
@@ -432,11 +429,7 @@ def kpi_cells(profits: Optional[dict]) -> dict:
 
 
 def counter_cells(stats: Optional[dict]) -> dict:
-    """Every counter card's rendered value for one aggregate snapshot.
-
-    Scrummed and Folded read a float that a missing or falsy entry sends
-    to zero; Trades, Bots and Errors read a plain count.
-    """
+    """Every counter card's rendered value for one aggregate snapshot."""
     data = stats if isinstance(stats, dict) else {}
     scrummed = float(data.get("total_scrummed_usd", 0.0) or 0.0)
     folded = float(data.get("total_folded_usd", 0.0) or 0.0)
@@ -452,18 +445,13 @@ def counter_cells(stats: Optional[dict]) -> dict:
 
 
 def hidden_card_text(stats: Optional[dict]) -> str:
-    """The P/L card's value. The strip hides the card but still sets it."""
+    """The P/L card's value."""
     data = stats if isinstance(stats, dict) else {}
     return pnl_text(float(data.get("total_realised_pnl", 0.0) or 0.0))
 
 
 def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
-    """The payload the spendable panel receives for one snapshot.
-
-    Wallet cash and position value both at zero means nothing has been
-    pulled from the venue yet, so every amount passes as ``None`` and the
-    panel shows its empty markers.
-    """
+    """The payload the spendable panel receives for one snapshot."""
     data = stats if isinstance(stats, dict) else {}
     wallet_cash = float(data.get("wallet_cash_usd", 0.0) or 0.0)
     position_value = float(data.get("crypto_position_value_usd", 0.0) or 0.0)
@@ -478,21 +466,13 @@ def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
 
 
 def mode_card(mode: Any) -> dict:
-    """The mode button's text, checked state and skin for one wing.
-
-    Any wing other than ``stock`` reads as crypto, which is the state the
-    strip is built in.
-    """
+    """The mode button's text, checked state and skin for one wing."""
     key = "stock" if str(mode) == "stock" else DEFAULT_MODE
     return {"mode": key, **MODE_BUTTON, **MODE_CARDS[key]}
 
 
 def strip_visible(tab_name: Any) -> bool:
-    """Whether the strip shows while ``tab_name`` is the active tab.
-
-    The Simulator and Paper Trader tabs hide it; the missing strip is
-    what marks them apart from the Trading tab.
-    """
+    """Whether the strip shows while ``tab_name`` is the active tab."""
     return tab_name not in ISOLATED_TABS
 
 
@@ -503,12 +483,7 @@ def build_view_model(
     tab_name: Any = None,
     profits: Optional[dict] = None,
 ) -> dict:
-    """Return the whole strip state as one serialisable dict.
-
-    ``profits`` overrides the payload derived from ``stats``, so a caller
-    holding venue figures the aggregate does not carry can still fill the
-    spendable panel.
-    """
+    """Return the whole strip state as one serialisable dict."""
     payload = profits_payload(stats, exchange_count) if profits is None else profits
     cells = kpi_cells(payload)
     values = counter_cells(stats)
@@ -552,11 +527,7 @@ def build_view_model(
 
 
 def view_model(params: dict) -> dict:
-    """Bridge handler for ``header.strip``.
-
-    Reads ``stats``, ``exchange_count``, ``mode``, ``tab_name`` and an
-    optional ``profits`` payload from the request parameters.
-    """
+    """Bridge handler for ``header.strip``."""
     return build_view_model(
         stats=params.get("stats") or {},
         exchange_count=int(params.get("exchange_count") or 0),

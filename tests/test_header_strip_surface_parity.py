@@ -1,10 +1,4 @@
-"""The Qt header strip and the Qt-free surface, driven side by side.
-
-A failure means the view model describes a different card, label, value,
-colour, tooltip, dot, separator, size, click action or mode skin than
-``HeaderStripMixin`` builds and the main window renders on the same
-input.
-"""
+"""The Qt header strip and the Qt-free surface, driven side by side."""
 
 from __future__ import annotations
 
@@ -77,13 +71,7 @@ def qapp():
 
 @pytest.fixture
 def built(qapp):
-    """The header strip built by the Qt mixin, and its host window.
-
-    The host supplies the three callables the mixin declares. The mode
-    button skin comes from ``MainWindow._update_mode_btn_style`` itself,
-    so the built button carries the shipped stylesheet rather than a copy
-    of it.
-    """
+    """The header strip built by the Qt mixin, and its host window."""
     from PySide6.QtWidgets import QMainWindow
 
     from src.gui.main_tabs.header_strip import HeaderStripMixin
@@ -183,11 +171,7 @@ def spendable_parts(widget) -> tuple:
 
 
 def top_row_names(host, top_row) -> list:
-    """Each widget in the top row, named by the field that holds it.
-
-    Named by identity, not by class: five of the seven are ``StatCard``,
-    so a class list cannot tell a reordered card from an ordered one.
-    """
+    """Each widget in the top row, named by the field that holds it."""
     by_widget = {
         id(host._spendable_widget): "spendable",
         id(host._stat_scrummed): "scrummed",
@@ -513,8 +497,8 @@ def test_the_connect_sets_match():
     assert translated == surface.ACTIONS
 
 
-def test_the_connect_reader_finds_the_real_sites():
-    """The connect reader returns an empty set whatever the source holds."""
+def test_the_connect_scan_finds_the_real_sites():
+    """The connect scan returns an empty set whatever the source holds."""
     sites = connect_sites()
     assert ("self._mode_btn.clicked", "self._toggle_trading_mode") in sites
     assert STRIP_SOURCE.read_text(encoding="utf-8").count(".connect(") == len(sites)
@@ -780,7 +764,13 @@ def test_the_panel_scripts_reach_every_spendable_branch(qapp, revealed):
         for key, cell in run_old_panel(payload).items()
         if cell["text"] == surface.EMPTY_TEXT
     }
-    assert empties == {"spendable", "total_realised", "locked", "mature"}
+    assert empties == {
+        "spendable",
+        "total_realised",
+        "locked",
+        "mature",
+        "exchanges",
+    }
 
 
 STATS_SCRIPTS = {
@@ -1103,12 +1093,7 @@ MODE_BUTTON_SIZE = (200, 40)
 
 
 def mode_button_painted_by_the_model(mode, state_mode=None):
-    """A bare button filled only from the mode cards, never from the window.
-
-    `mode` supplies the skin. `state_mode` supplies the text and the
-    checked state; they part company only where the strip was built in
-    one wing and repainted for the other.
-    """
+    """A bare button filled only from the mode cards, never from the window."""
     from PySide6.QtWidgets import QPushButton, QSizePolicy
 
     skin = surface.mode_card(mode)
@@ -1125,6 +1110,15 @@ def mode_button_painted_by_the_model(mode, state_mode=None):
     button.setStyleSheet(skin["style_sheet"])
     return button
 
+
+#: The highlight skin reaches a widget only once an amount is measured.
+HIGHLIGHT_PROFITS = {
+    "spendable": 12.5,
+    "total_realised": None,
+    "locked": None,
+    "mature": None,
+    "exchange_count": 1,
+}
 
 PAINTED_COLOURS = (
     surface.SPENDABLE_LABEL_STYLE,
@@ -1156,16 +1150,10 @@ def strip_style_sheets(built) -> str:
 
 @pytest.mark.parametrize("style_sheet", PAINTED_COLOURS)
 def test_every_declared_colour_is_carried_by_the_strip(built, revealed, style_sheet):
-    """A colour the view model declares is on no widget of the strip.
-
-    A count of pixels would state how many pixels the host's fonts and
-    its platform style give a colour, which is a different number on
-    every machine. The declared colour is read off the strip's own
-    widgets instead, and the mode button's pixels are compared against
-    the surface's own.
-    """
+    """A colour the view model declares is on no widget of the strip."""
     from tests.qt_pixel import render_widget
 
+    built._spendable_widget.update_profits(HIGHLIGHT_PROFITS)
     assert declared_colour(style_sheet) in strip_style_sheets(built), style_sheet
     shipped = built._mode_btn
     shipped.setParent(None)
