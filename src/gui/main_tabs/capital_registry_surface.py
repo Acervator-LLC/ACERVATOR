@@ -75,11 +75,19 @@ WIDGET = {
 }
 
 
+SHORT_DIGITS = 3
+ALPHA_FIRST_DIGITS = 8
+ALPHA_PAIR = 2
+
+
 def rgb(hex_color: str) -> tuple[int, int, int]:
-    """Split a ``#rgb`` or ``#rrggbb`` token into its three 0-255 channels."""
+    """Split a #rgb, #rrggbb or alpha-first #aarrggbb token into three channels,
+    dropping the alpha digits Qt reads first."""
     digits = hex_color.lstrip("#")
-    if len(digits) == 3:
+    if len(digits) == SHORT_DIGITS:
         digits = "".join(digit * 2 for digit in digits)
+    if len(digits) == ALPHA_FIRST_DIGITS:
+        digits = digits[ALPHA_PAIR:]
     return (
         int(digits[0:2], 16),
         int(digits[2:4], 16),
@@ -162,13 +170,8 @@ class CapitalRegistryModel:
         self.rows[row][col] = text
 
     def update_from_registry(self, registry: Any) -> None:
-        """Repopulate the grid from the live CapitalRegistry.
-
-        Idempotent — call as often as needed. The first reserved USD seen
-        for a bot is kept for as long as the model lives, so Profit Delta
-        reports growth since that first sighting rather than since the
-        last refresh.
-        """
+        """Repopulate the grid, recording no starting figure for a
+        reservation the grid refuses to format."""
         if registry is None:
             self.set_row_count(0)
             return
@@ -177,17 +180,12 @@ class CapitalRegistryModel:
         except Exception:
             self.set_row_count(0)
             return
-        for reservation in reservations:
-            if reservation.bot_id not in self.initial_usd_by_bot:
-                self.initial_usd_by_bot[reservation.bot_id] = float(
-                    reservation.reserved_usd
-                )
+        amounts = [float(one.reserved_usd) for one in reservations]
         self.set_row_count(len(reservations))
         for row, reservation in enumerate(reservations):
-            initial = self.initial_usd_by_bot.get(
-                reservation.bot_id, float(reservation.reserved_usd)
-            )
-            profit_delta = float(reservation.reserved_usd) - initial
+            amount = amounts[row]
+            initial = self.initial_usd_by_bot.get(reservation.bot_id, amount)
+            profit_delta = amount - initial
             cells = [
                 reservation.bot_id,
                 reservation.exchange_id,
@@ -199,6 +197,7 @@ class CapitalRegistryModel:
                 USD_FORMAT.format(initial),
                 DELTA_FORMAT.format(profit_delta),
             ]
+            self.initial_usd_by_bot.setdefault(reservation.bot_id, amount)
             for col, cell in enumerate(cells):
                 self.set_cell(row, col, str(cell))
 
@@ -216,14 +215,8 @@ def build_view_model(
     reservations: Optional[list] = None,
     clear: bool = False,
 ) -> dict:
-    """Return the whole surface state as one serialisable dict.
-
-    ``clear`` empties the grid and forgets every bot's first reservation
-    ahead of the batch, which is the table's teardown. ``reservations``
-    of None is the absent registry: the grid empties and the recorded
-    first reservations survive. An entry that cannot be read is skipped
-    rather than raised, so one bad entry cannot lose the rest.
-    """
+    """Return every value this surface publishes, the recorded bot order
+    included, because a JSON object loses it."""
     if clear:
         model.clear_table()
     source = None
@@ -244,6 +237,7 @@ def build_view_model(
         "rows": [list(row) for row in model.rows],
         "row_count": model.row_count(),
         "initial_usd_by_bot": dict(model.initial_usd_by_bot),
+        "initial_usd_bots": list(model.initial_usd_by_bot),
         "row_color": list(rgb(ROW_COLOR)),
         "alt_row_color": list(rgb(ALT_ROW_COLOR)),
         "text_color": list(rgb(TEXT_COLOR)),
