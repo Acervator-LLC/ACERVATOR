@@ -51,4 +51,5 @@ window.ACERVATOR_MODULES = [
   "preflight_check.js",
   "pulse_manager.js",
   "spendable_profits.js",
+  "bot_wizard.js",
 ];
