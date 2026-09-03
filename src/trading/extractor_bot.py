@@ -1,18 +1,11 @@
-"""
-src/trading/extractor_bot.py — Base Currency Extractor Multi-Target Bot (v3.19.1).
+"""Base-currency Extractor: the multi-pair, multi-target inversion of ScrummingBot.
 
-CONCEPT
-───────
-The inversion of ScrummingBot. Where ScrummingBot anchors to a TARGET
-BALANCE of an *alt* asset and grows USD-value through volatility, the
-Extractor anchors to a POOL of a *base* asset and grows BASE UNIT COUNT
-through volatility.
-
-Use case: operator holds 5 ETH and wants to grow it to 6 ETH without
-trading off the slow internal ETH price action. The Extractor pulls
-$20 of ETH at a time, buys into a volatile altcoin during a dip, sells
-it back during a rally, returns ~$22 of ETH to the pool. Repeat across
-many alt pairs concurrently.
+Where ScrummingBot anchors to a TARGET BALANCE of an *alt* asset and
+grows USD value through volatility, the Extractor anchors to a POOL of
+a *base* asset and grows BASE UNIT COUNT through volatility: it pulls
+a fixed USD slice of the base currency, buys into an alt pair during a
+dip, sells back during a rally, and returns more base than it spent.
+It runs many alt pairs concurrently.
 
 STATE MACHINE (per pair)
 ────────────────────────
@@ -23,33 +16,14 @@ STATE MACHINE (per pair)
        │                    │
        └────tier max────────┘ (gain locks to pool)
 
-DESIGN DOC
-──────────
-docs/audits/2026-05-20_extractor_bot_design.md (canonical).
-docs/audits/2026-05-20_extractor_bot_final_design_consideration.md
-(Tier-1 decisions: half-extract TA producer, generalized MEM-257
-helper, Section 13a decoupled, MR Inspector REMOVED).
+ExtractorBots do not spawn child bots; multi-asset reach comes from
+this bot's own top-N watch-list scan, not from spawn cascades.
 
-NO MR INSPECTOR (operator directive 2026-05-20):
-  > "Extractors do not spawn child bots and therefore do not need to
-  >  use Mr. Inspector. They are configured to be multi-pair and hit
-  >  multiple assets for maximum accumulation."
-
-Multi-asset reach is achieved by THIS bot's within-bot top-N watch
-list scan, NOT via spawn cascades.
-
-DEPENDENCIES (shipped in v3.18.18 → v3.19.0)
-─────────────────────────────────────────────
-  * BotManager.sum_sibling_base_currency_claims (v3.18.18, §13a) —
-    claim-aware base-currency capacity check.
-  * src/trading/buy_safety.py::verify_buy_safe_or_refuse (v3.18.19) —
-    parameterized MEM-257 FAIL-CLOSED, used on every artillery buy +
-    correction buy with expected_units = position.alt_units.
-  * src/trading/ta_signal_provider.py::TASignalProvider (v3.19.0) —
-    per-pair TA producer; bot constructs one provider per tick scope
-    and calls evaluate(pair) for every pair in the watch list.
-
-sadp: R28 R29 R51 R55 R68
+Depends on ``sum_sibling_base_currency_claims`` (claim-aware
+base-currency capacity check), ``verify_buy_safe_or_refuse`` in
+``buy_safety.py`` (fail-closed state-vs-exchange check on every
+artillery and correction buy), and ``TASignalProvider`` in
+``ta_signal_provider.py`` (one per bot, evaluated per pair per tick).
 """
 
 from __future__ import annotations
@@ -74,10 +48,7 @@ logger = logging.getLogger("acervator.extractor")
 # Position dataclass — one per active pair
 # ─────────────────────────────────────────────────────────────────────
 
-# Percent points in one unit of a dimensionless ratio. Named so the
-# conversion between the two is written once and visible: a threshold
-# stored in percent divided by this constant is a ratio, and a ratio
-# multiplied by it is percent. Used by update_base_usd_rate().
+# Percent-to-ratio conversion factor used by update_base_usd_rate().
 PERCENT_PER_RATIO_UNIT = 100.0
 
 POSITION_STATE_PENDING = "pending"  # (transitional — never persisted on a Position)
@@ -87,37 +58,19 @@ POSITION_STATE_BULLISH_EXIT = "bullish_exit"
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Extractor Tranche Arbiter (item 5, operator directive 2026-08-10)
+# Extractor Tranche Arbiter — per tranche, who may close it
 # ─────────────────────────────────────────────────────────────────────
-# Operator, verbatim: "Just have a toggling option for 'Extractor
-# Tranche Abiter' which decides who gets to sell it and when i.e.
-# Parent or Sibling." It is PER TRANCHE, not per bot, so the value
-# lives on the position and nowhere else.
-#
-# WHAT THE TWO VALUES NAME:
-#   parent  — the base-currency ScrummingBot force-sells the tranche
-#             at x% of growth.
-#   sibling — the Extractor does all the work; the parent stands back.
-#
-# WHAT IS TRUE TODAY. Only `sibling` describes running code. Nothing
-# in this repository force-sells a child's position from the parent:
-# the automatic closer is this bot's own `_execute_bullish_exit`, the
-# operator closer is this bot's own `manual_fire_position`, and the
-# parent's whole involvement is booking money that already arrived
-# (`ScrummingBot.apply_extractor_tranche_return`). So `parent` RECORDS
-# AN INTENTION and changes no trading decision. Nothing reads this
-# field except the row emitter and the surface that paints it.
-#
-# WHY THE DEFAULT IS SIBLING. It is the only value that describes what
-# the fleet already does. Defaulting to `parent` would put a false
-# record on every tranche and would silently arm every existing
-# tranche the moment a force-sell was built. Defaulting to `sibling`
-# means such a unit would ship inert and act only on tranches the
-# operator deliberately toggled.
+# `parent` names the base-currency ScrummingBot force-selling the
+# tranche at x% growth; `sibling` names the Extractor closing its own
+# position. Only `sibling` describes running code today: the automatic
+# closer is `_execute_bullish_exit`, the manual closer is
+# `manual_fire_position`, and the parent's only involvement is booking
+# an arrival via `ScrummingBot.apply_extractor_tranche_return`. Setting
+# `parent` records an intention and changes no trading decision; the
+# field is read only by the row emitter and the surface that paints it.
 ARBITER_PARENT = "parent"
 ARBITER_SIBLING = "sibling"
 
-# Operator's own words for the surface. "Sibling", never "child".
 ARBITER_LABELS = {
     ARBITER_PARENT: "Parent",
     ARBITER_SIBLING: "Sibling",
@@ -125,25 +78,12 @@ ARBITER_LABELS = {
 
 
 def normalize_arbiter(value: object) -> str:
-    """Coerce anything at all to exactly one of the two arbiter values.
+    """Coerce any value to exactly one of the two arbiter values.
 
-    FAIL TOWARDS THE INERT VALUE. Only the exact text ``parent``, once
-    stripped and lower-cased, reads as `parent`. A typo, a ``None``, a
-    ``True``, a truncated write, a number — every one of them lands on
-    `sibling`, which is the value that describes what the code already
-    does. The unrecognised case must never fall towards the value that
-    a later force-sell would act on.
-
-    THIS CANNOT RAISE, and that is the point. It is called from inside
-    `import_state`'s per-position constructor, where a raise DROPS the
-    record and the bot stops managing a real position. An arbiter
-    string is a preference; it may never cost the operator a position.
-    So nothing here can throw: `isinstance` cannot, and the two string
-    methods are only ever reached on a value that IS a string. Note
-    what is deliberately NOT done — `str(value)` is never called,
-    because that runs an arbitrary object's ``__str__`` and would put
-    a raise back on the path this exists to keep clear. A non-string
-    is simply not a value, and lands on the inert default.
+    Only the exact string ``"parent"`` (stripped, lower-cased) reads as
+    ``ARBITER_PARENT``; everything else, including a non-string, reads
+    as ``ARBITER_SIBLING``. Never raises: `import_state` calls this per
+    restored position, and a raise there would drop the whole record.
     """
     if not isinstance(value, str):
         return ARBITER_SIBLING
@@ -166,10 +106,8 @@ def other_arbiter(value: object) -> str:
 class ExtractorPosition:
     """One artillery round in flight against a pair.
 
-    The Extractor owns ONE active ExtractorPosition per pair (operator
-    directive 2026-05-20 decision #8: "one active position per pair,
-    maintained until released"). The position is created on artillery
-    fire (PENDING → IN_FLIGHT) and destroyed when the bullish exit
+    Exactly one active ExtractorPosition exists per pair. Created on
+    artillery fire (PENDING to IN_FLIGHT) and removed once the exit
     sells the alt units back to base.
     """
 
@@ -192,46 +130,16 @@ class ExtractorPosition:
     last_correction_ts: float = 0.0
     opened_at: float = 0.0
 
-    # Last observed alt price, in base currency per alt unit, recorded
-    # by the tick that had already fetched it for its own decisions.
-    # Item 4 (2026-08-11): the parent Scrumming Bot must be able to put
-    # a value on an Extractor Tranche, and the Open Tranches table that
-    # shows it is built on the Qt GUI thread, where every coroutine in
-    # this application runs. Fetching a ticker there would block the
-    # interface for the round trip, once per tranche, per repaint.
-    #
-    # So nothing new is fetched. The tick already calls get_ticker for
-    # this pair; it now keeps the answer instead of discarding it.
-    #
-    # Zero means NEVER PRICED, and readers must treat it as "no mark
-    # available" rather than as a price of zero. A position that has
-    # not ticked yet — freshly restored from disk, for instance — has
-    # no mark, and cost basis must not be dressed up as one.
+    # Recorded by the tick that already fetched it for its own
+    # decisions; no ticker is fetched here. Zero means never priced,
+    # not a real price of zero.
     last_price_base_per_alt: float = 0.0
     last_priced_at: float = 0.0
 
-    # Item 5 (2026-08-10) — who may close THIS tranche: `parent` or
-    # `sibling`. See the ARBITER_* block above for what each word
-    # names and why `sibling` is the default.
-    #
-    # WHY THE VALUE LIVES HERE AND NOT ON THE PARENT. The parent's
-    # Extractor Tranche row is a COMPUTED VIEW: it walks the manager
-    # and asks each child, and stores nothing. There is no parent-side
-    # record to attach a value to, and a parent-side copy would be a
-    # mirror that can diverge in silence — nothing tells the parent
-    # when a position OPENS, and the one sell-side message that does
-    # exist swallows every exception.
-    #
-    # WHY NOT A SIDE-MAP KEYED BY `tranche_id`. That id is DERIVED on
-    # every call from bot_id|pair|opened_at and is never stored, so a
-    # map keyed on it would depend on three fields all re-deriving
-    # identically after a restore — and a position saved without
-    # `opened_at` collapses to a `0.000000` suffix. A field on the
-    # position is created with the position and dies with it, so it
-    # cannot orphan and needs no pruning.
-    #
-    # WHY NOT BotConfig. The directive is per-tranche. A config field
-    # is bot-wide by construction and would set every tranche at once.
+    # Who may close this tranche: `parent` or `sibling` (see the
+    # ARBITER_* block above). Lives on the position, not on the parent
+    # or on BotConfig, because it is per-tranche and the parent keeps
+    # no per-child record to attach it to.
     arbiter: str = ARBITER_SIBLING
 
 
@@ -243,17 +151,10 @@ class ExtractorPosition:
 class ExtractorBot(BotContainer):
     """Multi-pair base-currency Extractor.
 
-    See module docstring for the architecture overview. This class
-    implements the per-tick logic; the dependencies (TASignalProvider,
-    buy_safety, BotManager claim helper) ship in v3.18.18-v3.19.0.
-
-    NO MR INSPECTOR INTEGRATION — operator directive 2026-05-20:
-    ExtractorBots do not spawn child bots. The class deliberately does
-    not register with the MR Inspector spawn controller and emits no
-    bot-creation provenance events. Multi-asset reach is achieved
-    via the within-bot top-N watch list, not via spawning. The
-    drift-detector test at tests/test_extractor_bot.py pins this
-    invariant by name-checking the module source.
+    Implements the per-tick logic described in the module docstring.
+    Does not spawn child bots and never registers with the MR
+    Inspector spawn controller; multi-asset reach comes from the
+    within-bot top-N watch list, not from spawning.
     """
 
     DEFAULT_TIMEFRAME = "1h"
@@ -264,60 +165,35 @@ class ExtractorBot(BotContainer):
         exchange: ExchangeInterface,
         enable_phantoms: bool = False,  # Extractor does not use phantoms
     ) -> None:
-        # This mode guard used to be an `assert`. Under `python -O` an
-        # assert is stripped, so the guard silently disappeared and an
-        # ExtractorBot could be built on a Scrumming config and then run
-        # extractor logic against real money. A raise cannot be stripped.
-        # Same shape as ScrummingBot.__init__ (scrumming_bot.py:334).
+        # A raise, not an assert, since assert is stripped under
+        # python -O. Same guard shape as ScrummingBot.__init__.
         if config.mode != BotMode.EXTRACTOR:
             raise ValueError(
                 f"ExtractorBot requires BotMode.EXTRACTOR; " f"got {config.mode!r}"
             )
         super().__init__(config, exchange)
 
-        # Record the phantom flag this bot was constructed with.
-        # BotContainer.__init__ hardcodes `_phantoms_enabled = False`,
-        # and its own comment says that value was "taken from the code"
-        # only because ExtractorBot "never stores the value"
-        # (bot_container.py:969-975). Storing it makes the constructor
-        # parameter real instead of decorative. The Extractor still runs
-        # no phantom logic; the flag is state, not a switch.
-        #
-        # NO BEHAVIOUR CHANGE: the parameter defaults to False and both
-        # construction sites pass False explicitly — `MainWindow._create_bot`
-        # in `src/gui/main_window.py` and `StateRestoreMixin.restore_bots_from_state`
-        # in `src/trading/container/restore.py` — so the stored value is
-        # False on every path that exists today, exactly what the parent set.
+        # Stores the phantom flag instead of discarding it; the
+        # Extractor still runs no phantom logic. Both construction
+        # sites (`main_window.py`'s bot creation,
+        # `restore.py`'s `restore_bots_from_state`) pass False today.
         self._phantoms_enabled = bool(enable_phantoms)
 
-        # ── Chunk-based balance (operator directive decision #8) ────
-        # The Extractor OWNS its assigned chunk of base currency.
-        # NEVER queries exchange.get_balance(base) to size decisions;
-        # only consults this internal ledger. Operator-allocated;
-        # never auto-resized.
-        #
-        # Conversion USD → base: snapshot ratio at construction time.
-        # Stored in base-currency units so base-USD price drift
-        # doesn't silently shrink/grow the bot's chunk.
-        # Until set_initial_chunk_rate() is called by the constructing
-        # context (BotManager or test harness), we default to a
-        # 1:1 USD/base ratio. Real callers MUST set the rate before
-        # the bot ticks.
+        # ── Chunk-based balance ──────────────────────────────────────
+        # The Extractor owns its assigned chunk of base currency and
+        # never queries exchange.get_balance to size decisions.
+        # Defaults to a 1:1 USD/base ratio until set_initial_chunk_rate
+        # is called; a real caller must set the rate before the bot ticks.
         self._chunk_size_usd: float = float(config.extractor_chunk_size_usd)
         self._chunk_to_base_rate: float = 1.0  # base/USD; set externally
         self._chunk_size_base: float = self._chunk_size_usd  # rebased when rate is set
         self._chunk_free_base: float = self._chunk_size_base
         self._chunk_extracted_total: float = 0.0  # cumulative base extracted
 
-        # v3.20.72 Phase C-1 — USD-anchored sizing state (MEM-418).
-        # Locked operator Q2: 10% rate-spike threshold with median-of-3
-        # fallback. _recent_rates holds the last 3 accepted rate
-        # samples; update_base_usd_rate() validates incoming rates
-        # against the most recent sample and falls back to the median
-        # of the trailing window if the spike is too large. Zero or
-        # negative rates are REFUSED (fail-closed) — artillery sizing
-        # defaults to the last-known-good rate until a valid update
-        # arrives.
+        # update_base_usd_rate() validates each incoming rate against
+        # the most recent sample: a >10% jump falls back to the median
+        # of this trailing window, and zero or negative rates refuse
+        # outright, leaving the last-known-good rate in effect.
         self._recent_rates: list[float] = []  # last 3 accepted rates
         self._rate_spike_threshold_pct: float = 10.0
         self._rate_spike_window: int = 3
@@ -331,10 +207,8 @@ class ExtractorBot(BotContainer):
         self._hedge_budget_usd: float = float(config.extractor_hedge_budget_usd)
         self._hedge_free_base: float = 0.0  # set in lock-step with rate
 
-        # v3.20.72 Phase C-1 — back-reference to BotManager for profit
-        # notifications (MEM-418). Set by BotManager.register() via
-        # set_bot_manager(). When None, profit credits don't notify
-        # the registry — preserves legacy test paths.
+        # Set via set_bot_manager(); when None, profit credits don't
+        # notify the registry.
         self._bot_manager = None
 
         # ── Positions (one per pair, keyed by pair symbol) ──
@@ -342,7 +216,7 @@ class ExtractorBot(BotContainer):
         self._closed_position_log: list[dict] = []  # last 200 closed
         self._closed_log_max: int = 200
 
-        # ── Top-N watch list (decision #5) ──
+        # ── Top-N watch list ──
         self._watch_list: list[str] = []
         self._watch_list_refreshed_at_tick: int = -1
         self._tick_counter: int = 0
@@ -363,13 +237,10 @@ class ExtractorBot(BotContainer):
         self._cycle_extracted_total: float = 0.0  # this session
         self._lifetime_extracted_total: float = 0.0
 
-        # ── v3.20.3 — Capital Reservation Registry token ──
-        # Reserved at set_initial_chunk_rate (when base-unit chunk is
-        # known); released at stop(). Heartbeat pulsed each tick.
-        # None means "no reservation held" (either pre-rate-set or
-        # post-release). The registry tolerates missing tokens
-        # gracefully — operations are no-ops on None.
-        # sadp: R28 FL  R68 DPA
+        # ── Capital Reservation Registry token ───────────────────────
+        # Reserved at set_initial_chunk_rate, released at stop(), and
+        # heartbeat-pulsed each tick. None means no reservation is
+        # held; registry calls are no-ops on None.
         self._crr_token: Optional[str] = None
 
         self._initialised = False
@@ -377,22 +248,11 @@ class ExtractorBot(BotContainer):
     # ── Public chunk-rate setter ────────────────────────────────────
 
     def set_initial_chunk_rate(self, base_per_usd: float) -> None:
-        """Rebase the chunk from USD to base units using the current
-        base/USD rate. Called by BotManager (or test harness) BEFORE
-        the bot's first tick so the chunk's base-unit denomination is
-        captured at construction-time rates.
+        """Rebase the USD-denominated chunk into base-currency units.
 
-        After this call:
-          self._chunk_size_base = self._chunk_size_usd / base_per_usd ???
-
-        Actually we want: chunk_size_base such that
-            chunk_size_base × base_USD_price = chunk_size_usd
-        which means:
-            chunk_size_base = chunk_size_usd / base_USD_price
-
-        ``base_per_usd`` here is the *USD value per 1 base unit*
-        (e.g. for ETH: ``3000``). So:
-            chunk_size_base = chunk_size_usd / base_per_usd
+        Called before the bot's first tick, once ``base_per_usd`` (the
+        USD value of one base unit) is known:
+        ``chunk_size_base = chunk_size_usd / base_per_usd``.
         """
         if base_per_usd <= 0:
             logger.warning(
@@ -403,14 +263,10 @@ class ExtractorBot(BotContainer):
             )
             return
         self._chunk_to_base_rate = float(base_per_usd)
-        # v3.20.74 Phase C-2 (MEM-420): Inverted Extractor standing-
-        # position import per locked Q7. When direction="inverted" AND
-        # inverted_extractor_standing_alt_units > 0, the chunk is
-        # initialized from the operator's already-held ALT quantity
-        # rather than from chunk_size_usd / rate. Sets the canonical
-        # chunk_size_usd as an OBSERVATION (standing_units × rate)
-        # rather than an INPUT, so downstream registry consultation
-        # and per-tick re-anchoring see the correct USD value.
+        # Inverted Extractor: when a standing ALT quantity is set, the
+        # chunk is initialised from it instead of from chunk_size_usd,
+        # and chunk_size_usd becomes an observation (standing × rate)
+        # rather than an input.
         _standing = float(
             getattr(self.config, "inverted_extractor_standing_alt_units", 0) or 0
         )
@@ -431,39 +287,15 @@ class ExtractorBot(BotContainer):
         if self._hedge_budget_usd > 0:
             self._hedge_free_base = self._hedge_budget_usd / base_per_usd
 
-        # ── v3.20.3 — Capital Reservation Registry: SOURCE-side wiring ──
-        # Operator design (2026-05-23):
-        #   "when an Extractor Bot is created its own field populates
-        #    with the amount of the Base Currency being used by any
-        #    other bots so that there is no predation at any phase of
-        #    these two or future bot types predating each others'
-        #    resources."
-        #
-        # This is the moment the base-unit chunk count is concretely
-        # known (was USD-denominated until now). Reserve the FULL
-        # chunk + hedge with the registry so any concurrent
-        # ScrummingBot on the same base_currency sees its effective
-        # budget reduced by exactly this Extractor's claim.
-        #
-        # Reservation is in ASSET QUANTITY (not USD) — price-stable
-        # through market moves. If ETH/USD drops 20%, the registry
-        # still protects the same 0.0410 ETH the Extractor needs;
-        # the displayed USD value of the reservation drops but the
-        # underlying budget protection is unchanged.
-        #
-        # No explicit TTL — relies on heartbeat liveness. Bot.tick
-        # pulses heartbeat; bot.stop releases. If the bot crashes
-        # without releasing, HEARTBEAT_TTL (120s default) expires
-        # the reservation automatically.
-        #
-        # Failure mode (R28 FL via log): if the registry call raises
-        # (e.g., persisted state corrupted), we continue WITHOUT a
-        # reservation. SB protection on this asset does not engage
-        # for this Extractor's lifetime, but trading continues. The
-        # smart_orders backstop (v3.20.1) and SB decision-gate
-        # (v3.20.2) provide the only-when-bot_id-passed coverage.
-        # Investigate at next operator opportunity.
-        # sadp: R28 FL  R68 DPA
+        # ── Capital Reservation Registry: source-side wiring ──────────
+        # Reserves the full chunk + hedge in ASSET QUANTITY, not USD,
+        # so a concurrent ScrummingBot on the same base_currency sees
+        # its budget reduced by this Extractor's claim regardless of
+        # price moves. No explicit TTL: tick() pulses heartbeat and
+        # stop() releases; a crash lets HEARTBEAT_TTL expire the
+        # reservation. If the registry call raises, this continues
+        # WITHOUT a reservation and ScrummingBot protection on this
+        # asset does not engage for this Extractor's lifetime.
         base_asset = (self.config.base_currency or "").upper()
         total_reserved_base = self._chunk_size_base + self._hedge_free_base
         if base_asset and total_reserved_base > 0:
@@ -496,7 +328,7 @@ class ExtractorBot(BotContainer):
                 )
             except (
                 Exception
-            ) as _crr_exc:  # R28-OK: registry-call defensive; primary trading path unaffected
+            ) as _crr_exc:  # fails open: continues without a reservation
                 logger.warning(
                     "Bot %s capital reservation at chunk-rate-set "
                     "raised %s: %s — continuing without reservation. "
@@ -509,49 +341,20 @@ class ExtractorBot(BotContainer):
                 )
                 self._crr_token = None
 
-    # ── v3.20.5 — Live-update for operator-edited Pool Size ─────────
-    #
-    # Operator-reported 2026-05-23: "updating the Chunk / Pool Size
-    # field is not updating the numeric readouts in the bot list."
-    # Root cause: `_chunk_size_usd` and `_chunk_size_base` are
-    # snapshotted from `config.extractor_chunk_size_usd` at __init__
-    # / set_initial_chunk_rate; nothing re-reads from config later.
-    # Settings dialog's setattr(cfg, ...) path updates the persisted
-    # field but leaves the runtime stale.
-    #
-    # This method is the runtime-routed entry point that
-    # `bot_live_settings._RUNTIME_ROUTED` calls when the operator
-    # edits Pool Size on a RUNNING Extractor. It updates BOTH the
-    # config and the runtime, in lockstep — same discipline as
-    # Session 26's settings-to-functions audit applied to SBs.
-    #
-    # Behavior:
-    #   • Updates self._chunk_size_usd (operator-set USD denomination)
-    #   • Recomputes self._chunk_size_base from current chunk_to_base
-    #     rate (price-stable; preserves the operator's USD intent)
-    #   • Scales self._chunk_free_base proportionally so the
-    #     deployed-vs-free *ratio* is preserved (a 50%-deployed bot
-    #     stays 50% deployed across the resize; open positions are
-    #     not disturbed). If the new chunk is smaller than what's
-    #     currently deployed, free → 0 and the bot will recover via
-    #     natural extraction cycles.
-    #   • Resizes the CapitalReservationRegistry claim via update()
-    #     so concurrent ScrummingBots see the new claim immediately.
-    #   • Returns {"applied": True, ...} on success, {"applied":
-    #     False, "reason": "..."} on no-op (operator routing layer
-    #     uses this to log accurately).
-    #
-    # Hedge is left alone — separate operator field, separate
-    # reservation contribution. If/when a Hedge Size live-edit is
-    # added, follow the same pattern.
-    #
-    # sadp: R28 FL  R55 GOV  R62 FRG  R68 DPA  R76 DMW
-
     def set_chunk_size_usd(self, new_value: float) -> dict:
         """Apply a new operator-set Pool Size (USD) to a running bot.
 
-        See module-level comment block above for full design.
-        Idempotent: a no-change call is a clean no-op.
+        The routed entry point for a live Pool Size edit. Updates both
+        `config.extractor_chunk_size_usd` and the runtime chunk fields
+        in lockstep, since neither re-reads the other after
+        construction: recomputes `_chunk_size_base` from the current
+        chunk-to-base rate, scales `_chunk_free_base` to preserve the
+        deployed-vs-free ratio, and resizes the
+        CapitalReservationRegistry claim so concurrent ScrummingBots
+        see it immediately. The hedge budget is untouched. Idempotent:
+        a no-change call is a clean no-op. Returns ``{"applied": True,
+        ...}`` on success, ``{"applied": False, "reason": "..."}``
+        on no-op.
         """
         try:
             new_value = float(new_value)
@@ -568,11 +371,6 @@ class ExtractorBot(BotContainer):
         old_free_base = float(self._chunk_free_base)
         rate = float(self._chunk_to_base_rate or 0.0)
 
-        # Recompute base-unit chunk from operator's USD intent at the
-        # rate captured at construction. If rate hasn't been set
-        # (pre-first-tick), keep the 1:1 default behavior — chunk_base
-        # tracks chunk_usd directly. The next set_initial_chunk_rate
-        # call will rebase from the real rate.
         self._chunk_size_usd = new_value
         self.config.extractor_chunk_size_usd = new_value
         if rate > 0:
@@ -580,10 +378,8 @@ class ExtractorBot(BotContainer):
         else:
             new_chunk_base = new_value  # 1:1 fallback (pre-rate-set)
 
-        # Scale free in proportion. Preserve deployed-vs-free RATIO
-        # across the resize so we don't suddenly claim phantom free
-        # base units the bot doesn't actually own. If old_base was 0
-        # (pre-rate-set), set free = new (all-free by default).
+        # Preserves the deployed-vs-free ratio across the resize, so
+        # the bot doesn't suddenly claim free base units it never earned.
         if old_base > 0:
             free_ratio = old_free_base / old_base
             free_ratio = max(0.0, min(1.0, free_ratio))
@@ -602,16 +398,11 @@ class ExtractorBot(BotContainer):
 
                 _crr_reg = _crr_get_registry()
                 new_total_base = self._chunk_size_base + self._hedge_free_base
-                # Registry.update signature: (token, bot_id, new_qty).
-                # No reason field — the registry tracks the
-                # original `reason` from reserve(); the update is a
-                # pure size adjustment. Audit trail lives in our
-                # logger.info below.
                 _crr_reg.update(self._crr_token, self.bot_id, new_total_base)
                 registry_updated = True
             except (
                 Exception
-            ) as _crr_exc:  # R28-OK: registry update best-effort; in-process state is authoritative
+            ) as _crr_exc:  # best-effort; in-process state is authoritative
                 logger.warning(
                     "Bot %s set_chunk_size_usd: registry update "
                     "raised %s: %s — in-process chunk state is "
@@ -648,15 +439,11 @@ class ExtractorBot(BotContainer):
     # ── Lifecycle override: release reservation on stop ─────────────
 
     async def stop(self) -> None:
-        """v3.20.3 — release the capital reservation, then delegate
-        to BotContainer.stop() for the standard shutdown path.
+        """Release the capital reservation, then delegate to
+        BotContainer.stop() for the standard shutdown path.
 
-        If release fails (e.g., registry corrupted), log and continue —
-        the heartbeat-staleness pruner in the registry will eventually
-        collect the reservation, and the smart_orders + SB gates will
-        keep functioning either way.
-
-        sadp: R28 FL  R68 DPA
+        If release fails, this logs and continues; the heartbeat-
+        staleness pruner in the registry collects the reservation later.
         """
         if self._crr_token is not None:
             try:
@@ -672,7 +459,7 @@ class ExtractorBot(BotContainer):
                 self._crr_token = None
             except (
                 Exception
-            ) as _crr_exc:  # R28-OK: release best-effort; heartbeat-staleness pruner is the backstop
+            ) as _crr_exc:  # best-effort; heartbeat-staleness pruner is the backstop
                 logger.warning(
                     "Bot %s capital reservation release at stop raised "
                     "%s: %s — leaving for heartbeat-staleness prune.",
@@ -680,10 +467,8 @@ class ExtractorBot(BotContainer):
                     type(_crr_exc).__name__,
                     _crr_exc,
                 )
-                # NOTE: do NOT clear self._crr_token here. If the
-                # bot is restarted, init won't double-reserve because
-                # set_initial_chunk_rate is called fresh; the old
-                # token will simply be orphaned and pruned by TTL.
+                # self._crr_token is left set; a restart reserves fresh
+                # via set_initial_chunk_rate and this token is pruned by TTL.
         await super().stop()
 
     # ── Capacity check ──────────────────────────────────────────────
@@ -692,15 +477,11 @@ class ExtractorBot(BotContainer):
         """Return True iff this bot's claim-aware free chunk has room
         for one more artillery round of `artillery_base` base units.
 
-        Reserve is computed against ``chunk_size_base`` (the operator's
-        allocation), NOT ``chunk_free_base``, so corrections that have
+        Reserve is computed against `chunk_size_base` (the operator's
+        allocation), not `chunk_free_base`, so corrections that have
         drained the chunk can't be papered over by the reserve math.
-
-        Sibling claims are NOT subtracted from chunk_size_base here —
-        each Extractor's chunk is its own allocation and the cross-bot
-        check is enforced by ScrummingBot's claim-aware quote read
-        (v3.18.18 §13a). Operator over-allocation surfaces at the
-        ScrummingBot side, not here.
+        Other bots' claims are not subtracted here; the cross-bot check
+        is enforced by ScrummingBot's own claim-aware quote read.
         """
         reserve = self._chunk_size_base * (
             self.config.extractor_pool_reserve_pct / 100.0
@@ -727,45 +508,33 @@ class ExtractorBot(BotContainer):
     # ── Watch-list refresh ──────────────────────────────────────────
 
     async def _refresh_watch_list(self) -> None:
-        """Refresh the watch list — TWO MODES per operator spec
-        (v3.19.27 closes a design contradiction):
+        """Refresh the watch list, in one of two modes.
 
-          MODE A — MANUAL OVERRIDE (config.extractor_alt_targets is non-empty):
-            The operator selected specific alt pairs in the wizard
-            (ExtractorPoolPage multi-select). The bot uses EXACTLY
-            those symbols, filtered to base-matching, and validated
-            against the current exchange markets (delisted pairs
-            dropped with a debug log). No top-N re-ranking by volume.
+        MODE A (``config.extractor_alt_targets`` non-empty): use
+        exactly the operator-selected symbols, filtered to
+        base-matching and validated against current exchange markets;
+        delisted pairs are dropped.
 
-          MODE B — AUTO-SCAN (config.extractor_alt_targets is empty):
-            The original §6 design — re-rank top-N */<base> pairs by
-            24h volume every extractor_scan_refresh_candles ticks.
+        MODE B (``extractor_alt_targets`` empty): re-rank the top-N
+        ``*/<base>`` pairs by 24h volume.
 
-        BOTH modes:
-          • Refresh on the same cadence (extractor_scan_refresh_candles).
-          • Preserve pairs with open positions — never abandon mid-
-            cycle positions even if they fell out of top-N (Mode B)
-            or were de-selected by the operator (Mode A, unlikely
-            mid-cycle but defensive).
-
-        Failure modes (R28 fail-safe): if exchange.get_markets or
-        get_ticker raises, the watch list is preserved as-is. The
-        bot continues operating against the previous list. A repeated
-        failure pattern would surface via the operator dashboard.
+        Both modes refresh every ``extractor_scan_refresh_candles``
+        ticks and preserve pairs with an open position even if they
+        fall out of the new list. If ``exchange.get_markets`` or
+        ``get_ticker`` raises, the watch list is left as-is.
         """
         base = (self.config.base_currency or "").upper()
         if not base:
             return
 
-        # v3.19.27 — operator manual-override list takes precedence.
-        # Filter to base-matching + exchange-active; preserve open positions.
+        # A manual-override list takes precedence over the auto-scan.
         manual_targets = list(getattr(self.config, "extractor_alt_targets", []) or [])
 
         if manual_targets:
             # MODE A — MANUAL OVERRIDE
             try:
                 markets = await self.exchange.get_markets()
-            except Exception as exc:  # R28-OK: best-effort refresh
+            except Exception as exc:  # best-effort refresh
                 logger.debug(
                     "Bot %s _refresh_watch_list (manual): get_markets " "raised %s: %s",
                     self.bot_id,
@@ -774,10 +543,7 @@ class ExtractorBot(BotContainer):
                 )
                 return
 
-            # Index active markets by symbol for O(1) validation
-            # v3.20.74 Phase C-2 (MEM-420): mode-aware filter via
-            # _pair_filter_matches — Normal keeps */{base}, Inverted
-            # keeps {base}/*.
+            # Index active markets by symbol for O(1) validation.
             active_symbols: set[str] = set()
             for m in markets:
                 try:
@@ -786,7 +552,7 @@ class ExtractorBot(BotContainer):
                     m_symbol = getattr(m, "symbol", None) or getattr(m, "id", None)
                     if m_symbol:
                         active_symbols.add(m_symbol)
-                except Exception as exc:  # R28-OK: skip malformed entries
+                except Exception as exc:  # skip malformed entries
                     logger.debug(
                         "Bot %s _refresh_watch_list (manual): market entry "
                         "raised %s: %s — entry skipped, scan continues",
@@ -812,10 +578,10 @@ class ExtractorBot(BotContainer):
                     dropped,
                 )
         else:
-            # MODE B — AUTO-SCAN top-N by 24h volume (original §6 design)
+            # MODE B — AUTO-SCAN top-N by 24h volume
             try:
                 markets = await self.exchange.get_markets()
-            except Exception as exc:  # R28-OK: best-effort refresh
+            except Exception as exc:  # best-effort refresh
                 logger.debug(
                     "Bot %s _refresh_watch_list (auto): get_markets " "raised %s: %s",
                     self.bot_id,
@@ -824,8 +590,6 @@ class ExtractorBot(BotContainer):
                 )
                 return
 
-            # v3.20.74 Phase C-2 (MEM-420): mode-aware candidate
-            # filter. Normal scans */{base}; Inverted scans {base}/*.
             candidates: list[str] = []
             for m in markets:
                 try:
@@ -834,7 +598,7 @@ class ExtractorBot(BotContainer):
                     m_symbol = getattr(m, "symbol", None) or getattr(m, "id", None)
                     if m_symbol:
                         candidates.append(m_symbol)
-                except Exception as exc:  # R28-OK: skip malformed market entries
+                except Exception as exc:  # skip malformed market entries
                     logger.debug(
                         "Bot %s _refresh_watch_list (auto): market entry "
                         "raised %s: %s — entry skipped, scan continues",
@@ -855,7 +619,7 @@ class ExtractorBot(BotContainer):
                     ticker = await self.exchange.get_ticker(sym)
                     vol = float(getattr(ticker, "volume_24h", 0) or 0)
                     ranked.append((sym, vol))
-                except Exception as exc:  # R28-OK: per-symbol probe failure
+                except Exception as exc:  # per-symbol probe failure
                     logger.debug(
                         "Bot %s _refresh_watch_list: get_ticker(%s) raised "
                         "%s: %s — pair dropped from this refresh only",
@@ -868,7 +632,7 @@ class ExtractorBot(BotContainer):
 
             ranked.sort(key=lambda x: x[1], reverse=True)
             top_n = int(self.config.extractor_scan_top_n)
-            top_n = max(5, min(10, top_n))  # design doc range
+            top_n = max(5, min(10, top_n))  # clamp to 5-10
             new_watch = [sym for sym, _ in ranked[:top_n]]
 
         # Both modes: preserve pairs with open positions even if they
@@ -900,14 +664,14 @@ class ExtractorBot(BotContainer):
         """Convert base-currency units to USD via cached chunk rate."""
         return float(base) * float(self._chunk_to_base_rate)
 
-    # ── v3.20.74 Phase C-2 — Inverted Extractor (MEM-420) ─────────────
+    # ── Inverted Extractor ────────────────────────────────────────────
 
     @property
     def _is_inverted(self) -> bool:
-        """True if this bot is running the Inverted Extractor direction
-        (ammo = ALT, sells first into quote, buys back more alt).
-        Locked Q8: single mode field on BotConfig; reads via getattr
-        with `"normal"` default so legacy configs are forward-compat."""
+        """True if this bot runs the Inverted Extractor direction (ammo
+        is ALT: sells first into quote, buys back more alt). Reads
+        `config.extractor_direction` with a `"normal"` default so a
+        config predating this field is unaffected."""
         direction = (
             getattr(self.config, "extractor_direction", "normal") or "normal"
         ).lower()
@@ -937,7 +701,7 @@ class ExtractorBot(BotContainer):
                 return m_base == base
             m_quote = (getattr(market, "quote", "") or "").upper()
             return m_quote == base
-        except Exception:  # R28-OK: defensive market filter
+        except Exception:  # defensive market filter
             return False
 
     def _entry_signal_matched(self, snapshot) -> bool:
@@ -984,38 +748,25 @@ class ExtractorBot(BotContainer):
         return OrderSide.BUY if self._is_inverted else OrderSide.SELL
 
     def set_bot_manager(self, manager) -> None:
-        """v3.20.72 Phase C-1 — accept back-reference to BotManager so
-        profit credits can call notify_bot_profit() and trigger
-        CapitalRegistry.grow_reservation(). Called by BotManager.register
-        during bot lifecycle wire-up (mirror of the existing
-        ScrummingBot.set_bot_manager pattern at scrumming_bot.py:696)."""
+        """Accept a back-reference to BotManager so profit credits can
+        call notify_bot_profit(). Called by BotManager during bot
+        lifecycle wire-up, same pattern as ScrummingBot.set_bot_manager.
+        """
         self._bot_manager = manager
 
     def update_base_usd_rate(self, rate_base_per_usd: float) -> tuple[bool, str]:
-        """v3.20.72 Phase C-1 — USD-anchored sizing rate update (MEM-418).
+        """Update the cached base/USD rate each artillery shot is sized at.
 
-        Operator's stated intent: "fires an artillery round of a given
-        USD value that is executed in converted terms of the selected
-        base currency." Each artillery shot is sized at the CURRENT
-        price, not the construction-time snapshot. Callers (tick
-        loop / TASignalProvider cache / connector ticker) invoke this
-        each tick with the live rate.
+        A zero or negative rate is refused; the last-known-good rate
+        stays in effect. A rate diverging more than
+        ``_rate_spike_threshold_pct`` from the most recent accepted
+        sample is spike-protected: ``_chunk_to_base_rate`` falls back
+        to the median of ``_recent_rates`` instead. Otherwise the rate
+        is accepted, ``_chunk_to_base_rate`` updates, and the sample is
+        appended to ``_recent_rates`` (trimmed to
+        ``_rate_spike_window``).
 
-        Locked Q2 validations:
-
-        - **Zero/negative**: REFUSED (fail-closed). The last-known-good
-          rate stays in effect; artillery sizing continues to use it.
-          ``_rate_refuse_events`` increments for diagnostic visibility.
-        - **>10% divergence from most recent sample**: SPIKE-PROTECTED.
-          Single-tick ticker glitches shouldn't propagate. Falls back
-          to the MEDIAN of the last 3 accepted samples (or the most
-          recent sample if fewer than 3 are buffered). ``_rate_spike_
-          events`` increments.
-        - **Otherwise**: ACCEPTED. ``_chunk_to_base_rate`` updates and
-          the sample is appended to ``_recent_rates`` (trimmed to 3).
-
-        Returns ``(accepted, reason)``. ``reason`` is a short string
-        suitable for operator logs.
+        Returns ``(accepted, reason)``.
         """
         # Fail-closed on zero / negative — the rate must be positive.
         if rate_base_per_usd is None or rate_base_per_usd <= 0:
@@ -1031,31 +782,21 @@ class ExtractorBot(BotContainer):
             self._chunk_to_base_rate = new_rate
             return True, "accepted (first sample)"
 
-        # Spike check against the MOST RECENT accepted sample.
+        # Spike check against the most recent accepted sample.
         last_rate = self._recent_rates[-1]
-        # Defensive: last_rate should always be > 0 at this point, but
-        # guard against future regression.
-        if last_rate <= 0:  # R28-OK: defensive guard; window should hold > 0
+        if last_rate <= 0:  # defensive: window should always hold > 0
             self._recent_rates = [new_rate]
             self._chunk_to_base_rate = new_rate
             return True, "accepted (recovered from invalid window)"
 
-        # UNITS, MADE EXPLICIT.
-        # `abs(new_rate - last_rate) / last_rate` is a price over a
-        # price: a dimensionless RATIO, 0.1 for a tenth. The threshold
-        # is stated in PERCENT — `_rate_spike_threshold_pct` is 10.0 and
-        # means 10%. The old line scaled the measurement UP by 100 and
-        # compared it to the threshold's bare magnitude, so the two
-        # sides of the `>` only matched by convention, not by units.
-        # Converting the threshold DOWN into ratio space once puts both
-        # sides in the same unit and leaves the rule identical.
+        # `divergence_ratio` and `spike_limit_ratio` are both
+        # dimensionless ratios, not percentages, so the comparison
+        # below compares like units.
         divergence_ratio = abs(new_rate - last_rate) / last_rate
         spike_limit_ratio = self._rate_spike_threshold_pct / PERCENT_PER_RATIO_UNIT
         if divergence_ratio > spike_limit_ratio:
-            # Spike detected. Use median of buffered window as the
-            # actual rate for this tick. The fresh sample is NOT
-            # appended to the window — preserves the median-of-recent
-            # fallback property across consecutive spikes.
+            # Spike: use the window median and do not append the
+            # fresh sample, so consecutive spikes fall back the same way.
             self._rate_spike_events += 1
             window = sorted(self._recent_rates)
             mid = len(window) // 2
@@ -1086,8 +827,7 @@ class ExtractorBot(BotContainer):
         pos: ExtractorPosition,
         alt_price_in_base: float,
     ) -> float:
-        """Current USD value of the position via double-layer valuation
-        (design doc §6a). alt_units × alt_price_in_base × base_per_USD."""
+        """USD value of the position: alt_units × alt_price_in_base × base_per_USD."""
         return pos.alt_units * alt_price_in_base * self._chunk_to_base_rate
 
     def _is_in_drawdown(
@@ -1095,11 +835,9 @@ class ExtractorBot(BotContainer):
         pos: ExtractorPosition,
         alt_price_in_base: float,
     ) -> bool:
-        """USD-anchored drawdown check (design doc §6a).
-
-        ``pos.artillery_size_usd_at_entry`` is snapshotted at FIRING
-        and never updated — that's our USD floor. Drawdown fires when
-        current USD value drops `drawdown_threshold_pct` below entry.
+        """True once current USD value drops `drawdown_threshold_pct`
+        below `pos.artillery_size_usd_at_entry`, the floor snapshotted
+        at firing and never updated afterward.
         """
         current_usd = self._position_value_usd(pos, alt_price_in_base)
         threshold = pos.artillery_size_usd_at_entry * (
@@ -1112,13 +850,9 @@ class ExtractorBot(BotContainer):
         pos: ExtractorPosition,
         alt_price_in_base: float,
     ) -> bool:
-        """Per design doc §6a: the point of the Extractor is growing
-        BASE UNIT COUNT. Even if a bullish signal fires, refuse the
-        exit if the proportional sell would net FEWER base units than
-        we put in (after fees).
-
-        Returns True iff sell would net MORE base units than the
-        proportional cost basis.
+        """True iff the proportional sell would net more base units
+        (after fees) than the proportional cost basis; refuses an exit
+        that would grow USD but shrink the base unit count.
         """
         units_to_sell = pos.alt_units * (self.config.extractor_exit_pct / 100.0)
         base_back = units_to_sell * alt_price_in_base
@@ -1152,9 +886,6 @@ class ExtractorBot(BotContainer):
             await self._maybe_fire_correction(pos, alt_price_in_base)
             return
 
-        # Mode-aware exit. v3.20.74 Phase C-2 (MEM-420): Normal exits
-        # on BULLISH (sell alt high); Inverted exits on BEARISH (buy
-        # back alt cheap to close the inverted short).
         if self._exit_signal_matched(snapshot) and self._exit_is_profitable_in_base(
             pos, alt_price_in_base
         ):
@@ -1167,17 +898,13 @@ class ExtractorBot(BotContainer):
         pos: ExtractorPosition,
         alt_price_in_base: float,
     ) -> None:
-        """Average-down to maintain notional (design doc §7).
-
-        Three gates:
-          1. Skip-candles: at least extractor_correction_skip_candles
-             must have elapsed since the last correction on this position.
-          2. Hedge-or-chunk has budget: if hedge_free > 0 use it;
-             else fall through to chunk_free. If neither has room,
-             return without firing.
-          3. Cost-basis-multiple ceiling: cost_basis_base must be below
-             artillery_size_base × max_cost_basis_multiple. At ceiling,
-             hold and wait for bullish exit.
+        """Average down to restore notional, gated three ways: at least
+        `extractor_correction_skip_candles` ticks since the last
+        correction on this position; hedge budget used before chunk
+        budget, and a no-op if neither has room; and
+        `cost_basis_base` held below `artillery_size_base ×
+        max_cost_basis_multiple`, above which this holds and waits for
+        the exit instead.
         """
         last_tick = self._last_correction_tick.get(pos.pair, -(10**9))
         if self._tick_counter - last_tick < int(
@@ -1211,7 +938,7 @@ class ExtractorBot(BotContainer):
         if add_amount_base <= 0:
             return  # no capital available
 
-        # MEM-257 fail-closed check on the alt side
+        # Fail-closed buy-safety check on the alt side.
         target_asset = pos.pair.split("/")[0]
         verified, refuse = await verify_buy_safe_or_refuse(
             self.exchange,
@@ -1224,11 +951,6 @@ class ExtractorBot(BotContainer):
             logger.warning("Bot %s %s", self.bot_id, refuse)
             return
 
-        # v3.20.74 Phase C-2 (MEM-420): mode-aware order side.
-        # Normal correction = BUY more alt at the lower price.
-        # Inverted correction = SELL more alt (the alt has gone
-        # FURTHER in the entry direction; we add to the inverted
-        # position to lower the cost basis on the rebound).
         alt_units_to_buy = add_amount_base / alt_price_in_base
         try:
             order = await self.guarded_place_order(
@@ -1297,32 +1019,17 @@ class ExtractorBot(BotContainer):
         )
 
     async def manual_fire_position(self, pair: str) -> dict:
-        """v3.19.3 — operator-initiated Manual Fire on a SINGLE position.
+        """Close one open position at the current market price on
+        operator request, from the position's Manual Fire button.
 
-        Per the Extractor design doc decision #7, each open position has
-        its own Manual Fire button in the detail-dialog Positions Held
-        tab. Clicking it calls THIS method, which closes the specific
-        position at current market price.
-
-        Operator-sovereignty (v3.18.15 invariant carry-over to Extractor):
-        Manual Fire bypasses gates the auto path would respect.
-        Specifically:
-          • The base-unit-profitability gate (``_exit_is_profitable_in_base``)
-            is DELIBERATELY SKIPPED — operator brings independent
-            verification the bot doesn't have (e.g., visible market
-            news, strategic decision to release capital).
-          • The position is closed in FULL regardless of
-            ``extractor_exit_pct`` — manual fire is an immediate full
-            release, not the auto partial-exit semantic.
-          • Compounding-tier roll-vs-lock logic still applies on the
-            realized gain; operator does NOT lose the tier accounting.
+        Bypasses `_exit_is_profitable_in_base` and always closes in
+        full, regardless of `extractor_exit_pct`; compounding-tier
+        roll-vs-lock logic still applies to the realized gain.
 
         Returns a status dict the GUI consumes:
           {"success": bool, "pair": str, "reason": str,
            "alt_units_closed": float, "base_received": float,
            "gain_base": float, "log_message": str}
-
-        sadp: R28 R55  # manual override: fail-loudly + invariant-preserving
         """
         pos = self._positions.get(pair)
         if pos is None:
@@ -1377,8 +1084,6 @@ class ExtractorBot(BotContainer):
                 "log_message": msg,
             }
 
-        # Emit the operator-narrative log BEFORE execution so the trail
-        # records the intent even if the order placement raises.
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
@@ -1394,10 +1099,8 @@ class ExtractorBot(BotContainer):
         # Snapshot pre-close state for the return dict
         units_before = pos.alt_units
 
-        # Force a 100% exit regardless of the configured
-        # ``extractor_exit_pct`` — manual fire is an immediate full
-        # release. Temporarily override exit_pct on the config in-memory;
-        # restore after the call.
+        # Overrides exit_pct on the shared config for this call only;
+        # restored in the finally clause below.
         _original_exit_pct = float(self.config.extractor_exit_pct)
         try:
             self.config.extractor_exit_pct = 100.0
@@ -1422,9 +1125,8 @@ class ExtractorBot(BotContainer):
         finally:
             self.config.extractor_exit_pct = _original_exit_pct
 
-        # Position is removed from _positions by _execute_bullish_exit
-        # on full exit. The last entry in _closed_position_log is THIS
-        # close — read it for the return dict.
+        # A full exit removes the position and appends this close to
+        # _closed_position_log; read the last entry for the return dict.
         last_close = self._closed_position_log[-1] if self._closed_position_log else {}
         return {
             "success": True,
@@ -1453,9 +1155,6 @@ class ExtractorBot(BotContainer):
         if units_to_sell <= 0:
             return
 
-        # v3.20.74 Phase C-2 (MEM-420): mode-aware exit side.
-        # Normal exit = SELL alt for base. Inverted exit = BUY alt
-        # back from the quote (close the inverted short).
         try:
             order = await self.guarded_place_order(
                 symbol=pos.pair,
@@ -1500,21 +1199,12 @@ class ExtractorBot(BotContainer):
         pos.alt_units -= filled_units
         pos.cost_basis_base -= cost_basis_proportional
 
-        # Compounding tier logic (design doc §8, operator decision #6 —
-        # per-position; ephemeral).
         max_tier = int(self.config.extractor_max_compounding_tier)
         if pos.compounding_tier < max_tier and gain_base > 0:
-            # Roll: realized base gain becomes part of next round's
-            # artillery for SAME pair. Since we're closing the position
-            # (full or partial exit), this means: if full exit, the
-            # next PENDING→IN_FLIGHT for this pair will fire at the
-            # rolled artillery size. For simplicity at v3.19.1, we
-            # treat the gain as locked-to-pool for now (the rolling
-            # mechanism with gain-as-next-artillery-size is a v3.19.1+
-            # follow-up; this ship handles the lock case cleanly).
+            # Roll bumps the tier counter; the gain is locked to
+            # chunk_free_base the same as Lock below — no rolled-
+            # forward artillery size is implemented yet.
             self._chunk_free_base += base_received
-            # Tier counter persists with the position; if exit was
-            # partial, position survives with bumped tier.
             if pos.alt_units > 1e-12:
                 pos.compounding_tier += 1
             log_kind = "ROLL_TO_NEXT_TIER"
@@ -1527,17 +1217,10 @@ class ExtractorBot(BotContainer):
         self._lifetime_extracted_total += gain_base
         self._chunk_extracted_total += gain_base
 
-        # v3.20.72 Phase C-1 — profit auto-grow registry notification
-        # (MEM-418). Closes the cross-bot leak surface identified in
-        # docs/audits/2026-06-05_profit_cascade_prevention_audit.md.
-        # When this bot earns positive gain_base, notify the manager so
-        # the CapitalRegistry's reservation grows to cover the profit —
-        # otherwise sibling bots see the wallet's grown balance as
-        # phantom excess and could claim it (fee-stacking cascade).
-        # Locked Q6 semantics: the bot's OWN reservation grows
-        # immediately even if wallet provider hasn't caught up;
-        # siblings' subsequent request_reservation() calls see the
-        # full new total and can't claim against unsettled profit.
+        # Notifies the manager so the CapitalRegistry reservation grows
+        # to cover the realized profit immediately; otherwise another
+        # bot could claim the wallet's grown balance as phantom excess
+        # before the profit settles.
         if (
             gain_base > 0
             and self._bot_manager is not None
@@ -1551,7 +1234,7 @@ class ExtractorBot(BotContainer):
                     )
             except (
                 Exception
-            ) as _exc:  # R28-OK: profit notification best-effort; don't block trade flow
+            ) as _exc:  # best-effort; must not block trade flow
                 logger.warning(
                     "v3.20.72 profit notification failed for bot %s: %s",
                     self.bot_id,
@@ -1598,43 +1281,18 @@ class ExtractorBot(BotContainer):
         )
 
     def _hand_base_currency_to_parent(self, base_received: float, pair: str) -> None:
-        """Tell the parent bot that its base currency came back.
+        """Tell the parent bot its base currency came back, so the
+        parent raises its own target balance by the same amount
+        instead of selling the arrival back out as surplus.
 
-        Operator design 2026-08-09: an Extractor is a tranche under the
-        Scrumming Bot that HOLDS its base currency. When the tranche
-        sells, that currency arrives, and the parent has to raise its own
-        target balance by the same amount. If nobody tells it, the
-        arrival reads as spare money and the parent sells the gain
-        straight back out as surplus.
-
-        `BotManager.find_parent_bot_for_base_currency` names the parent.
-        `ScrummingBot.apply_extractor_tranche_return` books the arrival
-        and the lift together, in one go.
-
-        THE PARENT IS ON THIS EXCHANGE. A parent and its Extractor are
-        bound to one exchange; nothing here crosses between exchanges.
-        So this bot's own `exchange_id` goes over with the currency, and
-        a bot holding the same currency somewhere else is not a parent.
-        The lookup asks for the exchange by name and has no default,
-        so this call cannot lose it quietly.
-
-        WHAT IS PASSED IS WHAT LANDED. `base_received` is the observed
-        fill -- units filled at the price they filled at -- and the
-        dollar figure is that same number through this bot's own
-        `_base_to_usd`. No profit is worked out here. The booking refuses
-        anything that is not exactly a plain number, so both halves go
-        over as plain floats or the booking declines them.
-
-        ONE CALL OR NONE. No parent, no manager, or a booking that
-        refuses, all mean the lift does not happen and nothing else
-        changes. There is no retry, no queue, and no second choice of
-        parent: a wrong parent would raise ITS target on money it never
-        received.
-
-        A FAILURE HERE NEVER REACHES THE SALE. Losing the lift costs a
-        lift. Breaking the exit would strand real money in a half-sold
-        position. So everything is inside one guard, and the caller
-        carries on either way.
+        Looks up the parent by `base_currency` scoped to this bot's own
+        `exchange_id` (no default, so the lookup cannot silently cross
+        exchanges) via `find_parent_bot_for_base_currency`, and books
+        the arrival with `ScrummingBot.apply_extractor_tranche_return`.
+        `base_received` is the observed fill, not a computed profit. No
+        parent, no manager, or a refused booking is a no-op with no
+        retry. A failure here is caught and logged; it never blocks the
+        exit that already happened.
 
         Tests: tests/test_extractor_tranche_return_call.py.
         """
@@ -1652,7 +1310,7 @@ class ExtractorBot(BotContainer):
                 base_units=float(base_received),
                 ref=pair,
             )
-        except Exception as _exc:  # R28-OK: the exit must finish anyway
+        except Exception as _exc:  # the exit must finish anyway
             logger.warning(
                 "Extractor %s could not hand %s back to a parent: %s: %s",
                 self.bot_id,
@@ -1679,15 +1337,8 @@ class ExtractorBot(BotContainer):
         if alt_price_in_base <= 0:
             return
 
-        # MEM-257 fail-closed check. For a fresh position the
-        # expected_units is 0 — operator does not yet hold alt;
-        # if exchange phantom-zeros THIS alt that's fine, we ARE
-        # firing from a fresh state. If exchange reports nonzero
-        # for the alt (impossible on a fresh Extractor unless
-        # operator manually pre-funded), the helper returns
-        # verified_units > 0 and we proceed; the helper's
-        # purpose is the BONK-style "state says X, exchange says 0"
-        # pattern which doesn't apply to a fresh position.
+        # Fail-closed buy-safety check; expected_units=0 since a fresh
+        # position holds no alt yet.
         target_asset = pair.split("/")[0]
         verified, refuse = await verify_buy_safe_or_refuse(
             self.exchange,
@@ -1700,10 +1351,6 @@ class ExtractorBot(BotContainer):
             logger.warning("Bot %s %s", self.bot_id, refuse)
             return
 
-        # v3.20.74 Phase C-2 (MEM-420): mode-aware artillery side.
-        # Normal artillery = BUY alt with base (build the position).
-        # Inverted artillery = SELL alt for quote (build the inverted
-        # short — we now hold quote, plan to buy back more alt later).
         alt_units_to_buy = artillery_base / alt_price_in_base
         try:
             order = await self.guarded_place_order(
@@ -1777,22 +1424,14 @@ class ExtractorBot(BotContainer):
     async def tick(self) -> None:
         """One tick of the Extractor.
 
-        Order:
-          0a. v3.20.3 — pulse heartbeat to CapitalReservationRegistry.
-              Without this, the registry would zombie-prune our chunk
-              reservation after HEARTBEAT_TTL (120s default) and SB
-              protection on this base_currency would disengage.
-          0b. Refresh watch list if due.
-          1.  Evaluate ALL open positions (drawdown/exit) — manage
-              existing commitments first.
-          2.  Scan watch list for new artillery opportunities — pairs
-              in volume-rank order; first eligible wins per tick.
+        Pulses the CapitalReservationRegistry heartbeat, refreshes the
+        watch list if due, evaluates every open position for
+        drawdown/exit, then scans the watch list for a new artillery
+        opportunity — the first eligible pair wins per tick.
         """
         self._tick_counter += 1
 
-        # v3.20.3 — heartbeat the registry so our chunk reservation
-        # stays live. Defensive: registry call must never block a tick.
-        # sadp: R28 FL
+        # Registry heartbeat is defensive: it must never block a tick.
         if self._crr_token is not None:
             try:
                 from .capital_reservation import get_registry as _crr_get_registry
@@ -1800,7 +1439,7 @@ class ExtractorBot(BotContainer):
                 _crr_get_registry().heartbeat(self.bot_id)
             except (
                 Exception
-            ) as _crr_exc:  # R28-OK: heartbeat best-effort; tick must not block
+            ) as _crr_exc:  # best-effort; tick must not block
                 logger.debug(
                     "Bot %s capital reservation heartbeat raised %s — "
                     "continuing tick.",
@@ -1820,7 +1459,7 @@ class ExtractorBot(BotContainer):
             try:
                 ticker = await self.exchange.get_ticker(pair)
                 alt_price_in_base = float(ticker.last)
-            except Exception as exc:  # R28-OK: per-pair best-effort
+            except Exception as exc:  # per-pair best-effort
                 logger.debug(
                     "Bot %s tick: get_ticker(%s) raised %s: %s — open "
                     "position left untouched this tick",
@@ -1832,12 +1471,9 @@ class ExtractorBot(BotContainer):
                 continue
             if alt_price_in_base <= 0:
                 continue
-            # Item 4 (2026-08-11) — keep the price this tick already
-            # paid for. The parent Scrumming Bot values its Extractor
-            # Tranches from this field, on the GUI thread, where a
-            # network call is not allowed. Recorded BEFORE the position
-            # is evaluated so a raising evaluator still leaves a fresh
-            # mark behind. Records only; moves nothing.
+            # Recorded before evaluation so a raising evaluator still
+            # leaves a fresh mark; the parent reads this field to value
+            # the tranche without a network call on the GUI thread.
             pos.last_price_base_per_alt = alt_price_in_base
             pos.last_priced_at = time.time()
             try:
@@ -1856,25 +1492,16 @@ class ExtractorBot(BotContainer):
         # Step 2: scan watch list for new entries
         for pair in self._watch_list:
             if pair in self._positions:
-                continue  # one position per pair (decision #8)
+                continue  # one position per pair
             snapshot = await self._ta_provider.evaluate(pair)
             if snapshot is None:
                 continue
-            # Entry trigger: mode-aware. v3.20.74 Phase C-2 (MEM-420):
-            # Normal fires on BEARISH (buy alt cheap); Inverted fires
-            # on BULLISH (sell alt expensive — capture relative outperf).
             if not self._entry_signal_matched(snapshot):
                 continue
             try:
                 ticker = await self.exchange.get_ticker(pair)
                 alt_price_in_base = float(ticker.last)
             except Exception as _tk_exc:  # noqa: BLE001 - skip this pair
-                # v3.24.21 — was a bare `continue`. An entry signal had
-                # already matched at this point, so every skip here is a
-                # trade the bot decided to take and then silently did
-                # not. A pair that always fails ticker lookup (delisted,
-                # renamed, rate-limited) would look identical to a pair
-                # that never signalled.
                 logger.warning(
                     "Extractor skipping %s after entry signal matched — "
                     "ticker fetch failed (%s): %s",
@@ -1904,26 +1531,16 @@ class ExtractorBot(BotContainer):
     # ── Positions snapshot (for detail-dialog Positions Held tab) ──
 
     def positions_for_gui(self) -> list[dict]:
-        """v3.19.3 — return a list of per-position dicts for the detail
-        dialog's Positions Held tab.
+        """Return a list of per-position dicts for the detail dialog's
+        Positions Held tab: pair, state, tier, alt units, entry USD,
+        current USD, delta %, and corrections fired.
 
-        Each dict carries the columns the design doc §10 spec'd:
-
-          | Pair | State | Tier | Alt units | Entry (USD) | Current (USD)
-          | Δ% (USD) | Corrections | (Manual Fire button rendered by GUI)
-
-        Current value computation needs a fresh per-pair price; the GUI
-        passes that in OR queries the bot's last-known cache. For
-        v3.19.3 we don't fetch live tickers here (GUI thread should
-        never block on network); we use the position's
-        ``avg_buy_price_base_per_alt`` as a fallback when the GUI
-        hasn't yet supplied a live price. The detail dialog can refresh
-        the rendered USD values asynchronously.
+        No ticker is fetched here since the GUI thread must never
+        block on network; ``avg_buy_price_base_per_alt`` stands in for
+        the current price until the dialog supplies a live one.
         """
         rows: list[dict] = []
         for p in self._positions.values():
-            # Fallback: use avg buy price as the "current" reference until
-            # the GUI refreshes the live price.
             current_price = p.avg_buy_price_base_per_alt
             current_value_usd = p.alt_units * current_price * self._chunk_to_base_rate
             entry_value_usd = p.artillery_size_usd_at_entry
@@ -1949,50 +1566,29 @@ class ExtractorBot(BotContainer):
             )
         return rows
 
-    # ── Extractor Tranches (item 4, for the PARENT's tranche list) ──
+    # ── Extractor Tranches (for the parent's tranche list) ──────────
 
     def tranche_id_for_position(self, position: ExtractorPosition) -> str:
-        """Build the stable Extractor Tranche id for one position.
+        """Build the stable Extractor Tranche id: ``bot_id|pair|opened_at``.
 
-        ONE COPY OF THE FORMAT, because two would be a defect waiting
-        to happen. The row emitter labels a row with this id and the
-        arbiter setter resolves a row back to a position with it; if
-        those two ever formatted `opened_at` differently — say ``%.6f``
-        against ``str()`` — the setter would refuse every row it was
-        handed, or worse, match the wrong one. They now cannot differ.
-
-        The parts are unchanged from item 4: `bot_id` survives restart
-        and separates two Extractors on one pair, `pair` is unique
-        within one Extractor, and `opened_at` stops a closed-and-
-        reopened position from inheriting anything attached to its
-        predecessor.
+        The row emitter and `set_tranche_arbiter` both format
+        `opened_at` through this one method, so they can never format
+        it differently and disagree on the same id. `bot_id` survives
+        restart and separates two Extractors on one pair; `pair` is
+        unique within one Extractor; `opened_at` stops a closed-and-
+        reopened position from inheriting its predecessor's id.
         """
         return (
             f"{self.bot_id}|{position.pair}|" f"{float(position.opened_at or 0.0):.6f}"
         )
 
     def set_tranche_arbiter(self, tranche_id: object, arbiter: object) -> str | None:
-        """Record who may close ONE Extractor Tranche. Returns the value.
-
-        NO MONEY MOVES HERE. This writes one string on one position.
-        It places no order, cancels none, touches no balance, no chunk
-        ledger and no target balance, and it awaits nothing. The value
-        is read today by exactly one consumer — the row emitter that
-        feeds the parent's Open Tranches table — so toggling it changes
-        the record and nothing else. Nothing about the parent
-        force-sell that `parent` names exists yet.
-
-        RESOLVED BY FULL IDENTITY, NEVER BY PAIR AND NEVER BY INDEX.
-        `_positions` is keyed by pair, and a pair can close and reopen;
-        a pair-keyed write would land on the successor position and
-        silently mislabel it. Matching the whole ``bot_id|pair|
-        opened_at`` string is what makes that impossible, so an id that
-        matches nothing gets ``None`` and NO write, rather than a
-        best-effort guess.
-
-        Returns the stored value on success, ``None`` when no open
-        position carries that id. The caller must treat ``None`` as a
-        refusal and leave its surface unchanged.
+        """Record who may close one Extractor Tranche. Writes one
+        string on the matching position; places no order and changes
+        no balance. Resolved by full tranche id, never by pair alone,
+        since a pair can close and reopen under a new id. Returns the
+        stored value, or ``None`` (no write) when no open position
+        carries that id.
         """
         wanted = str(tranche_id) if tranche_id is not None else ""
         if not wanted:
@@ -2012,16 +1608,9 @@ class ExtractorBot(BotContainer):
         return None
 
     def toggle_tranche_arbiter(self, tranche_id: object) -> str | None:
-        """Flip ONE tranche's arbiter between parent and sibling.
-
-        Reads that tranche's current value and writes the other one.
-        Every other tranche is untouched, including another position on
-        the same pair held by a different Extractor, because the write
-        goes through `set_tranche_arbiter` and matches the full id.
-
-        Returns the NEW value, or ``None`` when the id matches no open
-        position — the same refusal `set_tranche_arbiter` gives, so a
-        caller has one thing to check.
+        """Flip one tranche's arbiter to the other value, via
+        `set_tranche_arbiter`. Returns the new value, or ``None`` when
+        the id matches no open position.
         """
         wanted = str(tranche_id) if tranche_id is not None else ""
         if not wanted:
@@ -2033,44 +1622,18 @@ class ExtractorBot(BotContainer):
         return None
 
     def extractor_tranche_rows(self) -> list[dict]:
-        """Describe every open position as an Extractor Tranche.
+        """Describe every open position as an Extractor Tranche row,
+        the child's half of the listing `ScrummingBot.
+        open_extractor_tranches` reads on the parent side. This bot is
+        the only writer of its own positions, so the parent asks
+        rather than keeping a copy that could fall out of step.
 
-        Operator design 2026-08-09: an Extractor's in-flight position is
-        an "Extractor Tranche", and it is "listed under the base-currency
-        bot" — the Scrumming Bot that holds the base currency this
-        Extractor spends. This is the child's half of that listing. The
-        parent reads it through `ScrummingBot.open_extractor_tranches`.
-
-        WHY THE CHILD PRODUCES IT. The child is the only writer of its
-        own positions. If the parent kept its own copy it would be a
-        mirror that can silently fall out of step — and nothing today
-        tells the parent when a position OPENS, only when one sells
-        (`_hand_base_currency_to_parent`), through a call that swallows
-        every exception. A mirror that can diverge in silence is worse
-        than no mirror, so the parent asks and this answers.
-
-        NO NETWORK, NO CLOCK, NO STATE CHANGE. Every number here is
-        already in memory. The caller is the Qt GUI thread, which is
-        also the thread every coroutine in this application runs on, so
-        a fetch here would freeze the interface.
-
-        IDENTITY. `tranche_id` is ``"<bot_id>|<pair>|<opened_at>"``.
-        Each part earns its place: `bot_id` survives restart and
-        separates two Extractors on the same pair; `pair` is unique
-        within one Extractor because it enforces one position per pair;
-        `opened_at` stops a closed-and-reopened position from inheriting
-        anything attached to its predecessor. The id does not depend on
-        position in any list, so it survives a re-sort and survives
-        other tranches closing. Item 5 needs exactly that to hang a
-        per-tranche control on a row.
-
-        VALUATION IS HONEST OR ABSENT. `mark_*` is None when the
-        position has never been priced. `positions_for_gui` substitutes
-        the average buy price for a missing mark, which makes its
-        "current" value equal cost basis and its delta near zero by
-        construction; repeating that here would put a cost-basis number
-        under a market-value heading in the parent's own ledger. The
-        cost basis is reported too, under its own name.
+        Reads only in-memory state — no network, no clock, no write —
+        since the caller is the GUI thread. `mark_*` is ``None`` when a
+        position has never been priced, rather than substituting the
+        average buy price the way `positions_for_gui` does; that
+        substitute would misrepresent a cost-basis number as a market
+        value in the parent's own ledger.
         """
         rows: list[dict] = []
         base_asset = str(getattr(self.config, "base_currency", "") or "")
@@ -2079,15 +1642,8 @@ class ExtractorBot(BotContainer):
             mark_price = float(p.last_price_base_per_alt or 0.0)
             if mark_price > 0:
                 mark_value_base = float(p.alt_units) * mark_price
-                # `_chunk_to_base_rate` is USD PER ONE BASE UNIT, not
-                # base per USD, whatever its name suggests. Pinned from
-                # `set_initial_chunk_rate`, which states the units
-                # outright ("the *USD value per 1 base unit* (e.g. for
-                # ETH: 3000)") and divides USD by it to get base, and
-                # from `_position_value_usd`, which MULTIPLIES by it to
-                # turn a base amount into USD. Dividing here would
-                # invert the rate and report an ETH tranche worth about
-                # nine millionths of its true value.
+                # `_chunk_to_base_rate` is USD per one base unit despite
+                # its name; multiply, don't divide, to reach USD.
                 mark_value_usd = mark_value_base * rate if rate > 0 else None
             else:
                 mark_value_base = None
@@ -2103,8 +1659,6 @@ class ExtractorBot(BotContainer):
                     "pair": p.pair,
                     "state": p.state,
                     "base_asset": base_asset,
-                    # Base currency this position is holding out of the
-                    # parent's asset. Exact, and needs no price at all.
                     "base_deployed": float(p.cost_basis_base or 0.0),
                     "alt_units": float(p.alt_units or 0.0),
                     "mark_price_base_per_alt": (mark_price if mark_price > 0 else None),
@@ -2118,11 +1672,8 @@ class ExtractorBot(BotContainer):
                     "compounding_tier": int(p.compounding_tier or 0),
                     "corrections_fired": int(p.corrections_fired or 0),
                     "opened_at": float(p.opened_at or 0.0),
-                    # Item 5 — who may close this tranche. Normalised on
-                    # the way out as well as on the way in, so a surface
-                    # that trusts this dict can never be handed a third
-                    # value. `arbiter_label` turns it into the operator's
-                    # own word for the button.
+                    # Normalised on the way out, so a surface that trusts
+                    # this dict can never be handed a third value.
                     "arbiter": normalize_arbiter(p.arbiter),
                 }
             )
@@ -2186,11 +1737,9 @@ class ExtractorBot(BotContainer):
                     "opened_at": p.opened_at,
                     "last_price_base_per_alt": p.last_price_base_per_alt,
                     "last_priced_at": p.last_priced_at,
-                    # Item 5 — the per-tranche Arbiter. This literal is
-                    # an EXPLICIT key list, not a dataclass dump, so a
-                    # new field that is not named here is silently
-                    # dropped on every save. Normalised on the way out
-                    # so a state file can never carry a third value.
+                    # An explicit key list, not a dataclass dump, so a
+                    # new field not named here is silently dropped here
+                    # on every save until it is added.
                     "arbiter": normalize_arbiter(p.arbiter),
                 }
                 for p in self._positions.values()
@@ -2245,33 +1794,19 @@ class ExtractorBot(BotContainer):
                     corrections_fired=int(pdict.get("corrections_fired", 0)),
                     last_correction_ts=float(pdict.get("last_correction_ts", 0.0)),
                     opened_at=float(pdict.get("opened_at", 0.0)),
-                    # Absent on any state file written before item 4.
-                    # Defaulting to 0.0 means "never priced", which is
-                    # the truth about a position restored from a file
-                    # that did not record a mark.
+                    # Absent on an older state file; 0.0 correctly means
+                    # never priced for a position restored without a mark.
                     last_price_base_per_alt=float(
                         pdict.get("last_price_base_per_alt", 0.0)
                     ),
                     last_priced_at=float(pdict.get("last_priced_at", 0.0)),
-                    # Absent on every state file written before item 5,
-                    # which today is every state file that exists. The
-                    # default is the value that describes what the
-                    # fleet already does, so an old record loads
-                    # EXACTLY as it did before this field existed.
-                    #
-                    # `normalize_arbiter` cannot raise, deliberately.
-                    # A `float(...)` above can, and the handler below
-                    # DROPS the whole record when it does — a dropped
-                    # record is a position this bot stops managing. A
-                    # preference about who may sell must never cost the
-                    # operator a position, so this read is incapable of
-                    # reaching that path.
+                    # normalize_arbiter cannot raise, unlike the float()
+                    # calls above; a raise here would drop the whole
+                    # record, and a preference must never cost a position.
                     arbiter=normalize_arbiter(pdict.get("arbiter", ARBITER_SIBLING)),
                 )
                 self._positions[pos.pair] = pos
-            except Exception as exc:  # R28-OK: skip malformed position records
-                # A dropped record is a position the bot will no longer
-                # manage, so this one is louder than the scan skips.
+            except Exception as exc:  # skip malformed position records
                 logger.warning(
                     "Bot %s import_state: a saved position record raised "
                     "%s: %s — record dropped, remaining records still "
