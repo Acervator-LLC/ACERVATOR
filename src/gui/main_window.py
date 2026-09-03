@@ -330,7 +330,7 @@ if _HAS_QT:
                 + __version__
                 + " — Console logging active. All system messages appear here."
             )
-            self._verify_exchanges_on_startup()
+            self._report_stored_credentials_on_startup()
 
         def set_async_loop(self, loop) -> None:
             """Set the persistent asyncio event loop from main.py."""
@@ -1224,8 +1224,16 @@ if _HAS_QT:
             if sb.value() >= sb.maximum() - 20:
                 sb.setValue(sb.maximum())
 
-        def _verify_exchanges_on_startup(self) -> None:
-            """Check exchange connectivity on launch and log to API panel."""
+        def _report_stored_credentials_on_startup(self) -> None:
+            """Report which configured exchanges hold a stored credential.
+
+            Reads the settings entries at launch and writes one line per
+            exchange to the Activity Log, the notification spool and the
+            API panel. No exchange is contacted, so a stored credential
+            is unverified here: a revoked, expired, wrong or malformed
+            key is indistinguishable from a working one until the first
+            authenticated call.
+            """
             from ..exchange.api_logger import get_api_log
 
             _log = get_api_log()
@@ -1239,7 +1247,7 @@ if _HAS_QT:
                 _log.record(
                     exchange="app",
                     action="STARTUP_CHECK",
-                    reason="Application launched, checking configured exchanges",
+                    reason="Application launched, reading exchanges from settings",
                     result="No exchanges configured",
                     level="warning",
                     data_usage="User needs to add an exchange in Settings before creating bots",
@@ -1249,31 +1257,39 @@ if _HAS_QT:
             _log.record(
                 exchange="app",
                 action="STARTUP_CHECK",
-                reason=f"Application launched, verifying {len(exchanges)} exchange(s)",
-                result="Checking credentials...",
+                reason=f"Application launched, reading {len(exchanges)} exchange(s)",
+                result="Reading settings. No exchange is contacted.",
                 level="info",
-                data_usage="Each exchange will be checked for stored API credentials",
+                data_usage="Each exchange is read for a stored API credential",
             )
 
-            self._status_log.log(f"Verifying {len(exchanges)} exchange(s)...")
+            self._status_log.log(
+                f"Reading stored credentials for {len(exchanges)} exchange(s)...",
+            )
             for exch in exchanges:
                 eid = exch.get("exchange_id", "")
                 has_key = bool(exch.get("api_key_enc", ""))
                 if has_key:
                     self._status_log.log(
-                        f"  {eid.capitalize()}: credentials stored", "info"
+                        f"  {eid.capitalize()}: credentials stored, unverified", "info"
                     )
                     self._spool.notify(
-                        f"{eid.capitalize()}: credentials present, ready to trade",
+                        f"{eid.capitalize()}: credentials stored, unverified",
                         "info",
                     )
                     _log.record(
                         exchange=eid,
                         action="CREDENTIAL_CHECK",
                         reason=f"Checking if {eid.capitalize()} has stored API credentials",
-                        result="Credentials found (encrypted). Ready for authenticated API calls.",
-                        level="success",
-                        data_usage="Bot can be started for this exchange. Will authenticate on first API call.",
+                        result=(
+                            "Encrypted credentials found in settings. "
+                            "Not verified against the exchange."
+                        ),
+                        level="info",
+                        data_usage=(
+                            "A revoked, expired or malformed key reads the "
+                            "same as a working one here."
+                        ),
                     )
                 else:
                     self._status_log.log(
