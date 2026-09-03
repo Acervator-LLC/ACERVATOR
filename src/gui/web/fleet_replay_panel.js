@@ -383,6 +383,17 @@
     return hexWord(value).length === HEX_ARGB.length ? HEX_ARGB : undefined;
   }
 
+  // The words a value writes before its rgba call, such as `1px solid`.
+  function beforeCall(value) {
+    return String(value).split(RGBA_OPEN).shift();
+  }
+
+  // The words a value writes after its rgba call.
+  function afterCall(value) {
+    var rest = afterFirst(value, RGBA_OPEN);
+    return afterFirst(String(rest.shift()), CLOSE).join(CLOSE);
+  }
+
   // scaledAlpha rewrites one rgba value's alpha byte as the fraction CSS reads.
   function scaledAlpha(value) {
     var fields = rgbaFields(value);
@@ -390,7 +401,8 @@
     var head = fields.slice(ZERO, CHANNELS).map(function (one) {
       return String(one).trim();
     });
-    return RGBA_OPEN + head.concat([String(alpha)]).join(COMMA) + CLOSE;
+    var call = RGBA_OPEN + head.concat([String(alpha)]).join(COMMA) + CLOSE;
+    return beforeCall(value) + call + afterCall(value);
   }
 
   function usableValue(value) {

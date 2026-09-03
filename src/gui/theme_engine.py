@@ -33,6 +33,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+from .color_alpha import rgba
+
 
 # ---------------------------------------------------------------------------
 # Theme token set
@@ -74,10 +76,10 @@ class ThemeTokens:
     # Borders (SC 1.4.11 — UI components require ≥3:1 contrast against adjacent colors)
     border_primary: str = "#7a7a9c"  # was "#2a2a44" — WCAG C2: 1.42:1 → 4.79:1
     border_secondary: str = "#5e5e80"  # was "#1e1e33" — WCAG C2: 1.21:1 → 3.19:1
-    border_accent: str = "#00ffcc44"
+    border_accent: str = rgba("#00ffcc", 68)
 
     # Special
-    glow_color: str = "#00ffcc33"
+    glow_color: str = rgba("#00ffcc", 51)
     scrollbar_bg: str = "#0a0a14"
     scrollbar_handle: str = "#2a2a44"
 
@@ -126,8 +128,8 @@ NEON_LIGHT = ThemeTokens(
     accent_info="#0066cc",
     border_primary="#ccccdd",
     border_secondary="#ddddee",
-    border_accent="#6600cc44",
-    glow_color="#6600cc22",
+    border_accent=rgba("#6600cc", 68),
+    glow_color=rgba("#6600cc", 34),
     scrollbar_bg="#e0e0ea",
     scrollbar_handle="#bbbbcc",
 )
@@ -154,8 +156,8 @@ CLASSIC_TERMINAL = ThemeTokens(
     accent_info="#00ffff",
     border_primary="#003300",
     border_secondary="#002200",
-    border_accent="#00ff0044",
-    glow_color="#00ff0022",
+    border_accent=rgba("#00ff00", 68),
+    glow_color=rgba("#00ff00", 34),
     scrollbar_bg="#0a0a0a",
     scrollbar_handle="#003300",
     font_family="'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
@@ -183,7 +185,7 @@ MINIMAL_MODERN = ThemeTokens(
     accent_info="#2563eb",
     border_primary="#e0e0e0",
     border_secondary="#eeeeee",
-    border_accent="#2563eb33",
+    border_accent=rgba("#2563eb", 51),
     glow_color="transparent",
     scrollbar_bg="#f0f0f0",
     scrollbar_handle="#cccccc",
@@ -212,8 +214,8 @@ GLASS_METAL = ThemeTokens(
     accent_info="#88ccff",
     border_primary="#3a3a50",
     border_secondary="#2e2e42",
-    border_accent="#88ccff44",
-    glow_color="#88ccff22",
+    border_accent=rgba("#88ccff", 68),
+    glow_color=rgba("#88ccff", 34),
     scrollbar_bg="#1c1c24",
     scrollbar_handle="#3a3a50",
     font_family="'Exo 2', 'Rajdhani', 'Segoe UI', sans-serif",

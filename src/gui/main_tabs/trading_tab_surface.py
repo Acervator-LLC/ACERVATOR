@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from .. import design_system as ds
+from ..color_alpha import rgba
 
 METHOD = "trading.tab"
 
@@ -96,6 +97,8 @@ PLACEHOLDER_CARD_MIN_SIZE_PX = [280, 140]
 PLACEHOLDER_ADD_MIN_SIZE_PX = [180, 36]
 PLACEHOLDER_SPACING_PX = 12
 PLACEHOLDER_TAB_TITLE = "Get Started"
+
+PLACEHOLDER_CARD_BORDER_ALPHA = 68
 
 PLACEHOLDER_TITLE_STYLE = f"color: {ds.TEXT_INACTIVE}; border: none;"
 PLACEHOLDER_HINT_STYLE = f"color: {ds.TEXT_PLACEHOLDER}; font-size: 10px; border: none;"
@@ -219,7 +222,8 @@ def placeholder_card_style(accent: Any) -> str:
     """The empty-state card's skin, whose border carries the layer accent."""
     return (
         f"QFrame {{ background: rgba(0,255,204,8); "
-        f"border: 1px solid {accent}44; border-radius: 6px; }}"
+        f"border: 1px solid {rgba(accent, PLACEHOLDER_CARD_BORDER_ALPHA)}; "
+        f"border-radius: 6px; }}"
     )
 
 

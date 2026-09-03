@@ -315,8 +315,11 @@ def fault_kinds(report: Any) -> list:
     return sorted({one["fault"] for one in report["faults"]})
 
 
-#: HEADER_STYLE carries an eight-digit hex, so this fault stands in every state.
-HEADER_COLOUR_FAULT = {
+#: The header border as the surface writes it, both sides reading it alike.
+HEADER_BORDER = "rgba(0,204,204,68)"
+
+#: The fault the header raises once its border is written back in Qt's order.
+SWAPPED_HEADER_FAULT = {
     "where": "header",
     "field": "style_sheet",
     "fault": "qt-colour",
@@ -324,9 +327,14 @@ HEADER_COLOUR_FAULT = {
 }
 
 
-def extra_faults(report: Any) -> list:
-    """Every fault but the standing one the shipped header colour raises."""
-    return [one for one in report["faults"] if one != HEADER_COLOUR_FAULT]
+def swapped_header_payload(state: Any) -> dict:
+    """One payload whose header border is written as eight hex digits."""
+    payload = state_payload(state)
+    payload["header"]["style_sheet"] = (
+        "QFrame{background:rgba(0,255,204,10);"
+        "border:1px solid #00cccc44;border-radius:6px;}"
+    )
+    return payload
 
 
 @pytest.mark.parametrize("state", STATES)
@@ -364,7 +372,7 @@ def test_text_standing_where_a_number_belongs_is_named(js: JsRuntime, name: str)
     payload = state_payload("loaded")
     payload[name] = "seven"
     report = pushed(js, payload)
-    named = [one for one in extra_faults(report) if one["field"] == name]
+    named = [one for one in report["faults"] if one["field"] == name]
     assert [one["fault"] for one in named] == ["wrong-type"], report["faults"]
 
 
@@ -390,9 +398,9 @@ def test_the_type_reader_reports_a_type_that_changed(js: JsRuntime):
 
 
 @pytest.mark.parametrize("state", STATES)
-def test_every_state_carries_only_the_header_colour_fault(js: JsRuntime, state: str):
+def test_every_state_carries_no_fault_at_all(js: JsRuntime, state: str):
     report = pushed(js, state_payload(state))
-    assert report["faults"] == [HEADER_COLOUR_FAULT], (state, report["faults"])
+    assert report["faults"] == [], (state, report["faults"])
 
 
 @pytest.mark.parametrize("state", STATES)
@@ -807,7 +815,7 @@ def test_the_panel_publishes_no_bot_object_and_no_tape(js: JsRuntime):
         assert set(row) >= {"bot_id", "symbol", "stats"}
         assert isinstance(row["stats"], dict)
     pushed(js, payload)
-    assert extra_faults({"faults": js.answer("faults()")}) == []
+    assert js.answer("faults()") == []
 
 
 HOSTILE_FIELDS = (
@@ -850,7 +858,7 @@ def test_a_hostile_field_is_recorded_and_never_raises(
     js: JsRuntime, field: str, kind: str
 ):
     report = pushed(js, hostile_payload(field, kind))
-    assert extra_faults(report), (field, kind)
+    assert report["faults"], (field, kind)
     assert isinstance(report["held"]["fields"], int)
 
 
@@ -880,7 +888,7 @@ def test_a_hostile_cell_value_is_recorded_by_its_row_and_column(
     payload["fleet_table"]["rows"][1][0] = CELL_VALUES[kind]
     report = pushed(js, payload)
     quiet = kind in ("long_name", "newline", "null")
-    assert bool(extra_faults(report)) is not quiet, (kind, report["faults"])
+    assert bool(report["faults"]) is not quiet, (kind, report["faults"])
 
 
 def test_a_row_that_is_not_a_list_is_named(js: JsRuntime):
@@ -900,7 +908,7 @@ def test_a_null_row_is_named(js: JsRuntime):
 def test_a_replay_of_zero_frames_draws_an_empty_table_and_no_fault(js: JsRuntime):
     payload = state_payload("empty")
     report = pushed(js, payload)
-    assert extra_faults(report) == [], report["faults"]
+    assert report["faults"] == [], report["faults"]
     assert payload["progress"]["text"].startswith("Replay: 0/0 candles (0.0%)")
 
 
@@ -909,7 +917,7 @@ def test_a_position_past_the_last_frame_is_drawn_as_the_surface_wrote_it(
 ):
     payload = state_payload("overrun")
     report = pushed(js, payload)
-    assert extra_faults(report) == [], report["faults"]
+    assert report["faults"] == [], report["faults"]
     assert payload["progress"]["text"].startswith("Replay: 5/2 candles (250.0%)")
 
 
@@ -927,17 +935,20 @@ def test_a_duplicate_symbol_is_answered_as_two_rows_not_one(js: JsRuntime):
     assert len(js.answer("rowsNamed('BTC/USD')")) == 3
 
 
-def test_the_header_border_colour_qt_and_css_read_differently_is_refused(
+def test_the_header_border_reaches_the_page_and_a_swapped_one_is_refused(
     js: JsRuntime,
 ):
     report = pushed(js, state_payload("loaded"))
-    assert report["faults"] == [HEADER_COLOUR_FAULT]
-    assert js.answer("qtColour('1px solid #00cccc44')") == "AARRGGBB"
+    assert report["faults"] == []
     kept = js.answer("keptSheet(" + json.dumps(frp.HEADER_STYLE) + ")")
     assert [one.split(":")[0] for one in kept.split(";")] == [
         "background",
+        "border",
         "border-radius",
     ], kept
+    assert js.answer("qtColour('1px solid #00cccc44')") == "AARRGGBB"
+    swapped = pushed(js, swapped_header_payload("loaded"))
+    assert swapped["faults"] == [SWAPPED_HEADER_FAULT]
 
 
 def test_a_six_digit_hex_inside_a_sheet_is_kept(js: JsRuntime):
@@ -1063,13 +1074,12 @@ def test_the_markup_check_stays_quiet_on_a_label_with_no_tag(js: JsRuntime):
     assert [one for one in report["faults"] if one["fault"] == "markup"] == []
 
 
-def test_the_header_colour_fault_is_the_one_defect_the_surface_itself_carries(
-    js: JsRuntime,
-):
-    """HEADER_STYLE is shipped source, so this is reported and not repaired."""
+def test_the_surface_ships_a_header_border_both_sides_read_alike(js: JsRuntime):
+    """HEADER_STYLE is shipped source and carries no eight-digit colour."""
     report = pushed(js, state_payload("idle"))
-    assert report["faults"] == [HEADER_COLOUR_FAULT]
-    assert "#00cccc44" in frp.HEADER_STYLE
+    assert report["faults"] == []
+    assert "#00cccc44" not in frp.HEADER_STYLE
+    assert HEADER_BORDER in frp.HEADER_STYLE
 
 
 class Browser:
@@ -1303,9 +1313,10 @@ def scaled(value: str) -> str:
 def usable(prop: str, value: str) -> str:
     if value.count("#") and len(value.split("#")[1].split(" ")[0]) == 8:
         return ""
-    if value.startswith("rgba(") and "." not in value.split(",")[3]:
-        return scaled(value)
-    return value
+    if "rgba(" not in value:
+        return value
+    alpha = value.split("rgba(")[1].split(")")[0].split(",")[3]
+    return value if "." in alpha else scaled(value)
 
 
 def probe(browser: Browser, tag: str, sheet: Any) -> dict:
@@ -1474,13 +1485,18 @@ def test_the_header_takes_the_background_qt_paints_at_a_byte_alpha(browser: Brow
     assert drawn != "rgb(0, 255, 204)", drawn
 
 
-def test_the_header_border_is_not_drawn_because_css_reads_that_colour_differently(
-    browser: Browser,
-):
+def test_the_header_border_is_drawn_at_the_alpha_qt_paints(browser: Browser):
     parts = draw(browser, state_payload("loaded"))
     drawn = one_part(parts, "header")["style"]
-    assert drawn["borderTopStyle"] == "none"
-    assert drawn["borderTopWidth"] == "0px"
+    assert drawn["borderTopStyle"] == "solid"
+    assert drawn["borderTopWidth"] != "0px"
+    wanted = browser.parsed(
+        "window.probeStyle('div', "
+        + json.dumps("border:" + scaled("1px solid " + HEADER_BORDER))
+        + ', ["borderTopColor"])'
+    )
+    assert drawn["borderTopColor"] == wanted["borderTopColor"]
+    assert drawn["borderTopColor"] != "rgb(0, 204, 204)", drawn["borderTopColor"]
 
 
 BORROWED_COLOURS = {

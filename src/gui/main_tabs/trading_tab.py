@@ -19,10 +19,13 @@ from PySide6.QtWidgets import (
 )
 
 from .. import design_system as ds
+from ..color_alpha import rgba
 from ..widgets.status_log import StatusLog
 from .notify_stub import _NotifyStub
 
 logger = logging.getLogger("acervator.gui")
+
+PLACEHOLDER_CARD_BORDER_ALPHA = 68
 
 
 class TradingTabMixin:
@@ -94,7 +97,8 @@ class TradingTabMixin:
             ph_card.setMinimumSize(280, 140)
             ph_card.setStyleSheet(
                 f"QFrame {{ background: rgba(0,255,204,8); "
-                f"border: 1px solid {accent}44; border-radius: 6px; }}"
+                f"border: 1px solid {rgba(accent, PLACEHOLDER_CARD_BORDER_ALPHA)}; "
+                f"border-radius: 6px; }}"
             )
             ph_layout = QVBoxLayout(ph_card)
             ph_layout.setAlignment(Qt.AlignCenter)

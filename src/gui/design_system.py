@@ -50,6 +50,8 @@ STABILITY:
 
 from __future__ import annotations
 
+from .color_alpha import rgba as _rgba
+
 # =============================================================================
 # COLOR TOKENS — M3 role-based naming, WCAG AA verified
 # =============================================================================
@@ -99,9 +101,11 @@ OUTLINE_STRONG = "#a0a0c0"  # Focus rings, emphasized edges (≥6.1:1)
 
 # ---- Glow / special --------------------------------------------------------
 # Non-text visual effects, not subject to contrast minimums.
-GLOW_PRIMARY = "#00ffcc33"  # PRIMARY with 20% alpha
-GLOW_SECONDARY = "#ff00aa33"
-SCRIM = "#00000088"  # Dialog backdrop
+# Qt reads eight hex digits alpha first, so every tint below carries
+# its alpha in an rgba value instead.
+GLOW_PRIMARY = _rgba(PRIMARY, 51)  # PRIMARY at alpha 51 of 255
+GLOW_SECONDARY = _rgba(SECONDARY, 51)
+SCRIM = _rgba("#000000", 136)  # Dialog backdrop
 
 # ---- Stat-card skins (existing per-card values, promoted to tokens) --------
 # The stock window and the analytics tab ship different card colors. They stay
@@ -179,8 +183,8 @@ SETTINGS_DESTRUCTIVE_SURFACE = "#440011"  # Destructive button ground
 SETTINGS_DESTRUCTIVE_HOVER = "#660022"  # Destructive button hover ground
 SETTINGS_DISABLED_SURFACE = "#1a1a1a"  # Disabled button ground
 SETTINGS_DISABLED_DEEP = "#333333"  # Disabled button ground, deeper variant
-GLOW_PRIMARY_EDGE = "#00ffcc55"  # PRIMARY tint on a border, 8-digit QSS form
-GLOW_PRIMARY_FAINT = "#00ffcc22"  # PRIMARY tint on a hover fill, 8-digit QSS form
+GLOW_PRIMARY_EDGE = _rgba(PRIMARY, 85)  # PRIMARY tint on a border
+GLOW_PRIMARY_FAINT = _rgba(PRIMARY, 34)  # PRIMARY tint on a hover fill
 
 # Bot visualizer
 VIZ_PANEL_SURFACE = "#0c0c1a"  # Tab and button ground

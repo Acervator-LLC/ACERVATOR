@@ -2291,27 +2291,17 @@ def test_the_window_declares_no_skin_of_its_own():
 EQUAL_CHANNEL_COLOURS = ("#888", "#666", "#ccc")
 
 
-def test_a_colour_with_equal_channels_is_compared_as_exact_text():
-    """A short colour widened to six digits changes what the platform paints.
-
-    Three of these values have all three channels equal, so a swap of
-    two channels paints the same picture. They are compared as text, and
-    the digit count is part of the text: the state badge rule appends an
-    alpha pair, so a six-digit value there makes a valid eight-digit
-    colour where the window means a five-digit one.
-    """
-    from PySide6.QtGui import QColor
-
+def test_a_state_colour_reaches_the_badge_whatever_its_digit_count():
+    """A short state colour and its six-digit twin tint the badge differently."""
+    alpha = surface.STATE_BACKGROUND_ALPHA
     for colour in EQUAL_CHANNEL_COLOURS:
         digits = colour.lstrip("#")
         assert len(set(digits)) == 1, colour
-        assert QColor(colour + "22").isValid() is False, colour
         widened = "#" + "".join(one * 2 for one in digits)
-        assert QColor(widened + "22").isValid() is True, colour
-        assert QColor(colour) == QColor(widened), colour
-    assert surface.STATE_COLORS[surface.STATE_STOPPED] == "#666"
-    assert surface.STATE_UNKNOWN_BG == "#ccc"
-    assert surface.STATE_COLORS[surface.STATE_IDLE] == "#888"
+        assert surface.rgba(colour, alpha) == surface.rgba(widened, alpha), colour
+    assert surface.rgba("#0a1b2c", alpha) != surface.rgba("#2c1b0a", alpha)
+    assert surface.STATE_COLORS[surface.STATE_STOPPED] == shipped.ds.TEXT_MUTED
+    assert surface.STATE_UNKNOWN_BG == surface.STATE_UNKNOWN_FG
     assert shipped.ds.CARD_METRIC_LABEL == surface.STATE_COLORS[surface.STATE_IDLE]
 
 
@@ -2652,6 +2642,9 @@ COVERED_ELSEWHERE = {
     "NO_MANAGER": "test_the_window_falls_back_to_the_bots_manager",
     "AGE_SECONDS_FORMAT": "test_one_age_reads_the_same_on_both_sides",
     "AGE_MINUTES_FORMAT": "test_one_age_reads_the_same_on_both_sides",
+    "STATE_BACKGROUND_ALPHA": (
+        "test_a_state_colour_reaches_the_badge_whatever_its_digit_count"
+    ),
     "SECONDS_PER_MINUTE": "test_one_age_reads_the_same_on_both_sides",
 }
 

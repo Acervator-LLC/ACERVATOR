@@ -603,25 +603,17 @@ EIGHT_DIGIT = {
 }
 
 
+def swapped_fill(sheet: str) -> str:
+    """One sheet whose rgba fill is written back as the eight digits Qt misreads."""
+    written = sheet.split("background: ")[1].split(";")[0]
+    fields = written[len("rgba(") : -1].split(",")
+    digits = "".join(f"{int(one.strip()):02x}" for one in fields)
+    return sheet.replace(written, "#" + digits)
+
+
 @pytest.mark.parametrize("state", ("alone", "paused", "error", "cooldown"))
-def test_the_shipped_state_badge_fill_is_refused_as_a_qt_colour(
-    js: JsRuntime, state: str
-):
-    """#266: `#ffaa0022` is amber at 13% in CSS and opaque `#aa0022` in Qt."""
-    report = js.push(state_payload(state))
-    named = [
-        one
-        for one in report["faults"]
-        if one["fault"] == "qt-colour" and one["field"] == "state_style"
-    ]
-    assert named, f"{state}: the eight-digit badge fill was not refused"
-    assert named[0]["detail"] == "AARRGGBB"
-    assert named[0]["where"] == "background"
-
-
-@pytest.mark.parametrize("state", ("idle", "stopped", "unknown_state"))
-def test_a_three_digit_state_colour_is_left_alone(js: JsRuntime, state: str):
-    """A five-digit fill is invalid in Qt and in CSS alike, so both drop it."""
+def test_the_shipped_state_badge_fill_raises_no_colour_fault(js: JsRuntime, state: str):
+    """The badge fill now reads the same in Qt and in CSS, so nothing is named."""
     payload = state_payload(state)
     report = js.push(payload)
     named = [
@@ -629,20 +621,56 @@ def test_a_three_digit_state_colour_is_left_alone(js: JsRuntime, state: str):
         for one in report["faults"]
         if one["fault"] == "qt-colour" and one["field"] == "state_style"
     ]
-    assert named == [], f"{state}: a five-digit fill was named eight-digit: {named}"
-    assert "#" in payload["state_style"]
+    assert named == [], f"{state}: the shipped badge fill was refused: {named}"
+    payload["state_style"] = swapped_fill(payload["state_style"])
+    swapped = js.push(payload)
+    named = [
+        one
+        for one in swapped["faults"]
+        if one["fault"] == "qt-colour" and one["field"] == "state_style"
+    ]
+    assert named, f"{state}: an eight-digit badge fill was not refused"
+    assert named[0]["detail"] == "AARRGGBB"
+    assert named[0]["where"] == "background"
 
 
-def test_the_navigation_button_border_is_refused_as_a_qt_colour(js: JsRuntime):
-    """#266: `#00ffcc55` is a faint edge in CSS and fully transparent in Qt."""
-    report = js.push(state_payload(FULL_STATE))
+@pytest.mark.parametrize("state", ("idle", "stopped", "unknown_state"))
+def test_a_short_state_colour_reaches_the_fill_like_any_other(
+    js: JsRuntime, state: str
+):
+    """A short colour once made a five-digit fill Qt and CSS both dropped."""
+    payload = state_payload(state)
+    report = js.push(payload)
+    named = [
+        one
+        for one in report["faults"]
+        if one["fault"] == "qt-colour" and one["field"] == "state_style"
+    ]
+    assert named == [], f"{state}: the shipped badge fill was refused: {named}"
+    assert "rgba(" in payload["state_style"]
+
+
+def test_the_navigation_button_border_raises_no_colour_fault(js: JsRuntime):
+    """`#00ffcc55` was fully transparent in Qt; the rgba edge is not."""
+    payload = state_payload(FULL_STATE)
+    report = js.push(payload)
     named = [
         one
         for one in report["faults"]
         if one["fault"] == "qt-colour" and one["field"] == "nav_style"
     ]
-    assert len(named) == 2, f"the nav sheet named {named}"
-    assert sorted(one["where"] for one in named) == ["QPushButton:hover", "border"]
+    assert named == [], f"the nav sheet was refused: {named}"
+    payload["nav_style"] = payload["nav_style"].replace(
+        "rgba(0,255,204,85)", "#00ffcc55"
+    )
+    swapped = js.push(payload)
+    named = [
+        one
+        for one in swapped["faults"]
+        if one["fault"] == "qt-colour" and one["field"] == "nav_style"
+    ]
+    assert [one["where"] for one in named] == ["border"], named
+    assert named[0]["detail"] == "AARRGGBB"
 
 
 QUIET_SHEETS = ["apply_style", "change_style", "close_style", "header_style"]
@@ -661,7 +689,8 @@ def test_no_other_sheet_this_window_paints_carries_a_swapped_colour(
     assert named == [], f"{field} was refused: {named}"
 
 
-def test_the_colour_refusal_names_a_byte_alpha(js: JsRuntime):
+def test_a_byte_alpha_is_repainted_rather_than_refused(js: JsRuntime):
+    """Qt counts an rgba alpha in bytes; the module scales it for the page."""
     payload = state_payload(FULL_STATE)
     payload["change_style"] = "background:rgba(1,2,3,128);"
     report = js.push(payload)
@@ -670,7 +699,9 @@ def test_the_colour_refusal_names_a_byte_alpha(js: JsRuntime):
         for one in report["faults"]
         if one["fault"] == "qt-colour" and one["field"] == "change_style"
     ]
-    assert named and named[0]["detail"] == "rgba(", report["faults"]
+    assert named == [], report["faults"]
+    kept = js.named("keptSheet", "background:rgba(1,2,3,128);")
+    assert kept == "background:rgba(1,2,3," + repr(128 / 255) + ")", kept
 
 
 def test_a_refused_colour_is_left_out_of_the_style_the_module_paints(js: JsRuntime):
@@ -696,7 +727,9 @@ def test_the_alpha_answer_is_absent_where_no_eight_digit_colour_stands(js: JsRun
 
 def test_a_badge_fill_naming_another_state_is_named(js: JsRuntime):
     payload = state_payload("alone")
-    payload["state_style"] = payload["state_style"].replace("#00ff8822", "#ff336622")
+    payload["state_style"] = payload["state_style"].replace(
+        "rgba(0,255,136,34)", "rgba(255,51,102,34)"
+    )
     report = js.push(payload)
     named = [
         one
@@ -1263,6 +1296,18 @@ def python_declarations(body: str) -> list:
     return found
 
 
+def css_ready(value: str) -> str:
+    """One value as a browser reads it, with any Qt alpha byte scaled."""
+    head, opened, rest = value.partition("rgba(")
+    if not opened:
+        return value
+    fields = rest.split(")")[0].split(",")
+    if len(fields) != 4 or "." in fields[3] or "%" in fields[3]:
+        return value
+    scaled = [one.strip() for one in fields[:3]] + [repr(int(fields[3]) / 255)]
+    return head + "rgba(" + ",".join(scaled) + ")" + rest.split(")", 1)[1]
+
+
 def probe(browser: Browser, body: str) -> dict:
     """The computed style a probe takes from one whole declaration body."""
     names: list = []
@@ -1273,7 +1318,7 @@ def probe(browser: Browser, body: str) -> dict:
     if not names:
         return {}
     kept = ";".join(
-        f"{prop}:{value}"
+        f"{prop}:{css_ready(value)}"
         for prop, value in python_declarations(body)
         if len(value.partition("#")[2].split()[0] if "#" in value else "") != 8
     )
@@ -1460,13 +1505,13 @@ def test_the_navigation_buttons_carry_the_step_the_surface_names(browser: Browse
 
 
 #: MEASURED_NAV_PROPERTIES is the count read off this host, not one assumed.
-MEASURED_NAV_PROPERTIES = 7
+MEASURED_NAV_PROPERTIES = 8
 
 
 def test_the_navigation_sheet_writes_the_property_count_measured_on_this_host(
     browser: Browser,
 ):
-    """One of the eight base declarations is refused, so seven reach the page."""
+    """Every base declaration reaches the page now that none is refused."""
     draw_window(browser, state_payload(FULL_STATE))
     written = browser.parsed(
         "Object.keys(acervatorBotLiveSettings.styleOf("
