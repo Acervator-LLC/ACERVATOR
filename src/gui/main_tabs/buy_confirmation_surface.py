@@ -381,8 +381,20 @@ def _detail_row_value(row: str, whole: str) -> str:
     the cut.
     """
     prefix = f"<b>{DETAIL_ROW_LABELS[row]}</b>"
+    if not whole.startswith(prefix):
+        raise ValueError(
+            f"detail row {row!r} no longer starts with {prefix!r}: {whole!r}. "
+            "Slicing by its length would cut the wrong text, and this dialog "
+            "shows the figures of an order about to be placed."
+        )
     value = whole[len(prefix) :]
     if _DETAIL_ROW_KEEPS_ROW_END[row]:
+        if not value.endswith(_ROW_END):
+            raise ValueError(
+                f"detail row {row!r} no longer ends with {_ROW_END!r}: "
+                f"{whole!r}. Stripping by its length would eat "
+                f"{len(_ROW_END)} characters of the value."
+            )
         value = value[: -len(_ROW_END)]
     return value.strip()
 
