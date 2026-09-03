@@ -196,15 +196,64 @@ DIALOG_FIELDS = (
     "target_balance",
 )
 
-DETAIL_SYMBOL = "<b>Symbol:</b>   {symbol}<br>"
-DETAIL_COST = "<b>Cost:</b>     ${cost_usd:.4f} USD<br>"
-DETAIL_PRICE = "<b>Price:</b>    ${price:.8f}<br>"
-DETAIL_AMOUNT = "<b>Amount:</b>   {amount_asset:.6f} {base}<br>"
+LABEL_SYMBOL = "Symbol:"
+LABEL_COST = "Cost:"
+LABEL_PRICE = "Price:"
+LABEL_AMOUNT = "Amount:"
+LABEL_HOLDINGS = "Current holdings:"
+LABEL_TARGET = "Target balance:"
+LABEL_AFTER = "After this buy:"
+
+DETAIL_SYMBOL = f"<b>{LABEL_SYMBOL}</b>   {{symbol}}<br>"
+DETAIL_COST = f"<b>{LABEL_COST}</b>     ${{cost_usd:.4f}} USD<br>"
+DETAIL_PRICE = f"<b>{LABEL_PRICE}</b>    ${{price:.8f}}<br>"
+DETAIL_AMOUNT = f"<b>{LABEL_AMOUNT}</b>   {{amount_asset:.6f}} {{base}}<br>"
 DETAIL_HOLDINGS = (
-    "<b>Current holdings:</b> {holdings_before:.6f} (~${holdings_usd:.4f})<br>"
+    f"<b>{LABEL_HOLDINGS}</b> {{holdings_before:.6f}} (~${{holdings_usd:.4f}})<br>"
 )
-DETAIL_TARGET = "<b>Target balance:</b>   ${target_balance:.2f}<br>"
-DETAIL_AFTER = "<b>After this buy:</b>   ${after_usd:.4f}"
+DETAIL_TARGET = f"<b>{LABEL_TARGET}</b>   ${{target_balance:.2f}}<br>"
+DETAIL_AFTER = f"<b>{LABEL_AFTER}</b>   ${{after_usd:.4f}}"
+
+#: One entry per detail row, in the order the details block prints them.
+DETAIL_ROW_SYMBOL = "symbol"
+DETAIL_ROW_COST = "cost_usd"
+DETAIL_ROW_PRICE = "price"
+DETAIL_ROW_AMOUNT = "amount_asset"
+DETAIL_ROW_HOLDINGS = "holdings_before"
+DETAIL_ROW_TARGET = "target_balance"
+DETAIL_ROW_AFTER = "after_usd"
+
+DETAIL_ROW_ORDER = (
+    DETAIL_ROW_SYMBOL,
+    DETAIL_ROW_COST,
+    DETAIL_ROW_PRICE,
+    DETAIL_ROW_AMOUNT,
+    DETAIL_ROW_HOLDINGS,
+    DETAIL_ROW_TARGET,
+    DETAIL_ROW_AFTER,
+)
+
+DETAIL_ROW_LABELS = {
+    DETAIL_ROW_SYMBOL: LABEL_SYMBOL,
+    DETAIL_ROW_COST: LABEL_COST,
+    DETAIL_ROW_PRICE: LABEL_PRICE,
+    DETAIL_ROW_AMOUNT: LABEL_AMOUNT,
+    DETAIL_ROW_HOLDINGS: LABEL_HOLDINGS,
+    DETAIL_ROW_TARGET: LABEL_TARGET,
+    DETAIL_ROW_AFTER: LABEL_AFTER,
+}
+
+#: Whether a row's own line keeps the trailing "<br>" every row but the last carries.
+_ROW_END = "<br>"
+_DETAIL_ROW_KEEPS_ROW_END = {
+    DETAIL_ROW_SYMBOL: True,
+    DETAIL_ROW_COST: True,
+    DETAIL_ROW_PRICE: True,
+    DETAIL_ROW_AMOUNT: True,
+    DETAIL_ROW_HOLDINGS: True,
+    DETAIL_ROW_TARGET: True,
+    DETAIL_ROW_AFTER: False,
+}
 
 SYMBOL_SEPARATOR = "/"
 
@@ -321,6 +370,55 @@ def details_text(
         + DETAIL_TARGET.format(target_balance=target_balance)
         + DETAIL_AFTER.format(after_usd=after_buy_usd(holdings_before, price, cost_usd))
     )
+
+
+def _detail_row_value(row: str, whole: str) -> str:
+    """One row's value text, sliced out of its own already-formatted line.
+
+    Slices by the known length of ``<b>{label}</b>`` and, where the row
+    ends its own line, of the trailing ``<br>`` — never by searching the
+    formatted text, so a value carrying either sequence cannot confuse
+    the cut.
+    """
+    prefix = f"<b>{DETAIL_ROW_LABELS[row]}</b>"
+    value = whole[len(prefix) :]
+    if _DETAIL_ROW_KEEPS_ROW_END[row]:
+        value = value[: -len(_ROW_END)]
+    return value.strip()
+
+
+def detail_row_values(
+    symbol: str,
+    cost_usd: float,
+    price: float,
+    amount_asset: float,
+    holdings_before: float,
+    target_balance: float,
+) -> dict:
+    """Every detail row's value text, keyed the way ``DETAIL_ROW_ORDER`` names it.
+
+    A browser must never parse ``details_text`` for its values, because a
+    symbol carrying its own markup would then be read as part of the
+    dialog's own formatting. Every value here is sliced out of the same
+    templates ``details_text`` already agrees with, so a caller reading
+    this bag instead is reading the dialog's own numbers, unchanged.
+    """
+    usd_holdings = holdings_usd(holdings_before, price)
+    after_usd = after_buy_usd(holdings_before, price, cost_usd)
+    base = base_currency(symbol)
+    whole_lines = {
+        DETAIL_ROW_SYMBOL: DETAIL_SYMBOL.format(symbol=symbol),
+        DETAIL_ROW_COST: DETAIL_COST.format(cost_usd=cost_usd),
+        DETAIL_ROW_PRICE: DETAIL_PRICE.format(price=price),
+        DETAIL_ROW_AMOUNT: DETAIL_AMOUNT.format(amount_asset=amount_asset, base=base),
+        DETAIL_ROW_HOLDINGS: DETAIL_HOLDINGS.format(
+            holdings_before=holdings_before,
+            holdings_usd=usd_holdings,
+        ),
+        DETAIL_ROW_TARGET: DETAIL_TARGET.format(target_balance=target_balance),
+        DETAIL_ROW_AFTER: DETAIL_AFTER.format(after_usd=after_usd),
+    }
+    return {row: _detail_row_value(row, whole_lines[row]) for row in DETAIL_ROW_ORDER}
 
 
 def request_id(bot_id: str, millis: int) -> str:
@@ -600,6 +698,16 @@ def build_view_model(
         "dialog_fields": list(DIALOG_FIELDS),
         "reason_text": model.reason_text,
         "details_text": model.details,
+        "detail_row_order": list(DETAIL_ROW_ORDER),
+        "detail_row_labels": dict(DETAIL_ROW_LABELS),
+        "detail_row_values": detail_row_values(
+            symbol,
+            cost_usd,
+            price,
+            amount_asset,
+            holdings_before,
+            target_balance,
+        ),
         "result_value": model.result_value,
         "accepted": model.accepted,
         "calls": [list(call) for call in model.calls],
