@@ -11,15 +11,6 @@ The core cycle:
      accumulate extra asset)
   4. after a fold: target += profit (compound growth)
 
-Fold ONLY executes when price < fold_ref, which guarantees more asset is
-bought back than was sold; do not change that condition.
-
-No mirrored copy of this logic exists; the Simulator drives this engine.
-
-Implements the strategy with a 7-indicator TA engine (confidence/voting),
-Phantom Balance multi-timeframe analysis, higher-timeframe
-prioritization, the Memorize grid-conversion function, Profit Folding and
-Upward Distribution, and Extended Position creation.
 """
 
 from __future__ import annotations
@@ -81,15 +72,10 @@ from .scrumming.fold_tranches import (
 
 logger = logging.getLogger("acervator.scrumming")
 
-#: Seconds between detonation trigger checks. The detonation timeframe
-#: is a higher TF whose candles close slowly, so a faster cadence costs
-#: API quota and returns the same answer.
+#: Seconds between detonation trigger checks.
 _DETONATION_CHECK_INTERVAL_S: float = 3600.0
 
-#: Floor on how long the detonation bullish latch survives without a
-#: completed check. One skipped check at the interval above. A
-#: detonation timeframe shorter than this floor would otherwise expire
-#: the latch on the normal cadence and re-detonate every hour.
+#: Minimum seconds the detonation bullish latch survives without a check.
 _DETONATION_LATCH_MIN_TTL_S: float = 2.0 * _DETONATION_CHECK_INTERVAL_S
 
 
@@ -202,42 +188,7 @@ exception is about, so that is the reading the exception uses.
 
 
 def _skewed_confidence_floor(skew: float, floor: float = _TA_CONFIDENCE_FLOOR) -> float:
-    """``floor`` relaxed by ``skew``, proportionally, so the gate can refuse.
-
-    THE DEFECT CLASS THIS CLOSES. ``tick()`` carried THREE favours and
-    every one was written as an edit to ``eff_confidence``: the
-    BB-priority skew (issue #102, repaired), ``position_boost`` and
-    ``bb_confidence_boost`` (issue #104, this one). Confidence is bounded
-    [0, 1] and the floor is 0.25, so a favour of 0.25 or more makes
-    ``eff_confidence >= floor`` true for EVERY reading. The comparison
-    has no false case and the conjunct cannot refuse.
-
-    MEASURED, over 406 stone tablets at six tape lengths, 2,436 readings.
-    ``position_boost`` reached +0.4000 -- larger than the largest
-    consensus confidence the same sweep measured, 0.3402. A term bigger
-    than the quantity it adjusts is not an adjustment to it. The two
-    favours summed past the floor that judged them on 73 readings, and
-    drove ``eff_confidence`` BELOW ZERO on 316: a confidence outside the
-    domain of a confidence, printed to the operator at nine sites.
-
-    WHY PROPORTIONAL AND NOT SUBTRACTIVE. Subtracting a favour of 0.30
-    from a floor of 0.25 lands at or below zero and is the tautology
-    again. Dividing preserves zero -- however large the favour, a reading
-    of exactly 0.0 is still refused -- and it needs no second rule for a
-    NEGATIVE skew, which tightens the floor by the same arithmetic.
-
-    THE LIMIT AT A SKEW OF -1 IS INFINITY, AND THAT IS THE RIGHT ANSWER.
-    A favour of -1 is total evidence against, and the floor no reading
-    can clear is what the division tends to. It is returned rather than
-    clamped to something friendlier. No skew this module builds reaches
-    it: ``position_boost`` bottoms at -0.29 by enumeration of its own
-    terms, ``bb_confidence_boost`` is never negative, and the BB-priority
-    skew is positive. The branch guards a future term, not a live path.
-
-    NO NEW NUMBER IS INTRODUCED. The floor and every skew are constants
-    or measurements already of record. Only the form of the favour, and
-    what it is applied to, change.
-    """
+    """``floor`` relaxed by ``skew`` proportionally; a skew <= -1 returns infinity."""
     denominator = 1.0 + skew
     if denominator <= 0.0:
         return math.inf
@@ -254,14 +205,11 @@ that motivated this.
 
 
 def _roll_wire_credit_overflow(tranche: dict) -> int:
-    """Trim a tranche's ``wire_credits`` to the cap, folding the excess
-    into a lossless ``wire_credits_rolled`` aggregate.
+    """Trim ``wire_credits`` to the cap, folding excess into ``wire_credits_rolled``.
 
-    Returns how many detail entries were rolled up.
+    Returns:
+      How many detail entries were rolled up.
 
-    The aggregate preserves count, total USD and USD-per-source, so no
-    credited dollar leaves the record — only per-event granularity ages
-    out. Callers rely on that: this is money provenance, not telemetry.
     """
     wc = tranche.get("wire_credits")
     if not isinstance(wc, list) or len(wc) <= _WIRE_CREDIT_CAP:
@@ -317,11 +265,7 @@ _USD_STABLE_QUOTES = frozenset(
 
 
 def is_usd_stable_quote(currency: str) -> bool:
-    """Return True if the given currency code is a USD-equivalent stable.
-
-    Stable quotes get a 1.0 quote→USD multiplier; non-stable quotes
-    require a {QUOTE}/USD ticker fetch to recover the USD rate.
-    """
+    """Return True when ``currency`` is a USD-equivalent stable quote."""
     return (currency or "").upper() in _USD_STABLE_QUOTES
 
 
@@ -331,12 +275,7 @@ def _extract_signal_detail(
     detail_key: str,
     default: float = 0.0,
 ) -> float:
-    """Call-site activation helper for gate-chain context fields.
-
-    The sentinel-zero return is what makes the gates' additive-landing
-    contract survive call-site failures — gates with ``ctx.X == 0.0``
-    trivially pass.
-    """
+    """Return an indicator's ``detail_key`` from ``summary``, else ``default``."""
     if summary is None:
         return default
     for sig in summary.signals:
@@ -351,18 +290,7 @@ def _extract_signal_detail(
 
 @dataclass
 class StackTrancheSummary:
-    """A minimal stand-in summary carrying a Stack's opening vote.
-
-    NOT a gate, and never was. `_execute_sell` reads
-    `consensus_confidence` only for its "SELL signal:" line and the
-    `MemorisedTrade` record; no branch there tests it. Authority to
-    spend a tranche comes from the SCRUM gate chain evaluated on the
-    tick it is spent, and `_spend_activated_stack_tranches` passes
-    that tick's LIVE `VotingSummary`. This type is the fallback for a
-    caller with no live vote, rebuilt from the `open_confidence` /
-    `open_direction` recorded at stack-open time -- a forensic record
-    of what opened the Stack, never authority to close it.
-    """
+    """A stand-in summary carrying the vote recorded when a Stack opened."""
 
     consensus_confidence: float = 0.0
     consensus_direction: str = "stack"
@@ -488,51 +416,22 @@ class ScrummingBot(
         self._fold_tranches: list[dict] = []
         self._main_lots: list[dict] = []
 
-        # issue #133 unit 9b -- the fee the VENUE reported for the most
-        # recent settled SELL, cleared as soon as a valuation consumes
-        # it. Written only by `_record_venue_fee`, read only by
-        # `_take_venue_fee`. Never derived from `trading_fee_pct`.
         self._last_sell_venue_fee: Optional[SettledSellFee] = None
 
         self._stack_tranches: list[dict] = []
         self._stack_created: int = 0
         self._stack_discarded: int = 0
-        # issue #133 unit 7 -- the epoch second an operator cleared the
-        # two counters above, 0.0 when they never have been. It is the
-        # mirror of `_tranches_counters_reset_ts` and it is read for the
-        # same reason: `_stack_created == 0` alone cannot tell "no stack
-        # has ever opened" from "the operator cleared the record", and
-        # the Stack panel prints the first of those as a sentence.
+        # Epoch second an operator cleared the two counters above, 0.0 when never.
         self._stack_counters_reset_ts: float = 0.0
 
         self._tranches_created_lifetime: int = 0
         self._tranches_closed_lifetime: int = 0
         self._tranches_malformed_dropped: int = 0
-        # issue #133 unit 3 -- the epoch second an operator cleared the
-        # four counters above, 0.0 when they never have been. The four
-        # carry no history once they read zero, so the init handshake
-        # asks this field instead of reading a zeroed `created` as
-        # "this bot has never scrummed".
+        # Epoch second an operator cleared the three counters above, 0.0 when never.
         self._tranches_counters_reset_ts: float = 0.0
-        # issue #133 unit 2 -- how many SELLS have opened fold tranches.
-        # The operator's rule is a comparison and needs both sides:
-        # "never more Fold tranches than Scrums that have occurred,
-        # except during strong trends". This is the denominator. It
-        # counts the autonomous SCRUM, the DIST sell and the manual /
-        # wire-stack / max-cartridge fire, because each is the opposing
-        # trade a fold tranche answers and each builds one.
-        #
-        # `clear_lifetime_tranche_counters` DELIBERATELY LEAVES IT
-        # ALONE. Zeroing `created` and not this one keeps `created <=
-        # scrums` true; zeroing this one and not `created` would break
-        # it on the next read.
+        # Count of SELLS that have opened fold tranches.
         self._scrum_sells_lifetime: int = 0
-        # How many of the last 20 candles closed up, at the last tick
-        # that had 20 to read. A COUNT and not the share TREND-HOLD
-        # compares, because `_strong_trend_now` then answers on two
-        # integers and cannot round at its own threshold. 0 until a
-        # tick measures it, so a bot that has not yet read the market
-        # gets the bound and not the exception.
+        # How many of the last 20 candles closed up, 0 until a tick measures it.
         self._last_trend_bull_candles: int = 0
 
         self._scrum_target_mode: str = "search"
@@ -542,15 +441,7 @@ class ScrummingBot(
 
         self._anchor_target_balance: float = float(config.target_balance)
 
-        # Detonation edge state. Both are persisted by
-        # `export_scrumming_state` and restored by
-        # `import_scrumming_state`; these are the never-checked
-        # defaults for a bot with no saved state.
-        # `_detonation_last_check_ts` dates the last COMPLETED check and
-        # carries both the rate limit and the latch's age.
-        # `_detonation_last_signal_bullish` is the edge latch: True
-        # means the last check saw the bull run this bot already
-        # detonated on.
+        # Never-checked defaults for a bot with no saved detonation state.
         self._detonation_last_check_ts: float = 0.0
         self._detonation_last_signal_bullish: bool = False
 
@@ -626,9 +517,9 @@ class ScrummingBot(
     def get_swos_inputs(self) -> Optional[dict]:
         """Return the input dict for ``smart_wire.compute_safe_outflow_pct``.
 
-        Best-effort; returns ``None`` when critical fields are missing
-        (bot not yet bootstrapped) so the caller can fall back to raw
-        operator pct without applying safety math.
+        Returns:
+          ``None`` when critical fields are missing.
+
         """
         try:
             _price = float(getattr(self.stats, "current_price", 0.0) or 0.0)
@@ -659,10 +550,7 @@ class ScrummingBot(
             return None
 
     def note_scrum_retention_usd(self, retained_usd: float) -> None:
-        """Increment the per-cycle retained counter used by SWOS.
-
-        Called by the scrum-fill sites beside ``stats.total_scrummed_usd``.
-        """
+        """Increment the per-cycle retained counter used by SWOS."""
         try:
             self._retained_this_cycle_usd += max(0.0, float(retained_usd))
         except Exception as _sup:  # noqa: BLE001
@@ -674,29 +562,15 @@ class ScrummingBot(
             )
 
     def reset_swos_cycle(self) -> None:
-        """Reset the retained-this-cycle counter to 0.
-
-        Called at Fold execution — one Fold closes one cycle.
-        """
+        """Reset ``_retained_this_cycle_usd`` to 0, called at Fold execution."""
         self._retained_this_cycle_usd = 0.0
 
     def set_market_pairs_scout(self, scout) -> None:
-        """Attach the process-wide MarketPairsScout.
-
-        Silently no-ops if ``scout`` is falsy — this keeps unit tests
-        and headless simulators simple; the bot behaves identically
-        with or without an attached scout.
-        """
+        """Attach the process-wide MarketPairsScout; a falsy ``scout`` is a no-op."""
         self._market_pairs_scout = scout
 
     def get_target_asset_pairs(self):
-        """Return the current PairSnapshots for the bot's target asset
-        on this bot's exchange, from the attached scout.
-
-        Returns an empty list when no scout is attached, when the
-        scout has not yet polled, or when the target asset trades no
-        recognised pairs on the exchange. Never raises.
-        """
+        """Return PairSnapshots for this bot's target asset, empty when no scout."""
         _scout = getattr(self, "_market_pairs_scout", None)
         if _scout is None:
             return []
@@ -743,39 +617,13 @@ class ScrummingBot(
         self._bot_manager = manager
 
     def set_target_balance_live(self, new_target: float) -> dict:
-        """Apply an operator-initiated Target Balance change mid-session.
+        """Apply an operator-initiated Target Balance change, comparing ``new_target``
+        against ``_anchor_target_balance`` rather than the grown target.
 
-        This method is the correct entry point for operator-initiated
-        target changes. Updates BOTH `_target_balance` and
-        `_anchor_target_balance` because an explicit operator raise
-        re-sets the set-point for ceiling purposes — the anchor's job
-        is to freeze the set-point against INTERNAL drift (profit-fold
-        growth, Smart Wire routing) but NOT against EXPLICIT operator
-        intent. Config is also updated so persistence + re-reads see
-        the new value.
+        Returns:
+          {"applied", "old_target", "old_anchor", "new_target",
+           "new_anchor", "delta_usd"}
 
-        v3.25.9 — `new_target` is compared against the ANCHOR, not
-        against the grown `_target_balance`. The value arrives from an
-        anchor-denominated spinbox (`cfg.target_balance`), so the grown
-        target is the wrong frame to test it in. Worked example on live
-        bot IMU (anchor $50.00, target $63.53, $13.53 accrued): the
-        operator raises the displayed $50 to $60 to add $10 of capital.
-        Under the anchor reference this is a top-up — anchor becomes
-        $60 and target becomes $73.53. Under the old grown-target
-        reference 60 > 63.53 was False, so both collapsed to $60, the
-        $13.53 was destroyed, and the target FELL. The top-up policy of
-        the 2026-07-26 Option A directive is unchanged; only the
-        reference the comparison reads is corrected.
-
-        Returns a dict:
-            {
-                "applied": True/False,
-                "old_target": float,
-                "old_anchor": float,
-                "new_target": float,
-                "new_anchor": float,
-                "delta_usd": float    # new_target - position_value
-            }
         """
         try:
             nt = float(new_target)
@@ -822,62 +670,13 @@ class ScrummingBot(
         old_t = float(self._target_balance)
         old_a = float(getattr(self, "_anchor_target_balance", old_t))
 
-        # v3.23.30 — top-up preserves auto-accrued growth (Option A per
-        # operator directive 2026-07-26). Previously any operator set
-        # collapsed target + anchor to the new value, WIPING any
-        # compounded growth accumulated between anchors. Symptom: bot
-        # auto-grew target from $200 → $205, operator raised to $250
-        # (thinking "add $50 capital"), old code set both = $250,
-        # erasing the $5. Diagnosed via
-        # docs/audits/2026-07-25_ytd_compounding_replay/REPORT.md.
-        #
-        # v3.25.9 — the comparison reads the ANCHOR, not the grown
-        # target. `nt` arrives from the Target Balance spinbox, which
-        # shows `cfg.target_balance` and is deliberately NOT repointed
-        # at the grown value (the hazard is spelled out at
-        # bot_live_settings.py:3736). The spinbox is therefore
-        # anchor-denominated, so `nt` must be compared against the
-        # anchor. Comparing it against the grown target made every
-        # top-up smaller than the accrued growth fall into the
-        # collapse branch: on live bot IMU (anchor $50.00, target
-        # $63.53) raising the displayed $50 to $60 tested 60 > 63.53,
-        # took the else branch, and set BOTH to 60 — destroying
-        # $13.53 of accrued growth AND lowering the target below where
-        # it already stood. The position then sat above target, the
-        # Delta flipped positive, and the bot folded the excess.
-        # This is a correction to the REFERENCE, not to the top-up
-        # policy of the 2026-07-26 Option A directive.
-        #
-        # New behaviour:
-        #   * new > current_anchor → interpret as top-up.
-        #       anchor := new_target (fresh capital base)
-        #       target := new_target + (current_target − current_anchor)
-        #                                            (preserved growth)
-        #     e.g. anchor=200 target=205 (5 accrued) + new=250 →
-        #          anchor=250 target=255. Operator's $50 top-up
-        #          preserved on top of $5 accrued.
-        #     e.g. anchor=50 target=63.53 (13.53 accrued) + new=60 →
-        #          anchor=60 target=73.53. The $10 top-up lands and
-        #          the $13.53 survives, even though 60 is BELOW the
-        #          grown target.
-        #   * new < current_anchor → interpret as explicit lower / withdrawal.
-        #       anchor := new_target
-        #       target := new_target
-        #     Accrued growth cleared (can't accrue above a lower base).
-        #   * new == current_anchor → no-op path (mark_changed diff should
-        #     already skip; guarded here too for robustness). Falls to
-        #     the else branch, which is a no-op when target == anchor
-        #     and a re-confirmation of the anchor when it is not.
-        accrued = max(0.0, old_t - old_a)  # non-negative growth so far
+        accrued = max(0.0, old_t - old_a)
         if nt > old_a and accrued > 1e-9:
-            # Top-up path — preserve the accrued growth on top of the
-            # new anchor.
+            # Top-up: fresh anchor plus the growth accrued so far.
             self._anchor_target_balance = nt
             self._target_balance = nt + accrued
         else:
-            # At-or-below-anchor / zero-accrued — old behaviour (both
-            # in lockstep). Zero-accrued == old behaviour by definition
-            # since accrued=0.
+            # At or below anchor: target and anchor move together.
             self._target_balance = nt
             self._anchor_target_balance = nt
         try:
@@ -939,63 +738,12 @@ class ScrummingBot(
 
     @property
     def cycle_growth_cap_usd(self) -> float:
-        """The per-cycle Growth Rate Cap in USD. THE ONE DEFINITION.
-
-        Issue #106, operator report 2026-08-21: "the compounding rate
-        appears to stay frozen as a calculation based on the starting
-        value of the bot but this should refresh after each Fold so as
-        to induce the appropriate curve."
-
-        THE BASE IS THE GROWN TARGET, NOT THE FROZEN ANCHOR. Every site
-        that needed this number used to spell out
-        `self._anchor_target_balance * (max_target_growth_pct / 100)`
-        for itself. `_anchor_target_balance` moves only on operator
-        input, wire income or tranche arrival; a Fold never moves it. So
-        the cap held ONE dollar value for the life of the bot and the
-        curve was `anchor x (1 + 0.01N)` rather than `anchor x 1.01^N`.
-        Measured on the live fleet 2026-08-24: IMU had grown 27.1%, from
-        $50.00 to $63.53, and still capped each Fold at $0.50.
-
-        WHY THE BASE SUBTRACTS `_fold_cycle_cap_consumed` RATHER THAN
-        READING `_target_balance` RAW. `_apply_fold_target_growth` adds
-        the SAME `_growth_applied` to `_target_balance` and to
-        `_fold_cycle_cap_consumed`, so their difference is invariant
-        across a cycle and equals the target as it stood when the cycle
-        opened. Reading the raw target instead would let the cap grow as
-        the cycle consumed it -- a bound that expands while you spend it
-        -- and one cycle would settle at pct/(1-pct) rather than pct.
-        At 1% that is 1.0101% per cycle, an overrun of the per-event
-        bound MEM-249 states. Subtracting the consumption pins the base
-        for the cycle and needs no new attribute and no state migration.
-
-        WHAT THIS DOES NOT CHANGE, and MEM-249 at
-        `src/trading/bot_container.py` is the rule being kept: fold
-        surplus is still the ONLY mechanism that may grow the target,
-        and it is still bounded per event. Only the BASE of the bound
-        moved. Nothing new became able to grow the target.
-
-        FAIL-CLOSED. A non-finite or unreadable input returns 0.0, which
-        is a cap of zero and therefore no growth at all. A cap that
-        defaulted wide on unreadable state would grow the target from a
-        number nobody could read.
-
-        NOT ONE-DIRECTIONAL IN TWO NAMED STATES. The cap is >= the old
-        one whenever accrued growth (`target - anchor`) is at least the
-        consumption booked this cycle, which is the ordinary case
-        because this cycle's consumption is PART of accrued growth.
-        Detonation (`_execute_detonation`) puts the target back to the
-        anchor and deliberately does NOT clear
-        `_fold_cycle_cap_consumed`, and a withdrawal below the anchor
-        clears growth the same way; in both the base sits BELOW the
-        anchor until the cycle resets, so the cap is briefly smaller
-        than it used to be. Both are bounded by the consumption already
-        booked and both self-clear on the next cycle reset. Detonation
-        is disabled on all 38 live bots.
+        """The per-cycle Growth Rate Cap in USD, based on the cycle-open target.
 
         Returns:
-          The whole cycle's cap in USD, not the remaining headroom.
-          Callers subtract `_fold_cycle_cap_consumed` themselves, which
-          is what the four call sites did before this property existed.
+          The whole cycle's cap in USD, not the remaining headroom. The base is
+          ``_target_balance`` minus ``_fold_cycle_cap_consumed``, so the cap cannot
+          grow as the cycle consumes it. Unreadable input returns 0.0.
 
         """
         try:
@@ -1010,29 +758,23 @@ class ScrummingBot(
             return 0.0
         if _pct <= 0.0:
             return 0.0
-        # The target as it stood when this cycle opened. Never negative:
-        # a detonation or a withdrawal can leave the consumption above
-        # the target until the next reset, and a negative base would
-        # make the cap negative and `cap - consumed` wrong in the other
-        # direction.
+        # Never negative: consumption can exceed the target until the next reset.
         _base = max(0.0, _target - _consumed)
         return _base * (_pct / 100.0)
 
     def _apply_fold_target_growth(self, accum_profit: float, source: str) -> float:
-        """Drain fold surplus into `_target_balance`, bounded by the
-        per-cycle Growth Rate Cap. Returns `_growth_applied` (USD).
-
+        """Drain fold surplus into ``_target_balance``, bounded by the per-cycle cap.
 
         Args:
-          accum_profit: pre-quote-conversion USD-equivalent profit
-                        from the caller's tranche match.
-          source: short tag for the TARGET GROWN log line so operator
-                  can see which fold kind produced the growth
-                  ("auto", "MANUAL_FOLD", "CARTRIDGE_FOLD", etc.).
+          accum_profit: pre-quote-conversion USD-equivalent profit from the
+                        caller's tranche match.
+          source: short tag for the TARGET GROWN log line ("auto",
+                  "MANUAL_FOLD", "CARTRIDGE_FOLD").
 
         Returns:
           _growth_applied (USD). 0.0 if profit_folding_active is off,
           surplus is non-positive, or cap fully consumed.
+
         """
         if not self.config.profit_folding_active:
             try:
@@ -1083,14 +825,7 @@ class ScrummingBot(
                     _sup,
                 )
             return 0.0
-        # Issue #106 -- THE CAP COMPOUNDS. This read
-        # `self._anchor_target_balance * (_cap_pct / 100.0)`, and the
-        # anchor is the operator's input value which no Fold ever moves.
-        # `cycle_growth_cap_usd` takes the same percentage of the target
-        # as it stood when this cycle opened. Read its docstring for why
-        # the base is not the raw target. `_cap_pct` used to be bound
-        # here and is not, because nothing in this method reads the
-        # percentage now that the property owns the arithmetic.
+        # The cap base is the cycle-open target, not the frozen anchor.
         _cycle_cap_growth = self.cycle_growth_cap_usd
         _cap_remaining = max(0.0, _cycle_cap_growth - self._fold_cycle_cap_consumed)
         if _cap_remaining <= 1e-9:
@@ -1174,36 +909,18 @@ class ScrummingBot(
         return _growth_applied
 
     def _preview_fold_growth(self, units: float, price: float) -> float:
-        """What ``_apply_fold_target_growth`` WOULD add. Moves no money.
+        """What ``_apply_fold_target_growth`` would add for ``units`` at ``price``,
+        moving no money.
 
-            "After growth is calculated so that the Fold does not
-             acquire too little and actually fails to compound."
-
-        To size against the post-growth target the caller needs to know
-        the growth BEFORE placing the order. The growth depends on the
-        fill price, which is not knowable in advance -- so this uses the
-        current quote as the proxy and the caller applies the REAL
-        growth after the fill.
-
-        THE CAP ARITHMETIC IS THE APPLIER'S: the same
-        ``cycle_growth_cap_usd`` property, whose base is the cycle-open
-        target and NOT the anchor; the standing pool as an input; the
-        result drawn down to the remaining cap.
-
-        THE PROFIT ARITHMETIC IS NOT THE APPLIER'S, and the divergence
-        is the venue fee. This accrues ``take x (ref - price)`` off
-        each tranche's ``units``. The applier accrues the same quantity
-        off ``usd / ref``. Since issue #133 unit 9b ``usd`` holds the
-        NET proceeds and ``ref`` holds the gross fill price, so
-        ``usd / ref`` equals ``units x (1 - venue_fee)`` and this
-        preview returns ``1 / (1 - venue_fee)`` times what the applier
-        books. Measured at a 1.2% Coinbase fee: 1.012146x. The
-        overshoot sizes one order and is bounded by the cap; the
-        applier still books the fill-derived figure.
+        Returns:
+          The growth in USD, capped off the cycle-open target and NOT the
+          anchor, overshooting what the applier later books by
+          ``1 / (1 - venue_fee)``.
 
         Args:
           units: base units the prospective buy would acquire.
           price: quote price used in place of the unknown fill price.
+
         """
         if not self.config.profit_folding_active:
             return 0.0
@@ -1242,12 +959,7 @@ class ScrummingBot(
         self._fold_preview_unreadable_units = _unreadable_units
         _quote = float(self._quote_to_usd or 1.0)
         _new_surplus_usd = max(0.0, _accum * _quote)
-        # Issue #106 -- the SAME property the applier reads. This is a
-        # preview of what `_apply_fold_target_growth` WOULD add, so a
-        # second spelling of the cap here would let the preview and the
-        # applier disagree about the one number the preview exists to
-        # predict. `_cap_pct` is no longer read for the cap and is not
-        # bound at all.
+        # The same property the applier reads, so the two cannot disagree.
         _cycle_cap_growth = self.cycle_growth_cap_usd
         _cap_remaining = max(0.0, _cycle_cap_growth - self._fold_cycle_cap_consumed)
         if _cap_remaining <= 1e-9:
@@ -1299,13 +1011,8 @@ class ScrummingBot(
         }
 
     def set_aggressive_live(self, new_aggressive: bool) -> dict:
-        """Apply live aggressive-trading toggle.
-
-        Runtime gap: __init__ snapshots config.aggressive_trading into
-        self._aggressive (line 112). Config setattr alone leaves
-        self._aggressive stale. Log strings at line 1121 and any
-        downstream behavior keyed off self._aggressive stay on the old
-        value.
+        """Apply a live aggressive-trading toggle, writing ``self._aggressive`` as
+        well as ``config``.
         """
         nv = bool(new_aggressive)
         old = bool(self._aggressive)
@@ -1328,22 +1035,15 @@ class ScrummingBot(
         return {"applied": True, "old": old, "new": nv}
 
     def set_hedge_balance_live(self, new_hedge_balance: float) -> dict:
-        """Apply live hedge-balance cap change.
-
-        Runtime gap: __init__ snapshots config.hedge_balance into
-        self._hedge_bal AND self._hedge_balance_initial (search
-        `_hedge_bal:` in __init__) but ONLY if hedge_rebalance_active
-        is True at init. Config
-        setattr alone doesn't update either runtime attr.
+        """Apply a live hedge-balance cap change.
 
         Semantics:
-          - _hedge_balance_initial is the OPERATOR-CONFIGURED CAP on
-            the hedge reserve; bot refills up to this cap.
-          - _hedge_bal is the CURRENT drainable reserve; drains on
-            hedge spends, refills on scrum skims up to the cap.
-          - Raising the cap: new room to refill. _hedge_bal unchanged.
-          - Lowering the cap: no forced drain; reserve will simply not
-            refill above the new cap. _hedge_bal unchanged.
+          - _hedge_balance_initial is the operator-configured CAP on the
+            hedge reserve; the bot refills up to this cap.
+          - _hedge_bal is the CURRENT drainable reserve; it drains on
+            hedge spends and refills on scrum skims up to the cap.
+          - Raising or lowering the cap leaves _hedge_bal unchanged.
+
         """
         try:
             nv = float(new_hedge_balance)
@@ -1392,26 +1092,12 @@ class ScrummingBot(
     def _positive_observed_quantity(
         value: Any, label: str
     ) -> tuple[float | None, str | None]:
-        """Parse one observed money-path quantity, or say why it is unusable.
-
-        Both halves of an Extractor arrival are OBSERVED quantities --
-        USD that landed and units that landed -- and both are refused on
-        exactly the same four grounds. One parser keeps the two halves
-        from drifting apart, which is how a validated half and an
-        unvalidated half end up in the same write.
-
-        `float()` STILL RAISES ON A VALID `int`. `float(10 ** 400)` is
-        OverflowError, not ValueError, and the old two-member `except`
-        did not list it, so a caller-supplied huge integer raised
-        straight out of a documented fail-closed money path. It is
-        caught below with the other two.
-
-        The parameter is `Any` on purpose. Annotating `float` while the
-        body exists to reject `None` and `"x"` would be an annotation
-        that documents the opposite of the contract.
+        """Parse one observed money-path quantity, refusing anything that is not a
+        strictly positive finite int or float.
 
         Returns:
           (number, None) when usable, (None, reason) when refused.
+
         """
         if type(value) is not int and type(value) is not float:
             return None, (
@@ -1430,24 +1116,12 @@ class ScrummingBot(
 
     @staticmethod
     def _finite_state_number(value: Any, label: str) -> tuple[float | None, str | None]:
-        """Coerce one piece of the bot's OWN state, or say why it is unusable.
-
-        A DIFFERENT CONTRACT FROM `_positive_observed_quantity`, and the
-        difference is the point. An arrival must be strictly positive --
-        a zero-dollar arrival is not an arrival. A target of 0.0 and
-        holdings of 0.0 are ordinary, legal states of a bot that has not
-        bought yet, so this checks numeric-and-finite only. Reusing the
-        stricter parser here would refuse a healthy bot.
-
-        What the two share is that they RETURN the refusal instead of
-        raising. That is what lets every value the atomic block writes
-        be validated BEFORE the block opens, which is the whole of D1's
-        fix: a coercion that can raise must never sit between two
-        writes.
-
+        """Coerce one piece of the bot's own state, checking numeric-and-finite only
+        so that 0.0 is accepted.
 
         Returns:
           (number, None) when usable, (None, reason) when refused.
+
         """
         if type(value) is not int and type(value) is not float:
             return None, (
@@ -1464,22 +1138,11 @@ class ScrummingBot(
 
     @staticmethod
     def _sum_lot_units(lots: Any) -> tuple[float | None, str | None]:
-        """Total units the lot ledger holds, or say why it cannot be read.
-
-        The atomicity check reads this on BOTH sides of the arrival, so
-        it is the ledger's own witness rather than a restatement of
-        `_current_holdings`. A residual computed only from the two
-        scalars is algebraically zero and cannot falsify anything; a
-        residual that reads the lots back can.
-
-        Refuses instead of raising for the same reason as
-        `_finite_state_number`: the pre-block read must be able to stop
-        the arrival, and the post-block read must be able to report a
-        violation, and neither may throw on a money path.
-
+        """Total units the lot ledger holds, refusing instead of raising.
 
         Returns:
           (total_units, None) when readable, (None, reason) when not.
+
         """
         total = 0.0
         for _index, _lot in enumerate(lots):
@@ -1504,79 +1167,19 @@ class ScrummingBot(
     def apply_extractor_tranche_return(
         self, usd_value: Any, source: str, base_units: Any, ref: str = ""
     ) -> dict:
-        """Book base currency returned by a child Extractor Tranche.
+        """Book base currency returned by a child Extractor Tranche, lifting target
+        and anchor atomically.
 
-            "rather than have an immediate Base Currency to USD sell
-             fire this profit off as Surplus we want it protected by
-             lifting the Target Balance to contain it and then have the
-             received additional Base Currency to be distributed upward
-             for further gains in terms of USD"
-
-
-          holdings booked, target not lifted -> delta POSITIVE. The
-            header model says "If delta > 0 and delta_pct >= interval:
-            SCRUM (sell excess)", so the parent sells the child's gain.
-          target lifted, holdings not booked -> delta NEGATIVE. The
-            parent buys to close a gap that does not exist, spending
-            real USD on a phantom shortfall.
-
-
-            d(delta) = base_units * P * q_tick - usd_value
-
-        and since `usd_value = base_units * arrival_price * q_arr` by
-        construction, that is
-
-            d(delta) = base_units * (P * q_tick
-                                     - arrival_price * q_arr)
-
-        At any other USD price the arrival moves delta by the
-        mark-to-market of the units just booked -- precisely what the
-        same units would contribute had the parent bought them itself.
-        So the claim is that the arrival adds NO DELTA OF ITS OWN, not
-        that delta is frozen: containment neutralises the booking, and
-        the market still prices the position afterwards.
-
-
-          * Incrementing `_current_holdings` without appending a lot
-            breaks the invariant, and the next drift-down reconcile
-            rescales `_main_lots` and resets holdings (:14314-14334),
-            silently undoing the credit.
-          * Booking nothing at all is not neutral either. Units that
-            land on the exchange but are never attributed are refused
-            by the drift-UP policy (:14336-14369) -- "those units
-            belong to another bot, prior state, or operator" -- so the
-            child's gain would sit unclaimed forever.
-
-        This method owns both the scalar holdings write and the lot
-        append, synchronously, with nothing suspending between them. The
-        buy path splits the two across an await (scalar first, lot after
-        the await returns), which briefly exposes a false holdings/lots
-        invariant a concurrent tick can observe — so this method keeps
-        both halves rather than delegating one.
-
-        WHY `usd_value` IS AN OBSERVED ARRIVAL, NOT A COMPUTED PROFIT.
-        The caller passes what ACTUALLY LANDED in the balance. That is
-        already net of every fee the Extractor paid on both legs, so
-        this lift cannot be gross or net -- there is nothing to net.
-        Measure the arrival; do not compute the gain. Same exchange-truth
-        principle as `buy_safety`. `base_units` is the matching observed
-        quantity, so the lot's `initial_buy_price` is the two of them
-        put back into the shape `_main_lots` stores -- a quote-side
-        price -- and not a fabricated entry price.
-
-        WHY THIS IS NOT `_apply_fold_target_growth` (:2070). That helper
-        applies the per-cycle Growth Rate Cap (`max_target_growth_pct`,
-        default 1.0% of the cycle-open target -- issue #106 moved that
-        base off the anchor). A cap is WRONG here: a return larger
-        than the cap would be truncated, the uncontained remainder would
-        read as excess, and the parent would scrum exactly the amount
-        this method exists to protect. Containment is uncapped by
-        construction.
+        Args:
+          usd_value: USD that landed, already net of every fee the child paid.
+          source: short tag naming the child, for the log line.
+          base_units: base units that landed alongside it.
+          ref: optional reference recorded on the arrival lot.
 
         Returns:
-          {"applied": bool, ...}. On refusal nothing is mutated.
+          {"applied": bool, ...}. On refusal nothing is mutated. The arrival
+          adds no delta of its own and no growth cap applies.
 
-        Tests: tests/test_extractor_tranche_containment.py.
         """
         u, _why = self._positive_observed_quantity(usd_value, "usd_value")
         if u is None:
@@ -1703,12 +1306,12 @@ class ScrummingBot(
             "operator_initiated": False,
         }
 
-        # ---------------- ATOMIC ARRIVAL — DO NOT SPLIT ----------------
+        # ATOMIC ARRIVAL: four writes, nothing suspends between them.
         lots.append(_arrival_lot)
         self._current_holdings = _h_after
         self._target_balance = _t_after
         self._anchor_target_balance = _a_after
-        # -------------- END ATOMIC ARRIVAL — DO NOT SPLIT --------------
+        # END ATOMIC ARRIVAL
 
         try:
             self.config.target_balance = self._target_balance
@@ -1804,8 +1407,7 @@ class ScrummingBot(
         try:
             from src.core.signal_contract import emit as _et_emit
 
-            # Expectation 1: the target moved by EXACTLY the arrival. A
-            # cap or a partial write breaks it.
+            # The target moved by exactly the arrival.
             _et_emit(
                 "extractor.02.001.postcondition.tranche_contained",
                 actual=_target_usd_added,
@@ -1819,13 +1421,7 @@ class ScrummingBot(
                     "ref": ref,
                 },
             )
-            # Expectation 2: all four writes landed, each measured
-            # against the arrival. `actual` is the delta residual an
-            # operator reads; `ok` carries the four per-write terms and
-            # the two readability flags, so this record fails when ANY
-            # write is missing -- including the run where they are ALL
-            # missing, which every difference-based term reported as
-            # zero.
+            # ``ok`` carries the four per-write terms, so a missing write fails it.
             _et_emit(
                 "extractor.02.002.invariant.arrival_atomic",
                 actual=_delta_shift_usd,
@@ -1860,7 +1456,7 @@ class ScrummingBot(
                     "ref": ref,
                 },
             )
-        except Exception as _sup:  # noqa: BLE001,S110 - advisory
+        except Exception as _sup:  # noqa: BLE001,S110
             logger.debug(
                 "suppressed in %s: %s: %s",
                 "apply_extractor_tranche_return",
@@ -1868,10 +1464,7 @@ class ScrummingBot(
                 _sup,
             )
 
-        # EVERY REPORTED BALANCE IS THE READ-BACK, NOT THE VALUE THIS
-        # METHOD MEANT TO WRITE. Returning `_h_after` here would restate
-        # the intention and hide the one failure the read-back exists to
-        # expose; `_h_seen` is what the object actually holds now.
+        # Reported balances are read back from the object, not the values written.
         return {
             "applied": True,
             "mode": "contained",
@@ -1902,6 +1495,7 @@ class ScrummingBot(
 
         Returns:
           {"applied": True|False, "reason"?: str, ...}
+
         """
         if not isinstance(tranche_index, int):
             try:
@@ -2107,23 +1701,19 @@ class ScrummingBot(
         phantom_timeframes: Optional[list[str]] = None,
         lock_candle_count: Optional[int] = None,
     ) -> dict:
-        """Live-update phantom configuration. Called by the live-settings
+        """Live-update phantom configuration.
 
         Semantics:
-        - enable_phantoms: toggles the flag; if turning OFF while
-          phantoms are started, we leave existing phantoms running
-          (stopping them cleanly requires an async call that the GUI
-          thread cannot await) but set _phantoms_enabled=False so no
-          new phantoms spawn. Fully stopping requires a bot restart
-          until a proper async unwind path is added.
-        - phantom_timeframes: updated for the next phantom create pass.
-          Existing already-started phantoms keep running until bot
-          restart — this method does NOT forcibly remove or add them
-          mid-session to avoid state-race with the tick loop.
-        - lock_candle_count: applied to the TimeframeCoordinator
-          immediately (next lock installation uses the new value).
+          - enable_phantoms: toggles ``_phantoms_enabled``; turning it OFF
+            leaves running phantoms alive and only stops new ones spawning.
+          - phantom_timeframes: used by the next phantom create pass;
+            already started phantoms keep running.
+          - lock_candle_count: applied to the TimeframeCoordinator
+            immediately.
 
-        Returns a dict of what was applied plus any caveats.
+        Returns:
+          A dict of what was applied plus any caveats.
+
         """
         applied: dict = {}
         caveats: list[str] = []
@@ -2195,12 +1785,7 @@ class ScrummingBot(
         return self._scrum_target_mode
 
     async def _get_ticker(self, symbol: Optional[str] = None):
-        """Fetch a ticker through the shared MarketDataPool when wired,
-        else fall back to a direct ``self.exchange.get_ticker`` call.
-
-        Falls back to a direct fetch when ``self._data_pool`` is
-        unset (test harnesses, paper-trading without a manager).
-        """
+        """Fetch a ticker through ``_data_pool``, else direct from the exchange."""
         if symbol is None:
             symbol = self.config.symbol
         if self._data_pool is not None:
@@ -2235,11 +1820,7 @@ class ScrummingBot(
         return await self.exchange.get_ohlcv(symbol, timeframe, limit=limit)
 
     async def _get_balance(self, currency: str):
-        """Fetch a balance through the shared MarketDataPool when
-        wired, else fall back to a direct exchange call. Callers
-        that mutate the balance (post-trade paths) should also call
-        ``_invalidate_balance(currency)`` so the next read reflects
-        the change immediately."""
+        """Fetch a balance through ``_data_pool``, else a direct exchange call."""
         if self._data_pool is not None:
             try:
                 return await self._data_pool.get_or_fetch_balance(
@@ -2253,10 +1834,7 @@ class ScrummingBot(
         self,
         currency: Optional[str] = None,
     ) -> None:
-        """Force the next _get_balance for this (exchange, currency)
-        to re-fetch from the connector. Fire from post-trade paths
-        so the freshly-adjusted balance is visible to the next
-        gate/reconciliation call within the tick."""
+        """Force the next ``_get_balance`` for this exchange and currency."""
         if self._data_pool is None:
             return
         try:
@@ -2265,22 +1843,14 @@ class ScrummingBot(
             logger.debug("Bot %s balance invalidate failed: %s", self.bot_id, _inv_exc)
 
     async def _refresh_quote_to_usd(self) -> Optional[float]:
-        """Refresh the cached quote→USD rate.
+        """Refresh the cached quote→USD rate, at most once per 30s and 1.0 for
+        USD-stable quotes.
 
-        For USD-stable quotes (USD/USDC/USDT/etc.) this is 1.0 — no fetch
-        needed. For crypto quotes (ETH, BTC, SOL, ...) this fetches
-        ``{QUOTE}/USD`` ticker.last and caches the result. Throttled to
-        one fetch per 30s so it doesn't blow API quota — staleness of
-        a few seconds is tolerable for a slow-moving rate.
+        Returns:
+          The resolved rate, or ``None`` when the fetch failed and no cached
+          rate exists. On failure the cached rate is preserved and one
+          bot.log warning is emitted.
 
-        On fetch failure the cached rate is preserved (better than
-        falling back to 1.0, which would silently mis-evaluate Target
-        Balance for the entire tick). A single warning is emitted via
-        bot.log so the operator sees the degraded state once; subsequent
-        failures stay quiet to avoid spam.
-
-        Returns the resolved rate, or ``None`` if the fetch failed and
-        no cached rate exists.
         """
         quote = self.config.symbol.split("/")[-1].upper()
         if is_usd_stable_quote(quote):
@@ -2314,26 +1884,15 @@ class ScrummingBot(
         return self._quote_to_usd if self._quote_to_usd > 0 else None
 
     def _to_usd(self, quote_amount: float) -> float:
-        """Convert an amount in quote currency to its USD equivalent.
-
-        For USD-quoted pairs returns ``quote_amount`` unchanged. For
-        crypto-quoted pairs multiplies by the cached quote→USD rate.
-        """
+        """Convert a quote-currency amount to USD using ``_quote_to_usd``."""
         try:
             return float(quote_amount) * float(self._quote_to_usd or 1.0)
         except (TypeError, ValueError):
             return 0.0
 
     def _from_usd(self, usd_amount: float) -> float:
-        """Convert a USD amount into quote-currency units.
-
-        Used at trade-execution sites where the bot decides to spend
-        ``$X USD`` and must size the order in quote currency for the
-        exchange. For USD-quoted pairs returns ``usd_amount`` unchanged;
-        for crypto-quoted pairs divides by the quote→USD rate.
-
-        Returns 0.0 if the rate is unavailable or non-positive — caller
-        must check and refuse the trade.
+        """Convert a USD amount into quote-currency units, 0.0 when the rate is
+        unusable and the caller must check.
         """
         try:
             rate = float(self._quote_to_usd or 0)
@@ -2353,6 +1912,7 @@ class ScrummingBot(
         Returns dict:
             {"ok": bool, "reason": str, "sold_qty": float,
              "sold_usd": float, "fill_price": float}
+
         """
         if confirmation_token != "SELF-DESTRUCT":  # noqa: S105  # nosec B105
             try:
@@ -2680,25 +2240,17 @@ class ScrummingBot(
     def _update_opposing_hysteresis_state(
         self, delta: float, current_price: float
     ) -> None:
-        """Per-tick update of conditional opposing-direction hysteresis
-        arm/disarm state.
+        """Per-tick arm and disarm of the opposing-direction hysteresis state.
 
         Behavior:
-          • After a SCRUM (last_trade_side='SCRUM'): the FOLD-side gate
-            arms when delta crosses into negative territory; disarms
-            when delta returns non-negative. SCRUM-side stays
-            disarmed (no longer relevant — last trade was already a
-            SCRUM).
-          • After a FOLD (last_trade_side='FOLD'): symmetric — the
-            SCRUM-side gate arms when delta crosses into positive
-            territory; disarms when delta returns non-positive.
+          • After a SCRUM: the FOLD side arms when ``delta`` crosses
+            negative and disarms when it returns non-negative.
+          • After a FOLD: the SCRUM side arms when ``delta`` crosses
+            positive and disarms when it returns non-positive.
 
-        Reference price (`_hyst_ref_*_side`) is captured AT THE MOMENT
-        OF ARMING — it becomes the new pivot from which the opposing
-        price-distance requirement is measured. In a market bouncing
-        near a BB extreme, each fresh arming captures a fresh pivot,
-        so the gate "flickers on and off" (operator's words) tracking
-        the current swing.
+        ``_hyst_ref_*_side`` is captured at the moment of arming and becomes
+        the pivot the opposing price distance is measured from.
+
         """
         try:
             _px = float(current_price)
@@ -2786,15 +2338,7 @@ class ScrummingBot(
             self._hyst_ref_scrum_side = 0.0
 
     def _reset_opposing_hysteresis_after_fill(self) -> None:
-        """Called by every site that sets ``_last_trade_side`` after a
-        fresh fill. Resets both opposing-direction hysteresis
-        gates to disarmed with cleared pivot references. The next tick's
-        ``_update_opposing_hysteresis_state`` call will re-arm if the
-        Target Delta has crossed into opposing territory.
-
-        Sites: regular SCRUM fill, regular FOLD fill, manual-fire SCRUM,
-        manual-fire FOLD, self-destruct SCRUM. Centralized here so the
-        invariant 'fresh fill ⇒ both gates disarmed' is one-spot-bound."""
+        """Disarm both opposing-direction hysteresis states and clear their pivots."""
         self._hyst_armed_fold_side = False
         self._hyst_armed_scrum_side = False
         self._hyst_ref_fold_side = 0.0
@@ -2802,14 +2346,8 @@ class ScrummingBot(
 
     @property
     def position_value_usd(self) -> float:
-        """USD-equivalent of current holdings.
-
-        For USD-quoted pairs this is simply ``holdings * last_price``.
-        For crypto-quoted pairs (BTC/ETH, anything/BTC) it converts via
-        the cached quote→USD rate so comparisons against ``target_balance``
-        (which is always operator-stated USD) remain meaningful.
-
-        Returns 0.0 if no price is available (bot hasn't ticked yet).
+        """USD-equivalent of current holdings via the cached quote→USD rate, 0.0
+        without a price.
         """
         price = getattr(self, "_last_trade_price", 0.0) or self.stats.current_price
         if not price or price <= 0:
@@ -2822,20 +2360,14 @@ class ScrummingBot(
 
     @property
     def armed_action(self) -> Optional[str]:
-        """What action Manual Fire will take if pressed NOW.
-
-        Operator-stated rule: 'Positive [delta] = Scrum while Negative =
-        Fold.' Delta here is in USD: current_holdings_value - target_balance.
+        """What action Manual Fire will take if pressed now.
 
         Returns:
-            'scrum' — bot is above target, Manual Fire sells to rebalance
-            'fold'  — bot is below target, Manual Fire buys to rebalance
+            'scrum' — above target, Manual Fire sells to rebalance
+            'fold'  — below target, Manual Fire buys to rebalance
             None    — within the dust band (|delta| < 1% of target), or
                       price/holdings unavailable; Manual Fire is a no-op.
 
-        Dust band keeps the Fire button from falsely appearing "armed"
-        when the bot is effectively at target and small price noise
-        flips the sign tick-to-tick.
         """
         try:
             tgt = float(self._target_balance)
@@ -2879,13 +2411,14 @@ class ScrummingBot(
 
     @property
     def ceiling_ratio(self) -> Optional[float]:
-        """current_holdings_value / ceiling. None when ceiling disabled
-        or no price available.
+        """``current_holdings_value / ceiling``, None when the ceiling is disabled
+        or no price is available.
 
         Values:
             < 0.5  → plenty of runway, no taper
             0.5-1.0 → approaching ceiling, fold taper active
             >= 1.0 → at/above ceiling, fold hard-stopped
+
         """
         ceiling = self.position_ceiling_usd
         if ceiling is None or ceiling <= 0:
@@ -2902,17 +2435,13 @@ class ScrummingBot(
 
     @property
     def fold_rate_taper(self) -> float:
-        """Fold interval multiplier in [0.0, 1.0].
-
-        Operator Q2: "Slow fold rate — reduce interval size the closer
-        we get to ceiling."
+        """Fold interval multiplier in [0.0, 1.0], 1.0 when the ceiling is disabled.
 
         Taper schedule:
-            ratio < 0.5  → 1.0 (full rate)
+            ratio < 0.5   → 1.0 (full rate)
             ratio 0.5-1.0 → linear 1.0 → 0.1
-            ratio >= 1.0 → 0.0 (hard stop)
+            ratio >= 1.0  → 0.0 (hard stop)
 
-        When ceiling is disabled, always returns 1.0 (no taper).
         """
         ratio = self.ceiling_ratio
         if ratio is None:
@@ -2960,6 +2489,7 @@ class ScrummingBot(
             zero_balance_initial_entry: projected ≤ target_balance × (1 + tol)
             hedge_replenish: projected ≤ current_position + hedge_bal
         • Layer 2 — Smart Ceiling (when enabled): projected ≤ anchor × multiple
+
         """
         try:
             _cap_pct = float(getattr(self.config, "max_target_growth_pct", 1.0))
@@ -3049,21 +2579,7 @@ class ScrummingBot(
                 self._tick_skip = _base_skip
             self._tick_counter += 1
             if self._tick_counter < self._tick_skip and self._initialised:
-                # Still polling — but init tick always runs so we don't
-                # defer exchange connection + phantom setup.
-                #
-                # ── DIRECTIVE 2 EMITTER — the throttle, at its site ──
-                # This return is why "per-candle TA every tick" is false:
-                # measured on the live fleet, scrum_read_rate_min is 1 on
-                # 29 bots and 5 on 6, against a hardcoded tick_interval
-                # of 5.0, so _tick_skip is 12 for most of the fleet and
-                # 60 for the rest. Roughly 91% of ticks exit HERE.
-                #
-                # `bots_ticked` in the replay controller increments after
-                # tick() returns regardless, so it counted this exit
-                # identically to a full evaluation. Recording the exit
-                # where it happens makes the two separable without
-                # inferring anything.
+                # Still polling; the init tick always runs.
                 try:
                     from src.core.signal_contract import emit as _tk
 
@@ -3077,16 +2593,13 @@ class ScrummingBot(
                             "read_rate_min": self.config.scrum_read_rate_min,
                         },
                     )
-                except Exception as _sup:  # noqa: BLE001,S110 - advisory
+                except Exception as _sup:  # noqa: BLE001,S110
                     logger.debug(
                         "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
                     )
                 return
             self._tick_counter = 0
-            # The satisfied path. Emitted so silence is never ambiguous:
-            # a run with zero `tick.08.002.event.worked` records did
-            # not work, and a run with no records at all was not
-            # collected. Those must not look the same.
+            # The worked path, so a run with no records differs from no work.
             try:
                 from src.core.signal_contract import emit as _tk2
 
@@ -3095,7 +2608,7 @@ class ScrummingBot(
                     actual=True,
                     context={"bot_id": self.bot_id, "skip": self._tick_skip},
                 )
-            except Exception as _sup:  # noqa: BLE001,S110 - advisory
+            except Exception as _sup:  # noqa: BLE001,S110
                 logger.debug(
                     "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
                 )
@@ -3154,27 +2667,7 @@ class ScrummingBot(
         _delta_early = current_value - self._target_balance
         self._update_opposing_hysteresis_state(_delta_early, ticker.last)
 
-        # ================================================================
-        # MEM-258 DELTA-ZERO SHORT-CIRCUIT (FUND-SAFETY, Session 26).
-        # ================================================================
-        # Operator directive, verbatim:
-        #   "IF THE GOD DAMN FUCKING CURRENT BALANCE EQUAL TARGET BALANCE
-        #    NO SIGNAL LEAVES THE GOD DAMN PLATFORM. WHY THE FUCK ARE YOU
-        #    EVEN LOOKING FOR AN OPPORTUNITY WITHOUT A TARGET DELTA!!!!!!"
-        #
-        # Rule: if current_value is within the dust band of target, the bot
-        # EXITS THE TICK IMMEDIATELY. No TA evaluated. No opportunity sought.
-        # No buy or sell path considered. No fresh balance fetched downstream
-        # (which could generate a transient reading that might trigger an
-        # erroneous action). The bot stays parked until price moves the
-        # position far enough from target that action is meaningfully needed.
-        #
-        # Manual fire override (self._manual_fire_pending) still bypasses —
-        # operator-invoked action takes precedence over the parked state.
-        # Otherwise: parked.
-        # 0.1% of target, $0.01 floor. The dashboard's Ammo cell reads
-        # the same function, so the cell cannot promise a different
-        # park band from the one this tick applies.
+        # Within the dust band of target the tick returns; manual fire bypasses it.
         _dust_band_usd = at_target_dust_band(self._target_balance)
         if (
             not self._manual_fire_pending
@@ -3206,7 +2699,7 @@ class ScrummingBot(
                         "band": round(float(_dust_band_usd), 6),
                     },
                 )
-            except Exception as _sup:  # noqa: BLE001,S110 - advisory
+            except Exception as _sup:  # noqa: BLE001,S110
                 logger.debug(
                     "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
                 )
@@ -3571,39 +3064,6 @@ class ScrummingBot(
                 elif downtrend:
                     position_boost += 0.05
 
-        # v3.26.x (issue #104) -- POSITION-AWARE MOMENTUM SKEWS THE
-        # FLOOR. IT DOES NOT EDIT THE MEASUREMENT.
-        #
-        # This line read `eff_confidence += position_boost`.
-        #
-        # WHAT THE BLOCK IS FOR, from the record. DEVELOPMENT_CHRONICLE
-        # carries the BONK insight of 2026-04-14 that created it --
-        # "strong VX bullish AT the upper BB means the price is being
-        # PUSHED into resistance with force. Best time to sell, not
-        # worst." That is a statement about WHEN TO TRADE, and every
-        # comment above says the same: "boost scrum", "great time to
-        # scrum", "Bearish = good for scrum". It is a PRIORITY rule, and
-        # it was written into a confidence.
-        #
-        # IT ADDS NO MEASUREMENT. Every signal it reads -- vortex, macd,
-        # ichimoku, stochastic_rsi -- has already been counted by
-        # `VotingEngine` into `summary.consensus_confidence`, each with a
-        # weight of its own. This block re-reads those same votes and
-        # grants a FLAT bonus for where inside the band the price sits.
-        # A builder adds evidence; this re-spends evidence.
-        #
-        # AND IT OUTGREW WHAT IT ADJUSTED. Enumerating its own terms, the
-        # ceiling is +0.40 and the floor is -0.29. The product manual
-        # documents it as ±0.03 to ±0.20 -- deliberately under the 0.25
-        # confidence floor, so that it could not carry a reading over the
-        # gate by itself. The shipped arithmetic can, and the sweep
-        # observed +0.4000 against a largest measured consensus
-        # confidence of 0.3402.
-        #
-        # So the favour lands on the THRESHOLD now, together with the
-        # other two. See `_skewed_confidence_floor` and the
-        # `_eff_conf_floor` computation below.
-
         trend_hold = False
         trend_strength = 0.5
         if len(candles) >= 20:
@@ -3612,14 +3072,7 @@ class ScrummingBot(
             trend_strength = bull_count / len(recent)
             if trend_strength > _STRONG_TREND_MIN_BULL_SHARE:
                 trend_hold = True
-            # issue #133 unit 2 -- the fold-tranche count bound reads
-            # this AFTER the override below has cleared `trend_hold`,
-            # so it has to be the measurement and not the gate's
-            # verdict. A sell that fires because band travel lifted
-            # TREND-HOLD is a sell made during a strong trend, and that
-            # is the exception. Written INSIDE the 20-candle branch: a
-            # tick with fewer candles measured nothing, and the line
-            # below leaves the count at 0 for it.
+            # The measurement, not TREND-HOLD's verdict the override clears.
             self._last_trend_bull_candles = int(bull_count)
         else:
             self._last_trend_bull_candles = 0
@@ -3667,10 +3120,7 @@ class ScrummingBot(
             elif bb_result.near_lower:
                 bb_near = " NEAR LOWER"
 
-        # v3.26.x (issue #104) -- `+ BB 0.nn` READ AS AN ADDEND TO THE
-        # CONFIDENCE PRINTED BESIDE IT, and until this change it was one.
-        # Both favours now skew the FLOOR instead, so they are named as
-        # skews and the confidence stands alone as the measurement it is.
+        # Both favours skew the floor, so the confidence prints alone.
         _skew_note = ""
         if position_boost or bb_confidence_boost:
             _skew_note = f", floor skew {position_boost:+.2f} pos" + (
@@ -3723,50 +3173,8 @@ class ScrummingBot(
                     f"Folds/hedge/dist remain active per "
                     f"downside-protection invariant.",
                 )
-                break  # Highest active TF wins — don't double-log
+                break  # Highest active TF wins.
 
-        # =================================================================
-        # TRADE DECISION — Aligned with Simulator
-        # =================================================================
-        # SCRUM: delta > 0 + BULLISH TA → sell 100% delta → queue for fold
-        # FOLD:  fold_queue > 0 + BEARISH TA + price dropped → buy back
-        # DISTRIBUTE: dist_queue > 0 + BULLISH → sell excess
-        # =================================================================
-        # v3.13.8 MEM-191 / Chunk 7 — eff_confidence was hoisted above; here
-        # we add bb_confidence_boost (computed inside the BB/landing-strip
-        # block) to the already-position-boosted value. Previously this
-        # line did 'eff_confidence = summary.consensus_confidence + boost',
-        # which overwrote the position-aware adjustment from line 540.
-        # v3.26.x (issue #104) -- THE BB/LANDING-STRIP FAVOUR SKEWS THE
-        # FLOOR TOO. Same defect, same repair.
-        #
-        # This line read `eff_confidence += bb_confidence_boost`.
-        #
-        # WHY IT IS A FAVOUR AND NOT EVIDENCE. It is ONE-DIRECTIONAL --
-        # a detected pattern only ever raises the confidence, never
-        # lowers it -- and it raises the confidence used by BOTH
-        # `is_bullish` and `is_bearish` at once, while the pattern that
-        # granted it names ONE side in `bb_result.landing_strip_side`.
-        # A reading that names one direction but favours both is not a
-        # measurement of either. The landing-strip half is also already
-        # honoured as a hard override further down, where
-        # `landing_strip_side` sets `is_bullish` or `is_bearish` to True
-        # regardless of any confidence, so its contribution here only
-        # ever favoured a comparison that had already been decided.
-        #
-        # THE CEILING, DERIVED FROM SOURCE rather than from the tape.
-        # The landing-strip term is `0.15 + consolidation_strength *
-        # 0.20` and `consolidation_strength` is bounded to 1.0 twice in
-        # `bb_proximity.py`, so that term tops out at +0.35. The
-        # tightening term is `detect_landing_strip_v2`'s
-        # `confidence_boost`, `0.08 + 0.17 * length_factor *
-        # tightness_factor`, both factors bounded to 1.0, so it tops out
-        # at +0.25. They are independent detections and both can fire on
-        # one reading, so the sum reaches +0.60 -- more than twice the
-        # floor it was compared against, and well past the +0.15 to
-        # +0.35 the product manual documents. The 406-tablet sweep only
-        # reached +0.1437, so this ceiling is derived and NOT observed;
-        # it is stated that way on purpose.
         if bb_override_direction and eff_direction == SignalDirection.NEUTRAL:
             eff_direction = bb_override_direction
 
@@ -3841,32 +3249,8 @@ class ScrummingBot(
             and _delta_available
             and delta < 0
         )
-        # v3.26.x (issue #102) — THE PRIORITY ARM RELAXES THE FLOOR. IT
-        # DOES NOT EDIT THE MEASUREMENT, AND IT CAN STILL REFUSE.
-        #
-        # v3.15.64 wrote `eff_confidence += 0.30` here and then compared
-        # the result against a 0.25 floor. That is `conf >= -0.05` on a
-        # quantity bounded [0, 1]: the confidence conjunct had no false
-        # case, so the arm was the hard override the operator refused by
-        # name on 2026-04-26. The addition also travelled — nine sites
-        # below print `eff_confidence`, and they printed the inflated
-        # number rather than the measured one.
-        #
-        # Both halves are the same mistake: a favour was written as an
-        # edit to a measurement. It is now written as what the operator
-        # called it, a prioritisation, and it lands on the THRESHOLD.
-        # `_BB_PRIORITY_CONFIDENCE_FLOOR` carries the derivation and the
-        # reason the relaxation is proportional rather than subtractive.
         _bb_priority_arm = _bb_priority_scrum_skew or _bb_priority_fold_skew
-        # v3.26.x (issue #104) -- ALL THREE FAVOURS, IN ONE PLACE, ON THE
-        # THRESHOLD. `position_boost` and `bb_confidence_boost` used to
-        # be added to `eff_confidence` above; the BB-priority skew used
-        # to be added here. They COMPOUND -- all three are computed on
-        # every tick from the same reading, and the 406-tablet sweep
-        # measured both of the first two positive together on 3 readings
-        # and their sum past the floor that judged them on 73. Summing
-        # them here keeps the MAGNITUDE of the favour exactly what the
-        # added form gave, and changes only what it is applied to.
+        # All three favours sum into one skew applied to the floor.
         _ta_conf_skew = position_boost + bb_confidence_boost
         if _bb_priority_arm:
             _ta_conf_skew += _BB_PRIORITY_SKEW
@@ -4726,43 +4110,7 @@ class ScrummingBot(
                 f"higher-TF BEARISH bias ({_bear_w:.2f} vs {_bull_w:.2f})",
             )
 
-        # ═══════════════════════════════════════════════════════════════
-        # v3.13.8 MEM-187 / Chunk 3 — HEDGE REBALANCE
-        # ═══════════════════════════════════════════════════════════════
-        #
-        # Separate reserve buys during delta depletion. When the bot is
-        # below target (delta<0), a bearish candle is still falling, and
-        # price is in the lower BB region (bb_pos<0.40), deploy half the
-        # hedge reserve to buy the dip. Replenished later from fold
-        # profit (8% recycle, see Chunk 3 block above inside fold path).
-        #
-        # Ported from RAIntSimBat.py lines 2144-2159. Gap threshold: >= 1% of
-        # target. Hedge buys append a new lot to _main_lots at current
-        # fill price (MEM-171 compliance — the hedge buy's cost basis
-        # becomes its future fold floor).
-        #
-        # Not gated by phantom lock or bb_midline_gate — hedge is downside
-        # protection and must work in bearish regimes by design.
-        #
-        # THE GAP IS RE-READ HERE AND `delta` IS NOT USED. Issue #133
-        # unit 6, operator rule: "when a buy is triggered, tranched
-        # funds are considered first and are spent". They are — the fold
-        # above runs first — but `delta` was measured at :9173, BEFORE
-        # it, and the fold moves both of that subtraction's operands:
-        # `_execute_buy` credits `_current_holdings` and
-        # `_apply_fold_target_growth` raises `_target_balance`. Sizing
-        # the reserve on the stale figure buys the same deficit twice,
-        # so the tranche dollars bought the bot nothing and it paid two
-        # fees instead of one. MEASURED on a 400-candle replay, one
-        # tick, seed 20260825: gap $5.0627, the fold spent $1.0070 of
-        # tranche capital and grew the target $0.0990, leaving $4.1617 --
-        # and the reserve took $5.0955. See
-        # tests/test_hedge_reserve_reads_the_gap_the_fold_left.py.
-        #
-        # Spelled exactly as the tick's own `current_value` at :8188 --
-        # holdings x this tick's price x quote->USD. `position_value_usd`
-        # is NOT used: it reads `_last_trade_price`, which the fold above
-        # has just overwritten with its own fill.
+        # Re-read after the fold above moved ``_current_holdings`` and the target.
         _hedge_gap_usd = self._target_balance - (
             self._current_holdings * ticker.last * float(self._quote_to_usd or 1.0)
         )
@@ -4845,33 +4193,17 @@ class ScrummingBot(
         self._last_price = ticker.last
 
     async def _check_detonation_trigger(self, ticker) -> bool:
-        """Check higher-TF signal for detonation trigger.
+        """Check the higher-timeframe signal for a detonation trigger, edge-triggered
+        and rate-limited to ``_DETONATION_CHECK_INTERVAL_S``.
 
-        Edge-triggered: fires only on transition from not-bullish-or-
-        low-conf to BULLISH+>=`detonation_confidence_min`. A sustained
-        bull run that stays above threshold detonates ONCE, not every
-        hour.
-
-        The edge latch is persisted state, so the rule holds across a
-        restart as well as within one process. It expires when a whole
-        detonation-timeframe candle closed with no completed check: that
-        gap left the run unobserved, so the next check evaluates fresh.
-        The floor is `_DETONATION_LATCH_MIN_TTL_S`.
-
-        Rate-limited to one check per `_DETONATION_CHECK_INTERVAL_S`
-        (higher TF candles close slowly; no reason to burn API quota
-        faster). The rate limit also survives a restart, so a relaunch
-        loop re-reads the tape at the same cadence a running bot does.
-
-        Additional gates:
-          - detonation_enabled must be True
-          - current_value must be above anchor (nothing to harvest
-            if bot is below its anchor)
+        Requires:
+            ``detonation_enabled``, a current value above the anchor, and
+            BULLISH at or above ``detonation_confidence_min``. The latch and
+            the rate limit are persisted state that survives a restart.
 
         Returns:
-            True if trigger fired this call (caller should execute
-                 detonation immediately);
-            False otherwise.
+            True if the trigger fired this call, False otherwise.
+
         """
         if not getattr(self.config, "detonation_enabled", False):
             return False
@@ -4892,12 +4224,7 @@ class ScrummingBot(
         self._detonation_last_check_ts = now
 
         tf = getattr(self.config, "detonation_timeframe", "1d") or "1d"
-        # An unobserved gap of one whole detonation candle retires the
-        # latch. `elapsed >= latch_ttl` is sufficient for at least one
-        # full candle having closed unseen, whatever the candle
-        # boundary. A shorter gap keeps the latch, including across a
-        # candle boundary: a bull run is continuous bullishness and does
-        # not restart when the candle does.
+        # One unobserved detonation candle retires the latch; a shorter gap keeps it.
         latch_ttl = max(
             float(TIMEFRAME_SECONDS.get(tf, TIMEFRAME_SECONDS["1d"])),
             _DETONATION_LATCH_MIN_TTL_S,
@@ -4969,41 +4296,20 @@ class ScrummingBot(
         return fired
 
     def clear_stack_tranches(self, reason: str = "operator") -> dict:
-        """Discard this bot's standing Stack tranches. Trades nothing.
+        """Discard this bot's standing Stack tranches, trading nothing.
 
-        issue #133 unit 7, the operator's rule of 2026-08-25: "Either
-        side of the ladder should basically be functioning the same way
-        but travelling down (Fold) or up (Stack)."
-        ``clear_fold_tranches`` emptied one side and the other had no
-        counterpart, so a control that exists on one side and not the
-        other was the defect. Same verb, opposite direction.
+        Kept:
+            A Visible-mode tranche with ``status == "pending"`` and an
+            ``order_id`` holds a resting LIMIT SELL, so it is kept and counted.
 
-        ONE REFUSAL, AND IT IS THE DESPAWN SWEEP'S. A Visible-mode
-        tranche with ``status == "pending"`` and an ``order_id`` holds a
-        resting LIMIT SELL on the exchange. Dropping THAT record would
-        leave a live order on the book with nothing tracking it, which is
-        the single way this method could strand something. Such a record
-        is KEPT and counted. The fold ledger needs no such rule because a
-        fold tranche owns no order.
+        Untouched:
+            Holdings, ``_main_lots``, the fold queue, wire credits, the target
+            and the anchor. Every discarded record moves ``_stack_discarded``
+            and nothing else, keeping ``created - discarded == standing`` true.
 
-        COUNTER SEMANTICS, MIRRORED. Every discarded record moves
-        ``_stack_discarded`` and nothing else. There is no closed counter
-        on this ledger to conflate it with: filling a stack tranche sets
-        ``status`` and LEAVES THE RECORD LISTED, so
-        ``created - discarded == standing`` is the whole reconciliation
-        here, and this method keeps it true. Neither stack counter has a
-        ``stats`` mirror, so unlike ``clear_fold_tranches`` this has no
-        second copy to write.
+        Returns:
+            A report of what was discarded. Never raises.
 
-        WHAT THIS DOES NOT TOUCH: holdings, ``_main_lots``, the fold
-        queue, parked wire credits, the target and the anchor. Nothing is
-        sold, nothing is bought, and no order is placed or cancelled.
-
-        NO LIVE BLAST RADIUS TODAY. ``stack_mode`` reads False on all 38
-        live bots and every one of them stores zero stack tranches, so
-        this returns an empty report on the fleet as it stands.
-
-        Returns a report of what was discarded. Never raises.
         """
         _keep: list[dict] = []
         _drop: list[dict] = []
@@ -5013,10 +4319,7 @@ class ScrummingBot(
             else:
                 _drop.append(_t)
 
-        # A REFUSED SIZE IS COUNTED, NOT DROPPED, which is the rule the
-        # Stack panel already totals its own sizes under. Skipping an
-        # unreadable record reports a total below the truth with nothing
-        # on the report saying so.
+        # An unreadable size is counted in ``_size_unreadable``, not skipped.
         _size = 0.0
         _size_unreadable = 0
         for _t in _drop:
@@ -5070,7 +4373,7 @@ class ScrummingBot(
                     f"unchanged.{_kept_note}{_unreadable_note}"
                 ),
             )
-        except Exception as exc:  # noqa: BLE001 - diagnostic best-effort
+        except Exception as exc:  # noqa: BLE001
             logger.debug("clear_stack_tranches: log emit failed: %s", exc)
 
         logger.info(
@@ -5086,45 +4389,20 @@ class ScrummingBot(
         return report
 
     def clear_stack_lifetime_counters(self, reason: str = "operator") -> dict:
-        """Reset the two stack-tranche lifetime counters to zero.
+        """Reset ``_stack_created`` and ``_stack_discarded`` to zero.
 
-        issue #133 unit 7. Unit 3 gave the fold ledger
-        ``clear_lifetime_tranche_counters``; this side carried two
-        counters and no control of its own, so the Stack panel's fill
-        ratio could not be reset to the new standard while the Fold
-        panel's cycle ratio could.
+        Also sets:
+            ``_stack_counters_reset_ts``, so a cleared bot is distinguishable
+            from one that never opened a stack. A bot whose two counters
+            already read zero is left alone.
 
-        TWO COUNTERS, NOT FOUR, and the two the fold side has that this
-        one lacks are absent for a stated reason rather than overlooked.
-        ``closed`` is structurally zero here -- filling a stack tranche
-        sets ``status`` and leaves the record listed -- and nothing on
-        this ledger is dropped for being unreadable, so there is no
-        malformed sub-count. ``created - discarded == standing`` is the
-        whole reconciliation, and both of its terms are cleared.
+        Untouched:
+            The standing ``_stack_tranches``, the fold counters, wire credits,
+            holdings, lots and the target.
 
-        A SEPARATE METHOD, NOT A SECOND JOB FOR THE FOLD ONE. Widening
-        that method would make one click clear both ledgers, and the
-        operator can want one side's record reset with the other's
-        intact. Same reasoning that made the fold counter clear a third
-        button rather than a third job for the tranche clear.
+        Returns:
+            A report of the two values destroyed. Never raises.
 
-        THE RESET STAMP IS NOT A DECORATION, for the reason the fold
-        stamp is not. The Stack panel prints "no stacks opened yet"
-        whenever ``created`` reads 0, and on a cleared bot that sentence
-        is false. ``_stack_counters_reset_ts`` is what tells the two
-        zeroes apart.
-
-        WHAT THIS DOES NOT TOUCH: the standing ``_stack_tranches``, the
-        four fold counters and their own stamp, ``_pending_wire_credits``
-        and its ledger, and every holding, lot, cost basis and target.
-        This clears counters, not inventory. Neither counter has a
-        ``stats`` mirror, so there is no second copy to write.
-
-        A BOT WHOSE TWO COUNTERS ARE ALREADY ZERO IS LEFT ALONE, stamp
-        included, so a bot that genuinely never opened a stack keeps
-        saying so.
-
-        Returns a report of the two values destroyed. Never raises.
         """
         _before = {
             "created": int(as_finite_float(getattr(self, "_stack_created", 0)) or 0.0),
@@ -5163,7 +4441,7 @@ class ScrummingBot(
                     f"stack tranche(s) remain in the ledger."
                 ),
             )
-        except Exception as exc:  # noqa: BLE001 - diagnostic best-effort
+        except Exception as exc:  # noqa: BLE001
             logger.debug("clear_stack_lifetime_counters: log emit failed: %s", exc)
 
         logger.info(
@@ -5184,19 +4462,13 @@ class ScrummingBot(
         summary: Optional[VotingSummary] = None,
         origin: str = "scrum",
     ) -> int:
-        """Split a SCRUM decision into Stack tranches instead of firing
-        one immediate sell. Populates `self._stack_tranches`. Returns
-        the number of tranches created (>=1).
+        """Split a SCRUM decision into Stack tranches instead of one immediate sell.
 
-        `origin` names WHAT OPENED THIS STACK and is recorded on every
-        tranche it builds. "scrum" is the intercept in `_execute_sell`;
-        "fold" is the item-7 spawn in `_execute_buy`, whose ladder
-        anchor is the price a fold actually filled at. It changes no
-        arithmetic -- both origins build the same ascending sell ladder
-        through the same `stack_math` call -- but a tranche that cannot
-        say which side of the pair created it is not a record, and the
-        line this method emits said "from scrum" whoever called it.
-        fire on price crossing via the invisible reconciler."""
+        Returns:
+            The number of tranches created (>=1). Populates
+            ``self._stack_tranches`` and records ``origin`` on every tranche.
+
+        """
         from .stack_math import (
             split_scrum_into_tranches,
         )
@@ -5206,12 +4478,6 @@ class ScrummingBot(
         min_opposing_pct = _interval + _fee
 
         n_target = int(getattr(self.config, "stack_tranche_count_target", 3) or 3)
-        # THE FIELD IS `split_distance`, declared at bot_container.py:350.
-        # `split_distance_pct` is on no bot and on no schema, so this read
-        # took its 1.0 fallback on every ladder and the operator's Split
-        # Distance setting reached nothing. All 38 live bots store 1.0, so
-        # the fallback and the setting agree today and the ladders do not
-        # move; the setting starts working the moment one is changed.
         split_dist = float(getattr(self.config, "split_distance", 1.0) or 1.0)
         spacing = str(getattr(self.config, "stack_spacing_mode", "linear") or "linear")
         min_order = float(
@@ -5324,16 +4590,18 @@ class ScrummingBot(
         return len(tranches)
 
     async def _reconcile_stack_tranches_visible(self) -> int:
-        """Visible-mode Stack reconciliation.
+        """Visible-mode Stack reconciliation, once per tick.
 
-        Once per tick, cross-reference `_stack_tranches` order_ids against
-        the exchange's list of currently-open orders. Any tranche whose
-        order_id no longer appears open is assumed filled (or cancelled
-        externally) — fetch the terminal order state to disambiguate,
-        update status, capture fill price.
+        Cross-references:
+            ``_stack_tranches`` order_ids against the exchange's open orders,
+            fetching the terminal state of any that no longer appear, then
+            updating status and fill price.
 
-        No-op when not visible mode, no pending tranches, stack_mode off,
-        or exchange lacks get_open_orders."""
+        Returns:
+            0 when not visible mode, when there are no pending tranches, when
+            stack_mode is off, or when the exchange lacks get_open_orders.
+
+        """
         if self._invisible:
             return 0
         if not getattr(self.config, "stack_mode", False):
@@ -5413,22 +4681,14 @@ class ScrummingBot(
         return settled
 
     async def _reconcile_stack_tranches_invisible(self, current_price: float) -> int:
-        """STAGE ONE of the two-stage Stack rule: a crossed price
-        threshold ACTIVATES a tranche. It does not spend it.
+        """Stage one of the two-stage Stack rule: a crossed price threshold
+        ACTIVATES a tranche without spending it.
 
-        Spending is `_spend_activated_stack_tranches`, inside the chain's
-        should_fire block.
+        Returns:
+            The number of tranches newly activated this tick. Activation is
+            sticky and ``status`` stays "pending", so the ledger's three
+            states are unchanged; ``_spend_activated_stack_tranches`` spends.
 
-        ACTIVATION IS STICKY, and deliberately. The operator separated
-        "activates" from "is spent"; re-testing the threshold at spend
-        time would AND the two conditions into a single instant and
-        silently de-activate a tranche whose price retraced before the
-        chain authorised anything. `status` stays "pending" throughout, so
-        the ledger's three states (pending / filled / cancelled) and every
-        reader of them are unchanged -- activation is a separate flag on
-        the same entry, not a fourth state.
-
-        Returns the number of tranches NEWLY activated this tick.
         """
         if not self._invisible:
             return 0
@@ -5472,37 +4732,19 @@ class ScrummingBot(
         current_price: float,
         summary: Optional[VotingSummary] = None,
     ) -> int:
-        """STAGE TWO: spend the tranches the price threshold already
-        activated, now that the trading condition has manifested.
+        """Stage two: spend the tranches the price threshold already activated.
 
-        CALLED FROM ONE PLACE -- inside `tick`'s
-        `if _scrum_chain_result.should_fire:` branch, immediately after
-        `self._scrum_chain.evaluate(_scrum_ctx)`. Every gate the chain
-        owns has therefore passed on THIS tick's candles and this tick's
-        price, and every pre-chain return that ends a tick has already
-        been survived. A tranche can no longer be spent on a tick the bot
-        refused to trade on, nor on one where it never reached a decision.
+        Args:
+          current_price: this tick's ``ticker.last``, not the tranche's
+                         threshold, because invisible mode sells at market.
+          summary: the live vote that authorised the sell; a tranche's
+                   ``open_confidence`` and ``open_direction`` are used only
+                   when no live vote is supplied.
 
-        THE TRANCHE SURVIVES A REFUSAL, and there is no refusal branch
-        here to do it: refusal is expressed by NOT CALLING this method.
-        The tranche keeps `status == "pending"` and `activated == True`,
-        so the next authorised tick spends it. Dropping an activated
-        tranche on a refusal would be the same family of defect as
-        spending it on one, pointed the other way.
+        Returns:
+          The number of tranches spent this tick. A tranche not spent keeps
+          ``status == "pending"`` and ``activated == True``.
 
-        `current_price` is this tick's `ticker.last`, NOT the tranche's
-        threshold. Invisible mode sells at MARKET, and `_execute_sell`
-        measures its opposing-hysteresis and Verify-Hit gates against the
-        price it is handed; handing it a threshold recorded on an earlier
-        tick would measure both against a price that no longer exists.
-
-        `summary` is the LIVE `VotingSummary` the chain just evaluated,
-        which is the vote that authorised this sell. The tranche's
-        `open_confidence` / `open_direction` are used only when no live
-        vote is supplied -- they record what opened the Stack, and are
-        never authority to close it.
-
-        Returns the number of tranches spent this tick.
         """
         if not self._invisible:
             return 0
@@ -5581,10 +4823,7 @@ class ScrummingBot(
         return spent
 
     def memorize_to_grid(self) -> list[dict]:
-        """
-        Convert memorised scrumming trades into grid-style buy/sell pairs
-        with organic/random price levels from actual trade history.
-        """
+        """Convert memorised scrumming trades into grid-style buy/sell pairs."""
         if not self._memorised_trades:
             return []
 
@@ -5631,7 +4870,7 @@ class ScrummingBot(
         return abs(lots_sum - self._current_holdings) <= tol
 
     def _main_lots_summary(self) -> dict:
-        """Human-readable snapshot of the tranche-gate state for debugging."""
+        """Snapshot of the lot and tranche counters for debugging."""
         return {
             "main_lots_count": len(self._main_lots),
             "main_lots_units_sum": sum(l["units"] for l in self._main_lots),
@@ -5670,8 +4909,11 @@ class ScrummingBot(
         summary: Optional[VotingSummary] = None,
         path: str = "",
     ) -> int:
-        """A filled FOLD spawns the Stack ladder above it. Returns how
-        many Stack tranches were created, 0 when none were.
+        """A filled FOLD spawns the Stack ladder above it.
+
+        Returns:
+            How many Stack tranches were created, 0 when none were.
+
         """
         if path not in ("fold_rebuy", "manual_tranche_fire"):
             return 0
@@ -5722,10 +4964,10 @@ class ScrummingBot(
     def open_extractor_tranches(self) -> list[dict]:
         """List the Extractor Tranches held against this bot's asset.
 
-        Returns an empty list when no manager is attached or no child
-        matches -- which is every bot the operator runs without an
-        Extractor. A child that raises is logged and skipped, so one bad
-        child cannot blind the parent to the rest.
+        Returns:
+            An empty list when no manager is attached or no child matches; a
+            child that raises is logged and skipped.
+
         """
         manager = getattr(self, "_bot_manager", None)
         if manager is None:
