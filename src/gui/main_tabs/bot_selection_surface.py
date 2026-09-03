@@ -25,6 +25,7 @@ package imports Qt in its ``__init__``.
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any, Iterable, Optional
 
 logger = logging.getLogger("acervator.gui.bot_selection_surface")
@@ -57,6 +58,27 @@ SELECTION = {
     "reanchor_blocks_signals": REANCHOR_BLOCKS_SIGNALS,
     "select_for_bot_blocks_signals": SELECT_FOR_BOT_BLOCKS_SIGNALS,
 }
+
+
+def row_names(bot_ids: Any) -> list:
+    """The fleet ids as a list, empty when bot_ids is not a list or tuple."""
+    if isinstance(bot_ids, (list, tuple)):
+        return list(bot_ids)
+    return []
+
+
+def row_indices(filled_rows: Any) -> list:
+    """Every finite row number in filled_rows, sorted, without repeats or flags."""
+    if not isinstance(filled_rows, (list, tuple)):
+        return []
+    found = set()
+    for one in filled_rows:
+        if isinstance(one, bool) or not isinstance(one, (int, float)):
+            continue
+        if not math.isfinite(one):
+            continue
+        found.add(one)
+    return sorted(found)
 
 
 def target_row(bot_id: Any, bot_ids: Iterable[Any]) -> Optional[int]:
@@ -111,7 +133,7 @@ def reanchor_plan(
     row = target_row(previous_bot_id, bot_ids)
     if row is not None:
         reads.append([READ_ANCHOR_ITEM, row, ANCHOR_COLUMN])
-        if row not in set(filled_rows or ()):
+        if row not in set(row_indices(filled_rows)):
             row = None
     calls: list[TableCall] = [[CLEAR_SELECTION]]
     if row is None:
@@ -141,7 +163,7 @@ def select_for_bot_plan(
     if row is None:
         return build_plan(SELECT_FOR_BOT, None, SELECT_FOR_BOT_BLOCKS_SIGNALS, [], [])
     reads: list[TableCall] = [[READ_ANCHOR_ITEM, row, ANCHOR_COLUMN]]
-    if row not in set(filled_rows or ()):
+    if row not in set(row_indices(filled_rows)):
         return build_plan(
             SELECT_FOR_BOT, None, SELECT_FOR_BOT_BLOCKS_SIGNALS, reads, []
         )
@@ -164,18 +186,19 @@ def build_view_model(
     An action the surface does not name answers a plan with no calls, so
     an unknown request cannot move the highlight.
     """
-    rows = list(bot_ids or [])
+    rows = row_names(bot_ids)
+    filled = row_indices(filled_rows)
     if action == REANCHOR:
-        plan = reanchor_plan(bot_id, rows, selected_bot_id, filled_rows)
+        plan = reanchor_plan(bot_id, rows, selected_bot_id, filled)
     elif action == SELECT_FOR_BOT:
-        plan = select_for_bot_plan(bot_id, rows, filled_rows)
+        plan = select_for_bot_plan(bot_id, rows, filled)
     else:
         logger.warning("bot selection action not recognised: %r", action)
         plan = build_plan(action, None, False, [], [])
     return {
         "selection": dict(SELECTION),
         "bot_ids": rows,
-        "filled_rows": sorted(set(filled_rows or ())),
+        "filled_rows": filled,
         "plan": plan,
     }
 
@@ -187,10 +210,11 @@ def view_model(params: dict) -> dict:
     ``filled_rows`` from the request parameters. The surface holds no
     state between calls because the Qt helpers hold none.
     """
+    asked = params if isinstance(params, dict) else {}
     return build_view_model(
-        params.get("action", ""),
-        params.get("bot_id", ""),
-        params.get("bot_ids"),
-        params.get("selected_bot_id", ""),
-        params.get("filled_rows"),
+        asked.get("action", ""),
+        asked.get("bot_id", ""),
+        asked.get("bot_ids"),
+        asked.get("selected_bot_id", ""),
+        asked.get("filled_rows"),
     )
