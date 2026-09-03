@@ -2629,12 +2629,12 @@ def test_the_low_colour_has_three_equal_channels_and_is_compared_as_text():
 
 def test_the_high_and_mid_colours_would_report_a_channel_swap():
     """Every colour in the ramp is grey, so no swap could ever show."""
-    for named in ("SCORE_HIGH_COLOR", "SCORE_MID_COLOR", "NEW_BOT_COLOR"):
-        written = getattr(surface, named)
+    for constant in ("SCORE_HIGH_COLOR", "SCORE_MID_COLOR", "NEW_BOT_COLOR"):
+        written = getattr(surface, constant)
         red, green, blue = channels(written)
-        assert not red == green == blue, (named, written)
+        assert not red == green == blue, (constant, written)
         swapped = "#" + blue + green + red
-        assert canonical(swapped) != canonical(written), named
+        assert canonical(swapped) != canonical(written), constant
 
 
 def test_the_three_ramp_colours_are_different_from_each_other():

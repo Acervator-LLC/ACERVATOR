@@ -195,7 +195,9 @@ def test_the_engine_the_page_uses_runs_this_module(js: JsRuntime):
 def test_the_engine_check_reports_a_module_body_it_cannot_parse(js: JsRuntime):
     engine = js.engine_of()
     engine.evaluate("var window = this;")
-    broken = engine.evaluate("(function (global) { var = ; })(window);", MODULE_PATH.name)
+    broken = engine.evaluate(
+        "(function (global) { var = ; })(window);", MODULE_PATH.name
+    )
     assert broken.isError(), "the engine accepted a broken module body"
     whole = engine.evaluate(MODULE_SOURCE, MODULE_PATH.name)
     assert not whole.isError(), whole.toString()
@@ -215,7 +217,9 @@ def test_the_module_is_registered_and_runs_after_its_shared_pieces():
 
 def test_the_missing_dependency_check_would_see_the_module_absent():
     """`runs_after` reports false rather than crashing when a name is absent."""
-    assert runs_after(["shared_widgets.js"], MODULE_PATH.name, "header_strip.js") is False
+    assert (
+        runs_after(["shared_widgets.js"], MODULE_PATH.name, "header_strip.js") is False
+    )
     assert runs_after(load_order(), UNKNOWN_NAME, "header_strip.js") is False
 
 
@@ -223,12 +227,16 @@ def test_the_missing_dependency_check_would_see_the_module_absent():
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
-def test_every_field_the_surface_publishes_reaches_the_module(js: JsRuntime, state: str):
+def test_every_field_the_surface_publishes_reaches_the_module(
+    js: JsRuntime, state: str
+):
     payload = built(state)
     js.push(payload)
     named = declared_fields(js)
     missing = sorted(set(payload) - set(named))
-    assert not missing, f"{len(missing)} published fields the module never names: {missing}"
+    assert (
+        not missing
+    ), f"{len(missing)} published fields the module never names: {missing}"
     extra = sorted(set(named) - set(payload))
     assert not extra, f"the module names fields the surface has none of: {extra}"
     for name in named:
@@ -239,9 +247,9 @@ def test_a_missing_field_is_reported_by_the_whole_payload_check(js: JsRuntime):
     payload = built("plain")
     del payload["reason_text"]
     found = js.push(payload)
-    assert [
-        one["field"] for one in found["faults"] if one["fault"] == "missing"
-    ] == ["reason_text"]
+    assert [one["field"] for one in found["faults"] if one["fault"] == "missing"] == [
+        "reason_text"
+    ]
     assert "reason_text" in declared_fields(js)
 
 
@@ -284,9 +292,10 @@ def test_the_amount_row_carries_the_bases_symbol_not_a_recomputed_one(js: JsRunt
     """The browser must never re-derive the base currency from the symbol."""
     payload = state_payload(symbol="BONK/USD", amount_asset=7.0)
     js.push(payload)
-    assert js.called("detailRowValue", "amount_asset") == payload["detail_row_values"][
-        "amount_asset"
-    ]
+    assert (
+        js.called("detailRowValue", "amount_asset")
+        == payload["detail_row_values"]["amount_asset"]
+    )
     assert "BONK" in js.called("detailRowValue", "amount_asset")
 
 
@@ -294,9 +303,10 @@ def test_the_after_this_buy_row_is_the_surfaces_own_arithmetic(js: JsRuntime):
     for state in ("plain", "negative", "very_large", "zero_price"):
         payload = built(state)
         js.push(payload)
-        assert js.called("detailRowValue", "after_usd") == payload["detail_row_values"][
-            "after_usd"
-        ]
+        assert (
+            js.called("detailRowValue", "after_usd")
+            == payload["detail_row_values"]["after_usd"]
+        )
 
 
 def test_the_reason_text_the_module_answers_is_the_dialogs_own(js: JsRuntime):
@@ -377,7 +387,9 @@ def test_a_payload_that_is_not_an_object_is_reported_not_thrown(js: JsRuntime):
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
-def test_no_word_this_screen_draws_carries_an_unescaped_tag_fault(js: JsRuntime, state: str):
+def test_no_word_this_screen_draws_carries_an_unescaped_tag_fault(
+    js: JsRuntime, state: str
+):
     payload = built(state)
     js.push(payload)
     markup = [one for one in js.json(API + "faults()") if one["fault"] == "markup"]
@@ -409,7 +421,9 @@ def test_the_alpha_sweep_names_the_eight_digit_shape_and_no_other(js: JsRuntime)
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
-def test_no_sheet_the_surface_ships_carries_the_swapped_alpha_shape(js: JsRuntime, state: str):
+def test_no_sheet_the_surface_ships_carries_the_swapped_alpha_shape(
+    js: JsRuntime, state: str
+):
     js.push(built(state))
     assert [
         one for one in js.json(API + "faults()") if one["fault"] == "swapped-alpha"
@@ -426,7 +440,9 @@ def test_the_alpha_sweep_names_a_colour_written_with_eight_digits(js: JsRuntime)
 
 def test_the_alpha_sweep_reads_a_colour_inside_a_button_sheet(js: JsRuntime):
     payload = built("plain")
-    payload["buttons"]["yes"]["style_sheet"] = "background-color: " + SWAPPED_ALPHA + ";"
+    payload["buttons"]["yes"]["style_sheet"] = (
+        "background-color: " + SWAPPED_ALPHA + ";"
+    )
     found = js.push(payload)
     swapped = [one for one in found["faults"] if one["fault"] == "swapped-alpha"]
     assert [one["detail"] for one in swapped] == [SWAPPED_ALPHA]
@@ -491,7 +507,9 @@ def test_the_answer_check_names_a_result_value_outside_the_four(js: JsRuntime):
 
 def test_the_module_writes_no_number():
     found = js_literals(MODULE_SOURCE)
-    assert not found["numbers"], f"buy_confirmation.js holds numeric literals: {found['numbers']}"
+    assert not found[
+        "numbers"
+    ], f"buy_confirmation.js holds numeric literals: {found['numbers']}"
 
 
 def test_the_module_writes_no_colour():
@@ -756,7 +774,9 @@ def python_kinds(payload: dict) -> dict:
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
-def test_every_value_of_every_state_arrives_as_the_type_it_left_as(js: JsRuntime, state: str):
+def test_every_value_of_every_state_arrives_as_the_type_it_left_as(
+    js: JsRuntime, state: str
+):
     payload = built(state)
     js.push(payload)
     expected = python_kinds(payload)
@@ -766,7 +786,9 @@ def test_every_value_of_every_state_arrives_as_the_type_it_left_as(js: JsRuntime
         for path, kind in expected.items()
         if actual.get(path) != kind
     }
-    assert not differing, f"{state}: {len(differing)} values changed type: {sorted(differing)}"
+    assert (
+        not differing
+    ), f"{state}: {len(differing)} values changed type: {sorted(differing)}"
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
@@ -898,7 +920,9 @@ def test_nothing_is_rendered_before_the_payload_arrives(browser: Browser):
     assert browser.js("window.HOST.children.length") == 0
 
 
-def test_a_partial_state_still_reflects_the_surfaces_own_enabled_flags(browser: Browser):
+def test_a_partial_state_still_reflects_the_surfaces_own_enabled_flags(
+    browser: Browser,
+):
     """The rendered `disabled` attribute must track the payload, not a guess."""
     payload = built("empty")
     payload["buttons"]["yes"]["enabled"] = False
@@ -911,7 +935,9 @@ def test_a_partial_state_still_reflects_the_surfaces_own_enabled_flags(browser: 
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
-def test_every_button_reflects_the_payloads_own_enabled_flag(browser: Browser, state: str):
+def test_every_button_reflects_the_payloads_own_enabled_flag(
+    browser: Browser, state: str
+):
     payload = built(state)
     draw(browser, payload)
     order = payload["button_row"]["order"]
@@ -922,7 +948,9 @@ def test_every_button_reflects_the_payloads_own_enabled_flag(browser: Browser, s
     assert disabled == [payload["buttons"][name]["enabled"] is False for name in order]
 
 
-def test_a_hostile_symbol_and_reason_render_as_characters_not_elements(browser: Browser):
+def test_a_hostile_symbol_and_reason_render_as_characters_not_elements(
+    browser: Browser,
+):
     payload = built("markup")
     draw(browser, payload)
     assert browser.js("window.HOST.querySelectorAll('script').length") == 0
@@ -937,7 +965,7 @@ def test_a_hostile_symbol_and_reason_render_as_characters_not_elements(browser: 
     )
     assert reason_text == payload["reason_text"]
     symbol_value = browser.js(
-        "window.HOST.querySelector('[data-key=\"symbol\"] [data-part=\"detail-value\"]')"
+        'window.HOST.querySelector(\'[data-key="symbol"] [data-part="detail-value"]\')'
         ".textContent"
     )
     assert symbol_value == payload["detail_row_values"]["symbol"]
@@ -952,7 +980,7 @@ def test_every_rendered_detail_value_equals_the_payloads_own_row(browser: Browse
         rendered = browser.js(
             "window.HOST.querySelector('[data-key=\""
             + row
-            + "\"] [data-part=\"detail-value\"]').textContent"
+            + '"] [data-part="detail-value"]\').textContent'
         )
         assert rendered == payload["detail_row_values"][row], row
 
@@ -979,15 +1007,20 @@ def test_no_rendered_length_is_a_bare_whole_number(browser: Browser):
         assert not one.isdigit(), lengths
 
 
-def test_clicking_yes_re_asks_the_bridge_and_redraws_the_accepted_state(browser: Browser):
+def test_clicking_yes_re_asks_the_bridge_and_redraws_the_accepted_state(
+    browser: Browser,
+):
     browser.js(HOST_SETUP)
     first = built("plain")
     second = built("plain", button="yes")
     assert first["accepted"] is False
     assert second["accepted"] is True
     browser.js(
-        "window.RESPONSES = [" + json.dumps(json.dumps(first)) + ", "
-        + json.dumps(json.dumps(second)) + "];"
+        "window.RESPONSES = ["
+        + json.dumps(json.dumps(first))
+        + ", "
+        + json.dumps(json.dumps(second))
+        + "];"
         "window.CALLS = [];"
         "window.acervator = { call: function (m, p) {"
         "  window.CALLS.push(p);"
@@ -998,17 +1031,29 @@ def test_clicking_yes_re_asks_the_bridge_and_redraws_the_accepted_state(browser:
         if browser.js("window.HOST.querySelectorAll('button').length") > 0:
             break
         browser.settle(READY_STEP_MS)
-    assert browser.js("window.HOST.firstElementChild.getAttribute('data-accepted')") == "false"
+    assert (
+        browser.js("window.HOST.firstElementChild.getAttribute('data-accepted')")
+        == "false"
+    )
     browser.js(
         "window.HOST.querySelector('[data-answer=\"yes\"]').dispatchEvent("
         "new MouseEvent('click', { bubbles: true }));"
     )
     for _ in range(READY_ROUNDS):
-        if browser.js("window.HOST.firstElementChild.getAttribute('data-accepted')") == "true":
+        if (
+            browser.js("window.HOST.firstElementChild.getAttribute('data-accepted')")
+            == "true"
+        ):
             break
         browser.settle(READY_STEP_MS)
-    assert browser.js("window.HOST.firstElementChild.getAttribute('data-accepted')") == "true"
-    assert browser.js("window.HOST.firstElementChild.getAttribute('data-result-value')") == "yes"
+    assert (
+        browser.js("window.HOST.firstElementChild.getAttribute('data-accepted')")
+        == "true"
+    )
+    assert (
+        browser.js("window.HOST.firstElementChild.getAttribute('data-result-value')")
+        == "yes"
+    )
     assert browser.js("window.CALLS.length") == 2
     second_params = browser.parsed("window.CALLS[1]")
     assert second_params["button"] == "yes"

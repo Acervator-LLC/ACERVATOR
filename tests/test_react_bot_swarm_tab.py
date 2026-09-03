@@ -220,9 +220,7 @@ def test_bot_id_at_climbs_to_the_nearest_ancestor_that_carries_it(js: JsRuntime)
     script = (
         "var grand = stub({'data-bot-id': 'bot-c'}, null);"
         "var parent = stub({}, grand);"
-        "var leaf = stub({}, parent);"
-        + API
-        + "botIdAt(leaf)"
+        "var leaf = stub({}, parent);" + API + "botIdAt(leaf)"
     )
     assert js.run(script).toVariant() == "bot-c"
 
@@ -234,9 +232,7 @@ def test_bot_id_at_answers_nothing_for_a_chain_that_carries_the_attribute_nowher
     script = (
         "var top = stub({}, null);"
         "var mid = stub({}, top);"
-        "var leaf = stub({}, mid);"
-        + API
-        + "botIdAt(leaf)"
+        "var leaf = stub({}, mid);" + API + "botIdAt(leaf)"
     )
     assert js.run(script).toVariant() is None
 
@@ -244,7 +240,9 @@ def test_bot_id_at_answers_nothing_for_a_chain_that_carries_the_attribute_nowher
 def test_the_module_writes_no_number():
     """A numeric literal typed here has no publisher to compare it against."""
     literals = js_literals(MODULE_SOURCE)
-    assert not literals["numbers"], f"bot_swarm_tab.js holds numbers: {literals['numbers']}"
+    assert not literals[
+        "numbers"
+    ], f"bot_swarm_tab.js holds numbers: {literals['numbers']}"
 
 
 def test_the_module_writes_no_colour():
@@ -428,8 +426,7 @@ def draw_shell(browser: Browser, list_model: dict, tab_model: Any) -> None:
     browser.js("window.LIST_MODEL = " + json.dumps(json.dumps(list_model)) + ";")
     browser.js("window.TAB_MODEL = " + json.dumps(json.dumps(tab_model)) + ";")
     browser.js(
-        API
-        + "renderShell(window.HOST, JSON.parse(window.LIST_MODEL),"
+        API + "renderShell(window.HOST, JSON.parse(window.LIST_MODEL),"
         " JSON.parse(window.TAB_MODEL));"
     )
 
@@ -438,14 +435,16 @@ def test_the_shell_draws_the_list_panel_and_the_detail_panel_together(
     browser: Browser,
 ):
     draw_shell(browser, list_payload(), tab_payload())
-    assert browser.parsed(
-        "!!window.HOST.querySelector('[data-part=\"bot-swarm-shell\"]')"
-    ) is True
+    assert (
+        browser.parsed("!!window.HOST.querySelector('[data-part=\"bot-swarm-shell\"]')")
+        is True
+    )
     rows = browser.parsed("window.HOST.querySelectorAll('[data-part=\"row\"]').length")
     assert rows == len(THREE_BOTS)
-    assert browser.parsed(
-        "!!window.HOST.querySelector('[data-part=\"bot-swarm-tab\"]')"
-    ) is True
+    assert (
+        browser.parsed("!!window.HOST.querySelector('[data-part=\"bot-swarm-tab\"]')")
+        is True
+    )
 
 
 def test_the_list_and_the_detail_panel_each_nest_under_their_own_region(
@@ -456,21 +455,21 @@ def test_the_list_and_the_detail_panel_each_nest_under_their_own_region(
     assert (
         browser.parsed(
             "!!window.HOST.querySelector("
-            "'[data-part=\"bot-swarm-list-region\"] [data-part=\"list\"]')"
+            '\'[data-part="bot-swarm-list-region"] [data-part="list"]\')'
         )
         is True
     )
     assert (
         browser.parsed(
             "!!window.HOST.querySelector("
-            "'[data-part=\"bot-swarm-detail-region\"] [data-part=\"bot-swarm-tab\"]')"
+            '\'[data-part="bot-swarm-detail-region"] [data-part="bot-swarm-tab"]\')'
         )
         is True
     )
     assert (
         browser.parsed(
             "!!window.HOST.querySelector("
-            "'[data-part=\"bot-swarm-list-region\"] [data-part=\"bot-swarm-tab\"]')"
+            '\'[data-part="bot-swarm-list-region"] [data-part="bot-swarm-tab"]\')'
         )
         is False
     )
@@ -480,7 +479,7 @@ def test_a_row_click_marks_that_bot_selected_on_the_shell(browser: Browser):
     draw_shell(browser, list_payload(), None)
     browser.js(
         "window.HOST.querySelector("
-        "'[data-part=\"row\"][data-bot-id=\"bot-b\"]').click();"
+        '\'[data-part="row"][data-bot-id="bot-b"]\').click();'
     )
     settled = browser.wait_until(
         "window.HOST.querySelector('[data-part=\"bot-swarm-shell\"]')"
@@ -515,13 +514,14 @@ def test_the_click_selection_survives_a_bridgeless_lookup_without_raising(
     draw_shell(browser, list_payload(), None)
     browser.js(
         "window.HOST.querySelector("
-        "'[data-part=\"row\"][data-bot-id=\"bot-a\"]').click();"
+        '\'[data-part="row"][data-bot-id="bot-a"]\').click();'
     )
     browser.wait_until(
         "window.HOST.querySelector('[data-part=\"bot-swarm-shell\"]')"
         ".getAttribute('data-selected-bot-id') === 'bot-a'"
     )
     assert browser.parsed("document.readyState") == "complete"
-    assert browser.parsed(
-        "!!window.HOST.querySelector('[data-part=\"bot-swarm-shell\"]')"
-    ) is True
+    assert (
+        browser.parsed("!!window.HOST.querySelector('[data-part=\"bot-swarm-shell\"]')")
+        is True
+    )

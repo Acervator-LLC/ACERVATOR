@@ -49,7 +49,10 @@ def main() -> int:
     print()
     print("REMAINING SURFACE, largest first:")
     rows = sorted(
-        ((len(p.read_text(encoding="utf-8", errors="replace").splitlines()), p) for p in unpaired),
+        (
+            (len(p.read_text(encoding="utf-8", errors="replace").splitlines()), p)
+            for p in unpaired
+        ),
         reverse=True,
         key=lambda row: row[0],
     )

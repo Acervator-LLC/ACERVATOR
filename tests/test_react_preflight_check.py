@@ -1765,5 +1765,7 @@ def test_the_renderer_runs_this_module_after_the_pieces_it_reads():
 
 def test_the_order_reading_answers_no_for_the_pieces_the_other_way_round():
     """The same reading of an order that runs this module first."""
-    assert not runs_after([MODULE_PATH.name, *READS_FIRST], MODULE_PATH.name, *READS_FIRST)
+    assert not runs_after(
+        [MODULE_PATH.name, *READS_FIRST], MODULE_PATH.name, *READS_FIRST
+    )
     assert not runs_after(list(READS_FIRST), MODULE_PATH.name, *READS_FIRST)
