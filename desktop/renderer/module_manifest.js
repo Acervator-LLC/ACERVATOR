@@ -57,4 +57,5 @@ window.ACERVATOR_MODULES = [
   "api_tester_tab.js",
   "bot_swarm_tab.js",
   "start_all_progress.js",
+  "visualizer_themes.js",
 ];
