@@ -288,42 +288,42 @@ repeats a number by hand.
 
 | ID | name | signal type | duration term | records | duration on records | ok values |
 |---|---|---|---|---|---|---|
-| `01-002` | `bot.01.002.postcondition.capital_reservation` | `postcondition` | `none` | 37 | 0 | True=37 |
-| `03-001` | `fleet.03.001.postcondition.bots_loaded` | `postcondition` | `measured` | 3 | 3 | True=3 |
-| `03-002` | `fleet.03.002.invariant.bot_ids_mirror_live` | `invariant` | `forbidden` | 3 | 0 | True=3 |
-| `03-003` | `fleet.03.003.invariant.sections_imported` | `invariant` | `forbidden` | 3 | 0 | True=3 |
-| `03-004` | `fleet.03.004.postcondition.wires_loaded` | `postcondition` | `measured` | 3 | 3 | True=3 |
-| `03-005` | `fleet.03.005.invariant.state_parity` | `invariant` | `forbidden` | 114 | 0 | True=114 |
-| `03-006` | `fleet.03.006.postcondition.state_imported` | `postcondition` | `deferred` | 3 | 0 | True=3 |
-| `03-007` | `fleet.03.007.postcondition.positions_seeded_from_lots` | `postcondition` | `deferred` | 3 | 0 | True=3 |
-| `04-001` | `gui.04.001.postcondition.voting_panel.fit` | `postcondition` | `deferred` | 7 | 0 | True=7 |
-| `06-001` | `sim.06.001.postcondition.candles_stepped` | `postcondition` | `deferred` | 2 | 0 | False=1, True=1 |
-| `06-002` | `sim.06.002.postcondition.bot_ticks_did_work` | `postcondition` | `deferred` | 2 | 0 | True=2 |
-| `06-003` | `sim.06.003.counter.ticks_before_tape` | `counter` | `forbidden` | 2 | 0 | None=2 |
-| `06-004` | `sim.06.004.counter.trades_fired` | `counter` | `forbidden` | 2 | 0 | None=2 |
-| `06-005` | `sim.06.005.invariant.exceptions` | `invariant` | `forbidden` | 2 | 0 | True=2 |
-| `06-006` | `sim.06.006.event.window_played` | `event` | `forbidden` | 2 | 0 | None=2 |
-| `06-007` | `sim.06.007.postcondition.fleet_spawned` | `postcondition` | `measured` | 1 | 1 | True=1 |
-| `06-008` | `sim.06.008.invariant.state_persisted` | `invariant` | `forbidden` | 1 | 0 | True=1 |
-| `06-009` | `sim.06.009.invariant.spawn_drift` | `invariant` | `forbidden` | 1 | 0 | True=1 |
-| `06-010` | `sim.06.010.postcondition.bot_table.rendered` | `postcondition` | `deferred` | 2 | 0 | True=2 |
-| `06-011` | `sim.06.011.postcondition.price_chart.fed` | `postcondition` | `deferred` | 430 | 0 | True=430 |
-| `06-012` | `sim.06.012.postcondition.gate_status.rendered` | `postcondition` | `deferred` | 430 | 0 | True=430 |
-| `06-013` | `sim.06.013.state_transition.mode_selected` | `state_transition` | `forbidden` | 1 | 0 | True=1 |
-| `06-014` | `sim.06.014.event.log.line` | `event` | `forbidden` | 120 | 0 | None=120 |
-| `07-001` | `ta.07.001.postcondition.coverage_per_bot` | `postcondition` | `none` | 71 | 0 | True=71 |
-| `07-002` | `ta.07.002.invariant.invariants` | `invariant` | `forbidden` | 2 | 0 | True=2 |
-| `07-003` | `ta.07.003.postcondition.computed` | `postcondition` | `measured` | 273967 | 273967 | True=273967 |
+| `01-002` | `bot.01.002.postcondition.capital_reservation` | `src/trading/scrumming/capital_reservation_mixin.py:306` | `CapitalReservationMixin._ensure_capital_reservation` | 37 | 0 | True=37 |
+| `03-001` | `fleet.03.001.postcondition.bots_loaded` | `src/simulator/fleet/bot_state_loader.py:234`, `src/simulator/fleet/fleet_replay_controller.py:634` | `load_bot_configs_from_state`, `FleetReplayController.start` | 3 | 3 | True=3 |
+| `03-002` | `fleet.03.002.invariant.bot_ids_mirror_live` | `src/simulator/fleet/bot_state_loader.py:243` | `load_bot_configs_from_state` | 3 | 0 | True=3 |
+| `03-003` | `fleet.03.003.invariant.sections_imported` | `src/simulator/fleet/bot_state_loader.py:296`, `src/simulator/fleet/fleet_replay_controller.py:636` | `load_bot_configs_from_state`, `FleetReplayController.start` | 3 | 0 | True=3 |
+| `03-004` | `fleet.03.004.postcondition.wires_loaded` | `src/simulator/fleet/bot_state_loader.py:354` | `load_smart_wires_from_state` | 3 | 3 | True=3 |
+| `03-005` | `fleet.03.005.invariant.state_parity` | `src/simulator/fleet/fleet_replay_controller.py:635`, `src/simulator/fleet/fleet_replay_controller.py:1176` | `FleetReplayController.start`, `FleetReplayController._build_sim` | 114 | 0 | True=114 |
+| `03-006` | `fleet.03.006.postcondition.state_imported` | `src/simulator/fleet/fleet_replay_controller.py:1265` | `FleetReplayController._build_sim` | 3 | 0 | True=3 |
+| `03-007` | `fleet.03.007.postcondition.positions_seeded_from_lots` | `src/simulator/fleet/fleet_replay_controller.py:1271` | `FleetReplayController._build_sim` | 3 | 0 | True=3 |
+| `04-001` | `gui.04.001.postcondition.voting_panel.fit` | `src/gui/indicator_panel.py:1289`, `src/gui/indicator_panel.py:1304`, `src/gui/indicator_panel.py:2226` | `IndicatorVotingPanel.emit_fit`, `IndicatorVotingPanel.emit_fit`, `IndicatorVotingPanel.showEvent` | 7 | 0 | True=7 |
+| `06-001` | `sim.06.001.postcondition.candles_stepped` | `src/simulator/fleet/fleet_replay_controller.py:2121` | `FleetReplayController._run` | 2 | 0 | False=1, True=1 |
+| `06-002` | `sim.06.002.postcondition.bot_ticks_did_work` | `src/simulator/fleet/fleet_replay_controller.py:2152` | `FleetReplayController._run` | 2 | 0 | True=2 |
+| `06-003` | `sim.06.003.counter.ticks_before_tape` | `src/simulator/fleet/fleet_replay_controller.py:2338` | `FleetReplayController._run` | 2 | 0 | None=2 |
+| `06-004` | `sim.06.004.counter.trades_fired` | `src/simulator/fleet/fleet_replay_controller.py:2354` | `FleetReplayController._run` | 2 | 0 | None=2 |
+| `06-005` | `sim.06.005.invariant.exceptions` | `src/simulator/fleet/fleet_replay_controller.py:2355` | `FleetReplayController._run` | 2 | 0 | True=2 |
+| `06-006` | `sim.06.006.event.window_played` | `src/simulator/fleet/fleet_replay_controller.py:2380` | `FleetReplayController._run` | 2 | 0 | None=2 |
+| `06-007` | `sim.06.007.postcondition.fleet_spawned` | `src/gui/main_tabs/fleet_replay_panel_surface.py:390`, `src/gui/simulator_tab/fleet/fleet_replay_panel.py:498` | `FleetReplayPanel._spawn_sim_fleet` | 1 | 1 | True=1 |
+| `06-008` | `sim.06.008.invariant.state_persisted` | `src/gui/main_tabs/fleet_replay_panel_surface.py:391`, `src/gui/simulator_tab/fleet/fleet_replay_panel.py:567` | `FleetReplayPanel._spawn_sim_fleet` | 1 | 0 | True=1 |
+| `06-009` | `sim.06.009.invariant.spawn_drift` | `src/gui/main_tabs/fleet_replay_panel_surface.py:392`, `src/gui/simulator_tab/fleet/fleet_replay_panel.py:578` | `FleetReplayPanel._spawn_sim_fleet` | 1 | 0 | True=1 |
+| `06-010` | `sim.06.010.postcondition.bot_table.rendered` | `src/gui/main_tabs/fleet_replay_panel_surface.py:393`, `src/gui/simulator_tab/fleet/fleet_replay_panel.py:688` | `FleetReplayPanel.emit_bot_table` | 2 | 0 | True=2 |
+| `06-011` | `sim.06.011.postcondition.price_chart.fed` | `src/gui/main_tabs/fleet_replay_panel_surface.py:394`, `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1784` | `FleetReplayPanel._drain_visual_snapshot` | 430 | 0 | True=430 |
+| `06-012` | `sim.06.012.postcondition.gate_status.rendered` | `src/gui/main_tabs/fleet_replay_panel_surface.py:395`, `src/gui/simulator_tab/fleet/fleet_replay_panel.py:1803` | `FleetReplayPanel._drain_visual_snapshot` | 430 | 0 | True=430 |
+| `06-013` | `sim.06.013.state_transition.mode_selected` | `src/gui/main_tabs/simulator_tab_surface.py:328`, `src/gui/simulator_tab/simulator_tab.py:635` | `SimulatorTab._on_sim_mode_changed` | 1 | 0 | True=1 |
+| `06-014` | `sim.06.014.event.log.line` | `src/gui/main_tabs/simulator_tab_surface.py:329`, `src/gui/simulator_tab/simulator_tab.py:776` | `SimulatorTab._emit_log_line` | 120 | 0 | None=120 |
+| `07-001` | `ta.07.001.postcondition.coverage_per_bot` | `src/simulator/fleet/fleet_replay_controller.py:2251` | `FleetReplayController._run` | 71 | 0 | True=71 |
+| `07-002` | `ta.07.002.invariant.invariants` | `src/simulator/fleet/fleet_replay_controller.py:2322` | `FleetReplayController._run` | 2 | 0 | True=2 |
+| `07-003` | `ta.07.003.postcondition.computed` | `src/trading/ta_engine.py:251`, `src/trading/ta_engine.py:333`, `src/trading/ta_engine.py:383` | `_TAInstrumentationOff`, `VotingEngine.compute_all`, `VotingEngine.compute_all` | 273967 | 273967 | True=273967 |
 | `07-004` | `ta.07.004.postcondition.raw.{}` | `postcondition` | `none` | 3287604 | 0 | None=3866, True=3283738 |
-| `08-001` | `tick.08.001.event.throttled` | `event` | `forbidden` | 181259 | 0 | None=181259 |
-| `08-002` | `tick.08.002.event.worked` | `event` | `forbidden` | 53994 | 0 | None=53994 |
-| `08-003` | `tick.08.003.event.exit_dust_band` | `event` | `forbidden` | 921 | 0 | None=921 |
-| `09-001` | `topology.09.001.state_transition.bot_attached` | `state_transition` | `forbidden` | 114 | 0 | None=114 |
-| `09-002` | `topology.09.002.postcondition.wires_received` | `postcondition` | `measured` | 3 | 3 | True=3 |
-| `10-001` | `ytd.10.001.gauge.trades_fetched` | `gauge` | `forbidden` | 1 | 0 | None=1 |
-| `10-002` | `ytd.10.002.postcondition.fleet_symbol_coverage` | `postcondition` | `measured` | 1 | 1 | False=1 |
-| `10-003` | `ytd.10.003.gauge.per_symbol_counts` | `gauge` | `forbidden` | 1 | 0 | None=1 |
-| `11-001` | `swarm.11.001.postcondition.sim_run_registered` | `postcondition` | `measured` | 1 | 1 | True=1 |
+| `08-001` | `tick.08.001.event.throttled` | `src/trading/scrumming_bot.py:2587` | `ScrummingBot.tick` | 181259 | 0 | None=181259 |
+| `08-002` | `tick.08.002.event.worked` | `src/trading/scrumming_bot.py:2607` | `ScrummingBot.tick` | 53994 | 0 | None=53994 |
+| `08-003` | `tick.08.003.event.exit_dust_band` | `src/trading/scrumming_bot.py:2693` | `ScrummingBot.tick` | 921 | 0 | None=921 |
+| `09-001` | `topology.09.001.state_transition.bot_attached` | `src/trading/smart_wire.py:277` | `SmartWireManager.attach_bot` | 114 | 0 | None=114 |
+| `09-002` | `topology.09.002.postcondition.wires_received` | `src/trading/smart_wire.py:958` | `SmartWireManager.import_wires` | 3 | 3 | True=3 |
+| `10-001` | `ytd.10.001.gauge.trades_fetched` | `src/gui/main_tabs/fleet_replay_panel_surface.py:396`, `src/gui/simulator_tab/fleet/fleet_replay_panel.py:927` | `FleetReplayPanel._on_fetch_ytd_clicked._do_fetch` | 1 | 0 | None=1 |
+| `10-002` | `ytd.10.002.postcondition.fleet_symbol_coverage` | `src/gui/main_tabs/fleet_replay_panel_surface.py:397`, `src/gui/simulator_tab/fleet/fleet_replay_panel.py:934` | `FleetReplayPanel._on_fetch_ytd_clicked._do_fetch` | 1 | 1 | False=1 |
+| `10-003` | `ytd.10.003.gauge.per_symbol_counts` | `src/gui/main_tabs/fleet_replay_panel_surface.py:398`, `src/gui/simulator_tab/fleet/fleet_replay_panel.py:941` | `FleetReplayPanel._on_fetch_ytd_clicked._do_fetch` | 1 | 0 | None=1 |
+| `11-001` | `swarm.11.001.postcondition.sim_run_registered` | `src/gui/bot_visualizer.py:1039`, `src/gui/main_tabs/bot_visualizer_surface.py:502` | `BotVisualizationTab.register_sim_run` | 1 | 1 | True=1 |
 
 ### C. Fired, OUT of spec
 
@@ -341,54 +341,54 @@ None. Every pin that fired carried the name, the signal type and the site the re
 
 | ID | name | source | enclosing function | callers of that function |
 |---|---|---|---|---|
-| `01-001` | `bot.01.001.postcondition.capital_reservation` | `src/trading/scrumming_bot.py:1354` | `ScrummingBot._ensure_capital_reservation` | 1 direct |
-| `01-003` | `bot.01.003.postcondition.adoption_capped` | `src/trading/scrumming_bot.py:6601` | `ScrummingBot.tick` | 2 direct |
+| `01-001` | `bot.01.001.postcondition.capital_reservation` | `src/trading/scrumming/capital_reservation_mixin.py:268` | `CapitalReservationMixin._ensure_capital_reservation` | 1 direct |
+| `01-003` | `bot.01.003.postcondition.adoption_capped` | `src/trading/scrumming/tick_phases.py:263` | `TickPhaseMixin._tick_initialise` | 2 direct |
 
 **`enclosing-function-never-entered`** — 30 pins
 
 | ID | name | source | enclosing function | callers of that function |
 |---|---|---|---|---|
-| `02-001` | `extractor.02.001.postcondition.tranche_contained` | `src/trading/scrumming_bot.py:3268` | `ScrummingBot.apply_extractor_tranche_return` | 1 direct |
-| `02-002` | `extractor.02.002.invariant.arrival_atomic` | `src/trading/scrumming_bot.py:3283` | `ScrummingBot.apply_extractor_tranche_return` | 1 direct |
-| `05-001` | `history.05.001.postcondition.scan_complete` | `src/exchange/ccxt_connector.py:778` | `CCXTConnector._scan_trade_history` | 2 direct |
-| `11-002` | `swarm.11.002.postcondition.paper_run_registered` | `src/gui/bot_visualizer.py:2315` | `BotVisualizationTab.register_paper_run` | NONE OF ANY KIND |
-| `12-001` | `trading.12.001.postcondition.tab_assembled` | `src/gui/main_window.py:4926` | `MainWindow._setup_ui` | 12 direct |
-| `12-002` | `trading.12.002.postcondition.exchange_tab_routed` | `src/gui/main_window.py:7365` | `MainWindow.add_exchange_tab` | 1 direct |
-| `12-003` | `trading.12.003.postcondition.exchange_tabs_synced` | `src/gui/main_window.py:9413` | `MainWindow._sync_exchange_tabs` | 1 direct |
-| `12-004` | `trading.12.004.postcondition.active_layer_alias` | `src/gui/main_window.py:9292` | `MainWindow._toggle_trading_mode` | 0 direct, 1 indirect |
-| `12-005` | `trading.12.005.postcondition.activity_log_paused` | `src/gui/main_window.py:5069` | `MainWindow._setup_ui._on_activity_pause_toggled` | 0 direct, 1 indirect |
-| `12-006` | `trading.12.006.postcondition.notification_relayed` | `src/gui/main_window.py:5002` | `MainWindow._setup_ui._NotifyStub.notify` | 15 direct |
-| `13-001` | `charts.13.001.invariant.panels_mounted` | `src/gui/main_window.py:1417` | `TradeChartsTab.update_charts` | 1 direct |
-| `13-002` | `charts.13.002.postcondition.panel_symbols_current` | `src/gui/main_window.py:1426` | `TradeChartsTab.update_charts` | 1 direct |
-| `13-003` | `charts.13.003.postcondition.timeframe_rearmed` | `src/gui/main_window.py:1462` | `TradeChartsTab._on_tf_changed` | 1 direct |
-| `13-004` | `charts.13.004.postcondition.panel_refreshed` | `src/gui/main_window.py:1586` | `TradeChartsTab.fetch_chart_data` | 1 direct |
-| `13-005` | `charts.13.005.invariant.panels_fresh` | `src/gui/main_window.py:1621` | `TradeChartsTab.fetch_chart_data` | 1 direct |
-| `14-001` | `console.14.001.invariant.records_rendered` | `src/gui/main_window.py:6381` | `MainWindow._emit_console_health` | 0 direct, 1 indirect |
-| `14-002` | `console.14.002.invariant.view_holds_rendered` | `src/gui/main_window.py:6392` | `MainWindow._emit_console_health` | 0 direct, 1 indirect |
-| `14-003` | `console.14.003.invariant.drain_alive` | `src/gui/main_window.py:6403` | `MainWindow._emit_console_health` | 0 direct, 1 indirect |
-| `14-004` | `console.14.004.postcondition.pause_quiets_both_panes` | `src/gui/main_window.py:6229` | `MainWindow._toggle_console_pause` | 0 direct, 1 indirect |
-| `14-005` | `console.14.005.postcondition.pause_buffer_delivered` | `src/gui/main_window.py:6258` | `MainWindow._toggle_console_pause` | 0 direct, 1 indirect |
-| `15-001` | `exchange.15.001.postcondition.command_routed_to_chosen_table` | `src/gui/main_window.py:3162` | `ExchangeTab._cmd` | 1 direct |
-| `15-002` | `exchange.15.002.invariant.every_bot_reaches_a_table` | `src/gui/main_window.py:3320` | `ExchangeTab.update_bots` | 7 direct |
-| `15-003` | `exchange.15.003.invariant.selection_survives_refresh` | `src/gui/main_window.py:3333` | `ExchangeTab.update_bots` | 7 direct |
-| `15-004` | `exchange.15.004.postcondition.privacy_applied_to_every_field` | `src/gui/main_window.py:3398` | `ExchangeTab._on_global_privacy_clicked` | 0 direct, 1 indirect |
-| `15-005` | `exchange.15.005.postcondition.privacy_button_matches_registry` | `src/gui/main_window.py:3448` | `ExchangeTab._on_global_privacy_clicked` | 0 direct, 1 indirect |
-| `16-001` | `apitest.16.001.postcondition.label_matches_session` | `src/gui/main_window.py:3796` | `APITesterTab._do_connect` | 0 direct, 1 indirect |
-| `16-002` | `apitest.16.002.postcondition.session_released` | `src/gui/main_window.py:3909` | `APITesterTab._do_disconnect` | 0 direct, 1 indirect |
-| `16-003` | `apitest.16.003.postcondition.reported_ok_ran_a_test` | `src/gui/main_window.py:4021` | `APITesterTab._run_test` | 1 direct |
-| `16-004` | `apitest.16.004.postcondition.green_probe_read_a_body` | `src/gui/main_window.py:4272` | `APITesterTab._raw_http_probe` | 0 direct, 1 indirect |
-| `16-005` | `apitest.16.005.postcondition.indicator_is_mappable` | `src/gui/main_window.py:4368` | `APITesterTab._check_exchange_status` | 0 direct, 1 indirect |
+| `02-001` | `extractor.02.001.postcondition.tranche_contained` | `src/trading/scrumming_bot.py:1412` | `ScrummingBot.apply_extractor_tranche_return` | 1 direct |
+| `02-002` | `extractor.02.002.invariant.arrival_atomic` | `src/trading/scrumming_bot.py:1426` | `ScrummingBot.apply_extractor_tranche_return` | 1 direct |
+| `05-001` | `history.05.001.postcondition.scan_complete` | `src/exchange/ccxt_connector.py:645` | `CCXTConnector._scan_trade_history` | 2 direct |
+| `11-002` | `swarm.11.002.postcondition.paper_run_registered` | `src/gui/bot_visualizer.py:1121`, `src/gui/main_tabs/bot_visualizer_surface.py:503` | `BotVisualizationTab.register_paper_run` | NONE OF ANY KIND |
+| `12-001` | `trading.12.001.postcondition.tab_assembled` | `src/gui/main_tabs/trading_tab.py:227` | `TradingTabMixin._build_trading_tab` | 12 direct |
+| `12-002` | `trading.12.002.postcondition.exchange_tab_routed` | `src/gui/main_window.py:1397` | `MainWindow.add_exchange_tab` | 1 direct |
+| `12-003` | `trading.12.003.postcondition.exchange_tabs_synced` | `src/gui/main_window.py:3072` | `MainWindow._sync_exchange_tabs` | 1 direct |
+| `12-004` | `trading.12.004.postcondition.active_layer_alias` | `src/gui/main_window.py:2960` | `MainWindow._toggle_trading_mode` | 0 direct, 1 indirect |
+| `12-005` | `trading.12.005.postcondition.activity_log_paused` | `src/gui/main_tabs/trading_tab.py:322` | `TradingTabMixin._build_trading_tab._on_activity_pause_toggled` | 0 direct, 1 indirect |
+| `12-006` | `trading.12.006.postcondition.notification_relayed` | `src/gui/main_tabs/notify_stub.py:52` | `_NotifyStub.notify` | 15 direct |
+| `13-001` | `charts.13.001.invariant.panels_mounted` | `src/gui/main_tabs/trade_charts_tab_surface.py:147`, `src/gui/widgets/trade_charts_tab.py:249` | `TradeChartsTab.update_charts` | 1 direct |
+| `13-002` | `charts.13.002.postcondition.panel_symbols_current` | `src/gui/main_tabs/trade_charts_tab_surface.py:148`, `src/gui/widgets/trade_charts_tab.py:263` | `TradeChartsTab.update_charts` | 1 direct |
+| `13-003` | `charts.13.003.postcondition.timeframe_rearmed` | `src/gui/main_tabs/trade_charts_tab_surface.py:149`, `src/gui/widgets/trade_charts_tab.py:302` | `TradeChartsTab._on_tf_changed` | 1 direct |
+| `13-004` | `charts.13.004.postcondition.panel_refreshed` | `src/gui/main_tabs/trade_charts_tab_surface.py:150`, `src/gui/widgets/trade_charts_tab.py:401` | `TradeChartsTab.fetch_chart_data` | 1 direct |
+| `13-005` | `charts.13.005.invariant.panels_fresh` | `src/gui/main_tabs/trade_charts_tab_surface.py:151`, `src/gui/widgets/trade_charts_tab.py:435` | `TradeChartsTab.fetch_chart_data` | 1 direct |
+| `14-001` | `console.14.001.invariant.records_rendered` | `src/gui/main_window.py:514` | `MainWindow._emit_console_health` | 0 direct, 1 indirect |
+| `14-002` | `console.14.002.invariant.view_holds_rendered` | `src/gui/main_window.py:527` | `MainWindow._emit_console_health` | 0 direct, 1 indirect |
+| `14-003` | `console.14.003.invariant.drain_alive` | `src/gui/main_window.py:540` | `MainWindow._emit_console_health` | 0 direct, 1 indirect |
+| `14-004` | `console.14.004.postcondition.pause_quiets_both_panes` | `src/gui/main_window.py:446` | `MainWindow._toggle_console_pause` | 0 direct, 1 indirect |
+| `14-005` | `console.14.005.postcondition.pause_buffer_delivered` | `src/gui/main_window.py:460` | `MainWindow._toggle_console_pause` | 0 direct, 1 indirect |
+| `15-001` | `exchange.15.001.postcondition.command_routed_to_chosen_table` | `src/gui/main_tabs/exchange_tab_surface.py:142`, `src/gui/widgets/exchange_tab.py:273` | `ExchangeTab._cmd` | 1 direct |
+| `15-002` | `exchange.15.002.invariant.every_bot_reaches_a_table` | `src/gui/main_tabs/exchange_tab_surface.py:143`, `src/gui/widgets/exchange_tab.py:330` | `ExchangeTab.update_bots` | 7 direct |
+| `15-003` | `exchange.15.003.invariant.selection_survives_refresh` | `src/gui/main_tabs/exchange_tab_surface.py:144`, `src/gui/widgets/exchange_tab.py:347` | `ExchangeTab.update_bots` | 7 direct |
+| `15-004` | `exchange.15.004.postcondition.privacy_applied_to_every_field` | `src/gui/main_tabs/exchange_tab_surface.py:145`, `src/gui/widgets/exchange_tab.py:398` | `ExchangeTab._on_global_privacy_clicked` | 0 direct, 1 indirect |
+| `15-005` | `exchange.15.005.postcondition.privacy_button_matches_registry` | `src/gui/main_tabs/exchange_tab_surface.py:146`, `src/gui/widgets/exchange_tab.py:420` | `ExchangeTab._on_global_privacy_clicked` | 0 direct, 1 indirect |
+| `16-001` | `apitest.16.001.postcondition.label_matches_session` | `src/gui/widgets/api_tester_tab.py:401` | `APITesterTab._do_connect` | 0 direct, 1 indirect |
+| `16-002` | `apitest.16.002.postcondition.session_released` | `src/gui/widgets/api_tester_tab.py:525` | `APITesterTab._do_disconnect` | 0 direct, 1 indirect |
+| `16-003` | `apitest.16.003.postcondition.reported_ok_ran_a_test` | `src/gui/widgets/api_tester_tab.py:688` | `APITesterTab._run_test` | 1 direct |
+| `16-004` | `apitest.16.004.postcondition.green_probe_read_a_body` | `src/gui/widgets/api_tester_tab.py:1025` | `APITesterTab._raw_http_probe` | 0 direct, 1 indirect |
+| `16-005` | `apitest.16.005.postcondition.indicator_is_mappable` | `src/gui/widgets/api_tester_tab.py:1147` | `APITesterTab._check_exchange_status` | 0 direct, 1 indirect |
 
 **`module-not-executed`** — 6 pins
 
 | ID | name | source | enclosing function | callers of that function |
 |---|---|---|---|---|
-| `05-002` | `history.05.002.postcondition.trades_stored` | `src/gui/history_tab.py:488` | `HistoryTab._kick_async_fetch._check` | 0 direct, 1 indirect |
-| `05-003` | `history.05.003.postcondition.filter_options_built` | `src/gui/history_tab.py:608` | `HistoryTab._populate_filter_options` | 1 direct |
-| `05-004` | `history.05.004.postcondition.filters_applied` | `src/gui/history_tab.py:714` | `HistoryTab._apply_filters` | 2 direct |
-| `05-005` | `history.05.005.postcondition.page_rendered` | `src/gui/history_tab.py:916` | `HistoryTab._render_page` | 3 direct |
-| `05-006` | `history.05.006.postcondition.joiner_indexes_built` | `src/gui/history_tab.py:1180` | `HistoryTab._build_joiner_indexes_for_page` | 1 direct |
-| `05-007` | `history.05.007.postcondition.csv_exported` | `src/gui/history_tab.py:1307` | `HistoryTab._export_csv` | 0 direct, 1 indirect |
+| `05-002` | `history.05.002.postcondition.trades_stored` | `src/gui/history_tab.py:290` | `HistoryTab._kick_async_fetch._check` | 0 direct, 1 indirect |
+| `05-003` | `history.05.003.postcondition.filter_options_built` | `src/gui/history_tab.py:371` | `HistoryTab._populate_filter_options` | 1 direct |
+| `05-004` | `history.05.004.postcondition.filters_applied` | `src/gui/history_tab.py:445` | `HistoryTab._apply_filters` | 2 direct |
+| `05-005` | `history.05.005.postcondition.page_rendered` | `src/gui/history_tab.py:532` | `HistoryTab._render_page._emit_drawn` | 3 direct |
+| `05-006` | `history.05.006.postcondition.joiner_indexes_built` | `src/gui/history_tab.py:651` | `HistoryTab._build_joiner_indexes_for_page` | 1 direct |
+| `05-007` | `history.05.007.postcondition.csv_exported` | `src/gui/history_tab.py:757` | `HistoryTab._export_csv` | 0 direct, 1 indirect |
 
 ### E. Duration disposition, held against the records
 
