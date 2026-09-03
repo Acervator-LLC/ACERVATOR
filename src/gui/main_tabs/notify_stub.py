@@ -49,7 +49,7 @@ class _NotifyStub:
                     from src.core.signal_contract import emit as _tr_emit
 
                     _tr_emit(
-                        "trading.12.006.postcondition" ".notification_relayed",
+                        "trading.12.006.postcondition.notification_relayed",
                         actual=_doc.revision() != _rev,
                         expected=True,
                         context={

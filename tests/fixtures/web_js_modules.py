@@ -60,6 +60,44 @@ import pytest
 
 HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}")
 
+RENDERER = Path(__file__).resolve().parents[2] / "desktop" / "renderer"
+
+_PAGE_SCRIPT = re.compile(r'src="([^"]+\.js)"')
+
+#: Injects every manifest entry the page has no tag for.
+_LOADER = "module_loader.js"
+
+
+def load_order() -> list:
+    """Every module name the renderer runs, in run order.
+
+    Covers both the page's own script tags and the manifest entries
+    `module_loader.js` injects, which run at the loader's position.
+    """
+    from tools import sync_renderer_modules
+
+    page = (RENDERER / "index.html").read_text(encoding="utf-8")
+    tags = [src.rsplit("/", 1)[-1] for src in _PAGE_SCRIPT.findall(page)]
+    named = sync_renderer_modules.manifest_entries(
+        (RENDERER / "module_manifest.js").read_text(encoding="utf-8")
+    )
+    injected = [name for name in named if name not in tags]
+    if not injected:
+        return tags
+    at = tags.index(_LOADER) + 1 if _LOADER in tags else len(tags)
+    return tags[:at] + injected + tags[at:]
+
+
+def runs_after(order: list, name: str, *needed: str) -> bool:
+    """Whether `order` runs `name`, and runs every `needed` name before it.
+
+    False when `name` or any `needed` name is absent from `order`.
+    """
+    if name not in order:
+        return False
+    at = order.index(name)
+    return all(one in order and order.index(one) < at for one in needed)
+
 EVENT_DRAIN_ROUNDS = 20
 
 #: Windows denies os.replace for as long as another worker reads the module.

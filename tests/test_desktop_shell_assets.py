@@ -142,8 +142,8 @@ def test_the_parse_check_covers_every_module_the_page_loads():
 
 
 def test_no_module_on_disk_goes_unloaded_by_tag_or_manifest():
-    """A module reaches the page two ways: its own script tag, or the
-    manifest the loader injects. Either counts; neither is dead weight."""
+    """Every module in `src/gui/web` is named by a script tag or by
+    `module_manifest.js`."""
     reached = modules_the_page_loads() | set(manifest_names())
     unloaded = sorted({p.name for p in web_modules()} - reached)
     assert not unloaded, (

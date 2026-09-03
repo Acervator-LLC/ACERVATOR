@@ -37,6 +37,13 @@ ArchetypeReport schema in tools.harness.coding_archetype:
         file on disk — an unresolvable name is H001's job, not this
         one's.
 
+    H005 (medium) — A DOTTED NAME SPLIT ACROSS STRING LITERALS
+        ``"trading.12.003.postcondition" ".exchange_tabs_synced"``.
+        Python joins the pieces, so the program runs and its tests
+        pass, but no search for the whole name reaches the line.
+        Requires three or more dots and no whitespace in the joined
+        text, which leaves wrapped prose alone. Python targets only.
+
 FALSIFICATION — this rule module is wrong if:
   (a) H001 fires on a path that exists via a case-sensitivity
       quirk (Windows FS is case-insensitive; the check is
@@ -56,7 +63,9 @@ sadp: R28 SSS + R70 RCN
 from __future__ import annotations
 
 import ast
+import io
 import re
+import tokenize
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -275,6 +284,53 @@ def _find_out_of_range_citations(
     return hits
 
 
+# --------------------------------------------------------------------- #
+# H005 — a dotted name split across adjacent string literals            #
+# --------------------------------------------------------------------- #
+
+_DOTTED_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+){3,}$")
+
+
+def _find_split_dotted_names(source: str) -> list[tuple[int, str]]:
+    """Return (line, joined name) for each dotted name written as
+    two or more adjacent string literals."""
+    hits: list[tuple[int, str]] = []
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return hits
+    run: list[tokenize.TokenInfo] = []
+
+    def close() -> None:
+        if len(run) < 2:
+            run.clear()
+            return
+        joined = ""
+        for token in run:
+            try:
+                piece = ast.literal_eval(token.string)
+            except (ValueError, SyntaxError):
+                run.clear()
+                return
+            if not isinstance(piece, str):
+                run.clear()
+                return
+            joined += piece
+        if _DOTTED_NAME.match(joined):
+            hits.append((run[0].start[0], joined))
+        run.clear()
+
+    for token in tokens:
+        if token.type == tokenize.STRING:
+            run.append(token)
+        elif token.type in (tokenize.NL, tokenize.NEWLINE, tokenize.COMMENT):
+            continue
+        else:
+            close()
+    close()
+    return hits
+
+
 def _find_repo_root(start: Path) -> Path:
     """Walk parents until we find one containing pyproject.toml OR
     src/ + tools/ (repo markers). Fall back to start's parent."""
@@ -352,6 +408,21 @@ def scan(target: Path, source: str) -> list[Any]:
         )
 
     if suffix == ".py":
+        for line, joined in _find_split_dotted_names(source):
+            findings.append(
+                Finding(
+                    tool="hallucination",
+                    severity="medium",
+                    file=str(target),
+                    line=line,
+                    rule_id="H005",
+                    message=(
+                        f"the name {joined!r} is written as two or more "
+                        "adjacent string literals, so no search for the whole "
+                        "name reaches this line. Join them."
+                    ),
+                )
+            )
         try:
             tree = ast.parse(source, filename=str(target))
         except SyntaxError:

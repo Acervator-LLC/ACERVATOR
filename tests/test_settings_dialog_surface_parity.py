@@ -1586,10 +1586,9 @@ def parsed_names(path):
 
 
 def imported_names():
-    """Every name the imported surface module carries.
+    """Every public name the imported surface module carries.
 
-    No skip list: `parsed_names` reads the file's own import statements, so
-    adding an import cannot make the two lists disagree.
+    Imports are included; `parsed_names` reads them from the file.
     """
     return {name for name in vars(surface) if not name.startswith("__")}
 

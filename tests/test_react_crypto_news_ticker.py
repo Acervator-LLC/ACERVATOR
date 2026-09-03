@@ -26,7 +26,9 @@ from tests.fixtures.web_js_modules import (
     JsEngine,
     drain_events,
     js_literals,
+    load_order,
     new_engine,
+    runs_after,
     swap_module,
 )
 
@@ -1609,27 +1611,34 @@ def _refuse_constant(name: str) -> Any:
     raise json.JSONDecodeError("JSON.parse refuses " + name, name, 0)
 
 
-def test_the_page_names_this_module_once_and_after_the_ones_it_reads():
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    named = [line for line in html.splitlines() if MODULE_PATH.name in line]
-    assert len(named) == 1, f"{MODULE_PATH.name} is named {len(named)} times"
-    lines = html.splitlines()
-    mine = lines.index(named[0])
-    for other in (
-        "design_tokens.js",
-        "theme_engine.js",
-        "shared_widgets.js",
-        "header_strip.js",
-    ):
-        earlier = [at for at, line in enumerate(lines) if other in line]
-        assert earlier and earlier[0] < mine, f"{other} is not loaded before mine"
+READS_FIRST = (
+    "design_tokens.js",
+    "theme_engine.js",
+    "shared_widgets.js",
+    "header_strip.js",
+)
 
 
-def test_the_script_line_points_at_the_module_this_test_reads():
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    named = [line for line in html.splitlines() if MODULE_PATH.name in line]
-    href = named[0].split('src="')[1].split('"')[0]
-    assert (INDEX_HTML.parent / href).resolve() == MODULE_PATH
+def test_the_renderer_runs_this_module_once_and_after_the_ones_it_reads():
+    order = load_order()
+    assert order.count(MODULE_PATH.name) == 1, (
+        f"{MODULE_PATH.name} runs {order.count(MODULE_PATH.name)} times"
+    )
+    assert runs_after(order, MODULE_PATH.name, *READS_FIRST), order
+
+
+def test_the_order_reading_answers_no_for_the_pieces_the_other_way_round():
+    """The same reading of an order that runs this module first."""
+    assert not runs_after(
+        [MODULE_PATH.name, *READS_FIRST], MODULE_PATH.name, *READS_FIRST
+    )
+    assert not runs_after(list(READS_FIRST), MODULE_PATH.name, *READS_FIRST)
+
+
+def test_the_module_the_renderer_names_is_a_file_on_disk():
+    """The name in the run order is the file these checks read."""
+    assert MODULE_PATH.name in load_order()
+    assert MODULE_PATH.is_file()
 
 
 def test_the_surface_serves_the_method_the_module_asks_for(js: JsRuntime):

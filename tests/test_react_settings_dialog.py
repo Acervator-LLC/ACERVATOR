@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -21,7 +20,9 @@ from tests.fixtures.web_js_modules import (
     HEX_COLOUR,
     JsEngine,
     js_literals,
+    load_order,
     new_engine,
+    runs_after,
     swap_module,
 )
 
@@ -1808,31 +1809,17 @@ def test_the_carriage_return_counter_can_report():
     assert b"a\nb".count(b"\r") == 0
 
 
-def load_order() -> list:
-    """The module names the renderer runs, in the order it runs them."""
-    from tools import sync_renderer_modules
-
-    manifest = REPO_ROOT / "desktop" / "renderer" / "module_manifest.js"
-    tags = re.findall(
-        r'src="[^"]*?([A-Za-z0-9_]+\.js)"',
-        INDEX_HTML.read_text(encoding="utf-8"),
-    )
-    named = sync_renderer_modules.manifest_entries(
-        manifest.read_text(encoding="utf-8")
-    )
-    return tags + [name for name in named if name not in tags]
+READS_FIRST = ("header_strip.js", "table_cells.js")
 
 
 def test_the_renderer_runs_this_module_after_the_pieces_it_reads():
-    """Loaded before header_strip.js or table_cells.js it would draw no style."""
+    """`header_strip.js` and `table_cells.js` carry the style this draws with."""
     order = load_order()
-    for needed in (MODULE_PATH.name, "header_strip.js", "table_cells.js"):
-        assert needed in order, needed + " never loads: " + str(order)
-    assert order.index(MODULE_PATH.name) > order.index("header_strip.js")
-    assert order.index(MODULE_PATH.name) > order.index("table_cells.js")
+    assert runs_after(order, MODULE_PATH.name, *READS_FIRST), order
 
 
-def test_the_load_order_check_would_see_a_missing_piece():
-    """The order check reports rather than passing when a name never loads."""
-    order = [name for name in load_order() if name != "header_strip.js"]
-    assert "header_strip.js" not in order
+def test_the_order_reading_answers_no_for_the_pieces_the_other_way_round():
+    """The same reading of an order that runs this module first."""
+    first = [MODULE_PATH.name, *READS_FIRST]
+    assert not runs_after(first, MODULE_PATH.name, *READS_FIRST)
+    assert not runs_after(list(READS_FIRST), MODULE_PATH.name, *READS_FIRST)

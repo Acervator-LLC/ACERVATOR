@@ -24,7 +24,9 @@ from tests.fixtures.web_js_modules import (
     HEX_COLOUR,
     JsEngine,
     js_literals,
+    load_order,
     new_engine,
+    runs_after,
     swap_module,
 )
 
@@ -1585,27 +1587,16 @@ def test_the_module_reports_a_missing_bridge_rather_than_raising(
     assert js.json("acervatorProfits.isLoaded()") is False
 
 
-def test_the_page_names_the_strip_module_among_its_assets():
-    """The renderer page never loads the module, so nothing draws."""
-    page = INDEX_HTML.read_text(encoding="utf-8")
-    assert MODULE_PATH.name in page
+def test_the_renderer_runs_the_strip_module_after_the_header_it_draws_with():
+    """The dot span comes from `header_strip.js`, which runs first."""
+    assert runs_after(load_order(), MODULE_PATH.name, HEADER_PATH.name), load_order()
 
 
-def test_the_page_loads_the_strip_module_after_the_header_it_draws_with():
-    """The dot span comes from the header module, which must run first."""
-    page = INDEX_HTML.read_text(encoding="utf-8")
-    assert page.index(HEADER_PATH.name) < page.index(MODULE_PATH.name)
-
-
-def test_the_asset_order_check_would_see_the_two_the_other_way_round():
-    """The same reading of a page with the two names swapped."""
-    page = INDEX_HTML.read_text(encoding="utf-8")
-    swapped = (
-        page.replace(MODULE_PATH.name, "TEMP")
-        .replace(HEADER_PATH.name, MODULE_PATH.name)
-        .replace("TEMP", HEADER_PATH.name)
-    )
-    assert swapped.index(HEADER_PATH.name) > swapped.index(MODULE_PATH.name)
+def test_the_order_reading_answers_no_for_the_two_the_other_way_round():
+    """The same reading of an order that runs the strip first."""
+    swapped = [MODULE_PATH.name, HEADER_PATH.name]
+    assert not runs_after(swapped, MODULE_PATH.name, HEADER_PATH.name)
+    assert not runs_after([HEADER_PATH.name], MODULE_PATH.name, HEADER_PATH.name)
 
 
 def test_the_module_file_is_written_with_one_line_ending(registry):

@@ -20,7 +20,9 @@ from tests.fixtures.web_js_modules import (
     HEX_COLOUR,
     JsEngine,
     js_literals,
+    load_order,
     new_engine,
+    runs_after,
     swap_module,
 )
 
@@ -1345,18 +1347,16 @@ def test_the_markup_refusal_would_see_a_tag_the_page_did_run(browser: Browser):
     assert browser.parsed("window.HOST.querySelectorAll('img').length") == 1
 
 
-def test_the_page_loads_this_module_after_the_pieces_it_reads():
-    """A module loaded before header_strip.js would read no declaration."""
-    lines = INDEX_HTML.read_text(encoding="utf-8").splitlines()
-    names = [line for line in lines if MODULE_PATH.name in line]
-    assert len(names) == 1, names
-    order = [
-        at
-        for at, line in enumerate(lines)
-        if any(one in line for one in (MODULE_PATH.name, "header_strip.js"))
-    ]
-    assert len(order) == 2
-    assert lines[order[-1]].find(MODULE_PATH.name) >= 0
+def test_the_renderer_runs_this_module_after_header_strip():
+    """`header_strip.js` carries the declaration this module reads."""
+    assert runs_after(load_order(), MODULE_PATH.name, "header_strip.js"), load_order()
+
+
+def test_the_order_reading_answers_no_for_the_two_the_other_way_round():
+    """The same reading of an order that runs this module first."""
+    swapped = [MODULE_PATH.name, "header_strip.js"]
+    assert not runs_after(swapped, MODULE_PATH.name, "header_strip.js")
+    assert not runs_after(["header_strip.js"], MODULE_PATH.name, "header_strip.js")
 
 
 #: An empty tag pair a rich-text widget swallows and a plain one lays out.

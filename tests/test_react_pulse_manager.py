@@ -21,7 +21,9 @@ from tests.fixtures.web_js_modules import (
     JsEngine,
     drain_events,
     js_literals,
+    load_order,
     new_engine,
+    runs_after,
     swap_module,
 )
 
@@ -933,11 +935,14 @@ def test_forgetting_clears_everything_the_module_held(js: JsRuntime):
     assert js.json(API + "cadence()") is None
 
 
-def test_the_page_loads_the_module():
-    """A module no page loads is a module the running window never reaches."""
-    page = INDEX_HTML.read_text(encoding="utf-8")
-    assert MODULE_PATH.name in page, page
-    assert page.index(MODULE_PATH.name) < page.index("boot.js")
+def test_the_renderer_loads_the_module():
+    """A module the renderer never runs is one the window never reaches."""
+    assert runs_after(load_order(), MODULE_PATH.name), load_order()
+
+
+def test_the_order_reading_answers_no_for_a_module_it_never_runs():
+    """The same reading of an order this module is absent from."""
+    assert not runs_after(["boot.js"], MODULE_PATH.name)
 
 
 # ---------------------------------------------------------------------

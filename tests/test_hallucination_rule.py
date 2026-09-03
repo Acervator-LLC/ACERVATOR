@@ -84,3 +84,67 @@ class TestH004:
             if f.rule_id == "H004"
         ]
         assert len(found) == 1, f"expected one H004 in markdown, got {found}"
+
+
+def _h005(repo: Path, source: str) -> list:
+    return [
+        f
+        for f in hallucination.scan(repo / "src" / "target.py", source)
+        if f.rule_id == "H005"
+    ]
+
+
+class TestH005:
+    @pytest.mark.parametrize(
+        ("label", "source"),
+        [
+            ("split on one line", 'x = "a.b.c.postcondition" ".d_e"\n'),
+            (
+                "split across lines",
+                'emit(\n    "a.b.c.postcondition"\n    ".d_e",\n)\n',
+            ),
+            ("split into three pieces", 'x = "a" ".b.c.post" ".d_e"\n'),
+        ],
+    )
+    def test_a_split_dotted_name_is_reported(self, tmp_path, label, source):
+        repo = _repo(tmp_path, cited_lines=40)
+        found = _h005(repo, source)
+        assert len(found) == 1, f"expected one H005 for {label}, got {found}"
+
+    def test_the_message_carries_the_joined_name(self, tmp_path):
+        repo = _repo(tmp_path, cited_lines=40)
+        message = _h005(repo, 'x = "a.b.c.postcondition" ".d_e"\n')[0].message
+        assert "a.b.c.postcondition.d_e" in message, message
+
+    @pytest.mark.parametrize(
+        ("label", "source"),
+        [
+            ("the whole name in one literal", 'x = "a.b.c.postcondition.d_e"\n'),
+            (
+                "prose wrapped across lines",
+                'x = (\n    "the connector reads it "\n    "and writes it once."\n)\n',
+            ),
+            ("two dots only", 'x = "one.two" ".three"\n'),
+            ("a split path", 'x = "src/gui/" "main_window.py"\n'),
+            ("an operator between the pieces", 'x = "a.b.c.d" + ".e"\n'),
+            ("one literal per statement", 'x = "a.b.c.d"\ny = ".e.f.g.h"\n'),
+        ],
+    )
+    def test_stays_quiet(self, tmp_path, label, source):
+        repo = _repo(tmp_path, cited_lines=40)
+        assert _h005(repo, source) == [], f"H005 should be quiet on {label}"
+
+    def test_a_python_file_that_does_not_parse_reports_nothing(self, tmp_path):
+        repo = _repo(tmp_path, cited_lines=40)
+        assert _h005(repo, "def (:\n") == []
+
+    def test_markdown_is_not_scanned_for_split_names(self, tmp_path):
+        repo = _repo(tmp_path, cited_lines=40)
+        found = [
+            f
+            for f in hallucination.scan(
+                repo / "docs" / "note.md", 'x = "a.b.c.post" ".d_e"\n'
+            )
+            if f.rule_id == "H005"
+        ]
+        assert found == [], f"H005 is a Python check, got {found}"

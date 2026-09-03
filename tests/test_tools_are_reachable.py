@@ -132,6 +132,9 @@ INVENTORY: tuple[tuple[str, bool], ...] = (
     ("migration_verifier", True),
     ("orphan_widget_scan", True),
     ("queue_state", True),
+    # Writes `desktop/renderer/module_manifest.js` from the modules in
+    # `src/gui/web`. Takes no argument, so it is False.
+    ("sync_renderer_modules", False),
     # Issue #85 moved this in from the repository root, where it was
     # called `test_scrumming_v3.py`. It wore pytest's discovery prefix,
     # sat outside `testpaths`, and defined no test function, so nothing

@@ -3069,7 +3069,7 @@ if _HAS_QT:
                 from src.core.signal_contract import emit as _tr_emit
 
                 _tr_emit(
-                    "trading.12.003.postcondition" ".exchange_tabs_synced",
+                    "trading.12.003.postcondition.exchange_tabs_synced",
                     actual=_missing,
                     expected=0,
                     context={

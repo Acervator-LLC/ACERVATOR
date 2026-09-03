@@ -151,10 +151,10 @@ BANNER_RADIUS_PX = 4
 
 
 def banner_colour(alpha: Any) -> str:
-    """The banner tint at `alpha`, through the one rgba helper this repo has.
+    """The banner tint at `alpha`, built by `src.gui.color_alpha.rgba`.
 
-    The published `COLOUR_OPEN` / `COLOUR_JOIN` / `COLOUR_CLOSE` pieces let
-    the React side build the same text, so both agree byte for byte.
+    `COLOUR_OPEN` / `COLOUR_JOIN` / `COLOUR_CLOSE` publish the same
+    format to the React side.
     """
     return rgba(BANNER_TINT, alpha)
 

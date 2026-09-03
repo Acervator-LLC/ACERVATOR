@@ -319,7 +319,7 @@ class TradingTabMixin:
 
                 _stats = self._status_log.health_stats()
                 _tr_emit(
-                    "trading.12.005.postcondition" ".activity_log_paused",
+                    "trading.12.005.postcondition.activity_log_paused",
                     actual=_stats["paused"],
                     expected=checked,
                     context={

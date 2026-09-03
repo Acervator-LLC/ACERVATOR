@@ -20,7 +20,9 @@ from tests.fixtures.web_js_modules import (
     HEX_COLOUR,
     JsEngine,
     js_literals,
+    load_order,
     new_engine,
+    runs_after,
     swap_module,
 )
 
@@ -1752,18 +1754,16 @@ def test_the_carriage_return_counter_can_report():
     assert b"a\nb".count(b"\r") == 0
 
 
-def test_the_page_loads_this_module_after_the_pieces_it_reads():
-    """A module loaded before header_strip.js would draw no style at all."""
-    lines = INDEX_HTML.read_text(encoding="utf-8").splitlines()
-    names = [line for line in lines if MODULE_PATH.name in line]
-    assert len(names) == 1, names
-    order = [
-        at
-        for at, line in enumerate(lines)
-        if any(
-            one in line
-            for one in (MODULE_PATH.name, "header_strip.js", "table_cells.js")
-        )
-    ]
-    assert len(order) == 3
-    assert lines[order[-1]].find(MODULE_PATH.name) >= 0
+READS_FIRST = ("header_strip.js", "table_cells.js")
+
+
+def test_the_renderer_runs_this_module_after_the_pieces_it_reads():
+    """`header_strip.js` and `table_cells.js` carry the style this draws with."""
+    order = load_order()
+    assert runs_after(order, MODULE_PATH.name, *READS_FIRST), order
+
+
+def test_the_order_reading_answers_no_for_the_pieces_the_other_way_round():
+    """The same reading of an order that runs this module first."""
+    assert not runs_after([MODULE_PATH.name, *READS_FIRST], MODULE_PATH.name, *READS_FIRST)
+    assert not runs_after(list(READS_FIRST), MODULE_PATH.name, *READS_FIRST)

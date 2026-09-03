@@ -22,7 +22,9 @@ from tests.fixtures.web_js_modules import (  # noqa: E402
     HEX_COLOUR,
     JsEngine,
     js_literals,
+    load_order,
     new_engine,
+    runs_after,
     swap_module,
 )
 
@@ -720,17 +722,29 @@ def test_a_bridge_that_is_absent_is_named_rather_than_raising(js: JsRuntime):
     assert js.json("acervatorTradingViewChart.asking()") is None
 
 
-def test_the_page_names_the_chart_module_after_the_modules_it_uses():
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    at = html.index(MODULE_PATH.name)
-    for needed in (
-        "react.production.min.js",
-        "react-dom.production.min.js",
-        "design_tokens.js",
-        "theme_engine.js",
-        "shared_widgets.js",
-    ):
-        assert html.index(needed) < at, needed
+CHART_NEEDS = (
+    "react.production.min.js",
+    "react-dom.production.min.js",
+    "design_tokens.js",
+    "theme_engine.js",
+    "shared_widgets.js",
+)
+
+
+def test_the_renderer_runs_the_chart_module_after_the_modules_it_uses():
+    order = load_order()
+    assert MODULE_PATH.name in order, str(order)
+    at = order.index(MODULE_PATH.name)
+    for needed in CHART_NEEDS:
+        assert needed in order, needed + " never loads: " + str(order)
+        assert order.index(needed) < at, needed
+
+
+def test_the_order_check_would_see_a_module_it_uses_left_out():
+    """The order check reports rather than passing when a name never loads."""
+    assert CHART_NEEDS[0] not in [
+        name for name in load_order() if name != CHART_NEEDS[0]
+    ]
 
 
 def test_the_chart_module_the_page_names_exists_on_disk():
