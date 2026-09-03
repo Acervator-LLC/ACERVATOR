@@ -46,4 +46,5 @@ window.ACERVATOR_MODULES = [
   "positions_held.js",
   "tradingview_chart.js",
   "crypto_news_ticker.js",
+  "settings_dialog.js",
 ];

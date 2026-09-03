@@ -23,7 +23,7 @@ from src.gui.main_tabs import trading_tab_surface as tts
 GROUND = "#404040"
 FLEET_TEAL = "#00cccc"
 CARD_EDGE_ALPHA = 68
-BANNER_EDGE_ALPHA = 85
+BANNER_EDGE_ALPHA = sds.BANNER_EDGE_ALPHA
 MARGIN_PX = 10
 CARD_W_PX = 120
 CARD_H_PX = 60
@@ -158,7 +158,7 @@ SITES = (
     (
         "stock banner",
         lambda: f"QLabel {{ {sds.STOCK_BANNER_STYLE} }}",
-        sds.STOCK_BANNER_COLOR,
+        sds.BANNER_TINT,
         BANNER_EDGE_ALPHA,
         LABEL,
         "e",
@@ -214,7 +214,12 @@ def test_each_site_painted_another_colour_while_its_alpha_was_written_last(
 
 def bare_of(sheet: str, colour: str, alpha: int) -> str:
     """`sheet` with the one alpha-bearing colour turned fully see-through."""
-    return sheet.replace(rgba(colour, alpha), rgba(colour, 0))
+    wanted = rgba(colour, alpha)
+    assert wanted in sheet, (
+        "the ground reading needs " + wanted + " to leave the sheet, but the "
+        "sheet does not carry that text: " + sheet
+    )
+    return sheet.replace(wanted, rgba(colour, 0))
 
 
 SHORT_FORM_BADGES = (
@@ -239,7 +244,7 @@ def test_a_five_digit_badge_colour_painted_no_fill_at_all(
 def edge_agrees(sheet: str, colour: str, alpha: int, kind: str = FRAME) -> tuple:
     """The edge Qt paints, and the edge that colour at that alpha would give."""
     drawn = painted(sheet, kind)["edge"]
-    bare = painted(sheet.replace(rgba(colour, alpha), rgba(colour, 0)), kind)["edge"]
+    bare = painted(bare_of(sheet, colour, alpha), kind)["edge"]
     return drawn, over(colour, bare, alpha), bare
 
 
@@ -275,7 +280,7 @@ def test_the_stock_banner_edge_is_blue_and_not_lime():
     """`#6699ff55` painted a lime green, measured `#416b2b` on a dark ground."""
     drawn, wanted, bare = edge_agrees(
         f"QLabel {{ {sds.STOCK_BANNER_STYLE} }}",
-        sds.STOCK_BANNER_COLOR,
+        sds.BANNER_TINT,
         BANNER_EDGE_ALPHA,
         kind=LABEL,
     )
