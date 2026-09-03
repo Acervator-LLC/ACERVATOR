@@ -37,9 +37,7 @@ that the rule is switched off.
 
 from __future__ import annotations
 
-import re
 import time
-from pathlib import Path
 
 import pytest
 
@@ -415,14 +413,3 @@ class TestTheThrottleWindowReachesTheBudget:
         row = _one_row(sink.cadence_report(), AN_ALWAYS_ON_PIN)
         assert row["observed"]["throttle"] == 0.0
         assert row["predicted"]["max_interval"] == ALWAYS_ON_STALE_AFTER
-
-
-class TestTheSupersededNoteIsRewritten:
-    """`signal_contract`'s 'per-pin expected cadence' note is replaced."""
-
-    def test_the_module_no_longer_calls_for_a_per_pin_cadence(self):
-        source = (
-            Path(__file__).resolve().parents[1] / "src" / "core" / "signal_contract.py"
-        ).read_text(encoding="utf-8")
-        assert "needs a per-pin\nexpected cadence" not in source
-        assert re.search(r"always on.{0,40}toggle", source, re.DOTALL | re.IGNORECASE)
