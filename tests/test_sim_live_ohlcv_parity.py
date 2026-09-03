@@ -6,8 +6,9 @@ API pulls from the exchange. It is just a different data source that I
 am expecting you to handle in an identical, verifiable manner so that we
 have a valid test environment on which to build."
 
-WHAT WAS WRONG. `ScrummingBot` asks for `limit=100`
-(scrumming_bot.py:6223). Live's `CCXTConnector.get_ohlcv` passes that
+WHAT WAS WRONG. `ScrummingBot.tick` asks for `limit=100` via
+`_get_ohlcv` (`src/trading/scrumming_bot.py`). Live's
+`CCXTConnector.get_ohlcv` passes that
 into ccxt's `since` slot -- a known, documented defect on that method --
 so the exchange returns its own default page size instead and the live
 bot receives 300. `FleetSimExchange.get_ohlcv` honoured the limit and

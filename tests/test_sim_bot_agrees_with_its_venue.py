@@ -16,7 +16,7 @@ venue raises: `ccxt.coinbase.create_order` throws `InsufficientFunds`,
 and `CCXTConnector.place_order` re-raises it unchanged
 (ccxt_connector.py:1333). So the SIM handed the bot an `Order` object
 that live could never produce — `filled=0`, `average=None` — and
-`ScrummingBot._settled_fill` (scrumming_bot.py:12460) reads exactly
+`_settled_fill` (`src/trading/scrumming/execution.py`) reads exactly
 those two fields, finds neither, and books the REQUESTED size at the
 TICK price as an estimate. Its docstring states the premise out loud:
 "the order DID execute and refusing to book it would be worse". True of
@@ -25,7 +25,8 @@ a venue that raises. False of one that does not.
 MEASURED on the 400-candle single-symbol tape below, before the fix: the
 bot booked 101.05331875 CHIP into `_main_lots` while the tape held
 0.0 CHIP and its USD sat untouched at 100.0. Every autonomous fire after
-that was refused by the position check at scrumming_bot.py:12723 —
+that was refused by the position check in `_reconcile_holdings`
+(`src/trading/scrumming/reconciliation.py`) —
 "internal ... vs exchange 0.00000000" in the operator's console — so the
 bot traded nothing for the rest of the run.
 
@@ -119,7 +120,7 @@ def _sawtooth(n: int = TAPE_CANDLES) -> list[list[float]]:
     checks that need a run to DO something take this tape instead --
     fifty candles up at 0.2% each, then fifty down, a swing of about
     10%, two orders of magnitude outside the MEM-258 dust band (0.1% of
-    target, scrumming_bot.py:7144).
+    target, ``at_target_dust_band`` in ``src/trading/target_bands.py``).
 
     `_rows` is deliberately left as it was. It is what the agreement
     checks run on, and swapping it under them would change what they

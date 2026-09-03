@@ -14,8 +14,9 @@ understated the position by $35.46 against $3,317.16.
 
 WHY THIS WAS THE LAST ONE
 C10 made the per-bot Ammo recompute from holdings x price and treat the
-cached field as a MARKED fallback. `scrumming_bot.py:9246` already
-recomputed for manual fire. The aggregate was the only remaining
+cached field as a MARKED fallback. `_execute_manual_rebalance`
+(`src/trading/scrumming/execution.py`) already recomputed for manual
+fire. The aggregate was the only remaining
 consumer still trusting the cached value -- and it is the one the
 operator's headline number is built from.
 

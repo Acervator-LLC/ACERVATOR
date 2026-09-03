@@ -55,9 +55,9 @@ currently reach. Both readings are pinned below.
 
 WHAT CARRIES THE FEE
 ====================
-``Order.fee`` / ``Order.fee_currency`` are filled by the connector from
-the venue's own ``fee.cost`` / ``fee.currency``
-(``src/exchange/ccxt_connector.py:1661``). Two places hold a settled
+``Order.fee`` / ``Order.fee_currency`` are filled by the connector's
+``_parse_order`` from the venue's own ``fee.cost`` / ``fee.currency``
+(``src/exchange/ccxt_connector.py``). Two places hold a settled
 order and both now record it:
 
 * ``_execute_sell`` -- the only point SCRUM and DIST ever see an order;

@@ -17,7 +17,8 @@ existing pins (test_status_tab_sources.py, test_ytd_per_trade_increment)
 assert source TEXT and would have stayed green.
 
 NF-122 — BotState.ERROR was assigned NOWHERE in src/. Grep found it only
-in comparisons (bot_container.py:3191). The tick loop went
+in comparisons, in `BotContainer._run_with_guard`
+(`src/trading/bot_container.py`). The tick loop went
 RUNNING -> COOLDOWN (at 5 consecutive errors) -> RUNNING and skipped
 ERROR entirely, so get_aggregate_stats' "errored" count was structurally
 pinned at zero. A bot could fail every single tick and the dashboard

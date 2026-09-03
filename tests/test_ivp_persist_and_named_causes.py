@@ -17,8 +17,9 @@ exactly two sites in scrumming_bot.py (:7269 and :7513), both behind
 
   1. a restart blanks the whole fleet -- 8 of 34 bots had produced no TA
      at all when he looked, half an hour after a restart;
-  2. a bot parked inside its dust band never produces one, because the
-     tick returns at scrumming_bot.py:6660 before the TA block. That is
+  2. a bot parked inside its dust band never produces one, because
+     `ScrummingBot.tick` (`src/trading/scrumming_bot.py`) returns
+     before the TA block. That is
      correct trading behaviour (MEM-258) and is not changed here;
   3. a good reading is thrown away -- BTC emitted "TA Vote: BEARISH
      (conf=0.13, B:2/N:5/S:5)" at 22:00:26 and the restart discarded it.
@@ -691,8 +692,10 @@ class TestMainWindowPicksTheCause:
         live pool's cache dict and read back through the shipped
         `_candle_key`.
 
-        FAILURE MEANS: a bot blocked by the 30-candle gate at
-        scrumming_bot.py:7262 and :7510 is reported as a cold start, and
+        FAILURE MEANS: a bot blocked by the 30-candle gate --
+        `ScrummingBot.tick` (`src/trading/scrumming_bot.py`) and
+        `_tick_initial_entry` (`src/trading/scrumming/tick_phases.py`)
+        -- is reported as a cold start, and
         the operator waits for a read that cannot happen."""
         from src.exchange.data_pool import CacheEntry, _candle_key, get_data_pool
 

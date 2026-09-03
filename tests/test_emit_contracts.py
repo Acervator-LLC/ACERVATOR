@@ -22,7 +22,8 @@ None. Three real instances found in this codebase within one session:
    ``data={...}``, five pass kwargs flat. A consumer handling only one
    silently misses half the fills.
 
-3. ``scrumming_bot.py:8568`` (HEDGE rebalance) emitted ``size`` and no
+3. The HEDGE rebalance branch of ``ScrummingBot.tick``
+   (``src/trading/scrumming_bot.py``) emitted ``size`` and no
    ``amount``. ``LogManager._on_trade_filled_bus`` reads
    ``merged.get("amount", 0)``, so every hedge rebalance was written to
    the live trade.log with **amount=0.0**. The fill quantity was absent

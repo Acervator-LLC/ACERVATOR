@@ -20,8 +20,10 @@ WHY IT IS WORTH HAVING ANYWAY
 Measured against live state 2026-08-06: 11 of 35 bots diverged by more
 than 1%, worst ORCA/USD at 11.53%. The per-bot Ammo is unaffected (C10
 made it recompute) and so is the manual-fire engine
-(scrumming_bot.py:9246), but bot_container.py:3382 sums the CACHED field
-into the fleet total, understating it by $35.45 against $3,311.82.
+(`_execute_manual_rebalance`, `src/trading/scrumming/execution.py`),
+but `get_aggregate_stats` (`src/trading/container/aggregation.py`)
+sums the CACHED field into the fleet total, understating it by $35.45
+against $3,311.82.
 
 THE INSTRUMENT HAS A POSITIVE CONTROL, and that is the point
 An earlier hand-run of this same comparison read `current_holdings` --

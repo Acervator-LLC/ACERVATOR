@@ -10,8 +10,9 @@ THE DEFECT THIS PINS (GitHub issue #97)
                            otd_thresh  = ref_v * (1.0 - _otd_pct / 100.0)
 
 The executor does not use that number. Its per-tranche fold filter is
+`_fold_eligible_tranches` (`src/trading/scrumming/fold_tranches.py`):
 
-    scrumming_bot.py:9857  ticker.last <= float(t.get("ref", 0)) * _otd_factor
+    ticker.last <= float(t.get("ref", 0)) * _otd_factor
 
 and `_otd_factor` comes from `src/trading/otd_math.py`, where the
 Minimum Opposing Trade Distance is `scrumming_interval_pct +
@@ -277,7 +278,8 @@ def _panel_price_ok_set(monkeypatch, fleet):
 def _executor_price_ok_set(fleet):
     """Every (symbol, index) the EXECUTOR's own filter accepts.
 
-    The predicate is copied from `scrumming_bot.py:9857` verbatim --
+    The predicate is copied from `_fold_eligible_tranches`
+    (`src/trading/scrumming/fold_tranches.py`) verbatim --
     `ticker.last <= ref * _otd_factor` -- and the factor comes from
     `otd_math` through the same config reader the executor calls.
 

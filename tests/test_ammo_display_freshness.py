@@ -4,9 +4,10 @@ THE CORRECTION THIS PINS
 The bulk ticker refresher was shipped 2026-08-06 believing it unstuck
 the stale Ammo readout. It did not. The dashboard reads
 `stats.current_price` (main_window.py), whose only recurring writer is
-`scrumming_bot.py:5136` -- downstream of the read-rate gate. Warming the
-shared cache never writes that field, so the READOUT was exactly as
-stale as before: 60s on 29 bots, 300s on 6, against a 2s repaint.
+`ScrummingBot.tick` in `src/trading/scrumming_bot.py` -- downstream of
+the read-rate gate. Warming the shared cache never writes that field,
+so the READOUT was exactly as stale as before: 60s on 29 bots, 300s on
+6, against a 2s repaint.
 
 `_fresh_display_price` is the half that was missing: it reads the pool
 cache the refresher keeps warm. DISPLAY ONLY -- the trading path still
@@ -21,7 +22,9 @@ win rather than a trade-off.
 
 SECOND DEFECT PINNED HERE (the 10x band split)
 The cell's actionable band is 0.1% of target; Manual Fire's own no-op
-band is 1% (`scrumming_bot.py:9248`). In that 10x window the cell
+band is 1% (`manual_fire_dust_band` in `src/trading/target_bands.py`,
+checked in `_execute_manual_rebalance`,
+`src/trading/scrumming/execution.py`). In that 10x window the cell
 rendered a confident signal colour for an order that silently never
 happened -- "already within dust band ... No-op". Zero is one of the
 operator's "strange, intermittent and hard to explain amounts".

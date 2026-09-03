@@ -9,10 +9,11 @@ than merely convenient:
      the 60-second save then wrote it to disk. An operator who turned
      Profit Folding OFF found it back on, with nothing recording who
      changed it.
-  2. `bot_container.py:2404` re-emits `wire.created` for every stored
-     wire on EVERY BOOT — so this was not a one-time convenience at draw
-     time. It re-applied at every launch, permanently. The setting could
-     not be made to stick.
+  2. `BotManager.restore_smart_wires_from_state`
+     (`src/trading/container/restore.py`) re-emits `wire.created` for
+     every stored wire on EVERY BOOT — so this was not a one-time
+     convenience at draw time. It re-applied at every launch,
+     permanently. The setting could not be made to stick.
   3. The flag is load-bearing: it gates target growth
      (`scrumming_bot.py:1356`) and the DIST tranche rebuild (`:8688`).
 
@@ -79,8 +80,10 @@ class TestItDoesNotRewriteConfig:
         assert bot.config.profit_folding_active is True
 
     def test_the_boot_reemit_path_cannot_flip_it(self):
-        """bot_container.py:2404 re-emits wire.created for every stored
-        wire on every boot. Ten replays must leave the flag alone."""
+        """`BotManager.restore_smart_wires_from_state`
+        (`src/trading/container/restore.py`) re-emits wire.created for
+        every stored wire on every boot. Ten replays must leave the
+        flag alone."""
         bot = SimpleNamespace(config=SimpleNamespace(profit_folding_active=False))
         mgr = SimpleNamespace(get_bot=lambda _bid: bot)
         me = SimpleNamespace(_bot_manager=mgr, _status_log=_Log())

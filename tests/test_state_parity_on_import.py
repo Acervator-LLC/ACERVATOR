@@ -11,8 +11,9 @@ opening position -- `target_balance / open_price` -- a second source of
 initiating state. Every replay opened with no lots, no tranches, and the
 ORIGINAL config target instead of the grown one.
 
-`import_scrumming_state` (scrumming_bot.py:3786) already existed and is what
-LIVE calls at bot_container.py:3217. The sim simply never fed it.
+`import_scrumming_state` (`src/trading/scrumming/state_io.py`) already existed
+and is what LIVE calls from `BotManager.restore_bots_from_state`
+(`src/trading/container/restore.py`). The sim simply never fed it.
 
 THE CHECK IS A ROUND TRIP. `import_scrumming_state` is the inverse of
 `export_scrumming_state`, so a faithful import re-exports exactly what it was

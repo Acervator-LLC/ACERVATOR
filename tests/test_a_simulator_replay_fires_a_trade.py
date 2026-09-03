@@ -124,7 +124,8 @@ def _rows(n: int = TAPE_CANDLES, px0: float = 1.0) -> list[list[float]]:
     its floor on a fill that no longer exists, so this is a sawtooth --
     fifty candles up at 0.2% each, then fifty down, a swing of about
     10%. That is two orders of magnitude outside the MEM-258 dust band
-    (0.1% of target, scrumming_bot.py:7144), so the fill this file now
+    (0.1% of target, ``at_target_dust_band`` in
+    ``src/trading/target_bands.py``), so the fill this file now
     requires is a TRADING decision rather than an arrival artefact.
     """
     out: list[list[float]] = []

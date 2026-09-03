@@ -1,10 +1,10 @@
 """v3.23.74 — pin tests for MarketDataPool.get_or_fetch_ohlcv.
 
 Regression fixture for the CPM saturation the operator reported on
-2026-07-31: ScrummingBot bypassed the pool for OHLCV
-(scrumming_bot.py:5254 + 5433 hit the exchange directly on every
+2026-07-31: ScrummingBot bypassed the pool for OHLCV (two call sites
+in `src/trading/scrumming_bot.py` hit the exchange directly on every
 action tick), so N bots on the same (exchange, symbol, TF) each
-paid their own OHLCV call. v3.23.74 adds pool coalescing; these
+paid their own OHLCV call. Pool coalescing fixed it; these
 tests pin the invariants a future refactor mustn't silently break:
 
     1. Fresh cache hit → zero connector calls

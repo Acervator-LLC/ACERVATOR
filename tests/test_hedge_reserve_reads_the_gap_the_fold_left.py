@@ -15,7 +15,8 @@ the fold's order reaches the venue first.
 
 THE DEFECT
 ==========
-``delta`` is computed once, at ``scrumming_bot.py:9088``, and the fold
+``delta`` is computed once, in ``ScrummingBot.tick``
+(``src/trading/scrumming_bot.py``), and the fold
 moves BOTH of its operands afterwards -- ``_execute_buy`` credits
 ``_current_holdings`` and ``_apply_fold_target_growth`` raises
 ``_target_balance``. The hedge block then sized itself on that stale

@@ -4,7 +4,7 @@ C17 / SWARM-4.23, SN-42. Risk tier live-behaviour.
 
 THE DEFECT
 `BotManager.__init__` subscribes three handlers to the process-wide bus
-(`bot_container.py:1598/1602/1603`) INSIDE the constructor.
+(`src/trading/bot_container.py`) INSIDE the constructor.
 `nuclear_controller.py` rebound `._bus` on the very next line after
 constructing — too late. The three subscriptions were already latched,
 and `EventBus` had no way to retract them (C17 adds `unsubscribe`).

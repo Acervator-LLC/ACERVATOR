@@ -88,8 +88,9 @@ def _sawtooth(n: int = TAPE_CANDLES) -> list[list[float]]:
 
     Fifty candles up at 0.2% a candle, then fifty down. The swing is
     about 10%, which clears the MEM-258 dust band (0.1% of target,
-    scrumming_bot.py:7144) by two orders of magnitude, so a bot that
-    opens AT target still has something to do.
+    ``at_target_dust_band`` in ``src/trading/target_bands.py``) by two
+    orders of magnitude, so a bot that opens AT target still has
+    something to do.
     """
     out: list[list[float]] = []
     px = 1.0
@@ -273,7 +274,7 @@ class TestTheLotItself:
         Live's own lot writer states the rule: a zero basis "claims
         infinite profit against every price and can arm a sell that
         never should have armed" (`_book_reconciliation_lot`,
-        scrumming_bot.py:11948).
+        `src/trading/scrumming/reconciliation.py`).
         """
         assert (
             opening_lot_for_lotless(target, rows) is None
