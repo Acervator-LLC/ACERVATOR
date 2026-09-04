@@ -1,25 +1,19 @@
-"""
-src/simulator/nuclear_controller.py — Nuclear-mode orchestrator.
+"""Single-tape Nuclear orchestrator: one scout bot walking one tape.
 
-v3.18.8 (Phase B revision) — REWRITTEN for tape-based selection.
+The controller takes a ``tape_id`` ("A", "B", ...) rather than a symbol
+and builds the synthetic trading symbol from it ("TAPEA/USD"), so
+``BotConfig`` has something to bind to and the bot never sees the tape's
+real-world source.
 
-Operator directive 2026-05-20:
-    "We do not have to maintain ticker associations. We just have Tape
-    A, Tape B, and so on. We just need realistic price action feeds
-    that will actively fire all functions."
+It owns an isolated ``EventBus`` and ``BotManager``, constructs one
+sim-mode ``ScrummingBot`` against a ``NuclearSimExchange``, and runs a
+world-clock coroutine that advances the tape on a cadence. Smart Wire,
+spawning and load oscillation are not part of it.
 
-The controller now takes a ``tape_id`` ("A", "B", ...) instead of a
-symbol. The synthetic trading symbol is built from the tape id
-("TAPEA/USD") and only exists so ``BotConfig`` has something to bind
-to — the bot never sees the tape's real-world source.
-
-Scope for Phase B (unchanged from v3.18.7):
-  ✓ One scout bot ticks against ONE tape
-  ✓ Isolated EventBus + BotManager
-  ✓ Real ScrummingBot.tick() runs unmodified
-  ✓ World-clock coroutine advances the tape on a cadence
-  ✗ Smart Wire / MR / spawn cascade (Phase C)
-  ✗ Speed oscillator + verification harness (Phase D)
+``NuclearModePanel`` drives ``NuclearFleetController`` instead, so
+nothing under ``src/`` constructs this class; both share
+``nuclear_candle_source``. ``start`` is synchronous here and a coroutine
+on the fleet controller.
 """
 
 from __future__ import annotations
@@ -36,7 +30,7 @@ from ..trading.bot_container import (
     BotManager,
     BotMode,
     make_bot_config,
-)  # noqa: F401  (BotConfig retained for type hints; construction goes through make_bot_config per v3.20.35 fitness rule)
+)
 from ..trading.scrumming_bot import ScrummingBot
 from .fleet.fleet_replay_controller import _make_sim_capital_registry
 
@@ -46,28 +40,24 @@ from .nuclear_sim_exchange import NuclearSimExchange, _tape_id_to_base
 logger = logging.getLogger("acervator.nuclear_sim")
 
 
-# Quote currency the sim uses for the operator's paper pool. USD is
-# the obvious choice; cache files are USD-denominated for both crypto
-# (CoinGecko) and equity (Yahoo).
 _SIM_QUOTE = "USD"
 
 
 class NuclearController:
     """Orchestrate an isolated nuclear-mode sim run.
 
-    Lifecycle:
-        src = NuclearCandleSource()              # discovers tapes on disk
-        if not src.has_any_tapes():
-            ...show empty-cache message...
+    ``stop`` leaves the scout attached so ``snapshot`` still reports its
+    final state; ``_teardown_quiet`` is what releases it.
 
+    Lifecycle:
+        src = NuclearCandleSource()
         ctl = NuclearController(
             candle_source=src,
             tape_id="A",
             activity_cb=tab.log_activity,
         )
         ctl.start(async_loop=main_loop)
-        ...
-        ctl.stop()                                # idempotent
+        ctl.stop()
     """
 
     DEFAULT_WORLD_CLOCK_MS: int = 250
@@ -93,7 +83,6 @@ class NuclearController:
         self._seed_amount = float(seed_amount)
         self._world_clock_ms = int(world_clock_ms or self.DEFAULT_WORLD_CLOCK_MS)
 
-        # Synthetic symbol the bot trades against
         self._sim_symbol = f"{_tape_id_to_base(tape_id)}/{_SIM_QUOTE}"
 
         # Built on start()
@@ -181,10 +170,8 @@ class NuclearController:
             try:
                 unsub()
             except Exception as _unsub_exc:  # noqa: BLE001
-                # v3.24.32 — was a silent pass. A failed unsubscribe
-                # leaves a dead handler on the sim bus, so the next run
-                # double-counts events; worth a line even though it
-                # must not block teardown.
+                # A failed unsubscribe leaves a live handler on the sim bus,
+                # so the next run double-counts its events.
                 logger.debug("nuclear: unsubscribe failed: %s", _unsub_exc)
         self._bus_unsubs.clear()
         self._running = False
@@ -202,13 +189,11 @@ class NuclearController:
                 scout_holdings = float(getattr(self._scout, "_current_holdings", 0.0))
                 scout_target = float(getattr(self._scout, "_target_balance", 0.0))
             except Exception as _snap_exc:  # noqa: BLE001
-                # v3.24.32 — was a silent pass. The GUI polls this on a
-                # timer; a persistent read failure showed as frozen
-                # status fields with no explanation anywhere.
+                # A GUI timer polls this, so a read failure shows only as
+                # status fields that stop moving.
                 logger.debug("nuclear: scout snapshot read: %s", _snap_exc)
-        # v3.24.28 — visual-feed reads. Kept narrow and defensive: the
-        # snapshot is polled by a GUI timer, so a read that raises here
-        # would stall the whole status panel, not just one field.
+        # A raising tape read would stall the whole status panel, not just
+        # the two price fields below.
         _last_px = 0.0
         _last_vol = 0.0
         try:
@@ -243,11 +228,8 @@ class NuclearController:
             "exception_count": self._exception_count,
             "last_exception": self._last_exception,
             "exchange_snapshot": ex_snap,
-            # v3.24.28 — fields the shared Simulator visual panels need.
-            # Nuclear Mode had no visual feed at all (simulator_tab wired
-            # set_visual_widgets to Fleet Replay only), so the Indicator
-            # Voting Panel and price chart stayed empty for the whole
-            # run. These are read-only reads off the scout + tape.
+            # The Indicator Voting Panel and the price chart read the four
+            # keys below.
             "symbol": self._sim_symbol,
             "last_price": _last_px,
             "last_volume": _last_vol,
@@ -257,24 +239,13 @@ class NuclearController:
     # ─── Internal: context build ───────────────────────────────────────
 
     def _build_context(self) -> None:
-        # 1. Wire the chosen tape into the candle source.
         self._src.wire(self._tape_id)
 
-        # 2. Isolated bus + manager.
-        #
-        # v3.24.61 (C17 / SWARM-4.23) — INJECTED, not overwritten after
-        # the fact. `BotManager.__init__` (`src/trading/bot_container.py`)
-        # subscribes three handlers before this line could run,
-        # so rebinding `._bus` afterwards left three bound methods of a
-        # SIM manager permanently attached to the process-wide bus,
-        # firing on LIVE events, three more per replay, never retracted.
+        # Injected, not rebound afterwards: BotManager.__init__ subscribes
+        # three handlers, and rebinding `._bus` leaves them on the live bus.
         self._sim_bus = EventBus()
         self._sim_bot_manager = BotManager(bus=self._sim_bus)
 
-        # 3. Exchange wraps the candle source. Quote balance is seeded
-        #    with the operator's seed amount; synthetic base balances
-        #    are seeded with explicit 0.0 inside NuclearSimExchange's
-        #    constructor so the MEM-254 init handshake passes.
         self._exchange = NuclearSimExchange(
             self._src,
             quote_currency=_SIM_QUOTE,
@@ -324,9 +295,8 @@ class NuclearController:
 
     def _construct_scout(self) -> None:
         base = _tape_id_to_base(self._tape_id)
-        # v3.20.35 — route through make_bot_config factory so any
-        # future mode-foreign kwarg drift is caught at construction
-        # time (operator directive 2026-05-25).
+        # make_bot_config raises on a kwarg foreign to the mode; BotConfig
+        # constructed directly would store it.
         cfg = make_bot_config(
             BotMode.SCRUMMING,
             exchange_id="nuclear_sim",
@@ -337,39 +307,9 @@ class NuclearController:
             scrumming_interval_pct=1.0,
             ta_timeframe="1h",
         )
-        # v3.24.32 — LIVE CROSSOVER FIX.
-        #
-        # This constructed the scout WITHOUT sim_mode, which had three
-        # consequences on the only GUI-reachable Nuclear path:
-        #
-        #   1. `_sim_mode` False -> the bot resolved the process-wide
-        #      CapitalReservationRegistry and wrote reservations into
-        #      ~/.acervator/reservation_state.json — LIVE capital state.
-        #      That is the same leak that accumulated 16,523 orphan
-        #      reservations (6.5 MB) before v3.24.14.
-        #   2. Bus isolation is applied INSIDE __init__ under
-        #      `if self._sim_mode:`. With it False, the scout wired to
-        #      the GLOBAL bus during construction; reassigning
-        #      `_bus` afterwards does not move subscriptions already
-        #      made, so scout events could reach live subscribers.
-        #   3. `enable_phantoms=False` removed a whole subsystem
-        #      instead of isolating it.
-        #
-        # sim_mode=True now performs the bus isolation during __init__
-        # (so the assignment below is belt-and-braces, not the
-        # mechanism), the injected registry keeps reservations off live
-        # state, and phantoms run like they do live.
-        # v3.24.54 (C15 step 2) — the factory RAISES as of v3.24.35
-        # (CV1). This call site was left unguarded, so a mkdtemp failure
-        # aborted Nuclear Mode start with a bare traceback out of a Qt
-        # slot: the operator sees the panel do nothing and gets no
-        # reason. The methodology's own correction note flagged exactly
-        # this ("a second production caller the plan's file list
-        # omits").
-        #
-        # Aborting is still correct — losing a Nuclear run is cheap and
-        # corrupting live reservation state is not. What changes is that
-        # the abort is NAMED.
+        # _make_sim_capital_registry raises rather than falling back to the
+        # process-wide registry, which autosaves to reservation_state.json.
+        # Aborting is right; the abort must say why.
         try:
             _sim_registry = _make_sim_capital_registry()
         except Exception as _crr_exc:
@@ -386,6 +326,8 @@ class NuclearController:
             sim_mode=True,
             capital_registry=_sim_registry,
         )
+        # sim_mode gives the bot a private bus of its own; this re-points it
+        # at the one _wire_bus_subscriptions counts on.
         scout._bus = self._sim_bus
         self._sim_bot_manager.register(scout)
         self._scout = scout
@@ -425,10 +367,8 @@ class NuclearController:
     # ─── Internal: teardown / logging ──────────────────────────────────
 
     def _teardown_quiet(self) -> None:
-        # v3.24.61 (C17) — retract the sim manager's own subscriptions.
-        # Injection keeps them off the process-wide bus; this keeps them
-        # from accumulating on the private one across repeated runs, and
-        # is what makes the exit gate's before/after fingerprint match.
+        # Retract the manager's own subscriptions so they do not accumulate
+        # on the private bus across repeated runs.
         _mgr = getattr(self, "_sim_bot_manager", None)
         if _mgr is not None and hasattr(_mgr, "detach_bus"):
             try:
@@ -445,9 +385,9 @@ class NuclearController:
             try:
                 self._world_clock_task.cancel()
             except Exception as _cancel_exc:  # noqa: BLE001
-                # A world-clock task that refuses to cancel keeps
-                # advancing the tape after "stopped" — visible only as
-                # a status panel that will not settle.
+                # A task that refuses to cancel keeps advancing the tape
+                # after stop, visible only as a status panel that will not
+                # settle.
                 logger.debug("nuclear: world-clock cancel failed: %s", _cancel_exc)
         self._world_clock_task = None
         self._scout = None
@@ -456,7 +396,8 @@ class NuclearController:
         self._sim_bus = None
 
     def _log_activity(self, msg: str) -> None:
+        """Hand one line to the caller's activity callback, never raising."""
         try:
             self._activity_cb(msg)
         except Exception as _sf_exc:  # noqa: BLE001
-            logger.warning("Nuclear scout teardown failed: %s", _sf_exc)
+            logger.warning("nuclear: activity callback failed: %s", _sf_exc)
