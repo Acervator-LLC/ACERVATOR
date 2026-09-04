@@ -1,23 +1,11 @@
 """Report each standing-queue item's state FROM THE CODE, never from a table.
 
-Why this exists. On 2026-08-16 the queue table said item 4 was open. The code
-said otherwise: the delegate, both paint routines and the listing had all
-shipped four days earlier. The table was read, believed and reported, and the
-next unit was very nearly dispatched to build what already existed.
+Each probe searches `source_files` for its needles and prints both the hits and
+the needle, so a zero is distinguishable from a probe aimed wrong. `report`
+REFUSES an empty scan. `git_remotes` reads the repository config directly, so
+this module spawns no subprocess and needs no shell.
 
-A written table is a claim about the tree at the moment somebody typed it. This
-runs probes instead, so "what is the state of item N" is a MEASUREMENT.
-
-Each probe reports the evidence it found, not a verdict alone. A probe that
-finds nothing prints the pattern it searched for, so a zero can be told apart
-from a probe pointed at the wrong place.
-
-No subprocess and no shell: the scan is pure Python over the source tree, and
-the remote list is read out of the repository's own config file. That keeps the
-tool usable where grep is absent and leaves nothing for a shell to interpret.
-
-    python -m tools.queue_state          # every item
-    python -m tools.queue_state 19 20    # named items
+    python -m tools.queue_state 19 20
 """
 
 from __future__ import annotations
@@ -82,11 +70,8 @@ def _anchor(path: pathlib.Path, base: pathlib.Path) -> pathlib.Path:
 def git_common_dir() -> pathlib.Path | None:
     """The repository's common git directory, or None when ROOT is no checkout.
 
-    A linked worktree carries ``.git`` as a one-line ``gitdir:`` pointer file
-    rather than a directory. The directory it names holds a ``commondir`` file
-    naming the shared git directory, and that is where the remotes are declared.
-    A submodule checkout has the pointer file but no ``commondir``, so its own
-    git directory is the answer.
+    A ``gitdir:`` pointer is followed to its ``commondir``; a pointer with no
+    ``commondir`` answers the directory it names.
     """
     dot = ROOT / ".git"
     if dot.is_dir():
@@ -107,7 +92,7 @@ def git_common_dir() -> pathlib.Path | None:
 
 
 def git_remotes() -> list[str]:
-    """Remote names from the repository config, read rather than shelled out."""
+    """Remote names read out of the `git_common_dir` config file."""
     git_dir = git_common_dir()
     if git_dir is None:
         return []
@@ -133,10 +118,7 @@ PROBES: list[tuple[int, str, list[tuple[str, str]], str]] = [
             ("fold paint routine", "_paint_fold_tranche_row"),
             ("row border delegate", "_TrancheRowBorderDelegate"),
             ("delegate wired", "setItemDelegate"),
-            # Named _cells, not _row. The first version of this probe searched
-            # for `_compose_extractor_tranche_row` and reported 0 — which is
-            # exactly why a probe prints the pattern it searched for. A wrong
-            # needle and an absent feature look identical without it.
+            # The method is named _cells, not _row.
             ("row composer", "_compose_extractor_tranche_cells"),
         ],
         "all five present means the follow-up spec shipped",
@@ -226,10 +208,7 @@ GIT_ITEM = 16
 
 def report(only: set[int]) -> int:
     scanned = len(source_files())
-    # A probe over zero files reports 0 hits for every needle and the
-    # run still exits 0. That reads exactly like "every item is open",
-    # which is the one answer this tool must never give by accident. So
-    # an empty scan is REFUSED, and the refusal comes BEFORE the banner.
+    # An empty `source_files` would report every needle as 0 hits and exit 0.
     if scanned == 0:
         print(f"REFUSED: no source files under {ROOT / 'src'}.")
         print("Every probe would report 0 hits and the exit code would")

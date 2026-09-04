@@ -1,10 +1,9 @@
-"""Write ``desktop/renderer/module_manifest.js`` from the modules on disk.
+"""Write ``MANIFEST`` from the modules on disk.
 
-The renderer page names its own modules in ``index.html``. Anything under
-``src/gui/web`` that the page does not name is loaded from the manifest
-instead, which is why a new module needs no edit to the page. Run this
-after adding or removing a module; ``tests/test_desktop_shell_assets.py``
-fails and names the module when the manifest and the directory disagree.
+``modules_on_disk`` lists every ``.js`` under ``WEB_DIR``, and
+``modules_named_by_page`` lists the ones ``INDEX_HTML`` already loads; the
+manifest carries the difference. ``tests/test_desktop_shell_assets.py`` fails
+and names the module when the two disagree.
 """
 
 from __future__ import annotations

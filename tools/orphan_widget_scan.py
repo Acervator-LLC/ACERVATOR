@@ -1,30 +1,12 @@
-"""orphan_widget_scan.py — find interactive Qt widgets that nothing wires.
+"""Find interactive Qt widgets that nothing wires.
 
-A widget the user can click, type in or drag is a promise. If no signal
-of that widget reaches a handler, the promise is empty: the control
-renders, the user operates it, and the program does nothing. This scan
-reads ``src/gui`` with the ``ast`` module and reports every interactive
-widget whose name never appears in front of a ``.connect(`` call in the
-same file.
+``scan_file`` reads a module with ``ast`` and reports every
+``INTERACTIVE_WIDGETS`` name that never precedes a ``.connect(`` call in the
+same file. A widget wired through a loop variable or handed to a helper reads
+as an orphan, so ``build_report`` is a warning and not a verdict. An assignment
+carrying ``OPT_OUT_MARKER`` is counted as declared and skipped.
 
-The result is a WARNING-level instrument, not a gate. The scan is a
-heuristic and it has two known blind spots:
-
-  * a widget that a loop wires through a collection
-    (``for b in self._buttons: b.clicked.connect(...)``) reads as an
-    orphan, because the name in front of ``.connect`` is the loop
-    variable, not the widget;
-  * a widget that a helper wires by argument (``self._wire(btn)``)
-    reads as an orphan for the same reason.
-
-Mark a control that is deliberately inert with ``# display_only`` on the
-assignment line. The scan then skips it and counts it as declared.
-
-Usage:
-    python -m tools.orphan_widget_scan
-    python -m tools.orphan_widget_scan --root src/gui
-    python -m tools.orphan_widget_scan --json
-    python -m tools.orphan_widget_scan --strict   (exit 1 on any orphan)
+    python -m tools.orphan_widget_scan --root src/gui --strict
 """
 
 from __future__ import annotations
@@ -89,9 +71,8 @@ class Widget:
 def target_name(node: ast.expr) -> str | None:
     """Render an assignment target as the text the source uses.
 
-    ``btn`` becomes "btn"; ``self._btn`` becomes "self._btn". Anything
-    else (a subscript, a tuple, a call result) has no stable name, so
-    the scan cannot track it and this returns None.
+    ``ast.Name`` and ``ast.Attribute`` answer their spelling; every other
+    ``node`` answers None.
     """
     if isinstance(node, ast.Name):
         return node.id
@@ -154,9 +135,7 @@ class FileScan(ast.NodeVisitor):
         """Record the owner of every ``.connect(...)`` call."""
         func = node.func
         if isinstance(func, ast.Attribute) and func.attr == "connect":
-            # func.value is either the signal (``btn.clicked``) or, in
-            # rare code, the widget itself. Record every name on the
-            # chain so both shapes count as wired.
+            # func.value is the signal (``btn.clicked``) or the widget itself.
             owner = target_name(func.value)
             if owner is not None:
                 self.connected.add(owner)
@@ -274,11 +253,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     report = build_report(root)
-    # A scan that read no file finds no orphan, prints every count as 0
-    # and returns 0 -- including under --strict, where 0 is the pass
-    # verdict. A root that holds no module is therefore REFUSED. The
-    # directory check above does not cover it: an existing but empty
-    # directory passes that check and scans nothing.
+    # An existing but empty directory passes the check above and scans nothing.
     if not report["files_scanned"]:
         print(f"no Python file under {root}; nothing was scanned", file=sys.stderr)
         print(

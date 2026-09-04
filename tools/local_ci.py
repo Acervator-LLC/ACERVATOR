@@ -1,44 +1,16 @@
-"""Run the CI lanes on this machine, because GitHub Actions no longer runs them.
+"""Run the `LANE_ORDER` commands `.github/workflows/ci.yml` states, on this machine.
 
-`.github/workflows/ci.yml` is the specification for what a merge must pass.
-Its billing is off, so nothing executes it any more and a merge would land
-unverified. This module runs the same four lane commands here and reports one
-verdict, so the standard "code does not leave the branch until all gates are
-passing" still has a mechanism behind it.
+`XDIST_WORKERS` is 4 and never `auto`, and `QT_QPA_PLATFORM` is left as this
+machine sets it. The `src tests tools *.py` glob is expanded here, since a
+`subprocess` argv reaches no shell. `NON_FUNCTIONAL` decides which lanes a diff
+calls for, and `MAX_SIGNAL` reads a lane's return code back into a verdict.
 
-    python -m tools.local_ci                 # the lanes the diff calls for
-    python -m tools.local_ci --lane fast     # one lane alone
-    python -m tools.local_ci --all           # every lane, skip logic ignored
-
-Three places a local run must differ from the hosted runner, and why:
-
-* `-n 4`, never `-n auto`. The runner owns its machine. This one runs the live
-  trading application on 24 cores, and `-n auto` would take every one of them.
-* `QT_QPA_PLATFORM` is left alone. The runner sets `offscreen` because an
-  Ubuntu image has no display server. This machine has one, and an invocation
-  friendlier than the release gate's is not the check ci.yml asks for.
-* `src tests tools *.py` is expanded here. The runner has a shell; a
-  `subprocess` argv has none, and an unexpanded `*.py` reaches black as a
-  literal filename that does not exist.
-
-`tests/test_local_ci.py` drives the lane selection and the exit-code reading,
-which are the two parts that decide a verdict without any lane running.
+    python -m tools.local_ci --lane fast
+    python -m tools.local_ci --all
 """
 
 # ruff: noqa: S603
-# S607 IS FIXED BY CONSTRUCTION HERE, NOT SUPPRESSED, following the reasoning
-# recorded at the top of tools/gate.py and tools/migration_verifier.py: a
-# partial executable path is not a false positive, because on Windows PATH
-# plus PATHEXT would execute a `git.cmd` planted anywhere earlier on PATH
-# under the operator's own token. Every spawn below uses an absolute path --
-# the lanes via `sys.executable`, git via `_GIT_EXE` resolved once through
-# shutil.which -- so S607 reports zero here by construction.
-#
-# S603 remains and is not avoidable, exactly as measured for the other two
-# tools: an all-literal argv draws no S603 and every argv carrying a variable
-# draws one. A lane argv carries the expanded file list and `_GIT_EXE` is a
-# variable by definition, so there is no compliant form of "spawn the resolved
-# program". This directive is the residue, narrowed to the one rule.
+# Every lane argv carries the expanded file list, and `_GIT_EXE` is a variable.
 from __future__ import annotations
 
 import argparse
@@ -59,9 +31,7 @@ XDIST_WORKERS = 4
 #: A lane that has not answered in this many seconds is hung, not slow.
 DEFAULT_TIMEOUT_SECONDS = 3600
 
-#: The `IGNORE` pattern from ci.yml's `changes` job, alternative for
-#: alternative. `grep -vE` searches rather than matches, so `re.search` is the
-#: analogue and the anchors in the pattern are what limit each alternative.
+#: ci.yml's `IGNORE` pattern; applied with `re.search`, as `grep -vE` is.
 NON_FUNCTIONAL = re.compile(
     r"^\.claude/|^docs/|\.md$|^LICENSE$|^\.gitignore$|^\.gitattributes$"
     r"|^\.editorconfig$"
@@ -72,9 +42,7 @@ BASE_REF_CANDIDATES = ("origin/current", "origin/main", "current", "main")
 
 LANE_ORDER = ("black", "flake8", "fast", "full")
 
-#: The highest signal number any POSIX platform defines. A negative return
-#: code below this is not a signal: Windows hands back a signed NTSTATUS, and
-#: 0xC0000005 read as a signal would normalize into a meaningless number.
+#: The highest POSIX signal number; a code past it is an NTSTATUS, not a signal.
 MAX_SIGNAL = 64
 
 #: Shell convention: a process killed by signal N reports 128 + N.
@@ -86,8 +54,7 @@ SIGNAL_EXITS = {
     143: "SIGTERM",
 }
 
-#: Windows reports a crash as an NTSTATUS, signed or unsigned depending on the
-#: caller. A segfault here is 0xC0000005, not 139, so both forms are named.
+#: An NTSTATUS crash code reaches a caller signed or unsigned; both forms here.
 WINDOWS_CRASH_EXITS = {
     3221225477: "access violation",
     -1073741819: "access violation",
@@ -108,12 +75,9 @@ _GIT_EXE = shutil.which("git")
 
 
 def run_git(*args: str) -> tuple[int, str]:
-    """Run git in the repository and return (returncode, stripped stdout).
+    """Run git in `REPO` and return (returncode, stripped stdout).
 
-    Returns 127 when git cannot be resolved at all. The code is returned
-    beside the output on purpose: `git status --porcelain` on a clean tree is
-    empty output with a zero code, and that must never read the same as git
-    having failed or been absent.
+    Returns 127 when `_GIT_EXE` is None, which no empty output can look like.
     """
     if _GIT_EXE is None:
         return 127, ""
@@ -133,9 +97,7 @@ def run_git(*args: str) -> tuple[int, str]:
 def lint_targets() -> list[str]:
     """The `src tests tools *.py` argument list, with the glob expanded.
 
-    The directories are passed whether or not they exist, because ci.yml
-    passes them unconditionally and a lane that quietly drops a missing
-    directory is friendlier than the lane it claims to reproduce.
+    The three directories are passed whether or not they exist, as ci.yml does.
     """
     return ["src", "tests", "tools"] + sorted(p.name for p in REPO.glob("*.py"))
 
@@ -183,16 +145,10 @@ class ExitVerdict:
 def interpret_exit(
     returncode: int, *, is_pytest: bool = False, timed_out: bool = False
 ) -> ExitVerdict:
-    """Read a lane's return code and name what it means.
+    """Return the `ExitVerdict` for a lane's `returncode`.
 
-    `subprocess` reports a POSIX signal as a NEGATIVE number, so -11 from
-    Python and 139 from a shell are the same crash seen from two sides. Both
-    normalize to 128 + signal here, which is the number the operator reads
-    about. Only a negative down to `MAX_SIGNAL` is a signal; a Windows crash
-    code is also negative and is left alone. A timeout is 143: the lane was
-    terminated, so it never answered and is a failure, not a pass. A crash
-    prints no failure summary, so the detail has to carry the code, or a red
-    lane looks like an empty one.
+    A negative code down to `-MAX_SIGNAL` normalizes to 128 + signal;
+    `timed_out` reports 143 and never passes.
     """
     if timed_out:
         return ExitVerdict(143, False, "timed out and was killed (143 SIGTERM)")
@@ -261,11 +217,9 @@ class ChangeSet:
 
 
 def classify_changes(paths: Sequence[str] | None, unmeasured: str = "") -> ChangeSet:
-    """Decide whether the code lanes run, mirroring ci.yml's `changes` job.
+    """Return the `ChangeSet` deciding whether the code lanes run.
 
-    An unmeasurable diff runs every lane, which is what ci.yml does for a
-    zeroed base or a workflow_dispatch. A skip is only ever taken on a diff
-    that was actually read.
+    An `unmeasured` diff runs every lane, as ci.yml's `changes` job does.
     """
     if unmeasured:
         return ChangeSet((), (), True, f"{unmeasured}; running every lane")
@@ -289,11 +243,9 @@ def classify_changes(paths: Sequence[str] | None, unmeasured: str = "") -> Chang
 
 
 def read_changes(base: str | None) -> ChangeSet:
-    """Measure the real diff: this branch against its base, plus the dirty tree.
+    """Measure this branch against `resolve_base`, plus the dirty tree.
 
-    Uncommitted and untracked files count. CI never sees them, but they are
-    what the next commit will carry, and counting them can only move the
-    decision toward running more lanes.
+    `status_paths` adds the uncommitted and untracked files to the count.
     """
     ref = resolve_base(base)
     if ref is None:

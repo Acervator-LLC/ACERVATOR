@@ -1,31 +1,10 @@
 """Reports Qt-to-React conversion state from the wiring, not from file names.
 
-Run from anywhere in the repo. A Qt module under `src/gui` is paired when the
-running frontend can draw it, and that is a chain of declarations rather than a
-name:
-
-* a surface under `src/gui/main_tabs` publishes a bridge `METHOD`;
-* `src/core/desktop_bridge.py` registers that surface in its handler table;
-* a module under `src/gui/web` declares the same method string;
-* `desktop/renderer/module_manifest.js` or the renderer page loads that module.
-
-A Qt module that instead loads a renderer module itself, by naming the `.js`
-file, is paired on that alone: the React code is already what it draws.
-
-Nothing here compares a `.py` file name with a `.js` file name. A surface is
-addressed by the namespace of its bridge method and by its own module name, and
-a parity test that imports one surface and exactly one Qt module pins the two
-together whatever they are called.
-
-Three states come out, because they are three different kinds of work:
-
-* `paired`      -- a renderer module serves it;
-* `unpaired`    -- a Qt screen with no renderer module, the work that is left;
-* `not a screen`-- Qt plumbing that can never become React: a package marker, a
-  module that defines no class, or the desktop shell that hosts the renderer.
-
-A module counts as Qt only when it really imports PySide6. Naming the word in a
-docstring, a comment or a warning string does not make a module Qt.
+A Qt module is `paired` when a bridge method reaches a `src/gui/web` module the
+renderer loads, or when the module names a renderer `.js` file itself; it is
+`unpaired` when neither holds, and `not a screen` when it builds no view.
+`imports_pyside` decides what counts as Qt, so the word alone never does. No
+`.py` name is compared with a `.js` name anywhere in this module.
 """
 
 from __future__ import annotations
@@ -79,12 +58,9 @@ class Verdict:
 
 
 def imports_pyside(text: str) -> bool:
-    """True when a module really imports PySide6, false when it only names it.
+    """True when `text` imports `QT_PACKAGE`, false when it only names it.
 
-    The scan pairs a Qt module with its renderer module, so a module that
-    carries the word inside a string or a comment must not count as Qt. A module
-    that names the word but cannot be parsed stays counted, so a file the tool
-    cannot read is reported rather than dropped from the total.
+    Text holding `QT_PACKAGE` that `ast.parse` refuses stays counted as Qt.
     """
     if QT_PACKAGE not in text:
         return False
@@ -172,8 +148,7 @@ def renderer_modules(root: pathlib.Path) -> set[str]:
 def served_methods(root: pathlib.Path) -> dict[str, str]:
     """Bridge method to the renderer module that speaks it, loaded ones only.
 
-    A module that declares a method the bridge does not register is left out:
-    the frontend can name anything, and only the registry makes a method real.
+    A method absent from `registered_surfaces` is left out of the result.
     """
     loaded = renderer_modules(root)
     methods = surface_methods(root)
@@ -204,10 +179,7 @@ def dotted_name(root: pathlib.Path, path: pathlib.Path) -> str:
 def path_words(root: pathlib.Path, path: pathlib.Path) -> set[str]:
     """Every word in the location of a Qt module under `src/gui`.
 
-    A surface names the screen, never the file, so the two spellings differ in
-    the folder and in the order: `live_settings/status_tab.py` is addressed as
-    `live_status_tab`, and `visualizer/themes.py` as `visualizer_themes`. The
-    words are what both spellings share.
+    `address_words` produces the set that `serving_method` compares against.
     """
     parts = list(path.relative_to(root / "src" / "gui").with_suffix("").parts)
     if parts and parts[-1] == "__init__":
@@ -223,11 +195,7 @@ def address_words(name: str) -> set[str]:
 def parity_pins(root: pathlib.Path) -> dict[str, set[str]]:
     """Surface module to the Qt modules a parity test pins it against.
 
-    A parity test drives one surface and the Qt code it replaces side by side,
-    so its imports declare the pairing outright. Only a test that imports one
-    surface and one Qt module counts: a second of either is a neighbour brought
-    in as a control, and guessing between them pairs a surface with a screen it
-    never described.
+    Only a `test_*_surface_parity.py` importing exactly one of each is read.
     """
     qt_by_name = {dotted_name(root, path) for path in qt_modules(root)}
     surfaces = surface_methods(root)
@@ -261,11 +229,9 @@ def _imported_names(tree: ast.Module) -> set[str]:
 
 
 def hosted_module(text: str, loaded: set[str]) -> str:
-    """The renderer module a Qt module loads itself, or the empty string.
+    """The renderer module `text` loads itself, or the empty string.
 
-    A Qt widget that builds the page for a web view names the `.js` files that
-    page pulls in. Naming a loaded one is the strongest pairing there is: the
-    React code is already what the widget draws.
+    Only a name present in `loaded` counts as a pairing.
     """
     try:
         tree = ast.parse(text)
@@ -304,12 +270,10 @@ def read_wiring(root: pathlib.Path) -> Wiring:
 
 
 def serving_method(wiring: Wiring, path: pathlib.Path) -> str:
-    """The live bridge method that addresses one Qt module, or the empty string.
+    """The live bridge method addressing `path`, or the empty string.
 
-    Several addresses can sit inside one location: a panel under
-    `simulator_tab/` carries the words of the tab around it as well as its own.
-    The closest address wins, measured on the module's own name first, so a
-    panel is served by its own method and not by the one for its container.
+    Among the `wiring.addresses` inside `path_words`, the one overlapping the
+    module's own stem most wins; `wiring.pins` answers when none does.
     """
     words = path_words(wiring.root, path)
     own = address_words(path.stem)
@@ -328,12 +292,10 @@ def serving_method(wiring: Wiring, path: pathlib.Path) -> str:
 
 
 def plumbing_reason(path: pathlib.Path, text: str) -> str:
-    """Why a Qt module can never become React, or the empty string.
+    """Why `path` can never become React, or the empty string.
 
-    Three shapes carry no screen. A package marker is a directory, not a view.
-    A module that defines no class builds nothing to draw. A window deriving
-    from the shell base is the desktop window the renderer's web view lives
-    inside, so replacing it with React would leave the React nowhere to run.
+    Answers `PACKAGE_MARKER` for an `__init__.py`, and one of the other reasons
+    for a module defining no class or deriving from the shell base.
     """
     if path.name == "__init__.py":
         return PACKAGE_MARKER

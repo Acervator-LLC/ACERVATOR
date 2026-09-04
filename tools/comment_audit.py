@@ -1,45 +1,14 @@
-"""comment_audit.py — count comments, and prove a cleanup changed no code.
+"""Count comments, and prove a cleanup changed no code.
 
-Two jobs, one tool.
+``count`` reads a file with ``tokenize`` and reports own-line comments,
+trailing comments, runs of three or more, and comment lines matching
+``IDENTIFIER_PATTERNS``. ``prove`` parses two versions, replaces every
+docstring with ``DOCSTRING_STANDIN`` and compares the trees, so a line ending
+or a docstring edit never reads as a code change. Exit 1 means ``--strict``
+found a block or an identifier, or the two versions differ; exit 2 is a refusal.
 
-``count`` reads a file with Python's own tokeniser and reports how many
-comment lines it holds: comments that own their line, comments trailing
-code, runs of three or more own-line comments, and comment lines carrying
-an identifier from outside the code (a version name, a date, an issue
-number, a memory number, an item number).
-
-The tokeniser is the instrument on purpose. A ``#`` inside a string
-literal is a string token and is never a comment. A second ``#`` inside a
-comment belongs to that one comment token and cannot be counted twice. A
-docstring is a string token, so an issue number inside one is not a
-comment. A text search sees none of this and reports a number that is
-wrong in both directions.
-
-``prove`` reads two versions of one file, parses both, replaces every
-docstring with a fixed stand-in and compares the two trees. Identical
-trees mean no executable line changed. Comparing the two files as text
-cannot answer this: removing a comment collapses a blank line, and a
-docstring may change on purpose.
-
-Usage:
-    python -m tools.comment_audit count src/gui/widgets/exchange_tab.py
-    python -m tools.comment_audit count src --json
     python -m tools.comment_audit count src --strict
     python -m tools.comment_audit prove before.py after.py
-
-Take the "before" side straight out of git:
-
-    git show origin/current:src/trading/risk_manager.py > before.py
-
-Line endings do not matter to ``prove``. It compares parsed trees, so a
-file written with CRLF proves equal to the same file written with LF.
-
-Exit codes:
-    0  counted, or the two versions match
-    1  --strict and a 3+ block or an outside-code identifier was found,
-       or the two versions differ in executable code
-    2  refused: a path that does not exist, a directory holding no Python
-       file, or a file that will not parse
 """
 
 from __future__ import annotations
@@ -60,9 +29,7 @@ BLOCK_MINIMUM = 3
 
 DOCSTRING_STANDIN = "<docstring>"
 
-# Each pattern reads the comment BODY, after the leading run of "#" is
-# stripped. Run over the raw line, the comment's own marker reads as an
-# issue number.
+# Applied to the comment body; on a raw line the leading "#" reads as an issue.
 IDENTIFIER_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("version", re.compile(r"\bv\d+\.\d+(?:\.\d+)*\b")),
     ("date", re.compile(r"\b\d{4}-\d{2}-\d{2}\b")),
@@ -346,9 +313,8 @@ def is_docstring(statement: ast.stmt) -> bool:
 def blank_docstrings(tree: ast.AST) -> list[Docstring]:
     """Replace every docstring in `tree` with DOCSTRING_STANDIN, in place.
 
-    Returns the docstrings that were replaced, in source order, each named
-    by its owner. The tree that comes back describes executable code only,
-    so two trees that differ differ in something that runs.
+    Returns the replaced `Docstring` entries in source order, each named by
+    `docstring_owner_name`.
     """
     collected: list[Docstring] = []
 

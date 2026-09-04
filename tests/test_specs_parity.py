@@ -403,11 +403,12 @@ class TestGracefulDatas:
     def test_src_ships_first(self):
         assert datas_candidates("/root")[0][1] == "src"
 
-    def test_raintsimbat_probes_sadp_before_legacy(self):
-        dests = [dest for _, dest in datas_candidates("/root")]
-        sadp = [i for i, d in enumerate(dests) if "sadp" in d]
-        legacy = [i for i, d in enumerate(dests) if d == "RAIntSimBat"]
-        assert sadp and legacy and sadp[0] < legacy[0]
+    def test_every_candidate_is_a_directory_this_repository_can_hold(self):
+        dests = [Path(dest).as_posix() for _, dest in datas_candidates("/root")]
+        assert dests == ["src", "resources", "data/historical"], (
+            f"datas_candidates offers {dests}; every entry must name a "
+            f"directory a build of this repository can actually produce"
+        )
 
     def test_absent_paths_are_skipped(self, tmp_path):
         assert build_graceful_datas(str(tmp_path)) == []

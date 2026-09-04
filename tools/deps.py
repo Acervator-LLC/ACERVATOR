@@ -1,42 +1,10 @@
 """Print, check and lock the dependency set that `pyproject.toml` states.
 
-WHY THIS TOOL EXISTS
-====================
-Issue #94. The pip install list was hand-copied into eight places and no
-two of them agreed. Measured on 2026-08-23 at commit 4965bab:
-
-    build_mac.sh:46          14 names
-    build_windows.ps1:28     14 names, the same 14
-    Acervator_win.spec:8     14 names, in a docstring
-    Acervator_mac.spec:8     14 names, in a docstring
-    BUILD.py:79              12 names, as (import name, pip name) pairs
-    deploy/kiosk/install.sh:177        11 names, plus 4 more at :192
-    deploy/kiosk/update.sh:71          11 names
-    README.md:123             6 names
-    pyproject.toml           11 names
-
-    In `pyproject.toml` and in no other list: psutil, defusedxml.
-    In every build list, and in `pyproject.toml` in none of them:
-    certifi, requests, reportlab, pillow.
-    `defusedxml` is a module-level import at
-    src/gui/crypto_news_ticker.py:51, so every build list was missing a
-    hard requirement.
-    `requests` is imported by no file in the repository.
-
-Every one of those lists is now a call to this tool, so a package name
-lives in exactly one place: `[project] dependencies` and
-`[project.optional-dependencies]` in `pyproject.toml`.
-
-WHAT THIS TOOL WILL NOT DO
-==========================
-It never installs anything, and it never writes outside `requirements/`.
-`requirements` prints lines for a caller to pass to pip. `check` reports
-and sets an exit code. `lock` writes one file and refuses when it cannot.
-
-It also refuses an empty answer. A tool that reads a file with no
-`[project]` table, prints nothing and exits 0 reads exactly like a clean
-result. Issue #83 removed three tools that did that. Every subcommand
-below fails loudly instead.
+`load_project` reads `[project]` and raises `DependencySourceError` on a missing
+table or an empty `dependencies` list. `CONSUMER_EXTRAS` names the extras each
+build and install script asks for, so no script spells a package name itself.
+`requirements` prints the lines a caller passes to pip, `check` reports what is
+not installed, and `lock` writes one file under `REQUIREMENTS_DIR`.
 """
 
 from __future__ import annotations
@@ -53,35 +21,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
-# The extras each consumer asks for. Written here, and not in the
-# consumer script, so that `tests/test_one_dependency_source.py` reads
-# one table instead of parsing five scripts.
-#
-#   build   a PyInstaller HOST. It compiles the application, so it adds
-#           pyinstaller. It also takes `report`, because reportlab ships
-#           INSIDE the frozen application for the version sweep PDF.
-#   os      an AcervatorOS TARGET, a Raspberry Pi. It runs from source
-#           in a venv and never compiles, so it must NOT get pyinstaller.
-#   display the mini-panel libraries. Separate from `os` because
-#           `deploy/kiosk/install.sh` installs them with failure tolerated: a Pi
-#           with no panel is a supported machine.
-#   dev     the checkers the archetypes spawn, and the type stubs.
-#   contracts
-#           issue #92. The Base-chain deployment CLI,
-#           `contracts/deploy.py`. No build script and no install
-#           script asks for it, and none should: nothing in the
-#           product imports that file. The consumer exists so that an
-#           operator preparing a deployment has one derived command
-#           instead of a list to copy, which is the whole subject of
-#           issue #94.
+# `os` targets a Raspberry Pi running from source, so it never gets pyinstaller.
 CONSUMER_EXTRAS: dict[str, tuple[str, ...]] = {
     "build": ("build", "report"),
     "os": ("report",),
     "display": ("display",),
     "dev": ("dev",),
     "contracts": ("contracts",),
-    # ci      the GitHub workflow. Its two lanes install `test` (fast) and
-    #         `lint`, so neither job spells a package name in YAML.
     "ci": ("test", "lint"),
     "all": (
         "report",
@@ -102,12 +48,10 @@ class DependencySourceError(RuntimeError):
 
 
 def load_project(pyproject: Path = PYPROJECT) -> dict[str, Any]:
-    """Return the `[project]` table, or raise.
+    """Return the `[project]` table in `pyproject`, or raise.
 
-    A missing file, a missing table, and an empty `dependencies` list are
-    all failures. None of them may return an empty answer, because an
-    empty answer downstream means "install nothing", and that reads as
-    success.
+    `DependencySourceError` covers a missing file, a missing table and an
+    empty `dependencies` list alike.
     """
     if not pyproject.is_file():
         raise DependencySourceError(f"no dependency source at {pyproject}")
@@ -142,9 +86,7 @@ def optional_table(project: dict[str, Any]) -> dict[str, list[str]]:
 def distribution_name(requirement: str) -> str:
     """Return the distribution name at the front of a requirement string.
 
-    `"pytest-xdist>=3.8.0"` answers `"pytest-xdist"`. The specifier
-    grammar is PEP 508. Only the name is needed here, and it ends at the
-    first character that cannot be part of a name.
+    `"pytest-xdist>=3.8.0"` answers `"pytest-xdist"`.
     """
     name = requirement.strip()
     for index, char in enumerate(name):
@@ -161,9 +103,7 @@ def requirements_for(
 ) -> list[str]:
     """Return the requirement strings for the core set plus `extras`.
 
-    Order is stable: the core list in the order the file states it, then
-    each extra in the order named, with a duplicate dropped after its
-    first sight. `pillow` is in three extras and must be emitted once.
+    The core list comes first, then each extra in the order named, once each.
     """
     project = load_project(pyproject)
     table = optional_table(project)
@@ -208,11 +148,7 @@ def cmd_requirements(args: argparse.Namespace) -> int:
 def cmd_check(args: argparse.Namespace) -> int:
     """Report which of the consumer's requirements are not installed.
 
-    Presence only. This does NOT evaluate the version specifier, and the
-    reason is written down rather than left to be found: evaluating one
-    needs `packaging`, which `pyproject.toml` does not declare, and this
-    tool may not depend on something the one source does not state.
-    `requirements/` holds the resolved versions for that comparison.
+    Presence only: `distribution_name` is checked, the version specifier is not.
     """
     reqs = requirements_for(_extras_from(args), include_core=not args.extras_only)
     missing: list[str] = []
@@ -231,10 +167,9 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 
 def cmd_lock(args: argparse.Namespace) -> int:
-    """Regenerate the resolved requirement file with pip-compile.
+    """Regenerate the `lock_name` file under `REQUIREMENTS_DIR` with pip-compile.
 
-    Refuses when pip-tools is absent. A lock file that no resolver
-    produced is a claim, not a measurement.
+    Returns exit code 2 when pip-tools is absent.
     """
     if installed_version("pip-tools") is None:
         print("  pip-tools is not installed in this interpreter.", file=sys.stderr)
@@ -244,9 +179,7 @@ def cmd_lock(args: argparse.Namespace) -> int:
         return 2
     REQUIREMENTS_DIR.mkdir(exist_ok=True)
     out = REQUIREMENTS_DIR / lock_name(args.consumer)
-    # `--no-header` is deliberately NOT passed. pip-compile writes the
-    # exact command line it ran into the head of the file, which is the
-    # only provenance a reader gets for a resolved set.
+    # Without `--no-header`, pip-compile records its own command line in `out`.
     argv = [
         sys.executable,
         "-m",
@@ -260,12 +193,7 @@ def cmd_lock(args: argparse.Namespace) -> int:
     for extra in _extras_from(args):
         argv += ["--extra", extra]
     argv.append(str(PYPROJECT))
-    # S607 IS FIXED BY CONSTRUCTION, NOT SUPPRESSED, following the
-    # reasoning at the top of dev_harness/harness/coding_archetype.py:
-    # `sys.executable` is an absolute path, so a `python.exe` planted
-    # earlier on PATH cannot run here. S603 is the residue and is not
-    # avoidable, because an argv carrying a variable draws it and a
-    # resolved interpreter path is a variable by definition.
+    # `sys.executable` is absolute, so S607 does not apply here.
     result = subprocess.run(argv, cwd=str(REPO_ROOT), check=False)  # noqa: S603
     if result.returncode != 0:
         print(f"  pip-compile failed, exit {result.returncode}", file=sys.stderr)
@@ -275,11 +203,9 @@ def cmd_lock(args: argparse.Namespace) -> int:
 
 
 def lock_name(consumer: str) -> str:
-    """Return the lock file name for a consumer on this platform.
+    """Return the lock file name for `consumer` on this platform.
 
-    The platform and the interpreter are IN THE NAME, because a resolved
-    set is true for one of each and for no other. A Windows lock file
-    installs the wrong wheels on a Raspberry Pi.
+    The platform and the interpreter version are both in the name.
     """
     return (
         f"{consumer}-{sys.platform}-py"
@@ -317,7 +243,7 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Return the argument parser. Named so that a test can reach it."""
+    """Return the `argparse` parser `main` uses."""
     parser = argparse.ArgumentParser(
         prog="python -m tools.deps",
         description="Read the dependency set out of pyproject.toml. "

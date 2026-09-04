@@ -1,20 +1,11 @@
 #!/usr/bin/env python3
 """Interactive exchange connectivity diagnostic (operator tool).
 
-This is a hands-on support tool, NOT a test: it hits live exchange endpoints
-over the network and can prompt for API credentials to verify an
-authenticated connection. That is why it lives under ``tools/`` and not in
-``tests/`` — CI has no network, no secrets, and no human at the keyboard.
-
-The in-memory, network-free part of what this used to check — "does every
-supported exchange resolve to a real CCXT class?" — is now a real test:
-``tests/test_exchange_registry.py``.
-
-The exchange list and preflight URLs are imported from the single source of
-truth, ``src.exchange.ccxt_connector``; this tool no longer keeps its own
-copy that could drift.
-
-Run it from the repo root::
+``_check_public_endpoints`` opens every ``PREFLIGHT_URLS`` entry that
+``is_https_url`` allows, and ``_verify_ccxt_classes`` resolves every
+``SUPPORTED_EXCHANGES`` id through ``resolve_ccxt_class``. The authenticated
+half prompts at the keyboard, so this is an operator tool and not a test;
+``tests/test_exchange_registry.py`` holds the network-free checks.
 
     python -m tools.exchange_diagnostic
 """
@@ -54,20 +45,30 @@ def _ssl_context() -> ssl.SSLContext:
         return ssl.create_default_context()
 
 
+def is_https_url(url: str) -> bool:
+    """Report whether ``url`` carries the https scheme and no other.
+
+    ``_check_public_endpoints`` opens no ``PREFLIGHT_URLS`` entry this refuses.
+    """
+    return url.startswith("https://")
+
+
 def _check_public_endpoints(ctx: ssl.SSLContext) -> dict[str, tuple[str, int, float]]:
     results: dict[str, tuple[str, int, float]] = {}
     print(f"\n  Testing {len(PREFLIGHT_URLS)} exchanges...\n")
     for eid in sorted(PREFLIGHT_URLS):
         url = PREFLIGHT_URLS[eid]
         label = f"  {eid.upper():<12}"
+        if not is_https_url(url):
+            print(f"{label} REFUSED  not an https URL: {url}")
+            results[eid] = ("REFUSED", 0, 0.0)
+            continue
         start = time.monotonic()
         try:
             req = urllib.request.Request(url)  # noqa: S310 - fixed https registry
             req.add_header("User-Agent", "Acervator/diagnostic")
             req.add_header("Accept", "application/json")
-            with urllib.request.urlopen(
-                req, timeout=15, context=ctx
-            ) as resp:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
                 elapsed = (time.monotonic() - start) * 1000
                 print(f"{label} HTTP {resp.status}  {elapsed:6.0f}ms")
                 results[eid] = ("PASS", resp.status, elapsed)
@@ -114,7 +115,7 @@ def _authenticated_test() -> None:
 
     key = input("  API Key: ").strip()
     secret = input("  API Secret: ").strip()
-    passphrase = ""
+    passphrase: str | None = None
     if choice in PASSPHRASE_EXCHANGES:
         passphrase = input("  Passphrase: ").strip()
 
