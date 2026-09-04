@@ -1,44 +1,11 @@
-"""crypto_news_ticker.py — cycling crypto + fintech news widget.
+"""crypto_news_ticker.py — the cycling crypto news strip.
 
-Introduced 2026-07-28 as v3.23.54 per operator directive. Sits in
-the header strip of the main window (between the Privacy Mode
-toggle and the + New Bot button), cycles one headline every 15 s,
-hourly refresh from 10 free public RSS feeds, click-to-open in
-default browser, hover-to-pause.
-
-Feed bytes are untrusted: they arrive from ten third-party hosts over
-the open internet, on a worker thread of a trading GUI. Parsing is
-therefore done by ``defusedxml``, the maintained library the Python
-documentation points at for exactly this, rather than by
-``xml.etree.ElementTree`` or by a hand-hardened expat parser of our
-own. ``defusedxml`` costs one dependency; it is written by people who
-work on these attacks, and it replaces code we would otherwise have to
-be right about ourselves.
-
-Measured, CPython 3.14.4 / expat 2.7.5, driving the real ``parse_rss``:
-
-  * A 20,922-byte feed declaring one 20,000-character entity and
-    referencing it 150 times expanded to 3,000,027 characters under
-    ``xml.etree.ElementTree`` and RETURNED A HEADLINE. expat's own
-    amplification guard does not activate that low. Under
-    ``defusedxml`` the same bytes raise ``EntitiesForbidden`` and
-    ``parse_rss`` returns [].
-  * The textbook billion-laughs document is 701 bytes. Under
-    ``xml.etree.ElementTree`` it cost 59,097,148 bytes of peak
-    allocation and 0.51 s before expat refused it. Under
-    ``defusedxml`` it costs 15,551 bytes and 0.0001 s, because the
-    declaration is refused instead of expanded.
-
-External entity resolution is NOT a regression being fixed here: the
-stdlib parser installs no external-entity handler, so a ``file://``
-entity was already unresolved and reported as an undefined entity.
-Measured both ways, the local file was never read. ``defusedxml``
-turns that inherited default into an explicit refusal.
-
-Fetches go through ``src.core.safe_url``, so a feed URL naming a
-scheme outside the http/https allowlist is refused rather than opened,
-and the response body is read under a fixed cap. Fetches run in a
-background QThread so the GUI never blocks on network I/O.
+``CryptoNewsTicker`` shows one headline at a time, advancing every
+``CYCLE_INTERVAL_MS`` and refetching every ``REFRESH_INTERVAL_MS``.
+``_FetchWorker`` runs ``fetch_all`` on a ``QThread`` in ``_LIVE_WORKERS``,
+reading the ten ``NEWS_SOURCES`` through ``safe_urlopen`` under
+``MAX_FEED_BYTES``. ``parse_rss`` builds ``NewsHeadline`` objects with
+``defusedxml``, which refuses an entity declaration or an external reference.
 """
 
 from __future__ import annotations
@@ -68,9 +35,6 @@ except ImportError:  # pragma: no cover
     _HAS_QT = False
 
 logger = logging.getLogger("acervator.crypto_news_ticker")
-
-
-# Feed sources — operator-selected 10 free public RSS feeds.
 
 
 @dataclass(frozen=True)
@@ -112,37 +76,16 @@ class NewsHeadline:
         return f"{self.source.name} · {self.title}"
 
 
-# RSS parsing — defusedxml, tolerant of RSS 2.0 and Atom.
-#
-# ``defusedxml.ElementTree.fromstring`` builds the same element objects
-# ``xml.etree.ElementTree.fromstring`` builds, from the same expat
-# engine, with two handlers installed that REFUSE instead of expand:
-# an entity declaration raises ``EntitiesForbidden`` and an external
-# reference raises ``ExternalReferenceForbidden``. Both derive from
-# ``DefusedXmlException``. Everything downstream of the parse -- the
-# ``{uri}local`` tag spelling, ``.text`` stopping at the first child,
-# ``iter()`` in document order -- is unchanged, because it is the same
-# element type this module has always walked.
-#
-# A DTD with no entity declarations is still accepted. The library's
-# ``forbid_dtd`` default is left alone deliberately: the danger is the
-# declaration, which is refused, and a feed carrying a bare doctype is
-# a real shape that must keep working.
+# defusedxml keeps forbid_dtd off, so a feed with a bare doctype still parses.
 
 
 def parse_rss(
     xml_bytes: bytes, source: NewsSource, limit: int = 10
 ) -> list[NewsHeadline]:
-    """Return up to ``limit`` NewsHeadlines parsed from ``xml_bytes``.
+    """Return up to ``limit`` ``NewsHeadline`` objects parsed from ``xml_bytes``.
 
-    Supports the two common feed shapes we care about:
-      - RSS 2.0: <rss><channel><item><title/><link/><pubDate/>
-      - Atom:    <feed xmlns='...atom'><entry><title/><link href=/>
-    Malformed feeds return [] rather than raise. So do feeds that
-    declare an XML entity or reference an external one, but those are
-    logged at WARNING rather than DEBUG: a feed host that starts
-    shipping entity declarations is worth seeing, where a dropped
-    fetch is routine.
+    Reads RSS 2.0 ``<item>`` and Atom ``<entry>`` elements; a malformed feed,
+    or one ``DefusedXmlException`` refuses, returns [].
     """
     if not xml_bytes:
         return []
@@ -161,7 +104,6 @@ def parse_rss(
         )
         return []
     out: list[NewsHeadline] = []
-    # RSS 2.0 path
     for item in root.iter():
         _tag = _localname(item.tag)
         if _tag not in ("item", "entry"):
@@ -203,9 +145,7 @@ def _child_text(parent, names: tuple) -> str:
 
 
 def _parse_ts(raw: str) -> float:
-    """Best-effort RFC-2822 or ISO-8601 → unix seconds. Returns 0
-    on failure — display uses insertion order rather than pubDate
-    when timestamps are unknown."""
+    """Convert an RFC-2822 or ISO-8601 ``raw`` string to unix seconds, or 0.0."""
     if not raw:
         return 0.0
     try:
@@ -219,7 +159,6 @@ def _parse_ts(raw: str) -> float:
     try:
         from datetime import datetime
 
-        # Handle common ISO-8601 shapes (with/without Z, with fractional s).
         _r = raw.replace("Z", "+00:00")
         return datetime.fromisoformat(_r).timestamp()
     except (TypeError, ValueError):
@@ -227,50 +166,14 @@ def _parse_ts(raw: str) -> float:
     return 0.0
 
 
-# Fetch — synchronous per source, parallelised via a thread pool.
-
 DEFAULT_TIMEOUT_S = 8.0
 FETCH_USER_AGENT = "Mozilla/5.0 (compatible; AcervatorNewsTicker/1.0; +local)"
 
-# Refusing entity declarations bounds what a feed can make the parser
-# ALLOCATE, but not what it can make the socket READ. A plain oversized
-# response still lands in memory before any parser sees it, ten of them
-# at once on a GUI worker thread. 4 MiB is far above any RSS feed --
-# the largest source here is a full-text feed, which runs in the low
-# hundreds of KB -- and 4 MiB x 10 sources bounds the worst case at
-# 40 MiB instead of at whatever ten third-party hosts choose to send.
+# MAX_FEED_BYTES bounds one response body before any parser sees it.
 MAX_FEED_BYTES = 4 * 1024 * 1024
 
-# Bounds on the fetch itself. Issue #105.
-#
-# The old code had NO bound. ``fetch_one`` passed 8 s to
-# ``safe_urlopen``, but that is a per-SOCKET-OPERATION timeout: a host
-# that sends one byte every 7 s resets it on every read, so a single
-# feed could hold the worker for as long as it liked. ``fetch_all``
-# then asked ``as_completed`` for a 16 s timeout, but its
-# ``TimeoutError`` is raised BY THE ITERATOR, outside the per-future
-# ``try``, so it escaped the ``for`` and left the
-# ``with ThreadPoolExecutor(...)`` block -- whose ``__exit__`` calls
-# ``shutdown(wait=True)`` and BLOCKS until every feed finishes. The
-# timeout converted itself into an unbounded wait.
-#
-# That is why ``wait(50)`` in the widget could never succeed. The
-# repair is here, not in the wait: give the fetch a real deadline and
-# a stop flag, so the worker thread returns and the wait has something
-# to succeed at.
-#
-#   FETCH_BUDGET_S  total wall time for one fetch_all, whatever the
-#                   ten hosts do. Kept at the number the old
-#                   ``as_completed`` call already named -- one connect
-#                   timeout plus one read timeout -- now ENFORCED.
-#   FETCH_POLL_S    how long the collector blocks before it re-reads
-#                   the stop flag. This is where the number 50 ms
-#                   honestly belongs: it bounds a wait on a LOCAL
-#                   condition variable, not on a network call.
-#   READ_CHUNK_BYTES  body read granularity. The stop flag and the
-#                   deadline are re-read between chunks, so a feed
-#                   that streams slowly is abandoned instead of
-#                   followed to its end.
+# DEFAULT_TIMEOUT_S is per socket operation; FETCH_BUDGET_S caps a whole
+# fetch_all, and FETCH_POLL_S is how often the collector re-reads the stop flag.
 FETCH_BUDGET_S = DEFAULT_TIMEOUT_S * 2
 FETCH_POLL_S = 0.05
 READ_CHUNK_BYTES = 64 * 1024
@@ -287,23 +190,17 @@ def fetch_one(
     should_stop: Callable[[], bool] = _never_stop,
     deadline: Optional[float] = None,
 ) -> list[NewsHeadline]:
-    """Blocking single-feed fetch + parse. Returns [] on any error.
+    """Fetch and parse one ``source``, returning [] on any error.
 
-    ``should_stop`` is polled before the socket opens and again between
-    body chunks; ``deadline`` is a ``time.monotonic()`` instant past
-    which the body is abandoned. Both exist so a teardown does not have
-    to wait for a third-party host. Neither is an error: an abandoned
-    feed returns [], the same as an unreachable one.
+    ``should_stop`` is polled before the socket opens and again between body
+    chunks, and ``deadline`` is the ``time.monotonic()`` instant past which
+    ``_read_bounded`` abandons the body.
     """
     if should_stop():
         return []
     try:
-        # The scheme allowlist is PERFORMED here, not asserted in a
-        # comment. SafeRequest refuses a scheme outside http/https at
-        # CONSTRUCTION, and safe_urlopen checks again at open time over
-        # an opener carrying no file, ftp or data handler -- so a
-        # non-http(s) source has no transport even if the policy check
-        # were bypassed. See src/core/safe_url.py.
+        # SafeRequest refuses a non-http(s) scheme at construction;
+        # safe_urlopen checks again over an opener with no file or ftp handler.
         req = SafeRequest(source.url)
         req.add_header("User-Agent", FETCH_USER_AGENT)
         req.add_header(
@@ -325,10 +222,7 @@ def fetch_one(
             return []
         return parse_rss(body, source)
     except ValueError as _refused:
-        # The allowlist rejected this source before any socket opened.
-        # Every NEWS_SOURCES entry is an https literal today, so this
-        # can only fire once the source list carries a scheme it must
-        # not have -- the one day it has to be loud, not debug.
+        # SafeRequest raises ValueError for a scheme outside the allowlist.
         logger.warning(
             "crypto_news_ticker: %s refused before fetch: %s", source.name, _refused
         )
@@ -341,20 +235,10 @@ def fetch_one(
 def _read_bounded(
     resp, source: NewsSource, should_stop: Callable[[], bool], deadline: Optional[float]
 ) -> Optional[bytes]:
-    """Read a response body in chunks. Return None when abandoned.
+    """Read a response body in ``READ_CHUNK_BYTES`` chunks, or None if abandoned.
 
-    ``resp.read(MAX_FEED_BYTES + 1)`` in one call was correct about the
-    size cap and blind to everything else: it could not be interrupted
-    and it could not time out as a whole, because urllib's timeout
-    restarts on every socket operation. Reading in chunks keeps the
-    same cap -- one byte over, on purpose, so "exactly at the limit"
-    stays distinguishable from "truncated" -- and adds two exits the
-    single call did not have.
-
-    Returning None rather than the partial bytes is deliberate. A
-    truncated feed is not a shorter feed; it is XML that stops in the
-    middle, and handing it to the parser would trade a clean abandon
-    for a parse error logged as if the host were malformed.
+    Reading stops one byte past ``MAX_FEED_BYTES``, and returns None once
+    ``should_stop`` is true or ``deadline`` has passed.
     """
     parts: list[bytes] = []
     taken = 0
@@ -387,17 +271,10 @@ def fetch_all(
     should_stop: Callable[[], bool] = _never_stop,
     budget_s: float = FETCH_BUDGET_S,
 ) -> list[NewsHeadline]:
-    """Fetch every source in parallel, merge, sort by pubDate
-    descending (unknown timestamps sink to the end).
+    """Fetch every source in parallel, merged by ``published_ts`` descending.
 
-    Returns within ``budget_s``, and within ``FETCH_POLL_S`` of
-    ``should_stop`` turning true, whatever the ten hosts do. Feeds that
-    have not answered by then are dropped and the headlines that DID
-    arrive are still returned -- a partial ticker beats an empty one.
-
-    The pool is shut down with ``wait=False``. That is the line that
-    makes the bound real: the old ``with`` block joined every worker on
-    the way out, so a timeout above it bought nothing.
+    Returns within ``budget_s``, and within ``FETCH_POLL_S`` of ``should_stop``
+    turning true; a feed that has not answered by then is dropped.
     """
     deadline = time.monotonic() + budget_s
     out: list[NewsHeadline] = []
@@ -440,73 +317,25 @@ def fetch_all(
     return out
 
 
-# Widget — cycling QLabel ticker.
-
 if _HAS_QT:
 
     CYCLE_INTERVAL_MS = 15_000
-    REFRESH_INTERVAL_MS = 60 * 60 * 1000  # 1 hour
+    REFRESH_INTERVAL_MS = 60 * 60 * 1000
 
-    # Worker-thread ownership. Issue #105, with issue #58.
-    #
-    # THE DEFECT. ``force_refresh`` built ``QThread(self)`` -- a thread
-    # PARENTED TO THE WIDGET -- and ``_teardown_worker`` called
-    # ``wait(50)`` and then ``deleteLater()`` whatever the wait
-    # returned. Two destructions of a RUNNING QThread followed from
-    # that, and Qt answers both with ``std::terminate``: no traceback,
-    # no failure summary, exit 127.
-    #
-    #   * ``stop()`` mid-fetch. ``wait(50)`` returns False silently --
-    #     a timeout is not an exception, so the ``except`` around it
-    #     caught nothing -- and ``deleteLater()`` destroyed the thread
-    #     anyway.
-    #   * DESTROYING THE WIDGET. A parent destroys its children. So any
-    #     path that destroyed the tab inherited the abort without ever
-    #     calling ``stop()``.
-    #
-    # Measured on this file before the repair, offscreen, with
-    # ``fetch_all`` replaced by a 3 s sleep: both recipes exit 127.
-    #
-    # THE MODEL NOW. A fetch thread has NO PARENT and owns its own
-    # lifetime. ``_LIVE_WORKERS`` holds the only strong reference to
-    # the thread and to its worker until the thread really stops, so:
-    #
-    #   * destroying the widget destroys neither of them;
-    #   * the worker cannot be collected mid-fetch, which is the
-    #     "Signal source has been deleted" half recorded as issue #58;
-    #   * nothing is destroyed until ``finished`` has been seen.
-    #
-    # WHAT stop() DOES WHEN THE THREAD WILL NOT STOP. Of the three
-    # honest answers -- wait longer, abandon without destroying, refuse
-    # to destroy the widget -- this takes the second. It abandons the
-    # thread, keeps it registered so nothing destroys it, and logs at
-    # ERROR so the fault has a line to read. It never destroys, because
-    # destroying is the abort.
-    #
-    # WHY 2000 ms IS NOT ANOTHER 50. It is not a network bound; the
-    # network is no longer on this path, because ``fetch_all`` polls
-    # its stop flag every ``FETCH_POLL_S`` and shuts its pool down
-    # without joining. After the flag is set the worker returns inside
-    # one poll slice, sorts a list of at most 50 headlines, and the
-    # event loop of the thread sees the pending ``quit()``. 2000 ms is
-    # 40x that slice. A miss means something other than the fetch is
-    # wrong, which is why the miss is logged rather than absorbed.
+    # _stop_worker waits this long, then abandons the thread undestroyed:
+    # destroying a running QThread ends the process in std::terminate.
     _STOP_WAIT_MS = 2000
 
-    # After ``finished`` is delivered the thread has only to unwind.
-    # This wait covers that unwinding, not any work.
+    # _RETIRE_WAIT_MS covers only the unwinding after finished is delivered.
     _RETIRE_WAIT_MS = 1000
 
     _LIVE_WORKERS: "dict[QThread, _FetchWorker]" = {}
 
     def _retire_worker_thread(thread: QThread) -> None:
-        """Destroy a fetch thread, but only once it has really stopped.
+        """Destroy a fetch thread once ``isRunning`` is false.
 
-        Runs on the GUI thread from ``QThread.finished``. The guard is
-        not defensive noise: ``finished`` is emitted from inside the
-        thread, so a queued delivery can arrive while ``isRunning()``
-        is still true. A thread that is still running keeps its
-        registration and is destroyed by nobody.
+        Runs on the GUI thread from ``QThread.finished``; a thread still
+        running keeps its ``_LIVE_WORKERS`` entry and is not destroyed.
         """
         try:
             if thread.isRunning() and not thread.wait(_RETIRE_WAIT_MS):
@@ -525,24 +354,10 @@ if _HAS_QT:
 
     @atexit.register
     def _release_worker_threads_at_exit() -> None:
-        """Stop every live fetch thread before the interpreter tears down.
+        """Stop every ``_LIVE_WORKERS`` thread before the interpreter tears down.
 
-        This hook is required, not tidiness. Measured, offscreen: a
-        parentless running QThread whose last Python reference is
-        dropped at interpreter shutdown EXITS 127, because Python owns
-        the wrapper and frees the C++ thread under it. Two repairs that
-        look right were measured and rejected: handing the thread to
-        ``QCoreApplication`` as a parent still exits 127, because the
-        application destructor then destroys a running child, and
-        ``Shiboken.invalidate`` exits 127 as well.
-
-        So the hook stops the threads, which after the ``fetch_all``
-        repair they do. For any thread that still will not stop,
-        ``deleteLater()`` is the measured survivor: it moves ownership
-        to C++, and no event loop is left to deliver the deferred
-        delete. That is safe HERE and nowhere else -- inside a running
-        application the loop would deliver it and abort the process,
-        which is exactly the shipped defect this file repairs.
+        Calls ``request_stop`` on each worker, then ``quit`` and ``wait`` on
+        each thread, and logs one that outlasts ``_STOP_WAIT_MS``.
         """
         for _thread, _worker in list(_LIVE_WORKERS.items()):
             try:
@@ -567,13 +382,10 @@ if _HAS_QT:
             _thread.deleteLater()
 
     class _FetchWorker(QObject):
-        """Runs fetch_all() in a worker thread; emits results back.
+        """Run ``fetch_all`` on a worker thread and emit the result.
 
-        Carries a plain ``threading.Event`` rather than the QThread
-        interruption flag. ``fetch_all`` hands the flag to pool
-        threads, and a Qt object read from a thread whose lifetime it
-        does not control is a second lifetime problem. An Event has
-        none.
+        ``headlinesReady`` carries the headlines and ``failed`` an error
+        string; ``request_stop`` sets the ``threading.Event`` the fetch polls.
         """
 
         headlinesReady = Signal(list)
@@ -593,18 +405,10 @@ if _HAS_QT:
             return self._stop.is_set()
 
         def run(self) -> None:
-            """Fetch on the worker thread; emit nothing once stopped.
+            """Fetch, and emit nothing once ``request_stop`` has been called.
 
-            Ends by quitting its own thread, in a ``finally``. That is
-            not tidiness. The fetch is one shot, but the thread runs an
-            event loop, so it exits only when something calls ``quit``.
-            Before, the only callers were the two result signals -- and
-            a STOPPED fetch emits neither, and a widget that has been
-            destroyed calls nothing at all. Both cases left an event
-            loop spinning for the life of the process. Quitting from
-            inside the run is the one path that covers every outcome,
-            and ``currentThread()`` is the thread itself, so there is
-            no other lifetime to be right about.
+            Quits ``QThread.currentThread`` in a ``finally``, and never the
+            ``QCoreApplication`` thread.
             """
             try:
                 try:
@@ -613,17 +417,9 @@ if _HAS_QT:
                     if not self._stop.is_set():
                         self.failed.emit(f"{type(_exc).__name__}: {_exc}")
                     return
-                # A stopped fetch stays silent. The widget that asked
-                # for the stop is on its way out, and delivering a
-                # result to it is how issue #58 reached a deleted
-                # object.
                 if not self._stop.is_set():
                     self.headlinesReady.emit(headlines)
             finally:
-                # Never quit the GUI thread. `run` is only ever reached
-                # from `QThread.started`, but a test or a future caller
-                # that invokes it directly would otherwise stop the
-                # event loop of the whole application from a finally.
                 _thread = QThread.currentThread()
                 _app = QCoreApplication.instance()
                 if _thread is not None and (
@@ -632,15 +428,12 @@ if _HAS_QT:
                     _thread.quit()
 
     class CryptoNewsTicker(QWidget):
-        """Header-strip cycling news ticker. Public API:
+        """Header-strip cycling news ticker.
 
-        - ``start()``: kick off first fetch + start cycling
-        - ``stop()``: halt both timers + any in-flight worker
-        - ``force_refresh()``: fetch NOW (bypass hourly gate)
-        - ``current_headlines()``: read the cached queue
-
-        Emits nothing; user interaction (click) routes through
-        webbrowser.open directly.
+        ``start`` begins the fetch and the cycling, ``stop`` halts both timers
+        and the worker, ``force_refresh`` fetches at once, and
+        ``current_headlines`` reads the cached queue. ``eventFilter`` pauses
+        on hover and opens the current headline with ``webbrowser.open``.
         """
 
         def __init__(self, parent=None):
@@ -677,8 +470,6 @@ if _HAS_QT:
             self._refresh_timer.setInterval(REFRESH_INTERVAL_MS)
             self._refresh_timer.timeout.connect(self.force_refresh)
 
-        # -- Public --
-
         def start(self) -> None:
             self.force_refresh()
             self._cycle_timer.start()
@@ -687,9 +478,7 @@ if _HAS_QT:
         def stop(self) -> None:
             """Halt both timers and the in-flight fetch, if any.
 
-            Safe to call more than once, and safe to call while a fetch
-            is running. It never returns with a destroyed running
-            thread behind it, which is the whole of issue #105.
+            Safe to call more than once, and while ``_FetchWorker`` is running.
             """
             self._cycle_timer.stop()
             self._refresh_timer.stop()
@@ -697,16 +486,9 @@ if _HAS_QT:
 
         def force_refresh(self) -> None:
             if self._worker_thread is not None:
-                # Previous fetch still in flight — skip. The reference
-                # is cleared by `finished`, not by a timed-out wait, so
-                # this guard can no longer be talked into starting a
-                # second fetch alongside a first (issue #58 tail).
+                # _worker_thread is cleared by finished, never by a failed wait.
                 return
-            # NO PARENT. A QThread parented to this widget makes
-            # destroying the widget an attempt to destroy a running
-            # thread, which Qt answers with std::terminate. The
-            # registry below holds the reference instead, and drops it
-            # only once the thread has really stopped.
+            # The thread takes no parent; _LIVE_WORKERS holds it until it stops.
             thread = QThread()
             worker = _FetchWorker()
             _LIVE_WORKERS[thread] = worker
@@ -716,21 +498,14 @@ if _HAS_QT:
             thread.started.connect(worker.run)
             worker.headlinesReady.connect(self._on_headlines)
             worker.failed.connect(self._on_fetch_failed)
-            # No `result -> thread.quit` wiring here. `run` quits its
-            # own thread in a finally, which also covers the outcomes
-            # that emit nothing.
-            # Two receivers, on purpose. The first is bound to this
-            # widget and Qt drops it when the widget is destroyed; the
-            # second is module-level and outlives the widget, so the
-            # registry is emptied even when nobody is left to care.
+            # _retire_worker_thread is module-level, so _LIVE_WORKERS still
+            # empties once the widget holding _teardown_worker is destroyed.
             thread.finished.connect(self._teardown_worker)
             thread.finished.connect(partial(_retire_worker_thread, thread))
             thread.start()
 
         def current_headlines(self) -> list[NewsHeadline]:
             return list(self._headlines)
-
-        # -- Slots --
 
         def _on_headlines(self, headlines: list) -> None:
             if headlines:
@@ -763,61 +538,26 @@ if _HAS_QT:
             )
 
         def _teardown_worker(self) -> None:
-            """Forget a fetch thread that has finished.
+            """Clear ``_worker_thread`` and ``_worker`` after ``finished``.
 
-            Reached from ``QThread.finished`` only. Destruction is not
-            done here: ``_retire_worker_thread`` owns that, and it
-            checks that the thread has really stopped first.
+            Destruction belongs to ``_retire_worker_thread``, not here.
             """
             self._worker_thread = None
             self._worker = None
 
         def _stop_worker(self) -> None:
-            """Ask the fetch to stop, and wait for it with a real bound.
+            """Ask the fetch to stop and wait ``_STOP_WAIT_MS`` for it.
 
-            Order matters. The signals are detached FIRST, so a result
-            that is already in flight lands on nothing instead of on a
-            widget that is going away. Then the stop flag is set, the
-            event loop of the thread is asked to quit, and the wait
-            runs. Only a wait that SUCCEEDS permits destruction, and
-            the destruction itself happens in
-            ``_retire_worker_thread`` from ``finished``.
-
-            ASKING TWICE DOES NOT DO THE WORK TWICE. When a wait fails
-            the thread is abandoned and BOTH references stay set, so a
-            later ``stop()`` -- an application close after a failed tab
-            teardown, say -- arrives with the same worker still on the
-            attribute. Without the guard below that second call:
-
-              * detached signals that the first call already detached,
-                which libpyside reports as ``Failed to disconnect
-                (None) from signal`` -- the visible symptom, and the
-                least of it;
-              * blocked the GUI thread for another whole
-                ``_STOP_WAIT_MS`` on a thread already flagged and
-                already asked to quit;
-              * wrote the abandon ERROR a second time, so the crash
-                watchdog reads two failures where one happened.
-
-            The last is why this is a correctness guard and not tidying
-            up. A log the operator reads during a crash must not
-            multiply its own entries by the number of times something
-            polite called ``stop()``.
-
-            ``is_stopping()`` is the whole test: it is set by
-            ``request_stop`` on the first call and never cleared, and a
-            worker that has finished has already had both references
-            cleared by ``_teardown_worker``, so it cannot be reached
-            here at all.
+            ``headlinesReady`` and ``failed`` are disconnected first, and a
+            worker already reporting ``is_stopping`` returns at once; a thread
+            that does not stop keeps both references and its
+            ``_LIVE_WORKERS`` entry.
             """
             thread = self._worker_thread
             worker = self._worker
             if thread is None:
                 return
             if worker is not None and worker.is_stopping():
-                # Already asked, and the answer has not arrived yet.
-                # `finished` clears the references whenever the thread
-                # really stops; until then there is nothing to add.
                 return
             if worker is not None:
                 for _sig in (worker.headlinesReady, worker.failed):
@@ -835,12 +575,7 @@ if _HAS_QT:
                 self._worker = None
                 return
             if not stopped:
-                # Abandon it. Do NOT destroy it: destroying a running
-                # QThread is the abort this repair exists to remove.
-                # It stays in _LIVE_WORKERS, so nothing else destroys
-                # it either, and `finished` retires it whenever it
-                # arrives. _worker_thread stays set so force_refresh
-                # will not start a second fetch beside this one.
+                # _worker_thread stays set, so force_refresh starts no second fetch.
                 logger.error(
                     "crypto_news_ticker: fetch thread did not stop "
                     "within %d ms; abandoned undestroyed rather than "
@@ -851,8 +586,6 @@ if _HAS_QT:
             self._worker_thread = None
             self._worker = None
             _retire_worker_thread(thread)
-
-        # -- Event filter for hover-pause + click-to-open --
 
         def eventFilter(self, watched, event) -> bool:
             if watched is self._label:
