@@ -107,6 +107,9 @@ TOOLS = REPO / "tools"
 # `test_every_tool_on_disk_is_declared` below fails if the file returns
 # undeclared.
 INVENTORY: tuple[tuple[str, bool], ...] = (
+    # Renders `docs/manual` back into a PDF through reportlab. Its parser
+    # carries `--docs-dir`, `--figures-dir` and `--output`, so it is True.
+    ("build_product_manual", True),
     ("build_release_zip", True),
     # Counts comments by tokenising, and proves a comment cleanup left
     # executable code unchanged by comparing parsed trees. Two
