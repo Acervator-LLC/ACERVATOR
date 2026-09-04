@@ -61,4 +61,5 @@ window.ACERVATOR_MODULES = [
   "buy_confirmation.js",
   "audio_suite.js",
   "init_wizard.js",
+  "launcher.js",
 ];
