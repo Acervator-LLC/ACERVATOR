@@ -28,13 +28,19 @@ WEB_MODULES = REPO_ROOT / "src" / "gui" / "web"
 DESKTOP = REPO_ROOT / "desktop"
 RENDERER = DESKTOP / "renderer"
 
-SHELL_SCRIPTS = (
-    DESKTOP / "main.js",
-    DESKTOP / "preload.js",
-    RENDERER / "boot.js",
-    RENDERER / "module_errors.js",
-    RENDERER / "module_loader.js",
-)
+
+def shell_scripts() -> tuple:
+    """Every shell script on disk: the two process scripts and the renderer's.
+
+    Walked rather than listed, so a renderer script a later unit adds is
+    scanned here with no edit.
+    """
+    return (DESKTOP / "main.js", DESKTOP / "preload.js") + tuple(
+        sorted(RENDERER.glob("*.js"))
+    )
+
+
+SHELL_SCRIPTS = shell_scripts()
 
 _HOST = r"(?:global|window|self|globalThis)"
 _WRITE = re.compile(_HOST + r"\s*\.\s*(acervator[A-Za-z0-9_$]*)\s*=(?!=)")
