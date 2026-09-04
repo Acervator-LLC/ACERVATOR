@@ -60,4 +60,5 @@ window.ACERVATOR_MODULES = [
   "visualizer_themes.js",
   "buy_confirmation.js",
   "audio_suite.js",
+  "init_wizard.js",
 ];
