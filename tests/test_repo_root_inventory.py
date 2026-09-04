@@ -124,7 +124,7 @@ INVENTORY: dict[str, str] = {
     "CHANGELOG.md": "Keep a Changelog release notes, read at the root by GitHub "
     "and named by CONTRIBUTING.md. src/core/version_sweep.py reads it "
     'at `self.root / "CHANGELOG.md"` and requires every version string '
-    "in it to equal the canonical one",
+    "in it on the current release line to equal the canonical one",
     # -- the animation core the three screens share ----------------------
     "screen_fx.py": "issue #74. splash_screen.py, cartoon_screen.py and "
     "investor_screen.py all say `import screen_fx`, a top-level "
@@ -138,16 +138,16 @@ INVENTORY: dict[str, str] = {
     "splash_screen.py": "tests/test_screen_rng_and_signatures.py says `import "
     "splash_screen`, a top-level import that resolves only because "
     "conftest puts the root on sys.path. src/core/version_sweep.py "
-    'reads it at `self.root / "splash_screen.py"`. Moving it '
-    "under src/ or resources/ would also ship it in every build",
+    "discovers it wherever it sits and flags any version literal in "
+    "it. Moving it under src/ or resources/ would also ship it in "
+    "every build",
     "investor_screen.py": "tests/test_screen_rng_and_signatures.py says `import "
     "investor_screen` and reads its `_cached_prices` signature. "
-    "src/core/version_sweep.py reads it at "
-    '`self.root / "investor_screen.py"`',
+    "src/core/version_sweep.py discovers it wherever it sits",
     "generate_essay_ja.py": "tests/test_check_release_readiness.py reads it at "
     '`REPO_ROOT / "generate_essay_ja.py"` in three tests, one of '
     "them the positive control for the `*_FROZEN_AT` exemption. "
-    "src/core/version_sweep.py reads it at the root as well",
+    "src/core/version_sweep.py honours that same exemption",
     # -- scripts nothing requires at the root ----------------------------
     #
     # Each of these three could move. Issue #85 measured what the move
