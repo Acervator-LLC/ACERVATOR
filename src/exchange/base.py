@@ -1,9 +1,8 @@
-"""
-base.py — Abstract exchange interface
-======================================
-Defines the contract that every exchange connector must implement.
-The trading engine interacts only with this interface, making it
-trivial to add new exchanges or swap implementations.
+"""Abstract exchange interface.
+
+``ExchangeInterface`` declares the methods a connector class implements.
+``Ticker``, ``OrderBook``, ``Order``, ``Trade``, ``Balance`` and ``AssetInfo``
+are the records those methods return.
 """
 
 from __future__ import annotations
@@ -14,9 +13,6 @@ from enum import Enum
 from typing import Optional
 
 
-# ---------------------------------------------------------------------------
-# Data models shared by all exchange implementations
-# ---------------------------------------------------------------------------
 class OrderSide(str, Enum):
     BUY = "buy"
     SELL = "sell"
@@ -25,12 +21,7 @@ class OrderSide(str, Enum):
 class OrderType(str, Enum):
     MARKET = "market"
     LIMIT = "limit"
-    # v3.23.28 — Immediate-or-Cancel limit. Behaves as a taker-forcing
-    # limit: fills what's available immediately at limit-price or better,
-    # cancels the rest. Used by Aggressive Trading mode (operator
-    # directive 2026-07-25) to guarantee taker execution with a
-    # slippage cap. Connectors that don't natively support IOC map to
-    # LIMIT + timeInForce=IOC via extra params (see ccxt_connector).
+    # CCXTConnector sends IOC_LIMIT as a limit order with timeInForce=IOC.
     IOC_LIMIT = "ioc_limit"
 
 
@@ -38,10 +29,7 @@ class OrderStatus(str, Enum):
     OPEN = "open"
     FILLED = "filled"
     PARTIALLY_FILLED = "partially_filled"
-    # v3.13.8 MEM-191 / Chunk 7 — CLOSED referenced by bot_container.py's
-    # VolumeGuard path but was missing from the enum. Result: any guarded
-    # order would AttributeError on construction. Latent production bug
-    # until Chunk 7 harness exercised the trade path.
+    # guarded_place_order returns CLOSED for a VolumeGuard order that filled.
     CLOSED = "closed"
     CANCELLED = "cancelled"
     FAILED = "failed"
@@ -49,7 +37,7 @@ class OrderStatus(str, Enum):
 
 @dataclass
 class Ticker:
-    """Current price snapshot for a symbol."""
+    """Price snapshot, as ``get_ticker`` returns it."""
 
     symbol: str
     bid: float
@@ -61,7 +49,7 @@ class Ticker:
 
 @dataclass
 class OrderBook:
-    """Top-of-book orderbook snapshot."""
+    """Orderbook levels for ``symbol``."""
 
     symbol: str
     bids: list[tuple[float, float]]  # [(price, amount), ...]
@@ -71,7 +59,7 @@ class OrderBook:
 
 @dataclass
 class Order:
-    """Represents a placed or historical order."""
+    """A placed or historical order, as ``place_order`` returns it."""
 
     id: str
     symbol: str
@@ -85,11 +73,7 @@ class Order:
     timestamp: float = 0.0
     fee: float = 0.0
     fee_currency: str = ""
-    # v3.13.8 MEM-191 / Chunk 7 — avg fill price from exchange response.
-    # Referenced by bot_container.py:239 (VolumeGuard path) and by
-    # ScrummingBot's Chunk 6 slip-capture logic (_execute_buy /
-    # _execute_sell extract order.average as the primary fill price).
-    # Was missing from the dataclass — caught by Chunk 7 harness.
+    # _execute_buy and _execute_sell read average first as the fill price.
     average: float = 0.0
     raw: dict = field(default_factory=dict)  # Original exchange response
 
@@ -98,17 +82,12 @@ class Order:
 class Trade:
     """Historical trade record from the exchange.
 
-    v3.16.46 — added for exchange-truth migration. Bot stats /
-    SpendableWidget previously derived cost basis and realized P/L
-    from internal accumulators that diverge from exchange reality.
-    Fetching trade history from the exchange and aggregating it
-    locally produces avg_entry and realized P/L that match the
-    Coinbase Avg Entry / Returns numbers the operator sees.
+    ``ExchangeInterface.get_my_trades`` returns a list of these records.
     """
 
     id: str
     symbol: str  # e.g., "CHIP/USD"
-    side: OrderSide  # BUY or SELL
+    side: OrderSide
     amount: float  # base asset units
     price: float  # quote per base
     fee: float = 0.0  # in fee_currency
@@ -121,24 +100,20 @@ class Trade:
 class Balance:
     """Wallet balance for a single currency.
 
-    The `absent` flag lets callers distinguish "exchange explicitly reported
-    zero for this currency" from "exchange omitted this currency from the
-    response entirely." Before this flag, ccxt_connector.get_balance
-    fabricated Balance(free=0.0) for both cases, which hid a class of
-    connector-response gaps from the handshake layer. Defense-in-depth
-    alongside the MEM-259 VolumeGuard-disable fix for phantom-rebuy.
+    ``absent`` is True only when the exchange response omitted ``currency``,
+    and False when the exchange reported it as zero.
     """
 
     currency: str
     free: float
     used: float
     total: float
-    absent: bool = False  # True iff the exchange response omitted this currency
+    absent: bool = False
 
 
 @dataclass
 class AssetInfo:
-    """Metadata for a tradeable asset."""
+    """Market metadata, as ``get_markets`` returns it."""
 
     symbol: str  # e.g. "BTC/USDT"
     base: str  # e.g. "BTC"
@@ -153,65 +128,67 @@ class AssetInfo:
     logo_url: str = ""
 
 
-# ---------------------------------------------------------------------------
-# Abstract interface
-# ---------------------------------------------------------------------------
 class ExchangeInterface(ABC):
-    """
-    Unified exchange API.  Every exchange connector (CCXT-based or custom)
-    must implement these methods.
+    """The contract a connector class implements.
+
+    Every method is abstract except ``get_my_trades``, which raises
+    ``NotImplementedError`` unless a subclass overrides it.
     """
 
     @property
     @abstractmethod
     def exchange_id(self) -> str:
-        """Short identifier, e.g. ``'binance'``, ``'kraken'``."""
+        """Short venue id, e.g. ``'binance'``, paired with ``display_name``."""
 
     @property
     @abstractmethod
     def display_name(self) -> str:
-        """Human-readable name, e.g. ``'Binance'``."""
+        """Readable venue name for ``exchange_id``, e.g. ``'Binance'``."""
 
     @abstractmethod
     async def connect(
         self, api_key: str, api_secret: str, passphrase: str = ""
     ) -> None:
-        """Authenticate and establish a connection."""
+        """Open the exchange session and make ``is_connected`` True."""
 
     @abstractmethod
     async def disconnect(self) -> None:
-        """Close connections and clean up resources."""
+        """Close the exchange session and make ``is_connected`` False."""
 
     @property
     @abstractmethod
     def is_connected(self) -> bool:
-        """Whether the exchange session is active."""
+        """True after ``connect`` and False after ``disconnect``."""
 
-    # -- Market data ----------------------------------------------------
     @abstractmethod
     async def get_ticker(self, symbol: str) -> Ticker:
-        """Fetch current price for *symbol*."""
+        """Return the current ``Ticker`` for ``symbol``."""
 
     @abstractmethod
     async def get_orderbook(self, symbol: str, limit: int = 20) -> OrderBook:
-        """Fetch orderbook for *symbol*."""
+        """Return an ``OrderBook`` for ``symbol`` with ``limit`` levels a side."""
 
     @abstractmethod
     async def get_ohlcv(
         self, symbol: str, timeframe: str = "1h", limit: int = 100
     ) -> list[list[float]]:
-        """Fetch OHLCV candles: [[timestamp, O, H, L, C, V], ...]."""
+        """Return rows ``[timestamp_ms, open, high, low, close, volume]``.
 
-    # -- Account --------------------------------------------------------
+        ``timeframe`` names the candle interval and ``limit`` the row count.
+        """
+
     @abstractmethod
     async def get_balances(self) -> dict[str, Balance]:
-        """Fetch all non-zero balances."""
+        """Return one ``Balance`` per currency the exchange reports."""
 
     @abstractmethod
     async def get_balance(self, currency: str) -> Balance:
-        """Fetch balance for a specific currency."""
+        """Return the ``Balance`` for ``currency``.
 
-    # -- Orders ---------------------------------------------------------
+        A currency the exchange does not report gives a zeroed ``Balance``
+        with ``absent`` True.
+        """
+
     @abstractmethod
     async def place_order(
         self,
@@ -222,61 +199,40 @@ class ExchangeInterface(ABC):
         price: Optional[float] = None,
         client_order_id: Optional[str] = None,
     ) -> Order:
-        """Place an order. *price* is required for LIMIT orders.
+        """Submit an order and return the resulting ``Order``.
 
-        ``client_order_id`` (added v3.15.98 / TD-004 closure) is the
-        idempotency key. ``BotContainer.guarded_place_order`` derives
-        a deterministic coid from the trade intent
-        (symbol+side+amount+price+bot_id+purpose+session-nonce) so
-        that a retry of the same intent within TTL reuses the same id
-        and the exchange refuses the duplicate (Coinbase 409, Binance
-        -2010), preventing double-fills from network-timeout retry
-        storms. See src/exchange/idempotency.py for the full design.
-        Implementations may ignore the id (paper/sim exchanges that
-        synthesize fills locally) but MUST accept the kwarg.
+        ``price`` is required for ``OrderType.LIMIT`` and ``OrderType.IOC_LIMIT``;
+        an implementation may ignore ``client_order_id`` but must accept it.
         """
 
     @abstractmethod
     async def cancel_order(self, order_id: str, symbol: str) -> Order:
-        """Cancel an open order."""
+        """Cancel the order ``order_id`` and return it."""
 
     @abstractmethod
     async def get_order(self, order_id: str, symbol: str) -> Order:
-        """Fetch status of a specific order."""
+        """Return the ``Order`` for ``order_id``."""
 
     @abstractmethod
     async def get_open_orders(self, symbol: Optional[str] = None) -> list[Order]:
-        """Fetch all open orders, optionally filtered by *symbol*."""
+        """Return the ``OrderStatus.OPEN`` orders, narrowed by ``symbol``."""
 
-    # v3.16.46 — Trade history fetch for exchange-truth migration.
-    # Used by cost-basis derivation (replacing ticker.last seeding) and
-    # realized P/L computation (replacing internal accumulators).
     async def get_my_trades(
         self, symbol: str, since: Optional[float] = None, limit: Optional[int] = None
     ) -> list:
-        """Fetch historical trade fills for ``symbol``.
+        """Return the ``Trade`` fills for ``symbol``.
 
-        Returns a list of ``Trade`` records ordered chronologically.
-        Default implementation raises NotImplementedError; concrete
-        connectors override (ccxt_connector implements via ccxt's
-        fetch_my_trades).
-
-        Args:
-            symbol: market symbol (e.g., "CHIP/USD")
-            since: optional unix-seconds timestamp; only return trades at
-                or after this time. None = all available.
-            limit: optional max number of trades to return.
-                None = exchange default (typically 100-500).
+        ``since`` is a unix-seconds floor and ``limit`` caps the count; this
+        body raises ``NotImplementedError`` until a subclass overrides it.
         """
         raise NotImplementedError(
             f"{type(self).__name__} does not implement get_my_trades"
         )
 
-    # -- Asset discovery ------------------------------------------------
     @abstractmethod
     async def get_markets(self) -> list[AssetInfo]:
-        """Return metadata for all tradeable markets."""
+        """Return one ``AssetInfo`` per tradeable market."""
 
     @abstractmethod
     async def get_asset_logo_url(self, currency: str) -> str:
-        """Return a URL for the asset's logo/icon."""
+        """Return a logo URL for ``currency``, or an empty string."""

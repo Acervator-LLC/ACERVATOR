@@ -1,55 +1,11 @@
-"""history_read_contract.py -- the read-only backend contract for History.
+"""Read-only ``HistoryPage`` values for the History tab.
 
-Issue #128 unit R3. ADDITIVE: nothing that already exists changes
-behaviour. ``src/gui/history_tab.py`` is not wired to this module in this
-unit -- wiring it is a later unit, and doing both at once would put a
-behaviour change and a structural change in one blast radius.
-
-WHAT THIS SERVES
-
-Everything the History tab puts on screen, as plain serialisable values:
-``str``, ``int``, ``float``, ``bool``, ``None``, ``list`` and ``dict`` of
-those. No Qt type, no widget and no ``datetime`` object crosses the
-boundary -- a trade row's instant is served as a unix ``float`` and as
-the exact string the table shows.
-
-THE UNIT OF THE CONTRACT IS THE CELL, NOT THE ROW. Each of the thirteen
-columns yields a ``HistoryCell`` carrying four things:
-
-    value    the raw serialisable datum, for a client that formats
-    text     the exact string ``history_tab.py`` puts in that cell
-    color    the "#rrggbb" foreground the tab sets, or None
-    tooltip  the hover text the tab attaches, or None
-
-``text`` and ``color`` exist because a contract that served only raw
-values could not be proved to agree with the screen. They are what
-``tests/test_history_read_contract.py`` compares, cell for cell, against
-the real Qt widget driven on the same input.
-
-WHAT IT DOES NOT DO
-
-It never writes. It reads ``bot_manager._bots`` through ``getattr``,
-reads the gate and voting logs through ``src.trading.live_log_reader``,
-and returns new lists. ``tests/test_history_read_contract.py`` drives it
-against a bot and asserts the bot's state is byte-identical afterwards.
-
-It emits nothing. The seven ``history.05.*`` pins stay where they are and
-the census stays at 78.
-
-THE ROW ORDER IS THE FETCH ORDER AND THERE IS NO USER SORT.
-``history_helpers.fetch_all_history_chunked`` sorts newest-first
-(``reverse=True``) and nothing re-sorts downstream. ``history_tab.py``
-never calls ``setSortingEnabled``, so no column header sorts anything.
-``ROW_ORDER`` states that rather than leaving a client to infer it, and
-``sort_trades`` is the only ordering this subsystem has.
-
-KNOWN DEFECT SERVED AS-IS -- the "Cost USD" column.
-``history_helpers.py:146`` writes ``amount * price`` and discards the
-venue's own cost field; the header says "Cost USD" and the cell carries a
-dollar sign whatever the quote currency is. This contract serves that
-number unchanged, because a contract that disagreed with the screen would
-be a second implementation. Repairing it is its own unit -- see
-``docs/engineering-notes/2026-08-26_qt_to_react_boundary.md`` section 6.2.
+``build_page`` returns ``HistoryRow`` records as ``str``, ``int``, ``float``,
+``bool``, ``None``, ``list`` and ``dict``; no Qt type and no ``datetime``
+object crosses the boundary. Each of the thirteen ``COLUMNS`` yields one
+``HistoryCell`` carrying ``value``, ``text``, ``color`` and ``tooltip``.
+``ROW_ORDER`` is the whole ordering contract, and nothing here writes or
+emits.
 """
 
 from __future__ import annotations
@@ -75,40 +31,34 @@ from src.exchange.history_helpers import (
     voting_cell_tooltip,
 )
 
-# --------------------------------------------------------------------- #
-# Contract constants                                                     #
-# --------------------------------------------------------------------- #
-
 PAGE_SIZE = 100
-"""Rows per page. Mirrors ``history_tab.py:174``."""
+"""Rows per page, the same 100 ``HistoryTab.PAGE_SIZE`` holds."""
 
 ALL = "(all)"
-"""The sentinel the three dropdowns carry at index 0. It is chrome, not a
-value: no exchange, symbol or side is ever named ``(all)``."""
+"""The sentinel at index 0 of every ``filter_options`` list. No exchange,
+symbol or side is ever named ``(all)``."""
 
 SIDES = ("BUY", "SELL")
-"""The only two sides the normalizer emits (``history_helpers.py:110``)."""
+"""The only two sides ``history_helpers`` normalizes a raw side to."""
 
 ROW_ORDER = "timestamp_desc"
-"""Newest first. The fetch sorts ``reverse=True`` and nothing re-sorts.
-The tab enables no column sort, so this is the whole ordering contract."""
+"""Newest first. ``fetch_all_history_chunked`` sorts ``reverse=True``,
+``HistoryTab`` calls no ``setSortingEnabled``, and nothing re-sorts."""
 
 DEFAULT_FROM_LOCAL = (2026, 4, 1, 0, 0, 0)
 """The From date the tab opens and resets to, as LOCAL wall-clock parts.
 
-It is local, not UTC, and the difference is real. ``history_tab.py:235``
-builds ``QDateTime(QDate(2026, 4, 1), QTime(0, 0, 0))`` with no timezone,
-which Qt reads as local time, and ``:412`` converts it with
-``toSecsSinceEpoch()``. ``history_helpers.DEFAULT_START_DATE`` is the
-same wall clock in UTC and is a different instant everywhere but UTC."""
+``HistoryTab`` builds ``QDateTime(QDate(2026, 4, 1), QTime(0, 0, 0))`` with
+no timezone and reads it back with ``toSecsSinceEpoch()``, which Qt takes as
+local time. ``history_helpers.DEFAULT_START_DATE`` is the same wall clock in
+UTC and a different instant everywhere but UTC."""
 
 FETCH_POLL_INTERVAL_S = 0.4
-"""The tab observes the fetch future on a 400 ms timer
-(``history_tab.py:443``), so an observed fetch latency is the true
-latency plus up to one interval."""
+"""``HistoryTab`` polls the fetch future on a 400 ms timer, so an observed
+fetch latency is the true latency plus up to one interval."""
 
 FETCH_TIMEOUT_S = 60.0
-"""The tab gives up on a fetch after 60 s (``history_tab.py:540``)."""
+"""``HistoryTab`` abandons a fetch after 60 s."""
 
 STATUS_TEXT = {
     "idle": "No history loaded yet — click Refresh.",
@@ -117,8 +67,8 @@ STATUS_TEXT = {
     "fetching": "Fetching trade history from exchanges…",
     "timeout": "Fetch timeout (60s). Exchange may be rate-limited; try again.",
 }
-"""The five fixed status strings the summary line shows before any row
-exists. The two variable ones are ``Schedule failed: {exc}`` and
+"""The five fixed status strings shown before any row exists. The two
+variable ones are ``Schedule failed: {exc}`` and
 ``Fetch raised: {type}: {exc}``."""
 
 _SIDE_COLOR = {"BUY": "#00ff88", "SELL": "#ff5566"}
@@ -136,13 +86,8 @@ _VOTE_BUY_COLOR = "#00ff88"
 _VOTE_SELL_COLOR = "#ff5566"
 
 _EMPTY = "—"
-"""The em dash the tab renders for an absent value. One character, and
-``gate_cell_text`` deliberately does NOT use it -- see its docstring."""
-
-
-# --------------------------------------------------------------------- #
-# Column specification                                                   #
-# --------------------------------------------------------------------- #
+"""The one-character em dash rendered for an absent value. ``gate_cell_text``
+returns the words "no record" and never this."""
 
 
 @dataclass(frozen=True)
@@ -196,11 +141,6 @@ COLUMNS: tuple[HistoryColumn, ...] = (
 COLUMN_KEYS: tuple[str, ...] = tuple(c.key for c in COLUMNS)
 
 
-# --------------------------------------------------------------------- #
-# Row + page containers                                                  #
-# --------------------------------------------------------------------- #
-
-
 @dataclass
 class HistoryCell:
     """One rendered cell. ``value`` is raw; ``text`` is what the screen
@@ -224,7 +164,7 @@ class HistoryCell:
 
 @dataclass
 class HistoryRow:
-    """Thirteen cells plus the row's identity and its gate-light state."""
+    """Thirteen ``HistoryCell`` records plus ``trade_id`` and ``gate_lights``."""
 
     trade_id: str
     timestamp: float
@@ -248,7 +188,7 @@ class HistoryRow:
 
 @dataclass
 class HistoryPage:
-    """One page of rows plus the pager state the footer renders."""
+    """One page of ``HistoryRow`` records plus the pager state for the footer."""
 
     rows: list[HistoryRow]
     page: int
@@ -293,35 +233,24 @@ class HistoryFilters:
         }
 
 
-# --------------------------------------------------------------------- #
-# Fetch                                                                  #
-# --------------------------------------------------------------------- #
-
-
 async def fetch_trades(bot_manager: Any, since_ts: float) -> list[dict]:
     """Pull normalized trade rows for every active (exchange, symbol).
 
-    One delegate, no second fetcher. Returns newest-first. This is also
-    the payload the tab hands the Simulator through ``history_refreshed``.
+    ``fetch_all_history_chunked`` returns them newest-first, and
+    ``HistoryTab`` re-emits the same list on ``history_refreshed``.
     """
     return await fetch_all_history_chunked(bot_manager, since_ts)
 
 
 def sort_trades(trades: list[dict]) -> list[dict]:
-    """Return a new list in ``ROW_ORDER``. The fetch already sorts so."""
+    """Return a new list in ``ROW_ORDER``; ``fetch_trades`` already sorts so."""
     return sorted(trades, key=lambda r: r.get("timestamp", 0), reverse=True)
-
-
-# --------------------------------------------------------------------- #
-# Filters                                                                #
-# --------------------------------------------------------------------- #
 
 
 def default_filters(now_ts: Optional[float] = None) -> HistoryFilters:
     """The filter state on open, and the state Reset returns to.
 
-    ``from_ts`` is local midnight on the launch date, not UTC midnight --
-    see ``DEFAULT_FROM_LOCAL``.
+    ``from_ts`` is ``DEFAULT_FROM_LOCAL`` as a local instant, not UTC midnight.
     """
     if now_ts is None:
         now_ts = time.time()
@@ -335,11 +264,10 @@ def default_filters(now_ts: Optional[float] = None) -> HistoryFilters:
 
 
 def filter_options(trades: list[dict]) -> dict:
-    """The three dropdown contents, ``(all)`` first.
+    """The three dropdown contents, ``ALL`` first.
 
-    Exchange and symbol are the distinct non-empty values present in
-    ``trades``, sorted. Side is fixed: the normalizer emits only BUY and
-    SELL, so offering the loaded set would hide a side with no trades yet.
+    Exchange and symbol are the distinct non-empty values in ``trades``,
+    sorted; side is always the fixed ``SIDES`` pair.
     """
     exchanges = sorted({r["exchange"] for r in trades if r.get("exchange")})
     symbols = sorted({r["symbol"] for r in trades if r.get("symbol")})
@@ -353,8 +281,7 @@ def filter_options(trades: list[dict]) -> dict:
 def apply_filters(trades: list[dict], filters: HistoryFilters) -> list[dict]:
     """Return the retained rows, order preserved.
 
-    A filter at ``(all)`` or a date bound at 0 excludes nothing, so
-    widening a filter never drops a row.
+    A filter at ``ALL`` or a date bound at 0 excludes nothing.
     """
     out: list[dict] = []
     for row in trades:
@@ -373,18 +300,13 @@ def apply_filters(trades: list[dict], filters: HistoryFilters) -> list[dict]:
     return out
 
 
-# --------------------------------------------------------------------- #
-# Paging                                                                 #
-# --------------------------------------------------------------------- #
-
-
 def page_count(total: int) -> int:
-    """Pages needed for ``total`` rows. Zero rows is still one page."""
+    """Pages of ``PAGE_SIZE`` needed for ``total`` rows; zero rows is one."""
     return max(0, (total - 1) // PAGE_SIZE) + 1
 
 
 def clamp_page(page: int, total: int) -> int:
-    """Pull a page index back inside [0, last]. The tab clamps on render."""
+    """Pull ``page`` back inside 0 to ``page_count`` minus one."""
     last = page_count(total) - 1
     if page > last:
         page = last
@@ -394,8 +316,7 @@ def clamp_page(page: int, total: int) -> int:
 
 
 def page_slice(filtered: list[dict], page: int) -> list[dict]:
-    """The rows on ``page``, after clamping. Empty only when nothing
-    matched."""
+    """The ``filtered`` rows on ``page``, after ``clamp_page``."""
     total = len(filtered)
     page = clamp_page(page, total)
     start = page * PAGE_SIZE
@@ -404,8 +325,7 @@ def page_slice(filtered: list[dict], page: int) -> list[dict]:
 
 
 def page_label(page: int, total: int) -> str:
-    """The footer's page counter, or "No matches" when nothing is
-    retained."""
+    """The footer's page counter, or "No matches" when ``total`` is zero."""
     if total == 0:
         return "No matches"
     page = clamp_page(page, total)
@@ -420,8 +340,7 @@ def summary_line(
 ) -> str:
     """The line above the table: retained of loaded, both sides, fetch age.
 
-    The two dollar totals sum the same recomputed ``cost`` the Cost USD
-    column shows, so they inherit that column's defect exactly.
+    The two dollar totals sum the same ``cost`` field ``_cost_cell`` renders.
     """
     if now_ts is None:
         now_ts = time.time()
@@ -442,25 +361,14 @@ def summary_line(
     )
 
 
-# --------------------------------------------------------------------- #
-# The gate + voting join                                                 #
-# --------------------------------------------------------------------- #
-
-
 def build_join_indexes(page_rows: list[dict]) -> tuple[dict, dict]:
-    """The two ``(bot_id, ts // 60)`` indexes this page joins against.
+    """The ``(bot_id, ts // 60)`` gate and voting indexes for ``page_rows``.
 
-    Fail-soft: a reader that raises yields an empty index, and every
-    Gates and Voting cell then reads as no-record. A caller that needs to
-    tell a collapsed index from a genuinely empty log must compare the
-    bucket totals -- that is what pin ``history.05.006`` does.
+    ``build_page_gate_index`` and ``build_page_voting_index`` each yield an
+    empty dict when their log read raises, and every joined cell then reads
+    as no-record.
     """
     return build_page_gate_index(page_rows), build_page_voting_index(page_rows)
-
-
-# --------------------------------------------------------------------- #
-# Cell builders -- one per column, in table order                        #
-# --------------------------------------------------------------------- #
 
 
 def _timestamp_cell(row: dict) -> HistoryCell:
@@ -497,8 +405,8 @@ def _price_cell(row: dict) -> HistoryCell:
 
 
 def _cost_cell(row: dict) -> HistoryCell:
-    """Serves ``amount * price`` under a dollar sign. See the module
-    docstring."""
+    """Render the ``cost`` field, which ``history_helpers`` sets to
+    ``amount * price``, with a dollar sign for every quote currency."""
     cost = row.get("cost", 0)
     return HistoryCell("cost", float(cost or 0), f"${cost:,.4f}")
 
@@ -518,15 +426,11 @@ def _trade_id_cell(row: dict) -> HistoryCell:
 
 
 def grade_row(row_index: int, page_rows: list[dict], row: dict) -> str:
-    """The A-to-F letter for one row, graded against its own page.
+    """The A-to-F letter for one row, graded against ``page_rows``.
 
-    THE PAGE IS NEWEST-FIRST, so a LOWER index is a LATER trade. Prior
-    prices come from HIGHER indexes and future prices from LOWER ones;
-    reading it the other way puts post-trade prices into the reference and
-    returns the best grade for one of the worst trades.
-
-    Needs at least three prior same-symbol prices on the page for a
-    reference, and returns the em dash without one.
+    ``page_rows`` is newest-first, so ``prior_prices`` come from indexes above
+    ``row_index``; ``_EMPTY`` comes back only for an unusable ``price``,
+    ``amount`` or ``side``, never for a missing ``reference``.
     """
     try:
         from src.trading.trade_grader import (
@@ -600,17 +504,9 @@ def _gate_color(text: str) -> Optional[str]:
 
 
 def _gate_lights(entry: Optional[dict]) -> Optional[dict]:
-    """The five inputs the Simulator's gate-light cell draws from, plus
-    the nineteen resolved lights.
+    """The five raw gate fields plus the nineteen ``gate_light_row`` lights.
 
-    Present only when a gate record joined. A client that drew nineteen
-    grey lights for a row with no record would say "evaluated, nothing
-    fired" about a row nothing was recorded for.
-
-    ``lights`` is ``src.trading.gate_vocabulary.gate_light_row``, the
-    same rule the Simulator's ``GateLightsCell`` paints from. A client
-    that re-derived a light colour from the four raw fields would be a
-    second implementation of the gate map.
+    A falsy ``entry`` returns None, never a row of nineteen unlit lights.
     """
     if not entry:
         return None
@@ -685,8 +581,8 @@ def build_row(
 ) -> HistoryRow:
     """The thirteen cells for one trade, in table order.
 
-    ``row_index`` is the row's position within ``page_rows``, not within
-    the filtered set: the grade reads its reference prices off this page.
+    ``row_index`` is the position within ``page_rows``, not within the
+    filtered set, and ``grade_row`` reads its reference prices off that page.
     """
     gate_index = gate_index if gate_index is not None else {}
     voting_index = voting_index if voting_index is not None else {}
@@ -722,10 +618,10 @@ def build_page(
     gate_index: Optional[dict] = None,
     voting_index: Optional[dict] = None,
 ) -> HistoryPage:
-    """One rendered page: the rows plus the footer's pager state.
+    """One rendered page: the ``HistoryRow`` list plus the pager state.
 
-    Builds the join indexes for the page when none are supplied, which is
-    the only disk read on this path.
+    ``build_join_indexes`` runs when neither index is supplied, and it is the
+    only disk read on this path.
     """
     total = len(filtered)
     page = clamp_page(page, total)
@@ -749,10 +645,6 @@ def build_page(
     )
 
 
-# --------------------------------------------------------------------- #
-# CSV export -- the rows, not the file                                   #
-# --------------------------------------------------------------------- #
-
 CSV_HEADER: tuple[str, ...] = (
     "timestamp_utc",
     "exchange",
@@ -766,16 +658,15 @@ CSV_HEADER: tuple[str, ...] = (
     "fee_currency",
     "trade_id",
 )
-"""Eleven columns, not thirteen: the export carries ``fee_currency`` as
-its own field and carries no Grade, Gates or Voting."""
+"""Eleven columns against the thirteen ``COLUMNS``: the export carries
+``fee_currency`` as its own field and no Grade, Gates or Voting."""
 
 
 def csv_rows(filtered: list[dict], bot_manager: Any = None) -> list[list[str]]:
-    """Every retained row as the strings the export writes.
+    """Every row of ``filtered`` as the strings the export writes.
 
-    Returns rows; writes no file. The numbers here carry no thousands
-    separator and a missing instant is the empty string, both unlike the
-    table's own formatting.
+    ``csv_rows`` writes no file, its numbers carry no thousands separator,
+    and a missing instant is the empty string.
     """
     out: list[list[str]] = []
     for row in filtered:
