@@ -34,6 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 SHIPPED_PATH = REPO_ROOT / "src/gui/analytics_tab.py"
 SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/analytics_tab_surface.py"
+ALPHA_PATH = REPO_ROOT / "src/gui/color_alpha.py"
 BRIDGE_PATH = REPO_ROOT / "src/core/desktop_bridge.py"
 WIRED_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/widgets/bot_status_table.py"
 
@@ -803,6 +804,8 @@ SURFACE_FUNCTIONS = (
     "empty_chart",
     "chart_geometry",
     "build_view_model",
+    "css_stop",
+    "css_payload",
     "view_model",
 )
 
@@ -890,7 +893,7 @@ def test_the_surface_functions_are_reachable_and_described():
         and getattr(value, "__module__", "") == surface.__name__
     }
     assert found == set(SURFACE_FUNCTIONS), found
-    assert len(SURFACE_FUNCTIONS) == 23
+    assert len(SURFACE_FUNCTIONS) == 25
     for name in SURFACE_FUNCTIONS:
         member = getattr(surface, name)
         assert callable(member), name
@@ -1737,7 +1740,19 @@ def test_the_surface_loads_no_qt_module():
                 imported.update(alias.name for alias in node.names)
     assert not any(name.startswith("PySide6") for name in imported), imported
     assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "typing"}
+    assert imported == {"__future__", "typing", "color_alpha"}
+    alpha_tree = ast.parse(ALPHA_PATH.read_text(encoding="utf-8"))
+    alpha_imports = {
+        alias.name
+        for node in ast.walk(alpha_tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    } | {
+        node.module or ""
+        for node in ast.walk(alpha_tree)
+        if isinstance(node, ast.ImportFrom)
+    }
+    assert not any(name.startswith("PySide6") for name in alpha_imports), alpha_imports
     shipped_tree = ast.parse(SHIPPED_PATH.read_text(encoding="utf-8"))
     shipped_imports = {
         (node.module or "")
@@ -2509,3 +2524,74 @@ def test_the_qt_block_stops_the_shipped_tab():
     answered = run_script(probe)
     assert answered["has_qt"] is False
     assert answered["has_tab"] is False
+
+
+# ---------------------------------------------------------------------
+# The Qt tab stays reachable while the React panel is unproven
+# ---------------------------------------------------------------------
+
+#: Every widget the tab builds for itself, and how many of each it holds.
+#: Qt's own furniture -- scroll bars, splitter handles, header views and
+#: the viewports Qt gives a table -- is left out, because its count moves
+#: with the interface library rather than with this tab.
+QT_CHILD_CENSUS = {
+    "MetricCard": 8,
+    "QLabel": 16,
+    "MiniEquityChart": 1,
+    "QGroupBox": 3,
+    "QSplitter": 2,
+    "QTableWidget": 2,
+}
+
+
+def qt_children(tab):
+    """How many of each widget class the tab holds, its own classes only."""
+    from PySide6.QtWidgets import QWidget
+
+    found: dict = {}
+    for child in tab.findChildren(QWidget):
+        name = type(child).__name__
+        if name in QT_CHILD_CENSUS:
+            found[name] = found.get(name, 0) + 1
+    return found
+
+
+def test_the_shipped_tab_still_builds_every_widget_it_ever_built():
+    """A Qt widget left the analytics tab.
+
+    The React panel that draws this tab renders but is not yet verified
+    by a run of the application, so the Qt tab it replaces must stay
+    whole and reachable. A widget removed here is caught by the count,
+    not by anyone noticing the screen is short.
+    """
+    tab = shipped_tab()
+    assert shipped._HAS_QT is True
+    assert qt_children(tab) == QT_CHILD_CENSUS
+    assert sum(QT_CHILD_CENSUS.values()) == 32
+
+
+def test_the_shipped_tab_still_fills_every_widget_from_a_source():
+    """The Qt tab stopped showing what a source hands it."""
+    source = Source(FULL_SUMMARY, RISING_CURVE, FULL_BOTS, FULL_TIMEFRAMES)
+    tab = shipped_tab(source)
+    assert qt_children(tab) == QT_CHILD_CENSUS
+    assert tab._bot_table.rowCount() == len(FULL_BOTS)
+    assert tab._tf_table.rowCount() == len(FULL_TIMEFRAMES)
+    assert tab._equity_chart._data == RISING_CURVE
+    assert read_cards(tab)[0][1] == "$+1,234.5679"
+
+
+def test_the_child_count_reports_a_widget_that_left_the_tab():
+    """The census counts nothing, so a missing widget would pass.
+
+    One card is taken off the built tab and the census must report the
+    loss. Nothing shipped is changed: the tab is thrown away afterwards.
+    """
+    tab = shipped_tab()
+    assert qt_children(tab) == QT_CHILD_CENSUS
+    tab._card_pnl.setParent(None)
+    short = qt_children(tab)
+    assert short != QT_CHILD_CENSUS
+    assert short["MetricCard"] == QT_CHILD_CENSUS["MetricCard"] - 1
+    assert short["QLabel"] == QT_CHILD_CENSUS["QLabel"] - 2
+    assert qt_children(shipped_tab()) == QT_CHILD_CENSUS

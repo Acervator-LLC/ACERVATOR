@@ -62,4 +62,5 @@ window.ACERVATOR_MODULES = [
   "indicator_panel.js",
   "live_settings_tab.js",
   "usb_auth_widget.js",
+  "analytics_tab.js",
 ];
