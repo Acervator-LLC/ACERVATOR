@@ -169,6 +169,39 @@ def test_legacy_cache_wins_when_present(tablet_root, tmp_path):
     assert "LEGACY" in s.tape_label("A")
 
 
+def test_a_legacy_cache_tape_can_be_wired_and_played(tablet_root, tmp_path):
+    """A cache-backed tape has no manifest entry and must still wire."""
+    cache = tmp_path / "legacy"
+    cache.mkdir()
+    (cache / "aaa.json").write_text(
+        json.dumps({"symbol": "LEGACY", "year": "2023", "candles": _make_candles(50)}),
+        encoding="utf-8",
+    )
+    s = NuclearCandleSource(cache_dir=cache, noise_enabled=False)
+    s.wire("A")
+    assert s.active_tapes() == ["A"], s.stats()
+    assert s.current_price("A") > 0.0, s.tape_info("A")
+
+
+def test_the_legacy_loader_rejects_below_the_shared_candle_floor(
+    tablet_root, tmp_path, monkeypatch
+):
+    """Raising ``_MIN_TAPE_CANDLES`` must turn a 50-candle cache file away."""
+    from src.simulator import nuclear_candle_source as mod
+
+    monkeypatch.setattr(mod, "_MIN_TAPE_CANDLES", 60)
+    cache = tmp_path / "legacy"
+    cache.mkdir()
+    (cache / "aaa.json").write_text(
+        json.dumps({"symbol": "LEGACY", "year": "2023", "candles": _make_candles(50)}),
+        encoding="utf-8",
+    )
+    s = NuclearCandleSource(cache_dir=cache, noise_enabled=False)
+    labels = [s.tape_label(t) for t in s.list_tapes()]
+    assert labels, "expected the tablet fallback to offer tapes"
+    assert all("LEGACY" not in label for label in labels), labels
+
+
 def test_empty_manifest_yields_no_tapes(tmp_path, monkeypatch):
     from src.trading.stone_tablets import storage as S
 
