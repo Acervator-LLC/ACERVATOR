@@ -1,12 +1,10 @@
-"""
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-smart_orders.py — Intelligent order execution strategies.
+"""Order-execution strategies behind ``SmartOrderEngine``.
 
-Provides execution wrappers that reduce slippage and improve fill quality:
-- Iceberg: Split large orders into smaller visible chunks
-- TWAP: Time-Weighted Average Price across a time window
-- Limit-with-timeout: Place limit order, convert to market if unfilled
-- Adaptive: Choose strategy based on order size vs. book depth
+``execute`` dispatches on ``ExecutionStrategy`` to ``_execute_market``,
+``_execute_iceberg``, ``_execute_twap`` or ``_execute_limit_timeout``, and
+``ADAPTIVE`` first asks ``_choose_strategy``. Nothing under ``src/`` imports
+``SmartOrderEngine``.
 """
 
 from __future__ import annotations
@@ -22,21 +20,13 @@ logger = logging.getLogger("acervator.execution")
 
 
 def _extract_base_asset(symbol: str) -> str:
-    """Extract the base asset from a trading-pair symbol.
+    """Return the base asset of ``symbol``: ``ETH/USDT`` and ``ETH-USD`` give ``ETH``.
 
-    Supports the two common formats Coinbase / CCXT emit:
-      "ETH/USDT"  -> "ETH"   (CCXT canonical, slash-separated)
-      "ETH-USD"   -> "ETH"   (Coinbase product-id, dash-separated)
-      "BTC"       -> "BTC"   (fallback — already a base asset)
-
-    Empty/None input returns empty string (caller's pre-flight will
-    treat that as a soft-skip — see SmartOrderEngine.execute).
-
-    sadp: R28 FL  R68 DPA
+    An empty ``symbol`` returns an empty string, and ``SmartOrderEngine.execute``
+    then queries the registry with that empty asset.
     """
     if not symbol:
         return ""
-    # Try slash first (CCXT canonical), then dash (Coinbase product-id)
     for sep in ("/", "-"):
         if sep in symbol:
             return symbol.split(sep, 1)[0].strip().upper()
@@ -53,31 +43,29 @@ class ExecutionStrategy(Enum):
 
 @dataclass
 class ExecutionConfig:
-    """Configuration for an execution strategy."""
+    """Tuning for one ``ExecutionStrategy``: slice counts, delays, thresholds."""
 
     strategy: ExecutionStrategy = ExecutionStrategy.MARKET
-    # Iceberg params
-    iceberg_slices: int = 5  # Number of chunks
-    iceberg_delay_ms: int = 500  # Delay between chunks (ms)
-    # TWAP params
-    twap_duration_seconds: int = 60  # Spread order over this window
-    twap_slices: int = 10  # Number of TWAP intervals
-    # Limit-timeout params
-    limit_offset_pct: float = 0.1  # Place limit X% from market
-    limit_timeout_seconds: int = 30  # Convert to market after timeout
-    # Adaptive thresholds
-    large_order_pct: float = 5.0  # % of daily volume = "large"
+    iceberg_slices: int = 5
+    iceberg_delay_ms: int = 500
+    twap_duration_seconds: int = 60
+    twap_slices: int = 10
+    limit_offset_pct: float = 0.1
+    limit_timeout_seconds: int = 30
+    # Order value as a percent of 24h volume; _choose_strategy compares against it.
+    large_order_pct: float = 5.0
 
 
 @dataclass
 class ExecutionResult:
-    """Result of an order execution."""
+    """What ``SmartOrderEngine.execute`` returns to its caller."""
 
     success: bool
     strategy_used: str
     total_quantity: float
     avg_fill_price: float
-    slippage_pct: float  # vs. market price at start
+    # _execute_market signs a sell; every other strategy returns abs().
+    slippage_pct: float
     total_cost: float
     fills: list[dict] = field(default_factory=list)
     elapsed_ms: float = 0
@@ -85,10 +73,7 @@ class ExecutionResult:
 
 
 class SmartOrderEngine:
-    """
-    Manages intelligent order execution.
-    Wraps the exchange connector to provide smarter order placement.
-    """
+    """``execute`` places one order through a single ``ExecutionStrategy``."""
 
     def __init__(self, config: ExecutionConfig = None):
         self.config = config or ExecutionConfig()
@@ -105,58 +90,15 @@ class SmartOrderEngine:
         bot_id: Optional[str] = None,
         total_holdings: Optional[float] = None,
     ) -> ExecutionResult:
+        """Trade ``quantity`` of ``symbol`` on ``exchange`` using ``config.strategy``.
 
-        # sadp: R28 R29  # smart order: fail-loudly(R28) idempotent(R29)
-        """
-        Execute an order using the configured strategy.
-
-        Parameters
-        ----------
-        exchange : Exchange connector with create_order method
-        symbol : Trading pair (e.g. "BTC/USDT" or "ETH-USD")
-        side : "buy" or "sell"
-        quantity : Amount to trade (in base-asset units)
-        config : Override default execution config
-
-        Keyword-only (v3.20.1 — capital reservation chokepoint)
-        -------------------------------------------------------
-        bot_id : Optional[str]
-            Identifier of the bot placing this order. When provided
-            together with ``total_holdings`` and ``side == "sell"``,
-            the pre-flight check below consults the
-            CapitalReservationRegistry to verify the sell quantity
-            does not violate another bot's reservation on this asset.
-            **Opt-in for backwards compatibility** — callers from
-            pre-v3.20.1 code paths pass nothing and skip the check.
-        total_holdings : Optional[float]
-            Caller-supplied asset quantity currently held on the
-            exchange (in base-asset units). Required alongside
-            ``bot_id`` for the registry pre-flight. We do NOT call
-            ``exchange.fetch_balance()`` here — that's slow and the
-            caller usually already has this number.
-
-        Returns
-        -------
-        ExecutionResult. If the registry pre-flight rejects the sell,
-        returns ``success=False`` with ``strategy_used="rejected_by_
-        reservation"`` and a descriptive ``error`` field; no order
-        is placed on the exchange.
-
-        sadp: R28 FL  R68 DPA  R76 DMW
+        A sell that supplies both ``bot_id`` and ``total_holdings`` is refused
+        with ``strategy_used="rejected_by_reservation"`` when ``quantity``
+        exceeds ``effective_available``; omitting either one skips the check.
         """
         cfg = config or self.config
         start = time.time()
 
-        # ── v3.20.1 capital-reservation pre-flight (chokepoint) ──
-        # Defense-in-depth backstop: the PRIMARY enforcement is the
-        # ScrummingBot._delta() decision-level gate (lands v3.20.2),
-        # but if a race or bug routes around it, the registry catches
-        # the violation here before the order hits the exchange.
-        #
-        # Opt-in: requires bot_id + total_holdings. Skipping is logged
-        # at DEBUG so operators can grep audit logs for bypass cases.
-        # Only fires on sells — buys add to holdings, can't violate
-        # another bot's claim.
         if bot_id is not None and total_holdings is not None and side.lower() == "sell":
             try:
                 from .capital_reservation import get_registry
@@ -189,11 +131,6 @@ class SmartOrderEngine:
                         error=msg,
                     )
             except Exception as exc:
-                # R28 FL — if the registry call itself fails, log the
-                # exception but DO NOT block the trade. The primary
-                # gate at bot decision-level is still in effect; we
-                # don't want a registry bug to cripple all trading.
-                # Reconciliation (v3.20.4) will catch drift if any.
                 logger.error(
                     "smart_orders.execute: registry pre-flight raised "
                     "%s — falling through to exchange placement. "
@@ -201,7 +138,6 @@ class SmartOrderEngine:
                     exc,
                 )
         elif (bot_id is None or total_holdings is None) and side.lower() == "sell":
-            # Operator-greppable audit trail for bypass cases.
             logger.debug(
                 "smart_orders.execute: sell with bot_id=%r "
                 "total_holdings=%r — registry pre-flight skipped "
@@ -210,13 +146,11 @@ class SmartOrderEngine:
                 total_holdings,
             )
 
-        # Get reference price
         try:
             ticker = await exchange.fetch_ticker(symbol)
             ref_price = ticker.get("last", 0) or ticker.get("close", 0)
-        except (
-            Exception
-        ):  # R28-OK: ref-price probe; 0 disables price-aware logic downstream
+        except Exception:
+            # A zero ref_price makes every reported slippage_pct zero.
             ref_price = 0
 
         strategy = cfg.strategy
@@ -261,17 +195,19 @@ class SmartOrderEngine:
     async def _execute_market(
         self, exchange, symbol: str, side: str, quantity: float, ref_price: float
     ) -> ExecutionResult:
+        """Place one market order for the whole ``quantity``.
 
-        # sadp: R28 R29  # smart order: fail-loudly(R28) idempotent(R29)
-        """Simple market order."""
+        A buy reports ``slippage_pct`` as an absolute value; a sell reports it
+        negated, so a fill under ``ref_price`` comes back positive.
+        """
         order = await exchange.create_order(symbol, "market", side, quantity)
         fill_price = order.get("average", ref_price) or ref_price
         cost = order.get("cost", fill_price * quantity)
         slippage = ((fill_price - ref_price) / ref_price * 100) if ref_price else 0
         if side == "buy":
-            slippage = abs(slippage)  # Positive = paid more than ref
+            slippage = abs(slippage)
         else:
-            slippage = -slippage  # Negative = received less than ref
+            slippage = -slippage
 
         return ExecutionResult(
             success=True,
@@ -292,9 +228,10 @@ class SmartOrderEngine:
         cfg: ExecutionConfig,
         ref_price: float,
     ) -> ExecutionResult:
+        """Place ``cfg.iceberg_slices`` equal market orders with a delay between.
 
-        # sadp: R28 R29  # smart order: fail-loudly(R28) idempotent(R29)
-        """Split order into smaller chunks with delays."""
+        A slice that raises is logged and left out of ``total_filled``.
+        """
         slices = cfg.iceberg_slices
         chunk_size = quantity / slices
         delay = cfg.iceberg_delay_ms / 1000
@@ -349,9 +286,10 @@ class SmartOrderEngine:
         cfg: ExecutionConfig,
         ref_price: float,
     ) -> ExecutionResult:
+        """Place ``cfg.twap_slices`` equal market orders across the TWAP window.
 
-        # sadp: R28 R29  # smart order: fail-loudly(R28) idempotent(R29)
-        """Spread order across time window."""
+        An interval that raises is logged and left out of ``total_filled``.
+        """
         slices = cfg.twap_slices
         interval = cfg.twap_duration_seconds / slices
         chunk_size = quantity / slices
@@ -403,9 +341,11 @@ class SmartOrderEngine:
         cfg: ExecutionConfig,
         ref_price: float,
     ) -> ExecutionResult:
+        """Place one limit order, then market-order whatever is left unfilled.
 
-        # sadp: R28 R29  # smart order: fail-loudly(R28) idempotent(R29)
-        """Place limit order, fall back to market if not filled."""
+        ``total_quantity`` always comes back as ``quantity``, since ``remaining``
+        is defined as ``quantity`` minus ``filled``.
+        """
         offset = cfg.limit_offset_pct / 100
         if side == "buy":
             limit_price = ref_price * (1 - offset)
@@ -418,7 +358,6 @@ class SmartOrderEngine:
             )
             order_id = order.get("id", "")
 
-            # Wait for fill
             filled = 0
             deadline = time.time() + cfg.limit_timeout_seconds
             while time.time() < deadline:
@@ -428,10 +367,15 @@ class SmartOrderEngine:
                     filled = status.get("filled", 0)
                     if status.get("status") in ("closed", "filled"):
                         break
-                except Exception:  # R28-OK: order helper best-effort fallback
-                    pass
+                except Exception as exc:
+                    logger.debug(
+                        "fetch_order %s on %s raised %s: %s",
+                        order_id,
+                        symbol,
+                        type(exc).__name__,
+                        exc,
+                    )
 
-            # If not fully filled, cancel and market-order the rest
             remaining = quantity - filled
             fills = []
             total_cost = 0
@@ -441,12 +385,17 @@ class SmartOrderEngine:
                 fills.append({"price": avg, "quantity": filled, "type": "limit"})
                 total_cost += avg * filled
 
-            if remaining > 0.001 * quantity:  # More than 0.1% remaining
+            if remaining > 0.001 * quantity:
                 try:
                     await exchange.cancel_order(order_id, symbol)
-                except Exception:  # R28-OK: order helper best-effort fallback
-                    pass
-                # Market order remainder
+                except Exception as exc:
+                    logger.debug(
+                        "cancel_order %s on %s raised %s: %s",
+                        order_id,
+                        symbol,
+                        type(exc).__name__,
+                        exc,
+                    )
                 mkt = await exchange.create_order(symbol, "market", side, remaining)
                 mkt_price = mkt.get("average", ref_price) or ref_price
                 fills.append(
@@ -473,7 +422,6 @@ class SmartOrderEngine:
             )
 
         except Exception as exc:
-            # Fall back to pure market
             logger.warning("Limit-timeout failed, falling back to market: %s", exc)
             return await self._execute_market(
                 exchange, symbol, side, quantity, ref_price
@@ -482,7 +430,10 @@ class SmartOrderEngine:
     async def _choose_strategy(
         self, exchange, symbol: str, quantity: float, cfg: ExecutionConfig
     ) -> ExecutionStrategy:
-        """Adaptively choose execution strategy based on order size."""
+        """Return ``ICEBERG``, ``LIMIT_TIMEOUT`` or ``MARKET`` for this order.
+
+        A ticker with no 24h volume, or one that raises, returns ``MARKET``.
+        """
         try:
             ticker = await exchange.fetch_ticker(symbol)
             volume_24h = ticker.get("quoteVolume", 0) or ticker.get(
@@ -504,7 +455,9 @@ class SmartOrderEngine:
                     )
                     return ExecutionStrategy.LIMIT_TIMEOUT
 
-        except Exception:  # R28-OK: order helper best-effort fallback
-            pass
+        except Exception as exc:
+            logger.debug(
+                "_choose_strategy %s raised %s: %s", symbol, type(exc).__name__, exc
+            )
 
         return ExecutionStrategy.MARKET
