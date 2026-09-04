@@ -468,7 +468,7 @@ if _HAS_QT:
                     d = c.fetch_ohlcv(sym, "1h", limit=50)
 
                     def _close(rows, at):
-                        """One end candle's close, or the mark when it has none."""
+                        """Return the close of ``rows[at]``, or a mark if missing."""
                         if not rows:
                             return 0
                         row = rows[at]
@@ -491,7 +491,7 @@ if _HAS_QT:
                 elapsed = (_t.monotonic() - start) * 1000
 
                 def _positive(section):
-                    """One balance section: zero dropped, unreadable marked."""
+                    """Return *section*'s non-zero entries, unreadable ones marked."""
                     found = {}
                     for k, v in section.items():
                         if not v:
@@ -561,7 +561,7 @@ if _HAS_QT:
                 )
 
         def _raw_http_probe(self):
-            """Bypass CCXT entirely. Direct HTTP + SSL diagnostics."""
+            """Run the TCP, TLS and ``safe_urlopen`` probes without ``_connector``."""
             import time as _t, json, ssl, socket
 
             eid = self._exchange.currentData()
@@ -854,7 +854,7 @@ if _HAS_QT:
                 )
 
         def _check_exchange_status(self):
-            """Check exchange status pages for known outages."""
+            """Fetch the ``status_urls`` page for ``eid`` and map its indicator."""
             import time as _t, json
 
             eid = self._exchange.currentData()

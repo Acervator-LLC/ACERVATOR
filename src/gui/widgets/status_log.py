@@ -21,7 +21,7 @@ except ImportError:
 if _HAS_QT:
 
     class StatusLog(QTextEdit):
-        """Read-only scrolling log with timestamped, color-coded messages.
+        """``StatusLog`` shows timestamped, colour-coded lines, read-only.
 
         ``pause`` diverts each ``log`` call into ``_pause_buffer`` up to
         ``_pause_buffer_cap`` entries, and ``resume`` replays them through
