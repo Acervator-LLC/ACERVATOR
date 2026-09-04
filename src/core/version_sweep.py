@@ -3,7 +3,9 @@
 ``main`` runs every entry of the ``checks`` list in ``VersionSweep.run``, then
 exits 1 when ``SweepResult.passed`` is False. Each ``Finding`` carries a
 ``Severity`` and a category, and ``passed`` counts only CRITICAL and HIGH.
-``--report`` adds ``save_pdf_report`` beside the ``save_json_report`` output.
+A check that calls ``_no_subject`` lands in ``SweepResult.not_inspected`` and
+never prints the pass mark. ``--report`` adds ``save_pdf_report`` beside the
+``save_json_report`` output.
 """
 
 from __future__ import annotations
@@ -54,6 +56,7 @@ class SweepResult:
     files_scanned: int = 0
     lines_scanned: int = 0
     elapsed_sec: float = 0.0
+    not_inspected: dict[str, str] = field(default_factory=dict)
 
     @property
     def critical(self):
@@ -487,6 +490,15 @@ class VersionSweep:
             timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
         )
         self._skipped: list[tuple[str, str]] = []
+        self._no_subject_reason: Optional[str] = None
+
+    def _no_subject(self, reason: str) -> None:
+        """Record ``reason`` for the check that found nothing to read.
+
+        ``run`` copies it into ``SweepResult.not_inspected`` and prints NOT
+        INSPECTED in place of the pass mark.
+        """
+        self._no_subject_reason = reason
 
     def _read_or_skip(self, path: Path) -> Optional[str]:
         """Read a file for scanning, recording failure in ``self._skipped``.
@@ -728,11 +740,8 @@ class VersionSweep:
             if text is None:
                 continue
 
-            # exec() is intentionally used in root RAIntSimBat.py wrapper — skip that one
-            # random.random() is used for visual animation in splash — not security risk
             rel = self._rel(path)
-            # v3.16.14 — extended skip list for non-security random.random
-            # uses (audio synthesis white-noise + sim test fixtures).
+            # _visual_files use random.random for animation and white noise.
             _visual_files = {
                 "splash_screen.py",
                 "render_trailer.py",
@@ -750,7 +759,6 @@ class VersionSweep:
             # Self-exemption: version_sweep.py contains these patterns as data strings
             if "version_sweep.py" in rel:
                 continue
-            is_wrapper = "RAIntSimBat.py" in rel and "RAIntSimBat/" not in rel
 
             for line_no, line in enumerate(text.splitlines(), 1):
                 stripped = line.strip()
@@ -760,16 +768,6 @@ class VersionSweep:
                     continue
                 for pattern, desc in self.INSECURE_PATTERNS:
                     if re.search(pattern, line):
-                        if "exec(" in pattern and is_wrapper:
-                            self._add(
-                                Severity.INFO,
-                                "SECURITY",
-                                path,
-                                line_no,
-                                f"{desc} (intentional wrapper — documented)",
-                                "Confirmed safe: exec() in root wrapper only.",
-                            )
-                            continue
                         if "random.random" in pattern and (
                             "gen_from_anchors" in text or "sim" in rel.lower()
                         ):
@@ -821,8 +819,7 @@ class VersionSweep:
             try:
                 tree = ast.parse(source)
             except SyntaxError as _syn:
-                # v3.24.21 — a file that does not parse is excluded from
-                # every AST-based check. Record it rather than vanish.
+                # A file that does not parse is excluded from every AST check.
                 self._skipped.append((str(path), f"SyntaxError: {_syn}"))
                 logger.warning(
                     "version_sweep: %s failed to parse (%s) — EXCLUDED "
@@ -866,13 +863,15 @@ class VersionSweep:
     def check_r6_two_paths(self):
         """Compare the ``gate_pairs`` patterns across ``sim_path`` and ``bat_path``.
 
-        Returns without a finding when either path is absent.
+        Reports through ``_no_subject`` when either path is absent.
         """
         sim_path = self.root / "src" / "gui" / "simulator.py"
         bat_path = self.root / "sadp" / "RAIntSimBat" / "RAIntSimBat.py"
 
-        if not sim_path.exists() or not bat_path.exists():
-            return
+        for required in (sim_path, bat_path):
+            if not required.exists():
+                self._no_subject(f"{self._rel(required)} absent")
+                return
 
         sim_text = sim_path.read_text(encoding="utf-8", errors="replace")
         bat_text = bat_path.read_text(encoding="utf-8", errors="replace")
@@ -1228,10 +1227,15 @@ class VersionSweep:
         for name, fn in checks:
             print(f"  Checking: {name}...", end=" ", flush=True)
             before = len(self.result.findings)
+            self._no_subject_reason = None
             fn()
+            reason = self._no_subject_reason
             after = len(self.result.findings)
             new_count = after - before
-            if new_count == 0:
+            if reason is not None:
+                self.result.not_inspected[name] = reason
+                print(f"NOT INSPECTED ({reason})")
+            elif new_count == 0:
                 print("✓")
             else:
                 sevs = [f.severity for f in self.result.findings[before:after]]
@@ -1495,16 +1499,20 @@ class VersionSweep:
     def check_sadp_dependency_graph(self):
         """Flag every ``reverse`` entry depending on a suspended rule.
 
-        Returns without a finding when ``registry_path`` is absent.
+        Reports through ``_no_subject`` when ``registry_path`` is absent or
+        unreadable.
         """
         import json as _json
 
         registry_path = self.root / "sadp" / "RULE_REGISTRY.json"
+        rel = self._rel(registry_path)
         if not registry_path.exists():
+            self._no_subject(f"{rel} absent")
             return
         try:
             registry = _json.loads(registry_path.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, ValueError) as exc:
+            self._no_subject(f"{rel} unreadable: {type(exc).__name__}")
             return
         suspended = {
             rid for rid, v in registry.items() if v.get("state") == "SUSPENDED"
@@ -1566,6 +1574,11 @@ class VersionSweep:
 
         print(f"{'='*68}")
 
+        if result.not_inspected:
+            print(f"\n  ── NOT INSPECTED ({len(result.not_inspected)}) ──")
+            for check_name, reason in result.not_inspected.items():
+                print(f"  {check_name}: {reason}")
+
         for sev in sev_order:
             items = [f for f in result.findings if f.severity == sev]
             if not items:
@@ -1602,6 +1615,7 @@ class VersionSweep:
             "files_scanned": result.files_scanned,
             "lines_scanned": result.lines_scanned,
             "passed": result.passed,
+            "not_inspected": dict(result.not_inspected),
             "summary": {
                 "critical": len(result.critical),
                 "high": len(result.high),
@@ -1643,8 +1657,6 @@ class VersionSweep:
                 Table,
                 TableStyle,
             )
-
-            # v3.19.12 — removed unused TA_LEFT + Spacer + HRFlowable imports
         except ImportError:
             return None
 
@@ -1775,8 +1787,6 @@ class VersionSweep:
                     SS["SH"],
                 )
             )
-            # Annotated for the same reason: the header row holds plain
-            # strings and every data row below holds Paragraphs.
             rows: list[list[Flowable | str]] = [
                 ["Category", "File", "Line", "Description"]
             ]
