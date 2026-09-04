@@ -229,7 +229,7 @@ not.
 
 **The 16 skills and the hooks are USER-level**, at
 `~/.claude/skills/` — `acervator`, `archetype-peer-review`,
-`close-package`, `descriptive-comments-only`, `development-island`,
+`close-package`, `descriptive-comments-only`, `branch-discipline`,
 `harness-law`, `hyper-refocus`, `job-watch`, `log-pruning`, `ocir`,
 `prompt-distillation`, `simple-technical-english`, `ta-canon`,
 `two-sided-control`, `unit-decomposition`, `variable-naming-precision`.

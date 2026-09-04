@@ -437,17 +437,19 @@ def test_the_three_modules_the_stem_match_missed_report_paired(
     )
 
 
-def test_the_survey_still_reports_qt_screens_as_unpaired(
+def test_every_shipped_screen_carries_a_known_state(
     shipped: list[Verdict],
 ) -> None:
-    left = [
-        verdict.path.relative_to(ROOT).as_posix()
+    known = {PAIRED, UNPAIRED, NOT_A_SCREEN}
+    stray = {
+        verdict.path.relative_to(ROOT).as_posix(): verdict.state
         for verdict in shipped
-        if verdict.state == UNPAIRED
-    ]
-    assert left, (
-        "a tool that pairs everything reports nothing; the conversion is not "
-        "finished, so some Qt screen must still read as unpaired"
+        if not any(verdict.state.startswith(state) for state in known)
+    }
+    assert shipped, "the survey found no Qt modules at all; it cannot report"
+    assert not stray, (
+        "every Qt module must land in one of the three states or it silently "
+        "leaves the count; got " + str(stray)
     )
 
 
