@@ -106,3 +106,7 @@ tools/.island_ledger.jsonl
 
 # Agent working files never enter the tree.
 scratchpad/
+
+# Captured output. Figures extracted from the product manual PDF land here;
+# docs/manual/FIGURES.md is the tracked inventory of what the directory holds.
+artifacts/
