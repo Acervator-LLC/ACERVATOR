@@ -3173,7 +3173,19 @@ def test_the_surface_loads_no_qt_module():
                 imported.update(alias.name for alias in node.names)
     assert not any(name.startswith("PySide6") for name in imported), imported
     assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "time", "typing"}
+    assert imported == {"__future__", "time", "typing", "color_alpha"}
+    alpha_imports = {
+        node.module
+        for node in ast.walk(
+            ast.parse(
+                (SURFACE_PATH.parent.parent / "color_alpha.py").read_text(
+                    encoding="utf-8"
+                )
+            )
+        )
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert not any(name.startswith("PySide6") for name in alpha_imports), alpha_imports
     tab_tree = ast.parse(TAB_PATH.read_text(encoding="utf-8"))
     tab_imports = {
         (node.module or "")
