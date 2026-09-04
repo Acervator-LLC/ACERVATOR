@@ -1,35 +1,11 @@
-"""
-cross_pool.py — Cross-Pool Accumulation Advantage Engine
-==========================================================
-Models the price differential that exists between the same asset's
-order books on different exchanges (or base-pair pools on the same
-exchange) and quantifies the profiteering advantage available to
-the harvest-fold accumulation cycle by routing operations to the
-most favorable pool at execution time.
+# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
+"""Cross-pool routing for the harvest-fold cycle.
 
-CORE INSIGHT (Anthony L. Brown, 2020)
---------------------------------------
-Standard accumulation routes every harvest and fold to the same
-price source.  The same asset simultaneously exists in N pools at
-slightly different prices (BTC/USDT Binance ≠ BTC/USDT Kraken ≠
-BTC/USD Coinbase at any given moment).
-
-Cross-pool routing:
-  HARVEST → sell into the HIGHEST available pool price
-  FOLD    → buy from the  LOWEST  available pool price
-
-This captures (p_high - p_low) × quantity ON EVERY CYCLE, compounding
-through the profit-folding mechanism on top of the delta advantage.
-
-MODELS PROVIDED
----------------
-  CrossPoolSpreadModel   – tracks N pool prices, computes spread stats
-  CrossPoolSimulator     – runs a single accumulation sim with pool routing
-  CrossPoolBenchmark     – compares single-pool vs N-pool across many sims
-  route_to_best_pool     – standalone routing function for live bots
-
-Copyright © 2025 Anthony L. Brown (Ekthelius the Accumulator).
-All rights reserved.
+``route_to_best_pool`` sends a harvest to the highest ``PoolQuote.bid`` and a
+fold to the lowest ``PoolQuote.ask``, reporting the gap as ``spread_pct``.
+``CrossPoolSpreadModel`` generates the correlated pool prices that
+``run_cross_pool_sim`` trades against. ``run_cross_pool_benchmark`` and
+``analyze_pool_configuration`` repeat that sim across pool counts and assets.
 """
 
 from __future__ import annotations
@@ -42,78 +18,68 @@ from dataclasses import dataclass
 log = logging.getLogger("acervator.cross_pool")
 
 
-# ═══════════════════════════════════════════════════════════════
-# DATA STRUCTURES
-# ═══════════════════════════════════════════════════════════════
-
-
 @dataclass
 class PoolQuote:
-    """Price snapshot for one pool at one moment."""
+    """One pool's ``bid``, ``ask`` and ``fee_pct`` at one candle."""
 
     pool_id: str
     price: float
     bid: float
     ask: float
-    fee_pct: float = 0.001  # 0.10% default maker fee
+    fee_pct: float = 0.001  # a fraction, not a percent: 0.001 is 0.10%
 
 
 @dataclass
 class PoolRoutingDecision:
-    """Result of a pool routing query."""
+    """What ``route_to_best_pool`` chose for one side.
+
+    Nothing reads ``is_profitable`` or ``net_advantage``; ``run_cross_pool_sim``
+    executes at ``best_price`` whatever they say.
+    """
 
     side: str  # "harvest" | "fold"
     best_pool: str
     best_price: float
     worst_price: float
-    spread_pct: float  # (best - worst) / worst × 100
-    net_advantage: float  # spread_pct − 2 × fee (net after round-trip)
+    spread_pct: float  # abs(best_price - worst_price) / worst_price × 100
+    net_advantage: float  # spread_pct less both pools' fee_pct, in percent
     pools_checked: int
-    is_profitable: bool  # True if net_advantage > 0
+    is_profitable: bool
 
 
 @dataclass
 class CrossPoolCycleResult:
-    """Result of one harvest-fold cycle with pool routing."""
+    """One scrum-then-fold pair recorded by ``run_cross_pool_sim``.
+
+    ``harvest_price`` is the bid the scrum filled at and ``fold_price`` the ask
+    the fold filled at.
+    """
 
     harvest_pool: str
     harvest_price: float
     fold_pool: str
     fold_price: float
-    spread_captured: float  # USD captured from pool routing this cycle
-    spread_pct: float  # spread as % of price
-    base_profit: float  # profit from delta alone (single-pool equivalent)
-    total_profit: float  # base_profit + spread_captured
-    enhancement_pct: float  # how much pool routing improved the yield
-
-
-# ═══════════════════════════════════════════════════════════════
-# SPREAD MODEL — mean-reverting synthetic pool prices
-# ═══════════════════════════════════════════════════════════════
+    spread_captured: float  # USD gained vs a buy at the close, never below 0
+    spread_pct: float  # spread_pct of the fold routing decision
+    base_profit: float  # units gained over a buyback at harvest_price, in USD
+    total_profit: float
+    enhancement_pct: float  # spread_captured as a percent of base_profit
 
 
 class CrossPoolSpreadModel:
-    """
-    Generates N correlated price series for the same asset.
-    Prices are mean-reverting: they drift apart and snap back together,
-    mimicking real exchange price discovery dynamics.
+    """N correlated pool prices for one asset, advanced by ``step``.
 
-    Parameters
-    ----------
-    n_pools      : number of exchange pools to simulate
-    base_price   : starting price
-    max_spread   : maximum price divergence between any two pools (%)
-    mean_rev_spd : how quickly the spread collapses (0.01 = slow, 0.1 = fast)
-    volatility   : per-candle price volatility (std dev as %)
+    ``max_spread`` arrives as a percent and is stored as a fraction; ``mean_rev_spd``
+    and ``volatility`` are fractions already.
     """
 
     def __init__(
         self,
         n_pools: int = 3,
         base_price: float = 65000.0,
-        max_spread: float = 0.30,  # % max between any two pools
-        mean_rev_spd: float = 0.04,  # mean-reversion speed
-        volatility: float = 0.004,  # hourly vol
+        max_spread: float = 0.30,
+        mean_rev_spd: float = 0.04,
+        volatility: float = 0.004,
         fee_pcts: list = None,
         seed: int = None,
     ):
@@ -124,13 +90,11 @@ class CrossPoolSpreadModel:
         self.mean_rev_spd = mean_rev_spd
         self.volatility = volatility
 
-        # Default fee schedule per pool (can be overridden)
         self.fee_pcts = fee_pcts or [0.001] * n_pools
 
         if seed is not None:
             random.seed(seed)
 
-        # Initialise pool prices with small random offsets
         self._prices = [
             base_price * (1 + random.gauss(0, self.max_spread * 0.3))
             for _ in range(n_pools)
@@ -138,22 +102,19 @@ class CrossPoolSpreadModel:
         self._midpoint = base_price
 
     def step(self) -> list[float]:
+        """Advance every pool price one candle and return the new list.
+
+        Each price takes the shared ``market_return``, its own ``idio`` noise and
+        a pull ``rev`` toward ``_midpoint``.
         """
-        Advance one time step.  Returns current pool prices after update.
-        Prices share a common random walk but drift independently;
-        mean reversion pulls them back toward the shared midpoint.
-        """
-        # Shared market move (all pools move together most of the time)
         market_return = random.gauss(0, self.volatility)
         self._midpoint *= 1 + market_return
 
         new_prices = []
         for i, p in enumerate(self._prices):
-            # Idiosyncratic pool noise (creates the spread)
             idio = random.gauss(0, self.volatility * 0.25)
-            # Mean reversion toward shared midpoint
             rev = self.mean_rev_spd * (self._midpoint - p) / self._midpoint
-            # Hard-clamp: individual pool can't deviate > max_spread from mid
+            # No pool may end further than max_spread from _midpoint.
             raw = p * (1 + market_return + idio + rev)
             clamped = max(
                 self._midpoint * (1 - self.max_spread),
@@ -168,7 +129,7 @@ class CrossPoolSpreadModel:
         """Return current PoolQuote for each pool."""
         quotes = []
         for i, price in enumerate(self._prices):
-            spread = price * 0.0002  # tiny bid-ask within each pool
+            spread = price * 0.0002  # 2 bps total, split either side of price
             quotes.append(
                 PoolQuote(
                     pool_id=f"pool_{i+1}",
@@ -182,7 +143,7 @@ class CrossPoolSpreadModel:
 
     @property
     def spread_pct(self) -> float:
-        """Current max spread between any two pools (%)."""
+        """Gap between the highest and lowest of ``_prices``, in percent."""
         if len(self._prices) < 2:
             return 0.0
         return (max(self._prices) - min(self._prices)) / min(self._prices) * 100
@@ -196,12 +157,10 @@ def route_to_best_pool(
     quotes: list[PoolQuote],
     side: str,  # "harvest" (sell) | "fold" (buy)
 ) -> PoolRoutingDecision:
-    """
-    Given N pool quotes, return the optimal execution pool for the
-    accumulation operation.
+    """Pick the execution pool for one leg and measure the gap to the worst.
 
-    HARVEST → use the pool with the highest BID (sell into)
-    FOLD    → use the pool with the lowest ASK (buy from)
+    A ``side`` of ``"harvest"`` takes the highest ``bid``; every other value
+    takes the lowest ``ask``.
     """
     if not quotes:
         raise ValueError("No quotes provided")
@@ -219,8 +178,8 @@ def route_to_best_pool(
 
     spread_pct = abs(best_price - worst_price) / max(worst_price, 1e-9) * 100
 
-    # Net advantage: spread minus round-trip fees on BOTH pools
-    fee_cost = (best.fee_pct + worst.fee_pct) * 100  # as pct
+    # Both pools' fee_pct in percent, matching the scale of spread_pct.
+    fee_cost = (best.fee_pct + worst.fee_pct) * 100
     net_adv = spread_pct - fee_cost
 
     return PoolRoutingDecision(
@@ -235,41 +194,25 @@ def route_to_best_pool(
     )
 
 
-# ═══════════════════════════════════════════════════════════════
-# CORE SIMULATOR — accumulation with cross-pool routing
-# ═══════════════════════════════════════════════════════════════
-
-
 def run_cross_pool_sim(
-    candles: list,  # list of base prices (close prices)
+    candles: list,  # close prices
     n_pools: int = 3,
     target: float = 200.0,
     hedge: float = 200.0,
     interval_pct: float = 2.0,
     fee_pct: float = 0.001,
-    max_spread: float = 0.25,  # max pool spread %
+    max_spread: float = 0.25,  # percent
     mean_rev_spd: float = 0.04,
     seed: int = 42,
     pool_fees: list = None,
 ) -> dict:
-    """
-    Run the accumulation cycle with cross-pool price routing.
+    """Run the scrum-fold cycle over ``candles``, routing each leg to a pool.
 
-    For each candle:
-      1. Generate N pool prices from the base candle price
-      2. On scrum: route harvest to highest-bid pool
-      3. On fold:  route fold to lowest-ask pool
-      4. Record spread captured per cycle
-
-    Returns a results dict comparable to run_v3192 output, plus
-    cross-pool specific fields.
+    Every candle drives ``CrossPoolSpreadModel.step``, then at most one of the
+    scrum, fold and hedge branches fires.
     """
     random.seed(seed)
 
-    # v3.19.54 FIX (sadp R28 FL): early-return on empty candles. Pre-fix
-    # the spread-model constructor would index candles[0] unconditionally
-    # and raise IndexError on `run_cross_pool_sim([])`. Discovered by
-    # tests/test_cross_pool_coverage.py::test_run_cross_pool_sim_empty_candles.
     if not candles:
         return {
             "win": False,
@@ -293,15 +236,14 @@ def run_cross_pool_sim(
             "cycle_results": [],
         }
 
-    # Build pool fee schedule
     if pool_fees is None:
         pool_fees = [fee_pct] * n_pools
 
-    # State
     holdings = target / candles[0] if candles else 0.0
     usd = hedge
     fold_q = 0.0
     fold_ref = 0.0
+    fold_ref_pool = ""
     sim_tgt = target
 
     trades = scrums = folds = hedge_trades = 0
@@ -316,11 +258,9 @@ def run_cross_pool_sim(
     spread_captures: list[float] = []
     cycle_results: list[CrossPoolCycleResult] = []
 
-    # BB state
     bb_window = 20
     close_buf: list[float] = []
 
-    # Pool spread model — initialised at first candle price
     spread_model = CrossPoolSpreadModel(
         n_pools=n_pools,
         base_price=candles[0],
@@ -332,8 +272,7 @@ def run_cross_pool_sim(
     )
 
     for base_price in candles:
-        # Step pool spread model to this candle's level
-        # Nudge model midpoint toward base candle price then step
+        # A candle move above max_spread clamps every pool to one band edge.
         spread_model._midpoint = base_price
         spread_model.step()
         quotes = spread_model.get_quotes()
@@ -342,7 +281,7 @@ def run_cross_pool_sim(
         if len(close_buf) > bb_window:
             close_buf.pop(0)
 
-        # BB bands from base price series
+        # Bands come from base_price, never from the routed pool prices.
         bb_lower = bb_upper = None
         if len(close_buf) >= bb_window:
             sma = sum(close_buf) / bb_window
@@ -358,11 +297,9 @@ def run_cross_pool_sim(
         delta = value - sim_tgt
         delta_pct = abs(delta) / (sim_tgt + 1e-9) * 100
 
-        # ── SCRUM (harvest) ───────────────────────────────────
         if delta > 0 and delta_pct >= interval_pct and bb_pos > 0.50:
             scrum_qty = delta / base_price
             if scrum_qty > 0 and holdings >= scrum_qty:
-                # Route to best pool for sell
                 harvest_dec = route_to_best_pool(quotes, "harvest")
                 exec_price = harvest_dec.best_price
                 fee = scrum_qty * exec_price * fee_pct
@@ -371,14 +308,13 @@ def run_cross_pool_sim(
                 usd += net_usd
                 fold_q = net_usd
                 fold_ref = exec_price
+                fold_ref_pool = harvest_dec.best_pool
                 fees_paid += fee
                 trades += 1
                 scrums += 1
                 spread_captures.append(harvest_dec.spread_pct)
 
-        # ── FOLD ──────────────────────────────────────────────
         elif fold_q > 0 and bb_pos < 0.50 and base_price < fold_ref:
-            # Route to best pool for buy
             fold_dec = route_to_best_pool(quotes, "fold")
             exec_price = fold_dec.best_price
 
@@ -386,7 +322,6 @@ def run_cross_pool_sim(
             if avail > 0.10:
                 fee = avail * fee_pct
                 qty_bought = (avail - fee) / exec_price
-                # How much would we have bought at single-pool price?
                 qty_single = (avail - fee) / base_price
                 spread_bonus = (qty_bought - qty_single) * exec_price
                 if spread_bonus < 0:
@@ -409,10 +344,9 @@ def run_cross_pool_sim(
                     sim_tgt += profit
                     target_growth += profit
 
-                # Record cycle result
                 cycle_results.append(
                     CrossPoolCycleResult(
-                        harvest_pool=fold_dec.best_pool,  # fold is the closing leg
+                        harvest_pool=fold_ref_pool,
                         harvest_price=fold_ref,
                         fold_pool=fold_dec.best_pool,
                         fold_price=exec_price,
@@ -428,7 +362,6 @@ def run_cross_pool_sim(
                     )
                 )
 
-        # ── HEDGE ─────────────────────────────────────────────
         elif (
             delta < 0
             and usd > 1
@@ -446,7 +379,6 @@ def run_cross_pool_sim(
             trades += 1
             hedge_trades += 1
 
-        # Portfolio tracking
         port = holdings * base_price + usd + fold_q
         if port > peak_val:
             peak_val = port
@@ -486,14 +418,9 @@ def run_cross_pool_sim(
     }
 
 
-# ═══════════════════════════════════════════════════════════════
-# BENCHMARK — single vs multi-pool comparison
-# ═══════════════════════════════════════════════════════════════
-
-
 def run_cross_pool_benchmark(
     candles: list,
-    pool_counts: list = None,  # e.g. [1, 2, 3, 5, 10]
+    pool_counts: list = None,
     fee_pct: float = 0.001,
     max_spread: float = 0.25,
     target: float = 200.0,
@@ -502,11 +429,10 @@ def run_cross_pool_benchmark(
     seed: int = 42,
     verbose: bool = True,
 ) -> list[dict]:
-    """
-    Run the same simulation at different pool counts and compare.
-    Measures how much cross-pool routing improves over single-pool baseline.
+    """Run ``run_cross_pool_sim`` once per entry in ``pool_counts``.
 
-    Returns list of result dicts, one per pool count.
+    ``improvement_vs_single_pct`` stays 0.0 for every result unless
+    ``pool_counts`` contains 1, since only ``n == 1`` sets the baseline.
     """
     if pool_counts is None:
         pool_counts = [1, 2, 3, 5, 10]
@@ -556,13 +482,10 @@ def analyze_pool_configuration(
     max_spread: float = 0.25,
     verbose: bool = True,
 ) -> dict:
-    """
-    Full cross-pool profitability analysis across assets.
+    """Benchmark every symbol in ``candle_data`` that has 50 candles or more.
 
-    For each asset, runs [1, 2, 3, 5, 10] pool configurations and
-    summarises the marginal advantage per additional pool.
-
-    Returns a summary dict with per-asset and aggregate findings.
+    The returned dict holds one entry per symbol plus ``_aggregate``, which
+    averages ``improvement_3p``, ``improvement_5p`` and ``improvement_10p``.
     """
     summary = {}
 
@@ -644,38 +567,27 @@ def analyze_pool_configuration(
     return summary
 
 
-# ═══════════════════════════════════════════════════════════════
-# MULTI-BOT COORDINATION
-# ═══════════════════════════════════════════════════════════════
-
-
 class CrossPoolSwarm:
-    """
-    Coordinates multiple bots watching different pools.
+    """Pool assignment and wire queueing for several bots.
 
-    Bot A monitors pool_high → specialised for harvest operations
-    Bot B monitors pool_low  → specialised for fold operations
-    Smart Wire routes fold queue from A to B automatically.
-
-    This is the multi-bot configuration Anthony described: rather than
-    one bot trying to route to both sides, two dedicated bots maximise
-    both legs independently.
+    ``_total_spread_captured`` and ``_total_cycles`` are set once in
+    ``__init__``, so ``total_spread_captured`` and ``get_summary`` always
+    report zero.
     """
 
     def __init__(self, n_bots: int = 2, fee_pct: float = 0.001):
         self.n_bots = n_bots
         self.fee_pct = fee_pct
         self._bot_balances = [{"usd": 200.0, "asset": 0.0} for _ in range(n_bots)]
-        self._wire_queue: list[dict] = []  # cross-bot routing queue
+        self._wire_queue: list[dict] = []
         self._total_spread_captured = 0.0
         self._total_cycles = 0
 
     def assign_pools(self, quotes: list[PoolQuote]) -> dict:
-        """
-        Assign bots to pools.
-        Bot 0 → highest bid pool (harvest specialist)
-        Bot 1 → lowest ask pool (fold specialist)
-        Bot 2+ → mid pools (general purpose)
+        """Map bot index to a ``PoolQuote``.
+
+        Bot 0 takes the highest bid and bot 1 the lowest ask; bot ``i`` above
+        that takes ``quotes[i % len(quotes)]`` in the order given.
         """
         if not quotes:
             return {}
@@ -683,22 +595,28 @@ class CrossPoolSwarm:
         sorted_by_ask = sorted(quotes, key=lambda q: q.ask)
         assignments = {}
         if self.n_bots >= 1:
-            assignments[0] = sorted_by_bid[0]  # harvest specialist
+            assignments[0] = sorted_by_bid[0]
         if self.n_bots >= 2:
-            assignments[1] = sorted_by_ask[0]  # fold specialist
+            assignments[1] = sorted_by_ask[0]
         for i in range(2, self.n_bots):
             assignments[i] = quotes[i % len(quotes)]
         return assignments
 
     def route_wire(self, from_bot: int, amount_usd: float) -> bool:
-        """Route fold queue from harvest bot to fold bot via Smart Wire."""
+        """Queue ``amount_usd`` from bot 0 to bot 1 and report whether it queued.
+
+        Any ``from_bot`` other than 0 returns False and queues nothing.
+        """
         if from_bot == 0 and self.n_bots >= 2:
             self._wire_queue.append({"from": from_bot, "to": 1, "amount": amount_usd})
             return True
         return False
 
     def settle_wires(self) -> float:
-        """Process pending wire transfers between bots."""
+        """Empty ``_wire_queue`` and return the total amount it held.
+
+        No balance in ``_bot_balances`` moves.
+        """
         total = sum(w["amount"] for w in self._wire_queue)
         self._wire_queue.clear()
         return total
