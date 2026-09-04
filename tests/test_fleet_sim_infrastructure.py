@@ -302,6 +302,30 @@ def test_loader_survives_malformed_json(tmp_path):
     assert load_bot_configs_from_state(p) == []
 
 
+def test_loader_all_lists_every_public_function_the_module_defines():
+    import inspect
+
+    from src.simulator.fleet import bot_state_loader as loader
+
+    defined = {
+        name
+        for name, obj in vars(loader).items()
+        if not name.startswith("_")
+        and inspect.isfunction(obj)
+        and obj.__module__ == loader.__name__
+    }
+    assert defined, "no public functions found; the comparison below would be vacuous"
+    exported = set(loader.__all__)
+    assert not (defined - exported), (
+        "__all__ omits public functions that callers import: "
+        f"{sorted(defined - exported)}"
+    )
+    assert not (exported - set(vars(loader))), (
+        "__all__ names something the module does not define: "
+        f"{sorted(exported - set(vars(loader)))}"
+    )
+
+
 # --------------------------------------------------------------------- #
 # FleetReplayPanel smoke (headless)                                      #
 # --------------------------------------------------------------------- #

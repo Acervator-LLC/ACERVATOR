@@ -1,16 +1,10 @@
-"""bot_state_loader.py — instantiate ScrummingBot configs from the
-operator's live ``~/.acervator/bot_state.json``.
+"""Read the operator's ``~/.acervator/bot_state.json`` and return the per-bot
+config dicts and smart-wire rows the Fleet Replay controller builds sim bots
+from.
 
-Isolated + pure. Consumer: v3.23.72 Fleet Replay controller.
-
-Design note: the state file's ``bots`` map is
-``{bot_id: {config, stats, scrumming_state, ...}}``. Only ``config`` is
-needed to instantiate a fresh ScrummingBot for replay — stats and
-per-bot memory are runtime state that the sim rebuilds from tick 0.
-This keeps the sim isolated from any lingering live-side state
-(operator directive: "entirely isolated and simulated version").
-
-sadp: R28 SSS + R70 RCN
+Read-only and pure. Each returned config also carries the saved
+``scrumming_state`` and ``stats`` under underscore keys, so the sim opens a
+position from the state file instead of a second source.
 """
 
 from __future__ import annotations
@@ -47,21 +41,8 @@ def _read_state_file(path: Path) -> dict:
 
 
 CARRIED_SECTIONS: tuple[str, ...] = ("bot_id", "config", "scrumming_state", "stats")
-"""The bot_state sections this loader forwards, and the ONLY ones.
-
-10.4. This is the CARRY CONTRACT, and `fleet.03.003` is judged against
-it. Read it beside the loop in `load_bot_configs_from_state`:
-
-    ``bot_id``           the MAP KEY, stamped as ``_src_bot_id``
-    ``config``           copied whole - the returned dict IS the config
-    ``scrumming_state``  carried as ``_src_scrumming_state`` when a dict
-    ``stats``            carried as ``_src_stats`` when a dict
-
-Every other section of an entry is dropped, and the pin's ``dropped``
-context reports exactly those. It used to name ``scrumming_state`` and
-``stats`` among the dropped, which stopped being true the moment
-v3.24.81 added the two carries above.
-"""
+"""The only bot_state sections this loader forwards; every other section of
+an entry is dropped."""
 
 
 def _sections_carried(
@@ -71,41 +52,19 @@ def _sections_carried(
 ) -> tuple[list[str], list[str], list[str]]:
     """Return ``(offered, landed, dropped)`` for ONE bot_state entry.
 
-    ``offered``  sections of `CARRIED_SECTIONS` this entry supplies in
-                 the shape the loader requires.
-    ``landed``   those of them that reached ``loaded``, read back OFF
-                 THE RETURNED DICT rather than assumed from the source.
-    ``dropped``  sections the entry supplies that this loader has no
-                 carry for at all.
-
-    The two sides are produced by different mechanisms on purpose:
-    ``offered`` reads the state file, ``landed`` reads the product. A
-    carry that is deleted, renamed or short-circuited makes them
-    differ, which is the whole point of the pin. Deriving both from one
-    expression is what made `fleet.03.003`'s verdict constant before.
+    ``offered``  the `CARRIED_SECTIONS` names the entry supplies, judged
+                 by PRESENCE, never by shape: a present-but-malformed
+                 section is corruption and must be reported, not skipped.
+    ``landed``   those read back off ``loaded``, the returned dict, so a
+                 deleted or renamed carry drives ``landed`` under
+                 ``offered``.
+    ``dropped``  sections the entry supplies that no carry forwards.
 
     ``bot_id`` is always offered because the map key always exists, and
-    it lands only when ``_src_bot_id`` equals that key. The stamp uses
-    ``setdefault``, so a config that already carries a stale
-    ``_src_bot_id`` shadows the true id and the join to the live parity
-    trace silently addresses the wrong bot. That is a real defect and
-    this reports it.
-
-    OFFERED IS PRESENCE, NOT SHAPE, and that distinction was measured
-    rather than reasoned. The first draft asked
-    ``isinstance(entry.get("scrumming_state"), dict)``, which is the
-    SAME question the carry guard above asks - so an entry whose
-    ``scrumming_state`` was a list reported ok=True while the section
-    silently vanished. The check agreed with the code instead of with
-    the world, which is the invisible incomplete import this pin exists
-    to expose.
-
-    It costs nothing on well-formed data. `bot_container.py` writes
-    ``stats`` as ``asdict(self.stats)``, and ``scrumming_state`` only
-    from an exporter that either returns a dict or raises - and on a
-    raise the KEY IS ABSENT, not present-and-malformed. A section that
-    is present and the wrong shape is corruption, and corruption is
-    exactly what has to be reported rather than skipped.
+    lands only when ``_src_bot_id`` equals that key: the stamp uses
+    ``setdefault``, so a stale ``_src_bot_id`` in a saved config shadows
+    the true id and the join to the live parity trace addresses the
+    wrong bot.
     """
     src_cfg = entry.get("config")
     checks = (
@@ -136,20 +95,18 @@ def load_bot_configs_from_state(
     path: Optional[Path] = None,
     mode_filter: Optional[str] = "scrumming",
 ) -> list[dict[str, Any]]:
-    """Read ``bot_state.json`` and return the list of per-bot
-    ``config`` dicts, optionally filtered by ``config.mode``.
+    """Read ``bot_state.json`` and return each bot's saved ``config`` dict,
+    filtered on ``config.mode`` when ``mode_filter`` is set.
 
-    Returns raw config dicts (as saved by BotManager). Callers pass
-    them through ``src.trading.bot_container.make_bot_config`` to
-    materialise typed BotConfig instances. This split lets the sim
-    filter/mutate config dicts (e.g., zero out phantom flags) before
-    the mode-shape validator runs.
+    Returns raw config dicts as BotManager saved them. Callers materialise
+    typed BotConfig instances through
+    ``src.trading.bot_container.make_bot_config``; the split lets the sim
+    filter or mutate a config dict before the mode-shape validator runs.
 
-    v3.23.72 defaults to ``mode_filter="scrumming"`` since every
-    live bot in the operator's fleet today is Scrumming — extend
-    when Extractor fleet replay lands (v3.23.7x).
+    Each returned dict also carries ``_src_bot_id``, plus
+    ``_src_scrumming_state`` and ``_src_stats`` when the entry supplies
+    them as dicts, which is what `_build_sim` opens a position from.
     """
-    # 10.3 phase 2 — the load starts HERE, at the file read.
     _dur_t0 = time.monotonic()
     _path = path or BOT_STATE_PATH
     data = _read_state_file(_path)
@@ -168,61 +125,22 @@ def load_bot_configs_from_state(
             continue
         if mode_filter and (cfg.get("mode") or "").lower() != mode_filter:
             continue
-        # Stamp the source bot_id onto the returned dict so downstream
-        # sim can join to the live parity trace.
+        # Downstream sim joins to the live parity trace on this id.
         cfg_copy = dict(cfg)
         cfg_copy.setdefault("_src_bot_id", str(bot_id))
-        # v3.24.81 — CARRY THE WHOLE FLEET STATE, NOT JUST CONFIG.
-        #
-        # Operator directive 2026-08-08: "bot_state determines the
-        # initiating state… NO OTHER SOURCE FOR INITIATING STATE SHOULD
-        # BE CITED OR EXPECTED." and "THE SIMULATOR SHOULD BE COMPATIBLE
-        # IN FULL WITH THIS FUCKING FILE."
-        #
-        # This returned entry["config"] only. `scrumming_state` (38
-        # keys: lots, tranches, holdings, the grown target, anchors) and
-        # `stats` (36 keys incl. position_value) were dropped whole, so
-        # `_build_sim` had nothing to open a position with and SYNTHESISED
-        # one — target_balance / open_price. That is a second source for
-        # initiating state, which the directive forbids.
-        #
-        # ScrummingBot already has the importer for this:
-        # `StateSerializerMixin.import_scrumming_state`
-        # (`src/trading/scrumming/state_io.py`), which LIVE
-        # calls from `StateRestoreMixin.restore_bots_from_state`
-        # (`src/trading/container/restore.py`). The sim simply never fed it.
-        # Carried under underscore keys so the BotConfig field filter in
-        # `_instantiate_bot` ignores them; `_build_sim` reads them back
-        # off the dict after the bot is constructed.
+        # Underscore keys, so the BotConfig field filter in
+        # `_instantiate_bot` ignores them and `_build_sim` reads them back
+        # off the dict after the bot is constructed. The importer they feed
+        # is `StateSerializerMixin.import_scrumming_state`.
         if isinstance(entry.get("scrumming_state"), dict):
             cfg_copy["_src_scrumming_state"] = entry["scrumming_state"]
         if isinstance(entry.get("stats"), dict):
             cfg_copy["_src_stats"] = entry["stats"]
         out.append(cfg_copy)
 
-    # 10.3 phase 2 — STOP THE CLOCK HERE, BEFORE THE EMITTER BLOCK.
-    #
-    # `out` is complete at this point: the file has been read and every
-    # eligible entry turned into a config. What follows is the emitters'
-    # OWN bookkeeping -- `_eligible` is recomputed purely so each emitter
-    # can carry the expectation it is judged against.
-    #
-    # Letting the clock run through that would bill instrumentation cost
-    # to the load and report a number nobody could act on: making the
-    # emitters cheaper would "speed up the load". The same reasoning that
-    # keeps lock-wait out of `history.05.001`.
+    # The duration covers the read and the build, not the emitter block below.
     _dur_elapsed = time.monotonic() - _dur_t0
 
-    # ── FEATURE 1 EMITTERS ────────────────────────────────────────
-    # Directive: "Loads bot_state fleet as sim bots" and "ALL pieces /
-    # functions of the fleet must import".
-    #
-    # Before this, the only record of the fleet load was
-    # meta.json config.bots — a COUNT. A count cannot evidence WHICH
-    # bots loaded, whether their ids mirror live, or which sections of
-    # each entry were dropped. Each emitter below carries the
-    # expectation it is judged against, and fires whether or not it
-    # holds: silence must not be confusable with never-ran.
     from src.core.signal_contract import emit as _emit
 
     _eligible = [
@@ -240,48 +158,14 @@ def load_bot_configs_from_state(
         context={"mode_filter": mode_filter},
     )
 
-    # Traceability: sim ids must BE the live ids.
     _emit(
         "fleet.03.002.invariant.bot_ids_mirror_live",
         actual=sorted(c.get("_src_bot_id", "") for c in out),
         expected=sorted(_eligible),
     )
 
-    # The "all pieces" qualifier. Records which sections of a bot_state
-    # entry reach the sim and which the loader has no carry for, so an
-    # incomplete import announces itself instead of being invisible.
-    #
-    # 10.4 - THE PIN NOW ASSERTS THE LOADER'S OWN INVARIANT.
-    #
-    # It used to assert `set(sections_present) <= {"config"}` against a
-    # SAMPLE OF ONE, and reported ok=False on the operator's real state
-    # on EVERY load: 37 of 37 of his bots carry seven sections, and
-    # seven names are not a subset of one. The assertion was true of
-    # the v3.23.72 loader and was left behind when v3.24.81 added the
-    # `scrumming_state` and `stats` carries thirty lines above it.
-    #
-    # It survived because every fixture and all thirteen recorded runs
-    # fed a config-only entry - test data shaped like the assertion
-    # instead of like the file the button actually reads.
-    # `fleet_replay_panel.py` calls this with NO path, so `_path`
-    # resolves to `BOT_STATE_PATH`, the operator's own file.
-    #
-    # What the loader genuinely holds is `CARRIED_SECTIONS`: every
-    # section it is built to forward, that the entry supplies in the
-    # required shape, reaches the returned dict. `actual` is what
-    # LANDED, read back off `out`; `expected` is what the entries
-    # OFFERED, read off the state file. Two mechanisms, so the verdict
-    # varies - a carry that is deleted or renamed drives `actual` under
-    # `expected` and `missing` names the bot and the section.
-    #
-    # EVERY eligible bot, not a sample. A sample of one cannot see a
-    # malformed entry at position 17, and a property measured on one
-    # row is not an invariant.
-    #
-    # The guard is `_eligible` alone. `out` was in it, and an empty
-    # `out` against a non-empty `_eligible` is precisely the total
-    # import failure this pin exists to report - the old guard
-    # silenced its own worst case.
+    # Guarded on `_eligible` alone: an empty `out` beside a non-empty
+    # `_eligible` is the total import failure this record exists to report.
     if _eligible:
         _by_id = {str(c.get("_src_bot_id")): c for c in out}
         _offered = 0
@@ -312,27 +196,23 @@ def load_bot_configs_from_state(
 def load_smart_wires_from_state(
     path: Optional[Path] = None,
 ) -> list[dict[str, Any]]:
-    """Read ``bot_state.json``'s TOP-LEVEL ``smart_wires`` list.
+    """Read ``bot_state.json``'s TOP-LEVEL ``smart_wires`` list and return
+    the rows verbatim.
 
-    v3.24.72 (C20). Read-only, like every other access to this file.
+    Read-only, like every other access to this file.
 
     Rows are ``{source_id, target_id, pct}`` keyed by the PERSISTED bot
     id — which is why `load_bot_configs_from_state` stamps
     ``_src_bot_id`` and why `_build_sim` carries it onto the sim bot.
     Without that join the wires import cleanly and route nothing.
 
-    Returns rows verbatim. Filtering is the caller's job: `import_wires`
-    (smart_wire.py:456-478) drops malformed rows itself, and the
-    controller computes which wires have BOTH endpoints in the run's
-    fleet — a wire referencing a bot this replay never instantiated is
-    imported but inert, and reporting the import count as though it were
-    the active count is the failure this cascade exists to prevent.
+    Filtering is the caller's job: `SmartWireManager.import_wires` drops
+    malformed rows itself, and the controller computes which wires have
+    BOTH endpoints in the run's fleet — a wire referencing a bot this
+    replay never instantiated is imported but inert.
     """
-    # 10.3 phase 2 — the load starts HERE, at the file read.
-    #
-    # The malformed-list branch below returns WITHOUT emitting, so it
-    # needs no duration: there is no record to carry one. Only the path
-    # that reaches `fleet.03.004` is timed.
+    # The malformed-list branch below returns without emitting, so only the
+    # path that reaches `fleet.03.004` is timed.
     _dur_t0 = time.monotonic()
     _path = path or BOT_STATE_PATH
     data = _read_state_file(_path)
@@ -343,13 +223,9 @@ def load_smart_wires_from_state(
         )
         return []
     out = [w for w in wires if isinstance(w, dict)]
-    # `out` is complete; stop before the emitter's own block, for the
-    # same reason as `fleet.03.001` above.
+    # The duration excludes the emitter block below.
     _dur_elapsed = time.monotonic() - _dur_t0
 
-    # FEATURE 1 EMITTER — wires are part of "all pieces of the fleet".
-    # Nothing recorded how many were persisted versus how many reached
-    # the sim, so a partial topology import was invisible.
     from src.core.signal_contract import emit as _emit
 
     _emit(
@@ -383,5 +259,6 @@ def summarize_loaded_configs(configs: list[dict]) -> dict:
 __all__ = [
     "BOT_STATE_PATH",
     "load_bot_configs_from_state",
+    "load_smart_wires_from_state",
     "summarize_loaded_configs",
 ]
