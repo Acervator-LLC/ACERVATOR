@@ -13,8 +13,8 @@ given, in pixels, under `cyberpunk_dark` with 58 fold tranches::
     tab                need         viewport      cut off
     Status              477x 194     616x584      none
     Settings           1036x2652     606x574      430 across, 2078 down
-    Fold Tranches      1907x1053     606x574     1301 across,  479 down
-    Stack Tranches      724x 275     616x574      108 across
+    Fold Tranches      1946x1053     606x574     1340 across,  479 down
+    Stack Tranches      724x 310     616x574      108 across
     Bot Swarm           471x 252     616x584      none
     Market Inspector    406x 222     616x584      none
     Phantom Bots        731x 604     606x574      125 across,   30 down
@@ -43,8 +43,15 @@ THE SCREEN IS A CEILING, NOT A TARGET
 =====================================
 A dialog sized to the whole display contains everything and is
 unusable, so `TestTheScreenIsNotTheTarget` asserts an UPPER bound as
-well as a lower one: given a 4000x4000 display the dialog is 1977x2789
-— its content — and not 4000x4000.
+well as a lower one: given a 4000x4000 display the dialog is its
+biggest tab plus the chrome drawn around it, and not 4000x4000.
+
+The pixel counts in the table above are what those tabs held when the
+defect was read. They move whenever a tab gains a widget: measured
+since this file was written, the Fold tab grew 39px across and the
+Stack tab 35px down. No test pins one. The tests pin WHICH tabs are
+cut, in which direction, and that the dialog carries no slack over its
+content.
 
 WHAT THIS UNIT DOES NOT FIX, MEASURED
 =====================================
@@ -91,18 +98,45 @@ SCROLLAREA_CAP_CELLS_W = 36
 SCROLLAREA_CAP_CELLS_H = 24
 
 #: Font height the pixel numbers in this file were measured against.
-#: Section B, D and G state exact pixel counts, and a font of another
-#: height gives different ones.
+#: Section A states the wrapper cap and section G the residual shortfall,
+#: and a font of another height gives different ones. Section B reads no
+#: pixel count, but WHICH tabs overflow 640x720 is still a property of
+#: this cell, so it carries the same guard.
 MEASURED_FONT_HEIGHT_PX = 13
 
 #: A display no tab can exhaust, used to measure what the dialog asks
 #: for when nothing constrains it.
 UNBOUNDED_SCREEN = (4000, 4000)
 
-#: The size the dialog asks for on that display: every tab's content
-#: plus the chrome the layout draws around it.
-CONTENT_W = 1977
-CONTENT_H = 2789
+#: The most the dialog may exceed its biggest tab's content demand by.
+#: The surplus IS the chrome the layout draws around that tab -- header
+#: row, tab bar, margins, button row -- measured at 70px across and
+#: 137px down. The ceiling is a band rather than those numbers because
+#: editing a tab's content moves the demand and must not move this
+#: contract. A dialog sized to `UNBOUNDED_SCREEN` instead of its content
+#: carries a surplus in the thousands, so the band still separates the
+#: two by an order of magnitude.
+CHROME_CEILING_PX = 400
+
+#: Which tabs the shipped 640x720 dialog cuts off, and in which
+#: direction: `(across, down)`. This is the operator's report. The pixel
+#: COUNT of each cut is a property of that tab's content on the day it
+#: was read, so it is not pinned; which tabs are cut, and which are not,
+#: is the defect.
+CUT_AT_SHIPPED_MINIMUM: dict[str, tuple[bool, bool]] = {
+    "Settings": (True, True),
+    "Fold Tranches": (True, True),
+    "Stack Tranches": (True, False),
+    "Phantom Bots": (True, True),
+}
+
+#: Tabs light enough to fit the shipped dialog. Named so the check below
+#: compares two populated sets rather than two empty ones.
+FITS_AT_SHIPPED_MINIMUM: tuple[str, ...] = (
+    "Status",
+    "Bot Swarm",
+    "Market Inspector",
+)
 
 #: Fold tranches in the fixture. 58 is a long queue that still fits the
 #: 18-row table cap unit 1 installed, so the Fold tab is at its tallest.
@@ -262,6 +296,22 @@ def _build(app, screen=UNBOUNDED_SCREEN, tranches=FIXTURE_TRANCHES) -> _Dialog:
     return _Dialog(dialog, app)
 
 
+def _content_size(app) -> tuple[int, int]:
+    """The size the dialog asks for when no display constrains it.
+
+    Measured off a dialog built on `UNBOUNDED_SCREEN` rather than
+    written down, because it is the sum of every tab's content and
+    moves whenever a tab gains a widget. A caller that needs the
+    UNCLAMPED demand -- to work out what a real display would do to it
+    -- gets it from here.
+    """
+    panel = _build(app)
+    try:
+        return panel.dialog.width(), panel.dialog.height()
+    finally:
+        panel.destroy()
+
+
 @pytest.fixture(autouse=True)
 def themed():
     """Render under the theme `main.py` applies when none is chosen.
@@ -341,16 +391,21 @@ class TestTheShippedSizeCutsTabsOff:
             panel.dialog.resize(SHIPPED_MIN_W, SHIPPED_MIN_H)
             themed.processEvents()
             cut = panel.cutoff()
-            assert cut["Settings"] == (430, 2078), cut
-            assert cut["Fold Tranches"] == (1301, 479), cut
-            assert cut["Stack Tranches"][0] == 108, cut
-            assert cut["Phantom Bots"] == (125, 30), cut
-            assert sorted(k for k, v in cut.items() if v != (0, 0)) == [
-                "Fold Tranches",
-                "Phantom Bots",
-                "Settings",
-                "Stack Tranches",
-            ], cut
+            assert sorted(k for k, v in cut.items() if v != (0, 0)) == sorted(
+                CUT_AT_SHIPPED_MINIMUM
+            ), cut
+            assert sorted(k for k, v in cut.items() if v == (0, 0)) == sorted(
+                FITS_AT_SHIPPED_MINIMUM
+            ), cut
+            for label, (across, down) in CUT_AT_SHIPPED_MINIMUM.items():
+                assert (cut[label][0] > 0) is across, (label, cut[label])
+                assert (cut[label][1] > 0) is down, (label, cut[label])
+            demand = panel.demand()
+            assert cut["Settings"][1] > demand["Settings"][1] / 2, (cut, demand)
+            assert cut["Fold Tranches"][0] > demand["Fold Tranches"][0] / 2, (
+                cut,
+                demand,
+            )
         finally:
             panel.destroy()
 
@@ -394,12 +449,16 @@ class TestTheScreenIsNotTheTarget:
         try:
             assert panel.dialog.width() < UNBOUNDED_SCREEN[0]
             assert panel.dialog.height() < UNBOUNDED_SCREEN[1]
-            if panel.font_height() != MEASURED_FONT_HEIGHT_PX:
-                pytest.skip(_OTHER_FONT.format(height=panel.font_height()))
-            assert (panel.dialog.width(), panel.dialog.height()) == (
-                CONTENT_W,
-                CONTENT_H,
-            )
+            demand = panel.demand()
+            assert demand, "the dialog built no tabs"
+            widest = max(width for width, _ in demand.values())
+            tallest = max(height for _, height in demand.values())
+            surplus_w = panel.dialog.width() - widest
+            surplus_h = panel.dialog.height() - tallest
+            assert surplus_w >= 0, (panel.dialog.width(), widest)
+            assert surplus_h >= 0, (panel.dialog.height(), tallest)
+            assert surplus_w < CHROME_CEILING_PX, (surplus_w, demand)
+            assert surplus_h < CHROME_CEILING_PX, (surplus_h, demand)
         finally:
             panel.destroy()
 
@@ -474,9 +533,10 @@ class TestTheDialogStaysOnTheScreen:
         from PySide6.QtGui import QGuiApplication
 
         available = QGuiApplication.primaryScreen().availableGeometry()
+        content_w, content_h = _content_size(themed)
         expected = dialog_open_size_px(
-            CONTENT_W,
-            CONTENT_H,
+            content_w,
+            content_h,
             available.width(),
             available.height(),
             SHIPPED_MIN_W,

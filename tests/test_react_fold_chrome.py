@@ -793,6 +793,14 @@ def a_label(text: str) -> Any:
     return QLabel(text)
 
 
+def as_plain_text(widget: Any) -> Any:
+    """The same widget told to print its text rather than read it as markup."""
+    from PySide6.QtCore import Qt
+
+    widget.setTextFormat(Qt.TextFormat.PlainText)
+    return widget
+
+
 def a_combo(text: str) -> Any:
     from PySide6.QtWidgets import QComboBox
 
@@ -823,10 +831,12 @@ def test_no_widget_this_chrome_uses_reads_its_caller_text_as_markup(qapp, kind: 
 
 
 def test_the_markup_measurement_reads_a_label_as_a_widget_that_does(qapp):
-    """QLabel paints MARKUP_PROBE exactly as it paints PLAIN_PROBE, so its tags
-    cost nothing."""
+    """QLabel swallows the tags MARKUP_PROBE carries, so the same string forced
+    to PlainText -- which prints them -- paints a different picture."""
     assert qapp is not None
-    assert painted(a_label(MARKUP_PROBE)) == painted(a_label(PLAIN_PROBE))
+    assert painted(a_label(MARKUP_PROBE)) != painted(
+        as_plain_text(a_label(MARKUP_PROBE))
+    ), "QLabel painted the tags the same whether it read them or printed them"
 
 
 @pytest.mark.parametrize("kind", sorted(SCREEN_WIDGETS))

@@ -101,11 +101,11 @@ TOOLS = REPO / "tools"
 # out of pyproject.toml so that no script has to hold one. It carries an
 # argument parser and three subcommands, so it is True.
 #
-# `emitter_registry_check` left this list with the pin system. It held the
-# emitter register in `docs/EMITTER_IDENTIFICATION.md` against the pins in
-# `src/` by file, name and line, and the line half of that key moved on
-# every edit above a pin. `test_every_tool_on_disk_is_declared` below
-# fails if the file returns undeclared.
+# `emitter_registry_check` left this list with the pin system. It keyed an
+# emitter register against the pins in `src/` by file, name and line, and
+# the line half of that key moved on every edit above a pin.
+# `test_every_tool_on_disk_is_declared` below fails if the file returns
+# undeclared.
 INVENTORY: tuple[tuple[str, bool], ...] = (
     ("build_release_zip", True),
     # Counts comments by tokenising, and proves a comment cleanup left
@@ -130,6 +130,15 @@ INVENTORY: tuple[tuple[str, bool], ...] = (
     # Measures how far the HOP handoff has drifted from the repository and
     # exits 1 on drift. Takes no argument, so it is False.
     ("hop_check", False),
+    # Runs the four lane commands `.github/workflows/ci.yml` declares --
+    # black, flake8 and the two pytest lanes -- on this machine, because
+    # that workflow's billing is off and nothing executes it. It must be
+    # an importable module under `tools/`: its own docstring documents
+    # all three invocations as `python -m tools.local_ci`, and
+    # `tests/test_local_ci.py` reaches it with `from tools import
+    # local_ci`. It carries an argument parser with `--lane`, `--base`,
+    # `--all` and `--timeout`, so it is True.
+    ("local_ci", True),
     ("migrate_harness", True),
     # Issue #105 added this. It captures the facts a GitHub
     # organization migration must preserve, then verifies them
