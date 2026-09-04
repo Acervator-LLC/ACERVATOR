@@ -60,4 +60,5 @@ window.ACERVATOR_MODULES = [
   "visualizer_themes.js",
   "buy_confirmation.js",
   "indicator_panel.js",
+  "live_settings_tab.js",
 ];
