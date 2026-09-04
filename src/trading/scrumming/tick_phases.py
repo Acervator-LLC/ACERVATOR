@@ -14,17 +14,10 @@ logger = logging.getLogger("acervator.scrumming")
 
 
 class TickPhaseMixin:
-    """One method per phase of the trade loop, called in order by tick.
+    """One method per phase of the trade loop, called in order by tick."""
 
-    A method whose name starts ``_tick_`` runs at most once per tick.
-    ``_tick_detonation`` and ``_tick_execute_fold`` return True when the
-    tick must stop; every other phase either always ends the tick at its
-    call site or always continues.
-    """
-
-    # Supplied by ScrummingBot at runtime; declared so a type
-    # checker can resolve them. Annotations only: no attribute is
-    # created and the runtime base stays `object`.
+    # Bare annotations: ScrummingBot supplies these at runtime, and
+    # no attribute is created here.
     _absorb_pending_wire_credits_into: Callable[..., None]
     _aggressive: bool
     _anchor_target_balance: float
@@ -270,7 +263,7 @@ class TickPhaseMixin:
                             "withheld_units": round(_uncapped - _own, 10),
                         },
                     )
-                except Exception as _sup:  # noqa: BLE001,S110 - advisory
+                except Exception as _sup:  # noqa: BLE001
                     logger.debug(
                         "suppressed in %s: %s: %s",
                         "tick",
@@ -1198,11 +1191,8 @@ class TickPhaseMixin:
                     ),
                 )
         else:
-            # issue #133 unit 9b -- the venue credits the NET.
-            # `scrum_asset * sell_fill` is the GROSS notional,
-            # so every tranche built below was booked richer
-            # than the wallet. The wire routing reads this too,
-            # and the bot cannot route money it never received.
+            # _settled_sale_proceeds nets the venue's reported fee out
+            # of the gross scrum_asset * sell_fill.
             scrum_usd = self._settled_sale_proceeds(
                 scrum_asset, sell_fill, label="SCRUM"
             )
@@ -1256,21 +1246,11 @@ class TickPhaseMixin:
                 if _lot["units"] <= 1e-12:
                     self._main_lots.remove(_lot)
 
-            # issue #133 unit 2 -- BEFORE the absorb, so the parked
-            # credit lands in the record that survives, and before
-            # the ratio and the top-up, so both read a slice of one.
-            # `_first_new_tranche` is re-read from the list because
-            # the merge replaces the object the loop above kept.
+            # _bound_new_fold_tranches merges and replaces the tranche
+            # object, so _first_new_tranche is re-read from the list.
             if self._bound_new_fold_tranches(_tranche_count_before):
                 _first_new_tranche = self._fold_tranches[_tranche_count_before]
 
-            # P1b Session 26 (2026-04-24) — if there were pending
-            # wire credits parked before this scrum (target bot had
-            # no tranches when a wire income arrived), absorb them
-            # into the FIRST new tranche of this scrum burst. Only
-            # applies when this scrum actually created at least one
-            # new tranche AND there were zero tranches prior (wait-
-            # for-new-tranche semantic per operator directive).
             if (
                 _first_new_tranche is not None
                 and _tranche_count_before == 0
@@ -1286,10 +1266,7 @@ class TickPhaseMixin:
                 float(getattr(bb_result, "upper", 0.0) or 0.0),
             )
 
-            # issue #133 unit 11 -- the parked pool exists only while the
-            # fold queue is empty. This sell has just filled it, so the
-            # pool lands here. After the top-up: the merge blends `ref`
-            # from `usd / ref` per record, and wire USD carries no units.
+            # Ordered after the top-up because wire USD carries no units.
             self._land_pending_wire_credits()
 
             self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
@@ -1515,47 +1492,15 @@ class TickPhaseMixin:
         _taper = 0.0
         _fold_plan: list[tuple[dict, float, float]] = []
         if _eligible:
-            # v3.16.40 — Per-cycle fold-back capital soft cap
-            # (operator directive 2026-05-08):
-            #   "if I have enough lingering Folds that will
-            #    immediately exceed my 10% growth rate, the
-            #    amount needs to be soft-capped until the next
-            #    lower BB touch is confirmed and we re-calculate
-            #    the input as needed."
-            #
-            # When many lingering tranches become eligible at once,
-            # soft-cap the deployed fold-back capital to the
-            # configured per-cycle growth rate. Issue #106: that
-            # rate is max_target_growth_pct of the target as the
-            # cycle opened, NOT of the anchor. Excess tranches stay
-            # queued for the NEXT TA-validated fold opportunity.
-            # Sort highest-initial_buy_price-first so the most
-            # expensive lots get fold-back priority (mirrors
-            # SCRUM-side MEM-171 highest-priced-first consumption).
-            # Issue #106 -- the admission bound compounds with the
-            # cap it is a bound ON. This read
-            # `self._anchor_target_balance * _max_growth_pct / 100`
-            # and so admitted the same dollar of tranche capital on
-            # a bot that had grown 27% as on the day it was made.
-            # `_max_growth_pct` is still read because the emit below
-            # names the percentage.
+            # cycle_growth_cap_usd is the bound _plan_fold_consumption
+            # applies; _max_growth_pct only feeds the emit below.
             _max_growth_pct = float(getattr(self.config, "max_target_growth_pct", 1.0))
             _cycle_cap_usd = self.cycle_growth_cap_usd
-            # The base the property took, named so the emit below
-            # can quote it without respelling the subtraction.
+            # _cycle_open_target only feeds the emit below.
             _cycle_open_target = max(
                 0.0,
                 float(self._target_balance) - float(self._fold_cycle_cap_consumed),
             )
-            # v3.20.62 — bug-1B fix: subtract what's already been
-            # consumed this cycle so successive eligibility batches
-            # respect the cumulative budget. Pre-fix, this site
-            # used the FULL cap on every pass — the growth-
-            # application path at line 7237 was correctly bounded
-            # by cap_remaining, but the eligibility queue
-            # over-allowed tranches that then applied $0 growth
-            # silently. Operator-reported MEM-408: tranches firing
-            # past the 3% cap with zero actual target growth.
             _cap_remaining_for_queue = max(
                 0.0, _cycle_cap_usd - self._fold_cycle_cap_consumed
             )
@@ -1758,12 +1703,8 @@ class TickPhaseMixin:
 
             _new_surplus_usd = max(0.0, accum_profit * float(self._quote_to_usd or 1.0))
 
-            # Issue #106 -- DIAGNOSTIC ONLY, and it still has to be
-            # right. Nothing downstream enforces this value: the
-            # drain below delegates to `_apply_fold_target_growth`,
-            # which reads the cap itself. But this is the line an
-            # operator greps to see what the budget WAS, so a stale
-            # spelling here would report a cap the bot did not use.
+            # These three feed only the FOLD_DIAG_SURPLUS_CHECK emit;
+            # _apply_fold_target_growth reads the cap itself.
             _cap_pct_growth = float(getattr(self.config, "max_target_growth_pct", 1.0))
             _cycle_cap_growth = self.cycle_growth_cap_usd
             _cycle_open_target_d = max(
@@ -1977,8 +1918,8 @@ class TickPhaseMixin:
                         ),
                     )
                 else:
-                    # issue #133 unit 9b -- the venue credits the
-                    # NET, exactly as on the SCRUM path above.
+                    # _settled_sale_proceeds nets the venue's reported
+                    # fee out of dist_asset * dist_fill.
                     dist_usd = self._settled_sale_proceeds(
                         dist_asset, dist_fill, label="DIST"
                     )
@@ -2035,22 +1976,8 @@ class TickPhaseMixin:
                             _units_remaining -= _take
                             if _lot["units"] <= 1e-12:
                                 self._main_lots.remove(_lot)
-                        # issue #133 unit 2 -- a DIST sell is an
-                        # opposing trade and builds tranches exactly as
-                        # a SCRUM does, so it answers the same count
-                        # rule. Ordered before the ratio and the top-up
-                        # for the reason the SCRUM site gives.
                         self._bound_new_fold_tranches(_dist_tranche_count_before)
-                        # 2026-08-12 — MIRRORED FROM THE SCRUM PATH.
-                        # A DIST sell builds fold tranches exactly as a
-                        # SCRUM does, so scrum_fold_pct governs it
-                        # exactly as it governs a SCRUM. Before this,
-                        # DIST proceeds queued 100% for fold whatever
-                        # the setting said. `dist_usd` and `dist_asset`
-                        # are the same two figures the build loop above
-                        # divided, so the units test inside the helper
-                        # reads this sale's own rate. Ordered before the
-                        # top-up for the reason the helper gives.
+                        # scrum_fold_pct governs DIST proceeds as it governs a SCRUM.
                         self._apply_scrum_fold_pct(
                             _dist_tranche_count_before, dist_usd, dist_asset
                         )
@@ -2059,10 +1986,7 @@ class TickPhaseMixin:
                             float(getattr(bb_result, "lower", 0.0) or 0.0),
                             float(getattr(bb_result, "upper", 0.0) or 0.0),
                         )
-                        # issue #133 unit 11 -- the parked pool exists only while the
-                        # fold queue is empty. This sell has just filled it, so the
-                        # pool lands here. After the top-up: the merge blends `ref`
-                        # from `usd / ref` per record, and wire USD carries no units.
+                        # Ordered after the top-up because wire USD carries no units.
                         self._land_pending_wire_credits()
                         self._fold_queue_usd = sum(
                             t["usd"] for t in self._fold_tranches
