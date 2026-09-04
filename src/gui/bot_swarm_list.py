@@ -1,30 +1,10 @@
-"""bot_swarm_list.py — v3.23.61 professional list view for Bot Swarm.
+"""``BotListView`` and ``LaneWireCanvas`` draw the Bot Swarm list view.
 
-Replaces the locust-humanoid grid (bot_visualizer.BotNodeWidget in a
-QGridLayout) with a dense QTableWidget-backed row list per operator
-directive 2026-07-31: "convert the locust bot graphics to a
-professional looking list due to space consummation concerns for very
-large configurations."
-
-Row schema (11 columns):
-    Ticker | Inflow $ | Outflow $ | L1..L8 (8 connector-node lanes)
-
-The 8 lane columns are fixed narrow (16 px each). Each lane is a
-vertical slot; a wire between two rows is painted as a straight
-vertical segment down a single lane column shared by all rows it
-crosses. Lane assignment is first-free-lane per horizontal span so
-wires never overlap or diagonal-cross the readouts.
-
-The LaneWireCanvas is a transparent overlay on the list; it reads
-lane geometry from the list's header + row-Y coords and paints wires
-end-to-end. All the existing wire-drag / disconnect / hydration
-logic in bot_visualizer.BotVisualizationTab keeps working — this
-module just provides new render primitives.
-
-Lane assignment (BotSwarmLaneAllocator) is a pure algorithm and has
-its own pin tests separate from any Qt render.
-
-sadp: R28 SSS + R65 GDG + R83 STM (surface-tension minimum)
+``BotListView`` fills the ``TOTAL_COLS`` columns named by
+``COLUMN_HEADERS``, one row per bot at ``ROW_HEIGHT``.
+``BotSwarmLaneAllocator`` places each wire in one of ``LANE_COUNT`` lane
+columns whose row spans do not overlap. ``LaneWireCanvas`` overlays the
+list and paints every wire as a vertical segment down its lane.
 """
 
 from __future__ import annotations
@@ -47,24 +27,23 @@ try:
     )
 
     _HAS_QT = True
-except ImportError:  # noqa: BLE001 - graceful fallback for headless tests
+except ImportError:
     _HAS_QT = False
 
 logger = logging.getLogger("acervator.gui.bot_swarm_list")
 
-# --- Row / column geometry ----------------------------------------
-
-LANE_COUNT = 8  # per operator: 8 connector nodes/row
-LANE_COL_WIDTH = 20  # px per lane column
-LANE_DOT_RADIUS = 4  # px, painted in the cell
-ROW_HEIGHT = 30  # px, fixed
+LANE_COUNT = 8
+LANE_COL_WIDTH = 20
+LANE_DOT_RADIUS = 4
+ROW_HEIGHT = 30
 TICKER_COL_WIDTH = 90
 FLOW_COL_WIDTH = 90
 
 COL_TICKER = 0
 COL_INFLOW = 1
 COL_OUTFLOW = 2
-COL_OUTFLOW_PCT = 3  # v3.23.62: % of profit exported via smart wires
+# COL_OUTFLOW_PCT shows the sum of a bot's outbound wire percentages.
+COL_OUTFLOW_PCT = 3
 COL_LANE_0 = 4
 COL_LANE_LAST = COL_LANE_0 + LANE_COUNT - 1
 TOTAL_COLS = COL_LANE_LAST + 1
@@ -76,31 +55,23 @@ COLUMN_HEADERS = ["Ticker", "Inflow", "Outflow", "% Out"] + [
 ]
 
 
-# --- Pure lane allocator ------------------------------------------
-
-
 class BotSwarmLaneAllocator:
-    """Assign each wire to a lane index in ``0..LANE_COUNT-1``.
+    """Give each wire a lane index in ``0..lane_count-1``.
 
-    A wire spans the vertical range ``[min(src_row, dst_row),
-    max(src_row, dst_row)]``. Two wires can share a lane iff their
-    row-spans do not overlap. Assignment is first-free-lane
-    (deterministic, insertion-ordered).
-
-    Returns ``None`` for any wire that cannot be placed (all lanes
-    occupied at some row within its span) — caller decides whether
-    to hide, warn, or fall back to a floating diagonal.
+    Two wires share a lane only when their row spans do not overlap, and
+    ``assign`` takes the first free lane in order.
     """
 
     def __init__(self, lane_count: int = LANE_COUNT):
         self._lane_count = lane_count
 
     def assign(self, wires: list[tuple[str, int, int]]) -> dict[str, Optional[int]]:
-        """``wires`` is ``[(wire_id, row_a, row_b), ...]``. Returns
-        ``{wire_id: lane_idx | None}``."""
-        # Track occupied row-ranges per lane. Each lane has a list of
-        # (lo, hi) intervals; a new span fits if it doesn't overlap
-        # any existing interval on that lane.
+        """Place every ``(wire_id, row_a, row_b)`` triple in ``wires``.
+
+        Returns ``{wire_id: lane_idx}``, with ``None`` where no lane was
+        free.
+        """
+        # lanes[i] holds the (lo, hi) row spans already placed on lane i.
         lanes: list[list[tuple[int, int]]] = [[] for _ in range(self._lane_count)]
         result: dict[str, Optional[int]] = {}
         for wire_id, ra, rb in wires:
@@ -117,14 +88,14 @@ class BotSwarmLaneAllocator:
         return result
 
 
-# --- Qt widgets (list + wire canvas) ------------------------------
-
 if _HAS_QT:
 
     class BotListView(QTableWidget):
-        """Row-per-bot list view. One row = one bot. Fixed row height
-        so lane geometry is predictable. Alternating row colours
-        turned off; the lane columns paint their own dots instead."""
+        """One row per bot, every row at ``ROW_HEIGHT``.
+
+        Alternating row colours are off and the lane cells hold no text;
+        ``LaneWireCanvas`` paints over them.
+        """
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -138,17 +109,14 @@ if _HAS_QT:
             self.setColumnCount(TOTAL_COLS)
             self.setHorizontalHeaderLabels(COLUMN_HEADERS)
             hdr = self.horizontalHeader()
-            # Ticker + flow columns fixed widths
             hdr.setSectionResizeMode(COL_TICKER, QHeaderView.Fixed)
             self.setColumnWidth(COL_TICKER, TICKER_COL_WIDTH)
             hdr.setSectionResizeMode(COL_INFLOW, QHeaderView.Fixed)
             self.setColumnWidth(COL_INFLOW, FLOW_COL_WIDTH)
             hdr.setSectionResizeMode(COL_OUTFLOW, QHeaderView.Fixed)
             self.setColumnWidth(COL_OUTFLOW, FLOW_COL_WIDTH)
-            # v3.23.62: % Out column — narrow, holds "NN%" formatted.
             hdr.setSectionResizeMode(COL_OUTFLOW_PCT, QHeaderView.Fixed)
             self.setColumnWidth(COL_OUTFLOW_PCT, OUTFLOW_PCT_COL_WIDTH)
-            # Lane columns each fixed narrow
             for i in range(LANE_COUNT):
                 col = COL_LANE_0 + i
                 hdr.setSectionResizeMode(col, QHeaderView.Fixed)
@@ -158,9 +126,10 @@ if _HAS_QT:
             self._bot_ids: list[str] = []
 
         def set_bots(self, rows: list[dict]) -> None:
-            """Populate rows. Each dict: {bot_id, symbol, inflow_usd,
-            outflow_usd}. inflow / outflow are rendered with two
-            decimals + '$' prefix.
+            """Fill one row per entry of ``rows``.
+
+            Each entry carries ``bot_id``, ``symbol``, ``inflow_usd``,
+            ``outflow_usd`` and ``outflow_pct``.
             """
             self.setRowCount(len(rows))
             self._bot_ids = []
@@ -182,12 +151,8 @@ if _HAS_QT:
                 out_item.setTextAlignment(Qt.AlignCenter)
                 out_item.setForeground(QBrush(QColor(ds.ERROR)))
                 self.setItem(i, COL_OUTFLOW, out_item)
-                # v3.23.62 — % Out: how much profit is being exported
-                # via outbound smart wires. Colour ramp:
-                #   0%          — grey (no export configured)
-                #   1..80%      — cyan (healthy export headroom)
-                #   81..99%     — amber (approaching cap)
-                #   100%+       — red (fully-committed / over-committed)
+                # _pct picks TEXT_MUTED at or below 0, PRIMARY_BRIGHT
+                # under 81, WARNING under 100, and ERROR at 100 or above.
                 _pct = float(r.get("outflow_pct", 0.0) or 0.0)
                 pct_item = QTableWidgetItem(f"{_pct:.0f}%")
                 pct_item.setTextAlignment(Qt.AlignCenter)
@@ -200,7 +165,6 @@ if _HAS_QT:
                 else:
                     pct_item.setForeground(QBrush(QColor(ds.ERROR)))
                 self.setItem(i, COL_OUTFLOW_PCT, pct_item)
-                # Lane columns hold no text; wire overlay paints dots.
                 for j in range(LANE_COUNT):
                     self.setItem(i, COL_LANE_0 + j, QTableWidgetItem(""))
 
@@ -214,19 +178,17 @@ if _HAS_QT:
                 return -1
 
         def row_index_map(self) -> dict:
-            """`{bot_id: row}` for O(1) endpoint resolution.
+            """Return ``{bot_id: row}`` for every id in ``_bot_ids``.
 
-            v3.24.52 (C09). `row_of_bot` is a linear scan and the wire
-            canvas called it twice per wire on every paint. Callers that
-            resolve MANY endpoints in one pass build this once instead;
-            `row_of_bot` stays for single lookups, where a scan is
-            cheaper than allocating a dict.
+            ``row_of_bot`` stays for a single lookup.
             """
             return {bid: i for i, bid in enumerate(self._bot_ids)}
 
         def lane_col_x(self, lane_idx: int) -> int:
-            """X coordinate (in the list's coord space) of the CENTER
-            of the given lane column."""
+            """Return the x centre of the lane column for ``lane_idx``.
+
+            Returns 0 when ``lane_idx`` falls outside ``LANE_COUNT``.
+            """
             if lane_idx < 0 or lane_idx >= LANE_COUNT:
                 return 0
             hdr = self.horizontalHeader()
@@ -234,16 +196,20 @@ if _HAS_QT:
             return int(hdr.sectionPosition(col) + hdr.sectionSize(col) / 2)
 
         def row_y_center(self, row: int) -> int:
-            """Y coordinate of the vertical center of row (in the
-            list's viewport coord space)."""
+            """Return the y centre of ``row`` in viewport coordinates.
+
+            Returns 0 when ``row`` falls outside ``rowCount``.
+            """
             if row < 0 or row >= self.rowCount():
                 return 0
             return int(self.rowViewportPosition(row) + self.rowHeight(row) / 2)
 
     class LaneWireCanvas(QWidget):
-        """Transparent overlay on top of BotListView. Paints wires as
-        vertical segments in the lane columns. All mouse events pass
-        through to the underlying list unless a wire is hit."""
+        """Transparent overlay painting wires down ``BotListView`` lanes.
+
+        ``WA_TransparentForMouseEvents`` sends every mouse event through
+        to the list.
+        """
 
         def __init__(self, bot_list: "BotListView", parent=None):
             super().__init__(parent)
@@ -252,58 +218,44 @@ if _HAS_QT:
             self._allocator = BotSwarmLaneAllocator(LANE_COUNT)
             self._wires: list[dict] = []
             self._lane_assignments: dict[str, Optional[int]] = {}
-            # v3.24.52 (C09) — wires the last paint could not draw.
-            # Previously each one hit a bare `continue` and vanished
-            # with nothing reported, so a wire missing from the canvas
-            # was indistinguishable from a wire that was never
-            # configured (finding SWARM-A3).
             self._undrawable_wires: list[tuple[str, str]] = []
-            # v3.23.61 — opacity 0..100, applied at paint time.
             self._opacity_pct: int = 100
             self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
             self.setAttribute(Qt.WA_TranslucentBackground)
             self.setStyleSheet("background: transparent;")
 
         def undrawable_wire_count(self) -> int:
-            """Wires the LAST paint could not draw (C09).
+            """Count the wires the last ``paintEvent`` could not draw.
 
-            Non-zero means the canvas is showing the operator fewer
-            wires than are configured. Before v3.24.52 that condition
-            was reachable but unreportable: both skip branches were bare
-            `continue`s, so a wire missing from the canvas looked
-            exactly like a wire that was never created.
+            Non-zero means the canvas shows fewer wires than
+            ``set_wires`` was handed.
             """
             return len(self._undrawable_wires)
 
         def undrawable_wires(self) -> list:
-            """`[(wire_id, reason), ...]` from the last paint.
+            """Return ``[(wire_id, reason), ...]`` from the last paint.
 
-            Reasons are `no-lane` (allocator exhausted, or an endpoint
-            was unlisted when lanes were assigned) and `unlisted-bot`
-            (an endpoint is not in the current row set). They are
-            distinct causes and the operator needs to tell them apart:
-            the first is a capacity problem, the second a staleness one.
+            ``unlisted-bot`` means an endpoint is absent from
+            ``row_index_map``; ``no-lane`` means
+            ``BotSwarmLaneAllocator`` found no free lane.
             """
             return list(self._undrawable_wires)
 
         def set_opacity_pct(self, pct: int) -> None:
-            """0–100. Values outside the range are clamped."""
+            """Clamp ``pct`` into ``_opacity_pct`` at 0..100 and repaint."""
             self._opacity_pct = max(0, min(100, int(pct)))
             self.update()
 
         def set_wires(self, wires: list[dict]) -> None:
-            """``wires`` is ``[{id, source_id, target_id, ...}, ...]``.
-            Each wire's lane is assigned via BotSwarmLaneAllocator
-            based on the source + target row indices."""
+            """Give every ``{id, source_id, target_id}`` wire a lane.
+
+            ``BotSwarmLaneAllocator`` reads the source and target row
+            indices ``row_index_map`` returns.
+            """
             self._wires = list(wires)
-            # Build allocator input.
-            # v3.24.52 (C09) — one map, not two scans per wire.
             _row_of = self._list.row_index_map()
-            # Wires filtered out HERE never reach the allocator, so at
-            # paint time they look identical to allocator exhaustion.
-            # Remember which they were, or the reported reason blames
-            # capacity for what is actually a stale row set — two
-            # different problems with two different fixes.
+            # _unlisted_at_assign separates a stale row set from lane
+            # exhaustion at paint time.
             self._unlisted_at_assign = set()
             triples: list[tuple[str, int, int]] = []
             for w in self._wires:
@@ -320,22 +272,14 @@ if _HAS_QT:
             self._lane_assignments = self._allocator.assign(triples)
             self.update()
 
-        def paintEvent(self, event):  # noqa: D401
-            # v3.24.52 (C09) — reset per paint, not per wire. This is
-            # the count for THIS frame; carrying it across frames would
-            # grow without bound while the canvas repaints at ~2.5/sec.
+        def paintEvent(self, _event):
+            # _undrawable_wires counts this frame only.
             self._undrawable_wires = []
             if not self._wires:
                 return
             p = QPainter(self)
             p.setRenderHint(QPainter.Antialiasing)
-            # v3.23.61 — respect operator's wire-opacity slider.
             p.setOpacity(self._opacity_pct / 100.0)
-            # v3.24.52 (C09) — resolve endpoints from a mapping built
-            # ONCE. `row_of_bot` is `self._bot_ids.index(bot_id)`, a
-            # linear scan, and it was called twice per wire on every
-            # paint: O(bots x wires) per repaint, measured at 16 calls
-            # for 8 wires over 30 rows before this change.
             _row_of = self._list.row_index_map()
             for w in self._wires:
                 _wid = str(
@@ -346,11 +290,8 @@ if _HAS_QT:
                 _tgt = str(w.get("target_id", ""))
                 lane = self._lane_assignments.get(_wid)
                 if lane is None:
-                    # Attribute the true cause. A wire dropped by
-                    # set_wires for an unlisted endpoint also arrives
-                    # here with no lane, and calling that "no-lane"
-                    # would point the operator at lane capacity when
-                    # the row set is what is stale.
+                    # _unlisted_at_assign wires reach here with no lane
+                    # too, exactly as lane exhaustion does.
                     _why = (
                         "unlisted-bot"
                         if _wid in getattr(self, "_unlisted_at_assign", ())
@@ -366,18 +307,13 @@ if _HAS_QT:
                 x = self._list.lane_col_x(lane)
                 y0 = self._list.row_y_center(ra)
                 y1 = self._list.row_y_center(rb)
-                # v3.23.62 — animated wire. Each wire carries a
-                # `phase` incremented by BotVisualizationTab._animate
-                # at ~2.5/sec. We turn that into a bright pulse
-                # travelling source→target along the vertical segment
-                # while leaving a soft base gradient underneath.
+                # BotVisualizationTab._animate advances phase 2.5 cycles
+                # per second.
                 _phase = float(w.get("phase", 0.0) or 0.0)
-                _t = _phase % 1.0  # fraction 0..1
+                _t = _phase % 1.0
                 grad = QLinearGradient(x, y0, x, y1)
-                # Soft base gradient (cyan → green).
                 grad.setColorAt(0.0, QColor(0, 255, 238, 70))
                 grad.setColorAt(1.0, QColor(0, 255, 136, 70))
-                # Overlay a bright pulse at fraction _t.
                 _pulse_lo = max(0.0, _t - 0.12)
                 _pulse_hi = min(1.0, _t + 0.12)
                 if _pulse_lo > 0.0:
@@ -387,17 +323,16 @@ if _HAS_QT:
                     grad.setColorAt(_pulse_hi, QColor(0, 255, 136, 70))
                 p.setPen(QPen(QBrush(grad), 3))
                 p.drawLine(x, y0, x, y1)
-                # Endpoint dots — source dim, target bright, matching
-                # the wire's inflow → outflow directional visual.
+                # The source dot is dimmer than the target dot, showing
+                # wire direction.
                 p.setPen(Qt.NoPen)
                 p.setBrush(QBrush(QColor(0, 255, 238, 180)))
                 p.drawEllipse(QPointF(x, y0), LANE_DOT_RADIUS, LANE_DOT_RADIUS)
                 p.setBrush(QBrush(QColor(0, 255, 136, 230)))
                 p.drawEllipse(QPointF(x, y1), LANE_DOT_RADIUS, LANE_DOT_RADIUS)
             p.end()
-            # v3.24.52 (C09) — surface the drop. Reported on CHANGE, not
-            # per frame: this canvas repaints at ~2.5/sec and a per-paint
-            # line would bury the log while saying nothing new.
+            # Logged on change only; paintEvent runs on every animation
+            # frame.
             _now = tuple(self._undrawable_wires)
             if _now != getattr(self, "_last_reported_undrawable", None):
                 self._last_reported_undrawable = _now
