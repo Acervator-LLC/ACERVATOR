@@ -59,4 +59,5 @@ window.ACERVATOR_MODULES = [
   "start_all_progress.js",
   "visualizer_themes.js",
   "buy_confirmation.js",
+  "testnet_tab.js",
 ];

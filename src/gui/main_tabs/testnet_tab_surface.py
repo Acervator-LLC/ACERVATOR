@@ -26,6 +26,8 @@ from __future__ import annotations
 import time
 from typing import Any, Optional
 
+from ..color_alpha import css_colours
+
 METHOD = "testnet_tab.state"
 LOGGER_NAME = "acervator.testnet"
 
@@ -1645,11 +1647,20 @@ def build_view_model(model: Optional[TestnetTabModel] = None) -> dict:
 def view_model(params: dict) -> dict:
     """Bridge handler for ``testnet_tab.state``.
 
-    Reads ``reset`` and ``state`` from the request parameters. A call with
-    no parameters answers with the tab the last call built; ``reset`` is
-    what a fresh open sends.
+    Reads ``reset``, ``state``, ``refresh`` and ``now`` from the request
+    parameters. A call with no parameters answers with the tab the last
+    call built; ``reset`` is what a fresh open sends. ``refresh`` fills
+    the four tables from the chain, which is the poll the shipped tab
+    runs on its own timer and the renderer asks for instead.
+
+    The answer leaves under `src.gui.color_alpha.css_colours`, so a Qt
+    alpha byte becomes the share a browser reads. `build_view_model`
+    keeps the byte, because the shipped tab writes those same sheets
+    into `setStyleSheet` and Qt counts alpha in bytes.
     """
     global TAB_MODEL
     if params.get("reset", False) or "state" in params:
         TAB_MODEL = build_model(params.get("state"))
-    return build_view_model(TAB_MODEL)
+    if params.get("refresh", False) and TAB_MODEL is not None:
+        TAB_MODEL.refresh_all(params.get("now"))
+    return css_colours(build_view_model(TAB_MODEL))
