@@ -1,49 +1,10 @@
-"""
-src/trading/poa_tournament.py — PoA Tournament Engine (v1)
-════════════════════════════════════════════════════════════════════════════
+"""PoA tournaments built and run by ``TournamentEngine``.
 
-Tournament layer above the existing competition stack (CompetitionEngine,
-TokenLedger, LocalTestnet). Provides structured match formats, dynamic
-events, replay hashes, and bot isolation discipline.
-
-ARCHITECTURAL POSITION — this module is NEW, additive, and does not
-modify the existing src/competition/* stack. The legacy integration
-hook in nuclear_live.py::_run_poa_round was removed when nuclear_live
-was retired in v3.18.3. PoA integration with the new Nuclear Mode
-(under src/simulator/) will use this engine directly.
-
-TOURNAMENT TYPES (v1)
-─────────────────────
-DUEL      2 bots · 60 candles · 3 MarketShock events · best PnL wins
-MELEE     4-8 bots · 120 candles · elimination quartile every 20 candles
-          plus 1-2 PuzzleEvents · last standing wins
-GAUNTLET  1 bot vs scripted NpcOpponent sequence · scaffolding for
-          future bounty-monster injection
-
-DYNAMIC EVENTS
-──────────────
-MarketShock    perturb slippage model for 1-3 ticks (all participants)
-PuzzleEvent    signal-recognition challenge (MELEE/GAUNTLET only)
-RegimeFlip     swap volatility profile mid-run (rare, high-impact)
-
-Events are SEEDED PER TOURNAMENT — unpredictable within a match,
-reproducible across replays. R57 EPM discipline applied to tournament
-play: same seed → same event sequence → same outcome.
-
-BOT ISOLATION (R58 TBI — Tournament Bot Isolation)
-───────────────────────────────────────────────────
-Tournaments NEVER mutate the underlying bot's production state. A
-Participant wraps a read-only adapter over a ScrummingBot's
-configuration + an isolated BotStats snapshot. Production holdings,
-balances, and live stats are untouched by tournament play.
-
-SETTLEMENT
-──────────
-All ACRV awards route through the existing TokenLedger.
-bounty_testnet_wei field is a stub; testnet settlement plumbing will
-land as a separate SettlementAdapter in a future turn.
-
-sadp: R28 R29 R42 R43 R44 R47 R49 R50 R51 R57 R58
+``build_duel``, ``build_melee`` and ``build_gauntlet`` return a ``Tournament``
+from a ``TournamentConfig``, and ``run`` plays it over a candle provider to an
+``Outcome``. ``DynamicEventScheduler`` places MARKET_SHOCK, PUZZLE_EVENT and
+REGIME_FLIP events from ``TournamentConfig.seed``. ``LocalACRVAdapter`` settles
+``Outcome.acrv_awarded`` and ``_persist`` writes each ``Tournament`` to JSON.
 """
 
 from __future__ import annotations
@@ -62,11 +23,6 @@ from typing import Callable, Optional, Protocol
 logger = logging.getLogger("acervator.poa_tournament")
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# Enums — first-class state vocabularies
-# ══════════════════════════════════════════════════════════════════════════
-
-
 class TournamentType(Enum):
     DUEL = "duel"
     MELEE = "melee"
@@ -75,10 +31,10 @@ class TournamentType(Enum):
 
 class TournamentState(Enum):
     PENDING = "pending"  # created, not open
-    OPEN = "open"  # accepting participants
-    IN_PROGRESS = "in_progress"  # battle underway
-    CONCLUDED = "concluded"  # outcome computed, not yet settled
-    SETTLED = "settled"  # ACRV awarded via TokenLedger
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    CONCLUDED = "concluded"  # outcome computed, settlement not attempted
+    SETTLED = "settled"  # SettlementAdapter.settle reported settled
     FAILED = "failed"  # error during play; no settlement
 
 
@@ -88,36 +44,25 @@ class DynamicEventType(Enum):
     REGIME_FLIP = "regime_flip"
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# Season stub — hermetic theming layer lands in a later turn
-# ══════════════════════════════════════════════════════════════════════════
-
-
 @dataclass
 class Season:
-    """Stub. Real hermetic generative seasons come in a layer-4 turn.
-    For v1, just carries the round index + a label for audit."""
+    """Round index and label carried on ``Tournament.season``."""
 
     number: int
     label: str = "neutral"
-    # Future fields: planet, alchemical_stage, modifiers, themes
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# Participant abstraction — R58 TBI enforcement
-# ══════════════════════════════════════════════════════════════════════════
 
 
 class ParticipantKind(Enum):
-    BOT = "bot"  # wraps a live ScrummingBot via isolated snapshot
-    NPC = "npc"  # scripted opponent for GAUNTLET (future: monster)
+    BOT = "bot"  # Participant.source_bot_id names a bot; no bot object is held
+    NPC = "npc"  # scored by _tick_npc from Participant.npc_config
 
 
 @dataclass
 class ParticipantStats:
-    """Tournament-scoped stats. MUST NOT be the same object as the
-    live bot's stats. Mutated during play; never written back.
-    sadp: R58 TBI"""
+    """Per-``Participant`` tallies mutated by ``_tick_participant``.
+
+    ``eliminated_at_round`` is set by ``_run_melee`` and ``_run_gauntlet``.
+    """
 
     pnl: float = 0.0
     trades: int = 0
@@ -131,57 +76,47 @@ class ParticipantStats:
 
 @dataclass
 class Participant:
-    """Unified entry for both bot-backed and NPC-backed competitors.
-    A bot Participant holds a REFERENCE to the source bot for config
-    lookup (asset class, symbol) but operates on its own stats snapshot.
+    """A competitor entered in a ``Tournament``.
 
-    sadp: R58 TBI — underlying bot.stats is read-only from this type's
-    perspective. Any stat mutation lands in self.stats (isolated).
+    ``source_bot_id`` and ``symbol`` are set for ``ParticipantKind.BOT``;
+    ``npc_config`` is set for ``ParticipantKind.NPC``.
     """
 
     participant_id: str
     kind: ParticipantKind
     display_name: str
     stats: ParticipantStats = field(default_factory=ParticipantStats)
-    # For BOT-kind: the symbol this bot trades (for R55 VH class lookup)
     symbol: Optional[str] = None
-    # For NPC-kind: scripted difficulty parameters
     npc_config: Optional[dict] = None
-    # Read-only reference to source bot (not mutated by tournament)
     source_bot_id: Optional[str] = None
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# Dynamic events — the "hybrid" content injection
-# ══════════════════════════════════════════════════════════════════════════
 
 
 @dataclass
 class DynamicEvent:
     event_id: str
     etype: DynamicEventType
-    tick: int  # candle index at which event fires
-    payload: dict  # event-specific parameters
+    tick: int  # candle index chosen by DynamicEventScheduler.schedule
+    payload: dict
     resolved: bool = False
     resolution: Optional[dict] = None
 
 
 class DynamicEventScheduler:
-    """Schedules events at tournament start using a deterministic seed.
-    Same seed → same event sequence. Events are unpredictable WITHIN a
-    match (bots don't know the tick at play time) but reproducible
-    ACROSS replays (audit/debug)."""
+    """Places ``DynamicEvent`` objects on ticks from a seeded ``random.Random``.
+
+    ``schedule`` returns the same list for the same seed, ``ttype`` and
+    ``n_candles``.
+    """
 
     def __init__(self, seed: int, ttype: TournamentType, n_candles: int):
         self._rng = random.Random(seed)
-        self._seed = seed  # retained for deterministic event IDs
+        self._seed = seed  # formatted into every DynamicEvent.event_id
         self._ttype = ttype
         self._n_candles = n_candles
 
     def schedule(self) -> list[DynamicEvent]:
-        """Generate the full event list for this tournament up front."""
+        """Return the ``DynamicEvent`` list for this tournament, sorted by tick."""
         events: list[DynamicEvent] = []
-        # Event counts per type
         if self._ttype == TournamentType.DUEL:
             n_shocks, n_puzzles, n_flips = 3, 0, 0
         elif self._ttype == TournamentType.MELEE:
@@ -189,7 +124,7 @@ class DynamicEventScheduler:
         else:  # GAUNTLET
             n_shocks, n_puzzles, n_flips = 2, 1, 0
 
-        # Place events at random ticks (avoiding first 5 and last 5 candles)
+        # Ticks avoid the first 5 and the last 5 candles.
         lo, hi = 5, max(6, self._n_candles - 5)
         used_ticks = set()
 
@@ -199,16 +134,12 @@ class DynamicEventScheduler:
                 if t not in used_ticks:
                     used_ticks.add(t)
                     return t
-            # Fallback: take any unused
             for t in range(lo, hi + 1):
                 if t not in used_ticks:
                     used_ticks.add(t)
                     return t
-            return lo  # last resort
+            return lo
 
-        # Deterministic event IDs — derived from seed + type + ordinal
-        # so replay RNG seeded from event_id is itself reproducible.
-        # sadp: R57 EPM
         for i in range(n_shocks):
             events.append(
                 DynamicEvent(
@@ -253,14 +184,8 @@ class DynamicEventScheduler:
                 )
             )
 
-        # Sort by tick for deterministic iteration
         events.sort(key=lambda e: e.tick)
         return events
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# Round result — fine-grained audit trail
-# ══════════════════════════════════════════════════════════════════════════
 
 
 @dataclass
@@ -281,36 +206,27 @@ class Outcome:
     total_events: int
     replay_hash: str
     acrv_awarded: int = 0
-    testnet_tx_hash: Optional[str] = None  # stub for future settlement
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# Tournament config — tuning knobs
-# ══════════════════════════════════════════════════════════════════════════
+    testnet_tx_hash: Optional[str] = None  # never assigned in this module
 
 
 @dataclass
 class TournamentConfig:
     ttype: TournamentType
     n_candles: int = 60
-    round_size_candles: int = 20  # for MELEE elimination cadence
+    round_size_candles: int = 20  # _run_melee cadence, _run_gauntlet round length
     min_participants: int = 2
     max_participants: int = 8
-    acrv_purse: int = 10  # total ACRV to distribute
-    seed: int = 0  # 0 = use UUID hash (non-deterministic)
-    bounty_testnet_wei: int = 0  # stub; zero until settlement lands
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# Settlement adapter protocol — default local, future Sepolia
-# ══════════════════════════════════════════════════════════════════════════
+    acrv_purse: int = 10
+    seed: int = 0  # the build_* methods substitute _hash_seed when seed is None
+    bounty_testnet_wei: int = 0  # never read in this module
 
 
 class SettlementAdapter(Protocol):
-    """Protocol for paying out tournament winnings. v1 uses
-    LocalACRVAdapter (the existing TokenLedger). Future:
-    SepoliaAdapter will route to testnet wei bounty wallets.
-    sadp: R44 R57"""
+    """Settlement contract used by ``TournamentEngine``.
+
+    ``settle`` receives the ``Outcome`` and the ``Participant`` list and
+    returns a result dict carrying a ``settled`` key.
+    """
 
     def settle(
         self, tournament_id: str, outcome: Outcome, participants: list[Participant]
@@ -318,11 +234,14 @@ class SettlementAdapter(Protocol):
 
 
 class LocalACRVAdapter:
-    """Default settlement — pays via the existing TokenLedger in
-    ACRV tokens. No network, no gas, no real currency."""
+    """Default ``SettlementAdapter`` for ``TournamentEngine``.
+
+    ``settle`` reports ``Outcome.acrv_awarded`` and calls no method on the
+    ledger given to ``__init__``.
+    """
 
     def __init__(self, token_ledger=None):
-        self._ledger = token_ledger  # optional; None runs pure in-memory
+        self._ledger = token_ledger  # never read by settle
 
     def settle(
         self, tournament_id: str, outcome: Outcome, participants: list[Participant]
@@ -330,26 +249,18 @@ class LocalACRVAdapter:
         if outcome.winner_id is None:
             return {"settled": False, "reason": "no winner"}
         if self._ledger is None:
-            # Pure in-memory — just record the intent
             return {
                 "settled": True,
                 "adapter": "in_memory",
                 "winner_id": outcome.winner_id,
                 "acrv": outcome.acrv_awarded,
             }
-        # Real TokenLedger path (to be fully wired in integration turn)
-        # Hook point: self._ledger.award(bot_id, tournament_id, ...)
         return {
             "settled": True,
             "adapter": "token_ledger",
             "winner_id": outcome.winner_id,
             "acrv": outcome.acrv_awarded,
         }
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# The Tournament class
-# ══════════════════════════════════════════════════════════════════════════
 
 
 @dataclass
@@ -370,7 +281,7 @@ class Tournament:
         return self.config.ttype
 
     def to_dict(self) -> dict:
-        """Serialize for persistence / replay."""
+        """Return a JSON-ready dict of this ``Tournament`` for ``_persist``."""
         return {
             "tournament_id": self.tournament_id,
             "type": self.ttype.value,
@@ -388,21 +299,12 @@ class Tournament:
         }
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# Engine — builds + runs tournaments
-# ══════════════════════════════════════════════════════════════════════════
-
-
 class TournamentEngine:
-    """Constructs and runs tournaments. Integrates with:
-      - existing TokenLedger via SettlementAdapter
-      - scrumming_bot configs (read-only) via Participant wrappers
-      - R55 VH classifier for per-asset-class slippage tolerance
+    """Builds and runs ``Tournament`` objects.
 
-    Persists every concluded tournament to logs/tournaments/<id>.json
-    for audit + replay.
-
-    sadp: R49 R50 R51 R57 R58
+    ``build_duel``, ``build_melee`` and ``build_gauntlet`` construct one;
+    ``run`` plays it, settles it through ``_settlement`` and calls
+    ``_persist``.
     """
 
     def __init__(
@@ -415,11 +317,9 @@ class TournamentEngine:
         )
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._settlement = settlement or LocalACRVAdapter()
-        # R47 counters for observability
         self._tournaments_run: int = 0
         self._tournaments_failed: int = 0
 
-    # ── Factory methods ────────────────────────────────────────────────
     def build_duel(
         self,
         a: Participant,
@@ -428,7 +328,10 @@ class TournamentEngine:
         acrv_purse: int = 10,
         seed: Optional[int] = None,
     ) -> Tournament:
-        """Construct a DUEL tournament: 2 participants, 60 candles."""
+        """Return a DUEL ``Tournament`` over 60 candles for ``a`` and ``b``.
+
+        ``seed`` defaults to ``_hash_seed(a, b, season)``.
+        """
         if a.participant_id == b.participant_id:
             raise ValueError("DUEL participants must differ")
         cfg = TournamentConfig(
@@ -449,8 +352,11 @@ class TournamentEngine:
         acrv_purse: int = 20,
         seed: Optional[int] = None,
     ) -> Tournament:
-        """Construct a MELEE tournament: 4-8 participants, quartile
-        elimination every 20 candles over 120 candles."""
+        """Return a MELEE ``Tournament`` over 120 candles for 4 to 8 participants.
+
+        ``_run_melee`` drops the bottom quartile every
+        ``round_size_candles`` candles.
+        """
         if not (4 <= len(participants) <= 8):
             raise ValueError(
                 f"MELEE requires 4-8 participants, got {len(participants)}"
@@ -474,8 +380,10 @@ class TournamentEngine:
         acrv_purse: int = 15,
         seed: Optional[int] = None,
     ) -> Tournament:
-        """Construct a GAUNTLET: 1 bot vs N scripted NPCs sequentially.
-        Foundation for future bounty-monster injection."""
+        """Return a GAUNTLET ``Tournament`` for ``challenger`` and ``npc_sequence``.
+
+        ``n_candles`` is 40 per entry of ``npc_sequence``.
+        """
         if challenger.kind != ParticipantKind.BOT:
             raise ValueError("GAUNTLET challenger must be BOT kind")
         if not npc_sequence or any(p.kind != ParticipantKind.NPC for p in npc_sequence):
@@ -519,21 +427,15 @@ class TournamentEngine:
         )
         return t
 
-    # ── Run ────────────────────────────────────────────────────────────
     def run(
         self,
         tournament: Tournament,
         candle_provider: Optional[Callable[[int], dict]] = None,
     ) -> Outcome:
-        """Execute the tournament. candle_provider(tick) returns a dict
-        with at least 'close' price; if None, uses a synthetic series.
+        """Play ``tournament`` and return its ``Outcome``.
 
-        This is the core battle loop. v1 implementation is deliberately
-        lightweight — it does PnL accounting and event resolution without
-        calling into the full ScrummingBot state machine. Integration
-        with live bot decision logic (R57 EPM) is a later turn.
-
-        sadp: R55 R57 R58
+        ``candle_provider(tick)`` returns a dict holding ``close``; when it is
+        None, ``_synthetic_candles`` supplies one.
         """
         if tournament.state != TournamentState.OPEN:
             raise RuntimeError(
@@ -562,7 +464,6 @@ class TournamentEngine:
             outcome = self._compute_outcome(tournament)
             tournament.outcome = outcome
 
-            # Settlement
             settlement = self._settlement.settle(
                 tournament.tournament_id, outcome, tournament.participants
             )
@@ -587,14 +488,12 @@ class TournamentEngine:
             tournament.concluded_at = time.time()
             self._tournaments_failed += 1
             logger.exception("Tournament %s FAILED: %s", tournament.tournament_id, e)
-            # Still persist the failure for audit
             try:
                 self._persist(tournament)
             except Exception:
-                pass  # R28-OK / R61 ACCEPT — persist of failure state is best-effort; original exception re-raised below; do not mask the original tournament failure with a persist error if disk is full or persist itself fails
+                pass
             raise
 
-    # ── Format-specific runners ────────────────────────────────────────
     def _run_duel(self, t: Tournament, candle_provider: Callable[[int], dict]) -> None:
         events_by_tick = _events_by_tick(t.events)
         events_fired: list[str] = []
@@ -603,10 +502,8 @@ class TournamentEngine:
         for tick in range(t.config.n_candles):
             candle = candle_provider(tick)
             last_close = candle.get("close", last_close)
-            # Apply events for this tick
             for ev in events_by_tick.get(tick, []):
                 self._apply_event(t, ev, last_close, events_fired)
-            # Participant actions — each makes a scrum decision
             for p in t.participants:
                 self._tick_participant(p, candle, tick, t.config.seed)
 
@@ -642,14 +539,13 @@ class TournamentEngine:
                 if p.participant_id in active:
                     self._tick_participant(p, candle, tick, t.config.seed)
 
-            # Elimination: at each round boundary, eliminate bottom quartile
             if (tick + 1) % t.config.round_size_candles == 0:
                 round_number += 1
                 active_ranked = sorted(
                     [p for p in t.participants if p.participant_id in active],
                     key=lambda p: p.stats.pnl,
                 )
-                # Drop bottom quartile (min 1, at least keeping 1 alive)
+                # At least one ranked participant always stays active.
                 n_drop = max(1, len(active_ranked) // 4)
                 n_drop = min(n_drop, len(active_ranked) - 1)
                 dropped: list[str] = []
@@ -707,33 +603,26 @@ class TournamentEngine:
                 )
             )
             round_events = []
-            # If challenger lags badly, mark as defeated (no further NPCs)
             if challenger.stats.pnl < npc.stats.pnl - 50.0:
                 challenger.stats.eliminated_at_round = npc_idx
                 break
 
-    # ── Core per-tick behavior ─────────────────────────────────────────
     def _tick_participant(
         self, p: Participant, candle: dict, tick: int, seed: int
     ) -> None:
-        """v1 scrum-proxy logic. Simple momentum strategy; PnL accrues
-        on close-vs-prev movement. Later turn will integrate real
-        ScrummingBot decision flow via R57 EPM adapter.
+        """Move ``p.stats.pnl`` by one seeded draw for this tick.
 
-        sadp: R55 R57 — symbol-aware (R55 VH class) once integration lands
+        ``verify_hit`` is called with ``p.symbol`` on the ticks that count a
+        trade.
         """
-        # Seeded per-participant per-tick RNG for reproducibility
         rng = random.Random(
             (seed * 1_000_003 + hash(p.participant_id) + tick) & 0xFFFFFFFF
         )
         close = candle.get("close", 100.0)
-        # Simple momentum: random-walk "performance" scaled by participant
-        # stability factor (stub for bot config influence)
         raw_move = rng.gauss(0.0, 1.0)
         p.stats.pnl += raw_move
         if rng.random() < 0.15:
             p.stats.trades += 1
-            # Apply slippage model parity with R55 VH v3 class lookup
             if p.symbol:
                 from ..core.execution_discipline import verify_hit
 
@@ -746,19 +635,21 @@ class TournamentEngine:
                 p.stats.wins += 1
 
     def _tick_npc(self, npc: Participant, candle: dict, tick: int, seed: int) -> None:
-        """NPC decision logic — purely scripted, parameterized by
-        npc_config. Scaffolding for bounty-monster injection."""
+        """Move ``npc.stats.pnl`` by a seeded draw scaled by ``npc_config``.
+
+        The ``difficulty`` key of ``npc_config`` defaults to 1.0.
+        """
         rng = random.Random((seed * 7 + hash(npc.participant_id) + tick) & 0xFFFFFFFF)
         difficulty = (npc.npc_config or {}).get("difficulty", 1.0)
-        # NPCs get consistent small positive drift scaled by difficulty
         npc.stats.pnl += rng.gauss(0.5 * difficulty, 0.8)
 
-    # ── Event resolution ───────────────────────────────────────────────
     def _apply_event(
         self, t: Tournament, ev: DynamicEvent, last_close: float, fired_log: list[str]
     ) -> None:
-        """Resolve a dynamic event. v1: simple PnL adjustments reflecting
-        how each event type affects participants differently."""
+        """Apply ``ev`` to each live ``Participant`` and set ``ev.resolution``.
+
+        ``ev.resolved`` makes a second call a no-op.
+        """
         if ev.resolved:
             return
         fired_log.append(ev.event_id)
@@ -766,20 +657,17 @@ class TournamentEngine:
         if ev.etype == DynamicEventType.MARKET_SHOCK:
             mult = ev.payload.get("spread_multiplier", 5.0)
             direction = 1 if ev.payload.get("direction") == "up" else -1
-            # Traders with VH-aware symbols absorb shocks better
             for p in t.participants:
                 if p.stats.eliminated_at_round is not None:
                     continue
                 vh_protected = p.symbol is not None
                 impact = mult * 0.5 * direction
                 if vh_protected:
-                    impact *= 0.3  # R55 VH class tolerance absorbs 70%
+                    impact *= 0.3
                 p.stats.pnl += impact * random.Random(ev.event_id.encode()).gauss(0, 1)
             ev.resolution = {"applied_to": len(t.participants)}
 
         elif ev.etype == DynamicEventType.PUZZLE_EVENT:
-            # Participants attempt to answer; 60% of bots get it right
-            # (stub — later turn integrates with real TA heuristic)
             correct_idx = ev.payload.get("correct_index", 0)
             bonus = ev.payload.get("bonus_pnl", 30.0)
             rng = random.Random(ev.event_id.encode())
@@ -788,7 +676,7 @@ class TournamentEngine:
                 if p.stats.eliminated_at_round is not None:
                     continue
                 if p.kind == ParticipantKind.NPC:
-                    continue  # NPCs don't do puzzles in v1
+                    continue  # NPCs never answer a PUZZLE_EVENT
                 chose = rng.randint(0, ev.payload.get("options", 4) - 1)
                 if chose == correct_idx:
                     p.stats.pnl += bonus
@@ -799,8 +687,6 @@ class TournamentEngine:
             ev.resolution = {"correct": len(resolved_by), "resolved_by": resolved_by}
 
         elif ev.etype == DynamicEventType.REGIME_FLIP:
-            # Regime flip: increases volatility downstream. v1 models
-            # as a one-time bonus/penalty applied to every participant
             rng = random.Random(ev.event_id.encode())
             for p in t.participants:
                 if p.stats.eliminated_at_round is not None:
@@ -810,9 +696,7 @@ class TournamentEngine:
 
         ev.resolved = True
 
-    # ── Outcome computation ────────────────────────────────────────────
     def _compute_outcome(self, t: Tournament) -> Outcome:
-        # Determine winner
         if t.ttype == TournamentType.GAUNTLET:
             challenger = next(
                 p for p in t.participants if p.kind == ParticipantKind.BOT
@@ -829,11 +713,7 @@ class TournamentEngine:
             key=lambda x: -x[1],
         )
 
-        # Replay hash — captures config + events + final state for audit.
-        # Deliberately EXCLUDES instance identity (tournament_id, event_id)
-        # so that any two replays with the same seed + config produce
-        # the same hash regardless of which UUID was minted.
-        # sadp: R57 EPM
+        # hash_material omits tournament_id and event_id.
         hash_material = {
             "config": {**asdict(t.config), "ttype": t.ttype.value},
             "ttype": t.ttype.value,
@@ -859,9 +739,8 @@ class TournamentEngine:
             acrv_awarded=acrv,
         )
 
-    # ── Persistence ────────────────────────────────────────────────────
     def _persist(self, t: Tournament) -> None:
-        """Write tournament JSON to log dir for audit/replay."""
+        """Write ``t.to_dict`` as JSON under ``self._log_dir``."""
         path = self._log_dir / f"{t.tournament_id}.json"
         try:
             with path.open("w", encoding="utf-8") as f:
@@ -869,18 +748,12 @@ class TournamentEngine:
         except Exception as e:
             logger.warning("Failed to persist tournament %s: %s", t.tournament_id, e)
 
-    # ── Observability ──────────────────────────────────────────────────
     @property
     def stats(self) -> dict:
         return {
             "run": self._tournaments_run,
             "failed": self._tournaments_failed,
         }
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# Helpers
-# ══════════════════════════════════════════════════════════════════════════
 
 
 def _events_by_tick(events: list[DynamicEvent]) -> dict[int, list[DynamicEvent]]:
@@ -891,7 +764,7 @@ def _events_by_tick(events: list[DynamicEvent]) -> dict[int, list[DynamicEvent]]
 
 
 def _hash_seed(*items) -> int:
-    """Deterministic seed from any number of hashable items."""
+    """Return a 32-bit seed over ``Participant`` ids and ``Season`` fields."""
     parts = []
     for x in items:
         if isinstance(x, Participant):
@@ -905,9 +778,10 @@ def _hash_seed(*items) -> int:
 
 
 def _synthetic_candles(seed: int, n_candles: int) -> Callable[[int], dict]:
-    """Default candle provider — generates a synthetic OHLC series
-    deterministic for a given seed. Used when no real candle feed
-    is provided (tests, demos, sim-only tournaments)."""
+    """Return a ``provider(tick)`` yielding OHLC dicts from a seeded ``Random``.
+
+    ``run`` uses it when its ``candle_provider`` argument is None.
+    """
     rng = random.Random(seed)
     prices: list[float] = [100.0]
     for _ in range(n_candles):
@@ -928,19 +802,13 @@ def _synthetic_candles(seed: int, n_candles: int) -> Callable[[int], dict]:
     return provider
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# Convenience factories
-# ══════════════════════════════════════════════════════════════════════════
-
-
 def make_bot_participant(
     participant_id: str,
     display_name: str,
     source_bot_id: str,
     symbol: Optional[str] = None,
 ) -> Participant:
-    """Standard factory for bot-backed participant.
-    sadp: R58 TBI — new ParticipantStats, NOT the source bot's stats."""
+    """Return a BOT ``Participant`` holding a fresh ``ParticipantStats``."""
     return Participant(
         participant_id=participant_id,
         kind=ParticipantKind.BOT,
@@ -954,8 +822,7 @@ def make_bot_participant(
 def make_npc_participant(
     npc_id: str, label: str, difficulty: float = 1.0
 ) -> Participant:
-    """Factory for scripted NPC. Difficulty scales NPC scoring aggression.
-    Future: bounty monsters are this pattern + a testnet wei payout."""
+    """Return an NPC ``Participant`` whose ``npc_config`` carries ``difficulty``."""
     return Participant(
         participant_id=npc_id,
         kind=ParticipantKind.NPC,
