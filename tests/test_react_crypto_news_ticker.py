@@ -1621,9 +1621,9 @@ READS_FIRST = (
 
 def test_the_renderer_runs_this_module_once_and_after_the_ones_it_reads():
     order = load_order()
-    assert order.count(MODULE_PATH.name) == 1, (
-        f"{MODULE_PATH.name} runs {order.count(MODULE_PATH.name)} times"
-    )
+    assert (
+        order.count(MODULE_PATH.name) == 1
+    ), f"{MODULE_PATH.name} runs {order.count(MODULE_PATH.name)} times"
     assert runs_after(order, MODULE_PATH.name, *READS_FIRST), order
 
 

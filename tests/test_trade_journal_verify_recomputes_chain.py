@@ -59,9 +59,7 @@ def test_a_tampered_chain_hash_is_caught_by_verify(tmp_path):
     entries = [json.loads(line) for line in lines]
     real_hash = entries[1]["chain_hash"]
     entries[1]["chain_hash"] = "0" * len(real_hash)
-    path.write_text(
-        "\n".join(json.dumps(e) for e in entries) + "\n", encoding="utf-8"
-    )
+    path.write_text("\n".join(json.dumps(e) for e in entries) + "\n", encoding="utf-8")
 
     tampered_journal = TradeJournal(path=str(path))
     ok, count = tampered_journal.verify()

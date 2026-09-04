@@ -133,7 +133,9 @@ class JsRuntime(JsEngine):
             name = "ARG" + str(at)
             self.bind_json(name, value)
             parts.append("JSON.parse(" + name + ")")
-        return self.json("acervatorStartAllProgress." + api + "(" + ", ".join(parts) + ")")
+        return self.json(
+            "acervatorStartAllProgress." + api + "(" + ", ".join(parts) + ")"
+        )
 
 
 @pytest.fixture()
@@ -148,7 +150,15 @@ def js(qapp) -> JsRuntime:
 # module through its generic bag/list/field readers, and nothing else.
 # ---------------------------------------------------------------------------
 
-BAG_FIELDS = ("widget", "layout", "button_row", "headline", "subline", "buttons", "actions")
+BAG_FIELDS = (
+    "widget",
+    "layout",
+    "button_row",
+    "headline",
+    "subline",
+    "buttons",
+    "actions",
+)
 LIST_FIELDS = ("phases", "event_fields", "items", "calls")
 COLOUR_FIELDS = (
     "dialog_surface",
@@ -181,7 +191,9 @@ def reader_for(field: str) -> str:
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
-def test_every_field_the_surface_publishes_reaches_the_module(js: JsRuntime, state: str):
+def test_every_field_the_surface_publishes_reaches_the_module(
+    js: JsRuntime, state: str
+):
     """A field the module never carries is a value that stops at the bridge."""
     payload = state_payload(state)
     js.push(payload)
@@ -193,7 +205,9 @@ def test_every_field_the_surface_publishes_reaches_the_module(js: JsRuntime, sta
         for field in ALL_DECLARED_FIELDS
         if js.call(reader_for(field), field) != payload[field]
     }
-    assert not differing, f"{state}: {len(differing)} fields differ: {sorted(differing)}"
+    assert (
+        not differing
+    ), f"{state}: {len(differing)} fields differ: {sorted(differing)}"
 
 
 def test_the_module_names_the_fields_the_surface_declares(js: JsRuntime):
@@ -402,7 +416,7 @@ def test_the_literal_scan_catches_a_planted_colour():
     assert HEX_COLOUR.findall(planted)
     original = MODULE_PATH.read_bytes()
     try:
-        swap_module(MODULE_PATH, original + b'\nvar written = 12;\n')
+        swap_module(MODULE_PATH, original + b"\nvar written = 12;\n")
         on_disk = js_literals(MODULE_PATH.read_text(encoding="utf-8"))
         assert on_disk["numbers"] == ["12"]
     finally:
@@ -417,7 +431,9 @@ def test_the_literal_scan_catches_a_planted_colour():
 # ---------------------------------------------------------------------------
 
 
-def test_a_hostile_bot_id_reaches_the_module_as_the_text_the_surface_made(js: JsRuntime):
+def test_a_hostile_bot_id_reaches_the_module_as_the_text_the_surface_made(
+    js: JsRuntime,
+):
     payload = state_payload("hostile_bot_id")
     assert HOSTILE_ID in payload["headline_text"]
     assert any(HOSTILE_ID in line for line in payload["items"])
@@ -426,7 +442,9 @@ def test_a_hostile_bot_id_reaches_the_module_as_the_text_the_surface_made(js: Js
     assert js.call("list", "items") == payload["items"]
 
 
-def test_the_module_reads_a_button_s_live_enabled_state_not_its_starting_one(js: JsRuntime):
+def test_the_module_reads_a_button_s_live_enabled_state_not_its_starting_one(
+    js: JsRuntime,
+):
     """`buttons.cancel.enabled`/`buttons.close.enabled` never change; the
     live state is the top-level `cancel_enabled`/`close_enabled` field."""
     payload = state_payload("done")
@@ -540,13 +558,23 @@ def test_the_manifest_names_the_module_exactly_once():
 def test_the_module_is_reachable_in_the_page_load_order():
     order = load_order()
     assert order.count(MODULE_PATH.name) == 1
-    assert runs_after(order, MODULE_PATH.name, "react.production.min.js", "react-dom.production.min.js")
+    assert runs_after(
+        order,
+        MODULE_PATH.name,
+        "react.production.min.js",
+        "react-dom.production.min.js",
+    )
 
 
 def test_the_load_order_check_names_a_module_missing_from_the_order():
     """A check that agreed with any order would not have proved the line
     above; a hand-built order missing the module must fail it."""
-    assert runs_after(["react.production.min.js"], MODULE_PATH.name, "react.production.min.js") is False
+    assert (
+        runs_after(
+            ["react.production.min.js"], MODULE_PATH.name, "react.production.min.js"
+        )
+        is False
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -670,7 +698,15 @@ READ_PARTS = (
     "  return JSON.stringify(found); })()"
 )
 
-STYLE_NAMES = ["color", "backgroundColor", "minWidth", "width", "gap", "paddingTop", "fontSize"]
+STYLE_NAMES = [
+    "color",
+    "backgroundColor",
+    "minWidth",
+    "width",
+    "gap",
+    "paddingTop",
+    "fontSize",
+]
 
 
 def draw_dialog(browser: Browser, payload: dict) -> list:
@@ -726,7 +762,9 @@ def test_the_drawn_headline_and_items_match_the_surface(browser: Browser):
     assert [row["text"] for row in rows] == payload["items"]
 
 
-def test_a_hostile_bot_id_is_drawn_as_text_in_the_headline_and_the_list(browser: Browser):
+def test_a_hostile_bot_id_is_drawn_as_text_in_the_headline_and_the_list(
+    browser: Browser,
+):
     payload = state_payload("hostile_bot_id")
     parts = draw_dialog(browser, payload)
     headline = only(parts, "dialog/headline")
@@ -739,7 +777,9 @@ def test_a_hostile_bot_id_is_drawn_as_text_in_the_headline_and_the_list(browser:
     assert browser.js("window.HOST.getElementsByTagName('b').length") == 0
 
 
-def test_the_buttons_reflect_the_live_enabled_state_not_the_starting_one(browser: Browser):
+def test_the_buttons_reflect_the_live_enabled_state_not_the_starting_one(
+    browser: Browser,
+):
     """A read that always reported the starting `True`/`False` pair would
     pass a dialog stuck showing Cancel live after every bot finished."""
     payload = state_payload("done")
@@ -761,7 +801,10 @@ def test_a_refused_cancel_disables_cancel_and_names_the_failure(browser: Browser
     payload = cancel_failed_payload()
     parts = draw_dialog(browser, payload)
     assert only(parts, "dialog/headline")["text"] == surface.HEADLINE_CANCEL_FAILED
-    buttons = {one["attrs"]["data-name"]: one for one in at_path(parts, "dialog/button-row/button")}
+    buttons = {
+        one["attrs"]["data-name"]: one
+        for one in at_path(parts, "dialog/button-row/button")
+    }
     assert buttons["cancel"]["attrs"]["aria-disabled"] == "true"
 
 
@@ -770,7 +813,10 @@ def test_cancelled_reads_the_final_count_and_disables_cancel(browser: Browser):
     parts = draw_dialog(browser, payload)
     assert only(parts, "dialog/headline")["text"] == payload["headline_text"]
     assert "1/2" in payload["headline_text"]
-    buttons = {one["attrs"]["data-name"]: one for one in at_path(parts, "dialog/button-row/button")}
+    buttons = {
+        one["attrs"]["data-name"]: one
+        for one in at_path(parts, "dialog/button-row/button")
+    }
     assert buttons["cancel"]["attrs"]["aria-disabled"] == "true"
     assert buttons["close"]["attrs"]["aria-disabled"] == "false"
 
@@ -780,10 +826,14 @@ def test_whole_number_lengths_carry_their_unit_at_render(browser: Browser):
     var with no unit; every length here must carry its own unit."""
     payload = state_payload("done")
     dialog = only(draw_dialog(browser, payload), "dialog")
-    assert dialog["style"]["minWidth"] == str(payload["widget"]["minimum_width_px"]) + "px"
+    assert (
+        dialog["style"]["minWidth"] == str(payload["widget"]["minimum_width_px"]) + "px"
+    )
     assert dialog["style"]["width"] == str(payload["widget"]["size_px"][0]) + "px"
     assert dialog["style"]["gap"] == str(payload["layout"]["spacing_px"]) + "px"
-    assert dialog["style"]["paddingTop"] == str(payload["layout"]["margins_px"][1]) + "px"
+    assert (
+        dialog["style"]["paddingTop"] == str(payload["layout"]["margins_px"][1]) + "px"
+    )
     draw_dialog(browser, payload)
     # Computed font-size always normalises to px, so the unit the module
     # wrote is read off the specified (uncomputed) inline declaration.
@@ -825,13 +875,20 @@ def test_the_list_order_survives_number_like_bot_ids_in_the_real_dom(browser: Br
 #: `calls`, never a value this module invents.
 def test_close_delay_reads_the_surfaces_own_measured_value(js: JsRuntime):
     js.push(state_payload("no_bots"))
-    assert js.json("acervatorStartAllProgress.closeDelay()") == surface.NO_BOTS_CLOSE_DELAY_MS
+    assert (
+        js.json("acervatorStartAllProgress.closeDelay()")
+        == surface.NO_BOTS_CLOSE_DELAY_MS
+    )
     js.push(state_payload("done"))
-    assert js.json("acervatorStartAllProgress.closeDelay()") == surface.DONE_CLOSE_DELAY_MS
+    assert (
+        js.json("acervatorStartAllProgress.closeDelay()") == surface.DONE_CLOSE_DELAY_MS
+    )
     assert surface.NO_BOTS_CLOSE_DELAY_MS != surface.DONE_CLOSE_DELAY_MS
 
 
-def test_close_delay_is_undefined_where_the_surface_made_no_closeafter_call(js: JsRuntime):
+def test_close_delay_is_undefined_where_the_surface_made_no_closeafter_call(
+    js: JsRuntime,
+):
     """The control for the check above: a state with no `closeAfter`
     entry must not read as some other number, which would hide a bug
     where every state read the same hardcoded delay."""

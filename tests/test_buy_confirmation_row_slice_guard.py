@@ -59,8 +59,12 @@ def test_a_line_that_does_start_with_its_label_is_sliced():
 
 
 @pytest.mark.parametrize(
-    "row", sorted(one for one in surface.DETAIL_ROW_LABELS
-                  if surface._DETAIL_ROW_KEEPS_ROW_END[one])
+    "row",
+    sorted(
+        one
+        for one in surface.DETAIL_ROW_LABELS
+        if surface._DETAIL_ROW_KEEPS_ROW_END[one]
+    ),
 )
 def test_a_line_that_lost_its_row_end_is_refused(row):
     """Stripping the tail by length ate real digits: $100.00 became $10."""

@@ -60,7 +60,7 @@ def declared_absent(text: str) -> set[str]:
     head = text.find(ABSENT_HEADING)
     if head < 0:
         return set()
-    rest = text[head + len(ABSENT_HEADING):]
+    rest = text[head + len(ABSENT_HEADING) :]
     stop = rest.find("\n## ")
     return set(re.findall(TRACKED, rest if stop < 0 else rest[:stop]))
 
@@ -90,7 +90,9 @@ def main() -> int:
         if cited not in excused and not (ROOT / cited).exists()
     )
     unresolved = sorted(
-        sha for sha in set(re.findall(r"`([0-9a-f]{7,40})`", text)) if not git("cat-file", "-t", sha)
+        sha
+        for sha in set(re.findall(r"`([0-9a-f]{7,40})`", text))
+        if not git("cat-file", "-t", sha)
     )
 
     print("  declared absent on purpose          : " + str(len(excused)))
@@ -105,10 +107,16 @@ def main() -> int:
     if stale:
         print()
         print("DRIFTED. " + str(count) + " commits since " + hop.name + " was written,")
-        print("at or past the threshold of " + str(STALE_AFTER) + ". Rewrite what moved; never append.")
+        print(
+            "at or past the threshold of "
+            + str(STALE_AFTER)
+            + ". Rewrite what moved; never append."
+        )
     if missing or unresolved:
         print()
-        print("It cites things that are gone. Every claim must be checkable in one command.")
+        print(
+            "It cites things that are gone. Every claim must be checkable in one command."
+        )
 
     return 1 if (stale or missing or unresolved) else 0
 

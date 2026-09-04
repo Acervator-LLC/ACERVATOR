@@ -24,7 +24,6 @@ from tests.fixtures.web_js_modules import (  # noqa: E402
     js_literals,
     load_order,
     new_engine,
-    runs_after,
     swap_module,
 )
 

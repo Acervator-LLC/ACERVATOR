@@ -16,7 +16,9 @@ from dev_harness.harness.rules import hallucination
 
 def _repo(tmp_path: Path, cited_lines: int) -> Path:
     """Build a minimal repo whose src/cited.py holds `cited_lines` lines."""
-    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'x'\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = 'x'\n", encoding="utf-8"
+    )
     src = tmp_path / "src"
     src.mkdir()
     body = "".join(f"x = {n}\n" for n in range(cited_lines))

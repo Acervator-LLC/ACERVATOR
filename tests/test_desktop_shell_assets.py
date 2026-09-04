@@ -146,10 +146,10 @@ def test_no_module_on_disk_goes_unloaded_by_tag_or_manifest():
     `module_manifest.js`."""
     reached = modules_the_page_loads() | set(manifest_names())
     unloaded = sorted({p.name for p in web_modules()} - reached)
-    assert not unloaded, (
-        str(len(unloaded))
-        + " modules ship but neither a script tag nor the manifest names "
-        "them: " + ", ".join(unloaded)
+    assert not unloaded, str(
+        len(unloaded)
+    ) + " modules ship but neither a script tag nor the manifest names " "them: " + ", ".join(
+        unloaded
     )
 
 
