@@ -7,10 +7,15 @@ or removed, and only whitespace was normalised.
 Six part files hold that transcription alone.
 [07-indicators.md](07-indicators.md) and [08-tabs.md](08-tabs.md) transcribe
 the PDF and add sections of their own.
+Four files transcribe nothing, because the PDF carries no body text for the
+parts they belong to:
 [09-updates-and-versioning.md](09-updates-and-versioning.md) and
-[10-live-trade-history.md](10-live-trade-history.md) transcribe nothing: the
-PDF carries no body text for the parts they belong to, and both are written
-from the source and from measurements over the operator's own venue export.
+[10-live-trade-history.md](10-live-trade-history.md), written from the source
+and from measurements over the operator's own venue export; and
+[11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md)
+and [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md), written from
+the source alone. The `NN-` prefix of a file is its own name and carries no
+meaning; the Part column below is what places a file in the manual.
 
 ## Contents
 
@@ -24,6 +29,8 @@ from the source and from measurements over the operator's own venue export.
 | [06-trading-tab.md](06-trading-tab.md) | 3 | 14 to 27 | System architecture, then the Trading Tab walkthrough |
 | [07-indicators.md](07-indicators.md) | 3 | 27 to 29 | Indicator Voting Panel and the twelve indicators |
 | [08-tabs.md](08-tabs.md) | 3 | 29 to 35 | Portfolio panels, Market Inspector, Bot Swarm, Asset Charts, History, Simulator, Paper Trader, Proof of Accumulation, Console, System Status, Settings |
+| [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
+| [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
 | [09-updates-and-versioning.md](09-updates-and-versioning.md) | 7 | — | Version derivation, the six readers, the baked bundle value, the release gate |
 | [10-live-trade-history.md](10-live-trade-history.md) | 9 | — | The live fill record, VWAP charts, trade grading, gate coverage |
 | [FIGURES.md](FIGURES.md) | — | 15 to 44 | The figure inventory |
@@ -65,8 +72,8 @@ carrying `—` is not manual text and is not rendered. The order of the rows is
 the order the PDF prints them, and the first row is the title page. A row naming
 a file that is not on disk, and a `NN-*.md` file this table does not list, both
 stop the build. A `—` in the Manual pages column marks a file the PDF is not
-the source of. Parts 4, 5, 6 and 8 have no file; they print a part page and
-appear in the contents, and a new row here folds a file into its part.
+the source of. Parts 4 and 8 have no file; they print a part page and appear in
+the contents, and a new row here folds a file into its part.
 
 ## Figures
 
@@ -92,9 +99,11 @@ sit. That is the flag for a corrected PDF.
 
 `PART_FILES` in that tool names the eight files the PDF is the source of. The
 files under [08-tabs/](08-tabs/README.md),
-[09-updates-and-versioning.md](09-updates-and-versioning.md) and
-[10-live-trade-history.md](10-live-trade-history.md) are not among them and are
-never written.
+[09-updates-and-versioning.md](09-updates-and-versioning.md),
+[10-live-trade-history.md](10-live-trade-history.md),
+[11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md)
+and [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) are not among
+them and are never written.
 
 - 44 pages, 9,759 whitespace-separated tokens, 38 embedded images.
 - Page 24 and pages 36 to 44 extract zero visible characters.
@@ -118,9 +127,7 @@ both whitespace only:
 Compared token by token against the PDF, the transcription holds 9,759 tokens in
 the same order, with no loss. The added sections in
 [07-indicators.md](07-indicators.md) and [08-tabs.md](08-tabs.md) sit outside
-that count, and so do
-[09-updates-and-versioning.md](09-updates-and-versioning.md) and
-[10-live-trade-history.md](10-live-trade-history.md) in full.
+that count. The four files the PDF is not the source of sit outside it in full.
 
 ### Headings
 
