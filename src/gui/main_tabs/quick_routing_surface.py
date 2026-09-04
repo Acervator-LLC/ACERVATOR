@@ -140,6 +140,9 @@ SELF_WIRE_DISCONNECT_TEXT = (
     "Every selected pair is the same bot — nothing to disconnect."
 )
 SAVE_FAILED_FORMAT = "Nothing was changed — saving the routing table failed:\n\n{why}"
+CLEAR_FAILED_FORMAT = (
+    "Nothing was changed — clearing the routing table failed:\n\n{why}"
+)
 
 CREATE_VERB = "Create"
 DISCONNECT_VERB = "Disconnect"
@@ -717,18 +720,17 @@ class QuickRoutingModel:
     def disconnect_all_clicked(self) -> str:
         """Clear every wire in the swarm after one question.
 
-        Answers the name of the step it stopped on. A clear that fails
-        is treated as having removed nothing, and the redraw then runs
-        over an empty list.
+        Answers the name of the step it stopped on. A clear that raises
+        reaches reject with CLEAR_FAILED_FORMAT and never emits.
         """
         if not self.tab.ask(DISCONNECT_ALL_TITLE, DISCONNECT_ALL_BODY):
             return REFUSED_UNCONFIRMED
         stopped = DONE
         try:
             removed = self.tab.clear_all_routes()
-        except Exception:
-            removed = []
-            stopped = CLEAR_FAILED
+        except Exception as exc:
+            self.reject(CLEAR_FAILED_FORMAT.format(why=exc))
+            return CLEAR_FAILED
         try:
             for source, dest in removed:
                 self.tab.emit(WIRE_REMOVED, source_id=source, target_id=dest)
@@ -867,6 +869,7 @@ def build_view_model(
             "self_wire_connect": SELF_WIRE_CONNECT_TEXT,
             "self_wire_disconnect": SELF_WIRE_DISCONNECT_TEXT,
             "save_failed": SAVE_FAILED_FORMAT,
+            "clear_failed": CLEAR_FAILED_FORMAT,
             "step": STEP_REFUSAL,
         },
         "confirmation": {
