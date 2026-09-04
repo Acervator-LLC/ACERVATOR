@@ -72,4 +72,5 @@ window.ACERVATOR_MODULES = [
   "audio_suite.js",
   "init_wizard.js",
   "launcher.js",
+  "history_tab.js",
 ];

@@ -81,6 +81,7 @@ if _HAS_QT:
             self._last_fetched_ts: float = 0.0
             self._page_gate_index: dict = {}
             self._page_voting_index: dict = {}
+            self._to_default_ts: int = 0
             self._build_ui()
 
         def set_bot_manager(self, bot_manager) -> None:
@@ -124,6 +125,12 @@ if _HAS_QT:
             self._to_dt.setCalendarPopup(True)
             self._to_dt.setDisplayFormat("yyyy-MM-dd HH:mm")
             self._to_dt.setMinimumWidth(150)
+            self._to_dt.setToolTip(
+                "Upper bound of the trade window. Left alone it follows the "
+                "clock, so trades filled while the tab is open still show. "
+                "Set it to pin the window to a fixed instant."
+            )
+            self._remember_to_bound()
             fl.addWidget(self._to_dt)
 
             fl.addWidget(QLabel("Exchange:"))
@@ -205,6 +212,39 @@ if _HAS_QT:
             foot.addWidget(self._export_btn)
 
             outer.addLayout(foot)
+
+        def _remember_to_bound(self) -> None:
+            """Record the To value the tab itself wrote, read back off the
+            widget so any precision Qt drops is recorded as stored."""
+            try:
+                self._to_default_ts = int(self._to_dt.dateTime().toSecsSinceEpoch())
+            except Exception as _to_exc:  # noqa: BLE001 - a torn-down date edit
+                logger.debug("history: To bound not readable: %s", _to_exc)
+                self._to_default_ts = 0
+
+        def _to_bound_ts(self) -> int:
+            """The To bound in unix seconds, advanced to now while untouched.
+
+            An untouched bound means "up to now". Frozen at the instant the
+            tab was built it hides every trade the exchange filled after
+            that, so the screen disagrees with the venue. A bound the
+            operator set is left exactly where they put it.
+            """
+            try:
+                current = int(self._to_dt.dateTime().toSecsSinceEpoch())
+            except Exception as _to_exc:  # noqa: BLE001 - a torn-down date edit
+                logger.debug("history: To bound not readable: %s", _to_exc)
+                return 0
+            if current != self._to_default_ts:
+                return current
+            now = int(time.time())
+            if now <= current:
+                return current
+            self._to_dt.blockSignals(True)
+            self._to_dt.setDateTime(QDateTime.fromSecsSinceEpoch(now))
+            self._to_dt.blockSignals(False)
+            self._remember_to_bound()
+            return self._to_default_ts
 
         def _kick_async_fetch(self) -> None:
             if self._fetch_in_flight:
@@ -394,11 +434,11 @@ if _HAS_QT:
                 )
                 self._kick_async_fetch()
                 return
+            to_ts = self._to_bound_ts()
             try:
                 from_ts = self._from_dt.dateTime().toSecsSinceEpoch()
-                to_ts = self._to_dt.dateTime().toSecsSinceEpoch()
             except Exception:
-                from_ts, to_ts = 0, 0
+                from_ts = 0
             exch_f = self._exch_combo.currentText()
             sym_f = self._sym_combo.currentText()
             side_f = self._side_combo.currentText()
@@ -420,17 +460,19 @@ if _HAS_QT:
                 out.append(r)
             self._filtered = out
             _filter_s = time.monotonic() - _filter_t0
-            # Re-read from the combos, not the loop's locals, so a mis-wired
-            # predicate disagrees.
+            # Re-read from the widgets, not the loop's locals, so a mis-wired
+            # predicate disagrees. The To bound is read back too: an advance
+            # the bound reported but never stored shows up here.
             _v_exch = self._exch_combo.currentText()
             _v_sym = self._sym_combo.currentText()
             _v_side = self._side_combo.currentText()
+            _v_to = int(self._to_dt.dateTime().toSecsSinceEpoch())
             _violations = 0
             for _r in self._filtered:
                 _rts = float(_r.get("timestamp", 0) or 0)
                 if from_ts > 0 and _rts < from_ts:
                     _violations += 1
-                elif to_ts > 0 and _rts > to_ts:
+                elif _v_to > 0 and _rts > _v_to:
                     _violations += 1
                 elif _v_exch != "(all)" and _r.get("exchange") != _v_exch:
                     _violations += 1
@@ -464,6 +506,7 @@ if _HAS_QT:
 
             self._from_dt.setDateTime(QDateTime(QDate(2026, 4, 1), QTime(0, 0, 0)))
             self._to_dt.setDateTime(QDateTime.currentDateTime())
+            self._remember_to_bound()
             self._exch_combo.setCurrentIndex(0)
             self._sym_combo.setCurrentIndex(0)
             self._side_combo.setCurrentIndex(0)
