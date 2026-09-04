@@ -21,6 +21,34 @@ was normalised.
 Pages 36 to 44 carry a figure and no text, so no part file covers them.
 [FIGURES.md](FIGURES.md) is their only record.
 
+One file carries more than the transcription.
+[08-tabs.md](08-tabs.md) keeps every transcribed sentence, in order and
+unaltered, and adds a description of the running code under each heading. The
+subsystem files below hold the longer form of those descriptions and none of
+them transcribe the PDF.
+
+## Part 3 subsystem detail
+
+Written from the source, not from the PDF. Each file names the module behind a
+screen, the symbols inside it, the bridge method that serves its renderer, and
+the screen's state.
+
+| File | Covers |
+| ---- | ------ |
+| [08-tabs/README.md](08-tabs/README.md) | Index of the files below, the live tab set, how a screen reaches its renderer |
+| [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md) | The header strip: spendable columns, counter cards, privacy dots |
+| [08-tabs/market-inspector.md](08-tabs/market-inspector.md) | Signal table, opposing pairs, topology proposals, adopt |
+| [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md) | Nodes, Smart Wires, wire credits, the fold-tranche book |
+| [08-tabs/asset-charts.md](08-tabs/asset-charts.md) | One candlestick panel per traded symbol |
+| [08-tabs/history.md](08-tabs/history.md) | Venue trade history, grading, gate analysis |
+| [08-tabs/simulator.md](08-tabs/simulator.md) | Fleet Replay, Stone Tablets, the gate-latch criterion, Nuclear Mode |
+| [08-tabs/paper-trader.md](08-tabs/paper-trader.md) | What the step is, and the proof no module implements it |
+| [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain |
+| [08-tabs/console.md](08-tabs/console.md) | Python log tail and the emitter signal stream |
+| [08-tabs/system-status.md](08-tabs/system-status.md) | Emitter Network and Watchdog, and the proof no tab exists |
+| [08-tabs/settings.md](08-tabs/settings.md) | The User page and the Exchanges page |
+| [08-tabs/promotion-pipeline.md](08-tabs/promotion-pipeline.md) | How a strategy earns its way to real money |
+
 ## Figures
 
 The manual carries 38 embedded images. They are captured output, so they are not
@@ -36,6 +64,11 @@ repository and are not committed. `tools/extract_product_manual.py` takes the
 PDF path as its `--pdf` parameter and rewrites both this directory and the
 figures directory. It exits non-zero when the markdown it wrote no longer holds
 every PDF token in order.
+
+`write_parts` overwrites every file in its part list, [08-tabs.md](08-tabs.md)
+included, which drops the code-derived descriptions added under that file's
+headings. The files under [08-tabs/](08-tabs/README.md) sit outside the part
+list and survive a re-extraction.
 
 - 44 pages, 9,759 whitespace-separated tokens, 38 embedded images.
 - Page 24 and pages 36 to 44 extract zero visible characters.
