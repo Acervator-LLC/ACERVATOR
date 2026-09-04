@@ -1,54 +1,11 @@
-"""
-usb_auth.py — USB Hardware Authentication Key for Acervator
-============================================================
-Converts a USB drive into a hardware authentication key for API credentials.
+"""USB hardware key for exchange credentials.
 
-SECURITY MODEL
---------------
-When a user exports their API keys to USB:
-  1. All stored exchange credentials are decrypted from local vault.
-  2. They are re-encrypted using a key derived from:
-       PBKDF2-HMAC-SHA256(
-           password = APP_HMAC_SECRET + volume_serial,
-           salt     = random 32 bytes stored in the auth file,
-           iterations = 260_000
-       )
-  3. The resulting .acervator_auth file is written to the USB root.
-  4. The file is prefixed with a magic header for identification.
-  5. The USB volume serial is stored in AppSettings per exchange
-     (hardware_mode=True, hw_volume_serial=<serial>).
-
-When hardware mode is active for an exchange:
-  - App scans mounted volumes for .acervator_auth + matching serial.
-  - If found, decrypts credentials from USB — never from local vault.
-  - If USB not present, exchange is locked (no credentials available).
-
-FILE FORMAT (.acervator_auth)
-------------------------------
-  [0:8]   Magic header: b'ACERVKEY'
-  [8:12]  Version: b'\x00\x01\x00\x00'
-  [12:16] Exchange count (uint32 LE)
-  [16:48] Salt (32 bytes, random)
-  [48:]   AES-GCM encrypted JSON payload:
-            {
-              "version": 1,
-              "app_id": "<sha256 of APP_HMAC_SECRET>",
-              "exchanges": [
-                {
-                  "exchange_id": "binance",
-                  "api_key": "...",
-                  "api_secret": "...",
-                  "passphrase": "..."
-                },
-                ...
-              ]
-            }
-          Nonce (12 bytes) prepended to ciphertext in the payload.
-
-The USB cannot be read by any other application because the decryption
-key derivation incorporates APP_HMAC_SECRET — a value only Acervator
-knows. Even with the file and the volume serial, decryption fails without
-the app secret.
+``write_auth_file`` encrypts a credential list under a ``_derive_usb_key`` key
+and writes ``AUTH_FILENAME`` at a USB mount point. The layout is
+``MAGIC_HEADER``, ``FILE_VERSION``, a little-endian exchange count, a
+``SALT_LEN`` salt, then ``_aes_gcm_encrypt`` output carrying its own nonce.
+``find_auth_volume`` matches the volume serial ``read_auth_file`` needs to
+derive the same key.
 """
 
 from __future__ import annotations
@@ -60,6 +17,7 @@ import hmac
 import json
 import os
 import platform
+import shutil
 import struct
 import subprocess
 from dataclasses import dataclass, field
@@ -67,10 +25,6 @@ from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger("acervator.usb_auth")
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
 
 MAGIC_HEADER = b"ACERVKEY"
 FILE_VERSION = b"\x00\x01\x00\x00"
@@ -80,21 +34,18 @@ SALT_LEN = 32
 NONCE_LEN = 12
 KEY_LEN = 32  # AES-256
 
-# App-specific secret — incorporated into key derivation so the file
-# can only be decrypted by Acervator. Not a user-facing secret.
+# A source constant, not a user secret; _derive_usb_key prefixes it to the serial.
 _APP_HMAC_SECRET = (
     b"Acervator\x00HarvestFold\x00EktheliusTheAccumulator"
     b"\x00VersionOnePointZero\x00USB\x00AUTH\x00KEY"
 )
 
 
-# ---------------------------------------------------------------------------
-# Key derivation
-# ---------------------------------------------------------------------------
-
-
 def _derive_usb_key(volume_serial: str, salt: bytes) -> bytes:
-    """Derive AES-256 key from app secret + volume serial + salt."""
+    """Return a ``KEY_LEN`` byte key over ``_APP_HMAC_SECRET`` and *volume_serial*.
+
+    Derivation is PBKDF2-HMAC-SHA256 at ``PBKDF2_ITERS`` rounds against *salt*.
+    """
     password = _APP_HMAC_SECRET + volume_serial.encode("utf-8")
     return hashlib.pbkdf2_hmac(
         "sha256",
@@ -106,24 +57,21 @@ def _derive_usb_key(volume_serial: str, salt: bytes) -> bytes:
 
 
 def _app_id_fingerprint() -> str:
-    """Short fingerprint to verify app identity without exposing the secret."""
+    """Return the first 16 hex characters of the ``_APP_HMAC_SECRET`` digest."""
     return hashlib.sha256(_APP_HMAC_SECRET).hexdigest()[:16]
 
 
-# ---------------------------------------------------------------------------
-# AES-GCM (or fallback AES-CTR + HMAC)
-# ---------------------------------------------------------------------------
-
-
 def _aes_gcm_encrypt(key: bytes, nonce: bytes, plaintext: bytes) -> bytes:
-    """AES-256-GCM encrypt. Returns nonce + ciphertext + tag (16 bytes)."""
+    """Return *nonce* joined to ``AESGCM`` ciphertext and its 16-byte tag.
+
+    Falls back to ``_fallback_encrypt`` when ``cryptography`` is not installed.
+    """
     try:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
         aes = AESGCM(key)
         return nonce + aes.encrypt(nonce, plaintext, None)
     except ImportError:
-        # Pure-Python fallback: AES-CTR + HMAC-SHA256
         return _fallback_encrypt(key, nonce, plaintext)
 
 
@@ -140,7 +88,10 @@ def _aes_gcm_decrypt(key: bytes, data: bytes) -> bytes:
 
 
 def _fallback_encrypt(key: bytes, nonce: bytes, data: bytes) -> bytes:
-    """AES-CTR + HMAC-SHA256 using only stdlib."""
+    """XOR *data* against the ``_kdf_stream`` keystream, no cipher involved.
+
+    Appends a 32-byte HMAC-SHA256 tag computed over *nonce* and the ciphertext.
+    """
     from hashlib import sha256
 
     stream = _kdf_stream(key, nonce, len(data))
@@ -150,6 +101,10 @@ def _fallback_encrypt(key: bytes, nonce: bytes, data: bytes) -> bytes:
 
 
 def _fallback_decrypt(key: bytes, nonce: bytes, ct_and_tag: bytes) -> bytes:
+    """Check the trailing HMAC-SHA256 tag, then XOR against ``_kdf_stream``.
+
+    Raises ``ValueError`` when ``hmac.compare_digest`` rejects the tag.
+    """
     from hashlib import sha256
 
     ct = ct_and_tag[:-32]
@@ -173,18 +128,14 @@ def _kdf_stream(key: bytes, nonce: bytes, length: int) -> bytes:
     return stream[:length]
 
 
-# ---------------------------------------------------------------------------
-# USB volume discovery
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class USBVolume:
-    """Represents a detected removable USB volume."""
+    """One removable volume, with ``auth_file`` set when ``AUTH_FILENAME`` is there."""
 
     mount_point: Path
     label: str
-    serial: str  # Volume serial number (platform-specific)
+    # Windows volume serial hex, macOS VolumeUUID, or the Linux lsblk SERIAL.
+    serial: str
     size_gb: float
     auth_file: Optional[Path] = field(default=None)
 
@@ -194,9 +145,10 @@ class USBVolume:
 
 
 def list_usb_volumes() -> list[USBVolume]:
-    """
-    Detect removable USB volumes across Windows, macOS, and Linux.
-    Returns a list of USBVolume objects. Empty list if none found.
+    """Return a ``USBVolume`` per removable drive found by the platform helper.
+
+    ``_list_usb_windows``, ``_list_usb_macos`` and ``_list_usb_linux`` supply the
+    volumes, and each gets ``auth_file`` set where ``AUTH_FILENAME`` exists.
     """
     system = platform.system()
     volumes = []
@@ -208,7 +160,6 @@ def list_usb_volumes() -> list[USBVolume]:
     else:
         volumes = _list_usb_linux()
 
-    # Check each volume for an existing auth file
     for vol in volumes:
         candidate = vol.mount_point / AUTH_FILENAME
         if candidate.exists():
@@ -247,7 +198,6 @@ def _list_usb_windows() -> list[USBVolume]:
             drive, label_buf, 256, ctypes.byref(serial_buf), None, None, fs_buf, 256
         )
 
-        # Disk size
         free_bytes = wt.ULARGE_INTEGER(0)
         total_bytes = wt.ULARGE_INTEGER(0)
         GetDiskFreeSpaceEx(
@@ -268,11 +218,17 @@ def _list_usb_windows() -> list[USBVolume]:
 
 
 def _list_usb_macos() -> list[USBVolume]:
-    """Enumerate removable drives on macOS using diskutil."""
-    volumes = []
+    """Enumerate removable drives on macOS using ``diskutil``.
+
+    Returns an empty list where ``shutil.which`` cannot resolve ``diskutil``.
+    """
+    volumes: list[USBVolume] = []
+    diskutil = shutil.which("diskutil")
+    if not diskutil:
+        return volumes
     try:
         result = subprocess.run(
-            ["diskutil", "list", "-plist", "external"],
+            [diskutil, "list", "-plist", "external"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -286,9 +242,8 @@ def _list_usb_macos() -> list[USBVolume]:
                 if not mp:
                     continue
                 name = part.get("VolumeName", "USB Drive")
-                # Get serial from diskutil info
                 info = subprocess.run(
-                    ["diskutil", "info", "-plist", part.get("DeviceIdentifier", "")],
+                    [diskutil, "info", "-plist", part.get("DeviceIdentifier", "")],
                     capture_output=True,
                     text=True,
                     timeout=5,
@@ -313,8 +268,15 @@ def _list_usb_macos() -> list[USBVolume]:
 
 
 def _list_usb_linux() -> list[USBVolume]:
-    """Enumerate removable drives on Linux using /proc/mounts + udev."""
-    volumes = []
+    """Enumerate ``/proc/mounts`` entries under /media or /mnt on Linux.
+
+    ``lsblk`` supplies the removable flag, and an unresolved ``lsblk`` yields an
+    empty list.
+    """
+    volumes: list[USBVolume] = []
+    lsblk = shutil.which("lsblk")
+    if not lsblk:
+        return volumes
     try:
         with open("/proc/mounts") as f:
             mounts = f.readlines()
@@ -326,10 +288,9 @@ def _list_usb_linux() -> list[USBVolume]:
             device, mount = parts[0], parts[1]
             if not mount.startswith("/media") and not mount.startswith("/mnt"):
                 continue
-            # Try lsblk for removable flag
             try:
                 info = subprocess.run(
-                    ["lsblk", "-no", "RM,SIZE,LABEL,SERIAL", device],
+                    [lsblk, "-no", "RM,SIZE,LABEL,SERIAL", device],
                     capture_output=True,
                     text=True,
                     timeout=3,
@@ -361,9 +322,9 @@ def _list_usb_linux() -> list[USBVolume]:
 
 
 def find_auth_volume(volume_serial: str) -> Optional[USBVolume]:
-    """
-    Search all USB volumes for one matching the given serial and
-    containing a valid .acervator_auth file.
+    """Return the ``list_usb_volumes`` entry whose ``serial`` matches.
+
+    ``has_auth_file`` must also be true, which tests only that the file exists.
     """
     for vol in list_usb_volumes():
         if vol.serial == volume_serial and vol.has_auth_file:
@@ -371,24 +332,15 @@ def find_auth_volume(volume_serial: str) -> Optional[USBVolume]:
     return None
 
 
-# ---------------------------------------------------------------------------
-# Auth file: read / write
-# ---------------------------------------------------------------------------
-
-
 def write_auth_file(
     usb_path: Path,
     volume_serial: str,
-    credentials: list[
-        dict
-    ],  # [{"exchange_id":…,"api_key":…,"api_secret":…,"passphrase":…}]
+    credentials: list[dict],
 ) -> Path:
-    """
-    Encrypt credentials and write .acervator_auth to *usb_path*.
-    Returns the path of the written file.
+    """Encrypt *credentials* under ``_derive_usb_key`` and write ``AUTH_FILENAME``.
 
-    credentials: list of dicts, each with:
-        exchange_id, api_key, api_secret, passphrase (may be empty)
+    Each dict carries ``exchange_id``, ``api_key``, ``api_secret`` and
+    ``passphrase``, and the written path under *usb_path* is returned.
     """
     salt = os.urandom(SALT_LEN)
     nonce = os.urandom(NONCE_LEN)
@@ -404,7 +356,6 @@ def write_auth_file(
 
     ct = _aes_gcm_encrypt(key, nonce, payload)
 
-    # Build file
     count_bytes = struct.pack("<I", len(credentials))
     file_data = MAGIC_HEADER + FILE_VERSION + count_bytes + salt + ct
 
@@ -414,18 +365,16 @@ def write_auth_file(
 
 
 def read_auth_file(auth_file: Path, volume_serial: str) -> list[dict]:
-    """
-    Decrypt and return credentials from an .acervator_auth file.
-    Raises ValueError on tampered/wrong-key data.
-    Raises FileNotFoundError if auth_file doesn't exist.
+    """Decrypt an ``AUTH_FILENAME`` file and return its ``exchanges`` list.
+
+    ``ValueError`` marks a bad ``MAGIC_HEADER`` or an ``_app_id_fingerprint``
+    mismatch, while a wrong key surfaces as whatever ``_aes_gcm_decrypt`` raises.
     """
     data = auth_file.read_bytes()
 
-    # Validate header
     if data[:8] != MAGIC_HEADER:
         raise ValueError("Not a valid Acervator auth file (bad magic header).")
-    # version at [8:12] — reserved for future migration
-    # count at [12:16] — informational
+    # Bytes 8:16 hold FILE_VERSION and the exchange count; neither is read back.
     salt = data[16 : 16 + SALT_LEN]
     ct = data[16 + SALT_LEN :]
 
@@ -440,9 +389,9 @@ def read_auth_file(auth_file: Path, volume_serial: str) -> list[dict]:
 
 
 def verify_auth_file(auth_file: Path, volume_serial: str) -> bool:
-    """
-    Returns True if the auth file decrypts successfully and contains
-    at least one exchange. Does not raise.
+    """Return True when ``read_auth_file`` yields at least one exchange.
+
+    Every exception is caught and reported as False.
     """
     try:
         creds = read_auth_file(auth_file, volume_serial)
@@ -451,20 +400,15 @@ def verify_auth_file(auth_file: Path, volume_serial: str) -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
-# High-level export / import
-# ---------------------------------------------------------------------------
-
-
 def export_credentials_to_usb(
     usb_volume: USBVolume,
-    vault,  # CredentialVault instance from encryption.py
-    passphrase: str,
+    vault,  # encryption.CredentialVault
+    _passphrase: str,  # unused; vault decrypts with the one it was built with
 ) -> tuple[bool, str]:
-    """
-    Decrypt all credentials from the local vault and write them to USB.
+    """Write every ``vault.retrieve`` result to ``write_auth_file``.
 
-    Returns (success: bool, message: str).
+    ``vault.list_exchanges`` selects the entries and ``verify_auth_file``
+    confirms the written file.
     """
     try:
         exchange_ids = vault.list_exchanges()
@@ -488,7 +432,6 @@ def export_credentials_to_usb(
 
         auth_path = write_auth_file(usb_volume.mount_point, usb_volume.serial, creds)
 
-        # Verify immediately after write
         if not verify_auth_file(auth_path, usb_volume.serial):
             return False, "Export written but verification failed. Try again."
 
@@ -512,11 +455,9 @@ def export_credentials_to_usb(
 def import_credentials_from_usb(
     volume_serial: str,
 ) -> tuple[bool, list[dict], str]:
-    """
-    Find a USB with the given serial and return decrypted credentials.
-    Used at app startup when hardware mode is active.
+    """Return the ``read_auth_file`` credentials for the ``find_auth_volume`` match.
 
-    Returns (success, credentials_list, message).
+    A missing volume returns ``(False, [], message)`` and nothing raises.
     """
     vol = find_auth_volume(volume_serial)
     if vol is None:

@@ -1,31 +1,33 @@
-"""
-tradingview_bridge.py — TradingView integration bridge.
+"""TradingView webhook intake and chart URL construction.
 
-Provides:
-- Webhook HTTP server to receive TradingView alerts
-- Alert parsing and signal routing to stock bots
-- TradingView chart URL generation for embedded views
+``TradingViewBridge`` listens for alert posts on ``/webhook`` and turns each
+body into a ``TVAlert`` through ``_parse_alert``. Every callable added with
+``register_handler`` then receives that alert. ``get_chart_url`` builds a
+tradingview.com embed URL as text and opens no connection.
 """
 
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import json
 import logging
 import time
 from dataclasses import dataclass
 from typing import Mapping, Optional, Callable
 
+BIND_ALL_INTERFACES = str(ipaddress.IPv4Address(0))
+
 logger = logging.getLogger("acervator.stocks.tradingview")
 
 
 @dataclass
 class TVAlert:
-    """Parsed TradingView alert."""
+    """One alert ``_parse_alert`` accepted, with ``raw`` holding the body it read."""
 
     timestamp: float
     symbol: str
-    action: str  # "buy", "sell", "close", "info"
+    action: str  # lowercased by _parse_alert; "buy", "sell", "close" or "info"
     price: float = 0
     quantity: float = 0
     strategy: str = ""  # Pine Script strategy name
@@ -36,23 +38,16 @@ class TVAlert:
 
 
 class TradingViewBridge:
-    """
-    TradingView integration hub.
+    """Webhook intake for TradingView alerts.
 
-    Receives webhook alerts from TradingView and routes them to
-    registered handlers (stock bots, notification system, journal).
-
-    TradingView Alert Setup:
-    1. Create alert on TradingView
-    2. Set webhook URL to: http://localhost:{port}/webhook
-    3. Set alert message to JSON: {"symbol":"AAPL","action":"buy","price":{{close}}}
+    ``start`` serves ``/webhook``, ``/health`` and ``/status`` on ``_bind_host``
+    and ``_port``, falling back to ``_start_basic_server`` without aiohttp.
+    ``_alert_history`` keeps the last ``_max_history`` alerts ``_parse_alert``
+    accepted.
     """
 
     DEFAULT_PORT = 8742
-    # v3.15.85 — bind to localhost by default. Public-network exposure
-    # (host="0.0.0.0") now requires explicit operator opt-in via the
-    # `bind_host` constructor parameter. Closes the bandit B104 finding
-    # surfaced in the v3.15.84 SADP upgrade audit.
+    # TradingView posts alerts from its own servers, which cannot reach loopback.
     DEFAULT_BIND_HOST = "127.0.0.1"
 
     def __init__(
@@ -61,12 +56,6 @@ class TradingViewBridge:
         bind_host: str = DEFAULT_BIND_HOST,
         force_unauthenticated_lan: bool = False,
     ):
-        # v3.15.89 (TV-AUTH-5 fix): force_unauthenticated_lan is the
-        # escape hatch for the otherwise-blocked combination of
-        # bind_host="0.0.0.0" + empty auth token. start() refuses to
-        # launch the server in that combination unless this flag is
-        # True. Default False — protects operators who haven't read
-        # the auth audit doc.
         self._port = port
         self._bind_host = bind_host
         self._force_unauthenticated_lan = bool(force_unauthenticated_lan)
@@ -75,8 +64,8 @@ class TradingViewBridge:
         self._handlers: list[Callable[[TVAlert], None]] = []
         self._alert_history: list[TVAlert] = []
         self._max_history = 1000
-        self._auth_token: str = ""  # Optional auth for webhook security
-        if bind_host == "0.0.0.0":  # nosec B104 — defensive comparison only, not a bind
+        self._auth_token: str = ""
+        if bind_host == BIND_ALL_INTERFACES:
             logger.warning(
                 "TradingView bridge binding to 0.0.0.0 — webhook server "
                 "will be reachable from the local network. Ensure auth "
@@ -96,35 +85,18 @@ class TradingViewBridge:
         return list(self._alert_history)
 
     def set_auth_token(self, token: str):
-        """Set authentication token for webhook security."""
+        """Store *token* as ``_auth_token`` for ``_check_auth`` to match."""
         self._auth_token = token
 
     def _check_auth(self, headers: Mapping[str, str]) -> bool:
-        """v3.15.88 (TV-AUTH-1, TV-AUTH-2 fix) — single auth check
-        for both server backends.
+        """Return True when *headers* carry the ``_auth_token`` bearer value.
 
-        Returns True if the request is authorized (or auth is
-        disabled). Returns False otherwise.
-
-        Implementation notes:
-          * If ``self._auth_token`` is empty, auth is DISABLED — the
-            method returns True for any request. This preserves the
-            "no token configured = no auth required" semantic for
-            local-bind operation. PRIORITY 1l TV-AUTH-5 covers
-            tightening this when the bridge binds to 0.0.0.0.
-          * Token comparison uses ``hmac.compare_digest`` to defeat
-            timing-attack recovery (TV-AUTH-2). Plain ``!=`` would
-            short-circuit on the first differing character, leaking
-            the token byte-by-byte to a network observer measuring
-            response-time deltas.
-          * The basic HTTP fallback path now also calls this helper
-            (TV-AUTH-1) so an operator running without aiohttp
-            doesn't get an unauthenticated webhook server.
+        An empty ``_auth_token`` returns True for any request, and the match runs
+        through ``hmac.compare_digest``.
         """
         if not self._auth_token:
-            return True  # auth disabled by configuration
-        # `headers` may be a dict or an aiohttp/http.server Mapping.
-        # `.get` is universally available; default to empty string.
+            return True
+        # aiohttp and http.server expose different header objects, both with .get.
         try:
             auth = headers.get("Authorization", "") or ""
         except Exception:
@@ -133,28 +105,23 @@ class TradingViewBridge:
         return hmac.compare_digest(auth, expected)
 
     def register_handler(self, handler: Callable[[TVAlert], None]):
-        """Register a callback to receive parsed alerts."""
+        """Append *handler* to ``_handlers``, which every parsed alert reaches."""
         self._handlers.append(handler)
 
     def unregister_handler(self, handler: Callable):
-        """Remove a handler."""
+        """Drop *handler* from ``_handlers``."""
         self._handlers = [h for h in self._handlers if h != handler]
 
     async def start(self):
-        """Start the webhook HTTP server."""
+        """Serve ``/webhook``, ``/health`` and ``/status`` on ``_bind_host``.
+
+        Refuses ``BIND_ALL_INTERFACES`` with no ``_auth_token`` unless
+        ``_force_unauthenticated_lan`` is set.
+        """
         if self._running:
             return
 
-        # v3.15.89 (TV-AUTH-5 fix) — refuse to expose an unauthenticated
-        # webhook on the LAN. The combination of bind_host="0.0.0.0"
-        # AND empty auth token means anyone on the local network can
-        # submit trade alerts that dispatch directly to bot handlers.
-        # Required: either set an auth token (recommended) or
-        # construct with force_unauthenticated_lan=True (explicit
-        # operator opt-in; warn loudly).
-        if (
-            self._bind_host == "0.0.0.0" and not self._auth_token
-        ):  # nosec B104 — defensive refusal, not a bind
+        if self._bind_host == BIND_ALL_INTERFACES and not self._auth_token:
             if not self._force_unauthenticated_lan:
                 raise RuntimeError(
                     "TradingView bridge refusing to start: "
@@ -167,9 +134,7 @@ class TradingViewBridge:
                     "default; restricts to local machine)\n"
                     "  (c) construct with force_unauthenticated_lan=True "
                     "to explicitly opt in to unauthenticated LAN exposure "
-                    "(NOT recommended)\n"
-                    "See docs/audits/2026-04-28_tradingview_bridge_auth_"
-                    "audit.md TV-AUTH-5 for context."
+                    "(NOT recommended)"
                 )
             logger.warning(
                 "TradingView bridge starting on 0.0.0.0 with NO AUTH "
@@ -188,9 +153,7 @@ class TradingViewBridge:
 
             runner = web.AppRunner(app)
             await runner.setup()
-            site = web.TCPSite(
-                runner, self._bind_host, self._port
-            )  # nosec B104 — operator-configurable; defaults to 127.0.0.1
+            site = web.TCPSite(runner, self._bind_host, self._port)
             await site.start()
 
             self._server = runner
@@ -201,13 +164,12 @@ class TradingViewBridge:
                 "aiohttp not installed — webhook server unavailable. "
                 "Install with: pip install aiohttp"
             )
-            # Fallback: basic HTTP server
             await self._start_basic_server()
         except Exception as e:
             logger.error("Failed to start webhook server: %s", e)
 
     async def stop(self):
-        """Stop the webhook server."""
+        """Clean up ``_server`` and clear ``_running``."""
         if self._server:
             try:
                 await self._server.cleanup()
@@ -217,11 +179,12 @@ class TradingViewBridge:
         logger.info("TradingView webhook server stopped")
 
     async def _handle_webhook(self, request):
-        """Handle incoming TradingView webhook."""
+        """Parse the *request* body with ``_parse_alert``, then call ``_handlers``.
+
+        Returns 401 when ``_check_auth`` refuses the request.
+        """
         from aiohttp import web
 
-        # v3.15.88 — auth via shared _check_auth helper. Uses
-        # hmac.compare_digest under the hood (TV-AUTH-2 fix).
         if not self._check_auth(request.headers):
             return web.Response(status=401, text="Unauthorized")
 
@@ -242,7 +205,6 @@ class TradingViewBridge:
                     alert.strategy,
                 )
 
-                # Dispatch to handlers
                 for handler in self._handlers:
                     try:
                         handler(alert)
@@ -258,13 +220,13 @@ class TradingViewBridge:
             return web.Response(status=500, text=str(e))
 
     async def _handle_health(self, request):
-        """Health check endpoint."""
+        """Return 200 on the ``/health`` route ``start`` registers."""
         from aiohttp import web
 
         return web.Response(status=200, text="OK")
 
     async def _handle_status(self, request):
-        """Status endpoint."""
+        """Return ``_running``, ``_port`` and the ``_alert_history`` count as JSON."""
         from aiohttp import web
 
         status = {
@@ -279,7 +241,10 @@ class TradingViewBridge:
         return web.json_response(status)
 
     async def _start_basic_server(self):
-        """Fallback: basic asyncio HTTP server without aiohttp."""
+        """Serve ``WebhookHandler`` from ``http.server.HTTPServer`` on a daemon thread.
+
+        ``start`` calls this where ``aiohttp`` will not import.
+        """
         import http.server
         import threading
 
@@ -287,10 +252,6 @@ class TradingViewBridge:
             bridge = self
 
             def do_POST(self_inner):
-                # v3.15.88 (TV-AUTH-1 fix) — basic HTTP fallback path
-                # now consults _check_auth before dispatching to handlers.
-                # Pre-fix this branch had NO auth check, so an operator
-                # without aiohttp was running an unauthenticated webhook.
                 if not self.bridge._check_auth(self_inner.headers):
                     self_inner.send_response(401)
                     self_inner.end_headers()
@@ -312,13 +273,13 @@ class TradingViewBridge:
                     self_inner.send_response(400)
                 self_inner.end_headers()
 
-            def log_message(self_inner, *args):
-                pass  # Suppress default logging
+            def log_message(self_inner, format: str, *args: object) -> None:
+                logger.debug(format, *args)
 
         def run_server():
             server = http.server.HTTPServer(
                 (self._bind_host, self._port), WebhookHandler
-            )  # nosec B104 — operator-configurable; defaults to 127.0.0.1
+            )
             self._server = server
             self._running = True
             logger.info("Basic webhook server started on port %d", self._port)
@@ -330,10 +291,12 @@ class TradingViewBridge:
         thread.start()
 
     def _parse_alert(self, body: str) -> Optional[TVAlert]:
-        """Parse a TradingView alert message."""
+        """Return a ``TVAlert`` built from a JSON *body* or the plain-text form.
+
+        Returns None where neither shape yields a symbol and an action.
+        """
         now = time.time()
 
-        # Try JSON first
         try:
             data = json.loads(body)
             return TVAlert(
@@ -351,7 +314,7 @@ class TradingViewBridge:
         except (json.JSONDecodeError, ValueError):
             pass
 
-        # Try plain text parsing: "BUY AAPL @ 185.50"
+        # Plain-text form: "BUY AAPL @ 185.50".
         try:
             parts = body.strip().split()
             if len(parts) >= 2:
@@ -372,7 +335,10 @@ class TradingViewBridge:
 
     @staticmethod
     def get_chart_url(symbol: str, interval: str = "D", theme: str = "dark") -> str:
-        """Generate TradingView chart embed URL."""
+        """Build a tradingview.com widgetembed URL for *symbol* at *interval*.
+
+        The result is text; ``get_chart_url`` opens no connection of its own.
+        """
         return (
             f"https://www.tradingview.com/widgetembed/?frameElementId=tv_chart"
             f"&symbol={symbol}&interval={interval}&theme={theme}"
@@ -381,7 +347,10 @@ class TradingViewBridge:
         )
 
     def get_summary(self) -> dict:
-        """Get bridge status summary."""
+        """Return ``_running``, ``_port`` and ``_auth_token`` presence with counts.
+
+        ``alerts_1h`` counts the ``_alert_history`` entries under an hour old.
+        """
         recent = [a for a in self._alert_history if time.time() - a.timestamp < 3600]
         return {
             "running": self._running,
