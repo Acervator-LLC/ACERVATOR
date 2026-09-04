@@ -51,11 +51,14 @@ CANDLE = [0, 100.0, 105.0, 95.0, 100.0, 10.0]
 
 
 class _Src:
+    def __init__(self, tapes=("tape",)):
+        self._tapes = list(tapes)
+
     def current(self, _tape_id):
         return list(CANDLE)
 
     def active_tapes(self):
-        return ["tape"]
+        return list(self._tapes)
 
 
 def _nuclear():
@@ -85,8 +88,27 @@ def _fleet():
     )
 
 
-async def _limits(ex):
-    """(min_amount, min_cost) as the venue reports them.
+def _nuclear_two_tapes():
+    ex = _nuclear()
+    ex._src = _Src(tapes=["A", "B"])
+    return ex
+
+
+def _fleet_two_symbols():
+    from src.simulator.fleet.candle_series import CandleSeries
+    from src.simulator.fleet.sim_exchange import FleetSimExchange
+
+    return FleetSimExchange(
+        series_map={
+            "BTC/USD": CandleSeries(symbol="BTC/USD", rows=[list(CANDLE)]),
+            "ETH/USD": CandleSeries(symbol="ETH/USD", rows=[list(CANDLE)]),
+        },
+        starting_balances={"USD": 1_000.0},
+    )
+
+
+async def _entries(ex):
+    """Every market the venue reports, as a list.
 
     The two venues return different SHAPES from get_markets -- one a
     list of AssetInfo, one a dict -- which is itself a small parity
@@ -95,9 +117,13 @@ async def _limits(ex):
     """
     markets = await ex.get_markets()
     if isinstance(markets, dict):
-        entries = list(markets.values())
-    else:
-        entries = list(markets)
+        return list(markets.values())
+    return list(markets)
+
+
+async def _limits(ex):
+    """(min_amount, min_cost) as the venue reports them."""
+    entries = await _entries(ex)
     assert entries, "venue reported no markets"
     m = entries[0]
     return (
@@ -147,4 +173,33 @@ class TestTheFloorErrsTowardsRefusing:
             _amt, cost = await _limits(build())
             assert cost >= 1.0, (
                 f"{name} min_cost={cost} would accept orders Coinbase " f"rejects"
+            )
+
+
+class TestTheLimitsAreNotPerSymbol:
+    @pytest.mark.asyncio
+    async def test_every_market_a_venue_reports_carries_the_same_limits(self):
+        """Each venue serves one hard-coded pair, not captured venue
+        data. Two different symbols reporting identical limits is how
+        that shows at runtime; a real per-symbol capture would make this
+        fail, which is the point at which it should be rewritten."""
+        for name, build in (
+            ("nuclear", _nuclear_two_tapes),
+            ("fleet", _fleet_two_symbols),
+        ):
+            entries = await _entries(build())
+            assert len(entries) >= 2, (
+                f"{name} reported {len(entries)} markets; two are needed "
+                f"before 'the same on every symbol' means anything"
+            )
+            pairs = {
+                (
+                    float(getattr(m, "min_amount", 0.0) or 0.0),
+                    float(getattr(m, "min_cost", 0.0) or 0.0),
+                )
+                for m in entries
+            }
+            assert len(pairs) == 1, (
+                f"{name} reports limits that differ by symbol ({pairs}); "
+                f"if these are now captured from a venue, retire this pin"
             )

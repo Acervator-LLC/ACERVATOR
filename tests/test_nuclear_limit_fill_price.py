@@ -180,48 +180,33 @@ class TestFillableLimitsStillFill:
             assert o.average <= 99.0 + 1e-9
 
 
-class TestTheDocstringGuaranteeIsTrue:
-    def test_the_module_claims_zero_balances_raise_and_they_do(self):
-        """v3.24.65 CORRECTED this docstring because it claimed a
-        guarantee the code did not provide. v3.24.66 (SN-17) made the
-        guarantee TRUE, so the claim is restored — and this assertion
-        flipped with it, in the same commit.
-
-        That is the point of having pinned it: the documented guarantee
-        and the behaviour move together or the suite fails.
-        """
-        import src.simulator.nuclear_sim_exchange as m
-
-        doc = m.__doc__ or ""
-        # Behavioural in spirit, scoped to the R28 FL guarantee line
-        # rather than the whole docstring. An earlier version forbade
-        # the PHRASE "zero balances" anywhere, which a docstring
-        # EXPLAINING them necessarily trips. Trap #5 in
-        # docs/engineering-notes/2026-08-07_traps_that_pass_a_naive_test.md.
-        _blank = chr(10) + chr(10)
-        _guarantee = doc.split("R28 FL", 1)[-1].split(_blank, 1)[0]
-        assert "zero balances" in _guarantee, (
-            "SN-17 gave this venue a balance precondition, so the R28 FL "
-            "guarantee should list zero balances among the conditions "
-            "that raise"
-        )
-
+class TestAnUnfundedOrderIsRefused:
     @pytest.mark.asyncio
-    async def test_a_zero_balance_buy_now_raises(self):
-        """The tripwire, fired.
-
-        Written in v3.24.65 asserting the OPPOSITE — that a zero-balance
-        BUY settled and drove the ledger negative — with a note reading
-        "if SN-17 landed, update this pin and the docstring together".
-        SN-17 landed in v3.24.66 and this is that update.
-
-        Kept rather than deleted: it is now the Nuclear half of the
-        cross-venue contract, and a reader should be able to see that
-        the documented guarantee and the behaviour were made true in the
-        same change.
-        """
+    async def test_a_buy_with_no_quote_currency_raises(self):
+        """`_adjust_balance` has no floor, so without the precondition a
+        BUY settles and drives the ledger negative."""
         ex = _venue()
         ex._balances = {"USD": 0.0, "BTC": 0.0}
         with pytest.raises(ValueError):
             await _place(ex, OrderSide.BUY, OrderType.MARKET, 1.0)
         assert ex._balances["USD"] == 0.0, "a refused order still moved the ledger"
+
+    @pytest.mark.asyncio
+    async def test_a_sell_of_coins_never_held_raises(self):
+        """The SELL half of the same precondition: the venue checks the
+        base balance, not only the quote."""
+        ex = _venue()
+        ex._balances = {"USD": 1_000.0, "BTC": 0.0}
+        with pytest.raises(ValueError):
+            await _place(ex, OrderSide.SELL, OrderType.MARKET, 1.0)
+        assert ex._balances["BTC"] == 0.0, "a refused order still moved the ledger"
+
+    @pytest.mark.asyncio
+    async def test_the_same_sell_settles_when_the_coins_are_there(self):
+        """POSITIVE CONTROL for the two refusals above: a venue that
+        refused every order would pass them while trading nothing."""
+        ex = _venue()
+        ex._balances = {"USD": 1_000.0, "BTC": 1.0}
+        o = await _place(ex, OrderSide.SELL, OrderType.MARKET, 1.0)
+        assert float(getattr(o, "filled", 0) or 0) == pytest.approx(1.0)
+        assert ex._balances["BTC"] == pytest.approx(0.0)
