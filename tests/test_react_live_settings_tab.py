@@ -73,7 +73,9 @@ BYTE_ALPHA = "rgba(12, 34, 56, 204)"
 GRADIENT_SHEET = "background: qlineargradient(x1:0, y1:0, x2:1, y2:0);"
 UNKNOWN_NAME = "no-such-module.js"
 
-SCRUM_SCOUT = {"pairs": [["AERO", "BTC", 1.5], ["AERO", "ETH", -2.0], ["AERO", "USD", 3.0]]}
+SCRUM_SCOUT = {
+    "pairs": [["AERO", "BTC", 1.5], ["AERO", "ETH", -2.0], ["AERO", "USD", 3.0]]
+}
 RATES = {"btc_usd": 60_000.0, "eth_usd": 3_000.0}
 
 
@@ -447,8 +449,12 @@ def shown_values() -> set:
             payload["alt_targets"]["empty_text"],
             payload["alt_targets"]["active_format"],
         }
-        found |= {one for one in payload["reset_button"].values() if isinstance(one, str)}
-        found |= {one for one in payload["danger_button"].values() if isinstance(one, str)}
+        found |= {
+            one for one in payload["reset_button"].values() if isinstance(one, str)
+        }
+        found |= {
+            one for one in payload["danger_button"].values() if isinstance(one, str)
+        }
         found |= {one for one in payload["tooltips"].values() if isinstance(one, str)}
         for box in payload["boxes"]:
             found |= {box["title"], box["text"]}
@@ -886,7 +892,9 @@ def test_the_module_is_registered_and_runs_after_its_shared_pieces():
 
 
 def test_the_load_order_check_reports_false_when_a_name_is_absent():
-    assert runs_after(["shared_widgets.js"], MODULE_PATH.name, "header_strip.js") is False
+    assert (
+        runs_after(["shared_widgets.js"], MODULE_PATH.name, "header_strip.js") is False
+    )
     assert runs_after(load_order(), UNKNOWN_NAME, "header_strip.js") is False
 
 
@@ -1073,7 +1081,9 @@ def with_part(parts: list, name: str) -> list:
 
 
 def named(parts: list, part: str, name: str) -> dict:
-    found = [one for one in with_part(parts, part) if one["attrs"].get("data-name") == name]
+    found = [
+        one for one in with_part(parts, part) if one["attrs"].get("data-name") == name
+    ]
     assert len(found) == 1, f"{part} named {name}: {len(found)} drawn"
     return found[0]
 
@@ -1165,7 +1175,9 @@ def test_each_check_draws_its_own_words_and_the_state_the_surface_seeded(
             continue
         assert named(parts, "check-text", spec["name"])["text"] == spec["text"]
         drawn = named(parts, "control", spec["name"])
-        assert drawn["checked"] is (payload["values"][spec["name"]] is True), spec["name"]
+        assert drawn["checked"] is (payload["values"][spec["name"]] is True), spec[
+            "name"
+        ]
 
 
 def test_each_number_carries_the_bounds_and_the_step_the_surface_publishes(
@@ -1182,9 +1194,9 @@ def test_each_number_carries_the_bounds_and_the_step_the_surface_publishes(
         low, high = spec["range"]
         assert float(drawn["attrs"]["min"]) == float(low), spec["name"]
         assert float(drawn["attrs"]["max"]) == float(high), spec["name"]
-        assert float(drawn["value"]) == float(
-            payload["values"][spec["name"]]
-        ), spec["name"]
+        assert float(drawn["value"]) == float(payload["values"][spec["name"]]), spec[
+            "name"
+        ]
 
 
 def test_a_spin_at_its_lowest_value_prints_the_words_qt_prints_in_its_place(
@@ -1197,9 +1209,9 @@ def test_a_spin_at_its_lowest_value_prints_the_words_qt_prints_in_its_place(
     )
     payload["values"][spec["name"]] = spec["range"][0]
     parts = draw_tab(browser, payload)
-    assert named(parts, "value-suffix", spec["name"])["text"] == spec[
-        "special_value_text"
-    ]
+    assert (
+        named(parts, "value-suffix", spec["name"])["text"] == spec["special_value_text"]
+    )
 
 
 def test_a_spin_above_its_lowest_value_prints_its_own_unit(browser: Browser):
@@ -1229,7 +1241,9 @@ def test_each_read_only_row_draws_the_text_and_takes_the_colour_the_surface_send
         drawn = named(parts, "read-only-value", name)
         assert drawn["text"] == payload[field][0], name
         wanted = payload[field][1] if len(payload[field]) > 1 else None
-        assert drawn["attrs"]["data-styled"] == str(isinstance(wanted, str)).lower(), name
+        assert (
+            drawn["attrs"]["data-styled"] == str(isinstance(wanted, str)).lower()
+        ), name
 
 
 def test_a_painted_read_only_row_matches_a_probe_built_from_its_own_colour(

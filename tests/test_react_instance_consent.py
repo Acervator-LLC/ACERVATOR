@@ -107,7 +107,9 @@ def test_every_field_the_module_declares_is_one_the_surface_publishes(
     declared = set(js.json("acervatorInstanceConsent.declaredFields()"))
     assert declared, "the module declares no field, so the check proves nothing"
     missing = sorted(declared - set(model))
-    assert not missing, f"the module reads fields the surface does not publish: {missing}"
+    assert (
+        not missing
+    ), f"the module reads fields the surface does not publish: {missing}"
 
 
 def test_the_field_check_names_a_field_the_surface_dropped(js: JsRuntime, model: dict):
@@ -117,7 +119,9 @@ def test_the_field_check_names_a_field_the_surface_dropped(js: JsRuntime, model:
     assert sorted(declared - set(thinned)) == ["skin"]
 
 
-def test_the_module_holds_the_buttons_the_surface_publishes(loaded: JsRuntime, model: dict):
+def test_the_module_holds_the_buttons_the_surface_publishes(
+    loaded: JsRuntime, model: dict
+):
     """A button label, state or height drifted from the surface."""
     buttons = model["buttons"]
     assert set(buttons) == {"refuse", "consent"}, buttons
@@ -130,7 +134,10 @@ def test_the_consent_button_carries_the_bot_count_the_decision_named(
     """The operator must read the number he is authorising off the button itself."""
     assert model["button_bot_count"] == DECISION["fleet_bot_count"]
     assert str(DECISION["fleet_bot_count"]) in model["buttons"]["consent"]["text"]
-    assert loaded.json("acervatorInstanceConsent.botCount()") == DECISION["fleet_bot_count"]
+    assert (
+        loaded.json("acervatorInstanceConsent.botCount()")
+        == DECISION["fleet_bot_count"]
+    )
 
 
 def test_the_module_names_no_fault_on_the_shipped_payload(loaded: JsRuntime):
@@ -202,11 +209,15 @@ def test_the_module_paints_every_skin_role_from_the_published_channels(
     skin = model["skin"]
     assert skin, "the skin is empty, so the comparison proves nothing"
     for name, channels in skin.items():
-        painted = loaded.json(f"acervatorInstanceConsent.colour(JSON.parse(PAYLOAD), '{name}')")
+        painted = loaded.json(
+            f"acervatorInstanceConsent.colour(JSON.parse(PAYLOAD), '{name}')"
+        )
         assert painted == "rgb(" + ",".join(str(one) for one in channels) + ")", name
 
 
-def test_a_channel_swap_changes_the_colour_the_module_paints(loaded: JsRuntime, model: dict):
+def test_a_channel_swap_changes_the_colour_the_module_paints(
+    loaded: JsRuntime, model: dict
+):
     """The comparison above reads the channels, or a swap would pass."""
     swapped = json.loads(json.dumps(model))
     red, green, blue = swapped["skin"]["headline"]
@@ -231,7 +242,9 @@ def test_the_published_style_sheet_carries_no_alpha_byte(model: dict):
     assert "rgba(" not in json.dumps(model)
 
 
-def test_the_module_reads_one_named_block_of_the_style_sheet(loaded: JsRuntime, model: dict):
+def test_the_module_reads_one_named_block_of_the_style_sheet(
+    loaded: JsRuntime, model: dict
+):
     """Merging every block into one soup would paint the headline as body text."""
     headline = loaded.json(
         "acervatorInstanceConsent.styleFor("
@@ -269,7 +282,9 @@ def test_the_colour_scan_reads_the_module_file_and_can_report():
     original = MODULE_PATH.read_bytes()
     try:
         swap_module(MODULE_PATH, original + PLANTED_COLOUR.encode("utf-8"))
-        assert HEX_COLOUR.findall(MODULE_PATH.read_text(encoding="utf-8")) == ["#0b0b0b"]
+        assert HEX_COLOUR.findall(MODULE_PATH.read_text(encoding="utf-8")) == [
+            "#0b0b0b"
+        ]
     finally:
         swap_module(MODULE_PATH, original)
     assert MODULE_PATH.read_bytes() == original
@@ -423,13 +438,15 @@ def test_the_page_draws_both_facts_inside_the_facts_frame(page: Page, model: dic
     """The two machine names must be on screen together, or the comparison is a memory test."""
     drawn = page.parsed(
         "Array.prototype.map.call("
-        "window.HOST.querySelectorAll('[data-part=\"facts\"] [data-part=\"fact\"]'),"
+        'window.HOST.querySelectorAll(\'[data-part="facts"] [data-part="fact"]\'),'
         " function (one) { return one.textContent; })"
     )
     assert drawn == [model["owner_text"], model["this_machine_text"]], drawn
 
 
-def test_the_page_paints_the_headline_the_colour_the_skin_names(page: Page, model: dict):
+def test_the_page_paints_the_headline_the_colour_the_skin_names(
+    page: Page, model: dict
+):
     """The colour is read back computed off the element the page really built."""
     painted = page.js(
         "getComputedStyle(window.HOST.querySelector('[data-part=\"headline\"]')).color"
@@ -470,14 +487,17 @@ def test_a_blocked_consent_button_is_drawn_disabled_and_says_why(qapp):
     finally:
         found.close()
     assert drawn == [True, blocked["buttons"]["consent"]["tool_tip"]], drawn
-    assert blocked["buttons"]["consent"]["tool_tip"], "the blocked button gives no reason"
+    assert blocked["buttons"]["consent"][
+        "tool_tip"
+    ], "the blocked button gives no reason"
 
 
 def test_the_consent_button_is_drawn_reachable_when_consent_is_possible(page: Page):
     """The disabled reading above is a state, not the only state."""
-    assert page.parsed(
-        "window.HOST.querySelector('[data-name=\"consent\"]').disabled"
-    ) is False
+    assert (
+        page.parsed("window.HOST.querySelector('[data-name=\"consent\"]').disabled")
+        is False
+    )
 
 
 # -- the Qt dialog is preserved, and counted ---------------------------
@@ -565,7 +585,9 @@ def test_the_background_pixel_check_reports_a_different_skin():
     dialog = qt_dialog()
     image = render_widget(dialog, size=DIALOG_SIZE)
     painted = pixel_at(image, QPoint(DIALOG_SIZE[0] - 4, DIALOG_SIZE[1] - 4))
-    other = "#" + "".join(f"{one:02x}" for one in surface.rgb(surface.SKIN["facts_surface"]))
+    other = "#" + "".join(
+        f"{one:02x}" for one in surface.rgb(surface.SKIN["facts_surface"])
+    )
     assert painted != other, "two skin tokens read the same, so the pixel cannot report"
 
 

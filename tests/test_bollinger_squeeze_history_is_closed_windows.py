@@ -121,9 +121,9 @@ class TestTheWidestWindowOnTheTapeIsNotASqueeze:
         candles = _contracting_tape(80, seed=2)
         signal = BollingerBands().compute(candles)
         bandwidths = _closed_bandwidths(candles)
-        assert signal.details["band_width"] < max(bandwidths), (
-            "this tape must genuinely narrow, or the control proves nothing"
-        )
+        assert signal.details["band_width"] < max(
+            bandwidths
+        ), "this tape must genuinely narrow, or the control proves nothing"
         assert signal.details["squeeze"] is True, (
             "a tape that contracts must still flag a squeeze, otherwise the "
             "tests above pass on an indicator that never flags one"
@@ -163,6 +163,7 @@ class TestTheHistoryStartsAtTheFirstClosedWindow:
             BollingerBands().compute(_contracting_tape(bars, seed=5)).details["squeeze"]
             for bars in range(45, 200, 5)
         }
-        assert seen == {True, False}, (
-            f"the squeeze flag never varied over this walk: {seen}"
-        )
+        assert seen == {
+            True,
+            False,
+        }, f"the squeeze flag never varied over this walk: {seen}"

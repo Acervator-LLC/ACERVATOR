@@ -164,9 +164,9 @@ def test_the_published_button_style_carries_the_share_css_reads():
     """The export button's hover tint crosses the same boundary."""
     sheet = one_exchange_payload()["export_style"]
     shares = [alpha_of(one) for one in RGBA_CALL.findall(sheet)]
-    assert shares and all(one <= 1 for one in shares), (
-        f"the published export style carries the alphas {shares}: {sheet}"
-    )
+    assert shares and all(
+        one <= 1 for one in shares
+    ), f"the published export style carries the alphas {shares}: {sheet}"
 
 
 def test_the_bridge_registers_the_panel_handler():
@@ -329,9 +329,9 @@ def test_the_renderer_reports_a_field_the_payload_lost(browser: Browser):
         "(function () { acervatorSetUsbAuth(JSON.parse(window.PAYLOAD));"
         " return acervatorUsbAuth.faults(); })()"
     )
-    assert any(one["field"] == "header_text" for one in faults), (
-        f"a payload with no header_text drew no fault: {faults}"
-    )
+    assert any(
+        one["field"] == "header_text" for one in faults
+    ), f"a payload with no header_text drew no fault: {faults}"
 
 
 def test_the_renderer_reports_a_style_still_carrying_the_alpha_byte(browser: Browser):
@@ -346,9 +346,9 @@ def test_the_renderer_reports_a_style_still_carrying_the_alpha_byte(browser: Bro
         "(function () { acervatorSetUsbAuth(JSON.parse(window.PAYLOAD));"
         " return acervatorUsbAuth.faults(); })()"
     )
-    assert any(one["fault"] == "alpha-byte" for one in faults), (
-        f"a payload carrying Qt's alpha byte drew no fault: {faults}"
-    )
+    assert any(
+        one["fault"] == "alpha-byte" for one in faults
+    ), f"a payload carrying Qt's alpha byte drew no fault: {faults}"
 
 
 def test_the_renderer_draws_one_row_for_every_exchange(browser: Browser):
@@ -366,9 +366,10 @@ def test_the_renderer_draws_one_row_for_every_exchange(browser: Browser):
         "   names.push(found[at].getAttribute('data-exchange-id')); }"
         " host.remove(); return names; })()"
     )
-    assert drawn == ["coinbase", "kraken"], (
-        f"two exchanges were published and the panel drew {drawn}"
-    )
+    assert drawn == [
+        "coinbase",
+        "kraken",
+    ], f"two exchanges were published and the panel drew {drawn}"
 
 
 def test_the_renderer_draws_the_empty_note_when_no_exchange_is_configured(
@@ -388,9 +389,10 @@ def test_the_renderer_draws_the_empty_note_when_no_exchange_is_configured(
         " var text = note === null ? null : note.textContent;"
         " host.remove(); return [rows, text]; })()"
     )
-    assert drawn == [0, payload["empty_text"]], (
-        f"no exchange was published and the panel drew {drawn}"
-    )
+    assert drawn == [
+        0,
+        payload["empty_text"],
+    ], f"no exchange was published and the panel drew {drawn}"
 
 
 def test_the_lamp_pen_darkens_the_way_qt_darkens(browser: Browser):
@@ -538,6 +540,6 @@ def test_the_alpha_share_is_the_byte_over_the_highest(browser: Browser):
             surface.build_view_model(surface.panel_model())["rows"][0]["toggle_style"]
         )
     )
-    assert abs(alpha_of(written) - css_alpha(byte)) <= 0.001, (
-        f"the byte {byte} published the share {alpha_of(written)}"
-    )
+    assert (
+        abs(alpha_of(written) - css_alpha(byte)) <= 0.001
+    ), f"the byte {byte} published the share {alpha_of(written)}"

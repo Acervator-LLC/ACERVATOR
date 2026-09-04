@@ -384,9 +384,9 @@ def test_the_bridge_keeps_the_qt_byte_out_of_the_published_payload():
         "the bridge published the Qt byte, which a browser paints opaque: "
         f"{published_style}"
     )
-    assert str(css_alpha(BYTE_ALPHA)) in published_style, (
-        f"the published share is not {css_alpha(BYTE_ALPHA)}: {published_style}"
-    )
+    assert (
+        str(css_alpha(BYTE_ALPHA)) in published_style
+    ), f"the published share is not {css_alpha(BYTE_ALPHA)}: {published_style}"
 
 
 def test_no_colour_the_alerts_tab_paints_carries_transparency_today():
@@ -645,9 +645,7 @@ def test_the_page_asks_no_action_before_a_press(browser: Browser):
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize(
-    "index", [TEST_BUTTON_AT, SAVE_BUTTON_AT, ACK_BUTTON_AT]
-)
+@pytest.mark.parametrize("index", [TEST_BUTTON_AT, SAVE_BUTTON_AT, ACK_BUTTON_AT])
 def test_a_press_asks_the_bridge_on_the_action_the_surface_bound(
     browser: Browser, index: int
 ):
@@ -665,13 +663,13 @@ def test_the_page_draws_the_routing_table_the_surface_filled(browser: Browser):
     heads = browser.parsed(
         "Array.prototype.slice.call("
         "  window.HOST.querySelectorAll("
-        "    '[data-part=\"alerts-rules-table\"] [data-part=\"alerts-head-cell\"]'))"
+        '    \'[data-part="alerts-rules-table"] [data-part="alerts-head-cell"]\'))'
         "  .map(function (el) { return el.textContent; })"
     )
     cells = browser.parsed(
         "Array.prototype.slice.call("
         "  window.HOST.querySelectorAll("
-        "    '[data-part=\"alerts-rules-table\"] [data-part=\"alerts-cell\"]'))"
+        '    \'[data-part="alerts-rules-table"] [data-part="alerts-cell"]\'))'
         "  .map(function (el) { return el.textContent; })"
     )
     assert payload["rules_rows"], "the driven events reached no row"
@@ -686,7 +684,7 @@ def test_the_page_draws_the_history_table_the_surface_filled(browser: Browser):
     cells = browser.parsed(
         "Array.prototype.slice.call("
         "  window.HOST.querySelectorAll("
-        "    '[data-part=\"alerts-history-table\"] [data-part=\"alerts-cell\"]'))"
+        '    \'[data-part="alerts-history-table"] [data-part="alerts-cell"]\'))'
         "  .map(function (el) { return el.textContent; })"
     )
     assert payload["history_rows"], "the driven messages reached no row"
@@ -703,7 +701,7 @@ def test_the_page_paints_a_priority_cell_the_colour_the_surface_gave_it(
     painted = browser.parsed(
         "window.readStyle("
         "  window.HOST.querySelectorAll("
-        "    '[data-part=\"alerts-history-table\"] [data-part=\"alerts-row\"]')[1]"
+        '    \'[data-part="alerts-history-table"] [data-part="alerts-row"]\')[1]'
         "    .querySelectorAll('[data-part=\"alerts-cell\"]')[" + str(column) + "],"
         "  ['color'])"
     )

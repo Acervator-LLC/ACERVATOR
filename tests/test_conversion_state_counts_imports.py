@@ -35,16 +35,12 @@ def test_pyside_named_only_in_a_string_does_not_count_as_a_qt_surface() -> None:
 
 def test_pyside_named_only_in_a_comment_does_not_count_as_a_qt_surface() -> None:
     text = "# the Qt path still uses PySide6\nVALUE = 1\n"
-    assert imports_pyside(text) is False, (
-        "a comment naming PySide6 imports no Qt"
-    )
+    assert imports_pyside(text) is False, "a comment naming PySide6 imports no Qt"
 
 
 def test_pyside_named_only_in_a_docstring_does_not_count_as_a_qt_surface() -> None:
     text = '"""Nothing here imports PySide6."""\nVALUE = 1\n'
-    assert imports_pyside(text) is False, (
-        "a docstring naming PySide6 imports no Qt"
-    )
+    assert imports_pyside(text) is False, "a docstring naming PySide6 imports no Qt"
 
 
 def test_a_module_that_never_names_pyside_does_not_count_as_a_qt_surface() -> None:

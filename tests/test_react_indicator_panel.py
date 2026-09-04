@@ -125,25 +125,32 @@ def bridge_payload(**params) -> dict:
     """One payload straight from the surface, exactly as the bridge answers."""
     surface.view_model({"reset": True})
     surface.view_model(
-        {"action": "set_bots",
-         "bots": [
-             {
-                 "bot_id": "aaaa11112222",
-                 "symbol": "BTC-USD",
-                 "mode": "accumulation",
-                 "state": "running",
-             }
-         ]}
+        {
+            "action": "set_bots",
+            "bots": [
+                {
+                    "bot_id": "aaaa11112222",
+                    "symbol": "BTC-USD",
+                    "mode": "accumulation",
+                    "state": "running",
+                }
+            ],
+        }
     )
-    surface.view_model({"action": "set_rates", "snapshot": {
-        "btc_usd": 60000.0,
-        "eth_usd": 3000.0,
-        "sat_per_dollar": 1666.0,
-        "sat_per_cent": 16.0,
-        "gwei_per_dollar": 333333.0,
-        "gwei_per_cent": 3333.0,
-        "source": "coinbase",
-    }})
+    surface.view_model(
+        {
+            "action": "set_rates",
+            "snapshot": {
+                "btc_usd": 60000.0,
+                "eth_usd": 3000.0,
+                "sat_per_dollar": 1666.0,
+                "sat_per_cent": 16.0,
+                "gwei_per_dollar": 333333.0,
+                "gwei_per_cent": 3333.0,
+                "source": "coinbase",
+            },
+        }
+    )
     for action, body in params.items():
         surface.view_model(dict(body, action=action))
     return surface.view_model({})
@@ -211,9 +218,9 @@ def test_a_payload_missing_a_field_is_named_rather_than_drawn(js: JsRuntime) -> 
     payload = bridge_payload()
     payload.pop("staleness")
     report = js.push(payload)
-    assert any(one["where"] == "staleness" for one in report["faults"]), (
-        f"faults: {report['faults']}"
-    )
+    assert any(
+        one["where"] == "staleness" for one in report["faults"]
+    ), f"faults: {report['faults']}"
 
 
 def test_a_payload_that_is_not_an_object_is_refused(js: JsRuntime) -> None:
@@ -230,10 +237,14 @@ def test_a_qt_alpha_byte_is_scaled_by_the_published_unit(js: JsRuntime) -> None:
     js.push(payload)
     byte = payload["staleness"]["background_alpha"]
     js.bind_json("BYTE", byte)
-    got = js.json("window.acervatorIndicatorPanel.cssAlpha(" + json.dumps(payload) + ", JSON.parse(BYTE))")
-    assert got == pytest.approx(byte / ALPHA_SCALE), (
-        f"Qt alpha byte {byte} must reach CSS as {byte / ALPHA_SCALE}, got {got}"
+    got = js.json(
+        "window.acervatorIndicatorPanel.cssAlpha("
+        + json.dumps(payload)
+        + ", JSON.parse(BYTE))"
     )
+    assert got == pytest.approx(
+        byte / ALPHA_SCALE
+    ), f"Qt alpha byte {byte} must reach CSS as {byte / ALPHA_SCALE}, got {got}"
 
 
 def test_a_converted_alpha_always_lands_inside_the_css_range(js: JsRuntime) -> None:
@@ -246,9 +257,9 @@ def test_a_converted_alpha_always_lands_inside_the_css_range(js: JsRuntime) -> N
             + json.dumps(payload)
             + ", JSON.parse(BYTE))"
         )
-        assert 0.0 <= got <= 1.0, (
-            f"byte {byte} converted to {got}, which CSS would clamp"
-        )
+        assert (
+            0.0 <= got <= 1.0
+        ), f"byte {byte} converted to {got}, which CSS would clamp"
 
 
 def test_the_raw_qt_byte_would_leave_the_css_range(js: JsRuntime) -> None:
@@ -272,9 +283,9 @@ def test_the_staleness_banner_is_painted_as_a_translucent_wash(js: JsRuntime) ->
         + str(band["background_alpha"])
         + ")"
     )
-    assert channels_of(painted_colour) == band["background_rgb"], (
-        f"the banner keeps its own hue; got {painted_colour}"
-    )
+    assert (
+        channels_of(painted_colour) == band["background_rgb"]
+    ), f"the banner keeps its own hue; got {painted_colour}"
     assert 0.0 < alpha_fraction(painted_colour) < 1.0, (
         "CSS must receive a fraction, not Qt's byte; "
         f"got {painted_colour} for byte {band['background_alpha']}"
@@ -294,12 +305,12 @@ def test_a_cell_tint_is_painted_at_the_cell_s_own_converted_alpha(
     fills = js.api("cellFills(0)")
     cell = payload["tables"][0]["rows"][0]["cells"][1]
     painted_colour = fills[0][1]
-    assert channels_of(painted_colour) == cell["fill_rgb"], (
-        f"the tint keeps the cell's hue; got {painted_colour}"
-    )
-    assert 0.0 < alpha_fraction(painted_colour) < 1.0, (
-        f"a cell tint is a wash; got {painted_colour}"
-    )
+    assert (
+        channels_of(painted_colour) == cell["fill_rgb"]
+    ), f"the tint keeps the cell's hue; got {painted_colour}"
+    assert (
+        0.0 < alpha_fraction(painted_colour) < 1.0
+    ), f"a cell tint is a wash; got {painted_colour}"
     painted_byte = alpha_fraction(painted_colour) * ALPHA_SCALE
     assert painted_byte == pytest.approx(cell["fill_alpha"]), (
         f"the cell's own alpha byte {cell['fill_alpha']} must reach the page; "
@@ -312,9 +323,9 @@ def test_an_alpha_outside_the_qt_byte_range_is_named(js: JsRuntime) -> None:
     payload = bridge_payload()
     payload["staleness"]["background_alpha"] = 900
     report = js.push(payload)
-    assert any(one["where"] == "staleness" for one in report["faults"]), (
-        f"faults: {report['faults']}"
-    )
+    assert any(
+        one["where"] == "staleness" for one in report["faults"]
+    ), f"faults: {report['faults']}"
 
 
 # -- 3. the rows the panel draws ---------------------------------------
@@ -335,14 +346,11 @@ def test_row_a_carries_the_aggregate_columns_and_row_b_does_not(
 
 
 def test_the_cell_texts_are_the_ones_the_surface_settled(js: JsRuntime) -> None:
-    payload = bridge_payload(
-        set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"}
-    )
+    payload = bridge_payload(set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"})
     js.push(payload)
     printed = js.api("cellTexts(0)")
     settled_text = [
-        [cell["text"] for cell in row["cells"]]
-        for row in payload["tables"][0]["rows"]
+        [cell["text"] for cell in row["cells"]] for row in payload["tables"][0]["rows"]
     ]
     assert printed == settled_text, "the module prints the surface's text unchanged"
 
@@ -363,9 +371,7 @@ def test_the_frame_interval_is_read_rather_than_timed(js: JsRuntime) -> None:
 def test_one_frame_moves_a_bar_the_published_fraction_of_its_gap(
     js: JsRuntime,
 ) -> None:
-    payload = bridge_payload(
-        set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"}
-    )
+    payload = bridge_payload(set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"})
     js.push(payload)
     before = js.api("barConfidences(0)")
     assert before[0] == 0, "positive control: a bar starts at zero"
@@ -381,9 +387,7 @@ def test_one_frame_moves_a_bar_the_published_fraction_of_its_gap(
 def test_the_animation_settles_on_its_target_after_enough_frames(
     js: JsRuntime,
 ) -> None:
-    payload = bridge_payload(
-        set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"}
-    )
+    payload = bridge_payload(set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"})
     js.push(payload)
     settled = js.json("window.acervatorIndicatorPanel.advance(0, 500)")
     assert settled is True, "the animation must reach its target and stop"
@@ -394,9 +398,7 @@ def test_the_animation_settles_on_its_target_after_enough_frames(
 
 def test_the_module_matches_the_surface_frame_for_frame(js: JsRuntime) -> None:
     """The two sides run the same animation, so a panel drawn by either agrees."""
-    payload = bridge_payload(
-        set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"}
-    )
+    payload = bridge_payload(set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"})
     js.push(payload)
     js.run("window.acervatorIndicatorPanel.advance(0, 3);")
     reached = js.api("barConfidences(0)")
@@ -406,9 +408,9 @@ def test_the_module_matches_the_surface_frame_for_frame(js: JsRuntime) -> None:
     for _frame in range(3):
         model.step()
     wanted = [one["confidence"] for one in model.current]
-    assert reached == pytest.approx(wanted), (
-        f"module {reached} and surface {wanted} must agree frame for frame"
-    )
+    assert reached == pytest.approx(
+        wanted
+    ), f"module {reached} and surface {wanted} must agree frame for frame"
 
 
 # -- 5. the panel drawn in the real page -------------------------------
@@ -534,9 +536,9 @@ def test_the_page_draws_the_panel_and_its_two_mini_panels(browser) -> None:
         bridge_payload(set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"})
     )
     assert browser.count("indicator-panel") == 1
-    assert browser.count("indicator-mini-panel") == 2, (
-        "the panel stacks two mini-panels, one per indicator row"
-    )
+    assert (
+        browser.count("indicator-mini-panel") == 2
+    ), "the panel stacks two mini-panels, one per indicator row"
 
 
 def test_the_page_draws_one_table_row_per_timeframe(browser) -> None:
@@ -563,9 +565,9 @@ def test_the_page_paints_the_staleness_banner_at_the_converted_alpha(
         "Chromium reports a fully opaque colour as rgb(...), which is what an "
         f"unconverted alpha byte produces; got {painted}"
     )
-    assert channels_of(painted) == payload["staleness"]["background_rgb"], (
-        f"the page painted {painted}"
-    )
+    assert (
+        channels_of(painted) == payload["staleness"]["background_rgb"]
+    ), f"the page painted {painted}"
     painted_byte = alpha_fraction(painted) * ALPHA_SCALE
     assert painted_byte == pytest.approx(byte, abs=1.0), (
         f"Chromium painted alpha byte {painted_byte} where Qt paints {byte}; "
@@ -587,17 +589,13 @@ def test_the_page_hides_the_staleness_banner_on_a_live_reading(browser) -> None:
 
 
 def test_the_page_prints_the_vote_tally_beside_the_title(browser) -> None:
-    payload = bridge_payload(
-        set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"}
-    )
+    payload = bridge_payload(set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"})
     browser.draw(payload)
     assert browser.textOf("indicator-summary") == payload["summary_text"]
 
 
 def test_the_page_prints_the_active_lock_it_was_handed(browser) -> None:
-    payload = bridge_payload(
-        set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"}
-    )
+    payload = bridge_payload(set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"})
     browser.draw(payload)
     assert "4h" in browser.textOf("indicator-locks")
 
@@ -610,9 +608,9 @@ def test_the_page_prints_the_rate_strip_it_was_handed(browser) -> None:
 
 def test_the_page_says_it_is_waiting_when_there_are_no_bars(browser) -> None:
     browser.draw(bridge_payload())
-    assert browser.count("indicator-bars-empty") > 0, (
-        "an empty bar pane says what it is waiting for"
-    )
+    assert (
+        browser.count("indicator-bars-empty") > 0
+    ), "an empty bar pane says what it is waiting for"
 
 
 def test_the_page_makes_no_network_call(browser) -> None:
@@ -620,6 +618,6 @@ def test_the_page_makes_no_network_call(browser) -> None:
         bridge_payload(set_summary={"summary": LIVE_SUMMARY, "symbol": "BTC-USD"})
     )
     violations = browser.parsed("window.VIOLATIONS || []")
-    assert violations == [], (
-        f"the panel must not reach the network under the page policy: {violations}"
-    )
+    assert (
+        violations == []
+    ), f"the panel must not reach the network under the page policy: {violations}"

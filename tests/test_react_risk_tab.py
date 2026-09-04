@@ -237,9 +237,7 @@ class JsRuntime(JsEngine):
     def named(self, call: str, *args: Any) -> Any:
         """Call one module method with JSON arguments and read its answer."""
         self.bind_json("ARGS", list(args))
-        return self.json(
-            "acervatorRiskTab." + call + ".apply(null, JSON.parse(ARGS))"
-        )
+        return self.json("acervatorRiskTab." + call + ".apply(null, JSON.parse(ARGS))")
 
 
 @pytest.fixture()
@@ -330,9 +328,9 @@ def test_the_module_writes_no_colour():
 
 def test_no_string_in_the_module_equals_a_value_the_tab_paints():
     written = sorted(set(MODULE_LITERALS["strings"]) & PAINTED_VALUES)
-    assert written == sorted(ALLOWED_PAINTED), (
-        f"risk_tab.js spells out tab values: {written}"
-    )
+    assert written == sorted(
+        ALLOWED_PAINTED
+    ), f"risk_tab.js spells out tab values: {written}"
 
 
 def test_no_string_in_the_module_equals_a_design_token_value():
@@ -473,9 +471,9 @@ def test_the_bridge_keeps_the_qt_byte_out_of_the_published_payload():
         "the bridge published the Qt byte, which a browser paints opaque: "
         f"{published_style}"
     )
-    assert str(css_alpha(BYTE_ALPHA)) in published_style, (
-        f"the published share is not {css_alpha(BYTE_ALPHA)}: {published_style}"
-    )
+    assert (
+        str(css_alpha(BYTE_ALPHA)) in published_style
+    ), f"the published share is not {css_alpha(BYTE_ALPHA)}: {published_style}"
 
 
 def test_every_colour_the_two_tabs_paint_is_opaque_today():
@@ -724,9 +722,10 @@ def test_the_page_draws_one_ring_for_the_track_and_one_for_the_reading(
     steps = payload["gauge_paint"]["steps"]
     for dash, step in zip(dashes, steps):
         drawn = abs(step["span_angle"] / unit)
-        assert dash_fields(dash) == [drawn, FULL_TURN - drawn], (
-            f"the ring drew {dash} for a span of {step['span_angle']} sixteenths"
-        )
+        assert dash_fields(dash) == [
+            drawn,
+            FULL_TURN - drawn,
+        ], f"the ring drew {dash} for a span of {step['span_angle']} sixteenths"
 
 
 @pytest.mark.slow
@@ -752,13 +751,13 @@ def test_the_page_draws_the_alert_table_the_surface_filled(browser: Browser):
     heads = browser.parsed(
         "Array.prototype.slice.call("
         "  window.HOST.querySelectorAll("
-        "    '[data-part=\"risk-alert-table\"] [data-part=\"risk-head-cell\"]'))"
+        '    \'[data-part="risk-alert-table"] [data-part="risk-head-cell"]\'))'
         "  .map(function (el) { return el.textContent; })"
     )
     cells = browser.parsed(
         "Array.prototype.slice.call("
         "  window.HOST.querySelectorAll("
-        "    '[data-part=\"risk-alert-table\"] [data-part=\"risk-cell\"]'))"
+        '    \'[data-part="risk-alert-table"] [data-part="risk-cell"]\'))'
         "  .map(function (el) { return el.textContent; })"
     )
     assert payload["alert_rows"], "the driven alert fell outside its window"
@@ -773,7 +772,7 @@ def test_the_page_draws_the_rules_table_the_surface_filled(browser: Browser):
     cells = browser.parsed(
         "Array.prototype.slice.call("
         "  window.HOST.querySelectorAll("
-        "    '[data-part=\"risk-rule-table\"] [data-part=\"risk-cell\"]'))"
+        '    \'[data-part="risk-rule-table"] [data-part="risk-cell"]\'))'
         "  .map(function (el) { return el.textContent; })"
     )
     assert payload["rule_rows"], "the driven rules reached no row"
@@ -790,7 +789,7 @@ def test_the_page_paints_a_severity_cell_the_colour_the_surface_gave_it(
     painted = browser.parsed(
         "window.readStyle("
         "  window.HOST.querySelectorAll("
-        "    '[data-part=\"risk-alert-table\"] [data-part=\"risk-row\"]')[1]"
+        '    \'[data-part="risk-alert-table"] [data-part="risk-row"]\')[1]'
         "    .querySelectorAll('[data-part=\"risk-cell\"]')[" + str(column) + "],"
         "  ['color'])"
     )

@@ -1218,7 +1218,5 @@ def view_model(params: dict) -> dict:
     elif "manager" in params:
         TAB_MODEL.manager = build_manager(params.get("manager"))
     return css_colours(
-        build_view_model(
-            TAB_MODEL, params.get("action", ""), params.get("gauge_size")
-        )
+        build_view_model(TAB_MODEL, params.get("action", ""), params.get("gauge_size"))
     )

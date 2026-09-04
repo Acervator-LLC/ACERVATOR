@@ -83,7 +83,7 @@ ALGORITHM_NUMBERS = {
     "3",  # the three colour channels, and the digits of a short colour
     "16",  # the radix a hex colour is read in
     "0.5",  # the middle of the strip
-    "255"  # the scale Qt's alpha byte runs to
+    "255",  # the scale Qt's alpha byte runs to
 }
 
 

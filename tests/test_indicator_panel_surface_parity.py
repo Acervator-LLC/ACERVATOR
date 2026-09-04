@@ -102,9 +102,9 @@ def test_row_a_carries_the_first_six_indicators_and_row_b_the_rest() -> None:
 
 
 def test_the_group_accent_colours_match_the_qt_panel() -> None:
-    assert surface.GROUP_COLORS == qt_panel.GROUP_COLORS, (
-        "trend, momentum and structure keep the accents the Qt panel paints"
-    )
+    assert (
+        surface.GROUP_COLORS == qt_panel.GROUP_COLORS
+    ), "trend, momentum and structure keep the accents the Qt panel paints"
 
 
 def test_the_direction_symbols_match_the_qt_panel() -> None:
@@ -142,7 +142,9 @@ def test_a_zscore_cell_carries_the_sign_of_the_raw_z_value() -> None:
         "zscore", signal("zscore", BEARISH, 0.9, z=-2.31)
     )
     assert text == "▼ -2.3", f"z-score prints a signed raw value, got {text!r}"
-    rising = surface.indicator_cell_text("zscore", signal("zscore", BULLISH, 0.9, z=2.31))
+    rising = surface.indicator_cell_text(
+        "zscore", signal("zscore", BULLISH, 0.9, z=2.31)
+    )
     assert rising == "▲ +2.3", f"a positive z keeps its plus sign, got {rising!r}"
 
 
@@ -154,9 +156,7 @@ def test_a_kaufman_cell_prints_the_raw_efficiency_ratio() -> None:
 
 
 def test_every_other_indicator_prints_its_vote_confidence_as_a_percentage() -> None:
-    text = surface.indicator_cell_text(
-        "macd", signal("macd", BULLISH, 0.836)
-    )
+    text = surface.indicator_cell_text("macd", signal("macd", BULLISH, 0.836))
     assert text == "▲ 84%", f"a voting indicator prints a percentage, got {text!r}"
 
 
@@ -167,9 +167,9 @@ def test_a_missing_signal_reads_neutral_at_no_confidence() -> None:
 def test_the_raw_value_indicators_are_the_three_that_publish_a_reading() -> None:
     for key in surface.RAW_VALUE_INDICATORS:
         text = surface.indicator_cell_text(key, signal(key, BULLISH, 0.5))
-        assert not text.endswith("%"), (
-            f"{key} publishes a raw reading, never a percentage; got {text!r}"
-        )
+        assert not text.endswith(
+            "%"
+        ), f"{key} publishes a raw reading, never a percentage; got {text!r}"
 
 
 # -- cell colour, and the alpha byte behind it -------------------------
@@ -189,9 +189,9 @@ def test_a_bearish_cell_takes_the_red_text_and_the_red_tint() -> None:
 
 def test_a_neutral_cell_takes_the_flat_tint_at_its_own_fixed_alpha() -> None:
     colours = surface.indicator_cell_colors(signal("macd", NEUTRAL, 1.0))
-    assert colours["fill_alpha"] == surface.NEUTRAL_CELL_ALPHA, (
-        "a neutral cell's tint does not follow confidence"
-    )
+    assert (
+        colours["fill_alpha"] == surface.NEUTRAL_CELL_ALPHA
+    ), "a neutral cell's tint does not follow confidence"
 
 
 def test_the_cell_tint_alpha_climbs_with_confidence_from_its_floor() -> None:
@@ -199,9 +199,9 @@ def test_the_cell_tint_alpha_climbs_with_confidence_from_its_floor() -> None:
     assert surface.cell_alpha(1.0) == (
         surface.CELL_ALPHA_FLOOR + surface.CELL_ALPHA_SPAN
     )
-    assert surface.cell_alpha(0.5) > surface.cell_alpha(0.1), (
-        "a stronger vote paints a stronger tint"
-    )
+    assert surface.cell_alpha(0.5) > surface.cell_alpha(
+        0.1
+    ), "a stronger vote paints a stronger tint"
 
 
 def test_the_cell_tint_alpha_never_leaves_the_qt_byte_range() -> None:
@@ -293,9 +293,9 @@ def test_the_confidence_cell_colours_by_the_published_breadth_bands() -> None:
 def test_the_confidence_bar_always_holds_ten_cells() -> None:
     for confidence in (0.0, 0.37, 1.0):
         drawn = surface.confidence_bar(confidence)
-        assert len(drawn) == surface.CONF_BAR_CELLS, (
-            f"confidence {confidence} drew {drawn!r}"
-        )
+        assert (
+            len(drawn) == surface.CONF_BAR_CELLS
+        ), f"confidence {confidence} drew {drawn!r}"
 
 
 def test_the_confidence_bar_fills_in_step_with_the_reading() -> None:
@@ -321,9 +321,9 @@ def test_row_a_carries_the_three_aggregate_columns_and_row_b_does_not() -> None:
     model = surface.IndicatorPanelModel()
     model.set_summary(ONE_TIMEFRAME, "BTC-USD")
     assert model.table_a.titles[-3:] == surface.AGGREGATE_TITLES
-    assert model.table_b.titles[-1] == "RSI", (
-        f"row B ends at its last indicator; got {model.table_b.titles}"
-    )
+    assert (
+        model.table_b.titles[-1] == "RSI"
+    ), f"row B ends at its last indicator; got {model.table_b.titles}"
 
 
 def test_each_table_draws_one_row_per_timeframe() -> None:
@@ -370,9 +370,9 @@ def test_a_stored_reading_raises_the_banner_naming_its_age() -> None:
         "4m 12s ago",
         "cold start — this bot has computed no TA.",
     )
-    assert model.showing_stored is True, (
-        "a stored reading must announce itself as not current"
-    )
+    assert (
+        model.showing_stored is True
+    ), "a stored reading must announce itself as not current"
     assert "4m 12s ago" in model.staleness_line
     assert "09:41:07" in model.staleness_line
 
@@ -382,9 +382,9 @@ def test_a_stored_reading_still_fills_the_table_it_came_from() -> None:
     model.show_stored(
         {"symbol": "BTC-USD", "timeframes": ONE_TIMEFRAME}, "09:41:07", "just now", ""
     )
-    assert len(model.table_a.rows) == 1, (
-        "the stale banner sits over a drawn reading, not over an empty table"
-    )
+    assert (
+        len(model.table_a.rows) == 1
+    ), "the stale banner sits over a drawn reading, not over an empty table"
 
 
 def test_an_empty_state_names_its_one_cause_in_the_summary_line() -> None:
@@ -401,9 +401,9 @@ def test_an_empty_state_clears_the_bars_the_last_bot_left_behind() -> None:
     model.set_summary(ONE_TIMEFRAME, "BTC-USD")
     assert model.bars_a.targets, "positive control: a live reading fills the bars"
     model.show_no_data("no bot is selected", cause="no_selection")
-    assert model.bars_a.targets == [], (
-        "the previous bot's bars must not stay painted over an empty table"
-    )
+    assert (
+        model.bars_a.targets == []
+    ), "the previous bot's bars must not stay painted over an empty table"
     assert model.bars_b.targets == []
 
 
@@ -419,9 +419,10 @@ def test_only_accumulation_bots_reach_the_dropdown() -> None:
             {"bot_id": "cccc3333", "symbol": "SOL-USD", "mode": "scrumming"},
         ]
     )
-    assert [one["value"] for one in items] == ["aaaa1111", "cccc3333"], (
-        "accumulation and scrumming name the same bot class; extractor does not"
-    )
+    assert [one["value"] for one in items] == [
+        "aaaa1111",
+        "cccc3333",
+    ], "accumulation and scrumming name the same bot class; extractor does not"
 
 
 def test_an_empty_fleet_says_so_rather_than_offering_nothing() -> None:
@@ -451,15 +452,15 @@ def test_masking_replaces_the_dropdown_text_but_keeps_the_bot_id() -> None:
         [{"bot_id": "aaaa1111", "symbol": "BTC-USD", "mode": "accumulation"}]
     )
     revealed = model.selector_payload()
-    assert revealed[0]["text"] == "BTC-USD [aaaa1111] (idle)", (
-        "positive control: the entry reads plainly before the mask goes on"
-    )
+    assert (
+        revealed[0]["text"] == "BTC-USD [aaaa1111] (idle)"
+    ), "positive control: the entry reads plainly before the mask goes on"
     model.set_masked(masked=True)
     masked = model.selector_payload()
     assert masked[0]["text"] == surface.PRIVACY_MASK_TEXT
-    assert masked[0]["value"] == "aaaa1111", (
-        "selection must survive the mask, or a masked panel cannot pick a bot"
-    )
+    assert (
+        masked[0]["value"] == "aaaa1111"
+    ), "selection must survive the mask, or a masked panel cannot pick a bot"
 
 
 def test_masking_hides_the_symbol_label_too() -> None:
@@ -519,9 +520,9 @@ def test_a_side_with_no_price_reads_an_em_dash_rather_than_zero() -> None:
     line = surface.rate_strip_text(
         {"btc_usd": 0, "eth_usd": 2000.0, "gwei_per_dollar": 500000.0}
     )
-    assert line.startswith(surface.RATE_STRIP_BTC_ABSENT_TEXT), (
-        f"an absent BTC price must not print as $0.00; got {line!r}"
-    )
+    assert line.startswith(
+        surface.RATE_STRIP_BTC_ABSENT_TEXT
+    ), f"an absent BTC price must not print as $0.00; got {line!r}"
     assert "ETH $2,000.00" in line, "positive control: the present side still prints"
 
 
@@ -577,9 +578,9 @@ def test_a_bar_carries_its_direction_from_the_first_frame() -> None:
     bars = surface.ConfidenceBarsModel()
     bars.set_bars([{"name": "BB", "confidence": 0.9, "direction": BEARISH}])
     bars.step()
-    assert bars.current[0]["direction"] == BEARISH, (
-        "colour must not lag the reading by a frame"
-    )
+    assert (
+        bars.current[0]["direction"] == BEARISH
+    ), "colour must not lag the reading by a frame"
 
 
 def test_stepping_with_no_bars_settles_at_once_rather_than_spinning() -> None:
@@ -590,12 +591,12 @@ def test_stepping_with_no_bars_settles_at_once_rather_than_spinning() -> None:
 
 def test_the_arrow_appears_only_once_a_bar_is_tall_enough_to_hold_it() -> None:
     fraction = surface.arrow_min_fraction()
-    assert 0.0 < fraction < 1.0, (
-        f"the arrow threshold must sit inside the bar's range; got {fraction}"
-    )
-    assert surface.shine_min_fraction() < fraction, (
-        "the highlight shows on a shorter bar than the arrow does"
-    )
+    assert (
+        0.0 < fraction < 1.0
+    ), f"the arrow threshold must sit inside the bar's range; got {fraction}"
+    assert (
+        surface.shine_min_fraction() < fraction
+    ), "the highlight shows on a shorter bar than the arrow does"
 
 
 def test_a_bar_row_is_built_for_each_indicator_in_its_subset() -> None:
@@ -648,9 +649,9 @@ def test_a_step_bars_call_advances_the_animation_by_the_frames_asked_for() -> No
     after = surface.view_model({"action": "step_bars", "frames": 5})
     first = before["bars"][0]["bars"][0]["confidence"]
     later = after["bars"][0]["bars"][0]["confidence"]
-    assert later > first, (
-        f"six frames must travel further than one; got {first} then {later}"
-    )
+    assert (
+        later > first
+    ), f"six frames must travel further than one; got {first} then {later}"
 
 
 def test_an_unknown_action_leaves_the_panel_as_it_stood() -> None:
@@ -659,9 +660,9 @@ def test_an_unknown_action_leaves_the_panel_as_it_stood() -> None:
         {"action": "set_summary", "summary": ONE_TIMEFRAME, "symbol": "BTC-USD"}
     )
     payload = surface.view_model({"action": "no_such_action"})
-    assert payload["tables"][0]["row_count"] == 1, (
-        "an action the surface does not know must not empty the panel"
-    )
+    assert (
+        payload["tables"][0]["row_count"] == 1
+    ), "an action the surface does not know must not empty the panel"
 
 
 def test_the_sim_panel_drops_the_bot_selector_and_the_lock_row() -> None:
@@ -682,6 +683,6 @@ def test_the_renderer_manifest_names_the_indicator_panel_module() -> None:
 
 def test_the_surface_imports_no_qt() -> None:
     module = sys.modules[surface.__name__]
-    assert not hasattr(module, "QWidget"), (
-        "the surface serves any frontend and must not reach for Qt"
-    )
+    assert not hasattr(
+        module, "QWidget"
+    ), "the surface serves any frontend and must not reach for Qt"

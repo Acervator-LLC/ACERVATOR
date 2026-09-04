@@ -81,7 +81,7 @@ QT_WIDGET_KINDS = {
     "QTextEdit": "text",
     "QCheckBox": "check",
     "QPushButton": "button",
-    "QComboBox": "combo"
+    "QComboBox": "combo",
 }
 
 #: The one page entry that is a layout spacer, not a widget.
@@ -207,9 +207,7 @@ def test_every_widget_a_page_shows_has_a_drawer(js: JsRuntime, is_upgrade: bool)
     """A control the wizard shows would be drawn as an empty box."""
     js.push(bridge_payload(is_upgrade=is_upgrade))
     kinds = js.answer("widgetKinds()")
-    shown = {
-        one for order in surface.page_orders(is_upgrade).values() for one in order
-    }
+    shown = {one for order in surface.page_orders(is_upgrade).values() for one in order}
     assert set(kinds) == shown, sorted(set(kinds) ^ shown)
     unknown = sorted(name for name, kind in kinds.items() if kind == "unknown")
     assert not unknown, f"{len(unknown)} widgets have no drawer: {unknown}"
@@ -291,9 +289,7 @@ def test_the_module_lists_every_venue_the_surface_supports(loaded: JsRuntime):
 def test_the_passphrase_row_is_hidden_for_a_venue_that_needs_none(js: JsRuntime):
     """A venue that needs no passphrase still asked for one."""
     plain = surface.EXCHANGE_IDS.index("binance")
-    js.push(
-        bridge_payload(exchange_index=plain, page_id=surface.PASSPHRASE_PAGE_ID)
-    )
+    js.push(bridge_payload(exchange_index=plain, page_id=surface.PASSPHRASE_PAGE_ID))
     assert sorted(js.answer("hiddenWidgets()")) == sorted(
         [surface.PASSPHRASE_LABEL, surface.PASSPHRASE, surface.PASSPHRASE_HINT]
     )
@@ -302,9 +298,7 @@ def test_the_passphrase_row_is_hidden_for_a_venue_that_needs_none(js: JsRuntime)
 def test_the_passphrase_row_is_shown_for_a_venue_that_needs_one(js: JsRuntime):
     """The positive control: the row does come back."""
     needy = surface.EXCHANGE_IDS.index(surface.PASSPHRASE_EXCHANGE_IDS[0])
-    js.push(
-        bridge_payload(exchange_index=needy, page_id=surface.PASSPHRASE_PAGE_ID)
-    )
+    js.push(bridge_payload(exchange_index=needy, page_id=surface.PASSPHRASE_PAGE_ID))
     assert js.answer("hiddenWidgets()") == []
 
 
@@ -507,10 +501,7 @@ def test_the_shipped_qt_page_holds_one_widget_for_every_entry_the_surface_names(
             painted = page_widgets(wizard.page(ids[at]))
             assert set(painted) <= set(QT_WIDGET_KINDS), sorted(painted)
             by_kind = collections.Counter(
-                {
-                    QT_WIDGET_KINDS[cls]: count
-                    for cls, count in painted.items()
-                }
+                {QT_WIDGET_KINDS[cls]: count for cls, count in painted.items()}
             )
             wanted = collections.Counter(
                 kinds[one] for one in published[name] if one != SPACER

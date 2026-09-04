@@ -58,8 +58,15 @@ PERCENT_SCALE = 100.0
 CONTAINER = {
     "margins_px": [0, 0, 0, 0],
     "spacing_px": 2,
-    "children": ["header", "staleness", "lock_row", "rate_strip", "row_a", "row_b",
-                 "locks"],
+    "children": [
+        "header",
+        "staleness",
+        "lock_row",
+        "rate_strip",
+        "row_a",
+        "row_b",
+        "locks",
+    ],
 }
 
 HEADER = {
@@ -619,9 +626,7 @@ HEADER_TOOLTIPS = {
         "% conviction. ▲▼ shows direction; NN% shows "
         "vote confidence."
     ),
-    "VTX": (
-        "Vortex — VI+ vs VI− crossover conviction. ▲▼ direction + NN% confidence."
-    ),
+    "VTX": ("Vortex — VI+ vs VI− crossover conviction. ▲▼ direction + NN% confidence."),
     "MACD": (
         "MACD — histogram + crossover + divergence. ▲▼ direction + NN% confidence."
     ),
@@ -1114,9 +1119,7 @@ class IndicatorPanelModel:
         self.set_summary({}, self.symbol)
         self.summary_line = NO_DATA_FORMAT.format(message=self.no_data_message)
 
-    def show_stored(
-        self, stored: dict, when: str, age: str, message: str
-    ) -> None:
+    def show_stored(self, stored: dict, when: str, age: str, message: str) -> None:
         """Draw a persisted reading under the amber banner naming its age."""
         reading = stored if isinstance(stored, dict) else {}
         self.set_summary(
@@ -1214,9 +1217,7 @@ def build_payload(model: IndicatorPanelModel) -> dict:
             "border_radius_px": PRIVACY_DOT_RADIUS_PX,
             "border_width_px": PRIVACY_BORDER_WIDTH_PX,
             "masked": model.masked,
-            "state": (
-                PRIVACY_STATE_MASKED if model.masked else PRIVACY_STATE_REVEALED
-            ),
+            "state": (PRIVACY_STATE_MASKED if model.masked else PRIVACY_STATE_REVEALED),
             "mask_text": PRIVACY_MASK_TEXT,
             "masked_color": PRIVACY_MASKED_COLOR,
             "revealed_color": PRIVACY_REVEALED_COLOR,

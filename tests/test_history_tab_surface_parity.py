@@ -389,9 +389,9 @@ def test_the_progress_bar_hides_until_a_fetch_is_in_flight(
 def test_the_bridge_serves_the_history_tab_method() -> None:
     """The surface is reachable over the bridge, and answers."""
     registry = desktop_bridge.build_registry()
-    assert hts.METHOD in registry, (
-        f"{hts.METHOD} is not registered; the renderer cannot reach it"
-    )
+    assert (
+        hts.METHOD in registry
+    ), f"{hts.METHOD} is not registered; the renderer cannot reach it"
     answered = desktop_bridge.dispatch(hts.METHOD, {"trades": []}, registry)
     assert answered["pager"]["label"] == "No matches"
     assert [entry["key"] for entry in answered["buttons"]] == list(hts.BUTTON_NAMES)

@@ -35,6 +35,7 @@ from tests.qt_pixel import ensure_app
 #: The Qt children this bridge builds itself, by class and by count.
 BUILT_CHILDREN = {"QTimer": 2}
 
+
 #: A stand-in chain. It opens no file, reaches no network and makes no key.
 def stand_in_chain():
     return surface.SharedTestnetModel()
@@ -98,9 +99,7 @@ def watch(bridge) -> dict:
     """Connect a recorder to every signal the surface names."""
     seen: dict = {name: [] for name in surface.SIGNALS}
     for name in surface.SIGNALS:
-        getattr(bridge, name).connect(
-            lambda *args, key=name: seen[key].append(args)
-        )
+        getattr(bridge, name).connect(lambda *args, key=name: seen[key].append(args))
     return seen
 
 
@@ -145,9 +144,7 @@ def test_the_request_carries_the_four_fields_the_surface_names():
 
 
 def test_the_bridge_and_the_surface_name_the_same_saved_file():
-    assert shipped.DEFAULT_PERSIST_PATH == Path.home().joinpath(
-        *surface.PERSIST_PARTS
-    )
+    assert shipped.DEFAULT_PERSIST_PATH == Path.home().joinpath(*surface.PERSIST_PARTS)
     assert shipped.SCHEMA_VERSION == surface.SCHEMA_VERSION
     assert shipped.QUEUE_DRAIN_INTERVAL_MS == surface.QUEUE_DRAIN_INTERVAL_MS
     assert shipped.PERSIST_DEBOUNCE_MS == surface.PERSIST_DEBOUNCE_MS

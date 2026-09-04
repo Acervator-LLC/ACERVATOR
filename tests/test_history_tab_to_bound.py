@@ -164,8 +164,8 @@ def test_reset_returns_the_to_bound_to_the_clock(
         tab._apply_filters()
         assert _ids(tab) == [], f"cutoff did not bite; retained {_ids(tab)}"
         tab._reset_filters()
-        assert _ids(tab) == ["recent"], (
-            f"Reset left the operator's cutoff in force; retained {_ids(tab)}"
-        )
+        assert _ids(tab) == [
+            "recent"
+        ], f"Reset left the operator's cutoff in force; retained {_ids(tab)}"
     finally:
         tab.deleteLater()

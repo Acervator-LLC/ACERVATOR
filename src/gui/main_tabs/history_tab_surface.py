@@ -153,8 +153,9 @@ WIDGETS = (
         margins=OUTER_MARGINS,
         spacing=OUTER_SPACING,
     ),
-    widget("filters", GROUP_KIND, "tab", title=FILTER_GROUP_TITLE,
-           margins=FILTER_MARGINS),
+    widget(
+        "filters", GROUP_KIND, "tab", title=FILTER_GROUP_TITLE, margins=FILTER_MARGINS
+    ),
     widget("from_label", LABEL_KIND, "filters", text=FROM_LABEL),
     widget(
         "from_date",

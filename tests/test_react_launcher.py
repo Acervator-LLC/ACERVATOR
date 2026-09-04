@@ -72,7 +72,7 @@ ALGORITHM_NUMBERS = {
     "1",  # one step along a list: the second entry of a pair
     "2",  # the right margin
     "3",  # the bottom margin
-    "100"  # a gradient stop is a share of the run; CSS wants a percentage
+    "100",  # a gradient stop is a share of the run; CSS wants a percentage
 }
 
 #: Words the module writes as markup: an HTML tag, a CSS property, or
@@ -84,18 +84,14 @@ MARKUP_WORDS = {
     "button",  # the tag of the launch button, and the name of a press kind
     "card",  # the part name a card is marked with, and a press kind
     "color",  # the CSS property, and the key a card's colour arrives under
-    "title"  # the key a card's heading arrives under
+    "title",  # the key a card's heading arrives under
 }
 
 #: How many hex digits a colour with an alpha carries.
 ALPHA_HEX_DIGITS = 8
 
 #: The Qt class of a launcher widget -> what it is on the screen.
-QT_WIDGET_KINDS = {
-    "ModeCard": "card",
-    "QLabel": "label",
-    "QPushButton": "button"
-}
+QT_WIDGET_KINDS = {"ModeCard": "card", "QLabel": "label", "QPushButton": "button"}
 
 
 def bridge_payload(**params: Any) -> dict:
@@ -479,7 +475,7 @@ def test_the_renderer_runs_the_module_after_react():
 SHIPPED_CHILDREN = {
     "ModeCard": 2,
     "QLabel": 3 + 2 * (3 + len(surface.CRYPTO_FEATURES)),
-    "QPushButton": 2
+    "QPushButton": 2,
 }
 
 

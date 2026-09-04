@@ -3146,9 +3146,7 @@ def direct_children(widget, kind):
     """The `kind` widgets `widget` owns itself, in the order it built them."""
     from PySide6.QtCore import Qt
 
-    return widget.findChildren(
-        kind, options=Qt.FindChildOption.FindDirectChildrenOnly
-    )
+    return widget.findChildren(kind, options=Qt.FindChildOption.FindDirectChildrenOnly)
 
 
 def shown_texts(widget, kind):

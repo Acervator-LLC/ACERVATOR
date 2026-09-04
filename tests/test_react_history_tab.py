@@ -67,8 +67,10 @@ def _model(count: int = 4) -> dict:
 
 def _stub_panel(js: JsRuntime) -> None:
     """A table renderer that records what it was handed."""
-    js.run("var PUSHED = null; window.acervatorSetState = function (s) "
-           "{ PUSHED = s; return 1; };")
+    js.run(
+        "var PUSHED = null; window.acervatorSetState = function (s) "
+        "{ PUSHED = s; return 1; };"
+    )
 
 
 def test_the_module_runs_and_publishes_its_own_global(js: JsRuntime) -> None:
@@ -99,9 +101,9 @@ def test_the_module_demands_exactly_what_the_surface_publishes(
 ) -> None:
     """No declared field the surface never sends, and none missing."""
     declared = sorted(js.json("acervatorHistoryTab.declaredFields()"))
-    assert declared == sorted(_model()), (
-        "the module and the surface disagree about the payload's fields"
-    )
+    assert declared == sorted(
+        _model()
+    ), "the module and the surface disagree about the payload's fields"
 
 
 def test_the_summary_style_sheet_becomes_a_css_style(js: JsRuntime) -> None:
@@ -140,9 +142,11 @@ def test_the_rows_go_to_the_one_renderer_that_draws_rows(js: JsRuntime) -> None:
     js.push(model)
     assert js.json("acervatorHistoryTab.pushRows(acervatorHistoryTab.state())") is True
     handed = js.json("PUSHED")
-    assert handed["chrome"] == {"summary": False, "filters": False, "pager": False}, (
-        "the panel would draw a second summary, filter bar and pager"
-    )
+    assert handed["chrome"] == {
+        "summary": False,
+        "filters": False,
+        "pager": False,
+    }, "the panel would draw a second summary, filter bar and pager"
     assert handed["page"] == model["page"], "the rows were altered on the way"
     assert handed["page"]["rows"], "no rows were handed over at all"
     assert handed["columns"] == model["columns"]

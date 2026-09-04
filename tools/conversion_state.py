@@ -177,7 +177,9 @@ def served_methods(root: pathlib.Path) -> dict[str, str]:
     """
     loaded = renderer_modules(root)
     methods = surface_methods(root)
-    registered = {methods[name] for name in registered_surfaces(root) if name in methods}
+    registered = {
+        methods[name] for name in registered_surfaces(root) if name in methods
+    }
     served: dict[str, str] = {}
     for path in sorted((root / "src" / "gui" / "web").glob("*.js")):
         if path.name not in loaded:

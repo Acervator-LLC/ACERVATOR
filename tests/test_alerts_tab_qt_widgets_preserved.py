@@ -113,9 +113,7 @@ def qt_classes() -> dict:
 
 def census(tab: Any) -> dict:
     """How many live children of each counted class `tab` holds."""
-    return {
-        name: len(tab.findChildren(found)) for name, found in qt_classes().items()
-    }
+    return {name: len(tab.findChildren(found)) for name, found in qt_classes().items()}
 
 
 def refreshed_tab() -> Any:
@@ -170,12 +168,11 @@ def test_the_alerts_tab_fills_one_row_for_each_event_and_each_message():
         "both tables were driven to the same height, so this test cannot "
         "tell one from the other"
     )
-    assert rules.rowCount() == wanted_rules, (
-        f"{wanted_rules} events reported but {rules.rowCount()} rows filled"
-    )
+    assert (
+        rules.rowCount() == wanted_rules
+    ), f"{wanted_rules} events reported but {rules.rowCount()} rows filled"
     assert history.rowCount() == wanted_history, (
-        f"{wanted_history} messages reported but "
-        f"{history.rowCount()} rows filled"
+        f"{wanted_history} messages reported but " f"{history.rowCount()} rows filled"
     )
 
 

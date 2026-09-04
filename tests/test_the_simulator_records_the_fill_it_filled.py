@@ -268,9 +268,7 @@ class TestTheFillReachesTheProgressCounters:
             "an empty dict"
         )
 
-    def test_per_bot_trade_count_carries_the_fills_of_each_bot(
-        self, run: _Run
-    ) -> None:
+    def test_per_bot_trade_count_carries_the_fills_of_each_bot(self, run: _Run) -> None:
         """The counter was seeded with zeros and never written.
 
         `start()` builds `per_bot_trade_count` with a key per bot and a
@@ -301,9 +299,7 @@ class TestTheFillReachesTheProgressCounters:
         consumer that reads these keys as live ids resolves nothing.
         """
         assert run.bot_counts, "no per-bot keys to check"
-        unprefixed = sorted(
-            k for k in run.bot_counts if not k.startswith("simulated_")
-        )
+        unprefixed = sorted(k for k in run.bot_counts if not k.startswith("simulated_"))
         assert not unprefixed, (
             f"{unprefixed} carry no `simulated_` prefix, so they are "
             f"indistinguishable from live bot ids: {sorted(run.bot_counts)}"

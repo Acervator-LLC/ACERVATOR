@@ -107,7 +107,9 @@ def evidence_of(verdicts: list[Verdict], stem: str) -> str:
     return "absent"
 
 
-def _wired(root: pathlib.Path, relative: str, surface: str, method: str, js: str) -> None:
+def _wired(
+    root: pathlib.Path, relative: str, surface: str, method: str, js: str
+) -> None:
     add_qt(root, relative)
     add_surface(root, surface, method)
     register(root, surface)
@@ -168,9 +170,10 @@ def test_a_qt_module_that_loads_a_renderer_module_itself_is_paired(
         "a widget that builds a page loading history_panel.js already draws "
         "React; got " + evidence_of(verdicts, "react_history_panel")
     )
-    assert "history_panel.js" in evidence_of(verdicts, "react_history_panel"), (
-        "the evidence must name the module the widget loads; got "
-        + evidence_of(verdicts, "react_history_panel")
+    assert "history_panel.js" in evidence_of(
+        verdicts, "react_history_panel"
+    ), "the evidence must name the module the widget loads; got " + evidence_of(
+        verdicts, "react_history_panel"
     )
 
 
@@ -334,9 +337,10 @@ def test_a_module_that_defines_no_class_is_not_a_screen(
 
     verdicts = survey(tmp_path)
 
-    assert state_of(verdicts, "qt_safe_events") == NOT_A_SCREEN, (
-        "a module with no class builds nothing to draw; got "
-        + evidence_of(verdicts, "qt_safe_events")
+    assert (
+        state_of(verdicts, "qt_safe_events") == NOT_A_SCREEN
+    ), "a module with no class builds nothing to draw; got " + evidence_of(
+        verdicts, "qt_safe_events"
     )
 
 
@@ -385,8 +389,7 @@ def test_a_module_that_only_names_qt_gets_no_verdict(tmp_path: pathlib.Path) -> 
         "none of the three states"
     )
     assert imports_pyside('X = "PySide6"\n') is False, (
-        "the same rule, read directly: naming PySide6 in a string is not an "
-        "import"
+        "the same rule, read directly: naming PySide6 in a string is not an " "import"
     )
 
 

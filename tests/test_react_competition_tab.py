@@ -78,9 +78,30 @@ def tab_spec() -> dict:
         ],
         "summary": {"total_minted": 900, "remaining": 100, "total_holders": 7},
         "leaderboard": [
-            {"rank": 1, "bot_id": "aaa", "rating": 1600, "w": 9, "l": 1, "win_rate": "90%"},
-            {"rank": 2, "bot_id": "bbb", "rating": 1500, "w": 5, "l": 5, "win_rate": "50%"},
-            {"rank": 3, "bot_id": "ccc", "rating": 1400, "w": 1, "l": 9, "win_rate": "10%"},
+            {
+                "rank": 1,
+                "bot_id": "aaa",
+                "rating": 1600,
+                "w": 9,
+                "l": 1,
+                "win_rate": "90%",
+            },
+            {
+                "rank": 2,
+                "bot_id": "bbb",
+                "rating": 1500,
+                "w": 5,
+                "l": 5,
+                "win_rate": "50%",
+            },
+            {
+                "rank": 3,
+                "bot_id": "ccc",
+                "rating": 1400,
+                "w": 1,
+                "l": 9,
+                "win_rate": "10%",
+            },
         ],
         "season": 2,
     }
@@ -134,7 +155,9 @@ def test_every_field_the_module_declares_is_one_the_surface_publishes(
     """The module reads a field the surface never writes, or the reverse."""
     declared = set(js.json("acervatorCompetitionTab.declaredFields()"))
     missing = sorted(declared - set(model))
-    assert not missing, f"the module reads fields the surface does not publish: {missing}"
+    assert (
+        not missing
+    ), f"the module reads fields the surface does not publish: {missing}"
 
 
 def test_the_field_check_names_a_field_the_surface_dropped(js: JsRuntime, model: dict):
@@ -144,7 +167,9 @@ def test_the_field_check_names_a_field_the_surface_dropped(js: JsRuntime, model:
     assert sorted(declared - set(thinned)) == ["tier_colors"]
 
 
-def test_the_module_holds_every_wallet_row_the_surface_publishes(loaded: JsRuntime, model: dict):
+def test_the_module_holds_every_wallet_row_the_surface_publishes(
+    loaded: JsRuntime, model: dict
+):
     """A wallet cell drifted between the surface and the module."""
     rows = model["wallet_panel"]["rows"]
     assert rows, "the wallet fixture holds no row, so the comparison proves nothing"
@@ -194,7 +219,9 @@ def test_a_tier_colour_the_surface_never_published_is_named_as_a_fault(
     assert [one["fault"] for one in faults] == ["unnamed"], faults
 
 
-def test_a_cell_paints_the_tier_colour_the_surface_gave_it(loaded: JsRuntime, model: dict):
+def test_a_cell_paints_the_tier_colour_the_surface_gave_it(
+    loaded: JsRuntime, model: dict
+):
     """The tier column is the only coloured cell the wallet table paints."""
     cell = model["wallet_panel"]["rows"][0][0]
     assert cell["color"] == model["tier_colors"][LEADER_TIER]
@@ -206,7 +233,9 @@ def test_a_cell_paints_the_tier_colour_the_surface_gave_it(loaded: JsRuntime, mo
     assert painted["color"] == cell["color"]
 
 
-def test_a_cell_the_surface_left_uncoloured_paints_no_colour(loaded: JsRuntime, model: dict):
+def test_a_cell_the_surface_left_uncoloured_paints_no_colour(
+    loaded: JsRuntime, model: dict
+):
     """A column past the tier column carries the surface's own no-colour reading."""
     cell = model["wallet_panel"]["rows"][0][1]
     assert cell["color"] == model["colors"]["none"]
@@ -248,7 +277,9 @@ def test_the_colour_scan_reads_the_module_file_and_can_report():
 def test_no_string_in_the_module_is_a_text_the_tab_shows(model: dict):
     """A caption written into the module would not follow the surface."""
     written = set(js_literals(MODULE_SOURCE)["strings"])
-    shown = {one for one in model["texts"].values() if isinstance(one, str) and one.strip()}
+    shown = {
+        one for one in model["texts"].values() if isinstance(one, str) and one.strip()
+    }
     shown.update(model["section_names"])
     carried = sorted(written & shown)
     assert not carried, f"the module writes texts the surface owns: {carried}"
@@ -276,14 +307,18 @@ def test_the_renderer_manifest_names_the_module():
 
 def test_the_style_sheet_the_widget_sets_keeps_the_alpha_byte_qt_reads(monkeypatch):
     """build_view_model feeds a real setStyleSheet, so the byte must survive it."""
-    monkeypatch.setattr(surface, "SEPARATOR_STYLE", f"color:rgba(0,255,238,{BYTE_ALPHA});")
+    monkeypatch.setattr(
+        surface, "SEPARATOR_STYLE", f"color:rgba(0,255,238,{BYTE_ALPHA});"
+    )
     built = surface.build_view_model(surface.build_model(tab_spec()))
     assert built["styles"]["separator"] == f"color:rgba(0,255,238,{BYTE_ALPHA});"
 
 
 def test_the_published_payload_carries_the_alpha_share_a_browser_reads(monkeypatch):
     """view_model is the boundary: past it the alpha is the share CSS reads."""
-    monkeypatch.setattr(surface, "SEPARATOR_STYLE", f"color:rgba(0,255,238,{BYTE_ALPHA});")
+    monkeypatch.setattr(
+        surface, "SEPARATOR_STYLE", f"color:rgba(0,255,238,{BYTE_ALPHA});"
+    )
     published = surface.view_model({"reset": True, "state": tab_spec()})
     assert published["styles"]["separator"] == f"color:rgba(0,255,238,{SHARE_ALPHA});"
 
@@ -544,9 +579,11 @@ def test_the_page_paints_the_tier_colour_on_the_drawn_cell(page: Page, model: di
     """The colour is read back computed off the element the page really built."""
     painted = page.js(
         "getComputedStyle(window.HOST.querySelector("
-        "'[data-part=\"table\"] tbody [data-part=\"table-cell\"]')).color"
+        '\'[data-part="table"] tbody [data-part="table-cell"]\')).color'
     )
-    channels = [int(one, 16) for one in re.findall(r"..", model["tier_colors"][LEADER_TIER][1:])]
+    channels = [
+        int(one, 16) for one in re.findall(r"..", model["tier_colors"][LEADER_TIER][1:])
+    ]
     assert painted == "rgb(" + ", ".join(str(one) for one in channels) + ")", painted
 
 

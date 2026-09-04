@@ -326,9 +326,7 @@ class ExtractorBot(BotContainer):
                     self._chunk_size_usd,
                     self._hedge_budget_usd,
                 )
-            except (
-                Exception
-            ) as _crr_exc:  # fails open: continues without a reservation
+            except Exception as _crr_exc:  # fails open: continues without a reservation
                 logger.warning(
                     "Bot %s capital reservation at chunk-rate-set "
                     "raised %s: %s — continuing without reservation. "
@@ -1232,9 +1230,7 @@ class ExtractorBot(BotContainer):
                     self._bot_manager.notify_bot_profit(
                         bot_id=self.bot_id, profit_usd=gain_usd
                     )
-            except (
-                Exception
-            ) as _exc:  # best-effort; must not block trade flow
+            except Exception as _exc:  # best-effort; must not block trade flow
                 logger.warning(
                     "v3.20.72 profit notification failed for bot %s: %s",
                     self.bot_id,
@@ -1437,9 +1433,7 @@ class ExtractorBot(BotContainer):
                 from .capital_reservation import get_registry as _crr_get_registry
 
                 _crr_get_registry().heartbeat(self.bot_id)
-            except (
-                Exception
-            ) as _crr_exc:  # best-effort; tick must not block
+            except Exception as _crr_exc:  # best-effort; tick must not block
                 logger.debug(
                     "Bot %s capital reservation heartbeat raised %s — "
                     "continuing tick.",

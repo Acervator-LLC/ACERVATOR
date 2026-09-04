@@ -445,9 +445,9 @@ def caught_by_scan(source: str) -> set:
 
 @pytest.mark.parametrize("kind", sorted(WRITTEN_LINES))
 def test_the_literal_scan_names_one_written_line(kind: str):
-    assert kind in caught_by_scan(WRITTEN_LINES[kind]), (
-        f"the scan reported nothing on the {kind} line"
-    )
+    assert kind in caught_by_scan(
+        WRITTEN_LINES[kind]
+    ), f"the scan reported nothing on the {kind} line"
 
 
 def test_each_written_literal_is_caught_in_the_module_file_itself():
@@ -461,9 +461,9 @@ def test_each_written_literal_is_caught_in_the_module_file_itself():
             swap_module(MODULE_PATH, original + WRITTEN_LINES[kind].encode("utf-8"))
             caught_each[kind] = caught_by_scan(MODULE_PATH.read_text(encoding="utf-8"))
             swap_module(MODULE_PATH, original)
-            assert hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest() == before, (
-                f"the file was not restored after the {kind} line"
-            )
+            assert (
+                hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest() == before
+            ), f"the file was not restored after the {kind} line"
     finally:
         swap_module(MODULE_PATH, original)
     quiet = sorted(kind for kind, caught in caught_each.items() if kind not in caught)

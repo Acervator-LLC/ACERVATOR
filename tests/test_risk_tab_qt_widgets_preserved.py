@@ -104,9 +104,7 @@ def qt_classes() -> dict:
 
 def census(tab: Any) -> dict:
     """How many live children of each counted class `tab` holds."""
-    return {
-        name: len(tab.findChildren(found)) for name, found in qt_classes().items()
-    }
+    return {name: len(tab.findChildren(found)) for name, found in qt_classes().items()}
 
 
 def refreshed_tab() -> Any:

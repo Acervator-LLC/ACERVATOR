@@ -293,9 +293,10 @@ def test_the_counts_the_module_reports_match_the_payload(loaded: JsRuntime):
     assert report["declared"]["timeframe_columns"] == TIMEFRAME_COLUMN_TOTAL
     assert report["held"]["timeframe_columns"] == TIMEFRAME_COLUMN_TOTAL
     assert report["held"]["rows"] == len(BOTS) + len(TIMEFRAMES)
-    assert report["held"]["cells"] == len(BOTS) * BOT_COLUMN_TOTAL + len(
-        TIMEFRAMES
-    ) * TIMEFRAME_COLUMN_TOTAL
+    assert (
+        report["held"]["cells"]
+        == len(BOTS) * BOT_COLUMN_TOTAL + len(TIMEFRAMES) * TIMEFRAME_COLUMN_TOTAL
+    )
 
 
 def test_the_module_names_every_card_the_surface_published(loaded: JsRuntime):
@@ -547,9 +548,10 @@ def test_the_page_draws_every_part_the_tab_is_made_of(browser: Browser):
         BOT_COLUMN_TOTAL + TIMEFRAME_COLUMN_TOTAL
     )
     assert len(drawn.get("row", [])) == len(BOTS) + len(TIMEFRAMES)
-    assert len(drawn.get("cell", [])) == len(BOTS) * BOT_COLUMN_TOTAL + len(
-        TIMEFRAMES
-    ) * TIMEFRAME_COLUMN_TOTAL
+    assert (
+        len(drawn.get("cell", []))
+        == len(BOTS) * BOT_COLUMN_TOTAL + len(TIMEFRAMES) * TIMEFRAME_COLUMN_TOTAL
+    )
 
 
 def test_the_page_draws_the_card_values_the_surface_published(browser: Browser):

@@ -46,8 +46,7 @@ def test_a_raising_activity_callback_is_reported_as_the_callback(capture_log):
         "activity callback" in m for m in warnings
     ), f"the warning does not name the activity callback: {warnings}"
     assert not any("teardown" in m for m in warnings), (
-        f"the warning blames teardown for an activity-callback failure: "
-        f"{warnings}"
+        f"the warning blames teardown for an activity-callback failure: " f"{warnings}"
     )
 
 

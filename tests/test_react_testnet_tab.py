@@ -187,9 +187,7 @@ class JsRuntime(JsEngine):
             loaded = engine.evaluate(
                 HEADER_MODULE.read_text(encoding="utf-8"), HEADER_MODULE.name
             )
-            assert not loaded.isError(), (
-                HEADER_MODULE.name + " -> " + loaded.toString()
-            )
+            assert not loaded.isError(), HEADER_MODULE.name + " -> " + loaded.toString()
 
     def called(self, method: str, *args: Any) -> Any:
         names = []
@@ -437,9 +435,9 @@ def caught_by_scan(source: str) -> set:
 
 @pytest.mark.parametrize("kind", sorted(WRITTEN_LINES))
 def test_the_literal_scan_names_one_written_line(kind: str):
-    assert kind in caught_by_scan(WRITTEN_LINES[kind]), (
-        f"the scan reported nothing on the {kind} line"
-    )
+    assert kind in caught_by_scan(
+        WRITTEN_LINES[kind]
+    ), f"the scan reported nothing on the {kind} line"
 
 
 def test_each_written_literal_is_caught_in_the_module_file_itself():
@@ -453,9 +451,9 @@ def test_each_written_literal_is_caught_in_the_module_file_itself():
             swap_module(MODULE_PATH, original + WRITTEN_LINES[kind].encode("utf-8"))
             caught_each[kind] = caught_by_scan(MODULE_PATH.read_text(encoding="utf-8"))
             swap_module(MODULE_PATH, original)
-            assert hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest() == before, (
-                f"the file was not restored after the {kind} line"
-            )
+            assert (
+                hashlib.sha256(MODULE_PATH.read_bytes()).hexdigest() == before
+            ), f"the file was not restored after the {kind} line"
     finally:
         swap_module(MODULE_PATH, original)
     quiet = sorted(kind for kind, caught in caught_each.items() if kind not in caught)
@@ -610,9 +608,12 @@ def test_the_tab_draws_one_element_for_every_node_the_surface_published(
 
 def test_the_tab_carries_the_accessible_name_the_surface_declares(browser: Browser):
     draw(browser, payload())
-    assert browser.parsed(
-        "window.HOST.querySelector('[data-node=\"tab\"]').getAttribute('aria-label')"
-    ) == surface.ACCESSIBLE_NAME
+    assert (
+        browser.parsed(
+            "window.HOST.querySelector('[data-node=\"tab\"]').getAttribute('aria-label')"
+        )
+        == surface.ACCESSIBLE_NAME
+    )
 
 
 @pytest.mark.parametrize(("node_name", "rows_key"), TABLE_PAIRS)
@@ -673,8 +674,8 @@ def test_a_cell_is_painted_the_colour_the_surface_gave_it(browser: Browser):
     assert wanted, "the event colour fixture is empty"
     found = browser.parsed(
         "window.getComputedStyle(window.HOST.querySelector("
-        "'[data-node=\"events_table\"] [data-part=\"row\"][data-row=\"0\"]"
-        " [data-part=\"cell\"][data-column=\"1\"]')).color"
+        '\'[data-node="events_table"] [data-part="row"][data-row="0"]'
+        ' [data-part="cell"][data-column="1"]\')).color'
     )
     assert found == rgb_of(wanted), found
 
@@ -692,13 +693,13 @@ def test_the_colour_reading_tells_two_different_real_cells_apart(browser: Browse
     draw(browser, given)
     first = browser.parsed(
         "window.getComputedStyle(window.HOST.querySelector("
-        "'[data-node=\"events_table\"] [data-part=\"row\"][data-row=\"0\"]"
-        " [data-part=\"cell\"][data-column=\"1\"]')).color"
+        '\'[data-node="events_table"] [data-part="row"][data-row="0"]'
+        ' [data-part="cell"][data-column="1"]\')).color'
     )
     second = browser.parsed(
         "window.getComputedStyle(window.HOST.querySelector("
-        "'[data-node=\"events_table\"] [data-part=\"row\"][data-row=\"1\"]"
-        " [data-part=\"cell\"][data-column=\"1\"]')).color"
+        '\'[data-node="events_table"] [data-part="row"][data-row="1"]'
+        ' [data-part="cell"][data-column="1"]\')).color'
     )
     assert given["rows"]["events"][0][1]["color"] != (
         given["rows"]["events"][1][1]["color"]
@@ -729,12 +730,18 @@ def test_a_switched_off_button_draws_switched_off(browser: Browser):
     model.run_enabled = False
     off = as_json(css_colours(surface.build_view_model(model)))
     draw(browser, off)
-    assert browser.parsed(
-        "window.HOST.querySelector('[data-node=\"run_button\"]').disabled"
-    ) is True
-    assert browser.parsed(
-        "window.HOST.querySelector('[data-node=\"stress_button\"]').disabled"
-    ) is False
+    assert (
+        browser.parsed(
+            "window.HOST.querySelector('[data-node=\"run_button\"]').disabled"
+        )
+        is True
+    )
+    assert (
+        browser.parsed(
+            "window.HOST.querySelector('[data-node=\"stress_button\"]').disabled"
+        )
+        is False
+    )
 
 
 def test_the_same_button_draws_switched_on_when_the_surface_says_so(
@@ -744,9 +751,12 @@ def test_the_same_button_draws_switched_on_when_the_surface_says_so(
     given = payload()
     assert given["buttons_enabled"]["run_button"] is True
     draw(browser, given)
-    assert browser.parsed(
-        "window.HOST.querySelector('[data-node=\"run_button\"]').disabled"
-    ) is False
+    assert (
+        browser.parsed(
+            "window.HOST.querySelector('[data-node=\"run_button\"]').disabled"
+        )
+        is False
+    )
 
 
 def test_the_log_pane_draws_one_stamped_line_for_every_line_the_model_wrote(
