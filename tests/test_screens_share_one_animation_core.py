@@ -132,9 +132,7 @@ def _base_method_names() -> set[str]:
     }
 
 
-# ---------------------------------------------------------------------------
 # The rules
-# ---------------------------------------------------------------------------
 
 
 def test_the_shared_module_is_not_in_a_directory_the_build_ships() -> None:
@@ -286,9 +284,7 @@ def test_the_palette_hands_out_no_shared_qcolor_instance() -> None:
         assert cartoon_screen.C[key] is not investor_screen.C[key], key
 
 
-# ---------------------------------------------------------------------------
 # Two-sided: each rule, driven with the case it exists for
-# ---------------------------------------------------------------------------
 
 
 class TestTheRulesFire:

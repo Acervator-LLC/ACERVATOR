@@ -776,9 +776,7 @@ SHAPE_TRIPLES = (
 SWATCH_ORDER = EXPECTED_COLOR_NAMES + EXPECTED_ALIAS_NAMES
 
 
-# ---------------------------------------------------------------------
 # The two token tables, and the panel painted from one of them
-# ---------------------------------------------------------------------
 
 
 def shipped_tokens():
@@ -994,9 +992,7 @@ def digest(payload):
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", shipped.__all__)
@@ -1084,9 +1080,7 @@ def test_the_hash_can_report_a_difference():
     assert digest(old) == digest(dict(old))
 
 
-# ---------------------------------------------------------------------
 # The names, their order and their count
-# ---------------------------------------------------------------------
 
 
 def test_the_token_names_are_the_shipped_modules_export_list():
@@ -1122,9 +1116,7 @@ def test_the_token_table_matches_the_name_list():
     assert surface.TOKENS == shipped_tokens()
 
 
-# ---------------------------------------------------------------------
 # The type each value carries
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", shipped.__all__)
@@ -1219,9 +1211,7 @@ def test_every_font_family_names_a_stack_the_shipped_module_ships():
     assert surface.FONT_FAMILY_MONO.count(",") == 3
 
 
-# ---------------------------------------------------------------------
 # The groups
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("group", sorted(EXPECTED_GROUP_MEMBERS))
@@ -1297,9 +1287,7 @@ def test_the_named_group_tables_are_the_group_map():
         assert table == {n: getattr(shipped, n) for n in EXPECTED_GROUP_MEMBERS[group]}
 
 
-# ---------------------------------------------------------------------
 # The six second names
-# ---------------------------------------------------------------------
 
 
 def test_every_second_name_carries_the_value_of_the_token_it_copies():
@@ -1338,9 +1326,7 @@ def test_the_six_second_names_are_the_only_repeated_colour_values():
         assert EXPECTED_ALIAS_TARGETS[names[1]] == names[0], names
 
 
-# ---------------------------------------------------------------------
 # What the five helpers return
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", shipped.__all__)
@@ -1438,9 +1424,7 @@ def test_requested_names_reads_a_list_and_refuses_anything_else():
     assert surface.requested_names(["<b>PRIMARY</b>"]) == ["<b>PRIMARY</b>"]
 
 
-# ---------------------------------------------------------------------
 # What the shipped module never had
-# ---------------------------------------------------------------------
 
 
 def test_the_connect_sites_match_the_actions():
@@ -1583,9 +1567,7 @@ def test_the_surface_carries_its_own_copy_of_every_value(monkeypatch):
         assert getattr(shipped, name) == was, name
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def test_the_two_sides_paint_one_picture():
@@ -1869,9 +1851,7 @@ def test_the_panel_paints_something_to_compare():
     assert len(seen) > 1, "the panel painted one colour, so no defect could show"
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -2060,9 +2040,7 @@ def test_the_table_is_the_same_on_every_call():
     assert digest(first["tokens"]) == digest(third["tokens"])
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt, proved in a process of its own
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -2188,9 +2166,7 @@ def test_the_shipped_module_needs_no_qt_either():
     assert answered["shadow"] == [4, 8, "60"]
 
 
-# ---------------------------------------------------------------------
 # Nothing the surface holds is left out of the snapshot
-# ---------------------------------------------------------------------
 
 # Every constant the surface exports that is not one of the 195 tokens,
 # and the payload key that carries it. A comparison reading 40 of 50

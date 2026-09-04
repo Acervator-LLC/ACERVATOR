@@ -92,9 +92,7 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The inputs. One table for the card state, one for the card steps.
-# ---------------------------------------------------------------------
 
 
 LONG_TEXT = "L" * 200
@@ -368,9 +366,7 @@ REFUSING_STEPS = (
 )
 
 
-# ---------------------------------------------------------------------
 # The three outward edges both sides are driven through
-# ---------------------------------------------------------------------
 
 
 def hide_identifiers(value, field_id, mask="****"):
@@ -413,9 +409,7 @@ def shipped():
     return bot_node
 
 
-# ---------------------------------------------------------------------
 # The painter the shipped card draws through
-# ---------------------------------------------------------------------
 
 
 def colour_of(value):
@@ -601,9 +595,7 @@ def recording_node_class():
     return RecordingNode
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def old_node(spec, draws=None):
@@ -767,9 +759,7 @@ def partial_new(spec, steps=()):
     return [list(one) for one in model.draw_calls], refusal
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", CARD_NAMES)
@@ -945,9 +935,7 @@ def test_every_paint_branch_the_surface_declares_is_taken():
     )
 
 
-# ---------------------------------------------------------------------
 # Answers and refusals
-# ---------------------------------------------------------------------
 
 
 def test_both_answers_and_refusals_are_in_the_measured_card_set():
@@ -1030,9 +1018,7 @@ def test_a_flag_where_a_profit_belongs_is_read_as_one_dollar():
     assert canonical(new) == canonical(old)
 
 
-# ---------------------------------------------------------------------
 # The draws the card takes from the operating system
-# ---------------------------------------------------------------------
 
 
 def test_the_card_takes_one_draw_to_start_and_twenty_for_each_trade():
@@ -1088,9 +1074,7 @@ def test_the_two_sides_build_one_speck_from_one_set_of_draws():
     assert mine[0].vx != mine[1].vx, "every speck took the same draw"
 
 
-# ---------------------------------------------------------------------
 # The enumeration: wiring, signals, classes, methods, timers, bus topics
-# ---------------------------------------------------------------------
 
 
 def parsed(path):
@@ -1365,9 +1349,7 @@ def test_the_counterpart_reader_reports_a_missing_counterpart():
         getattr(surface, "InventedModel")
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 PAYLOAD_KEYS = {
@@ -1731,9 +1713,7 @@ def test_the_completeness_check_can_report_a_missing_value():
         at_path(payload, "path.origin.9")
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -1907,9 +1887,7 @@ def test_the_card_the_bridge_keeps_really_moves():
     assert surface.NODE_MODEL is surface.held_model()
 
 
-# ---------------------------------------------------------------------
 # The shape builder against the drawing library
-# ---------------------------------------------------------------------
 
 
 def qt_path(steps):
@@ -2042,9 +2020,7 @@ def test_each_body_shape_matches_the_one_the_library_builds(name):
     assert mine[name], name
 
 
-# ---------------------------------------------------------------------
 # The colours
-# ---------------------------------------------------------------------
 
 
 def canonical_colour(value):
@@ -2188,9 +2164,7 @@ def test_the_alpha_of_every_layer_is_the_one_declared():
     )
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def model_payload(name, steps=(), mask=show_identifiers):
@@ -2469,9 +2443,7 @@ def test_two_labels_of_equal_length_measure_different_widths():
     assert narrow != wide, (narrow, wide)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_hover_text_is_read_off_both_sides():
@@ -2551,9 +2523,7 @@ def test_the_recording_card_records_nothing_while_it_is_built():
     assert recording_node_class().route == ()
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)

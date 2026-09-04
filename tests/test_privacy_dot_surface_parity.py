@@ -112,10 +112,8 @@ def differences(old, new, prefix: str = "") -> list:
     return found
 
 
-# ---------------------------------------------------------------------
 # The privacy register is process-wide, and the dot WRITES to it. Every
 # test is given its own and the process one is put back.
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -153,9 +151,7 @@ def registry_rows() -> list:
     )
 
 
-# ---------------------------------------------------------------------
 # The inputs. One scenario drives both sides.
-# ---------------------------------------------------------------------
 
 LONG_TEXT = "L" * 200
 MARKUP_TEXT = '<b onclick="x">bold &amp; "quoted"</b>'
@@ -310,9 +306,7 @@ def run_steps(spec, dots, click) -> None:
                 dot.refresh()
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def drive_old(spec):
@@ -344,9 +338,7 @@ def drive_new(spec):
     return models, recorder
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def dot_from_qt(dot) -> dict:
@@ -419,9 +411,7 @@ def new_outcome(spec) -> dict:
     return outcome(lambda: surface_trace(drive_new(spec)))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -637,9 +627,7 @@ def test_a_refresh_puts_every_dot_on_one_field_back_in_step():
     assert differences(old, new) == []
 
 
-# ---------------------------------------------------------------------
 # The enumeration: connect sites, classes, methods, timers, bus topics
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -826,9 +814,7 @@ def test_the_dot_subscribes_to_no_bus_topic_and_the_counter_can_report():
     assert "wire.created" in neighbour
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 def named_payloads() -> dict:
@@ -1025,9 +1011,7 @@ def test_a_callback_that_raises_is_swallowed_on_both_sides():
     assert differences(old["value"], new["value"]) == []
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_moved_in_the_shipped_dot(monkeypatch):
@@ -1089,9 +1073,7 @@ def test_the_default_field_id_is_one_the_privacy_register_knows():
     assert "kpi.invented" not in ALL_FIELD_IDS
 
 
-# ---------------------------------------------------------------------
 # The shared privacy register
-# ---------------------------------------------------------------------
 
 
 def test_a_click_writes_to_the_process_wide_privacy_register():
@@ -1147,9 +1129,7 @@ def test_each_test_is_given_its_own_register_again():
     assert registry().is_masked(HAPPY_FIELD_ID) is False
 
 
-# ---------------------------------------------------------------------
 # The colours
-# ---------------------------------------------------------------------
 
 
 def canonical(colour) -> str:
@@ -1201,9 +1181,7 @@ def test_the_hover_white_is_compared_as_text_because_its_channels_are_equal():
     assert new["style_sheet"] == old["style_sheet"]
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 @functools.lru_cache(maxsize=1)
@@ -1387,9 +1365,7 @@ def test_two_strings_of_one_length_measure_different_widths():
     assert dot_width(NARROW_LABEL) != dot_width(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_values_no_picture_carries_are_read_off_both_sides():
@@ -1427,9 +1403,7 @@ def test_the_glyph_is_compared_as_exact_text_on_both_sides():
     assert surface.MASKED_GLYPH == masked["text"]
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):

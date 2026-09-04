@@ -69,11 +69,9 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The three services, as the test owns them. The Qt tab is driven with
 # these; the surface is driven with its own. Neither side reads the
 # other's.
-# ---------------------------------------------------------------------
 
 
 class Journal:
@@ -112,9 +110,7 @@ class Reconciliation:
         return self.result
 
 
-# ---------------------------------------------------------------------
 # The inputs. One scenario drives both sides.
-# ---------------------------------------------------------------------
 
 
 def entry(**named):
@@ -302,9 +298,7 @@ SCENARIO_NAMES = [spec["name"] for spec in SCENARIOS]
 BY_NAME = {spec["name"]: spec for spec in SCENARIOS}
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def old_services(spec):
@@ -378,9 +372,7 @@ def drive_new(spec):
     return model, journal
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def margins(layout):
@@ -680,9 +672,7 @@ def new_outcome(spec):
     return outcome(read)
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -753,9 +743,7 @@ def test_the_sample_hashes_are_reported(name):
     assert digest(value) == digest(new_outcome(BY_NAME[name])["value"])
 
 
-# ---------------------------------------------------------------------
 # The detail pane, driven into a real text box on both sides
-# ---------------------------------------------------------------------
 
 
 DETAIL_SCENARIOS = [
@@ -896,9 +884,7 @@ def test_a_bot_that_stays_keeps_the_selection():
     assert surface.FILTER_RESTORED in [call[0] for call in model.calls]
 
 
-# ---------------------------------------------------------------------
 # The enumeration: signals, classes, methods, timers, bus topics
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1087,9 +1073,7 @@ def test_the_screen_subscribes_to_no_bus_topic_and_the_counter_can_report():
     assert "wire.created" in neighbour
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 PAYLOAD_KEYS = {
@@ -1427,9 +1411,7 @@ def test_every_branch_marker_fires_and_ties_to_what_the_operator_sees():
     assert written.snapshot_text != surface.SNAPSHOT_LABEL_TEXT
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 class FrozenClock:
@@ -1497,9 +1479,7 @@ def test_the_surface_names_the_same_logger_as_the_screen():
     assert surface.LOGGER_NAME == "acervator.gui"
 
 
-# ---------------------------------------------------------------------
 # The splitter sizes are a request, not a read-back
-# ---------------------------------------------------------------------
 
 
 def plain_splitter(orientation, requested, size):
@@ -1553,9 +1533,7 @@ def test_the_two_sides_ask_for_the_same_splitter_sizes():
     assert len(parts["splitter"].sizes()) == 2
 
 
-# ---------------------------------------------------------------------
 # The colours
-# ---------------------------------------------------------------------
 
 
 def canonical(colour):
@@ -1599,9 +1577,7 @@ def test_the_muted_grey_is_compared_as_text_because_its_channels_are_equal():
     assert payload["detail_view"]["html"].count(surface.MUTED_COLOR) == 18
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 ORIENTATIONS = {"vertical": "Vertical", "horizontal": "Horizontal"}
@@ -1878,9 +1854,7 @@ def test_the_host_font_question_is_asked_and_not_assumed():
         ), "the host reports no fonts and the glyphs still have their own widths"
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_values_no_picture_carries_are_read_off_both_sides():
@@ -1916,9 +1890,7 @@ def test_the_values_no_picture_carries_are_read_off_both_sides():
     assert old["journal_table"]["vertical_header_visible"] is False
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):

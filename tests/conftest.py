@@ -222,9 +222,7 @@ def capture_log():
     return _capture
 
 
-# ---------------------------------------------------------------------
 # RULE -- a silent capture is a failed capture.
-# ---------------------------------------------------------------------
 ACERVATOR_LOG_NODE = "acervator"
 
 SILENT_CAPTURE_MARKER = "caplog_may_be_empty"

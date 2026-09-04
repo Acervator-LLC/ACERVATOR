@@ -285,9 +285,7 @@ REFUSAL_TYPE = "refused"
 ANSWER_TYPE = "answered"
 
 
-# ---------------------------------------------------------------------
 # The outward edges, stood in for. Nothing here reaches a device.
-# ---------------------------------------------------------------------
 
 
 class FakeSignal:
@@ -399,9 +397,7 @@ def short_generator(real):
     return staticmethod(generate_wav)
 
 
-# ---------------------------------------------------------------------
 # One world per side. Everything process-wide is swapped and put back.
-# ---------------------------------------------------------------------
 
 # Every name on the shipped module that a side sets for itself. Read by
 # the isolation tests, so a name added here is watched by them too.
@@ -483,9 +479,7 @@ def world_restored():
     assert world_now() == PRISTINE_WORLD, world_now()
 
 
-# ---------------------------------------------------------------------
 # The shipped side, driven step by step
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -722,9 +716,7 @@ def run_surface(steps, media):
     )
 
 
-# ---------------------------------------------------------------------
 # The two sides, read into one shape
-# ---------------------------------------------------------------------
 
 
 def outcome(call, *args):
@@ -841,9 +833,7 @@ RICHNESS_UNCHANGED = 0.500001
 RICHNESS_MOVED = 0.5001
 
 
-# ---------------------------------------------------------------------
 # The tables, value for value
-# ---------------------------------------------------------------------
 
 PRESET_PAIR_CASES = [
     (name, position)
@@ -965,9 +955,7 @@ def test_every_number_of_a_preset_is_read_as_its_own_text():
     assert differences(EXPECTED_PRESETS, swapped) != []
 
 
-# ---------------------------------------------------------------------
 # The tone, sample by sample, against frames the shipped code wrote
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("case", sorted(TONE_CASES))
@@ -1113,9 +1101,7 @@ def test_a_sample_past_the_loop_join_is_not_mixed():
     assert mixed != inside
 
 
-# ---------------------------------------------------------------------
 # The file name the generator writes, held as text and never joined
-# ---------------------------------------------------------------------
 
 NAME_CASES = [
     (preset, key) for preset in EXPECTED_PRESET_NAMES for key in EXPECTED_KEY_NAMES
@@ -1189,9 +1175,7 @@ def test_a_preset_name_that_is_not_text_refuses_the_same_way(value):
     assert new == old, (value, old, new)
 
 
-# ---------------------------------------------------------------------
 # The steps, driven through both sides in one run
-# ---------------------------------------------------------------------
 
 # One sequence is one named run of screen actions. Both sides are driven
 # from this table and from nothing else, so neither can be given a
@@ -1649,9 +1633,7 @@ def test_a_caption_for_a_path_that_is_not_text_refuses(tmp_path):
         assert new["did"] == REFUSAL_TYPE, value
 
 
-# ---------------------------------------------------------------------
 # One whole answer, by hash
-# ---------------------------------------------------------------------
 
 HASH_SAMPLES = (
     "one_layer",
@@ -1737,9 +1719,7 @@ def test_the_difference_reader_names_what_moved(tmp_path):
     assert differences(state, state) == []
 
 
-# ---------------------------------------------------------------------
 # What the shipped file has, and where each item went
-# ---------------------------------------------------------------------
 
 SCREEN_ROOTS = ("PySide6.QtWidgets",)
 
@@ -2295,9 +2275,7 @@ def test_the_file_chooser_is_named_and_never_opened():
     assert "QFileDialog" not in names, names
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_loads_no_qt_module():
@@ -2381,9 +2359,7 @@ def test_the_clock_reader_can_see_a_clock():
     assert "time" in called
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt, proved in a process of its own
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -2554,9 +2530,7 @@ def test_the_connection_counter_reaches_a_child_process():
     assert "127.0.0.1" in answered["attempts"][0], answered
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own copy of every value
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_carries_its_own_copy_of_every_value(monkeypatch):
@@ -2703,9 +2677,7 @@ def test_the_in_place_check_can_report():
     assert state["layer_presets"][1] == ""
 
 
-# ---------------------------------------------------------------------
 # One side's world never reaches the other
-# ---------------------------------------------------------------------
 
 
 def test_each_side_gets_its_own_world_and_gives_it_back(tmp_path):
@@ -2768,9 +2740,7 @@ def test_the_directory_watcher_can_report(tmp_path):
     assert sorted(p.name for p in folder.glob("*.wav")) == ["qat_planted.wav"]
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_bridge_registers_the_audio_suite_method():
@@ -2873,9 +2843,7 @@ def test_a_media_state_the_surface_does_not_know_opens_ready():
         assert state["media"] == MEDIA_READY, value
 
 
-# ---------------------------------------------------------------------
 # Nothing the surface holds is left out of the snapshot
-# ---------------------------------------------------------------------
 
 # Every constant the surface exports, and the payload key that carries
 # it. A comparison reading some of them passes whether the rest match or
@@ -3137,9 +3105,7 @@ def test_a_key_no_list_holds_is_reported_as_nothing_chosen(tmp_path):
     assert surface.current_base_freq(chosen) == 55
 
 
-# ---------------------------------------------------------------------
 # The wording the drone panel shows
-# ---------------------------------------------------------------------
 
 
 def direct_children(widget, kind):

@@ -258,9 +258,7 @@ class answered_dialog:
         return False
 
 
-# ---------------------------------------------------------------------
 # Invented inputs, and the stand-ins both sides are driven with
-# ---------------------------------------------------------------------
 
 
 def block(**over):
@@ -603,9 +601,7 @@ TAB_CASES: dict = {
 }
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def numbered(value):
@@ -751,9 +747,7 @@ def layout_entries(layout):
     return found
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def qt_bridge(signals=surface.BRIDGE_SIGNALS):
@@ -907,9 +901,7 @@ def compare(name, table, key):
     return old, new
 
 
-# ---------------------------------------------------------------------
 # Value for value, and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(BLOCK_CASES))
@@ -1083,9 +1075,7 @@ def test_the_frozen_clock_reaches_both_sides():
     assert moved != held, (moved, held)
 
 
-# ---------------------------------------------------------------------
 # Both sides answered, or both refused, with the same wording
-# ---------------------------------------------------------------------
 
 
 def outcomes(table, key):
@@ -1169,9 +1159,7 @@ def test_the_refusal_wording_is_read_off_the_shipped_side():
     assert old["headline"] != [""]
 
 
-# ---------------------------------------------------------------------
 # Step sequences, not only single inputs
-# ---------------------------------------------------------------------
 
 
 def old_steps(steps, bridge_signals=surface.BRIDGE_SIGNALS):
@@ -1413,9 +1401,7 @@ def test_a_click_on_a_switched_off_button_does_nothing():
     assert len(model.bridge.requests) == 1
 
 
-# ---------------------------------------------------------------------
 # One finished competition, run inline and taken off the bridge
-# ---------------------------------------------------------------------
 
 
 def old_run_result(outcome):
@@ -1544,9 +1530,7 @@ def test_the_two_winner_lines_use_different_ellipses():
     assert stamped(old_over) == stamped([over_winner])
 
 
-# ---------------------------------------------------------------------
 # Every path the tab can take is reached
-# ---------------------------------------------------------------------
 
 
 def test_every_named_path_is_reached_on_both_sides():
@@ -1598,9 +1582,7 @@ def test_the_path_names_are_all_different():
     assert len(every) == 13
 
 
-# ---------------------------------------------------------------------
 # The whole widget tree
-# ---------------------------------------------------------------------
 
 
 def qt_kind(found):
@@ -1849,9 +1831,7 @@ def test_the_tab_uses_the_testnet_it_was_given():
     assert model.stat_values["Block"] == "4242"
 
 
-# ---------------------------------------------------------------------
 # The surface writes its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
@@ -1899,9 +1879,7 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
     assert readable(restored_old) == readable(restored_new)
 
 
-# ---------------------------------------------------------------------
 # Counting what the shipped file wires, waits on, and builds
-# ---------------------------------------------------------------------
 
 WIDGET_NAMES_BUILT = (
     "QWidget",
@@ -2102,9 +2080,7 @@ def test_the_class_counter_finds_a_class_inside_a_branch():
     assert len(class_statements(SURFACE_PATH)) == 8
 
 
-# ---------------------------------------------------------------------
 # Every class and every method has a counterpart
-# ---------------------------------------------------------------------
 
 
 def members(owner):
@@ -2416,9 +2392,7 @@ def test_the_shipped_helpers_answer_what_the_surface_answers():
     assert read_table(table)[0][0]["color"] == canon_colour(surface.CYAN)
 
 
-# ---------------------------------------------------------------------
 # Nothing else reaches the tab
-# ---------------------------------------------------------------------
 
 
 def modules_importing(module, skip=()):
@@ -2466,9 +2440,7 @@ def test_the_tab_is_reached_by_no_other_module():
     assert named == [], named
 
 
-# ---------------------------------------------------------------------
 # The tab paints, and the two sides paint the same pixels
-# ---------------------------------------------------------------------
 
 
 def colour_count(image):
@@ -2740,9 +2712,7 @@ def test_with_a_font_database_the_letters_advance_apart():
     assert app_font_advance_px(WIDE_LABEL) > app_font_advance_px(NARROW_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 def test_the_accessible_name_is_compared_as_a_string():
@@ -2981,9 +2951,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
         assert callable(globals()[covered_by]), covered_by
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def freeze(value):
@@ -3430,9 +3398,7 @@ def test_both_completeness_checks_can_report():
     assert not backed("method", "another.method", ("METHOD",), model)
 
 
-# ---------------------------------------------------------------------
 # The shipped module keeps nothing between tabs
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_tab_changes_no_value_the_next_tab_reads():
@@ -3473,9 +3439,7 @@ def test_the_surface_keeps_nothing_between_models():
     assert digest(third.block_rows) == digest(first.block_rows)
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 BRIDGE_STATE = {
     "chain": {
@@ -3573,9 +3537,7 @@ def test_the_bridge_import_list_stays_alphabetical():
     assert len(names) == len(set(names))
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -3760,9 +3722,7 @@ def test_the_surface_opens_no_file_and_no_socket():
     assert str(surface.CHAIN_ID) in surface.NET_LABEL_TEXT
 
 
-# ---------------------------------------------------------------------
 # Where the alpha byte turns into the share CSS reads
-# ---------------------------------------------------------------------
 
 
 def alpha_fields(text):
@@ -3814,9 +3774,7 @@ def test_a_share_crosses_the_boundary_unchanged(monkeypatch):
     assert alpha_fields(published) == ["0.15"]
 
 
-# ---------------------------------------------------------------------
 # The poll the renderer asks for, which the shipped tab runs on a timer
-# ---------------------------------------------------------------------
 
 
 def test_a_bridge_call_asking_for_a_refresh_fills_all_four_tables():

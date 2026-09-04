@@ -184,9 +184,7 @@ def test_the_install_is_not_partial():
     assert not absent, f"{HOOKS} is missing hook script(s): {absent}"
 
 
-# ---------------------------------------------------------------------------
 # prompt_router.py
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
@@ -273,9 +271,7 @@ class TestPromptRouter:
         assert r.returncode == 0  # fail-open, never crash CC
 
 
-# ---------------------------------------------------------------------------
 # archetype_gate.py
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
@@ -409,9 +405,7 @@ class TestArchetypeGate:
         # function that no longer exists tests nothing.
 
 
-# ---------------------------------------------------------------------------
 # verify_release_gate.py
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
@@ -524,9 +518,7 @@ class TestVerifyReleaseGate:
         assert r.returncode == 0
 
 
-# ---------------------------------------------------------------------------
 # session_stop_backstop.py
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks

@@ -93,9 +93,7 @@ def _selloff_tape(drop: float, recovery: float, n_pre: int = 60) -> list[list[fl
     return rows
 
 
-# ---------------------------------------------------------------------
 # REFUSED: values that are not prices
-# ---------------------------------------------------------------------
 @pytest.mark.parametrize(
     "row",
     [
@@ -149,9 +147,7 @@ def test_short_row_still_raises_index_error() -> None:
         candles_from_raw([[BASE_TS, 100.0, 101.0]])
 
 
-# ---------------------------------------------------------------------
 # ACCEPTED: real market shapes the screen must not kill
-# ---------------------------------------------------------------------
 @pytest.mark.parametrize(
     "row",
     [
@@ -187,9 +183,7 @@ def test_self_consistent_spike_is_deliberately_not_refused() -> None:
     assert len(candles_from_raw([row])) == 1
 
 
-# ---------------------------------------------------------------------
 # THE DEFECT: the corrupt tick can no longer cast a maximum vote
-# ---------------------------------------------------------------------
 @pytest.mark.parametrize("bars_back", REACHABLE_BARS_BACK)
 def test_zero_close_cannot_reach_slingshot_at_any_depth(bars_back: int) -> None:
     """Refuse the bad tick at the boundary, so no vote is cast.
@@ -232,9 +226,7 @@ def test_bad_tick_vote_is_no_longer_reachable() -> None:
     assert OLD_BAD_TICK_CONFIDENCE == 1.0
 
 
-# ---------------------------------------------------------------------
 # THE OPPOSITE FAILURE: a real deep penetration must still score
-# ---------------------------------------------------------------------
 def test_genuine_sharp_selloff_still_scores_a_strong_snapback() -> None:
     """Keep a real reversal scoring.
 

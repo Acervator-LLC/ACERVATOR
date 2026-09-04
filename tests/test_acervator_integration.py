@@ -32,9 +32,7 @@ VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(\+[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$")
 LOCAL_LEADERS = frozenset({"dev", "dirty", "unknown"})
 
 
-# ---------------------------------------------------------------------------
 # Import-integrity: every top-level src/ subpackage must import
-# ---------------------------------------------------------------------------
 
 
 class TestSrcImports:
@@ -105,9 +103,7 @@ class TestMainEntry:
         ast.parse(text)  # will raise SyntaxError on breakage
 
 
-# ---------------------------------------------------------------------------
 # Entry-point contracts — modules the build spec's hiddenimports rely on
-# ---------------------------------------------------------------------------
 
 
 class TestBuildSpecHiddenImportsResolve:
@@ -155,11 +151,9 @@ class TestBuildSpecHiddenImportsResolve:
         importlib.import_module("acervator_watchdog")
 
 
-# ---------------------------------------------------------------------------
 # Trading subpackage contracts — key symbols must remain importable.
 # These are pins against the specific class of failure the operator hit
 # with the BotConfig position_count error (silent surface drift).
-# ---------------------------------------------------------------------------
 
 
 class TestTradingSurface:

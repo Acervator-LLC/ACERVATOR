@@ -29,9 +29,7 @@ REPO = Path(__file__).resolve().parent.parent
 WIZARD = REPO / "src" / "gui" / "bot_wizard.py"
 
 
-# ---------------------------------------------------------------------------
 # BotConfig dataclass surface pin
-# ---------------------------------------------------------------------------
 
 
 class TestBotConfigSurface:
@@ -87,9 +85,7 @@ class TestBotConfigSurface:
         assert not hasattr(cfg, "position_count")
 
 
-# ---------------------------------------------------------------------------
 # Bot wizard source pin — the fix must stay in place
-# ---------------------------------------------------------------------------
 
 
 class TestBotWizardSourcePins:

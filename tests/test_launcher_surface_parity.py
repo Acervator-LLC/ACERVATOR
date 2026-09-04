@@ -75,9 +75,7 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The inputs. One table for the card's five fields, one for the presses.
-# ---------------------------------------------------------------------
 
 
 LONG_TEXT = "L" * 200
@@ -211,9 +209,7 @@ REFUSING_PRESS_SPECS = (
 )
 
 
-# ---------------------------------------------------------------------
 # Reading the shipped side
-# ---------------------------------------------------------------------
 
 
 def item_kind(item) -> str:
@@ -503,9 +499,7 @@ def new_window_outcome(presses) -> dict:
     return outcome(lambda: surface_window_trace(drive_new(presses)[1]))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", FIELD_NAMES)
@@ -578,9 +572,7 @@ def test_the_sample_screen_hashes_are_reported(name):
     assert digest(value) == digest(new_window_outcome(PRESS_SPECS[name])["value"])
 
 
-# ---------------------------------------------------------------------
 # Answers and refusals
-# ---------------------------------------------------------------------
 
 
 def test_both_answers_and_refusals_are_in_the_measured_card_set():
@@ -675,9 +667,7 @@ def test_a_text_feature_list_is_read_letter_by_letter_on_both_sides():
     assert new["value"]["features"] == old["value"]["features"]
 
 
-# ---------------------------------------------------------------------
 # The enumeration: signals, classes, methods, timers, bus topics
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -953,9 +943,7 @@ def test_the_screen_subscribes_to_no_bus_topic_and_the_counter_can_report():
     assert "wire.created" in neighbour
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 PAYLOAD_KEYS = {
@@ -1196,9 +1184,7 @@ def test_every_branch_marker_fires_and_ties_to_what_the_operator_sees():
     assert loud_payload["cards"]["stocks_card"]["clicks"] == 0
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 def moved_label_class():
@@ -1283,9 +1269,7 @@ def test_the_surface_names_the_same_logger_as_the_screen():
     assert surface.LOGGER_NAME == "acervator.gui"
 
 
-# ---------------------------------------------------------------------
 # The colours
-# ---------------------------------------------------------------------
 
 
 def canonical(colour):
@@ -1354,9 +1338,7 @@ def test_every_named_colour_reaches_the_style_that_carries_it():
         assert colour in surface.COLORS.values()
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def model_payload(presses=None):
@@ -1629,9 +1611,7 @@ def test_two_feature_lines_of_equal_length_measure_different_widths():
     assert narrow.sizeHint().width() != wide.sizeHint().width()
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_values_no_picture_carries_are_read_off_both_sides():
@@ -1708,9 +1688,7 @@ def test_the_glow_the_card_asks_for_never_reaches_the_screen():
     assert kept.graphicsEffect() is not None, "a kept shadow does not attach either"
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):

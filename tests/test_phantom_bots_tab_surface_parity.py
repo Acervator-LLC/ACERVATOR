@@ -121,11 +121,9 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The bot, its config, its phantoms and its coordinator, as the test owns
 # them. The Qt tab is driven with these; the surface is driven with its
 # own. Neither side reads the other's.
-# ---------------------------------------------------------------------
 
 
 class Config:
@@ -239,9 +237,7 @@ def host_class():
     return Host
 
 
-# ---------------------------------------------------------------------
 # The inputs. One spec drives both sides.
-# ---------------------------------------------------------------------
 
 LONG_TEXT = "L" * 200
 MARKUP_TEXT = '<b onclick="x">bold &amp; "quoted"</b>'
@@ -561,9 +557,7 @@ def test_every_spec_carries_its_own_name():
     assert len(SPEC_NAMES) == len(SPECS)
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def old_bot(one):
@@ -705,9 +699,7 @@ def drive_new(one):
     return {"model": model, "bot": bot, "steps": taken}
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def layout_order(layout):
@@ -988,9 +980,7 @@ def new_outcome(one):
     return outcome(lambda: surface_trace(drive_new(one)))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SPEC_NAMES)
@@ -1111,9 +1101,7 @@ def test_the_sample_hashes_are_reported(name):
     assert digest(value) == digest(new_outcome(BY_NAME[name])["value"])
 
 
-# ---------------------------------------------------------------------
 # Step sequences
-# ---------------------------------------------------------------------
 
 STEP_SEQUENCES = (
     ("a_full_sequence", -1, "", "", 5),
@@ -1192,10 +1180,8 @@ def test_every_step_the_surface_declares_is_driven():
     )
 
 
-# ---------------------------------------------------------------------
 # The enumeration: wiring, classes, methods, signals, threads, timers,
 # bus traffic and screen elements, counted in both forms
-# ---------------------------------------------------------------------
 
 
 def call_name(node):
@@ -1654,9 +1640,7 @@ def test_the_screen_elements_the_tab_builds_are_counted():
     assert count_calls(SURFACE_PATH, LAYOUT_NAMES_BUILT) == 0
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 PAYLOAD_KEYS = {
     "ACCESSIBLE_NAME": "accessible_name",
@@ -1967,9 +1951,7 @@ def test_every_branch_marker_fires_and_ties_to_what_the_operator_sees():
     assert filled.locks_group_shown is True
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 class MovedTokens:
@@ -2143,9 +2125,7 @@ def test_a_rebuild_keeps_the_changes_the_host_was_already_told():
     assert old["steps"]["steps_taken"] == 5
 
 
-# ---------------------------------------------------------------------
 # The colours
-# ---------------------------------------------------------------------
 
 DECLARED_COLORS = (
     ("on", surface.ON_COLOR),
@@ -2296,9 +2276,7 @@ def test_the_lock_count_clamp_matches_the_number_box(monkeypatch):
     assert box.maximum() == surface.LOCK_MAX
 
 
-# ---------------------------------------------------------------------
 # The timeframes
-# ---------------------------------------------------------------------
 
 
 def test_the_tab_lists_every_timeframe_the_venue_map_knows():
@@ -2390,9 +2368,7 @@ def test_the_unknown_exchange_note_is_never_shown():
     )
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def model_payload(one=None):
@@ -2687,9 +2663,7 @@ def test_two_equal_length_timeframes_measure_apart_with_fonts():
     assert app_font_advance_px(NARROW_LABEL) != app_font_advance_px(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_values_no_picture_carries_are_read_off_both_sides():
@@ -2821,9 +2795,7 @@ def test_the_real_phantom_status_drives_both_sides():
     assert REAL_PHANTOM_STATUS["realised_pnl"] != 0
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -3065,9 +3037,7 @@ def test_the_connection_counter_reaches_the_child_process():
     assert reached["frame"]["ok"] is True
 
 
-# ---------------------------------------------------------------------
 # The throwaway home and the network, in this process
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -3140,9 +3110,7 @@ def test_the_throwaway_home_check_reports_a_file_that_was_written(tmp_path):
     assert sorted(home.rglob("*")) == [home / "seeded.json"]
 
 
-# ---------------------------------------------------------------------
 # The clock
-# ---------------------------------------------------------------------
 
 
 class CountedClock:
@@ -3205,9 +3173,7 @@ def test_the_clock_is_put_back_after_a_run_that_refuses():
     assert time.time() > 0
 
 
-# ---------------------------------------------------------------------
 # Order independence
-# ---------------------------------------------------------------------
 
 
 def test_each_side_holds_its_own_bot_and_its_own_model():
@@ -3286,9 +3252,7 @@ def test_the_file_reads_no_state_another_test_left_behind():
     assert digest(old_outcome(one)["value"]) == first
 
 
-# ---------------------------------------------------------------------
 # The file runs in the CI fast lane
-# ---------------------------------------------------------------------
 
 
 def test_this_file_imports_only_what_the_fast_lane_installs():

@@ -877,7 +877,6 @@ def test_a_short_write_is_reported(
 # ── 10.3 durations: four History pins, each driven both ways ───────────
 #
 # WHY THIS BLOCK EXISTS
-# =====================
 # Queue item 10.3 made a duration MANDATORY IN THE RECORD -- not
 # mandatory as a number on every pin, which is impossible, but mandatory
 # as a DECLARATION the register carries and the checker holds against

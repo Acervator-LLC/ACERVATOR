@@ -136,9 +136,7 @@ def _break_writers(mgr: LogManager) -> None:
         setattr(getattr(mgr, attr), "write", explode)
 
 
-# --------------------------------------------------------------------
 # Sites 1-5 -- the five bus teardowns
-# --------------------------------------------------------------------
 @pytest.mark.parametrize("topic", TEARDOWN_TOPICS)
 def test_refused_unsubscribe_is_recorded_and_does_not_raise(tmp_path, topic):
     """A bus that refuses to detach one topic is counted, not swallowed.
@@ -200,9 +198,7 @@ def test_refused_unsubscribe_reaches_the_system_logger(tmp_path):
         assert any(topic in m for m in logged), topic
 
 
-# --------------------------------------------------------------------
 # Sites 6-8 -- the three handler recovery blocks
-# --------------------------------------------------------------------
 @pytest.mark.parametrize(("method", "payload"), HANDLERS)
 def test_handler_survives_writer_and_logger_both_failing(
     tmp_path, capsys, method, payload
@@ -259,9 +255,7 @@ def test_handler_with_live_logger_does_not_touch_stderr(
     assert "[LogManager]" not in capsys.readouterr().err
 
 
-# --------------------------------------------------------------------
 # The instrument's own controls
-# --------------------------------------------------------------------
 def test_clean_run_records_nothing(tmp_path):
     """A healthy attach + handler pass leaves the counters empty.
 

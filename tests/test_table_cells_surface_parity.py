@@ -77,9 +77,7 @@ LONG_SYMBOL = "X" * 200 + "/USD"
 
 FILLER_TEXT = "row"
 
-# ---------------------------------------------------------------------
 # The collaborators both sides reach, each recording what it was asked.
-# ---------------------------------------------------------------------
 
 
 class FakeTicker:
@@ -215,9 +213,7 @@ def freeze_clock(monkeypatch):
     monkeypatch.setattr(time, "time", lambda: CLOCK_NOW)
 
 
-# ---------------------------------------------------------------------
 # The engine calls both cells make, wrapped so the trace is real.
-# ---------------------------------------------------------------------
 
 TERRITORY_ASK = "band.territory"
 DUST_ASK = "band.dust"
@@ -248,9 +244,7 @@ def watch_bands(monkeypatch, module):
     monkeypatch.setattr(module, "manual_fire_will_noop", watched_noop)
 
 
-# ---------------------------------------------------------------------
 # Cases
-# ---------------------------------------------------------------------
 
 AMMO_CASES = {
     "scrum": (0.0, 5.0, 20.0, 1.0, 50.0, None),
@@ -495,9 +489,7 @@ PRICE_CASES = {
 PRICE_HIT_CASES = ("hit", "hit_old", "future_fetch_time", "very_large_last")
 
 
-# ---------------------------------------------------------------------
 # Drivers
-# ---------------------------------------------------------------------
 
 
 def digest(trace):
@@ -608,9 +600,7 @@ def new_price_model(name, monkeypatch):
     return model, _guarded(lambda: model.fresh_price(model.price_pool(), *args))
 
 
-# ---------------------------------------------------------------------
 # Side by side, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(AMMO_CASES))
@@ -705,9 +695,7 @@ def test_the_sample_hashes_are_reported(monkeypatch):
     assert digest(changed) != samples["scrum"][0]
 
 
-# ---------------------------------------------------------------------
 # The paths every case reaches
-# ---------------------------------------------------------------------
 
 
 def test_every_ammo_case_reaches_the_path_it_names(monkeypatch):
@@ -849,9 +837,7 @@ def test_every_denom_case_carries_the_text_it_names(monkeypatch):
     assert len(cells) == len(DENOM_CASES) - len(DENOM_RAISING_CASES)
 
 
-# ---------------------------------------------------------------------
 # The pieces both sides share
-# ---------------------------------------------------------------------
 
 
 def test_the_magnitude_format_is_the_shipped_cells_own(monkeypatch):
@@ -1137,9 +1123,7 @@ def test_the_stale_branch_overwrites_the_manual_fire_note(monkeypatch):
     assert aged["tip"] == surface.AGED_PRICE_TIP_FORMAT.format(price_age_s=25.0)
 
 
-# ---------------------------------------------------------------------
 # The debug logs
-# ---------------------------------------------------------------------
 
 
 def test_the_debug_logs_are_the_shipped_modules_own(monkeypatch, capture_log):
@@ -1190,9 +1174,7 @@ def test_the_denom_cell_writes_no_log(monkeypatch, capture_log):
     assert len(heard) == 1
 
 
-# ---------------------------------------------------------------------
 # The table the two cells are painted into
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -1474,9 +1456,7 @@ def test_the_text_shape_a_picture_may_not_see_is_compared_as_a_string(monkeypatc
     assert len(set(changed.values())) == 7
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 def test_the_tooltip_a_picture_cannot_see_is_compared_as_a_string(monkeypatch):
@@ -1776,9 +1756,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered(monkeypatch):
     )
 
 
-# ---------------------------------------------------------------------
 # The pool and the price reader
-# ---------------------------------------------------------------------
 
 
 def test_the_price_pool_is_the_shipped_pools_own(monkeypatch):
@@ -1872,9 +1850,7 @@ def test_the_price_feeds_the_ammo_cells_age(monkeypatch):
     )
 
 
-# ---------------------------------------------------------------------
 # The counterpart map
-# ---------------------------------------------------------------------
 
 
 METHOD_MAP = {
@@ -2097,9 +2073,7 @@ def test_the_surface_loads_no_qt_module():
     assert any(name.startswith("PySide6") for name in caller_imports), caller_imports
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable(monkeypatch):
@@ -2292,9 +2266,7 @@ def test_the_bridge_carries_the_price_reading(monkeypatch):
     )
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

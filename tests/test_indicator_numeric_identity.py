@@ -392,9 +392,7 @@ class TestTheComparisonCanFail:
         assert digest(one) == digest(two)
 
 
-# =====================================================================
 # ISSUE #99 -- PROVENANCE, AND A TAPE SHORT ENOUGH TO SEE IT
-# =====================================================================
 #
 # THE PINS ABOVE ARE BLIND TO THIS DEFECT AND THE BLINDNESS IS
 # MEASURED. ``_ema`` back-filled every index below its seed with the

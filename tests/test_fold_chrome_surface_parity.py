@@ -96,10 +96,8 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The clock counter. Both sides are driven through it, so a read either
 # side makes is counted rather than assumed absent.
-# ---------------------------------------------------------------------
 
 
 class ClockRecorder:
@@ -150,10 +148,8 @@ def watched_clock(monkeypatch, ticks=()):
     return recorder
 
 
-# ---------------------------------------------------------------------
 # The pin recorder. The shipped panel emits inside a suppressed block,
 # so a recorder that raises would delete the record it was watching for.
-# ---------------------------------------------------------------------
 
 
 class PinRecorder:
@@ -184,10 +180,8 @@ def watched_pins(monkeypatch):
     return recorder
 
 
-# ---------------------------------------------------------------------
 # One spec, two worlds. Each side builds its own objects from the plain
 # values below and never reads the other side's.
-# ---------------------------------------------------------------------
 
 
 def tranche(age_days, usd, units, key="created_ts"):
@@ -368,11 +362,9 @@ def refusing_install(name):
 DIFFERENT_INPUT_PAIR = ("happy", "no_tranches")
 
 
-# ---------------------------------------------------------------------
 # The shared rule both sides consume. It is not part of the panel, so
 # each side reaches it its own way: the Qt panel calls it inside itself,
 # the surface is handed what it returns.
-# ---------------------------------------------------------------------
 
 
 def armed_days(days):
@@ -402,9 +394,7 @@ def window_previews(fold, stacks):
     ]
 
 
-# ---------------------------------------------------------------------
 # The old side: the shipped Qt panel
-# ---------------------------------------------------------------------
 
 
 class QtConfig:
@@ -574,9 +564,7 @@ def qt_paint_plan(fill, rect):
     return {"stroked": bool(bands), "border": border, "bands": bands}
 
 
-# ---------------------------------------------------------------------
 # The new side: the Qt-free surface
-# ---------------------------------------------------------------------
 
 
 def new_dialog(spec):
@@ -617,9 +605,7 @@ def drive_new_sort(spec, order):
     }
 
 
-# ---------------------------------------------------------------------
 # The traces the two sides are compared on
-# ---------------------------------------------------------------------
 
 
 def form_rows(form):
@@ -727,9 +713,7 @@ def new_outcome(spec):
     return outcome(lambda: surface_trace(drive_new(spec)))
 
 
-# ---------------------------------------------------------------------
 # The side-by-side drive
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(BY_NAME))
@@ -813,9 +797,7 @@ def test_the_sample_hashes_are_reported(name):
     assert len(old) == len(hashlib.sha256(b"").hexdigest())
 
 
-# ---------------------------------------------------------------------
 # The step sequences, including ones that refuse part way
-# ---------------------------------------------------------------------
 
 STEP_SEQUENCES = {
     "install_then_controls_then_filter": ["install", "controls", "filter"],
@@ -946,9 +928,7 @@ def test_the_step_recorder_reports_a_refusal_at_every_position():
     assert all(row[2] is None for row in clean), clean
 
 
-# ---------------------------------------------------------------------
 # The delegate, driven through a recording painter
-# ---------------------------------------------------------------------
 
 PAINT_FILLS = [
     surface.FOLD_ROW_FILL,
@@ -1021,9 +1001,7 @@ def test_the_band_reader_reports_a_picture_with_no_stroke_on_it():
     assert painted_bands(coloured, surface.FOLD_ROW_BORDER) != []
 
 
-# ---------------------------------------------------------------------
 # The order action and its deferral
-# ---------------------------------------------------------------------
 
 SORT_STEPS = [
     "Oldest first",
@@ -1059,9 +1037,7 @@ def test_a_panel_that_cannot_rebuild_still_stores_the_order_on_both_sides():
     assert old["rebuilt"] == 0
 
 
-# ---------------------------------------------------------------------
 # The enumeration: wiring, signals, classes, methods, timers, topics
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1451,9 +1427,7 @@ def test_the_two_neighbours_are_different_files():
         assert path.is_file(), path
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 PAYLOAD_KEYS = {
     "ACTIONS": "actions",
@@ -1692,9 +1666,7 @@ def test_the_branch_marker_reader_reports_a_marker_that_never_fires():
     assert surface.INSTALL_START in marks, marks
 
 
-# ---------------------------------------------------------------------
 # The surface follows nothing it was not given
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_moved_in_the_shipped_panel(monkeypatch):
@@ -1809,9 +1781,7 @@ def test_both_sides_edit_the_dialog_they_were_handed_and_that_is_the_contract():
     assert new.dialog.preview_row_text is not None
 
 
-# ---------------------------------------------------------------------
 # The pin
-# ---------------------------------------------------------------------
 
 
 def test_the_two_sides_record_the_same_pin(monkeypatch):
@@ -1891,9 +1861,7 @@ def test_the_pin_names_the_bot_it_came_from_on_both_sides(monkeypatch):
     assert new.pins[0][4]["bot_id"] == spec["bot_id"]
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 PICTURE_SCENARIOS = [
     "happy",
@@ -2158,9 +2126,7 @@ def test_the_two_marker_strings_measure_apart_with_fonts():
     assert app_font_advance_px(NARROW_LABEL) != app_font_advance_px(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def canonical(colour) -> str:
@@ -2257,9 +2223,7 @@ def test_the_long_row_is_carried_whole_on_both_sides():
     assert len(spec["row_texts"][0][0]) == 200
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -2385,9 +2349,7 @@ def test_the_bridge_hides_the_rows_the_filter_hides():
     assert not any(open_again["hidden"]), open_again["hidden"]
 
 
-# ---------------------------------------------------------------------
 # The subprocess probes: no Qt, no clock, no connection, no file
-# ---------------------------------------------------------------------
 
 BUILD_REGISTRY = "registry = desktop_bridge.build_registry();"
 
@@ -2649,9 +2611,7 @@ def test_the_file_counter_sees_a_file_that_is_created():
     ]
 
 
-# ---------------------------------------------------------------------
 # Order independence
-# ---------------------------------------------------------------------
 
 
 def test_the_panel_state_the_bridge_keeps_is_restored_after_a_refusal():

@@ -122,9 +122,7 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The seams: the venue, the box and the call-budget monitor
-# ---------------------------------------------------------------------
 
 
 class FakeBox:
@@ -262,9 +260,7 @@ class QtSeams:
         )
 
 
-# ---------------------------------------------------------------------
 # What each side is asked
-# ---------------------------------------------------------------------
 
 EXCHANGES = [
     {"display_name": "Coinbase", "exchange_id": "coinbase"},
@@ -561,9 +557,7 @@ PICTURE_CASES = [
 ]
 
 
-# ---------------------------------------------------------------------
 # Driving the shipped wizard
-# ---------------------------------------------------------------------
 
 
 def supported_timeframes(exchange_id):
@@ -754,9 +748,7 @@ def drive_old(spec):
     }
 
 
-# ---------------------------------------------------------------------
 # Driving the surface
-# ---------------------------------------------------------------------
 
 
 def venue_timeframes(spec):
@@ -913,9 +905,7 @@ def new_answer(spec):
     return new_state(drive_new(spec), spec)
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", [spec["name"] for spec in ALL_CASES])
@@ -1034,9 +1024,7 @@ def test_two_not_a_numbers_settle_on_the_same_highest_value():
     assert surface.number_value(-math.inf, spec) != first
 
 
-# ---------------------------------------------------------------------
 # The steps the wizard takes
-# ---------------------------------------------------------------------
 
 FORWARD_SCRUMMING = [1, 0, 2, 4]
 FORWARD_EXTRACTOR = [1, 5, 2]
@@ -1237,9 +1225,7 @@ def test_a_page_the_route_skips_keeps_its_own_values():
     assert config["profit_folding_active"] is False
 
 
-# ---------------------------------------------------------------------
 # What the shipped wizard declares, counted off the file
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1798,9 +1784,7 @@ def test_no_declared_colour_has_three_equal_channels():
         assert len(set(channels)) > 1, (name, value)
 
 
-# ---------------------------------------------------------------------
 # Completeness
-# ---------------------------------------------------------------------
 
 
 def at_path(payload, path):
@@ -2189,9 +2173,7 @@ def test_every_call_the_surface_names_is_recorded_by_some_drive():
     assert missing == set(), sorted(missing)
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 PICTURE_SPECS = {
     "mode": ("mode", BY_NAME["happy"]),
@@ -2751,9 +2733,7 @@ def test_two_equal_length_names_measure_apart_with_fonts():
     assert app_font_advance_px("IIII") != app_font_advance_px("WWWW")
 
 
-# ---------------------------------------------------------------------
 # What the wizard does with a value nobody entered
-# ---------------------------------------------------------------------
 
 BARE_READINGS = [
     ("a stored True", True),
@@ -3097,9 +3077,7 @@ def test_the_venue_id_check_still_reads_a_venue_id_that_is_text():
     assert payload["asset_page"]["config"]["exchange_id"] == "coinbase"
 
 
-# ---------------------------------------------------------------------
 # The world outside the process
-# ---------------------------------------------------------------------
 
 
 def test_every_swapped_name_is_put_back_after_a_drive_and_after_a_refusal():
@@ -3247,9 +3225,7 @@ def test_no_drive_reads_the_operators_own_state_file(monkeypatch):
     assert len(opened) >= 0
 
 
-# ---------------------------------------------------------------------
 # The bridge, and a process that never loads Qt
-# ---------------------------------------------------------------------
 
 
 def build_payload(spec):

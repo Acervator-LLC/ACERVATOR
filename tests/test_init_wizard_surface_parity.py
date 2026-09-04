@@ -863,9 +863,7 @@ def run_new(script):
     return trace
 
 
-# ---------------------------------------------------------------------
 # The two sides, driven together
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(SCRIPTS))
@@ -993,9 +991,7 @@ def test_a_refused_input_names_its_own_type_on_both_sides(monkeypatch):
     assert surface.index_value(1.5) == 1
 
 
-# ---------------------------------------------------------------------
 # The wizard enumerated
-# ---------------------------------------------------------------------
 
 
 def test_the_connect_sites_match_the_actions():
@@ -1302,9 +1298,7 @@ def test_the_surface_loads_no_qt_module():
     assert any(name.startswith("PySide6") for name in wizard_imports)
 
 
-# ---------------------------------------------------------------------
 # The surface holds its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_changed_colour_in_the_shipped_file(
@@ -1408,9 +1402,7 @@ def test_the_safe_events_reason_is_the_wizards_own(monkeypatch):
     assert [call for call in new if call[0] == surface.SAFE_PROCESS_EVENTS] == paused
 
 
-# ---------------------------------------------------------------------
 # The completeness of the comparison
-# ---------------------------------------------------------------------
 
 CONSTANT_LOCATION = {
     "METHOD": ("method", None),
@@ -1759,9 +1751,7 @@ def test_the_bridge_reads_every_step_name():
     assert every["results"]["api_key"] == INVENTED_KEY
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 PICTURE_SPECS = {
     "first_run": (False, {}),
@@ -2091,9 +2081,7 @@ def test_two_names_of_equal_length_paint_different_widths():
     assert narrow.sizeHint().width() < wide.sizeHint().width()
 
 
-# ---------------------------------------------------------------------
 # What no picture can report, each read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_window_title_a_picture_cannot_see_is_compared_as_text(monkeypatch):
@@ -2372,9 +2360,7 @@ def test_everything_a_picture_cannot_report_is_named_and_covered(monkeypatch):
     )
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -2504,9 +2490,7 @@ def test_the_answer_is_the_same_on_every_call_with_the_same_request():
     assert first != second
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt, proved in a process of its own
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

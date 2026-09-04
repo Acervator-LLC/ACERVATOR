@@ -213,9 +213,7 @@ def declared_fields(js: JsRuntime) -> list:
     return js.json(API + "declaredNames()")
 
 
-# ---------------------------------------------------------------------
 # The whole payload, both directions, both counts
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
@@ -307,9 +305,7 @@ def test_an_unplaced_field_shortens_the_held_row_count(js: JsRuntime):
     assert found["declared"]["rows"] > found["held"]["rows"], found
 
 
-# ---------------------------------------------------------------------
 # Both sides agree by value and by type
-# ---------------------------------------------------------------------
 
 
 def python_kinds(payload: dict) -> dict:
@@ -442,9 +438,7 @@ def test_the_plain_data_check_names_a_function_bound_into_the_payload(js: JsRunt
     assert found == [{"path": "window.live", "kind": "function"}], found
 
 
-# ---------------------------------------------------------------------
 # No value literal in the JavaScript
-# ---------------------------------------------------------------------
 
 
 def shown_values() -> set:
@@ -623,9 +617,7 @@ def test_the_written_file_is_still_a_module_the_page_can_run(js: JsRuntime):
     assert MODULE_PATH.read_text(encoding="utf-8") == MODULE_SOURCE
 
 
-# ---------------------------------------------------------------------
 # Colours, including the sub-blocks a base walk skips
-# ---------------------------------------------------------------------
 
 
 def payload_colours(payload: dict) -> list:
@@ -729,9 +721,7 @@ def test_no_declared_colour_has_three_equal_channels():
         assert len(set(channels)) > 1, (name, value)
 
 
-# ---------------------------------------------------------------------
 # Bag order and identity by name
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
@@ -844,9 +834,7 @@ def test_the_field_kind_reader_names_no_kind_for_a_field_nobody_declared(
     assert js.json(API + 'fieldKind("no_such_field")') is None
 
 
-# ---------------------------------------------------------------------
 # The layout the payload publishes covers every field
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
@@ -937,9 +925,7 @@ def test_the_page_name_check_names_a_page_the_payload_stopped_naming(js: JsRunti
     assert [one["where"] for one in missing] == ["page:folding"], found["faults"]
 
 
-# ---------------------------------------------------------------------
 # Every value the payload holds pairs with a field it declares
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
@@ -1022,9 +1008,7 @@ def test_the_step_check_names_a_number_between_two_steps(js: JsRuntime):
     assert [one["where"] for one in off] == ["field:trading_fee"], found["faults"]
 
 
-# ---------------------------------------------------------------------
 # Markup, measured by the width a widget asks for
-# ---------------------------------------------------------------------
 
 
 def text_width(widget: Any) -> int:
@@ -1219,9 +1203,7 @@ def test_the_markup_report_is_quiet_on_a_line_carrying_no_mark(js: JsRuntime):
     assert "alt_list_heading" not in marked, found["faults"]
 
 
-# ---------------------------------------------------------------------
 # Hostile payloads
-# ---------------------------------------------------------------------
 
 
 HOSTILE_NUMBERS = {
@@ -1413,9 +1395,7 @@ def test_a_payload_that_is_not_an_object_at_all_is_reported(js: JsRuntime):
     assert js.json(API + "isLoaded()") is False
 
 
-# ---------------------------------------------------------------------
 # The rendered page
-# ---------------------------------------------------------------------
 
 
 class Browser:
@@ -1945,9 +1925,7 @@ def test_the_prefix_check_finds_the_dollar_mark_the_surface_declares(
     assert drawn[0]["whole"] == payload["fields"]["numbers"]["target_balance"]["prefix"]
 
 
-# ---------------------------------------------------------------------
 # The asset, pool and phantom pages
-# ---------------------------------------------------------------------
 
 
 def test_the_asset_page_draws_the_venue_list_the_surface_carries(browser: Browser):
@@ -2205,9 +2183,7 @@ def test_the_line_break_check_would_see_a_note_told_to_collapse_it(browser: Brow
         assert one["style"]["whiteSpace"] == "nowrap"
 
 
-# ---------------------------------------------------------------------
 # Every move reaches the surface as the step the wizard took
-# ---------------------------------------------------------------------
 
 
 def test_typing_in_a_number_runs_its_own_handler_with_the_number_typed(
@@ -2394,9 +2370,7 @@ def test_the_step_name_check_would_see_a_step_the_surface_never_reads(js: JsRunt
     assert "no_such_step" not in surface.STEP_NAMES
 
 
-# ---------------------------------------------------------------------
 # A long, marked or broken value on the drawn page
-# ---------------------------------------------------------------------
 
 
 def test_a_two_hundred_character_label_stretches_the_row_rather_than_clipping(
@@ -2524,9 +2498,7 @@ def test_a_bare_payload_with_no_venue_still_draws_the_wizard(browser: Browser):
     assert with_part(parts, "page-rail-stop"), "no page rail was drawn"
 
 
-# ---------------------------------------------------------------------
 # The layout numbers this host measured
-# ---------------------------------------------------------------------
 
 
 def test_the_wizard_declares_its_own_spacing_and_leaves_the_form_to_the_host(

@@ -23,9 +23,7 @@ if str(REPO) not in sys.path:
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 from tests.test_ytd_trade_sync import _make_stub_bot, _make_trade, _run  # noqa: E402
 
-# -----------------------------------------------------------------
 # 1. YTD Scrummed/Folded accumulation inside sync_ytd_trade_count
-# -----------------------------------------------------------------
 
 
 class TestYtdScrumFoldAccumulation:
@@ -88,9 +86,7 @@ class TestYtdScrumFoldAccumulation:
         assert stub.stats.ytd_scrummed_usd == pytest.approx(3000.0)
 
 
-# -----------------------------------------------------------------
 # 2. Aggregator prefers YTD when populated
-# -----------------------------------------------------------------
 
 
 class TestAggregatorPrefersYtd:
@@ -157,9 +153,7 @@ class TestAggregatorPrefersYtd:
         assert agg["total_folded_usd"] == 17.0
 
 
-# -----------------------------------------------------------------
 # 3. Errors card + dialog source discipline
-# -----------------------------------------------------------------
 
 
 class TestErrorsCardAndResetSourceDiscipline:

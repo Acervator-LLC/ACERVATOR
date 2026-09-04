@@ -111,9 +111,7 @@ def _run_fetch(ticker, blocker: _Blocker, qt_app: QApplication) -> None:
     )
 
 
-# ------------------------------------------------------------------
 # The ownership defect itself.
-# ------------------------------------------------------------------
 
 
 class TestThreadOwnership:
@@ -386,9 +384,7 @@ class TestWorkerStaysSilentAfterStop:
         )
 
 
-# ------------------------------------------------------------------
 # The reason 50 ms could never work: the fetch had no bound.
-# ------------------------------------------------------------------
 
 
 class TestFetchIsBounded:
@@ -480,7 +476,6 @@ class _Stream:
         return chunk
 
 
-# ------------------------------------------------------------------
 # The falsifier, out of process. This is the recipe that produced the
 # abort on the shipped file.
 #
@@ -494,7 +489,6 @@ class _Stream:
 # `multiprocessing` rather than `subprocess`: a spawned child re-imports
 # this module and runs `_shipped_recipe` by name, so there is no argv
 # to build and no command string for a reader to have to trust.
-# ------------------------------------------------------------------
 
 
 def _shipped_recipe(mode: str) -> None:
@@ -555,9 +549,7 @@ def test_the_shipped_recipe_no_longer_aborts(mode):
     assert proc.exitcode == 0, f"child exit {proc.exitcode}"
 
 
-# ------------------------------------------------------------------
 # The real fetch path, against a host that never finishes.
-# ------------------------------------------------------------------
 
 
 def _start_drip_server():

@@ -84,9 +84,7 @@ def tranche(usd, units, ref, ibp, **extra) -> dict:
     return t
 
 
-# ---------------------------------------------------------------------
 # HALF ONE — partial consumption
-# ---------------------------------------------------------------------
 
 
 class TestATrancheBiggerThanTheCapIsPartlyConsumed:
@@ -373,9 +371,7 @@ class TestATrancheThatFitsIsStillConsumedWhole:
             assert took == pytest.approx(room), "planted: the take exceeded the cap"
 
 
-# ---------------------------------------------------------------------
 # HALF TWO — top-up on an opposing trade
-# ---------------------------------------------------------------------
 
 
 class TestTheTopUpGoesToTheLowestPricedRemnantInTheBand:
@@ -642,9 +638,7 @@ class TestTheCreatedCounterStaysHonest:
             ), "planted: created no longer reconciles with open"
 
 
-# ---------------------------------------------------------------------
 # The two halves together
-# ---------------------------------------------------------------------
 
 
 class TestBothHalvesTogetherStopTheRemnantsMultiplying:

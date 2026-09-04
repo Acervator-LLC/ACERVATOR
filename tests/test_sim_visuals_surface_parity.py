@@ -68,9 +68,7 @@ MISSING = object()
 _alive: list = []
 
 
-# ---------------------------------------------------------------------
 # Reading a value without caring what kind of number it is
-# ---------------------------------------------------------------------
 
 
 def as_text(value):
@@ -119,9 +117,7 @@ def differing_paths(old, new, prefix: str = "") -> list:
     return [] if old == new else [prefix.rstrip(".")]
 
 
-# ---------------------------------------------------------------------
 # The one application object and the run's fonts
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -168,9 +164,7 @@ def measured_pitch_px() -> int:
     return surface.gate_pitch_px(widest_gate_label_px())
 
 
-# ---------------------------------------------------------------------
 # The inputs. One table of step sequences drives both sides.
-# ---------------------------------------------------------------------
 
 LONG_TEXT = "L" * 200
 MARKUP_TEXT = '<b onclick="x">bold &amp; "quoted"</b>'
@@ -405,9 +399,7 @@ class Summary:
             setattr(self, name, value)
 
 
-# ---------------------------------------------------------------------
 # Driving the shipped Qt widgets
-# ---------------------------------------------------------------------
 
 
 def shipped_module():
@@ -558,9 +550,7 @@ def drive(name, build, run_step):
     return parts, {"outcome": "answered"}
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def gate_state_from_qt(cell) -> dict:
@@ -724,9 +714,7 @@ def new_outcome(name) -> dict:
     return dict(stopped, trace=new_trace(parts))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -874,9 +862,7 @@ def test_the_sample_hashes_are_reported(name):
     assert digest(old) == digest(new), (name, digest(old), digest(new))
 
 
-# ---------------------------------------------------------------------
 # The rules the drawing rests on
-# ---------------------------------------------------------------------
 
 
 def test_the_rolling_vwap_is_the_volume_weighted_mean_of_its_window():
@@ -966,9 +952,7 @@ def test_the_expand_geometry_is_full_width_and_half_height():
     assert offset == {"width": 1280, "height": 360, "x": 1920, "y": 180}
 
 
-# ---------------------------------------------------------------------
 # The enumeration
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1464,9 +1448,7 @@ def test_the_growth_check_reports_a_name_on_one_side_only():
     assert {"kept", "invented"} - declared == {"invented"}
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 def named_payloads() -> dict:
@@ -1817,9 +1799,7 @@ def test_the_carried_values_reader_finds_a_value_at_any_depth():
     assert "shallow" not in held
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 MOVED_VALUES = {
     "_BAND_HEIGHT": ("SimPriceVwapChart", 999),
@@ -1882,9 +1862,7 @@ def test_the_surface_does_not_follow_a_vocabulary_that_lost_a_gate(monkeypatch):
     assert digest(old_outcome("gates_read_once")["trace"]) == digest(before)
 
 
-# ---------------------------------------------------------------------
 # The draw programs
-# ---------------------------------------------------------------------
 
 
 def gate_row_after(steps) -> surface.GateLightsModel:
@@ -2181,9 +2159,7 @@ def test_every_branch_marker_fires_and_ties_to_a_step():
     assert len(surface.CALL_NAMES) == len(set(surface.CALL_NAMES))
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 REPLAY_ACCESSIBLE_NAME = "Sim Visuals Draw Program"
 REPLAY_ACCESSIBLE_DESCRIPTION = (
@@ -2866,9 +2842,7 @@ def test_the_host_font_question_is_asked_and_not_assumed():
         assert app_font_advance_px(NARROW_LABEL) == app_font_advance_px(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot carry, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_values_no_picture_carries_are_read_off_both_sides():
@@ -3010,9 +2984,7 @@ def test_a_widget_with_no_window_of_its_own_never_reaches_the_shipped_guard():
     assert chart.window() is _window
 
 
-# ---------------------------------------------------------------------
 # Shared state and run order
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_widgets_write_to_no_shared_table():
@@ -3111,9 +3083,7 @@ def test_neither_side_edits_the_list_it_was_handed():
     assert blockers == SCRUM_BLOCKERS
 
 
-# ---------------------------------------------------------------------
 # The bare readings
-# ---------------------------------------------------------------------
 
 BARE_READINGS = [
     ("append_tick close", ("tick", PAIR, None, 1.0)),
@@ -3197,9 +3167,7 @@ def test_a_number_in_a_table_cell_builds_a_cell_with_no_text():
     assert votes.rows[0][0] == ""
 
 
-# ---------------------------------------------------------------------
 # The clock, the network and the throwaway home
-# ---------------------------------------------------------------------
 
 
 class RefusingClock:
@@ -3449,9 +3417,7 @@ def test_the_file_counter_reports_a_file_that_was_created():
     assert [p.name for p in home.rglob("*")] == ["one.txt"]
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):
@@ -3516,9 +3482,7 @@ def test_the_bridge_answer_is_json_serialisable():
     assert "\n" not in text
 
 
-# ---------------------------------------------------------------------
 # Sweeping this file for checks that cannot fail
-# ---------------------------------------------------------------------
 
 THIS_FILE = Path(__file__).resolve()
 

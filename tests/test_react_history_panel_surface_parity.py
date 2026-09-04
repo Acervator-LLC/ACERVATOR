@@ -115,9 +115,7 @@ INFINITY = float("inf")
 HELD: list = []
 
 
-# ---------------------------------------------------------------------
 # The browser the shipped panel talks to, recording every ask
-# ---------------------------------------------------------------------
 
 
 def recording_web_view():
@@ -204,9 +202,7 @@ def new_panel(theme=surface.DEFAULT_THEME, parent=None):
     return panel
 
 
-# ---------------------------------------------------------------------
 # The trades and filters both sides read
-# ---------------------------------------------------------------------
 
 
 def trade(
@@ -439,9 +435,7 @@ def row_count_callback(value):
     return value
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def guarded(run):
@@ -501,9 +495,7 @@ def read_new_host(model):
     }
 
 
-# ---------------------------------------------------------------------
 # Drivers
-# ---------------------------------------------------------------------
 
 
 def run_steps(host, steps, is_old):
@@ -584,9 +576,7 @@ def no_live_logs(monkeypatch):
     monkeypatch.setattr(reader, "live_voting_panel_snapshots", empty)
 
 
-# ---------------------------------------------------------------------
 # Side by side
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(HOST_CASES))
@@ -701,9 +691,7 @@ def test_two_genuinely_different_cases_hash_apart():
     assert digest(new_view("happy")) == digest(old_view("happy"))
 
 
-# ---------------------------------------------------------------------
 # Answered or refused
-# ---------------------------------------------------------------------
 
 
 def test_the_outcome_set_holds_both_an_answer_and_a_refusal():
@@ -821,9 +809,7 @@ def test_the_path_set_covers_every_branch_the_host_holds():
     assert len(surface.LOAD_PATHS) == 3
 
 
-# ---------------------------------------------------------------------
 # What the two sides do, value by value
-# ---------------------------------------------------------------------
 
 
 def test_a_model_held_before_the_page_loads_is_pushed_by_the_load():
@@ -1074,9 +1060,7 @@ def test_the_chrome_the_client_asks_for_reaches_the_view_model():
     assert new_view("happy")["answer"]["chrome"] == {}
 
 
-# ---------------------------------------------------------------------
 # The window the browser draws
-# ---------------------------------------------------------------------
 
 
 def render_offscreen(widget, size):
@@ -1203,9 +1187,7 @@ def test_with_a_font_database_the_window_is_still_flat():
     assert colour_count(render_offscreen(real_panel("cyberpunk_dark"), PIXEL_SIZE)) == 1
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 BLIND_TO_THE_PICTURE = {
@@ -1274,9 +1256,7 @@ def test_the_layout_numbers_are_compared_as_values():
     assert panel.layout().metaObject().className() == surface.LAYOUT_KIND
 
 
-# ---------------------------------------------------------------------
 # The counterpart map
-# ---------------------------------------------------------------------
 
 
 METHOD_MAP = {
@@ -1640,9 +1620,7 @@ def test_the_host_takes_the_parent_the_caller_gives_it():
     assert new_panel().parent() is None
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def normalise(value):
@@ -1983,9 +1961,7 @@ def test_the_recorded_calls_are_compared_as_values():
     assert len(model.calls) == 16
 
 
-# ---------------------------------------------------------------------
 # The values are the surface's own, not the shipped panel's
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_panel():
@@ -2045,9 +2021,7 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_panel():
     assert surface.palette("neon_light") == shipped._palette("neon_light")
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def call_bridge(params):
@@ -2151,9 +2125,7 @@ def test_the_bridge_reports_a_request_it_cannot_serve():
     assert call_bridge({"reset": True})["ok"] is True
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

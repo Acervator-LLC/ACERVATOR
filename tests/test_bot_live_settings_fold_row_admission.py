@@ -288,9 +288,7 @@ def _bare_tranche_float_reads(source):
     return found
 
 
-# ---------------------------------------------------------------------
 # CONTROL A - THE DIALOG OPENS
-# ---------------------------------------------------------------------
 
 
 class TestTheDialogOpens:
@@ -347,9 +345,7 @@ class TestTheDialogOpens:
         assert rows[1][COL_AGE] == DASH
 
 
-# ---------------------------------------------------------------------
 # CONTROL B - VALID INPUT RENDERS IDENTICALLY
-# ---------------------------------------------------------------------
 
 # TWO CELLS IN `LIVE_ROW` MOVED ONCE, AND THE REASON IS RECORDED HERE
 # RATHER THAN DELETED WITH THEM.
@@ -608,9 +604,7 @@ class TestValidInputIsByteIdentical:
         assert _summary(labels, "Oldest tranche age:") == "no open tranches"
 
 
-# ---------------------------------------------------------------------
 # CONTROL C - THE REFUSAL IS HONEST
-# ---------------------------------------------------------------------
 
 
 class TestTheRefusalIsHonest:
@@ -683,9 +677,7 @@ class TestTheRefusalIsHonest:
         assert (rows[0][COL_USD] == DASH) == ("unreadable" in _parked(labels))
 
 
-# ---------------------------------------------------------------------
 # CONTROL D - THE SUM
-# ---------------------------------------------------------------------
 
 
 class TestTheParkedTotalCountsWhatItCannotRead:
@@ -760,9 +752,7 @@ class TestTheParkedTotalCountsWhatItCannotRead:
         assert _parked(labels) == "$6.0000  (+1 unreadable)"
 
 
-# ---------------------------------------------------------------------
 # CONTROL E - 10 ** 400 RAISES NOWHERE, INCLUDING INSIDE THE GUARD
-# ---------------------------------------------------------------------
 
 
 class TestHugeIntDoesNotRaiseAnywhere:
@@ -800,9 +790,7 @@ class TestHugeIntDoesNotRaiseAnywhere:
             math.isfinite(10**400)
 
 
-# ---------------------------------------------------------------------
 # CONTROL F - PRECISION IN THE BAND ABOVE 2 ** 53
-# ---------------------------------------------------------------------
 #
 # Routing an accepted int through `as_finite_float` sends it through a
 # float, and these are MONEY columns. Measured on live BEFORE the change
@@ -887,9 +875,7 @@ class TestPrecisionBandIsUnchanged:
         assert float(2**1023 + 1) == float(2**1023)
 
 
-# ---------------------------------------------------------------------
 # The admission rule is the repo's, not a fourth variant
-# ---------------------------------------------------------------------
 
 
 class TestAdmissionHelperIsTheRepoRule:
@@ -970,9 +956,7 @@ class TestAdmissionHelperIsTheRepoRule:
         assert as_finite_float(NOW) == NOW
 
 
-# ---------------------------------------------------------------------
 # Reachability - the shapes above are what the saved file produces
-# ---------------------------------------------------------------------
 
 
 class TestTheHostileShapesAreReachable:

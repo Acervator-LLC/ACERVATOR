@@ -50,11 +50,9 @@ MIN_OPPOSING_PCT = 1.6
 OPENER_GAP_PCT = 1.0
 
 
-# ---------------------------------------------------------------------------
 # Stubs. Deliberately NOT ScrummingBot instances: each carries only the
 # surface the method under test reads, so an accidental dependence on
 # anything else surfaces as an AttributeError instead of passing.
-# ---------------------------------------------------------------------------
 
 
 class _StubExchangeInterface:
@@ -254,11 +252,9 @@ def _self_calls(func_name: str) -> set[str]:
     return out
 
 
-# ---------------------------------------------------------------------------
 # THE ORACLES. Written once, driven by the real tests below and by the
 # planted failures at the bottom. A plant that ran a different assertion
 # from the one it claims to control would be no control at all.
-# ---------------------------------------------------------------------------
 
 
 def _check_gate_withheld_the_spawn(opened: int, tranches: list[dict]) -> None:
@@ -321,14 +317,12 @@ def _check_the_fill_survived(fill, messages: list[str]) -> None:
     ), "the buy reported failure after it had already filled"
 
 
-# ---------------------------------------------------------------------------
 # POSITIVE CONTROLS ON THE HARNESS ITSELF.
 #
 # Everything below reads `bot._stack_tranches`. If the stub cannot reach
 # the real opener, or `_execute_buy` cannot reach the spawn site, an
 # empty ledger means "the harness is broken", not "the code refused" --
 # and every no-spawn assertion in this file passes for the wrong reason.
-# ---------------------------------------------------------------------------
 
 
 class TestTheHarnessCanSeeASpawn:
@@ -376,9 +370,7 @@ class TestTheHarnessCanSeeASpawn:
         assert bot.spawn_calls, "no spawn to read an anchor from"
 
 
-# ---------------------------------------------------------------------------
 # THE UNIT: a fold spawns stack tranches.
-# ---------------------------------------------------------------------------
 
 
 class TestAFoldSpawnsStackTranches:
@@ -734,13 +726,11 @@ class TestTheSpawnCannotFailTheTrade:
         _check_only_a_fold_spawned(opened, bot._stack_tranches)
 
 
-# ---------------------------------------------------------------------------
 # PLANTED FAILURES.
 #
 # Each one breaks the real mechanism and runs THE SAME `_check_*` oracle
 # the corresponding test above runs, requiring it to go red. A check
 # never observed failing is not evidence.
-# ---------------------------------------------------------------------------
 
 
 async def _ungated_spawn(bot, fold_price, fold_size, summary, path):

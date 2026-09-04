@@ -28,9 +28,7 @@ from src.exchange.currency_rate_monitor import (  # noqa: E402
     WEI_PER_ETH,
 )
 
-# -----------------------------------------------------------------
 # 1. gwei derivation math
-# -----------------------------------------------------------------
 
 
 class TestGweiDerivation:
@@ -74,9 +72,7 @@ class TestGweiDerivation:
         assert f"{snap.gwei_per_dollar:,.0f}" == "529,669"
 
 
-# -----------------------------------------------------------------
 # 2. paintEvent source discipline (retired features stay retired)
-# -----------------------------------------------------------------
 
 
 class TestPaintEventDiscipline:
@@ -116,9 +112,7 @@ class TestPaintEventDiscipline:
         ), "Per-mini-panel sync helper _sync_bars_for missing."
 
 
-# -----------------------------------------------------------------
 # 3. Live-render smoke — panel instantiates, layout is well-formed
-# -----------------------------------------------------------------
 
 
 class TestLiveRender:

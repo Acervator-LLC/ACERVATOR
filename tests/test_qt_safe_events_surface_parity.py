@@ -100,9 +100,7 @@ def app():
     return ensure_app()
 
 
-# ---------------------------------------------------------------------
 # The world the shipped rule runs in
-# ---------------------------------------------------------------------
 
 
 class ApplicationCounter:
@@ -189,9 +187,7 @@ def captured_records():
         logger.setLevel(held_level)
 
 
-# ---------------------------------------------------------------------
 # The queue both sides drain
-# ---------------------------------------------------------------------
 
 
 def work_event_type():
@@ -236,9 +232,7 @@ def work_receiver(sink):
     return WorkReceiver()
 
 
-# ---------------------------------------------------------------------
 # The inputs. One scenario drives both sides.
-# ---------------------------------------------------------------------
 
 
 def scenario(name, steps):
@@ -360,9 +354,7 @@ SHARED_WORDING = (
 REFUSING_SCENARIOS = SHARED_WORDING
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def capture(sink, work):
@@ -488,9 +480,7 @@ def record_from_logging(record) -> dict:
     }
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def read_records(records) -> list:
@@ -554,9 +544,7 @@ def refusal_headline(message) -> str:
     return message.splitlines()[0].strip()
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -683,9 +671,7 @@ def test_the_sample_hashes_are_reported(name):
     assert digest(value) == digest(new_outcome(BY_NAME[name])["value"])
 
 
-# ---------------------------------------------------------------------
 # The four endings, each told apart from the others
-# ---------------------------------------------------------------------
 
 
 def test_the_four_endings_are_told_apart_on_both_sides():
@@ -805,9 +791,7 @@ def test_the_shipped_logger_carries_the_name_and_level_the_surface_names():
     assert surface.SKIP_LOG_LEVEL == logging.getLevelName(logging.DEBUG)
 
 
-# ---------------------------------------------------------------------
 # Real events, and things that are not events
-# ---------------------------------------------------------------------
 
 
 def test_the_rule_dispatches_a_real_posted_event():
@@ -954,9 +938,7 @@ def test_the_rule_reads_neither_argument_when_it_is_given_neither():
     )
 
 
-# ---------------------------------------------------------------------
 # The guard is per thread
-# ---------------------------------------------------------------------
 
 
 def test_the_guard_one_thread_raises_is_down_in_another_on_both_sides():
@@ -1003,9 +985,7 @@ def test_the_guard_one_thread_raises_is_down_in_another_on_both_sides():
     receiver.deleteLater()
 
 
-# ---------------------------------------------------------------------
 # The enumeration
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1259,9 +1239,7 @@ def test_every_surface_class_and_extra_name_stands_for_something_shipped():
     assert given - {"self"} - shipped_given == set(EXTRA_PARAMETERS)
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 def named_payloads() -> dict:
@@ -1516,9 +1494,7 @@ def test_every_ending_answers_what_the_shipped_rule_answers():
         assert shipped.safe_process_events(PLAIN_REASON) is False
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_moved_in_the_shipped_rule(monkeypatch):
@@ -1609,9 +1585,7 @@ def test_the_shipped_rule_holds_one_piece_of_shared_state_and_it_is_per_thread()
     assert mine, "the container counter reports nothing"
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):

@@ -88,9 +88,7 @@ FROZEN_NOW = 1_700_000_000.5
 WIDGETS_HELD: list = []
 
 
-# ---------------------------------------------------------------------
 # Nothing here reaches outside this process
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -167,9 +165,7 @@ def frozen_clock(moment=FROZEN_NOW):
     return lambda: moment
 
 
-# ---------------------------------------------------------------------
 # One starting state, handed to both sides
-# ---------------------------------------------------------------------
 
 
 def rss(items, header=b'<?xml version="1.0"?>'):
@@ -390,9 +386,7 @@ def refusing_request_factory(url):
     raise ValueError("this scheme is not allowed")
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def numbered(value):
@@ -501,9 +495,7 @@ def stories_shape(stories):
     return [story_shape(story) for story in stories]
 
 
-# ---------------------------------------------------------------------
 # Parsing one feed body
-# ---------------------------------------------------------------------
 
 
 def parse_both(name, limit=None):
@@ -664,9 +656,7 @@ def test_an_element_name_loses_its_namespace_the_same_way(tag):
     assert shipped._localname(tag) == surface.localname(tag), tag
 
 
-# ---------------------------------------------------------------------
 # Fetching one feed
-# ---------------------------------------------------------------------
 
 
 FETCH_CASES: dict = {
@@ -912,9 +902,7 @@ def test_the_default_stop_flag_is_clear_on_both_sides():
     assert surface.zero_clock() == 0.0
 
 
-# ---------------------------------------------------------------------
 # Merging every feed
-# ---------------------------------------------------------------------
 
 
 MERGE_CASES: dict = {
@@ -1117,9 +1105,7 @@ def test_the_tie_reader_reports_a_lost_story_and_keeps_a_real_order():
     assert tie_folded([]) == []
 
 
-# ---------------------------------------------------------------------
 # The strip on screen
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -1606,9 +1592,7 @@ def test_two_not_a_numbers_built_apart_compare_equal():
     assert readable(float("inf")) != readable(float("-inf"))
 
 
-# ---------------------------------------------------------------------
 # The fetch worker, and what owns it
-# ---------------------------------------------------------------------
 
 
 def instant_fetch(stories):
@@ -1921,9 +1905,7 @@ def test_a_detached_report_reaches_nothing():
     assert worker.headlines_ready == [] and worker.failed == []
 
 
-# ---------------------------------------------------------------------
 # Counting what the shipped file wires, waits on, and builds
-# ---------------------------------------------------------------------
 
 WIDGET_NAMES_BUILT = (
     "QWidget",
@@ -2209,9 +2191,7 @@ def test_the_class_counter_finds_a_class_declared_inside_another():
     } == {"NewsSource", "NewsHeadline"}
 
 
-# ---------------------------------------------------------------------
 # Every class and every method has a counterpart
-# ---------------------------------------------------------------------
 
 
 def members(owner):
@@ -2504,9 +2484,7 @@ def test_the_strip_is_reached_by_the_tab_and_the_surface_by_the_bridge():
     assert len(known) > 5, known
 
 
-# ---------------------------------------------------------------------
 # The surface holds its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file(monkeypatch):
@@ -2551,9 +2529,7 @@ def test_the_shipped_file_is_not_named_by_the_surface():
     assert not any("widgets" in name for name in imported), imported
 
 
-# ---------------------------------------------------------------------
 # The strip paints, and the two sides paint the same pixels
-# ---------------------------------------------------------------------
 
 
 def render_offscreen(widget, size):
@@ -2749,9 +2725,7 @@ def test_with_a_font_database_the_letters_advance_apart():
     assert app_font_advance_px(WIDE_LABEL) > app_font_advance_px(NARROW_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 def test_the_strip_tooltip_is_compared_as_a_string(monkeypatch):
@@ -2902,9 +2876,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
         assert callable(globals()[covered_by]), covered_by
 
 
-# ---------------------------------------------------------------------
 # The strip writes under the logger it names
-# ---------------------------------------------------------------------
 
 
 def lines_from(logger_name, run, level=logging.DEBUG):
@@ -3010,9 +2982,7 @@ def test_the_surface_writes_under_the_logger_it_names():
     assert shipped.logger.name == surface.LOGGER_NAME
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def freeze(value):
@@ -3341,9 +3311,7 @@ def test_the_ten_feed_addresses_are_the_shipped_addresses():
     assert all(one[2].startswith("https://") for one in new), new
 
 
-# ---------------------------------------------------------------------
 # What the shipped module keeps between strips
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_module_keeps_a_worker_register_for_the_whole_process(
@@ -3412,9 +3380,7 @@ def test_the_surface_keeps_no_value_between_two_strips():
     assert first.headlines is not second.headlines
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -3563,9 +3529,7 @@ def test_the_bridge_drives_every_step_the_strip_takes():
     ask({"reset": True})
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -3866,9 +3830,7 @@ def test_the_import_scan_reports_a_module_the_shipped_file_does_load():
     assert "atexit" in text
 
 
-# ---------------------------------------------------------------------
 # Nothing reaches outside, and nothing is written to the operator's tree
-# ---------------------------------------------------------------------
 
 
 def test_no_connection_is_attempted_while_both_sides_are_driven(
@@ -3925,9 +3887,7 @@ def test_the_throwaway_home_check_reports_a_file_that_was_written(tmp_path):
     assert sorted(home.rglob("*")) == [home / "seeded.json"]
 
 
-# ---------------------------------------------------------------------
 # The file runs in the CI fast lane
-# ---------------------------------------------------------------------
 
 
 def test_this_file_imports_only_what_the_fast_lane_installs():

@@ -146,9 +146,7 @@ def canonical(value):
     return f"{type(value).__name__}:{value!r}"
 
 
-# ---------------------------------------------------------------------
 # The cases both sides are driven with
-# ---------------------------------------------------------------------
 
 
 def case(name, **named):
@@ -299,9 +297,7 @@ ALL_CASES = CASES + REFUSING_CASES
 BY_NAME = {spec["name"]: spec for spec in ALL_CASES}
 
 
-# ---------------------------------------------------------------------
 # The shipped side
-# ---------------------------------------------------------------------
 
 
 class QtSeams:
@@ -468,9 +464,7 @@ def edit_trigger_name(table) -> str:
     return str(table.editTriggers()).rsplit(".", 1)[-1]
 
 
-# ---------------------------------------------------------------------
 # The Qt-free side
-# ---------------------------------------------------------------------
 
 
 def surface_answer(spec) -> dict:
@@ -542,9 +536,7 @@ def outcome(drive, spec):
         return ("refused", type(exc).__name__)
 
 
-# ---------------------------------------------------------------------
 # Both sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", [spec["name"] for spec in CASES])
@@ -629,9 +621,7 @@ def test_the_true_stored_where_a_number_belongs_prints_as_one_pixel():
     assert surface_answer(spec)["card"]["layout"]["spacing_px"] == 1
 
 
-# ---------------------------------------------------------------------
 # Step sequences, including one that refuses part way
-# ---------------------------------------------------------------------
 
 
 SEQUENCE = (
@@ -692,9 +682,7 @@ def test_the_sequence_recorder_reports_a_sequence_that_finishes():
     assert finished["stopped_at"] is None, finished
 
 
-# ---------------------------------------------------------------------
 # Enumerating the shipped file
-# ---------------------------------------------------------------------
 
 
 def parsed(source: str):
@@ -901,9 +889,7 @@ def test_the_style_sheet_counter_reports_a_call_it_is_shown():
     assert none == [], none
 
 
-# ---------------------------------------------------------------------
 # The comparison is complete
-# ---------------------------------------------------------------------
 
 
 def leaves(value) -> set:
@@ -1062,9 +1048,7 @@ def test_the_surface_grew_no_name_the_file_does_not_declare():
     assert {name for name in written if name.isupper()} - imported == set()
 
 
-# ---------------------------------------------------------------------
 # Pictures
-# ---------------------------------------------------------------------
 
 
 def card_payload(spec):
@@ -1262,9 +1246,7 @@ def test_the_card_and_table_colour_counts_are_reported():
     assert all(found > 1 for found in counts.values()), counts
 
 
-# ---------------------------------------------------------------------
 # Order, shared state, the home directory and the world
-# ---------------------------------------------------------------------
 
 
 def test_every_swapped_name_is_put_back_after_a_drive_and_after_a_refusal():
@@ -1406,9 +1388,7 @@ def test_the_throwaway_home_check_reports_a_file_that_was_written(tmp_path):
     assert sorted(home.rglob("*")) == [home / "seeded.json"]
 
 
-# ---------------------------------------------------------------------
 # The bridge, and a process that never loads Qt
-# ---------------------------------------------------------------------
 
 
 def test_the_bridge_registers_the_widgets_package_method():

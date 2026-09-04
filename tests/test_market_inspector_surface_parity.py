@@ -103,10 +103,8 @@ def hold(widget):
     return widget
 
 
-# ---------------------------------------------------------------------
 # The analyzer is process-wide, and BOTH screens read it through one
 # accessor. Every test is given its own and the process one is put back.
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -151,9 +149,7 @@ def seat_inspector(signals, pairs):
     return getattr(analyzer, SHARED_INSPECTOR_NAME)
 
 
-# ---------------------------------------------------------------------
 # Invented market readings, and the case table both sides are driven with
-# ---------------------------------------------------------------------
 
 
 def reading(**over):
@@ -492,9 +488,7 @@ FLEET_LISTS: dict = {
 FLEET_REFUSING = ("number_where_text_belongs", "nothing_where_text_belongs")
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def numbered(value):
@@ -944,9 +938,7 @@ def both_sides_agree(run, note):
     )
 
 
-# ---------------------------------------------------------------------
 # The two sides, case by case
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
@@ -1055,9 +1047,7 @@ def test_the_machine_rule_keeps_a_seeded_value_and_hides_a_chosen_one():
     assert platform_chosen({"pane_sizes_px": asked})["pane_sizes_px"] == asked
 
 
-# ---------------------------------------------------------------------
 # What each side DID: answered, or refused with which type
-# ---------------------------------------------------------------------
 
 
 def refusals(outcome):
@@ -1118,9 +1108,7 @@ def test_the_refusal_reader_reports_two_different_wordings():
     assert headline_of(lambda: None) == ""
 
 
-# ---------------------------------------------------------------------
 # Step sequences, including one that refuses part way
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(SEQUENCES))
@@ -1190,9 +1178,7 @@ def test_pressing_the_switch_refuses_the_same_way_on_both_sides():
     assert model.show_active_checked is True
 
 
-# ---------------------------------------------------------------------
 # The fetch cycle
-# ---------------------------------------------------------------------
 
 
 def test_pressing_refresh_with_nothing_wired_writes_the_same_line():
@@ -1402,9 +1388,7 @@ def analyzer_blocked():
     return Refuse()
 
 
-# ---------------------------------------------------------------------
 # The right pane and its three wiring points
-# ---------------------------------------------------------------------
 
 
 class RecordingPane:
@@ -1530,9 +1514,7 @@ def test_the_shipped_screen_builds_the_real_right_pane():
     assert plain._topologies_pane is not None
 
 
-# ---------------------------------------------------------------------
 # The per-bot screen
-# ---------------------------------------------------------------------
 
 
 class Config:
@@ -1679,9 +1661,7 @@ def test_the_higher_scoring_card_holds_at_most_five_rows_on_both_sides():
     assert len(higher[1][2]) == surface.HIGHER_LIMIT == 5
 
 
-# ---------------------------------------------------------------------
 # The surface holds its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
@@ -1734,9 +1714,7 @@ def test_the_shipped_file_is_not_named_by_the_surface():
     assert "market_inspector_topologies" not in imported, imported
 
 
-# ---------------------------------------------------------------------
 # Counting what the shipped file wires, waits on, and builds
-# ---------------------------------------------------------------------
 
 WIDGET_NAMES_BUILT = (
     "QWidget",
@@ -1932,9 +1910,7 @@ def test_the_class_counter_finds_a_class_declared_inside_another():
     } == set()
 
 
-# ---------------------------------------------------------------------
 # Every class, function and method has a counterpart
-# ---------------------------------------------------------------------
 
 
 def members(owner):
@@ -2304,9 +2280,7 @@ def test_the_screen_is_reached_by_two_windows_and_the_surface_by_the_bridge():
     assert len(known) > 5, known
 
 
-# ---------------------------------------------------------------------
 # The screen paints, and the two sides paint the same pixels
-# ---------------------------------------------------------------------
 
 
 def render_offscreen(widget, size):
@@ -2564,9 +2538,7 @@ def test_with_a_font_database_the_letters_advance_apart():
     assert app_font_advance_px(WIDE_LABEL) > app_font_advance_px(NARROW_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 def test_the_refresh_tooltip_is_compared_as_a_string():
@@ -2766,9 +2738,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
         assert callable(globals()[covered_by]), covered_by
 
 
-# ---------------------------------------------------------------------
 # The screen writes under the logger it names
-# ---------------------------------------------------------------------
 
 
 def lines_from(logger_name, run, level=logging.WARNING):
@@ -2852,9 +2822,7 @@ def test_the_surface_writes_under_the_logger_the_screen_names():
     assert shipped.logger.name == surface.LOGGER_NAME
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def freeze(value):
@@ -3239,9 +3207,7 @@ def test_the_key_check_reports_a_key_backed_by_the_wrong_value():
     assert not backed("calls", [], "model.calls", model)
 
 
-# ---------------------------------------------------------------------
 # What the shipped module keeps between screens
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_module_changes_no_value_the_next_screen_reads():
@@ -3320,9 +3286,7 @@ def test_the_surface_keeps_no_value_between_two_screens():
     assert first.signal_rows != []
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -3447,9 +3411,7 @@ def test_the_bridge_drives_every_step_the_screen_takes():
     ask({"reset": True})
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

@@ -76,11 +76,9 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The bot, its config and the bot manager, as the test owns them. The Qt
 # tab is driven with these; the surface is driven with its own. Neither
 # side reads the other's.
-# ---------------------------------------------------------------------
 
 
 class Config:
@@ -150,9 +148,7 @@ LOOP_STANDIN = ["a running loop"]
 HOST_ACCESSIBLE_NAME = "Positions Held tab host"
 
 
-# ---------------------------------------------------------------------
 # The message boxes and the loop hand-off, recorded rather than shown
-# ---------------------------------------------------------------------
 
 
 #: The button set Qt gives a warning or an information box when the
@@ -297,9 +293,7 @@ def host_class():
     return Host
 
 
-# ---------------------------------------------------------------------
 # The inputs. One scenario drives both sides.
-# ---------------------------------------------------------------------
 
 
 def position(**named):
@@ -604,9 +598,7 @@ def surface_answer_value(spec):
     return surface.NO_BUTTON_VALUE
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def old_bot(spec):
@@ -693,9 +685,7 @@ def drive_new(spec):
     return {"model": model, "bot": bot, "sink": sink}
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def host_table(tab):
@@ -958,9 +948,7 @@ def new_outcome(spec):
     return outcome(lambda: surface_trace(drive_new(spec)))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -1047,9 +1035,7 @@ def test_the_sample_hashes_are_reported(name):
     assert digest(value) == digest(new_outcome(BY_NAME[name])["value"])
 
 
-# ---------------------------------------------------------------------
 # The Fire button, driven down all four of its paths
-# ---------------------------------------------------------------------
 
 
 FIRE_SCENARIOS = (
@@ -1200,9 +1186,7 @@ def test_the_two_qt_seams_are_put_back_after_a_run():
     assert widgets.QMessageBox is not BoxRecorder
 
 
-# ---------------------------------------------------------------------
 # The enumeration: signals, classes, methods, functions, timers, topics
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1425,9 +1409,7 @@ def test_the_tab_subscribes_to_no_bus_topic_and_the_counter_can_report():
     assert "wire.created" in neighbour
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 PAYLOAD_KEYS = {
@@ -1744,9 +1726,7 @@ def test_every_branch_marker_fires_and_ties_to_what_the_operator_sees():
     assert filled.table_shown is True
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 class MovedTokens:
@@ -1836,9 +1816,7 @@ def test_the_shipped_tab_writes_to_no_shared_table():
     assert shipped.ds is design_system
 
 
-# ---------------------------------------------------------------------
 # The colours
-# ---------------------------------------------------------------------
 
 
 def canonical(colour):
@@ -1961,9 +1939,7 @@ def test_the_pool_colour_follows_the_pool_name_exactly(name, expected):
     assert surface.pool_color_hex(name) == expected
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def model_payload(spec=None):
@@ -2184,9 +2160,7 @@ def test_two_equal_length_pairs_measure_apart_with_fonts():
     )
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_values_no_picture_carries_are_read_off_both_sides():
@@ -2284,9 +2258,7 @@ def test_the_fire_column_holds_a_button_and_no_cell():
     assert table.cellWidget(0, 0) is None
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -2441,9 +2413,7 @@ def test_the_qt_probe_can_report_qt():
     assert loaded["frame"]["ok"] is True
 
 
-# ---------------------------------------------------------------------
 # One check for each repair, each of which fails without it
-# ---------------------------------------------------------------------
 
 
 UNREADABLE_ROW = 1

@@ -150,10 +150,8 @@ def _drift(bot) -> int:
     return standing - created + closed + discarded
 
 
-# ======================================================================
 # A. THE INSTRUMENT. A test that never sees the defect is not a
 #    measurement.
-# ======================================================================
 class TestTheInstrumentWorks:
 
     def test_a_seeded_bot_reconciles_before_anything_acts(self):
@@ -174,9 +172,7 @@ class TestTheInstrumentWorks:
         assert _drift(bot) == 5
 
 
-# ======================================================================
 # B. THE WRITE SITE THAT PRODUCED NEGATIVE DRIFT.
-# ======================================================================
 class TestTheMalformedDropIsCountedAsADiscard:
 
     #: `ref` values the guard refuses. `nan` is here because every
@@ -293,9 +289,7 @@ class TestTheMalformedDropIsCountedAsADiscard:
         assert any("FOLD GUARD" in m and "DISCARDED" in m for m in seen)
 
 
-# ======================================================================
 # C. THE RESTORE FILTER, the second unbalanced removal.
-# ======================================================================
 def _state(tranches, created, closed, discarded, malformed=0) -> dict:
     return {
         "fold_tranches": list(tranches),
@@ -338,10 +332,8 @@ class TestTheRestoreFilterCountsWhatItDrops:
         assert bot._tranches_malformed_dropped == 6
 
 
-# ======================================================================
 # D. THE THREE VERBS. Merge, despawn and clear are the only three that
 #    collapse or remove a tranche, and each moves ONE counter.
-# ======================================================================
 class TestClearMovesDiscarded:
 
     def test_clear_discards_and_never_closes(self):
@@ -417,9 +409,7 @@ class TestMergeMovesCreatedDown:
         assert _books(bot) == before
 
 
-# ======================================================================
 # E. THE SOURCE RULE. A later edit must not re-open the hole.
-# ======================================================================
 def _functions_assigning(name: str) -> set[str]:
     """Every engine function that ASSIGNS `self.<name>`."""
     nodes: list = []
@@ -462,10 +452,8 @@ def test_no_function_moves_the_malformed_counter_alone():
     assert malformed <= discarded, sorted(malformed - discarded)
 
 
-# ======================================================================
 # F. THE RATIO. Pure, so the panel's only health verdict is testable
 #    without Qt.
-# ======================================================================
 #: Read off `~/.acervator/bot_state.json`, saved 2026-08-24 16:14:19.
 #: `(symbol, created, closed, discarded)`.
 BTC = ("BTC/USD", 160, 118, 42)

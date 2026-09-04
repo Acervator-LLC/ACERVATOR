@@ -117,9 +117,7 @@ def app():
     return found
 
 
-# ---------------------------------------------------------------------
 # Invented inputs, and the stand-ins both sides are driven with
-# ---------------------------------------------------------------------
 
 
 def award(**over):
@@ -302,9 +300,7 @@ LEADERBOARD_REFUSING = ("no_rank_key", "no_win_rate_key")
 CELL_KEPT_BY_ONE_SIDE = ("number_where_text_belongs",)
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def numbered(value):
@@ -442,9 +438,7 @@ def hold(widget):
     return widget
 
 
-# ---------------------------------------------------------------------
 # The four panels, driven on both sides from one stand-in
-# ---------------------------------------------------------------------
 
 
 def old_identity_panel(bot_id):
@@ -667,9 +661,7 @@ def drive(old, new, name):
     )
 
 
-# ---------------------------------------------------------------------
 # Side by side, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(IDENTITY_CASES))
@@ -815,9 +807,7 @@ def test_the_masking_rule_keeps_a_seeded_value_and_hides_a_chosen_one():
     assert readable(new) == readable(old)
 
 
-# ---------------------------------------------------------------------
 # What each side did with an input it would not take
-# ---------------------------------------------------------------------
 
 
 def outcomes(old, new, cases):
@@ -909,9 +899,7 @@ def test_the_refusal_wording_is_read_off_the_shipped_side():
     assert season_reward(100) == surface.season_budget(100) == 100
 
 
-# ---------------------------------------------------------------------
 # The paths every case reaches
-# ---------------------------------------------------------------------
 
 
 def test_every_wallet_and_leaderboard_case_reaches_the_path_it_names():
@@ -959,9 +947,7 @@ def test_the_identity_and_balance_paths_are_both_reached():
     assert set(surface.BALANCE_PATHS) == {"held", "no_identity"}
 
 
-# ---------------------------------------------------------------------
 # The whole tab, built from real files in a throwaway directory
-# ---------------------------------------------------------------------
 
 
 def workspace(bot_id=BOT_KEY, awards=(), elo=(), broken=()):
@@ -1566,9 +1552,7 @@ def test_the_recorded_calls_are_compared_as_values():
     assert [call[0] for call in bare.calls] == [call[0] for call in model.calls]
 
 
-# ---------------------------------------------------------------------
 # The surface writes its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
@@ -1612,9 +1596,7 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
     assert readable(restored) == readable(new)
 
 
-# ---------------------------------------------------------------------
 # Counting what the shipped file wires, waits on, and builds
-# ---------------------------------------------------------------------
 
 WIDGET_NAMES_BUILT = (
     "QWidget",
@@ -1779,9 +1761,7 @@ def test_the_screen_elements_the_tab_builds_are_counted():
     assert len(built) - len(painted) == 14
 
 
-# ---------------------------------------------------------------------
 # Every class and every method has a counterpart
-# ---------------------------------------------------------------------
 
 
 def members(owner):
@@ -2047,9 +2027,7 @@ def test_the_tab_is_reached_by_no_other_module():
     assert files_naming("src.gui.competition_tab") == [str(SURFACE_PATH)]
 
 
-# ---------------------------------------------------------------------
 # The tab paints, and the two sides paint the same pixels
-# ---------------------------------------------------------------------
 
 
 def render_offscreen(widget, size):
@@ -2324,9 +2302,7 @@ def test_with_a_font_database_the_letters_advance_apart():
     assert app_font_advance_px(WIDE_LABEL) > app_font_advance_px(NARROW_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 def test_the_accessible_names_are_compared_as_strings():
@@ -2546,9 +2522,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
         assert callable(globals()[covered_by]), covered_by
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def freeze(value):
@@ -2874,9 +2848,7 @@ def test_the_key_check_reports_a_key_backed_by_the_wrong_value():
     assert not backed("season", 9, ("model.season",), model)
 
 
-# ---------------------------------------------------------------------
 # The shipped module keeps nothing between tabs
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_tab_changes_no_value_the_next_tab_reads():
@@ -2902,9 +2874,7 @@ def test_the_shipped_tab_changes_no_value_the_next_tab_reads():
     assert freeze(moved) != freeze(before)
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 BRIDGE_STATE = {
@@ -3026,9 +2996,7 @@ def test_the_bridge_reports_a_state_it_cannot_read():
     )
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

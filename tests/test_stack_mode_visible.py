@@ -19,9 +19,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 
-# ---------------------------------------------------------------------------
 # OrderType.IOC_LIMIT — the enum must exist + connector must translate
-# ---------------------------------------------------------------------------
 
 
 class TestOrderTypeIOCLimit:
@@ -44,9 +42,7 @@ class TestOrderTypeIOCLimit:
         ), "IOC_LIMIT must map to native ccxt 'limit' + IOC time_in_force"
 
 
-# ---------------------------------------------------------------------------
 # Visible-mode Stack execution — source-shape pins
-# ---------------------------------------------------------------------------
 
 
 class TestVisibleModeSourceShape:
@@ -128,9 +124,7 @@ class TestVisibleModeSourceShape:
         assert "await self._reconcile_stack_tranches_visible(" in source
 
 
-# ---------------------------------------------------------------------------
 # GUI: Stack Tranches tab
-# ---------------------------------------------------------------------------
 
 
 class TestStackTranchesTab:
@@ -237,10 +231,8 @@ class TestStackTranchesTab:
         assert "VISIBLE" in body and "INVISIBLE" in body
 
 
-# ---------------------------------------------------------------------------
 # Behavioural: async _open_stack_from_scrum in Invisible mode still works
 # (regression check — 2B-2 tests already cover this but re-run under 2B-3)
-# ---------------------------------------------------------------------------
 
 
 class TestAsyncOpenStackRegression:

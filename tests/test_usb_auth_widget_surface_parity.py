@@ -114,9 +114,7 @@ EXPORT_MESSAGE = "wrote 2 exchanges"
 WIDGETS_HELD: list = []
 
 
-# ---------------------------------------------------------------------
 # The application object, and the widgets a render must outlive
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -133,9 +131,7 @@ def hold(widget):
     return widget
 
 
-# ---------------------------------------------------------------------
 # One starting state, handed to both sides
-# ---------------------------------------------------------------------
 
 
 class Drive:
@@ -326,9 +322,7 @@ REFUSING_CASES = {
 }
 
 
-# ---------------------------------------------------------------------
 # The shared swap helper: neither side reaches a device or a file
-# ---------------------------------------------------------------------
 
 
 class Recorder:
@@ -531,9 +525,7 @@ def swapped_world(monkeypatch):
     surface.PANEL_MODEL = None
 
 
-# ---------------------------------------------------------------------
 # Building each side from one spec
-# ---------------------------------------------------------------------
 
 
 def old_panel(one):
@@ -591,9 +583,7 @@ def scripted_verify(record, path, serial):
     return record.verify_answer
 
 
-# ---------------------------------------------------------------------
 # Driving one step sequence through either side
-# ---------------------------------------------------------------------
 
 
 def drives_for(one):
@@ -726,9 +716,7 @@ SEQUENCES = {
 SEQUENCE_NAMES = tuple(sorted(SEQUENCES))
 
 
-# ---------------------------------------------------------------------
 # Reading each side into one comparable shape
-# ---------------------------------------------------------------------
 
 
 def old_parts(panel):
@@ -1056,9 +1044,7 @@ def both_sides_agree(name, steps=(), note=""):
     return old_side, new_side
 
 
-# ---------------------------------------------------------------------
 # Both sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", CASE_NAMES)
@@ -1169,9 +1155,7 @@ def test_a_swap_of_two_values_changes_the_reading():
     assert digest(first) != digest(second)
 
 
-# ---------------------------------------------------------------------
 # Every failure path, compared by the type of the refusal
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", tuple(sorted(REFUSING_CASES)))
@@ -1219,9 +1203,7 @@ def test_the_shipped_panel_and_the_surface_refuse_a_drive_that_stops():
     assert old_stop == new_stop
 
 
-# ---------------------------------------------------------------------
 # The worker, the row and the lamp, each on its own
-# ---------------------------------------------------------------------
 
 
 def old_worker():
@@ -1503,9 +1485,7 @@ def test_the_lamp_paint_carries_the_darkening_as_the_request():
     assert steps[3] == ["ellipse", [3, 3, 16, 16]]
 
 
-# ---------------------------------------------------------------------
 # Counting what the shipped file wires, waits on and builds
-# ---------------------------------------------------------------------
 
 WIDGET_NAMES_BUILT = (
     "QWidget",
@@ -1770,9 +1750,7 @@ def test_the_shipped_file_declares_twenty_five_methods_and_no_function():
     assert len(declared_methods(ELEMENT_CONTROL_PATH)) == 6
 
 
-# ---------------------------------------------------------------------
 # Every class and every method has a counterpart
-# ---------------------------------------------------------------------
 
 
 def members(owner):
@@ -1969,9 +1947,7 @@ def test_the_signatures_match_the_shipped_methods():
         assert list(old_side.parameters) == list(new_side.parameters), shipped_name
 
 
-# ---------------------------------------------------------------------
 # The surface writes its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
@@ -2107,9 +2083,7 @@ def test_the_clock_guard_names_a_file_that_does_read_the_clock():
     assert WORLD.current.clock_readers == [Path(__file__).name]
 
 
-# ---------------------------------------------------------------------
 # A complete comparison
-# ---------------------------------------------------------------------
 
 #: Payload keys no side-by-side reading compares, each with the test
 #: that does cover it.
@@ -2245,9 +2219,7 @@ def test_both_completeness_checks_can_report():
     assert unbacked({"A_SPARE_KEY": 1}) == ["A_SPARE_KEY"]
 
 
-# ---------------------------------------------------------------------
 # The values a picture cannot see
-# ---------------------------------------------------------------------
 
 #: Every colour the panel names whose channels are not all different. A
 #: swap of two equal channels paints the same picture, so each is
@@ -2386,9 +2358,7 @@ def test_a_confirmation_answered_yes_asks_for_the_write():
     assert model.threads == old_record.threads
 
 
-# ---------------------------------------------------------------------
 # The two sides paint the same pixels
-# ---------------------------------------------------------------------
 
 PICTURE_CASES = (
     "happy",
@@ -2707,9 +2677,7 @@ def test_with_a_font_database_the_letters_advance_apart():
     assert app_font_advance_px(WIDE_LABEL) > app_font_advance_px(NARROW_LABEL)
 
 
-# ---------------------------------------------------------------------
 # Order independence and shared state
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_module_changes_no_value_the_next_panel_reads():
@@ -2806,9 +2774,7 @@ def test_no_test_here_reaches_a_real_device_or_a_real_venue():
         refuse("a seeded call")
 
 
-# ---------------------------------------------------------------------
 # Over the bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -2924,9 +2890,7 @@ def test_the_bridge_reports_a_panel_it_cannot_read():
     surface.view_model({"reset": True})
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all, in a fresh process
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

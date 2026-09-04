@@ -181,9 +181,7 @@ def warned():
         log.setLevel(was)
 
 
-# ---------------------------------------------------------------------
 # The paired test the whole file turns on.
-# ---------------------------------------------------------------------
 
 
 def test_one_unreadable_sibling_is_never_silently_dropped(warned) -> None:
@@ -208,9 +206,7 @@ def test_one_unreadable_sibling_is_never_silently_dropped(warned) -> None:
     assert "2000.00000000" in warned[0], "The warning must say how big the gap was."
 
 
-# ---------------------------------------------------------------------
 # Controls. Every honest case must still hand back a real number.
-# ---------------------------------------------------------------------
 
 
 def test_every_sibling_readable_totals_all_claims() -> None:
@@ -271,9 +267,7 @@ def test_a_dollar_pool_needs_no_rate_and_still_counts_in_full(bot: Any) -> None:
     assert _ask(_dollar_fleet(bot)) == pytest.approx(3 * CLAIM_USD)
 
 
-# ---------------------------------------------------------------------
 # Defect rows. Each one used to vanish from the total in silence.
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(

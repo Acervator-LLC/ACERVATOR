@@ -424,11 +424,9 @@ def _rendered(site: str, widget: Any) -> str:
     raise AssertionError(site)
 
 
-# =====================================================================
 # CHANGE A -- control (a): THE TAB BUILDS.
 # A failure here means a hostile value in saved state raises out of
 # _create_bot_swarm_tab, and Bot Settings does not open for that bot.
-# =====================================================================
 @pytest.mark.parametrize("site", SITES)
 @pytest.mark.parametrize("label,value", REFUSED, ids=[r[0] for r in REFUSED])
 def test_change_a_tab_builds_on_every_hostile_value(
@@ -440,12 +438,10 @@ def test_change_a_tab_builds_on_every_hostile_value(
     assert widget.layout() is not None, f"{site}/{label}: no layout"
 
 
-# =====================================================================
 # CHANGE A -- control (c): NO REFUSED MONEY VALUE READS AS ZERO.
 # A failure here means the tab states a dollar figure the ledger never
 # supported. $0.0000 is a claim about the money; the em dash is a claim
 # about the read, and only the second one is true.
-# =====================================================================
 @pytest.mark.parametrize("site", SITES)
 @pytest.mark.parametrize("label,value", REFUSED, ids=[r[0] for r in REFUSED])
 def test_change_a_refused_renders_em_dash_never_zero(
@@ -457,11 +453,9 @@ def test_change_a_refused_renders_em_dash_never_zero(
     assert "0.00" not in got, f"{site}/{label}: refused value read as zero"
 
 
-# =====================================================================
 # CHANGE A -- control (b), value half: VALID INPUT RENDERS IDENTICALLY.
 # A failure here means the guard changed what an operator sees for a
 # value that was always valid.
-# =====================================================================
 @pytest.mark.parametrize("site", SITES)
 @pytest.mark.parametrize(
     "label,value,money,pct", ACCEPTED, ids=[r[0] for r in ACCEPTED]
@@ -475,11 +469,9 @@ def test_change_a_accepted_renders_unchanged(
     assert got == want, f"{site}/{label}: rendered {got!r}, wanted {want!r}"
 
 
-# =====================================================================
 # CHANGE A -- control (b), whole-tab half: the realistic swarm state
 # renders byte-identically to the pinned live measurement, INCLUDING a
 # json round trip on the dict-backed rows.
-# =====================================================================
 def test_change_a_realistic_render_matches_pinned_live_hash(monkeypatch: Any) -> None:
     """Every string in a realistic tab still hashes to the live pin."""
     import hashlib
@@ -516,12 +508,10 @@ def test_change_a_realistic_render_matches_pinned_live_hash(monkeypatch: Any) ->
     ), "the realistic tab no longer renders what live rendered"
 
 
-# =====================================================================
 # CHANGE A -- control (d): 10 ** 400 MUST NOT RAISE, INCLUDING INSIDE
 # THE GUARD ITSELF. `math.isfinite(10 ** 400)` raises OverflowError, so
 # a guard that reaches for it before checking the integer bound reopens
 # the hole it was written to close.
-# =====================================================================
 @pytest.mark.parametrize("site", SITES)
 def test_change_a_huge_int_does_not_raise_inside_the_guard(
     monkeypatch: Any, site: str
@@ -540,11 +530,9 @@ def test_change_a_admission_helper_survives_huge_int_directly() -> None:
     assert as_finite_float(2**1023) == float(2**1023)
 
 
-# =====================================================================
 # CHANGE A -- the dict-backed site through the real serialisation.
 # A failure here means the shape survives json but not the guard, or
 # the guard was tested only against hand-built Python objects.
-# =====================================================================
 @pytest.mark.parametrize(
     "raw,want",
     [
@@ -573,12 +561,10 @@ def test_change_a_credit_usd_json_round_trip(
     assert got == want, f"json {raw}: rendered {got!r}, wanted {want!r}"
 
 
-# =====================================================================
 # CHANGE A -- an unreadable leg poisons the TOTAL rather than vanishing
 # from it. A failure here means the tab reports a confident sum that is
 # short by the amount it could not read, with nothing on screen saying
 # so. That is the silent-drop shape, not a rendering nicety.
-# =====================================================================
 def test_change_a_unreadable_leg_does_not_silently_shrink_a_total(
     monkeypatch: Any,
 ) -> None:
@@ -650,11 +636,9 @@ def test_change_a_derived_net_flow_inherits_the_refusal(monkeypatch: Any) -> Non
     assert net == EM, f"net flow rendered {net!r} with an unreadable leg"
 
 
-# =====================================================================
 # CHANGE B -- control (f): THE IMPORT NOW SUCCEEDS.
 # A failure here means the name is still wrong and _mature_ratio_pct is
 # still a hardcoded 70 wearing a comment that says otherwise.
-# =====================================================================
 def test_change_b_the_imported_name_exists_and_the_attribute_reads() -> None:
     """`BotLedger.MATURE_RATIO` resolves without instantiating."""
     from src.trading import smart_wire
@@ -681,13 +665,11 @@ def test_change_b_the_source_no_longer_imports_the_dead_name() -> None:
     assert offenders == [], f"dead import still present in {offenders}"
 
 
-# =====================================================================
 # CHANGE B -- control (g): THE LABEL FOLLOWS THE CONSTANT.
 # THIS IS THE ONE THAT MATTERS. A test asserting only "70%" passes on
 # the broken code and on the fixed code alike, and proves nothing. If
 # this fails, the label is a hardcoded number and changing the runtime
 # constant silently misreports a money figure on screen.
-# =====================================================================
 @pytest.mark.parametrize(
     "ratio,want_pct",
     [
@@ -735,11 +717,9 @@ def test_change_b_two_different_constants_give_two_different_labels(
     assert at_70 != at_42, "the label did not move with the constant"
 
 
-# =====================================================================
 # CHANGE B -- control (h): THE FALLBACK STILL WORKS.
 # A failure here means the repair traded a silent wrong label for a
 # dialog that will not open at all -- strictly worse than the defect.
-# =====================================================================
 def test_change_b_fallback_holds_when_the_name_is_genuinely_absent(
     monkeypatch: Any,
 ) -> None:

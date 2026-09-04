@@ -108,9 +108,7 @@ def reference_level_one(
     return p1
 
 
-# ---------------------------------------------------------------------------
 # The floor is enforced at the placement site
-# ---------------------------------------------------------------------------
 
 
 class TestPlacementNeverSitsUnderTheFloor:
@@ -232,9 +230,7 @@ class TestPlacementNeverSitsUnderTheFloor:
             )
 
 
-# ---------------------------------------------------------------------------
 # The opposing band raises the floor. It never lowers it.
-# ---------------------------------------------------------------------------
 
 
 class TestTheOpposingBandCanOnlyRaisePlacement:
@@ -323,9 +319,7 @@ class TestTheOpposingBandCanOnlyRaisePlacement:
         assert placement_floor_price(+1, TRIGGER, 0.0, far) is None
 
 
-# ---------------------------------------------------------------------------
 # THE VACUOUS-PASS CONTROL
-# ---------------------------------------------------------------------------
 
 
 class TestTheFixDoesNotClampEverythingToTheFloor:
@@ -435,9 +429,7 @@ class TestTheFixDoesNotClampEverythingToTheFloor:
             )
 
 
-# ---------------------------------------------------------------------------
 # The live fleet, swept
-# ---------------------------------------------------------------------------
 
 
 class TestEveryLiveConfigClearsItsOwnFloor:

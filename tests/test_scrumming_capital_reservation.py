@@ -35,9 +35,7 @@ def _run(coro):
     return asyncio.new_event_loop().run_until_complete(coro)
 
 
-# ---------------------------------------------------------------------
 # Stubs
-# ---------------------------------------------------------------------
 
 
 class _StubRegistry:
@@ -174,9 +172,7 @@ def _mk_stub_bot(
     return stub
 
 
-# ---------------------------------------------------------------------
 # _compute_reservation_qty
-# ---------------------------------------------------------------------
 
 
 class TestComputeReservationQty:
@@ -213,9 +209,7 @@ class TestComputeReservationQty:
         assert q == pytest.approx(2.20)  # falls back to base only
 
 
-# ---------------------------------------------------------------------
 # _ensure_capital_reservation
-# ---------------------------------------------------------------------
 
 
 class TestEnsureReservation:
@@ -328,9 +322,7 @@ class TestEnsureReservation:
         assert stub._crr_last_reserved_qty == 0.0
 
 
-# ---------------------------------------------------------------------
 # _release_capital_reservation
-# ---------------------------------------------------------------------
 
 
 class TestReleaseReservation:
@@ -369,9 +361,7 @@ class TestReleaseReservation:
         assert stub._crr_token == "tok-0001"
 
 
-# ---------------------------------------------------------------------
 # BotConfig integration
-# ---------------------------------------------------------------------
 
 
 class TestBotConfigDefaults:
@@ -400,9 +390,7 @@ class TestBotConfigDefaults:
         assert "personal_hold_qty" in _BOT_CONFIG_SCRUMMING_ONLY_FIELDS
 
 
-# ---------------------------------------------------------------------
 # v3.23.46 correctness regression tests
-# ---------------------------------------------------------------------
 
 
 class TestV32346Correctness:

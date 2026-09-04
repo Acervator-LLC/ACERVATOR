@@ -73,9 +73,7 @@ def chart_module():
     return native_chart
 
 
-# ---------------------------------------------------------------------
 # The cases
-# ---------------------------------------------------------------------
 
 
 class Series:
@@ -173,9 +171,7 @@ def model_payload(case=None):
     return sealed(surface.build_view_model(drive_new(case), *PIXEL_SIZE))
 
 
-# ---------------------------------------------------------------------
 # The recorder: the shipped paint runs unchanged, onto a stub painter
-# ---------------------------------------------------------------------
 
 
 class PaintRecorder:
@@ -303,9 +299,7 @@ def full_width_lines(calls, left, right):
     return found
 
 
-# ---------------------------------------------------------------------
 # Enumeration
-# ---------------------------------------------------------------------
 
 
 def parsed_chart():
@@ -447,9 +441,7 @@ def test_every_action_the_surface_names_is_one_the_panel_connects():
     }
 
 
-# ---------------------------------------------------------------------
 # Value for value, and by hash
-# ---------------------------------------------------------------------
 
 PRICES = [
     0.0,
@@ -627,9 +619,7 @@ def test_the_palette_check_would_report_a_changed_channel():
     ) != surface.UP_FILL
 
 
-# ---------------------------------------------------------------------
 # The painted geometry, read off the shipped paint
-# ---------------------------------------------------------------------
 
 GEOMETRY_CASES = [
     c for c in CASES if c.name not in {"empty", "high below low", "times backwards"}
@@ -740,9 +730,7 @@ def test_the_recorder_captured_the_paint_and_not_an_empty_run():
     assert len(record_paint(BY_NAME["empty"])) < len(calls)
 
 
-# ---------------------------------------------------------------------
 # Steps, refusals and the recorder that keeps what came before
-# ---------------------------------------------------------------------
 
 
 def test_a_step_sequence_records_every_step_in_order():
@@ -834,9 +822,7 @@ def test_the_two_sides_keep_the_same_usable_trade():
     assert model.markers[0].price == chart._markers[0].price
 
 
-# ---------------------------------------------------------------------
 # Completeness, backing and growth
-# ---------------------------------------------------------------------
 
 
 def surface_constants():
@@ -953,9 +939,7 @@ def test_the_surface_grew_no_public_name_the_module_does_not_carry():
     assert parsed == live, (sorted(parsed - live), sorted(live - parsed))
 
 
-# ---------------------------------------------------------------------
 # Nothing at import time touches the world
-# ---------------------------------------------------------------------
 
 PROBE = r"""
 import builtins, importlib, json, os, sys, threading, time
@@ -1070,9 +1054,7 @@ def test_the_surface_writes_no_file_into_a_throwaway_home(tmp_path):
     assert list(home.rglob("*")) != [], "the file check cannot see a written file"
 
 
-# ---------------------------------------------------------------------
 # Order independence
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_module_holds_no_state_between_two_models():
@@ -1118,9 +1100,7 @@ def test_the_chart_module_writes_no_shared_table_at_import():
     assert globals_used == []
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def widget_painted_by_the_chart(case):

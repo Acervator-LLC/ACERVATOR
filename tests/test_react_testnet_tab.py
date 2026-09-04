@@ -211,9 +211,7 @@ def loaded(js: JsRuntime) -> JsRuntime:
     return js
 
 
-# ---------------------------------------------------------------------
 # What the module holds
-# ---------------------------------------------------------------------
 
 
 def test_the_module_defines_its_globals(js: JsRuntime):
@@ -374,9 +372,7 @@ def test_the_style_reader_answers_nothing_for_a_sheet_with_no_declaration(
     assert loaded.called("styleOf", "") == {}
 
 
-# ---------------------------------------------------------------------
 # The module writes no value of its own
-# ---------------------------------------------------------------------
 
 
 def test_the_module_writes_no_number():
@@ -479,9 +475,7 @@ def test_the_order_reading_answers_no_for_the_two_the_other_way_round():
     assert not runs_after([HEADER_MODULE.name], MODULE_PATH.name, HEADER_MODULE.name)
 
 
-# ---------------------------------------------------------------------
 # What the renderer page draws
-# ---------------------------------------------------------------------
 
 
 class Browser:

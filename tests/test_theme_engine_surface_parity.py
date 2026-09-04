@@ -335,9 +335,7 @@ FIELD_CASES = [
 MARKER_FORMAT = "<<%s>>"
 
 
-# ---------------------------------------------------------------------
 # The two theme tables, and the panel painted from one of them
-# ---------------------------------------------------------------------
 
 
 def shipped_theme(name):
@@ -562,9 +560,7 @@ def build_panel(qss):
     return root
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("theme,field", FIELD_CASES)
@@ -728,9 +724,7 @@ def test_the_hash_can_report_a_difference():
     assert text_digest("a") == text_digest("a")
 
 
-# ---------------------------------------------------------------------
 # The style sheet each theme builds
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("theme", EXPECTED_THEME_NAMES)
@@ -787,9 +781,7 @@ def test_generate_qss_reads_the_values_it_is_handed():
     assert marked == shipped_marked
 
 
-# ---------------------------------------------------------------------
 # Which fields the style sheet uses, counted on both sides
-# ---------------------------------------------------------------------
 
 
 def test_both_sides_use_the_same_fields_the_same_number_of_times():
@@ -843,9 +835,7 @@ def test_the_shown_name_sits_inside_a_comment():
     assert not any(start < colour_at < end for start, end in spans)
 
 
-# ---------------------------------------------------------------------
 # What the shipped module has, and where each item went
-# ---------------------------------------------------------------------
 
 SURFACE_FUNCTIONS = (
     "build_theme",
@@ -964,9 +954,7 @@ def test_the_theme_table_declares_no_action_no_timer_and_no_skin():
     assert len(surface.ACTIONS) == len(surface.TIMERS) == 0
 
 
-# ---------------------------------------------------------------------
 # Every branch of every function
-# ---------------------------------------------------------------------
 
 
 def test_list_themes_returns_the_same_five_pairs():
@@ -1177,9 +1165,7 @@ def test_unknown_theme_message_names_the_value_it_was_given():
     )
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_loads_no_qt_module():
@@ -1241,9 +1227,7 @@ def test_the_surface_style_sheet_does_not_follow_the_shipped_template(monkeypatc
     assert shipped.generate_qss is was
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("theme", EXPECTED_THEME_NAMES)
@@ -1438,9 +1422,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
     assert len(PAINTED_FIELDS) == 22
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -1665,9 +1647,7 @@ def test_the_table_is_the_same_on_every_call():
     assert first["current"] == "glass_metal"
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt, proved in a process of its own
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -1796,9 +1776,7 @@ def test_the_shipped_module_needs_no_qt_either():
     assert answered["length"] == EXPECTED_STYLE_SHEET_LENGTHS["glass_metal"]
 
 
-# ---------------------------------------------------------------------
 # Nothing the surface holds is left out of the snapshot
-# ---------------------------------------------------------------------
 
 # Every constant the surface exports, and the payload key that carries
 # it. A comparison reading 10 of 22 constants passes whether the other

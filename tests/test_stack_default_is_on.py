@@ -91,9 +91,7 @@ def _restore_one(bot_id: str, cfg: dict) -> BotConfig:
     return mgr._bots[bot_id].config
 
 
-# ---------------------------------------------------------------------------
 # A new bot comes up ON
-# ---------------------------------------------------------------------------
 
 
 class TestANewBotComesUpOn:
@@ -159,9 +157,7 @@ class TestANewBotComesUpOn:
         assert again.stack_mode is True
 
 
-# ---------------------------------------------------------------------------
 # THE CONTROL — a stored value is never overridden
-# ---------------------------------------------------------------------------
 
 
 class TestAStoredValueSurvives:
@@ -215,9 +211,7 @@ class TestAStoredValueSurvives:
             )
 
 
-# ---------------------------------------------------------------------------
 # A state file older than the field
-# ---------------------------------------------------------------------------
 
 
 class TestPreFieldStateGetsTheDefault:
@@ -259,9 +253,7 @@ class TestPreFieldStateGetsTheDefault:
         assert cfg.stack_mode is True
 
 
-# ---------------------------------------------------------------------------
 # One declaration, no re-hardcoded literals
-# ---------------------------------------------------------------------------
 
 
 class TestOneDeclarationSite:

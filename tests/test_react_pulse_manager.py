@@ -133,9 +133,7 @@ def js(qapp) -> JsRuntime:
     return JsRuntime(new_engine(), MODULE_SOURCE)
 
 
-# ---------------------------------------------------------------------
 # The whole payload, both directions, every state
-# ---------------------------------------------------------------------
 
 
 def test_the_module_declares_every_name_the_payload_carries(js: JsRuntime):
@@ -231,9 +229,7 @@ def test_a_value_that_is_not_plain_data_is_named(js: JsRuntime):
     assert js.json(API + "notPlainData()") == []
 
 
-# ---------------------------------------------------------------------
 # The cadence
-# ---------------------------------------------------------------------
 
 
 def test_the_cadence_the_module_reads_is_the_delay_the_timer_runs_at(js: JsRuntime):
@@ -322,9 +318,7 @@ def test_every_name_the_timer_bag_carries_is_read(js: JsRuntime):
     assert "missing" not in js.fault_kinds()
 
 
-# ---------------------------------------------------------------------
 # Two lists of different lengths, and a published count
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
@@ -366,9 +360,7 @@ def test_the_index_lists_are_not_paired_with_the_targets_by_position(js: JsRunti
     assert js.json(API + "list('failed')") == []
 
 
-# ---------------------------------------------------------------------
 # The opacity band
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
@@ -398,9 +390,7 @@ def test_an_opacity_a_target_kept_is_read_as_well_as_the_flat_list(js: JsRuntime
     assert "out-of-band" not in js.fault_kinds()
 
 
-# ---------------------------------------------------------------------
 # Order and identity, by name
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("state", STATE_NAMES)
@@ -465,9 +455,7 @@ def test_the_moved_key_check_would_see_one(js: JsRuntime, name: str):
     assert [one["field"] for one in named] == ["12"], named
 
 
-# ---------------------------------------------------------------------
 # Every string this screen emits
-# ---------------------------------------------------------------------
 
 
 def published_strings() -> set:
@@ -643,9 +631,7 @@ def test_the_written_file_is_still_a_module_the_page_can_run(js: JsRuntime):
         assert runtime.json("typeof " + SETTER) == "function", kind
 
 
-# ---------------------------------------------------------------------
 # Colours, including a sub-block a declaration walk never enters
-# ---------------------------------------------------------------------
 
 
 def payload_strings(payload: Any) -> list:
@@ -697,9 +683,7 @@ def test_a_colour_written_alpha_first_anywhere_in_the_payload_is_reported(
     assert "swapped-alpha" not in js.fault_kinds()
 
 
-# ---------------------------------------------------------------------
 # Hostile payloads
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", DECLARED)
@@ -853,9 +837,7 @@ def test_a_target_row_that_is_a_scalar_does_not_slip_past_the_walk(js: JsRuntime
     assert js.fault_kinds() == []
 
 
-# ---------------------------------------------------------------------
 # The request the surface refuses
-# ---------------------------------------------------------------------
 
 
 def test_a_request_asking_for_more_runs_than_the_cap_never_reaches_the_module():
@@ -873,9 +855,7 @@ def test_the_cap_the_payload_publishes_is_the_cap_the_surface_holds(js: JsRuntim
     assert surface.RUN_CAP * surface.TIMER_INTERVAL_MS == 60_000
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_the_module_asks_the_method_the_bridge_registers(js: JsRuntime):
@@ -945,9 +925,7 @@ def test_the_order_reading_answers_no_for_a_module_it_never_runs():
     assert not runs_after(["boot.js"], MODULE_PATH.name)
 
 
-# ---------------------------------------------------------------------
 # What the shipped driver builds
-# ---------------------------------------------------------------------
 
 
 def test_this_screen_builds_no_widget_and_the_counter_can_report(qapp):
@@ -977,9 +955,7 @@ def test_a_label_would_have_read_a_name_carrying_markup_as_markup(qapp):
     assert label.text() == MARKUP_NAME
 
 
-# ---------------------------------------------------------------------
 # The page itself
-# ---------------------------------------------------------------------
 
 
 class Browser:

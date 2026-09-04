@@ -144,7 +144,6 @@ class TestOpenStackFromScrumBehavior:
         )
 
 
-# ---------------------------------------------------------------------------
 # Invisible-mode tranche FIRE path — drives the real _execute_sell.
 #
 # The source-shape pins above never execute _execute_sell, so they were
@@ -157,7 +156,6 @@ class TestOpenStackFromScrumBehavior:
 #
 # These tests execute the real method. Each negative assertion is paired
 # with a positive control that must FAIL if the stub goes blind.
-# ---------------------------------------------------------------------------
 
 
 class _StubOrder:

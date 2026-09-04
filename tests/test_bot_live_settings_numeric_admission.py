@@ -127,9 +127,7 @@ def _tooltip(mark_price):
     return _compose_extractor_tranche_tooltip(row)
 
 
-# ---------------------------------------------------------------------
 # Site C — the "USD parked" cell
-# ---------------------------------------------------------------------
 
 
 class TestExtractorUsdCell:
@@ -174,9 +172,7 @@ class TestExtractorUsdCell:
         assert cells[7] == "open"
 
 
-# ---------------------------------------------------------------------
 # Site D — the tooltip that explains that cell
-# ---------------------------------------------------------------------
 
 
 class TestExtractorTooltip:
@@ -215,9 +211,7 @@ class TestExtractorTooltip:
         assert cell_dashed == tip_no_mark
 
 
-# ---------------------------------------------------------------------
 # Sites A + B — the Stack Tranches tab, through the REAL method
-# ---------------------------------------------------------------------
 
 
 def _qt_or_skip():
@@ -427,9 +421,7 @@ class TestAdmissionHelperIsTheRepoRule:
         assert as_finite_float(NOW) == NOW
 
 
-# ---------------------------------------------------------------------
 # The Stack Tranches ROW - index, price, size and fill price
-# ---------------------------------------------------------------------
 #
 # Four sibling keys read from the same dict as `opened_ts`, in the same
 # row builder, with no guard at all. Measured on live before the fix:

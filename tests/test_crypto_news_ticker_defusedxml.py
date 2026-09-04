@@ -40,10 +40,8 @@ SRC = NewsSource("t", "Test Feed", "https://example.invalid/rss")
 CANARY = "XXE_CANARY_LOCAL_DISK_CONTENT"
 
 
-# ------------------------------------------------------------------
 # Payload builders. Every one is a real RSS 2.0 or Atom document, so
 # the real entry point walks them exactly as it walks a feed.
-# ------------------------------------------------------------------
 
 
 def _entity_doc(body: str, refs: int = 1) -> bytes:
@@ -83,7 +81,6 @@ def _deep_feed(depth: int) -> bytes:
     ).encode()
 
 
-# ------------------------------------------------------------------
 # Entity declarations are refused.
 #
 # A FAILURE HERE MEANS a feed host can still make the ticker's worker
@@ -91,7 +88,6 @@ def _deep_feed(depth: int) -> bytes:
 # GUI. That is the whole reason the parser was replaced, and the band
 # that matters is the one BELOW expat's own guard, which is what
 # TestSubThresholdBand covers.
-# ------------------------------------------------------------------
 
 
 class TestEntityDeclarationsRefused:
@@ -179,7 +175,6 @@ class TestSubThresholdBand:
         ), f"parse allocated {peak} bytes refusing a {len(doc)}-byte feed"
 
 
-# ------------------------------------------------------------------
 # External entities.
 #
 # A FAILURE HERE MEANS a feed host can read the operator's local disk
@@ -191,7 +186,6 @@ class TestSubThresholdBand:
 # handler. These tests pin a PRESERVED property, not a repaired one.
 # They exist because adopting a new parser is exactly when an inherited
 # default can quietly change.
-# ------------------------------------------------------------------
 
 
 class TestExternalEntitiesNeverRead:
@@ -238,13 +232,11 @@ class TestExternalEntitiesNeverRead:
         assert all(CANARY not in h.title for h in out)
 
 
-# ------------------------------------------------------------------
 # A parser that blocks everything is not a fix.
 #
 # A FAILURE HERE MEANS the hardening is too broad and the operator's
 # ticker goes blank. Every shape below was produced identically by the
 # previous parser, measured side by side.
-# ------------------------------------------------------------------
 
 
 class TestOrdinaryFeedsStillParse:
@@ -336,13 +328,11 @@ class TestOrdinaryFeedsStillParse:
         assert len(parse_rss(long_raw, SRC)[0].title) == 220
 
 
-# ------------------------------------------------------------------
 # The docstring's own contract: malformed returns [] rather than raise.
 #
 # A FAILURE HERE MEANS parse_rss raises into fetch_one's blanket
 # handler, which turns a diagnosable feed problem into a debug line,
 # and breaks the sentence written above the function.
-# ------------------------------------------------------------------
 
 
 class TestMalformedNeverRaises:
@@ -375,13 +365,11 @@ class TestMalformedNeverRaises:
         assert [h.title for h in out] == ["Deep headline"]
 
 
-# ------------------------------------------------------------------
 # The response read is capped.
 #
 # A FAILURE HERE MEANS a feed host still chooses how many bytes land in
 # the GUI process. Closing the entity path bounds what the PARSER can
 # be made to allocate; it does nothing about a plain oversized body.
-# ------------------------------------------------------------------
 
 
 class _Resp:
@@ -490,12 +478,10 @@ class TestResponseSizeCap:
         assert [h.title for h in cnt.fetch_one(SRC)] == ["Edge"]
 
 
-# ------------------------------------------------------------------
 # H9 -- the fetch performs the allowlist instead of asserting it.
 #
 # A FAILURE HERE MEANS the scheme control is once again a comment
 # beside a suppression rather than code that runs.
-# ------------------------------------------------------------------
 
 
 class TestFetchRoutesThroughSafeUrl:
@@ -586,14 +572,12 @@ class TestFetchRoutesThroughSafeUrl:
             assert SafeRequest(source.url).full_url == source.url
 
 
-# ------------------------------------------------------------------
 # The parse path is defusedxml's, not the stdlib's.
 #
 # A FAILURE HERE MEANS an edit swapped the import back and every test
 # above would then be measuring the stdlib parser while still passing
 # on the shapes it happens to agree about. This is the guard that makes
 # the rest of the file mean what it says.
-# ------------------------------------------------------------------
 
 
 class TestTheParserIsTheDefusedOne:
