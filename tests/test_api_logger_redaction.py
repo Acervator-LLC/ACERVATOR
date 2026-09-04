@@ -9,19 +9,10 @@ through ``logger`` and asserts no param value appears in the formatted line.
 from __future__ import annotations
 
 import logging
-import sys
-from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from src.exchange.api_logger import (  # noqa: E402
-    APIInteractionLog,
-    _redact,
-)
+from src.exchange.api_logger import APIInteractionLog, _redact
 
 MASK = "***REDACTED***"
 FAKE_SIGNATURE = "d3ad" * 16
