@@ -1,49 +1,11 @@
-"""
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-phantom_balance.py — Phantom Balance Bots v1.1
-# ┌─────────────────────────────────────────────────────────────┐
-# │ AI DEVELOPER NOTE                                           │
-# │                                                             │
-# │ PATENT-ELIGIBLE INVENTION #2.                               │
-# │                                                             │
-# │ Phantom Balance creates read-only copies of a bot on        │
-# │ multiple timeframes (5m, 15m, 1h, 4h). Each phantom         │
-# │ computes TA independently. The hierarchy:                   │
-# │                                                             │
-# │   4h TradeLock overrides 1h overrides 15m overrides 5m     │
-# │                                                             │
-# │ If 4h TA says "don't trade", all lower TFs are blocked.    │
-# │ If 5m TA says "scrum" but 1h says "trend hold", blocked.   │
-# │                                                             │
-# │ The phantom bots never place orders. They only vote.        │
-# │ The primary bot on its home timeframe makes the final       │
-# │ execution decision using the aggregated phantom signals.    │
-# │                                                             │
-# │ Validated: 4/5 scenarios improved in Phantom Balance sim.   │
-# └─────────────────────────────────────────────────────────────┘
-================================================
-Phantom Balance Bots are shadow instances of a parent Speculative
-Scrumming Bot that operate on different timeframes simultaneously.
+"""``PhantomBalanceBot`` read-only TA observers, one per timeframe.
 
-Architecture:
-  ┌────────────────────────────────────────┐
-  │         Parent Scrumming Bot           │
-  │           (e.g. 1h timeframe)          │
-  ├────────────────────────────────────────┤
-  │  Phantom 5m │ Phantom 15m │ Phantom 4h │ Phantom 1d │
-  └────────────────────────────────────────┘
-
-Key behaviours:
-  1. Each phantom tracks its own Target Balance on its own timeframe
-     but shares the same exchange connection and asset pair.
-  2. Higher timeframe phantoms can identify optimal large-scale exits
-     and "pull in" lower timeframes to maximize profit/accumulation.
-  3. A higher-TF phantom trading will temporarily DISABLE contradicting
-     trades on lower timeframes for a configurable candle count.
-  4. Phantoms communicate via the TimeframeCoordinator.
-
-Timeframe hierarchy (lowest → highest):
-  1m < 5m < 15m < 30m < 1h < 2h < 4h < 6h < 12h < 1d < 1w
+Each ``PhantomBalanceBot._tick`` computes TA on its own timeframe and stores it
+on ``last_summary``, constructing no order. ``TimeframeCoordinator`` weights
+those summaries by ``tf_rank`` in ``get_higher_tf_bias`` and returns them per
+timeframe in ``get_multi_tf_summary``. ``TIMEFRAME_ORDER`` runs 1m to 1w,
+lowest rank first.
 """
 
 from __future__ import annotations
@@ -64,9 +26,6 @@ from .ta_engine import VotingEngine, VotingSummary, SignalDirection, candles_fro
 logger = logging.getLogger("acervator.phantom")
 
 
-# ---------------------------------------------------------------------------
-# Timeframe hierarchy
-# ---------------------------------------------------------------------------
 TIMEFRAME_ORDER: list[str] = [
     "1m",
     "5m",
@@ -97,7 +56,7 @@ TIMEFRAME_SECONDS: dict[str, int] = {
 
 
 def tf_rank(timeframe: str) -> int:
-    """Numeric rank of a timeframe (higher = longer)."""
+    """Return the index of ``timeframe`` in ``TIMEFRAME_ORDER``, or -1."""
     try:
         return TIMEFRAME_ORDER.index(timeframe)
     except ValueError:
@@ -105,44 +64,38 @@ def tf_rank(timeframe: str) -> int:
 
 
 def is_higher_tf(a: str, b: str) -> bool:
-    """Return True if timeframe *a* is strictly higher than *b*."""
+    """Return True when ``tf_rank(a)`` exceeds ``tf_rank(b)``."""
     return tf_rank(a) > tf_rank(b)
 
 
-# ---------------------------------------------------------------------------
-# Trade lock — used to prevent contradicting trades
-# ---------------------------------------------------------------------------
 @dataclass
 class TradeLock:
-    """
-    A temporary lock placed by a higher-timeframe phantom to prevent
-    contradicting trades on lower timeframes.
+    """One entry in ``TimeframeCoordinator._locks``.
+
+    ``is_locked`` matches it against every timeframe below
+    ``source_timeframe``, and ``tick_candle`` decrements
+    ``candles_remaining``.
     """
 
     source_timeframe: str
     source_bot_id: str
-    direction: SignalDirection  # The direction that is LOCKED OUT
-    candles_remaining: int  # How many candles this lock persists
+    direction: SignalDirection  # The direction locked OUT, not the one allowed.
+    candles_remaining: int
     created_at: float = field(default_factory=time.time)
-    lock_all_lower: bool = True  # Lock all TFs below source, not just one
+    # Read by nothing; is_locked always covers every lower timeframe.
+    lock_all_lower: bool = True
 
     @property
     def is_expired(self) -> bool:
         return self.candles_remaining <= 0
 
 
-# ---------------------------------------------------------------------------
-# Phantom Balance Bot
-# ---------------------------------------------------------------------------
 class PhantomBalanceBot:
-    """
-    A shadow of a parent ScrummingBot operating on a specific timeframe.
+    """A read-only TA observer registered on one ``TimeframeCoordinator``.
 
-    Each phantom:
-      - Has its own target balance (can differ from parent)
-      - Runs TA analysis on its assigned timeframe
-      - Coordinates with other phantoms via the TimeframeCoordinator
-      - Can trigger "pull-in" events that override lower-TF phantoms
+    ``_tick`` refreshes ``last_summary`` for ``timeframe``; ``target_balance``,
+    ``total_trades`` and ``realised_pnl`` are reported by ``get_status`` and
+    changed by nothing here.
     """
 
     def __init__(
@@ -158,8 +111,7 @@ class PhantomBalanceBot:
         bus=None,
         sim_mode: bool = False,
     ) -> None:
-        # v3.24.64 (C18) — in sim the REPLAY owns the clock. See
-        # tick_for_cursor and the sim branch in _run_loop.
+        # When True, _run_loop never self-schedules; tick_for_cursor drives ticks.
         self._sim_mode = bool(sim_mode)
         self._last_cursor_bucket: Optional[int] = None
         self.parent_bot_id = parent_bot_id
@@ -171,9 +123,6 @@ class PhantomBalanceBot:
         self.coordinator = coordinator
         self.voting_engine = VotingEngine(weights=ta_weights)
 
-        # v3.24.61 (C17 / SN-42) — injectable; this bot emits on the bus
-        # at :173/:200/:251. Defaults to the process-wide bus so live
-        # construction is unchanged.
         self._bus = bus if bus is not None else get_event_bus()
         self.state = BotState.IDLE
         self.last_summary: Optional[VotingSummary] = None
@@ -192,7 +141,6 @@ class PhantomBalanceBot:
     def candle_seconds(self) -> int:
         return TIMEFRAME_SECONDS.get(self.timeframe, 3600)
 
-    # -- Lifecycle ------------------------------------------------------
     async def start(self) -> None:
         self.state = BotState.RUNNING
         self._stop_event.clear()
@@ -215,24 +163,14 @@ class PhantomBalanceBot:
         self.state = BotState.STOPPED
 
     async def tick_for_cursor(self, cursor_ts: float) -> bool:
-        """Advance this phantom iff its own timeframe closed a candle.
+        """Run ``_tick`` when ``cursor_ts`` enters a new ``candle_seconds``
+        bucket, and return whether it ran.
 
-        v3.24.64 (C18). The replay owns the clock, so it calls this as
-        the cursor moves instead of letting the phantom sleep on wall
-        time. A phantom on 1h ticks once per simulated hour of tape, not
-        once per real minute.
-
-        Returns True when a tick actually ran, so a caller can count
-        them — "the phantoms were enabled" and "the phantoms ran" are
-        different claims, and only the second one is worth verifying.
-
-        Idempotent within a bucket: called repeatedly inside the same
-        candle it runs once. That is what keeps a phantom's sampling
-        moment deterministic across replays of the same tape.
+        Repeated calls inside one bucket return False without ticking.
         """
         try:
             _period = max(1, int(self.candle_seconds))
-        except Exception:  # R28-OK: unreadable period -> do not tick
+        except Exception:
             return False
         _bucket = int(float(cursor_ts) // _period)
         if _bucket == getattr(self, "_last_cursor_bucket", None):
@@ -241,9 +179,8 @@ class PhantomBalanceBot:
         await self._tick()
         return True
 
-    # -- Main loop ------------------------------------------------------
     async def _run_loop(self) -> None:
-        """Phantom analysis and trading loop."""
+        """Call ``_tick`` until ``_stop_event`` is set, logging any exception."""
         while not self._stop_event.is_set():
             try:
                 await self._tick()
@@ -256,58 +193,19 @@ class PhantomBalanceBot:
                     phantom=self.phantom_id,
                     error=str(exc),
                 )
-            # v3.24.64 (C18) — a sim phantom does NOT self-schedule.
-            #
-            # This sleep is WALL CLOCK: min(candle_seconds, 60) is 60
-            # real seconds for every phantom regardless of timeframe. In
-            # live that is roughly right — real time and market time are
-            # the same thing. In a replay they are not: a run covering
-            # ~15,000 candles finishes in minutes, so each phantom got a
-            # handful of ticks at arbitrary REPLAY positions, and
-            # get_higher_tf_bias read a last_summary computed at a
-            # random point in history.
-            #
-            # That made SN-1 (six phantoms sharing one series) only half
-            # the fidelity problem: giving them six DIFFERENT series
-            # still leaves the sampling moment random. In sim the replay
-            # drives ticks through `tick_for_cursor`, so a phantom
-            # advances exactly when its own timeframe closes a candle.
             if getattr(self, "_sim_mode", False):
                 await self._stop_event.wait()
                 break
-            # Sleep for one candle period (phantom operates per-candle)
+            # Wall clock: 60s for every phantom once candle_seconds exceeds 60.
             await asyncio.sleep(min(self.candle_seconds, 60))
 
     async def _tick(self) -> None:
-        """One analysis cycle.
+        """Fetch candles for ``timeframe`` and set ``last_summary`` from
+        ``voting_engine``.
 
-        v3.15.61 redesign (operator directive 2026-04-26):
-          "Redesign phantom bots so that they ONLY provide TA over rides
-           and do not place orders until AFTER the override is in place
-           and based upon the higher TF TA readings. As long as the higher
-           TF bot is considering placing an order, the lower TF
-           measurements are just used for fine tuning the order timing."
-          "This must be wired gracefully to prevent rogue order placement
-           as observed in early development."
-
-        Phantoms now do ONE thing: compute TA on their assigned timeframe
-        and expose the result via ``self.last_summary``. They do not
-        propose trades, do not maintain holdings, do not consult target
-        balance, and have no code path — at all — that constructs an
-        order. The trade-execution helpers were removed wholesale; if
-        any future change tries to call ``phantom._execute_buy`` or
-        ``phantom._execute_sell`` it will raise ``AttributeError`` rather
-        than fall through into a no-op + bus emit (the prior MEM-259
-        defense had the right intent but kept a residual code path the
-        operator caught firing real orders during early development).
-
-        The parent ScrummingBot consumes the multi-TF bias via
-        ``TimeframeCoordinator.get_higher_tf_bias`` to decide whether to
-        proceed with its OWN order. Lower-TF phantoms (vs. the parent
-        TF) are used to fine-tune timing inside the parent's tick loop;
-        higher-TF phantoms gate the directional intent.
+        Returns without setting ``last_summary`` on fewer than 30 candles, and
+        constructs no order on any path.
         """
-        # Fetch candles for this timeframe
         raw = await self.exchange.get_ohlcv(
             self.symbol,
             timeframe=self.timeframe,
@@ -317,12 +215,9 @@ class PhantomBalanceBot:
         if len(candles) < 30:
             return
 
-        # Run TA voting — the only purpose of a phantom.
         summary = self.voting_engine.compute_all(candles, self.timeframe)
         self.last_summary = summary
 
-        # Emit analysis event so the GUI (Indicator Panel, multi-TF
-        # summary) and the parent bot's gate can consume it.
         self._bus.emit(
             "phantom.analysis",
             phantom=self.phantom_id,
@@ -332,17 +227,7 @@ class PhantomBalanceBot:
             net_score=summary.net_score,
             confidence=summary.consensus_confidence,
         )
-        # That's it. No trade construction, no order placement, no
-        # delta-vs-target math. Phantoms are READ-ONLY TA observers.
 
-    # NOTE — v3.15.61: the methods _execute_sell and _execute_buy were
-    # REMOVED wholesale. They had been hard-disabled to no-ops in MEM-259
-    # but the residual code path was still a regression risk. Removing
-    # them entirely makes "rogue phantom order" a structural impossibility
-    # — the AttributeError from any accidental future call is a louder
-    # failure mode than a silent no-op.
-
-    # -- Status --------------------------------------------------------
     def get_status(self) -> dict:
         return {
             "phantom_id": self.phantom_id,
@@ -363,38 +248,19 @@ class PhantomBalanceBot:
         }
 
 
-# ---------------------------------------------------------------------------
-# Timeframe Coordinator
-# ---------------------------------------------------------------------------
 class TimeframeCoordinator:
-    """
-    Manages the hierarchy of Phantom Balance Bots and enforces:
-      1. Higher-TF prioritization — locks that prevent contradicting trades
-      2. Pull-in mechanics — higher TF bots override lower TF behaviour
-      3. Lock expiration per candle count
+    """Registry of ``PhantomBalanceBot`` instances and their ``TradeLock`` list.
 
-    Usage::
-
-        coord = TimeframeCoordinator()
-        coord.create_lock("4h", "phantom_4h", SignalDirection.BULLISH, candle_count=3)
-        # Now all timeframes below 4h are locked from bullish trades for 3 candles
-        assert coord.is_locked("1h", SignalDirection.BULLISH) == True
-        assert coord.is_locked("1h", SignalDirection.BEARISH) == False  # Only bullish locked
-        assert coord.is_locked("1d", SignalDirection.BULLISH) == False  # Higher TF, not locked
+    ``get_higher_tf_bias`` and ``get_multi_tf_summary`` read the registered
+    phantoms; ``create_lock``, ``is_locked`` and ``tick_candle`` own the locks.
     """
 
     def __init__(self, lock_candle_count: int = 2, bus=None) -> None:
         self.lock_candle_count = lock_candle_count
         self._locks: list[TradeLock] = []
         self._phantoms: dict[str, PhantomBalanceBot] = {}
-        # v3.24.61 (C17 / SN-42) — injectable. This coordinator emits on
-        # the bus (:358), and ScrummingBot constructs one AFTER its own
-        # sim private-bus swap without passing it, so a sim bot's
-        # coordinator emitted onto the LIVE bus. Defaults to the
-        # process-wide bus, so live construction is unchanged.
         self._bus = bus if bus is not None else get_event_bus()
 
-    # -- Phantom management ---------------------------------------------
     def register_phantom(self, phantom: PhantomBalanceBot) -> None:
         self._phantoms[phantom.phantom_id] = phantom
 
@@ -414,7 +280,6 @@ class TimeframeCoordinator:
                 return p
         return None
 
-    # -- Lock management ------------------------------------------------
     def create_lock(
         self,
         source_timeframe: str,
@@ -422,10 +287,11 @@ class TimeframeCoordinator:
         locked_direction: SignalDirection,
         candle_count: Optional[int] = None,
     ) -> TradeLock:
-        """
-        Create a trade lock.  All timeframes BELOW *source_timeframe*
-        are prevented from trading in *locked_direction* for
-        *candle_count* candles of the source timeframe.
+        """Append a ``TradeLock`` on ``locked_direction`` sourced at
+        ``source_timeframe``.
+
+        ``candle_count`` defaults to ``lock_candle_count`` and is counted down
+        by ``tick_candle``.
         """
         count = candle_count or self.lock_candle_count
         lock = TradeLock(
@@ -452,10 +318,11 @@ class TimeframeCoordinator:
         return lock
 
     def is_locked(self, timeframe: str, direction: SignalDirection) -> bool:
-        """
-        Check if *timeframe* is locked from trading in *direction*.
-        A timeframe is locked if any HIGHER timeframe has an active
-        lock against that direction.
+        """Report whether any ``TradeLock`` above ``timeframe`` names
+        ``direction``.
+
+        Runs ``_cleanup_expired`` first, and returns False while ``_locks`` is
+        empty.
         """
         self._cleanup_expired()
         target_rank = tf_rank(timeframe)
@@ -467,7 +334,7 @@ class TimeframeCoordinator:
         return False
 
     def get_active_locks(self) -> list[dict]:
-        """Return all active locks as dicts for UI display."""
+        """Return each unexpired ``TradeLock`` as a dict."""
         self._cleanup_expired()
         return [
             {
@@ -480,9 +347,8 @@ class TimeframeCoordinator:
         ]
 
     def tick_candle(self, timeframe: str) -> None:
-        """
-        Called when a candle closes on *timeframe*.  Decrements lock
-        counters for locks sourced from this timeframe.
+        """Decrement ``candles_remaining`` on every ``TradeLock`` sourced at
+        ``timeframe``, then run ``_cleanup_expired``.
         """
         for lock in self._locks:
             if lock.source_timeframe == timeframe:
@@ -497,39 +363,18 @@ class TimeframeCoordinator:
         if removed > 0:
             logger.debug("Cleaned up %d expired trade locks", removed)
 
-    # ------------------------------------------------------------------
-    # v3.15.61 — Higher-TF directional-bias accessor (operator directive
-    # 2026-04-26: "As long as the higher TF bot is considering placing
-    # an order, the lower TF measurements are just used for fine tuning
-    # the order timing.")
-    # ------------------------------------------------------------------
     def get_higher_tf_bias(
         self,
         parent_bot_id: str,
         base_timeframe: str,
         min_confidence: float = 0.30,
     ) -> tuple[Optional[SignalDirection], dict]:
-        """Compute the dominant directional bias from phantoms whose
-        timeframe is HIGHER than ``base_timeframe``.
+        """Weigh every registered phantom ranked above ``base_timeframe`` by
+        ``rank`` times ``consensus_confidence``, skipping any below
+        ``min_confidence``.
 
-        Returns (direction, detail) where:
-          direction: SignalDirection.BULLISH / BEARISH / NEUTRAL when
-              the higher-TF consensus is meaningful; None when there
-              are no higher-TF phantoms with usable summaries (in which
-              case the parent gate should default to "no override").
-          detail: dict with raw bullish/bearish weight + the contributing
-              phantoms for log surfacing.
-
-        Weighting: higher-TF phantoms count more (linear in tf_rank).
-        A phantom contributes only if its
-        ``last_summary.consensus_confidence >= min_confidence`` —
-        low-confidence phantoms abstain.
-
-        This is the read accessor the parent ScrummingBot's SCRUM/FOLD
-        gates use to enforce the operator's "higher TF gates lower TF
-        intent" directive. It NEVER mutates state, NEVER places orders,
-        and is safe to call from any thread (read-only over the phantom
-        registry).
+        Returns a ``SignalDirection`` with a detail dict, or None when no
+        higher phantom has a ``last_summary``.
         """
         base_rank = tf_rank(base_timeframe)
         higher = [
@@ -555,13 +400,12 @@ class TimeframeCoordinator:
                     }
                 )
                 continue
-            # Linear weight: 4h-rank=6 contributes 6, 1d-rank=9 contributes 9
+            # A 4h phantom at rank 6 and confidence 0.5 contributes 3.0.
             weight = max(1, p.rank) * float(s.consensus_confidence)
             if s.consensus_direction == SignalDirection.BULLISH:
                 bull_weight += weight
             elif s.consensus_direction == SignalDirection.BEARISH:
                 bear_weight += weight
-            # NEUTRAL contributes to neither side.
             contrib.append(
                 {
                     "tf": p.timeframe,
@@ -590,11 +434,11 @@ class TimeframeCoordinator:
             "contributors": contrib,
         }
 
-    # -- Multi-timeframe analysis summary --------------------------------
     def get_multi_tf_summary(self, parent_bot_id: str) -> dict:
-        """
-        Return a summary of all phantom analyses for a parent bot,
-        organized by timeframe for the indicator voting window.
+        """Return each registered phantom's ``last_summary`` for
+        ``parent_bot_id``, keyed by timeframe in ``rank`` order.
+
+        A phantom without a ``last_summary`` contributes no key.
         """
         phantoms = self.get_phantoms_for_parent(parent_bot_id)
         result = {}
@@ -627,25 +471,11 @@ class TimeframeCoordinator:
         return result
 
 
-# ---------------------------------------------------------------------------
-# Phantom Balance Manager — creates and manages phantom sets for a parent bot
-# ---------------------------------------------------------------------------
 class PhantomBalanceManager:
-    """
-    High-level manager that creates a set of Phantom Balance Bots
-    for a parent Speculative Scrumming Bot.
+    """Owns one ``PhantomBalanceBot`` set per parent bot id.
 
-    Usage::
-
-        mgr = PhantomBalanceManager(coordinator)
-        phantoms = mgr.create_phantom_set(
-            parent_bot_id="bot_abc",
-            timeframes=["5m", "15m", "1h", "4h", "1d"],
-            target_balance=200.0,
-            exchange=exchange,
-            symbol="BTC/USDT",
-        )
-        await mgr.start_all("bot_abc")
+    ``create_phantom_set`` builds and registers them on ``coordinator``, and
+    ``start_all``, ``stop_all`` and ``remove_set`` act on a whole set.
     """
 
     def __init__(self, coordinator: TimeframeCoordinator) -> None:
@@ -662,17 +492,15 @@ class PhantomBalanceManager:
         balance_scaling: str = "equal",
         ta_weights: Optional[dict[str, float]] = None,
     ) -> list[PhantomBalanceBot]:
-        """
-        Create a set of phantoms for a parent bot.
+        """Build one ``PhantomBalanceBot`` per entry in ``timeframes`` and
+        register each on ``coordinator``.
 
-        *balance_scaling*:
-          "equal"  — each phantom gets the same target balance
-          "weighted" — higher TFs get proportionally larger balances
+        ``balance_scaling`` of "weighted" scales ``target_balance`` by
+        ``tf_rank``; any other value gives every phantom ``target_balance``.
         """
         phantoms = []
         for i, tf in enumerate(sorted(timeframes, key=tf_rank)):
             if balance_scaling == "weighted":
-                # Higher TFs get larger share
                 rank = tf_rank(tf)
                 max_rank = tf_rank(timeframes[-1]) if timeframes else 1
                 weight = 0.5 + 0.5 * (rank / (max_rank + 1))
@@ -689,10 +517,7 @@ class PhantomBalanceManager:
                 symbol=symbol,
                 coordinator=self.coordinator,
                 ta_weights=ta_weights,
-                # v3.24.61 (C17) — inherit the coordinator's bus. The
-                # coordinator already carries the sim's private bus when
-                # there is one, so phantoms follow their parent's
-                # isolation instead of each resolving the global bus.
+                # Inherit the coordinator's bus; None falls back to the global.
                 bus=getattr(self.coordinator, "_bus", None),
             )
             self.coordinator.register_phantom(phantom)
