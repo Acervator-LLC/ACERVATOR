@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:  # pragma: no cover
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.gui.color_alpha import css_colours
 from src.gui.main_tabs import design_system_surface as dss
 from tests.fixtures.web_js_modules import (
     HEX_COLOUR,
@@ -199,7 +200,7 @@ def test_the_counts_are_filled_in_from_the_lists_they_count(loaded: JsRuntime):
     assert counts["held"] == len(dss.TOKEN_NAMES)
     assert counts["faults"] == 0
     assert counts["refusals"] == 0
-    assert counts["conversions"] == 5
+    assert counts["conversions"] == 0
 
 
 def test_the_counts_read_zero_before_any_payload_arrives(js: JsRuntime):
@@ -352,15 +353,46 @@ ALPHA_BYTE_TOKENS = (
 )
 
 
-def test_every_alpha_byte_colour_is_converted_and_named(loaded: JsRuntime):
+def qt_byte_payload() -> dict:
+    """The payload as it would arrive carrying the alpha byte Qt reads.
+
+    The surface publishes the share a browser reads, so the module's own
+    conversion is driven here from a payload in the Qt form instead.
+    """
+    swapped = {
+        css_colours(dss.TOKENS[name]): dss.TOKENS[name] for name in ALPHA_BYTE_TOKENS
+    }
+
+    def back(value: Any) -> Any:
+        if isinstance(value, str):
+            return swapped.get(value, value)
+        if isinstance(value, dict):
+            return {key: back(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [back(item) for item in value]
+        return value
+
+    return back(bridge_payload())
+
+
+def test_every_alpha_byte_colour_is_converted_and_named(js: JsRuntime):
     """Each of the five conversions names the colour text that arrived and the text
     that renders."""
-    changed = loaded.ask("conversions")
+    js.load(qt_byte_payload(), SHADOW_COLOUR)
+    changed = js.ask("conversions")
     assert [row["name"] for row in changed] == list(ALPHA_BYTE_TOKENS)
     for row in changed:
         assert row["from"] == dss.TOKENS[row["name"]]
         assert row["from"] != row["to"]
         assert row["to"].startswith("rgba(")
+
+
+def test_the_real_payload_leaves_the_module_nothing_to_convert(loaded: JsRuntime):
+    """The surface publishes the share, so no colour reaches the module in the
+    form the check above drives."""
+    assert loaded.ask("conversions") == []
+    for name in ALPHA_BYTE_TOKENS:
+        assert loaded.ask("value", name) == css_colours(dss.TOKENS[name])
 
 
 def test_the_converted_alpha_is_the_byte_over_the_published_scale(

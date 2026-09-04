@@ -8,6 +8,7 @@ from typing import Any, Optional
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
 
 from .. import design_system as ds
+from ..color_alpha import css_colours
 
 METHOD = "header.strip"
 
@@ -483,11 +484,17 @@ def build_view_model(
     tab_name: Any = None,
     profits: Optional[dict] = None,
 ) -> dict:
-    """Return the whole strip state as one serialisable dict."""
+    """Return the whole strip state as one serialisable dict.
+
+    The style sheets are written the way the Qt widget carries them, with
+    the alpha byte Qt reads. The payload leaves under
+    `src.gui.color_alpha.css_colours`, so the renderer receives the share
+    a browser reads and no style sheet is written out twice.
+    """
     payload = profits_payload(stats, exchange_count) if profits is None else profits
     cells = kpi_cells(payload)
     values = counter_cells(stats)
-    return {
+    strip = {
         "central_layout": CENTRAL_LAYOUT,
         "top_row": TOP_ROW,
         "top_row_order": list(TOP_ROW_ORDER),
@@ -524,6 +531,7 @@ def build_view_model(
         "mode_button": mode_card(mode),
         "actions": dict(ACTIONS),
     }
+    return css_colours(strip)
 
 
 def view_model(params: dict) -> dict:

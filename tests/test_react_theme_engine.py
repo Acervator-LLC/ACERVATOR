@@ -152,6 +152,16 @@ def js(qapp) -> JsRuntime:
     return JsRuntime(new_engine(), MODULE_PATH.read_text(encoding="utf-8"))
 
 
+def held_theme(name: str) -> dict:
+    """One theme as the payload hands it to the module.
+
+    The surface publishes for a browser, so its themes carry the alpha
+    share CSS reads while tes.THEMES keeps the byte Qt reads. The
+    module is answerable for what it was given, never for the Qt table.
+    """
+    return bridge_payload()["themes"][name]
+
+
 @pytest.fixture()
 def loaded(js: JsRuntime) -> JsRuntime:
     """The module holding the real surface's whole theme table."""
@@ -479,8 +489,8 @@ def test_switching_theme_changes_what_a_screen_would_paint(loaded: JsRuntime):
     after = loaded.json("acervatorThemes.painted()")
     changed = [f for f in before if after.get(f) != before[f]]
     assert changed, "the two themes paint identically, so the check cannot report"
-    assert before == tes.THEMES[FIRST_THEME]
-    assert after == tes.THEMES[SECOND_THEME]
+    assert before == held_theme(FIRST_THEME)
+    assert after == held_theme(SECOND_THEME)
 
 
 def test_switching_back_restores_every_value_exactly(loaded: JsRuntime):
@@ -520,7 +530,7 @@ def test_a_theme_the_module_does_not_hold_changes_nothing(loaded: JsRuntime):
     loaded.run("acervatorThemes.select(JSON.parse(FIRST));")
     assert loaded.json("acervatorThemes.select('no_such_theme')") is None
     assert loaded.json("acervatorThemes.current()") == FIRST_THEME
-    assert loaded.json("acervatorThemes.painted()") == tes.THEMES[FIRST_THEME]
+    assert loaded.json("acervatorThemes.painted()") == held_theme(FIRST_THEME)
 
 
 # -- the design tokens -------------------------------------------------
