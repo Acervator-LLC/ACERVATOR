@@ -62,10 +62,11 @@ class CandleSeries:
         return True
 
     def step_to_ts(self, target_ts_ms: int) -> bool:
-        """Set ``cursor`` to the last row timestamped at or before ``target_ts_ms``.
+        """Move ``cursor`` to the last row at or before ``target_ts_ms``, never back.
 
-        Bisects ``rows``, returning False and leaving ``cursor`` untouched when
-        ``rows`` is empty or ``target_ts_ms`` precedes the first row.
+        Bisects ``rows`` and returns True only when ``cursor`` advances, leaving
+        ``cursor`` untouched when ``rows`` is empty, when ``target_ts_ms``
+        precedes the first row, or when that row is at or behind ``cursor``.
         """
         if len(self.rows) == 0:
             return False
@@ -79,6 +80,8 @@ class CandleSeries:
                 lo = mid
             else:
                 hi = mid - 1
+        if lo <= self.cursor:
+            return False
         self.cursor = lo
         return True
 
