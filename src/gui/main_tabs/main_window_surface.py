@@ -49,6 +49,21 @@ METHOD = "main_window.state"
 # ---------------------------------------------------------------------
 
 WINDOW_TITLE_FORMAT = "Acervator v{version}"
+
+
+def running_version() -> str:
+    """The version the title carries when the caller names none.
+
+    Read when asked rather than at import, so the surface stays importable
+    without the package having resolved its version yet. A literal default
+    here would title the bridge's window differently from the Qt window,
+    which reads ``src.__version__`` directly.
+    """
+    from src import __version__
+
+    return str(__version__)
+
+
 MINIMUM_WIDTH_PX = 1400
 MINIMUM_HEIGHT_PX = 900
 
@@ -1219,7 +1234,7 @@ class MainWindowModel:
 
     def __init__(
         self,
-        version: Any = "0.0.0",
+        version: Any = None,
         fleet: Any = None,
         settings: Any = None,
         themes: Any = None,
@@ -1233,7 +1248,7 @@ class MainWindowModel:
         tabs_ready: Any = True,
         failed_tabs: Any = None,
     ) -> None:
-        self.version = version
+        self.version = running_version() if version is None else version
         self.fleet = fleet
         self.settings = settings
         self.themes = themes if themes is not None else ThemeSource()
@@ -1733,7 +1748,7 @@ def build_view_model(params: Any = None) -> dict:
             statuses=given["fleet"].get("statuses"),
         )
     model = MainWindowModel(
-        version=given.get("version", "0.0.0"),
+        version=given.get("version"),
         fleet=fleet,
         settings=settings,
         themes=themes,

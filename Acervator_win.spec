@@ -43,6 +43,12 @@ if PROJECT_ROOT not in sys.path:
 
 from PyInstaller.utils.hooks import collect_submodules  # noqa: E402
 
+from tools.build_variants import (  # noqa: E402
+    bake_variant_datas,
+    requested_variant,
+    unique_output_basename,
+    windows_file_version,
+)
 from tools.spec_common import (  # noqa: E402
     EXCLUDES,
     bake_version_datas,
@@ -54,6 +60,13 @@ from tools.spec_common import (  # noqa: E402
 block_cipher = None
 
 ACERVATOR_VERSION = read_acervator_version(PROJECT_ROOT)
+ACERVATOR_VARIANT = requested_variant()
+
+# The output carries the version and the variant, and steps past a name
+# already in dist rather than replacing it. The operator runs builds from
+# dist and keeps several side by side; a rebuild must never remove or
+# overwrite a bundle a live process may hold open.
+OUTPUT_NAME = unique_output_basename(DISTPATH, ACERVATOR_VERSION, ACERVATOR_VARIANT)
 
 ICON_PATH = os.path.join(PROJECT_ROOT, 'resources', 'icon.ico')
 
@@ -66,7 +79,11 @@ a = Analysis(
     [os.path.join(PROJECT_ROOT, 'main.py')],
     pathex=[PROJECT_ROOT],
     binaries=[],
-    datas=build_graceful_datas(PROJECT_ROOT) + bake_version_datas(PROJECT_ROOT),
+    datas=(
+        build_graceful_datas(PROJECT_ROOT)
+        + bake_version_datas(PROJECT_ROOT)
+        + bake_variant_datas(PROJECT_ROOT, ACERVATOR_VARIANT)
+    ),
     hiddenimports=collect_submodules('src') + hiddenimports_for('windows'),
     hookspath=[],
     hooksconfig={},
@@ -88,7 +105,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='Acervator',
+    name=OUTPUT_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -99,20 +116,20 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     icon=ICON_PATH,
-    # FileVersion and ProductVersion below are Windows resource fields
-    # and they are NOT the Acervator version. They have read '1.1.0'
-    # since the file was written. FileDescription carries the real
-    # version. Left as found: these fields are Windows installed-app
-    # identity, the same class of value as the macOS bundle_identifier,
-    # and changing them is the operator's call.
+    # Every field here is derived. FileVersion and ProductVersion are
+    # numeric-only Windows resource fields, so they carry the leading
+    # numbers of the resolved version and drop any local segment after
+    # the '+'. They used to read a literal '1.1.0', which made Explorer's
+    # Properties pane and FileDescription report two different versions
+    # for the same executable.
     version_info={
         'CompanyName': 'Quantum Trading Systems',
-        'FileDescription': f'Acervator v{ACERVATOR_VERSION}',
-        'FileVersion': '1.1.0.0',
-        'InternalName': 'Acervator',
-        'OriginalFilename': 'Acervator.exe',
+        'FileDescription': f'Acervator v{ACERVATOR_VERSION} ({ACERVATOR_VARIANT})',
+        'FileVersion': windows_file_version(ACERVATOR_VERSION),
+        'InternalName': OUTPUT_NAME,
+        'OriginalFilename': f'{OUTPUT_NAME}.exe',
         'ProductName': 'Acervator',
-        'ProductVersion': '1.1.0',
+        'ProductVersion': windows_file_version(ACERVATOR_VERSION),
     } if os.path.exists(ICON_PATH) else None,
 )
 
@@ -124,5 +141,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='Acervator',
+    name=OUTPUT_NAME,
 )

@@ -244,8 +244,9 @@ def run_build() -> bool:
     )
     print("=" * 60)
 
-    # Try to add Defender exclusion (requires admin)
-    exe_path = os.path.join("dist", "Acervator")
+    # Try to add Defender exclusion (requires admin). The whole dist root,
+    # because each build adds another folder under it and none are removed.
+    exe_path = "dist"
     if os.path.isdir(exe_path):
         print("\n  Adding Windows Defender exclusion...")
         exe_quoted = f'"{os.path.abspath(exe_path)}"'
@@ -265,6 +266,39 @@ def run_build() -> bool:
             print("  Defender exclusion skipped (admin prompt declined).")
 
     return result.returncode == 0
+
+
+def build_outputs() -> list:
+    """Return every built executable under dist, newest first.
+
+    The build names each folder after the version and the variant it
+    produced, so there is no single fixed path to look at any more. Every
+    folder is reported and none is removed; the operator picks which build
+    to run.
+    """
+    dist_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist")
+    if not os.path.isdir(dist_dir):
+        return []
+    found = []
+    for name in os.listdir(dist_dir):
+        exe = os.path.join(dist_dir, name, f"{name}.exe")
+        if os.path.exists(exe):
+            found.append(exe)
+    found.sort(key=os.path.getmtime, reverse=True)
+    return found
+
+
+def write_smartscreen_help(folder: str) -> None:
+    """Write the "if Windows blocks this" note beside a built executable."""
+    help_path = os.path.join(folder, "IF_BLOCKED_READ_THIS.txt")
+    try:
+        with open(help_path, "w", encoding="utf-8") as handle:
+            handle.write(SMARTSCREEN_HELP)
+        print(f"  Help file: {help_path}")
+    except OSError as exc:
+        # Printed and not swallowed. The build succeeded; only the note
+        # beside the exe is missing, and the reader must be able to see why.
+        print(f"  NOTE: help file not written: {exc}")
 
 
 def main() -> None:
@@ -287,23 +321,14 @@ def main() -> None:
     success = run_build()
 
     if success:
-        exe = os.path.join("dist", "Acervator", "Acervator.exe")
-        if os.path.exists(exe):
-            print(f"\n  Build complete: {os.path.abspath(exe)}")
-
-            # Create help file next to exe
-            help_path = os.path.join("dist", "Acervator", "IF_BLOCKED_READ_THIS.txt")
-            try:
-                with open(help_path, "w", encoding="utf-8") as handle:
-                    handle.write(SMARTSCREEN_HELP)
-                print(f"  Help file: {os.path.abspath(help_path)}")
-            except OSError as exc:
-                # Printed and not swallowed. The build succeeded; only the
-                # note beside the exe is missing, and the reader must be
-                # able to see why.
-                print(f"  NOTE: help file not written: {exc}")
-
+        built = build_outputs()
+        for exe in built:
+            print(f"\n  Build complete: {exe}")
+            write_smartscreen_help(os.path.dirname(exe))
+        if built:
             print(SMARTSCREEN_NOTICE)
+        else:
+            print("\n  Build reported success but no executable was found in dist.")
     else:
         print("\n  Build failed. Check the output above for errors.")
 

@@ -41,6 +41,11 @@ if PROJECT_ROOT not in sys.path:
 
 from PyInstaller.utils.hooks import collect_submodules  # noqa: E402
 
+from tools.build_variants import (  # noqa: E402
+    bake_variant_datas,
+    requested_variant,
+    unique_output_basename,
+)
 from tools.spec_common import (  # noqa: E402
     EXCLUDES,
     bake_version_datas,
@@ -52,6 +57,11 @@ from tools.spec_common import (  # noqa: E402
 block_cipher = None
 
 ACERVATOR_VERSION = read_acervator_version(PROJECT_ROOT)
+ACERVATOR_VARIANT = requested_variant()
+
+# The output carries the version and the variant, and steps past a name
+# already in dist rather than replacing it, so builds accumulate.
+OUTPUT_NAME = unique_output_basename(DISTPATH, ACERVATOR_VERSION, ACERVATOR_VARIANT)
 
 ICON_PATH = os.path.join(PROJECT_ROOT, 'resources', 'icon.icns')
 
@@ -64,7 +74,11 @@ a = Analysis(
     [os.path.join(PROJECT_ROOT, 'main.py')],
     pathex=[PROJECT_ROOT],
     binaries=[],
-    datas=build_graceful_datas(PROJECT_ROOT) + bake_version_datas(PROJECT_ROOT),
+    datas=(
+        build_graceful_datas(PROJECT_ROOT)
+        + bake_version_datas(PROJECT_ROOT)
+        + bake_variant_datas(PROJECT_ROOT, ACERVATOR_VARIANT)
+    ),
     hiddenimports=collect_submodules('src') + hiddenimports_for('macos'),
     hookspath=[],
     hooksconfig={},
@@ -86,7 +100,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='Acervator',
+    name=OUTPUT_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -108,7 +122,7 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='Acervator',
+    name=OUTPUT_NAME,
 )
 
 # ---------------------------------------------------------------------------
@@ -125,7 +139,7 @@ coll = COLLECT(
 # ---------------------------------------------------------------------------
 app = BUNDLE(
     coll,
-    name='Acervator.app',
+    name=f'{OUTPUT_NAME}.app',
     icon=ICON_PATH,
     bundle_identifier='com.quantumtrader.app',
     version=ACERVATOR_VERSION,
