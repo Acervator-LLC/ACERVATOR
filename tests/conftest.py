@@ -57,6 +57,11 @@ if _TEST_HOME:
     os.environ["USERPROFILE"] = _TEST_HOME
     os.environ["HOME"] = _TEST_HOME
 
+from tests.fixtures.qt_platform import choose_qt_platform
+
+# The first QApplication fixes the platform for the whole process.
+choose_qt_platform()
+
 from src.trading.sim_run_log import SIM_LOG_ROOT_ENV  # noqa: E402
 
 # v3.24.xx — set at conftest IMPORT time, not in a fixture, and this is
