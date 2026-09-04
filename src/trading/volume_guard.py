@@ -5,8 +5,8 @@
 safe order with ``_compute_safe_sizes``, then places it whole or spreads it over
 ``_execute_iceberg`` chunks. ``VolumeGuard.enabled`` returns False and
 ``BotContainer.guarded_place_order`` tests that property, leaving ``execute``
-unreached on a live order. No path here refuses a trade: ``_execute_passthrough``
-still places the order when ``MarketProfile.is_tradeable`` is False.
+unreached on a live order. A False ``MarketProfile.is_tradeable`` does not
+refuse the order; ``_execute_passthrough`` still places it.
 """
 
 from __future__ import annotations
@@ -199,9 +199,10 @@ class VolumeGuard:
     ) -> ExecutionReport:
         """Place ``amount`` of ``symbol`` under the ``VolumeGuardConfig`` limits.
 
-        ``_execute_passthrough`` handles a False ``config.enabled`` and a
-        non-tradeable ``MarketProfile``; otherwise ``_compute_chunk_plan``
-        chooses between ``_execute_single`` and ``_execute_iceberg``.
+        A False ``config.enabled`` or a non-tradeable ``MarketProfile`` goes to
+        ``_execute_passthrough``, a missing connector returns strategy ``error``,
+        and otherwise ``_compute_chunk_plan`` picks ``_execute_single`` or
+        ``_execute_iceberg``.
         """
         start = time.monotonic()
         ex = exchange or self._exchange
