@@ -67,4 +67,6 @@ window.ACERVATOR_MODULES = [
   "alerts_tab.js",
   "competition_tab.js",
   "instance_consent_dialog.js",
+  "testnet_tab.js",
+  "shared_testnet.js",
 ];

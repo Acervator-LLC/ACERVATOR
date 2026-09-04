@@ -2408,3 +2408,40 @@ def test_the_qt_probe_can_report_qt():
     loaded = run_probe("import PySide6.QtCore;")
     assert loaded["qt"] is True
     assert loaded["frame"]["ok"] is True
+
+
+# ---------------------------------------------------------------------
+# Nothing this bridge publishes is a colour
+# ---------------------------------------------------------------------
+
+
+def colour_texts(value):
+    """Every string inside `value` that a style sheet would read as a colour."""
+    if isinstance(value, str):
+        return [value] if "rgba(" in value or "#" in value else []
+    if isinstance(value, dict):
+        found = []
+        for key, inner in value.items():
+            found += colour_texts(key) + colour_texts(inner)
+        return found
+    if isinstance(value, (list, tuple)):
+        found = []
+        for inner in value:
+            found += colour_texts(inner)
+        return found
+    return []
+
+
+def test_the_colour_reader_names_a_colour_wherever_one_hides():
+    """Without this the measurement below is a reader that sees nothing."""
+    assert colour_texts({"a": ["#00FFEE"]}) == ["#00FFEE"]
+    assert colour_texts({"a": {"b": "border:1px solid rgba(0,255,238,38);"}}) == [
+        "border:1px solid rgba(0,255,238,38);"
+    ]
+    assert colour_texts({"a": [1, None, True, "plain"]}) == []
+
+
+def test_this_bridge_publishes_no_colour_at_all():
+    """A colour here would need the byte-to-share conversion the tabs make."""
+    for name, payload in named_payloads().items():
+        assert colour_texts(payload) == [], (name, colour_texts(payload))

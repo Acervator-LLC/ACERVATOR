@@ -3721,7 +3721,7 @@ def test_the_surface_loads_no_qt_module():
                 imported.update(alias.name for alias in node.names)
     assert not any(name.startswith("PySide6") for name in imported), imported
     assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "time", "typing"}
+    assert imported == {"__future__", "time", "typing", "color_alpha"}
     tab_tree = ast.parse(TAB_PATH.read_text(encoding="utf-8"))
     tab_imports = {
         (node.module or "")
@@ -3758,3 +3758,82 @@ def test_the_surface_opens_no_file_and_no_socket():
         assert forbidden not in text, forbidden
     assert surface.CHAIN_ID == 84532
     assert str(surface.CHAIN_ID) in surface.NET_LABEL_TEXT
+
+
+# ---------------------------------------------------------------------
+# Where the alpha byte turns into the share CSS reads
+# ---------------------------------------------------------------------
+
+
+def alpha_fields(text):
+    """The fourth field of every ``rgba`` call one style value carries."""
+    return [
+        part.split(")")[0].split(",")[3].strip()
+        for part in str(text).split("rgba(")[1:]
+        if len(part.split(")")[0].split(",")) == 4
+    ]
+
+
+def byte_alphas(text):
+    """Every alpha in one style value that counts in bytes, as CSS cannot."""
+    return [one for one in alpha_fields(text) if float(one) > 1]
+
+
+def test_the_alpha_reader_names_a_byte_and_passes_a_share():
+    """Without this the measurement below is a reader that sees nothing."""
+    assert byte_alphas("background:rgba(0,255,238,38);") == ["38"]
+    assert byte_alphas("background:rgba(0,255,238,0.15);") == []
+    assert alpha_fields("border:1px solid #00FFEE;") == []
+
+
+def test_no_style_this_tab_publishes_counts_its_alpha_in_bytes():
+    """A byte reaching CSS paints opaque, and no error says so."""
+    written = []
+    for name, sheet in surface.build_view_model()["styles"].items():
+        written += [(name, one) for one in byte_alphas(sheet)]
+    assert not written, written
+
+
+def test_the_bridge_answer_turns_a_byte_into_a_share_the_plain_build_keeps(
+    monkeypatch,
+):
+    """The two sides of the boundary answer differently for one value."""
+    monkeypatch.setattr(surface, "SECTION_STYLE", "background:rgba(0,255,238,38);")
+    kept = surface.build_view_model()["styles"]["section"]
+    published = surface.view_model({"reset": True})["styles"]["section"]
+    assert byte_alphas(kept) == ["38"], kept
+    assert byte_alphas(published) == [], published
+    assert alpha_fields(published) == [repr(38 / 255)], published
+
+
+def test_a_share_crosses_the_boundary_unchanged(monkeypatch):
+    """The positive control: the boundary rewrites a byte and nothing else."""
+    monkeypatch.setattr(surface, "SECTION_STYLE", "background:rgba(0,255,238,0.15);")
+    published = surface.view_model({"reset": True})["styles"]["section"]
+    assert published == surface.build_view_model()["styles"]["section"]
+    assert alpha_fields(published) == ["0.15"]
+
+
+# ---------------------------------------------------------------------
+# The poll the renderer asks for, which the shipped tab runs on a timer
+# ---------------------------------------------------------------------
+
+
+def test_a_bridge_call_asking_for_a_refresh_fills_all_four_tables():
+    """The renderer could never draw a block, because nothing refreshed."""
+    filled = surface.view_model(
+        {"reset": True, "state": BRIDGE_STATE, "refresh": True, "now": FROZEN_NOW}
+    )["rows"]
+    assert sorted(filled) == ["blocks", "events", "holders", "transactions"]
+    for name, rows in filled.items():
+        assert rows, name
+    assert filled["blocks"][0][0]["text"] == "1"
+    assert filled["holders"][0][2]["text"] == "Harvest"
+
+
+def test_a_bridge_call_without_that_ask_leaves_the_four_tables_empty():
+    """The positive control: the fill above comes from the ask, not the state."""
+    empty = surface.view_model({"reset": True, "state": BRIDGE_STATE})["rows"]
+    assert sorted(empty) == ["blocks", "events", "holders", "transactions"]
+    for name, rows in empty.items():
+        assert rows == [], name
