@@ -21,8 +21,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.trading.indicators.bollinger import BollingerBands  # noqa: E402
-from src.trading.indicators.types import Candle  # noqa: E402
+from src.trading.indicators.bollinger import BollingerBands
+from src.trading.indicators.types import Candle
 
 PERIOD = BollingerBands().period
 
