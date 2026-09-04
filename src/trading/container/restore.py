@@ -16,9 +16,7 @@ class StateRestoreMixin:
     Composed into ``BotManager``; ``self`` is the manager instance.
     """
 
-    # Supplied by BotManager at runtime; declared so a type checker
-    # can resolve them. Annotations only: no attribute is created and
-    # the runtime base stays `object`.
+    # Declared for the type checker only; BotManager supplies these at runtime.
     _boot_state_records: dict
     _bots: dict
     _bus: Any
@@ -30,11 +28,8 @@ class StateRestoreMixin:
 
     # -- State persistence -----------------------------------------------
     def save_all_state(self) -> None:
-        """Save complete state of all bots + Smart Wire registry.
-
-        v3.15.68 — operator directive 2026-04-26: "Bot swarm state is
-        not being preserved." Smart Wire registry (source→target→pct)
-        is now saved alongside bot state and rehydrated on restore.
+        """Write every registered bot's state, the Smart Wire topology and
+        the per-bot wire ledgers through the state manager.
         """
         if not self._state_manager:
             return
@@ -48,11 +43,8 @@ class StateRestoreMixin:
                 wires = self._smart_wire_mgr.export_wires()
         except Exception as exc:
             logger.warning("save_all_state: smart wire export raised: %s", exc)
-        # v3.16.57 — persist per-bot ledgers (wired_in/wired_out totals
-        # + provenance) so Smart Wire credits survive restart. Operator
-        # bug 2026-05-13: "Smart Wire credits are not persisting across
-        # platform restarts." Root cause: only topology was exported,
-        # not the ledger state.
+        # Ledger totals are separate from topology: export_wires carries
+        # only source, target and pct.
         try:
             if self._smart_wire_mgr is not None and hasattr(
                 self._smart_wire_mgr, "export_ledgers"
@@ -60,19 +52,15 @@ class StateRestoreMixin:
                 ledgers = self._smart_wire_mgr.export_ledgers()
         except Exception as exc:
             logger.warning("save_all_state: smart wire ledger export raised: %s", exc)
-        # v3.24.35 (C01) — the DRY-RUN block that stood here is gone.
-        # It computed which records a future merge WOULD carry forward
-        # and then did not carry them. save_state now carries them for
-        # real, and keeping both would leave two answers to one question.
         self._state_manager.save_state(
             states, smart_wires=wires, smart_wire_ledgers=ledgers
         )
 
     def restore_smart_wires_from_state(self, state: dict) -> int:
-        """v3.15.68 — restore the Smart Wire registry from saved state.
-        Returns count of wires imported. Re-emits ``wire.created``
-        events on the bus so the GUI visualizer can rehydrate its
-        on-screen wire list.
+        """Rebuild the Smart Wire topology and ledger totals from saved state.
+
+        Re-emits ``wire.created`` on the bus so the visualizer redraws each
+        link. Returns the number of wires ``import_wires`` accepted.
         """
         wires = state.get("smart_wires", []) if isinstance(state, dict) else []
         ledgers = state.get("smart_wire_ledgers", []) if isinstance(state, dict) else []
@@ -85,10 +73,8 @@ class StateRestoreMixin:
         except Exception as exc:
             logger.warning("restore_smart_wires_from_state: import raised: %s", exc)
             return 0
-        # v3.16.57 — restore per-bot ledger totals so wired_in /
-        # wired_out / provenance survive restart. Attach_bot at startup
-        # registers fresh BotLedger entries; import_ledgers overlays the
-        # saved totals onto them.
+        # import_ledgers updates an existing ledger entry in place and
+        # creates a missing one.
         try:
             if ledgers and hasattr(self._smart_wire_mgr, "import_ledgers"):
                 _l = self._smart_wire_mgr.import_ledgers(ledgers)
@@ -98,10 +84,7 @@ class StateRestoreMixin:
             logger.warning(
                 "restore_smart_wires_from_state: ledger import raised: %s", exc
             )
-        # Re-emit wire.created events so the GUI visualizer (which
-        # subscribes to the event bus) draws them. Skip if both
-        # endpoints aren't currently registered — orphaned wires after
-        # bot deletion shouldn't redraw.
+        # A wire with either endpoint missing from self._bots is not re-emitted.
         for w in wires:
             try:
                 src = str(w.get("source_id", ""))
@@ -113,12 +96,8 @@ class StateRestoreMixin:
                     continue
                 self._bus.emit("wire.created", source_id=src, target_id=tgt, pct=pct)
             except Exception as _wire_exc:
-                # Skipping a saved link that cannot be read is right —
-                # one bad record must not stop the rest being drawn.
-                # It used to be silent, so a link the operator set up
-                # would simply not appear, with nothing said anywhere.
-                # The count printed below still counts it, so the count
-                # and the picture disagree; this line is how that shows.
+                # One unreadable record must not stop the remaining links
+                # being drawn.
                 logger.warning(
                     "Skipped a saved bot-to-bot link while restoring: "
                     "the record could not be read (%s). Record: %r. "
@@ -139,43 +118,31 @@ class StateRestoreMixin:
     def _ledger_skip(self, bid: str, reason: str) -> None:
         """Record that a bot was OBSERVED failing to load.
 
-        v3.24.35 (C01 PR-0). The single writer of ``_restore_ledger``.
-        Only code that watched a bot fail may call it, which is what
-        makes the ledger different from inferring intent from absence:
-        a bot missing from ``self._bots`` might have been deleted by the
-        operator, but a bot in this ledger definitely was not.
-
-        Never raises — a bookkeeping failure must not abort a restore
+        Writes the bot id and the reason into ``_restore_ledger``. Only code
+        that watched a bot fail may call it: a bot missing from ``self._bots``
+        may have been deleted by the operator, but a bot in this ledger was
+        not. Never raises, so a bookkeeping failure cannot abort a restore
         that is already handling an error.
         """
         try:
             self._restore_ledger[str(bid)] = str(reason)
         except Exception:  # noqa: BLE001,S110 - bookkeeping only
-            pass  # noqa: S110
+            pass
 
     def restore_bots_from_state(self, state: dict) -> list[str]:
-        """
-        Recreate bots from saved state in PAUSED mode.
-        Does NOT connect to exchanges or place any orders.
-        Returns list of restored bot IDs.
+        """Recreate every persisted bot in IDLE state; return the ids restored.
 
-        SAFETY: All restored bots start in IDLE state with a
-        'restored' flag. User must explicitly start each one,
-        which triggers exchange sync before any trading.
+        Connects to no exchange and places no order. Each restored bot carries
+        a ``_restored`` flag and stays IDLE until the operator starts it, which
+        is what triggers the exchange sync before any trading.
         """
         from .config import BotMode
 
         bots_data = state.get("bots", {})
         restored = []
 
-        # v3.24.35 (C01 PR-0) — hold the boot records in RAM.
-        #
-        # Deep-copied so a later mutation of `state` (or of a bot's own
-        # dict during restore) cannot alter what was actually on disk at
-        # boot. PR-1 hands these to save_state BY VALUE, which is what
-        # lets the save path carry a skipped bot's record forward
-        # without performing a read — a read there could fail and freeze
-        # persistence for the whole fleet.
+        # Deep-copied so a later mutation of `state` cannot change what was
+        # on disk at boot.
         import copy as _copy
 
         try:
@@ -193,18 +160,6 @@ class StateRestoreMixin:
         for bid, bot_data in bots_data.items():
             cfg = bot_data.get("config", {})
             if not cfg.get("exchange_id"):
-                # v3.24.35 (C01 PR-0) — this skip was entirely SILENT.
-                # Of the five `continue` exits in this function it was
-                # the only one with no log line at any level, so a bot
-                # whose persisted config lost its exchange_id vanished
-                # without a trace -- and then, because save_state
-                # rebuilds "bots" solely from the registered set, its
-                # record was deleted from bot_state.json by the 60s
-                # save timer. Silent skip followed by silent deletion.
-                #
-                # Measured 2026-08-05 on the live file: 35 bots holding
-                # 1,949 lots and 829 fold tranches, none of it
-                # reconstructible from exchange fill history.
                 logger.error(
                     "Bot %s SKIPPED during restore: persisted config has "
                     "no exchange_id. Its saved record (lots, tranches, "
@@ -215,14 +170,8 @@ class StateRestoreMixin:
                 self._ledger_skip(bid, "no exchange_id in persisted config")
                 continue
 
-            # Recreate BotConfig.
-            # v3.20.4 — grid handling fully removed. Missing/empty
-            # mode is treated as SCRUMMING for backward compat with
-            # pre-v3.19.1 save files; any explicit but unrecognized
-            # mode string (including the now-defunct "grid") is
-            # ERROR-logged and skipped rather than silently
-            # misclassified.
-            # sadp: R28 FL  R55 GOV  R68 DPA
+            # An absent or empty mode is treated as SCRUMMING for pre-rename
+            # state files.
             _mode_str = (cfg.get("mode") or "").lower()
             if _mode_str == "extractor":
                 mode = BotMode.EXTRACTOR
@@ -241,21 +190,8 @@ class StateRestoreMixin:
                 )
                 self._ledger_skip(bid, "legacy grid mode (unrestorable)")
                 continue
-            # v3.20.35 — restore path migrated to make_bot_config
-            # factory (per operator directive 2026-05-25 "Make sure
-            # any syntax deemed 'old' is being purged"). Same
-            # three-layer split as main_window.py: shared kwargs +
-            # mode-specific kwargs + factory call. Stale persisted
-            # configs with mode-foreign field values are caught at
-            # restore time with a clear error, then skipped (the
-            # restore path must not abort the platform launch on
-            # one bad bot — we log and continue).
-            # Local boolean hoisted so the test_bot_restoration_
-            # dispatch fitness pin (which scans for the FIRST
-            # mode-equality occurrence and expects ExtractorBot
-            # construction within 600 chars) still lands on the
-            # actual dispatch branch below, not on the target_asset
-            # default ternary.
+            # make_bot_config raises on a mode-foreign field, so a stale
+            # config is skipped rather than constructed.
             _ta_default = "*" if mode.value == "extractor" else "BTC"
             _shared_kwargs = {
                 "exchange_id": cfg["exchange_id"],
@@ -266,40 +202,30 @@ class StateRestoreMixin:
                 "ta_timeframe": cfg.get("ta_timeframe", "1h"),
                 "visibility": cfg.get("visibility", "orderbook"),
                 "aggressive_trading": cfg.get("aggressive_trading", False),
-                # An absent key resolves to STACK_MODE_DEFAULT, not to
-                # the retired `bulk_trading`. That key was always False,
-                # so reading it here resolved a pre-rename state file to
-                # a stale False instead of the current default; it is
-                # dropped by _sanitize_deprecated_kwargs() either way.
+                # An absent key resolves to STACK_MODE_DEFAULT; the retired
+                # bulk_trading key is dropped by _sanitize_deprecated_kwargs.
                 "stack_mode": cfg.get("stack_mode", STACK_MODE_DEFAULT),
                 "split_distance": cfg.get("split_distance", 1.0),
                 "stack_tranche_count_target": cfg.get("stack_tranche_count_target", 3),
                 "stack_spacing_mode": cfg.get("stack_spacing_mode", "linear"),
-                # v3.23.25 bulk_partial_on_return retired
                 "max_entry_price": cfg.get("max_entry_price", None),
                 "min_entry_price": cfg.get("min_entry_price", None),
                 "trading_fee_pct": cfg.get("trading_fee_pct", 0.6),
             }
             if mode == BotMode.SCRUMMING:
-                # v3.23.3 R-CLN Phase 1: 8 grid-legacy dead fields no
-                # longer extracted from cfg. See
-                # docs/audits/2026-06-12_scrumming_bot_field_alignment.md
-                # for the list. Operator's bot_state.json may still
-                # carry these keys — silently ignored by cleaned code.
-                # GUI wizard/settings cleanup deferred to R-CLN Phase 2.
+                # Grid-legacy keys still in bot_state.json are ignored;
+                # nothing here reads them.
                 _mode_kwargs = {
                     "investment_amount": cfg.get("investment_amount", 200.0),
                     "increment_style": cfg.get("increment_style", "linear"),
                     "spacing_style": cfg.get("spacing_style", "expanding"),
-                    # v3.23.25 market_check_interval kwarg removed
                     "profit_folding_active": cfg.get("profit_folding_active", True),
                     "scrumming_interval_pct": cfg.get("scrumming_interval_pct", 1.0),
                     "profit_route": cfg.get("profit_route", "fold_to_target"),
                     "profit_route_bot_id": cfg.get("profit_route_bot_id", ""),
                     "scrum_fold_pct": cfg.get("scrum_fold_pct", 100),
-                    # Item 9 — despawn timer. Absent from every
-                    # state file written before 2026-08-13, so the
-                    # default here is what those bots restore with: 0.
+                    # Absent from older state files, so those bots restore
+                    # with the despawn timer at 0.
                     "tranche_despawn_days": cfg.get("tranche_despawn_days", 0),
                     "max_target_growth_pct": cfg.get("max_target_growth_pct", 1.0),
                     "bb_tolerance_pct": cfg.get("bb_tolerance_pct", 1.0),
@@ -323,7 +249,6 @@ class StateRestoreMixin:
                     "detonation_confidence_min": cfg.get(
                         "detonation_confidence_min", 0.75
                     ),
-                    # v3.23.42 interop
                     "self_reserve_capital": cfg.get("self_reserve_capital", True),
                     "personal_hold_qty": cfg.get("personal_hold_qty", 0.0),
                     "circuit_breaker_soft_pct": cfg.get(
@@ -387,9 +312,6 @@ class StateRestoreMixin:
                     "extractor_alt_targets": list(
                         cfg.get("extractor_alt_targets", []) or []
                     ),
-                    # v3.20.74 — Inverted Extractor (Q6/Q7/Q8/Q9):
-                    # direction flag + standing-position import unit
-                    # count for Inverted variants.
                     "extractor_direction": cfg.get("extractor_direction", "normal"),
                     "inverted_extractor_standing_alt_units": float(
                         cfg.get("inverted_extractor_standing_alt_units", 0.0) or 0.0
@@ -413,34 +335,8 @@ class StateRestoreMixin:
                 self._ledger_skip(bid, "mode-shape violation in persisted config")
                 continue
 
-            # Create bot with placeholder exchange (will be replaced
-            # on start).
-            #
-            # v3.20.4 — DISPATCH BY MODE. Prior to this hotfix, the
-            # restore path always constructed a ScrummingBot regardless
-            # of the persisted mode. EXTRACTOR-mode bots (added
-            # v3.19.1) tripped ScrummingBot.__init__'s `assert
-            # config.mode == BotMode.SCRUMMING` and **aborted the
-            # platform launch** before the GUI loaded. Operator hit
-            # this 2026-05-23 with a persisted Extractor in state.
-            # Root cause: BotMode.EXTRACTOR was added to the enum but
-            # the dispatch table at this call site was never updated.
-            # The same cascade removed BotMode.GRID entirely (operator
-            # directive 2026-05-23: "Grid code and dangling mentions
-            # can be cleaned out").
-            #
-            # Discipline going forward:
-            #   - Every BotMode value MUST have an explicit branch.
-            #   - Unknown modes ERROR-log and `continue` — one corrupt
-            #     record never takes down platform launch (R28 FL
-            #     loud-but-not-fatal where the user is locked out).
-            #   - Whole construction wrapped in try/except so a broken
-            #     bot can't poison restoration of healthy bots either.
-            #
-            # ExtractorBot is constructed with enable_phantoms=False
-            # unconditionally — Extractor does not use phantoms by
-            # design (extractor_bot.py:140).
-            # sadp: R28 FL  R55 GOV  R62 FRG  R68 DPA  R76 DMW
+            # Every BotMode needs an explicit branch here; ScrummingBot
+            # rejects a config whose mode is not SCRUMMING.
             bot = None
             try:
                 if mode == BotMode.EXTRACTOR:
@@ -459,32 +355,14 @@ class StateRestoreMixin:
                 elif mode == BotMode.SCRUMMING:
                     from ...trading.scrumming_bot import ScrummingBot
 
-                    # v3.16.27 P0g — restore phantom enabled flag from
-                    # saved state. Default: True (matches
-                    # ScrummingBot.__init__ default — preserves
-                    # prior-version behavior for save files that don't
-                    # carry the flag yet). Once a bot has been saved
-                    # by v3.16.27+ it round-trips correctly.
+                    # Default True matches ScrummingBot.__init__, so a state
+                    # file without the flag keeps prior behaviour.
                     _restored_phantoms_enabled = bot_data.get("phantoms_enabled", True)
                     bot = ScrummingBot(
                         config,
                         _PlaceholderExchangeForRestore(cfg["exchange_id"]),
                         enable_phantoms=bool(_restored_phantoms_enabled),
                     )
-                    # v3.16.36 — operator-reported 2026-05-06 that
-                    # phantoms were still activating after restart
-                    # despite the v3.16.27 fix. Inspection of the
-                    # actual saved state file confirmed
-                    # phantoms_enabled=False is correctly persisted;
-                    # my v3.16.27 save/restore round-trip works. This
-                    # post-restore diagnostic INFO log lets the
-                    # operator verify directly in the activity log
-                    # that the flag was honored at restore time. If
-                    # the log shows False at restart but phantoms
-                    # still appear active, the bug is downstream
-                    # (GUI display, tick auto-start guard, or an
-                    # unconfirmed override path) — the diagnostic
-                    # narrows the search space.
                     logger.info(
                         "P0g-DIAG | bot=%s saved_phantoms_enabled=%s "
                         "constructed_with_enable_phantoms=%s "
@@ -495,11 +373,8 @@ class StateRestoreMixin:
                         bot._phantoms_enabled,
                     )
                 else:
-                    # Defensive — should be unreachable because the
-                    # mode-parsing step above already skips unknown
-                    # modes via `continue`. Kept as a belt-and-braces
-                    # guard so adding a new BotMode without a branch
-                    # here is logged rather than silently broken.
+                    # Unreachable: the mode parse above already skips an
+                    # unknown mode.
                     logger.error(
                         "Bot %s mode %s (parsed from %r) has no "
                         "construction branch in "
@@ -522,34 +397,15 @@ class StateRestoreMixin:
                 self._ledger_skip(bid, "construction failed")
                 continue
 
-            # Preserve original bot ID
             bot.bot_id = bid
 
-            # Restore stats
             saved_stats = bot_data.get("stats", {})
             for key, val in saved_stats.items():
                 if hasattr(bot.stats, key):
                     setattr(bot.stats, key, val)
 
-            # MEM-245 — Restore scrumming compounding state (main_lots,
-            # fold_tranches, accumulation scalars). Absence is safe
-            # (bot starts fresh as before).
-            # v3.20.4 — symmetric extractor branch restores
-            # positions/chunk/hedge from extractor_state if present.
-            # v3.24.35 (C01 PR-0) — did this bot's persisted state
-            # actually load?
-            #
-            # The two branches below are the ONLY restore failures that
-            # do not `continue`. Control falls through to register(), so
-            # the bot ends up in self._bots holding DEFAULT state — and
-            # because save_state rebuilds "bots" from the registered
-            # set, the next 60s save writes those defaults over the good
-            # persisted record. That is strictly worse than a skip: a
-            # skipped bot is merely absent, this one actively overwrites.
-            #
-            # The old message said "(bot will start fresh)", which reads
-            # as harmless. It is not: the record it would have started
-            # from is destroyed one minute later.
+            # An extractor import failure still registers the bot; only the
+            # scrumming branch skips registration.
             bot._state_import_failed = False
             if mode == BotMode.EXTRACTOR:
                 ext_state = bot_data.get("extractor_state")
@@ -596,30 +452,9 @@ class StateRestoreMixin:
                     except Exception as exc:
                         bot._state_import_failed = True
                         self._ledger_skip(bid, "import_scrumming_state failed")
-                        # v3.24.48 (Phase 1 Step 5) — this used to log
-                        # the hazard and then fall through to register()
-                        # anyway, with DEFAULT state. The message below
-                        # said "the next save would overwrite its
-                        # persisted lots and tranches. Do not let that
-                        # record be replaced" -- and then nothing stopped
-                        # it. Sixty seconds after launch the save timer
-                        # wrote 0 lots and 0 tranches over the good
-                        # record. On the largest queue in the fleet that
-                        # is ~200 tranches plus every lot's cost basis,
-                        # destroyed by one malformed field.
-                        #
-                        # Skipping registration is what protects it. A
-                        # bot absent from self._bots is absent from the
-                        # dict save_state rebuilds, and state_manager's
-                        # carry-forward keys on exactly that absence, so
-                        # the on-disk record survives untouched.
-                        #
-                        # import_scrumming_state is NOT transactional --
-                        # it applies fields sequentially -- so what is
-                        # being protected is a PARTIALLY-applied record,
-                        # not a cleanly zeroed one. That is the reason
-                        # the in-memory object must not be trusted or
-                        # saved from.
+                        # import_scrumming_state is not transactional, so the
+                        # bot is left unregistered and state_manager carries
+                        # the disk record forward.
                         logger.error(
                             "import_scrumming_state FAILED on %s: %s. The "
                             "bot is NOT being registered this launch, so "
@@ -630,9 +465,8 @@ class StateRestoreMixin:
                             bid,
                             exc,
                         )
-                        # The bot vanishing from the fleet must never
-                        # read as a silent deletion, so say so on the
-                        # operator's own surface, not just in a log file.
+                        # The bus banner tells the operator on screen; a log
+                        # line alone would read as a deletion.
                         try:
                             self._bus.emit(
                                 "bot.restore_failed",
@@ -661,25 +495,16 @@ class StateRestoreMixin:
                             )
                         continue
 
-            # Mark as restored — stays IDLE until user starts
             bot.state = BotState.IDLE
             bot._restored = True
-            # v3.16.11 — record whether this bot was running at the time
-            # the saved state was captured. The auto-restart-after-launch
-            # path (start_all with eligible_filter) uses this to decide
-            # which bots to bring back online.
+            # Recorded from the saved state; only the restore log below
+            # reads it.
             bot._was_running = (
                 str(bot_data.get("state_when_saved", "")).lower() == "running"
             )
 
-            # v3.24.35 (C01 PR-0) — register() returns
-            # (granted, refusal_reason) and its result was DISCARDED, so
-            # a refused registration was still appended to `restored`.
-            # That made it a sixth restore exit nobody had enumerated:
-            # the bot is counted as restored, is absent from self._bots,
-            # and is therefore absent from the list save_state rebuilds
-            # "bots" from -- deleted by the next 60s save while the boot
-            # report claimed success.
+            # register() refuses on capital over-allocation; a refused bot
+            # must not be counted as restored.
             _granted, _refusal = self.register(bot)
             if not _granted:
                 logger.error(
@@ -700,19 +525,14 @@ class StateRestoreMixin:
                 " (was RUNNING at save)" if bot._was_running else "",
             )
 
-        # v3.24.35 (C01 PR-0) — restore reached its end.
-        #
-        # PR-1 requires this before any carry-forward decision: if a
-        # restore ABORTED partway, the ledger is incomplete and absence
-        # proves nothing, so a save must refuse rather than guess. The
-        # flag distinguishes "no bots failed" from "we never finished
-        # looking", which an empty ledger alone cannot.
+        # An aborted restore leaves the ledger incomplete, so absence alone
+        # cannot prove a bot loaded.
         self._restore_completed = True
         if self._restore_ledger:
             logger.error(
                 "C01: restore completed with %d bot(s) NOT loaded: %s. "
-                "Their records are still on disk and will be DELETED by "
-                "the next save (PR-0 is log-only).",
+                "Their records are still on disk and the next save carries "
+                "them forward untouched. Do not recreate these bots.",
                 len(self._restore_ledger),
                 ", ".join(
                     f"{b} ({r})" for b, r in list(self._restore_ledger.items())[:8]

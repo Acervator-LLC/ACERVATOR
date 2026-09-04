@@ -21,6 +21,8 @@ else:
 
 
 class CircuitBreakerMixin(_Host):
+    state: BotState
+
     def _check_circuit_breakers(self, candles) -> bool:
         """Evaluate the most recent candle for circuit-breaker triggers.
 
