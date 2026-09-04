@@ -30,6 +30,7 @@ import time
 from typing import Any, Optional
 
 from .. import design_system as ds
+from ..color_alpha import css_colours
 
 METHOD = "alerts_tab.state"
 
@@ -948,14 +949,22 @@ def view_model(params: dict) -> dict:
     Reads ``reset``, ``manager``, ``fields`` and ``action`` from the
     request parameters. The tab keeps what the operator typed between
     calls, so the model persists; ``reset`` is what a fresh open sends.
+
+    ``build_view_model`` writes every style sheet the way Qt reads it,
+    with the alpha byte, because a widget paints from that same dict.
+    The payload leaves here under `src.gui.color_alpha.css_colours`, so
+    the renderer receives the share a browser reads and no colour is
+    converted twice.
     """
     global TAB_MODEL
     if params.get("reset", False):
         TAB_MODEL = AlertsTabModel(build_manager(params.get("manager")))
     elif "manager" in params:
         TAB_MODEL.manager = build_manager(params.get("manager"))
-    return build_view_model(
-        TAB_MODEL,
-        params.get("fields"),
-        params.get("action", ""),
+    return css_colours(
+        build_view_model(
+            TAB_MODEL,
+            params.get("fields"),
+            params.get("action", ""),
+        )
     )
