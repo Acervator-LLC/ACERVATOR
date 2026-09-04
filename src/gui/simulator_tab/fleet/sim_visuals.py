@@ -45,6 +45,15 @@ except ImportError:  # pragma: no cover - import guard
     _HAS_QT = False
 
 
+def _band_span(low: float, high: float) -> float:
+    """Return the divisor for a band running low to high.
+
+    A fixed floor would outrank the real span at BONK scale; the
+    substitute applies only when high equals low.
+    """
+    return (high - low) or 1.0
+
+
 def _show_expanded(widget, title: str) -> None:
     """Open ``widget`` in a modeless dialog sized to the display.
 
@@ -831,7 +840,7 @@ if _HAS_QT:
                     plot_y = band_y + 3
                     _all = prices + vwaps
                     mn, mx = min(_all), max(_all)
-                    span = max(mx - mn, 1e-9)
+                    span = _band_span(mn, mx)
                     n = len(prices)
 
                     def _proj(vals, height, top, left, width, count):
@@ -867,7 +876,7 @@ if _HAS_QT:
                         for idx, ok in marks:
                             if idx < 0 or idx >= n:
                                 continue
-                            mx = plot_x + int(idx * step)
+                            mark_x = plot_x + int(idx * step)
                             my = (
                                 plot_y
                                 + plot_h
@@ -876,7 +885,7 @@ if _HAS_QT:
                             col = QColor("#00ff66" if ok else "#ff3355")
                             p.setPen(QPen(col, 1))
                             p.setBrush(QBrush(col))
-                            p.drawEllipse(QRectF(mx - 1.5, my - 1.5, 3.0, 3.0))
+                            p.drawEllipse(QRectF(mark_x - 1.5, my - 1.5, 3.0, 3.0))
             finally:
                 p.end()
 
