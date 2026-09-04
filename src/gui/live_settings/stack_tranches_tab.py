@@ -25,32 +25,27 @@ logger = logging.getLogger("acervator.gui")
 
 
 class StackTranchesTabMixin:
-    """The stack ladder and its clear controls."""
+    """The Stack Tranches tab of ``BotLiveSettingsDialog``.
 
-    # Supplied by BotLiveSettingsDialog at runtime; declared so a
-    # type checker can resolve them. Annotations only: no attribute
-    # is created and the runtime base stays `object`.
+    ``_create_stack_tranches_tab`` builds the ladder,
+    ``_on_clear_stack_tranches`` discards the standing records and
+    ``_on_clear_stack_lifetime_counters`` zeroes the two counters.
+    """
+
+    # BotLiveSettingsDialog supplies these; the annotations create no attribute.
     _bot: Any
     _configure_form: Callable[..., Any]
     _format_age: Callable[..., Any]
     _save_fleet_state_now: Callable[..., Any]
     _wrap_scrollable: Callable[..., Any]
 
-    # --- issue #133 unit 7: the Stack side gets the Fold side's
-    # controls ---------------------------------------------------
-    #
-    # The Fold Tranches tab carries three clear buttons, a rebuild
-    # that runs inside the click and a save that reaches disk. The
-    # Stack Tranches tab carried none of the three, so one side of
-    # the ladder could be emptied and reset by the operator and the
-    # other could not. These four methods are that mirror.
     STACK_TRANCHES_TAB_LABEL = "Stack Tranches"
 
     def _install_stack_tranches_tab(self, tabs: QTabWidget) -> QWidget:
-        """Build the Stack Tranches tab, add it, and remember it.
+        """Build the Stack Tranches tab and add it to ``tabs``.
 
-        ONE INSTALL SITE, so the handle a later refresh swaps is
-        never a second bookkeeping step somebody can forget.
+        ``_refresh_stack_tranches_tab`` swaps the page kept in
+        ``_stack_tab_page``.
         """
         page = self._wrap_scrollable(self._create_stack_tranches_tab())
         tabs.addTab(page, self.STACK_TRANCHES_TAB_LABEL)
@@ -58,20 +53,10 @@ class StackTranchesTabMixin:
         return page
 
     def _refresh_stack_tranches_tab(self) -> str:
-        """Rebuild the Stack Tranches tab in place. Return a status.
+        """Rebuild the Stack Tranches tab at the index ``indexOf`` reports.
 
-        Returns "refreshed", or a sentence naming why it did not.
-        THE STRING IS LOAD-BEARING: the message the operator reads
-        after a clear quotes it, so a rebuild that could not run
-        says so instead of the panel quietly lying twice.
-
-        THE TAB IS FOUND BY WIDGET IDENTITY, NOT BY A STORED INDEX,
-        and `removeTab` + `insertTab` land it at the same index, so
-        no other tab renumbers. `removeTab` reparents the old page
-        rather than deleting it, so the page is deleted here; without
-        that every clear leaks a whole tab's widget tree for the life
-        of the dialog. All three points are `_refresh_fold_tranches_
-        tab`'s, and this is that method pointed at the other ledger.
+        Returns ``"refreshed"``, or a sentence naming why it did not;
+        ``removeTab`` reparents the old page and ``deleteLater`` drops it.
         """
         tabs = getattr(self, "_tabs", None)
         page = getattr(self, "_stack_tab_page", None)
@@ -79,7 +64,7 @@ class StackTranchesTabMixin:
             return "not refreshed: this dialog has no Stack " "Tranches tab installed"
         try:
             index = tabs.indexOf(page)
-        except Exception as exc:  # R28-OK: display-only rebuild
+        except Exception as exc:
             logger.warning(
                 "Stack Tranches refresh could not locate its tab (%s: %s)",
                 type(exc).__name__,
@@ -97,7 +82,7 @@ class StackTranchesTabMixin:
         was_current = tabs.currentIndex() == index
         try:
             fresh = self._wrap_scrollable(self._create_stack_tranches_tab())
-        except Exception as exc:  # R28-OK: display-only rebuild
+        except Exception as exc:
             logger.exception("Stack Tranches refresh raised while rebuilding")
             return (
                 f"not refreshed: rebuilding the tab raised "
@@ -113,20 +98,10 @@ class StackTranchesTabMixin:
         return "refreshed"
 
     def _settle_after_stack_clear(self, what: str) -> list[str]:
-        """Save, rebuild the Stack tab, report the lines.
+        """Save the fleet, rebuild the Stack tab, and return the two lines.
 
-        THE ORDER IS SAVE, THEN REFRESH, for `_settle_after_clear`'s
-        reason: the durable write is the one a crash can take away,
-        so a crash between the two costs a stale panel and not a
-        restored tranche.
-
-        IT EMITS NO PIN, AND THAT IS DELIBERATE.
-        `gui.04.002.postcondition.clear_settled` carries fold_rows,
-        open_tranches_label and two fold button states; firing it
-        from here would put stack numbers under a fold pin's name and
-        make its record mean two things. The emitter network is not
-        this unit's to extend, so this path stays unpinned and says
-        so.
+        ``_save_fleet_state_now`` runs before
+        ``_refresh_stack_tranches_tab``, and this path emits no pin.
         """
         saved, why = self._save_fleet_state_now(what)
         refresh = self._refresh_stack_tranches_tab()
@@ -153,14 +128,10 @@ class StackTranchesTabMixin:
         return lines
 
     def _on_clear_stack_tranches(self: BotLiveSettingsDialog) -> None:
-        """Discard this bot's standing Stack tranches, after
-        confirming.
+        """Confirm, then call ``bot.clear_stack_tranches``.
 
-        THE DIALOG STATES THE ONE REFUSAL. A Visible-mode tranche
-        holding a resting exchange order is KEPT, because delisting a
-        record that owns a live order would strand it. The operator
-        sees that count before deciding, so a clear that leaves rows
-        on screen is expected rather than a surprise.
+        A pending tranche carrying an ``order_id`` is kept, and the
+        confirm box states that count.
         """
         from PySide6.QtWidgets import QMessageBox
 
@@ -180,7 +151,7 @@ class StackTranchesTabMixin:
                 "discard."
                 + (
                     f"\n\n{len(_live)} tranche(s) hold resting "
-                    f"exchange orders and are never delisted."
+                    f"exchange orders and are never removed."
                     if _live
                     else ""
                 ),
@@ -208,7 +179,7 @@ class StackTranchesTabMixin:
             body += [
                 "",
                 f"NOTE - {len(_live)} tranche(s) hold resting "
-                f"exchange orders and are KEPT. Delisting a record "
+                f"exchange orders and are KEPT. Removing a record "
                 f"that owns a live order would leave that order on "
                 f"the book with nothing tracking it.",
             ]
@@ -224,7 +195,7 @@ class StackTranchesTabMixin:
 
         try:
             report = bot.clear_stack_tranches(reason="operator (GUI)")
-        except Exception as exc:  # noqa: BLE001 - operator surface
+        except Exception as exc:
             logger.exception("clear_stack_tranches failed: %s", exc)
             QMessageBox.critical(
                 self,
@@ -254,14 +225,10 @@ class StackTranchesTabMixin:
         )
 
     def _on_clear_stack_lifetime_counters(self: BotLiveSettingsDialog) -> None:
-        """Zero this bot's two stack lifetime counters, after
-        confirming.
+        """Confirm, then call ``bot.clear_stack_lifetime_counters``.
 
-        TWO COUNTERS, NOT FOUR. The Stack ledger has no closed count
-        and no malformed count: filling a stack tranche sets its
-        status and leaves the record listed, so `opened - discarded`
-        against the standing ledger is the whole reconciliation this
-        clear breaks until the next stack opens.
+        ``_stack_created`` and ``_stack_discarded`` are the only two
+        counters the Stack ledger keeps.
         """
         from PySide6.QtWidgets import QMessageBox
 
@@ -321,7 +288,7 @@ class StackTranchesTabMixin:
 
         try:
             report = bot.clear_stack_lifetime_counters(reason="operator (GUI)")
-        except Exception as exc:  # noqa: BLE001 - operator surface
+        except Exception as exc:
             logger.exception("clear_stack_lifetime_counters failed: %s", exc)
             QMessageBox.critical(
                 self,
@@ -351,19 +318,9 @@ class StackTranchesTabMixin:
             ),
         )
 
-    # Tab 3.5: Stack Tranches (v3.23.28, scrumming + stack_mode only)
-    # Mirrors Fold Tranches styling. Reads `_bot._stack_tranches` +
-    # `_bot._stack_created`. Surfaces per-tranche state (target
-    # price, size, mode Visible/Invisible, status, fill price, age)
-    # so operator can see Stack lifecycle without needing a log dump.
     def _create_stack_tranches_tab(self) -> QWidget:
         import time as _time
 
-        # Item 9 (2026-08-13) — the same admission rule the despawn
-        # sweep and the Settings spinbox use, imported here the way
-        # this module imports every other trading symbol: locally,
-        # so building a tab never drags the trading package in at
-        # module import time.
         from ...trading.bot_container import (
             as_finite_float as _as_finite_float,
         )
@@ -375,25 +332,13 @@ class StackTranchesTabMixin:
         tranches = list(getattr(self._bot, "_stack_tranches", []) or [])
         now_ts = _time.time()
         created_lifetime = int(getattr(self._bot, "_stack_created", 0) or 0)
-        # HOISTED ABOVE THE SUMMARY ROWS because the clear
-        # buttons below read it too. Read through
-        # `as_finite_float` rather than the Fold panel's bare
-        # `int(... or 0)`: `int(float("nan"))` raises
-        # ValueError, and this runs while the tab is being
-        # built, so the operator would get a traceback
-        # instead of a panel.
         discarded_lifetime = int(
             _as_finite_float(getattr(self._bot, "_stack_discarded", 0)) or 0.0
         )
-        # issue #133 unit 7 -- the epoch second an operator
-        # cleared the two counters, 0.0 when none has. It
-        # tells a bot that never opened a stack apart from
-        # one whose record was reset, which a bare 0 cannot.
         reset_ts = (
             _as_finite_float(getattr(self._bot, "_stack_counters_reset_ts", 0.0)) or 0.0
         )
 
-        # --- Summary ---
         summary = QGroupBox("Stack-Tranche Cycle Health")
         sf = QFormLayout(summary)
         self._configure_form(sf)
@@ -402,26 +347,8 @@ class StackTranchesTabMixin:
         filled = [t for t in tranches if t.get("status") == "filled"]
         cancelled = [t for t in tranches if t.get("status") == "cancelled"]
 
-        # Item 10 (2026-08-14) — the same admission rule
-        # the two age rows already use, applied to the money keys
-        # on the same dict. `size` is read here and again on the
-        # detail row below, so both must refuse the same shapes
-        # or the panel contradicts itself.
-        #
-        # A REFUSED MEMBER IS COUNTED, NOT DROPPED. Silently
-        # skipping an unreadable entry reports a total lower
-        # than the truth with nothing on the panel saying so.
-        # That is the shape of the claim-total defect of
-        # 2026-08-10, which reported $2,000 against a true
-        # $3,000 and logged nothing. The count rides beside the
-        # number instead.
-        #
-        # `or 0` IS GONE. It mapped None, "" and False onto the
-        # int 0 before any guard could see them, so a missing
-        # size printed a confident 0.000000 into a base-unit
-        # total. `t.get("size", 0)` still defaults an ABSENT key
-        # to 0, which is what it rendered before and still
-        # renders.
+        # A size `as_finite_float` refuses is counted in
+        # `pending_size_unreadable`, never dropped.
         pending_size_total = 0.0
         pending_size_unreadable = 0
         for _pending in pending:
@@ -452,19 +379,6 @@ class StackTranchesTabMixin:
         )
         sf.addRow("Pending size (unfilled):", pending_lbl)
 
-        # Oldest pending age
-        # EXACT type AND finite, mirroring the Fold panel's own
-        # summary row. `isinstance` admits bool, so a stored
-        # `True` was arithmetic'd as 1.0 — dating the tranche to
-        # the epoch and reporting an age near 57 years on the
-        # row the operator reads to judge whether Stack Mode has
-        # stalled. `inf` was worse than wrong: it passed the
-        # `> 0` test, and `int(-inf)` inside `_format_age` then
-        # raised OverflowError with no `try` between here and
-        # the click, so the dialog would not open at all.
-        # `as_finite_float` bounds huge ints with an integer
-        # comparison rather than `math.isfinite`, which raises
-        # on the very input it would be added to reject.
         ages_sec = []
         for t in pending:
             ots = _as_finite_float(t.get("opened_ts"))
@@ -491,42 +405,18 @@ class StackTranchesTabMixin:
                 ratio_lbl.setStyleSheet(f"color: {ds.SUCCESS};")
         sf.addRow("Fill ratio (filled/opened):", ratio_lbl)
 
-        # Item 9 (2026-08-13) — the mirror of the Fold panel's own
-        # discarded row. `filled` counts only STANDING filled
-        # tranches, `created_lifetime` counts every one ever opened,
-        # and the despawn sweep removes records from the first while
-        # leaving the second alone. Without this row the ratio above
-        # simply falls after every sweep — into the red under 30% —
-        # with nothing on the panel saying where the tranches went.
-        # Shown only once non-zero, exactly as the Fold panel does,
-        # so a bot that has never been swept sees no extra row.
-        #
-        # Read through `as_finite_float` rather than the Fold
-        # panel's bare `int(... or 0)`. Same reason as the state
-        # export: `int(float("nan"))` raises ValueError, and this
-        # runs while the Stack tab is being built, so the operator
-        # would get a traceback instead of a panel. The Fold panel's
-        # line is unchanged — putting both on one rule is a separate
-        # unit.
+        # `discarded_lifetime` accounts for a fill ratio that a
+        # despawn sweep pushed down.
         if discarded_lifetime:
             sf.addRow(
-                "Lifetime tranches discarded (delisted, not filled):",
+                "Lifetime tranches discarded (removed, not filled):",
                 QLabel(str(discarded_lifetime)),
             )
 
         layout.addWidget(summary)
 
-        # --- issue #133 unit 7: the Fold tab's clear controls,
-        # mirrored ----------------------------------------------
-        # Same two verbs the Fold tab carries and the same order:
-        # the INVENTORY clear first, the RECORD clear second. A bot
-        # can want its ledger emptied with its history intact, or
-        # the reverse, so they stay two buttons.
-        #
-        # BUILT BEFORE THE EMPTY-LEDGER RETURN BELOW, so a bot with
-        # counters and no standing tranche can still reset its
-        # counters. The Fold tab's buttons sit in the same place for
-        # the same reason.
+        # `_droppable` and both buttons are built above the
+        # empty-ledger return below.
         _droppable = len(
             [
                 _t
@@ -544,7 +434,7 @@ class StackTranchesTabMixin:
             "Discard this bot's standing stack tranches.\n\n"
             "Places NO order and cancels NO order. Holdings, cost "
             "basis and target balance are untouched. A tranche "
-            "holding a resting exchange order is KEPT - delisting "
+            "holding a resting exchange order is KEPT - removing "
             "it would leave that order on the book with nothing "
             "tracking it."
         )
@@ -587,7 +477,6 @@ class StackTranchesTabMixin:
         stack_btn_row.addStretch()
         layout.addLayout(stack_btn_row)
 
-        # --- Detail ---
         if not tranches:
             empty_lbl = QLabel(
                 "No stack tranches yet. When Stack Mode is enabled "
@@ -602,7 +491,6 @@ class StackTranchesTabMixin:
         detail_group = QGroupBox(f"Tranches ({len(tranches)})")
         dg = QVBoxLayout(detail_group)
 
-        # Header row
         header = QLabel(
             "  #  |  Target Price  |    Size      |  Mode     |  "
             "Status     |  Fill Price   |  Age"
@@ -613,37 +501,8 @@ class StackTranchesTabMixin:
         )
         dg.addWidget(header)
 
-        # Item 10 (2026-08-14) — every numeric key on
-        # the row, on the one rule. NONE of these had a guard,
-        # and NONE of them sits inside a `try`: the path from
-        # here is `_create_stack_tranches_tab` -> `__init__` ->
-        # `MainWindow._on_bot_clicked`, with no handler at any
-        # step, so a raise means Bot Settings does not open for
-        # that bot at all.
-        #
-        # Measured on live before this change: `index` of `inf`
-        # raised OverflowError, of `nan` ValueError, and of None
-        # or a string TypeError and ValueError; `price`, `size`
-        # and `fill_price` of 10**400 raised OverflowError from
-        # `float()`. `nan` and `inf` did not raise, which was
-        # worse: they printed `$nan` and `$inf` into a money
-        # column. `as_finite_float` bounds huge ints with an
-        # integer comparison, because `math.isfinite(10**400)`
-        # raises the very error it would be added to prevent.
-        #
-        # WHY A REFUSAL IS AN EM DASH AND NEVER A ZERO. These
-        # columns carry money and size. A refused value that
-        # renders 0.00000000 is a confident wrong number, which
-        # is a new defect rather than a fix. The em dash is what
-        # this table already prints for an absent fill price and
-        # an unusable timestamp, so a refusal lands on a path
-        # the panel already had. Each is padded to the minimum
-        # width its valid rendering occupies, so the column
-        # stays aligned.
-        #
-        # `index` is an ordinal, so it takes the em dash too,
-        # and an accepted value goes through `int()` exactly as
-        # the discarded-count row above does.
+        # A value `as_finite_float` refuses renders `no_value`,
+        # padded to the width its valid rendering occupies.
         no_value = "—"
         for t in tranches:
             _idx = _as_finite_float(t.get("index", 0))
@@ -654,23 +513,10 @@ class StackTranchesTabMixin:
             size_str = f"{_size:>10.6f}" if _size is not None else f"{no_value:>10}"
             status = str(t.get("status", "unknown"))
             mode = "VISIBLE" if t.get("visible") else "INVISIBLE"
-            # The truthiness gate is KEPT. A stored 0.0 fill
-            # price printed the em dash before this change and
-            # must keep printing it; admitting it here would
-            # change a valid rendering, which this unit may not
-            # do.
+            # A stored 0.0 fill price is falsy here and renders `no_value`.
             fill = t.get("fill_price")
             _fill = _as_finite_float(fill) if fill else None
             fill_str = f"${_fill:.8f}" if _fill is not None else no_value
-            # The same rule as the summary row above, which
-            # this column must agree with: both render the age
-            # of the same tranche from the same key. The bare
-            # `float(ots)` here was the wider hole of the two —
-            # it also admitted Decimal, Fraction, a numeric
-            # string and any object with `__float__` — so
-            # closing the summary alone would have left this row
-            # printing an age directly beneath a summary
-            # reporting no timestamp for that same tranche.
             ots = _as_finite_float(t.get("opened_ts"))
             age_str = (
                 self._format_age(now_ts - ots) if ots is not None and ots > 0 else "—"

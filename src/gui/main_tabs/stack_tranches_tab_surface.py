@@ -1,28 +1,13 @@
-"""stack_tranches_tab_surface.py -- the Stack Tranches tab, without Qt.
+"""The Stack Tranches tab, without Qt.
 
-Describes the tab inside the live bot settings dialog that reports the
-stack ladder. The tab holds a summary box of seven or eight rows, then
-two clear buttons, then either an empty-state line or a detail box with
-a header line and one line per tranche.
-
-``StackTranchesTabModel`` holds the tab's state. ``build`` reads the bot
-and fills the summary rows, the two buttons and the detail lines.
-``refresh`` rebuilds the tab in place and reports why it could not.
-``settle_after_clear`` saves, refreshes and reports the two lines the
-operator reads. ``clear_tranches`` and ``clear_lifetime_counters`` run
-the two clear paths and record every box they raise.
-
-``BotConfig``, ``BotSource``, ``TabHost`` and ``StateSaver`` are plain
-stand-ins for the bot, its config, the dialog's tab strip and the fleet
-save, so the tab can be driven over the bridge from values alone.
-
-``src.core.desktop_bridge`` registers ``view_model`` as the handler for
-the ``stack_tranches_tab.state`` method, which is how the Electron
-renderer reaches it. Every value below is written out here rather than
-read from ``src.gui.live_settings.stack_tranches_tab``, so a value
-changed on one side alone is reported. Nothing here imports Qt, and
-nothing here reads the clock: ``build`` takes the epoch second it ages
-tranches against.
+``StackTranchesTabModel.build`` fills the summary rows, the two clear
+buttons and the detail lines, while ``refresh``,
+``settle_after_clear``, ``clear_tranches`` and
+``clear_lifetime_counters`` run the paths the two buttons run.
+``BotConfig``, ``BotSource``, ``TabHost`` and ``StateSaver`` stand in
+for the bot, its config, the dialog's tab strip and the fleet save.
+``src.core.desktop_bridge`` registers ``view_model`` under ``METHOD``,
+and ``build`` takes the epoch second it ages tranches against.
 """
 
 from __future__ import annotations
@@ -72,7 +57,7 @@ PENDING_SIZE_ROW_LABEL = "Pending size (unfilled):"
 OLDEST_AGE_ROW_LABEL = "Oldest pending age:"
 OPENED_ROW_LABEL = "Lifetime tranches opened:"
 FILL_RATIO_ROW_LABEL = "Fill ratio (filled/opened):"
-DISCARDED_ROW_LABEL = "Lifetime tranches discarded (delisted, not filled):"
+DISCARDED_ROW_LABEL = "Lifetime tranches discarded (removed, not filled):"
 
 COUNT_FORMAT = "{count}"
 PENDING_SIZE_FORMAT = "{size_total:,.6f} base units"
@@ -104,7 +89,7 @@ CLEAR_BUTTON_TOOLTIP = (
     "Discard this bot's standing stack tranches.\n\n"
     "Places NO order and cancels NO order. Holdings, cost "
     "basis and target balance are untouched. A tranche "
-    "holding a resting exchange order is KEPT - delisting "
+    "holding a resting exchange order is KEPT - removing "
     "it would leave that order on the book with nothing "
     "tracking it."
 )
@@ -196,7 +181,7 @@ NOT_SAVED_LINE_FORMAT = (
 CLEAR_TRANCHES_TITLE = "Clear stack tranches"
 NOTHING_TO_DISCARD_TEXT = "This bot has no stack tranche this clear may " "discard."
 KEPT_LIVE_NOTE_FORMAT = (
-    "\n\n{live} tranche(s) hold resting " "exchange orders and are never delisted."
+    "\n\n{live} tranche(s) hold resting " "exchange orders and are never removed."
 )
 NO_CLEAR_SUPPORT_TEXT = "This bot type does not support clearing stack " "tranches."
 CONFIRM_DISCARD_FORMAT = "Discard {droppable} stack tranche(s) for {symbol}?"
@@ -208,7 +193,7 @@ CONFIRM_NO_ORDER_TEXT = (
 CONFIRM_UNDONE_TEXT = "This cannot be undone."
 CONFIRM_LIVE_NOTE_FORMAT = (
     "NOTE - {live} tranche(s) hold resting "
-    "exchange orders and are KEPT. Delisting a record "
+    "exchange orders and are KEPT. Removing a record "
     "that owns a live order would leave that order on "
     "the book with nothing tracking it."
 )
@@ -344,9 +329,8 @@ OUTCOMES = (
 def as_finite_float(value) -> Optional[float]:
     """`value` as a float when it is EXACTLY int or float AND finite.
 
-    The one admission rule the tab reads every stored number through,
-    imported from the trading package inside the call so that loading
-    this module drags no trading code in.
+    Delegates to ``src.trading.bot_container.as_finite_float``, imported
+    inside the call.
     """
     from ...trading.bot_container import as_finite_float as admitted
 
@@ -356,8 +340,8 @@ def as_finite_float(value) -> Optional[float]:
 def format_age(seconds: float) -> str:
     """`seconds` as the age string the dialog prints beside a tranche.
 
-    The dialog owns this helper and the tab calls it; the surface
-    carries it so a payload can be built from values alone.
+    ``AGE_SECONDS_MINUTE``, ``AGE_SECONDS_HOUR`` and ``AGE_SECONDS_DAY``
+    bound the four bands ``format_age`` returns.
     """
     if seconds < AGE_SECONDS_MINUTE:
         return AGE_SECONDS_FORMAT.format(whole=int(seconds))
@@ -464,48 +448,48 @@ class TabHost:
         self.builds = 0
 
     def index_of(self) -> int:
-        """Where the tab sits, or a negative number when it is gone."""
+        """Return ``index``, or raise whatever ``index_raises`` holds."""
         if self.index_raises is not None:
             raise self.index_raises
         return self.index
 
     def tab_text(self, index: int) -> str:
-        """The label the tab strip shows at `index`."""
+        """Return ``label``, whatever ``index`` names."""
         return self.label
 
     def current_index(self) -> int:
-        """The tab the operator is looking at."""
+        """Return ``current``, the index of the tab at the front."""
         return self.current
 
     def rebuild(self):
-        """Build a fresh page for the tab, or raise as the build would."""
+        """Count a build in ``builds``, or raise whatever ``rebuild_raises`` holds."""
         if self.rebuild_raises is not None:
             raise self.rebuild_raises
         self.builds += 1
         return "page %d" % self.builds
 
     def remove_tab(self, index: int) -> None:
-        """Take the tab out of the strip at `index`."""
+        """Record ``index`` in ``removed``."""
         self.removed.append(index)
 
     def insert_tab(self, index: int, page, label: str) -> None:
-        """Put `page` back at `index` under `label`."""
+        """Record ``index``, ``page`` and ``label`` in ``inserted``."""
         self.inserted.append((index, page, label))
 
     def set_current_index(self, index: int) -> None:
-        """Bring the tab at `index` back to the front."""
+        """Record ``index`` in ``made_current``."""
         self.made_current.append(index)
 
     def delete_page(self, page) -> None:
-        """Drop the page the strip reparented rather than deleted."""
+        """Record the dropped page in ``deleted``; ``refresh`` passes its index."""
         self.deleted.append(page)
 
 
 class TabState:
     """Everything one build of the tab puts on the screen.
 
-    A fresh one is what a rebuilt tab starts from, so the defaults live
-    here once and no build inherits a value from the build before it.
+    ``StackTranchesTabModel.build`` replaces the whole ``TabState``,
+    never a field of the one before it.
     """
 
     def __init__(self):
@@ -541,9 +525,8 @@ class TabState:
 class StackTranchesTabModel:
     """The Stack Tranches tab, as values.
 
-    Stands in for ``StackTranchesTabMixin``. ``build`` fills the rows
-    the operator reads; the two clear methods run the paths the two
-    buttons run.
+    ``build`` fills the rows the operator reads, and ``clear_tranches``
+    and ``clear_lifetime_counters`` run the two button paths.
     """
 
     def __init__(self, bot=None, saver=None, host=None):
@@ -575,9 +558,8 @@ class StackTranchesTabModel:
     def build(self, now_ts: float):
         """Fill every row, button and line the tab shows.
 
-        `now_ts` is the epoch second every pending age is measured
-        against. It is a parameter and never a clock reading, so one
-        input always produces one payload.
+        ``now_ts`` is the epoch second every pending age is measured
+        against, and ``build`` reads no clock.
         """
         self.state = TabState()
         self._record(STEP_READ_BOT)
@@ -977,7 +959,7 @@ def payload_labels() -> dict:
 
 
 def payload_texts() -> dict:
-    """Every fixed string the tab prints."""
+    """The fixed strings ``build_view_model`` carries under ``texts``."""
     return {
         "no_value": NO_VALUE,
         "no_timestamp": NO_TIMESTAMP_TEXT,
@@ -1244,9 +1226,9 @@ def build_view_model(model: StackTranchesTabModel) -> dict:
 def view_model(params: dict) -> dict:
     """Answer the bridge with the tab's state.
 
-    ``reset`` starts a fresh tab. ``bot`` seeds the bot readings and
-    builds against ``now_ts``. ``clear`` and ``clear_counters`` run the
-    two button paths with the answer ``answer`` names.
+    ``reset`` starts a fresh ``PANE_MODEL``, ``bot`` seeds the readings
+    and builds against ``now_ts``, and ``clear`` and ``clear_counters``
+    run the two button paths with ``answer``.
     """
     params = params or {}
     global PANE_MODEL

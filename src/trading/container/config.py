@@ -77,7 +77,7 @@ class BotConfig:
     scrum_fold_pct: int = 100  # 1-100: % of scrum proceeds queued for fold
 
     # Read via despawn_threshold_days() below, never raw; 0 = off.
-    tranche_despawn_days: int = 0  # 0 = off; else delist at >= N days
+    tranche_despawn_days: int = 0  # 0 = off; else remove at >= N days
 
     # Caps per-cycle target_balance growth as a % of the cycle's anchor; 1-100.
     max_target_growth_pct: float = 1.0
