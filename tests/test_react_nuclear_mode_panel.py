@@ -730,8 +730,14 @@ def test_a_scalar_where_a_cell_list_belongs_draws_only_the_wide_row(js: JsRuntim
     assert found["cells"] == 1
 
 
-MARKUP_TEXT = '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width="500">'
-IMAGE_WIDTH_PX = int(re.search(r'width="(\d+)"', MARKUP_TEXT).group(1))
+#: Two tags of one length whose declared widths are digit permutations. A widget
+#: that prints them draws the same characters either way, whatever the host's
+#: fonts; only one that reads them takes the width each asks for.
+IMAGE_WIDTH_PX = 129
+WIDE_IMAGE_WIDTH_PX = 921
+GIF_SOURCE = "data:image/gif;base64,R0lGODlhAQABAAAAACw="
+MARKUP_TEXT = '<img src="%s" width="%d">' % (GIF_SOURCE, IMAGE_WIDTH_PX)
+WIDE_MARKUP_TEXT = '<img src="%s" width="%d">' % (GIF_SOURCE, WIDE_IMAGE_WIDTH_PX)
 
 
 def widget_width(kind: str, wording: str) -> int:
@@ -744,28 +750,43 @@ def widget_width(kind: str, wording: str) -> int:
 
 
 def test_a_qlabel_draws_the_image_the_tag_names_at_the_width_it_asks_for(qapp):
-    """The QLabel takes the tag's own width, so its caller text is markup."""
+    """The QLabel takes each tag's own width, so its caller text is markup."""
     assert qapp is not None
     assert widget_width("label", MARKUP_TEXT) == IMAGE_WIDTH_PX
+    assert widget_width("label", WIDE_MARKUP_TEXT) == WIDE_IMAGE_WIDTH_PX
 
 
-def test_the_same_qlabel_draws_characters_when_the_format_is_plain(qapp):
+def plain_label_width(wording: str) -> int:
+    """The width a QLabel gives `wording` when told to print it, not read it."""
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QLabel
 
-    assert qapp is not None
-    made = QLabel(MARKUP_TEXT)
+    made = QLabel(wording)
     made.setTextFormat(Qt.TextFormat.PlainText)
-    drawn = made.sizeHint().width()
+    width = made.sizeHint().width()
     made.deleteLater()
-    assert drawn < IMAGE_WIDTH_PX, f"the plain label drew {drawn}"
+    return width
+
+
+def test_the_same_qlabel_draws_characters_when_the_format_is_plain(qapp):
+    """Under PlainText the label prints the tag, so the width it declares moves
+    the label not at all."""
+    assert qapp is not None
+    drawn = plain_label_width(MARKUP_TEXT)
+    assert drawn == plain_label_width(
+        WIDE_MARKUP_TEXT
+    ), f"the plain label took the declared width: {drawn}"
+    assert drawn > IMAGE_WIDTH_PX, f"the plain label drew too little: {drawn}"
 
 
 @pytest.mark.parametrize("kind", ["button", "check"])
 def test_a_shipped_button_or_tick_box_never_draws_the_image(kind: str, qapp):
     assert qapp is not None
     drawn = widget_width(kind, MARKUP_TEXT)
-    assert drawn < IMAGE_WIDTH_PX, f"{kind} drew {drawn}"
+    assert drawn == widget_width(
+        kind, WIDE_MARKUP_TEXT
+    ), f"{kind} took the declared width: {drawn}"
+    assert drawn > IMAGE_WIDTH_PX, f"{kind} drew too little: {drawn}"
 
 
 class Browser:

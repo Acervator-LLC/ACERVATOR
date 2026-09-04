@@ -1214,6 +1214,14 @@ def a_spin(text: str) -> Any:
     return widget
 
 
+def as_plain_text(widget: Any) -> Any:
+    """The same widget told to print its text rather than read it as markup."""
+    from PySide6.QtCore import Qt
+
+    widget.setTextFormat(Qt.TextFormat.PlainText)
+    return widget
+
+
 SCREEN_WIDGETS = {
     "QCheckBox": a_check,
     "QGroupBox": a_group,
@@ -1237,10 +1245,13 @@ def test_no_plain_widget_this_tab_uses_reads_its_caller_text_as_markup(qapp, kin
 
 @pytest.mark.parametrize("kind", sorted(RICH_TEXT_WIDGETS))
 def test_the_one_widget_this_tab_uses_that_does_read_markup_is_named(qapp, kind: str):
-    """QLabel paints MARKUP_PROBE exactly as PLAIN_PROBE, and it carries bot state."""
+    """QLabel swallows the tags MARKUP_PROBE carries, so the same string forced to
+    PlainText -- which prints them -- paints differently. It carries bot state."""
     assert qapp is not None
     build_widget = RICH_TEXT_WIDGETS[kind]
-    assert painted(build_widget(MARKUP_PROBE)) == painted(build_widget(PLAIN_PROBE))
+    assert painted(build_widget(MARKUP_PROBE)) != painted(
+        as_plain_text(build_widget(MARKUP_PROBE))
+    ), f"{kind} painted the tags the same whether it read them or printed them"
 
 
 @pytest.mark.parametrize("kind", sorted(SCREEN_WIDGETS))
