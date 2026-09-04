@@ -1017,16 +1017,26 @@ def _tab_dom(tab) -> dict:
     return json.loads(_eval_in(tab._table._web, _DOM_DUMP_JS))
 
 
-def test_the_history_tab_holds_no_qtablewidget() -> None:
-    """The Qt table is gone and the web table stands in its place.
+def test_the_react_variant_gives_the_history_tab_the_web_table() -> None:
+    """The React build resolves History to the web table, not a Qt table."""
+    from PySide6.QtWidgets import QTableWidget
 
-    Scanned as CODE. A class named in a comment is not a table, and the
-    module explains its own import fallback in prose.
-    """
-    code = _code_of(REPO / "src" / "gui" / "history_tab.py")
-    for gone in ("QTableWidget", "QTableWidgetItem", "setRowCount", "setCellWidget"):
-        assert gone not in code, f"{gone} survives in the History tab"
-    assert "HistoryWebTable" in code
+    from src._variant import QT, REACT
+    from src.gui.history_table_variant import history_table_class
+
+    react = history_table_class(REACT)
+    assert react.__name__ == "HistoryWebTable", (
+        "the React build must draw History with the web table; got " + react.__name__
+    )
+    assert not issubclass(react, QTableWidget), (
+        "the React History table must not be a QTableWidget; got " + react.__name__
+    )
+
+    qt = history_table_class(QT)
+    assert qt is not react, (
+        "the two builds exist to be compared, so they must not resolve to one "
+        "class; both gave " + qt.__name__
+    )
 
 
 def test_the_qtablewidget_scan_can_see_a_real_table() -> None:

@@ -208,6 +208,11 @@ LIBRARIES: tuple[tuple[str, str], ...] = (
         "and Acervator_mac.spec",
     ),
     (
+        "build_variants",
+        "names a build output after its resolved version and variant, "
+        "imported by Acervator_win.spec and Acervator_mac.spec",
+    ),
+    (
         "claude_home",
         "where the Claude harness is installed, imported by the hook pin "
         "tests and by tools/migrate_harness.py",
