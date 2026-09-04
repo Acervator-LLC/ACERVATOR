@@ -5,20 +5,22 @@ names the module that implements the screen, the symbols inside it, the
 bridge method that serves its renderer, and the screen's current state.
 
 The parent section is [08-tabs.md](../08-tabs.md), which carries the
-manual's own text for each of these screens.
+manual's own text for each of these screens. The rows below run in the
+order the tab list in [04-manual-parts.md](../04-manual-parts.md) sets,
+which is the order [08-tabs.md](../08-tabs.md) runs its sections in.
 
 ## Contents
 
 | File | Covers | State |
 | ---- | ------ | ----- |
 | [portfolio-panels.md](portfolio-panels.md) | The header strip: spendable columns, five counter cards, privacy dots | Live |
+| [simulator.md](simulator.md) | Fleet Replay, Stone Tablets, the gate-latch criterion, Nuclear Mode | Live, rebuild in progress |
+| [paper-trader.md](paper-trader.md) | What the step is, and the proof no module implements it | Not built |
+| [proof-of-accumulation.md](proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain | Engine only, tabs shelved |
 | [market-inspector.md](market-inspector.md) | Higher-timeframe scanner, opposing pairs, topology proposals, adopt | Live |
 | [bot-swarm.md](bot-swarm.md) | Nodes, Smart Wires, wire credits, the fold-tranche book | Live |
 | [asset-charts.md](asset-charts.md) | One candlestick panel per traded symbol | Live |
 | [history.md](history.md) | Venue trade history, grading, gate analysis | Live |
-| [simulator.md](simulator.md) | Fleet Replay, Stone Tablets, the gate-latch criterion, Nuclear Mode | Live, rebuild in progress |
-| [paper-trader.md](paper-trader.md) | What the step is, and the proof no module implements it | Not built |
-| [proof-of-accumulation.md](proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain | Engine only, tabs shelved |
 | [console.md](console.md) | Python log tail and the emitter signal stream | Live |
 | [system-status.md](system-status.md) | Emitter Network and Watchdog, and the proof no tab exists | Not built |
 | [settings.md](settings.md) | The User page, the Exchanges page, and what each of the eleven pages persists | Live |

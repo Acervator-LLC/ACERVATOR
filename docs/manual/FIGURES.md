@@ -75,7 +75,9 @@ numbers it shows, written from the code behind the screen.
 | 15 to 27 | 18 | [06-trading-tab.md](06-trading-tab.md) |
 | 29 to 44 | 20 | [08-tabs.md](08-tabs.md) |
 
-The nine text-less Settings pages, 36 to 44, take one `##` section each in
-[08-tabs.md](08-tabs.md), named for the page they show. The figures sit in
-page order inside each part file, which is the order the built PDF prints
-them in.
+The nine text-less Settings pages, 36 to 44, take one section each in
+[08-tabs.md](08-tabs.md), named for the page they show.
+[06-trading-tab.md](06-trading-tab.md) holds its eighteen figures in page
+order. [08-tabs.md](08-tabs.md) holds each of its twenty inside the section it
+illustrates, and those sections run in the order the tab list in
+[04-manual-parts.md](04-manual-parts.md) sets.

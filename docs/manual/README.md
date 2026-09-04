@@ -28,7 +28,7 @@ meaning; the Part column below is what places a file in the manual.
 | [05-novel-concepts.md](05-novel-concepts.md) | 2 | 10 to 14 | Novel concepts and patent candidate catalogue, entries 1 to 17 |
 | [06-trading-tab.md](06-trading-tab.md) | 3 | 14 to 27 | System architecture, then the Trading Tab walkthrough |
 | [07-indicators.md](07-indicators.md) | 3 | 27 to 29 | Indicator Voting Panel and the twelve indicators |
-| [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Portfolio panels, Market Inspector, Bot Swarm, Asset Charts, History, Simulator, Paper Trader, Proof of Accumulation, Console, System Status, and the eleven Settings pages |
+| [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Main Window, Simulator, Paper Trader, Proof of Accumulation, Market Inspector, Bot Swarm, Asset Charts, History, Console, System Status, and the eleven Settings pages |
 | [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
 | [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
 | [09-updates-and-versioning.md](09-updates-and-versioning.md) | 7 | — | Version derivation, the six readers, the baked bundle value, the release gate |
@@ -43,9 +43,13 @@ those nine figures under a heading of its own, and
 [07-indicators.md](07-indicators.md) adds the twelve published formulae, the
 departures the code takes from them, and the gate logic chain.
 [08-tabs.md](08-tabs.md) adds a description of the running code under each
-heading. Both keep every transcribed sentence, in order and unaltered. The
-subsystem files below hold the longer form of the tab descriptions and none of
-them transcribe the PDF.
+heading. Both keep every transcribed sentence unaltered.
+[07-indicators.md](07-indicators.md) holds them in the PDF's order.
+[08-tabs.md](08-tabs.md) orders its sections by the tab list in
+[04-manual-parts.md](04-manual-parts.md): Main Window opens the part, and the
+eleven Settings pages sit under one Settings heading. The subsystem files below
+hold the longer form of the tab descriptions and none of them transcribe the
+PDF.
 
 ## Part 3 subsystem detail
 
@@ -57,13 +61,13 @@ the screen's state.
 | ---- | ------ |
 | [08-tabs/README.md](08-tabs/README.md) | Index of the files below, the live tab set, how a screen reaches its renderer |
 | [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md) | The header strip: spendable columns, counter cards, privacy dots |
+| [08-tabs/simulator.md](08-tabs/simulator.md) | Fleet Replay, Stone Tablets, the gate-latch criterion, Nuclear Mode |
+| [08-tabs/paper-trader.md](08-tabs/paper-trader.md) | What the step is, and the proof no module implements it |
+| [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain |
 | [08-tabs/market-inspector.md](08-tabs/market-inspector.md) | Signal table, opposing pairs, topology proposals, adopt |
 | [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md) | Nodes, Smart Wires, wire credits, the fold-tranche book |
 | [08-tabs/asset-charts.md](08-tabs/asset-charts.md) | One candlestick panel per traded symbol |
 | [08-tabs/history.md](08-tabs/history.md) | Venue trade history, grading, gate analysis |
-| [08-tabs/simulator.md](08-tabs/simulator.md) | Fleet Replay, Stone Tablets, the gate-latch criterion, Nuclear Mode |
-| [08-tabs/paper-trader.md](08-tabs/paper-trader.md) | What the step is, and the proof no module implements it |
-| [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain |
 | [08-tabs/console.md](08-tabs/console.md) | Python log tail and the emitter signal stream |
 | [08-tabs/system-status.md](08-tabs/system-status.md) | Emitter Network and Watchdog, and the proof no tab exists |
 | [08-tabs/settings.md](08-tabs/settings.md) | The User page, the Exchanges page, and what each of the eleven pages persists |
