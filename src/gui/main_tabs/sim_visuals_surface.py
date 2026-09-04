@@ -231,9 +231,8 @@ def gate_cell_min_width_px(pitch_px: Any) -> int:
 class GateLightsModel:
     """One bot's gate row between updates, with no Qt object behind it.
 
-    ``clear_gates`` returns the row to the not-evaluated state. It
-    releases the scrum landing strip and leaves the fold landing strip
-    where it was, which is what the shipped row does.
+    ``clear_gates`` returns the row to the not-evaluated state and releases
+    both ``scrum_landing_strip`` and ``fold_landing_strip``.
     """
 
     def __init__(self) -> None:
@@ -273,6 +272,7 @@ class GateLightsModel:
         self.scrum_blocked = set()
         self.fold_blocked = set()
         self.scrum_landing_strip = False
+        self.fold_landing_strip = False
         self.calls.append(GATES_CLEARED)
 
     def bank(self, name: str) -> dict:
@@ -727,14 +727,17 @@ class PriceVwapModel:
         high: Any = None,
         low: Any = None,
     ) -> None:
-        """Take one bar. A bar with only a close degenerates to a doji."""
+        """Take one bar. A bar with only a close degenerates to a doji.
+
+        The stored bar always keeps ``highest`` at or above ``lowest``.
+        """
         if symbol not in self.series:
             self.calls.append(CHART_TICK_IGNORED)
             return
         close = float(close_price)
         opened = float(open_price) if open_price is not None else close
-        highest = float(high) if high is not None else max(opened, close)
-        lowest = float(low) if low is not None else min(opened, close)
+        highest = max(opened, close, float(high) if high is not None else close)
+        lowest = min(opened, close, float(low) if low is not None else close)
         bars = self.candles.setdefault(symbol, [])
         bars.append((int(ts) if ts is not None else 0, opened, highest, lowest, close))
         if len(bars) > CHART_MAX_CANDLES:

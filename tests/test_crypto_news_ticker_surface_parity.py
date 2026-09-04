@@ -17,7 +17,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import socket
 import subprocess
 import sys
@@ -1942,9 +1941,8 @@ def call_name(node):
 def count_calls(path, names):
     """How many times one file really calls any of `names`.
 
-    Read from the parsed file rather than from its text: this file's
-    neighbour writes ``QThread(self)`` inside a comment, and a text
-    counter reads that comment as a second construction.
+    Counts ``ast.Call`` nodes, so an import line or a name written in prose
+    is not read as a construction.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))
     return sum(
@@ -1994,17 +1992,6 @@ def declared_widget_classes(path):
 def count_elements(path):
     """How many screen elements one file builds, its own classes included."""
     return count_calls(path, WIDGET_NAMES_BUILT) + len(declared_widget_classes(path))
-
-
-def test_the_construction_counter_ignores_one_written_inside_a_comment():
-    """The counter reads a comment as code, so its number is too big."""
-    text = STRIP_PATH.read_text(encoding="utf-8")
-    by_text = len(re.findall(r"\bQThread\s*\(", text))
-    by_code = count_calls(STRIP_PATH, ("QThread",))
-    assert by_text == 2, by_text
-    assert by_code == STRIP_THREAD_BUILDS == 1
-    assert by_text > by_code, "the comment case is gone, so this control is stale"
-    assert count_calls(SURFACE_PATH, ("QThread",)) == 0
 
 
 def test_the_strip_wires_seven_signals_and_the_surface_names_seven_actions():

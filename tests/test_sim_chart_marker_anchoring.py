@@ -252,6 +252,44 @@ class TestClearGatesClearsTheOverrideLed:
         row.clear_gates()
         assert row._ls_scrum is False
 
+    def test_the_fold_ls_led_is_cleared_too(self):
+        """A cleared row must not still paint a fold landing-strip override."""
+        from src.gui.simulator_tab.fleet.sim_visuals import GateLightsCell
+        from src.trading.gate_vocabulary import LIGHT_COLORS, gate_light_color
+
+        _app()
+        row = GateLightsCell()
+        row.update_gates(False, False, [], [], landing_strip_side="lower")
+        assert row._fold_ls is True, "the fold landing strip never lit"
+        row.clear_gates()
+        painted = gate_light_color(
+            "LS", row._evaluated, row._fold_armed, row._fold_blocked, row._fold_ls
+        )
+        assert painted == LIGHT_COLORS["not_evaluated"], (
+            f"the fold LS light painted {painted} after clear_gates, "
+            f"expected {LIGHT_COLORS['not_evaluated']}"
+        )
+
+    def test_the_scrum_ls_led_is_the_control_for_the_fold_one(self):
+        """The same drive on the scrum side already greys out."""
+        from src.gui.simulator_tab.fleet.sim_visuals import GateLightsCell
+        from src.trading.gate_vocabulary import LIGHT_COLORS, gate_light_color
+
+        _app()
+        row = GateLightsCell()
+        row.update_gates(False, False, [], [], landing_strip_side="upper")
+        lit = gate_light_color(
+            "LS", row._evaluated, row._scrum_armed, row._scrum_blocked, row._ls_scrum
+        )
+        assert lit == LIGHT_COLORS["override"], f"the scrum LS light was {lit}, not lit"
+        row.clear_gates()
+        painted = gate_light_color(
+            "LS", row._evaluated, row._scrum_armed, row._scrum_blocked, row._ls_scrum
+        )
+        assert (
+            painted == LIGHT_COLORS["not_evaluated"]
+        ), f"the scrum LS light painted {painted}"
+
     def test_clear_gates_still_clears_the_blockers(self):
         """NEGATIVE CONTROL: the existing behaviour must survive."""
         from src.gui.simulator_tab.fleet.sim_visuals import GateLightsCell
