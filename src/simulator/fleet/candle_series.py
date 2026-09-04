@@ -1,17 +1,10 @@
-"""candle_series.py — OHLCV window container + cursor.
+"""OHLCV window with a replay cursor.
 
-Backing store for the Fleet-Replay ``FleetSimExchange``. Each series
-holds one symbol's chronological candle sequence and a "current cursor"
-index — ``get_ticker`` / ``get_ohlcv`` operate on the cursor's slice of
-the series so bot ticks see prices as of a specific point in the
-replay timeline (never future data — replay is causal).
-
-Row shape follows the ccxt OHLCV convention:
-    [timestamp_ms, open, high, low, close, volume]
-
-Isolated pure module — no Qt, no exchange, no live-side coupling.
-
-sadp: R28 SSS
+``CandleSeries`` holds one symbol's ``rows`` in ascending timestamp order,
+each ``[timestamp_ms, open, high, low, close, volume]`` as ccxt returns them.
+``get_current`` and ``get_history`` read at or before ``cursor``, never past
+it. ``build_candle_series_from_rows`` drops malformed rows and keeps the
+timestamp an ``int``.
 """
 
 from __future__ import annotations
@@ -24,13 +17,8 @@ from typing import Iterator, Optional
 class CandleSeries:
     """One symbol's OHLCV history with a replay cursor.
 
-    The cursor starts at 0 (first candle) and advances via ``step()``.
-    ``get_current()`` returns the candle at the cursor;
-    ``get_history(limit)`` returns the last N candles up to and including
-    the cursor (never future).
-
-    All timestamps are unix milliseconds (matches ccxt output +
-    NuclearSimExchange's ``_candle_to_ohlcv_row`` convention).
+    ``cursor`` starts at 0 and moves through ``step`` or ``step_to_ts``.
+    ``rows`` carry unix-millisecond timestamps and are sorted on construction.
     """
 
     symbol: str
@@ -40,8 +28,7 @@ class CandleSeries:
     def __post_init__(self) -> None:
         if not self.rows:
             return
-        # Enforce chronological order so cursor semantics are stable.
-        # Ties (equal ts) are allowed and kept in input order.
+        # ``sorted`` is stable: ``rows`` with equal timestamps keep input order.
         self.rows = sorted(self.rows, key=lambda r: r[0])
 
     def __len__(self) -> int:
@@ -65,31 +52,26 @@ class CandleSeries:
         self.cursor = max(0, min(len(self.rows) - 1, int(cursor)))
 
     def step(self) -> bool:
-        """Advance cursor by one candle. Returns False when already at
-        the last candle (replay done)."""
+        """Advance ``cursor`` by one row.
+
+        Returns False when ``at_end`` is already True.
+        """
         if self.at_end:
             return False
         self.cursor += 1
         return True
 
     def step_to_ts(self, target_ts_ms: int) -> bool:
-        """v3.24.3 (master-clock) — move cursor to the candle whose
-        timestamp is <= target_ts_ms. Returns True if the cursor
-        advanced (or is already at the correct spot with a valid
-        candle at or before the target), False if target is before
-        the first candle of this series or the series is empty.
+        """Set ``cursor`` to the last row timestamped at or before ``target_ts_ms``.
 
-        Bisects so cost is O(log N) even on 45k-candle tablets.
+        Bisects ``rows``, returning False and leaving ``cursor`` untouched when
+        ``rows`` is empty or ``target_ts_ms`` precedes the first row.
         """
         if len(self.rows) == 0:
             return False
         target = int(target_ts_ms)
-        # If target is before this series's first candle, we can't
-        # advance to a legitimate cursor — leave cursor at 0 but
-        # signal "not advanced yet"
         if target < int(self.rows[0][0]):
             return False
-        # Binary search for the rightmost index with ts <= target
         lo, hi = 0, len(self.rows) - 1
         while lo < hi:
             mid = (lo + hi + 1) // 2
@@ -101,14 +83,17 @@ class CandleSeries:
         return True
 
     def get_current(self) -> Optional[list[float]]:
-        """Return the candle at the current cursor, or None if empty."""
+        """Return a copy of the row at ``cursor``, None when ``rows`` is empty."""
         if len(self.rows) == 0:
             return None
         return list(self.rows[self.cursor])
 
     def get_history(self, limit: int = 100) -> list[list[float]]:
-        """Return up to ``limit`` candles ending at the cursor. Never
-        exposes future candles (causal replay guarantee)."""
+        """Return copies of up to ``limit`` rows ending at ``cursor``.
+
+        Returns an empty list when ``rows`` is empty or ``limit`` is not
+        positive.
+        """
         if len(self.rows) == 0 or limit <= 0:
             return []
         end = self.cursor + 1
@@ -116,9 +101,7 @@ class CandleSeries:
         return [list(r) for r in self.rows[start:end]]
 
     def iter_ts(self) -> Iterator[int]:
-        """Tablet timestamps, unaltered. See the note in
-        `build_candle_series_from_rows` — these are exact int ms
-        addresses, not measurements."""
+        """Yield each row's timestamp from ``rows`` as an ``int``."""
         for r in self.rows:
             yield int(r[0])
 
@@ -127,29 +110,17 @@ def build_candle_series_from_rows(
     symbol: str,
     rows: list[list[float]],
 ) -> CandleSeries:
-    """Construct a series with input validation.
+    """Build a ``CandleSeries`` from ``rows``, dropping malformed entries.
 
-    Rows with wrong length / non-numeric fields are silently dropped
-    (per R28 fail-soft on ingest; the series is a display/replay
-    surface, not a decision authority).
+    A row is dropped when it has fewer than six fields, a non-numeric field, or
+    a non-positive ``ts`` or ``c``; ``ts`` stays an ``int`` and ``o``, ``h``,
+    ``l``, ``c`` and ``v`` become floats.
     """
     clean: list[list[float]] = []
     for r in rows or []:
         try:
             if len(r) < 6:
                 continue
-            # v3.24.83 — the TIMESTAMP STAYS AS THE TABLET WROTE IT.
-            #
-            # This floated the timestamp alongside the OHLCV values, as
-            # though a timestamp were a price. It is not: Stone Tablets
-            # store an exact int millisecond epoch on a fixed 5m grid
-            # (verified — CHIP row 0 is 1776778500000, delta 300000ms),
-            # and it is the ADDRESS a trade, a gate decision and a raw
-            # indicator value are keyed by.
-            #
-            # Floating it forced every consumer that joins back to the
-            # tablet to cast, and put a value that must be exact into a
-            # type that only happens to be exact below 2^53.
             ts = int(r[0])
             o, h, l, c, v = (
                 float(r[1]),
