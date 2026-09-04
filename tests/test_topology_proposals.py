@@ -1,15 +1,10 @@
-"""v3.23.67 — pin tests for src/trading/topology_proposals.py.
+"""Pin tests for ``src/trading/topology_proposals.py``.
 
-Covers tests 1-9 from the design doc § 8:
-  1. momentum_funnel finds correlated cluster
-  2. momentum_funnel ranks leader by 24h volume
-  3. momentum_funnel skips clusters below min size
-  4. mean_reversion consumes precomputed opposing-pair table
-  5. mean_reversion liquidity gate
-  6. sector_cluster hub = highest volume within sector
-  7. distance_to_band pairs deep_scrum → deep_fold
-  8. detect_all_topologies dedupes by asset overlap
-  9. proposal shape matches spec § 4
+Each detector is driven on its own fixture, then
+``detect_all_topologies`` is checked for asset-overlap dedupe, the
+archetype tie order, and the shape ``make_proposal`` returns.
+``load_sector_map`` and ``load_target_defaults`` are read from the
+shipped files.
 """
 
 from __future__ import annotations
@@ -321,3 +316,83 @@ def test_suggested_target_usd_uses_map_then_fallback():
     d = {"FOO": 111.11}
     assert tp.suggested_target_usd("FOO", d, 25.0) == pytest.approx(111.11)
     assert tp.suggested_target_usd("BAR", d, 25.0) == pytest.approx(25.0)
+
+
+def _tied_context():
+    """Build a context whose three archetypes score exactly 75.0.
+
+    ``detect_momentum_funnel``, ``detect_mean_reversion_pair`` and
+    ``detect_distance_to_band`` each emit one proposal over disjoint
+    assets, on values that divide exactly in binary.
+    """
+    tickers = {
+        "ETH": _ticker(symbol="ETH/USD", base_volume=10_000_000),
+        "ARB": _ticker(symbol="ARB/USD", base_volume=3_000_000),
+        "OP": _ticker(symbol="OP/USD", base_volume=2_000_000),
+        "AAA": _ticker(symbol="AAA/USD"),
+        "BBB": _ticker(symbol="BBB/USD"),
+    }
+    return {
+        "tickers_by_asset": tickers,
+        "correlations": {
+            ("ARB", "ETH"): 0.75,
+            ("ETH", "OP"): 0.75,
+            ("ARB", "OP"): 0.75,
+        },
+        "opposing_pairs": [
+            {"long_asset": "AAA", "short_asset": "BBB", "corr": -0.75},
+        ],
+        "sector_map": {},
+        "bots_snapshot": [
+            {
+                "bot_id": "scrumdeep",
+                "asset": "SOL",
+                "quote": "USD",
+                "symbol": "SOL/USD",
+                "position_val": 137.5,
+                "target_balance": 100.0,
+            },
+            {
+                "bot_id": "folddeep",
+                "asset": "SOL",
+                "quote": "USD",
+                "symbol": "SOL/USD",
+                "position_val": 62.5,
+                "target_balance": 100.0,
+            },
+        ],
+        "target_defaults": {},
+        "target_fallback": 25.0,
+        "now": 1000.0,
+    }
+
+
+def test_the_three_archetypes_really_do_tie_on_score():
+    """POSITIVE CONTROL for the ordering pin below.
+
+    ``_tied_context`` must hand ``detect_all_topologies`` three proposals
+    on one identical score, or the archetype key is never reached.
+    """
+    out = tp.detect_all_topologies(_tied_context())
+    by_archetype = {p["archetype"]: p["score"] for p in out}
+    assert set(by_archetype) == {
+        "momentum_funnel",
+        "mean_reversion_pair",
+        "distance_to_band",
+    }, by_archetype
+    assert set(by_archetype.values()) == {75.0}, by_archetype
+
+
+def test_a_score_tie_ranks_momentum_then_mean_reversion_then_distance():
+    """Tied proposals fall to archetype priority, never to ``title``.
+
+    Alphabetical ``title`` order would put ``Distance handoff`` first, so
+    ``detect_all_topologies`` can only produce this order from the
+    archetype key.
+    """
+    out = tp.detect_all_topologies(_tied_context())
+    assert [p["archetype"] for p in out] == [
+        "momentum_funnel",
+        "mean_reversion_pair",
+        "distance_to_band",
+    ], [(p["archetype"], p["score"], p["title"]) for p in out]

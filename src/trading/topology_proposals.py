@@ -1,30 +1,12 @@
-"""topology_proposals.py — cross-market topology proposal engine.
+"""``detect_all_topologies`` builds cross-market topology proposals.
 
-Reference specification (Diataxis: reference). Pure runtime — no Qt,
-no exchange I/O. Consumer: v3.23.68 right-pane GUI in
-`src/gui/market_inspector_topologies.py`. Design doc:
-`docs/engineering-notes/2026-07-31_market_inspector_topology_proposals_design.md`.
-
-Introduced 2026-07-31 as v3.23.67 (Piece 3 of the Market Inspector
-build-out). Four archetype detectors + a top-level orchestrator that
-unions, de-duplicates by asset overlap, and caps at 20 proposals.
-
-Detector inputs are supplied by the caller as a ``context`` dict so
-this module has zero coupling to the live exchange or bot manager —
-tests can drive it with pure fixtures. Every detector is a pure
-function of its inputs.
-
-Archetypes (see design doc § 3):
-    * momentum_funnel — correlated cluster, leader → laggers
-    * mean_reversion_pair — anti-correlated pair, bidirectional
-    * sector_cluster — same-sector star, hub → spokes
-    * distance_to_band — intra-asset scrum-deep → fold-deep
-
-Proposal schema (see design doc § 4) — a plain ``dict`` so it can
-serialise across process boundaries when the Adopt handoff calls the
-Bot Wizard.
-
-sadp: R28 SSS + R70 RCN
+It fans out to ``detect_momentum_funnel``, ``detect_mean_reversion_pair``,
+``detect_sector_cluster`` and ``detect_distance_to_band``, dedupes the
+union by asset overlap and caps it at ``PROPOSAL_CAP``. Every detector is
+a pure function of a caller-supplied ``context`` dict and returns plain
+dicts from ``make_proposal``. ``load_sector_map`` and
+``load_target_defaults`` read ``SECTOR_MAP_PATH`` and
+``TARGET_DEFAULTS_PATH``.
 """
 
 from __future__ import annotations
@@ -38,10 +20,6 @@ from typing import Any, Optional
 
 logger = logging.getLogger("acervator.topology_proposals")
 
-# --------------------------------------------------------------------------- #
-# Constants (see design doc §§ 3, 10)                                          #
-# --------------------------------------------------------------------------- #
-
 MOMENTUM_MIN_CORR: float = 0.75
 MOMENTUM_MIN_CLUSTER_SIZE: int = 3
 MOMENTUM_WIRE_PCT: float = 20.0
@@ -53,22 +31,8 @@ MEAN_REVERSION_WIRE_PCT: float = 25.0
 SECTOR_MIN_CLUSTER_SIZE: int = 4
 SECTOR_MAX_CLUSTER_SIZE: int = 6
 SECTOR_WIRE_PCT: float = 15.0
-# v3.24.57 (C35 / SWARM-4.28) — the sector score is a BLEND, because a
-# score that is linear in cluster size alone puts every full sector on
-# the 100.0 ceiling. Measured on a three-full-sector fixture before this
-# change: scores [100.0, 100.0, 100.0], and across 20 shuffles of the
-# same input the ranked leader landed on all three sectors and the full
-# ranking produced five distinct orders. The operator's top
-# recommendation was decided by dict iteration order.
-#
-# Liquidity is the tie-break by operator decision 2026-08-07. It costs
-# nothing — `baseVolume` is already fetched and already used below to
-# rank members and pick the hub — and it makes the score coherent with
-# how the cluster is built.
-#
-# Weights sum to 1.0 so the score stays on its documented 0..100 scale,
-# and size stays dominant: a bigger cluster should still outrank a
-# smaller one of similar liquidity.
+# SECTOR_SIZE_WEIGHT and SECTOR_LIQUIDITY_WEIGHT sum to 1.0, holding the
+# sector score on 0..100.
 SECTOR_SIZE_WEIGHT: float = 0.7
 SECTOR_LIQUIDITY_WEIGHT: float = 0.3
 
@@ -85,17 +49,11 @@ TARGET_DEFAULTS_PATH: Path = (
 )
 
 
-# --------------------------------------------------------------------------- #
-# Config loaders                                                              #
-# --------------------------------------------------------------------------- #
-
-
 def load_sector_map(path: Optional[Path] = None) -> dict[str, str]:
-    """Read the hand-curated ``{asset: sector_tag}`` map.
+    """Read the ``{asset: sector_tag}`` map from ``SECTOR_MAP_PATH``.
 
-    Returns an empty dict on any read/parse error (sector-cluster
-    detection then produces no proposals, but the other three
-    archetypes remain functional).
+    Returns an empty dict on any read or parse error, which leaves
+    ``detect_sector_cluster`` with no proposals.
     """
     _path = path or SECTOR_MAP_PATH
     try:
@@ -112,10 +70,10 @@ def load_sector_map(path: Optional[Path] = None) -> dict[str, str]:
 
 
 def load_target_defaults(path: Optional[Path] = None) -> tuple[dict[str, float], float]:
-    """Read the per-asset target-USD default map + fallback.
+    """Read the per-asset target-USD map from ``TARGET_DEFAULTS_PATH``.
 
-    Returns ``(defaults, fallback)``. Fallback is 25.0 on any load
-    error per the operator directive in design doc § 10 answer 2.
+    Returns ``(defaults, fallback)``, where ``fallback`` is
+    ``DEFAULT_TARGET_USD_FALLBACK`` on any load error.
     """
     _path = path or TARGET_DEFAULTS_PATH
     try:
@@ -145,10 +103,10 @@ def suggested_target_usd(
     defaults: Optional[dict[str, float]] = None,
     fallback: Optional[float] = None,
 ) -> float:
-    """Look up per-asset target USD; fall back per design doc § 10.
+    """Look up ``asset`` in ``defaults``, or return ``fallback``.
 
-    Caller may pass pre-loaded ``defaults`` + ``fallback`` to avoid
-    per-call disk reads; tests use this to inject fixtures.
+    A ``None`` ``defaults`` or ``fallback`` is filled from
+    ``load_target_defaults``.
     """
     if defaults is None or fallback is None:
         _defaults, _fallback = load_target_defaults()
@@ -158,11 +116,6 @@ def suggested_target_usd(
             fallback = _fallback
     key = (asset or "").upper()
     return float(defaults.get(key, fallback))
-
-
-# --------------------------------------------------------------------------- #
-# Proposal schema builder                                                     #
-# --------------------------------------------------------------------------- #
 
 
 def make_proposal(
@@ -176,11 +129,10 @@ def make_proposal(
     adopt_notes: Optional[list[str]] = None,
     now: Optional[float] = None,
 ) -> dict[str, Any]:
-    """Build a Proposal dict matching design doc § 4.
+    """Build the proposal dict every detector returns.
 
-    ``id`` is derived from archetype + sorted-assets so the same
-    topology across refresh cycles keeps the same id (enables the
-    Dismiss-for-24h behaviour in the GUI).
+    ``id`` joins ``archetype`` to the sorted ``assets``, and ``score`` is
+    clamped to 0..100.
     """
     _now = time.time() if now is None else now
     canonical_assets = sorted({(a or "").upper() for a in assets if a})
@@ -233,13 +185,11 @@ def _make_wire(
     }
 
 
-# --------------------------------------------------------------------------- #
-# Correlation helpers                                                          #
-# --------------------------------------------------------------------------- #
-
-
 def _pearson(xs: list[float], ys: list[float]) -> float:
-    """Sample Pearson correlation; 0.0 on degenerate input."""
+    """Return the sample correlation of ``xs`` and ``ys``.
+
+    Returns 0.0 when ``n`` is under two or ``denom`` is zero.
+    """
     n = min(len(xs), len(ys))
     if n < 2:
         return 0.0
@@ -260,11 +210,6 @@ def _pearson(xs: list[float], ys: list[float]) -> float:
     return num / denom
 
 
-# --------------------------------------------------------------------------- #
-# Detector: momentum funnel (§ 3.1)                                            #
-# --------------------------------------------------------------------------- #
-
-
 def detect_momentum_funnel(
     tickers_by_asset: dict[str, dict[str, Any]],
     correlations: dict[tuple[str, str], float],
@@ -274,15 +219,11 @@ def detect_momentum_funnel(
     target_fallback: Optional[float] = None,
     now: Optional[float] = None,
 ) -> list[dict[str, Any]]:
-    """Emit proposals for each correlated cluster.
+    """Emit one proposal per correlated cluster of USD-quoted assets.
 
-    ``tickers_by_asset`` supplies at minimum ``{"quote", "symbol",
-    "baseVolume", "existing_bot_id"}`` per asset. Assets without a
-    USD/USDC quote are skipped (design doc § 3.1 step 1).
-
-    ``correlations`` is a lookup keyed by *sorted* asset pair tuples
-    ``("A","B")`` (both uppercased). Pairs absent from the dict are
-    treated as uncorrelated (corr = 0.0).
+    ``tickers_by_asset`` carries ``quote``, ``symbol``, ``baseVolume``
+    and ``existing_bot_id`` per asset; ``correlations`` is keyed by
+    sorted asset pairs and a pair it omits counts as 0.0.
     """
     usd_quote_assets = [
         a.upper()
@@ -293,8 +234,7 @@ def detect_momentum_funnel(
     if len(usd_quote_assets) < min_cluster:
         return []
 
-    # Simple greedy clustering: seed with each asset, expand with any
-    # peer whose correlation to the seed >= min_corr; then dedupe.
+    # A cluster holds peers correlated to its seed, never to each other.
     clusters: list[set[str]] = []
     seen: set[frozenset[str]] = set()
     for seed in usd_quote_assets:
@@ -372,11 +312,6 @@ def detect_momentum_funnel(
     return out
 
 
-# --------------------------------------------------------------------------- #
-# Detector: mean-reversion pair (§ 3.2)                                        #
-# --------------------------------------------------------------------------- #
-
-
 def detect_mean_reversion_pair(
     opposing_pairs: list[dict[str, Any]],
     tickers_by_asset: dict[str, dict[str, Any]],
@@ -386,11 +321,11 @@ def detect_mean_reversion_pair(
     target_fallback: Optional[float] = None,
     now: Optional[float] = None,
 ) -> list[dict[str, Any]]:
-    """Consume the precomputed Opposing Pairs table.
+    """Emit one proposal per qualifying row of ``opposing_pairs``.
 
-    Each row supplies ``{"long_asset", "short_asset", "corr"}``.
-    Liquidity gate: both sides must have ``baseVolume × price >=
-    min_volume_usd``.
+    A row carries ``long_asset``, ``short_asset`` and ``corr``, and both
+    sides need ``baseVolume`` times ``last`` at or above
+    ``min_volume_usd``.
     """
     out: list[dict[str, Any]] = []
     seen_pairs: set[frozenset[str]] = set()
@@ -452,7 +387,6 @@ def detect_mean_reversion_pair(
                 f"{b} scrum funds {a} fold (anti-corr {corr:.2f})",
             ),
         ]
-        # Score: |corr| ∈ [0.60, 1.0] → [60, 100].
         score = max(0.0, min(100.0, 100.0 * abs(corr)))
         out.append(
             make_proposal(
@@ -472,11 +406,6 @@ def detect_mean_reversion_pair(
     return out
 
 
-# --------------------------------------------------------------------------- #
-# Detector: sector cluster (§ 3.3)                                             #
-# --------------------------------------------------------------------------- #
-
-
 def detect_sector_cluster(
     tickers_by_asset: dict[str, dict[str, Any]],
     sector_map: dict[str, str],
@@ -486,10 +415,11 @@ def detect_sector_cluster(
     target_fallback: Optional[float] = None,
     now: Optional[float] = None,
 ) -> list[dict[str, Any]]:
-    """Group assets by sector tag, keep sectors with ≥ min_cluster.
+    """Emit one proposal per sector ``sector_map`` fills.
 
-    Assets absent from ``sector_map`` are silently skipped for this
-    archetype only (design doc § 10 answer 1).
+    A sector needs ``min_cluster`` members, keeps its ``max_cluster``
+    most liquid, and an asset ``sector_map`` omits reaches no proposal
+    here.
     """
     if not sector_map:
         return []
@@ -503,21 +433,12 @@ def detect_sector_cluster(
             continue
         by_sector.setdefault(sector, []).append(upper)
 
-    # v3.24.57 (C35) — two passes. The score is relative to the other
-    # sectors in this run, so every qualifying sector's members must be
-    # chosen before any of them can be scored.
-    #
-    # Sector order is sorted, not dict order. `by_sector` is built by
-    # iterating `tickers_by_asset`, so its insertion order follows the
-    # caller's input; anything downstream that depends on it (including
-    # a stable sort's treatment of ties) inherits that nondeterminism.
+    # prepared holds every qualifying sector; _max_volume spans them all.
     prepared: list[tuple[str, list[str], float]] = []
     for sector in sorted(by_sector):
         members = by_sector[sector]
         if len(members) < min_cluster:
             continue
-        # Asset name is the secondary key so equal volumes cannot make
-        # hub selection depend on input order either.
         ranked = sorted(
             members,
             key=lambda a: (
@@ -531,10 +452,6 @@ def detect_sector_cluster(
         )
         prepared.append((sector, ranked, sector_volume))
 
-    # Normalise liquidity against the most liquid qualifying sector.
-    # When every sector is equally liquid the term is constant and the
-    # ranking falls back to size, then to the sorted sector order — all
-    # three deterministic.
     _max_volume = max((v for _s, _r, v in prepared), default=0.0)
 
     out: list[dict[str, Any]] = []
@@ -562,8 +479,6 @@ def detect_sector_cluster(
             )
             for sp in spokes
         ]
-        # Score: size blended with liquidity (C35). Size alone put every
-        # full sector on 100.0 and left the leader to dict order.
         _size_ratio = len(ranked) / float(max_cluster)
         _liq_ratio = (sector_volume / _max_volume) if _max_volume > 0 else 0.0
         score = max(
@@ -595,21 +510,16 @@ def detect_sector_cluster(
     return out
 
 
-# --------------------------------------------------------------------------- #
-# Detector: distance-to-band (§ 3.4)                                           #
-# --------------------------------------------------------------------------- #
-
-
 def detect_distance_to_band(
     bots_snapshot: list[dict[str, Any]],
     deep_pct: float = DISTANCE_DEEP_PCT,
     now: Optional[float] = None,
 ) -> list[dict[str, Any]]:
-    """Pair operator's own deep-Scrum bots with deep-Fold bots.
+    """Pair each deep-scrum bot with a deep-fold bot on the same asset.
 
-    ``bots_snapshot`` entries: ``{"bot_id", "asset", "quote",
-    "symbol", "position_val", "target_balance"}``. Skips entries
-    missing any required field.
+    A ``bots_snapshot`` entry needs ``target_balance`` above zero, a
+    numeric ``position_val`` and an ``asset``; ``deep_pct`` sets the
+    distance both sides must reach.
     """
     deep_scrum: list[dict[str, Any]] = []
     deep_fold: list[dict[str, Any]] = []
@@ -632,7 +542,6 @@ def detect_distance_to_band(
         s_asset = (s_bot.get("asset", "") or "").upper()
         for f_bot in deep_fold:
             f_asset = (f_bot.get("asset", "") or "").upper()
-            # Same asset required — this is an intra-asset handoff.
             if s_asset != f_asset or not s_asset:
                 continue
             s_symbol = s_bot.get("symbol", f"{s_asset}/USD")
@@ -668,7 +577,6 @@ def detect_distance_to_band(
                     ),
                 )
             ]
-            # Score: sum of |distance| capped at 100.
             score = max(
                 0.0, min(100.0, abs(s_bot["_dist_pct"]) + abs(f_bot["_dist_pct"]))
             )
@@ -689,26 +597,24 @@ def detect_distance_to_band(
     return out
 
 
-# --------------------------------------------------------------------------- #
-# Top-level orchestrator (§ 7.1)                                               #
-# --------------------------------------------------------------------------- #
-
-
 def detect_all_topologies(
     context: dict[str, Any],
     cap: int = PROPOSAL_CAP,
 ) -> list[dict[str, Any]]:
-    """Fan out to each detector, union results, dedupe, cap.
+    """Union every detector's proposals, dedupe them and cap at ``cap``.
 
-    ``context`` shape (all optional):
-        tickers_by_asset:   dict[str, dict]   see per-detector docs
-        correlations:       dict[tuple[str,str], float]
+    Every ``context`` key is optional, and ``sector_map``,
+    ``target_defaults`` and ``target_fallback`` are read from disk when
+    absent.
+
+        tickers_by_asset:   dict[str, dict]
+        correlations:       dict[tuple[str, str], float]
         opposing_pairs:     list[dict]
-        sector_map:         dict[str, str]    (auto-loaded when absent)
+        sector_map:         dict[str, str]
         bots_snapshot:      list[dict]
-        target_defaults:    dict[str, float]  (auto-loaded when absent)
-        target_fallback:    float             (auto-loaded when absent)
-        now:                float             wall-clock for created_ts
+        target_defaults:    dict[str, float]
+        target_fallback:    float
+        now:                float
     """
     if not isinstance(context, dict):
         return []
@@ -760,20 +666,10 @@ def detect_all_topologies(
     )
     proposals.extend(detect_distance_to_band(bots_snapshot, now=now))
 
-    # Rank by score desc; on ties keep the higher archetype priority
-    # order: momentum → mean_reversion → sector → distance (matches
-    # the append order, so a stable sort suffices).
-    #
-    # v3.24.57 (C35) — that reasoning covers ties BETWEEN archetypes and
-    # nothing else. Proposals tied WITHIN one archetype are all appended
-    # by the same detector, so a stable sort leaves them in that
-    # detector's emission order, which followed dict iteration. `title`
-    # is the deterministic floor: it is unique per proposal (it names
-    # the sector and its members) and gives a total order when score and
-    # archetype both tie.
+    # _ARCHETYPE_RANK keys are the archetype values make_proposal writes.
     _ARCHETYPE_RANK = {
-        "momentum": 0,
-        "mean_reversion": 1,
+        "momentum_funnel": 0,
+        "mean_reversion_pair": 1,
         "sector_cluster": 2,
         "distance_to_band": 3,
     }
@@ -785,8 +681,8 @@ def detect_all_topologies(
         )
     )
 
-    # Dedup by asset-overlap: keep the higher-scoring proposal when
-    # two share ≥ 2 assets AND ≥ 50% of the smaller's asset set.
+    # kept takes the first of a clashing pair; the sort above ranked it
+    # higher.
     kept: list[dict[str, Any]] = []
     for p in proposals:
         p_assets = set(p["assets"])

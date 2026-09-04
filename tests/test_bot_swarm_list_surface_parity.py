@@ -2282,7 +2282,7 @@ def test_the_signatures_match_the_shipped_methods():
             ).parameters
         )
         if old_name == "LaneWireCanvas.paintEvent":
-            assert old == ["self", "event"], old
+            assert old == ["self", "_event"], old
             assert new == ["self"], new
             continue
         if old_name == "BotListView.__init__":
@@ -2297,8 +2297,11 @@ def test_the_signatures_match_the_shipped_methods():
 
 
 def test_the_shipped_paint_never_reads_the_event_it_is_handed():
-    """The shipped paint reads its event, so the surface dropping it
-    loses something."""
+    """A read of ``_event`` would make ``LaneWireModel.paint`` lossy.
+
+    ``Refuses`` raises on any attribute read, so an ``outcome`` without
+    an error proves the shipped paint never touched it.
+    """
     view = old_list("nine_bots")
     canvas = old_canvas(view)
     canvas.set_wires([wire()])
