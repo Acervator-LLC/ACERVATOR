@@ -147,17 +147,13 @@ class BollingerBands:
         widths = [
             ((sma[i] + self.std_dev * std[i]) - (sma[i] - self.std_dev * std[i]))
             / (sma[i] + 1e-9)
-            for i in range(max(0, len(sma) - self.period), len(sma))
+            for i in range(max(self.period - 1, len(sma) - self.period), len(sma))
         ]
         # `width_count` is a COUNT of windows, not a bandwidth. Naming
         # it keeps the length test out of the bandwidth comparison on
         # the next line.
         width_count = len(widths)
-        avg_width = (
-            sum(widths[-self.period :]) / self.period
-            if width_count >= self.period
-            else band_width
-        )
+        avg_width = sum(widths) / width_count if width_count else band_width
         squeeze = band_width < avg_width * 0.75
 
         # Position within bands (0 = lower, 1 = upper)
