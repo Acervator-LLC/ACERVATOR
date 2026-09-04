@@ -720,6 +720,10 @@ PART_REFUSALS = (
         surface.REFUSED_SAVE_FAILED,
         fixed_part(surface.SAVE_FAILED_FORMAT, before=True),
     ),
+    (
+        surface.CLEAR_FAILED,
+        fixed_part(surface.CLEAR_FAILED_FORMAT, before=True),
+    ),
 )
 
 
@@ -1303,6 +1307,7 @@ PAYLOAD_KEYS = {
     "SELF_WIRE_CONNECT_TEXT": "refusals.self_wire_connect",
     "SELF_WIRE_DISCONNECT_TEXT": "refusals.self_wire_disconnect",
     "SAVE_FAILED_FORMAT": "refusals.save_failed",
+    "CLEAR_FAILED_FORMAT": "refusals.clear_failed",
     "STEP_REFUSAL": "refusals.step",
     "CREATE_VERB": "confirmation.create_verb",
     "DISCONNECT_VERB": "confirmation.disconnect_verb",
