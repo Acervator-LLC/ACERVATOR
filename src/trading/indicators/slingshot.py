@@ -1,8 +1,8 @@
 """Slingshot -- volatility squeeze plus directional snapback.
 
-Carter's TTM squeeze and Bollinger's band rules. The class computes
-its own True Range, Donchian midline and linear regression rather
-than reading another indicator's output.
+``SlingshotIndicator`` implements Carter's TTM squeeze with Bollinger's
+band rules. It builds ``tr_all``, the Donchian midline and
+``_linreg_endpoint`` from raw candles.
 """
 
 from __future__ import annotations
@@ -21,50 +21,18 @@ from .helpers import (
 class SlingshotIndicator:
     """Volatility squeeze plus directional snapback, over one candle list.
 
-    ATTRIBUTION. The NAME is Chris Moody's; the SQUEEZE is not. Moody's
-    ``CM_SlingShotSystem`` (TradingView, 10-05-2014) is an EMA
-    trend-and-pullback system -- ``emaSlow = ema(close, 62)``,
-    ``emaFast = ema(close, 38)`` -- with no Bollinger Band, no Keltner
-    Channel and no squeeze. The squeeze half is John Carter's TTM
-    Squeeze, whose public reference implementation is LazyBear's
-    ``SQZMOM_LB``. The snapback half is John Bollinger's band rules.
-
-    SIGNAL 1, THE VOLATILITY SQUEEZE (Carter / TTM, via LazyBear). The
-    squeeze is ON while the Bollinger Bands sit inside the Keltner
-    Channel, comparing standard deviation against true range:
+    ATTRIBUTION: the NAME is Chris Moody's ``CM_SlingShotSystem``
+    (TradingView, 2014), an EMA trend-and-pullback system with no
+    Bollinger Band, no Keltner Channel and no squeeze; the SQUEEZE is
+    John Carter's TTM Squeeze, public reference LazyBear's
+    ``SQZMOM_LB``; the SNAPBACK is Bollinger's rules 6 and 8, a close
+    outside a band and then a later close back inside; and ``compute``
+    reads only raw candle fields and this class's own arithmetic,
+    calling no other voter, over
 
         sqzOn = (lowerBB > lowerKC) and (upperBB < upperKC)
-
-    It FIRES on the release, the bar where ``sqzOn`` turns off. Direction
-    at the fire is the sign of the canonical momentum value, never the
-    price's own side of the midline:
-
         delta = close - (donchian_mid + sma(close, N)) / 2
-        val   = linreg(delta, N, 0)          # val > 0 bullish
-
-    SIGNAL 2, THE BAND SNAPBACK (Bollinger's rules 6 and 8). Rule 8: a
-    close OUTSIDE a band is a continuation signal, not a reversal. The
-    later close back INSIDE is what makes it a mean-reversion signal, and
-    re-entry is the only requirement. A break below the lower band that
-    re-enters is BULLISH.
-
-    SEQUENCE, NOT COINCIDENCE. All three sources order these: the TTM
-    squeeze is a state that persists and then releases, Moody's
-    conservative entry is a two-bar sequence, and Bollinger's re-entry is
-    on a LATER bar than the break. The agreement bonus therefore needs
-    the snapback to resolve after the fire, not two flags true on one bar.
-
-    NOT REDUNDANT WITH ``BollingerBands``, which reports where price sits
-    relative to the bands. This reports the compression-to-expansion
-    cycle: it fires when a consolidation ENDS and direction is clear.
-
-    NO BLENDING. Every input is raw candle data (close, high, low) or
-    this class's own arithmetic over the module's shared scalar helpers.
-    The Keltner Channel, the Donchian midline, the True Range series and
-    the linear regression are computed inside this class because the
-    module has none of them. ``ATRIndicator``, ``BollingerBands``,
-    ``IchimokuCloud`` and ``compute_heikin_ashi`` are deliberately NOT
-    called.
+        val   = linreg(delta, N, 0)
     """
 
     def __init__(
@@ -87,14 +55,14 @@ class SlingshotIndicator:
             squeeze_threshold  # fraction of avg bandwidth = squeeze
         )
         self.weight = weight
-        # Carter and StockCharts both specify BB 20/2.0 against KC 20/1.5.
-        # LazyBear's script multiplies the BB deviation by multKC instead.
+        # Carter and StockCharts specify BB 20/2.0 against KC 20/1.5;
+        # LazyBear scales the BB deviation by multKC.
         self.kc_mult = kc_mult
 
     @staticmethod
     def _bandwidth(upper: float, lower: float, mid: float) -> float:
-        """BB bandwidth as fraction of midline (normalised)."""
-        return (upper - lower) / (mid + 1e-9)
+        """BandWidth: ``(upper - lower) / mid``, Bollinger's normalisation."""
+        return (upper - lower) / mid
 
     @staticmethod
     def _linreg_endpoint(series: list) -> float:
@@ -142,14 +110,14 @@ class SlingshotIndicator:
             )
 
         closes = [c.close for c in candles]
-        # The delta loop reaches `bb_period` bars deeper than the `bb` loop,
-        # because each linreg segment spans that many deltas.
+        # `_need` covers the delta loop, which reaches `bb_period` bars
+        # below the `bb` loop.
         _need = self.squeeze_lookback + 5 + self.bb_period
         sma_v = _sma_tail(closes, self.bb_period, tail=_need)
         std_v = _stdev_tail(closes, self.bb_period, tail=_need)
 
-        # Carter's Keltner leg needs True Range; computing it here avoids
-        # reading `ATRIndicator`, which is another voter's output.
+        # Carter's Keltner leg needs True Range; `tr_all` computes it
+        # without `ATRIndicator`.
         tr_all = [candles[0].high - candles[0].low]
         for i in range(1, n):
             c = candles[i]
@@ -178,6 +146,8 @@ class SlingshotIndicator:
             std = std_v[i]
             up = mid + self.bb_std * std
             lo = mid - self.bb_std * std
+            # `mid` averages closes `candles_from_raw` admits only when
+            # positive, so it cannot be zero.
             bw = self._bandwidth(up, lo, mid)
             # LazyBear's KC shares the BB basis; rangema is the SMA of
             # True Range over the same period.
@@ -220,10 +190,8 @@ class SlingshotIndicator:
         prev2_bw = bb[-3][4] if len(bb) >= 3 else prev_bw
         recent_bw = [b[4] for b in bb[-4:]]
 
-        # `expansion_rate`, `squeeze_depth` and `mom_norm` below each
-        # divide by a volatility that is zero on a halted window.
-        # The bandwidths inherit `_stdev_tail`'s rounding and land on ULPs
-        # rather than on zero, so the decisive test is on the source bars.
+        # `expansion_rate`, `squeeze_depth` and `mom_norm` divide by a
+        # volatility a halted window zeroes; bandwidths round to ULPs.
         _span = candles[max(0, n - win - self.bb_period) :]
         _span_px: list[float] = []
         for _c in _span:
@@ -247,11 +215,11 @@ class SlingshotIndicator:
         n_squeezed = sum(1 for bw in recent_bw if bw < squeeze_bw_limit)
         was_squeezed = n_squeezed >= 2
         expanding = curr_bw > prev_bw * 1.02
-        expansion_rate = (curr_bw - prev2_bw) / (prev2_bw + 1e-9)
+        expansion_rate = (curr_bw - prev2_bw) / prev2_bw
         min_recent_bw = min(b[4] for b in bb[-4:])
-        squeeze_depth = max(0.0, avg_bw - min_recent_bw) / (avg_bw + 1e-9)
+        squeeze_depth = max(0.0, avg_bw - min_recent_bw) / avg_bw
 
-        # StockCharts: the squeeze is released when the bands expand back
+        # StockCharts: the squeeze releases when the bands expand back
         # outside the Keltner Channel, the sqzOn -> not sqzOn transition.
         fire_idx = -1
         for k in range(last, 0, -1):
@@ -260,25 +228,24 @@ class SlingshotIndicator:
                 break
 
         bars_since_fire = (last - fire_idx) if fire_idx >= 0 else -1
-        # The release stays live for `snapback_lookback` bars after it, so
-        # a snapback on a later bar can confirm the same fire.
+        # The release stays live for `snapback_lookback` bars, so a later
+        # snapback confirms the same fire.
         squeeze_live = 0 <= bars_since_fire <= self.snapback_lookback
         fire_val = bb[fire_idx][6] if fire_idx >= 0 else 0.0
 
-        # Direction at the fire is the sign of the momentum value, never
-        # the price's own side of the midline.
+        # Direction at the fire is the sign of `fire_val`, never the
+        # price's own side of the midline.
         squeeze_bull = squeeze_live and fire_val > 0.0
         squeeze_bear = squeeze_live and fire_val < 0.0
         just_fired = squeeze_live
 
-        # TTM's output IS the momentum histogram, so squeeze strength is
-        # |val| in the Keltner range unit from the same formula.
-        # The clamp to [0, 1] is `Signal`'s contract, not Carter's.
-        mom_norm = abs(fire_val) / (curr_rangema + 1e-9)
+        # TTM's output is the momentum histogram: `mom_norm` is |fire_val|
+        # in the Keltner range unit, clamped by `Signal`'s [0, 1] contract.
+        mom_norm = abs(fire_val) / curr_rangema
         squeeze_conf = max(0.0, min(1.0, mom_norm))
 
-        # Bollinger rule 8: a close outside the band is continuation, and
-        # the close back INSIDE is the only requirement for the signal.
+        # Bollinger rule 8: a close outside the band is continuation; the
+        # close back inside is the signal.
         snapback_type = ""
         snapback_conf = 0.0
         snapback_break_idx = -1
@@ -290,10 +257,11 @@ class SlingshotIndicator:
 
             past_close, past_up, past_lo, past_mid = bb[idx][:4]
 
-            # BULLISH: past close below lower band, now back inside
             if past_close < past_lo:
                 if curr_close > curr_lo:
-                    penetration = (past_lo - past_close) / (past_lo + 1e-9)
+                    # The branch puts `past_close` under `past_lo`, and
+                    # `candles_from_raw` keeps it above zero.
+                    penetration = (past_lo - past_close) / past_lo
                     midward = curr_close > past_close
                     snapback_conf = max(
                         0.0,
@@ -303,10 +271,11 @@ class SlingshotIndicator:
                     snapback_break_idx = idx
                     break
 
-            # BEARISH: past close above upper band, now back inside
             elif past_close > past_up:
                 if curr_close < curr_up:
-                    penetration = (past_close - past_up) / (past_up + 1e-9)
+                    # `past_up` is `mid` plus a non-negative deviation, so
+                    # it carries `mid`'s positive sign.
+                    penetration = (past_close - past_up) / past_up
                     midward = curr_close < past_close
                     snapback_conf = max(
                         0.0,
@@ -338,8 +307,8 @@ class SlingshotIndicator:
             confidence = snapback_conf
             active_type = snapback_type
 
-        # Reports the discard the precedence above makes: a snapback the
-        # squeeze outranked while pointing the other way.
+        # `snapback_conflict` reports a snapback the squeeze outranked
+        # while pointing the other way.
         snapback_conflict = bool(
             snapback_type
             and (
@@ -348,8 +317,8 @@ class SlingshotIndicator:
             )
         )
 
-        # The break must land at or after the fire, and the re-entry on
-        # this bar must be strictly later than the fire.
+        # The break lands at or after the fire; the re-entry is strictly
+        # later.
         sequential = (
             fire_idx >= 0 and bars_since_fire >= 1 and snapback_break_idx >= fire_idx
         )

@@ -1,4 +1,4 @@
-"""John Bollinger's bands, and the vote the engine casts on them."""
+"""John Bollinger's bands: the ``bands`` envelope and the ``compute`` vote."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from .helpers import (
     _window_has_no_range,
 )
 
-#: ``(upper, middle, lower)`` for one candle, or ``None`` before the
-#: window closes -- see ``BollingerBands.bands``.
+#: One ``BollingerBands.bands`` entry: ``(upper, middle, lower)``, or
+#: ``None`` before the window closes.
 _Band = tuple[float, float, float] | None
 
 
@@ -34,25 +34,18 @@ class BollingerBands:
         self.weight = weight
 
     def bands(self, candles: list[Candle]) -> list[_Band]:
-        """Upper, middle and lower band, ONE ENTRY PER CANDLE.
+        """One ``(upper, middle, lower)`` per candle, ``None`` below ``period - 1``.
 
-        THE PUBLISHED DEFINITION. Bollinger, and StockCharts
-        reproducing him:
+        THE PUBLISHED DEFINITION, Bollinger and StockCharts reproducing
+        him:
 
             Middle Band = SMA(period)
             Upper Band  = Middle + std_dev * sigma(period)
             Lower Band  = Middle - std_dev * sigma(period)
 
-        with sigma the POPULATION deviation over the same window --
-        ``helpers._stdev_tail``, the one this package already uses.
-
-        NO BAND BEFORE THE WINDOW CLOSES. A 20-period band needs 20
-        closes, so entries below ``period - 1`` are ``None``.
-        ``_sma_tail`` and ``_stdev_tail`` keep their own lists
-        candle-aligned by averaging however many closes they have at
-        those indices; no band is built from one of those entries.
-
-        ``CandlestickChart`` in ``native_chart.py`` draws this series.
+        with sigma the POPULATION deviation over the same window,
+        ``_stdev_tail``, and the loop starting past every short-divisor
+        ``_sma_tail`` entry.
         """
         closes = [c.close for c in candles]
         sma = _sma_tail(closes, self.period, tail=None)
@@ -86,8 +79,6 @@ class BollingerBands:
                 abstained=True,
             )
 
-        # `self.period` is the exact depth read below, and it comes from
-        # config, not a module default.
         sma = _sma_tail(closes, self.period, tail=self.period)
         std = _stdev_tail(closes, self.period, tail=self.period)
 
@@ -95,25 +86,25 @@ class BollingerBands:
         upper = mid + self.std_dev * std[-1]
         lower = mid - self.std_dev * std[-1]
         price = closes[-1]
-        band_width = (upper - lower) / (mid + 1e-9)
+        # BandWidth = (Upper - Lower) / Middle. `candles_from_raw` admits
+        # only positive closes, so `mid` cannot be zero.
+        band_width = (upper - lower) / mid
 
-        # The history starts at the first closed window; below
-        # `period - 1` the helpers hold no band.
+        # The loop starts at the first closed window, index `period - 1`.
         widths = [
-            # Spelt out, not folded to `2 * std_dev * std[i]`, to keep
-            # `band_width`'s float operation order.
+            # Matches `band_width`'s float operation order; folding to
+            # `2 * std_dev * std[i]` would not.
             ((sma[i] + self.std_dev * std[i]) - (sma[i] - self.std_dev * std[i]))
-            / (sma[i] + 1e-9)
+            / sma[i]
             for i in range(max(self.period - 1, len(sma) - self.period), len(sma))
         ]
-        # Both sides of the comparison are BandWidths over the midline,
-        # so the flag is free of the asset's price scale.
+        # `band_width` and `avg_width` are both BandWidths over the midline.
         width_count = len(widths)
         avg_width = sum(widths) / width_count if width_count else band_width
         squeeze = band_width < avg_width * 0.75
 
-        # Tested on the closes: sigma over a halted window rounds to ULPs,
-        # so `upper - lower` does not reach zero.
+        # `_window_has_no_range` reads the closes: sigma over a halted
+        # window rounds to ULPs, not to zero.
         if _window_has_no_range(closes[-self.period :]) or upper - lower <= 0.0:
             return Signal(
                 "bollinger_bands",
@@ -125,7 +116,7 @@ class BollingerBands:
             )
 
         # %B: 0 at the lower band, 1 at the upper, outside [0, 1] beyond them.
-        bb_pos = (price - lower) / (upper - lower + 1e-9)
+        bb_pos = (price - lower) / (upper - lower)
 
         direction = SignalDirection.NEUTRAL
         confidence = 0.0
