@@ -13,9 +13,11 @@ Ichimoku   400 of 400 terms (80 candles x 5 lines) bit-identical.
 Vortex     66 drawn, 0 identical, max absolute difference 1.456e-10.
 StochRSI   52 drawn, 9 identical, max absolute difference 1.664e-08.
 
-The last two differ only in where the zero-denominator epsilon sits:
-the copy wrote ``sum(...) or 1e-9`` and the engine writes
-``sum(...) + 1e-9``. Both now come from the engine's spelling.
+The last two differ only in where the zero-denominator guard sits: the
+copy wrote ``sum(...) or 1e-9``, ``StochasticRSI`` writes
+``(high - low + 1e-9)``, and ``VortexIndicator.window_sums`` returns
+``None`` for a zero true-range total and divides by the total itself.
+Both now come from the engine's spelling.
 
 WHAT THE COPY GOT WRONG
 =======================

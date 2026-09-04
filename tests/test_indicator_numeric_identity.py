@@ -246,7 +246,19 @@ def _bb_pos_history() -> list:
 #: absolute. ``voting_engine`` moved because it carries every voter's
 #: raw confidence. No gate verdict changed: 29,208 evaluated, 0 moved.
 #:
-#: The other twenty pins hold. That is not proof the repairs missed
+#: TWO MORE WERE RESTATED by the Vortex denominator repair.
+#: ``VortexIndicator.lines`` and ``.compute`` divided by
+#: ``sum_tr_window + 1e-9``. Botes and Siepman (2010) publish
+#: ``VI+ = sum(VM+, N) / sum(TR, N)`` with no epsilon, and
+#: ``VortexIndicator.window_sums`` already returns ``None`` for a window
+#: whose true-range total is 0.0, so the epsilon guarded nothing and only
+#: scaled with price. MEASURED on one tape shape priced at four scales,
+#: 600 tapes each: before the repair 386 of 600 BONK-scale readings
+#: (3.1e-06) differed from the same shape at 61234, and one direction
+#: differed; after it, 0 of 600 differ at any scale. ``voting_engine``
+#: moved because it carries every voter's raw confidence.
+#:
+#: The other nineteen pins hold. That is not proof the repairs missed
 #: them -- Ichimoku's Chikou repair and Kaufman's window repair are both
 #: ACTIVE on this tape (the historical cloud reads 1.0909/1.0648 against
 #: the current 1.0217/0.9678, and the ER window ends at 0.8723 against
@@ -279,8 +291,15 @@ EXPECTED = {
     # "4f1c7a3e0c9a2d86f1b2eb36c6e5195c633f02a552d6a3adcf96c64ceb9d2232"
     # before the same repair: this digest carries the ADX voter's raw
     # confidence, so it moved with it and for no other reason.
-    "voting_engine": "e90c6b9b11c19bd8ca0d957303e52875641bc64cc172e09455e202d93da2aea8",
-    "vortex": "c1d4d32dc62386d3357f31b961b139682cd38e9ce7d596a58e6fe25e41be5c52",
+    # RESTATED a second time. Was
+    # "e90c6b9b11c19bd8ca0d957303e52875641bc64cc172e09455e202d93da2aea8"
+    # before the Vortex denominator repair, which this digest carries
+    # through the Vortex voter's raw confidence.
+    "voting_engine": "2c225e1ab22f20ed14b6e67f5b35c4aae9dc7826cce4a8be464ab1bd625f8a6f",
+    # RESTATED. Was
+    # "c1d4d32dc62386d3357f31b961b139682cd38e9ce7d596a58e6fe25e41be5c52"
+    # while VI+ and VI- divided by ``sum_tr_window + 1e-9``.
+    "vortex": "7f8767b6a6a9506f1d320809a1fc38db33c827c1c87c811eac341981102685f6",
     "w_bottom": "1a68a6ce5c825b9ba4901d1adfe4e5ce1707eaa5148631c504687c445b5d67e0",
     "zscore": "56a681b17a8a3c39981a83f74d051278cfe35a4e4b350b8aa8def8b21db1676f",
 }
@@ -454,11 +473,13 @@ def _short_units():
 EXPECTED_SHORT = {
     "macd": "b04be9756a1fafff959516346fa222ee8965ef7fe5ed9ed07e3fd1c86864ed9c",
     "macd_taper": "be3e7ab4145472bc726159e7b62b656484ea727ffd9eb9825cc706106a9427ce",
-    # RESTATED by issue #100. Was
+    # RESTATED twice. Was
     # "68b306f9a514d0c09d61b714c3cd2d080f790f8d7a175b1609a9facf216cd241"
     # while an abstaining voter's full weight still counted in the
-    # `consensus_confidence` denominator.
-    "voting_engine": "2914a154fe7497569fad65f43d5611c7d301218349c0a9d886b2b00d6dcb9f8f",
+    # `consensus_confidence` denominator, then
+    # "2914a154fe7497569fad65f43d5611c7d301218349c0a9d886b2b00d6dcb9f8f"
+    # while VI+ and VI- divided by ``sum_tr_window + 1e-9``.
+    "voting_engine": "1f681507ee953c1577006880eb80f4177ce381daf334abb0beac6fb5f39c8925",
 }
 
 
