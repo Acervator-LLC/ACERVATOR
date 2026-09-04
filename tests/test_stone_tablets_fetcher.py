@@ -354,3 +354,34 @@ def test_first_time_generation_flow(tmp_path):
     branded = [c for c in reg.coverage_summary() if c.asset == "BRANDNEW"]
     assert branded
     assert branded[0].exchange_id == "fake"
+
+
+def test_gap_filler_fetches_a_hole_between_two_covered_runs(tmp_path):
+    reg = StoneTabletsRegistry(root=tmp_path)
+    covered = [0, 1, 2, 20, 21, 22]
+    reg.ingest_candles(
+        asset="HOLE",
+        timeframe=NATIVE_TIMEFRAME,
+        rows=[
+            [_START_MS + i * STEP_5M_MS, 100.0, 101.0, 99.0, 100.5, 5.0]
+            for i in covered
+        ],
+        source="test",
+        exchange_id="fake",
+    )
+    until = _START_MS + 22 * STEP_5M_MS
+    hole = (_START_MS + 3 * STEP_5M_MS, _START_MS + 19 * STEP_5M_MS)
+    seen = reg.missing_ranges("HOLE", _START_MS, until, exchange_id="fake")
+    assert seen == [hole], f"the interior hole was not reported: {seen}"
+
+    adapter = _FakeAdapter([])
+    report = asyncio.run(GapFiller(reg, adapter).fill_asset("HOLE", _START_MS, until))
+
+    assert report.gaps_requested == 1, f"expected one gap, got {report.gaps_requested}"
+    assert adapter.calls, "the adapter was never asked for the hole"
+    assert adapter.calls[0][0] == hole[0], (
+        f"first request started at {adapter.calls[0][0]}, "
+        f"not at the first missing step {hole[0]}"
+    )
+    left = reg.missing_ranges("HOLE", _START_MS, until, exchange_id="fake")
+    assert left == [], f"the window is still short after the fill: {left}"
