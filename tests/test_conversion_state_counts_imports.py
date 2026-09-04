@@ -7,9 +7,7 @@ as remaining work sends a conversion unit at a file with nothing to convert.
 
 from __future__ import annotations
 
-import pathlib
-
-from tools.conversion_state import imports_pyside, split_surfaces
+from tools.conversion_state import imports_pyside
 
 
 def test_a_plain_import_of_pyside_counts_as_a_qt_surface() -> None:
@@ -60,56 +58,3 @@ def test_a_module_naming_pyside_that_cannot_be_parsed_stays_counted() -> None:
         "an unparseable module naming PySide6 stays counted, so a file the "
         "tool cannot read is reported rather than dropped from the total"
     )
-
-
-def _write(folder: pathlib.Path, name: str, text: str) -> None:
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / name).write_text(text, encoding="utf-8")
-
-
-def test_a_surface_naming_pyside_in_a_string_is_absent_from_both_lists(
-    tmp_path: pathlib.Path,
-) -> None:
-    gui = tmp_path / "gui"
-    _write(gui, "chart_surface.py", 'WARNING = "requires PySide6-WebEngine"\n')
-
-    paired, unpaired = split_surfaces(gui, set())
-
-    assert [p.name for p in unpaired] == [], (
-        "a surface that imports no Qt is not remaining conversion work; got "
-        + str([p.name for p in unpaired])
-    )
-    assert [p.name for p in paired] == [], (
-        "a surface that imports no Qt is not a Qt surface at all; got "
-        + str([p.name for p in paired])
-    )
-
-
-def test_a_widget_that_imports_qt_and_has_no_react_module_is_unpaired(
-    tmp_path: pathlib.Path,
-) -> None:
-    gui = tmp_path / "gui"
-    _write(gui, "chart_widget.py", "from PySide6.QtWidgets import QWidget\n")
-
-    paired, unpaired = split_surfaces(gui, set())
-
-    assert [p.name for p in unpaired] == ["chart_widget.py"], (
-        "a Qt widget with no React module of the same stem is remaining work; got "
-        + str([p.name for p in unpaired])
-    )
-    assert paired == [], "nothing pairs when no React module exists"
-
-
-def test_a_widget_that_imports_qt_and_has_a_react_module_is_paired(
-    tmp_path: pathlib.Path,
-) -> None:
-    gui = tmp_path / "gui"
-    _write(gui, "chart_widget.py", "from PySide6.QtWidgets import QWidget\n")
-
-    paired, unpaired = split_surfaces(gui, {"chart_widget"})
-
-    assert [p.name for p in paired] == ["chart_widget.py"], (
-        "a Qt widget whose stem matches a React module is paired; got "
-        + str([p.name for p in paired])
-    )
-    assert unpaired == [], "a paired widget is not remaining work"

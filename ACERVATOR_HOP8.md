@@ -299,61 +299,54 @@ Trading, Charts, Bot Swarm, Market Inspector, Simulator, History, Console.
 
 ## #128 — THE CONVERSION. RESUME HERE.
 
-**Measured 2026-09-03 on `current`, `d9937ef`. Refresh before you act:**
+**Refresh before you act:**
 
 ```bash
-python C:/Users/brown/AppData/Local/Temp/claude/conversion_state.py
+python -m tools.conversion_state
 ```
 
 ```
-60   React modules, vendor excluded
-72   src/gui .py importing PySide6
-41     of those, a .js of the same name exists
-31     of those, NO React counterpart   <- the remaining surface
+60   renderer modules the page loads
+53   bridge methods a renderer module speaks
+68   src/gui .py importing PySide6
+49     paired, a React module serves it
+ 5     not a screen, Qt plumbing
+14     UNPAIRED, the work that is left
 ```
 
-**What that instrument does and does not prove.** It matches file stems. A
-`.py` and a `.js` sharing a name means a React module was written for that
-surface; it does **not** prove the React one is live or the Qt one retired.
-Treat 41 as "started", never as "done", and confirm at the surface itself. Its
-control is `bot_swarm_list`, which must land in `paired`; `theme_engine` and
-`design_tokens` correctly report "no .py at all" because they were born React.
+**What that instrument proves.** It reads the chain the running frontend uses:
+a surface publishes a bridge method, `src/core/desktop_bridge.py` registers it,
+a module under `src/gui/web` speaks it, and the renderer manifest loads that
+module. A Qt module that loads a renderer module itself pairs on that alone. No
+`.py` name is compared with a `.js` name. A pair means React can draw the
+screen; it does not prove the Qt one is retired, so confirm at the surface.
+Its control is `bot_swarm_list`, which must land in `paired`; `theme_engine`
+and `design_tokens` report "born React" because they have no Qt module.
 
-**The 31 with no React counterpart, largest first — this is the work:**
+**Qt plumbing, which can never be converted:** `src/gui/main_window.py`,
+`src/gui/stock_main_window.py` and `src/gui/live_bot_window.py` are the desktop
+windows the web view lives inside; `src/gui/widgets/__init__.py` is a package
+marker; `src/gui/qt_safe_events.py` defines no class. Counting these as
+outstanding is what made the item look permanently incompletable.
+
+**The 14 with no renderer module, largest first — this is the work:**
 
 | lines | file |
 |---|---|
-| 3,550 | `src/gui/main_window.py` |
 | 2,000 | `src/gui/indicator_panel.py` |
 | 1,560 | `src/gui/live_settings/settings_tab.py` |
-| 1,430 | `src/gui/main_tabs/stock_main_window_surface.py` |
-| 1,213 | `src/gui/main_tabs/audio_suite_surface.py` |
 | 777 | `src/gui/history_tab.py` |
-| 753 | `src/gui/main_tabs/buy_confirmation_surface.py` |
-| 716 | `src/gui/stock_main_window.py` |
-| 671 | `src/gui/main_tabs/tradingview_chart_surface.py` |
 | 648 | `src/gui/testnet_tab.py` |
 | 643 | `src/gui/audio_suite.py` |
 | 627 | `src/gui/usb_auth_widget.py` |
-| 423 | `src/gui/live_bot_window.py` |
 | 379 | `src/gui/risk_tab.py` |
 | 378 | `src/gui/shared_testnet.py` |
 | 355 | `src/gui/competition_tab.py` |
 | 331 | `src/gui/alerts_tab.py` |
-| 326 | `src/gui/react_history_panel.py` |
 | 322 | `src/gui/analytics_tab.py` |
-| 306 | `src/gui/live_settings/positions_held_tab.py` |
 | 286 | `src/gui/instance_consent_dialog.py` |
-| 276 | `src/gui/buy_confirmation_dialog.py` |
 | 272 | `src/gui/init_wizard.py` |
-| 234 | `src/gui/main_tabs/console_log_handler.py` |
-| 233 | `src/gui/start_all_progress_dialog.py` |
-| 221 | `src/gui/widgets/__init__.py` |
 | 211 | `src/gui/launcher.py` |
-| 145 | `src/gui/visualizer/themes.py` |
-| 131 | `src/gui/live_settings/status_tab.py` |
-| 88 | `src/gui/qt_safe_events.py` |
-| 77 | `src/gui/widgets/capital_registry_panel.py` |
 
 **Ranked by live use, not by size.** The measured live tab set is Trading,
 Charts, Bot Swarm, Market Inspector, Simulator, History, Console. `history_tab`
