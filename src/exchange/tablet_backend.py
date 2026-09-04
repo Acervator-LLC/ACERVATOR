@@ -1,74 +1,4 @@
-"""A ccxt-shaped exchange backed by Stone Tablets instead of the network.
-
-Operator directive 2026-08-09: the Simulator must process Stone Tablet
-and YTD data "in the exact same manner that Live Mode processes API
-pulls from the exchange. It is just a different data source that I am
-expecting you to handle in an identical, verifiable manner so that we
-have a valid test environment on which to build."
-
-WHY THIS SITS BELOW `CCXTConnector` AND NOT BESIDE IT
-=====================================================
-The Simulator previously satisfied that directive by RE-IMPLEMENTING the
-connector. `FleetSimExchange` grew its own ticker, balance ledger, order
-settlement, market metadata and fee arithmetic — a second implementation
-of behaviour that already existed. Two implementations of one behaviour
-cannot be held in agreement by inspection: a seam-by-seam audit found 16
-divergences on fields the bot actually reads, and every one repaired only
-reopens the moment live changes.
-
-So this class does NOT implement the exchange interface. It implements
-the raw `ccxt` surface — the 14 members `CCXTConnector` reaches through
-its `_ex` property — and is attached via `connector.attach_backend()`.
-Everything above that line is then the same code in both modes:
-normalisation, `_parse_order`, fee reading, `AssetInfo` construction,
-retry and rate-limit wrappers, and every documented ccxt quirk the bots
-have been calibrated against.
-
-THE QUIRK THAT MUST REPRODUCE, NOT BE RE-CODED
-==============================================
-`CCXTConnector.get_ohlcv` calls `fetch_ohlcv(symbol, timeframe, limit)`
-— three positional arguments — against ccxt's real signature
-`fetch_ohlcv(symbol, timeframe='1m', since=None, limit=None)`. The
-requested limit therefore lands in the `since` slot and is never
-applied; the exchange returns its own default page instead (Coinbase:
-300). That defect is documented on `get_ohlcv` and is deliberately left
-in place, because correcting it changes live TA and needs its own gated
-cascade.
-
-`fetch_ohlcv` below declares ccxt's real signature. It receives
-`since=100, limit=None` from that call and returns a default page,
-reproducing live's behaviour BY CONSTRUCTION. Nothing here special-cases
-it, and when the defect is eventually fixed upstream this backend
-follows automatically — which is the entire argument for putting the
-seam here.
-
-A REFUSAL IS AN EXCEPTION, NOT A RETURN VALUE
-=============================================
-`create_order` raises `ccxt.InsufficientFunds` when the wallet cannot
-cover a marketable order. That is what `ccxt` does on the venue, and it
-is the ONLY refusal shape the bot above has been written against: a
-returned order carrying `filled=0` reaches
-`ScrummingBot._settled_fill`, which books the requested size at the tick
-price as an estimate — a position that exists in the book and nowhere
-else. Issue #111 defect 2 is that state, and it is unreachable in live.
-A resting order that cannot be funded when the sweep crosses it is still
-marked `rejected`, because a sweep has no caller to raise at.
-
-WHAT THIS OWNS AND WHAT IT DOES NOT
-===================================
-Owns: the replay clock, candle rows, balances, open orders, fills and
-trade history — state and DATA.
-
-Does not own: what any of it MEANS. No `Order`, no `Ticker`, no
-`Balance`, no `AssetInfo` is constructed here. Those are the connector's
-job, and letting this class build them would rebuild the divergence the
-class exists to remove.
-
-CAUSALITY. A live exchange cannot return a price stamped later than now.
-Tablets in a fleet start on different dates, so a symbol whose tape has
-not begun has NO price — `has_data()` reports that and the read methods
-raise rather than serve row 0 from the symbol's own future.
-"""
+"""A ccxt-shaped exchange backed by Stone Tablets instead of the network."""
 
 from __future__ import annotations
 
@@ -82,33 +12,18 @@ __all__ = ["TabletBackend", "TabletNotStarted"]
 
 logger = logging.getLogger(__name__)
 
-# Candles a page returns when the caller does not successfully specify a
-# limit. Coinbase's default, and the value live actually receives on
-# every call because of the `since`-slot defect described above.
+# Candles fetch_ohlcv returns when limit is unset.
 DEFAULT_PAGE_SIZE = 300
 
 NATIVE_TIMEFRAME = "5m"  # what the Stone Tablets store
 
 
 class TabletNotStarted(Exception):
-    """Raised when a symbol is read before its tablet begins.
-
-    Deliberately an exception rather than an empty result. A silent
-    empty would be indistinguishable from a quiet market, and the
-    Simulator would keep ticking a bot that has no price — which is the
-    exact defect this replaces.
-    """
+    """Raised when a symbol is read before its tablet begins."""
 
 
 class TabletBackend:
-    """Serves `ccxt`'s raw surface from Stone Tablet rows.
-
-    Rows are `[ts_ms, open, high, low, close, volume]` exactly as the
-    tablets store them, with `ts_ms` an int millisecond epoch on a fixed
-    5m grid. Timestamps are passed through untouched — they are the
-    ADDRESS a trade and a gate decision are keyed by, not a measurement
-    to be re-typed.
-    """
+    """Serves ccxt's raw surface from Stone Tablet rows."""
 
     def __init__(
         self,
@@ -119,16 +34,14 @@ class TabletBackend:
         default_fee_rate: float = 0.006,
         tf_rows: Optional[dict[tuple, list[list]]] = None,
     ) -> None:
+        # Rows are [ts_ms, open, high, low, close, volume], ms epoch on a 5m grid.
         self._rows: dict[str, list[list]] = {
             str(s): [list(r) for r in (rows or [])]
             for s, rows in (rows_by_symbol or {}).items()
         }
         self._cursor: dict[str, int] = {s: 0 for s in self._rows}
-        # Higher-timeframe series, keyed (symbol, timeframe). A request
-        # for a timeframe with no series is an ERROR, not a fallback to
-        # the native one -- serving 5m for a 1h request makes every
-        # timeframe agree perfectly, which is not a signal, it is the
-        # same signal counted N times, and it gates SCRUM.
+        # Higher-timeframe series keyed (symbol, timeframe);
+        # fetch_ohlcv raises when one is missing.
         self._tf_rows: dict[tuple, list[list]] = {
             (str(k[0]), str(k[1])): [list(r) for r in v]
             for k, v in (tf_rows or {}).items()
@@ -142,39 +55,8 @@ class TabletBackend:
         self._fee_by_symbol = dict(fee_rate_by_symbol or {})
         self._default_fee = float(default_fee_rate)
         self._opening_balances: dict[str, float] = dict(self._balances)
-        # THE EXCHANGE REPORTS EVERY CURRENCY IT TRADES, INCLUDING THE
-        # ONES THAT ARE ZERO.
-        #
-        # `FleetSimExchange`, which this class replaced in v3.24.84,
-        # seeded both sides of every pair for exactly this reason:
-        # "Seed every base + quote encountered so MEM-254's absent-side
-        # handshake passes" (sim_exchange.py:130-136). The seeding was
-        # not carried across, so `fetch_balance` reported only the quote
-        # currencies the caller passed.
-        #
-        # WHAT THAT COST. `CCXTConnector.get_balance` marks a currency
-        # the response OMITS as `absent=True` (see
-        # `CCXTConnector.get_balance` in `src/exchange/ccxt_connector.py`),
-        # and `TickPhaseMixin._tick_initialise` in
-        # `src/trading/scrumming/tick_phases.py` refuses to set
-        # `_initialised` on an absent read. The refusal is
-        # correct - two deterministic lies from the same filter still
-        # agree - but here the read was not a lie, it was a currency the
-        # backend simply never listed. So EVERY sim bot re-ran the init
-        # handshake on EVERY tick, for ever, and no sim bot has been
-        # initialised since v3.24.84.
-        #
-        # The handshake is two balance reads with `await
-        # asyncio.sleep(0.25)` between them, in the same
-        # `TickPhaseMixin._tick_initialise`.
-        # Measured on a 50-candle 2-bot replay: 100 refusals, 25.73 s of
-        # the run's 26.03 s spent in that sleep - 98.8%.
-        #
-        # `setdefault`, so a caller that states a currency keeps its
-        # value; only the currencies the caller did not mention are
-        # added, at zero. `_opening_balances` is captured ABOVE this
-        # block so it still reflects the caller's intent rather than the
-        # seeded scaffolding, which is what `FleetSimExchange` did too.
+        # Every traded currency is listed, at zero if unheld, so
+        # get_balance never marks it absent.
         for _sym in self._rows:
             _base, _sep, _quote = str(_sym).partition("/")
             if not _sep:
@@ -184,10 +66,8 @@ class TabletBackend:
         self._on_trade = None
         self._ticks = 0
 
-        # The master clock is the UNION of every tablet's timestamps, so
-        # a fleet whose tapes start on different dates advances on one
-        # timeline. `has_data` is what keeps that from serving a price
-        # before a symbol's tape opens.
+        # The clock is the union of every tablet's timestamps, so tapes
+        # with different start dates share one timeline.
         stamps: set = set()
         for rows in self._rows.values():
             for r in rows:
@@ -202,12 +82,7 @@ class TabletBackend:
     # -- market metadata ------------------------------------------------
     @staticmethod
     def _default_market(symbol: str) -> dict:
-        """A ccxt market dict in the shape `get_markets` parses.
-
-        Keys chosen to match what the connector actually reads:
-        `active`, `base`, `quote`, `limits.amount.min`, `limits.cost.min`,
-        `precision.price`, `precision.amount`, `maker`, `taker`.
-        """
+        """Return a ccxt market dict in the shape get_markets parses."""
         base, _, quote = str(symbol).partition("/")
         return {
             "id": str(symbol).replace("/", "-"),
@@ -229,9 +104,8 @@ class TabletBackend:
 
     def amount_to_precision(self, symbol: str, amount: float) -> str:
         prec = int(self.market(symbol)["precision"]["amount"])
-        # ccxt returns a STRING, and truncates rather than rounds. Both
-        # matter: the connector re-floats the result, and rounding UP
-        # here would submit more than the caller sized.
+        # ccxt truncates rather than rounds; rounding up would submit
+        # more than the caller sized.
         factor = 10**prec
         return f"{int(float(amount) * factor) / factor:.{prec}f}"
 
@@ -246,12 +120,7 @@ class TabletBackend:
         return self._clock[self._clock_i]
 
     def has_data(self, symbol: str) -> bool:
-        """Has the clock reached this symbol's first candle?
-
-        Stateless: a comparison of the clock against the tablet's first
-        row, so it cannot drift out of step with the cursor the way a
-        cached flag would.
-        """
+        """Return True once the clock reaches this symbol's first candle."""
         rows = self._rows.get(str(symbol))
         ts = self.current_ts_ms()
         if not rows or ts is None:
@@ -287,48 +156,21 @@ class TabletBackend:
         return self._ticks
 
     def clock_window(self) -> tuple[int | None, int | None]:
-        """First and last master timestamp in the tape, in ms.
-
-        The window a run CONSUMED, which is what makes the run
-        re-checkable against the same data later. `FleetSimExchange`
-        exposed this as `clock.timestamps`; a reader written against
-        that shape gets `None` from a `CCXTConnector` and reports a
-        run with no window at all (issue #110). Exposed as a method on
-        the tape so the reader asks the object that owns the clock.
-
-        `(None, None)` on an empty tape -- there is no window, and a
-        zero would claim the epoch.
-        """
+        """First and last master timestamp in ms, or (None, None) when empty."""
         if not self._clock:
             return (None, None)
         return (int(self._clock[0]), int(self._clock[-1]))
 
     def on_trade(self, callback) -> None:
-        """Register a fill observer.
-
-        The Simulator records every fill to its run log. Live gets the
-        same information from the exchange's own trade stream, so this
-        is replay plumbing, not a behavioural difference: no bot ever
-        sees it.
-        """
+        """Register a callback _settle invokes with each fill dict."""
         self._on_trade = callback
 
     def cursor_for(self, symbol: str) -> int:
-        """Index of the candle currently visible for *symbol*.
-
-        Exposed instead of the raw series object so the Simulator can
-        ask its question -- how far into this tape are we -- without
-        reaching into private state and coupling to its shape.
-        """
+        """Index of the candle currently visible for *symbol*."""
         return int(self._cursor.get(str(symbol), 0))
 
     def history(self, symbol: str, limit: int = 100) -> list[list]:
-        """Visible rows for *symbol*, oldest-first, never past the cursor.
-
-        The same data `fetch_ohlcv` serves, without the ccxt argument
-        quirk -- this is for the Simulator's own observation pass, which
-        is not pretending to be an exchange call.
-        """
+        """Visible rows for *symbol*, oldest-first, never past the cursor."""
         return [list(r) for r in self._visible(symbol)[-int(limit) :]]
 
     def symbols(self) -> list[str]:
@@ -338,12 +180,7 @@ class TabletBackend:
         return dict(self._balances)
 
     def credit(self, currency: str, amount: float) -> None:
-        """Seed a holding before the run starts.
-
-        The Simulator opens each bot with the position bot_state says it
-        already holds, which has to exist in the ledger or the first
-        SELL fails a sufficiency check that live would have passed.
-        """
+        """Add *amount* of *currency* to the ledger before the run starts."""
         self._adjust(str(currency), float(amount))
 
     def mark_opening_balances(self) -> None:
@@ -386,13 +223,7 @@ class TabletBackend:
         limit: Optional[int] = None,
         params: Optional[dict] = None,
     ) -> list[list]:
-        """ccxt's real signature — see the module note on the quirk.
-
-        `CCXTConnector.get_ohlcv` passes its limit positionally into
-        `since`, so the common live call arrives here as
-        `since=100, limit=None` and falls to the default page. That is
-        live's actual behaviour, reproduced without being re-coded.
-        """
+        """Return the last *limit* visible rows for *symbol* at *timeframe*."""
         tf = str(timeframe or "").strip() or NATIVE_TIMEFRAME
         n = int(limit) if limit else DEFAULT_PAGE_SIZE
         if tf == NATIVE_TIMEFRAME:
@@ -436,9 +267,7 @@ class TabletBackend:
             try:
                 out[str(sym)] = self.fetch_ticker(sym)
             except (TabletNotStarted, ValueError):
-                # A symbol whose tape has not opened is absent from the
-                # response, which is what a real exchange returns for a
-                # symbol it has no data for.
+                # A symbol whose tape has not opened is absent from the response.
                 continue
         return out
 
@@ -455,7 +284,7 @@ class TabletBackend:
 
     # -- ccxt: account --------------------------------------------------
     def fetch_balance(self, params: Optional[dict] = None) -> dict:
-        """ccxt balance shape: per-currency free/used/total plus mirrors."""
+        """Return the ccxt balance shape: per-currency free/used/total plus mirrors."""
         out: dict = {"info": {}, "free": {}, "used": {}, "total": {}}
         for cur, total in self._balances.items():
             used = float(self._reserved.get(cur, 0.0))
@@ -477,7 +306,7 @@ class TabletBackend:
         self,
         symbol: str,
         type: str,
-        side: str,  # noqa: A002 - ccxt name
+        side: str,
         amount: float,
         price: Optional[float] = None,
         params: Optional[dict] = None,
@@ -499,10 +328,7 @@ class TabletBackend:
             "status": "open",
             "fee": None,
             "timestamp": self.current_ts_ms(),
-            # ccxt echoes venue params back on the order's `info`. The
-            # connector sends client_order_id here, and dropping it
-            # would make sim orders untraceable in a way live ones are
-            # not.
+            # ccxt echoes venue params back on the order's info.
             "info": {"sim": True, "params": dict(params or {})},
             "clientOrderId": (params or {}).get("client_order_id"),
         }
@@ -514,60 +340,17 @@ class TabletBackend:
             or (str(side).lower() == "sell" and float(price) <= px_now)
         )
         if marketable:
-            # A VENUE REFUSES BY RAISING. THIS ONE MUST TOO.
-            #
-            # Issue #111 defect 2. `_settle` marked an unfundable order
-            # `rejected` and this method returned it like any other
-            # order. `CCXTConnector.place_order` in
-            # `src/exchange/ccxt_connector.py`
-            # only re-raises what `create_order` raises, so the bot
-            # received an ordinary `Order` carrying `filled=0`,
-            # `average=None`. `ExecutionEngineMixin._settled_fill`
-            # in `src/trading/scrumming/execution.py` reads exactly those
-            # two fields, finds neither, and books the REQUESTED size at
-            # the TICK price as an estimate — a position the wallet
-            # never bought.
-            #
-            # MEASURED on a 400-candle 1-symbol tape before this line
-            # existed: the bot booked 101.05331875 CHIP into `_main_lots`
-            # while `TabletBackend` held 0.0 CHIP and its USD was
-            # untouched at 100.0. Every autonomous fire afterwards was
-            # refused by the MEM-257 position check —
-            # `ExecutionEngineMixin._verify_buy_safe_or_refuse` in
-            # `src/trading/scrumming/execution.py` — "internal
-            # 0.93737127 vs exchange 0.00000000" in the operator's own
-            # console — so the bot traded nothing for the rest of the run.
-            #
-            # LIVE CANNOT REACH THAT STATE. `ccxt` raises
-            # `InsufficientFunds` out of `coinbase.create_order`, so the
-            # bot never gets an order object to mis-book; the call site
-            # catches it and says so (`TickPhaseMixin._tick_wire_stack_fire`
-            # for the wire stack path, `_tick_cartridge_fire` for max
-            # cartridge, both in `src/trading/scrumming/tick_phases.py`).
-            # `_settled_fill`'s docstring states
-            # that premise out loud — "the order DID execute and refusing
-            # to book it would be worse". It is true of a venue that
-            # raises and false of one that does not.
-            #
-            # So the divergence is closed HERE, in the backend, and not
-            # by teaching the bot about a second refusal shape. The bot
-            # is live's code and must stay live's code.
             _px = px_now if str(type).lower() == "market" else float(price)
             if not self._settle(order, _px):
-                # `_settle` moved no balance on the refusal, so the
-                # shortfall re-reads the same wallet and the message
-                # states the arithmetic that produced the refusal.
+                # _settle moved no balance on the refusal, so
+                # _shortfall re-reads the same wallet.
                 raise InsufficientFunds(self._shortfall(order, _px))
         else:
             self._open.append(oid)
         return dict(order)
 
     def _shortfall(self, order: dict, fill_px: float) -> str:
-        """Return why this order cannot settle, or "" when it can.
-
-        The string is the message the refusal carries, so the caller
-        never has to re-derive the arithmetic that produced it.
-        """
+        """Return why this order cannot settle, or "" when it can."""
         sym = order["symbol"]
         base, _, quote = sym.partition("/")
         amount = float(order["amount"])
@@ -592,20 +375,7 @@ class TabletBackend:
         return ""
 
     def _settle(self, order: dict, fill_px: float) -> bool:
-        """Fill an order and move the ledger. True when it filled.
-
-        The FEE is written onto the order in ccxt's nested shape,
-        because that is where the connector reads it from:
-        `raw.get("fee", {}).get("cost")`. The Simulator computing a fee
-        and stashing it somewhere else is how sim and live diverged on
-        this field before.
-
-        RETURNS FALSE RATHER THAN RAISING, and marks the order
-        `rejected`. `create_order` turns that into the exception the
-        venue raises; `_sweep_open_orders` leaves the resting order
-        rejected, because a sweep is not a caller and has nothing to
-        raise at.
-        """
+        """Fill *order* at *fill_px* and move the ledger, True when filled."""
         sym = order["symbol"]
         base, _, quote = sym.partition("/")
         amount = float(order["amount"])
@@ -649,11 +419,9 @@ class TabletBackend:
         if self._on_trade is not None:
             try:
                 self._on_trade(dict(_t))
-            except Exception as exc:  # noqa: BLE001 - must not break a fill
-                # A fill is real whether or not the observer survives
-                # it, so this cannot raise -- but a silently dead
-                # observer means the run log quietly stops recording
-                # trades, which reads as "no trades happened".
+            except Exception as exc:  # noqa: BLE001
+                # The fill already moved the ledger, so an observer
+                # error is logged, not raised.
                 logger.warning(
                     "on_trade observer raised for %s fill: %s", _t.get("symbol"), exc
                 )
@@ -685,7 +453,7 @@ class TabletBackend:
     def cancel_order(
         self,
         id: str,
-        symbol: Optional[str] = None,  # noqa: A002
+        symbol: Optional[str] = None,
         params: Optional[dict] = None,
     ) -> dict:
         o = self._orders.get(str(id))
@@ -700,7 +468,7 @@ class TabletBackend:
     def fetch_order(
         self,
         id: str,
-        symbol: Optional[str] = None,  # noqa: A002
+        symbol: Optional[str] = None,
         params: Optional[dict] = None,
     ) -> dict:
         o = self._orders.get(str(id))
