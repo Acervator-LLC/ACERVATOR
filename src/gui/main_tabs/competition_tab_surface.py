@@ -158,6 +158,7 @@ SUPPLY_NUMBER_FORMAT = "{value:,}"
 MINTED_KEY = "total_minted"
 REMAINING_KEY = "remaining"
 HOLDERS_KEY = "total_holders"
+SUPPLY_KEYS = (MINTED_KEY, REMAINING_KEY, HOLDERS_KEY)
 
 TOTAL_SUPPLY_CAP = 10_000_000
 INITIAL_REWARD = 500_000
@@ -419,7 +420,10 @@ class LedgerSnapshot:
     ) -> None:
         self._balances = {} if balances is None else balances
         self._awards = {} if awards is None else awards
-        self._summary = {} if summary is None else summary
+        # A real token ledger always answers every key, so an unsupplied
+        # summary counts zero. A supplied one is kept as given, and a
+        # missing key in it still refuses the way the Qt tab refuses.
+        self._summary = dict.fromkeys(SUPPLY_KEYS, 0) if summary is None else summary
 
     def balance(self, bot_id: Any) -> Any:
         """The ACRV one bot holds."""
@@ -922,7 +926,7 @@ def build_model(spec: Optional[dict]) -> CompetitionTabModel:
     ledger = LedgerSnapshot(
         balances={bot_id: spec.get("balance", 0)},
         awards={bot_id: build_awards(spec.get("awards", ()))},
-        summary=spec.get("summary", {MINTED_KEY: 0, REMAINING_KEY: 0, HOLDERS_KEY: 0}),
+        summary=spec.get("summary", dict.fromkeys(SUPPLY_KEYS, 0)),
     )
     return CompetitionTabModel(
         identity=identity,
@@ -1046,7 +1050,7 @@ def build_view_model(model: CompetitionTabModel) -> dict:
         "leaderboard_lead_row": LEADERBOARD_LEAD_ROW,
         "leaderboard_lead_column": LEADERBOARD_LEAD_COLUMN,
         "supply_labels": list(SUPPLY_LABELS),
-        "supply_keys": [MINTED_KEY, REMAINING_KEY, HOLDERS_KEY],
+        "supply_keys": list(SUPPLY_KEYS),
         "supply_constants": {
             "total_supply_cap": TOTAL_SUPPLY_CAP,
             "initial_reward": INITIAL_REWARD,

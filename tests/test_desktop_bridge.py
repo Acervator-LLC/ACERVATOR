@@ -464,3 +464,40 @@ def test_control_a_backend_sharing_stdout_does_corrupt_the_stream(monkeypatch):
     )
     db.serve(io.BytesIO(noisy_request()), shared, {"noisy": noisy_handler})
     assert unparseable_lines(shared.getvalue()) == 1
+
+
+def surfaces_that_raise(registry: dict) -> dict:
+    """Every method in ``registry`` answering an error frame to a bare call,
+    keyed by method name and carrying the exception the handler raised."""
+    raised = {}
+    for method in sorted(registry):
+        request = json.dumps({"id": 1, "method": method, "params": {}})
+        reply = db.handle_line(request, registry)
+        if not reply["ok"]:
+            error = reply["error"]
+            raised[method] = error["type"] + ": " + error["message"]
+    return raised
+
+
+def raises_missing_key(_params):
+    raise KeyError("total_minted")
+
+
+def test_no_registered_surface_raises_on_a_call_with_no_parameters(registry):
+    """A screen opening for the first time sends no parameters, and
+    ``handle_line`` turns a raise into an error frame the renderer's
+    ``.catch`` swallows, so a surface that raises here draws nothing and
+    reports nothing."""
+    raised = surfaces_that_raise(registry)
+    assert raised == {}, "surfaces raising on a bare call: " + json.dumps(
+        raised, indent=2, sort_keys=True
+    )
+
+
+def test_control_the_bare_call_sweep_names_a_surface_that_raises(registry):
+    """The blinded twin of the test above. Without this, an empty result
+    from the sweep could mean every surface answers or could mean the
+    sweep never called one."""
+    registry["control.raises"] = raises_missing_key
+    raised = surfaces_that_raise(registry)
+    assert raised == {"control.raises": "KeyError: 'total_minted'"}
