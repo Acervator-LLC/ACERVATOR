@@ -175,9 +175,9 @@ if _HAS_QT:
             self._summary.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; padding: 2px 6px;")
             outer.addWidget(self._summary)
 
-            from .react_history_panel import HistoryWebTable
+            from .history_table_variant import history_table_class
 
-            self._table = HistoryWebTable(self)
+            self._table = history_table_class()(self)
             outer.addWidget(self._table, stretch=1)
 
             foot = QHBoxLayout()

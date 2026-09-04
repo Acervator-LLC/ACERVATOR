@@ -43,11 +43,14 @@ from __future__ import annotations
 
 import ast
 import re
+import runpy
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from src._version import BAKED_FILENAME, baked_path
+from tools.build_variants import sanitise, windows_file_version
 from tools.spec_common import (
     COMMON_HIDDENIMPORTS,
     EXCLUDES,
@@ -64,6 +67,71 @@ REPO = Path(__file__).resolve().parent.parent
 WIN_SPEC = REPO / "Acervator_win.spec"
 MAC_SPEC = REPO / "Acervator_mac.spec"
 SHARED_MODULE = REPO / "tools" / "spec_common.py"
+SPEC_DIR = REPO
+
+VARIANT_BAKED_FILENAME = "_baked_variant.txt"
+
+
+def run_spec(
+    spec_path: Path,
+    project_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    variant: str = "react",
+) -> dict:
+    """Run a spec file against ``project_root`` and report what it built.
+
+    The spec is copied so ``PROJECT_ROOT``, which it derives from its own
+    location, becomes the caller's temporary directory. Nothing is written
+    into the repository and no build runs: PyInstaller's builder callables
+    are replaced with recorders, so the answer holds the arguments the spec
+    actually passed rather than a bundle.
+
+    ``collect_submodules`` is stubbed because walking the real ``src``
+    package costs seconds and answers nothing this asks about.
+    """
+    copied = project_root / spec_path.name
+    copied.write_bytes(spec_path.read_bytes())
+
+    recorded: dict = {}
+
+    def recorder(name):
+        def record(*_positional, **kwargs):
+            recorded[name] = kwargs
+            # The spec reads attributes off what Analysis returns and
+            # passes them on, so the stand-in has to carry them.
+            return SimpleNamespace(
+                pure=f"<{name}.pure>",
+                zipped_data=f"<{name}.zipped_data>",
+                scripts=f"<{name}.scripts>",
+                binaries=f"<{name}.binaries>",
+                zipfiles=f"<{name}.zipfiles>",
+                datas=f"<{name}.datas>",
+            )
+
+        return record
+
+    def one_stub_module(*_positional, **_keyword):
+        return ["src.stub"]
+
+    monkeypatch.setattr("PyInstaller.utils.hooks.collect_submodules", one_stub_module)
+    monkeypatch.setenv("ACERVATOR_BUILD_VARIANT", variant)
+
+    namespace = runpy.run_path(
+        str(copied),
+        init_globals={
+            "SPEC": str(copied),
+            "DISTPATH": str(project_root / "dist"),
+            "Analysis": recorder("Analysis"),
+            "PYZ": recorder("PYZ"),
+            "EXE": recorder("EXE"),
+            "COLLECT": recorder("COLLECT"),
+            "BUNDLE": recorder("BUNDLE"),
+        },
+    )
+    recorded["version"] = namespace["ACERVATOR_VERSION"]
+    recorded["variant"] = namespace["ACERVATOR_VARIANT"]
+    return recorded
+
 
 # The names both specs must take from the shared module. Losing any one of
 # them means that spec has grown a private copy again.
@@ -308,8 +376,36 @@ class TestVersionHelper:
             r"CFBundleShortVersionString['\"]\s*:\s*ACERVATOR_VERSION", mac_src
         )
 
-    def test_win_file_description_comes_from_the_reader(self, win_src):
-        assert "f'Acervator v{ACERVATOR_VERSION}'" in win_src
+    def test_win_file_description_carries_the_resolved_version(
+        self, tmp_path, monkeypatch
+    ):
+        """Run the spec and read the resource block it actually built.
+
+        The icon has to exist: the spec writes ``version_info`` only when
+        it does, so without one there is no resource block to read.
+        """
+        icon = tmp_path / "resources" / "icon.ico"
+        icon.parent.mkdir(parents=True, exist_ok=True)
+        icon.write_bytes(b"\x00")
+        built = run_spec(SPEC_DIR / "Acervator_win.spec", tmp_path, monkeypatch)
+        resource = built["EXE"]["version_info"]
+        assert built["version"] in resource["FileDescription"], (
+            f"FileDescription {resource['FileDescription']!r} does not carry "
+            f"the resolved version {built['version']!r}"
+        )
+
+    def test_win_numeric_resource_fields_are_not_a_literal(self, tmp_path, monkeypatch):
+        """FileVersion and ProductVersion read a hardcoded 1.1.0 until this seam."""
+        icon = tmp_path / "resources" / "icon.ico"
+        icon.parent.mkdir(parents=True, exist_ok=True)
+        icon.write_bytes(b"\x00")
+        built = run_spec(SPEC_DIR / "Acervator_win.spec", tmp_path, monkeypatch)
+        resource = built["EXE"]["version_info"]
+        expected = windows_file_version(built["version"])
+        for field in ("FileVersion", "ProductVersion"):
+            assert resource[field] == expected, (
+                f"{field} reads {resource[field]!r}, not the resolved " f"{expected!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -344,13 +440,60 @@ class TestGracefulDatas:
         assert [dest for _, dest in pairs] == ["src"]
         assert Path(pairs[0][0]).name == BAKED_FILENAME
 
-    def test_both_specs_ship_the_baked_version(self, win_src, mac_src):
+    @pytest.mark.parametrize("spec", ["Acervator_win.spec", "Acervator_mac.spec"])
+    def test_both_specs_ship_the_baked_version(self, spec, tmp_path, monkeypatch):
         """A spec that dropped the pair would build a bundle with no version."""
-        for label, src in (("win", win_src), ("mac", mac_src)):
-            assert (
-                "build_graceful_datas(PROJECT_ROOT) + "
-                "bake_version_datas(PROJECT_ROOT)" in src
-            ), f"{label} spec does not add the baked version to datas"
+        built = run_spec(SPEC_DIR / spec, tmp_path, monkeypatch)
+        shipped = dict(
+            (Path(source).name, dest) for source, dest in built["Analysis"]["datas"]
+        )
+        assert shipped.get(BAKED_FILENAME) == "src", (
+            f"{spec} does not ship {BAKED_FILENAME} to src; "
+            f"it ships {sorted(shipped)}"
+        )
+        baked = tmp_path / "build" / "version" / BAKED_FILENAME
+        assert (
+            baked.read_text(encoding="utf-8").strip() == built["version"]
+        ), f"{spec} baked a version that is not the one it resolved"
+
+    @pytest.mark.parametrize("spec", ["Acervator_win.spec", "Acervator_mac.spec"])
+    def test_both_specs_ship_the_baked_variant(self, spec, tmp_path, monkeypatch):
+        """The variant travels into the bundle the same way the version does."""
+        built = run_spec(SPEC_DIR / spec, tmp_path, monkeypatch, variant="qt")
+        shipped = dict(
+            (Path(source).name, dest) for source, dest in built["Analysis"]["datas"]
+        )
+        assert shipped.get(VARIANT_BAKED_FILENAME) == "src", (
+            f"{spec} does not ship {VARIANT_BAKED_FILENAME} to src; "
+            f"it ships {sorted(shipped)}"
+        )
+        baked = tmp_path / "build" / "version" / VARIANT_BAKED_FILENAME
+        assert baked.read_text(encoding="utf-8").strip() == "qt"
+
+    @pytest.mark.parametrize("spec", ["Acervator_win.spec", "Acervator_mac.spec"])
+    def test_the_output_name_carries_the_version_and_the_variant(
+        self, spec, tmp_path, monkeypatch
+    ):
+        """Two variants of one version must not claim the same folder."""
+        react = run_spec(SPEC_DIR / spec, tmp_path, monkeypatch, variant="react")
+        qt = run_spec(SPEC_DIR / spec, tmp_path, monkeypatch, variant="qt")
+        for built, variant in ((react, "react"), (qt, "qt")):
+            # COLLECT names the dist folder and EXE names the executable
+            # inside it. BUILD.py looks for dist/<name>/<name>.exe, so both
+            # have to carry the version and the variant or it finds nothing.
+            for stage in ("COLLECT", "EXE"):
+                name = built[stage]["name"]
+                assert (
+                    sanitise(built["version"]) in name
+                ), f"{stage} name {name!r} omits the version"
+                assert variant in name, f"{stage} name {name!r} omits the variant"
+            assert built["COLLECT"]["name"] == built["EXE"]["name"], (
+                f"folder {built['COLLECT']['name']!r} and executable "
+                f"{built['EXE']['name']!r} disagree; BUILD.py would find neither"
+            )
+        assert (
+            react["COLLECT"]["name"] != qt["COLLECT"]["name"]
+        ), "both variants claimed the same output folder"
 
 
 # ---------------------------------------------------------------------------
