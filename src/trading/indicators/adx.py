@@ -15,9 +15,7 @@ from .helpers import (
 )
 
 
-# ---------------------------------------------------------------------------
 # 8. ADX / DMI — Average Directional Index + Directional Movement Index
-# ---------------------------------------------------------------------------
 class ADXIndicator:
     """
     Wilder's ADX/DMI (1978) — the only indicator that measures TREND STRENGTH

@@ -12,9 +12,7 @@ from .types import (
 )
 
 
-# ---------------------------------------------------------------------------
 # 11. Kaufman Efficiency Ratio — Market quality indicator
-# ---------------------------------------------------------------------------
 class KaufmanERIndicator:
     """
     Perry Kaufman's Efficiency Ratio (1995) — measures the quality of the

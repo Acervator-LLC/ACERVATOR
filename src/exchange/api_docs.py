@@ -28,9 +28,7 @@ class ExchangeAPIDocs:
     special_features: list[str] = field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
 # Complete API documentation registry
-# ---------------------------------------------------------------------------
 API_DOCS: dict[str, ExchangeAPIDocs] = {}
 
 
@@ -192,9 +190,7 @@ _add(
 )
 
 
-# ---------------------------------------------------------------------------
 # Access functions
-# ---------------------------------------------------------------------------
 def get_api_docs(exchange_id: str) -> ExchangeAPIDocs | None:
     return API_DOCS.get(exchange_id)
 

@@ -182,9 +182,7 @@ class CurrencyRateMonitor:
         return self._snapshot
 
 
-# ---------------------------------------------------------------------
 # Process-wide shared monitor
-# ---------------------------------------------------------------------
 
 _MONITOR: LazySingleton[CurrencyRateMonitor] = LazySingleton(
     CurrencyRateMonitor,

@@ -17,9 +17,7 @@ from .types import (
 _Five = tuple[float | None, float | None, float | None, float | None, float]
 
 
-# ---------------------------------------------------------------------------
 # 5. Ichimoku Cloud
-# ---------------------------------------------------------------------------
 class IchimokuCloud:
     """
     Ichimoku Kinko Hyo — full correct five-line implementation.

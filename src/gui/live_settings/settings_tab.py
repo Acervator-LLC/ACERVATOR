@@ -112,9 +112,7 @@ class SettingsTabMixin:
         except Exception as _denom_exc:  # noqa: BLE001 - refresh best-effort
             logger.debug("target denom row refresh raised: %s", _denom_exc)
 
-    # ---------------------------------------------------------------
     # v3.15.62 — Self-destruct handler with type-to-confirm
-    # ---------------------------------------------------------------
     def _on_self_destruct_clicked(self) -> None:
         """Operator-initiated SELF-DESTRUCT. Two-step confirmation:
         (1) modal dialog explains the consequences and requires
@@ -192,9 +190,7 @@ class SettingsTabMixin:
             f"Bot will be PAUSED on completion.",
         )
 
-    # ---------------------------------------------------------------
     # Tab 2: Settings (editable)
-    # ---------------------------------------------------------------
     def _create_settings_tab(self) -> QWidget:
         w = QWidget()
         layout = QVBoxLayout(w)

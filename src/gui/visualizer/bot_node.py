@@ -38,7 +38,6 @@ except ImportError:
 
 if _HAS_QT:
 
-    # -------------------------------------------------------------------
     # Bot Node - single bot visualization
     #
     # MEM-233 (2026-04-22) — Locust redesign.
@@ -71,7 +70,6 @@ if _HAS_QT:
     #   - set_theme(key), set_bot_data(data), animate(dt), paintEvent.
     #   - Widget center (w/2, h/2) = locust thorax center, so Smart
     #     Wire's _get_bot_center keeps working without changes.
-    # -------------------------------------------------------------------
     class BotNodeWidget(QWidget):
         """Locust-themed bot card. Insectoid silhouette with functional
         elements mapped to anatomy: head/compound-eye = state;
@@ -460,13 +458,11 @@ if _HAS_QT:
                 leg_pen.setWidth(2)
                 p.setPen(leg_pen)
 
-            # -------------------------------------------------------
             # Cybernetic detail — small circuit accent lines on the
             # thorax, corner brackets at widget bounds, and an inner
             # iris ring on the compound eye. Session 26 (2026-04-24)
             # operator directive: "cybernetic locusts". Kept lightweight
             # so the insect silhouette still reads (Saltsman Pillar 2).
-            # -------------------------------------------------------
             QColor(t["accent2"])
             # Corner brackets — 4 small L-shapes at widget corners.
             # Subtle; read as HUD frame. WCAG: accent2 on bg ≥ 3:1 in
@@ -517,7 +513,6 @@ if _HAS_QT:
                 QPointF(cx, cy - 16.5 * scale), eye_radius * 1.5, eye_radius * 1.5
             )
 
-            # -------------------------------------------------------
             # Text labels — minimal set for the 112x98 canvas.
             # Kept: symbol (top), P/L (below abdomen), bot_id (bottom).
             # Dropped for space: mode badge, state text, trades, price,
@@ -525,7 +520,6 @@ if _HAS_QT:
             # Dropped stats remain queryable via hover-tooltip (Session
             # 27 queued per PLAN_LOCUST_REFRESH.md).
             # WCAG: all text uses t["text"] or pnl_color, ≥4.5:1 on bg.
-            # -------------------------------------------------------
             from ...core.fmt import fmt_pnl as _fpnl
 
             # Symbol — top center, above the head (between antennae).

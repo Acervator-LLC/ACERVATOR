@@ -17,9 +17,7 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
     # Privacy Mask Dot — clickable indicator per masked field (v3.23.7)
-    # ---------------------------------------------------------------
     # A small ~10×10px clickable dot widget that toggles the masked
     # state of a single field_id in the PrivacyMaskRegistry. Color
     # encodes state from the operator's point of view:

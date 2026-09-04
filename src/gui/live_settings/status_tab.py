@@ -24,9 +24,7 @@ class StatusTabMixin:
     _bot: Any
     _configure_form: Callable[..., Any]
 
-    # ---------------------------------------------------------------
     # Tab 1: Status (read-only)
-    # ---------------------------------------------------------------
     def _create_status_tab(self) -> QWidget:
         w = QWidget()
         layout = QVBoxLayout(w)

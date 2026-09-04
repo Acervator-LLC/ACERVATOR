@@ -13,9 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 
-# ---------------------------------------------------------------------------
 # Units
-# ---------------------------------------------------------------------------
 # A threshold that bounds a RATIO is carried in PERCENT and divided by
 # this constant once, so both operands of the comparison are ratios.
 PERCENT_PER_RATIO_UNIT = 100.0
@@ -34,9 +32,7 @@ NO_SHRINK_RATIO = 1.0
 VOLUME_SPIKE_PCT = 200.0
 
 
-# ---------------------------------------------------------------------------
 # Core data types
-# ---------------------------------------------------------------------------
 class SignalDirection(int, Enum):
     BEARISH = -1
     NEUTRAL = 0
@@ -99,9 +95,7 @@ class VotingSummary:
         return SignalDirection.NEUTRAL
 
 
-# ---------------------------------------------------------------------------
 # OHLCV candle helper
-# ---------------------------------------------------------------------------
 @dataclass
 class Candle:
     """Single OHLCV candle."""
@@ -124,7 +118,6 @@ class CandleDomainError(ValueError):
 
 
 # THE CLOSED DOMAIN OF AN OHLC BAR
-# --------------------------------
 # Each constraint is the DEFINITION of an OHLC bar, so none of them is
 # calibrated and none invents a scale:
 #

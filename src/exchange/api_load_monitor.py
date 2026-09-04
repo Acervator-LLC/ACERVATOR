@@ -165,9 +165,7 @@ class APILoadMonitor:
         )
 
 
-# ---------------------------------------------------------------------
 # Process-wide shared monitor
-# ---------------------------------------------------------------------
 
 _GLOBAL_MONITOR: Optional[APILoadMonitor] = None
 

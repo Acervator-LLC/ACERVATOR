@@ -70,9 +70,7 @@ except ImportError:  # pragma: no cover
 logger = logging.getLogger("acervator.crypto_news_ticker")
 
 
-# ------------------------------------------------------------------
 # Feed sources — operator-selected 10 free public RSS feeds.
-# ------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -114,7 +112,6 @@ class NewsHeadline:
         return f"{self.source.name} · {self.title}"
 
 
-# ------------------------------------------------------------------
 # RSS parsing — defusedxml, tolerant of RSS 2.0 and Atom.
 #
 # ``defusedxml.ElementTree.fromstring`` builds the same element objects
@@ -131,7 +128,6 @@ class NewsHeadline:
 # ``forbid_dtd`` default is left alone deliberately: the danger is the
 # declaration, which is refused, and a feed carrying a bare doctype is
 # a real shape that must keep working.
-# ------------------------------------------------------------------
 
 
 def parse_rss(
@@ -231,9 +227,7 @@ def _parse_ts(raw: str) -> float:
     return 0.0
 
 
-# ------------------------------------------------------------------
 # Fetch — synchronous per source, parallelised via a thread pool.
-# ------------------------------------------------------------------
 
 DEFAULT_TIMEOUT_S = 8.0
 FETCH_USER_AGENT = "Mozilla/5.0 (compatible; AcervatorNewsTicker/1.0; +local)"
@@ -247,7 +241,6 @@ FETCH_USER_AGENT = "Mozilla/5.0 (compatible; AcervatorNewsTicker/1.0; +local)"
 # 40 MiB instead of at whatever ten third-party hosts choose to send.
 MAX_FEED_BYTES = 4 * 1024 * 1024
 
-# ------------------------------------------------------------------
 # Bounds on the fetch itself. Issue #105.
 #
 # The old code had NO bound. ``fetch_one`` passed 8 s to
@@ -447,16 +440,13 @@ def fetch_all(
     return out
 
 
-# ------------------------------------------------------------------
 # Widget — cycling QLabel ticker.
-# ------------------------------------------------------------------
 
 if _HAS_QT:
 
     CYCLE_INTERVAL_MS = 15_000
     REFRESH_INTERVAL_MS = 60 * 60 * 1000  # 1 hour
 
-    # ----------------------------------------------------------------
     # Worker-thread ownership. Issue #105, with issue #58.
     #
     # THE DEFECT. ``force_refresh`` built ``QThread(self)`` -- a thread

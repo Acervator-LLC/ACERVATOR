@@ -39,9 +39,7 @@ FILE_BACKUP_COUNT = 5
 """Backup files kept when the sink's file rotates."""
 
 
-# ---------------------------------------------------------------------------
 # The digest ladder
-# ---------------------------------------------------------------------------
 # A second log beside the main one, admitting one record per
 # DIGEST_MIN_INTERVAL seconds per identity.
 # Suppressed records fold into the next admitted line's `folded` count.
@@ -87,9 +85,7 @@ float age and a positive count.
 """
 
 
-# ---------------------------------------------------------------------------
 # The cadence category
-# ---------------------------------------------------------------------------
 # always_on pins are reached by a loop, timer or stream every pass;
 # toggle pins need a discrete trigger.
 

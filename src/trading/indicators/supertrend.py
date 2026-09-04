@@ -15,9 +15,7 @@ from .helpers import (
 )
 
 
-# ---------------------------------------------------------------------------
 # 9. Supertrend — ATR-based dynamic support/resistance
-# ---------------------------------------------------------------------------
 class SupertrendIndicator:
     """
     Supertrend (Oliver Seban popularised; ATR trailing stop concept).

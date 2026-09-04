@@ -24,9 +24,7 @@ class MarketInspectorTabMixin:
     # is created and the runtime base stays `object`.
     _bot: Any
 
-    # ---------------------------------------------------------------
     # Tab 5: Market Inspector (v3.23.37, scrumming-only)
-    # ---------------------------------------------------------------
     # Delegates to src.gui.market_inspector.build_per_bot_view, which
     # reads the shared analyzer's most recent scan (populated by the
     # top-level Market Inspector tab's Refresh button). Renders this

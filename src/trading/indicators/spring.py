@@ -20,9 +20,7 @@ if TYPE_CHECKING:  # a TYPE, never a computation
     from .bb_proximity import BBProximityResult
 
 
-# ===========================================================================
 # v3.19.25 — Tier-1 STRUCTURAL DETECTORS (L1 + L2 Part 6 closure)
-# ===========================================================================
 #
 # Closes Part 6 L1 (Volume-confirmed Spring test) and L2 (W-Bottom / M-Top)
 # pushbacks from docs/audits/2026-05-22_archetype_pushback_research.md.
@@ -39,7 +37,6 @@ if TYPE_CHECKING:  # a TYPE, never a computation
 #   - The dict always contains at minimum a `triggered: bool` key.
 #     Detailed diagnostics live in adjacent keys so the operator can see
 #     WHY a detector fired without re-running.
-# ===========================================================================
 
 
 def detect_volume_confirmed_spring(

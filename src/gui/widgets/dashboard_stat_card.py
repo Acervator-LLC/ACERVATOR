@@ -27,9 +27,7 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
     # Stat Card — vertical (label-on-top) layout for large-number safety
-    # ---------------------------------------------------------------
     # v3.15.54 — operator directive 2026-04-25: "Labels should be above
     # the numbers. The scrum and fold fields are not going to do well
     # with large numbers with this letter size and arrangement."

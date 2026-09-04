@@ -70,7 +70,6 @@ logger = logging.getLogger("acervator.stone_tablets.parity_harness")
 DEFAULT_TOLERANCE_S: float = 300.0  # one 5m candle
 
 # THE MILLISECOND SEAM
-# ====================
 # The two sim producers stamp a fill in DIFFERENT UNITS, and a
 # timestamp read in the wrong unit produces a plausible number rather
 # than an error -- so this seam has to be stated, not inferred.

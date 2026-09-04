@@ -19,9 +19,7 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
     # Extractor Bot Status Table (v3.20.5)
-    # ---------------------------------------------------------------
     # Operator directive 2026-05-23: Extractor bots need a separate
     # partition from Scrumming bots in the dashboard so the column
     # semantics (chunk-based accounting vs target-balance accounting)

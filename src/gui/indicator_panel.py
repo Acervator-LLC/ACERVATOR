@@ -43,9 +43,7 @@ from ..core.privacy_mask_registry import (
 logger = logging.getLogger("acervator.gui")
 
 
-# ---------------------------------------------------------------------------
 # UNIT 1 — durable per-bot TA reads, stored outside bot_state.json.
-# ---------------------------------------------------------------------------
 
 #: Sidecar directory name, created under the live StateManager's dir.
 _TA_SNAPSHOT_DIRNAME = "ta_snapshots"
@@ -273,9 +271,7 @@ def age_phrase(seconds: float) -> str:
     return f"{text} ago"
 
 
-# ---------------------------------------------------------------------------
 # UNIT 2 — one cause per empty state, never a disjunction of causes.
-# ---------------------------------------------------------------------------
 
 _NO_DATA_CAUSE_TEXT: dict[str, str] = {
     "no_selection": "no bot is selected — pick one from the Bot dropdown.",

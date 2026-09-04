@@ -34,9 +34,7 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
     # Bot Status Table - clickable rows
-    # ---------------------------------------------------------------
     # MEM-236 — columns after operator redesign:
     #   Removed: "State" (redundant with color-coded Mode)
     #   Removed: "Extended" (grid-bot only, always 0 for scrumming)

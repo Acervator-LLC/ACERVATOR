@@ -54,9 +54,7 @@ ALIGN_LABEL = "hcenter|vcenter"
 ALIGN_MARKER = "right|vcenter"
 ALIGN_SYMBOL = "left|vcenter"
 
-# ---------------------------------------------------------------------
 # The expand dialog
-# ---------------------------------------------------------------------
 
 EXPAND_STYLE = "QDialog{background:#0a0a14;}"
 EXPAND_MARGINS_PX = (8, 8, 8, 8)
@@ -146,9 +144,7 @@ class ExpandModel:
         }
 
 
-# ---------------------------------------------------------------------
 # GateLightsCell -- one labelled row of trading gates
-# ---------------------------------------------------------------------
 
 GATE_LED_PX = 9
 GATE_GAP_PX = 4
@@ -381,9 +377,7 @@ def gate_program(model: "GateLightsModel", pitch_px: Any) -> list:
     return program
 
 
-# ---------------------------------------------------------------------
 # GateStatusPanel -- every bot's gate row in one scrollable pane
-# ---------------------------------------------------------------------
 
 PANEL_ACCESSIBLE_NAME = "Gate Status Panel"
 PANEL_MARGINS_PX = (0, 0, 0, 0)
@@ -459,9 +453,7 @@ class GatePanelModel:
         return found
 
 
-# ---------------------------------------------------------------------
 # SimPriceVwapChart -- stacked bands, or one bot's candles
-# ---------------------------------------------------------------------
 
 CHART_BAND_HEIGHT_PX = 36
 CHART_LABEL_WIDTH_PX = 128
@@ -1116,9 +1108,7 @@ def chart_program(model: "PriceVwapModel", width_px: Any, height_px: Any) -> lis
     return band_program(model, width_px)
 
 
-# ---------------------------------------------------------------------
 # PerBotVotingReadout -- one row per bot, the voting summary
-# ---------------------------------------------------------------------
 
 VOTE_COLUMNS = ("Symbol", "Net", "Conf", "Bull", "Bear", "Direction")
 VOTE_PLACEHOLDER = "—"
@@ -1264,9 +1254,7 @@ class VotingReadoutModel:
         ]
 
 
-# ---------------------------------------------------------------------
 # The whole screen
-# ---------------------------------------------------------------------
 
 ACTIONS = {"dialog_finished": "ExpandModel.close"}
 TIMERS: dict = {}
