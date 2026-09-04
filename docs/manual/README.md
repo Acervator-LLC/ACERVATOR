@@ -4,9 +4,13 @@ Reference. The product manual, extracted from its PDF into markdown. The
 transcription is verbatim in every part file: no wording was changed, shortened
 or removed, and only whitespace was normalised.
 
-Two part files carry more than the transcription.
-[07-indicators.md](07-indicators.md) and [08-tabs.md](08-tabs.md) add sections
-of their own; the other six hold the transcription alone.
+Six part files hold that transcription alone.
+[07-indicators.md](07-indicators.md) and [08-tabs.md](08-tabs.md) transcribe
+the PDF and add sections of their own.
+[09-updates-and-versioning.md](09-updates-and-versioning.md) and
+[10-live-trade-history.md](10-live-trade-history.md) transcribe nothing: the
+PDF carries no body text for the parts they belong to, and both are written
+from the source and from measurements over the operator's own venue export.
 
 ## Contents
 
@@ -20,6 +24,8 @@ of their own; the other six hold the transcription alone.
 | [06-trading-tab.md](06-trading-tab.md) | 3 | 14 to 27 | System architecture, then the Trading Tab walkthrough |
 | [07-indicators.md](07-indicators.md) | 3 | 27 to 29 | Indicator Voting Panel and the twelve indicators |
 | [08-tabs.md](08-tabs.md) | 3 | 29 to 35 | Portfolio panels, Market Inspector, Bot Swarm, Asset Charts, History, Simulator, Paper Trader, Proof of Accumulation, Console, System Status, Settings |
+| [09-updates-and-versioning.md](09-updates-and-versioning.md) | 7 | — | Version derivation, the six readers, the baked bundle value, the release gate |
+| [10-live-trade-history.md](10-live-trade-history.md) | 9 | — | The live fill record, VWAP charts, trade grading, gate coverage |
 | [FIGURES.md](FIGURES.md) | — | 15 to 44 | The figure inventory |
 
 Pages 36 to 44 carry a figure and no text, so no part file covers them.
@@ -58,8 +64,9 @@ The Part column is the table's second job: it tells
 carrying `—` is not manual text and is not rendered. The order of the rows is
 the order the PDF prints them, and the first row is the title page. A row naming
 a file that is not on disk, and a `NN-*.md` file this table does not list, both
-stop the build. Parts 4 to 9 have no file yet; they print a part page and appear
-in the contents, and a new row here folds a file into its part.
+stop the build. A `—` in the Manual pages column marks a file the PDF is not
+the source of. Parts 4, 5, 6 and 8 have no file; they print a part page and
+appear in the contents, and a new row here folds a file into its part.
 
 ## Figures
 
@@ -83,7 +90,10 @@ written; the refusal names the file, counts the blocks, and quotes the first
 one. `--re-extract` rewrites the transcription and keeps those blocks where they
 sit. That is the flag for a corrected PDF.
 
-The files under [08-tabs/](08-tabs/README.md) sit outside the part list and are
+`PART_FILES` in that tool names the eight files the PDF is the source of. The
+files under [08-tabs/](08-tabs/README.md),
+[09-updates-and-versioning.md](09-updates-and-versioning.md) and
+[10-live-trade-history.md](10-live-trade-history.md) are not among them and are
 never written.
 
 - 44 pages, 9,759 whitespace-separated tokens, 38 embedded images.
@@ -108,7 +118,9 @@ both whitespace only:
 Compared token by token against the PDF, the transcription holds 9,759 tokens in
 the same order, with no loss. The added sections in
 [07-indicators.md](07-indicators.md) and [08-tabs.md](08-tabs.md) sit outside
-that count.
+that count, and so do
+[09-updates-and-versioning.md](09-updates-and-versioning.md) and
+[10-live-trade-history.md](10-live-trade-history.md) in full.
 
 ### Headings
 
