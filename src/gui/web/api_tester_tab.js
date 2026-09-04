@@ -1475,7 +1475,7 @@
     };
     selectProps[PART_ATTR] = EXCHANGE_SELECT_PART;
     selectProps[COUNT_ATTR] = text(listField(found, EXCHANGE_OPTIONS).length);
-    selectProps[NAME_ATTR] = text(actionNamed(EXCHANGE_ID));
+    selectProps[NAME_ATTR] = EXCHANGE_ID;
     var drawn = listField(found, EXCHANGE_OPTIONS).map(function (row, at) {
       var cells = rowOf(row);
       var optionProps = {
@@ -1541,7 +1541,7 @@
       title: label(found[USE_STORED_TOOLTIP])
     };
     checkProps[PART_ATTR] = USE_STORED_PART;
-    checkProps[NAME_ATTR] = text(actionNamed(USE_STORED));
+    checkProps[NAME_ATTR] = USE_STORED;
     var checkLabelProps = { key: USE_STORED_LABEL_PART, className: TAB_CLASS };
     checkLabelProps[PART_ATTR] = USE_STORED_LABEL_PART;
     var connectProps = {
@@ -1604,7 +1604,7 @@
       title: label(found[SYMBOL_TOOLTIP])
     };
     symbolProps[PART_ATTR] = SYMBOL_BOX_PART;
-    symbolProps[NAME_ATTR] = text(actionNamed(SYMBOL));
+    symbolProps[NAME_ATTR] = SYMBOL;
     var drawn = [
       element(DIV_TAG, titleProps, text(found[OPERATIONS_TITLE])),
       element(INPUT_TAG, symbolProps)
