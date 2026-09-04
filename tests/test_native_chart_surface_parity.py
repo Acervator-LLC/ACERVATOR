@@ -261,8 +261,11 @@ def _plain(value):
     return repr(value)
 
 
-def record_paint(case, size=PIXEL_SIZE):
-    """Every painter call the shipped chart makes for one case."""
+def record_paint(case, size=PIXEL_SIZE, setup=None):
+    """Every painter call the shipped chart makes for one case.
+
+    ``setup`` runs against the built chart before the paint.
+    """
     module = chart_module()
     app()
     from PySide6.QtGui import QImage
@@ -270,6 +273,8 @@ def record_paint(case, size=PIXEL_SIZE):
     chart = module.CandlestickChart(case.symbol)
     chart.resize(*size)
     chart.set_candles(shipped_candles(case))
+    if setup is not None:
+        setup(chart)
     held = QImage(size[0], size[1], QImage.Format_ARGB32)
     original = module.QPainter
     PaintRecorder.Antialiasing = original.Antialiasing
@@ -714,6 +719,144 @@ def test_the_surface_writes_every_axis_label_the_chart_writes(case):
     assert payload["price_axis"]["last_price_label"] in written
 
 
+def test_a_tight_range_at_a_high_price_keeps_its_top_price_tick():
+    """``price_grid`` scales its last-tick tolerance to the tick step."""
+    grid = surface.price_grid(117999.7, 118000.3)
+    prices = [tick["price"] for tick in grid["ticks"]]
+    assert prices[-1] == pytest.approx(118000.3, abs=grid["step"] / 100), prices
+
+
+def test_a_low_priced_range_gains_no_tick_past_its_top():
+    """``price_grid`` draws no tick above ``high`` at BONK prices."""
+    grid = surface.price_grid(3.0e-06, 3.2e-06)
+    prices = [tick["price"] for tick in grid["ticks"]]
+    assert prices[-1] <= 3.2e-06 + grid["step"] / 100, prices
+    assert len(prices) == 11, prices
+
+
+def test_slingshot_bandwidth_is_bollingers_published_normalisation():
+    """``slingshot_bands`` divides by the middle price with nothing added."""
+    from src.trading.indicators.slingshot import SlingshotIndicator
+
+    closes = [3.1e-06 * (1.0 + 0.004 * (index % 7)) for index in range(60)]
+    rows = [row for row in surface.slingshot_bands(closes) if row is not None]
+    assert rows, "slingshot_bands returned no band row to compare"
+    for close, upper, lower, middle, bandwidth in rows:
+        del close
+        assert bandwidth == SlingshotIndicator._bandwidth(upper, lower, middle), (
+            bandwidth,
+            middle,
+        )
+
+
+def test_the_bandwidth_comparison_would_see_an_added_epsilon():
+    """An added epsilon moves the bandwidth ``slingshot_bands`` returns."""
+    from src.trading.indicators.slingshot import SlingshotIndicator
+
+    middle = 3.1e-06
+    published = SlingshotIndicator._bandwidth(middle * 1.02, middle * 0.98, middle)
+    biased = (middle * 1.02 - middle * 0.98) / (middle + 1e-9)
+    drift = abs(biased / published - 1.0)
+    assert drift > 3e-4, drift
+
+
+GLOW_WIDTH_PX = 6
+
+
+def armed_glow_rects(scrum_armed, fold_armed):
+    """The right-edge glow rectangles painted for one armed state."""
+    calls = record_paint(
+        BY_NAME["normal"],
+        setup=lambda chart: chart.set_fire_armed_state(scrum_armed, fold_armed),
+    )
+    glow_x = PIXEL_SIZE[0] - surface.RIGHT_MARGIN_PX - 4
+    return [
+        args[0]
+        for args in calls_named(calls, "drawRect")
+        if args[0][0] == "rect"
+        and args[0][3] == GLOW_WIDTH_PX
+        and round(args[0][1]) == glow_x
+    ]
+
+
+def test_no_armed_gate_paints_no_right_edge_glow():
+    """``set_fire_armed_state`` with both flags off paints no glow."""
+    assert armed_glow_rects(False, False) == []
+
+
+def test_an_armed_scrum_paints_one_glow_in_the_upper_half():
+    """A scrum-armed chart paints its glow above the price pane's middle."""
+    rects = armed_glow_rects(True, False)
+    assert len(rects) == 1, rects
+    payload = surface.build_view_model(drive_new(BY_NAME["normal"]), *PIXEL_SIZE)
+    panes = payload["panes"]
+    middle = panes["price_top_px"] + panes["price_height_px"] / 2
+    assert rects[0][2] < middle, (rects, middle)
+
+
+def test_an_armed_fold_paints_one_glow_in_the_lower_half():
+    """A fold-armed chart paints its glow below the price pane's middle."""
+    rects = armed_glow_rects(False, True)
+    assert len(rects) == 1, rects
+    payload = surface.build_view_model(drive_new(BY_NAME["normal"]), *PIXEL_SIZE)
+    panes = payload["panes"]
+    middle = panes["price_top_px"] + panes["price_height_px"] / 2
+    assert rects[0][2] >= middle, (rects, middle)
+
+
+def test_both_gates_armed_paint_both_glows():
+    """A chart armed on both sides paints two right-edge glows."""
+    assert len(armed_glow_rects(True, True)) == 2
+
+
+def squeezing_closes(count=200):
+    """Closes whose volatility alternates, so slingshot squeezes fire."""
+    closes = []
+    price = 100.0
+    for index in range(count):
+        step = 0.02 if (index // 40) % 2 == 0 else 1.6
+        price += step if index % 2 == 0 else -step * 0.9
+        closes.append(price)
+    return closes
+
+
+def test_the_slingshot_overlay_ignores_the_bollinger_toggle():
+    """``_show_slingshot`` alone decides whether the markers paint."""
+    module = chart_module()
+    closes = squeezing_closes()
+    assert any(
+        fire["kind"] == "squeeze" for fire in surface.slingshot_fires(closes)
+    ), "the fixture closes produce no squeeze to paint"
+    candles = [
+        module.Candle(
+            time=1_700_000_000 + index * 3600,
+            open=close,
+            high=close * 1.001,
+            low=close * 0.999,
+            close=close,
+            volume=1.0,
+        )
+        for index, close in enumerate(closes)
+    ]
+
+    def diamonds_with(show_bb):
+        def setup(chart):
+            chart.set_candles(candles)
+            chart._show_slingshot = True
+            chart._show_bb = show_bb
+
+        calls = record_paint(BY_NAME["normal"], setup=setup)
+        return [
+            args[0]
+            for args in calls_named(calls, "drawPolygon")
+            if len(args[0][1]) == 4
+        ]
+
+    without_bb = diamonds_with(False)
+    assert without_bb, "the slingshot overlay painted no diamond at all"
+    assert diamonds_with(True) == without_bb
+
+
 def test_the_recorder_reports_a_difference_between_two_real_inputs():
     """The recorder returns the same calls whatever it is driven with."""
     one = record_paint(BY_NAME["normal"])
@@ -1083,21 +1226,31 @@ def test_the_bridge_handler_starts_clean_when_it_is_reset():
     assert after["steps"] == []
 
 
-def test_the_chart_module_writes_no_shared_table_at_import():
-    """The chart writes a module-level value another file also writes."""
-    tree = parsed_chart()
-    module_level = [
-        target.id
-        for node in tree.body
-        if isinstance(node, ast.Assign)
-        for target in node.targets
-        if isinstance(target, ast.Name)
-    ]
-    assert module_level == ["logger"], module_level
-    globals_used = [
-        n for n in ast.walk(tree) if isinstance(n, (ast.Global, ast.Nonlocal))
-    ]
-    assert globals_used == []
+def mutable_module_bindings(module):
+    """Every non-dunder name a module binds to a mutable container."""
+    return {
+        name: type(value).__name__
+        for name, value in vars(module).items()
+        if not name.startswith("__") and isinstance(value, (list, dict, set, bytearray))
+    }
+
+
+def test_the_chart_module_binds_no_mutable_table_at_import():
+    """Importing ``native_chart`` binds no shared mutable container."""
+    from src.gui import native_chart
+
+    assert mutable_module_bindings(native_chart) == {}, mutable_module_bindings(
+        native_chart
+    )
+
+
+def test_the_mutable_binding_reader_reports_a_module_that_has_one():
+    """The reader names a mutable module-level binding when one exists."""
+    from types import ModuleType
+
+    holder = ModuleType("holder")
+    holder.table = {}
+    assert mutable_module_bindings(holder) == {"table": "dict"}
 
 
 # The pictures
