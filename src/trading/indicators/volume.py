@@ -1,7 +1,6 @@
 """Volume suite -- OBV, MFI, CMF, A/D line and volume ratio.
 
-Moved out of ``ta_engine.py`` for issue #73. The body below is a
-verbatim line slice of that file: no arithmetic was retyped.
+``VolumeAnalysis.compute`` scores all five into one Signal.
 """
 
 from __future__ import annotations
@@ -23,47 +22,14 @@ from .helpers import (
 
 
 class VolumeAnalysis:
-    """
-    Multi-indicator volume analysis suite.
+    """OBV, MFI, CMF, the A/D line and a volume ratio, over one candle list.
 
-    INDICATORS (in order of practical usefulness for accumulation):
-
-    1. OBV DIVERGENCE (most powerful signal)
-         Price makes lower low but OBV makes higher low  → bullish divergence
-         = smart money accumulating despite price decline → strong FOLD signal
-         Price makes higher high but OBV makes lower high → bearish divergence
-         = distribution at peak levels                   → strong SCRUM signal
-
-    2. MFI (Money Flow Index) — volume-weighted RSI (14-period)
-         MFI > 80: volume-confirmed overbought            → SCRUM signal
-         MFI < 20: volume-confirmed oversold              → FOLD signal
-         MFI divergence mirrors OBV divergence but filters by volume weight.
-
-    3. CMF (Chaikin Money Flow) — 20-period
-         CMF > +0.05: net buying pressure (accumulation)
-         CMF < -0.05: net selling pressure (distribution)
-         CMF near zero: balanced / consolidation
-
-    4. A/D LINE TREND — Accumulation/Distribution
-         A/D rising while price flat/falling → underlying accumulation
-         A/D falling while price flat/rising → underlying distribution
-
-    5. VOLUME RATIO — current vs N-period average
-         ratio > 1.5: above-average participation
-         ratio > 2.5: significant spike
-         Direction of the candle determines bullish/bearish interpretation.
-
-    6. OBV TREND — slow trend component
-         OBV EMA(5) vs EMA(20): basic direction of money flow.
-
-    ACCUMULATION STRATEGY WIRING:
-         Bullish divergence (OBV or MFI) → fold confidence +0.15 to +0.20
-         Volume spike on DOWN candle + OBV rising → capitulation fold +0.18
-         MFI < 20 → fold +0.12
-         MFI > 80 → scrum +0.10
-         Bearish divergence → scrum +0.12
-         CMF strongly negative while OBV rising → premium fold (distribution
-           near surface but net accumulation in the background)
+    ``_obv`` accumulates signed volume, ``_mfi`` is Quong and Soudack's
+    ``100 - 100 / (1 + pos_mf / neg_mf)`` over the typical price, ``_cmf`` is
+    Chaikin's ``sum(clv * volume) / sum(volume)``, ``ad`` runs ``clv *
+    volume`` cumulatively, and ``vol_ratio`` is ``curr_vol / avg_vol``;
+    ``compute`` sums them into ``score`` and reads ``obv_div`` and ``mfi_div``
+    for divergence.
     """
 
     def __init__(
@@ -103,18 +69,14 @@ class VolumeAnalysis:
                 pos_mf += mf
             elif tp < ptp:
                 neg_mf += mf
-        # No negative money flow but SOME positive flow is the defined
-        # case: the ratio diverges and MFI is 100. With NEITHER flow the
-        # ratio is 0/0 and there is no reading, yet the test below
-        # answered 100.0 -- the TOP of the scale, read by `mfi_ob` as
-        # maximum overbought -- on a market where the typical price never
-        # changed and so neither bucket was ever credited. 50.0 is this
-        # function's own no-information value, returned by the
-        # short-history branch above, and it leaves both `mfi_ob` and
-        # `mfi_os` False.
-        if pos_mf < 1e-9 and neg_mf < 1e-9:
+        # `pos_mf` and `neg_mf` sum `tp * volume` over non-negative terms, so
+        # each is 0.0 exactly when its bucket was never credited and these
+        # tests are exact at every price and volume scale. With neither flow
+        # the ratio is 0/0, and 50.0 is this function's own no-information
+        # value, returned by the short-history branch above.
+        if pos_mf <= 0.0 and neg_mf <= 0.0:
             return 50.0
-        if neg_mf < 1e-9:
+        if neg_mf <= 0.0:
             return 100.0
         return 100.0 - 100.0 / (1.0 + pos_mf / neg_mf)
 
@@ -277,12 +239,10 @@ class VolumeAnalysis:
         # ── VOLUME RATIO ─────────────────────────────────────────────────
         avg_vol = sum(volumes[-self.period :]) / self.period
         curr_vol = volumes[-1]
-        # A window that traded no volume has no average for the current
-        # bar to be measured against, so the ratio is 0/0 -- and
-        # `is_spike`, `is_high` and `is_low` below are all statements
-        # about that ratio. Volumes are SOURCE values and non-negative
-        # (candles_from_raw refuses a negative one), so their sum is 0.0
-        # exactly when every bar traded nothing.
+        # Volumes are source values and non-negative, so `avg_vol` is 0.0
+        # exactly when every bar in the window traded nothing, and
+        # `is_spike`, `is_high` and `is_low` are all statements about a
+        # ratio that then has no denominator.
         if avg_vol <= 0.0:
             return Signal(
                 "volume",
@@ -292,7 +252,9 @@ class VolumeAnalysis:
                 self.weight,
                 abstained=True,
             )
-        vol_ratio = curr_vol / (avg_vol + 1e-9)
+        # The abstention above returns on `avg_vol <= 0.0`, so this quotient
+        # carries no volume unit.
+        vol_ratio = curr_vol / avg_vol
         is_spike = vol_ratio > self.spike_threshold
         is_high = vol_ratio > 1.5
         is_low = vol_ratio < 0.6  # low-volume move = weak conviction

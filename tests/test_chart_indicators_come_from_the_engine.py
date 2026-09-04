@@ -153,10 +153,11 @@ def test_stochrsi_series_last_bars_match_the_vote():
     # ``stoch_ratios`` for the last k_smooth + d_smooth entries and the
     # chart asks for all of them, and narrowing the RANGE must not
     # change a VALUE.
-    rsi_values, _ = indicator.rsi_values([c.close for c in tape])
-    full_from, full, _ = indicator.stoch_ratios(rsi_values)
+    tape_closes = [c.close for c in tape]
+    rsi_values, _ = indicator.rsi_values(tape_closes)
+    full_from, full, _ = indicator.stoch_ratios(rsi_values, tape_closes)
     tail_need = indicator.k_smooth + indicator.d_smooth
-    tail_from, tail, _ = indicator.stoch_ratios(rsi_values, tail=tail_need)
+    tail_from, tail, _ = indicator.stoch_ratios(rsi_values, tape_closes, tail=tail_need)
     assert len(tail) == tail_need
     assert full[tail_from - full_from :] == tail
 

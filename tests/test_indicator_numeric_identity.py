@@ -265,6 +265,24 @@ def _bb_pos_history() -> list:
 #: the old 0.8846); both simply resolve to the same boolean here. ATR's
 #: restored first True Range is 1.85e-15 relative at 400 bars, below
 #: ``round(atr, 8)``, and Supertrend's is smaller still.
+#:
+#: ``heikin_ashi``, ``ichimoku``, ``supertrend`` and ``voting_engine``
+#: moved again when eight more absolute epsilons left price-scaled and
+#: volume-scaled denominators. ``adx``, ``bb_proximity``,
+#: ``stochastic_rsi``, ``volume`` and ``zscore`` HOLD, and each for a
+#: reason this tape supplies rather than because the repair missed it:
+#: ADX's two terms were threshold tests (``s_tr[-1] < 1e-9``) that no bar
+#: here reaches; ``detect_bb_proximity`` rounds ``bb_position`` to 4
+#: places over a band of order 1, and 1e-12 lands below that;
+#: ``StochasticRSI`` has no flat window on this tape and steps
+#: ``confidence`` at 0.8 / 0.5 / 0.25 / 0.2, which a 1e-10 shift cannot
+#: cross; ``VolumeAnalysis`` runs at volumes of 67 to 99,915 and rounds
+#: ``vol_ratio`` to 2 places and ``mfi`` to 1; and ``ZScoreIndicator``
+#: divided ``z`` by a bare ``std`` already, so only ``z_prev`` carried the
+#: epsilon and it reaches the digest through ``round(z_prev, 3)`` and the
+#: ``z_reverting`` boolean. The tape prices 0.8311 to 1.1894 -- a scale at
+#: which an absolute 1e-9 is 1e-9 relative, which is why five pins are
+#: blind to a defect that inverts a reading at BONK's 3.1e-06.
 EXPECTED = {
     # RESTATED. Was
     # "fa36fd9e749982e6bd32a7ff460702d81ab8834bce2b94c3b18e8034fa124aba"
@@ -274,8 +292,22 @@ EXPECTED = {
     "bb_proximity": "9a5e96d5ac5d02e354c6bf0d338215ad36824493ec8b5249e043e60909ebe030",
     "bollinger": "511c7c97e9b46dbfe2b6476e6444e498edb610b3a5d758e88965a5787826807e",
     "fvg": "8607df354acd4466633d1aa9b0c1ae809192c73c1c2d21c501a52ac06f4eafe8",
-    "heikin_ashi": "533dfad9a2e0c4654c9347f90aead087d2ee86ae07e778dea3ba12f9378d7d54",
-    "ichimoku": "dfc7d9734a086056ce998342c1d8075dc08fe615ed08414e02932fe20027be68",
+    # RESTATED. Was
+    # "533dfad9a2e0c4654c9347f90aead087d2ee86ae07e778dea3ba12f9378d7d54"
+    # while ``body_pct`` divided by ``hl_range + 1e-12``. The Heikin Ashi
+    # transform defines the body as its share OF the bar's range, and
+    # ``HACandle.body_pct`` states that contract; the branch above the
+    # division already answers ``math.nan`` on ``hl_range <= 0.0``. All 12
+    # carried candles moved, each in the last three hex digits.
+    "heikin_ashi": "48ffcd12b543173791cdb543786ff024048ec5ce02d7ec08dfab408d6bd2c5ec",
+    # RESTATED. Was
+    # "dfc7d9734a086056ce998342c1d8075dc08fe615ed08414e02932fe20027be68"
+    # while ``cloud_thick_pct`` divided by ``price + 1e-9``, where
+    # ``candles_from_raw`` already refuses a close at or below 0.0. One
+    # token of 33 moved: the BEARISH confidence, 0x1.80af2768ceef7p-1 to
+    # 0x1.80af2769bb9ecp-1. ``cloud_thick_pct`` rounds to 2 places and did
+    # not move on this tape.
+    "ichimoku": "38642338bd4b98a0395f230c422cccf5f39053cfaf951c1a85bfc95798e1a714",
     "kaufman_er": "cbab1b1329c51d8cba16d17a90bffdce068212402b9dcbc00ccbf6ad3a53ab9d",
     "landing_strip": "03cd6a53d2add10cd31c8e9c86b30372f7751ced070df2746bf753495c08ff34",
     "m_top": "1545fcf5de3538be3a9b41b0520254f273a9900eea6c0f2953442906a648ef34",
@@ -285,7 +317,14 @@ EXPECTED = {
     "slingshot": "431969ec0c8c8c594c8e1841b6bb4b84304ea4c53331a3a1ef424f0507e1f19f",
     "spring": "e1db5c93684a0bb097803c027be223d5d7878b48968eb9a4d9e6e7186342470f",
     "stochastic_rsi": "2cdc5162b2733fcf0b49ebf7da860da989c8775a56896b8b8b082516089c3934",
-    "supertrend": "270670d53152f76c841d30ed801678ee26485c8c5d807c9da3add330ade16118",
+    # RESTATED. Was
+    # "270670d53152f76c841d30ed801678ee26485c8c5d807c9da3add330ade16118"
+    # while ``dist_pct`` divided by ``st_line + 1e-9``. Seban's Supertrend
+    # publishes the line, not a distance; ``st_line`` is a band and the
+    # abstention now returns on ``st_line <= 0.0``. One token of 13 moved:
+    # the BEARISH confidence, 0x1.ce68ab0b44712p-2 to 0x1.ce68ab101aa94p-2.
+    # ``dist_pct`` rounds to 3 places and did not move on this tape.
+    "supertrend": "78a0861e87cba21dc320c08afd41bf2a00ad1757f189beaee4a04f5d5051e0a2",
     "volume": "065c7e1e79be4d26b55fc325102eafdd67327218018ca181ab4081f3a2cc0df3",
     # RESTATED. Was
     # "4f1c7a3e0c9a2d86f1b2eb36c6e5195c633f02a552d6a3adcf96c64ceb9d2232"
@@ -295,7 +334,13 @@ EXPECTED = {
     # "e90c6b9b11c19bd8ca0d957303e52875641bc64cc172e09455e202d93da2aea8"
     # before the Vortex denominator repair, which this digest carries
     # through the Vortex voter's raw confidence.
-    "voting_engine": "2c225e1ab22f20ed14b6e67f5b35c4aae9dc7826cce4a8be464ab1bd625f8a6f",
+    # RESTATED a third time. Was
+    # "2c225e1ab22f20ed14b6e67f5b35c4aae9dc7826cce4a8be464ab1bd625f8a6f"
+    # before the Ichimoku and Supertrend denominator repairs above. Two
+    # tokens of 220 moved, and they are exactly those two voters' raw
+    # confidences; ``bullish_count``, ``bearish_count``, ``neutral_count``,
+    # ``net_score`` and ``consensus_confidence`` all hold.
+    "voting_engine": "ffd42f184066749001f66110a200f29475af6034b9b3abd9f74acbd2a2acb341",
     # RESTATED. Was
     # "c1d4d32dc62386d3357f31b961b139682cd38e9ce7d596a58e6fe25e41be5c52"
     # while VI+ and VI- divided by ``sum_tr_window + 1e-9``.
@@ -478,8 +523,13 @@ EXPECTED_SHORT = {
     # while an abstaining voter's full weight still counted in the
     # `consensus_confidence` denominator, then
     # "2914a154fe7497569fad65f43d5611c7d301218349c0a9d886b2b00d6dcb9f8f"
-    # while VI+ and VI- divided by ``sum_tr_window + 1e-9``.
-    "voting_engine": "1f681507ee953c1577006880eb80f4177ce381daf334abb0beac6fb5f39c8925",
+    # while VI+ and VI- divided by ``sum_tr_window + 1e-9``, then
+    # "1f681507ee953c1577006880eb80f4177ce381daf334abb0beac6fb5f39c8925"
+    # while ``dist_pct`` divided by ``st_line + 1e-9``. One token of 162
+    # moved, the Supertrend voter's raw confidence, 0x1.591f186f1b47cp-2 to
+    # 0x1.591f18718faaap-2. Ichimoku abstains at 40 bars, so its repair
+    # reaches this pin through nothing.
+    "voting_engine": "9fe2f35d6e60dc9d5176a782d045b577d57b36de00cf0ec73d593565b5387a9d",
 }
 
 

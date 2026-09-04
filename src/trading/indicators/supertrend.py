@@ -1,7 +1,7 @@
-"""Supertrend -- ATR trailing stop (Oliver Seban).
+"""Supertrend -- ATR trailing stop (Olivier Seban).
 
-Moved out of ``ta_engine.py`` for issue #73. The body below is a
-verbatim line slice of that file: no arithmetic was retyped.
+``SupertrendIndicator.compute`` returns the flip and the distance to the
+line.
 """
 
 from __future__ import annotations
@@ -19,29 +19,19 @@ from .helpers import (
 # 9. Supertrend — ATR-based dynamic support/resistance
 # ---------------------------------------------------------------------------
 class SupertrendIndicator:
-    """
-    Supertrend (Oliver Seban popularised; ATR trailing stop concept).
-    Places a dynamic line above price in downtrend, below in uptrend.
-    When price crosses the line, it flips direction.
+    """Olivier Seban's ATR trailing stop, over one candle list.
 
-    Unlike Ichimoku (26-bar displacement, complex), Supertrend is reactive:
-    it gives a timestamped trend flip at the exact candle it occurs.
-    The combination of Ichimoku (predictive) + Supertrend (reactive) gives
-    both "what is coming" and "has it started."
+    ``compute`` builds Wilder's ``atr``, the basic bands ``raw_ub`` and
+    ``raw_lb``, and Seban's sticky ``final_ub`` and ``final_lb``, then reads
+    ``flip_bull`` / ``flip_bear`` from ``st`` and ``dist_pct`` from
+    ``st_line``:
 
-    Computation:
-      ATR over period
-      Upper band = (H + L)/2 + multiplier × ATR
-      Lower band = (H + L)/2 - multiplier × ATR
-      Supertrend is bullish when close > lower band
-      Supertrend is bearish when close < upper band
-      Bands are "sticky" — only update when price crosses them
-
-    For accumulation:
-      Flip bearish→bullish = highest-quality fold entry (trend changed NOW)
-      Flip bullish→bearish = harvest NOW, trend changed
-      Bullish + close near line = Kijun-equivalent fold dip entry
-      Distance from line = trend conviction
+        raw_ub   = (high + low) / 2 + multiplier * ATR
+        raw_lb   = (high + low) / 2 - multiplier * ATR
+        final_ub = raw_ub if raw_ub < prev_ub or prev_close > prev_ub
+                   else prev_ub
+        final_lb = raw_lb if raw_lb > prev_lb or prev_close < prev_lb
+                   else prev_lb
     """
 
     def __init__(self, period: int = 10, multiplier: float = 3.0, weight: float = 1.0):
@@ -61,15 +51,8 @@ class SupertrendIndicator:
                 abstained=True,
             )
 
-        # ATR (Wilder) -- THE WHOLE TRUE RANGE SERIES, FIRST BAR
-        # INCLUDED. Supertrend is an ATR trailing stop, so its ATR
-        # is Wilder's ATR and it is seeded the same way: the average
-        # of the first `period` True Ranges, of which the first is
-        # `high - low` (StockCharts, reproducing Wilder's
-        # worksheet). This comprehension started at bar 1 and
-        # dropped that value. `_true_range` is the module's one
-        # definition; the per-bar expression is the identical max
-        # of the identical three terms.
+        # Wilder's ATR seed is the mean of the first `period` True Ranges,
+        # of which the first is `high - low`, so `tr_list` keeps bar 0.
         tr_list = _true_range(candles)
 
         # Simple ATR smoothing (Wilder)
@@ -90,15 +73,8 @@ class SupertrendIndicator:
                 abstained=True,
             )
 
-        # Align. `tr_list[k]` is now the True Range of candle k, so
-        # `atr[0] = mean(tr_list[:period])` is the ATR AT candle
-        # `period - 1`, and `atr[j]` is the ATR at candle
-        # `period - 1 + j`. Re-anchored below as
-        # `idx_atr = i - (period - 1)`.
-        #
-        # The band loop still starts at candle `period`, so the
-        # same candles carry bands as before -- only the ATR values
-        # move, by the seed the line above restored.
+        # `tr_list[k]` is the True Range of candle k, so `atr[j]` is the ATR
+        # at candle `period - 1 + j`, re-anchored below as `idx_atr`.
         start = self.period
         curr_atr = atr[-1]
 
@@ -146,7 +122,22 @@ class SupertrendIndicator:
 
         price = candles[-1].close
         st_line = lb[-1] if curr_bull else ub[-1]
-        dist_pct = abs(price - st_line) / (st_line + 1e-9)
+
+        # `raw_lb` is `hl2 - multiplier * a` and goes at or below zero once
+        # `a` passes `hl2 / multiplier`. There is no percentage distance to
+        # a stop that is not a price, and `near_line` and `confidence` are
+        # both statements about `dist_pct`.
+        if st_line <= 0.0:
+            return Signal(
+                "supertrend",
+                timeframe,
+                SignalDirection.NEUTRAL,
+                0.0,
+                self.weight,
+                abstained=True,
+            )
+
+        dist_pct = abs(price - st_line) / st_line
 
         # Near-line: price within 0.5% of Supertrend line (fold entry in bull)
         near_line = dist_pct < 0.005

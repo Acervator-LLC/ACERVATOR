@@ -1,7 +1,7 @@
 """Ichimoku Kinko Hyo -- Goichi Hosoda's five lines (1969).
 
-Moved out of ``ta_engine.py`` for issue #73. The body below is a
-verbatim line slice of that file: no arithmetic was retyped.
+``IchimokuCloud.lines`` returns a ``_Five`` per candle and
+``IchimokuCloud.compute`` votes on the cloud.
 """
 
 from __future__ import annotations
@@ -21,38 +21,17 @@ _Five = tuple[float | None, float | None, float | None, float | None, float]
 # 5. Ichimoku Cloud
 # ---------------------------------------------------------------------------
 class IchimokuCloud:
-    """
-    Ichimoku Kinko Hyo — full correct five-line implementation.
-    Developed by Goichi Hosoda (1969). Genuinely predictive because the cloud
-    is displaced 26 periods forward, making future S/R levels visible now.
+    """Goichi Hosoda's five lines (1969), over one candle list.
 
-    LINES (all correct-indexed — inclusive of current candle):
-      Tenkan-sen  (T): (9-period H+L)/2   — fast conversion line
-      Kijun-sen   (K): (26-period H+L)/2  — base line, dynamic S/R
-      Senkou A (SpA):  (T+K)/2 plotted 26 ahead — leading span A
-      Senkou B (SpB):  (52-period H+L)/2 plotted 26 ahead — leading span B
-      Chikou   (Ch):   current close plotted 26 BEHIND — lagging confirmation
+    ``lines`` builds each line at its native index, and ``compute`` reads the
+    displaced windows itself: ``curr_spa`` and ``curr_spb`` from data
+    ``kijun`` bars back, ``fut_spa`` and ``fut_spb`` from current data:
 
-    CLOUD DISPLACEMENT (critical for correctness):
-      The CURRENT cloud = SpA/SpB computed from data 26 candles ago.
-      The FUTURE cloud  = SpA/SpB computed from current data (appears 26 ahead).
-      A TWIST occurs when future SpA crosses SpB — signals regime change in ~26 bars.
-
-    PREDICTIVE HIERARCHY (strongest → weakest):
-      1. Future cloud TWIST         — regime change coming in 26 bars
-      2. Cloud BREAKOUT             — price exiting cloud confirms new trend
-      3. TK CROSS location-adjusted — above cloud=strong, inside=weak, below=weak
-      4. Chikou span confirmation   — current close vs 26-bar-ago landscape
-      5. Kijun bounce               — textbook institutional S/R entry
-      6. Price vs cloud (regime)    — ongoing trend context
-      7. SpB flatness               — multi-period consolidation S/R level
-
-    ACCUMULATION TUNING:
-      - Future twist to bull + price below/inside cloud = PREMIUM fold window
-      - Kijun bounce in bull regime = high-quality fold entry (buy the dip)
-      - TK cross above cloud = scrum confirmation (momentum peak)
-      - San-Ko-Shu bull + price at upper BB = harvest; at lower BB = accumulate
-      - Future twist to bear + price above cloud = harvest NOW
+        Tenkan   = (9-period high + 9-period low) / 2
+        Kijun    = (26-period high + 26-period low) / 2
+        Senkou A = (Tenkan + Kijun) / 2, plotted 26 ahead
+        Senkou B = (52-period high + 52-period low) / 2, plotted 26 ahead
+        Chikou   = the close, plotted 26 behind
     """
 
     def __init__(
@@ -66,24 +45,10 @@ class IchimokuCloud:
     def lines(self, candles: list) -> list[_Five]:
         """Tenkan, Kijun, Senkou A, Senkou B and Chikou, per candle.
 
-        THE PUBLISHED DEFINITION, Hosoda (1969), each line INCLUSIVE
-        of the current candle and all five built from the one ``_mid``
-        below:
-
-            Tenkan   = (9-period high + 9-period low) / 2
-            Kijun    = (26-period high + 26-period low) / 2
-            Senkou A = (Tenkan + Kijun) / 2
-            Senkou B = (52-period high + 52-period low) / 2
-            Chikou   = the close
-
-        AT THEIR NATIVE INDEX, NOT DISPLACED. Senkou A and B plot 26
-        bars FORWARD and Chikou 26 bars BACK; that shift belongs to
-        whatever draws them, and ``compute`` reads the displaced
-        windows itself. Displacing here would shift them twice.
-
-        A LINE WHOSE WINDOW HAS NOT CLOSED IS ``None``, so nothing can
-        draw a 52-period span over 9 bars of data. The candle chart
-        carried its own copy of these midpoints until issue #128 R2.
+        Each of the five is Hosoda's, built from ``_span_mid`` at its native
+        index and inclusive of the current candle; ``senkou_a`` and
+        ``senkou_b`` carry no forward shift and ``chikou`` no backward one;
+        and ``_span_mid`` answers ``None`` for a window that has not closed.
         """
         out: list[_Five] = []
         for i in range(len(candles)):
@@ -99,11 +64,9 @@ class IchimokuCloud:
         return out
 
     def _span_mid(self, candles: list, end: int, period: int) -> float | None:
-        """``_mid`` over the ``period`` candles ENDING at ``end``.
+        """``_mid`` over the ``period`` candles ending at ``end``.
 
-        ``None`` before the window closes. ``_mid`` answers 0.0 for a
-        window running off the front of the tape, and 0.0 is a price a
-        chart would happily draw.
+        ``None`` before the window closes, where ``_mid`` would answer 0.0.
         """
         if end < period - 1:
             return None
@@ -111,8 +74,9 @@ class IchimokuCloud:
 
     @staticmethod
     def _mid(candles: list, start: int, period: int) -> float:
-        """(highest high + lowest low) / 2 over candles[start:start+period].
-        Correct: _mid(candles, n-period, period) gives midpoint of LAST `period` candles.
+        """(highest high + lowest low) / 2 over ``candles[start:start+period]``.
+
+        0.0 where that slice runs off either end of ``candles``.
         """
         if start < 0 or period <= 0 or start + period > len(candles):
             return 0.0
@@ -140,9 +104,8 @@ class IchimokuCloud:
         price = candles[-1].close
 
         # ── CURRENT LINES ────────────────────────────────────────────────
-        # Correct: period-midpoint INCLUSIVE of current candle
-        #   Tenkan = midpoint of candles[n-T : n]   ← _mid(n-T, T)
-        #   Kijun  = midpoint of candles[n-K : n]   ← _mid(n-K, K)
+        #   Tenkan = midpoint of candles[n-T : n]
+        #   Kijun  = midpoint of candles[n-K : n]
         tenkan = self._mid(candles, n - T, T)
         kijun = self._mid(candles, n - K, K)
 
@@ -161,7 +124,9 @@ class IchimokuCloud:
         cloud_top = max(curr_spa, curr_spb)
         cloud_bottom = min(curr_spa, curr_spb)
         cloud_thick = cloud_top - cloud_bottom
-        cloud_thick_pct = cloud_thick / (price + 1e-9)
+        # `candles_from_raw` admits only positive closes, so `price` cannot
+        # be zero and the quotient carries no price unit.
+        cloud_thick_pct = cloud_thick / price
 
         # ── FUTURE CLOUD (computed now — appears D periods ahead — PREDICTIVE) ─
         fut_spa = (tenkan + kijun) / 2.0
@@ -180,33 +145,11 @@ class IchimokuCloud:
         ch_price = candles[n - D - 1].close if n > D else price
         chikou_bull = price > ch_price
         chikou_bear = price < ch_price
-        # Extra: Chikou vs the cloud of D periods ago (triple-layer
-        # confirmation).
-        #
-        # THE CLOUD AT THE CHIKOU'S OWN POSITION. The Chikou Span is
-        # "Close plotted 26 days in the past" (StockCharts), so it
-        # sits at bar n-1-D, and the published confirmation reads it
-        # against what is drawn there: the Chikou Span is bullish
-        # when it is "above the candlesticks (and the cloud) from 26
-        # periods ago".
-        #
-        # A cloud PLOTTED at bar x was COMPUTED at bar x-D, because
-        # Senkou A and B are displaced D bars forward. The cloud
-        # under the Chikou was therefore computed at bar n-1-2D.
-        #
-        # This test used `cloud_top` / `cloud_bottom`, which are the
-        # cloud plotted at the CURRENT bar. That made the expression
-        # `chikou_bull and above_cloud` -- two quantities scored
-        # separately three lines below and again at step 6, so the
-        # "third layer" was a re-count of the first two and the name
-        # was not what the code did.
-        #
-        # With fewer than 2D + B bars there is no cloud under the
-        # Chikou. An unmeasured confirmation is not a confirmation,
-        # so both flags are False and the plain `chikou_bull` /
-        # `chikou_bear` branch below still scores. `_mid` would
-        # answer 0.0 on a negative start, and `price > 0.0` would be
-        # a fabricated True.
+        # StockCharts: the Chikou Span is bullish when it is "above the
+        # candlesticks (and the cloud) from 26 periods ago". A cloud plotted
+        # at bar x was computed at bar x - D, so the one under the Chikou
+        # was computed at bar n - 1 - 2D. Below 2D + B bars there is none,
+        # and `_mid` would answer 0.0 on a negative start.
         if n - 2 * D - B >= 0:
             _h_tenkan = self._mid(candles, n - 2 * D - T, T)
             _h_kijun = self._mid(candles, n - 2 * D - K, K)
@@ -230,7 +173,7 @@ class IchimokuCloud:
         # ── PRICE POSITION ───────────────────────────────────────────────
         above_cloud = price > cloud_top
         below_cloud = price < cloud_bottom
-        # Neither above nor below: no reader consumes this state today.
+        # Neither above nor below: nothing consumes this state today.
         not above_cloud and not below_cloud
 
         # Cloud breakout (price exiting cloud this candle)
