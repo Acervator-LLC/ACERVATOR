@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from src._version import resolve_version
+from src._version import UNKNOWN_VERSION, resolve_version
 from src.core.log_paths import get_reports_dir
 
 logger = logging.getLogger("acervator.version_sweep")
@@ -88,6 +88,322 @@ class SweepResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# VERSION SHADOW LITERALS
+# ─────────────────────────────────────────────────────────────────────────────
+
+VERSION_LITERAL = re.compile(
+    r"^\d+\.\d+(?:\.\d+){0,2}(?:[+-][0-9A-Za-z][0-9A-Za-z.]*)?$"
+)
+
+PYTHON_SUFFIXES = frozenset({".py", ".spec"})
+SCRIPT_SUFFIXES = frozenset({".sh", ".ps1", ".bat", ".cmd"})
+
+FROZEN_CONTENT_SUFFIX = "_FROZEN_AT"
+
+_NAME_WORDS = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+")
+
+# A word that, standing beside `version`, makes the value somebody else's.
+FOREIGN_VERSION_SUBJECTS = frozenset(
+    {
+        "api",
+        "electron",
+        "macos",
+        "max",
+        "min",
+        "minimum",
+        "node",
+        "os",
+        "osx",
+        "platform",
+        "protocol",
+        "python",
+        "qt",
+        "required",
+        "requires",
+        "schema",
+        "sdk",
+        "supported",
+        "system",
+        "target",
+        "windows",
+    }
+)
+
+_SCRIPT_ASSIGNMENT = re.compile(
+    r"^\s*(?:export\s+|set\s+)?\$?(?P<name>[A-Za-z_][A-Za-z0-9_:]*)\s*=\s*"
+    r"[\"']?(?P<value>[0-9A-Za-z.+-]+)[\"']?\s*$"
+)
+_SCRIPT_OPTION = re.compile(
+    r"--(?P<name>[A-Za-z][A-Za-z0-9_-]*)[=\s]+[\"']?(?P<value>[0-9A-Za-z.+-]+)"
+)
+
+
+@dataclass(frozen=True)
+class ShadowLiteral:
+    """A version string written down where the resolved version belongs."""
+
+    line: int
+    slot: str
+    name: str
+    value: str
+
+
+def is_version_literal(value: object) -> bool:
+    """Report whether a value is a version string such as ``1.2.3``."""
+    return isinstance(value, str) and bool(VERSION_LITERAL.match(value))
+
+
+def name_words(name: str) -> set[str]:
+    """Split an identifier, key or option into lowercase words.
+
+    Splits on separators and on camel-case boundaries, so
+    ``LSMinimumSystemVersion`` yields ``ls minimum system version``.
+    """
+    return {word.lower() for word in _NAME_WORDS.findall(name)}
+
+
+def names_a_version(name: str) -> bool:
+    """Report whether a name denotes THIS application's version.
+
+    ``version`` qualified by another subject states a requirement on
+    something else — ``LSMinimumSystemVersion`` is the macOS a bundle
+    needs, not the version Acervator reports.
+    """
+    words = name_words(name)
+    return "version" in words and words.isdisjoint(FOREIGN_VERSION_SUBJECTS)
+
+
+def is_bare_version_key(name: str) -> bool:
+    """Report whether a mapping key is the unqualified word ``version``.
+
+    A record stamps its own schema lineage under that key and nothing reads
+    it back as the application's version. A key that qualifies the word —
+    ``FileVersion``, ``ProductVersion``, ``app_version`` — names the
+    application, so a literal there is a restatement.
+    """
+    return name.strip("-_ ").lower() == "version"
+
+
+def is_frozen_content_name(name: str) -> bool:
+    """Report whether a name records the release some content was cut from.
+
+    ``generate_essay_ja.py`` pins ``_CONTENT_VERSION_FROZEN_AT``. That value
+    is a true statement about a translated body, not a claim about this
+    build, and the file warns at import when it differs from the running
+    version.
+    """
+    return name.endswith(FROZEN_CONTENT_SUFFIX)
+
+
+def defines_version_resolver(tree: ast.Module) -> bool:
+    """Report whether a module defines ``resolve_version``.
+
+    That module is the version authority. Its literals are the values the
+    resolver itself returns when git and the baked stamp are both absent,
+    so they restate nothing.
+    """
+    return any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "resolve_version"
+        for node in tree.body
+    )
+
+
+class _ShadowLiteralVisitor(ast.NodeVisitor):
+    """Collect version literals occupying a slot the resolved version fills."""
+
+    def __init__(self) -> None:
+        self.found: list[ShadowLiteral] = []
+        self._handlers = 0
+
+    def _record(self, node: ast.AST, slot: str, name: str, value: str) -> None:
+        """Add one literal, once. A name and its operand can both reach it."""
+        line = getattr(node, "lineno", 0)
+        if any(s.line == line and s.value == value for s in self.found):
+            return
+        self.found.append(ShadowLiteral(line, slot, name, value))
+
+    @staticmethod
+    def _literal(node: Optional[ast.AST]) -> Optional[str]:
+        if isinstance(node, ast.Constant) and is_version_literal(node.value):
+            return str(node.value)
+        return None
+
+    def _bind(self, target: ast.AST, value: ast.AST) -> None:
+        name = getattr(target, "id", None) or getattr(target, "attr", None)
+        if not name or not names_a_version(name) or is_frozen_content_name(name):
+            return
+        literal = self._literal(value)
+        if literal:
+            slot = "except fallback" if self._handlers else "assignment"
+            self._record(value, slot, name, literal)
+            return
+        if isinstance(value, ast.BoolOp) and isinstance(value.op, ast.Or):
+            fallback = value.values[-1]
+            literal = self._literal(fallback)
+            if literal:
+                self._record(fallback, "or fallback", name, literal)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        for target in node.targets:
+            self._bind(target, node.value)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None:
+            self._bind(node.target, node.value)
+        self.generic_visit(node)
+
+    def visit_Try(self, node: ast.Try) -> None:
+        for stmt in node.body:
+            self.visit(stmt)
+        for handler in node.handlers:
+            self._handlers += 1
+            for stmt in handler.body:
+                self.visit(stmt)
+            self._handlers -= 1
+        for stmt in [*node.orelse, *node.finalbody]:
+            self.visit(stmt)
+
+    def _parameter_defaults(self, args: ast.arguments) -> None:
+        positional = [*args.posonlyargs, *args.args]
+        tail = positional[len(positional) - len(args.defaults) :]
+        pairs = [*zip(tail, args.defaults), *zip(args.kwonlyargs, args.kw_defaults)]
+        for arg, default in pairs:
+            literal = self._literal(default)
+            if literal and names_a_version(arg.arg):
+                self._record(default, "parameter default", arg.arg, literal)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._parameter_defaults(node.args)
+        self.generic_visit(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._parameter_defaults(node.args)
+        self.generic_visit(node)
+
+    def _lookup_default(self, node: ast.Call) -> None:
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "get":
+            return
+        if len(node.args) != 2:
+            return
+        key, fallback = node.args
+        literal = self._literal(fallback)
+        if (
+            literal
+            and isinstance(key, ast.Constant)
+            and isinstance(key.value, str)
+            and names_a_version(key.value)
+        ):
+            self._record(fallback, "lookup default", key.value, literal)
+
+    def _keyword_defaults(self, node: ast.Call) -> None:
+        option = next(
+            (
+                arg.value
+                for arg in node.args
+                if isinstance(arg, ast.Constant)
+                and isinstance(arg.value, str)
+                and names_a_version(arg.value)
+            ),
+            None,
+        )
+        for keyword in node.keywords:
+            literal = self._literal(keyword.value)
+            if not literal or keyword.arg is None:
+                continue
+            if names_a_version(keyword.arg):
+                self._record(keyword.value, "keyword argument", keyword.arg, literal)
+            elif keyword.arg == "default" and option:
+                self._record(keyword.value, "option default", option, literal)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        self._lookup_default(node)
+        self._keyword_defaults(node)
+        self.generic_visit(node)
+
+    def visit_Dict(self, node: ast.Dict) -> None:
+        for key, value in zip(node.keys, node.values):
+            if not isinstance(key, ast.Constant) or not isinstance(key.value, str):
+                continue
+            literal = self._literal(value)
+            if (
+                literal
+                and names_a_version(key.value)
+                and not is_bare_version_key(key.value)
+            ):
+                self._record(value, "mapping entry", key.value, literal)
+        self.generic_visit(node)
+
+    @staticmethod
+    def _version_name_in(nodes: list[ast.expr]) -> Optional[str]:
+        for node in nodes:
+            for child in ast.walk(node):
+                name = getattr(child, "id", None) or getattr(child, "attr", None)
+                if isinstance(name, str) and names_a_version(name):
+                    return name
+        return None
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> None:
+        if isinstance(node.op, ast.Or):
+            fallback = node.values[-1]
+            literal = self._literal(fallback)
+            name = self._version_name_in(node.values[:-1]) if literal else None
+            if literal and name:
+                self._record(fallback, "or fallback", name, literal)
+        self.generic_visit(node)
+
+
+def find_python_shadow_literals(source: str) -> list[ShadowLiteral]:
+    """Return every version literal in Python source that shadows the version.
+
+    Covers Python-syntax build inputs as well, so a PyInstaller ``.spec``
+    is read the same way. Raises ``SyntaxError`` when the source does not
+    parse, so a caller records the file instead of scoring it clean.
+    """
+    tree = ast.parse(source)
+    if defines_version_resolver(tree):
+        return []
+    visitor = _ShadowLiteralVisitor()
+    visitor.visit(tree)
+    return visitor.found
+
+
+def find_script_shadow_literals(source: str) -> list[ShadowLiteral]:
+    """Return every version literal a shell or PowerShell script writes down."""
+    found: list[ShadowLiteral] = []
+    for line_no, raw in enumerate(source.splitlines(), 1):
+        line = raw.split(" #", 1)[0]
+        if line.lstrip().startswith("#"):
+            continue
+        assigned = _SCRIPT_ASSIGNMENT.match(line)
+        if (
+            assigned
+            and names_a_version(assigned["name"])
+            and not is_frozen_content_name(assigned["name"])
+            and is_version_literal(assigned["value"])
+        ):
+            found.append(
+                ShadowLiteral(
+                    line_no, "assignment", assigned["name"], assigned["value"]
+                )
+            )
+            continue
+        for option in _SCRIPT_OPTION.finditer(line):
+            if names_a_version(option["name"]) and is_version_literal(option["value"]):
+                found.append(
+                    ShadowLiteral(
+                        line_no,
+                        "option default",
+                        f"--{option['name']}",
+                        option["value"],
+                    )
+                )
+    return found
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # CHECK REGISTRY
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -105,6 +421,18 @@ class VersionSweep:
         "cloud",
         "dist",
         "build",
+    }
+    # Directories the version check does not enter. A literal in a test
+    # tree, a document or the harness reaches no version-reporting surface.
+    VERSION_SKIP_DIRS = {
+        "tests",
+        "docs",
+        "docs-archive",
+        "dev_harness",
+        "harness_fixtures",
+        "site-packages",
+        ".venv",
+        "venv",
     }
     SKIP_EXTS = {
         ".pyc",
@@ -284,73 +612,99 @@ class VersionSweep:
 
     # ── CHECK 2: Version consistency ──────────────────────────────────────────
 
+    def _version_subject_files(self):
+        """Yield every file that could restate the application's version.
+
+        Subjects are discovered, so a file that starts carrying a literal
+        is swept the day it lands. Anything under ``VERSION_SKIP_DIRS`` is
+        out of scope: a literal there reaches no surface that reports a
+        version.
+        """
+        skip = self.SKIP_DIRS | self.VERSION_SKIP_DIRS
+        for dirpath, dirs, files in os.walk(self.root):
+            dirs[:] = [d for d in dirs if d not in skip]
+            for fname in files:
+                suffix = Path(fname).suffix.lower()
+                if suffix in PYTHON_SUFFIXES or suffix in SCRIPT_SUFFIXES:
+                    yield Path(dirpath) / fname
+
+    def _shadow_literals(self, path: Path, source: str) -> list[ShadowLiteral]:
+        """Return the shadow literals in one subject, or [] when it cannot parse."""
+        if path.suffix.lower() not in PYTHON_SUFFIXES:
+            return find_script_shadow_literals(source)
+        try:
+            return find_python_shadow_literals(source)
+        except SyntaxError as syn:
+            self._skipped.append((self._rel(path), f"SyntaxError: {syn}"))
+            logger.warning(
+                "version_sweep: %s failed to parse (%s) — EXCLUDED "
+                "from the version check",
+                path,
+                syn,
+            )
+            return []
+
     def check_version_consistency(self):
-        """No file may restate a version that differs from src/__init__.py.
+        """Flag every version literal that can shadow the resolved version.
 
-        A file carrying no version literal cannot drift, so absence is the
-        correct end state and scores nothing. A restatement that is present
-        must equal the canonical value.
-
-        An unreadable ``src/__init__.py`` scores HIGH rather than
-        returning. A skipped check that prints nothing is indistinguishable
-        from a check that found nothing.
+        A literal counts when it occupies a slot the resolved version fills:
+        bound to a version-named identifier, defaulting a version parameter,
+        answering an absent version key or option, or keying a version-info
+        field of a build spec. An unresolvable version scores HIGH on its
+        own, because a check that cannot name the value it compares against
+        reports nothing in language identical to a clean run.
         """
         canonical = self.result.version
-        if canonical == "unknown":
+        if canonical == UNKNOWN_VERSION:
             self._add(
                 Severity.HIGH,
                 "CONSISTENCY",
-                self.root / "src" / "__init__.py",
+                self.root / "src" / "_version.py",
                 0,
-                "Canonical __version__ unreadable — no version check ran",
-                "Restore src/__init__.py; until then this sweep verifies "
-                "no version anywhere in the tree.",
+                "Version unresolvable — no git tag and no baked stamp",
+                "Tag the repository or restore src/_baked_version.txt.",
             )
-            return
 
-        version_sources = {
-            self.root / "main.py": r'current_version\s*=\s*["\']([^"\']+)["\']',
-            self.root / "splash_screen.py": r'__version__\s*=\s*["\']([^"\']+)["\']',
-            self.root / "investor_screen.py": r'__version__\s*=\s*["\']([^"\']+)["\']',
-            self.root
-            / "generate_essay_ja.py": r'__version__\s*=\s*["\']([^"\']+)["\']',
-        }
-
-        for fpath, pattern in version_sources.items():
-            if not fpath.exists():
+        for path in self._version_subject_files():
+            source = self._read_or_skip(path)
+            if source is None:
                 continue
-            text = fpath.read_text(encoding="utf-8", errors="replace")
-            m = re.search(pattern, text)
-            # No match == the file imports __version__ == nothing can drift.
-            if m and m.group(1) != canonical:
+            for shadow in self._shadow_literals(path, source):
                 self._add(
                     Severity.HIGH,
                     "CONSISTENCY",
-                    fpath,
-                    0,
-                    f"Version mismatch: {m.group(1)!r} != canonical {canonical!r}",
-                    f"Import __version__ from src rather than restating {m.group(1)!r}.",
+                    path,
+                    shadow.line,
+                    f"Version literal {shadow.value!r} in {shadow.slot} "
+                    f"{shadow.name!r} shadows the resolved version {canonical!r}",
+                    "Read src.__version__ rather than restating the version.",
                 )
 
-        # Docs must also reference the right version
-        doc_files = [
-            self.root / "AI_DEVELOPER_GUIDE.md",
-            self.root / "CHANGELOG.md",
-        ]
-        for dpath in doc_files:
+        self._check_doc_versions(canonical)
+
+    def _check_doc_versions(self, canonical: str) -> None:
+        """Flag a doc naming a release of the current line that is not current.
+
+        The release line comes from the resolved version, so the check
+        follows the project across a major bump instead of watching one
+        hardcoded major forever.
+        """
+        release_line = canonical.split(".", 1)[0]
+        stale_pattern = re.compile(rf"\b{re.escape(release_line)}\.\d+\.\d+\b")
+        for dpath in (self.root / "AI_DEVELOPER_GUIDE.md", self.root / "CHANGELOG.md"):
             if not dpath.exists():
                 continue
             text = dpath.read_text(encoding="utf-8", errors="replace")
-            old_vers = re.findall(r"\b3\.\d+\.\d+\b", text)
-            old_refs = [v for v in old_vers if v != canonical]
-            if old_refs:
-                unique_old = list(set(old_refs))
+            stale = sorted(
+                {v for v in stale_pattern.findall(text) if not canonical.startswith(v)}
+            )
+            if stale:
                 self._add(
                     Severity.MEDIUM,
                     "CONSISTENCY",
                     dpath,
                     0,
-                    f"Stale version reference(s) found: {unique_old}",
+                    f"Stale version reference(s) found: {stale}",
                     f"Update all to {canonical}.",
                 )
 
