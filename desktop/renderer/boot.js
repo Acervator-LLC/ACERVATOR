@@ -9,11 +9,19 @@
 // The tokens are asked for once here. `design_tokens.js` writes each one
 // onto the root element as a CSS custom property under its own name, so
 // a stylesheet reads `var(--SURFACE_0)` and no panel carries a colour.
+//
+// Every other converted panel is drawn by `panel_host.js` into `#panels`,
+// one host element each, and only when the bridge is there to answer.
 
 "use strict";
 
 (function (global) {
   var METHOD = "history.view_model";
+  var PANELS_ID = "panels";
+
+  function hasBridge() {
+    return Boolean(global.acervator) && typeof global.acervator.call === "function";
+  }
 
   function showError(message) {
     var box = document.getElementById("bridge-error");
@@ -22,7 +30,7 @@
   }
 
   function load() {
-    if (!global.acervator || typeof global.acervator.call !== "function") {
+    if (!hasBridge()) {
       showError("the preload bridge is not present");
       return Promise.resolve(null);
     }
@@ -55,8 +63,24 @@
     });
   }
 
+  // Every panel the manifest names and a module registered, each into its
+  // own host element under `#panels`. The History surface keeps `#root`.
+  function mountPanels() {
+    if (!global.acervatorPanelHost) {
+      showError("the panel host is not present");
+      return Promise.resolve([]);
+    }
+    return global.acervatorPanelHost.mountAll(
+      document.getElementById(PANELS_ID)
+    );
+  }
+
   global.acervatorReload = load;
   global.acervatorReloadTokens = loadTokens;
+  global.acervatorMountPanels = mountPanels;
   loadTokens();
   load();
+  if (hasBridge()) {
+    mountPanels();
+  }
 })(window);
