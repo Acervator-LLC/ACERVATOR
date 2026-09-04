@@ -1,56 +1,15 @@
-"""
-# Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-ta_engine.py — Technical Analysis Engine v1.1
-==============================================
-# ┌─────────────────────────────────────────────────────────────┐
-# │ AI DEVELOPER NOTE                                           │
-# │                                                             │
-# │ THE INDICATORS NO LONGER LIVE HERE. Issue #73 moved each    │
-# │ one into its own module under src/trading/indicators/.      │
-# │ This file now holds the CONSUMER — the VotingEngine — and   │
-# │ re-exports the package, so every existing import path       │
-# │ ``from ..trading.ta_engine import X`` still resolves.       │
-# │                                                             │
-# │ WHY ONE FILE EACH. Indicator formulae are PUBLISHED. Each   │
-# │ indicator has its own discrete maths and is never blended   │
-# │ with another's. Nineteen of them in one file made that a    │
-# │ habit; one file each makes it structural, and               │
-# │ tests/test_one_indicator_per_module.py fails if a module    │
-# │ grows a second indicator or reaches into another's maths.   │
-# │                                                             │
-# │ Three novel inventions live in the package:                 │
-# │                                                             │
-# │ 1. detect_bb_proximity() — Landing Strip v1                 │
-# │    indicators/bb_proximity.py                               │
-# │    Detects HA body consolidation at BB band extremes.       │
-# │    Returns BBProximityResult with landing_strip flag.       │
-# │                                                             │
-# │ 2. detect_landing_strip_v2() — Tightening Detection         │
-# │    indicators/landing_strip.py                              │
-# │    Gradient-based: measures if consecutive HA bodies are     │
-# │    SHRINKING (each smaller than the last). More reliable    │
-# │    than v1's absolute threshold. Inspired by CogNex edge    │
-# │    detection from semiconductor wafer inspection.           │
-# │    Uses compute_heikin_ashi() internally — confirmed [HA✓]. │
-# │                                                             │
-# │ 3. compute_heikin_ashi() — HA candle computation            │
-# │    indicators/heikin_ashi.py                                │
-# │    Used for BOTH chart rendering AND LS detection.          │
-# │    HA smooths noise; body_pct measures trend exhaustion.    │
-# │                                                             │
-# │ POSITION-AWARE TA (the BONK insight):                       │
-# │    The same VX/MACD signal means different things at        │
-# │    different BB positions. Strong VX bullish AT the upper   │
-# │    band = price being PUSHED into resistance = SELL signal. │
-# │    Same signal in the MIDDLE = weak/ignore.                 │
-# │    This reinterpretation happens in the simulator's         │
-# │    _sim_scrumming_tick(), NOT in this file.                 │
-# │                                                             │
-# │ Import path: from ..trading.ta_engine import ...            │
-# │ (NOT from .ta_engine — that's the bug that killed LS v2)   │
-# └─────────────────────────────────────────────────────────────┘
+"""The TA VotingEngine, and the front door of the indicator package.
 
-Comprehensive TA signal processing for Accumulation Trading bots.
+Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights
+reserved.
+
+The indicators live one per module under ``src/trading/indicators/``. This
+module holds their consumer, the VotingEngine, and re-exports the package so
+every existing ``ta_engine`` import path still resolves.
+
+Indicator formulae are published, and each indicator computes its own maths
+from candles alone. ``tests/test_one_indicator_per_module.py`` fails when a
+module grows a second indicator or reaches into another's maths.
 
 Indicators, one module each under ``src/trading/indicators/``:
   1. Bollinger Bands — price position within bands, squeeze detection
@@ -78,10 +37,9 @@ Each voting indicator produces a Signal with:
   - confidence: 0.0 to 1.0
   - weight: configurable per-indicator importance
 
-The VotingEngine below aggregates signals across indicators AND
-timeframes, producing a final consensus with configurable thresholds.
-It is the only thing in this file that computes, and it computes
-nothing itself: it calls each indicator and adds up the votes.
+The VotingEngine aggregates those signals across indicators and timeframes
+into a consensus. It computes no indicator maths itself: it calls each
+indicator and adds up the votes.
 """
 
 from __future__ import annotations
@@ -89,11 +47,7 @@ from __future__ import annotations
 import time
 from typing import Optional
 
-# ── THE PACKAGE'S FRONT DOOR ────────────────────────────────────────────
-# Nineteen call sites across src/, tools/ and tests/ import these names
-# from `ta_engine`. The names are re-exported rather than moved so the
-# split changes no caller, and `__all__` states that the re-export is
-# deliberate rather than a leftover.
+# Re-exported rather than moved, so the split into one module each changed no caller.
 from .indicators.adx import ADXIndicator
 from .indicators.atr import ATRIndicator
 from .indicators.bb_proximity import BBProximityResult, detect_bb_proximity
@@ -150,12 +104,8 @@ from .indicators.w_bottom import detect_w_bottom
 from .indicators.zscore import ZScoreIndicator
 
 __all__ = [
-    # The seven leading-underscore names are re-exported DELIBERATELY.
-    # `tests/test_ta_suffix_bit_identity.py` and
-    # `tests/test_ta_engine_degenerate_abstention.py` import `_sma`,
-    # `_sma_tail`, `_stdev`, `_stdev_tail` from here, and this list is
-    # what says so: without it they read as dead imports left behind by
-    # the issue #73 split.
+    # tests/test_ta_suffix_bit_identity.py imports the four underscore stats
+    # names from here.
     "_ema",
     "_sma",
     "_sma_tail",
@@ -212,11 +162,6 @@ __all__ = [
 ]
 
 
-# ===========================================================================
-# VOTING ENGINE
-# ===========================================================================
-
-# Default indicator weights
 DEFAULT_WEIGHTS = {
     "bollinger_bands": 1.0,
     "vortex": 0.9,
@@ -225,52 +170,36 @@ DEFAULT_WEIGHTS = {
     "ichimoku": 1.1,
     "volume": 0.8,
     "slingshot": 1.0,
-    "adx": 1.0,  # P2.9 / MEM-200 — trend-strength signal. Structural tier.
-    # ── v3.19.17: indicator-coverage P0 closure (Trading-Discipline Arc #2) ──
-    # Three voters previously built as full classes (Sessions 15-17 era) but
-    # never wired into VotingEngine. Filed as UNWIRED in the v3.19.16
-    # indicator-coverage audit. Wiring matches v3.19.16 ADX template.
+    "adx": 1.0,
     "kaufman_er": 1.0,  # Perry Kaufman Efficiency Ratio (regime classifier)
-    "supertrend": 1.0,  # Oliver Seban ATR-trailing trend (reactive flip)
-    "zscore": 0.9,  # Statistical extremity (longer window than BB)
-    # ── v3.19.18: last UNWIRED indicator from v3.19.16 audit closed ──
-    # Plain RSI weighted lower than StochRSI (1.0) because they overlap;
-    # StochRSI is the more refined two-stage indicator. Both voting now —
-    # the small redundancy is acceptable because RSI's classical 70/30
-    # divergence detection still adds independent information.
+    "supertrend": 1.0,  # Olivier Seban ATR-trailing trend (reactive flip)
+    "zscore": 0.9,  # Statistical extremity over a longer window than BB
+    # Both are built on Wilder's RSI, so this vote overlaps stochastic_rsi.
     "rsi": 0.8,
 }
 
 
 class _TAInstrumentationOff(Exception):
-    """Raised to skip the emitter block when no sink is installed.
-
-    A sentinel rather than a flag so the existing `try` around the
-    instrumentation is the single exit — the block is one unit, and
-    half-emitting it would produce a
-    `ta.07.003.postcondition.computed` with no matching
-    `ta.07.004.postcondition.raw.*` rows.
-    """
+    """Raised to skip the emitter block when no sink is installed."""
 
 
-# Head of the per-indicator raw emitter name. Consumers recover the
-# indicator with `name[len(TA_RAW_PREFIX):]`. The emitter spells the
-# literal out itself, so tests/test_ta_raw_prefix_consumer.py fails when
-# this copy drifts from what the engine emits.
+# Head of the raw emitter name; tests/test_ta_raw_prefix_consumer.py fails
+# when this copy drifts from the emitter.
 TA_RAW_PREFIX = "ta.07.004.postcondition.raw."
 
 
 class VotingEngine:
-    """
-    Aggregates signals from all indicators into a consensus vote.
+    """Aggregates signals from all indicators into a consensus vote.
 
-    Features:
-      - Weighted voting: each indicator's contribution is scaled by
-        its weight × confidence.
-      - Confidence threshold: consensus is only actionable if total
-        confidence exceeds a minimum threshold.
-      - Multi-timeframe: can aggregate across timeframes with higher
-        timeframes weighted more heavily.
+    Weighted voting: each indicator's contribution is scaled by its weight
+    times its confidence, and the consensus is the absolute weighted mean of
+    those contributions over the voters that did not abstain.
+
+    ``confidence_threshold`` is held for callers to read; this class does not
+    apply it. Nothing here filters or suppresses a consensus below it.
+
+    Multi-timeframe: ``aggregate_multi_timeframe`` combines summaries from
+    several timeframes, weighting higher timeframes more heavily.
     """
 
     def __init__(
@@ -292,28 +221,10 @@ class VotingEngine:
             IchimokuCloud(weight=self.weights.get("ichimoku", 1.1)),
             VolumeAnalysis(weight=self.weights.get("volume", 0.8)),
             SlingshotIndicator(weight=self.weights.get("slingshot", 1.0)),
-            # P2.9 / MEM-200 — ADX trend-strength indicator. Class fully
-            # implemented since Session 15 but never consumed. Added to
-            # address Manual Part 6 L4 (Oscillators Lead) objection.
             ADXIndicator(weight=self.weights.get("adx", 1.0)),
-            # ── v3.19.17 (Trading-Discipline Arc #2 — indicator-coverage P0) ──
-            # Three indicators built as full classes but never wired. Surfaced
-            # by docs/audits/2026-05-22_indicator_coverage_audit.md and elevated
-            # to P0 by operator 2026-05-22 ("the TA engine not being built
-            # properly is also P0"). Wired into VotingEngine here; KaufmanER
-            # additionally gets a discrete GateContext field + dedicated
-            # SCRUM-suppressor gate (EfficiencyRatioRegimeGate) — see
-            # gate_chain.py. The L3.b "ER is the Anti-pattern substitute"
-            # claim in Part 6 — false at write time — becomes true with this
-            # wiring.
             KaufmanERIndicator(weight=self.weights.get("kaufman_er", 1.0)),
             SupertrendIndicator(weight=self.weights.get("supertrend", 1.0)),
             ZScoreIndicator(weight=self.weights.get("zscore", 0.9)),
-            # ── v3.19.18 — last UNWIRED indicator closed ──
-            # Plain RSI refactored from dict-returning to Signal-returning
-            # compute() in this ship (closes the v3.19.16 audit P0 fully).
-            # See class docstring + _compute_metrics() for the dict form
-            # that any external consumer of the rich detail still needs.
             RSIIndicator(weight=self.weights.get("rsi", 0.8)),
         ]
 
@@ -323,26 +234,13 @@ class VotingEngine:
         timeframe: str = "1h",
         symbol: Optional[str] = None,
     ) -> VotingSummary:
+        """Run all indicators on *candles* and aggregate into a VotingSummary.
 
-        # sadp: R28  # TA computation: fail-loudly on insufficient candles(R28)
+        Every indicator abstains rather than raising when *candles* is too
+        short for its own formula, so a short tape returns a summary with no
+        voters instead of an error.
         """
-        Run all indicators on *candles* and aggregate into a VotingSummary.
-        """
-        # 10.3 phase 2 — BRACKET THE REAL WORK, not the emit.
-        #
-        # This is the operation `ta.07.003.postcondition.computed`
-        # observes, so it is the only interval that emitter may honestly
-        # claim. `time.monotonic()` because a wall clock can step
-        # backwards; measured resolution on the target machine is 1e-07,
-        # so a sub-millisecond compute is still distinguishable.
-        #
-        # COST, MEASURED rather than assumed, because this runs on every
-        # candle of every live bot: `time.monotonic()` is 38 ns a call,
-        # so the pair adds ~76 ns to a compute_all that runs every
-        # indicator over the whole window. The emit block below is
-        # skipped entirely when nobody is collecting; this is not,
-        # deliberately, because the timer must bracket the work whether
-        # or not a sink was installed before it started.
+        # time.monotonic(), not a wall clock, because a wall clock can step backwards.
         _dur_t0 = time.monotonic()
         signals: list[Signal] = []
         for ind in self._indicators:
@@ -350,34 +248,14 @@ class VotingEngine:
             signals.append(sig)
         _dur_elapsed = time.monotonic() - _dur_t0
 
-        # ── DIRECTIVE 2 EMITTER — "actual per-candle TA every tick" ──
-        #
-        # THE SIGNAL THAT DID NOT EXIST. Nothing anywhere counted TA
-        # computations, so a run's artifacts could not distinguish
-        # "TA on 100% of candles" from "TA on 2%". That is why the
-        # per-candle-TA claim survived: it was unfalsifiable, not merely
-        # unchecked.
-        #
-        # THIS is the true count — every TA computation in the platform
-        # passes through here. It is not inferred from a tick counter or
-        # from a config flag; the emit happens where the work happens.
-        #
-        # `window` is recorded because directive 2 is about per-CANDLE
-        # computation: without the input length, a value cannot be
-        # independently recomputed and the emitter would only prove that
-        # something ran, not that it ran on the right data.
-        #
-        # Costs nothing when no sink is installed — a dict lookup and a
-        # return. Live runs collect nothing unless a sink is set.
+        # `window` records the input length, so a value can be recomputed
+        # from the same candles.
         try:
             from src.core.signal_contract import emit as _ta_emit
             from src.core.signal_contract import get_sink as _ta_sink
 
             if _ta_sink() is None:
-                # Nothing is collecting. Skip the whole block rather
-                # than build context dicts and evaluate invariants for
-                # a call that returns None on its first line — this
-                # runs on every candle of every live bot.
+                # This runs on every candle of every live bot.
                 raise _TAInstrumentationOff
             _ta_emit(
                 "ta.07.003.postcondition.computed",
@@ -387,34 +265,12 @@ class VotingEngine:
                 context={"timeframe": timeframe, "window": len(candles)},
             )
 
-            # ── RAW INDICATOR VALUES ────────────────────────────────
-            # Operator directive 2026-08-08: "Should also explore
-            # capturing the raw indicator values so we [have] more
-            # comparative data."
-            #
-            # `Signal.details` already holds each indicator's own
-            # internals — bollinger's upper/middle/lower/bb_position,
-            # rsi's rsi, macd's macd_line/signal_line/histogram,
-            # zscore's z/sma/std. Nothing persisted them, so a run's
-            # artifacts held a DIRECTION and a CONFIDENCE but not the
-            # numbers those were derived from. Two runs could disagree
-            # with no way to see where they diverged.
-            #
-            # Recorded per indicator, not as one blob, so a single
-            # indicator can be queried across a whole run.
-            #
-            # `candle_ts` and `window` are what make a value
-            # RECOMPUTABLE: with the closing timestamp and the input
-            # length, the same value can be derived independently from
-            # the tablet and compared. A raw value with no address is
-            # not comparative data.
+            # `Signal.details` carries each indicator's own internals,
+            # recorded one row each.
             _last_ts = None
             if candles:
-                # int, not float. Candle.timestamp is a float, so a
-                # millisecond epoch was being recorded as
-                # 1776789300000.0 -- which cannot represent every ms
-                # past 2^53 and forces a cast to join against tablet
-                # ints. This is an ADDRESS; it must be exact.
+                # int, not float: a float ms epoch needs a cast to join
+                # against tablet ints.
                 _raw_ts = getattr(candles[-1], "timestamp", None)
                 if _raw_ts is not None:
                     try:
@@ -425,19 +281,7 @@ class VotingEngine:
 
             for _sig in signals:
                 _details = dict(_sig.details or {})
-                # THE RECORD NOW CARRIES A VERDICT, NOT JUST A VALUE.
-                #
-                # Every `ta.07.004.postcondition.raw.*` record used to
-                # emit with no
-                # `expected`, so `Signal.ok` came back None and the row
-                # was a transcript. ADX sat at up to 761.5 — seven times
-                # its definitional maximum — across 1174 such rows and
-                # nothing objected, because nothing had been ASKED to.
-                #
-                # `check` returns (None, None) when it has no applicable
-                # bound, which reproduces the old behaviour exactly for
-                # indicators and warm-up paths it cannot speak to. It
-                # never raises.
+                # `check` returns (None, None) when no bound applies, and never raises.
                 _ok, _rule = _ta_inv.check(_sig.indicator, _details)
                 _ta_emit(
                     f"ta.07.004.postcondition.raw.{_sig.indicator}",
@@ -447,14 +291,8 @@ class VotingEngine:
                     context={
                         "timeframe": timeframe,
                         "window": len(candles),
-                        # WITHOUT THE SYMBOL THE ADDRESS IS
-                        # INCOMPLETE. candle_ts alone does not say
-                        # WHICH tablet the value came from, so a
-                        # raw record could not be joined back to
-                        # its own input and independently
-                        # recomputed -- the whole point of keeping
-                        # it. Optional so live callers are
-                        # unaffected.
+                        # candle_ts alone does not say which tablet the
+                        # value came from.
                         "symbol": symbol,
                         "candle_ts": _last_ts,
                         "direction": _sig.direction.name,
@@ -474,12 +312,9 @@ class VotingEngine:
         summaries: list[VotingSummary],
         timeframe_weights: Optional[dict[str, float]] = None,
     ) -> VotingSummary:
-        """
-        Combine VotingSummaries from multiple timeframes.
-        Higher timeframes are weighted more heavily by default.
+        """Combine VotingSummaries from multiple timeframes.
 
-        Default timeframe weights:
-          5m=0.5, 15m=0.7, 1h=1.0, 4h=1.3, 1d=1.5
+        Higher timeframes are weighted more heavily by default.
         """
         tf_weights = timeframe_weights or {
             "1m": 0.3,
@@ -499,7 +334,6 @@ class VotingEngine:
         for summary in summaries:
             tf_w = tf_weights.get(summary.timeframe, 1.0)
             for sig in summary.signals:
-                # Apply timeframe weight multiplier
                 boosted = Signal(
                     indicator=sig.indicator,
                     timeframe=sig.timeframe,
@@ -508,14 +342,8 @@ class VotingEngine:
                     weight=sig.weight * tf_w,
                     details=sig.details,
                     timestamp=sig.timestamp,
-                    # THE FLAG MUST SURVIVE THE COPY. `_aggregate` reads
-                    # `abstained` off the signals THIS loop builds, not
-                    # off the originals, so a rebuild that dropped it
-                    # would put every abstaining voter's timeframe-
-                    # boosted weight back into the multi-timeframe
-                    # denominator while the per-timeframe one stayed
-                    # correct -- the repair working everywhere except
-                    # the number the fleet actually reads.
+                    # `_aggregate` reads `abstained` off these rebuilt
+                    # signals, not the originals.
                     abstained=sig.abstained,
                 )
                 all_signals.append(boosted)
@@ -543,50 +371,9 @@ class VotingEngine:
 
         net = bull_score - bear_score
 
-        # THE DENOMINATOR IS THE WEIGHT THAT VOTED — issue #100.
-        # ------------------------------------------------------
-        # `consensus_confidence` is a WEIGHTED ARITHMETIC MEAN of each
-        # voter's signed conviction `direction x confidence`, taken in
-        # absolute value. The published definition of that mean fixes
-        # its denominator: it is the sum of the weights of the data
-        # points INCLUDED IN THE CALCULATION. A voter that abstained
-        # contributed no data point, so its weight is not one of them.
-        #
-        # This line used to read `sum(s.weight for s in signals)`. That
-        # summed the weight of every voter the engine ASKED, not the
-        # weight of every voter that ANSWERED, so an indicator with too
-        # little history to evaluate its own formula still occupied a
-        # share of the maximum the numerator was measured against. The
-        # displayed number was diluted by a quantity no candle produced.
-        #
-        # The panel already told the operator this was the rule.
-        # `src/gui/indicator_panel.py:1025` documents the field as
-        # "|Net| / total_weight_of_active_voters" -- the code and its
-        # own tooltip disagreed, and the tooltip was right.
-        #
-        # MEASURED over 406 stone tablets, the abstaining share of the
-        # old denominator, by tape length:
-        #     35 bars  34.21% mean   42.74% worst tablet   406/406 hit
-        #     40 bars  25.68% mean   42.74% worst tablet   406/406 hit
-        #     60 bars   9.44% mean   17.95% worst tablet   406/406 hit
-        #    100 bars   0.06% mean   25.64% worst tablet     3/406 hit
-        #    200 bars   0.06% mean   25.64% worst tablet     3/406 hit
-        #    400 bars   0.14% mean   41.03% worst tablet     6/406 hit
-        # The live fetch is 100 candles (`ScrummingBot.tick` in
-        # `src/trading/scrumming_bot.py`), where
-        # only a degenerate book abstains -- but a bot that has just
-        # spawned holds the short tape, and there the dilution is a
-        # third of the denominator on every symbol measured.
-        #
-        # WHEN NOBODY VOTED. `voted_weight` is then exactly 0.0 and so
-        # is `net`: an abstention is NEUTRAL, `weighted_score` multiplies
-        # by `direction.value == 0`, and neither score accumulates. The
-        # quotient is 0/0, which is UNDEFINED and is not a confidence of
-        # any size. This returns 0.0 -- no vote -- which is the rule
-        # `tests/test_ta_engine_degenerate_abstention.py` already holds
-        # every division in this package to. It is NOT a guard against
-        # ZeroDivisionError standing in for a decision; the decision is
-        # that an engine with no voters has no consensus.
+        # A weighted mean divides by the weight of the points included, and an
+        # abstention is not one; it is NEUTRAL, so it adds nothing to `net`.
+        # `IndicatorVotingPanel._setup_ui` states the same rule in its Conf tooltip.
         voted_weight = sum(s.weight for s in signals if not s.abstained)
         consensus_conf = abs(net) / voted_weight if voted_weight > 0.0 else 0.0
 
@@ -603,15 +390,11 @@ class VotingEngine:
         )
 
 
-# ---------------------------------------------------------------------------
-# Convenience: single-function TA analysis
-# ---------------------------------------------------------------------------
 def analyze(
     candles_by_timeframe: dict[str, list[list[float]]],
     weights: Optional[dict[str, float]] = None,
 ) -> tuple[VotingSummary, dict[str, VotingSummary]]:
-    """
-    Run full TA analysis across multiple timeframes.
+    """Run full TA analysis across multiple timeframes.
 
     Parameters
     ----------
@@ -624,6 +407,7 @@ def analyze(
     -------
     (multi_summary, per_timeframe)
         Overall multi-timeframe consensus and per-timeframe summaries.
+
     """
     engine = VotingEngine(weights=weights)
     per_tf: dict[str, VotingSummary] = {}
