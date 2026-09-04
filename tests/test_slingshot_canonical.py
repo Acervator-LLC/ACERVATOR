@@ -151,8 +151,8 @@ class TestDirectionIsMomentumNotMidline:
         assert old_squeeze_bear != d["squeeze_bear"]
 
     def test_the_two_flags_stay_mutually_exclusive(self):
-        """`ta_invariants.py:217` pins `_excl(squeeze_bull,
-        squeeze_bear)`. A momentum sign cannot be both."""
+        """`ta_invariants.INDICATORS["slingshot"]` carries
+        `_excl(squeeze_bull, squeeze_bear)`. A momentum sign cannot be both."""
         for params in (
             self.BULL_BELOW_MID,
             self.BEAR_ABOVE_MID,
@@ -458,8 +458,8 @@ class TestDomainAndInvariants:
                     assert 0.0 <= d[key] <= 1.0, (name, key, d[key])
 
     def test_bandwidth_fields_stay_non_negative(self):
-        """`ta_invariants.py:215-216` pins `_nonneg(curr_bw)` and
-        `_nonneg(avg_bw)`."""
+        """`ta_invariants.INDICATORS["slingshot"]` carries
+        `_nonneg(curr_bw)` and `_nonneg(avg_bw)`."""
         for name, cs in self._series().items():
             d = SlingshotIndicator().compute(cs).details
             for key in ("curr_bw", "avg_bw"):
@@ -478,8 +478,9 @@ class TestDomainAndInvariants:
         assert sig.confidence == 0.0
 
     def test_details_schema_keeps_every_consumed_field(self):
-        """`ta_invariants.py:212-218` reads five of these, and the
-        `ta.raw.slingshot` emitter payload carries all twelve."""
+        """`ta_invariants.INDICATORS["slingshot"]` reads five of these, and
+        the `ta.07.004.postcondition.raw.slingshot` payload carries all
+        twelve."""
         d = SlingshotIndicator().compute(_chop(44, 2.0, 0.01, (0.0, 0.0, 1.0))).details
         for key in (
             "slingshot_type",
