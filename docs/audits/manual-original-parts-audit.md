@@ -1,0 +1,662 @@
+# Original Manual — Claim Audit Against The Code
+
+**Mode: Reference.** This document scores the original ten-part product manual
+against the source in this repository. It reports, per part, how many checkable
+claims hold, how many drifted, and how many name things that have never existed
+here. It is the measurement that decides what is worth carrying into the new
+manual. It does not edit the original text.
+
+Related: [documentation rules](../../.claude/rules/documentation.md),
+[docs index](../index.md).
+
+## Source Under Audit
+
+Fourteen PDFs, all produced by ReportLab, held outside this repository. The
+directory is a parameter of the audit, written here as `<MANUAL_PDF_DIR>`; it is
+a personal path and is never recorded literally.
+
+Measured with `pypdf`: **479 pages, 55 images**, across fourteen files. The
+manual calls itself an eight-part work on its own cover and a fourteen-part work
+on later covers; the file count is fourteen.
+
+| File | Pages | Images |
+|---|---:|---:|
+| Part 1 Frontmatter and Overview | 26 | 0 |
+| Part 2 Patent Portfolio | 54 | 0 |
+| Part 3 System Architecture | 39 | 0 |
+| Part 4 Features Catalogue | 59 | 0 |
+| Part 5a Battery Methodology | 14 | 0 |
+| Part 5b Main Bot Results | 15 | 4 |
+| Part 5c Spectre Evidence | 12 | 2 |
+| Part 6 Department Leads Review | 25 | 0 |
+| Part 7a Development Chronicle | 30 | 0 |
+| Part 7b Rules Registry | 19 | 0 |
+| Part 7c ADR Index and Glossary | 21 | 0 |
+| Part 8 Recent Updates and Live Evidence | 86 | 49 |
+| Part 9 RAIntSimBat Standalone | 28 | 0 |
+| Part 10 SADP Standalone | 51 | 0 |
+
+## How This Was Measured
+
+Every claim carries one of four verdicts.
+
+| Verdict | Meaning |
+|---|---|
+| ANCHORED | the named thing exists and the claim matches what it does |
+| DRIFTED | the thing exists, the claim does not match it |
+| PHANTOM | the named thing has no source in this repository, ever |
+| UNCHECKABLE | narrative, opinion, or a claim with no code referent |
+
+```mermaid
+flowchart TD
+    A[PDF text via pypdf] --> B[Normalise whitespace only]
+    B --> C{Claim names a code thing?}
+    C -->|no| U[UNCHECKABLE]
+    C -->|yes| D{Present in the working tree?}
+    D -->|yes| E{Behaviour matches the claim?}
+    E -->|yes| F[ANCHORED]
+    E -->|no| G[DRIFTED]
+    D -->|no| H{Any commit ever added it?}
+    H -->|yes| G
+    H -->|no| I[PHANTOM]
+```
+
+### Instruments And Their Controls
+
+Three instruments, each run with a positive and a negative control so that a
+zero is a fact about the repository and not about the tool.
+
+| Question | Instrument | Positive control | Negative control |
+|---|---|---|---|
+| Does the file exist now | `git ls-files -- "*/NAME" NAME` | `src/core/log_paths.py` returns a path | a coined name returns nothing |
+| Did the file ever exist | `git log --all --diff-filter=ADR --name-only -- "*/NAME" NAME` | `src/core/log_paths.py` returns commit `6e4f46b` | a coined name returns nothing |
+| Did the symbol ever appear in Python | `git log --all --regexp-ignore-case --pickaxe-regex -S<term> -- "*.py"` | `alpaca` returns 18 commits | `zzqqnope9` returns 0 |
+
+The controls were re-run alongside every reported zero. Scope is 429 refs and
+1,244 reachable commits.
+
+**What PHANTOM does and does not prove.** This repository's history begins at an
+initial upload — the same commit that serves as the positive control. A verdict
+of PHANTOM therefore means exactly what the word is defined to mean here: the
+named thing has no source in *this* repository, in any commit. It is not proof
+that nothing of the kind ever existed on the author's machine before the upload.
+For the largest phantom, the retired protocol tree, there is corroboration
+inside the repository that does not depend on the history depth:
+`tests/test_no_dead_sadp_references.py` exists precisely because references to
+that tree shipped in packaging and README files while the tree itself never did.
+The repository's own hallucination rule also lists that tree and the battery
+engine as dead architecture, and exempts `docs/audits/` so that retirement
+documents such as this one may name them.
+
+**The symbol instrument has a known limit, and it changed a verdict.** A hit
+proves only that the string appeared in some Python file — not that anything
+implemented it. `RAIntSimBat` returns 26 Python commits, yet every occurrence is
+a comment, a rule title, or an entry in this repository's own
+hallucination-marker list; no module implements it and no file has ever carried
+that name. A miss is equally fallible: the term `full_override` returned zero and
+would have scored one invention PHANTOM, but that invention's real identifiers
+(`_ripe_scrum`, `_deep_fold`) are live in `src/trading/scrumming_bot.py`. Every
+zero below was re-probed with the identifiers the manual itself names.
+
+### Sampling, Stated Plainly
+
+479 pages could not be classified claim-by-claim in full. Three censuses were
+run instead, each complete within its own class, so every ratio has a real
+denominator rather than a hand-picked sample.
+
+- **Census A — every distinct Python filename named, all fourteen parts.**
+  Machine-extracted with one fixed pattern, then each name classified by the
+  file instruments. This is a complete enumeration of the file-existence claim
+  class, not a sample.
+- **Census B — every numbered catalogue entry.** All 26 inventions in Part 2 and
+  all 77 rules in Part 10, each checked against the mechanism or registry it
+  names.
+- **Census C — the executive claims of Part 1**, pages 1 to 8: every claim naming
+  a component or a count. This one is a stated subset of a 26-page part, and the
+  ratio below says so.
+
+Parts 3 through 8 were read in full by separate reviewers against the same four
+verdicts and the same controls; their per-part censuses are reported in their own
+sections and are marked where a reviewer classified a subset rather than the
+whole part.
+
+### A Note On Extraction Damage
+
+The PDF extractor breaks long identifiers across a line. Measured: a line ending
+`ta_signal_pro` followed by a line beginning `vider.py`, for the real
+`src/trading/ta_signal_provider.py`; and `check_r` split from
+`elease_readiness.py`. An automatic rejoin was written, tested and **rejected** —
+it repaired two names and fabricated nine others by welding ordinary words onto
+following filenames. The three damaged tokens were instead removed by hand
+(`vider.py`, `elease_readiness.py`, and a `file.py` that is a placeholder in a
+template, not a claim). Every rejoin candidate the experiment produced was
+already present in the corpus under its correct spelling, so no name was lost
+entirely and the denominator is complete. Whitespace was normalised; words never
+were.
+
+## Whole-Document Roll-Up
+
+**Census A, counting each name once for the whole document: 162 distinct Python
+filenames are named across all fourteen parts. 88 exist now, 1 existed and was
+deleted, and 73 have no commit in this repository, ever — 73/162, 45 percent.**
+
+Counting each name once per part in which it appears, the denominator is 355:
+199 present, 1 historical, 155 phantom — 155/355, 44 percent.
+
+The two headline censuses of catalogued content land in the same band. Of Part
+2's 26 inventions, 7 name mechanisms with no code referent under any name the
+manual gives them — 7/26, 27 percent — and 2 more are drifted. Of Part 10's 77
+rules, 42 have no identifier in the live registry at all, and of the 35 whose
+identifiers do collide with it, **zero describe the same rule** — 77/77 of that
+part's registry has no matching implementation here.
+
+The operator's estimate was that roughly 60 percent might be invented. The
+file-name census puts the phantom share at 45 percent, and the two catalogue
+censuses put whole parts at or near total. The estimate is the right order of
+magnitude, and it is worse in the standalone parts than in the engine parts.
+
+## Part 1 — Frontmatter And Overview
+
+26 pages. **28 claims classified** — Census C (all component and count claims on
+pages 1 to 8) plus Census A's 6 filenames. This is a stated subset of the part;
+pages 9 to 26 are a section index and were not classified.
+
+| Verdict | Count | Share of 28 |
+|---|---:|---:|
+| ANCHORED | 10 | 36% |
+| DRIFTED | 5 | 18% |
+| PHANTOM | 10 | 36% |
+| UNCHECKABLE | 3 | 11% |
+
+**Anchored, and precisely so.** Two headline counts in the executive summary are
+exactly right. "A seventeen-class declarative GateChain" — `src/trading/gate_chain.py`
+defines exactly 17 concrete subclasses of the abstract `Gate`. "A twelve-voter
+Indicator Voting Panel" — `src/trading/ta_engine.py` instantiates exactly 12
+indicators. `ScrummingBot`, `ExtractorBot`, the Coinbase surface under
+`src/exchange/`, Landing Strip detection, Phantom Balance, Smart Wire, the MR
+Inspector and Proof of Accumulation all have real modules.
+
+**PHANTOM claims, with proof.** All were re-probed with the manual's own
+identifiers; the positive control returned `6e4f46b` or 18 commits on each run,
+and the negative control returned zero.
+
+- *Spectre, named as one of three production bot types* (pages 5, 6). No file
+  has ever been named for it, and the string has **never appeared in any Python
+  file in any commit**. It exists only as design prose in a handoff document.
+  Three of Part 2's inventions and the whole of Part 5c rest on it.
+- *`sadp/EPISODIC_MEMORY.json`, given as the truth source for the patent
+  portfolio* (page 2). No path under `sadp/` has ever been committed.
+- *Stocks market data "via Polygon.io and yfinance"* (page 5). Neither string has
+  ever appeared in a Python file. The real connector is
+  `src/stocks/alpaca_connector.py`, with `src/stocks/tradingview_bridge.py`.
+- *Six named tooling scripts* — `chronicle_coverage.py`, `claims_audit.py`,
+  `manual_depth_evaluator.py`, `manual_topic_matrix.py`, `q1_baseline_compute.py`,
+  `regime_classify.py`. None was ever added.
+
+**DRIFTED claims, with the real behaviour named.**
+
+- *"Across five timeframes"* (page 5). No five-timeframe set exists anywhere.
+  `TIMEFRAME_ORDER` in `src/gui/main_tabs/indicator_panel_surface.py` carries 11,
+  and `src/trading/ta_engine.py` weights the same 11.
+- *Four internal contradictions.* The part says twenty-six inventions on pages 2
+  and 6 and twenty-seven in the table on page 8; Part 2 enumerates 26, so the
+  table is wrong. The cover and the status section name different live-software
+  versions. The cover says eight parts and the standalone covers say fourteen.
+  The table calls the rules registry R1 to R70 where Part 10 catalogues R1 to R77.
+
+**UNCHECKABLE.** The live-trading totals and the per-asset discipline split are
+not checkable from the repository, and the runtime trees were deliberately not
+opened. The split is at least internally consistent: 20 good plus 4 flat plus 1
+wind-down equals the 25 pairs claimed.
+
+## Part 2 — Patent Portfolio
+
+54 pages. **30 claims classified** — Census B (all 26 numbered inventions) plus
+Census A's 4 filenames. Complete for both classes.
+
+| Verdict | Count | Share of 30 |
+|---|---:|---:|
+| ANCHORED | 19 | 63% |
+| DRIFTED | 2 | 7% |
+| PHANTOM | 9 | 30% |
+| UNCHECKABLE | 0 | 0% |
+
+**This is the strongest part of the manual.** 17 of 26 inventions describe
+mechanisms that exist: `src/trading/phantom_balance.py`, `profit_fold.py`,
+`smart_wire.py`, `mr_inspector.py`, `poa_tournament.py`,
+`src/trading/indicators/landing_strip.py` and `fvg.py`, the entry-price
+conservation cap, the initial-purchase-price floor, the fire-window override,
+and the position ceiling with detonation are all real and all named correctly.
+
+**PHANTOM inventions.** Seven describe mechanisms with no code referent under
+any identifier the manual supplies. Each was probed with the manual's own terms;
+both controls fired on every run.
+
+- *Hunger Index* — `hunger` and `max_hunger` have never appeared in a Python file.
+- *Satiety Index* — `satiety` likewise never.
+- *Shadow Secondary Add* — `shadow_secondary` never. Its stated trough test uses
+  `bb_pos`, which is real, inside a mechanism that is not.
+- *Charge-Up Permission Gate* — neither `charge_up` nor `chargeup` ever.
+- *The three Spectre inventions* — `spectre` and `spectre_reserve` never.
+
+Two further filenames named in this part were never added.
+
+**DRIFTED inventions, with the real behaviour named.**
+
+- *The full-override fire window.* The mechanism is real —`_ripe_scrum` and
+  `_deep_fold` live in `src/trading/scrumming_bot.py` — but both stated constants
+  are wrong. The manual gives a band trigger of 0.80; the code compares `bb_pos`
+  against `_bb_detect_thresholds()` in `src/trading/scrumming/circuit_breakers.py`,
+  which derives from `config.scrum_detect_pct` and defaults to **0.875**, and is
+  configurable rather than constant. The manual gives a fixed 10 percent delta
+  trigger; the code tests against the bot's configured `scrumming_interval_pct`.
+- *Position-Aware Technical Analysis.* The named mechanism, a `sign_context`
+  multiplier, has never existed. Band-position gating itself is real, as
+  `BBProximityGate` in `src/trading/gate_chain.py` reading `bb_pos`.
+
+**Every supporting-evidence block in this part is unreproducible.** All 27 of
+them attribute their numbers to the simulation battery, and that engine has no
+source here (see Part 9). One bull-regime figure is reported as an average
+advantage of more than nineteen million dollars against a sideways-regime figure
+of some five thousand — a spread of three orders of magnitude, produced by an
+instrument this repository does not contain. The claim scopes and equations are
+worth keeping; the numbers beside them are not.
+
+## Part 3 — System Architecture
+
+39 pages. Census A is complete for this part: **112 distinct Python filenames,
+77 present, 35 never committed — 35/112, 31 percent phantom.** This is the
+densest part in the manual for file references and has the highest anchored
+share of any part measured by that census.
+
+## Part 4 — Features Catalogue
+
+59 pages. Census A complete: **41 distinct Python filenames, 21 present, 20 never
+committed — 20/41, 49 percent phantom.** The release-readiness gate is named at
+a `tools/` path; the gate really lives at
+`dev_harness/harness/check_release_readiness.py`, so that claim is DRIFTED, not
+phantom.
+
+## Part 5a — Battery Methodology
+
+14 pages, read line by line. **61 claims classified** — every sentence naming a
+file, class, function, config field, constant, rule id, metric or number.
+
+| Verdict | Count | Share of 61 |
+|---|---:|---:|
+| ANCHORED | 12 | 20% |
+| DRIFTED | 10 | 16% |
+| PHANTOM | 34 | 56% |
+| UNCHECKABLE | 5 | 8% |
+
+**The battery universe contradicts the code and itself.** Page 3 defines the
+battery as 26 assets across 3 regime periods, giving 78 simulations. The live
+registry's own rule title names the full battery as 39 simulations, and the
+repository's handoff record puts it at 13 assets across 3 periods. Page 11 of
+this same part then says 39 equals 13 times 3 — eleven pages after saying 78.
+The constants said to fix the roster were never defined: one of the two appears
+in the whole history only as a since-removed comment in
+`src/exchange/ccxt_connector.py`, and the other never appears at all.
+
+**A dependency claimed that was never installed.** The part describes a
+property-testing layer of 29 invariants and some 880 randomised invocations. The
+library named is imported nowhere and appears in no requirements or project
+file, in any commit; its only traces are a cache-directory name inside three
+exclusion lists and one use of the ordinary English word in a comment.
+
+**Anchored where it touches real gates.** The sentinel behaviour of the trend
+and efficiency-ratio gates is described exactly right, the z-score gate is
+correctly identified as the seventeenth concrete gate with the right block
+directions, and the initial-purchase-price floor is correctly located in
+`src/trading/scrumming/tick_phases.py`.
+
+## Part 5b — Main Bot Results
+
+15 pages and 4 images, read in full. **44 claims classified**, chart captions
+included; the charts themselves are images and only their captions were scored.
+
+| Verdict | Count | Share of 44 |
+|---|---:|---:|
+| ANCHORED | 6 | 14% |
+| DRIFTED | 6 | 14% |
+| PHANTOM | 30 | 68% |
+| UNCHECKABLE | 2 | 5% |
+
+**None of the 30 numbers in this part can be reproduced from this repository.**
+Two producers are credited and both are phantom: the battery engine, and a
+grading script for the live export. The nearest real instrument,
+`dev_harness/harness/ytd_compounding_replay.py`, does read a Coinbase export but
+computes a compounding upper bound, and emits neither the ratio nor the
+discipline classes the part tabulates.
+
+**Two figures refute themselves without needing any code.** A caption reports
+the bull and sideways regimes as unbroken at 57 wins from 57; in the part's own
+26-by-3 universe those two regimes are 52 simulations, not 57. A table classes an
+asset at exactly the ratio 1.005 as good, under a rule stated on the same page as
+strictly greater than 1.005. The part also gives two different baseline dates for
+one comparison, and says five new assets entered while listing four.
+
+**Notable DRIFTED claims.** A contention mechanism is named that does not exist;
+the real mechanism is capital reservation, in `src/trading/capital_reservation.py`
+and its mixin. The competition package is cited as the place to inspect
+contention outcomes, but `src/competition/` is the proof-of-accumulation
+tournament and holds no such data. The trade grade is described as a 0-to-100
+numeric on an A-to-F scale; the real mapping is a 0-to-1 numeric and the top band
+is A-plus.
+
+## Part 5c — Spectre Evidence
+
+12 pages and 2 images, read in full. **33 claims classified.**
+
+| Verdict | Count | Share of 33 |
+|---|---:|---:|
+| ANCHORED | 1 | 3% |
+| DRIFTED | 2 | 6% |
+| PHANTOM | 25 | 76% |
+| UNCHECKABLE | 5 | 15% |
+
+**This part is evidence for a subsystem that was never built.** Every mechanism
+it reports as measured — the dark-zone spawn fraction, the tranche count, the
+release threshold, the raised candle cap — exists nowhere in code, in this
+repository or its history. The generator credited with producing the report never
+existed, and neither did its output directory.
+
+**One sentence refutes itself by three orders of magnitude:** it reports profit
+of about eighty-four dollars on a hundred dollars of capital and, in the same
+breath, an advantage over passive holding of more than a hundred and nineteen
+thousand.
+
+**The single anchored claim is the part's own disclaimer** — that the live
+evidence is entirely the two real bots and that no live data for this one
+exists. That is true, and understates the case.
+
+## Part 6 — Department Leads Review
+
+25 pages, read in full. **81 claims classified.**
+
+| Verdict | Count | Share of 81 |
+|---|---:|---:|
+| ANCHORED | 25 | 31% |
+| DRIFTED | 20 | 25% |
+| PHANTOM | 30 | 37% |
+| UNCHECKABLE | 6 | 7% |
+
+**This is the strongest of the results parts.** The reviewer framework is openly
+fictional, and the domain assertions are field-standard trading principles that
+need no code. Three "deliberately not built" decisions — no classical
+trend-following, no hard stops, no order-book tape — are each verified absent and
+each carry a stated rationale. These are product decisions, and they hold.
+
+**The failures cluster in two places.** The memory ids resolve to a store that
+never existed here, and the entire review apparatus described in the closing
+pages — an archetype library, a claims-audit ratchet, a structural test family —
+has no source at all. That last point matters more than its count: the part
+credits those instruments with having guarded its own numbers.
+
+**Notable DRIFTED claims.** The phantom-balance timeframes are described once as
+three copies and once as only two, and a later passage proposes adding two
+timeframes that are already present; the real default carries six. An
+agreement rule is described that has no counting logic anywhere. The efficiency
+ratio is cited at a line number in a 420-line file, attributed to the wrong
+module, and described as downweighting folds when the real gate hard-blocks the
+sell side at both extremes. The volume voter is described as compositing four
+sub-indicators where the module documents six — and this part's own earlier page
+says six.
+
+## Part 7a — Development Chronicle
+
+30 pages, read end to end. **160 claims classified**, counting one claim per
+distinct named thing.
+
+| Verdict | Count | Share of 160 |
+|---|---:|---:|
+| ANCHORED | 64 | 40% |
+| DRIFTED | 9 | 6% |
+| PHANTOM | 45 | 28% |
+| UNCHECKABLE | 42 | 26% |
+
+The high uncheckable share is structural: pages 20 to 30 are an index of memory
+ids that all resolve to the episodic-memory store, which has never existed here.
+
+**Notable DRIFTED claims.** The chronicle names a mean-reversion suppression gate
+that has never existed under that name; the real class is
+`ADXTrendSuppressionGate` in `src/trading/gate_chain.py`, and Part 7c uses the
+correct name, so the manual disagrees with itself. The trade grader is described
+as a five-axis rubric; `src/trading/trade_grader.py` scores four — execution,
+timing, strategic and outcome — and records the regime as a string it never
+scores. The release gate is again cited at a `tools/` path it has never had.
+
+**Where 7a is right, it is right in bulk.** Every module named in the
+coverage-backfill arc exists at the stated path. The trading-discipline arc on
+page 12 correctly describes the gate context populated from the voting summary
+and the sentinel that lets an unpopulated reading pass. The configuration-factory
+arc on page 15 correctly describes `make_bot_config` and its three field
+manifests in `src/trading/container/config.py`.
+
+## Part 7b — Rules Registry
+
+19 pages, read end to end. **97 claims classified.**
+
+| Verdict | Count | Share of 97 |
+|---|---:|---:|
+| ANCHORED | 20 | 21% |
+| DRIFTED | 13 | 13% |
+| PHANTOM | 50 | 52% |
+| UNCHECKABLE | 14 | 14% |
+
+**The registry comparison, in both directions.** Parts 7a, 7b and 7c together
+make a content claim about 51 distinct rule numbers. Seventeen name a rule the
+live registry defines — 17/51, 33 percent — and only 15 of those describe it
+correctly, so 34/51 have no entry at all. Read the other way, `RULE_META` defines
+35 rules, of which 17 are described anywhere in these parts and 15 correctly —
+15/35, 43 percent. The registry marks five rules as core and refuses to suspend
+them; the manual describes one of the five.
+
+**The group table is wrong in six places.** Four lettered groups are given
+memberships that belong to different rules entirely, one rule is double-booked
+into two groups, and a tenth group is named that does not exist.
+
+**The part contradicts itself on nine rule numbers**, giving each two
+incompatible identities in different sections. Both readings are phantom in every
+case, so the contradiction is a symptom rather than a separate defect.
+
+## Part 7c — ADR Index And Glossary
+
+21 pages, read end to end. **149 claims classified.**
+
+| Verdict | Count | Share of 149 |
+|---|---:|---:|
+| ANCHORED | 16 | 11% |
+| DRIFTED | 9 | 6% |
+| PHANTOM | 69 | 46% |
+| UNCHECKABLE | 55 | 37% |
+
+**No decision record has ever existed here.** No file whose name contains "adr",
+case-insensitive, appears in any commit, while the positive control returned its
+path on the same instrument. That covers every record the part enumerates across
+its three lists. The claim that the index regenerates from a canonical source is
+phantom for the same reason. The part also gives one record three different
+titles in three places.
+
+**The glossary is the exception and the prize.** The trading-engine vocabulary is
+accurate, and the technical-analysis vocabulary is publisher-canonical with no
+repository dependency at all. One glossary entry drifts: the battery is defined
+at one size where the live registry's own rule title and a comment in
+`src/trading/strategy_compare.py` both name another.
+
+## Part 8 — Recent Updates And Live Evidence
+
+86 pages and 49 images, the largest part, read in full. **231 claims
+classified**, counting each distinct identifier once, each numeric table once,
+and each standalone number once. Narrative was excluded rather than padded in.
+
+| Verdict | Count | Share of 231 |
+|---|---:|---:|
+| ANCHORED | 90 | 39% |
+| DRIFTED | 18 | 8% |
+| PHANTOM | 71 | 31% |
+| UNCHECKABLE from the repository | 52 | 22% |
+
+The runtime log trees were deliberately not opened, so no live number was
+checked against live data. The question asked instead was whether the repository
+holds code that could produce each number.
+
+**The headline metric has no producer at all.** The part leads on a
+sell-over-buy price-discipline ratio, and carries roughly 190 table cells of it
+across four dated snapshots. No module computes an average sell price: a search
+for the obvious spellings across `src/` and `dev_harness/` returns zero, against
+a positive control of 61 hits for the average-entry term in the same sweep. The
+only trace in the whole history is a removed comment in
+`src/trading/trade_grader.py`. Neither is there a discipline-grade classifier,
+nor any of the ratio thresholds the part tabulates. The chart gallery is in the
+same position: the one volume-weighted price in the tree is a rolling window for
+the simulator chart, not a per-position running cost basis.
+
+This compounds a framing problem. The trustworthy lenses for this evidence are
+the bot-VWAP trajectory, the platform-reported unrealized position, and the
+total-balance arc. The part argues for exactly that on two of its own pages and
+then leads with the summary ratios anyway — and the ratio is the one metric class
+with no producing code. Of the anchored lenses, the unrealized-position table
+does have a real producer in `src/exchange/position_health.py`, which derives
+average entry and realized profit from exchange-pulled trades rather than
+computing them locally.
+
+**Notable DRIFTED claims.** The efficiency-ratio gate is described as
+suppressing at a low-end reading five times higher than the real one;
+`EfficiencyRatioRegimeGate` in `src/trading/gate_chain.py` takes
+`lower_threshold` of 0.05, not the quarter the manual states. The trend gate is
+described as refusing to scrum in a ranging market when the code blocks in the
+opposite regime, on strong trend. A worked attribution example on page 70 is
+self-refuting: it records a trend reading that would have fired the very
+suppression gate it claims passed, so the trade it narrates cannot have
+happened as written. One citation points at lines 6873 to 6911 of
+`src/trading/scrumming_bot.py`, a file of 5,010 lines; the behaviour it
+describes is real but now lives in `src/trading/scrumming/tick_phases.py`. The
+volume guard is described with a per-bar cap and a square-root slippage curve;
+the real field is an hourly participation cap and the model is linear. The
+risk-metric methodology is described with a risk-free term and daily
+annualisation; `compute_risk_metrics` in `src/trading/strategy_compare.py` has
+no risk-free term and annualises hourly.
+
+**Anchored, and strongly.** The trade-grading chapter verifies almost
+completely: the scored axes, the letter boundaries, and the grade column's
+position in the history contract all match. The gate call-site activation is
+real and load-bearing. The two snapshot emitters in
+`src/trading/scrumming/snapshots.py` emit exactly the line prefixes quoted. The
+configuration-factory preventatives are exactly as described. In the
+quality-arc module inventory, all 18 named modules verify, and its one
+falsifiable sub-claim — that a named fold helper has no production callers —
+is still true today.
+
+## Part 9 — RAIntSimBat Standalone
+
+28 pages. **13 claims classified** — Census A's 6 filenames plus the 7 subsystem
+and methodology claims that name a mechanism. The narrative sections on limits
+are opinion and are counted UNCHECKABLE rather than scored.
+
+| Verdict | Count | Share of 13 |
+|---|---:|---:|
+| ANCHORED | 3 | 23% |
+| DRIFTED | 0 | 0% |
+| PHANTOM | 9 | 69% |
+| UNCHECKABLE | 1 | 8% |
+
+**The subject of the part does not exist here.** Page 3 states the canonical
+source file and gives it a line count. No file of that name, and no path under
+`sadp/`, has ever been committed; the positive control returned `6e4f46b` on the
+same run. Also phantom: the cost-basis methodology (`hifo` never appears in any
+Python file), the cooperative-capacity arbiter, and a position analyser.
+
+**Anchored anyway.** Three named integrations are real: `src/trading/gate_chain.py`,
+`src/trading/trade_grader.py`, and `src/trading/capital_registry.py`. The part's
+own limits-first framing — leading with what the simulation does not model — is
+sound editorial practice and is the one thing here worth carrying forward as
+posture rather than as content.
+
+**A live defect this audit surfaced.** `src/core/version_sweep.py` registers
+three checks that guard paths under the retired protocol tree. The sweep calls
+every registered check in turn and prints a tick when a check adds no finding.
+Two of the three — `check_r6_two_paths` and `check_sadp_dependency_graph` —
+return early and silently, because the paths they compare are absent and one of
+them, the battery engine, has never existed here at all. Both therefore print a
+green tick for an inspection that examined nothing. The third,
+`check_rule_registry`, is better behaved: it emits an informational finding
+naming the missing file, though the remedy it suggests writes into the same
+absent directory. A gate that cannot fail is not a gate. This is code, not
+prose, and it needs its own repair.
+
+## Part 10 — SADP Standalone
+
+51 pages. **103 claims classified** — Census B (all 77 rules) plus Census A's 26
+filenames. Complete for both classes.
+
+| Verdict | Count | Share of 103 |
+|---|---:|---:|
+| ANCHORED | 6 | 6% |
+| DRIFTED | 0 | 0% |
+| PHANTOM | 97 | 94% |
+| UNCHECKABLE | 0 | 0% |
+
+**The rule set has no implementation here, and the identifier overlap is
+coincidental.** The part catalogues 77 rules. `src/core/rule_registry.py` defines
+35. The 42 ids from R36 upward have no entry in the registry at all. Of the 35
+ids that do collide, **not one describes the same rule**: the manual's first rule
+is a lock-state default where the registry's is about target increments after a
+fold; the manual's third is an append-only log where the registry's is about a
+targeting-mode reset. The two are unrelated namespaces that happen to share an
+id space, and the manual's is the one with no code.
+
+Twenty of the 26 filenames named here were never added, including the episodic
+memory store, the edit log, a token timer, and eleven named test modules.
+
+**The one namesake in code is itself inert.** `src/core/rule_registry.py`
+persists to `sadp/RULE_REGISTRY.json` — a path that has never been committed —
+and no production module imports it; only a test does. Its own docstring says as
+much.
+
+This part is deprecated in substance as well as in fact: the protocol it
+describes has been replaced by the skills-based harness. Its R-numbers are not
+live and must not be cited as though they were.
+
+## Migration List
+
+Carry these forward. Everything named here is ANCHORED, verified against a
+module that exists, and worth the space in a new manual.
+
+| From | Pages | What to carry | Anchor in code |
+|---|---|---|---|
+| Part 1 | 5–6 | The harvest-fold mechanic and the target-ratchet description | `src/trading/profit_fold.py`, `src/trading/scrumming_bot.py` |
+| Part 1 | 5 | The two real bot types and what separates them | `src/trading/scrumming_bot.py`, `src/trading/extractor_bot.py` |
+| Part 1 | 5 | The gate-chain and voting-panel counts, both exact | `src/trading/gate_chain.py`, `src/trading/ta_engine.py` |
+| Part 2 | 5–9 | Speculative scrumming, phantom balance, landing strip — mechanism and claim scope | `phantom_balance.py`, `indicators/landing_strip.py` |
+| Part 2 | 10–13 | Band travel and the MR inspector z-score | `mr_inspector.py`, `indicators/zscore.py` |
+| Part 2 | 14–17 | Smart wire provenance and proof of accumulation | `smart_wire.py`, `poa_tournament.py`, `src/competition/` |
+| Part 2 | 30–38 | Provenance fold queue, entry-price conservation, fair-value gaps, regime bias | `profit_fold.py`, `indicators/fvg.py` |
+| Part 2 | 39–46 | The initial-purchase-price floor and the initial-entry discipline gate | `scrumming_bot.py`, `gate_chain.py` |
+| Part 2 | 49–51 | Position ceiling and detonation | `scrumming_bot.py` |
+| Part 3 | — | The engine-layer module map, for the 77 of 112 files that exist | `src/trading/`, `src/core/` |
+| Part 5a | 5–6 | The methodology principles and the four stated blind spots | editorial, no anchor |
+| Part 6 | 3–4 | The reviewer framework, roster and lineage — openly fictional | no anchor needed |
+| Part 6 | 5–14 | The ten domain assertions, re-deriving each product bullet | field-standard, verify per bullet |
+| Part 6 | 10–17 | The three deliberately-not-built decisions and their rationale | verified absent in code |
+| Part 7a | 12 | The trading-discipline arc and the gate-context sentinel | `gate_chain.py`, `scrumming_bot.py` |
+| Part 7a | 15 | The configuration-factory arc and its three field manifests | `src/trading/container/config.py` |
+| Part 7a | 18 | The inverted-extractor fields and their wizard surface | `config.py`, `src/gui/bot_wizard.py` |
+| Part 7b | 11 | The declared-but-unwired gate class, as an engineering note | `gate_chain.py` |
+| Part 7c | 8 | The trading-engine vocabulary — the strongest section in these parts | whole glossary |
+| Part 7c | 10 | The technical-analysis vocabulary, publisher-canonical | no repository dependency |
+| Part 8 | 40–42 | Trade grading — axes, letter boundaries, history column | `src/trading/trade_grader.py` |
+| Part 8 | 58–59 | The gate call-site activation | `scrumming_bot.py`, `gate_chain.py` |
+| Part 8 | 70–71 | The two snapshot emitters and their line prefixes | `src/trading/scrumming/snapshots.py` |
+| Part 8 | 8–10 | The quality-arc module inventory, all 18 modules | `src/trading/`, `src/core/` |
+| Part 9 | 2 | The limits-first posture only — lead with what is not modelled | editorial, no anchor |
+
+Drop the rest. Specifically: do not migrate Part 5c or the three Spectre
+inventions, do not migrate Part 10 or its rule numbers, do not migrate the
+battery result figures anywhere they appear, and do not migrate any
+supporting-evidence number in Part 2 without regenerating it from an instrument
+that exists.
+
+Two things need repair rather than migration, and both are code, not prose: the
+vacuous parity check in `src/core/version_sweep.py`, and the rule registry that
+writes to a path which has never existed.
