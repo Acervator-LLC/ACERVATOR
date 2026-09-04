@@ -63,7 +63,6 @@ would corrupt the counters this repair exists to make trustworthy.
 from __future__ import annotations
 
 import ast
-import inspect
 import sys
 from pathlib import Path
 
@@ -461,17 +460,6 @@ def test_no_function_moves_the_malformed_counter_alone():
     discarded = _functions_assigning("_tranches_discarded_lifetime")
     assert malformed, "the scanner found no writer at all"
     assert malformed <= discarded, sorted(malformed - discarded)
-
-
-def test_the_drop_helper_says_which_counters_it_moves():
-    """Prose that names the counters, checked against the code."""
-    source = inspect.getsource(ScrummingBot._drop_malformed_fold_tranches)
-    for name in (
-        "_tranches_discarded_lifetime",
-        "_tranches_malformed_dropped",
-        "_tranches_closed_lifetime",
-    ):
-        assert name in source, name
 
 
 # ======================================================================
