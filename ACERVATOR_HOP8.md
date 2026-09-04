@@ -51,9 +51,12 @@ than the entire context window.** Attachments cannot be compacted away.
 **Four rules, and they are not optional:**
 
 1. **The standing sweep brief is a file.** Point at it; never retype it.
-   `C:/Users/brown/AppData/Local/Temp/claude/SWEEP_UNIT_BRIEF.md`
+   `<scratchpad>/SWEEP_UNIT_BRIEF.md`
    A dispatch carries the file path, its prose count, two or three facts
    specific to that file, and a pointer. Nothing else.
+   `<scratchpad>` is the session's own temp directory, named in the system
+   prompt. It does NOT survive a session, so a new instance writes the brief
+   once at the start and points every dispatch at it.
 2. **Never paste data into a prompt.** Exports go on disk; read with `grep`,
    `sed -n`, or pandas. The Coinbase CSVs are already at
    `Desktop/ACERTAVOR PRODUCT DOCUMENTATION/9c46231b-…__csv_.csv` — eleven of
@@ -62,7 +65,7 @@ than the entire context window.** Attachments cannot be compacted away.
 4. **`grep` and `sed -n`, not `Read`,** for anything you do not need whole.
 
 Measure it yourself before you trust this:
-`python C:/Users/brown/AppData/Local/Temp/claude/measure_context.py`
+`python <scratchpad>/measure_context.py`
 
 ---
 
@@ -116,7 +119,7 @@ everywhere else.
 7. When may you edit a failing test.
 8. How many controls in one unit, and why not "as many as it needs".
 
-Answers to 5–8 are in `C:/Users/brown/.claude/skills/harness-law/` and the
+Answers to 5–8 are in `~/.claude/skills/harness-law/` and the
 memory directory.
 
 **Then prove the harness is live — both halves:**
@@ -225,7 +228,7 @@ not.
 | 2026-08-27 `fc0d778` | Ekthelius | issue #81: sort `docs/audits` into engineering notes and calibration fixtures → this is where `harness_fixtures/` came from |
 
 **The 16 skills and the hooks are USER-level**, at
-`C:/Users/brown/.claude/skills/` — `acervator`, `archetype-peer-review`,
+`~/.claude/skills/` — `acervator`, `archetype-peer-review`,
 `close-package`, `descriptive-comments-only`, `development-island`,
 `harness-law`, `hyper-refocus`, `job-watch`, `log-pruning`, `ocir`,
 `prompt-distillation`, `simple-technical-english`, `ta-canon`,
@@ -302,7 +305,7 @@ Trading, Charts, Bot Swarm, Market Inspector, Simulator, History, Console.
 **Measured 2026-09-03 on `current`, `d9937ef`. Refresh before you act:**
 
 ```bash
-python C:/Users/brown/AppData/Local/Temp/claude/conversion_state.py
+python <scratchpad>/conversion_state.py
 ```
 
 ```
@@ -451,10 +454,10 @@ those first.**
 | 494 | 1,188 | `src/simulator/nuclear_fleet_controller.py` |
 | 441 | 1,041 | `src/trading/scrumming/fold_tranches.py` |
 
-Refresh with `python C:/Users/brown/AppData/Local/Temp/claude/audit_progress.py`.
+Refresh with `python <scratchpad>/audit_progress.py`.
 
 **The brief is a file. Point at it.**
-`C:/Users/brown/AppData/Local/Temp/claude/SWEEP_UNIT_BRIEF.md`
+`<scratchpad>/SWEEP_UNIT_BRIEF.md`
 
 **The identity proof, which is the whole unit.** Parse before and after with
 `ast` and **strip every bare string statement at every depth**, not only
@@ -592,7 +595,7 @@ nan is False. `type(inf) is float` is True; `math.isfinite(10**400)` raises.
 
 | what | where |
 |---|---|
-| the law, 16 skills | `C:/Users/brown/.claude/skills/` — **user level, not the repo** |
+| the law, 16 skills | `~/.claude/skills/` — **user level, not the repo** |
 | the three auto-loaded rules | `.claude/rules/` in the repo |
 | durable rulings | this repo's project `memory/`, indexed by `MEMORY.md` |
 | the sweep brief | `%TEMP%/claude/SWEEP_UNIT_BRIEF.md` |
