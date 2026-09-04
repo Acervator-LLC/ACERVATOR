@@ -118,9 +118,7 @@ def app():
     return ensure_app()
 
 
-# ---------------------------------------------------------------------
 # The recorders. Each side gets its own; neither reads the other's.
-# ---------------------------------------------------------------------
 
 
 class Row:
@@ -473,9 +471,7 @@ class Ticker:
         return TICK_BASE + TICK_STEP * self.reads
 
 
-# ---------------------------------------------------------------------
 # The scenarios. One spec drives both sides; neither reads the other.
-# ---------------------------------------------------------------------
 
 LONG_NAME = "L" * 200
 FLOOR_LOTS = [
@@ -866,9 +862,7 @@ BY_NAME = {spec["name"]: spec for spec in SCENARIOS}
 REFUSING = ("price_is_text", "state_is_a_number", "price_two_to_the_1024")
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 @contextlib.contextmanager
@@ -1123,9 +1117,7 @@ def read_new(model, refusal):
     }
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", [spec["name"] for spec in SCENARIOS])
@@ -1339,9 +1331,7 @@ def test_the_marker_guard_reports_a_trade_log_entry_that_is_not_a_record():
     assert panel.armed is not None
 
 
-# ---------------------------------------------------------------------
 # What went where
-# ---------------------------------------------------------------------
 
 SHIPPED_SOURCE = REPO_ROOT / "src" / "gui" / "widgets" / "trade_charts_tab.py"
 
@@ -1598,9 +1588,7 @@ def test_the_duration_follows_the_gap_between_the_two_readings():
     assert fetched[0].duration == pytest.approx(2.5)
 
 
-# ---------------------------------------------------------------------
 # The comparison is complete
-# ---------------------------------------------------------------------
 
 PAYLOAD_PATHS = {
     "ACCESSIBLE_NAME": "accessible_name",
@@ -1914,9 +1902,7 @@ def test_the_growth_check_reports_a_name_on_one_side_only():
     assert "TradeChartsTabModel" in off_file
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_moved_in_the_shipped_tab(monkeypatch):
@@ -1998,9 +1984,7 @@ def test_the_panel_class_is_put_back_after_a_drive():
     assert first.__name__ == "ChartPanel"
 
 
-# ---------------------------------------------------------------------
 # The numbers the tab computes
-# ---------------------------------------------------------------------
 
 
 def test_the_ceiling_takes_the_spent_cap_off_the_live_target():
@@ -2099,9 +2083,7 @@ def test_a_stored_true_price_prints_as_one_dollar():
     )
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 PICTURE_CASES = ("happy", "fetch_returns_candles", "nuclear_from_objects")
 CONTROL_RULE = "QWidget { background: #3a1414; }"
@@ -2280,9 +2262,7 @@ def test_the_colour_counter_reports_a_flat_render():
         assert_picture_can_report(flat, note="a flat control")
 
 
-# ---------------------------------------------------------------------
 # The world this run touches
-# ---------------------------------------------------------------------
 
 
 LOOPBACK = ("127.0.0.1", "::1", "localhost")
@@ -2436,9 +2416,7 @@ def test_the_file_counter_reports_a_file_that_was_created():
     assert [p.name for p in home.rglob("*")] == ["one.txt"]
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture

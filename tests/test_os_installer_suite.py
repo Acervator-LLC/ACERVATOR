@@ -164,9 +164,7 @@ QT_WINDOW_PACKAGES = (
 QT_CURSOR_REQUIRED_FROM = (6, 5)
 
 
-# ---------------------------------------------------------------------------
 # The shell reader
-# ---------------------------------------------------------------------------
 
 _ASSIGN = re.compile(
     r"(?:^|[;&|(){}\s])"
@@ -401,9 +399,7 @@ def run_dry(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-# ---------------------------------------------------------------------------
 # Contract 0 — the instrument answers on a known fault
-# ---------------------------------------------------------------------------
 
 
 class TestTheReaderWorks:
@@ -474,9 +470,7 @@ class TestTheReaderWorks:
         assert "unbound variable" in result.stderr
 
 
-# ---------------------------------------------------------------------------
 # Contract 1 — no variable is read above its first assignment
-# ---------------------------------------------------------------------------
 
 
 class TestNoOrderingFault:
@@ -510,9 +504,7 @@ class TestNoOrderingFault:
         )
 
 
-# ---------------------------------------------------------------------------
 # Contract 2 — the packages Qt needs to open a window
-# ---------------------------------------------------------------------------
 
 
 class TestQtCanOpenAWindow:
@@ -551,9 +543,7 @@ class TestQtCanOpenAWindow:
         assert "tigervnc-standalone-server" in text
 
 
-# ---------------------------------------------------------------------------
 # Contract 3 — the installer reaches its last line
-# ---------------------------------------------------------------------------
 
 
 class TestTheInstallerCompletes:
@@ -626,9 +616,7 @@ class TestTheInstallerCompletes:
         assert result.returncode == 0, result.stderr
 
 
-# ---------------------------------------------------------------------------
 # Contract 4 — one exclude set, and no dead subsystem
-# ---------------------------------------------------------------------------
 
 
 class TestOneExcludeSet:
@@ -695,9 +683,7 @@ class TestOneExcludeSet:
         assert hits == [], hits
 
 
-# ---------------------------------------------------------------------------
 # Contract 5 — port 5901 stays shut, and the advice agrees
-# ---------------------------------------------------------------------------
 
 
 class TestTheViewerPortStaysShut:
@@ -768,9 +754,7 @@ class TestTheViewerPortStaysShut:
         assert "ssh -L 5901:localhost:5901" in text or "SSH tunnel" in text
 
 
-# ---------------------------------------------------------------------------
 # Contract 6 — the Python floor comes from pyproject.toml
-# ---------------------------------------------------------------------------
 
 
 def pyproject_python_floor() -> tuple[int, int]:

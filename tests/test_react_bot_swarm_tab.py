@@ -320,9 +320,7 @@ def test_the_order_reading_answers_no_for_the_two_the_other_way_round():
     assert not runs_after(["bot_swarm_list.js"], MODULE_PATH.name, "bot_swarm_list.js")
 
 
-# ---------------------------------------------------------------------
 # Rendered checks: real DOM composition and a real click selecting a bot.
-# ---------------------------------------------------------------------
 
 
 class Browser:

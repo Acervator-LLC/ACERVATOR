@@ -33,9 +33,7 @@ from src.gui.bot_swarm_list import (  # noqa: E402
 # depend on the paint actually running.
 from PySide6.QtGui import QPixmap  # noqa: E402
 
-# -----------------------------------------------------------------
 # BotSwarmLaneAllocator — pure algorithm
-# -----------------------------------------------------------------
 
 
 class TestLaneAllocator:
@@ -134,9 +132,7 @@ class TestLaneAllocator:
         assert got["w2"] == 1
 
 
-# -----------------------------------------------------------------
 # Column schema
-# -----------------------------------------------------------------
 
 
 class TestSchema:
@@ -157,10 +153,8 @@ class TestSchema:
         assert LANE_COUNT == 8
 
 
-# -----------------------------------------------------------------
 # Headless-Qt render smoke — BotListView populates + LaneWireCanvas
 #                            assigns lanes correctly
-# -----------------------------------------------------------------
 
 
 class TestHeadlessRender:

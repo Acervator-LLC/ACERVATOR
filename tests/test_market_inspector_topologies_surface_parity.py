@@ -121,9 +121,7 @@ def settled_cache(held):
     return {str(key): settled(value) for key, value in held.items()}
 
 
-# ---------------------------------------------------------------------
 # The stand-ins. One of each, handed to both sides.
-# ---------------------------------------------------------------------
 
 
 class HeldClock:
@@ -343,9 +341,7 @@ class Source:
         return copy.deepcopy(self.proposals)
 
 
-# ---------------------------------------------------------------------
 # The inputs. One scenario builds one starting state for both sides.
-# ---------------------------------------------------------------------
 
 
 LONG_TEXT = "L" * 200
@@ -668,9 +664,7 @@ def spec_store(spec):
     )
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides. One scenario, one held clock, one set of steps.
-# ---------------------------------------------------------------------
 
 
 def flush_deleted():
@@ -745,9 +739,7 @@ def drive_new(spec):
     return {"model": model, "source": source, "store": store}
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def order_of(layout):
@@ -1131,9 +1123,7 @@ def new_outcome(spec):
     return outcome(lambda: surface_trace(drive_new(spec), spec))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -1286,9 +1276,7 @@ def test_two_cards_of_one_screen_are_not_compared_to_each_other():
     assert digest(reading["cards"]) != digest([second, first])
 
 
-# ---------------------------------------------------------------------
 # The values the platform chooses
-# ---------------------------------------------------------------------
 
 
 def test_a_seeded_expiry_is_kept_and_an_unseeded_one_is_hidden():
@@ -1322,9 +1310,7 @@ def test_an_expiry_the_wall_clock_chose_is_hidden_on_the_shipped_side():
     assert loose["held"] == FIXED_NOW + surface.DISMISS_TTL_SECONDS
 
 
-# ---------------------------------------------------------------------
 # Step sequences, including one that refuses part way
-# ---------------------------------------------------------------------
 
 
 def test_a_second_refresh_carries_the_same_screen_on_both_sides():
@@ -1543,9 +1529,7 @@ def test_the_preview_screen_is_built_once_per_request_on_both_sides():
     assert titles[0] != titles[1]
 
 
-# ---------------------------------------------------------------------
 # The enumeration: wiring, signals, classes, methods, timers, topics
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1981,9 +1965,7 @@ def test_the_neighbouring_controls_are_seven_different_files():
     assert timer_sites(TIMER_NEIGHBOUR) != []
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 PAYLOAD_KEYS = {
@@ -2311,9 +2293,7 @@ def test_the_call_trace_reports_a_branch_that_never_ran():
     assert set(call[0] for call in busy.calls) != set(call[0] for call in quiet.calls)
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 MOVED_COLOR = "#123456"
@@ -2405,9 +2385,7 @@ def test_the_surface_does_not_follow_a_pane_that_builds_nothing(monkeypatch):
     assert drive_new(BY_NAME["happy"])["model"].current_proposals()
 
 
-# ---------------------------------------------------------------------
 # Order independence: what each side leaves behind
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_pane_writes_to_no_shared_table():
@@ -2565,9 +2543,7 @@ def test_a_run_that_refuses_part_way_still_gives_the_stand_ins_back():
     assert list(named.handlers) == before
 
 
-# ---------------------------------------------------------------------
 # The colours and the words
-# ---------------------------------------------------------------------
 
 
 def canonical(colour):
@@ -2794,9 +2770,7 @@ def test_an_invented_error_name_reaches_the_screen_under_its_own_name():
     assert surface.error_from("valueerror", "x").__class__ is not ValueError
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def card_class(accessible_name):
@@ -3203,9 +3177,7 @@ def test_the_card_skin_selects_the_class_the_test_builds():
     assert surface.CARD_STYLE.startswith(surface.CARD_CLASS + " {")
 
 
-# ---------------------------------------------------------------------
 # The host's fonts
-# ---------------------------------------------------------------------
 
 
 def test_the_host_font_question_is_asked_and_not_assumed():
@@ -3242,9 +3214,7 @@ def test_the_two_marker_strings_measure_apart_with_fonts():
     assert app_font_advance_px(NARROW_LABEL) != app_font_advance_px(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_tooltips_are_read_off_both_sides():
@@ -3352,9 +3322,7 @@ def test_the_preview_minimum_size_is_read_off_both_sides():
     ]
 
 
-# ---------------------------------------------------------------------
 # The card the pane stopped showing but did not let go of
-# ---------------------------------------------------------------------
 
 
 def cards_parented_to(pane):
@@ -3393,9 +3361,7 @@ def test_a_dropped_card_stays_owned_until_the_loop_turns():
     assert len(cards_parented_to(pane)) == 1
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -3583,9 +3549,7 @@ def test_the_import_list_on_the_bridge_is_alphabetical():
     )
 
 
-# ---------------------------------------------------------------------
 # The surface answers without Qt, and builds nothing while it is imported
-# ---------------------------------------------------------------------
 
 
 QT_PROBE = (
@@ -3714,9 +3678,7 @@ def test_nothing_runs_at_import_and_the_first_request_uses_the_later_root(tmp_pa
     assert read["at_request"]["qt"] is False
 
 
-# ---------------------------------------------------------------------
 # Nothing is written outside the run, and nothing leaves the machine
-# ---------------------------------------------------------------------
 
 
 def files_under(root) -> list:

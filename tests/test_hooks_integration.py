@@ -129,9 +129,7 @@ class TestTheHarnessSearchCanFail:
         assert claude_home.skill_file("no-such-skill") is None
 
 
-# ---------------------------------------------------------------------------
 # Chain 1: prompt_router → archetype named in routing exists + runnable
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
@@ -188,9 +186,7 @@ class TestRouterNamesRealArchetype:
         )
 
 
-# ---------------------------------------------------------------------------
 # Chain 2: Write payload → archetype_gate runs → summary output
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
@@ -245,9 +241,7 @@ class TestArchetypeGateOnRealFile:
         ), f"expected either a summary or a skip; got {r.stdout!r}"
 
 
-# ---------------------------------------------------------------------------
 # Chain 3: full release-gate deny → check → allow cycle
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
@@ -325,9 +319,7 @@ class TestReleaseGateCycle:
                 backup.replace(sidecar)
 
 
-# ---------------------------------------------------------------------------
 # Chain 4: settings.json declared hooks all exist and are runnable
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks

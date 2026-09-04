@@ -145,10 +145,8 @@ def js(qapp) -> JsRuntime:
     return JsRuntime(new_engine(), MODULE_SOURCE)
 
 
-# ---------------------------------------------------------------------------
 # Whole-payload contract: every field the surface publishes reaches the
 # module through its generic bag/list/field readers, and nothing else.
-# ---------------------------------------------------------------------------
 
 BAG_FIELDS = (
     "widget",
@@ -304,12 +302,10 @@ def test_a_payload_that_is_not_an_object_leaves_the_module_unloaded(js: JsRuntim
         assert [one["fault"] for one in report["faults"]] == ["not-an-object"]
 
 
-# ---------------------------------------------------------------------------
 # Defect class 1 - no invented progress value. The module reads no field
 # but `headline_text` and `items` for what it shows; `total`/`started`
 # never reach the render at all, so two states differing only in those
 # numbers must be indistinguishable to the module's own readers.
-# ---------------------------------------------------------------------------
 
 
 def test_the_module_never_reads_total_or_started_by_name():
@@ -338,11 +334,9 @@ def test_two_states_differing_only_in_total_and_started_read_identically(js: JsR
     assert js.call("field", "headline_text") == happy_headline
 
 
-# ---------------------------------------------------------------------------
 # Defect class 2 - #257 non-finite numbers. Nothing in this payload is
 # ever computed by division, so a bare NaN cannot arise here; this proves
 # a hostile payload carrying one still cannot cross into the module.
-# ---------------------------------------------------------------------------
 
 
 def test_a_payload_carrying_a_bare_nan_never_reaches_the_module(js: JsRuntime):
@@ -368,11 +362,9 @@ def test_the_bare_nan_check_accepts_a_frame_the_bridge_can_write(js: JsRuntime):
     assert refused is None
 
 
-# ---------------------------------------------------------------------------
 # Defect class 3 - #276 order loss. `items` is an explicit ordered list on
 # the wire; this proves the module keeps that order even when the entries
 # look like numbers a browser might otherwise re-sort as object keys.
-# ---------------------------------------------------------------------------
 
 
 def test_number_like_item_text_keeps_the_order_the_surface_sent(js: JsRuntime):
@@ -388,12 +380,10 @@ def test_items_is_a_list_never_a_bag_keyed_by_bot_id():
     assert isinstance(payload["items"], list)
 
 
-# ---------------------------------------------------------------------------
 # Defect class 4 - #266 colour trap. This payload carries no alpha at all,
 # so the module must never write an 8-digit hex or an `rgba(` call, which
 # would silently invent transparency (or Qt's byte-order) nowhere present
 # in the source data.
-# ---------------------------------------------------------------------------
 
 
 def test_the_module_writes_no_number():
@@ -424,11 +414,9 @@ def test_the_literal_scan_catches_a_planted_colour():
     assert MODULE_PATH.read_bytes() == original
 
 
-# ---------------------------------------------------------------------------
 # Defect class 5 - #268/#272 markup. A bot id is drawn where Qt would use
 # both a rich-text QLabel (the headline) and a plain-text QListWidgetItem
 # (the list). Neither must let a hostile bot id become live markup.
-# ---------------------------------------------------------------------------
 
 
 def test_a_hostile_bot_id_reaches_the_module_as_the_text_the_surface_made(
@@ -454,10 +442,8 @@ def test_the_module_reads_a_button_s_live_enabled_state_not_its_starting_one(
     assert payload["close_enabled"] is True
 
 
-# ---------------------------------------------------------------------------
 # Bridge behaviour: one round trip per page, cancel/close dispatch the
 # right method and params, and a refused ask is not remembered.
-# ---------------------------------------------------------------------------
 
 BRIDGE_STUB = (
     "window.CALLS = [];"
@@ -540,10 +526,8 @@ def test_a_dispatch_with_no_bridge_is_recorded_but_answers_nothing(js: JsRuntime
     ]
 
 
-# ---------------------------------------------------------------------------
 # Module registration: the page loads it through the manifest, after the
 # React vendor bundle it calls.
-# ---------------------------------------------------------------------------
 
 
 def test_the_manifest_names_the_module_exactly_once():
@@ -577,9 +561,7 @@ def test_the_load_order_check_names_a_module_missing_from_the_order():
     )
 
 
-# ---------------------------------------------------------------------------
 # Rendered checks: drawn in a real Chromium view under the page's own CSP.
-# ---------------------------------------------------------------------------
 
 
 class Browser:

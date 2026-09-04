@@ -324,9 +324,7 @@ UNDECLARED_ON_PURPOSE: frozenset[str] = frozenset({"tomli", "ST7789"})
 PRODUCT_ROOTS: tuple[str, ...] = ("src", "tools", "deploy", "contracts")
 
 
-# ---------------------------------------------------------------------------
 # Reading the one source
-# ---------------------------------------------------------------------------
 
 
 def read_project(pyproject: Path = PYPROJECT) -> dict[str, Any]:
@@ -381,9 +379,7 @@ def install_words() -> set[str]:
     return words
 
 
-# ---------------------------------------------------------------------------
 # The list rule
-# ---------------------------------------------------------------------------
 
 
 def hand_copied_list(line: str, words: set[str]) -> tuple[str, ...]:
@@ -479,9 +475,7 @@ def scan_for_lists(paths: list[str], words: set[str]) -> list[str]:
     return hits
 
 
-# ---------------------------------------------------------------------------
 # The import inventory
-# ---------------------------------------------------------------------------
 
 
 def product_python_files(roots: tuple[str, ...] = PRODUCT_ROOTS) -> list[Path]:
@@ -537,9 +531,7 @@ def third_party_imports(roots: tuple[str, ...] = PRODUCT_ROOTS) -> dict[str, lis
     }
 
 
-# ---------------------------------------------------------------------------
 # git
-# ---------------------------------------------------------------------------
 # S607 IS FIXED BY CONSTRUCTION, NOT SUPPRESSED, following the reasoning at
 # the top of dev_harness/harness/coding_archetype.py and the pattern already
 # measured clean in tests/test_no_committed_backup_copies.py: the spawn
@@ -559,9 +551,7 @@ def _git_exe() -> str:
     return git
 
 
-# ---------------------------------------------------------------------------
 # Contract 1
-# ---------------------------------------------------------------------------
 
 
 class TestNoFileHoldsAList:
@@ -594,9 +584,7 @@ class TestNoFileHoldsAList:
         assert not missing, "; ".join(missing)
 
 
-# ---------------------------------------------------------------------------
 # Contract 2
-# ---------------------------------------------------------------------------
 
 
 class TestEveryConsumerNamesARealExtra:
@@ -651,9 +639,7 @@ class TestEveryConsumerNamesARealExtra:
         )
 
 
-# ---------------------------------------------------------------------------
 # Contract 3
-# ---------------------------------------------------------------------------
 
 
 class TestEveryImportIsDeclared:
@@ -686,9 +672,7 @@ class TestEveryImportIsDeclared:
         assert "PySide6" in modules, "the import walk missed PySide6"
 
 
-# ---------------------------------------------------------------------------
 # Two-sided control
-# ---------------------------------------------------------------------------
 
 
 class TestTheInstrumentCanFail:
@@ -783,9 +767,7 @@ class TestTheInstrumentCanFail:
         )
 
 
-# ---------------------------------------------------------------------------
 # Two-sided control for the issue #92 repair
-# ---------------------------------------------------------------------------
 
 
 class TestTheWalkReachesTheContractsTree:

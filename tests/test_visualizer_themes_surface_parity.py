@@ -306,9 +306,7 @@ SEE_THROUGH_TOTAL = 8
 TIER_PALETTE_READERS = 0
 
 
-# ---------------------------------------------------------------------
 # The shipped tables, put back after every test
-# ---------------------------------------------------------------------
 
 
 def _copied_qcolor_table(table):
@@ -350,9 +348,7 @@ def shipped_tables_unchanged():
     restore_shipped_tables()
 
 
-# ---------------------------------------------------------------------
 # The two sides, read into one shape
-# ---------------------------------------------------------------------
 
 
 def hex_from_qcolor(colour):
@@ -487,9 +483,7 @@ def render_offscreen(widget, size):
     return render_widget(widget, size)
 
 
-# ---------------------------------------------------------------------
 # The panel painted from one side's colours
-# ---------------------------------------------------------------------
 
 SWATCH = 44
 
@@ -603,9 +597,7 @@ def colour_count(image):
     return len(seen)
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("theme,field", THEME_FIELD_CASES)
@@ -828,9 +820,7 @@ def test_channels_splits_a_colour_into_its_four_numbers():
             ), (theme, field)
 
 
-# ---------------------------------------------------------------------
 # The tier a balance maps to
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("case", sorted(NUMBER_CASES))
@@ -900,9 +890,7 @@ def test_the_tier_answer_reports_the_refusal_instead_of_raising():
     assert surface.NOT_ASKED == ""
 
 
-# ---------------------------------------------------------------------
 # Looking a theme or a tier up
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("theme", EXPECTED_THEME_NAMES)
@@ -962,9 +950,7 @@ def test_the_lookup_can_report_a_missing_name():
     assert surface.tier_colours("harves") == {}
 
 
-# ---------------------------------------------------------------------
 # What the shipped module has, and where each item went
-# ---------------------------------------------------------------------
 
 SHIPPED_DEFINITIONS = ("_tier_from_target_balance",)
 
@@ -1126,9 +1112,7 @@ def test_nothing_in_the_product_reads_the_tier_palettes():
     ) == 1
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_loads_no_qt_module():
@@ -1227,9 +1211,7 @@ def test_the_surface_mutates_no_shared_state():
     assert digest(surface_snapshot()) == before
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 PICTURE_CASES = tuple(zip(EXPECTED_THEME_NAMES, EXPECTED_TIER_NAMES))
 
@@ -1364,9 +1346,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
         assert callable(globals()[covered_by]), covered_by
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -1593,9 +1573,7 @@ def test_the_table_is_the_same_on_every_call():
     assert second["requested_theme"] == ""
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt, proved in a process of its own
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -1713,9 +1691,7 @@ def test_the_shipped_table_disappears_where_qt_cannot_be_imported():
     assert answered["has_mapper"] is False
 
 
-# ---------------------------------------------------------------------
 # Nothing the surface holds is left out of the snapshot
-# ---------------------------------------------------------------------
 
 # Every constant the surface exports, and the payload key that carries
 # it. A comparison reading 10 of 21 constants passes whether the other

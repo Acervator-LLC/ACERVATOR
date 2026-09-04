@@ -103,10 +103,8 @@ def _tape(n: int = 80) -> list[Candle]:
     return out
 
 
-# ---------------------------------------------------------------------------
 # 1. Each series agrees with the SAME indicator's vote, which is a
 #    second code path through the same published formula.
-# ---------------------------------------------------------------------------
 def test_bollinger_series_last_bar_matches_the_vote():
     tape = _tape()
     upper, middle, lower = BollingerBands(20, 2.0).bands(tape)[-1]
@@ -170,9 +168,7 @@ def test_ichimoku_series_last_bar_matches_the_vote():
     assert chikou == tape[-1].close
 
 
-# ---------------------------------------------------------------------------
 # 2. The MACD repair, as numbers.
-# ---------------------------------------------------------------------------
 def test_macd_has_no_value_before_its_published_seed():
     """A failure here means an EMA is seeding on invented bars again.
 
@@ -205,10 +201,8 @@ def test_the_old_chart_macd_value_no_longer_reaches_the_screen():
         assert round(hist[index], 8) != wrong
 
 
-# ---------------------------------------------------------------------------
 # 3. The chart still RENDERS. Deleting a duplicate also stops it
 #    disagreeing, so "the copy is gone" proves nothing on its own.
-# ---------------------------------------------------------------------------
 pytest.importorskip("PySide6")
 
 

@@ -137,9 +137,7 @@ def leaves(value, path=""):
     return found
 
 
-# ---------------------------------------------------------------------
 # The process-wide names each side gets its own of
-# ---------------------------------------------------------------------
 
 
 class BoxRecorder:
@@ -262,9 +260,7 @@ class SwappedNames:
         )
 
 
-# ---------------------------------------------------------------------
 # The stand-ins the shipped window is driven against
-# ---------------------------------------------------------------------
 
 
 class LogSink:
@@ -545,9 +541,7 @@ def driven(window, name):
     return MethodType(mw.MainWindow.__dict__[name], window)
 
 
-# ---------------------------------------------------------------------
 # The cases both sides are driven with
-# ---------------------------------------------------------------------
 
 
 def aggregate(**named):
@@ -626,9 +620,7 @@ REFUSING_AGGREGATE_CASES = {
 }
 
 
-# ---------------------------------------------------------------------
 # One tick, driven through both sides
-# ---------------------------------------------------------------------
 
 
 def shipped_tick(reading):
@@ -847,9 +839,7 @@ def test_the_swap_is_put_back_after_a_refusal_too():
     assert mw.QMessageBox is not boxes
 
 
-# ---------------------------------------------------------------------
 # The window's chrome
-# ---------------------------------------------------------------------
 
 
 def test_the_two_sides_carry_one_window_title():
@@ -993,9 +983,7 @@ def test_the_header_strip_check_reports_both_answers():
     assert surface.header_strip_visible("Simulator") is False
 
 
-# ---------------------------------------------------------------------
 # The status line
-# ---------------------------------------------------------------------
 
 
 class Sample:
@@ -1208,9 +1196,7 @@ def test_the_ai_pill_check_reports_both_answers():
     )
 
 
-# ---------------------------------------------------------------------
 # The console pause line
-# ---------------------------------------------------------------------
 
 
 CONSOLE_CASES = {
@@ -1266,9 +1252,7 @@ def test_the_console_line_check_reports_the_dropped_wording():
     )
 
 
-# ---------------------------------------------------------------------
 # The signals gap marker
-# ---------------------------------------------------------------------
 
 
 GAP_CASES = [
@@ -1306,9 +1290,7 @@ def test_the_gap_marker_comparison_reports_a_different_count():
     assert surface.signal_gap_marker_text(1) != surface.signal_gap_marker_text(2)
 
 
-# ---------------------------------------------------------------------
 # The API interaction log
-# ---------------------------------------------------------------------
 
 
 def entry(**named):
@@ -1449,9 +1431,7 @@ def test_an_api_event_off_the_main_thread_is_refused_by_the_surface():
     assert model.api_event(entry(), "00:00:00") == surface.API_EVENT_APPENDED
 
 
-# ---------------------------------------------------------------------
 # The indicator panel's empty state
-# ---------------------------------------------------------------------
 
 
 def bot(**named):
@@ -1538,9 +1518,7 @@ def test_the_empty_state_comparison_reports_a_different_cause():
     assert idle["cause"] != cold["cause"]
 
 
-# ---------------------------------------------------------------------
 # The Extractor parent refusal
-# ---------------------------------------------------------------------
 
 
 REFUSAL_CASES = {
@@ -1652,9 +1630,7 @@ def test_the_refusal_box_and_the_records_it_writes():
     release()
 
 
-# ---------------------------------------------------------------------
 # The adopt gate
-# ---------------------------------------------------------------------
 
 
 def proposal(**named):
@@ -1849,9 +1825,7 @@ def test_the_adopt_comparison_reports_a_missing_collision_line():
     assert with_one != with_none
 
 
-# ---------------------------------------------------------------------
 # Confirmations, theme and the About box
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("confirmed", [True, False])
@@ -1990,9 +1964,7 @@ def test_the_theme_switch_check_reports_a_known_name_and_an_unknown_one():
     assert surface_theme_switch("no such theme", themes)["refused"] == "ValueError"
 
 
-# ---------------------------------------------------------------------
 # The sounds and the pulse
-# ---------------------------------------------------------------------
 
 
 SOUND_CASES = [
@@ -2169,9 +2141,7 @@ def test_the_pulse_check_reports_a_changed_swing():
     assert surface.glow_blur(0.0) == pytest.approx(17.0)
 
 
-# ---------------------------------------------------------------------
 # The History tab's auto-refresh, and every other decision
-# ---------------------------------------------------------------------
 
 
 HISTORY_CASES = [
@@ -2286,9 +2256,7 @@ def test_the_orphan_report_is_worded_the_same_way():
         release()
 
 
-# ---------------------------------------------------------------------
 # The bus this window never unsubscribes from
-# ---------------------------------------------------------------------
 
 
 def test_the_window_subscribes_to_the_topics_the_surface_names():
@@ -2326,9 +2294,7 @@ def test_the_window_gives_back_none_of_the_topics_it_takes():
     assert len(surface.BUS_SUBSCRIPTIONS) == 6
 
 
-# ---------------------------------------------------------------------
 # The timers, counted on the running window by what they drive
-# ---------------------------------------------------------------------
 
 
 def test_a_bare_window_drives_none_of_the_products_timers():
@@ -2402,9 +2368,7 @@ def test_the_timer_check_reports_a_timer_that_drives_nothing():
     bare.stop()
 
 
-# ---------------------------------------------------------------------
 # Completeness, unbacked keys and growth
-# ---------------------------------------------------------------------
 
 
 def answer_for_completeness():
@@ -2534,9 +2498,7 @@ def test_the_growth_check_reports_a_name_added_to_the_module():
     ]
 
 
-# ---------------------------------------------------------------------
 # The surface reaches for nothing
-# ---------------------------------------------------------------------
 
 
 BRIDGE_PROBE = """
@@ -2813,9 +2775,7 @@ def test_the_channel_reader_reports_a_colour_whose_channels_match():
     assert flat_colours({"c": "#00ff88"}) == []
 
 
-# ---------------------------------------------------------------------
 # Pictures
-# ---------------------------------------------------------------------
 
 
 def pill_payload(case):
@@ -2896,14 +2856,10 @@ def test_the_colour_count_moves_with_the_pill_state():
     release()
 
 
-# ---------------------------------------------------------------------
 # The build machine
-# ---------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------
 # What one bad stored value does to this window
-# ---------------------------------------------------------------------
 
 
 HOSTILE_VALUES = {
@@ -3044,9 +3000,7 @@ def test_a_stored_ai_config_that_is_not_a_mapping_stops_the_settings_save():
     ]
 
 
-# ---------------------------------------------------------------------
 # The skin control, and which rule moves a pixel first
-# ---------------------------------------------------------------------
 
 
 CANDIDATE_RULES = (

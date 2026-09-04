@@ -49,9 +49,7 @@ CONNECT_ATTEMPTS = 3
 CONFIGS_PER_CONNECT = 2
 
 
-# ---------------------------------------------------------------------
 # doubles
-# ---------------------------------------------------------------------
 class RequestTimeout(Exception):
     """Class name carries the decorator's 'timeout' keyword."""
 
@@ -166,9 +164,7 @@ class FakeBackend:
         }
 
 
-# ---------------------------------------------------------------------
 # fixtures
-# ---------------------------------------------------------------------
 @pytest.fixture
 def fake_ccxt(monkeypatch: pytest.MonkeyPatch) -> type[FakeSyncExchange]:
     """Shadow ccxt so no connect attempt in this module can reach a network."""
@@ -253,9 +249,7 @@ def shutdown(conn: Any) -> None:
     conn._sync_executor.shutdown(wait=False)
 
 
-# =====================================================================
 # preflight — the S310 finding
-# =====================================================================
 @pytest.mark.usefixtures("fake_ccxt")
 def test_preflight_request_is_checked_at_construction(
     opened: list[dict[str, Any]],
@@ -389,9 +383,7 @@ def test_preflight_failure_stops_before_markets(
     assert FakeSyncExchange.calls == []
 
 
-# =====================================================================
 # passphrase — the B107 finding
-# =====================================================================
 @pytest.mark.parametrize("supplied", ["OMIT", "", None])
 @pytest.mark.usefixtures("fake_ccxt", "opened")
 def test_absent_passphrase_is_one_behaviour(
@@ -468,9 +460,7 @@ def test_async_connect_still_delegates() -> None:
         shutdown(conn)
 
 
-# =====================================================================
 # retry budgets — instrumented, never read back
-# =====================================================================
 @pytest.mark.usefixtures("fake_ccxt", "opened")
 def test_connect_retry_budget(
     sleeps: dict[str, list[float]],
@@ -534,9 +524,7 @@ def test_get_ticker_success_is_one_call(
     assert ticker.last == 100.5
 
 
-# =====================================================================
 # orders — live money
-# =====================================================================
 @pytest.mark.parametrize(
     "error",
     [
@@ -640,9 +628,7 @@ def test_queue_cap_fails_fast() -> None:
     assert backend.count("fetch_ticker") == 0
 
 
-# =====================================================================
 # annotations — the name-defined finding
-# =====================================================================
 @pytest.mark.parametrize(
     "method",
     [

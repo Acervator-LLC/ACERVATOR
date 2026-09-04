@@ -58,9 +58,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-# ---------------------------------------------------------------------------
 # The inventory
-# ---------------------------------------------------------------------------
 #
 # Every TRACKED file at the repository root, with the reason it is at the
 # root and not in a directory. Untracked files are not subjects: the root
@@ -177,9 +175,7 @@ PYTEST_DISCOVERY_PREFIXES = ("test_",)
 PYTEST_DISCOVERY_SUFFIXES = ("_test.py",)
 
 
-# ---------------------------------------------------------------------------
 # Reading the tree
-# ---------------------------------------------------------------------------
 
 
 def tracked_root_files() -> set[str]:
@@ -220,9 +216,7 @@ def _module_source(relative: str) -> str:
     return (REPO_ROOT / relative).read_text(encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
 # The rules
-# ---------------------------------------------------------------------------
 
 
 def test_the_inventory_names_every_tracked_root_file() -> None:
@@ -390,9 +384,7 @@ def test_the_root_is_inside_the_dependency_import_contract() -> None:
     ), "the file issue #85 moved has left the dependency walk"
 
 
-# ---------------------------------------------------------------------------
 # Two-sided: each rule, driven with the case it exists for
-# ---------------------------------------------------------------------------
 
 
 class TestTheRulesFire:

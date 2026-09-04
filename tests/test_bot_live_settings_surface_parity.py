@@ -86,9 +86,7 @@ LOWER_BOT_ID = "BOT-Alpha-0001"
 WIDGETS_HELD: list = []
 
 
-# ---------------------------------------------------------------------
 # The application object, and the widgets a render must outlive
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -124,9 +122,7 @@ def own_shared_state(monkeypatch):
     yield market_inspector
 
 
-# ---------------------------------------------------------------------
 # The case table: one spec drives both sides
-# ---------------------------------------------------------------------
 
 
 def spec(**over):
@@ -214,9 +210,7 @@ AGE_SECONDS = (
 REFUSING_AGES = (float("-inf"), "abc", None, [1])
 
 
-# ---------------------------------------------------------------------
 # Building the shipped window
-# ---------------------------------------------------------------------
 
 
 class Exchange:
@@ -342,9 +336,7 @@ def surface_symbol(one):
     return "%s/USD" % one["asset"]
 
 
-# ---------------------------------------------------------------------
 # Reading each side into one comparable shape
-# ---------------------------------------------------------------------
 
 
 def read_old(window):
@@ -491,9 +483,7 @@ def both_sides_agree(name, note=""):
     return old_side, new_side
 
 
-# ---------------------------------------------------------------------
 # Both sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", CASE_NAMES)
@@ -594,9 +584,7 @@ def test_the_machine_rule_keeps_a_seeded_value_and_hides_an_unseeded_one():
     assert platform_chosen({"style_sheet": "x", "title": "y"}) == {"title": "y"}
 
 
-# ---------------------------------------------------------------------
 # Where both sides refuse, the TYPE is compared and never the wording
-# ---------------------------------------------------------------------
 
 
 def refusal_of(run):
@@ -715,9 +703,7 @@ def test_an_unbounded_age_prints_the_same_words_on_both_sides():
         )
 
 
-# ---------------------------------------------------------------------
 # The size the window opens at
-# ---------------------------------------------------------------------
 
 SIZE_CASES = {
     "content_fits": (700, 800, 400, 300, 1000, 2000, 1920, 1080),
@@ -798,9 +784,7 @@ def test_the_tab_demand_is_read_the_same_way_on_both_sides():
     assert surface.tab_content_demand_px([None]) == (0, 0, 0, 0)
 
 
-# ---------------------------------------------------------------------
 # One edit, and what the window does with it
-# ---------------------------------------------------------------------
 
 
 def old_edited(name, steps):
@@ -922,9 +906,7 @@ def test_a_lock_edit_with_no_coordinator_is_recorded_on_both_sides():
     assert window._changes == {"lock_candle_count": 9}
 
 
-# ---------------------------------------------------------------------
 # Applying edits, including the routes that refuse
-# ---------------------------------------------------------------------
 
 
 class Sent:
@@ -1258,9 +1240,7 @@ def test_an_apply_after_a_refused_edit_still_clears_the_pending_line():
     assert window._apply_btn.isEnabled() is False
 
 
-# ---------------------------------------------------------------------
 # Step sequences, including one that refuses part way
-# ---------------------------------------------------------------------
 
 STEP_RUNS = {
     "edit_apply_edit": (
@@ -1369,9 +1349,7 @@ def test_the_sequence_check_reports_a_step_that_went_differently():
     assert digest(old_side) != digest(new_side)
 
 
-# ---------------------------------------------------------------------
 # Walking the swarm
-# ---------------------------------------------------------------------
 
 NAVIGATE_RUNS = {
     "next_from_the_first": (("bot-a", "bot-b", "bot-c"), "bot-a", 1),
@@ -1469,9 +1447,7 @@ def test_the_prev_and_next_buttons_step_the_way_the_window_names_them():
     assert surface.NEXT_STEP == 1
 
 
-# ---------------------------------------------------------------------
 # Saving the fleet in this click
-# ---------------------------------------------------------------------
 
 SAVE_RUNS = {
     "manager_on_the_window": ("window", None),
@@ -1562,9 +1538,7 @@ def test_the_window_falls_back_to_the_bots_manager():
     assert model.bot_manager_for_save() is on_bot
 
 
-# ---------------------------------------------------------------------
 # The surface writes out its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
@@ -1615,9 +1589,7 @@ def imports_of(path):
     return found
 
 
-# ---------------------------------------------------------------------
 # Counting what the shipped file wires, waits on, and builds
-# ---------------------------------------------------------------------
 
 WIDGET_NAMES_BUILT = (
     "QWidget",
@@ -1832,9 +1804,7 @@ def test_the_class_counter_finds_a_class_declared_inside_a_method():
     } == set()
 
 
-# ---------------------------------------------------------------------
 # Every class and every method has a counterpart
-# ---------------------------------------------------------------------
 
 
 def members(owner):
@@ -2104,9 +2074,7 @@ def test_the_window_is_reached_by_its_hosts_and_the_surface_by_the_bridge():
     assert len(known) > 5, known
 
 
-# ---------------------------------------------------------------------
 # The window paints, and the two sides paint the same pixels
-# ---------------------------------------------------------------------
 
 PICTURE_CASES = (
     "happy",
@@ -2350,9 +2318,7 @@ def test_with_a_font_database_the_letters_advance_apart():
     assert app_font_advance_px(WIDE_LABEL) > app_font_advance_px(NARROW_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 UNPAINTED = {
     "prev_tooltip": "test_the_tooltips_are_compared_as_strings",
@@ -2516,9 +2482,7 @@ def test_the_scroller_is_asked_for_the_same_thing_on_both_sides():
     assert QFrame.NoFrame.name == record[2]
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def freeze(value):
@@ -2893,9 +2857,7 @@ def test_the_surface_names_the_logger_the_window_writes_under():
     assert surface.LOGGER_NAME == shipped.logger.name == "acervator.gui"
 
 
-# ---------------------------------------------------------------------
 # What the shipped module keeps between windows
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_module_changes_no_value_the_next_window_reads():
@@ -2960,9 +2922,7 @@ def test_the_surface_declares_its_class_default_and_not_an_instance_value():
     assert "_fold_sort_key" in vars(shipped.BotLiveSettingsDialog)
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -3046,9 +3006,7 @@ def test_the_bridge_reports_a_window_it_cannot_read():
     surface.view_model({"reset": True})
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

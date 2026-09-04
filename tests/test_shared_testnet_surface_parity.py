@@ -55,9 +55,7 @@ CLOCK_MARKER = "<clock>"
 
 _MISSING = object()
 
-# ---------------------------------------------------------------------
 # Invented values. Nothing below names a real wallet, key or node.
-# ---------------------------------------------------------------------
 
 GENESIS_HASH = "0x" + "0" * 64
 INVENTED_BLOCK_HASH = "0x" + "b1" * 32
@@ -282,9 +280,7 @@ WORKER_RESULTS = {
 }
 
 
-# ---------------------------------------------------------------------
 # The shipped side, driven over a chain this file invented
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -492,9 +488,7 @@ def finish_worker(bridge) -> None:
         worker.wait(5000)
 
 
-# ---------------------------------------------------------------------
 # The new side, driven by the same steps
-# ---------------------------------------------------------------------
 
 
 def drive_new(name):
@@ -543,9 +537,7 @@ def run_new_step(model, step) -> None:
         raise AssertionError(f"unknown step: {step!r}")
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def old_trace(bridge, testnet, path, raised) -> dict:
@@ -683,9 +675,7 @@ def new_outcome(name) -> dict:
     return outcome(lambda: readable(new_trace(drive_new(name))))
 
 
-# ---------------------------------------------------------------------
 # The step sequences. One table drives both sides.
-# ---------------------------------------------------------------------
 
 SCENARIOS: dict = {
     "built_only": {"steps": []},
@@ -826,9 +816,7 @@ TORN_RESTORE_SCENARIOS = (
 SHARED_REFUSALS = ("load_not_an_object", "load_not_an_object_then_save")
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -995,9 +983,7 @@ def test_a_torn_restore_is_named_and_only_the_chain_moves(tmp_path):
     assert differing_paths(other, mine) == []
 
 
-# ---------------------------------------------------------------------
 # The chain rows, restored and refused
-# ---------------------------------------------------------------------
 
 RESTORE_CASES = {
     "empty_payload": {},
@@ -1185,9 +1171,7 @@ def test_a_default_is_never_shared_between_two_rows():
     assert surface.BLOCK_DEFAULTS["transactions"] == []
 
 
-# ---------------------------------------------------------------------
 # The saved payload
-# ---------------------------------------------------------------------
 
 
 def test_the_two_sides_write_the_same_payload_keys_in_the_same_order(tmp_path):
@@ -1317,9 +1301,7 @@ def test_a_payload_that_cannot_be_built_is_named_rather_than_raised(tmp_path):
     assert model.persisted is None
 
 
-# ---------------------------------------------------------------------
 # The enumeration: connect sites, classes, methods, timers, bus, pixels
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1679,9 +1661,7 @@ def test_a_fresh_chain_starts_with_the_genesis_block_on_both_sides():
     assert seeded == ["blocks.0.timestamp"], seeded
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 def named_payloads() -> dict:
@@ -1918,9 +1898,7 @@ def test_every_branch_marker_fires_and_ties_to_what_the_bridge_does():
     assert seen == set(surface.CALL_NAMES), sorted(set(surface.CALL_NAMES) - seen)
 
 
-# ---------------------------------------------------------------------
 # The worker
-# ---------------------------------------------------------------------
 
 WORKER_NAMES = sorted(WORKER_OUTCOMES)
 
@@ -1977,9 +1955,7 @@ def test_a_worker_that_raised_names_the_error_and_its_text():
     assert model.calls == [surface.WORKER_RAISED, surface.WORKER_RAISED]
 
 
-# ---------------------------------------------------------------------
 # Loading, and the wipe-and-warn policy
-# ---------------------------------------------------------------------
 
 
 def test_a_payload_of_another_schema_is_wiped_with_a_reason(tmp_path):
@@ -2031,9 +2007,7 @@ def test_the_saved_age_is_read_in_minutes_and_never_goes_below_zero():
     assert surface.restore_age_min(0, 120) == 2.0
 
 
-# ---------------------------------------------------------------------
 # What the bridge writes into the log
-# ---------------------------------------------------------------------
 
 
 class Recorder(logging.Handler):
@@ -2114,9 +2088,7 @@ def test_the_bridge_logger_is_the_one_the_surface_names(tmp_path):
     assert {record.name for record in records} == {surface.LOGGER_NAME}
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_schema_version_moved_in_the_bridge(
@@ -2228,9 +2200,7 @@ def test_every_value_the_comparison_cannot_see_names_the_check_that_reads_it():
     assert len(BLIND_TO_THE_COMPARISON) == 7
 
 
-# ---------------------------------------------------------------------
 # Shared state and run order
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_bridge_writes_no_module_value(tmp_path):
@@ -2296,9 +2266,7 @@ def test_the_surface_leaves_its_own_tables_alone():
     assert surface.TX_DEFAULTS == before["tx_defaults"]
 
 
-# ---------------------------------------------------------------------
 # The bridge to the frontend
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):
@@ -2410,9 +2378,7 @@ def test_the_qt_probe_can_report_qt():
     assert loaded["frame"]["ok"] is True
 
 
-# ---------------------------------------------------------------------
 # Nothing this bridge publishes is a colour
-# ---------------------------------------------------------------------
 
 
 def colour_texts(value):

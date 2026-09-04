@@ -185,9 +185,7 @@ def test_weighted_score_discards_the_sign_so_the_bound_is_load_bearing() -> None
     assert abs(negative.weighted_score) == abs(positive.weighted_score)
 
 
-# ---------------------------------------------------------------------------
 # The numbers the repair restated. Bit-exact or it is a behaviour change.
-# ---------------------------------------------------------------------------
 
 
 def test_percent_to_ratio_division_is_bit_exact() -> None:

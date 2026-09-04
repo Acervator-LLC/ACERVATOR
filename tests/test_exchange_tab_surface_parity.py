@@ -87,10 +87,8 @@ WIDGETS_HELD: list = []
 PINS_SEEN: list = []
 
 
-# ---------------------------------------------------------------------
 # The privacy register is process-wide, and the screen WRITES to it.
 # Every test is given its own and the process one is put back.
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -200,10 +198,8 @@ def hold(widget):
     return widget
 
 
-# ---------------------------------------------------------------------
 # Invented bot records, pool reports, and the case table both sides
 # are driven with
-# ---------------------------------------------------------------------
 
 
 def bot(**over):
@@ -441,9 +437,7 @@ POOL_REFUSING = ("missing_a_key", "text_where_a_number_belongs")
 COMMANDS = ("start", "pause", "stop", "restart", "delete")
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def numbered(value):
@@ -886,9 +880,7 @@ def both_sides_agree(run, note):
     assert run["old_opened"] == run["new_opened"], note
 
 
-# ---------------------------------------------------------------------
 # The two sides, case by case
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
@@ -989,9 +981,7 @@ def test_the_machine_rule_keeps_a_seeded_value_and_hides_a_chosen_one():
     assert platform_chosen({"ticker_starts": 0})["ticker_starts"] == 0
 
 
-# ---------------------------------------------------------------------
 # What each side DID: answered, or refused with which type
-# ---------------------------------------------------------------------
 
 
 def refusals(outcome):
@@ -1065,9 +1055,7 @@ def test_the_refusal_reader_reports_two_different_wordings():
     assert headline_of(lambda: None) == ""
 
 
-# ---------------------------------------------------------------------
 # Step sequences, including one that refuses part way
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(SEQUENCES))
@@ -1125,9 +1113,7 @@ def test_a_command_after_a_refused_rewrite_reaches_the_same_bot():
     ]
 
 
-# ---------------------------------------------------------------------
 # The highlight, the two tables, and where a command lands
-# ---------------------------------------------------------------------
 
 
 def test_the_highlight_follows_the_bot_not_the_row():
@@ -1268,9 +1254,7 @@ def test_a_detail_press_chooses_its_own_table_on_both_sides():
     assert model.last_clicked_table == "scrumming"
 
 
-# ---------------------------------------------------------------------
 # Privacy Mode
-# ---------------------------------------------------------------------
 
 
 def test_the_privacy_button_flips_every_mask_on_both_sides():
@@ -1369,9 +1353,7 @@ def test_the_privacy_tooltip_names_a_count_the_register_does_not_hold():
     assert old_tab()._privacy_mode_btn.toolTip() == surface.PRIVACY_TOOLTIP
 
 
-# ---------------------------------------------------------------------
 # The five recorded checks
-# ---------------------------------------------------------------------
 
 
 def test_the_recorded_checks_are_the_shipped_checks():
@@ -1435,9 +1417,7 @@ def test_each_screen_names_its_own_exchange_in_every_check():
     assert {pin["instance"] for pin in model.pins} == {OTHER_EXCHANGE_ID}
 
 
-# ---------------------------------------------------------------------
 # The surface holds its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
@@ -1485,9 +1465,7 @@ def test_the_shipped_file_is_not_named_by_the_surface():
     assert not any("exchange_tab" == name for name in imported), imported
 
 
-# ---------------------------------------------------------------------
 # Counting what the shipped file wires, waits on, and builds
-# ---------------------------------------------------------------------
 
 WIDGET_NAMES_BUILT = (
     "QWidget",
@@ -1665,9 +1643,7 @@ def test_the_class_counter_finds_a_class_declared_inside_another():
     } == set()
 
 
-# ---------------------------------------------------------------------
 # Every class and every method has a counterpart
-# ---------------------------------------------------------------------
 
 
 def members(owner):
@@ -1914,9 +1890,7 @@ def test_the_screen_is_reached_by_the_window_and_the_surface_by_the_bridge():
     assert len(known) > 5, known
 
 
-# ---------------------------------------------------------------------
 # The screen paints, and the two sides paint the same pixels
-# ---------------------------------------------------------------------
 
 
 def render_offscreen(widget, size):
@@ -2129,9 +2103,7 @@ def test_with_a_font_database_the_letters_advance_apart():
     assert app_font_advance_px(WIDE_LABEL) > app_font_advance_px(NARROW_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 def test_the_privacy_tooltip_is_compared_as_a_string():
@@ -2332,9 +2304,7 @@ def test_a_news_strip_that_raises_is_recorded_and_not_sent_on():
     assert [surface.NEWS_TICKER_FAILED, "RuntimeError"] in model.calls
 
 
-# ---------------------------------------------------------------------
 # The freshness line writes under the logger it names
-# ---------------------------------------------------------------------
 
 
 def warnings_from(logger_name, run, level=logging.WARNING):
@@ -2415,9 +2385,7 @@ def test_the_surface_writes_under_the_logger_it_names():
     assert shipped.logger.name == surface.LOGGER_NAME
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def freeze(value):
@@ -2766,9 +2734,7 @@ def test_the_key_check_reports_a_key_backed_by_the_wrong_value():
     )
 
 
-# ---------------------------------------------------------------------
 # What the shipped module keeps between screens
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_module_changes_no_value_the_next_screen_reads():
@@ -2830,9 +2796,7 @@ def test_the_surface_keeps_no_value_between_two_screens():
     assert first.scrum_table is not second.scrum_table
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -2997,9 +2961,7 @@ def test_the_control_check_names_a_field_the_handler_never_reads():
     ask({surface.RESET_PARAM: True})
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

@@ -238,9 +238,7 @@ def _qt_reached_from(start: str) -> set[str]:
     return found
 
 
-# ---------------------------------------------------------------------
 # The seam itself
-# ---------------------------------------------------------------------
 def test_the_driver_module_imports_no_qt():
     """No Qt anywhere in the module's first-party import closure.
 
@@ -308,9 +306,7 @@ def test_pump_once_advances_a_real_loop():
     )
 
 
-# ---------------------------------------------------------------------
 # Does a real bot tick?
-# ---------------------------------------------------------------------
 def _qt_canary() -> tuple[object, dict]:
     """A 10 ms QTimer that fires only while a Qt event loop dispatches.
 
@@ -442,9 +438,7 @@ def test_both_drivers_reach_the_same_tick_count(qt_app):
     )
 
 
-# ---------------------------------------------------------------------
 # Exactly one driver
-# ---------------------------------------------------------------------
 def test_one_driver_pumps_once_per_interval():
     """The count over a known window is what ONE driver produces.
 
@@ -564,9 +558,7 @@ def test_the_refusal_lifts_after_the_run_ends():
     )
 
 
-# ---------------------------------------------------------------------
 # Cadence
-# ---------------------------------------------------------------------
 def test_the_headless_cadence_matches_the_nominal_interval():
     """Median gap between pumps, read at the loop, not at the driver."""
     loop = _new_loop()
@@ -595,9 +587,7 @@ def test_the_headless_cadence_matches_the_nominal_interval():
     )
 
 
-# ---------------------------------------------------------------------
 # Shutdown, and a pump that raises
-# ---------------------------------------------------------------------
 def test_stop_releases_run():
     """A driver that will not stop is how a process hangs on exit."""
     loop = _new_loop()

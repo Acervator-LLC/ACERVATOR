@@ -101,11 +101,9 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The bot and its stats object, as the test owns them. The Qt tab is
 # driven with these; the surface is driven with its own. Neither side
 # reads the other's.
-# ---------------------------------------------------------------------
 
 
 class Stats:
@@ -199,9 +197,7 @@ class FixedClock:
         return False
 
 
-# ---------------------------------------------------------------------
 # The inputs. One scenario drives both sides.
-# ---------------------------------------------------------------------
 
 
 LONG_TEXT = "L" * 200
@@ -395,9 +391,7 @@ SCENARIO_NAMES = [spec["name"] for spec in SCENARIOS]
 BY_NAME = {spec["name"]: spec for spec in SCENARIOS}
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def old_stats(spec):
@@ -462,9 +456,7 @@ def drive_new(spec):
     return {"model": model}
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def layout_order(layout):
@@ -563,9 +555,7 @@ def new_outcome(spec):
     return outcome(lambda: surface_trace(drive_new(spec)))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -685,9 +675,7 @@ def test_the_sample_hashes_are_reported(name):
     assert digest(value) == digest(new_outcome(BY_NAME[name])["value"])
 
 
-# ---------------------------------------------------------------------
 # Step sequences
-# ---------------------------------------------------------------------
 
 
 def test_a_second_build_carries_the_same_rows_on_both_sides():
@@ -750,9 +738,7 @@ def test_a_refused_reading_after_a_good_one_leaves_the_error_and_not_the_rows():
     assert model.group_shown is False
 
 
-# ---------------------------------------------------------------------
 # The enumeration: wiring, signals, classes, methods, timers, topics
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -979,9 +965,7 @@ def test_the_signal_neighbour_and_the_wiring_neighbour_are_different_files():
     assert timer_sites(TIMER_NEIGHBOUR) != []
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 PAYLOAD_KEYS = {
@@ -1216,9 +1200,7 @@ def test_every_branch_marker_fires_and_ties_to_what_the_operator_sees():
     assert filled_marks.count(surface.BUILD_REALISED) == 1
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 class MovedTokens:
@@ -1345,9 +1327,7 @@ def test_the_surface_writes_to_no_shared_table():
     assert surface.BUS_TOPICS == ()
 
 
-# ---------------------------------------------------------------------
 # The colours
-# ---------------------------------------------------------------------
 
 
 def canonical(colour):
@@ -1457,9 +1437,7 @@ def test_the_age_of_a_not_a_number_reading_is_read_as_minutes():
     assert not (math.nan < surface.AGE_MINUTES_CUTOFF_S)
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def model_payload(spec=None):
@@ -1618,9 +1596,7 @@ def test_the_two_marker_strings_measure_apart_with_fonts():
     assert app_font_advance_px(NARROW_LABEL) != app_font_advance_px(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_tooltips_are_read_off_both_sides():
@@ -1780,9 +1756,7 @@ def test_the_layout_order_is_read_off_both_sides():
     assert old["order"] == new["order"] == ["QGroupBox", "stretch"]
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture

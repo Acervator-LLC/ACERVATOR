@@ -92,9 +92,7 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
-# ---------------------------------------------------------------------
 # The stored fleet load every case is driven with
-# ---------------------------------------------------------------------
 
 STORED_FLEET = {
     "bots": {
@@ -196,9 +194,7 @@ def fleet_statuses(state: dict) -> list:
     return found
 
 
-# ---------------------------------------------------------------------
 # The cases both sides are driven with
-# ---------------------------------------------------------------------
 
 
 def case(name, state=None, steps=()):
@@ -595,9 +591,7 @@ def canonical(value):
     return f"{type(value).__name__}:{value!r}"
 
 
-# ---------------------------------------------------------------------
 # The shared names both sides borrow, and putting them back
-# ---------------------------------------------------------------------
 
 
 class StandInStateManager:
@@ -701,9 +695,7 @@ def throwaway_home() -> Path:
     return made
 
 
-# ---------------------------------------------------------------------
 # The shipped side
-# ---------------------------------------------------------------------
 
 ROW_COLUMNS = (
     "dot",
@@ -941,9 +933,7 @@ def drive_old(spec) -> dict:
             release(tab)
 
 
-# ---------------------------------------------------------------------
 # The Qt-free side
-# ---------------------------------------------------------------------
 
 
 def apply_new(model, spec, step) -> None:
@@ -1047,9 +1037,7 @@ def outcome(drive, spec):
         return ("refused", type(exc).__name__)
 
 
-# ---------------------------------------------------------------------
 # Both sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", [spec["name"] for spec in CASES])
@@ -1237,9 +1225,7 @@ def test_the_sample_hashes_are_reported():
     assert len(set(found.values())) > 1, found
 
 
-# ---------------------------------------------------------------------
 # Step sequences
-# ---------------------------------------------------------------------
 
 SEQUENCE = ("happy", "sim_run", "paper_run", "one_bot", "a_wire_is_cut")
 REFUSING_SEQUENCE = ("happy", "sim_run", "paper_run_text_price", "one_bot")
@@ -1288,9 +1274,7 @@ def test_the_sequence_recorder_reports_a_sequence_that_finishes():
     assert finished["stopped_at"] is None, finished
 
 
-# ---------------------------------------------------------------------
 # Enumerating the shipped file
-# ---------------------------------------------------------------------
 
 
 def parsed(source: str):
@@ -1493,9 +1477,7 @@ def test_the_shipped_file_names_twenty_connect_sites():
     assert len(function_calls(SHIPPED_SOURCE, "connect")) == 20
 
 
-# ---------------------------------------------------------------------
 # The comparison is complete
-# ---------------------------------------------------------------------
 
 
 def leaves(value) -> set:
@@ -1713,9 +1695,7 @@ def test_the_surface_grew_no_name_the_file_does_not_declare():
     assert {name for name in written if name.isupper()} - imported == set()
 
 
-# ---------------------------------------------------------------------
 # The geometry and the words, read off both sides
-# ---------------------------------------------------------------------
 
 CENTERS = {
     "a": (100.0, 100.0),
@@ -1910,9 +1890,7 @@ def test_an_empty_pair_list_refuses_on_both_sides():
             release(tab)
 
 
-# ---------------------------------------------------------------------
 # The routes a stored fleet load holds
-# ---------------------------------------------------------------------
 
 ROUTE_CASES = [
     ("add_one", [("BTC-USD-0001", "SOL-USD-0003", 15.0)], []),
@@ -2037,9 +2015,7 @@ def test_the_two_sides_write_the_same_shortfall_line(monkeypatch):
     assert new[0] == "WARNING"
 
 
-# ---------------------------------------------------------------------
 # Pictures
-# ---------------------------------------------------------------------
 
 PICTURE_CASES = ("sim", "paper", "live")
 
@@ -2171,9 +2147,7 @@ def test_the_host_font_question_is_asked_and_not_assumed():
     assert has_real_fonts() in (True, False)
 
 
-# ---------------------------------------------------------------------
 # Order, shared state, the home directory and the world
-# ---------------------------------------------------------------------
 
 
 def test_every_swapped_name_is_put_back_after_a_drive_and_after_a_refusal():
@@ -2364,9 +2338,7 @@ def test_the_file_watcher_reports_a_file_that_was_opened(tmp_path, monkeypatch):
     assert [one for one in opened if "bot_state.json" in one] != []
 
 
-# ---------------------------------------------------------------------
 # The bridge, and a process that never loads Qt
-# ---------------------------------------------------------------------
 
 
 def test_the_bridge_registers_the_bot_visualizer_method():
@@ -2705,9 +2677,7 @@ def test_this_file_imports_only_what_the_fast_lane_installs():
     assert offences == [], offences
 
 
-# ---------------------------------------------------------------------
 # The bare-reading audit
-# ---------------------------------------------------------------------
 
 BARE_READINGS = (
     True,

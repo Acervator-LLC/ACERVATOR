@@ -241,9 +241,7 @@ REPEATED_COLORS = {
 }
 
 
-# ---------------------------------------------------------------------
 # One table, every case, driven through both sides
-# ---------------------------------------------------------------------
 
 LONG_SYMBOL = "Z" * 200
 UNICODE_SYMBOL = "₿/€ 中文 éè"
@@ -328,9 +326,7 @@ REFUSALS = {
 }
 
 
-# ---------------------------------------------------------------------
 # Reading each side
-# ---------------------------------------------------------------------
 
 HELD: list = []
 
@@ -519,9 +515,7 @@ def outcome(work):
         return ("refused", type(exc).__name__)
 
 
-# ---------------------------------------------------------------------
 # The enumeration: every item on one side has a counterpart
-# ---------------------------------------------------------------------
 
 # The widget class carries a private name and is published as
 # ``TradingViewChart``, so that the browser-less stub can be a separate
@@ -753,9 +747,7 @@ def test_the_chart_builds_whatever_the_module_names_as_the_browser():
     assert shipped.QWebEngineView.__name__ == "QWebEngineView"
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
@@ -844,9 +836,7 @@ def test_the_outcomes_hold_both_an_answer_and_a_refusal():
     assert kinds == {"answered", "refused"}, kinds
 
 
-# ---------------------------------------------------------------------
 # The page, the themes, the buttons and the calls, read off both sides
-# ---------------------------------------------------------------------
 
 
 def test_the_two_sides_hold_one_page_template():
@@ -1036,9 +1026,7 @@ def test_the_call_helper_refuses_a_name_it_does_not_know():
         surface.call_text("noSuchCall", [])
 
 
-# ---------------------------------------------------------------------
 # The values around the page: series, markers, grid lines, layout
-# ---------------------------------------------------------------------
 
 
 def test_the_candle_series_colours_match_on_both_sides():
@@ -1406,9 +1394,7 @@ def test_this_file_passes_with_the_theme_table_left_dirty():
     assert code == 0, output[-4000:]
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def font_note():
@@ -1569,9 +1555,7 @@ def test_the_host_font_question_is_asked_and_not_assumed():
         ), "the host reports no fonts and the glyphs still have their own widths"
 
 
-# ---------------------------------------------------------------------
 # What no picture can report, each read off both sides instead
-# ---------------------------------------------------------------------
 
 BLIND_TO_THE_PICTURE = {
     "page_text": "test_both_sides_build_one_page_for_one_theme",
@@ -1675,9 +1659,7 @@ def test_the_colours_two_names_share_are_compared_by_name():
     assert surface.CANDLE_SERIES["down"] == surface.MARKER_SKIN["sell_color"]
 
 
-# ---------------------------------------------------------------------
 # Nothing the surface holds is left out of the snapshot
-# ---------------------------------------------------------------------
 
 # Every constant the surface exports and the payload key that carries
 # it. A comparison reading some of the constants passes whether the
@@ -1839,9 +1821,7 @@ def test_the_completeness_check_can_report_a_made_up_name():
     assert "view_model" not in surface_constants()
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -1938,9 +1918,7 @@ def test_two_calls_with_one_request_answer_the_same():
     assert first["themes"] == second["themes"]
 
 
-# ---------------------------------------------------------------------
 # The surface does not follow a value moved on the shipped side
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_moved_shipped_theme(monkeypatch):
@@ -1982,9 +1960,7 @@ def test_the_surface_does_not_follow_a_replaced_shipped_class(monkeypatch):
     assert EXPECTED_THEMES["neon_light"]["bg"] in model.html
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt, proved in a process of its own
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

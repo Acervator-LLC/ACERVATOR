@@ -284,10 +284,8 @@ def _fire(tranche, monkeypatch, answer_yes=True):
     return res
 
 
-# --------------------------------------------------------------------
 # POSITIVE CONTROLS. A guard that refused everything would pass every
 # refusal test below while making the Fire button useless.
-# --------------------------------------------------------------------
 
 
 def test_valid_tranche_confirmation_is_byte_identical_to_live(monkeypatch):
@@ -338,9 +336,7 @@ def test_operator_answering_no_places_no_order(monkeypatch):
     assert res.order_calls == []
 
 
-# --------------------------------------------------------------------
 # THE REFUSAL
-# --------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("bad,_live_showed", REFUSED)

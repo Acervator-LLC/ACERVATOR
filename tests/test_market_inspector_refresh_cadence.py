@@ -167,9 +167,7 @@ def test_no_connectors_still_reports_why():
     assert res.meta["error"]
 
 
-# =====================================================================
 # THE BUTTON -> FETCHER WIRING
-# =====================================================================
 #
 # Everything above calls `fetch_htf_universe` DIRECTLY, so all of it
 # stays green while the Refresh button is disconnected from the cadence

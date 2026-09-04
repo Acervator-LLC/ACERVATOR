@@ -24,9 +24,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 
-# ---------------------------------------------------------------------------
 # Source-shape pins
-# ---------------------------------------------------------------------------
 
 
 #: Every module the ScrummingBot engine is spread across. A scan of one
@@ -145,9 +143,7 @@ class TestManualCartridgePathUsesHelper:
         )
 
 
-# ---------------------------------------------------------------------------
 # Behavioural pins on the helper
-# ---------------------------------------------------------------------------
 
 
 def _make_stub(

@@ -131,9 +131,7 @@ def first_difference(one, other, path="") -> str:
     return ""
 
 
-# ---------------------------------------------------------------------
 # The stored fleet load. One file, read by the real loader.
-# ---------------------------------------------------------------------
 
 STORED_LOTS = [
     {"units": 4000.5, "price": 0.021},
@@ -203,9 +201,7 @@ def with_stored_number(configs, where, key, value) -> list:
     return changed
 
 
-# ---------------------------------------------------------------------
 # The stand-ins. One per side, never shared.
-# ---------------------------------------------------------------------
 
 
 class RecordingSink:
@@ -382,9 +378,7 @@ class QtNuclear:
         self.topology_getter = getter
 
 
-# ---------------------------------------------------------------------
 # The two sides, driven through one step language.
-# ---------------------------------------------------------------------
 
 LIVE_TABS: list = []
 
@@ -723,9 +717,7 @@ def both(spec):
     return drive(ShippedSide, spec), drive(SurfaceSide, spec)
 
 
-# ---------------------------------------------------------------------
 # The cases. One per state the tab can be in.
-# ---------------------------------------------------------------------
 
 
 def case_no_run():
@@ -809,9 +801,7 @@ def case_setters():
     }
 
 
-# ---------------------------------------------------------------------
 # The surface stands alone
-# ---------------------------------------------------------------------
 
 IMPORT_PROBE = """
 import json, sys
@@ -1019,9 +1009,7 @@ def test_the_comparison_names_exactly_what_moved():
     assert first_difference(one, other) == ".log.lines: 0 rows against 1"
 
 
-# ---------------------------------------------------------------------
 # Both sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 def cases(tmp_path):
@@ -1115,9 +1103,7 @@ def test_two_not_a_numbers_are_told_apart(tmp_path):
     assert one_nan != other_nan
 
 
-# ---------------------------------------------------------------------
 # Step sequences, including ones that refuse part way
-# ---------------------------------------------------------------------
 
 REFUSING_SEQUENCE = [
     ("build",),
@@ -1181,9 +1167,7 @@ def test_a_refusal_carries_the_same_type_on_both_sides(name, argument, refusal):
     assert digest(old) == digest(new), first_difference(old, new)
 
 
-# ---------------------------------------------------------------------
 # Every kind of value, through the values the tab shows
-# ---------------------------------------------------------------------
 
 TEXT_VALUES = [
     ("empty", ""),
@@ -1331,9 +1315,7 @@ def test_a_bad_reading_takes_the_whole_refresh_pass_with_it(tmp_path):
     assert digest(old) == digest(new), first_difference(old, new)
 
 
-# ---------------------------------------------------------------------
 # Completeness of the comparison
-# ---------------------------------------------------------------------
 
 
 def flat(payload, path=""):
@@ -1449,9 +1431,7 @@ def test_the_name_check_reports_a_name_only_one_side_holds():
     assert on_file - on_module == {"planted_name"}
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_the_bridge_answers_the_surface_method():
@@ -1482,9 +1462,7 @@ def test_the_order_check_reports_a_list_out_of_order():
     assert out_of_order != sorted(out_of_order)
 
 
-# ---------------------------------------------------------------------
 # Order independence and the world
-# ---------------------------------------------------------------------
 
 
 def test_each_side_takes_its_own_sink_and_gives_it_back(tmp_path):
@@ -1563,9 +1541,7 @@ def test_two_surface_models_do_not_share_state():
     assert one.active_bot_picker.count() == 2
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 CONTROL_RULE = "QWidget { background: #7d1a4a; }"
 
@@ -1810,9 +1786,7 @@ def test_a_payload_changed_after_it_came_off_the_surface_is_refused():
         new_pause_button(payload)
 
 
-# ---------------------------------------------------------------------
 # What the shipped tab does that the model must not
-# ---------------------------------------------------------------------
 
 
 def test_the_pause_button_holds_the_activity_stream_only():
@@ -1875,9 +1849,7 @@ def test_the_pin_recorder_can_report_a_missing_pin():
     assert len(one["pins"]) > len(other["pins"])
 
 
-# ---------------------------------------------------------------------
 # The connections the tab makes when it is built
-# ---------------------------------------------------------------------
 
 
 def test_the_tab_builds_two_expand_buttons_from_one_wiring_line():

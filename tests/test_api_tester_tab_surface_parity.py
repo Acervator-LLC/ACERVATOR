@@ -144,9 +144,7 @@ def no_signal_sink():
     assert get_sink() is None, "a signal sink was installed during this test"
 
 
-# ---------------------------------------------------------------------
 # One scripted venue, read by both sides
-# ---------------------------------------------------------------------
 
 
 class Boom(Exception):
@@ -327,9 +325,7 @@ def fake_decrypt(blob, master):
     return blob[len(VAULT_PREFIX) :]
 
 
-# ---------------------------------------------------------------------
 # The surface's caller, and the same world patched into the widget
-# ---------------------------------------------------------------------
 
 
 class SurfaceCaller:
@@ -580,9 +576,7 @@ def surface_world(world, monkey):
     monkey.setattr(time, "monotonic", lambda: FROZEN_MONOTONIC)
 
 
-# ---------------------------------------------------------------------
 # The case table, and the steps each case is driven through
-# ---------------------------------------------------------------------
 
 
 def http_map(answer):
@@ -954,9 +948,7 @@ def fresh_world(name):
     return found
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def numbered(value):
@@ -1025,9 +1017,7 @@ def guarded(run):
         return {"error": type(exc).__name__, "headline": str(exc).splitlines()[:1]}
 
 
-# ---------------------------------------------------------------------
 # Driving both sides from one case
-# ---------------------------------------------------------------------
 
 
 def old_tab(world, monkey):
@@ -1281,9 +1271,7 @@ def both_sides_agree(run, note):
     )
 
 
-# ---------------------------------------------------------------------
 # The two sides, case by case
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
@@ -1403,9 +1391,7 @@ def test_the_clock_and_the_wall_time_reach_both_sides():
     assert all(STAMP not in html for html in seen), seen
 
 
-# ---------------------------------------------------------------------
 # What each side DID: answered, or refused with which wording
-# ---------------------------------------------------------------------
 
 
 def test_no_press_on_either_side_ever_raises():
@@ -1473,9 +1459,7 @@ def test_the_asked_list_reports_a_step_neither_side_took():
     assert refused["old_asked"] != run["old_asked"]
 
 
-# ---------------------------------------------------------------------
 # The surface holds its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
@@ -1516,9 +1500,7 @@ def test_the_shipped_file_is_not_named_by_the_surface():
     assert not any("widgets" in name for name in imported), imported
 
 
-# ---------------------------------------------------------------------
 # Counting what the shipped file wires, waits on, and builds
-# ---------------------------------------------------------------------
 
 WIDGET_NAMES_BUILT = (
     "QWidget",
@@ -1694,9 +1676,7 @@ def test_the_class_counter_finds_a_class_declared_inside_a_branch():
     } == set()
 
 
-# ---------------------------------------------------------------------
 # Every class and every method has a counterpart
-# ---------------------------------------------------------------------
 
 
 def members(owner):
@@ -1932,9 +1912,7 @@ def test_the_screen_is_reached_by_the_window_and_the_surface_by_the_bridge():
     assert len(known) > 5, known
 
 
-# ---------------------------------------------------------------------
 # The screen paints, and the two sides paint the same pixels
-# ---------------------------------------------------------------------
 
 
 def colour_count(image):
@@ -2226,9 +2204,7 @@ def test_with_a_font_database_the_letters_advance_apart():
     assert app_font_advance_px(WIDE_LABEL) > app_font_advance_px(NARROW_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 BLIND_TO_THE_PICTURE = {
     "button tooltips": "test_the_button_tooltips_are_compared_as_strings",
@@ -2445,9 +2421,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
         assert callable(globals()[covered_by]), covered_by
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def freeze(value):
@@ -2926,9 +2900,7 @@ def test_the_derived_keys_are_each_covered_by_a_named_test():
         assert callable(globals()[name]), name
 
 
-# ---------------------------------------------------------------------
 # The pieces the surface decides on its own
-# ---------------------------------------------------------------------
 
 LOG_ELAPSED_CASES = (
     0,
@@ -3120,9 +3092,7 @@ def test_a_bare_surface_reaches_nothing():
     assert surface.NO_CALLER_MESSAGE in model.entries[-3]["detail"] or True
 
 
-# ---------------------------------------------------------------------
 # What the shipped module keeps between screens
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_module_changes_no_value_the_next_screen_reads():
@@ -3171,9 +3141,7 @@ def test_each_test_is_given_its_own_bridge_screen_again():
     assert surface.view_model({})["symbol"] == surface.SYMBOL_DEFAULT
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -3278,9 +3246,7 @@ def test_the_surface_writes_under_the_logger_it_names():
     assert shipped.logger.name == surface.LOGGER_NAME
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

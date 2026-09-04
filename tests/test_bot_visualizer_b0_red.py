@@ -74,9 +74,7 @@ def qapp() -> QCoreApplication:
     return QApplication([])
 
 
-# --------------------------------------------------------------------
 # Probes. Each is driven by a test AND by that test's paired control.
-# --------------------------------------------------------------------
 def _binds_random_module(module: types.ModuleType) -> bool:
     """Report whether ``module`` holds a reference to the stdlib ``random``."""
     return getattr(module, "random", None) is importlib.import_module("random")

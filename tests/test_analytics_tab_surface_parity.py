@@ -172,9 +172,7 @@ EXPECTED_CHART_RISE_FILL = [[0, 255, 136, 40], [0, 255, 136, 5]]
 EXPECTED_CHART_FALL_FILL = [[255, 51, 102, 40], [255, 51, 102, 5]]
 
 
-# ---------------------------------------------------------------------
 # The numbers both sides are driven with
-# ---------------------------------------------------------------------
 
 
 class Source:
@@ -433,9 +431,7 @@ AWKWARD_NUMBERS = (
 NON_TEXT_VALUES: tuple = (0, -1, 9.5, None, [], {}, True)
 
 
-# ---------------------------------------------------------------------
 # Reading each side
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -550,9 +546,7 @@ def both_displays(summary, curve, bots, timeframes):
     return old, new
 
 
-# ---------------------------------------------------------------------
 # The window built from the payload, and nothing else
-# ---------------------------------------------------------------------
 
 
 def _build_metric_card_class():
@@ -753,9 +747,7 @@ def full_payload():
     return payload_for(FULL_SUMMARY, RISING_CURVE, FULL_BOTS, FULL_TIMEFRAMES)
 
 
-# ---------------------------------------------------------------------
 # What the shipped file has, and where each item went
-# ---------------------------------------------------------------------
 
 SHIPPED_CLASSES = ("MetricCard", "MiniEquityChart", "AnalyticsTab")
 
@@ -939,9 +931,7 @@ def test_the_tab_declares_no_action_no_timer_and_no_skin():
     assert len(neighbour.TIMERS) > 0, "the timer counter cannot report a timer"
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("index", range(CARD_TOTAL))
@@ -1205,9 +1195,7 @@ def test_every_cell_is_centred_on_both_sides():
     assert len(read_alignments(new_bots)) == 3 * BOT_COLUMN_TOTAL
 
 
-# ---------------------------------------------------------------------
 # Every widget, every column and every layout number
-# ---------------------------------------------------------------------
 
 
 def test_the_page_layout_matches_on_both_sides():
@@ -1450,9 +1438,7 @@ def test_set_data_replaces_the_points_the_chart_holds():
     assert surface.chart_geometry(RISING_CURVE, *CHART_SIZE)["empty"] is False
 
 
-# ---------------------------------------------------------------------
 # Every branch of every surface function
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("seconds,expected", sorted(EXPECTED_DURATIONS.items()))
@@ -1602,9 +1588,7 @@ def test_the_model_keeps_what_it_last_showed():
     assert surface.AnalyticsTabModel().refresh(None) is None
 
 
-# ---------------------------------------------------------------------
 # The chart geometry
-# ---------------------------------------------------------------------
 
 
 def test_the_chart_waits_for_a_second_point():
@@ -1719,9 +1703,7 @@ def test_the_chart_labels_the_latest_equity_and_the_scaled_floor():
     assert top["font_point_size"] == 9
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_loads_no_qt_module():
@@ -1833,9 +1815,7 @@ def test_the_surface_does_not_follow_a_replaced_shipped_chart(monkeypatch):
     monkeypatch.undo()
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def font_note():
@@ -1985,9 +1965,7 @@ def test_the_host_font_question_is_asked_and_not_assumed():
         ), "the host reports no fonts and the glyphs still have their own widths"
 
 
-# ---------------------------------------------------------------------
 # What no picture can report, each read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_accessible_names_are_compared_as_text():
@@ -2122,9 +2100,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
     assert len(set(BLIND_TO_THE_PICTURE.values())) == 13
 
 
-# ---------------------------------------------------------------------
 # Nothing the surface holds is left out of the snapshot
-# ---------------------------------------------------------------------
 
 # Every constant the surface exports and the payload key that carries
 # it. A comparison reading some of the constants passes whether the
@@ -2293,9 +2269,7 @@ def test_the_completeness_check_can_report_a_missing_constant():
     assert "view_model" not in surface_constants()
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -2419,9 +2393,7 @@ def test_the_table_is_the_same_on_every_call():
     assert first["bot_columns"] == second["bot_columns"]
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt, proved in a process of its own
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -2526,9 +2498,7 @@ def test_the_qt_block_stops_the_shipped_tab():
     assert answered["has_tab"] is False
 
 
-# ---------------------------------------------------------------------
 # The Qt tab stays reachable while the React panel is unproven
-# ---------------------------------------------------------------------
 
 #: Every widget the tab builds for itself, and how many of each it holds.
 #: Qt's own furniture -- scroll bars, splitter handles, header views and

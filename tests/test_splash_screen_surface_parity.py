@@ -66,9 +66,7 @@ TRACE_KEY_TOTAL = 8
 TICK_S = 0.025
 
 
-# ---------------------------------------------------------------------
 # Rebuilding the shipped class out of main's compiled code
-# ---------------------------------------------------------------------
 
 SPLASH_BODY = next(
     const
@@ -104,10 +102,8 @@ def app():
     return ensure_app()
 
 
-# ---------------------------------------------------------------------
 # The recorders. Each keeps the values it was BUILT with, so a value the
 # platform clamps is still compared as the splash computed it.
-# ---------------------------------------------------------------------
 
 
 def recorder_names():
@@ -355,9 +351,7 @@ class SwappedVersion:
         return False
 
 
-# ---------------------------------------------------------------------
 # The two sides
-# ---------------------------------------------------------------------
 
 LONG_TEXT = "L" * 200
 MARKUP_TEXT = '<b onclick="x">bold &amp; "quoted"</b>'
@@ -722,9 +716,7 @@ def new_outcome(spec) -> dict:
     return outcome(lambda: drive_new(spec))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -846,9 +838,7 @@ def test_a_not_a_number_elapsed_time_stops_the_splash_painting():
     assert old_outcome(BY_NAME["glow_middle"])["outcome"] == "answered"
 
 
-# ---------------------------------------------------------------------
 # Step sequences, including ones that refuse part way
-# ---------------------------------------------------------------------
 
 STEP_SEQUENCES = [
     ("ticks_only", ("tick", "tick", "tick"), None),
@@ -957,9 +947,7 @@ def test_a_click_jumps_the_clock_to_the_start_of_the_fade_out():
     assert differences(old, new) == []
 
 
-# ---------------------------------------------------------------------
 # The enumeration
-# ---------------------------------------------------------------------
 
 
 def parsed(path):
@@ -1232,9 +1220,7 @@ def test_the_shipped_easing_helper_is_called_nowhere():
     assert "_t" in body.co_names
 
 
-# ---------------------------------------------------------------------
 # Completeness
-# ---------------------------------------------------------------------
 
 
 def surface_constants() -> dict:
@@ -1508,9 +1494,7 @@ def test_the_surface_grew_no_name_the_file_does_not_declare():
     assert module_level_names(ENTRY_SOURCE) - on_file, "the name reader reports nothing"
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 PICTURE_FRAMES = ("fadein_middle", "glow_middle", "fadeout_middle")
 
@@ -1724,9 +1708,7 @@ def test_the_values_no_picture_carries_are_read_off_both_sides():
     assert drive_old(BY_NAME["fadein_middle"])["phase"] == surface.FADEIN
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):
@@ -1782,9 +1764,7 @@ def test_the_bridge_answer_is_json_serialisable():
     assert encoded["result"]["method"] == surface.METHOD
 
 
-# ---------------------------------------------------------------------
 # Nothing at import, and no Qt behind the bridge
-# ---------------------------------------------------------------------
 
 BRIDGE_PROBE = (
     "import json, sys\n"
@@ -1958,9 +1938,7 @@ def test_the_surface_imports_no_qt_and_reaches_for_nothing():
     assert "sin" in reached, "the attribute reader reports nothing"
 
 
-# ---------------------------------------------------------------------
 # Shared state
-# ---------------------------------------------------------------------
 
 
 def test_the_qpen_swap_is_in_place_during_a_drive_and_gone_after():
@@ -2063,9 +2041,7 @@ def test_a_drive_writes_no_file_under_a_throwaway_home(tmp_path):
     ), "the home watcher reports nothing whatever lands there"
 
 
-# ---------------------------------------------------------------------
 # What the splash reads out of stored state
-# ---------------------------------------------------------------------
 
 BARE_READINGS = (
     True,
@@ -2138,9 +2114,7 @@ def test_the_bare_reading_audit_covers_both_answers_and_refusals():
     assert "refused" in verdicts.values(), verdicts
 
 
-# ---------------------------------------------------------------------
 # What the bootstrap reads out of stored settings
-# ---------------------------------------------------------------------
 
 BOOTSTRAP_SETTINGS_KEYS = ("theme", "username", "app_version")
 

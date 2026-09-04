@@ -121,9 +121,7 @@ def _book(bot):
     return sum(float(l["units"]) for l in bot._main_lots)
 
 
-# ---------------------------------------------------------------------
 # The live defect
-# ---------------------------------------------------------------------
 
 
 class TestTheBillDefect:
@@ -175,9 +173,7 @@ class TestTheBillDefect:
         assert "Preserving internal state" not in joined
 
 
-# ---------------------------------------------------------------------
 # What must still be refused — the 2026-07-27 protection
-# ---------------------------------------------------------------------
 
 
 class TestTheOperatorsCoinIsStillSafe:
@@ -214,9 +210,7 @@ class TestTheOperatorsCoinIsStillSafe:
         assert "Personal hold" in joined
 
 
-# ---------------------------------------------------------------------
 # No regression on the arm this repair does not touch
-# ---------------------------------------------------------------------
 
 
 class TestDownwardDriftIsUnchanged:
@@ -236,9 +230,7 @@ class TestDownwardDriftIsUnchanged:
         assert len(bot._main_lots) == 1
 
 
-# ---------------------------------------------------------------------
 # Falsifier, restated rather than deleted
-# ---------------------------------------------------------------------
 
 
 def test_without_the_adopt_the_book_stayed_behind_the_wallet():

@@ -56,9 +56,7 @@ def container_source() -> str:
     return "\n".join(parts)
 
 
-# ---------------------------------------------------------------------------
 # P1 — active_buy_orders / active_sell_orders populated by exchange refresh
-# ---------------------------------------------------------------------------
 
 
 class TestP1_ActiveOrdersWired:
@@ -100,9 +98,7 @@ class TestP1_ActiveOrdersWired:
         assert "_OS.SELL" in scrumming_source
 
 
-# ---------------------------------------------------------------------------
 # P2 — Unrealised P/L prefers exchange cost basis
-# ---------------------------------------------------------------------------
 
 
 class TestP2_UnrealisedCostBasisFromExchange:
@@ -125,9 +121,7 @@ class TestP2_UnrealisedCostBasisFromExchange:
         assert "_main_lots" in scrumming_source
 
 
-# ---------------------------------------------------------------------------
 # P3 — get_status prefers exchange_trade_count
-# ---------------------------------------------------------------------------
 
 
 class TestP3_GetStatusPrefersExchangeTradeCount:
@@ -147,9 +141,7 @@ class TestP3_GetStatusPrefersExchangeTradeCount:
         assert "self.stats.total_trades" in container_source
 
 
-# ---------------------------------------------------------------------------
 # Regression pin — dataclass fields must still exist
-# ---------------------------------------------------------------------------
 
 
 class TestBotStatsSchema:
@@ -169,9 +161,7 @@ class TestBotStatsSchema:
         assert "exchange_data_fresh_ts: float" in container_source
 
 
-# ---------------------------------------------------------------------------
 # v3.23.25 — market_check_interval retirement (Settings § 1 audit 2026-07-25)
-# ---------------------------------------------------------------------------
 
 
 class TestMarketCheckIntervalRetired:

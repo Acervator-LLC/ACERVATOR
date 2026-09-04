@@ -41,9 +41,7 @@ from src.exchange.ccxt_connector import CCXTConnector  # noqa: E402
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
 
-# --------------------------------------------------------------------
 # The root cause: _parse_order must carry `average`
-# --------------------------------------------------------------------
 class TestParseOrderCarriesTheFillPrice:
     def test_average_is_populated_from_the_payload(self):
         """POSITIVE CONTROL. Everything downstream reads this field."""
@@ -103,9 +101,7 @@ class TestParseOrderCarriesTheFillPrice:
         assert o.average == 0.0 and o.filled == 0.0
 
 
-# --------------------------------------------------------------------
 # _settled_fill
-# --------------------------------------------------------------------
 class _Order:
     def __init__(self, oid="oid-1", filled=0.0, average=0.0):
         self.id = oid

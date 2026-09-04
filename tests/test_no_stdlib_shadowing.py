@@ -127,9 +127,7 @@ def shadowing_packages(root: Path) -> dict[str, str]:
     return found
 
 
-# ---------------------------------------------------------------------------
 # The invariant
-# ---------------------------------------------------------------------------
 
 
 def test_no_stdlib_named_root_directory_is_a_package() -> None:
@@ -160,9 +158,7 @@ def test_the_set_of_stdlib_named_root_directories_is_known() -> None:
     assert stdlib_named_directories(REPO) == KNOWN_STDLIB_NAMED_ROOT_DIRS
 
 
-# ---------------------------------------------------------------------------
 # The positive control — the guard must FIRE, not only stay quiet
-# ---------------------------------------------------------------------------
 
 
 def test_the_guard_fires_on_a_planted_package(tmp_path: Path) -> None:
@@ -201,9 +197,7 @@ def test_the_guard_stays_quiet_on_a_legitimate_package(tmp_path: Path) -> None:
     assert shadowing_packages(tmp_path) == {}
 
 
-# ---------------------------------------------------------------------------
 # End-to-end: the claim itself, under the worst supported conditions
-# ---------------------------------------------------------------------------
 
 
 def test_the_path_finder_finds_no_importable_os_in_the_repository() -> None:

@@ -88,9 +88,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 REPLAY = REPO_ROOT / "src/simulator/fleet/fleet_replay_controller.py"
 MAIN_WINDOW = REPO_ROOT / "src/gui/main_window.py"
 
-# --------------------------------------------------------------------
 # REAL LINES FROM THE OPERATOR'S LIVE HISTORY
-# --------------------------------------------------------------------
 # Copied read-only 2026-08-15 from `~/.acervator_logs/signals/`, one
 # verbatim line per distinct name found in a sample of six generations
 # totalling 587,000 records. Every one predates this unit, so none of

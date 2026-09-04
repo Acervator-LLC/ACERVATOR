@@ -69,9 +69,7 @@ COINBASE = "coinbase"
 KRAKEN = "kraken"
 
 
-# ----------------------------------------------------------------------
 # The books
-# ----------------------------------------------------------------------
 def _scrumming_bot(bot_id: str, target_asset: str, exchange: str):
     """One Scrumming Bot on the manager's books, holding one asset.
 
@@ -120,9 +118,7 @@ def books():
         manager.detach_bus()
 
 
-# ----------------------------------------------------------------------
 # The window, reduced to what the creation path actually touches
-# ----------------------------------------------------------------------
 class _Log:
     def __init__(self):
         self.entries: list[tuple[str, str]] = []
@@ -320,9 +316,7 @@ def _run_wizard_to_registration(monkeypatch, manager, config):
     return window, dialogs
 
 
-# ----------------------------------------------------------------------
 # 1 -- nobody holds it
-# ----------------------------------------------------------------------
 class TestNoHolder:
     def test_creation_is_refused(self, monkeypatch, books):
         manager = books([("scrum-btc", "BTC", COINBASE)])
@@ -418,9 +412,7 @@ class TestNoHolder:
         assert parent is window
 
 
-# ----------------------------------------------------------------------
 # 2 -- two hold it, and that is a different problem
-# ----------------------------------------------------------------------
 class TestTwoHolders:
     HOLDERS = [("scrum-eth-a", "ETH", COINBASE), ("scrum-eth-b", "ETH", COINBASE)]
 
@@ -466,9 +458,7 @@ class TestTwoHolders:
         )
 
 
-# ----------------------------------------------------------------------
 # 3 -- exactly one holder is the whole requirement
-# ----------------------------------------------------------------------
 class TestExactlyOneHolder:
     def test_creation_proceeds(self, monkeypatch, books):
         """POSITIVE CONTROL for every refusal above. If creation could
@@ -491,9 +481,7 @@ class TestExactlyOneHolder:
         )
 
 
-# ----------------------------------------------------------------------
 # 4 -- the holder must be on the same exchange
-# ----------------------------------------------------------------------
 class TestExchangeBound:
     """4a and 4b are one pair. They differ in the holder's exchange and
     in nothing else, so 4b refusing can only be the exchange."""
@@ -521,9 +509,7 @@ class TestExchangeBound:
         )
 
 
-# ----------------------------------------------------------------------
 # 5 -- the asset is matched loosely, exactly as the lookup matches it
-# ----------------------------------------------------------------------
 class TestAssetMatching:
     @pytest.mark.parametrize(
         "held,asked",
@@ -558,9 +544,7 @@ class TestAssetMatching:
         assert reached is False
 
 
-# ----------------------------------------------------------------------
 # 6 -- an unavailable roster is not a satisfied requirement
-# ----------------------------------------------------------------------
 class TestNoRoster:
     def test_creation_is_refused_when_there_is_no_bot_manager(self):
         """A requirement that cannot be checked has not been met.
@@ -573,9 +557,7 @@ class TestNoRoster:
         assert "roster is not available" in reason
 
 
-# ----------------------------------------------------------------------
 # 7 -- THE LOAD-BEARING TEST: restore still tolerates a missing parent
-# ----------------------------------------------------------------------
 class TestRestoreStillTolerates:
     """If this fails, the item has done real harm.
 

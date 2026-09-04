@@ -67,9 +67,7 @@ PRE_CHAIN_REFUSALS = {
 }
 
 
-# --------------------------------------------------------------------------
 # The instrument
-# --------------------------------------------------------------------------
 
 
 def _read_source() -> str:
@@ -206,9 +204,7 @@ def _refusals_that_do_not_protect(source: str) -> list[str]:
     return problems
 
 
-# --------------------------------------------------------------------------
 # The planted defects. Each is the exact defect its check exists to catch.
-# --------------------------------------------------------------------------
 
 
 def _plant_hoisted_spend(source: str) -> str:
@@ -247,9 +243,7 @@ def _plant_order_in(source: str, method_name: str) -> str:
     return head + marker + tail[:body_start] + injected + tail[body_start:]
 
 
-# --------------------------------------------------------------------------
 # Stage two sits under the chain verdict
-# --------------------------------------------------------------------------
 
 
 class TestTheSpendIsGated:
@@ -381,9 +375,7 @@ class TestStageOneIsDeliberatelyUngated:
             )
 
 
-# --------------------------------------------------------------------------
 # What this change must NOT have touched
-# --------------------------------------------------------------------------
 
 
 class TestFoldSideGatingUnchanged:

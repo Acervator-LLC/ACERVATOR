@@ -83,9 +83,7 @@ NOT_A_NUMBER = float("nan")
 HELD: list = []
 
 
-# ---------------------------------------------------------------------
 # The fleet statuses both sides read
-# ---------------------------------------------------------------------
 
 
 def status(**over):
@@ -304,9 +302,7 @@ COMPARED_BUTTON_KEYS = (
 )
 
 
-# ---------------------------------------------------------------------
 # The two shared registers the drive touches, each put back after
-# ---------------------------------------------------------------------
 
 
 class NoAssetManager:
@@ -339,9 +335,7 @@ def own_bridge_model():
     surface.PANE_MODEL = original
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -495,9 +489,7 @@ def read_new_model(model):
     }
 
 
-# ---------------------------------------------------------------------
 # Drivers
-# ---------------------------------------------------------------------
 
 
 def old_table(clicks=None):
@@ -575,9 +567,7 @@ def new_steps(name):
     }
 
 
-# ---------------------------------------------------------------------
 # Side by side
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
@@ -634,9 +624,7 @@ def test_one_case_hashes_the_same_twice():
     )
 
 
-# ---------------------------------------------------------------------
 # Answered or refused
-# ---------------------------------------------------------------------
 
 
 REFUSED_CASES = {
@@ -720,9 +708,7 @@ def test_a_refused_row_carries_no_highlight_on_either_side():
     assert new.selected_item_count == 0
 
 
-# ---------------------------------------------------------------------
 # What the two sides do, value by value
-# ---------------------------------------------------------------------
 
 
 def test_the_headers_and_their_tooltips_are_the_shipped_tables():
@@ -1286,9 +1272,7 @@ def test_the_table_takes_the_parent_the_caller_gives_it():
     assert old_table().parent() is None
 
 
-# ---------------------------------------------------------------------
 # The window the table paints
-# ---------------------------------------------------------------------
 
 
 def sealed_payload(name):
@@ -1471,9 +1455,7 @@ def real_table_with_name(bot_id):
     return table
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 BLIND_TO_THE_PICTURE = {
@@ -1532,9 +1514,7 @@ def test_the_accessible_name_is_compared_as_a_string():
     assert shipped.EXTRACTOR_COLUMNS.accessible_name == surface.ACCESSIBLE_NAME
 
 
-# ---------------------------------------------------------------------
 # The counterpart map
-# ---------------------------------------------------------------------
 
 
 CLASS_MAP = {"ExtractorBotTable": "ExtractorBotTableModel"}
@@ -1904,9 +1884,7 @@ def test_the_surface_file_carries_no_carriage_return():
     assert SURFACE_PATH.read_bytes().count(b"\n") > 0
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def normalise(value):
@@ -2187,9 +2165,7 @@ def test_the_key_check_reports_a_key_backed_by_the_wrong_value():
     assert not backed("has_parent", True, ("model.parent",), model)
 
 
-# ---------------------------------------------------------------------
 # The values are the surface's own, not the shipped table's
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_table():
@@ -2294,9 +2270,7 @@ def test_the_surface_never_reads_the_shipped_module():
     assert "design_system" in named
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def call_bridge(params):
@@ -2395,9 +2369,7 @@ def test_the_bridge_import_list_stays_in_order():
     assert "extractor_bot_table_surface" in named
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

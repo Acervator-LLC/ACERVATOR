@@ -139,9 +139,7 @@ def loaded(js: JsRuntime) -> JsRuntime:
     return js
 
 
-# ---------------------------------------------------------------------
 # What the module holds
-# ---------------------------------------------------------------------
 
 
 def test_the_module_defines_its_globals(js: JsRuntime):
@@ -229,9 +227,7 @@ def test_a_row_name_the_answer_never_carried_requires_nothing(loaded: JsRuntime)
     assert loaded.called("rowDefaults", "NoSuchRow") == {}
 
 
-# ---------------------------------------------------------------------
 # The queue, the worker and the save
-# ---------------------------------------------------------------------
 
 
 def test_a_waiting_request_is_reported_on_the_queue(js: JsRuntime):
@@ -368,9 +364,7 @@ def test_the_summary_moves_when_the_bridge_state_moves(js: JsRuntime):
     assert waiting != done
 
 
-# ---------------------------------------------------------------------
 # The module writes no value of its own
-# ---------------------------------------------------------------------
 
 
 def test_the_module_writes_no_number():
@@ -483,9 +477,7 @@ def test_the_order_reading_answers_no_for_the_two_the_other_way_round():
     assert not runs_after([LOADER], MODULE_PATH.name, LOADER)
 
 
-# ---------------------------------------------------------------------
 # The module inside the real renderer page
-# ---------------------------------------------------------------------
 
 
 class Browser:

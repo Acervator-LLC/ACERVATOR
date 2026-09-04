@@ -87,10 +87,8 @@ WIDGETS_HELD: list = []
 BOXES_HELD: list = []
 
 
-# ---------------------------------------------------------------------
 # The shipped window reaches the process-wide event bus and the modal
 # warning box. Every drive is given its own of each.
-# ---------------------------------------------------------------------
 
 
 class RecordingBus:
@@ -294,9 +292,7 @@ class Bot:
             raise RuntimeError("engine down")
 
 
-# ---------------------------------------------------------------------
 # The case tables both sides are driven with
-# ---------------------------------------------------------------------
 
 LOG_CASES: dict = {
     "buy": {"message": "BUY 1 BTC at 100"},
@@ -505,9 +501,7 @@ WORKER_CASES: dict = {
 WORKER_REFUSING = ("config_refuses", "bot_refuses_to_build")
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def numbered(value):
@@ -592,9 +586,7 @@ def event(topic, data):
     return types.SimpleNamespace(topic=topic, data=data)
 
 
-# ---------------------------------------------------------------------
 # Building each side
-# ---------------------------------------------------------------------
 
 
 def old_window_and_boxes(monkeypatch, bus, warnings, threads):
@@ -728,9 +720,7 @@ def read_new_pane(found):
     }
 
 
-# ---------------------------------------------------------------------
 # Driving both sides through the same steps
-# ---------------------------------------------------------------------
 
 
 def old_steps(window, steps):
@@ -923,9 +913,7 @@ def both_sides_agree(run, note):
     )
 
 
-# ---------------------------------------------------------------------
 # The two sides, case by case
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(LOG_CASES))
@@ -1078,9 +1066,7 @@ def test_the_machine_rule_keeps_a_seeded_value_and_hides_a_chosen_one():
     )
 
 
-# ---------------------------------------------------------------------
 # What each side DID: answered, or refused with which type
-# ---------------------------------------------------------------------
 
 
 def refusals(outcome):
@@ -1179,9 +1165,7 @@ def test_a_sequence_that_refuses_part_way_leaves_the_same_text(monkeypatch):
     assert digest(run["old"]) != digest(clean["old"])
 
 
-# ---------------------------------------------------------------------
 # The worker thread
-# ---------------------------------------------------------------------
 
 
 class OldExchange:
@@ -1454,9 +1438,7 @@ def test_the_config_the_worker_builds_carries_the_chosen_pair(monkeypatch):
     ]
 
 
-# ---------------------------------------------------------------------
 # STOP
-# ---------------------------------------------------------------------
 
 
 def test_the_stop_button_asks_the_bot_to_stop_on_both_sides(monkeypatch):
@@ -1594,9 +1576,7 @@ def test_a_way_off_a_topic_that_refuses_is_swallowed_on_both_sides(monkeypatch):
     assert surface.UNSUBSCRIBE_FAILED in [call[0] for call in model.calls]
 
 
-# ---------------------------------------------------------------------
 # The configuration group the shipped window drops
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_window_drops_its_whole_configuration_group(monkeypatch):
@@ -1674,9 +1654,7 @@ def test_the_surface_names_every_item_that_reaches_the_window(monkeypatch):
     assert set(surface.LIVE_ITEM_NAMES) & set(surface.DROPPED_ITEM_NAMES) == set()
 
 
-# ---------------------------------------------------------------------
 # Counting what the shipped file wires, waits on, and builds
-# ---------------------------------------------------------------------
 
 WIDGET_NAMES_BUILT = (
     "QWidget",
@@ -1898,9 +1876,7 @@ def test_the_class_counter_finds_a_class_declared_inside_a_method():
     assert declared_classes(WINDOW_PATH) == {"LiteLiveBotWindow"}
 
 
-# ---------------------------------------------------------------------
 # Every class and every method has a counterpart
-# ---------------------------------------------------------------------
 
 
 def members(owner):
@@ -2182,9 +2158,7 @@ def test_the_surface_is_reached_by_the_bridge():
     assert len(known) > 5, known
 
 
-# ---------------------------------------------------------------------
 # The surface holds its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file(monkeypatch):
@@ -2232,9 +2206,7 @@ def test_the_shipped_file_is_not_named_by_the_surface():
     assert not any("ccxt_connector" in name for name in imported), imported
 
 
-# ---------------------------------------------------------------------
 # The window paints, and the two sides paint the same pixels
-# ---------------------------------------------------------------------
 
 PICTURE_STEPS = {
     "at_rest": [],
@@ -2512,9 +2484,7 @@ def test_with_a_font_database_the_letters_advance_apart():
     assert app_font_advance_px(WIDE_LABEL) > app_font_advance_px(NARROW_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 def test_the_pane_look_is_compared_as_a_string(monkeypatch):
@@ -2716,9 +2686,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
         assert callable(globals()[covered_by]), covered_by
 
 
-# ---------------------------------------------------------------------
 # The surface writes under the logger it names
-# ---------------------------------------------------------------------
 
 
 def warnings_from(logger_name, run, level=logging.WARNING):
@@ -2779,9 +2747,7 @@ def test_the_surface_writes_under_the_logger_it_names():
     assert shipped.logger.name == surface.LOGGER_NAME
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def freeze(value):
@@ -3233,9 +3199,7 @@ def test_the_key_check_reports_a_key_backed_by_the_wrong_value():
     assert not backed("subscriptions_held", 4, ("model.unsubs",), model)
 
 
-# ---------------------------------------------------------------------
 # What each side keeps between windows
-# ---------------------------------------------------------------------
 
 
 def drive_one_window(name):
@@ -3322,9 +3286,7 @@ def test_the_surface_keeps_no_value_between_two_windows():
     )
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -3454,9 +3416,7 @@ def test_the_bridge_drives_every_step_the_window_takes():
     ask({"reset": True})
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

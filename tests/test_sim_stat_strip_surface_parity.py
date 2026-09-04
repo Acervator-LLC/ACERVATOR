@@ -133,9 +133,7 @@ def differing_paths(old, new, prefix: str = "") -> list:
     return [] if old == new else [prefix.rstrip(".")]
 
 
-# ---------------------------------------------------------------------
 # The inputs. One table of step sequences drives both sides.
-# ---------------------------------------------------------------------
 
 LONG_TEXT = "L" * 200
 MARKUP_TEXT = '<b onclick="x">bold &amp; "quoted"</b>'
@@ -234,9 +232,7 @@ SHARED_REFUSALS = ("the_field_is_not_hashable",)
 REFUSING_SCENARIOS = tuple(sorted(LIBRARY_REFUSALS + SHARED_REFUSALS))
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def drive_old(name):
@@ -264,9 +260,7 @@ def drive_new(name):
     return model
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def field_from_qt(cell_widget) -> str:
@@ -374,9 +368,7 @@ def new_outcome(name) -> dict:
     return outcome(lambda: surface_trace(surface.build_view_model(drive_new(name))))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -576,9 +568,7 @@ def test_the_outer_spacing_is_not_the_spacing_a_fresh_layout_already_has():
     assert old["cells"][0]["margins_px"] == list(surface.CELL_MARGINS_PX)
 
 
-# ---------------------------------------------------------------------
 # The enumeration: connect sites, classes, methods, timers, bus topics
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -760,9 +750,7 @@ def test_the_method_reader_counts_no_signal_as_a_method():
         surface_counterpart("InventedModel")
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 def named_payloads() -> dict:
@@ -961,9 +949,7 @@ def test_every_branch_marker_fires_and_ties_to_what_the_operator_sees():
     assert wiped.cells["Errors"]["text"] == PLACEHOLDER
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_placeholder_moved_in_the_strip(monkeypatch):
@@ -1002,9 +988,7 @@ def test_the_surface_does_not_follow_a_field_list_moved_in_the_strip(monkeypatch
     assert qt_trace(drive_old("built_only")) == before
 
 
-# ---------------------------------------------------------------------
 # The colours
-# ---------------------------------------------------------------------
 
 
 def canonical(colour) -> str:
@@ -1035,9 +1019,7 @@ def test_the_value_colour_is_compared_as_text_because_its_channels_are_equal():
     assert surface.LABEL_COLOUR != surface.VALUE_COLOUR
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 FRAME_SHAPES = {"NoFrame": 0}
 
@@ -1196,9 +1178,7 @@ def test_two_values_of_one_length_are_compared_as_text_whatever_the_fonts():
     assert moved == ["cells.4.text"], moved
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_values_no_picture_carries_are_read_off_both_sides():
@@ -1267,9 +1247,7 @@ def test_the_two_skins_select_no_class_so_a_rebuilt_cell_keeps_them():
     assert surface.VALUE_STYLE.startswith("color:")
 
 
-# ---------------------------------------------------------------------
 # Shared state and run order
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_strip_writes_no_shared_table():
@@ -1312,9 +1290,7 @@ def test_two_models_share_no_cells():
     assert one["cells"][0] is not other["cells"][0]
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):

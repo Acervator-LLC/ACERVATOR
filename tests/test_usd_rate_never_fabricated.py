@@ -78,9 +78,7 @@ def _manager(answer: Any) -> BotManager:
     return mgr
 
 
-# ---------------------------------------------------------------------
 # The whole set of ways the question can be answered.
-# ---------------------------------------------------------------------
 
 
 def test_rate_available_is_returned_unchanged() -> None:
@@ -125,9 +123,7 @@ def test_failing_rows_are_not_confusable_with_a_dollar_coin() -> None:
     assert mgr._usd_per_base_for("coinbase", "BTC") is None
 
 
-# ---------------------------------------------------------------------
 # What the two callers do with the answer.
-# ---------------------------------------------------------------------
 
 
 def _bot(bot_id: str = "bot-1") -> Any:

@@ -64,9 +64,7 @@ SKIN_CONTROL_RULE = (
 )
 
 
-# ---------------------------------------------------------------------
 # Comparing two answers
-# ---------------------------------------------------------------------
 
 
 def canonical(value):
@@ -122,9 +120,7 @@ def call(fn, args) -> Answer:
         return Answer(refusal=type(exc).__name__)
 
 
-# ---------------------------------------------------------------------
 # The cases both sides are driven with
-# ---------------------------------------------------------------------
 
 
 class RefusingTranche(dict):
@@ -438,9 +434,7 @@ def drive_both(step, args):
 COMPARED = sorted(name for name, (step, _) in CASES.items() if shipped_side(step))
 
 
-# ---------------------------------------------------------------------
 # The two sides answer alike
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", COMPARED)
@@ -521,9 +515,7 @@ def test_the_case_set_drives_every_refusal_the_panel_can_reach():
     assert all(refused.values()), refused
 
 
-# ---------------------------------------------------------------------
 # The comparison can report
-# ---------------------------------------------------------------------
 
 
 TWO_REAL_INPUTS = [
@@ -604,9 +596,7 @@ def test_the_refusal_recorder_keeps_the_type_and_not_the_wording():
     assert refused.digest != answered.digest
 
 
-# ---------------------------------------------------------------------
 # The five steps the shipped side reaches another way
-# ---------------------------------------------------------------------
 
 
 def test_the_admission_rule_matches_the_one_the_panel_imports():
@@ -660,9 +650,7 @@ def test_the_row_border_map_matches():
     assert len(surface.TRANCHE_ROW_BORDER_BY_BG) == 2
 
 
-# ---------------------------------------------------------------------
 # Step sequences, and one that refuses part way
-# ---------------------------------------------------------------------
 
 
 GOOD_SEQUENCE = [
@@ -793,9 +781,7 @@ def test_a_model_reused_after_a_refusal_still_holds_its_earlier_records():
     ]
 
 
-# ---------------------------------------------------------------------
 # The three helpers that read a live widget
-# ---------------------------------------------------------------------
 
 
 _alive: list = []
@@ -973,9 +959,7 @@ def test_the_health_row_edits_only_what_it_is_handed():
     assert value.toolTip() == "a tooltip"
 
 
-# ---------------------------------------------------------------------
 # Enumeration: what each side holds
-# ---------------------------------------------------------------------
 
 
 def parsed(path):
@@ -1420,9 +1404,7 @@ def test_the_row_age_takes_the_current_time_as_an_argument():
     assert shipped._compose_extractor_tranche_cells(EXTRACTOR_ROW, 90000.0) == first
 
 
-# ---------------------------------------------------------------------
 # Completeness: every exported value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 # A value the snapshot does not carry, named with the test that covers it.
@@ -1543,9 +1525,7 @@ def test_the_case_table_is_driven_and_holds_no_case_it_never_runs():
         assert CASES[name][0] in STEPS_DRIVEN_ELSEWHERE, name
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 SHARED_TOKENS = {
@@ -1677,9 +1657,7 @@ def test_the_shared_token_check_reports_a_value_that_moved():
         assert hasattr(surface, name), name
 
 
-# ---------------------------------------------------------------------
 # Nothing is edited that was not handed over
-# ---------------------------------------------------------------------
 
 
 MUTATION_CASES = [
@@ -1722,9 +1700,7 @@ def test_a_refusing_run_edits_nothing_either(step, args):
     assert canonical(given) == before
 
 
-# ---------------------------------------------------------------------
 # Order independence and process-wide state
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_keeps_no_state_between_two_requests():
@@ -1815,9 +1791,7 @@ def test_the_shipped_module_holds_no_value_a_run_can_change():
     ] == []
 
 
-# ---------------------------------------------------------------------
 # The bridge, with no Qt in the process
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params):
@@ -2024,9 +1998,7 @@ def test_the_connection_counter_reaches_the_child_process(tmp_path):
     assert json.loads(counter.read_text(encoding="utf-8")) == 1
 
 
-# ---------------------------------------------------------------------
 # Pictures: the two sides paint one table
-# ---------------------------------------------------------------------
 
 
 ROW_CASES = {
@@ -2229,9 +2201,7 @@ def test_a_narrow_label_is_narrower_than_a_wide_one_with_real_fonts():
     assert app_font_advance_px(NARROW_LABEL) < app_font_advance_px(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # The shipped defect this conversion reproduces rather than corrects
-# ---------------------------------------------------------------------
 
 
 UNGUARDED_UNITS_SHAPES = [

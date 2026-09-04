@@ -257,11 +257,9 @@ class TestSWOSFormula:
         ), f"1 % floor must snap sub-1 % results to 0, got {pct_tiny}"
 
 
-# ------------------------------------------------------------------
 # v3.23.65 — integration tests exercise the SmartWireManager call
 # path: get_swos_inputs → compute_safe_outflow_pct → divide by N
 # outbound wires → min(raw_pct, per_wire_safe_pct).
-# ------------------------------------------------------------------
 
 from unittest.mock import MagicMock  # noqa: E402
 

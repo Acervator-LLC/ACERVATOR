@@ -75,9 +75,7 @@ def _sample_tickers():
     }
 
 
-# -----------------------------------------------------------------
 # ingest_tickers
-# -----------------------------------------------------------------
 
 
 class TestIngest:
@@ -120,9 +118,7 @@ class TestIngest:
         assert pair.last == pytest.approx(0.000012)
 
 
-# -----------------------------------------------------------------
 # pairs_for / quote_currencies_for / get_pair / has_pair
-# -----------------------------------------------------------------
 
 
 class TestQueryAPI:
@@ -175,9 +171,7 @@ class TestQueryAPI:
             )
 
 
-# -----------------------------------------------------------------
 # PairSnapshot properties + usd_per_base helper
-# -----------------------------------------------------------------
 
 
 class TestPairSnapshot:
@@ -226,9 +220,7 @@ class TestPairSnapshot:
         assert p.usd_per_base(btc_usd=0, eth_usd=3000) == 0.0
 
 
-# -----------------------------------------------------------------
 # refresh_from_connectors
-# -----------------------------------------------------------------
 
 
 class _StubConn:
@@ -299,9 +291,7 @@ class TestRefresh:
         assert _run(s.refresh_from_connectors({})) == {}
 
 
-# -----------------------------------------------------------------
 # Module singleton
-# -----------------------------------------------------------------
 
 
 class TestSingleton:
@@ -324,9 +314,7 @@ class TestSingleton:
         assert DEFAULT_REFRESH_SECONDS == 10.0
 
 
-# -----------------------------------------------------------------
 # ScrummingBot wiring
-# -----------------------------------------------------------------
 
 
 class TestScrummingBotWiring:

@@ -181,11 +181,9 @@ def refuse_outside_connections(monkeypatch):
     yield attempted
 
 
-# ---------------------------------------------------------------------
 # The fleet, as the platform saves it and restores it. Both sides are
 # handed the SAME stored rows and each loads them with its own
 # stand-in. Neither side reads the other's.
-# ---------------------------------------------------------------------
 
 
 class QtLedger:
@@ -279,11 +277,9 @@ def host_class():
     return Host
 
 
-# ---------------------------------------------------------------------
 # The stored fleet. One topology, saved in the shape export_wires and
 # export_ledgers write, and every scenario is that topology with one
 # stored value replaced.
-# ---------------------------------------------------------------------
 
 
 LONG_TEXT = "L" * 200
@@ -669,9 +665,7 @@ REFUSING_NAMES = [spec["name"] for spec in REFUSING_SCENARIOS]
 UNREADABLE_NAMES = [spec["name"] for spec in UNREADABLE_SCENARIOS]
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 class FrozenClock:
@@ -721,10 +715,8 @@ def build_surface(spec):
     return model
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides. Neither reader touches a style, a palette, a
 # brush or a property on a live object: the skin is proved by rendering.
-# ---------------------------------------------------------------------
 
 
 def group_boxes(tab):
@@ -1003,9 +995,7 @@ def traced_qt(spec, monkeypatch):
     return trace
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -1105,9 +1095,7 @@ def test_every_scenario_name_is_driven():
     assert set(UNREADABLE_READERS) == set(UNREADABLE_NAMES)
 
 
-# ---------------------------------------------------------------------
 # The steps, including the ones that refuse part way
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", REFUSING_NAMES)
@@ -1232,9 +1220,7 @@ def test_a_second_build_inherits_nothing_from_the_first():
     assert model.state.calls.count(surface.STEP_READ_BOT) == 1
 
 
-# ---------------------------------------------------------------------
 # The stored fleet, through the real restore
-# ---------------------------------------------------------------------
 
 
 def test_the_real_restore_accepts_the_stored_topology(record_property):
@@ -1277,9 +1263,7 @@ def test_the_real_restore_reports_what_it_does_with_each_stored_percent(
         assert stored is not None
 
 
-# ---------------------------------------------------------------------
 # The bare-reading audit: every number the tab reads out of stored state
-# ---------------------------------------------------------------------
 
 
 AUDIT_VALUES = {
@@ -1487,9 +1471,7 @@ def test_a_refused_predominant_funder_reads_as_a_seed_funded_bot(monkeypatch):
     assert build_surface(seeded).state.predominant_refused is False
 
 
-# ---------------------------------------------------------------------
 # The enumeration: every item on the shipped side, and where it went
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1924,9 +1906,7 @@ def test_every_state_field_the_model_holds_is_named():
     assert sorted(vars(built.state)) == sorted(MODEL_STATE_FIELDS)
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 PAYLOAD_KEYS = {
@@ -2229,9 +2209,7 @@ def test_the_export_reader_reports_a_name_only_one_form_declares():
     assert "METHOD" in surface_constants()
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 class MovedTokens:
@@ -2462,9 +2440,7 @@ def test_the_clock_counter_reports_a_read():
     assert clock.asked == 1
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def model_payload(spec):
@@ -2723,9 +2699,7 @@ def test_two_equal_length_rows_measure_apart_with_fonts():
     assert app_font_advance_px(NARROW_LABEL) != app_font_advance_px(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_values_no_picture_carries_are_read_off_both_sides(monkeypatch):
@@ -2774,9 +2748,7 @@ def test_the_outer_layout_sets_no_margins_on_either_side(monkeypatch):
     assert untouched_spacing != surface.CONTENT_SPACING_PX
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -2867,9 +2839,7 @@ def test_the_bridge_answer_is_json_serialisable():
     assert encoded["result"]["pending_table"]["rows"][0][1] == "BOT-D"
 
 
-# ---------------------------------------------------------------------
 # The surface answers with Qt absent, and reads nothing at import
-# ---------------------------------------------------------------------
 
 
 BRIDGE_PROBE = (
@@ -3114,9 +3084,7 @@ def test_the_import_scan_reports_a_module_the_shipped_file_does_load():
     assert "import time" in TAB_SOURCE.read_text(encoding="utf-8")
 
 
-# ---------------------------------------------------------------------
 # Nothing reaches outside, and nothing is written to the operator's tree
-# ---------------------------------------------------------------------
 
 
 def test_no_driven_case_attempts_a_connection(monkeypatch, refuse_outside_connections):
@@ -3192,9 +3160,7 @@ def test_the_throwaway_home_check_reports_a_file_that_was_written(tmp_path):
     assert sorted(home.rglob("*")) == [home / "seeded.json"]
 
 
-# ---------------------------------------------------------------------
 # The file runs in the CI fast lane
-# ---------------------------------------------------------------------
 
 
 def test_this_file_imports_only_what_the_fast_lane_installs():

@@ -87,9 +87,7 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The inputs
-# ---------------------------------------------------------------------
 
 LONG_TEXT = "L" * 200
 MARKUP_TEXT = '<b onclick="x">bold &amp; "quoted"</b>'
@@ -264,9 +262,7 @@ SPECS["a_clear_that_removed_nothing"] = spec(
 SPECS["asking_live"] = spec(ticks="every_bot_both_ways")
 
 
-# ---------------------------------------------------------------------
 # The shipped side, driven through a stand-in for every outward edge
-# ---------------------------------------------------------------------
 
 
 class ScrollStandIn:
@@ -813,9 +809,7 @@ def new_trace(spec_name):
     }
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(SPECS))
@@ -912,9 +906,7 @@ def test_a_question_that_cannot_be_put_ends_disconnect_all_the_same_way():
     assert canonical(old["tab"]) == canonical(new["tab"])
 
 
-# ---------------------------------------------------------------------
 # The enumeration
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1233,9 +1225,7 @@ def test_the_counters_read_the_parsed_file_and_not_its_prose():
     assert len(connect_sites(scratch)) == 1
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 PAYLOAD_KEYS = {
     "LIST_SURFACE": "colors.list_surface",
@@ -1481,9 +1471,7 @@ def test_the_completeness_check_can_report_a_missing_value():
         at_path(payload, "colors.names.99")
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -1614,9 +1602,7 @@ def test_the_column_stand_in_refuses_a_call_it_does_not_answer():
         column.setStyleSheet("x")
 
 
-# ---------------------------------------------------------------------
 # The colours, read as values
-# ---------------------------------------------------------------------
 
 
 def test_every_declared_colour_matches_the_shipped_token():
@@ -1653,9 +1639,7 @@ def test_a_colour_with_two_equal_channels_is_compared_as_numbers():
         assert len(set(one)) == 3, (name, one)
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def model_payload(spec_name):
@@ -1872,9 +1856,7 @@ def test_two_row_labels_of_equal_length_measure_different_widths():
     assert app_font_advance_px(NARROW_LABEL) < app_font_advance_px(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # The values no picture carries
-# ---------------------------------------------------------------------
 
 
 def test_the_questions_the_matrix_asks_are_read_off_both_sides():
@@ -1927,9 +1909,7 @@ def test_a_column_that_was_not_scrolled_defers_nothing():
     assert old["deferred_delays"] == [0]
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)

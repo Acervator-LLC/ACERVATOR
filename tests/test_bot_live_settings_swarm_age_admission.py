@@ -326,11 +326,9 @@ def _obj_age(value, monkeypatch, *, omit=False):
     return rows[0][COL_AGE]
 
 
-# ---------------------------------------------------------------------
 # (a) THE TAB BUILDS.
 #     A failure here means a corrupted or hand-edited bot_state.json
 #     stops the Bot Settings dialog from opening for that bot at all.
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("value", REFUSED)
@@ -374,11 +372,9 @@ def test_object_site_one_bad_row_keeps_the_others(monkeypatch):
     assert ages == [DASH, "2.0h"]
 
 
-# ---------------------------------------------------------------------
 # (b) VALID INPUT RENDERS IDENTICALLY.
 #     A failure here means the guard changed a real, readable age —
 #     the fix would be silently rewriting the operator's data.
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("value,expected", ACCEPTED)
@@ -444,11 +440,9 @@ def test_the_other_transaction_cells_are_untouched(monkeypatch):
     assert row == ["2.0h", "OUT →", "bot-child", "$17.2500", "SCRUM_ROUTE"]
 
 
-# ---------------------------------------------------------------------
 # (c) THE REFUSAL USES THE EXISTING BRANCH.
 #     A failure here means the fix invented a new "no value" string,
 #     so the same absence would read two different ways in one tab.
-# ---------------------------------------------------------------------
 
 
 def test_refusal_string_equals_the_absent_timestamp_string(monkeypatch):
@@ -472,13 +466,11 @@ def test_refusal_is_the_dash_the_file_already_used():
     assert len(DASH) == 1
 
 
-# ---------------------------------------------------------------------
 # (d) THE GUARD MUST NOT OPEN THE HOLE IT CLOSES.
 #     A failure here means the guard itself raises on the value it
 #     exists to refuse — `math.isfinite(10 ** 400)` raises
 #     OverflowError, so an isfinite-first guard would be worse than
 #     none at all.
-# ---------------------------------------------------------------------
 
 
 def test_huge_int_does_not_raise_inside_the_guard():
@@ -502,12 +494,10 @@ def test_huge_int_does_not_raise_through_either_tab_site(value, monkeypatch):
     assert _obj_age(value, monkeypatch) == DASH
 
 
-# ---------------------------------------------------------------------
 # THE CALL SITES THEMSELVES.
 #     A failure here means a sixth variant of the admission rule was
 #     written instead of the shipped helper being reused, or a bare
 #     read was reintroduced beside a guarded one.
-# ---------------------------------------------------------------------
 
 
 def _swarm_tab_source():

@@ -164,9 +164,7 @@ def mac_src() -> str:
     return MAC_SPEC.read_text(encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
 # The rules, as functions, so the controls at the bottom can drive them
-# ---------------------------------------------------------------------------
 
 
 def shared_names_imported(src: str) -> set[str]:
@@ -206,9 +204,7 @@ def top_level_imports(path: Path) -> set[str]:
     return names
 
 
-# ---------------------------------------------------------------------------
 # The files exist
-# ---------------------------------------------------------------------------
 
 
 class TestSpecsExist:
@@ -233,9 +229,7 @@ class TestSpecsExist:
         ).is_file(), "build_windows.ps1 missing — BUILD.py runs it."
 
 
-# ---------------------------------------------------------------------------
 # Both specs take the shared content from the shared module
-# ---------------------------------------------------------------------------
 
 
 class TestSpecsUseTheSharedModule:
@@ -281,9 +275,7 @@ class TestSpecsUseTheSharedModule:
         assert imported == {"__future__", "os", "src"}
 
 
-# ---------------------------------------------------------------------------
 # The shared hidden imports
-# ---------------------------------------------------------------------------
 
 
 class TestHiddenImports:
@@ -323,9 +315,7 @@ class TestHiddenImports:
         )
 
 
-# ---------------------------------------------------------------------------
 # The shared excludes
-# ---------------------------------------------------------------------------
 
 
 class TestExcludes:
@@ -338,9 +328,7 @@ class TestExcludes:
         assert len(set(EXCLUDES)) == len(EXCLUDES)
 
 
-# ---------------------------------------------------------------------------
 # The shared version reader
-# ---------------------------------------------------------------------------
 
 
 class TestVersionHelper:
@@ -408,9 +396,7 @@ class TestVersionHelper:
             )
 
 
-# ---------------------------------------------------------------------------
 # The shared datas builder
-# ---------------------------------------------------------------------------
 
 
 class TestGracefulDatas:
@@ -496,9 +482,7 @@ class TestGracefulDatas:
         ), "both variants claimed the same output folder"
 
 
-# ---------------------------------------------------------------------------
 # Entry point
-# ---------------------------------------------------------------------------
 
 
 class TestEntryPoint:
@@ -509,9 +493,7 @@ class TestEntryPoint:
             ), f"{label} spec must build from main.py"
 
 
-# ---------------------------------------------------------------------------
 # Two-sided control — every rule above must be able to report
-# ---------------------------------------------------------------------------
 
 
 class TestTheInstrumentCanFail:

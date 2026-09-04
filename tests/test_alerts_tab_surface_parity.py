@@ -82,9 +82,7 @@ PHONE_NUMBER = "+15551234"
 TABS_HELD: list = []
 
 
-# ---------------------------------------------------------------------
 # The manager both sides read, recording every call it is asked to make
-# ---------------------------------------------------------------------
 
 
 class FakePriority:
@@ -404,9 +402,7 @@ def make_manager(name):
     return FakeManager(**REFRESH_CASES[name])
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def canon_colour(value):
@@ -550,9 +546,7 @@ def new_tab(manager):
     return tab
 
 
-# ---------------------------------------------------------------------
 # Drivers
-# ---------------------------------------------------------------------
 
 
 def old_refresh(name, by_argument=False):
@@ -744,9 +738,7 @@ def new_ack_model(name):
     return model
 
 
-# ---------------------------------------------------------------------
 # Side by side, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(REFRESH_CASES))
@@ -867,9 +859,7 @@ def test_two_genuinely_different_cases_hash_apart():
     assert digest(new_refresh("empty")) == empty
 
 
-# ---------------------------------------------------------------------
 # The paths every case reaches
-# ---------------------------------------------------------------------
 
 
 def test_every_refresh_case_reaches_the_path_it_names():
@@ -937,9 +927,7 @@ def test_every_save_and_acknowledge_case_reaches_the_path_it_names():
     assert set(acked.values()) == set(surface.ACK_PATHS)
 
 
-# ---------------------------------------------------------------------
 # The values behind the two tables
-# ---------------------------------------------------------------------
 
 
 def test_the_unread_line_is_the_shipped_tabs_own():
@@ -1233,9 +1221,7 @@ def test_the_time_column_is_read_the_same_way_on_both_sides():
     assert surface.clock_text(CLOCK_STAMP) != surface.clock_text(BILLION_STAMP)
 
 
-# ---------------------------------------------------------------------
 # The tab the two sides paint
-# ---------------------------------------------------------------------
 
 
 def render_offscreen(widget, size):
@@ -1539,9 +1525,7 @@ def test_with_a_font_database_the_letters_advance_apart():
     assert metrics.horizontalAdvance("WW") > metrics.horizontalAdvance("ii")
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 def test_the_splitter_sizes_are_compared_as_the_request():
@@ -1761,9 +1745,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
     )
 
 
-# ---------------------------------------------------------------------
 # The counterpart map
-# ---------------------------------------------------------------------
 
 
 METHOD_MAP = {
@@ -2157,9 +2139,7 @@ def test_the_widget_tree_is_the_tabs_own():
     assert model.calls[-1] == ["setup.return", 23]
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def normalise(value):
@@ -2479,9 +2459,7 @@ def test_the_key_check_reports_a_key_backed_by_the_wrong_value():
     assert not backed("skin", {"a": "b"}, ("SKIN",), model)
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 BRIDGE_MANAGER = {
@@ -2630,9 +2608,7 @@ def test_the_bridge_keeps_what_was_typed_until_a_reset():
     call({"reset": True})
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

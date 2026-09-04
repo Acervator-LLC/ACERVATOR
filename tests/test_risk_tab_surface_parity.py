@@ -122,9 +122,7 @@ PLATFORM_CHOSEN = ("bar_read_back_value", "splitter_settled_sizes")
 WIDGETS_HELD: list = []
 
 
-# ---------------------------------------------------------------------
 # The risk manager both sides read
-# ---------------------------------------------------------------------
 
 
 class FakeAction:
@@ -660,9 +658,7 @@ def make_manager(name):
     return FakeRiskManager(**REFRESH_CASES[name])
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def canon_colour(value):
@@ -884,9 +880,7 @@ def new_tab(manager):
     return tab
 
 
-# ---------------------------------------------------------------------
 # Drivers
-# ---------------------------------------------------------------------
 
 
 def old_refresh(name, by_argument=False):
@@ -955,9 +949,7 @@ def new_sequence(names):
     return steps
 
 
-# ---------------------------------------------------------------------
 # Side by side, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(REFRESH_CASES))
@@ -1090,9 +1082,7 @@ def test_the_platform_rule_keeps_a_seeded_value_and_hides_the_platforms():
     assert product_only({"splitter_settled_sizes": [1, 2], "a": 1}) == {"a": 1}
 
 
-# ---------------------------------------------------------------------
 # Step sequences
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(SEQUENCE_CASES))
@@ -1159,9 +1149,7 @@ def test_a_sequence_that_refuses_first_still_paints_the_second_step():
     assert product_only(new[1]["state"]) == product_only(old[1]["state"])
 
 
-# ---------------------------------------------------------------------
 # What each side did when it refused
-# ---------------------------------------------------------------------
 
 
 def test_the_outcome_set_holds_both_an_answer_and_a_refusal():
@@ -1203,9 +1191,7 @@ def test_the_refusal_comparison_reports_two_different_wordings():
     assert headline("two\nlines") == "two"
 
 
-# ---------------------------------------------------------------------
 # The values behind the lines, the bars and the tables
-# ---------------------------------------------------------------------
 
 
 def test_the_status_line_is_the_shipped_tabs_own():
@@ -1640,9 +1626,7 @@ def test_the_time_column_is_read_the_same_way_on_both_sides():
     assert surface.TIME_FORMAT == "%H:%M:%S"
 
 
-# ---------------------------------------------------------------------
 # The gauge both sides paint
-# ---------------------------------------------------------------------
 
 
 def painter_steps(sink=None):
@@ -1999,9 +1983,7 @@ def test_a_whole_number_and_a_decimal_reading_draw_the_same_string():
     assert model_shape(new_gauge("whole_number")["painted"]) == whole
 
 
-# ---------------------------------------------------------------------
 # The tab the two sides paint
-# ---------------------------------------------------------------------
 
 
 def render_offscreen(widget, size):
@@ -2418,9 +2400,7 @@ def test_with_a_font_database_the_letters_advance_apart():
     assert app_font_advance_px(WIDE_LABEL) > app_font_advance_px(NARROW_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 def test_the_splitter_sizes_are_compared_as_the_request():
@@ -2684,9 +2664,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
     )
 
 
-# ---------------------------------------------------------------------
 # The counterpart map
-# ---------------------------------------------------------------------
 
 
 CLASS_MAP = {
@@ -2922,9 +2900,7 @@ def test_the_signatures_match_the_shipped_methods():
     )
 
 
-# ---------------------------------------------------------------------
 # The counters, each proved against a file that really carries one
-# ---------------------------------------------------------------------
 
 
 def count_sites(path, needle):
@@ -3215,9 +3191,7 @@ def test_the_surface_loads_no_qt_module():
     assert any(name.startswith("PySide6") for name in tab_imports), tab_imports
 
 
-# ---------------------------------------------------------------------
 # The surface holds its own values
-# ---------------------------------------------------------------------
 
 
 def moved_fields(left, right):
@@ -3266,9 +3240,7 @@ def test_the_moved_field_report_names_nothing_when_nothing_moved():
     assert "rule_rows" in moved_fields(one, other)
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def normalise(value):
@@ -3662,9 +3634,7 @@ def test_every_case_table_is_driven():
     assert len(driven["PICTURE_CASES"]) == 13
 
 
-# ---------------------------------------------------------------------
 # The tab writes nothing outside itself
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_tab_leaves_no_shared_state_changed():
@@ -3699,9 +3669,7 @@ def test_the_bridge_model_is_put_back_by_a_reset():
     assert surface.TAB_MODEL.calls == []
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 BRIDGE_MANAGER = {
@@ -3863,9 +3831,7 @@ def test_a_bad_request_over_the_bridge_becomes_an_error_frame():
     )
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

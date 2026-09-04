@@ -62,9 +62,7 @@ THOUSAND_MILLION = 1_000_000_000.0
 _alive: list = []
 
 
-# ---------------------------------------------------------------------
 # The shipped side, driven through a stub host
-# ---------------------------------------------------------------------
 
 
 class HostConfig:
@@ -223,9 +221,7 @@ def otd_for(spec):
     return [pct, fold_rebuy_factor_from_pct(pct)]
 
 
-# ---------------------------------------------------------------------
 # Reading one side into one snapshot
-# ---------------------------------------------------------------------
 
 
 def reset_stamp(value):
@@ -383,9 +379,7 @@ def digest(body):
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The cases, each driven through both sides
-# ---------------------------------------------------------------------
 
 
 def tranche(**over):
@@ -728,9 +722,7 @@ def new_snapshot(name):
     return read_new_tab(new_model(name))
 
 
-# ---------------------------------------------------------------------
 # Value for value, and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", CASE_NAMES)
@@ -777,9 +769,7 @@ def test_the_same_case_twice_hashes_alike_on_each_side():
     assert first_old == first_new, (first_old, first_new)
 
 
-# ---------------------------------------------------------------------
 # The number columns and the counters, guarded against bare
-# ---------------------------------------------------------------------
 
 REFUSED_SHAPES = {
     "stored_true": True,
@@ -896,9 +886,7 @@ def cells_units(row):
     return surface.extractor_row_cells(row, NOW)[2]
 
 
-# ---------------------------------------------------------------------
 # The step sequences, including ones that refuse part way
-# ---------------------------------------------------------------------
 
 CLEAR_STEPS = {
     "fold_declined": ["fold", surface.NO_BUTTON_VALUE, surface.OUTCOME_DECLINED],
@@ -1195,9 +1183,7 @@ def test_a_refusal_is_told_apart_by_type_and_never_by_wording():
     assert kinds == {"ValueError", "OverflowError", "TypeError", "RuntimeError"}
 
 
-# ---------------------------------------------------------------------
 # The enumeration, counted off the parsed file
-# ---------------------------------------------------------------------
 
 TIMER_BUILDERS = {"QTimer"}
 THREAD_BUILDERS = {"QThread", "Thread"}
@@ -1393,9 +1379,7 @@ def test_the_surface_emits_the_topic_the_tab_emits():
     assert actual["fold_rows"] == expected["fold_rows"] == 0
 
 
-# ---------------------------------------------------------------------
 # Completeness
-# ---------------------------------------------------------------------
 
 
 def freeze(value):
@@ -1606,9 +1590,7 @@ def test_a_value_added_later_fails_rather_than_slipping_through():
     assert "USD_FORMAT" in parsed
 
 
-# ---------------------------------------------------------------------
 # The rest of the surface, against the shipped side
-# ---------------------------------------------------------------------
 
 
 def test_the_admission_rule_agrees_with_the_shipped_one():
@@ -1884,9 +1866,7 @@ def test_the_despawn_threshold_is_the_shipped_rule():
         ), days
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 BRIDGE_BOT = {
     "symbol": "BTC/USD",
@@ -1968,9 +1948,7 @@ def test_the_bridge_carries_every_action():
     bridge_call({"reset": True})
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -2187,9 +2165,7 @@ def test_a_run_under_a_throwaway_home_writes_no_file():
         assert answered["written"] == [str(control)], answered["written"]
 
 
-# ---------------------------------------------------------------------
 # Order independence
-# ---------------------------------------------------------------------
 
 
 def test_the_clock_swap_is_restored_after_a_drive():
@@ -2242,9 +2218,7 @@ def test_two_models_do_not_share_a_state():
     assert surface.PANE_MODEL is not second
 
 
-# ---------------------------------------------------------------------
 # Pictures
-# ---------------------------------------------------------------------
 
 
 def old_payload(name):
@@ -2403,9 +2377,7 @@ def test_with_fonts_two_equal_length_rows_paint_apart():
     assert app_font_advance_px(NARROW_LABEL) < app_font_advance_px(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # This file's own checks
-# ---------------------------------------------------------------------
 
 
 SKIN_READERS = (
