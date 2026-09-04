@@ -69,4 +69,7 @@ window.ACERVATOR_MODULES = [
   "instance_consent_dialog.js",
   "testnet_tab.js",
   "shared_testnet.js",
+  "audio_suite.js",
+  "init_wizard.js",
+  "launcher.js",
 ];

@@ -2925,6 +2925,9 @@ PAYLOAD_KEYS = {
     "MUSIC_TITLE": "music_title",
     "DRONE_TITLE": "drone_title",
     "MUSIC_BUTTON_LABELS": "music_button_labels",
+    "DRONE_BUTTON_LABELS": "drone_button_labels",
+    "KEY_UP_TOOLTIP": "key_up_tooltip",
+    "CONTROL_LABELS": "control_labels",
     "PLAY_LABEL": "play_label",
     "PAUSE_LABEL": "pause_label",
     "NOTHING_PLAYING_TEXT": "nothing_playing_text",
@@ -3132,3 +3135,93 @@ def test_a_key_no_list_holds_is_reported_as_nothing_chosen(tmp_path):
     chosen = run_surface([("select_key", ("A#",))], MEDIA_READY)["state"]
     assert surface.current_key(chosen) == "A#"
     assert surface.current_base_freq(chosen) == 55
+
+
+# ---------------------------------------------------------------------
+# The wording the drone panel shows
+# ---------------------------------------------------------------------
+
+
+def direct_children(widget, kind):
+    """The `kind` widgets `widget` owns itself, in the order it built them."""
+    from PySide6.QtCore import Qt
+
+    return widget.findChildren(
+        kind, options=Qt.FindChildOption.FindDirectChildrenOnly
+    )
+
+
+def shown_texts(widget, kind):
+    """The text on each `kind` widget `widget` owns itself."""
+    return [one.text() for one in direct_children(widget, kind)]
+
+
+def test_the_drone_buttons_carry_the_labels_the_surface_publishes(tmp_path):
+    """A renderer drew a drone button from wording no table holds."""
+    from PySide6.QtWidgets import QPushButton
+
+    app()
+    with side_world(MEDIA_READY, tmp_path / "buttons"):
+        panel = shipped.DroneEnginePanel()
+        try:
+            painted = shown_texts(panel, QPushButton)
+        finally:
+            panel.deleteLater()
+    assert painted == list(surface.DRONE_BUTTON_LABELS), (
+        "the drone panel paints "
+        f"{painted}, the surface publishes {list(surface.DRONE_BUTTON_LABELS)}"
+    )
+
+
+def test_the_key_up_button_carries_the_tooltip_the_surface_publishes(tmp_path):
+    """The one drone button with a tooltip explained itself off-table."""
+    from PySide6.QtWidgets import QPushButton
+
+    app()
+    at = surface.DRONE_BUTTON_LABELS.index(surface.DRONE_BUTTON_LABELS[-1])
+    with side_world(MEDIA_READY, tmp_path / "tooltip"):
+        panel = shipped.DroneEnginePanel()
+        try:
+            buttons = direct_children(panel, QPushButton)
+            painted = [one.toolTip() for one in buttons]
+        finally:
+            panel.deleteLater()
+    assert painted[at] == surface.KEY_UP_TOOLTIP, (
+        f"the key-up button says {painted[at]!r}, "
+        f"the surface publishes {surface.KEY_UP_TOOLTIP!r}"
+    )
+    assert [one for one in painted if one] == [surface.KEY_UP_TOOLTIP], painted
+
+
+def test_every_control_label_the_panels_show_is_one_the_surface_publishes(tmp_path):
+    """A slider or a list was labelled with wording no table holds."""
+    from PySide6.QtWidgets import QLabel
+
+    app()
+    with side_world(MEDIA_READY, tmp_path / "labels"):
+        drone = shipped.DroneEnginePanel()
+        music = shipped.MusicPlayerPanel()
+        try:
+            painted = shown_texts(drone, QLabel) + shown_texts(music, QLabel)
+            painted += shown_texts(drone._layers[0], QLabel)
+        finally:
+            drone.deleteLater()
+            music.deleteLater()
+    published = set(surface.CONTROL_LABELS.values())
+    off_table = [one for one in painted if one.endswith(":") and one not in published]
+    assert off_table == [], (
+        f"{len(off_table)} control labels reach no table: {off_table}. "
+        f"The surface publishes {sorted(published)}"
+    )
+    assert published <= set(painted), sorted(published - set(painted))
+
+
+def test_the_label_check_names_a_control_the_surface_has_no_wording_for():
+    """The check passed because it compared two empty collections."""
+    published = set(surface.CONTROL_LABELS.values())
+    assert published, "the surface publishes no control wording at all"
+    invented = "Nothing:"
+    assert invented not in published
+    painted = list(published) + [invented]
+    off_table = [one for one in painted if one.endswith(":") and one not in published]
+    assert off_table == [invented], off_table
