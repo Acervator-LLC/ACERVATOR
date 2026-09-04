@@ -18,7 +18,7 @@ import pytest
 
 from src.gui import design_system as ds
 from src.gui.main_tabs import console_log_surface as surface
-from src.gui.main_tabs.console_log_handler import _QtLogHandler, _QtLogRelay
+from src.gui.main_tabs.console_log_handler import _QtLogHandler
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -400,13 +400,23 @@ def test_buffer_cap_default_matches_the_handler():
     assert surface.BUFFER_MAX == handler._buffer_max
 
 
-def test_relay_has_exactly_one_connect_site():
-    """A signal connection in the handler has no twin in the surface."""
-    source = _QtLogRelay.__module__
-    import inspect
+def test_one_record_paints_the_pane_once():
+    """``_QtLogRelay.append`` reaches the painter more than once per record."""
+    pane = _FakePane()
+    handler = _QtLogHandler(pane)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    handler.emit(_record("INFO", "one line"))
+    assert [text for text, _r, _g, _b in pane.inserts] == ["one line"]
 
-    text = inspect.getsource(__import__(source, fromlist=["x"]))
-    assert text.count(".connect(") == 1
+
+def test_a_second_connection_paints_the_line_twice():
+    """Positive control: the count above cannot see a doubled connection."""
+    pane = _FakePane()
+    handler = _QtLogHandler(pane)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    handler._relay.append.connect(handler._relay._deliver)
+    handler.emit(_record("INFO", "one line"))
+    assert len(pane.inserts) == 2
 
 
 def test_bad_record_paints_nothing_on_both_sides():

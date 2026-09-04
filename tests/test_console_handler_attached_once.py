@@ -207,6 +207,32 @@ def test_one_record_paints_one_console_line(booted, qapp, name):
     assert paint(qapp, host._console, name, f"attached-once {name}") == 1
 
 
+def test_building_the_tab_leaves_the_root_logger_level_alone(booted, console_handler):
+    """`_build_console_tab` sets its own handler's level, not the root logger's.
+
+    A root logger dropped to DEBUG turns on debug processing for every
+    third-party logger in the process, and for every other root handler.
+    """
+    root = logging.getLogger()
+    assert root.level == logging.INFO, (
+        f"building the Console tab moved the root logger to {root.level}; "
+        f"the boot left it at {logging.INFO}"
+    )
+    assert console_handler.level == logging.DEBUG
+
+
+def test_the_root_level_reading_reports_a_level_that_moved(booted):
+    """Positive control for the root-level assertion above."""
+    root = logging.getLogger()
+    before = root.level
+    root.setLevel(before + 1)
+    try:
+        assert root.level != before
+    finally:
+        root.setLevel(before)
+    assert root.level == before
+
+
 def test_a_message_logged_three_times_paints_three_lines(booted, qapp):
     """Recurrence is not duplication.
 

@@ -31,7 +31,7 @@ TAB_TITLE = "Console"
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 LOG_DATEFMT = "%H:%M:%S"
 HANDLER_LOGGERS = ("", "acervator")
-ROOT_LEVEL = logging.DEBUG
+HANDLER_LEVEL = logging.DEBUG
 
 PANE_MAX_BLOCKS = 2000
 SIGNAL_MAX_BLOCKS = 2000
@@ -217,7 +217,7 @@ LOG_HANDLER = {
     "format": LOG_FORMAT,
     "datefmt": LOG_DATEFMT,
     "loggers": list(HANDLER_LOGGERS),
-    "root_level": ROOT_LEVEL,
+    "handler_level": HANDLER_LEVEL,
 }
 
 FORMATTER = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATEFMT)
