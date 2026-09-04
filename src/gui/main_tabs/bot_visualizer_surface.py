@@ -1652,12 +1652,11 @@ WIRES_CAPTION = "Wires:"
 VIEW_LABELS = ("List", "Grid")
 
 EXCHANGE_TOOLTIP = (
-    "Filter Bot Swarm visualizer + Quick Routing scope by exchange "
-    "(Q4 (c)). Default: All."
+    "Filter Bot Swarm visualizer + Quick Routing scope by exchange. Default: All."
 )
 VIEW_TOOLTIP = (
     "List: dense row-per-bot table with vertical-lane wires "
-    "(default v3.23.61).\nGrid: locust-avatar swarm view (legacy fallback)."
+    "(the default).\nGrid: locust-avatar swarm view (legacy fallback)."
 )
 OPACITY_TOOLTIP = (
     "Wire opacity 0–100 %. Lower for more contrast on underlying "
