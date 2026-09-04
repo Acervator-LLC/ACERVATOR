@@ -1,8 +1,17 @@
-"""The one way a colour in this repository carries transparency."""
+"""The one way a colour in this repository carries transparency.
+
+``rgba`` writes the alpha Qt reads: a byte running to 255. ``css_alpha``,
+``css_rgba`` and ``css_colours`` rewrite that byte as the 0-to-1 share a
+browser reads, so a surface can hand a renderer the same colour without
+the engine painting it opaque.
+"""
 
 from __future__ import annotations
 
-__all__ = ["rgba"]
+import re
+from typing import Any
+
+__all__ = ["css_alpha", "css_colours", "css_rgba", "rgba"]
 
 RGBA_FORMAT = "rgba({red},{green},{blue},{alpha})"
 
@@ -12,6 +21,14 @@ CHANNEL_DIGITS = 2
 HEX_RADIX = 16
 ALPHA_LOWEST = 0
 ALPHA_HIGHEST = 255
+
+CSS_ALPHA_HIGHEST = 1
+CSS_ALPHA_UNIT = 1.0 / ALPHA_HIGHEST
+
+RGBA_CALL = re.compile(r"rgba\(([^()]*)\)")
+RGBA_FIELDS = 4
+ALPHA_AT = 3
+FIELD_SPLIT = ","
 
 
 def rgba(color: str, alpha: int) -> str:
@@ -38,3 +55,58 @@ def rgba(color: str, alpha: int) -> str:
         blue=channels[2],
         alpha=alpha,
     )
+
+
+def css_alpha(alpha: float) -> float:
+    """One Qt alpha byte as the share of full opacity a browser reads."""
+    return alpha * CSS_ALPHA_UNIT
+
+
+def _css_call(found: re.Match) -> str:
+    fields = [part.strip() for part in found.group(1).split(FIELD_SPLIT)]
+    if len(fields) != RGBA_FIELDS:
+        return found.group(0)
+    try:
+        alpha = float(fields[ALPHA_AT])
+    except ValueError:
+        return found.group(0)
+    if alpha <= CSS_ALPHA_HIGHEST:
+        return found.group(0)
+    fields[ALPHA_AT] = repr(css_alpha(alpha))
+    return RGBA_FORMAT.format(
+        red=fields[0],
+        green=fields[1],
+        blue=fields[2],
+        alpha=fields[ALPHA_AT],
+    )
+
+
+def css_rgba(text: str) -> str:
+    """One style value with every Qt alpha byte written as the share CSS reads.
+
+    An alpha of one or less is already a share and is left alone, which
+    is why an all-but-invisible Qt byte of 1 cannot be told from a fully
+    opaque share and stays as it arrived. Everything that is not the
+    fourth field of an ``rgba`` call is carried through untouched, so a
+    Qt-only value such as ``qlineargradient`` keeps its own shape.
+    """
+    return RGBA_CALL.sub(_css_call, text)
+
+
+def css_colours(value: Any) -> Any:
+    """One published view model with every Qt alpha byte rewritten for CSS.
+
+    A surface calls this on the payload it hands the renderer. Every
+    string inside is rewritten by `css_rgba` and every other value is
+    returned as it arrived, so the colours a browser paints from and the
+    colours Qt paints from stay one table with two readings.
+    """
+    if isinstance(value, str):
+        return css_rgba(value)
+    if isinstance(value, dict):
+        return {key: css_colours(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [css_colours(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(css_colours(item) for item in value)
+    return value
