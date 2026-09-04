@@ -1,39 +1,11 @@
-"""
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-privacy_mask_registry.py — per-field privacy mask state (v3.23.7)
-================================================================
+"""Per-field-id privacy mask state.
 
-The Privacy Mask Registry is the single source of truth for which
-on-screen fields are currently masked (rendered as ``****``) versus
-revealed.
-
-Scope (operator-pinned spec v3.23.7 + v3.23.9 Bot Swarm extension):
-  - 19 fields total, broken into 5 groups:
-      • 5 top-bar KPI cards (SPENDABLE/REALISED/LOCKED/MATURE/EXCH)
-      • 5 top-right counter cards (Scrummed/Folded/Trades/Bots/Errors)
-      • 7 Bot table columns (Bot ID/Symbol/Mode/Trades/Target/Ammo/Fire)
-      • 1 IVP bot-selector readout
-      • 1 Bot Swarm identifier field (bot_swarm.identifiers — covers
-        BOTH bot hash IDs AND symbol labels per v3.23.9 Q2 (c); single
-        toggle, single field id, both masked at render time).
-  - TA columns (BB/VTX/MACD/SRsi/Ichi/Vol/Sling/ADX/STrd/ZSc/KER/RSI/
-    Net/Conf) are intentionally NOT registered — they are anonymous in
-    isolation. The TA-leak-guard test pins this constraint.
-
-Persistence:
-  - State is auto-persisted to ``~/.acervator/settings.json`` under the
-    ``privacy_mask.<field_id>`` namespace on every mutation. Survives
-    Qt app restart even on hard crash.
-  - The file format is plain JSON. A missing/corrupt file is treated
-    as "no fields masked" (fresh-start default).
-
-Threading:
-  - Mutations are guarded by a module-level ``RLock``. GUI threads may
-    flip masks freely; persistence runs inside the lock.
-
-Singleton:
-  - ``get_privacy_mask_registry()`` returns the process-wide singleton.
-    Tests that need isolation construct ``PrivacyMaskRegistry`` directly.
+``ALL_FIELD_IDS`` names the 19 screen fields ``mask_or`` may replace with
+``****``; a field_id outside it comes back unmasked. ``set_masked`` and
+``set_all`` write the ``privacy_mask`` key of ``settings_path``, and
+``reload_from_disk`` copies it back. ``get_privacy_mask_registry`` returns the
+process-wide ``PrivacyMaskRegistry`` and every mutation holds ``_lock``.
 """
 
 from __future__ import annotations
@@ -49,12 +21,6 @@ from .io_utils import atomic_write_json
 
 logger = logging.getLogger("acervator.privacy_mask")
 
-# ----------------------------------------------------------------------
-# Canonical field id catalogue
-# ----------------------------------------------------------------------
-# Exactly 18 entries per the operator-pinned spec. Keep these as
-# uppercase string constants so the test suite can introspect them
-# without re-parsing the docstring above.
 KPI_FIELD_IDS = (
     "kpi.spendable",
     "kpi.realised",
@@ -83,9 +49,7 @@ BOT_TABLE_FIELD_IDS = (
 
 IVP_FIELD_IDS = ("ivp.bot_selector",)
 
-# v3.23.9 — Bot Swarm tab additions. Per operator-pinned spec Q2 (c),
-# a SINGLE field id covers BOTH bot hash IDs AND symbol labels in the
-# Bot Swarm visualizer. One red-dot toggle, one field id, masks both.
+# One id covers both the bot hash ids and the symbol labels in the swarm view.
 BOT_SWARM_FIELD_IDS = ("bot_swarm.identifiers",)
 
 ALL_FIELD_IDS = (
@@ -95,17 +59,14 @@ ALL_FIELD_IDS = (
     + IVP_FIELD_IDS
     + BOT_SWARM_FIELD_IDS
 )
-# v3.23.7: 18 canonical fields. v3.23.9: +1 bot_swarm.identifiers → 19.
-PRIVACY_FIELD_IDS = ALL_FIELD_IDS  # canonical alias used by v3.23.9 tests
+PRIVACY_FIELD_IDS = ALL_FIELD_IDS
 if len(ALL_FIELD_IDS) != 19:
     raise RuntimeError(
         "The registry covers exactly 19 fields. "
         "Update the spec and the tests before changing this count."
     )
 
-# TA columns — explicitly EXCLUDED. Listed here so the test suite can
-# pin the leak-guard contract (these field ids must NOT be in the
-# registry's known-key list and ``mask_or`` must short-circuit on them).
+# ``mask_or`` refuses these ids by their absence from ``ALL_FIELD_IDS``.
 TA_FIELD_IDS_EXCLUDED = (
     "ta.bb",
     "ta.vtx",
@@ -124,26 +85,9 @@ TA_FIELD_IDS_EXCLUDED = (
 )
 
 
-# ----------------------------------------------------------------------
-# Persistence path
-# ----------------------------------------------------------------------
 SETTINGS_ROOT_ENV = "ACERVATOR_SETTINGS_ROOT"
-"""Override the directory holding ``settings.json``.
-
-v3.24.42 (C14 family) — the registry auto-persists on every
-``set_masked``, so ANY code that toggles a mask writes to the operator's
-live ``~/.acervator/settings.json``. Tests that exercise privacy
-behaviour therefore mutated the operator's real settings file, which is
-the isolation breach class this project has now shipped three times (the
-sim capital registry, feature telemetry, and this).
-
-Resolved AT CALL TIME, deliberately. ``feature_telemetry`` learned this
-the hard way: it had a working override that bound its path at IMPORT
-time, so anything setting the variable after the module was first
-imported -- which is always, transitively -- wrote to the live tree
-anyway. The override was correct and unreachable. The defect was the
-binding moment, not the lookup.
-"""
+"""``_default_settings_path`` reads this variable on every call and puts
+``settings.json`` under its value in place of the home directory."""
 
 
 def _default_settings_path() -> Path:
@@ -153,20 +97,12 @@ def _default_settings_path() -> Path:
     return Path.home() / ".acervator" / "settings.json"
 
 
-# ----------------------------------------------------------------------
-# Registry class
-# ----------------------------------------------------------------------
 class PrivacyMaskRegistry:
     """Per-field-id boolean store with auto-persistence.
 
-    Unknown field_ids are tolerated by ``is_masked`` (returns ``False``)
-    and ``mask_or`` (returns the original value untouched). This means a
-    typo at a call site silently leaks the value rather than crashing —
-    a conscious choice because Qt repaints must never raise.
-
-    ``set_masked`` records the value even for unknown ids so a wired-up
-    call site that uses a new id starts working without a separate
-    registration step. ``set_all`` only touches the 18 canonical ids.
+    ``is_masked`` answers ``False`` for a field_id it never recorded, and
+    ``set_masked`` records any field_id while only an ``ALL_FIELD_IDS`` member
+    reaches ``mask_or``.
     """
 
     def __init__(self, settings_path: Optional[Path] = None, autosave: bool = True):
@@ -179,17 +115,11 @@ class PrivacyMaskRegistry:
     def settings_path(self) -> Path:
         """The file this registry reads and writes.
 
-        Resolved on every access when the caller named no path, so
-        SETTINGS_ROOT_ENV set AFTER the object exists still binds. A GUI
-        surface builds its module-level model while it is imported, and
-        that model reads the register, so the singleton exists before any
-        test fixture body runs.
+        ``_default_settings_path`` resolves it on every access when
+        ``__init__`` was given no ``settings_path``.
         """
         return self._path_override or _default_settings_path()
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
     def is_masked(self, field_id: str) -> bool:
         with self._lock:
             return bool(self._mask_state.get(field_id, False))
@@ -209,21 +139,22 @@ class PrivacyMaskRegistry:
                 self._persist_unlocked()
 
     def known_field_ids(self) -> tuple[str, ...]:
-        """The 18 canonical ids. Excludes any unknown ids that have
-        been opportunistically set via ``set_masked``."""
+        """The 19 ids in ``ALL_FIELD_IDS``.
+
+        An id added by ``set_masked`` is not among them.
+        """
         return ALL_FIELD_IDS
 
-    # ------------------------------------------------------------------
-    # Snapshot helpers (used by tests + persistence)
-    # ------------------------------------------------------------------
     def to_dict(self) -> dict[str, bool]:
         with self._lock:
             return dict(self._mask_state)
 
     def load_from_dict(self, d: dict) -> None:
-        """Overwrite current state from a snapshot dict. Unknown ids in
-        the snapshot are accepted (forward compatibility); the 18
-        canonical ids default to False if absent."""
+        """Replace ``_mask_state`` from a snapshot dict.
+
+        An ``ALL_FIELD_IDS`` member missing from ``d`` resets to ``False`` and
+        any other key in ``d`` is kept.
+        """
         with self._lock:
             new_state: dict[str, bool] = {fid: False for fid in ALL_FIELD_IDS}
             if isinstance(d, dict):
@@ -233,13 +164,11 @@ class PrivacyMaskRegistry:
             if self._autosave:
                 self._persist_unlocked()
 
-    # ------------------------------------------------------------------
-    # Persistence
-    # ------------------------------------------------------------------
     def _persist_unlocked(self) -> None:
-        """Write current state to settings.json under the
-        ``privacy_mask`` namespace. Never raises — persistence failures
-        are logged but never crash the GUI thread."""
+        """Write ``_mask_state`` into the ``privacy_mask`` key of ``settings_path``.
+
+        Logs and swallows every exception.
+        """
         try:
             payload = self._load_existing_payload()
             namespace = {
@@ -247,7 +176,7 @@ class PrivacyMaskRegistry:
             }
             payload["privacy_mask"] = namespace
             atomic_write_json(self.settings_path, payload, indent=2, sort_keys=True)
-        except Exception as exc:  # R28-OK: persistence best-effort
+        except Exception as exc:
             logger.warning("PrivacyMaskRegistry: persist failed: %s", exc)
 
     def _load_existing_payload(self) -> dict:
@@ -258,7 +187,7 @@ class PrivacyMaskRegistry:
                 data = json.loads(raw) if raw.strip() else {}
                 if isinstance(data, dict):
                     return data
-        except Exception as exc:  # R28-OK: corrupt file → start fresh
+        except Exception as exc:
             logger.warning(
                 "PrivacyMaskRegistry: settings.json unreadable (%s), "
                 "starting fresh.",
@@ -267,9 +196,10 @@ class PrivacyMaskRegistry:
         return {}
 
     def reload_from_disk(self) -> None:
-        """Pull current state from settings.json. Called by the module
-        singleton accessor on first construction so state survives
-        process restarts. Safe to call multiple times."""
+        """Copy the ``privacy_mask`` values in ``settings_path`` over ``_mask_state``.
+
+        A key outside ``ALL_FIELD_IDS`` is ignored.
+        """
         with self._lock:
             payload = self._load_existing_payload()
             namespace = (
@@ -281,19 +211,14 @@ class PrivacyMaskRegistry:
                         self._mask_state[fid] = bool(namespace[fid])
 
 
-# ----------------------------------------------------------------------
-# Module-level singleton
-# ----------------------------------------------------------------------
 _SINGLETON: Optional[PrivacyMaskRegistry] = None
 _SINGLETON_LOCK = threading.Lock()
 
 
 def get_privacy_mask_registry() -> PrivacyMaskRegistry:
-    """Process-wide singleton accessor.
+    """Return the process-wide ``PrivacyMaskRegistry``, building it once.
 
-    On first call the registry pulls any persisted state from
-    ``~/.acervator/settings.json`` so masks survive restart. Subsequent
-    calls return the same instance.
+    The first call runs ``reload_from_disk`` and logs any exception it raises.
     """
     global _SINGLETON
     with _SINGLETON_LOCK:
@@ -301,38 +226,35 @@ def get_privacy_mask_registry() -> PrivacyMaskRegistry:
             reg = PrivacyMaskRegistry()
             try:
                 reg.reload_from_disk()
-            except Exception as exc:  # R28-OK
+            except Exception as exc:
                 logger.warning("PrivacyMaskRegistry: cold-load failed: %s", exc)
             _SINGLETON = reg
         return _SINGLETON
 
 
 def _reset_singleton_for_tests() -> None:
-    """Drops the cached singleton. Intended for unit tests only."""
+    """Clear ``_SINGLETON``.
+
+    The next ``get_privacy_mask_registry`` builds a fresh
+    ``PrivacyMaskRegistry``.
+    """
     global _SINGLETON
     with _SINGLETON_LOCK:
         _SINGLETON = None
 
 
-# ----------------------------------------------------------------------
-# Render helper
-# ----------------------------------------------------------------------
 def mask_or(value, field_id: str, mask: str = "****") -> str:
-    """Return ``mask`` if the field is currently masked, otherwise
-    return ``str(value)``.
+    """Return ``mask`` when ``field_id`` is masked, else ``str(value)``.
 
-    Unknown field_ids short-circuit to ``str(value)`` — this is the
-    TA-leak-guard contract: calls like ``mask_or(x, "ta.bb")`` will
-    NEVER mask, even if a future caller mistakenly tries.
+    A ``field_id`` outside ``ALL_FIELD_IDS`` never masks, which covers every
+    ``TA_FIELD_IDS_EXCLUDED`` entry.
     """
     if field_id not in ALL_FIELD_IDS:
-        # Unknown id — short-circuit, never mask. Pins the TA-leak-guard
-        # invariant: TA column ids cannot be masked through this helper.
         return str(value)
     try:
         reg = get_privacy_mask_registry()
         if reg.is_masked(field_id):
             return mask
-    except Exception as exc:  # R28-OK: never break a Qt repaint on registry error
+    except Exception as exc:
         logger.warning("PrivacyMaskRegistry: mask lookup failed: %s", exc)
     return str(value)
