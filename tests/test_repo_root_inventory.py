@@ -73,6 +73,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # location; they are at the root because moving them costs more than it
 # buys, and the entry says so rather than inventing a requirement.
 
+_HOP_REASON = (
+    "session handoff. tools/hop_check.py globs ACERVATOR_HOP*.md at the root, "
+    "and a fresh clone has to find orientation without being told where to look"
+)
+
 INVENTORY: dict[str, str] = {
     # -- repository and tool configuration ------------------------------
     ".gitattributes": "git reads it at the root only",
@@ -80,6 +85,12 @@ INVENTORY: dict[str, str] = {
     ".python-version": "the ONE interpreter pin. actions/setup-python reads it through python-version-file, and pyproject.toml requires-python must agree",
     ".git-blame-ignore-revs": "git blame --ignore-revs-file reads it at the root; it holds the whole-tree reformat commit so blame skips over it",
     "CLAUDE.md": "repository guidance an agent reads on entry; tooling looks for it at the root and nowhere else",
+    "ACERVATOR_HOP2.md": _HOP_REASON,
+    "ACERVATOR_HOP3.md": _HOP_REASON,
+    "ACERVATOR_HOP4.md": _HOP_REASON,
+    "ACERVATOR_HOP5.md": _HOP_REASON,
+    "ACERVATOR_HOP7.md": _HOP_REASON,
+    "ACERVATOR_HOP8.md": _HOP_REASON,
     ".gitignore": "git reads it at the root only",
     ".vale.ini": "vale reads it from the directory it runs in",
     "pyproject.toml": "the one source for dependencies, pytest config, coverage and "
