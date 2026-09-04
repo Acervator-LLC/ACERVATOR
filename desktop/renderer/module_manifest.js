@@ -60,4 +60,5 @@ window.ACERVATOR_MODULES = [
   "visualizer_themes.js",
   "buy_confirmation.js",
   "competition_tab.js",
+  "instance_consent_dialog.js",
 ];

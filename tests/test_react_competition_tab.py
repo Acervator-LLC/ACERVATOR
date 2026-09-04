@@ -420,6 +420,144 @@ def test_the_child_counter_reports_a_widget_that_is_not_there(tmp_path: Path):
     assert live_children(qt_tab(tmp_path)) != counted
 
 
+# -- the module drawn by the real page ---------------------------------
+
+INDEX_HTML = REPO_ROOT / "desktop" / "renderer" / "index.html"
+JS_TIMEOUT_MS = 30_000
+READY_ROUNDS = 100
+READY_STEP_MS = 100
+
+
+class Page:
+    """The renderer page, loaded from disk in the Chromium view the shell embeds."""
+
+    def __init__(self) -> None:
+        from PySide6.QtWebEngineWidgets import QWebEngineView
+
+        self._view = QWebEngineView()
+        self.open()
+        self.wait_for_module()
+
+    def open(self) -> None:
+        from PySide6.QtCore import QEventLoop, QTimer, QUrl
+
+        loop = QEventLoop()
+        box: dict = {}
+
+        def _loaded(ok: bool) -> None:
+            box.setdefault("ok", ok)
+            loop.quit()
+
+        connection = self._view.loadFinished.connect(_loaded)
+        self._view.load(QUrl.fromLocalFile(str(INDEX_HTML)))
+        QTimer.singleShot(JS_TIMEOUT_MS, loop.quit)
+        loop.exec()
+        self._view.loadFinished.disconnect(connection)
+        assert box.get("ok") is True, f"{INDEX_HTML.name} did not load: {box}"
+
+    def settle(self, milliseconds: int) -> None:
+        from PySide6.QtCore import QEventLoop, QTimer
+
+        loop = QEventLoop()
+        QTimer.singleShot(milliseconds, loop.quit)
+        loop.exec()
+
+    def wait_for_module(self) -> None:
+        for _ in range(READY_ROUNDS):
+            if self.js("typeof window.acervatorSetCompetitionTab") == "function":
+                return
+            self.settle(READY_STEP_MS)
+        raise AssertionError(
+            "the page never defined the module: readyState "
+            + str(self.js("document.readyState"))
+        )
+
+    def js(self, script: str) -> Any:
+        from PySide6.QtCore import QEventLoop, QTimer
+
+        loop = QEventLoop()
+        box: dict = {}
+
+        def _answered(value: Any) -> None:
+            box.setdefault("v", value)
+            loop.quit()
+
+        self._view.page().runJavaScript(script, _answered)
+        QTimer.singleShot(JS_TIMEOUT_MS, loop.quit)
+        loop.exec()
+        assert "v" in box, "the page never answered: " + script[:80]
+        return box["v"]
+
+    def parsed(self, expression: str) -> Any:
+        found = self.js("JSON.stringify(" + expression + ")")
+        assert isinstance(found, str), (
+            "the page answered nothing for " + expression + "; it drew no such element"
+        )
+        return json.loads(found)
+
+    def close(self) -> None:
+        self._view.deleteLater()
+
+
+@pytest.fixture()
+def page(qapp, model: dict):
+    """The page with the tab drawn into a host node, or a skip with no Chromium."""
+    assert qapp is not None
+    pytest.importorskip("PySide6.QtWebEngineWidgets")
+    found = Page()
+    found.js("window.PAYLOAD = " + json.dumps(json.dumps(model)) + ";")
+    found.js(
+        "window.HOST = document.createElement('div');"
+        "document.body.appendChild(window.HOST);"
+        "window.acervatorSetCompetitionTab(JSON.parse(window.PAYLOAD));"
+        "window.acervatorCompetitionTab.renderTab(window.HOST,"
+        " JSON.parse(window.PAYLOAD));"
+    )
+    yield found
+    found.close()
+
+
+def test_the_page_draws_the_five_sections_the_surface_names(page: Page, model: dict):
+    """The module publishes components the page never actually drew."""
+    drawn = page.parsed(
+        "Array.prototype.map.call("
+        "window.HOST.querySelectorAll('[data-part=\"section-title\"]'),"
+        " function (one) { return one.textContent; })"
+    )
+    assert drawn == model["section_names"], drawn
+
+
+def test_the_page_draws_every_wallet_and_leaderboard_row(page: Page, model: dict):
+    """A table the page never built would report no row at all."""
+    counted = page.parsed(
+        "Array.prototype.map.call("
+        "window.HOST.querySelectorAll('[data-part=\"table\"]'),"
+        " function (one) { return Number(one.getAttribute('data-rows')); })"
+    )
+    assert counted == [
+        len(model["wallet_panel"]["rows"]),
+        len(model["leaderboard_panel"]["rows"]),
+    ], counted
+
+
+def test_the_page_paints_the_tier_colour_on_the_drawn_cell(page: Page, model: dict):
+    """The colour is read back computed off the element the page really built."""
+    painted = page.js(
+        "getComputedStyle(window.HOST.querySelector("
+        "'[data-part=\"table\"] tbody [data-part=\"table-cell\"]')).color"
+    )
+    channels = [int(one, 16) for one in re.findall(r"..", model["tier_colors"][LEADER_TIER][1:])]
+    assert painted == "rgb(" + ", ".join(str(one) for one in channels) + ")", painted
+
+
+def test_the_relay_field_and_connect_button_are_drawn_switched_off(page: Page):
+    """This tab is read only: neither control may be reachable."""
+    assert page.parsed(
+        "[window.HOST.querySelector('[data-name=\"relay_url\"]').disabled,"
+        " window.HOST.querySelector('[data-name=\"connect_button\"]').disabled]"
+    ) == [True, True]
+
+
 BOARD_SIZE = (520, 160)
 
 
