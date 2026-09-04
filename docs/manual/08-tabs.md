@@ -17,7 +17,17 @@ Paper Trader, Live. Each step is a gate.
 [08-tabs/promotion-pipeline.md](08-tabs/promotion-pipeline.md) draws the chain
 and marks where it breaks.
 
-## Portfolio Information Panels
+The sections below run in the order
+[04-manual-parts.md](04-manual-parts.md) lists the tabs.
+
+## Main Window
+
+`MainWindow` in `src/gui/main_window.py` builds the window in three parts: the
+menu bar from `menuBar`, the header strip from `_build_header_strip`, and the
+tab row `_reorder_main_tabs` fixes to `CANONICAL_TAB_ORDER`. The Portfolio
+Information Panels fill that strip, and each tab below sits in that row.
+
+### Portfolio Information Panels
 
 Found at the top of the Main Window at all times, this provides metrics for total performance and activity of the platform.
 
@@ -65,6 +75,120 @@ The tab row below takes its order from `CANONICAL_TAB_ORDER`, and
 `_reorder_main_tabs` moves each tab into that position after the builders run.
 
 Detail: [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md).
+
+## Simulator Tab (Hot Mess; Complete Rebuild In Progress)
+
+`SimulatorTab` in `src/gui/simulator_tab/simulator_tab.py` stacks two panels.
+Fleet Replay loads every bot from `bot_state.json` through
+`load_bot_configs_from_state` in `src/simulator/fleet/bot_state_loader.py`,
+builds one real `ScrummingBot` per config, and plays Stone Tablet candles
+through them against `FleetSimExchange`. The sim uses the bot class body
+unchanged, which is the parity guarantee: it runs live's code against a fake
+exchange rather than a second implementation.
+
+The criterion is the gates latching identically on the same data. Not profit and
+loss, and not the trade count. `GateLightsCell` in
+`src/gui/simulator_tab/fleet/sim_visuals.py` draws each sim bot's scrum and fold
+arm state, and it reads the same `src/trading/gate_vocabulary.py` the History
+table reads, which stops the two surfaces drifting apart.
+
+Nuclear Mode loops the same fleet over the tablet window with per-cycle market
+noise and a load pulse, writing over no tablet. It stands as a soak test, judged
+on coverage and survival, and it compares nothing to live.
+
+![The Simulator tab, with no fleet loaded.](p33-i0.png)
+
+`SimStatStrip` in `src/gui/simulator_tab/sim_stat_strip.py` replaces the
+window's header strip while this tab is active. `FIELDS` names the same ten
+readings — Spendable, Realised, Locked, Mature, Exch, Scrummed, Folded,
+Trades, Bots and Errors — against sim balances. Every one draws an em dash in
+the figure, because no fleet is loaded.
+
+Mode is `_mode_selector`. `SIM_MODES` holds three: Validation, Looping Back
+Test and Nuclear. `_on_sim_mode_changed` writes the hint beside it naming
+what that mode collects, and routes the stack to the Nuclear page or the
+fleet page. Active simulator bots filters the readouts to one loaded bot.
+
+The table under it is `BotStatusTable`, the same class the Trading tab uses,
+with the same columns and a privacy dot on each header.
+
+Fleet Replay is `FleetReplayPanel`. Load live fleet calls `_spawn_sim_fleet`,
+which builds one real `ScrummingBot` per config that
+`load_bot_configs_from_state` read. Fetch YTD pulls the year of live trades
+the run is compared against, and Reset clears both. Full evaluation widens
+the run. The line beside the buttons counts the trades and symbols the
+History tab front-loaded through `on_history_refreshed`.
+
+Loaded fleet carries three columns: Symbol, Target USD and Sim Trades, and
+Sim Trades increments during a run. `_progress_lbl` reads `Replay idle` until
+Start Replay runs, and Stop drains the current tick and exits.
+
+The right column stacks two panels, each with its own Expand button. The
+first charts historical price against position VWAP for the bot its picker
+names, drawn from that bot's Stone Tablet candles. The second is the same
+`IndicatorVotingPanel` the Trading tab carries: a bot picker, the vote count
+badge, the TF Lock, the currency rate line, then the first six voters —
+BB, VTX, MACD, SRsi, Ichi and Vol — with Net, Comp and Conf, and the
+confidence bars under them. `_ROW_B_INDICATOR_COLS` holds the remaining six,
+Sling, ADX, STrd, ZSc, KER and RSI, below the area the figure shows.
+
+Simulator Log and Gate Status close the tab. Gate Status is `GateLightsCell`
+in `src/gui/simulator_tab/fleet/sim_visuals.py`, which reads the same
+`src/trading/gate_vocabulary.py` the History table reads and draws the same
+nineteen lights. `No fleet loaded.` stands in its place until a fleet loads.
+
+The banner above the buttons and the Start Replay tooltip both name an
+internal release identifier for the work that replaces the synthetic candles
+with the real feed.
+
+Detail: [08-tabs/simulator.md](08-tabs/simulator.md).
+
+## Paper Trader Tab (To Be Built)
+
+Real-time, API-fed trades against a fake budget. This is designed as the second tier of strategy validation within the platform.
+
+No module implements it. `git log --all --diff-filter=ADR --name-only` over
+every commit reachable from every ref returns two paths carrying the word
+`paper`, both markdown documents under `docs/`. The same query returns modules
+and tests for `history_tab`, which proves it finds files that existed.
+
+`RetiredTabsMixin` in `src/gui/main_tabs/retired_tabs.py` holds the `None`
+sentinel the window reads in its place, and the Bot Swarm tab's Paper Swarm
+sub-tab is chrome: its rows flip a label and construct no bot.
+
+Live, Paper and the Simulator differ in one thing only, where the data comes
+from. The trading logic stays one body of pure code all three call, and only the
+stateful shells fork. Real time is Paper's defining property, and its budget is
+twice the dollar target. Paper waits on the Simulator and on Nuclear Mode, both
+gates ahead of it in
+[08-tabs/promotion-pipeline.md](08-tabs/promotion-pipeline.md).
+
+Detail: [08-tabs/paper-trader.md](08-tabs/paper-trader.md).
+
+## Proof of Accumulation (Anonymized Trading Tournaments Via Blockchain)
+
+This is currently proposed as a concept but will likely require the building of a supporting blockchain team for proper / full implementation. This system is designed to enable users of Acervator to compete against each anonymously via our own Proof of Accumulation blockchain. The idea is to convert trades executed into videogame metrics such as damage to a coliseum style monster or a fellow trader in a 1v1 face off. This further positions the platform as a surgical tool that can be finely tuned and customized to produce intense competition scenarios between entire groups of traders. This, of course, opens the door for actual tokenized Trading Guilds who may require their members to have a certain number of PoA tokens under their belt to join. There will be much more to follow on this as I do intend to scaffold it out for internal testing.
+
+`src/competition/` is the Proof of Accumulation package. `BotIdentity` signs
+each trade with an Ed25519 key and signs no strategy parameter.
+`MerkleTradeLog` commits the trades to a root a third party can verify one trade
+against without receiving the log. `CompetitionEngine` runs registration, active
+trading, submission and adjudication. `TokenLedger` awards ACRV against a
+ten-million hard cap, append-only and idempotent, with five rarity tiers by
+rank. `TournamentEngine` in `src/trading/poa_tournament.py` builds the duel, the
+melee and the gauntlet, and `local_testnet.py` simulates the whole Base
+environment in memory with no wallet and no network.
+
+The engine runs with no screen in front of it.
+`src/gui/competition_tab.py` and `src/gui/testnet_tab.py` both exist, and
+`RetiredTabsMixin` sets both attributes to `None`, so the window builds neither.
+That makes this an initial implementation rather than a repair.
+
+`harvest_svg` in `src/competition/trophy_generator.py` letters
+`SOLVE · ET · COAGULA` around the trophy ring, which is the epigraph's own
+instruction in its usual form.
+
+Detail: [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md).
 
 ## Market Inspector Tab
 
@@ -319,120 +443,6 @@ strings depart from.
 
 Detail: [08-tabs/history.md](08-tabs/history.md).
 
-## Simulator Tab (Hot Mess; Complete Rebuild In Progress)
-
-`SimulatorTab` in `src/gui/simulator_tab/simulator_tab.py` stacks two panels.
-Fleet Replay loads every bot from `bot_state.json` through
-`load_bot_configs_from_state` in `src/simulator/fleet/bot_state_loader.py`,
-builds one real `ScrummingBot` per config, and plays Stone Tablet candles
-through them against `FleetSimExchange`. The sim uses the bot class body
-unchanged, which is the parity guarantee: it runs live's code against a fake
-exchange rather than a second implementation.
-
-The criterion is the gates latching identically on the same data. Not profit and
-loss, and not the trade count. `GateLightsCell` in
-`src/gui/simulator_tab/fleet/sim_visuals.py` draws each sim bot's scrum and fold
-arm state, and it reads the same `src/trading/gate_vocabulary.py` the History
-table reads, which stops the two surfaces drifting apart.
-
-Nuclear Mode loops the same fleet over the tablet window with per-cycle market
-noise and a load pulse, writing over no tablet. It stands as a soak test, judged
-on coverage and survival, and it compares nothing to live.
-
-![The Simulator tab, with no fleet loaded.](p33-i0.png)
-
-`SimStatStrip` in `src/gui/simulator_tab/sim_stat_strip.py` replaces the
-window's header strip while this tab is active. `FIELDS` names the same ten
-readings — Spendable, Realised, Locked, Mature, Exch, Scrummed, Folded,
-Trades, Bots and Errors — against sim balances. Every one draws an em dash in
-the figure, because no fleet is loaded.
-
-Mode is `_mode_selector`. `SIM_MODES` holds three: Validation, Looping Back
-Test and Nuclear. `_on_sim_mode_changed` writes the hint beside it naming
-what that mode collects, and routes the stack to the Nuclear page or the
-fleet page. Active simulator bots filters the readouts to one loaded bot.
-
-The table under it is `BotStatusTable`, the same class the Trading tab uses,
-with the same columns and a privacy dot on each header.
-
-Fleet Replay is `FleetReplayPanel`. Load live fleet calls `_spawn_sim_fleet`,
-which builds one real `ScrummingBot` per config that
-`load_bot_configs_from_state` read. Fetch YTD pulls the year of live trades
-the run is compared against, and Reset clears both. Full evaluation widens
-the run. The line beside the buttons counts the trades and symbols the
-History tab front-loaded through `on_history_refreshed`.
-
-Loaded fleet carries three columns: Symbol, Target USD and Sim Trades, and
-Sim Trades increments during a run. `_progress_lbl` reads `Replay idle` until
-Start Replay runs, and Stop drains the current tick and exits.
-
-The right column stacks two panels, each with its own Expand button. The
-first charts historical price against position VWAP for the bot its picker
-names, drawn from that bot's Stone Tablet candles. The second is the same
-`IndicatorVotingPanel` the Trading tab carries: a bot picker, the vote count
-badge, the TF Lock, the currency rate line, then the first six voters —
-BB, VTX, MACD, SRsi, Ichi and Vol — with Net, Comp and Conf, and the
-confidence bars under them. `_ROW_B_INDICATOR_COLS` holds the remaining six,
-Sling, ADX, STrd, ZSc, KER and RSI, below the area the figure shows.
-
-Simulator Log and Gate Status close the tab. Gate Status is `GateLightsCell`
-in `src/gui/simulator_tab/fleet/sim_visuals.py`, which reads the same
-`src/trading/gate_vocabulary.py` the History table reads and draws the same
-nineteen lights. `No fleet loaded.` stands in its place until a fleet loads.
-
-The banner above the buttons and the Start Replay tooltip both name an
-internal release identifier for the work that replaces the synthetic candles
-with the real feed.
-
-Detail: [08-tabs/simulator.md](08-tabs/simulator.md).
-
-## Paper Trader Tab (To Be Built)
-
-Real-time, API-fed trades against a fake budget. This is designed as the second tier of strategy validation within the platform.
-
-No module implements it. `git log --all --diff-filter=ADR --name-only` over
-every commit reachable from every ref returns two paths carrying the word
-`paper`, both markdown documents under `docs/`. The same query returns modules
-and tests for `history_tab`, which proves it finds files that existed.
-
-`RetiredTabsMixin` in `src/gui/main_tabs/retired_tabs.py` holds the `None`
-sentinel the window reads in its place, and the Bot Swarm tab's Paper Swarm
-sub-tab is chrome: its rows flip a label and construct no bot.
-
-Live, Paper and the Simulator differ in one thing only, where the data comes
-from. The trading logic stays one body of pure code all three call, and only the
-stateful shells fork. Real time is Paper's defining property, and its budget is
-twice the dollar target. Paper waits on the Simulator and on Nuclear Mode, both
-gates ahead of it in
-[08-tabs/promotion-pipeline.md](08-tabs/promotion-pipeline.md).
-
-Detail: [08-tabs/paper-trader.md](08-tabs/paper-trader.md).
-
-## Proof of Accumulation (Anonymized Trading Tournaments Via Blockchain)
-
-This is currently proposed as a concept but will likely require the building of a supporting blockchain team for proper / full implementation. This system is designed to enable users of Acervator to compete against each anonymously via our own Proof of Accumulation blockchain. The idea is to convert trades executed into videogame metrics such as damage to a coliseum style monster or a fellow trader in a 1v1 face off. This further positions the platform as a surgical tool that can be finely tuned and customized to produce intense competition scenarios between entire groups of traders. This, of course, opens the door for actual tokenized Trading Guilds who may require their members to have a certain number of PoA tokens under their belt to join. There will be much more to follow on this as I do intend to scaffold it out for internal testing.
-
-`src/competition/` is the Proof of Accumulation package. `BotIdentity` signs
-each trade with an Ed25519 key and signs no strategy parameter.
-`MerkleTradeLog` commits the trades to a root a third party can verify one trade
-against without receiving the log. `CompetitionEngine` runs registration, active
-trading, submission and adjudication. `TokenLedger` awards ACRV against a
-ten-million hard cap, append-only and idempotent, with five rarity tiers by
-rank. `TournamentEngine` in `src/trading/poa_tournament.py` builds the duel, the
-melee and the gauntlet, and `local_testnet.py` simulates the whole Base
-environment in memory with no wallet and no network.
-
-The engine runs with no screen in front of it.
-`src/gui/competition_tab.py` and `src/gui/testnet_tab.py` both exist, and
-`RetiredTabsMixin` sets both attributes to `None`, so the window builds neither.
-That makes this an initial implementation rather than a repair.
-
-`harvest_svg` in `src/competition/trophy_generator.py` letters
-`SOLVE · ET · COAGULA` around the trophy ring, which is the epigraph's own
-instruction in its usual form.
-
-Detail: [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md).
-
 ## Console
 
 This tab is focused on displaying Python activity and errors. The lower half, which is displaying the Emitter Network activity, will be migrated to the System Status Tab (under the Watchdog) which is to be built in the near future.
@@ -503,7 +513,13 @@ the heartbeat file, and writes a post-mortem after the child dies.
 
 Detail: [08-tabs/system-status.md](08-tabs/system-status.md).
 
-## Settings > User Tab
+## Settings
+
+`SettingsDialog` in `src/gui/settings_dialog.py` holds the eleven pages below.
+`_save` and `_load_current` decide which of them persists, and each page says
+which under its own heading.
+
+### Settings > User Tab
 
 This needs to be built out to accept and contain individual end user credentials. This will also be where a license is entered or a keyfile is imported depending on how we design the authentication piece.
 
@@ -530,7 +546,7 @@ The page itself carries one row, `Username`, and nothing else.
 
 Detail: [08-tabs/settings.md](08-tabs/settings.md).
 
-## Settings > Exchanges
+### Settings > Exchanges
 
 `_create_exchange_tab` in `src/gui/settings_dialog.py` lists the configured
 exchanges and adds one: the exchange picker, an API key, an API secret, and a
@@ -564,7 +580,7 @@ nothing when it fails. Remove Selected drops the highlighted entry.
 
 Detail: [08-tabs/settings.md](08-tabs/settings.md).
 
-## Settings > Trading
+### Settings > Trading
 
 ![Settings, the Trading page.](p36-i0.png)
 
@@ -582,7 +598,7 @@ are the defaults a new bot starts from, not a running bot's settings.
 Bot Visibility and the aggressive checkbox open at their built-in defaults
 whatever was stored, and a Save with no edit overwrites the stored pair.
 
-## Settings > Profit Folding
+### Settings > Profit Folding
 
 ![Settings, the Profit Folding page.](p37-i0.png)
 
@@ -602,7 +618,7 @@ holding `active`, `mode`, `fold_target`, `fold_target_count`,
 `active` alone, so the mode and both targets open at the checked defaults the
 figure shows.
 
-## Settings > TA Indicators
+### Settings > TA Indicators
 
 ![Settings, the TA Indicators page.](p38-i0.png)
 
@@ -620,7 +636,7 @@ declares no field for indicator weights. `VotingEngine.__init__` takes a
 site under `src/` supplies one from the settings store. The page label
 promises an adjustment the engine never sees.
 
-## Settings > Phantom Bots
+### Settings > Phantom Bots
 
 ![Settings, the Phantom Bots page.](p39-i0.png)
 
@@ -635,7 +651,7 @@ declares no field for a phantom default. The per-bot equivalents in the
 wizard's `PhantomConfigPage` and in the Live Bot Settings dialog do persist,
 through the bot's own config.
 
-## Settings > Theme
+### Settings > Theme
 
 ![Settings, the Theme page.](p40-i0.png)
 
@@ -655,7 +671,7 @@ Font Settings group.
 `_load_current` reads back the theme and that field only, so the four font
 rows open at Segoe UI, 11, 14 and 10 whatever was stored.
 
-## Settings > Logging
+### Settings > Logging
 
 ![Settings, the Logging page.](p41-i0.png)
 
@@ -671,7 +687,7 @@ rows open at Segoe UI, 11, 14 and 10 whatever was stored.
 periodicities. `_load_current` reads none of them back, so every open shows
 the build state rather than the stored one.
 
-## Settings > Sound
+### Settings > Sound
 
 ![Settings, the Sound page.](p42-i0.png)
 
@@ -695,7 +711,7 @@ test button is pressed, and at no other time. `_save` reads no widget on this
 page and `AppSettings` declares no sound field, so nothing here survives the
 dialog closing.
 
-## Settings > SMS
+### Settings > SMS
 
 ![Settings, the SMS page.](p43-i0.png)
 
@@ -720,7 +736,7 @@ offers matches an `SMSConfig.provider` value, which are `email_gateway` and
 `twilio`. The page also carries no field for the three Twilio credentials
 `_send_twilio` reads.
 
-## Settings > AI Monitor
+### Settings > AI Monitor
 
 ![Settings, the AI Monitor page.](p44-i0.png)
 
