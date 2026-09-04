@@ -2023,7 +2023,25 @@ def test_the_surface_loads_no_qt_module():
                 imported.update(alias.name for alias in node.names)
     assert not any(name.startswith("PySide6") for name in imported), imported
     assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "time", "typing", "design_system"}
+    assert imported == {
+        "__future__",
+        "time",
+        "typing",
+        "design_system",
+        "color_alpha",
+    }
+    for sibling in imported:
+        beside = SURFACE_PATH.parent.parent / (sibling + ".py")
+        if not beside.exists():
+            continue
+        pulled = {
+            (node.module or "")
+            for node in ast.walk(ast.parse(beside.read_text(encoding="utf-8")))
+            if isinstance(node, ast.ImportFrom)
+        }
+        assert not any(
+            name.startswith(("PySide6", "shiboken")) for name in pulled
+        ), f"{beside.name} pulls Qt into the surface: {sorted(pulled)}"
     tab_tree = ast.parse(TAB_PATH.read_text(encoding="utf-8"))
     tab_imports = {
         (node.module or "")
