@@ -5,6 +5,41 @@ adds eleven pages in this order: User, Exchanges, Trading, Profit
 Folding, TA Indicators, Phantom Bots, Theme, Logging, Sound, SMS and AI
 Monitor. The two pages below are the ones Part 3 names.
 
+## What each page persists
+
+`_save` writes and `_load_current` reads back. A control neither method
+touches keeps its build-time default for the life of the process and reaches
+no engine. `AppSettings` in `src/core/settings.py` is the whole schema, and
+`SettingsManager.set` raises `KeyError` for a key it does not declare.
+
+| Page | Controls | `_save` writes | `_load_current` restores |
+| ---- | -------: | -------------- | ------------------------ |
+| User | 1 | the row | the row |
+| Exchanges | 6 plus 3 buttons | on Add and Remove | the configured list |
+| Trading | 6 | all six | four of six |
+| Profit Folding | 11 | the whole group | `active` alone |
+| TA Indicators | 12 | nothing | nothing |
+| Phantom Bots | 13 | nothing | nothing |
+| Theme | 6 | all six | the theme and the accent |
+| Logging | 6 | the whole group | nothing |
+| Sound | 10 plus 6 buttons | nothing | nothing |
+| SMS | 17 | nothing | nothing |
+| AI Monitor | 7 | all seven | all seven |
+
+The Exchanges page is the exception to the pattern: `_add_exchange` and
+`_remove_exchange` write through the settings manager as the operator uses
+them, rather than waiting for Save.
+
+Four pages hold controls `_save` never reads, and `AppSettings` declares no
+field any of them could land in. TA Indicators, Phantom Bots, Sound and SMS
+all sit in that state. The Sound page reaches its engine by one other route:
+`_on_sfx_volume_changed` builds a `SoundConfig` from every checkbox and
+pushes it into `src/core/sound_engine.py` whenever the volume slider moves or
+a test button plays a sample.
+
+The parent section, [08-tabs.md](../08-tabs.md), carries the figure for each
+of the eleven pages and names every control on it.
+
 ## Settings, User page
 
 `_create_user_tab` builds one form row holding a `Username` line edit.

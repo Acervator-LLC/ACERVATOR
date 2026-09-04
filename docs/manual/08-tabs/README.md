@@ -21,7 +21,7 @@ manual's own text for each of these screens.
 | [proof-of-accumulation.md](proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain | Engine only, tabs shelved |
 | [console.md](console.md) | Python log tail and the emitter signal stream | Live |
 | [system-status.md](system-status.md) | Emitter Network and Watchdog, and the proof no tab exists | Not built |
-| [settings.md](settings.md) | The User page and the Exchanges page | Live |
+| [settings.md](settings.md) | The User page, the Exchanges page, and what each of the eleven pages persists | Live |
 | [promotion-pipeline.md](promotion-pipeline.md) | How a strategy earns its way to real money | Two of four steps |
 
 ## The live tab set

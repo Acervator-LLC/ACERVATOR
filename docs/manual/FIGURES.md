@@ -64,3 +64,18 @@ content is the image listed above. Page 24 holds two images; pages 36 to 44
 hold one each.
 
 Page 28 is the only page from 15 to 35 that carries text and no image.
+
+## Where each figure is described
+
+Every figure carries a description of the controls, columns, colours and
+numbers it shows, written from the code behind the screen.
+
+| Pages | Figures | Described in |
+| ----- | ------: | ------------ |
+| 15 to 27 | 18 | [06-trading-tab.md](06-trading-tab.md) |
+| 29 to 44 | 20 | [08-tabs.md](08-tabs.md) |
+
+The nine text-less Settings pages, 36 to 44, take one `##` section each in
+[08-tabs.md](08-tabs.md), named for the page they show. The figures sit in
+page order inside each part file, which is the order the built PDF prints
+them in.

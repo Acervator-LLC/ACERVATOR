@@ -28,15 +28,17 @@ meaning; the Part column below is what places a file in the manual.
 | [05-novel-concepts.md](05-novel-concepts.md) | 2 | 10 to 14 | Novel concepts and patent candidate catalogue, entries 1 to 17 |
 | [06-trading-tab.md](06-trading-tab.md) | 3 | 14 to 27 | System architecture, then the Trading Tab walkthrough |
 | [07-indicators.md](07-indicators.md) | 3 | 27 to 29 | Indicator Voting Panel and the twelve indicators |
-| [08-tabs.md](08-tabs.md) | 3 | 29 to 35 | Portfolio panels, Market Inspector, Bot Swarm, Asset Charts, History, Simulator, Paper Trader, Proof of Accumulation, Console, System Status, Settings |
+| [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Portfolio panels, Market Inspector, Bot Swarm, Asset Charts, History, Simulator, Paper Trader, Proof of Accumulation, Console, System Status, and the eleven Settings pages |
 | [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
 | [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
 | [09-updates-and-versioning.md](09-updates-and-versioning.md) | 7 | — | Version derivation, the six readers, the baked bundle value, the release gate |
 | [10-live-trade-history.md](10-live-trade-history.md) | 9 | — | The live fill record, VWAP charts, trade grading, gate coverage |
 | [FIGURES.md](FIGURES.md) | — | 15 to 44 | The figure inventory |
 
-Pages 36 to 44 carry a figure and no text, so no part file covers them.
-[FIGURES.md](FIGURES.md) is their only record.
+Pages 36 to 44 carry a figure and no text, so the PDF gives a part file
+nothing to transcribe for them. [08-tabs.md](08-tabs.md) describes each of
+those nine figures under a heading of its own, and
+[FIGURES.md](FIGURES.md) records where every figure is described.
 
 [07-indicators.md](07-indicators.md) adds the twelve published formulae, the
 departures the code takes from them, and the gate logic chain.
@@ -64,7 +66,7 @@ the screen's state.
 | [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain |
 | [08-tabs/console.md](08-tabs/console.md) | Python log tail and the emitter signal stream |
 | [08-tabs/system-status.md](08-tabs/system-status.md) | Emitter Network and Watchdog, and the proof no tab exists |
-| [08-tabs/settings.md](08-tabs/settings.md) | The User page and the Exchanges page |
+| [08-tabs/settings.md](08-tabs/settings.md) | The User page, the Exchanges page, and what each of the eleven pages persists |
 | [08-tabs/promotion-pipeline.md](08-tabs/promotion-pipeline.md) | How a strategy earns its way to real money |
 The Part column is the table's second job: it tells
 `tools/build_product_manual.py` which manual part a file belongs to. A file
