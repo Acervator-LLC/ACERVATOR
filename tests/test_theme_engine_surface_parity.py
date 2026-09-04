@@ -21,6 +21,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from src.gui import theme_engine as shipped
+from src.gui.color_alpha import css_colours
 from src.gui.main_tabs import theme_engine_surface as surface
 from tests.fixtures.host_fonts import has_real_fonts
 from tests.fixtures.surface_pictures import (
@@ -349,6 +350,20 @@ def shipped_theme(name):
 def surface_theme(name):
     """One surface theme's 34 values, by field name."""
     return dict(surface.THEMES[name])
+
+
+#: The theme fields whose value is an rgba call carrying Qt's alpha byte.
+ALPHA_BYTE_FIELD_NAMES = ("border_accent", "glow_color")
+
+
+def painted(value):
+    """One shipped value the way the payload carries it for a browser.
+
+    The theme table holds the alpha byte Qt reads and the payload leaves
+    under ``css_colours``, so a parity comparison against the shipped
+    module reads the shipped value through the same conversion.
+    """
+    return css_colours(value)
 
 
 def shipped_style_sheet(name):
@@ -1183,7 +1198,7 @@ def test_the_surface_loads_no_qt_module():
                 imported.update(alias.name for alias in node.names)
     assert not any(name.startswith("PySide6") for name in imported), imported
     assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "typing"}
+    assert imported == {"__future__", "typing", "color_alpha"}
     caller_tree = ast.parse(CALLER_PATH.read_text(encoding="utf-8"))
     caller_imports = {
         (node.module or "")
@@ -1433,7 +1448,7 @@ def test_view_model_is_json_serialisable():
     payload = surface.view_model({"name": "glass_metal"})
     text = json.dumps(payload, ensure_ascii=True)
     back = json.loads(text)
-    assert back["themes"]["glass_metal"] == EXPECTED["glass_metal"]
+    assert back["themes"]["glass_metal"] == painted(EXPECTED["glass_metal"])
     assert back["requested"] == "glass_metal"
     assert back["current"] == "glass_metal"
     assert back["style_sheets"]["glass_metal"] == shipped_style_sheet("glass_metal")
@@ -1444,10 +1459,27 @@ def test_the_payload_carries_every_theme_the_shipped_module_ships():
     payload = surface.build_view_model()
     assert list(payload["theme_names"]) == list(shipped.THEMES)
     for theme in EXPECTED_THEME_NAMES:
-        assert payload["themes"][theme] == shipped_theme(theme), theme
+        assert payload["themes"][theme] == painted(shipped_theme(theme)), theme
         assert payload["style_sheets"][theme] == shipped_style_sheet(theme), theme
     assert payload["theme_list"] == shipped.ThemeManager().list_themes()
     assert len(payload["themes"]) == THEME_TOTAL
+
+
+def test_the_payload_carries_a_share_where_the_shipped_theme_carries_a_byte():
+    """Without this the comparison above passes on a payload that converted
+    nothing, because both sides would read the shipped table."""
+    payload = surface.build_view_model()
+    for theme in EXPECTED_THEME_NAMES:
+        for field in ALPHA_BYTE_FIELD_NAMES:
+            carried = payload["themes"][theme][field]
+            shipped_value = getattr(shipped.THEMES[theme], field)
+            if not shipped_value.startswith("rgba("):
+                continue
+            assert carried != shipped_value, (theme, field)
+            assert float(carried[len("rgba(") : -1].split(",")[3]) <= 1, (theme, field)
+        assert payload["themes"][theme]["bg_primary"] == (
+            shipped.THEMES[theme].bg_primary
+        )
 
 
 def test_the_payload_hands_back_a_copy():
@@ -1481,7 +1513,7 @@ def test_the_payload_applies_the_theme_it_is_asked_for():
     assert payload["current"] == "classic_terminal"
     assert payload["current_before"] is None
     assert payload["requested"] == "classic_terminal"
-    assert payload["requested_tokens"] == EXPECTED["classic_terminal"]
+    assert payload["requested_tokens"] == painted(EXPECTED["classic_terminal"])
     assert payload["requested_style_sheet"] == shipped_style_sheet("classic_terminal")
     assert payload["unknown"] == []
     assert payload["unknown_message"] == ""
@@ -1531,11 +1563,11 @@ def test_bridge_registers_the_theme_engine_method():
     assert answer["ok"] is True
     result = answer["result"]
     assert result["requested"] == "neon_light"
-    assert result["requested_tokens"] == EXPECTED["neon_light"]
+    assert result["requested_tokens"] == painted(EXPECTED["neon_light"])
     assert result["unknown"] == []
-    assert result["themes"] == {
-        theme: shipped_theme(theme) for theme in EXPECTED_THEME_NAMES
-    }
+    assert result["themes"] == painted(
+        {theme: shipped_theme(theme) for theme in EXPECTED_THEME_NAMES}
+    )
 
 
 def test_the_bridge_registration_is_two_lines_and_no_more():
@@ -1558,7 +1590,7 @@ def test_the_bridge_carries_every_theme(theme):
     )
     assert answer["ok"] is True
     result = answer["result"]
-    assert result["requested_tokens"] == shipped_theme(theme)
+    assert result["requested_tokens"] == painted(shipped_theme(theme))
     assert result["requested_style_sheet"] == shipped_style_sheet(theme)
     assert result["current"] == theme
 
@@ -1695,7 +1727,7 @@ def test_the_surface_answers_over_the_bridge_without_loading_qt():
     assert answered["frame"]["ok"] is True
     result = answered["frame"]["result"]
     assert result["requested"] == "glass_metal"
-    assert result["requested_tokens"] == EXPECTED["glass_metal"]
+    assert result["requested_tokens"] == painted(EXPECTED["glass_metal"])
     assert result["theme_names"] == list(shipped.THEMES)
     assert result["current"] == "glass_metal"
     assert len(result["themes"]) == THEME_TOTAL
@@ -1841,9 +1873,9 @@ def test_every_constant_the_surface_holds_reaches_the_snapshot():
             assert list(carried) == list(value), name
             if isinstance(value, dict):
                 for key in value:
-                    assert carried[key] == value[key], (name, key)
+                    assert carried[key] == painted(value[key]), (name, key)
         elif name in THEME_CONSTANTS:
-            assert payload["themes"][THEME_CONSTANTS[name]] == value, name
+            assert payload["themes"][THEME_CONSTANTS[name]] == painted(value), name
         elif name in NOT_IN_THE_SNAPSHOT:
             covered_by = NOT_IN_THE_SNAPSHOT[name]
             assert covered_by in globals(), (name, covered_by)
