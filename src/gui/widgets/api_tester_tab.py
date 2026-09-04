@@ -1,4 +1,8 @@
-"""Isolated exchange API tester. Touches no bot and no live credential."""
+"""``APITesterTab`` drives one exchange call at a time through its own connector.
+
+``_do_connect`` decrypts the stored key and secret and then hands the live
+``CCXTConnector`` to ``set_history_callback`` and to ``_bot_manager.set_connector``.
+"""
 
 from __future__ import annotations
 
@@ -36,9 +40,8 @@ except ImportError:
 
 if _HAS_QT:
 
-    # API Tester Tab - isolated exchange testing
     class APITesterTab(QWidget):
-        """Standalone API testing tool. Fully isolated from the bot system."""
+        """Holds one ``CCXTConnector`` in ``_connector`` and drives it from buttons."""
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -49,7 +52,6 @@ if _HAS_QT:
             layout.setContentsMargins(6, 6, 6, 6)
             layout.setSpacing(4)
 
-            # --- Connection panel ---
             conn_group = QGroupBox(
                 "Exchange Connection (Isolated - does not affect bots)"
             )
@@ -112,7 +114,6 @@ if _HAS_QT:
             conn_layout.addLayout(row2)
             layout.addWidget(conn_group)
 
-            # --- Operations + Results ---
             ops_splitter = QSplitter(Qt.Horizontal)
             ops_splitter.setHandleWidth(5)
             ops_splitter.setChildrenCollapsible(False)
@@ -147,7 +148,6 @@ if _HAS_QT:
                 btn.clicked.connect(lambda _checked, c=cmd: self._run_test(c))
                 btn_layout.addWidget(btn)
 
-            # Diagnostic tools (bypass CCXT)
             sep = QLabel("--- Diagnostics ---")
             sep.setStyleSheet(f"color: {ds.TEXT_PLACEHOLDER}; margin-top: 6px;")
             sep.setAlignment(Qt.AlignCenter)
@@ -176,9 +176,6 @@ if _HAS_QT:
             self._result_info = QLabel("")
             self._result_info.setWordWrap(True)
             rl.addWidget(self._result_info)
-            # DPA: Q-001 exception — _result_view displays exchange-test
-            # result bursts (HTML formatting useful; content short), not a
-            # streaming log. QPlainTextEdit not appropriate here.
             self._result_view = QTextEdit()
             self._result_view.setReadOnly(True)
             self._result_view.setPlaceholderText(
@@ -227,18 +224,7 @@ if _HAS_QT:
             import time as _t
 
             eid = self._exchange.currentData()
-            # 10.9 -- the two values apitest.16.001 reads, bound
-            # BEFORE the try so the `finally` can read them on every
-            # exit path, including the two early returns inside the
-            # try. `_call_s` stays None until `sync_connect` returns,
-            # so a path that never reached the network carries no
-            # duration rather than a fabricated one.
-            #
-            # `_supplied` IS A PRESENCE BOOLEAN AND NOTHING ELSE. It
-            # says a non-empty key and a non-empty secret were
-            # resolved. No length, no prefix, no hash: this record is
-            # serialised to ~/.acervator_logs/signals/ and the
-            # operator trades real money on those keys.
+            # ``_supplied`` and ``_call_s`` are read in the ``finally`` on every exit.
             _supplied = False
             _call_s = None
             self._conn_status.setText(f"Connecting to {eid.capitalize()}...")
@@ -301,7 +287,6 @@ if _HAS_QT:
                     )
                 except Exception:
                     mcount = None
-                # A count nothing read shows the mark, never a measured zero.
                 shown = "?" if mcount is None else str(mcount)
 
                 self._connector = conn
@@ -320,7 +305,6 @@ if _HAS_QT:
                     elapsed,
                     "success",
                 )
-                # Register history callback if the trade history tab is available
                 try:
                     main_win = self.window()
                     if (
@@ -330,7 +314,6 @@ if _HAS_QT:
                         conn.set_history_callback(
                             main_win._trade_history_tab.get_history_callback()
                         )
-                        # Register all active bot symbols for scanning
                         if hasattr(main_win, "_bot_manager") and main_win._bot_manager:
                             main_win._bot_manager.set_connector(conn)
                 except Exception as _e:
@@ -346,43 +329,8 @@ if _HAS_QT:
             finally:
                 if not self._connected:
                     self._connect_btn.setEnabled(True)
-                # 10.9 -- apitest.16.001. THE LABEL IS ALL THE
-                # OPERATOR HAS. A connect that paints "Connected"
-                # while holding no session leaves every later button
-                # failing against a tab that says the link is up.
-                #
-                # `expected` IS WHAT THE OPERATOR WAS TOLD, read back
-                # off `_conn_status` after the handler wrote it.
-                # `actual` IS WHETHER A SESSION EXISTS: the connector
-                # reference, the tab's own flag, and the connector's
-                # `_ex` -- the property every later call resolves
-                # through. `sync_connect` returning without an
-                # exchange instance is the false green this pin is
-                # for. No argument to this method is read back as a
-                # result.
-                #
-                # IN THE `finally` SO EVERY EXIT IS ON THE RECORD.
-                # Both early returns inside the try leave the label on
-                # "Connecting to ...", which does not start with
-                # "Connected", so they report an honest green rather
-                # than nothing at all.
-                #
-                # NO CREDENTIAL REACHES THIS RECORD. `key`, `secret`
-                # and `pp` are not read here in any form -- not the
-                # value, not a length, not a hash. A length leaks and
-                # a hash of a short secret is brute-forceable. One
-                # PRESENCE BOOLEAN rides in the context:
-                # `credentials_supplied` says a key AND a secret were
-                # resolved and says nothing else, and it is what tells
-                # a refusal for missing credentials apart from a
-                # refusal by the venue.
-                #
-                # THE DURATION IS THE `sync_connect` BRACKET ONLY
-                # (E8), and it is None on every path that never
-                # reached the call.
-                #
-                # NO `every=`: the Connect button is the cadence, so
-                # silence from this pin says nothing about the tab.
+                # ``_ex`` is the CCXTConnector property every later exchange call
+                # resolves through.
                 _session = getattr(self._connector, "_ex", None)
                 _usable = (
                     self._connector is not None
@@ -412,26 +360,6 @@ if _HAS_QT:
                     )
 
         def _do_disconnect(self):
-            # 10.9 -- the state apitest.16.002 reads on every exit
-            # path, bound before the branch that fills it. `failure`
-            # MOVED UP from inside the branch and nothing else about
-            # it changed: it was already initialised to None there,
-            # and the pin below has to be able to read it when there
-            # was no connector to close.
-            #
-            # THE CONTEXT READ IS GUARDED AND THE VERDICT IS NOT.
-            # `_exchange` is the ONE attribute this pin needs that the
-            # method did not need before it, so reading it bare turned
-            # instrumentation into a PRECONDITION ON THE HOST: a caller
-            # that binds this method onto an object without that widget
-            # used to run and would now raise AttributeError. A pin may
-            # never make its host need more than it did -- the same
-            # rule `emit` itself follows. The guard covers the whole
-            # read, a missing attribute and a deleted C++ widget alike,
-            # and the cost of a miss is ONE CONTEXT FIELD falling to
-            # None. `actual`, `expected`, `ok` and the duration do not
-            # read it, so on a real tab -- which has the widget -- the
-            # record is byte for byte the one it was.
             import contextlib
 
             _eid = None
@@ -441,25 +369,13 @@ if _HAS_QT:
             _close_s = None
             failure = None
             if self._connector:
-                # Suppression audit 2026-08-13, H3. Two layers
-                # used to lose the failure: the worker exception
-                # died with the executor because nothing read the
-                # Future, and anything the handler could still see
-                # was dropped by a bare pass. The connector
-                # reference is discarded either way and the label
-                # below reads "Disconnected", so an unreported
-                # failure leaves a session open that nothing can
-                # close and a display that asserts the opposite.
                 try:
                     import concurrent.futures
 
                     _close_at = time.monotonic()
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                         fut = pool.submit(asyncio.run, self._connector.disconnect())
-                    # The executor's __exit__ waits for the worker, so
-                    # this reading spans the whole close attempt and
-                    # not the submit. It stays None if the executor
-                    # itself could not be built.
+                    # ``_close_s`` spans the whole close; the pool's __exit__ waits.
                     _close_s = time.monotonic() - _close_at
                     failure = fut.exception()
                 except Exception as exc:
@@ -480,7 +396,6 @@ if _HAS_QT:
             self._disconnect_btn.setEnabled(False)
             self._conn_status.setText("Disconnected")
             self._conn_status.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL};")
-            # A close that never ran must not report a closed connection.
             if _held:
                 self._log("DISCONNECTED", "Connection closed", level="info")
             else:
@@ -489,29 +404,8 @@ if _HAS_QT:
                     "No session was open, so no close was attempted.",
                     level="info",
                 )
-            # 10.9 -- apitest.16.002, AND IT IS THE ONE THAT MATTERS
-            # MOST IN THIS TAB. The label two lines above reads
-            # "Disconnected" whatever happened and the connector
-            # reference is dropped either way, so a close that failed
-            # leaves an AUTHENTICATED SESSION open that nothing can
-            # reach and a display that asserts the opposite. The
-            # method's own comment above says exactly that; nothing
-            # recorded it.
-            #
-            # `expected` IS THE CLAIM ON SCREEN, read off the label.
-            # `actual` IS WHETHER THE SESSION WAS RELEASED: the close
-            # raised nothing, the reference is gone and the flag is
-            # down. A failed close therefore reports red while the
-            # screen reads "Disconnected", which is the whole point.
-            #
-            # THE CONTEXT CARRIES THE ERROR'S CLASS NAME AND NEVER ITS
-            # MESSAGE. A venue error message quotes request parameters
-            # and some echo the key, and this record goes to disk.
-            #
-            # THE DURATION SPANS THE CLOSE ATTEMPT (E8) and is None
-            # when there was no connector to close.
-            #
-            # NO `every=`: the Disconnect button is the cadence.
+            # ``failure_class`` is the class name only; a venue message can quote
+            # the request.
             _released = (
                 failure is None and self._connector is None and not self._connected
             )
@@ -544,27 +438,12 @@ if _HAS_QT:
 
             safe_process_events("legacy P4.1 site")
 
-            # Use sync exchange (no asyncio/aiohttp)
             c = getattr(self._connector, "_ccxt_sync", self._connector._ccxt)
 
-            # Started OUTSIDE the try. The failure handler below reads
-            # `start` to report how long the call took before it broke;
-            # binding it as the try's first statement left that read
-            # depending on the binding itself having succeeded, so the
-            # error report could raise instead of printing the error.
-            # Nothing runs between here and the try, so the elapsed
-            # figure is the same number it was.
+            # ``start`` is bound outside the try, where the except clause reads it.
             start = _t.monotonic()
-            # 10.9 -- apitest.16.003's OBSERVABLE, and it is one
-            # token. The dispatch chain's last arm answers a name it
-            # does not know with an empty dict, and the success path
-            # below then logs "<test> OK" -- the operator reads a pass
-            # for a call that never happened. Binding that arm to a
-            # sentinel changes no value, no type and no branch: `{}`
-            # is still `{}`, still empty, and still renders as `{}`.
-            # It lets the pin read the RESULT to tell a real answer
-            # from the do-nothing arm, instead of reading the `test`
-            # argument back in as though it were a result.
+            # The else arm returns ``_nothing``; identity separates it from a
+            # venue answer that is also empty.
             _nothing: dict = {}
             try:
                 if test == "fetch_markets":
@@ -641,8 +520,6 @@ if _HAS_QT:
                         display += f"\n... and {len(result) - 5} more"
                 else:
                     display = str(result)
-                # A name no arm answered never reached the venue, so it
-                # reports NOT RUN rather than a green OK headline.
                 if result is _nothing:
                     display = (
                         "This screen has no call by that name, "
@@ -651,28 +528,8 @@ if _HAS_QT:
                     self._log(f"{test} NOT RUN", display, elapsed, "warning")
                 else:
                     self._log(f"{test} OK", display, elapsed, "success")
-                # 10.9 -- apitest.16.003. A GREEN HEADLINE OVER A CALL
-                # THAT NEVER RAN is the failure shape this tab has:
-                # the chain above answers an unrecognised name with an
-                # empty dict and falls straight through to the success
-                # log.
-                #
-                # `expected` IS THE HEADLINE THE OPERATOR READS, taken
-                # back off `_result_info` after `_log` painted it, not
-                # from the string handed to `_log`. `actual` IS
-                # WHETHER AN ARM RAN, read off the result object's own
-                # identity.
-                #
-                # NO OPERATOR FREE TEXT IN THE CONTEXT. `test` is the
-                # fixed vocabulary the seven buttons pass. The symbol
-                # box is NOT recorded: this tab has three password
-                # fields one row above it, and free text typed in this
-                # tab is exactly what must never reach a file.
-                #
-                # THE DURATION IS THE CALL BRACKET (E8), and it is
-                # None on the arm that ran nothing.
-                #
-                # NO `every=`: each test button press is one record.
+                # The context omits ``sym``: ``_symbol_input`` is operator free
+                # text and this record goes to disk.
                 _ran = result is not _nothing
                 _headline = self._result_info.text()
                 _claimed_ok = _headline.split(" (")[0].endswith(" OK")
@@ -709,7 +566,6 @@ if _HAS_QT:
 
             eid = self._exchange.currentData()
 
-            # --- SSL Diagnostic first ---
             host_map = {
                 "coinbase": "api.coinbase.com",
                 "binance": "api.binance.com",
@@ -728,7 +584,6 @@ if _HAS_QT:
 
             safe_process_events("legacy P4.1 site")
 
-            # Test 1: Raw TCP connection
             try:
                 start = _t.monotonic()
                 sock = socket.create_connection((host, 443), timeout=10)
@@ -749,7 +604,6 @@ if _HAS_QT:
 
             safe_process_events("legacy P4.1 site")
 
-            # Test 2: SSL handshake with default certs
             try:
                 start = _t.monotonic()
                 ctx = ssl.create_default_context()
@@ -783,7 +637,6 @@ if _HAS_QT:
 
             safe_process_events("legacy P4.1 site")
 
-            # Test 3: SSL with certifi (if available)
             try:
                 import certifi
 
@@ -811,7 +664,6 @@ if _HAS_QT:
 
             safe_process_events("legacy P4.1 site")
 
-            # --- HTTP endpoint probes ---
             probes = {
                 "coinbase": [
                     (
@@ -859,9 +711,9 @@ if _HAS_QT:
             )
             safe_process_events("legacy P4.1 site")
 
+            import contextlib
             import urllib.error
 
-            # Use certifi for SSL if available
             ssl_ctx = None
             try:
                 import certifi
@@ -870,12 +722,8 @@ if _HAS_QT:
             except ImportError:
                 ssl_ctx = ssl.create_default_context()
 
-            # 10.9 -- apitest.16.004's ledger. `_green` counts the
-            # SUCCESS headlines the operator sees; `_green_with_body`
-            # counts how many of those really carried bytes off the
-            # socket. They are incremented on the same path but under
-            # DIFFERENT conditions, so a 200 with an empty body moves
-            # one and not the other.
+            # ``_green`` counts every response received; only a non-empty body
+            # moves ``_green_with_body``.
             _green = 0
             _green_with_body = 0
             _attempted = 0
@@ -885,13 +733,8 @@ if _HAS_QT:
                 _attempted += 1
                 try:
                     start = _t.monotonic()
-                    # SafeRequest refuses any scheme outside the
-                    # http/https allowlist AT CONSTRUCTION. The probe
-                    # table above is all https literals, but the
-                    # fallback entry builds its host from the selected
-                    # exchange id, so the string reaching here is not a
-                    # constant and nothing downstream re-reads its
-                    # scheme before the open.
+                    # SafeRequest refuses a scheme outside its allowlist at
+                    # construction; ``default_probe`` builds ``url`` from ``eid``.
                     req = SafeRequest(url)
                     req.add_header("User-Agent", "Acervator/1.8 (diagnostic)")
                     req.add_header("Accept", "application/json")
@@ -908,13 +751,11 @@ if _HAS_QT:
                         else:
                             body = f"[body is {type(read_back).__name__}, not text]"
 
-                        # Truncate body for display
                         if len(body) > 1000:
                             body_display = body[:1000] + "\n... (truncated)"
                         else:
                             body_display = body
 
-                        # Try to parse as JSON for pretty display
                         try:
                             parsed = json.loads(body)
                             if isinstance(parsed, dict):
@@ -928,8 +769,6 @@ if _HAS_QT:
                         except json.JSONDecodeError:
                             pass
 
-                        # A status nothing read shows the mark, and the
-                        # line must not paint like a measured pass.
                         unread = status is None
                         shown = "?" if unread else str(status)
                         detail = (
@@ -959,10 +798,8 @@ if _HAS_QT:
                 except urllib.error.HTTPError as exc:
                     elapsed = (_t.monotonic() - start) * 1000
                     body = ""
-                    try:  # noqa: SIM105
+                    with contextlib.suppress(Exception):
                         body = exc.read().decode("utf-8", errors="replace")[:500]
-                    except Exception:  # noqa: S110
-                        pass
                     detail = (
                         f"Endpoint: {desc}\n"
                         f"URL: {url}\n"
@@ -994,27 +831,9 @@ if _HAS_QT:
 
                 safe_process_events("legacy P4.1 site")
 
-            # 10.9 -- apitest.16.004. A GREEN PROBE THAT READ NOTHING.
-            # The success branch reports `HTTP <status>` from the
-            # response object and then prints whatever `read()`
-            # returned, so an endpoint that answers 200 with an empty
-            # body paints the same green line as one that returned the
-            # product list -- and the operator uses this button
-            # precisely when nothing else works.
-            #
-            # `expected` IS THE NUMBER OF GREENS SHOWN.  `actual` IS
-            # HOW MANY OF THEM CARRIED BYTES. Neither side is the
-            # endpoint table read back: a probe that raised is in
-            # neither count, and `attempted` rides in the context so a
-            # reader sees the sweep's own size.
-            #
-            # THE DURATION IS THE SWEEP (E8) -- the loop above and
-            # nothing else. The SSL and TCP diagnostics before it are
-            # separate operations with their own log lines.
-            #
-            # NO `every=`: the Raw HTTP Probe button is the cadence.
+            # A probe that raised is in neither ``_green`` nor ``_green_with_body``;
+            # ``_attempted`` counts them all.
             _sweep_s = _t.monotonic() - _sweep_at
-            import contextlib
 
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _api_emit
@@ -1046,12 +865,7 @@ if _HAS_QT:
                 "kraken": "https://status.kraken.com/api/v2/status.json",
             }
 
-            # 10.9 -- the vocabulary apitest.16.005 judges the
-            # fetched document against. Statuspage publishes
-            # `status.indicator` as one of none / minor / major /
-            # critical; `maintenance` is carried too because some
-            # pages report it, and a value the venue never sends costs
-            # nothing while a missing one would paint a false red.
+            # ``_mappable`` holds the ``status.indicator`` words Statuspage sends.
             _mappable = ("none", "minor", "major", "critical", "maintenance")
 
             url = status_urls.get(eid)
@@ -1073,12 +887,6 @@ if _HAS_QT:
 
             try:
                 start = _t.monotonic()
-                # Same allowlist as the probe path above. Here the URL
-                # is always one of the three https literals in
-                # status_urls (the `if not url: return` above rules out
-                # anything else), so the check can only ever pass — but
-                # it is the check, not the table, that makes that true
-                # for a reader and for the next entry added to it.
                 req = SafeRequest(url)
                 req.add_header("User-Agent", "Acervator/1.8")
                 req.add_header("Accept", "application/json")
@@ -1103,8 +911,6 @@ if _HAS_QT:
                             f"Description: {desc}\n"
                             f"Raw: {json.dumps(data, indent=2)[:500]}"
                         )
-                        # A word this screen has no mapping for was
-                        # never read as an outage, so it paints amber.
                         if indicator in ("none", "minor"):
                             level = "success"
                         elif indicator in _mappable:
@@ -1112,28 +918,8 @@ if _HAS_QT:
                         else:
                             level = "warning"
                         self._log(f"STATUS: {desc}", detail, elapsed, level)
-                        # 10.9 -- apitest.16.005. THE VERDICT IS
-                        # DERIVED FROM A WORD THE TAB MAY NOT KNOW.
-                        # The line above maps `none` and `minor` to
-                        # green and EVERYTHING ELSE to red, so a
-                        # missing field (which `get` answers with
-                        # "unknown") or a renamed one paints an outage
-                        # the venue never declared, and the operator
-                        # stops trading on it.
-                        #
-                        # `actual` IS THE WORD THE DOCUMENT CARRIED,
-                        # read back out of the parsed body and capped
-                        # at 32 characters because it is untrusted
-                        # venue text. `expected` is the vocabulary,
-                        # and `ok` is membership -- the two sides are
-                        # not the same expression.
-                        #
-                        # THE DURATION SPANS THE FETCH AND THE PARSE
-                        # (E8). It is this pin's own reading and does
-                        # not touch the `elapsed` the log line shows.
-                        #
-                        # NO `every=`: the Exchange Status Page button
-                        # is the cadence.
+                        # ``_ind_seen`` is capped at 32 characters of untrusted
+                        # venue text.
                         _ind_seen = str(s.get("indicator", ""))[:32]
                         _fetch_s = _t.monotonic() - start
                         import contextlib
