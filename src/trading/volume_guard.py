@@ -1,18 +1,12 @@
-"""
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-volume_guard.py — Volume-Aware Trade Execution Guard
+"""Volume-aware order chunking.
 
-Prevents disproportionately large trades relative to current market
-conditions. Sits between bot trade decisions and exchange execution.
-
-Core Algorithm:
-  1. Profile the market: 24h volume, orderbook depth, spread
-  2. Compute safe trade size from volume participation limits
-  3. If trade exceeds safe size → split into adaptive iceberg chunks
-  4. Chunks sized and timed to market rhythm (high volume = bigger/faster)
-
-This is a smart version of iceberg trading that adapts in real-time
-to actual market conditions rather than using fixed chunk sizes.
+``VolumeGuard.execute`` profiles a symbol with ``_get_market_profile``, sizes a
+safe order with ``_compute_safe_sizes``, then places it whole or spreads it over
+``_execute_iceberg`` chunks. ``VolumeGuard.enabled`` returns False and
+``BotContainer.guarded_place_order`` tests that property, leaving ``execute``
+unreached on a live order. No path here refuses a trade: ``_execute_passthrough``
+still places the order when ``MarketProfile.is_tradeable`` is False.
 """
 
 from __future__ import annotations
@@ -27,103 +21,109 @@ from typing import Optional
 logger = logging.getLogger("acervator.execution")
 
 
-# ───────────────────────────────────────────────────────────────────
-# Configuration
-# ───────────────────────────────────────────────────────────────────
-
-
 @dataclass
 class VolumeGuardConfig:
-    """Tunable parameters for volume-aware execution."""
+    """Tunable parameters ``VolumeGuard`` reads.
 
-    # Max fraction of 24h volume per single order (0.001 = 0.1%)
+    ``max_slippage_pct`` is tested only against ``MarketProfile.spread_pct`` in
+    ``_execute_iceberg``, and ``max_hourly_participation_pct`` only sizes
+    ``_get_hourly_budget``, which no execution path consults.
+    """
+
+    # Fraction of ``MarketProfile.volume_24h_quote`` allowed in one order.
     max_single_order_volume_pct: float = 0.001
 
-    # Max fraction of hourly volume our bot can consume per hour
-    max_hourly_participation_pct: float = 0.02  # 2% of hourly volume
+    max_hourly_participation_pct: float = 0.02
 
-    # Max fraction of top-of-book liquidity to hit in one order
-    max_book_depth_pct: float = 0.25  # Take max 25% of visible book depth
+    # Fraction of the thinner book side allowed in one order.
+    max_book_depth_pct: float = 0.25
 
-    # Price slippage threshold — abort if estimated slippage exceeds this
-    max_slippage_pct: float = 1.0  # 1% max acceptable slippage
+    max_slippage_pct: float = 1.0
 
-    # Chunk execution timing
-    min_chunk_delay_ms: int = 200  # Minimum ms between chunks
-    max_chunk_delay_ms: int = 5000  # Maximum ms between chunks
-    chunk_headroom_pct: float = 0.7  # Use 70% of safe size per chunk
+    min_chunk_delay_ms: int = 200
+    max_chunk_delay_ms: int = 5000
 
-    # Orderbook analysis depth (levels from top)
+    # Fraction of the safe size that sets the chunk count, not the chunk size.
+    chunk_headroom_pct: float = 0.7
+
     book_depth_levels: int = 20
 
-    # Minimum volume required to consider a market tradeable
-    min_daily_volume_usd: float = 1000.0  # $1K minimum
+    # Sets ``MarketProfile.low_volume``; ``is_tradeable`` needs only a non-zero volume.
+    min_daily_volume_usd: float = 1000.0
 
-    # Enable/disable the guard (pass-through when disabled)
+    # ``execute`` passes through when False; the ``enabled`` property ignores it.
     enabled: bool = True
 
-    # Cache TTL for market profiles (seconds)
     profile_cache_ttl: float = 30.0
-
-
-# ───────────────────────────────────────────────────────────────────
-# Market Profile (point-in-time snapshot)
-# ───────────────────────────────────────────────────────────────────
 
 
 @dataclass
 class MarketProfile:
-    """Snapshot of market conditions for a symbol at a given moment."""
+    """One symbol's conditions, as ``_get_market_profile`` builds them.
+
+    ``last_price``, ``bid``, ``ask`` and ``volume_24h_quote`` come from
+    ``get_ticker`` and the depth fields sum ``get_orderbook``; every other field
+    is derived here.
+    """
 
     symbol: str
     timestamp: float
 
-    # Price
     last_price: float = 0
     bid: float = 0
     ask: float = 0
     spread_pct: float = 0  # (ask - bid) / mid * 100
 
-    # Volume
-    volume_24h_quote: float = 0  # Total 24h volume in quote currency
-    volume_hourly_est: float = 0  # Estimated hourly volume
-    avg_trade_size_est: float = 0  # Estimated average trade size (quote)
+    volume_24h_quote: float = 0
+    volume_hourly_est: float = 0  # volume_24h_quote / 24
+    avg_trade_size_est: float = 0  # volume_24h_quote / TRADES_PER_DAY_EST[tier]
 
-    # Orderbook depth
-    bid_depth_quote: float = 0  # Total bid liquidity in quote (N levels)
-    ask_depth_quote: float = 0  # Total ask liquidity in quote (N levels)
-    bid_depth_levels: int = 0  # Number of bid levels analyzed
-    ask_depth_levels: int = 0  # Number of ask levels analyzed
+    # Price times amount over ``book_depth_levels``, or a synthesized fallback.
+    bid_depth_quote: float = 0
+    ask_depth_quote: float = 0
+    # Levels the venue returned, which can exceed ``book_depth_levels``.
+    bid_depth_levels: int = 0
+    ask_depth_levels: int = 0
 
-    # Computed safe sizes
-    safe_single_order_quote: float = 0  # Max safe order in quote currency
-    safe_single_order_base: float = 0  # Max safe order in base currency
-    hourly_budget_remaining: float = 0  # Quote budget for this hour
+    safe_single_order_quote: float = 0
+    safe_single_order_base: float = 0
+    hourly_budget_remaining: float = 0
 
-    # Market health indicators
+    # False only when the ticker reports no volume or the profile raises.
     is_tradeable: bool = True
-    thin_market: bool = False  # Low liquidity warning
-    wide_spread: bool = False  # Spread > 0.5%
-    low_volume: bool = False  # Volume below threshold
+    # Set from book depth against ``volume_hourly_est``; no execution path reads it.
+    thin_market: bool = False
+    wide_spread: bool = False  # spread_pct > 0.5
+    low_volume: bool = False
 
 
 @dataclass
 class ChunkPlan:
-    """Execution plan: how to split a large order into market-safe chunks."""
+    """How ``_compute_chunk_plan`` splits one order.
 
-    original_amount: float  # Requested trade amount (base)
-    original_quote_value: float  # Estimated quote value
-    needs_chunking: bool  # Whether splitting is needed
-    chunks: list[float] = field(default_factory=list)  # Chunk sizes (base)
-    chunk_delay_ms: int = 500  # Delay between chunks
+    ``chunks`` are base-currency sizes and ``estimated_slippage_pct`` is the
+    quote value over the opposite book side, capped at 10.
+    """
+
+    original_amount: float
+    original_quote_value: float
+    needs_chunking: bool
+    chunks: list[float] = field(default_factory=list)
+    chunk_delay_ms: int = 500
     estimated_slippage_pct: float = 0
+    # One of within_safe_limits, above_safe, very_large, extreme_size.
     reason: str = ""
     market_profile: Optional[MarketProfile] = None
 
 
 @dataclass
 class ExecutionReport:
-    """Post-execution report for a volume-guarded trade."""
+    """What ``VolumeGuard.execute`` returns for one trade.
+
+    ``executed_amount`` and ``avg_fill_price`` fall back to the requested size
+    and the tick price when the venue leaves ``order.filled`` or
+    ``order.average`` empty.
+    """
 
     success: bool
     symbol: str
@@ -136,47 +136,36 @@ class ExecutionReport:
     estimated_slippage_pct: float
     actual_slippage_pct: float
     total_quote: float
+    # Elapsed wall time for the call, not a point in time.
     execution_time_ms: float
-    strategy: str  # "passthrough", "single", "iceberg_N"
+    strategy: str  # "passthrough", "single", "error", or "iceberg_N"
     reason: str = ""
     fills: list[dict] = field(default_factory=list)
-
-
-# ───────────────────────────────────────────────────────────────────
-# Volume Guard
-# ───────────────────────────────────────────────────────────────────
+    completed_at: float = field(default_factory=time.time)
 
 
 class VolumeGuard:
-    """
-    Volume-aware trade execution guard.
+    """Volume-aware order chunking.
 
-    Wraps exchange.place_order to prevent market-moving trades.
-    Analyzes real-time volume and orderbook depth to compute safe
-    trade sizes, then executes as adaptive iceberg if needed.
-
-    Usage:
-        guard = VolumeGuard(exchange, config)
-        report = await guard.execute(symbol, "sell", amount)
-        if report.success:
-            print(f"Filled {report.executed_amount} in {report.chunks_executed} chunks")
+    ``execute`` profiles the market and places an order whole or in chunks, and
+    ``set_exchange`` supplies the connector when the constructor had none.
     """
 
-    # Estimated trades per day for common market tiers
-    # (Used to estimate avg trade size when recent trade data unavailable)
+    # Divisor ``_get_market_profile`` uses for ``avg_trade_size_est``, keyed by
+    # ``_classify_volume_tier``.
     TRADES_PER_DAY_EST = {
-        "mega": 200_000,  # BTC/ETH top pairs: ~200K trades/day
-        "large": 50_000,  # Top 20 coins: ~50K trades/day
-        "mid": 15_000,  # Top 100 coins: ~15K trades/day
-        "small": 3_000,  # Long tail: ~3K trades/day
-        "micro": 500,  # Very low volume: ~500 trades/day
+        "mega": 200_000,
+        "large": 50_000,
+        "mid": 15_000,
+        "small": 3_000,
+        "micro": 500,
     }
 
     def __init__(self, exchange=None, config: VolumeGuardConfig = None):
         self._exchange = exchange
         self.config = config or VolumeGuardConfig()
         self._profile_cache: dict[str, MarketProfile] = {}
-        self._hourly_usage: dict[str, float] = {}  # symbol → quote used this hour
+        self._hourly_usage: dict[str, float] = {}
         self._last_hour_reset: float = 0
         self._execution_history: list[ExecutionReport] = []
         self._max_history = 500
@@ -187,21 +176,17 @@ class VolumeGuard:
 
     @property
     def enabled(self) -> bool:
-        # MEM-259 (Session 26 operator directive): "Disable the fucking thing."
-        # VolumeGuard is force-disabled. Always reports enabled=False so
-        # BotContainer.guarded_place_order falls through to the direct
-        # exchange.place_order path, which is still gated upstream by
-        # _execute_buy's MEM-251/257 ceiling guards. Re-enabling requires
-        # explicit operator action (edit this file).
+        """Return False on every call, whatever ``config.enabled`` holds.
+
+        ``BotContainer.guarded_place_order`` reads this property and takes the
+        direct ``exchange.place_order`` path while it is False.
+        """
         return False
 
     @enabled.setter
     def enabled(self, val: bool):
-        # Setter retained for API compatibility but does not affect
-        # the disabled property. MEM-259.
+        """Store ``val`` on ``config.enabled``, which the getter above ignores."""
         self.config.enabled = val
-
-    # ─── Main execution entry point ────────────────────────────────
 
     async def execute(
         self,
@@ -212,31 +197,15 @@ class VolumeGuard:
         order_type: str = "market",
         exchange=None,
     ) -> ExecutionReport:
+        """Place ``amount`` of ``symbol`` under the ``VolumeGuardConfig`` limits.
 
-        # sadp: R28 R29  # volume-gated order: fail-loudly(R28) idempotent(R29)
-        """
-        Execute a trade with volume-aware protection.
-
-        If the trade is safe for market conditions, executes normally.
-        If too large, splits into adaptive iceberg chunks.
-
-        Parameters
-        ----------
-        symbol : Trading pair (e.g. "BTC/USDT")
-        side : "buy" or "sell"
-        amount : Amount in base currency
-        price : Limit price (0 = market)
-        order_type : "market" or "limit"
-        exchange : Exchange connector (overrides default)
-
-        Returns
-        -------
-        ExecutionReport with fill details
+        ``_execute_passthrough`` handles a False ``config.enabled`` and a
+        non-tradeable ``MarketProfile``; otherwise ``_compute_chunk_plan``
+        chooses between ``_execute_single`` and ``_execute_iceberg``.
         """
         start = time.monotonic()
         ex = exchange or self._exchange
 
-        # Pass-through if disabled
         if not self.config.enabled:
             return await self._execute_passthrough(
                 symbol, side, amount, price, order_type, start, ex
@@ -260,7 +229,6 @@ class VolumeGuard:
                 reason="No exchange connector set",
             )
 
-        # 1. Profile the market
         profile = await self._get_market_profile(symbol, ex)
 
         if not profile.is_tradeable:
@@ -269,12 +237,10 @@ class VolumeGuard:
                 symbol,
                 "low volume" if profile.low_volume else "no data",
             )
-            # Still allow the trade but log warning
             return await self._execute_passthrough(
                 symbol, side, amount, price, order_type, start, ex
             )
 
-        # 2. Plan the execution
         ref_price = price if price > 0 else profile.last_price
         plan = self._compute_chunk_plan(amount, ref_price, side, profile)
 
@@ -291,7 +257,6 @@ class VolumeGuard:
             plan.reason,
         )
 
-        # 3. Execute
         if not plan.needs_chunking:
             report = await self._execute_single(
                 symbol, side, amount, price, order_type, profile, start, ex
@@ -301,27 +266,26 @@ class VolumeGuard:
                 symbol, side, plan, price, order_type, profile, start, ex
             )
 
-        # 4. Track hourly usage
         self._track_hourly_usage(symbol, report.total_quote)
 
-        # 5. Record history
         self._execution_history.append(report)
         if len(self._execution_history) > self._max_history:
             self._execution_history = self._execution_history[-self._max_history :]
 
         return report
 
-    # ─── Market Profiling ──────────────────────────────────────────
-
     async def _get_market_profile(self, symbol: str, ex=None) -> MarketProfile:
-        """Build or retrieve cached market profile for a symbol."""
+        """Return the cached ``MarketProfile`` for ``symbol``, or build a fresh one.
+
+        A profile older than ``config.profile_cache_ttl`` is rebuilt from
+        ``get_ticker`` and ``get_orderbook``, and any failure there leaves
+        ``is_tradeable`` False.
+        """
         now = time.time()
         exchange = ex or self._exchange
 
-        # Check cache
         cached = self._profile_cache.get(symbol)
         if cached and (now - cached.timestamp) < self.config.profile_cache_ttl:
-            # Update hourly budget from current usage
             cached.hourly_budget_remaining = self._get_hourly_budget(
                 symbol, cached.volume_hourly_est
             )
@@ -330,14 +294,12 @@ class VolumeGuard:
         profile = MarketProfile(symbol=symbol, timestamp=now)
 
         try:
-            # Fetch ticker for price + volume
             ticker = await exchange.get_ticker(symbol)
             profile.last_price = ticker.last
             profile.bid = ticker.bid
             profile.ask = ticker.ask
             profile.volume_24h_quote = ticker.volume_24h
 
-            # Spread analysis
             mid = (
                 (ticker.bid + ticker.ask) / 2
                 if (ticker.bid and ticker.ask)
@@ -347,7 +309,6 @@ class VolumeGuard:
                 profile.spread_pct = (ticker.ask - ticker.bid) / mid * 100
             profile.wide_spread = profile.spread_pct > 0.5
 
-            # Volume analysis
             profile.volume_hourly_est = profile.volume_24h_quote / 24
             profile.low_volume = (
                 profile.volume_24h_quote < self.config.min_daily_volume_usd
@@ -356,12 +317,10 @@ class VolumeGuard:
                 not profile.low_volume or profile.volume_24h_quote > 0
             )
 
-            # Estimate average trade size
             tier = self._classify_volume_tier(profile.volume_24h_quote)
             est_trades = self.TRADES_PER_DAY_EST.get(tier, 5000)
             profile.avg_trade_size_est = profile.volume_24h_quote / est_trades
 
-            # Fetch orderbook for depth analysis
             try:
                 book = await exchange.get_orderbook(
                     symbol, self.config.book_depth_levels
@@ -374,18 +333,14 @@ class VolumeGuard:
                 )
                 profile.bid_depth_levels = len(book.bids)
                 profile.ask_depth_levels = len(book.asks)
-            except (
-                Exception
-            ):  # R28-OK: orderbook probe; volume-derived estimate is the documented fallback
-                # Orderbook unavailable — use volume-only estimates
+            except Exception:
+                # A synthesized depth, not a venue value.
                 profile.bid_depth_quote = profile.volume_hourly_est * 0.1
                 profile.ask_depth_quote = profile.volume_hourly_est * 0.1
 
-            # Thin market detection
             book_depth = min(profile.bid_depth_quote, profile.ask_depth_quote)
             profile.thin_market = book_depth < profile.volume_hourly_est * 0.02
 
-            # Compute safe trade sizes
             self._compute_safe_sizes(profile)
 
         except Exception as exc:
@@ -396,32 +351,28 @@ class VolumeGuard:
         return profile
 
     def _compute_safe_sizes(self, profile: MarketProfile):
-        """Compute maximum safe trade sizes from market profile."""
+        """Set the safe order sizes and the hourly budget on ``profile``.
+
+        ``safe_single_order_quote`` is the smallest of the volume, book-depth
+        and average-trade limits, floored at 0.01 quote.
+        """
         cfg = self.config
 
-        # Method 1: Volume-based limit
-        # Don't exceed X% of daily volume in a single order
         vol_limit_quote = profile.volume_24h_quote * cfg.max_single_order_volume_pct
 
-        # Method 2: Orderbook depth limit
-        # Don't take more than X% of visible book depth
         if profile.bid_depth_quote > 0 and profile.ask_depth_quote > 0:
             book_limit_quote = (
                 min(profile.bid_depth_quote, profile.ask_depth_quote)
                 * cfg.max_book_depth_pct
             )
         else:
-            book_limit_quote = vol_limit_quote  # Fallback to volume-only
+            book_limit_quote = vol_limit_quote
 
-        # Method 3: Average trade size limit
-        # Don't exceed N multiples of the estimated average trade size
-        # (even a "large" trade should be at most 10x average)
         avg_limit_quote = profile.avg_trade_size_est * 10
 
-        # Take the most conservative (smallest) limit
         safe_quote = max(
             min(vol_limit_quote, book_limit_quote, avg_limit_quote),
-            0.01,  # Absolute minimum to avoid zero
+            0.01,
         )
 
         profile.safe_single_order_quote = safe_quote
@@ -430,29 +381,30 @@ class VolumeGuard:
         else:
             profile.safe_single_order_base = 0
 
-        # Hourly participation budget
         profile.hourly_budget_remaining = self._get_hourly_budget(
             profile.symbol, profile.volume_hourly_est
         )
 
     def _classify_volume_tier(self, daily_volume_quote: float) -> str:
-        """Classify a market's volume tier."""
-        if daily_volume_quote >= 100_000_000:  # $100M+
+        """Return the ``TRADES_PER_DAY_EST`` key for ``daily_volume_quote``."""
+        if daily_volume_quote >= 100_000_000:
             return "mega"
-        if daily_volume_quote >= 10_000_000:  # $10M+
+        if daily_volume_quote >= 10_000_000:
             return "large"
-        if daily_volume_quote >= 1_000_000:  # $1M+
+        if daily_volume_quote >= 1_000_000:
             return "mid"
-        if daily_volume_quote >= 100_000:  # $100K+
+        if daily_volume_quote >= 100_000:
             return "small"
         return "micro"
-
-    # ─── Chunk Planning ────────────────────────────────────────────
 
     def _compute_chunk_plan(
         self, amount: float, ref_price: float, side: str, profile: MarketProfile
     ) -> ChunkPlan:
-        """Determine if and how to split an order into chunks."""
+        """Decide whether ``amount`` needs splitting against ``profile``.
+
+        Returns a ``ChunkPlan`` of at most 50 equal chunks whose
+        ``chunk_delay_ms`` shortens as ``volume_hourly_est`` rises.
+        """
         quote_value = amount * ref_price if ref_price > 0 else 0
         plan = ChunkPlan(
             original_amount=amount,
@@ -464,38 +416,29 @@ class VolumeGuard:
         safe_quote = profile.safe_single_order_quote
         safe_base = profile.safe_single_order_base
 
-        # Check if order fits within safe limits
         if safe_base <= 0 or amount <= safe_base:
             plan.needs_chunking = False
             plan.chunks = [amount]
             plan.reason = "within_safe_limits"
             return plan
 
-        # Order too large — compute chunks
         plan.needs_chunking = True
 
-        # Chunk size = safe_size * headroom factor
         chunk_base = safe_base * self.config.chunk_headroom_pct
         if chunk_base <= 0:
-            chunk_base = amount  # Fallback: execute as single
+            chunk_base = amount
             plan.needs_chunking = False
 
         n_chunks = math.ceil(amount / chunk_base)
-        # Cap at reasonable number of chunks (no more than 50)
         n_chunks = min(n_chunks, 50)
         chunk_base = amount / n_chunks
 
         plan.chunks = [chunk_base] * n_chunks
-        # Adjust last chunk for remainder
         total_planned = sum(plan.chunks)
         if total_planned != amount:
             plan.chunks[-1] += amount - total_planned
 
-        # Compute inter-chunk delay
-        # Higher volume → shorter delays (market absorbs faster)
         if profile.volume_hourly_est > 0:
-            # Scale delay inversely with volume
-            # At $1M/hr volume, ~500ms delay; at $10K/hr, ~3000ms
             volume_factor = min(profile.volume_hourly_est / 100_000, 10)
             delay = int(self.config.max_chunk_delay_ms / max(volume_factor, 0.5))
             delay = max(
@@ -506,7 +449,6 @@ class VolumeGuard:
             delay = self.config.max_chunk_delay_ms
         plan.chunk_delay_ms = delay
 
-        # Estimate slippage from orderbook depth
         relevant_depth = (
             profile.ask_depth_quote if side == "buy" else profile.bid_depth_quote
         )
@@ -516,7 +458,6 @@ class VolumeGuard:
         else:
             plan.estimated_slippage_pct = 0
 
-        # Classify reason
         ratio = quote_value / safe_quote if safe_quote > 0 else 0
         if ratio > 20:
             plan.reason = f"extreme_size ({ratio:.0f}× safe limit)"
@@ -526,8 +467,6 @@ class VolumeGuard:
             plan.reason = f"above_safe ({ratio:.1f}× safe limit)"
 
         return plan
-
-    # ─── Execution Strategies ──────────────────────────────────────
 
     async def _execute_passthrough(
         self,
@@ -539,9 +478,11 @@ class VolumeGuard:
         start: float,
         ex=None,
     ) -> ExecutionReport:
+        """Place all of ``amount`` through ``exchange.place_order`` with no sizing.
 
-        # sadp: R28 R29  # volume-gated order: fail-loudly(R28) idempotent(R29)
-        """Execute without any volume protection (disabled or fallback)."""
+        ``executed_amount`` falls back to ``amount`` and ``avg_fill_price`` to
+        ``price`` when the venue leaves ``order.filled`` or ``order.average`` empty.
+        """
         from ..exchange.base import OrderSide, OrderType as OT
 
         exchange = ex or self._exchange
@@ -570,9 +511,7 @@ class VolumeGuard:
                 strategy="passthrough",
                 fills=[{"price": fill_price, "amount": order.filled or amount}],
             )
-        except (
-            Exception
-        ) as exc:  # R28-OK: error surfaced via ExecutionReport(success=False)
+        except Exception as exc:
             elapsed = (time.monotonic() - start) * 1000
             return ExecutionReport(
                 success=False,
@@ -602,9 +541,11 @@ class VolumeGuard:
         start: float,
         ex=None,
     ) -> ExecutionReport:
+        """Place ``amount`` in one order and score it against ``profile``.
 
-        # sadp: R28 R29  # volume-gated order: fail-loudly(R28) idempotent(R29)
-        """Execute a single order that's within safe limits."""
+        ``actual_slippage_pct`` is the fill price away from
+        ``profile.last_price``, and stays 0 while either is not positive.
+        """
         from ..exchange.base import OrderSide, OrderType as OT
 
         exchange = ex or self._exchange
@@ -639,9 +580,7 @@ class VolumeGuard:
                 strategy="single",
                 fills=[{"price": fill_price, "amount": order.filled or amount}],
             )
-        except (
-            Exception
-        ) as exc:  # R28-OK: error surfaced via ExecutionReport(success=False)
+        except Exception as exc:
             elapsed = (time.monotonic() - start) * 1000
             return ExecutionReport(
                 success=False,
@@ -671,9 +610,11 @@ class VolumeGuard:
         start: float,
         ex=None,
     ) -> ExecutionReport:
+        """Place every entry of ``plan.chunks``, sleeping ``plan.chunk_delay_ms``.
 
-        # sadp: R28 R29  # volume-gated order: fail-loudly(R28) idempotent(R29)
-        """Execute as volume-aware iceberg: adaptive chunks with delays."""
+        Every fifth chunk rebuilds the profile and abandons the rest once
+        ``spread_pct`` passes twice ``config.max_slippage_pct``.
+        """
         from ..exchange.base import OrderSide, OrderType as OT
 
         exchange = ex or self._exchange
@@ -729,15 +670,11 @@ class VolumeGuard:
                     {"chunk": i + 1, "price": 0, "amount": 0, "error": str(exc)}
                 )
 
-            # Inter-chunk delay (skip after last chunk)
             if i < len(plan.chunks) - 1:
-                # Re-check market between chunks for adaptive timing
                 if i > 0 and i % 5 == 0:
                     try:
-                        # Refresh profile every 5 chunks
                         self._profile_cache.pop(symbol, None)
                         fresh = await self._get_market_profile(symbol)
-                        # Abort if market conditions deteriorated
                         if fresh.spread_pct > self.config.max_slippage_pct * 2:
                             logger.warning(
                                 "VolumeGuard: Spread widened to %.2f%%, "
@@ -745,8 +682,13 @@ class VolumeGuard:
                                 fresh.spread_pct,
                             )
                             break
-                    except Exception:  # R28-OK: volume probe best-effort fallback
-                        pass
+                    except Exception as exc:
+                        logger.warning(
+                            "VolumeGuard: %s profile refresh failed between "
+                            "chunks; the remaining chunks are unchecked: %s",
+                            symbol,
+                            exc,
+                        )
 
                 await asyncio.sleep(plan.chunk_delay_ms / 1000)
 
@@ -774,10 +716,12 @@ class VolumeGuard:
             fills=fills,
         )
 
-    # ─── Hourly Participation Tracking ─────────────────────────────
-
     def _track_hourly_usage(self, symbol: str, quote_amount: float):
-        """Track how much volume we've consumed this hour."""
+        """Add ``quote_amount`` to ``_hourly_usage`` for ``symbol``.
+
+        The whole map is cleared the first time ``_track_hourly_usage`` runs in
+        a new clock hour.
+        """
         now = time.time()
         current_hour = int(now // 3600)
         last_hour = int(self._last_hour_reset // 3600) if self._last_hour_reset else 0
@@ -791,19 +735,23 @@ class VolumeGuard:
         )
 
     def _get_hourly_budget(self, symbol: str, hourly_volume: float) -> float:
-        """Get remaining hourly participation budget."""
+        """Return ``hourly_volume`` scaled by ``max_hourly_participation_pct``.
+
+        The ``_hourly_usage`` already booked for ``symbol`` is subtracted, and
+        the result never falls below zero.
+        """
         max_hourly = hourly_volume * self.config.max_hourly_participation_pct
         used = self._hourly_usage.get(symbol, 0)
         return max(0, max_hourly - used)
 
-    # ─── Reporting & Status ────────────────────────────────────────
-
     def get_status(self) -> dict:
-        """Return current guard status and statistics."""
+        """Return the config, the cache size and the ``_execution_history`` counts.
+
+        ``recent_executions`` and ``iceberg_executions`` count only reports
+        whose ``completed_at`` is inside the last hour.
+        """
         recent = [
-            r
-            for r in self._execution_history
-            if time.time() - r.execution_time_ms / 1000 < 3600
+            r for r in self._execution_history if time.time() - r.completed_at < 3600
         ]
         icebergs = [r for r in recent if r.strategy.startswith("iceberg")]
 
@@ -823,7 +771,7 @@ class VolumeGuard:
         }
 
     def get_market_profile(self, symbol: str) -> Optional[dict]:
-        """Get cached market profile as dict (for UI display)."""
+        """Return the cached ``MarketProfile`` for ``symbol`` as a dict, or None."""
         p = self._profile_cache.get(symbol)
         if not p:
             return None
@@ -847,7 +795,7 @@ class VolumeGuard:
         }
 
     def get_execution_history(self, limit: int = 50) -> list[dict]:
-        """Get recent execution reports as dicts."""
+        """Return the last ``limit`` ``ExecutionReport`` entries as dicts."""
         return [
             {
                 "symbol": r.symbol,
@@ -864,15 +812,15 @@ class VolumeGuard:
         ]
 
 
-# ───────────────────────────────────────────────────────────────────
-# Singleton
-# ───────────────────────────────────────────────────────────────────
-
 _instance: Optional[VolumeGuard] = None
 
 
 def get_volume_guard(exchange=None, config: VolumeGuardConfig = None) -> VolumeGuard:
-    """Get or create the global VolumeGuard instance."""
+    """Return the process-wide ``VolumeGuard``, building it on the first call.
+
+    ``config`` is read only on that first call; a later ``exchange`` reaches the
+    existing instance through ``set_exchange``.
+    """
     global _instance
     if _instance is None:
         _instance = VolumeGuard(exchange, config)
