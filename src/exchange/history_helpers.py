@@ -377,13 +377,15 @@ def _best_entry_within_window(
     if not candidates:
         return None
     best = None
-    best_delta = JOIN_TOLERANCE_SECONDS + 1.0
+    best_delta = JOIN_TOLERANCE_SECONDS
     for e in candidates:
         ets = _parse_entry_ts(e.get("timestamp", ""))
         if ets is None:
             continue
         dt = abs(ets - target_ts)
-        if dt < best_delta:
+        if dt > JOIN_TOLERANCE_SECONDS:
+            continue
+        if best is None or dt < best_delta:
             best = e
             best_delta = dt
     return best

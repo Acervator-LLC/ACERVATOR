@@ -351,3 +351,41 @@ def test_history_tab_has_history_refreshed_signal():
     from src.gui.history_tab import HistoryTab
 
     assert HistoryTab.history_refreshed is not None
+
+
+# ---- gate/voting join window ----------------------------------------- #
+
+
+def _gate_index_at(bot_id, entry_ts):
+    stamp = datetime.fromtimestamp(entry_ts, tz=timezone.utc)
+    entry = {
+        "bot_id": bot_id,
+        "timestamp": stamp.isoformat().replace("+00:00", "Z"),
+        "data": {"symbol": "BTC/USD", "scrum_armed": True},
+    }
+    return {(bot_id, int(entry_ts) // 60): [entry]}
+
+
+def test_an_entry_inside_the_join_tolerance_is_returned():
+    trade_ts = 1_700_000_000.0
+    inside = trade_ts - (h.JOIN_TOLERANCE_SECONDS - 0.5)
+    index = _gate_index_at("bot1", inside)
+
+    found = h.lookup_gate_entry(index, "bot1", trade_ts)
+
+    assert found is not None, (
+        "an entry 59.5s from the trade must join; the probe reached " f"{sorted(index)}"
+    )
+
+
+def test_an_entry_past_the_join_tolerance_is_not_returned():
+    trade_ts = 1_700_000_000.0
+    outside = trade_ts - (h.JOIN_TOLERANCE_SECONDS + 0.5)
+    index = _gate_index_at("bot1", outside)
+
+    found = h.lookup_gate_entry(index, "bot1", trade_ts)
+
+    assert found is None, (
+        "an entry 60.5s from the trade is outside JOIN_TOLERANCE_SECONDS "
+        f"and must not join; got {found}"
+    )
