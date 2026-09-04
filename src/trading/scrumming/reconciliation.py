@@ -1,7 +1,8 @@
 """Holdings reconciliation for ScrummingBot: the venue is authoritative.
 
-Pulls exchange truth -- balance, trade count, position health -- and folds
-any difference into the internal lot book. Places no orders.
+``ReconciliationEngineMixin`` pulls the balance, the trade count and the
+position health from the exchange, then books any difference into
+``_main_lots`` without placing an order.
 """
 
 from __future__ import annotations
@@ -14,16 +15,15 @@ logger = logging.getLogger("acervator.scrumming")
 
 
 class ReconciliationEngineMixin:
-    """Reconcile internal holdings and the lot book against the exchange.
+    """Reconcile ``_current_holdings`` and ``_main_lots`` against the exchange.
 
-    Internal numbers never override the venue: a disagreement is resolved
-    by adopting the exchange reading and booking the difference as a
-    reconciliation lot.
+    A disagreement is settled by adopting the exchange reading;
+    ``_book_reconciliation_lot`` writes the difference as a lot flagged
+    ``reconciled_to_exchange``.
     """
 
-    # Supplied by ScrummingBot at runtime; declared so a type
-    # checker can resolve them. Annotations only: no attribute is
-    # created and the runtime base stays `object`.
+    # Supplied by ScrummingBot at runtime; annotations only, no attribute
+    # is created.
     _bus: Any
     _current_holdings: float
     _get_balance: Callable[..., Any]
@@ -39,14 +39,11 @@ class ReconciliationEngineMixin:
     EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC = 300.0
 
     async def refresh_exchange_position_health(self, force: bool = False) -> bool:
-        """Refresh exchange-pulled position health stats.
+        """Refresh the exchange-pulled fields on ``stats``.
 
-        Returns True if a refresh actually fetched + updated stats,
-        False if throttled or unavailable.
-
-        Args:
-            force: bypass throttle (use sparingly — e.g., on operator-
-                triggered diagnostics).
+        Returns True when a fetch updated ``stats``; returns False when
+        ``EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC`` throttles the call without
+        ``force``, and when ``self.exchange`` cannot serve ``get_my_trades``.
         """
         import time as _t
 
@@ -140,17 +137,12 @@ class ReconciliationEngineMixin:
     YTD_TRADE_MAX_PAGES = 40
 
     async def sync_ytd_trade_count(self) -> Optional[int]:
-        """Paginate get_my_trades from YTD_TRADE_ANCHOR_UTC forward
-        and reconcile ``stats.total_trades`` / ``exchange_trade_count``.
+        """Walk ``get_my_trades`` in 30-day windows from the YTD anchor.
 
-        Returns the reconciled total, or ``None`` when the exchange
-        can't be consulted (missing connector, method not implemented,
-        API error). Never lowers the persisted counter — the
-        reconciled value is ``max(persisted, exchange_count)`` so a
-        partial-page response or transient rate-limit can't wipe out
-        real history. Called once at boot from
-        ``bootstrap_exchange_state``; subsequent per-trade increments
-        continue via the normal execute-buy / execute-sell paths.
+        ``stats.total_trades`` and ``stats.exchange_trade_count`` take the
+        ``max`` of the persisted and the counted value, which is returned;
+        ``None`` comes back when ``self.exchange`` cannot serve
+        ``get_my_trades`` or the walk raises.
         """
         if self.exchange is None:
             return None
@@ -258,13 +250,11 @@ class ReconciliationEngineMixin:
         return _reconciled
 
     async def bootstrap_exchange_state(self) -> None:
-        """One-shot live-pull of exchange state for the GUI.
+        """One-shot live pull of exchange state after the connector attaches.
 
-        Populates: _current_holdings, stats.current_price, stats.position_value.
-        Runs fail-closed — any exception logged but not raised. Intended to
-        be scheduled as a background task right after the connector is
-        attached to the bot; irrelevant for bots that tick quickly (the
-        handshake covers them) but essential for bots that haven't started.
+        Sets ``_current_holdings``, ``stats.current_price`` and
+        ``stats.position_value``, calls ``_bootstrap_adopt_from_exchange``,
+        and logs every exception without raising.
         """
         if (
             self.exchange is None
@@ -365,31 +355,11 @@ class ReconciliationEngineMixin:
 
     @staticmethod
     def _reconcilable_units(value: Any, label: str) -> tuple[float | None, str | None]:
-        """One units reading as a finite, NON-NEGATIVE float, or a reason.
+        """One units reading as a finite, non-negative float, or a reason.
 
-        Returns (number, None) when usable, (None, reason) when
-        refused, the same shape as `_positive_observed_quantity`
-        (:3134), `_finite_state_number` (:3199) and `_sum_lot_units`
-        (:3245). Returning the refusal instead of raising is what lets
-        `_reconcile_holdings` decline the whole audit before it writes
-        anything.
-
-        The restore paths coerce the same field more loosely, with
-        `float(lot.get("units", 0) or 0)` (:6910, :7985). That
-        divergence is deliberate and it runs one way only: this reader
-        refuses a strict superset of what they refuse, so a book they
-        loaded can be declined here, and a book declined here is never
-        written to. The reverse -- a book this reader accepts that they
-        would reject -- cannot happen.
-
-        `-0.0` is a zero and is normalised to `0.0`, so no caller
-        formats a negative zero into a log line.
-
-        `float(10 ** 400)` raises OverflowError, which is neither
-        ValueError nor TypeError, so it is caught by name. Reaching for
-        `math.isfinite` instead does not help: the conversion raises
-        before `isfinite` is ever evaluated, and `json.loads` parses a
-        400-digit literal into exactly that int.
+        Returns ``(number, None)`` when usable and ``(None, reason)`` when
+        refused; ``-0.0`` normalises to ``0.0``, and ``OverflowError`` from
+        ``float`` is caught by name alongside ``TypeError`` and ``ValueError``.
         """
         if type(value) is not int and type(value) is not float:
             return None, (
@@ -409,32 +379,9 @@ class ReconciliationEngineMixin:
     def _reconcilable_lot_book(self) -> tuple[list[float] | None, str | None]:
         """Every lot's units, coerced, in book order — or a reason.
 
-        The per-lot values are returned rather than only their total
-        because the drift-down branch multiplies them one by one.
-        Deriving them a second time down there would let two passes
-        disagree about one book.
-
-        NOT `_sum_lot_units` (:3245), and the difference is deliberate
-        in both directions. That helper refuses a lot with no "units"
-        key; here such a lot counts as ZERO, which is what the restore
-        paths' `.get` already does (:6910, :7985). Refusing it instead
-        would leave a bot permanently unreconcilable over a lot that
-        holds nothing. It also returns a total only, and a total cannot
-        be multiplied back into a book. Its contract is pinned by the
-        atomicity check in `apply_extractor_tranche_return`, so it is
-        left exactly as it is.
-
-        ONE unreadable lot refuses the whole book: the correction is a
-        single ratio applied to every lot, so a lot that cannot be read
-        cannot be corrected around.
-
-        The caller totals this with `sum`, not with a `+=` loop,
-        because those two do not agree — CPython's `sum` applies
-        Neumaier compensation to floats. On ORCA's real 48-lot book
-        `sum` gives 54.053407815409216 and an accumulator loop gives
-        54.05340781540922, one ULP apart. `sum` is what :6910 and :7985
-        use to derive the scalar, so the audited total comes out
-        bit-identical to theirs.
+        One lot that ``_reconcilable_units`` refuses returns ``(None, reason)``
+        for the whole book; a lot with no ``units`` key counts as zero, and
+        ``_reconcile_holdings`` totals the returned list with ``sum``.
         """
         per_lot: list[float] = []
         for _index, _lot in enumerate(self._main_lots):
@@ -457,19 +404,9 @@ class ReconciliationEngineMixin:
     ) -> tuple[float, float, float]:
         """``(claimable, personal_hold, sibling_tracked)`` for this asset.
 
-        Lifted verbatim out of the drift-UP branch of
-        ``_reconcile_holdings`` so ``bootstrap_exchange_state`` asks the
-        same question the same way. The rule is unchanged:
-
-            claimable = exchange - personal_hold_qty - sibling_tracked
-
-        Both subtrahends are operator/bot DECLARATIONS, not inferences,
-        and they are what preserves the 2026-07-27 ETH/BTC protection.
-
-        FAIL CLOSED. An unreadable sibling total returns ``inf`` for the
-        siblings, which drives ``claimable`` negative and claims
-        nothing. Under-claiming costs a log line; over-claiming spends
-        the operator's coins.
+        ``claimable`` is ``exchange_units`` less ``config.personal_hold_qty``
+        and ``sum_sibling_tracked_units``; an unreadable second total becomes
+        ``inf``, which drives ``claimable`` negative and claims nothing.
         """
         _personal = max(
             0.0, float(getattr(self.config, "personal_hold_qty", 0.0) or 0.0)
@@ -486,7 +423,7 @@ class ReconciliationEngineMixin:
                         )
                     ),
                 )
-            except Exception as _sib_exc:  # R28-OK: fail closed
+            except Exception as _sib_exc:
                 logger.warning(
                     "Bot %s claimable units: sibling total unreadable "
                     "(%s) — claiming nothing this pass.",
@@ -501,14 +438,9 @@ class ReconciliationEngineMixin:
     ) -> float | None:
         """Raise a restored book to the wallet at startup, once.
 
-        Same ownership rule as the periodic reconcile, and the same lot
-        writer, so a restart cannot re-introduce the figure that
-        reconcile just corrected. Returns the units added, or ``None``
-        when nothing was adopted.
-
-        It lives in its own method rather than inline because the two
-        branches it carries pushed ``bootstrap_exchange_state`` past
-        the complexity ceiling, and both belong to one idea.
+        Calls ``_claimable_exchange_units`` and ``_book_reconciliation_lot``,
+        the pair ``_reconcile_holdings`` also uses, and returns the units
+        added or ``None``.
         """
         if book_units <= 0:
             return None
@@ -550,46 +482,14 @@ class ReconciliationEngineMixin:
     def _book_reconciliation_lot(
         self, adopt_units: float, book_units: float, price: float
     ) -> float | None:
-        """Write the top-up as a lot, then re-derive holdings from it.
+        """Write the top-up as a lot, then re-derive ``_current_holdings``.
 
-        Returns the units added, or ``None`` when nothing was written.
-
-        TWO THINGS THIS CLOSES, BOTH OF THEM IN THE ARITHMETIC.
-
-        1. THE TOP-UP IS MEASURED FROM THE BOOK. The drift-UP branch
-           measured it from ``internal_units``, which is
-           ``max(scalar, book)``. Whenever the scalar leads the book
-           those are different numbers, the lot written is short by the
-           difference, and the invariant the adopt exists to keep --
-           ``sum(l["units"] for l in _main_lots) == _current_holdings``
-           -- comes out FALSE. Measured on the live BILL book with a
-           scalar of 15000 against a 14131-unit book and a 15778-unit
-           wallet: holdings 15778, book 14909, invariant_ok False. The
-           delta is computed from the scalar and the scrum reads the
-           book, so the two consumers disagree by 869 units.
-
-        2. NO PRICE, NO LOT. The basis was written straight from
-           ``stats.current_price`` with no test, and that field is 0.0
-           on a bot that has not completed a priced tick -- a
-           post-failure reconcile on a freshly restored bot reaches
-           here. The same measurement books
-           ``initial_buy_price: 0.0``, which is not a cheap entry, it
-           is a lot that claims infinite profit against every price
-           and can arm a sell that never should have armed. Refusing
-           costs one cycle; the reconcile runs again.
-
-        The scalar is re-derived by summing the book rather than
-        assigned from ``adopt_units``, so the two counters agree bit
-        for bit whatever the float addition did.
+        The lot holds ``adopt_units`` less ``book_units`` at a ``price`` that
+        must be finite and above zero, and ``_current_holdings`` is then
+        re-summed from ``_main_lots``.
         """
-        # NO READING IS NOT A QUANTITY. `nan` compares False against
-        # every bound, so `nan <= 1e-9` falls THROUGH a guard written
-        # as a comparison and writes a nan lot, a nan scalar and a nan
-        # delta. The reconcile path cannot deliver one -- its inputs go
-        # through `_reconcilable_lot_book` first -- but the bootstrap
-        # path sums the book with a bare `float(lot.get(...))` and can.
-        # A writer that is safe only when its caller validates is not
-        # safe.
+        # nan compares False against every bound, so both readings go
+        # through math.isfinite.
         for _reading in (adopt_units, book_units):
             try:
                 if not math.isfinite(float(_reading)):
@@ -619,27 +519,13 @@ class ReconciliationEngineMixin:
         return _gain
 
     async def _reconcile_holdings(self, reason: str = "periodic") -> bool:
-        """Re-fetch asset balance from the exchange and compare it to
-        what this bot claims to hold. On drift above tolerance, log
-        prominently and reset internal state to exchange reality.
+        """Compare ``_current_holdings`` and ``_main_lots`` against the venue.
 
-
-        Returns True if reconciliation completed (with or without drift
-        action). Returns False in three cases, all of which leave every
-        counter and every lot untouched: the balance fetch itself
-        failed (network blip; retry next scheduled interval), the
-        exchange OMITTED the currency from its response so the venue
-        holding is unknown rather than zero (`Balance.absent`), or one
-        of the three inputs was outside the reconcilable domain
-        (exactly an int or a float, finite, non-negative — see
-        `_reconcilable_units`).
-
-        Reason tags help the operator and post-hoc investigation know
-        why reconciliation ran:
-          "init"           — first-tick verification after bot start
-          "periodic"       — every N ticks routine check
-          "post_failure"   — after a trade attempt returned None
-          "operator_req"   — explicitly requested via future GUI action
+        ``reason`` tags every log line with ``periodic`` or ``post_failure``,
+        and the return is True once the comparison completes, False when the
+        balance fetch raises, when ``Balance.absent`` marks the currency
+        missing from the response, or when ``_reconcilable_units`` refuses an
+        input.
         """
         try:
             balance = await self._get_balance(self.config.target_asset)
@@ -731,12 +617,7 @@ class ReconciliationEngineMixin:
                 f"drift={drift_units:+.6f} ({drift_pct:.2f}%)."
             ),
         )
-        # This line is emitted BEFORE either branch runs, so it states
-        # the OBSERVATION only. It used to end "Resetting internal
-        # state to exchange reality" and then the drift-UP branch
-        # preserved instead -- two log lines one second apart saying
-        # opposite things, 735 times on BILL alone. Each branch below
-        # reports what it actually did.
+        # Observation only; each branch below logs what it did.
         logger.warning(
             "Bot %s balance drift (%s): internal=%.6f exchange=%.6f "
             "drift=%+.6f (%.3f%%)",
@@ -763,40 +644,23 @@ class ReconciliationEngineMixin:
                     exchange_units
                 )
                 _adopt = min(exchange_units, _claimable)
-                # v3.25.10 — measured from the BOOK, not from
-                # `internal_units`. See `_book_reconciliation_lot`:
-                # `internal_units` is `max(scalar, book)`, so a scalar
-                # that leads the book wrote a lot short by the
-                # difference and left `sum(lots) != _current_holdings`.
+                # Measured from _lot_units; internal_units is
+                # max(scalar, book) and would write a short lot.
                 _gain = _adopt - _lot_units
                 _basis = float(
                     getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
                 )
 
-                # ONE WRITER DECIDES, AND THE SENTENCE FOLLOWS IT.
-                # The branch used to re-test the price itself, so the
-                # message could describe an adopt the writer had
-                # refused -- and `_basis` of `inf` passes `> 0`, is
-                # refused inside the writer, and would then have
-                # formatted `None` into the operator's line and raised
-                # a TypeError out of the tick. The writer answers with
-                # the units it wrote, or None, and the two branches
-                # below read that answer.
+                # _book_reconciliation_lot returns the units it wrote;
+                # both branches below read that, not _basis.
                 _written = (
                     self._book_reconciliation_lot(_adopt, _lot_units, _basis)
                     if _gain > 1e-9
                     else None
                 )
                 if _written is not None:
-                    # Reconciliation lot. The units are real and on the
-                    # exchange; only their cost basis is unknown, so it
-                    # is booked at the price this reconcile ran at and
-                    # flagged, rather than inventing a fill that never
-                    # happened. The invariant every consumer relies on
-                    # -- sum(_main_lots units) == _current_holdings --
-                    # is what makes the delta computable, so the lot is
-                    # appended in the same step that moves the scalar,
-                    # and the scalar is re-derived from the book.
+                    # Booked at this pass's price and flagged
+                    # reconciled_to_exchange; no fill is invented.
                     _gain = _written
                     _adopt = self._current_holdings
                     _foreign = max(0.0, exchange_units - _adopt)
@@ -831,13 +695,9 @@ class ReconciliationEngineMixin:
                         _personal,
                         _sib_units,
                     )
-                elif _gain > 1e-9:  # claimable, but the writer refused
-                    # v3.25.10 — the units are claimable but there is no
-                    # price to book them at. A lot at a zero basis is
-                    # not a cheap entry; it reads as infinite profit
-                    # against every price and can arm a sell. Say so and
-                    # keep the position, rather than write a number that
-                    # was never observed.
+                elif _gain > 1e-9:
+                    # A lot at a zero basis reads as unlimited profit
+                    # against every price and can arm a sell.
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -862,9 +722,8 @@ class ReconciliationEngineMixin:
                         _basis,
                     )
                 else:
-                    # Every surplus unit is spoken for. This is the
-                    # 2026-07-27 case and it still refuses -- but it
-                    # now says WHY, with the numbers that decided it.
+                    # The whole surplus is attributed to personal hold
+                    # plus other bots, so nothing is claimed.
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
