@@ -97,13 +97,13 @@ upward have no entry in `RULE_META` at all, and of the 35 that do collide, not
 one describes the same rule: the older manual's first rule is a lock-state
 default where the registry's is a target increment after a fold, and its third is
 an append-only log where the registry's is a targeting-mode reset. The two are
-unrelated id spaces that share a shape. Version one was never built here and its
+unrelated id spaces that share a shape. Version one was never built and its
 R-numbers were never live. `docs/audits/manual-original-parts-audit.md` carries
 the full count.
 
 What did ship was a set of references to it. `tests/test_no_dead_sadp_references.py`
 holds the line: `pyproject.toml`, `README.md` and `CONTRIBUTING.md` may not name
-the retired protocol or its battery, no module under `src/` or `tools/` may
+the protocol or its battery, no module under `src/` or `tools/` may
 import it, and `datas_candidates` in `tools/spec_common.py` may not ship a path
 naming it. The test module records both directions of its own control: reverting
 the five files to their earlier state failed four of its checks, and restoring

@@ -9,8 +9,8 @@ The manual this one replaces carries a decision-record index across three lists.
 No file whose name holds "adr", in any case, appears in any commit. The set of
 paths any commit across every ref has added holds 1,599 distinct names, and none
 matches. Run over that same set, the control returns `src/core/log_paths.py` and
-three paths naming the retired protocol, so the query does find a name when one
-is present.
+three paths naming the older development protocol, so the query does find a name
+when one is present.
 
 No decision-record index exists here, and none has ever existed. Nothing carries
 forward from that part of the older manual.
