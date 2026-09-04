@@ -100,25 +100,28 @@ zero below was re-probed with the identifiers the manual itself names.
 
 ### Sampling, Stated Plainly
 
-479 pages could not be classified claim-by-claim in full. Three censuses were
-run instead, each complete within its own class, so every ratio has a real
-denominator rather than a hand-picked sample.
+All fourteen parts were read end to end. Every claim naming a file, module,
+class, function, config field, flag, metric or number was extracted and scored.
+Nothing was extrapolated from a sample, with one stated exception noted below.
+
+Three machine censuses run underneath the reading, each complete within its own
+class, so the ratios rest on real denominators rather than on impressions.
 
 - **Census A — every distinct Python filename named, all fourteen parts.**
   Machine-extracted with one fixed pattern, then each name classified by the
-  file instruments. This is a complete enumeration of the file-existence claim
-  class, not a sample.
-- **Census B — every numbered catalogue entry.** All 26 inventions in Part 2 and
-  all 77 rules in Part 10, each checked against the mechanism or registry it
-  names.
-- **Census C — the executive claims of Part 1**, pages 1 to 8: every claim naming
-  a component or a count. This one is a stated subset of a 26-page part, and the
-  ratio below says so.
+  file instruments. A complete enumeration, not a sample.
+- **Census B — every numbered catalogue entry.** All 26 inventions in the patent
+  portfolio and all 77 rules in the protocol part, each checked against the
+  mechanism or registry it names.
+- **Census C — the executive claims of Part 1**, pages 1 to 8. This is the one
+  stated subset: the remaining pages of that part are a section index and were
+  not scored. Its table says so, and its 28-claim denominator covers only what
+  was read.
 
-Parts 3 through 8 were read in full by separate reviewers against the same four
-verdicts and the same controls; their per-part censuses are reported in their own
-sections and are marked where a reviewer classified a subset rather than the
-whole part.
+Counting rule, applied uniformly: one claim per distinct named thing per part.
+A thing named five times in one part counts once. A numeric table counts once.
+Pure narrative is counted UNCHECKABLE rather than excluded, so the denominators
+are not flattered by dropping the unscoreable.
 
 ### A Note On Extraction Damage
 
@@ -136,24 +139,51 @@ were.
 
 ## Whole-Document Roll-Up
 
-**Census A, counting each name once for the whole document: 162 distinct Python
-filenames are named across all fourteen parts. 88 exist now, 1 existed and was
-deleted, and 73 have no commit in this repository, ever — 73/162, 45 percent.**
+**All fourteen parts were read and scored. 1,676 checkable claims classified.**
 
-Counting each name once per part in which it appears, the denominator is 355:
-199 present, 1 historical, 155 phantom — 155/355, 44 percent.
+| Verdict | Count | Share of 1,676 |
+|---|---:|---:|
+| ANCHORED | 564 | 34% |
+| DRIFTED | 200 | 12% |
+| PHANTOM | 630 | 38% |
+| UNCHECKABLE | 282 | 17% |
 
-The two headline censuses of catalogued content land in the same band. Of Part
-2's 26 inventions, 7 name mechanisms with no code referent under any name the
-manual gives them — 7/26, 27 percent — and 2 more are drifted. Of Part 10's 77
-rules, 42 have no identifier in the live registry at all, and of the 35 whose
-identifiers do collide with it, **zero describe the same rule** — 77/77 of that
-part's registry has no matching implementation here.
+Uncheckable claims are narrative and opinion — they are neither right nor wrong,
+so they belong outside any accuracy ratio. **Against the 1,394 claims that do
+have a code referent, 830 are wrong or unfounded: 60 percent.** The operator
+wagered that about 60 percent of the manual might be invented. Measured against
+the claims that can be scored at all, that estimate is almost exactly right.
 
-The operator's estimate was that roughly 60 percent might be invented. The
-file-name census puts the phantom share at 45 percent, and the two catalogue
-censuses put whole parts at or near total. The estimate is the right order of
-magnitude, and it is worse in the standalone parts than in the engine parts.
+Read the other way, a third of the whole document is verified accurate, and that
+third is not evenly spread. It concentrates in the two operator sections of the
+features catalogue, the voting-panel chapter of the architecture part, the
+patent portfolio, and the glossaries — and it thins to nothing in the standalone
+parts and the results parts.
+
+```mermaid
+pie showData
+    title Checkable claims with a code referent
+    "Anchored" : 564
+    "Drifted" : 200
+    "Phantom" : 630
+```
+
+**The supporting file census agrees.** Counting each distinct Python filename
+once for the whole document: 162 are named, 88 exist now, 1 existed and was
+deleted, and 73 have no commit in this repository, ever — 73/162, 45 percent.
+Counting a name once per part in which it appears, the denominator is 355: 199
+present, 1 historical, 155 phantom.
+
+**The two catalogue censuses land harder.** Of the 26 inventions, 7 name
+mechanisms with no code referent under any name the manual gives them, and 2 more
+are drifted. Of the 77 protocol rules, 42 have no identifier in the live registry
+at all, and of the 35 whose identifiers do collide with it, **not one describes
+the same rule**.
+
+**Where the damage is worst.** Three parts are beyond repair rather than in need
+of correction: the standalone part on the battery engine, the standalone part on
+the protocol, and the evidence part for a bot that was never built. Together
+those are 91 of the 479 pages, and their subjects have no source here at all.
 
 ## Part 1 — Frontmatter And Overview
 
@@ -243,7 +273,7 @@ Two further filenames named in this part were never added.
 
 **DRIFTED inventions, with the real behaviour named.**
 
-- *The full-override fire window.* The mechanism is real —`_ripe_scrum` and
+- *The full-override fire window.* The mechanism is real — `_ripe_scrum` and
   `_deep_fold` live in `src/trading/scrumming_bot.py` — but both stated constants
   are wrong. The manual gives a band trigger of 0.80; the code compares `bb_pos`
   against `_bb_detect_thresholds()` in `src/trading/scrumming/circuit_breakers.py`,
@@ -264,18 +294,90 @@ worth keeping; the numbers beside them are not.
 
 ## Part 3 — System Architecture
 
-39 pages. Census A is complete for this part: **112 distinct Python filenames,
-77 present, 35 never committed — 35/112, 31 percent phantom.** This is the
-densest part in the manual for file references and has the highest anchored
-share of any part measured by that census.
+39 pages, read in full with no sampling. **358 claims classified** — every claim
+naming a file, module, class, function, config field or number. Provenance tags
+carrying no code referent were not counted.
+
+| Verdict | Count | Share of 358 |
+|---|---:|---:|
+| ANCHORED | 175 | 49% |
+| DRIFTED | 55 | 15% |
+| PHANTOM | 83 | 23% |
+| UNCHECKABLE | 45 | 13% |
+
+**Every module count and every size is wrong.** The engine package is given as
+23 modules and holds 88; the core package as 17 and holds 28; the exchange
+package as 12 and holds 24. The graphical layer is given as about 30 files and
+28,874 lines; it is 165 files and 118,879. Two line-count citations point past
+the end of the file they name.
+
+**Thirty-one module roles are described as something the module does not do.**
+The pattern is consistent and worth naming, because it is the failure mode a
+reader is least likely to catch: the module exists, so a spot check passes, but
+the description belongs to a different component. Among them, the volume guard
+is described as verifying fill prices when it does order chunking — and its own
+docstring records that it returns disabled, leaving its execute path unreached
+on a live order. The competition package is described as generic tournament
+scaffolding when it is a real on-chain token ledger with chain ids and contract
+addresses.
+
+**A subsystem that never existed occupies several pages.** A cooperative
+capacity arbiter, its bridge, and every one of its named symbols return zero on
+both instruments with both controls firing. Nothing implements it and nothing
+ever did.
+
+**The voting-panel chapter is the strongest writing in the manual.** All twelve
+voter codes and their exact weights match `src/trading/ta_engine.py`, the
+weights sum to the stated range, the net and confidence formulae match including
+the detail that neutral voters leave the denominator, and the raw-value columns
+and colour thresholds match the surface module. It needs three small corrections
+and then it ships.
 
 ## Part 4 — Features Catalogue
 
-59 pages. Census A complete: **41 distinct Python filenames, 21 present, 20 never
-committed — 20/41, 49 percent phantom.** The release-readiness gate is named at
-a `tools/` path; the gate really lives at
-`dev_harness/harness/check_release_readiness.py`, so that claim is DRIFTED, not
-phantom.
+59 pages, read in full with no sampling. **288 claims classified.**
+
+| Verdict | Count | Share of 288 |
+|---|---:|---:|
+| ANCHORED | 117 | 41% |
+| DRIFTED | 51 | 18% |
+| PHANTOM | 68 | 24% |
+| UNCHECKABLE | 52 | 18% |
+
+**One finding here has a direct money consequence, and it is the most important
+single result in this audit.** Eleven settings are documented across the
+operator sections with types and defaults, as though an operator could set them.
+All eleven are listed in `_DEPRECATED_KWARGS` in
+`src/trading/container/config.py` and are dropped before `BotConfig.__init__`
+ever sees them. An operator following these pages would set a value, see no
+error, and get silence. Verified at runtime: the frozen set holds exactly 11
+keys.
+
+**The detonation trigger is documented backwards on two pages of three.** Two
+passages describe it as exiting on a high-confidence bearish higher-timeframe
+signal. `ScrummingBot._check_detonation_trigger` requires a value above the
+anchor and a **bullish** reading at or above the configured confidence. The
+part's own risk-control table gets it right, so the manual contradicts itself,
+and the majority reading is the wrong one.
+
+**Counts drift where they can be measured exactly.** Verified at runtime:
+`BotConfig` carries 72 fields, not the "80+" claimed; the extractor-only field
+manifest holds 15, not the thirteen claimed. The default interval, detect and
+fire settings are each given at the wrong magnitude, two of them confusing a
+percent for a fraction.
+
+**Every graphical-tab line count is wrong, and five of eight tab purposes with
+them.** Three are wrong decisively: the analytics tab is described with
+features a search of the file does not find, the competition tab is described as
+visualising the arbiter that does not exist, and the local-chain explorer tab is
+described as an exchange sandbox.
+
+**Anchored, and this is the part's real value.** The two operator sections are
+the highest-value block in the whole manual. Field by field against
+`src/trading/container/config.py`, the scrumming defaults verify, and all
+fifteen extractor field defaults verify exactly, down to the spike-protection
+percentage and the median-of-three fallback. Cut the eleven dead settings and
+the two reversed detonation paragraphs and these pages ship close to as-is.
 
 ## Part 5a — Battery Methodology
 
@@ -634,7 +736,13 @@ module that exists, and worth the space in a new manual.
 | Part 2 | 30–38 | Provenance fold queue, entry-price conservation, fair-value gaps, regime bias | `profit_fold.py`, `indicators/fvg.py` |
 | Part 2 | 39–46 | The initial-purchase-price floor and the initial-entry discipline gate | `scrumming_bot.py`, `gate_chain.py` |
 | Part 2 | 49–51 | Position ceiling and detonation | `scrumming_bot.py` |
-| Part 3 | — | The engine-layer module map, for the 77 of 112 files that exist | `src/trading/`, `src/core/` |
+| Part 3 | 23–27 | The indicator voting panel — voters, weights, net and confidence | `src/trading/ta_engine.py`, `indicator_panel_surface.py` |
+| Part 3 | 16 | The gate-chain framework and its context object | `src/trading/gate_chain.py` |
+| Part 3 | 17 | The extractor state machine and chunk accounting | `src/trading/extractor_bot.py` |
+| Part 3 | 19 | Postmortem-bundle rotation and its four constants | `acervator_watchdog.py` |
+| Part 4 | 32–44 | The scrumming operator section, field by field | `src/trading/container/config.py` |
+| Part 4 | 45–49 | The extractor operator section, all fifteen fields | `src/trading/container/config.py` |
+| Part 4 | 7 | The risk-control rows, including the fold-rate taper | `scrumming_bot.py`, `gate_chain.py` |
 | Part 5a | 5–6 | The methodology principles and the four stated blind spots | editorial, no anchor |
 | Part 6 | 3–4 | The reviewer framework, roster and lineage — openly fictional | no anchor needed |
 | Part 6 | 5–14 | The ten domain assertions, re-deriving each product bullet | field-standard, verify per bullet |
@@ -651,12 +759,49 @@ module that exists, and worth the space in a new manual.
 | Part 8 | 8–10 | The quality-arc module inventory, all 18 modules | `src/trading/`, `src/core/` |
 | Part 9 | 2 | The limits-first posture only — lead with what is not modelled | editorial, no anchor |
 
-Drop the rest. Specifically: do not migrate Part 5c or the three Spectre
-inventions, do not migrate Part 10 or its rule numbers, do not migrate the
-battery result figures anywhere they appear, and do not migrate any
-supporting-evidence number in Part 2 without regenerating it from an instrument
-that exists.
+### Corrections That Must Travel With The Migration
 
-Two things need repair rather than migration, and both are code, not prose: the
-vacuous parity check in `src/core/version_sweep.py`, and the rule registry that
-writes to a path which has never existed.
+Several migratable sections carry one wrong constant or one wrong path. Carry
+the section, fix the value.
+
+| Where | The manual says | The code says |
+|---|---|---|
+| Part 4 operator sections | eleven settings, with types and defaults | all eleven are in `_DEPRECATED_KWARGS` and dropped before `BotConfig.__init__` |
+| Part 4, two of three passages | detonation exits on a bearish higher-timeframe signal | `_check_detonation_trigger` requires **bullish** at or above the confidence floor |
+| Part 4 | more than 80 config fields, thirteen extractor-only | 72 fields, 15 extractor-only, both measured at runtime |
+| Part 3 | package sizes of 23, 17 and 12 modules | 88, 28 and 24 |
+| Parts 3, 4 | seventeen gates evaluated per tick | 17 gate *classes*; the chains are 14 on the sell side and 10 on the buy side |
+| Part 1 executive summary | five timeframes | eleven, in `indicator_panel_surface.py` and `ta_engine.py` |
+| Part 2 fire-window override | band trigger 0.80, delta trigger 10 percent | 0.875 by default from `scrum_detect_pct`, and the configured scrumming interval |
+| Parts 4, 7a, 7b, 8 | the release gate under `tools/` | `dev_harness/harness/check_release_readiness.py` |
+| Parts 7a, 7c, 8 | the trade grader scores five axes | four scored axes; the regime is recorded, never scored |
+| Part 8 | efficiency-ratio suppression at 0.25 | `lower_threshold` of 0.05 in `gate_chain.py` |
+| Part 8 | the trend gate refuses in a ranging market | it blocks on strong trend, at or above 30 |
+| Part 6 | phantom balance uses two or three timeframes | six, in `DEFAULT_PHANTOM_TIMEFRAMES` |
+| Parts 5a, 7c | a 78-simulation battery over 26 assets | the live rule title names 39; Part 5a's own later page agrees |
+
+### Migrate Only After Rebuilding The Producer
+
+These sections carry sound reasoning on top of numbers nothing here can
+regenerate. Keep the framing, re-measure the figures, or publish neither.
+
+- **Part 5a, the methodology depth pass** — the designed-versus-realised regime
+  distinction and the walk-forward specification are good discipline. Settle the
+  battery size in one direction first.
+- **Part 5b, the recovery profiles** — cooperation, survival and resilience is a
+  real product story. Every number in it must be re-measured from the live
+  account, and the cost-basis method it names must be dropped or implemented.
+- **Part 8, the live-evidence and chart chapters** — the numbers may well be
+  true. Nothing in this repository can regenerate them, so migrating them as they
+  stand writes an unfalsifiable claim into a new document.
+
+### Drop
+
+Do not migrate Part 5c or the three inventions built on it, Part 10 or its rule
+numbers, the third-generation baseline chapter, the decision-record index, or any
+battery figure wherever it appears.
+
+Two items need repair rather than migration, and both are code rather than
+prose: the two checks in `src/core/version_sweep.py` that pass without examining
+anything, and the rule registry that persists to a directory which has never
+existed.
