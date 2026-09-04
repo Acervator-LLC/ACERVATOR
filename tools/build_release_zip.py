@@ -172,9 +172,8 @@ ADDITIONAL_FILES_EXACT = {
     # silence and the file would have joined the PRIMARY zip with no
     # message. It joins the PRIMARY zip on purpose now: it is a tool in
     # `tools/`, and every other tool in that directory ships there.
-    # Cat 7 — low-coupling promo (trailer chain). KEEP
-    # generate_essay.py in PRIMARY — it builds the live product
-    # manual. The trailer chain (splash + render) is dormant.
+    # Cat 7 — promo screens. render_trailer.py is in no commit, so
+    # unmatched_rules names it on every run.
     "splash_screen.py",
     "render_trailer.py",
 }

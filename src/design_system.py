@@ -55,6 +55,7 @@ TYPE = {
     "cap": {"size": 9, "weight": "regular", "family": "sans"},
     "mono": {"size": 9, "weight": "regular", "family": "mono"},
     "num": {"size": 24, "weight": "bold", "family": "sans"},
+    "callout": {"size": 54, "weight": "bold", "family": "sans"},
 }
 
 GRID = {
@@ -92,7 +93,7 @@ def apply_rcparams():
             "axes.titlelocation": "left",
             "axes.titlepad": 14,
             "axes.grid": True,
-            "axes.grid.axis": "y",  # horizontal grid lines only
+            "axes.grid.axis": "y",
             "axes.axisbelow": True,
             "axes.spines.top": False,
             "axes.spines.right": False,
@@ -174,7 +175,7 @@ def contrast_self_test() -> list[tuple]:
         "info",
     ]:
         ok, r = validate_contrast(COLORS[name], COLORS["bg"])
-        results.append((name, COLORS[name], r, "✓" if ok else "✗"))
+        results.append((name, COLORS[name], r, "PASS" if ok else "FAIL"))
     return results
 
 
@@ -539,23 +540,10 @@ def callout_value(ax, *, label: str, value: str, context: str = ""):
         0.5,
         0.50,
         value,
-        level="h1",
+        level="callout",
         color=COLORS["accent"],
         align="center",
-        weight_override="bold",
-    )
-    # 54 is above every size in TYPE
-    ax.text(
-        0.5,
-        0.50,
-        value,
-        fontsize=54,
-        fontweight="bold",
-        fontfamily=FAMILY_SANS,
-        color=COLORS["accent"],
-        ha="center",
-        va="center",
-        transform=ax.transAxes,
+        valign="center",
     )
     if context:
         _put(
