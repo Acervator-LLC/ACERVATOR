@@ -555,6 +555,15 @@ def candle_step_px() -> int:
     return CHART_CANDLE_WIDTH_PX + CHART_CANDLE_GAP_PX
 
 
+def band_span(low: float, high: float) -> float:
+    """Return the divisor for a band running low to high.
+
+    A fixed floor would outrank the real span at BONK scale; the
+    substitute applies only when high equals low.
+    """
+    return (high - low) or 1.0
+
+
 def rolling_vwap(window: list, close_price: float) -> float:
     """Volume-weighted average price over `window`.
 
@@ -809,7 +818,7 @@ def band_program(model: "PriceVwapModel", width_px: Any) -> list:
         plot_y = band_y + CHART_BAND_INSET_PX
         both = prices + vwaps
         low = min(both)
-        span = max(max(both) - low, CHART_FLAT_SPAN)
+        span = band_span(low, max(both))
         count = len(prices)
         step_px = plot_w / max(count - 1, 1)
 

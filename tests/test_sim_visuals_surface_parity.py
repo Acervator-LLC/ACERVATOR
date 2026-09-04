@@ -1195,7 +1195,7 @@ SHIPPED_MEMBERS = {
     "SimPriceVwapChart.set_ytd_start": "PriceVwapModel.set_ytd_start",
 }
 
-SHIPPED_FUNCTIONS = {"_show_expanded": "ExpandModel.open"}
+SHIPPED_FUNCTIONS = {"_show_expanded": "ExpandModel.open", "_band_span": "band_span"}
 
 NESTED_FUNCTIONS = {
     "_restore": "ExpandModel.close",
