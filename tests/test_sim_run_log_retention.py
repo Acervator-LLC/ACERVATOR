@@ -43,6 +43,7 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from src.trading import sim_run_log
 from src.trading.sim_run_log import (
     BULK_FILENAMES,
     PROTECTED_TREE_NAME,
@@ -1146,3 +1147,27 @@ def test_the_bound_is_the_budget_plus_at_most_one_run(tmp_path):
     assert _tree_bytes(tmp_path) > budget
     assert res.floor_held is True
     assert over.exists()
+
+
+def test_append_index_bounds_the_index_at_index_max_entries(tmp_path, monkeypatch):
+    """index.json outgrows its own cap when _append_index slices a literal."""
+    monkeypatch.setattr(sim_run_log, "INDEX_MAX_ENTRIES", 4)
+    seed = [
+        {
+            "run_id": f"20260101T1200{i:02d}_aaaaaa",
+            "started_at": "",
+            "finished_at": None,
+        }
+        for i in range(30)
+    ]
+    (tmp_path / "index.json").write_text(json.dumps(seed), encoding="utf-8")
+
+    lg = SimRunLog(run_id="20260101T130000_bbbbbb", root=tmp_path)
+    lg.start_run(config={})
+    lg._append_index()
+
+    written = json.loads((tmp_path / "index.json").read_text(encoding="utf-8"))
+    assert (
+        len(written) == 4
+    ), f"index.json holds {len(written)} entries with INDEX_MAX_ENTRIES at 4"
+    assert written[0]["run_id"] == "20260101T130000_bbbbbb"

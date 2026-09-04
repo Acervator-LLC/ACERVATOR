@@ -1,66 +1,4 @@
-"""sim_run_log.py — persist a Fleet Replay run to disk.
-
-Operator directive 2026-08-02, after v3.24.12 isolated the sim's
-event bus:
-
-    "Yes, let's implement the persistent log before I build and
-    test."
-
-WHY THIS IS NEEDED NOW
-======================
-v3.24.12 gave sim bots a private EventBus so their fills stop
-landing in the live ``trade.log`` (136 rows of measured
-contamination). That fixed the pollution but left the sim with no
-durable record at all — its trades lived only in
-``FleetSimExchange._trades`` for the lifetime of the process, so a
-replay's output vanished the moment the run ended and could not be
-compared against anything later.
-
-This module gives the sim its own log tree, physically separate
-from live:
-
-    ~/.acervator_logs/sim/
-        index.json                        every run, newest first
-        runs/<run_id>/meta.json           config + summary
-        runs/<run_id>/trades.log          NDJSON
-        runs/<run_id>/gates.log           NDJSON
-        runs/<run_id>/signals.jsonl       NDJSON, written by the
-                                          replay controller's sink
-        runs/<run_id>/signals.digest.jsonl
-
-RETENTION
-=========
-``runs/`` is bounded. It was not until 2026-08-24, and it reached
-674 MB in 102 directories. ``finish_run`` now closes with a
-retention pass; the policy, the three bounds it applies and the
-alternatives it rejects are documented at ``BULK_FILENAMES`` below.
-
-The pass can only ever operate inside ``<root>/runs/``. It refuses
-outright if that resolves inside ``~/.acervator`` -- a SIBLING tree
-holding ``bot_state.json``, the exchange credentials and the stone
-tablet archive, none of which any log policy may reach.
-
-SCHEMA PARITY, PHYSICAL SEPARATION
-==================================
-Rows mirror the LIVE schema field-for-field so the same parsing and
-comparison code reads both, with two additions: ``run_id`` and
-``origin: "sim"``. The directory split is what guarantees the two
-sets can never merge by accident; the ``origin`` field means that
-even if a row is copied out of context, it still identifies itself.
-
-A sim row must never be mistaken for a live trade — that is the
-whole failure this log exists downstream of.
-
-WRITE DISCIPLINE
-================
-Appends are buffered and flushed every ``flush_every`` rows (default
-200) so a 60k-candle replay does not pay a syscall per tick. The
-buffer is flushed on ``finish_run`` and by an explicit ``flush()``.
-A crash mid-run loses at most one buffer, and the rows already on
-disk stay valid NDJSON because each line is written whole.
-
-sadp: R28 SSS + R70 RCN
-"""
+"""Persist a Fleet Replay run under ~/.acervator_logs/sim/ in the live schema."""
 
 from __future__ import annotations
 
@@ -78,16 +16,7 @@ from typing import Any, Optional
 logger = logging.getLogger("acervator.sim_run_log")
 
 SIM_LOG_ROOT_ENV = "ACERVATOR_SIM_LOG_ROOT"
-"""Override the sim log root.
-
-Set by ``tests/conftest.py`` so the suite never writes into the
-operator's runtime tree. This is not a convenience: before v3.24.19
-the pin tests wrote real run directories into
-``~/.acervator_logs/sim/runs``, and 54 of the 62 directories there
-were 4-to-59-candle test artifacts. Diagnosing the GUI slowdown meant
-first filtering them back out of the operator's own performance
-record. Test output does not belong in a production log tree.
-"""
+"""Sim log root override; tests/conftest.py sets it away from ~/.acervator_logs."""
 
 
 def _default_sim_log_root() -> Path:
@@ -103,196 +32,31 @@ SCHEMA_VERSION = 1
 
 DEFAULT_FLUSH_EVERY = 200
 MAX_ROWS_PER_FILE = 2_000_000
-"""Hard stop so a runaway replay cannot fill the disk. Reaching it
-is itself reported rather than silently truncating."""
+"""Row ceiling across trades and gates; _push warns once then drops rows."""
 
 
 # ── retention ────────────────────────────────────────────────────
-#
-# WHY THIS EXISTS
-# ===============
-# ``runs/`` had no bound of any kind. Between 2026-08-03 and
-# 2026-08-24 it reached 674 MB in 102 run directories -- the single
-# largest item in a 2.0 GB log tree, bigger than ``signals/`` and
-# ``console/`` together. The operator purged it to zero on
-# 2026-08-24 and is about to rebuild the Simulator incrementally
-# with heavy testing, which means MORE runs than the rate that
-# produced those 674 MB, not fewer.
-#
-# A one-time purge is not a policy. Without a bound the tree grows
-# straight back.
-#
-# WHERE THE BYTES ARE
-# ===================
-# One sampled run directory, measured:
-#
-#     signals.jsonl          5.8 MB
-#     gates.log              (unmeasured; see below)
-#     signals.digest.jsonl  12.8 KB
-#     trades.log             302 B
-#     meta.json              ~1 KB
-#
-# 674 MB over 102 runs is 6.6 MB per run, and ``signals.jsonl``
-# alone is 5.8 MB of it. It is not A cost, it is essentially THE
-# cost, and it is 450x its own digest.
-#
-# THE SHAPE, AND WHAT IT REJECTS
-# ==============================
-# Three bounds, applied in a fixed order, cheapest reclaim first.
-#
-#   1. DEMOTE.  A run outside the verbatim window loses the files
-#      in ``BULK_FILENAMES`` and keeps everything else. The run
-#      stays discoverable, keeps its meta, its trades, its gates
-#      and its digest.
-#
-#      This is the primary bound because it is the only one with an
-#      argument for why the loss is acceptable: issue #62
-#      established that ``signals.digest.jsonl`` retains EVERY
-#      emitter identity. A demoted run can still answer "did this
-#      emitter fire in that run", which is the question the sim log
-#      exists to answer. What it loses is verbatim payloads and
-#      per-record timing.
-#
-#      ``gates.log`` is deliberately NOT in the bulk list. Gate-latch
-#      parity is the Simulator's validation criterion, and a run's
-#      ``gates.log`` is the only record of it. Its size is also
-#      genuinely unmeasured here -- the tree was purged before it
-#      could be sampled -- and the byte cap below, not a guess, is
-#      what covers it.
-#
-#   2. COUNT CAP.  At most ``keep_runs`` directories. This bounds
-#      the thing that makes discovery slow rather than the thing
-#      that fills the disk.
-#
-#   3. BYTE CAP.  A last-resort bound on the resource the operator
-#      actually ran out of. It exists because a count cap does not
-#      bound bytes: one 400 MB nuclear replay defeats any run count.
-#
-# WHAT THE BOUND ACTUALLY IS
-# ==========================
-# ``max_total_bytes`` PLUS AT MOST ONE RUN, not ``max_total_bytes``.
-#
-# The newest run is never demoted and never evicted -- that is the
-# floor, and it is deliberate: the operator just made that run. So a
-# pass that closes a run bigger than the remaining headroom leaves
-# the tree over budget by up to that run's size, and says so through
-# ``floor_held``.
-#
-# Measured 2026-08-24, shipped defaults driven at 1/100 scale over
-# 400 runs at the production per-run shape:
-#
-#     high-water mark   201.3 MB against a 201.0 MB budget
-#     at 102 runs       145.0 MB  (the tree that reached 674 MB)
-#     at 400 runs       195.1 MB, 201 directories, 201 digests
-#     unbounded control   2.6 GB
-#
-# The overshoot is one run's worth and it is the price of the floor.
-# It is stated here rather than rounded away.
-#
-# REJECTED, with reasons:
-#
-#   * A COUNT CAP ALONE. It deletes whole runs, and a whole run is
-#     mostly evidence that costs nothing to keep. The GUI-vs-headless
-#     throughput diagnosis was made by reading
-#     ``runs/*/meta.json`` across many dates; a count cap set low
-#     enough to bound 674 MB would have destroyed exactly that
-#     record. It also does not bound bytes at all.
-#
-#   * A BYTE CAP ALONE. It makes one expensive run evict twenty
-#     cheap ones, so the survivors are selected by size rather than
-#     by age or by worth. Kept as tier 3 precisely because that is
-#     acceptable behaviour for a last resort and not for a primary.
-#
-#   * AN AGE CAP. Time is not the resource. A week of heavy testing
-#     is hundreds of runs and a quiet week is three, so an age cap
-#     has its unbounded worst case exactly in the regime the
-#     operator is entering. Rejected outright.
-#
-# THE VERBATIM WINDOW IS A MAXIMUM, NOT A GUARANTEE
-# =================================================
-# When the byte cap is breached, retention demotes FURTHER --
-# inward from the oldest kept -- before it evicts any whole run.
-# Bytes come from the cheapest source first. ``verbatim_kept`` on
-# the result reports the window that actually held.
-#
-# NOTHING IS DELETED SILENTLY
-# ===========================
-# Every removal is counted and every count is reported on four
-# independent surfaces, so no reader has to take one of them on
-# trust:
-#
-#   * the returned ``RetentionResult``
-#   * an INFO line on ``acervator.sim_run_log``
-#   * a tombstone on the run's ``index.json`` entry, so a pruned run
-#     is distinguishable from a run that never happened
-#   * a ``retention`` block written into a demoted run's
-#     ``meta.json``, so a demoted run is distinguishable from a run
-#     that never wrote signals at all
-#
-# THE ORDERING INVARIANT
-# ======================
-# THE RECORD NEVER UNDERSTATES WHAT IS GONE. Every record is written
-# BEFORE the bytes it describes are removed -- the index in phase B
-# before any eviction, the ``retention`` block in a run's meta
-# before its bulk file is unlinked.
-#
-# The two failure directions are not symmetric, which is what
-# decides the order:
-#
-#   * record-first, crash before the delete: the record says
-#     "pruned" for bytes still on disk. A reader declines to read
-#     something that is there. Nothing false is concluded about the
-#     run, and the next pass heals it.
-#
-#   * delete-first, crash before the record: the index still
-#     describes a run as readable and its directory is gone. The
-#     panel reads it, finds nothing, and concludes the run had no
-#     trades. That is a lie about the run's CONTENT, and it is the
-#     failure this ordering exists to make impossible.
 
 BULK_FILENAMES: tuple[str, ...] = ("signals.jsonl",)
-"""The files a demoted run loses. MEASURED, not assumed: 5.8 MB
-against a 12.8 KB digest that issue #62 proved retains every emitter
-identity. Adding a name here is a claim that the file is both large
-and reconstructible from what stays behind."""
+"""Filenames _demote unlinks from a run outside the verbatim window."""
 
 KEEP_VERBATIM_RUNS = 10
-"""How many of the newest runs keep their bulk files. Ten runs is
-about 58 MB at the measured rate, and covers a working session --
-during an incremental rebuild the comparison is against the
-immediately preceding runs, not against last month."""
+"""Newest runs that keep BULK_FILENAMES; _decide demotes every run past this."""
 
 KEEP_RUNS = 200
-"""Directory count cap. Twice the 102 the tree reached in three
-weeks, so the record stays deep enough to keep answering the
-cross-date questions ``meta.json`` is read for."""
+"""Directory cap for runs/; _decide evicts whole runs past this count."""
 
 MAX_TOTAL_BYTES = 192_000_000
-"""Byte budget for ``runs/``. A BUDGET, not a measurement: under a
-third of the 674 MB that provoked this, and enough for the verbatim
-window (about 58 MB) plus deep skeleton history.
-
-DECIMAL MB, not MiB, because ``RetentionResult.summary`` divides by
-1e6 and the two numbers have to be the same number. Written as
-``192 * 1024 * 1024`` the constant reads 192 in the source and 201 in
-every line the operator sees."""
+"""Byte budget for runs/ in decimal MB, matching the 1e6 divisor in summary()."""
 
 INDEX_MAX_ENTRIES = 500
-"""Index length cap, matching ``_append_index``. Tombstones spend
-this budget too, so an entry pushed off the end is counted in
-``RetentionResult.index_dropped`` rather than vanishing."""
+"""Entry cap for index.json, applied by _append_index and _rewrite_index."""
 
 MAX_TREE_ENTRIES = 10_000
-"""Per-run walk bound. A run directory holds five files. Anything
-that walks past this is not a run directory, and retention refuses
-it rather than walking whatever it actually is."""
+"""Entry ceiling per run directory; _measure_plain_tree raises past it."""
 
 PROTECTED_TREE_NAME = ".acervator"
-"""``~/.acervator`` holds ``bot_state.json``, the exchange
-credentials and 408 stone tablets across 369 MB. Retention refuses
-to run at all if its target resolves inside it. The sim log lives in
-``~/.acervator_logs``, a SIBLING tree, and this constant is what
-keeps the two from ever being the same directory by accident."""
+"""_resolve_runs_root refuses any target resolving inside ~/.acervator."""
 
 
 def _utc_iso(ts: Optional[float] = None) -> str:
@@ -303,12 +67,7 @@ def _utc_iso(ts: Optional[float] = None) -> str:
 
 @dataclass
 class SimRunLog:
-    """Durable record of one Fleet Replay run.
-
-    Not thread-safe by design: the replay controller drives it from
-    a single asyncio task. If that ever changes, wrap the append
-    paths in a lock rather than relying on GIL atomicity.
-    """
+    """Durable record of one Fleet Replay run, not safe for concurrent callers."""
 
     run_id: str = ""
     root: Path = field(default_factory=_default_sim_log_root)
@@ -325,22 +84,12 @@ class SimRunLog:
     _open: bool = False
 
     retention: Optional[RetentionResult] = None
-    """What the retention pass at the end of this run did.
-
-    Public and populated by ``finish_run`` so the caller that just
-    persisted a run can report the eviction counts beside the trade
-    and gate counts it already reports. ``None`` means the run has
-    not finished yet."""
+    """What _apply_retention returned, or None until finish_run completes."""
 
     # ── lifecycle ────────────────────────────────────────────────
 
     def start_run(self, config: Optional[dict] = None) -> str:
-        """Create the run directory and write meta. Returns run_id.
-
-        Never raises: if the directory cannot be created the log
-        degrades to a no-op and says so, because losing a sim record
-        must not take down the replay itself.
-        """
+        """Create the run directory, write meta.json, and return the run_id."""
         self._started_at = time.time()
         if not self.run_id:
             self.run_id = (
@@ -374,7 +123,7 @@ class SimRunLog:
         return self.run_id
 
     def finish_run(self, summary: Optional[dict] = None) -> None:
-        """Flush buffers and stamp the summary. Idempotent."""
+        """Flush buffers, stamp the summary, index the run, and apply retention."""
         if not self._open:
             return
         self.flush()
@@ -400,54 +149,7 @@ class SimRunLog:
         self.retention = self._apply_retention()
 
     def _apply_retention(self) -> RetentionResult:
-        """Bound ``runs/`` now that this run is closed and indexed.
-
-        WHY HERE. This is the one code path that creates the growth,
-        so it is the one place a bound cannot be forgotten. A policy
-        that has to be invoked by a separate tool is a policy that
-        runs when somebody remembers, and 674 MB accumulated over
-        three weeks because nothing ran at all.
-
-        AFTER ``_append_index``, not before: this run is already in
-        the index when retention reads it, so retention cannot
-        decide about a run the index does not yet describe.
-
-        ``protect`` carries this run's own id. Nuclear loops runs and
-        can hold a second ``SimRunLog`` open, so the newest-run floor
-        is not on its own enough to keep a live directory.
-
-        COST, MEASURED, not estimated. 2026-08-24, over 400 passes
-        against a tree held at the 200-directory cap:
-
-            median 52.8 ms, p95 59.7 ms, max 72.5 ms
-
-        once per run end. It is bounded by ``keep_runs``: one
-        ``scandir`` plus roughly five ``stat`` calls per run
-        directory, and no ``meta.json`` read for a directory whose
-        name carries the run-id convention -- which is why it is
-        stat-only in the normal case.
-
-        This runs on the asyncio task that shares the Qt GUI thread,
-        so it IS ~50 ms of I/O on that thread. It is one-shot at run
-        end rather than per-tick, which is the only reason it is
-        acceptable there. If ``keep_runs`` is ever raised far above
-        200 this becomes a visible hitch and belongs off the thread.
-
-        WHAT THIS CATCHES, AND WHY IT IS NOT A BLIND ``except``.
-        ``apply_retention`` turns every failure it anticipates into a
-        ``refused``, a ``skipped`` or an ``errors`` entry and returns
-        normally, so this handler only ever sees a defect. The named
-        tuple is what a filesystem walk and a JSON rewrite can
-        actually raise.
-
-        A class NOT in that tuple propagates, deliberately. The
-        caller already holds the outer guarantee --
-        ``FleetReplayController._run`` in
-        ``src/simulator/fleet/fleet_replay_controller.py`` wraps this whole
-        ``finish_run`` in its own handler -- so the replay is safe
-        either way, and swallowing an unknown exception class here
-        would only hide a bug that nothing else is looking for.
-        """
+        """Run apply_retention over self.root, protecting this run's id."""
         try:
             return apply_retention(self.root, protect=frozenset({self.run_id}))
         except (
@@ -477,13 +179,7 @@ class SimRunLog:
         candle_address: str = "",
         extra: Optional[dict] = None,
     ) -> None:
-        """Append one sim fill.
-
-        ``sim_ts_ms`` is MASTER-CLOCK time, not wall clock. Using
-        wall clock here would make the row uncomparable to live
-        history — the same defect v3.24.5 fixed inside the sim
-        exchange.
-        """
+        """Append one sim fill, timestamped from sim_ts_ms or from wall clock."""
         if not self._open:
             return
         ts_s = (sim_ts_ms / 1000.0) if sim_ts_ms else time.time()
@@ -517,7 +213,7 @@ class SimRunLog:
         sim_ts_ms: Optional[int] = None,
         candle_address: str = "",
     ) -> None:
-        """Append one sim gate decision, shaped like live gate.log."""
+        """Append one gate.decision row shaped like the live gate.log schema."""
         if not self._open:
             return
         ts_s = (sim_ts_ms / 1000.0) if sim_ts_ms else time.time()
@@ -542,19 +238,11 @@ class SimRunLog:
         self._push(self._gate_buf, row, is_trade=False)
 
     def attach_to_bot_bus(self, bot: Any) -> bool:
-        """Subscribe to a sim bot's PRIVATE bus to capture gates.
-
-        v3.24.12 gave each sim bot its own EventBus, which makes this
-        safe: subscribing here cannot receive live events, and these
-        handlers cannot reach live subscribers. Returns True when the
-        subscription was established.
-        """
+        """Subscribe _on_bus_gate to a sim bot's private _bus and report success."""
         bus = getattr(bot, "_bus", None)
         if bus is None or not hasattr(bus, "subscribe"):
             return False
         if not getattr(bot, "_sim_mode", False):
-            # Refuse to attach to a LIVE bot's bus — that would mean
-            # writing live decisions into the sim log.
             logger.warning(
                 "sim_run_log: refusing to attach to non-sim bot %s",
                 getattr(bot, "bot_id", "?"),
@@ -602,7 +290,7 @@ class SimRunLog:
             self.flush()
 
     def flush(self) -> None:
-        """Write buffered rows. Safe to call at any time."""
+        """Append buffered trade and gate rows to their files, clearing them."""
         if self._dir is None:
             self._trade_buf.clear()
             self._gate_buf.clear()
@@ -659,7 +347,8 @@ class SimRunLog:
         try:
             self.root.mkdir(parents=True, exist_ok=True)
             idx_path.write_text(
-                json.dumps(entries[:500], indent=2, default=str), encoding="utf-8"
+                json.dumps(entries[:INDEX_MAX_ENTRIES], indent=2, default=str),
+                encoding="utf-8",
             )
         except OSError as exc:
             logger.debug("sim_run_log: index write failed: %s", exc)
@@ -684,19 +373,7 @@ class SimRunLog:
 
 
 def list_runs(root: Optional[Path] = None) -> list[dict]:
-    """Every run the index describes, newest first.
-
-    Empty when the index is absent or unreadable, unchanged from
-    before retention existed.
-
-    TOMBSTONES ARE RETURNED, NOT FILTERED. An entry carrying
-    ``pruned: true`` names a run that HAPPENED and whose files
-    retention removed. Dropping it here would make a pruned run
-    indistinguishable from a run that never ran, which is the one
-    thing the retention policy is not allowed to do. A caller that
-    wants only readable runs filters on ``pruned`` itself, and by
-    filtering says so.
-    """
+    """Every dict entry in index.json, tombstones included, or empty on error."""
     idx = (root or _default_sim_log_root()) / "index.json"
     try:
         loaded = json.loads(idx.read_text(encoding="utf-8"))
@@ -719,6 +396,7 @@ def load_run_gates(
     run_id: str,
     root: Optional[Path] = None,
 ) -> list[dict]:
+    """Read back one run's sim gate decisions as dicts."""
     return _read_ndjson(
         (root or _default_sim_log_root()) / "runs" / run_id / "gates.log"
     )
@@ -746,14 +424,7 @@ def _read_ndjson(path: Path) -> list[dict]:
 
 @dataclass(frozen=True)
 class RetentionPolicy:
-    """The three bounds, and the switch that turns them off.
-
-    ``enabled=False`` is not a convenience. It is the control the
-    growth reproduction runs against: a policy that quietly does
-    nothing looks exactly like one that works, because the tree
-    stays small either way when nothing is running. The unbounded
-    case has to be reproducible on demand to tell them apart.
-    """
+    """The three retention bounds plus enabled, which makes apply_retention refuse."""
 
     enabled: bool = True
     keep_verbatim: int = KEEP_VERBATIM_RUNS
@@ -765,13 +436,7 @@ class RetentionPolicy:
 
 @dataclass
 class RetentionResult:
-    """What one retention pass did. Every removal is in here.
-
-    ``refused`` being non-empty means NOTHING was touched: the pass
-    declined the whole target. That is a different outcome from a
-    pass that ran and found nothing to do, and the two must not read
-    the same.
-    """
+    """What one pass did; a non-empty refused means nothing on disk was touched."""
 
     scanned: int = 0
     demoted: int = 0
@@ -789,7 +454,7 @@ class RetentionResult:
     errors: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
-        """One line, for the log and the activity pane."""
+        """Build one log line of run counts, bytes reclaimed and the window."""
         if self.refused:
             return f"sim retention refused: {self.refused}"
         return (
@@ -804,11 +469,7 @@ class RetentionResult:
 
 
 class _UnsafeTreeError(Exception):
-    """A directory retention will not walk or remove.
-
-    Raised rather than returned so that no caller can reach a
-    removal path by ignoring a boolean.
-    """
+    """Raised for a reparse point, an unreadable directory, or a failed rmdir."""
 
 
 @dataclass
@@ -821,24 +482,11 @@ class _RunFacts:
 
 
 _RUN_ID_LEN = 15
-"""``"%Y%m%dT%H%M%S"`` renders 15 characters: 8 date, ``T``, 6 time."""
+"""Characters in the %Y%m%dT%H%M%S run-id prefix: 8 date, T, 6 time."""
 
 
 def _is_reparse(path: Path) -> bool:
-    """Answer whether ``path`` is a link, or unclassifiable.
-
-    ON WINDOWS ``Path.is_symlink()`` IS NOT SUFFICIENT. Measured on
-    this machine, 2026-08-24: a directory junction made with
-    ``mklink /J`` reports ``is_symlink() == False`` and
-    ``is_dir() == True``, while ``st_reparse_tag`` is 0xA0000003.
-    A guard built on ``is_symlink`` alone therefore reads a junction
-    as an ordinary directory -- and the junction is the link an
-    unprivileged account on Windows can actually create, because
-    ``os.symlink`` raises ``WinError 1314`` for this user.
-
-    An ``OSError`` answers True. A path that cannot be classified is
-    not a path retention may delete.
-    """
+    """Report whether path is a symlink, a reparse point, or unclassifiable."""
     try:
         st = path.lstat()
     except OSError:
@@ -849,12 +497,7 @@ def _is_reparse(path: Path) -> bool:
 
 
 def _resolve_runs_root(root: Path) -> tuple[Optional[Path], str]:
-    """Resolve the one directory retention may operate inside.
-
-    Returns ``(path, "")`` or ``(None, reason)``. Every refusal
-    carries its reason, so a pass that declined is never mistaken
-    for a pass that found nothing to do.
-    """
+    """Return (<root>/runs, "") or (None, reason) for any target it refuses."""
     runs = Path(root) / "runs"
     try:
         real = runs.resolve(strict=True)
@@ -874,31 +517,7 @@ def _resolve_runs_root(root: Path) -> tuple[Optional[Path], str]:
 
 
 def _safe_run_dir(runs_root: Path, name: str) -> Optional[Path]:
-    """Resolve ``name`` to a run directory, or answer None.
-
-    None means ``name`` is not a plain, real, direct child of
-    ``runs_root``, and retention will not touch it. There are two
-    checks and they are NOT equal in standing:
-
-      * THE REPARSE CHECK IS THE PRIMARY. It is the only one that
-        stops ``runs/evil -> runs/keepme``, a link whose target IS
-        inside ``runs_root`` and which therefore satisfies the
-        containment check below on its own merits. Deleting the
-        reparse check guts the target through the link, and
-        ``test_a_link_pointing_back_into_runs_is_refused`` goes red.
-
-      * THE CONTAINMENT CHECK IS THE SECOND LAYER, and its honest
-        description is that with the reparse check present nothing
-        reaches it. Measured 2026-08-24: deleting the containment
-        check leaves the whole suite green, because every hostile
-        input this module can be handed is a link, and the reparse
-        check already refused it. It is here for the day
-        ``_is_reparse`` fails to classify something -- a reparse tag
-        it does not know, a filesystem that does not report one --
-        and ``test_containment_holds_when_the_link_check_is_blind``
-        drives exactly that degradation rather than pretending an
-        end-to-end case exercises it.
-    """
+    """Return runs_root/name when it is a plain, real, direct child directory."""
     if not name or name in (".", ".."):
         return None
     if name != Path(name).name:
@@ -920,29 +539,7 @@ def _safe_run_dir(runs_root: Path, name: str) -> Optional[Path]:
 
 
 def _measure_plain_tree(path: Path) -> int:
-    """Bytes under ``path``, walking real directories only.
-
-    Raises ``_UnsafeTreeError`` on the first reparse point at any depth,
-    and on a tree holding more entries than ``MAX_TREE_ENTRIES``.
-    The measurement and the safety check are ONE pass on purpose: a
-    caller cannot obtain a size without also having proved the tree
-    is safe to remove.
-
-    THIS CHECK AND THE ONE IN ``_remove_plain_tree`` ARE A PAIR, and
-    the pair is what the test pins. Measured 2026-08-24 by deleting
-    each in turn against
-    ``test_a_link_nested_inside_a_real_run_is_refused``:
-
-        this one alone removed     52 passed
-        the removal one alone      52 passed
-        both removed                1 failed
-
-    Either survivor refuses the tree, so neither is individually
-    falsifiable and neither is claimed to be. What IS claimed is
-    that no path through this module walks or deletes through a
-    reparse point, and deleting both is what proves the claim is not
-    vacuous.
-    """
+    """Measure bytes under path, raising _UnsafeTreeError on any unsafe entry."""
     total = 0
     seen = 0
     stack = [path]
@@ -973,22 +570,7 @@ def _measure_plain_tree(path: Path) -> int:
 
 
 def _remove_plain_tree(path: Path) -> int:
-    """Remove ``path`` and its contents. Returns bytes freed.
-
-    Re-checks every entry for a reparse point as it goes rather than
-    trusting the earlier measurement pass. Measurement and removal
-    are separated by the whole index rewrite, and nothing in between
-    stops the tree changing underneath.
-
-    THIS RE-CHECK IS NOT INDIVIDUALLY FALSIFIABLE, and that is
-    stated rather than glossed: ``_measure_plain_tree`` refuses the
-    same tree in phase A, so deleting this check alone leaves the
-    suite green. See the pair measurement in that function.
-
-    ``shutil.rmtree`` is not used. On this interpreter it happens to
-    refuse a junction, but that is a property of one Python version
-    and this guard has to hold without depending on it.
-    """
+    """Delete path and contents, refusing any reparse point, and return bytes freed."""
     freed = 0
     try:
         entries = list(os.scandir(path))
@@ -1017,13 +599,7 @@ def _remove_plain_tree(path: Path) -> int:
 
 
 def _looks_like_run_id(name: str) -> bool:
-    """Answer whether ``name`` carries the run-id convention.
-
-    Used only to decide whether the directory NAME can be trusted to
-    order the run. The name is a convention; ``meta.json`` is the
-    record, and a name that fails this test sends retention to read
-    it instead.
-    """
+    """Report whether name opens with the %Y%m%dT%H%M%S prefix start_run builds."""
     head = name[:_RUN_ID_LEN]
     if len(head) != _RUN_ID_LEN or head[8] != "T":
         return False
@@ -1031,18 +607,7 @@ def _looks_like_run_id(name: str) -> bool:
 
 
 def _sort_key(run_dir: Path) -> tuple:
-    """Newest-first ordering key for one run directory.
-
-    The directory name is timestamp-prefixed by construction, so for
-    every run this module writes the name alone sorts
-    chronologically and costs one string compare. A name that does
-    NOT carry the convention gets its ``started_at`` read out of
-    ``meta.json`` instead.
-
-    Reading meta for the normal case would put a few hundred file
-    reads on the GUI thread at every run end, which is why it is
-    conditional and not unconditional.
-    """
+    """Build a newest-first key, reading meta.json when the name lacks the prefix."""
     name = run_dir.name
     if _looks_like_run_id(name):
         return (name[:_RUN_ID_LEN], name)
@@ -1061,18 +626,7 @@ def _stamp_demotion(
     removed: list[str],
     freed: int,
 ) -> None:
-    """Record the demotion inside the run's own ``meta.json``.
-
-    Without this, a demoted run and a run that never wrote signals
-    at all are the same directory on disk. The difference matters:
-    one lost its verbatim record to a policy, the other never had
-    one.
-
-    Called BEFORE the unlink, so ``removed`` names what retention
-    HAS DECIDED to remove. A crash between this write and the unlink
-    leaves a meta that names a file still present -- the safe
-    direction, and the one the module header states.
-    """
+    """Write a retention block into the run's meta.json before the unlink."""
     meta_path = run_dir / "meta.json"
     try:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -1100,29 +654,7 @@ def _rewrite_index(
     demoting: set,
     max_entries: int,
 ) -> int:
-    """Make ``index.json`` agree with what ``runs/`` will hold.
-
-    Called BEFORE any file is removed. See the ordering invariant in
-    the module header: the record never understates what is gone.
-
-    Four repairs, in one write:
-
-      * a run about to be evicted gains ``pruned`` and ``pruned_at``
-        and KEEPS its description, so the panel reads "this run
-        happened and its files are gone" and not "this run never
-        happened";
-      * a run about to be demoted gains ``verbatim: false``;
-      * an entry naming a directory that is not on disk gains
-        ``pruned`` with reason ``missing``. This heals an index
-        after ``runs/`` is emptied by hand, which is exactly what
-        happened on 2026-08-24;
-      * a directory on disk with no entry gains one, built from its
-        own ``meta.json``. Truthfulness runs in both directions: an
-        index that omits a run on disk hides bytes from the only
-        surface that lists them.
-
-    Returns how many entries the length cap pushed off the end.
-    """
+    """Tombstone evicting runs, mark demoting ones, and return entries dropped."""
     idx_path = Path(root) / "index.json"
     entries: list = []
     try:
@@ -1137,10 +669,7 @@ def _rewrite_index(
     for entry in entries:
         run_id = str(entry.get("run_id") or "")
         seen.add(run_id)
-        # A crafted run_id reaches this branch as DATA and nothing
-        # else. Nothing on this path builds a filesystem path from
-        # it, so "../../trade" in an index entry is a bad label, not
-        # a delete.
+        # run_id is a label here; no filesystem path is built from it.
         if run_id in evicting:
             entry["pruned"] = True
             entry["pruned_at"] = now
@@ -1174,12 +703,7 @@ def _rewrite_index(
             }
         )
 
-    # Chronological, newest first, same direction as `_sort_key`.
-    # The two use different REPRESENTATIONS of the same instant --
-    # this one an ISO `started_at`, `_sort_key` the run_id's
-    # `%Y%m%dT%H%M%S` prefix -- because `start_run` derives the
-    # run_id FROM `started_at`, so each is chronological within its
-    # own list and neither has to pay for the other's read.
+    # start_run derives run_id from started_at, so both sort chronologically.
     entries.sort(
         key=lambda e: str(e.get("started_at") or e.get("run_id") or ""), reverse=True
     )
@@ -1200,17 +724,7 @@ def _scan(
     pol: RetentionPolicy,
     res: RetentionResult,
 ) -> Optional[list[_RunFacts]]:
-    """Measure every run directory. Newest first.
-
-    Answers None when the LISTING itself failed, which is a refusal
-    and not an empty tree -- ``res.refused`` carries the reason, and
-    the two must not read the same.
-
-    Anything ``_safe_run_dir`` or ``_measure_plain_tree`` declines is
-    counted in ``res.skipped`` and NAMED in ``res.skipped_reasons``.
-    A run retention refuses to look at is exactly the run an operator
-    needs to be told about.
-    """
+    """Measure every run directory newest-first, or None when the listing failed."""
     facts: list[_RunFacts] = []
     try:
         names = [e.name for e in os.scandir(runs_root)]
@@ -1257,13 +771,7 @@ def _evict(
     evict_idx: set,
     res: RetentionResult,
 ) -> None:
-    """Remove whole run directories. Count every one.
-
-    A tree that turns unsafe between the decision and here is SKIPPED
-    and recorded in both ``skipped_reasons`` and ``errors``. Its
-    index entry already says pruned, which UNDERSTATES what is gone
-    -- the direction the module header requires.
-    """
+    """Remove whole run directories, recording an unsafe tree in skipped_reasons."""
     for i in sorted(evict_idx):
         fact = facts[i]
         try:
@@ -1284,11 +792,7 @@ def _demote(
     pol: RetentionPolicy,
     res: RetentionResult,
 ) -> None:
-    """Strip the bulk files from runs outside the verbatim window.
-
-    Decide, then RECORD, then remove -- the same order phase B uses
-    for the index, and for the same reason.
-    """
+    """Unlink pol.bulk_filenames from runs outside the verbatim window."""
     for i in sorted(demote_idx):
         fact = facts[i]
         planned: list = []
@@ -1329,16 +833,7 @@ def _decide(
     keep_ids: frozenset,
     live_bytes: int,
 ) -> tuple[set, set, int, bool]:
-    """Choose what to demote and what to evict. Writes nothing.
-
-    ``facts`` is newest-first. Returns
-    ``(demote_idx, evict_idx, verbatim_kept, floor_held)``.
-
-    THE WHOLE DECISION IS MADE BEFORE ANYTHING IS TOUCHED. The index
-    rewrite in phase B needs the complete eviction set to tombstone,
-    and it runs BEFORE the removals -- so the decision cannot be
-    interleaved with the deletions that carry it out.
-    """
+    """Choose (demote_idx, evict_idx, verbatim_kept, floor_held), writing nothing."""
     n = len(facts)
 
     # 1. DEMOTE everything outside the verbatim window.
@@ -1348,12 +843,7 @@ def _decide(
     def _projected() -> int:
         return live_bytes - sum(facts[i].bulk_bytes for i in demote_idx)
 
-    # 2. Over budget? Tighten the window before evicting anything.
-    #    Bytes come from the cheapest source first, so a whole run is
-    #    never spent to save what a demotion would have saved.
-    #    Start at the OLDEST run still inside the window, which is
-    #    NOT `window - 1` when the window is wider than the tree is
-    #    deep.
+    # 2. Over budget: demote inward from min(window, n) - 1 before evicting.
     i = min(window, n) - 1
     while _projected() > pol.max_total_bytes and i >= 1:
         if facts[i].bulk_bytes > 0:
@@ -1381,9 +871,7 @@ def _decide(
             evict_idx.add(i)
         i -= 1
 
-    # The newest run alone is over budget, or everything else is
-    # protected. Keeping it is the correct answer, and this flag is
-    # how the operator finds out the budget did not hold.
+    # floor_held: the newest run alone exceeds max_total_bytes.
     floor_held = _after_evictions() > pol.max_total_bytes
     return demote_idx, evict_idx, verbatim_kept, floor_held
 
@@ -1394,16 +882,7 @@ def apply_retention(
     policy: Optional[RetentionPolicy] = None,
     protect: Optional[frozenset] = None,
 ) -> RetentionResult:
-    """Bound ``<root>/runs/``. Returns what it did.
-
-    ``protect`` names run_ids that must survive whatever the bounds
-    say. ``finish_run`` passes its own, so a second ``SimRunLog``
-    open at the same time -- Nuclear loops runs -- cannot have its
-    live directory removed out from under it.
-
-    Never raises. A retention pass that took down a replay would be
-    a worse defect than the growth it exists to stop.
-    """
+    """Bound <root>/runs/; protect names run_ids that must survive the bounds."""
     pol = policy or RetentionPolicy()
     res = RetentionResult()
     if not pol.enabled:
