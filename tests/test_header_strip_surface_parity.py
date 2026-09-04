@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from src.core.privacy_mask_registry import get_privacy_mask_registry
+from src.gui.color_alpha import css_colours
 from src.gui.main_tabs import header_strip_surface as surface
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
@@ -195,7 +196,12 @@ def card_parts(card) -> tuple:
 
 
 def qt_trace(host) -> dict:
-    """Every value the built strip can be asked for, as plain data."""
+    """Every value the built strip can be asked for, as plain data.
+
+    The widget carries the alpha byte Qt reads and the surface publishes
+    for a browser, so the widget's own values are read back through the
+    same conversion the payload leaves under.
+    """
     central = host.centralWidget()
     main_layout = central.layout()
     container = host._header_strip_container
@@ -211,7 +217,7 @@ def qt_trace(host) -> dict:
     ]
     first_row, first_label, first_value, _ = card_parts(cards[0])
     mode = host._mode_btn
-    return {
+    trace = {
         "central_layout": {
             "margins_px": margins(main_layout),
             "spacing_px": main_layout.spacing(),
@@ -311,6 +317,7 @@ def qt_trace(host) -> dict:
             "style_sheet": mode.styleSheet(),
         },
     }
+    return css_colours(trace)
 
 
 def surface_trace() -> dict:
@@ -401,6 +408,24 @@ def test_the_built_strip_and_the_surface_describe_the_same_strip(built, revealed
     new = surface_trace()
     assert new == old
     assert digest(new) == digest(old)
+
+
+def test_the_payload_carries_a_share_where_the_style_sheet_carries_a_byte():
+    """Without this the comparison above passes on a payload that converted
+    nothing, because both traces read through the same conversion."""
+    payload = surface.build_view_model(stats={}, exchange_count=0)
+    for written, published in (
+        (surface.SPENDABLE_STYLE, payload["spendable"]["style_sheet"]),
+        (
+            surface.MODE_CARDS["crypto"]["style_sheet"],
+            payload["mode_button"]["style_sheet"],
+        ),
+    ):
+        assert "rgba(0,255,180,80)" in written or "rgba(0, 200, 160, 40)" in written
+        assert published != written
+        for call in published.split("rgba(")[1:]:
+            alpha = call.split(")")[0].split(",")[3]
+            assert float(alpha) <= 1, published
 
 
 def test_the_trace_carries_every_part_of_the_strip(built, revealed):

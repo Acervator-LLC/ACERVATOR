@@ -29,6 +29,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from ..color_alpha import css_colours
+
 METHOD = "design_system.state"
 
 # ==========================================================================
@@ -841,10 +843,14 @@ def build_view_model(
     does not hold comes back under `unknown` with a null value. `group`
     carries one group name; a group the table does not hold comes back
     empty.
+
+    The table itself carries the alpha byte Qt reads. The payload leaves
+    under `src.gui.color_alpha.css_colours`, so the renderer receives the
+    share a browser reads and no colour is copied twice.
     """
     asked = requested_names(names)
     wanted = str(group) if group else ""
-    return {
+    payload = {
         "token_names": list(TOKEN_NAMES),
         "tokens": dict(TOKENS),
         "group_names": list(GROUP_NAMES),
@@ -876,6 +882,7 @@ def build_view_model(
         "skin": dict(SKIN),
         "style_sheet": STYLE_SHEET,
     }
+    return css_colours(payload)
 
 
 def view_model(params: dict) -> dict:
