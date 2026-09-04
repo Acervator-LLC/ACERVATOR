@@ -15,7 +15,7 @@ before it can do anything else, and that costs `target x (1 + fee)`. N
 targets cannot fund N such acquisitions, so the LAST bot is always short
 by the fees the earlier ones paid. The path is reached whenever a config
 carries no `_src_scrumming_state`, which is exactly what
-`topology_stress._config_for` (topology_stress.py:216) builds.
+`topology_stress._config_for` builds.
 
 MEASURED before the fix, on the 400-candle synthetic tapes below.
 Wallet closing USD 100.00 / 99.40 / 98.80 at fleet sizes 1 / 2 / 3 - the

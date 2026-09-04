@@ -502,10 +502,7 @@ def test_the_outcome_wallet_matches_the_tape_ledger(traded_trial) -> None:
         # wallet holds exactly `sum(target_balance)`, so the LAST bot
         # was always short by the fees the earlier ones paid.
         #
-        # The opening is now read off the tape rather than asserted to
-        # be a constant, which is what `_read_wallet` itself does
-        # (topology_stress.py:362) and the only form that survives a
-        # change to seeding.
+        # `_run_one_trial` reads the opening off the tape, never a constant.
         assert outcome.base_start == pytest.approx(opening.get(outcome.asset, 0.0)), (
             f"the trial opened holding {outcome.base_start} "
             f"{outcome.asset} against a tape that opened on "
