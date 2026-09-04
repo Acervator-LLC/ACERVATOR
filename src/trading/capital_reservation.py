@@ -1,69 +1,11 @@
-"""
-capital_reservation.py — Inter-bot capital reservation registry.
+"""Inter-bot capital reservation registry.
 
-OPERATOR INTENT (2026-05-23)
-────────────────────────────
-> "Thinking that a graceful solution for preventing overlapping
->  Scrumming Bots attempting to sell excess Base Currencies reserved
->  for Extractors could be for them to have an automatically populating
->  field that tells them how much of a given Base Currency position to
->  ignore. So if I have a $100 ETH Extractor running then this field
->  will tell the Scrumming Bot to start ignoring $100 of the ETH
->  budget. Similarly, when an Extractor Bot is created its own field
->  populates with the amount of the Base Currency being used by any
->  other bots so that there is no predation at any phase of these two
->  or future bot types predating each others' resources."
-
-ARCHITECTURE
-────────────
-Each bot, before deciding what to do with an asset, consults the
-registry for an "effective available" quantity — total holdings minus
-all reservations placed by OTHER bots. The bot's own reservations don't
-count against itself (a bot can always act within its own claim).
-
-Reservations are stored in **asset quantity** (not USD), because USD
-notional drifts with price while the underlying budget being protected
-is a fixed number of asset units. The display layer converts qty → USD
-at current price for human-readable presentation.
-
-Two enforcement layers (defense in depth):
-  1. **Decision-level**: bots read effective_available() during their
-     position-math (e.g., ScrummingBot._delta) and decide based on
-     reduced budgets.
-  2. **Execution-level**: order placement (smart_orders.py) pre-flights
-     against the registry before submitting to exchange. Catches races
-     between decision and execution.
-
-CRASH RECOVERY
-──────────────
-Each bot heartbeats to the registry periodically. If a bot stops
-heartbeating for HEARTBEAT_TTL seconds, its reservations are pruned
-automatically. Explicit per-reservation TTL is also supported (Extractor
-can declare "I'll be done within 45 min" up front). prune_expired() runs
-at the head of reserve(), so the over-commit sum never counts a dead
-bot's claim; sweep_unknown_bots() drops claims whose bot id is not in the
-fleet at all, which no heartbeat rule can express.
-
-PERSISTENCE
-───────────
-Registry state is persisted to ~/.acervator/reservation_state.json on
-every mutation. On startup, state is reloaded; pruning runs immediately
-to drop reservations whose heartbeats are stale beyond the restart
-grace window.
-
-INVARIANTS (R28 FL)
-───────────────────
-  1. Total reservations on an asset MUST NOT exceed the bot's own
-     declared holdings of that asset. Over-commit is rejected with a
-     loud ValueError at reserve()/update() time.
-  2. A bot cannot release another bot's reservations except via
-     force_release() (operator-explicit override).
-  3. The registry's view of "what's available" is authoritative for
-     all bots inside the platform; the exchange-side balance is the
-     ultimate truth and the reconciliation hook (separate file) handles
-     drift between registry and exchange.
-
-sadp: R26 CHR  R28 FL  R49 MDEL  R55 GOV  R62 FRG  R68 DPA  R76 DMW
+``CapitalReservationRegistry.effective_available`` returns holdings minus every
+other bot's ``Reservation`` on the same asset, excluding the caller's own.
+``reserve``, ``update`` and ``release`` take quantities in asset units.
+``prune_expired`` drops a ``Reservation`` past its ``expires_at`` or past
+``HEARTBEAT_TTL`` of silence, and ``sweep_unknown_bots`` drops one whose
+``bot_id`` is outside the fleet it is given.
 """
 
 from __future__ import annotations
@@ -82,68 +24,36 @@ from typing import Optional
 
 logger = logging.getLogger("acervator.capital_reservation")
 
-# ─────────────────────────────────────────────────────────────────
-# Constants
-# ─────────────────────────────────────────────────────────────────
-
 _DEFAULT_STATE_DIR = Path.home() / ".acervator"
 _DEFAULT_STATE_FILE = _DEFAULT_STATE_DIR / "reservation_state.json"
 
-# Live-tree redirect hook, mirroring TELEMETRY_ROOT_ENV / SETTINGS_ROOT_ENV
-# in src/core. get_registry()'s singleton autosaves to reservation_state.json,
-# so every test that resolved the singleton wrote into the operator's real
-# ~/.acervator — on a clean machine (CI) it CREATED the file outright, which
-# is what turned a silent leak into a red build. When this env var is set, the
-# state file lives under it instead. Resolved at call time (never frozen at
-# import) so tests/conftest.py can point it at a tmp dir after this module is
-# already imported. The default path constant above is kept unchanged for the
-# tests that assert on its shape.
+# Read by _resolve_state_file at call time, never frozen at import.
 RESERVATION_ROOT_ENV = "ACERVATOR_RESERVATION_ROOT"
 
 
 def _resolve_state_file() -> Path:
-    """The reservation-state path, honoring the redirect override."""
+    """Return ``RESERVATION_ROOT_ENV``/reservation_state.json, else
+    ``_DEFAULT_STATE_FILE``."""
     override = os.environ.get(RESERVATION_ROOT_ENV)
     if override:
         return Path(override) / "reservation_state.json"
     return _DEFAULT_STATE_FILE
 
 
-# Heartbeat: bot pings every HEARTBEAT_INTERVAL; if no ping in
-# HEARTBEAT_TTL the bot's reservations are pruned as zombie.
-HEARTBEAT_INTERVAL = 30.0  # seconds between pings (advisory)
-HEARTBEAT_TTL = 120.0  # 4 missed pings = zombie
+# HEARTBEAT_INTERVAL is advisory: no timer in this codebase reads it.
+HEARTBEAT_INTERVAL = 30.0
+HEARTBEAT_TTL = 120.0
 
-# Restart grace: after a fresh process start, give all bots this long
-# to re-establish heartbeats before pruning zombies. Otherwise the
-# first prune_expired() call after startup would nuke everything.
+# Without it, the first prune_expired() after a restart drops every claim.
 RESTART_GRACE_SECONDS = 60.0
-
-
-# ─────────────────────────────────────────────────────────────────
-# Data types
-# ─────────────────────────────────────────────────────────────────
 
 
 @dataclass
 class Reservation:
-    """A single capital reservation entry.
+    """One ``bot_id``'s claim on ``qty`` units of ``asset``.
 
-    Fields:
-      token:        unique UUID — bots track their own reservations
-                    via the token returned from reserve(); release()
-                    requires the token to prevent cross-bot interference.
-      bot_id:       the bot holding this reservation.
-      asset:        symbol (e.g., "ETH", "BTC"). Case-sensitive — match
-                    the exchange's casing.
-      qty:          asset units reserved. Always positive.
-      reason:       human-readable rationale (audit trail).
-      reserved_at:  epoch seconds when reserve() was called.
-      expires_at:   optional epoch seconds — if set, reservation is
-                    auto-released after this time. None = no explicit
-                    TTL, relies on heartbeat liveness only.
-      bot_kind:     "scrumming" | "extractor" | "manual" | <other> —
-                    advisory categorization for the dashboard.
+    ``asset`` is compared as an exact string. ``reason`` and ``bot_kind`` are
+    logged and read by nothing.
     """
 
     token: str
@@ -160,52 +70,24 @@ class Reservation:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Reservation":
-        # Filter to known fields — defensive against schema drift.
-        # Same pattern as RuleEntry.from_dict (MEM-335 / v3.19.56).
+        # Unknown keys are dropped; a state file from an older schema loads.
         known = {f.name for f in cls.__dataclass_fields__.values()}
         return cls(**{k: v for k, v in d.items() if k in known})
 
     def is_expired(self, now: float) -> bool:
-        """True if this reservation's explicit TTL has passed.
-        Heartbeat liveness is checked separately at the registry level."""
+        """Report whether ``expires_at`` has passed.
+
+        ``prune_expired`` applies heartbeat staleness separately.
+        """
         return self.expires_at is not None and now >= self.expires_at
-
-
-# ─────────────────────────────────────────────────────────────────
-# Registry
-# ─────────────────────────────────────────────────────────────────
 
 
 class CapitalReservationRegistry:
     """Single source of truth for inter-bot capital reservations.
 
-    Thread-safe via a single registry-level lock. Reservation grants
-    and queries are short, so contention should be negligible.
-
-    Typical usage:
-
-        registry = CapitalReservationRegistry()
-
-        # Extractor on start:
-        token = registry.reserve(
-            bot_id="extractor_001",
-            asset="ETH",
-            qty=0.0410,                       # 0.0410 ETH ≈ $100 at $2438
-            reason="Staged $100 ETH extraction",
-            bot_kind="extractor",
-            ttl_seconds=2700,                 # 45 min budget
-        )
-
-        # ScrummingBot every tick:
-        eff = registry.effective_available(
-            asset="ETH",
-            bot_id="scrumming_eth_usdt",
-            total_holdings=current_eth_qty,
-        )
-        delta = eff * price - target
-
-        # Extractor on completion:
-        registry.release(token)
+    Every method holds one registry-level lock. ``reserve`` returns a token
+    that ``release`` and ``update`` require alongside the owning ``bot_id``,
+    while ``release_for`` addresses a ``Reservation`` by ``bot_id`` alone.
     """
 
     def __init__(
@@ -214,17 +96,13 @@ class CapitalReservationRegistry:
         autosave: bool = True,
         restart_grace_seconds: float = RESTART_GRACE_SECONDS,
     ):
-        """
+        """Construct the registry and run ``_load``.
+
         Args:
-            state_path: where to persist the reservation table.
-                Defaults to ~/.acervator/reservation_state.json.
-                Pass an explicit path in tests so the helper never
-                touches the production state file. Same pattern as
-                v3.19.57 RuleRegistry hotfix (MEM-336).
-            autosave: persist on every mutation. Disable in tests for
-                speed when persistence isn't being verified.
-            restart_grace_seconds: bots get this long to heartbeat
-                after registry boot before zombie-pruning fires.
+            state_path: persistence target, defaulting to ``_resolve_state_file``.
+            autosave: when False, ``_save`` writes nothing.
+            restart_grace_seconds: seconds after construction during which
+                ``prune_expired`` ignores heartbeat staleness.
         """
         self._lock = threading.Lock()
         self._state_path = (
@@ -234,21 +112,17 @@ class CapitalReservationRegistry:
         self._boot_time = time.time()
         self._restart_grace = restart_grace_seconds
 
-        # Primary storage: token -> Reservation
         self._reservations: dict[str, Reservation] = {}
-        # Liveness: bot_id -> last_heartbeat epoch
+        # bot_id -> last heartbeat, in epoch seconds.
         self._heartbeats: dict[str, float] = {}
 
-        # Load persisted state if file exists
         self._load()
 
-    # ─────────────────────────────────────────────────────────
-    # Persistence
-    # ─────────────────────────────────────────────────────────
-
     def _save(self):
-        """Atomic write to state file. Same temp-rename pattern as
-        state_manager.py."""
+        """Write ``_reservations`` and ``_heartbeats`` to ``_state_path``.
+
+        Returns without writing when ``_autosave`` is False.
+        """
         if not self._autosave:
             return
         try:
@@ -261,13 +135,14 @@ class CapitalReservationRegistry:
             atomic_write_json(self._state_path, payload, indent=2)
         except Exception as e:
             logger.error("CapitalReservationRegistry persist failed: %s", e)
-            # Don't raise — persistence failure should not break trading.
-            # The in-memory state is still authoritative for the
-            # running process. R28 FL: log loudly.
+            # A failed write never raises; _reservations stays authoritative.
 
     def _load(self):
-        """Load persisted state. Silently tolerates missing file
-        (first run) and corrupt file (logged but state stays empty)."""
+        """Read ``_state_path`` into ``_reservations`` and ``_heartbeats``.
+
+        A missing file returns silently; a corrupt one is logged and leaves
+        both empty.
+        """
         if not self._state_path.exists():
             return
         try:
@@ -290,10 +165,6 @@ class CapitalReservationRegistry:
                 e,
             )
 
-    # ─────────────────────────────────────────────────────────
-    # Core API: reserve / release / update
-    # ─────────────────────────────────────────────────────────
-
     def reserve(
         self,
         bot_id: str,
@@ -304,31 +175,23 @@ class CapitalReservationRegistry:
         ttl_seconds: Optional[float] = None,
         total_holdings: Optional[float] = None,
     ) -> str:
-        """Place a reservation. Returns a unique token used to
-        release/update the reservation later.
+        """Store a ``Reservation`` and return its token.
 
         Args:
-            bot_id:         caller's bot identifier.
-            asset:          asset symbol (e.g., "ETH").
-            qty:            asset units to reserve. Must be > 0.
-            reason:         human-readable rationale (audit trail).
-            bot_kind:       "scrumming" | "extractor" | etc.
-            ttl_seconds:    optional explicit TTL. If set, the
-                            reservation auto-releases this many seconds
-                            after creation. None = relies on heartbeat
-                            liveness.
-            total_holdings: optional. If provided, the registry
-                            validates that the new reservation + all
-                            existing reservations on this asset
-                            (across all bots) does not exceed
-                            total_holdings. Raises ValueError on
-                            over-commit (R28 FL).
+            bot_id:         owner recorded on the ``Reservation``.
+            asset:          asset symbol, matched by exact string.
+            qty:            asset units, greater than 0.
+            reason:         audit text, logged only.
+            bot_kind:       "scrumming" or "extractor", logged only.
+            ttl_seconds:    when set, fixes ``expires_at`` this far ahead.
+            total_holdings: when set, caps this ``qty`` plus every existing
+                            ``Reservation`` on ``asset``.
 
         Returns:
-            token (str) — pass to release() or update() to refer back.
+            The token ``release`` and ``update`` require.
 
         Raises:
-            ValueError on qty <= 0 or over-commit.
+            ValueError: ``qty`` is not positive, or the cap is exceeded.
         """
         if qty <= 0:
             raise ValueError(f"reserve: qty must be > 0, got {qty}")
@@ -337,13 +200,10 @@ class CapitalReservationRegistry:
         if not bot_id:
             raise ValueError("reserve: bot_id required")
 
-        # The over-commit sum below counts every reservation on the asset,
-        # including those of bots that stopped heartbeating. Collect them
-        # first or a dead bot's claim refuses a live bot's forever.
+        # Prune first: the sum below counts a dead bot's Reservation too.
         self.prune_expired()
 
         with self._lock:
-            # Over-commit check (R28 FL — fail loudly)
             if total_holdings is not None:
                 existing = sum(
                     r.qty for r in self._reservations.values() if r.asset == asset
@@ -370,7 +230,6 @@ class CapitalReservationRegistry:
                 bot_kind=bot_kind,
             )
             self._reservations[token] = r
-            # Implicit heartbeat — reserving is proof of life
             self._heartbeats[bot_id] = now
             self._save()
             logger.info(
@@ -384,11 +243,9 @@ class CapitalReservationRegistry:
             return token
 
     def release(self, token: str, bot_id: str) -> bool:
-        """Release a reservation. The bot_id must match the
-        reservation's owner (R28 FL — no cross-bot release).
+        """Drop the ``Reservation`` at ``token``, returning False when unknown.
 
-        Returns True if released, False if token unknown.
-        Raises ValueError if token exists but bot_id mismatches.
+        Raises ValueError when ``bot_id`` is not the recorded owner.
         """
         with self._lock:
             r = self._reservations.get(token)
@@ -413,12 +270,10 @@ class CapitalReservationRegistry:
             return True
 
     def release_for(self, bot_id: str, asset: Optional[str] = None) -> int:
-        """Release every reservation held by ``bot_id``, optionally narrowed
-        to one asset, addressing them by ownership rather than by token.
+        """Drop every ``Reservation`` owned by ``bot_id``, narrowed to ``asset``
+        when one is given.
 
-        ``reserve()`` raises before it returns a token, so a caller whose
-        reserve failed holds no handle to what it may have created. This is
-        the only way to reach such a reservation. Returns the count released.
+        Returns the count dropped, and 0 for an empty ``bot_id``.
         """
         if not bot_id:
             return 0
@@ -450,16 +305,13 @@ class CapitalReservationRegistry:
         new_qty: float,
         total_holdings: Optional[float] = None,
     ) -> bool:
-        """Adjust an existing reservation's quantity. Used by
-        Extractor as it consumes its budget in slices.
+        """Set the ``qty`` of the ``Reservation`` at ``token`` to ``new_qty``.
 
-        Returns True if updated, False if token unknown.
-        Raises ValueError on cross-bot update, over-commit, or
-        non-positive qty.
+        Returns False when ``token`` is unknown, and raises ValueError on a
+        foreign ``bot_id``, a non-positive ``new_qty``, or a breached
+        ``total_holdings``.
         """
         if new_qty <= 0:
-            # Treat as a release — calling update with 0 should not
-            # leave a zero-qty zombie in the table.
             raise ValueError(
                 f"update: new_qty must be > 0 (got {new_qty}); "
                 f"call release() to drop the reservation instead."
@@ -473,7 +325,6 @@ class CapitalReservationRegistry:
                     f"update: token {token[:8]} owned by {r.bot_id!r}, "
                     f"not {bot_id!r}."
                 )
-            # Over-commit check excludes the reservation being updated
             if total_holdings is not None:
                 existing = sum(
                     rr.qty
@@ -502,10 +353,10 @@ class CapitalReservationRegistry:
             return True
 
     def force_release(self, token: str, operator_note: str = "") -> bool:
-        """Operator-explicit override — release a reservation regardless
-        of owning bot_id. Logs at WARNING level for audit visibility.
+        """Drop the ``Reservation`` at ``token`` without checking its ``bot_id``.
 
-        Returns True if released, False if token unknown.
+        Returns False when ``token`` is unknown, and logs ``operator_note`` at
+        WARNING.
         """
         with self._lock:
             r = self._reservations.get(token)
@@ -525,9 +376,9 @@ class CapitalReservationRegistry:
             return True
 
     def force_release_all(self, bot_id: str, operator_note: str = "") -> int:
-        """Operator-explicit override — release every reservation held
-        by bot_id. Useful when a bot has crashed and isn't coming back.
-        Returns count of reservations released.
+        """Drop every ``Reservation`` owned by ``bot_id``, and its heartbeat.
+
+        Returns the count dropped, and logs ``operator_note`` at WARNING.
         """
         with self._lock:
             to_release = [
@@ -535,7 +386,6 @@ class CapitalReservationRegistry:
             ]
             for t in to_release:
                 del self._reservations[t]
-            # Also drop the bot's heartbeat so it doesn't linger
             self._heartbeats.pop(bot_id, None)
             if to_release:
                 self._save()
@@ -549,13 +399,11 @@ class CapitalReservationRegistry:
             return len(to_release)
 
     def sweep_unknown_bots(self, known_bot_ids, note: str = "") -> list[Reservation]:
-        """Drop every reservation, and every heartbeat, whose ``bot_id`` is
+        """Drop every ``Reservation``, and every heartbeat, whose ``bot_id`` is
         absent from ``known_bot_ids``.
 
-        A bot id outside the fleet has no owner that can release it, and the
-        persisted table is inherited by every launch. An empty or non-iterable
-        fleet is refused with an empty result: sweeping against a fleet that
-        failed to load would drop live bots' claims. Returns what was dropped.
+        Returns the dropped ``Reservation`` list, empty when ``known_bot_ids``
+        is empty or not iterable.
         """
         try:
             known = {str(b) for b in known_bot_ids}
@@ -592,23 +440,13 @@ class CapitalReservationRegistry:
                 )
             return dropped
 
-    # ─────────────────────────────────────────────────────────
-    # Query API
-    # ─────────────────────────────────────────────────────────
-
     def effective_available(
         self, asset: str, bot_id: str, total_holdings: float
     ) -> float:
-        """The core query: how much of this asset is bot_id allowed
-        to consider available?
+        """Return ``total_holdings`` minus every ``Reservation`` on ``asset``
+        whose owner is not ``bot_id``.
 
-        Returns total_holdings minus the sum of all OTHER bots'
-        reservations on this asset. The querying bot's own reservations
-        do NOT subtract (a bot can always act inside its own claim).
-
-        Never returns negative — if reservations exceed holdings (which
-        should be prevented at reserve-time but defended here), clamps
-        to 0 with a logged warning.
+        A negative result is logged at ERROR and clamped to 0.0.
         """
         with self._lock:
             others_reserved = sum(
@@ -618,9 +456,6 @@ class CapitalReservationRegistry:
             )
             effective = total_holdings - others_reserved
             if effective < 0:
-                # R28 FL — log loudly. Over-reservation should have
-                # been caught at reserve-time; if we're here, the
-                # invariant is broken.
                 logger.error(
                     "CRR.effective_available: %s on %s — others reserved "
                     "%.10g > total_holdings %.10g. Clamping to 0. "
@@ -640,15 +475,12 @@ class CapitalReservationRegistry:
         bot_id: Optional[str] = None,
         excluding_bot_id: Optional[str] = None,
     ) -> list[Reservation]:
-        """Inspect current reservations. Filters are AND-combined.
+        """Return copied ``Reservation`` objects matching every filter given.
 
         Args:
-            asset:            if set, only reservations on this asset.
-            bot_id:           if set, only reservations BY this bot.
-            excluding_bot_id: if set, exclude reservations by this bot.
-
-        Returns list of Reservation objects (copies — caller can mutate
-        without affecting the registry).
+            asset:            keep only this ``asset``.
+            bot_id:           keep only this owner.
+            excluding_bot_id: drop this owner.
         """
         with self._lock:
             out = []
@@ -659,22 +491,14 @@ class CapitalReservationRegistry:
                     continue
                 if excluding_bot_id is not None and r.bot_id == excluding_bot_id:
                     continue
-                # Return a copy so caller can't mutate the registry
-                # by accident
                 out.append(Reservation.from_dict(r.to_dict()))
             return out
 
     def snapshot(self) -> dict:
-        """Full audit-friendly view of the registry. Returns:
+        """Return the whole table under the keys "reservations", "heartbeats",
+        "total_by_asset" and "now".
 
-            {
-                "reservations": [{...}, ...],  # all current reservations
-                "heartbeats":   {bot_id: epoch, ...},
-                "total_by_asset": {"ETH": 0.123, "BTC": 0.001, ...},
-                "now": epoch,
-            }
-
-        For dashboard / Mini Display / Settings tab display.
+        "total_by_asset" sums ``qty`` per ``asset`` across every owner.
         """
         with self._lock:
             now = time.time()
@@ -688,31 +512,18 @@ class CapitalReservationRegistry:
                 "now": now,
             }
 
-    # ─────────────────────────────────────────────────────────
-    # Heartbeat + zombie pruning (next step in cascade)
-    # ─────────────────────────────────────────────────────────
-
     def heartbeat(self, bot_id: str):
-        """Record that bot_id is alive at this moment. Bots should
-        call this on a timer (HEARTBEAT_INTERVAL recommended)."""
+        """Stamp ``bot_id`` in ``_heartbeats`` with the current epoch."""
         with self._lock:
             self._heartbeats[bot_id] = time.time()
-            # Note: NOT autosaved on each heartbeat — would be too much
-            # disk churn. Heartbeats are recovered from in-memory state
-            # on restart's grace period; if the process dies, the next
-            # boot's grace window covers the freshly-restarted bots'
-            # heartbeats anyway.
+            # Not persisted here; the next _save call writes _heartbeats.
 
     def prune_expired(self, now: Optional[float] = None) -> list[Reservation]:
-        """Drop reservations whose explicit TTL has passed OR whose
-        bot has stopped heartbeating for > HEARTBEAT_TTL seconds.
+        """Drop each ``Reservation`` past ``is_expired``, or whose owner has
+        been silent longer than ``HEARTBEAT_TTL``.
 
-        Within the restart grace window (first RESTART_GRACE_SECONDS
-        after registry boot), heartbeat-staleness is NOT enforced —
-        gives all bots time to re-establish heartbeats after an app
-        restart.
-
-        Returns list of pruned Reservation objects for audit logging.
+        Silence is ignored for ``_restart_grace`` seconds after construction,
+        and the dropped objects are returned.
         """
         if now is None:
             now = time.time()
@@ -724,12 +535,10 @@ class CapitalReservationRegistry:
                 drop = False
                 drop_reason = ""
 
-                # Explicit TTL expiry — always enforced
                 if r.is_expired(now):
                     drop = True
                     drop_reason = f"explicit TTL expired at {r.expires_at}"
 
-                # Heartbeat staleness — only enforced post-grace
                 elif not within_grace:
                     last_hb = self._heartbeats.get(r.bot_id, r.reserved_at)
                     silence = now - last_hb
@@ -756,13 +565,8 @@ class CapitalReservationRegistry:
                 self._save()
             return pruned
 
-    # ─────────────────────────────────────────────────────────
-    # Lifecycle
-    # ─────────────────────────────────────────────────────────
-
     def reset(self):
-        """Clear all reservations and heartbeats. Used in tests +
-        operator-explicit nuke. Persists the empty state."""
+        """Empty ``_reservations`` and ``_heartbeats``, then ``_save``."""
         with self._lock:
             self._reservations.clear()
             self._heartbeats.clear()
@@ -770,16 +574,11 @@ class CapitalReservationRegistry:
             logger.warning("CRR.reset: all reservations cleared.")
 
 
-# ─────────────────────────────────────────────────────────────────
-# Module-level singleton (lazy-initialized)
-# ─────────────────────────────────────────────────────────────────
-
 _global_registry: Optional[CapitalReservationRegistry] = None
 
 
 def get_registry() -> CapitalReservationRegistry:
-    """Return the module-level singleton registry. Bots use this
-    rather than constructing their own instance."""
+    """Return the shared ``CapitalReservationRegistry``, constructing it once."""
     global _global_registry
     if _global_registry is None:
         _global_registry = CapitalReservationRegistry()
@@ -787,6 +586,6 @@ def get_registry() -> CapitalReservationRegistry:
 
 
 def set_registry(reg: CapitalReservationRegistry):
-    """Inject a registry (for tests). Use sparingly."""
+    """Replace what ``get_registry`` returns with ``reg``."""
     global _global_registry
     _global_registry = reg
