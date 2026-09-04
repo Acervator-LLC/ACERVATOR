@@ -496,3 +496,80 @@ class TestDomainAndInvariants:
             "avg_bw",
         ):
             assert key in d, key
+
+
+# ── D7: THE MOMENTUM DELTA USES sma(close, N), NOT close ─────────────
+
+
+class TestMomentumDeltaUsesTheMovingAverage:
+    """LazyBear's ``val`` subtracts ``avg(donchian_mid, sma(close, N))``
+    from the close. Substituting the close itself for that SMA is a
+    different formula, and the reported ``momentum`` shows which ran."""
+
+    SQUEEZE_LOOKBACK = 10
+
+    @staticmethod
+    def _tape(n: int = 40) -> list:
+        out = []
+        px = 100.0
+        for i in range(n):
+            px += math.sin(i / 3.0) * 0.8 + (0.05 if i % 7 else -0.3)
+            out.append(_row(i, px, 0.8))
+        return out
+
+    @staticmethod
+    def _canonical_momentum(candles: list, period: int) -> float:
+        closes = [c.close for c in candles]
+
+        def delta(i: int) -> float:
+            j0 = max(0, i - period + 1)
+            window = closes[j0 : i + 1]
+            hi = max(c.high for c in candles[j0 : i + 1])
+            lo = min(c.low for c in candles[j0 : i + 1])
+            sma_i = sum(window) / len(window)
+            return closes[i] - ((hi + lo) / 2.0 + sma_i) / 2.0
+
+        last = len(candles) - 1
+        seg = [delta(k) for k in range(max(0, last - period + 1), last + 1)]
+        return SlingshotIndicator._linreg_endpoint(seg)
+
+    def test_reported_momentum_matches_the_published_linreg(self):
+        cs = self._tape()
+        ind = SlingshotIndicator(squeeze_lookback=self.SQUEEZE_LOOKBACK)
+        got = ind.compute(cs).details["momentum"]
+        want = round(self._canonical_momentum(cs, ind.bb_period), 8)
+        assert got == want, (
+            f"momentum {got} departs from linreg(close - avg(donchian_mid, "
+            f"sma(close, {ind.bb_period})), {ind.bb_period}, 0) = {want}"
+        )
+
+    def test_substituting_the_close_for_the_sma_gives_a_different_number(self):
+        """Negative control: the formula this repair removed, recomputed
+        inline, disagrees with the canonical one on the same candles."""
+        cs = self._tape()
+        ind = SlingshotIndicator(squeeze_lookback=self.SQUEEZE_LOOKBACK)
+        closes = [c.close for c in cs]
+        period = ind.bb_period
+        reach = ind.squeeze_lookback + 5
+
+        def delta(i: int) -> float:
+            j0 = max(0, i - period + 1)
+            hi = max(c.high for c in cs[j0 : i + 1])
+            lo = min(c.low for c in cs[j0 : i + 1])
+            window = closes[j0 : i + 1]
+            sma_i = (
+                sum(window) / len(window)
+                if i >= len(cs) - reach
+                else closes[i]  # the substitution the repair removed
+            )
+            return closes[i] - ((hi + lo) / 2.0 + sma_i) / 2.0
+
+        last = len(cs) - 1
+        seg = [delta(k) for k in range(max(0, last - period + 1), last + 1)]
+        old = round(SlingshotIndicator._linreg_endpoint(seg), 8)
+        want = round(self._canonical_momentum(cs, period), 8)
+        assert old != want, (
+            "the negative control computes the same number as the canonical "
+            f"formula ({old}), so it cannot detect the substitution"
+        )
+        assert ind.compute(cs).details["momentum"] != old
