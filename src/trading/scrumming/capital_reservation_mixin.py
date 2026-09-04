@@ -1,8 +1,10 @@
 """Capital-reservation wiring for ScrummingBot.
 
-Reserves the bot's buy-side capital with the CapitalReservationRegistry so
-concurrent bots cannot double-spend the same shared wallet. ``_crr`` is the
-registry accessor; the ensure/release pair drive the reservation lifecycle.
+``_crr`` resolves the registry this bot claims against, answering None in
+sim mode with no injected ``_capital_registry``. ``_compute_reservation_qty``
+sizes the claim in target-asset units, the units a later sell is checked
+against. ``_ensure_capital_reservation`` places and updates that claim, and
+``_release_capital_reservation`` drops it.
 """
 
 from __future__ import annotations
@@ -13,25 +15,25 @@ from typing import TYPE_CHECKING
 logger = logging.getLogger("acervator.scrumming")
 
 if TYPE_CHECKING:
+    from ..capital_reservation import CapitalReservationRegistry
     from ..scrumming_bot import ScrummingBot as _Host
 else:
     _Host = object
 
 
 class CapitalReservationMixin(_Host):
-    def _crr(self):
-        """The capital-reservation registry this bot should use.
+    _capital_registry: CapitalReservationRegistry | None
+    _crr_token: str | None
+    _crr_last_reserved_qty: float
 
-        Injected instance when one was supplied (sim fleets get a
-        private, non-persisting registry); the process-wide singleton
-        otherwise. None only if the module cannot be imported.
+    def _crr(self) -> CapitalReservationRegistry | None:
+        """Return the registry this bot claims against.
+
+        An injected ``_capital_registry`` wins, ``_sim_mode`` without one
+        answers None, and ``_crr_get_registry`` answers otherwise.
         """
         if self._capital_registry is not None:
             return self._capital_registry
-        # A sim bot with no injected registry must not resolve the
-        # process-wide singleton — it persists to the operator's live
-        # reservation_state.json. Return None (fail-closed) so reservation
-        # is refused rather than performed against live state.
         if getattr(self, "_sim_mode", False):
             logger.warning(
                 "Bot %s is in sim mode with no injected capital registry; "
@@ -50,17 +52,10 @@ class CapitalReservationMixin(_Host):
             return None
 
     def _compute_reservation_qty(self, current_price: float) -> float:
-        """Target-asset units this bot should claim in the registry.
+        """Return the target-asset units this bot claims.
 
-        Formula: ``target_balance_USD / (current_price × quote_to_usd)``
-        (with a 10 % safety margin so tick-to-tick price drift doesn't
-        leave us under-reserved) plus ``personal_hold_qty``
-        (operator-declared units this bot keeps out of both its own
-        math AND other bots' reach).
-
-        Multiplying by ``_quote_to_usd`` gives USD-per-target-asset, the
-        correct denominator for a USD-denominated target on non-USD-quoted
-        pairs (e.g. ETH/BTC, where ``current_price`` is BTC-per-ETH).
+        ``_target_balance`` over the product of ``current_price`` and
+        ``_quote_to_usd``, scaled by 1.10, plus ``personal_hold_qty``.
         """
         if current_price <= 0:
             return 0.0
@@ -82,16 +77,11 @@ class CapitalReservationMixin(_Host):
         return _base_units * 1.10 + max(0.0, _hold)
 
     async def _ensure_capital_reservation(self, current_price: float) -> None:
-        """Idempotent: reserve on first eligible call, update on
-        subsequent calls, always heartbeat.
+        """Reserve on the first eligible call and update on later ones.
 
-        No-ops when self_reserve_capital is disabled or price is
-        unavailable. Failures log at WARNING and clear the token so the
-        next tick retries. Never raises into the tick path. Async so it can
-        pass ``total_holdings`` (from the balance cache) into
-        ``reserve()`` / ``update()``, which the registry's over-commit
-        check needs. Sim isolation comes from the bot holding a private
-        registry, not from skipping this path.
+        Returns without claiming when ``self_reserve_capital`` is off, when
+        ``current_price`` or ``target_asset`` is unusable, or when ``_crr``
+        answers None; failures log at WARNING and clear ``_crr_token``.
         """
         if not bool(getattr(self.config, "self_reserve_capital", True)):
             return
@@ -105,11 +95,7 @@ class CapitalReservationMixin(_Host):
             return
         _total_holdings = await self._get_cached_exchange_balance(_asset)
 
-        # A sim bot's first reserve passes holdings=None: sim inventory is
-        # seeded at exactly target/open_px, so the 110% claim would fail
-        # over-commit on a private registry that isn't guarding a shared
-        # live balance. Subsequent updates still pass holdings, so drift is
-        # still caught.
+        # Passing _total_holdings None skips reserve()'s over-commit check.
         if getattr(self, "_sim_mode", False) and self._crr_token is None:
             _total_holdings = None
         try:
@@ -117,18 +103,10 @@ class CapitalReservationMixin(_Host):
             if _crr_reg is None:
                 return
             if self._crr_token is None:
-                # No token means this bot believes it holds nothing. A
-                # reservation still standing in its name is unreachable by
-                # token, and the over-commit sum would count it against the
-                # claim about to be made.
+                # release_for clears a standing reservation no token can reach.
                 _crr_reg.release_for(self.bot_id, _asset)
             if _total_holdings is not None:
-                # Claim what this bot needs, bounded by what no other bot has
-                # claimed. Capping at the whole balance instead left nothing
-                # for a co-tenant Extractor on the same asset, which is the
-                # sharing this registry exists to arbitrate. Skipped when
-                # holdings are unknown so a transient fetch failure cannot
-                # shrink a live claim.
+                # _headroom leaves a co-tenant Extractor's claim untouched.
                 _others_reserved = sum(
                     r.qty
                     for r in _crr_reg.reservations_for(
@@ -180,7 +158,6 @@ class CapitalReservationMixin(_Host):
                     ),
                 )
             else:
-                # Only push an update when qty drift > 1 %.
                 if self._crr_last_reserved_qty > 0:
                     _drift = (
                         abs(_qty - self._crr_last_reserved_qty)
@@ -198,10 +175,7 @@ class CapitalReservationMixin(_Host):
                     if _applied:
                         self._crr_last_reserved_qty = _qty
                     else:
-                        # update() returns False for a token the registry no
-                        # longer holds, having pruned or swept it. Forgetting
-                        # it makes the next tick reserve afresh instead of
-                        # updating nothing forever.
+                        # update() answers False for a token the registry pruned.
                         logger.info(
                             "Bot %s reservation token %s is no longer in the "
                             "registry; re-reserving on the next tick",
@@ -219,11 +193,8 @@ class CapitalReservationMixin(_Host):
                 type(_crr_exc).__name__,
                 _crr_exc,
             )
-            # Release the token before clearing it. Dropping it while the
-            # reservation still stands would orphan units the next
-            # reserve() then counts against itself in the over-commit
-            # check, refusing forever. Releasing first makes the retry a
-            # real retry rather than a collision with this bot's own ghost.
+            # Releasing before clearing keeps _stale out of the next
+            # reserve()'s over-commit sum.
             _stale = self._crr_token
             _dropped = 0
             try:
@@ -239,10 +210,8 @@ class CapitalReservationMixin(_Host):
                             _stale[:8],
                         )
                     elif _asset:
-                        # reserve() raises before it returns a token, so the
-                        # token branch above cannot reach a reservation this
-                        # call left standing. Ownership can, and this is the
-                        # branch that runs on the failing path.
+                        # reserve() raises before returning a token, so
+                        # release_for is the only reach into this claim.
                         _dropped = _reg.release_for(self.bot_id, _asset)
                         if _dropped:
                             logger.info(
@@ -281,7 +250,7 @@ class CapitalReservationMixin(_Host):
                         "released_stale": bool(_dropped),
                     },
                 )
-            except Exception as _sup:  # noqa: BLE001,S110
+            except Exception as _sup:  # noqa: BLE001
                 logger.debug(
                     "suppressed in %s: %s: %s",
                     "_ensure_capital_reservation",
@@ -289,14 +258,7 @@ class CapitalReservationMixin(_Host):
                     _sup,
                 )
         else:
-            # Success path reports too (throttled), so a green run is
-            # evidence rather than silence. ``ok`` compares the held
-            # quantity (_crr_last_reserved_qty) against what this tick
-            # needs (_qty): True only when a reservation is held and the
-            # two sit within the 1% band the update path maintains. A held
-            # quantity <= 0 is not a pass. ``ok`` is passed explicitly
-            # because the two numbers are legitimately unequal inside the
-            # band.
+            # ok is explicit: _held and _need differ legitimately inside the band.
             try:
                 from src.core.signal_contract import emit as _cr_ok
 
@@ -322,7 +284,7 @@ class CapitalReservationMixin(_Host):
                         ),
                     },
                 )
-            except Exception as _sup:  # noqa: BLE001,S110
+            except Exception as _sup:  # noqa: BLE001
                 logger.debug(
                     "suppressed in %s: %s: %s",
                     "_ensure_capital_reservation",
@@ -331,9 +293,11 @@ class CapitalReservationMixin(_Host):
                 )
 
     def _release_capital_reservation(self) -> None:
-        """Release the registry token in stop() / destroy paths.
-        Non-raising; the registry's own heartbeat-staleness prune is
-        the backstop if this call fails."""
+        """Release ``_crr_token`` and zero ``_crr_last_reserved_qty``.
+
+        A failure logs at WARNING and leaves ``_crr_reg`` to prune the
+        reservation on heartbeat staleness.
+        """
         if self._crr_token is None:
             return
         try:
