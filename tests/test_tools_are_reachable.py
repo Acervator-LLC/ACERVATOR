@@ -118,12 +118,18 @@ INVENTORY: tuple[tuple[str, bool], ...] = (
     # Judges every comment a branch adds, carrying a parser over the base
     # ref and the paths, so it is True.
     ("check_added_comments", True),
+    # Pairs each `src/gui` module that imports PySide6 with a React module
+    # of the same stem. Takes no argument, so it is False.
+    ("conversion_state", False),
     ("deps", True),
     # Moved in from the repository root as EXCHANGE_DIAGNOSTIC.py. The move
     # also gave it the `main()` and `__main__` guard it never had: importing
     # the root file opened 15 sockets and then blocked on input().
     ("exchange_diagnostic", True),
     ("gate", False),
+    # Measures how far the HOP handoff has drifted from the repository and
+    # exits 1 on drift. Takes no argument, so it is False.
+    ("hop_check", False),
     ("migrate_harness", True),
     # Issue #105 added this. It captures the facts a GitHub
     # organization migration must preserve, then verifies them
