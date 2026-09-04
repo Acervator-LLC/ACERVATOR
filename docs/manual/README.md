@@ -1,8 +1,12 @@
 # Acervator Product Manual
 
-Reference. The product manual, extracted from its PDF into markdown. The text is
-verbatim: no wording was changed, shortened, added or removed. Only whitespace
-was normalised.
+Reference. The product manual, extracted from its PDF into markdown. The
+transcription is verbatim in every part file: no wording was changed, shortened
+or removed, and only whitespace was normalised.
+
+Two part files carry more than the transcription.
+[07-indicators.md](07-indicators.md) and [08-tabs.md](08-tabs.md) add sections
+of their own; the other six hold the transcription alone.
 
 ## Contents
 
@@ -21,10 +25,11 @@ was normalised.
 Pages 36 to 44 carry a figure and no text, so no part file covers them.
 [FIGURES.md](FIGURES.md) is their only record.
 
-One file carries more than the transcription.
-[08-tabs.md](08-tabs.md) keeps every transcribed sentence, in order and
-unaltered, and adds a description of the running code under each heading. The
-subsystem files below hold the longer form of those descriptions and none of
+[07-indicators.md](07-indicators.md) adds the twelve published formulae, the
+departures the code takes from them, and the gate logic chain.
+[08-tabs.md](08-tabs.md) adds a description of the running code under each
+heading. Both keep every transcribed sentence, in order and unaltered. The
+subsystem files below hold the longer form of the tab descriptions and none of
 them transcribe the PDF.
 
 ## Part 3 subsystem detail
@@ -61,14 +66,18 @@ name, byte size, pixel size, and whether its page also carries text.
 
 The source PDF and the operator's exchange CSV exports live outside this
 repository and are not committed. `tools/extract_product_manual.py` takes the
-PDF path as its `--pdf` parameter and rewrites both this directory and the
-figures directory. It exits non-zero when the markdown it wrote no longer holds
-every PDF token in order.
+PDF path as its `--pdf` parameter and writes both this directory and the figures
+directory. It exits non-zero when the part files no longer hold every PDF token
+in order.
 
-`write_parts` overwrites every file in its part list, [08-tabs.md](08-tabs.md)
-included, which drops the code-derived descriptions added under that file's
-headings. The files under [08-tabs/](08-tabs/README.md) sit outside the part
-list and survive a re-extraction.
+`write_parts` compares each part file against the blocks the PDF produces. A
+file holding a block the PDF does not produce stops the run before anything is
+written; the refusal names the file, counts the blocks, and quotes the first
+one. `--re-extract` rewrites the transcription and keeps those blocks where they
+sit. That is the flag for a corrected PDF.
+
+The files under [08-tabs/](08-tabs/README.md) sit outside the part list and are
+never written.
 
 - 44 pages, 9,759 whitespace-separated tokens, 38 embedded images.
 - Page 24 and pages 36 to 44 extract zero visible characters.
@@ -89,8 +98,10 @@ both whitespace only:
    the Asset Charts Tab entry that starts on page 8 and finishes on page 9, and
    the Scrumming Bot paragraph that starts on page 15 and finishes on page 16.
 
-Compared token by token against the PDF, the markdown holds 9,759 tokens in the
-same order, with no addition and no loss.
+Compared token by token against the PDF, the transcription holds 9,759 tokens in
+the same order, with no loss. The added sections in
+[07-indicators.md](07-indicators.md) and [08-tabs.md](08-tabs.md) sit outside
+that count.
 
 ### Headings
 

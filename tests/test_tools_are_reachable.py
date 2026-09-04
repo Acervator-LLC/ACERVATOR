@@ -122,6 +122,10 @@ INVENTORY: tuple[tuple[str, bool], ...] = (
     # of the same stem. Takes no argument, so it is False.
     ("conversion_state", False),
     ("deps", True),
+    # Transcribes the product manual PDF into `docs/manual`. Its parser
+    # carries `--pdf`, `--docs-dir`, `--figures-dir` and `--re-extract`, so
+    # it is True.
+    ("extract_product_manual", True),
     # Moved in from the repository root as EXCHANGE_DIAGNOSTIC.py. The move
     # also gave it the `main()` and `__main__` guard it never had: importing
     # the root file opened 15 sockets and then blocked on input().
