@@ -32,6 +32,8 @@ from __future__ import annotations
 import time
 from typing import Any, Optional
 
+from ..color_alpha import css_colours
+
 METHOD = "competition_tab.state"
 
 ACCESSIBLE_NAME = "Competition Tab"
@@ -1099,8 +1101,14 @@ def view_model(params: dict) -> dict:
     Reads ``reset`` and ``state`` from the request parameters. The tab is
     read only, so a call with no parameters answers with the tab the last
     call built; ``reset`` is what a fresh open sends.
+
+    ``build_view_model`` keeps the style sheets the way the Qt widget
+    carries them, because that is the text the widget hands
+    ``setStyleSheet``. Only the payload leaving here goes through
+    ``src.gui.color_alpha.css_colours``, so an alpha byte becomes the
+    share a browser reads and the renderer needs no scale of its own.
     """
     global TAB_MODEL
     if params.get("reset", False) or "state" in params:
         TAB_MODEL = build_model(params.get("state"))
-    return build_view_model(TAB_MODEL)
+    return css_colours(build_view_model(TAB_MODEL))

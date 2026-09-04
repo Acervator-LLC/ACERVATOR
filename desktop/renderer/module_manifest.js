@@ -65,4 +65,6 @@ window.ACERVATOR_MODULES = [
   "analytics_tab.js",
   "risk_tab.js",
   "alerts_tab.js",
+  "competition_tab.js",
+  "instance_consent_dialog.js",
 ];
