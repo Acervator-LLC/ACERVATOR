@@ -1,17 +1,9 @@
-"""
-api_logger.py - Detailed API interaction logging
-==================================================
-Wraps exchange API calls with verbose logging that shows:
-  - What API endpoint is being called and why
-  - The full request parameters (keys redacted)
-  - Response data summary
-  - Response time in milliseconds
-  - What the application does with the returned data
-  - Any errors with full context
+"""In-memory record of exchange API interactions.
 
-This module is designed to make the application's behavior
-fully transparent to the user. Every API interaction is
-explained in plain language.
+``APIInteractionLog.record`` stores one entry per call and emits one ``logger``
+line holding the action, reason, result and elapsed time, never the params.
+``_redact`` masks credential-named params before they reach that entry.
+``get_api_log`` returns the process-wide ``APIInteractionLog``.
 """
 
 from __future__ import annotations
@@ -25,36 +17,15 @@ logger = logging.getLogger("acervator.api")
 
 
 def _listener_name(cb: object) -> str:
-    """Name a listener without touching an object that may be destroyed.
+    """Name ``cb`` without evaluating its own ``__repr__``.
 
-    issue #101. The handler below existed so that a listener which
-    raises cannot break `record`. It could not keep that promise,
-    because its own diagnostic raised.
-
-    `getattr(cb, "__qualname__", repr(cb))` evaluates `repr(cb)` EVERY
-    time, including when `__qualname__` is present -- Python builds the
-    default argument before it calls `getattr`. `cb` is normally a
-    BOUND METHOD of a Qt widget, and `repr()` of a bound method whose
-    C++ object is destroyed raises
-    `RuntimeError: Internal C++ object already deleted`. That
-    RuntimeError left the `except` block and came out of `record()`,
-    which is on the API path.
-
-    Measured 2026-08-24: `MainWindow._on_api_event` stays in
-    `_listeners` after the window is destroyed, so the next `record()`
-    hit exactly this. 39 tests across four files failed on it as soon
-    as the suite teardown started destroying widgets for real.
-
-    `object.__repr__` reads the type and the address only. It cannot
-    call into Qt, so it cannot raise.
+    A ``cb`` with no readable ``__qualname__`` falls back to
+    ``object.__repr__``, which reads the type and address only.
     """
     try:
         name = getattr(cb, "__qualname__", None)
     except Exception as exc:
-        # A destroyed Qt object answers every attribute read with
-        # RuntimeError, not AttributeError, so the `None` default above
-        # does not cover it. Naming the listener must never be the
-        # reason a caller loses its own exception.
+        # A destroyed Qt object raises RuntimeError from getattr, not AttributeError.
         name = f"<unnameable listener: {type(exc).__name__}>"
     if isinstance(name, str):
         return name
@@ -62,10 +33,10 @@ def _listener_name(cb: object) -> str:
 
 
 class APIInteractionLog:
-    """
-    Collects detailed API interaction records for display in the UI.
-    Each record contains: timestamp, direction (call/response), exchange,
-    endpoint, parameters, result summary, elapsed time, and reasoning.
+    """Ring buffer of API interaction entries, capped at ``max_entries``.
+
+    ``record`` appends one entry and notifies every callback given to
+    ``add_listener``; ``get_recent`` and ``get_for_exchange`` read them back.
     """
 
     def __init__(self, max_entries: int = 500):
@@ -74,7 +45,7 @@ class APIInteractionLog:
         self._listeners: list[Callable] = []
 
     def add_listener(self, callback: Callable) -> None:
-        """Register a callback that fires on every new entry."""
+        """Register ``callback`` to receive every entry ``record`` appends."""
         self._listeners.append(callback)
 
     def record(
@@ -89,29 +60,10 @@ class APIInteractionLog:
         level: str = "info",
         data_usage: str = "",
     ) -> dict:
-        """
-        Record one API interaction.
+        """Append one interaction entry and return it.
 
-        Parameters
-        ----------
-        exchange : str
-            Exchange name (e.g. "coinbase")
-        action : str
-            What we're doing (e.g. "FETCH_TICKER", "PLACE_ORDER")
-        reason : str
-            WHY we're making this call in plain English
-        endpoint : str
-            API endpoint or method name
-        params : dict
-            Request parameters (keys will be redacted)
-        result : str
-            Summary of what came back
-        elapsed_ms : float
-            How long the call took
-        level : str
-            "info", "success", "warning", "error"
-        data_usage : str
-            What the app does with this data
+        ``params`` passes through ``_redact`` before storage, and the ``logger``
+        line carries ``action``, ``reason``, ``result`` and ``elapsed_ms`` only.
         """
         entry = {
             "timestamp": time.time(),
@@ -130,7 +82,6 @@ class APIInteractionLog:
         if len(self._entries) > self._max:
             self._entries = self._entries[-self._max :]
 
-        # Log to Python logger
         log_line = (
             f"[{exchange.upper()}] {action} | {reason} | "
             f"{result} | {elapsed_ms:.0f}ms"
@@ -139,18 +90,11 @@ class APIInteractionLog:
             log_line += f" | Usage: {data_usage}"
         logger.info(log_line)
 
-        # MEM-216 — tag the entry with the thread that produced it so
-        # listeners (e.g., _on_api_event) can detect and refuse cross-
-        # thread delivery. Used for diagnostic traces only; listeners
-        # are responsible for their own thread-safety logic.
+        # Listeners read _thread_name to refuse delivery off the GUI thread.
         import threading as _threading
 
         entry["_thread_name"] = _threading.current_thread().name
 
-        # Notify listeners. MEM-216 — log listener exceptions at DEBUG
-        # level (previously silent). If a listener ever crashes, the
-        # debug log tells us which one and why, instead of losing the
-        # signal entirely. DEBUG keeps production logs clean.
         for cb in self._listeners:
             try:
                 cb(entry)
@@ -193,9 +137,24 @@ class APIInteractionLog:
 
 
 def _redact(params: dict) -> dict:
-    """Redact sensitive values (keys, secrets) from params dict."""
+    """Replace every credential-named value in ``params`` with "***REDACTED***".
+
+    A key whose lowercase form contains a ``sensitive`` substring is masked; any
+    other str value over 50 characters keeps its first 20 and gains an ellipsis.
+    """
     redacted = {}
-    sensitive = {"apikey", "secret", "password", "passphrase", "key", "token"}
+    # "sign" covers signature and CB-ACCESS-SIGN; "key" covers apiKey.
+    sensitive = {
+        "apikey",
+        "secret",
+        "password",
+        "passphrase",
+        "key",
+        "token",
+        "sign",
+        "auth",
+        "credential",
+    }
     for k, v in params.items():
         if any(s in k.lower() for s in sensitive):
             redacted[k] = "***REDACTED***"
@@ -206,32 +165,22 @@ def _redact(params: dict) -> dict:
     return redacted
 
 
-# ---------------------------------------------------------------------------
-# Global singleton
-# ---------------------------------------------------------------------------
 _global_log: Optional[APIInteractionLog] = None
 
 
 def get_api_log() -> APIInteractionLog:
+    """Return the process-wide ``APIInteractionLog``, building it on first call."""
     global _global_log
     if _global_log is None:
         _global_log = APIInteractionLog()
     return _global_log
 
 
-# ---------------------------------------------------------------------------
-# Decorator for wrapping exchange methods with logging
-# ---------------------------------------------------------------------------
 def log_api_call(action: str, reason: str = "", data_usage: str = ""):
-    """
-    Decorator that wraps an async exchange method with API logging.
+    """Wrap an async method in a ``record`` call carrying ``action``.
 
-    Usage::
-
-        @log_api_call("FETCH_TICKER", "Get current price for delta calculation",
-                       data_usage="Compared against target balance to determine trade direction")
-        async def get_ticker(self, symbol):
-            ...
+    The wrapper stringifies its arguments into ``params`` and records a
+    ``{action}_FAILED`` entry before re-raising any exception.
     """
 
     def decorator(func):
@@ -253,7 +202,6 @@ def log_api_call(action: str, reason: str = "", data_usage: str = ""):
                 result = await func(self, *args, **kwargs)
                 elapsed = (time.monotonic() - start) * 1000
 
-                # Summarize result
                 if result is None:
                     result_summary = "No data returned"
                 elif isinstance(result, dict):

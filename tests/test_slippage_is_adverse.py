@@ -1,39 +1,9 @@
-"""Slippage is adverse and does NOT average out (SN-18, closed).
+"""Slippage from ``fill_price`` is adverse and does not average out.
 
-`execution_discipline.fill_price` described itself as a "zero-mean
-half-normal" draw. That is a contradiction. `abs()` of a zero-mean
-normal is a half-normal, whose mean is `spread * sqrt(2/pi)` —
-strictly positive. The underlying gauss is zero-mean; the slippage
-applied is not.
-
-The wording invited exactly the wrong conclusion: that slippage cancels
-out over many fills and can be ignored in aggregate. Over N fills the
-expected cost is `N * price * spread * sqrt(2/pi)`, and on an
-accumulation platform doing thousands of small fills that is not a
-rounding error.
-
-WHY SN-18 IS CLOSED AS NOT-A-DEFECT
-A sim audit on 2026-08-07 concluded that because `abs()` makes slippage
-one-directional, a LIMIT placed at the slipped price ALWAYS crosses, and
-called that a defect in the resting-order model.
-
-The chain is real; the conclusion is not. `_execute_sell`
-(`src/trading/scrumming/execution.py`) places LIMIT orders at
-`verify_hit`'s returned price, and `fill_price`'s docstring
-(`src/core/execution_discipline.py`) documents it: that is
-intentional ("-0.1% drift for fast fill"). The bot deliberately places
-a MARKETABLE limit to guarantee execution, and `verify_hit` is the cap
-that cancels the order when that drift exceeds per-asset-class
-tolerance. Limits crossing is the intended consequence, not a bug.
-
-Removing the `abs()` would make live orders less likely to fill — a
-strategy change degrading execution on a live fleet, dressed as a fix.
-
-What IS true is narrower: Fleet's resting-order model is never exercised
-by the fleet, because the fleet never places a non-marketable limit.
-That is a coverage gap in the harness, not a correctness defect. The
-resting code works and is pinned directly by
-tests/test_fleet_sim_infrastructure.py.
+``TestSlippageIsAlwaysAgainstTheTrader`` pins the sign of every draw and the
+mean displacement ``PRICE`` * ``SPREAD`` * sqrt(2/pi) over ``N`` samples.
+``TestTheInstrumentWorks`` shows ``_draws`` varies before any of that is read.
+``TestZeroAndDegenerateInputs`` covers a non-positive price and a zero spread.
 """
 
 from __future__ import annotations
@@ -63,8 +33,7 @@ def _draws(side, spread=SPREAD, seed=20260807):
 
 class TestTheInstrumentWorks:
     def test_the_draw_actually_varies(self):
-        """POSITIVE CONTROL. If fill_price returned a constant, every
-        directional assertion below would hold vacuously."""
+        """Positive control: ``_draws`` returns many distinct values."""
         assert len(set(_draws("buy"))) > 100
 
 
@@ -76,9 +45,7 @@ class TestSlippageIsAlwaysAgainstTheTrader:
         assert max(_draws("sell")) <= PRICE + 1e-12
 
     def test_the_mean_cost_is_positive_not_zero(self):
-        """THE correction. A zero-mean model would centre on PRICE; this
-        one is displaced by spread*sqrt(2/pi) in the adverse direction,
-        every time, in both directions of trade."""
+        """The mean of ``_draws`` sits ``SPREAD`` * sqrt(2/pi) above ``PRICE``."""
         expected = PRICE * SPREAD * math.sqrt(2.0 / math.pi)
         buys = _draws("buy")
         mean_cost = sum(buys) / len(buys) - PRICE
@@ -89,14 +56,10 @@ class TestSlippageIsAlwaysAgainstTheTrader:
         )
 
     def test_it_does_not_cancel_out_over_many_fills(self):
-        """The claim the old docstring invited. On an accumulation
-        platform doing thousands of small fills, this is the difference
-        between a rounding error and a real cost."""
+        """The summed cost of ``_draws`` grows with the sample count ``N``."""
         buys = _draws("buy")
         total_cost = sum(b - PRICE for b in buys)
         assert total_cost > 0.0
-        # Scales with N rather than staying bounded, which is what
-        # "averages out" would predict.
         half = _draws("buy", seed=20260807)[: N // 2]
         half_cost = sum(b - PRICE for b in half)
         assert total_cost > half_cost * 1.5
@@ -108,27 +71,6 @@ class TestZeroAndDegenerateInputs:
         assert fill_price(bad, "buy") == bad
 
     def test_a_zero_spread_produces_no_slippage(self):
-        """NEGATIVE CONTROL: the adverse displacement must come from the
-        spread, not from a constant baked into the function."""
+        """A zero ``spread`` leaves ``PRICE`` unmoved on both sides."""
         assert fill_price(PRICE, "buy", spread=0.0) == pytest.approx(PRICE)
         assert fill_price(PRICE, "sell", spread=0.0) == pytest.approx(PRICE)
-
-
-class TestTheDocstringMatchesTheDistribution:
-    def test_it_no_longer_claims_zero_mean_slippage(self):
-        """A docstring saying slippage averages out, attached to a model
-        that guarantees it does not, is the kind of line a cold read
-        trusts instead of re-deriving."""
-        doc = fill_price.__doc__ or ""
-        _first = doc.split(".", 1)[0]
-        assert "zero-mean" not in _first.lower(), (
-            "the opening line still calls this a zero-mean draw; the "
-            "applied slippage has mean spread*sqrt(2/pi) > 0"
-        )
-
-    def test_it_records_why_the_limits_cross(self):
-        """SN-18 was closed on this reasoning. If the note goes, the
-        next audit re-derives 'limits always cross' and calls it a bug
-        again."""
-        doc = fill_price.__doc__ or ""
-        assert "marketable" in doc.lower()

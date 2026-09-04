@@ -1,25 +1,10 @@
-"""
-src/core/execution_discipline.py — R44 DRY: single source of truth for
-R55 VH (Verify Hit) and microstructure slippage across the live-path
-engines.
+"""Live-path fill simulation and slippage tolerance.
 
-Prior to v3.9.15 this logic was duplicated across:
-  1. sadp/RAIntSimBat/RAIntSimBat.py::_verify_hit  (canonical sim)
-  2. (retired) nuclear_live.py::_live_verify_hit   (deleted v3.18.3)
-  3. (retired) gui/simulator.py::_sim_scrumming_tick (deleted prior)
-
-Multiple implementations with bitwise-identical semantics but
-textually distinct code — technical debt flagged as R44 DRY violation.
-This module is the single source of truth for live-path VH. (1) stays
-self-contained because it uses a closure over `slip_pct_fn` with per-
-asset SPREADS dict — a different slippage-source architecture that
-would require a separate refactor to merge. When NuclearSimExchange
-lands in Phase B of the v3.18.x Simulator rebuild, it will consume
-this module directly rather than re-implementing the helper.
-
-sadp: R44  # DRY consolidation
-sadp: R55  # Verify Hit semantics
-sadp: R57  # engine parity artifact
+``fill_price`` moves a price against the trader by a half-normal draw scaled
+by ``LIVE_SPREAD_PCT``. ``verify_hit`` samples it up to ``VERIFY_MAX_SAMPLES``
+times and cancels once the drift between samples exceeds ``VERIFY_DRIFT_PCT``.
+``classify_symbol`` and ``verify_min_profit`` read the per-class tolerance out
+of ``VERIFY_MIN_PROFIT_BY_CLASS``.
 """
 
 from __future__ import annotations
@@ -27,39 +12,22 @@ from __future__ import annotations
 import random
 from typing import Optional, Tuple
 
-# R55 VH — slippage tolerance constants
-# These are the canonical values used across all live-path engines.
-# Sim engine (RAIntSimBat) defines its own copies because its slippage
-# model is different (per-asset SPREADS + microstructure fn), but the
-# thresholds (MIN_PROFIT, DRIFT_PCT, MAX_SAMPLES) must match exactly.
+# VERIFY_DRIFT_PCT and LIVE_SPREAD_PCT are fractions of price, not percents.
 VERIFY_HIT_ENABLED: bool = True
-VERIFY_MAX_SAMPLES: int = 5  # ultra-sampling budget
-VERIFY_DRIFT_PCT: float = 0.005  # 0.5% compounding drift → cancel
-LIVE_SPREAD_PCT: float = 0.0008  # 0.08% Gaussian slippage std dev
+VERIFY_MAX_SAMPLES: int = 5
+VERIFY_DRIFT_PCT: float = 0.005
+LIVE_SPREAD_PCT: float = 0.0008
 
-# R55 v3 — per-asset-class slippage tolerances (MEM-123).
-# R55 v2's uniform 2% tolerance was too tight for crypto/meme/pandemic-
-# drawdown regimes where real microstructure slippage occasionally
-# exceeds 2%, causing VH to cancel trades the strategy would have
-# legitimately captured. v3 widens tolerance for high-volatility
-# asset classes while holding bonds/equity tighter.
-#
-# Pass criteria per R56 ABV: full 6-portfolio A/B with aggregate
-# delta ≥ 0 AND regressions < improvements.
 VERIFY_MIN_PROFIT_BY_CLASS = {
-    "crypto": 0.04,  # 4% — crypto microstructure can spike hard
-    "meme": 0.04,  # 4% — pandemic/meme names in drawdown regime
-    "equity": 0.02,  # 2% — typical equity microstructure
-    "bond": 0.01,  # 1% — bonds are tight; preserve strict discipline
-    "etf": 0.015,  # 1.5% — index/commodity ETFs usually tight
-    "default": 0.02,  # fallback matches v2 uniform
+    "crypto": 0.04,
+    "meme": 0.04,
+    "equity": 0.02,
+    "bond": 0.01,
+    "etf": 0.015,
+    "default": 0.02,
 }
-VERIFY_MIN_PROFIT: float = VERIFY_MIN_PROFIT_BY_CLASS["default"]  # legacy
+VERIFY_MIN_PROFIT: float = VERIFY_MIN_PROFIT_BY_CLASS["default"]
 
-# Asset-class classifier. Membership derived from RAIntSimBat SPREADS
-# groupings and A/B portfolio composition. Symbols not listed fall to
-# 'default' tolerance. Lives here (not in RAIntSimBat) because R57 EPM
-# requires all live-path engines to classify identically.
 _CRYPTO = {
     "BTC",
     "ETH",
@@ -102,17 +70,17 @@ _MEME = {
     "PRNT",
     "NIO",
 }
-# Everything else with a ticker is assumed equity.
 
 
 def classify_symbol(symbol: str) -> str:
-    """Return asset class for VH tolerance lookup. Canonical single
-    source — any live-path engine calling this gets the same answer.
-    sadp: R29 R55 R57"""
+    """Return the class of ``symbol``: crypto, bond, etf, meme or equity.
+
+    An empty ``symbol`` returns "default"; anything after a "/" or "-" quote
+    separator is dropped before the sets are searched.
+    """
     if not symbol:
         return "default"
     s = symbol.upper().strip()
-    # Strip quote suffix like '/USD' or '-USD'
     for sep in ("/", "-"):
         if sep in s:
             s = s.split(sep)[0]
@@ -128,9 +96,11 @@ def classify_symbol(symbol: str) -> str:
 
 
 def verify_min_profit(symbol: str | None = None) -> float:
-    """Return the R55 v3 slippage tolerance for a given symbol.
-    Falls back to the uniform 'default' tolerance if symbol is None
-    or not classifiable. sadp: R55"""
+    """Return the tolerance for ``symbol`` from ``VERIFY_MIN_PROFIT_BY_CLASS``.
+
+    A ``symbol`` of None, or a class missing from the table, resolves to the
+    "default" entry.
+    """
     if symbol is None:
         return VERIFY_MIN_PROFIT_BY_CLASS["default"]
     cls = classify_symbol(symbol)
@@ -140,34 +110,11 @@ def verify_min_profit(symbol: str | None = None) -> float:
 def fill_price(
     intended_price: float, side: str, spread: float = LIVE_SPREAD_PCT
 ) -> float:
-    """Half-normal ADVERSE slippage draw. Sells fill below ask, buys
-    fill above bid. Parity with RAIntSimBat's closure-based _fill_price
-    on equivalent slippage input.
+    """Move ``intended_price`` against the trader by a half-normal draw.
 
-    v3.24.69 — this said "ZERO-MEAN half-normal", which is a
-    contradiction: `abs()` of a zero-mean normal is a half-normal, whose
-    mean is `spread * sqrt(2/pi)` — strictly POSITIVE. The underlying
-    gauss draw is zero-mean; the slippage applied is not, and that is
-    deliberate. Slippage is always against the trader.
-
-    The wording mattered because it invites the opposite conclusion:
-    that slippage averages out over many fills and can be ignored in
-    aggregate. It does not and cannot. Over N fills the expected cost is
-    N * price * spread * sqrt(2/pi), not zero.
-
-    NOTE FOR ANYONE TRACING LIMIT-ORDER BEHAVIOUR HERE. `verify_hit`
-    below samples this function and callers place LIMIT orders AT the
-    returned price (see `ExecutionEngineMixin._execute_sell` /
-    `_execute_buy` in `src/trading/scrumming/execution.py`),
-    which makes those limits marketable by construction — a sell lands
-    below the bid, a buy above the ask. That is intentional ("-0.1%
-    drift for fast fill") and `verify_hit` is the cap that cancels when
-    the drift exceeds per-class tolerance. It is NOT a defect, and
-    removing the `abs()` to make limits rest would make live orders less
-    likely to fill. Recorded because a sim audit reached the opposite
-    conclusion on 2026-08-07.
-
-    sadp: R28 R29  # microstructure slippage
+    A ``side`` of "sell" fills below ``intended_price`` and every other side
+    above it, with mean displacement ``spread`` * sqrt(2/pi); a non-positive
+    ``intended_price`` is returned untouched.
     """
     if intended_price <= 0:
         return intended_price
@@ -184,25 +131,12 @@ def verify_hit(
     spread: Optional[float] = None,
     min_profit: Optional[float] = None,
 ) -> Tuple[Optional[float], str, int]:
-    """R55 VH v3 — per-asset-class slippage tolerance guard.
+    """Draw ``fill_price`` repeatedly until one sample clears the tolerance.
 
-    Ultra-sample the fill. Cancel when effective fill degrades more than
-    tolerance from intended_price, OR when compounding adverse drift
-    exceeds VERIFY_DRIFT_PCT across samples.
-
-    Tolerance resolution (first non-None wins):
-        1. Explicit min_profit argument (caller override)
-        2. symbol-based lookup via verify_min_profit(symbol)
-        3. VERIFY_MIN_PROFIT module-level default (2%)
-
-    Returns:
-        (effective_price_or_None, status, samples_used)
-        where status ∈ {'clean', 'adjusted', 'canceled'}.
-
-    sadp: R55 R57  # Verify Hit, engine parity
+    Returns ``(price, status, samples)``, where status is "clean", "adjusted"
+    or "canceled" and a canceled price is None; an explicit ``min_profit``
+    outranks ``symbol``, which outranks ``VERIFY_MIN_PROFIT``.
     """
-    # Resolve spread and min_profit dynamically so tests/callers can
-    # patch constants at module level without a default-arg freeze.
     if spread is None:
         spread = LIVE_SPREAD_PCT
     if min_profit is None:
@@ -236,7 +170,5 @@ def verify_hit(
     return None, "canceled", VERIFY_MAX_SAMPLES
 
 
-# Legacy-name aliases for backward compatibility during migration.
-# Callers importing `_live_verify_hit` or `_live_fill_price` still work.
 _live_verify_hit = verify_hit
 _live_fill_price = fill_price
