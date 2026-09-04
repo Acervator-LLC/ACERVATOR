@@ -351,9 +351,7 @@ class StackTranchesTabMixin:
             ),
         )
 
-    # ---------------------------------------------------------------
     # Tab 3.5: Stack Tranches (v3.23.28, scrumming + stack_mode only)
-    # ---------------------------------------------------------------
     # Mirrors Fold Tranches styling. Reads `_bot._stack_tranches` +
     # `_bot._stack_created`. Surfaces per-tranche state (target
     # price, size, mode Visible/Invisible, status, fill price, age)

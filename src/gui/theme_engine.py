@@ -36,9 +36,7 @@ from typing import Optional
 from .color_alpha import rgba
 
 
-# ---------------------------------------------------------------------------
 # Theme token set
-# ---------------------------------------------------------------------------
 @dataclass
 class ThemeTokens:
     """Color and style tokens that define a complete visual theme."""
@@ -97,9 +95,7 @@ class ThemeTokens:
     radius_lg: str = "12px"
 
 
-# ---------------------------------------------------------------------------
 # Pre-built themes
-# ---------------------------------------------------------------------------
 CYBERPUNK_DARK = ThemeTokens(
     name="cyberpunk_dark",
     display_name="Cyberpunk Dark",
@@ -229,9 +225,7 @@ THEMES: dict[str, ThemeTokens] = {
 }
 
 
-# ---------------------------------------------------------------------------
 # QSS generator
-# ---------------------------------------------------------------------------
 def generate_qss(theme: ThemeTokens) -> str:
     """Generate a complete Qt stylesheet from theme tokens."""
     t = theme
@@ -599,9 +593,7 @@ QRadioButton::indicator {{
 """
 
 
-# ---------------------------------------------------------------------------
 # Theme manager
-# ---------------------------------------------------------------------------
 class ThemeManager:
     """
     Manages theme selection and application.

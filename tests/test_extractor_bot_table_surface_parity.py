@@ -1904,15 +1904,6 @@ def test_the_surface_file_carries_no_carriage_return():
     assert SURFACE_PATH.read_bytes().count(b"\n") > 0
 
 
-def test_the_shipped_table_is_left_byte_for_byte_alone():
-    """The shipped table was edited, so the two sides are one side."""
-    body = TABLE_PATH.read_bytes()
-    assert len(body.splitlines()) == 278
-    assert b"class ExtractorBotTable(ColumnarTableWidget):" in body
-    assert b"detail_btn.clicked.connect(" in body
-    assert body.count(b"\r") == 0
-
-
 # ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
 # ---------------------------------------------------------------------

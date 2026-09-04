@@ -22,9 +22,7 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
     # Selection re-anchor (issue #51)
-    # ---------------------------------------------------------------
     # A Qt selection is anchored to a ROW INDEX, not to a row's
     # contents. Both bot tables below rewrite every row in place on the
     # 2000 ms dashboard timer, so a fleet list that arrives in a

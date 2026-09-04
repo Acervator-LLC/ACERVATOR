@@ -58,9 +58,7 @@ from .api_logger import get_api_log
 
 logger = logging.getLogger("acervator.exchange")
 
-# ---------------------------------------------------------------------------
 # Supported exchanges — maps exchange_id to the CCXT class name
-# ---------------------------------------------------------------------------
 SUPPORTED_EXCHANGES: dict[str, str] = {
     "binance": "binance",
     "coinbase": "coinbase",
@@ -205,9 +203,7 @@ _LOGO_CDN = "https://assets.coingecko.com/coins/images/{id}/small/{symbol}.png"
 _LOGO_FALLBACK = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
 
 
-# ---------------------------------------------------------------------------
 # Retry decorator for transient failures
-# ---------------------------------------------------------------------------
 def _with_retry(max_retries: int = 3, base_delay: float = 1.0):
     """Bind :func:`src.core.retry.with_retry` to this module's logger."""
     return with_retry(max_retries=max_retries, base_delay=base_delay, log=logger)

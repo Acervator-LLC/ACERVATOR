@@ -24,9 +24,7 @@ logger = logging.getLogger("acervator.assets")
 LOGO_CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "resources" / "logos"
 
 
-# ---------------------------------------------------------------------------
 # Asset descriptor
-# ---------------------------------------------------------------------------
 @dataclass
 class CryptoAsset:
     """Metadata for a cryptocurrency."""
@@ -45,9 +43,7 @@ class CryptoAsset:
     category: str = ""  # e.g. "Currency", "Smart Contract Platform"
 
 
-# ---------------------------------------------------------------------------
 # Comprehensive asset database (top 50+ cryptos)
-# ---------------------------------------------------------------------------
 ASSETS: dict[str, CryptoAsset] = {}
 
 
@@ -476,9 +472,7 @@ for sym, name, cgid, cat, desc in [
     )
 
 
-# ---------------------------------------------------------------------------
 # Asset manager
-# ---------------------------------------------------------------------------
 class AssetManager:
     """
     Access cryptocurrency metadata and manage logo caching.

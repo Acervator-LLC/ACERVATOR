@@ -16,9 +16,7 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
     # Notification Spool - replaces All Bots Overview
-    # ---------------------------------------------------------------
     # DPA: Q-001 exception — fixed 100px height caps visible content;
     # HTML formatting useful for notification styling.
     class NotificationSpool(QTextEdit):

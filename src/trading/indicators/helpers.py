@@ -19,9 +19,7 @@ from .types import (
 )
 
 
-# ---------------------------------------------------------------------------
 # Math helpers
-# ---------------------------------------------------------------------------
 def _ema(values: list[float], period: int) -> list[float | None]:
     """Exponential moving average, candle-aligned, NO VALUE BEFORE THE SEED.
 

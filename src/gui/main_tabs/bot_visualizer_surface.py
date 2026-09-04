@@ -126,9 +126,7 @@ PAPER_TAB_INDEX = 2
 HEADER_TITLE = "Bot Swarm"
 HEADER_HINT = "   Drag between bots to connect  •  Right-click wire to disconnect"
 
-# ---------------------------------------------------------------------
 # The unified swarm row
-# ---------------------------------------------------------------------
 
 LIVE_KIND = "live"
 SIM_KIND = "sim"
@@ -445,9 +443,7 @@ def apply_pnl(handle: dict, pnl: Any) -> dict:
     return handle
 
 
-# ---------------------------------------------------------------------
 # What each layer's caller hands the row factory
-# ---------------------------------------------------------------------
 
 SIM_MODE = "SIM"
 PAPER_MODE = "PAPER"
@@ -674,9 +670,7 @@ def paper_summary(bench_running: int, bench_total: int, bench_capital: Any) -> d
     }
 
 
-# ---------------------------------------------------------------------
 # The bench rows the operator adds by hand
-# ---------------------------------------------------------------------
 
 SIM_BENCH_ID_FORMAT = "SIM-{idx:02d}"
 PAPER_BENCH_ID_FORMAT = "PAP-{idx:02d}"
@@ -808,9 +802,7 @@ def _idle_button_text(kind: str) -> str:
     return START_BUTTON_TEXT if kind == PAPER_KIND else RUN_BUTTON_TEXT
 
 
-# ---------------------------------------------------------------------
 # The locust grid and the empty fleet
-# ---------------------------------------------------------------------
 
 GRID_COLS = 6
 GRID_SPACING = 10
@@ -949,9 +941,7 @@ def visible_bots(exchanges_by_bot: dict, selected: str) -> dict:
     return {one: eid == selected for one, eid in exchanges_by_bot.items()}
 
 
-# ---------------------------------------------------------------------
 # The list view rows
-# ---------------------------------------------------------------------
 
 LIST_ROW_KEYS = ("bot_id", "symbol", "inflow_usd", "outflow_usd", "outflow_pct")
 INFLOW_STAT_KEY = "ytd_folded_usd"
@@ -1011,9 +1001,7 @@ def mask_or(value: Any, masked: bool) -> str:
     return MASK_TEXT if masked else str(value)
 
 
-# ---------------------------------------------------------------------
 # The privacy glyphs
-# ---------------------------------------------------------------------
 
 REVEALED_GLYPH = "●"
 MASKED_GLYPH = "○"
@@ -1080,9 +1068,7 @@ def privacy_mode_style_sheet(any_on: bool) -> str:
     return PRIVACY_ON_STYLE_SHEET if any_on else PRIVACY_OFF_STYLE_SHEET
 
 
-# ---------------------------------------------------------------------
 # The wires
-# ---------------------------------------------------------------------
 
 WIRE_KEYS = ("source_id", "target_id", "pct", "phase")
 START_PHASE = 0.0
@@ -1488,9 +1474,7 @@ def wire_config_prompt(source_id: str, target_id: str) -> str:
     )
 
 
-# ---------------------------------------------------------------------
 # The routes a wire is stored as
-# ---------------------------------------------------------------------
 
 ROUTES_KEY = "smart_wire_routes"
 SCRUMMING_KEY = "scrumming_state"
@@ -1783,9 +1767,7 @@ LAYER_CHROME = {
 }
 
 
-# ---------------------------------------------------------------------
 # The whole screen
-# ---------------------------------------------------------------------
 
 ACTIONS = {
     "register_sim": "Build a Simulator Swarm row for one run",

@@ -19,9 +19,7 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
     # Status Log - persistent feedback panel
-    # ---------------------------------------------------------------
     # DPA: Q-001 exception — fixed 150px height caps visible content;
     # HTML formatting useful for timestamp+color coding.
     class StatusLog(QTextEdit):

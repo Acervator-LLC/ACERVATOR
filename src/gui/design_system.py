@@ -52,9 +52,7 @@ from __future__ import annotations
 
 from .color_alpha import rgba as _rgba
 
-# =============================================================================
 # COLOR TOKENS — M3 role-based naming, WCAG AA verified
-# =============================================================================
 #
 # All pairs below have been audited via WCAG 2.1 relative luminance algorithm.
 # Results in the audit table that must be kept in sync with this file.
@@ -248,9 +246,7 @@ STOCK_LOG_DEBUG = "#444455"  # Debug log level
 STOCK_LOG_TIMESTAMP = "#555566"  # Log timestamp
 STOCK_LOG_CRITICAL = "#ff0033"  # Critical log level
 
-# =============================================================================
 # TYPOGRAPHY — Butterick 1.25× geometric ramp
-# =============================================================================
 # All sizes in pixels. Integer values; no sub-pixel fractions.
 # Line-height follows 1.3–1.4 band per Butterick (body) and tighter for display.
 
@@ -279,9 +275,7 @@ WEIGHT_REGULAR = 400
 WEIGHT_MEDIUM = 500
 WEIGHT_BOLD = 700
 
-# =============================================================================
 # SPACING — 8pt modular grid (Swiss typographic tradition)
-# =============================================================================
 # All layout spacing must be a multiple of 4. Prefer multiples of 8.
 
 SPACE_XS = 4  # Intra-control spacing (icon-to-label gap)
@@ -294,9 +288,7 @@ SPACE_L = 24  # Between groups
 SPACE_XL = 32  # Between sections
 SPACE_XXL = 48  # Between major regions
 
-# =============================================================================
 # SHAPE — M3 corner radius scale
-# =============================================================================
 RADIUS_NONE = 0
 RADIUS_XS = 4  # Chips, tight inputs
 RADIUS_CARD = 6  # Analytics metric cards
@@ -305,9 +297,7 @@ RADIUS_MD = 12  # Elevated cards, dialogs
 RADIUS_LG = 16  # Large surfaces, bottom sheets (rare in desktop)
 RADIUS_FULL = 9999  # Pills, fully round
 
-# =============================================================================
 # MOTION — M3 standard timing
-# =============================================================================
 # Durations in milliseconds. Easing handled at callsite (QEasingCurve).
 
 MOTION_INSTANT = 0  # No animation — accessibility setting may force
@@ -316,9 +306,7 @@ MOTION_MEDIUM = 250  # Panel open/close, tab switch
 MOTION_LONG = 500  # Dramatic reveals, onboarding
 MOTION_EXTRA = 1000  # Splash / first-run only
 
-# =============================================================================
 # TARGET SIZES — WCAG SC 2.5.8 (≥24×24 CSS px) + touch-friendly guidance
-# =============================================================================
 # Pointer target minimums. Primary CTAs get comfortable size even on desktop.
 
 TARGET_MIN = 24  # WCAG floor — use only for dense admin tables
@@ -329,9 +317,7 @@ TARGET_LARGE = 44  # Primary CTAs, important toggles
 TABLE_COL_FIRE_W = 70  # Fire button column
 TABLE_COL_DETAIL_W = 60  # Detail button column
 
-# =============================================================================
 # FOCUS INDICATOR (SC 2.4.7)
-# =============================================================================
 # Applied globally via QSS (chunk C3). Exposed as tokens for widgets that
 # need to compose focus state into custom paint events.
 
@@ -339,9 +325,7 @@ FOCUS_RING_WIDTH = 2  # px
 FOCUS_RING_OFFSET = 2  # px gap between widget and ring
 FOCUS_RING_COLOR = OUTLINE_STRONG  # 7.79:1 on SURFACE_0 — very visible
 
-# =============================================================================
 # ELEVATION SHADOWS (M3 — optional, Qt drop-shadow effect)
-# =============================================================================
 # Tuples of (offset_y, blur_radius, alpha_hex) for QGraphicsDropShadowEffect.
 # Alpha values are MATERIAL DESIGN 3 recommended for dark themes.
 
@@ -352,9 +336,7 @@ SHADOW_3 = (4, 8, "60")  # Modals
 SHADOW_4 = (8, 16, "70")  # Top-most dialogs
 
 
-# =============================================================================
 # CONVENIENCE — semantic aliases for very common patterns
-# =============================================================================
 # Short names for callsites where the full token name adds noise without
 # adding clarity. Use sparingly — prefer full names for precision.
 
@@ -365,9 +347,7 @@ DIM = TEXT_MED
 HINT = TEXT_LOW
 
 
-# =============================================================================
 # LINTER HOOKS
-# =============================================================================
 # Chunk C9 adds tools/gui_lint.py that scans src/gui/ for hex literals and
 # font-size literals. It imports this module to know what tokens exist.
 # Do not remove these constants without updating the linter whitelist.

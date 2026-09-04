@@ -31,9 +31,7 @@ except ImportError:
 
 if _HAS_QT:
 
-    # -------------------------------------------------------------------
     # Wire Canvas Overlay — draws glowing wires between bots
-    # -------------------------------------------------------------------
     class _WireCanvas(QWidget):
         """Transparent overlay that renders glowing profit wires."""
 

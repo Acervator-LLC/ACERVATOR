@@ -123,9 +123,7 @@ def build_graceful_datas(project_root: str) -> list[tuple[str, str]]:
     return result
 
 
-# ---------------------------------------------------------------------------
 # Hidden imports
-# ---------------------------------------------------------------------------
 #
 # Every name here is load-bearing until a build proves otherwise. A
 # dropped hiddenimport does not fail the build; it fails the frozen
@@ -222,9 +220,7 @@ def hiddenimports_for(platform: str) -> list[str]:
     return [*COMMON_HIDDENIMPORTS, backend]
 
 
-# ---------------------------------------------------------------------------
 # Excludes — identical on both platforms.
-# ---------------------------------------------------------------------------
 EXCLUDES: tuple[str, ...] = (
     "tkinter",
     "matplotlib",

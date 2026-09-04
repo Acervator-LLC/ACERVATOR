@@ -10,9 +10,7 @@ verbatim line slice of that file: no arithmetic was retyped.
 
 from __future__ import annotations
 
-# ---------------------------------------------------------------------------
 # 3b. MACD Consolidation / Taper Detection
-# ---------------------------------------------------------------------------
 
 
 def detect_macd_taper(histogram: list, lookback: int = 8) -> dict:

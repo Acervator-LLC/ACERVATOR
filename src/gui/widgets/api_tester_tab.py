@@ -36,9 +36,7 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
     # API Tester Tab - isolated exchange testing
-    # ---------------------------------------------------------------
     class APITesterTab(QWidget):
         """Standalone API testing tool. Fully isolated from the bot system."""
 

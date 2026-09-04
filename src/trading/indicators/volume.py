@@ -16,9 +16,7 @@ from .helpers import (
     _ema,
 )
 
-# ---------------------------------------------------------------------------
 # 6. Volume Analysis
-# ---------------------------------------------------------------------------
 # Helper: simple EMA used for MFI smoothing (already defined as _ema above)
 
 

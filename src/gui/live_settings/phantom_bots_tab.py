@@ -33,10 +33,8 @@ class PhantomBotsTabMixin:
     _mark_changed: Callable[..., Any]
     _phantom_tf_checks: dict
 
-    # ---------------------------------------------------------------
     # Tab 6: Phantom Bots (v3.23.39 — merged from Phantom Bot +
     # Phantom State per operator directive 2026-07-27).
-    # ---------------------------------------------------------------
     def _create_phantom_bots_tab(self) -> QWidget:
         """Combined Phantom Balance Bots config + runtime view.
 

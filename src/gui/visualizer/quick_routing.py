@@ -37,9 +37,7 @@ except ImportError:
 
 if _HAS_QT:
 
-    # -------------------------------------------------------------------
     # v3.23.9 — Quick Routing Matrix
-    # -------------------------------------------------------------------
     # Operator-pinned Q3: pick 1+ Source bots, 1+ Destination bots, an
     # Amount %, and Connect wires every Source → every Destination at
     # N% of source's profit-per-trade. Disconnect removes wires in the
@@ -53,7 +51,6 @@ if _HAS_QT:
     # Exchange filter (Q4 (c)): the Source/Destination checkbox lists
     # rebuild themselves from the parent tab's current exchange selector
     # scope. Bots outside the scope are hidden from the matrix entirely.
-    # -------------------------------------------------------------------
     class QuickRoutingMatrix(QWidget):
         """v3.23.18 — Three side-by-side Source | Rate | Destination zones,
         each a single-bordered widget (no nested window-in-window), with
@@ -181,9 +178,7 @@ if _HAS_QT:
             btn_row.addStretch()
             outer.addLayout(btn_row)
 
-        # ----------------------------------------------------------
         # Scope rebuild — called when exchange filter changes
-        # ----------------------------------------------------------
         def rebuild_scope(self, bot_ids: list[str]) -> None:
             """v3.23.13: Repopulate source + destination checkbox lists
             from the current filtered set of bot_ids. Preserves which
@@ -191,11 +186,11 @@ if _HAS_QT:
             in-progress selection survives an exchange-filter change."""
             prior_src = self._selected_sources()
             prior_dst = self._selected_destinations()
-            # v3.24.36 (C05) � scroll offset. clear() collapses the
+            # v3.24.36 (C05) — scroll offset. clear() collapses the
             # scrollbar range, which clamps its value to 0. That clamp
             # only lands on the next relayout, so today the offset
             # survives purely because nothing turns the event loop
-            # between the clear and the refill below � measured: force
+            # between the clear and the refill below — measured: force
             # one processEvents() in between and a 35-row scroll goes
             # to 0. Save and restore it so the operator's position is
             # guaranteed rather than incidental.
@@ -227,11 +222,11 @@ if _HAS_QT:
                 di.setCheckState(Qt.Checked if bid in prior_dst else Qt.Unchecked)
                 self._dest_list.addItem(di)
 
-            # v3.24.36 (C05) � restore the offsets saved above. The
+            # v3.24.36 (C05) — restore the offsets saved above. The
             # range is recomputed lazily, so a synchronous setValue can
             # be clamped against a range that is still 0..0; the
             # deferred pass runs after the relayout that fixes it.
-            # Both are needed � neither alone covers both orderings.
+            # Both are needed — neither alone covers both orderings.
             for lst, val in (
                 (self._source_list, prior_src_scroll),
                 (self._dest_list, prior_dst_scroll),
@@ -264,12 +259,10 @@ if _HAS_QT:
             except Exception:
                 return "?"
 
-        # ----------------------------------------------------------
         # Selected ids — v3.23.13: iterate checked items from
         # multi-select QListWidget panels. Returns every checked bot_id
         # so the (sources × destinations) cartesian product in
         # _on_connect_clicked produces N×M wires from one click.
-        # ----------------------------------------------------------
         def _selected_sources(self) -> list[str]:
             """All currently-checked source bot_ids (empty list if
             none checked)."""
@@ -294,9 +287,7 @@ if _HAS_QT:
                         out.append(str(bid))
             return out
 
-        # ----------------------------------------------------------
         # Button handlers
-        # ----------------------------------------------------------
         def _reject(self, why: str) -> None:
             """Tell the operator why a Quick Routing click did nothing.
 

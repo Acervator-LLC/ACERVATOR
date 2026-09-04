@@ -44,9 +44,7 @@ from .. import design_system as ds
 
 METHOD = "main_window.state"
 
-# ---------------------------------------------------------------------
 # Chrome
-# ---------------------------------------------------------------------
 
 WINDOW_TITLE_FORMAT = "Acervator v{version}"
 
@@ -158,9 +156,7 @@ PULSE_TICK_MS = 80
 TOOLTIP_TICK_MS = 5000
 TOOLTIP_FIRST_SCAN_MS = 500
 
-# ---------------------------------------------------------------------
 # Status line
-# ---------------------------------------------------------------------
 
 STATUS_READY_TEXT = "Ready"
 
@@ -188,9 +184,7 @@ AI_OFF_COLOUR = ds.TEXT_PLACEHOLDER
 AI_READY_TEXT = "AI: READY"
 AI_READY_COLOUR = ds.STATUS_AUTHENTICATED
 
-# ---------------------------------------------------------------------
 # The six stat cards and the spendable panel
-# ---------------------------------------------------------------------
 
 SCRUMMED_FORMAT = "${value:,.2f}"
 FOLDED_FORMAT = "${value:,.2f}"
@@ -212,9 +206,7 @@ CRYPTO_VALUE_KEY = "crypto_position_value_usd"
 
 SPENDABLE_UNKNOWN = None
 
-# ---------------------------------------------------------------------
 # The console pause button
-# ---------------------------------------------------------------------
 
 CONSOLE_PAUSE_TEXT = "⏸  Pause"
 CONSOLE_RESUME_TEXT = "▶  Resume"
@@ -231,9 +223,7 @@ SIGNAL_GAP_MARKER_FORMAT = (
     "~/.acervator_logs/signals/session.jsonl ────"
 )
 
-# ---------------------------------------------------------------------
 # The API interaction log
-# ---------------------------------------------------------------------
 
 API_EVENT_HEAD_FORMAT = "[{stamp}] {exchange} {action}"
 API_EVENT_REASON_FORMAT = "  Reason: {reason}"
@@ -246,9 +236,7 @@ API_EVENT_BUFFERED = "buffered"
 API_EVENT_APPENDED = "appended"
 MAIN_THREAD_NAME = "MainThread"
 
-# ---------------------------------------------------------------------
 # The indicator panel's empty state
-# ---------------------------------------------------------------------
 
 CAUSE_BOT_MISSING = "bot_missing"
 CAUSE_NOT_RUNNING = "not_running"
@@ -262,9 +250,7 @@ ERROR_STATE = "error"
 CANDLES_REQUIRED = 30
 DEFAULT_TIMEFRAME = "1h"
 
-# ---------------------------------------------------------------------
 # The sounds the window decides on
-# ---------------------------------------------------------------------
 
 FIRE_SOUND = "fire"
 PROFIT_SOUND = "profit"
@@ -282,9 +268,7 @@ BEEP_SILENT = "silent"
 BEEP_THROTTLED = "throttled"
 BEEP_PLAYED = "played"
 
-# ---------------------------------------------------------------------
 # The pulse
-# ---------------------------------------------------------------------
 
 PULSE_PHASE_STEP = 0.05
 PULSE_OPACITY_MID = 0.91
@@ -293,9 +277,7 @@ GLOW_BLUR_MID = 17.0
 GLOW_BLUR_SWING = 5.0
 GLOW_PHASE_RATE = 1.6
 
-# ---------------------------------------------------------------------
 # The boxes the window raises
-# ---------------------------------------------------------------------
 
 BOX_QUESTION = "question"
 BOX_WARNING = "warning"
@@ -423,9 +405,7 @@ DEFAULT_THEME = "cyberpunk_dark"
 AI_RECONFIGURED_LOG_FORMAT = "AI Monitor reconfigured (phrase: '{phrase}...')"
 AI_PHRASE_CHARACTERS = 20
 
-# ---------------------------------------------------------------------
 # The bus this window subscribes to, and what it never gives back
-# ---------------------------------------------------------------------
 
 BUS_SUBSCRIPTIONS = (
     "bot.log",
@@ -438,9 +418,7 @@ BUS_SUBSCRIPTIONS = (
 BUS_UNSUBSCRIPTIONS: tuple = ()
 ERROR_BUFFER_MAX = 200
 
-# ---------------------------------------------------------------------
 # Wiring: named here, modelled by the surface each tab already has
-# ---------------------------------------------------------------------
 
 WIRED_TABS = (
     "_build_trading_tab",
@@ -490,9 +468,7 @@ WIRED_PATHS = (
     "set_async_loop",
 )
 
-# ---------------------------------------------------------------------
 # The abbreviation tooltips the window applies to its own children
-# ---------------------------------------------------------------------
 
 ABBREVIATION_TOOLTIPS = (
     ("P/L", "Profit / Loss - net gain or loss from closed trades"),
@@ -617,9 +593,7 @@ TOOLTIP_STYLE = (
 )
 
 
-# ---------------------------------------------------------------------
 # Pure decisions
-# ---------------------------------------------------------------------
 
 
 def window_title(version: Any) -> str:
@@ -1005,9 +979,7 @@ def mode_tab_styles(mode: Any, tabs_ready: Any) -> dict:
     return {STOCK_MODE: active, CRYPTO_MODE: MODE_TAB_STYLE_CLEARED}
 
 
-# ---------------------------------------------------------------------
 # Stand-ins
-# ---------------------------------------------------------------------
 
 
 class LoadSample:
@@ -1218,9 +1190,7 @@ class ModelCall:
         return {"name": self.name, "detail": self.detail}
 
 
-# ---------------------------------------------------------------------
 # The model
-# ---------------------------------------------------------------------
 
 
 class MainWindowModel:

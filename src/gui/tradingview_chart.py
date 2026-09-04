@@ -44,9 +44,7 @@ except ImportError:
     _HAS_WEBENGINE = False
 
 
-# ---------------------------------------------------------------------------
 # The charting library, read off disk
-# ---------------------------------------------------------------------------
 
 #: The charting library the page runs, relative to the web asset directory.
 LIBRARY_ASSET = "vendor/lightweight-charts.standalone.production.js"
@@ -91,9 +89,7 @@ def read_asset(name: str) -> str:
         ) from exc
 
 
-# ---------------------------------------------------------------------------
 # Chart HTML template using TradingView lightweight-charts
-# ---------------------------------------------------------------------------
 
 #: The page down to the chart element. The library is joined in after it.
 CHART_HTML_HEAD = """<!DOCTYPE html>
@@ -282,9 +278,7 @@ def page_html(colors: dict) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
 # Theme-aware color sets
-# ---------------------------------------------------------------------------
 CHART_THEMES = {
     "cyberpunk_dark": {
         "bg": "#0a0a0f",
@@ -339,9 +333,7 @@ CHART_THEMES = {
 }
 
 
-# ---------------------------------------------------------------------------
 # Qt Widget
-# ---------------------------------------------------------------------------
 if _HAS_WEBENGINE:
 
     class _ChartWidget(QWidget):
