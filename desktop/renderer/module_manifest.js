@@ -61,4 +61,5 @@ window.ACERVATOR_MODULES = [
   "buy_confirmation.js",
   "indicator_panel.js",
   "live_settings_tab.js",
+  "usb_auth_widget.js",
 ];

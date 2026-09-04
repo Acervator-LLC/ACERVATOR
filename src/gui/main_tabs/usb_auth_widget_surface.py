@@ -33,6 +33,8 @@ from collections.abc import Callable
 from pathlib import PurePath
 from typing import Any
 
+from ..color_alpha import css_colours
+
 METHOD = "usb_auth_widget.state"
 
 LOGGER_NAME = "acervator.gui.usb_auth"
@@ -1253,6 +1255,11 @@ def view_model(params: dict) -> dict:
     ``reset`` throws the shared panel away and builds a new one from the
     ``exchanges``, ``vault`` and ``answers`` in the same request. Every
     other key named in ``STEP_NAMES`` drives one step, in that order.
+
+    The style sheets are written the way the Qt widget carries them, with
+    the alpha byte Qt reads. The payload leaves under
+    `src.gui.color_alpha.css_colours`, so the renderer receives the share
+    a browser reads and no style sheet is written out twice.
     """
     global PANEL_MODEL
     if params.get("reset"):
@@ -1285,4 +1292,4 @@ def view_model(params: dict) -> dict:
         panel.toggle_row(index, checked)
     if params.get("refresh_exchanges"):
         panel.refresh_exchanges()
-    return build_view_model(panel)
+    return css_colours(build_view_model(panel))
