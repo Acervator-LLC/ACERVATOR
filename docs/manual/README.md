@@ -24,16 +24,18 @@ Pages 36 to 44 carry a figure and no text, so no part file covers them.
 ## Figures
 
 The manual carries 38 embedded images. They are captured output, so they are not
-tracked: the extractor writes them to `artifacts/manual-figures/` under the
-repository root, a path `.gitignore` excludes. [FIGURES.md](FIGURES.md) lists
-every one with its page, index, file name, byte size, pixel size, and whether its
-page also carries text.
+tracked: `tools/extract_product_manual.py` writes them to
+`artifacts/manual-figures/` under the repository root, a path `.gitignore`
+excludes. [FIGURES.md](FIGURES.md) lists every one with its page, index, file
+name, byte size, pixel size, and whether its page also carries text.
 
 ## Extraction record
 
 The source PDF and the operator's exchange CSV exports live outside this
-repository and are not committed. The extractor takes the PDF path as a
-parameter.
+repository and are not committed. `tools/extract_product_manual.py` takes the
+PDF path as its `--pdf` parameter and rewrites both this directory and the
+figures directory. It exits non-zero when the markdown it wrote no longer holds
+every PDF token in order.
 
 - 44 pages, 9,759 whitespace-separated tokens, 38 embedded images.
 - Page 24 and pages 36 to 44 extract zero visible characters.

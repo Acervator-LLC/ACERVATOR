@@ -6,10 +6,10 @@ carries 38 images across 29 of its 44 pages. The manual text is in
 
 ## Where the figures are written
 
-The images are captured output, so they are not tracked. The extractor writes
-them to `artifacts/manual-figures/` under the repository root, a path
-`.gitignore` excludes. Re-create them by running the extractor with the path to
-the manual PDF.
+The images are captured output, so they are not tracked.
+`tools/extract_product_manual.py` writes them to `artifacts/manual-figures/`
+under the repository root, a path `.gitignore` excludes. Re-create them by
+running that tool with `--pdf` set to the manual PDF.
 
 File names carry the source page and the image index on that page,
 `p<page>-i<index>.png`. Every image is a PNG.
