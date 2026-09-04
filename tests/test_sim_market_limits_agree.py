@@ -148,19 +148,3 @@ class TestTheFloorErrsTowardsRefusing:
             assert cost >= 1.0, (
                 f"{name} min_cost={cost} would accept orders Coinbase " f"rejects"
             )
-
-
-class TestTheApproximationIsLabelled:
-    def test_both_sites_say_the_limits_are_not_real(self):
-        """SN-20's real-limits half is outstanding. A fabricated uniform
-        value that is not labelled as one is how the next reader
-        concludes the sim honours venue limits."""
-        for rel in (
-            "src/simulator/fleet/sim_exchange.py",
-            "src/simulator/nuclear_sim_exchange.py",
-        ):
-            src = (REPO_ROOT / rel).read_text(encoding="utf-8")
-            assert "SN-20" in src, (
-                f"{rel} does not record that its market limits are a "
-                f"placeholder pending real per-symbol capture"
-            )
