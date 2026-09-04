@@ -286,13 +286,13 @@ IMPORT_TO_DISTRIBUTION: dict[str, str] = {
 # Third-party imports the product tree makes that no consumer installs,
 # each with the reason it is not a declared dependency.
 #
-#   tomli   src/core/settings.py:32 imports it only in the `except
+#   tomli   src/core/settings.py imports it only in the `except
 #           ImportError` arm below `import tomllib`. `requires-python`
 #           is ">=3.11" and tomllib is stdlib from 3.11, so that arm is
 #           unreachable on every interpreter this project supports.
-#   ST7789  src/core/mini_display.py:362, inside a try that returns
-#           False. deploy/kiosk/install.sh has always said it is hardware-specific
-#           and has never installed it.
+#   ST7789  TftColorAdapter.connect imports it inside a try that returns
+#           False. deploy/kiosk/install.sh installs it only as the
+#           optional `display` extra, never with the core set.
 UNDECLARED_ON_PURPOSE: frozenset[str] = frozenset({"tomli", "ST7789"})
 
 # Every Python file the product ships. The repo root carries ten of them
