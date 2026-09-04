@@ -130,7 +130,7 @@ ANSWERED_BY = {
     "marker_skin": ("markerSkin", []),
     "missing_webengine_warning": ("field", ["missing_webengine_warning"]),
     "page": ("page", []),
-    "script_url": ("field", ["script_url"]),
+    "script_asset": ("field", ["script_asset"]),
     "sell_side": ("field", ["sell_side"]),
     "skin": ("skin", []),
     "symbol": ("field", ["symbol"]),
@@ -289,7 +289,7 @@ SPELLED_OUT_LINES = {
     "handler": 'var spelled = "' + tvs.BUTTON_SKIN["handler"] + '";',
     "call_format": "var spelled = " + json.dumps(tvs.SET_CANDLES_FORMAT) + ";",
     "warning": "var spelled = " + json.dumps(tvs.MISSING_WEBENGINE_WARNING) + ";",
-    "script_url": "var spelled = " + json.dumps(tvs.SCRIPT_URL) + ";",
+    "script_asset": "var spelled = " + json.dumps(tvs.LIBRARY_ASSET) + ";",
     "font_size": "var spelled = " + str(tvs.WATERMARK["font_size_px"]) + ";",
     "gap": "var spelled = " + str(tvs.TOOLBAR["gap_px"]) + ";",
     "number": "var spelled = 12;",
@@ -576,7 +576,7 @@ def test_a_number_json_cannot_carry_is_reported(spelled: str, js: JsRuntime):
 
 MARKUP = '<img src="x" onerror="window.PWNED = true;">'
 LONG_SYMBOL = "S" * 200
-URL_SHAPED = tvs.SCRIPT_URL
+URL_SHAPED = "https://unpkg.example.invalid/some-library@1.0.0/dist/library.js"
 PATH_SHAPED = "..\\..\\windows\\system32"
 
 HOSTILE_VALUES = {
@@ -609,7 +609,7 @@ HOSTILE_FIELDS = [
     ["button_skin", "padding_px"],
     ["watermark", "font_size_px"],
     ["call_order"],
-    ["script_url"],
+    ["script_asset"],
 ]
 
 
@@ -755,9 +755,10 @@ def test_the_module_declares_no_network_call_of_its_own():
         assert banned not in MODULE_SOURCE, banned
 
 
-def test_the_module_never_spells_the_address_the_surface_carries():
-    assert tvs.SCRIPT_URL not in MODULE_SOURCE
+def test_the_module_never_spells_the_page_the_surface_carries():
     assert tvs.CHART_HTML not in MODULE_SOURCE
+    assert tvs.CHART_HTML_HEAD not in MODULE_SOURCE
+    assert tvs.CHART_HTML_TAIL not in MODULE_SOURCE
 
 
 class Browser:
@@ -1419,11 +1420,14 @@ def test_an_address_in_a_drawn_string_reaches_the_page_as_characters(
     assert browser.js("document.images.length") == 0
 
 
-def test_the_page_never_carries_the_address_the_surface_publishes(browser):
+def test_the_page_the_surface_publishes_is_never_drawn_as_markup(browser):
     payload = scenario("cyberpunk_dark")
     draw_chart(browser, payload)
-    assert payload["script_url"] in payload["html"]
-    assert payload["script_url"] not in browser.js("window.HOST.innerHTML")
+    assert payload["script_asset"] == tvs.LIBRARY_ASSET
+    assert len(payload["html"]) > 100_000
+    drawn = browser.js("window.HOST.innerHTML")
+    assert payload["html"] not in drawn
+    assert "LightweightCharts" not in drawn
     assert browser.js("window.HOST.querySelectorAll('script, img, iframe').length") == 0
 
 
@@ -1436,7 +1440,7 @@ def test_the_connection_check_would_see_a_page_that_reached_out(browser):
     draw_chart(browser, scenario("cyberpunk_dark"))
     browser.js(
         "var img = document.createElement('img');"
-        "img.src = " + json.dumps(tvs.SCRIPT_URL) + ";"
+        "img.src = " + json.dumps(URL_SHAPED) + ";"
         "window.HOST.appendChild(img);"
     )
     browser.settle(READY_STEP_MS)

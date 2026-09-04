@@ -13,10 +13,9 @@ call format is written out here rather than read from
 ``src.gui.tradingview_chart``, so a value changed on one side alone is
 reported.
 
-The page names one asset it does not carry: the charting library at
-``SCRIPT_URL``. Nothing here fetches it. The address is held as text,
-exactly as the shipped page holds it, so the frontend decides for
-itself what to do about an asset that lives on the internet.
+The page carries the charting library at ``LIBRARY_ASSET``, read off
+disk from the same web directory the React panel reads. The page names
+no address, so it draws with no network at all.
 
 ``TradingViewChartModel`` holds the symbol and the theme the chart was
 built with, the page text those two produce, and every call made into
@@ -28,6 +27,8 @@ which is how the Electron renderer reaches it. Nothing here imports Qt.
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 from typing import Any
 
 METHOD = "tradingview.chart"
@@ -41,12 +42,59 @@ DEFAULT_THEME = "cyberpunk_dark"
 FALLBACK_THEME = "cyberpunk_dark"
 SYMBOL_KEY = "symbol"
 
-SCRIPT_URL = (
-    "https://unpkg.com/lightweight-charts@4.1.0/dist/"
-    "lightweight-charts.standalone.production.js"
-)
+LIBRARY_ASSET = "vendor/lightweight-charts.standalone.production.js"
+ASSET_SUBDIR = "web"
+ASSET_ENCODING = "utf-8"
+ASSET_NEWLINE = ""
+ASSET_READ_MODE = "r"
+BUNDLE_ATTR = "_MEIPASS"
+BUNDLE_PARTS: tuple[str, ...] = ("src", "gui", "web")
+ASSET_ERROR_FORMAT = "Chart asset not readable: {path} ({error})"
 
-CHART_HTML = """<!DOCTYPE html>
+SCRIPT_OPEN = "<script>"
+SCRIPT_CLOSE = "</script>"
+PART_JOIN = "\n"
+
+
+class ChartAssetMissing(RuntimeError):
+    """An asset the page cannot be drawn without is not on disk."""
+
+
+def asset_dir() -> Path:
+    """The directory holding the chart's JS assets.
+
+    Two candidates, in order. The directory beside the GUI package covers
+    running from source. ``sys._MEIPASS`` covers the frozen build, where
+    the whole ``src`` directory is shipped to ``<bundle>/src``.
+    """
+    beside_package = Path(__file__).resolve().parents[1] / ASSET_SUBDIR
+    if beside_package.is_dir():
+        return beside_package
+    bundle = getattr(sys, BUNDLE_ATTR, None)
+    if bundle:
+        return Path(bundle).joinpath(*BUNDLE_PARTS)
+    return beside_package
+
+
+def read_asset(name: str) -> str:
+    """Return one asset's text, or raise naming the path that is missing.
+
+    Reads as UTF-8 with newline translation off, so a CRLF checkout of a
+    ``.js`` file cannot put a stray carriage return into the page.
+    """
+    path = asset_dir() / name
+    try:
+        with open(
+            path, ASSET_READ_MODE, encoding=ASSET_ENCODING, newline=ASSET_NEWLINE
+        ) as handle:
+            return handle.read()
+    except OSError as exc:
+        raise ChartAssetMissing(
+            ASSET_ERROR_FORMAT.format(path=path, error=type(exc).__name__)
+        ) from exc
+
+
+CHART_HTML_HEAD = """<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -77,9 +125,9 @@ CHART_HTML = """<!DOCTYPE html>
   <button class="tf-btn" onclick="setTimeframe('W')">1W</button>
 </div>
 <div id="chart"></div>
+"""
 
-<script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-<script>
+CHART_HTML_TAIL = """<script>
 // --- Chart initialisation ---
 const chart = LightweightCharts.createChart(document.getElementById('chart'), {
   layout: {
@@ -209,6 +257,8 @@ chart.applyOptions({ width: window.innerWidth, height: window.innerHeight });
 </body>
 </html>"""
 
+CHART_HTML = CHART_HTML_HEAD + CHART_HTML_TAIL
+
 CYBERPUNK_DARK: dict[str, str] = {
     "bg": "#0a0a0f",
     "text": "#e0e0f0",
@@ -300,8 +350,8 @@ PAGE: dict[str, Any] = {
 WEB_VIEW: dict[str, Any] = {
     "kind": "web_view",
     "html_source": "set_html",
-    "script_url": SCRIPT_URL,
-    "carries_script": False,
+    "script_asset": LIBRARY_ASSET,
+    "carries_script": True,
 }
 
 TOOLBAR: dict[str, Any] = {
@@ -466,8 +516,22 @@ def page_colors(symbol: Any, theme: Any) -> dict:
 
 
 def page_html(symbol: Any = DEFAULT_SYMBOL, theme: Any = DEFAULT_THEME) -> str:
-    """The whole page for one symbol on one theme."""
-    return CHART_HTML % page_colors(symbol, theme)
+    """The whole page for one symbol on one theme: no network fetch, no CDN.
+
+    The two template halves are filled from the colours and the charting
+    library is joined between them, never formatted: the minified bundle
+    carries both ``%`` and braces, and either would raise.
+    """
+    colors = page_colors(symbol, theme)
+    return PART_JOIN.join(
+        [
+            CHART_HTML_HEAD % colors,
+            SCRIPT_OPEN,
+            read_asset(LIBRARY_ASSET),
+            SCRIPT_CLOSE,
+            CHART_HTML_TAIL % colors,
+        ]
+    )
 
 
 def call_text(name: str, payload: Any) -> str:
@@ -619,7 +683,7 @@ def build_view_model(
         "default_theme": DEFAULT_THEME,
         "fallback_theme": FALLBACK_THEME,
         "symbol_key": SYMBOL_KEY,
-        "script_url": SCRIPT_URL,
+        "script_asset": LIBRARY_ASSET,
         "html": page_html(symbol, theme),
         "colors": page_colors(symbol, theme),
         "themes": {name: dict(one) for name, one in CHART_THEMES.items()},

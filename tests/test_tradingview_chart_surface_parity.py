@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -56,9 +57,9 @@ THEME_TOTAL = 5
 THEME_KEY_TOTAL = 8
 BUTTON_TOTAL = 7
 CALL_TOTAL = 5
-SHIPPED_METHOD_TOTAL = 9
-SURFACE_FUNCTION_TOTAL = 14
-CONSTANT_TOTAL = 61
+SHIPPED_METHOD_TOTAL = 18
+SURFACE_FUNCTION_TOTAL = 16
+CONSTANT_TOTAL = 73
 PAYLOAD_KEY_TOTAL = 44
 
 # Every value typed out here rather than read from either module, so a
@@ -68,10 +69,12 @@ EXPECTED_LOGGER_NAME = "acervator.gui"
 EXPECTED_MISSING_WARNING = "TradingView charts require PySide6-WebEngine"
 EXPECTED_DEFAULT_SYMBOL = "BTC/USDT"
 EXPECTED_DEFAULT_THEME = "cyberpunk_dark"
-EXPECTED_SCRIPT_URL = (
-    "https://unpkg.com/lightweight-charts@4.1.0/dist/"
-    "lightweight-charts.standalone.production.js"
-)
+EXPECTED_LIBRARY_ASSET = "vendor/lightweight-charts.standalone.production.js"
+
+# The first line of the vendored bundle's own licence banner. Finding it
+# in the page proves the file's bytes reached the page, which naming the
+# asset does not.
+EXPECTED_LIBRARY_BANNER = "TradingView Lightweight Charts"
 
 EXPECTED_THEMES = {
     "cyberpunk_dark": {
@@ -334,13 +337,13 @@ HELD: list = []
 
 def app():
     """The process application object every render needs."""
-    from qt_pixel import ensure_app
+    from tests.qt_pixel import ensure_app
 
     return ensure_app()
 
 
 def render_offscreen(widget, size):
-    from qt_pixel import render_widget
+    from tests.qt_pixel import render_widget
 
     return render_widget(widget, size)
 
@@ -520,38 +523,52 @@ def outcome(work):
 # The enumeration: every item on one side has a counterpart
 # ---------------------------------------------------------------------
 
-SHIPPED_CLASSES = ("TradingViewChart",)
+# The widget class carries a private name and is published as
+# ``TradingViewChart``, so that the browser-less stub can be a separate
+# class under the same public name without redeclaring it.
+# The widget class carries a private name and is published under the
+# public one, so that the browser-less stub can be a separate class
+# without redeclaring the public name. Both names reach the same class,
+# so the inventory below lists both and pairs each with one counterpart.
+WIDGET_NAMES = ("_ChartWidget", "TradingViewChart")
 
-SHIPPED_MEMBERS = {
-    "TradingViewChart": (
-        "__init__",
-        "_setup_ui",
-        "set_candles",
-        "update_candle",
-        "set_bollinger_bands",
-        "add_trade_marker",
-        "set_grid_levels",
-        "set_theme",
-        "_run_js",
-    ),
+SHIPPED_CLASSES = WIDGET_NAMES + ("ChartAssetMissing",)
+
+WIDGET_MEMBERS = (
+    "__init__",
+    "_setup_ui",
+    "set_candles",
+    "update_candle",
+    "set_bollinger_bands",
+    "add_trade_marker",
+    "set_grid_levels",
+    "set_theme",
+    "_run_js",
+)
+
+SHIPPED_MEMBERS = {name: WIDGET_MEMBERS for name in WIDGET_NAMES}
+
+MEMBER_COUNTERPARTS = {
+    "__init__": "TradingViewChartModel.__init__",
+    "_setup_ui": "page_html",
+    "set_candles": "TradingViewChartModel.set_candles",
+    "update_candle": "TradingViewChartModel.update_candle",
+    "set_bollinger_bands": "TradingViewChartModel.set_bollinger_bands",
+    "add_trade_marker": "TradingViewChartModel.add_trade_marker",
+    "set_grid_levels": "TradingViewChartModel.set_grid_levels",
+    "set_theme": "TradingViewChartModel.set_theme",
+    "_run_js": "TradingViewChartModel.run_js",
 }
 
-COUNTERPARTS = {
-    "TradingViewChart": "TradingViewChartModel",
-    "TradingViewChart.__init__": "TradingViewChartModel.__init__",
-    "TradingViewChart._setup_ui": "page_html",
-    "TradingViewChart.set_candles": "TradingViewChartModel.set_candles",
-    "TradingViewChart.update_candle": "TradingViewChartModel.update_candle",
-    "TradingViewChart.set_bollinger_bands": (
-        "TradingViewChartModel.set_bollinger_bands"
-    ),
-    "TradingViewChart.add_trade_marker": "TradingViewChartModel.add_trade_marker",
-    "TradingViewChart.set_grid_levels": "TradingViewChartModel.set_grid_levels",
-    "TradingViewChart.set_theme": "TradingViewChartModel.set_theme",
-    "TradingViewChart._run_js": "TradingViewChartModel.run_js",
-}
+COUNTERPARTS = {"ChartAssetMissing": "ChartAssetMissing"}
+for _widget_name in WIDGET_NAMES:
+    COUNTERPARTS[_widget_name] = "TradingViewChartModel"
+    for _member, _stands_for in MEMBER_COUNTERPARTS.items():
+        COUNTERPARTS[f"{_widget_name}.{_member}"] = _stands_for
 
 SURFACE_FUNCTIONS = (
+    "asset_dir",
+    "read_asset",
     "theme_colors",
     "page_colors",
     "page_html",
@@ -568,7 +585,7 @@ SURFACE_FUNCTIONS = (
     "view_model",
 )
 
-SURFACE_CLASSES = ("TradingViewChartModel",)
+SURFACE_CLASSES = ("ChartAssetMissing", "TradingViewChartModel")
 
 SURFACE_MODEL_MEMBERS = (
     "__init__",
@@ -615,7 +632,8 @@ def test_the_shipped_classes_each_have_a_counterpart():
     """A class on the shipped side has nothing standing for it."""
     defined = shipped_definitions()
     assert defined == set(SHIPPED_CLASSES), defined
-    assert len(defined) == 1
+    assert len(defined) == len(SHIPPED_CLASSES)
+    assert shipped.TradingViewChart is shipped._ChartWidget
     for name in SHIPPED_CLASSES:
         assert name in COUNTERPARTS, name
         assert hasattr(surface, COUNTERPARTS[name].split(".")[0]), name
@@ -1137,13 +1155,114 @@ def test_the_page_layout_matches_on_both_sides():
 
 def test_the_page_names_the_same_charting_library_on_both_sides():
     """The page asks for a different charting library than it did."""
-    assert surface.SCRIPT_URL == EXPECTED_SCRIPT_URL
-    assert EXPECTED_SCRIPT_URL in shipped.CHART_HTML
-    assert EXPECTED_SCRIPT_URL in surface.CHART_HTML
-    assert surface.WEB_VIEW["script_url"] == EXPECTED_SCRIPT_URL
-    assert surface.WEB_VIEW["carries_script"] is False
-    assert surface.CHART_HTML.count("<script src=") == 1
-    assert shipped.CHART_HTML.count("<script src=") == 1
+    assert surface.LIBRARY_ASSET == EXPECTED_LIBRARY_ASSET
+    assert shipped.LIBRARY_ASSET == EXPECTED_LIBRARY_ASSET
+    assert surface.WEB_VIEW["script_asset"] == EXPECTED_LIBRARY_ASSET
+    assert surface.WEB_VIEW["carries_script"] is True
+
+
+def test_neither_side_holds_a_script_tag_that_names_an_address():
+    """A template asked the internet for the library it draws with."""
+    for name, template in (
+        ("shipped", shipped.CHART_HTML),
+        ("surface", surface.CHART_HTML),
+    ):
+        assert "<script src=" not in template, name
+        assert "unpkg" not in template, name
+        assert "http://" not in template, name
+        assert "https://" not in template, name
+
+
+def test_the_library_the_page_draws_with_is_a_file_in_this_repository():
+    """The page named an asset that is not in the tree."""
+    vendored = REPO_ROOT / "src" / "gui" / "web" / EXPECTED_LIBRARY_ASSET
+    assert vendored.is_file(), vendored
+    assert EXPECTED_LIBRARY_BANNER in vendored.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("theme", sorted(EXPECTED_THEMES))
+def test_the_page_carries_the_vendored_library_byte_for_byte(theme):
+    """The page named the library instead of carrying it."""
+    vendored = REPO_ROOT / "src" / "gui" / "web" / EXPECTED_LIBRARY_ASSET
+    library = vendored.read_text(encoding="utf-8", newline="")
+    page = surface.page_html(EXPECTED_DEFAULT_SYMBOL, theme)
+    assert library in page, theme
+    assert len(page) > len(library)
+
+
+def test_the_page_opens_no_connection_of_its_own():
+    """The page still carried a way to reach the network."""
+    page = surface.page_html(EXPECTED_DEFAULT_SYMBOL, EXPECTED_DEFAULT_THEME)
+    for marker in ("<script src=", "fetch(", "XMLHttpRequest", "importScripts"):
+        assert marker not in page, marker
+    found = sorted(set(re.findall(r"https?://[A-Za-z0-9./_?=&+#:-]+", page)))
+    assert found == ["https://www.apache.org/licenses/LICENSE-2.0"], found
+    for address in found:
+        assert "<script src=" + address not in page
+
+
+def test_the_connection_check_can_see_a_fetch_that_is_there():
+    """The connection check reports nothing whatever the page carries."""
+    page = surface.page_html(EXPECTED_DEFAULT_SYMBOL, EXPECTED_DEFAULT_THEME)
+    seeded = page + '<script src="https://example.invalid/x.js"></script>fetch("x")'
+    caught = [m for m in ("<script src=", "fetch(") if m in seeded]
+    assert caught == ["<script src=", "fetch("]
+    assert [m for m in ("<script src=", "fetch(") if m in page] == []
+
+
+def test_the_asset_directory_holds_the_library_the_page_names():
+    """The surface looked for its assets somewhere else."""
+    found = surface.asset_dir()
+    assert found.is_dir(), found
+    assert found == REPO_ROOT / "src" / "gui" / surface.ASSET_SUBDIR
+    assert (found / surface.LIBRARY_ASSET).is_file()
+    assert shipped.asset_dir() == found
+
+
+def test_the_asset_reader_answers_the_bytes_on_disk():
+    """The reader changed the file on the way to the page."""
+    vendored = REPO_ROOT / "src" / "gui" / "web" / EXPECTED_LIBRARY_ASSET
+    on_disk = vendored.read_bytes().decode(surface.ASSET_ENCODING)
+    assert surface.read_asset(surface.LIBRARY_ASSET) == on_disk
+    assert shipped.read_asset(shipped.LIBRARY_ASSET) == on_disk
+    assert "\r" not in surface.read_asset(surface.LIBRARY_ASSET)
+
+
+def test_the_asset_directory_falls_back_to_the_frozen_bundle(monkeypatch, tmp_path):
+    """A frozen build looked for assets beside a module that is not there."""
+    monkeypatch.setattr(surface.Path, "is_dir", lambda self: False)
+    monkeypatch.setattr(surface.sys, surface.BUNDLE_ATTR, str(tmp_path), raising=False)
+    assert surface.asset_dir() == tmp_path.joinpath(*surface.BUNDLE_PARTS)
+
+
+def test_a_missing_asset_is_refused_by_name(monkeypatch, tmp_path):
+    """A missing library drew an empty page instead of saying so."""
+    monkeypatch.setattr(surface, "asset_dir", lambda: tmp_path)
+    with pytest.raises(surface.ChartAssetMissing) as raised:
+        surface.read_asset(EXPECTED_LIBRARY_ASSET)
+    assert EXPECTED_LIBRARY_ASSET.rsplit("/", 1)[-1] in str(raised.value)
+    assert str(tmp_path) in str(raised.value)
+
+
+def test_a_missing_asset_stops_the_page_being_built(monkeypatch, tmp_path):
+    """A page was handed to the browser with no charting library in it."""
+    monkeypatch.setattr(surface, "asset_dir", lambda: tmp_path)
+    with pytest.raises(surface.ChartAssetMissing):
+        surface.page_html(EXPECTED_DEFAULT_SYMBOL, EXPECTED_DEFAULT_THEME)
+
+
+def test_the_page_is_built_by_joining_never_by_formatting():
+    """A brace or a percent in the bundle broke the page build."""
+    page = surface.page_html(EXPECTED_DEFAULT_SYMBOL, EXPECTED_DEFAULT_THEME)
+    assert "%" in page
+    assert "{" in page and "}" in page
+    assert len(page) > 100_000
+    vendored = REPO_ROOT / "src" / "gui" / "web" / EXPECTED_LIBRARY_ASSET
+    library = vendored.read_text(encoding="utf-8", newline="")
+    with pytest.raises((ValueError, KeyError, TypeError)):
+        (surface.CHART_HTML_HEAD + library + surface.CHART_HTML_TAIL) % (
+            surface.page_colors(EXPECTED_DEFAULT_SYMBOL, EXPECTED_DEFAULT_THEME)
+        )
 
 
 def test_the_page_calls_back_through_the_same_bridge_name():
@@ -1457,7 +1576,7 @@ def test_the_host_font_question_is_asked_and_not_assumed():
 BLIND_TO_THE_PICTURE = {
     "page_text": "test_both_sides_build_one_page_for_one_theme",
     "page_template": "test_the_two_sides_hold_one_page_template",
-    "script_url": "test_the_page_names_the_same_charting_library_on_both_sides",
+    "script_asset": "test_the_page_names_the_same_charting_library_on_both_sides",
     "accessible_name": "test_the_accessible_name_is_compared_as_text",
     "page_margins": "test_the_page_layout_matches_on_both_sides",
     "call_formats": "test_every_call_into_the_page_matches_on_both_sides",
@@ -1571,7 +1690,7 @@ CONSTANT_LOCATION = {
     "DEFAULT_THEME": ("default_theme", None),
     "FALLBACK_THEME": ("fallback_theme", None),
     "SYMBOL_KEY": ("symbol_key", None),
-    "SCRIPT_URL": ("script_url", None),
+    "LIBRARY_ASSET": ("script_asset", None),
     "CHART_THEMES": ("themes", None),
     "CYBERPUNK_DARK": ("themes", "cyberpunk_dark"),
     "NEON_LIGHT": ("themes", "neon_light"),
@@ -1629,6 +1748,18 @@ CONSTANT_LOCATION = {
 NOT_IN_THE_SNAPSHOT = {
     "METHOD": "test_the_bridge_registers_the_tradingview_chart_method",
     "CHART_HTML": "test_the_two_sides_hold_one_page_template",
+    "CHART_HTML_HEAD": "test_the_page_is_built_by_joining_never_by_formatting",
+    "CHART_HTML_TAIL": "test_the_page_is_built_by_joining_never_by_formatting",
+    "SCRIPT_OPEN": "test_the_page_carries_the_vendored_library_byte_for_byte",
+    "SCRIPT_CLOSE": "test_the_page_carries_the_vendored_library_byte_for_byte",
+    "PART_JOIN": "test_the_page_carries_the_vendored_library_byte_for_byte",
+    "ASSET_SUBDIR": "test_the_asset_directory_holds_the_library_the_page_names",
+    "ASSET_ENCODING": "test_the_asset_reader_answers_the_bytes_on_disk",
+    "ASSET_NEWLINE": "test_the_asset_reader_answers_the_bytes_on_disk",
+    "ASSET_READ_MODE": "test_the_asset_reader_answers_the_bytes_on_disk",
+    "BUNDLE_ATTR": "test_the_asset_directory_falls_back_to_the_frozen_bundle",
+    "BUNDLE_PARTS": "test_the_asset_directory_falls_back_to_the_frozen_bundle",
+    "ASSET_ERROR_FORMAT": "test_a_missing_asset_is_refused_by_name",
     "TIMEFRAME_BUTTONS": "test_the_buttons_come_back_in_one_order_with_one_active",
 }
 
@@ -1833,7 +1964,7 @@ def test_the_surface_does_not_follow_a_moved_shipped_page(monkeypatch):
     assert shipped.CHART_HTML == "<html>%(bg)s %(symbol)s</html>"
     made = surface.page_html("BTC/USDT", "cyberpunk_dark")
     assert made.startswith("<!DOCTYPE html>")
-    assert EXPECTED_SCRIPT_URL in made
+    assert EXPECTED_LIBRARY_BANNER in made
     assert len(made) > 1000
 
 
@@ -1885,7 +2016,7 @@ TABLE_PROBE = BLOCK_QT + (
     "print(json.dumps({'qt': 'PySide6' in sys.modules,\n"
     "    'themes': s.CHART_THEMES,\n"
     "    'buttons': s.buttons(),\n"
-    "    'script_url': s.SCRIPT_URL,\n"
+    "    'script_asset': s.LIBRARY_ASSET,\n"
     "    'html': model.html,\n"
     "    'calls': model.calls,\n"
     "    'fallback': s.theme_colors('no_such_theme'),\n"
@@ -1943,7 +2074,7 @@ def test_the_surface_carries_every_value_where_qt_cannot_be_imported():
     assert [one["label"] for one in answered["buttons"]] == [
         one[0] for one in EXPECTED_BUTTONS
     ]
-    assert answered["script_url"] == EXPECTED_SCRIPT_URL
+    assert answered["script_asset"] == EXPECTED_LIBRARY_ASSET
     assert answered["html"] == surface.page_html("BTC/USDT", "cyberpunk_dark")
     assert answered["calls"] == ["setCandles('[]')"]
     assert answered["fallback"] == EXPECTED_THEMES["cyberpunk_dark"]
