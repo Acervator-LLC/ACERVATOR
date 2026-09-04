@@ -28,6 +28,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from ..color_alpha import css_colours
+
 METHOD = "theme_engine.state"
 
 REQUIRED_FIELD_NAMES = ("name", "display_name")
@@ -697,6 +699,10 @@ def build_view_model(name: Any = None, styleable: Any = True) -> dict:
     module it replaces raises, and no theme becomes current.
     `styleable` says whether the target application accepts a style
     sheet; a target that does not still records the theme as current.
+
+    The theme table itself carries the alpha byte Qt reads. The payload
+    leaves under `src.gui.color_alpha.css_colours`, so the renderer
+    receives the share a browser reads and no colour is copied twice.
     """
     asked = requested_theme(name)
     known = has_theme(asked)
@@ -707,7 +713,7 @@ def build_view_model(name: Any = None, styleable: Any = True) -> dict:
     if known:
         manager.apply_theme(asked, sink)
     current = manager.current
-    return {
+    payload = {
         "theme_names": list(THEME_NAMES),
         "display_names": dict(DISPLAY_NAMES),
         "field_names": list(FIELD_NAMES),
@@ -732,6 +738,7 @@ def build_view_model(name: Any = None, styleable: Any = True) -> dict:
         "timer_delays_ms": list(TIMER_DELAYS_MS),
         "skin": dict(SKIN),
     }
+    return css_colours(payload)
 
 
 def view_model(params: dict) -> dict:
