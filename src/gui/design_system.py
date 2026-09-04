@@ -319,7 +319,7 @@ __all__ = [
     "CARD_METRIC_SURFACE",
     "CARD_METRIC_BORDER",
     "CARD_METRIC_LABEL",
-    # Widget colors promoted from hex literals
+    # Widget colours
     "ERROR",
     "WARNING_STRONG",
     "STATUS_INFO",
