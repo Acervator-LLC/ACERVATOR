@@ -13,15 +13,24 @@ widget.  This provides professional candlestick charts with:
 
 The chart is rendered as an HTML page loaded into QWebEngineView,
 with data injected via JavaScript bridge calls.
+
+The charting library is a file in this repository, read off disk and
+carried inside the page. The page fetches nothing, so the chart draws
+the same with no network at all.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
+import sys
+from pathlib import Path
+from typing import Any, Optional
 
 logger = logging.getLogger("acervator.gui")
+
+#: Logged where PySide6 ships without its WebEngine, in place of a chart.
+MISSING_WEBENGINE_WARNING = "TradingView charts require PySide6-WebEngine"
 
 try:
     from PySide6.QtWidgets import (
@@ -36,9 +45,58 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
+# The charting library, read off disk
+# ---------------------------------------------------------------------------
+
+#: The charting library the page runs, relative to the web asset directory.
+LIBRARY_ASSET = "vendor/lightweight-charts.standalone.production.js"
+
+SCRIPT_OPEN = "<script>"
+SCRIPT_CLOSE = "</script>"
+
+
+class ChartAssetMissing(RuntimeError):
+    """An asset the page cannot be drawn without is not on disk."""
+
+
+def asset_dir() -> Path:
+    """The directory holding the chart's JS assets.
+
+    Two candidates, in order. ``__file__`` covers running from source.
+    ``sys._MEIPASS`` covers the frozen build, where the whole ``src``
+    directory is shipped to ``<bundle>/src``.
+    """
+    beside_module = Path(__file__).resolve().parent / "web"
+    if beside_module.is_dir():
+        return beside_module
+    bundle = getattr(sys, "_MEIPASS", None)
+    if bundle:
+        return Path(bundle) / "src" / "gui" / "web"
+    return beside_module
+
+
+def read_asset(name: str) -> str:
+    """Return one asset's text, or raise naming the path that is missing.
+
+    Reads as UTF-8 with newline translation off, so a CRLF checkout of a
+    ``.js`` file cannot put a stray carriage return into the page.
+    """
+    path = asset_dir() / name
+    try:
+        with open(path, "r", encoding="utf-8", newline="") as handle:
+            return handle.read()
+    except OSError as exc:
+        raise ChartAssetMissing(
+            f"Chart asset not readable: {path} ({type(exc).__name__})"
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
 # Chart HTML template using TradingView lightweight-charts
 # ---------------------------------------------------------------------------
-CHART_HTML = """<!DOCTYPE html>
+
+#: The page down to the chart element. The library is joined in after it.
+CHART_HTML_HEAD = """<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -69,9 +127,10 @@ CHART_HTML = """<!DOCTYPE html>
   <button class="tf-btn" onclick="setTimeframe('W')">1W</button>
 </div>
 <div id="chart"></div>
+"""
 
-<script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-<script>
+#: The page from the chart element on. The library is already loaded here.
+CHART_HTML_TAIL = """<script>
 // --- Chart initialisation ---
 const chart = LightweightCharts.createChart(document.getElementById('chart'), {
   layout: {
@@ -201,6 +260,27 @@ chart.applyOptions({ width: window.innerWidth, height: window.innerHeight });
 </body>
 </html>"""
 
+#: The whole page apart from the library, as one template.
+CHART_HTML = CHART_HTML_HEAD + CHART_HTML_TAIL
+
+
+def page_html(colors: dict) -> str:
+    """The whole page, self-contained: no network fetch, no CDN.
+
+    The two template halves are filled from ``colors`` and the library
+    is joined between them, never formatted: the minified bundle carries
+    both ``%`` and braces, and either would raise.
+    """
+    return "\n".join(
+        [
+            CHART_HTML_HEAD % colors,
+            SCRIPT_OPEN,
+            read_asset(LIBRARY_ASSET),
+            SCRIPT_CLOSE,
+            CHART_HTML_TAIL % colors,
+        ]
+    )
+
 
 # ---------------------------------------------------------------------------
 # Theme-aware color sets
@@ -264,7 +344,7 @@ CHART_THEMES = {
 # ---------------------------------------------------------------------------
 if _HAS_WEBENGINE:
 
-    class TradingViewChart(QWidget):
+    class _ChartWidget(QWidget):
         """
         TradingView lightweight-charts embedded in Qt via WebEngine.
 
@@ -296,8 +376,7 @@ if _HAS_WEBENGINE:
             colors = CHART_THEMES.get(self._theme, CHART_THEMES["cyberpunk_dark"])
             colors["symbol"] = self._symbol
 
-            html = CHART_HTML % colors
-            self._web.setHtml(html)
+            self._web.setHtml(page_html(colors))
             layout.addWidget(self._web)
 
         def set_candles(self, ohlcv: list[dict]) -> None:
@@ -326,15 +405,25 @@ if _HAS_WEBENGINE:
             self._theme = theme
             colors = CHART_THEMES.get(theme, CHART_THEMES["cyberpunk_dark"])
             colors["symbol"] = self._symbol
-            html = CHART_HTML % colors
-            self._web.setHtml(html)
+            self._web.setHtml(page_html(colors))
 
         def _run_js(self, js: str) -> None:
             """Execute JavaScript in the WebEngine context."""
             self._web.page().runJavaScript(js)
 
+    TradingViewChart: Any = _ChartWidget
+
 else:
-    # Stub when WebEngine is not available
-    class TradingViewChart:
-        def __init__(self, *args, **kwargs):
-            logger.warning("TradingView charts require PySide6-WebEngine")
+
+    class _ChartStub:
+        """Stands in for the chart where WebEngine is not installed.
+
+        It carries no drawing method, so a caller that reaches past the
+        warning fails by name rather than drawing nothing.
+        """
+
+        def __init__(self, *args: Any, **named: Any) -> None:
+            del args, named
+            logger.warning(MISSING_WEBENGINE_WARNING)
+
+    TradingViewChart = _ChartStub

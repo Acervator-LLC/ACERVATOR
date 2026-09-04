@@ -32,7 +32,7 @@
   var MARKER_SKIN = "marker_skin";
   var MISSING_WEBENGINE_WARNING = "missing_webengine_warning";
   var PAGE = "page";
-  var SCRIPT_URL = "script_url";
+  var SCRIPT_ASSET = "script_asset";
   var SELL_SIDE = "sell_side";
   var SKIN = "skin";
   var SYMBOL = "symbol";
@@ -78,7 +78,7 @@
     MARKER_SKIN,
     MISSING_WEBENGINE_WARNING,
     PAGE,
-    SCRIPT_URL,
+    SCRIPT_ASSET,
     SELL_SIDE,
     SKIN,
     SYMBOL,

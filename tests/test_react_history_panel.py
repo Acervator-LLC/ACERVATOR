@@ -563,14 +563,29 @@ def test_the_page_fetches_nothing_from_the_network(page) -> None:
 def test_the_page_declares_no_external_asset() -> None:
     """And no tag asks for one, so an offline start cannot go blank.
 
-    ``tradingview_chart.py:72`` pulls its charting library from unpkg,
-    so that chart is empty with no network. This page inlines everything.
+    The candlestick chart used to fetch its charting library from a CDN
+    and drew nothing offline. It carries that library now, so the same
+    rule is asserted over both pages rather than as a contrast between
+    them.
     """
-    html = rhp.panel_html()
-    external = re.findall(r"<(?:script|link|img|iframe)[^>]*\b(?:src|href)\s*=", html)
-    assert external == [], f"the page declares external assets: {external}"
-    chart = (REPO / "src" / "gui" / "tradingview_chart.py").read_text(encoding="utf-8")
-    assert "unpkg.com" in chart, "the contrast this test draws is gone; re-check it"
+    from src.gui import tradingview_chart as chart
+
+    pattern = r"<(?:script|link|img|iframe)[^>]*\b(?:src|href)\s*="
+    colors = dict(chart.CHART_THEMES["cyberpunk_dark"])
+    colors["symbol"] = "BTC/USDT"
+    for name, html in (
+        ("history panel", rhp.panel_html()),
+        ("candlestick chart", chart.page_html(colors)),
+    ):
+        external = re.findall(pattern, html)
+        assert external == [], f"{name} declares external assets: {external}"
+
+
+def test_the_external_asset_check_can_see_a_tag_that_is_there() -> None:
+    """The check reports nothing whatever the page declares."""
+    pattern = r"<(?:script|link|img|iframe)[^>]*\b(?:src|href)\s*="
+    seeded = rhp.panel_html() + "<" + 'script src="x.js">' + "</" + "script>"
+    assert re.findall(pattern, seeded) != []
 
 
 def test_vendor_bundles_carry_no_script_terminator() -> None:
