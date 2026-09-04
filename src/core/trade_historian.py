@@ -1,45 +1,11 @@
-"""
-trade_historian.py — Trade History Scanner and Acervator Logic Mapper
-======================================================================
-Triggered on every API connect, reconnect, or manual refresh.
-Fetches the user's trade history from the exchange and classifies
-each trade in the context of Acervator's accumulation logic.
+"""Trade-history scan and Acervator-role classification.
 
-CLASSIFICATION RULES
---------------------
-  SCRUM       SELL order.  Acervator only sells in scrums (selling excess
-              holdings above target after band travel / bullseye trigger).
-
-  FOLD        BUY order, size within 1.5× the median buy size for this
-              symbol.  Regular accumulation buy — price dipped below the
-              detect threshold and the bot bought back.
-
-  HEDGE       BUY order, size > 2× median buy size.  Consistent with a
-              hedge rebalance — buying during a drawdown from the separate
-              hedge reserve rather than the normal fold mechanism.
-
-  RAPID_FIRE  BUY order arriving within 60 seconds of a prior BUY on the
-              same symbol.  Consistent with BB Bullseye rapid-fire mode.
-
-  UNKNOWN     Trade that does not fit any of the above patterns.  Could
-              be a manual trade, a partial fill, or a trade from before
-              the user started using Acervator.
-
-CYCLE PAIRING
--------------
-  A scrum at time T is paired with the next BUY of any kind (FOLD, HEDGE,
-  or RAPID_FIRE) to form a complete scrum-fold cycle.  The cycle advantage
-  is: sell_proceeds - buy_cost.  Positive advantage = the scrum captured
-  more than the subsequent fold cost.
-
-USAGE
------
-  historian = TradeHistorian(ccxt_exchange)
-  analysis  = await historian.analyze("BTC/USDT", limit=500)
-  print(analysis.summary())
-
-  # Or call from connector on every connect event:
-  results = await historian.analyze_all(["BTC/USDT", "ETH/USDT"])
+``TradeHistorian.analyze_sync`` fetches one symbol's ccxt trades and
+``TradeClassifier.classify`` labels each SCRUM, FOLD, HEDGE, RAPID_FIRE
+or UNKNOWN. ``TradeClassifier.pair_cycles`` joins a SCRUM to the next
+buy and reports ``CycleSummary.cycle_advantage``. ``scan_on_connect``
+runs the scan over a list of symbols and returns one ``HistoryAnalysis``
+each.
 """
 
 from __future__ import annotations
@@ -48,43 +14,45 @@ import asyncio
 import logging
 import statistics
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger("acervator.trade_historian")
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-RAPID_FIRE_WINDOW_S = 60  # seconds — two buys within this = RAPID_FIRE
-HEDGE_SIZE_MULTIPLE = 2.0  # × median buy → HEDGE classification
-FOLD_SIZE_TOLERANCE = 1.5  # × median buy — above this is HEDGE territory
-MIN_TRADES_FOR_STATS = 3  # need at least this many buys for median calc
-MAX_HISTORY_FETCH = 500  # ccxt limit per call (most exchanges cap here)
-
-# ---------------------------------------------------------------------------
-# Data classes
-# ---------------------------------------------------------------------------
+RAPID_FIRE_WINDOW_S = 60
+HEDGE_SIZE_MULTIPLE = 2.0
+# Above this and at or below HEDGE_SIZE_MULTIPLE, a buy classifies UNKNOWN.
+FOLD_SIZE_TOLERANCE = 1.5
+# Below this many buys, median_buy falls back to the first buy size, or 1.0.
+MIN_TRADES_FOR_STATS = 3
+# ccxt caps one fetch_my_trades page here on most venues.
+MAX_HISTORY_FETCH = 500
 
 
 @dataclass
 class MappedTrade:
-    """A single exchange trade classified against Acervator logic."""
+    """One ccxt trade record with an Acervator role attached.
+
+    ``order_id``, ``timestamp_ms``, ``side``, ``quantity``, ``price``,
+    ``cost_usd`` and ``fee_usd`` come from the exchange record;
+    ``acervator_role``, ``cycle_id``, ``confidence`` and ``note`` are
+    derived by ``TradeClassifier``.
+    """
 
     order_id: str
-    timestamp_ms: int  # millisecond UTC timestamp from exchange
+    timestamp_ms: int
     symbol: str
     side: str  # 'buy' | 'sell'
-    quantity: float  # asset units traded
-    price: float  # execution price
-    cost_usd: float  # quantity × price (before fee)
-    fee_usd: float  # fee paid
+    quantity: float  # asset units
+    price: float
+    cost_usd: float  # quantity * price, before fee
+    fee_usd: float
     acervator_role: str  # SCRUM | FOLD | HEDGE | RAPID_FIRE | UNKNOWN
-    cycle_id: Optional[str]  # pairs scrum with following fold
-    confidence: float  # 0.0–1.0 classification confidence
-    note: str = ""  # human-readable classification note
+    cycle_id: Optional[str]  # set on both legs by pair_cycles
+    confidence: float  # 0.0 to 1.0
+    note: str = ""
 
     @property
     def dt(self) -> datetime:
@@ -100,15 +68,19 @@ class MappedTrade:
 
 @dataclass
 class CycleSummary:
-    """A matched scrum–fold pair."""
+    """A SCRUM joined to the buy that followed it.
+
+    ``pair_cycles`` sets ``scrum_proceeds`` net of fee, ``fold_cost``
+    gross of fee, and ``cycle_advantage`` as their difference.
+    """
 
     cycle_id: str
     scrum: MappedTrade
     fold: MappedTrade
-    duration_hours: float  # time from scrum to fold
-    scrum_proceeds: float  # sell proceeds after fee
-    fold_cost: float  # buy cost after fee
-    cycle_advantage: float  # scrum_proceeds - fold_cost
+    duration_hours: float
+    scrum_proceeds: float
+    fold_cost: float
+    cycle_advantage: float
 
     @property
     def profitable(self) -> bool:
@@ -117,42 +89,41 @@ class CycleSummary:
 
 @dataclass
 class HistoryAnalysis:
-    """Complete analysis result for one symbol on one exchange."""
+    """One symbol's scan result on one exchange.
+
+    ``_build_analysis`` fills every field; the counts, the cycles and the
+    three estimates are derived from ``trades``, never read from the venue.
+    """
 
     symbol: str
     exchange_id: str
     trade_count: int
     analysis_ts: float = field(default_factory=time.time)
 
-    # Classification counts
     scrum_count: int = 0
     fold_count: int = 0
     hedge_count: int = 0
     rapid_fire_count: int = 0
     unknown_count: int = 0
 
-    # Cycle analysis
     complete_cycles: int = 0
     profitable_cycles: int = 0
     avg_cycle_duration_h: float = 0.0
     total_advantage_usd: float = 0.0
 
-    # Reconstructed state (approximate)
-    est_holdings: float = 0.0  # net asset balance from history
-    est_cost_basis: float = 0.0  # avg cost of current holdings
-    net_pnl_usd: float = 0.0  # all sell proceeds - all buy costs
+    est_holdings: float = 0.0  # buy quantity less sell quantity, floored at 0
+    est_cost_basis: float = 0.0  # buy cost over buy quantity, across every buy
+    net_pnl_usd: float = 0.0  # sell cost less fee, minus buy cost plus fee
 
-    # Quality flags
-    history_truncated: bool = False  # exchange returned max limit
+    history_truncated: bool = False  # the fetch returned at least `limit` rows
     has_unrecognized_trades: bool = False
     analysis_error: Optional[str] = None
 
-    # Detailed records
     trades: list = field(default_factory=list)  # list[MappedTrade]
     cycles: list = field(default_factory=list)  # list[CycleSummary]
 
     def summary(self) -> str:
-        """One-paragraph human-readable summary."""
+        """Render the counts, cycles and estimates as text lines."""
         lines = [
             f"Trade History Analysis — {self.symbol} on {self.exchange_id}",
             f"  {self.trade_count} trades fetched"
@@ -193,36 +164,25 @@ class HistoryAnalysis:
         return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Classifier
-# ---------------------------------------------------------------------------
-
-
 class TradeClassifier:
-    """
-    Stateless classifier — given a list of raw ccxt trade dicts for one
-    symbol, classifies each trade and pairs scrums with folds.
+    """Stateless classification of ccxt trade dicts for one symbol.
+
+    ``classify`` returns ``MappedTrade`` records and ``pair_cycles``
+    joins them into ``CycleSummary`` pairs.
     """
 
     @staticmethod
     def classify(raw_trades: list[dict], symbol: str) -> list[MappedTrade]:
-        """
-        Classify a list of ccxt trade dicts.
+        """Label every ccxt trade dict in ``raw_trades`` under ``symbol``.
 
-        Expected ccxt trade format:
-          {
-            'id': str, 'timestamp': int (ms), 'symbol': str,
-            'side': 'buy'|'sell', 'amount': float, 'price': float,
-            'cost': float, 'fee': {'cost': float, 'currency': str}
-          }
+        Reads ``id``, ``timestamp``, ``side``, ``amount``, ``price``,
+        ``cost`` and ``fee.cost`` from each record.
         """
         if not raw_trades:
             return []
 
-        # Sort ascending by timestamp
         trades = sorted(raw_trades, key=lambda t: t.get("timestamp", 0))
 
-        # Compute median buy size for FOLD vs HEDGE discrimination
         buy_sizes = [t["amount"] for t in trades if t.get("side") == "buy"]
         if len(buy_sizes) >= MIN_TRADES_FOR_STATS:
             median_buy = statistics.median(buy_sizes)
@@ -243,15 +203,14 @@ class TradeClassifier:
                 ts_ms = int(t.get("timestamp", 0) or 0)
                 order_id = str(t.get("id", t.get("order", "?")))
 
-                # Classify
                 if side == "sell":
                     role = "SCRUM"
                     confidence = 0.90
                     note = "Sell — consistent with scrum harvest"
-                    prev_buy_ts = None  # reset rapid-fire window after sell
+                    prev_buy_ts = None  # a sell breaks the rapid-fire chain
 
                 elif side == "buy":
-                    # Check rapid-fire window first
+                    # Tested before size, so a fast large buy reads RAPID_FIRE.
                     if (
                         prev_buy_ts is not None
                         and (ts_ms - prev_buy_ts) <= RAPID_FIRE_WINDOW_S * 1000
@@ -318,9 +277,10 @@ class TradeClassifier:
 
     @staticmethod
     def pair_cycles(trades: list[MappedTrade]) -> list[CycleSummary]:
-        """
-        Pair each SCRUM with the next BUY (FOLD / HEDGE / RAPID_FIRE) to
-        form complete scrum-fold cycles.  Assigns cycle_id to both legs.
+        """Pair each SCRUM with the next trade whose ``side`` is buy.
+
+        The pairing reads ``side``, not ``acervator_role``, so an UNKNOWN
+        buy closes a cycle; both legs get the same ``cycle_id``.
         """
         cycles: list[CycleSummary] = []
         pending_scrum: Optional[MappedTrade] = None
@@ -357,39 +317,28 @@ class TradeClassifier:
         return cycles
 
 
-# ---------------------------------------------------------------------------
-# Main historian class
-# ---------------------------------------------------------------------------
-
-
 class TradeHistorian:
-    """
-    Fetches and analyses trade history for one or more symbols.
-    Designed to be called on every API connect / reconnect / refresh.
+    """Fetches and analyses trade history for one symbol at a time.
 
-    R29 (Idempotency): safe to call multiple times — each call fetches
-    fresh data and produces a fresh HistoryAnalysis; no side effects.
-    R28 (Fail Loudly): exchange fetch errors are caught and reported in
-    HistoryAnalysis.analysis_error, not swallowed silently.
+    Every ``analyze_sync`` call re-fetches; a fetch failure comes back in
+    ``HistoryAnalysis.analysis_error``.
     """
 
     def __init__(self, exchange, loop: Optional[asyncio.AbstractEventLoop] = None):
-        """
-        exchange  — an initialised ccxt exchange instance (sync or async).
-        loop      — event loop for async ccxt; None uses the running loop.
+        """Hold a ccxt ``exchange`` instance, sync or async.
+
+        ``loop`` is stored on ``_loop`` and no method reads it.
         """
         self._exchange = exchange
         self._loop = loop
         self._cache: dict[str, HistoryAnalysis] = {}
 
-    # ── Public API ────────────────────────────────────────────────────────────
-
     def analyze_sync(
         self, symbol: str, limit: int = MAX_HISTORY_FETCH
     ) -> HistoryAnalysis:
-        """
-        Synchronous wrapper.  Fetches and classifies trade history for one
-        symbol.  Returns a HistoryAnalysis regardless of errors.
+        """Fetch and classify one symbol through the sync ccxt API.
+
+        Returns a ``HistoryAnalysis`` whatever the fetch does.
         """
         try:
             raw = self._fetch_sync(symbol, limit)
@@ -406,7 +355,10 @@ class TradeHistorian:
     async def analyze_async(
         self, symbol: str, limit: int = MAX_HISTORY_FETCH
     ) -> HistoryAnalysis:
-        """Async version for use in async exchange contexts."""
+        """Fetch and classify one symbol through the async ccxt API.
+
+        Returns a ``HistoryAnalysis`` whatever the fetch does.
+        """
         try:
             raw = await self._fetch_async(symbol, limit)
             return self._build_analysis(raw, symbol, limit)
@@ -422,7 +374,10 @@ class TradeHistorian:
     def analyze_all_sync(
         self, symbols: list[str], limit: int = MAX_HISTORY_FETCH
     ) -> dict[str, HistoryAnalysis]:
-        """Scan all provided symbols. Returns {symbol: HistoryAnalysis}."""
+        """Run ``analyze_sync`` for every entry in ``symbols``.
+
+        Each result is also written to ``_cache`` for ``get_cached``.
+        """
         results = {}
         for sym in symbols:
             logger.info("TradeHistorian: scanning %s...", sym)
@@ -431,28 +386,31 @@ class TradeHistorian:
         return results
 
     def get_cached(self, symbol: str) -> Optional[HistoryAnalysis]:
-        """Return the most recent analysis for a symbol without re-fetching."""
+        """Return what ``analyze_all_sync`` last stored in ``_cache``."""
         return self._cache.get(symbol)
 
     def clear_cache(self):
         self._cache.clear()
 
-    # ── Internal helpers ──────────────────────────────────────────────────────
-
     def _fetch_sync(self, symbol: str, limit: int) -> list[dict]:
-        """Fetch trade history from exchange using ccxt sync API."""
+        """Call ``fetch_my_trades`` on the sync ccxt exchange.
+
+        A ccxt failure is re-raised as ``RuntimeError`` naming ``symbol``.
+        """
         try:
             trades = self._exchange.fetch_my_trades(symbol, limit=limit)
             logger.info("TradeHistorian: fetched %d trades for %s", len(trades), symbol)
             return trades or []
         except Exception as e:
-            # R28: fail loudly — propagate to caller for transparent error
             raise RuntimeError(
                 f"Exchange trade history fetch failed for {symbol}: {e}"
             ) from e
 
     async def _fetch_async(self, symbol: str, limit: int) -> list[dict]:
-        """Fetch trade history from exchange using ccxt async API."""
+        """Await ``fetch_my_trades`` on the async ccxt exchange.
+
+        A ccxt failure is re-raised as ``RuntimeError`` naming ``symbol``.
+        """
         try:
             trades = await self._exchange.fetch_my_trades(symbol, limit=limit)
             return trades or []
@@ -464,7 +422,11 @@ class TradeHistorian:
     def _build_analysis(
         self, raw: list[dict], symbol: str, limit: int
     ) -> HistoryAnalysis:
-        """Build HistoryAnalysis from raw ccxt trade records."""
+        """Build a ``HistoryAnalysis`` from ``raw`` ccxt trade records.
+
+        ``exchange_id`` is read off the ccxt object; every count, cycle and
+        estimate is derived from the ``MappedTrade`` list.
+        """
         exc_id = getattr(self._exchange, "id", "unknown")
 
         analysis = HistoryAnalysis(
@@ -477,11 +439,9 @@ class TradeHistorian:
         if not raw:
             return analysis
 
-        # Classify all trades
         trades = TradeClassifier.classify(raw, symbol)
         analysis.trades = trades
 
-        # Count by role
         analysis.scrum_count = sum(1 for t in trades if t.acervator_role == "SCRUM")
         analysis.fold_count = sum(1 for t in trades if t.acervator_role == "FOLD")
         analysis.hedge_count = sum(1 for t in trades if t.acervator_role == "HEDGE")
@@ -491,7 +451,6 @@ class TradeHistorian:
         analysis.unknown_count = sum(1 for t in trades if t.acervator_role == "UNKNOWN")
         analysis.has_unrecognized_trades = analysis.unknown_count > 0
 
-        # Pair cycles
         cycles = TradeClassifier.pair_cycles(trades)
         analysis.cycles = cycles
         analysis.complete_cycles = len(cycles)
@@ -502,7 +461,6 @@ class TradeHistorian:
                 c.duration_hours for c in cycles
             )
 
-        # Reconstruct estimated state
         net_qty = 0.0
         total_buy_cost = 0.0
         total_buy_qty = 0.0
@@ -541,28 +499,17 @@ class TradeHistorian:
         return analysis
 
 
-# ---------------------------------------------------------------------------
-# Convenience function for the ccxt connector
-# ---------------------------------------------------------------------------
-
-
 def scan_on_connect(
     exchange,
     symbols: list[str],
     limit: int = MAX_HISTORY_FETCH,
-    on_result: Optional[callable] = None,
+    on_result: Optional[Callable[[str, HistoryAnalysis], None]] = None,
     pace_s: float = 0.0,
 ) -> dict[str, HistoryAnalysis]:
-    """
-    Entry point called by ccxt_connector on every connect / reconnect /
-    refresh.  Runs synchronously.  Calls on_result(symbol, analysis)
-    for each symbol as results come in (for incremental GUI updates).
+    """Run ``TradeHistorian.analyze_sync`` over ``symbols`` in order.
 
-    Returns {symbol: HistoryAnalysis} for all symbols.
-
-    R29: Safe to call multiple times — each call is a fresh read.
-    R28: Errors are surfaced in HistoryAnalysis.analysis_error, never
-         swallowed.
+    ``on_result`` is called with each symbol and its ``HistoryAnalysis``
+    as that symbol finishes.
     """
     if not symbols:
         logger.info("TradeHistorian: no symbols provided — skipping scan")
@@ -572,15 +519,8 @@ def scan_on_connect(
     results = {}
 
     for _i, sym in enumerate(symbols):
-        # v3.24.95 — SPACE THE FETCHES.
-        #
-        # `_fetch_sync` calls the RAW ccxt object, so none of the
-        # connector's rate limiting, serialisation or retry applies
-        # here. MEASURED on the 3.24.94 launch: 200 fetches in the
-        # first 24 seconds, all rate-limited by Coinbase.
-        #
-        # Sleeps BETWEEN symbols only, never before the first, so a
-        # single-symbol refresh stays immediate.
+        # `_fetch_sync` calls the raw ccxt object, past the connector's
+        # own rate limiting; `pace_s` spaces the symbols after the first.
         if _i and pace_s > 0:
             time.sleep(pace_s)
         logger.info("TradeHistorian: scanning history for %s...", sym)
@@ -593,7 +533,6 @@ def scan_on_connect(
             except Exception as e:
                 logger.warning("on_result callback error for %s: %s", sym, e)
 
-        # Log a brief summary at INFO level
         logger.info(analysis.summary())
 
     return results
