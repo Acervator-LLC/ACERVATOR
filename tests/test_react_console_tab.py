@@ -472,7 +472,7 @@ SIZE_FIELDS = (
     "font_size_px",
     "font_point_size",
     "interval_ms",
-    "root_level",
+    "handler_level",
 )
 
 
@@ -602,6 +602,7 @@ NAMED_WORDS = sorted(
         "font_point_size",
         "font_size_px",
         "format",
+        "handler_level",
         "hover_background",
         "interval_ms",
         "is_empty",
@@ -617,7 +618,6 @@ NAMED_WORDS = sorted(
         "pause_button.clicked",
         "pause_indicator",
         "read_only",
-        "root_level",
         "running",
         "signal_box",
         "signal_header",
@@ -1607,14 +1607,14 @@ def test_the_logger_snapshot_reports_a_handler_that_was_added():
     assert logger_state(named) == before
 
 
-def test_the_surface_publishes_the_root_logger_and_its_level(browser: Browser):
-    """Issue 237 described and not repeated: the surface names the root logger and its level."""
+def test_the_surface_publishes_the_root_logger_and_the_handler_level(browser: Browser):
+    """The surface lists the root logger in ``loggers`` and publishes ``handler_level``."""
     payload = bridge_payload()
     assert payload["log_handler"]["loggers"] == ["", "acervator"]
-    assert payload["log_handler"]["root_level"] == logging.DEBUG
+    assert payload["log_handler"]["handler_level"] == logging.DEBUG
     parts = draw_tab(browser, payload)
     handler = only(parts, "tab/machinery/log-handler")
-    assert handler["attrs"]["data-root-level"] == str(logging.DEBUG)
+    assert handler["attrs"]["data-handler-level"] == str(logging.DEBUG)
     assert handler["attrs"]["data-format"] == payload["log_handler"]["format"]
     named = [
         one["attrs"]["data-logger"]
