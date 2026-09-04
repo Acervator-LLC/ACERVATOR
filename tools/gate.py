@@ -1,55 +1,15 @@
-"""Run the release gate and STAMP the commit it proved.
+"""Run `dev_harness.harness.check_release_readiness` and record the commit it proved.
 
-Why this exists
----------------
-The operator's standard, stated 2026-08-19:
+`main` writes `STAMP_PATH` with the HEAD sha only on a green run of a clean
+tree, and `clear_stamp` removes it otherwise. `SIDECAR_PATH` carries a version
+and a test count but names no commit, which is what `head_sha` supplies.
+`describe_tags` is the one git call `src/_version.py` reaches for.
 
-    "Code does not leave the branch or get merged until all gates are
-     passing."
-
-Island `promote` used to enforce that mechanically. Islands were retired the
-same day, and within the hour a documentation branch was merged on the
-REASONING that markdown cannot affect pytest rather than on a measurement.
-That is the failure this file exists to make impossible.
-
-Why a wrapper and not a change to the gate itself
--------------------------------------------------
-`harness-law` forbids editing anything under `dev_harness/harness/`, and that rule
-is not negotiable for convenience. So the gate is called, not modified. This
-file adds exactly one thing the gate does not record: WHICH COMMIT was proved.
-
-`.release_ready.json` carries a version, a test count and a timestamp. None of
-those identifies a tree. Two different commits at v3.25.8 produce identical
-sidecars, so a sidecar alone can never answer "was THIS commit gated?" The
-stamp answers it by recording the HEAD sha.
-
-The dirty-tree refusal is the load-bearing part
------------------------------------------------
-A gate run against a dirty working tree measured content that is in no commit.
-Stamping it would assert that HEAD was proved when HEAD is not what ran. So a
-green gate on a dirty tree is recorded as NOT STAMPED, deliberately, and the
-pre-push hook then refuses. Commit first, then gate.
-
-Usage
------
-    python -m tools.gate            # runs the gate, stamps on success
-
-Exit code is the gate's own, unmodified. Never read it through a pipe.
+    python -m tools.gate
 """
 
 # ruff: noqa: S603
-# S607 IS FIXED BY CONSTRUCTION HERE, NOT SUPPRESSED, following the reasoning
-# recorded at the top of dev_harness/harness/coding_archetype.py: a partial
-# executable path is not a false positive, because on Windows PATH plus
-# PATHEXT would execute a `git.cmd` planted anywhere earlier on PATH under the
-# developer's own token. Both spawns below use an absolute path — the gate via
-# `sys.executable`, git via `_GIT`, resolved once through shutil.which — so
-# S607 reports zero here by construction.
-#
-# S603 remains and is not avoidable, exactly as measured for the archetype: an
-# all-literal argv draws no S603 and every argv carrying a variable draws one.
-# `_GIT` is a variable by definition, so there is no compliant form of "spawn
-# the resolved git". This directive is the residue, narrowed to the one rule.
+# `_GIT` is a variable, and every argv here carries one.
 from __future__ import annotations
 
 import json
@@ -67,11 +27,9 @@ _GIT = shutil.which("git")
 
 
 def _git(*args: str) -> str:
-    """Run git in the repo and return stripped stdout, or '' on failure.
+    """Run git in `REPO` and return stripped stdout, or '' on failure.
 
-    Returns '' when git cannot be resolved at all. Every caller treats '' as
-    "unknown", and unknown is refused rather than stamped — a stamp that
-    guesses is worse than no stamp.
+    Returns '' when `_GIT` is None, which every caller treats as unknown.
     """
     if _GIT is None:
         return ""
@@ -93,11 +51,9 @@ def head_sha() -> str:
 
 
 def tree_is_dirty() -> bool:
-    """True when tracked content differs from HEAD.
+    """True when tracked content in `REPO` differs from HEAD.
 
-    Untracked files are IGNORED on purpose: the gate does not run them and a
-    scratch file beside the repo must not block a legitimate push. Tracked
-    modifications are what make a stamp a lie.
+    Untracked files do not count: `_git` is called with `--untracked-files=no`.
     """
     return bool(_git("status", "--porcelain", "--untracked-files=no"))
 
@@ -105,13 +61,7 @@ def tree_is_dirty() -> bool:
 def describe_tags(root: str | Path, match: str, dirty_suffix: str) -> str:
     """Return `git describe` output for the repository at `root`, or ''.
 
-    `src/_version.py` builds the application version out of this. It lives
-    here because every git subprocess in this repository lives here, behind
-    the one narrowed S603 directive at the top of the file.
-
-    `-C` targets the repository, so the answer does not depend on where the
-    caller was invoked from. `match` limits which tags are eligible, and a
-    tree with no matching tag falls back to a bare commit id.
+    `match` limits the eligible tags; a tree with none falls back to a commit id.
     """
     return _git(
         "-C",
@@ -127,7 +77,7 @@ def describe_tags(root: str | Path, match: str, dirty_suffix: str) -> str:
 
 
 def clear_stamp(reason: str) -> None:
-    """Remove a stamp so a later push cannot inherit an older proof."""
+    """Delete `STAMP_PATH` and print `reason`."""
     if STAMP_PATH.exists():
         STAMP_PATH.unlink()
         print(f"[gate] stamp cleared: {reason}")

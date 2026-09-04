@@ -20,6 +20,10 @@ Everything here runs in memory. No sockets, no files, no prompts.
 
 from __future__ import annotations
 
+import ssl
+import urllib.error
+import urllib.request
+
 import pytest
 
 from src.exchange.ccxt_connector import (
@@ -69,6 +73,50 @@ def test_preflight_urls_are_https(exchange_id):
     must never be pointed at a plaintext URL."""
     url = PREFLIGHT_URLS[exchange_id]
     assert url.startswith("https://"), f"{exchange_id}: {url!r} is not HTTPS"
+
+
+_NO_NETWORK = "no network in this test"
+_FILE_URL = "file:///etc/passwd"
+_HTTPS_URL = "https://example.invalid/ping"
+
+
+class _RecordingUrlopen:
+    """A urlopen stand-in: it records each URL in `opened`, then raises."""
+
+    def __init__(self, opened: list[str]) -> None:
+        self.opened = opened
+
+    def __call__(self, request, timeout, context) -> None:
+        """Record `request` and raise `urllib.error.URLError`."""
+        del timeout, context
+        self.opened.append(request.full_url)
+        raise urllib.error.URLError(_NO_NETWORK)
+
+
+def test_the_diagnostic_opens_no_url_outside_https(monkeypatch) -> None:
+    """`_check_public_endpoints` refuses a non-https entry without opening it."""
+    from tools import exchange_diagnostic as diag
+
+    opened: list[str] = []
+    monkeypatch.setattr(diag, "PREFLIGHT_URLS", {"evil": _FILE_URL})
+    monkeypatch.setattr(diag.urllib.request, "urlopen", _RecordingUrlopen(opened))
+    results = diag._check_public_endpoints(ssl.create_default_context())
+
+    assert opened == [], f"the diagnostic opened {opened}"
+    assert results["evil"][0] == "REFUSED", f"got {results['evil']!r}, wanted REFUSED"
+
+
+def test_the_diagnostic_allows_an_https_entry(monkeypatch) -> None:
+    """The refusal is not blanket: an https entry still reaches `urlopen`."""
+    from tools import exchange_diagnostic as diag
+
+    opened: list[str] = []
+    monkeypatch.setattr(diag, "PREFLIGHT_URLS", {"good": _HTTPS_URL})
+    monkeypatch.setattr(diag.urllib.request, "urlopen", _RecordingUrlopen(opened))
+    results = diag._check_public_endpoints(ssl.create_default_context())
+
+    assert opened == [_HTTPS_URL], f"opened {opened}"
+    assert results["good"][0] == "FAIL", f"got {results['good']!r}"
 
 
 class _FakeCcxt:

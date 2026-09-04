@@ -1,19 +1,13 @@
 """Reports whether the HOP handoff has drifted from the repository.
 
-Drift is measured, not remembered: how many commits have landed on the current
-branch since the HOP file was last written, whether every path it cites still
-exists, and whether every commit it names still resolves. Exits 1 on drift so a
-caller can gate on it.
-
-A handoff legitimately names paths that are gone, to say they are gone. It
-declares those under a `## CITED AS ABSENT` heading, one backtick-quoted path
-per line, and they are excluded. Anything else missing is drift.
+Drift is the commits landed since the HOP file was last written past
+`STALE_AFTER`, plus every `TRACKED` path it cites that is gone and every commit
+it names that no longer resolves. A path listed under `ABSENT_HEADING` is
+excluded. Exit 1 means drift.
 """
 
 # ruff: noqa: S603
-# Every argument is a literal in this file and git resolves to an absolute path,
-# so there is no untrusted input to find. tools/gate.py and
-# tools/migration_verifier.py take the same line for the same reason.
+# `git` resolves through `shutil.which`, and every argv here carries a variable.
 
 from __future__ import annotations
 

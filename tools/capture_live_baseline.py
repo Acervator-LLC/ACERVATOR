@@ -1,15 +1,13 @@
 """Capture one diffable snapshot of the live runtime trees.
 
-Reads build identity, fleet state, gate-latch distribution, console log
-classes and emitter coverage, and writes one JSON document under `_logs/`.
-Every path outside the repo is opened read-only.
+`capture` reads build identity, fleet state, gate-latch distribution, console
+log classes and emitter coverage, and `write_snapshot` puts one JSON document
+under `OUTPUT_DIR`. `compare` splits its findings into DRIFT for vocabularies
+and identities, and MOVEMENT for counts, prices and timestamps. Every path
+under `RUNTIME_DIR` and `LOG_DIR` is opened read-only.
 
     python -m tools.capture_live_baseline
     python -m tools.capture_live_baseline --compare BEFORE.json AFTER.json
-
-The comparison splits its findings in two. DRIFT covers vocabularies and
-identities that a build change should not move. MOVEMENT covers counts,
-prices and timestamps that move on their own.
 """
 
 from __future__ import annotations
@@ -69,11 +67,6 @@ def as_number(value: object) -> float | None:
     return None
 
 
-# --------------------------------------------------------------------- #
-# normalisers
-# --------------------------------------------------------------------- #
-
-
 def normalise_blocker(text: str) -> str:
     """Collapse every number in a gate blocker string to `#`.
 
@@ -83,10 +76,10 @@ def normalise_blocker(text: str) -> str:
 
 
 def build_symbol_pattern(assets: Iterable[str]) -> re.Pattern[str] | None:
-    """Compile a whole-word alternation over bare asset tickers.
+    """Compile a whole-word alternation over the `assets` tickers, longest first.
 
-    Returns None when no usable ticker is supplied. Longest first, so `LSETH`
-    is not shortened to `LSE`.
+    Returns None when no ticker between `TICKER_MIN_LEN` and `TICKER_MAX_LEN`
+    is supplied.
     """
     usable = sorted(
         {
@@ -108,9 +101,8 @@ def build_symbol_pattern(assets: Iterable[str]) -> re.Pattern[str] | None:
 def normalise_message(text: str, symbols: re.Pattern[str] | None = None) -> str:
     """Collapse a log message to its class key.
 
-    Trading pairs, bot ids, numbers and the user's home directory become
-    placeholders. `symbols` additionally collapses bare tickers taken from
-    the loaded fleet. The verbatim example held beside a class is untouched.
+    Pairs, bot ids, numbers and `_HOME_FORMS` become `_PLACEHOLDER_TOKENS`, and
+    `symbols` collapses bare tickers as well.
     """
     out = text
     for form in _HOME_FORMS:
@@ -140,11 +132,6 @@ def extract_bot_id(text: str) -> str:
     """Return the bot id named in a message, or ''."""
     match = _BOT_ID.search(text)
     return match.group(0).split(" ", 1)[1] if match else ""
-
-
-# --------------------------------------------------------------------- #
-# shared helpers
-# --------------------------------------------------------------------- #
 
 
 def display_path(path: Path) -> str:
@@ -226,16 +213,10 @@ def _read_lines(path: Path) -> Iterator[str]:
         yield from handle
 
 
-# --------------------------------------------------------------------- #
-# section 1 - build identity
-# --------------------------------------------------------------------- #
-
-
 def read_resolved_version(root: Path) -> str | None:
     """Version the tree at `root` resolves to, or None when nothing answers.
 
-    Derived from the git tag by `src._version`, so a snapshot is attributed
-    to the commit it was captured on rather than to a literal.
+    Read from the git tag through `src._version`, never from a literal.
     """
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
@@ -272,11 +253,6 @@ def capture_build(root: Path) -> Json:
         **_git_identity(),
         "gate_stamp": stamp,
     }
-
-
-# --------------------------------------------------------------------- #
-# section 2 - fleet state
-# --------------------------------------------------------------------- #
 
 
 def _lot_units(lots: object) -> float:
@@ -453,11 +429,6 @@ def capture_fleet(state_path: Path) -> Json:
     }
 
 
-# --------------------------------------------------------------------- #
-# section 3 - gate latch distribution
-# --------------------------------------------------------------------- #
-
-
 def _gate_bot_slot(bots: Json, bot_id: str) -> Json:
     slot = bots.get(bot_id)
     if slot is None:
@@ -559,11 +530,6 @@ def capture_gate(paths: list[Path], since: str | None = None) -> Json:
     }
 
 
-# --------------------------------------------------------------------- #
-# section 4 - console error and warning classes
-# --------------------------------------------------------------------- #
-
-
 def _record_class(bucket: Json, message: str, symbols: re.Pattern[str] | None) -> None:
     key = normalise_message(message, symbols)
     slot = bucket.get(key)
@@ -617,11 +583,6 @@ def capture_console(
         "levels": level_counts,
         "classes": classes,
     }
-
-
-# --------------------------------------------------------------------- #
-# section 5 - emitter coverage
-# --------------------------------------------------------------------- #
 
 
 def load_declared_pins() -> dict[str, str]:
@@ -738,11 +699,6 @@ def capture_emitters(paths: list[Path], declared: dict[str, str]) -> Json:
     return _emitter_report(files, totals, seen, declared)
 
 
-# --------------------------------------------------------------------- #
-# capture entry
-# --------------------------------------------------------------------- #
-
-
 def capture(*, rotations: bool = True, since: str | None = None) -> Json:
     """Build the whole snapshot document."""
     started = time.time()
@@ -793,10 +749,6 @@ def write_snapshot(snapshot: Json, path: Path) -> Path:
     )
     return path
 
-
-# --------------------------------------------------------------------- #
-# comparison
-# --------------------------------------------------------------------- #
 
 _BOT_IDENTITY_FIELDS = (
     "symbol",
@@ -1016,11 +968,6 @@ def format_comparison(
     if len(rows) > len(shown):
         lines.append(f"  ... {len(rows) - len(shown)} further moved values")
     return "\n".join(lines)
-
-
-# --------------------------------------------------------------------- #
-# cli
-# --------------------------------------------------------------------- #
 
 
 def load_snapshot(path: str | Path) -> Json:
