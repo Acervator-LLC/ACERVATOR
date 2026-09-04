@@ -43,7 +43,9 @@ def test_the_global_stream_probe_sees_a_reseed() -> None:
 def test_generate_surrounding_prices_leaves_the_global_random_stream_alone() -> None:
     """Fails when generate_surrounding_prices reseeds the process-wide random module."""
     untouched, touched = _global_stream(
-        lambda: generate_surrounding_prices(CANDLES, {"USD": 0.0, "ETH": 0.005}, seed=42)
+        lambda: generate_surrounding_prices(
+            CANDLES, {"USD": 0.0, "ETH": 0.005}, seed=42
+        )
     )
     assert untouched == touched, (
         "generate_surrounding_prices moved the global random stream: "
@@ -56,9 +58,9 @@ def test_run_surrounding_swarm_leaves_the_global_random_stream_alone() -> None:
     untouched, touched = _global_stream(
         lambda: run_surrounding_swarm("BTC", CANDLES, n_arms=2, verbose=False)
     )
-    assert untouched == touched, (
-        f"run_surrounding_swarm moved the global random stream: {untouched} vs {touched}"
-    )
+    assert (
+        untouched == touched
+    ), f"run_surrounding_swarm moved the global random stream: {untouched} vs {touched}"
 
 
 def test_run_equity_surrounding_swarm_leaves_the_global_random_stream_alone() -> None:
@@ -72,7 +74,9 @@ def test_run_equity_surrounding_swarm_leaves_the_global_random_stream_alone() ->
     )
 
 
-def test_generate_surrounding_prices_repeats_for_one_seed_and_moves_for_another() -> None:
+def test_generate_surrounding_prices_repeats_for_one_seed_and_moves_for_another() -> (
+    None
+):
     """Fails when the seed stops deciding the synthetic crypto quote series."""
     vols = {"USD": 0.0, "ETH": 0.005}
     first = generate_surrounding_prices(CANDLES, vols, seed=42)
@@ -86,7 +90,9 @@ def test_generate_surrounding_prices_repeats_for_one_seed_and_moves_for_another(
 def test_a_zero_volatility_quote_tracks_the_base_exactly() -> None:
     """Fails when a quote pegged at volatility 0 stops reproducing base_closes."""
     out = generate_surrounding_prices(CANDLES, {"USD": 0.0}, seed=42)
-    assert out["USD"] == CANDLES, f"USD series departed from base_closes: {out['USD'][:5]}"
+    assert (
+        out["USD"] == CANDLES
+    ), f"USD series departed from base_closes: {out['USD'][:5]}"
 
 
 def test_the_third_arm_is_the_cross_that_closes_the_loop() -> None:
@@ -106,18 +112,20 @@ def test_the_avax_triads_name_the_cross_in_the_order_score_triad_reads() -> None
     """Fails when the AVAX cross pairs come back inverted."""
     triads = TriadSpawner(base="AVAX", exchange="COINBASE").generate_all_triads()
     crosses = [c for _a, _b, c in triads]
-    assert crosses == ["USDC/USD", "EUR/USD", "EUR/USDC"], (
-        f"unexpected cross pairs for AVAX on COINBASE: {crosses}"
-    )
+    assert crosses == [
+        "USDC/USD",
+        "EUR/USD",
+        "EUR/USDC",
+    ], f"unexpected cross pairs for AVAX on COINBASE: {crosses}"
 
 
 def test_a_short_series_still_answers_with_arm_scores() -> None:
     """Fails when score_triad's short-series answer omits a key rank_triads reads."""
     answer = score_triad(FLAT, FLAT, FLAT)
     full = score_triad(CANDLES, CANDLES, CANDLES)
-    assert set(answer) == set(full), (
-        f"short-series keys {sorted(answer)} differ from full-series keys {sorted(full)}"
-    )
+    assert set(answer) == set(
+        full
+    ), f"short-series keys {sorted(answer)} differ from full-series keys {sorted(full)}"
     assert answer["arm_scores"] == {"a": 0.0, "b": 0.0, "c": 0.0}
 
 
