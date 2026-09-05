@@ -17,8 +17,8 @@ and from measurements over the operator's own venue export; and
 and [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md), written from
 the source alone; and
 [14-development-chronicle.md](14-development-chronicle.md), written from the
-git history, the audits in [docs/audits](../audits), and the operator's own
-pre-git record. The `NN-` prefix of a file is its own name and carries no
+git history, the audits in [docs/audits](../audits), the operator's own
+pre-git record, and a memory record kept across sessions. The `NN-` prefix of a file is its own name and carries no
 meaning; the Part column below is what places a file in the manual.
 
 ## Contents
@@ -37,7 +37,7 @@ meaning; the Part column below is what places a file in the manual.
 | [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
 | [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
 | [09-updates-and-versioning.md](09-updates-and-versioning.md) | 7 | — | Version derivation, the six readers, the baked bundle value, the release gate |
-| [14-development-chronicle.md](14-development-chronicle.md) | 8 | — | The two records of the work, the instruments and audits behind the current code, what they cost and what they missed |
+| [14-development-chronicle.md](14-development-chronicle.md) | 8 | — | The three records of the work, the corrections that became the instruments, the audits they produced, and what they cost and missed |
 | [10-live-trade-history.md](10-live-trade-history.md) | 9 | — | The live fill record, VWAP charts, trade grading, gate coverage |
 | [FIGURES.md](FIGURES.md) | — | 15 to 44 | The figure inventory |
 
@@ -116,10 +116,9 @@ files under [08-tabs/](08-tabs/README.md),
 [10-live-trade-history.md](10-live-trade-history.md),
 [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md),
 [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) and
-[09-updates-and-versioning.md](09-updates-and-versioning.md),
-[10-live-trade-history.md](10-live-trade-history.md) and
-[13-live-evidence.md](13-live-evidence.md), written from the source
-and from measurements over the operator's own venue export; and
+[13-live-evidence.md](13-live-evidence.md) and
+[14-development-chronicle.md](14-development-chronicle.md) are not
+among them and are never written.
 
 - 44 pages, 9,759 whitespace-separated tokens, 38 embedded images.
 - Page 24 and pages 36 to 44 extract zero visible characters.
