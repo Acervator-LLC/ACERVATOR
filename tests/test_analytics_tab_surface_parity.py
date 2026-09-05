@@ -32,11 +32,6 @@ from tests.fixtures.surface_pictures import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-SHIPPED_PATH = REPO_ROOT / "src/gui/analytics_tab.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/analytics_tab_surface.py"
-ALPHA_PATH = REPO_ROOT / "src/gui/color_alpha.py"
-BRIDGE_PATH = REPO_ROOT / "src/core/desktop_bridge.py"
-WIRED_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/widgets/bot_status_table.py"
 
 METHOD_NAME = "analytics.tab"
 
@@ -904,15 +899,34 @@ def test_the_surface_functions_are_reachable_and_described():
 
 
 def test_the_connect_sites_match_the_actions():
-    """A signal wiring appeared on one side and not the other."""
-    shipped_text = SHIPPED_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert shipped_text.count(".connect(") == 0
-    assert surface_text.count(".connect(") == 0
-    assert len(surface.ACTIONS) == shipped_text.count(".connect(")
-    assert len(surface.ACTIONS) == surface_text.count(".connect(")
-    wired = WIRED_NEIGHBOUR_PATH.read_text(encoding="utf-8")
-    assert wired.count(".connect(") > 0, "the counter cannot report a wiring"
+    """A signal wiring appeared on one side and not the other.
+
+    ``connections`` counts what building each side really wires, so a signal
+    connected through a helper or a loop is counted the same as a literal one.
+    """
+    from tests.fixtures.qt_wiring import connections
+
+    app()
+    shipped_wirings, tab = connections(lambda: shipped.AnalyticsTab(None))
+    assert tab is not None
+    assert shipped_wirings == 0, shipped_wirings
+
+    surface_wirings, payload = connections(lambda: surface.view_model({}))
+    assert payload
+    assert surface_wirings == 0, surface_wirings
+    assert len(surface.ACTIONS) == shipped_wirings
+
+
+def test_the_connection_counter_can_report_a_wiring():
+    """POSITIVE CONTROL. The neighbour this unit did not touch wires signals, so
+    a zero above is a fact about the analytics tab."""
+    from tests.fixtures.qt_wiring import connections
+    from src.gui.widgets.bot_status_table import BotStatusTable
+
+    app()
+    wired, table = connections(BotStatusTable)
+    assert table is not None
+    assert wired > 0, "the counter cannot report a wiring"
 
 
 def test_the_tab_declares_no_action_no_timer_and_no_skin():
@@ -1706,42 +1720,55 @@ def test_the_chart_labels_the_latest_equity_and_the_scaled_floor():
 # The surface carries its own values
 
 
-def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    import ast
+#: Refuses PySide6 and shiboken at the meta path, then reports what imported.
+BLOCKED_QT_PROBE = """
+import importlib.abc
+import json
+import sys
 
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "typing", "color_alpha"}
-    alpha_tree = ast.parse(ALPHA_PATH.read_text(encoding="utf-8"))
-    alpha_imports = {
-        alias.name
-        for node in ast.walk(alpha_tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    } | {
-        node.module or ""
-        for node in ast.walk(alpha_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert not any(name.startswith("PySide6") for name in alpha_imports), alpha_imports
-    shipped_tree = ast.parse(SHIPPED_PATH.read_text(encoding="utf-8"))
-    shipped_imports = {
-        (node.module or "")
-        for node in ast.walk(shipped_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in shipped_imports)
+
+class _NoQt(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        if name.split('.')[0] in ('PySide6', 'shiboken6'):
+            raise ImportError('Qt is blocked in this probe: ' + name)
+        return None
+
+
+sys.meta_path.insert(0, _NoQt())
+answer = {'module': '%s', 'imported': False, 'error': ''}
+try:
+    __import__(answer['module'])
+    answer['imported'] = True
+except Exception as exc:
+    answer['error'] = '%%s: %%s' %% (type(exc).__name__, exc)
+answer['qt_in_sys_modules'] = any(
+    m.split('.')[0] in ('PySide6', 'shiboken6') for m in sys.modules)
+print(json.dumps(answer))
+"""
+
+
+def test_the_surface_loads_no_qt_module():
+    """``BLOCKED_QT_PROBE`` refuses ``PySide6`` and ``shiboken6`` at the meta
+    path, so a transitive import through any other module is refused too."""
+    answered = run_script(BLOCKED_QT_PROBE % "src.gui.main_tabs.analytics_tab_surface")
+    assert answered["imported"] is True, answered
+    assert answered["qt_in_sys_modules"] is False, answered
+
+
+def test_the_colour_helper_the_surface_imports_loads_no_qt_either():
+    """``color_alpha`` is the surface's only repo import and carries the same
+    rule."""
+    answered = run_script(BLOCKED_QT_PROBE % "src.gui.color_alpha")
+    assert answered["imported"] is True, answered
+    assert answered["qt_in_sys_modules"] is False, answered
+
+
+def test_the_probe_refuses_a_module_that_needs_qt():
+    """POSITIVE CONTROL. ``BLOCKED_QT_PROBE`` reports ``bot_status_table`` as
+    unimportable, so the two greens above are facts about the surface."""
+    answered = run_script(BLOCKED_QT_PROBE % "src.gui.widgets.bot_status_table")
+    assert answered["imported"] is False, answered
+    assert "Qt is blocked" in answered["error"], answered
 
 
 def test_the_surface_does_not_follow_a_colour_moved_in_the_design_system(
@@ -2315,12 +2342,15 @@ def test_the_bridge_registers_the_analytics_tab_method():
     assert len(result["cards"]) == CARD_TOTAL
 
 
-def test_the_bridge_registration_is_two_lines_and_no_more():
-    """The bridge grew more than the one registration this unit adds."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    assert text.count("analytics_tab_surface") == 3
-    assert "analytics_tab_surface.METHOD: analytics_tab_surface.view_model" in text
-    assert "analytics_tab_surface,\n" in text
+def test_the_bridge_registers_this_surface_once_and_by_identity():
+    """The registry maps ``surface.METHOD`` to ``surface.view_model`` itself, and
+    to nothing else."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert registry[surface.METHOD] is surface.view_model
+    mine = [m for m, fn in registry.items() if fn is surface.view_model]
+    assert mine == [surface.METHOD], mine
 
 
 def test_the_bridge_answers_with_no_parameters_at_all():
