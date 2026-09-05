@@ -174,9 +174,7 @@ _TOML_HEADER_PREFIX = "tool."
 # Path claims that are true for a reason the scanner cannot see. Every
 # entry carries that reason. This map may not grow without one.
 ALLOWED: dict[tuple[str, str], str] = {
-    # Coverage WRITE target. Measured 2026-08-22: ``python -m pytest
-    # --cov --cov-report=json`` created ``qa_baselines/`` and wrote the
-    # file. It is an output path, not a file the repo must ship.
+    # A coverage output path, not a file the repo ships.
     (
         "pyproject.toml",
         "qa_baselines/coverage_current.json",

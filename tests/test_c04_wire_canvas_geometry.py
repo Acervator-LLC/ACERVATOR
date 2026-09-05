@@ -109,11 +109,7 @@ class TestGridStillWorks:
             640,
             480,
         ), "canvas is showing the stale default rect"
-        # The rect must be live, not the 640x480 default asserted against
-        # above. The 600px floor is the real bound and it holds on a real
-        # platform; the offscreen plugin lays this out narrower, so there the
-        # floor drops to "non-degenerate". The bound is not relaxed for
-        # everyone to suit one platform.
+        # The offscreen plugin lays this out narrower, so it only needs a live rect.
         floor = 0 if os.environ.get("QT_QPA_PLATFORM") == "offscreen" else 600
         assert g.width() > floor and g.height() > floor
 

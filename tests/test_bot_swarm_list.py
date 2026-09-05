@@ -28,9 +28,7 @@ from src.gui.bot_swarm_list import (  # noqa: E402
     BotSwarmLaneAllocator,
 )
 
-# C09 — the canvas only paints on a real paintEvent. repaint() does NOT
-# fire one offscreen; render(QPixmap) does. The skip-counter pins below
-# depend on the paint actually running.
+# `repaint()` fires no paintEvent offscreen; `render(QPixmap)` does.
 from PySide6.QtGui import QPixmap  # noqa: E402
 
 # BotSwarmLaneAllocator — pure algorithm

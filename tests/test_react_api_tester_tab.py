@@ -2099,9 +2099,7 @@ def test_this_host_can_run_the_rendered_checks_at_all():
     pytest.importorskip("PySide6.QtWebEngineWidgets")
 
 
-#: Each control that draws its own name, beside the parameter the surface
-#: reads for it. The name is what a caller sends back, so an empty one
-#: leaves the control with no way to say which value it carries.
+#: Each control that draws its own name, beside the parameter the surface reads.
 NAMED_CONTROLS = (
     ("exchange-select", "exchange_id", "kraken"),
     ("use-stored", "use_stored", False),

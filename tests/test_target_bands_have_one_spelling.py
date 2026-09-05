@@ -44,9 +44,7 @@ from src.trading.target_bands import (  # noqa: E402
     target_territory,
 )
 
-#: Sub-dollar through institutional. 8.0 is where the $0.01 floor stops
-#: binding on the Manual Fire band; 10.0 is where it stops binding on
-#: neither -- both edges are inside the sweep on purpose.
+#: Sub-dollar through institutional; 8.0 and 10.0 are the $0.01 floor's two edges.
 TARGETS = (0.03, 0.11, 1.0, 8.0, 10.0, 47.13, 100.0, 12500.0)
 
 

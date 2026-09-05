@@ -178,9 +178,7 @@ class TestMainPyVersionLiterals:
             and isinstance(n.value, str)
             and re.fullmatch(self._VERSION_RE, n.value)
         ]
-        # Zero bare literals is the correct end state, not a failure:
-        # main() now binds `from src import __version__`. Any literal
-        # that reappears must at least agree with the package.
+        # Zero bare literals is the end state; one that reappears must match the package.
         mismatched = [(ln, v) for ln, v in bare if v != src.__version__]
         assert not mismatched, (
             f"main.py version literal(s) disagree with "

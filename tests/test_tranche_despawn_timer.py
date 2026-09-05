@@ -431,8 +431,6 @@ class _FloatSubclass(float):
 
 
 #: (label, stored value, whole days `despawn_threshold_days` returns).
-#: The accepted set is exactly `int` or exactly `float`, finite and in
-#: float range; every other row reads 0.
 THRESHOLD_TABLE = [
     # `float` by exact type and still refused
     ("nan", NAN, 0),

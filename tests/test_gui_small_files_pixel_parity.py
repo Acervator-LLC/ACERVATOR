@@ -543,12 +543,7 @@ def test_init_wizard_feedback_branches_are_pixel_identical(
         assert _count_colour(head_pending, STATUS_INFO) > 0
 
 
-#: Each audio widget, the token colour it must reach a pixel with, and
-#: whether that colour needs `PySide6.QtMultimedia`. MusicPlayerPanel
-#: builds its now-playing label -- the only FOLD_SOURCE_MANUAL reference
-#: in that class -- inside the `_HAS_MEDIA` branch; without the import it
-#: paints a fallback label instead, measured at 14 distinct colours and
-#: no token value against 94 colours and 181 #00ccff pixels with it.
+#: Each audio widget, the token colour it must paint, and whether QtMultimedia is needed.
 AUDIO_COLOURS = [
     ("DroneLayer", (0,), LAYER_SIZE, DISABLED_DEEP, False),
     ("MusicPlayerPanel", (), PANEL_SIZE, SOURCE_MANUAL, True),

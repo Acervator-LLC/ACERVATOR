@@ -65,10 +65,7 @@ SECOND_TIER = surface.TIER_NAMES[1]
 FIRST_THEME_COLOUR_FIELD = surface.THEME_COLOUR_FIELDS[0]
 FIRST_TIER_COLOUR_FIELD = surface.TIER_COLOUR_FIELDS[0]
 
-#: The arithmetic constants a hex-colour splitter and an array index
-#: need. ``"9a"`` is a scanner artefact of the hex character class
-#: inside a regular expression, not a literal the module wrote.
-#: A number outside this set in the module is unexplained.
+#: Constants a hex splitter and an array index need; ``"9a"`` is a scanner artefact.
 ALGORITHM_NUMBERS = {"0", "1", "2", "3", "4", "6", "8", "16", "255", "9a"}
 
 

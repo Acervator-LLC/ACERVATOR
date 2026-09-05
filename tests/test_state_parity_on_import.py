@@ -47,16 +47,7 @@ from src.simulator.fleet.sim_exchange import (  # noqa: E402
 BASE = 1_700_000_000_000
 STEP = 300_000
 
-# TEST FIXTURE state -- synthetic, never the operator's file.
-#
-# DERIVED FROM A REAL EXPORT, not hand-written. An earlier version listed
-# 12 keys by hand; `export_scrumming_state` always writes 38, so the round
-# trip legitimately showed 23 "extra" fields and the test failed against
-# CORRECT code. A hand-written fixture that does not match the exporter's
-# shape tests the fixture, not the importer.
-#
-# Built once at import time by exporting a fresh bot, then overriding the
-# fields this file actually asserts on.
+# Overrides onto a real `export_scrumming_state`, so the fixture carries every key.
 _OVERRIDES = {
     "anchor_target_balance": 250.0,
     "target_balance": 252.13907101630653,
