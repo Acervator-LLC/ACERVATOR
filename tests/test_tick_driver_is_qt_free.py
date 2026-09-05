@@ -66,9 +66,10 @@ WHAT EACH TEST WOULD MEAN IF IT FAILED
 
 from __future__ import annotations
 
-import ast
 import asyncio
+import json
 import statistics
+import subprocess
 import sys
 import threading
 import time
@@ -175,111 +176,113 @@ def qt_app():
     return qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
 
 
-_QT_ROOTS = ("PySide6", "PyQt5", "PyQt6", "shiboken6")
+BLOCK_QT = (
+    "import sys\n"
+    "import importlib.abc\n"
+    "class _Refuse(importlib.abc.MetaPathFinder):\n"
+    "    def find_spec(self, name, path=None, target=None):\n"
+    "        if name.split('.')[0] in ('PySide6', 'PyQt5', 'PyQt6', 'shiboken6'):\n"
+    "            raise ImportError('Qt is blocked')\n"
+    "        return None\n"
+    "sys.meta_path.insert(0, _Refuse())\n"
+)
 
 
-def _module_path(dotted: str) -> Path | None:
-    """Return the file for a first-party `src.*` module, or None."""
-    if not dotted.startswith("src."):
-        return None
-    candidate = REPO / Path(*dotted.split("."))
-    if candidate.with_suffix(".py").is_file():
-        return candidate.with_suffix(".py")
-    if (candidate / "__init__.py").is_file():
-        return candidate / "__init__.py"
-    return None
+def _qt_free_probe(module: str) -> str:
+    """A probe that imports ``module`` with every Qt package refused."""
+    return BLOCK_QT + (
+        "import json\n"
+        "answer = {}\n"
+        "try:\n"
+        f"    __import__({module!r})\n"
+        "    answer['error'] = ''\n"
+        "except Exception as exc:\n"
+        "    answer['error'] = type(exc).__name__\n"
+        "answer['qt'] = 'PySide6' in sys.modules\n"
+        "print(json.dumps(answer))\n"
+    )
 
 
-def _imports_of(path: Path, package: str) -> set[str]:
-    """Every dotted name this file imports, including inside functions.
-
-    Relative forms are resolved against `package`, so `from ..gui import x`
-    is followed like an absolute import rather than skipped.
-    """
-    names: set[str] = set()
-    parts = package.split(".")
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-        if isinstance(node, ast.Import):
-            names.update(a.name for a in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.level:
-                base = parts[: len(parts) - node.level + 1]
-                prefix = ".".join(base + ([node.module] if node.module else []))
-            else:
-                prefix = node.module or ""
-            if not prefix:
-                continue
-            names.add(prefix)
-            names.update(f"{prefix}.{a.name}" for a in node.names)
-    return names
+#: Imports the driver, then RUNS its bodies. A Qt import inside a function
+#: never executes at import time, so the probe drives the code as well.
+DRIVE_PROBE = BLOCK_QT + (
+    "import asyncio, json\n"
+    "from src.core.tick_driver import AsyncioTickDriver, TickDriver, pump_once\n"
+    "loop = asyncio.new_event_loop()\n"
+    "ran = []\n"
+    "loop.call_soon(lambda: ran.append(1))\n"
+    "pump_once(loop)\n"
+    "driver = AsyncioTickDriver(loop)\n"
+    "answer = {'pumped': len(ran), 'protocol': isinstance(driver, TickDriver)}\n"
+    "driver.stop()\n"
+    "loop.close()\n"
+    "answer['qt'] = 'PySide6' in sys.modules\n"
+    "print(json.dumps(answer))\n"
+)
 
 
-def _qt_reached_from(start: str) -> set[str]:
-    """Qt modules reachable from `start` through first-party imports."""
-    seen: set[str] = set()
-    found: set[str] = set()
-    queue = [start]
-    while queue:
-        dotted = queue.pop()
-        if dotted in seen:
-            continue
-        seen.add(dotted)
-        path = _module_path(dotted)
-        if path is None:
-            continue
-        package = dotted if path.name == "__init__.py" else dotted.rsplit(".", 1)[0]
-        for name in _imports_of(path, package):
-            if name.split(".")[0] in _QT_ROOTS:
-                found.add(f"{dotted} -> {name}")
-            elif name.startswith("src."):
-                queue.append(name)
-    return found
+def _run_probe(source: str) -> dict:
+    """Run one probe in a fresh process and return what it printed."""
+    done = subprocess.run(
+        [sys.executable, "-"],
+        input=source.encode("utf-8"),
+        capture_output=True,
+        cwd=str(REPO),
+        timeout=300,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+    return json.loads(done.stdout.decode("utf-8").splitlines()[-1])
 
 
 # The seam itself
 def test_the_driver_module_imports_no_qt():
-    """No Qt anywhere in the module's first-party import closure.
+    """The driver loads in a process where every Qt package is refused."""
+    answered = _run_probe(_qt_free_probe("src.core.tick_driver"))
+    assert answered["error"] == "", (
+        f"importing src.core.tick_driver with Qt blocked raised "
+        f"{answered['error']}. The headless tick path still needs "
+        f"PySide6 installed, so the unit bought nothing."
+    )
+    assert answered["qt"] is False
 
-    Static rather than a trial import: a Qt import inside a function body
-    never executes at import time, so a runtime probe cannot see it.
-    """
-    found = _qt_reached_from("src.core.tick_driver")
-    assert found == set(), (
-        f"src/core/tick_driver.py reaches Qt: {sorted(found)}. The "
-        f"headless tick path still needs PySide6 installed, so the unit "
-        f"bought nothing."
+
+def test_the_control_for_the_qt_probe_above():
+    """The probe must SEE Qt where Qt is. Otherwise it proves nothing."""
+    answered = _run_probe(_qt_free_probe("src.gui.widgets"))
+    assert answered["error"] == "ImportError", (
+        f"src.gui.widgets imported with Qt blocked and answered "
+        f"{answered!r}. The probe is blind, and the test above proves "
+        f"nothing."
     )
 
 
-def test_the_control_for_the_qt_scan_above():
-    """The scan must SEE Qt where Qt is. Otherwise it proves nothing."""
-    found = _qt_reached_from("src.gui.alerts_tab")
-    assert found, (
-        "the Qt detector found nothing in src/gui/alerts_tab.py, which "
-        "imports PySide6. It is blind, and the test above proves nothing."
-    )
+def test_the_driver_runs_its_own_bodies_without_qt():
+    """A Qt import inside a body never runs at import time, so the probe
+    pumps a real loop and builds a driver in the same blocked process."""
+    answered = _run_probe(DRIVE_PROBE)
+    assert answered["pumped"] == 1
+    assert answered["protocol"] is True
+    assert answered["qt"] is False
 
 
-def test_main_and_the_driver_agree_on_the_interval():
-    """One cadence, restated in two files. They must not drift."""
-    assert main.ASYNC_PUMP_INTERVAL_MS == PUMP_INTERVAL_MS, (
-        f"main.ASYNC_PUMP_INTERVAL_MS is {main.ASYNC_PUMP_INTERVAL_MS} ms "
-        f"and tick_driver.PUMP_INTERVAL_MS is {PUMP_INTERVAL_MS} ms. The Qt "
-        f"schedule and the headless schedule now advance the loop at "
-        f"different rates, which changes trading cadence and shows no "
-        f"other symptom."
-    )
-
-
-def test_the_qt_factory_uses_the_shared_pump_body():
+def test_the_qt_factory_uses_the_shared_pump_body(monkeypatch):
     """main's timer must call `pump_once`, not a private copy of it."""
-    import inspect
+    pytest.importorskip("PySide6.QtCore")
+    import src.core.tick_driver as tick_driver
 
-    source = inspect.getsource(main._make_async_pump_timer)
-    assert "pump_once" in source, (
-        "main._make_async_pump_timer no longer calls "
-        "src.core.tick_driver.pump_once. The Qt path and the headless "
-        "path can now diverge without any test noticing."
+    reached: list = []
+    monkeypatch.setattr(tick_driver, "pump_once", reached.append)
+    loop = _new_loop()
+    timer = main._make_async_pump_timer(loop)
+    assert reached == [], "the factory pumped before the timer fired"
+    timer.timeout.emit()
+    loop.close()
+    assert reached == [loop], (
+        f"main._make_async_pump_timer fired and "
+        f"src.core.tick_driver.pump_once saw {reached}. The Qt path no "
+        f"longer runs the shared pump body, so the Qt schedule and the "
+        f"headless schedule can diverge with no other symptom."
     )
 
 

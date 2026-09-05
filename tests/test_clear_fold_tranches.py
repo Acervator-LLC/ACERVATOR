@@ -67,6 +67,10 @@ class _Bot:
 
     clear_fold_tranches = ScrummingBot.clear_fold_tranches
     clear_pending_wire_credits = ScrummingBot.clear_pending_wire_credits
+    export_scrumming_state = ScrummingBot.export_scrumming_state
+    import_scrumming_state = ScrummingBot.import_scrumming_state
+    _compact_wire_credits = ScrummingBot._compact_wire_credits
+    _land_pending_wire_credits = ScrummingBot._land_pending_wire_credits
 
     def __init__(self, tranches, pending=0.0):
         self.bot_id = "bot-test-0001"
@@ -84,6 +88,16 @@ class _Bot:
         self._main_lots = [{"units": 12.5, "initial_buy_price": 0.30}]
         self.stats = type("S", (), {})()
         self._bus = _Bus()
+        # Read by export_scrumming_state and written by its import twin.
+        self._tranches_discarded_lifetime = 0
+        self._last_trade_price = 0.30
+        self._last_trade_side = "buy"
+        self._quote_to_usd = 1.0
+        self._dist_accumulator = 0.0
+        self._hedge_bal = 0.0
+        self._hedge_trades = 0
+        self._scrum_target_mode = "usd"
+        self._scrum_target_side = None
 
 
 def _tr(usd, units, ref=0.30):
@@ -303,17 +317,23 @@ class TestTheTwoClearsCloseTheTrap:
 
 
 class TestItSurvivesRestart:
-    def test_the_counter_is_persisted(self):
-        import ast
-        import inspect
-
-        _sf = inspect.getsourcefile(ScrummingBot.export_scrumming_state)
-        assert _sf is not None
-        src = Path(_sf).read_text(encoding="utf-8")
-        assert '"tranches_discarded_lifetime"' in src, (
-            "the counter is not written to state; a clear would vanish "
-            "on restart and the reconciliation would break again"
+    def test_a_discard_reaches_the_exported_state(self):
+        b = _Bot([_tr(1.25, 4.0), _tr(2.50, 8.0), _tr(0.75, 2.5)])
+        assert b.export_scrumming_state()["tranches_discarded_lifetime"] == 0
+        b.clear_fold_tranches()
+        assert b.export_scrumming_state()["tranches_discarded_lifetime"] == 3, (
+            "the discard count is not written to state; a clear would "
+            "vanish on restart and the reconciliation would break again"
         )
-        # written AND read back
-        assert src.count('"tranches_discarded_lifetime"') >= 2
-        ast.parse(src)
+
+    def test_the_counter_comes_back_on_the_next_launch(self):
+        b = _Bot([_tr(1.25, 4.0), _tr(2.50, 8.0), _tr(0.75, 2.5)])
+        b.clear_fold_tranches()
+        fresh = _Bot([])
+        assert fresh._tranches_discarded_lifetime == 0, "the twin starts clean"
+        fresh.import_scrumming_state(b.export_scrumming_state())
+        assert fresh._tranches_discarded_lifetime == 3, (
+            "the discard count did not survive an export/import round "
+            "trip, so created - closed - discarded = standing stops "
+            "holding after a restart"
+        )

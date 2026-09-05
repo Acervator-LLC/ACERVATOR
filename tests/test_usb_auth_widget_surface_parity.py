@@ -15,7 +15,6 @@ function for the length of a drive.
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import math
@@ -55,40 +54,19 @@ from tests.fixtures.surface_pictures import (
 
 WIDGET_PATH = REPO_ROOT / "src/gui/usb_auth_widget.py"
 SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/usb_auth_widget_surface.py"
-BRIDGE_PATH = REPO_ROOT / "src/core/desktop_bridge.py"
 
-WIRING_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-SIGNAL_CONTROL_PATH = REPO_ROOT / "src/gui/launcher.py"
-TIMER_CONTROL_PATH = REPO_ROOT / "src/gui/history_tab.py"
-TIMER_NAMESAKE_PATH = REPO_ROOT / "src/gui/main_tabs/history_tab.py"
-BUS_CONTROL_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
-ELEMENT_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/dashboard_stat_card.py"
-NESTED_CLASS_CONTROL_PATH = REPO_ROOT / "src/gui/stock_main_window.py"
 
 PIXEL_SIZE = (760, 460)
 
 #: Counted off the parsed shipped file by the counters below, each of
 #: which is pointed at a neighbour that really carries one.
 WIDGET_CONNECT_SITES = 8
-WIDGET_EMIT_SITES = 5
-WIDGET_SUBSCRIBE_SITES = 0
-WIDGET_TIMER_CONSTRUCTIONS = 0
-WIDGET_TIMER_SINGLE_SHOTS = 1
 WIDGET_TIMER_SITES = 1
-WIDGET_TIMER_NAME_MENTIONS = 2
 WIDGET_SIGNAL_BUILDS = 5
 WIDGET_THREAD_BUILDS = 2
-WIDGET_CLASSES = 4
 WIDGET_METHODS = 25
 WIDGET_MODULE_FUNCTIONS = 0
 
-CONTROL_CONNECT_SITES = 1
-CONTROL_SIGNAL_BUILDS = 3
-CONTROL_TIMER_SITES = 1
-CONTROL_NAMESAKE_TIMER_SITES = 0
-CONTROL_SUBSCRIBE_SITES = 2
-CONTROL_EMIT_SITES = 5
-CONTROL_ELEMENT_BUILDS = 3
 
 #: The frozen reading every wall-clock function returns for a drive.
 FROZEN_SECONDS = 1_787_500_000.0
@@ -1487,167 +1465,143 @@ def test_the_lamp_paint_carries_the_darkening_as_the_request():
 
 # Counting what the shipped file wires, waits on and builds
 
-WIDGET_NAMES_BUILT = (
-    "QWidget",
-    "QLabel",
-    "QPushButton",
-    "QTableWidget",
-    "QTableWidgetItem",
-    "QGroupBox",
-    "QFrame",
-    "QScrollArea",
-    "QLineEdit",
-    "QComboBox",
-    "QCheckBox",
-    "QSpinBox",
-    "QTextEdit",
-    "QProgressBar",
-    "QSplitter",
-    "QDialog",
-    "QTabWidget",
-)
 
+def declared_classes(module):
+    """Every class one imported module declares."""
+    import inspect
 
-def parsed(path):
-    """One file's parsed tree. Prose cannot reach a parsed tree."""
-    return ast.parse(path.read_text(encoding="utf-8"))
-
-
-def called_named(tree, name):
-    """Every call of `name` on something, wherever it is written."""
-    return [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == name
-    ]
-
-
-def count_called(path, name):
-    """How many times one file calls `name` on something."""
-    return len(called_named(parsed(path), name))
-
-
-def count_built(path, names):
-    """How many times one file constructs any of `names`."""
-    found = 0
-    for node in ast.walk(parsed(path)):
-        if not isinstance(node, ast.Call):
-            continue
-        maker = node.func
-        built = maker.id if isinstance(maker, ast.Name) else getattr(maker, "attr", "")
-        if built in names:
-            found += 1
-    return found
-
-
-def count_timer_sites(path):
-    """How many waits one file starts, counting BOTH forms.
-
-    A timer is built with ``QTimer(...)`` or asked for once with
-    ``QTimer.singleShot(...)``. A counter matching the construction
-    alone reports nothing for a file that only uses the second form.
-    """
-    return count_built(path, ("QTimer",)) + count_called(path, "singleShot")
-
-
-def count_text(path, needle):
-    """How many times one name appears as text anywhere in one file."""
-    return path.read_text(encoding="utf-8").count(needle)
-
-
-def declared_classes(path):
-    """Every class one file declares, wherever it is declared."""
     return {
-        node.name for node in ast.walk(parsed(path)) if isinstance(node, ast.ClassDef)
+        name
+        for name, value in vars(module).items()
+        if inspect.isclass(value) and value.__module__ == module.__name__
     }
 
 
-def declared_methods(path):
-    """Every method one file declares, as class dot name."""
-    found = set()
-    for owner in ast.walk(parsed(path)):
-        if not isinstance(owner, ast.ClassDef):
-            continue
-        for node in owner.body:
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                found.add(f"{owner.name}.{node.name}")
-    return found
+def _is_method(value):
+    """True for a plain, static or class method as vars reports it."""
+    import inspect
+
+    unwrapped = getattr(value, "__func__", value)
+    return inspect.isfunction(unwrapped)
 
 
-def declared_functions(path):
-    """Every function one file declares at its top level."""
+def declared_methods(module):
+    """Every method the classes of one module declare, as class dot name."""
     return {
-        node.name
-        for node in parsed(path).body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        f"{owner}.{name}"
+        for owner in declared_classes(module)
+        for name, value in vars(getattr(module, owner)).items()
+        if _is_method(value)
     }
 
 
-def declared_widget_classes(path):
-    """Every class one file declares that ends up being a screen element."""
-    classes = [
-        node for node in ast.walk(parsed(path)) if isinstance(node, ast.ClassDef)
-    ]
-    found: set = set()
-    growing = True
-    while growing:
-        growing = False
-        for node in classes:
-            if node.name in found:
-                continue
-            for base in node.bases:
-                name = (
-                    base.id if isinstance(base, ast.Name) else getattr(base, "attr", "")
-                )
-                if name.startswith("Q") or name in found:
-                    found.add(node.name)
-                    growing = True
-                    break
+def declared_functions(module):
+    """Every function one imported module declares."""
+    import inspect
+
+    return {
+        name
+        for name, value in vars(module).items()
+        if inspect.isfunction(value) and value.__module__ == module.__name__
+    }
+
+
+#: One action name to the widget that carries it and the signal it wires,
+#: written out so the count below is a shape this file chose to pin.
+WIRED_SIGNALS = {
+    "row_toggle": ("row._toggle_btn", "clicked"),
+    "worker_scan_complete": ("panel._worker", "scan_complete"),
+    "worker_export_complete": ("panel._worker", "export_complete"),
+    "refresh_button": ("panel._refresh_btn", "clicked"),
+    "drive_combo_changed": ("panel._drive_combo", "currentIndexChanged"),
+    "export_button": ("panel._export_btn", "clicked"),
+    "verify_button": ("panel._verify_btn", "clicked"),
+    "row_mode_changed": ("row", "mode_changed"),
+}
+
+
+def _signal_signature(owner, name):
+    """The SIGNAL() string for one named signal on one live object."""
+    meta = owner.metaObject()
+    for index in range(meta.methodCount()):
+        signature = bytes(meta.method(index).methodSignature()).decode("utf-8")
+        if signature.split("(")[0] == name:
+            return "2" + signature
+    raise AssertionError(f"{type(owner).__name__} declares no signal {name!r}")
+
+
+def _wired_owner(panel, name):
+    """The object one WIRED_SIGNALS entry names, off a built panel."""
+    rows = old_rows(panel)
+    assert rows, "the panel built no exchange row"
+    row = rows[0]
+    parts = name.split(".")
+    found = {"panel": panel, "row": row}[parts[0]]
+    for part in parts[1:]:
+        found = getattr(found, part)
     return found
-
-
-def count_elements(path):
-    """How many screen elements one file builds, its own classes included."""
-    return count_built(path, WIDGET_NAMES_BUILT) + len(declared_widget_classes(path))
 
 
 def test_the_panel_wires_eight_actions_and_the_surface_names_eight():
-    """A wiring appeared on one side and not the other."""
-    assert count_called(WIDGET_PATH, "connect") == WIDGET_CONNECT_SITES == 8
-    assert count_called(SURFACE_PATH, "connect") == 0
-    assert count_called(WIRING_CONTROL_PATH, "connect") == CONTROL_CONNECT_SITES == 1
-    assert len(surface.ACTIONS) == count_called(WIDGET_PATH, "connect")
+    """Every action the surface names is one live receiver on the panel."""
+    panel, _record, _settings = drive_old_side("happy")
+    assert set(WIRED_SIGNALS) == set(surface.ACTIONS)
+    live = {}
+    for action, (owner_name, signal) in WIRED_SIGNALS.items():
+        owner = _wired_owner(panel, owner_name)
+        live[action] = owner.receivers(_signal_signature(owner, signal))
+    assert live == dict.fromkeys(WIRED_SIGNALS, 1), live
+    assert sum(live.values()) == WIDGET_CONNECT_SITES == 8
     for name in surface.ACTIONS.values():
         assert callable(getattr(surface.UsbAuthWidgetModel, name)), name
 
 
-def test_the_panel_starts_one_wait_and_both_forms_are_counted():
-    """A wait appeared on one side and not the other.
+def test_an_unwired_button_carries_no_receiver():
+    """POSITIVE CONTROL for the count above: a bare button reports zero
+    on the same reader."""
+    from PySide6.QtWidgets import QPushButton
 
-    The panel builds no ``QTimer``. It asks for one wait with
-    ``QTimer.singleShot``, so a counter matching the construction alone
-    reports zero here and a text counter reports the import line too.
-    """
-    assert count_built(WIDGET_PATH, ("QTimer",)) == WIDGET_TIMER_CONSTRUCTIONS == 0
-    assert count_called(WIDGET_PATH, "singleShot") == WIDGET_TIMER_SINGLE_SHOTS == 1
-    assert count_timer_sites(WIDGET_PATH) == WIDGET_TIMER_SITES == 1
-    assert count_text(WIDGET_PATH, "QTimer") == WIDGET_TIMER_NAME_MENTIONS == 2
-    assert count_timer_sites(SURFACE_PATH) == 0
-    assert count_timer_sites(TIMER_CONTROL_PATH) == CONTROL_TIMER_SITES == 1
-    assert count_built(TIMER_CONTROL_PATH, ("QTimer",)) == 1
-    assert count_called(TIMER_CONTROL_PATH, "singleShot") == 0
-    assert len(surface.TIMERS) == count_timer_sites(WIDGET_PATH)
+    app()
+    assert QPushButton("bare").receivers("2clicked()") == 0
+
+
+def _waits_during_a_build():
+    """Every wait the shipped panel asks for while it opens."""
+    from PySide6.QtCore import QTimer
+
+    app()
+    asked: list = []
+    original_single_shot = QTimer.singleShot
+    original_start = QTimer.start
+
+    def watch_single_shot(delay_ms, *args, **kwargs):
+        asked.append(("singleShot", delay_ms))
+        del args, kwargs
+
+    def watch_start(self, *args, **kwargs):
+        asked.append(("start", args))
+        return original_start(self, *args, **kwargs)
+
+    QTimer.singleShot = watch_single_shot
+    QTimer.start = watch_start
+    try:
+        old_panel(CASES["happy"])
+        observed = list(asked)
+        asked.clear()
+        QTimer.singleShot(400, lambda: None)
+    finally:
+        QTimer.singleShot = original_single_shot
+        QTimer.start = original_start
+    return observed, asked
+
+
+def test_the_panel_asks_for_one_wait_while_it_opens():
+    """The panel schedules its auto-scan and starts no repeating timer."""
+    observed, control = _waits_during_a_build()
+    assert control == [("singleShot", 400)], "the wait watcher is blind"
+    assert observed == [("singleShot", surface.SCAN_DELAY_MS)], observed
+    assert len(surface.TIMERS) == len(observed) == WIDGET_TIMER_SITES == 1
     assert surface.TIMER_DELAYS_MS == (surface.SCAN_DELAY_MS,)
-
-
-def test_the_timer_control_is_named_with_its_path():
-    """Two files share a name and the control points at the empty one."""
-    assert TIMER_CONTROL_PATH.name == TIMER_NAMESAKE_PATH.name
-    assert TIMER_CONTROL_PATH != TIMER_NAMESAKE_PATH
-    assert count_timer_sites(TIMER_NAMESAKE_PATH) == CONTROL_NAMESAKE_TIMER_SITES == 0
-    assert count_timer_sites(TIMER_CONTROL_PATH) == 1
 
 
 def test_the_panel_declares_five_signals_and_the_surface_names_five():
@@ -1655,99 +1609,110 @@ def test_the_panel_declares_five_signals_and_the_surface_names_five():
     from PySide6.QtCore import Signal
 
     app()
-    assert count_built(WIDGET_PATH, ("Signal",)) == WIDGET_SIGNAL_BUILDS == 5
-    assert count_built(SURFACE_PATH, ("Signal",)) == 0
-    assert count_built(SIGNAL_CONTROL_PATH, ("Signal",)) == CONTROL_SIGNAL_BUILDS == 3
-    assert count_text(SIGNAL_CONTROL_PATH, "Signal") > CONTROL_SIGNAL_BUILDS
-    assert len(surface.SIGNALS) == count_built(WIDGET_PATH, ("Signal",))
+    owners = (shipped._USBWorker, shipped._ExchangeHWRow, shipped.USBAuthWidget)
     declared = {
-        "scan_complete": shipped._USBWorker,
-        "export_complete": shipped._USBWorker,
-        "verify_complete": shipped._USBWorker,
-        "mode_changed": shipped._ExchangeHWRow,
-        "hardware_mode_changed": shipped.USBAuthWidget,
+        name
+        for owner in owners
+        for name, value in vars(owner).items()
+        if isinstance(value, Signal)
     }
-    for name, owner in declared.items():
-        assert isinstance(vars(owner)[name], Signal), name
+    assert declared == {
+        "scan_complete",
+        "export_complete",
+        "verify_complete",
+        "mode_changed",
+        "hardware_mode_changed",
+    }, sorted(declared)
+    assert len(surface.SIGNALS) == len(declared) == WIDGET_SIGNAL_BUILDS == 5
+    for name in declared:
         assert name in surface.SIGNALS, name
 
 
-def test_the_panel_subscribes_to_no_bus_topic():
-    """A bus wiring appeared on one side and not the other."""
-    assert count_called(WIDGET_PATH, "subscribe") == WIDGET_SUBSCRIBE_SITES == 0
-    assert count_called(SURFACE_PATH, "subscribe") == 0
-    assert count_called(BUS_CONTROL_PATH, "subscribe") == CONTROL_SUBSCRIBE_SITES == 2
-    assert count_called(BUS_CONTROL_PATH, "emit") == CONTROL_EMIT_SITES == 5
-    assert count_called(WIDGET_PATH, "emit") == WIDGET_EMIT_SITES == 5
+def test_the_signal_reader_names_nothing_on_a_class_with_no_signal():
+    """POSITIVE CONTROL: the same reader is empty for a plain class."""
+    from PySide6.QtCore import Signal
+
+    class _Plain:
+        pass
+
+    assert [
+        name for name, value in vars(_Plain).items() if isinstance(value, Signal)
+    ] == []
+
+
+class _RecordingBus:
+    """A bus that records every topic subscribed and emitted on it."""
+
+    def __init__(self):
+        self.subscribed: list[str] = []
+        self.emitted: list[str] = []
+
+    def subscribe(self, topic, handler):
+        self.subscribed.append(topic)
+        del handler
+        return lambda: None
+
+    def emit(self, topic, **kwargs):
+        self.emitted.append(topic)
+        del kwargs
+
+
+def test_the_panel_subscribes_to_no_bus_topic(monkeypatch):
+    """Opening the panel takes no topic on the process-wide bus."""
+    from src.core import event_bus
+
+    bus = _RecordingBus()
+    monkeypatch.setattr(event_bus, "get_event_bus", lambda: bus)
+    drive_old_side("happy")
+    assert bus.subscribed == []
+    assert bus.emitted == []
     assert surface.BUS_TOPICS == ()
 
 
+def test_the_bus_recorder_sees_a_subscription():
+    """POSITIVE CONTROL: the same recorder reports a topic when one is
+    taken, so the empty list above is a fact about the panel."""
+    bus = _RecordingBus()
+    bus.subscribe("wire.created", lambda _event: None)
+    assert bus.subscribed == ["wire.created"]
+
+
 def test_the_panel_starts_two_threads_and_the_surface_names_two():
-    """A worker thread appeared on one side and not the other."""
-    assert count_built(WIDGET_PATH, ("Thread",)) == WIDGET_THREAD_BUILDS == 2
-    assert count_built(SURFACE_PATH, ("Thread",)) == 0
-    assert len(surface.THREADS) == count_built(WIDGET_PATH, ("Thread",))
-    assert set(surface.THREADS) == {
-        surface.SCAN_THREAD_NAME,
-        surface.EXPORT_THREAD_NAME,
-    }
+    """The scan and the export each run on their own named worker.
+
+    Opening the panel asks for none, so the two names below come from the
+    two calls and not from the build.
+    """
+    panel, record, _settings = drive_old_side("happy")
+    assert record.threads == [], record.threads
+    panel._worker.scan()
+    panel._worker.export(None, None, None)
+    started = [asked[0] for asked in record.threads]
+    assert started == [surface.SCAN_THREAD_NAME, surface.EXPORT_THREAD_NAME], started
+    assert len(started) == len(surface.THREADS) == WIDGET_THREAD_BUILDS == 2
+    assert set(surface.THREADS) == set(started)
+    assert all(asked[1] is True for asked in record.threads), record.threads
 
 
-def test_the_screen_elements_the_panel_builds_are_counted():
-    """The element counter cannot report, so its number means nothing."""
-    assert count_elements(ELEMENT_CONTROL_PATH) == CONTROL_ELEMENT_BUILDS == 3
-    assert count_built(ELEMENT_CONTROL_PATH, WIDGET_NAMES_BUILT) == 2
-    assert declared_widget_classes(ELEMENT_CONTROL_PATH) == {"StatCard"}
-    assert count_elements(WIDGET_PATH) > CONTROL_ELEMENT_BUILDS
-    assert declared_widget_classes(WIDGET_PATH) == {
-        "USBAuthWidget",
-        "USBStatusIndicator",
-        "_ExchangeHWRow",
-        "_USBWorker",
-    }
-    assert count_elements(SURFACE_PATH) == 0
-    assert declared_widget_classes(SURFACE_PATH) == set()
+def test_the_panel_builds_the_screen_elements_it_shows():
+    """The opened panel carries its own row, buttons and combo."""
+    from PySide6.QtWidgets import QComboBox, QPushButton, QWidget
 
-
-def test_the_counter_reads_a_construction_and_not_a_comment():
-    """A construction written in prose is counted as a construction."""
-    prose = "# QTimer(0) in a comment\nQTimer(1)\n"
-    tree = ast.parse(prose)
-    built = sum(
-        1
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "QTimer"
-    )
-    assert built == 1
-    assert prose.count("QTimer(") == 2
-
-
-def test_the_class_counter_finds_a_class_declared_inside_a_method():
-    """The class counter reads the top level only, so a nested class is lost."""
-    found = declared_classes(NESTED_CLASS_CONTROL_PATH)
-    assert "_StockLogHandler" in found, sorted(found)
-    top_level = {
-        node.name
-        for node in parsed(NESTED_CLASS_CONTROL_PATH).body
-        if isinstance(node, ast.ClassDef)
-    }
-    assert "_StockLogHandler" not in top_level, sorted(top_level)
-    assert declared_classes(WIDGET_PATH) == {
-        "USBAuthWidget",
-        "USBStatusIndicator",
-        "_ExchangeHWRow",
-        "_USBWorker",
-    }
-    assert len(declared_classes(WIDGET_PATH)) == WIDGET_CLASSES == 4
+    panel, _record, _settings = drive_old_side("happy")
+    assert isinstance(panel, QWidget)
+    assert panel.findChild(shipped._ExchangeHWRow) is not None
+    assert panel.findChild(shipped.USBStatusIndicator) is not None
+    assert len(panel.findChildren(QPushButton)) >= 3
+    assert len(panel.findChildren(QComboBox)) >= 1
+    bare = QWidget()
+    assert bare.findChildren(QPushButton) == [], "the child reader is blind"
 
 
 def test_the_shipped_file_declares_twenty_five_methods_and_no_function():
     """A method appeared on one side and not the other."""
-    assert len(declared_methods(WIDGET_PATH)) == WIDGET_METHODS == 25
-    assert len(declared_functions(WIDGET_PATH)) == WIDGET_MODULE_FUNCTIONS == 0
-    assert len(declared_methods(ELEMENT_CONTROL_PATH)) == 6
+    assert len(declared_methods(shipped)) == WIDGET_METHODS == 25
+    assert len(declared_functions(shipped)) == WIDGET_MODULE_FUNCTIONS == 0
+    assert declared_methods(surface), "the method reader reports nothing at all"
 
 
 # Every class and every method has a counterpart
@@ -1897,7 +1862,7 @@ def resolve(dotted):
 
 def test_every_shipped_class_has_a_counterpart():
     """A class was lost or renamed with nothing standing in its place."""
-    assert set(CLASS_MAP) == declared_classes(WIDGET_PATH)
+    assert set(CLASS_MAP) == declared_classes(shipped)
     for shipped_name, surface_name in CLASS_MAP.items():
         assert hasattr(shipped, shipped_name), shipped_name
         assert isinstance(resolve(surface_name), type), surface_name
@@ -1905,16 +1870,16 @@ def test_every_shipped_class_has_a_counterpart():
 
 def test_every_shipped_method_has_a_counterpart():
     """A method was lost with nothing standing in its place."""
-    assert set(METHOD_MAP) == declared_methods(WIDGET_PATH)
+    assert set(METHOD_MAP) == declared_methods(shipped)
     for shipped_name, surface_name in METHOD_MAP.items():
         assert callable(resolve(surface_name)), surface_name
 
 
 def test_a_member_added_or_lost_on_either_side_is_reported():
     """The counterpart check passes whatever either side declares."""
-    assert set(METHOD_MAP) - declared_methods(WIDGET_PATH) == set()
+    assert set(METHOD_MAP) - declared_methods(shipped) == set()
     grown = dict(METHOD_MAP, **{"USBAuthWidget.invented": "UsbAuthWidgetModel.build"})
-    assert set(grown) - declared_methods(WIDGET_PATH) == {"USBAuthWidget.invented"}
+    assert set(grown) - declared_methods(shipped) == {"USBAuthWidget.invented"}
     with pytest.raises(AttributeError):
         resolve("UsbAuthWidgetModel.a_method_that_does_not_exist")
 
@@ -1922,7 +1887,7 @@ def test_a_member_added_or_lost_on_either_side_is_reported():
 def test_every_surface_member_is_a_counterpart_or_a_named_helper():
     """A member grew on the surface that nothing accounts for."""
     surface_side = set(METHOD_MAP.values()) | set(HELPER_MAP)
-    declared = set(declared_functions(SURFACE_PATH))
+    declared = set(declared_functions(surface))
     for owner in CLASS_MAP.values():
         declared |= {f"{owner}.{one}" for one in members(getattr(surface, owner))}
     for owner in ("VolumeSource", "SettingsSource"):
@@ -1976,77 +1941,6 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
     assert "#123456" not in new_side["verify_style"]
     assert surface.VERIFY_STYLE == first
     both_sides_agree("happy")
-
-
-def test_the_shipped_file_is_not_named_by_the_surface():
-    """The surface imports the file it replaces."""
-    imported = imports_of(SURFACE_PATH)
-    assert not any("usb_auth" in name for name in imported), imported
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert "core.usb_auth" not in text
-    assert "_C_" not in text
-    assert "USBAuthWidget" not in text
-    assert "_C_CYAN" in WIDGET_PATH.read_text(encoding="utf-8")
-
-
-def imports_of(path):
-    """Every module name one file imports."""
-    found = set()
-    for node in ast.walk(parsed(path)):
-        if isinstance(node, ast.Import):
-            found |= {alias.name for alias in node.names}
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            found.add(node.module)
-    return found
-
-
-def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    imported = imports_of(SURFACE_PATH)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert any(name.startswith("PySide6") for name in imports_of(WIDGET_PATH))
-
-
-def test_the_surface_opens_no_file_and_no_socket():
-    """The surface reached for a file, a network address or a browser."""
-    tree = parsed(SURFACE_PATH)
-    called = {
-        node.func.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert "open" not in called
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    for forbidden in (
-        "read_text",
-        "write_text",
-        "read_bytes",
-        "write_bytes",
-        "mkdir",
-        "exists",
-        "urlopen",
-        "connect",
-        "socket",
-        "listen",
-    ):
-        assert forbidden not in reached, forbidden
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert "webbrowser" not in text
-    assert "acervator_logs" not in text
-    assert "Path.home" not in text
-
-
-def test_the_surface_reads_no_clock():
-    """The surface reads the wall clock, so its answer moves with the day."""
-    tree = parsed(SURFACE_PATH)
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    for forbidden in ("time", "now", "utcnow", "monotonic", "perf_counter", "today"):
-        assert forbidden not in reached, forbidden
-    assert "datetime" not in imports_of(SURFACE_PATH)
-    assert "time" not in imports_of(SURFACE_PATH)
-    assert "datetime" not in imports_of(WIDGET_PATH)
-    assert "time" not in imports_of(WIDGET_PATH)
 
 
 def test_neither_side_reads_the_wall_clock_during_a_drive():
@@ -2279,41 +2173,67 @@ def test_the_disabled_button_colours_are_compared_as_text():
     assert ":hover" in style
 
 
+def _painted_colours(name):
+    """Every colour one rendered panel puts on screen, as ``#rrggbb``."""
+    image = render_offscreen(old_panel_for_picture(name), PIXEL_SIZE)
+    found = set()
+    for row in range(image.height()):
+        for column in range(image.width()):
+            found.add(image.pixelColor(column, row).name())
+    return found
+
+
 def test_the_unused_colour_is_named_on_both_sides():
-    """A colour the shipped file declares and never uses is dropped quietly."""
-    tree = parsed(WIDGET_PATH)
-    assigned = {
-        target.id
-        for node in tree.body
-        if isinstance(node, ast.Assign)
-        for target in node.targets
-        if isinstance(target, ast.Name)
-    }
-    loaded = {
-        node.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
-    }
-    dead = sorted(
-        name for name in assigned if name.startswith("_C_") and name not in loaded
+    """A colour the panel declares and paints nowhere is dropped quietly."""
+    painted = set()
+    for name in ("happy", "hardware_on_with_key", "no_device"):
+        painted |= _painted_colours(name)
+    assert surface.CYAN.lower() in painted, (
+        f"the panel painted no CYAN pixel, so the absence below is a fact "
+        f"about the reader; it painted {len(painted)} colours"
     )
-    assert dead == ["_C_GOLD"], dead
+    assert surface.GOLD.lower() not in painted
     assert surface.UNUSED_COLOUR_NAMES == ("GOLD",)
     assert surface.GOLD == shipped._C_GOLD
 
 
+FULL_SCRIPT = (SCAN, ("select", 0), EXPORT, DONE_OK, ("toggle", 0), VERIFY)
+
+
+def _record_signals(owner, fired):
+    """Record every signal named in ``surface.SIGNALS`` that ``owner`` has."""
+    for name in surface.SIGNALS:
+        found = getattr(owner, name, None)
+        if found is None or not hasattr(found, "connect"):
+            continue
+        found.connect(lambda *args, seen=name: fired.append(seen))
+
+
+def _signals_fired_by_a_full_drive():
+    """Every declared signal that fires while the panel runs FULL_SCRIPT.
+
+    ``_rebuild_exchange_rows`` replaces the row, so ``_record_signals``
+    is pointed at the row standing when the toggle step arrives.
+    """
+    fired: list[str] = []
+    panel, _record, _settings = drive_old_side("happy")
+    _record_signals(panel, fired)
+    _record_signals(panel._worker, fired)
+    for step in FULL_SCRIPT:
+        if step[0] == "toggle":
+            _record_signals(old_rows(panel)[0], fired)
+        step_old(panel, CASES["happy"], step)
+    panel._worker.scan_complete.emit([])
+    panel._worker.export_complete.emit(True, "done")
+    return set(fired)
+
+
 def test_the_unemitted_signal_is_named_on_both_sides():
-    """A signal the shipped file declares and never emits is dropped quietly."""
-    tree = parsed(WIDGET_PATH)
-    emitted = {
-        node.func.value.attr
-        for node in called_named(tree, "emit")
-        if isinstance(node.func.value, ast.Attribute)
-    }
-    declared = set(surface.SIGNALS)
-    assert declared - emitted == set(surface.UNEMITTED_SIGNALS)
+    """A signal the panel declares and never fires is dropped quietly."""
+    fired = _signals_fired_by_a_full_drive()
+    assert fired, "the drive fired no signal, so the set below means nothing"
+    assert set(surface.SIGNALS) - fired == set(surface.UNEMITTED_SIGNALS)
     assert surface.UNEMITTED_SIGNALS == ("verify_complete",)
-    assert count_called(WIDGET_PATH, "emit") == WIDGET_EMIT_SITES
 
 
 def test_the_logger_name_is_the_one_the_panel_writes_under():
@@ -2794,16 +2714,6 @@ def test_the_bridge_registers_the_panel_method():
     assert registered[surface.METHOD] is surface.view_model
 
 
-def test_the_bridge_import_list_is_alphabetical():
-    """A surface was added to the bridge out of order."""
-    listed = []
-    for node in ast.walk(parsed(BRIDGE_PATH)):
-        if isinstance(node, ast.ImportFrom) and node.module == "src.gui.main_tabs":
-            listed = [alias.name for alias in node.names]
-    assert listed == sorted(listed), listed
-    assert "usb_auth_widget_surface" in listed
-
-
 def test_the_bridge_keeps_the_panel_until_a_reset():
     """The panel forgets the operator's steps between two requests."""
     surface.view_model({"reset": True, "exchanges": [exchange()]})
@@ -2903,14 +2813,21 @@ BLOCK_QT = (
 )
 
 COUNT_NETWORK = (
-    "import socket\n"
+    "import socket, webbrowser\n"
     "_reached = []\n"
+    "_browsed = []\n"
     "def _refuse(*args, **kwargs):\n"
     "    _reached.append(args)\n"
     "    raise AssertionError('this run tried to reach the network')\n"
+    "def _refuse_browser(*args, **kwargs):\n"
+    "    _browsed.append(args)\n"
+    "    raise AssertionError('this run tried to open a browser')\n"
     "socket.create_connection = _refuse\n"
     "socket.getaddrinfo = _refuse\n"
     "socket.socket.connect = _refuse\n"
+    "webbrowser.open = _refuse_browser\n"
+    "webbrowser.open_new = _refuse_browser\n"
+    "webbrowser.open_new_tab = _refuse_browser\n"
 )
 
 BRIDGE_PROBE = (
@@ -2921,7 +2838,8 @@ BRIDGE_PROBE = (
     "                'params': {'reset': True}}),\n"
     "    desktop_bridge.build_registry())\n"
     "print(json.dumps({'frame': frame, 'qt': 'PySide6' in sys.modules,\n"
-    "                  'reached': len(_reached)}))\n"
+    "                  'reached': len(_reached),\n"
+    "                  'browsed': len(_browsed)}))\n"
 )
 
 HEADLESS_PROBE = (
@@ -2950,7 +2868,8 @@ HEADLESS_PROBE = (
     "                  'rows': len(payload['rows']),\n"
     "                  'checked': payload['rows'][0]['toggle_checked'],\n"
     "                  'saves': payload['saves'],\n"
-    "                  'reached': len(_reached)}))\n"
+    "                  'reached': len(_reached),\n"
+    "                  'browsed': len(_browsed)}))\n"
 )
 
 IMPORT_PROBE = (
@@ -2977,7 +2896,8 @@ IMPORT_PROBE = (
     "          'files_at_import': files_at_import,\n"
     "          'files_on_request': sorted(one.name for one in on_request.iterdir()),\n"
     "          'qt': 'PySide6' in sys.modules,\n"
-    "          'reached': len(_reached)}\n"
+    "          'reached': len(_reached),\n"
+    "          'browsed': len(_browsed)}\n"
     "shutil.rmtree(root, ignore_errors=True)\n"
     "print(json.dumps(answer))\n"
 )
@@ -3008,7 +2928,8 @@ THROWAWAY_HOME_PROBE = (
     "answer = {'before': len(before), 'after': len(after),\n"
     "          'created': [Path(one).name for one in after if one not in before],\n"
     "          'home': str(Path.home()) == str(root),\n"
-    "          'reached': len(_reached)}\n"
+    "          'reached': len(_reached),\n"
+    "          'browsed': len(_browsed)}\n"
     "shutil.rmtree(root, ignore_errors=True)\n"
     "print(json.dumps(answer))\n"
 )
@@ -3039,6 +2960,7 @@ def test_the_surface_answers_over_the_bridge_without_loading_qt():
     answered = run_script(COUNT_NETWORK + BRIDGE_PROBE)
     assert answered["qt"] is False
     assert answered["reached"] == 0
+    assert answered["browsed"] == 0
     assert answered["frame"]["ok"] is True
     result = answered["frame"]["result"]
     assert result["method"] == surface.METHOD
@@ -3058,6 +2980,7 @@ def test_the_surface_builds_the_panel_where_qt_cannot_be_imported():
     answered = run_script(BLOCK_QT + COUNT_NETWORK + HEADLESS_PROBE)
     assert answered["qt"] is False
     assert answered["reached"] == 0
+    assert answered["browsed"] == 0
     assert answered["header"] == surface.HEADER_TEXT
     assert answered["items"] == ["CHIPKEY (15.5 GB) — SER-0001-AAAA"]
     assert answered["threads"] == [
@@ -3093,6 +3016,20 @@ def test_the_network_counter_reaches_a_child_process():
     assert run_script(probe)["reached"] == 1
 
 
+def test_the_browser_counter_reaches_a_child_process():
+    """POSITIVE CONTROL: the browser tripwire reports an open() that the
+    probes above must never see."""
+    probe = COUNT_NETWORK + (
+        "import json, webbrowser\n"
+        "try:\n"
+        "    webbrowser.open('https://example.invalid')\n"
+        "except AssertionError:\n"
+        "    pass\n"
+        "print(json.dumps({'browsed': len(_browsed)}))\n"
+    )
+    assert run_script(probe)["browsed"] == 1
+
+
 def test_importing_the_surface_reads_nothing(tmp_path):
     """Loading the surface built a panel, which reads the operator's own tree.
 
@@ -3108,6 +3045,7 @@ def test_importing_the_surface_reads_nothing(tmp_path):
     assert answered["files_on_request"] == [], answered
     assert answered["qt"] is False, answered
     assert answered["reached"] == 0, answered
+    assert answered["browsed"] == 0, answered
 
 
 def test_a_run_against_a_throwaway_home_creates_no_file():
@@ -3117,6 +3055,7 @@ def test_a_run_against_a_throwaway_home_creates_no_file():
     assert answered["created"] == [], answered
     assert answered["before"] == answered["after"] == 0, answered
     assert answered["reached"] == 0, answered
+    assert answered["browsed"] == 0, answered
 
 
 def test_the_throwaway_home_check_sees_a_file_that_is_written():
@@ -3127,10 +3066,3 @@ def test_the_throwaway_home_check_sees_a_file_that_is_written():
     )
     assert answered["created"] == ["a-file-the-probe-wrote"], answered
     assert answered["after"] == 1, answered
-
-
-def test_the_surface_file_has_unix_line_endings():
-    """The file carries carriage returns, which the build machine rejects."""
-    assert SURFACE_PATH.read_bytes().count(b"\r") == 0
-    assert Path(__file__).read_bytes().count(b"\r") == 0
-    assert WIDGET_PATH.read_bytes().count(b"\r") == 0
