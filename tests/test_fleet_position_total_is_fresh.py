@@ -29,7 +29,6 @@ empty portfolio is a more dangerous lie than a slightly old one.
 
 from __future__ import annotations
 
-import ast
 import sys
 from pathlib import Path
 
@@ -39,21 +38,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-import src.trading.bot_container as bc  # noqa: E402
 from src.trading.bot_container import BotManager, BotState  # noqa: E402
-
-AGG_SRC = (Path(bc.__file__).parent / "container" / "aggregation.py").read_text(
-    encoding="utf-8"
-)
-
-
-def _owning_source(owner, method_name: str) -> str:
-    """Source of the module that really defines ``method_name``."""
-    import inspect
-
-    path = inspect.getsourcefile(getattr(owner, method_name))
-    assert path is not None, method_name
-    return Path(path).read_text(encoding="utf-8")
 
 
 class _Stats:
@@ -160,22 +145,23 @@ class TestTheFallbackProtectsTheTotal:
 
 
 class TestTheOtherConsumersAlreadyAgree:
-    def test_the_manual_fire_engine_recomputes(self):
-        """If the engine ever moved to the cached field, this fix would
-        re-open the display/engine split it exists to close."""
-        import src.trading.scrumming_bot as sbm
-
-        src = _owning_source(sbm.ScrummingBot, "_execute_manual_rebalance")
-        fn = next(
-            n
-            for n in ast.walk(ast.parse(src))
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and n.name == "_execute_manual_rebalance"
+    def test_the_manual_fire_engine_sizes_off_holdings_not_the_cached_field(self):
+        """``fire_manual`` gives the bot a ``STALE_POSITION_VALUE`` no
+        holdings match, so an engine reading it would size a wider order."""
+        from tests.test_manual_fire_settled_fill import (
+            STALE_POSITION_VALUE,
+            TARGET_USD,
+            fire_manual,
         )
-        seg = ast.get_source_segment(src, fn) or ""
-        assert "self._current_holdings * price" in seg
 
-    def test_the_aggregate_no_longer_only_reads_the_cached_field(self):
-        i = AGG_SRC.index("crypto_position_value_usd +=")
-        window = AGG_SRC[max(0, i - 1800) : i]
-        assert "_current_holdings" in window
+        holdings = 120.0
+        bot = fire_manual(holdings)
+        assert bot.stats.position_value == pytest.approx(STALE_POSITION_VALUE)
+        assert len(bot.placed) == 1, bot.placed
+        assert bot.placed[0]["amount"] == pytest.approx(holdings - TARGET_USD), (
+            f"the engine sold {bot.placed[0]['amount']}, not the "
+            f"{holdings - TARGET_USD} its holdings and price come to"
+        )
+        assert bot.placed[0]["amount"] != pytest.approx(
+            STALE_POSITION_VALUE - TARGET_USD
+        )

@@ -1657,28 +1657,17 @@ def test_the_key_check_reports_a_key_backed_by_the_wrong_value():
     assert not backed({"absent": 1}, "missing", None)
 
 
-def test_a_value_added_later_fails_rather_than_slipping_through():
-    """A new exported value never reaches the comparison.
+def test_a_value_added_later_fails_rather_than_slipping_through(monkeypatch):
+    """A value put on the surface reaches ``surface_constants`` and is
+    reported missing, so the sweep cannot be outgrown."""
+    assert "USD_FORMAT" in surface_constants()
+    values = payload_values(compared_payloads())
+    assert missing_from_payload(surface_constants(), values) == []
 
-    The names are parsed off the file and matched against the names the
-    imported module carries, so neither count is typed here.
-    """
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    parsed = set()
-    for node in tree.body:
-        targets = []
-        if isinstance(node, ast.Assign):
-            targets = node.targets
-        elif isinstance(node, ast.AnnAssign):
-            targets = [node.target]
-        for one in targets:
-            if isinstance(one, ast.Name) and one.id.isupper():
-                parsed.add(one.id)
-    imported = set(surface_constants())
-    assert parsed - imported == set(), sorted(parsed - imported)
-    assert imported - parsed == set(), sorted(imported - parsed)
-    assert len(parsed) == len(imported)
-    assert "USD_FORMAT" in parsed
+    monkeypatch.setattr(surface, "A_LATER_VALUE", "a-later-value", raising=False)
+    named = surface_constants()
+    assert named["A_LATER_VALUE"] == "a-later-value"
+    assert missing_from_payload(named, values) == ["A_LATER_VALUE"]
 
 
 # The rest of the surface, against the shipped side
