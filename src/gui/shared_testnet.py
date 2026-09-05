@@ -1,37 +1,12 @@
-"""
-src/gui/shared_testnet.py — Shared LocalTestnet bridge (Session 18,
-v3.12.0) between Nuclear mode, TestNet tab, and persistence.
+"""Shared LocalTestnet bridge.
 
-ARCHITECTURE
-────────────
-ONE LocalTestnet instance lives on MainWindow. Every subsystem that
-wants to read its state OR append to it goes through this bridge.
-
-WRITE PATH (Nuclear → chain):
-  Nuclear thread     →  SharedTestnetBridge.request_competition(event)
-                        (thread-safe queue.put)
-  Qt main thread     ←  drain QTimer (every 250ms) picks up event
-                     →  PipCompetitionWorker (QThread) runs it
-                     →  worker.done → applies to LocalTestnet on main thread
-                     →  chain_updated signal fires → TestnetTab refreshes
-
-READ PATH (TestNet tab → display):
-  QTimer poll (3s)   →  SharedTestnetBridge.testnet  (direct read; safe because
-                        all writes are marshaled through main thread)
-
-PERSISTENCE
-───────────
-Chain state round-trips to ~/.acervator/testnet_chain.json on every
-mutation (debounced 500ms). Schema version 1. On load, schema mismatch
-→ wipe + warn (no migration).
-
-THREADING INVARIANT (critical)
-──────────────────────────────
-LocalTestnet itself is NOT thread-safe. This module enforces that ALL
-mutations happen on the Qt main thread. Nuclear (engine thread) only
-enqueues requests; it never calls mutating methods directly.
-
-sadp: R28 FL  R44 DRY  R49 LOG  R50 ANCH
+``SharedTestnetBridge.install_on`` attaches one ``LocalTestnet`` to a
+MainWindow and starts ``_drain_queue`` on a timer. Each queued
+``CompetitionRequest`` runs in a ``_CompetitionWorker``, which mutates
+the chain on its own thread while it holds ``_mutation_lock``, one
+worker at a time. ``_save_now`` writes the chain to
+``DEFAULT_PERSIST_PATH`` and ``_try_load`` drops a file whose
+``schema_version`` is not ``SCHEMA_VERSION``.
 """
 
 from __future__ import annotations
@@ -58,16 +33,13 @@ QUEUE_DRAIN_INTERVAL_MS = 250
 PERSIST_DEBOUNCE_MS = 500
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# Event schema
-# ══════════════════════════════════════════════════════════════════════════
-
-
 @dataclass
 class CompetitionRequest:
-    """Request from Nuclear (or any other producer) to run a PoA
-    competition against the shared chain. Enqueued from any thread;
-    executed on Qt main thread."""
+    """One competition to run against the shared chain.
+
+    ``request_competition`` enqueues it from any thread and
+    ``_CompetitionWorker`` runs it.
+    """
 
     symbol: str
     season: int
@@ -75,18 +47,13 @@ class CompetitionRequest:
     round_id: Optional[int] = None  # for caller correlation
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# Worker thread — runs run_demo_competition off the Qt main thread
-# ══════════════════════════════════════════════════════════════════════════
-
-
 class _CompetitionWorker(QThread):
-    """Runs a single competition against the shared LocalTestnet on
-    a worker thread. The mutation itself happens here — but this
-    thread owns exclusive access via the bridge's mutation_lock.
+    """Run one ``CompetitionRequest`` against the shared ``LocalTestnet``.
 
-    Emits `finished_competition(result_dict)` when done. Failures
-    emit a dict with `"error"` key."""
+    ``run`` holds ``_lock`` for the mutation and emits
+    ``finished_competition`` with the result dict, or with an ``error``
+    key when ``run_demo_competition`` raises.
+    """
 
     finished_competition = Signal(dict)
 
@@ -101,10 +68,6 @@ class _CompetitionWorker(QThread):
     def run(self):
         try:
             with self._lock:
-                # sadp: R28 FL — if run_demo_competition raises, we
-                # want the exception in the signal payload, not
-                # swallowed. The worker thread dying silently would
-                # be the exact anti-pattern we've been fighting.
                 result = self._testnet.run_demo_competition(
                     n_bots=self._request.n_bots,
                     season=self._request.season,
@@ -112,7 +75,6 @@ class _CompetitionWorker(QThread):
                 )
             if not isinstance(result, dict):
                 result = {"error": f"unexpected result type: {type(result)}"}
-            # Echo the request for correlation
             result["_request"] = {
                 "symbol": self._request.symbol,
                 "season": self._request.season,
@@ -130,23 +92,15 @@ class _CompetitionWorker(QThread):
             )
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# The bridge — singleton held on MainWindow
-# ══════════════════════════════════════════════════════════════════════════
-
-
 class SharedTestnetBridge(QObject):
-    """Owns the single LocalTestnet instance + the thread-crossing queue.
+    """Owns one ``LocalTestnet`` and the queue that crosses threads into it.
 
-    Lifecycle:
-      bridge = SharedTestnetBridge.install_on(main_win)   # once at startup
-      bridge.request_competition(CompetitionRequest(...)) # any thread
-      bridge.chain_updated                                # signal subscribers
-      bridge.competition_completed                        # signal w/ result
-      bridge.reset()                                      # wipe memory + persist
+    ``request_competition`` enqueues work, ``chain_updated`` and
+    ``competition_completed`` report a finished run, and ``reset``
+    clears the chain and the file at ``_persist_path``.
     """
 
-    chain_updated = Signal()  # fires after any mutation
+    chain_updated = Signal()  # not emitted when the worker returns an error
     competition_completed = Signal(dict)  # full result, including "error"
     chain_reset = Signal(str)  # reason string
 
@@ -158,13 +112,11 @@ class SharedTestnetBridge(QObject):
         self._mutation_lock = threading.Lock()
         self._active_worker: Optional[_CompetitionWorker] = None
 
-        # Drain timer — pulls from queue, spawns worker per request
         self._drain_timer = QTimer(self)
         self._drain_timer.setInterval(QUEUE_DRAIN_INTERVAL_MS)
         self._drain_timer.timeout.connect(self._drain_queue)
         self._drain_timer.start()
 
-        # Persistence debounce timer (single-shot)
         self._persist_timer = QTimer(self)
         self._persist_timer.setInterval(PERSIST_DEBOUNCE_MS)
         self._persist_timer.setSingleShot(True)
@@ -173,10 +125,12 @@ class SharedTestnetBridge(QObject):
     # ── Installation factory (called once by MainWindow) ──────────────
     @classmethod
     def install_on(cls, main_win, persist_path: Optional[Path] = None):
-        """Create the shared LocalTestnet + bridge + attach to main_win.
-        Safe to call exactly once per MainWindow lifecycle.
+        """Create the shared ``LocalTestnet`` and bridge, and attach both
+        to ``main_win``.
 
-        sadp: R28 FL — raises on double-install so we detect misuse."""
+        A second call raises ``RuntimeError`` while ``_testnet_bridge``
+        is set.
+        """
         if getattr(main_win, "_testnet_bridge", None) is not None:
             raise RuntimeError(
                 "SharedTestnetBridge already installed " "on this MainWindow"
@@ -184,9 +138,8 @@ class SharedTestnetBridge(QObject):
         from src.competition.local_testnet import LocalTestnet
 
         path = persist_path or DEFAULT_PERSIST_PATH
-        testnet = LocalTestnet()  # fresh
+        testnet = LocalTestnet()
         bridge = cls(testnet, persist_path=path, parent=main_win)
-        # Try loading persisted state
         bridge._try_load()
         main_win._local_testnet = testnet
         main_win._testnet_bridge = bridge
@@ -197,16 +150,21 @@ class SharedTestnetBridge(QObject):
 
     @property
     def testnet(self):
-        """Direct read access. Writes via request_competition only."""
+        """Read the shared ``LocalTestnet``; ``request_competition`` is
+        the only write path.
+        """
         return self._testnet
 
     def request_competition(self, req: CompetitionRequest) -> None:
-        """Thread-safe enqueue. Callable from Nuclear engine thread."""
+        """Enqueue ``req`` for ``_drain_queue``, from any thread."""
         self._queue.put(req)
 
     def reset(self, reason: str = "user-requested") -> None:
-        """Wipe the in-memory chain + remove persistence file.
-        Must be called on the Qt main thread. Emits chain_reset signal."""
+        """Replace the chain with a fresh ``LocalTestnet`` and unlink
+        ``_persist_path``.
+
+        Emits ``chain_reset`` with ``reason`` and then ``chain_updated``.
+        """
         from src.competition.local_testnet import LocalTestnet
 
         with self._mutation_lock:
@@ -223,11 +181,13 @@ class SharedTestnetBridge(QObject):
     # ── Queue drain (runs on Qt main thread) ──────────────────────────
 
     def _drain_queue(self) -> None:
-        """Pull the next request off the queue, spawn a worker to run
-        it. If a worker is already running, we wait — one-at-a-time to
-        keep the chain state consistent and avoid parallel writers."""
+        """Start a ``_CompetitionWorker`` for the next queued request.
+
+        Returns without dequeuing while ``_active_worker`` is still
+        running.
+        """
         if self._active_worker is not None and self._active_worker.isRunning():
-            return  # serialize
+            return
         try:
             req = self._queue.get_nowait()
         except queue.Empty:
@@ -240,13 +200,16 @@ class SharedTestnetBridge(QObject):
         worker.start()
 
     def _on_worker_done(self, result: dict) -> None:
-        """Called on Qt main thread when a worker finishes."""
+        """Clear ``_active_worker``, then emit ``competition_completed``.
+
+        A result with no ``error`` key also schedules a save and emits
+        ``chain_updated``.
+        """
         self._active_worker = None
         if "error" in result:
             logger.warning("competition worker error: %s", result["error"])
         else:
-            # Mutation already happened inside the worker (under lock);
-            # schedule a persistence save + notify listeners
+            # The worker mutated the chain already, under _mutation_lock.
             self._schedule_save()
             self.chain_updated.emit()
         self.competition_completed.emit(result)
@@ -254,12 +217,17 @@ class SharedTestnetBridge(QObject):
     # ── Persistence ────────────────────────────────────────────────────
 
     def _schedule_save(self) -> None:
-        """Debounced save — coalesces rapid updates into one write."""
+        """Start ``_persist_timer``, which coalesces rapid updates into
+        one ``_save_now``.
+        """
         self._persist_timer.start()
 
     def _save_now(self) -> None:
-        """Serialize the chain state to JSON. Called from the debounced
-        timer on the Qt main thread."""
+        """Write ``_serialize_state`` to ``_persist_path`` through
+        ``atomic_write_json``.
+
+        Does nothing while ``_persist_path`` is ``None``.
+        """
         if self._persist_path is None:
             return
         try:
@@ -278,14 +246,12 @@ class SharedTestnetBridge(QObject):
             logger.warning("chain persist failed: %s", e)
 
     def _serialize_state(self) -> dict:
-        """Capture the current chain state as a plain JSON dict.
-        Field names match LocalTestnet internals verified 2026-04-20:
-          LocalChain: _blocks (list), _txs (dict[hash→tx]), _events
-                       (list), _block_number (int)
-          LocalACRV:  _balances (dict[addr→wei]), _allowances,
-                       _total_supply (int), _mint_log (list[dict])
-          LocalRegistry: _comps (dict[id→dict])
-        Any schema drift here needs a SCHEMA_VERSION bump."""
+        """Return the ``_chain``, ``_acrv`` and ``_registry`` state as a
+        JSON dict.
+
+        ``_restore_state`` reads the same keys, and ``schema_version``
+        carries ``SCHEMA_VERSION``.
+        """
         chain = self._testnet._chain
         acrv = self._testnet._acrv
         registry = self._testnet._registry
@@ -305,9 +271,11 @@ class SharedTestnetBridge(QObject):
         }
 
     def _try_load(self) -> None:
-        """Load persisted state on startup. On any error (missing file,
-        bad JSON, schema mismatch): wipe + warn + continue with empty
-        chain.  sadp: R28 FL"""
+        """Fill the chain from ``_persist_path`` through ``_restore_state``.
+
+        A ``schema_version`` other than ``SCHEMA_VERSION`` or a failed
+        restore unlinks the file; unreadable JSON leaves it in place.
+        """
         if self._persist_path is None or not self._persist_path.is_file():
             return
         try:
@@ -325,11 +293,8 @@ class SharedTestnetBridge(QObject):
             )
             try:
                 self._persist_path.unlink()
-            except Exception:
-                pass  # sadp: R61 ACCEPT — schema wipe
-            # best-effort; unlink failure (file already gone, permission,
-            # etc.) doesn't change behaviour since we're discarding the
-            # old chain anyway and will overwrite on next persist.
+            except Exception as e:
+                logger.warning("stale chain file not removed: %s", e)
             self.chain_reset.emit(f"schema version upgrade ({ver} → {SCHEMA_VERSION})")
             return
         try:
@@ -346,14 +311,16 @@ class SharedTestnetBridge(QObject):
             # Don't leave a corrupt file in place
             try:
                 self._persist_path.unlink()
-            except Exception:
-                pass  # sadp: R61 ACCEPT — corrupt-file
-            # cleanup best-effort; same rationale as above.
+            except Exception as e:
+                logger.warning("corrupt chain file not removed: %s", e)
 
     def _restore_state(self, payload: dict) -> None:
-        """Rehydrate LocalTestnet fields from a serialized payload.
-        Field names must match _serialize_state exactly.
-        sadp: R28 FL — any missing or mismatched field raises"""
+        """Rebuild ``_chain``, ``_acrv`` and ``_registry`` from a
+        ``_serialize_state`` payload.
+
+        A missing or mismatched field raises out of ``Block``,
+        ``TxRecord`` or ``ChainEvent``.
+        """
         from src.competition.local_testnet import Block, TxRecord, ChainEvent
 
         chain = self._testnet._chain
