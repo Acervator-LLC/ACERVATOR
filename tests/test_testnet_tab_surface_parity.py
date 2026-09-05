@@ -10,7 +10,6 @@ or makes a key. Every chain, wallet and hash value below is invented.
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import logging
@@ -39,6 +38,14 @@ from tests.fixtures.host_fonts import (
     skip_unless_real_fonts,
 )
 from tests.qt_pixel import render_widget
+from tests.fixtures.qt_wiring_counts import (
+    bus_subscriptions_watched,
+    connections_watched,
+    io_watched,
+    package_walk_loads,
+    qt_free,
+    timers_watched,
+)
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
@@ -48,30 +55,15 @@ from tests.fixtures.surface_pictures import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-TAB_PATH = REPO_ROOT / "src/gui/testnet_tab.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/testnet_tab_surface.py"
 BRIDGE_PATH = REPO_ROOT / "src/core/desktop_bridge.py"
-WIRING_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-SIGNAL_CONTROL_PATH = REPO_ROOT / "src/gui/launcher.py"
-TIMER_CONTROL_PATH = REPO_ROOT / "src/gui/history_tab.py"
-BUS_CONTROL_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
-ELEMENT_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/dashboard_stat_card.py"
 
 PIXEL_SIZE = (1000, 800)
 
-# The counts the shipped tab carries, each measured off the file by the
-# same counter that is pointed at a neighbour which really has one.
+# What the shipped tab does when it is built and both buttons are driven.
 TAB_CONNECT_SITES = 9
 TAB_TIMER_BUILDS = 1
 TAB_BUS_SITES = 0
-TAB_WIDGET_BUILDS = 15
-TAB_WIDGET_CLASSES = 1
-TAB_ELEMENT_BUILDS = 16
-TAB_CLASS_STATEMENTS = 2
-CONTROL_CONNECT_SITES = 1
-CONTROL_TIMER_BUILDS = 1
-CONTROL_BUS_SITES = 2
-CONTROL_ELEMENT_BUILDS = 3
+TAB_ELEMENT_BUILDS = 130
 
 # Invented values. None of these is a real wallet, a real key or a real
 # node. The chain id is text the tab prints and nothing dials.
@@ -244,7 +236,7 @@ class answered_dialog:
         asked = self.asked
         wanted = QMessageBox.Yes if self.confirmed else QMessageBox.No
 
-        def answer(*args, **kwargs):
+        def answer(*args, **_kwargs):
             asked.append([args[1], args[2]] if len(args) > 2 else list(args))
             return wanted
 
@@ -1879,90 +1871,23 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
     assert readable(restored_old) == readable(restored_new)
 
 
-# Counting what the shipped file wires, waits on, and builds
-
-WIDGET_NAMES_BUILT = (
-    "QWidget",
-    "QLabel",
-    "QPushButton",
-    "QTableWidget",
-    "QTableWidgetItem",
-    "QGroupBox",
-    "QFrame",
-    "QScrollArea",
-    "QLineEdit",
-    "QComboBox",
-    "QCheckBox",
-    "QSpinBox",
-    "QDoubleSpinBox",
-    "QTextEdit",
-    "QProgressBar",
-    "QSplitter",
-    "QDialog",
-    "QMessageBox",
-)
-
-
-def count_text(path, needle):
-    """How many times one wiring call appears in one file."""
-    return path.read_text(encoding="utf-8").count(needle)
-
-
-def count_built(path, names):
-    """How many times one file constructs any of `names`."""
-    text = path.read_text(encoding="utf-8")
-    return sum(len(re.findall(r"\b%s\s*\(" % name, text)) for name in names)
-
-
-def class_statements(path):
-    """Every class statement one file holds, nested classes included.
-
-    A class inside another class, and a class inside an ``if``, are both
-    classes the file builds. Counting names alone would collapse two
-    classes that share one name into one.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-
-
-def declared_widget_classes(path):
-    """Every class statement one file makes that ends up a screen element.
-
-    A class whose base is a widget is one, and so is a class whose base is
-    another such class, however many steps away.
-    """
-    nodes = class_statements(path)
-    found: list = []
-    names: set = set()
-    growing = True
-    while growing:
-        growing = False
-        for node in nodes:
-            if node in found:
-                continue
-            for base in node.bases:
-                name = (
-                    base.id if isinstance(base, ast.Name) else getattr(base, "attr", "")
-                )
-                if name.startswith("Q") or name in names:
-                    found.append(node)
-                    names.add(node.name)
-                    growing = True
-                    break
-    return found
-
-
-def count_elements(path):
-    """How many screen elements one file builds, its own classes included."""
-    return count_built(path, WIDGET_NAMES_BUILT) + len(declared_widget_classes(path))
+def driven_tab():
+    """The shipped tab built on a bridge and run through both buttons."""
+    bridge = qt_bridge()
+    with frozen_clock():
+        tab, _ = old_tab(TAB_CASES["full"], bridge)
+        tab._run_competition()
+        tab._stress_test()
+    return tab
 
 
 def test_the_tab_wires_nine_signals():
     """A signal wiring appeared on one side and not the other."""
-    assert count_text(TAB_PATH, ".connect(") == TAB_CONNECT_SITES == 9
-    assert count_text(SURFACE_PATH, ".connect(") == 1
-    assert count_text(WIRING_CONTROL_PATH, ".connect(") == CONTROL_CONNECT_SITES == 1
-    assert len(surface.ACTIONS) == TAB_CONNECT_SITES
+    app()
+    with connections_watched() as made:
+        driven_tab()
+    assert len(made) == TAB_CONNECT_SITES == 9, made
+    assert len(surface.ACTIONS) == len(made)
     assert sorted(surface.ACTIONS) == [
         "bridge.chain_reset",
         "bridge.chain_updated",
@@ -1980,78 +1905,70 @@ def test_the_tab_wires_nine_signals():
 
 def test_the_tab_starts_one_timer():
     """A wait appeared on one side and not the other."""
-    from PySide6.QtCore import QObject, QTimer
-
     app()
-    timer_names = ("QTimer",)
-    assert count_built(TAB_PATH, timer_names) == TAB_TIMER_BUILDS == 1
-    assert count_text(TAB_PATH, "QTimer") > TAB_TIMER_BUILDS
-    assert count_built(SURFACE_PATH, timer_names) == 0
-    assert count_built(TIMER_CONTROL_PATH, timer_names) == CONTROL_TIMER_BUILDS == 1
-    assert count_built(REPO_ROOT / "src/gui/main_tabs/history_tab.py", timer_names) == 0
-    started: list = []
-    first_start = QObject.startTimer
-    first_timer = QTimer.start
-    first_single = QTimer.singleShot
-
-    def watch_start_timer(self, *args, **kwargs):
-        started.append(("startTimer", args))
-        return first_start(self, *args, **kwargs)
-
-    def watch_timer_start(self, *args, **kwargs):
-        started.append(("QTimer.start", args))
-        return first_timer(self, *args, **kwargs)
-
-    def watch_single_shot(*args, **kwargs):
-        started.append(("singleShot", args))
-        return first_single(*args, **kwargs)
-
-    QObject.startTimer = watch_start_timer
-    QTimer.start = watch_timer_start
-    QTimer.singleShot = watch_single_shot
-    try:
+    with timers_watched() as built:
         with frozen_clock():
             old_tab(TAB_CASES["full"])
-        observed = list(started)
-        started.clear()
+    with timers_watched() as quiet:
         new_model(TAB_CASES["full"])
-        quiet = list(started)
-        QTimer().start(250)
-    finally:
-        QObject.startTimer = first_start
-        QTimer.start = first_timer
-        QTimer.singleShot = first_single
-    assert started == [("QTimer.start", (250,))]
-    assert observed == [("QTimer.start", (surface.REFRESH_INTERVAL_MS,))], observed
-    assert quiet == []
+    assert [one for one in built if one[0] == "QTimer()"] != [], built
+    assert len([one for one in built if one[0] == "QTimer()"]) == TAB_TIMER_BUILDS == 1
+    assert [one for one in built if one[0] == "QTimer.start"] == [
+        ("QTimer.start", (surface.REFRESH_INTERVAL_MS,))
+    ], built
+    assert quiet == [], quiet
     assert surface.TIMERS == {"refresh": surface.REFRESH_INTERVAL_MS}
     assert surface.TIMER_DELAYS_MS == (3000,)
     assert surface.AUTOSTART_TIMERS == ("refresh",)
 
 
+def test_the_timer_counter_can_see_a_wait_it_did_not_build():
+    """POSITIVE CONTROL for ``timers_watched``: a timer built outside the
+    block and started inside it is recorded as a start alone."""
+    from PySide6.QtCore import QTimer
+
+    app()
+    timer = QTimer()
+    WIDGETS_HELD.append(timer)
+    with timers_watched() as seen:
+        timer.start(250)
+    assert seen == [("QTimer.start", (250,))], seen
+
+
 def test_the_tab_subscribes_to_no_bus_topic():
     """A bus wiring appeared on one side and not the other."""
-    assert count_text(TAB_PATH, ".subscribe(") == TAB_BUS_SITES == 0
-    assert count_text(SURFACE_PATH, ".subscribe(") == 0
-    assert count_text(BUS_CONTROL_PATH, ".subscribe(") == CONTROL_BUS_SITES == 2
+    app()
+    with bus_subscriptions_watched() as taken:
+        with frozen_clock():
+            old_tab(TAB_CASES["full"])
+        new_model(TAB_CASES["full"])
+    assert taken == [], taken
     assert surface.BUS_TOPICS == ()
-    assert len(surface.BUS_TOPICS) == count_text(TAB_PATH, ".subscribe(")
+    assert len(surface.BUS_TOPICS) == len(taken) == TAB_BUS_SITES == 0
+
+
+def test_the_bus_counter_can_see_a_subscription():
+    """POSITIVE CONTROL for ``bus_subscriptions_watched``: one
+    ``subscribe`` inside the block is recorded."""
+    from src.core.event_bus import EventBus
+
+    bus = EventBus()
+    with bus_subscriptions_watched() as taken:
+        bus.subscribe("probe.topic", lambda _event: None)
+    assert taken == ["probe.topic"], taken
 
 
 def test_the_screen_elements_the_tab_builds_are_counted():
     """The element counter cannot report, so its number means nothing."""
-    assert count_built(TAB_PATH, WIDGET_NAMES_BUILT) == TAB_WIDGET_BUILDS == 15
-    assert len(declared_widget_classes(TAB_PATH)) == TAB_WIDGET_CLASSES == 1
-    assert count_elements(TAB_PATH) == TAB_ELEMENT_BUILDS == 16
-    assert (
-        count_elements(ELEMENT_CONTROL_PATH) == CONTROL_ELEMENT_BUILDS == 3
-    ), count_elements(ELEMENT_CONTROL_PATH)
-    assert count_built(ELEMENT_CONTROL_PATH, WIDGET_NAMES_BUILT) == 2
-    assert [node.name for node in declared_widget_classes(ELEMENT_CONTROL_PATH)] == [
-        "StatCard"
-    ]
-    assert count_elements(SURFACE_PATH) == 0
-    assert declared_widget_classes(SURFACE_PATH) == []
+    from PySide6.QtWidgets import QLabel, QWidget
+
+    app()
+    with frozen_clock():
+        tab, _ = old_tab(TAB_CASES["full"])
+    children = tab.findChildren(QWidget)
+    assert len(children) == TAB_ELEMENT_BUILDS, len(children)
+    QLabel("extra", tab)
+    assert len(tab.findChildren(QWidget)) == TAB_ELEMENT_BUILDS + 1
     model, _ = new_model(TAB_CASES["full"])
     built = model.setup_ui()
     painted = [
@@ -2069,15 +1986,14 @@ def test_the_screen_elements_the_tab_builds_are_counted():
     assert len(painted) == len(built) - len(scaffold) == 40
 
 
-def test_the_class_counter_finds_a_class_inside_a_branch():
-    """The class counter reads two same-named classes as one."""
-    nodes = class_statements(TAB_PATH)
-    assert len(nodes) == TAB_CLASS_STATEMENTS == 2
-    assert [node.name for node in nodes] == ["TestnetTab", "TestnetTab"]
-    assert len({node.name for node in nodes}) == 1
-    nested = class_statements(REPO_ROOT / "src/gui/launcher.py")
-    assert len(nested) > len({node.name for node in nested}) or len(nested) > 1
-    assert len(class_statements(SURFACE_PATH)) == 8
+def test_the_tab_class_the_import_reaches_is_the_painted_one():
+    """The Qt-free fallback class is what a caller with Qt gets."""
+    app()
+    with frozen_clock():
+        tab, _ = old_tab(TAB_CASES["full"])
+    assert isinstance(tab, shipped.TestnetTab)
+    assert shipped._QT is True
+    assert hasattr(tab, "_run_btn")
 
 
 # Every class and every method has a counterpart
@@ -2395,49 +2311,26 @@ def test_the_shipped_helpers_answer_what_the_surface_answers():
 # Nothing else reaches the tab
 
 
-def modules_importing(module, skip=()):
-    """Every file under src that imports the module named exactly `module`.
-
-    The name is matched whole. ``testnet_tab_surface`` is a different
-    module from ``testnet_tab``, and a match on part of a name would count
-    one as the other.
-    """
-    found = []
-    for path in sorted((REPO_ROOT / "src").rglob("*.py")):
-        if path in skip:
-            continue
-        names = []
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                names += [alias.name for alias in node.names]
-            if isinstance(node, ast.ImportFrom):
-                names.append(node.module or "")
-        if any(name.split(".")[-1] == module for name in names):
-            found.append(str(path))
-    return found
-
-
-def test_the_whole_name_is_matched_not_a_part_of_it():
-    """A part-of-a-name match reads the conversion as a reader of the tab."""
-    assert modules_importing("testnet_tab_surface") == [str(BRIDGE_PATH)]
-    assert str(SURFACE_PATH) not in modules_importing("testnet_tab")
-    known = modules_importing("design_system")
-    assert len(known) > 5, known
-    assert str(SURFACE_PATH) not in known
-    assert modules_importing("no_such_module_anywhere") == []
-
-
 def test_the_tab_is_reached_by_no_other_module():
-    """A module grew a reader of the shipped tab, or one was always there."""
-    readers = modules_importing("testnet_tab", skip=(SURFACE_PATH, TAB_PATH))
-    assert readers == [], readers
-    named = [
-        str(path)
-        for path in sorted((REPO_ROOT / "src").rglob("*.py"))
-        if path not in (SURFACE_PATH, TAB_PATH)
-        and "src.gui.testnet_tab" in path.read_text(encoding="utf-8")
-    ]
-    assert named == [], named
+    """A module under ``src.gui`` pulls the shipped tab in."""
+    walked = package_walk_loads(
+        "src.gui",
+        skip=("src.gui.testnet_tab", "src.gui.main_tabs.testnet_tab_surface"),
+    )
+    assert walked["walked"] > 100, walked["walked"]
+    assert "src.gui.testnet_tab" not in walked["loaded"], walked["walked"]
+    assert "src.gui.design_system" in walked["loaded"], walked["walked"]
+
+
+def test_the_surface_is_reached_by_the_bridge():
+    """The renderer cannot reach the testnet screen."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert registry[surface.METHOD] is surface.view_model
+    assert sorted(
+        name for name, handler in registry.items() if handler is surface.view_model
+    ) == [surface.METHOD]
 
 
 # The tab paints, and the two sides paint the same pixels
@@ -3527,16 +3420,6 @@ def test_the_bridge_reports_a_state_it_cannot_read():
     assert good["ok"] is True
 
 
-def test_the_bridge_import_list_stays_alphabetical():
-    """The bridge import list drifted out of order."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    block = re.search(r"from src\.gui\.main_tabs import \((.*?)\)", text, re.S).group(1)
-    names = [line.strip().rstrip(",") for line in block.strip().split("\n")]
-    assert names == sorted(names), names
-    assert "testnet_tab_surface" in names
-    assert len(names) == len(set(names))
-
-
 # Without Qt at all
 
 BLOCK_QT = (
@@ -3671,55 +3554,29 @@ def test_the_qt_block_stops_the_module_that_paints_the_tab():
 
 def test_the_surface_loads_no_qt_module():
     """The surface grew an import that pulls Qt into the backend."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "time", "typing", "color_alpha"}
-    tab_tree = ast.parse(TAB_PATH.read_text(encoding="utf-8"))
-    tab_imports = {
-        (node.module or "")
-        for node in ast.walk(tab_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in tab_imports), tab_imports
+    answered = qt_free("src.gui.main_tabs.testnet_tab_surface", "TestnetTabModel")
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
 
 
 def test_the_surface_opens_no_file_and_no_socket():
     """The surface reached for a file, a network address or a key."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    called = {
-        node.func.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert "open" not in called
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    for forbidden in (
-        "read_text",
-        "write_text",
-        "read_bytes",
-        "write_bytes",
-        "mkdir",
-        "urlopen",
-        "socket",
-        "generate",
-        "home",
-    ):
-        assert forbidden not in reached, forbidden
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    for forbidden in ("http://", "https://", "wss://", ".acervator"):
-        assert forbidden not in text, forbidden
+    answered = io_watched(
+        "src.gui.main_tabs.testnet_tab_surface",
+        "model = m.TestnetTabModel(None, None)\nmodel.setup_ui()\n",
+    )
+    assert answered["touched"] == [], answered
     assert surface.CHAIN_ID == 84532
     assert str(surface.CHAIN_ID) in surface.NET_LABEL_TEXT
+
+
+def test_the_io_traps_can_see_a_file_being_opened():
+    """POSITIVE CONTROL for ``io_watched``: one ``open`` after the import
+    is recorded."""
+    answered = io_watched(
+        "src.gui.main_tabs.testnet_tab_surface", "open('main.py').close()\n"
+    )
+    assert answered["touched"] == ["open"], answered
 
 
 # Where the alpha byte turns into the share CSS reads

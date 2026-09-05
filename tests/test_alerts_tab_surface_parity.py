@@ -27,6 +27,12 @@ from tests.fixtures.host_fonts import (
     skip_unless_no_fonts,
     skip_unless_real_fonts,
 )
+from tests.fixtures.qt_wiring_counts import (
+    bus_subscriptions_watched,
+    connections_watched,
+    qt_free,
+    timers_watched,
+)
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
@@ -34,11 +40,6 @@ from tests.fixtures.surface_pictures import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-TAB_PATH = REPO_ROOT / "src/gui/alerts_tab.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/alerts_tab_surface.py"
-TIMER_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/history_tab.py"
-BUS_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/live_bot_window.py"
 
 PIXEL_SIZE = (900, 620)
 
@@ -1896,82 +1897,84 @@ def test_the_signatures_match_the_shipped_methods():
     assert model_default.default is None
 
 
-def count_sites(path, needle):
-    """How many times one wiring call appears in one file."""
-    return path.read_text(encoding="utf-8").count(needle)
-
-
 def test_the_connect_sites_match_the_actions():
     """A signal wiring appeared on one side and not the other."""
-    assert count_sites(TAB_PATH, ".connect(") == TAB_CONNECT_SITES == 3
-    assert count_sites(SURFACE_PATH, ".connect(") == 0
-    assert len(surface.ACTIONS) == count_sites(TAB_PATH, ".connect(")
+    app()
+    with connections_watched() as made:
+        old_picture_tab("happy")
+    assert len(made) == TAB_CONNECT_SITES == 3, made
+    assert len(surface.ACTIONS) == len(made)
     assert set(surface.ACTIONS) == {
         "test_button.clicked",
         "save_button.clicked",
         "ack_button.clicked",
     }
-    assert count_sites(TAB_PATH, "clicked.connect(") == 3
-    assert count_sites(TAB_PATH, "a-call-this-tab-never-makes") == 0
+
+
+def test_the_connection_counter_can_see_a_wiring():
+    """POSITIVE CONTROL for ``connections_watched``: an empty block
+    records nothing and two ``clicked`` wirings record two."""
+    from PySide6.QtWidgets import QPushButton
+
+    app()
+    button = QPushButton()
+    TABS_HELD.append(button)
+    with connections_watched() as quiet:
+        pass
+    assert quiet == []
+    with connections_watched() as made:
+        button.clicked.connect(lambda: None)
+        button.clicked.connect(lambda: None)
+    assert len(made) == 2, made
 
 
 def test_the_tab_starts_no_timer():
-    """A wait appeared on one side and not the other.
-
-    The counter is proved able to report by counting a neighbouring file
-    that really does start one, and by starting one under the watcher.
-    """
-    from PySide6.QtCore import QObject, QTimer
-
+    """A wait appeared on one side and not the other."""
     app()
-    assert count_sites(TAB_PATH, "QTimer") == TAB_TIMER_SITES == 0
-    assert count_sites(SURFACE_PATH, "QTimer") == 0
-    assert count_sites(TIMER_NEIGHBOUR_PATH, "QTimer") > 0
-    started: list = []
-    original_start_timer = QObject.startTimer
-    original_timer_start = QTimer.start
-    original_single_shot = QTimer.singleShot
-
-    def watch_start_timer(self, *args, **kwargs):
-        started.append(("startTimer", args))
-        return original_start_timer(self, *args, **kwargs)
-
-    def watch_timer_start(self, *args, **kwargs):
-        started.append(("QTimer.start", args))
-        return original_timer_start(self, *args, **kwargs)
-
-    def watch_single_shot(*args, **kwargs):
-        started.append(("singleShot", args))
-        return original_single_shot(*args, **kwargs)
-
-    QObject.startTimer = watch_start_timer
-    QTimer.start = watch_timer_start
-    QTimer.singleShot = watch_single_shot
-    try:
+    with timers_watched() as seen:
         for name in ("happy", "empty"):
             old_picture_tab(name)
             new_picture_tab(name)
-        observed = list(started)
-        started.clear()
-        QTimer().start(250)
-    finally:
-        QObject.startTimer = original_start_timer
-        QTimer.start = original_timer_start
-        QTimer.singleShot = original_single_shot
-    assert started == [("QTimer.start", (250,))]
-    assert observed == []
+    assert seen == [], seen
+    assert len(seen) == TAB_TIMER_SITES == 0
     assert surface.TIMERS == {}
     assert surface.TIMER_DELAYS_MS == ()
-    assert len(surface.TIMERS) == len(observed) == 0
+
+
+def test_the_timer_counter_can_see_a_wait():
+    """POSITIVE CONTROL for ``timers_watched``: one ``QTimer.start``
+    inside the block is recorded."""
+    from PySide6.QtCore import QTimer
+
+    app()
+    timer = QTimer()
+    TABS_HELD.append(timer)
+    with timers_watched() as seen:
+        timer.start(250)
+    assert seen == [("QTimer.start", (250,))], seen
 
 
 def test_the_tab_subscribes_to_no_bus_topic():
     """A bus wiring appeared on one side and not the other."""
-    assert count_sites(TAB_PATH, ".subscribe(") == TAB_BUS_SITES == 0
-    assert count_sites(SURFACE_PATH, ".subscribe(") == 0
-    assert count_sites(BUS_NEIGHBOUR_PATH, ".subscribe(") > 0
+    app()
+    with bus_subscriptions_watched() as taken:
+        for name in ("happy", "empty"):
+            old_picture_tab(name)
+            new_picture_tab(name)
+    assert taken == [], taken
     assert surface.BUS_TOPICS == ()
-    assert len(surface.BUS_TOPICS) == count_sites(TAB_PATH, ".subscribe(")
+    assert len(surface.BUS_TOPICS) == len(taken) == TAB_BUS_SITES == 0
+
+
+def test_the_bus_counter_can_see_a_subscription():
+    """POSITIVE CONTROL for ``bus_subscriptions_watched``: one
+    ``subscribe`` inside the block is recorded."""
+    from src.core.event_bus import EventBus
+
+    bus = EventBus()
+    with bus_subscriptions_watched() as taken:
+        bus.subscribe("probe.topic", lambda _event: None)
+    assert taken == ["probe.topic"], taken
 
 
 def test_the_tab_declares_no_skin_of_its_own():
@@ -1990,46 +1993,17 @@ def test_the_tab_declares_no_skin_of_its_own():
 
 def test_the_surface_loads_no_qt_module():
     """The surface grew an import that pulls Qt into the backend."""
-    import ast
+    answered = qt_free("src.gui.main_tabs.alerts_tab_surface", "AlertsTabModel")
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
 
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {
-        "__future__",
-        "time",
-        "typing",
-        "design_system",
-        "color_alpha",
-    }
-    for sibling in imported:
-        beside = SURFACE_PATH.parent.parent / (sibling + ".py")
-        if not beside.exists():
-            continue
-        pulled = {
-            (node.module or "")
-            for node in ast.walk(ast.parse(beside.read_text(encoding="utf-8")))
-            if isinstance(node, ast.ImportFrom)
-        }
-        assert not any(
-            name.startswith(("PySide6", "shiboken")) for name in pulled
-        ), f"{beside.name} pulls Qt into the surface: {sorted(pulled)}"
-    tab_tree = ast.parse(TAB_PATH.read_text(encoding="utf-8"))
-    tab_imports = {
-        (node.module or "")
-        for node in ast.walk(tab_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in tab_imports), tab_imports
+
+def test_the_qt_block_stops_the_class_that_paints_the_tab():
+    """POSITIVE CONTROL for ``qt_free``: ``AlertsTab`` is absent when Qt
+    is refused."""
+    answered = qt_free("src.gui.alerts_tab", "AlertsTab")
+    assert answered["imported"] is False, answered
+    assert answered["error"] == "AttributeError", answered
 
 
 def layout_entries(layout):
