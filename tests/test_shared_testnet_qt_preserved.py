@@ -15,6 +15,8 @@ Nothing here writes a real file: the bridge is given a path under
 from __future__ import annotations
 
 import collections
+import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -148,3 +150,55 @@ def test_the_bridge_and_the_surface_name_the_same_saved_file():
     assert shipped.SCHEMA_VERSION == surface.SCHEMA_VERSION
     assert shipped.QUEUE_DRAIN_INTERVAL_MS == surface.QUEUE_DRAIN_INTERVAL_MS
     assert shipped.PERSIST_DEBOUNCE_MS == surface.PERSIST_DEBOUNCE_MS
+
+
+LOGGER_NAME = "acervator.shared_testnet"
+UNLINK_REFUSED = "unlink refused"
+
+
+def refuse_unlink(_self) -> None:
+    """Stand in for ``Path.unlink`` and refuse, taking no other argument."""
+    raise OSError(UNLINK_REFUSED)
+
+
+def load_over(bridge, monkeypatch, payload, unlink_raises) -> None:
+    """Run ``_try_load`` over ``payload``, optionally against a refusing unlink."""
+    bridge._persist_path.write_text(json.dumps(payload), encoding="utf-8")
+    if unlink_raises:
+        monkeypatch.setattr(Path, "unlink", refuse_unlink)
+    bridge._try_load()
+
+
+def test_a_refused_unlink_after_a_schema_wipe_is_logged(
+    bridge, monkeypatch, capture_log
+):
+    """A wipe that cannot delete the file says so instead of going quiet."""
+    with capture_log(LOGGER_NAME, logging.WARNING) as records:
+        load_over(bridge, monkeypatch, {"schema_version": 999}, unlink_raises=True)
+    said = [one.getMessage() for one in records]
+    assert any("stale chain file not removed" in one for one in said), said
+    assert any(UNLINK_REFUSED in one for one in said), said
+
+
+def test_a_refused_unlink_after_a_failed_restore_is_logged(
+    bridge, monkeypatch, capture_log
+):
+    """A corrupt file that cannot be deleted says so instead of going quiet."""
+    payload = {"schema_version": shipped.SCHEMA_VERSION, "blocks": 7}
+    with capture_log(LOGGER_NAME, logging.WARNING) as records:
+        load_over(bridge, monkeypatch, payload, unlink_raises=True)
+    said = [one.getMessage() for one in records]
+    assert any("corrupt chain file not removed" in one for one in said), said
+    assert any(UNLINK_REFUSED in one for one in said), said
+
+
+def test_a_wipe_that_deletes_the_file_reports_no_unlink_trouble(
+    bridge, monkeypatch, capture_log
+):
+    """The positive control: the same wipe is quiet when the delete works."""
+    with capture_log(LOGGER_NAME, logging.WARNING) as records:
+        load_over(bridge, monkeypatch, {"schema_version": 999}, unlink_raises=False)
+    said = [one.getMessage() for one in records]
+    assert said, "the wipe itself must still be announced"
+    assert not any("not removed" in one for one in said), said
+    assert bridge._persist_path.exists() is False

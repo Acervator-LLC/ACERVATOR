@@ -242,8 +242,8 @@ if _HAS_QT:
             """Replace ``_markers`` with one ``TradeMarker`` per trade dict.
 
             Each dict carries ``ts`` or ``time``, ``side``, ``price``
-            and ``role`` or ``label``; a dict with no positive ``ts``
-            and ``price`` is dropped.
+            and ``role`` or ``label``; a dict without a positive ``ts``
+            or a positive ``price`` is dropped.
             """
             self._markers = []
             for t in trades:
@@ -251,7 +251,6 @@ if _HAS_QT:
                     ts = int(t.get("ts", t.get("time", 0)) or 0)
                     price = float(t.get("price", 0) or 0)
                     if ts <= 0 or price <= 0:
-                        # No timestamp or no price: nothing to anchor the marker to.
                         continue
                     m = TradeMarker(
                         time=ts,
@@ -287,9 +286,9 @@ if _HAS_QT:
             """Set ``_tb_anchor_price`` and ``_tb_ceiling_price``, the
             two dashed lines on the price pane.
 
-            Both are price-axis values; ``TradeChartsTab.update_charts``
-            divides the USD anchor and ceiling by holdings and the
-            quote rate. ``None`` hides that line.
+            ``TradeChartsTab.update_charts`` divides the USD anchor and
+            ceiling by holdings and the quote rate; ``None`` hides that
+            line.
             """
             self._tb_anchor_price = anchor_price
             self._tb_ceiling_price = ceiling_price
@@ -302,7 +301,7 @@ if _HAS_QT:
             scrum_blockers: list = None,
             fold_blockers: list = None,
         ) -> None:
-            """Set ``_fire_armed_state`` from the bot's gate state.
+            """Set ``_fire_armed_state`` from the bot's arming flags.
 
             ``paintEvent`` paints a green right-edge glow while
             ``scrum_armed`` and a red one while ``fold_armed``.
@@ -619,7 +618,6 @@ if _HAS_QT:
 
                 g0 = _m.ceil(lo / grid_step) * grid_step
                 g = g0
-                # Step-scaled: a fixed tolerance is under one ULP at BTC prices.
                 while g <= hi + grid_step * GRID_TICK_TOLERANCE:
                     y = int(p2y(g))
                     if price_top <= y <= price_bot:
@@ -1336,7 +1334,6 @@ if _HAS_QT:
                 if ML <= mx <= w - MR and price_top <= my <= time_axis_y:
                     p.setPen(QPen(self.CROSSHAIR_COLOR, 1, Qt.DotLine))
                     p.drawLine(mx, int(price_top), mx, int(time_axis_y))
-                    # Horizontal line only inside the pane the cursor is in
                     p.drawLine(ML, my, w - MR, my)
 
                     if price_top <= my <= price_bot:
