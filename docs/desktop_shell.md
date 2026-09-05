@@ -100,8 +100,17 @@ npm install
 npm start
 ```
 
-`npm install` downloads Electron. It needs a network connection and
-approximately 300 MB.
+`desktop/package.json` names one exact Electron version rather than a
+range, so every install gets the same build. The repository carries no
+lockfile; the manifest is the whole record of what the shell runs.
+
+`npm install` records the dependency. From Electron 42 the package
+fetches its own binary on first run, so `npm start` is the step that
+downloads it. It needs a network connection and approximately 300 MB.
+
+The pinned Electron runs on 64-bit Windows and on macOS 13 or later.
+`tests/test_desktop_shell_assets.py` fails if the pin drops below the
+lowest release no published security advisory reaches.
 
 Set `ACERVATOR_PYTHON` if `python` is not the interpreter that has the
 project dependencies.

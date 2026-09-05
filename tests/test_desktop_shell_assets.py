@@ -38,6 +38,10 @@ WEB_MODULES = REPO_ROOT / "src" / "gui" / "web"
 MANIFEST_JS = RENDERER / "module_manifest.js"
 WEB_PREFIX = "../../src/gui/web/"
 
+EXACT_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
+# The highest first_patched_version among the electron advisories GitHub publishes.
+ELECTRON_ADVISORY_FLOOR = (43, 0, 0)
+
 
 def shell_scripts() -> tuple:
     """Every shell script on disk: the two process scripts and the renderer's.
@@ -202,6 +206,55 @@ def test_the_package_entry_point_exists():
     manifest = json.loads((DESKTOP / "package.json").read_text(encoding="utf-8"))
     assert (DESKTOP / manifest["main"]).is_file()
     assert "electron" in manifest["devDependencies"]
+
+
+def electron_requirement() -> str:
+    """The electron entry in the ``desktop/package.json`` devDependencies."""
+    manifest = json.loads((DESKTOP / "package.json").read_text(encoding="utf-8"))
+    return manifest["devDependencies"]["electron"]
+
+
+def version_tuple(text: str) -> tuple:
+    """``text`` split on its dots into integers."""
+    return tuple(int(part) for part in text.split("."))
+
+
+def test_the_shell_names_one_exact_electron_version():
+    """``electron_requirement`` answers a version, not a range."""
+    requirement = electron_requirement()
+    assert EXACT_VERSION.match(requirement), (
+        "desktop/package.json asks for electron "
+        + requirement
+        + "; a range leaves the installed version to the day of the install, "
+        + "and the repository carries no lockfile to record what was installed"
+    )
+
+
+def test_the_pinned_electron_clears_every_published_advisory():
+    """``electron_requirement`` parses at or above ``ELECTRON_ADVISORY_FLOOR``."""
+    requirement = electron_requirement()
+    assert EXACT_VERSION.match(requirement), requirement
+    assert version_tuple(requirement) >= ELECTRON_ADVISORY_FLOOR, (
+        "electron "
+        + requirement
+        + " is below "
+        + ".".join(str(part) for part in ELECTRON_ADVISORY_FLOOR)
+        + ", the lowest release no published advisory reaches"
+    )
+
+
+def test_the_exact_version_check_rejects_a_range():
+    """The control for ``test_the_shell_names_one_exact_electron_version``."""
+    for loose in ("^31.0.0", "~39.8.10", ">=43.0.0", "31.x", "*", "latest"):
+        assert not EXACT_VERSION.match(loose), loose
+    assert EXACT_VERSION.match("44.2.0")
+
+
+def test_the_floor_check_reports_a_version_under_it():
+    """The control for ``test_the_pinned_electron_clears_every_published_advisory``."""
+    assert version_tuple("31.7.7") < ELECTRON_ADVISORY_FLOOR
+    assert version_tuple("39.8.10") < ELECTRON_ADVISORY_FLOOR
+    assert version_tuple("44.2.0") >= ELECTRON_ADVISORY_FLOOR
 
 
 @pytest.mark.parametrize("path", SHIPPED_JS, ids=lambda p: p.name)
