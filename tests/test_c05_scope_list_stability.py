@@ -1,10 +1,8 @@
-"""C05 step 3: rebuild_scope must not throw away the operator's place.
+"""``rebuild_scope`` must not throw away the operator's place.
 
-WHAT THE AUDIT CLAIMED vs WHAT THE CODE DOES
-The remediation doc listed "preserve scroll offset and checked sets".
-A cold read found the checked sets were already preserved (v3.23.13
-captures prior_src/prior_dst and re-checks on refill), so only half the
-finding was live. These tests keep BOTH halves pinned.
+Both halves are pinned: ``rebuild_scope`` captures ``prior_src`` and
+``prior_dst`` and re-checks them on refill, and it restores the scroll
+offset of both lists.
 
 WHY THE NAIVE MEASUREMENT SAID "FINE"
 `clear()` collapses the scrollbar range, and that clamps its value to 0
@@ -150,7 +148,7 @@ class TestScrollOffsetSurvivesRebuild:
 
 
 class TestCheckedSetsSurviveRebuild:
-    """Already true since v3.23.13 -- pinned so it stays true."""
+    """``rebuild_scope`` re-checks the boxes that were checked before it ran."""
 
     def test_checked_sources_survive(self, qr):
         matrix, app = qr

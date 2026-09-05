@@ -1,4 +1,4 @@
-"""Issue #128 Stage 3 -- the React side of the visualizer themes.
+"""The React side of the visualizer themes.
 
 WHAT IS PROVED
 ==============

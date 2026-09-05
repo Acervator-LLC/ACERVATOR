@@ -1,26 +1,10 @@
-"""Pins for the release-readiness gate — v3.24.34 (cascade C43).
+"""Pins for the release-readiness gate in ``dev_harness.harness.check_release_readiness``.
 
-Replaces the pre-2026-07-25 archived pin, which could not run: it
-imported six helpers from `tools.check_release_readiness`, and the tool
-now lives at `dev_harness.harness.check_release_readiness` and defines only
-one of them. Full classification of every archived failure is at
-docs/engineering-notes/2026-08-05_C43_archived_pin_classification.md.
-
-What these pin, and why each exists:
-
-  * The gate cannot print `[OK] Release-ready` or write a green sidecar
-    when a check was skipped. Before v3.24.34 `--no-pytest
-    --no-archetypes --no-claims` left `failures` empty and printed
-    "[OK] Release-ready (vX.Y.Z, 0 tests)". Observed in the wild
-    2026-08-05: a `tests: 0` green sidecar sat in the tree for 46
-    minutes, left by a skipped run.
-  * A green pytest run that collected nothing is not evidence.
-  * The sidecar records WHICH checks ran, so a consumer can tell a full
-    run from a skipped one. They were previously indistinguishable.
-
-EVERY test here isolates SIDECAR_PATH onto tmp_path. `main()` calls
-`_remove_sidecar()` on failure, so an unisolated test would delete the
-operator's real sidecar as a side effect.
+``main`` cannot print ``[OK] Release-ready`` or write a green sidecar when a
+check was skipped, and a pytest run that collected nothing is not a pass. The
+sidecar records which checks ran, so a consumer can tell a full run from a
+skipped one. Every test here isolates ``SIDECAR_PATH`` onto ``tmp_path``,
+because ``main`` calls ``_remove_sidecar`` on failure.
 """
 
 from __future__ import annotations
@@ -143,11 +127,8 @@ class TestZeroCollectedTests:
 
 
 class TestMainPyVersionLiterals:
-    """NF-133 / finding G1.
-
-    The gate never opens main.py -- `grep -n 'main\\.py' ` against the
-    tool returns nothing -- so nothing has ever checked its version
-    strings. Measured at build v3.24.32: the boot log line and the Qt
+    """The gate never opens main.py, so nothing else checks its version
+    strings. Measured once: the boot log line and the Qt
     application version both said "3.1.26", 23 minor versions stale.
     Every log the operator has collected carries the wrong build.
 
@@ -259,26 +240,17 @@ class TestFailurePathsRemoveSidecar:
 
 
 class TestRepoWideVersionLiterals:
-    """Issue #70. One version, one name.
+    """One version, one name.
 
     `TestMainPyVersionLiterals` above proved the pattern on ONE file.
-    Measured at build v3.25.8, these sources disagreed with
-    `src.__version__ == "3.25.8"` at the same time:
+    Measured once, these sources disagreed with `src.__version__` at the
+    same time:
 
-      * pyproject.toml            version = "1.0.0", name
-                                  "quantum-auto-trader"
-      * ver.txt                   3.25.5 -- zero consumers, now deleted
-      * README.md                 "Current version: 3.15.94"
-      * splash_screen.py:170      "3.9.0"
-      * investor_screen.py:289    "3.7.0"
-      * generate_essay_ja.py:43   "3.1.98"
-      * generate_essay_ja.py:78   output filename stamped v3.7.0
+      * pyproject.toml, ver.txt, README.md, and the three scripts named
+        in ``_VERSION_CARRYING_SCRIPTS``.
 
-    Nothing compared any of them to the package, so every one rotted
-    quietly. The repo already SHIPS a drift detector --
-    src/core/version_sweep.py check_version_consistency -- and a search
-    of the tree finds no caller for it. An instrument nobody runs
-    measures nothing. These tests live in the suite, which does run.
+    ``src.core.version_sweep.check_version_consistency`` detects the same
+    drift and has no caller, so these tests carry it instead.
 
     The rule they pin: a file either imports `__version__` or states a
     value equal to it. There is no third option.
@@ -286,8 +258,7 @@ class TestRepoWideVersionLiterals:
 
     _SEMVER = r"\d+\.\d+\.\d+"
 
-    # Scripts that show or stamp the build version. Each carried a stale
-    # literal before issue #70.
+    # Scripts that show or stamp the build version.
     _VERSION_CARRYING_SCRIPTS = (
         "splash_screen.py",
         "investor_screen.py",
@@ -449,10 +420,9 @@ class TestRepoWideVersionLiterals:
     def test_readme_states_no_version_of_its_own(self):
         """The README must point at the source, not copy it.
 
-        Its hand-written number was 10 minor versions stale. Dated
-        historical records such as "measured at v3.13.7" are
-        deliberately not matched. They are true statements about a past
-        run, and rewriting them to today's build would make them false.
+        A dated historical record of a past measurement is deliberately
+        not matched, because rewriting one to today's build would make it
+        false.
         """
         import re
 
@@ -468,10 +438,8 @@ class TestRepoWideVersionLiterals:
     def test_no_scratch_version_file_at_repo_root(self):
         """ver.txt held `ASSIGN: __version__ = "3.25.5"`.
 
-        A search of every file type found no reader for it anywhere in
-        the tree. It was committed once, by accident, in `be6aa04
-        initial upload`. Issue #70 deleted it. This stops it returning
-        as a fifth disagreeing source.
+        No file in the tree read it, and it is deleted. This stops it
+        returning as a fifth disagreeing source.
         """
         assert not (REPO_ROOT / "ver.txt").exists(), (
             "ver.txt is back at the repo root; the version lives in "

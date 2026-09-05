@@ -1,7 +1,7 @@
 """The dashboard reads the tick's bands; it does not restate them.
 
-Issue #128 R2. Two thresholds decide whether a position counts as ON
-TARGET, and each was written out twice:
+Two thresholds decide whether a position counts as ON TARGET, and each
+was written out twice:
 
     park band    max(target * 0.001, 0.01)   tick(), and the Ammo cell
     Manual Fire  max(target * 0.01,  0.01)   _execute_manual_rebalance,

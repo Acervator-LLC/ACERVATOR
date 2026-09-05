@@ -73,7 +73,7 @@ def _cfg():
         "base_currency": "USD",
         "_src_bot_id": "aaaa1111",
         "_src_scrumming_state": dict(FIXTURE_STATE),
-    }  # noqa: F821
+    }
 
 
 def _rows(n=50):

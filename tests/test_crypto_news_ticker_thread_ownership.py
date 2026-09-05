@@ -1,4 +1,4 @@
-"""Issue #105 — the news ticker must never destroy a running QThread.
+"""The news ticker must never destroy a running QThread.
 
 WHAT WAS WRONG. ``force_refresh`` built ``QThread(self)``, a thread
 PARENTED TO THE WIDGET, and ``_teardown_worker`` called ``wait(50)``
@@ -128,7 +128,7 @@ class TestThreadOwnership:
     def test_the_registry_holds_thread_and_worker(self, monkeypatch, ticker, qt_app):
         """A FAILURE HERE MEANS the only reference to a running worker
         belongs to the widget, so the widget going away collects the
-        worker mid-emit -- issue #58."""
+        worker mid-emit."""
         blocker = _Blocker(honours_stop=True)
         monkeypatch.setattr(cnt, "fetch_all", blocker)
         _run_fetch(ticker, blocker, qt_app)
@@ -216,7 +216,7 @@ class TestStopIsBounded:
         thread = ticker._worker_thread
         assert thread is not None, (
             "the reference was dropped, so force_refresh can start a "
-            "second fetch beside the first -- issue #58 tail"
+            "second fetch beside the first"
         )
         assert Shiboken.isValid(thread), "a running thread was destroyed"
         assert thread.isRunning()
@@ -336,7 +336,7 @@ class TestStopIsBounded:
 
 class TestWorkerStaysSilentAfterStop:
     def test_a_stopped_worker_emits_nothing(self, qt_app):
-        """Issue #58, the emit half. A FAILURE HERE MEANS a result
+        """The emit half. A FAILURE HERE MEANS a result
         arrives at a widget that asked to be left alone."""
         assert qt_app is not None
         worker = cnt._FetchWorker()

@@ -208,8 +208,7 @@ class _SellStubBot:
         self.placed_orders: list[dict] = []
         self.notifications: list[tuple] = []
         self.reconcile_reasons: list[str] = []
-        # issue #133 unit 9b -- the venue's fee for the last settled
-        # sell. `_execute_sell` clears it and writes it.
+        # `_execute_sell` clears this and writes the settled sell's venue fee.
         self._last_sell_venue_fee = None
 
     def _crr(self):
@@ -223,8 +222,8 @@ class _SellStubBot:
     def _record_venue_fee(self, order, units, price):
         """Delegate to the REAL ScrummingBot._record_venue_fee.
 
-        issue #133 unit 9b. ``_execute_sell`` records the venue's fee
-        off the settled order. A no-op here would let this stub drift
+        ``_execute_sell`` records the venue's fee off the settled
+        order. A no-op here would let this stub drift
         from the collaborator it doubles, which is the same reason
         ``_execute_sell`` below delegates rather than fakes.
         """
@@ -494,10 +493,8 @@ class TestStageTwoSpendsOnlyWhatTheGateAuthorises:
         )
 
     def test_the_live_vote_is_what_reaches_the_sell_log(self):
-        """RESTATED, v3.23.44. This test used to require the FROZEN
-        stack-open confidence in the SELL line. That was a record of a
-        past condition standing in for a present one. The spend stage
-        runs where the live VotingSummary is in scope, so the live vote
+        """The spend stage runs where the live VotingSummary is in
+        scope, so the live vote
         is what gets logged -- and the frozen one survives untouched as
         the forensic record it always was."""
         bot = _opened_bot(confidence=0.62)
@@ -516,7 +513,7 @@ class TestStageTwoSpendsOnlyWhatTheGateAuthorises:
         ), "the forensic record of the opening vote was overwritten"
 
     def test_the_recorded_open_vote_is_the_fallback_with_no_live_vote(self):
-        """The v3.23.43 fix stays load-bearing: `_execute_sell` reads
+        """`_execute_sell` reads
         `summary.consensus_confidence` before it places the order, so a
         caller with no live vote must still get a well-formed summary
         rather than an AttributeError that silently kills the fire."""
@@ -640,10 +637,8 @@ class TestTheTrancheSurvivesARefusal:
 
 
 class TestBothStagesRespectTheGate:
-    """Issue #133 unit 8 turned the DEFAULT on; the GATE is what
-    these two stages read, and a bot whose stored value is False
-    must still do nothing. The 38 bots in the operator's
-    bot_state.json each store False and keep it."""
+    """The gate, not the default, is what these two stages read, so a
+    bot whose stored value is False must still do nothing."""
 
     def test_the_config_default_is_the_one_declaration(self):
         import dataclasses

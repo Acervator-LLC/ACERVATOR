@@ -1,4 +1,4 @@
-"""Issue #111 violation B - fleet size must not decide who can trade.
+"""Fleet size must not decide which sim bot can trade.
 
 THE RULING THIS FILE ENFORCES. Live, Paper and Sim differ ONLY in where
 market data comes from. Operator ruling on this defect: a lot-less bot
@@ -82,8 +82,8 @@ def _sawtooth(n: int = TAPE_CANDLES) -> list[list[float]]:
     """Return a tape that moves a position far enough off target.
 
     Fifty candles up at 0.2% a candle, then fifty down. The swing is
-    about 10%, which clears the MEM-258 dust band (0.1% of target,
-    ``at_target_dust_band`` in ``src/trading/target_bands.py``) by two
+    about 10%, which clears the dust band ``at_target_dust_band``
+    returns (0.1% of target) by two
     orders of magnitude, so a bot that opens AT target still has
     something to do.
     """
@@ -96,7 +96,7 @@ def _sawtooth(n: int = TAPE_CANDLES) -> list[list[float]]:
 
 
 def _oscillating(n: int = TAPE_CANDLES) -> list[list[float]]:
-    """Return the tape the issue #111 fleet-size table was measured on."""
+    """Return the tape the fleet-size table was measured on."""
     out: list[list[float]] = []
     px = 1.0
     for i in range(n):

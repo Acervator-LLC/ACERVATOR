@@ -196,8 +196,7 @@ class TestDegenerateInputs:
         assert b._preview_fold_growth(1.0, 50.0) == pytest.approx(1.0)
 
     def test_the_quote_rate_is_applied(self):
-        # Issue #106 - same reason as above: the target carries the
-        # cap now, and target < anchor is not a reachable state.
+        # The target carries the cap, and target below anchor is unreachable.
         b = _bot([_tr(1.0, 60.0)], anchor=10000.0, target=10000.0, qrate=3.0)
         assert b._preview_fold_growth(1.0, 50.0) == pytest.approx(30.0)
 

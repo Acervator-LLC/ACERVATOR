@@ -256,7 +256,7 @@ def _build(tmp_path, *, opened=OPENED, closed=CLOSED, discarded=DISCARDED):
 
 
 def _destroy(panel) -> None:
-    """Issue #96's third row: queue the delete, then DELIVER the event.
+    """Queue the delete, then deliver the event.
 
     ``processEvents()`` does not deliver ``DeferredDelete``, and a widget
     left alive here fails a stranger's test — ``_open_dialogs(app)``

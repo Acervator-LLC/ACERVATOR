@@ -1,4 +1,4 @@
-"""Issue #128 Stage 3 unit 3 -- the React side of the shared widgets.
+"""The React side of the shared widgets.
 
 WHAT IS PROVED
 ==============

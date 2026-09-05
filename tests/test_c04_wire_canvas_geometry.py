@@ -21,15 +21,9 @@ Measured after:
     childAt(200, 200)   : QWidget   (the list)
     grid geometry       : 680x733   (was a stale 640x480)
 
-This is the same failure `_reposition_wire_canvas`'s own comment records
-("7 broken interactions"): the v3.23.19 fix scoped the canvas to the
-grid, then v3.23.61 made the grid the hidden page without revisiting it.
-
-WHY C06b HAD TO LAND FIRST
-While broken, this overlay was the only thing shielding the default view
-from `_finish_wire_drag`'s two silent wire-removal branches. Restoring
-the view ARMS those gestures, so they were confirmed in C06b before this
-shipped.
+`_reposition_wire_canvas` scopes the canvas to `_grid_widget`, which is
+the hidden stacked page, so its geometry is never updated while the List
+view shows.
 """
 
 from __future__ import annotations

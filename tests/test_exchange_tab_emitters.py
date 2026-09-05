@@ -224,7 +224,7 @@ def _last(sink: SignalSink, name: str):
 
 
 def _without_the_reanchor(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Put the tree back the way it was before the issue #51 repair.
+    """Put the tree back the way it was before the re-anchor repair.
 
     `BotStatusTable.update_bots` and `ExtractorBotTable.update_bots`
     both end by calling `bot_selection._reanchor_bot_selection`,
@@ -253,7 +253,7 @@ def _without_the_reanchor(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _without_the_detail_row_selection(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Put the tree back the way it was before the issue #52 repair.
+    """Put the tree back the way it was before the Detail-row-selection repair.
 
     `BotStatusTable._on_detail` and `ExtractorBotTable._on_detail` both
     now begin by calling `bot_selection._select_row_for_bot`,
@@ -414,7 +414,7 @@ def test_a_command_reaches_the_table_the_operator_chose(
 def test_the_extractor_detail_button_carries_the_selection_with_it(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """ISSUE #52: the Detail button is a row click, so `15-001` is green.
+    """The Detail button is a row click, so `15-001` is green.
 
     The gesture the falsifier below drives, with the repair in place and
     nothing patched out: select a Scrumming row, click the EXTRACTOR
@@ -455,7 +455,7 @@ def test_the_extractor_detail_button_carries_the_selection_with_it(
 def test_the_scrumming_detail_button_carries_the_selection_with_it(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """ISSUE #52 in the other direction, because BOTH tables have one.
+    """The same gesture in the other direction, because BOTH tables have one.
 
     `delete` again -- the command with the least recoverable
     consequence, and the one the mirror falsifier sends to the wrong
@@ -488,7 +488,7 @@ def test_the_scrumming_detail_button_carries_the_selection_with_it(
 def test_a_detail_button_inside_the_selected_table_moves_the_highlight(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The same-table case, and it is a SECOND misroute issue #52 closes.
+    """The same-table case, and it is a SECOND misroute the repair closes.
 
     `15-001` could never see this one. The operator has `s1` selected
     and presses the Detail button on `s2`'s row: before the repair the
@@ -564,7 +564,7 @@ def test_the_detail_button_leaves_a_row_it_cannot_read_alone(
     exists with no column-0 item. `selectedItems()` stays empty on such
     a row and `get_selected_bot_id` answers "" for it -- which is the
     empty-preferred-table state `_cmd` falls back out of, so selecting
-    one would be MEM-408 in a new place. `_reanchor_bot_selection`
+    one would be the same misroute in a new place. `_reanchor_bot_selection`
     refuses the same row for the same reason.
 
     Driven against the table directly, the way `15-002`'s blank-row
@@ -596,7 +596,7 @@ def test_a_command_that_lands_on_the_other_tables_bot_is_reported(
 ) -> None:
     """THE FALSIFIER for `15-001`, AND IT IS THE MISROUTE ITSELF.
 
-    MEM-408 in the direction the v3.20.62 fix opened. Driven, not
+    the misroute in the direction the preference reversal opened. Driven, not
     argued:
 
       1. The operator selects a Scrumming row. `_last_clicked_table`
@@ -610,7 +610,7 @@ def test_a_command_that_lands_on_the_other_tables_bot_is_reported(
     asserted first, because the pin is only worth anything if the
     misroute is real.
 
-    ISSUE #52 REPAIRED STEP 2, AND THIS FALSIFIER KEPT ITS RED. The
+    THE REPAIR CLOSED STEP 2, AND THIS FALSIFIER KEPT ITS RED. The
     Detail button sits inside a cell, and a click on a cell widget
     changes no row selection -- that was the whole gap, and the ONE
     entry point that moved the flag without moving the selection. The
@@ -668,7 +668,7 @@ def test_the_fallback_hijacks_in_the_other_direction_too(
     table holds a selection. `delete` -- the command with the least
     recoverable consequence -- goes to the Extractor bot.
 
-    ISSUE #52 REPAIRED THIS DIRECTION TOO, and that is why it is driven
+    THE REPAIR CLOSED THIS DIRECTION TOO, and that is why it is driven
     here: BOTH tables carry a Detail button and BOTH flip the flag
     through their `on_bot_clicked` callback, so a repair applied to one
     of them would have left the hijack standing in this direction.
@@ -682,7 +682,7 @@ def test_the_fallback_hijacks_in_the_other_direction_too(
         tab.update_bots([_scrum("scrum-1"), _extractor("ext-1")])
         tab._extractor_table.selectRow(0)
         # Put the preference back on Scrumming without selecting a row,
-        # exactly as the Scrumming Detail button did before issue #52.
+        # exactly as the Scrumming Detail button did before the repair.
         detail = tab._bot_table.cellWidget(0, 9)
         assert detail is not None, "the Scrumming Detail button is gone"
         detail.click()
@@ -777,7 +777,7 @@ def test_a_bot_both_mode_filters_drop_is_reported(
     which.
 
     A third mode is one enum member away -- `BotMode` lost `GRID` in
-    v3.20.4 and the unknown-mode branch in `restore_bots_from_state`
+    the unknown-mode branch in `restore_bots_from_state`
     exists precisely because a persisted bot can carry one.
     """
     with _collect() as sink, _tab(qapp, monkeypatch, tmp_path) as tab:
@@ -925,7 +925,7 @@ def test_a_reordered_refresh_that_moves_the_selection_is_reported(
     somewhere else, on a 2000 ms timer, with the operator's hands
     still.
 
-    Issue #51 repaired that in the two table classes, so swapping two
+    The re-anchor repaired that in the two table classes, so swapping two
     statuses no longer produces the drift and this test can no longer
     drive it that way. It is NOT deleted, because a pin with no
     falsifier is a check nobody has ever seen fail. The failing
@@ -1060,7 +1060,7 @@ def test_the_refresh_does_not_move_the_operators_preferred_table(
     scrumming rows, which is the one case where the restore really
     runs.
 
-    ISSUE #52 CLOSED THAT GENERATOR, SO IT IS RESTORED HERE. The Detail
+    THE REPAIR CLOSED THAT GENERATOR, SO IT IS RESTORED HERE. The Detail
     button now selects its own row, which is the repair. This test is
     not about the button: it is about a 2000 ms timer that must not
     impersonate one, and it needs the flag and the selection to
@@ -1145,7 +1145,7 @@ def test_a_selection_whose_bot_left_the_fleet_is_dropped_not_left_behind(
     The row BELOW the deleted one shifts up into the vacated index, so
     this is the exact shape that produced the misroute. The current
     cell is asserted too: `clearSelection` alone leaves `currentRow()`
-    pointing at the old row, which is the MEM-411 half of the same
+    pointing at the old row, which is the silent half of the same
     family.
     """
     with _collect(), _tab(qapp, monkeypatch, tmp_path) as tab:
@@ -1171,7 +1171,7 @@ def test_a_moved_extractor_selection_is_reported_on_its_own_side(
     The context names which side moved, because the two tables carry
     different accounting and a reader has to know which one to look at.
     Driven with the re-anchor taken away, for the reason given on the
-    scrumming falsifier above: after issue #51 a reordered refresh no
+    scrumming falsifier above: with the re-anchor a reordered refresh no
     longer moves the selection, and the pin still has to be shown
     capable of reporting it when something does.
     """
@@ -1377,7 +1377,7 @@ def test_each_exchange_folds_into_its_own_green_record(
 
     `_throttle_admit` keys its window on `(name, site, instance)`, and
     both cadence pins declare `instance=self.exchange_id`. Two
-    ExchangeTabs run the SAME two lines, so before issue #57 they shared
+    ExchangeTabs run the SAME two lines, so before the instance key they shared
     one 30 s window and the second tab's passes folded into the first
     tab's record. They hold one window EACH now: two exchanges, two
     greens, and the second pass inside each window folds into its own
@@ -1411,7 +1411,7 @@ def test_each_exchange_folds_into_its_own_green_record(
 def test_a_dead_exchange_is_visible_behind_a_healthy_one(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """THE FALSIFIER FOR ISSUE #57.
+    """THE FALSIFIER FOR THE PER-EXCHANGE THROTTLE WINDOW.
 
     The second tab's emitter is stopped: `exchange_id` raises, so both
     pins die while building their own context, inside the tab's own
@@ -1422,7 +1422,7 @@ def test_a_dead_exchange_is_visible_behind_a_healthy_one(
     produced -- one record, naming `coinbase`, `count` 1 -- so the dead
     tab was invisible. With the exchange in the key the record set names
     the exchanges that are still speaking and no others, which is the
-    fact item #14 reads.
+    fact the emitter report reads.
     """
     with _collect() as sink:
         with (
@@ -1446,7 +1446,7 @@ def test_a_dead_exchange_is_visible_behind_a_healthy_one(
 def test_the_two_drives_do_not_read_the_same(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """THE WHOLE OF ISSUE #57 IN ONE ASSERTION.
+    """THE WHOLE OF THE PER-EXCHANGE WINDOW IN ONE ASSERTION.
 
     The two tests above are one control between them, and a reader
     should not have to hold both in their head to see it. This runs BOTH
@@ -1521,7 +1521,7 @@ def test_a_red_from_every_exchange_arrives_on_its_own_record(
     A failing check is never folded. Two exchanges, both losing a bot to
     the mode filter, inside one 30 s window: two records, one per
     exchange, each naming its own. This was the only thing standing
-    between the shared window and a blindfold before issue #57, and the
+    between the shared window and a blindfold before the instance key, and the
     per-exchange key does not retire it -- a red must still bypass, as
     the one-tab test above drives.
     """
@@ -1589,7 +1589,7 @@ def test_no_pin_in_this_tab_carries_a_duration() -> None:
 
 
 def test_the_cadence_declaration_is_what_the_source_does() -> None:
-    """Item #14 reads this split, so it is asserted and not narrated.
+    """The split between the two lanes is asserted, not narrated.
 
     Two pins fire on `update_bots`, which the 2000 ms dashboard timer
     drives, and fold to one record per 30 s window. The three

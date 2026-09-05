@@ -1,4 +1,4 @@
-"""v3.23.61 — pin tests for bot_swarm_list.
+"""Pin tests for bot_swarm_list.
 
 Two surfaces:
   (a) BotSwarmLaneAllocator — pure algorithm, no Qt required
@@ -153,7 +153,7 @@ class TestLaneAllocator:
 
 class TestSchema:
     def test_12_columns_total(self):
-        """v3.23.62 — %Out column added → 12 cols total."""
+        """The %Out column brings the table to twelve columns."""
         assert TOTAL_COLS == 12
         assert len(COLUMN_HEADERS) == 12
 
@@ -241,9 +241,8 @@ class TestHeadlessRender:
         ), f"{outflow_pct}% should paint only {token}, but also painted {others}"
 
     def test_wire_paint_uses_wire_phase_for_animation(self):
-        """v3.23.62 — wire animation migrated to list view. The paint
-        loop must consume `wire['phase']` (set by BotVisualizationTab
-        ._animate at ~2.5/sec) so pulses travel source→target."""
+        """The paint loop consumes `wire['phase']`, so pulses travel
+        source to target."""
         self._new_app()
         from src.gui.bot_swarm_list import BotListView, LaneWireCanvas
 
@@ -304,20 +303,10 @@ class TestHeadlessRender:
         assert canvas._lane_assignments["w2"] == 1
 
     def test_wire_canvas_reports_unknown_bot(self):
-        """REPLACES test_wire_canvas_ignores_unknown_bot (C09, v3.24.52).
+        """An unknown bot id is skipped by the lane assignment AND reported.
 
-        The old pin was named "ignores", commented "wire silently
-        skipped", and asserted that the silent drop was correct. That is
-        finding SWARM-A3 written down as a requirement: it stayed green
-        through the defect and would only have gone red if someone fixed
-        it.
-
-        Replacement, not relaxation, per M7 with operator acknowledgement
-        recorded 2026-08-07 (see
-        docs/engineering-notes/2026-08-07_C09_pin_replacement_record.md). This
-        asserts STRICTLY MORE than the old pin: the original invariant
-        survives verbatim as the first assertion, and the silence is
-        withdrawn.
+        The first assertion keeps the original invariant; the second
+        withdraws the silence that hid a dropped wire.
         """
         self._new_app()
         from src.gui.bot_swarm_list import BotListView, LaneWireCanvas

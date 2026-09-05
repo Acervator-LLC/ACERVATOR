@@ -340,23 +340,14 @@ def test_fleet_replay_panel_mounts(tmp_path, monkeypatch):
     panel = FleetReplayPanel()
     panel._on_load_clicked()
     assert len(panel.get_loaded_configs()) == 1
-    # v3.23.79-A: bare-list retired for QTableWidget (operator called
-    # the old row rendering "sloppy" 2026-07-31).
     assert panel._fleet_table.rowCount() == 1
     assert "1 bot" in panel._status_lbl.text()
-    # v3.23.79-A: Start button is enabled after configs load
-    # (was gated in v3.23.72 before the tick controller existed).
     assert panel._start_btn.isEnabled() is True
 
 
-# ── v3.24.17: sim exchange call-signature parity ─────────────────
-
-
 def test_get_my_trades_accepts_params_kwarg():
-    """ScrummingBot.sync_ytd_trade_count calls get_my_trades with
-    params={"paginate": True, ...}. Before v3.24.17 the sim raised
-    TypeError on every bot on every sync, so counts never populated
-    and each run emitted 35 identical failures."""
+    """ScrummingBot.sync_ytd_trade_count calls get_my_trades with a
+    ``params`` keyword, so the sim exchange must accept one."""
     import asyncio as _a
     from src.simulator.fleet.sim_exchange import FleetSimExchange
     from src.simulator.fleet.candle_series import build_candle_series_from_rows

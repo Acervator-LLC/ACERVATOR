@@ -215,7 +215,7 @@ def test_build_orchestrator_dispatches_per_target(tmp_path):
 
 
 def test_discover_all_exchange_markets_filters_active_and_quote():
-    """v3.24.4 F10 — discover walks connector.get_markets() and
+    """discover walks connector.get_markets() and
     returns only active markets whose quote is in the filter."""
     from types import SimpleNamespace
 
@@ -243,7 +243,7 @@ def test_discover_returns_empty_on_connector_none():
 
 
 def test_build_universe_dispatches_per_discovered_market(tmp_path):
-    """v3.24.4 F11 — build_universe fills every discovered market
+    """build_universe fills every discovered market
     on the exchange, skipping any without a wired adapter."""
     from types import SimpleNamespace
 
