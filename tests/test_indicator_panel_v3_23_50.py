@@ -75,41 +75,101 @@ class TestGweiDerivation:
 # 2. paintEvent source discipline (retired features stay retired)
 
 
+BARS_BACKGROUND = "#0a0a12"
+BARS_MARGIN_TOP = 8
+BARS_MARGIN_BOTTOM = 22
+BARS_SIZE = (200, 200)
+
+
+def _settled_bars(confidence: float, direction: str = "BULLISH"):
+    """A `ConfidenceBarsWidget` holding one bar settled at `confidence`.
+
+    `set_bars` animates from zero, and `_animate_step` is driven to a stop.
+    """
+    pytest.importorskip("PySide6.QtWidgets")
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from src.gui.indicator_panel import ConfidenceBarsWidget
+    from tests.qt_pixel import ensure_app
+
+    ensure_app()
+    widget = ConfidenceBarsWidget()
+    widget.resize(*BARS_SIZE)
+    widget.set_bars([{"name": "rsi", "confidence": confidence, "direction": direction}])
+    for _ in range(500):
+        if not widget._anim_timer.isActive():
+            break
+        widget._animate_step()
+    assert widget._anim_bars[0]["confidence"] == pytest.approx(confidence)
+    return widget
+
+
+def _bar_top(confidence: float) -> int:
+    """The y of the bar's own top edge, in the widget's logical pixels."""
+    height = BARS_SIZE[1]
+    span = height - BARS_MARGIN_TOP - BARS_MARGIN_BOTTOM
+    return int(height - BARS_MARGIN_BOTTOM - max(2, confidence * span))
+
+
+def _colours_in(image, left: int, top: int, right: int, bottom: int) -> set:
+    """Every painted colour inside a logical rectangle of `image`."""
+    from PySide6.QtGui import QColor
+
+    ratio = image.devicePixelRatio() or 1.0
+    seen = set()
+    for x in range(left, right):
+        for y in range(top, bottom):
+            device_x, device_y = int(x * ratio), int(y * ratio)
+            assert 0 <= device_x < image.width() and 0 <= device_y < image.height(), (
+                f"logical ({x},{y}) is outside the "
+                f"{image.width()}x{image.height()} render"
+            )
+            seen.add(QColor(image.pixel(device_x, device_y)).name().lower())
+    return seen
+
+
 class TestPaintEventDiscipline:
-    """We can't easily assert Qt paint output from a headless test, but
-    we CAN assert the retired code paths have not returned. The
-    module's source is the source of truth for these disciplines."""
+    """The retired per-bar percentage label stays off the render."""
 
-    def _src(self) -> str:
-        p = REPO / "src" / "gui" / "indicator_panel.py"
-        return p.read_text(encoding="utf-8")
+    def test_nothing_is_painted_in_the_band_above_a_bar(self):
+        """The band 14 logical pixels above the bar top holds
+        `BARS_BACKGROUND` and nothing else."""
+        from tests.qt_pixel import render_widget
 
-    def test_per_bar_percent_label_removed(self):
-        src = self._src()
-        # The retired snippet was:
-        #   p.drawText(QRectF(label_x, y - 14, label_w, 13),
-        #              Qt.AlignCenter, f"{conf:.0%}")
-        # We assert neither of the two-together fragments remains in
-        # the bar-chart paintEvent region.
-        assert 'f"{conf:.0%}"' not in src, (
-            "Per-bar % label above each bar has returned — operator "
-            "directive 2026-07-28 required removal (visual redundancy)."
-        )
+        confidence = 0.30
+        widget = _settled_bars(confidence)
+        image = render_widget(widget, size=BARS_SIZE)
+        top = _bar_top(confidence)
+        painted = _colours_in(image, 7, top - 14, BARS_SIZE[0] - 7, top - 4)
+        assert painted == {BARS_BACKGROUND}, sorted(painted)
 
-    def test_use_cols_alignment_restored(self):
-        """v3.23.53 — bar chart alignment to table columns was
-        RESTORED per operator directive 2026-07-28: 'columns should
-        always fit under and never exceed the width of their
-        respective readouts'. Assert paint-time branch + sync
-        helper are present."""
-        src = self._src()
-        assert "use_cols = " in src, (
-            "Bar-chart column-alignment branch is missing — needed "
-            "so bar[i] centers under table-column[i+1]."
-        )
-        assert (
-            "def _sync_bars_for" in src
-        ), "Per-mini-panel sync helper _sync_bars_for missing."
+    def test_the_band_sampler_reports_the_bar_it_is_pointed_at(self):
+        """The control: `_colours_in` over the bar itself is not flat."""
+        from tests.qt_pixel import render_widget
+
+        confidence = 0.30
+        widget = _settled_bars(confidence)
+        image = render_widget(widget, size=BARS_SIZE)
+        top = _bar_top(confidence)
+        painted = _colours_in(image, 12, top + 2, BARS_SIZE[0] - 12, top + 12)
+        assert len(painted) > 1, sorted(painted)
+        assert painted != {BARS_BACKGROUND}, sorted(painted)
+
+    def test_the_bars_align_under_the_columns_they_are_given(self):
+        """`set_column_positions` moves the painted bar to the column x."""
+        from tests.qt_pixel import render_widget
+
+        confidence = 0.80
+        widget = _settled_bars(confidence)
+        widget.set_column_positions([(0, 40), (120, 60)])
+        image = render_widget(widget, size=BARS_SIZE)
+        top = _bar_top(confidence)
+        row = top + 20
+        inside = _colours_in(image, 130, row, 170, row + 1)
+        outside = _colours_in(image, 20, row, 60, row + 1)
+        assert inside != {BARS_BACKGROUND}, sorted(inside)
+        assert outside == {BARS_BACKGROUND}, sorted(outside)
 
 
 # 3. Live-render smoke — panel instantiates, layout is well-formed
