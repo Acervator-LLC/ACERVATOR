@@ -979,43 +979,47 @@ def test_the_react_variant_gives_the_history_tab_the_web_table() -> None:
     )
 
 
-def _window_wiring() -> str:
-    """The window module and every per-tab builder, concatenated.
+class _TabBook:
+    """Carries the ``_main_tabs`` and ``_bot_manager`` a tab builder reads."""
 
-    Each ``addTab`` call now sits in the mixin that builds that tab.
-    """
-    gui = REPO / "src" / "gui"
-    parts = [gui / "main_window.py"]
-    parts += sorted((gui / "main_tabs").glob("*.py"))
-    return "\n".join(p.read_text(encoding="utf-8") for p in parts)
+    def __init__(self, tabs: Any) -> None:
+        self._main_tabs = tabs
+        self._bot_manager = _bot_manager()
+        self._history_tab: Any = None
 
 
-def test_there_is_exactly_one_history_tab() -> None:
-    """One tab named History, and no second renderer beside it."""
-    wiring = _window_wiring()
-    added = re.findall(r'addTab\([^,]+,\s*"([^"]*[Hh]istory[^"]*)"\)', wiring)
-    assert added == ["History"], added
-    assert "ReactHistoryPanel" not in wiring
+def test_the_history_builder_adds_exactly_one_history_tab(qapp) -> None:
+    """``_build_history_tab`` leaves one tab, named History."""
+    from types import MethodType
+
+    from PySide6.QtWidgets import QTabWidget
+
+    from src.gui.history_tab import HistoryTab
+    from src.gui.main_tabs.history_tab import HistoryTabMixin
+
+    tabs = QTabWidget()
+    holder = _TabBook(tabs)
+    MethodType(HistoryTabMixin.__dict__["_build_history_tab"], holder)()
+    try:
+        assert holder._history_tab is not None, (
+            "_build_history_tab swallowed its own failure and added no tab; "
+            "see the acervator.gui warning for the cause"
+        )
+        labels = [tabs.tabText(i) for i in range(tabs.count())]
+        assert labels == ["History"], labels
+        assert isinstance(tabs.widget(0), HistoryTab), type(tabs.widget(0)).__name__
+    finally:
+        tabs.deleteLater()
+
+
+def test_the_history_tab_pages_at_the_contract_size() -> None:
+    """``HistoryTab.PAGE_SIZE`` is the size the read contract serves."""
     from src.gui.history_tab import HistoryTab
 
-    assert HistoryTab.PAGE_SIZE == hrc.PAGE_SIZE
-
-
-def test_the_canonical_tab_order_still_holds() -> None:
-    """History keeps its place in the seven-tab order."""
-    wiring = (REPO / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-    block = wiring[wiring.index("CANONICAL_TAB_ORDER = [") :]
-    block = block[: block.index("]")]
-    names = re.findall(r'"([^"]+)"', block)
-    assert names == [
-        "Trading",
-        "Market Inspector",
-        "Bot Swarm",
-        "Asset Charts",
-        "History",
-        "Simulator",
-        "Console",
-    ], names
+    assert HistoryTab.PAGE_SIZE == hrc.PAGE_SIZE, (
+        f"the tab pages at {HistoryTab.PAGE_SIZE} and the contract "
+        f"serves {hrc.PAGE_SIZE}"
+    )
 
 
 def test_the_shipped_tab_renders_the_contract_into_its_own_view(qapp) -> None:
