@@ -985,6 +985,7 @@ class _TabBook:
     def __init__(self, tabs: Any) -> None:
         self._main_tabs = tabs
         self._bot_manager = _bot_manager()
+        self._history_tab: Any = None
 
 
 def test_the_history_builder_adds_exactly_one_history_tab(qapp) -> None:

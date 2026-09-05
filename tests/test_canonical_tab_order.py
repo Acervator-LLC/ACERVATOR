@@ -150,7 +150,7 @@ class ShellWindow:
         self.tab_changes.append(index)
 
 
-@pytest.fixture()
+@pytest.fixture
 def shell(qapp):
     """A ``ShellWindow`` the shipped ``_setup_ui`` has already run against."""
     host = QWidget()

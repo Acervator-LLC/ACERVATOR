@@ -900,8 +900,23 @@ def test_the_menu_comparison_reports_a_missing_item():
     assert digest(shipped_menu_titles()) != digest(thinned)
 
 
+#: What the shipped builders leave: six append and the Simulator inserts at 1.
+SHIPPED_CONSTRUCTION_ORDER = [
+    "Trading",
+    "Simulator",
+    "Asset Charts",
+    "Bot Swarm",
+    "Market Inspector",
+    "History",
+    "Console",
+]
+
 TAB_ORDER_CASES = {
-    "shipped_build_order": list(surface.BUILT_TAB_ORDER),
+    "surface_built_tab_order": list(surface.BUILT_TAB_ORDER),
+    "shipped_construction_order": list(SHIPPED_CONSTRUCTION_ORDER),
+    "a_tab_that_failed_to_build_from_construction_order": [
+        name for name in SHIPPED_CONSTRUCTION_ORDER if name != "History"
+    ],
     "already_canonical": list(surface.CANONICAL_TAB_ORDER),
     "reversed": list(reversed(surface.CANONICAL_TAB_ORDER)),
     "no_tabs": [],
