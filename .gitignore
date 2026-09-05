@@ -110,3 +110,6 @@ scratchpad/
 # Captured output. Figures extracted from the product manual PDF land here;
 # docs/manual/FIGURES.md is the tracked inventory of what the directory holds.
 artifacts/
+
+# Files taken out of the tree and held for one release before deletion.
+quarantine/

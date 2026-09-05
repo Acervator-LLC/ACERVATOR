@@ -19,9 +19,11 @@ NOT_SOURCE_PARTS = frozenset(
         ".ruff_cache",  # tool cache
         ".mypy_cache",  # tool cache
         "__pycache__",  # bytecode
+        "artifacts",  # build output, holds the manual PDF and its figures
         "build",  # build output
         "dist",  # build output, holds a copy of every src module
         "node_modules",  # third-party
+        "quarantine",  # holds files taken out of the tree; they are not in it
         "scratchpad",  # agent working files
         "vendor",  # third-party, React itself
     }

@@ -63,7 +63,6 @@ class TestSrcImports:
             "src.exchange",
             "src.competition",
             "src.stocks",
-            "src.utils",
         ],
     )
     def test_subpackage_imports(self, subpkg):
