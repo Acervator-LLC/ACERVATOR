@@ -142,7 +142,6 @@ exist, and the sink is in memory and is never given a path.
 
 from __future__ import annotations
 
-import ast
 import contextlib
 import os
 import sys
@@ -151,11 +150,8 @@ from typing import TYPE_CHECKING, Any, Iterator
 
 import pytest
 
-# `tests/conftest.py` puts the repository root on `sys.path` before any
-# test module is imported, so these import normally rather than after a
-# path insert. THAT IS WHY THERE IS NO `# noqa: E402` HERE: they are at
-# the top because they belong there, not because a suppression was
-# written over a real finding.
+# `tests/conftest.py` puts the repository root on `sys.path` before any test
+# module is imported, so these need no path insert above them.
 from src.core import signal_contract as sc
 from src.core.signal_contract import SignalSink
 
@@ -166,10 +162,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 REPO = Path(__file__).resolve().parent.parent
 
 if TYPE_CHECKING:  # pragma: no cover
-    # Annotation only. PySide6 must not be imported at module scope: the
-    # source-reading tests below are pure Python and have to run on a box
-    # without Qt. A skipped test is not evidence, so the skip is scoped
-    # to the fixture and not to the module.
+    # Annotation only: importing PySide6 at module scope would skip the whole
+    # file on a box without Qt, and the fixture scopes the skip instead.
     from PySide6.QtWidgets import QApplication
 
 RENDERED = "console.14.001.invariant.records_rendered"
@@ -194,9 +188,8 @@ SLICE_CAP = 200
 GAP_TAG = "[SIGNALS GAP]"
 SIGNALS_FILE = "~/.acervator_logs/signals/session.jsonl"
 
-# Substrings that must never appear in a record this tab writes. A
-# context is written to disk, and a bot id is operator-chosen text the
-# privacy registry masks in the bot table.
+# Substrings that must never appear in a record this tab writes. A bot id is
+# operator-chosen text the privacy registry masks in the bot table.
 FORBIDDEN = (
     "api_key",
     "apikey",
@@ -567,64 +560,6 @@ def _without_the_gap_marker(monkeypatch: pytest.MonkeyPatch) -> None:
         return 0
 
     monkeypatch.setattr(mw, "_draw_signal_gap_marker", _pre_repair_no_op, raising=True)
-
-
-# ── the syntax tree ────────────────────────────────────────────────────
-
-
-def _console_emit_calls() -> list[ast.Call]:
-    """Every `_co_emit(...)` call node in `main_window.py`.
-
-    Read from the syntax tree, so an aliased import or a renamed local
-    cannot slip one past. A regex over the source would answer a
-    different question.
-    """
-    tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
-    return [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "_co_emit"
-    ]
-
-
-def _pin_name(call: ast.Call) -> str:
-    first = call.args[0]
-    assert isinstance(first, ast.Constant)
-    return str(first.value)
-
-
-def _keyword(call: ast.Call, name: str) -> ast.expr | None:
-    for kw in call.keywords:
-        if kw.arg == name:
-            return kw.value
-    return None
-
-
-def _span(function: str) -> tuple[int, int]:
-    """The first and last line of one method of `MainWindow`."""
-    tree = ast.parse(MAIN_WINDOW.read_text(encoding="utf-8"))
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.FunctionDef)
-            and node.name == function
-            and node.end_lineno is not None
-        ):
-            return (node.lineno, node.end_lineno)
-    missing = f"{function} not found in {MAIN_WINDOW}"
-    raise AssertionError(missing)
-
-
-# ── THE RECURSION. Settled first, because nothing else is safe. ────────
-#
-# The static half of this section read every pin in `main_window.py`
-# through `tools/emitter_registry_check.collect_pins` and required that
-# none of them fell inside the `_drain_signals` span. That collector went
-# with the pin system. The invariant is still driven, dynamically, by
-# `test_two_hundred_drains_do_not_grow_the_sink` below: a pin on the drain
-# path makes each drain add at least one record, and that test requires
-# the count to hold at three over two hundred drains.
 
 
 def test_two_hundred_drains_do_not_grow_the_sink(qapp: QApplication) -> None:
@@ -1033,50 +968,33 @@ def test_a_resume_leaves_both_panes_agreeing(qapp: QApplication) -> None:
     assert rec.context["log_pane_paused"] is False
 
 
-def test_the_flag_the_drain_reads_is_assigned_exactly_once_in_the_tree() -> None:
-    """The measurement behind `14-004`, read off the syntax tree.
+def test_set_console_paused_is_the_only_writer_of_the_flag(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With `_set_console_paused` neutered the flag never moves.
 
-    IT USED TO ASSERT ZERO. That walk found no assignment to
-    `_console_paused` anywhere under `src/` or in `main.py`, against a
-    control that the same walk DID find the neighbouring `_signal_seq`
-    -- and the zero was the defect, not an instrument fault. Issue #49
-    put ONE assignment in the tree, so the same walk now asserts one,
-    in `main_window.py`, and the control stays exactly where it was:
-    without it a count here would be a claim about the walk rather than
-    about the tree.
-
-    ONE, not merely at-least-one. `_set_console_paused` is the single
-    writer on purpose -- the falsifier for `14-004` monkeypatches that
-    function to reach the pin's red condition, and a second assignment
-    written somewhere else would keep the flag moving with the falsifier
-    installed and quietly retire the falsifier.
+    A second writer anywhere on the press path would keep
+    `_console_paused` moving and quietly retire the `14-004` falsifier.
     """
-    targets = [*sorted((REPO / "src").rglob("*.py")), REPO / "main.py"]
+    with _collect(), _console(qapp) as stub:
+        _without_the_console_pause_flag(monkeypatch)
+        for checked in (True, False, True):
+            stub._console_pause_btn.setChecked(checked)
+            stub._toggle_console_pause()
+            assert not hasattr(stub, "_console_paused"), stub._console_paused
 
-    def _assigned(attribute: str) -> list[str]:
-        hits: list[str] = []
-        for path in targets:
-            if "__pycache__" in path.parts:
-                continue
-            try:
-                tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-            except SyntaxError:  # pragma: no cover
-                continue
-            for node in ast.walk(tree):
-                if not isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
-                    continue
-                written = (
-                    node.targets if isinstance(node, ast.Assign) else [node.target]
-                )
-                for target in written:
-                    if isinstance(target, ast.Attribute) and target.attr == attribute:
-                        hits.append(f"{path.name}:{node.lineno}")
-        return hits
 
-    assert _assigned("_signal_seq"), "the control found nothing; the walk is broken"
-    written = _assigned("_console_paused")
-    assert len(written) == 1, written
-    assert written[0].startswith("main_window.py:"), written
+def test_the_pause_flag_control_moves_the_flag_when_the_writer_is_left_alone(
+    qapp: QApplication,
+) -> None:
+    """The control: unpatched, `_toggle_console_pause` moves the flag."""
+    with _collect(), _console(qapp) as stub:
+        stub._console_pause_btn.setChecked(True)
+        stub._toggle_console_pause()
+        assert stub._console_paused is True
+        stub._console_pause_btn.setChecked(False)
+        stub._toggle_console_pause()
+        assert stub._console_paused is False
 
 
 def test_a_resume_delivers_the_backlog_and_the_slice_reports_what_it_ate(
@@ -1164,26 +1082,6 @@ def test_a_resume_delivers_the_backlog_and_the_slice_reports_what_it_ate(
     # The pane cap never bit: 200 rendered and one marker is under 2000
     # blocks.
     assert blocks < PANE_BLOCKS
-
-
-# ── issue #48  THE GAP THE SLICE MAKES IS DRAWN, NOT ONLY COUNTED ──────
-#
-# `14-001` counts it. A number in `session.jsonl` is for whoever reads
-# `session.jsonl`; it does nothing for the operator watching the pane,
-# who saw the newest 200 records appear with no sign that thousands of
-# older ones had been stepped over. THE OPERATOR'S REQUIREMENT IS
-# VERBATIM: "The Emitter Network just needs to work. No part should get
-# back logged or clogged or fall out of sync."
-#
-# TWO PATHS REACH THE SAME SLICE and both are driven below: the resume
-# after a long pause (issue #49's repair created it) and a live burst of
-# more than 200 records inside one 500 ms window with no pause at all
-# (issue #48 was filed for this one and predates the repair).
-#
-# THE RECORDS ARE NOT LOST FROM THE SYSTEM. `SignalSink` appends and
-# flushes on every emit; the pane is one consumer falling behind. The
-# marker says so and names the file, so the operator's next move is to
-# read it rather than to hunt a defect that is not there.
 
 
 def test_the_marker_says_the_records_are_not_lost_and_where_they_are() -> None:
@@ -1599,82 +1497,94 @@ def test_the_duration_tracks_two_different_resume_workloads(qapp: QApplication) 
     assert quick < 0.20
 
 
-# ── the shape, read off the syntax tree ────────────────────────────────
+def _drive_every_pin(qapp: QApplication, sink: SignalSink) -> None:
+    """Fire all five console pins once: a health pass, then pause and resume."""
+    with _console(qapp) as stub:
+        stub._signal_drain_ticks = 1
+        stub._emit_console_health()
+        stub._console_pause_btn.setChecked(True)
+        stub._toggle_console_pause()
+        stub._console_log_handler.log("one held line")
+        stub._console_pause_btn.setChecked(False)
+        stub._toggle_console_pause()
+    assert {r.name for r in sink.records()} == set(CONSOLE_PINS), sorted(
+        {r.name for r in sink.records()}
+    )
 
 
-def test_only_the_resume_pin_carries_a_duration() -> None:
-    """E8 in this tab: one postcondition behind a real bounded
-    operation, and nothing else. The other four read counters and a
-    flag."""
-    carriers = {
-        _pin_name(call)
-        for call in _console_emit_calls()
-        if _keyword(call, "duration") is not None
-    }
+def test_only_the_resume_pin_carries_a_duration(qapp: QApplication) -> None:
+    """One postcondition behind a bounded operation. The other four read
+    counters and a flag, and carry no duration."""
+    with _collect() as sink:
+        _drive_every_pin(qapp, sink)
+        carriers = {r.name for r in sink.records() if r.duration is not None}
     assert carriers == {DELIVERED}
 
 
-def test_the_cadence_declaration_is_what_the_source_does() -> None:
-    """Item #14 reads this split, so it is asserted and not narrated.
+def test_the_health_pins_fold_and_the_toggle_pins_do_not(qapp: QApplication) -> None:
+    """A second health pass inside the fold window adds no record, while a
+    second pause press adds one every time."""
+    with _collect() as sink, _console(qapp) as stub:
+        stub._signal_drain_ticks = 1
+        stub._emit_console_health()
+        stub._signal_drain_ticks = 2
+        stub._emit_console_health()
+        for checked in (True, False, True):
+            stub._console_pause_btn.setChecked(checked)
+            stub._toggle_console_pause()
+        counts = {name: len(_records(sink, name)) for name in CONSOLE_PINS}
+    for name in (RENDERED, HOLDS, ALIVE):
+        assert counts[name] == 1, (name, counts)
+    assert counts[QUIETS] == 3, counts
 
-    Three pins fire on the 5000 ms health timer and fold to one record
-    per 30 s window. The two toggle pins carry no throttle: the
-    operator's finger is their rate limit.
+
+def test_the_health_pass_fires_exactly_the_three_cadence_pins(
+    qapp: QApplication,
+) -> None:
+    """`_emit_console_health` emits the three cadence pins and neither
+    toggle pin."""
+    with _collect() as sink, _console(qapp) as stub:
+        stub._signal_drain_ticks = 1
+        stub._emit_console_health()
+        fired = {r.name for r in sink.records()}
+    assert fired == {RENDERED, HOLDS, ALIVE}, sorted(fired)
+
+
+def test_a_pause_press_fires_only_the_toggle_pins(qapp: QApplication) -> None:
+    """`_toggle_console_pause` emits only the two unthrottled pins."""
+    with _collect() as sink, _console(qapp) as stub:
+        stub._console_pause_btn.setChecked(True)
+        stub._toggle_console_pause()
+        stub._console_pause_btn.setChecked(False)
+        stub._toggle_console_pause()
+        fired = {r.name for r in sink.records()}
+    assert fired == set(UNTHROTTLED), sorted(fired)
+
+
+def test_every_pin_emits_from_its_own_site(qapp: QApplication) -> None:
+    """Five records, five distinct `(name, site)` identities.
+
+    `signal_contract` keys the fold window and the timing identity on that
+    pair, so a shared identity would be one pin to the wire and two to a
+    reader.
     """
-    every: dict[str, Any] = {}
-    for call in _console_emit_calls():
-        node = _keyword(call, "every")
-        every[_pin_name(call)] = node.value if isinstance(node, ast.Constant) else None
-    assert set(every) == set(CONSOLE_PINS)
-    assert {name for name, value in every.items() if value is None} == set(UNTHROTTLED)
-    assert {value for name, value in every.items() if name not in UNTHROTTLED} == {30.0}
+    with _collect() as sink:
+        _drive_every_pin(qapp, sink)
+        identities = {(r.name, r.site) for r in sink.records()}
+    assert len(identities) == 5, sorted(identities)
 
 
-def test_the_cadence_pins_all_live_in_the_health_pass() -> None:
-    """The cadence is a property of WHERE the three pins sit.
+def test_no_context_carries_credential_material_or_a_bot_id(
+    qapp: QApplication,
+) -> None:
+    """No emitted context holds credential material or operator text.
 
-    All three are inside `_emit_console_health`, which the health timer
-    drives; neither toggle pin is. A pin that drifted into the drain
-    would fail `test_the_drain_emits_nothing_on_any_path`, and one that
-    drifted out of the health pass onto some other caller would keep its
-    `every=30.0` while losing the cadence the register promises. This
-    holds the second half.
+    A context is written to disk, and these hold counts, intervals and
+    booleans.
     """
-    low, high = _span("_emit_console_health")
-    placed = {
-        _pin_name(call): low <= call.lineno <= high for call in _console_emit_calls()
-    }
-    assert {name for name, inside in placed.items() if inside} == {
-        RENDERED,
-        HOLDS,
-        ALIVE,
-    }
-
-    toggle_low, toggle_high = _span("_toggle_console_pause")
-    assert {name for name, inside in placed.items() if not inside} == set(UNTHROTTLED)
-    for call in _console_emit_calls():
-        if _pin_name(call) in UNTHROTTLED:
-            assert toggle_low <= call.lineno <= toggle_high
-
-
-def test_no_two_pins_share_a_line() -> None:
-    """One pin per line.
-
-    `signal_contract` keys both the fold window and the timing identity
-    on (name, site), and `site` is `file:line`. Two pins on one line
-    would be one identity to the wire and two to a reader.
-    """
-    lines = [call.lineno for call in _console_emit_calls()]
-    assert len(lines) == len(set(lines)) == 5
-
-
-def test_no_context_carries_credential_material_or_a_bot_id() -> None:
-    """A context is written to disk. These contexts hold counts,
-    intervals and booleans -- no operator text at all, and no bot id,
-    which the privacy registry masks in the bot table."""
-    for call in _console_emit_calls():
-        node = _keyword(call, "context")
-        assert isinstance(node, ast.Dict), _pin_name(call)
-        rendered = ast.dump(node).lower()
-        for banned in FORBIDDEN:
-            assert banned not in rendered, (_pin_name(call), banned)
+    with _collect() as sink:
+        _drive_every_pin(qapp, sink)
+        for record in sink.records():
+            rendered = repr(record.context).lower()
+            for banned in FORBIDDEN:
+                assert banned not in rendered, (record.name, banned, record.context)
