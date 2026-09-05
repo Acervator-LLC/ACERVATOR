@@ -5,15 +5,21 @@ two isolated ones.
 
 ## What builds it
 
-`HeaderStripMixin._build_header_strip` in
-`src/gui/main_tabs/header_strip.py` creates the window's central widget
-and returns the layout the main tab widget goes into. The strip is one
-row.
+One method builds the strip. It makes the window's central widget, lays a
+single row across the top of it, and hands back the layout the tab row goes
+into. That row holds the five spendable columns on the left and the five
+counter cards on the right, and it does not move as you change tabs.
+
+`src/gui/main_tabs/header_strip.py` — `HeaderStripMixin._build_header_strip`
+
+```python
+self._spendable_widget = SpendableProfitsWidget()
+top_row.addWidget(self._spendable_widget, stretch=3)
+```
 
 ## Left: the spendable columns
 
-`SpendableProfitsWidget` in `src/gui/widgets/spendable_profits.py` draws
-five labelled columns divided by thin vertical rules:
+Five labelled columns fill the left half, divided by thin vertical rules.
 
 | Column | Meaning |
 | ------ | ------- |
@@ -23,13 +29,46 @@ five labelled columns divided by thin vertical rules:
 | MATURE | Wire profit old enough to move |
 | EXCH | Connected exchange count |
 
-`update_profits` takes one payload dict and renders it. A value the
-payload omits draws an em dash rather than a zero, which keeps "no
-reading" and "a reading of nothing" apart.
+The widget builds four of the five from one list, and each entry carries the
+label the operator reads and the payload key that fills it.
+
+`src/gui/widgets/spendable_profits.py` — `SpendableProfitsWidget.__init__`
+
+```python
+for label_text, key in [
+    ("REALISED", "total_realised"),
+    ("LOCKED", "locked"),
+    ("MATURE", "mature"),
+    ("EXCH", "exchanges"),
+]:
+```
+
+One payload draws all five. A value the payload leaves out draws an em dash
+rather than a zero, which keeps "no reading" and "a reading of nothing" apart.
+That is the difference between a column with nothing behind it and a column
+reporting a genuine zero, and on this strip it matters: two of the five have
+nothing behind them today.
+
+`src/gui/widgets/spendable_profits.py` — `SpendableProfitsWidget._money_text`
+
+```python
+@staticmethod
+def _money_text(value) -> str:
+    """Render one amount as money text, or as the empty marker."""
+    amount = SpendableProfitsWidget._amount_of(value)
+    if amount is None:
+        return "—"
+    return f"${amount:,.2f}"
+```
+
+REALISED and MATURE are the two. Both are handed a literal absence at the one
+call site that fills the strip, so both draw the marker on every tick. The
+Trading tab section carries the proposal for the first of them:
+[06-trading-tab.md](../06-trading-tab.md).
 
 ## Right: the five counter cards
 
-`StatCard` in `src/gui/widgets/dashboard_stat_card.py` draws each card.
+Five cards close the row, and each one counts a single thing.
 
 | Card | What it counts |
 | ---- | -------------- |
@@ -39,46 +78,116 @@ reading" and "a reading of nothing" apart.
 | Bots | Bots in the RUNNING state |
 | Errors | Errors across every bot since the last reset |
 
-The Errors card is clickable. `set_clickable` arms it and the click
-reaches `_show_error_log_dialog` in `src/gui/main_window.py`, which opens
-the rolling error buffer and its Reset button.
+Errors is the one card you can click. Arming it takes one call, and the click
+opens the rolling error buffer with its Reset button.
 
-A sixth card, P/L, stays constructed and hidden. Code paths that still
-call `_stat_pnl.set_value` keep working while the card draws nothing.
+`src/gui/main_tabs/header_strip.py` — `HeaderStripMixin._build_header_strip`
 
-The mode button on the right ends the row. `_toggle_trading_mode` swaps
-the window between the crypto and stock layers.
+```python
+self._stat_errors.set_clickable(True, "Click to open the error log.")
+self._stat_errors.clicked.connect(self._show_error_log_dialog)
+```
+
+Issue #428 carries a disagreement between what the tooltips on these cards
+promise and what the cards draw.
+
+A sixth card, P/L, is constructed and then hidden. Code that still writes to it
+keeps working and nothing appears on screen.
+
+`src/gui/main_tabs/header_strip.py` — `HeaderStripMixin._build_header_strip`
+
+```python
+self._stat_pnl = StatCard("P/L", "$0.00")
+self._stat_pnl.setVisible(False)
+```
+
+The mode button on the right ends the row. `_toggle_trading_mode` swaps the
+window between the crypto and stock layers.
 
 ## Privacy
 
-Every field carries a privacy dot. `attach_privacy_dot` registers the
-field id, `mask_or` in `src/core/privacy_mask_registry.py` substitutes
-the mask on the next render, and the registry is shared, so a toggle on
-this strip also hides the same field on the Bot Swarm tab.
+Every field on the strip carries its own privacy dot. Attaching one registers
+the field, and from then on the card draws its value through the mask.
+
+`src/gui/main_tabs/header_strip.py` — `HeaderStripMixin._build_header_strip`
+
+```python
+self._stat_scrummed.attach_privacy_dot("counter.scrummed")
+self._stat_folded.attach_privacy_dot("counter.folded")
+self._stat_trades.attach_privacy_dot("counter.trades")
+self._stat_bots.attach_privacy_dot("counter.bots")
+self._stat_errors.attach_privacy_dot("counter.errors")
+```
+
+The registry behind those field ids is shared. Hide a field here and the same
+field hides on the Bot Swarm tab, because both surfaces ask the one registry.
+
+`src/core/privacy_mask_registry.py` — `mask_or`
+
+```python
+def mask_or(value, field_id: str, mask: str = "****") -> str:
+    """Return ``mask`` when ``field_id`` is masked, else ``str(value)``.
+
+    A ``field_id`` outside ``ALL_FIELD_IDS`` never masks, which covers every
+    ``TA_FIELD_IDS_EXCLUDED`` entry.
+    """
+```
 
 ## Where the numbers come from
 
-`_refresh_dashboard` in `src/gui/main_window.py` calls
-`BotManager.get_aggregate_stats`, defined as
-`FleetAggregationMixin.get_aggregate_stats` in
-`src/trading/container/aggregation.py`, then writes each card and calls
-`update_profits`. One aggregate feeds every field, so two cards cannot
-disagree about the same fleet.
+One aggregate call fills the whole strip, once a tick. Every card and every
+column is written from that single answer, so two cards cannot disagree about
+the same fleet.
+
+`src/gui/main_window.py` — `_refresh_dashboard`
+
+```python
+agg = self._bot_manager.get_aggregate_stats()
+_scr = float(agg.get("total_scrummed_usd", 0.0) or 0.0)
+_fld = float(agg.get("total_folded_usd", 0.0) or 0.0)
+self._stat_scrummed.set_value(f"${_scr:,.2f}")
+self._stat_folded.set_value(f"${_fld:,.2f}")
+```
+
+The aggregate itself is `FleetAggregationMixin.get_aggregate_stats` in
+`src/trading/container/aggregation.py`.
 
 ## Hiding
 
-`_on_main_tab_changed` hides the strip's container while the active tab
-is Simulator or Paper Trader. `ISOLATED_TABS` in
-`src/gui/main_tabs/header_strip_surface.py` carries the same pair. The
-Simulator draws its own strip instead: `SimStatStrip` in
-`src/gui/simulator_tab/sim_stat_strip.py` mirrors these ten fields
-against sim balances, and the missing live strip is itself the signal
-that the screen is not live trading.
+Two screens are isolated from live trading, and on those two the strip hides
+itself. The absent strip is the signal: no live numbers are on this screen.
+
+`src/gui/main_window.py` — `_on_main_tab_changed`
+
+```python
+isolated_tabs = {"Simulator", "Paper Trader"}
+container = getattr(self, "_header_strip_container", None)
+if container is not None:
+    container.setVisible(tab_name not in isolated_tabs)
+```
+
+The surface module carries the same pair as a constant.
+
+`src/gui/main_tabs/header_strip_surface.py` — `ISOLATED_TABS`
+
+```python
+ISOLATED_TABS = ("Simulator", "Paper Trader")
+```
+
+The Simulator draws its own strip in place of this one. `SimStatStrip` in
+`src/gui/simulator_tab/sim_stat_strip.py` mirrors these ten fields against sim
+balances.
 
 ## Bridge
 
-`header_strip_surface.view_model` answers the `header.strip` method in
-the registry that `build_registry` in `src/core/desktop_bridge.py`
-assembles. The renderer module is `header_strip.js`.
+The strip answers one bridge method, and one renderer module draws it.
+
+`src/gui/main_tabs/header_strip_surface.py` — `METHOD`
+
+```python
+METHOD = "header.strip"
+```
+
+The renderer module is `header_strip.js`.
 
 Back to [the subsystem index](README.md).

@@ -28,32 +28,55 @@ flowchart LR
 
 ## One logic, three data sources
 
-Live, Paper and the Simulator differ in one thing only: where the candles
-and the balances come from. The trading logic stays one body of pure code
-that all three call. Only the stateful shells fork, which keeps a
-simulated run from touching a live object. The Simulator's fleet, for
-example, builds real `ScrummingBot` instances against `FleetSimExchange`
-in `src/simulator/fleet/sim_exchange.py` rather than a second bot class.
+Live, Paper and the Simulator differ in one thing only: where the candles and
+the balances come from. The trading logic stays one body of pure code that all
+three call. Only the stateful shells fork, which keeps a simulated run from
+touching a live object.
+
+The Simulator's fleet is the worked example. It builds real bots against a fake
+exchange rather than a second bot class, and that fake exchange is a subclass
+of the same interface the live connector implements.
+
+`src/simulator/fleet/sim_exchange.py` — `FleetSimExchange`
+
+```python
+class FleetSimExchange(ExchangeInterface):
+    """Real-symbol candle-driven fake exchange for Fleet Replay.
+```
 
 ## The dashed edge
 
-`MarketInspectorTopologies` in `src/gui/market_inspector_topologies.py`
-emits `adoptRequested`, and `_adopt_topology_proposal` in
-`src/gui/main_window.py` creates real bots and draws real wires on the
-live fleet. That edge skips the two middle steps, which is why the
-handler opens a confirmation naming the new bot count, the new budget and
-every wire the adopt would change.
+One edge skips the two middle steps. The Market Inspector's adopt path creates
+real bots and draws real wires on the live fleet, which is why the handler
+opens a confirmation naming the new bot count, the new budget and every wire
+the adopt would change.
 
-The read-only edge into the Simulator is a different hook:
-`set_topology_getter`, wired in
-`src/gui/main_tabs/simulator_tab.py`, lets the sim read a proposal's
-shape and replay it across sim bots. It creates nothing.
+`src/gui/main_window.py` — `_topology_wire_collisions`
+
+```python
+def _topology_wire_collisions(
+    self, wires: list, asset_to_bot: dict
+) -> list[dict]:
+    """Return one dict per proposal wire whose bot pair is already wired."""
+```
+
+The read-only edge into the Simulator is a different hook, and it says so in
+its own words. It lets the sim replay a proposal's shape across sim bots and
+creates nothing.
+
+`src/gui/simulator_tab/simulator_tab.py` — `set_topology_getter`
+
+```python
+    READ ONLY. This is not the adopt path — adopting a proposal
+    creates real bots and wires on the live fleet, while this only
+    lets the simulator replay a proposal's shape across sim bots.
+    """
+```
 
 ## Where the chain breaks today
 
-The Paper Trader step has no module. The Simulator hands nothing forward,
-and Live receives from the Market Inspector's adopt path instead. See
-[paper-trader.md](paper-trader.md) for the proof and for what the step
-needs.
+The Paper Trader step has no module. The Simulator hands nothing forward, and
+Live receives from the Market Inspector's adopt path instead. See
+[paper-trader.md](paper-trader.md) for the proof and for what the step needs.
 
 Back to [the subsystem index](README.md).
