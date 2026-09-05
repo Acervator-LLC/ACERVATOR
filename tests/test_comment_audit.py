@@ -27,10 +27,29 @@ from tools import comment_audit as audit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Two files under the hands-off `dev_harness` tree, so their comment profiles
-# do not move under a cleanup unit.
-UNEDITED_SPARSE = REPO_ROOT / "dev_harness" / "harness" / "claim_ledger.py"
-UNEDITED_DENSE = REPO_ROOT / "dev_harness" / "harness" / "coding_archetype.py"
+DENSE = '''"""A module the counter has plenty to find in."""
+
+# own line one
+# own line two
+# own line three
+LIMIT = 3  # trailing one
+
+
+def widen(value):
+    """Return the value raised to the limit."""
+    # own line four
+    # own line five
+    # own line six
+    return value**LIMIT  # trailing two
+'''
+
+SPARSE = '''"""A module the counter has almost nothing to find in."""
+
+
+def narrow(value):
+    """Return the value unchanged."""
+    return value  # trailing one
+'''
 
 TRAPS = '''"""Module docstring naming issue #128 and v9.9.9 and 2026-01-01."""
 
@@ -223,9 +242,11 @@ def test_comment_blocks_honours_a_wider_minimum():
     assert audit.comment_blocks(comments, minimum=4) == []
 
 
-def test_the_counter_reports_different_numbers_for_two_real_files():
-    """DERIVED. The counter returns the same numbers whatever it reads."""
-    report = audit.build_count_report([UNEDITED_SPARSE, UNEDITED_DENSE])
+def test_the_counter_reports_different_numbers_for_two_files(tmp_path):
+    """STATED. `build_count_report` returns the same numbers whatever it reads."""
+    write_module(tmp_path, SPARSE, "sparse.py")
+    write_module(tmp_path, DENSE, "dense.py")
+    report = audit.build_count_report([tmp_path])
     assert report.files == 2, report.as_dict()
     profiles = {
         (c.own_line_comments, c.trailing_comments, len(c.blocks)) for c in report.counts
@@ -233,19 +254,21 @@ def test_the_counter_reports_different_numbers_for_two_real_files():
     assert len(profiles) == 2, profiles
 
 
-def test_one_real_file_holds_comments_the_other_barely_does():
-    """DERIVED. The dense file no longer out-counts the sparse one."""
-    report = audit.build_count_report([UNEDITED_SPARSE, UNEDITED_DENSE])
+def test_one_file_holds_comments_the_other_barely_does(tmp_path):
+    """STATED. `build_count_report` scores DENSE no higher than SPARSE."""
+    write_module(tmp_path, SPARSE, "sparse.py")
+    write_module(tmp_path, DENSE, "dense.py")
+    report = audit.build_count_report([tmp_path])
     by_path = {c.path: c for c in report.counts}
-    sparse = by_path[next(p for p in by_path if "claim_ledger" in p)]
-    dense = by_path[next(p for p in by_path if "coding_archetype" in p)]
+    sparse = by_path[next(p for p in by_path if "sparse" in p)]
+    dense = by_path[next(p for p in by_path if "dense" in p)]
     assert dense.own_line_comments > sparse.own_line_comments
     assert dense.block_lines > sparse.block_lines
 
 
 def test_removing_every_line_the_counter_named_leaves_no_own_line_comment():
-    """DERIVED. A reported comment line number does not point at a comment."""
-    text = UNEDITED_DENSE.read_text(encoding="utf-8")
+    """STATED. A line `comment_tokens` named does not hold a comment."""
+    text = DENSE
     before = audit.count_source(text, "dense")
     assert before.own_line_comments > 0, before.as_dict()
     rows = {c.line for c in audit.comment_tokens(text) if c.owns_line}
@@ -299,8 +322,8 @@ def test_strict_exits_one_on_an_outside_code_identifier_alone(tmp_path):
 
 
 def real_module_text() -> str:
-    """Return the source of one real file the prover tests drive."""
-    return UNEDITED_DENSE.read_text(encoding="utf-8")
+    """Return the DENSE body the `compare_sources` tests drive."""
+    return DENSE
 
 
 def test_one_changed_operand_reports_not_identical():
@@ -313,7 +336,7 @@ def test_one_changed_operand_reports_not_identical():
 
 
 def test_removing_every_comment_from_a_real_file_reports_identical():
-    """DERIVED. The prover calls a comments-only cleanup a code change."""
+    """STATED. `compare_sources` calls a comments-only cleanup a code change."""
     text = real_module_text()
     rows = {c.line for c in audit.comment_tokens(text) if c.owns_line}
     assert rows, "the real file under test holds no own-line comment"
@@ -322,7 +345,7 @@ def test_removing_every_comment_from_a_real_file_reports_identical():
 
 
 def test_that_same_cleanup_is_not_identical_as_text():
-    """DERIVED positive control. A byte comparison would have answered this."""
+    """STATED positive control. `strip_lines` removed nothing from DENSE."""
     text = real_module_text()
     rows = {c.line for c in audit.comment_tokens(text) if c.owns_line}
     assert strip_lines(text, rows) != text

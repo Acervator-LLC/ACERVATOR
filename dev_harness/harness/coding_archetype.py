@@ -29,28 +29,6 @@ silently pass).
 """
 
 # ruff: noqa: S603
-# S607 WAS SUPPRESSED HERE AND IT WAS NOT A FALSE POSITIVE.
-#
-# The directive used to read `S603, S607`, justified as "partial
-# executable path -- deliberate since we let PATH resolve the tool".
-# Measured 2026-08-13 by stripping it: S603 at six lines and S607 at
-# two -- `["pyright", ...]` and `["semgrep", ...]`. The other four
-# runners spawn `[sys.executable, "-m", ...]`, an absolute
-# interpreter path. So the file already held the safe form and
-# deviated from it twice, and the blanket directive is what stopped
-# anyone noticing. On Windows, PATH plus PATHEXT would execute a
-# `pyright.cmd` or `semgrep.exe` planted anywhere earlier on PATH,
-# under the developer's own token, on every gated write to a Python
-# file. Both now resolve through `_resolve_executable` and are
-# spawned by absolute path, so S607 reports zero here BY
-# CONSTRUCTION rather than by suppression.
-#
-# S603 remains, and it is not avoidable. Measured with ruff 0.16 on
-# six argv forms: an all-literal argv draws no S603, and every argv
-# carrying a variable draws one. Every runner here must pass the
-# target path, which is a variable by definition. There is no
-# compliant form of "spawn an analyzer over a caller-supplied path",
-# so this line is the residue, narrowed from two rules to one.
 from __future__ import annotations
 
 import ast
@@ -81,58 +59,18 @@ __all__ = [
 ]
 
 
-# `Finding` and `ArchetypeReport` now live in tools/harness/report.py.
-# Five archetypes each carried a copy; the copies drifted, and two of
-# the drifts shipped a green report for a run that checked nothing.
-# Re-exported above so `from dev_harness.harness.coding_archetype import
-# ArchetypeReport` keeps working.
-
-
-# ---------------------------------------------------------------------------
-# LANGUAGE DETECTION
-#
-# Every analyzer this archetype drives is a Python analyzer, and none of
-# them refuses a file that is not Python. MEASURED on one JavaScript
-# file, src/gui/web/bot_swarm_list.js: ruff emitted 3,089 findings, 6 of
-# them HIGH, and vulture raised "unterminated string literal" after
-# reading a `//` comment containing an apostrophe as an unclosed Python
-# string. The verdict was passed=False for reasons that described
-# nothing in the file. Sixty-two JavaScript files in this tree were
-# ungateable that way.
-#
-# A file whose language has no toolchain here is reported UNHANDLED, a
-# verdict distinct from both passed and failed: nothing ran, so the
-# report says nothing about the code. `ArchetypeReport.passed` refuses
-# it, so the gate cannot be satisfied by a file it never examined.
-#
-# NO JAVASCRIPT TOOLCHAIN IS INTRODUCED. There is no Node on this
-# machine. Detecting JavaScript and declining it is the whole change.
-#
-# FALSIFICATION: this block is wrong if a `.py` file reaches any path
-# other than the analyzers below; if a file the analyzers cannot parse
-# still reaches them; or if an unhandled verdict is ever readable as a
-# pass.
-# ---------------------------------------------------------------------------
-
 UNKNOWN_LANGUAGE = "unknown"
 
 # The languages this archetype carries analyzers for. Adding a name here
 # is a claim that the runners below can read that language.
 HANDLED_LANGUAGES: frozenset[str] = frozenset({"python"})
 
-# The suffix decides whenever it is mapped, because the runtimes that
-# consume these files dispatch on it -- Python's import machinery on
-# `.py`, Node's resolver on `.js`, `.mjs` and `.cjs`. A suffix is a
-# contract, not a hint, so no content check may overturn one; that is
-# what keeps the Python path identical.
+# A mapped suffix decides the language, and no content check overturns it.
 _LANGUAGE_BY_SUFFIX: dict[str, str] = {
     ".py": "python",
     ".pyi": "python",
     ".pyw": "python",
-    # A PyInstaller spec is Python that PyInstaller execs. Measured on
-    # Acervator_win.spec before this map existed: every analyzer read it
-    # and returned 52 findings, so leaving it unmapped would drop real
-    # coverage rather than stop a fabrication.
+    # A PyInstaller spec is Python that PyInstaller execs.
     ".spec": "python",
     ".js": "javascript",
     ".mjs": "javascript",
@@ -233,13 +171,7 @@ def detect_language(path: Path) -> str:
     return _shebang_language(path) or UNKNOWN_LANGUAGE
 
 
-
-# ---------------------------------------------------------------------------
-# Bandit severity remap - operator directive:
-# B105 (hardcoded password) and B101 (assert-for-security) are HIGH
-# in the security-community consensus, even though bandit's raw output
-# ranks them LOW. Any addition to this map is a curated escalation.
-# ---------------------------------------------------------------------------
+# Bandit rules escalated above the severity bandit itself reports.
 _BANDIT_SEVERITY_OVERRIDES: dict[str, str] = {
     "B101": "high",  # assert used for security-critical check
     "B105": "high",  # hardcoded password
@@ -256,27 +188,11 @@ _BANDIT_SEVERITY_OVERRIDES: dict[str, str] = {
 }
 
 
-# ---------------------------------------------------------------------------
-# v3.23.44 — Type-checker noise demotions (per full-codebase-audit doc
-# docs/audits/2026-07-28_full_codebase_archetype_audit.md § 4.5).
-# These pyright + mypy rules fire in vast numbers on Acervator's
-# defensive async trading paths (`try: x = fn(); except: pass; use(x)`)
-# and on the duck-typed exchange connector API where static analysis
-# cannot resolve dynamic attributes. Individual sites are not
-# actionable at HIGH severity — the type-inference gap is
-# architectural, not per-site. Demoted here to LOW so they still
-# appear in reports for anyone who wants them, without polluting the
-# HIGH gate that blocks self-report-done.
-#
-# Any addition to this map is a curated demotion. Removing an entry
-# re-escalates the rule to its native severity.
-# ---------------------------------------------------------------------------
+# Type-checker rules demoted to low: they still report, and no longer
+# block. Removing an entry restores that rule's native severity.
 _TYPECHECK_NOISE_DEMOTIONS: dict[str, str] = {
-    # pyright
-    # NOTE: reportPossiblyUnboundVariable is NOT demoted wholesale. It is
-    # split by binding kind in `_possibly_unbound_severity()` below --
-    # import-bound is noise, assignment-bound is a real flow bug. See
-    # that function's docstring for the measurement that justifies it.
+    # reportPossiblyUnboundVariable is absent here: `_possibly_unbound_severity`
+    # splits it by binding kind instead.
     "reportAttributeAccessIssue": "low",
     "reportArgumentType": "low",
     "reportOptionalMemberAccess": "low",
@@ -299,40 +215,13 @@ _TYPECHECK_NOISE_DEMOTIONS: dict[str, str] = {
     "operator": "low",
     "index": "low",
     "misc": "low",
-    # NOTE: `unused-ignore` is NOT in this map. Its severity is read
-    # off the message text by `_unused_ignore_severity` below, because
-    # mypy uses one code for two different situations.
+    # `unused-ignore` is not in this map. `_unused_ignore_severity` reads it
+    # off the message text, because mypy uses one code for two situations.
 }
 
 
-# ---------------------------------------------------------------------------
-# 2026-08-13 -- surfaced by --warn-unused-ignores on the mypy invocation
-# below. mypy answers `unused-ignore` for TWO different situations and
-# only one of them is a dead directive. The message text separates them,
-# so the severity is read off the message rather than off the code.
-#
-#   Unused "type: ignore" comment
-#       the directive suppresses nothing. Deleting it changes no other
-#       diagnostic, measured by strip-and-diff on 5 of 5 such rows in
-#       this tree. It is a mypy `error`, so it keeps mypy's native HIGH.
-#
-#   Unused "type: ignore" comment, use narrower [method-assign]
-#   instead of [assignment] code
-#       the directive IS load-bearing. mypy honours it and advises a
-#       narrower code in the same breath, so stripping it ADDS a
-#       `method-assign` error -- measured on
-#       tests/test_api_load_monitor.py:51. Calling that one dead would
-#       be wrong. It surfaces at MEDIUM because its actionable content
-#       is "narrow the code", not "delete the line".
-#
-# The first version of this rule demoted BOTH to medium, reasoning that
-# the oracle mislabels 1 row in 6. That reason does not survive
-# measurement: the message text separates the two classes with no error
-# over this tree's whole population, and the demotion bought nothing
-# except three files staying green while carrying three directives
-# measured DEAD. A severity must not be chosen to avoid its own
-# consequence.
-# ---------------------------------------------------------------------------
+# mypy answers `unused-ignore` for two situations and only the message text
+# separates them, so `_unused_ignore_severity` reads the severity off it.
 _IGNORE_NARROWER_RE = re.compile(r"use narrower \[")
 
 
@@ -349,81 +238,8 @@ def _unused_ignore_severity(message: str) -> str:
     return "medium" if _IGNORE_NARROWER_RE.search(message or "") else "high"
 
 
-# ---------------------------------------------------------------------------
-# 2026-08-14 -- UNTYPED THIRD-PARTY PACKAGES, NAMED ONE AT A TIME.
-#
-# WHY THIS EXISTS
-# ---------------
-# mypy answers `import-untyped` as an `error`, so it arrived here at
-# HIGH, and HIGH blocks. It is not a statement about our code. A file
-# whose entire content is two import statements, one naming ccxt and
-# one naming its async_support submodule, draws the identical two
-# rows, measured 2026-08-14. So every file that imports ccxt was
-# blocked by that library's packaging and by nothing the file itself
-# did. src/gui/bot_wizard.py and
-# src/exchange/ccxt_connector.py were both held by exactly this, and
-# the only per-file answer available is a type-ignore directive. The
-# rule as it stood taught suppression. That is what this map stops.
-#
-# WHY A NAMED MAP AND NOT A mypy FLAG
-# -----------------------------------
-# `--ignore-missing-imports` is a blanket: it also silences
-# `import-not-found`, and an import of a package that is NOT
-# INSTALLED is a real defect that must stay visible.
-# `--disable-error-code=import-untyped` is a blanket over every
-# package, named or not. `--follow-untyped-imports` makes mypy
-# typecheck the library's own source, which reports the LIBRARY's
-# defects against OUR file. None of the three can be read as a list.
-#
-# The mechanism used instead is the one this file already uses twice
-# -- _BANDIT_SEVERITY_OVERRIDES and _TYPECHECK_NOISE_DEMOTIONS -- a
-# curated severity remap applied to an already-parsed finding, with
-# the reason recorded beside the entry. It has one property no flag
-# has: mypy's argv does not change, so mypy computes exactly what it
-# computed before and the row stays in the report at LOW. Nothing is
-# hidden. One label moves.
-#
-# WHAT MAY BE NAMED HERE
-# ----------------------
-# Only a package for which mypy itself knows of NO stub distribution.
-# mypy separates the two cases in the message text, and its own
-# registry is the oracle -- measured 2026-08-14 against mypy 2.1.0:
-#
-#     mypy.stubinfo.stub_distribution_name("ccxt")      -> None
-#     mypy.stubinfo.stub_distribution_name("reportlab") -> types-reportlab
-#
-#   'Skipping analyzing "X": module is installed, but missing
-#   library stubs or py.typed marker'
-#       mypy knows of nothing to install. Not fixable from this
-#       repo. NAMEABLE.
-#
-#   'Library stubs not installed for "X"'
-#       a stub package exists and is merely absent. Installing it is
-#       the fix, so the row must keep its HIGH. reportlab, imported
-#       by src/core/version_sweep.py, is in exactly that state and is
-#       deliberately NOT named below.
-#
-# One entry names one distribution. PEP 561 puts the py.typed marker
-# at the distribution root, so "ccxt ships no py.typed" is a fact
-# about ccxt and every ccxt.* submodule at once; the matcher compares
-# the top-level name for that reason. Measured 2026-08-14 on ccxt
-# 4.5.73: the installed package carries no py.typed marker, no
-# ccxt-stubs and no types-ccxt are installed, and the package ships
-# no stub file of its own.
-#
-# The matcher requires ALL THREE of: the `import-untyped` code, the
-# no-stub-distribution message form, and the named package. If a stub
-# package for ccxt is ever published, mypy switches to the second
-# message form, this entry stops matching, and the row returns to
-# HIGH on its own. The rule retires itself rather than outliving its
-# reason.
-#
-# FALSIFICATION: this map is wrong if a row it demotes is about
-# anything other than a named package's missing type information; if
-# an `import-not-found` row ever reaches LOW through it; or if adding
-# an entry changes any finding in a file that does not import that
-# package.
-# ---------------------------------------------------------------------------
+# Packages mypy knows no stub distribution for. An `import-untyped` row
+# naming one drops to low; `import-not-found` never matches.
 _UNTYPED_THIRD_PARTY: dict[str, str] = {
     "ccxt": "no py.typed marker, and no stub distribution known to mypy",
 }
@@ -458,42 +274,14 @@ def _untyped_import_severity(message: str, native: str) -> str:
     return "low" if top_level in _UNTYPED_THIRD_PARTY else native
 
 
-# ---------------------------------------------------------------------------
-# v3.24.20 — possibly-unbound triage by BINDING KIND.
-#
-# WHY THIS EXISTS
-# ---------------
-# v3.23.44 demoted `reportPossiblyUnboundVariable` to LOW wholesale
-# because it fires 2,465 times across src/ + main.py. That demotion made
-# the gate blind to a whole bug class. Measured on 2026-08-04:
-#
-#     import-bound only (Qt try/except guard)  2,456   <- genuine noise
-#     ASSIGNMENT-bound only (real flow bug)        9   <- real defects
-#     ambiguous                                    0
-#
-# The separation is total. The 2,456 are `try: from PySide6 import X`
-# guarded by `if _HAS_QT:`, where the symbol can never actually be
-# touched unbound. The 9 are locals assigned inside a conditional and
-# read outside it. One of those 9 is main.py:1107 `_autostart_bot_count`
-# -- an UnboundLocalError that kills startup on any machine with no saved
-# bot state, i.e. every fresh install. The gate saw it and passed it.
-#
-# So: classify by how the name is bound in the module under test.
-# Import-bound stays LOW. Assignment-bound is promoted to HIGH, which
-# blocks self-report-done.
-# ---------------------------------------------------------------------------
 _PU_NAME_RE = re.compile(r'"([^"]+)"')
 
 # Per-process memo of (import_bound, assignment_bound) by file path.
-# Module level rather than a mutable default argument: the default
-# argument carried the same lifetime with none of the visibility, and
-# needed a suppression to say so.
 _PU_BINDING_CACHE: dict[str, tuple[set[str], set[str]]] = {}
 
 
-# Ruff code-family severities. Matched LONGEST-PREFIX-FIRST so that
-# multi-letter families (SIM, SLF, RUF, ANN, PERF...) are not swallowed
-# by their single-letter neighbours (S = bandit security).
+# Matched longest-prefix-first, so SIM, SLF, RUF and ANN are not swallowed
+# by the single-letter S family.
 _RUFF_SEV_MAP: dict[str, str] = {
     "F": "medium",  # pyflakes (real bugs / unused code)
     "E": "medium",  # pycodestyle errors
@@ -578,11 +366,6 @@ def _possibly_unbound_severity(message: str, file_path: str) -> str:
     return "low"
 
 
-# ---------------------------------------------------------------------------
-# The archetype
-# ---------------------------------------------------------------------------
-
-
 class CodingArchetype:
     """Coding-quality archetype v2 — subprocess-invokes six tools:
     ruff, mypy, pyright, bandit, vulture, semgrep."""
@@ -608,8 +391,7 @@ class CodingArchetype:
             return report
 
         # A directory has no single language, and every analyzer below
-        # self-filters to `.py` when handed one, so a mixed tree needs
-        # no gate here.
+        # self-filters to `.py`.
         if target.is_file():
             report.language = detect_language(target)
             if report.language not in HANDLED_LANGUAGES:
@@ -617,9 +399,8 @@ class CodingArchetype:
                 report.falsification = self._unhandled_falsification(report)
                 return report
 
-        # Past this line the analyzers actually run over the target.
-        # `scanned` stays False on the early return above, so an empty
-        # report can no longer answer passed=True.
+        # `scanned` stays False on the early return, so an empty report
+        # cannot answer passed=True.
         report.scanned = True
 
         for tool_name, runner in [
@@ -644,28 +425,15 @@ class CodingArchetype:
                 report.tool_availability[tool_name] = "error"
                 report.errors.append(f"{tool_name}: {type(e).__name__}: {e}")
 
-        # v3.23.90 + v3.23.91 — universal rule modules. Adds
-        # scaffolding + hallucination findings normalized to the
-        # Finding schema so they show up in by_tool + by_severity as
-        # first-class results, not out-of-band annexes.
-        #
-        # 2026-08-13 — the enumeration, the read and the status now come
-        # from `scan_rule_modules`. This block used to read `target`
-        # itself, substitute "" when the read failed, scan the empty
-        # string and still report every module `ok`.
         scan_rule_modules(
             report,
             target,
             (
                 ("scaffolding", "dev_harness.harness.rules.scaffolding"),
                 ("hallucination", "dev_harness.harness.rules.hallucination"),
-                # v3.23.92 — slop is coding-only per operator directive
-                # 2026-08-01: "slop probably only applied to coding."
-                # gui_archetype + docs_archetype deliberately skip it.
+                # slop and numeric_guard are coding-only; the gui and docs
+                # archetypes skip both.
                 ("slop", "dev_harness.harness.rules.slop"),
-                # 2026-08-10 — numeric_guard is coding-only for the same
-                # reason: numeric admission is a code contract, not a
-                # widget or a document concern.
                 ("numeric_guard", "dev_harness.harness.rules.numeric_guard"),
             ),
             (".py",),
@@ -760,24 +528,7 @@ class CodingArchetype:
             return False
         return f"No module named {tool}" in (proc.stderr or "")
 
-    # Rules that are DEFECTS in source and CORRECT PRACTICE in a test.
-    #
-    # v3.24.84 — without this the gate was dead on every test file.
-    # MEASURED across 14 test files: 13 failed the archetype, and the
-    # high-severity findings were 235 S101 against 1 S112 and 5
-    # dead-code. `assert` is how pytest is written -- S101 exists
-    # because asserts vanish under `python -O`, which is not how the
-    # suite runs -- so every test file failed, permanently, on a rule
-    # that cannot be complied with.
-    #
-    # The cost was not the noise. It was that `passed=False` on a test
-    # file carried NO information, so it was waived every time, and the
-    # PostToolUse hook that blocks self-reporting done became a
-    # formality. The 6 genuine findings above were invisible inside 235
-    # false ones.
-    #
-    # A gate that always fails is the same as a gate that never runs,
-    # with the added cost of teaching its readers to ignore it.
+    # Rules that are defects in source and correct practice in a test.
     _TEST_FILE_EXEMPT = (
         "S101",  # assert -- the mechanism pytest is built on
         "S105",  # hardcoded password -- fixture credentials are fake
@@ -831,18 +582,8 @@ class CodingArchetype:
         # ruff finding: {"code": "F401", "message": "...", "location": {"row": 5, "column": 1}, "filename": "..."}
         for item in data:
             code = item.get("code") or "no-code"
-            # Ruff severity: everything from --select=ALL is technically warning-level;
-            # normalize by code family.
-            #
-            # v3.24.20 — LONGEST-PREFIX match, not code[0].
-            # Until now this read `fam = code[0]`, which made every
-            # multi-letter key below unreachable and mis-scored two
-            # families badly:
-            #   SIM114 / SLF001  -> matched "S" -> HIGH (blocking)
-            #   RUF* / ANN*      -> matched nothing -> low, never "medium"
-            # So "combine these if branches" blocked a release at HIGH
-            # while genuine findings sat at low. Sorting keys by length
-            # and taking the first match fixes both directions at once.
+            # Longest-prefix match, not code[0], or every multi-letter
+            # family below is unreachable.
             severity = "low"
             for _fam in _RUFF_FAMILIES_BY_LEN:
                 if code.startswith(_fam):
@@ -876,26 +617,9 @@ class CodingArchetype:
                 "--disallow-untyped-defs",  # <-- v2 fix
                 "--disallow-incomplete-defs",  # <-- v2 fix
                 "--warn-return-any",  # <-- v2 fix
-                # 2026-08-13: without this a `type: ignore` that
-                # suppresses nothing is invisible to the gate for ever,
-                # so a directive could outlive the defect it was written
-                # for and nobody could tell. Measured on a two-file
-                # fixture pair: the dead ignore drew no output at all
-                # before the flag, and `unused-ignore` after it, while
-                # the live ignore stayed silent on both sides.
                 "--warn-unused-ignores",
-                # Pinned, not defaulted. mypy writes `./.mypy_cache`, so
-                # the cache -- and with it the incremental state a
-                # diagnostic can depend on -- used to be chosen by the
-                # caller's working directory. A cache per caller is a
-                # verdict per caller.
-                #
-                # NOT a fresh cache per run: measured on one file, a cold
-                # cache costs 8.8s against 0.6s warm, 15x, and the hook
-                # already runs on a 30s budget. The residual is stated in
-                # docs/audits/2026-08-13_harness_gap_closure.md - compare
-                # two TREES with a fresh cache, because mypy's incremental
-                # mode can answer differently on a warm one.
+                # Pinned: mypy writes `./.mypy_cache`, so an unpinned cache
+                # is one cache, and one verdict, per caller.
                 "--cache-dir",
                 str(REPO_ROOT / ".mypy_cache"),
             ],
@@ -968,10 +692,6 @@ class CodingArchetype:
             line_num = diag.get("range", {}).get("start", {}).get("line", 0) + 1
             rule_id = diag.get("rule", "no-code")
             if rule_id == "reportPossiblyUnboundVariable":
-                # v3.24.20 — triaged by binding kind rather than
-                # demoted wholesale. Import-bound stays low (Qt guard
-                # noise); assignment-bound is promoted to high because
-                # it is a genuine UnboundLocalError waiting to fire.
                 severity = _possibly_unbound_severity(
                     diag.get("message", ""), diag.get("file", str(target))
                 )
@@ -993,13 +713,8 @@ class CodingArchetype:
 
     def _run_bandit(self, target: Path) -> tuple[list[Finding], str]:
         proc = subprocess.run(
-            # `-r`: without it, bandit handed a DIRECTORY scans no
-            # file at all and exits 0 with an empty results array, so
-            # this runner reported `ok` having read nothing. MEASURED
-            # 2026-08-13 on a directory holding one copy of the
-            # harness's own known_bad.py: the FILE target drew B101,
-            # B105 and B404, two of them HIGH, and the DIRECTORY target
-            # drew none. `-r` over a single file is the same scan.
+            # Without `-r` bandit given a directory scans no file and exits 0
+            # with an empty results array.
             [sys.executable, "-m", "bandit", "-f", "json", "-q", "-r", str(target)],
             cwd=str(REPO_ROOT),
             capture_output=True,
@@ -1019,13 +734,8 @@ class CodingArchetype:
         except json.JSONDecodeError as e:
             raise RuntimeError(f"bandit produced non-JSON output: {e}")
         sev_map = {"HIGH": "high", "MEDIUM": "medium", "LOW": "low"}
-        # v3.24.5 — pytest uses `assert` as its native assertion
-        # syntax; bandit B101 flags every one as HIGH. In test files
-        # this is idiomatic (pytest even AST-rewrites asserts for
-        # richer diffs) and running pytest with -O to strip asserts
-        # would make the tests inert — nobody does this. Suppress
-        # B101 when the target is under tests/ so real production
-        # asserts still surface unmuted.
+        # B101 is dropped under tests/ only. A production assert still
+        # surfaces, and every other bandit rule still fires on a test.
         _is_test_file = "/tests/" in str(target).replace("\\", "/")
         for issue in data.get("results", []):
             rule_id = issue.get("test_id", "unknown")
@@ -1128,11 +838,6 @@ class CodingArchetype:
                 )
             )
         return findings, "ok"
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 
 def main(argv: list[str] | None = None) -> int:

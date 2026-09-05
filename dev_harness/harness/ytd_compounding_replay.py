@@ -59,11 +59,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# CSV parsing
-# ---------------------------------------------------------------------------
-
-
 _MONEY_RE = re.compile(r"[$,\s]")
 
 
@@ -131,11 +126,6 @@ def parse_coinbase_csv(path: Path) -> list[Trade]:
                 continue
             trades.append(Trade(ts=ts, side=side, asset=asset, qty=qty, price=price))
     return trades
-
-
-# ---------------------------------------------------------------------------
-# Per-asset replay
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -235,14 +225,9 @@ def replay_asset(
     return r
 
 
-# ---------------------------------------------------------------------------
-# Driver
-# ---------------------------------------------------------------------------
-
-
 def analyze(
     csv_path: Path, initial_target: float = 200.0, max_target_growth_pct: float = 1.0
-) -> dict:
+) -> tuple[dict, list[AssetResult]]:
     trades = parse_coinbase_csv(csv_path)
     per_asset: dict[str, list[Trade]] = defaultdict(list)
     for t in trades:

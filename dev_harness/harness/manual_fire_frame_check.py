@@ -109,9 +109,6 @@ def main(argv: list[str] | None = None) -> int:
         print("no bots in state; nothing to analyse", file=sys.stderr)
         return 2
 
-    # POSITIVE CONTROL. Every bot reporting a zero position means the
-    # field layout moved and this tool is measuring nothing -- which
-    # would otherwise render as "no divergence, all clear".
     if not any(r["position"] > 0 for r in rows):
         print(
             "INSTRUMENT FAILURE: every position recomputed to zero. The "

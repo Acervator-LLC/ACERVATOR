@@ -87,20 +87,6 @@ from dev_harness.harness.report import ArchetypeReport, Finding, cli_exit
 
 __all__ = ["ArchetypeReport", "Finding", "WatchdogArchetype", "main"]
 
-# --------------------------------------------------------------------- #
-# `Finding` and `ArchetypeReport` now live in tools/harness/report.py.
-# Five archetypes each carried a copy. The copies drifted, and the
-# drift shipped a green report for a run that checked nothing: an
-# early return left `findings` empty, and "no high finding" answered
-# True. `passed` now also requires that the target was scanned and
-# that every required analyzer reported `ok`.
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
-# Finding the pins                                                       #
-# --------------------------------------------------------------------- #
-
 _SIGNAL_MODULE = "signal_contract"
 
 # The wire itself, and test files that legitimately build stub pins.
@@ -144,12 +130,6 @@ class _PinScan(ast.NodeVisitor):
                     elif alias.name == _SIGNAL_MODULE:
                         self.module_names.add(alias.asname or alias.name)
                     elif alias.name == "emit":
-                        # `from somewhere_else import emit as _tk`. The
-                        # short alias hides the intent from a name-shape
-                        # test, so record it here or the dead pin is
-                        # invisible. Measured 2026-08-10: every `import
-                        # emit` in this tree comes from signal_contract,
-                        # so this can only fire on a repointed import.
                         self.pin_names.add(alias.asname or "emit")
             elif isinstance(node, ast.Import):
                 for alias in node.names:
@@ -198,9 +178,6 @@ class _PinScan(ast.NodeVisitor):
         callee: Optional[str] = None
         wired = False
         if isinstance(func, ast.Name):
-            # wired_names wins over pin_names on purpose: a file that
-            # binds the same name both ways is read as working, because
-            # accusing working code is the costlier mistake.
             if func.id in self.wired_names:
                 callee, wired = func.id, True
             elif (
@@ -212,9 +189,7 @@ class _PinScan(ast.NodeVisitor):
         elif isinstance(func, ast.Attribute) and func.attr == "emit":
             recv = func.value
             head = recv.id if isinstance(recv, ast.Name) else getattr(recv, "attr", "")
-            # Only `signal_contract.emit(...)`. Every other object that
-            # owns `.emit` is a Qt widget or the bus, and neither is a
-            # pin.
+            # Every other object owning `.emit` is a Qt widget or the bus.
             if head in self.module_names:
                 callee, wired = f"{head}.emit", True
         if callee is not None:
@@ -260,11 +235,6 @@ def _iter_python(base: Path) -> list[Path]:
     return [p for p in sorted(base.rglob("*.py")) if "__pycache__" not in p.parts]
 
 
-# --------------------------------------------------------------------- #
-# The archetype                                                          #
-# --------------------------------------------------------------------- #
-
-
 class WatchdogArchetype:
     """Checks one thing: every test pin is wired out to the handler."""
 
@@ -281,9 +251,8 @@ class WatchdogArchetype:
             rep.falsification = self._falsification(0, 0, 0)
             return rep
 
-        # Past this line the scan actually runs over the target.
-        # `scanned` stays False on the early return above, so an
-        # empty report can no longer answer passed=True.
+        # `scanned` stays False on the early return, so an empty report
+        # cannot answer passed=True.
         rep.scanned = True
         gated = [p for p in _iter_python(target) if not is_exempt(p)]
         calls: list[PinCall] = []
@@ -295,12 +264,8 @@ class WatchdogArchetype:
                 unscanned += 1
                 continue
             calls.extend(found)
-        # A module that would not parse was DROPPED from the scan, and
-        # every pin inside it with it. "0 unwired pins" over a set that
-        # silently lost a file is not a measurement. MEASURED 2026-08-13
-        # on a directory holding one unparseable module: exit 0,
-        # passed=True, pin-wiring `ok`, and the SyntaxError sitting
-        # unread in `errors`.
+        # An unparseable module makes pin-wiring "error", so a dropped file
+        # cannot read as zero unwired pins.
         rep.tool_availability["pin-wiring"] = "error" if unscanned else "ok"
 
         for call in calls:
@@ -346,11 +311,6 @@ class WatchdogArchetype:
             f"discriminating, known_good exiting non-zero or known_bad "
             f"exiting zero."
         )
-
-
-# --------------------------------------------------------------------- #
-# CLI                                                                    #
-# --------------------------------------------------------------------- #
 
 
 def main(argv: Optional[list[str]] = None) -> int:

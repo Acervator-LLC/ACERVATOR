@@ -81,10 +81,6 @@ class Finding:
     message: str
 
 
-# --------------------------------------------------------------------- #
-# Vocabulary                                                            #
-# --------------------------------------------------------------------- #
-
 # The only type names that make a guard "numeric-only". A tuple that
 # holds anything else was widened deliberately and is left alone.
 _NUMERIC_TYPE_NAMES = frozenset({"int", "float"})
@@ -111,11 +107,6 @@ _NESTED_SCOPES = (
 )
 
 
-# --------------------------------------------------------------------- #
-# Name resolution                                                       #
-# --------------------------------------------------------------------- #
-
-
 def _dotted(node: ast.AST) -> str | None:
     """Return ``a`` or ``a.b.c`` for a name or attribute chain, else None."""
     if isinstance(node, ast.Name):
@@ -138,11 +129,6 @@ def _is_numeric_type_arg(node: ast.AST) -> bool:
             for elt in node.elts
         )
     return False
-
-
-# --------------------------------------------------------------------- #
-# Guard extraction                                                      #
-# --------------------------------------------------------------------- #
 
 
 def _isinstance_calls_in_test(test: ast.AST) -> list[ast.Call]:
@@ -256,11 +242,6 @@ def _scan_scope(scope: ast.AST) -> list[tuple[int, str, str]]:
             if later:
                 hits.append((call.lineno, name, scope_name))
     return hits
-
-
-# --------------------------------------------------------------------- #
-# Public entry — called by coding_archetype only                        #
-# --------------------------------------------------------------------- #
 
 
 def scan(target: Path, source: str) -> list[Any]:

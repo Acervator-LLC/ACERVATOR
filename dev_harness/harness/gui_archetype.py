@@ -29,18 +29,6 @@ Design (in one paragraph):
 """
 
 # ruff: noqa: S603
-# The S607 half was DEAD and is removed. Measured 2026-08-13 by
-# stripping the whole directive and re-running ruff 0.16 with
-# --select=S603,S607: two S603 and ZERO S607. Both runners here
-# already spawn `[sys.executable, "-m", ...]`, an absolute
-# interpreter path, so there was never a partial path to suppress.
-# A directive naming a rule that cannot fire is a claim nobody
-# checked, and it is the half that hid a real S607 in
-# coding_archetype.py and docs_archetype.py.
-#
-# S603 stays because it has no compliant form: measured across six
-# argv shapes, an all-literal argv draws none and any argv carrying
-# a variable draws one, and every runner must pass the target path.
 from __future__ import annotations
 
 import ast
@@ -60,18 +48,6 @@ from dev_harness.harness.report import (
 
 __all__ = ["ArchetypeReport", "Finding", "GUIArchetype", "main"]
 
-
-# `Finding` and `ArchetypeReport` now live in tools/harness/report.py.
-# Five archetypes each carried a copy. The copies drifted, and the
-# drift shipped a green report for a run that checked nothing: an
-# early return left `findings` empty, and "no high finding" answered
-# True. `passed` now also requires that the target was scanned and
-# that every required analyzer reported `ok`.
-
-
-# ---------------------------------------------------------------------------
-# Qt widget class recognition
-# ---------------------------------------------------------------------------
 
 _QT_WIDGET_BASES: set[str] = {
     "QWidget",
@@ -97,19 +73,8 @@ _QT_WIDGET_BASES: set[str] = {
     "QGroupBox",
     "QScrollArea",
     "QDockWidget",
-    # v3.24.xx — CHANGE 2. Every name below is a QWidget subclass that
-    # the analyzer previously did not recognise, so a class deriving
-    # from one was graded by NO GUI rule at all. MEASURED before the
-    # widening: across the 56 files of src/gui the GUI rules skipped
-    # 8 classes outright -- the 6 QWizardPage subclasses and the 2
-    # QWizard subclasses in bot_wizard.py and init_wizard.py -- and
-    # bot_wizard.py is the file that carries the Extractor creation
-    # flow. Widening the set can only make MORE classes graded; it
-    # cannot remove a finding.
-    #
-    # QObject and QThread are deliberately NOT here. They are not
-    # widgets, they paint nothing, and GUI001 (accessible name) and
-    # GUI003 (layout vs setGeometry) are meaningless against them.
+    # QObject and QThread are excluded: they paint nothing, so GUI001 and
+    # GUI003 say nothing about them.
     "QWizard",
     "QWizardPage",
     "QTableView",
@@ -241,11 +206,6 @@ def _local_widget_classes(tree: ast.AST) -> frozenset[str]:
                 seen.add(name)
                 changed = True
     return frozenset(seen)
-
-
-# ---------------------------------------------------------------------------
-# Static analyzer
-# ---------------------------------------------------------------------------
 
 
 class _GUIAnalyzer(ast.NodeVisitor):
@@ -483,20 +443,8 @@ class _GUIAnalyzer(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-# ---------------------------------------------------------------------------
-# GUI006 — model-only colour assertion (CHANGE 4 / "Rule 3")
-# ---------------------------------------------------------------------------
-
-# Qt getters that report a MODEL-level paint value off a LIVE object.
-# Reading one tells you what the widget was TOLD to paint. It does not
-# tell you what the widget painted. MEASURED 2026-08-11 on the real
-# case: a QTableWidget with per-cell setBackground(QColor("#b3261e"))
-# plus a `QTableWidget::item { background: #101018; }` stylesheet rule
-# renders the cell #101018 while item.background().color().name()
-# still returns "#b3261e". The model assertion passes; the screen is
-# the other colour.
-#
-# Only CALLS match. A local variable named `palette` is not a read.
+# Qt getters that report what a widget was told to paint, not what it
+# painted. Only calls match, so a local named `palette` is not a read.
 _MODEL_COLOUR_READS: frozenset[str] = frozenset(
     {
         "background",
@@ -514,10 +462,8 @@ _MODEL_COLOUR_READS: frozenset[str] = frozenset(
     }
 )
 
-# Constructs that prove the test looked at a RENDERED pixel. Any one of
-# these anywhere in the test function disarms GUI006 for that function.
-# Names are matched as call targets, attributes, or bare names, so both
-# `w.grab().toImage()` and a helper import are recognised.
+# Any one of these in a test function disarms GUI006 for that function.
+# Matched as a call target, an attribute, or a bare name.
 _PIXEL_CONSTRUCTS: frozenset[str] = frozenset(
     {
         "grab",
@@ -704,11 +650,6 @@ def _run_gui_static(target: Path) -> list[Finding]:
     return findings
 
 
-# ---------------------------------------------------------------------------
-# The archetype
-# ---------------------------------------------------------------------------
-
-
 _BANDIT_SEVERITY_OVERRIDES: dict[str, str] = {
     "B101": "high",
     "B105": "high",
@@ -730,11 +671,6 @@ class GUIArchetype:
     for GUI-specific concerns with ruff + bandit for general quality."""
 
     name = "gui_quality"
-    # v1.1: added falsification field + calibration hook
-    # v1.2: test-file lint exemption (S101/S105/S106/PLR2004/SLF001 +
-    #       bandit B101 under tests/), widened _QT_WIDGET_BASES with
-    #       same-module subclass resolution, and GUI006 (model-only
-    #       colour assertion).
     version = "1.2"
     tools = ("gui-static", "ruff", "bandit")
     calibration_name = "gui"
@@ -753,9 +689,8 @@ class GUIArchetype:
             report.falsification = self._build_falsification(report)
             return report
 
-        # Past this line the checks actually run over the target.
-        # `scanned` stays False on the early return above, so an
-        # empty report can no longer answer passed=True.
+        # `scanned` stays False on the early return, so an empty report
+        # cannot answer passed=True.
         report.scanned = True
 
         # Static AST pass (always available; no subprocess dependency)
@@ -785,16 +720,6 @@ class GUIArchetype:
                 report.tool_availability[tool_name] = "error"
                 report.errors.append(f"{tool_name}: {type(e).__name__}: {e}")
 
-        # v3.23.90 + v3.23.91 — universal rule modules (scaffolding
-        # + hallucination). S002/S003 (wall-clock completion timer,
-        # uninitialized attr) are direct captures of v3.23.85 +
-        # v3.23.87 GUI defects. H001/H003 catch dead paths + dead
-        # imports the AST-level GUI checks would otherwise miss.
-        #
-        # 2026-08-13 — the enumeration, the read and the status now come
-        # from `scan_rule_modules`. This block used to read `target`
-        # itself, substitute "" when the read failed, scan the empty
-        # string and still report both modules `ok`.
         scan_rule_modules(
             report,
             target,
@@ -864,27 +789,7 @@ class GUIArchetype:
             return False
         return f"No module named {tool}" in (proc.stderr or "")
 
-    # Rules that are DEFECTS in source and CORRECT PRACTICE in a test.
-    #
-    # v3.24.xx — CHANGE 1, ported from
-    # coding_archetype._TEST_FILE_EXEMPT, which fixed the identical
-    # defect there. Without it this archetype was DEAD on every pytest
-    # file. MEASURED on tests/test_extractor_requires_parent.py before
-    # the port: passed=False with 60 high findings, being 30 ruff S101
-    # and 30 bandit B101 for the same 30 asserts, and gui-static
-    # contributing ZERO. No GUI test file could pass, whatever it
-    # contained.
-    #
-    # The cost is not the noise. `passed=False` on a test file carried
-    # NO information, so it was waived every time, and any real GUI
-    # finding in a test was invisible inside the assert count. A gate
-    # that always fails is the same as a gate that never runs, with the
-    # added cost of teaching its readers to ignore it.
-    #
-    # This list is the same five codes coding_archetype exempts, and it
-    # stays that length. Each names a rule pytest CANNOT comply with,
-    # not a rule that is merely inconvenient. Every other ruff and
-    # bandit rule stays live on test files, so nothing in src/ changes.
+    # Rules that are defects in source and correct practice in a test.
     _TEST_FILE_EXEMPT = (
         "S101",  # assert -- the mechanism pytest is built on
         "S105",  # hardcoded password -- fixture credentials are fake
@@ -967,10 +872,8 @@ class GUIArchetype:
 
     def _run_bandit(self, target: Path) -> tuple[list[Finding], str]:
         proc = subprocess.run(
-            # `-r`: without it, bandit handed a DIRECTORY scans no
-            # file at all and exits 0 with an empty results array, so
-            # this runner reported `ok` having read nothing. `-r` over a
-            # single file is the same scan.
+            # Without `-r` bandit given a directory scans no file and exits 0
+            # with an empty results array.
             [sys.executable, "-m", "bandit", "-f", "json", "-q", "-r", str(target)],
             cwd=str(REPO_ROOT),
             capture_output=True,
@@ -990,14 +893,8 @@ class GUIArchetype:
         except json.JSONDecodeError as e:
             raise RuntimeError(f"bandit produced non-JSON output: {e}")
         sev_map = {"HIGH": "high", "MEDIUM": "medium", "LOW": "low"}
-        # v3.24.xx — CHANGE 1, ported from coding_archetype._run_bandit.
-        # pytest uses `assert` as its native assertion syntax and even
-        # AST-rewrites it for richer diffs; bandit B101 flags every one
-        # as HIGH. Running the suite under `python -O` to strip asserts
-        # would make the tests inert, so the rule cannot be complied
-        # with. Suppress B101 under tests/ ONLY -- every production
-        # assert still surfaces unmuted, and every other bandit rule
-        # still fires on test files.
+        # B101 is dropped under tests/ only. Every other bandit rule still
+        # fires there, and a production assert still surfaces.
         _in_tests = "/tests/" in str(target).replace("\\", "/")
         for issue in data.get("results", []):
             rule_id = issue.get("test_id", "unknown")
