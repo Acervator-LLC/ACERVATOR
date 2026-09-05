@@ -39,16 +39,10 @@ _GATE_ORDER_FOLD: tuple[str, ...] = (
     "OTD",  # opposing-trade-distance hysteresis
 )
 
-# LS is an override, not a pass/fail gate. A detected landing strip forces
-# is_bullish/is_bearish True in ``ScrummingBot.tick``
-# (``src/trading/scrumming_bot.py``), so it can
-# produce a fire the TA gate alone refuses. It never appears in a blocker
-# list and is painted from its own field.
+# LS is an override, not a pass/fail gate, and never appears in a blocker list.
 _GATE_OVERRIDE = "LS"
 
-# Blocker phrase prefix -> gate label. ORDERED most-specific-first; a
-# sort breaks the mapping, because "target_fires=False(...)" contains
-# "target" and would match the TGT (delta) entry.
+# Ordered most-specific-first; sorting breaks the prefix match.
 _BLOCKER_PREFIXES: tuple[tuple[str, str], ...] = (
     # scrum -- specific before general
     ("target_fires", "FIRE"),

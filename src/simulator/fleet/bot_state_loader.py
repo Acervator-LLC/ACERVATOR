@@ -128,10 +128,7 @@ def load_bot_configs_from_state(
         # Downstream sim joins to the live parity trace on this id.
         cfg_copy = dict(cfg)
         cfg_copy.setdefault("_src_bot_id", str(bot_id))
-        # Underscore keys, so the BotConfig field filter in
-        # `_instantiate_bot` ignores them and `_build_sim` reads them back
-        # off the dict after the bot is constructed. The importer they feed
-        # is `StateSerializerMixin.import_scrumming_state`.
+        # Underscore keys, so the BotConfig field filter in _instantiate_bot ignores them.
         if isinstance(entry.get("scrumming_state"), dict):
             cfg_copy["_src_scrumming_state"] = entry["scrumming_state"]
         if isinstance(entry.get("stats"), dict):

@@ -8,9 +8,7 @@ questions from a position value, which is what the dashboard holds.
 
 from __future__ import annotations
 
-#: The tick's park band, as a fraction of target. Inside it
-#: ``ScrummingBot.tick`` exits before any TA or signal, unless a manual
-#: fire is pending.
+#: The tick's park band as a fraction of target; ScrummingBot.tick exits inside it.
 AT_TARGET_PCT = 0.001
 
 #: Manual Fire's own no-op band, as a fraction of target; ten times

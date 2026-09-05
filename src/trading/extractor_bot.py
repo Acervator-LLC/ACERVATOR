@@ -44,10 +44,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger("acervator.extractor")
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Position dataclass — one per active pair
-# ─────────────────────────────────────────────────────────────────────
-
 # Percent-to-ratio conversion factor used by update_base_usd_rate().
 PERCENT_PER_RATIO_UNIT = 100.0
 
@@ -57,17 +53,7 @@ POSITION_STATE_DRAWDOWN = "drawdown"
 POSITION_STATE_BULLISH_EXIT = "bullish_exit"
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Extractor Tranche Arbiter — per tranche, who may close it
-# ─────────────────────────────────────────────────────────────────────
-# `parent` names the base-currency ScrummingBot force-selling the
-# tranche at x% growth; `sibling` names the Extractor closing its own
-# position. Only `sibling` describes running code today: the automatic
-# closer is `_execute_bullish_exit`, the manual closer is
-# `manual_fire_position`, and the parent's only involvement is booking
-# an arrival via `ScrummingBot.apply_extractor_tranche_return`. Setting
-# `parent` records an intention and changes no trading decision; the
-# field is read only by the row emitter and the surface that paints it.
+# Only ARBITER_SIBLING closes a tranche today; ARBITER_PARENT records an intention.
 ARBITER_PARENT = "parent"
 ARBITER_SIBLING = "sibling"
 
@@ -130,22 +116,12 @@ class ExtractorPosition:
     last_correction_ts: float = 0.0
     opened_at: float = 0.0
 
-    # Recorded by the tick that already fetched it for its own
-    # decisions; no ticker is fetched here. Zero means never priced,
-    # not a real price of zero.
+    # Zero means never priced, not a price of zero.
     last_price_base_per_alt: float = 0.0
     last_priced_at: float = 0.0
 
-    # Who may close this tranche: `parent` or `sibling` (see the
-    # ARBITER_* block above). Lives on the position, not on the parent
-    # or on BotConfig, because it is per-tranche and the parent keeps
-    # no per-child record to attach it to.
+    # Who may close this tranche: ARBITER_PARENT or ARBITER_SIBLING.
     arbiter: str = ARBITER_SIBLING
-
-
-# ─────────────────────────────────────────────────────────────────────
-# ExtractorBot
-# ─────────────────────────────────────────────────────────────────────
 
 
 class ExtractorBot(BotContainer):
@@ -173,37 +149,24 @@ class ExtractorBot(BotContainer):
             )
         super().__init__(config, exchange)
 
-        # Stores the phantom flag instead of discarding it; the
-        # Extractor still runs no phantom logic. Both construction
-        # sites (`main_window.py`'s bot creation,
-        # `restore.py`'s `restore_bots_from_state`) pass False today.
+        # Stored only: the Extractor runs no phantom logic.
         self._phantoms_enabled = bool(enable_phantoms)
 
-        # ── Chunk-based balance ──────────────────────────────────────
-        # The Extractor owns its assigned chunk of base currency and
-        # never queries exchange.get_balance to size decisions.
-        # Defaults to a 1:1 USD/base ratio until set_initial_chunk_rate
-        # is called; a real caller must set the rate before the bot ticks.
+        # Sized from the assigned chunk, never from exchange.get_balance.
         self._chunk_size_usd: float = float(config.extractor_chunk_size_usd)
         self._chunk_to_base_rate: float = 1.0  # base/USD; set externally
         self._chunk_size_base: float = self._chunk_size_usd  # rebased when rate is set
         self._chunk_free_base: float = self._chunk_size_base
         self._chunk_extracted_total: float = 0.0  # cumulative base extracted
 
-        # update_base_usd_rate() validates each incoming rate against
-        # the most recent sample: a >10% jump falls back to the median
-        # of this trailing window, and zero or negative rates refuse
-        # outright, leaving the last-known-good rate in effect.
+        # update_base_usd_rate falls back to this window's median on a spike.
         self._recent_rates: list[float] = []  # last 3 accepted rates
         self._rate_spike_threshold_pct: float = 10.0
         self._rate_spike_window: int = 3
         self._rate_spike_events: int = 0  # diagnostic counter
         self._rate_refuse_events: int = 0  # zero/negative rate refusals
 
-        # ── Hedge reserve (separate from chunk; powers corrections) ──
-        # If extractor_hedge_budget_usd > 0, a separate base reserve
-        # is provisioned. Corrections draw from hedge first; chunk
-        # second. Until exhausted, chunk_free is protected.
+        # Corrections draw from the hedge reserve first and the chunk second.
         self._hedge_budget_usd: float = float(config.extractor_hedge_budget_usd)
         self._hedge_free_base: float = 0.0  # set in lock-step with rate
 
@@ -237,10 +200,7 @@ class ExtractorBot(BotContainer):
         self._cycle_extracted_total: float = 0.0  # this session
         self._lifetime_extracted_total: float = 0.0
 
-        # ── Capital Reservation Registry token ───────────────────────
-        # Reserved at set_initial_chunk_rate, released at stop(), and
-        # heartbeat-pulsed each tick. None means no reservation is
-        # held; registry calls are no-ops on None.
+        # Reserved at set_initial_chunk_rate, released at stop(), pulsed each tick.
         self._crr_token: Optional[str] = None
 
         self._initialised = False
@@ -263,10 +223,7 @@ class ExtractorBot(BotContainer):
             )
             return
         self._chunk_to_base_rate = float(base_per_usd)
-        # Inverted Extractor: when a standing ALT quantity is set, the
-        # chunk is initialised from it instead of from chunk_size_usd,
-        # and chunk_size_usd becomes an observation (standing × rate)
-        # rather than an input.
+        # With a standing ALT quantity set, chunk_size_usd is an observation, not an input.
         _standing = float(
             getattr(self.config, "inverted_extractor_standing_alt_units", 0) or 0
         )
@@ -287,15 +244,7 @@ class ExtractorBot(BotContainer):
         if self._hedge_budget_usd > 0:
             self._hedge_free_base = self._hedge_budget_usd / base_per_usd
 
-        # ── Capital Reservation Registry: source-side wiring ──────────
-        # Reserves the full chunk + hedge in ASSET QUANTITY, not USD,
-        # so a concurrent ScrummingBot on the same base_currency sees
-        # its budget reduced by this Extractor's claim regardless of
-        # price moves. No explicit TTL: tick() pulses heartbeat and
-        # stop() releases; a crash lets HEARTBEAT_TTL expire the
-        # reservation. If the registry call raises, this continues
-        # WITHOUT a reservation and ScrummingBot protection on this
-        # asset does not engage for this Extractor's lifetime.
+        # Reserved in asset quantity, not USD; a raising registry leaves this bot unreserved.
         base_asset = (self.config.base_currency or "").upper()
         total_reserved_base = self._chunk_size_base + self._hedge_free_base
         if base_asset and total_reserved_base > 0:
@@ -633,10 +582,7 @@ class ExtractorBot(BotContainer):
             top_n = max(5, min(10, top_n))  # clamp to 5-10
             new_watch = [sym for sym, _ in ranked[:top_n]]
 
-        # Both modes: preserve pairs with open positions even if they
-        # fell out of the new watch (auto: dropped from top-N; manual:
-        # operator de-selected mid-cycle — defensive against rogue
-        # config edits that would orphan an open position).
+        # A pair with an open position stays in the watch even when it leaves the new one.
         for pair in list(self._positions.keys()):
             if pair not in new_watch:
                 new_watch.append(pair)
@@ -787,9 +733,7 @@ class ExtractorBot(BotContainer):
             self._chunk_to_base_rate = new_rate
             return True, "accepted (recovered from invalid window)"
 
-        # `divergence_ratio` and `spike_limit_ratio` are both
-        # dimensionless ratios, not percentages, so the comparison
-        # below compares like units.
+        # Both are dimensionless ratios, not percentages.
         divergence_ratio = abs(new_rate - last_rate) / last_rate
         spike_limit_ratio = self._rate_spike_threshold_pct / PERCENT_PER_RATIO_UNIT
         if divergence_ratio > spike_limit_ratio:
@@ -1199,9 +1143,7 @@ class ExtractorBot(BotContainer):
 
         max_tier = int(self.config.extractor_max_compounding_tier)
         if pos.compounding_tier < max_tier and gain_base > 0:
-            # Roll bumps the tier counter; the gain is locked to
-            # chunk_free_base the same as Lock below — no rolled-
-            # forward artillery size is implemented yet.
+            # Roll bumps the tier counter; the gain still locks to chunk_free_base.
             self._chunk_free_base += base_received
             if pos.alt_units > 1e-12:
                 pos.compounding_tier += 1
@@ -1215,10 +1157,7 @@ class ExtractorBot(BotContainer):
         self._lifetime_extracted_total += gain_base
         self._chunk_extracted_total += gain_base
 
-        # Notifies the manager so the CapitalRegistry reservation grows
-        # to cover the realized profit immediately; otherwise another
-        # bot could claim the wallet's grown balance as phantom excess
-        # before the profit settles.
+        # Grows the registry reservation at once, so no sibling claims the profit.
         if (
             gain_base > 0
             and self._bot_manager is not None
@@ -1465,9 +1404,7 @@ class ExtractorBot(BotContainer):
                 continue
             if alt_price_in_base <= 0:
                 continue
-            # Recorded before evaluation so a raising evaluator still
-            # leaves a fresh mark; the parent reads this field to value
-            # the tranche without a network call on the GUI thread.
+            # The parent values the tranche from this field, with no network call.
             pos.last_price_base_per_alt = alt_price_in_base
             pos.last_priced_at = time.time()
             try:
@@ -1731,9 +1668,7 @@ class ExtractorBot(BotContainer):
                     "opened_at": p.opened_at,
                     "last_price_base_per_alt": p.last_price_base_per_alt,
                     "last_priced_at": p.last_priced_at,
-                    # An explicit key list, not a dataclass dump, so a
-                    # new field not named here is silently dropped here
-                    # on every save until it is added.
+                    # An explicit key list: a field not named here is dropped on save.
                     "arbiter": normalize_arbiter(p.arbiter),
                 }
                 for p in self._positions.values()
@@ -1794,9 +1729,7 @@ class ExtractorBot(BotContainer):
                         pdict.get("last_price_base_per_alt", 0.0)
                     ),
                     last_priced_at=float(pdict.get("last_priced_at", 0.0)),
-                    # normalize_arbiter cannot raise, unlike the float()
-                    # calls above; a raise here would drop the whole
-                    # record, and a preference must never cost a position.
+                    # normalize_arbiter cannot raise, unlike the float() calls above.
                     arbiter=normalize_arbiter(pdict.get("arbiter", ARBITER_SIBLING)),
                 )
                 self._positions[pos.pair] = pos

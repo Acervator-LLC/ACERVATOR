@@ -285,16 +285,11 @@ class FleetAggregationMixin:
         errored = 0
         total_scrummed = 0.0
         total_folded = 0.0
-        # YTD sums come from exchange fills via
-        # `ScrummingBot.sync_ytd_trade_count`; the lifetime accumulators
-        # below run in parallel, so a bot that has not yet synced still
-        # contributes.
+        # YTD sums come from exchange fills via ScrummingBot.sync_ytd_trade_count.
         total_scrummed_ytd = 0.0
         total_folded_ytd = 0.0
         total_errors_lifetime = 0  # cumulative across all bots
-        # Exchange-pulled: realised P/L, unrealised and fees come from
-        # actual trade history rather than the synthetic
-        # `stats.realised_pnl` accumulator.
+        # Exchange-pulled, not the synthetic stats.realised_pnl accumulator.
         total_realized_exchange = 0.0
         total_unrealized_exchange = 0.0
         total_fees_exchange = 0.0
@@ -327,11 +322,7 @@ class FleetAggregationMixin:
             _bot_cash = float(getattr(bot.stats, "cash_balance_usd", 0.0) or 0.0)
             if _bot_cash > wallet_cash_usd:
                 wallet_cash_usd = _bot_cash
-            # `stats.position_value` and `stats.current_price` are written
-            # at different moments in the tick, so the cached product lags
-            # a price move. The per-bot Ammo cell and
-            # `ExecutionEngineMixin._execute_manual_rebalance` recompute
-            # for the same reason.
+            # stats.position_value and stats.current_price are written at different moments.
             _bot_pos_val = float(getattr(bot.stats, "position_value", 0.0) or 0.0)
             try:
                 _h = float(getattr(bot, "_current_holdings", 0.0) or 0.0)

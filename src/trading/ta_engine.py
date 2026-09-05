@@ -371,9 +371,7 @@ class VotingEngine:
 
         net = bull_score - bear_score
 
-        # A weighted mean divides by the weight of the points included, and an
-        # abstention is not one; it is NEUTRAL, so it adds nothing to `net`.
-        # `IndicatorVotingPanel._setup_ui` states the same rule in its Conf tooltip.
+        # An abstention is NEUTRAL: it adds nothing to net and no weight to the divisor.
         voted_weight = sum(s.weight for s in signals if not s.abstained)
         consensus_conf = abs(net) / voted_weight if voted_weight > 0.0 else 0.0
 
