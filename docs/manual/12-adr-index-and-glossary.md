@@ -3,29 +3,15 @@
 Reference. Where this repository records a decision, and the words the manual
 uses, each anchored to the module that implements it.
 
-## The decision-record index
+## Where a decision is recorded
 
-The manual this one replaces carries a decision-record index across three lists.
-No file whose name holds "adr", in any case, appears in any commit. The set of
-paths any commit across every ref has added holds 1,599 distinct names, and none
-matches. Run over that same set, the control returns `src/core/log_paths.py` and
-three paths naming the older development protocol, so the query does find a name
-when one is present.
-
-No decision-record index exists here, and none has ever existed. Nothing carries
-forward from that part of the older manual.
-
-## Where a decision is recorded instead
-
-Five places hold the decisions this repository has made. None of them is an
-index, and each answers a different question.
+Four places hold the decisions this repository has made. Each answers a
+different question.
 
 - `docs/engineering-notes/` — 21 notes, ten with an evidence directory beside
   them holding the rows and the script that produced them. One note per
   question, each naming the standard it measures against and the control beside
   every measurement.
-- `docs/audits/manual-original-parts-audit.md` — the claim audit of the older
-  manual, part by part, with a migration list and a corrections table.
 - `.claude/rules/` — three binding standards, on code comments, on documentation
   and on tests. `CLAUDE.md` at the root holds the repository rules above them:
   one role per folder, and no machine-specific path anywhere committed.
@@ -61,9 +47,14 @@ not repeated here.
   `src/trading/scrumming_bot.py` decides and places it.
 - **Fold** — the buy back on the dip that follows a scrum, carried by
   `apply_profit_fold` in `src/trading/profit_fold.py`.
+- **Interval** — the smallest price move between two fires, in percent.
+  `scrumming_interval_pct` in `src/trading/container/config.py`, default 1.0.
 - **Scrum/Fold cycle** — the pair, run against volatility rather than against a
   price forecast. A completed cycle ends holding more of the asset than it
   started with.
+- **Price floor** — every unit bought back after a fold costs at or under the
+  lot's original price. `_fold_eligible_tranches` in
+  `src/trading/scrumming/tick_phases.py` enforces it.
 - **Fold tranche** — one queued slice of scrummed dollars waiting for its buy
   back. `src/trading/scrumming/fold_tranches.py` holds the book.
 - **Merge** — `_top_up_remnant_fold_tranches` folds a new sell's dollars into
@@ -105,6 +96,8 @@ tranche. [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md) describes each in full.
 - **Gate chain** — the ordered checks a candidate trade passes before it fires.
   `GateChain` and `GateContext` in `src/trading/gate_chain.py`. The sell chain
   and the buy chain differ, and [07-indicators.md](07-indicators.md) lists both.
+- **Heikin-Ashi candle** — a smoothed price bar. `detect_landing_strip_v2` in
+  `src/trading/indicators/landing_strip.py` reads them.
 - **Landing Strip** — a tightening detector, `detect_landing_strip_v2` in
   `src/trading/indicators/landing_strip.py`.
 - **Band travel** — the mean-reversion read, `MRInspector` in
@@ -128,11 +121,9 @@ tranche. [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md) describes each in full.
   `src/simulator/fleet/fleet_replay_controller.py` drives the replay and
   `src/simulator/fleet/sim_exchange.py` serves the candles.
 - **Paper Trader** — the step between Simulator and Live, defined by running the
-  same logic against a real-time feed and a fake budget. **It is not built.** No
-  file named `paper*` exists under `src/`, no commit ever added one, and the
+  same logic against a real-time feed and a fake budget. In development. The
   surface that mentions it defaults to `paper_trader_available: bool = False` in
-  `src/gui/main_tabs/stock_main_window_surface.py`, beside a stored import error
-  for a module nobody wrote. See
+  `src/gui/main_tabs/stock_main_window_surface.py`. See
   [08-tabs/paper-trader.md](08-tabs/paper-trader.md).
 - **Proof of Accumulation** — the competition package, `src/competition/`. It
   holds the bot identity, the Merkle log, the challenge protocol, the token
@@ -171,84 +162,4 @@ the operator uses them, and no module implements any of them.
 - **Conceptual hopscotch** — his name for a session hopping across a context
   boundary, which the handoff file exists to carry.
 - **Ekthelius the Accumulator** — his handle.
-
-## Trading-engine vocabulary from the legacy manual
-
-Source: LEGACY, the fourteen-part manual, Part 7c "ADR Index and Glossary", page
-8. The claim audit calls the trading-engine vocabulary accurate, and it carries
-here with each entry re-anchored. The technical-analysis vocabulary from page 10
-of the same part is in [07-indicators.md](07-indicators.md), which is where this
-file already says such words belong.
-
-- **Advantage** — the final portfolio value minus what passive holding would
-  have produced on the same capital. A run wins when this is above zero.
-- **Band travel** — price displacement measured as a fraction of the current
-  Bollinger Band width, so the threshold follows volatility.
-  `band_travel_pct` in `src/trading/container/config.py:100`, default 70.
-- **Explode** — the liquidation trigger of the bear-regime accumulator, at a
-  recovery to 98 percent of entry. No source in this repository; see
-  [15-patent-portfolio.md](15-patent-portfolio.md).
-- **Fold** — a profit-realisation event. The target grows by the realised
-  amount.
-- **Heikin-Ashi candle** — a smoothed price bar. The landing strip reads them,
-  in `src/trading/indicators/landing_strip.py`.
-- **Interval** — the profit-take threshold for one trade, in percent.
-  `scrumming_interval_pct`, default 1.0.
-- **Landing strip** — several consecutive same-colour Heikin-Ashi candles with a
-  narrow body range against a band boundary. `detect_landing_strip_v2`.
-- **Phantom** — a read-only copy of the position at a longer timeframe, read by
-  the bias gates. `src/trading/phantom_balance.py`.
-- **Price floor** — the invariant that every unit bought back after a fold costs
-  at or under the lot's original price. The test is in
-  `src/trading/scrumming/tick_phases.py`.
-- **Regime** — the market classification a timeframe's indicators produce.
-- **Scrum** — a trade inside the zone. In the main bot, a profit-take followed
-  by a target increase.
-- **Target** — the running dollar goal. It grows on a fold and never shrinks.
-- **Tier** — a signal's importance, from structural down to contextual. A
-  structural signal can open a trade; a contextual one can only move confidence.
-- **Tranche** — one buy kept as its own cost-basis lot, so the fold can decide
-  lot by lot. `self._fold_tranches` in `src/trading/scrumming/tick_phases.py`.
-
-The legacy glossary also defines the simulation battery at one size, and the
-same legacy manual gives it two other sizes on other pages. No battery engine
-has any source in this repository, so no size is the right one to carry. The
-entry is dropped and the reason is here.
-
-## Three things deliberately not built
-
-Source: LEGACY, the fourteen-part manual, Part 6 "Department Leads Review",
-pages 10 to 17. These are product decisions rather than deferred work, each with
-a stated reason, and the claim audit verified each subject absent from the code.
-They belong in this file because a decision not to build is still a decision,
-and nothing else in this repository records them.
-
-### No classical trend following
-
-Moving-average crossovers, Donchian channels and channel breakouts are absent,
-and stay absent. Adding them would put a second trading system inside one
-engine, on a different thesis from accumulation. The trend-signal class that
-belongs in an accumulation bot is already covered by the MACD voter and its
-divergence reading, in `src/trading/ta_engine.py`. A dedicated trend follower
-would be a separate product.
-
-### No hard stops
-
-A stop-loss contradicts the price floor. The floor asserts that every unit held
-was bought at or under the lot's original price, and a stop would liquidate
-exactly the units that structural defence exists to carry through a temporary
-drawdown. What the platform has instead is bounded per-event damage:
-`CircuitBreakerGate` and the soft and hard trip percentages, and
-`SmartCeilingGate` with the position ceiling. Those bound one event. They do not
-promise that a long decline costs nothing.
-
-### No tape reading and no order-book depth
-
-Level-two order-book data varies widely in quality between venues and would need
-its own data pipeline. At the size this platform trades, the extra signal does
-not pay for the infrastructure. The bot reads the line of least resistance from
-candle patterns and band positions instead, which the legacy section calls a
-derivative signal and admits as such. The decision is scale-based, and the note
-that comes with it is the honest part: revisit when the size grows enough for
-microstructure to matter.
 
