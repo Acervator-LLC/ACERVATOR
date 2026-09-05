@@ -28,7 +28,7 @@ Users are solely responsible for compliance with all applicable laws and regulat
 
 ### PATENT AND INTELLECTUAL PROPERTY NOTICE
 
-The mechanisms catalogued in Part 2 are claimed as novel inventions by the author. Implementations derived from this document for commercial or competitive use may constitute patent infringement. Research, academic, and personal study use is permitted. Commercial or competitive use requires written license.
+The mechanisms catalogued in Part 2 are claimed as novel inventions by the author. No patent has been granted or filed for any of them. Research, academic, and personal study use is permitted. Commercial or competitive use requires written license.
 
 ## Risk Factors Specific to Algorithmic Trading
 
