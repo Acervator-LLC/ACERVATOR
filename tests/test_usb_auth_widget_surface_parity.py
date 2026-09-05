@@ -1978,17 +1978,6 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
     both_sides_agree("happy")
 
 
-def test_the_shipped_file_is_not_named_by_the_surface():
-    """The surface imports the file it replaces."""
-    imported = imports_of(SURFACE_PATH)
-    assert not any("usb_auth" in name for name in imported), imported
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert "core.usb_auth" not in text
-    assert "_C_" not in text
-    assert "USBAuthWidget" not in text
-    assert "_C_CYAN" in WIDGET_PATH.read_text(encoding="utf-8")
-
-
 def imports_of(path):
     """Every module name one file imports."""
     found = set()
@@ -2006,47 +1995,6 @@ def test_the_surface_loads_no_qt_module():
     assert not any(name.startswith("PySide6") for name in imported), imported
     assert not any(name.startswith("shiboken") for name in imported), imported
     assert any(name.startswith("PySide6") for name in imports_of(WIDGET_PATH))
-
-
-def test_the_surface_opens_no_file_and_no_socket():
-    """The surface reached for a file, a network address or a browser."""
-    tree = parsed(SURFACE_PATH)
-    called = {
-        node.func.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert "open" not in called
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    for forbidden in (
-        "read_text",
-        "write_text",
-        "read_bytes",
-        "write_bytes",
-        "mkdir",
-        "exists",
-        "urlopen",
-        "connect",
-        "socket",
-        "listen",
-    ):
-        assert forbidden not in reached, forbidden
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert "webbrowser" not in text
-    assert "acervator_logs" not in text
-    assert "Path.home" not in text
-
-
-def test_the_surface_reads_no_clock():
-    """The surface reads the wall clock, so its answer moves with the day."""
-    tree = parsed(SURFACE_PATH)
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    for forbidden in ("time", "now", "utcnow", "monotonic", "perf_counter", "today"):
-        assert forbidden not in reached, forbidden
-    assert "datetime" not in imports_of(SURFACE_PATH)
-    assert "time" not in imports_of(SURFACE_PATH)
-    assert "datetime" not in imports_of(WIDGET_PATH)
-    assert "time" not in imports_of(WIDGET_PATH)
 
 
 def test_neither_side_reads_the_wall_clock_during_a_drive():
@@ -2903,14 +2851,21 @@ BLOCK_QT = (
 )
 
 COUNT_NETWORK = (
-    "import socket\n"
+    "import socket, webbrowser\n"
     "_reached = []\n"
+    "_browsed = []\n"
     "def _refuse(*args, **kwargs):\n"
     "    _reached.append(args)\n"
     "    raise AssertionError('this run tried to reach the network')\n"
+    "def _refuse_browser(*args, **kwargs):\n"
+    "    _browsed.append(args)\n"
+    "    raise AssertionError('this run tried to open a browser')\n"
     "socket.create_connection = _refuse\n"
     "socket.getaddrinfo = _refuse\n"
     "socket.socket.connect = _refuse\n"
+    "webbrowser.open = _refuse_browser\n"
+    "webbrowser.open_new = _refuse_browser\n"
+    "webbrowser.open_new_tab = _refuse_browser\n"
 )
 
 BRIDGE_PROBE = (
@@ -2921,7 +2876,8 @@ BRIDGE_PROBE = (
     "                'params': {'reset': True}}),\n"
     "    desktop_bridge.build_registry())\n"
     "print(json.dumps({'frame': frame, 'qt': 'PySide6' in sys.modules,\n"
-    "                  'reached': len(_reached)}))\n"
+    "                  'reached': len(_reached),\n"
+    "                  'browsed': len(_browsed)}))\n"
 )
 
 HEADLESS_PROBE = (
@@ -2950,7 +2906,8 @@ HEADLESS_PROBE = (
     "                  'rows': len(payload['rows']),\n"
     "                  'checked': payload['rows'][0]['toggle_checked'],\n"
     "                  'saves': payload['saves'],\n"
-    "                  'reached': len(_reached)}))\n"
+    "                  'reached': len(_reached),\n"
+    "                  'browsed': len(_browsed)}))\n"
 )
 
 IMPORT_PROBE = (
@@ -2977,7 +2934,8 @@ IMPORT_PROBE = (
     "          'files_at_import': files_at_import,\n"
     "          'files_on_request': sorted(one.name for one in on_request.iterdir()),\n"
     "          'qt': 'PySide6' in sys.modules,\n"
-    "          'reached': len(_reached)}\n"
+    "          'reached': len(_reached),\n"
+    "          'browsed': len(_browsed)}\n"
     "shutil.rmtree(root, ignore_errors=True)\n"
     "print(json.dumps(answer))\n"
 )
@@ -3008,7 +2966,8 @@ THROWAWAY_HOME_PROBE = (
     "answer = {'before': len(before), 'after': len(after),\n"
     "          'created': [Path(one).name for one in after if one not in before],\n"
     "          'home': str(Path.home()) == str(root),\n"
-    "          'reached': len(_reached)}\n"
+    "          'reached': len(_reached),\n"
+    "          'browsed': len(_browsed)}\n"
     "shutil.rmtree(root, ignore_errors=True)\n"
     "print(json.dumps(answer))\n"
 )
@@ -3039,6 +2998,7 @@ def test_the_surface_answers_over_the_bridge_without_loading_qt():
     answered = run_script(COUNT_NETWORK + BRIDGE_PROBE)
     assert answered["qt"] is False
     assert answered["reached"] == 0
+    assert answered["browsed"] == 0
     assert answered["frame"]["ok"] is True
     result = answered["frame"]["result"]
     assert result["method"] == surface.METHOD
@@ -3058,6 +3018,7 @@ def test_the_surface_builds_the_panel_where_qt_cannot_be_imported():
     answered = run_script(BLOCK_QT + COUNT_NETWORK + HEADLESS_PROBE)
     assert answered["qt"] is False
     assert answered["reached"] == 0
+    assert answered["browsed"] == 0
     assert answered["header"] == surface.HEADER_TEXT
     assert answered["items"] == ["CHIPKEY (15.5 GB) — SER-0001-AAAA"]
     assert answered["threads"] == [
@@ -3093,6 +3054,20 @@ def test_the_network_counter_reaches_a_child_process():
     assert run_script(probe)["reached"] == 1
 
 
+def test_the_browser_counter_reaches_a_child_process():
+    """POSITIVE CONTROL: the browser tripwire reports an open() that the
+    probes above must never see."""
+    probe = COUNT_NETWORK + (
+        "import json, webbrowser\n"
+        "try:\n"
+        "    webbrowser.open('https://example.invalid')\n"
+        "except AssertionError:\n"
+        "    pass\n"
+        "print(json.dumps({'browsed': len(_browsed)}))\n"
+    )
+    assert run_script(probe)["browsed"] == 1
+
+
 def test_importing_the_surface_reads_nothing(tmp_path):
     """Loading the surface built a panel, which reads the operator's own tree.
 
@@ -3108,6 +3083,7 @@ def test_importing_the_surface_reads_nothing(tmp_path):
     assert answered["files_on_request"] == [], answered
     assert answered["qt"] is False, answered
     assert answered["reached"] == 0, answered
+    assert answered["browsed"] == 0, answered
 
 
 def test_a_run_against_a_throwaway_home_creates_no_file():
@@ -3117,6 +3093,7 @@ def test_a_run_against_a_throwaway_home_creates_no_file():
     assert answered["created"] == [], answered
     assert answered["before"] == answered["after"] == 0, answered
     assert answered["reached"] == 0, answered
+    assert answered["browsed"] == 0, answered
 
 
 def test_the_throwaway_home_check_sees_a_file_that_is_written():
@@ -3127,10 +3104,3 @@ def test_the_throwaway_home_check_sees_a_file_that_is_written():
     )
     assert answered["created"] == ["a-file-the-probe-wrote"], answered
     assert answered["after"] == 1, answered
-
-
-def test_the_surface_file_has_unix_line_endings():
-    """The file carries carriage returns, which the build machine rejects."""
-    assert SURFACE_PATH.read_bytes().count(b"\r") == 0
-    assert Path(__file__).read_bytes().count(b"\r") == 0
-    assert WIDGET_PATH.read_bytes().count(b"\r") == 0

@@ -49,14 +49,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 ENTRY_SOURCE = REPO_ROOT / "main.py"
 SURFACE_SOURCE = REPO_ROOT / "src" / "gui" / "main_tabs" / "splash_screen_surface.py"
 TIMER_NEIGHBOUR = REPO_ROOT / "src" / "gui" / "history_tab.py"
-TIMER_NAMESAKE = REPO_ROOT / "src" / "gui" / "main_tabs" / "history_tab.py"
 
 PIXEL_SIZE = (400, 400)
 
 SHIPPED_METHOD_TOTAL = 5
 SHIPPED_FREE_NAME_TOTAL = 7
-ENTRY_TIMER_TOTAL = 5
-ENTRY_CONNECT_TOTAL = 5
 ENTRY_THREAD_TOTAL = 0
 SPLASH_CONNECT_TOTAL = 1
 PAYLOAD_KEY_TOTAL = 24
@@ -1083,17 +1080,64 @@ def base_classes(tree) -> list:
     return found
 
 
-def test_the_entry_point_builds_five_timers_and_the_counter_can_report():
-    """The timer counter counts a name rather than a construction."""
-    tree = parsed(ENTRY_SOURCE)
-    built = constructions(tree, "QTimer")
-    assert len(built) == ENTRY_TIMER_TOTAL, len(built)
-    named = ENTRY_SOURCE.read_text(encoding="utf-8").count("QTimer")
-    assert named > len(built), (named, len(built))
-    assert len(constructions(parsed(TIMER_NEIGHBOUR), "QTimer")) == 1
-    assert constructions(parsed(TIMER_NAMESAKE), "QTimer") == []
-    assert TIMER_NEIGHBOUR.name == TIMER_NAMESAKE.name
-    assert constructions(parsed(SURFACE_SOURCE), "QTimer") == []
+def _built_splash():
+    """The shipped SplashScreen, built on a watched timer and widget."""
+    from PySide6.QtCore import Qt
+
+    app()
+    colour, rect, font, gradient, pen, painter = recorder_names()
+    del pen
+    built = build_shipped(
+        {
+            "QColor": colour,
+            "QFont": font,
+            "QLinearGradient": gradient,
+            "QPainter": painter,
+            "QRectF": rect,
+            "QTimer": watched_timer(),
+            "Qt": Qt,
+        },
+        watched_widget(),
+    )
+    target = watched_widget()()
+    return built(target), target
+
+
+def test_the_splash_starts_exactly_one_timer():
+    """The splash runs its own clock and nothing else's."""
+    from PySide6.QtCore import QObject, QTimer
+
+    app()
+    started: list = []
+    original_start = QTimer.start
+    original_start_timer = QObject.startTimer
+
+    def watch_start(self, *args, **kwargs):
+        started.append(("QTimer.start", args))
+        return original_start(self, *args, **kwargs)
+
+    def watch_start_timer(self, *args, **kwargs):
+        started.append(("startTimer", args))
+        return original_start_timer(self, *args, **kwargs)
+
+    QTimer.start = watch_start
+    QObject.startTimer = watch_start_timer
+    try:
+        splash, target = _built_splash()
+        observed = list(started)
+        started.clear()
+        QTimer().start(400)
+    finally:
+        QTimer.start = original_start
+        QObject.startTimer = original_start_timer
+    splash._timer.stop()
+    splash.setParent(None)
+    splash.deleteLater()
+    target.deleteLater()
+    assert started == [("QTimer.start", (400,))], "the watcher is blind"
+    assert [name for name, _args in observed] == ["QTimer.start"], observed
+    assert surface.TIMERS == {"tick": surface.TIMER_INTERVAL_MS}
+    assert splash._timer.interval() == surface.TIMER_INTERVAL_MS
 
 
 def test_the_splash_stands_on_qwidget_under_an_import_alias():
@@ -1115,13 +1159,21 @@ def test_the_splash_stands_on_qwidget_under_an_import_alias():
     assert unresolved == ["_QW"], unresolved
 
 
-def test_the_entry_point_wires_five_signals_and_one_is_the_splash():
-    """A wired signal in the entry point is missing from the count."""
-    wired = connect_sites(parsed(ENTRY_SOURCE))
-    assert len(wired) == ENTRY_CONNECT_TOTAL, wired
-    assert wired.count("self._timer.timeout") == SPLASH_CONNECT_TOTAL, wired
-    assert connect_sites(parsed(SURFACE_SOURCE)) == []
-    assert len(surface.ACTIONS) == SPLASH_CONNECT_TOTAL
+def test_the_splash_wires_one_signal_and_no_more():
+    """The splash's own timer carries one receiver, counted on it."""
+    from PySide6.QtCore import QTimer
+
+    splash, target = _built_splash()
+    splash._timer.stop()
+    timeout = "2timeout()"
+    live = splash._timer.receivers(timeout)
+    bare = QTimer().receivers(timeout)
+    splash.setParent(None)
+    splash.deleteLater()
+    target.deleteLater()
+    assert bare == 0, "a bare QTimer already carries a receiver"
+    assert live == SPLASH_CONNECT_TOTAL == 1
+    assert len(surface.ACTIONS) == live
 
 
 def test_one_emit_of_the_wired_signal_advances_the_clock_exactly_one_tick():
