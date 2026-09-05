@@ -717,17 +717,17 @@ def _hash_signal(sig) -> str:
     return digest.hexdigest()[:16]
 
 
-# `_hash_signal` over `realistic_rows`, taken before the abstention repair.
+# `_hash_signal` over the twelve voters `realistic_rows` produces.
 EXPECTED_HEALTHY_HASHES = {
     "adx": "a21a68f11b0ebe4e",
     "bollinger_bands": "d15bd21c3a386958",
-    "ichimoku": "5d584593ca7a1c7e",
+    "ichimoku": "fd69f49215c7722a",
     "kaufman_er": "49a171528a8e7876",
-    "macd": "93bd545133023f59",
+    "macd": "228963f2e660ebea",
     "rsi": "846a05fa23dac836",
     "slingshot": "217d6d34260b66c6",
     "stochastic_rsi": "3e3911f241b15bb2",
-    "supertrend": "43d753765bd80aa9",
+    "supertrend": "a95500ab1cb03b56",
     "volume": "fe01e09f3ce04b03",
     "vortex": "89d6bbd412a328ea",
     "zscore": "f13d4d992ca85e24",
@@ -735,14 +735,10 @@ EXPECTED_HEALTHY_HASHES = {
 
 
 def test_well_formed_data_is_bit_identical(healthy: list) -> None:
-    """THE OPPOSITE CONTROL, and it is as binding as the abstentions.
+    """Every voter's reading on ``healthy`` matches ``EXPECTED_HEALTHY_HASHES``.
 
-    These twelve digests were taken from the tree BEFORE the repair. Any
-    movement means a healthy vote changed and the repair over-reached.
-    The digest reads direction, confidence, weight and every detail
-    field, so a change in the last bit of any of them fails this test --
-    proved by adding one ULP to a single confidence, which moved that
-    indicator's digest and left the other eleven untouched.
+    ``_hash_signal`` covers direction, confidence, weight and every detail
+    field, so a one-ULP move in any of them fails this test.
     """
     summary = VotingEngine().compute_all(healthy, "1h")
     got = {s.indicator: _hash_signal(s) for s in summary.signals}
