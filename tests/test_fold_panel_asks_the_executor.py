@@ -599,41 +599,77 @@ class TestTheReaderMatchesTheExecutorsInlineRead:
             assert "or 0.6" in text, text
 
 
-class TestThePanelSourceHoldsNoGateArithmetic:
-    """Cheap structural companion to the sentinel guard above.
+#: An OTD no config in this file produces, so a row carrying it can only have
+#: come from the reader.
+FORCED_OTD_PCT = 25.0
 
-    The sentinel proves the panel ASKS. This proves it does not ALSO
-    keep a copy, which is what a partial repair leaves behind.
+
+def _reader_returns(monkeypatch, otd_pct):
+    """Replace ``minimum_opposing_trade_distance_pct_from_config`` with a constant.
+
+    The name is asserted callable first, so a rename fails here and not silently.
     """
+    from src.trading import otd_math
 
-    @staticmethod
-    def _tab_code():
-        import inspect
+    assert callable(otd_math.minimum_opposing_trade_distance_pct_from_config)
+    monkeypatch.setattr(
+        otd_math,
+        "minimum_opposing_trade_distance_pct_from_config",
+        lambda config: float(otd_pct),
+        raising=True,
+    )
 
-        from src.gui import bot_live_settings
 
-        src = inspect.getsource(
-            bot_live_settings.BotLiveSettingsDialog._create_fold_tranches_tab
+class TestThePanelHoldsNoGateArithmeticOfItsOwn:
+    """The sentinel above proves the panel ASKS ``otd_math``. Every row below
+    moves with ``_reader_returns``, so the panel keeps no second copy."""
+
+    def test_the_row_carries_the_readers_answer_and_not_the_configs(self, monkeypatch):
+        """With the reader forced to ``FORCED_OTD_PCT`` the printed rebuy price is
+        ``ref`` times 0.75, and neither config field can produce that number."""
+        _reader_returns(monkeypatch, FORCED_OTD_PCT)
+        rows = _build_rows(
+            [_tranche(20000.0)],
+            monkeypatch,
+            cur_price=1.0,
+            interval=10.0,
+            fee=0.6,
         )
-        # Comments quote the old expression on purpose, so the record of
-        # the defect is not itself read as the defect.
-        return "\n".join(
-            ln for ln in src.split("\n") if not ln.lstrip().startswith("#")
+        assert rows[0][COL_MIN_REBUY] == "≤$15000.00000000", rows[0]
+
+    def test_the_unforced_row_uses_the_interval_and_the_fee(self, monkeypatch):
+        """POSITIVE CONTROL. The same tranche unforced prints ``ref`` times
+        0.894, the interval and the fee together."""
+        rows = _build_rows(
+            [_tranche(20000.0)],
+            monkeypatch,
+            cur_price=1.0,
+            interval=10.0,
+            fee=0.6,
         )
+        assert rows[0][COL_MIN_REBUY] == "≤$17880.00000000", rows[0]
 
-    def test_the_tab_calls_the_reader(self):
-        assert "minimum_opposing_trade_distance_pct_from_config" in self._tab_code()
-
-    def test_the_tab_divides_no_otd_by_one_hundred(self):
-        code = self._tab_code()
-        assert "_otd_pct / 100" not in code, (
-            "the panel is computing the fold gate again instead of "
-            "asking otd_math for it"
+    def test_the_status_cell_follows_the_reader_too(self, monkeypatch):
+        """The green the operator reads moves with ``_reader_returns``, so the
+        Status cell is not a second computation beside the price cell."""
+        _reader_returns(monkeypatch, FORCED_OTD_PCT)
+        below = _build_rows(
+            [_tranche(20000.0)], monkeypatch, cur_price=14000.0, interval=10.0, fee=0.6
         )
+        above = _build_rows(
+            [_tranche(20000.0)], monkeypatch, cur_price=16000.0, interval=10.0, fee=0.6
+        )
+        assert below[0][COL_STATUS].startswith("Price-OK"), below[0]
+        assert above[0][COL_STATUS].startswith("Need price"), above[0]
 
-    def test_the_tab_names_neither_config_field(self):
-        """Both field names left the GUI with the arithmetic. A surface
-        that reads either one has started a second reader."""
-        code = self._tab_code()
-        assert "scrumming_interval_pct" not in code, code
-        assert "trading_fee_pct" not in code, code
+    def test_a_config_missing_both_fields_still_renders(self, monkeypatch):
+        """The panel names neither field, so a config carrying neither is answered
+        by the defaults inside ``minimum_opposing_trade_distance_pct_from_config``."""
+        rows = _build_rows(
+            [_tranche(20000.0)],
+            monkeypatch,
+            cur_price=1.0,
+            interval=None,
+            fee=None,
+        )
+        assert rows[0][COL_MIN_REBUY] == "≤$19880.00000000", rows[0]
