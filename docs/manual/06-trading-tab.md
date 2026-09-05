@@ -599,11 +599,47 @@ midline and a fold only below it.
 Read Rate - To be re-evaluated.
 
 From 1 to 60 minutes, at 5 minutes to start. It sets the search-mode read rate;
-track mode reads ten times faster.
+track mode reads ten times faster. Fire mode reads at that same faster rate.
+
+The wizard writes it as `scrum_read_rate_min`, bot creation passes it through,
+and the bot reads it at the top of every tick. The range starts at 1, so this
+control cannot switch the throttle off.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`, the throttle
+
+```python
+if self.config.scrum_read_rate_min > 0 and not self._manual_fire_pending:
+    _tick_sec = max(self.tick_interval, 0.1)
+    _base_skip = max(1, int((self.config.scrum_read_rate_min * 60) / _tick_sec))
+    self._tick_skip_search = _base_skip
+    if self._scrum_target_mode in ("track", "fire"):
+        self._tick_skip = max(1, _base_skip // 10)
+    else:
+        self._tick_skip = _base_skip
+```
 
 Band Travel - Previously described. To be re-evaluated.
 
-A whole percentage from 0 to 100, at 70 % to start. Zero switches it off.
+A whole percentage from 0 to 100, at 70 % to start. Zero switches it off. The
+wizard writes it as `band_travel_pct` and bot creation passes it through.
+
+The engine reads it once per evaluation. It measures how far price has moved
+since the last trade, as a share of the current band width, and raises a second
+trigger once price covers that share. The same trigger overrides a trend hold,
+so Band Travel can release a trade the trend gates were holding.
+
+`src/trading/scrumming_bot.py` — the band-travel trigger
+
+```python
+_bb_width = max(bb_result.upper - bb_result.lower, 1e-12)
+band_travel_frac = abs(ticker.last - self._last_trade_price) / _bb_width
+if (
+    abs(ticker.last - self._last_trade_price)
+    >= self.config.band_travel_pct / 100.0 * _bb_width
+    and delta > 0
+):
+    band_travel_triggered = True
+```
 
 BB Bullseye Check - If current price and Bollinger Band thresholds are equal, the user can opt to perform a double-sized trade.
 
@@ -611,7 +647,30 @@ A checkbox, on at the start.
 
 Wire Inflow Stack - To be re-evaluated.
 
-A percentage from 0.00 to 100.00, at 1.00 % to start.
+A percentage from 0.00 to 100.00, at 1.00 % to start. The wizard writes it as
+`wire_inflow_stack_pct`, and one method in the engine reads it. Above zero, wire
+income arriving while the position sits within that band of its target and
+within that band of its entry price goes onto the target and queues an
+aggressive buy, rather than spreading over the fold queue.
+
+Bot creation does not pass this setting, so a new bot takes the declared default
+of 1.00 whatever you type here. The declared default and the wizard's start
+value are the same number, so the loss shows only once you change it. Bot
+Settings can set it on a bot that is already running. Issue #336 carries this.
+
+`src/trading/scrumming/wire_routing.py` — `WireRoutingMixin.apply_wire_income`
+
+```python
+try:
+    stack_pct = float(getattr(self.config, "wire_inflow_stack_pct", 1.0) or 0)
+except (TypeError, ValueError):
+    stack_pct = 0.0
+_stack_eligible = False
+_stack_reason = ""
+_target = 0.0
+_entry_px = 0.0
+if stack_pct > 0:
+```
 
 Hedge Rebalance Active - Determines if Current Price drifting below Initial Entry Price will have a limited amount of funds that can be used to keep re-zeroing the Target Delta at key bearish thresholds or areas of possible reversal.
 
@@ -800,6 +859,24 @@ carries this.
 ![The Profit Routing group.](p22-i1.png)
 
 Moving onto the final section, we have Profit Routing which was intended to allow profits to be routed differently during initial set-up. This will be re-evaluated and potentially removed.
+
+The group writes two settings and stores them with the bot. No module under
+`src/trading/` reads either one. The wizard records the route, Bot Settings can
+change it, and a restart restores it. None of that reaches a trade:
+`_route_scrum_proceeds_via_wires` moves the scrum proceeds, and it never asks
+what the route says.
+
+The bot config declares both fields with a default, so the destination a bot
+holds is always the first entry in the list. Issue #336 carries this, with the
+rest of the settings the wizard writes and bot creation drops.
+
+`src/trading/container/restore.py` — the round-trip that puts both fields back
+on a restarted bot
+
+```python
+"profit_route": cfg.get("profit_route", "fold_to_target"),
+"profit_route_bot_id": cfg.get("profit_route_bot_id", ""),
+```
 
 Route - Destination for profits.
 
@@ -992,11 +1069,49 @@ From 10 to 240 candles, at 60 to start.
 
 Pool Reserve - To be re-evaluated.
 
-A percentage from 0.0 to 90.0, at 50.0 % to start.
+A percentage from 0.0 to 90.0, at 50.0 % to start. Bot creation passes it
+through as `extractor_pool_reserve_pct`, and one method reads it: the capacity
+check the artillery path runs before it fires a round. The reserve is that share
+of the pool, and the check refuses any round that would take the free pool below
+it.
+
+The share counts against the pool the operator allocated, not against what is
+left of it. Corrections that have already drained the pool therefore cannot hide
+inside the reserve arithmetic.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._has_chunk_capacity`
+
+```python
+reserve = self._chunk_size_base * (
+    self.config.extractor_pool_reserve_pct / 100.0
+)
+return (self._chunk_free_base - artillery_base) >= reserve
+```
 
 Exit % - To be re-evaluated.
 
-A percentage from 10.0 to 100.0, at 100.0 % to start.
+A percentage from 10.0 to 100.0, at 100.0 % to start. Bot creation passes it
+through as `extractor_exit_pct`. It sets the share of a position's alt units an
+exit sells, and the Extractor reads it nine times across three methods: the
+profitability test, the bullish exit, and the per-position Manual Fire.
+
+The profitability test is the one that can refuse. It prices the proportional
+sell in base units, takes the trading fee off, and compares the result against
+the same share of the cost basis. An exit that would gain dollars but lose base
+units does not happen.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._exit_is_profitable_in_base`
+
+```python
+units_to_sell = pos.alt_units * (self.config.extractor_exit_pct / 100.0)
+base_back = units_to_sell * alt_price_in_base
+fee_pct = float(getattr(self.config, "trading_fee_pct", 0.6))
+base_back_after_fee = base_back * (1.0 - fee_pct / 100.0)
+base_in_proportional = pos.cost_basis_base * (
+    self.config.extractor_exit_pct / 100.0
+)
+return base_back_after_fee > base_in_proportional
+```
 
 Max compounding tier - Allows the Extractor to attempt a number of compounding Swing Trades with a given Extractor Tranche with subsequent re-entries based upon the Parent Scrumming Bot’s Minimum Opposing Trade Distance + Trade Fee + Bollinger Band extension settings.
 
@@ -1005,6 +1120,26 @@ From 1 to 10, at 3 to start.
 Max cost-basis multiple - To be re-evaluated.
 
 From 1.0x to 10.0x, at 2.0x to start. Setting it to 1.0 stops averaging down.
+Bot creation passes it through as `extractor_max_cost_basis_multiple`, and the
+correction path reads it twice. The first read is the ceiling: the bot may
+average a position down until its cost basis reaches this multiple of its
+opening round, then it holds and waits for the exit.
+
+The second read writes a log line, and it prints this multiple where a
+correction count belongs. The line reads corrections=1/2x cap, and nothing
+anywhere compares the correction counter against a cap. Issue #438 carries this.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._maybe_fire_correction`, the
+ceiling
+
+```python
+max_basis = pos.artillery_size_base * float(
+    self.config.extractor_max_cost_basis_multiple
+)
+headroom = max_basis - pos.cost_basis_base
+if headroom <= 0:
+    return  # hard floor reached; wait for bullish exit
+```
 
 Direction - To be re-evaluated.
 
@@ -1035,15 +1170,68 @@ group emits, in the order of the rows above
 Standing alt units (inverted) - To be re-evaluated.
 
 Eight decimal places, at 0 to start. The Inverted direction reads it; the
-Normal direction ignores it.
+Normal direction ignores it. The field takes up to a billion units. The wizard
+writes it as `inverted_extractor_standing_alt_units`.
+
+Bot creation passes neither this number nor the Direction beside it, so a new
+Extractor runs Normal with a standing position of zero whatever you enter.
+The one method that reads the number, `set_initial_chunk_rate`, has no caller in
+the product source either. Only tests call it. Issue #437 carries the method,
+and issue #336 the settings creation drops.
+
+`src/trading/extractor_bot.py` — `ExtractorBot.set_initial_chunk_rate`, the
+inverted branch
+
+```python
+_standing = float(
+    getattr(self.config, "inverted_extractor_standing_alt_units", 0) or 0
+)
+if self._is_inverted and _standing > 0:
+    self._chunk_size_base = _standing
+    self._chunk_size_usd = _standing * base_per_usd
+```
 
 Correction skip candles - To be re-evaluated.
 
-From 0 to 100 candles, at 4 to start.
+From 0 to 100 candles, at 4 to start. It throttles averaging down: the Extractor
+will not correct the same position again until this many have passed. One method
+reads it, the correction path, and it counts ticks rather than candles. The
+Extractor ticks every five seconds, so 4 is twenty seconds on any timeframe.
+
+Bot creation does not pass it, so a new bot takes the declared default of 4.
+Issue #438 carries the counting, and issue #336 the drop.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._maybe_fire_correction`, the
+throttle
+
+```python
+last_tick = self._last_correction_tick.get(pos.pair, -(10**9))
+if self._tick_counter - last_tick < int(
+    self.config.extractor_correction_skip_candles
+):
+    return  # skip-candles throttle
+```
 
 Drawdown threshold - To be re-evaluated.
 
-A percentage from 0.00 to 50.00, at 3.00 % to start.
+A percentage from 0.00 to 50.00, at 3.00 % to start. One method reads it, and
+that method decides when a position counts as down: the current dollar value
+against the dollar value snapshotted at firing, which never changes afterwards.
+Crossing the threshold puts a position in front of the correction path.
+
+The wizard writes it as `extractor_drawdown_threshold_pct`, and bot creation
+does not pass it, so a new bot takes the declared default of 3.00. Issue #336
+carries this.
+
+`src/trading/extractor_bot.py` — `ExtractorBot._is_in_drawdown`
+
+```python
+current_usd = self._position_value_usd(pos, alt_price_in_base)
+threshold = pos.artillery_size_usd_at_entry * (
+    1.0 - self.config.extractor_drawdown_threshold_pct / 100.0
+)
+return current_usd < threshold
+```
 
 Trend Strength Threshold - To be re-evaluated.
 
