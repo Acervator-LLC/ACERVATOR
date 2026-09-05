@@ -137,6 +137,7 @@ CANONICAL_TAB_ORDER = (
     CONSOLE_TAB,
 )
 
+# The order `_setup_ui` runs the builders in, which is not the order the bar ends in.
 BUILT_TAB_ORDER = (
     TRADING_TAB,
     ASSET_CHARTS_TAB,
@@ -146,6 +147,8 @@ BUILT_TAB_ORDER = (
     HISTORY_TAB,
     CONSOLE_TAB,
 )
+
+SIMULATOR_BUILD_INDEX = 1
 
 ISOLATED_TABS = (SIMULATOR_TAB, PAPER_TRADER_TAB)
 
@@ -604,6 +607,24 @@ def window_title(version: Any) -> str:
 def wing_title(mode: Any) -> str:
     """The title bar after the operator flips the trading wing."""
     return WING_TITLES[mode]
+
+
+def constructed_tabs(failed: Any = None) -> list:
+    """The tab bar the builders leave, with every name in `failed` skipped.
+
+    Each builder in `BUILT_TAB_ORDER` appends; the Simulator's inserts at
+    `SIMULATOR_BUILD_INDEX`.
+    """
+    skipped = set(failed or ())
+    order: list = []
+    for name in BUILT_TAB_ORDER:
+        if name in skipped:
+            continue
+        if name == SIMULATOR_TAB:
+            order.insert(SIMULATOR_BUILD_INDEX, name)
+        else:
+            order.append(name)
+    return order
 
 
 def reordered_tabs(labels: Any, desired: Any) -> list:
@@ -1282,7 +1303,7 @@ class MainWindowModel:
         self._record("menus", [menu["title"] for menu in self.menus])
         self.subscriptions = list(BUS_SUBSCRIPTIONS)
         self._record("subscribe", self.subscriptions)
-        built = [name for name in BUILT_TAB_ORDER if name not in self.failed_tabs]
+        built = constructed_tabs(self.failed_tabs)
         self.tab_labels = reordered_tabs(built, CANONICAL_TAB_ORDER)
         self._record("tabs", list(self.tab_labels))
         self.timers = [
