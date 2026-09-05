@@ -107,6 +107,7 @@ importers, so the instrument does find an importer where one exists.
 
 ```python
 REGISTRY_PATH = ROOT / "sadp" / "RULE_REGISTRY.json"        # src/core/rule_registry.py
+# sadp/ is not in the tree, so REGISTRY_PATH resolves to nothing
 ```
 
 The module's own docstring says as much. The ids name nothing the running
@@ -124,6 +125,7 @@ the commit that added it, which is the control saying the query works.
 `git log --all --diff-filter=ADR --name-only`, one path per run
 
 ```
+the query finds no commit that added the first two rows
 sadp/, and RAIntSimBat.py and RULE_REGISTRY.json inside it   nothing
 src/gui/simulator.py                                         nothing
 src/core/log_paths.py                       the commit that added it
@@ -294,7 +296,6 @@ Four carry the domain.
 Eight hooks sit under `~/.claude/hooks/`, also machine-local and also not
 committed. They are the blocking layer, and six of them deny a call outright
 rather than warn about it.
-
 - `archetype_gate.py` — in its pre mode, denies a write whose pending content
   would introduce a high or critical finding the file does not already carry; in
   its post mode, runs the archetype on what was written and reports the verdict.
@@ -319,16 +320,17 @@ main.py                 current_version = _acervator_version
 .release_ready.json     written by the release gate, good for one hour
 ```
 
-Two add context rather than deny: `prompt_router.py` names the archetype a task
-will need, and `session_stop_backstop.py` writes a forensic record of whatever
-is uncommitted at a session boundary.
+Two add context rather than deny, and both are machine-local, not in the tree:
+`prompt_router.py` names the archetype a task will need, and
+`session_stop_backstop.py` writes a forensic record of whatever is uncommitted
+at a session boundary.
 
 The count reads the directory, not a list. Eight names end in `.py` and each of
 those runs. Six saved copies and one cache directory sit beside them, and the
 listing marks every entry the count leaves out.
 
 ```
-~/.claude/hooks/
+~/.claude/hooks/, not committed and not in the tree
     archetype_gate.py                            counted, denies
     block_heavy_run.py                           counted, denies
     block_heredoc.py                             counted, denies

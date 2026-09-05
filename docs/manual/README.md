@@ -193,14 +193,16 @@ reportlab, taking its colours, type sizes and page grid from
 python -m tools.build_product_manual
 ```
 
-The PDF is generated output, so it is not tracked. It is written beside the
-figures, under the same ignore rule. Three flags move the input directory, the
-figures directory and the output file.
+The build writes the PDF beside the figures, under the same ignore rule. The
+shipped copy of that render is tracked one directory up, at
+[../Acervator-Product-Manual.pdf](../Acervator-Product-Manual.pdf). Three flags
+move the input directory, the figures directory and the output file.
 
 ```python
 DEFAULT_DOCS_DIR = REPO_ROOT / "docs" / "manual"        # tools/build_product_manual.py
 DEFAULT_FIGURES_DIR = REPO_ROOT / "artifacts" / "manual-figures"
 DEFAULT_OUTPUT = REPO_ROOT / "artifacts" / "manual" / "Acervator-Product-Manual.pdf"
+# artifacts/ is gitignored, so the built PDF is not in the tree
 
 parser.add_argument("--docs-dir", type=Path, default=DEFAULT_DOCS_DIR)
 parser.add_argument("--figures-dir", type=Path, default=DEFAULT_FIGURES_DIR)
@@ -227,7 +229,7 @@ commits, so the query does find a file that once existed.
 The query and its control:
 
 ```
-git log --all --diff-filter=ADR --name-only -- generate_essay.py       # no commits
+git log --all --diff-filter=ADR --name-only -- generate_essay.py       # no commits, not in the tree
 git log --all --diff-filter=ADR --name-only -- generate_essay_ja.py    # three commits
 ```
 

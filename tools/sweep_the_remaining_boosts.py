@@ -56,7 +56,7 @@ from pathlib import Path
 
 logger = logging.getLogger("acervator.audits.issue_104")
 
-REPO = Path(__file__).resolve().parents[3]
+REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from src.trading.gate_chain import (  # noqa: E402
@@ -76,7 +76,7 @@ from src.trading.scrumming_bot import (  # noqa: E402
 from src.trading.ta_engine import VotingEngine  # noqa: E402
 
 TABLETS = Path.home() / ".acervator" / "stone_tablets"
-OUT = Path(__file__).resolve().parent
+OUT = REPO / "artifacts" / "remaining-boosts-sweep"
 BARS = (35, 40, 60, 100, 200, 400)
 
 # BotConfig defaults, src/trading/bot_container.py.

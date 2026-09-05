@@ -2,7 +2,7 @@
 
 Date: 2026-08-24
 Unit: `fix-106-growth-cap-compounds`
-Evidence: `docs/engineering-notes/2026-08-24_issue_106_evidence/`
+Instrument: `tools/sweep_the_growth_cap.py`
 
 Operator report, 2026-08-21: "the compounding rate appears to stay frozen
 as a calculation based on the starting value of the bot but this should
@@ -16,9 +16,9 @@ moves it. `_target_balance` is the number the bot trades against, and
 fold surplus grows it.
 
 Every site that needed the per-cycle Growth Rate Cap spelled it out for
-itself as `_anchor_target_balance * (max_target_growth_pct / 100)`. So
-the cap held one fixed dollar value for the life of the bot. The curve
-was `anchor x (1 + 0.01N)` where the operator asked for `1.01^N`.
+itself as `_anchor_target_balance * (max_target_growth_pct / 100)`. The
+cap therefore held one fixed dollar value for the life of the bot. The
+curve was `anchor x (1 + 0.01N)` where the operator asked for `1.01^N`.
 
 The repair adds ONE property, `ScrummingBot.cycle_growth_cap_usd`, and
 every site reads it.
@@ -108,16 +108,70 @@ bound moved. `TestMEM249StillHolds` pins it.
 
 ## Measured
 
-See `2026-08-24_issue_106_evidence/sweep_result.md` for the full value
-sweep, decision sweep and six calibration controls. Headlines:
+`tools/sweep_the_growth_cap.py` runs the sweep. It pairs each of the
+operator's 38 live bots with the Stone Tablet for that bot's own asset
+and replays six tape lengths — 35, 40, 60, 100, 200 and 400 bars — for
+**228 rows**. No bot was skipped for a missing tablet. The fleet anchor
+is $3,501.51 against a target of $3,593.75, $13.37 parked, and every bot
+runs the 1.0 % cap.
 
 * fleet per-cycle cap **$35.0151 -> $35.9301** (+2.61%)
 * IMU **$0.5000 -> $0.6353**; CAP's budget **$0.0000 -> $0.0491**, which
   releases the first of the $7.79 it has parked
 * 30 of 222 ladder rows change which tranches the production packer
-  takes; 204 deploy more, **0 deploy less**
+  takes; 204 deploy more, **0 deploy less**, **$+5.4799** of fold-back
+  deployed across the fleet
 * over a 400-bar tape (median 17 D2-b cycles) the fleet target after N
   cycles is **$4,182.26 frozen vs $4,250.35 compounding**
+
+The trajectory widens with the tape, which is the curve the operator
+asked for.
+
+| bars | median cycles | fleet target, frozen | compounding | difference |
+|---|---|---|---|---|
+| 35 | 0 | $3,599.50 | $3,599.79 | $+0.29 |
+| 40 | 0 | $3,606.00 | $3,606.42 | $+0.42 |
+| 60 | 1 | $3,633.50 | $3,635.15 | $+1.65 |
+| 100 | 3 | $3,703.28 | $3,707.76 | $+4.47 |
+| 200 | 8 | $3,859.09 | $3,875.74 | $+16.64 |
+| 400 | 17 | $4,182.26 | $4,250.35 | $+68.09 |
+
+## The controls that make the zeros above readable
+
+Six ran, and all six passed.
+
+The reader is not blind: 38 bots declared in state, 38 read, 35 already
+carrying `target != anchor`, 37 carrying a queued tranche ladder, 406
+tablets read.
+
+The decision instrument is the production packer, not a model of it.
+`_plan_fold_consumption` touches **zero** `self` attributes — asserted by
+walking the shipping file's syntax tree — so the sweep calls it unbound
+and every admission verdict below is the shipping method's.
+
+Both positive controls inject a known perturbation and count what moves.
+
+| injected into the cap percentage | rows whose cap moves |
+|---|---|
+| 0 | 0 |
+| 1e-12 | 228 |
+| 0.01 | 228 |
+
+| injected into the packer's budget (USD) | admission verdicts that move |
+|---|---|
+| 0 | 0 |
+| 1e-09 | 6 |
+| 0.1 | 60 |
+| 100 | 222 |
+
+The packer is a step function, so a small injection moving nothing is
+correct behaviour rather than a dead instrument; the last row proves it
+is alive. The **0 narrower** count above is believable only because
+these two lines are not zero.
+
+The no-op control is the other half. 18 rows carry no accrued growth and
+no consumption, so `target == anchor` and the new base IS the anchor. The
+cap changed on **0** of them.
 
 ## Timing note for the operator
 

@@ -242,8 +242,7 @@ prove that from the guard alone. Re-run with Acervator closed for that proof.
 ## WHAT THIS MATRIX DOES NOT COVER — read this before you trust a row
 
 A complete-looking matrix that is partial is the failure this document exists to stop. The
-gaps below are named so the next unit does not believe a subsystem is understood when it
-is not.
+gaps below are what the matrix does not establish.
 
 1. **No live network call was made.** Every statement about how the real Coinbase venue
    behaves rests on the ccxt contract, not on a Coinbase response. This audit ran offline

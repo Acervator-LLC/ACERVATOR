@@ -43,7 +43,7 @@ is item **A2** of `2026-08-23_manufactured_values_sweep.md`.
 **The precondition therefore held for 11 voters and failed for one.**
 It was repaired for that one, by the narrowest change that carries the
 signal: RSI now sets `abstained` when `len(candles) < period + 1`. The
-50.0 is untouched — A2 stays named, not fixed.
+50.0 is untouched, and `rsi.py` still returns it on a short tape.
 
 ## 2. The published treatment of a non-voting participant
 
@@ -382,7 +382,7 @@ freshly spawned bot; `HONEY@400` is the single warmed-fleet case.
   counted in bars, not minutes, so the bar-count results carry; the
   tablet population does not cover other granularities.
 
-## 10. Adjacent defects — named, not fixed
+## 10. Adjacent defects, still in the code
 
 * `rsi.py:45-52` still returns a fabricated `rsi: 50.0` on a short tape;
   only its `abstained` flag was added (sweep item A2).
@@ -419,8 +419,7 @@ and 541 against pins at 331 and 453.
 
 **Tests.** 906 pass across the 26 test files that touch `ta_engine`, the
 indicator package, `VotingSummary` or `consensus_confidence`, including
-`test_autonomous_fold_price_gate.py` (122 tests). The full release gate
-was NOT run and the version was NOT bumped.
+`test_autonomous_fold_price_gate.py` (122 tests).
 
 **Forbidden files.** `src/trading/scrumming_bot.py` and
 `src/gui/bot_live_settings.py` are byte-identical to base by SHA-256

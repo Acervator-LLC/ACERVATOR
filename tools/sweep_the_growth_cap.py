@@ -58,7 +58,7 @@ from pathlib import Path
 
 logger = logging.getLogger("acervator.audits.issue_106")
 
-REPO = Path(__file__).resolve().parents[3]
+REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from src.trading.indicators.bb_proximity import detect_bb_proximity  # noqa: E402
@@ -67,7 +67,7 @@ from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
 TABLETS = Path.home() / ".acervator" / "stone_tablets"
 STATE = Path.home() / ".acervator" / "bot_state.json"
-OUT = Path(__file__).resolve().parent
+OUT = REPO / "artifacts" / "growth-cap-sweep"
 BARS = (35, 40, 60, 100, 200, 400)
 
 # The D2-b asymmetric reset thresholds, as tick() spells them.
@@ -739,6 +739,7 @@ def main() -> int:
         "tranche that a price gate refused.\n"
     )
 
+    OUT.mkdir(parents=True, exist_ok=True)
     with io.open(OUT / "rows.jsonl", "w", encoding="utf-8", newline="\n") as f:
         for r in rows:
             f.write(json.dumps(r, sort_keys=True) + "\n")
