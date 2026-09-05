@@ -1,31 +1,11 @@
-"""Every indicator's number, pinned, so a move cannot change one.
+"""Every indicator's number over a fixed tape, pinned by SHA-256.
 
-WHY THIS EXISTS. Issue #73 moved nineteen indicators out of
-``ta_engine.py`` into one module each. The rule the operator holds this
-codebase to is that an indicator's maths is PUBLISHED and discrete: a
-refactor may move it, and may not change what it returns. So the move
-was proved by driving every unit over real candles before and after and
-comparing SHA-256 per unit -- 29,232 evaluations across 407 stone
-tablets, all identical.
-
-That sweep needs ``~/.acervator/stone_tablets`` and cannot run in the
-suite. This file is the part that can: the same canonicaliser, the same
-per-unit digest, over a tape built inside this file from a seeded
-integer generator, so it is the same tape on every machine.
-
-WHAT A FAILURE HERE MEANS. One indicator now returns a different number
-than it did at v3.26.0. That is a defect unless it is a deliberate,
-authorised repair -- in which case the digest below is updated in the
-SAME change as the repair, and the change says which formula moved and
-what published source it now matches. Never update a digest to make a
-red test green.
-
-THE INSTRUMENT IS CALIBRATED. ``TestTheComparisonCanFail`` shows the
-canonicaliser separating values that differ in the last bit and in the
-last bit only. Without it, "identical" would be a claim about the
-comparison rather than about the numbers -- a zero that says nothing.
-``float.hex`` is used, not ``repr``, so nothing is rounded away before
-the comparison runs.
+``_tape`` builds the same 400 bars on every machine from a seeded integer
+generator, and ``canon`` renders each reading with ``float.hex``, so
+``digest`` separates two floats differing in the last bit. ``EXPECTED``
+pins the long tape and ``EXPECTED_SHORT`` the first 40 bars, where a voter
+still abstains. ``TestTheComparisonCanFail`` is the control for ``canon``
+and ``digest``.
 """
 
 from __future__ import annotations
@@ -44,13 +24,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.trading import ta_engine as TA  # noqa: E402
 
-# ── the tape ─────────────────────────────────────────────────────────
-# A Lehmer generator with the MINSTD constants, written out here so the
-# tape does not depend on the `random` module's version. Integers only
-# until the last step, so every machine builds the same bars.
-
 
 def _tape(bars: int = 400, seed: int = 20260823) -> list:
+    """Build ``bars`` OHLCV rows from a Lehmer generator on the MINSTD
+    constants, held in integers so every machine gets the same tape."""
     state = seed % 2147483647 or 1
 
     def nxt() -> int:
@@ -86,12 +63,9 @@ RAW = _tape()
 CANDLES = TA.candles_from_raw(RAW)
 
 
-# ── the canonicaliser ────────────────────────────────────────────────
-# The same function the before/after sweep used. `float.hex` is exact:
-# two floats have the same hex string only when they are the same float.
-
-
 def canon(o) -> str:
+    """Render ``o`` as canonical text, floats through ``float.hex`` so two
+    values share a string only when they are the same float."""
     if isinstance(o, float):
         if math.isnan(o):
             return "nan"
@@ -219,56 +193,9 @@ def _bb_pos_history() -> list:
     return _BBH
 
 
-#: SHA-256 of each unit's canonical output over the tape above, taken at
-#: v3.26.0 with the indicators still inside ta_engine.py, and unchanged
-#: by the issue #73 split.
-#:
-#: TWO PINS WERE RESTATED by the canonical-formula repair. Both moved
-#: for the SAME reason, and the OLD value is recorded beside each so the
-#: change is auditable.
-#:
-#: `ADXIndicator._wilder_smooth` recursed as ``a + (v - a) / period``.
-#: Wilder publishes the recursion as an explicit weighted average, and
-#: StockCharts reproduces it that way for all three of his indicators:
-#:   "Subsequent ADX14 = ((Prior ADX14 x 13) + Current DX Value)/14"
-#:   "Current ATR = [(Prior ATR x 13) + Current TR] / 14"
-#:   "Average Gain = [(previous Average Gain) x 13 + current Gain] / 14"
-#: i.e. ``(a * (period - 1) + v) / period``, which is what ATR,
-#: Supertrend, RSI and StochasticRSI in this package already used. The
-#: same change also removed a ``+ 1e-9`` that the DX series added to a
-#: denominator the current-bar DI pair used bare -- one formula, two
-#: divisions.
-#:
-#: WHAT MOVED. Only ``Signal.confidence``, and only in its last bits.
-#: MEASURED over 406 stone tablets x 3 windows: every rounded detail
-#: field (``adx``, ``di_plus``, ``di_minus`` and all eleven booleans) is
-#: byte-identical, and the worst confidence change is 1.22e-15
-#: absolute. ``voting_engine`` moved because it carries every voter's
-#: raw confidence. No gate verdict changed: 29,208 evaluated, 0 moved.
-#:
-#: TWO MORE WERE RESTATED by the Vortex denominator repair.
-#: ``VortexIndicator.lines`` and ``.compute`` divided by
-#: ``sum_tr_window + 1e-9``. Botes and Siepman (2010) publish
-#: ``VI+ = sum(VM+, N) / sum(TR, N)`` with no epsilon, and
-#: ``VortexIndicator.window_sums`` already returns ``None`` for a window
-#: whose true-range total is 0.0, so the epsilon guarded nothing and only
-#: scaled with price. MEASURED on one tape shape priced at four scales,
-#: 600 tapes each: before the repair 386 of 600 BONK-scale readings
-#: (3.1e-06) differed from the same shape at 61234, and one direction
-#: differed; after it, 0 of 600 differ at any scale. ``voting_engine``
-#: moved because it carries every voter's raw confidence.
-#:
-#: The other nineteen pins hold. That is not proof the repairs missed
-#: them -- Ichimoku's Chikou repair and Kaufman's window repair are both
-#: ACTIVE on this tape (the historical cloud reads 1.0909/1.0648 against
-#: the current 1.0217/0.9678, and the ER window ends at 0.8723 against
-#: the old 0.8846); both simply resolve to the same boolean here. ATR's
-#: restored first True Range is 1.85e-15 relative at 400 bars, below
-#: ``round(atr, 8)``, and Supertrend's is smaller still.
+# SHA-256 of each unit's canonical output over `CANDLES`. A digest moves only
+# with an authorised repair, named in the same change.
 EXPECTED = {
-    # RESTATED. Was
-    # "fa36fd9e749982e6bd32a7ff460702d81ab8834bce2b94c3b18e8034fa124aba"
-    # before the Wilder-spelling and DX-epsilon repair.
     "adx": "e2fd4d2d146d7bd13de369db0973c8c438222e3a032b88c899055c35fc00794d",
     "atr": "f85286da7bd653ba4451cf19fc09aec46d77fb47d15e47df25fb45719e7c921f",
     "bb_proximity": "9a5e96d5ac5d02e354c6bf0d338215ad36824493ec8b5249e043e60909ebe030",
@@ -287,18 +214,7 @@ EXPECTED = {
     "stochastic_rsi": "2cdc5162b2733fcf0b49ebf7da860da989c8775a56896b8b8b082516089c3934",
     "supertrend": "270670d53152f76c841d30ed801678ee26485c8c5d807c9da3add330ade16118",
     "volume": "065c7e1e79be4d26b55fc325102eafdd67327218018ca181ab4081f3a2cc0df3",
-    # RESTATED. Was
-    # "4f1c7a3e0c9a2d86f1b2eb36c6e5195c633f02a552d6a3adcf96c64ceb9d2232"
-    # before the same repair: this digest carries the ADX voter's raw
-    # confidence, so it moved with it and for no other reason.
-    # RESTATED a second time. Was
-    # "e90c6b9b11c19bd8ca0d957303e52875641bc64cc172e09455e202d93da2aea8"
-    # before the Vortex denominator repair, which this digest carries
-    # through the Vortex voter's raw confidence.
     "voting_engine": "2c225e1ab22f20ed14b6e67f5b35c4aae9dc7826cce4a8be464ab1bd625f8a6f",
-    # RESTATED. Was
-    # "c1d4d32dc62386d3357f31b961b139682cd38e9ce7d596a58e6fe25e41be5c52"
-    # while VI+ and VI- divided by ``sum_tr_window + 1e-9``.
     "vortex": "7f8767b6a6a9506f1d320809a1fc38db33c827c1c87c811eac341981102685f6",
     "w_bottom": "1a68a6ce5c825b9ba4901d1adfe4e5ce1707eaa5148631c504687c445b5d67e0",
     "zscore": "56a681b17a8a3c39981a83f74d051278cfe35a4e4b350b8aa8def8b21db1676f",
@@ -392,35 +308,6 @@ class TestTheComparisonCanFail:
         assert digest(one) == digest(two)
 
 
-# ISSUE #99 -- PROVENANCE, AND A TAPE SHORT ENOUGH TO SEE IT
-#
-# THE PINS ABOVE ARE BLIND TO THIS DEFECT AND THE BLINDNESS IS
-# MEASURED. ``_ema`` back-filled every index below its seed with the
-# seed value, so MACD's signal line was seeded on 25 numbers no candle
-# supplied. On the 400-bar tape above, the repair is BIT-IDENTICAL --
-# 406 of 406 stone tablets, not one float moved -- because the EMA
-# recursion decays the seed by 0.8 per bar and 366 bars of decay reach
-# 1e-36. Every digest above still holds after the repair. That is not
-# the repair being small; that is a 400-bar tape being the wrong
-# instrument.
-#
-# MEASURED over 406 stone tablets. Maximum relative error on the signal
-# line, repaired against back-filled:
-#
-#     bars   max rel err     median        bit-identical
-#       20   MACD abstains (its guard is slow + signal = 35)
-#       35   1.897e+00       9.411e-02       0 / 406
-#       40   1.370e+00       3.605e-02       1 / 406
-#       60   7.962e-02       4.839e-04       1 / 406
-#      120   2.079e-06       7.668e-10       0 / 406
-#      200   2.563e-14       0             336 / 406
-#      400   0               0             406 / 406
-#
-# A freshly spawned bot holds the shortest tape it will ever hold while
-# it makes its first decisions. So the pins below run on the first 40
-# bars of the SAME generated tape -- no new generator, nothing new to
-# pin -- and cover only the three units the repair moves.
-
 SHORT_CANDLES = CANDLES[:40]
 
 
@@ -435,59 +322,20 @@ def _short_units():
     }
 
 
-#: Taken at the issue #99 repair. These are NEW pins, not restatements:
-#: no digest in EXPECTED moved, so none was rewritten.
-#:
-#: ONE PIN WAS RESTATED by the issue #100 repair, and this block is why
-#: the repair was visible at all. ``VotingEngine._aggregate`` divided
-#: ``abs(net_score)`` by the weight of every voter it ASKED. It now
-#: divides by the weight of every voter that ANSWERED: the published
-#: denominator of a weighted arithmetic mean is the sum of the weights
-#: of the data points included in the calculation, and an abstaining
-#: indicator supplied no data point.
-#:
-#: WHAT MOVED, AND ONLY WHAT MOVED. ``consensus_confidence``. Nothing
-#: else. MEASURED over 406 stone tablets x 6 tape lengths, 2,436 rows:
-#: ``net_score`` moved on 0 rows, ``consensus_direction`` on 0 rows,
-#: and every voter's own ``direction``, ``confidence``, ``weight`` and
-#: ``details`` on 0 rows. 1,220 rows moved, every one of them in
-#: ``consensus_confidence`` alone.
-#:
-#: THE MOVE IS MONOTONE, AND STRUCTURALLY SO. The voted weight cannot
-#: exceed the asked weight and the numerator is untouched, so the
-#: quotient can only rise or stay equal. Measured: 1,220 rows rose,
-#: 1,216 held, 0 fell, none passed the 1.0 cap.
-#:
-#: AT 40 BARS on this tape, Ichimoku (needs 79 candles), Slingshot (52)
-#: and Z-Score (51) all abstain, and carried 3.0 of the engine's 11.7
-#: total weight -- 25.6% of the old denominator supplied by voters that
-#: had measured nothing.
-#:
-#: THE 400-BAR PIN IN ``EXPECTED`` DID NOT MOVE, which is this file's
-#: own thesis restated by a second defect: on the long tape no voter
-#: abstains, so the long pin is blind to a denominator error exactly as
-#: it was blind to the back-filled EMA. A 400-bar sweep alone would
-#: have reported this repair as a no-op.
+# The same digests over `SHORT_CANDLES`, where Ichimoku, Slingshot and Z-Score
+# abstain and `EXPECTED` above cannot see a denominator or seeding change.
 EXPECTED_SHORT = {
     "macd": "b04be9756a1fafff959516346fa222ee8965ef7fe5ed9ed07e3fd1c86864ed9c",
     "macd_taper": "be3e7ab4145472bc726159e7b62b656484ea727ffd9eb9825cc706106a9427ce",
-    # RESTATED twice. Was
-    # "68b306f9a514d0c09d61b714c3cd2d080f790f8d7a175b1609a9facf216cd241"
-    # while an abstaining voter's full weight still counted in the
-    # `consensus_confidence` denominator, then
-    # "2914a154fe7497569fad65f43d5611c7d301218349c0a9d886b2b00d6dcb9f8f"
-    # while VI+ and VI- divided by ``sum_tr_window + 1e-9``.
     "voting_engine": "1f681507ee953c1577006880eb80f4177ce381daf334abb0beac6fb5f39c8925",
 }
 
 
 def _back_filling_ema(values: list, period: int) -> list:
-    """Reproduce the ``_ema`` body as it stood BEFORE the #99 repair.
+    """The ``_ema`` body that back-filled every index below its seed.
 
-    Kept here, and only here, as the positive control. A pin that cannot
-    fail is a claim about the test, so the class below drives this OLD
-    body through the SAME MACD arithmetic and requires a DIFFERENT
-    answer on a short tape.
+    ``TestTheShortTapePinsCanFail`` drives it through the same MACD
+    arithmetic and requires a different answer on ``SHORT_CANDLES``.
     """
     if len(values) < period:
         return values[:]
@@ -551,10 +399,6 @@ class TestEveryValueTracesToACandle:
         assert all(v is None for v in macd_line[:first_macd])
         assert macd_line[first_macd] is not None
         assert all(v is None for v in signal_line[:first_sig])
-        # Every name below holds a MACD-LINE quantity -- a difference
-        # of two price EMAs, absolute, in the asset's own units. Nothing
-        # here is normalised, so nothing here may be compared with a
-        # ratio.
         macd_window = [
             v
             for v in macd_line[first_macd : first_macd + m.signal_period]
