@@ -135,19 +135,27 @@ full.
 in the list is moved to its own index at build time. Any tab the list does not
 name keeps the position it was added at.
 
-`src/gui/main_window.py` — `_reorder_main_tabs`
+`src/gui/main_tabs/main_window_surface.py` — the order, declared once
 
 ```python
-CANONICAL_TAB_ORDER = [
-    "Trading",
-    "Market Inspector",
-    "Bot Swarm",
-    "Asset Charts",
-    "History",
-    "Simulator",
-    "Console",
-]
-self._reorder_main_tabs(CANONICAL_TAB_ORDER)
+CANONICAL_TAB_ORDER = (
+    TRADING_TAB,
+    MARKET_INSPECTOR_TAB,
+    BOT_SWARM_TAB,
+    ASSET_CHARTS_TAB,
+    HISTORY_TAB,
+    SIMULATOR_TAB,
+    CONSOLE_TAB,
+)
+```
+
+Each of those seven names is a constant holding the label the tab bar shows,
+and the main window applies the order once, after the last builder has run.
+
+`src/gui/main_window.py` — where the order is applied
+
+```python
+self._reorder_main_tabs(list(CANONICAL_TAB_ORDER))
 ```
 
 **Design intention.** The order should read as the working order. Trade first,
@@ -349,9 +357,47 @@ If Acervator has a crown jewel, this is it. The scrumming bot is what houses and
 
 Target Balance - The initial value of the position to be taken or controlled by the Scrumming Bot. The bot will monitor the market for bullish or bearish conditions, check for Target Balance deviations (Target Delta), and re-zero back to the set point. It will repeat this until stopped by the user or some other market condition.
 
+The figure is one field on the bot's own configuration. It is carried in from
+the wizard and held for the life of the bot, and every other term on this page
+is measured against it.
+
+`src/trading/container/config.py` — `BotConfig.target_balance`
+
+```python
+target_balance: float = 200.0  # Balance the bot trades relative to
+```
+
 Target Delta - The amount by which a position value has drifted from the Target Balance. The Target Delta is denoted by the Ammo column under the Scrumming Bot list of the Trading Tab. This is the amount of value that will be fired during the appropriate market conditions.
 
+One subtraction, and the platform does it in two places with opposite signs.
+The Ammo cell takes the position value less the target, so a surplus reads
+positive. The fold path takes the target less the position, so a deficit reads
+positive. Both measure the same drift.
+
+`src/gui/table_cells.py` — `ammo_cell`, the figure the Ammo column shows
+
+```python
+delta = position_val - target_val
+territory = target_territory(position_val, target_val)
+```
+
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
+
+One shared helper decides which half of the cycle a position sits in. It
+answers scrum above the target and fold below it, and it answers at target
+inside a dust band, so a position that has barely moved is left alone.
+
+`src/trading/target_bands.py` — `target_territory`
+
+```python
+delta = float(position_value) - float(target_balance)
+band = at_target_dust_band(target_balance)
+if delta > band:
+    return "scrum"
+if delta < -band:
+    return "fold"
+return "at_target"
+```
 
 Fold - To buy an amount for an investment position that allows it to return to its initial price level. This also drives Compounding Growth based on Local Volatility and is restricted by the Maximum Growth Per Cycle setting which has been set to a conservative 1% globally for Acervator’s live test and development run.
 
@@ -1539,6 +1585,47 @@ _ROW_B_INDICATOR_COLS = INDICATOR_COLS[6:]  # Sling ADX STrd ZSc KER RSI
 
 The operator's own reading of each column follows in the next section.
 
-[07-indicators.md](07-indicators.md) carries the published formula for each of
-the twelve and the gate logic chain behind them.
+**Where the maths lives.** [07-indicators.md](07-indicators.md) is the single
+home for all twelve. Each voter is described once there and once only: the
+operator's own line, then what the cell prints and what makes the vote bullish,
+bearish or neutral, then the published formula with the code that computes it.
+Nine voters print a direction arrow and a confidence percentage. Three print a
+raw value instead, and those three are ADX, Z-Score and Kaufman ER.
 
+| Voter | Its formula and its vote |
+| ----- | ------------------------ |
+| BB | [Bollinger Bands](07-indicators.md#bollinger-bands) |
+| VTX | [Vortex Indicator](07-indicators.md#vortex-indicator) |
+| MACD | [MACD](07-indicators.md#macd) |
+| SRsi | [Stochastic RSI](07-indicators.md#stochastic-rsi) |
+| Ichi | [Ichimoku Cloud](07-indicators.md#ichimoku-cloud) |
+| Vol | [Volume](07-indicators.md#volume) |
+| Sling | [Slingshot](07-indicators.md#slingshot) |
+| ADX | [ADX and DMI](07-indicators.md#adx-and-dmi) — raw value |
+| STrd | [Supertrend](07-indicators.md#supertrend) |
+| ZSc | [Z-Score](07-indicators.md#z-score) — raw value |
+| KER | [Kaufman Efficiency Ratio](07-indicators.md#kaufman-efficiency-ratio) — raw value |
+| RSI | [RSI](07-indicators.md#rsi) |
+
+One decision picks the text a cell carries. Three voters are named in it and
+every other voter falls through to the percentage.
+
+`src/gui/indicator_panel.py` — `_populate_indicator_cell`
+
+```python
+if ind_key == "adx":
+    adx_v = details.get("adx", 0)
+    if details.get("ranging"):
+        cell_text = f"Rng {adx_v:.0f}"
+    else:
+        cell_text = f"{sym} {adx_v:.0f}"
+elif ind_key == "zscore":
+    cell_text = f"{sym} {details.get('z', 0):+.1f}"
+elif ind_key == "kaufman_er":
+    cell_text = f"{sym} {details.get('er', 0):.2f}"
+else:
+    cell_text = f"{sym} {confidence:.0%}"
+```
+
+The same file carries the gate logic chain that turns those twelve votes into a
+trade decision.

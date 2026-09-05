@@ -7,18 +7,32 @@ live one file per screen in [08-tabs/](08-tabs/README.md).
 One list names the seven tabs the window builds, and every screen below that
 the window does not build says as much in its own entry.
 
-`src/gui/main_window.py` — `CANONICAL_TAB_ORDER`
+`src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
 
 ```python
-CANONICAL_TAB_ORDER = [
-    "Trading",
-    "Market Inspector",
-    "Bot Swarm",
-    "Asset Charts",
-    "History",
-    "Simulator",
-    "Console",
-]
+CANONICAL_TAB_ORDER = (
+    TRADING_TAB,
+    MARKET_INSPECTOR_TAB,
+    BOT_SWARM_TAB,
+    ASSET_CHARTS_TAB,
+    HISTORY_TAB,
+    SIMULATOR_TAB,
+    CONSOLE_TAB,
+)
+```
+
+Each of those seven names is a constant holding the label the tab bar shows.
+
+`src/gui/main_tabs/main_window_surface.py` — the seven labels
+
+```python
+TRADING_TAB = "Trading"
+MARKET_INSPECTOR_TAB = "Market Inspector"
+BOT_SWARM_TAB = "Bot Swarm"
+ASSET_CHARTS_TAB = "Asset Charts"
+HISTORY_TAB = "History"
+SIMULATOR_TAB = "Simulator"
+CONSOLE_TAB = "Console"
 ```
 
 The Trading tab has its own section, [06-trading-tab.md](06-trading-tab.md),
@@ -306,9 +320,9 @@ before it.
 ```python
 TOTAL_SUPPLY_CAP = 10_000_000  # Hard cap — immutable
 GENESIS_SEASON = 1
-INITIAL_REWARD = 500_000  # Season 1 reward pool
-DECAY_FACTOR = 0.85  # Each season awards 85% of the prior season
-MIN_SEASON_REWARD = 100  # Floor — never less than this per season
+INITIAL_REWARD = 500_000  # season 1 pool, in ACRV tokens
+DECAY_FACTOR = 0.85
+MIN_SEASON_REWARD = 100
 ```
 
 `TournamentEngine` in `src/trading/poa_tournament.py` builds the duel, the
@@ -403,16 +417,15 @@ Dismiss hides a card for a day, and the dismissal does not survive a restart.
 The write-through never raises, so the pane logs the failure and carries on,
 which leaves the dismissed count at zero on every launch.
 
-`src/gui/market_inspector_topologies.py` — `_persist_dismissed`
+`src/gui/main_tabs/market_inspector_topologies_surface.py` — `persist_dismissed`
 
 ```python
-def _persist_dismissed(self) -> None:
-    """Best-effort write-through. Never raises: losing a
-    dismissal is a nuisance, taking down the pane is not."""
-    if self._dismiss_store is None:
+def persist_dismissed(self) -> None:
+    """Best-effort write-through. Never raises."""
+    if self.dismiss_store is None:
         return
     try:
-        self._dismiss_store.set(DISMISS_SETTINGS_KEY, dict(self._dismissed))
+    self.dismiss_store.set(DISMISS_SETTINGS_KEY, dict(self.dismissed))
 ```
 
 The key it writes is not one the settings schema declares, so the write fails
@@ -1396,24 +1409,11 @@ settings.
 Position Distance - Sets the spacing a new bot puts between its positions.
 Key `position_distance_pct`, 1.0 % to 50.0 %, at 2.0 %.
 
-Increment Style - Chooses whether that spacing stays even or widens on a
-curve. Key `increment_style`, linear or logarithmic, at linear.
+The dialog stores the figure and reads it back the next time the page opens.
+No bot ever sees it. The bot factory strips the name before it builds a
+config, so the value cannot reach a bot by any route.
 
-Default Positions - Sets how many positions a new bot opens with. Key
-`default_position_count`, 1 to 100, at 10.
-
-Default Target Balance - Sets the dollar figure the wizard's own Target
-Balance field opens at. Key `default_target_balance`, $1.00 to $1,000,000.00,
-at $200.00.
-
-Bot Visibility - Chooses whether a new bot rests its orders on the book or
-tracks them inside the platform. Key `bot_visibility`, orderbook or internal,
-at orderbook.
-
-Enable aggressive trading mode - Starts a new bot pricing for an immediate
-fill. Key `aggressive_trading`, a checkbox, off.
-
-`src/gui/settings_dialog.py` — `_create_trading_tab`
+`src/gui/settings_dialog.py` — the Position Distance row
 
 ```python
 self._pos_distance = QDoubleSpinBox()
@@ -1421,45 +1421,10 @@ self._pos_distance.setRange(1.0, 50.0)
 self._pos_distance.setSuffix("%")
 self._pos_distance.setDecimals(1)
 form.addRow("Position Distance:", self._pos_distance)
-self._increment_style = QComboBox()
-self._increment_style.addItems(["linear", "logarithmic"])
-form.addRow("Increment Style:", self._increment_style)
-self._default_positions = QSpinBox()
-self._default_positions.setRange(1, 100)
-form.addRow("Default Positions:", self._default_positions)
-self._default_balance = QDoubleSpinBox()
-self._default_balance.setRange(1.0, 1000000.0)
-self._default_balance.setPrefix("$")
-self._default_balance.setDecimals(2)
-form.addRow("Default Target Balance:", self._default_balance)
-self._visibility = QComboBox()
-self._visibility.addItems(["orderbook", "internal"])
-form.addRow("Bot Visibility:", self._visibility)
-self._aggressive = QCheckBox("Enable aggressive trading mode")
 ```
 
-Save writes all six. The load path reads back the first four only, so Bot
-Visibility and the aggressive checkbox open at their built-in defaults whatever
-was stored, and a Save with no edit overwrites the stored pair.
-
-`src/gui/settings_dialog.py` — `_load_current`, the four it restores
-
-```python
-self._username.setText(self._sm.get("username", ""))
-self._pos_distance.setValue(self._sm.get("position_distance_pct", 2.0))
-self._default_positions.setValue(self._sm.get("default_position_count", 10))
-self._default_balance.setValue(
-    self._sm.get("default_target_balance", 200.0)
-)
-```
-
-One of the six reaches a new bot. The wizard's parameter page opens its Target
-Balance field at the stored default target balance, and no bot builder reads
-the other five.
-
-Position Distance carries a second gap. Its key is one of eleven names the bot
-factory strips before it constructs a config, so the value cannot reach a bot
-by any route whatever the page stores.
+The strip list holds eleven names. This page contributes one of them and the
+Profit Folding page below contributes four more.
 
 `src/trading/container/config.py` — `_DEPRECATED_KWARGS`
 
@@ -1481,6 +1446,99 @@ _DEPRECATED_KWARGS: frozenset = frozenset(
 )
 ```
 
+Increment Style - Chooses whether that spacing stays even or widens on a
+curve. Key `increment_style`, linear or logarithmic, at linear.
+
+The dialog stores the choice and restores it on the next open. A bot takes its
+own increment style from the wizard rather than from this page.
+
+`src/gui/settings_dialog.py` — the Increment Style row
+
+```python
+self._increment_style = QComboBox()
+self._increment_style.addItems(["linear", "logarithmic"])
+form.addRow("Increment Style:", self._increment_style)
+```
+
+Default Positions - Sets how many positions a new bot opens with. Key
+`default_position_count`, 1 to 100, at 10.
+
+The dialog stores the count and restores it. Nothing outside the dialog reads
+the name, so no bot opens with it.
+
+`src/gui/settings_dialog.py` — the Default Positions row
+
+```python
+self._default_positions = QSpinBox()
+self._default_positions.setRange(1, 100)
+form.addRow("Default Positions:", self._default_positions)
+```
+
+Default Target Balance - Sets the dollar figure the wizard's own Target
+Balance field opens at. Key `default_target_balance`, $1.00 to $1,000,000.00,
+at $200.00.
+
+This is the one row on the page that reaches a new bot. The wizard's parameter
+page opens its Target Balance field at the stored figure.
+
+`src/gui/bot_wizard.py` — the wizard field that reads the stored default
+
+```python
+self._target_balance = QDoubleSpinBox()
+self._target_balance.setRange(1.0, 1000000.0)
+self._target_balance.setDecimals(2)
+self._target_balance.setPrefix("$ ")
+self._target_balance.setValue(defaults.get("default_target_balance", 200.0))
+```
+
+Bot Visibility - Chooses whether a new bot rests its orders on the book or
+tracks them inside the platform. Key `bot_visibility`, orderbook or internal,
+at orderbook.
+
+Save writes the name and the load path never reads it. The box opens on
+orderbook whatever was stored, and a Save with no edit writes that first entry
+back over the stored value. A bot takes its visibility from the wizard, under
+a different name.
+
+`src/gui/settings_dialog.py` — the Bot Visibility row
+
+```python
+self._visibility = QComboBox()
+self._visibility.addItems(["orderbook", "internal"])
+form.addRow("Bot Visibility:", self._visibility)
+```
+
+Enable aggressive trading mode - Starts a new bot pricing for an immediate
+fill. Key `aggressive_trading`, a checkbox, off.
+
+The same gap as the row above. Save writes it, the load path skips it, and the
+box opens clear. The wizard carries its own aggressive trading checkbox, and
+that is the one a new bot reads.
+
+`src/gui/settings_dialog.py` — the aggressive trading row
+
+```python
+self._aggressive = QCheckBox("Enable aggressive trading mode")
+form.addRow(self._aggressive)
+```
+
+Save writes all six keys. The load path restores the first four, which is why
+the last two rows on the page open at their built-in defaults.
+
+`src/gui/settings_dialog.py` — `_load_current`, the four it restores
+
+```python
+self._pos_distance.setValue(self._sm.get("position_distance_pct", 2.0))
+self._default_positions.setValue(self._sm.get("default_position_count", 10))
+self._default_balance.setValue(
+    self._sm.get("default_target_balance", 200.0)
+)
+style = self._sm.get("increment_style", "linear")
+idx = self._increment_style.findText(style)
+if idx >= 0:
+    self._increment_style.setCurrentIndex(idx)
+```
+
 ### Settings > Profit Folding
 
 ![Settings, the Profit Folding page.](p37-i0.png)
@@ -1492,12 +1550,52 @@ Profit Folding / Upward Distribution Active - Turns the whole page on. Key
 `active`, a checkbox, clear at build and set to on when the stored group
 loads.
 
+This is the one control on the page the load path restores, so it is the only
+one of the six that reopens on what was stored.
+
+`src/gui/settings_dialog.py` — the master switch
+
+```python
+self._folding_active = QCheckBox(
+    "Profit Folding / Upward Distribution Active"
+)
+layout.addWidget(self._folding_active)
+```
+
 Distribution Mode - Chooses whether a fold spreads evenly across the chosen
 positions or on a curve. Key `mode`, equal or logarithmic, at equal.
+
+Two radio buttons in one group. Equal is checked at build, and Save reads the
+logarithmic button to decide which of the two words it stores.
+
+`src/gui/settings_dialog.py` — the Distribution Mode group
+
+```python
+mode_group = QGroupBox("Distribution Mode")
+mode_layout = QVBoxLayout(mode_group)
+self._fold_equal = QRadioButton("Equal distribution")
+self._fold_log = QRadioButton("Logarithmic distribution")
+self._fold_equal.setChecked(True)
+```
 
 Profit Folding Target - Chooses which buy positions a fold reaches: all of
 them, a counted number of them, or the most recent. Key `fold_target`, at all
 buy positions.
+
+Three radio buttons and the count box the middle one gates. The all-buy button
+is checked at build.
+
+`src/gui/settings_dialog.py` — the Profit Folding Target group
+
+```python
+self._fold_all = QRadioButton("Fold to ALL buy positions")
+self._fold_x = QRadioButton("Fold to X# of buy positions:")
+self._fold_recent = QRadioButton("Fold to most recent buy positions")
+self._fold_x_count = QSpinBox()
+self._fold_x_count.setRange(1, 100)
+self._fold_x_count.setValue(5)
+self._fold_all.setChecked(True)
+```
 
 Fold to X# of buy positions - Sets that counted number. Key
 `fold_target_count`, 1 to 100, at 5.
@@ -1505,10 +1603,26 @@ Fold to X# of buy positions - Sets that counted number. Key
 Upward Distribution Target - The same three choices on the sell side. Key
 `distribute_target`, at all sell positions.
 
+The sell-side group is built the same way as the buy-side group above, with
+its own count box at 5 and its own all-sell button checked at build.
+
+`src/gui/settings_dialog.py` — the Upward Distribution Target group
+
+```python
+self._dist_all = QRadioButton("Distribute to ALL sell positions")
+self._dist_x = QRadioButton("Distribute to X# of sell positions:")
+self._dist_recent = QRadioButton("Distribute to most recent sell positions")
+self._dist_x_count = QSpinBox()
+self._dist_x_count.setRange(1, 100)
+self._dist_x_count.setValue(5)
+self._dist_all.setChecked(True)
+```
+
 Distribute to X# of sell positions - Sets the sell-side count. Key
 `distribute_target_count`, 1 to 100, at 5.
 
-Save collapses the two target groups into one dictionary.
+Save collapses the two target groups into one dictionary. Each group reduces
+to a single word, taken from whichever of its three buttons is checked.
 
 `src/gui/settings_dialog.py` — `_save`
 
@@ -1519,6 +1633,10 @@ if self._fold_x.isChecked():
 elif self._fold_recent.isChecked():
     fold_target = "most_recent_buy"
 dist_target = "all_sell"
+if self._dist_x.isChecked():
+    dist_target = "x_sell"
+elif self._dist_recent.isChecked():
+    dist_target = "most_recent_sell"
 ```
 
 The load path restores the master switch alone, so the mode and both targets
@@ -1597,11 +1715,50 @@ the figure shows.
 Enable Phantom Balance Bots for Scrumming - Turns the phantom overrides on for
 a new bot. Per-bot key `enable_phantoms`, a checkbox, checked at build.
 
+This is the only control on the page that starts on. Save never reads it, so
+the page stores nothing under the name it shows.
+
+`src/gui/settings_dialog.py` — the phantom master switch
+
+```python
+self._phantoms_enabled = QCheckBox(
+    "Enable Phantom Balance Bots for Scrumming"
+)
+self._phantoms_enabled.setChecked(True)
+layout.addWidget(self._phantoms_enabled)
+```
+
 Default Phantom Timeframes - Chooses which charts a phantom watches. Per-bot
 key `phantom_timeframes`, eleven boxes, five of them checked at build.
 
+One box per timeframe in a single row. The build decides which five open
+checked, and those five are the ones the figure shows.
+
+`src/gui/settings_dialog.py` — the box built for each timeframe
+
+```python
+cb = QCheckBox(tf)
+cb.setChecked(tf in ["5m", "15m", "1h", "4h", "1d"])
+self._phantom_tf_checks[tf] = cb
+tf_grid.addWidget(cb)
+```
+
 Lock duration (candles) - Sets how many candles a higher-timeframe lock holds
 an opposing trade back for. Per-bot key `lock_candle_count`, 1 to 10, at 2.
+
+The one spin box on the page, inside its own group. It opens at 2 and Save
+reads it no more than it reads the other two.
+
+`src/gui/settings_dialog.py` — the lock duration box
+
+```python
+lock_group = QGroupBox("Higher-TF Lock Settings")
+lock_form = QFormLayout(lock_group)
+self._lock_candles = QSpinBox()
+self._lock_candles.setRange(1, 10)
+self._lock_candles.setValue(2)
+lock_form.addRow("Lock duration (candles):", self._lock_candles)
+```
 
 Those eleven boxes are the eleven timeframes the voting engine already weights,
 from 1m at 0.3 up to 1w at 1.6, so a slower chart counts for more when several
@@ -1647,20 +1804,96 @@ Visual Theme - Chooses the palette the whole window paints in. Key `theme`,
 five display names — Cyberpunk Dark, Neon Light, Classic Terminal, Minimal
 Modern and Glass & Metal — at Cyberpunk Dark.
 
+This is the one control on the page that reaches the running window. Save
+emits a signal, the main window reads the stored theme back, and the window
+repaints without a restart.
+
+`src/gui/main_window.py` — `_on_settings_changed`
+
+```python
+theme = self._settings.get("theme", "cyberpunk_dark")
+self._switch_theme(theme)
+```
+
 Accent Color - Sets the highlight colour. Key `accent_color`, a free-text
 field, at `#00ffcc`.
+
+A plain text box. The default is placeholder text, not a value, so the field
+opens empty until something is typed or a stored value loads. Save stores what
+is there and the load path puts it back, but nothing paints with it.
+
+`src/gui/settings_dialog.py` — the Accent Color field
+
+```python
+layout.addWidget(QLabel("Accent Color:"))
+self._accent_color = QLineEdit()
+self._accent_color.setPlaceholderText("#00ffcc")
+layout.addWidget(self._accent_color)
+```
 
 Font Family - Sets the typeface for application text. Key `font_family`, an
 editable combo over twelve named families, at Segoe UI.
 
+The box is editable, so a family outside the twelve can be typed in. Save
+stores this value and the three sizes below it. Nothing reads any of the four,
+and the load path does not restore them either, so the whole Font Settings
+group reopens at its built-in figures.
+
+`src/gui/settings_dialog.py` — the Font Family row
+
+```python
+self._font_family.addItems(fonts)
+self._font_family.setCurrentText("Segoe UI")
+self._font_family.setToolTip("Font family for all application text")
+font_form.addRow("Font Family:", self._font_family)
+```
+
 Base Font Size - Sets the size of ordinary interface text. Key `font_size`,
 8 pt to 24 pt, at 11 pt.
+
+The preview line below the group follows this box and the family box as either
+changes. That preview is the only place either value has an effect.
+
+`src/gui/settings_dialog.py` — the Base Font Size row
+
+```python
+self._font_size = QSpinBox()
+self._font_size.setRange(8, 24)
+self._font_size.setValue(11)
+self._font_size.setSuffix(" pt")
+self._font_size.setToolTip("Base font size for all UI text")
+font_form.addRow("Base Font Size:", self._font_size)
+```
 
 Heading Font Size - Sets the size of headings and stat-card values. Key
 `heading_font_size`, 10 pt to 32 pt, at 14 pt.
 
+The widest of the three ranges. The preview does not follow this box.
+
+`src/gui/settings_dialog.py` — the Heading Font Size row
+
+```python
+self._heading_size = QSpinBox()
+self._heading_size.setRange(10, 32)
+self._heading_size.setValue(14)
+self._heading_size.setSuffix(" pt")
+self._heading_size.setToolTip("Font size for headings and stat card values")
+font_form.addRow("Heading Font Size:", self._heading_size)
+```
+
 Log Font Size - Sets the size of the Activity Log and API Log text. Key
 `log_font_size`, 8 pt to 18 pt, at 10 pt.
+
+The narrowest of the three ranges, and the last row before the preview.
+
+`src/gui/settings_dialog.py` — the Log Font Size row
+
+```python
+self._log_font_size = QSpinBox()
+self._log_font_size.setRange(8, 18)
+self._log_font_size.setValue(10)
+self._log_font_size.setSuffix(" pt")
+```
 
 Preview redraws in the chosen family and base size as either changes. It is a
 sample line, not a setting, and nothing stores it.
@@ -1723,14 +1956,53 @@ Log TA signal samples with all values and timestamps - Writes each indicator
 reading out with its value and its time. Key `ta_signal_logging`, a checkbox,
 checked at build.
 
+The first of the two flags on the page, and the one that decides whether the
+indicator record is written at all.
+
+`src/gui/settings_dialog.py` — the TA logging checkbox
+
+```python
+self._ta_logging = QCheckBox(
+    "Log TA signal samples with all values and timestamps"
+)
+self._ta_logging.setChecked(True)
+layout.addWidget(self._ta_logging)
+```
+
 Highlight entries near Scrumming Bot trades - Marks the log lines that sit
 close to a fire, so a decision can be read in its own context. Key
 `highlight_trade_proximity`, a checkbox, checked at build.
+
+The second flag, built the same way and checked at build like the first.
+
+`src/gui/settings_dialog.py` — the highlight checkbox
+
+```python
+self._highlight_trades = QCheckBox(
+    "Highlight entries near Scrumming Bot trades"
+)
+self._highlight_trades.setChecked(True)
+layout.addWidget(self._highlight_trades)
+```
 
 P/L Log Periodicity - Chooses the windows a profit and loss figure is
 summarised over: 24 Hours, 1 Week, 1 Month and 1 Year. Key
 `active_periodicities`, four boxes written as a list, with the first two
 checked at build.
+
+Four separate boxes rather than one control. Save walks them in page order and
+writes the checked ones into a list.
+
+`src/gui/settings_dialog.py` — the four periodicity boxes
+
+```python
+self._log_24h = QCheckBox("24 Hours")
+self._log_24h.setChecked(True)
+self._log_1w = QCheckBox("1 Week")
+self._log_1w.setChecked(True)
+self._log_1m = QCheckBox("1 Month")
+self._log_1y = QCheckBox("1 Year")
+```
 
 Save collapses all six into one dictionary holding the two flags and the list
 of active periodicities. The load path reads none of them back, so every open
@@ -1754,27 +2026,130 @@ is a field of the sound configuration the block below builds.
 Enable sound notifications - Turns every sound on or off at once. Key
 `enabled`, on.
 
+The engine tests this flag before it tests any other, so a clear box silences
+the page whatever the eight below are set to.
+
+`src/gui/settings_dialog.py` — the master switch
+
+```python
+self._sound_enabled = QCheckBox("Enable sound notifications")
+self._sound_enabled.setChecked(True)
+self._sound_enabled.setToolTip("Master switch for all audio notifications")
+```
+
 Buy order fills - Plays a low rising tone when a buy fills. Key `buy_sound`,
 on.
 
+The label carries the sound's own name in brackets, as every box on this page
+does. The engine plays this one under the name buy.
+
+`src/gui/settings_dialog.py` — the buy fill box
+
+```python
+self._sound_buy = QCheckBox("Buy order fills (blurb + squirt tone)")
+self._sound_buy.setChecked(True)
+self._sound_buy.setToolTip(
+    "Plays a low bubbly rising tone when a buy order is filled"
+)
+```
+
 Sell order fills - Plays a bright bell when a sell fills. Key `sell_sound`, on.
 
+The counterpart to the box above, played under the name sell.
+
+`src/gui/settings_dialog.py` — the sell fill box
+
+```python
+self._sound_sell = QCheckBox("Sell order fills (bell + jingle tone)")
+self._sound_sell.setChecked(True)
+self._sound_sell.setToolTip(
+    "Plays a high bright bell tone when a sell order is filled"
+)
+```
+
 Errors - Plays an alert tone on an error. Key `error_sound`, on.
+
+One of the two boxes on the page with no tooltip of its own.
+
+`src/gui/settings_dialog.py` — the error box
+
+```python
+self._sound_error = QCheckBox("Errors (alert tone)")
+self._sound_error.setChecked(True)
+layout.addWidget(self._sound_error)
+```
 
 Bot state changes - Plays a click when a bot starts, pauses or stops. Key
 `bot_state_sound`, on.
 
+The other box with no tooltip. The engine plays it under the name state, not
+under the key.
+
+`src/gui/settings_dialog.py` — the bot state box
+
+```python
+self._sound_state = QCheckBox("Bot state changes (subtle click)")
+self._sound_state.setChecked(True)
+layout.addWidget(self._sound_state)
+```
+
 Scrum/Fold Fire - Plays a rifle shot when a scrum or a fold executes, and on a
 Manual Fire. Key `fire_sound`, on.
+
+This is the first of the four the engine reads with a default rather than
+straight off the configuration. A stored configuration written before these
+four existed leaves all four on.
+
+`src/gui/settings_dialog.py` — the fire box
+
+```python
+self._sound_fire = QCheckBox("Scrum/Fold Fire (sniper rifle shot)")
+self._sound_fire.setChecked(True)
+self._sound_fire.setToolTip(
+    "Synthesized rifle shot plays when a scrum or fold\n"
+    "actually executes. Also plays on Manual Fire."
+)
+```
 
 Tracking beeps - Paces a beep by the scrum phase: silent in SEARCH, slow in
 TRACK, fast in FIRE. Key `track_sound`, on.
 
+The tooltip gives the two paces in milliseconds: 800 in TRACK and 200 in FIRE.
+
+`src/gui/settings_dialog.py` — the tracking box
+
+```python
+self._sound_track = QCheckBox(
+    "Tracking beeps (speeds up as bot closes on fire)"
+)
+self._sound_track.setChecked(True)
+```
+
 P/L increase - Plays coins dropping into a bucket on any trade that realised a
 profit. Key `profit_sound`, on.
 
+The tooltip is the only place on the page that names the condition exactly:
+realised profit above zero, on grid and scrumming bots alike.
+
+`src/gui/settings_dialog.py` — the profit box
+
+```python
+self._sound_profit = QCheckBox("P/L increase (coins dropping into bucket)")
+self._sound_profit.setChecked(True)
+```
+
 Accumulation - Plays a water drip on a FOLD, and on nothing else. Key
 `drip_sound`, on.
+
+The last of the nine. Its tooltip calls a fold the canonical accumulation
+moment and states that a scrum or a distribution does not fire it.
+
+`src/gui/settings_dialog.py` — the accumulation box
+
+```python
+self._sound_drip = QCheckBox("Accumulation (water drip)")
+self._sound_drip.setChecked(True)
+```
 
 SFX Volume - Sets how loud every sample plays. Key `volume`, 0 % to 100 %, at
 70 %.
@@ -1836,56 +2211,258 @@ configuration the engine reads.
 Enable SMS notifications - Turns every message on or off at once. Key
 `enabled`, clear at build.
 
+The only control on the page outside the three groups, and the only checkbox
+here that opens clear rather than checked.
+
+`src/gui/settings_dialog.py` — the SMS master switch
+
+```python
+self._sms_enabled = QCheckBox("Enable SMS notifications")
+self._sms_enabled.setToolTip(
+    "Send text messages to your phone for trading events"
+)
+layout.addWidget(self._sms_enabled)
+```
+
 Provider - Chooses how a message leaves the machine: a carrier's email gateway,
 or the Twilio web interface. Key `provider`, at the email gateway. Nothing
 loads a stored choice into the picker, so it opens on the first entry whatever
 the figure shows.
 
+Two entries, both written as display labels. The engine tests a short code
+rather than either label, so neither entry matches what the send path looks
+for.
+
+`src/gui/settings_dialog.py` — the Provider row
+
+```python
+self._sms_provider = QComboBox()
+self._sms_provider.setMinimumHeight(28)
+self._sms_provider.addItems(["Email-to-SMS Gateway", "Twilio API"])
+pf.addRow("Provider:", self._sms_provider)
+```
+
 Phone Number - Sets the number every message goes to. Key `phone_number`, empty,
 with a placeholder showing the international shape.
+
+The placeholder is the only guidance on the row. It is grey sample text, not a
+value, so the field starts genuinely empty.
+
+`src/gui/settings_dialog.py` — the Phone Number row
+
+```python
+self._sms_phone = QLineEdit()
+self._sms_phone.setMinimumHeight(28)
+self._sms_phone.setPlaceholderText("+15551234567")
+pf.addRow("Phone Number:", self._sms_phone)
+```
 
 Carrier - Names the carrier whose gateway address a message would be built for.
 Ten entries, opening on the first. It has no stored field of its own, and
 nothing on the page reads the choice.
 
+The ten names come from one mapping in the engine. The last entry is a manual
+option whose address is deliberately empty.
+
+`src/gui/settings_dialog.py` — the Carrier row
+
+```python
+self._sms_carrier = QComboBox()
+self._sms_carrier.setMinimumHeight(28)
+from src.core.sms_engine import CARRIER_GATEWAYS
+
+for carrier in CARRIER_GATEWAYS:
+    self._sms_carrier.addItem(carrier)
+pf.addRow("Carrier:", self._sms_carrier)
+```
+
 Gateway Email - Sets the full gateway address a message is sent to. Key
 `gateway_email`, empty.
+
+The row a carrier choice would otherwise fill in. Nothing builds the address
+from the picker above, so this field is typed by hand or left blank.
+
+`src/gui/settings_dialog.py` — the Gateway Email row
+
+```python
+self._sms_gateway = QLineEdit()
+self._sms_gateway.setMinimumHeight(28)
+self._sms_gateway.setPlaceholderText("5551234567@vtext.com")
+self._sms_gateway.setToolTip("Full email address for carrier SMS gateway")
+pf.addRow("Gateway Email:", self._sms_gateway)
+```
 
 SMTP Username - Sets the mailbox a message is sent from. Key `smtp_username`,
 empty.
 
+The first of the two mailbox rows. Its placeholder shows an ordinary address.
+
+`src/gui/settings_dialog.py` — the SMTP Username row
+
+```python
+self._sms_smtp_user = QLineEdit()
+self._sms_smtp_user.setMinimumHeight(28)
+self._sms_smtp_user.setPlaceholderText("your.email@gmail.com")
+pf.addRow("SMTP Username:", self._sms_smtp_user)
+```
+
 SMTP Password - Sets that mailbox's application password. Key `smtp_password`,
 masked, empty.
+
+The only masked field on the page. Its placeholder says an application
+password rather than the account password.
+
+`src/gui/settings_dialog.py` — the SMTP Password row
+
+```python
+self._sms_smtp_pass = QLineEdit()
+self._sms_smtp_pass.setMinimumHeight(28)
+self._sms_smtp_pass.setEchoMode(QLineEdit.Password)
+self._sms_smtp_pass.setPlaceholderText(
+    "App password (not regular password)"
+)
+pf.addRow("SMTP Password:", self._sms_smtp_pass)
+```
 
 Buy fills - Sends a message when a buy fills. Key `notify_buy_fills`, checked
 at build.
 
+The first of the eight event rows, and one of the four that open checked.
+
+`src/gui/settings_dialog.py` — the buy fills row
+
+```python
+self._sms_buy = QCheckBox("Buy fills")
+self._sms_buy.setChecked(True)
+ef.addRow(self._sms_buy)
+```
+
 Sell fills - Sends a message when a sell fills. Key `notify_sell_fills`,
 checked at build.
+
+The counterpart to the row above, built and checked the same way.
+
+`src/gui/settings_dialog.py` — the sell fills row
+
+```python
+self._sms_sell = QCheckBox("Sell fills")
+self._sms_sell.setChecked(True)
+ef.addRow(self._sms_sell)
+```
 
 Bot state changes - Sends a message when a bot starts, stops or errors. Key
 `notify_bot_state_changes`, checked at build.
 
+The label names the three states in brackets, which the page's own text does
+not repeat anywhere else.
+
+`src/gui/settings_dialog.py` — the bot state row
+
+```python
+self._sms_state = QCheckBox("Bot state changes (start/stop/error)")
+self._sms_state.setChecked(True)
+ef.addRow(self._sms_state)
+```
+
 API errors and failures - Sends a message when a venue call fails. Key
 `notify_errors`, checked at build.
+
+The last of the four rows that open checked.
+
+`src/gui/settings_dialog.py` — the API errors row
+
+```python
+self._sms_errors = QCheckBox("API errors and failures")
+self._sms_errors.setChecked(True)
+ef.addRow(self._sms_errors)
+```
 
 P/L threshold alerts - Sends a message when profit or loss passes a dollar
 figure. Key `notify_pl_threshold`, clear at build.
 
+The first row in the group that opens clear. It gates the dollar figure on the
+row below it.
+
+`src/gui/settings_dialog.py` — the P/L alert row
+
+```python
+self._sms_pl = QCheckBox("P/L threshold alerts")
+ef.addRow(self._sms_pl)
+```
+
 P/L threshold - Sets that dollar figure. Key `pl_threshold_amount`, $1 to
 $100,000, at $100.
+
+The one spin box in the events group, and the only row there that is not a
+checkbox.
+
+`src/gui/settings_dialog.py` — the P/L threshold row
+
+```python
+self._sms_pl_amount = QDoubleSpinBox()
+self._sms_pl_amount.setMinimumHeight(28)
+self._sms_pl_amount.setRange(1, 100000)
+self._sms_pl_amount.setValue(100)
+self._sms_pl_amount.setPrefix("$")
+ef.addRow("P/L threshold:", self._sms_pl_amount)
+```
 
 Low balance warnings - Sends a message when a balance runs low. Key
 `notify_balance_warning`, clear at build.
 
+No figure on the page sets what counts as low, so the row carries the switch
+alone.
+
+`src/gui/settings_dialog.py` — the low balance row
+
+```python
+self._sms_balance = QCheckBox("Low balance warnings")
+ef.addRow(self._sms_balance)
+```
+
 Exchange connection status - Sends a message when a venue connects or drops.
 Key `notify_connection_status`, clear at build.
+
+The last event row, and the third of the three that open clear.
+
+`src/gui/settings_dialog.py` — the connection status row
+
+```python
+self._sms_connection = QCheckBox("Exchange connection status")
+ef.addRow(self._sms_connection)
+```
 
 Max messages per hour - Caps how many messages one hour may carry. Key
 `max_messages_per_hour`, 1 to 100, at 20. Below the area the figure shows.
 
+The first of the two rows in the rate limiting group.
+
+`src/gui/settings_dialog.py` — the hourly cap row
+
+```python
+self._sms_max_hour = QSpinBox()
+self._sms_max_hour.setMinimumHeight(28)
+self._sms_max_hour.setRange(1, 100)
+self._sms_max_hour.setValue(20)
+rf.addRow("Max messages per hour:", self._sms_max_hour)
+```
+
 Min time between messages - Sets the wait between two messages. Key
 `cooldown_seconds`, 5 to 300 seconds, at 30. Below the area the figure shows.
+
+The second rate limiting row, and the last control on the page. It is the one
+spin box here that carries a unit in its own suffix.
+
+`src/gui/settings_dialog.py` — the cooldown row
+
+```python
+self._sms_cooldown = QSpinBox()
+self._sms_cooldown.setMinimumHeight(28)
+self._sms_cooldown.setRange(5, 300)
+self._sms_cooldown.setValue(30)
+self._sms_cooldown.setSuffix(" sec")
+rf.addRow("Min time between messages:", self._sms_cooldown)
+```
 
 The Carrier list fills from one mapping of carrier name to gateway address.
 
@@ -1931,25 +2508,111 @@ Seven settings, and every key below sits inside one stored `ai_monitor` group.
 Anthropic API Key - Holds the key the monitor authenticates with. Key
 `api_key`, masked, empty.
 
+The first row of the Claude API Connection group. It is masked like the SMS
+password, and its placeholder shows the shape of a key rather than a key.
+
+`src/gui/settings_dialog.py` — the API key row
+
+```python
+self._ai_api_key = QLineEdit()
+self._ai_api_key.setMinimumHeight(28)
+self._ai_api_key.setEchoMode(QLineEdit.Password)
+self._ai_api_key.setPlaceholderText("sk-ant-api03-...")
+af.addRow("Anthropic API Key:", self._ai_api_key)
+```
+
 Check interval - Sets how long the monitor waits between two reviews. Key
 `interval_hours`, 0.5 to 24.0 hours, at 4.0.
 
+The one figure on the page. It carries a decimal place, so half an hour is the
+shortest wait it accepts.
+
+`src/gui/settings_dialog.py` — the check interval row
+
+```python
+self._ai_interval = QDoubleSpinBox()
+self._ai_interval.setMinimumHeight(28)
+self._ai_interval.setRange(0.5, 24.0)
+self._ai_interval.setValue(4.0)
+self._ai_interval.setSuffix(" hours")
+self._ai_interval.setDecimals(1)
+af.addRow("Check interval:", self._ai_interval)
+```
+
 Connect phrase - Sets the phrase the platform puts into the prompt it sends.
 Key `connect_phrase`, empty.
+
+The first of the two handshake rows. A grey note above the pair states the
+rule the two follow, and the placeholder shows the shape of a phrase.
+
+`src/gui/settings_dialog.py` — the connect phrase row
+
+```python
+self._ai_connect_phrase = QLineEdit()
+self._ai_connect_phrase.setMinimumHeight(28)
+self._ai_connect_phrase.setPlaceholderText("acervator-heapbuilder-live")
+hf.addRow("Connect phrase:", self._ai_connect_phrase)
+```
 
 Confirm phrase - Sets the phrase the answer must carry back to prove it came
 from the same conversation. Key `confirm_phrase`, empty. Change both phrases
 together and keep both secret.
 
+The second handshake row, built like the first. Neither field is masked.
+
+`src/gui/settings_dialog.py` — the confirm phrase row
+
+```python
+self._ai_confirm_phrase = QLineEdit()
+self._ai_confirm_phrase.setMinimumHeight(28)
+self._ai_confirm_phrase.setPlaceholderText("the-heap-grows-by-accumulation")
+hf.addRow("Confirm phrase:", self._ai_confirm_phrase)
+```
+
 Enable AI Monitor feedback loop - Turns the monitor on. Key `enabled`, clear at
 build.
+
+The one control on the page that opens clear. Save emits a signal and the main
+window reads the whole group back, so this box and the key beside it decide
+whether the header reads READY or OFF.
+
+`src/gui/main_window.py` — `_on_settings_changed`, the monitor branch
+
+```python
+ai_cfg = self._settings.get("ai_monitor", {})
+if self._bot_manager:
+    self._bot_manager.configure_live_monitor(ai_cfg)
+    if ai_cfg.get("enabled") and ai_cfg.get("api_key"):
+        self._ai_monitor_label.setText("AI: READY")
+```
 
 Auto-handshake on first analysis - Runs the phrase exchange on the first review
 rather than waiting for one to be asked for. Key `auto_handshake`, checked at
 build.
 
+The first of the two Monitor Behavior rows that open checked.
+
+`src/gui/settings_dialog.py` — the auto-handshake row
+
+```python
+self._ai_auto_handshake = QCheckBox("Auto-handshake on first analysis")
+self._ai_auto_handshake.setChecked(True)
+bf.addRow(self._ai_auto_handshake)
+```
+
 Log AI feedback to trade journal - Writes each answer into the trade journal.
 Key `log_feedback`, checked at build.
+
+The last control before the status group, and the second of the two that open
+checked.
+
+`src/gui/settings_dialog.py` — the journal logging row
+
+```python
+self._ai_log_feedback = QCheckBox("Log AI feedback to trade journal")
+self._ai_log_feedback.setChecked(True)
+bf.addRow(self._ai_log_feedback)
+```
 
 Connection Status closes the page, below the area the figure shows: a status
 line, a journal hash, a completed-check count and a Test Handshake button. The
