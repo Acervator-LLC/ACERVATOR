@@ -2,7 +2,7 @@
 """
 Acervator_win.spec — PyInstaller spec for Windows
 ==========================================================
-Produces: dist/Acervator/Acervator.exe
+Produces: dist/Acervator-<version>-<variant>/Acervator-<version>-<variant>.exe
 
 Build command (run on Windows):
     pip install $(python -m tools.deps requirements build)
@@ -23,7 +23,7 @@ follow.
 
 The resulting .exe is a standalone Windows application.
 No NSIS, no separate installer — the dist/ folder IS the application.
-Optionally zip dist/Acervator/ for distribution.
+Optionally zip one build folder under dist/ for distribution.
 """
 
 import os
@@ -42,12 +42,22 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from PyInstaller.utils.hooks import collect_submodules  # noqa: E402
+from PyInstaller.utils.win32.versioninfo import (  # noqa: E402
+    FixedFileInfo,
+    StringFileInfo,
+    StringStruct,
+    StringTable,
+    VarFileInfo,
+    VarStruct,
+    VSVersionInfo,
+)
 
 from tools.build_variants import (  # noqa: E402
     bake_variant_datas,
     requested_variant,
     unique_output_basename,
-    windows_file_version,
+    windows_file_version_tuple,
+    windows_version_fields,
 )
 from tools.spec_common import (  # noqa: E402
     EXCLUDES,
@@ -69,6 +79,27 @@ ACERVATOR_VARIANT = requested_variant()
 OUTPUT_NAME = unique_output_basename(DISTPATH, ACERVATOR_VERSION, ACERVATOR_VARIANT)
 
 ICON_PATH = os.path.join(PROJECT_ROOT, 'resources', 'icon.ico')
+
+# EXE reads `version`; a `version_info` dict is dropped without a warning and
+# ships an executable whose Properties pane is blank.
+VERSION_NUMBERS = windows_file_version_tuple(ACERVATOR_VERSION)
+VERSION_RESOURCE = VSVersionInfo(
+    ffi=FixedFileInfo(filevers=VERSION_NUMBERS, prodvers=VERSION_NUMBERS),
+    kids=[
+        StringFileInfo([
+            StringTable(
+                '040904B0',
+                [
+                    StringStruct(name, value)
+                    for name, value in windows_version_fields(
+                        ACERVATOR_VERSION, ACERVATOR_VARIANT, OUTPUT_NAME
+                    ).items()
+                ],
+            )
+        ]),
+        VarFileInfo([VarStruct('Translation', [0x0409, 1200])]),
+    ],
+)
 
 # ---------------------------------------------------------------------------
 # Collect all source modules.
@@ -116,21 +147,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     icon=ICON_PATH,
-    # Every field here is derived. FileVersion and ProductVersion are
-    # numeric-only Windows resource fields, so they carry the leading
-    # numbers of the resolved version and drop any local segment after
-    # the '+'. They used to read a literal '1.1.0', which made Explorer's
-    # Properties pane and FileDescription report two different versions
-    # for the same executable.
-    version_info={
-        'CompanyName': 'Quantum Trading Systems',
-        'FileDescription': f'Acervator v{ACERVATOR_VERSION} ({ACERVATOR_VARIANT})',
-        'FileVersion': windows_file_version(ACERVATOR_VERSION),
-        'InternalName': OUTPUT_NAME,
-        'OriginalFilename': f'{OUTPUT_NAME}.exe',
-        'ProductName': 'Acervator',
-        'ProductVersion': windows_file_version(ACERVATOR_VERSION),
-    } if os.path.exists(ICON_PATH) else None,
+    version=VERSION_RESOURCE,
 )
 
 coll = COLLECT(

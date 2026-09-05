@@ -1,11 +1,12 @@
 #!/bin/bash
 # ============================================================================
 #  Acervator — macOS Build Script
-#  Produces: dist/Acervator.app
+#  Produces: dist/Acervator-<version>-<variant>.app, one per variant
 #
 #  Usage:
 #      chmod +x build_mac.sh
-#      ./build_mac.sh              # Build .app only
+#      ./build_mac.sh              # Build every variant, .app only
+#      ./build_mac.sh --variant qt # Build one variant
 #      ./build_mac.sh --dmg        # Build .app + wrap in .dmg
 #      ./build_mac.sh --sign "Developer ID Application: Your Name (TEAMID)"
 # ============================================================================
@@ -19,15 +20,26 @@ VERSION="$(python3 -c 'import src; print(src.__version__)' 2>/dev/null || echo "
 [ -z "$VERSION" ] && VERSION="unknown"
 SIGN_IDENTITY=""
 MAKE_DMG=false
+VARIANT_ARGS=()
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         --dmg)      MAKE_DMG=true; shift ;;
         --sign)     SIGN_IDENTITY="$2"; shift 2 ;;
+        --variant)  VARIANT_ARGS+=(--variant "$2"); shift 2 ;;
         *)          echo "Unknown option: $1"; exit 1 ;;
     esac
 done
+
+# The environment variable the spec reads and the variant names are declared in
+# src/_variant.py. Asking for them keeps no second copy here.
+VARIANT_ENV_VAR="$(python3 -m tools.build_variants env-var)" || {
+    echo "ERROR: could not read the build-variant environment variable"
+    exit 1
+}
+VARIANTS="$(python3 -m tools.build_variants select "${VARIANT_ARGS[@]}")" || exit 1
+[ -n "$VARIANTS" ] || { echo "ERROR: no build variant to build"; exit 1; }
 
 echo ""
 echo "  ========================================="
@@ -58,61 +70,80 @@ DEPS="$(python3 -m tools.deps requirements build)" || {
 # shellcheck disable=SC2086
 pip3 install $DEPS --quiet
 
-# Build the .app
-echo "[2/4] Building ${APP_NAME}.app..."
-pyinstaller Acervator_mac.spec --noconfirm
+# Build one .app per variant. The spec names each bundle after the version and
+# the variant and steps past a name already in dist, so nothing is overwritten.
+echo "[2/4] Building ${APP_NAME}..."
+BUILT_APPS=()
+for VARIANT in $VARIANTS; do
+    echo "  Building the ${VARIANT} variant..."
+    BEFORE="$(ls -1 dist 2>/dev/null || true)"
+    env "${VARIANT_ENV_VAR}=${VARIANT}" pyinstaller Acervator_mac.spec --noconfirm
 
-APP_PATH="dist/${APP_NAME}.app"
-
-if [ ! -d "$APP_PATH" ]; then
-    echo "ERROR: .app bundle not created."
-    exit 1
-fi
+    APP_PATH=""
+    for CANDIDATE in dist/*.app; do
+        [ -d "$CANDIDATE" ] || continue
+        if ! printf '%s\n' "$BEFORE" | grep -qxF "$(basename "$CANDIDATE")"; then
+            APP_PATH="$CANDIDATE"
+        fi
+    done
+    if [ -z "$APP_PATH" ]; then
+        echo "ERROR: the ${VARIANT} build produced no new .app bundle in dist/."
+        exit 1
+    fi
+    echo "  Built: ${APP_PATH}"
+    BUILT_APPS+=("$APP_PATH")
+done
 
 # Codesign if identity provided
 if [ -n "$SIGN_IDENTITY" ]; then
     echo "[3/4] Code signing..."
-    codesign --deep --force --verify --verbose \
-        --sign "$SIGN_IDENTITY" \
-        --options runtime \
-        "$APP_PATH"
-    echo "  Signed with: $SIGN_IDENTITY"
+    for APP_PATH in "${BUILT_APPS[@]}"; do
+        codesign --deep --force --verify --verbose \
+            --sign "$SIGN_IDENTITY" \
+            --options runtime \
+            "$APP_PATH"
+        echo "  Signed: ${APP_PATH}"
+    done
 else
     echo "[3/4] Skipping code signing (no --sign provided)"
 fi
 
-# Create DMG if requested
+# Create DMG if requested. The bundle basename already carries the version and
+# the variant, so two DMGs never claim one path.
 if [ "$MAKE_DMG" = true ]; then
     echo "[4/4] Creating DMG..."
-    DMG_PATH="dist/${APP_NAME}-${VERSION}.dmg"
-    rm -f "$DMG_PATH"
+    for APP_PATH in "${BUILT_APPS[@]}"; do
+        BUNDLE_NAME="$(basename "$APP_PATH" .app)"
+        DMG_PATH="dist/${BUNDLE_NAME}.dmg"
+        rm -f "$DMG_PATH"
 
-    # Create a staging directory with .app and Applications symlink
-    STAGING=$(mktemp -d)
-    cp -R "$APP_PATH" "$STAGING/"
-    ln -s /Applications "$STAGING/Applications"
+        # Create a staging directory with .app and Applications symlink
+        STAGING=$(mktemp -d)
+        cp -R "$APP_PATH" "$STAGING/"
+        ln -s /Applications "$STAGING/Applications"
 
-    hdiutil create \
-        -volname "$APP_NAME" \
-        -srcfolder "$STAGING" \
-        -ov -format UDZO \
-        -imagekey zlib-level=9 \
-        "$DMG_PATH"
+        hdiutil create \
+            -volname "$APP_NAME" \
+            -srcfolder "$STAGING" \
+            -ov -format UDZO \
+            -imagekey zlib-level=9 \
+            "$DMG_PATH"
 
-    rm -rf "$STAGING"
-    echo "  DMG created: $DMG_PATH"
+        rm -rf "$STAGING"
+        echo "  DMG created: ${DMG_PATH}"
+    done
 else
     echo "[4/4] Skipping DMG (use --dmg to create)"
 fi
 
 echo ""
 echo "  ========================================="
-echo "   OUTPUT: dist/${APP_NAME}.app"
-if [ "$MAKE_DMG" = true ]; then
-    echo "   DMG:    dist/${APP_NAME}-${VERSION}.dmg"
-fi
+echo "   ${APP_NAME} v${VERSION} — this run produced:"
+for APP_PATH in "${BUILT_APPS[@]}"; do
+    echo "     ${APP_PATH}"
+done
 echo "  ========================================="
 echo ""
-echo "  To run:  open \"dist/${APP_NAME}.app\""
-echo "  To install: drag .app to /Applications"
+echo "  To run:  open \"${BUILT_APPS[0]}\""
+echo "  To install: drag a .app to /Applications"
 echo ""

@@ -32,6 +32,7 @@ TOOLS = REPO / "tools"
 INVENTORY: tuple[tuple[str, bool], ...] = (
     ("build_product_manual", True),
     ("build_release_zip", True),
+    ("build_variants", True),
     ("comment_audit", True),
     ("capture_live_baseline", True),
     ("check_added_comments", True),
@@ -64,11 +65,6 @@ LIBRARIES: tuple[tuple[str, str], ...] = (
         "spec_common",
         "shared PyInstaller spec content, imported by Acervator_win.spec "
         "and Acervator_mac.spec",
-    ),
-    (
-        "build_variants",
-        "names a build output after its resolved version and variant, "
-        "imported by Acervator_win.spec and Acervator_mac.spec",
     ),
     (
         "claude_home",

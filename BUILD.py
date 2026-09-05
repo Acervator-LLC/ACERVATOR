@@ -2,6 +2,7 @@
 BUILD - Acervator Build Launcher
 Double-click this file to build the application.
 Automatically detects and installs all required dependencies.
+``parse_variants`` reads ``--variant NAME``; a double-click builds every variant.
 """
 
 # S607 IS FIXED BY CONSTRUCTION, NOT SUPPRESSED, following the reasoning at
@@ -14,10 +15,13 @@ Automatically detects and installs all required dependencies.
 # argv carrying a variable draws one. A resolved executable path is a variable
 # by definition. This directive is the residue, narrowed to the one rule.
 # ruff: noqa: S603
+import argparse
 import os
 import shutil
 import subprocess
 import sys
+
+from tools.build_variants import selected_variants
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 try:
@@ -216,8 +220,28 @@ def powershell_exe() -> str:
     return shutil.which("powershell") or ""
 
 
-def run_build() -> bool:
-    """Execute the PowerShell build script."""
+def parse_variants(argv: list[str] | None = None) -> tuple[str, ...]:
+    """Return the variants ``--variant`` names in ``argv``, or every known one.
+
+    Raises ``ValueError`` through ``selected_variants`` on an unknown name.
+    """
+    parser = argparse.ArgumentParser(
+        prog="BUILD.py",
+        description="Build Acervator. Every variant is built unless one is named.",
+    )
+    parser.add_argument(
+        "--variant",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="build only this variant; repeat or comma-separate for several",
+    )
+    parsed = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    return selected_variants(parsed.variant)
+
+
+def run_build(variants: tuple[str, ...]) -> bool:
+    """Execute the PowerShell build script for ``variants``."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     ps1_path = os.path.join(script_dir, "build_windows.ps1")
 
@@ -233,12 +257,22 @@ def run_build() -> bool:
         return False
 
     print(f"\n  Script: {ps1_path}")
+    print(f"  Variants: {', '.join(variants)}")
     print("  Starting build...\n")
     print("=" * 60)
 
-    # Use absolute path and set working directory explicitly
+    # The spec reads the variant from the environment, and build_windows.ps1
+    # sets it per variant. -Variant takes one comma-joined argv token.
     result = subprocess.run(
-        [powershell, "-ExecutionPolicy", "Bypass", "-File", ps1_path],
+        [
+            powershell,
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            ps1_path,
+            "-Variant",
+            ",".join(variants),
+        ],
         cwd=script_dir,
         check=False,
     )
@@ -304,6 +338,13 @@ def write_smartscreen_help(folder: str) -> None:
 def main() -> None:
     print(HEADER)
 
+    try:
+        variants = parse_variants()
+    except ValueError as exc:
+        print(f"\n  ERROR: {exc}")
+        input("\nPress Enter to close...")
+        return
+
     print("[1/3] Checking Python...")
     if not check_python():
         input("\nPress Enter to close...")
@@ -318,7 +359,7 @@ def main() -> None:
         return
 
     print("\n[3/3] Building application...")
-    success = run_build()
+    success = run_build(variants)
 
     if success:
         built = build_outputs()
