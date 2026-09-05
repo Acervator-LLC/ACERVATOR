@@ -31,6 +31,24 @@ from src.gui.bot_swarm_list import (  # noqa: E402
 # `repaint()` fires no paintEvent offscreen; `render(QPixmap)` does.
 from PySide6.QtGui import QPixmap  # noqa: E402
 
+RAMP_TOKENS = ("TEXT_MUTED", "PRIMARY_BRIGHT", "WARNING", "ERROR")
+# Wide enough for a laid-out row; a smaller render leaves the cell rect empty.
+RAMP_RENDER_SIZE = (640, 200)
+
+
+def _cell_colours(view, image, row, col):
+    """Count the painted colours inside one cell of `view`, by lowercase hex."""
+    import collections
+
+    rect = view.visualRect(view.model().index(row, col))
+    origin = view.viewport().mapTo(view, rect.topLeft())
+    bag: dict = collections.Counter()
+    for y in range(origin.y(), origin.y() + rect.height()):
+        for x in range(origin.x(), origin.x() + rect.width()):
+            bag[image.pixelColor(x, y).name().lower()] += 1
+    return bag
+
+
 # BotSwarmLaneAllocator — pure algorithm
 
 
@@ -199,29 +217,28 @@ class TestHeadlessRender:
         assert lst.item(0, COL_OUTFLOW_PCT).text() == "25%"
         assert lst.item(1, COL_OUTFLOW_PCT).text() == "0%"
 
-    def test_outflow_pct_color_ramp(self):
-        """v3.23.62 — colour thresholds:
-        0 → grey  |  1-80 → cyan  |  81-99 → amber  |  100+ → red"""
+    @pytest.mark.parametrize(
+        "outflow_pct,token",
+        [(0, "TEXT_MUTED"), (80, "PRIMARY_BRIGHT"), (99, "WARNING"), (100, "ERROR")],
+        ids=RAMP_TOKENS,
+    )
+    def test_outflow_pct_color_ramp(self, outflow_pct, token):
+        """The % Out cell paints its own ramp token and none of the other three."""
         self._new_app()
+        from src.gui import design_system as ds
         from src.gui.bot_swarm_list import BotListView
+        from tests.qt_pixel import render_widget
 
         lst = BotListView()
-        lst.set_bots(
-            [
-                {"bot_id": "a", "symbol": "A/USD", "outflow_pct": 0},
-                {"bot_id": "b", "symbol": "B/USD", "outflow_pct": 25},
-                {"bot_id": "c", "symbol": "C/USD", "outflow_pct": 90},
-                {"bot_id": "d", "symbol": "D/USD", "outflow_pct": 120},
-            ]
-        )
-
-        def _col(row):
-            return lst.item(row, COL_OUTFLOW_PCT).foreground().color().name()
-
-        assert _col(0) == "#666666"  # grey
-        assert _col(1) == "#00ffee"  # cyan
-        assert _col(2) == "#ffaa00"  # amber
-        assert _col(3) == "#ff3366"  # red
+        lst.set_bots([{"bot_id": "a", "symbol": "A/USD", "outflow_pct": outflow_pct}])
+        image = render_widget(lst, size=RAMP_RENDER_SIZE)
+        painted = _cell_colours(lst, image, 0, COL_OUTFLOW_PCT)
+        counts = {name: painted[str(getattr(ds, name)).lower()] for name in RAMP_TOKENS}
+        assert counts[token] > 0, f"{outflow_pct}% painted no {token}: {counts}"
+        others = {k: v for k, v in counts.items() if k != token}
+        assert all(
+            v == 0 for v in others.values()
+        ), f"{outflow_pct}% should paint only {token}, but also painted {others}"
 
     def test_wire_paint_uses_wire_phase_for_animation(self):
         """v3.23.62 — wire animation migrated to list view. The paint
