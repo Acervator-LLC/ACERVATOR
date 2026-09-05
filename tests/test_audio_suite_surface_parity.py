@@ -52,9 +52,7 @@ READ_ONLY_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/indicator_panel.py"
 
 METHOD_NAME = "audio_suite.state"
 
-# One length short enough to drive the real generator many times. The
-# loop join is two seconds whatever the length, so the frames written
-# are all inside it and every one is a blended frame.
+# Short enough that every frame written falls inside the two-second loop join.
 SHORT_DURATION_S = 0.001
 
 # The three states the sound library and the device can be in.
@@ -174,9 +172,7 @@ KEY_TOTAL = 12
 LAYER_TOTAL = 4
 BASE_FREQUENCY_TOTAL = 4
 
-# Counted from the parsed shipped file, both timer forms, both bus
-# directions. Every number below is asserted against a counter that runs
-# over the syntax tree, never over the text.
+# Counted over the parsed shipped file, covering both timer forms and bus directions.
 SHIPPED_CLASS_TOTAL = 7
 SHIPPED_REACHABLE_CLASS_TOTAL = 6
 SHIPPED_METHOD_TOTAL = 29
@@ -1177,9 +1173,7 @@ def test_a_preset_name_that_is_not_text_refuses_the_same_way(value):
 
 # The steps, driven through both sides in one run
 
-# One sequence is one named run of screen actions. Both sides are driven
-# from this table and from nothing else, so neither can be given a
-# starting value the other did not get.
+# Both sides are driven from this table alone, so neither gets an input the other missed.
 SEQUENCES = {
     "nothing_at_all": [],
     "one_layer": [
@@ -1776,9 +1770,7 @@ SURFACE_FUNCTIONS = (
     "view_model",
 )
 
-# Every item the shipped file holds, and what stands for it here. The
-# file write and the device calls have no counterpart: a view model
-# writes nothing and opens nothing.
+# Shipped item to its surface counterpart; the file write and device calls have none.
 COUNTERPARTS = {
     "KEY_MULT": "KEY_MULTIPLIERS",
     "ToneGenerator.SR": "SAMPLE_RATE_HZ",
@@ -2845,9 +2837,7 @@ def test_a_media_state_the_surface_does_not_know_opens_ready():
 
 # Nothing the surface holds is left out of the snapshot
 
-# Every constant the surface exports, and the payload key that carries
-# it. A comparison reading some of them passes whether the rest match or
-# not; this closes that gap for every one at once.
+# Every constant the surface exports, and the payload key that carries it.
 PAYLOAD_KEYS = {
     "SAMPLE_RATE_HZ": "sample_rate_hz",
     "CHANNEL_TOTAL": "channel_total",

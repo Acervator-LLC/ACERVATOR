@@ -21,15 +21,9 @@ Measured after:
     childAt(200, 200)   : QWidget   (the list)
     grid geometry       : 680x733   (was a stale 640x480)
 
-This is the same failure `_reposition_wire_canvas`'s own comment records
-("7 broken interactions"): the v3.23.19 fix scoped the canvas to the
-grid, then v3.23.61 made the grid the hidden page without revisiting it.
-
-WHY C06b HAD TO LAND FIRST
-While broken, this overlay was the only thing shielding the default view
-from `_finish_wire_drag`'s two silent wire-removal branches. Restoring
-the view ARMS those gestures, so they were confirmed in C06b before this
-shipped.
+`_reposition_wire_canvas` scopes the canvas to `_grid_widget`, which is
+the hidden stacked page, so its geometry is never updated while the List
+view shows.
 """
 
 from __future__ import annotations
@@ -109,11 +103,7 @@ class TestGridStillWorks:
             640,
             480,
         ), "canvas is showing the stale default rect"
-        # The rect must be live, not the 640x480 default asserted against
-        # above. The 600px floor is the real bound and it holds on a real
-        # platform; the offscreen plugin lays this out narrower, so there the
-        # floor drops to "non-degenerate". The bound is not relaxed for
-        # everyone to suit one platform.
+        # The offscreen plugin lays this out narrower, so it only needs a live rect.
         floor = 0 if os.environ.get("QT_QPA_PLATFORM") == "offscreen" else 600
         assert g.width() > floor and g.height() > floor
 

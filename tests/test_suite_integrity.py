@@ -49,10 +49,7 @@ if str(REPO_ROOT) not in sys.path:
 
 TESTS_DIR = REPO_ROOT / "tests"
 
-# Baselines recorded 2026-08-05 at v3.24.34 (76 files / 1146 functions /
-# 1171 collected). Floors sit a little under so ordinary consolidation
-# does not trip them, while a sweep like 2026-07-25 -- which removed 316
-# files -- would.
+# Floors set under the recorded counts, so consolidation passes and a sweep does not.
 MIN_TEST_FILES = 70
 MIN_TEST_FUNCTIONS = 1100
 
@@ -265,9 +262,7 @@ SHORTEST_WORDING = 12
 
 QUOTED_RUN = re.compile(r"'[^']*'")
 
-# The misuses below hand these to the platform. Each is declared as an
-# open type so the mistake is made at run time, where the platform words
-# its own refusal, rather than being resolved before the run.
+# Declared open so the mistake happens at run time, where the platform words it.
 WHOLE: Any = 1
 NONE_AT_ALL: Any = 0
 LETTER: Any = "a"
@@ -287,9 +282,7 @@ def _wants_two(first, second):
 
 MISCALLED: Any = _wants_two
 
-# Misuses whose refusal the platform words, not the product. The wording
-# each one produces is read from the running interpreter, so this list
-# names the mistakes and never the sentences.
+# Mistakes only; each refusal's wording is read off the running interpreter.
 PLATFORM_MISUSES: tuple[Callable[[], Any], ...] = (
     lambda: WHOLE / NONE_AT_ALL,
     lambda: DECIMAL / NONE_AT_ALL,

@@ -47,9 +47,7 @@ COLOR_TOTAL = 139
 ALIAS_TOTAL = 6
 GROUP_TOTAL = 13
 
-# Every token value, typed out here rather than read from either module.
-# Neither side can satisfy this table by copying the other, and an edit
-# made to both files together is still reported.
+# Typed out here, not read from either module, so neither can satisfy it by copying.
 EXPECTED = {
     "SURFACE_0": "#0a0a0f",
     "SURFACE_1": "#141420",
@@ -708,9 +706,7 @@ EXPECTED_GROUP_MEMBERS = {
 }
 
 
-# The shipped module defines no function and no class, so nothing here
-# has a counterpart upstream. These seven carry the view model the
-# renderer reads and are named so one added or lost is reported.
+# Surface-only names carrying the view model; the shipped module defines no callable.
 SURFACE_ONLY = (
     "token",
     "has_token",
@@ -2168,10 +2164,7 @@ def test_the_shipped_module_needs_no_qt_either():
 
 # Nothing the surface holds is left out of the snapshot
 
-# Every constant the surface exports that is not one of the 195 tokens,
-# and the payload key that carries it. A comparison reading 40 of 50
-# constants passes whether the other ten match or not; this closes that
-# gap for every one of them at once.
+# Every non-token constant the surface exports, and the payload key that carries it.
 PAYLOAD_KEYS = dict(
     (
         ("TOKEN_NAMES", "token_names"),
@@ -2218,9 +2211,7 @@ NAME_LIST_GROUPS = {
     "ALIAS_NAMES": "aliases",
 }
 
-# The four constants no snapshot key carries, each with the check that
-# covers it. `METHOD` is the name the bridge registers under. The other
-# three are the values the three lookups return when they find nothing.
+# The constants no snapshot key carries, each with the check that covers it.
 NOT_IN_THE_SNAPSHOT = dict(
     (
         ("METHOD", "test_bridge_registers_the_design_system_method"),

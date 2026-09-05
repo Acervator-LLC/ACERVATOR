@@ -75,11 +75,7 @@ def _bot(
     b._fold_accumulator = 0.0
     b._target_grow_last_side = None
     b.stats = type("S", (), {})()
-    # The stub must ACCEPT the bus signature -- it takes 12 real
-    # calls of the form emit("bot.log", bot_id=..., message=...).
-    # Production wraps every emit in try/except-debug, so dropping
-    # these parameters would break the stub silently. Keep them;
-    # the leading underscore marks the names deliberately unused.
+    # Production wraps every emit in try/except, so a stub that refuses one is silent.
     b._bus = type("B", (), {"emit": lambda self, *_a, **_k: None})()
     return b
 
@@ -147,11 +143,7 @@ class TestItMatchesTheRealFormula:
     def test_only_units_actually_bought_count(self):
         """Growth is bounded by what the buy discharges, not by the
         whole queue."""
-        # Issue #106 - the TARGET is what lifts the cap out of the way
-        # now, so it is raised with the anchor. The old fixture raised
-        # only the anchor and left the target at $100, which is a state
-        # the setter invariant `target >= anchor` forbids: the cap was
-        # being lifted by a bot that could not exist.
+        # The target is raised with the anchor: the setter forbids target below anchor.
         b = _bot([_tr(10.0, 60.0)], anchor=10000.0, target=10000.0)
         assert b._preview_fold_growth(1.0, 50.0) == pytest.approx(10.0)
 
@@ -204,8 +196,7 @@ class TestDegenerateInputs:
         assert b._preview_fold_growth(1.0, 50.0) == pytest.approx(1.0)
 
     def test_the_quote_rate_is_applied(self):
-        # Issue #106 - same reason as above: the target carries the
-        # cap now, and target < anchor is not a reachable state.
+        # The target carries the cap, and target below anchor is unreachable.
         b = _bot([_tr(1.0, 60.0)], anchor=10000.0, target=10000.0, qrate=3.0)
         assert b._preview_fold_growth(1.0, 50.0) == pytest.approx(30.0)
 

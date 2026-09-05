@@ -1,4 +1,4 @@
-"""Issue #86 — no top-level directory is named after a stdlib module.
+"""No top-level directory is named after a stdlib module.
 
 WHAT THIS FILE GUARDS
 =====================
@@ -7,15 +7,8 @@ the whole session. A top-level directory whose name equals a stdlib
 top-level module name therefore sits on the import path beside the
 standard library.
 
-Issue #86 reported that the top-level ``os/`` directory shadowed the
-stdlib ``os`` module. Measured 2026-08-23 and again 2026-08-27: it did
-not. Three independent protections stood, and each was sufficient alone.
-The directory was renamed to ``deploy/kiosk/`` anyway, because the name
-mislabelled the contents: the suite is AcervatorOS, the Raspberry Pi OS
-and Debian deployment, and ``os`` reads as operating-system helpers.
-
-The collision set is now EMPTY, so the guard below is strictly stronger
-than it was: it no longer carries an exception.
+``KNOWN_STDLIB_NAMED_ROOT_DIRS`` is empty, so the guard below carries no
+exception.
 
 PROTECTION 1 — a stdlib-named directory must not be an importable package
 --------------------------------------------------------------------------
@@ -75,18 +68,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 # Top-level directories whose name equals a stdlib top-level module name.
-#
-# Measured 2026-08-27: none. Issue #86 renamed the one entry, `os`, to
-# `deploy/kiosk/`.
-#
-# A NEW name landing here is not automatically a defect, but it is
-# automatically a review: it must satisfy
-# `test_no_stdlib_named_root_directory_is_a_package` as well.
 KNOWN_STDLIB_NAMED_ROOT_DIRS: frozenset[str] = frozenset()
 
-# A directory becomes importable as a real package when it holds one of
-# these. Source, bytecode and extension forms all give PathFinder a
-# loader, and a loader is what beats the stdlib module.
+# A directory holding one of these gives PathFinder a loader, which beats the stdlib.
 PACKAGE_MARKERS: tuple[str, ...] = (
     "__init__.py",
     "__init__.pyc",
@@ -212,10 +196,6 @@ def test_the_path_finder_finds_no_importable_os_in_the_repository() -> None:
       either.
     * the search path is the repository root alone, so a stdlib hit
       cannot be mistaken for safety.
-
-    Before issue #86 renamed the directory this returned a LOADERLESS
-    ``ModuleSpec`` — a namespace portion, harmless because ``PathFinder``
-    records a portion and keeps walking. It now returns ``None``.
 
     The assertion is on the LOADER and not on the spec, because a
     loaderless portion is safe and a loader is not. Asserting ``spec is

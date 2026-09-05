@@ -71,17 +71,11 @@ from pathlib import Path
 
 import pytest
 
-# The index enumeration is not restated here. tests/test_no_committed_backup_copies
-# already spawns git to read it, and carries the reasoning for the one
-# lint directive that spawn needs. Two copies would mean two spawns and a
-# second place for that reasoning to drift.
 from tests.test_no_committed_backup_copies import tracked_files
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# A script tag whose src names a host: scheme-qualified or protocol
-# relative. Attribute order is free, so the src is found anywhere inside
-# the tag, and the quote is optional because HTML allows a bare value.
+# A script src naming a host, scheme-qualified or protocol-relative, quote optional.
 REMOTE_SCRIPT = re.compile(
     r"<\s*script\b[^>]*?\bsrc\s*=\s*[\"']?\s*(?:https?:)?//([^\s\"'/>]+)",
     re.IGNORECASE,
@@ -93,10 +87,7 @@ UNREACHABLE_HOSTS = (".invalid", ".test", ".example", "localhost")
 
 CHART_LIBRARY = "src/gui/web/vendor/lightweight-charts.standalone.production.js"
 
-#: Digest of the vendored bundle, taken from the bytes unpkg served for
-#: lightweight-charts 4.1.0, standalone production build. Same bytes as
-#: the page used to fetch, which is what makes the chart's drawing
-#: unchanged a property of the file rather than a claim about it.
+#: The bytes unpkg served for lightweight-charts 4.1.0, standalone production build.
 CHART_LIBRARY_SHA256 = (
     "78d2bcbd79556d4f67ae3e3f7776f74e3b46a499466615b1f99397c53cb4056f"
 )
@@ -176,15 +167,7 @@ def test_the_vendored_library_matches_the_digest_of_what_was_fetched() -> None:
     assert b"\r" not in raw, "a carriage return reached a file written as LF"
 
 
-# ── controls: the rule fires ─────────────────────────────────────────
-#
-# EVERY control tag below is ASSEMBLED AT RUNTIME, never written out as
-# one literal. This file is a tracked file, so a whole tag written here
-# would be reported by the guard above -- and the honest fix for that is
-# to leave the rule universal and stop writing the tag, not to exempt
-# this file. An exemption here would be the one blind spot a
-# reintroduction would most plausibly hide in.
-
+# Assembled at runtime: this file is tracked, so a literal tag would trip the rule.
 OPEN = "<" + "script"
 SHUT = "</" + "script>"
 

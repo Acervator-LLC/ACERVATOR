@@ -1,116 +1,11 @@
 """A shipped file may not name a path that is not in the tree.
 
-WHAT WAS MEASURED
-=================
-Issue #69, on 2026-08-22, in a clone at commit b1bcd8b. Every path the
-issue listed was checked with ``Path.exists()``. All of them were absent:
-
-    RAIntSimBat.py            generate_essay.py       WHY_SADP.md
-    ARCHITECTURE.md           docs/RISK_REGISTER.md   qa_baselines/
-    tests/obsolete/           cloud/                  requirements.txt
-    requirements-optional.txt tests/test_swarm_row_parity.py
-    acervator_product_manual_v3_13_7.pdf
-
-They fall into three classes, and the class decides the repair:
-
-  INERT      ``--ignore=tests/obsolete`` and
-             ``--ignore=tests/test_swarm_row_parity.py`` in pytest
-             ``addopts``. pytest accepts an ignore for a path that is
-             not in the tree. Collection returned 7382 tests with the
-             two entries present and 7382 with them gone. Removal
-             changed nothing except the truth of the file.
-
-  BROKEN     The README install step ran ``pip install -r
-             requirements.txt``, and no requirements file is in the
-             tree, so the documented setup stopped at its first command.
-             The README Project Structure block drew 8 documents under
-             ``docs/``, a whole ``logs/`` subtree and 9 modules under
-             ``src/`` that are not there.
-
-  DEAD       ``[tool.mutmut]`` described a mutation-testing capability
-             the tree does not have. It could not run, for two
-             independent reasons. mutmut 3.5.0 refuses this platform:
-             ``python -m mutmut run`` prints "To run mutmut on Windows,
-             please use the WSL" and exits 1 at import, before it reads
-             any config. Separately, its ``runner`` named
-             ``tests/test_verify_buy_safe_helper.py`` and
-             ``tests/test_mem228_buy_confirmation_gate.py``, and that
-             command exits 4 because neither file is in the tree.
-             Nothing read a qa_baselines file either: the two tests the
-             config said would read one
-             (``tests/test_coverage_floor.py``,
-             ``tests/test_mutation_baseline.py``) are not in the tree.
-             So the baselines were never load-bearing, and no number in
-             the suite rests on them. ``git log`` over all 107 commits
-             shows that no commit ever added any of these paths. They
-             are not deleted files. They are references that never had
-             a referent in this repository.
-
-WHAT ISSUE #89 MEASURED
-=======================
-The Docker build was retired on 2026-08-22, not repaired. ``Dockerfile``
-and ``docker-compose.yml`` are deleted. Five findings, each one on its
-own sufficient:
-
-  NO SOURCE   The image ran ``cloud/acervator_daemon.py`` and mounted
-              ``cloud/config.json``. Neither ``cloud/`` nor
-              ``RAIntSimBat.py`` is in the tree, and ``git log`` over
-              all 109 commits shows that no commit ever added either
-              one. The build failed at line 21, its first COPY.
-
-  NO ENTRY    The one entry point is ``main:main``. It builds a
-              QApplication and it exits with a message when PySide6 is
-              absent. No headless runner is in the tree. The Dockerfile
-              installed no Qt and said so: "No Qt, no PySide6, no
-              display server needed". So the image could not start the
-              only program this repository has, whatever its
-              dependencies.
-
-  NO SERVER   The HEALTHCHECK polled a /health route on port 8080. No
-              HTTP server, no such route and no --status-port option is
-              in the tree, so the container would report unhealthy for
-              its whole life.
-
-  NO READER   The compose file passed BINANCE_API_KEY, ALPACA_API_KEY,
-              ANTHROPIC_API_KEY and TELEGRAM_BOT_TOKEN. No module reads
-              any of those names. The platform reads its credentials
-              from a user directory, not from the environment.
-
-  NO CALLER   Literal "docker", case-insensitive, over every tracked
-              file hit three: the compose file itself, this test, and
-              two lines in the harness archive. There is no CI (issue
-              #91). Nothing ever built the image.
-
-The deployment this repository does maintain is ``deploy/kiosk/`` - AcervatorOS
-on Raspberry Pi OS or Debian. It installs a systemd unit that sets
-DISPLAY and QT_QPA_PLATFORM=xcb, because the program needs a display. A
-container and that unit are two answers to one question, and only one
-of them has code.
-
-Docker is not installed on the machine that made this change: no
-binary, no service, no install directory. So no repaired image could be
-built and proved. A build file that is only believed to build is the
-same false claim in a new coat.
-
-WHY A GUARD AND NOT A CLEANUP
-=============================
-``docs_archetype`` passed README.md green on 2026-08-22 while that
-README named seven files which are not in the tree. No instrument in the
-repo reads a shipped document and asks whether its paths resolve. This
-test is that instrument.
-
-HOW A DOCUMENT SAYS A FILE IS GONE
-==================================
-A document must be able to record an absence. A block of text may name a
-path that is not in the tree when the same block carries one of the
-phrases in ABSENCE_MARKERS. The marker is per block, not per file, so
-one sentence cannot excuse a whole document.
-
-TWO-SIDED CONTROL
-==================
-Driven both ways on 2026-08-22 against the same tree. The reverted files
-failed the matching tests; the restored files passed and matched their
-recorded sha256.
+Every path a file in ``SHIPPED`` names is checked with ``Path.exists()``, and
+the pytest ``addopts`` ignores, the README install step and the README project
+structure are each read the same way. A block of prose may name an absent path
+when that same block carries one of ``ABSENCE_MARKERS``; the marker is per
+block, so one sentence cannot excuse a whole document. ``RETIRED_DOCKER`` names
+the two deployment files that must stay deleted.
 """
 
 from __future__ import annotations
@@ -125,8 +20,7 @@ from tests.fixtures.repo_tree import source_files
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Files that ship to a user or drive a build. The same line issue #68
-# drew for the retired-subsystem guard.
+# Files that ship to a user or drive a build.
 SHIPPED = (
     "pyproject.toml",
     "README.md",
@@ -174,9 +68,7 @@ _TOML_HEADER_PREFIX = "tool."
 # Path claims that are true for a reason the scanner cannot see. Every
 # entry carries that reason. This map may not grow without one.
 ALLOWED: dict[tuple[str, str], str] = {
-    # Coverage WRITE target. Measured 2026-08-22: ``python -m pytest
-    # --cov --cov-report=json`` created ``qa_baselines/`` and wrote the
-    # file. It is an output path, not a file the repo must ship.
+    # A coverage output path, not a file the repo ships.
     (
         "pyproject.toml",
         "qa_baselines/coverage_current.json",
@@ -373,9 +265,8 @@ def test_pytest_addopts_ignores_nothing_that_is_gone() -> None:
 def test_readme_install_step_names_a_real_dependency_source() -> None:
     """The install step must name a dependency source that is present.
 
-    Before issue #69 it ran ``pip install -r requirements.txt``, and no
-    requirements file is in the tree, so the documented setup failed at
-    its first command.
+    A step naming ``requirements.txt`` fails at once, because no
+    requirements file is in the tree.
     """
     text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     for match in re.finditer(r"pip install\s+(?:--\S+\s+)*-r\s+(\S+)", text):
@@ -388,8 +279,6 @@ def test_readme_install_step_names_a_real_dependency_source() -> None:
         "installs nothing"
     )
 
-
-# ── Retired Docker build (issue #89) ─────────────────────────────────
 
 RETIRED_DOCKER = ("Dockerfile", "docker-compose.yml")
 
@@ -451,7 +340,7 @@ def _docker_mentions() -> list[str]:
 
 
 def test_retired_docker_build_files_are_gone() -> None:
-    """Issue #89 deleted the Docker build, and it may not return.
+    """The Docker build is deleted, and it may not return.
 
     The image copied a directory that no commit ever added, so it could
     not build; and it excluded the toolkit that the one entry point

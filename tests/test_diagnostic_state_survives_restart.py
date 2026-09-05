@@ -91,10 +91,7 @@ class _Bot:
         self._hedge_trades = 0
         self._cb_hard_tripped = False
         self._compact_wire_credits = lambda *_a, **_k: None
-        # issue #133 unit 11 -- the restore lands a parked wire
-        # credit into a standing fold queue. Bound as the REAL
-        # methods, so the stub runs the shipping code rather
-        # than a stand-in that cannot fail.
+        # Bound as the real methods, so the stub runs the shipping restore.
         self._fold_tranches = []
         self._pending_wire_ledger = []
         self._fold_queue_usd = 0.0

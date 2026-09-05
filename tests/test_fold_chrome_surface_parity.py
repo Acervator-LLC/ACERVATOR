@@ -362,9 +362,7 @@ def refusing_install(name):
 DIFFERENT_INPUT_PAIR = ("happy", "no_tranches")
 
 
-# The shared rule both sides consume. It is not part of the panel, so
-# each side reaches it its own way: the Qt panel calls it inside itself,
-# the surface is handed what it returns.
+# The shared rule: the Qt panel calls it, the surface is handed what it returns.
 
 
 def armed_days(days):

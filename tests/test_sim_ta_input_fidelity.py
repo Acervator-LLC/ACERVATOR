@@ -213,15 +213,7 @@ class TestTheSimBotCarriesTheRealVenue:
                 ):
                     continue
                 seg = ast.get_source_segment(src, n.value) or ""
-                # The requirement is that the REAL venue wins when
-                # present — not that the sim id is unmentionable. A
-                # fallback for hand-built configs that carry no venue is
-                # correct and necessary: BotConfig has no default for
-                # exchange_id, and leaving it unset makes every such bot
-                # fail construction and the replay report "0 bots".
-                #
-                # An earlier version of this assertion forbade the
-                # string outright and failed that correct fallback.
+                # A fallback is allowed: `BotConfig` has no default for `exchange_id`.
                 assert "cfg" in seg or "_real_venue" in seg, (
                     f"line {n.lineno} sets exchange_id without consulting "
                     f"the config; the real venue is discarded"

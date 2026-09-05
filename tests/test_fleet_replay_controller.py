@@ -1,21 +1,11 @@
-# S101  — pytest's assert IS the assertion syntax; -O would strip
-#         them and make the suite inert. Nobody runs pytest with -O.
-# SLF001 — pin tests deliberately read internals (_exchange,
-#         _balances, _build_sim, _task) because the whole point is
-#         verifying wiring the public API does not expose.
-"""v3.23.79-A — pin tests for the Fleet Replay tick controller.
+"""Pin tests for the Fleet Replay tick controller.
 
-Deferred piece from v3.23.72 that makes Start Replay actually work.
-Tests exercise the async orchestrator's contract in isolation:
-
-    * ReplayProgress starts at 0 / total_candles from series
-    * _instantiate_bot returns None for non-scrumming configs
-    * Start with empty candles fails-soft (no bots, no ticks)
-    * Stop request drains cooperatively
-    * Controller emits stopped_event when finished
-
-These tests use synthetic configs + candle series so the real
-ScrummingBot / event-bus / balance-check machinery isn't required.
+``ReplayProgress`` starts at zero over the series total, ``_instantiate_bot``
+returns None for a non-scrumming config, an empty candle list fails soft, a stop
+request drains cooperatively and ``FleetReplayController`` sets
+``stopped_event`` when it finishes. ``_build_sim`` seeds the wallet from the
+fleet's ``target_balance`` and lists the asset each bot trades, so the init
+handshake runs once per bot rather than on every tick.
 """
 
 from __future__ import annotations
@@ -172,13 +162,6 @@ def test_controller_double_start_is_noop():
     assert first is second, "second start() must not spawn a new task"
 
 
-# ── v3.24.9: wallet seeding from fleet target_balance ────────────
-# Operator directive 2026-08-02: "let's just make the spendable
-# amount for the sim always equal the locked amount at the start of
-# the sim replay." Prior code hardcoded $100,000 USD, which is why
-# sim stat-strip figures bore no relation to bot_state reality.
-
-
 def test_wallet_seed_equals_sum_of_target_balance():
     ctrl = FleetReplayController(
         configs=[
@@ -243,25 +226,6 @@ def test_wallet_seed_is_announced_in_activity_log():
     assert any("Wallet seed: $250.00" in a for a in acts)
 
 
-# ── the wallet must also LIST the asset each bot trades ──────────
-# `_build_sim` seeds `balances=dict(seed_by_quote)`, so the tape held
-# USD and nothing else. `CCXTConnector.get_balance` marks a currency
-# the response omits `absent=True`, and `ScrummingBot.tick` refuses to
-# set `_initialised` on an absent read. Every sim bot therefore re-ran
-# the init handshake on every tick, for ever, and that handshake holds
-# `await asyncio.sleep(0.25)` between its two balance reads.
-#
-# MEASURED on a 50-candle 2-bot replay before the seeding: 100
-# refusals, 25.73 s of the run's 26.03 s inside that one sleep, no bot
-# initialised, and `sim.06.002` reporting worked=100 of entered=100.
-# After: 2 handshakes, both bots initialised, 0.54 s, and
-# `sim.06.002` reporting worked=2, throttled=98.
-#
-# `FleetSimExchange` seeded both sides of every pair for exactly this
-# reason (sim_exchange.py:130-136). `TabletBackend` replaced it in
-# v3.24.84 and the seeding was not carried across.
-
-
 def test_the_wallet_lists_the_asset_each_bot_trades():
     ctrl = FleetReplayController(
         configs=[{"mode": "scrumming", "symbol": "BTC/USD", "target_balance": 200.0}],
@@ -275,15 +239,6 @@ def test_the_wallet_lists_the_asset_each_bot_trades():
         "the tape omits the base asset, so the init handshake refuses "
         f"on every tick for ever; it listed {sorted(bals)}"
     )
-    # ISSUE #111 VIOLATION B. This used to read
-    # `bals["BTC"]["total"] == 0.0, "seeding must not invent units"`.
-    # The operator ruled that a bot carrying NO bot_state opens with a
-    # LOCKED SIDE, so this config -- which has no `_src_scrumming_state`
-    # -- now opens holding `target_balance` of base and locked and
-    # spendable start equal. The rule the old line protected is
-    # unchanged and is still enforced, one line down: seeding may not
-    # INVENT units, so what the venue holds must be exactly what the
-    # bot's own lot book claims. Nothing here is a written constant.
     booked = sum(
         float(lot.get("units", 0.0) or 0.0)
         for lot in (getattr(ctrl._bots[0], "_main_lots", None) or [])
@@ -343,12 +298,6 @@ def test_a_bot_initialises_instead_of_looping_the_handshake():
         sleeps.count(0.25) == 1
     ), f"the handshake ran again after initialisation: {sleeps}"
 
-
-# ── v3.24.15: anchored read head ─────────────────────────────────
-# Operator directive 2026-08-03: "the read head reaches a candle,
-# first checks for an expected trade, if none are identified, it
-# skips." Validation runs only need candles where something
-# happened; full evaluation is for strategy work.
 
 _ANCHOR_BASE = 1_774_915_200_000
 _ANCHOR_STEP = 300_000
@@ -428,15 +377,6 @@ def test_unanchored_run_evaluates_every_candle():
         await ctrl.stopped_event.wait()
 
     asyncio.run(run())
-    # Issue #109 — the positive anchor comes FIRST.
-    #
-    # `candles_skipped == 0` on its own is a negative assertion: a
-    # controller that played nothing at all reports zero skipped and
-    # passes. That is the shape that let a Simulator with no
-    # initialised bots and no trades read as healthy for nine months.
-    # "Evaluated everything" is only a claim if something was
-    # evaluated, so the count of candles PLAYED is asserted before the
-    # count of candles skipped.
     assert ctrl.progress.candles_played >= 1, (
         "the controller played no candles, so 'skipped nothing' says "
         "nothing about whether it evaluates everything"

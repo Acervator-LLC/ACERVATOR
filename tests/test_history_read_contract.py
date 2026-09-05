@@ -1,65 +1,12 @@
-"""The History read contract serves exactly what the History tab renders.
+"""``history_read_contract`` serves exactly what the History tab renders.
 
-Issue #128 unit R3. ``src/exchange/history_read_contract.py`` is a second
-implementation of the History tab's read path -- that is unavoidable while
-the tab keeps its own, and it is precisely the risk this migration exists
-to prevent. A second implementation is only safe while it is PROVED to
-agree, so that proof is this file's whole subject.
-
-WHAT AGREEMENT MEANS HERE, AND WHERE IT IS READ
-===============================================
-Both sides are driven on the SAME trade rows, the SAME filter values and
-the SAME page index. The comparison is then read at the surface the
-operator sees:
-
-  * ``QTableWidgetItem.text()`` for all thirteen columns of every row.
-  * ``QTableWidgetItem.foreground()`` for the colour, discriminated by
-    ``QBrush.style() != Qt.NoBrush`` -- an unset foreground is a default
-    brush, not a colour, and reading ``.color()`` unconditionally would
-    report a colour the tab never set.
-  * ``QTableWidgetItem.toolTip()`` for the three columns that carry one.
-  * ``cellWidget(row, 11)`` for the Simulator gate-light cell, whose own
-    ``_scrum_armed`` / ``_fold_armed`` are compared against the
-    contract's ``gate_lights``.
-  * The page label and the summary line, off the two real ``QLabel``s.
-
-A FAILURE OF ``test_the_contract_agrees_with_the_tab_cell_for_cell`` MEANS
-THE CONTRACT SERVES A VALUE THE OPERATOR'S SCREEN DOES NOT SHOW. A client
-built on it would render something Qt does not. That is the only thing it
-can mean, and it names the row, the column and the two values.
-
-THE VACUOUS PASS IS THE ONE THIS ORACLE IS MOST EXPOSED TO
-==========================================================
-Two empty renderings agree perfectly. So does a table of thirteen empty
-strings. ``test_the_agreement_fixture_is_not_vacuous`` runs FIRST on the
-same fixture and refuses both: it asserts the row count, asserts every
-one of the thirteen columns is non-empty on at least one row, and asserts
-the fixture exercises more than one distinct value in the columns whose
-agreement is worth anything -- side, grade, fee and gates.
-
-WHAT IS PROVED, BEYOND THE CELLS
-================================
-  * Filters retain the same rows the tab retains, for five filter shapes.
-  * The dropdown contents match, entry for entry.
-  * The default From date matches the tab's date edit to the second --
-    it is LOCAL midnight, not UTC midnight, and the two differ.
-  * Paging agrees at one row, at exactly ``PAGE_SIZE`` and at
-    ``PAGE_SIZE + 1``, including the pager button states, and a page
-    index past the last is clamped the same way.
-  * The CSV rows match the file the tab's exporter actually writes, read
-    back through ``csv.reader``.
-  * The contract writes nothing: a real ``ScrummingBot`` in a real
-    ``BotManager`` is digested before and after, and the trade rows
-    handed in are digested with it.
-  * Every value the contract serves survives ``json.dumps``.
-
-NOTHING HERE TOUCHES ``~/.acervator`` OR ``~/.acervator_logs``. The
-joiner reads gate.log and voting.log through
-``src.trading.live_log_reader``; ``_no_live_logs`` replaces both readers
-for every test in this module, and the join tests replace them again with
-their own in-memory entries built to the schema
-``live_log_reader.GATE_LOG_REQUIRED_DATA_FIELDS`` declares. The CSV test
-writes only into pytest's ``tmp_path``.
+Both sides run on the same trade rows, filters and page index, and
+``test_the_contract_agrees_with_the_tab_cell_for_cell`` compares the thirteen
+column texts, the foregrounds, the tooltips, the Simulator gate-light cell and
+the two labels. ``test_the_agreement_fixture_is_not_vacuous`` runs first and
+refuses a fixture whose columns are empty or single-valued. Filters, dropdowns,
+the local-midnight default date, paging, the CSV export and ``json.dumps``
+round-tripping are each pinned, and the contract is proved to write nothing.
 """
 
 from __future__ import annotations
@@ -251,9 +198,6 @@ def _mixed_rows() -> list[dict]:
                 fee_currency="" if i == 0 else "EUR",
             )
         )
-    # A row on a second venue, a row no bot matches, a row with a trade
-    # id past the sixteen-character elision, and a row the grader must
-    # refuse for want of a side.
     rows.append(_row("kraken-0", exchange="kraken", ts=BASE_TS - 1200))
     rows.append(_row("orphan-0", symbol="ZZZ/USD", ts=BASE_TS - 1260))
     rows.append(_row("x" * 40, symbol="CHIP/USD", ts=BASE_TS - 1320, side="SELL"))
@@ -344,9 +288,7 @@ def _voting_entry(bot_id: str, ts: float, direction: str, net: float) -> dict:
 
 _JS_TIMEOUT_MS = 30_000
 
-# Reads what the SCREEN shows: the cell's own text with the gate-light
-# strip removed, the colour and tooltip attributes the contract set, and
-# every light the strip drew. One round trip carries the whole table.
+# Returns each cell's text with the gate-light strip removed, plus the lights drawn.
 _DOM_DUMP_JS = r"""
 JSON.stringify((function () {
   var out = {rows: [], lights: [], error: null};
@@ -666,9 +608,7 @@ def test_the_filters_retain_the_rows_the_tab_retains(
     tab._side_combo.setCurrentText(filters.side)
     tab._apply_filters()
 
-    # Read the tab's OWN understanding of the bounds back out, so the
-    # comparison is against what the widget produced and not against the
-    # integers this test typed in.
+    # Read the bounds back off the widgets, not off the integers typed in above.
     effective = hrc.HistoryFilters(
         from_ts=tab._from_dt.dateTime().toSecsSinceEpoch(),
         to_ts=tab._to_dt.dateTime().toSecsSinceEpoch(),
@@ -676,10 +616,7 @@ def test_the_filters_retain_the_rows_the_tab_retains(
         symbol=tab._sym_combo.currentText(),
         side=tab._side_combo.currentText(),
     )
-    # The widget must have TAKEN the filter. `setCurrentText` on a
-    # non-editable combo silently does nothing when the value is not in
-    # the list, and a comparison of "(all)" against "(all)" would pass
-    # while proving nothing about the filter under test.
+    # `setCurrentText` silently no-ops on a non-editable combo missing the value.
     assert effective.exchange == filters.exchange
     assert effective.symbol == filters.symbol
     assert effective.side == filters.side
@@ -787,9 +724,7 @@ def test_the_summary_line_matches_the_tab(qapp) -> None:
     assert tab._summary.text() == hrc.summary_line(rows, len(rows), 0.0)
     assert "no fetch yet" in tab._summary.text()
 
-    # The half-second offset keeps the two integer truncations on the
-    # same side of a second boundary; the two clock reads are microseconds
-    # apart, not half a second.
+    # The half-second offset keeps both integer truncations one side of a boundary.
     now = time.time()
     tab._last_fetched_ts = now - 5.5
     tab._render_page()
@@ -982,11 +917,7 @@ def test_the_contract_writes_nothing_to_a_real_bot() -> None:
 
     bot = _real_bot()
 
-    # ``__new__`` deliberately, not ``BotManager()``. The constructor
-    # subscribes three handlers on the PROCESS-WIDE event bus and this
-    # test has no way to retract them, so building one here would leak
-    # into every test that runs after it. The contract reads exactly two
-    # attributes off a manager and both are set below.
+    # `BotManager()` subscribes handlers on the process-wide bus and cannot retract them.
     manager = BotManager.__new__(BotManager)
     manager._bots = {bot.bot_id: bot}
     manager._async_loop = None
