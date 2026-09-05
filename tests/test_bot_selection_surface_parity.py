@@ -812,55 +812,61 @@ def test_a_same_length_cell_is_compared_as_an_exact_string(table_name):
     assert disguised != original
 
 
-HELPER_PATH = REPO_ROOT / "src/gui/widgets/bot_selection.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/bot_selection_surface.py"
-
-MARKERS_ABSENT_FROM_BOTH = (
-    ".connect(",
-    "setToolTip",
-    "setStyleSheet",
-    "setBackground",
-    "setForeground",
-    "QColor",
-    "design_system",
-    "setColumnWidth",
-    "setHorizontalHeaderLabels",
-    "horizontalHeader",
-    "{:",
-)
-
-MARKER_HOMES = {
-    ".connect(": "src/gui/widgets/bot_status_table.py",
-    "setToolTip": "src/gui/widgets/bot_status_table.py",
-    "setStyleSheet": "src/gui/widgets/bot_status_table.py",
-    "setBackground": "src/gui/indicator_panel.py",
-    "setForeground": "src/gui/indicator_panel.py",
-    "QColor": "src/gui/widgets/bot_status_table.py",
-    "design_system": "src/gui/widgets/bot_status_table.py",
-    "setColumnWidth": "src/gui/widgets/__init__.py",
-    "setHorizontalHeaderLabels": "src/gui/indicator_panel.py",
-    "horizontalHeader": "src/gui/widgets/bot_status_table.py",
-    "{:": "src/gui/main_tabs/capital_registry_surface.py",
-}
+def paint_state(table):
+    """Every colour, tip and header label the table currently carries."""
+    return {
+        "cells": [
+            [
+                str(item.background().color().name()),
+                str(item.foreground().color().name()),
+                item.toolTip(),
+            ]
+            for row in range(table.rowCount())
+            for column in range(table.columnCount())
+            for item in [table.item(row, column)]
+            if item is not None
+        ],
+        "headers": [
+            table.horizontalHeaderItem(column).text()
+            for column in range(table.columnCount())
+            if table.horizontalHeaderItem(column) is not None
+        ],
+        "widths": [table.columnWidth(column) for column in range(table.columnCount())],
+        "style_sheet": table.styleSheet(),
+    }
 
 
-def test_neither_file_paints_a_colour_a_header_or_a_signal():
-    """A colour, a header, a width or a signal appeared on one side only."""
-    helper_text = HELPER_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    for marker in MARKERS_ABSENT_FROM_BOTH:
-        assert marker not in helper_text, marker
-        assert marker not in surface_text, marker
-    for marker, path in MARKER_HOMES.items():
-        assert marker in (REPO_ROOT / path).read_text(encoding="utf-8"), marker
+PAINT_SCRIPT = [
+    (POPULATE, ["bot-a", "bot-b", "bot-c"], [0, 1, 2]),
+    (SELECT, 2),
+    (REANCHOR, "bot-b"),
+    (SELECT_FOR_BOT, "bot-c"),
+]
 
 
-def test_the_surface_imports_no_qt():
-    """The surface grew a Qt import, so the backend would load Qt."""
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert "PySide6" not in surface_text
-    assert "QSignalBlocker" not in surface_text
-    assert "PySide6" in HELPER_PATH.read_text(encoding="utf-8")
+@pytest.mark.parametrize("table_name", ["scrumming", "extractor"])
+def test_neither_decision_paints_a_colour_a_header_or_a_width(table_name):
+    """A selection decision moves the highlight and nothing else."""
+    app()
+    table = traced_class(table_classes()[table_name])()
+    populate(table, ["bot-a", "bot-b", "bot-c"], [0, 1, 2])
+    before = paint_state(table)
+    assert before["cells"], "the table painted no cells, so the reader is blind"
+    for step in PAINT_SCRIPT[1:]:
+        run_step(table, step, use_surface=False)
+    assert paint_state(table) == before
+
+
+def test_the_paint_reader_sees_a_colour_that_does_change():
+    """POSITIVE CONTROL: the same reader catches one repainted cell."""
+    from PySide6.QtGui import QColor
+
+    app()
+    table = traced_class(table_classes()["scrumming"])()
+    populate(table, ["bot-a", "bot-b"], [0, 1])
+    before = paint_state(table)
+    table.item(0, 0).setBackground(QColor("#ff00ff"))
+    assert paint_state(table) != before
 
 
 FUNCTION_MAP = {
@@ -908,23 +914,124 @@ def test_the_two_sides_take_the_same_inputs():
     ]
 
 
-def test_the_helper_is_defined_only_when_qt_is_present():
-    """The Qt guard went, so importing the helper without Qt would raise."""
-    helper_text = HELPER_PATH.read_text(encoding="utf-8")
-    assert "_HAS_QT = True" in helper_text
-    assert "if _HAS_QT:" in helper_text
-    assert "_HAS_QT" not in SURFACE_PATH.read_text(encoding="utf-8")
+HELPER_WITHOUT_QT = (
+    "import sys\n"
+    "import importlib.abc\n"
+    "class _Refuse(importlib.abc.MetaPathFinder):\n"
+    "    def find_spec(self, name, path=None, target=None):\n"
+    "        if name == 'PySide6' or name.startswith('PySide6.'):\n"
+    "            raise ImportError('PySide6 blocked')\n"
+    "        return None\n"
+    "sys.meta_path.insert(0, _Refuse())\n"
+    "import json, importlib.util, pathlib\n"
+    "answer = {}\n"
+    "for name in ('src.gui.widgets', 'src.gui.main_tabs.bot_selection_surface'):\n"
+    "    try:\n"
+    "        __import__(name)\n"
+    "        answer[name] = ''\n"
+    "    except Exception as exc:\n"
+    "        answer[name] = type(exc).__name__\n"
+    "path = pathlib.Path('src/gui/widgets/bot_selection.py').resolve()\n"
+    "spec = importlib.util.spec_from_file_location('_helper_alone', path)\n"
+    "helper = importlib.util.module_from_spec(spec)\n"
+    "spec.loader.exec_module(helper)\n"
+    "answer['has_qt'] = helper._HAS_QT\n"
+    "answer['defines'] = sorted(\n"
+    "    name for name in ('_reanchor_bot_selection', '_select_row_for_bot')\n"
+    "    if hasattr(helper, name))\n"
+    "answer['qt'] = 'PySide6' in sys.modules\n"
+    "print(json.dumps(answer))\n"
+)
 
 
-def test_the_two_sides_agree_on_the_anchor_column_and_the_cleared_cell():
-    """A column index or the cleared cell drifted from the helper."""
-    helper_text = HELPER_PATH.read_text(encoding="utf-8")
-    assert "setCurrentCell(-1, -1)" in helper_text
-    assert "setCurrentCell(target, 0)" in helper_text
-    assert "table.item(target, 0)" in helper_text
-    assert surface.ANCHOR_COLUMN == 0
-    assert surface.CLEARED_ROW == -1
-    assert surface.CLEARED_COLUMN == -1
+def test_the_helper_module_alone_defines_nothing_without_qt():
+    """The helper's ``_HAS_QT`` guard keeps the module loadable with
+    PySide6 blocked, and both selection functions are then absent."""
+    done = subprocess.run(
+        [sys.executable, "-"],
+        input=HELPER_WITHOUT_QT.encode("utf-8"),
+        capture_output=True,
+        cwd=str(REPO_ROOT),
+        timeout=300,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr.decode()
+    answered = json.loads(done.stdout.decode().splitlines()[-1])
+    assert answered["qt"] is False
+    assert answered["has_qt"] is False
+    assert answered["defines"] == []
+
+
+def test_the_widgets_package_needs_qt_and_the_surface_package_does_not():
+    """``src.gui.widgets`` reaches PySide6 through its own package, so
+    the Qt guard is only reachable on the module loaded alone."""
+    done = subprocess.run(
+        [sys.executable, "-"],
+        input=HELPER_WITHOUT_QT.encode("utf-8"),
+        capture_output=True,
+        cwd=str(REPO_ROOT),
+        timeout=300,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr.decode()
+    answered = json.loads(done.stdout.decode().splitlines()[-1])
+    assert answered["src.gui.widgets"] == "ImportError"
+    assert answered["src.gui.main_tabs.bot_selection_surface"] == ""
+
+
+def test_the_helper_defines_both_functions_when_qt_is_present():
+    """POSITIVE CONTROL for the probe above: with PySide6 importable the
+    same two names exist."""
+    assert bot_selection._HAS_QT is True
+    assert callable(bot_selection._reanchor_bot_selection)
+    assert callable(bot_selection._select_row_for_bot)
+
+
+def test_the_helper_clears_the_cell_when_the_anchor_has_no_row():
+    """A reanchor onto a bot the table does not hold leaves the cleared
+    cell the surface names."""
+    app()
+    table = traced_class(table_classes()["scrumming"])()
+    populate(table, ["bot-a", "bot-b"], [0, 1])
+    run_step(table, (SELECT, 1), use_surface=False)
+    run_step(table, (REANCHOR, "bot-gone"), use_surface=False)
+    assert table.currentRow() == surface.CLEARED_ROW == -1
+    assert table.currentColumn() == surface.CLEARED_COLUMN == -1
+
+
+def _table_missing_the_anchor_cell():
+    """A table whose row 1 carries every cell except ANCHOR_COLUMN."""
+    from PySide6.QtWidgets import QTableWidgetItem
+
+    app()
+    table = traced_class(table_classes()["scrumming"])()
+    populate(table, ["bot-a", "bot-b"], [0])
+    for column in range(table.columnCount()):
+        if column != surface.ANCHOR_COLUMN:
+            table.setItem(1, column, QTableWidgetItem(f"r1c{column}"))
+    return table
+
+
+def test_a_row_without_its_anchor_cell_cannot_be_reanchored_to():
+    """``_reanchor_bot_selection`` reads ANCHOR_COLUMN to decide whether
+    a row exists, so a row missing only that cell clears the selection."""
+    table = _table_missing_the_anchor_cell()
+    run_step(table, (SELECT, 0), use_surface=False)
+    run_step(table, (REANCHOR, "bot-b"), use_surface=False)
+    assert table.currentRow() == surface.CLEARED_ROW
+    assert table.currentColumn() == surface.CLEARED_COLUMN
+
+
+def test_a_row_with_its_anchor_cell_is_reanchored_to():
+    """POSITIVE CONTROL: the same row, once ANCHOR_COLUMN is filled,
+    takes the selection."""
+    app()
+    table = traced_class(table_classes()["scrumming"])()
+    populate(table, ["bot-a", "bot-b"], [0, 1])
+    run_step(table, (SELECT, 0), use_surface=False)
+    run_step(table, (REANCHOR, "bot-b"), use_surface=False)
+    assert table.currentRow() == 1
+    assert table.currentColumn() == surface.ANCHOR_COLUMN == 0
     assert surface.SELECTION == {
         "anchor_column": 0,
         "cleared_row": -1,
@@ -934,18 +1041,27 @@ def test_the_two_sides_agree_on_the_anchor_column_and_the_cleared_cell():
     }
 
 
-def test_the_helper_blocks_one_signal_and_not_the_other():
-    """The two decisions stopped differing on whether they are silent."""
-    helper_text = HELPER_PATH.read_text(encoding="utf-8")
-    assert helper_text.count("QSignalBlocker(table)") == 1
-    assert "table.blockSignals(" not in helper_text
-    reanchor_body = helper_text.split("def _reanchor_bot_selection")[1].split(
-        "def _select_row_for_bot"
-    )[0]
-    select_body = helper_text.split("def _select_row_for_bot")[1]
-    assert "QSignalBlocker(table)" in reanchor_body
-    assert "QSignalBlocker" not in select_body
+def _emissions_during(step):
+    """``itemSelectionChanged`` emissions one decision lets out."""
+    app()
+    table = traced_class(table_classes()["scrumming"])()
+    populate(table, ["bot-a", "bot-b", "bot-c"], [0, 1, 2])
+    run_step(table, (SELECT, 0), use_surface=False)
+    table.emissions = 0
+    run_step(table, step, use_surface=False)
+    return table.emissions
+
+
+def test_a_reanchor_lets_no_selection_signal_out():
+    """``_reanchor_bot_selection`` rewrites the highlight silently."""
+    assert _emissions_during((REANCHOR, "bot-c")) == 0
     assert surface.REANCHOR_BLOCKS_SIGNALS is True
+
+
+def test_a_select_for_bot_lets_the_selection_signal_out():
+    """POSITIVE CONTROL for the silence above: the other decision is an
+    operator action and emits."""
+    assert _emissions_during((SELECT_FOR_BOT, "bot-c")) > 0
     assert surface.SELECT_FOR_BOT_BLOCKS_SIGNALS is False
 
 

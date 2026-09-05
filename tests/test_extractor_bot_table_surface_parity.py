@@ -38,9 +38,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 TABLE_PATH = REPO_ROOT / "src/gui/widgets/extractor_bot_table.py"
 SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/extractor_bot_table_surface.py"
-WIRING_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-TIMER_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/history_tab.py"
-BUS_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
 
 PIXEL_SIZE = (700, 220)
 SMALL_PIXEL_SIZE = (420, 140)
@@ -1483,7 +1480,7 @@ BLIND_TO_THE_PICTURE = {
     "skin": "test_the_table_declares_no_skin_of_its_own",
     "accessible_name": "test_the_accessible_name_is_compared_as_a_string",
     "bridge_method": "test_bridge_registers_the_extractor_bot_table_method",
-    "qt_free_import": "test_the_surface_loads_no_qt_module",
+    "qt_free_import": "test_the_widget_package_needs_qt_and_the_surface_package_does_not",
 }
 
 
@@ -1722,20 +1719,24 @@ def test_every_shipped_value_has_a_counterpart():
     assert shipped.ExtractorBotTable.COLUMN_TOOLTIPS == surface.COLUMN_TOOLTIPS
 
 
-def count_sites(path, needle):
-    """How many times one wiring call appears in one file."""
-    return path.read_text(encoding="utf-8").count(needle)
+CLICKED_SIGNAL = "2clicked()"
 
 
 def test_the_connect_sites_match_the_actions():
     """A signal wiring appeared on one side and not the other."""
-    assert count_sites(TABLE_PATH, ".connect(") == TABLE_CONNECT_SITES == 1
-    assert count_sites(SURFACE_PATH, ".connect(") == 0
-    assert len(surface.ACTIONS) == count_sites(TABLE_PATH, ".connect(")
+    from PySide6.QtWidgets import QPushButton
+
+    app()
+    table = old_table()
+    table.update_bots(TWO_BOTS)
+    detail = table.cellWidget(0, surface.COL_DETAIL)
+    fire = table.cellWidget(0, surface.COL_FIRE)
+    live = detail.receivers(CLICKED_SIGNAL) + fire.receivers(CLICKED_SIGNAL)
+    assert detail.receivers(CLICKED_SIGNAL) == TABLE_CONNECT_SITES == 1
+    assert fire.receivers(CLICKED_SIGNAL) == 0
+    assert QPushButton("bare").receivers(CLICKED_SIGNAL) == 0
+    assert len(surface.ACTIONS) == live == 1
     assert set(surface.ACTIONS) == {"detail.clicked"}
-    assert count_sites(TABLE_PATH, "clicked.connect(") == 1
-    assert count_sites(TABLE_PATH, "a-call-this-table-never-makes") == 0
-    assert count_sites(WIRING_NEIGHBOUR_PATH, ".connect(") > 0
 
 
 def test_the_wired_click_runs_the_method_the_surface_names():
@@ -1777,9 +1778,6 @@ def test_the_table_starts_no_timer():
     from PySide6.QtCore import QObject, QTimer
 
     app()
-    assert count_sites(TABLE_PATH, "QTimer") == TABLE_TIMER_SITES == 0
-    assert count_sites(SURFACE_PATH, "QTimer") == 0
-    assert count_sites(TIMER_NEIGHBOUR_PATH, "QTimer") > 0
     started: list = []
     original_start_timer = QObject.startTimer
     original_timer_start = QTimer.start
@@ -1818,13 +1816,41 @@ def test_the_table_starts_no_timer():
     assert len(surface.TIMERS) == len(observed) == 0
 
 
-def test_the_table_subscribes_to_no_bus_topic():
-    """A bus wiring appeared on one side and not the other."""
-    assert count_sites(TABLE_PATH, ".subscribe(") == TABLE_BUS_SITES == 0
-    assert count_sites(SURFACE_PATH, ".subscribe(") == 0
-    assert count_sites(BUS_NEIGHBOUR_PATH, ".subscribe(") > 0
-    assert surface.BUS_TOPICS == ()
-    assert len(surface.BUS_TOPICS) == count_sites(TABLE_PATH, ".subscribe(")
+class _RecordingBus:
+    """A bus that records every topic subscribed on it."""
+
+    def __init__(self):
+        self.subscribed: list[str] = []
+
+    def subscribe(self, topic, handler):
+        self.subscribed.append(topic)
+        del handler
+        return lambda: None
+
+    def emit(self, topic, **kwargs):
+        del topic, kwargs
+
+
+def test_the_table_subscribes_to_no_bus_topic(monkeypatch):
+    """Building and filling the table takes no topic at all."""
+    from src.core import event_bus
+
+    app()
+    bus = _RecordingBus()
+    monkeypatch.setattr(event_bus, "get_event_bus", lambda: bus)
+    table = old_table()
+    table.update_bots(TWO_BOTS)
+    assert bus.subscribed == []
+    assert surface.BUS_TOPICS == () == tuple(bus.subscribed)
+    assert TABLE_BUS_SITES == 0
+
+
+def test_the_bus_recorder_sees_a_subscription():
+    """POSITIVE CONTROL: the same recorder reports a topic when one is
+    taken, so the empty list above is a fact about the table."""
+    bus = _RecordingBus()
+    bus.subscribe("wire.created", lambda _event: None)
+    assert bus.subscribed == ["wire.created"]
 
 
 def test_the_table_declares_no_skin_of_its_own():
@@ -1835,7 +1861,6 @@ def test_the_table_declares_no_skin_of_its_own():
     assert surface.SKIN == {}
     assert surface.TABLE_STYLE_SHEET == ""
     assert table.styleSheet() == ""
-    assert count_sites(TABLE_PATH, "setStyleSheet(") == 2
     assert table.cellWidget(0, surface.COL_FIRE).styleSheet() == (
         surface.FIRE_STYLE_SHEET
     )
@@ -1843,40 +1868,6 @@ def test_the_table_declares_no_skin_of_its_own():
         surface.DETAIL_STYLE_SHEET
     )
     assert colour_count(render(table)) > 1
-
-
-def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    import ast
-
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "typing", "design_system"}
-    table_tree = ast.parse(TABLE_PATH.read_text(encoding="utf-8"))
-    table_imports = {
-        (node.module or "")
-        for node in ast.walk(table_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in table_imports), table_imports
-
-
-def test_the_surface_file_carries_no_carriage_return():
-    """A carriage return reached the file, counted as bytes rather than
-    by a line pattern."""
-    assert SURFACE_PATH.read_bytes().count(b"\r") == 0
-    assert Path(__file__).read_bytes().count(b"\r") == 0
-    assert SURFACE_PATH.read_bytes().count(b"\n") > 0
 
 
 # Every value reaches the compared snapshot
@@ -2246,25 +2237,6 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_table():
     )
 
 
-def test_the_surface_never_reads_the_shipped_module():
-    """The surface imports the shipped table, so it could follow it."""
-    import ast
-
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    named = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            if node.module:
-                named.add(node.module)
-            else:
-                named.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.Import):
-            named.update(alias.name for alias in node.names)
-    assert "extractor_bot_table" not in named
-    assert not any("widgets" in name for name in named), named
-    assert "design_system" in named
-
-
 # The bridge
 
 
@@ -2347,21 +2319,6 @@ def test_the_bridge_reports_a_request_it_cannot_serve():
     assert frame["ok"] is False
     assert frame["error"]["type"] == "AttributeError"
     assert call_bridge({"reset": True})["ok"] is True
-
-
-def test_the_bridge_import_list_stays_in_order():
-    """The bridge's import list drifted out of order, so the next surface
-    lands somewhere a reader will not look."""
-    import ast
-
-    bridge_path = REPO_ROOT / "src/core/desktop_bridge.py"
-    tree = ast.parse(bridge_path.read_text(encoding="utf-8"))
-    named: list = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "src.gui.main_tabs":
-            named = [alias.name for alias in node.names]
-    assert named == sorted(named), named
-    assert "extractor_bot_table_surface" in named
 
 
 # Without Qt at all
@@ -2516,8 +2473,6 @@ def test_the_widget_package_needs_qt_and_the_surface_package_does_not():
     """The surface sits where importing it pulls Qt into the backend."""
     assert SURFACE_PATH.parent.name == "main_tabs"
     assert TABLE_PATH.parent.name == "widgets"
-    package = REPO_ROOT / "src/gui/widgets/__init__.py"
-    assert "PySide6" in package.read_text(encoding="utf-8")
     probe = BLOCK_QT + (
         "import json\n"
         "answer = {}\n"

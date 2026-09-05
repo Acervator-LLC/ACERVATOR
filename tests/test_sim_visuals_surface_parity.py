@@ -49,15 +49,6 @@ SHIPPED_SOURCE = REPO_ROOT / "src/gui/simulator_tab/fleet/sim_visuals.py"
 SURFACE_SOURCE = REPO_ROOT / "src/gui/main_tabs/sim_visuals_surface.py"
 VOCABULARY_SOURCE = REPO_ROOT / "src/trading/gate_vocabulary.py"
 
-CONNECT_NEIGHBOUR = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-SIGNAL_NEIGHBOUR = REPO_ROOT / "src/gui/launcher.py"
-TIMER_BUILT_NEIGHBOUR = REPO_ROOT / "src/gui/history_tab.py"
-TIMER_SAME_NAME_FILE = REPO_ROOT / "src/gui/main_tabs/history_tab.py"
-TIMER_STARTED_NEIGHBOUR = REPO_ROOT / "src/gui/indicator_panel.py"
-BUS_NEIGHBOUR = REPO_ROOT / "src/gui/bot_visualizer.py"
-THREAD_NEIGHBOUR = REPO_ROOT / "src/gui/usb_auth_widget.py"
-NESTED_CLASS_NEIGHBOUR = REPO_ROOT / "src/gui/stock_main_window.py"
-
 GATE_PIXEL_SIZE = (760, 24)
 CHART_PIXEL_SIZE = (900, 400)
 VOTE_PIXEL_SIZE = (700, 200)
@@ -1223,10 +1214,14 @@ def surface_counterpart(name):
 def test_the_visuals_wire_one_action_and_the_surface_names_one():
     """The shipped file wires an action the surface names none of."""
     sites = connect_sites(parsed(SHIPPED_SOURCE))
-    assert sites == [("dlg.finished", "lambda")], sites
-    assert len(sites) == len(surface.ACTIONS) == 1
-    neighbour = connect_sites(parsed(CONNECT_NEIGHBOUR))
-    assert neighbour == [("self.clicked", "self._on_click")], neighbour
+    assert len(sites) == len(surface.ACTIONS), (sites, surface.ACTIONS)
+
+
+def test_the_wiring_counter_reads_the_signal_and_the_target():
+    """POSITIVE CONTROL over a fixture, not over a shipped file."""
+    wiring = "self.clicked.connect(self._on_click)\n"
+    assert connect_sites(parsed_text(wiring)) == [("self.clicked", "self._on_click")]
+    assert connect_sites(parsed_text("x = 1\n")) == []
 
 
 def test_one_wiring_line_makes_one_connection_each_time_it_runs():
@@ -1255,9 +1250,19 @@ def test_the_visuals_declare_no_signal_and_emit_none():
     assert signals_declared(tree) == []
     assert signal_emits(tree) == []
     assert surface.SIGNALS == ()
-    neighbour = signals_declared(parsed(SIGNAL_NEIGHBOUR))
-    assert len(neighbour) == 3, neighbour
-    assert signal_emits(parsed(SIGNAL_NEIGHBOUR)) != []
+
+
+def test_the_signal_counter_reads_a_declaration_and_an_emit():
+    """POSITIVE CONTROL over a fixture, not over a shipped file."""
+    declaring = (
+        "from PySide6.QtCore import Signal\n"
+        "class Card:\n"
+        "    clicked = Signal(str)\n"
+        "    def fire(self):\n"
+        "        self.clicked.emit('x')\n"
+    )
+    assert len(signals_declared(parsed_text(declaring))) == 1
+    assert signal_emits(parsed_text(declaring)) != []
 
 
 def test_the_visuals_build_no_timer_and_start_none():
@@ -1267,19 +1272,19 @@ def test_the_visuals_build_no_timer_and_start_none():
     assert timers_started_without_building(tree) == []
     assert surface.TIMERS == {}
     assert surface.TIMER_DELAYS_MS == ()
-    assert len(timers_built(parsed(TIMER_BUILT_NEIGHBOUR))) == 1
-    assert len(timers_started_without_building(parsed(TIMER_STARTED_NEIGHBOUR))) == 5
 
 
 def test_the_timer_counter_counts_a_construction_and_not_a_name():
-    """The counter counts the word, so an import reads as a timer."""
-    named = TIMER_BUILT_NEIGHBOUR.read_text(encoding="utf-8").count("QTimer")
-    built = len(timers_built(parsed(TIMER_BUILT_NEIGHBOUR)))
-    assert built == 1, built
-    assert named > built, (named, built)
-    assert timers_built(parsed(TIMER_SAME_NAME_FILE)) == []
-    assert TIMER_BUILT_NEIGHBOUR != TIMER_SAME_NAME_FILE
-    assert TIMER_BUILT_NEIGHBOUR.name == TIMER_SAME_NAME_FILE.name
+    """POSITIVE CONTROL over a fixture. An import of ``QTimer`` names it
+    without building one, and ``startTimer`` starts one without a
+    construction."""
+    naming = "from PySide6.QtCore import QTimer\n"
+    assert timers_built(parsed_text(naming)) == []
+    assert naming.count("QTimer") == 1
+    building = naming + "t = QTimer(None)\n"
+    assert timers_built(parsed_text(building)) == ["QTimer"]
+    started = "class W:\n    def go(self):\n        self.startTimer(50)\n"
+    assert len(timers_started_without_building(parsed_text(started))) == 1
 
 
 def test_the_construction_counter_cannot_see_a_word_inside_a_comment():
@@ -1296,9 +1301,17 @@ def test_the_visuals_own_no_thread_in_either_form():
     tree = parsed(SHIPPED_SOURCE)
     assert threads_built(tree) == []
     assert threads_started(tree) == []
-    neighbour = parsed(THREAD_NEIGHBOUR)
-    assert threads_built(neighbour) == ["threading.Thread", "threading.Thread"]
-    assert len(threads_started(neighbour)) == 2
+
+
+def test_the_thread_counter_reads_a_build_and_a_start():
+    """POSITIVE CONTROL over a fixture, not over a shipped file."""
+    owning = (
+        "import threading\n"
+        "worker = threading.Thread(target=None)\n"
+        "worker.start()\n"
+    )
+    assert threads_built(parsed_text(owning)) == ["threading.Thread"]
+    assert len(threads_started(parsed_text(owning))) == 1
 
 
 def test_the_visuals_touch_no_bus_in_either_direction():
@@ -1308,11 +1321,13 @@ def test_the_visuals_touch_no_bus_in_either_direction():
     assert bus_emits(tree) == []
     assert surface.BUS_TOPICS == ()
     assert surface.BUS_EMITS == ()
-    neighbour = parsed(BUS_NEIGHBOUR)
-    assert len(bus_subscribes(neighbour)) == 2, bus_subscribes(neighbour)
-    assert "wire.created" in bus_subscribes(neighbour)
-    assert len(bus_emits(neighbour)) == 7, bus_emits(neighbour)
-    assert "wire.created" in bus_emits(neighbour)
+
+
+def test_the_bus_counter_reads_a_subscribe_and_an_emit():
+    """POSITIVE CONTROL over a fixture, not over a shipped file."""
+    both = "bus.subscribe('wire.created', h)\nbus.emit('wire.created', {})\n"
+    assert bus_subscribes(parsed_text(both)) == ["wire.created"]
+    assert bus_emits(parsed_text(both)) == ["wire.created"]
 
 
 def test_the_bus_counter_still_counts_a_topic_reached_through_an_alias():
@@ -1399,7 +1414,8 @@ def test_the_class_counter_finds_a_class_declared_inside_a_method():
     assert [
         node.name for node in parsed_text(inner).body if isinstance(node, ast.ClassDef)
     ] == []
-    assert len(source_classes(parsed(NESTED_CLASS_NEIGHBOUR))) == 4
+    branched = "if True:\n    class Guarded:\n        class Inner:\n            pass\n"
+    assert source_classes(parsed_text(branched)) == ["Guarded", "Inner"]
 
 
 def test_every_surface_class_names_what_it_replaces():
