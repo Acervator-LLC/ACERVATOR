@@ -184,7 +184,17 @@ Each row arrives as an `OHLCVCandle`.
 
 `src/gui/tradingview_chart.py` holds the QWebEngineView chart, which runs HTML
 and JavaScript inside the Chromium that PySide6 already ships. The Asset Charts
-tab does not use it; the panels above are painted natively.
+tab does not use it; the panels above are painted natively. Its one
+construction site is the stock window, and the application builds no stock
+window, so no screen draws it today.
+
+`src/gui/stock_main_window.py` — the one construction site
+
+```python
+from .tradingview_chart import TradingViewChart
+
+self._chart = TradingViewChart(symbol="AAPL", theme="dark")
+```
 
 ## Bridge
 

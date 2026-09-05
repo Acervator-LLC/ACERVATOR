@@ -1,9 +1,9 @@
 # Proof of Accumulation
 
-Reference. `src/competition/` is the Proof of Accumulation package. The
-engine runs with no screen in front of it, and both the Competition and
-Local Testnet tabs stay shelved, which makes this an initial
-implementation rather than a repair.
+Reference. The screen is not built. The window builds neither the Competition
+tab nor the Local Testnet tab, and issue #147 carries the initial build-out.
+`src/competition/` is the Proof of Accumulation package, and its engine runs
+today with no screen in front of it. The rest of this file is that engine.
 
 ## Identity
 
@@ -207,8 +207,9 @@ The contract addresses and ABIs sit beside them.
 
 ## The two shelved tabs
 
-`src/gui/competition_tab.py` and `src/gui/testnet_tab.py` both exist, and the
-window builds neither.
+Both tab modules exist and the window builds neither. Their surfaces stay
+registered in the bridge, so the view models answer with no Qt tab in front of
+them.
 
 `src/gui/main_tabs/retired_tabs.py` — `RetiredTabsMixin._install_retired_tab_sentinels`
 
@@ -218,7 +219,6 @@ self._competition_tab = None
 self._testnet_tab = None
 ```
 
-`competition_tab_surface` and `testnet_tab_surface` stay registered in the
-bridge, so the view models answer even with no Qt tab in front of them.
+Issue #147 carries the initial build-out.
 
 Back to [the subsystem index](README.md).
