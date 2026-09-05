@@ -1,27 +1,9 @@
-"""Pins for the live-tree isolation guard — CV1.
+"""Pins for the live-tree isolation guard in tests/conftest.py.
 
-The guard in tests/conftest.py protects the operator's runtime tree
-(~/.acervator, ~/.acervator_logs, and the Stone Tablet archive) from
-suite writes. Before CV1 it watched ONE directory
-(~/.acervator_logs/sim/runs) and compared only the names of its
-immediate children, so it could not see:
-
-  * anything under ~/.acervator at all
-  * modification or deletion of an existing file
-  * the Stone Tablet archive
-
-Both isolation breaches this project has shipped landed in
-~/.acervator, and BOTH happened while that guard was green.
-
-Testing a guard is awkward: the thing it detects is damage to the
-operator's data, and a test must never cause that. So the guard is
-built in two testable pieces --
-
-  _snapshot(roots)              stat-only walk, runs against tmp_path
-  _classify(before, after, tr)  pure function over two dicts
-
--- and every test here uses synthetic roots. Nothing in this file
-touches the real tree.
+``_snapshot`` walks a root with ``stat`` alone and ``_classify`` is pure over
+two of its results, and every test here drives them on synthetic roots under
+``tmp_path``. ``_drive_guard`` runs the ``_assert_no_live_tree_writes``
+generator over those roots with ``_live_app_running`` forced either way.
 """
 
 from __future__ import annotations
@@ -142,8 +124,8 @@ class TestClassify:
 
 
 class TestRegressionOfRealBreaches:
-    """Both shipped defects, expressed as snapshot diffs. The pre-CV1
-    guard reported neither, because both are under ~/.acervator."""
+    """Both shipped defects, expressed as ``_snapshot`` diffs under
+    ~/.acervator."""
 
     def test_feature_telemetry_creation_is_caught(self):
         before = {}
@@ -162,8 +144,7 @@ class TestRegressionOfRealBreaches:
 
 
 def test_live_roots_is_injectable(monkeypatch, tmp_path):
-    """The guard must be redirectable, or it can only be exercised by
-    damaging the thing it protects."""
+    """``_live_roots`` answers with whatever is patched over it."""
     fake = (tmp_path / "a", tmp_path / "b")
     monkeypatch.setattr(cf, "_live_roots", lambda: fake)
     assert cf._live_roots() == fake
@@ -196,12 +177,10 @@ def _drive_guard(monkeypatch, roots, tablet_root, mutate, *, live_app=False):
 
 
 class TestFixtureIsActuallyArmed:
-    """End-to-end, not just the pure helpers.
+    """``_assert_no_live_tree_writes`` calls ``_classify`` and acts on it.
 
-    A green suite proves the guard did not FIRE; it does not prove the
-    guard is WIRED. These drive the session fixture's generator directly
-    against a fake root, so a future refactor that leaves _classify
-    perfect but stops calling it still fails here.
+    Each test drives the fixture's generator against a fake root, so a
+    ``_classify`` that stays correct while nothing calls it fails here.
     """
 
     def _drive(self, monkeypatch, roots, tablet_root, mutate):
@@ -242,7 +221,7 @@ class TestFixtureIsActuallyArmed:
         )  # must not raise
 
     def test_modification_is_tolerated_when_live_app_is_up(self, monkeypatch, tmp_path):
-        """Rule 3: the operator running Acervator must not fail the suite."""
+        """``modified`` does not fail while ``_live_app_running`` is true."""
         root = tmp_path / "acervator"
         root.mkdir()
         f = root / "bot_state.json"
@@ -262,11 +241,7 @@ class TestFixtureIsActuallyArmed:
     def test_a_redirected_home_fails_a_modification_with_the_app_up(
         self, monkeypatch, tmp_path
     ):
-        """The same modification the test above excuses must fail here.
-
-        A live Acervator writes only the operator's real home, so under
-        ACERVATOR_TEST_HOME the suite is the only possible author.
-        """
+        """``_home_is_redirected`` cancels the ``_live_app_running`` excuse."""
         root = tmp_path / "acervator"
         root.mkdir()
         f = root / "bot_state.json"
@@ -286,7 +261,7 @@ class TestFixtureIsActuallyArmed:
 
 
 def test_the_redirect_reads_the_variable_on_every_call(monkeypatch, tmp_path):
-    """The guard bound the variable once instead of reading it live."""
+    """``_home_is_redirected`` reads ``TEST_HOME_ENV`` on every call."""
     monkeypatch.delenv(cf.TEST_HOME_ENV, raising=False)
     assert cf._home_is_redirected() is False
     monkeypatch.setenv(cf.TEST_HOME_ENV, str(tmp_path))
@@ -294,7 +269,7 @@ def test_the_redirect_reads_the_variable_on_every_call(monkeypatch, tmp_path):
 
 
 def test_the_variable_moves_the_home_directory(monkeypatch, tmp_path):
-    """conftest read ACERVATOR_TEST_HOME and left Path.home() alone."""
+    """``TEST_HOME_ENV`` moves ``Path.home()`` when conftest is imported."""
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.setenv("USERPROFILE", str(elsewhere))
@@ -325,18 +300,19 @@ def test_live_app_detection_never_raises(monkeypatch):
 
 
 def _redirected_root(tmp_path):
-    """A throwaway ``.acervator`` root, named as the live one so the
-    ``_LIVE_APP_CREATES`` keys resolve against it."""
+    """Return a throwaway root named ``.acervator``, which the
+    ``_LIVE_APP_CREATES`` keys match."""
     root = tmp_path / ".acervator"
     root.mkdir()
     return root
 
 
 class TestCreationAndTabletsCarryNoLiveAppExcuse:
-    """Rules 1 and 2 fail whether or not Acervator is running.
+    """``created`` and ``tablet_touched`` fail whatever ``_live_app_running``
+    says.
 
-    Every test drives the session fixture with ``_live_app_running`` true and
-    the watched roots redirected into ``tmp_path``.
+    Every test drives ``_drive_guard`` with the roots redirected into
+    ``tmp_path``.
     """
 
     def test_a_created_path_fails_while_the_app_runs(self, monkeypatch, tmp_path):
@@ -351,8 +327,7 @@ class TestCreationAndTabletsCarryNoLiveAppExcuse:
             )
 
     def test_a_topology_snapshot_fails_while_the_app_runs(self, monkeypatch, tmp_path):
-        """The shape that got through: an adopt test wrote two files into
-        ``topology_snapshots`` and the suite stayed green."""
+        """``topology_snapshots`` is not a ``_LIVE_APP_CREATES`` key."""
         root = _redirected_root(tmp_path)
         snaps = root / "topology_snapshots"
         snaps.mkdir()
@@ -399,7 +374,8 @@ class TestCreationAndTabletsCarryNoLiveAppExcuse:
 
 
 class TestModificationKeepsTheLiveAppExcuse:
-    """Rule 3 is the one exception, and it still prints."""
+    """``modified`` is the one bucket ``_live_app_running`` excuses, and the
+    guard still prints it."""
 
     def _state_file(self, tmp_path):
         root = _redirected_root(tmp_path)
@@ -425,7 +401,8 @@ class TestModificationKeepsTheLiveAppExcuse:
     def test_the_same_modification_fails_with_no_app_running(
         self, monkeypatch, tmp_path
     ):
-        """Positive control for the test above: the instrument does fail here."""
+        """Positive control: the same write fails once ``_live_app_running``
+        is false."""
         root, state = self._state_file(tmp_path)
         with pytest.raises(AssertionError, match="modified"):
             _drive_guard(
@@ -462,7 +439,8 @@ class TestTheLiveAppExcuseIsNamedAndConditional:
     def test_the_same_listed_path_fails_with_no_app_running(
         self, monkeypatch, tmp_path
     ):
-        """Positive control: nothing is excused once the application is closed."""
+        """Positive control: ``_LIVE_APP_CREATES`` excuses nothing while
+        ``_live_app_running`` is false."""
         root = _redirected_root(tmp_path)
         snaps = root / "ta_snapshots"
         snaps.mkdir()
@@ -519,7 +497,8 @@ class TestTheLiveAppExcuseIsNamedAndConditional:
         ],
     )
     def test_the_rest_of_the_tree_is_never_excused(self, tmp_path, root_name, rest):
-        """Negative control for the case above: nothing else matches a key."""
+        """Negative control: no other path matches a ``_LIVE_APP_CREATES``
+        key."""
         root = tmp_path / root_name
         path = root.joinpath(*rest.split("/"))
         assert cf._excused_by_the_live_app(str(path), (root,)) == "", rest

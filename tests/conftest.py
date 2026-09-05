@@ -477,9 +477,8 @@ _LIVE_APP_CREATES: dict[str, str] = {
 }
 """The only new paths a running Acervator writes under ``_live_roots``.
 
-Each key is a literal location and each value names the writer behind it.
-``_excused_by_the_live_app`` matches nothing else, and only while
-``_live_app_running`` is true.
+``_excused_by_the_live_app`` matches these keys as literal prefixes and
+nothing else, and only while ``_live_app_running`` is true.
 """
 
 
