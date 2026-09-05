@@ -980,9 +980,8 @@ def test_an_alpha_already_written_as_a_fraction_is_left_alone(js: JsRuntime):
 
 MARK = '<img src="x" width="500">'
 
-#: Two tags of one length whose declared widths are digit permutations. A
-#: carrier that prints them draws the same characters either way, whatever the
-#: host's fonts; only one that reads them takes the width each asks for.
+# Two tags of one length whose declared widths are digit permutations.
+# Only a carrier that READS them takes the width each asks for.
 NARROW_IMAGE_PX = 129
 WIDE_IMAGE_PX = 921
 NARROW_IMAGE = '<img src="x" width="%d">' % NARROW_IMAGE_PX

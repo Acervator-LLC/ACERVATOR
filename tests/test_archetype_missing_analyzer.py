@@ -131,12 +131,8 @@ class TestDocsArchetype:
         real_run = subprocess.run
 
         def fake(cmd, *a, **kw):
-            # SUBSTRING, not equality. `_run_vale` used to spawn the
-            # bare name "vale" while holding the absolute path that
-            # `shutil.which` had just resolved; it now spawns that
-            # path, so argv[0] reads like C:/.../vale.EXE. An
-            # equality match would stop matching and this test would
-            # pass by never simulating the failure at all.
+            # Substring, not equality: `_run_vale` spawns the absolute path
+            # `shutil.which` resolved, so argv[0] carries a directory.
             if isinstance(cmd, (list, tuple)) and any(
                 "vale" in str(c).lower() for c in cmd
             ):

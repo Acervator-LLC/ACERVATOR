@@ -181,9 +181,8 @@ def refuse_outside_connections(monkeypatch):
     yield attempted
 
 
-# The fleet, as the platform saves it and restores it. Both sides are
-# handed the SAME stored rows and each loads them with its own
-# stand-in. Neither side reads the other's.
+# Both sides are handed the SAME stored rows and each loads them with its
+# own stand-in.
 
 
 class QtLedger:
@@ -277,9 +276,8 @@ def host_class():
     return Host
 
 
-# The stored fleet. One topology, saved in the shape export_wires and
-# export_ledgers write, and every scenario is that topology with one
-# stored value replaced.
+# One stored topology in the shape export_wires and export_ledgers write;
+# every scenario is that topology with one value replaced.
 
 
 LONG_TEXT = "L" * 200

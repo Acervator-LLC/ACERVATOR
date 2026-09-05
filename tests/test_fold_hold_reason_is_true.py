@@ -174,19 +174,8 @@ class TestTheFloorIsNamed:
         seg = _gate_source()
         assert "eff_confidence + _BB_PRIORITY_SKEW" not in seg
         assert "eff_confidence = max(" not in seg
-        # ISSUE #104. The same rule over the whole method, not only the
-        # priority block: NOTHING adds to the measurement any more.
-        # Two more favours were spent here -- `position_boost` and
-        # `bb_confidence_boost` -- and the sweep measured what they cost:
-        # 123 trades fired on a confidence the indicators had not
-        # produced, and 316 readings carried a NEGATIVE confidence into
-        # nine diagnostics.
-        #
-        # READ AS CODE, NOT AS TEXT. A substring search for
-        # `eff_confidence +=` also matches the prose that RECORDS what
-        # those lines used to read, so it would go red on the repair's
-        # own explanation and green on a comment that quietly said
-        # `eff_confidence  +=`. The AST is the exact instrument.
+        # Nothing adds to the measurement anywhere in the method. Read as parsed
+        # code, so a comment naming the retired expression cannot trip it.
         augmented = [
             n
             for n in ast.walk(ast.parse(seg))

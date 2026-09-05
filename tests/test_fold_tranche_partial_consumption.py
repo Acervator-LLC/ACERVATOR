@@ -491,10 +491,8 @@ class TestTheFloorMustMatchBeforeAnythingMerges:
         units being rebought above 0.20."""
         cheap_ibp, dear_ibp = 0.20, 0.30
         cheap_usd, dear_usd = 1.0, 2.0
-        # Written as price x weight, not as a sum over a sum, so the
-        # result stays a PRICE on both sides of the compare. TA Quant
-        # reads a bare division of two dollar sums as dimensionless and
-        # refuses to compare it against a price, which is right.
+        # Written as price x weight so the result stays a PRICE; TA Quant reads a
+        # bare division of two dollar sums as dimensionless.
         cheap_share = cheap_usd / (cheap_usd + dear_usd)
         dear_share = dear_usd / (cheap_usd + dear_usd)
         weighted_ibp = cheap_ibp * cheap_share + dear_ibp * dear_share
@@ -585,10 +583,8 @@ class _NoTrancheGrowthBot:
 
     _apply_fold_target_growth = ScrummingBot._apply_fold_target_growth
 
-    # Issue #106 - `_apply_fold_target_growth` now reads the cap
-    # from `cycle_growth_cap_usd` instead of respelling
-    # `anchor * pct/100` inline. This stub carries only what the
-    # helper reads, so it has to carry the property too.
+    # `_apply_fold_target_growth` reads the cap from `cycle_growth_cap_usd`,
+    # so this stub carries that property.
     cycle_growth_cap_usd = ScrummingBot.cycle_growth_cap_usd
 
     def __init__(self):

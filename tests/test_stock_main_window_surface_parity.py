@@ -125,9 +125,8 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# The bot manager, the bridge, the market reader and one alert, as the
-# test owns them. The Qt window is driven with these; the surface is
-# driven with its own. Neither side reads the other's.
+# The manager, bridge, market reader and alert the Qt window is driven
+# with; the surface is driven with its own.
 
 
 class Manager:

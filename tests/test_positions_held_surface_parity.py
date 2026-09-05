@@ -76,9 +76,8 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# The bot, its config and the bot manager, as the test owns them. The Qt
-# tab is driven with these; the surface is driven with its own. Neither
-# side reads the other's.
+# The bot, config and manager the Qt tab is driven with; the surface is
+# driven with its own and neither side reads the other's.
 
 
 class Config:
@@ -1595,9 +1594,8 @@ CALL_CONSTANTS = (
     "FIRE_DISPATCHED",
 )
 
-# The two values no snapshot key carries, each with the check that
-# covers it. METHOD is the name the bridge registers under and
-# PANE_MODEL is the tab state the bridge keeps between calls.
+# The two values no snapshot key carries: METHOD is the bridge's
+# registered name and PANE_MODEL is the tab state it keeps between calls.
 NOT_IN_THE_SNAPSHOT = {
     "METHOD": "test_the_bridge_registers_the_positions_held_method",
     "PANE_MODEL": "test_the_bridge_resets_the_tab_state_on_request",

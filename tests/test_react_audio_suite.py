@@ -366,9 +366,7 @@ def test_a_qt_selector_block_becomes_the_declarations_a_browser_reads(
 # -- 6. the module carries no value of its own -------------------------
 
 
-#: A value this short is punctuation, not a product value. Every module
-#: in the tree writes a comma and a space; the surface happens to publish
-#: one of each as the characters a file name is built from.
+# A value this short is punctuation, not a product value.
 SHORTEST_VALUE = 2
 
 
@@ -486,16 +484,10 @@ def test_the_renderer_runs_the_module_after_react():
     assert runs_after(order, MODULE_NAME, "module_loader.js"), order
 
 
-# -- 8. the Qt tab this module replaces is still there ------------------
-#
 # React does not replace a widget until the operational logs verify it.
-# These counts are what the shipped tab builds; a deleted layer, a
-# deleted waveform or a tab that stops holding them is reported here.
 
-#: Class name -> how many the shipped tab holds, with the sound library
-#: stood down. The private classes Qt builds inside a combo box are the
-#: host's and are left out; these are the product's own and the controls
-#: the operator touches.
+# Class name -> how many the shipped tab holds with the sound library
+# stood down. The private classes Qt builds inside a combo box are left out.
 SHIPPED_CHILDREN = {
     "WaveformWidget": 1,
     "MusicPlayerPanel": 1,

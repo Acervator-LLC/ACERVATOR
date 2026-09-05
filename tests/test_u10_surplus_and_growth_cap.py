@@ -63,9 +63,8 @@ BC_SRC = (REPO_ROOT / "src" / "trading" / "bot_container.py").read_text(
     encoding="utf-8"
 )
 
-# LIVE, CAP/USD, 2026-08-26. The only shape on the fleet that separates
-# the three ceiling expressions from each other: the only bot carrying
-# BOTH accrued growth and a non-zero in-cycle consumption.
+# The only live shape separating the three ceiling expressions: a bot
+# carrying both accrued growth and a non-zero in-cycle consumption.
 CAP_TARGET = 55.4148
 CAP_ANCHOR = 50.00
 CAP_CONSUMED = 0.5000

@@ -50,9 +50,8 @@ def test_the_double_records_what_it_is_given():
     """The stub is the instrument. An `add_marker` that dropped its argument
     would make every assertion below pass against a hook that did nothing."""
     item = _Item("x.py")
-    # `fspath` is the only field the hook reads, and `add_marker` the only one
-    # it writes. Both are asserted here, so a double that lost either cannot
-    # make the lane checks below pass on a hook that did nothing.
+    # `fspath` is the only field the hook reads and `add_marker` the only one
+    # it writes; both are asserted, so a hollow double cannot pass.
     assert str(item.fspath) == "x.py"
     assert item.names == set()
     item.add_marker(pytest.mark.slow)

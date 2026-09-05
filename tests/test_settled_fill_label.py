@@ -33,14 +33,12 @@ import pytest
 
 from src.trading.scrumming_bot import ScrummingBot
 
-# Distinguishes "no label argument at all" from "label=None". Both must
-# yield the manual default, but they are different call shapes and the
-# table has to cover each.
+# Distinguishes "no label argument" from "label=None": two call shapes,
+# one default.
 _ABSENT = object()
 
-# Captured from the module as it stood before U1, driven with
-# requested=2.5 and quoted=0.00004321. A change to any byte of this is
-# a change the operator would read in bot.log.
+# Captured with requested=2.5 and quoted=0.00004321; every byte is a
+# string the operator reads in bot.log.
 LIVE_FALLBACK_MESSAGE = (
     "MANUAL FIRE: exchange reported no settled fill for order oid-1; "
     "booking the ESTIMATE (2.500000 @ $0.00004321) instead of a "
