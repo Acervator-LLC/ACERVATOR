@@ -208,6 +208,10 @@ MEASUREMENT_RECORDS: dict[str, str] = {
     "docs/engineering-notes/2026-08-27_simulator_fleet_nuclear_divergence.md": (
         "one import census over tests/ at the commit it names"
     ),
+    "docs/engineering-notes/2026-08-28_linux_server_readiness.md": (
+        "one CI run read on ubuntu-24.04; the rows name the files it read "
+        "and the scratch trees its controls built"
+    ),
 }
 
 # The two roots the running platform owns, kept outside this repository.

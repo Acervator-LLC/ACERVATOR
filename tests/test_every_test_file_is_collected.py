@@ -30,6 +30,7 @@ PYTEST_DEFAULT_PYTHON_FILES = ("test_*.py", "*_test.py")
 # Directories the walk never enters, each with its reason.
 WALK_SKIP_EXACT = {
     "__pycache__": "bytecode, not source",
+    "quarantine": "holds files taken out of the tree; they are not in it",
 }
 
 # Discovery-named files pytest must not collect, each with its reason.
@@ -67,16 +68,16 @@ def _ini() -> dict[str, Any]:
     return table
 
 
-@lru_cache(maxsize=1)
-def _walk() -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """One pass over the tree: entry basenames, and discovery-named files.
+@lru_cache(maxsize=4)
+def _walk(root: Path = REPO_ROOT) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """One pass over `root`: entry basenames, and discovery-named files.
 
     Returns every directory and file basename, then the POSIX paths of
-    the matching files relative to the repository root.
+    the matching files relative to `root`.
     """
     entries: list[str] = []
     files: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
+    for dirpath, dirnames, filenames in os.walk(root):
         kept = []
         for name in dirnames:
             entries.append(name)
@@ -87,7 +88,7 @@ def _walk() -> tuple[tuple[str, ...], tuple[str, ...]]:
         for name in filenames:
             entries.append(name)
             if any(fnmatch(name, pattern) for pattern in PYTEST_DEFAULT_PYTHON_FILES):
-                rel = Path(dirpath, name).relative_to(REPO_ROOT)
+                rel = Path(dirpath, name).relative_to(root)
                 files.append(rel.as_posix())
     return tuple(sorted(set(entries))), tuple(sorted(files))
 

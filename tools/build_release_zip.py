@@ -36,6 +36,7 @@ JUNK_DIRS = {
     ".idea",
     ".vscode",
     "worktrees",
+    "quarantine",
 }
 JUNK_SUFFIXES = (".pyc", ".pyo", ".log", ".tmp")
 # `.coveragerc` is not matched: only the data file `.coverage` is junk.

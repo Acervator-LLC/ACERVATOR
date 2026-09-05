@@ -391,6 +391,7 @@ else entirely.
 
 ```
 the gate looks for   docs/audits/2026-07-24_.../fixtures/known_good.py
+                     that folder is not in the tree
 they actually live   harness_fixtures/coding_archetype/known_good.py
 ```
 
