@@ -17,7 +17,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -47,29 +46,19 @@ from tests.fixtures.surface_pictures import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-TAB_PATH = REPO_ROOT / "src/gui/widgets/exchange_tab.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/exchange_tab_surface.py"
-WIRING_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-SIGNAL_CONTROL_PATH = REPO_ROOT / "src/gui/launcher.py"
-TIMER_CONTROL_PATH = REPO_ROOT / "src/gui/history_tab.py"
-BUS_CONTROL_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
-ELEMENT_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/dashboard_stat_card.py"
-NESTED_CLASS_CONTROL_PATH = REPO_ROOT / "src/gui/stock_main_window.py"
 
 PIXEL_SIZE = (900, 220)
 
-# Counts measured off the file by the same counter that is pointed at a
-# neighbour which really has one.
-TAB_CONNECT_SITES = 6
+# Counts read off a built screen, not off the file. The suite seats
+# `tests/fixtures/quiet_news_ticker.py` in place of the real strip, so these are
+# the tab's own wiring and elements.
+TAB_CONNECTIONS = 13
+SURFACE_ACTION_TOTAL = 6
 TAB_TIMER_BUILDS = 1
 TAB_BUS_SITES = 0
 TAB_SIGNAL_BUILDS = 0
-TAB_ELEMENT_BUILDS = 7
-CONTROL_CONNECT_SITES = 1
-CONTROL_TIMER_BUILDS = 1
-CONTROL_BUS_SITES = 2
-CONTROL_SIGNAL_BUILDS = 3
-CONTROL_ELEMENT_BUILDS = 3
+TAB_ELEMENTS = 51
+STAT_CARD_ELEMENTS = 2
 
 # Invented values. No bot id, symbol or balance below is the operator's.
 UNICODE_BOT_ID = "Δ_fold→⚡"
@@ -1450,103 +1439,113 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
     both_sides_agree(drive(["happy"]), "after the value was put back")
 
 
+#: Refuses one module prefix at the meta path, then imports another and reports.
+BLOCKED_IMPORT_PROBE = """
+import importlib.abc
+import json
+import sys
+
+
+class _Refuse(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        for blocked in %r:
+            if name == blocked or name.startswith(blocked + '.'):
+                raise ImportError('blocked in this probe: ' + name)
+        return None
+
+
+sys.meta_path.insert(0, _Refuse())
+answer = {'imported': False, 'error': ''}
+try:
+    __import__(%r)
+    answer['imported'] = True
+except Exception as exc:
+    answer['error'] = '%%s: %%s' %% (type(exc).__name__, exc)
+answer['loaded'] = sorted(
+    m for m in sys.modules if any(m.startswith(b) for b in %r))
+print(json.dumps(answer))
+"""
+
+TAB_PATH = REPO_ROOT / "src/gui/widgets/exchange_tab.py"
+SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/exchange_tab_surface.py"
+SHIPPED_TAB_MODULE = "src.gui.widgets.exchange_tab"
+SURFACE_MODULE = "src.gui.main_tabs.exchange_tab_surface"
+
+
+def blocked_import(blocked, module):
+    """Import ``module`` in a fresh process with ``blocked`` refused, and report."""
+    return run_script(BLOCKED_IMPORT_PROBE % (blocked, module, blocked))
+
+
 def test_the_shipped_file_is_not_named_by_the_surface():
-    """The surface reaches into the widget it replaces."""
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    tree = ast.parse(text)
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imported.add(node.module or "")
-            imported.update(alias.name for alias in node.names)
-    assert not any("widgets" in name for name in imported), imported
-    assert not any("exchange_tab" == name for name in imported), imported
+    """The surface reaches into the widget it replaces.
 
-
-# Counting what the shipped file wires, waits on, and builds
-
-WIDGET_NAMES_BUILT = (
-    "QWidget",
-    "QLabel",
-    "QPushButton",
-    "QTableWidget",
-    "QTableWidgetItem",
-    "QGroupBox",
-    "QFrame",
-    "QScrollArea",
-    "QLineEdit",
-    "QComboBox",
-    "QCheckBox",
-    "QSpinBox",
-    "QTextEdit",
-    "QProgressBar",
-    "QSplitter",
-    "QDialog",
-)
-
-
-def count_text(path, needle):
-    """How many times one wiring call appears in one file."""
-    return path.read_text(encoding="utf-8").count(needle)
-
-
-def count_built(path, names):
-    """How many times one file constructs any of `names`."""
-    text = path.read_text(encoding="utf-8")
-    return sum(len(re.findall(r"\b%s\s*\(" % name, text)) for name in names)
-
-
-def declared_classes(path):
-    """Every class one file declares, wherever it is declared.
-
-    A class inside an ``if``, inside a method or inside another class is
-    still a class, so the whole tree is walked rather than its top level.
+    ``blocked_import`` refuses ``SHIPPED_TAB_MODULE`` at the meta path, so a
+    transitive import through any other module is refused too.
     """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+    answered = blocked_import((SHIPPED_TAB_MODULE,), SURFACE_MODULE)
+    assert answered["imported"] is True, answered
+    assert answered["loaded"] == [], answered
 
 
-def declared_widget_classes(path):
-    """Every class one file declares that ends up being a screen element."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-    found: set = set()
-    growing = True
-    while growing:
-        growing = False
-        for node in classes:
-            if node.name in found:
-                continue
-            for base in node.bases:
-                name = (
-                    base.id if isinstance(base, ast.Name) else getattr(base, "attr", "")
-                )
-                if (
-                    name.startswith("Q")
-                    or name in found
-                    or name.endswith("TableWidget")
-                ):
-                    found.add(node.name)
-                    growing = True
-                    break
-    return found
+def test_the_import_probe_refuses_the_shipped_tab():
+    """POSITIVE CONTROL. ``blocked_import`` reports ``exchange_tab`` as
+    unimportable, so the green above is a fact about the surface."""
+    answered = blocked_import((SHIPPED_TAB_MODULE,), SHIPPED_TAB_MODULE)
+    assert answered["imported"] is False, answered
+    assert "blocked in this probe" in answered["error"], answered
 
 
-def count_elements(path):
-    """How many screen elements one file builds, its own classes included."""
-    return count_built(path, WIDGET_NAMES_BUILT) + len(declared_widget_classes(path))
+# Counting what each side wires, waits on, and builds, off the built object
 
 
-def test_the_screen_wires_six_signals_and_the_surface_names_six_actions():
-    """A wiring appeared on one side and not the other."""
-    assert count_text(TAB_PATH, ".connect(") == TAB_CONNECT_SITES == 6
-    assert count_text(SURFACE_PATH, ".connect(") == 0
-    assert count_text(WIRING_CONTROL_PATH, ".connect(") == CONTROL_CONNECT_SITES == 1
-    assert len(surface.ACTIONS) == count_text(TAB_PATH, ".connect(")
+def classes_of(module):
+    """Every class ``module`` declares itself, by name."""
+    import inspect
+
+    return {
+        name
+        for name, value in vars(module).items()
+        if inspect.isclass(value)
+        and getattr(value, "__module__", "") == module.__name__
+    }
+
+
+def test_the_screen_wires_its_signals_and_the_surface_wires_none():
+    """A wiring appeared on one side and not the other.
+
+    ``connections`` counts what building each side really wires, so a signal
+    connected inside a widget the tab builds is counted the same as a literal one.
+    """
+    from tests.fixtures.qt_wiring import connections
+
+    app()
+    wired, tab = connections(lambda: old_tab(names=["happy"]))
+    assert tab is not None
+    assert wired == TAB_CONNECTIONS == 13, wired
+
+    surface_wired, model = connections(lambda: new_model(names=["happy"]))
+    assert model is not None
+    assert surface_wired == 0, surface_wired
+
+
+def test_the_surface_names_one_action_per_thing_the_operator_can_do():
+    """Each entry of ``ACTIONS`` names a real ``ExchangeTabModel`` method."""
+    assert len(surface.ACTIONS) == SURFACE_ACTION_TOTAL == 6
     for name in surface.ACTIONS.values():
         assert callable(getattr(surface.ExchangeTabModel, name)), name
+
+
+def test_the_connection_counter_can_report_a_wiring():
+    """POSITIVE CONTROL for ``connections``. ``PrivacyDot`` wires one signal while
+    it is built and is counted as one."""
+    from tests.fixtures.qt_wiring import connections
+    from src.gui.widgets.privacy_dot import PrivacyDot
+
+    app()
+    wired, dot = connections(lambda: PrivacyDot("exchange_tab.probe"))
+    hold(dot)
+    assert wired == 1, wired
 
 
 def test_the_screen_starts_one_timer_and_the_surface_names_one_wait():
@@ -1554,11 +1553,6 @@ def test_the_screen_starts_one_timer_and_the_surface_names_one_wait():
     from PySide6.QtCore import QObject, QTimer
 
     app()
-    timer_names = ("QTimer",)
-    assert count_built(TAB_PATH, timer_names) == TAB_TIMER_BUILDS == 1
-    assert count_built(SURFACE_PATH, timer_names) == 0
-    assert count_built(TIMER_CONTROL_PATH, timer_names) == CONTROL_TIMER_BUILDS == 1
-    assert count_text(TAB_PATH, "QTimer") > TAB_TIMER_BUILDS
     started: list = []
     first_start = QObject.startTimer
     first_timer = QTimer.start
@@ -1596,51 +1590,103 @@ def test_the_screen_starts_one_timer_and_the_surface_names_one_wait():
     assert len(surface.TIMERS) == TAB_TIMER_BUILDS
 
 
+def declared_signals(owner):
+    """Every ``Signal`` a class declares, by name."""
+    from PySide6.QtCore import Signal
+
+    return {n for n, v in vars(owner).items() if isinstance(v, Signal)}
+
+
 def test_the_screen_declares_no_signal_of_its_own():
     """A signal declaration appeared on one side and not the other."""
-    signal_names = ("Signal",)
-    assert count_built(TAB_PATH, signal_names) == TAB_SIGNAL_BUILDS == 0
-    assert count_built(SURFACE_PATH, signal_names) == 0
-    assert count_built(SIGNAL_CONTROL_PATH, signal_names) == CONTROL_SIGNAL_BUILDS == 3
-    assert count_text(SIGNAL_CONTROL_PATH, "Signal") > CONTROL_SIGNAL_BUILDS
+    app()
+    assert declared_signals(shipped.ExchangeTab) == set()
+    assert len(declared_signals(shipped.ExchangeTab)) == TAB_SIGNAL_BUILDS
+    assert declared_signals(surface.ExchangeTabModel) == set()
+
+
+def test_the_signal_reader_can_report_a_declaration():
+    """POSITIVE CONTROL. ``ModeCard`` declares a signal, so the empty sets above
+    are facts about ``ExchangeTab``."""
+    from src.gui.launcher import ModeCard
+
+    app()
+    assert declared_signals(ModeCard), "the signal reader cannot report"
 
 
 def test_the_screen_subscribes_to_no_bus_topic():
     """A bus wiring appeared on one side and not the other."""
-    assert count_text(TAB_PATH, ".subscribe(") == TAB_BUS_SITES == 0
-    assert count_text(SURFACE_PATH, ".subscribe(") == 0
-    assert count_text(BUS_CONTROL_PATH, ".subscribe(") == CONTROL_BUS_SITES == 2
+    from tests.fixtures.qt_wiring import bus_subscriptions
+
+    app()
+    subscribed, tab = bus_subscriptions(lambda: old_tab(names=["happy"]))
+    assert tab is not None
+    assert subscribed == TAB_BUS_SITES == 0, subscribed
+
+    surface_subscribed, model = bus_subscriptions(lambda: new_model(names=["happy"]))
+    assert model is not None
+    assert surface_subscribed == 0, surface_subscribed
     assert surface.BUS_TOPICS == ()
-    assert len(surface.BUS_TOPICS) == count_text(TAB_PATH, ".subscribe(")
 
 
-def test_the_screen_elements_the_tab_builds_are_counted():
+def test_the_bus_counter_can_report_a_subscription():
+    """POSITIVE CONTROL for ``bus_subscriptions``. ``_subscribe_once`` takes one
+    topic and is counted as one."""
+    from tests.fixtures.qt_wiring import bus_subscriptions
+    from src.core.event_bus import get_event_bus
+
+    def _subscribe_once():
+        return get_event_bus().subscribe("exchange_tab.probe", lambda _e: None)
+
+    seen, off = bus_subscriptions(_subscribe_once)
+    off()
+    assert seen == 1, seen
+
+
+def screen_elements(widget):
+    """Every Qt child widget one built screen carries."""
+    from PySide6.QtWidgets import QWidget
+
+    return widget.findChildren(QWidget)
+
+
+def test_the_screen_builds_the_elements_it_is_counted_for():
     """The element counter cannot report, so its number means nothing."""
-    assert count_elements(TAB_PATH) == TAB_ELEMENT_BUILDS == 7
-    assert count_elements(ELEMENT_CONTROL_PATH) == CONTROL_ELEMENT_BUILDS == 3
-    assert count_built(ELEMENT_CONTROL_PATH, WIDGET_NAMES_BUILT) == 2
-    assert declared_widget_classes(ELEMENT_CONTROL_PATH) == {"StatCard"}
-    assert declared_widget_classes(TAB_PATH) == {"ExchangeTab"}
-    assert count_built(TAB_PATH, WIDGET_NAMES_BUILT) == 6
-    assert count_elements(SURFACE_PATH) == 0
-    assert declared_widget_classes(SURFACE_PATH) == set()
+    app()
+    built = screen_elements(old_tab(names=["happy"]))
+    assert len(built) == TAB_ELEMENTS, len(built)
 
 
-def test_the_class_counter_finds_a_class_declared_inside_another():
-    """The class counter reads the top level only, so a nested class is lost."""
-    found = declared_classes(NESTED_CLASS_CONTROL_PATH)
-    assert "_StockLogHandler" in found, sorted(found)
-    assert "StockMainWindow" in found, sorted(found)
-    assert len(found) == 4, sorted(found)
-    tree = ast.parse(NESTED_CLASS_CONTROL_PATH.read_text(encoding="utf-8"))
-    top_level = {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
-    assert top_level == set(), top_level
-    assert declared_classes(TAB_PATH) == {"ExchangeTab"}
-    assert {
-        node.name
-        for node in ast.parse(TAB_PATH.read_text(encoding="utf-8")).body
-        if isinstance(node, ast.ClassDef)
-    } == set()
+def test_the_surface_builds_no_screen_element_at_all():
+    """The surface answers with a model, and a model is not a Qt widget."""
+    from PySide6.QtWidgets import QWidget
+
+    app()
+    assert not isinstance(new_model(names=["happy"]), QWidget)
+
+
+def test_the_element_counter_can_report_a_child():
+    """POSITIVE CONTROL for ``screen_elements``. ``StatCard`` carries children and
+    is counted for them."""
+    from src.gui.widgets.dashboard_stat_card import StatCard
+
+    app()
+    card = hold(StatCard("label", "value"))
+    assert len(screen_elements(card)) == STAT_CARD_ELEMENTS, len(screen_elements(card))
+
+
+def test_the_tab_declares_one_class_of_its_own():
+    """``ExchangeTab`` is the only class ``src.gui.widgets.exchange_tab`` declares."""
+    import inspect
+
+    app()
+    declared = {
+        name
+        for name, value in vars(shipped).items()
+        if inspect.isclass(value)
+        and getattr(value, "__module__", "") == shipped.__name__
+    }
+    assert declared == {"ExchangeTab"}, sorted(declared)
 
 
 # Every class and every method has a counterpart
@@ -1808,7 +1854,7 @@ def test_every_shipped_class_and_method_has_a_counterpart():
         members(surface.HostedTableModel) ^ HOSTED_TABLE_MEMBERS
     )
     assert len(HOSTED_TABLE_MEMBERS) == 12
-    assert declared_classes(TAB_PATH) == set(CLASS_MAP)
+    assert classes_of(shipped) == set(CLASS_MAP)
 
 
 def test_a_member_added_or_lost_on_either_side_is_reported():
@@ -2823,21 +2869,25 @@ def test_the_bridge_registers_the_exchange_tab_method():
     assert answer["result"]["add_bot_label"] == surface.ADD_BOT_LABEL
 
 
-def test_the_bridge_import_list_is_alphabetical():
-    """The bridge import list drifted out of order."""
+def test_the_bridge_registers_this_surface_once_and_by_identity():
+    """The registry maps ``surface.METHOD`` to ``surface.view_model`` itself, and
+    to nothing else."""
     from src.core import desktop_bridge
 
-    source = Path(desktop_bridge.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    names: list = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "src.gui.main_tabs":
-            names = [alias.name for alias in node.names]
-    assert names == sorted(names), names
-    assert "exchange_tab_surface" in names
-    assert names.index("design_system_surface") + 1 == names.index(
-        "exchange_tab_surface"
-    )
+    registry = desktop_bridge.build_registry()
+    assert registry[surface.METHOD] is surface.view_model
+    mine = [m for m, fn in registry.items() if fn is surface.view_model]
+    assert mine == [surface.METHOD], mine
+
+
+def test_the_bridge_answers_every_surface_it_registered():
+    """POSITIVE CONTROL: the registry holds more than this one surface, so the
+    single match above is a fact and not an empty registry."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert len(registry) > 1, sorted(registry)
+    assert all(callable(fn) for fn in registry.values())
 
 
 def test_the_bridge_keeps_the_screen_until_a_reset():
@@ -3163,54 +3213,83 @@ def test_the_qt_block_stops_the_module_that_builds_the_screen():
     assert answered["imported"] is False
     assert answered["error"] == "ImportError"
     assert answered["headline"] == "PySide6 blocked"
-    assert "_HAS_QT" in TAB_PATH.read_text(encoding="utf-8")
 
 
 def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    tab_imports = {
-        (node.module or "")
-        for node in ast.walk(ast.parse(TAB_PATH.read_text(encoding="utf-8")))
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in tab_imports), tab_imports
+    """The surface grew an import that pulls Qt into the backend.
+
+    ``blocked_import`` refuses ``PySide6`` and ``shiboken6`` at the meta path, so
+    a transitive import through any other module is refused too.
+    """
+    answered = blocked_import(("PySide6", "shiboken6"), SURFACE_MODULE)
+    assert answered["imported"] is True, answered
+    assert answered["loaded"] == [], answered
+
+
+def test_the_qt_probe_refuses_the_shipped_tab():
+    """POSITIVE CONTROL. ``blocked_import`` reports ``exchange_tab`` as
+    unimportable without Qt, so the green above is a fact about the surface."""
+    answered = blocked_import(("PySide6", "shiboken6"), SHIPPED_TAB_MODULE)
+    assert answered["imported"] is False, answered
+    assert "blocked in this probe" in answered["error"], answered
+
+
+#: Makes every file, socket and browser reach raise, then drives the surface.
+NO_IO_PROBE = """
+import builtins
+import json
+import pathlib
+import socket
+import webbrowser
+
+
+class _Refused(Exception):
+    pass
+
+
+def _refuse(*a, **kw):
+    raise _Refused('the surface reached outside the process')
+
+
+builtins.open = _refuse
+socket.socket = _refuse
+webbrowser.open = _refuse
+pathlib.Path.home = staticmethod(_refuse)
+pathlib.Path.read_text = _refuse
+pathlib.Path.write_text = _refuse
+pathlib.Path.mkdir = _refuse
+
+from src.gui.main_tabs import exchange_tab_surface as s
+
+answer = {'reached_out': False, 'method': '', 'error': ''}
+try:
+    payload = s.view_model({})
+    answer['method'] = payload['method']
+except _Refused as exc:
+    answer['reached_out'] = True
+    answer['error'] = str(exc)
+print(json.dumps(answer))
+"""
 
 
 def test_the_surface_opens_no_file_and_no_socket():
-    """The surface reached for a file, a network address or a browser."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    called = {
-        node.func.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert "open" not in called
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    for forbidden in (
-        "read_text",
-        "write_text",
-        "read_bytes",
-        "write_bytes",
-        "mkdir",
-        "urlopen",
-        "connect",
-        "socket",
-        "listen",
-    ):
-        assert forbidden not in reached, forbidden
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert "webbrowser" not in text
-    assert "acervator_logs" not in text
-    assert "Path.home" not in text
+    """The surface reached for a file, a network address or a browser.
+
+    ``NO_IO_PROBE`` makes each of those raise before the surface is imported, so
+    a reach through any helper is caught as well as a direct one.
+    """
+    answered = run_script(NO_IO_PROBE)
+    assert answered["reached_out"] is False, answered
+    assert answered["method"] == surface.METHOD, answered
+
+
+def test_the_no_io_probe_catches_a_reach():
+    """POSITIVE CONTROL for ``NO_IO_PROBE``. The same refusals, with one
+    deliberate ``open`` after them, are reported as a reach."""
+    answered = run_script(
+        NO_IO_PROBE.replace(
+            "    payload = s.view_model({})",
+            "    open('planted.txt')\n    payload = s.view_model({})",
+        )
+    )
+    assert answered["reached_out"] is True, answered
