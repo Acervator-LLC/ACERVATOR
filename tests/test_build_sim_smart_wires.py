@@ -96,16 +96,11 @@ class TestTheWiresActuallyRoute:
 
     def test_a_source_bot_resolves_its_outgoing_wire(self):
         ctl = _built(FLEET, WIRE)
-        # v3.24.82 -- both endpoints live in sim id space. Translating
-        # only the bots would leave live ids in `_wires` and sim ids in
-        # `_bot_refs`: disjoint keys, `get_outgoing_wires` returns {},
-        # and the run logs "wires imported" while routing $0.00. That is
-        # the failure this file exists to catch, so it is asserted in
-        # BOTH directions.
         src = next(b for b in ctl._bots if b.config.symbol == "BTC/USD")
         assert ctl._smart_wire_mgr.get_outgoing_wires(src.bot_id) == {
             sim_bot_id("bbbb2222"): 20.0
         }
+        # Both endpoints live in sim id space, so a live id resolves to {}.
         assert ctl._smart_wire_mgr.get_outgoing_wires("aaaa1111") == {}
 
     def test_the_wire_resolves_through_the_bot_s_own_id(self):
@@ -124,11 +119,6 @@ class TestTheWiresActuallyRoute:
         seen = []
         tgt.apply_wire_income = lambda usd, source, **kw: seen.append((usd, source))
 
-        # Sim ids are `simulated_<live id>`, and the bot itself calls
-        # `distribute_fold_profit(source_id=self.bot_id)`
-        # (`src/trading/smart_wire.py`). So the SIM id is the production
-        # lookup key; using the raw live id here would test a path no
-        # bot takes. Verified: $20.00 delivered at the wire's 20%.
         src = next(b for b in ctl._bots if b.config.symbol == "BTC/USD")
         ctl._smart_wire_mgr.distribute_fold_profit(
             source_id=src.bot_id, profit_usd=100.0

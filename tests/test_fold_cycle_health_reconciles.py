@@ -175,9 +175,7 @@ class TestTheInstrumentWorks:
 # B. THE WRITE SITE THAT PRODUCED NEGATIVE DRIFT.
 class TestTheMalformedDropIsCountedAsADiscard:
 
-    #: `ref` values the guard refuses. `nan` is here because every
-    #: comparison against it is False, so it fails `ref > 0` the same
-    #: way a missing key does.
+    #: `ref` values the guard refuses; `nan` fails `ref > 0` like a missing key.
     BAD_REFS = (0.0, -1.0, float("nan"))
 
     def test_it_removes_only_the_unreadable_records(self):
@@ -452,10 +450,7 @@ def test_no_function_moves_the_malformed_counter_alone():
     assert malformed <= discarded, sorted(malformed - discarded)
 
 
-# F. THE RATIO. Pure, so the panel's only health verdict is testable
-#    without Qt.
-#: Read off `~/.acervator/bot_state.json`, saved 2026-08-24 16:14:19.
-#: `(symbol, created, closed, discarded)`.
+#: Read off the live state file as `(symbol, created, closed, discarded)`.
 BTC = ("BTC/USD", 160, 118, 42)
 CHIP = ("CHIP/USD", 4924, 4603, 90)
 BIO = ("BIO/USD", 305, 161, 132)

@@ -1165,9 +1165,8 @@ def methods_in(module) -> list:
 
 SHIPPED_CLASSES = {"_WireCanvas": "WireCanvasModel"}
 
-# The surface holds one class the shipped file does not: the visualizer
-# tab the sheet reads, which lives in another file and is stood in for
-# here so the sheet can be driven with no visualizer built.
+# The visualizer tab the sheet reads lives in another file and is stood in for
+# here.
 EXTRA_SURFACE_CLASSES = {"CanvasTabState": "BotVisualizationTab"}
 
 SHIPPED_METHODS = {
@@ -1372,9 +1371,7 @@ PAYLOAD_KEYS = {
     "ZERO_LENGTH_FALLBACK": "arrow.zero_length_fallback",
 }
 
-# Values the payload carries inside a list rather than at a path of
-# their own: the drawing call names, the mouse route names, the branch
-# names, the mouse event kinds and the three curve point kinds.
+# Values the payload carries inside a list rather than at a path of their own.
 LIST_MEMBERS = {
     "BASE_MOVE": "route_names",
     "BASE_PRESS": "route_names",
@@ -1425,9 +1422,7 @@ KEY_MEMBERS = {
     "RIGHT_BUTTON": "buttons",
 }
 
-# The two values no payload key carries, each with the check that covers
-# it. METHOD is the name the bridge registers under and CANVAS_MODEL the
-# sheet state the bridge keeps between calls.
+# The values no payload key carries, each with the check that covers it.
 NOT_IN_THE_SNAPSHOT = {
     "METHOD": "test_the_bridge_registers_the_wire_canvas_method",
     "CANVAS_MODEL": "test_the_bridge_resets_the_sheet_state_on_request",

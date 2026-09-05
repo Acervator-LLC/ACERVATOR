@@ -1203,9 +1203,8 @@ def declared(path) -> tuple:
 
 SHIPPED_CLASSES = {"BotNodeWidget": "BotNodeModel"}
 
-# The surface holds two classes the shipped file does not: the shape
-# builder, which stands in for the drawing library's own, and the speck,
-# which lives in a file of its own beside the shipped card.
+# The shape builder stands in for the drawing library and the speck lives in a
+# file of its own beside the shipped card.
 EXTRA_SURFACE_CLASSES = ("PathBuilder", "NodeParticle")
 
 SHIPPED_METHODS = {
@@ -1551,9 +1550,7 @@ PAYLOAD_KEYS = {
     "ZERO_STAT": "defaults.stat",
 }
 
-# Values the payload carries inside a list rather than at a path of
-# their own: the drawing call names, the effect names, the branch names,
-# the step kinds, the four curve step kinds and the six state names.
+# Values the payload carries inside a list rather than at a path of their own.
 LIST_MEMBERS = {
     "ANIMATE_STEP": "step_kinds",
     "CURVE_TO_DATA_ELEMENT": "path.element_names",
@@ -1602,9 +1599,7 @@ LIST_MEMBERS = {
     "WING_TIGHT": "paint_branch_names",
 }
 
-# The two values no payload key carries, each with the check that
-# covers it. MIN_WIDTH_PX and MIN_HEIGHT_PX reach the payload as the
-# smallest size the card may be shrunk to.
+# The values no payload key carries, each with the check that covers it.
 NOT_IN_THE_SNAPSHOT = {
     "MIN_WIDTH_PX": "test_the_smallest_card_size_is_read_off_both_sides",
     "MIN_HEIGHT_PX": "test_the_smallest_card_size_is_read_off_both_sides",

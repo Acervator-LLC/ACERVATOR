@@ -52,11 +52,8 @@ from src.trading.indicators import (  # noqa: E402
 
 PKG = REPO_ROOT / "src" / "trading" / "indicators"
 
-#: The only run-time edges between two units. Heikin Ashi is a candle
-#: TRANSFORM -- it returns candles, not a Signal -- and both Landing
-#: Strip detectors are defined in terms of it. The engine's own module
-#: docstring has said so since Landing Strip v2 shipped: "Uses
-#: compute_heikin_ashi() internally -- confirmed [HA/]".
+#: The only run-time edges between two units. Heikin Ashi returns candles, not
+#: a Signal, and both Landing Strip detectors are defined in terms of it.
 ALLOWED_EDGES = frozenset(
     {
         ("bb_proximity", "heikin_ashi"),
@@ -72,11 +69,6 @@ ALLOWED_CALLS = frozenset(
         ("landing_strip", "compute_heikin_ashi"),
     }
 )
-
-
-# ── the helpers the guard is built from ──────────────────────────────
-# Each takes SOURCE TEXT, so TestTheGuardCanFail can hand them a
-# reconstructed violation without writing anything into src/.
 
 
 def indicator_defs(source: str) -> list[str]:

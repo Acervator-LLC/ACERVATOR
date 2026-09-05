@@ -57,9 +57,7 @@ INDEX_HTML = REPO_ROOT / "desktop" / "renderer" / "index.html"
 
 JS_TIMEOUT_MS = 30_000
 
-#: Python type -> the JavaScript type the same value has after the
-#: bridge's ``json.dumps``. A value that changes shape in transit shows
-#: as a disagreement between this map and ``acervatorTokens.types()``.
+#: Python type -> the JavaScript type the same value has after `json.dumps`.
 JS_TYPE_OF = {
     "str": "string",
     "int": "number",
@@ -428,9 +426,8 @@ def test_a_name_the_payload_never_carried_is_not_a_token(js: JsRuntime):
         js.bind_json("NAME", inherited)
         assert js.json("acervatorTokens.has(JSON.parse(NAME))") is False
         assert js.json("acervatorTokens.group(JSON.parse(NAME))") == {}
-        # The TYPE, not the value. JSON.stringify turns a function into
-        # `undefined`, the same answer an absent token gives, so a value
-        # comparison cannot tell a leaked method from a real miss.
+        # The type, not the value: JSON.stringify turns a function into
+        # `undefined`, which is also what an absent token gives.
         for reader in ("token", "aliasTarget"):
             kind = js.json("typeof acervatorTokens." + reader + "(JSON.parse(NAME))")
             assert kind == "undefined", f"{reader}({inherited}) returned a {kind}"
