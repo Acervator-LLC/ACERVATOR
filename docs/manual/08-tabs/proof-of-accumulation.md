@@ -7,89 +7,218 @@ implementation rather than a repair.
 
 ## Identity
 
-`BotIdentity` in `src/competition/bot_identity.py` gives each instance an
-Ed25519 keypair. The private key signs every trade in the log; the public
-key is the identity another party verifies against. Strategy parameters
-are never signed and never published, so authorship is provable while the
-method stays private.
+Each instance gets an Ed25519 keypair. The private key signs every trade in the
+log. The public key is the identity another party verifies against. Strategy
+parameters are never signed and never published, so authorship is provable
+while the method stays private.
+
+`src/competition/bot_identity.py` — `BotIdentity`
+
+```python
+class BotIdentity:
+    """
+    Manages a bot's Ed25519 keypair.  The private key never leaves this object
+    unencrypted.  The public key is the bot's network-visible identity.
+```
 
 ## The trade log
 
-`MerkleTradeLog` in `src/competition/merkle_log.py` appends each signed
-trade to a Merkle tree. Leaves are the SHA-256 of a trade's canonical
-bytes, `merkle_root` returns the commitment, `merkle_proof` builds an
-inclusion proof for one trade and `verify_proof` checks it. A third party
-can confirm a trade sits in the log without receiving the log.
+Each signed trade appends to a Merkle tree. Leaves are the SHA-256 of a trade's
+canonical bytes, the root is the commitment, and a proof lets a third party
+confirm one trade sits in the log without receiving the log.
+
+`src/competition/merkle_log.py` — `verify_proof`
+
+```python
+def verify_proof(leaf_hash: str, proof: List[dict], root: str) -> bool:
+    """Verify a Merkle inclusion proof."""
+    current = leaf_hash
+    for step in proof:
+        if step["position"] == "left":
+            current = _node_hash(step["hash"], current)
+        else:
+            current = _node_hash(current, step["hash"])
+    return current == root
+```
+
+`merkle_root` returns the commitment and `merkle_proof` builds the inclusion
+proof one trade at a time.
 
 ## The competition lifecycle
 
-`CompetitionEngine` in `src/competition/competition_engine.py` runs four
-phases: registration, where a bot commits capital and a config hash;
-active, where each trade appends to its Merkle log; submission, where
-trading closes and each bot submits a root and a `PerformanceSubmission`;
-and adjudication, where the arbiter verifies, ranks and awards. A
-competition runs either locally across instances on one machine and one
-price feed, or between two machines exchanging signed submissions.
+Four phases run in order.
+
+`src/competition/competition_engine.py` — the module's own summary
+
+```python
+  1. REGISTRATION  — bots register with capital commitment + config hash
+  2. ACTIVE        — bots trade; each trade appended to their Merkle log
+  3. SUBMISSION    — trading closes; bots submit Merkle root + performance claim
+  4. ADJUDICATION  — arbiter verifies submissions, ranks bots, awards tokens
+```
+
+A competition runs either locally across instances on one machine and one price
+feed, or between two machines exchanging signed submissions.
 
 ## Tournaments
 
-`TournamentEngine` in `src/trading/poa_tournament.py` builds the game
-shapes: `build_duel`, `build_melee` and `build_gauntlet` each return a
-`Tournament` from a `TournamentConfig`, and `run` plays it over a candle
-provider to an `Outcome`. `DynamicEventScheduler` places market shocks,
-puzzle events and regime flips from the config's seed, so the same seed
-replays the same tournament. `LocalACRVAdapter` settles the award and
-each tournament persists as JSON.
+`TournamentEngine` in `src/trading/poa_tournament.py` builds the game shapes.
+Each builder returns a tournament from a configuration, and one run method
+plays it over a candle provider to an outcome.
+
+| Builder | Shape |
+| ------- | ----- |
+| `build_duel` | Two participants, head to head |
+| `build_melee` | A whole field at once |
+| `build_gauntlet` | One challenger against a sequence |
+
+`src/trading/poa_tournament.py` — `TournamentEngine.build_duel`
+
+```python
+def build_duel(
+    self,
+    a: Participant,
+    b: Participant,
+    season: Season,
+    acrv_purse: int = 10,
+    seed: Optional[int] = None,
+```
+
+`DynamicEventScheduler` places market shocks, puzzle events and regime flips
+from the configuration's seed, so the same seed replays the same tournament.
+`LocalACRVAdapter` settles the award and each tournament persists as JSON.
 
 ## The token
 
-`TokenLedger` in `src/competition/token_ledger.py` is append-only.
-`TOTAL_SUPPLY_CAP` in `src/competition/season_schedule.py` sets the hard
-cap at ten million ACRV, and the ledger refuses an award that would pass
-it. Awards are idempotent: settling the same result twice writes one
-`AwardRecord`. Balances are replayed from the log, and no operation edits
-a balance.
+The ledger is append-only, and four methods are its whole surface.
 
-`RARITY_TIERS` in the schedule file names five tiers, awarded on rank
-within the field: Harvest, Gold Fold, Bear Slayer, Grand Accumulator and
-Ekthelius. Season rewards fall each season, so later tokens are harder to
+`src/competition/token_ledger.py` — `TokenLedger`
+
+```python
+class TokenLedger:
+    """
+    Append-only ACRV token ledger.
+
+    award()  — mint tokens for a competition result (idempotent)
+    balance()  — current balance for a bot
+    total_minted()  — total ACRV in existence
+    remaining_supply()  — tokens still mintable this season
+    """
+```
+
+The hard cap is ten million, and the ledger refuses an award that would pass
+it. Each season awards less than the one before, so later tokens are harder to
 earn.
+
+`src/competition/season_schedule.py` — the supply constants
+
+```python
+TOTAL_SUPPLY_CAP = 10_000_000  # Hard cap — immutable
+GENESIS_SEASON = 1
+INITIAL_REWARD = 500_000  # Season 1 reward pool
+DECAY_FACTOR = 0.85  # Each season awards 85% of the prior season
+MIN_SEASON_REWARD = 100  # Floor — never less than this per season
+```
+
+Awards are idempotent: settling the same result twice writes one record.
+Balances are replayed from the log, and no operation edits a balance.
+
+Five tiers are awarded on rank within the field, and the rarest three carry a
+lifetime cap on how many can ever exist.
+
+| Tier | Rank | Ever minted, at most |
+| ---- | ---- | -------------------: |
+| Harvest | top 50% | no cap |
+| Gold Fold | top 10% | no cap |
+| Bear Slayer | top 25% in a verified bear market | 10,000 |
+| Grand Accumulator | top 1% across three consecutive seasons | 1,000 |
+| Ekthelius | perfect score across every metric | 21 |
+
+`src/competition/season_schedule.py` — the last tier
+
+```python
+RarityTier(
+    name="Ekthelius",
+    emoji="∞",
+    description="Perfect score across all metrics, any season",
+    rank_pct_max=0.001,
+    condition="100% win rate + top Sharpe + max capital efficiency",
+    max_ever=21,
+    base_value=10_000,
+),
+```
 
 ## Head to head
 
-`challenge_protocol.py` carries the Elo ladder. A challenger sends a
-signed challenge, the target accepts or declines, both trade the agreed
-asset for the agreed duration, the shared engine adjudicates, and
-`ELO_K_FACTOR` at 32 moves both ratings while the stake flows from loser
-to winner.
+`challenge_protocol.py` carries the Elo ladder. A challenger sends a signed
+challenge, the target accepts or declines, both trade the agreed asset for the
+agreed duration, and the shared engine adjudicates.
+
+`src/competition/challenge_protocol.py` — the ladder constants
+
+```python
+ELO_K_FACTOR = 32
+MIN_ELO = 100
+```
+
+The stake flows from loser to winner and both ratings move.
 
 ## Trophies
 
-`src/competition/trophy_generator.py` renders one SVG per tier through
-`generate_trophy`, and `generate_preview_html` lays the set out on one
-page. `harvest_svg` letters `SOLVE · ET · COAGULA` around the trophy's
-ring, which is the epigraph's own instruction in its usual form.
+One SVG per tier, picked by name. An unknown tier raises rather than returning
+an empty drawing, and `generate_preview_html` lays the whole set out on one
+page.
+
+`src/competition/trophy_generator.py` — `generate_trophy`
+
+```python
+def generate_trophy(tier: str, data: TrophyData) -> str:
+    fn = GENERATORS.get(tier)
+    if not fn:
+        raise ValueError(f"Unknown tier: {tier!r}")
+    return fn(data)
+```
+
+Inside `harvest_svg`, a text path letters the epigraph's own instruction around
+the trophy ring, in its usual form: SOLVE ET COAGULA.
 
 ## The chain
 
-`local_testnet.py` simulates the whole Base environment in memory, with
-no wallet, no ETH and no network. `LocalChain` produces blocks,
-`LocalACRV` holds the ERC-20 balances and mint history, `LocalRegistry`
-holds competitions, submissions and adjudications, and `LocalTestnet`
-binds them together with a mock oracle and transaction receipts.
+`local_testnet.py` simulates the whole Base environment in memory, with no
+wallet, no ETH and no network. Four classes make it up.
 
-`base_config.py` carries the real targets for the day it deploys: Base
-mainnet at chain id 8453 and Base Sepolia at 84532, with the contract
-addresses and ABIs beside them.
+| Class | Holds |
+| ----- | ----- |
+| `LocalChain` | The blocks |
+| `LocalACRV` | The ERC-20 balances and the mint history |
+| `LocalRegistry` | Competitions, submissions and adjudications |
+| `LocalTestnet` | The three above, plus a mock oracle and transaction receipts |
+
+The real targets sit ready for the day it deploys.
+
+`src/competition/base_config.py` — the two chains
+
+```python
+  Base Mainnet: chain_id=8453  — production
+  Base Sepolia: chain_id=84532 — testnet (deploy here first)
+```
+
+The contract addresses and ABIs sit beside them.
 
 ## The two shelved tabs
 
-`src/gui/competition_tab.py` and `src/gui/testnet_tab.py` both exist.
-`RetiredTabsMixin._install_retired_tab_sentinels` in
-`src/gui/main_tabs/retired_tabs.py` assigns `None` to `_competition_tab`
-and `_testnet_tab`, and the window builds neither.
-`competition_tab_surface` and `testnet_tab_surface` stay registered in
-`build_registry` in `src/core/desktop_bridge.py`, so the view models
-answer even with no Qt tab in front of them.
+`src/gui/competition_tab.py` and `src/gui/testnet_tab.py` both exist, and the
+window builds neither.
+
+`src/gui/main_tabs/retired_tabs.py` — `RetiredTabsMixin._install_retired_tab_sentinels`
+
+```python
+self._competition_tab = None
+
+self._testnet_tab = None
+```
+
+`competition_tab_surface` and `testnet_tab_surface` stay registered in the
+bridge, so the view models answer even with no Qt tab in front of them.
 
 Back to [the subsystem index](README.md).
