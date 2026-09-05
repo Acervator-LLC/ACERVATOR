@@ -1,39 +1,10 @@
-"""Numeric admission on the four display sites in bot_live_settings.
+"""Numeric admission on the four display sites in `bot_live_settings`.
 
-THE DEFECT THESE PIN
-====================
-All four sites decided "is this a number I can render" with an OPEN
-predicate — ``isinstance(x, (int, float))`` at three of them and a bare
-``float(x)`` at the fourth. ``bool`` is a subclass of ``int``, so
-``isinstance(True, int)`` is True and a stored ``True`` was arithmetic'd
-as ``1``:
-
-* Stack summary + row: a tranche dated to one second after the epoch,
-  reported as an age of about 57 years, on the row an operator reads to
-  judge whether Stack Mode has stalled.
-* Extractor cell: ``$1.0000`` for ``True`` and ``$0.0000`` for ``False``
-  in a money column whose docstring promises an em dash when the
-  position was never priced.
-
-A TYPE IS NOT A DOMAIN, so these also pin the value:
-``type(float("nan")) is float`` is True. ``inf`` passed the Stack site's
-``> 0`` test and then ``int(-inf)`` inside ``_format_age`` raised
-OverflowError with no ``try`` between there and the click — the dialog
-would not open at all. An int above the float maximum raised
-OverflowError from ``float()`` on every site.
-
-AND THE GUARD MUST NOT OPEN THE HOLE IT CLOSES: ``math.isfinite(10**400)``
-itself raises OverflowError. ``as_finite_float`` bounds ints with an
-integer comparison, which cannot raise. ``test_huge_int_*`` is the row
-that tells the two apart.
-
-REACHABILITY: ``bot_state.json`` is read with ``json.load``, which
-produces real ``True``/``NaN``/``Infinity``, and the tranche dicts are
-copied key-for-key in and out of state with no per-key validation.
-
-Every table below carries POSITIVE CONTROLS — genuine ints and floats
-that must still render exactly as before. Without them a guard that
-refuses everything would pass every other row while blanking the panel.
+Every site reads through `as_finite_float`, so a stored `True` renders as DASH
+rather than as the ordinal 1, and `nan`, `inf` and an int above the float
+maximum are refused instead of raising out of `_format_age`. `bot_state.json`
+is read with `json.load`, which produces each of those shapes. Every table
+carries genuine ints and floats as the positive control.
 """
 
 from __future__ import annotations
@@ -241,11 +212,8 @@ class _DialogRest:
     def __getattr__(self, name):
         from src.gui.bot_live_settings import BotLiveSettingsDialog
 
-        # THROUGH `__dict__` AND THE DESCRIPTOR PROTOCOL, not through
-        # `getattr(cls, name)`. That call has already run `__get__`, so a
-        # plain function and a `staticmethod` come back looking alike and
-        # binding either one passes `self` as the first argument -- the
-        # exact hazard `_format_age` above is re-wrapped to avoid.
+        # Through `__dict__`, not `getattr`: that would run `__get__` and hide
+        # whether a name is a `staticmethod`.
         for klass in BotLiveSettingsDialog.__mro__:
             if name in klass.__dict__:
                 raw = klass.__dict__[name]
@@ -288,9 +256,8 @@ def _build_tab(opened_ts, monkeypatch):
         _stack_discarded = 0
 
     class _StubDlg(_DialogRest):
-        # `_format_age` is a @staticmethod; re-wrap it or binding it
-        # here would silently make it an instance method and pass
-        # `self` as `seconds`.
+        # Without the re-wrap `_format_age` binds as an instance method and
+        # takes `self` as `seconds`.
         _format_age = staticmethod(_Dlg._format_age)
         _bot = _StubBot()
 
@@ -421,23 +388,6 @@ class TestAdmissionHelperIsTheRepoRule:
         assert as_finite_float(NOW) == NOW
 
 
-# The Stack Tranches ROW - index, price, size and fill price
-#
-# Four sibling keys read from the same dict as `opened_ts`, in the same
-# row builder, with no guard at all. Measured on live before the fix:
-#
-#   index      inf -> OverflowError, nan -> ValueError, None and any
-#              string -> TypeError/ValueError, True -> the ordinal 1,
-#              10**400 -> a 400-digit cell that destroyed the row
-#   price      10**400 -> OverflowError; nan/inf -> "$nan"/"$inf"
-#   size       10**400 -> OverflowError; nan/inf -> "nan"/"inf"
-#   fill_price 10**400 -> OverflowError; nan/inf -> "$nan"/"$inf"
-#
-# None of the four sits inside a `try`. The AST ancestor chain runs
-# `_create_stack_tranches_tab` -> `BotLiveSettingsDialog.__init__` ->
-# `MainWindow._on_bot_clicked` with no handler at any step, so a raise
-# means the Bot Settings dialog does not open for that bot at all.
-
 DASH = "\u2014"
 
 ROW_KEYS = ["index", "price", "size", "fill_price"]
@@ -481,6 +431,8 @@ def _build_rows(tranches, monkeypatch):
         _stack_discarded = 0
 
     class _StubDlg(_DialogRest):
+        # Without the re-wrap `_format_age` binds as an instance method and
+        # takes `self` as `seconds`.
         _format_age = staticmethod(_Dlg._format_age)
         _bot = _StubBot()
 

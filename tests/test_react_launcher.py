@@ -1,33 +1,11 @@
 """The React side of the Launcher screen.
 
-WHAT IS PROVED
-==============
-``src/gui/web/launcher.js`` draws the Launcher from the payload
-``src/gui/main_tabs/launcher_surface.py`` serves: a heading, a prompt,
-two mode cards side by side and a footer. It carries no wording, colour
-or measurement of its own.
-
-The work the module does for itself is reading Qt's style sheets. A Qt
-sheet names a selector and may carry a ``:hover`` block; an inline style
-holds neither, so the base declarations are painted inline and every
-hover value is published as a custom property the page's own rule reads.
-
-THE EIGHT-DIGIT COLOUR
-======================
-The launch button's hover fill is the card colour with a two-character
-alpha appended. Qt reads eight hex digits as ``#AARRGGBB`` and a browser
-reads them as ``#RRGGBBAA``, so the SAME string is a translucent card
-colour in a browser and a fully transparent near-white under Qt. The
-browser reading is the one the wording intends; the checks below pin it.
-
-The Qt window this module replaces is NOT removed. The last section
-builds ``LauncherWindow`` and counts its live Qt children.
-
-HOW THE JAVASCRIPT IS RUN
-=========================
-Node is not installed and nothing here adds a JavaScript test runner.
-``QJSEngine`` from ``PySide6.QtQml`` runs the module as plain JavaScript
-and answers in JSON, through ``tests/fixtures/web_js_modules.py``.
+`launcher.js` draws the Launcher from the payload `launcher_surface.py` serves
+and carries no wording, colour or measurement of its own. It reads Qt style
+sheets, painting the base declarations inline and publishing each hover value
+as a custom property. The launch buttons hover fill is eight hex digits, which
+a browser reads as `#RRGGBBAA`. `QJSEngine` runs the module through
+`tests/fixtures/web_js_modules.py`.
 """
 
 from __future__ import annotations
@@ -75,11 +53,8 @@ ALGORITHM_NUMBERS = {
     "100",  # a gradient stop is a share of the run; CSS wants a percentage
 }
 
-#: Words the module writes as markup: an HTML tag, a CSS property, or
-#: the name it marks a rendered part with. Each also happens to be a
-#: value the payload publishes, so the value check would report the
-#: module for writing markup. The planted-value controls prove the check
-#: still names real wording.
+#: Words the module writes as markup; each is also a value the payload
+#: publishes, so the value check would name them.
 MARKUP_WORDS = {
     "button",  # the tag of the launch button, and the name of a press kind
     "card",  # the part name a card is marked with, and a press kind
@@ -461,17 +436,7 @@ def test_the_renderer_runs_the_module_after_react():
     assert runs_after(order, MODULE_NAME, "module_loader.js"), order
 
 
-# -- 10. the Qt window this module replaces is still there --------------
-#
-# React does not replace a widget until the operational logs verify it.
-# `LauncherWindow` is a screen, not plumbing: it builds two `ModeCard`
-# frames of labels and a button, and paints its own gradient. Nothing in
-# the product constructs it, so this count is the only thing standing
-# between it and a quiet deletion.
-
-#: Class name -> how many the shipped window holds. Two cards, each with
-#: an icon, a title, a subtitle, six feature lines and a launch button,
-#: under a heading, a prompt and a footer.
+#: Class name -> how many the shipped `LauncherWindow` holds.
 SHIPPED_CHILDREN = {
     "ModeCard": 2,
     "QLabel": 3 + 2 * (3 + len(surface.CRYPTO_FEATURES)),
