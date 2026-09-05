@@ -202,3 +202,24 @@ def test_a_wipe_that_deletes_the_file_reports_no_unlink_trouble(
     assert said, "the wipe itself must still be announced"
     assert not any("not removed" in one for one in said), said
     assert bridge._persist_path.exists() is False
+
+
+def test_the_persist_path_guard_decides_whether_the_state_is_serialized(
+    bridge, monkeypatch
+):
+    """No path stops _save_now before _serialize_state; a path lets it through."""
+    reached = []
+
+    def record_instead() -> dict:
+        reached.append("serialize")
+        return {"schema_version": shipped.SCHEMA_VERSION}
+
+    monkeypatch.setattr(bridge, "_serialize_state", record_instead)
+    kept = bridge._persist_path
+    bridge._persist_path = None
+    bridge._save_now()
+    assert reached == [], reached
+    bridge._persist_path = kept
+    bridge._save_now()
+    assert reached == ["serialize"], reached
+    assert kept.exists() is True
