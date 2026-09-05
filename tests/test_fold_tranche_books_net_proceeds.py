@@ -102,25 +102,19 @@ from src.exchange.base import OrderSide  # noqa: E402
 from src.exchange.ccxt_connector import CCXTConnector  # noqa: E402
 from src.trading.scrumming_bot import ScrummingBot, SettledSellFee  # noqa: E402
 
-# ── THE OPERATOR'S MEASURED TRADE ────────────────────────────────────
-# Quoted, not derived. A fixture that recomputes the expectation from
-# the code under test is the instrument agreeing with itself.
+# A recorded venue fill, quoted rather than recomputed from the code
+# under test.
 UNITS = 473.0
 PRICE = 0.03376
 VENUE_FEE = 0.19162
 GROSS = 15.96848
 NET = 15.77686
 
-# The bot's CONFIGURED rate on that same trade. It is wrong by design
-# here: the venue charged 1.2%, the config says 1.6%, and the tests
-# below refuse the config's answer.
+# The configured rate, deliberately 1.6% against the venue's 1.2%.
 CONFIG_FEE_PCT = 1.6
 SYNTHESISED = 15.71298
 
-# Money is compared to five decimals, which is the precision the
-# operator's own reconciliation was stated to. A wider tolerance would
-# stop telling $15.77686 from $15.96848 -- but those differ in the
-# first decimal, so this is not what makes the comparison discriminate.
+# Money is compared to five decimals, the reconciliation's precision.
 PLACES = 5
 
 
@@ -592,13 +586,6 @@ def test_an_estimated_fill_carries_no_fee_at_all():
     assert _round(_proceeds(bot, amount, price)) == GROSS
 
 
-# ── ALL THREE LOOPS, PINNED IN THE SHIPPING SOURCE ───────────────────
-#
-# The three build loops are inline in ``tick`` and
-# ``_execute_manual_rebalance``, which no test drives end to end. These
-# read the shipped source instead, so fixing one loop and leaving the
-# others cannot pass.
-
 #: Every module the ScrummingBot engine is spread across. A scan of one
 #: of them alone would pass over code that moved to another.
 ENGINE_PATHS = tuple(
@@ -759,16 +746,11 @@ def test_the_record_cannot_be_edited_after_the_venue_wrote_it():
         record.fee_amount = 0.0
 
 
-# ── WHAT THE CONNECTOR HANDS THE BOT ─────────────────────────────────
-#
-# The bot's contract is with ``CCXTConnector._parse_order``. These two
-# fixtures are the two ccxt order dicts Coinbase can produce, and the
-# pair is what makes the reading discriminate: if both gave the same
-# answer, neither test would mean anything.
+# The two ccxt order dicts Coinbase can produce, as
+# ``CCXTConnector._parse_order`` receives them.
 
-# What ccxt builds from a Coinbase PLACEMENT. The venue's
-# ``success_response`` carries four keys and no ``total_fees``, so the
-# fee parses to None.
+# A Coinbase placement: `success_response` carries no `total_fees`, so
+# the fee parses to None.
 _PLACED = {
     "id": "52cfe5e2-0b29-4c19-a245-a6a773de5030",
     "symbol": "CHIP/USD",
