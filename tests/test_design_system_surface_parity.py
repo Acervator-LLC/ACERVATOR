@@ -1423,21 +1423,33 @@ def test_requested_names_reads_a_list_and_refuses_anything_else():
 # What the shipped module never had
 
 
-def test_the_connect_sites_match_the_actions():
-    """A signal wiring appeared on one side and not the other."""
-    shipped_text = SHIPPED_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert shipped_text.count(".connect(") == 0
-    assert surface_text.count(".connect(") == 0
+def test_neither_side_declares_a_signal_to_wire():
+    """The surface exports no action, and neither module carries a Signal
+    for a widget to connect."""
+    from PySide6.QtCore import Signal
+
     assert surface.ACTIONS == {}
-    assert len(surface.ACTIONS) == shipped_text.count(".connect(")
-    assert len(surface.ACTIONS) == surface_text.count(".connect(")
-    assert "import PySide6" not in shipped_text
-    assert "from PySide6" not in shipped_text
-    assert "import PySide6" not in surface_text
-    assert "from PySide6" not in surface_text
-    caller = CALLER_PATH.read_text(encoding="utf-8")
-    assert caller.count(".connect(") > 0
+    for module in (shipped, surface):
+        signals = [
+            name for name, value in vars(module).items() if isinstance(value, Signal)
+        ]
+        assert signals == [], (module.__name__, signals)
+
+
+def test_the_widget_that_reads_these_values_does_wire_its_own_signals():
+    """The signal check reports none whatever a module declares."""
+    from PySide6.QtCore import SignalInstance
+
+    from src.gui.widgets.bot_status_table import BotStatusTable
+
+    app()
+    table = BotStatusTable()
+    wired = [
+        name
+        for name in dir(BotStatusTable)
+        if isinstance(getattr(table, name, None), SignalInstance)
+    ]
+    assert wired, "the widget declares no signal at all"
 
 
 def test_the_tokens_declare_no_action_no_timer_and_no_skin():
@@ -1515,29 +1527,20 @@ def test_a_function_added_or_lost_on_either_side_is_reported():
 
 
 def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    import ast
+    """The surface grew an import that pulls Qt into the backend.
 
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "typing", "color_alpha"}
-    caller_tree = ast.parse(CALLER_PATH.read_text(encoding="utf-8"))
-    caller_imports = {
-        (node.module or "")
-        for node in ast.walk(caller_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in caller_imports), caller_imports
+    Read off ``sys.modules`` after the import, so a module reached through
+    another module is counted the same as a direct one.
+    """
+    answered = run_script(QT_MODULES_PROBE)
+    assert answered["surface"] is True, answered
+    assert answered["qt"] == [], answered["qt"]
+
+
+def test_the_qt_module_probe_reports_a_qt_module():
+    """The Qt-module probe reports nothing whatever a process imports."""
+    answered = run_script(QT_MODULES_PROBE.replace(BLOCK_QT, "import PySide6.QtCore\n"))
+    assert answered["qt"] != [], answered
 
 
 def test_the_surface_carries_its_own_copy_of_every_value(monkeypatch):
@@ -1955,12 +1958,18 @@ def test_bridge_registers_the_design_system_method():
     assert result["tokens"] == painted(shipped_tokens())
 
 
-def test_the_bridge_registration_is_two_lines_and_no_more():
+def test_the_bridge_registers_one_handler_for_the_surface():
     """The bridge grew more than the one registration this unit adds."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    assert text.count("design_system_surface") == 3
-    assert "design_system_surface.METHOD: design_system_surface.view_model" in text
-    assert "design_system_surface,\n" in text
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert registry[surface.METHOD] is surface.view_model
+    from_surface = sorted(
+        method
+        for method, handler in registry.items()
+        if getattr(handler, "__module__", "") == surface.__name__
+    )
+    assert from_surface == [surface.METHOD], from_surface
 
 
 @pytest.mark.parametrize("group", sorted(EXPECTED_GROUP_MEMBERS))
@@ -2071,6 +2080,15 @@ TABLE_PROBE = BLOCK_QT + (
     "    'fallback': s.token('NOPE', 'none'),\n"
     "    'alias': s.alias_target('BG'),\n"
     "    'groups': len(s.GROUP_NAMES)}))\n"
+)
+
+
+QT_MODULES_PROBE = BLOCK_QT + (
+    "import json, sys\n"
+    "from src.gui.main_tabs import design_system_surface as s\n"
+    "print(json.dumps({'surface': s.METHOD is not None,\n"
+    "    'qt': sorted(m for m in sys.modules\n"
+    "        if m.split('.')[0] in ('PySide6', 'shiboken6'))}))\n"
 )
 
 

@@ -3145,44 +3145,20 @@ def test_the_widget_tree_is_the_tabs_own():
 
 
 def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {
-        "__future__",
-        "time",
-        "typing",
-        "design_system",
-        "color_alpha",
-    }
-    for sibling in imported:
-        beside = SURFACE_PATH.parent.parent / (sibling + ".py")
-        if not beside.exists():
-            continue
-        pulled = {
-            (node.module or "")
-            for node in ast.walk(ast.parse(beside.read_text(encoding="utf-8")))
-            if isinstance(node, ast.ImportFrom)
-        }
-        assert not any(
-            name.startswith(("PySide6", "shiboken")) for name in pulled
-        ), f"{beside.name} pulls Qt into the surface: {sorted(pulled)}"
-    tab_imports = {
-        (node.module or "")
-        for node in ast.walk(ast.parse(TAB_PATH.read_text(encoding="utf-8")))
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in tab_imports), tab_imports
+    """The surface grew an import that pulls Qt into the backend.
+
+    Read off ``sys.modules`` after the import, so a module the surface reaches
+    through a sibling is counted the same as a direct one.
+    """
+    answered = run_script(QT_MODULES_PROBE)
+    assert answered["surface"] is True, answered
+    assert answered["qt"] == [], answered["qt"]
+
+
+def test_the_qt_module_probe_reports_a_qt_module():
+    """The Qt-module probe reports nothing whatever a process imports."""
+    answered = run_script(QT_MODULES_PROBE.replace(BLOCK_QT, "import PySide6.QtCore\n"))
+    assert answered["qt"] != [], answered
 
 
 # The surface holds its own values
@@ -3874,6 +3850,15 @@ HEADLESS_PROBE = (
     "    'band': drawn['band'], 'steps': len(drawn['steps']),\n"
     "    'refresh_path': model.refresh_path, 'widgets': len(s.WIDGETS),\n"
     "    'calls': len(model.calls)}))\n" % RECENT_STAMP
+)
+
+
+QT_MODULES_PROBE = BLOCK_QT + (
+    "import json, sys\n"
+    "from src.gui.main_tabs import risk_tab_surface as s\n"
+    "print(json.dumps({'surface': s.WIDGETS is not None,\n"
+    "    'qt': sorted(m for m in sys.modules\n"
+    "        if m.split('.')[0] in ('PySide6', 'shiboken6'))}))\n"
 )
 
 

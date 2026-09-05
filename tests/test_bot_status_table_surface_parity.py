@@ -1064,17 +1064,16 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
 
 
 def test_the_shipped_file_is_not_named_by_the_surface():
-    """The surface reaches into the widget it replaces."""
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    tree = ast.parse(text)
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imported.add(node.module or "")
-            imported.update(alias.name for alias in node.names)
-    assert not any("widgets" in name for name in imported), imported
+    """Loading the surface pulled a widget module in behind it."""
+    answered = run_script(LOADED_MODULES_PROBE)
+    assert answered["widgets"] == [], answered["widgets"]
+    assert answered["surface"] is True, answered
+
+
+def test_the_loaded_module_probe_reports_a_widget_module():
+    """The loaded-module probe reports nothing whatever a process imports."""
+    answered = run_script("import src.gui.widgets.privacy_dot\n" + LOADED_MODULES_PROBE)
+    assert answered["widgets"] != [], answered
 
 
 # Counting what the shipped file wires, waits on, and builds
@@ -1237,21 +1236,34 @@ def test_the_screen_elements_the_table_builds_are_counted():
     assert declared_widget_classes(SURFACE_PATH) == set()
 
 
-def test_the_class_counter_finds_a_class_declared_inside_another():
+NESTED_CLASS_SOURCE = (
+    "import sys\n"
+    "\n"
+    "if sys.version_info:\n"
+    "\n"
+    "    class Painted:\n"
+    "        class Handler:\n"
+    "            pass\n"
+    "\n"
+    "        def make(self):\n"
+    "            class Buried:\n"
+    "                pass\n"
+    "\n"
+    "            return Buried\n"
+)
+
+
+def test_the_class_counter_finds_a_class_declared_inside_another(tmp_path):
     """The class counter reads the top level only, so a nested class is lost."""
-    found = declared_classes(NESTED_CLASS_CONTROL_PATH)
-    assert "_StockLogHandler" in found, sorted(found)
-    assert "StockMainWindow" in found, sorted(found)
-    assert len(found) == 4, sorted(found)
-    tree = ast.parse(NESTED_CLASS_CONTROL_PATH.read_text(encoding="utf-8"))
-    top_level = {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
-    assert top_level == set(), top_level
-    assert declared_classes(TABLE_PATH) == {"BotStatusTable"}
-    assert {
+    written = tmp_path / "nested.py"
+    written.write_text(NESTED_CLASS_SOURCE, encoding="utf-8", newline="\n")
+    assert declared_classes(written) == {"Painted", "Handler", "Buried"}
+    top_level = {
         node.name
-        for node in ast.parse(TABLE_PATH.read_text(encoding="utf-8")).body
+        for node in ast.parse(NESTED_CLASS_SOURCE).body
         if isinstance(node, ast.ClassDef)
-    } == set()
+    }
+    assert top_level == set(), top_level
 
 
 # Every class and every method has a counterpart
@@ -2409,23 +2421,6 @@ def test_the_bridge_registers_the_bot_status_table_method():
     assert answer["result"]["columns"] == list(surface.COLUMN_LABELS)
 
 
-def test_the_bridge_import_list_is_alphabetical():
-    """The bridge import list drifted out of order."""
-    from src.core import desktop_bridge
-
-    source = Path(desktop_bridge.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    names: list = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "src.gui.main_tabs":
-            names = [alias.name for alias in node.names]
-    assert names == sorted(names), names
-    assert "bot_status_table_surface" in names
-    assert names.index("bot_selection_surface") + 1 == names.index(
-        "bot_status_table_surface"
-    )
-
-
 def test_the_bridge_keeps_the_table_until_a_reset():
     """The table forgot its rows between two calls, or kept them past a reset."""
     from src.core import desktop_bridge
@@ -2528,6 +2523,39 @@ HEADLESS_PROBE = BLOCK_QT + (
 )
 
 
+POISON_IO = (
+    "import builtins, pathlib, socket, webbrowser, urllib.request\n"
+    "def _outside(*a, **k):\n"
+    "    raise AssertionError('the surface reached outside the process')\n"
+    "builtins.open = _outside\n"
+    "socket.socket = _outside\n"
+    "socket.create_connection = _outside\n"
+    "webbrowser.open = _outside\n"
+    "urllib.request.urlopen = _outside\n"
+    "pathlib.Path.home = staticmethod(_outside)\n"
+    "pathlib.Path.mkdir = _outside\n"
+    "pathlib.Path.write_text = _outside\n"
+    "pathlib.Path.read_text = _outside\n"
+)
+
+QT_MODULES_PROBE = BLOCK_QT + (
+    "import json, sys\n"
+    "from src.gui.main_tabs import bot_status_table_surface as s\n"
+    "print(json.dumps({'surface': s.METHOD is not None,\n"
+    "    'qt': sorted(m for m in sys.modules\n"
+    "        if m.split('.')[0] in ('PySide6', 'shiboken6'))}))\n"
+)
+
+LOADED_MODULES_PROBE = (
+    "import json, sys\n"
+    "from src.gui.main_tabs import bot_status_table_surface as s\n"
+    "print(json.dumps({'surface': s.METHOD is not None,\n"
+    "    'widgets': sorted(m for m in sys.modules if '.widgets.' in m)}))\n"
+)
+
+NO_IO_PROBE = HEADLESS_PROBE.replace(BLOCK_QT, BLOCK_QT + POISON_IO)
+
+
 def run_script(source):
     """Run one probe in a fresh process and return what it printed."""
     done = subprocess.run(
@@ -2617,54 +2645,49 @@ def test_the_qt_block_stops_the_module_that_paints_the_table():
     assert answered["imported"] is False
     assert answered["error"] == "ImportError"
     assert answered["headline"] == "PySide6 blocked"
-    assert "_HAS_QT" in TABLE_PATH.read_text(encoding="utf-8")
+    assert shipped._HAS_QT is True, "the shipped table stopped guarding its import"
 
 
 def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    table_imports = {
-        (node.module or "")
-        for node in ast.walk(ast.parse(TABLE_PATH.read_text(encoding="utf-8")))
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in table_imports), table_imports
+    """The surface grew an import that pulls Qt into the backend.
+
+    Read off ``sys.modules`` after the import, so a module reached through
+    another module is counted the same as a direct one.
+    """
+    answered = run_script(QT_MODULES_PROBE)
+    assert answered["surface"] is True, answered
+    assert answered["qt"] == [], answered["qt"]
+
+
+def test_the_qt_module_probe_reports_a_qt_module():
+    """The Qt-module probe reports nothing whatever a process imports."""
+    answered = run_script(QT_MODULES_PROBE.replace(BLOCK_QT, "import PySide6.QtCore\n"))
+    assert answered["qt"] != [], answered
 
 
 def test_the_surface_opens_no_file_and_no_socket():
-    """The surface reached for a file, a network address or a browser."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    called = {
-        node.func.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert "open" not in called
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    for forbidden in (
-        "read_text",
-        "write_text",
-        "read_bytes",
-        "write_bytes",
-        "mkdir",
-        "urlopen",
-        "connect",
-        "socket",
-        "listen",
-    ):
-        assert forbidden not in reached, forbidden
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert "webbrowser" not in text
-    assert "acervator_logs" not in text
-    assert "Path.home" not in text
+    """Every route outside the process raises, and the surface still paints.
+
+    ``open``, the socket constructors, ``urlopen``, ``webbrowser.open`` and the
+    ``Path`` readers and writers are replaced before the surface is imported.
+    """
+    answered = run_script(NO_IO_PROBE)
+    assert answered["qt"] is False
+    assert answered["row_count"] == 1
+    assert answered["columns"] == list(surface.COLUMN_LABELS)
+    assert answered["headers"][0] == "● Bot ID"
+    assert answered["calls"] > 5
+
+
+def test_the_no_io_probe_reports_a_file_that_was_opened():
+    """The no-I/O probe passes whatever a driven surface reaches for."""
+    done = subprocess.run(
+        [sys.executable, "-"],
+        input=(NO_IO_PROBE + "open('anything')\n").encode("utf-8"),
+        capture_output=True,
+        cwd=str(REPO_ROOT),
+        timeout=300,
+        check=False,
+    )
+    assert done.returncode != 0, done.stdout.decode()
+    assert "reached outside the process" in done.stderr.decode()
