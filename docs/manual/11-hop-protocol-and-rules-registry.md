@@ -199,8 +199,16 @@ The gate and the ledger:
   declare a release ready when a step was skipped or when a green pytest run
   collected nothing. The older copy under `tools/`, and the whole harness
   directory beside it, are gone from the working tree.
-- `claim_ledger.py` — one JSONL row per claim, each carrying a status of `open`,
-  `verified` or `refuted`, which leaves a claim without a measurement visible.
+- `claim_ledger.py` — one JSONL row per claim, each row carrying a status. A
+  claim with no measurement behind it stays visible.
+
+A claim holds one of three statuses.
+
+| Status | What it records |
+| ---------- | ------------------------------------------------------------- |
+| `open` | Asserted, no measurement yet. A new claim starts here, and the pre-cascade check returns exit code 1 while one remains |
+| `verified` | Evidence attached, as a note and a file list. Only an open claim moves here |
+| `refuted` | Evidence disproved the claim. Only an open claim moves here |
 
 Four analysis tools, each answering one question about live behaviour:
 
@@ -236,27 +244,50 @@ harness_fixtures/<archetype>/known_bad.<ext>        exits 1
 
 ### The skills, outside the repository
 
-Nineteen skills sit under `~/.claude/skills/`, one directory each with a
+Twenty skills sit under `~/.claude/skills/`, one directory each with a
 `SKILL.md`. They are machine-local and none is committed, so a reader cannot
 locate them in this repository. They carry the standing rules that version one
 put in a numbered registry.
 
-- Authority and process — `harness-law` (who may write code and which archetype
-  clears which domain), `found-it-own-it` (a defect found is a defect fixed in
-  the same unit), `branch-discipline` (work on a branch, never the tree the
-  operator trades from), `unit-decomposition` (size a task into one-pass units),
-  `close-package` (build the session close archive).
-- Measurement — `ocir` (observe, calibrate, iterate, repeat, before trusting any
-  zero or pass), `two-sided-control` (drive a check to failure before trusting a
-  pass), `job-watch` (tell a slow background job from a stuck one),
-  `log-pruning` (bound a log that grows without limit).
-- Writing — `descriptive-comments-only`, `simple-technical-english`,
-  `variable-naming-precision`, `hyper-refocus` (filter a report against the item
-  and the directives), `prompt-distillation` (decompose a dense request before
-  starting), `anti-claudism` (eight recurring failure behaviours).
-- Domain — `acervator` (project posture and operator identity), `ta-canon`
-  (an indicator against its published formula), `archetype-peer-review` (build or
-  extend an archetype), `hop-protocol` (the handoff file described above).
+Five carry authority and process.
+
+| Skill | What it governs |
+| --------------------- | ----------------------------------------------- |
+| `harness-law` | Who may write code, and which archetype clears which domain |
+| `found-it-own-it` | A defect found is a defect fixed in the same unit |
+| `branch-discipline` | Work on a branch, never the tree the operator trades from |
+| `unit-decomposition` | Sizing a task into units one pass can finish |
+| `close-package` | Building the session close archive |
+
+Four carry measurement.
+
+| Skill | What it governs |
+| --------------------- | ----------------------------------------------- |
+| `ocir` | Observe, calibrate, iterate, repeat, before trusting any zero or pass |
+| `two-sided-control` | Driving a check to failure before trusting a pass |
+| `job-watch` | Telling a slow background job from a stuck one |
+| `log-pruning` | Bounding a log that grows without limit |
+
+Seven carry writing.
+
+| Skill | What it governs |
+| --------------------------- | ----------------------------------------- |
+| `descriptive-comments-only` | A comment states a technical fact or it does not exist |
+| `simple-technical-english` | Plain words and short sentences in everything the operator reads |
+| `variable-naming-precision` | Short, functional and exact names |
+| `docs-narrative` | Narrative shape, citation density, and where the code sits |
+| `hyper-refocus` | Filtering a report against the item and the directives |
+| `prompt-distillation` | Decomposing a dense request before the work starts |
+| `anti-claudism` | The eight recurring failure behaviours |
+
+Four carry the domain.
+
+| Skill | What it governs |
+| ----------------------- | --------------------------------------------- |
+| `acervator` | Project posture and operator identity |
+| `ta-canon` | An indicator against its published formula |
+| `archetype-peer-review` | Building or extending an archetype |
+| `hop-protocol` | The handoff file described above |
 
 ### The hooks, outside the repository
 
