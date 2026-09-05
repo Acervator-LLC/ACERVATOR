@@ -30,6 +30,27 @@ _BLOCK_QT = (
 )
 
 
+def connections(build):
+    """Return ``(count, built)`` for the signal connections ``build`` makes."""
+    with connections_watched() as made:
+        built = build()
+    return len(made), built
+
+
+def timer_starts(build):
+    """Return ``(count, built)`` for the timers ``build`` builds or starts."""
+    with timers_watched() as seen:
+        built = build()
+    return len(seen), built
+
+
+def bus_subscriptions(build):
+    """Return ``(count, built)`` for the bus topics ``build`` subscribes to."""
+    with bus_subscriptions_watched() as taken:
+        built = build()
+    return len(taken), built
+
+
 @contextlib.contextmanager
 def connections_watched():
     """One entry per signal connection made inside the block."""
