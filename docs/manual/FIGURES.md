@@ -5,19 +5,26 @@ carries 38 images across 29 of its 44 pages. The manual text is in
 [README.md](README.md) and the part files listed there.
 
 Two figure sets reach the built PDF, and this file inventories both. The 38
-above come out of the source PDF's own pages, and
-`tools/extract_product_manual.py` unpacks them. A second set of 39 VWAP charts
-belongs to [Part 9](10-live-trade-history.md), built from the operator's venue
-export rather than from the PDF. The two sets never mix: they land in
-directories of their own, `artifacts/manual-figures/` and
-`artifacts/vwap-charts/`. Counting both, the built manual embeds 77 images.
+above come out of the source PDF's own pages, and the extractor unpacks them. A
+second set of 39 VWAP charts belongs to [Part 9](10-live-trade-history.md),
+built from the operator's venue export rather than from the PDF. The two sets
+never mix: each lands in a directory of its own. Counting both, the built manual
+embeds 77 images.
+
+```
+artifacts/manual-figures/       38 images, unpacked from the source PDF
+artifacts/vwap-charts/          39 charts, drawn from the venue export
+```
 
 ## Where the figures are written
 
-The images are captured output, so they are not tracked.
-`tools/extract_product_manual.py` writes them to `artifacts/manual-figures/`
-under the repository root, a path `.gitignore` excludes. Re-create them by
-running that tool with `--pdf` set to the manual PDF.
+The images are captured output, so they are not tracked. The extractor writes
+them under the repository root, into a directory the ignore file excludes.
+Re-create them by running that tool against the manual PDF.
+
+```
+python -m tools.extract_product_manual --pdf <the manual PDF>
+```
 
 File names carry the source page and the image index on that page,
 `p<page>-i<index>.png`. Every image is a PNG.
@@ -96,12 +103,15 @@ illustrates, and those sections run in the order the tab list in
 [10-live-trade-history.md](10-live-trade-history.md) embeds and describes every
 one. They carry no page number, because the source PDF is not their source: a
 generator drew them from the operator's Coinbase export, over the same 5,661
-fills that part opens with. They live in `artifacts/vwap-charts/`, a directory
-of their own beside `artifacts/manual-figures/`, under the same `.gitignore`
-rule. This repository tracks no chart.
+fills that part opens with. They live in a directory of their own beside the
+manual figures, under the same ignore rule. This repository tracks no chart. A
+file name carries the asset, and the combined view has a name of its own.
 
-File names carry the asset, `vwap_<ASSET>.png`, and the combined view is
-`vwap_combined.png`.
+```
+artifacts/vwap-charts/
+    vwap_combined.png       the combined view
+    vwap_<ASSET>.png        one per charted base, 38 of them
+```
 
 | File | Asset | Fills | Described in |
 | ---- | ----- | ----: | ------------ |
@@ -155,10 +165,23 @@ eight assets it draws, which the 38 rows already carry.
 | Manual pages 15 to 44 | 38 | `write_figures` in `tools/extract_product_manual.py`, given the PDF | yes, with the PDF |
 | Part 9 VWAP charts | 39 | a generator outside this repository | no |
 
-`git log --all --diff-filter=ADR --name-only` reaches 1,606 distinct paths and
-returns one whose name carries `vwap`,
-`tests/test_vwap_band_scales_to_price.py`, which drives the Simulator's price
-band rather than any chart. A pickaxe over every `.py` in every commit returns
-nothing for `draw_combined`, `vwap_combined` or `buy_vwap`, against controls of
-16 commits for `avg_entry`, 7 for `sync_ytd_trade_count`, and 0 for a coined
-term. A fresh clone has 38 figures it can rebuild and 39 it cannot.
+No commit in this repository's history ever added a chart generator. A log over
+every branch reaches every path the history added, deleted or renamed, and
+returns exactly one whose name carries `vwap`: a Simulator test that drives the
+price band rather than any chart. A pickaxe over every Python file in every
+commit returns nothing for the three names such a generator would carry, against
+two controls that do return commits and one coined term that returns none. A
+fresh clone has 38 figures it can rebuild and 39 it cannot.
+
+```
+git log --all --diff-filter=ADR --name-only            1,612 distinct paths
+    tests/test_vwap_band_scales_to_price.py            the only one carrying vwap
+
+git log --all -S<name> -- "*.py"
+    draw_combined             0 commits
+    vwap_combined             0 commits
+    buy_vwap                  0 commits
+    avg_entry                16 commits      control
+    sync_ytd_trade_count      7 commits      control
+    ZZQQNOTATOKEN             0 commits      coined term
+```
