@@ -354,6 +354,45 @@ class FoldTrancheAccountingMixin:
         _n = as_finite_float(getattr(self, "_last_trend_bull_candles", 0))
         return _n is not None and _n > _STRONG_TREND_MIN_BULL_CANDLES
 
+    def _drop_empty_fresh_tranches(self, first_new_index: int) -> int:
+        """Remove this sell's records that carry neither units nor USD.
+
+        ``_bound_new_fold_tranches`` calls this before it reads its
+        slice, and a build loop consuming a ``_main_lots`` entry with no
+        units is what puts such a record there.
+
+        Args:
+          first_new_index: index in ``_fold_tranches`` where this
+            sell's own records start.
+
+        Returns:
+          The number of records removed from that slice.
+          ``_tranches_created_lifetime`` comes down by the same amount.
+        """
+        _fresh = self._fold_tranches[first_new_index:] if first_new_index >= 0 else []
+        _empty = {
+            id(_t)
+            for _t in _fresh
+            if (as_finite_float(_t.get("units", 0.0)) or 0.0) <= 0.0
+            and (as_finite_float(_t.get("usd", 0.0)) or 0.0) <= 0.0
+        }
+        if not _empty:
+            return 0
+        self._fold_tranches = [_t for _t in self._fold_tranches if id(_t) not in _empty]
+        _created = int(getattr(self, "_tranches_created_lifetime", 0) or 0)
+        self._tranches_created_lifetime = max(0, _created - len(_empty))
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"FOLD TRANCHE EMPTY DROPPED: {len(_empty)} record(s) "
+                f"from this sell held no units and no USD and were "
+                f"removed before the bound. "
+                f"{len(self._fold_tranches)} tranche(s) open."
+            ),
+        )
+        return len(_empty)
+
     def _bound_new_fold_tranches(self, first_new_index: int) -> int:
         """One sell opens one fold tranche, unless the trend is strong.
 
@@ -388,12 +427,16 @@ class FoldTrancheAccountingMixin:
         _fresh = self._fold_tranches[first_new_index:] if first_new_index >= 0 else []
         if not _fresh:
             return 0
+        _dropped = self._drop_empty_fresh_tranches(first_new_index)
+        _fresh = self._fold_tranches[first_new_index:]
+        if not _fresh:
+            return _dropped
         # Only a sell that appended a tranche is counted; one that found
         # no lot to consume is not a scrum this rule answers for.
         _sells = int(getattr(self, "_scrum_sells_lifetime", 0) or 0)
         self._scrum_sells_lifetime = _sells + 1
         if len(_fresh) < 2:
-            return 0
+            return _dropped
         if self._strong_trend_now():
             self._bus.emit(
                 "bot.log",
@@ -407,7 +450,7 @@ class FoldTrancheAccountingMixin:
                     f"{len(_fresh)} per-lot tranche(s)."
                 ),
             )
-            return 0
+            return _dropped
 
         # `_row_*` and not `_t_*`: `ta_archetype` reads provenance per
         # module, and `tick_phases` already binds `_t_usd` to a rate.
@@ -421,9 +464,9 @@ class FoldTrancheAccountingMixin:
             if any(_v is None for _v in _row):
                 # Leaving the slice alone keeps the unreadable row where
                 # `_drop_malformed_fold_tranches` can remove it.
-                return 0
+                return _dropped
             if _row_units <= 0.0 or _row_ref <= 0.0:
-                return 0
+                return _dropped
             _read.append(_row)
 
         # `math.fsum` is exactly rounded, so accumulation order cannot
@@ -434,7 +477,7 @@ class FoldTrancheAccountingMixin:
         _at_sale = math.fsum(_r[1] / _r[2] for _r in _read)
         _refs = {_r[2] for _r in _read}
         if _units <= 0.0 or _at_sale <= 0.0:
-            return 0
+            return _dropped
 
         # Kept verbatim: re-deriving lands an ULP away and moves the
         # `ticker.last <= ref x factor` comparison at its boundary.
@@ -467,7 +510,7 @@ class FoldTrancheAccountingMixin:
                 f"tranches; {len(self._fold_tranches)} open."
             ),
         )
-        return _removed
+        return _dropped + _removed
 
     def _fold_discharge_order(self) -> list[dict]:
         """Queued tranches in discharge order; unreadable rows omitted.

@@ -1,94 +1,17 @@
-"""A fold tranche is worth what the VENUE credited, not the notional.
+"""A fold tranche is worth what the venue credited, not the notional.
 
-THE OPERATOR'S RULE, issue #133 unit 9b, 2026-08-26
-===================================================
-    "If an Exchange provides a value, you are not allowed to
-     synthesize it. This is why understanding each API's capability
-     and data is so important."
-
-THE DEFECT
-==========
-Three loops in ``scrumming_bot.py`` build fold tranches -- the
-autonomous SCRUM sell in ``tick``, the DIST re-fold sell in ``tick``,
-and ``_execute_manual_rebalance``, which serves Manual Fire, Wire Stack
-and Max Cartridge. All three valued the sale at ``units x fill_price``.
-That is the GROSS notional. A venue credits the NET: it keeps its fee
-out of the proceeds.
-
-THE NUMBERS, EACH WITH ITS PROVENANCE
-=====================================
-Bot ``c8e5c5db``, 2026-08-26 21:50:57, 473 CHIP at $0.03376:
-
-* **$15.96848 gross -- LOGGED.** ``~/.acervator_logs/trade/trade.log``
-  and ``trade/pnl/daily/2026-08-26.ndjson`` both record it, and neither
-  carries a fee field at all.
-* **1.2% -- THE VENUE'S OWN RATE.** Coinbase's CSV export of CHIP fills
-  shows 92 of 92 August 2026 fills at exactly 1.2000% of subtotal, on
-  both sides.
-* **$15.77686 net -- INFERRED from those two.** The export ends
-  2026-08-20, so the amount actually credited for THIS trade is
-  recorded nowhere. It is not claimed as measured, here or in the
-  source.
-
-The bot's configured ``trading_fee_pct`` is 1.6, which gives $15.71298
-and does not match the venue's rate. That gap is the whole reason the
-fee must be carried from the venue and never computed: a synthesised
-fee books a number the exchange never charged, which is the same class
-of defect as the one being fixed.
-
-WHAT REACHES THE BOT FROM COINBASE, AND WHAT DOES NOT
-=====================================================
-Established from ``ccxt/coinbase.py``, not from a live call.
-``create_order`` returns ``parse_order(response["success_response"])``,
-and that body carries four keys -- ``order_id``, ``product_id``,
-``side``, ``client_order_id``. No ``total_fees``, so ``fee.cost``
-parses to ``None`` and ``Order.fee`` is 0.0 on every just-placed
-Coinbase order. ``fetch_order`` is a DIFFERENT endpoint whose body does
-carry ``total_fees``; whether Coinbase has settled a non-zero value
-into it seconds after a market fill is UNOBSERVED and is not assumed.
-
-So on live Coinbase the SCRUM and DIST paths book the gross and say so
-every time, because they read the placed order and never re-read it.
-That is the specified no-fee behaviour. The manual paths re-read
-through ``_settled_fill`` and are the only ones a Coinbase fee can
-currently reach. Both readings are pinned below.
-
-WHAT CARRIES THE FEE
-====================
-``Order.fee`` / ``Order.fee_currency`` are filled by the connector's
-``_parse_order`` from the venue's own ``fee.cost`` / ``fee.currency``
-(``src/exchange/ccxt_connector.py``). Two places hold a settled
-order and both now record it:
-
-* ``_execute_sell`` -- the only point SCRUM and DIST ever see an order;
-* ``_settled_fill`` -- the manual paths, recording from whichever order
-  object the accepted fill came from, which is the RE-READ order when a
-  re-read is what settled.
-
-``_settled_sale_proceeds`` consumes the record ONCE and returns the net.
-
-WHAT EACH FAILURE HERE MEANS
-============================
-Every test states it in one line. The four that matter most:
-
-* THE RED PROOF going green on $15.96848 means a loop books gross again;
-* THE VACUOUS-PASS CONTROL going red means the path books zero, which
-  also never books gross and would satisfy a "not gross" assertion
-  while destroying the number;
-* THE SYNTHESIS CONTROL going red means a path started deriving the fee
-  from ``trading_fee_pct`` instead of reading the venue's;
-* THE NO-FEE CONTROL going red means the code stopped booking gross, and
-  stopped saying so, when the venue reported nothing -- so it is
-  guessing.
+``_settled_sale_proceeds`` values a settled sell at ``units`` times
+``price`` minus the fee the venue reported, and ``_record_venue_fee``
+is the only thing that supplies that fee. ``PATHS`` fires the real
+SCRUM, DIST and manual sells and reads the booked figure at the
+tranche. ``GROSS``, ``NET`` and ``SYNTHESISED`` are the three numbers a
+sale can be valued at, and only ``NET`` is the venue's.
 """
 
 from __future__ import annotations
 
-import ast
 import asyncio
-import inspect
 import sys
-import textwrap
 import types
 from pathlib import Path
 
@@ -364,53 +287,6 @@ def test_any_fee_the_venue_reports_is_the_one_booked(venue_fee):
     assert _round(booked) == _round(UNITS * PRICE - venue_fee)
 
 
-def _code_without_the_docstring(func) -> str:
-    """The method's executable body, with its prose removed.
-
-    The docstrings NAME ``trading_fee_pct`` in order to say the code
-    must never read it. Matching on raw source would flag the very
-    sentence that forbids the thing.
-    """
-    node = ast.parse(textwrap.dedent(inspect.getsource(func))).body[0]
-    body = list(node.body)
-    if (
-        body
-        and isinstance(body[0], ast.Expr)
-        and isinstance(body[0].value, ast.Constant)
-        and isinstance(body[0].value.value, str)
-    ):
-        body = body[1:]
-    return "\n".join(ast.unparse(stmt) for stmt in body)
-
-
-def test_the_fee_plumbing_never_reads_the_configured_rate():
-    """Red means ``trading_fee_pct`` entered the fee path."""
-    checked = 0
-    for name in (
-        "_record_venue_fee",
-        "_take_venue_fee",
-        "_venue_quote_currency",
-        "_settled_sale_proceeds",
-    ):
-        code = _code_without_the_docstring(getattr(ScrummingBot, name))
-        assert code.strip(), f"{name} has no body left to check"
-        checked += 1
-        assert "trading_fee_pct" not in code, (
-            f"{name} reads the configured rate; the venue's fee is the "
-            f"only permitted source"
-        )
-    assert checked == 4
-
-
-def test_the_configured_rate_check_can_see_a_read_at_all():
-    """Red means the check above is blind and its pass means nothing."""
-    code = _code_without_the_docstring(ScrummingBot._execute_sell)
-    assert "trading_fee_pct" in code, (
-        "_execute_sell reads the configured rate for its hysteresis "
-        "band; a checker that cannot see it there cannot see it anywhere"
-    )
-
-
 # ── THE NO-FEE CONTROL ───────────────────────────────────────────────
 
 
@@ -586,154 +462,6 @@ def test_an_estimated_fill_carries_no_fee_at_all():
     assert _round(_proceeds(bot, amount, price)) == GROSS
 
 
-#: Every module the ScrummingBot engine is spread across. A scan of one
-#: of them alone would pass over code that moved to another.
-ENGINE_PATHS = tuple(
-    [REPO / "src" / "trading" / "scrumming_bot.py"]
-    + [
-        REPO / "src" / "trading" / "scrumming" / _n
-        for _n in (
-            "execution.py",
-            "fold_tranches.py",
-            "reconciliation.py",
-            "tick_phases.py",
-        )
-    ]
-)
-ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
-_SOURCE = ENGINE_SRC
-_TREE = ast.parse(_SOURCE)
-
-
-def _proceeds_assignments():
-    """Every ``x = self._settled_sale_proceeds(...)`` in the module."""
-    found = []
-    for node in ast.walk(_TREE):
-        if not isinstance(node, ast.Assign):
-            continue
-        call = node.value
-        if not isinstance(call, ast.Call):
-            continue
-        func = call.func
-        if not isinstance(func, ast.Attribute):
-            continue
-        if func.attr != "_settled_sale_proceeds":
-            continue
-        target = node.targets[0]
-        found.append((target.id if isinstance(target, ast.Name) else "?", call))
-    return found
-
-
-def test_all_three_fold_loops_value_the_sale_through_the_helper():
-    """Red means a loop values a sale without the venue's fee."""
-    names = sorted(name for name, _ in _proceeds_assignments())
-    assert names == ["dist_usd", "fill_usd", "scrum_usd"], (
-        f"expected the SCRUM, DIST and MANUAL proceeds to come from "
-        f"the helper; found {names}"
-    )
-
-
-def test_each_loop_values_its_own_units_at_its_own_fill():
-    """Red means a loop values one sale's units at another's price."""
-    expected = {
-        "scrum_usd": ("scrum_asset", "sell_fill"),
-        "dist_usd": ("dist_asset", "dist_fill"),
-        "fill_usd": ("fill_amount", "fill_price"),
-    }
-    for name, call in _proceeds_assignments():
-        units, price = call.args
-        assert isinstance(units, ast.Name) and isinstance(price, ast.Name)
-        assert (units.id, price.id) == expected[name], (
-            f"{name} is valued from ({units.id}, {price.id}), not " f"{expected[name]}"
-        )
-        labels = [kw for kw in call.keywords if kw.arg == "label"]
-        assert labels, f"{name} names no path in the operator's log"
-
-
-def _enclosing_function(lineno: int):
-    """The innermost ``def`` containing ``lineno``."""
-    best = None
-    for node in ast.walk(_TREE):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if node.lineno <= lineno <= (node.end_lineno or node.lineno):
-            if best is None or node.lineno > best.lineno:
-                best = node
-    return best
-
-
-@pytest.mark.parametrize(
-    "target, units, price",
-    [
-        ("scrum_usd", "scrum_asset", "sell_fill"),
-        ("dist_usd", "dist_asset", "dist_fill"),
-        ("fill_usd", "fill_amount", "fill_price"),
-    ],
-)
-def test_no_loop_multiplies_the_units_by_the_fill_any_more(target, units, price):
-    """Red means the gross notional came back into a build loop.
-
-    This is the pin that goes red if unit 9b is reverted.
-
-    It is scoped to an ASSIGNMENT of the loop's own proceeds variable,
-    inside the loop's own function, because two untouched sites read
-    alike and neither belongs to this unit: ``_execute_detonation``
-    assigns ``fill_usd = fill_price * fill_amount`` for a sale it then
-    discards the tranches of, and the manual FOLD branch multiplies
-    ``fill_amount * fill_price`` into ``total_folded_usd``, which is a
-    BUY's cost. A module-wide sweep would report both as this unit's
-    regression.
-    """
-    site = [call for name, call in _proceeds_assignments() if name == target]
-    assert len(site) == 1, f"{target} is not assigned from the helper once"
-    owner = _enclosing_function(site[0].lineno)
-    assert owner is not None
-
-    for node in ast.walk(owner):
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(isinstance(t, ast.Name) and t.id == target for t in node.targets):
-            continue
-        value = node.value
-        if not isinstance(value, ast.BinOp) or not isinstance(value.op, ast.Mult):
-            continue
-        left, right = value.left, value.right
-        if not (isinstance(left, ast.Name) and isinstance(right, ast.Name)):
-            continue
-        assert {left.id, right.id} != {units, price}, (
-            f"{owner.name} line {node.lineno} sets {target} to "
-            f"{left.id} * {right.id}, which is the GROSS notional"
-        )
-
-
-def test_the_gross_notional_pin_can_see_the_shape_it_refuses():
-    """Red means the pin above is blind and its pass means nothing.
-
-    Two TERMINAL LIQUIDATIONS still carry the exact shape the three
-    loops were fixed out of. Neither is in this unit's scope, and
-    neither builds a fold tranche -- both CLEAR ``_fold_tranches`` --
-    but both value a sale at the gross notional, so this list is also
-    the standing record of where the same class of defect remains.
-    """
-    found = []
-    for node in ast.walk(_TREE):
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(
-            isinstance(t, ast.Name) and t.id == "fill_usd" for t in node.targets
-        ):
-            continue
-        value = node.value
-        if not isinstance(value, ast.BinOp) or not isinstance(value.op, ast.Mult):
-            continue
-        owner = _enclosing_function(node.lineno)
-        found.append(owner.name if owner else "?")
-    assert sorted(found) == ["_execute_detonation", "self_destruct"], (
-        f"expected the two liquidation paths to be the remaining sites; "
-        f"found {found}"
-    )
-
-
 # ── THE RECORD TYPE ──────────────────────────────────────────────────
 
 
@@ -817,3 +545,266 @@ def test_a_re_read_coinbase_order_books_the_net():
     assert booked > 0.0, "a settled sale that books nothing is not a fix"
     assert _round(booked) == NET
     assert _round(booked) != GROSS
+
+
+# ── THE BOOKED FIGURE, READ AT THE TRANCHE ON EVERY PATH ─────────────
+
+
+class _PathBus:
+    def __init__(self):
+        self.messages = []
+        self.events = []
+
+    def emit(self, topic, **payload):
+        self.messages.append(f"{topic}|{payload.get('message', '')}")
+        self.events.append((topic, payload))
+
+
+class _PathTicker:
+    def __init__(self, last):
+        self.last = last
+
+
+class _PathBB:
+    lower = 0.0
+    upper = 0.0
+
+
+PATH_LOTS = ({"units": UNITS, "initial_buy_price": 0.03},)
+
+
+def _path_bot(*, venue_fee=None, fee_currency="USD", trading_fee_pct=CONFIG_FEE_PCT):
+    """A bot that can run any of the three real selling paths.
+
+    ``venue_fee`` is parked as the record ``_record_venue_fee`` would
+    have written, so ``_settled_sale_proceeds`` runs for real.
+    """
+    bot = object.__new__(ScrummingBot)
+    bot.bot_id = "net-path-bot"
+    bot.seen = {}
+    bot._bus = _PathBus()
+    bot.config = _Config(symbol="CHIP/USD", trading_fee_pct=trading_fee_pct)
+    bot.config.scrum_fold_pct = 100
+    bot.config.profit_folding_active = True
+    bot.config.manual_fire_dust_band = 0.0
+    bot.stats = _Stats()
+    bot.stats.total_scrummed_usd = 0.0
+    bot._fold_tranches = []
+    bot._main_lots = [dict(lot) for lot in PATH_LOTS]
+    bot._quote_to_usd = 1.0
+    bot._last_sell_venue_fee = (
+        SettledSellFee(
+            units=UNITS,
+            price=PRICE,
+            fee_amount=venue_fee,
+            currency=fee_currency,
+            reported=True,
+        )
+        if venue_fee is not None
+        else None
+    )
+    bot._tranches_created_lifetime = 0
+    bot._tranches_discarded_lifetime = 0
+    bot._tranches_closed_lifetime = 0
+    bot._scrum_sells_lifetime = 0
+    bot._last_trend_bull_candles = 0
+    bot._fold_queue_usd = 0.0
+    bot._fold_queue_ref_price = 0.0
+    bot._fold_cycle_cap_consumed = 0.0
+    bot._pending_wire_credits = 0.0
+    bot._standing_surplus_usd = 0.0
+    bot._below_min_scrum_log_ts = 0.0
+    bot._scrum_target_mode = "search"
+    bot._scrum_target_side = None
+    bot._dist_accumulator = 0.0
+    bot._manual_fire_pending = True
+    bot._last_trade_side = None
+    bot._last_trade_price = 0.0
+    bot._last_bb = _PathBB()
+    bot._current_holdings = UNITS
+    bot._target_balance = 0.0
+    bot._anchor_target_balance = 0.0
+
+    def _route(scrum_usd, sell_fill, label):
+        bot.seen.setdefault("routed", []).append((scrum_usd, sell_fill, label))
+        return 0.0
+
+    def _recorder(key):
+        def _inner(*args, **kwargs):
+            bot.seen.setdefault(key, []).append((args, kwargs))
+
+        return _inner
+
+    bot._route_scrum_proceeds_via_wires = _route
+    bot._emit_trade_fire_snapshot = _recorder("fire_snapshots")
+    bot._emit_voting_panel_snapshot_at_fire = _recorder("snapshots")
+    bot._emit_gate_decision_at_fire = _recorder("gates")
+    bot._reset_opposing_hysteresis_after_fill = _recorder("disarms")
+    bot.note_scrum_retention_usd = _recorder("retained")
+    bot._emit_trade_notification = _recorder("notifications")
+
+    async def _limits(symbol):
+        bot.seen.setdefault("limits", []).append(symbol)
+        return 0.0, 0.0, 0.0
+
+    async def _sell(amount, price_arg, summary):
+        bot.seen.setdefault("sold", []).append((amount, price_arg, summary))
+        return PRICE
+
+    async def _balance(currency):
+        bot.seen.setdefault("balances", []).append(currency)
+        _held = bot._current_holdings
+        return type("B", (), {"total": _held, "free": _held, "absent": False})()
+
+    async def _refresh():
+        return 1.0
+
+    async def _place(**kwargs):
+        bot.seen["placed"] = kwargs
+        return _Order(price=PRICE, filled=UNITS)
+
+    async def _settled(order, symbol, requested, tick_price):
+        bot.seen["settled"] = (order.id, symbol, requested, tick_price)
+        return requested, PRICE, True
+
+    bot._get_market_limits = _limits
+    bot._execute_sell = _sell
+    bot._get_balance = _balance
+    bot._refresh_quote_to_usd = _refresh
+    bot.guarded_place_order = _place
+    bot._settled_fill = _settled
+    return bot
+
+
+def _fire_scrum(bot):
+    asyncio.run(
+        bot._tick_execute_scrum(
+            _PathTicker(PRICE),
+            _Summary(),
+            _PathBB(),
+            -UNITS * PRICE,
+            -1.0,
+            0.0,
+            0.5,
+            type("D", (), {"name": "BEARISH"})(),
+            0.9,
+            0.5,
+            0.0,
+            None,
+        )
+    )
+
+
+def _fire_dist(bot):
+    bot._dist_accumulator = UNITS
+    asyncio.run(bot._tick_distribute(_PathTicker(PRICE), _Summary(), _PathBB(), True))
+
+
+def _fire_manual(bot):
+    asyncio.run(bot._execute_manual_rebalance(_PathTicker(PRICE), "manual_button"))
+
+
+PATHS = {"DIST": _fire_dist, "MANUAL": _fire_manual, "SCRUM": _fire_scrum}
+PATH_NAMES = sorted(PATHS)
+
+
+def _queued(bot):
+    return sum(float(t["usd"]) for t in bot._fold_tranches)
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_every_selling_path_queues_the_net_the_venue_credited(path):
+    """Red means a build loop queued the gross notional again."""
+    bot = _path_bot(venue_fee=VENUE_FEE)
+    PATHS[path](bot)
+    booked = _queued(bot)
+    assert booked > 0.0, f"{path} queued nothing; that is not a fix"
+    assert _round(booked) == NET, (
+        f"{path} queued ${booked:.5f}; the venue credited ${NET:.5f} "
+        f"for {UNITS} @ ${PRICE}"
+    )
+    assert _round(booked) != GROSS, (
+        f"{path} queued the gross notional ${GROSS:.5f}, which the "
+        f"venue did not credit"
+    )
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_control_a_path_with_no_reported_fee_queues_the_gross(path):
+    """CONTROL. Red means the net above came from somewhere other than
+    the venue's record, so the check cannot tell the two apart."""
+    bot = _path_bot(venue_fee=None)
+    PATHS[path](bot)
+    booked = _queued(bot)
+    assert _round(booked) == GROSS, (
+        f"{path} queued ${booked:.5f} with no fee reported; the gross "
+        f"${GROSS:.5f} is the only figure it can honestly book"
+    )
+    assert any("BOOKED GROSS" in m for m in bot._bus.messages), (
+        f"{path} booked the gross and did not say so: " f"{bot._bus.messages}"
+    )
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+@pytest.mark.parametrize("configured", [0.0, 1.2, 1.6, 9.9])
+def test_the_configured_rate_never_moves_what_a_path_queues(path, configured):
+    """Red means a path started deriving the fee from the config."""
+    bot = _path_bot(venue_fee=VENUE_FEE, trading_fee_pct=configured)
+    PATHS[path](bot)
+    booked = _queued(bot)
+    assert _round(booked) == NET, (
+        f"{path} queued ${booked:.5f} with trading_fee_pct={configured}; "
+        f"the venue's ${NET:.5f} must not move with the config"
+    )
+    assert _round(booked) != SYNTHESISED
+
+
+def test_control_the_configured_rate_would_give_a_different_answer():
+    """Red means the sweep above proves nothing, because the configured
+    rate and the venue's agree on this trade."""
+    assert _round(GROSS * (1 - CONFIG_FEE_PCT / 100.0)) == SYNTHESISED
+    assert SYNTHESISED != NET
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_a_fee_in_the_base_currency_never_reaches_a_tranche(path):
+    """Red means a CHIP-denominated fee was subtracted from USD."""
+    bot = _path_bot(venue_fee=VENUE_FEE, fee_currency="CHIP")
+    PATHS[path](bot)
+    assert _round(_queued(bot)) == GROSS
+    assert any(
+        "not the USD this sale is credited in" in m for m in bot._bus.messages
+    ), f"{path} refused the foreign-currency fee without saying why"
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_a_fee_larger_than_the_sale_never_reaches_a_tranche(path):
+    """Red means an absurd fee can drive a tranche to zero or below."""
+    bot = _path_bot(venue_fee=GROSS * 2.0)
+    PATHS[path](bot)
+    assert _round(_queued(bot)) == GROSS
+    assert any("is not smaller than the gross" in m for m in bot._bus.messages)
+
+
+def test_a_detonation_still_values_its_sale_at_the_gross():
+    """The standing record of where the gross notional remains.
+
+    ``_execute_detonation`` clears ``_fold_tranches`` rather than
+    building one, so its valuation reaches no tranche; this reads the
+    figure it publishes on ``trade.filled``.
+    """
+    bot = _path_bot(venue_fee=VENUE_FEE)
+    bot._anchor_target_balance = 0.0
+    asyncio.run(bot._execute_detonation(_PathTicker(PRICE)))
+    filled = [
+        kwargs
+        for topic, kwargs in _bus_events(bot)
+        if topic == "trade.filled" and kwargs.get("data", {}).get("type")
+    ]
+    assert filled, "the detonation published no trade.filled"
+    assert _round(filled[-1]["data"]["usd"]) == GROSS
+    assert bot._fold_tranches == []
+
+
+def _bus_events(bot):
+    return bot._bus.events
