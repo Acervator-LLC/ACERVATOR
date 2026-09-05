@@ -145,6 +145,11 @@ dev = [
     # Issue #94 - the lockfile generator. `requirements/` holds what it
     # produced; `python -m tools.deps lock` regenerates it.
     "pip-tools>=7.6.1",
+    # tools/build_product_manual.py and tools/extract_product_manual.py
+    # import pypdf at module level. No src/ module imports either
+    # producer and neither .spec collects tools/, so it ships to no
+    # target.
+    "pypdf>=6.10.2",
 ]
 
 [project.scripts]
