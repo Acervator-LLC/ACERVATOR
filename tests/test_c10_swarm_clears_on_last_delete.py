@@ -92,9 +92,8 @@ class TestTheTickCanActuallyReachIt:
         """THE defect. The call must not sit under `if all_statuses:`,
         or the empty case -- the only case that needs it -- is the one
         case it never runs for."""
-        # Parse the MODULE file, not inspect.getsource(MainWindow):
-        # the class is nested inside a try: block, so its source comes
-        # back indented and ast.parse rejects it.
+        # The module file, not `inspect.getsource(MainWindow)`: the class
+        # is nested in a `try`, so its source comes back indented.
         tree = ast.parse(_main_window_source())
 
         gated = []

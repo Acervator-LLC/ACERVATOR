@@ -67,9 +67,8 @@ from src.core.signal_contract import (
     set_sink,
 )
 
-# Two real identities out of the roster, used as the two arms of every
-# control below. Named rather than invented: a control driven on a
-# fabricated pin proves the code runs, not that it runs on this tree.
+# Two identities taken from the real roster, the two arms of every
+# control below. A fabricated pin would prove nothing about this tree.
 AN_ALWAYS_ON_PIN = "tick.08.002.event.worked"
 A_TOGGLE_PIN = "tick.08.003.event.exit_dust_band"
 

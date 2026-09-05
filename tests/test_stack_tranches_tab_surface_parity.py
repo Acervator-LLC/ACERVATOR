@@ -162,9 +162,8 @@ def refuse_outside_connections(monkeypatch):
     yield attempted
 
 
-# The bot and the dialog seams, as the test owns them. The Qt tab is
-# driven with these; the surface is driven with its own. Neither side
-# reads the other's.
+# The bot and dialog seams the Qt tab is driven with. The surface gets
+# its own.
 
 
 class Config:

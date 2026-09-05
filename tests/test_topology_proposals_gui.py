@@ -382,9 +382,8 @@ def test_adopt_signal_reaches_pane_handler(qapp):
 
     p = _make_proposal("test:ADOPT")
     dlg = TopologyPreviewDialog(p)
-    # Mirror the wiring done in MarketInspectorTopologies._on_preview:
-    # the preview signal on the dialog is forwarded to the pane's
-    # adoptRequested signal on Adopt click.
+    # The wiring `MarketInspectorTopologies._on_preview` does: the dialog's
+    # preview signal forwards to the pane's `adoptRequested`.
     dlg.adoptClicked.connect(tab._topologies_pane.adoptRequested.emit)
     dlg._on_adopt()
     assert len(captured) == 1

@@ -1,6 +1,5 @@
 # ruff: noqa: S311
-# S311: seeded RNG generates deterministic price series for the identity
-# comparison. Nothing here is security-relevant.
+# A seeded RNG builds the price series; nothing here is a secret.
 """v3.24.22 — pin tests for suffix-only _sma / _stdev.
 
 WHY THIS CHANGE EXISTS
