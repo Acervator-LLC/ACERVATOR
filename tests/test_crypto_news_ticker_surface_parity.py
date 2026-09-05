@@ -55,32 +55,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 STRIP_PATH = REPO_ROOT / "src/gui/crypto_news_ticker.py"
 SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/crypto_news_ticker_surface.py"
-WIRING_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-SIGNAL_CONTROL_PATH = REPO_ROOT / "src/gui/launcher.py"
-TIMER_CONTROL_PATH = REPO_ROOT / "src/gui/history_tab.py"
-BUS_CONTROL_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
-ELEMENT_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/dashboard_stat_card.py"
-NESTED_CLASS_CONTROL_PATH = REPO_ROOT / "src/gui/stock_main_window.py"
 
 PIXEL_SIZE = (620, 40)
-
-# Counts measured off the file by the same counter that is pointed at a
-# neighbour which really has one.
-STRIP_CONNECT_SITES = 7
-STRIP_TIMER_BUILDS = 2
-STRIP_THREAD_BUILDS = 1
-STRIP_SIGNAL_BUILDS = 2
-STRIP_BUS_SITES = 0
-STRIP_ELEMENT_BUILDS = 3
-STRIP_LAYOUT_BUILDS = 1
-STRIP_CURSOR_BUILDS = 1
-CONTROL_CONNECT_SITES = 1
-CONTROL_TIMER_BUILDS = 1
-CONTROL_SIGNAL_BUILDS = 3
-CONTROL_BUS_SITES = 2
-CONTROL_ELEMENT_BUILDS = 3
-CONTROL_LAYOUT_BUILDS = 2
-CONTROL_CURSOR_BUILDS = 0
 
 FROZEN_NOW = 1_700_000_000.5
 
@@ -1906,56 +1882,6 @@ def test_a_detached_report_reaches_nothing():
 
 # Counting what the shipped file wires, waits on, and builds
 
-WIDGET_NAMES_BUILT = (
-    "QWidget",
-    "QLabel",
-    "QPushButton",
-    "QTableWidget",
-    "QTableWidgetItem",
-    "QGroupBox",
-    "QFrame",
-    "QScrollArea",
-    "QLineEdit",
-    "QComboBox",
-    "QCheckBox",
-    "QSpinBox",
-    "QTextEdit",
-    "QProgressBar",
-    "QSplitter",
-    "QDialog",
-)
-
-LAYOUT_NAMES_BUILT = ("QHBoxLayout", "QVBoxLayout")
-CURSOR_NAMES_BUILT = ("QCursor",)
-
-
-def call_name(node):
-    """The name a call reaches for, or nothing when it reaches for none."""
-    if isinstance(node.func, ast.Name):
-        return node.func.id
-    if isinstance(node.func, ast.Attribute):
-        return node.func.attr
-    return ""
-
-
-def count_calls(path, names):
-    """How many times one file really calls any of `names`.
-
-    Counts ``ast.Call`` nodes, so an import line or a name written in prose
-    is not read as a construction.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return sum(
-        1
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and call_name(node) in names
-    )
-
-
-def count_text(path, needle):
-    """How many times one wiring call appears in one file."""
-    return path.read_text(encoding="utf-8").count(needle)
-
 
 def declared_classes(path):
     """Every class one file declares, wherever it is declared.
@@ -1967,41 +1893,75 @@ def declared_classes(path):
     return {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
 
 
-def declared_widget_classes(path):
-    """Every class one file declares that ends up being a screen element."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-    found: set = set()
-    growing = True
-    while growing:
-        growing = False
-        for node in classes:
-            if node.name in found:
-                continue
-            for base in node.bases:
-                name = (
-                    base.id if isinstance(base, ast.Name) else getattr(base, "attr", "")
-                )
-                if name.startswith("Q") or name in found:
-                    found.add(node.name)
-                    growing = True
-                    break
-    return found
+def signal_is_connected(owner, signature):
+    """Whether ``owner`` has a receiver on the signal named ``signature``."""
+    meta = owner.metaObject()
+    index = meta.indexOfSignal(signature)
+    assert index >= 0, f"{type(owner).__name__} declares no signal {signature}"
+    return owner.isSignalConnected(meta.method(index))
 
 
-def count_elements(path):
-    """How many screen elements one file builds, its own classes included."""
-    return count_calls(path, WIDGET_NAMES_BUILT) + len(declared_widget_classes(path))
+#: Each action the surface names, against the live object and signal the
+#: running strip wires it to. The two ``finished()`` actions share one signal
+#: and are told apart by their effect below.
+STRIP_WIRINGS = (
+    ("cycle_timeout", "_cycle_timer", "timeout()"),
+    ("refresh_timeout", "_refresh_timer", "timeout()"),
+    ("thread_started", "_worker_thread", "started()"),
+    ("thread_finished_teardown", "_worker_thread", "finished()"),
+    ("thread_finished_retire", "_worker_thread", "finished()"),
+    ("headlines_ready", "_worker", "headlinesReady(QVariantList)"),
+    ("fetch_failed", "_worker", "failed(QString)"),
+)
 
 
-def test_the_strip_wires_seven_signals_and_the_surface_names_seven_actions():
-    """A wiring appeared on one side and not the other."""
-    assert count_text(STRIP_PATH, ".connect(") == STRIP_CONNECT_SITES == 7
-    assert count_text(SURFACE_PATH, ".connect(") == 0
-    assert count_text(WIRING_CONTROL_PATH, ".connect(") == CONTROL_CONNECT_SITES == 1
-    assert len(surface.ACTIONS) == count_text(STRIP_PATH, ".connect(")
+def test_the_strip_wires_seven_signals_and_the_surface_names_seven_actions(monkeypatch):
+    """Every action the surface names is a live connection on the strip."""
+    app()
+    monkeypatch.setattr(shipped, "time", FrozenTime())
+    monkeypatch.setattr(shipped, "fetch_all", instant_fetch([]))
+    strip = hold(shipped.CryptoNewsTicker())
+    strip.start()
+    try:
+        for action, attribute, signature in STRIP_WIRINGS:
+            owner = getattr(strip, attribute)
+            assert owner is not None, action
+            assert signal_is_connected(owner, signature), action
+    finally:
+        strip.stop()
+    assert sorted(surface.ACTIONS) == sorted(
+        action for action, _owner, _signature in STRIP_WIRINGS
+    )
     for name in surface.ACTIONS.values():
         assert callable(getattr(surface.CryptoNewsTickerModel, name)), name
+
+
+def test_a_finished_fetch_thread_is_torn_down_and_retired(monkeypatch):
+    """Both ``finished()`` receivers run: one clears ``_worker_thread`` and
+    the other drops the thread from ``_LIVE_WORKERS``."""
+    found = app()
+    monkeypatch.setattr(shipped, "time", FrozenTime())
+    monkeypatch.setattr(shipped, "fetch_all", instant_fetch([]))
+    strip = hold(shipped.CryptoNewsTicker())
+    strip.start()
+    thread = strip._worker_thread
+    assert thread is not None
+    assert thread in shipped._LIVE_WORKERS, sorted(map(str, shipped._LIVE_WORKERS))
+    thread.wait(shipped._STOP_WAIT_MS)
+    assert settle(strip, found), "the fetch never reported back"
+    assert strip._worker_thread is None, "the teardown receiver never ran"
+    assert thread not in shipped._LIVE_WORKERS, "the retire receiver never ran"
+
+
+def test_the_wiring_check_reports_a_signal_nothing_listens_to():
+    """The wiring check answers connected whatever the object carries."""
+    from PySide6.QtCore import QTimer
+
+    app()
+    quiet = QTimer()
+    assert signal_is_connected(quiet, "timeout()") is False
+    quiet.timeout.connect(lambda: None)
+    assert signal_is_connected(quiet, "timeout()") is True
 
 
 def test_the_strip_starts_two_timers_and_the_surface_names_two_waits(monkeypatch):
@@ -2009,11 +1969,6 @@ def test_the_strip_starts_two_timers_and_the_surface_names_two_waits(monkeypatch
     from PySide6.QtCore import QObject, QTimer
 
     found = app()
-    assert count_calls(STRIP_PATH, ("QTimer",)) == STRIP_TIMER_BUILDS == 2
-    assert count_calls(SURFACE_PATH, ("QTimer",)) == 0
-    assert count_calls(TIMER_CONTROL_PATH, ("QTimer",)) == CONTROL_TIMER_BUILDS == 1
-    assert count_text(STRIP_PATH, "QTimer") > STRIP_TIMER_BUILDS
-
     started: list = []
     first_object_timer = QObject.startTimer
     first_timer_start = QTimer.start
@@ -2063,7 +2018,7 @@ def test_the_strip_starts_two_timers_and_the_surface_names_two_waits(monkeypatch
         "cycle": surface.CYCLE_INTERVAL_MS,
         "refresh": surface.REFRESH_INTERVAL_MS,
     }
-    assert len(surface.TIMERS) == STRIP_TIMER_BUILDS == surface.TIMER_COUNT
+    assert len(surface.TIMERS) == len(old_started) == surface.TIMER_COUNT
     assert surface.TIMER_DELAYS_MS == (
         surface.CYCLE_INTERVAL_MS,
         surface.REFRESH_INTERVAL_MS,
@@ -2075,8 +2030,6 @@ def test_the_strip_starts_one_thread_and_the_surface_names_one_worker(monkeypatc
     from PySide6.QtCore import QThread
 
     found = app()
-    assert count_calls(STRIP_PATH, ("QThread",)) == STRIP_THREAD_BUILDS == 1
-    assert count_calls(SURFACE_PATH, ("QThread",)) == 0
     started: list = []
     first_start = QThread.start
 
@@ -2103,62 +2056,101 @@ def test_the_strip_starts_one_thread_and_the_surface_names_one_worker(monkeypatc
         new_started = list(started)
     finally:
         QThread.start = first_start
-    assert len(old_started) == STRIP_THREAD_BUILDS == 1, old_started
+    assert len(old_started) == surface.THREAD_COUNT == 1, old_started
     assert new_started == []
     assert surface.THREAD_COUNT == len(surface.WORKER_LIFECYCLE) == 1
     assert model.fetches_started == 1
 
 
 def test_the_strip_declares_two_signals_and_the_surface_names_two_reports():
-    """A report declaration appeared on one side and not the other."""
-    assert count_calls(STRIP_PATH, ("Signal",)) == STRIP_SIGNAL_BUILDS == 2
-    assert count_calls(SURFACE_PATH, ("Signal",)) == 0
-    assert count_calls(SIGNAL_CONTROL_PATH, ("Signal",)) == CONTROL_SIGNAL_BUILDS == 3
-    assert count_text(SIGNAL_CONTROL_PATH, "Signal") > CONTROL_SIGNAL_BUILDS
-    worker = surface.FetchWorkerModel()
-    assert worker.headlines_ready == [] and worker.failed == []
-    assert callable(worker.say_ready) and callable(worker.say_failed)
+    """The two reports the worker sends, read off the built worker."""
+    from PySide6.QtCore import QMetaMethod
+
+    app()
+    worker = shipped._FetchWorker()
+    meta = worker.metaObject()
+    declared = sorted(
+        bytes(meta.method(index).methodSignature()).decode("utf-8")
+        for index in range(meta.methodOffset(), meta.methodCount())
+        if meta.method(index).methodType() == QMetaMethod.MethodType.Signal
+    )
+    assert declared == ["failed(QString)", "headlinesReady(QVariantList)"], declared
+
+    model = surface.FetchWorkerModel()
+    assert model.headlines_ready == [] and model.failed == []
+    assert callable(model.say_ready) and callable(model.say_failed)
 
 
-def test_the_strip_subscribes_to_no_bus_topic():
-    """A bus wiring appeared on one side and not the other."""
-    assert count_text(STRIP_PATH, ".subscribe(") == STRIP_BUS_SITES == 0
-    assert count_text(SURFACE_PATH, ".subscribe(") == 0
-    assert count_text(BUS_CONTROL_PATH, ".subscribe(") == CONTROL_BUS_SITES == 2
+def test_the_strip_subscribes_to_no_bus_topic(monkeypatch):
+    """Neither side reaches the event bus while it is driven."""
+    from src.core import event_bus
+
+    heard: list = []
+    monkeypatch.setattr(
+        event_bus.EventBus,
+        "subscribe",
+        lambda self, topic, _handler: heard.append(topic),
+    )
+    app()
+    monkeypatch.setattr(shipped, "time", FrozenTime())
+    monkeypatch.setattr(shipped, "fetch_all", instant_fetch([]))
+    strip = hold(shipped.CryptoNewsTicker())
+    strip.start()
+    strip.stop()
+    model = surface.CryptoNewsTickerModel(clock=frozen_clock())
+    model.start()
+    model.run_worker()
+    model.stop()
+    assert heard == [], heard
     assert surface.BUS_TOPICS == ()
-    assert len(surface.BUS_TOPICS) == count_text(STRIP_PATH, ".subscribe(")
+
+
+def test_the_bus_watch_reports_a_subscription():
+    """The bus watch reports nothing whatever a caller subscribes to."""
+    from src.core import event_bus
+
+    heard: list = []
+    bus = event_bus.EventBus()
+    real = event_bus.EventBus.subscribe
+    try:
+        event_bus.EventBus.subscribe = lambda self, topic, _handler: heard.append(topic)
+        bus.subscribe("bot.log", lambda **_named: None)
+    finally:
+        event_bus.EventBus.subscribe = real
+    assert heard == ["bot.log"]
 
 
 def test_the_screen_elements_the_strip_builds_are_counted():
-    """The element counter cannot report, so its number means nothing."""
-    assert count_elements(STRIP_PATH) == STRIP_ELEMENT_BUILDS == 3
-    assert count_elements(ELEMENT_CONTROL_PATH) == CONTROL_ELEMENT_BUILDS == 3
-    assert count_calls(ELEMENT_CONTROL_PATH, WIDGET_NAMES_BUILT) == 2
-    assert declared_widget_classes(ELEMENT_CONTROL_PATH) == {"StatCard"}
-    assert declared_widget_classes(STRIP_PATH) == {"CryptoNewsTicker", "_FetchWorker"}
-    assert count_calls(STRIP_PATH, WIDGET_NAMES_BUILT) == 1
-    assert count_elements(SURFACE_PATH) == 0
-    assert declared_widget_classes(SURFACE_PATH) == set()
+    """The strip paints one label inside one layout; the surface paints none."""
+    from PySide6.QtWidgets import QLabel, QLayout, QWidget
+
+    app()
+    strip = hold(shipped.CryptoNewsTicker())
+    assert isinstance(strip, QWidget)
+    labels = strip.findChildren(QLabel)
+    assert len(labels) == 1, [one.text() for one in labels]
+    assert strip.findChildren(QLayout) == [strip.layout()]
+    assert not any(
+        isinstance(value, type) and issubclass(value, QWidget)
+        for value in vars(surface).values()
+    )
 
 
 def test_the_strip_builds_one_layout_and_one_pointer_shape():
-    """A layout or a pointer shape appeared on one side and not the other."""
-    assert count_calls(STRIP_PATH, LAYOUT_NAMES_BUILT) == STRIP_LAYOUT_BUILDS == 1
+    """The margins and the pointer shape the built strip really carries."""
+    from PySide6.QtWidgets import QLabel
+
+    app()
+    strip = hold(shipped.CryptoNewsTicker())
+    margins = strip.layout().contentsMargins()
     assert (
-        count_calls(ELEMENT_CONTROL_PATH, LAYOUT_NAMES_BUILT)
-        == CONTROL_LAYOUT_BUILDS
-        == 2
-    )
-    assert count_calls(SURFACE_PATH, LAYOUT_NAMES_BUILT) == 0
-    assert count_calls(STRIP_PATH, CURSOR_NAMES_BUILT) == STRIP_CURSOR_BUILDS == 1
-    assert (
-        count_calls(ELEMENT_CONTROL_PATH, CURSOR_NAMES_BUILT)
-        == CONTROL_CURSOR_BUILDS
-        == 0
-    )
-    assert count_calls(SURFACE_PATH, CURSOR_NAMES_BUILT) == 0
-    assert surface.LAYOUT_MARGINS == (6, 2, 6, 2)
-    assert surface.LABEL_CURSOR == "PointingHandCursor"
+        margins.left(),
+        margins.top(),
+        margins.right(),
+        margins.bottom(),
+    ) == surface.LAYOUT_MARGINS
+    label = strip.findChildren(QLabel)[0]
+    assert label.cursor().shape().name == surface.LABEL_CURSOR
 
 
 NESTED_CLASS_SOURCE = (
