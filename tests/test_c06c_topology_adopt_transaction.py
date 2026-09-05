@@ -1,45 +1,11 @@
-"""C06c: adopting a topology must not misroute, overwrite, or lie.
+"""Adopting a topology must not misroute a wire, overwrite one silently, or lie.
 
-FOUR DEFECTS, ALL LIVE-MONEY
-
-1. UNVALIDATED ASSET BINDING (the serious one)
-   The adopt opens the Bot Wizard with ``exchange_id=""`` and only
-   ``default_target_balance`` overridden -- the symbol is neither
-   pre-filled nor constrained. Whatever bot came out was then bound to
-   the proposal's asset with no check at all:
-
-       asset_to_bot[asset] = sorted(new_ids)[0]
-
-   So a proposal asking for an ETH bot, satisfied by an operator who
-   created a SOL bot, would draw the proposal's ETH->BTC wire FROM the
-   SOL bot. Fold profit then routes out of the wrong asset, permanently,
-   and nothing downstream ever flags it.
-
-2. SILENT OVERWRITE
-   ``register_wire`` did ``setdefault(src, {})[tgt] = p`` and returned
-   ``applied: True`` whether or not it had just replaced a hand-tuned
-   percentage. The caller could not tell "new wire" from "destroyed the
-   operator's 20% and put 50% there".
-
-3. THE ENGINE'S REFUSAL WAS DISCARDED
-   ``BotManager._on_wire_created_mgr`` threw the result away.
-   ``register_wire`` refuses a pct that is non-numeric, <= 0, or > 100 --
-   and every refusal was dropped, so the canvas drew a wire the engine
-   never accepted. The adopt's "12/12 wires drawn" counted EMITS, not
-   registrations, and could report a clean success for a topology the
-   engine took none of.
-
-4. NO SNAPSHOT, NO DISCLOSURE OF ORPHANS
-   Nothing recorded the pre-adopt topology, and an abort at bot 4 of 6
-   left bots 1-3 in place while saying only "aborted".
-
-WHAT IS AND IS NOT TESTED HERE
-The helpers are exercised directly against a fake bot manager rather
-than through a constructed MainWindow -- the adopt itself needs a wizard,
-a bus, and a live roster. That means these pins cover the collision
-pre-flight, the read-back, the snapshot, and the orphan report, plus the
-engine-level overwrite disclosure. The end-to-end wizard sequence is NOT
-covered and still needs the operator's manual confirmation.
+``_Stub`` binds ``_topology_wire_collisions``, ``_wire_is_registered``,
+``_snapshot_wires_for_adopt`` and ``_report_adopt_orphans`` off ``MainWindow`` and
+runs them against a ``SmartWireManager`` and a fake bot manager. ``_AdoptStub``
+adds ``_adopt_topology_proposal`` itself, with ``_create_bot`` standing in for the
+Bot Wizard and ``_WireBus`` carrying ``wire.created`` into the engine. The ``adopt``
+fixture replaces ``QMessageBox`` and roots every snapshot at ``tmp_path``.
 """
 
 from __future__ import annotations
@@ -70,6 +36,12 @@ class _FakeBotManager:
     def __init__(self, mgr, state_dir=None):
         self.smart_wire_manager = mgr
         self._state_manager = _FakeStateManager(state_dir) if state_dir else None
+        self.bots: list[dict] = []
+
+    def list_bots(self) -> list[dict]:
+        """Return the roster ``_adopt_topology_proposal`` reads before and after
+        each wizard run."""
+        return list(self.bots)
 
 
 class _Log:
@@ -241,72 +213,224 @@ class TestSnapshotAndOrphans:
         stub._report_adopt_orphans([])
         assert stub._status_log.entries == []
 
-    def test_orphans_are_not_deleted(self, mgr):
-        """Destroying a bot the operator may have wanted is a worse
-        failure than leaving one. The report must not remove them."""
-        import inspect
-
-        src = inspect.getsource(MainWindow._report_adopt_orphans)
-        assert "delete" not in src.lower().replace("deleted", "")
+    def test_the_report_removes_no_bot(self, mgr):
+        """Destroying a bot the operator may have wanted is the worse failure, so
+        ``_report_adopt_orphans`` leaves the roster it names untouched."""
+        stub = _Stub(mgr)
+        stub._bot_manager.bots = [{"bot_id": "abcdef1234"}, {"bot_id": "ffff000011"}]
+        stub._report_adopt_orphans(["abcdef1234", "ffff000011"])
+        assert [b["bot_id"] for b in stub._bot_manager.bots] == [
+            "abcdef1234",
+            "ffff000011",
+        ]
 
 
 # ------------------------------------------------------------ policy --
+
+
+class _Spool:
+    """Collects the toast ``_adopt_topology_proposal`` raises at the end."""
+
+    def __init__(self):
+        self.notices: list[tuple[str, str]] = []
+
+    def notify(self, text, level="info"):
+        """Record one toast."""
+        self.notices.append((level, text))
+
+
+class _WireBus:
+    """A bus whose ``wire.created`` reaches ``SmartWireManager.register_wire``."""
+
+    def __init__(self, mgr):
+        self._mgr = mgr
+        self.emitted: list[dict] = []
+
+    def emit(self, topic, **payload):
+        """Record a ``wire.created`` event and register it with the engine."""
+        if topic != "wire.created":
+            return
+        self.emitted.append(dict(payload))
+        self._mgr.register_wire(
+            payload["source_id"], payload["target_id"], payload["pct"]
+        )
+
+
+class _AdoptStub(_Stub):
+    """A ``_Stub`` that also runs the real ``_adopt_topology_proposal``.
+
+    ``_create_bot`` appends the next entry of ``wizard_makes`` to the roster, and
+    ``moments`` records the order the adopt reached each step in.
+    """
+
+    _adopt_topology_proposal = MainWindow._adopt_topology_proposal
+    _report_adopt_orphans = MainWindow._report_adopt_orphans
+
+    def __init__(self, mgr, state_dir, wizard_makes=()):
+        assert state_dir is not None, (
+            "_snapshot_wires_for_adopt falls back to ~/.acervator when the bot "
+            "manager carries no state manager; every adopt run needs a tmp_path"
+        )
+        super().__init__(mgr, state_dir)
+        self._bus = _WireBus(mgr)
+        self._spool = _Spool()
+        self.wizard_makes = list(wizard_makes)
+        self.wizard_calls: list[dict] = []
+        self.moments: list[str] = []
+        self.question_text = ""
+
+    def _create_bot(self, **wizard_kwargs):
+        """Record ``wizard_kwargs`` and add the next ``wizard_makes`` entry."""
+        self.moments.append("create_bot")
+        self.wizard_calls.append(wizard_kwargs)
+        if self.wizard_makes:
+            self._bot_manager.bots.append(self.wizard_makes.pop(0))
+
+    def _snapshot_wires_for_adopt(self, title):
+        """Record the moment, then take the real snapshot."""
+        self.moments.append("snapshot")
+        return MainWindow._snapshot_wires_for_adopt(self, title)
+
+
+@pytest.fixture
+def adopt(mgr, tmp_path, monkeypatch):
+    """Run the real ``_adopt_topology_proposal`` with ``QMessageBox`` replaced.
+
+    ``tmp_path`` is the state root, so ``_snapshot_wires_for_adopt`` never reaches
+    its ``_DEFAULT_DIR`` fallback under the operator's home.
+    """
+    from PySide6.QtWidgets import QMessageBox
+
+    def _run(proposal, wizard_makes=(), answer_ok=True):
+        stub = _AdoptStub(mgr, tmp_path, wizard_makes)
+
+        def _question(_parent, _title, text, *_a, **_kw):
+            stub.moments.append("confirm")
+            stub.question_text = text
+            return QMessageBox.Ok if answer_ok else QMessageBox.Cancel
+
+        def _warning(_parent, _title, text, *_a, **_kw):
+            stub.moments.append("warning")
+            return QMessageBox.Ok
+
+        monkeypatch.setattr(QMessageBox, "question", staticmethod(_question))
+        monkeypatch.setattr(QMessageBox, "warning", staticmethod(_warning))
+        stub._adopt_topology_proposal(proposal)
+        return stub
+
+    return _run
+
+
+ETH_TO_BTC = {
+    "title": "eth to btc",
+    "bots": [
+        {"asset": "ETH", "existing_bot_id": "bot_eth"},
+        {"asset": "BTC", "existing_bot_id": "bot_btc"},
+    ],
+    "wires": [{"source_asset": "ETH", "target_asset": "BTC", "pct": 50.0}],
+}
+
+
 class TestAdoptAppliesTheWholeTopology:
-    """D23, ruled by the operator 2026-08-06: a wire pct is an ordinary
-    user setting, adjustable whenever they like, so there was no
-    permission question to ask. An earlier revision gated this behind a
-    policy constant and skipped collisions, which produced a topology
-    matching NEITHER the proposal nor the prior state -- adopt
-    "AAA->BBB 25%" and silently keep 10%. What matters is disclosure
-    plus a way back, both of which exist."""
+    """A wire pct is an ordinary user setting, so a colliding pair is applied and
+    disclosed, never skipped."""
 
-    def test_no_policy_gate_remains(self):
-        import inspect
+    def test_a_colliding_wire_is_applied_at_the_proposed_rate(self, mgr, adopt):
+        mgr.register_wire("bot_eth", "bot_btc", 20.0)
+        stub = adopt(ETH_TO_BTC)
+        assert stub._bus.emitted == [
+            {"source_id": "bot_eth", "target_id": "bot_btc", "pct": 50.0}
+        ]
+        assert mgr.get_outgoing_wires("bot_eth")["bot_btc"] == 50.0
 
-        src = inspect.getsource(MainWindow._adopt_topology_proposal)
-        assert "ADOPT_MAY_OVERWRITE" not in src, (
-            "the adopt still branches on an overwrite policy; a pct is "
-            "a user setting, not a permission"
-        )
+    def test_a_fresh_wire_is_applied_the_same_way(self, mgr, adopt):
+        """Positive control: the collision is not what makes the wire land."""
+        stub = adopt(ETH_TO_BTC)
+        assert len(stub._bus.emitted) == 1
+        assert mgr.get_outgoing_wires("bot_eth")["bot_btc"] == 50.0
 
-    def test_colliding_pairs_are_not_skipped(self):
-        """The whole proposal must be applied. A 'continue' that drops
-        a disclosed pair is what this decision removed."""
-        import inspect
+    def test_the_operator_is_shown_the_old_and_new_rate(self, mgr, adopt):
+        mgr.register_wire("bot_eth", "bot_btc", 20.0)
+        stub = adopt(ETH_TO_BTC)
+        assert "ALREADY EXIST" in stub.question_text, stub.question_text
+        assert "20.00% -> 50.00%" in stub.question_text, stub.question_text
 
-        src = inspect.getsource(MainWindow._adopt_topology_proposal)
-        assert "skip_pairs" not in src
+    def test_a_fresh_wire_discloses_no_change(self, adopt):
+        """Negative control: the disclosure appears only where a rate is
+        replaced."""
+        stub = adopt(ETH_TO_BTC)
+        assert "ALREADY EXIST" not in stub.question_text, stub.question_text
 
-    def test_the_change_is_disclosed_before_it_is_applied(self):
-        """The whole ordering: disclose old -> new, ask, snapshot, then
-        mutate. Matching on the CALL, not the name, since the rationale
-        comment above also mentions the helper."""
-        import inspect
 
-        src = inspect.getsource(MainWindow._adopt_topology_proposal)
-        assert "ALREADY EXIST" in src
-        disclose = src.index("Adopting CHANGES them")
-        confirm = src.index("QMessageBox.question")
-        snapshot = src.index("self._snapshot_wires_for_adopt(")
-        assert disclose < confirm < snapshot, (
-            f"expected disclose < confirm < snapshot, got "
-            f"{disclose} / {confirm} / {snapshot}"
-        )
+class TestTheOrderIsDiscloseConfirmSnapshotApply:
+    def test_the_snapshot_is_taken_after_the_confirm(self, mgr, adopt):
+        """Disclosure, then the operator's answer, then the rollback file, then the
+        wires; a snapshot taken first would record a state nobody had agreed to."""
+        mgr.register_wire("bot_eth", "bot_btc", 20.0)
+        stub = adopt(ETH_TO_BTC)
+        assert stub.moments == ["confirm", "snapshot"], stub.moments
 
-    def test_a_rollback_path_exists(self):
-        """Disclosure without recovery would just be a warning."""
-        import inspect
+    def test_a_cancel_snapshots_nothing_and_draws_nothing(self, mgr, adopt):
+        """Positive control for the order above: nothing after the confirm runs
+        when the operator answers Cancel."""
+        mgr.register_wire("bot_eth", "bot_btc", 20.0)
+        stub = adopt(ETH_TO_BTC, answer_ok=False)
+        assert stub.moments == ["confirm"], stub.moments
+        assert stub._bus.emitted == []
+        assert mgr.get_outgoing_wires("bot_eth")["bot_btc"] == 20.0
 
-        src = inspect.getsource(MainWindow._adopt_topology_proposal)
-        assert "self._snapshot_wires_for_adopt(" in src
+    def test_the_snapshot_file_holds_the_rate_the_adopt_replaced(
+        self, mgr, adopt, tmp_path
+    ):
+        """The rollback path is a real file carrying the pre-adopt wires."""
+        mgr.register_wire("bot_eth", "bot_btc", 20.0)
+        stub = adopt(ETH_TO_BTC)
+        saved = sorted((tmp_path / "topology_snapshots").glob("*.json"))
+        assert len(saved) == 1, saved
+        body = json.loads(saved[0].read_text(encoding="utf-8"))
+        pairs = {(w["source_id"], w["target_id"], w["pct"]) for w in body["wires"]}
+        assert pairs == {("bot_eth", "bot_btc", 20.0)}
+        assert stub._bus.emitted, "the adopt stopped before drawing the wire"
 
-    def test_the_binding_is_validated_before_use(self):
-        """Structural pin on defect 1 -- the misrouting guard must sit
-        between the wizard and the asset_to_bot assignment."""
-        import inspect
 
-        src = inspect.getsource(MainWindow._adopt_topology_proposal)
-        assert "made_base" in src
-        assert src.index("made_base != asset") < src.index(
-            "asset_to_bot[asset] = chosen"
-        )
+NEW_ETH = {
+    "title": "new eth bot",
+    "bots": [
+        {"asset": "ETH", "suggested_target_usd": 25.0},
+        {"asset": "BTC", "existing_bot_id": "bot_btc"},
+    ],
+    "wires": [{"source_asset": "ETH", "target_asset": "BTC", "pct": 50.0}],
+}
+
+
+SOL_BOT = [{"bot_id": "made_sol", "symbol": "SOL/USD"}]
+ETH_BOT = [{"bot_id": "made_eth", "symbol": "ETH/USD"}]
+
+
+class TestTheNewBotsAssetIsValidatedBeforeItIsBound:
+    def test_a_wrong_asset_draws_no_wire(self, mgr, adopt):
+        """The wizard makes a SOL bot for an ETH proposal; binding it would route
+        this topology's wires out of the wrong asset."""
+        stub = adopt(NEW_ETH, wizard_makes=SOL_BOT)
+        assert stub._bus.emitted == []
+        assert mgr.get_outgoing_wires("made_sol") == {}
+        assert "ABORTED" in stub._status_log.text()
+
+    def test_the_matching_asset_is_bound_and_wired(self, adopt):
+        """Positive control: the same run with an ETH bot draws the wire, so the
+        refusal above is the guard and not a broken harness."""
+        stub = adopt(NEW_ETH, wizard_makes=ETH_BOT)
+        assert stub._bus.emitted == [
+            {"source_id": "made_eth", "target_id": "bot_btc", "pct": 50.0}
+        ]
+
+    def test_the_wrongly_made_bot_is_named_and_left_in_place(self, adopt):
+        stub = adopt(NEW_ETH, wizard_makes=SOL_BOT)
+        assert "made_sol" in stub._status_log.text()
+        assert [b["bot_id"] for b in stub._bot_manager.bots] == ["made_sol"]
+
+    def test_a_cancelled_wizard_aborts_and_draws_nothing(self, adopt):
+        """A wizard that creates no bot ends the adopt before any wire."""
+        stub = adopt(NEW_ETH, wizard_makes=[])
+        assert stub._bus.emitted == []
+        assert "wizard cancelled" in stub._status_log.text()

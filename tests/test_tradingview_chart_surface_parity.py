@@ -41,12 +41,6 @@ from tests.fixtures.surface_pictures import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-SHIPPED_PATH = REPO_ROOT / "src/gui/tradingview_chart.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/tradingview_chart_surface.py"
-BRIDGE_PATH = REPO_ROOT / "src/core/desktop_bridge.py"
-WIRED_CONNECT_PATH = REPO_ROOT / "src/gui/main_tabs/history_tab.py"
-WIRED_TIMER_PATH = REPO_ROOT / "src/gui/history_tab.py"
-WIRED_BUS_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
 
 METHOD_NAME = "tradingview.chart"
 
@@ -689,24 +683,59 @@ def test_the_surface_functions_are_reachable_and_described():
 
 
 def test_the_connect_sites_match_the_actions():
-    """A signal wiring appeared on one side and not the other."""
-    shipped_text = SHIPPED_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert shipped_text.count(".connect(") == 0
-    assert surface_text.count(".connect(") == 0
-    assert len(surface.ACTIONS) == shipped_text.count(".connect(")
-    assert len(surface.ACTIONS) == surface_text.count(".connect(")
-    wired = WIRED_CONNECT_PATH.read_text(encoding="utf-8")
-    assert wired.count(".connect(") > 0, "the counter cannot report a wiring"
+    """A signal wiring appeared on one side and not the other.
+
+    ``connections`` counts what building each side really wires, so a signal
+    connected through a helper or a loop is counted the same as a literal one.
+    """
+    from tests.fixtures.qt_wiring_counts import connections
+
+    with recording_web_view():
+        shipped_wirings, chart = connections(old_chart)
+    assert chart is not None
+    assert shipped_wirings == 0, shipped_wirings
+
+    surface_wirings, payload = connections(surface.build_view_model)
+    assert payload
+    assert surface_wirings == 0, surface_wirings
+    assert len(surface.ACTIONS) == shipped_wirings
 
 
-def test_the_chart_declares_no_timer_and_no_bus_topic():
+def test_the_connection_counter_can_report_a_wiring():
+    """POSITIVE CONTROL for ``connections``. ``_Wired`` connects one signal while
+    it is built and is counted as one."""
+    from PySide6.QtCore import QObject, Signal
+
+    from tests.fixtures.qt_wiring_counts import connections
+
+    app()
+
+    class _Wired(QObject):
+        fired = Signal()
+
+        def __init__(self):
+            super().__init__()
+            self.fired.connect(lambda: None)
+
+    wired, built = connections(_Wired)
+    HELD.append(built)
+    assert wired == 1, "the counter cannot report a wiring"
+
+
+def test_the_chart_starts_no_timer_and_subscribes_to_no_topic():
     """The surface gained behaviour the chart it replaces never had."""
-    from src.gui.main_tabs import console_tab_surface as neighbour
+    from tests.fixtures.qt_wiring_counts import bus_subscriptions, timer_starts
 
-    shipped_text = SHIPPED_PATH.read_text(encoding="utf-8")
-    assert shipped_text.count("QTimer") == 0
-    assert shipped_text.count(".subscribe(") == 0
+    with recording_web_view():
+        started, chart = timer_starts(old_chart)
+    assert chart is not None
+    assert started == 0, started
+
+    with recording_web_view():
+        subscribed, chart = bus_subscriptions(old_chart)
+    assert chart is not None
+    assert subscribed == 0, subscribed
+
     assert surface.TIMERS == {}
     assert surface.TIMER_DELAYS_MS == ()
     assert surface.BUS_TOPICS == ()
@@ -717,11 +746,23 @@ def test_the_chart_declares_no_timer_and_no_bus_topic():
     assert payload["bus_topics"] == []
     assert payload["skin"] == {}
     assert payload["actions"] == {}
-    timer_neighbour = WIRED_TIMER_PATH.read_text(encoding="utf-8")
-    bus_neighbour = WIRED_BUS_PATH.read_text(encoding="utf-8")
-    assert timer_neighbour.count("QTimer") > 0, "the timer counter cannot report"
-    assert bus_neighbour.count(".subscribe(") > 0, "the bus counter cannot report"
+
+
+def test_the_timer_and_bus_counters_can_report():
+    """POSITIVE CONTROL for the two zeros above. The console surface declares
+    timers, and a neighbour that subscribes is seen subscribing."""
+    from tests.fixtures.qt_wiring_counts import bus_subscriptions
+    from src.core.event_bus import get_event_bus
+    from src.gui.main_tabs import console_tab_surface as neighbour
+
     assert len(neighbour.TIMERS) > 0, "the surface timer counter cannot report"
+
+    def _subscribe_once():
+        return get_event_bus().subscribe("test.qt_wiring.probe", lambda _e: None)
+
+    seen, off = bus_subscriptions(_subscribe_once)
+    off()
+    assert seen == 1, seen
 
 
 def test_the_chart_builds_whatever_the_module_names_as_the_browser():
@@ -1846,14 +1887,15 @@ def test_the_bridge_registers_the_tradingview_chart_method():
     assert len(result["themes"]) == THEME_TOTAL
 
 
-def test_the_bridge_registration_is_two_lines_and_no_more():
-    """The bridge grew more than the one registration this unit adds."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    assert text.count("tradingview_chart_surface") == 3
-    assert (
-        "tradingview_chart_surface.METHOD: tradingview_chart_surface.view_model" in text
-    )
-    assert "tradingview_chart_surface,\n" in text
+def test_the_bridge_registers_this_surface_once_and_by_identity():
+    """The registry maps ``surface.METHOD`` to ``surface.view_model`` itself, and
+    to nothing else."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert registry[surface.METHOD] is surface.view_model
+    mine = [m for m, fn in registry.items() if fn is surface.view_model]
+    assert mine == [surface.METHOD], mine
 
 
 def test_the_bridge_answers_with_no_parameters_at_all():

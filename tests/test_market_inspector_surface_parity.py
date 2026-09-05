@@ -18,7 +18,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -51,31 +50,22 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 SCREEN_PATH = REPO_ROOT / "src/gui/market_inspector.py"
 SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/market_inspector_surface.py"
-RIGHT_PANE_PATH = REPO_ROOT / "src/gui/market_inspector_topologies.py"
-WIRING_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-SIGNAL_CONTROL_PATH = REPO_ROOT / "src/gui/launcher.py"
-TIMER_CONTROL_PATH = REPO_ROOT / "src/gui/history_tab.py"
-TIMER_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/main_tabs/history_tab.py"
-BUS_CONTROL_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
-ELEMENT_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/dashboard_stat_card.py"
-NESTED_CLASS_CONTROL_PATH = REPO_ROOT / "src/gui/stock_main_window.py"
 
 PIXEL_SIZE = (1100, 760)
 
 SHARED_INSPECTOR_NAME = "_GLOBAL_INSPECTOR"
 
-# Counts measured off the file by the same counter that is pointed at a
-# neighbour which really has one.
-SCREEN_CONNECT_SITES = 3
+# Counts read off a built screen, not off the file. The pane rows are the same
+# screen with `src/gui/market_inspector_topologies.py` seated in it.
+SCREEN_CONNECTIONS = 2
+SCREEN_WITH_PANE_CONNECTIONS = 4
+SCREEN_ELEMENTS = 48
+SCREEN_WITH_PANE_ELEMENTS = 59
 SCREEN_TIMER_BUILDS = 0
 SCREEN_BUS_SITES = 0
 SCREEN_SIGNAL_BUILDS = 0
-SCREEN_ELEMENT_BUILDS = 32
-CONTROL_CONNECT_SITES = 1
-CONTROL_TIMER_BUILDS = 1
-CONTROL_BUS_SITES = 2
-CONTROL_SIGNAL_BUILDS = 3
-CONTROL_ELEMENT_BUILDS = 3
+SURFACE_ACTION_TOTAL = 3
+STAT_CARD_ELEMENTS = 2
 
 # Invented values. No symbol, score or correlation below is a market
 # reading; all of them are written for this file.
@@ -1699,108 +1689,122 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
     both_sides_agree(drive(["happy"]), "after the value was put back")
 
 
-def test_the_shipped_file_is_not_named_by_the_surface():
-    """The surface reaches into the screen it replaces."""
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    tree = ast.parse(text)
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imported.add(node.module or "")
-            imported.update(alias.name for alias in node.names)
-    assert not any("gui.market_inspector" in name for name in imported), imported
-    assert "market_inspector_topologies" not in imported, imported
+#: Refuses one module prefix at the meta path, then imports another and reports.
+BLOCKED_IMPORT_PROBE = """
+import importlib.abc
+import json
+import sys
 
 
-# Counting what the shipped file wires, waits on, and builds
+class _Refuse(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        for blocked in %r:
+            if name == blocked or name.startswith(blocked + '.'):
+                raise ImportError('blocked in this probe: ' + name)
+        return None
 
-WIDGET_NAMES_BUILT = (
-    "QWidget",
-    "QLabel",
-    "QPushButton",
-    "QTableWidget",
-    "QTableWidgetItem",
-    "QGroupBox",
-    "QFrame",
-    "QScrollArea",
-    "QLineEdit",
-    "QComboBox",
-    "QCheckBox",
-    "QSpinBox",
-    "QTextEdit",
-    "QProgressBar",
-    "QSplitter",
-    "QDialog",
+
+sys.meta_path.insert(0, _Refuse())
+answer = {'imported': False, 'error': ''}
+try:
+    __import__(%r)
+    answer['imported'] = True
+except Exception as exc:
+    answer['error'] = '%%s: %%s' %% (type(exc).__name__, exc)
+answer['loaded'] = sorted(
+    m for m in sys.modules if any(m.startswith(b) for b in %r))
+print(json.dumps(answer))
+"""
+
+
+def blocked_import(blocked, module):
+    """Import ``module`` in a fresh process with ``blocked`` refused, and report."""
+    return run_script(BLOCKED_IMPORT_PROBE % (blocked, module, blocked))
+
+
+SHIPPED_SCREEN_MODULES = (
+    "src.gui.market_inspector",
+    "src.gui.market_inspector_topologies",
 )
+SURFACE_MODULE = "src.gui.main_tabs.market_inspector_surface"
 
 
-def count_text(path, needle):
-    """How many times one wiring call appears in one file."""
-    return path.read_text(encoding="utf-8").count(needle)
+def test_the_shipped_file_is_not_named_by_the_surface():
+    """The surface reaches into the screen it replaces.
 
-
-def count_built(path, names):
-    """How many times one file constructs any of `names`."""
-    text = path.read_text(encoding="utf-8")
-    return sum(len(re.findall(r"\b%s\s*\(" % name, text)) for name in names)
-
-
-def declared_classes(path):
-    """Every class one file declares, wherever it is declared.
-
-    A class inside an ``if``, inside a method or inside another class is
-    still a class, so the whole tree is walked rather than its top level.
+    ``blocked_import`` refuses both entries of ``SHIPPED_SCREEN_MODULES`` at the
+    meta path, so a transitive import through any other module is refused too.
     """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+    answered = blocked_import(SHIPPED_SCREEN_MODULES, SURFACE_MODULE)
+    assert answered["imported"] is True, answered
+    assert answered["loaded"] == [], answered
 
 
-def declared_widget_classes(path):
-    """Every class one file declares that ends up being a screen element."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-    found: set = set()
-    growing = True
-    while growing:
-        growing = False
-        for node in classes:
-            if node.name in found:
-                continue
-            for base in node.bases:
-                name = (
-                    base.id if isinstance(base, ast.Name) else getattr(base, "attr", "")
-                )
-                if name.startswith("Q") or name in found:
-                    found.add(node.name)
-                    growing = True
-                    break
-    return found
+def test_the_import_probe_refuses_the_shipped_screen():
+    """POSITIVE CONTROL. ``blocked_import`` reports ``market_inspector`` as
+    unimportable, so the green above is a fact about the surface."""
+    answered = blocked_import(SHIPPED_SCREEN_MODULES, SHIPPED_SCREEN_MODULES[0])
+    assert answered["imported"] is False, answered
+    assert "blocked in this probe" in answered["error"], answered
 
 
-def count_elements(path):
-    """How many screen elements one file builds, its own classes included."""
-    return count_built(path, WIDGET_NAMES_BUILT) + len(declared_widget_classes(path))
+# Counting what each side wires, waits on, and builds, off the built object
 
 
-SURFACE_CONNECT_SITES = 1
+def classes_of(module):
+    """Every class ``module`` declares itself, by name."""
+    import inspect
+
+    return {
+        name
+        for name, value in vars(module).items()
+        if inspect.isclass(value)
+        and getattr(value, "__module__", "") == module.__name__
+    }
 
 
-def test_the_screen_wires_three_signals_and_the_surface_names_three_actions():
+def test_the_screen_wires_two_signals_and_the_pane_wires_two_more():
     """A wiring appeared on one side and not the other.
 
-    The surface holds one ``.connect(`` of its own. It is the hand-off
-    the shipped screen makes to whatever right pane it was given, and
-    the surface makes the same hand-off to whatever it is given. The
-    surface declares no signal and builds no Qt object.
+    ``connections`` counts what building the screen really wires, so a signal
+    connected through a helper or a loop is counted the same as a literal one.
     """
-    assert count_text(SCREEN_PATH, ".connect(") == SCREEN_CONNECT_SITES == 3
-    assert count_text(SURFACE_PATH, ".connect(") == SURFACE_CONNECT_SITES == 1
-    assert count_text(WIRING_CONTROL_PATH, ".connect(") == CONTROL_CONNECT_SITES == 1
-    assert len(surface.ACTIONS) == count_text(SCREEN_PATH, ".connect(")
+    from tests.fixtures.qt_wiring_counts import connections
+
+    app()
+    alone, screen = connections(lambda: old_screen(right_pane=False))
+    assert screen is not None
+    assert alone == SCREEN_CONNECTIONS == 2, alone
+
+    with_pane, whole = connections(old_screen)
+    assert whole is not None
+    assert with_pane == SCREEN_WITH_PANE_CONNECTIONS == 4, with_pane
+
+
+def test_the_surface_wires_nothing_and_still_names_every_action():
+    """The surface builds no Qt object, so it connects nothing, and each entry of
+    ``ACTIONS`` still names a real ``MarketInspectorScreenModel`` method."""
+    from tests.fixtures.qt_wiring_counts import connections
+
+    app()
+    surface_wired, model = connections(new_screen)
+    assert model is not None
+    assert surface_wired == 0, surface_wired
+    assert len(surface.ACTIONS) == SURFACE_ACTION_TOTAL == 3
     for name in surface.ACTIONS.values():
         assert callable(getattr(surface.MarketInspectorScreenModel, name)), name
+
+
+def test_the_connection_counter_can_report_a_wiring():
+    """POSITIVE CONTROL for ``connections``. ``PrivacyDot`` wires one signal while
+    it is built and is counted as one."""
+    from tests.fixtures.qt_wiring_counts import connections
+    from src.gui.widgets.privacy_dot import PrivacyDot
+
+    app()
+    wired, dot = connections(lambda: PrivacyDot("market_inspector.probe"))
+    hold(dot)
+    assert wired == 1, wired
 
 
 def test_the_screen_starts_no_timer_of_its_own_and_the_pane_starts_one():
@@ -1813,15 +1817,6 @@ def test_the_screen_starts_no_timer_of_its_own_and_the_pane_starts_one():
     from PySide6.QtCore import QObject, QTimer
 
     app()
-    timer_names = ("QTimer",)
-    assert count_built(SCREEN_PATH, timer_names) == SCREEN_TIMER_BUILDS == 0
-    assert count_built(SURFACE_PATH, timer_names) == 0
-    assert count_built(TIMER_CONTROL_PATH, timer_names) == CONTROL_TIMER_BUILDS == 1
-    assert count_built(TIMER_NEIGHBOUR_PATH, timer_names) == 0
-    assert count_built(RIGHT_PANE_PATH, timer_names) == 1
-    assert count_text(RIGHT_PANE_PATH, "QTimer") > count_built(
-        RIGHT_PANE_PATH, timer_names
-    )
     started: list = []
     first_start = QObject.startTimer
     first_timer = QTimer.start
@@ -1863,51 +1858,91 @@ def test_the_screen_starts_no_timer_of_its_own_and_the_pane_starts_one():
     assert len(surface.TIMERS) == SCREEN_TIMER_BUILDS
 
 
+def declared_signals(owner):
+    """Every ``Signal`` a class declares, by name."""
+    from PySide6.QtCore import Signal
+
+    return {n for n, v in vars(owner).items() if isinstance(v, Signal)}
+
+
 def test_the_screen_declares_no_signal_of_its_own():
     """A signal declaration appeared on one side and not the other."""
-    signal_names = ("Signal",)
-    assert count_built(SCREEN_PATH, signal_names) == SCREEN_SIGNAL_BUILDS == 0
-    assert count_built(SURFACE_PATH, signal_names) == 0
-    assert count_built(SIGNAL_CONTROL_PATH, signal_names) == CONTROL_SIGNAL_BUILDS == 3
-    assert count_text(SIGNAL_CONTROL_PATH, "Signal") > CONTROL_SIGNAL_BUILDS
+    app()
+    assert declared_signals(shipped.MarketInspectorTab) == set()
+    assert len(declared_signals(shipped.MarketInspectorTab)) == SCREEN_SIGNAL_BUILDS
+    assert declared_signals(surface.MarketInspectorScreenModel) == set()
+
+
+def test_the_signal_reader_can_report_a_declaration():
+    """POSITIVE CONTROL. ``ModeCard`` declares a signal, so the empty sets above
+    are facts about ``MarketInspectorTab``."""
+    from src.gui.launcher import ModeCard
+
+    app()
+    assert declared_signals(ModeCard), "the signal reader cannot report"
 
 
 def test_the_screen_subscribes_to_no_bus_topic():
     """A bus wiring appeared on one side and not the other."""
-    assert count_text(SCREEN_PATH, ".subscribe(") == SCREEN_BUS_SITES == 0
-    assert count_text(SURFACE_PATH, ".subscribe(") == 0
-    assert count_text(BUS_CONTROL_PATH, ".subscribe(") == CONTROL_BUS_SITES == 2
+    from tests.fixtures.qt_wiring_counts import bus_subscriptions
+
+    app()
+    subscribed, screen = bus_subscriptions(old_screen)
+    assert screen is not None
+    assert subscribed == SCREEN_BUS_SITES == 0, subscribed
+
+    surface_subscribed, model = bus_subscriptions(new_screen)
+    assert model is not None
+    assert surface_subscribed == 0, surface_subscribed
     assert surface.BUS_TOPICS == ()
-    assert len(surface.BUS_TOPICS) == count_text(SCREEN_PATH, ".subscribe(")
 
 
-def test_the_screen_elements_the_file_builds_are_counted():
+def test_the_bus_counter_can_report_a_subscription():
+    """POSITIVE CONTROL for ``bus_subscriptions``. ``_subscribe_once`` takes one
+    topic and is counted as one."""
+    from tests.fixtures.qt_wiring_counts import bus_subscriptions
+    from src.core.event_bus import get_event_bus
+
+    def _subscribe_once():
+        return get_event_bus().subscribe("market_inspector.probe", lambda _e: None)
+
+    seen, off = bus_subscriptions(_subscribe_once)
+    off()
+    assert seen == 1, seen
+
+
+def screen_elements(widget):
+    """Every Qt child widget one built screen carries."""
+    from PySide6.QtWidgets import QWidget
+
+    return widget.findChildren(QWidget)
+
+
+def test_the_screen_builds_the_elements_it_is_counted_for():
     """The element counter cannot report, so its number means nothing."""
-    assert count_elements(SCREEN_PATH) == SCREEN_ELEMENT_BUILDS == 32
-    assert count_elements(ELEMENT_CONTROL_PATH) == CONTROL_ELEMENT_BUILDS == 3
-    assert count_built(ELEMENT_CONTROL_PATH, WIDGET_NAMES_BUILT) == 2
-    assert declared_widget_classes(ELEMENT_CONTROL_PATH) == {"StatCard"}
-    assert declared_widget_classes(SCREEN_PATH) == {"MarketInspectorTab"}
-    assert count_built(SCREEN_PATH, WIDGET_NAMES_BUILT) == 31
-    assert count_elements(SURFACE_PATH) == 0
-    assert declared_widget_classes(SURFACE_PATH) == set()
+    app()
+    alone = screen_elements(old_screen(right_pane=False))
+    assert len(alone) == SCREEN_ELEMENTS, len(alone)
+    whole = screen_elements(old_screen())
+    assert len(whole) == SCREEN_WITH_PANE_ELEMENTS, len(whole)
 
 
-def test_the_class_counter_finds_a_class_declared_inside_another():
-    """The class counter reads the top level only, so a nested class is lost."""
-    found = declared_classes(NESTED_CLASS_CONTROL_PATH)
-    assert "_StockLogHandler" in found, sorted(found)
-    assert "StockMainWindow" in found, sorted(found)
-    assert len(found) == 4, sorted(found)
-    tree = ast.parse(NESTED_CLASS_CONTROL_PATH.read_text(encoding="utf-8"))
-    top_level = {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
-    assert top_level == set(), top_level
-    assert declared_classes(SCREEN_PATH) == {"MarketInspectorTab"}
-    assert {
-        node.name
-        for node in ast.parse(SCREEN_PATH.read_text(encoding="utf-8")).body
-        if isinstance(node, ast.ClassDef)
-    } == set()
+def test_the_surface_builds_no_screen_element_at_all():
+    """The surface answers with a model, and a model is not a Qt widget."""
+    from PySide6.QtWidgets import QWidget
+
+    app()
+    assert not isinstance(new_screen(), QWidget)
+
+
+def test_the_element_counter_can_report_a_child():
+    """POSITIVE CONTROL for ``screen_elements``. ``StatCard`` carries children and
+    is counted for them."""
+    from src.gui.widgets.dashboard_stat_card import StatCard
+
+    app()
+    card = hold(StatCard("label", "value"))
+    assert len(screen_elements(card)) == STAT_CARD_ELEMENTS, len(screen_elements(card))
 
 
 # Every class, function and method has a counterpart
@@ -2134,7 +2169,7 @@ def test_every_shipped_class_function_and_method_has_a_counterpart():
     assert members(surface.TopologyPaneModel) == PANE_MODEL_MEMBERS, sorted(
         members(surface.TopologyPaneModel) ^ PANE_MODEL_MEMBERS
     )
-    assert declared_classes(SCREEN_PATH) == set(CLASS_MAP)
+    assert classes_of(shipped) == set(CLASS_MAP)
 
 
 def test_a_member_added_or_lost_on_either_side_is_reported():
@@ -3316,21 +3351,26 @@ def test_the_bridge_registers_the_market_inspector_method():
     assert answer["result"]["refresh_label"] == surface.REFRESH_LABEL
 
 
-def test_the_bridge_import_list_is_alphabetical():
-    """The bridge import list drifted out of order."""
+def test_the_bridge_registers_this_surface_once_and_by_identity():
+    """The registry maps ``surface.METHOD`` to ``surface.view_model`` itself, and
+    to nothing else."""
     from src.core import desktop_bridge
 
-    source = Path(desktop_bridge.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    names: list = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "src.gui.main_tabs":
-            names = [alias.name for alias in node.names]
-    assert names == sorted(names), names
-    assert "market_inspector_surface" in names
-    assert names.index("market_inspector_surface") + 1 == names.index(
-        "market_inspector_tab_surface"
-    )
+    registry = desktop_bridge.build_registry()
+    assert registry[surface.METHOD] is surface.view_model
+    mine = [m for m, fn in registry.items() if fn is surface.view_model]
+    assert mine == [surface.METHOD], mine
+
+
+def test_the_bridge_also_registers_the_per_bot_surface():
+    """The per-bot pane answers on its own method, so the two surfaces are two
+    entries and not one."""
+    from src.core import desktop_bridge
+    from src.gui.main_tabs import market_inspector_tab_surface as per_bot
+
+    registry = desktop_bridge.build_registry()
+    assert registry[per_bot.METHOD] is per_bot.view_model
+    assert per_bot.METHOD != surface.METHOD
 
 
 def test_the_bridge_keeps_the_screen_until_a_reset():
@@ -3561,56 +3601,88 @@ def test_the_shipped_file_builds_no_screen_without_qt():
     assert answered["has_screen"] is False, answered
     assert answered["has_per_bot"] is False, answered
     assert answered["has_helper"] is True, answered
-    assert "_HAS_QT" in SCREEN_PATH.read_text(encoding="utf-8")
 
 
 def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    screen_imports = {
-        (node.module or "")
-        for node in ast.walk(ast.parse(SCREEN_PATH.read_text(encoding="utf-8")))
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in screen_imports), screen_imports
+    """The surface grew an import that pulls Qt into the backend.
+
+    ``blocked_import`` refuses ``PySide6`` and ``shiboken6`` at the meta path, so
+    a transitive import through any other module is refused too.
+    """
+    answered = blocked_import(("PySide6", "shiboken6"), SURFACE_MODULE)
+    assert answered["imported"] is True, answered
+    assert answered["loaded"] == [], answered
+
+
+def test_the_qt_probe_refuses_a_module_that_needs_qt():
+    """POSITIVE CONTROL. ``blocked_import`` reports ``bot_status_table`` as
+    unimportable, so the green above is a fact about the surface."""
+    answered = blocked_import(
+        ("PySide6", "shiboken6"), "src.gui.widgets.bot_status_table"
+    )
+    assert answered["imported"] is False, answered
+    assert "blocked in this probe" in answered["error"], answered
+
+
+#: Makes every file, socket and browser reach raise, then drives the surface.
+NO_IO_PROBE = """
+import builtins
+import json
+import pathlib
+import socket
+import webbrowser
+
+
+class _Refused(Exception):
+    pass
+
+
+def _refuse(*a, **kw):
+    raise _Refused('the surface reached outside the process')
+
+
+builtins.open = _refuse
+socket.socket = _refuse
+webbrowser.open = _refuse
+pathlib.Path.home = staticmethod(_refuse)
+pathlib.Path.read_text = _refuse
+pathlib.Path.write_text = _refuse
+pathlib.Path.mkdir = _refuse
+
+from src.gui.main_tabs import market_inspector_surface as s
+
+answer = {'reached_out': False, 'rows': None, 'error': ''}
+try:
+    payload = s.view_model({'reset': True})
+    answer['rows'] = len(payload['signal_rows'])
+except _Refused as exc:
+    answer['reached_out'] = True
+    answer['error'] = str(exc)
+print(json.dumps(answer))
+"""
 
 
 def test_the_surface_opens_no_file_and_no_socket():
-    """The surface reached for a file, a network address or a browser."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    called = {
-        node.func.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert "open" not in called
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    for forbidden in (
-        "read_text",
-        "write_text",
-        "read_bytes",
-        "write_bytes",
-        "mkdir",
-        "urlopen",
-        "socket",
-        "listen",
-    ):
-        assert forbidden not in reached, forbidden
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert "webbrowser" not in text
-    assert "acervator_logs" not in text
-    assert "Path.home" not in text
+    """The surface reached for a file, a network address or a browser.
+
+    ``NO_IO_PROBE`` makes each of those raise before the surface is imported, so
+    a reach through any helper is caught as well as a direct one.
+    """
+    answered = run_script(NO_IO_PROBE)
+    assert answered["reached_out"] is False, answered
+    assert answered["rows"] == 0, answered
+
+
+def test_the_no_io_probe_catches_a_reach():
+    """POSITIVE CONTROL for ``NO_IO_PROBE``. The same refusals, with one
+    deliberate ``open`` after them, are reported as a reach."""
+    answered = run_script(
+        NO_IO_PROBE.replace(
+            "    payload = s.view_model({'reset': True})",
+            "    open('planted.txt')\n    payload = s.view_model({'reset': True})",
+        )
+    )
+    assert answered["reached_out"] is True, answered
 
 
 SETTINGS_PROBE = """

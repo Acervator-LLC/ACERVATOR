@@ -1,26 +1,10 @@
-"""Issue #128 R1 moved 16 modules out of `src/gui/`. Two things no other
-test in this repository can see.
+"""``__file__``-relative path maths and function-local imports across ``src``.
 
-WHY THIS FILE EXISTS
-====================
-1. `__file__`-RELATIVE PATH MATH. `nuclear_candle_source.py` and
-   `populate_nuclear_cache.py` each walk up from `__file__` to the repo
-   root by a COUNT of parents. The move made them one directory
-   shallower, so the count had to change from 3 to 2. Measured: with the
-   old count `_default_cache_dir()` returned
-   `.../Temp/sadp/RAIntSimBat/data/cache` instead of
-   `.../Temp/r1/sadp/...` -- one level above the repo, silently, with no
-   exception. `populate_nuclear_cache.py` is at 0% coverage from the
-   whole suite, so nothing else would have caught it.
-
-2. FUNCTION-LOCAL IMPORTS. A deferred import fails at RUNTIME, not at
-   collection. Measured on 2026-08-26: `fleet_replay_panel.py:556` was
-   deliberately broken back to its pre-move spelling and
-   `test_fleet_replay_panel_state_machine.py` still reported 25 passed.
-   Collection cannot see a defect inside a method body. The walker here
-   grades deferred imports the same as top-level ones.
-
-Both tests carry a control: blind the mechanism and each goes red.
+``_default_cache_dir`` and ``_load_raintsimbat`` walk up from ``__file__`` by a
+count of parents, so a module that moves directory answers with a path one level
+off and raises nothing. ``test_every_import_under_src_resolves`` resolves every
+import ``_imports_of`` finds, function-local ones included, which collection
+never reaches. ``test_the_walker_reads_a_deferred_import`` is its control.
 """
 
 from __future__ import annotations
@@ -57,11 +41,16 @@ def test_populate_nuclear_cache_still_finds_the_repo_root() -> None:
 
 
 def _imports_of(path: Path) -> list[tuple[str, int]]:
-    """Every import in a file, function-local ones included, resolved."""
-    rel = path.resolve().relative_to(REPO_ROOT).with_suffix("")
-    pkg = rel.parts if path.name == "__init__.py" else rel.parts[:-1]
-    if path.name == "__init__.py":
-        pkg = rel.parts[:-1]
+    """Every import in a file, function-local ones included, resolved.
+
+    A file outside ``REPO_ROOT`` carries no package, so ``pkg`` is empty and only
+    its absolute imports resolve.
+    """
+    try:
+        rel = path.resolve().relative_to(REPO_ROOT).with_suffix("")
+        pkg: tuple[str, ...] = rel.parts[:-1]
+    except ValueError:
+        pkg = ()
     found: list[tuple[str, int]] = []
     for node in ast.walk(ast.parse(path.read_text(encoding="utf-8", errors="replace"))):
         if isinstance(node, ast.Import):
@@ -109,22 +98,28 @@ def test_every_import_under_src_resolves() -> None:
     assert broken == KNOWN_UNRESOLVABLE, f"the known finding changed: {sorted(broken)}"
 
 
-def test_the_walker_reads_deferred_imports() -> None:
-    """CONTROL. `fleet_replay_panel.py:556` sits inside a method.
+def test_the_walker_reads_a_deferred_import(tmp_path) -> None:
+    """CONTROL. ``_imports_of`` finds an import written inside a function body,
+    which is where a deferred import lives and where collection cannot see it."""
+    module = tmp_path / "deferred_importer.py"
+    module.write_text(
+        "import json\n"
+        "\n"
+        "\n"
+        "def go():\n"
+        "    from src.trading.stone_tablets import get_registry\n"
+        "\n"
+        "    return json, get_registry\n",
+        encoding="utf-8",
+    )
+    walked = {name for name, _line in _imports_of(module)}
+    assert "src.trading.stone_tablets" in walked, sorted(walked)
+    assert "json" in walked, sorted(walked)
 
-    If the walker only read module-level imports these 2 names would be
-    absent and the test above would grade nothing.
-    """
-    panel = REPO_ROOT / "src/gui/simulator_tab/fleet/fleet_replay_panel.py"
-    top_level = {
-        node.module
-        for node in ast.parse(panel.read_text(encoding="utf-8")).body
-        if isinstance(node, ast.ImportFrom) and node.module
-    }
-    walked = {module for module, _ in _imports_of(panel)}
-    for deferred in (
-        "src.simulator.fleet.fleet_replay_controller",
-        "src.exchange.history_helpers",
-    ):
-        assert deferred in walked, deferred
-        assert deferred not in top_level, f"{deferred} is no longer deferred"
+
+def test_the_walker_reports_nothing_for_a_module_with_no_imports(tmp_path) -> None:
+    """NEGATIVE CONTROL. ``_imports_of`` reads the file it was handed and answers
+    with an empty list when that file imports nothing."""
+    module = tmp_path / "importless.py"
+    module.write_text("VALUE = 1\n", encoding="utf-8")
+    assert _imports_of(module) == []
