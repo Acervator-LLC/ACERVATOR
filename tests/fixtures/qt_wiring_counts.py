@@ -138,3 +138,63 @@ def qt_free(module, attribute=None):
         "print(json.dumps(out))\n"
     )
     return run_probe(probe)
+
+
+def io_watched(module, drive=""):
+    """Import ``module`` and run ``drive`` with file and socket calls trapped.
+
+    ``touched`` names every trap that fired, so an empty list is a run
+    that reached no file, socket, address or browser.
+    """
+    probe = (
+        "import builtins, importlib, json, pathlib, socket, ssl\n"
+        "import urllib.request, webbrowser\n"
+        "touched = []\n"
+        "def trap(name, real):\n"
+        "    def fire(*a, **k):\n"
+        "        touched.append(name)\n"
+        "        return real(*a, **k)\n"
+        "    return fire\n"
+        "builtins.open = trap('open', builtins.open)\n"
+        "socket.socket = trap('socket', socket.socket)\n"
+        "socket.create_connection = trap('create_connection',"
+        " socket.create_connection)\n"
+        "ssl.create_default_context = trap('ssl', ssl.create_default_context)\n"
+        "urllib.request.urlopen = trap('urlopen', urllib.request.urlopen)\n"
+        "webbrowser.open = trap('webbrowser', webbrowser.open)\n"
+        "pathlib.Path.read_text = trap('read_text', pathlib.Path.read_text)\n"
+        "pathlib.Path.write_text = trap('write_text', pathlib.Path.write_text)\n"
+        "pathlib.Path.read_bytes = trap('read_bytes', pathlib.Path.read_bytes)\n"
+        "pathlib.Path.write_bytes = trap('write_bytes', pathlib.Path.write_bytes)\n"
+        "pathlib.Path.mkdir = trap('mkdir', pathlib.Path.mkdir)\n"
+        "m = importlib.import_module(%r)\n" % module
+        + drive
+        + "print(json.dumps({'touched': sorted(set(touched))}))\n"
+    )
+    return run_probe(probe)
+
+
+def package_walk_loads(package, skip=()):
+    """Import every module under ``package`` except ``skip``, and report.
+
+    ``loaded`` lists the modules that ended up in ``sys.modules``, so a
+    name absent from it is one nothing under ``package`` reaches.
+    """
+    probe = (
+        "import importlib, json, os, pkgutil, sys\n"
+        "os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')\n"
+        "package = importlib.import_module(%r)\n" % package
+        + "skip = set(%r)\n" % (tuple(skip),)
+        + "walked = 0\n"
+        "for info in pkgutil.walk_packages(package.__path__, package.__name__ + '.'):\n"
+        "    if info.name in skip:\n"
+        "        continue\n"
+        "    try:\n"
+        "        importlib.import_module(info.name)\n"
+        "    except BaseException:\n"
+        "        continue\n"
+        "    walked += 1\n"
+        "print(json.dumps({'walked': walked, 'loaded': sorted(\n"
+        "    name for name in sys.modules if name.startswith('src.'))}))\n"
+    )
+    return run_probe(probe)
