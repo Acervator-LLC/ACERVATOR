@@ -259,7 +259,9 @@ A total above the ``_wallet_usd`` figure is refused whole with
 """
 ```
 
-`src/gui/widgets/capital_registry_panel.py` shows the table read-only.
+The reservation table reaches the frontend through its own bridge method, named
+in the table at the foot of this file. The Qt panel beside it,
+`CapitalRegistryPanel`, is declared and no screen builds it.
 
 ## Bridge
 

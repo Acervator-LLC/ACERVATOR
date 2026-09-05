@@ -243,22 +243,8 @@ Detail: [08-tabs/simulator.md](08-tabs/simulator.md).
 
 Real-time, API-fed trades against a fake budget. This is designed as the second tier of strategy validation within the platform.
 
-No module implements it. One method assigns nothing-at-all to the four
-attributes the tab would own, so a legacy code path that reads one gets that
-sentinel rather than an error.
-
-`src/gui/main_tabs/retired_tabs.py` — `RetiredTabsMixin._install_retired_tab_sentinels`
-
-```python
-self._paper_trader = None
-self._paper_trader_stack = None
-self._paper_trader_crypto = None
-self._paper_trader_equity = None
-```
-
-The Bot Swarm tab's Paper Swarm sub-tab is chrome: its Start button flips a
-flag and relabels itself, and no bot is constructed. Issue #422 carries the
-caption on it.
+The screen is not built. No module implements it, the tab row does not name
+it, and issue #19 carries the initial build-out.
 
 Live, Paper and the Simulator differ in one thing only, where the data comes
 from. The trading logic stays one body of pure code all three call, and only
@@ -271,38 +257,20 @@ budget is twice the dollar target.
 target_balance: float = 200.0  # Balance the bot trades relative to
 ```
 
-Two places already expect the tab. The window treats it as isolated alongside
-the Simulator, and the header-strip surface carries the same pair, so the strip
-will hide itself the day the tab arrives with no change to either site.
-
-`src/gui/main_tabs/header_strip_surface.py` — `ISOLATED_TABS`
-
-```python
-ISOLATED_TABS = ("Simulator", "Paper Trader")
-```
-
-The step needs its own exchange shell, forked from the Simulator's rather than
-imported: same base class, live candles instead of stored ones.
-
-*Proposed, not present, in a package of its own:*
-
-```python
-class PaperExchange(ExchangeInterface):
-    """Live-feed prices, fake balances. Orders fill against the last ticker."""
-
-    def __init__(self, connector, starting_balances: dict[str, float]):
-        self._connector = connector
-        self._balances = dict(starting_balances)
-```
-
-Paper waits on the Simulator and on Nuclear Mode, both gates ahead of it in
-[08-tabs/promotion-pipeline.md](08-tabs/promotion-pipeline.md).
+Two live surfaces still offer the step. The Bot Swarm tab's Paper Swarm
+sub-tab is chrome: its Start button flips a flag and relabels itself, and no
+bot is constructed. The wing toggle makes the same offer on both wings. Issues
+#422 and #426 carry the two captions.
 
 Detail: [08-tabs/paper-trader.md](08-tabs/paper-trader.md).
 
 ## Proof of Accumulation (Anonymized Trading Tournaments Via Blockchain)
 
 This is currently proposed as a concept but will likely require the building of a supporting blockchain team for proper / full implementation. This system is designed to enable users of Acervator to compete against each anonymously via our own Proof of Accumulation blockchain. The idea is to convert trades executed into videogame metrics such as damage to a coliseum style monster or a fellow trader in a 1v1 face off. This further positions the platform as a surgical tool that can be finely tuned and customized to produce intense competition scenarios between entire groups of traders. This, of course, opens the door for actual tokenized Trading Guilds who may require their members to have a certain number of PoA tokens under their belt to join. There will be much more to follow on this as I do intend to scaffold it out for internal testing.
+
+The screen is not built. The window builds neither the Competition tab nor the
+Local Testnet tab, and issue #147 carries the initial build-out. The engine
+behind them runs today, and the rest of this section is that engine.
 
 `src/competition/` is the Proof of Accumulation package. Each bot signs every
 trade with an Ed25519 key and signs no strategy parameter, so authorship is
@@ -346,19 +314,6 @@ MIN_SEASON_REWARD = 100  # Floor — never less than this per season
 `TournamentEngine` in `src/trading/poa_tournament.py` builds the duel, the
 melee and the gauntlet. A local testnet module beside it simulates the whole
 Base environment in memory, with no wallet and no network.
-
-The engine runs with no screen in front of it. `src/gui/competition_tab.py` and
-`src/gui/testnet_tab.py` both exist, and the window builds neither.
-
-`src/gui/main_tabs/retired_tabs.py` — `RetiredTabsMixin._install_retired_tab_sentinels`
-
-```python
-self._competition_tab = None
-
-self._testnet_tab = None
-```
-
-That makes this an initial implementation rather than a repair.
 
 Detail: [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md).
 
@@ -1097,8 +1052,9 @@ tab's signal pane reads them.
 
 This tab consists of two distinct but closely related parts. The Emitter Network is an embedded system of data activity detectors intended to allow for detailed subsystem performance monitoring. The Watchdog is the raw signal capture for the Emitter Network’s output.
 
-No tab exists, and the tab row names seven screens without it. Both halves run
-today.
+The screen is not built. The tab row names seven screens and this is not one of
+them, and issue #34 carries the initial build-out. Both halves run today, and
+the Console tab shows the first of them.
 
 The Emitter Network is one plain function and one sink. A call site says what
 it expected and what it actually saw, and a satisfied expectation is recorded
@@ -1152,25 +1108,6 @@ the heartbeat file, and writes a post-mortem after the child dies.
 ```python
 DEFAULT_STALL_SECONDS = 60  # must match or exceed Acervator's longest sync call (CCXT: ~15s typical, 30s timeout)
 HEARTBEAT_POLL_INTERVAL = 2.0
-```
-
-The screen the operator's text describes needs a name in the tab row and a pane
-for each half. The upper pane's renderer already exists and nothing on any
-screen calls it.
-
-*Proposed, not present, in `src/gui/main_window.py`:*
-
-```python
-CANONICAL_TAB_ORDER = [
-    "Trading",
-    "Market Inspector",
-    "Bot Swarm",
-    "Asset Charts",
-    "History",
-    "Simulator",
-    "Console",
-    "System Status",
-]
 ```
 
 Detail: [08-tabs/system-status.md](08-tabs/system-status.md).

@@ -265,8 +265,8 @@ history_refreshed = Signal(list)
 ## Paper History
 
 The manual's part list names a Paper History Tab beside this one. No such
-module has ever been committed. See [paper-trader.md](paper-trader.md) for the
-proof.
+module exists, and it waits on the Paper Trader step under issue #19. See
+[paper-trader.md](paper-trader.md).
 
 ## Bridge
 

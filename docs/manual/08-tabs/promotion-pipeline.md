@@ -75,8 +75,8 @@ creates nothing.
 
 ## Where the chain breaks today
 
-The Paper Trader step has no module. The Simulator hands nothing forward, and
-Live receives from the Market Inspector's adopt path instead. See
-[paper-trader.md](paper-trader.md) for the proof and for what the step needs.
+The Paper Trader step has no module, and issue #19 carries its build-out. The
+Simulator hands nothing forward, and Live receives from the Market Inspector's
+adopt path instead. See [paper-trader.md](paper-trader.md).
 
 Back to [the subsystem index](README.md).
