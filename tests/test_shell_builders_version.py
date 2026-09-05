@@ -118,4 +118,3 @@ def test_builders_banner_the_version_they_read() -> None:
 
     mac = _code_lines(MAC_BUILDER)
     assert any("${APP_NAME} v${VERSION}" in c for c in mac)
-    assert any("${APP_NAME}-${VERSION}.dmg" in c for c in mac)

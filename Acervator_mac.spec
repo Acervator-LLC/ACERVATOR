@@ -2,7 +2,7 @@
 """
 Acervator_mac.spec — PyInstaller spec for macOS
 ========================================================
-Produces: dist/Acervator.app
+Produces: dist/Acervator-<version>-<variant>.app
 
 Build command (run on macOS):
     pip install $(python -m tools.deps requirements build)

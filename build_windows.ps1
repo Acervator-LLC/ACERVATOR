@@ -6,11 +6,30 @@
 # stays runnable beside the ones before it.
 
 param(
-    [ValidateSet("react", "qt")]
-    [string[]]$Variant = @("react", "qt")
+    [string]$Variant = ""
 )
 
 Set-Location $PSScriptRoot
+
+# The environment variable the spec reads and the variant names are declared in
+# src/_variant.py. Asking for them keeps no second copy here.
+$variantEnvVar = & python -m tools.build_variants env-var
+if ($LASTEXITCODE -ne 0 -or -not $variantEnvVar) {
+    Write-Host "  ERROR: could not read the build-variant environment variable" -ForegroundColor Red
+    exit 1
+}
+$variantEnvVar = ([string]($variantEnvVar | Select-Object -First 1)).Trim()
+
+if ($Variant) {
+    $requested = & python -m tools.build_variants select --variant $Variant
+} else {
+    $requested = & python -m tools.build_variants select
+}
+if ($LASTEXITCODE -ne 0 -or -not $requested) {
+    Write-Host "  ERROR: no build variant to build" -ForegroundColor Red
+    exit 1
+}
+$requested = @($requested | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 # The version is derived, never written down, so there is no literal to parse.
 # src/_version.py resolves it from the git tag and answers through the package.
@@ -29,7 +48,7 @@ if (-not $versionStr) {
 
 Write-Host ""
 Write-Host "  Acervator v$versionStr" -ForegroundColor Cyan
-Write-Host "  Variants: $($Variant -join ', ')" -ForegroundColor Cyan
+Write-Host "  Variants: $($requested -join ', ')" -ForegroundColor Cyan
 Write-Host ""
 
 # --- Step 1: Strip Mark of the Web from ALL files ---
@@ -60,9 +79,8 @@ Get-ChildItem -Path . -Directory -Recurse -Filter "__pycache__" -ErrorAction Sil
 
 # --- Step 4: Build each variant ---
 #
-# The spec reads ACERVATOR_BUILD_VARIANT, names the output after the
-# version and the variant, and bakes the variant into the bundle so the
-# running application reports which one it is.
+# The spec reads $variantEnvVar, names the output after the version and the
+# variant, and bakes the variant into the bundle.
 $distRoot = Join-Path $PSScriptRoot "dist"
 $before = @()
 if (Test-Path $distRoot) {
@@ -70,17 +88,17 @@ if (Test-Path $distRoot) {
 }
 
 $failed = @()
-foreach ($v in $Variant) {
+foreach ($v in $requested) {
     Write-Host ""
     Write-Host "  Building the $v variant..." -ForegroundColor Cyan
-    $env:ACERVATOR_BUILD_VARIANT = $v
+    Set-Item -Path "Env:\$variantEnvVar" -Value $v
     pyinstaller Acervator_win.spec --noconfirm
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  ERROR: the $v build failed" -ForegroundColor Red
         $failed += $v
     }
 }
-Remove-Item Env:\ACERVATOR_BUILD_VARIANT -ErrorAction SilentlyContinue
+Remove-Item -Path "Env:\$variantEnvVar" -ErrorAction SilentlyContinue
 
 # --- Step 5: Strip MOTW from built exe and all dist files ---
 if (Test-Path $distRoot) {

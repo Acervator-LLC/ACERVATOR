@@ -102,11 +102,11 @@ def test_an_unset_build_variant_falls_back_to_the_default():
 
 
 def test_the_build_variant_is_read_from_the_environment():
-    assert requested_variant({"ACERVATOR_BUILD_VARIANT": QT}) == QT
+    assert requested_variant({_variant.ENV_VAR: QT}) == QT
 
 
 def test_an_unknown_build_variant_falls_back_rather_than_raising():
-    answer = requested_variant({"ACERVATOR_BUILD_VARIANT": "electron"})
+    answer = requested_variant({_variant.ENV_VAR: "electron"})
     assert answer == DEFAULT_VARIANT, f"an unknown variant answered {answer!r}"
 
 

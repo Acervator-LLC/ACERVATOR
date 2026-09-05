@@ -43,13 +43,13 @@ from __future__ import annotations
 
 import ast
 import re
-import runpy
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
+from src._variant import BAKED_FILENAME as VARIANT_BAKED_FILENAME
 from src._version import BAKED_FILENAME, baked_path
+from tests.fixtures.spec_runner import run_spec
 from tools.build_variants import sanitise, windows_file_version
 from tools.spec_common import (
     COMMON_HIDDENIMPORTS,
@@ -68,69 +68,6 @@ WIN_SPEC = REPO / "Acervator_win.spec"
 MAC_SPEC = REPO / "Acervator_mac.spec"
 SHARED_MODULE = REPO / "tools" / "spec_common.py"
 SPEC_DIR = REPO
-
-VARIANT_BAKED_FILENAME = "_baked_variant.txt"
-
-
-def run_spec(
-    spec_path: Path,
-    project_root: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    variant: str = "react",
-) -> dict:
-    """Run a spec file against ``project_root`` and report what it built.
-
-    The spec is copied so ``PROJECT_ROOT``, which it derives from its own
-    location, becomes the caller's temporary directory. Nothing is written
-    into the repository and no build runs: PyInstaller's builder callables
-    are replaced with recorders, so the answer holds the arguments the spec
-    actually passed rather than a bundle.
-
-    ``collect_submodules`` is stubbed because walking the real ``src``
-    package costs seconds and answers nothing this asks about.
-    """
-    copied = project_root / spec_path.name
-    copied.write_bytes(spec_path.read_bytes())
-
-    recorded: dict = {}
-
-    def recorder(name):
-        def record(*_positional, **kwargs):
-            recorded[name] = kwargs
-            # The spec reads attributes off what Analysis returns and
-            # passes them on, so the stand-in has to carry them.
-            return SimpleNamespace(
-                pure=f"<{name}.pure>",
-                zipped_data=f"<{name}.zipped_data>",
-                scripts=f"<{name}.scripts>",
-                binaries=f"<{name}.binaries>",
-                zipfiles=f"<{name}.zipfiles>",
-                datas=f"<{name}.datas>",
-            )
-
-        return record
-
-    def one_stub_module(*_positional, **_keyword):
-        return ["src.stub"]
-
-    monkeypatch.setattr("PyInstaller.utils.hooks.collect_submodules", one_stub_module)
-    monkeypatch.setenv("ACERVATOR_BUILD_VARIANT", variant)
-
-    namespace = runpy.run_path(
-        str(copied),
-        init_globals={
-            "SPEC": str(copied),
-            "DISTPATH": str(project_root / "dist"),
-            "Analysis": recorder("Analysis"),
-            "PYZ": recorder("PYZ"),
-            "EXE": recorder("EXE"),
-            "COLLECT": recorder("COLLECT"),
-            "BUNDLE": recorder("BUNDLE"),
-        },
-    )
-    recorded["version"] = namespace["ACERVATOR_VERSION"]
-    recorded["variant"] = namespace["ACERVATOR_VARIANT"]
-    return recorded
 
 
 # The names both specs must take from the shared module. Losing any one of
@@ -367,33 +304,25 @@ class TestVersionHelper:
     def test_win_file_description_carries_the_resolved_version(
         self, tmp_path, monkeypatch
     ):
-        """Run the spec and read the resource block it actually built.
-
-        The icon has to exist: the spec writes ``version_info`` only when
-        it does, so without one there is no resource block to read.
-        """
-        icon = tmp_path / "resources" / "icon.ico"
-        icon.parent.mkdir(parents=True, exist_ok=True)
-        icon.write_bytes(b"\x00")
+        """Read the resource EXE was handed, under the keyword EXE reads."""
         built = run_spec(SPEC_DIR / "Acervator_win.spec", tmp_path, monkeypatch)
-        resource = built["EXE"]["version_info"]
-        assert built["version"] in resource["FileDescription"], (
-            f"FileDescription {resource['FileDescription']!r} does not carry "
-            f"the resolved version {built['version']!r}"
+        resource = str(built["EXE"]["version"])
+        assert built["version"] in resource, (
+            f"the version resource does not carry the resolved version "
+            f"{built['version']!r}:\n{resource}"
         )
 
     def test_win_numeric_resource_fields_are_not_a_literal(self, tmp_path, monkeypatch):
         """FileVersion and ProductVersion read a hardcoded 1.1.0 until this seam."""
-        icon = tmp_path / "resources" / "icon.ico"
-        icon.parent.mkdir(parents=True, exist_ok=True)
-        icon.write_bytes(b"\x00")
         built = run_spec(SPEC_DIR / "Acervator_win.spec", tmp_path, monkeypatch)
-        resource = built["EXE"]["version_info"]
+        resource = str(built["EXE"]["version"])
         expected = windows_file_version(built["version"])
-        for field in ("FileVersion", "ProductVersion"):
-            assert resource[field] == expected, (
-                f"{field} reads {resource[field]!r}, not the resolved " f"{expected!r}"
-            )
+        numbers = tuple(int(part) for part in expected.split("."))
+        assert f"filevers={numbers}" in resource, f"filevers is not {numbers}"
+        assert f"prodvers={numbers}" in resource, f"prodvers is not {numbers}"
+        assert f"StringStruct('FileVersion', '{expected}')" in resource
+        assert f"StringStruct('ProductVersion', '{expected}')" in resource
+        assert "1.1.0" not in resource, f"the retired literal is back:\n{resource}"
 
 
 # The shared datas builder
