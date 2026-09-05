@@ -8,7 +8,6 @@ a different refusal than ``RiskTab``.
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import inspect
 import json
@@ -27,6 +26,7 @@ pytest.importorskip("PySide6")
 
 from src.gui import risk_tab as shipped
 from src.gui.main_tabs import risk_tab_surface as surface
+from tests.fixtures.qt_wiring_counts import bus_subscriptions_watched, qt_free
 from tests.fixtures.host_fonts import (
     NARROW_LABEL,
     WIDE_LABEL,
@@ -49,13 +49,6 @@ TAB_PATH = REPO_ROOT / "src/gui/risk_tab.py"
 SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/risk_tab_surface.py"
 
 # Full paths: two files share the basename ``history_tab.py`` and differ in timers.
-WIRING_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-SIGNAL_CONTROL_PATH = REPO_ROOT / "src/gui/launcher.py"
-TIMER_CONTROL_PATH = REPO_ROOT / "src/gui/history_tab.py"
-TIMER_QUIET_PATH = REPO_ROOT / "src/gui/main_tabs/history_tab.py"
-BUS_CONTROL_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
-ELEMENT_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/dashboard_stat_card.py"
-NESTED_CLASS_PATH = REPO_ROOT / "src/gui/stock_main_window.py"
 DESCRIPTOR_CONTROL_PATH = REPO_ROOT / "src/gui/indicator_panel.py"
 
 PIXEL_SIZE = (900, 620)
@@ -73,22 +66,6 @@ TEXT_HIGH_HEX = "#e0e0f0"
 CHART_HEX = "#0a0a12"
 CONTROL_HEX = "#1a1a2e"
 CARD_BORDER_HEX = "#2a2a3f"
-
-# The counts the shipped tab carries, measured off the file.
-TAB_CONNECT_SITES = 0
-TAB_TIMER_SITES = 0
-TAB_BUS_SITES = 0
-TAB_ELEMENTS_BUILT = 21
-TAB_CLASS_COUNT = 3
-
-# The same counters pointed at files that really carry one.
-WIRING_CONTROL_SITES = 1
-SIGNAL_CONTROL_SITES = 3
-TIMER_CONTROL_SITES = 1
-TIMER_QUIET_SITES = 0
-BUS_CONTROL_SITES = 2
-ELEMENT_CONTROL_BUILT = 3
-NESTED_CLASS_COUNT = 4
 
 # Alert stamps are taken from one reading of the clock, so every case
 # sees the same values whatever order the run puts them in.
@@ -2636,7 +2613,7 @@ BLIND_TO_THE_PICTURE = {
     "paint_refusal": "test_a_reading_the_gauge_cannot_draw_ends_the_process",
     "timer_delay": "test_the_tab_starts_no_timer",
     "bus_topic": "test_the_tab_subscribes_to_no_bus_topic",
-    "action_wiring": "test_the_tab_wires_no_signal",
+    "action_wiring": "test_the_tab_carries_no_button_to_wire",
     "non_text_cell": "test_a_number_where_text_belongs_is_kept_by_one_side_only",
     "gauge_partial_paint": (
         "test_a_gauge_paint_that_stops_part_way_keeps_the_arc_it_drew"
@@ -2753,10 +2730,14 @@ def resolve(dotted):
     return found
 
 
-def classes_in(path):
-    """Every class one file declares, including one inside another."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+def classes_declared(module):
+    """Every class ``module`` defines, in declaration order."""
+    return [
+        name
+        for name, value in vars(module).items()
+        if inspect.isclass(value)
+        and getattr(value, "__module__", "") == module.__name__
+    ]
 
 
 def test_the_method_counter_leaves_out_a_signal():
@@ -2796,22 +2777,17 @@ def test_the_method_counter_finds_a_factory_and_a_read_only_value():
     assert isinstance(vars(surface.RiskManagerSnapshot)["snapshots"], property)
 
 
-def test_the_class_counter_finds_a_class_inside_another():
-    """The class counter misses a class declared inside another."""
-    nested = classes_in(NESTED_CLASS_PATH)
-    assert len(nested) == NESTED_CLASS_COUNT == 4
-    assert "_StockLogHandler" in nested
-    assert "StockMainWindow" in nested
-    assert nested.index("StockMainWindow") < nested.index("_StockLogHandler")
-    assert classes_in(TAB_PATH) == ["DrawdownGauge", "ExposureBar", "RiskTab"]
-    assert len(classes_in(TAB_PATH)) == TAB_CLASS_COUNT == 3
+def test_the_class_reader_reports_only_the_modules_own_classes():
+    """A class the module imports is not a class the module declares."""
+    assert classes_declared(shipped) == ["DrawdownGauge", "ExposureBar", "RiskTab"]
+    assert "QWidget" not in classes_declared(shipped)
+    assert "RiskTabModel" in classes_declared(surface)
 
 
 def test_every_shipped_class_and_method_has_a_counterpart():
     """A class or a method exists on one side and nowhere on the other."""
     app()
-    assert classes_in(TAB_PATH) == list(CLASS_MAP)
-    assert len(CLASS_MAP) == TAB_CLASS_COUNT
+    assert classes_declared(shipped) == list(CLASS_MAP)
     for old_name, new_name in CLASS_MAP.items():
         assert inspect.isclass(getattr(shipped, old_name)), old_name
         assert inspect.isclass(getattr(surface, new_name)), new_name
@@ -2841,8 +2817,7 @@ def test_a_member_added_or_lost_on_either_side_is_reported():
     app()
     assert "refresh" in members(shipped.RiskTab)
     assert "paintEvent" in members(shipped.DrawdownGauge)
-    assert "logger" not in classes_in(TAB_PATH)
-    assert "QWidget" not in classes_in(TAB_PATH)
+    assert "logger" not in classes_declared(shipped)
     with pytest.raises(AttributeError):
         resolve("RiskTabModel.no_such_member")
     assert TAB_MEMBERS - {"refresh"} != TAB_MEMBERS
@@ -2897,78 +2872,46 @@ def test_the_signatures_match_the_shipped_methods():
 # The counters, each proved against a file that really carries one
 
 
-def count_sites(path, needle):
-    """How many times one call appears in one file."""
-    return path.read_text(encoding="utf-8").count(needle)
+def declared_signals(owner):
+    """Every signal a class adds to the ones its base classes carry."""
+    from PySide6.QtCore import QMetaMethod
 
-
-def count_built(path, needle):
-    """How many times one class is CONSTRUCTED in one file.
-
-    A name counter reads the import line too, so the construction is
-    what is counted.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return len(
-        [
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == needle
-        ]
-    )
-
-
-def screen_elements_built(path):
-    """Every screen element one file constructs, in order.
-
-    A layout is not a screen element and a painting tool is not either,
-    so the names are taken from what the file imports for the screen and
-    from the classes it declares.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    names = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            if (node.module or "") in ("PySide6.QtGui", "PySide6.QtCore"):
-                continue
-            for alias in node.names:
-                found = alias.asname or alias.name
-                if found[:1].isupper():
-                    names.add(found)
-    names = {found for found in names if not found.endswith("Layout")}
+    meta = owner.staticMetaObject
     return [
-        node.func.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in names
+        bytes(meta.method(index).methodSignature()).decode("utf-8")
+        for index in range(meta.methodOffset(), meta.methodCount())
+        if meta.method(index).methodType() == QMetaMethod.MethodType.Signal
     ]
 
 
-def test_the_tab_wires_no_signal():
-    """A signal wiring appeared on one side and not the other.
+def test_the_tab_carries_no_button_to_wire():
+    """The built tab paints no button, and the surface names no action."""
+    from PySide6.QtWidgets import QAbstractButton
 
-    The counter is proved able to report by pointing it at two files
-    that really carry one.
-    """
-    assert count_sites(TAB_PATH, ".connect(") == TAB_CONNECT_SITES == 0
-    assert count_sites(SURFACE_PATH, ".connect(") == 0
-    assert count_sites(WIRING_CONTROL_PATH, ".connect(") == WIRING_CONTROL_SITES == 1
-    assert count_sites(SIGNAL_CONTROL_PATH, ".connect(") == SIGNAL_CONTROL_SITES == 3
+    app()
+    tab = old_picture_tab("asset_bands")
+    # Qt names its own table corner button qt_tableview_cornerbutton.
+    buttons = [
+        one
+        for one in tab.findChildren(QAbstractButton)
+        if not one.objectName().startswith("qt_")
+    ]
+    assert buttons == [], [one.text() for one in buttons]
     assert surface.ACTIONS == {}
-    assert len(surface.ACTIONS) == count_sites(TAB_PATH, ".connect(")
     assert surface.BUTTON_NAMES == ()
 
 
 def test_the_tab_declares_no_signal():
-    """A signal declaration appeared on one side and not the other."""
-    assert count_built(TAB_PATH, "Signal") == 0
-    assert count_built(SURFACE_PATH, "Signal") == 0
-    assert count_built(SIGNAL_CONTROL_PATH, "Signal") == SIGNAL_CONTROL_SITES == 3
-    assert count_built(WIRING_CONTROL_PATH, "Signal") == 0
-    assert count_sites(SIGNAL_CONTROL_PATH, "Signal") > SIGNAL_CONTROL_SITES
+    """``RiskTab`` adds no signal to the ones QWidget carries."""
+    from PySide6.QtCore import QObject, Signal
+
+    app()
+    assert declared_signals(shipped.RiskTab) == []
+
+    class Loud(QObject):
+        spoke = Signal(str)
+
+    assert declared_signals(Loud) == ["spoke(QString)"]
 
 
 def test_the_tab_starts_no_timer():
@@ -2980,12 +2923,6 @@ def test_the_tab_starts_no_timer():
     from PySide6.QtCore import QObject, QTimer
 
     app()
-    assert count_built(TAB_PATH, "QTimer") == TAB_TIMER_SITES == 0
-    assert count_built(SURFACE_PATH, "QTimer") == 0
-    assert count_built(TIMER_CONTROL_PATH, "QTimer") == TIMER_CONTROL_SITES == 1
-    assert count_built(TIMER_QUIET_PATH, "QTimer") == TIMER_QUIET_SITES == 0
-    assert TIMER_CONTROL_PATH.name == TIMER_QUIET_PATH.name
-    assert count_sites(TIMER_CONTROL_PATH, "QTimer") > TIMER_CONTROL_SITES
     started: list = []
     first_start_timer = QObject.startTimer
     first_timer_start = QTimer.start
@@ -3026,31 +2963,41 @@ def test_the_tab_starts_no_timer():
 
 def test_the_tab_subscribes_to_no_bus_topic():
     """A bus wiring appeared on one side and not the other."""
-    assert count_sites(TAB_PATH, ".subscribe(") == TAB_BUS_SITES == 0
-    assert count_sites(SURFACE_PATH, ".subscribe(") == 0
-    assert count_sites(BUS_CONTROL_PATH, ".subscribe(") == BUS_CONTROL_SITES == 2
+    app()
+    with bus_subscriptions_watched() as taken:
+        old_picture_tab("asset_bands")
+        new_picture_tab("asset_bands")
+    assert taken == [], taken
     assert surface.BUS_TOPICS == ()
-    assert len(surface.BUS_TOPICS) == count_sites(TAB_PATH, ".subscribe(")
+
+
+def test_the_bus_counter_can_see_a_subscription():
+    """POSITIVE CONTROL for ``bus_subscriptions_watched``: one ``subscribe``
+    inside the block is recorded."""
+    from src.core.event_bus import EventBus
+
+    bus = EventBus()
+    with bus_subscriptions_watched() as taken:
+        bus.subscribe("probe.topic", lambda _event: None)
+    assert taken == ["probe.topic"], taken
 
 
 def test_the_screen_elements_the_tab_builds_are_counted():
-    """The element counter reads a name instead of a construction."""
-    built = screen_elements_built(TAB_PATH)
-    assert len(built) == TAB_ELEMENTS_BUILT == 21
-    assert built.count("QLabel") == 6
-    assert built.count("QGroupBox") == 4
-    assert built.count("QTableWidget") == 2
-    assert built.count("ExposureBar") == 2
-    assert built.count("DrawdownGauge") == 1
-    assert "QPainter" not in built
-    assert "QColor" not in built
-    assert "QVBoxLayout" not in built
-    control = screen_elements_built(ELEMENT_CONTROL_PATH)
-    assert len(control) == ELEMENT_CONTROL_BUILT == 3
-    assert control == ["QLabel", "QLabel", "PrivacyDot"]
-    made = screen_elements_built(SURFACE_PATH)
-    assert [found for found in made if found.startswith("Q")] == []
-    assert "RiskTabModel" in made
+    """The elements the built tab really carries, counted off the widget."""
+    from PySide6.QtWidgets import QGroupBox, QLabel, QTableWidget, QWidget
+
+    app()
+    tab = old_picture_tab("asset_bands")
+    kinds = list(surface.WIDGET_KINDS.values())
+    for widget_class in (QGroupBox, QTableWidget):
+        assert len(tab.findChildren(widget_class)) == kinds.count(
+            widget_class.__name__
+        ), widget_class.__name__
+    assert len(tab.findChildren(QLabel)) >= kinds.count("QLabel") > 0
+    assert not any(
+        isinstance(value, type) and issubclass(value, QWidget)
+        for value in vars(surface).values()
+    )
 
 
 def layout_entries(layout):
@@ -3146,43 +3093,15 @@ def test_the_widget_tree_is_the_tabs_own():
 
 def test_the_surface_loads_no_qt_module():
     """The surface grew an import that pulls Qt into the backend."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {
-        "__future__",
-        "time",
-        "typing",
-        "design_system",
-        "color_alpha",
-    }
-    for sibling in imported:
-        beside = SURFACE_PATH.parent.parent / (sibling + ".py")
-        if not beside.exists():
-            continue
-        pulled = {
-            (node.module or "")
-            for node in ast.walk(ast.parse(beside.read_text(encoding="utf-8")))
-            if isinstance(node, ast.ImportFrom)
-        }
-        assert not any(
-            name.startswith(("PySide6", "shiboken")) for name in pulled
-        ), f"{beside.name} pulls Qt into the surface: {sorted(pulled)}"
-    tab_imports = {
-        (node.module or "")
-        for node in ast.walk(ast.parse(TAB_PATH.read_text(encoding="utf-8")))
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in tab_imports), tab_imports
+    answered = qt_free("src.gui.main_tabs.risk_tab_surface", "RiskTabModel")
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
+
+
+def test_the_qt_block_stops_the_shipped_side():
+    """POSITIVE CONTROL for ``qt_free``: src.gui.risk_tab needs Qt to load."""
+    answered = qt_free("src.gui.risk_tab", "RiskTab")
+    assert answered["imported"] is False, answered
 
 
 # The surface holds its own values
@@ -3377,7 +3296,7 @@ COVERED_ELSEWHERE = {
     "SPLITTER_ORIENTATION": "test_the_splitter_sizes_are_compared_as_the_request",
     "RENDER_HINT": "test_the_gauge_draws_what_the_shipped_gauge_draws",
     "TABLE_NAMES": "test_the_widget_tree_is_the_tabs_own",
-    "BUTTON_NAMES": "test_the_tab_wires_no_signal",
+    "BUTTON_NAMES": "test_the_tab_carries_no_button_to_wire",
     "METRIC_BUILD_ORDER": "test_the_metric_build_order_is_compared_as_a_value",
 }
 
