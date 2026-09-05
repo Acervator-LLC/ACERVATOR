@@ -230,6 +230,51 @@ correct result rather than a missing file. The contrast with version one is the
 point: version one's subject has no source anywhere, in this repository or on
 disk.
 
+## Declared means wired
+
+Source: LEGACY, the fourteen-part manual, Part 7b "Rules Registry", page 11.
+
+The legacy registry catalogues 77 numbered rules. The registry that exists in
+this repository defines 35, the numbers above 35 have no entry at all, and of
+the identifiers that do collide, not one describes the same rule. The two are
+unrelated namespaces that happen to share a number space, and the legacy one is
+the one with no code. Its numbers are not live and must not be cited as though
+they were.
+
+One entry survives that comparison, because it is a standing engineering rule
+rather than a numbered claim, and because this repository can show it working.
+
+**A declared interface that nothing invokes is a defect, not a placeholder.**
+
+The measured case is the gate pair in
+[07-indicators.md](07-indicators.md#gate-call-site-activation). Two gate classes
+existed, sat in the chain, and returned pass on every tick, because the context
+field each one reads defaults to `0.0` and no call site filled it. The gate was
+declared. The gate was not wired. Nothing failed, nothing warned, and the only
+visible symptom was a live trading result that did not move.
+
+The same shape appeared a second time in the bot configuration. One dataclass
+served two bot modes, so a field meaningful to one mode could be passed into the
+other, sit on the object, and mean nothing. The field existed. The behaviour did
+not. The repair was structural rather than local: a factory that owns
+construction, a field manifest per mode, refusal of a mode-foreign field at
+build time, and a test that bans direct construction outside the factory.
+`make_bot_config` at `src/trading/container/config.py:578` is that factory, and
+`_BOT_CONFIG_SCRUMMING_ONLY_FIELDS` and `_BOT_CONFIG_EXTRACTOR_ONLY_FIELDS` are
+those manifests.
+
+The rule generalises to a check anyone can run. Enumerate every declared thing
+of a kind — every gate class, every construction site, every voter — and assert
+that each one is reached. `tests/test_gate_coverage.py` does exactly that. A
+rule written as prose cannot fail. A rule written as an enumeration fails the
+moment somebody adds the eighteenth gate and forgets the chain.
+
+Two further declarations in this repository are in the unwired state right now,
+and neither is hidden: `apply_profit_fold` in `src/trading/profit_fold.py`
+records in its own docstring that no module imports it, and
+`src/trading/poa_tournament.py` has no caller anywhere, including in the tests.
+Naming them is the rule working.
+
 ## Related parts
 
 - [09-updates-and-versioning.md](09-updates-and-versioning.md) — the release gate

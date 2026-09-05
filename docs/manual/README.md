@@ -21,25 +21,55 @@ git history, the audits in [docs/audits](../audits), the operator's own
 pre-git record, and a memory record kept across sessions. The `NN-` prefix of a file is its own name and carries no
 meaning; the Part column below is what places a file in the manual.
 
+## Three sources, and how to tell them apart
+
+Every passage in this manual comes from one of three places. The Source column
+in the table below says which, per file, and each migrated section repeats its
+source in its own first paragraph, so a reader who opens a file in the middle
+still knows what they are reading.
+
+| Bucket | What it is |
+| ------ | ---------- |
+| ORIGINAL | The operator's own product manual, 44 pages and 38 figures. Transcribed verbatim into the part files. |
+| UPDATES | Written this session from the source in this repository and from measurements over the operator's own venue export. |
+| LEGACY | The superseded fourteen-part manual, 479 pages and 55 images. Carried across section by section, with every claim re-checked and every wrong value corrected in place. |
+
+A file marked with more than one bucket holds a labelled section per bucket and
+never blends them inside a section. Nothing in the ORIGINAL bucket was reworded
+to accommodate a migration.
+
+The LEGACY bucket is superseded, and "the original" always means the operator's
+own 44-page manual. Where a legacy passage and the code disagree, the code is
+the present state and the correction travels with the passage.
+
+Every one of the 479 legacy pages is accounted for. The disposition of each
+part, migrated or not, with the reason and the proof, is the migration ledger in
+[docs/audits/manual-original-parts-audit.md](../audits/manual-original-parts-audit.md).
+All 55 legacy images are inventoried, one row each, in
+[FIGURES.md](FIGURES.md).
+
 ## Contents
 
-| File | Part | Manual pages | Covers |
-| ---- | ---- | ------------ | ------ |
-| [01-title.md](01-title.md) | 1 | 1 | Title and the epigraph |
-| [02-legal.md](02-legal.md) | 1 | 2 to 4 | Copyright, contact, legal disclaimers, algorithmic-trading risk |
-| [03-executive-summary.md](03-executive-summary.md) | 1 | 5 to 7 | Executive summary, origin of the method, support addresses |
-| [04-manual-parts.md](04-manual-parts.md) | 1 | 8 to 9 | The manual's own part list and tab list |
-| [05-novel-concepts.md](05-novel-concepts.md) | 2 | 10 to 14 | Novel concepts and patent candidate catalogue, entries 1 to 17 |
-| [06-trading-tab.md](06-trading-tab.md) | 3 | 14 to 27 | System architecture, then the Trading Tab walkthrough |
-| [07-indicators.md](07-indicators.md) | 3 | 27 to 29 | Indicator Voting Panel and the twelve indicators |
-| [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Main Window, Simulator, Paper Trader, Proof of Accumulation, Market Inspector, Bot Swarm, Asset Charts, History, Console, System Status, and the eleven Settings pages |
-| [13-live-evidence.md](13-live-evidence.md) | 4 | — | The readers of the year-to-date venue record, the connectors, and what the exchange tests reach |
-| [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
-| [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
-| [09-updates-and-versioning.md](09-updates-and-versioning.md) | 7 | — | Version derivation, the six readers, the baked bundle value, the release gate |
-| [14-development-chronicle.md](14-development-chronicle.md) | 8 | — | The three records of the work, the corrections that became the instruments, the audits they produced, and what they cost and missed |
-| [10-live-trade-history.md](10-live-trade-history.md) | 9 | — | The live fill record, VWAP charts, trade grading, gate coverage |
-| [FIGURES.md](FIGURES.md) | — | 15 to 44 | The figure inventory |
+| File | Part | Source | Manual pages | Covers |
+| ---- | ---- | ------ | ------------ | ------ |
+| [01-title.md](01-title.md) | 1 | ORIGINAL | 1 | Title and the epigraph |
+| [02-legal.md](02-legal.md) | 1 | ORIGINAL | 2 to 4 | Copyright, contact, legal disclaimers, algorithmic-trading risk |
+| [03-executive-summary.md](03-executive-summary.md) | 1 | ORIGINAL | 5 to 7 | Executive summary, origin of the method, support addresses |
+| [04-manual-parts.md](04-manual-parts.md) | 1 | ORIGINAL | 8 to 9 | The manual's own part list and tab list |
+| [17-legacy-overview.md](17-legacy-overview.md) | 1 | LEGACY | — | The harvest-fold summary, the bot types that run, and the four headline counts re-measured |
+| [05-novel-concepts.md](05-novel-concepts.md) | 2 | ORIGINAL | 10 to 14 | Novel concepts and patent candidate catalogue, entries 1 to 17 |
+| [15-patent-portfolio.md](15-patent-portfolio.md) | 2 | LEGACY | — | The seventeen anchored inventions, the two with a corrected constant, and the seven with no code |
+| [06-trading-tab.md](06-trading-tab.md) | 3 | ORIGINAL + LEGACY | 14 to 27 | System architecture, then the Trading Tab walkthrough |
+| [07-indicators.md](07-indicators.md) | 3 | ORIGINAL + UPDATES + LEGACY | 27 to 29 | Indicator Voting Panel and the twelve indicators |
+| [08-tabs.md](08-tabs.md) | 3 | ORIGINAL + UPDATES + LEGACY | 29 to 44 | Main Window, Simulator, Paper Trader, Proof of Accumulation, Market Inspector, Bot Swarm, Asset Charts, History, Console, System Status, and the eleven Settings pages |
+| [16-operator-settings.md](16-operator-settings.md) | 3 | LEGACY | — | Every Scrumming and Extractor setting, field by field, with the eleven that never reach the bot |
+| [13-live-evidence.md](13-live-evidence.md) | 4 | UPDATES | — | The readers of the year-to-date venue record, the connectors, and what the exchange tests reach |
+| [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | UPDATES + LEGACY | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
+| [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | UPDATES + LEGACY | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
+| [09-updates-and-versioning.md](09-updates-and-versioning.md) | 7 | UPDATES + LEGACY | — | Version derivation, the six readers, the baked bundle value, the release gate |
+| [14-development-chronicle.md](14-development-chronicle.md) | 8 | UPDATES + LEGACY | — | The three records of the work, the corrections that became the instruments, the audits they produced, and what they cost and missed |
+| [10-live-trade-history.md](10-live-trade-history.md) | 9 | UPDATES | — | The live fill record, VWAP charts, trade grading, gate coverage |
+| [FIGURES.md](FIGURES.md) | — | ORIGINAL + LEGACY | 15 to 44 | The figure inventory |
 
 Pages 36 to 44 carry a figure and no text, so the PDF gives a part file
 nothing to transcribe for them. [08-tabs.md](08-tabs.md) describes each of

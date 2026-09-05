@@ -143,6 +143,55 @@ with the real feed.
 
 Detail: [08-tabs/simulator.md](08-tabs/simulator.md).
 
+### Lead with what the simulation does not model
+
+Source: LEGACY, the fourteen-part manual, Part 9 page 2 and Part 5a pages 5 and
+6. Both are editorial posture rather than a code claim, and the posture is worth
+more than the engine those parts describe, which has no source in this
+repository at all.
+
+The legacy standalone part on the simulation engine opens with what the
+simulation does **not** model, and says why in one line: a simulation engine
+that opens with its capabilities and footnotes its limits builds false
+confidence. A reader deciding whether to trust a result should read the limits
+first, then the regime distribution, then everything else. That ordering carries
+forward here unchanged, and this section is placed to obey it.
+
+Three design principles come with it, from the methodology part.
+
+- **Fix the universe and fix the periods.** A run whose asset list drifts is not
+  comparable with the run before it. Adding an asset can raise a win rate
+  without improving anything. Name a new constant for a new universe and keep
+  the old one.
+- **Be deterministic.** The same input gives the same output, with the seed a
+  function of the asset, the period and the run. Then a change of one thing
+  makes any difference in the result attributable to that one thing.
+- **Measure against passive holding, not against zero.** A bull market returns
+  something to anybody who holds. A strategy that returns 50 percent where
+  holding returned 80 percent destroyed 30 points of value.
+
+Four classes of fact sit outside any such run, and the legacy manual names all
+four.
+
+1. **Regime boundaries.** One run is one regime. Real markets change regime, and
+   the change is where a strategy usually breaks.
+2. **Execution failure.** Timeouts, partial fills, a venue freeze, a network
+   split — none of these appear in a replay of stored candles. The live record
+   is the only place they show up.
+3. **The bot's own footprint.** A replay treats stored candles as ground truth.
+   A live order participates in the book it is trading against. At small size
+   the effect is small, and a replay cannot tell an operator when the size has
+   stopped being small.
+4. **Drift over time.** Parameters fitted to one span of history are a snapshot
+   of fit, not a law.
+
+The engine the legacy parts describe has no source here. Its file name has never
+been committed and no path under its directory has ever existed in this
+repository. What this repository holds instead is the Simulator tab above, and
+the operator's own label on it stands: hot mess, complete rebuild in progress.
+The criterion for that rebuild is gate-latch parity on the same data, not a
+matching profit figure. [08-tabs/simulator.md](08-tabs/simulator.md) carries it.
+
 ## Paper Trader Tab (To Be Built)
 
 Real-time, API-fed trades against a fake budget. This is designed as the second tier of strategy validation within the platform.
@@ -443,6 +492,61 @@ strings depart from.
 
 Detail: [08-tabs/history.md](08-tabs/history.md).
 
+### Trade grading
+
+Source: LEGACY, the fourteen-part manual, Part 8, pages 40 to 42. The claim
+audit reports this chapter as verifying almost completely: the scored axes, the
+letter boundaries and the grade column's place in the history contract all
+match. One number in it is wrong, and the correction is below.
+
+The grader scores a trade that has already happened. It never feeds a trading
+decision, it never tunes a parameter, and no gate consults it. The same inputs
+always give the same grade.
+
+`src/trading/trade_grader.py` holds it, and
+`src/exchange/history_read_contract.py` calls it at three sites, which is how
+the grade reaches the History tab's grade column.
+
+**Four axes are scored, not five.** The legacy chapter counts the regime tag as
+a fifth axis and then says on the same page that the regime is used for
+attribution rather than scored. Four is the number.
+
+| Axis | What it reads | What a 1.0 means |
+| ---- | ------------- | ---------------- |
+| Execution | fill price against the reference price at decision time | no slippage |
+| Timing | the favourable excursion against the adverse one over the following candles | the trade went far more right than wrong before it closed |
+| Strategic | the asset's discipline ratio before the trade against after it | the trade moved the ratio the operator's way |
+| Outcome | realised profit per unit | a clear gain |
+
+`PriceContext.regime_tag` reaches `TradeGrade.regime` and the rationale string
+and gets no score of its own. Grading the same record with a regime tag and
+without one returns the same number, which is the control that proves it.
+
+The overall number is the unweighted mean of the axes whose inputs were present.
+An axis with no input is skipped: it neither credits nor penalises. The scale is
+0.0 to 1.0, not 0 to 100.
+
+| Letter | Lower bound |
+| ------ | ----------: |
+| A+ | 0.93 |
+| A | 0.85 |
+| B | 0.70 |
+| C | 0.55 |
+| D | 0.40 |
+| F | below 0.40 |
+
+Driving the mapper across each boundary and just under it flips the letter
+exactly where the table says, in both directions.
+
+**One trap worth knowing.** A trade with no gradeable input at all scores 0.5 and
+therefore reads as a **D**, not as ungraded. A fully specified trade scores 1.0
+and reads A+. A column of Ds may mean the trades were poor, or it may mean the
+surrounding price context never arrived.
+
+The legacy chapter names three files for the grader and its two command-line
+tools. None of the three has ever been committed here. The grading that runs
+today runs through the History tab.
+
 ## Console
 
 This tab is focused on displaying Python activity and errors. The lower half, which is displaying the Emitter Network activity, will be migrated to the System Status Tab (under the Watchdog) which is to be built in the near future.
@@ -492,6 +596,40 @@ that never ran distinct from one that always passed.
 
 Detail: [08-tabs/console.md](08-tabs/console.md).
 
+### The two snapshot emitters
+
+Source: LEGACY, the fourteen-part manual, Part 8, pages 70 and 71. The claim
+audit checked the quoted line prefixes against the code and found them exact.
+They are still exact.
+
+`SnapshotEmitterMixin` in `src/trading/scrumming/snapshots.py` writes two
+symmetric records to the bot log, and the Console tab is where an operator reads
+them.
+
+| Method | Line prefix | Written when |
+| ------ | ----------- | ------------ |
+| `_emit_risk_gate_snapshot` | `RISK GATE SNAPSHOT [SIDE] ` | a risk gate blocks a trade |
+| `_emit_trade_fire_snapshot` | `TRADE FIRED SNAPSHOT [SIDE] ` | a scrum or a fold actually fires |
+
+`SIDE` is the upper-case side of the decision. Both lines continue with the last
+ticker price and a panel dictionary holding every voter's direction, confidence,
+weight and detail at that moment. The fire record adds the list of overrides
+that engaged, so a reader can tell an override-driven fire from a
+consensus-driven one without opening anything else.
+
+The pair is the point. A blocked trade and a fired trade write the same shape,
+so the log holds both halves of the decision and not only the half that acted.
+
+Three further emitters sit in the same mixin: a trade notification carrying its
+own text prefix, a voting-panel snapshot at fire time, and a gate decision at
+fire time. The last two emit events rather than text lines, and the Console
+tab's signal pane reads them.
+
+The legacy chapter also describes a command-line tool that samples the log,
+re-derives the net and confidence from each snapshot, and classifies the trade.
+That tool has never been committed here. The emitters it reads are real, and the
+reader is not.
+
 ## System Status Tab (To Be Built)
 
 This tab consists of two distinct but closely related parts. The Emitter Network is an embedded system of data activity detectors intended to allow for detailed subsystem performance monitoring. The Watchdog is the raw signal capture for the Emitter Network’s output.
@@ -512,6 +650,41 @@ application as a child process, tees both output streams to its own log, polls
 the heartbeat file, and writes a post-mortem after the child dies.
 
 Detail: [08-tabs/system-status.md](08-tabs/system-status.md).
+
+### Post-mortem bundle rotation
+
+Source: LEGACY, the fourteen-part manual, Part 3 "System Architecture", page 19.
+
+The Watchdog writes a post-mortem bundle every time the application dies. Each
+bundle copies the runner's console log, the crash log, the fault-handler log and
+a thread dump, which runs to hundreds of megabytes. Per-run log rotation already
+capped the size of one run's logs and capped nothing about the number of
+bundles, so weeks of restarts grew without limit. The operator's log directory
+reached roughly 400 gigabytes and took the host down with it.
+
+`prune_postmortem_bundles` in `acervator_watchdog.py:421` is the cap. It keeps
+the most recent bundles, drops anything past a maximum age whatever its
+position, and runs at two sites: once at Watchdog startup, which clears what
+earlier runs left behind, and once after each post-mortem is written, which
+holds the ceiling during a long session.
+
+**The legacy page names four constants. Three exist.**
+
+| Constant | Value | What it does |
+| -------- | ----: | ------------ |
+| `POSTMORTEM_KEEP_LATEST` | 20 | bundles preserved, newest first |
+| `POSTMORTEM_MAX_AGE_DAYS` | 30 | anything older is dropped |
+| `POSTMORTEM_SIZE_WARN_BYTES` | 5 GB | warns at startup, prunes nothing |
+
+All three are at `acervator_watchdog.py:389` to 391. The third is a warning
+threshold read by `report_log_dir_footprint` and it deletes nothing, so two
+constants govern the rotation and one reports on it. The only other inputs are
+the log directory itself, derived from the home directory at
+`acervator_watchdog.py:64`, and the literal bundle-name prefix inside the
+function. Neither is a rotation constant.
+
+No test in this repository references any of the three names. The cap runs and
+nothing holds it in place.
 
 ## Settings
 

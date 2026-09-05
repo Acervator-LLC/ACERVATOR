@@ -805,3 +805,100 @@ Two items need repair rather than migration, and both are code rather than
 prose: the two checks in `src/core/version_sweep.py` that pass without examining
 anything, and the rule registry that persists to a directory which has never
 existed.
+
+## Migration Ledger
+
+The audit above produced a carry list. This section records what happened to it.
+Every one of the 479 pages sits in exactly one row below, either with the file
+it was migrated into or with the reason it was not and the proof of that reason.
+The 55 images are inventoried separately, one row each, in
+[docs/manual/FIGURES.md](../manual/FIGURES.md).
+
+The manual's three sources are kept apart and labelled per file and per section.
+[docs/manual/README.md](../manual/README.md) carries the bucket scheme.
+
+### Pages migrated, and where each went
+
+| From | Pages | Destination | Manual part |
+|---|---|---|---|
+| Part 1 | 5–6 | [17-legacy-overview.md](../manual/17-legacy-overview.md) | 1 |
+| Part 2 | 5–17, 30–46, 49–51 | [15-patent-portfolio.md](../manual/15-patent-portfolio.md) | 2 |
+| Part 3 | 16 | [07-indicators.md](../manual/07-indicators.md) | 3 |
+| Part 3 | 17 | [06-trading-tab.md](../manual/06-trading-tab.md) | 3 |
+| Part 3 | 19 | [08-tabs.md](../manual/08-tabs.md), System Status | 3 |
+| Part 3 | 23–27 | [07-indicators.md](../manual/07-indicators.md) | 3 |
+| Part 4 | 7 | [16-operator-settings.md](../manual/16-operator-settings.md) | 3 |
+| Part 4 | 32–44 | [16-operator-settings.md](../manual/16-operator-settings.md) | 3 |
+| Part 4 | 45–49 | [16-operator-settings.md](../manual/16-operator-settings.md) | 3 |
+| Part 5a | 5–6 | [08-tabs.md](../manual/08-tabs.md), Simulator | 3 |
+| Part 6 | 3–4 | [14-development-chronicle.md](../manual/14-development-chronicle.md) | 8 |
+| Part 6 | 10–17, the three not-built decisions | [12-adr-index-and-glossary.md](../manual/12-adr-index-and-glossary.md) | 6 |
+| Part 7a | 12 | [14-development-chronicle.md](../manual/14-development-chronicle.md) | 8 |
+| Part 7a | 15 | [14-development-chronicle.md](../manual/14-development-chronicle.md) | 8 |
+| Part 7a | 18 | [14-development-chronicle.md](../manual/14-development-chronicle.md) | 8 |
+| Part 7b | 11 | [11-hop-protocol-and-rules-registry.md](../manual/11-hop-protocol-and-rules-registry.md) | 5 |
+| Part 7c | 8 | [12-adr-index-and-glossary.md](../manual/12-adr-index-and-glossary.md) | 6 |
+| Part 7c | 10 | [07-indicators.md](../manual/07-indicators.md) | 3 |
+| Part 8 | 8–10 | [09-updates-and-versioning.md](../manual/09-updates-and-versioning.md) | 7 |
+| Part 8 | 40–42 | [08-tabs.md](../manual/08-tabs.md), History | 3 |
+| Part 8 | 58–59 | [07-indicators.md](../manual/07-indicators.md) | 3 |
+| Part 8 | 70–71 | [08-tabs.md](../manual/08-tabs.md), Console | 3 |
+| Part 9 | 2 | [08-tabs.md](../manual/08-tabs.md), Simulator | 3 |
+
+No new part was created. The operator's own table of contents in
+`docs/manual/04-manual-parts.md` has nine parts and its arrangement takes
+precedence, so each migrated passage entered the part whose subject it serves.
+Three new files were added inside existing parts, which is what the manifest
+table in `docs/manual/README.md` documents as folding a further file into a
+part.
+
+### Pages not migrated, with the reason and the proof
+
+Every count below is per part, and the three columns sum to the part's page
+count. The proof column names the measurement, not an opinion.
+
+| Part | Pages | Migrated | Not migrated | Reason, and the proof |
+|---|---:|---:|---:|---|
+| Part 1 | 26 | 2 | 24 | Pages 1–4 are cover and front matter. Pages 7–8 carry the part's four internal contradictions, including a table saying twenty-seven inventions where the portfolio enumerates twenty-six. Pages 9–26 are a section index of the superseded document itself, so it indexes nothing that now exists. |
+| Part 2 | 54 | 33 | 21 | Front matter, the seven inventions whose identifiers have never appeared in any Python file, and all 27 supporting-evidence blocks. Every block attributes its numbers to a simulation engine with no source in this repository; the figures the blocks cite are inventoried in FIGURES.md with their producer named as absent. |
+| Part 3 | 39 | 8 | 31 | Every module count and size in the part is wrong; measured now, the trading package holds 88 modules against 23 claimed, core 28 against 17, exchange 24 against 12, and the graphical layer 165 files and 117,241 lines against about 30 files and 28,874. Thirty-one module roles describe a different component from the one named. Several pages describe a capacity arbiter whose every named symbol returns zero on both instruments with both controls firing. |
+| Part 4 | 59 | 19 | 40 | The tab chapters: every graphical-tab line count is wrong and five of eight tab purposes with them, three decisively — an analytics tab described with features a search of the file does not find, a competition tab described as visualising the arbiter that does not exist, and a chain-explorer tab described as an exchange sandbox. |
+| Part 5a | 14 | 2 | 12 | The battery universe contradicts itself inside one part: page 3 defines 26 assets across 3 periods for 78 runs, page 11 says 39 equals 13 times 3. The constants said to fix the roster were never defined. The property-testing library the part credits with 29 invariants is imported nowhere and appears in no requirements file in any commit. |
+| Part 5b | 15 | 0 | 15 | No number in the part can be reproduced here. Both credited producers are absent: the battery engine and a grading script for the venue export. Two figures refute themselves without needing any code — see the figure inventory. The four images are carried in FIGURES.md. |
+| Part 5c | 12 | 0 | 12 | Evidence for a subsystem that was never built. Every mechanism it reports as measured exists nowhere in code or history, and one sentence refutes itself by three orders of magnitude. Its single accurate claim is its own disclaimer that no live data for the subsystem exists. The two images are carried in FIGURES.md. |
+| Part 6 | 25 | 10 | 15 | The ten domain assertions on pages 5–14 are field-standard trading principles and each would need re-deriving against the product bullet it defends; a bullet re-derived without its measurement is an opinion with a citation. The memory identifiers resolve to a store that has never existed here, and the review apparatus described in the closing pages has no source at all. |
+| Part 7a | 30 | 3 | 27 | Pages 20–30 are an index of memory identifiers that all resolve to the same absent store. The remaining narrative pages carry the arcs that are already migrated. |
+| Part 7b | 19 | 1 | 18 | The rule catalogue. Of 51 distinct rule numbers the three protocol parts describe, 34 have no entry in the live registry at all, and of the 17 that do collide, 15 describe it correctly. The group table is wrong in six places and the part gives nine rule numbers two incompatible identities. |
+| Part 7c | 21 | 2 | 19 | The decision-record index across three lists. No file whose name contains "adr", in any case, appears in any commit, while the positive control returns its path on the same instrument. The part also gives one record three different titles in three places. |
+| Part 8 | 86 | 10 | 76 | The live-evidence chapters. The headline metric has no producer: a search for the obvious spellings of an average sell price across `src/` and `dev_harness/` returns zero, against 61 hits for the average-entry term in the same sweep. Roughly 190 table cells rest on that metric across four dated snapshots. The numbers may well be true; nothing here can regenerate them, so migrating them writes an unfalsifiable claim. All 49 images are carried in FIGURES.md. |
+| Part 9 | 28 | 1 | 27 | The subject does not exist here. The canonical source file the part names, and every path under its directory, have never been committed; the positive control returned its commit on the same run. The cost-basis method, the capacity arbiter and the position analyser are absent by the same instrument. |
+| Part 10 | 51 | 0 | 51 | The protocol it describes is deprecated in substance and in fact, replaced by the skills-based harness. Of 77 catalogued rules, the 42 above R35 have no entry in `src/core/rule_registry.py`, and of the 35 that collide, not one describes the same rule. Twenty of the 26 filenames named here were never added. These numbers are not live and must not be cited as though they were. |
+| **Total** | **479** | **91** | **388** | |
+
+The two counted columns sum to the page count on every row and across the whole
+table: 91 plus 388 is 479. Part 2's migrated count is pages 5–17, 30–46 and
+49–51, which is 13 plus 17 plus 3. Part 6's is pages 3–4 and 10–17, which is 2
+plus 8. Part 8's is pages 8–10, 40–42, 58–59 and 70–71, which is 3 plus 3 plus 2
+plus 2.
+
+### Corrections found while migrating
+
+The corrections table above travelled with the migration and was applied. Three
+of its rows needed correcting themselves, and the migrated text carries the
+measured value rather than the audited one.
+
+| Where the audit says | What measurement returns | Instrument |
+|---|---|---|
+| The quality-arc module inventory verifies all 18 named modules | 17 verify. `ab_gate_flags.py` has no commit on any ref that ever added it. | `git log --all --diff-filter=ADR`; the same query for `src/trading/scrumming_bot.py` returns 2 commits |
+| Post-mortem rotation has four constants | Three, at `acervator_watchdog.py:389`–391. One of the three only warns and prunes nothing, so two govern the rotation. | read from the module |
+| All fifteen extractor defaults verify, down to the spike-protection percentage and the median-of-three fallback | The fifteen config defaults verify. The spike threshold and the window are not config fields: `ExtractorBot._rate_spike_threshold_pct` is 10.0 and `_rate_spike_window` is 3, both hard-coded at `src/trading/extractor_bot.py:198`–199. | `dataclasses.fields(BotConfig)` for the defaults; a `spike|median` search over `config.py` returns one unrelated comment while the same search over `src/` returns 13 real hits |
+
+Two further refinements, neither a contradiction of the audit:
+
+- The eleven deprecated settings are dropped by `make_bot_config` calling
+  `_sanitize_deprecated_kwargs`, not by `BotConfig` itself. A direct
+  `BotConfig(**kwargs)` with the same eleven raises `TypeError`, which is the
+  control proving the stripper does the work.
+- The efficiency-ratio gate blocks at both ends, not only the low one:
+  `upper_threshold` 0.70 and `lower_threshold` 0.05, with a reading at or below
+  zero passing as the not-populated sentinel.
