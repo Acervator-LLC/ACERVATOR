@@ -92,9 +92,18 @@ INVENTORY: dict[str, str] = {
     "from the directory it sits in",
     "run_acervator.sh": "operator launch wrapper for macOS and Linux. It runs "
     "`python3 main.py` from the directory it sits in",
-    "BUILD.py": "the build driver. It resolves build_windows.ps1 beside itself "
-    "with os.path.dirname(__file__), so the two must stay together",
-    "build_windows.ps1": "the Windows build script BUILD.py calls by name",
+    "BUILD.py": "the build driver, double-clicked. A double-click puts the script's "
+    "own directory on sys.path as sys.path[0], and `from tools.build_launcher "
+    "import launch` is a TOP-LEVEL package import that resolves only from the "
+    "repository root",
+    "React_BUILD.py": "the React build entry point, double-clicked. It pins VARIANT "
+    "to src._variant.REACT and reaches tools.build_launcher by the same "
+    "top-level import BUILD.py does",
+    "Qt_BUILD.py": "the Qt build entry point, double-clicked. It pins VARIANT to "
+    "src._variant.QT and reaches tools.build_launcher by the same top-level "
+    "import BUILD.py does",
+    "build_windows.ps1": "the Windows build script tools/build_launcher.py calls by "
+    "name, resolved beside the repository root it derives from its own location",
     "build_mac.sh": "the macOS build script, run as ./build_mac.sh",
     "Acervator_win.spec": "PyInstaller spec. It sets PROJECT_ROOT from the SPEC variable, "
     "so the directory it sits in IS the project root for the build",

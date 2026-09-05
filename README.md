@@ -134,7 +134,9 @@ and without it `_make_oscillator` caps the load multiplier instead of
 reporting zero load (R28 FL / R61 CBF compliance).
 
 **Where the package names live.** `pyproject.toml` is the only place.
-`build_windows.ps1`, `build_mac.sh`, `BUILD.py`, `deploy/kiosk/install.sh` and
+`build_windows.ps1`, `build_mac.sh`, `tools/build_launcher.py` (which
+`BUILD.py`, `React_BUILD.py` and `Qt_BUILD.py` all call),
+`deploy/kiosk/install.sh` and
 `deploy/kiosk/update.sh` each call `python -m tools.deps requirements <consumer>`
 and install what it prints. `requirements/` holds the resolved
 transitive set that `python -m tools.deps lock` produced, one file per
@@ -148,7 +150,8 @@ platform and interpreter.
 acervator/
 ├── main.py                                   # Entry point
 ├── acervator_watchdog.py                     # Out-of-process crash watchdog
-├── BUILD.py                                  # PyInstaller build driver
+├── BUILD.py                                  # Build driver, every variant
+├── React_BUILD.py · Qt_BUILD.py              # Build one surface, no argument
 ├── pyproject.toml                            # Dependencies, pytest, coverage
 ├── CHANGELOG.md · CONTRIBUTING.md · DISCLAIMER.md · LICENSE
 │

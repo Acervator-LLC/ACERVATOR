@@ -27,8 +27,9 @@ from tools import claude_home
 REPO = Path(__file__).resolve().parents[1]
 TOOLS = REPO / "tools"
 
-# (module suffix, reachable as a program). `gate` is False: it has no parser,
-# so spawning it would run the release gate.
+# (module suffix, reachable as a program). `gate` and each `sweep_the_*`
+# calibration are False: none has a parser, so spawning one would run the
+# release gate or the sweep itself.
 INVENTORY: tuple[tuple[str, bool], ...] = (
     ("build_product_manual", True),
     ("build_release_zip", True),
@@ -49,6 +50,9 @@ INVENTORY: tuple[tuple[str, bool], ...] = (
     ("queue_state", True),
     ("sync_renderer_modules", False),
     ("scrumming_v3_sim", True),
+    ("sweep_the_confidence_gate", False),
+    ("sweep_the_growth_cap", False),
+    ("sweep_the_remaining_boosts", False),
 )
 
 # Named here so restoring one silently fails `test_the_file_is_gone`.
@@ -61,6 +65,11 @@ DELETED_ONE_SHOTS: tuple[str, ...] = (
 # (module suffix, reason). `TestEveryLibraryIsALibrary` requires each to
 # import, to serve its importers, and to expose no `main`.
 LIBRARIES: tuple[tuple[str, str], ...] = (
+    (
+        "build_launcher",
+        "the dependency checks and the PowerShell spawn shared by BUILD.py, "
+        "React_BUILD.py and Qt_BUILD.py at the repository root",
+    ),
     (
         "spec_common",
         "shared PyInstaller spec content, imported by Acervator_win.spec "
