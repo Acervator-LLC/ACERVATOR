@@ -47,10 +47,11 @@ def module_held(attempts: int = LOCK_ATTEMPTS):
     """Holds LOCK_PATH so one worker at a time reads or swaps the module."""
     handle = None
     for _ in range(attempts):
+        # Windows answers a file pending deletion with a permission error.
         try:
             handle = os.open(LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_RDWR)
             break
-        except FileExistsError:
+        except (FileExistsError, PermissionError):
             continue
     if handle is None:
         raise AssertionError(f"{LOCK_PATH} stayed taken for all {attempts} attempts")
