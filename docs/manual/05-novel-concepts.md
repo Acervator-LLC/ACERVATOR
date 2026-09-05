@@ -359,7 +359,7 @@ if hasattr(self._simulator, "set_topology_getter"):
 ```
 
 No Paper Trader exists to push to; entry 17 gives the measurement. Issue #23
-tracks the tab's build-out, issue #18 the topology and oppositional pushes, and
+tracks the tab's build-out and the topology and oppositional pushes, and
 issue #290 a live connector defect on Refresh.
 
 ## 7 - Bot Swarm and Smart Wire Network w/ Provenance Tracking
