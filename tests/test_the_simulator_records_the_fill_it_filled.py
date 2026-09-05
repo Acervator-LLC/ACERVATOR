@@ -1,53 +1,10 @@
-# S101  — pytest's assert IS the assertion syntax; -O would strip them
-#         and make this file inert. Nobody runs pytest with -O.
-# SLF001 — this file reads `_tape`, `_pending_markers`, `_read_fill`,
-#         `_run_log` and `_signal_sink` on purpose. The question it
-#         answers is "did the fill reach the record", and none of the
-#         five is on a public surface.
-"""Issue #110 — a fill that HAPPENED must arrive in the record intact.
+"""A Simulator fill arrives in the record with its own values.
 
-WHAT WENT WRONG. `TabletBackend` replaced `FleetSimExchange` in
-v3.24.84 and hands its fill observer a ccxt-shaped DICT:
-`self._on_trade(dict(_t))` (tablet_backend.py:527). `_on_sim_trade` was
-written for the old `Trade` OBJECT and read every field with
-`getattr(trade, "symbol")`, `getattr(trade, "amount")` and so on.
-`getattr` on a dict does not read a key, so every field returned its
-default.
-
-MEASURED ON THIS TAPE BEFORE THE FIX. One real fill —
-`CHIP/USD buy 101.05331875 @ 0.9895766` — sat in the tape's own ledger,
-and the record of it said:
-
-    progress.per_symbol_trade_count == {}
-    ctl._pending_markers            == []          (no chart marker)
-    trades.log row  symbol=""  side=""  amount=0.0  price=0.0  usd=0.0
-                    candle_address=""  spendable_usd=0.0
-
-WHY THE SUITE STAYED GREEN. Every symptom is a VALID value of its own
-type. An empty dict is a dict, a zero is a number, and `getattr` with a
-default cannot raise. Nothing was missing; everything was blank. So
-this file asserts VALUES, and it derives each expected value from the
-tape's own ledger rather than from a pinned constant — "record_trade
-was called" is satisfied by a row of zeros, which is exactly the defect.
-
-WHY THE VALUES COME FROM THE LEDGER AND NOT FROM LITERALS. The
-Simulator's criterion on this project is gate-latch parity, never trade
-count or price parity, and a test pinned to `0.9895766` is weakened by
-the next gate change. The ledger row is a SECOND WITNESS produced on a
-different code path from the observer under test, so agreement between
-the two is an observation rather than a constant.
-
-THE FLOOR IS ONE FILL, and the file states it before reading anything
-over it. Zero fills makes every "the record matches the ledger" check
-vacuously true, and zero fills is the neighbouring defect (#109) this
-one was found behind.
-
-WHY `start()` AND NOT `_build_sim()` THEN `start()`. `_build_sim`
-APPENDS to `self._bots` and `start()` calls it unconditionally, so
-building here first would give a 2-config fleet four bots and
-double-count every fill. That non-idempotency is named separately in
-#110 and is NOT fixed here; this file works around it by never
-pre-building.
+Every check derives its expected value from the tape's ``ledger``, a second
+witness on a different code path from ``_on_sim_trade``. ``_Run`` asserts a
+floor of ``FIRST_FILL_OBSERVED_BY`` before reading anything over it, so no
+comparison passes vacuously. ``_Run`` calls ``FleetReplayController.start``
+and never ``_build_sim`` first, which appends to ``_bots`` a second time.
 """
 
 from __future__ import annotations
@@ -71,20 +28,14 @@ from src.simulator.fleet.fleet_replay_controller import (  # noqa: E402
 )
 from src.trading.stone_tablets.addressing import parse_address  # noqa: E402
 
-# The same synthetic-tablet shape tests/test_pin_observability.py and
-# tests/test_a_simulator_replay_fires_a_trade.py use, on the 5-minute
-# grid the real tablets sit on.
+# A synthetic tablet on the 5-minute grid the real tablets sit on.
 T0 = 1_776_778_500_000
 STEP = 300_000
 SYMS = ("CHIP/USD", "SPK/USD")
 TARGET_BALANCE = 100.0
 TAPE_CANDLES = 400
 
-# RE-MEASURED after issue #111 violation B, on the sawtooth tape below:
-# 8 fills, the first on candle 150. The old figure was 80, taken from
-# the STRUCTURAL opening acquisition that the ruling removed. The run
-# plays the whole tape, so it carries about 2.7x margin over the
-# warm-up the first fill actually needs.
+# Measured on the sawtooth tape below: 8 fills, the first on candle 150.
 FIRST_FILL_OBSERVED_BY = 150
 
 
@@ -109,14 +60,8 @@ def _rows(n: int = TAPE_CANDLES, px0: float = 1.0) -> list[list[float]]:
 
 
 def _controller() -> FleetReplayController:
-    # `ta_timeframe` is the tape's own `5m`. `BotConfig` defaults it to
-    # `1h` (bot_container.py:203) and `TabletBackend.fetch_ohlcv`
-    # refuses a timeframe it holds no series for (tablet_backend.py:392)
-    # rather than serving `5m` in its place, so a `1h` bot can never
-    # clear the TA gate here. It could still make the structural opening
-    # acquisition, which is how that went unnoticed; with the
-    # acquisition gone a `1h` config would leave this file no fill to
-    # check the record against.
+    # `ta_timeframe` is the tape's own `5m`; `TabletBackend.fetch_ohlcv`
+    # refuses the `1h` a `BotConfig` defaults to.
     cfgs = [
         {
             "mode": "scrumming",
@@ -521,9 +466,8 @@ class TestBothProducerShapesAreRead:
             )
         )
         assert fill["symbol"] == "CHIP/USD"
-        # `OrderSide.BUY.value` is lowercase `"buy"`, the same string
-        # the dict path carries, so both producers land one shape in
-        # the run log rather than two.
+        # `OrderSide.BUY.value` is lowercase `"buy"`, the string the dict
+        # path also carries.
         assert fill["side"] == "buy"
         assert fill["amount"] == pytest.approx(101.05331875)
         assert fill["price"] == pytest.approx(0.9895766040550209)

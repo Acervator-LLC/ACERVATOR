@@ -1,16 +1,9 @@
-"""v3.23.42 — ScrummingBot self-reservation + personal_hold_qty pins.
+"""ScrummingBot self-reservation and ``personal_hold_qty``.
 
-Covers the F62 + F65 fixes documented at
-docs/engineering-notes/2026-07-27_interop_usd_denom_settlement_audit_and_design.md,
-plus v3.23.46 correctness fixes for over-commit enforcement + USD-
-denominated reservation qty
-(docs/engineering-notes/2026-07-28_multibase_coordination_and_cross_pair_intelligence_plan.md).
-
-We test the four ScrummingBot helpers directly (unbound-method style)
-against a lightweight stub — instantiating a full ScrummingBot drags
-in the whole exchange stack and is out of scope here. Behavioural
-integration is covered by the existing suite; these pins just lock
-the reservation math + lifecycle.
+``_compute_reservation_qty``, ``_ensure_capital_reservation`` and
+``_release_capital_reservation`` are called unbound against
+``_mk_stub_bot``, so no exchange stack is built. ``_StubRegistry`` records
+every reserve, update, release and heartbeat the helpers make.
 """
 
 from __future__ import annotations
@@ -28,6 +21,9 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
+
+CLAIM_ID = "tok-0001"
+CLAIM_ID_EXISTING = "pre-existing"
 
 
 def _run(coro):
@@ -117,26 +113,16 @@ def _mk_stub_bot(
 ):
     stub = SimpleNamespace()
     stub.bot_id = bot_id
-    # v3.24.31 — `_ensure_capital_reservation` now resolves its registry
-    # through `ScrummingBot._crr()`, which returns an injected instance
-    # when one was supplied and the process-wide singleton otherwise.
-    # This hand-built stub has to model that seam or the method raises
-    # AttributeError before reaching any of the behaviour under test.
-    #
-    # Bound to the real implementation rather than stubbed out, so these
-    # tests still exercise the resolution logic. With
-    # `_capital_registry = None` it falls through to `get_registry()`,
-    # which is what `_patch_registry` patches — so the assertions below
-    # are unchanged in meaning.
+    # `_ensure_capital_reservation` resolves its registry through
+    # `ScrummingBot._crr()`, bound here to the real implementation.
     stub._capital_registry = None
     stub._crr = lambda: ScrummingBot._crr(stub)
     stub._target_balance = target_balance
     stub._crr_token = None
     stub._crr_last_reserved_qty = 0.0
     stub._quote_to_usd = quote_to_usd
-    # v3.23.46 — exchange-balance cache used by
-    # _get_cached_exchange_balance to short-circuit the exchange call
-    # in tests. Seed with a fresh timestamp so the TTL logic returns it.
+    # The cache `_get_cached_exchange_balance` reads, seeded with a fresh
+    # timestamp so the TTL returns it.
     import time as _t
 
     stub._exchange_balance_cache = (
@@ -149,9 +135,8 @@ def _mk_stub_bot(
         personal_hold_qty=personal_hold_qty,
         self_reserve_capital=self_reserve,
     )
-    # Bind ScrummingBot's own reservation helpers onto the stub so
-    # nested self._compute_reservation_qty() calls inside
-    # _ensure_capital_reservation resolve to the real math.
+    # Bind the real `_compute_reservation_qty` onto the stub, so the
+    # nested call inside `_ensure_capital_reservation` runs the real math.
     stub._compute_reservation_qty = MethodType(
         ScrummingBot._compute_reservation_qty, stub
     )
@@ -159,9 +144,7 @@ def _mk_stub_bot(
         ScrummingBot._get_cached_exchange_balance, stub
     )
 
-    # exchange.get_balance is only called when the cache is empty /
-    # stale. Provide a default that raises so tests fail loud if
-    # they exercise the un-cached path unintentionally.
+    # `get_balance` raises by default, so an un-cached path fails loudly.
     async def _no_exchange(*_a, **_kw):
         raise RuntimeError(
             "test stub: exchange.get_balance was called; seed "
@@ -283,10 +266,10 @@ class TestEnsureReservation:
         last_qty stays 0.0 so the next tick retries cleanly."""
 
         class _BrokenOnReserve:
-            def reserve(self, *a, **kw):
+            def reserve(self, *_a, **_kw):
                 raise RuntimeError("registry down")
 
-            def heartbeat(self, *a, **kw):
+            def heartbeat(self, *_a, **_kw):
                 pass
 
         stub = _mk_stub_bot(target_balance=200.0)
@@ -304,14 +287,14 @@ class TestEnsureReservation:
         token cleared so next tick attempts a fresh reserve()."""
 
         class _BrokenOnUpdate:
-            def update(self, *a, **kw):
+            def update(self, *_a, **_kw):
                 raise RuntimeError("update failed")
 
-            def heartbeat(self, *a, **kw):
+            def heartbeat(self, *_a, **_kw):
                 pass
 
         stub = _mk_stub_bot(target_balance=200.0)
-        stub._crr_token = "pre-existing"
+        stub._crr_token = CLAIM_ID_EXISTING
         stub._crr_last_reserved_qty = 5.0  # drift vs new 2.2 forces update
         with patch(
             "src.trading.capital_reservation.get_registry",
@@ -336,21 +319,21 @@ class TestReleaseReservation:
     def test_release_clears_state(self):
         reg = _StubRegistry()
         stub = _mk_stub_bot()
-        stub._crr_token = "tok-0001"
+        stub._crr_token = CLAIM_ID
         stub._crr_last_reserved_qty = 2.5
         with patch("src.trading.capital_reservation.get_registry", return_value=reg):
             ScrummingBot._release_capital_reservation(stub)
-        assert reg.released == [{"token": "tok-0001", "bot_id": stub.bot_id}]
+        assert reg.released == [{"token": CLAIM_ID, "bot_id": stub.bot_id}]
         assert stub._crr_token is None
         assert stub._crr_last_reserved_qty == 0.0
 
     def test_release_error_does_not_raise(self):
         class _BrokenRegistry:
-            def release(self, *a, **kw):
+            def release(self, *_a, **_kw):
                 raise RuntimeError("release failed")
 
         stub = _mk_stub_bot()
-        stub._crr_token = "tok-0001"
+        stub._crr_token = CLAIM_ID
         with patch(
             "src.trading.capital_reservation.get_registry",
             return_value=_BrokenRegistry(),
@@ -358,7 +341,7 @@ class TestReleaseReservation:
             # Should not raise; token intentionally NOT cleared so
             # a subsequent retry / TTL-prune can clean up.
             ScrummingBot._release_capital_reservation(stub)
-        assert stub._crr_token == "tok-0001"
+        assert stub._crr_token == CLAIM_ID
 
 
 # BotConfig integration
