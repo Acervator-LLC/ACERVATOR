@@ -511,20 +511,31 @@ def test_no_back_channel_exists_so_the_page_cannot_write(module: str) -> None:
         assert forbidden not in code, f"{forbidden} opens a path back into Python"
 
 
-def test_no_back_channel_control_the_scan_can_see_a_real_call() -> None:
-    """The control: the same scan DOES find the name in real code.
-
-    Without this, a scan that strips everything would pass the test
-    above on a module that really did open a channel.
-    """
-    code = _code_of(REPO / "src" / "gui" / "react_history_panel.py")
-    assert "runJavaScript" in code, "the scan stripped the code, not the prose"
-    prose = (REPO / "src" / "gui" / "react_history_panel.py").read_text(
-        encoding="utf-8"
+def test_the_back_channel_scan_sees_a_call_and_not_a_docstring(tmp_path) -> None:
+    """``_code_of`` keeps ``QWebChannel`` where it is called and drops it
+    where only a docstring names it."""
+    in_code = tmp_path / "opens_a_channel.py"
+    in_code.write_text(
+        '"""A module that really does open one."""\n'
+        "from PySide6.QtWebChannel import QWebChannel\n"
+        "\n"
+        "def wire(page):\n"
+        "    page.setWebChannel(QWebChannel())\n",
+        encoding="utf-8",
     )
-    assert (
-        "QWebChannel" in prose
-    ), "the docstring that makes this test non-trivial is gone"
+    in_prose = tmp_path / "only_mentions_it.py"
+    in_prose.write_text(
+        '"""No QWebChannel is opened here and setWebChannel is never called."""\n'
+        "\n"
+        "def wire(page):\n"
+        "    # setWebChannel would open a QWebChannel\n"
+        "    page.runJavaScript('1')\n",
+        encoding="utf-8",
+    )
+    assert "QWebChannel" in _code_of(in_code), "the scan stripped a real call"
+    assert "setWebChannel" in _code_of(in_code), "the scan stripped a real call"
+    assert "QWebChannel" not in _code_of(in_prose), "the scan read prose as code"
+    assert "runJavaScript" in _code_of(in_prose), "the scan stripped the code"
 
 
 # ═══════════════════════════════════════════════════════════════════════

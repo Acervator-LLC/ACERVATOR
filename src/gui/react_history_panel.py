@@ -1,53 +1,9 @@
-"""react_history_panel.py — the React History table. Issue #128 units R4, R6.
+"""The React History table, drawn inside ``QWebEngineView``.
 
-WHAT THIS IS
-============
-The History tab's table, drawn by React inside the Chromium that PySide6
-already ships. ``HistoryTab`` in ``src/gui/history_tab.py`` embeds it in
-place of the ``QTableWidget`` it used to hold. There is ONE History tab
-and one renderer.
-
-WHAT IT MAY NOT DO
-==================
-It computes nothing. Every string, every colour and every gate-light
-state on screen is a field ``src.exchange.history_read_contract`` already
-produced. A table that re-derived a cost, a grade, a colour or a light
-would be the second implementation of History, which is the defect this
-migration order exists to prevent.
-
-THE HOSTING MECHANISM, AS MEASURED
-==================================
-``src/gui/tradingview_chart.py`` already runs HTML/JS inside
-``QWebEngineView``, and ``tools/spec_common.py:153`` carries
-``PySide6.QtWebEngineWidgets`` as a hidden import while the 10-name
-``EXCLUDES`` list holds no Qt web entry. Measured on this machine,
-PySide6 6.11.2: ``QtWebEngineProcess.exe`` -- the Chromium subprocess --
-is present in the installed wheel. No Electron and no second web host.
-
-THE BRIDGE IS ONE-WAY, AND THAT IS THE WRITE PROOF
-==================================================
-Python pushes JSON with ``QWebEnginePage.runJavaScript``. That is the
-only bridge ``tradingview_chart.py`` uses and the only one used here.
-The page has NO path back into Python, so "the table writes nothing" is
-a property of the wiring rather than a claim a test has to keep proving.
-The cost is that the page cannot raise its own events, so the Qt controls
-in ``HistoryTab`` -- Refresh, Apply, Reset, the two date edits, the three
-combos, Prev, Next and Export CSV -- stay Qt widgets. Electron or
-``QWebChannel`` would move those into the page; neither is in this unit,
-and ``PySide6.QtWebChannel`` is NOT in the frozen build's hidden imports.
-
-Reads run the same way and are therefore ASYNCHRONOUS: ``row_count``
-answers through a callback. Nothing here spins a nested event loop, which
-on the GUI thread would re-enter the render it was called from.
-
-NOT THE ``tradingview_chart.py`` INJECTION SHAPE
-================================================
-That file builds ``f"setCandles('{json.dumps(x)}')"``: JSON inside a
-single-quoted JS string. ``json.dumps`` does not escape ``'``, so one
-apostrophe in the data ends the string and the rest executes. History
-cells carry free-text tooltips, so this module embeds the JSON as a bare
-JS expression instead and never wraps it in quotes. Named, not fixed --
-that call site belongs to its own file.
+``HistoryWebTable`` replaces the table widget ``HistoryTab`` used to hold.
+``build_view_model`` returns only fields ``history_read_contract`` produced;
+no cost, grade or colour is derived here. ``state_push_script`` embeds the
+JSON as a bare JS expression and never wraps it in quotes.
 """
 
 from __future__ import annotations
@@ -67,17 +23,11 @@ try:
 
     _HAS_WEBENGINE = True
 except ImportError:
-    # Same form as history_tab.py: no Qt means no widget class, the
-    # module still imports, and asking for the widget fails by name at
-    # the import site. history_tab.py catches that and logs.
+    # Without Qt, HistoryWebTable is never defined and the import site fails by name.
     _HAS_WEBENGINE = False
 
 logger = logging.getLogger("acervator.gui.react_history")
 
-
-# --------------------------------------------------------------------- #
-# Assets                                                                 #
-# --------------------------------------------------------------------- #
 
 #: The three files the page is built from. Order is load order.
 ASSET_NAMES: tuple[str, ...] = (
@@ -88,8 +38,7 @@ ASSET_NAMES: tuple[str, ...] = (
 
 STYLE_ASSET = "history_panel.css"
 
-#: The chrome the page draws for a client that asks for none of it.
-#: ``HistoryTab`` owns its own summary line, filter bar and pager.
+#: ``HistoryTab`` draws its own summary line, filter bar and pager.
 TABLE_ONLY_CHROME = {"summary": False, "filters": False, "pager": False}
 
 #: The JS expression that counts the rows the browser actually drew.
@@ -103,11 +52,8 @@ class HistoryPanelAssetMissing(RuntimeError):
 def asset_dir() -> Path:
     """The directory holding the panel's JS and CSS.
 
-    Two candidates, in order. ``__file__`` covers running from source.
-    ``sys._MEIPASS`` covers the frozen build, where
-    ``tools/spec_common.py:datas_candidates`` ships the whole ``src``
-    directory to ``<bundle>/src``. NOT MEASURED against a real build --
-    no build was run for this unit.
+    ``__file__`` covers running from source; ``sys._MEIPASS`` covers the
+    frozen build, which carries ``src/gui/web`` inside the bundle.
     """
     beside_module = Path(__file__).resolve().parent / "web"
     if beside_module.is_dir():
@@ -119,10 +65,9 @@ def asset_dir() -> Path:
 
 
 def read_asset(name: str) -> str:
-    """Return one asset's text, or raise naming the path that is missing.
+    """Return one asset's text, or raise ``HistoryPanelAssetMissing``.
 
-    Reads as UTF-8 with newline translation off, so a CRLF checkout of a
-    ``.js`` file cannot put a stray carriage return into the page.
+    ``newline=""`` keeps a CRLF checkout from reaching the page.
     """
     path = asset_dir() / name
     try:
@@ -135,10 +80,9 @@ def read_asset(name: str) -> str:
 
 
 def _palette(theme: str) -> dict:
-    """The six chrome colours, taken from the chart's theme table.
+    """The six chrome colours, read from ``CHART_THEMES``.
 
-    Imported rather than restated: a second copy of the palette drifts
-    from the first the next time a theme changes.
+    An unknown ``theme`` falls back to ``cyberpunk_dark``.
     """
     from .tradingview_chart import CHART_THEMES
 
@@ -154,10 +98,10 @@ def _palette(theme: str) -> dict:
 
 
 def panel_html(theme: str = "cyberpunk_dark") -> str:
-    """The whole page, self-contained: no network fetch, no CDN.
+    """The whole page as one string, with no network fetch.
 
-    Built by joining, never by ``%`` or ``str.format``: the minified
-    React bundle carries both ``%`` and braces, and either would raise.
+    ``parts`` is joined, never ``%``-formatted: the minified bundles named in
+    ``ASSET_NAMES`` carry both ``%`` and braces.
     """
     overrides = "".join(f"{k}:{v};" for k, v in _palette(theme).items())
     parts = [
@@ -179,13 +123,8 @@ def panel_html(theme: str = "cyberpunk_dark") -> str:
     return "\n".join(parts)
 
 
-# --------------------------------------------------------------------- #
-# The view model -- pure, no Qt, no browser                              #
-# --------------------------------------------------------------------- #
-
-
 def _date_text(ts: int) -> str:
-    """A filter bound as text. 0 means the bound is inactive."""
+    """``ts`` as UTC ``YYYY-MM-DD HH:MM``; a ``ts`` of 0 gives ``(any)``."""
     if ts <= 0:
         return "(any)"
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
@@ -205,17 +144,9 @@ def build_view_model(
 ) -> dict:
     """Everything the page draws, as one JSON-serialisable dict.
 
-    Every field is the contract's answer. This function chooses which of
-    the contract's functions to call and in what order; it decides no
-    value of its own.
-
-    ``filtered`` is the retained set when the caller has already applied
-    the filters and counted the result. Supplying it skips a second
-    filter pass over the same rows; the contract's own pass runs when it
-    is omitted.
-
-    ``gate_index`` and ``voting_index`` are the caller's per-page join
-    indexes. Supplying them keeps the log read to one per page.
+    A supplied ``filtered`` skips the second ``hrc.apply_filters`` pass, and
+    ``gate_index`` and ``voting_index`` keep ``hrc.build_page`` to one log
+    read per page.
     """
     retained = hrc.apply_filters(trades, filters) if filtered is None else filtered
     rendered = hrc.build_page(retained, page, bot_manager, gate_index, voting_index)
@@ -241,30 +172,22 @@ def build_view_model(
 
 
 def state_push_script(payload: dict) -> str:
-    """The one JS statement the bridge sends.
+    """The one JS statement pushed into the page.
 
-    ``ensure_ascii=True`` escapes every non-ASCII code point, U+2028 and
-    U+2029 among them. Those two are legal inside a JSON string and are
-    line terminators in JavaScript, so leaving them raw would end the
-    statement mid-value.
+    ``ensure_ascii=True`` escapes U+2028 and U+2029, which are legal inside a
+    JSON string and are JavaScript line terminators.
     """
     return "window.acervatorSetState(" + json.dumps(payload, ensure_ascii=True) + ");"
 
 
-# --------------------------------------------------------------------- #
-# The Qt host                                                            #
-# --------------------------------------------------------------------- #
-
 if _HAS_WEBENGINE:
 
     class HistoryWebTable(QWidget):
-        """The History table, hosted in QWebEngineView.
+        """The History table, hosted in ``QWebEngineView``.
 
-        Public surface, all of it read-only:
-          * set_model(model)      -- push one view model to the page
-          * page_ready            -- True once the document has loaded
-          * model()               -- what the last push carried
-          * row_count(callback)   -- the DOM's own row count, async
+        ``set_model`` pushes one view model, ``model`` returns the last one
+        pushed, ``page_ready`` reports the document state, and ``row_count``
+        counts the rows the DOM drew.
         """
 
         def __init__(self, parent=None, theme: str = "cyberpunk_dark") -> None:
@@ -283,30 +206,26 @@ if _HAS_WEBENGINE:
         # -- public ---------------------------------------------------
         @property
         def page_ready(self) -> bool:
-            """True once the document exists and can be pushed to."""
+            """True once ``_on_load_finished`` has seen a successful load."""
             return self._page_ready
 
         def model(self) -> dict:
-            """The payload of the most recent push. Empty before the first."""
+            """A copy of ``_last_model``, empty before the first ``set_model``."""
             return dict(self._last_model)
 
         def set_model(self, model: dict) -> None:
-            """Hold the model and push it if the document is up.
+            """Hold ``model`` in ``_last_model`` and push it when ``_page_ready``.
 
-            A model handed over before ``loadFinished`` is pushed by the
-            load handler instead, so nothing is dropped on the way in.
+            ``_on_load_finished`` pushes a model handed over before the load.
             """
             self._last_model = model
             if self._page_ready:
                 self._push(model)
 
         def row_count(self, callback: Callable[[Any], None]) -> bool:
-            """Ask the DOM how many rows it drew. Answers through
-            ``callback``.
+            """Run ``ROW_COUNT_JS`` and hand the count to ``callback``.
 
-            Returns False and calls nothing when the document is not up:
-            no rows are on screen and there is nothing to count. The
-            caller decides what an unread count means.
+            Returns False and calls nothing while ``_page_ready`` is False.
             """
             if not self._page_ready:
                 return False
