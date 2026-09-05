@@ -43,10 +43,14 @@ above the price the venue actually filled at, on every buy in the record.
 
 ## How a VWAP is computed here
 
-The running figure is a streaming sum of Subtotal over a streaming sum of
-quantity, both carried as floats. Run against the same rows with Python's exact
-`Fraction`, the two paths agree to 3.63e-15 across 26 assets, so the float path
-loses nothing a chart can show.
+The running figure is a streaming sum of price times quantity over a streaming
+sum of quantity, both carried as floats. The price is the export's Price at
+Transaction column. The generator never reads Subtotal, and it does not need
+to. The section above measures quantity times price against Subtotal and finds
+the two equal to within 5e-6.
+
+Run against the same rows with Python's exact `Fraction`, the two paths agree
+to 3.63e-15 across 26 assets, so the float path loses nothing a chart can show.
 
 One control separates a weighted mean from an unweighted one. One unit bought
 at $10 and three at $20 give 17.50 by hand, and both the float path and the
@@ -305,6 +309,56 @@ chart's two lines start and end at, and the window its axis spans.
 Those 38 fill counts sum to 5,661, the fill total this part opens with. Eleven
 of the 38 end at or above 1.000 and 27 end below it.
 
+The 39 charts of this part, the combined view above included, come from one
+module, `vwap_charts`. It reads the export once, groups the fills by asset, and
+writes one PNG per charted base.
+
+The line each chart draws is a running mean of price weighted by quantity. The
+price is the export's Price at Transaction column and the quantity is its
+Quantity Transacted column. Buys and sells accumulate in two separate pairs of
+sums, so a fill on one side steps that side's line and leaves the other flat.
+The lower panel is the same walk of quantities, added on a buy and taken away
+on a sell.
+
+The module is not committed to this repository. Neither is the export it reads.
+
+```python
+def load_fills(src: Path):
+    """Return the Fill list and a Counter keyed by drop cause."""
+    ...
+    price = parse_money(r[idx["Price at Transaction"]])
+    qty = abs(parse_money(r[idx["Quantity Transacted"]]))
+    ...
+    fills.append(Fill(asset, when, side, price, qty))
+
+
+def trajectory(fills):
+    """Return times and the running buy VWAP, sell VWAP and net units."""
+    ordered = sorted(fills, key=lambda f: f.when)
+    t, buy_v, sell_v, held = [], [], [], []
+    bn = bd = sn = sd = pos = 0.0
+    for f in ordered:
+        if f.side == "buy":
+            bn += f.price * f.qty
+            bd += f.qty
+            pos += f.qty
+        else:
+            sn += f.price * f.qty
+            sd += f.qty
+            pos -= f.qty
+        t.append(f.when)
+        buy_v.append(bn / bd if bd > 0 else float("nan"))
+        sell_v.append(sn / sd if sd > 0 else float("nan"))
+        held.append(pos)
+    return t, buy_v, sell_v, held
+```
+
+Four of the 38 charts below carry a block of their own. Each one is a chart
+where the module takes a turn it does not take for the rest: a logarithmic
+price axis, the minor ticks that axis needs, a tick label small enough to go
+scientific, and a fill count low enough to mark every step. The other 34 are
+drawn by the two functions above and nothing else.
+
 ### RAVE
 
 ![RAVE, 900 fills, a logarithmic price axis, and a net-units panel that empties twice.](../../artifacts/vwap-charts/vwap_RAVE.png)
@@ -314,6 +368,17 @@ logarithmic. Both lines step down together to about 1.00 by early May, then to
 about 0.67 at the end of June, where the sell line settles below the buy line
 and stays there. The net-units panel peaks at 1,037 units in late June and ends
 at 209, with two near-vertical drops.
+
+The axis is a measurement, not a choice. RAVE's fills run from 0.2118 to
+2.1805, a span of 10.30, and the module turns the axis logarithmic above eight.
+BILL is the only other chart over that line.
+
+```python
+lo = min(f.price for f in fills)
+hi = max(f.price for f in fills)
+if hi / lo > 8:
+    ax.set_yscale("log")
+```
 
 ### CHIP
 
@@ -329,6 +394,19 @@ in September. Net units climb to 11,699 in mid-August and end at 4,765.
 The second logarithmic axis, at a span of 13.25. Both lines hold near 0.09
 through June, then break down in mid-July. Net units end at the highest point
 of the window, 18,510.
+
+A logarithmic axis labels the powers of ten. BILL's fills run from 0.01682 to
+0.22281, a window holding one of them, and RAVE's window holds one as well. The
+module adds five minor ticks per decade and gives them the same price formatter
+as the major ones, which is what puts 0.2000 down to 0.0200 on this axis.
+
+```python
+SUBS = (1.0, 2.0, 3.0, 5.0, 7.0)
+
+ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=SUBS, numticks=99))
+ax.yaxis.set_minor_formatter(FuncFormatter(fmt_price))
+ax.tick_params(axis="y", which="minor", labelsize=TYPE["cap"]["size"])
+```
 
 ### ALLO
 
@@ -382,6 +460,25 @@ units drop from 140 to about 20 at the end of June and hold near 40 after that.
 The lowest-priced base in the record. The buy line holds near 6.3e-06 from late
 April while the fill dots fall from 8.0e-06 to 2.3e-06. Net units spike to
 1.02e+08 in late April and end at 3.22e+07.
+
+BONK is the only base whose fills fall under a tenth of a cent. The next lowest
+is PUMP at 0.001479, so BONK alone reaches the last branch of the tick
+formatter, and this is the only chart of the 38 labelled in scientific
+notation.
+
+```python
+def fmt_price(v, _pos=None) -> str:
+    """Format a y-axis price tick, keeping a micro-cap significand visible."""
+    if v == 0:
+        return "0"
+    if abs(v) >= 1000:
+        return f"{v:,.0f}"
+    if abs(v) >= 1:
+        return f"{v:,.2f}"
+    if abs(v) >= 0.001:
+        return f"{v:.4f}"
+    return f"{v:.2e}"
+```
 
 ### CAP
 
@@ -537,6 +634,18 @@ the two converge near 2.05. Net units end at 26.
 The first of the eight thin charts. The sell line starts at 0.1048, steps down
 through June and July, and crosses below the buy line in late July. Net units
 end at 626.
+
+25 fills is under the module's threshold of 30, so both lines carry a marker at
+every step. Sixteen dots sit on the buy line and nine on the sell line. The
+seven charts after this one are drawn the same way.
+
+```python
+THIN_FILLS = 30
+
+dot = "o" if len(fills) <= THIN_FILLS else None
+ax.plot(t, buy_v, color=COLORS["series"][0], lw=2.0, marker=dot,
+        markersize=4, label="running buy VWAP")
+```
 
 ### AERO
 
