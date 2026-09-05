@@ -1,16 +1,10 @@
-"""v3.23.99 — pin tests for the exchange-agnostic Stone Tablets fetcher.
+"""Pin tests for the exchange-agnostic Stone Tablets fetcher.
 
-Coverage:
-    F1  ExchangeAdapter is abstract — subclass must implement fetch_chunk
-    F2  CoinbaseAdapter chunk_span_ms = 350 * 5m in ms
-    F3  GapFiller.fill_asset skips work when already covered
-    F4  GapFiller.fill_asset walks a single gap in chunks, ingests each
-    F5  GapFiller.fill_asset records chunk errors without aborting the gap
-    F6  TargetAssetDiscovery reads bot_state.json (deterministic order)
-    F7  TargetAssetDiscovery prefers bot_manager over state file
-    F8  BuildOrchestrator dispatches per-target to the right adapter
-    F9  ensure_asset_coverage builds a tablet from nothing (first-time
-        generation flow — operator directive 2026-08-01)
+``ExchangeAdapter`` is abstract and ``CoinbaseAdapter`` sets ``chunk_span_ms``.
+``GapFiller.fill_asset`` skips a covered range, walks a gap in chunks, and records
+a chunk error without abandoning the gap. ``TargetAssetDiscovery`` prefers
+``bot_manager`` over ``bot_state.json``, and ``BuildOrchestrator`` dispatches each
+target to its own adapter.
 """
 
 from __future__ import annotations
@@ -45,11 +39,6 @@ from src.trading.stone_tablets.fetcher import (  # noqa: E402
 _START_MS = 1_735_689_600_000  # 2025-01-01T00:00:00Z
 
 
-# --------------------------------------------------------------------- #
-# Fake adapter for tests — no network                                   #
-# --------------------------------------------------------------------- #
-
-
 class _FakeAdapter(ExchangeAdapter):
     exchange_id = "fake"
     chunk_limit = 10
@@ -59,10 +48,6 @@ class _FakeAdapter(ExchangeAdapter):
         super().__init__(connector)
         self._script = list(script)  # list of FetchAttempt
         self.calls: list[tuple[int, int]] = []
-        # What the fetcher ASKED for, not only when. The parameter
-        # names are fixed by ExchangeAdapter.fetch_chunk, so an
-        # override cannot rename them out of a dead-code report --
-        # it has to use them.
         self.requested: list[tuple[str, str, str]] = []
 
     async def fetch_chunk(
@@ -82,20 +67,10 @@ class _FakeAdapter(ExchangeAdapter):
         return FetchAttempt(since_ms, until_ms, rows)
 
 
-# --------------------------------------------------------------------- #
-# F1                                                                    #
-# --------------------------------------------------------------------- #
-
-
 def test_exchange_adapter_is_abstract():
     base = ExchangeAdapter(connector=None)
     with pytest.raises(NotImplementedError):
         asyncio.run(base.fetch_chunk("BTC", "USD", 0, 1000, NATIVE_TIMEFRAME))
-
-
-# --------------------------------------------------------------------- #
-# F2                                                                    #
-# --------------------------------------------------------------------- #
 
 
 def test_coinbase_adapter_chunk_span():
@@ -103,11 +78,6 @@ def test_coinbase_adapter_chunk_span():
     assert ad.chunk_limit == 350
     assert ad.chunk_sleep_s == 1.3
     assert ad.chunk_span_ms == 350 * STEP_5M_MS  # ~29 hours in ms
-
-
-# --------------------------------------------------------------------- #
-# F3                                                                    #
-# --------------------------------------------------------------------- #
 
 
 def test_gap_filler_skips_when_covered(tmp_path):
@@ -132,11 +102,6 @@ def test_gap_filler_skips_when_covered(tmp_path):
     assert adapter.calls == []  # never called the exchange
 
 
-# --------------------------------------------------------------------- #
-# F4                                                                    #
-# --------------------------------------------------------------------- #
-
-
 def test_gap_filler_walks_gap_in_chunks_and_ingests(tmp_path):
     reg = StoneTabletsRegistry(root=tmp_path)
     # No prior tablet → full window is a gap. 25 5m candles = 25 * step
@@ -149,11 +114,6 @@ def test_gap_filler_walks_gap_in_chunks_and_ingests(tmp_path):
     assert report.chunks_attempted >= 1
     assert report.chunks_ok == report.chunks_attempted
     assert report.candles_appended > 0
-
-
-# --------------------------------------------------------------------- #
-# F5                                                                    #
-# --------------------------------------------------------------------- #
 
 
 def test_gap_filler_records_chunk_errors(tmp_path):
@@ -182,11 +142,6 @@ def test_gap_filler_records_chunk_errors(tmp_path):
     assert report.candles_appended > 0
 
 
-# --------------------------------------------------------------------- #
-# F6                                                                    #
-# --------------------------------------------------------------------- #
-
-
 def test_target_discovery_from_bot_state(tmp_path):
     state_path = tmp_path / "bot_state.json"
     state_path.write_text(
@@ -213,11 +168,6 @@ def test_target_discovery_from_bot_state(tmp_path):
     ]
 
 
-# --------------------------------------------------------------------- #
-# F7                                                                    #
-# --------------------------------------------------------------------- #
-
-
 def test_target_discovery_prefers_bot_manager(tmp_path):
     # bot_state.json says one thing, bot_manager says another —
     # bot_manager wins when it's non-empty.
@@ -235,11 +185,6 @@ def test_target_discovery_prefers_bot_manager(tmp_path):
     disc = TargetAssetDiscovery(bot_manager=_FakeBotMgr(), bot_state_path=state_path)
     targets = disc.enumerate()
     assert targets == [("NEW", "coinbase")]
-
-
-# --------------------------------------------------------------------- #
-# F8                                                                    #
-# --------------------------------------------------------------------- #
 
 
 def test_build_orchestrator_dispatches_per_target(tmp_path):
@@ -267,11 +212,6 @@ def test_build_orchestrator_dispatches_per_target(tmp_path):
     assets = sorted(r.asset for r in report.reports)
     assert assets == ["BTC", "ETH"]
     assert report.total_candles > 0
-
-
-# --------------------------------------------------------------------- #
-# F9                                                                    #
-# --------------------------------------------------------------------- #
 
 
 def test_discover_all_exchange_markets_filters_active_and_quote():
