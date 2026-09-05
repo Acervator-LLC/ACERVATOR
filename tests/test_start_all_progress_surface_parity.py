@@ -33,7 +33,7 @@ from tests.fixtures.surface_pictures import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-LOGGER_NAME = "acervator.gui.start_all"
+LOGGER_NAME = surface.LOGGER_NAME
 
 PROGRESS = "progress"
 REPLACE = "replace"
@@ -261,13 +261,19 @@ def run_step_new(model, step):
         surface.unsubscribe(make_unsubscriber(step[1]))
 
 
-def build_dialog(monkeypatch):
-    """A dialog whose bus handler is dropped as soon as it is built."""
+def fresh_dialog():
+    """A dialog off the shipped constructor, with its bus handler dropped."""
     app()
     dialog = qt_dialog.StartAllProgressDialog(object())
     if callable(dialog._unsub):
         dialog._unsub()
     dialog._unsub = None
+    return dialog
+
+
+def build_dialog(monkeypatch):
+    """A dialog whose bus handler is dropped as soon as it is built."""
+    dialog = fresh_dialog()
     return dialog, trace_dialog(dialog, monkeypatch)
 
 
@@ -1014,21 +1020,24 @@ def test_the_connect_sites_match_the_actions(monkeypatch):
 
 
 def test_clicking_cancel_reaches_the_bot_manager(monkeypatch):
-    """The cancel button's own signal reaches ``cancel_start_all``."""
+    """The button reading ``CANCEL_TEXT`` reaches ``cancel_start_all``."""
     dialog, _ = build_dialog(monkeypatch)
     manager = _Manager()
     dialog._bot_manager = manager
+    assert dialog._cancel_btn.text() == surface.CANCEL_TEXT
     assert manager.calls == 0
     dialog._cancel_btn.click()
     assert manager.calls == 1
 
 
 def test_clicking_close_accepts_the_dialog(monkeypatch):
-    """The close button's own signal reaches ``accept``."""
+    """The button reading ``CLOSE_TEXT`` reaches ``accept``."""
     dialog, _ = build_dialog(monkeypatch)
     dialog._close_btn.setEnabled(True)
+    assert dialog._close_btn.text() == surface.CLOSE_TEXT
     accepted = []
     monkeypatch.setattr(type(dialog), "accept", lambda _self: accepted.append(True))
+    assert accepted == []
     dialog._close_btn.click()
     assert accepted == [True]
 
@@ -1130,41 +1139,139 @@ def test_the_engine_emits_every_phase_the_surface_answers():
         assert phase in seen, f"start_all never emitted {phase!r}; it sent {seen}"
 
 
-def test_the_format_strings_agree_with_the_dialogs_f_strings():
-    """The surface's format constants drifted from the dialog's f-strings."""
-    for total, started, bot_id in (
-        (3, 1, "bot-a"),
-        (0, 0, ""),
-        (-1, -3, "Δ"),
-        (1000000, 999999, "x" * 40),
-    ):
-        assert surface.HEADLINE_BEGIN.format(total=total) == (
-            f"Auto-starting {total} bots (0/{total} verified)"
-        )
-        assert surface.HEADLINE_BOT_STARTING.format(
-            total=total, started=started, bot_id=bot_id
-        ) == (
-            f"Auto-starting {total} bots "
-            f"({started}/{total} verified, starting {bot_id}...)"
-        )
-        assert surface.HEADLINE_BOT_STARTED.format(total=total, started=started) == (
-            f"Auto-starting {total} bots ({started}/{total} verified)"
-        )
-        assert surface.HEADLINE_DONE.format(total=total) == (
-            f"Done — {total} bot(s) processed."
-        )
-        assert surface.HEADLINE_CANCELLED.format(started=started, total=total) == (
-            f"Cancelled — {started}/{total} bots had started."
-        )
-        assert surface.ITEM_BOT_STARTING.format(bot_id=bot_id) == (
-            f"⏳ {bot_id} (starting...)"
-        )
-        assert surface.ITEM_BOT_STARTED.format(bot_id=bot_id) == f"✓ {bot_id}"
-        assert surface.ITEM_BOT_TIMEOUT.format(bot_id=bot_id) == (
-            f"⚠ {bot_id} (start verify timed out — may still come up)"
-        )
-    assert surface.HEADLINE_BEGIN != surface.HEADLINE_BOT_STARTED
-    assert surface.ITEM_BOT_STARTED != surface.ITEM_BOT_TIMEOUT
+def test_the_dialog_paints_the_headline_each_phase_names(monkeypatch):
+    """A phase wrote a headline the operator does not read on screen."""
+    dialog, _ = build_dialog(monkeypatch)
+    assert dialog._headline.text() == "Preparing to auto-start bots..."
+    dialog._handle_progress_main_thread(surface.BEGIN, 3, 0, "")
+    assert dialog._headline.text() == "Auto-starting 3 bots (0/3 verified)"
+    dialog._handle_progress_main_thread(surface.BOT_STARTING, 3, 0, "bot-a")
+    assert dialog._headline.text() == (
+        "Auto-starting 3 bots (0/3 verified, starting bot-a...)"
+    )
+    dialog._handle_progress_main_thread(surface.BOT_STARTED, 3, 1, "bot-a")
+    assert dialog._headline.text() == "Auto-starting 3 bots (1/3 verified)"
+    dialog._handle_progress_main_thread(surface.DONE, 3, 3, "")
+    assert dialog._headline.text() == "Done — 3 bot(s) processed."
+    dialog._handle_progress_main_thread(surface.CANCELLED, 3, 2, "")
+    assert dialog._headline.text() == "Cancelled — 2/3 bots had started."
+    empty, _ = build_dialog(monkeypatch)
+    empty._handle_progress_main_thread(surface.BEGIN, 0, 0, "")
+    assert empty._headline.text() == "No bots to auto-start."
+
+
+def test_the_dialog_paints_the_bot_line_each_phase_names(monkeypatch):
+    """A bot line reached the list reading something else."""
+    dialog, _ = build_dialog(monkeypatch)
+    dialog._handle_progress_main_thread(surface.BEGIN, 2, 0, "")
+    assert dialog._list.count() == 0
+    dialog._handle_progress_main_thread(surface.BOT_STARTING, 2, 0, "bot-a")
+    assert dialog._list.item(0).text() == "⏳ bot-a (starting...)"
+    dialog._handle_progress_main_thread(surface.BOT_STARTED, 2, 1, "bot-a")
+    assert dialog._list.item(0).text() == "✓ bot-a"
+    dialog._handle_progress_main_thread(surface.BOT_TIMEOUT, 2, 1, "bot-a")
+    assert dialog._list.item(0).text() == (
+        "⚠ bot-a (start verify timed out — may still come up)"
+    )
+
+
+SENTINEL_WORDS = {
+    "ACCESSIBLE_NAME": "sentinel accessible name",
+    "WINDOW_TITLE": "sentinel window title",
+    "HEADLINE_INITIAL_TEXT": "sentinel headline",
+    "CANCEL_TEXT": "sentinel cancel",
+    "CLOSE_TEXT": "sentinel close",
+}
+
+
+def words_the_dialog_paints(dialog):
+    """The five words a fresh dialog puts on screen, keyed by surface name."""
+    return {
+        "ACCESSIBLE_NAME": dialog.accessibleName(),
+        "WINDOW_TITLE": dialog.windowTitle(),
+        "HEADLINE_INITIAL_TEXT": dialog._headline.text(),
+        "CANCEL_TEXT": dialog._cancel_btn.text(),
+        "CLOSE_TEXT": dialog._close_btn.text(),
+    }
+
+
+def test_a_fresh_dialog_paints_the_surfaces_five_words():
+    """The dialog put a word on screen the surface does not declare."""
+    painted = words_the_dialog_paints(fresh_dialog())
+    assert painted == {name: getattr(surface, name) for name in SENTINEL_WORDS}
+    assert painted["WINDOW_TITLE"] == "Auto-starting bots"
+
+
+def test_rewriting_a_surface_word_rewrites_what_the_dialog_paints(monkeypatch):
+    """A word rewritten on the surface never reached the dialog."""
+    before = words_the_dialog_paints(fresh_dialog())
+    assert not set(before.values()) & set(SENTINEL_WORDS.values())
+    for name, sentinel in SENTINEL_WORDS.items():
+        monkeypatch.setattr(surface, name, sentinel)
+    assert words_the_dialog_paints(fresh_dialog()) == SENTINEL_WORDS
+
+
+def test_rewriting_a_surface_format_rewrites_what_the_dialog_paints(monkeypatch):
+    """A headline or bot-line format rewritten on the surface never arrived."""
+    dialog, _ = build_dialog(monkeypatch)
+    dialog._handle_progress_main_thread(surface.DONE, 3, 3, "")
+    assert dialog._headline.text() == "Done — 3 bot(s) processed."
+    monkeypatch.setattr(surface, "HEADLINE_DONE", "sentinel done {total}")
+    monkeypatch.setattr(surface, "ITEM_BOT_STARTED", "sentinel line {bot_id}")
+    dialog._handle_progress_main_thread(surface.DONE, 3, 3, "")
+    assert dialog._headline.text() == "sentinel done 3"
+    dialog._handle_progress_main_thread(surface.BOT_STARTED, 3, 1, "bot-a")
+    assert dialog._list.item(0).text() == "sentinel line bot-a"
+
+
+def test_rewriting_a_surface_log_rewrites_what_the_dialog_logs(
+    capture_log, monkeypatch
+):
+    """A log line rewritten on the surface never reached the dialog."""
+    dialog, _ = build_dialog(monkeypatch)
+    dialog._bot_manager = _RaisingManager()
+    with capture_log(LOGGER_NAME) as before:
+        dialog._on_cancel()
+    assert [record.msg for record in before] == [surface.CANCEL_FAILED_LOG]
+    monkeypatch.setattr(surface, "CANCEL_FAILED_LOG", "sentinel cancel log: %s")
+    monkeypatch.setattr(surface, "UNSUBSCRIBE_FAILED_LOG", "sentinel unsub log: %s")
+    with capture_log(LOGGER_NAME) as after:
+        dialog._on_cancel()
+    assert [record.msg for record in after] == ["sentinel cancel log: %s"]
+    from PySide6.QtGui import QCloseEvent
+
+    dialog._unsub = make_unsubscriber(UNSUB_RAISES)
+    with capture_log(LOGGER_NAME) as closed:
+        dialog.closeEvent(QCloseEvent())
+    assert [record.msg for record in closed] == ["sentinel unsub log: %s"]
+
+
+class _RefusingBus:
+    """A bus whose subscribe refuses, so the dialog logs and carries on."""
+
+    def subscribe(self, topic, handler):
+        del topic, handler
+        raise RuntimeError("bus refused the subscribe")
+
+
+def test_a_refused_subscribe_is_logged_and_the_dialog_still_builds(
+    capture_log, monkeypatch
+):
+    """A bus that refuses the subscribe left no trace, or lost the dialog."""
+    from src.core import event_bus
+
+    app()
+    monkeypatch.setattr(event_bus, "get_event_bus", lambda: _RefusingBus())
+    with capture_log(LOGGER_NAME) as records:
+        dialog = qt_dialog.StartAllProgressDialog(object())
+    assert [record.msg for record in records] == [surface.SUBSCRIBE_FAILED_LOG]
+    assert dialog._bus is None
+    assert dialog._unsub is None
+    assert dialog._cancel_btn.text() == surface.CANCEL_TEXT
+    monkeypatch.undo()
+    with capture_log(LOGGER_NAME) as quiet:
+        fresh_dialog()
+    assert [record.msg for record in quiet] == []
 
 
 COLOUR_TOKENS = (

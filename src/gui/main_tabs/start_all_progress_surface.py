@@ -1,23 +1,12 @@
 """start_all_progress_surface.py -- the Start All progress view model.
 
-Describes the dialog the staggered bulk start puts on screen as plain
-data: the window, its skin, the headline, the fixed explanatory line,
-the list of bot lines and the two buttons. Colours come from
-``design_system`` tokens, so a page carries the values the Qt dialog
-paints rather than a second palette.
-
-It also holds the state the dialog owns rather than describes: the
-headline text, the bot lines already listed, which button is enabled,
-and the ordered calls each progress event makes. Six phases drive it --
-``begin``, ``bot_starting``, ``bot_started``, ``bot_timeout``, ``done``
-and ``cancelled`` -- and a phase the surface does not name changes
-nothing.
-
-``src.core.desktop_bridge`` registers ``view_model`` as the handler for
-the ``start_all_progress.state`` method, which is how the Electron
-renderer reaches it. Nothing here imports Qt, and it sits beside the
-other surfaces rather than beside ``start_all_progress_dialog.py``
-because that module imports Qt at the top.
+Holds every word, colour, size and delay ``StartAllProgressDialog`` paints,
+and the state it owns: the headline, the bot lines listed, which button is
+enabled and the calls each progress event makes. ``handle_progress`` answers
+``BEGIN``, ``BOT_STARTING``, ``BOT_STARTED``, ``BOT_TIMEOUT``, ``DONE`` and
+``CANCELLED``; any other phase changes nothing. The desktop bridge registers
+``view_model`` as the handler for ``METHOD``, and ``view_model`` answers
+without loading Qt.
 """
 
 from __future__ import annotations
@@ -27,7 +16,9 @@ from typing import Any, Callable, Iterable, Optional
 
 from .. import design_system as ds
 
-logger = logging.getLogger("acervator.gui.start_all")
+LOGGER_NAME = "acervator.gui.start_all"
+
+logger = logging.getLogger(LOGGER_NAME)
 
 METHOD = "start_all_progress.state"
 
@@ -73,17 +64,22 @@ WIDGET = {
     "style_sheet": STYLE_SHEET,
 }
 
+MARGINS_PX = [14, 14, 14, 14]
+SPACING_PX = 10
+LIST_STRETCH = 1
+BUTTON_ROW_LEADING_STRETCH = 1
+
 LAYOUT = {
-    "margins_px": [14, 14, 14, 14],
-    "spacing_px": 10,
+    "margins_px": list(MARGINS_PX),
+    "spacing_px": SPACING_PX,
     "order": ["headline", "subline", "list", "button_row"],
-    "child_stretch": [0, 0, 1, 0],
+    "child_stretch": [0, 0, LIST_STRETCH, 0],
 }
 
 BUTTON_ROW = {
     "margins_px": [0, 0, 0, 0],
     "order": ["stretch", "cancel", "close"],
-    "leading_stretch": 1,
+    "leading_stretch": BUTTON_ROW_LEADING_STRETCH,
 }
 
 HEADLINE_INITIAL_TEXT = "Preparing to auto-start bots..."
@@ -167,6 +163,7 @@ CANCEL_SET_ENABLED = "cancel.setEnabled"
 CLOSE_SET_ENABLED = "close.setEnabled"
 CLOSE_AFTER = "closeAfter"
 
+SUBSCRIBE_FAILED_LOG = "Start All progress subscribe failed, no progress will show: %s"
 EVENT_DROPPED_LOG = "Start All progress event dropped (%s): %s"
 CANCEL_FAILED_LOG = "cancel_start_all failed: %s"
 UNSUBSCRIBE_FAILED_LOG = "Start All progress unsubscribe failed, handler leaked: %s"
@@ -192,10 +189,9 @@ def rgb(hex_color: str) -> tuple[int, int, int]:
 def progress_fields(data: Any) -> Optional[tuple]:
     """The four fields one progress event carries, or None when it fails.
 
-    A missing field falls back to the dialog's own default, and a bot id
-    of None reads as the empty string. An event the surface cannot read
-    is logged and dropped rather than raised, because the bus delivers it
-    on the thread that emitted it.
+    A missing field falls back to its default and a ``bot_id`` of None reads
+    as the empty string; an unreadable event is logged and dropped, never
+    raised.
     """
     try:
         phase = data.get("phase", "")
@@ -211,9 +207,7 @@ def progress_fields(data: Any) -> Optional[tuple]:
 def unsubscribe(unsubscriber: Any) -> None:
     """Drop this dialog's handler off the bus when the window closes.
 
-    A failed unsubscribe leaks the handler for the process lifetime, so
-    it is logged; the close still proceeds, because a window that cannot
-    be closed is worse than a leaked handler.
+    An ``unsubscriber`` that raises is logged and the close still proceeds.
     """
     try:
         if unsubscriber and callable(unsubscriber):
@@ -305,9 +299,8 @@ class StartAllProgressModel:
     def replace_last_matching(self, bot_id: str, new_text: str) -> None:
         """Rewrite the newest line carrying ``bot_id``, or add one.
 
-        The match is a substring of the whole line, so a bot id that
-        reads inside a longer id claims that longer line. A bot with no
-        line yet gains one instead of being lost.
+        The match is a substring of the whole line, so a ``bot_id`` reading
+        inside a longer id claims that longer line.
         """
         for row in range(self.item_count() - 1, -1, -1):
             text = self.item_text(row)
@@ -325,10 +318,8 @@ class StartAllProgressModel:
     ) -> None:
         """Advance the dialog through one progress event.
 
-        ``begin`` with a total of zero says so in the headline, enables
-        Close and asks to be dismissed, because there is nothing to
-        watch. ``bot_timeout`` leaves the headline alone and marks only
-        the line. A phase the surface does not name changes nothing.
+        ``BEGIN`` with a ``total`` of zero writes ``HEADLINE_NO_BOTS``, enables
+        Close and asks to be dismissed; ``BOT_TIMEOUT`` marks only the line.
         """
         if phase == BEGIN:
             if total == 0:
@@ -370,12 +361,11 @@ class StartAllProgressModel:
             self.set_close_enabled(True)
 
     def cancel(self, bot_manager: Any) -> None:
-        """Press Cancel: ask the manager to stop, then say what happened.
+        """Press Cancel: ask ``bot_manager`` to stop, then say what happened.
 
-        A manager that refuses leaves Cancel disabled under a headline
-        naming the failure, because a dialog reading "Cancelling..."
-        while bots keep starting tells the operator the opposite of what
-        is happening.
+        A refused ``cancel_start_all`` writes ``HEADLINE_CANCEL_FAILED``; an
+        accepted one writes ``HEADLINE_CANCELLING``. Cancel ends disabled
+        either way.
         """
         try:
             bot_manager.cancel_start_all()
@@ -443,13 +433,11 @@ def build_view_model(
 
 
 def view_model(params: dict) -> dict:
-    """Bridge handler for ``start_all_progress.state``.
+    """Bridge handler for ``METHOD``.
 
-    Reads ``reset``, ``events``, ``cancel``, ``cancel_refused``,
-    ``close`` and ``unsubscribe_refused`` from the request parameters.
-    The headline, the bot lines and the button states persist between
-    calls because the dialog's own do; ``reset`` is what a fresh Start
-    All sends.
+    Reads ``reset``, ``events``, ``cancel``, ``cancel_refused``, ``close``
+    and ``unsubscribe_refused`` from ``params``. ``PANE_MODEL`` keeps its
+    headline, lines and button states until ``reset`` replaces it.
     """
     global PANE_MODEL
     if params.get("reset", False):

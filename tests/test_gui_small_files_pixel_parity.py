@@ -1,18 +1,13 @@
-"""The six small GUI files paint the same pixels after the token migration.
+"""The small GUI files paint the same pixels after the token migration.
 
-A failure means a `design_system` token reference, or one of the six
-files, moved pixels in the operator's live trading GUI.
-
-`SHIPPED` holds, per file and in source order, every `design_system`
-name the file now reads and the hex literal that name replaced. Each
-widget is then built twice: once from the working tree, which reads
-tokens, and once from a copy of the same source with every token
-reference substituted back to its literal. The two renders must be
-byte-identical.
-
-The literal side is what makes this falsifiable. A test that compared a
-render to the token that produced it would move on both sides and pass a
-wrong colour.
+`SHIPPED` names, per file and in source order, every `design_system` token
+the file reads and the hex literal it replaced; each widget renders once
+from the working tree and once from `literal_module`, a twin carrying those
+literals, and the two renders must be byte-identical. `StartAllProgressDialog`
+takes its skin from `start_all_progress_surface`, so `DIALOG_TOKENS` names
+those tokens and `SHIPPED_DIALOG_QSS` is the literal twin swapped onto the
+surface at runtime. A failure means a `design_system` token moved pixels in
+the operator's live trading GUI.
 """
 
 from __future__ import annotations
@@ -64,22 +59,19 @@ DISABLED_DEEP = "#333333"
 SOURCE_MANUAL = "#00ccff"
 TEXT_INACTIVE = "#aaaaaa"
 
+DIALOG_TOKENS: dict[str, str] = {
+    "MAIN_TOOLBAR_SURFACE": "#14141e",
+    "TEXT_CONSOLE": "#c0c0c0",
+    "SURFACE_CHART": "#0a0a12",
+    "MAIN_SEPARATOR": "#2a2a3a",
+    "MAIN_BUTTON_SURFACE": "#1a1a26",
+    "MAIN_BUTTON_BORDER": "#3a3a4a",
+    "MAIN_BUTTON_HOVER": "#22222e",
+    "TEXT_PLACEHOLDER": "#555",
+    "CARD_METRIC_LABEL": "#888",
+}
+
 SHIPPED: dict[str, tuple[tuple[str, str], ...]] = {
-    "start_all_progress_dialog": (
-        ("MAIN_TOOLBAR_SURFACE", "#14141e"),
-        ("TEXT_CONSOLE", "#c0c0c0"),
-        ("TEXT_CONSOLE", "#c0c0c0"),
-        ("SURFACE_CHART", "#0a0a12"),
-        ("TEXT_CONSOLE", "#c0c0c0"),
-        ("MAIN_SEPARATOR", "#2a2a3a"),
-        ("MAIN_BUTTON_SURFACE", "#1a1a26"),
-        ("TEXT_CONSOLE", "#c0c0c0"),
-        ("MAIN_BUTTON_BORDER", "#3a3a4a"),
-        ("MAIN_BUTTON_HOVER", "#22222e"),
-        ("TEXT_PLACEHOLDER", "#555"),
-        ("MAIN_SEPARATOR", "#2a2a3a"),
-        ("CARD_METRIC_LABEL", "#888888"),
-    ),
     "bot_swarm_list": (
         ("SUCCESS", "#00ff88"),
         ("ERROR", "#ff3366"),
@@ -120,6 +112,8 @@ SHIPPED_DIALOG_QSS = (
     "QPushButton:hover { background: #22222e; }"
     "QPushButton:disabled { color: #555; border-color: #2a2a3a; }"
 )
+
+SHIPPED_SUBLINE_QSS = "color: #888;"
 
 SHIPPED_INFO_BUTTON_QSS = (
     "color: #00ccff; font-weight: bold; border: 1px solid #00ccff; "
@@ -361,14 +355,53 @@ def test_the_literal_twin_carries_no_token_reference(name: str) -> None:
     assert HEX_LITERAL.search(twin) is not None
 
 
-def test_start_all_dialog_is_pixel_identical() -> None:
+def _dialog_render(size=DIALOG_SIZE):
+    """Render a real ``StartAllProgressDialog``, its bus handler dropped."""
+    from tests.qt_pixel import ensure_app, render_widget
+
+    from src.gui.start_all_progress_dialog import StartAllProgressDialog
+
+    ensure_app()
+    dialog = StartAllProgressDialog(object())
+    if callable(dialog._unsub):
+        dialog._unsub()
+    return render_widget(dialog, size=size)
+
+
+def test_the_dialog_tokens_still_hold_the_literals_they_replaced() -> None:
+    """A failure means a design_system value behind the dialog QSS drifted."""
+    from PySide6.QtGui import QColor
+
+    from src.gui import design_system as ds
+
+    for token_name, literal in DIALOG_TOKENS.items():
+        assert (
+            QColor(getattr(ds, token_name)).name() == QColor(literal).name()
+        ), f"{token_name} is {getattr(ds, token_name)}, shipped {literal}"
+    assert len(DIALOG_TOKENS) == 9
+
+
+def test_start_all_dialog_is_pixel_identical(monkeypatch) -> None:
     """A failure means the start-all progress dialog repainted."""
-    head, base = _pair(
-        "start_all_progress_dialog",
-        lambda m: m.StartAllProgressDialog(object()),
-        DIALOG_SIZE,
-    )
-    assert _diff_pixels(head, base) == 0
+    from src.gui.main_tabs import start_all_progress_surface as surface
+
+    head = _dialog_render()
+    assert _distinct_colours(head) > 1, "the dialog rendered one flat colour"
+    monkeypatch.setattr(surface, "STYLE_SHEET", SHIPPED_DIALOG_QSS)
+    monkeypatch.setattr(surface, "SUBLINE_STYLE", SHIPPED_SUBLINE_QSS)
+    assert _diff_pixels(head, _dialog_render()) == 0
+
+
+def test_the_dialog_pixel_check_reports_a_swapped_colour(monkeypatch) -> None:
+    """A swapped literal the render never reported would pass anything."""
+    from src.gui.main_tabs import start_all_progress_surface as surface
+
+    head = _dialog_render()
+    swapped = SHIPPED_DIALOG_QSS.replace(TOOLBAR_SURFACE, "#ff00ff")
+    assert swapped != SHIPPED_DIALOG_QSS
+    monkeypatch.setattr(surface, "STYLE_SHEET", swapped)
+    monkeypatch.setattr(surface, "SUBLINE_STYLE", SHIPPED_SUBLINE_QSS)
+    assert _diff_pixels(head, _dialog_render()) > 0
 
 
 def test_start_all_dialog_paints_its_shipped_colours() -> None:

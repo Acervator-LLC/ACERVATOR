@@ -465,16 +465,6 @@ class ExecutionEngineMixin:
             )
             return
 
-        class _ManualSummary:
-            consensus_confidence = 1.0
-            direction = None
-            raw_votes: dict = {}
-
-            def __repr__(self) -> str:
-                return "<ManualSummary operator_initiated=True>"
-
-        _ManualSummary()
-
         if delta_usd > 0:
             _denom_sc = price * _qrate
             sell_amount = (delta_usd / _denom_sc) if _denom_sc > 0 else 0.0
@@ -1202,7 +1192,7 @@ class ExecutionEngineMixin:
             )
         self._fold_tranches.clear()
         self._fold_queue_usd = 0.0
-        float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0)
+        _discharged_surplus = float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0)
         self._standing_surplus_usd = 0.0
         try:
             self.stats.standing_surplus_usd = 0.0
@@ -1230,8 +1220,9 @@ class ExecutionEngineMixin:
                 f"${fill_price:.8f} = ${fill_usd:.2f}. "
                 f"target_balance reset ${prior_target:.2f} → "
                 f"${self._anchor_target_balance:.2f} (anchor). "
-                f"Fold queue cleared. Bot will re-accumulate "
-                f"from scratch on next dip."
+                f"Fold queue cleared. Standing surplus "
+                f"${_discharged_surplus:.4f} discharged. "
+                f"Bot will re-accumulate from scratch on next dip."
             ),
         )
 
