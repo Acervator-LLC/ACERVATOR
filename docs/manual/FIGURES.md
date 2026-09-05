@@ -4,6 +4,14 @@ Reference for the images embedded in the Acervator product manual. The manual
 carries 38 images across 29 of its 44 pages. The manual text is in
 [README.md](README.md) and the part files listed there.
 
+Two figure sets reach the built PDF, and this file inventories both. The 38
+above come out of the source PDF's own pages, and
+`tools/extract_product_manual.py` unpacks them. A second set of 39 VWAP charts
+belongs to [Part 9](10-live-trade-history.md), built from the operator's venue
+export rather than from the PDF. The two sets never mix: they land in
+directories of their own, `artifacts/manual-figures/` and
+`artifacts/vwap-charts/`. Counting both, the built manual embeds 77 images.
+
 ## Where the figures are written
 
 The images are captured output, so they are not tracked.
@@ -81,3 +89,76 @@ The nine text-less Settings pages, 36 to 44, take one section each in
 order. [08-tabs.md](08-tabs.md) holds each of its twenty inside the section it
 illustrates, and those sections run in the order the tab list in
 [04-manual-parts.md](04-manual-parts.md) sets.
+
+## The second figure set — Part 9's VWAP charts
+
+39 charts, one per charted base plus one combined view.
+[10-live-trade-history.md](10-live-trade-history.md) embeds and describes every
+one. They carry no page number, because the source PDF is not their source: a
+generator drew them from the operator's Coinbase export, over the same 5,661
+fills that part opens with. They live in `artifacts/vwap-charts/`, a directory
+of their own beside `artifacts/manual-figures/`, under the same `.gitignore`
+rule. This repository tracks no chart.
+
+File names carry the asset, `vwap_<ASSET>.png`, and the combined view is
+`vwap_combined.png`.
+
+| File | Asset | Fills | Described in |
+| ---- | ----- | ----: | ------------ |
+| `vwap_combined.png` | top eight by fill count | 3,113 | [10-live-trade-history.md](10-live-trade-history.md), under the combined-chart section |
+| `vwap_RAVE.png` | RAVE | 900 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_CHIP.png` | CHIP | 495 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_BILL.png` | BILL | 459 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_ALLO.png` | ALLO | 322 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_ZEC.png` | ZEC | 261 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_KAT.png` | KAT | 230 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_BIO.png` | BIO | 226 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_SPK.png` | SPK | 220 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_ORCA.png` | ORCA | 196 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_BONK.png` | BONK | 191 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_CAP.png` | CAP | 178 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_PENGU.png` | PENGU | 159 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_VVV.png` | VVV | 147 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_ETH.png` | ETH | 141 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_BTC.png` | BTC | 124 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_TAO.png` | TAO | 124 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_ONDO.png` | ONDO | 119 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_XRP.png` | XRP | 119 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_IMU.png` | IMU | 113 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_BICO.png` | BICO | 87 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_LINK.png` | LINK | 83 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_DOGE.png` | DOGE | 80 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_SOL.png` | SOL | 77 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_GROVE.png` | GROVE | 75 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_SUI.png` | SUI | 74 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_RE.png` | RE | 73 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_XLM.png` | XLM | 73 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_HYPE.png` | HYPE | 66 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_PUMP.png` | PUMP | 63 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_NEAR.png` | NEAR | 58 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_HBAR.png` | HBAR | 25 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_AERO.png` | AERO | 24 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_ENA.png` | ENA | 23 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_ADA.png` | ADA | 23 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_AGLD.png` | AGLD | 16 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_LTC.png` | LTC | 6 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_WLFI.png` | WLFI | 6 | [10-live-trade-history.md](10-live-trade-history.md) |
+| `vwap_LSETH.png` | LSETH | 5 | [10-live-trade-history.md](10-live-trade-history.md) |
+
+The 38 per-asset counts sum to 5,661. The combined view's 3,113 counts the
+eight assets it draws, which the 38 rows already carry.
+
+## What produces each set
+
+| Set | Count | Producer | Reachable from this repository |
+| --- | ----: | -------- | --- |
+| Manual pages 15 to 44 | 38 | `write_figures` in `tools/extract_product_manual.py`, given the PDF | yes, with the PDF |
+| Part 9 VWAP charts | 39 | a generator outside this repository | no |
+
+`git log --all --diff-filter=ADR --name-only` reaches 1,606 distinct paths and
+returns one whose name carries `vwap`,
+`tests/test_vwap_band_scales_to_price.py`, which drives the Simulator's price
+band rather than any chart. A pickaxe over every `.py` in every commit returns
+nothing for `draw_combined`, `vwap_combined` or `buy_vwap`, against controls of
+16 commits for `avg_entry`, 7 for `sync_ytd_trade_count`, and 0 for a coined
+term. A fresh clone has 38 figures it can rebuild and 39 it cannot.

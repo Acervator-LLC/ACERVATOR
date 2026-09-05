@@ -96,6 +96,16 @@ tracked: `tools/extract_product_manual.py` writes them to
 excludes. [FIGURES.md](FIGURES.md) lists every one with its page, index, file
 name, byte size, pixel size, and whether its page also carries text.
 
+That count of 38 covers the images the source PDF embeds, and a deep walk of
+the PDF's resource tree — every page's `/XObject`, recursing into every `/Form`
+— returns the same 38, across 38 distinct objects, with none nested inside a
+form and no inline image anywhere. Part 9 adds a second set:
+[10-live-trade-history.md](10-live-trade-history.md) embeds 39 VWAP charts
+built from the operator's venue export. Those live in
+`artifacts/vwap-charts/`, a directory of their own under the same `.gitignore`
+rule, and [FIGURES.md](FIGURES.md) inventories them beside the first set.
+Counting both sets, the built PDF embeds 77 images.
+
 ## Extraction record
 
 The source PDF and the operator's exchange CSV exports live outside this
