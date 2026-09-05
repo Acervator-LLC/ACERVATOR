@@ -1,7 +1,8 @@
 """The CI lanes: which files each one runs, and which packages each installs.
 
 ``SLOW_FILES`` and ``lane_marks`` decide the marks ``tests/conftest.py``
-applies, and ``runs_in_fast_lane`` reads the same answer. The fast lane
+applies, ``runs_in_fast_lane`` reads the same answer, and ``is_collected``
+separates a file pytest runs from one it only imports. The fast lane
 installs ``FAST_LANE_EXTRA`` and runs ``-m "not slow and not
 archetype"``; the full lane installs ``FULL_LANE_EXTRA`` and runs the
 complement. ``lane_distributions`` reads ``dependencies`` and one named
@@ -24,6 +25,8 @@ SLOW_FILES = frozenset(
         "test_fleet_replay_controller.py",
         "test_build_product_manual.py",
         "test_build_product_manual_rendering.py",
+        "test_design_system_chart_tokens.py",
+        "test_extract_product_manual_keeps_additions.py",
     }
 )
 
@@ -44,6 +47,18 @@ def lane_marks(filename: str) -> frozenset[str]:
 def runs_in_fast_lane(filename: str) -> bool:
     """True when the fast lane collects this file rather than deselecting it."""
     return not lane_marks(filename)
+
+
+def is_collected(filename: str) -> bool:
+    """True when pytest itself runs the file, matching ``python_files``.
+
+    ``conftest.py`` counts; a helper module a test imports does not.
+    """
+    return (
+        filename.startswith("test_")
+        or filename.endswith("_test.py")
+        or filename == "conftest.py"
+    )
 
 
 def normalise_distribution(requirement: str) -> str:
