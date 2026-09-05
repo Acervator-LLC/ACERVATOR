@@ -606,16 +606,63 @@ Disconnect or Disconnect All runs.
 ![The same tab in Grid view.](p30-i1.png)
 
 The view switch swaps the table for the node canvas. Each card carries the
-masked symbol above, the realised profit below it, and the first eight
-characters of the bot id at the foot. The profit colour is the theme's success
-colour at zero and above and the error colour below, and the abdomen gradient
-takes that same colour with its alpha scaled by the size of the figure.
+symbol above, the realised profit below it, and the first eight characters of
+the bot id at the foot. The profit colour is the theme's success colour at zero
+and above and the error colour below, and the abdomen gradient takes that same
+colour with its alpha scaled by the size of the figure.
+
+Privacy Mode is off in the figure, so the symbol and the id both draw plain.
+One field id covers all three readings on a card, the symbol, the short bot id
+and the tooltip, so a card is never half masked.
+
+`src/gui/visualizer/bot_node.py` — the symbol, drawn through the one mask
+
+```python
+p.drawText(
+    QRectF(0, 2, w, 11),
+    Qt.AlignCenter,
+    _mask_or(symbol, "bot_swarm.identifiers"),
+)
+```
+
+Theme names the palette the canvas paints in. The module declares four, and the
+figure sits on Quantum Circuit. The palette decides the locust body, the
+success and error colours the profit line takes, and the four corner brackets
+around each card, which draw in the second accent at low alpha.
+
+`src/gui/visualizer/themes.py` — the palette the figure is on
+
+```python
+"quantum": {
+    "name": "Quantum Circuit",
+    "bg": QColor(10, 15, 25),
+    "accent": QColor(0, 200, 255),
+    "accent2": QColor(0, 255, 200),
+    "success": QColor(0, 255, 136),
+    "warning": QColor(255, 180, 0),
+    "error": QColor(255, 50, 80),
+```
 
 The wires cover the grid alone, because the grid is the only view whose
 coordinates a wire can be drawn against. Each wire carries its own percentage,
 drawn beside it. Drag between two nodes to create a wire, and right-click a
 wire to remove it. The quick routing matrix on the right is the same widget the
 List view shows.
+
+A wire's percentage sits in a rounded dark badge at the midpoint of the curve,
+so a wire crossing a card still reads. The Wires slider at the top right sets
+the opacity of the whole overlay rather than of any one wire.
+
+`src/gui/visualizer/wire_canvas.py` — the badge under the label
+
+```python
+label = f"{pct}%"
+font = QFont("Consolas", 8, QFont.Bold)
+p.setFont(font)
+fm = p.fontMetrics()
+tw = fm.horizontalAdvance(label) + 8
+badge = QRectF(label_pt.x() - tw / 2, label_pt.y() - 9, tw, 18)
+```
 
 Detail: [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md).
 
@@ -946,6 +993,23 @@ the message, coloured by level. Three logger names appear in the figure.
 | `acervator.api` | The venue calls |
 | `acervator.gui` | The panel feed |
 
+Five levels each carry a colour, and the figure shows three of them: warning,
+info and debug, with debug the most muted of the three. A sixth colour follows
+the text of the message rather than its level, and it marks the indicator panel
+feed.
+
+`src/gui/main_tabs/console_log_handler.py` — the level colours
+
+```python
+COLORS = {
+    "DEBUG": QColor(ds.TEXT_MUTED),
+    "INFO": QColor(ds.TEXT_INACTIVE),
+    "WARNING": QColor(ds.WARNING),
+    "ERROR": QColor(ds.ERROR),
+    "CRITICAL": QColor(ds.MAIN_LOG_CRITICAL),
+}
+```
+
 Two of those lines are worth reading against the code. The repeated warning
 naming a capital-reservation over-commit comes from
 `src/trading/capital_reservation.py`, where a claim whose total would pass the
@@ -960,6 +1024,32 @@ record draws a pass marker, a fail marker or a neutral one, then the signal
 name, the site that emitted it, the actual value and the expected one. A
 satisfied expectation is recorded the same as a violated one, which keeps a
 call site that never ran distinct from one that always passed.
+
+`src/gui/main_window.py` — `_drain_signals`, the three markers
+
+```python
+if r.ok is True:
+    mark, colour = "OK  ", ds.SUCCESS
+elif r.ok is False:
+    mark, colour = "FAIL", ds.ERROR
+else:
+    mark, colour = "--  ", ds.STATUS_NEUTRAL
+```
+
+The site is the file and the line of the frame that made the call, read off the
+stack at the moment of emission. It moves whenever the code moves. The numbers
+in the figure are the numbers those call sites held on the day of the capture,
+not the numbers they hold now.
+
+`src/core/signal_contract.py` — `_caller_site`
+
+```python
+def _caller_site(depth: int = 2) -> str:
+    """Return `file:line` of the calling frame at the given stack `depth`."""
+    try:
+        f = sys._getframe(depth)
+        return f"{Path(f.f_code.co_filename).name}:{f.f_lineno}"
+```
 
 Detail: [08-tabs/console.md](08-tabs/console.md).
 
@@ -1200,6 +1290,43 @@ width. Cancel and Save close the dialog, and Save always closes it, reporting
 any group that failed to persist. The page itself carries one row, Username,
 and nothing else.
 
+That one row is not cosmetic. The stored username keys the credential vault.
+Adding a venue on the next page builds a master phrase from that name, then
+encrypts the API key and the API secret with the phrase.
+
+`src/gui/settings_dialog.py` — `_add_exchange`, the phrase and the encryption
+
+```python
+master = f"qat_{self._sm.get('username', 'user')}_vault"
+config.api_key_enc = encrypt(key, master)
+config.api_secret_enc = encrypt(secret, master)
+```
+
+The figure shows a stored value, User. The declared default is an empty string,
+and the settings object always declares the field, so the fallback written into
+the phrase never fires. An install where the row was never filled encrypts
+under a phrase with an empty middle. Change the name on a machine that already
+holds credentials and the stored secrets stop opening, because the connect path
+rebuilds the same phrase from the new name. Issue #436 carries it.
+
+`src/gui/main_window.py` — the decrypt side, rebuilding the same phrase
+
+```python
+master = f"qat_{self._settings.get('username', 'user')}_vault"
+api_key = decrypt(exch_config["api_key_enc"], master)
+api_secret = decrypt(exch_config["api_secret_enc"], master)
+```
+
+Three sites write that phrase out as a literal, one to encrypt and two to
+decrypt, and a fourth declares the format none of them reads. The same issue
+carries that half.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — the declaration
+
+```python
+MASTER_FORMAT = "qat_{username}_vault"
+```
+
 Detail: [08-tabs/settings.md](08-tabs/settings.md).
 
 ### Settings > Exchanges
@@ -1272,9 +1399,53 @@ placeholder shows the CDP shape. API Secret takes a plain secret or a PEM
 elliptic-curve private key, and escaped newlines inside a pasted PEM convert on
 the way in. The passphrase checkbox appears for the three venues above.
 
+The picker in the figure reads Binance, the first supported id in alphabetical
+order, and the passphrase box under it stays clear. Changing the picker sets
+that box for the three venues that need one and clears it for the rest. It also
+wipes the feedback line, so an answer about the last venue cannot stand as an
+answer about this one.
+
+`src/gui/settings_dialog.py` — `_on_exchange_changed`
+
+```python
+def _on_exchange_changed(self) -> None:
+    eid = self._new_exchange.currentData()
+    needs_pp = eid in self._passphrase_exchanges
+    self._pp_check.setChecked(needs_pp)
+    self._api_feedback.setText("")
+```
+
+The page hides the passphrase field until you tick the box, which is why the
+figure shows the box and no field under it. The box carries the state; the
+field only collects the value.
+
+`src/gui/settings_dialog.py` — the field the box reveals
+
+```python
+self._new_passphrase = QLineEdit()
+self._new_passphrase.setEchoMode(QLineEdit.Password)
+self._new_passphrase.setPlaceholderText(
+    "Passphrase set when creating API key"
+)
+self._new_passphrase.setVisible(False)
+```
+
 Test Connection runs the check and reports the answer. Test and Add Exchange
 runs the same check first and stores nothing when it fails. Remove Selected
 drops the highlighted entry.
+
+Both buttons go dead for the length of a call, so a second click cannot start a
+second test. Test and Add returns on a failed check, which is what keeps a
+venue that did not answer out of the store.
+
+`src/gui/settings_dialog.py` — `_add_exchange`, the guard before the store
+
+```python
+if key and secret:
+    result = self._test_api_connection()
+    if result is None or not result.success:
+        return
+```
 
 Detail: [08-tabs/settings.md](08-tabs/settings.md).
 

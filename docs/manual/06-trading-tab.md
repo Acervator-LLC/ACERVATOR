@@ -8,6 +8,36 @@ Here you see the first subsystem we are going to cover and this will primarily b
 
 ![The Trading tab, with Privacy Mode on.](p15-i0.png)
 
+This is the whole tab in one capture. The title bar and the menu row open it.
+The header strip and the tab row run under them. Below those the exchange
+sub-tab fills the left with the Scrumming Bots table and the command bar, the
+Indicator Voting Panel fills the right, and the Activity Log and the API
+Interaction Log close the foot. The status bar carries the API load pill and
+the AI state label. The parts below take that screen in that order.
+
+Privacy Mode is on, so every masked field draws four asterisks and the bot
+table reads as ten columns of them. The title bar is the one reading no part
+below names. It carries the version the tree answered with on the day of the
+capture, v0.1.0. Nothing types that string out. Git answers for a source
+checkout and the baked file answers for a frozen bundle, so the title cannot
+name a release the build is not.
+
+`src/gui/main_window.py` — the window title
+
+```python
+self.setWindowTitle("Acervator v" + __version__ + "")
+```
+
+Press the mode button once and the title is rewritten to name the wing. The
+version leaves the title for the rest of the session, and only a restart brings
+it back. Issue #426 carries that handler.
+
+`src/gui/main_window.py` — `_toggle_trading_mode`, the title after a swap
+
+```python
+self.setWindowTitle("Acervator — CRYPTO WING")
+```
+
 #### The screen itself
 
 **Functional.** One method builds this whole screen. It makes two layers, one
@@ -164,6 +194,33 @@ def _sync_exchange_tabs(self) -> None:
     """Add a tab for each configured exchange missing one, in its own layer."""
 ```
 
+#### The news line
+
+**Functional.** The headline between Privacy Mode and + New Bot is one item
+from the crypto news ticker. The counter in front of it gives that item's place
+in the batch the ticker holds, so a reading of 23 of 42 marks the twenty-third
+headline of forty-two. The item itself carries the feed name, a middle dot,
+then the story title. A timer steps to the next item and wraps at the end of
+the batch.
+
+`src/gui/crypto_news_ticker.py` — the line the strip draws
+
+```python
+_prefix = f"[{self._index + 1}/{len(self._headlines)}] "
+self._label.setText(_prefix + h.display_text())
+```
+
+**Design intention.** The counter tells you the batch is whole. A feed that
+came back short shows a smaller second number rather than a strip that looks
+the same and carries less. With nothing reachable the strip says so in words
+instead of going blank.
+
+`src/gui/crypto_news_ticker.py` — the empty state
+
+```python
+self._label.setText("(no crypto news feeds reachable)")
+```
+
 #### The bot tables
 
 **Functional.** The Scrumming Bots table carries ten columns. Nine are named
@@ -250,6 +307,35 @@ The right half is the Indicator Voting Panel, described at the end of this
 section. The two panes at the foot are the Activity Log and the API Interaction
 Log. The status bar carries the API load pill written by
 `_refresh_api_load_pill` and the `AI:` state label.
+
+The pill names the venue, the calls that venue took in the last minute, the
+ceiling for it and the two as a percentage. It reads the worst-loaded connected
+venue, so one busy exchange cannot hide behind a quiet one.
+
+`src/gui/main_window.py` — the pill text
+
+```python
+text = (
+    f"API {worst.exchange}: "
+    f"{worst.calls_per_minute:.0f}/"
+    f"{worst.ceiling_cpm:.0f} CPM ({pct} %)"
+)
+```
+
+Its colour is the warning. Green under half load, amber above that, red past
+the venue's safety percentage. With no venue connected the pill draws an em
+dash and no number.
+
+`src/gui/main_window.py` — the three colours
+
+```python
+if worst.load_score > mon.safety_pct:
+    colour = ds.ERROR
+elif worst.load_score > 0.5:
+    colour = ds.FOLD_RATIO_AMBER
+else:
+    colour = ds.SUCCESS
+```
 
 1 - Add Exchange - User provides valid API key and secret for target exchange - Platforms validates with an API handshake - Exchange Initializes
 
