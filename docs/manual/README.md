@@ -193,9 +193,10 @@ reportlab, taking its colours, type sizes and page grid from
 python -m tools.build_product_manual
 ```
 
-The PDF is generated output, so it is not tracked. It is written beside the
-figures, under the same ignore rule. Three flags move the input directory, the
-figures directory and the output file.
+The build writes the PDF beside the figures, under the same ignore rule. The
+shipped copy of that render is tracked one directory up, at
+[../Acervator-Product-Manual.pdf](../Acervator-Product-Manual.pdf). Three flags
+move the input directory, the figures directory and the output file.
 
 ```python
 DEFAULT_DOCS_DIR = REPO_ROOT / "docs" / "manual"        # tools/build_product_manual.py
