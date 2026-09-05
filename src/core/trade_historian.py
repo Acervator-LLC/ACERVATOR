@@ -112,7 +112,7 @@ class HistoryAnalysis:
     total_advantage_usd: float = 0.0
 
     est_holdings: float = 0.0  # buy quantity less sell quantity, floored at 0
-    est_cost_basis: float = 0.0  # buy cost over buy quantity, across every buy
+    est_cost_basis: float = 0.0  # buy cost plus fee, over buy quantity
     net_pnl_usd: float = 0.0  # sell cost less fee, minus buy cost plus fee
 
     history_truncated: bool = False  # the fetch returned at least `limit` rows

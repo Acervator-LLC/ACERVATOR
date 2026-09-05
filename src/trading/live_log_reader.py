@@ -1,36 +1,10 @@
-"""sadp/_tools/live_log_reader.py — The SINGLE sanctioned reader of live's log root.
+"""The read-only reader of the live log root at ``LIVE_LOG_ROOT``.
 
-This module is the ONE sadp-side file allowed to reference ``LIVE_LOG_ROOT``
-(=``~/.acervator_logs/``). Any other sadp/* file that references that path is
-a R-WIR (write-once-read-rooted) boundary violation, caught by the static
-check ``tools/check_sim_live_boundary.py``.
-
-The boundary is per operator directive 2026-06-09:
-
-    "And logs are restructured and VERIFIED wired and VERIFIED working
-    THEN we point both sim and live to them for relevant queries. This
-    will be one of the only places that connects sim and live. Do not
-    screw it up please."
-
-Strict rules:
-  1. **READ-ONLY.** This reader NEVER writes to live's log dirs.
-  2. **SCHEMA-VALIDATED.** Each entry is validated against the v3.23.0
-     gate.log + trade.log + pnl.log shapes before being returned. Drift
-     surfaces as a raised exception, not a silent corruption.
-  3. **OPERATOR-INITIATED FILTERABLE.** ``live_trades(since)`` returns
-     all entries; ``live_autonomous_trades(since)`` filters
-     ``operator_initiated=false`` so parity work compares apples to apples.
-  4. **NO MUTATION OF YIELDED OBJECTS.** The reader yields plain dicts
-     constructed fresh each iteration; the caller is free to mutate them.
-
-Sim parity tool consumers replace the v3.22.74 Coinbase YTD CSV ground
-truth with this reader's autonomous-trade output. The CSV had the manual-
-fire confound built in (operator's manual fires were indistinguishable
-from autonomous fires); gate.log carries ``operator_initiated`` as a
-proper field.
-
-Status v3.23.1: Phase C-1 foundation. Sim mirror + parity tool rewrite +
-per-bot decision matrix ship in v3.23.2 (Phase C-2/3/4).
+``live_gate_decisions``, ``live_trades`` and ``live_voting_panel_snapshots``
+yield a fresh dict per entry and write nothing. ``_validate_gate_entry`` and
+``_validate_trade_entry`` raise ``SchemaDriftError`` on an entry that does
+not match the pinned field lists. ``live_autonomous_trades`` drops the rows
+whose ``operator_initiated`` is true.
 """
 
 from __future__ import annotations
@@ -40,19 +14,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
-# ─── Single canonical path resolution — the only place these constants live ───
-
 LIVE_LOG_ROOT: Path = Path.home() / ".acervator_logs"
 LIVE_TRADE_DIR: Path = LIVE_LOG_ROOT / "trade"
 LIVE_GATE_LOG: Path = LIVE_TRADE_DIR / "gate.log"
 LIVE_TRADE_LOG: Path = LIVE_TRADE_DIR / "trade.log"
-# v3.23.6 — voting-panel-snapshot log (operator pin: per-fired-trade).
+# One voting-panel snapshot per fired trade.
 LIVE_VOTING_LOG: Path = LIVE_TRADE_DIR / "voting.log"
 LIVE_CONSOLE_DIR: Path = LIVE_LOG_ROOT / "console"
 LIVE_PNL_DIR: Path = LIVE_TRADE_DIR / "pnl"
 
 
-# ─── Schema pins (v3.23.0 baseline; update in same cascade as any new field) ───
+# Schema pins. A new log field is added here in the same change.
 
 GATE_LOG_REQUIRED_TOP_FIELDS = (
     "timestamp",
@@ -94,20 +66,14 @@ TRADE_LOG_REQUIRED_DATA_FIELDS = (
 
 
 class SchemaDriftError(RuntimeError):
-    """Raised when an entry on disk does not match the pinned schema.
-
-    Fail-loud (R28 FL) so v3.23.x schema changes that did not update the
-    schema pins surface as test failures instead of silent sim/live
-    decision-comparison drift.
-    """
+    """Raised when an entry on disk does not match the pinned schema."""
 
 
 def _validate_gate_entry(entry: dict) -> None:
-    """Validate one parsed gate.log entry against the v3.23.0 schema.
+    """Validate one parsed gate.log entry against the pinned field lists.
 
     Raises ``SchemaDriftError`` if any required field is missing. Optional
-    fields are allowed to be absent (older entries from before the field
-    landed) but if present must be the right shape.
+    fields may be absent, and must be the right shape when present.
     """
     for f in GATE_LOG_REQUIRED_TOP_FIELDS:
         if f not in entry:
@@ -139,11 +105,7 @@ def _validate_gate_entry(entry: dict) -> None:
 
 
 def _validate_trade_entry(entry: dict) -> None:
-    """Validate one parsed trade.log entry against the v3.20.78 schema.
-
-    The v3.23.0 ship preserved v3.20.78's schema verbatim, so this
-    validator is unchanged from prior versions.
-    """
+    """Validate one parsed trade.log entry against the pinned field lists."""
     for f in TRADE_LOG_REQUIRED_TOP_FIELDS:
         if f not in entry:
             raise SchemaDriftError(
@@ -247,23 +209,11 @@ def _file_predates(path: Path, since: datetime) -> bool:
 
 
 def _line_predates(line: str, since_prefix: str) -> bool:
-    """Cheap pre-parse rejection of a line older than ``since``.
+    """Reject a line older than ``since`` without parsing it.
 
-    v3.24.24 — ``since`` used to be applied AFTER ``json.loads``, so the
-    cutoff discarded work already done. On the operator's logs that is
-    165,062 full JSON parses of 262 MB regardless of how narrow the
-    window was, and the caller docstrings that claimed ``since`` stopped
-    the iterators scanning back were simply wrong.
-
-    NDJSON rows are written by ``NDJSONWriter`` with ``timestamp`` as the
-    first key, so the ISO date appears near the head of the line. This
-    compares the raw text against the cutoff's ISO prefix, which is a
-    valid lexicographic comparison for ISO-8601 UTC.
-
-    CONSERVATIVE BY DESIGN: returns False (keep the line) on anything it
-    cannot positively establish as older. A false keep costs one parse; a
-    false reject would silently drop a gate decision, and sim-parity
-    tooling reads through this same path.
+    ``timestamp`` is the first key an NDJSON row carries, so its ISO text
+    is compared lexicographically against ``since_prefix``. Returns False,
+    keeping the line, for anything this cannot read as older.
     """
     head = line[:64]
     i = head.find('"timestamp"')
@@ -282,25 +232,14 @@ def _line_predates(line: str, since_prefix: str) -> bool:
 
 
 def _rotated_files_for(path: Path) -> list[Path]:
-    """v3.23.6 — return [path, path.1, path.2, ...] for all rotated copies.
+    """Return ``[path, path.1, path.2, ...]`` for every rotated copy.
 
-    Pre-v3.23.6 the reader only consumed the active file, so once
-    rotation kicked in (50 MB) the older entries were invisible to the
-    parity tool. Operator's 33-hour window needs the full set of
-    rotated files so a single live-fire event can be matched even if
-    its gate.log entry lives in gate.log.4.
-
-    Order: active file first (newest writes), then numerically by
-    rotation index. NDJSON parsing is line-by-line so order across
-    files doesn't affect correctness — only the ``since`` filter would
-    care, and that's per-entry.
+    The active file comes first, then the rotated ones in numeric order.
     """
     files: list[Path] = []
     if path.is_file():
         files.append(path)
-    # Rotation suffix is .1 .. .backup_count (default 5). Use a glob
-    # that matches any digit suffix so future rotation-count changes
-    # don't silently miss files.
+    # Any digit suffix matches, so a changed backup count still resolves.
     rotated = sorted(
         path.parent.glob(f"{path.name}.[0-9]*"),
         key=lambda p: int(p.suffix.lstrip(".") or "0"),
@@ -312,25 +251,16 @@ def _rotated_files_for(path: Path) -> list[Path]:
 def live_gate_decisions(
     since: Optional[datetime] = None, validate: bool = True
 ) -> Iterator[dict]:
-    """Yield gate-decision entries from live's gate.log + rotated copies.
-
-    v3.23.6: globs ``gate.log`` + ``gate.log.[0-9]*`` so the full
-    rotation chain is consumed. Pre-v3.23.6 only the active file was
-    read which meant the operator's 33-hour window was effectively
-    bounded by the 50 MB rotation cutoff.
+    """Yield gate-decision entries from ``LIVE_GATE_LOG`` and its rotations.
 
     Args:
-        since:    If set, only yield entries with timestamp ≥ since.
+        since:    If set, only yield entries with timestamp >= since.
                   Timezone-aware (UTC) datetimes only.
-        validate: If True (default), raise SchemaDriftError on any
-                  entry that doesn't match the v3.23.0 schema. Set
-                  False for triage-mode reads of older entries.
+        validate: If True, raise ``SchemaDriftError`` on an entry that does
+                  not match the pinned field lists.
 
-    Yields plain dicts; the caller is free to mutate them.
+    Yields a fresh dict per entry; the caller is free to mutate it.
     """
-    # v3.24.24 — make `since` actually save work. The filter used to run
-    # AFTER json.loads, so a narrow window still paid a full parse of
-    # every one of the 165,062 rows / 262 MB on the operator's disk.
     since_prefix = since.isoformat()[:19] if since is not None else ""
     for path in _rotated_files_for(LIVE_GATE_LOG):
         if since is not None and _file_predates(path, since):
@@ -353,24 +283,16 @@ def live_gate_decisions(
 
 
 def live_voting_panel_snapshots(since: Optional[datetime] = None) -> Iterator[dict]:
-    """v3.23.6 — Yield voting-panel-snapshot entries from live's voting.log.
+    """Yield the per-fired-trade snapshots from ``LIVE_VOTING_LOG``.
 
-    Operator pin 2026-06-13: snapshot cadence is per-fired-trade (NOT
-    per-tick). Schema mirrors gate.log + trade.log: top-level
-    ``{timestamp, category, bot_id, data}`` with ``data.panel`` carrying
-    the VotingSummary asdict snapshot at fire time.
-
-    NO schema validator pinned yet — the schema may evolve as
-    VotingSummary grows new fields; we use the forward-compatible
-    "require core fields, allow extras" pattern (asdict() over the
-    dataclass auto-propagates new fields).
+    Each entry is ``{timestamp, category, bot_id, data}`` with
+    ``data.panel`` holding the VotingSummary at fire time; no validator is
+    pinned for this shape.
 
     Args:
-        since: If set, only yield entries with timestamp ≥ since.
+        since: If set, only yield entries with timestamp >= since.
 
-    Yields plain dicts; the caller is free to mutate them. Glob over
-    rotated copies (voting.log + voting.log.1..N) same as
-    live_gate_decisions.
+    Yields a fresh dict per entry, over the rotated copies as well.
     """
     for path in _rotated_files_for(LIVE_VOTING_LOG):
         for entry in _iter_ndjson(path):
@@ -389,7 +311,7 @@ def live_trades(
     Args:
         since:    If set, only yield entries with timestamp ≥ since.
         validate: If True (default), raise SchemaDriftError on any
-                  entry that doesn't match the v3.20.78 schema.
+                  entry that does not match the pinned field lists.
 
     Yields plain dicts. To filter to autonomous fires only, use
     ``live_autonomous_trades`` which adds the
@@ -410,11 +332,6 @@ def live_autonomous_trades(
     since: Optional[datetime] = None, validate: bool = True
 ) -> Iterator[dict]:
     """Yield ONLY autonomous (non-operator-initiated) trade fills.
-
-    This is the sim parity tool's ground-truth iterator. Replaces the
-    v3.22.74 Coinbase YTD CSV which carried the manual-fire confound
-    (the CSV did not distinguish operator's manual fires from
-    autonomous gate-driven fires).
 
     Args:
         since:    If set, only yield entries with timestamp ≥ since.
@@ -458,7 +375,7 @@ def gate_decision_count_by_bot(since: Optional[datetime] = None) -> dict[str, di
 
     The sim parity tool compares these against the sim's per-bot
     aggregate to produce the (sim_armed, live_armed) decision matrix
-    that v3.23.2 Phase C-4 ships.
+    per-bot aggregate.
     """
     out: dict[str, dict] = {}
     for entry in live_gate_decisions(since=since):

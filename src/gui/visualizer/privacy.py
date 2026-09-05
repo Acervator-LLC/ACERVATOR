@@ -14,15 +14,10 @@ try:
         get_privacy_mask_registry as _get_privacy_mask_registry,
         mask_or as _mask_or,
     )
-except Exception:  # R28-OK: defensive — the widget modules must import even
-    # if the registry module fails to load; render falls back to plain
-    # strings (no masking) and the GUI continues to function.
+except Exception:
     _get_privacy_mask_registry = None  # type: ignore[assignment]
 
     def _mask_or(value, field_id: str, mask: str = "****") -> str:
-        # Signature parity with the real mask_or is load-bearing:
-        # callers pass mask= by keyword. This fallback masks nothing,
-        # so it discards both masking parameters rather than reading
-        # them.
+        # Callers pass ``mask=`` by keyword, so the signature must match.
         del field_id, mask
         return str(value)

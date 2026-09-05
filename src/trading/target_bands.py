@@ -1,41 +1,28 @@
 """The two bands that decide whether a position is ON TARGET.
 
-ONE SPELLING, READ BY THE TICK AND BY THE DASHBOARD. Both numbers were
-written out twice: once in ``scrumming_bot.py``, where they stop a
-trade, and once in ``src/gui/main_window.py``, where the Ammo cell
-predicts what the tick will do. A dashboard that computes a trading
-threshold itself can disagree with the engine, and the operator finds
-out by pressing the button. Issue #128 R2 removed the second copy.
-
-Qt-free by construction: nothing here imports a widget, and the GUI
-calls in.
+``at_target_dust_band`` is the band ``ScrummingBot.tick`` parks inside;
+``manual_fire_dust_band`` is the wider one Manual Fire refuses inside.
+``target_territory`` and ``manual_fire_will_noop`` answer the same two
+questions from a position value, which is what the dashboard holds.
 """
 
 from __future__ import annotations
 
-#: The tick's park band, as a fraction of target. MEM-258: inside it
-#: ``ScrummingBot.tick`` exits immediately -- no TA, no signals, no
-#: buy or sell considered.
+#: The tick's park band, as a fraction of target. Inside it
+#: ``ScrummingBot.tick`` exits before any TA or signal, unless a manual
+#: fire is pending.
 AT_TARGET_PCT = 0.001
 
-#: Manual Fire's own no-op band, as a fraction of target. TEN TIMES
-#: the band above, which is why the dashboard has to say so: between
-#: the two, the autonomous engine still works the range and the button
-#: silently returns "already within dust band".
+#: Manual Fire's own no-op band, as a fraction of target; ten times
+#: ``AT_TARGET_PCT``.
 MANUAL_FIRE_PCT = 0.01
 
-#: Floor for both bands, in quote currency. A target small enough to
-#: make a percentage band vanish still needs a band.
+#: Floor for both bands, in quote currency.
 BAND_FLOOR_USD = 0.01
 
 
 def at_target_dust_band(target_balance: float) -> float:
-    """The band inside which the tick parks: 0.1% of target, min $0.01.
-
-    Operator directive, MEM-258, verbatim: "IF THE GOD DAMN FUCKING
-    CURRENT BALANCE EQUAL TARGET BALANCE NO SIGNAL LEAVES THE GOD DAMN
-    PLATFORM."
-    """
+    """The band inside which the tick parks: 0.1% of target, min $0.01."""
     return max(float(target_balance) * AT_TARGET_PCT, BAND_FLOOR_USD)
 
 
@@ -47,10 +34,8 @@ def manual_fire_dust_band(target_balance: float) -> float:
 def target_territory(position_value: float, target_balance: float) -> str:
     """``"scrum"``, ``"fold"`` or ``"at_target"`` for one position.
 
-    The tick's own test, stated once. A position above target by more
-    than the band has surplus to sell; below it by more than the band
-    has a deficit to buy; inside it, the tick exits early and neither
-    is pending.
+    A position further from ``target_balance`` than ``at_target_dust_band``
+    has surplus to sell above it and a deficit to buy below it.
     """
     delta = float(position_value) - float(target_balance)
     band = at_target_dust_band(target_balance)
@@ -64,10 +49,8 @@ def target_territory(position_value: float, target_balance: float) -> str:
 def manual_fire_will_noop(position_value: float, target_balance: float) -> bool:
     """True when Manual Fire would log a no-op instead of trading.
 
-    ``_execute_manual_rebalance`` computes ``delta_usd`` at the tick's
-    price and refuses inside ``manual_fire_dust_band``. This answers
-    the same question from a position value, which is what a display
-    has.
+    ``_execute_manual_rebalance`` refuses inside ``manual_fire_dust_band``;
+    this answers the same question from a position value.
     """
     delta = float(position_value) - float(target_balance)
     return abs(delta) <= manual_fire_dust_band(target_balance)

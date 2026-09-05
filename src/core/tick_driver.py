@@ -1,31 +1,10 @@
 """The call that advances the asyncio loop, with no Qt in it.
 
-Every coroutine in this application runs on one asyncio loop, and that
-loop does not run itself. Something must call it. In the shipped
-application that caller is the ``QTimer`` built by
-``main._make_async_pump_timer``, and nothing else reaches
-``ScrummingBot.tick``. Measured with a real ``QApplication`` running and
-the pump stopped: 0 coroutine steps in 1000 ms. With the pump started:
-10.
-
-This module holds the call itself and the interval it runs at, so the
-caller can be replaced without the trading loop noticing. It imports no
-Qt, directly or transitively.
-
-TWO SCHEDULERS, ONE BODY. Measured over the same 5 s window, driving the
-same started bot:
-
-    Qt        ``main._make_async_pump_timer`` connects ``pump_once`` to a
-              PreciseTimer QTimer.  99 pumps, 101 ticks, median 50.043 ms
-    Qt-free   ``AsyncioTickDriver.run`` calls ``pump_once`` on the
-              calling thread.       100 pumps, 102 ticks, median 50.000 ms
-
-Both call the same ``pump_once`` at the same ``PUMP_INTERVAL_MS``, so a
-change to either is a change to both.
-
-NO NEW THREAD. ``AsyncioTickDriver.run`` blocks the thread that calls it,
-the way ``QApplication.exec`` does. Every coroutine keeps running on the
-caller's thread, so no shared trading state changes hands.
+``pump_once`` runs one iteration of the loop, once every
+``PUMP_INTERVAL_MS``. ``main._make_async_pump_timer`` drives it from a
+``QTimer``; ``AsyncioTickDriver.run`` drives it from the calling thread
+and starts no thread of its own. Neither ``pump_once`` nor
+``AsyncioTickDriver`` imports Qt, directly or transitively.
 """
 
 from __future__ import annotations
@@ -35,10 +14,8 @@ import threading
 import time
 from typing import Optional, Protocol, runtime_checkable
 
-# The cadence of the whole application. A coroutine resumes only when the
-# loop is advanced, so this is the resolution of every ``asyncio.sleep``
-# in the trading path. ``main.ASYNC_PUMP_INTERVAL_MS`` must equal it;
-# tests/test_tick_driver_is_qt_free.py fails when they differ.
+# The resolution of every ``asyncio.sleep`` in the trading path.
+# ``main.ASYNC_PUMP_INTERVAL_MS`` must equal it.
 PUMP_INTERVAL_MS = 50
 
 
@@ -60,13 +37,8 @@ def pump_once(loop: asyncio.AbstractEventLoop) -> None:
     loop.run_forever()
 
 
-# Loops with a driver already on them, by id(). A loop advanced twice per
-# interval halves every asyncio.sleep in the trading path and reports
-# nothing, so the second driver is refused rather than logged.
-#
-# A QTimer schedule does not register here. main.py builds one and only
-# one, so the reachable case is two AsyncioTickDrivers; a driver added
-# beside main's QTimer would not be caught.
+# Loops that already carry a driver, by id(). A ``QTimer`` schedule does not
+# register here, so only a second ``AsyncioTickDriver`` is refused.
 _DRIVEN_LOOPS: set[int] = set()
 _DRIVEN_LOOPS_LOCK = threading.Lock()
 

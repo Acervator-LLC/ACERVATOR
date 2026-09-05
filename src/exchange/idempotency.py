@@ -1,38 +1,11 @@
-"""
-src/exchange/idempotency.py — TD-004 client-order-id idempotency layer.
+"""Deterministic client-order-ids, so a retried order cannot fill twice.
 
-Implemented v3.15.98 to close TD-004 ("Idempotency Not Enforced on Trade
-Submission"). Required before sustained paper trading per TECH_DEBT.md.
-
-PROBLEM
--------
-A network timeout on `place_order()` followed by an automatic retry can
-result in DUPLICATE orders at the exchange — both the original (which
-the timeout hid) and the retry land. Symmetric SCRUM (sell delta + retry
-sell delta) doubles the position-reduction; symmetric FOLD doubles the
-buy-back. Either is an immediate financial loss for the operator.
-
-SOLUTION
---------
-Deterministic `client_order_id` (`coid`) derived from the trade's
-INTENT — symbol, side, quantity, price-bucket, and session-scoped nonce.
-The exchange refuses a second order with the same `coid` (Coinbase: 409
-Duplicate; Binance: -2010), so a retry that lands gets rejected at the
-broker rather than executed.
-
-The IdempotencyLayer:
-  - Generates a `coid` from the trade intent + a session-stable nonce
-  - Caches recently-issued coids with a TTL window (default 5 minutes)
-  - On retry of the same intent within TTL, REUSES the same `coid`
-  - On confirmed success, marks the coid as "fulfilled" (still cached
-    for the TTL so a delayed double-retry hits the cache)
-  - On confirmed failure (4xx other than 409), marks for deletion
-    so a future legitimate retry generates a new coid
-
-This file is exchange-agnostic. The CCXT connector consumes it via
-`apply_idempotency()` and passes the resulting `coid` in the
-exchange-specific way (Coinbase: `client_oid`, Binance:
-`newClientOrderId`, Kraken: `userref`).
+``IdempotencyLayer.derive_coid`` hashes a ``TradeIntent`` with a
+session-stable nonce and caches the result for ``ttl_seconds``, so the same
+intent inside that window reuses one ``coid`` and the exchange refuses the
+second order. ``mark_fulfilled`` and ``invalidate`` record the outcome.
+``BotContainer.guarded_place_order`` is the caller; it passes the ``coid``
+to ``place_order`` as ``client_order_id``.
 """
 
 from __future__ import annotations
@@ -66,7 +39,7 @@ class TradeIntent:
     side: str  # "buy" / "sell"
     amount: float  # in base asset units
     price: Optional[float]  # None for market orders
-    bot_id: str  # which bot is firing
+    bot_id: str
     purpose: str = ""  # "scrum" / "fold" / "cartridge" / "manual" / etc.
 
     def fingerprint(self, session_nonce: str) -> str:
@@ -92,10 +65,7 @@ class IdempotencyLayer:
     def __init__(self, ttl_seconds: float = 300.0, max_entries: int = 5000) -> None:
         self.ttl_seconds = ttl_seconds
         self.max_entries = max_entries
-        # Session nonce: stable for this process lifetime, NOT
-        # persisted. After app restart, retry-collision-avoidance
-        # resets — that's correct: a restart means the operator
-        # explicitly re-launched and shouldn't be tied to old orders.
+        # Not persisted, so a restart gives new coids for the same intent.
         self.session_nonce = uuid.uuid4().hex[:8]
         self._cache: dict[str, _CachedCoid] = {}
         self._lock = threading.RLock()

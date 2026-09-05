@@ -126,11 +126,6 @@ class InstanceConsentDialog(QtWidgets.QDialog):
         self._consent_button.setDefault(False)
         self._consent_button.setAutoDefault(False)
         self._consent_button.clicked.connect(self._on_consent)
-        # A live second copy is proved by the operating system, not
-        # inferred from a file, and no answer the operator gives makes
-        # two copies on one account safe. The button is therefore
-        # disabled rather than present-and-ignored, so the dialog never
-        # offers a choice it would refuse to honour.
         if not bool(decision.consent_is_possible):
             self._consent_button.setEnabled(False)
             self._consent_button.setToolTip(

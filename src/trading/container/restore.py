@@ -452,9 +452,6 @@ class StateRestoreMixin:
                     except Exception as exc:
                         bot._state_import_failed = True
                         self._ledger_skip(bid, "import_scrumming_state failed")
-                        # import_scrumming_state is not transactional, so the
-                        # bot is left unregistered and state_manager carries
-                        # the disk record forward.
                         logger.error(
                             "import_scrumming_state FAILED on %s: %s. The "
                             "bot is NOT being registered this launch, so "
