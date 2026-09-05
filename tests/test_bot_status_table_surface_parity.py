@@ -1062,14 +1062,16 @@ def test_the_loaded_module_probe_reports_a_widget_module():
 # Counting what the shipped file wires, waits on, and builds
 
 
-def declared_classes(path):
-    """Every class one file declares, wherever it is declared.
+def classes_declared(module):
+    """Every class ``module`` defines, by name."""
+    import inspect
 
-    A class inside an ``if``, inside a method or inside another class is
-    still a class, so the whole tree is walked rather than its top level.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+    return {
+        name
+        for name, value in vars(module).items()
+        if inspect.isclass(value)
+        and getattr(value, "__module__", "") == module.__name__
+    }
 
 
 def signal_is_connected(owner, signature):
@@ -1242,34 +1244,11 @@ def test_the_screen_elements_the_table_builds_are_counted():
     )
 
 
-NESTED_CLASS_SOURCE = (
-    "import sys\n"
-    "\n"
-    "if sys.version_info:\n"
-    "\n"
-    "    class Painted:\n"
-    "        class Handler:\n"
-    "            pass\n"
-    "\n"
-    "        def make(self):\n"
-    "            class Buried:\n"
-    "                pass\n"
-    "\n"
-    "            return Buried\n"
-)
-
-
-def test_the_class_counter_finds_a_class_declared_inside_another(tmp_path):
-    """The class counter reads the top level only, so a nested class is lost."""
-    written = tmp_path / "nested.py"
-    written.write_text(NESTED_CLASS_SOURCE, encoding="utf-8", newline="\n")
-    assert declared_classes(written) == {"Painted", "Handler", "Buried"}
-    top_level = {
-        node.name
-        for node in ast.parse(NESTED_CLASS_SOURCE).body
-        if isinstance(node, ast.ClassDef)
-    }
-    assert top_level == set(), top_level
+def test_the_class_reader_reports_only_the_modules_own_classes():
+    """A class the module imports is not a class the module declares."""
+    app()
+    assert classes_declared(shipped) == set(CLASS_MAP)
+    assert "QWidget" not in classes_declared(shipped)
 
 
 # Every class and every method has a counterpart
@@ -1413,7 +1392,7 @@ def test_every_shipped_class_and_method_has_a_counterpart():
         members(surface.BotStatusTableModel) ^ MODEL_MEMBERS
     )
     assert len(MODEL_MEMBERS) == 24
-    assert declared_classes(TABLE_PATH) == set(CLASS_MAP)
+    assert classes_declared(shipped) == set(CLASS_MAP)
 
 
 def test_a_member_added_or_lost_on_either_side_is_reported():

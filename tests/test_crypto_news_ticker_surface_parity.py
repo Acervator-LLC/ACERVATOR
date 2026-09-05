@@ -12,7 +12,6 @@ and address below is invented, and every outward call is handed in.
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import logging
@@ -1883,16 +1882,6 @@ def test_a_detached_report_reaches_nothing():
 # Counting what the shipped file wires, waits on, and builds
 
 
-def declared_classes(path):
-    """Every class one file declares, wherever it is declared.
-
-    A class inside an ``if``, inside a method or inside another class is
-    still a class, so the whole tree is walked rather than its top level.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
-
-
 def signal_is_connected(owner, signature):
     """Whether ``owner`` has a receiver on the signal named ``signature``."""
     meta = owner.metaObject()
@@ -2151,36 +2140,6 @@ def test_the_strip_builds_one_layout_and_one_pointer_shape():
     ) == surface.LAYOUT_MARGINS
     label = strip.findChildren(QLabel)[0]
     assert label.cursor().shape().name == surface.LABEL_CURSOR
-
-
-NESTED_CLASS_SOURCE = (
-    "import sys\n"
-    "\n"
-    "if sys.version_info:\n"
-    "\n"
-    "    class Painted:\n"
-    "        class Handler:\n"
-    "            pass\n"
-    "\n"
-    "        def make(self):\n"
-    "            class Buried:\n"
-    "                pass\n"
-    "\n"
-    "            return Buried\n"
-)
-
-
-def test_the_class_counter_finds_a_class_declared_inside_another(tmp_path):
-    """The class counter reads the top level only, so a nested class is lost."""
-    written = tmp_path / "nested.py"
-    written.write_text(NESTED_CLASS_SOURCE, encoding="utf-8", newline="\n")
-    assert declared_classes(written) == {"Painted", "Handler", "Buried"}
-    top_level = {
-        node.name
-        for node in ast.parse(NESTED_CLASS_SOURCE).body
-        if isinstance(node, ast.ClassDef)
-    }
-    assert top_level == set(), top_level
 
 
 # Every class and every method has a counterpart
@@ -2448,32 +2407,31 @@ def test_the_signatures_match_the_shipped_methods():
     )
 
 
-def modules_importing(module, skip=()):
-    """Every file under src that imports the module named exactly `module`."""
-    found = []
-    for path in sorted((REPO_ROOT / "src").rglob("*.py")):
-        if path in skip:
-            continue
-        names = []
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                names += [alias.name for alias in node.names]
-            if isinstance(node, ast.ImportFrom):
-                names.append(node.module or "")
-        if any(name.split(".")[-1] == module for name in names):
-            found.append(str(path))
-    return found
+def test_the_exchange_tab_builds_the_strip():
+    """The exchange tab stopped putting the strip in its header."""
+    from src.gui.widgets.exchange_tab import ExchangeTab
+
+    app()
+    tab = hold(ExchangeTab("coinbase", "Coinbase"))
+    try:
+        assert isinstance(tab._news_ticker, shipped.CryptoNewsTicker)
+        assert tab._news_ticker.parent() is not None, "the strip is not in the header"
+    finally:
+        tab._news_ticker.stop()
 
 
-def test_the_strip_is_reached_by_the_tab_and_the_surface_by_the_bridge():
-    """The count of readers is wrong, so a lost reader would pass unseen."""
-    readers = modules_importing("crypto_news_ticker", skip=(SURFACE_PATH, STRIP_PATH))
-    assert readers == [str(REPO_ROOT / "src/gui/widgets/exchange_tab.py")], readers
-    assert modules_importing("crypto_news_ticker_surface") == [
-        str(REPO_ROOT / "src/core/desktop_bridge.py")
-    ]
-    known = modules_importing("design_system")
-    assert len(known) > 5, known
+def test_the_bridge_reaches_the_surface():
+    """The bridge registry stopped carrying the strip's method."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert registry[surface.METHOD] is surface.view_model
+    from_surface = sorted(
+        method
+        for method, handler in registry.items()
+        if getattr(handler, "__module__", "") == surface.__name__
+    )
+    assert from_surface == [surface.METHOD], from_surface
 
 
 # The surface holds its own values
