@@ -4,6 +4,7 @@ run in QJSEngine and drawn in QWebEngineView."""
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -16,20 +17,17 @@ if str(REPO_ROOT) not in sys.path:  # pragma: no cover
 
 from src.gui.main_tabs import start_all_progress_surface as surface
 from tests.fixtures.web_js_modules import (
-    HEX_COLOUR,
     JsEngine,
     drain_events,
-    js_literals,
     load_order,
     new_engine,
     runs_after,
-    swap_module,
 )
 
 MODULE_PATH = REPO_ROOT / "src" / "gui" / "web" / "start_all_progress.js"
 INDEX_HTML = REPO_ROOT / "desktop" / "renderer" / "index.html"
 
-#: Read at collection, before any test body can write into the file.
+#: The module text `JsRuntime` evaluates. Never asserted on.
 MODULE_SOURCE = MODULE_PATH.read_text(encoding="utf-8")
 
 JS_TIMEOUT_MS = 30_000
@@ -84,9 +82,8 @@ STATES = {
         ("bot_started", 2, 1, "fast-bot"),
         ("done", 2, 1, ""),
     ],
-    # Stops on `bot_starting`, where both the headline and the freshest
-    # item still carry the raw bot id (`bot_started` drops it from the
-    # headline format string).
+    # Stops on `bot_starting`, the last phase whose headline still carries
+    # the raw bot id.
     "hostile_bot_id": [
         ("begin", 1, 0, ""),
         ("bot_starting", 1, 0, HOSTILE_ID),
@@ -302,24 +299,6 @@ def test_a_payload_that_is_not_an_object_leaves_the_module_unloaded(js: JsRuntim
         assert [one["fault"] for one in report["faults"]] == ["not-an-object"]
 
 
-# Defect class 1 - no invented progress value. The module reads no field
-# but `headline_text` and `items` for what it shows; `total`/`started`
-# never reach the render at all, so two states differing only in those
-# numbers must be indistinguishable to the module's own readers.
-
-
-def test_the_module_never_reads_total_or_started_by_name():
-    assert "total" not in MODULE_SOURCE
-    assert "started" not in MODULE_SOURCE
-
-
-def test_the_module_computes_no_ratio_or_percentage():
-    """No division operator exists, so no `done / total` can ever divide
-    by zero and no percentage can ever be a guess (#257)."""
-    literals = js_literals(MODULE_SOURCE)
-    assert literals["slashes"] == [], literals["slashes"]
-
-
 def test_two_states_differing_only_in_total_and_started_read_identically(js: JsRuntime):
     happy = state_payload("in_progress")
     inflated = json.loads(json.dumps(happy))
@@ -332,11 +311,6 @@ def test_two_states_differing_only_in_total_and_started_read_identically(js: JsR
     js.push(inflated)
     assert js.call("list", "items") == happy_items
     assert js.call("field", "headline_text") == happy_headline
-
-
-# Defect class 2 - #257 non-finite numbers. Nothing in this payload is
-# ever computed by division, so a bare NaN cannot arise here; this proves
-# a hostile payload carrying one still cannot cross into the module.
 
 
 def test_a_payload_carrying_a_bare_nan_never_reaches_the_module(js: JsRuntime):
@@ -362,11 +336,6 @@ def test_the_bare_nan_check_accepts_a_frame_the_bridge_can_write(js: JsRuntime):
     assert refused is None
 
 
-# Defect class 3 - #276 order loss. `items` is an explicit ordered list on
-# the wire; this proves the module keeps that order even when the entries
-# look like numbers a browser might otherwise re-sort as object keys.
-
-
 def test_number_like_item_text_keeps_the_order_the_surface_sent(js: JsRuntime):
     payload = state_payload("number_like_ids")
     assert [line.split()[1] for line in payload["items"]] == ["10", "2", "1"]
@@ -378,45 +347,6 @@ def test_number_like_item_text_keeps_the_order_the_surface_sent(js: JsRuntime):
 def test_items_is_a_list_never_a_bag_keyed_by_bot_id():
     payload = state_payload("number_like_ids")
     assert isinstance(payload["items"], list)
-
-
-# Defect class 4 - #266 colour trap. This payload carries no alpha at all,
-# so the module must never write an 8-digit hex or an `rgba(` call, which
-# would silently invent transparency (or Qt's byte-order) nowhere present
-# in the source data.
-
-
-def test_the_module_writes_no_number():
-    literals = js_literals(MODULE_SOURCE)
-    assert literals["numbers"] == [], literals["numbers"]
-
-
-def test_the_module_writes_no_colour_literal():
-    found = HEX_COLOUR.findall(MODULE_SOURCE)
-    assert not found, f"start_all_progress.js holds colour literals: {found}"
-
-
-def test_the_module_writes_no_rgba_call():
-    assert "rgba(" not in MODULE_SOURCE
-
-
-def test_the_literal_scan_catches_a_planted_colour():
-    """A positive control for the two checks above: the scan is not blind."""
-    planted = MODULE_SOURCE + '\nvar written = "#aabbccdd";\n'
-    assert HEX_COLOUR.findall(planted)
-    original = MODULE_PATH.read_bytes()
-    try:
-        swap_module(MODULE_PATH, original + b"\nvar written = 12;\n")
-        on_disk = js_literals(MODULE_PATH.read_text(encoding="utf-8"))
-        assert on_disk["numbers"] == ["12"]
-    finally:
-        swap_module(MODULE_PATH, original)
-    assert MODULE_PATH.read_bytes() == original
-
-
-# Defect class 5 - #268/#272 markup. A bot id is drawn where Qt would use
-# both a rich-text QLabel (the headline) and a plain-text QListWidgetItem
-# (the list). Neither must let a hostile bot id become live markup.
 
 
 def test_a_hostile_bot_id_reaches_the_module_as_the_text_the_surface_made(
@@ -712,6 +642,111 @@ def only(parts: list, path: str) -> dict:
     return found[0]
 
 
+#: Collects the inline ``style`` of every element the module drew under HOST,
+#: skipping HOST itself, whose width the test harness sets.
+INLINE_STYLES = (
+    "(function () {"
+    "  var found = [];"
+    "  Array.prototype.slice.call("
+    "    window.HOST.getElementsByTagName('*')).forEach(function (el) {"
+    "    var css = el.style ? el.style.cssText : '';"
+    "    if (css) { found.push({ tag: el.tagName, css: css }); } });"
+    "  return JSON.stringify(found); })()"
+)
+
+HEX_TOKEN = re.compile(r"#([0-9a-fA-F]{3,8})\b")
+FUNC_TOKEN = re.compile(r"rgba?\(([^)]*)\)")
+PIXEL_TOKEN = re.compile(r"-?\d+(?:\.\d+)?px")
+
+
+def hex_channels(digits: str) -> tuple:
+    """Red, green, blue and alpha of a 3-, 4-, 6- or 8-digit hex colour."""
+    if len(digits) in (3, 4):
+        digits = "".join(ch * 2 for ch in digits)
+    parts = [int(digits[i : i + 2], 16) for i in range(0, len(digits), 2)]
+    while len(parts) < 4:
+        parts.append(255)
+    return tuple(parts)
+
+
+def func_channels(inside: str) -> tuple:
+    """Red, green, blue and alpha of an ``rgb()`` or ``rgba()`` call."""
+    numbers = [part.strip() for part in inside.split(",")]
+    parts = [int(round(float(one))) for one in numbers[:3]]
+    alpha = int(round(float(numbers[3]) * 255)) if len(numbers) > 3 else 255
+    return (*parts, alpha)
+
+
+def colours_in(text: str) -> set:
+    """Every colour in `text`, as red-green-blue-alpha byte tuples."""
+    found = {hex_channels(one) for one in HEX_TOKEN.findall(text)}
+    found |= {func_channels(one) for one in FUNC_TOKEN.findall(text)}
+    return found
+
+
+def drawn_inline_styles(browser: Browser) -> list:
+    return json.loads(browser.js(INLINE_STYLES))
+
+
+def test_the_drawn_dialog_paints_no_colour_the_payload_did_not_publish(
+    browser: Browser,
+):
+    """Every colour a drawn element carries is a colour the payload sent."""
+    payload = state_payload("in_progress")
+    draw_dialog(browser, payload)
+    published = colours_in(json.dumps(payload))
+    assert published, "the payload published no colour; the check has no input"
+    drawn = colours_in(
+        " ".join(one["css"] for one in drawn_inline_styles(browser)),
+    )
+    assert drawn, "the module painted no colour at all"
+    invented = sorted(drawn - published)
+    assert not invented, f"start_all_progress.js painted its own colour: {invented}"
+
+
+def test_the_inline_colour_check_reports_a_planted_colour(browser: Browser):
+    """The control: an rgba() planted on a drawn element is reported."""
+    payload = state_payload("in_progress")
+    draw_dialog(browser, payload)
+    browser.js("window.HOST.firstChild.style.backgroundColor = 'rgba(1, 2, 3, 0.5)';")
+    published = colours_in(json.dumps(payload))
+    drawn = colours_in(
+        " ".join(one["css"] for one in drawn_inline_styles(browser)),
+    )
+    assert sorted(drawn - published) == [(1, 2, 3, 128)]
+
+
+def test_the_drawn_dialog_uses_no_pixel_length_the_payload_did_not_publish(
+    browser: Browser,
+):
+    """Every px length in a drawn element's inline style is in the payload."""
+    payload = state_payload("in_progress")
+    draw_dialog(browser, payload)
+    published = json.dumps(payload)
+    invented = [
+        (one["tag"], token)
+        for one in drawn_inline_styles(browser)
+        for token in PIXEL_TOKEN.findall(one["css"])
+        if token.removesuffix("px") not in published
+    ]
+    assert not invented, f"start_all_progress.js sized itself: {invented}"
+
+
+def test_the_inline_style_scan_reports_a_planted_length(browser: Browser):
+    """The control: a px length planted on a drawn element is reported."""
+    payload = state_payload("in_progress")
+    draw_dialog(browser, payload)
+    browser.js("window.HOST.firstChild.style.minWidth = '4321px';")
+    published = json.dumps(payload)
+    invented = [
+        token
+        for one in drawn_inline_styles(browser)
+        for token in PIXEL_TOKEN.findall(one["css"])
+        if token.removesuffix("px") not in published
+    ]
+    assert invented == ["4321px"], invented
+
+
 def test_the_page_loads_the_module_under_its_own_policy(browser: Browser):
     policy = browser.js(
         "document.querySelector(\"meta[http-equiv='Content-Security-Policy']\").content"
@@ -849,13 +884,12 @@ def test_the_list_order_survives_number_like_bot_ids_in_the_real_dom(browser: Br
     assert [row["text"].split()[1] for row in rows] == ["10", "2", "1"]
 
 
-#: A wall-clock wait for a real `setTimeout` to fire is not reliable under
-#: an offscreen, never-shown QWebEngineView (Chromium throttles background
-#: timers unpredictably); no other module in this tree tests one that way.
-#: `closeDelay()` proves the same fact deterministically: the auto-close
-#: uses the exact millisecond value the surface measured and published in
-#: `calls`, never a value this module invents.
 def test_close_delay_reads_the_surfaces_own_measured_value(js: JsRuntime):
+    """`closeDelay()` returns the delay the surface published.
+
+    The value is read, not waited on: Chromium throttles a `setTimeout` in
+    an offscreen QWebEngineView.
+    """
     js.push(state_payload("no_bots"))
     assert (
         js.json("acervatorStartAllProgress.closeDelay()")
