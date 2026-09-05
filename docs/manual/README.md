@@ -201,6 +201,7 @@ figures directory and the output file.
 DEFAULT_DOCS_DIR = REPO_ROOT / "docs" / "manual"        # tools/build_product_manual.py
 DEFAULT_FIGURES_DIR = REPO_ROOT / "artifacts" / "manual-figures"
 DEFAULT_OUTPUT = REPO_ROOT / "artifacts" / "manual" / "Acervator-Product-Manual.pdf"
+# artifacts/ is gitignored, so the built PDF is not in the tree
 
 parser.add_argument("--docs-dir", type=Path, default=DEFAULT_DOCS_DIR)
 parser.add_argument("--figures-dir", type=Path, default=DEFAULT_FIGURES_DIR)
@@ -227,7 +228,7 @@ commits, so the query does find a file that once existed.
 The query and its control:
 
 ```
-git log --all --diff-filter=ADR --name-only -- generate_essay.py       # no commits
+git log --all --diff-filter=ADR --name-only -- generate_essay.py       # no commits, not in the tree
 git log --all --diff-filter=ADR --name-only -- generate_essay_ja.py    # three commits
 ```
 

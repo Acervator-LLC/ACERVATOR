@@ -570,7 +570,7 @@ control unchanged.
 
 ## 7. Defects found
 
-Not fixed. All are pre-existing.
+All are present in the code today.
 
 ### D1 — Nuclear Mode's visual feed reads keys the controller never emits
 

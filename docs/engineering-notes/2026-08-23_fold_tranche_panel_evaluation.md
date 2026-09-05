@@ -2,8 +2,8 @@
 
 Reference. This document records what each control on the Fold-Tranche Cycle
 Health panel shows, where its number comes from, and whether it is correct. It
-is an evaluation. **It repairs nothing.** Each defect below becomes its own unit
-later.
+is an evaluation of the panel as it stands. Every defect below is still in the
+code.
 
 Measured 2026-08-23 against `current` at commit `8159b98`, version `v3.26.0`.
 The subject was `_create_fold_tranches_tab` and the bot methods it calls in

@@ -1,17 +1,19 @@
 """A shipped file may not name a path that is not in the tree.
 
 Every path a file in ``SHIPPED`` names is checked with ``Path.exists()``, and
-the pytest ``addopts`` ignores, the README install step and the README project
-structure are each read the same way. A block of prose may name an absent path
-when that same block carries one of ``ABSENCE_MARKERS``; the marker is per
-block, so one sentence cannot excuse a whole document. ``RETIRED_DOCKER`` names
-the two deployment files that must stay deleted.
+the pytest ``addopts``, the README install step and the README project
+structure are each read the same way; ``doc_pages`` extends the scan to every
+Markdown page under ``docs/`` except the ``MEASUREMENT_RECORDS``. A block of
+prose may name an absent path when that same block carries one of
+``ABSENCE_MARKERS``. ``RETIRED_DOCKER`` names the two deployment files that
+must stay deleted.
 """
 
 from __future__ import annotations
 
 import re
 import tomllib
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -55,10 +57,15 @@ _TOKEN = re.compile(
 )
 _URL = re.compile(r"https?://\S+")
 
-# A block that carries one of these may name a path that is gone.
+# A block that carries one of these may name a path that is gone. Each
+# asserts the absence in the page's own words, so a reader is not sent
+# looking for a file.
 ABSENCE_MARKERS = (
     "not in the tree",
     "not in this repository",
+    "no commit that added",
+    "none is committed",
+    "not committed",
 )
 
 # TOML table headers read as paths: ``[tool.coverage.json]`` ends in
@@ -139,6 +146,14 @@ def _block_excused(block: list[str]) -> bool:
     return any(marker in joined for marker in ABSENCE_MARKERS)
 
 
+def _line_excused(line: str) -> bool:
+    """Whether one line carries an ``ABSENCE_MARKERS`` entry of its own.
+
+    One table row is excused while every other row in that block is read.
+    """
+    return any(marker in " ".join(line.split()) for marker in ABSENCE_MARKERS)
+
+
 def _bad_tokens(name: str, names: set[str]) -> list[str]:
     bad: list[str] = []
     for start, block in _blocks(REPO_ROOT / name):
@@ -159,6 +174,189 @@ def test_shipped_file_names_no_missing_path(name: str) -> None:
     path = REPO_ROOT / name
     assert path.is_file(), f"{name} is missing"
     assert _bad_tokens(name, _file_names()) == []
+
+
+# ── documentation pages ──────────────────────────────────────────────
+
+DOCS = REPO_ROOT / "docs"
+
+# Pages whose dead citations are ROWS OF A MEASUREMENT TABLE: each row
+# names a file the run read, on the dated tree the page names. Repointing
+# a row would report a measurement that was never taken, so the scan does
+# not read these pages. A page joins this list only when its table rows
+# are the citations; prose that names a dead path belongs in no record.
+MEASUREMENT_RECORDS: dict[str, str] = {
+    "docs/audits/manual-original-parts-audit.md": (
+        "the manual read against the tree of the day; it also quotes the "
+        "tokens the PDF extractor damaged"
+    ),
+    "docs/engineering-notes/2026-08-24_archetype_census.md": (
+        "one archetype run over every file present that day"
+    ),
+    "docs/engineering-notes/2026-08-25_subsystem_capability_matrix.md": (
+        "one capability sweep; the rows are the files it read"
+    ),
+    "docs/engineering-notes/2026-08-25_the_venue_seam.md": (
+        "one probe run; the probe files were removed after it"
+    ),
+    "docs/engineering-notes/2026-08-26_issue_revalidation.md": (
+        "one probe run; the probe files were removed after it"
+    ),
+    "docs/engineering-notes/2026-08-27_gui_hex_literal_inventory.md": (
+        "one tokenizer pass over src/gui/ at the commit it names"
+    ),
+    "docs/engineering-notes/2026-08-27_simulator_fleet_nuclear_divergence.md": (
+        "one import census over tests/ at the commit it names"
+    ),
+}
+
+# The two roots the running platform owns, kept outside this repository.
+_RUNTIME_ROOTS = (".acervator/", ".acervator_logs/")
+
+# A block naming one of these describes a tree outside this repository:
+# the platform's runtime state, or the operator's Claude Code harness.
+_EXTERNAL_ROOTS = ("~/.acervator", "~/.claude")
+
+# Only a DATA file is excused inside an external-root block. A module or
+# a page named there must still resolve, so a dead citation cannot hide
+# in a paragraph that happens to mention the runtime tree.
+_DATA_EXT = frozenset(
+    {"cfg", "ini", "json", "jsonl", "log", "toml", "txt", "yaml", "yml"}
+)
+
+# A path segment of this shape is a deployment placeholder.
+_PLACEHOLDER = re.compile(r"^__[A-Z_]+__$")
+
+
+def doc_pages() -> list[str]:
+    """Every Markdown page under ``docs/`` that the scan reads."""
+    return sorted(
+        rel
+        for rel in (
+            path.relative_to(REPO_ROOT).as_posix() for path in DOCS.rglob("*.md")
+        )
+        if rel not in MEASUREMENT_RECORDS
+    )
+
+
+@cache
+def _generated_names() -> frozenset[str]:
+    """File names the repository's own ``.gitignore`` excludes.
+
+    ``.release_ready.json`` and ``bot_state.json`` are written at run time
+    and the tree never holds them.
+    """
+    names: set[str] = set()
+    text = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+    for line in text.split("\n"):
+        entry = line.split("#", 1)[0].strip().lstrip("!")
+        if not entry or entry.endswith("/"):
+            continue
+        leaf = entry.rsplit("/", 1)[-1]
+        if not set(leaf) & set("*?["):
+            names.add(leaf)
+    return frozenset(names)
+
+
+@cache
+def _path_suffixes() -> frozenset[str]:
+    """Every trailing run of path parts of every source file.
+
+    A page writes ``scrumming/fold_tranches.py`` for
+    ``src/trading/scrumming/fold_tranches.py``, and the shorter form names
+    the same file.
+    """
+    out: set[str] = set()
+    for path in source_files():
+        parts = path.relative_to(REPO_ROOT).parts
+        out.update("/".join(parts[start:]) for start in range(len(parts)))
+    return frozenset(out)
+
+
+def _block_names_an_external_root(block: list[str]) -> bool:
+    joined = " ".join(block)
+    return any(root in joined for root in _EXTERNAL_ROOTS)
+
+
+def _doc_resolves(token: str, page: Path, outside: bool, external: bool) -> bool:
+    if token.startswith(_RUNTIME_ROOTS):
+        return True
+    if token.rsplit("/", 1)[-1] in _generated_names():
+        return True
+    if outside or any(_PLACEHOLDER.match(part) for part in token.split("/")):
+        return True
+    if external and token.rsplit(".", 1)[-1] in _DATA_EXT:
+        return True
+    if "/" not in token:
+        return token in _file_names()
+    if token in _path_suffixes():
+        return True
+    candidate = (page.parent / token).resolve()
+    return candidate.is_relative_to(REPO_ROOT) and candidate.exists()
+
+
+def _scan_page(page: Path, label: str) -> list[str]:
+    """Every path claim in ``page`` that resolves to nothing."""
+    bad: list[str] = []
+    for start, block in _blocks(page):
+        if _block_excused(block):
+            continue
+        external = _block_names_an_external_root(block)
+        for offset, line in enumerate(block):
+            if _line_excused(line):
+                continue
+            masked = _URL.sub(" ", line)
+            for match in _TOKEN.finditer(masked):
+                token = match.group(0)
+                outside = match.start() > 0 and masked[match.start() - 1] in "/\\"
+                if _doc_resolves(token, page, outside, external):
+                    continue
+                bad.append(f"{label}:{start + offset}: {token}")
+    return bad
+
+
+@pytest.mark.parametrize("rel", doc_pages())
+def test_doc_page_names_no_missing_path(rel: str) -> None:
+    """Every path a documentation page names must be in the tree."""
+    assert _scan_page(REPO_ROOT / rel, rel) == []
+
+
+def test_every_measurement_record_is_still_a_page() -> None:
+    """A record that leaves the tree must leave the exclusion list with it.
+
+    An entry naming a page that is gone would silence a later page of the
+    same name.
+    """
+    missing = [rel for rel in MEASUREMENT_RECORDS if not (REPO_ROOT / rel).is_file()]
+    assert missing == [], f"MEASUREMENT_RECORDS names pages that are gone: {missing}"
+
+
+def test_the_doc_scan_reports_a_dead_path(tmp_path: Path) -> None:
+    """The control for the scan above: a dead path must be reported."""
+    page = tmp_path / "planted.md"
+    page.write_text(
+        "The panel is built in `src/gui/not_in_the_tree_at_all.py`.\n",
+        encoding="utf-8",
+    )
+    assert _scan_page(page, "planted.md") == [
+        "planted.md:1: src/gui/not_in_the_tree_at_all.py"
+    ]
+
+
+def test_the_doc_scan_leaves_a_live_path_alone(tmp_path: Path) -> None:
+    """The other half of the control: a real path must not be reported."""
+    page = tmp_path / "planted.md"
+    page.write_text(
+        "The log root is set in `src/core/log_paths.py`.\n", encoding="utf-8"
+    )
+    assert _scan_page(page, "planted.md") == []
+
+
+def test_a_measurement_record_is_not_scanned() -> None:
+    """No page in ``MEASUREMENT_RECORDS`` reaches the parametrised scan."""
+    scanned = set(doc_pages())
+    assert scanned & set(MEASUREMENT_RECORDS) == set()
+    assert scanned, "doc_pages found no page to scan"
 
 
 # ── README Project Structure tree ────────────────────────────────────

@@ -425,8 +425,9 @@ master = f"qat_{sm.get('username', 'user')}_vault"
 ```
 
 The passphrase is your username wrapped in fixed text. `settings.json`
-holds that username, in the same folder, beside the encrypted keys. Anybody who can read that folder holds both the locked box and
-the recipe for its key.
+in `~/.acervator/` holds that username, beside the encrypted keys.
+Anybody who can read that folder holds both the locked box and the
+recipe for its key.
 
 The encryption is therefore real cryptography protecting nothing.
 Treat `~/.acervator/` as if it holds your Coinbase keys in plain text,
