@@ -100,10 +100,7 @@ if _HAS_QT:
 
         def __init__(self, parent=None):
             super().__init__(parent)
-            # v3.23.68 — outer layout hosts a horizontal splitter:
-            # LEFT = existing HTF/Opposing content, RIGHT = topology
-            # proposals pane. All existing left-side widget refs stay
-            # on `self` so external API + private helpers are unchanged.
+            # Splitter panes: left is the HTF/Opposing content, right the proposals.
             outer = QVBoxLayout(self)
             outer.setContentsMargins(0, 0, 0, 0)
             outer.setSpacing(0)
@@ -119,9 +116,7 @@ if _HAS_QT:
             self._show_active = False  # Default: hide markets already traded
             self._last_meta: dict = {}
             self._pending_refresh = False
-            # v3.23.38 — retooled to use connected-exchange OHLCV
-            # (CoinGecko was rate-limited to ~4 markets on live tests).
-            # main_window wires these via set_exchange_source().
+            # Wired by MainWindow's MarketInspectorTabMixin via set_exchange_source().
             self._connectors_getter = None
             self._scheduler = None
 
@@ -223,29 +218,20 @@ if _HAS_QT:
             self._render_signals()
 
         def set_dismiss_store(self, store) -> None:
-            """Give the proposals pane somewhere to persist dismissals.
+            """Forward ``store`` to ``_topologies_pane`` for dismissal persistence.
 
-            v3.24.57 (C35). Passed DOWN from the owner rather than
-            resolved here: `SettingsManager()` defaults to
-            `Path.home()/".acervator"`, so a widget that builds its own
-            would write the operator's live settings from any headless
-            construction. Unset stays memory-only.
+            No-op when the topologies import failed and the pane is a
+            plain ``QWidget``.
             """
-            # hasattr-guarded rather than getattr-dispatched: when the
-            # topologies import fails above, `_topologies_pane` is a
-            # plain QWidget with no such method. The direct call keeps
-            # the wiring visible to static analysis — a store nothing
-            # injects persists nothing, and that is the failure mode
-            # this whole cascade is fixing.
             pane = getattr(self, "_topologies_pane", None)
             if pane is not None and hasattr(pane, "set_dismiss_store"):
                 pane.set_dismiss_store(store)
 
         def set_proposal_source(self, getter) -> None:
-            """v3.23.68 — wire topology-proposal source into right pane.
+            """Wire the topology-proposal source into ``_topologies_pane``.
 
             ``getter`` is a zero-arg callable returning ``list[dict]``.
-            No-op if the right pane wasn't constructed (import guard).
+            No-op when the pane was not constructed.
             """
             pane = getattr(self, "_topologies_pane", None)
             if pane is None:

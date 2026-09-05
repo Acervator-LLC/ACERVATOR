@@ -78,7 +78,7 @@ class PositionMarker:
     price: float
     side: str  # "buy" or "sell"
     visibility: str  # "internal" (invisible) or "orderbook" (visible)
-    level: int = 0  # Grid level index
+    level: int = 0
     filled: bool = False
     asset_held: float = 0.0
 
@@ -806,12 +806,12 @@ if _HAS_QT:
                         for k in range(v_start, v_end)
                     ]
 
-                    # One polygon per run of candles where both spans exist.
-                    bull_color = QColor(38, 200, 130, 50)  # bullish kumo
-                    bear_color = QColor(239, 90, 110, 50)  # bearish kumo
-                    seg_pts_top = []  # the higher of SpA/SpB
-                    seg_pts_bot = []  # the lower of SpA/SpB
-                    seg_bullish = None  # current segment's polarity
+                    # One polygon per run of equal polarity; a missing span ends a run.
+                    bull_color = QColor(38, 200, 130, 50)
+                    bear_color = QColor(239, 90, 110, 50)
+                    seg_pts_top = []
+                    seg_pts_bot = []
+                    seg_bullish = None
 
                     def _flush_segment():
                         if not seg_pts_top or not seg_pts_bot:
@@ -1288,10 +1288,10 @@ if _HAS_QT:
                 sz = 5
                 diamond = QPolygonF(
                     [
-                        QPointF(mx, my - sz),  # top
-                        QPointF(mx + sz, my),  # right
-                        QPointF(mx, my + sz),  # bottom
-                        QPointF(mx - sz, my),  # left
+                        QPointF(mx, my - sz),
+                        QPointF(mx + sz, my),
+                        QPointF(mx, my + sz),
+                        QPointF(mx - sz, my),
                     ]
                 )
                 p.setBrush(QBrush(tc))

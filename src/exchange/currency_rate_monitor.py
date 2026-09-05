@@ -1,29 +1,11 @@
-"""currency_rate_monitor.py — persistent BTC/USD + ETH/USD rate feed.
+"""BTC/USD and ETH/USD rate feed with satoshi, wei and gwei equivalents.
 
-Also derives satoshi- and wei-denominated equivalents used across the
-GUI to give operators granular price awareness (per operator directive
-2026-07-27, see docs/engineering-notes/2026-07-27_interop_usd_denom_settlement_audit_and_design.md
-§ 3.3).
-
-Sourcing:
-    Any connected exchange connector — polls ``get_ticker('BTC/USD')``
-    and ``get_ticker('ETH/USD')`` on a 60 s cadence. Rate-limited
-    against the connector's own executor (MEM-220). Snapshot cached
-    in memory; readers pull via ``snapshot()``.
-
-Consumers (v3.23.41):
-    * ``IndicatorVotingPanel.update_currency_rates()`` — header row.
-
-Derived rates:
-    * ``sat_per_dollar = 100_000_000 / (BTC/USD)``
-    * ``sat_per_cent   = 1_000_000   / (BTC/USD)``
-    * ``wei_per_dollar = 1e18 / (ETH/USD)``
-    * ``wei_per_cent   = 1e16 / (ETH/USD)``
-
-Not persisted — a fresh process starts with an empty snapshot and
-populates on the first successful poll.
-
-sadp: R28 SSS + R70 RCN
+``CurrencyRateMonitor.refresh_from_connectors`` polls ``get_ticker`` on the
+first connector answering both pairs, and ``snapshot`` returns the cached
+``CurrencyRates``. Readers reach it through ``get_currency_monitor``:
+``main_window`` (which feeds ``IndicatorVotingPanel.update_currency_rates``),
+``table_cells``, ``table_cells_surface`` and the Live Settings tab.
+``CurrencyRates`` is held in memory only and starts empty in a new process.
 """
 
 from __future__ import annotations
@@ -38,9 +20,9 @@ from .lazy_singleton import LazySingleton
 logger = logging.getLogger("acervator.currency_rate_monitor")
 
 DEFAULT_REFRESH_SECONDS = 60.0
-SATOSHI_PER_BTC = 100_000_000  # 1 BTC = 1e8 satoshi
-WEI_PER_ETH = 10**18  # 1 ETH = 1e18 wei
-WEI_PER_GWEI = 10**9  # 1 gwei = 1e9 wei — v3.23.50
+SATOSHI_PER_BTC = 100_000_000
+WEI_PER_ETH = 10**18
+WEI_PER_GWEI = 10**9
 
 
 @dataclass
@@ -53,17 +35,11 @@ class CurrencyRates:
     sat_per_cent: float = 0.0
     wei_per_dollar: float = 0.0
     wei_per_cent: float = 0.0
-    # v3.23.50 — gwei-per-dollar / gwei-per-cent derived rates. Operator
-    # directive 2026-07-28: the raw wei display was scientific-notation-
-    # heavy (5.297e+14) which visually suggested more precision than the
-    # sat side (1,567). Switching the panel readout to gwei (1e9 wei)
-    # matches the sat-shape "big integer with commas" while remaining
-    # exact — no rounding, just a base-1e9 rescale.
     gwei_per_dollar: float = 0.0
     gwei_per_cent: float = 0.0
     last_updated: float = 0.0  # epoch seconds
-    source: str = "none"  # exchange id or "cache"/"none"
-    error: Optional[str] = None  # last failure text, if any
+    source: str = "none"  # exchange id, "manual", or "none"
+    error: Optional[str] = None
 
     def age_seconds(self, now: Optional[float] = None) -> float:
         _now = time.time() if now is None else now
@@ -79,12 +55,11 @@ class CurrencyRates:
 
 
 class CurrencyRateMonitor:
-    """Periodic BTC/ETH-USD sampler.
+    """BTC/ETH-USD sampler holding one ``CurrencyRates`` snapshot.
 
-    Not a QThread — the update coroutine is scheduled onto the main
-    async loop by the caller (main_window's ``_schedule_async``). The
-    monitor itself is pure: no Qt, no timers of its own. Callers do
-    the pacing.
+    ``refresh_from_connectors`` is a coroutine the caller schedules
+    (``main_window._schedule_async``); the monitor owns no timer and
+    ``is_stale`` is its only pacing.
     """
 
     def __init__(self, refresh_seconds: float = DEFAULT_REFRESH_SECONDS):
@@ -110,7 +85,6 @@ class CurrencyRateMonitor:
         sat_cent = sat_dollar * 0.01
         wei_dollar = WEI_PER_ETH / eth_usd if eth_usd > 0 else 0.0
         wei_cent = wei_dollar * 0.01
-        # v3.23.50 — gwei-per-* derived from wei-per-* via /1e9.
         gwei_dollar = wei_dollar / WEI_PER_GWEI
         gwei_cent = wei_cent / WEI_PER_GWEI
         return (sat_dollar, sat_cent, wei_dollar, wei_cent, gwei_dollar, gwei_cent)
