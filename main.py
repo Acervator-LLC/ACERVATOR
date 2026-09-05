@@ -42,27 +42,27 @@ CRASH_LOG_ROOT_ENV = "ACERVATOR_CRASH_LOG_ROOT"
 
 
 def _check_stale_dist_binary() -> None:
-    """Write STALE_DIST_WARNING.txt when the source and dist versions differ, and delete it when they match."""
+    """Write STALE_DIST_WARNING.txt when dist holds bundles and none carries the source version, and delete it when one does."""
     try:
         here = os.path.dirname(os.path.abspath(__file__))
         live_init = os.path.join(here, "src", "__init__.py")
-        bundle_root = os.path.join(here, "dist", "Acervator", "_internal")
-        dist_init = os.path.join(bundle_root, "src", "__init__.py")
-        dist_baked = os.path.join(bundle_root, "src", "_baked_version.txt")
+        dist_root = os.path.join(here, "dist")
         if not os.path.isfile(live_init):
-            return
-        if not os.path.isfile(dist_baked) and not os.path.isfile(dist_init):
             return
 
         def _read_version(p):
+            """Return the quoted ``__version__`` literal in the file at p, or None."""
             try:
                 with open(p, "r", encoding="utf-8") as f:
                     for line in f:
                         s = line.strip()
-                        if s.startswith("__version__"):
-                            parts = s.split("=", 1)
-                            if len(parts) == 2:
-                                return parts[1].strip().strip('"').strip("'")
+                        if not s.startswith("__version__"):
+                            continue
+                        _, _, raw = s.partition("=")
+                        raw = raw.strip()
+                        quote = raw[:1]
+                        if quote in ('"', "'") and raw[1:].endswith(quote):
+                            return raw[1:-1]
             except Exception as _ver_exc:  # noqa: BLE001
                 _early_debug("stale-binary version parse skipped %s: %s", p, _ver_exc)
             return None
@@ -78,16 +78,31 @@ def _check_stale_dist_binary() -> None:
                 return None
             return None if resolved == UNKNOWN_VERSION else resolved
 
-        def _baked_or_literal_version():
-            """Read the bundle's baked version, falling back to its literal."""
+        def _bundle_version(internal):
+            """Read a bundle's baked version, falling back to its literal."""
             try:
                 from src._version import read_baked_version
 
-                baked = read_baked_version(bundle_root)
+                baked = read_baked_version(internal)
             except Exception as _baked_exc:  # noqa: BLE001
                 _early_debug("stale-binary baked version skipped: %s", _baked_exc)
                 baked = ""
-            return baked or _read_version(dist_init)
+            return baked or _read_version(os.path.join(internal, "src", "__init__.py"))
+
+        def _dist_bundles():
+            """Return each bundle directory name under dist and the version it holds."""
+            try:
+                names = sorted(os.listdir(dist_root))
+            except OSError as _ls_exc:
+                _early_debug("stale-binary dist listing skipped: %s", _ls_exc)
+                return []
+            found = []
+            for name in names:
+                internal = os.path.join(dist_root, name, "_internal")
+                if not os.path.isdir(os.path.join(internal, "src")):
+                    continue
+                found.append((name, _bundle_version(internal)))
+            return found
 
         def _marker_path():
             from pathlib import Path as _P
@@ -104,8 +119,8 @@ def _check_stale_dist_binary() -> None:
                     return
                 stream.write(
                     "ACERVATOR: the stale-binary marker could not be "
-                    f"removed: {path or '<unresolved>'} ({exc}). The "
-                    "source and dist versions now AGREE, so that file "
+                    f"removed: {path or '<unresolved>'} ({exc}). A bundle "
+                    "in dist now carries the source version, so that file "
                     "names versions that are no longer current. Delete "
                     "it by hand.\n"
                 )
@@ -114,23 +129,26 @@ def _check_stale_dist_binary() -> None:
                 _early_debug("stale-binary clear notice failed: %s", _rep_exc)
 
         live_ver = _live_version()
-        dist_ver = _baked_or_literal_version()
-        if live_ver and dist_ver and live_ver != dist_ver:
+        dated = [(name, ver) for name, ver in _dist_bundles() if ver]
+        if not live_ver or not dated:
+            return
+        if not any(ver == live_ver for _name, ver in dated):
+            listing = "".join(f"    dist/{n}  (built from {v})\n" for n, v in dated)
             msg = (
                 "\n"
                 "============================================================\n"
-                "  ACERVATOR STALE BINARY WARNING (v3.15.97 guard)           \n"
+                "  ACERVATOR STALE BINARY WARNING\n"
                 "============================================================\n"
                 f"  Live source version : {live_ver}\n"
-                f"  dist/.exe version   : {dist_ver}\n"
-                "                                                            \n"
-                "  The PyInstaller binary in dist/Acervator/Acervator.exe   \n"
-                "  is OUT OF DATE relative to the source code in src/.       \n"
-                "  If you double-click the .exe, you are running OLD code   \n"
-                "  with bugs that have since been fixed.                     \n"
-                "                                                            \n"
-                "  ACTION: either run `python main.py` from this source     \n"
-                "  tree, or rebuild the .exe via BUILD.py before launching.  \n"
+                "\n"
+                "  No bundle in dist was built from this source. Launching\n"
+                "  any of the bundles below runs OLD code with bugs that\n"
+                "  have since been fixed:\n"
+                "\n"
+                f"{listing}"
+                "\n"
+                "  ACTION: run `python main.py` from this source tree, or\n"
+                "  rebuild with BUILD.py before launching a bundle.\n"
                 "============================================================\n"
             )
             sys.stderr.write(msg)
@@ -142,7 +160,7 @@ def _check_stale_dist_binary() -> None:
                     f.write(msg)
             except Exception as _mk_exc:  # noqa: BLE001
                 _early_debug("stale-binary marker write failed: %s", _mk_exc)
-        elif live_ver and dist_ver:
+        else:
             marker_path = None
             try:
                 marker_path = _marker_path()
