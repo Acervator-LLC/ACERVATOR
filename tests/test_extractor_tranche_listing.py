@@ -1,34 +1,10 @@
-"""Item 4 — an Extractor Tranche is listed and valued under its parent.
+"""`ScrummingBot.open_extractor_tranches` lists and values a child's position.
 
-WHAT ITEM 4 IS
-An Extractor spends a base currency that a Scrumming Bot owns. While the
-Extractor holds a position, that position is an "Extractor Tranche", and
-the operator's design says it is "listed under the base-currency bot" and
-its "value is tracked by the parent Scrumming Bot".
-
-So the parent can now enumerate what is leased out of its asset. A claim
-that lives in the parent cannot be invisible to the parent.
-
-WHAT ITEM 4 IS NOT
-It is a RECORD, not a transfer. Nothing here moves money, raises a target
-balance or places an order. The lift that contains a child's returned
-gain is item 1's `apply_extractor_tranche_return`, which is untouched.
-
-THE THING THIS FILE MOSTLY EXISTS TO PROVE
-The parent must never trade on an Extractor Tranche. If a lease were
-counted as the parent's own inventory, the parent would SCRUM units it
-does not hold, or open a fold gate against a tranche it cannot discharge.
-The design removes that whole surface by construction: an Extractor
-Tranche is a COMPUTED VIEW and is never written into `_fold_tranches` or
-`_main_lots`, which are the only two lists the trading path reads.
-
-"By construction" is a claim, so the HAZARD tests below check it site by
-site, one test per consumer named in the read phase, against the exact
-expression that consumer evaluates.
-
-EVERY MECHANISM HERE HAS A PAIRED CONTROL. A test that passes when the
-mechanism is blinded is not evidence, so each group carries a control
-that must fail if the thing under test stopped working.
+The listing is a computed view that never writes `_fold_tranches` or
+`_main_lots`, the two lists the trading path reads. The `test_hazard_`
+tests check that against the expression each consumer evaluates. Every
+group carries a control that fails when `open_extractor_tranches` is
+blinded.
 """
 
 from __future__ import annotations
@@ -58,15 +34,6 @@ KRAKEN = "kraken"
 ETH = "ETH"
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Builders
-#
-# Built with `object.__new__`, which is how `test_extractor_parent_
-# lookup.py` builds the same two bot types. The real constructors want
-# an exchange, a bus and a live balance; the code under test reads a
-# bot's type, its settings and its in-memory positions, and all three
-# of those are genuine here.
-# ─────────────────────────────────────────────────────────────────────
 def _cfg(**kw):
     return type("_Cfg", (), kw)()
 
@@ -95,9 +62,7 @@ def _parent(bot_id="scrum-eth", target_asset=ETH, exchange=COINBASE):
     bot._tranches_created_lifetime = 0
     bot._tranches_closed_lifetime = 0
     bot._tranches_discarded_lifetime = 0
-    # The rest of what `import_scrumming_state` reads as its own
-    # defaults. Present so the persistence tests exercise the REAL
-    # importer rather than a reduced stand-in.
+    # The remaining fields `import_scrumming_state` reads as its own defaults.
     bot._last_trade_price = 0.0
     bot._last_trade_side = None
     bot._quote_to_usd = 1.0
@@ -134,11 +99,8 @@ def _child(
         inverted_extractor_standing_alt_units=0,
     )
     bot._positions = {}
-    # USD PER ONE BASE UNIT. Pinned by `set_initial_chunk_rate`, which
-    # divides a USD chunk by it to get base units, and by
-    # `_position_value_usd`, which multiplies a base amount by it to get
-    # USD. The parameter it arrives under is named `base_per_usd`, which
-    # says the opposite; the arithmetic is what governs.
+    # `_base_to_usd` multiplies by this, so it is USD per base unit despite
+    # the `base_per_usd` parameter name it arrives under.
     bot._chunk_to_base_rate = rate_usd_per_base
     bot._chunk_size_base = 1.0
     bot._chunk_free_base = 1.0
@@ -154,9 +116,8 @@ def _child(
     bot._tick_counter = 0
     bot._cycle_extracted_total = 0.0
     bot._lifetime_extracted_total = 0.0
-    # `_is_inverted` is a read-only property derived from
-    # `config.extractor_direction`, so it is set on the config, not on
-    # the bot.
+    # `_is_inverted` is a property over `config.extractor_direction`, never a
+    # bot attribute.
     return bot
 
 
@@ -168,16 +129,8 @@ def _position(
     opened_at=1000.0,
     state="in_flight",
 ):
-    """One open Extractor position.
-
-    The ENTRY PRICE is the input and the cost basis follows from it by
-    multiplication. Deriving the price by dividing a cost basis instead
-    would be the same numbers, but it marks this fixture as a
-    dimensionless quantity for the rest of the file and every later
-    `pos.<field> == approx(<absolute>)` then reads as a units mismatch.
-    A position is entered at a price, for a quantity, so this is also
-    the order the real bot builds one in.
-    """
+    """One open `ExtractorPosition`. `cost_basis_base` is `alt_units` times
+    `entry_price`, the order the real bot builds a position in."""
     cost_basis_base = alt_units * entry_price
     pos = ExtractorPosition(
         pair=pair,
@@ -214,9 +167,6 @@ def _family(mark=0.006, **pos_kw):
     return parent, child
 
 
-# ═════════════════════════════════════════════════════════════════════
-# A. THE LISTING
-# ═════════════════════════════════════════════════════════════════════
 def test_parent_lists_the_tranche_while_the_child_holds_a_position():
     parent, _ = _family()
     rows = parent.open_extractor_tranches()
@@ -303,9 +253,6 @@ def test_listing_is_ordered_the_same_way_on_every_read():
     assert first == second == sorted(first)
 
 
-# ═════════════════════════════════════════════════════════════════════
-# B. THE VALUE
-# ═════════════════════════════════════════════════════════════════════
 def test_tracked_value_reflects_the_marked_position():
     parent, _ = _family(mark=0.006, alt_units=100.0)
     row = parent.open_extractor_tranches()[0]
@@ -405,12 +352,6 @@ def test_listing_performs_no_network_call():
     assert len(rows) == 1
 
 
-# ═════════════════════════════════════════════════════════════════════
-# C. HAZARDS — the parent must not trade on an Extractor Tranche.
-#
-# One test per consumer named in the read phase, each asserting the
-# exact expression that consumer evaluates.
-# ═════════════════════════════════════════════════════════════════════
 def test_hazard_the_listing_leaves_the_parents_own_books_untouched():
     """The umbrella proof. Every group-1 hazard reads one of these."""
     parent, _ = _family()
@@ -479,19 +420,16 @@ def test_hazard_3_cycle_cap_packing_sees_no_extractor_usd():
 
 
 def test_hazard_4_main_lots_gains_no_fabricated_cost_basis():
-    """`_execute_manual_rebalance` (`src/trading/scrumming/execution.py`)
-    — a rebuy inherits `initial_buy_price` from the tranche it
-    discharges. A fabricated basis here would corrupt MEM-171
-    protection permanently."""
+    """`_execute_manual_rebalance` gives a rebuy the discharged tranche's
+    `initial_buy_price`, so `_main_lots` must gain no fabricated basis."""
     parent, _ = _family()
     parent.open_extractor_tranches()
     assert parent._main_lots == []
 
 
 def test_hazard_6_wire_income_is_not_divided_into_an_extractor_tranche():
-    """`scrumming_bot.py:2197-2220` — `apply_wire_income` credits every
-    entry in `_fold_tranches`. Real Smart Wire money divided into an
-    Extractor Tranche would become unreachable."""
+    """`apply_wire_income` credits every entry in `_fold_tranches`, so an
+    Extractor Tranche there would take Smart Wire money out of reach."""
     parent, _ = _family()
     parent.open_extractor_tranches()
     # The divisor the real method uses.
@@ -511,13 +449,8 @@ def test_hazard_7_manual_rebalance_sort_finds_no_extractor_tranche():
 
 
 def test_hazard_8_the_manual_fire_index_still_maps_to_fold_tranches():
-    """`scrumming_bot.py:3196` with `_on_fire_tranche_clicked`
-    (`src/gui/live_settings/fold_tranches_tab.py`).
-
-    Manual fire is POSITION-indexed into `_fold_tranches`. If an
-    Extractor Tranche shifted that mapping, the operator's Fire button
-    would sell the wrong tranche.
-    """
+    """`_on_fire_tranche_clicked` indexes `_fold_tranches` by position, so an
+    Extractor Tranche in that list would shift the Fire button's target."""
     parent, _ = _family()
     fold = [
         {
@@ -588,9 +521,8 @@ def test_hazard_11_fold_queue_usd_sum_excludes_the_extractor_tranche():
 
 
 def test_hazard_12_prospective_surplus_preview_is_unmoved():
-    """`scrumming_bot.py:1709-1725` — feeds
-    `_apply_fold_target_growth`. A phantom tranche inflates predicted
-    surplus and widens a real growth decision."""
+    """The prospective-surplus preview feeds `_apply_fold_target_growth`, so a
+    phantom tranche in `_fold_tranches` would widen a real growth decision."""
     parent, _ = _family()
     parent.open_extractor_tranches()
     price = 100.0
@@ -611,18 +543,8 @@ def test_hazard_13_the_min_ref_diagnostic_finds_no_extractor_tranche():
 
 
 def test_hazard_17_current_holdings_excludes_the_leased_units():
-    """`ScrummingBot.tick` (`src/trading/scrumming_bot.py`) — THE
-    decision itself.
-
-    `current_value = _current_holdings x price x quote_to_usd`, and the
-    delta against Target Balance is what makes the bot SCRUM or FOLD.
-    `_current_holdings` derives from `_main_lots` alone (recomputed by
-    `_tick_initialise` and `_book_reconciliation_lot` in
-    `src/trading/scrumming/`),
-    so putting an Extractor Tranche in `_main_lots` would make the
-    parent count units it does not hold AND SELL THEM. This is the
-    precise failure item 4 had to avoid.
-    """
+    """`ScrummingBot.tick` decides SCRUM or FOLD from `_current_holdings`,
+    which `_tick_initialise` derives from `_main_lots` alone."""
     parent, _ = _family(entry_price=0.005)
     parent._main_lots = [{"units": 2.0, "initial_buy_price": 3000.0}]
     parent._current_holdings = 2.0
@@ -649,10 +571,8 @@ def test_hazard_18_capital_reservation_total_holdings_not_inflated():
 
 
 def test_hazard_19_the_anchor_and_target_balance_are_untouched():
-    """`scrumming_bot.py:1601-1605` and `:4481` — the anchor sets both
-    the per-cycle Growth Rate Cap and the Smart Ceiling. Item 1 already
-    lifts it when a tranche RETURNS; item 4 must not lift anything on
-    the open side or the same money is counted twice."""
+    """`_anchor_target_balance` sets the per-cycle Growth Rate Cap and the
+    Smart Ceiling, so `open_extractor_tranches` must not lift it."""
     parent, _ = _family()
     parent.open_extractor_tranches()
     assert parent._target_balance == 1000.0
@@ -660,8 +580,8 @@ def test_hazard_19_the_anchor_and_target_balance_are_untouched():
 
 
 def test_hazard_no_money_moves_and_no_order_is_placed():
-    """Item 4 is a record. If it ever needs an exchange, that is a
-    different item."""
+    """`open_extractor_tranches` places no order and leaves
+    `_chunk_free_base` alone."""
     parent, child = _family()
     calls = []
     for name in ("create_order", "place_order", "market_sell", "market_buy"):
@@ -671,13 +591,9 @@ def test_hazard_no_money_moves_and_no_order_is_placed():
     assert child._chunk_free_base == 1.0
 
 
-# ═════════════════════════════════════════════════════════════════════
-# D. BACKWARD COMPATIBILITY WITH THE OPERATOR'S SAVED STATE
-# ═════════════════════════════════════════════════════════════════════
 def test_a_scrumming_state_without_the_new_field_loads_unchanged():
-    """Item 4 adds NO key to the Scrumming Bot's saved state, because
-    the listing is computed rather than stored. So the operator's file
-    loads exactly as it did before."""
+    """`import_scrumming_state` reads no extractor key, since
+    `open_extractor_tranches` computes the listing rather than storing it."""
     parent = _parent()
     state = {
         "main_lots": [{"units": 1.5, "initial_buy_price": 2000.0}],
@@ -705,9 +621,8 @@ def test_an_empty_scrumming_state_still_loads():
 
 
 def test_an_extractor_position_saved_before_item_4_loads_with_no_mark():
-    """The two mark fields are new on a saved position. A file written
-    before item 4 has neither, and the honest default is "never
-    priced" — not a fabricated price of zero treated as real."""
+    """A saved position without `last_price_base_per_alt` imports at 0.0 and
+    `extractor_tranche_rows` reports its `mark_value_usd` as None."""
     child = _child()
     legacy = {
         "positions": [
@@ -766,9 +681,6 @@ def test_control_a_round_trip_without_the_mark_key_yields_no_mark():
     assert restored._positions["SOL/ETH"].last_price_base_per_alt == 0.0
 
 
-# ═════════════════════════════════════════════════════════════════════
-# E. IDENTITY — item 5 hangs a per-row control on this.
-# ═════════════════════════════════════════════════════════════════════
 def test_the_tranche_id_survives_a_resort():
     parent = _parent()
     c1, c2 = _child(bot_id="ext-a"), _child(bot_id="ext-b")
@@ -798,9 +710,7 @@ def test_the_tranche_id_survives_another_tranche_closing():
 
 
 def test_a_reopened_position_does_not_inherit_the_old_identity():
-    """`opened_at` is in the id precisely so a closed-and-reopened
-    position cannot pick up whatever item 5 attached to its
-    predecessor."""
+    """`tranche_id` carries `opened_at`, so a reopened position gets a new id."""
     child = _child()
     child._positions["SOL/ETH"] = _position(mark=0.006, opened_at=1000.0)
     first = child.extractor_tranche_rows()[0]["tranche_id"]
@@ -820,12 +730,8 @@ def test_two_children_on_the_same_pair_get_different_identities():
 
 
 def test_the_identity_can_carry_a_per_tranche_field_for_item_5():
-    """Item 5 adds a per-tranche Arbiter toggle. It is NOT built here.
-
-    What is proven here is only that this structure can carry one: a
-    side-table keyed by `tranche_id` still resolves to the right row
-    after another tranche closes, which a row index would not.
-    """
+    """A side table keyed by `tranche_id` still resolves to the right row
+    after another tranche closes, which a row index would not."""
     parent = _parent()
     c1, c2 = _child(bot_id="ext-a"), _child(bot_id="ext-b")
     c1._positions["SOL/ETH"] = _position(mark=0.006)
@@ -843,9 +749,6 @@ def test_the_identity_can_carry_a_per_tranche_field_for_item_5():
     assert remaining[0]["pair"] == marked_pair
 
 
-# ═════════════════════════════════════════════════════════════════════
-# F. THE COLOUR — measured, not asserted.
-# ═════════════════════════════════════════════════════════════════════
 def _srgb_to_linear(c: float) -> float:
     if c <= 0.04045:
         return c / 12.92
@@ -971,35 +874,14 @@ def _tab():
     widget = dlg._create_fold_tranches_tab()
     tables = widget.findChildren(QTableWidget)
     assert tables, "the tab rendered no table"
-    # YIELD, not return. The tab widget has no parent, so returning
-    # would drop the last reference to it and Qt would destroy the
-    # whole tree — including this table — before the test touched it.
-    # Yielding keeps this frame, and therefore `dlg` and `widget`,
-    # alive for the duration of the test.
+    # Yielded, not returned: `widget` is unparented, and returning would drop
+    # the last reference and let Qt destroy the table.
     yield tables[0]
 
 
-# ═════════════════════════════════════════════════════════════════════
-# THE RENDER. A colour read off a live Qt object reports what the
-# widget was TOLD to paint, not what it painted. Measured 2026-08-11 on
-# this very table: a `QTableWidget::item { background: ... }` rule
-# overrides the item brush while `item.background().color().name()`
-# keeps returning the old value, so a model-only assertion passes over
-# a screen showing another colour. Every colour claim below is asserted
-# on BOTH, in one function, over one widget.
-# ═════════════════════════════════════════════════════════════════════
 def _fit_on_screen(table) -> None:
-    """Give the table a complete, settled surface before any sample.
-
-    DETACHED from the tab's layout, which otherwise re-imposes its own
-    geometry and allots the table about 115px. SHOWN, because an
-    unshown widget has never been polished and reports
-    self-inconsistent geometry, and a render of one leaves regions
-    unpainted so a sampler reads a default colour at a point that is
-    nominally in range. SIZED TO ITS CONTENT, so every column and row
-    is on the surface. The shipped 280px cap is lifted for the render
-    only and is asserted elsewhere.
-    """
+    """Unparent, resize to content and show `table`, so `_cell_colours` reads
+    a fully painted surface. The shipped 280px maximum height is lifted."""
     from PySide6.QtWidgets import QApplication
 
     from tests.qt_pixel import pin_text_rendering
@@ -1073,9 +955,6 @@ def test_the_extractor_row_is_red_with_white_text_in_every_column(_tab):
     assert EXTRACTOR_TRANCHE_BG_HEX == "#b3261e"
     assert EXTRACTOR_TRANCHE_FG_HEX == "#ffffff"
 
-    # THE SAME CLAIM, ON THE RENDER. Every column is sampled, because
-    # a missed one leaves the row half red and the model would not
-    # show it.
     _fit_on_screen(_tab)
     image = _tab.viewport().grab().toImage()
     for col in range(_tab.columnCount()):
@@ -1089,32 +968,13 @@ def test_the_extractor_row_is_red_with_white_text_in_every_column(_tab):
 
 
 def test_the_ordinary_tranche_row_is_not_repainted(_tab):
-    """A fold row is BLUE, never the Extractor red.
-
-    RESTATED 2026-08-11, and made stronger. This test used to say fold
-    rows "keep their default background" and checked only that row 0
-    was NOT red. That description retired when the operator asked for
-    the blue to be painted: before, "blue" was only the per-cell
-    `#00ccff` Source foreground and the Fire button's stylesheet, and
-    the row background was whatever the theme's alternating brush
-    supplied.
-
-    The invariant the test exists for is unchanged — no red may leak
-    onto a fold row, and the Source colour and Fire button must
-    survive. It is now asserted POSITIVELY: the row must equal the
-    fold blue, rather than merely differ from the red. "Not red" was
-    satisfied by an unpainted row, so it could not have caught the
-    blue failing to paint.
-    """
+    """A fold row paints `FOLD_TRANCHE_BG_HEX` in every column and never
+    `EXTRACTOR_TRANCHE_BG_HEX`, keeping its Source colour and Fire button."""
     from src.gui.bot_live_settings import (
         EXTRACTOR_TRANCHE_BG_HEX,
         FOLD_TRANCHE_BG_HEX,
     )
 
-    # issue #98 defect 5 - the cell used to read "manual fire", which
-    # is a BUY and the action that REMOVES a tranche. The flag means a
-    # manual SCRUM. The COLOUR and the rows carrying it are unchanged,
-    # which is what this test is here to protect.
     from src.gui.bot_live_settings import FOLD_SOURCE_MANUAL_SCRUM
 
     source_cell = _tab.item(0, 8)
