@@ -487,13 +487,32 @@ Next we come to the combined Scrumming Bot configuration page which has several 
 Order Visibility - Trades are listed on the order books or tracked internally to the platform.
 
 Two entries, Order Book (Visible) and Internal (Invisible). `ScrummingBot`
-reads the choice once at construction and holds it as its invisible flag.
+reads the choice once at construction and holds it as its invisible flag. The
+label a reader sees and the value the bot stores are two different strings on
+the same row.
+
+`src/gui/bot_wizard.py` — the Order Visibility row
+
+```python
+self._visibility = QComboBox()
+self._visibility.addItem("Order Book (Visible)", "orderbook")
+self._visibility.addItem("Internal (Invisible)", "internal")
+self._visibility.setToolTip("How orders appear on the exchange.")
+self._visibility.currentIndexChanged.connect(self._on_visibility_changed)
+mf.addRow("Order Visibility:", self._visibility)
+```
 
 Aggressive Trading - Trades are priced so that they fill immediately. Trading like this is a bit like guerilla warfare. In and out before anyone notices.
 
 A checkbox, off at the start. Every engine-initiated order then leaves as an
 immediate-or-cancel limit priced through the spread, so it pays the taker fee
 for an immediate fill. Manual Fire is unaffected.
+
+`src/gui/bot_wizard.py` — the Aggressive Trading row
+
+```python
+self._aggressive = QCheckBox("Aggressive Trading (force IOC-limit takers)")
+```
 
 Stack Mode - Stack Mode enables Stack Tranches which operate on the Sell or Scrum side. This forms the “upside” of the organic ladder structure whereas Fold Tranches form its “downside”.
 
@@ -515,7 +534,18 @@ self._stack_mode.setChecked(STACK_MODE_DEFAULT)
 Split Distance - This setting determines the spacing between tranches if Tranche Spread (not available yet) is being used.
 
 A percentage from 0.10 to 20.00, at 1.00 % to start. The bot hands it to the
-stack maths as the gap between one tranche and the next.
+stack maths as the gap between one tranche and the next, and the Spacing row
+below decides how that gap grows across the ladder.
+
+`src/gui/bot_wizard.py` — the Split Distance row
+
+```python
+self._split_distance = QDoubleSpinBox()
+self._split_distance.setRange(0.1, 20.0)
+self._split_distance.setDecimals(2)
+self._split_distance.setSuffix(" %")
+self._split_distance.setValue(1.0)
+```
 
 Tranche Spread - This allows a given Scrum or Fold to divide its result X# of times across multiple incremented (as dictated by Split Distance) positions.
 
@@ -530,12 +560,31 @@ In development.
 Tranche Count - This can also be referred to as Spread Count. It determines how pieces a given Scrum or Fold is split into and distributed across incremented tranches as opposed to just one.
 
 A whole number from 2 to 20, at 3 to start, written out as
-`stack_tranche_count_target`.
+`stack_tranche_count_target`. It is a target rather than a promise: the runtime
+count drops when a tranche would fall under the venue minimum, or when two
+computed prices land within a tenth of a percent of each other and merge.
+
+`src/gui/bot_wizard.py` — the Tranche Count row
+
+```python
+self._stack_count = QSpinBox()
+self._stack_count.setRange(2, 20)
+self._stack_count.setValue(3)
+```
 
 Spacing - This adds a scaling factor Split Distance and works in conjunction with Tranche Spread and Tranche Count to induce curves and more aggressive growth within the ladder structure.
 
 Three entries: Linear, Quadratic and Exponential. The sequence beside each name
 is the cumulative distance from the anchor in units of Split Distance.
+
+`src/gui/bot_wizard.py` — the Spacing row
+
+```python
+self._stack_spacing = QComboBox()
+self._stack_spacing.addItem("Linear (1, 2, 3, 4…)", "linear")
+self._stack_spacing.addItem("Quadratic (1, 2, 4, 7…)", "quadratic")
+self._stack_spacing.addItem("Exponential (1, 2, 4, 8…)", "exponential")
+```
 
 Personal Hold - Setting to be removed.
 
@@ -571,12 +620,34 @@ Scrolling down we next find the first block of Scrumming Settings. These are the
 
 Opposing Trade Interval - Establishes the minimum travel distance required by price action from the point a given trade in order the next trade of the opposite type to occur.
 
-A percentage from 0.10 to 20.00, at 1.00 % to start.
+A percentage from 0.10 to 20.00, at 1.00 % to start. The Trading Fee below is
+added to it, so the real distance a reversal must travel is the two together.
+
+`src/gui/bot_wizard.py` — the Opposing Trade Interval row
+
+```python
+self._scrumming_interval = QDoubleSpinBox()
+self._scrumming_interval.setRange(0.1, 20.0)
+self._scrumming_interval.setDecimals(2)
+self._scrumming_interval.setSuffix(" %")
+self._scrumming_interval.setValue(1.0)
+```
 
 BB Tolerance - Determines the minimum distance of the Bollinger Band extent price action must be in order for a trade action to occur.
 
 A percentage from 0.25 to 5.00, at 1.00 % to start. The band-proximity detector
-takes it as its tolerance.
+takes it as its tolerance. This is the narrowest range on the page, and it
+cannot be set to zero.
+
+`src/gui/bot_wizard.py` — the BB Tolerance row
+
+```python
+self._bb_tolerance = QDoubleSpinBox()
+self._bb_tolerance.setRange(0.25, 5.0)
+self._bb_tolerance.setDecimals(2)
+self._bb_tolerance.setSuffix(" %")
+self._bb_tolerance.setValue(1.0)
+```
 
 Landing Strip Candles - Determines the strictness of Landing Strip detection. Minimum is three candles. Longer Landing Strips are historically more likely to indicate an impending market reversal than shorter ones assuming the taper remains intact or grows tighter.
 
@@ -584,36 +655,113 @@ A whole number of candles from 2 to 10, at 3 to start. The widget accepts 2,
 one below the minimum of three the description names, and the number reaches
 only one of the two landing-strip detectors. Issue #432 carries this.
 
+`src/gui/bot_wizard.py` — the Landing Strip Candles row
+
+```python
+self._ls_candles = QSpinBox()
+self._ls_candles.setRange(2, 10)
+self._ls_candles.setValue(3)
+self._ls_candles.setSuffix(" candles")
+```
+
 TA Timeframe - This is the timeframe at which the bot operates and denotes the price chart it will monitor for trade decisions.
 
 Seven entries to start, with 1h chosen. Pick an exchange and the list is
 rebuilt from the timeframes that venue carries, so a venue without 4h does not
-offer it.
+offer it. The starting choice is an index into the list rather than a named
+timeframe.
+
+`src/gui/bot_wizard.py` — the TA Timeframe row
+
+```python
+self._ta_timeframe = QComboBox()
+```
+
+```python
+self._ta_timeframe.setCurrentIndex(4)  # Default 1h
+```
 
 Target Balance - This is the intended starting and locked value for the investment position that the Scrumming Bot is controlling.
 
 From $1.00 to $1,000,000.00. Its start value is whatever default the wizard was
-handed.
+handed, which is the figure the Settings Trading page stores.
+
+`src/gui/bot_wizard.py` — the Target Balance row
+
+```python
+self._target_balance = QDoubleSpinBox()
+self._target_balance.setRange(1.0, 1000000.0)
+self._target_balance.setDecimals(2)
+self._target_balance.setPrefix("$ ")
+self._target_balance.setValue(defaults.get("default_target_balance", 200.0))
+```
 
 Max Entry Price - If the new bot does not detect the requisite amount (as dictated by Target Balance) of the Target Asset, this price threshold sets a limit at which it will attempt to perform the initiating Fold.
 
 Eight decimal places, at $0.00000000, where zero means no ceiling. The buy path
-is the only reader, and it refuses a buy above the ceiling.
+is the only reader, and it refuses a buy above the ceiling. Manual Fire goes
+around it.
+
+`src/gui/bot_wizard.py` — the Max Entry Price row
+
+```python
+self._max_entry_px = QDoubleSpinBox()
+self._max_entry_px.setRange(0.0, 10_000_000.0)
+self._max_entry_px.setDecimals(8)
+self._max_entry_px.setPrefix("$ ")
+self._max_entry_px.setValue(0.0)
+```
 
 Min Entry (Should Be Exit) Price - If the new bot detects a requisite amount (as dictated by the Target Balance) of the Target Asset, this price threshold sets a limit at which it will attempt to perform the initiating Scrum.
 
 The same shape, where zero means no floor. The buy path is the only reader here
-too, so the number refuses a buy below the floor and never reaches a sell.
+too, so the number refuses a buy below the floor and never reaches a sell. The
+row is labelled Min Entry Price on the page, without the parenthesis his line
+carries.
+
+`src/gui/bot_wizard.py` — the Min Entry Price row
+
+```python
+self._min_entry_px = QDoubleSpinBox()
+self._min_entry_px.setRange(0.0, 10_000_000.0)
+self._min_entry_px.setDecimals(8)
+self._min_entry_px.setPrefix("$ ")
+self._min_entry_px.setValue(0.0)
+```
 
 Trading Fee % - This allows the trading fee for the target exchange to be set. This is added to Minimum Opposing Trade Distance to further ensure buys / sells are properly distant and that a given bot is not losing an excessive amount to fee chop in volatile but overly tight market regimes.
 
 A percentage from 0.00 to 5.00, at 0.60 % to start, which is the Coinbase
-Advanced Trade maximum tier.
+Advanced Trade maximum tier. It steps in twentieths of a percent, and it is a
+per-side figure.
+
+`src/gui/bot_wizard.py` — the Trading Fee row
+
+```python
+self._trading_fee = QDoubleSpinBox()
+self._trading_fee.setRange(0.0, 5.0)
+self._trading_fee.setSuffix(" %")
+self._trading_fee.setDecimals(2)
+self._trading_fee.setSingleStep(0.05)
+self._trading_fee.setValue(0.6)
+```
 
 Max Target Growth % - This determines the maximum amount of growth the Target Balance can increase in a given Market Cycle with a cycle being a Fold / Scrum / Fold sequence. Essentially any Fold preceded by a Scrum will be allowed to Fold an amount of profit back in and, if Surplus remains after the Target Delta is re-zero’d, it can be used to increase Target Balance up to this hard limit for that cycle. This is the organic compounding mechanic.
 
 A percentage from 0.00 to 100.00, at 1.00 % to start. Setting it to zero
-freezes Target Balance.
+freezes Target Balance. It steps a quarter of a percent at a time, and it is
+the only mechanism allowed to raise the figure.
+
+`src/gui/bot_wizard.py` — the Max Target Growth row
+
+```python
+self._max_target_growth_pct = QDoubleSpinBox()
+self._max_target_growth_pct.setRange(0.0, 100.0)
+self._max_target_growth_pct.setSuffix(" %")
+self._max_target_growth_pct.setDecimals(2)
+self._max_target_growth_pct.setSingleStep(0.25)
+self._max_target_growth_pct.setValue(1.0)
+```
 
 Scrum Fold Ratio - This precedes Surplus calculation as described under Max Target Growth %. It determines how much of a given trade’s profits will be redistributed to directly contribute to its own organic compounding. Note that this does not interfere with normal Target Delta re-zeroing and is intended to only serve as a “cushion” to slow runaway compounding when Wire Credits are being received from multiple sources.
 
@@ -721,12 +869,31 @@ return (0.5 - half, 0.5 + half)
 
 Fire Threshold - The final Bollinger Band approach metric. Once satisfied, the bot can fire a trade.
 
-A percentage from 0.10 to 10.00, at 0.50 % to start.
+A percentage from 0.10 to 10.00, at 0.50 % to start. It measures distance from
+the band, where the Detect Threshold above it measures distance from the
+midline.
+
+`src/gui/bot_wizard.py` — the Fire Threshold row
+
+```python
+self._scrum_fire_pct = QDoubleSpinBox()
+self._scrum_fire_pct.setRange(0.1, 10.0)
+self._scrum_fire_pct.setDecimals(2)
+self._scrum_fire_pct.setSuffix(" %")
+self._scrum_fire_pct.setValue(0.5)
+```
 
 BB Midline Gate - This is another, perhaps redundant layer, of Bollinger Band travel protection. It is different in that it is concerned with distance from the midline instead of the entire local width.
 
 A checkbox, on at the start. While it is on, a scrum fires only above the
 midline and a fold only below it.
+
+`src/gui/bot_wizard.py` — the BB Midline Gate row
+
+```python
+self._bb_midline_gate = QCheckBox("BB Midline Gate")
+self._bb_midline_gate.setChecked(True)
+```
 
 Read Rate - To be re-evaluated.
 
@@ -777,6 +944,13 @@ BB Bullseye Check - If current price and Bollinger Band thresholds are equal, th
 
 A checkbox, on at the start.
 
+`src/gui/bot_wizard.py` — the BB Bullseye row
+
+```python
+self._bb_bullseye = QCheckBox("BB Bullseye Check")
+self._bb_bullseye.setChecked(True)
+```
+
 Wire Inflow Stack - To be re-evaluated.
 
 A percentage from 0.00 to 100.00, at 1.00 % to start. The wizard writes it as
@@ -806,7 +980,15 @@ if stack_pct > 0:
 
 Hedge Rebalance Active - Determines if Current Price drifting below Initial Entry Price will have a limited amount of funds that can be used to keep re-zeroing the Target Delta at key bearish thresholds or areas of possible reversal.
 
-A checkbox, on at the start.
+A checkbox, on at the start. It opens the one group on the page that holds a
+reserve outside Target Balance.
+
+`src/gui/bot_wizard.py` — the Hedge Rebalance row
+
+```python
+self._hedge_rebalance = QCheckBox("Hedge Rebalance Active")
+self._hedge_rebalance.setChecked(True)
+```
 
 Hedge Balance - Sets a limit on the amount of additional liquidity a given bot is allowed to absorb when Current Price drifts below Initial Entry Price.
 
@@ -837,25 +1019,74 @@ Now we arrive at some safety controls. Circuit Breakers are designed to fully in
 
 Soft CB Threshold - The amount of instantaneous, single-candle price action required for the bot to pause trading for a number of candles denoted by Soft CB Cooldown.
 
-A percentage from 0.0 to 100.0, at 25.0 % to start. Zero switches it off.
+A percentage from 0.0 to 100.0, at 25.0 % to start. Zero switches it off. It
+interrupts only the side of the market that moved, so an upward candle stops
+scrums and a downward one stops folds.
+
+`src/gui/bot_wizard.py` — the Soft CB Threshold row
+
+```python
+self._cb_soft_pct.setSuffix(" %")
+self._cb_soft_pct.setValue(25.0)
+```
 
 Hard CB Threshold - The amount of instantaneous, single-candle price action required for the bot to be hard stopped at which point the user must re-authorize trading.
 
-The same range, at 35.0 % to start. Zero switches it off.
+The same range, at 35.0 % to start. Zero switches it off. Where the soft
+breaker interrupts one side, this one pauses the bot outright and the pause
+survives a restart.
+
+`src/gui/bot_wizard.py` — the Hard CB Threshold row
+
+```python
+self._cb_hard_pct = QDoubleSpinBox()
+self._cb_hard_pct.setRange(0.0, 100.0)
+self._cb_hard_pct.setDecimals(1)
+self._cb_hard_pct.setSuffix(" %")
+self._cb_hard_pct.setValue(35.0)
+```
 
 Soft CB Cooldown - This is the number of candles that must close before the Soft Circuit Breaker opens again.
 
-From 1 to 100 candles, at 3 to start.
+From 1 to 100 candles, at 3 to start. It is counted in closed candles, so its
+real length follows the bot's own timeframe.
+
+`src/gui/bot_wizard.py` — the Soft CB Cooldown row
+
+```python
+self._cb_cooldown = QSpinBox()
+self._cb_cooldown.setRange(1, 100)
+self._cb_cooldown.setValue(3)
+```
 
 Max Cartridge Size - This is the maximum amount of deviation allowed for the Target Delta. At this threshold the bot is actively and aggressively looking for a trade opportunity.
 
 A percentage from 0.0 to 200.0, at 10.0 % to start. Crossing it fires an
 aggressive rebalance that bypasses the detection, hysteresis and soft-breaker
-checks.
+checks. It is the one figure on the page whose range runs past 100.
+
+`src/gui/bot_wizard.py` — the Max Cartridge Size row
+
+```python
+self._max_cartridge_pct = QDoubleSpinBox()
+self._max_cartridge_pct.setRange(0.0, 200.0)
+self._max_cartridge_pct.setDecimals(1)
+self._max_cartridge_pct.setSuffix(" %")
+self._max_cartridge_pct.setValue(10.0)
+```
 
 Smart Cartridge - This allows the Max Cartridge Size to organically resize in response to current price range as defined by the current-candle Bollinger Band reading.
 
-One checkbox labelled Calibrate to BB range, off at the start.
+One checkbox labelled Calibrate to BB range, off at the start. While it is on,
+the cartridge size comes from the current band range instead of the fixed
+percentage above it.
+
+`src/gui/bot_wizard.py` — the Smart Cartridge row
+
+```python
+self._cartridge_smart_chk = QCheckBox("Calibrate to BB range")
+self._cartridge_smart_chk.setChecked(False)
+```
 
 Smart Ceiling - To be re-evaluated.
 
@@ -895,12 +1126,32 @@ After Circuit Breakers, which help defend against extreme volatility, we come to
 
 Enable Position Ceiling - Enables a growth cap for a given position.
 
-A checkbox, off at the start.
+A checkbox, off at the start. Nothing in the Risk Controls group acts until it
+is on.
+
+`src/gui/bot_wizard.py` — the Position Ceiling row
+
+```python
+self._position_ceiling_enabled = QCheckBox("Enable Position Ceiling")
+self._position_ceiling_enabled.setChecked(False)
+```
 
 Ceiling Multiple - This setting caps the maximum amount of growth a position at a multiple of the Target Balance (anchor) and, once reached (and under higher timeframe bullish conditions with Detonation enabled) will allow the entire position to be sold and the corresponding bot will pause all further operations. Without Detonation enabled, this becomes a user notification.
 
 From 1.0 to 10.0, at 5.0x anchor to start. The anchor is the target balance the
-bot was created with, not the balance it has grown to.
+bot was created with, not the balance it has grown to. It steps half a multiple
+at a time and carries its unit in the box.
+
+`src/gui/bot_wizard.py` — the Ceiling Multiple row
+
+```python
+self._position_ceiling_multiple = QDoubleSpinBox()
+self._position_ceiling_multiple.setRange(1.0, 10.0)
+self._position_ceiling_multiple.setDecimals(1)
+self._position_ceiling_multiple.setSingleStep(0.5)
+self._position_ceiling_multiple.setSuffix("x anchor")
+self._position_ceiling_multiple.setValue(5.0)
+```
 
 Enable Detonation - Enables an entire remaining position to be sold after the Ceiling Multiple growth threshold is crossed.
 
@@ -923,7 +1174,16 @@ fired = is_bullish and not self._detonation_last_signal_bullish
 
 Detonation TF - Selects the timeframe for the chart that is being evaluated for bullish conditions that will allow the detonation to occur.
 
-Two entries, 1d and 1w.
+Two entries, 1d and 1w. The label and the stored value are the same string on
+both rows, which is not true of every picker in the wizard.
+
+`src/gui/bot_wizard.py` — the Detonation TF row
+
+```python
+self._detonation_timeframe = QComboBox()
+self._detonation_timeframe.addItem("1d", "1d")
+self._detonation_timeframe.addItem("1w", "1w")
+```
 
 Min Confidence - This is the minimum technical analysis confidence index (via the Indicator Voting Panel) that will allow the detonation to occur.
 
@@ -1013,7 +1273,18 @@ on a restarted bot
 Route - Destination for profits.
 
 Four destinations: fold back to target balance, send to spendable, split fold
-and spendable by percentage, and route to another bot.
+and spendable by percentage, and route to another bot. Only the last of the
+four makes the Target bot ID field below it mean anything.
+
+`src/gui/bot_wizard.py` — the Route row
+
+```python
+self._profit_route = QComboBox()
+self._profit_route.addItem("Fold back to target balance", "fold_to_target")
+self._profit_route.addItem("Send to spendable", "spendable")
+self._profit_route.addItem("Split fold/spendable per %", "split")
+self._profit_route.addItem("Route to another bot (cross-bot)", "cross_bot")
+```
 
 Target bot ID - Field for manually a bot ID which was intended to create a Smart Wire under the Bot Swarm tab.
 
@@ -1185,19 +1456,60 @@ gap the dropped character leaves. Issue #421 carries this.
 
 Chunk size (USD) - This determines the maximum amount of the parent’s pool that the Extractor can use.
 
-From $10.00 to $10,000,000.00, at $100.00 to start.
+From $10.00 to $10,000,000.00, at $100.00 to start. It is the pool every
+artillery round below is drawn from.
+
+`src/gui/bot_wizard.py` — the Chunk size row
+
+```python
+self._ext_chunk_size_usd = QDoubleSpinBox()
+self._ext_chunk_size_usd.setRange(10.0, 10_000_000.0)
+self._ext_chunk_size_usd.setPrefix("$")
+self._ext_chunk_size_usd.setDecimals(2)
+self._ext_chunk_size_usd.setValue(100.0)
+```
 
 Artillery size (USD) - This determines the individual size of Extractor Tranches.
 
-From $0.50 to $100,000.00, at $5.00 to start.
+From $0.50 to $100,000.00, at $5.00 to start. The default is set small enough
+to fire often and still clear a venue's minimum order cost.
+
+`src/gui/bot_wizard.py` — the Artillery size row
+
+```python
+self._ext_artillery_size_usd = QDoubleSpinBox()
+self._ext_artillery_size_usd.setRange(0.5, 100_000.0)
+self._ext_artillery_size_usd.setPrefix("$")
+self._ext_artillery_size_usd.setDecimals(2)
+self._ext_artillery_size_usd.setValue(5.0)
+```
 
 Watch list top-N - The determines the number of Alternate Currency pairs the bot will scan for potential extraction.
 
-From 5 to 10, at 8 to start.
+From 5 to 10, at 8 to start. The pairs are ranked by twenty-four hour volume,
+so the list holds the most liquid alternates against the chosen base.
+
+`src/gui/bot_wizard.py` — the watch list size row
+
+```python
+self._ext_scan_top_n = QSpinBox()
+self._ext_scan_top_n.setRange(5, 10)
+self._ext_scan_top_n.setValue(8)
+```
 
 Watch list refresh - This determines the rate at which the Extractor will scan its watched markets. This is the equivalent of a Timeframe for the Extractor but covers multiple pairs.
 
-From 10 to 240 candles, at 60 to start.
+From 10 to 240 candles, at 60 to start, which is once an hour at a one-minute
+cadence. It re-ranks the list rather than re-reading one pair.
+
+`src/gui/bot_wizard.py` — the watch list refresh row
+
+```python
+self._ext_scan_refresh = QSpinBox()
+self._ext_scan_refresh.setRange(10, 240)
+self._ext_scan_refresh.setValue(60)
+self._ext_scan_refresh.setSuffix(" candles")
+```
 
 Pool Reserve - To be re-evaluated.
 
@@ -1247,7 +1559,17 @@ return base_back_after_fee > base_in_proportional
 
 Max compounding tier - Allows the Extractor to attempt a number of compounding Swing Trades with a given Extractor Tranche with subsequent re-entries based upon the Parent Scrumming Bot’s Minimum Opposing Trade Distance + Trade Fee + Bollinger Band extension settings.
 
-From 1 to 10, at 3 to start.
+From 1 to 10, at 3 to start. The first tier always locks its gain back to the
+pool, and the counter is held by the position rather than by the bot, so it
+ends when the position does.
+
+`src/gui/bot_wizard.py` — the compounding tier row
+
+```python
+self._ext_max_tier = QSpinBox()
+self._ext_max_tier.setRange(1, 10)
+self._ext_max_tier.setValue(3)
+```
 
 Max cost-basis multiple - To be re-evaluated.
 
