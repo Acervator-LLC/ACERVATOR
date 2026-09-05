@@ -27,9 +27,8 @@ from src.gui import testnet_tab as shipped
 from src.gui.main_tabs import testnet_tab_surface as surface
 from tests.qt_pixel import ensure_app, render_widget
 
-#: Every widget class this tab builds itself, and how many it builds.
-#: Qt builds scroll bars, header views and popup frames of its own, so
-#: only the classes the tab constructs are counted.
+# Every widget class this tab builds itself, and how many. Qt's own
+# scroll bars, header views and popup frames are not counted.
 BUILT_WIDGETS = {
     "QGroupBox": 7,
     "QLabel": 18,

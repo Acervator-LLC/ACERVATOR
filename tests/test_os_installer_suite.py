@@ -138,10 +138,8 @@ SHELL_PROVIDED = frozenset(
     }
 )
 
-# The libraries the Qt xcb platform plugin needs before it will load.
-# `libxcb-cursor0` is the one issue #95 found missing; the rest were
-# already there and must stay there. A name leaves this set only when
-# somebody proves Qt no longer needs it.
+# The libraries the Qt xcb platform plugin needs before it will load. A
+# name leaves this set only on proof Qt no longer needs it.
 QT_WINDOW_PACKAGES = (
     "libxcb-cursor0",  # required from Qt 6.5.0 - issue #95 defect two
     "libxcb-xinerama0",
@@ -178,9 +176,8 @@ _HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 _BARE_WORD = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SOURCE_LINE = re.compile(r"^\s*(?:source|\.)\s+\S*lib/common\.sh")
 
-# A parameter expansion that supplies a default, an alternative or a
-# message is SAFE under `set -u`. `${FOO:-}` is the correct idiom and
-# must never be reported.
+# A parameter expansion supplying a default, an alternative or a message
+# is safe under `set -u` and must never be reported.
 _SAFE_SUFFIX = (":-", "-", ":=", "=", ":+", "+", ":?", "?")
 
 # The shell builtin, held as a name so that no scanner reads the bare

@@ -50,17 +50,8 @@ CONSUMER_DIRS = ("src/trading", "src/gui")
 
 DATACLASSES = ("Ticker", "Balance", "Order", "Trade", "OrderBook")
 
-# Fields live populates and the Simulator does not.
-#
-# EMPTY, AND IT STAYS EMPTY. Operator directive 2026-08-09: "If the code
-# is not bit identical to live and only varies by calling the Stone
-# Tablets and YTD as its source of data, you have failed."
-#
-# An earlier version of this file exempted Order.fee / fee_currency /
-# raw on the grounds that nothing read them. That is not a standard —
-# it dates the guarantee to the last time someone grepped. The sim
-# already computed the fee and stamped it on the Trade; it now stamps
-# the Order too.
+# Fields live populates and the Simulator does not. Empty, and it stays
+# empty: the sim is bit identical to live but for its data source.
 KNOWN_UNPOPULATED: dict = {}
 
 

@@ -75,9 +75,8 @@ EXPECTED_THEME_FIELDS = (
 # Every field of a tier row, in the order the shipped table writes them.
 EXPECTED_TIER_FIELDS = ("name", "base", "shadow", "highlight", "accent", "glow")
 
-# Every value of every canvas theme, typed out here rather than read
-# from either module. Neither side can satisfy this table by copying the
-# other, and an edit made to both files together is still reported.
+# Every value of every canvas theme, typed out here rather than read from
+# either module, so neither side can satisfy the table by copying the other.
 EXPECTED_THEMES = {
     "nebula": {
         "name": "Nebula",
@@ -284,9 +283,8 @@ ANSWERED_NUMBER_CASES = tuple(EXPECTED_TIERS_FOR_NUMBERS)
 
 REFUSAL_FORMAT = "'<' not supported between instances of %r and 'int'"
 
-# The three colours whose red, green and blue are not all different. A
-# swap of two matching channels paints the same pixel, so each is read
-# off both sides as text instead.
+# The three colours whose channels are not all different; a swap of two
+# matching channels paints the same pixel.
 EQUAL_CHANNEL_COLOURS = (
     ("themes", "nebula", "text"),
     ("themes", "matrix", "bg"),
@@ -1693,9 +1691,8 @@ def test_the_shipped_table_disappears_where_qt_cannot_be_imported():
 
 # Nothing the surface holds is left out of the snapshot
 
-# Every constant the surface exports, and the payload key that carries
-# it. A comparison reading 10 of 21 constants passes whether the other
-# 11 match or not; this closes that gap for every one of them at once.
+# Every constant the surface exports, mapped to the payload key that
+# carries it.
 PAYLOAD_KEYS = {
     "THEME_FIELD_NAMES": "theme_field_names",
     "TIER_FIELD_NAMES": "tier_field_names",

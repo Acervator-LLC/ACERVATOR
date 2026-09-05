@@ -110,9 +110,7 @@ from src.core import signal_contract as sc  # noqa: E402
 from src.core.signal_contract import SignalSink  # noqa: E402
 
 if TYPE_CHECKING:  # pragma: no cover
-    # Annotation only. PySide6 must not be imported at module scope: the
-    # two source-reading tests below are pure Python and have to run on a
-    # box without Qt.
+    # Annotation only; the two tests below run without Qt.
     from PySide6.QtWidgets import QApplication
 
 ASSEMBLED = "trading.12.001.postcondition.tab_assembled"
@@ -133,9 +131,7 @@ TRADING_PIN_SOURCES = (
 )
 
 # The topics `MainWindow.__init__` subscribes to. It discards every
-# unsubscribe closure the bus hands back, so a window that is closed is
-# still attached to the process-wide bus and a later publish would reach
-# a deleted C++ object. The fixture below detaches them by hand.
+# unsubscribe closure, so the fixture below detaches them by hand.
 BUS_HANDLERS = (
     ("bot.log", "_on_bot_log"),
     ("wire.created", "_on_wire_created"),
@@ -145,9 +141,7 @@ BUS_HANDLERS = (
     ("bot.error", "_on_bot_error_for_log"),
 )
 
-# Substrings that must never appear in a record this tab writes. A
-# context is written to disk and the Trading tab is the tab that handles
-# exchange credentials.
+# Substrings that must never appear in a record this tab writes to disk.
 FORBIDDEN = (
     "api_key",
     "apikey",
@@ -174,9 +168,8 @@ def qapp() -> QApplication:
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication as _QApplication
 
-    # `instance()` is typed as the QCoreApplication base and can hand
-    # back a bare QCoreApplication in a non-GUI process, which has no
-    # widget machinery. Narrow it rather than assume.
+    # `instance()` can hand back a bare QCoreApplication, which has no
+    # widget machinery.
     running = _QApplication.instance()
     if isinstance(running, _QApplication):
         return running

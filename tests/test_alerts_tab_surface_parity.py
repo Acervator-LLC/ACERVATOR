@@ -42,9 +42,8 @@ BUS_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/live_bot_window.py"
 
 PIXEL_SIZE = (900, 620)
 
-# The design-system colours these cells use, typed out here rather than
-# read from the surface, so a renamed or re-valued token cannot move both
-# sides together.
+# The design-system colours these cells use, typed out here so a renamed
+# or re-valued token cannot move both sides together.
 SUCCESS_HEX = "#00ff88"
 ERROR_HEX = "#ff3366"
 WARNING_HEX = "#ffaa00"

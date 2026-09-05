@@ -191,15 +191,12 @@ class _Window:
     _create_bot = MainWindow._create_bot
 
 
-#: Every wizard opening in the current test, as
-#: ``(exchanges, defaults, parent)``. A refusal that skipped the wizard
-#: entirely would look identical to one the operator was shown, so the
-#: openings are recorded and asserted on.
+# Every wizard opening in the current test, as (exchanges, defaults,
+# parent). A refusal that skipped the wizard would look identical.
 WIZARD_OPENINGS: list[tuple] = []
 
-#: `QWizard.DialogCode.Accepted`. Named here rather than read off the
-#: stub instance so no method reaches for an attribute its own __init__
-#: never set.
+# `QWizard.DialogCode.Accepted`, named here so no method reaches for an
+# attribute its own __init__ never set.
 _ACCEPTED = 1
 
 

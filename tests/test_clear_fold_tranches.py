@@ -74,11 +74,8 @@ class _Bot:
         self._fold_tranches = list(tranches)
         self._fold_queue_usd = sum(float(t.get("usd", 0) or 0) for t in tranches)
         self._pending_wire_credits = float(pending)
-        # Self-consistent by construction: created - closed == standing
-        # BEFORE any clear. An inconsistent fixture cannot test an
-        # invariant -- the first draft used RAVE's real 39/29 with three
-        # tranches, which already violated it, and the invariant test
-        # correctly refused to pass.
+        # Self-consistent by construction: created - closed == standing before
+        # any clear, so the invariant test has something to measure.
         self._tranches_created_lifetime = 39
         self._tranches_closed_lifetime = 39 - len(self._fold_tranches)
         self._target_balance = 50.0

@@ -112,9 +112,8 @@ class _FakeExchange:
             if t.symbol == symbol and (since is None or t.timestamp >= since)
         ]
         window.sort(key=lambda t: t.timestamp, reverse=True)
-        # If caller requested pagination, return everything (ccxt
-        # walks the exchange's cursor internally). Otherwise honor
-        # the per-call cap the exchange would enforce.
+        # With pagination, return everything; ccxt walks the cursor internally.
+        # Otherwise honour the per-call cap the exchange would enforce.
         if params and params.get("paginate"):
             return window
         return window[: min(self._cap, limit)]
@@ -247,12 +246,8 @@ def test_gate_tooltip_lists_scrum_and_fold_blockers():
         },
     }
     tt = h.gate_cell_tooltip(entry)
-    # v3.24.98 — asserts the PROPERTIES, not the phrasing. The wording
-    # was rewritten (operator 2026-08-08: "Mouse over information is a
-    # bit confusing. Needs to be more clear.") and the old assertions
-    # pinned "SCRUM:" / "blocked" literally, so a clarity change read
-    # as a regression. What must hold is that both sides are described,
-    # their states are distinguishable, and EVERY blocker is named.
+    # Asserts the properties, not the phrasing: both sides described, states
+    # distinguishable, and every blocker named.
     up = tt.upper()
     assert "SCRUM" in up and "FOLD" in up
     assert "ARMED" in up  # the scrum side, which is armed

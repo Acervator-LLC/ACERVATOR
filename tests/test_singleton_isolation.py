@@ -46,15 +46,8 @@ SIM_DIRS = [
     REPO_ROOT / "src" / "gui" / "simulator_tab",
 ]
 
-# Resolvers that hand back process-wide, LIVE-PERSISTING state, keyed by
-# the module they come from.
-#
-# The module matters. A first draft keyed on the bare name `get_registry`
-# and immediately flagged two false positives --
-# fleet_replay_panel.py:690 and nuclear_fleet_controller.py:305 -- both
-# of which import `get_registry` from `stone_tablets`, whose registry is
-# a READ-ONLY tablet index and entirely legitimate for sim. A guard that
-# cannot tell those apart gets switched off.
+# Resolvers handing back process-wide, live-persisting state, keyed by the
+# module they come from. `stone_tablets` is a read-only index and is not one.
 LIVE_SINGLETONS = {
     ("event_bus", "get_event_bus"),
     ("capital_reservation", "get_registry"),

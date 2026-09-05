@@ -75,18 +75,14 @@ if str(REPO) not in sys.path:
 #: truth about a plural, and few enough to read in a failure message.
 LEDGER_SIZE = 3
 
-#: Non-zero on every counter, so a clear that skips one is visible. The
-#: fold side has four and the stack side two; each value is distinct so
-#: a report cannot pass by printing the wrong one.
+#: Distinct non-zero counters, so a clear that skips one is visible.
 FOLD_COUNTS = {"created": 4925, "closed": 4813, "discarded": 91, "malformed": 4}
 STACK_COUNTS = {"created": 37, "discarded": 5}
 
 #: Frozen enough for an age column; nothing here reads the wall clock.
 NOW = 1_800_000_000.0
 
-#: The operator's Split Distance, set to something the 1.0 fallback
-#: cannot imitate. Three percent, so a ladder built on the fallback is
-#: wrong by a factor the assertion can name.
+#: Split Distance, set clear of the 1.0 fallback ladder.
 SPLIT_DISTANCE = 3.0
 
 
@@ -148,10 +144,7 @@ def _bot(**overrides):
         base_currency="USD",
         target_asset="CHIP",
         target_balance=100.0,
-        # Every assertion in this file was written against a
-        # dormant Stack side. Pinned here because the field's
-        # default is now ON (issue #133 unit 8); pass
-        # stack_mode=True to drive the other case.
+        # The shipped default is on; pass stack_mode=True for that case.
         stack_mode=False,
     )
     for key, value in overrides.items():
@@ -368,9 +361,7 @@ def test_the_one_refusal_is_the_stack_side_owning_an_order():
     assert report["kept_live_order"] == 1
     assert len(bot._stack_tranches) == 1
     assert bot._stack_tranches[0]["order_id"] == "order-0"
-    # THE OTHER HALF OF THE SENTENCE. The fold side has nothing to
-    # refuse, and that is a property of the record rather than of the
-    # method: no fold tranche carries an order at all.
+    # No fold tranche carries an `order_id` for the fold clear to refuse.
     for tranche in _fold_tranches(LEDGER_SIZE):
         assert "order_id" not in tranche, (
             "a fold tranche now carries an order, so the fold clear needs "
@@ -496,9 +487,8 @@ def test_the_stack_ladder_reads_the_split_distance_the_operator_set():
     bot._stack_tranches = []
     tranches = _open_stack(bot, price=100.0, size=30.0)
 
-    # THE SECOND WITNESS. Same law, computed by the pure module the
-    # executor calls, from the settings the operator set rather than
-    # from anything the executor passed.
+    # `scrum_ladder_prices` recomputed from the settings, not from what
+    # the executor passed.
     expected = scrum_ladder_prices(
         trigger_price=100.0,
         levels=3,
@@ -508,9 +498,7 @@ def test_the_stack_ladder_reads_the_split_distance_the_operator_set():
     )
     assert [t["price"] for t in tranches] == expected
 
-    # AND IT IS NOT THE FALLBACK. The 1.0 ladder is a different ladder,
-    # so agreeing with the witness above cannot be an accident of both
-    # reading the same default.
+    # The 1.0 fallback ladder, which must differ from the one above.
     fallback = scrum_ladder_prices(
         trigger_price=100.0,
         levels=3,
@@ -593,9 +581,7 @@ def test_a_state_file_without_either_stamp_imports_zero_on_both_sides():
 
 # ── the control surface, enumerated ───────────────────────────────────
 
-#: Every clear control, paired. A row here is the operator's rule in
-#: table form: one side's verb, the other side's verb, and nothing on
-#: either side without a partner.
+#: Each clear control paired with its opposite side's control.
 CLEAR_PAIRS = (
     ("clear_fold_tranches", "clear_stack_tranches"),
     ("clear_lifetime_tranche_counters", "clear_stack_lifetime_counters"),

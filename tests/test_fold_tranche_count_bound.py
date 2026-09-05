@@ -70,10 +70,8 @@ from src.trading.scrumming_bot import (
 # comparisons exist to catch.
 EXACT = 0.0
 
-# Two ULP of double precision, which is what the sweep behind
-# ``_bound_new_fold_tranches`` measured as the worst case over 20,000
-# sales. Wider would stop discriminating; exact is unavailable, because
-# a weighted mean divides and a sum of products does not.
+# Two ULP of double precision, the worst case measured over 20,000 sales.
+# Exact is unavailable: a weighted mean divides.
 TWO_ULP = 1e-15
 
 

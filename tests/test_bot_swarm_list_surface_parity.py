@@ -75,9 +75,8 @@ PAINT_SIZE = (600, 200)
 
 TEST_SKIN = "border: 5px solid #ff00ff;"
 
-# The design values both colour sets are built from, typed out here
-# rather than read from either side, so a re-valued token cannot move
-# both together.
+# The design values both colour sets are built from, typed out here so a
+# re-valued token cannot move both together.
 INFLOW_GREEN = "#00ff88"
 OUTFLOW_RED = "#ff3366"
 NEAR_CAP_AMBER = "#ffaa00"

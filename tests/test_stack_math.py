@@ -132,9 +132,8 @@ class TestSpacingModelSequences:
         return [(t.price / anchor - 1.0) * 100.0 for t in tranches]
 
     def _assert_matches_law(self, mode: str, gap: float, expected: list[float]):
-        # Fibonacci anchors on the last candle close; set it equal to the
-        # trigger price so every mode's distances are read off 100.0 and
-        # the four sequences are directly comparable.
+        # Fibonacci anchors on the last candle close, set equal to the trigger
+        # price so all four sequences are read off 100.0.
         r = split_scrum_into_tranches(
             scrum_price=100.0,
             scrum_size=100.0,

@@ -126,10 +126,8 @@ class TestDirectionIsMomentumNotMidline:
         assert d["squeeze_bull"] is True, d
         assert d["fire_momentum"] > 0.0, d["fire_momentum"]
 
-        # NEGATIVE CONTROL -- the retired predicate, on these same
-        # candles. It calls this bar BEARISH. If this ever stops
-        # disagreeing, the series has drifted and the test above is
-        # no longer exercising the repair.
+        # Negative control: the retired predicate calls this same bar BEARISH. If
+        # it stops disagreeing, the series has drifted.
         old_squeeze_bull = close > mid
         old_squeeze_bear = close < mid
         assert old_squeeze_bull is False

@@ -94,14 +94,8 @@ SCRUMMING_BOT_SRC = (
     REPO / "src" / "trading" / "scrumming" / "fold_tranches.py"
 ).read_text(encoding="utf-8")
 
-# The defect signal this suite must be able to see is at its smallest when
-# the parked pool is smallest and the fold percentage is highest: at
-# $0.01 parked and scrum_fold_pct=99 the pre-fix code mis-routes $0.0001.
-# The comparison tolerance below is 1e-9 -- five orders of magnitude
-# smaller -- so it cannot hide the defect. It is above float64's ~1e-11
-# absolute error at the largest magnitude swept ($99,999.99), so it does
-# not manufacture failures either. THIS NUMBER IS PART OF THE CHECK. Do
-# not widen it to make a failing case pass.
+# Tolerance is part of the check: 1e-9 is five orders below the smallest
+# defect signal and above float64 error at the largest magnitude swept.
 MONEY_TOL_USD = 1e-9
 
 _BLOCK_START = "_fold_pct = max(0, min(100, int(getattr("
@@ -205,9 +199,8 @@ PLANT_PRE_FIX = (
     ),
 )
 
-# The plausible-but-broken fix: exempt what the `wire_credits` record
-# says instead of what the units say. Correct on a bot whose ledger
-# survived, useless on the two live bots whose ledger did not.
+# The plausible-but-broken fix: exempt what the `wire_credits` record says
+# instead of what the units say.
 _RECORDED = (
     "min(max(sum(float(_e.get('usd', 0.0) or 0.0) for _e in "
     "(_t.get('wire_credits') or [])), 0.0), _full_usd)"
@@ -233,13 +226,8 @@ PLANT_VALUE_LEAK = (
     ),
 )
 
-# The same leak, on the RETIRED side. The sweep checks the wire half
-# before it checks conservation, and PLANT_VALUE_LEAK moves the tranche's
-# usd, so that plant trips the wire assertion first and the conservation
-# assertion is never reached -- a control that fires for the wrong reason
-# proves nothing about the check it was meant to exercise. Leaking from
-# `_skim_usd` leaves the tranche untouched, so the wire assertion passes
-# and conservation is the one that must go red.
+# Leaks from `_skim_usd` so the wire assertion passes first and
+# conservation is the assertion that goes red.
 PLANT_RETIRED_LEAK = (
     ("_skim_usd += _skim_proceeds", "_skim_usd += _skim_proceeds * 0.9"),
 )
@@ -258,7 +246,7 @@ class _Bus:
     def __init__(self) -> None:
         self.messages: list[tuple[str, dict]] = []
 
-    def emit(self, event: str, **kwargs) -> None:
+    def emit(self, event: str, **kwargs: object) -> None:
         self.messages.append((event, kwargs))
 
     def logs(self) -> list[str]:
@@ -321,10 +309,10 @@ class _Bot:
         self._fold_tranches.append(tranche)
         return tranche
 
-    def absorb_into(self, tranche: dict) -> float:
-        """Run the REAL absorb, at the real drain window (zero tranches
-        before this scrum). Unit 1 does not touch that window."""
-        return ScrummingBot._absorb_pending_wire_credits_into(self, tranche)
+    def absorb_into(self, tranche: dict) -> None:
+        """Run the real ``_absorb_pending_wire_credits_into`` at the drain
+        window, with zero tranches standing before this scrum."""
+        ScrummingBot._absorb_pending_wire_credits_into(self, tranche)
 
     def retired_usd(self) -> float:
         """Dollars the block reports as retired to cash, read off the

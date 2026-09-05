@@ -58,18 +58,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-# The inventory
-#
 # Every TRACKED file at the repository root, with the reason it is at the
-# root and not in a directory. Untracked files are not subjects: the root
-# also carries gitignored scratch output (``gate_*.log``, ``pytest_out
-# .txt``), and a guard that failed on those would fail on a normal
-# working tree.
-#
-# A new entry needs a reason that names a MECHANISM. "tidier here" is not
-# one. Three of the entries below say plainly that nothing requires the
-# location; they are at the root because moving them costs more than it
-# buys, and the entry says so rather than inventing a requirement.
+# root. Untracked scratch output is not a subject.
 
 _HOP_REASON = (
     "session handoff. tools/hop_check.py globs ACERVATOR_HOP*.md at the root, "
@@ -146,11 +136,8 @@ INVENTORY: dict[str, str] = {
     '`REPO_ROOT / "generate_essay_ja.py"` in three tests, one of '
     "them the positive control for the `*_FROZEN_AT` exemption. "
     "src/core/version_sweep.py honours that same exemption",
-    # -- scripts nothing requires at the root ----------------------------
-    #
-    # Each of these three could move. Issue #85 measured what the move
-    # would buy and left them where they are. The entry records the
-    # measurement, so the next reader does not repeat it.
+    # Scripts nothing requires at the root; the entry records the measured
+    # cost of moving each one.
     "cartoon_screen.py": "a 60-second marketing animation. Nothing imports it and no "
     "test reads it; its stated renderer, render.py, is not in the "
     "tree. It is the one root file with no consumer of any kind. "
@@ -167,10 +154,8 @@ INVENTORY: dict[str, str] = {
     "reads worse than leaving both here",
 }
 
-# Root files that pytest's discovery patterns must NOT match. Issue #85
-# emptied this set by renaming `test_scrumming_v3.py` to
-# `tools/scrumming_v3_sim.py`. It stays as a named rule rather than an
-# implicit one, because the rule is what matters, not the count.
+# Root files pytest discovery must not match. The set is empty and stays
+# as a named rule.
 PYTEST_DISCOVERY_PREFIXES = ("test_",)
 PYTEST_DISCOVERY_SUFFIXES = ("_test.py",)
 

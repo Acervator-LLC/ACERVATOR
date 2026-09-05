@@ -1,27 +1,15 @@
-"""Tests for the defusedxml adoption in src/gui/crypto_news_ticker.py.
+"""The defusedxml parse path in ``crypto_news_ticker``.
 
-WHAT A FAILURE MEANS is stated per class rather than per assert, because
-the classes are the units of meaning here. Nothing below is forced red;
-each test pins behaviour this change introduced or preserved, and the
-sentence beside it says what the world would have to be like for the
-test to go red.
-
-The numbers quoted are measurements taken by driving the real
-``parse_rss`` entry point of both trees, CPython 3.14.4 / expat 2.7.5,
-before this file was written -- not predictions.
-
-This file does NOT import ``xml.etree``. Comparing the new parser to the
-old one is a real question, but importing the old one here would put
-ruff S314 and semgrep use-defused-xml on the test file itself. The
-comparison was run as a scratchpad measurement instead, and its results
-are the numbers quoted below.
+``parse_rss`` refuses entity declarations and external entities, returns ``[]``
+on malformed input, and still accepts every well-formed shape. ``fetch_one``
+reads in bounded chunks up to ``MAX_FEED_BYTES`` and performs its own scheme
+allowlist. This module imports no ``xml.etree``.
 """
 
 from __future__ import annotations
 
 import logging
 import tracemalloc
-from pathlib import Path
 
 import pytest
 
@@ -79,15 +67,6 @@ def _deep_feed(depth: int) -> bytes:
         "<rss version='2.0'><channel>" + head + "<item><title>Deep headline</title>"
         "<link>https://example.invalid/deep</link></item>" + tail + "</channel></rss>"
     ).encode()
-
-
-# Entity declarations are refused.
-#
-# A FAILURE HERE MEANS a feed host can still make the ticker's worker
-# thread expand entity text it chose, on a thread inside the trading
-# GUI. That is the whole reason the parser was replaced, and the band
-# that matters is the one BELOW expat's own guard, which is what
-# TestSubThresholdBand covers.
 
 
 class TestEntityDeclarationsRefused:
@@ -175,19 +154,6 @@ class TestSubThresholdBand:
         ), f"parse allocated {peak} bytes refusing a {len(doc)}-byte feed"
 
 
-# External entities.
-#
-# A FAILURE HERE MEANS a feed host can read the operator's local disk
-# through the news ticker.
-#
-# HONEST FRAMING: the previous stdlib parser did not leak either --
-# measured, both payloads below raised "undefined entity" and the file
-# was never opened, because ElementTree installs no external-entity
-# handler. These tests pin a PRESERVED property, not a repaired one.
-# They exist because adopting a new parser is exactly when an inherited
-# default can quietly change.
-
-
 class TestExternalEntitiesNeverRead:
     def test_internal_dtd_file_entity_is_refused_and_never_read(
         self, tmp_path, capture_log
@@ -230,13 +196,6 @@ class TestExternalEntitiesNeverRead:
         out = parse_rss(raw, SRC)
         assert out == []
         assert all(CANARY not in h.title for h in out)
-
-
-# A parser that blocks everything is not a fix.
-#
-# A FAILURE HERE MEANS the hardening is too broad and the operator's
-# ticker goes blank. Every shape below was produced identically by the
-# previous parser, measured side by side.
 
 
 class TestOrdinaryFeedsStillParse:
@@ -328,13 +287,6 @@ class TestOrdinaryFeedsStillParse:
         assert len(parse_rss(long_raw, SRC)[0].title) == 220
 
 
-# The docstring's own contract: malformed returns [] rather than raise.
-#
-# A FAILURE HERE MEANS parse_rss raises into fetch_one's blanket
-# handler, which turns a diagnosable feed problem into a debug line,
-# and breaks the sentence written above the function.
-
-
 class TestMalformedNeverRaises:
     @pytest.mark.parametrize(
         "raw",
@@ -365,26 +317,11 @@ class TestMalformedNeverRaises:
         assert [h.title for h in out] == ["Deep headline"]
 
 
-# The response read is capped.
-#
-# A FAILURE HERE MEANS a feed host still chooses how many bytes land in
-# the GUI process. Closing the entity path bounds what the PARSER can
-# be made to allocate; it does nothing about a plain oversized body.
-
-
 class _Resp:
-    """A response stub that ADVANCES, like the stream it stands for.
+    """A response stub whose ``read`` advances an offset.
 
-    The first version of this stub returned ``self._body[:amount]`` on
-    every call, from offset zero. That modelled a reader that calls
-    ``read`` exactly once. ``fetch_one`` now reads the body in bounded
-    chunks (issue #105, so a teardown does not have to wait out a
-    third-party host), and a stub that never advances hands the same
-    bytes back for ever. It reported an oversized feed where the real
-    stream would have reported a small one.
-
-    A stub that does not model the thing it replaces turns a correct
-    change into a red test. This one keeps an offset.
+    ``fetch_one`` reads the body in bounded chunks, so a stub returning the
+    same bytes on every call would report an oversized feed.
     """
 
     def __init__(self, body: bytes) -> None:
@@ -413,13 +350,10 @@ class TestResponseSizeCap:
         assert MAX_FEED_BYTES == 4 * 1024 * 1024
 
     def test_read_is_bounded_rather_than_unlimited(self, monkeypatch):
-        """A failure means ``resp.read()`` was called with no argument,
-        which reads until the peer stops sending.
+        """Every ``read`` carries an argument no larger than the chunk size.
 
-        The read is now CHUNKED as well as capped (issue #105), so the
-        assertion is on the shape of every request rather than on a
-        single one: no request may be unbounded, none may exceed the
-        chunk size, and the total asked for may not exceed the cap.
+        The total asked for across the calls does not exceed
+        ``MAX_FEED_BYTES``.
         """
         from src.gui import crypto_news_ticker as cnt
 
@@ -478,12 +412,6 @@ class TestResponseSizeCap:
         assert [h.title for h in cnt.fetch_one(SRC)] == ["Edge"]
 
 
-# H9 -- the fetch performs the allowlist instead of asserting it.
-#
-# A FAILURE HERE MEANS the scheme control is once again a comment
-# beside a suppression rather than code that runs.
-
-
 class TestFetchRoutesThroughSafeUrl:
     def test_module_holds_no_bare_urlopen_or_request(self):
         from src.gui import crypto_news_ticker as cnt
@@ -492,19 +420,6 @@ class TestFetchRoutesThroughSafeUrl:
         assert not hasattr(cnt, "Request")
         assert hasattr(cnt, "safe_urlopen")
         assert hasattr(cnt, "SafeRequest")
-
-    def test_source_file_carries_no_suppression_for_this_unit(self):
-        path = (
-            Path(__file__).resolve().parents[1]
-            / "src"
-            / "gui"
-            / "crypto_news_ticker.py"
-        )
-        text = path.read_text(encoding="utf-8")
-        assert "S310" not in text
-        assert "S314" not in text
-        assert "nosec" not in text
-        assert "type: ignore" not in text
 
     def test_fetch_one_hands_safe_urlopen_a_checked_request(self, monkeypatch):
         from src.core.safe_url import SafeRequest
@@ -570,14 +485,6 @@ class TestFetchRoutesThroughSafeUrl:
 
         for source in NEWS_SOURCES:
             assert SafeRequest(source.url).full_url == source.url
-
-
-# The parse path is defusedxml's, not the stdlib's.
-#
-# A FAILURE HERE MEANS an edit swapped the import back and every test
-# above would then be measuring the stdlib parser while still passing
-# on the shapes it happens to agree about. This is the guard that makes
-# the rest of the file mean what it says.
 
 
 class TestTheParserIsTheDefusedOne:

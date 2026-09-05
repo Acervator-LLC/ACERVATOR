@@ -1,50 +1,10 @@
-"""The Details window opens on a WHOLE tranche row - issue #133, unit 12.
+"""The Details window opens wide enough for a whole tranche row.
 
-Operator: "Details window still needs to be a bit wider on opening so
-that Tranche rows are fully visible without adjustment."
-
-MECHANISM
-=========
-Unit 4 sized the dialog to the widest tab, reading the widget inside
-each QScrollArea because the wrapper caps its hint at 36x24 character
-cells. QTableWidget is itself a QScrollArea and
-QAbstractScrollArea::sizeHint does not sum columns, so the Fold tab
-hints a width unrelated to a row.
-
-REPAIR
-======
-The table declares `fold_table_natural_width_px` as its minimum width
-at build time. `QWidgetItem.sizeHint` expands to `minimumSize`, so the
-tab's hint carries the columns and unit 4's sizing pass is unchanged.
-
-MEASURED - operator display 1536x960 logical, real font database,
-cyberpunk_dark, 58 tranches, three real tranche shapes::
-
-    shape          dialog before   after   cut before   cut after
-    CHIP/USD             859       1034       138           0
-    BTC-scale            859       1066       170           0
-    7-figure USD         859       1124       228           0
-
-Table viewport after: 893, 925 and 983 - equal to the columns in every
-case. Display headroom at 1536: 412px at the widest.
-
-A HOST WITHOUT A FONT DATABASE CANNOT DISCRIMINATE
-=================================================
-The offscreen platform takes its font database from the host, so it
-has one where the host does and none where it does not. With none,
-every family resolves to a box font advancing one em per character.
-The Cycle Health block then inflates further than the table, its
-1907px demand stays ahead of the row's 1656px, and max() keeps the old
-number. Section E drives the arithmetic directly for that reason, and
-`skip_unless_real_fonts` guards the checks that need a measured
-string, and `has_real_fonts` steers the ones that hold either way.
-
-FALSIFICATION: wrong if (a) the row demand stops reading the columns,
-(b) the dialog opens narrower than a whole row on a display with room
-for one, (c) it opens wider than the display, (d) it is sized to the
-display rather than its content, or (e) the 640x720 minimum moves.
-
-Nothing writes under ~/.acervator.
+The Fold Tranches table declares ``fold_table_natural_width_px`` as its
+minimum width, so ``QWidgetItem.sizeHint`` carries the columns up to the tab.
+``QAbstractScrollArea::sizeHint`` does not sum columns, which is why the
+wrapper hint alone is too narrow. ``skip_unless_real_fonts`` guards the checks
+that need a measured string.
 """
 
 from __future__ import annotations
@@ -65,7 +25,7 @@ if TESTS_DIR not in sys.path:
 
 from tests.fixtures.host_fonts import has_real_fonts, skip_unless_real_fonts
 
-#: The dialog's floor, set by MEM-240 and untouched by this unit.
+#: The dialog's minimum size, which Qt enforces on every open.
 SHIPPED_MIN_W = 640
 SHIPPED_MIN_H = 720
 
@@ -250,9 +210,6 @@ def no_leaked_dialog():
     assert not leaked, f"{len(leaked)} dialog(s) left alive"
 
 
-# ══════════════════════════════════════════════════════════════════════
-# A. THE DEMAND - what a whole tranche row needs, read off the columns
-# ══════════════════════════════════════════════════════════════════════
 class TestTheRowDemandReadsTheColumns:
 
     def test_the_table_hint_does_not_answer_for_a_row(self, themed):
@@ -354,9 +311,6 @@ class TestTheRowDemandReadsTheColumns:
             panel.destroy()
 
 
-# ══════════════════════════════════════════════════════════════════════
-# B. THE OPERATOR'S CASE - a whole row, read off the render
-# ══════════════════════════════════════════════════════════════════════
 def _unclamped_width(app, **kw) -> int:
     """Width the dialog wants with no display constraining it."""
     panel = _build(app, screen=UNBOUNDED_SCREEN, **kw)
@@ -454,9 +408,6 @@ class TestTheRowIsWhole:
         _assert_clamped_or_whole(themed, OPERATOR_SCREEN, tranches=1)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# C. THE UPPER BOUND - a dialog the size of the screen is not the fix
-# ══════════════════════════════════════════════════════════════════════
 class TestTheScreenIsNotTheTarget:
 
     def test_it_does_not_fill_the_operators_display(self, themed):
@@ -501,9 +452,6 @@ class TestTheScreenIsNotTheTarget:
             big.destroy()
 
 
-# ══════════════════════════════════════════════════════════════════════
-# D. THE CLAMP - the display still wins, and the floor still holds
-# ══════════════════════════════════════════════════════════════════════
 class TestTheDisplayStillWins:
 
     @pytest.mark.parametrize(
@@ -521,7 +469,8 @@ class TestTheDisplayStillWins:
             panel.destroy()
 
     def test_a_display_smaller_than_the_minimum_gets_the_minimum(self, themed):
-        """FAILURE MEANS: the 640x720 floor MEM-240 set has moved."""
+        """A display under the floor opens at ``SHIPPED_MIN_W`` by
+        ``SHIPPED_MIN_H``."""
         panel = _build(themed, screen=(640, 480))
         try:
             assert panel.dialog.width() == SHIPPED_MIN_W
@@ -543,9 +492,6 @@ class TestTheDisplayStillWins:
             panel.destroy()
 
 
-# ══════════════════════════════════════════════════════════════════════
-# E. THE ARITHMETIC - closed table, no QApplication needed
-# ══════════════════════════════════════════════════════════════════════
 class TestTheWidthArithmetic:
 
     @pytest.mark.parametrize(
@@ -583,9 +529,6 @@ class TestTheWidthArithmetic:
         )
 
 
-# ══════════════════════════════════════════════════════════════════════
-# F. THE RESIDUAL - stated, so it is known rather than silent
-# ══════════════════════════════════════════════════════════════════════
 class TestWhatStillDoesNotFit:
 
     def test_a_display_too_narrow_for_a_row_still_clamps(self, themed):

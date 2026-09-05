@@ -46,9 +46,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIPPED_SOURCE = REPO_ROOT / "src" / "gui" / "live_settings" / "fold_tokens.py"
 SURFACE_SOURCE = REPO_ROOT / "src" / "gui" / "main_tabs" / "fold_tokens_surface.py"
 
-# Files measured only to prove a counter reports. Each is named with its
-# directory: two modules in this tree share the basename history_tab.py
-# and build different numbers of timers.
+# Controls proving each counter reports; two modules in this tree share
+# the basename history_tab.py, so each is named with its directory.
 WIRING_CONTROL = REPO_ROOT / "src" / "gui" / "widgets" / "privacy_dot.py"
 SIGNAL_CONTROL = REPO_ROOT / "src" / "gui" / "launcher.py"
 TIMER_BUILT_CONTROL = REPO_ROOT / "src" / "gui" / "history_tab.py"
@@ -377,9 +376,8 @@ CASES = {
     "width_text_reading": (surface.STEP_WIDTH, ["x", 13]),
 }
 
-# The shipped name each step is driven through. The row composers are
-# private on the shipped module and the panel builder calls them by that
-# name, so there is no public route to them.
+# The shipped name each step is driven through; the row composers are
+# private on the shipped module.
 SHIPPED_BY_STEP = {
     surface.STEP_ORDER: "fold_display_order",
     surface.STEP_FILTER: "fold_row_matches_filter",
@@ -394,9 +392,8 @@ SHIPPED_BY_STEP = {
     surface.STEP_EXTRACTOR_TIP: "_compose_extractor_tranche_tooltip",
 }
 
-# Steps the shipped module reaches through a widget or a constant rather
-# than through a function of its own. Each is driven against the shipped
-# side by the test named here.
+# Steps the shipped module reaches through a widget or a constant, mapped
+# to the test that drives each against the shipped side.
 STEPS_DRIVEN_ELSEWHERE = {
     surface.STEP_FINITE: "test_the_admission_rule_matches_the_one_the_panel_imports",
     surface.STEP_CHROME: "test_the_chrome_arithmetic_matches_on_a_real_table",
@@ -658,9 +655,8 @@ GOOD_SEQUENCE = [
     [surface.STEP_AGE, 3661],
     [surface.STEP_RATIO, 10, 9, 0],
 ]
-# The age step refuses three different ways. Which name each refusal
-# carries is read off the SHIPPED side rather than written down, because
-# the platform words and types a refusal for itself.
+# The three inputs the age step refuses; each refusal's wording is read
+# off the shipped side.
 AGE_REFUSED_BY_TEXT = "x"
 AGE_REFUSED_BY_NOT_A_NUMBER = NAN
 AGE_REFUSED_BY_INFINITY = INF
@@ -1597,9 +1593,8 @@ def test_the_surface_writes_its_own_values_and_reads_no_shipped_module():
         "typing.Any",
         "typing.Optional",
     ], imported
-    # Asked of the parsed tree, not of the file's text: the docstring
-    # names the module this surface replaces, and naming it is not
-    # reading it.
+    # Asked of the parsed tree; the docstring names the module this
+    # surface replaces.
     tree = parsed(SURFACE_SOURCE)
     reached = [
         node

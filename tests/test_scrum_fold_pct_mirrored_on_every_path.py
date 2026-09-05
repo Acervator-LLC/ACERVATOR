@@ -1,61 +1,12 @@
-"""``scrum_fold_pct`` must mean the same thing on every selling path.
+"""``scrum_fold_pct`` means the same thing on every selling path.
 
-THE DEFECT
-==========
-``scrum_fold_pct`` is one operator setting. It decides how much of a
-sale's proceeds queue for fold and how much is retired as cash. Three
-places in ``scrumming_bot.py`` append to ``self._fold_tranches``, and the
-setting was applied at exactly one of them:
-
-* the autonomous SCRUM in ``tick`` -- APPLIED, and this is the reference,
-* the DIST excess-distribution sell in ``tick`` -- NOT applied,
-* ``_execute_manual_rebalance`` -- NOT applied.
-
-That last site is not "the manual button". ``_INTENT_MAP`` routes three
-callers through it and two of them fire autonomously: Wire Stack and Max
-Cartridge. So a bot could sell all day, on paths the operator never
-touched, with the ratio silently meaning nothing.
-
-MEASURED, from the operator's filled sells 2026-06-09 to 2026-08-13:
-276 of 380 (72.6%) ran an unscaled path. Across the eight bots that set
-the value below 100, 95.6% of sell dollars bypassed it.
-
-THE GOVERNING PRINCIPLE, operator 2026-08-12: "Functionality should be
-mirrored between either side of the ladder."
-
-TERMINAL ACTIONS ARE OUT OF SCOPE, and the code already agrees with the
-operator's rule that "Detonations and Self-Destruct actions do not spawn
-or populate tranches". ``_execute_detonation`` and ``self_destruct``
-contain no statement that lengthens ``_fold_tranches``; they clear it.
-``test_terminal_actions_build_no_tranche`` pins that, so a future edit
-that gave a terminal action a tranche would have to face this file.
-
-HOW THE FIX WORKS
-=================
-The reference arithmetic was MOVED, character for character, out of
-``tick`` and into ``_apply_scrum_fold_pct``. All three sites call it.
-Nothing was reimplemented, so the three cannot drift apart.
-
-WHAT THIS FILE CHECKS, AND AT WHICH SURFACE
-===========================================
-1. The moved arithmetic is the pre-change arithmetic -- by hash of the
-   text, and by the numbers it produces.
-2. Every site that appends a tranche calls it, after the append and
-   before the top-up, with THAT site's own sale figures.
-3. A manual fire and an autonomous scrum of the same sale leave the
-   same tranches -- read off the tranche dicts after running the real
-   ``_execute_manual_rebalance``.
-4. At 100 nothing changes anywhere, which is 29 of the operator's 37
-   bots.
-5. Wired-in money is still exempt, still told apart by units.
-
-EVERY CHECK CARRIES A PLANTED-DEFECT CONTROL
-============================================
-Each ``_check_*`` helper is run twice: on the shipping code, where it
-must pass, and on a copy carrying a planted defect of the kind that
-check exists to catch, where it must raise. A plant that no longer
-matches the shipping text is an error, not a skip -- otherwise a stale
-plant degrades into a green run and the control proves nothing.
+``_apply_scrum_fold_pct`` holds the one copy of the fold-ratio arithmetic, and
+every site that appends to ``_fold_tranches`` calls it with that site's own
+sale figures. ``GOLDEN_PRE_CHANGE`` pins the numbers to the bit, and
+``test_terminal_actions_build_no_tranche`` holds detonation and self-destruct
+outside it. Each ``_check_*`` helper runs twice, once on the shipping code and
+once on a copy carrying a planted defect that raises ``StalePlant`` when it no
+longer matches.
 """
 
 from __future__ import annotations
@@ -71,11 +22,6 @@ import pytest
 
 from src.trading.scrumming_bot import ScrummingBot
 
-# tests/conftest.py puts the repo root on sys.path at collection time,
-# before any test module is imported, so this import needs no path
-# juggling ahead of it and is therefore not a late import. The three
-# lines that used to do the juggling here were what forced the E402
-# suppression that sat on the import; both are gone.
 REPO = Path(__file__).resolve().parent.parent
 #: Every module the ScrummingBot engine is spread across. A scan of one
 #: of them alone would pass over code that moved to another.
@@ -95,23 +41,12 @@ ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
 SOURCE_PATH = ENGINE_PATHS[0]
 SOURCE = ENGINE_SRC
 
-# Money is compared to the bit. These vectors were produced by running
-# the pre-change code, so an exact comparison is the honest one; a
-# tolerance would hide precisely the drift this file exists to catch.
+# Money is compared to the bit; a tolerance would hide the drift.
 EXACT = 0.0
 
 _BLOCK_START = "_fold_pct = max(0, min(100, int(getattr("
 _BLOCK_END = "Cash buffer preserved against further drops."
 
-# ── the pre-change record ────────────────────────────────────────────
-#
-# Captured from src/trading/scrumming_bot.py as it stood before the
-# mirroring change, by slicing the fold-ratio block between the two
-# anchors above and running it. Not a reimplementation: these are the
-# old code's own outputs, float noise included.
-# Re-derived 2026-08-25 after the black normal-form pass. Not a
-# recalibration: the block this covers is AST-identical to the block the
-# previous digest covered (e43dd0d1...), so only layout moved.
 # name -> (scrum_usd, scrum_asset, tranche_count_before, tranches,
 #          {fold_pct: ((usd, units), ...)})
 GOLDEN_PRE_CHANGE = {
@@ -153,9 +88,8 @@ GOLDEN_PRE_CHANGE = {
             100: ((60.0, 6.0), (40.0, 4.0)),
         },
     ),
-    # $343.68 of wired-in money absorbed into the tranche, the live
-    # shape measured on bot 7c39c7a2. The $343.68 must survive every
-    # percentage untouched; only the $100 of scrum proceeds scales.
+    # The $343.68 of wire credit survives every percentage untouched;
+    # only the $100 of scrum proceeds scales.
     "absorbed_wire": (
         100.0,
         10.0,
@@ -211,10 +145,7 @@ GOLDEN_PRE_CHANGE = {
             100: ((999.0, 99.0), (100.0, 10.0)),
         },
     ),
-    # Un-round figures, built the way the shipping loop builds them, so
-    # the dollars equal the units at the sale's rate to the last bit.
-    # The 3.55e-15 at 0% is float noise the old code produced and the
-    # new code must reproduce.
+    # The 3.55e-15 at 0% is float noise the reference arithmetic produces.
     "ragged_lots": (
         37.77,
         3.3333,
@@ -329,10 +260,8 @@ def _block_source() -> str:
         )
     if len(ends) != 1 or ends[0] <= starts[0]:
         raise StalePlant(f"fold-ratio block end is wrong: starts={starts} ends={ends}")
-    # The end anchor names the block's last STATEMENT. A formatter can push
-    # that statement's closing brackets onto lines below it, so the slice
-    # grows until it parses rather than pinning an offset. Bound 12; the
-    # widest closer run black produces here is 2.
+    # The end anchor names the block's last statement, whose closing
+    # brackets a formatter can push onto lines below it.
     end = ends[0]
     for _ in range(12):
         block = textwrap.dedent("\n".join(lines[starts[0] : end + 1]))
@@ -857,10 +786,8 @@ def _reference_for_the_same_sale(fold_pct, sale_usd, sale_units, lots):
     bot = _bare_bot(fold_pct, tranches)
     bot._bound_new_fold_tranches(0)
     bot._apply_scrum_fold_pct(0, sale_usd, sale_units)
-    # READ AT THE BOT, not at the list handed in. The bound REBINDS
-    # `_fold_tranches`, so the local goes stale the moment it merges,
-    # and a stale read would report the pre-bound records as the
-    # reference.
+    # `_bound_new_fold_tranches` rebinds `_fold_tranches`, so the list
+    # handed in goes stale the moment it merges.
     return [(t["usd"], t["units"]) for t in bot._fold_tranches]
 
 

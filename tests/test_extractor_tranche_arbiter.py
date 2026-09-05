@@ -1,34 +1,10 @@
-"""Item 5 — the per-tranche Extractor Tranche Arbiter toggle.
+"""The per-tranche Extractor Tranche Arbiter toggle.
 
-WHAT ITEM 5 IS
-Operator, 2026-08-10: "Just have a toggling option for 'Extractor
-Tranche Abiter' which decides who gets to sell it and when i.e. Parent
-or Sibling", and it "should be next to each Extractor Tranche that
-spawns and be a toggling status button that reads Parent or Sibling
-under an Arbiter column."
-
-So: one stored value per TRANCHE, one button per row, two words.
-
-WHAT ITEM 5 IS NOT, AND THIS FILE PINS THE DIFFERENCE
-The `Parent` value names a force-sell of the tranche by the base-
-currency Scrumming Bot at a growth threshold. NO SUCH MECHANISM EXISTS
-in this repository — no trigger, no threshold field, no caller. It was
-deliberately not built: a toggle that records an intention is safe, and
-a half-built force-sell moves real money. The tests below therefore
-prove the value is STORED and SURVIVES, and prove that setting it
-places no order and changes no balance. They make no claim that
-anything acts on it, because nothing does.
-
-WHY `sibling` IS THE SAFE DEFAULT
-It is a description of the running code: the automatic closer is the
-Extractor's own bullish exit, the operator closer is the Extractor's
-own manual fire, and the parent only books money that already arrived.
-Defaulting to `parent` would put a false record on every tranche and
-would silently arm all of them the moment a force-sell was built.
-
-EVERY MECHANISM HERE HAS A PAIRED CONTROL. A test that still passes
-when the thing it tests is blinded is not evidence, so each group
-carries a control that must fail if the mechanism stopped working.
+``ExtractorPosition.arbiter`` stores one word per tranche and
+``toggle_tranche_arbiter`` flips it; ``normalize_arbiter`` reads anything that
+is not ``ARBITER_PARENT`` back as ``ARBITER_SIBLING``. ``arbiter_label``
+renders the two words on the surface. Nothing acts on the value: the tests
+below prove it is stored and survives, and that setting it places no order.
 """
 
 from __future__ import annotations
@@ -55,12 +31,6 @@ COINBASE = "coinbase"
 ETH = "ETH"
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Builders — the same `object.__new__` construction the item 4 listing
-# tests use. The real constructors want an exchange, a bus and a live
-# balance; what is under test reads a bot's type, its settings and its
-# in-memory positions, and all three are genuine here.
-# ─────────────────────────────────────────────────────────────────────
 def _cfg(**kw):
     return type("_Cfg", (), kw)()
 
@@ -180,9 +150,6 @@ def _id_of(child, pair):
     return child.tranche_id_for_position(child._positions[pair])
 
 
-# ═════════════════════════════════════════════════════════════════════
-# A. THE STORED VALUE AND ITS COERCION
-# ═════════════════════════════════════════════════════════════════════
 def test_a_freshly_opened_tranche_is_a_sibling():
     """The default is the value that describes the running code."""
     pos = _position()
@@ -284,9 +251,6 @@ def test_a_toggle_has_exactly_two_positions():
     assert other_arbiter(other_arbiter(ARBITER_PARENT)) == ARBITER_PARENT
 
 
-# ═════════════════════════════════════════════════════════════════════
-# B. THE TOGGLE — one tranche, and only that one
-# ═════════════════════════════════════════════════════════════════════
 def test_toggling_flips_the_value_of_that_tranche():
     _, child = _family()
     tid = _id_of(child, "SOL/ETH")
@@ -368,9 +332,6 @@ def test_setting_a_nonsense_value_stores_the_inert_one():
     assert child._positions["SOL/ETH"].arbiter == ARBITER_PARENT
 
 
-# ═════════════════════════════════════════════════════════════════════
-# C. IDENTITY SURVIVES A CLOSE
-# ═════════════════════════════════════════════════════════════════════
 def test_the_right_tranche_changes_after_another_one_has_closed():
     """A row index would be wrong here. The identity is not.
 
@@ -437,9 +398,6 @@ def test_the_id_the_row_carries_is_the_id_the_setter_accepts():
     )
 
 
-# ═════════════════════════════════════════════════════════════════════
-# D. PERSISTENCE — it has to survive a restart to be worth anything
-# ═════════════════════════════════════════════════════════════════════
 def _restore(child, state):
     """Rebuild a second Extractor from a state dict, as a restart does."""
     fresh = _child(child.bot_id)
@@ -482,8 +440,8 @@ def test_export_names_the_key_for_every_position():
 
 
 def test_a_saved_position_with_no_arbiter_field_loads_as_a_sibling():
-    """BACKWARD COMPATIBILITY. Every state file written before item 5
-    lacks this key — which today is every state file that exists."""
+    """A state file with no ``arbiter`` key restores as
+    ``ARBITER_SIBLING``."""
     _, child = _family()
     state = child.export_state()
     for pdict in state["positions"]:
@@ -561,9 +519,6 @@ def test_control_import_still_drops_a_record_that_is_genuinely_broken():
     assert restored._positions == {}
 
 
-# ═════════════════════════════════════════════════════════════════════
-# E. THE ROW THE PARENT PUBLISHES
-# ═════════════════════════════════════════════════════════════════════
 def test_the_parents_row_carries_the_arbiter_value():
     """The row dict is the ONLY thing the surface sees."""
     parent, child = _family()
@@ -582,9 +537,6 @@ def test_the_row_reports_one_of_the_two_values_even_when_state_is_junk():
     assert parent.open_extractor_tranches()[0]["arbiter"] == (ARBITER_SIBLING)
 
 
-# ═════════════════════════════════════════════════════════════════════
-# F. NO MONEY MOVES — the whole safety argument for shipping this alone
-# ═════════════════════════════════════════════════════════════════════
 class _RecordingExchange:
     """A stub that records every call and performs none.
 
@@ -683,9 +635,6 @@ def test_control_the_money_snapshot_notices_a_change():
     assert _money_snapshot(parent, child) != before
 
 
-# ═════════════════════════════════════════════════════════════════════
-# G. THE SURFACE — the operator's button
-# ═════════════════════════════════════════════════════════════════════
 pytest.importorskip("PySide6.QtWidgets")
 
 FIRE_COLUMN = 9
@@ -786,9 +735,8 @@ def _family_tab():
     parent.get_status = lambda: {"stats": {"current_price": 2000.0}}
 
     dlg, widget, table = _build_tab(parent)
-    # YIELD, not return: the tab widget has no parent, so returning
-    # would drop the last reference and Qt would destroy the table
-    # before the test touched it.
+    # Yielding keeps the parentless tab widget referenced; Qt destroys the
+    # table once the last reference drops.
     yield parent, kid_a, kid_b, table, dlg
     _destroy_tab(dlg, widget)
 
@@ -985,9 +933,8 @@ def test_clicking_the_toggle_places_no_order(_family_tab):
 
 
 def test_a_fold_row_has_no_arbiter_button_and_says_so(_family_tab):
-    """An Arbiter belongs to an Extractor Tranche. A fold tranche has
-    no child holding it, so the cell prints the same em dash item 4
-    prints under Fire on an Extractor row."""
+    """A fold row prints ``ARBITER_NOT_APPLICABLE`` at
+    ``ARBITER_COLUMN_INDEX``."""
     from src.gui.bot_live_settings import (
         ARBITER_COLUMN_INDEX,
         ARBITER_NOT_APPLICABLE,
@@ -1001,7 +948,7 @@ def test_a_fold_row_has_no_arbiter_button_and_says_so(_family_tab):
 
 
 def test_the_fold_row_keeps_its_fire_button_where_it_was(_family_tab):
-    """Item 4's arrangement is unchanged by the new column."""
+    """The Fire button stays at ``FIRE_COLUMN`` on the fold row."""
     _, _, _, table, _ = _family_tab
 
     fire = table.cellWidget(FOLD_ROW, FIRE_COLUMN)

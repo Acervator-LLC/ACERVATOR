@@ -1,9 +1,3 @@
-# S101  — pytest's assert IS the assertion syntax; -O would strip them
-#         and make this file inert. Nobody runs pytest with -O.
-# SLF001 — this file reads `_bots`, `_tape`, `_build_sim` and
-#         `_initialised` on purpose. The question it answers is
-#         "did the Simulator do any work", and none of the four is on a
-#         public surface.
 """Issue #109 — the Simulator must be caught the day it stops trading.
 
 WHAT WENT WRONG. `TabletBackend` replaced `FleetSimExchange` in
@@ -93,14 +87,8 @@ STEP = 300_000
 SYMS = ("CHIP/USD", "SPK/USD")
 TARGET_BALANCE = 100.0
 
-# The deepest indicator guard in the voting engine is 51 candles
-# (ZScore, period + 1). RE-MEASURED after issue #111 violation B, on
-# the sawtooth tape below and with TA on the tape's own timeframe: 8
-# fills, the first on candle 150, then 264 and 300. The old figure was
-# 80, taken from the STRUCTURAL opening acquisition that the ruling
-# removed; a fill now needs the price to travel far enough for a scrum,
-# which takes longer. 400 is the tape length and the run is uncapped,
-# so the margin over the measured requirement is about 2.7x.
+# The voting engine's deepest indicator guard is 51 candles (ZScore).
+# Measured on the sawtooth tape below: 8 fills, the first on candle 150.
 TAPE_CANDLES = 400
 FIRST_FILL_OBSERVED_BY = 150
 
@@ -146,14 +134,8 @@ def _controller(*, build: bool = True) -> FleetReplayController:
     `bots_ticked=1600` and `trades_fired=2` against a tape ledger
     holding one fill.
     """
-    # `ta_timeframe` is the tape's own `5m`. `BotConfig` defaults it to
-    # `1h` (bot_container.py:203) and `TabletBackend.fetch_ohlcv`
-    # refuses a timeframe it holds no series for (tablet_backend.py:392)
-    # rather than serving `5m` in its place, so on a `5m`-only tape a
-    # `1h` bot can never clear the TA gate. It could still make the
-    # structural opening acquisition, which is why this went unnoticed;
-    # with that acquisition gone (issue #111 violation B) a `1h` config
-    # here would make every assertion below vacuous.
+    # `ta_timeframe` is the tape's own `5m`; `TabletBackend.fetch_ohlcv`
+    # refuses the `1h` a `BotConfig` defaults to.
     cfgs = [
         {
             "mode": "scrumming",
@@ -359,13 +341,8 @@ class TestASimulatorReplayFiresATrade:
             "no base asset holds a positive quantity after the replay, "
             f"so nothing settled; wallet={balances}"
         )
-        # ISSUE #111 VIOLATION B. This used to require the quote leg to
-        # be BELOW its seed, because the fleet's first act was always an
-        # opening acquisition. A bot that opens with a locked side is
-        # already at target and buys nothing structural, so a settled
-        # scrum can leave the quote leg either side of the seed. What
-        # must not happen is that it did not move at all, which is the
-        # counter-without-a-settlement state this check exists for.
+        # A settled scrum can leave the quote leg either side of its seed;
+        # what it cannot do is leave it unmoved.
         opening = dict(ctl._tape.snapshot().get("opening_balances", {}))
         assert float(balances.get("USD", 0.0)) != float(opening.get("USD", 0.0)), (
             f"the quote leg still holds exactly its opening "

@@ -1,75 +1,11 @@
-"""The Details dialog opens big enough to hold its tabs — issue #133, unit 4.
+"""The Details dialog opens at its content size.
 
-WHAT THE OPERATOR SAID, VERBATIM
-================================
-    "The Details panel that houses the Tranches Tab opens too small. It
-     needs to be able to fully contain all tabs contents without rubber
-     banding or having to be tweaked to see critical elements or data."
-
-`Bot Settings — CHIP/USD [c8e5c5db]`, seven tabs, opened at its shipped
-`setMinimumSize(640, 720)`. Content demand against the viewport it was
-given, in pixels, under `cyberpunk_dark` with 58 fold tranches::
-
-    tab                need         viewport      cut off
-    Status              477x 194     616x584      none
-    Settings           1036x2652     606x574      430 across, 2078 down
-    Fold Tranches      1946x1053     606x574     1340 across,  479 down
-    Stack Tranches      724x 310     616x574      108 across
-    Bot Swarm           471x 252     616x584      none
-    Market Inspector    406x 222     616x584      none
-    Phantom Bots        731x 604     606x574      125 across,   30 down
-
-THE MECHANISM, AND IT IS ONE LINE OF QT
-=======================================
-`QScrollArea::sizeHint` ends in `boundedTo(QSize(36 * h, 24 * h))`,
-where `h` is the font height — 13px here, so **468x312**. MEM-240
-wrapped every tab in one, so the dialog's layout asks each tab how big
-it is and is told 432x288 by a wrapper standing in front of a
-1036x2652 tab. The dialog then sizes itself to that answer. Reading the
-wrapper is the defect; reading its CHILD is the repair.
-
-WHAT THE FIX IS, AND WHAT IT IS NOT
-===================================
-`open_at_content_size` sets the size the dialog OPENS at. It does not
-raise `setMinimumSize`, which would hand the operator a window he
-cannot shrink and, below the content size, cannot fully see either. The
-640x720 floor MEM-240 put there is untouched, and
-`test_the_dialog_can_still_be_shrunk` is what holds that open.
-
-It also does not make anything scroll. The scroll areas were already
-there; the dialog now opens past them.
-
-THE SCREEN IS A CEILING, NOT A TARGET
-=====================================
-A dialog sized to the whole display contains everything and is
-unusable, so `TestTheScreenIsNotTheTarget` asserts an UPPER bound as
-well as a lower one: given a 4000x4000 display the dialog is its
-biggest tab plus the chrome drawn around it, and not 4000x4000.
-
-The pixel counts in the table above are what those tabs held when the
-defect was read. They move whenever a tab gains a widget: measured
-since this file was written, the Fold tab grew 39px across and the
-Stack tab 35px down. No test pins one. The tests pin WHICH tabs are
-cut, in which direction, and that the dialog carries no slack over its
-content.
-
-WHAT THIS UNIT DOES NOT FIX, MEASURED
-=====================================
-The Settings tab wants 2652 vertical pixels of content. No clamp can
-put that on a display that does not have it: at 2560x1400 it is 1460px
-short, at 1920x1040 it is 1820px short. The tests in
-`TestWhatStillDoesNotFit` record that, so it is a known residual rather
-than a silent one. Fitting it needs the tab's ten group boxes laid out
-in columns, which is a different unit and a different verb.
-
-NOTHING WRITES UNDER `~/.acervator`. No StateManager, no clear, no
-order.
-
-FALSIFICATION: this file is wrong if (a) the shipped 640x720 dialog
-cuts nothing off, (b) the repaired dialog still cuts a tab off on a
-display large enough for it, (c) the dialog grows to the size of any
-display handed to it, (d) it opens larger than the display, or (e) its
-minimum size moved.
+``BotLiveSettingsDialog.open_at_content_size`` sizes the dialog from each
+tab's own content, not from the ``QScrollArea`` wrapper whose ``sizeHint`` Qt
+bounds to ``SCROLLAREA_CAP_CELLS_W`` by ``SCROLLAREA_CAP_CELLS_H`` character
+cells. ``dialog_open_size_px`` then clamps that between the ``SHIPPED_MIN_W``
+by ``SHIPPED_MIN_H`` floor and the display. ``TestWhatStillDoesNotFit``
+records the Settings tab height no real display holds.
 """
 
 from __future__ import annotations
@@ -89,40 +25,21 @@ if str(REPO) not in sys.path:
 SHIPPED_MIN_W = 640
 SHIPPED_MIN_H = 720
 
-#: `QScrollArea::sizeHint` bounds itself to 36x24 character cells, so
-#: no tab wrapper can report more than this however big the tab behind
-#: it is. The cell is the font height, which is 13px under
-#: `cyberpunk_dark` on the operator's display and is read off the
-#: wrapper rather than assumed.
+#: Character cells `QScrollArea::sizeHint` bounds every wrapper to.
 SCROLLAREA_CAP_CELLS_W = 36
 SCROLLAREA_CAP_CELLS_H = 24
 
-#: Font height the pixel numbers in this file were measured against.
-#: Section A states the wrapper cap and section G the residual shortfall,
-#: and a font of another height gives different ones. Section B reads no
-#: pixel count, but WHICH tabs overflow 640x720 is still a property of
-#: this cell, so it carries the same guard.
+#: Font height every exact pixel count here was measured against.
 MEASURED_FONT_HEIGHT_PX = 13
 
 #: A display no tab can exhaust, used to measure what the dialog asks
 #: for when nothing constrains it.
 UNBOUNDED_SCREEN = (4000, 4000)
 
-#: The most the dialog may exceed its biggest tab's content demand by.
-#: The surplus IS the chrome the layout draws around that tab -- header
-#: row, tab bar, margins, button row -- measured at 70px across and
-#: 137px down. The ceiling is a band rather than those numbers because
-#: editing a tab's content moves the demand and must not move this
-#: contract. A dialog sized to `UNBOUNDED_SCREEN` instead of its content
-#: carries a surplus in the thousands, so the band still separates the
-#: two by an order of magnitude.
+#: The most the dialog may exceed its biggest tab's demand by, in pixels.
 CHROME_CEILING_PX = 400
 
-#: Which tabs the shipped 640x720 dialog cuts off, and in which
-#: direction: `(across, down)`. This is the operator's report. The pixel
-#: COUNT of each cut is a property of that tab's content on the day it
-#: was read, so it is not pinned; which tabs are cut, and which are not,
-#: is the defect.
+#: Which tabs the shipped minimum cuts off, as `(across, down)`.
 CUT_AT_SHIPPED_MINIMUM: dict[str, tuple[bool, bool]] = {
     "Settings": (True, True),
     "Fold Tranches": (True, True),
@@ -138,8 +55,7 @@ FITS_AT_SHIPPED_MINIMUM: tuple[str, ...] = (
     "Market Inspector",
 )
 
-#: Fold tranches in the fixture. 58 is a long queue that still fits the
-#: 18-row table cap unit 1 installed, so the Fold tab is at its tallest.
+#: Fold tranches in the fixture, filling the Fold tab's 18-row table cap.
 FIXTURE_TRANCHES = 58
 
 #: Said when the host measures a different character cell, so the exact
@@ -328,9 +244,6 @@ def themed():
     app.setStyleSheet(before)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# A. THE DEFECT — the wrapper answers for a tab it is smaller than
-# ══════════════════════════════════════════════════════════════════════
 class TestTheWrapperHidesTheTab:
 
     def test_every_wrapper_is_capped(self, themed):
@@ -376,9 +289,6 @@ class TestTheWrapperHidesTheTab:
             panel.destroy()
 
 
-# ══════════════════════════════════════════════════════════════════════
-# B. THE REPRODUCTION — what 640x720 cut off, per tab
-# ══════════════════════════════════════════════════════════════════════
 class TestTheShippedSizeCutsTabsOff:
 
     def test_four_of_seven_tabs_are_cut_off_at_the_shipped_minimum(self, themed):
@@ -410,9 +320,6 @@ class TestTheShippedSizeCutsTabsOff:
             panel.destroy()
 
 
-# ══════════════════════════════════════════════════════════════════════
-# C. CONTAINED AFTER — no tab is cut off on a display that has room
-# ══════════════════════════════════════════════════════════════════════
 class TestEveryTabIsContained:
 
     def test_nothing_is_cut_off(self, themed):
@@ -436,9 +343,6 @@ class TestEveryTabIsContained:
             panel.destroy()
 
 
-# ══════════════════════════════════════════════════════════════════════
-# D. THE UPPER BOUND — a dialog the size of the screen is not the fix
-# ══════════════════════════════════════════════════════════════════════
 class TestTheScreenIsNotTheTarget:
 
     def test_the_dialog_is_the_content_size_not_the_display(self, themed):
@@ -475,9 +379,6 @@ class TestTheScreenIsNotTheTarget:
             big.destroy()
 
 
-# ══════════════════════════════════════════════════════════════════════
-# E. THE CLAMP — driven on displays that cannot hold the content
-# ══════════════════════════════════════════════════════════════════════
 class TestTheDialogStaysOnTheScreen:
 
     @pytest.mark.parametrize(
@@ -489,16 +390,14 @@ class TestTheDialogStaysOnTheScreen:
         panel = _build(themed, screen=screen)
         try:
             assert panel.dialog.width() <= screen[0]
-            # Height is bounded by the display OR by the 640x720 floor
-            # MEM-240 set, whichever is larger. Qt enforces that floor
-            # whatever this code returns.
+            # Qt enforces `SHIPPED_MIN_H` whatever the clamp returns.
             assert panel.dialog.height() <= max(screen[1], SHIPPED_MIN_H)
         finally:
             panel.destroy()
 
     def test_a_display_smaller_than_the_minimum_gets_the_minimum(self, themed):
-        """FAILURE MEANS: this unit moved the floor. It did not — Qt has
-        enforced 640x720 since MEM-240 and still does."""
+        """A display under the floor still opens at ``SHIPPED_MIN_W`` by
+        ``SHIPPED_MIN_H``."""
         panel = _build(themed, screen=(640, 480))
         try:
             assert panel.dialog.width() == SHIPPED_MIN_W
@@ -522,12 +421,10 @@ class TestTheDialogStaysOnTheScreen:
             panel.destroy()
 
     def test_the_constructor_is_what_applies_the_size(self, themed):
-        """FAILURE MEANS: the dialog opens at its 640x720 minimum. Every
-        other test here calls `open_at_content_size` itself, so nothing
-        else in this file can tell a wired fix from an unwired one.
+        """``BotLiveSettingsDialog.__init__`` itself applies the open size.
 
-        Measured: deleting the call from `__init__` left all 25 other
-        tests green.
+        Every other test here calls ``open_at_content_size`` directly, so this
+        is the only one that sees the constructor's own call.
         """
         from src.gui.bot_live_settings import dialog_open_size_px
         from PySide6.QtGui import QGuiApplication
@@ -569,9 +466,6 @@ class TestTheDialogStaysOnTheScreen:
             panel.destroy()
 
 
-# ══════════════════════════════════════════════════════════════════════
-# F. THE ARITHMETIC — closed table, no QApplication needed
-# ══════════════════════════════════════════════════════════════════════
 class TestTheClampArithmetic:
 
     @pytest.mark.parametrize(
@@ -623,9 +517,6 @@ class TestTheClampArithmetic:
         assert dialog_content_size_px(538, 449, 468, 312, 1907, 2652) == (1977, 2789)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# G. THE RESIDUAL — stated, so it is known rather than silent
-# ══════════════════════════════════════════════════════════════════════
 class TestWhatStillDoesNotFit:
 
     @pytest.mark.parametrize(

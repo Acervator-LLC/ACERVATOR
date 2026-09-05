@@ -1,24 +1,10 @@
-"""Pins `Signal.duration` — 10.3 phase 2, the OPERATION duration.
+"""Pins ``Signal.duration``, the latency of the observed operation.
 
-WHAT THIS IS NOT. `Signal.dt` already ships and is pinned by
-`test_signal_timing.py`. `dt` is CADENCE, the gap BETWEEN successive emissions
-of the same identity. `duration` is LATENCY, how long the observed operation
-took. For item 17's health, cadence answers "on time" and "hangs"; duration is
-what answers "slow downs". A record may honestly carry one, both, or neither,
-and these tests hold that line so the two are never conflated again.
-
-THE ONE CONTROL IS THAT DURATION **TRACKS**. Absent before, present after, and
-two DIFFERENT known intervals producing two DIFFERENT recorded values. A
-duration that is present but constant passes an existence check and fails this
-one, so the tracking predicate is itself driven in both directions here — see
-`test_the_tracking_predicate_rejects_a_constant_duration`. A check never shown
-failing proves nothing.
-
-WHY `None` AND NOT `0.0`. Measured 2026-08-19: 23 of the 40 emitters are
-instantaneous observations where a duration would be FABRICATED, and a
-fabricated duration is worse than a missing one because item 17 computes health
-from it. Zero reads as "instantaneous", which is a measurement; there was none.
-See docs/engineering-notes/2026-08-19_emitter_duration_classification.md.
+``Signal.dt`` carries cadence, the gap between successive emissions of one
+identity; ``duration`` carries how long the operation took, and a record may
+hold one, both or neither. ``_tracks_the_operation`` is driven in both
+directions here, so a present but constant duration fails. An emitter with no
+measured interval records ``None``, never ``0.0``.
 """
 
 from __future__ import annotations
@@ -36,51 +22,12 @@ from src.core.signal_contract import Signal, SignalSink, read_records
 SHORT_S = 0.005
 LONG_S = 0.030
 
-# HOW MANY TIMES EACH WORKLOAD IS MEASURED, and why the figure compared
-# is the MINIMUM of the samples rather than a single reading.
-#
-# A scheduling pause can only ADD to an elapsed-time reading. The
-# operating system can take the thread away inside the bracketed region
-# and hand it back later; it cannot hand back time that was never
-# spent. So every sample is the true cost plus non-negative noise, and
-# the smallest of several samples is the closest estimate of the true
-# cost this machine can give. Averaging would not do it -- an average
-# carries the noise it was given -- and raising the ratio would not do
-# it either, because the ratio is not what is wrong.
-#
-# WHY THE CLASS NEEDED IT. On 2026-08-19 the release gate went red on
-# the sibling of this test in tests/test_wires_received_duration.py:
-# one failure in a 7012-test run, with the same file passing 45 times
-# in isolation on the same commit. Reproduced 2026-08-20 by burning
-# 1.5 ms inside the SHORT measurement, which is where a real scheduler
-# pause would land. That is the whole failure: a single-sample
-# measurement of a small interval, taken once, on a loaded Windows box
-# with the live application trading.
-#
-# THIS SITE, MEASURED 2026-08-20, 60 single readings off the real
-# emitter: a 0.005 s compute recorded 0.0050007 s to 0.0050099 s and a
-# 0.030 s compute recorded 0.0300008 s to 0.0300244 s. The lever is what the bracket is asked to see, so
-# a pause of 10 ms inside the SHORT region is all it takes to close
-# a gap that reads as comfortable.
+# Readings per workload. A pause only adds, so the minimum is the closest
+# estimate of the real compute.
 SAMPLES = 5
 
-# THE FLOOR, and the measurement that says it is not optional.
-#
-# Move the stop clock above the work and the bracket spans nothing:
-# every reading collapses to the cost of two `time.monotonic()` calls,
-# and a ratio between two numbers that small is a coin flip rather than
-# a measurement. Measured 2026-08-20 with the stop clock planted above
-# the work at this exact site, 120 readings: every reading fell between 0.0 s and 3.0e-07 s. The bare ratio
-# ACCEPTED 2 of 30 pairs, and the minimum of five samples accepted 6 of 30.
-#
-# READ THAT SECOND FIGURE AGAIN. The minimum is the right estimator
-# against a stall and it does NOT close the dead-clock hole; at some
-# sites it widens it, because it drives the short reading to a hard
-# zero and any positive long reading then beats twice zero. The floor
-# is a SECOND rule, never an alternative to the first.
-#
-# Half the long lever separates the two populations by four orders of
-# magnitude without standing near either.
+# A dead clock reads under 3.0e-07 s, which the ratio alone accepts. The
+# long reading must also clear this floor.
 LONG_FLOOR_S = LONG_S / 2.0
 
 
@@ -231,11 +178,8 @@ def test_the_site_predicate_rejects_a_bracket_that_spans_nothing() -> None:
         LONG_S, SHORT_S
     ), "going backwards must not read as tracking"
 
-    # THE DEAD CLOCK, and the measured reason this site carries a floor
-    # the shared predicate does not. This pair is a real one, harvested
-    # 2026-08-20 with the stop clock planted above the work. `_tracks`
-    # accepts it. The floor rejects it. That is an addition to
-    # `_tracks`, never a relaxation of it.
+    # `_tracks` accepts a dead-clock pair; the floor in
+    # `_tracks_the_operation` rejects it.
     assert _tracks(
         0.0, 3.0e-07
     ), "the shared predicate is expected to accept a dead clock here"
@@ -340,10 +284,8 @@ def test_ta_07_003_carries_a_duration_that_tracks_the_real_compute():
             for _ in range(SAMPLES):
                 engine.compute_all([], "1h")
     finally:
-        # RESTORE THE PREVIOUS SINK, never None. `set_sink` is process-global
-        # and ta_engine gates its whole instrumentation block on the sink
-        # being installed, so leaking one silently changes the code path for
-        # every test module collected afterwards.
+        # `set_sink` is process-global and ta_engine gates its whole
+        # instrumentation block on a sink being installed.
         sc.set_sink(previous)
 
     computed = [
@@ -351,9 +293,6 @@ def test_ta_07_003_carries_a_duration_that_tracks_the_real_compute():
     ]
     assert len(computed) == 2 * SAMPLES, computed
 
-    # The MINIMUM of each workload's samples, for the reason recorded
-    # at `SAMPLES`: a pause can only ADD to an elapsed-time reading, so
-    # the smallest sample is the closest estimate of the real compute.
     short = min(r.duration for r in computed[:SAMPLES])
     long_ = min(r.duration for r in computed[SAMPLES:])
     assert _tracks_the_operation(
@@ -369,19 +308,6 @@ def test_ta_07_003_carries_a_duration_that_tracks_the_real_compute():
         for r in sink.records()
         if r.name != "ta.07.003.postcondition.computed" and r.duration is not None
     ]
-
-
-# ── Defect A: the READER, not the dataclass default ───────────────────
-#
-# `test_a_record_written_before_this_field_existed_reads_back_as_none`
-# above builds a `Signal(...)` by hand, so it asserts the DATACLASS
-# DEFAULT and never reaches `read_records` -- which is the only code a
-# record on the operator's disk actually comes back through. Measured
-# 2026-08-20 on this branch: with the reader's `duration=` restore
-# DELETED, and again with an absent duration restored as 0.0, every
-# test in this file still passed. The writer half was pinned -- drop
-# the key from `to_json` and a test fails -- and the reader half was
-# not. These three hold the reader itself.
 
 
 def _payload(with_key: bool, duration: Optional[float] = None) -> dict:
@@ -666,9 +592,6 @@ def test_a_huge_int_duration_no_longer_destroys_the_record():
     assert neg.duration is None
     assert len(sink.records()) == 2
 
-    # THE COUNTER IS THE OTHER HALF. A refusal nobody counted is the
-    # silent degrade this counter exists to prevent, and neither of
-    # these two reached it before -- the record died first.
     assert sink.health()["duration_rejected"] == 2
 
 
@@ -774,24 +697,6 @@ def test_the_guard_function_itself_raises_for_no_input():
     assert _as_measured_duration(1 / 3) == 0.3333333
 
 
-# ── Defect E: the DISK guard was the same hole, at a worse price ──────
-#
-# `_as_float` is the reader's counterpart to `_as_measured_duration`,
-# and it carried the identical unguarded `float(value)` on its int
-# branch. The price is not the same. On the write path a refused value
-# cost ONE record, because `emit`'s blanket handler caught the raise.
-# `read_records` has two handlers and neither is blanket: an inner
-# `except json.JSONDecodeError` around `json.loads` ONLY, and an outer
-# `except OSError`. `_as_float` runs after the decode, inside the
-# `Signal(...)` construction, so OverflowError is caught by neither. It
-# leaves `read_records` entirely. ONE bad line therefore did not cost
-# one line -- it cost the whole file, and the caller with it.
-#
-# Measured on this branch before the fix, over a three-line file:
-#   read_records RAISED OverflowError: int too large to convert to float
-# and zero of the three records came back.
-
-
 def _huge(sign: str = "") -> str:
     """A JSON integer literal wider than any float, as written text.
 
@@ -823,9 +728,7 @@ def _sandwich(tmp_path, key: str, bad_literal: str):
     path = tmp_path / ("sandwich_" + key + ".jsonl")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    # THE FIXTURE IS ONLY A FIXTURE IF THE MIDDLE LINE REALLY CARRIES A
-    # NUMBER NO FLOAT CAN HOLD. A typo that made it a string would
-    # exercise the string branch and pass for the wrong reason.
+    # The middle line must hold an int literal no float can take.
     middle = json.loads(path.read_text(encoding="utf-8").splitlines()[1])
     assert type(middle[key]) is int, "the fixture is not an int literal"
     with pytest.raises(OverflowError):
@@ -850,11 +753,7 @@ def test_a_huge_dt_on_one_line_no_longer_costs_the_whole_file(tmp_path):
         0.75,
     ), "a neighbour of the bad line lost its own good value"
 
-    # THE FIELD, AND ONLY THE FIELD. None is this module's existing
-    # spelling for "not a usable number" -- what `_as_float` already
-    # returns for a string, a list or a bool. An int too wide for a
-    # float joins that class rather than being promoted into a
-    # record-level or a file-level failure.
+    # None is what `_as_float` already returns for a string, a list or a bool.
     assert back[1].dt is None
     assert back[1].dt != 0.0, "an unusable interval was invented as zero"
     assert (
