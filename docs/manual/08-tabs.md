@@ -1285,6 +1285,26 @@ Detail: [08-tabs/settings.md](08-tabs/settings.md).
 Six rows carry the defaults a new bot starts from, not a running bot's
 settings.
 
+Position Distance - Sets the spacing a new bot puts between its positions.
+Key `position_distance_pct`, 1.0 % to 50.0 %, at 2.0 %.
+
+Increment Style - Chooses whether that spacing stays even or widens on a
+curve. Key `increment_style`, linear or logarithmic, at linear.
+
+Default Positions - Sets how many positions a new bot opens with. Key
+`default_position_count`, 1 to 100, at 10.
+
+Default Target Balance - Sets the dollar figure the wizard's own Target
+Balance field opens at. Key `default_target_balance`, $1.00 to $1,000,000.00,
+at $200.00.
+
+Bot Visibility - Chooses whether a new bot rests its orders on the book or
+tracks them inside the platform. Key `bot_visibility`, orderbook or internal,
+at orderbook.
+
+Enable aggressive trading mode - Starts a new bot pricing for an immediate
+fill. Key `aggressive_trading`, a checkbox, off.
+
 `src/gui/settings_dialog.py` — `_create_trading_tab`
 
 ```python
@@ -1325,18 +1345,60 @@ self._default_balance.setValue(
 )
 ```
 
+One of the six reaches a new bot. The wizard's parameter page opens its Target
+Balance field at the stored default target balance, and no bot builder reads
+the other five.
+
+Position Distance carries a second gap. Its key is one of eleven names the bot
+factory strips before it constructs a config, so the value cannot reach a bot
+by any route whatever the page stores.
+
+`src/trading/container/config.py` — `_DEPRECATED_KWARGS`
+
+```python
+_DEPRECATED_KWARGS: frozenset = frozenset(
+    {
+        "bulk_trading",  # renamed to stack_mode
+        "bulk_partial_on_return",
+        "market_check_interval",
+        "position_count",
+        "position_distance_pct",
+        "fold_mode",
+        "fold_target",
+        "fold_target_count",
+        "profit_fold_pct",
+        "distribute_target",
+        "distribute_target_count",
+    }
+)
+```
+
 ### Settings > Profit Folding
 
 ![Settings, the Profit Folding page.](p37-i0.png)
 
-One master checkbox and three groups of radio buttons.
+One master checkbox and three groups of radio buttons, eleven controls in all.
+Every key below sits inside one stored `profit_folding` group.
 
-- Profit Folding / Upward Distribution Active, the master switch.
-- Distribution Mode: Equal distribution or Logarithmic distribution.
-- Profit Folding Target: fold to ALL buy positions, to a count of them, or to
-  the most recent. The count spinbox holds 1 to 100.
-- Upward Distribution Target: the same three choices on the sell side, with its
-  own count.
+Profit Folding / Upward Distribution Active - Turns the whole page on. Key
+`active`, a checkbox, clear at build and set to on when the stored group
+loads.
+
+Distribution Mode - Chooses whether a fold spreads evenly across the chosen
+positions or on a curve. Key `mode`, equal or logarithmic, at equal.
+
+Profit Folding Target - Chooses which buy positions a fold reaches: all of
+them, a counted number of them, or the most recent. Key `fold_target`, at all
+buy positions.
+
+Fold to X# of buy positions - Sets that counted number. Key
+`fold_target_count`, 1 to 100, at 5.
+
+Upward Distribution Target - The same three choices on the sell side. Key
+`distribute_target`, at all sell positions.
+
+Distribute to X# of sell positions - Sets the sell-side count. Key
+`distribute_target_count`, 1 to 100, at 5.
 
 Save collapses the two target groups into one dictionary.
 
@@ -1361,6 +1423,14 @@ pf = self._sm.get("profit_folding", {})
 self._folding_active.setChecked(pf.get("active", True))
 ```
 
+Issue #322 carries that half of it. Four of the six keys then fail a second
+time further down: the two target names and their two counts are four of the
+eleven the bot factory strips, listed under Settings > Trading above. A group
+that did round-trip still could not carry those four to a bot.
+
+In development. Which of the six the load path should restore has not been
+settled against the rest of the dialog, so nothing is proposed here.
+
 ### Settings > TA Indicators
 
 ![Settings, the TA Indicators page.](p38-i0.png)
@@ -1368,6 +1438,10 @@ self._folding_active.setChecked(pf.get("active", True))
 One slider per weight, twelve in all, each labelled from its key and each
 running 0.00 to 2.00. The value beside a slider follows it as it moves, and the
 starting values are the weights themselves.
+
+Indicator weight - Sets how far one indicator's vote counts against the other
+eleven when the engine totals a direction. The key behind each slider, and the
+value it starts at, are the twelve below.
 
 `src/trading/ta_engine.py` — `DEFAULT_WEIGHTS`
 
@@ -1396,6 +1470,13 @@ the defaults above, and no construction site under `src/` supplies one from the
 settings store. The page label promises an adjustment the engine never sees.
 Issue #423 carries it.
 
+`src/trading/ta_engine.py` — `VotingEngine.__init__`, the fallback every
+construction site takes
+
+```python
+self.weights = weights or DEFAULT_WEIGHTS.copy()
+```
+
 ### Settings > Phantom Bots
 
 ![Settings, the Phantom Bots page.](p39-i0.png)
@@ -1404,6 +1485,19 @@ The master checkbox, eleven timeframe boxes — 1m, 5m, 15m, 30m, 1h, 2h, 4h, 6h
 12h, 1d and 1w — and one Higher-TF Lock Settings group holding Lock duration in
 candles, 1 to 10. The build checks 5m, 15m, 1h, 4h and 1d, which is the state
 the figure shows.
+
+Enable Phantom Balance Bots for Scrumming - Turns the phantom overrides on for
+a new bot. Per-bot key `enable_phantoms`, a checkbox, checked at build.
+
+Default Phantom Timeframes - Chooses which charts a phantom watches. Per-bot
+key `phantom_timeframes`, eleven boxes, five of them checked at build.
+
+Lock duration (candles) - Sets how many candles a higher-timeframe lock holds
+an opposing trade back for. Per-bot key `lock_candle_count`, 1 to 10, at 2.
+
+Those eleven boxes are the eleven timeframes the voting engine already weights,
+from 1m at 0.3 up to 1w at 1.6, so a slower chart counts for more when several
+are combined.
 
 These three controls carry the same gap the TA Indicators page carries. Save
 reads none of them, the load path restores none, and the schema refuses a key
@@ -1419,24 +1513,51 @@ with self._lock:
     self._save()
 ```
 
-The per-bot equivalents in the wizard's phantom page and in the Live Bot
-Settings dialog do persist, through the bot's own config.
+Issue #423 carries this page. The per-bot equivalents do persist: the wizard's
+phantom page emits the same three names into the bot's own config, and the Live
+Bot Settings dialog edits them there.
+
+`src/gui/bot_wizard.py` — `PhantomConfigPage.get_config`, the three keys that
+do reach a bot
+
+```python
+return {
+    "enable_phantoms": self._enable.isChecked(),
+    "phantom_timeframes": checked,
+    "lock_candle_count": self._lock_candles.value(),
+}
+```
 
 ### Settings > Theme
 
 ![Settings, the Theme page.](p40-i0.png)
 
-The theme picker, the accent colour field and a Font Settings group.
+The theme picker, the accent colour field and a Font Settings group. Six
+controls and one preview.
 
-- Visual Theme lists five display names: Cyberpunk Dark, Neon Light, Classic
-  Terminal, Minimal Modern and Glass & Metal.
-- Accent Color is a free-text field, placeholder `#00ffcc`.
-- Font Family is an editable combo over twelve named families.
-- Base Font Size, 8 pt to 24 pt. Heading Font Size, 10 pt to 32 pt. Log Font
-  Size, 8 pt to 18 pt.
-- Preview redraws in the chosen family and base size as either changes.
+Visual Theme - Chooses the palette the whole window paints in. Key `theme`,
+five display names — Cyberpunk Dark, Neon Light, Classic Terminal, Minimal
+Modern and Glass & Metal — at Cyberpunk Dark.
 
-The five come from one mapping built off the five theme objects.
+Accent Color - Sets the highlight colour. Key `accent_color`, a free-text
+field, at `#00ffcc`.
+
+Font Family - Sets the typeface for application text. Key `font_family`, an
+editable combo over twelve named families, at Segoe UI.
+
+Base Font Size - Sets the size of ordinary interface text. Key `font_size`,
+8 pt to 24 pt, at 11 pt.
+
+Heading Font Size - Sets the size of headings and stat-card values. Key
+`heading_font_size`, 10 pt to 32 pt, at 14 pt.
+
+Log Font Size - Sets the size of the Activity Log and API Log text. Key
+`log_font_size`, 8 pt to 18 pt, at 10 pt.
+
+Preview redraws in the chosen family and base size as either changes. It is a
+sample line, not a setting, and nothing stores it.
+
+The five theme names come from one mapping built off the five theme objects.
 
 `src/gui/theme_engine.py` — `THEMES`
 
@@ -1463,20 +1584,51 @@ Save writes the theme, the Accent Color field and all four font values.
 The load path reads back the theme and the accent field only, so the four font
 rows open at Segoe UI, 11, 14 and 10 whatever was stored.
 
+Of the six, the theme alone reaches the window. `main.py` reads it at startup,
+and the window reads it again in `_on_settings_changed` when the dialog saves.
+
+The other five are stored and never read again. Each palette carries its own
+typeface in the theme object it declares, so the theme decides the font and the
+four font rows decide nothing. The accent field has the same shape: declared,
+written, read back into its own line edit, and painted nowhere.
+
+`src/core/settings.py` — `AppSettings`, the five that are stored and unread
+
+```python
+accent_color: str = "#00ffcc"
+
+# These four mirror the font widgets in settings_dialog._create_theme_tab.
+font_family: str = "Segoe UI"
+font_size: int = 11
+heading_font_size: int = 14
+log_font_size: int = 10
+```
+
 ### Settings > Logging
 
 ![Settings, the Logging page.](p41-i0.png)
 
-Two checkboxes and four periodicity boxes:
+Two checkboxes and four periodicity boxes. Every key below sits inside one
+stored `data_logging` group.
 
-- Log TA signal samples with all values and timestamps, checked at build.
-- Highlight entries near Scrumming Bot trades, checked at build.
-- P/L Log Periodicity: 24 Hours, 1 Week, 1 Month and 1 Year. The build checks
-  the first two.
+Log TA signal samples with all values and timestamps - Writes each indicator
+reading out with its value and its time. Key `ta_signal_logging`, a checkbox,
+checked at build.
+
+Highlight entries near Scrumming Bot trades - Marks the log lines that sit
+close to a fire, so a decision can be read in its own context. Key
+`highlight_trade_proximity`, a checkbox, checked at build.
+
+P/L Log Periodicity - Chooses the windows a profit and loss figure is
+summarised over: 24 Hours, 1 Week, 1 Month and 1 Year. Key
+`active_periodicities`, four boxes written as a list, with the first two
+checked at build.
 
 Save collapses all six into one dictionary holding the two flags and the list
 of active periodicities. The load path reads none of them back, so every open
-shows the build state rather than the stored one.
+shows the build state rather than the stored one. No reader outside the dialog
+reads the group either, which leaves the six controls writing to a key nothing
+consults. Issue #322 carries this page.
 
 In development. What the load path should restore for this page has not been
 settled against the rest of the dialog, so nothing is proposed here.
@@ -1488,14 +1640,39 @@ settled against the rest of the dialog, so nothing is proposed here.
 The master switch, eight event checkboxes, a volume slider and six test
 buttons. Every checkbox is checked at build.
 
-- Buy order fills, Sell order fills, Errors, Bot state changes, Scrum/Fold
-  Fire, Tracking beeps, P/L increase and Accumulation. Each names its sound in
-  the label, and six of the eight carry a tooltip naming when it fires: the
-  tracking beep is silent in SEARCH, slow in TRACK and fast in FIRE, and the
-  water drip fires on FOLD alone.
-- SFX Volume, 0 % to 100 %, at 70 %.
-- Test Buy, Test Sell, Test Fire, Test Track, Test Profit and Test Drip play one
-  sample each.
+Each checkbox names its sound in its own label, and the key behind each control
+is a field of the sound configuration the block below builds.
+
+Enable sound notifications - Turns every sound on or off at once. Key
+`enabled`, on.
+
+Buy order fills - Plays a low rising tone when a buy fills. Key `buy_sound`,
+on.
+
+Sell order fills - Plays a bright bell when a sell fills. Key `sell_sound`, on.
+
+Errors - Plays an alert tone on an error. Key `error_sound`, on.
+
+Bot state changes - Plays a click when a bot starts, pauses or stops. Key
+`bot_state_sound`, on.
+
+Scrum/Fold Fire - Plays a rifle shot when a scrum or a fold executes, and on a
+Manual Fire. Key `fire_sound`, on.
+
+Tracking beeps - Paces a beep by the scrum phase: silent in SEARCH, slow in
+TRACK, fast in FIRE. Key `track_sound`, on.
+
+P/L increase - Plays coins dropping into a bucket on any trade that realised a
+profit. Key `profit_sound`, on.
+
+Accumulation - Plays a water drip on a FOLD, and on nothing else. Key
+`drip_sound`, on.
+
+SFX Volume - Sets how loud every sample plays. Key `volume`, 0 % to 100 %, at
+70 %.
+
+Test Buy, Test Sell, Test Fire, Test Track, Test Profit and Test Drip play one
+sample each. They are buttons, not settings.
 
 One handler is the only path from this page to the engine. It builds a
 configuration from every checkbox and the slider, pushes it in and clears the
@@ -1521,7 +1698,23 @@ new_cfg = SoundConfig(
 
 That path runs when the slider moves or a test button is pressed, and at no
 other time. Save reads no widget on this page and the schema declares no sound
-field, so nothing here survives the dialog closing. Issue #423 carries it.
+field, so nothing here survives the dialog closing. A checkbox cleared and the
+dialog saved comes back checked. Issue #423 carries it.
+
+`src/core/sound_engine.py` — `SoundConfig`, the ten fields and their defaults
+
+```python
+enabled: bool = True
+buy_sound: bool = True
+sell_sound: bool = True
+error_sound: bool = True
+bot_state_sound: bool = True
+fire_sound: bool = True
+track_sound: bool = True
+profit_sound: bool = True
+drip_sound: bool = True
+volume: float = 0.7
+```
 
 ### Settings > SMS
 
@@ -1529,15 +1722,62 @@ field, so nothing here survives the dialog closing. Issue #423 carries it.
 
 A scrolling page holding the master switch and three groups.
 
-- SMS Provider: Provider, offering Email-to-SMS Gateway or Twilio API, and
-  Phone Number.
-- Email Gateway Settings: Carrier, then Gateway Email, SMTP Username and SMTP
-  Password. The password field masks its input.
-- Notification Events: Buy fills, Sell fills, Bot state changes, API errors and
-  failures, P/L threshold alerts with its dollar amount, Low balance warnings,
-  and Exchange connection status. The first four are checked at build.
-- Rate Limiting, below the area the figure shows: Max messages per hour, 1 to
-  100 at 20, and Min time between messages, 5 to 300 seconds at 30.
+Seventeen controls, and the key behind each is a field of the message
+configuration the engine reads.
+
+Enable SMS notifications - Turns every message on or off at once. Key
+`enabled`, clear at build.
+
+Provider - Chooses how a message leaves the machine: a carrier's email gateway,
+or the Twilio web interface. Key `provider`, at the email gateway. Nothing
+loads a stored choice into the picker, so it opens on the first entry whatever
+the figure shows.
+
+Phone Number - Sets the number every message goes to. Key `phone_number`, empty,
+with a placeholder showing the international shape.
+
+Carrier - Names the carrier whose gateway address a message would be built for.
+Ten entries, opening on the first. It has no stored field of its own, and
+nothing on the page reads the choice.
+
+Gateway Email - Sets the full gateway address a message is sent to. Key
+`gateway_email`, empty.
+
+SMTP Username - Sets the mailbox a message is sent from. Key `smtp_username`,
+empty.
+
+SMTP Password - Sets that mailbox's application password. Key `smtp_password`,
+masked, empty.
+
+Buy fills - Sends a message when a buy fills. Key `notify_buy_fills`, checked
+at build.
+
+Sell fills - Sends a message when a sell fills. Key `notify_sell_fills`,
+checked at build.
+
+Bot state changes - Sends a message when a bot starts, stops or errors. Key
+`notify_bot_state_changes`, checked at build.
+
+API errors and failures - Sends a message when a venue call fails. Key
+`notify_errors`, checked at build.
+
+P/L threshold alerts - Sends a message when profit or loss passes a dollar
+figure. Key `notify_pl_threshold`, clear at build.
+
+P/L threshold - Sets that dollar figure. Key `pl_threshold_amount`, $1 to
+$100,000, at $100.
+
+Low balance warnings - Sends a message when a balance runs low. Key
+`notify_balance_warning`, clear at build.
+
+Exchange connection status - Sends a message when a venue connects or drops.
+Key `notify_connection_status`, clear at build.
+
+Max messages per hour - Caps how many messages one hour may carry. Key
+`max_messages_per_hour`, 1 to 100, at 20. Below the area the figure shows.
+
+Min time between messages - Sets the wait between two messages. Key
+`cooldown_seconds`, 5 to 300 seconds, at 30. Below the area the figure shows.
 
 The Carrier list fills from one mapping of carrier name to gateway address.
 
@@ -1564,21 +1804,48 @@ Twilio credentials the send path reads.
 
 Issue #423 carries the page.
 
+`src/core/sms_engine.py` — `SMSConfig`, the three credentials no row fills
+
+```python
+twilio_sid: str = ""
+twilio_auth_token: str = ""
+twilio_from_number: str = ""
+```
+
 ### Settings > AI Monitor
 
 ![Settings, the AI Monitor page.](p44-i0.png)
 
 A scrolling page holding four groups.
 
-- Claude API Connection: Anthropic API Key, masked, and Check interval, 0.5 to
-  24.0 hours at 4.0.
-- Handshake Authentication: a note naming what each phrase does, then Connect
-  phrase and Confirm phrase.
-- Monitor Behavior: Enable AI Monitor feedback loop, clear at build, then
-  Auto-handshake on first analysis and Log AI feedback to trade journal, both
-  checked.
-- Connection Status, below the area the figure shows: a status line, a journal
-  hash, a completed-check count and a Test Handshake button.
+Seven settings, and every key below sits inside one stored `ai_monitor` group.
+
+Anthropic API Key - Holds the key the monitor authenticates with. Key
+`api_key`, masked, empty.
+
+Check interval - Sets how long the monitor waits between two reviews. Key
+`interval_hours`, 0.5 to 24.0 hours, at 4.0.
+
+Connect phrase - Sets the phrase the platform puts into the prompt it sends.
+Key `connect_phrase`, empty.
+
+Confirm phrase - Sets the phrase the answer must carry back to prove it came
+from the same conversation. Key `confirm_phrase`, empty. Change both phrases
+together and keep both secret.
+
+Enable AI Monitor feedback loop - Turns the monitor on. Key `enabled`, clear at
+build.
+
+Auto-handshake on first analysis - Runs the phrase exchange on the first review
+rather than waiting for one to be asked for. Key `auto_handshake`, checked at
+build.
+
+Log AI feedback to trade journal - Writes each answer into the trade journal.
+Key `log_feedback`, checked at build.
+
+Connection Status closes the page, below the area the figure shows: a status
+line, a journal hash, a completed-check count and a Test Handshake button. The
+three readings report and the button acts. None of the four stores anything.
 
 Save writes all seven controls into one dictionary and the load path reads all
 seven back, which makes this the one page besides User whose whole state
@@ -1608,4 +1875,24 @@ self._ai_status.setText("Settings saved — handshake runs on next bot cycle")
 self._ai_status.setStyleSheet("color: #00ddff; font-weight: bold;")
 ```
 
-The button reports the fields it read, never a venue answer.
+The button reports the fields it read, never a venue answer. Issue #327 carries
+that.
+
+Six of the seven do reach the engine. `configure_live_monitor` in
+`src/trading/bot_container.py` reads five of them and builds or clears the
+monitor, and the main window reads the journal switch when an answer arrives.
+The auto-handshake box is the seventh: written, read back, and read by nothing
+else.
+
+`src/trading/bot_container.py` — `configure_live_monitor`, the five keys it
+reads
+
+```python
+self._live_monitor = LiveMonitor(
+    api_key=settings["api_key"],
+    journal=journal,
+    interval_hours=settings.get("interval_hours", 4.0),
+    connect_phrase=settings.get("connect_phrase", ""),
+    confirm_phrase=settings.get("confirm_phrase", ""),
+)
+```

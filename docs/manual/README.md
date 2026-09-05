@@ -29,12 +29,10 @@ meaning; the Part column below is what places a file in the manual.
 | [02-legal.md](02-legal.md) | 1 | 2 to 4 | Copyright, contact, legal disclaimers, algorithmic-trading risk |
 | [03-executive-summary.md](03-executive-summary.md) | 1 | 5 to 7 | Executive summary, origin of the method, support addresses |
 | [04-manual-parts.md](04-manual-parts.md) | 1 | 8 to 9 | The manual's own part list and tab list |
-| [17-legacy-overview.md](17-legacy-overview.md) | 1 | — | The harvest-fold summary, the bot types that run, and the four headline counts re-measured |
 | [05-novel-concepts.md](05-novel-concepts.md) | 2 | 10 to 14 | Novel concepts and patent candidate catalogue, entries 1 to 17 |
 | [06-trading-tab.md](06-trading-tab.md) | 3 | 14 to 27 | System architecture, then the Trading Tab walkthrough |
 | [07-indicators.md](07-indicators.md) | 3 | 27 to 29 | Indicator Voting Panel and the twelve indicators |
 | [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Main Window, Simulator, Paper Trader, Proof of Accumulation, Market Inspector, Bot Swarm, Asset Charts, History, Console, System Status, and the eleven Settings pages |
-| [16-operator-settings.md](16-operator-settings.md) | 3 | — | Every Scrumming and Extractor setting, field by field, with the eleven that never reach the bot |
 | [13-live-evidence.md](13-live-evidence.md) | 4 | — | The readers of the year-to-date venue record, the connectors, and what the exchange tests reach |
 | [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
 | [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
