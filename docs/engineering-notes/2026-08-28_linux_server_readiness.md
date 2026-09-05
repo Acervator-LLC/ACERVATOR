@@ -191,7 +191,7 @@ call in the tree is either off the product path or platform-guarded:
 | `lsblk` | `src/core/usb_auth.py:331` | Linux branch | only via the USB widget | silent — bare `except`, defaults substituted |
 | `ffmpeg` | `src/gui/screen_recorder.py:73,424,469` | any | **no** — no importer | loud in the log, `None` returned |
 | `xdg-open` / `open` | `src/gui/screen_recorder.py:740,742` | Linux / macOS arms exist | **no** | `logger.warning` |
-| `git`, `powershell`, `py-spy` | `tools/gate.py:66`, `BUILD.py:218`, `acervator_watchdog.py:103` | dev + build tooling | **no** | n/a |
+| `git`, `powershell`, `py-spy` | `tools/gate.py:66`, `tools/build_launcher.py`, `acervator_watchdog.py:103` | dev + build tooling | **no** | n/a |
 
 ---
 

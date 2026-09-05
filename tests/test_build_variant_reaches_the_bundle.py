@@ -1,9 +1,10 @@
-"""One variant name travels from ``BUILD.py`` to the bundle that reports it.
+"""One variant name travels from a build entry point to the bundle that reports it.
 
 ``ENV_VAR`` is the single environment variable ``requested_variant`` and
-``resolve_variant`` both read, ``parse_variants`` puts ``--variant`` on the
+``resolve_variant`` both read, ``run_build`` puts the chosen names on the
 ``build_windows.ps1`` argv, and the spec bakes the answer into the bundle.
-Every build claims a name of its own, and the ones before it stay on disk.
+``BUILD.py`` chooses through ``parse_variants``; ``React_BUILD.py`` and
+``Qt_BUILD.py`` pin ``VARIANT`` and read no argv at all.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from src._variant import (
     resolve_variant,
 )
 from tests.fixtures.spec_runner import run_spec
+from tools import build_launcher
 from tools.build_variants import (
     APP_NAME,
     requested_variant,
@@ -43,6 +45,12 @@ REPO = Path(__file__).resolve().parents[1]
 WIN_SPEC = REPO / "Acervator_win.spec"
 MAC_SPEC = REPO / "Acervator_mac.spec"
 SPECS = ["Acervator_win.spec", "Acervator_mac.spec"]
+
+# The entry points that take no argument, and the surface each one pins.
+PINNED_ENTRY_POINTS = [
+    pytest.param("React_BUILD.py", REACT, id="react"),
+    pytest.param("Qt_BUILD.py", QT, id="qt"),
+]
 
 RETIRED_ENV_VAR = "ACERVATOR_BUILD_VARIANT"
 CLI = [sys.executable, "-m", "tools.build_variants"]
@@ -79,22 +87,42 @@ def run_cli(*args: str) -> subprocess.CompletedProcess:
     )
 
 
-@pytest.fixture(scope="module")
-def launcher():
-    """Import ``BUILD.py`` under its own name, restoring the working directory.
+def load_entry_point(path: Path, name: str):
+    """Import a root build entry point under ``name``, restoring the directory.
 
-    ``BUILD.py`` changes directory at import, which no other test may inherit.
+    ``launch`` changes directory when it runs, which no other test may inherit.
     """
     original = os.getcwd()
     try:
-        spec = importlib.util.spec_from_file_location(
-            "acervator_build_launcher", REPO / "BUILD.py"
-        )
+        spec = importlib.util.spec_from_file_location(name, path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
     finally:
         os.chdir(original)
     return module
+
+
+def variant_token_for(variants: tuple[str, ...]) -> str:
+    """Return the ``-Variant`` token ``run_build`` puts on the builder's argv."""
+    calls = []
+
+    def record(argv, **_keyword):
+        calls.append(argv)
+        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(build_launcher, "powershell_exe", lambda: "powershell.exe")
+        patched.setattr(subprocess, "run", record)
+        build_launcher.run_build(variants)
+    argv = calls[0]
+    assert "-Variant" in argv, f"no variant reached build_windows.ps1: {argv}"
+    return argv[argv.index("-Variant") + 1]
+
+
+@pytest.fixture(scope="module")
+def launcher():
+    """Import ``BUILD.py`` under a private name."""
+    return load_entry_point(REPO / "BUILD.py", "acervator_build_entry")
 
 
 # One environment variable, read by the build and by the application
@@ -216,9 +244,7 @@ def test_the_launcher_refuses_an_unknown_variant(launcher):
 
 
 @pytest.mark.parametrize("variant", VARIANTS)
-def test_the_launcher_hands_the_variant_to_the_windows_builder(
-    launcher, variant, monkeypatch
-):
+def test_the_launcher_hands_the_variant_to_the_windows_builder(variant, monkeypatch):
     """``BUILD.py`` named no variant at all before ``parse_variants``."""
     calls = []
 
@@ -227,29 +253,145 @@ def test_the_launcher_hands_the_variant_to_the_windows_builder(
         calls.append(argv)
         return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr(launcher, "powershell_exe", lambda: "powershell.exe")
+    monkeypatch.setattr(build_launcher, "powershell_exe", lambda: "powershell.exe")
     monkeypatch.setattr(subprocess, "run", record)
 
-    assert launcher.run_build((variant,)) is True, "the launcher reported failure"
+    assert build_launcher.run_build((variant,)) is True, "the launcher reported failure"
     argv = calls[0]
     assert "-Variant" in argv, f"no variant reached build_windows.ps1: {argv}"
     assert argv[argv.index("-Variant") + 1] == variant
 
 
-def test_the_launcher_joins_several_variants_into_one_argument(launcher, monkeypatch):
+def test_the_launcher_joins_several_variants_into_one_argument():
     """PowerShell binds one argv token to -Variant, so the names travel joined."""
-    calls = []
+    assert variant_token_for(tuple(VARIANTS)) == ",".join(VARIANTS)
 
-    def record(argv, **_keyword):
-        calls.append(argv)
-        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
 
-    monkeypatch.setattr(launcher, "powershell_exe", lambda: "powershell.exe")
-    monkeypatch.setattr(subprocess, "run", record)
+# React_BUILD.py and Qt_BUILD.py, which take no argument
 
-    launcher.run_build(tuple(VARIANTS))
-    argv = calls[0]
-    assert argv[argv.index("-Variant") + 1] == ",".join(VARIANTS)
+
+@pytest.mark.parametrize(("filename", "variant"), PINNED_ENTRY_POINTS)
+def test_a_pinned_entry_point_names_its_own_surface(filename, variant):
+    module = load_entry_point(REPO / filename, f"acervator_entry_{variant}")
+    assert module.VARIANT == variant, (
+        f"{filename} pins {module.VARIANT!r}; the operator double-clicks it "
+        f"expecting the {variant} surface"
+    )
+
+
+@pytest.mark.parametrize(("filename", "variant"), PINNED_ENTRY_POINTS)
+def test_an_argument_cannot_make_a_pinned_entry_point_build_the_other_surface(
+    filename, variant, monkeypatch
+):
+    """The argument that steers ``BUILD.py`` must reach nothing here."""
+    module = load_entry_point(REPO / filename, f"acervator_entry_argv_{variant}")
+    asked = []
+    monkeypatch.setattr(module, "launch", asked.append)
+    monkeypatch.setattr("builtins.input", lambda *_prompt: "")
+    monkeypatch.setattr(sys, "argv", [filename, "--variant", other_variant(variant)])
+
+    module.main()
+
+    assert asked == [(variant,)], (
+        f"{filename} asked to build {asked}; `--variant "
+        f"{other_variant(variant)}` on its command line must select nothing"
+    )
+
+
+def test_the_pin_check_reports_an_entry_point_that_names_the_other_surface(
+    tmp_path, monkeypatch
+):
+    """Control: the check above, driven at a file whose ``VARIANT`` is flipped."""
+    planted = tmp_path / "Flipped_BUILD.py"
+    planted.write_text(
+        "from src._variant import QT\n"
+        "from tools.build_launcher import launch\n"
+        "VARIANT = QT\n"
+        "def main():\n"
+        "    launch((VARIANT,))\n",
+        encoding="utf-8",
+    )
+    module = load_entry_point(planted, "acervator_entry_flipped")
+    asked = []
+    monkeypatch.setattr(module, "launch", asked.append)
+
+    module.main()
+
+    assert module.VARIANT != REACT, "the control does not differ from React_BUILD.py"
+    assert asked != [(REACT,)], "the check cannot tell the two surfaces apart"
+    assert asked == [(QT,)]
+
+
+@pytest.mark.parametrize(("filename", "variant"), PINNED_ENTRY_POINTS)
+def test_a_pinned_entry_points_surface_reaches_the_bundle(
+    filename, variant, tmp_path, monkeypatch
+):
+    """The whole path: the pin, the builder argv, the CLI, the spec, the bundle."""
+    module = load_entry_point(REPO / filename, f"acervator_entry_reach_{variant}")
+
+    token = variant_token_for((module.VARIANT,))
+    assert token == variant, f"{filename} put {token!r} on the builder argv"
+
+    chosen = run_cli("select", "--variant", token)
+    assert chosen.returncode == 0, chosen.stderr
+    assert chosen.stdout.split() == [variant], (
+        f"build_windows.ps1 asks the CLI for {token!r} and it answered "
+        f"{chosen.stdout.split()}"
+    )
+
+    built = run_spec(WIN_SPEC, tmp_path, monkeypatch, variant=chosen.stdout.split()[0])
+    bundle = bundle_from(built["Analysis"], tmp_path)
+    monkeypatch.setattr(_variant, "is_frozen", lambda: True)
+    monkeypatch.setenv(ENV_VAR, other_variant(variant))
+    reported = resolve_variant(bundle)
+    assert reported == variant, (
+        f"{filename} built the {variant} surface and the bundle reports "
+        f"{reported!r}"
+    )
+
+
+@pytest.mark.parametrize(("filename", "variant"), PINNED_ENTRY_POINTS)
+def test_two_runs_of_one_entry_point_leave_two_runnable_builds(
+    filename, variant, tmp_path, monkeypatch
+):
+    """The troubleshooting case: run the build before this one against this one."""
+    module = load_entry_point(REPO / filename, f"acervator_entry_dist_{variant}")
+    dist = tmp_path / "dist"
+    dist.mkdir()
+
+    first = run_spec(WIN_SPEC, tmp_path, monkeypatch, variant=module.VARIANT)
+    first_name = first["COLLECT"]["name"]
+    first_exe = materialise(dist, first_name, b"first")
+
+    second = run_spec(WIN_SPEC, tmp_path, monkeypatch, variant=module.VARIANT)
+    second_name = second["COLLECT"]["name"]
+    second_exe = materialise(dist, second_name, b"second")
+
+    assert variant in first_name and variant in second_name
+    assert second_name != first_name, (
+        f"the second run of {filename} claimed {first_name!r}, the folder the "
+        f"first build holds"
+    )
+    assert first_exe.read_bytes() == b"first", "the rebuild overwrote the first build"
+    assert second_exe.read_bytes() == b"second"
+
+
+def test_only_the_folders_a_run_added_are_reported(tmp_path, monkeypatch):
+    """A rebuild reports what it produced, never the builds already in dist."""
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    for stale in ("Acervator-1.0.0-react", "Acervator-1.0.0-qt"):
+        materialise(dist, stale, b"old")
+    monkeypatch.setattr(build_launcher, "PROJECT_ROOT", str(tmp_path))
+
+    before = build_launcher.build_folder_names()
+    fresh = materialise(dist, "Acervator-2.0.0-react", b"new")
+
+    assert build_launcher.build_outputs(skip=frozenset(before)) == [str(fresh)]
+    assert len(build_launcher.build_outputs()) == 3, (
+        "the unfiltered read is the control; it must see all three builds or "
+        "the filtered read above proves nothing"
+    )
 
 
 # The spec bakes the variant, and a bundle reports it
