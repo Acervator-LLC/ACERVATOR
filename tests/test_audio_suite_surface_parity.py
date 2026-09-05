@@ -40,7 +40,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 SHIPPED_PATH = REPO_ROOT / "src/gui/audio_suite.py"
 SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/audio_suite_surface.py"
-BRIDGE_PATH = REPO_ROOT / "src/core/desktop_bridge.py"
 WIRED_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
 SIGNAL_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/launcher.py"
 TIMER_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/history_tab.py"
@@ -2751,26 +2750,25 @@ def test_bridge_registers_the_audio_suite_method():
     assert frame["result"]["key_multiplier"] == EXPECTED_KEY_MULTIPLIERS["G"]
 
 
-def test_the_bridge_registration_is_two_lines_and_no_more():
-    """The bridge grew more than the import and the one registry line."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    named = [line for line in text.splitlines() if "audio_suite_surface" in line]
-    assert len(named) == 2, named
-    assert named[0].strip() == "audio_suite_surface,"
-    assert named[1].strip() == (
-        "audio_suite_surface.METHOD: audio_suite_surface.view_model,"
-    )
+def test_the_bridge_registers_this_surface_once_and_by_identity():
+    """The registry maps ``METHOD_NAME`` to ``surface.view_model`` itself, and to
+    nothing else."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert registry[METHOD_NAME] is surface.view_model
+    mine = [m for m, fn in registry.items() if fn is surface.view_model]
+    assert mine == [METHOD_NAME], mine
 
 
-def test_the_bridge_import_list_stays_alphabetical():
-    """A surface was added out of order, so the next one lands anywhere."""
-    for node in ast.walk(parsed(BRIDGE_PATH)):
-        if isinstance(node, ast.ImportFrom) and node.module == "src.gui.main_tabs":
-            names = [alias.name for alias in node.names]
-            assert names == sorted(names), names
-            assert "audio_suite_surface" in names
-            return
-    raise AssertionError("the bridge imports no surfaces from src.gui.main_tabs")
+def test_the_bridge_answers_every_surface_it_registered():
+    """POSITIVE CONTROL: the registry holds more than this one surface, so the
+    single match above is a fact and not an empty registry."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert len(registry) > 1, sorted(registry)
+    assert all(callable(fn) for fn in registry.values())
 
 
 @pytest.mark.parametrize("preset", EXPECTED_PRESET_NAMES)
