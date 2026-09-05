@@ -12,7 +12,6 @@ and address below is invented, and every outward call is handed in.
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import logging
@@ -40,6 +39,14 @@ from tests.fixtures.host_fonts import (
     skip_unless_no_fonts,
     skip_unless_real_fonts,
 )
+from tests.fixtures.qt_wiring_counts import (
+    bus_subscriptions_watched,
+    connections_watched,
+    io_watched,
+    module_pulls,
+    qt_free,
+    timers_watched,
+)
 from tests.fixtures.quiet_news_ticker import (
     fetch_threads_running,
     install_quiet_ticker,
@@ -55,32 +62,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 STRIP_PATH = REPO_ROOT / "src/gui/crypto_news_ticker.py"
 SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/crypto_news_ticker_surface.py"
-WIRING_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-SIGNAL_CONTROL_PATH = REPO_ROOT / "src/gui/launcher.py"
-TIMER_CONTROL_PATH = REPO_ROOT / "src/gui/history_tab.py"
-BUS_CONTROL_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
-ELEMENT_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/dashboard_stat_card.py"
-NESTED_CLASS_CONTROL_PATH = REPO_ROOT / "src/gui/stock_main_window.py"
 
 PIXEL_SIZE = (620, 40)
-
-# Counts measured off the file by the same counter that is pointed at a
-# neighbour which really has one.
-STRIP_CONNECT_SITES = 7
-STRIP_TIMER_BUILDS = 2
-STRIP_THREAD_BUILDS = 1
-STRIP_SIGNAL_BUILDS = 2
-STRIP_BUS_SITES = 0
-STRIP_ELEMENT_BUILDS = 3
-STRIP_LAYOUT_BUILDS = 1
-STRIP_CURSOR_BUILDS = 1
-CONTROL_CONNECT_SITES = 1
-CONTROL_TIMER_BUILDS = 1
-CONTROL_SIGNAL_BUILDS = 3
-CONTROL_BUS_SITES = 2
-CONTROL_ELEMENT_BUILDS = 3
-CONTROL_LAYOUT_BUILDS = 2
-CONTROL_CURSOR_BUILDS = 0
 
 FROZEN_NOW = 1_700_000_000.5
 
@@ -1906,168 +1889,95 @@ def test_a_detached_report_reaches_nothing():
 
 # Counting what the shipped file wires, waits on, and builds
 
-WIDGET_NAMES_BUILT = (
-    "QWidget",
-    "QLabel",
-    "QPushButton",
-    "QTableWidget",
-    "QTableWidgetItem",
-    "QGroupBox",
-    "QFrame",
-    "QScrollArea",
-    "QLineEdit",
-    "QComboBox",
-    "QCheckBox",
-    "QSpinBox",
-    "QTextEdit",
-    "QProgressBar",
-    "QSplitter",
-    "QDialog",
-)
 
-LAYOUT_NAMES_BUILT = ("QHBoxLayout", "QVBoxLayout")
-CURSOR_NAMES_BUILT = ("QCursor",)
-
-
-def call_name(node):
-    """The name a call reaches for, or nothing when it reaches for none."""
-    if isinstance(node.func, ast.Name):
-        return node.func.id
-    if isinstance(node.func, ast.Attribute):
-        return node.func.attr
-    return ""
-
-
-def count_calls(path, names):
-    """How many times one file really calls any of `names`.
-
-    Counts ``ast.Call`` nodes, so an import line or a name written in prose
-    is not read as a construction.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return sum(
-        1
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and call_name(node) in names
-    )
-
-
-def count_text(path, needle):
-    """How many times one wiring call appears in one file."""
-    return path.read_text(encoding="utf-8").count(needle)
-
-
-def declared_classes(path):
-    """Every class one file declares, wherever it is declared.
-
-    A class inside an ``if``, inside a method or inside another class is
-    still a class, so the whole tree is walked rather than its top level.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
-
-
-def declared_widget_classes(path):
-    """Every class one file declares that ends up being a screen element."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-    found: set = set()
-    growing = True
-    while growing:
-        growing = False
-        for node in classes:
-            if node.name in found:
-                continue
-            for base in node.bases:
-                name = (
-                    base.id if isinstance(base, ast.Name) else getattr(base, "attr", "")
-                )
-                if name.startswith("Q") or name in found:
-                    found.add(node.name)
-                    growing = True
-                    break
-    return found
-
-
-def count_elements(path):
-    """How many screen elements one file builds, its own classes included."""
-    return count_calls(path, WIDGET_NAMES_BUILT) + len(declared_widget_classes(path))
-
-
-def test_the_strip_wires_seven_signals_and_the_surface_names_seven_actions():
+def test_the_strip_wires_seven_signals_and_the_surface_names_seven_actions(monkeypatch):
     """A wiring appeared on one side and not the other."""
-    assert count_text(STRIP_PATH, ".connect(") == STRIP_CONNECT_SITES == 7
-    assert count_text(SURFACE_PATH, ".connect(") == 0
-    assert count_text(WIRING_CONTROL_PATH, ".connect(") == CONTROL_CONNECT_SITES == 1
-    assert len(surface.ACTIONS) == count_text(STRIP_PATH, ".connect(")
+    app()
+    monkeypatch.setattr(shipped, "time", FrozenTime())
+    monkeypatch.setattr(shipped, "fetch_all", instant_fetch([]))
+    with connections_watched() as made:
+        strip = hold(shipped.CryptoNewsTicker())
+        strip.start()
+    strip.stop()
+    assert len(made) == len(surface.ACTIONS) == 7, made
     for name in surface.ACTIONS.values():
         assert callable(getattr(surface.CryptoNewsTickerModel, name)), name
 
 
-def test_the_strip_starts_two_timers_and_the_surface_names_two_waits(monkeypatch):
-    """A wait appeared on one side and not the other."""
-    from PySide6.QtCore import QObject, QTimer
+def test_the_connection_counter_can_see_a_wiring():
+    """POSITIVE CONTROL for ``connections_watched``: an empty block records
+    nothing and two ``timeout`` wirings record two."""
+    from PySide6.QtCore import QTimer
 
+    app()
+    timer = hold(QTimer())
+    with connections_watched() as quiet:
+        pass
+    assert quiet == []
+    with connections_watched() as made:
+        timer.timeout.connect(lambda: None)
+        timer.timeout.connect(lambda: None)
+    assert len(made) == 2, made
+
+
+def test_a_finished_fetch_thread_is_torn_down_and_retired(monkeypatch):
+    """Both ``finished()`` receivers run: one clears ``_worker_thread`` and
+    the other drops the thread from ``_LIVE_WORKERS``."""
     found = app()
-    assert count_calls(STRIP_PATH, ("QTimer",)) == STRIP_TIMER_BUILDS == 2
-    assert count_calls(SURFACE_PATH, ("QTimer",)) == 0
-    assert count_calls(TIMER_CONTROL_PATH, ("QTimer",)) == CONTROL_TIMER_BUILDS == 1
-    assert count_text(STRIP_PATH, "QTimer") > STRIP_TIMER_BUILDS
-
-    started: list = []
-    first_object_timer = QObject.startTimer
-    first_timer_start = QTimer.start
-    first_single_shot = QTimer.singleShot
-
-    def watch_object_timer(self, *found_args, **found_named):
-        started.append(["startTimer", found_args])
-        return first_object_timer(self, *found_args, **found_named)
-
-    def watch_timer_start(self, *found_args, **found_named):
-        started.append(["QTimer.start", found_args])
-        return first_timer_start(self, *found_args, **found_named)
-
-    def watch_single_shot(*found_args, **found_named):
-        started.append(["singleShot", found_args])
-        return first_single_shot(*found_args, **found_named)
-
     monkeypatch.setattr(shipped, "time", FrozenTime())
     monkeypatch.setattr(shipped, "fetch_all", instant_fetch([]))
-    QObject.startTimer = watch_object_timer
-    QTimer.start = watch_timer_start
-    QTimer.singleShot = watch_single_shot
-    try:
+    strip = hold(shipped.CryptoNewsTicker())
+    strip.start()
+    thread = strip._worker_thread
+    assert thread is not None
+    assert thread in shipped._LIVE_WORKERS, sorted(map(str, shipped._LIVE_WORKERS))
+    thread.wait(shipped._STOP_WAIT_MS)
+    assert settle(strip, found), "the fetch never reported back"
+    assert strip._worker_thread is None, "the teardown receiver never ran"
+    assert thread not in shipped._LIVE_WORKERS, "the retire receiver never ran"
+
+
+def test_the_strip_starts_two_timers_and_the_surface_names_two_waits(monkeypatch):
+    """A wait appeared on one side and not the other."""
+    found = app()
+    monkeypatch.setattr(shipped, "time", FrozenTime())
+    monkeypatch.setattr(shipped, "fetch_all", instant_fetch([]))
+    with timers_watched() as seen:
         strip = hold(shipped.CryptoNewsTicker())
         strip.start()
         if strip._worker_thread is not None:
             strip._worker_thread.wait(shipped._STOP_WAIT_MS)
         settle(strip, found)
         strip.stop()
-        old_started = list(started)
-        started.clear()
+    started = [name for name, _args in seen if name != "QTimer()"]
+    with timers_watched() as quiet:
         model = surface.CryptoNewsTickerModel(clock=frozen_clock())
         model.start()
         model.run_worker()
         model.stop()
-        new_started = list(started)
-    finally:
-        QObject.startTimer = first_object_timer
-        QTimer.start = first_timer_start
-        QTimer.singleShot = first_single_shot
-    assert [name for name, _args in old_started] == [
-        "QTimer.start",
-        "QTimer.start",
-    ], old_started
-    assert new_started == []
+    assert started == ["QTimer.start", "QTimer.start"], seen
+    assert quiet == [], quiet
     assert surface.TIMERS == {
         "cycle": surface.CYCLE_INTERVAL_MS,
         "refresh": surface.REFRESH_INTERVAL_MS,
     }
-    assert len(surface.TIMERS) == STRIP_TIMER_BUILDS == surface.TIMER_COUNT
+    assert len(surface.TIMERS) == len(started) == surface.TIMER_COUNT
     assert surface.TIMER_DELAYS_MS == (
         surface.CYCLE_INTERVAL_MS,
         surface.REFRESH_INTERVAL_MS,
     )
+
+
+def test_the_timer_counter_can_see_a_wait():
+    """POSITIVE CONTROL for ``timers_watched``: one ``QTimer.start`` inside
+    the block is recorded."""
+    from PySide6.QtCore import QTimer
+
+    app()
+    timer = hold(QTimer())
+    with timers_watched() as seen:
+        timer.start(250)
+    assert ("QTimer.start", (250,)) in seen, seen
 
 
 def test_the_strip_starts_one_thread_and_the_surface_names_one_worker(monkeypatch):
@@ -2075,8 +1985,6 @@ def test_the_strip_starts_one_thread_and_the_surface_names_one_worker(monkeypatc
     from PySide6.QtCore import QThread
 
     found = app()
-    assert count_calls(STRIP_PATH, ("QThread",)) == STRIP_THREAD_BUILDS == 1
-    assert count_calls(SURFACE_PATH, ("QThread",)) == 0
     started: list = []
     first_start = QThread.start
 
@@ -2103,79 +2011,91 @@ def test_the_strip_starts_one_thread_and_the_surface_names_one_worker(monkeypatc
         new_started = list(started)
     finally:
         QThread.start = first_start
-    assert len(old_started) == STRIP_THREAD_BUILDS == 1, old_started
+    assert len(old_started) == surface.THREAD_COUNT == 1, old_started
     assert new_started == []
     assert surface.THREAD_COUNT == len(surface.WORKER_LIFECYCLE) == 1
     assert model.fetches_started == 1
 
 
 def test_the_strip_declares_two_signals_and_the_surface_names_two_reports():
-    """A report declaration appeared on one side and not the other."""
-    assert count_calls(STRIP_PATH, ("Signal",)) == STRIP_SIGNAL_BUILDS == 2
-    assert count_calls(SURFACE_PATH, ("Signal",)) == 0
-    assert count_calls(SIGNAL_CONTROL_PATH, ("Signal",)) == CONTROL_SIGNAL_BUILDS == 3
-    assert count_text(SIGNAL_CONTROL_PATH, "Signal") > CONTROL_SIGNAL_BUILDS
-    worker = surface.FetchWorkerModel()
-    assert worker.headlines_ready == [] and worker.failed == []
-    assert callable(worker.say_ready) and callable(worker.say_failed)
+    """The two reports the worker sends, read off the built worker."""
+    from PySide6.QtCore import QMetaMethod
+
+    app()
+    worker = shipped._FetchWorker()
+    meta = worker.metaObject()
+    declared = sorted(
+        bytes(meta.method(index).methodSignature()).decode("utf-8")
+        for index in range(meta.methodOffset(), meta.methodCount())
+        if meta.method(index).methodType() == QMetaMethod.MethodType.Signal
+    )
+    assert declared == ["failed(QString)", "headlinesReady(QVariantList)"], declared
+
+    model = surface.FetchWorkerModel()
+    assert model.headlines_ready == [] and model.failed == []
+    assert callable(model.say_ready) and callable(model.say_failed)
 
 
-def test_the_strip_subscribes_to_no_bus_topic():
+def test_the_strip_subscribes_to_no_bus_topic(monkeypatch):
     """A bus wiring appeared on one side and not the other."""
-    assert count_text(STRIP_PATH, ".subscribe(") == STRIP_BUS_SITES == 0
-    assert count_text(SURFACE_PATH, ".subscribe(") == 0
-    assert count_text(BUS_CONTROL_PATH, ".subscribe(") == CONTROL_BUS_SITES == 2
+    app()
+    monkeypatch.setattr(shipped, "time", FrozenTime())
+    monkeypatch.setattr(shipped, "fetch_all", instant_fetch([]))
+    with bus_subscriptions_watched() as taken:
+        strip = hold(shipped.CryptoNewsTicker())
+        strip.start()
+        strip.stop()
+        model = surface.CryptoNewsTickerModel(clock=frozen_clock())
+        model.start()
+        model.run_worker()
+        model.stop()
+    assert taken == [], taken
     assert surface.BUS_TOPICS == ()
-    assert len(surface.BUS_TOPICS) == count_text(STRIP_PATH, ".subscribe(")
+    assert len(surface.BUS_TOPICS) == len(taken)
+
+
+def test_the_bus_counter_can_see_a_subscription():
+    """POSITIVE CONTROL for ``bus_subscriptions_watched``: one ``subscribe``
+    inside the block is recorded."""
+    from src.core.event_bus import EventBus
+
+    bus = EventBus()
+    with bus_subscriptions_watched() as taken:
+        bus.subscribe("probe.topic", lambda _event: None)
+    assert taken == ["probe.topic"], taken
 
 
 def test_the_screen_elements_the_strip_builds_are_counted():
-    """The element counter cannot report, so its number means nothing."""
-    assert count_elements(STRIP_PATH) == STRIP_ELEMENT_BUILDS == 3
-    assert count_elements(ELEMENT_CONTROL_PATH) == CONTROL_ELEMENT_BUILDS == 3
-    assert count_calls(ELEMENT_CONTROL_PATH, WIDGET_NAMES_BUILT) == 2
-    assert declared_widget_classes(ELEMENT_CONTROL_PATH) == {"StatCard"}
-    assert declared_widget_classes(STRIP_PATH) == {"CryptoNewsTicker", "_FetchWorker"}
-    assert count_calls(STRIP_PATH, WIDGET_NAMES_BUILT) == 1
-    assert count_elements(SURFACE_PATH) == 0
-    assert declared_widget_classes(SURFACE_PATH) == set()
+    """The strip paints one label inside one layout; the surface paints none."""
+    from PySide6.QtWidgets import QLabel, QLayout, QWidget
+
+    app()
+    strip = hold(shipped.CryptoNewsTicker())
+    assert isinstance(strip, QWidget)
+    labels = strip.findChildren(QLabel)
+    assert len(labels) == 1, [one.text() for one in labels]
+    assert strip.findChildren(QLayout) == [strip.layout()]
+    assert not any(
+        isinstance(value, type) and issubclass(value, QWidget)
+        for value in vars(surface).values()
+    )
 
 
 def test_the_strip_builds_one_layout_and_one_pointer_shape():
-    """A layout or a pointer shape appeared on one side and not the other."""
-    assert count_calls(STRIP_PATH, LAYOUT_NAMES_BUILT) == STRIP_LAYOUT_BUILDS == 1
-    assert (
-        count_calls(ELEMENT_CONTROL_PATH, LAYOUT_NAMES_BUILT)
-        == CONTROL_LAYOUT_BUILDS
-        == 2
-    )
-    assert count_calls(SURFACE_PATH, LAYOUT_NAMES_BUILT) == 0
-    assert count_calls(STRIP_PATH, CURSOR_NAMES_BUILT) == STRIP_CURSOR_BUILDS == 1
-    assert (
-        count_calls(ELEMENT_CONTROL_PATH, CURSOR_NAMES_BUILT)
-        == CONTROL_CURSOR_BUILDS
-        == 0
-    )
-    assert count_calls(SURFACE_PATH, CURSOR_NAMES_BUILT) == 0
-    assert surface.LAYOUT_MARGINS == (6, 2, 6, 2)
-    assert surface.LABEL_CURSOR == "PointingHandCursor"
+    """The margins and the pointer shape the built strip really carries."""
+    from PySide6.QtWidgets import QLabel
 
-
-def test_the_class_counter_finds_a_class_declared_inside_another():
-    """The class counter reads the top level only, so a nested class is lost."""
-    found = declared_classes(NESTED_CLASS_CONTROL_PATH)
-    assert "_StockLogHandler" in found, sorted(found)
-    assert "StockMainWindow" in found, sorted(found)
-    assert len(found) == 4, sorted(found)
-    tree = ast.parse(NESTED_CLASS_CONTROL_PATH.read_text(encoding="utf-8"))
-    top_level = {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
-    assert top_level == set(), top_level
-    assert declared_classes(STRIP_PATH) == set(CLASS_MAP)
-    assert {
-        node.name
-        for node in ast.parse(STRIP_PATH.read_text(encoding="utf-8")).body
-        if isinstance(node, ast.ClassDef)
-    } == {"NewsSource", "NewsHeadline"}
+    app()
+    strip = hold(shipped.CryptoNewsTicker())
+    margins = strip.layout().contentsMargins()
+    assert (
+        margins.left(),
+        margins.top(),
+        margins.right(),
+        margins.bottom(),
+    ) == surface.LAYOUT_MARGINS
+    label = strip.findChildren(QLabel)[0]
+    assert label.cursor().shape().name == surface.LABEL_CURSOR
 
 
 # Every class and every method has a counterpart
@@ -2443,32 +2363,31 @@ def test_the_signatures_match_the_shipped_methods():
     )
 
 
-def modules_importing(module, skip=()):
-    """Every file under src that imports the module named exactly `module`."""
-    found = []
-    for path in sorted((REPO_ROOT / "src").rglob("*.py")):
-        if path in skip:
-            continue
-        names = []
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                names += [alias.name for alias in node.names]
-            if isinstance(node, ast.ImportFrom):
-                names.append(node.module or "")
-        if any(name.split(".")[-1] == module for name in names):
-            found.append(str(path))
-    return found
+def test_the_exchange_tab_builds_the_strip():
+    """The exchange tab stopped putting the strip in its header."""
+    from src.gui.widgets.exchange_tab import ExchangeTab
+
+    app()
+    tab = hold(ExchangeTab("coinbase", "Coinbase"))
+    try:
+        assert isinstance(tab._news_ticker, shipped.CryptoNewsTicker)
+        assert tab._news_ticker.parent() is not None, "the strip is not in the header"
+    finally:
+        tab._news_ticker.stop()
 
 
-def test_the_strip_is_reached_by_the_tab_and_the_surface_by_the_bridge():
-    """The count of readers is wrong, so a lost reader would pass unseen."""
-    readers = modules_importing("crypto_news_ticker", skip=(SURFACE_PATH, STRIP_PATH))
-    assert readers == [str(REPO_ROOT / "src/gui/widgets/exchange_tab.py")], readers
-    assert modules_importing("crypto_news_ticker_surface") == [
-        str(REPO_ROOT / "src/core/desktop_bridge.py")
-    ]
-    known = modules_importing("design_system")
-    assert len(known) > 5, known
+def test_the_bridge_reaches_the_surface():
+    """The bridge registry stopped carrying the strip's method."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert registry[surface.METHOD] is surface.view_model
+    from_surface = sorted(
+        method
+        for method, handler in registry.items()
+        if getattr(handler, "__module__", "") == surface.__name__
+    )
+    assert from_surface == [surface.METHOD], from_surface
 
 
 # The surface holds its own values
@@ -2503,17 +2422,17 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file(monkeyp
 
 
 def test_the_shipped_file_is_not_named_by_the_surface():
-    """The surface reaches into the widget it replaces."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imported.add(node.module or "")
-            imported.update(alias.name for alias in node.names)
-    assert not any("crypto_news_ticker" == name for name in imported), imported
-    assert not any("widgets" in name for name in imported), imported
+    """Loading the surface pulled the strip or a widget module in behind it."""
+    pulled = module_pulls("src.gui.main_tabs.crypto_news_ticker_surface")
+    assert "src.gui.main_tabs.crypto_news_ticker_surface" in pulled, pulled
+    assert "src.gui.crypto_news_ticker" not in pulled, pulled
+    assert [name for name in pulled if ".widgets." in name] == [], pulled
+
+
+def test_the_module_pull_reader_reports_the_strip():
+    """POSITIVE CONTROL for ``module_pulls``: the strip's own import pulls it."""
+    pulled = module_pulls("src.gui.crypto_news_ticker")
+    assert "src.gui.crypto_news_ticker" in pulled, pulled
 
 
 # The strip paints, and the two sides paint the same pixels
@@ -3396,23 +3315,6 @@ def test_the_bridge_registers_the_news_strip_method():
     assert answer["result"]["label_text"] == surface.INITIAL_TEXT
 
 
-def test_the_bridge_import_list_is_alphabetical():
-    """The bridge import list drifted out of order."""
-    from src.core import desktop_bridge
-
-    source = Path(desktop_bridge.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    names: list = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "src.gui.main_tabs":
-            names = [alias.name for alias in node.names]
-    assert names == sorted(names), names
-    assert "crypto_news_ticker_surface" in names
-    assert names.index("console_tab_surface") + 1 == names.index(
-        "crypto_news_ticker_surface"
-    )
-
-
 def test_the_bridge_keeps_the_strip_until_a_reset():
     """The strip forgot its stories between two calls, or kept them past a reset."""
     from src.core import desktop_bridge
@@ -3753,68 +3655,57 @@ def test_the_import_probe_can_report_a_file_and_a_connection():
     assert seeded, answered["opened_at_import"]
 
 
+SURFACE_DRIVE = (
+    "stories = [m.NewsHeadline('First', 'https://story.invalid/1',\n"
+    "    m.NewsSource('cd', 'CoinDesk', 'https://feed.invalid/rss'), 3.0),\n"
+    "    m.NewsHeadline('Second', 'https://story.invalid/2',\n"
+    "    m.NewsSource('dc', 'Decrypt', 'https://feed.invalid/rss'), 2.0)]\n"
+    "model = m.build_model(stories, lambda: 1700000000.5)\n"
+    "model.advance()\n"
+    "m.build_view_model(model)\n"
+    "m.parse_rss(b'<rss><channel><item><title>T</title>'\n"
+    "    b'<link>https://story.invalid/9</link></item></channel></rss>',\n"
+    "    m.NewsSource('cd', 'CoinDesk', 'https://feed.invalid/rss'))\n"
+)
+
+
 def test_the_surface_loads_no_qt_module():
     """The surface grew an import that pulls Qt into the backend."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    strip_imports = {
-        (node.module or "")
-        for node in ast.walk(ast.parse(STRIP_PATH.read_text(encoding="utf-8")))
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in strip_imports), strip_imports
+    answered = qt_free(
+        "src.gui.main_tabs.crypto_news_ticker_surface", "CryptoNewsTickerModel"
+    )
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
+
+
+def test_the_qt_block_stops_the_class_that_paints_the_strip():
+    """POSITIVE CONTROL for ``qt_free``: ``CryptoNewsTicker`` is absent when
+    Qt is refused."""
+    answered = qt_free("src.gui.crypto_news_ticker", "CryptoNewsTicker")
+    assert answered["imported"] is False, answered
+    assert answered["error"] == "AttributeError", answered
 
 
 def test_the_surface_opens_no_file_no_socket_and_no_browser():
     """The surface reached for a file, a network address or a browser."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    called = {
-        node.func.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert "open" not in called
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    for forbidden in (
-        "read_text",
-        "write_text",
-        "read_bytes",
-        "write_bytes",
-        "mkdir",
-        "urlopen",
-        "socket",
-        "listen",
-        "monotonic",
-    ):
-        assert forbidden not in reached, forbidden
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert "webbrowser" not in text
-    assert "acervator_logs" not in text
-    assert "Path.home" not in text
-    assert "import time" not in text
-    assert "safe_urlopen" not in text
-    assert "atexit" not in text
+    answered = io_watched("src.gui.main_tabs.crypto_news_ticker_surface", SURFACE_DRIVE)
+    assert answered["touched"] == [], answered
 
 
-def test_the_import_scan_reports_a_module_the_shipped_file_does_load():
-    """The import scan reports nothing whatever a file imports."""
-    tree = ast.parse(STRIP_PATH.read_text(encoding="utf-8"))
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    assert "monotonic" in reached, "the shipped strip stopped reading the clock"
-    text = STRIP_PATH.read_text(encoding="utf-8")
-    assert "webbrowser" in text
-    assert "safe_urlopen" in text
-    assert "atexit" in text
+def test_the_io_watch_reports_a_route_that_was_reached():
+    """POSITIVE CONTROL for ``io_watched``: a driven open and a driven
+    browser call are both recorded."""
+    answered = io_watched(
+        "src.gui.main_tabs.crypto_news_ticker_surface",
+        "open(m.__file__).close()\n"
+        "import webbrowser\n"
+        "try:\n"
+        "    webbrowser.open('https://example.invalid')\n"
+        "except Exception:\n"
+        "    pass\n",
+    )
+    assert "open" in answered["touched"], answered
+    assert "webbrowser" in answered["touched"], answered
 
 
 # Nothing reaches outside, and nothing is written to the operator's tree

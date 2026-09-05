@@ -118,7 +118,20 @@ class SupertrendIndicator:
 
         price = candles[-1].close
         st_line = lb[-1] if curr_bull else ub[-1]
-        dist_pct = abs(price - st_line) / (st_line + 1e-9)
+
+        # `raw_lb` is `hl2 - multiplier * a` and goes at or below zero once
+        # `a` passes `hl2 / multiplier`.
+        if st_line <= 0.0:
+            return Signal(
+                "supertrend",
+                timeframe,
+                SignalDirection.NEUTRAL,
+                0.0,
+                self.weight,
+                abstained=True,
+            )
+
+        dist_pct = abs(price - st_line) / st_line
 
         near_line = dist_pct < 0.005
 

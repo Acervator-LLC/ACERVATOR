@@ -23,35 +23,162 @@ for bot in self._bot_manager._bots.values():
 
 Bot - Drop down menu for selecting which bot’s TA signals are displayed.
 
+The list refills every tick and carries one entry per running bot, opening on a
+placeholder until one is chosen. Choosing a bot is what makes the twelve
+columns below read anything at all.
+
+`src/gui/indicator_panel.py` — the selector
+
+```python
+self._bot_selector = QComboBox()
+self._bot_selector.setMinimumWidth(180)
+self._bot_selector.addItem("(select a bot)", "")
+self._bot_selector.currentIndexChanged.connect(self._on_bot_selected)
+```
+
 TF - Timeframe for the selected bot.
+
+One row per timeframe, each row a separate verdict from the same twelve
+voters. The rows are the bot's own timeframes and any phantom timeframes it
+runs.
+
+In development.
 
 BB - Bollinger Bands - https://en.wikipedia.org/wiki/Bollinger_Bands
 
 In Acervator, Bollinger Bands are used as the thresholds or boundaries at which trades are allowed to fire. Multiple market structure pieces are intertwined with our readings of the bands such as Landing Strip Detection (Heikin-Aishii Candle Consolidation Pattern) and Minimum Opposing Trade Distance. From a tactical standpoint, these represent the area or zone through which an investment position is passing.
 
+The cell prints a direction arrow and a confidence percentage. Direction comes
+from the band position alone: under 0.15 or under 0.35 votes bullish, over 0.85
+or over 0.65 votes bearish, and anything between the two middle figures votes
+neutral. [Bollinger Bands](#bollinger-bands) carries the formula.
+
+`src/trading/indicators/bollinger.py` — the vote
+
+```python
+if bb_pos < 0.15:
+    direction = SignalDirection.BULLISH
+    confidence = max(0.0, min(1.0, (0.15 - bb_pos) / 0.15 * 0.8 + 0.3))
+elif bb_pos > 0.85:
+    direction = SignalDirection.BEARISH
+    confidence = max(0.0, min(1.0, (bb_pos - 0.85) / 0.15 * 0.8 + 0.3))
+elif bb_pos < 0.35:
+    direction = SignalDirection.BULLISH
+    confidence = 0.2
+elif bb_pos > 0.65:
+    direction = SignalDirection.BEARISH
+    confidence = 0.2
+```
+
 VTX - Vortex Indicator - https://en.wikipedia.org/wiki/Vortex_indicator
 
 In my experience (which is entirely subjective), this particular indicator is unusually strong at flagging early trend reversals. For Acervator, we are generally looking for signal saturation or near-saturation in either polarity which, under optimum conditions, will align with Bollinger Band thresholds being hit.
+
+The cell prints an arrow and a percentage. The crossover of the two lines
+decides the vote, and then Acervator adds one reading of its own: the direction
+is overwritten to bullish whenever the downward line reaches 1.30, whatever the
+crossover said. [Vortex Indicator](#vortex-indicator) carries the formula.
+
+`src/trading/indicators/vortex.py` — the ceiling that overwrites the vote
+
+```python
+VX_CEILING_PCT = 130.0
+```
 
 MACD - Moving Average Convergence Divergence - https://en.wikipedia.org/wiki/MACD
 
 This is one of the oscillators used and, with it, we are looking for “top of the hill” formations in either polarity and these, under optimum conditions, will align with Bollinger Band thresholds being hit. Keep in mind that I do not approach any of these indicators from a mathematical standpoint as I am a purely visual trader without a quant or certified technical analysis background.
 
+The cell prints an arrow and a percentage. A signal-line crossover decides the
+vote first. Failing that, a histogram growing away from zero votes with its
+own sign, and a histogram merely on one side of zero votes the same way with
+less conviction. [MACD](#macd) carries the formula.
+
+`src/trading/indicators/macd.py` — the crossover, tested first
+
+```python
+if prev_macd <= prev_signal and curr_macd > curr_signal:
+    direction = SignalDirection.BULLISH
+```
+
 SRsi - Stochastic RSI - https://en.wikipedia.org/wiki/Stochastic_oscillator
 
 Our second oscillator and, like the vortex indicator, we are looking at initial maximizing or prolonged periods of saturation of the signal at either polarity and this will, under optimum conditions, align with other indicators to trigger a trade.
+
+The cell prints an arrow and a percentage. The vote needs a crossover of the
+two smoothed lines, and how deep in the range that crossover happens sets the
+confidence: a bullish cross under 30 scores 0.8, under 50 scores 0.5, and
+higher still scores less. [Stochastic RSI](#stochastic-rsi) carries the
+formula.
+
+`src/trading/indicators/stochastic_rsi.py` — the bullish crossover
+
+```python
+if prev_k <= prev_d and k > d:
+    crossover = "bullish"
+    if k < 30:
+        direction = SignalDirection.BULLISH
+        confidence = 0.8
+```
 
 Ichi - Ichimoku Cloud - https://en.wikipedia.org/wiki/Ichimoku_Kink%C5%8D_Hy%C5%8D
 
 This particular indicator is one of the few ‘predicative’ indicators. In Acervator, we are focused on its additional ability to strengthen market reversal zone detection which is where we prefer to shave off or fold in funds.
 
+The cell prints an arrow and a percentage. Several cloud readings add into one
+score, and only a score past 0.08 either way casts a vote. The score doubles as
+the confidence. [Ichimoku Cloud](#ichimoku-cloud) carries the formula.
+
+`src/trading/indicators/ichimoku.py` — the vote
+
+```python
+if score > 0.08:
+    direction = SignalDirection.BULLISH
+    confidence = max(0.0, min(1.0, score))
+elif score < -0.08:
+    direction = SignalDirection.BEARISH
+    confidence = max(0.0, min(1.0, abs(score)))
+else:
+    direction = SignalDirection.NEUTRAL
+    confidence = 0.0
+```
+
 Net - Primary TF panel index collated from all 12 indicators.
 
+The cell prints a signed figure to two decimals, green above zero and red
+below. It is the weighted bullish total less the weighted bearish total, and an
+abstaining voter adds nothing to either side.
+[Net, Comp and Conf](#net-comp-and-conf) carries the arithmetic.
+
+`src/gui/indicator_panel.py` — the Net cell
+
+```python
+net = tf_data.get("net_score", 0)
+item = QTableWidgetItem(f"{net:+.2f}")
+```
+
 Comp - Composite TF panel index provided by the highest TF Phantom Bot that is active. Phantom bots are still in active development so any related features are not yet working.
+
+The cell prints an em dash when no composite figure is present, which is what a
+fleet with no active phantom shows.
+[Net, Comp and Conf](#net-comp-and-conf) carries the arithmetic.
+
+In development.
 
 Conf - Confidence reading for the panel.
 
 This is the ‘breadth’ of agreement between all 12 indicators.
+
+The cell draws a ten-block bar and the percentage beside it. The bar fills one
+block per tenth. Green from 0.6, amber from 0.3, grey below that.
+
+`src/gui/indicator_panel.py` — the Conf cell
+
+```python
+conf = tf_data.get("confidence", 0)
+conf_bar = "█" * int(conf * 10) + "░" * (10 - int(conf * 10))
+item = QTableWidgetItem(f"{conf_bar} {conf:.0%}")
+```
 
 Sling - CM (Chris Moody) Slingshot -
 
@@ -59,17 +186,85 @@ https://www.tradingview.com/script/GE7tSQK1-CM-Sling-Shot-System/
 
 Another excellent indicator for reversal detection and here it adds to our laser precision detection of such zones and structures.
 
+The cell prints an arrow and a percentage. A squeeze breaking either way votes
+first, and a band snapback votes when no squeeze is breaking.
+[Slingshot](#slingshot) carries the formula and the attribution, which is
+shared between three authors rather than one.
+
+`src/trading/indicators/slingshot.py` — the squeeze, tested first
+
+```python
+if squeeze_bull:
+    direction = SignalDirection.BULLISH
+    confidence = squeeze_conf
+    active_type = "squeeze_bull"
+```
+
 ADX - https://en.wikipedia.org/wiki/Average_directional_movement_index
 
 This is a trend strength indicator but, as with the other indicators, we are using it to detect reversal by way of signal decreasing.
+
+The cell prints the raw ADX value, 0 to 100, not a percentage. Below 20 the
+cell reads Rng and the figure, with no arrow. The vote itself is decided by
+which directional line is on top, at any ADX, so a ranging market still casts a
+directional vote even though the cell shows no arrow.
+[ADX and DMI](#adx-and-dmi) carries the formula.
+
+`src/trading/indicators/adx.py` — the vote
+
+```python
+if bull_dominant and strong_trend:
+    direction = SignalDirection.BULLISH
+    confidence = max(0.0, min(1.0, (adx - 35) / 30 + 0.5))
+elif bear_dominant and strong_trend:
+    direction = SignalDirection.BEARISH
+    confidence = max(0.0, min(1.0, (adx - 35) / 30 + 0.5))
+elif bull_dominant:
+    direction = SignalDirection.BULLISH
+    confidence = max(0.0, min(0.5, adx / 70))
+elif bear_dominant:
+    direction = SignalDirection.BEARISH
+    confidence = max(0.0, min(0.5, adx / 70))
+else:
+    direction = SignalDirection.NEUTRAL
+    confidence = 0.0
+```
 
 STrd - https://www.tradingview.com/support/solutions/43000634738-supertrend/
 
 Supertrend is based upon Average True Range and, unsurprisingly further assists in detecting reversals.
 
+The cell prints an arrow and a percentage. The vote is simply which side of the
+sticky band the price closed on, so this voter is never neutral once it reads
+at all. A band that has fallen to zero makes it abstain instead.
+[Supertrend](#supertrend) carries the formula.
+
+`src/trading/indicators/supertrend.py` — the vote
+
+```python
+direction = SignalDirection.BULLISH if curr_bull else SignalDirection.BEARISH
+```
+
 ZSc - Z Score - https://www.tradingview.com/script/KSMvIkvh-Z-Score-Predictive-Zones-AlgoPoint/
 
 Our current indicator is the basic or classic Z Score indicator but this will be upgraded. But, as before, we are after more data to confirm reversals.
+
+The cell prints the raw signed z-value to one decimal, not a percentage. Past
+two deviations either way the vote is strong and contrarian: high votes
+bearish, low votes bullish. Between 1.5 and 2 it votes the same way at a fixed
+0.25 confidence, and inside 1.5 it casts no vote.
+[Z-Score](#z-score) carries the formula.
+
+`src/trading/indicators/zscore.py` — the thresholds
+
+```python
+extreme_high = z > 3.0
+strong_high = z > 2.0
+mild_high = z > 1.5
+extreme_low = z < -3.0
+strong_low = z < -2.0
+mild_low = z < -1.5
+```
 
 KER -
 
@@ -396,10 +591,9 @@ prev_hist = histogram[-2]
 curr_macd = macd_line[-1]
 ```
 
-The confidence this indicator reports carries an absolute constant that shifts
-its reading on a very cheap asset, which
-[Departures](#departures-from-the-published-maths) measures. Issue #414 owns
-that repair and no correction is proposed here.
+The confidence divides the histogram by a share of the last close, so the
+same crossover scores the same on a four-figure asset and on one worth a few
+millionths of a dollar.
 
 ### Stochastic RSI
 
@@ -415,9 +609,8 @@ StochRSI = (RSI - min(RSI, 14)) / (max(RSI, 14) - min(RSI, 14))
 own RSI series, then places each RSI value inside its own fourteen-value range.
 The vote reads the crossover of the two smoothed lines. The result saturates at
 0 and at 100 far more often than plain RSI does, and that saturation is what
-the panel is watching for. The small constant in the divisor sits on an RSI
-range, which runs 0 to 100 whatever the asset costs, so it is not one of the
-price-scale departures listed below.
+the panel is watching for. A window whose RSI never moved is caught before the
+division, and the vote abstains on it rather than dividing by that spread.
 
 `src/trading/indicators/stochastic_rsi.py` — `StochasticRSI.rsi_values`
 
@@ -431,12 +624,7 @@ avg_loss = (avg_loss * (self.rsi_period - 1) + losses[i]) / self.rsi_period
 ```python
 window = rsi_values[i - self.stoch_period + 1 : i + 1]
 low = min(window)
-high = max(window)
-# `high` and `low` come from the window itself, so `flat` is the
-# source-quantity test.
-if high - low <= 0.0:
-    flat = True
-ratios.append((rsi_values[i] - low) / (high - low + 1e-9))
+ratios.append((rsi_values[i] - low) / (max(window) - low))
 ```
 
 **Design intention.** This is the operator's second oscillator, and he looks
@@ -498,10 +686,9 @@ if end < period - 1:
 return self._mid(candles, end - period + 1, period)
 ```
 
-The confidence it reports carries an absolute constant that shifts its reading
-on a very cheap asset, which
-[Departures](#departures-from-the-published-maths) measures. Issue #414 owns
-that repair and no correction is proposed here.
+The cloud thickness divides by the price bare. Every candle reaching this
+point has already been refused unless its price is above zero, so the division
+needs no guard of its own.
 
 ### Volume
 
@@ -545,9 +732,9 @@ for i in range(1, len(candles)):
 `src/trading/indicators/volume.py` — `VolumeAnalysis._mfi`
 
 ```python
-if pos_mf < 1e-9 and neg_mf < 1e-9:
+if pos_mf <= 0.0 and neg_mf <= 0.0:
     return 50.0
-if neg_mf < 1e-9:
+if neg_mf <= 0.0:
     return 100.0
 return 100.0 - 100.0 / (1.0 + pos_mf / neg_mf)
 ```
@@ -562,10 +749,9 @@ that number is the intention written down.
 "volume": 0.8,
 ```
 
-The second test in the block above still compares a money flow, which is a
-price times a volume, against a fixed constant.
-[Departures](#departures-from-the-published-maths) lists it with the rest.
-Issue #414 owns the repair.
+Both tests in the block above compare a money flow against zero. Money flow is
+a price times a volume and carries no fixed scale, so only an exact zero can
+stand as the test.
 
 ### Slingshot
 
@@ -636,9 +822,8 @@ ADX    = Wilder(DX, 14)
 **Functional.** One smoothing recursion carries every line in this indicator.
 The reading tells you how committed a move is, and says nothing about which way
 it points. Below 20 the market is ranging. Above 35 it is trending hard. The
-indicator abstains when its smoothed true range falls under a fixed constant,
-and [Departures](#departures-from-the-published-maths) measures what that costs
-on a very cheap asset.
+indicator abstains when its smoothed true range is not above zero, so a market
+that moved at all still gets a vote however little the asset costs.
 
 `src/trading/indicators/adx.py` — `ADXIndicator._wilder_smooth`
 
@@ -715,10 +900,24 @@ else:
     curr_bull = candles[i].close > final_ub
 ```
 
-The confidence this indicator reports carries an absolute constant that shifts
-its reading on a very cheap asset, which
-[Departures](#departures-from-the-published-maths) measures. Issue #414 owns
-that repair.
+The band this indicator measures distance from is derived rather than read off
+the tape, and it can genuinely reach zero once the average true range passes
+the midpoint over the multiplier. The indicator abstains outright on that bar
+instead of dividing by it.
+
+`src/trading/indicators/supertrend.py` — the abstention
+
+```python
+if st_line <= 0.0:
+    return Signal(
+        "supertrend",
+        timeframe,
+        SignalDirection.NEUTRAL,
+        0.0,
+        self.weight,
+        abstained=True,
+    )
+```
 
 ### Z-Score
 
@@ -749,26 +948,19 @@ std = variance**0.5
 upgrade is coming, and uses it to confirm a reversal. The longer window is why
 it earns a column of its own beside the Bollinger Bands.
 
-One formula is written two ways inside this one function. The current bar
-divides by the deviation bare. The previous bar adds a constant to the
-denominator first, and on a very cheap asset that constant is large enough to
-change the answer. Both lines describe the same quantity and the guard above
-them has already proved the denominator positive.
+One formula, written once, for both bars. The current bar and the previous bar
+each divide by their own deviation bare, and a guard above each refuses a
+deviation under the same threshold before the division runs.
 
-`src/trading/indicators/zscore.py` — the previous bar today
+`src/trading/indicators/zscore.py` — both divisions
 
 ```python
-z_prev = (candles[-2].close - s2) / (std2 + 1e-9)
+z = (candles[-1].close - sma) / std
 ```
-
-*Proposed, not present:*
 
 ```python
 z_prev = (candles[-2].close - s2) / std2
 ```
-
-The guard immediately above already refuses a `std2` under the same threshold,
-so removing the constant changes no branch. Issues #414 and #399 carry this.
 
 ### Kaufman Efficiency Ratio
 
@@ -799,24 +991,15 @@ operator's own words above. The engine acts on that at both ends: a scrum is
 refused when the market is running too straight to mean-revert, and refused
 again when it is too noisy to hold an edge.
 
-The division that produces the ratio still adds a constant to the denominator,
-directly under a guard that has already proved the denominator positive. On
-tenth-of-a-percent bars that reads about 3% low.
+The division that produces the ratio is bare. A guard four lines above returns
+early when the distance travelled is not above zero, so the denominator is
+already proved positive by the time the division runs.
 
-`src/trading/indicators/kaufman_er.py` — the division today
-
-```python
-er = net_change / (price_travel + 1e-9)
-```
-
-*Proposed, not present:*
+`src/trading/indicators/kaufman_er.py` — the division
 
 ```python
 er = net_change / price_travel
 ```
-
-The guard four lines above returns early on `price_travel <= 0.0`, so the
-constant guards nothing. Issues #414 and #399 carry this.
 
 ### RSI
 
@@ -882,26 +1065,12 @@ The rounding belongs to display, not to a comparison. Issue #414 carries this.
 
 ## Departures from the published maths
 
-**Functional.** Every row below is an absolute constant compared against, or
-added to, a quantity carried in the asset's own price units. At a four-figure
-price the constant vanishes. At a price of a few millionths of a dollar it does
-not, and the reading moves. Seven modules carry one, across the six rows below.
-
-```
-zscore.py   kaufman_er.py   adx.py   macd.py
-volume.py   ichimoku.py     supertrend.py
-```
-
-| Where | The departure | Measured effect at 3.1e-06 |
-| ----- | ------------- | -------------------------- |
-| `zscore.py` `ZScoreIndicator.compute` | `Z` divides by `sigma` bare; the previous bar's `Z` divides by `sigma + 1e-9`. One formula, two spellings, in one function. | With sigma at 2e-9 the previous `Z` reads 1.33 where the formula gives 2.00, a third low. `z_reverting` compares the two. |
-| `kaufman_er.py` `KaufmanERIndicator.compute` | `ER` divides by `price_travel + 1e-9` after the guard above it has already proved `price_travel` above zero. | On 0.1% bars ER reads 3.13% low, on 0.5% bars 0.64% low. At a four-figure price the same expression moves nothing. |
-| `adx.py` `ADXIndicator.compute` | Abstains when the smoothed true range falls under `1e-9`. True range is a price, so the test carries a price scale. | A bar range of 0.03% gives a true range of 9.3e-10 and the indicator casts no vote on a market that moved. |
-| `macd.py` `MACD.compute` | Confidence divides by `close * 0.001 + 1e-9`. The added constant is a fixed number of dollars; the term beside it scales with the price. | A crossover that scores 0.800 at a four-figure price scores 0.727 here. |
-| `volume.py` `VolumeAnalysis._mfi` | Treats a negative money flow under `1e-9` as zero and returns MFI 100, the top of the scale. Money flow is a price times a volume, so the quantity has no fixed scale at all. | A bar trading 0.001 units still gives 3.1e-9, above the threshold. Listed as the same class, not as a live effect. |
-| `ichimoku.py` `IchimokuCloud.compute` and `supertrend.py` `SupertrendIndicator.compute` | Both divide by `price + 1e-9`, where `candles_from_raw` has already refused any candle whose price is not above zero. | 0.032% low on both. The guard has already proved the denominator positive, so the constant does no work and its error grows as the price falls. |
-
-Two more, neither of them a scale problem:
+**Functional.** Two departures remain, and neither is a matter of scale. Every
+voter now reads the same on an asset worth four figures and on one worth a few
+millionths of a dollar, because no division and no threshold in the twelve
+carries an absolute constant against a quantity measured in the asset's own
+price units. Where a denominator can genuinely reach zero the indicator
+abstains on that bar rather than adding a constant to it.
 
 - The Vortex overwrites its own direction to BULLISH whenever the downward line
   reaches 1.30, after the crossover has already decided. The two lines
@@ -911,15 +1080,26 @@ Two more, neither of them a scale problem:
   30, while the overbought and oversold flags beside it test the unrounded
   number. An RSI of 70.003 sets overbought and still votes NEUTRAL.
 
-**Design intention.** An indicator has to read the same on every asset, because
-one threshold serves the whole fleet. A constant carried in the asset's own
-price units breaks that, and every row above is one instance of it. Read the
-table as the gap between the intention and the code, never as a description of
-how these indicators are meant to work.
+Supertrend is the one place an abstention stands in for a division. Its lower
+band is derived from the average true range rather than read off the tape, so
+it can reach zero on a real market, and the indicator refuses to vote on that
+bar.
 
-Corrections for the Z-Score, the Efficiency Ratio and the RSI rounding are
-proposed in their own sections above. The remaining rows belong to issue #414,
-which owns the whole class, and issue #399, which owns the ratio denominators.
+**Design intention.** An indicator has to read the same on every asset, because
+one threshold serves the whole fleet. Four test files hold that property for
+the twelve, one shape at a time, by running the same tape at several price
+scales and comparing the readings.
+
+```
+tests/test_bollinger_and_slingshot_are_scale_invariant.py
+tests/test_vortex_and_landing_strip_are_scale_invariant.py
+tests/test_macd_and_kaufman_er_are_scale_invariant.py
+tests/test_the_last_eight_indicators_are_scale_invariant.py
+```
+
+Issue #414 owns the two readings above. Both are deliberate choices in
+Acervator's own reading of a published indicator, not arithmetic errors, and
+neither has a replacement chosen yet.
 
 In development.
 

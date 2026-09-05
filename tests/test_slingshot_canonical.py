@@ -57,6 +57,8 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from src.trading.ta_engine import (
     Candle,
     SignalDirection,
@@ -362,55 +364,117 @@ class TestOpposingSignalIsRecorded:
 # ── NO BLENDING ──────────────────────────────────────────────────────
 
 
+FORBIDDEN = (
+    ("src.trading.indicators.heikin_ashi", "compute_heikin_ashi"),
+    ("src.trading.indicators.atr", "ATRIndicator"),
+    ("src.trading.indicators.bollinger", "BollingerBands"),
+    ("src.trading.indicators.ichimoku", "IchimokuCloud"),
+    ("src.trading.indicators.helpers", "_true_range"),
+)
+
+OWN_ARITHMETIC = ("_sma_tail", "_stdev_tail", "_linreg_endpoint", "_bandwidth")
+
+
+class _Poison:
+    """Raises on any use, so a caller that reaches it cannot stay quiet."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __call__(self, *args, **kwargs):
+        del args, kwargs
+        raise AssertionError(f"Slingshot reached {self.name}")
+
+    def __getattr__(self, attribute):
+        raise AssertionError(f"Slingshot reached {self.name}.{attribute}")
+
+
+def _blend_series() -> dict:
+    """Five tapes that between them drive every branch ``compute`` has."""
+    return {
+        "flat": [
+            Candle(TS0 + i * STEP, 100.0, 100.0, 100.0, 100.0, 100.0) for i in range(80)
+        ],
+        "squeeze": _chop(44, 2.4, 0.02, (0.0, 0.0, 1.0)),
+        "release_up": _chop(44, 2.4, 0.02, (0.0, 4.0, 6.0)),
+        "release_down": _chop(44, 2.4, 0.02, (0.0, -4.0, -6.0)),
+        "trend": [_row(i, 100.0 + i * 0.5, 0.4) for i in range(80)],
+    }
+
+
+def _readable(signal) -> tuple:
+    return (signal.direction, round(signal.confidence, 12))
+
+
 class TestNoBlending:
-    """Every input must be raw candle data or Slingshot's own
-    arithmetic. This is a source-level check because a runtime one
-    would pass whenever the forbidden branch simply did not execute."""
+    """Slingshot reads raw candle fields and its own arithmetic, nothing else."""
 
-    FORBIDDEN = (
-        "compute_heikin_ashi",
-        "ATRIndicator",
-        "BollingerBands",
-        "IchimokuCloud",
-        "_true_range",
-    )
+    def test_the_module_binds_none_of_the_other_indicators(self):
+        """A blended import shows up as a name in the module's namespace."""
+        from src.trading.indicators import slingshot
 
-    def _source(self):
-        import ast
-        import inspect
+        bound = vars(slingshot)
+        for _module_name, name in FORBIDDEN:
+            assert name not in bound, f"blending: slingshot binds {name}"
 
-        from src.trading import ta_engine
+    def test_it_computes_the_same_signal_with_every_other_indicator_poisoned(
+        self, monkeypatch
+    ):
+        """Each forbidden callable is replaced where it lives, so an alias
+        or an attribute route reaches the poison too."""
+        import importlib
 
-        src = inspect.getsource(ta_engine.SlingshotIndicator)
-        return src, ast.parse(src.lstrip())
+        before = {
+            name: _readable(SlingshotIndicator().compute(candles))
+            for name, candles in _blend_series().items()
+        }
+        assert len(before) == 5, before
+        for module_name, name in FORBIDDEN:
+            monkeypatch.setattr(
+                importlib.import_module(module_name), name, _Poison(name)
+            )
+        after = {
+            name: _readable(SlingshotIndicator().compute(candles))
+            for name, candles in _blend_series().items()
+        }
+        assert after == before, "the poison changed the answer"
 
-    def test_no_other_indicator_is_called(self):
-        src, _ = self._source()
-        for name in self.FORBIDDEN:
-            assert f"{name}(" not in src, f"blending: {name} called"
+    def test_POSITIVE_CONTROL_the_poison_raises_when_it_is_reached(self, monkeypatch):
+        """An indicator that does blend fails the sweep above."""
+        import importlib
 
-    def test_reads_only_candle_fields_and_own_helpers(self):
-        src, _ = self._source()
-        # The shared scalar maths helpers are allowed; indicator
-        # classes are not. Assert the allowed set is what is used.
-        for allowed in ("_sma_tail", "_stdev_tail", "_linreg_endpoint", "_bandwidth"):
-            assert allowed in src, allowed
+        module_name, name = FORBIDDEN[1]
+        module = importlib.import_module(module_name)
+        monkeypatch.setattr(module, name, _Poison(name))
+        with pytest.raises(AssertionError, match=name):
+            getattr(module, name)()
 
-    def test_heikin_ashi_is_not_claimed_as_a_direction_input(self):
-        """The old docstring listed HA as a bullet under "Direction
-        determined by". The method never computed one. Under the
-        no-blending rule the claim is removed, not honoured.
+    @pytest.mark.parametrize("helper", OWN_ARITHMETIC)
+    def test_each_piece_of_its_own_arithmetic_is_really_called(self, helper):
+        """A helper nothing calls is not what the answer was built from."""
+        from src.trading.indicators import slingshot
 
-        The assertion targets the BULLET form. The new docstring names
-        the retired claim in prose while explaining its removal, and a
-        bare substring match would fire on that explanation -- which is
-        what the first version of this test did.
-        """
-        from src.trading.ta_engine import SlingshotIndicator as S
+        owner = (
+            SlingshotIndicator
+            if helper in ("_linreg_endpoint", "_bandwidth")
+            else slingshot
+        )
+        real = getattr(owner, helper)
+        called = []
 
-        doc = S.__doc__ or ""
-        assert "• HA candle direction" not in doc
-        assert "Direction determined by:" not in doc
+        def _spy(*args, **kwargs):
+            called.append(args)
+            return real(*args, **kwargs)
+
+        setattr(owner, helper, staticmethod(_spy) if owner is not slingshot else _spy)
+        try:
+            for candles in _blend_series().values():
+                SlingshotIndicator().compute(candles)
+        finally:
+            setattr(
+                owner, helper, staticmethod(real) if owner is not slingshot else real
+            )
+        assert called, f"{helper} was never called"
 
 
 # ── DOMAIN + INVARIANTS ──────────────────────────────────────────────

@@ -81,21 +81,34 @@ class TestFailsClosed:
         assert _make_sim_capital_registry() is not None
 
 
+class _PrivateRegistry:
+    """A stand-in registry object; ``_crr`` must hand back this exact instance."""
+
+
+def _bot_with(registry, sim_mode):
+    """Return a ``ScrummingBot`` carrying only what ``_crr`` reads."""
+    from src.trading.scrumming_bot import ScrummingBot
+
+    bot = object.__new__(ScrummingBot)
+    bot.bot_id = "bot-crr"
+    bot._capital_registry = registry
+    bot._sim_mode = sim_mode
+    return bot
+
+
 class TestInjectedRegistryWins:
     def test_crr_returns_the_injected_registry(self):
-        """The positive half: when a private registry IS supplied, the
-        bot must use it rather than the singleton."""
-        import inspect
-        from src.trading import scrumming_bot as sb
+        """A supplied ``_capital_registry`` is what ``_crr`` answers with, not the
+        process-wide singleton."""
+        private = _PrivateRegistry()
+        assert _bot_with(private, sim_mode=True)._crr() is private
+        assert _bot_with(private, sim_mode=False)._crr() is private
 
-        src = inspect.getsource(
-            sb.ScrummingBot._crr.fget
-            if isinstance(sb.ScrummingBot._crr, property)
-            else sb.ScrummingBot._crr
-        )
-        assert (
-            "_capital_registry is not None" in src
-        ), "_crr no longer prefers the injected registry"
+    def test_a_sim_bot_with_no_registry_gets_none(self):
+        """Positive control for the pair above: ``_crr`` reaches its refusal when
+        ``_capital_registry`` is None, so returning the injected object is a
+        decision and not the only branch."""
+        assert _bot_with(None, sim_mode=True)._crr() is None
 
 
 class TestNoSimPathResolvesALiveSingleton:

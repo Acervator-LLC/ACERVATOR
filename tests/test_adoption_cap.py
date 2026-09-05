@@ -1,42 +1,14 @@
-"""A bot may not adopt more than the operator allows.
+"""``max_adoptable_usd`` caps what a never-scrummed bot adopts from the wallet.
 
-Operator approved 2026-08-09, after research into how the field solves
-shared-account attribution:
-docs/engineering-notes/2026-08-09_position_attribution_shared_account_research.md
-
-THE GAP THIS CLOSES. The never-scrummed rule (v3.24.85) lets a bot with
-no earned history adopt an operator-placed position as its opening lot.
-That fixed the BICO/IMU incident, where two new bots each bought a
-SECOND full position because their own ledger said they held nothing.
-
-But adoption INFERS ownership from the exchange balance, and nothing on
-the exchange distinguishes "the seed the operator bought for this bot"
-from "coins the operator holds and wants left alone". A fresh bot on an
-asset the operator already held would take all of it.
-
-WHAT THE FIELD DOES. Three patterns found:
-
-  * Freqtrade — internal ledger authoritative, no adoption at all:
-    "Freqtrade assumes that the trades it opens are managed only
-    through the bot."
-  * Coinbase Portfolios — exchange-level sub-accounts, attribution
-    becomes a fact rather than an inference.
-  * Hummingbot `balance limit` — an operator-DECLARED cap on what the
-    bot may use. Documented as: "Sets the amount limit on how much
-    assets Hummingbot can use in an exchange or wallet. This can be
-    useful when running multiple bots on different trading pairs with
-    same tokens."
-    https://hummingbot.org/client/global-configs/balance-limit/
-
-The third is what was missing here, and it is the only one that answers
-the question the inference cannot. `max_adoptable_usd` is that
-declaration, defaulting to `target_balance`: a bot asked to hold $25 has
-no business claiming $500 because it happened to be there.
+``_adopt`` drives the real ``ScrummingBot._tick_initialise`` against ``_Bot``, a
+stand-in carrying only the attributes that phase reads. The adopted position is
+read off ``_main_lots``; the operator-facing refusal is read off the ``bot.log``
+messages ``_Bus`` collects.
 """
 
 from __future__ import annotations
 
-import inspect
+import asyncio
 import sys
 from pathlib import Path
 
@@ -46,46 +18,119 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.exchange.base import Balance, Ticker  # noqa: E402
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
 SYM = "BICO/USDC"
 ASSET = "BICO"
 PX = 0.0706380489
-T0 = 1_776_778_500_000
-STEP = 300_000
 
 
-def _cap_units(exchange_units, cap_usd, target_balance, price):
-    """The capping arithmetic exactly as the adoption site applies it.
+class _Bus:
+    """Collects every ``bot.log`` message ``_tick_initialise`` emits."""
 
-    Pinned here because the site itself lives inline in `tick`, which
-    needs a running loop; a change to the rule fails here rather than
-    in production.
-    """
-    own = float(exchange_units)
-    cap = float(cap_usd or 0.0)
-    if cap <= 0:
-        cap = float(target_balance or 0.0)
-    if cap > 0 and price > 0:
-        own = min(own, cap / price)
-    return own
+    def __init__(self):
+        self.messages: list[str] = []
+
+    def emit(self, topic, **payload):
+        """Record the ``message`` of a ``bot.log`` event."""
+        if topic == "bot.log":
+            self.messages.append(str(payload.get("message", "")))
 
 
-class TestTheDefaultIsTargetBalance:
-    def test_zero_means_use_target_balance(self):
-        """0.0 is 'unset', not 'adopt nothing'. Treating it as a literal
-        zero would silently disable adoption for every existing bot,
-        since none of them carry the new field."""
-        got = _cap_units(10_000.0, 0.0, 25.0, PX)
-        assert got == pytest.approx(25.0 / PX)
+class _Phantoms:
+    """Phantom manager stand-in; ``_tick_initialise`` reaches it only when
+    ``_phantoms_enabled`` is set, which ``_adopt`` leaves False."""
 
-    def test_a_bot_asked_to_hold_25_adopts_at_most_25(self):
-        got = _cap_units(10_000.0, 0.0, 25.0, PX)
-        assert got * PX == pytest.approx(25.0)
 
-    def test_an_explicit_cap_overrides_the_default(self):
-        got = _cap_units(10_000.0, 10.0, 25.0, PX)
-        assert got * PX == pytest.approx(10.0)
+def _bot(units_on_exchange, cap_usd, target_balance, price, lots):
+    """Return a ``ScrummingBot`` posed for the boot handshake with ``price`` and
+    ``units_on_exchange`` on the wallet."""
+    bot = object.__new__(ScrummingBot)
+    bot.bot_id = "bot-adoption"
+    bot.config = type(
+        "C",
+        (),
+        {
+            "symbol": SYM,
+            "target_asset": ASSET,
+            "max_adoptable_usd": cap_usd,
+        },
+    )()
+    bot._bus = _Bus()
+    bot._main_lots = list(lots)
+    bot._target_balance = target_balance
+    bot._tranches_created_lifetime = 0
+    bot._tranches_counters_reset_ts = 0.0
+    bot._current_holdings = 0.0
+    bot._quote_to_usd = 1.0
+    bot._initialised = False
+    bot._invisible = True
+    bot._aggressive = False
+    bot._last_price = 0.0
+    bot._phantom_gate_logged = True
+    bot._phantoms_enabled = False
+    bot._phantoms_started = False
+    bot._phantom_timeframes = []
+    bot._phantom_mgr = _Phantoms()
+    bot.stats = type(
+        "S", (), {"current_price": 0.0, "cost_basis_total_exchange": 0.0}
+    )()
+
+    async def _get_ticker(_symbol):
+        return Ticker(
+            symbol=SYM,
+            bid=price,
+            ask=price,
+            last=price,
+            volume_24h=0.0,
+            timestamp=0.0,
+        )
+
+    async def _get_balance(currency):
+        return Balance(
+            currency=currency,
+            free=units_on_exchange,
+            used=0.0,
+            total=units_on_exchange,
+        )
+
+    async def _refresh_quote_to_usd():
+        return 1.0
+
+    bot._get_ticker = _get_ticker
+    bot._get_balance = _get_balance
+    bot._refresh_quote_to_usd = _refresh_quote_to_usd
+    return bot
+
+
+def _adopt(units_on_exchange, cap_usd=0.0, target_balance=25.0, price=PX, lots=()):
+    """Run the real ``_tick_initialise`` and return the ``ScrummingBot`` it left."""
+    bot = _bot(units_on_exchange, cap_usd, target_balance, price, lots)
+    asyncio.run(ScrummingBot._tick_initialise(bot, SYM))
+    return bot
+
+
+def _adopted_units(bot) -> float:
+    """Sum the units ``_tick_initialise`` wrote into ``_main_lots``."""
+    return sum(float(lot.get("units", 0) or 0) for lot in bot._main_lots)
+
+
+def _capped_message(bot) -> str:
+    """Return the ``ADOPTION CAPPED`` message, or an empty string."""
+    for message in bot._bus.messages:
+        if "ADOPTION CAPPED" in message:
+            return message
+    return ""
+
+
+class TestTheInstrumentWorks:
+    def test_the_handshake_completes_and_records_a_lot(self):
+        """Positive control: ``_tick_initialise`` reaches the adoption branch and
+        marks the bot ``_initialised``."""
+        bot = _adopt(25.0 / PX)
+        assert bot._initialised is True
+        assert bot._main_lots, bot._bus.messages
 
     def test_the_field_exists_on_botconfig(self):
         from src.trading.bot_container import BotConfig
@@ -94,79 +139,102 @@ class TestTheDefaultIsTargetBalance:
         assert BotConfig.max_adoptable_usd == 0.0
 
 
+class TestTheDefaultIsTargetBalance:
+    def test_zero_means_use_target_balance(self):
+        """A ``max_adoptable_usd`` of 0.0 is unset, not adopt-nothing; every bot
+        predating the field carries 0.0."""
+        bot = _adopt(10_000.0, cap_usd=0.0, target_balance=25.0)
+        assert _adopted_units(bot) == pytest.approx(25.0 / PX)
+
+    def test_a_bot_asked_to_hold_25_adopts_at_most_25(self):
+        bot = _adopt(10_000.0, cap_usd=0.0, target_balance=25.0)
+        assert _adopted_units(bot) * PX == pytest.approx(25.0)
+
+    def test_an_explicit_cap_overrides_the_default(self):
+        bot = _adopt(10_000.0, cap_usd=10.0, target_balance=25.0)
+        assert _adopted_units(bot) * PX == pytest.approx(10.0)
+
+
 class TestTheCapOnlyEverReduces:
     def test_a_small_holding_is_adopted_whole(self):
-        """The BICO case: the operator's manual $25 against a $25
-        target. The cap must not shave it."""
+        """The operator's manual $25 against a $25 target: ``_main_lots`` keeps
+        every unit and no ``ADOPTION CAPPED`` message is emitted."""
         units = 25.0 / PX
-        assert _cap_units(units, 0.0, 25.0, PX) == pytest.approx(units)
+        bot = _adopt(units, cap_usd=0.0, target_balance=25.0)
+        assert _adopted_units(bot) == pytest.approx(units)
+        assert _capped_message(bot) == ""
 
     def test_it_never_invents_units(self):
-        """A cap above the holding must not raise the holding to it."""
+        """A ``max_adoptable_usd`` above the holding must not raise it."""
         units = 5.0 / PX
-        assert _cap_units(units, 1000.0, 25.0, PX) == pytest.approx(units)
+        bot = _adopt(units, cap_usd=1000.0, target_balance=25.0)
+        assert _adopted_units(bot) == pytest.approx(units)
 
-    def test_a_zero_price_leaves_the_holding_alone(self):
-        """No price means no USD conversion, so no defensible cap.
-        Capping to zero here would discard a real position on a failed
-        ticker read."""
-        units = 100.0
-        assert _cap_units(units, 25.0, 25.0, 0.0) == pytest.approx(units)
+    def test_a_zero_price_discards_nothing_already_tracked(self):
+        """A ticker ``last`` of 0.0 gives no cost basis, so ``_tick_initialise``
+        writes no lot and the 60 units already in ``_main_lots`` survive."""
+        held = [{"units": 60.0, "initial_buy_price": PX}]
+        bot = _adopt(100.0, cap_usd=25.0, target_balance=25.0, price=0.0, lots=held)
+        assert _adopted_units(bot) == pytest.approx(60.0)
+        assert _capped_message(bot) == "", bot._bus.messages
+
+    def test_a_live_price_does_adopt_over_the_tracked_units(self):
+        """Positive control for the zero-price case: the same 60 tracked units are
+        replaced when the ticker carries a price."""
+        held = [{"units": 60.0, "initial_buy_price": PX}]
+        bot = _adopt(100.0, cap_usd=1000.0, target_balance=25.0, lots=held)
+        assert _adopted_units(bot) == pytest.approx(100.0)
 
     def test_no_target_and_no_cap_leaves_the_holding_alone(self):
-        assert _cap_units(100.0, 0.0, 0.0, PX) == pytest.approx(100.0)
+        bot = _adopt(100.0, cap_usd=0.0, target_balance=0.0)
+        assert _adopted_units(bot) == pytest.approx(100.0)
 
 
 class TestTheOperatorsSurplusIsWithheld:
     def test_the_withheld_amount_is_the_difference(self):
-        """The operator holds 500 of the asset; the bot may take $25."""
+        """The operator holds 500 ``BICO``; the bot may adopt $25 of it."""
         held = 500.0
-        got = _cap_units(held, 0.0, 25.0, PX)
-        withheld = held - got
-        assert withheld > 0
-        assert got * PX == pytest.approx(25.0)
-        assert withheld == pytest.approx(held - 25.0 / PX)
+        bot = _adopt(held, cap_usd=0.0, target_balance=25.0)
+        adopted = _adopted_units(bot)
+        assert adopted * PX == pytest.approx(25.0)
+        assert held - adopted == pytest.approx(held - 25.0 / PX)
 
-    def test_the_uncapped_rule_would_have_taken_everything(self):
-        """NEGATIVE CONTROL. Without the cap the bot adopts the lot --
-        this is the behaviour the cap exists to prevent, and if it were
-        not reproducible the tests above would prove nothing."""
+    def test_a_cap_above_the_holding_takes_the_lot(self):
+        """Negative control: without a binding ``max_adoptable_usd`` the bot
+        adopts everything, which is what the cap exists to stop."""
         held = 500.0
-        uncapped = held
-        capped = _cap_units(held, 0.0, 25.0, PX)
-        assert uncapped > capped
-        assert uncapped == pytest.approx(held)
-
-
-def _adoption_source() -> str:
-    """The module that owns the boot handshake, whichever file that is."""
-    path = inspect.getsourcefile(ScrummingBot._tick_initialise)
-    return Path(path).read_text(encoding="utf-8")
-
-
-class TestItIsWiredIntoAdoption:
-    def test_the_adoption_site_applies_the_cap(self):
-        src = _adoption_source()
-        assert "max_adoptable_usd" in src
-        assert "ADOPTION CAPPED" in src
-
-    def test_the_cap_is_applied_before_the_lot_is_built(self):
-        """Order matters: capping after `_main_lots` was written would
-        record the uncapped position and then contradict it."""
-        import re
-
-        src = _adoption_source()
-        i_cap = src.index("_cap_usd = float(getattr(")
-        # black may wrap `[{` across lines; match the dict-literal build, not `[]`.
-        i_lot = re.search(r"self\._main_lots = \[\s*\{", src).start()
-        assert i_cap < i_lot, "cap must precede lot construction"
+        bot = _adopt(held, cap_usd=held * PX * 10, target_balance=25.0)
+        assert _adopted_units(bot) == pytest.approx(held)
+        assert _capped_message(bot) == ""
 
 
 class TestTheOperatorIsTold:
-    def test_the_log_names_the_lever(self):
-        """A cap the operator cannot find is a cap they will report as
-        a bug."""
-        src = _adoption_source()
-        blk = src[src.index("ADOPTION CAPPED") :][:900]
-        assert "max_adoptable_usd" in blk
-        assert "unmanaged" in blk
+    def test_the_refusal_is_announced(self):
+        bot = _adopt(500.0, cap_usd=0.0, target_balance=25.0)
+        assert _capped_message(bot), bot._bus.messages
+
+    def test_the_message_names_the_lever(self):
+        """A cap the operator cannot find is a cap they report as a bug, so the
+        ``ADOPTION CAPPED`` line names ``max_adoptable_usd``."""
+        message = _capped_message(_adopt(500.0, cap_usd=0.0, target_balance=25.0))
+        assert "max_adoptable_usd" in message, message
+        assert "unmanaged" in message, message
+
+    def test_the_message_carries_both_sizes(self):
+        """The line reports the wallet holding and the adopted size."""
+        message = _capped_message(_adopt(500.0, cap_usd=0.0, target_balance=25.0))
+        assert "500.000000" in message, message
+        assert f"{25.0 / PX:.6f}" in message, message
+
+
+class TestTheCapReachesTheLot:
+    def test_the_lot_records_the_capped_size(self):
+        """Capping after ``_main_lots`` was written would record the uncapped
+        position and then contradict it."""
+        bot = _adopt(500.0, cap_usd=0.0, target_balance=25.0)
+        assert len(bot._main_lots) == 1, bot._main_lots
+        assert bot._main_lots[0]["units"] == pytest.approx(25.0 / PX)
+
+    def test_current_holdings_matches_the_lot(self):
+        bot = _adopt(500.0, cap_usd=0.0, target_balance=25.0)
+        assert bot._current_holdings == pytest.approx(_adopted_units(bot))

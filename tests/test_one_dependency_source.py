@@ -330,12 +330,11 @@ class TestNoFileHoldsAList:
             "what it prints."
         )
 
-    def test_the_five_repaired_files_still_call_the_tool(self) -> None:
+    def test_the_repaired_shell_installers_still_call_the_tool(self) -> None:
         """The repair holds. Deleting the call would pass contract 1."""
         expected = {
             "build_mac.sh": "tools.deps",
             "build_windows.ps1": "tools.deps",
-            "BUILD.py": "tools.deps",
             "deploy/kiosk/install.sh": "tools/deps.py",
             "deploy/kiosk/update.sh": "tools/deps.py",
         }
@@ -345,6 +344,88 @@ class TestNoFileHoldsAList:
             if needle not in text:
                 missing.append(f"{path} no longer names {needle}")
         assert not missing, "; ".join(missing)
+
+    def test_the_python_installer_installs_what_the_one_source_answers(
+        self, monkeypatch
+    ) -> None:
+        """The path behind every root build entry point, driven, not read."""
+        import tools.deps as deps
+        from tools import build_launcher
+
+        answered = ["only-this-package==1.2.3"]
+        installed: list[str] = []
+
+        def record_install(requirement: str) -> bool:
+            installed.append(requirement)
+            return True
+
+        monkeypatch.setattr(deps, "requirements_for", lambda _extras: answered)
+        monkeypatch.setattr(deps, "installed_version", lambda _req: None)
+        monkeypatch.setattr(build_launcher, "install_package", record_install)
+
+        assert build_launcher.check_and_install_deps() is True
+        assert installed == answered, (
+            f"the build path installed {installed}; the one source answered "
+            f"{answered}. A hand-copied list would have installed something else"
+        )
+
+    def test_the_python_installer_refuses_when_the_one_source_answers_nothing(
+        self, monkeypatch
+    ) -> None:
+        """Control. A file holding its own list would install it regardless."""
+        import tools.deps as deps
+        from tools import build_launcher
+
+        def no_source(_extras):
+            raise deps.DependencySourceError("pyproject.toml is not readable")
+
+        monkeypatch.setattr(deps, "requirements_for", no_source)
+        monkeypatch.setattr(
+            build_launcher,
+            "install_package",
+            lambda req: pytest.fail(f"installed {req!r} with no dependency source"),
+        )
+
+        assert build_launcher.check_and_install_deps() is False
+
+
+class TestTheInterpreterFloorIsReadNotHeld:
+    """`requires-python` is read from the one source, never copied into a build."""
+
+    def test_the_floor_follows_the_source(self, monkeypatch) -> None:
+        """A planted bound moves the floor; a held constant would not."""
+        import tools.deps as deps
+        from tools import build_launcher
+
+        monkeypatch.setattr(
+            deps, "load_project", lambda *_a, **_k: {"requires-python": ">=9.9"}
+        )
+        assert build_launcher.required_python() == (9, 9)
+
+    def test_the_running_interpreter_meets_the_declared_floor(self) -> None:
+        from tools import build_launcher
+
+        assert build_launcher.check_python() is True
+
+    def test_an_interpreter_below_the_declared_floor_is_refused(
+        self, monkeypatch
+    ) -> None:
+        """Control for the check above, which would else pass on any floor."""
+        from tools import build_launcher
+
+        monkeypatch.setattr(build_launcher, "required_python", lambda: (99, 0))
+        assert build_launcher.check_python() is False
+
+    def test_a_source_stating_no_lower_bound_stops_the_build(self, monkeypatch) -> None:
+        import tools.deps as deps
+        from tools import build_launcher
+
+        monkeypatch.setattr(
+            deps, "load_project", lambda *_a, **_k: {"requires-python": ""}
+        )
+        with pytest.raises(deps.DependencySourceError):
+            build_launcher.required_python()
+        assert build_launcher.check_python() is False
 
 
 # Contract 2

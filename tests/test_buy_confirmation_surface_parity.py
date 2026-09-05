@@ -23,6 +23,7 @@ pytest.importorskip("PySide6")
 
 from src.gui import buy_confirmation_dialog as qt_dialog
 from src.gui.main_tabs import buy_confirmation_surface as surface
+from tests.fixtures.qt_wiring_counts import qt_free
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
@@ -978,67 +979,59 @@ def test_the_skins_are_the_dialogs_own(monkeypatch):
 
 
 def test_the_shipped_strings_are_the_dialogs_own():
-    """A string the operator reads was retyped rather than carried over."""
-    dialog_text = DIALOG_PATH.read_text(encoding="utf-8")
-    for literal in (
-        surface.ACCESSIBLE_NAME,
-        surface.WINDOW_TITLE,
+    """Every string here is read off the built dialog, never off a module's
+    text, and each button is clicked for the answer it sets."""
+    dialog = dialog_painted_by_the_dialog("plain")
+    assert dialog.accessibleName() == surface.ACCESSIBLE_NAME
+    assert dialog.windowTitle() == surface.WINDOW_TITLE
+    labels, buttons = qt_labels_and_buttons(dialog)
+    assert [button.text() for button in buttons] == [
         surface.YES_TEXT,
         surface.NO_TEXT,
         surface.SKIP_TEXT,
-        surface.TIMEOUT_LOG,
-        surface.REASON_STYLE,
-        surface.DETAILS_STYLE,
-        surface.ANSWER_YES,
-        surface.ANSWER_SKIP,
-        surface.ANSWER_TIMEOUT,
+    ]
+    assert dialog.result_value == surface.ANSWER_NO
+    for index, answer in (
+        (0, surface.ANSWER_YES),
+        (1, surface.ANSWER_NO),
+        (2, surface.ANSWER_SKIP),
     ):
-        assert literal in dialog_text, literal
-    assert surface.YES_SURFACE in dialog_text
-    assert surface.NO_SURFACE in dialog_text
-    for half in surface.HEADLESS_LOG.split("; "):
-        assert half in dialog_text, half
-    for half in surface.NO_QT_ERROR.split("dialog "):
-        assert half in dialog_text, half
+        fresh = dialog_painted_by_the_dialog("plain")
+        _, fresh_buttons = qt_labels_and_buttons(fresh)
+        fresh_buttons[index].click()
+        assert fresh.result_value == answer, answer
 
 
 def test_the_surface_loads_no_qt_module():
     """The surface grew an import that pulls Qt into the backend."""
-    import ast
+    answered = qt_free(
+        "src.gui.main_tabs.buy_confirmation_surface", "BuyConfirmationModel"
+    )
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
 
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imported.add(node.module or "")
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"logging", "typing", "__future__", ""}
-    dialog_tree = ast.parse(DIALOG_PATH.read_text(encoding="utf-8"))
-    dialog_imports = {
-        (node.module or "")
-        for node in ast.walk(dialog_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in dialog_imports), dialog_imports
+
+def test_the_qt_block_stops_the_shipped_side():
+    """POSITIVE CONTROL for ``qt_free``: src.gui.widgets.bot_status_table needs Qt to load."""
+    answered = qt_free("src.gui.widgets.bot_status_table", "BotStatusTable")
+    assert answered["imported"] is False, answered
 
 
 def test_the_connect_sites_match_the_actions():
-    """A signal wiring appeared on one side and not the other."""
-    dialog_text = DIALOG_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert dialog_text.count(".connect(") == 4
-    assert (
-        "self._request_signal.connect(self._on_request_received, Qt.AutoConnection)"
-        in dialog_text
-    )
-    assert 'btn_yes.clicked.connect(lambda: self._answer("yes"))' in dialog_text
-    assert 'btn_no.clicked.connect(lambda: self._answer("no"))' in dialog_text
-    assert 'btn_skip.clicked.connect(lambda: self._answer("skip"))' in dialog_text
-    assert surface_text.count(".connect(") == 0
-    assert len(surface.ACTIONS) == dialog_text.count(".connect(")
+    """A signal wiring appeared on one side and not the other.
+
+    Each wiring is read off the live object through ``isSignalConnected``, and
+    each button's answer is compared with the model method ``ACTIONS`` names
+    for it.
+    """
+    dialog = dialog_painted_by_the_dialog("plain")
+    _, buttons = qt_labels_and_buttons(dialog)
+    broker = qt_dialog._BuyConfirmationBroker()
+    assert signal_is_connected(broker, "_request_signal(QString,PyObject)") is True
+    wired = [signal_is_connected(button, "clicked(bool)") for button in buttons]
+    assert wired == [True, True, True], wired
+    assert 1 + len(wired) == len(surface.ACTIONS)
+
     assert set(surface.ACTIONS) == {
         "request.received",
         "yes.clicked",
@@ -1046,9 +1039,13 @@ def test_the_connect_sites_match_the_actions():
         "skip.clicked",
     }
     assert surface.ACTIONS["request.received"] == "show_request"
-    assert surface.ACTIONS["yes.clicked"] == "answer_yes"
-    assert surface.ACTIONS["no.clicked"] == "answer_no"
-    assert surface.ACTIONS["skip.clicked"] == "answer_skip"
+    for action, index in (("yes.clicked", 0), ("no.clicked", 1), ("skip.clicked", 2)):
+        fresh = dialog_painted_by_the_dialog("plain")
+        _, fresh_buttons = qt_labels_and_buttons(fresh)
+        fresh_buttons[index].click()
+        model = surface.BuyConfirmationModel()
+        getattr(model, surface.ACTIONS[action])()
+        assert model.result_value == fresh.result_value, action
     for target in surface.ACTIONS.values():
         assert callable(getattr(surface.BuyConfirmationModel, target)), target
 
@@ -1512,6 +1509,25 @@ def dialog_painted_by_the_dialog(spec):
     return qt_dialog.BuyConfirmationDialog(**PARAMS[spec])
 
 
+def signal_is_connected(owner, signature):
+    """Whether ``owner`` has a receiver on the signal named ``signature``."""
+    meta = owner.metaObject()
+    index = meta.indexOfSignal(signature)
+    assert index >= 0, f"{owner} declares no signal {signature}"
+    return owner.isSignalConnected(meta.method(index))
+
+
+def qt_labels_and_buttons(dialog):
+    """``dialog``'s two ``QLabel`` children and three ``QPushButton`` children."""
+    from PySide6.QtWidgets import QLabel, QPushButton
+
+    labels = dialog.findChildren(QLabel)
+    buttons = dialog.findChildren(QPushButton)
+    assert len(labels) == 2, [one.text() for one in labels]
+    assert len(buttons) == 3, [one.text() for one in buttons]
+    return labels, buttons
+
+
 def model_payload(spec, button=None):
     """The surface payload for the same parameter set, stamped."""
     model = surface.BuyConfirmationModel()
@@ -1931,6 +1947,21 @@ BLOCK_QT = (
     "        return None\n"
     "sys.meta_path.insert(0, _Refuse())\n"
 )
+
+
+def run_probe_alone(source):
+    """Run one probe in a fresh process and return what it printed."""
+    done = subprocess.run(
+        [sys.executable, "-"],
+        input=source.encode("utf-8"),
+        capture_output=True,
+        cwd=str(REPO_ROOT),
+        timeout=300,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr.decode()
+    return json.loads(done.stdout.decode().splitlines()[-1])
+
 
 HEADLESS_PROBE = BLOCK_QT + (
     "import asyncio, json, logging, sys\n"

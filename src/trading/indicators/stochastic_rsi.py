@@ -1,8 +1,8 @@
 """Stochastic RSI.
 
 ``StochasticRSI.rsi_values`` builds the Wilder RSI series, ``stoch_ratios``
-positions each value within its window, and ``lines`` aligns the result to
-candles.
+positions each value within its window, ``window_is_flat`` marks a window
+with no range, and ``lines`` aligns the result to candles.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from .types import (
 )
 from .helpers import (
     _sma,
+    _window_has_no_range,
 )
 
 #: One entry per candle. ``None`` where ``StochasticRSI.lines`` has no value.
@@ -72,15 +73,29 @@ class StochasticRSI:
                 values.append(100.0 if avg_gain > 0.0 else 0.0)
         return values, rs_indeterminate
 
+    def window_is_flat(
+        self, rsi_values: list[float], closes: list[float], i: int
+    ) -> bool:
+        """True when the StochRSI window ending at ``rsi_values[i]`` has no range.
+
+        ``rsi_values[j]`` describes candle ``rsi_period + j + 1``, so the span
+        of ``closes`` this reads is every close the window's deltas come from.
+        """
+        window = rsi_values[i - self.stoch_period + 1 : i + 1]
+        span = closes[
+            self.rsi_period + i - self.stoch_period + 1 : self.rsi_period + i + 2
+        ]
+        return max(window) - min(window) <= 0.0 or _window_has_no_range(span)
+
     def stoch_ratios(
-        self, rsi_values: list[float], tail: int | None = None
+        self, rsi_values: list[float], closes: list[float], tail: int | None = None
     ) -> tuple[int, list[float], bool]:
         """StochRSI over an RSI series: ``(first index, ratios, flat?)``.
 
-        Chande and Kroll (1994): ``StochRSI = (RSI - lowest RSI) / (highest
-        RSI - lowest RSI)`` over ``stoch_period`` values, returned as a
-        0-to-1 ratio. ``tail`` bounds the computed range and ``flat`` marks a
-        window with no range.
+        Chande and Kroll (1994) define ``StochRSI = (RSI - lowest RSI) /
+        (highest RSI - lowest RSI)`` over ``stoch_period`` values as a 0-to-1
+        ratio; ``tail`` bounds the computed range; and ``flat`` marks a window
+        with no range, where the ratio is 0/0 and the entry is 0.0.
         """
         start = self.stoch_period - 1
         if tail is not None:
@@ -88,14 +103,16 @@ class StochasticRSI:
         ratios: list[float] = []
         flat = False
         for i in range(start, len(rsi_values)):
+            # Identical closes hold the RSI mathematically constant while
+            # Wilder's recursion rounds it across ULPs, and dividing by that
+            # spread reports a halted market at one end of the oscillator.
+            if self.window_is_flat(rsi_values, closes, i):
+                flat = True
+                ratios.append(0.0)
+                continue
             window = rsi_values[i - self.stoch_period + 1 : i + 1]
             low = min(window)
-            high = max(window)
-            # `high` and `low` come from the window itself, so `flat` is the
-            # source-quantity test.
-            if high - low <= 0.0:
-                flat = True
-            ratios.append((rsi_values[i] - low) / (high - low + 1e-9))
+            ratios.append((rsi_values[i] - low) / (max(window) - low))
         return start, ratios, flat
 
     def lines(self, candles: list[Candle]) -> _Line:
@@ -107,13 +124,11 @@ class StochasticRSI:
         closes = [c.close for c in candles]
         out: _Line = [None] * len(closes)
         rsi_values, _ = self.rsi_values(closes)
-        start, ratios, _ = self.stoch_ratios(rsi_values)
+        start, ratios, _ = self.stoch_ratios(rsi_values, closes)
         for offset, ratio in enumerate(ratios):
             i = start + offset
-            window = rsi_values[i - self.stoch_period + 1 : i + 1]
-            if max(window) - min(window) <= 0.0:
+            if self.window_is_flat(rsi_values, closes, i):
                 continue
-            # `rsi_values[j]` describes candle `rsi_period + j + 1`.
             out[self.rsi_period + i + 1] = ratio
         return out
 
@@ -146,7 +161,7 @@ class StochasticRSI:
         # and `d_line[-2]` reach back through.
         _stoch_need = self.k_smooth + self.d_smooth
         _, _ratios, stoch_indeterminate = self.stoch_ratios(
-            rsi_values, tail=_stoch_need
+            rsi_values, closes, tail=_stoch_need
         )
         # The published ratio is 0-to-1; `stoch_rsi` is its 0-to-100 form.
         stoch_rsi = [r * 100 for r in _ratios]

@@ -8,8 +8,8 @@ Two mechanisms claim to persist wires:
   2. top-level `smart_wires`, written by SmartWireManager.export_wires()
      through StateManager
 
-Channel 1 cannot survive: `export_scrumming_state` emits 31 keys and
-`smart_wire_routes` is not among them, so the 60-second save rebuilds
+Channel 1 cannot survive: `smart_wire_routes` is not among the keys
+`export_scrumming_state` emits, so the 60-second save rebuilds
 each bot's scrumming_state without it. On the operator's live file
 2026-08-06: **0 of 35 bots carried the key, 0 route entries**, while
 channel 2 held all **40 wires** and 48 ledger rows.
@@ -36,7 +36,6 @@ staging tests write only under pytest's `tmp_path`.
 
 from __future__ import annotations
 
-import ast
 import json
 import sys
 from pathlib import Path
@@ -47,25 +46,46 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-VIZ = REPO_ROOT / "src" / "gui" / "bot_visualizer.py"
-STATE_MGR = REPO_ROOT / "src" / "core" / "state_manager.py"
+ROUTES_KEY = "smart_wire_routes"
+GUI_ROUTES = [{"dest_bot_id": "b2", "pct": 25.0}]
 
 
-def _source_file_of(qualname_owner, method_name: str) -> Path:
-    """Path to the file that actually defines ``method_name``, following
-    the method wherever it has been extracted to."""
-    import inspect
+def _bare_bot():
+    """A ScrummingBot carrying every field ``export_scrumming_state`` reads.
 
-    sf = inspect.getsourcefile(getattr(qualname_owner, method_name))
-    assert sf is not None
-    return Path(sf)
+    ``_smart_wire_routes`` is set beside them, so an exporter that carried the
+    GUI's key would show it.
+    """
+    from src.trading.scrumming_bot import ScrummingBot
+
+    bot = object.__new__(ScrummingBot)
+    bot._target_balance = 100.0
+    bot._anchor_target_balance = 100.0
+    bot._last_trade_price = 1.0
+    bot._last_trade_side = None
+    bot._quote_to_usd = 1.0
+    bot._fold_queue_usd = 0.0
+    bot._dist_accumulator = 0.0
+    bot._hedge_bal = 0.0
+    bot._hedge_trades = 0
+    bot._scrum_target_mode = "usd"
+    bot._scrum_target_side = None
+    bot._main_lots = [{"units": 1.0, "initial_buy_price": 1.0}]
+    bot._fold_tranches = []
+    bot._smart_wire_routes = list(GUI_ROUTES)
+    bot._current_holdings = 1.0
+    bot._pending_wire_credits = 0.0
+    bot.bot_id = "c02-bot"
+    bot._bus = type("B", (), {"emit": lambda self, *_a, **_k: None})()
+    bot.config = type("C", (), {"position_ceiling_enabled": False})()
+    return bot
 
 
-def _fn(path: Path, name: str) -> ast.FunctionDef:
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return next(
-        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name
-    )
+def _exported_state() -> dict:
+    """What ``export_scrumming_state`` writes for a ``_bare_bot``."""
+    from src.trading.scrumming_bot import ScrummingBot
+
+    return ScrummingBot.export_scrumming_state(_bare_bot())
 
 
 class TestStagingFilesDoNotCollide:
@@ -129,52 +149,98 @@ class TestStagingFilesDoNotCollide:
 
 
 class TestChannelOneCannotSurviveASave:
-    def test_export_does_not_emit_smart_wire_routes(self):
-        """Why channel 1 is empty on all 35 live bots: the exporter
-        that rebuilds scrumming_state every 60s does not carry it."""
+    def test_the_exporter_carries_the_keys_the_save_rebuilds(self):
+        """POSITIVE CONTROL: every assertion below reads this dict."""
+        exported = _exported_state()
+        assert "main_lots" in exported, sorted(exported)
+        assert len(exported) > 30, len(exported)
+
+    def test_the_export_drops_the_gui_routes(self):
+        """The 60-second save rebuilds ``scrumming_state`` from this dict, so
+        a key it omits cannot survive."""
+        exported = _exported_state()
+        assert ROUTES_KEY not in exported, (
+            f"{ROUTES_KEY} is now exported; channel 1 has become durable "
+            f"and this cascade's premise needs revisiting"
+        )
+
+    def test_an_import_of_the_gui_routes_leaves_nothing_the_export_carries(self):
+        """A restored state carrying the key round-trips without it."""
         from src.trading.scrumming_bot import ScrummingBot
 
-        fn = _fn(
-            _source_file_of(ScrummingBot, "export_scrumming_state"),
-            "export_scrumming_state",
-        )
-        keys = {
-            k.value
-            for n in ast.walk(fn)
-            if isinstance(n, ast.Dict)
-            for k in n.keys
-            if isinstance(k, ast.Constant) and isinstance(k.value, str)
-        }
-        assert (
-            "main_lots" in keys
-        ), "positive control failed — extractor found no known key"
-        assert "smart_wire_routes" not in keys, (
-            "smart_wire_routes is now exported; if that is deliberate, "
-            "channel 1 has become durable and this cascade's premise "
-            "needs revisiting"
-        )
+        bot = _bare_bot()
+        del bot._smart_wire_routes
+        restored = dict(_exported_state())
+        restored[ROUTES_KEY] = list(GUI_ROUTES)
+        ScrummingBot.import_scrumming_state(bot, restored)
+        assert ROUTES_KEY not in ScrummingBot.export_scrumming_state(bot)
+        assert getattr(bot, "_" + ROUTES_KEY, None) is None
 
-    def test_the_trading_layer_never_reads_it(self):
-        """A key only the GUI knows about is not a persistence
-        mechanism for the engine."""
-        hits = []
-        for p in (REPO_ROOT / "src" / "trading").rglob("*.py"):
-            if "smart_wire_routes" in p.read_text(encoding="utf-8"):
-                hits.append(p.name)
-        assert not hits, f"src/trading now references it: {hits}"
+
+def _drive_the_gui_write(write_json):
+    """Run the real ``_save_bot_state_dict`` with ``write_json`` in place.
+
+    Returns the ERROR records ``bot_visualizer.logger`` emitted, collected off
+    that logger directly: ``acervator`` does not propagate to caplog's handler.
+    """
+    import logging
+
+    import src.core.io_utils as io_utils
+    import src.gui.bot_visualizer as viz
+
+    records: list = []
+
+    class _Collect(logging.Handler):
+        def emit(self, record):
+            if record.levelno >= logging.ERROR:
+                records.append(record.getMessage())
+
+    handler = _Collect()
+    kept = io_utils.atomic_write_json
+    io_utils.atomic_write_json = write_json
+    viz.logger.addHandler(handler)
+    try:
+        viz.BotVisualizationTab._save_bot_state_dict(None, {"bots": {}})
+    finally:
+        viz.logger.removeHandler(handler)
+        io_utils.atomic_write_json = kept
+    return records
 
 
 class TestTheGuiWriterIsNoLongerSilent:
-    def test_failure_is_logged(self):
-        """A failed write to the operator's position file could
-        previously fail for weeks with no signal."""
-        fn = _fn(VIZ, "_save_bot_state_dict")
-        handlers = [n for n in ast.walk(fn) if isinstance(n, ast.ExceptHandler)]
-        assert handlers, "no exception handler in _save_bot_state_dict"
-        for h in handlers:
-            bare_pass = len(h.body) == 1 and isinstance(h.body[0], ast.Pass)
-            assert not bare_pass, (
-                "the write to bot_state.json still swallows failures " "silently"
-            )
-        src = ast.get_source_segment(VIZ.read_text(encoding="utf-8"), fn) or ""
-        assert "logger.error" in src
+    def test_a_failed_write_is_logged(self):
+        """``atomic_write_json`` raises, so no file is opened and the
+        operator's tree is never touched."""
+        import src.gui.bot_visualizer as viz
+
+        if not viz._HAS_QT:
+            pytest.skip("bot_visualizer declares its writer under the Qt guard")
+
+        def _boom(*args, **kwargs):
+            del args, kwargs
+            raise OSError("disk full")
+
+        said = _drive_the_gui_write(_boom)
+        assert any(
+            "bot_state.json" in message for message in said
+        ), f"the failed write said nothing: {said}"
+
+    def test_POSITIVE_CONTROL_a_successful_write_logs_no_error(self):
+        """A writer that logged on every call would make the test above green
+        without ever failing."""
+        import src.gui.bot_visualizer as viz
+
+        if not viz._HAS_QT:
+            pytest.skip("bot_visualizer declares its writer under the Qt guard")
+
+        written = {}
+
+        def _record(path, payload, **kwargs):
+            del kwargs
+            written["path"] = path
+            written["payload"] = payload
+
+        said = _drive_the_gui_write(_record)
+        assert written["payload"] == {"bots": {}}
+        assert Path(written["path"]).name == "bot_state.json"
+        assert said == [], said

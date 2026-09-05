@@ -35,6 +35,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -51,13 +52,109 @@ from src.gui.main_window import (  # noqa: E402
 )
 
 
-def _owning_source(owner, method_name: str) -> str:
-    """Source of the module that really defines ``method_name``."""
-    import inspect
+class _FireBus:
+    def __init__(self):
+        self.messages = []
 
-    path = inspect.getsourcefile(getattr(owner, method_name))
-    assert path is not None, method_name
-    return Path(path).read_text(encoding="utf-8")
+    def emit(self, topic, **payload):
+        self.messages.append(f"{topic}|{payload.get('message', '')}")
+
+
+class _FireStats:
+    def __init__(self):
+        self.total_trades = 0
+        self.total_scrummed_usd = 0.0
+        self.trade_volume = 0.0
+        self.last_trade_time = 0.0
+
+
+class _FireConfig:
+    symbol = "CHIP/USD"
+    target_asset = "CHIP"
+    exchange_id = "coinbase"
+    scrumming_interval_pct = 1.0
+    trading_fee_pct = 0.6
+    max_target_growth_pct = 0.0
+    profit_folding_active = True
+    scrum_fold_pct = 100
+
+
+class _FireOrder:
+    id = "ammo-1"
+    filled = 0.0
+    average = 0.0
+
+
+class _FireTicker:
+    def __init__(self, last):
+        self.last = last
+
+
+def _fire_at(position_usd: float, target: float):
+    """One real ``_execute_manual_rebalance`` run at ``position_usd``.
+
+    Price is $1, so holdings and USD are the same number and the delta the
+    engine reads is ``position_usd - target``. Only the outward edges are
+    stubbed; ``bot.placed`` records every order the run placed.
+    """
+    import asyncio
+
+    from src.trading.scrumming_bot import ScrummingBot
+
+    holdings = position_usd
+    bot: Any = object.__new__(ScrummingBot)
+    bot.bot_id = "ammo-bot"
+    bot.placed = []
+    bot._bus = _FireBus()
+    bot.config = _FireConfig()
+    bot.stats = _FireStats()
+    bot._fold_tranches = []
+    bot._main_lots = [{"units": holdings, "initial_buy_price": 0.9}]
+    bot._current_holdings = holdings
+    bot._target_balance = target
+    bot._anchor_target_balance = target
+    bot._quote_to_usd = 1.0
+    bot._manual_fire_pending = True
+    bot._tranches_created_lifetime = 0
+    bot._fold_queue_usd = 0.0
+    bot._last_trade_side = None
+    bot._last_trade_price = 0.0
+    bot._last_bb = None
+    bot._pending_wire_credits = 0.0
+
+    async def _refresh():
+        return 1.0
+
+    async def _place(**kwargs):
+        bot.placed.append(dict(kwargs))
+        return _FireOrder()
+
+    async def _settled(order, symbol, requested, tick_price):
+        del order, symbol, tick_price
+        return requested, 1.0, True
+
+    async def _balance(currency):
+        del currency
+        return type("B", (), {"total": holdings, "free": holdings, "absent": False})()
+
+    def _ignore(*args, **kwargs):
+        del args, kwargs
+
+    def _route(scrum_usd, sell_fill, label):
+        del scrum_usd, sell_fill, label
+        return 0.0
+
+    bot._refresh_quote_to_usd = _refresh
+    bot.guarded_place_order = _place
+    bot._settled_fill = _settled
+    bot._get_balance = _balance
+    bot._route_scrum_proceeds_via_wires = _route
+    bot._emit_voting_panel_snapshot_at_fire = _ignore
+    bot._emit_gate_decision_at_fire = _ignore
+    bot._reset_opposing_hysteresis_after_fill = _ignore
+    bot.note_scrum_retention_usd = _ignore
+    asyncio.run(bot._execute_manual_rebalance(_FireTicker(1.0), "manual_button"))
+    return bot
 
 
 class _Entry:
@@ -178,48 +275,58 @@ class TestTheManualFireBandSplit:
         assert out["manual_fire_noop"] is False
         assert "MANUAL FIRE WILL NOT ACT" not in out["tip"]
 
-    def test_the_engine_spells_no_band_of_its_own_to_drift_from(self):
-        """THE SAME INVARIANT, ASSERTED HARDER. Issue #128 R2.
-
-        This used to read ``_execute_manual_rebalance``'s SOURCE TEXT
-        for ``"* 0.01"`` and require the cell's constant to match it.
-        That was the best available check while the number was written
-        out twice: it could only catch the two copies disagreeing, and
-        only through a substring.
-
-        Both sites now call ``src/trading/target_bands.py``, so the
-        property to assert is stronger -- there is no second spelling
-        to drift. That is checked two ways: the engine method carries
-        no band literal, and the two bands come out EQUAL AS NUMBERS
-        over a swept domain rather than as matching text.
-
-        IF THIS FAILS: a band literal came back into the engine, and
-        the cell's "MANUAL FIRE WILL NOT ACT" warning can start lying
-        again.
-        """
-        import ast
-
-        import src.trading.scrumming_bot as sb
-        from src.trading.target_bands import (
-            MANUAL_FIRE_PCT,
-            manual_fire_dust_band,
-        )
-
-        src = _owning_source(sb.ScrummingBot, "_execute_manual_rebalance")
-        fn = next(
-            n
-            for n in ast.walk(ast.parse(src))
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and n.name == "_execute_manual_rebalance"
-        )
-        seg = ast.get_source_segment(src, fn) or ""
-        assert "manual_fire_dust_band(" in seg, "the engine stopped calling the band"
-        assert "* 0.01" not in seg, "a band literal is back in the engine"
+    def test_the_cell_and_the_engine_read_one_band(self):
+        """The cell's percentage is the engine's own object, not a copy."""
+        from src.trading.target_bands import MANUAL_FIRE_PCT, manual_fire_dust_band
 
         assert _MANUAL_FIRE_DUST_PCT is MANUAL_FIRE_PCT
         for target in (0.0, 0.001, 0.5, 1.0, 1.0000001, 47.13, 100.0, 1e6):
-            engine = max(target * MANUAL_FIRE_PCT, 0.01)
-            assert manual_fire_dust_band(target) == engine, target
+            assert manual_fire_dust_band(target) == max(
+                target * MANUAL_FIRE_PCT, 0.01
+            ), target
+
+    @pytest.mark.parametrize("target", [0.5, 47.13, 100.0, 12500.0])
+    def test_the_engine_refuses_up_to_the_band_the_cell_warns_about(self, target):
+        """The surplus at which the engine starts trading is measured by
+        bisecting real fires, then compared with the band the cell reads."""
+        from src.trading.target_bands import manual_fire_dust_band
+
+        band = manual_fire_dust_band(target)
+        low, high = 0.0, band * 4.0
+        assert _fire_at(target + low, target).placed == [], "a zero surplus traded"
+        opened = _fire_at(target + high, target).placed
+        assert len(opened) == 1 and opened[0]["side"].value == "sell", opened
+        for _ in range(40):
+            middle = (low + high) / 2.0
+            if _fire_at(target + middle, target).placed:
+                high = middle
+            else:
+                low = middle
+        assert high == pytest.approx(band, rel=1e-9), (
+            f"the engine starts trading at a ${high:.10f} surplus, but the "
+            f"cell warns up to ${band:.10f}"
+        )
+
+    @pytest.mark.parametrize("target", [0.5, 47.13, 100.0, 12500.0])
+    def test_the_cell_warns_up_to_the_same_band(self, target):
+        """The cell's warning boundary, bisected the same way."""
+        from src.trading.target_bands import manual_fire_dust_band
+
+        band = manual_fire_dust_band(target)
+        low, high = 0.0, band * 4.0
+        assert (
+            _compose_ammo_cell(0.0, 1.0, target + high, 1.0, target)["manual_fire_noop"]
+            is False
+        ), "the cell warns past four times its own band"
+        for _ in range(40):
+            middle = (low + high) / 2.0
+            if _compose_ammo_cell(0.0, 1.0, target + middle, 1.0, target)[
+                "manual_fire_noop"
+            ]:
+                low = middle
+            else:
+                high = middle
+        assert high == pytest.approx(band, rel=1e-9)
 
     def test_an_exactly_zero_delta_is_not_flagged(self):
         """A bot sitting precisely on target is not a surprising no-op."""
