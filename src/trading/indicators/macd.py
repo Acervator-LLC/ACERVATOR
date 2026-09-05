@@ -136,25 +136,21 @@ class MACD:
             crossover = True
             confidence = max(
                 0.0,
-                min(1.0, abs(curr_hist) / (abs(closes[-1]) * 0.001 + 1e-9) * 0.3 + 0.5),
+                min(1.0, abs(curr_hist) / (abs(closes[-1]) * 0.001) * 0.3 + 0.5),
             )
         elif prev_macd >= prev_signal and curr_macd < curr_signal:
             direction = SignalDirection.BEARISH
             crossover = True
             confidence = max(
                 0.0,
-                min(1.0, abs(curr_hist) / (abs(closes[-1]) * 0.001 + 1e-9) * 0.3 + 0.5),
+                min(1.0, abs(curr_hist) / (abs(closes[-1]) * 0.001) * 0.3 + 0.5),
             )
         elif curr_hist > 0 and curr_hist > prev_hist:
             direction = SignalDirection.BULLISH
-            confidence = max(
-                0.0, min(0.6, abs(curr_hist) / (abs(closes[-1]) * 0.002 + 1e-9))
-            )
+            confidence = max(0.0, min(0.6, abs(curr_hist) / (abs(closes[-1]) * 0.002)))
         elif curr_hist < 0 and curr_hist < prev_hist:
             direction = SignalDirection.BEARISH
-            confidence = max(
-                0.0, min(0.6, abs(curr_hist) / (abs(closes[-1]) * 0.002 + 1e-9))
-            )
+            confidence = max(0.0, min(0.6, abs(curr_hist) / (abs(closes[-1]) * 0.002)))
         elif curr_hist > 0:
             direction = SignalDirection.BULLISH
             confidence = 0.15

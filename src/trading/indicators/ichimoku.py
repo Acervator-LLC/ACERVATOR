@@ -114,7 +114,7 @@ class IchimokuCloud:
         cloud_top = max(curr_spa, curr_spb)
         cloud_bottom = min(curr_spa, curr_spb)
         cloud_thick = cloud_top - cloud_bottom
-        cloud_thick_pct = cloud_thick / (price + 1e-9)
+        cloud_thick_pct = cloud_thick / price
 
         # fut_spa and fut_spb are computed now and drawn D bars ahead.
         fut_spa = (tenkan + kijun) / 2.0

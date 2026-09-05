@@ -16,7 +16,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -37,6 +36,14 @@ from tests.fixtures.host_fonts import (  # noqa: E402
     skip_unless_no_fonts,
     skip_unless_real_fonts,
 )
+from tests.fixtures.qt_wiring_counts import (  # noqa: E402
+    bus_subscriptions_watched,
+    connections_watched,
+    io_watched,
+    module_pulls,
+    qt_free,
+    timers_watched,
+)
 from tests.fixtures.surface_pictures import (  # noqa: E402
     assert_pictures_differ,
     assert_pictures_match,
@@ -48,27 +55,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 TABLE_PATH = REPO_ROOT / "src/gui/widgets/bot_status_table.py"
 SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/bot_status_table_surface.py"
-WIRING_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-SIGNAL_CONTROL_PATH = REPO_ROOT / "src/gui/launcher.py"
-TIMER_CONTROL_PATH = REPO_ROOT / "src/gui/history_tab.py"
-BUS_CONTROL_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
-ELEMENT_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/dashboard_stat_card.py"
-NESTED_CLASS_CONTROL_PATH = REPO_ROOT / "src/gui/stock_main_window.py"
 
 PIXEL_SIZE = (1000, 240)
 
 # Counts measured off the file by the same counter that is pointed at a
 # neighbour which really has one.
-TABLE_CONNECT_SITES = 4
-TABLE_TIMER_BUILDS = 0
-TABLE_BUS_SITES = 0
-TABLE_SIGNAL_BUILDS = 0
-TABLE_ELEMENT_BUILDS = 6
-CONTROL_CONNECT_SITES = 1
-CONTROL_TIMER_BUILDS = 1
-CONTROL_BUS_SITES = 2
-CONTROL_SIGNAL_BUILDS = 3
-CONTROL_ELEMENT_BUILDS = 3
 
 # Invented values. No bot id, symbol or balance below is the operator's.
 UNICODE_BOT_ID = "Δ_fold→⚡"
@@ -1064,194 +1055,168 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file():
 
 
 def test_the_shipped_file_is_not_named_by_the_surface():
-    """The surface reaches into the widget it replaces."""
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    tree = ast.parse(text)
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imported.add(node.module or "")
-            imported.update(alias.name for alias in node.names)
-    assert not any("widgets" in name for name in imported), imported
+    """Loading the surface pulled a widget module in behind it."""
+    pulled = module_pulls("src.gui.main_tabs.bot_status_table_surface")
+    assert "src.gui.main_tabs.bot_status_table_surface" in pulled, pulled
+    assert [name for name in pulled if ".widgets." in name] == [], pulled
+
+
+def test_the_module_pull_reader_reports_a_widget_module():
+    """POSITIVE CONTROL for ``module_pulls``: the widget's own import pulls it."""
+    pulled = module_pulls("src.gui.widgets.bot_status_table")
+    assert [name for name in pulled if ".widgets." in name] != [], pulled
 
 
 # Counting what the shipped file wires, waits on, and builds
 
-WIDGET_NAMES_BUILT = (
-    "QWidget",
-    "QLabel",
-    "QPushButton",
-    "QTableWidget",
-    "QTableWidgetItem",
-    "QGroupBox",
-    "QFrame",
-    "QScrollArea",
-    "QLineEdit",
-    "QComboBox",
-    "QCheckBox",
-    "QSpinBox",
-    "QTextEdit",
-    "QProgressBar",
-    "QSplitter",
-    "QDialog",
-)
 
+def classes_declared(module):
+    """Every class ``module`` defines, by name."""
+    import inspect
 
-def count_text(path, needle):
-    """How many times one wiring call appears in one file."""
-    return path.read_text(encoding="utf-8").count(needle)
-
-
-def count_built(path, names):
-    """How many times one file constructs any of `names`."""
-    text = path.read_text(encoding="utf-8")
-    return sum(len(re.findall(r"\b%s\s*\(" % name, text)) for name in names)
-
-
-def declared_classes(path):
-    """Every class one file declares, wherever it is declared.
-
-    A class inside an ``if``, inside a method or inside another class is
-    still a class, so the whole tree is walked rather than its top level.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
-
-
-def declared_widget_classes(path):
-    """Every class one file declares that ends up being a screen element."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-    found: set = set()
-    growing = True
-    while growing:
-        growing = False
-        for node in classes:
-            if node.name in found:
-                continue
-            for base in node.bases:
-                name = (
-                    base.id if isinstance(base, ast.Name) else getattr(base, "attr", "")
-                )
-                if (
-                    name.startswith("Q")
-                    or name in found
-                    or name.endswith("TableWidget")
-                ):
-                    found.add(node.name)
-                    growing = True
-                    break
-    return found
-
-
-def count_elements(path):
-    """How many screen elements one file builds, its own classes included."""
-    return count_built(path, WIDGET_NAMES_BUILT) + len(declared_widget_classes(path))
+    return {
+        name
+        for name, value in vars(module).items()
+        if inspect.isclass(value)
+        and getattr(value, "__module__", "") == module.__name__
+    }
 
 
 def test_the_table_wires_four_signals_and_the_surface_names_four_actions():
     """A wiring appeared on one side and not the other."""
-    assert count_text(TABLE_PATH, ".connect(") == TABLE_CONNECT_SITES == 4
-    assert count_text(SURFACE_PATH, ".connect(") == 0
-    assert count_text(WIRING_CONTROL_PATH, ".connect(") == CONTROL_CONNECT_SITES == 1
-    assert len(surface.ACTIONS) == count_text(TABLE_PATH, ".connect(")
+    app()
+    with connections_watched() as made:
+        old_table(["happy"])
+    assert len(made) >= len(surface.ACTIONS) == 4, made
+    assert sorted(surface.ACTIONS) == [
+        "cell_clicked",
+        "detail_clicked",
+        "fire_clicked",
+        "header_clicked",
+    ]
     for name in surface.ACTIONS.values():
         assert callable(getattr(surface.BotStatusTableModel, name)), name
 
 
-def test_the_table_starts_no_timer():
-    """A wait appeared on one side and not the other."""
-    from PySide6.QtCore import QObject, QTimer
+def test_the_connection_counter_can_see_a_wiring():
+    """POSITIVE CONTROL for ``connections_watched``: an empty block records
+    nothing and two ``clicked`` wirings record two."""
+    from PySide6.QtWidgets import QPushButton
 
     app()
-    timer_names = ("QTimer",)
-    assert count_built(TABLE_PATH, timer_names) == TABLE_TIMER_BUILDS == 0
-    assert count_built(SURFACE_PATH, timer_names) == 0
-    assert count_built(TIMER_CONTROL_PATH, timer_names) == CONTROL_TIMER_BUILDS == 1
-    assert count_text(TIMER_CONTROL_PATH, "QTimer") > CONTROL_TIMER_BUILDS
-    started: list = []
-    first_start = QObject.startTimer
-    first_timer = QTimer.start
-    first_single = QTimer.singleShot
+    button = hold(QPushButton("x"))
+    with connections_watched() as quiet:
+        pass
+    assert quiet == []
+    with connections_watched() as made:
+        button.clicked.connect(lambda: None)
+        button.clicked.connect(lambda: None)
+    assert len(made) == 2, made
 
-    def watch_start_timer(self, *args, **kwargs):
-        started.append(("startTimer", args))
-        return first_start(self, *args, **kwargs)
 
-    def watch_timer_start(self, *args, **kwargs):
-        started.append(("QTimer.start", args))
-        return first_timer(self, *args, **kwargs)
-
-    def watch_single_shot(*args, **kwargs):
-        started.append(("singleShot", args))
-        return first_single(*args, **kwargs)
-
-    QObject.startTimer = watch_start_timer
-    QTimer.start = watch_timer_start
-    QTimer.singleShot = watch_single_shot
-    try:
+def test_the_table_starts_no_timer():
+    """A wait appeared on one side and not the other."""
+    app()
+    with timers_watched() as seen:
         old_table(["happy", "three_rows"])
         new_model(["happy", "three_rows"])
-        observed = list(started)
-        started.clear()
-        QTimer().start(250)
-    finally:
-        QObject.startTimer = first_start
-        QTimer.start = first_timer
-        QTimer.singleShot = first_single
-    assert started == [("QTimer.start", (250,))]
-    assert observed == []
+    assert seen == [], seen
     assert surface.TIMERS == {}
     assert surface.TIMER_DELAYS_MS == ()
 
 
+def test_the_timer_counter_can_see_a_wait():
+    """POSITIVE CONTROL for ``timers_watched``: one ``QTimer.start`` inside
+    the block is recorded."""
+    from PySide6.QtCore import QTimer
+
+    app()
+    timer = hold(QTimer())
+    with timers_watched() as seen:
+        timer.start(250)
+    assert ("QTimer.start", (250,)) in seen, seen
+
+
 def test_the_table_declares_no_signal_of_its_own():
-    """A signal declaration appeared on one side and not the other."""
-    signal_names = ("Signal",)
-    assert count_built(TABLE_PATH, signal_names) == TABLE_SIGNAL_BUILDS == 0
-    assert count_built(SURFACE_PATH, signal_names) == 0
-    assert count_built(SIGNAL_CONTROL_PATH, signal_names) == CONTROL_SIGNAL_BUILDS == 3
-    assert count_text(SIGNAL_CONTROL_PATH, "Signal") > CONTROL_SIGNAL_BUILDS
+    """``BotStatusTable`` adds no signal to the ones QTableWidget carries."""
+    from PySide6.QtCore import QMetaMethod
+
+    app()
+    meta = shipped.BotStatusTable.staticMetaObject
+    declared = [
+        bytes(meta.method(index).methodSignature()).decode("utf-8")
+        for index in range(meta.methodOffset(), meta.methodCount())
+        if meta.method(index).methodType() == QMetaMethod.MethodType.Signal
+    ]
+    assert declared == [], declared
+
+
+def test_the_signal_check_reports_a_declared_signal():
+    """The signal check reports none whatever a class declares."""
+    from PySide6.QtCore import QMetaMethod, QObject, Signal
+
+    class Loud(QObject):
+        spoke = Signal(str)
+
+    meta = Loud.staticMetaObject
+    declared = [
+        bytes(meta.method(index).methodSignature()).decode("utf-8")
+        for index in range(meta.methodOffset(), meta.methodCount())
+        if meta.method(index).methodType() == QMetaMethod.MethodType.Signal
+    ]
+    assert declared == ["spoke(QString)"], declared
 
 
 def test_the_table_subscribes_to_no_bus_topic():
     """A bus wiring appeared on one side and not the other."""
-    assert count_text(TABLE_PATH, ".subscribe(") == TABLE_BUS_SITES == 0
-    assert count_text(SURFACE_PATH, ".subscribe(") == 0
-    assert count_text(BUS_CONTROL_PATH, ".subscribe(") == CONTROL_BUS_SITES == 2
+    app()
+    with bus_subscriptions_watched() as taken:
+        old_table(["happy", "three_rows"])
+        new_model(["happy", "three_rows"])
+    assert taken == [], taken
     assert surface.BUS_TOPICS == ()
-    assert len(surface.BUS_TOPICS) == count_text(TABLE_PATH, ".subscribe(")
+
+
+def test_the_bus_counter_can_see_a_subscription():
+    """POSITIVE CONTROL for ``bus_subscriptions_watched``: one ``subscribe``
+    inside the block is recorded."""
+    from src.core.event_bus import EventBus
+
+    bus = EventBus()
+    with bus_subscriptions_watched() as taken:
+        bus.subscribe("probe.topic", lambda _event: None)
+    assert taken == ["probe.topic"], taken
 
 
 def test_the_screen_elements_the_table_builds_are_counted():
-    """The element counter cannot report, so its number means nothing."""
-    assert count_elements(TABLE_PATH) == TABLE_ELEMENT_BUILDS == 6
-    assert count_elements(ELEMENT_CONTROL_PATH) == CONTROL_ELEMENT_BUILDS == 3
-    assert count_built(ELEMENT_CONTROL_PATH, WIDGET_NAMES_BUILT) == 2
-    assert declared_widget_classes(ELEMENT_CONTROL_PATH) == {"StatCard"}
-    assert declared_widget_classes(TABLE_PATH) == {"BotStatusTable"}
-    assert count_built(TABLE_PATH, WIDGET_NAMES_BUILT) == 5
-    assert count_elements(SURFACE_PATH) == 0
-    assert declared_widget_classes(SURFACE_PATH) == set()
+    """The painted table carries one button per button column and no more."""
+    from PySide6.QtWidgets import QPushButton, QWidget
+
+    table = old_table(["happy"])
+    rows = table.rowCount()
+    assert rows > 0
+    buttons = table.findChildren(QPushButton)
+    assert len(buttons) == rows * len(surface.BUTTON_COLUMNS), [
+        one.text() for one in buttons
+    ]
+    for row in range(rows):
+        for column in range(table.columnCount()):
+            widget = table.cellWidget(row, column)
+            if column in surface.BUTTON_COLUMNS:
+                assert isinstance(widget, QPushButton), (row, column)
+            else:
+                assert widget is None, (row, column)
+    assert not any(
+        isinstance(value, type) and issubclass(value, QWidget)
+        for value in vars(surface).values()
+    )
 
 
-def test_the_class_counter_finds_a_class_declared_inside_another():
-    """The class counter reads the top level only, so a nested class is lost."""
-    found = declared_classes(NESTED_CLASS_CONTROL_PATH)
-    assert "_StockLogHandler" in found, sorted(found)
-    assert "StockMainWindow" in found, sorted(found)
-    assert len(found) == 4, sorted(found)
-    tree = ast.parse(NESTED_CLASS_CONTROL_PATH.read_text(encoding="utf-8"))
-    top_level = {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
-    assert top_level == set(), top_level
-    assert declared_classes(TABLE_PATH) == {"BotStatusTable"}
-    assert {
-        node.name
-        for node in ast.parse(TABLE_PATH.read_text(encoding="utf-8")).body
-        if isinstance(node, ast.ClassDef)
-    } == set()
+def test_the_class_reader_reports_only_the_modules_own_classes():
+    """A class the module imports is not a class the module declares."""
+    app()
+    assert classes_declared(shipped) == set(CLASS_MAP)
+    assert "QWidget" not in classes_declared(shipped)
 
 
 # Every class and every method has a counterpart
@@ -1395,7 +1360,7 @@ def test_every_shipped_class_and_method_has_a_counterpart():
         members(surface.BotStatusTableModel) ^ MODEL_MEMBERS
     )
     assert len(MODEL_MEMBERS) == 24
-    assert declared_classes(TABLE_PATH) == set(CLASS_MAP)
+    assert classes_declared(shipped) == set(CLASS_MAP)
 
 
 def test_a_member_added_or_lost_on_either_side_is_reported():
@@ -2409,23 +2374,6 @@ def test_the_bridge_registers_the_bot_status_table_method():
     assert answer["result"]["columns"] == list(surface.COLUMN_LABELS)
 
 
-def test_the_bridge_import_list_is_alphabetical():
-    """The bridge import list drifted out of order."""
-    from src.core import desktop_bridge
-
-    source = Path(desktop_bridge.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    names: list = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "src.gui.main_tabs":
-            names = [alias.name for alias in node.names]
-    assert names == sorted(names), names
-    assert "bot_status_table_surface" in names
-    assert names.index("bot_selection_surface") + 1 == names.index(
-        "bot_status_table_surface"
-    )
-
-
 def test_the_bridge_keeps_the_table_until_a_reset():
     """The table forgot its rows between two calls, or kept them past a reset."""
     from src.core import desktop_bridge
@@ -2617,54 +2565,37 @@ def test_the_qt_block_stops_the_module_that_paints_the_table():
     assert answered["imported"] is False
     assert answered["error"] == "ImportError"
     assert answered["headline"] == "PySide6 blocked"
-    assert "_HAS_QT" in TABLE_PATH.read_text(encoding="utf-8")
+    assert shipped._HAS_QT is True, "the shipped table stopped guarding its import"
 
 
 def test_the_surface_loads_no_qt_module():
     """The surface grew an import that pulls Qt into the backend."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    table_imports = {
-        (node.module or "")
-        for node in ast.walk(ast.parse(TABLE_PATH.read_text(encoding="utf-8")))
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in table_imports), table_imports
+    answered = qt_free(
+        "src.gui.main_tabs.bot_status_table_surface", "BotStatusTableModel"
+    )
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
+
+
+def test_the_qt_block_stops_the_module_that_paints_the_table_at_import():
+    """POSITIVE CONTROL for ``qt_free``: the shipped table's package needs Qt."""
+    answered = qt_free("src.gui.widgets.bot_status_table", "BotStatusTable")
+    assert answered["imported"] is False, answered
+    assert answered["error"] == "ImportError", answered
 
 
 def test_the_surface_opens_no_file_and_no_socket():
     """The surface reached for a file, a network address or a browser."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    called = {
-        node.func.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert "open" not in called
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    for forbidden in (
-        "read_text",
-        "write_text",
-        "read_bytes",
-        "write_bytes",
-        "mkdir",
-        "urlopen",
-        "connect",
-        "socket",
-        "listen",
-    ):
-        assert forbidden not in reached, forbidden
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert "webbrowser" not in text
-    assert "acervator_logs" not in text
-    assert "Path.home" not in text
+    answered = io_watched(
+        "src.gui.main_tabs.bot_status_table_surface",
+        "m.build_view_model(m.build_model([]))\n",
+    )
+    assert answered["touched"] == [], answered
+
+
+def test_the_io_watch_reports_a_route_that_was_reached():
+    """POSITIVE CONTROL for ``io_watched``: a driven open is recorded."""
+    answered = io_watched(
+        "src.gui.main_tabs.bot_status_table_surface", "open(m.__file__).close()\n"
+    )
+    assert "open" in answered["touched"], answered

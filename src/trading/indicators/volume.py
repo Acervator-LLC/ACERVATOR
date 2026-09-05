@@ -60,9 +60,9 @@ class VolumeAnalysis:
                 pos_mf += mf
             elif tp < ptp:
                 neg_mf += mf
-        if pos_mf < 1e-9 and neg_mf < 1e-9:
+        if pos_mf <= 0.0 and neg_mf <= 0.0:
             return 50.0
-        if neg_mf < 1e-9:
+        if neg_mf <= 0.0:
             return 100.0
         return 100.0 - 100.0 / (1.0 + pos_mf / neg_mf)
 
@@ -207,7 +207,7 @@ class VolumeAnalysis:
                 self.weight,
                 abstained=True,
             )
-        vol_ratio = curr_vol / (avg_vol + 1e-9)
+        vol_ratio = curr_vol / avg_vol
         is_spike = vol_ratio > self.spike_threshold
         is_high = vol_ratio > 1.5
         is_low = vol_ratio < 0.6

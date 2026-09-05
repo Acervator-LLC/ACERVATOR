@@ -906,18 +906,18 @@ Simulator tab are both built and inserted, and the Simulator is handed the
 Inspector's proposals at build time, so a proposal reaches the back test. Live
 is the Trading tab, and it is first in the canonical order.
 
-`src/gui/main_window.py` — `CANONICAL_TAB_ORDER`
+`src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
 
 ```python
-CANONICAL_TAB_ORDER = [
-    "Trading",
-    "Market Inspector",
-    "Bot Swarm",
-    "Asset Charts",
-    "History",
-    "Simulator",
-    "Console",
-]
+CANONICAL_TAB_ORDER = (
+    TRADING_TAB,
+    MARKET_INSPECTOR_TAB,
+    BOT_SWARM_TAB,
+    ASSET_CHARTS_TAB,
+    HISTORY_TAB,
+    SIMULATOR_TAB,
+    CONSOLE_TAB,
+)
 ```
 
 **The Paper stage is not built.** No file named for it exists in the tree, and

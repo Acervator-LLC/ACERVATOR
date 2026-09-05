@@ -51,7 +51,7 @@ class KaufmanERIndicator:
                 abstained=True,
             )
 
-        er = net_change / (price_travel + 1e-9)
+        er = net_change / price_travel
 
         er_prev = er
         if len(candles) >= self.period + 3:
@@ -59,7 +59,7 @@ class KaufmanERIndicator:
             nc2 = abs(c2[-1] - c2[0])
             pl2 = sum(abs(c2[i] - c2[i - 1]) for i in range(1, len(c2)))
             if pl2 > 0.0:
-                er_prev = nc2 / (pl2 + 1e-9)
+                er_prev = nc2 / pl2
 
         er_rising = er > er_prev
         er_falling = er < er_prev
