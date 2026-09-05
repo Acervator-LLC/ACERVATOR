@@ -534,9 +534,8 @@ def new_box(payload):
     )
 
 
-# The wizard reads a Yes and nothing else as consent, and creates the
-# bot on every path that does not return early. Typed here rather than
-# read from the surface, so a changed table cannot move both sides.
+# The wizard reads a Yes and nothing else as consent. Typed here, so a changed
+# table cannot move both sides at once.
 WIZARD_BUTTON_ANSWER = {"ok": False, "yes": True, "no": False}
 WIZARD_CLOSED_ANSWER = False
 WIZARD_CREATES_BOT = {

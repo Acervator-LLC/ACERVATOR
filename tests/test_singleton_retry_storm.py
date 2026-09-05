@@ -1,11 +1,9 @@
-"""Calibration for the singleton cooling-off that replaced the retry storm.
+"""Calibration for the ``LazySingleton`` cooling-off in the shipped getters.
 
-The live incident: a cached singleton whose construction failed left its
-cache at None, so every later call re-constructed and re-logged, at the
-2 s GUI tick, for days.
-
-Every count below is taken over 150 ticks of 2 s — 300 s of dashboard
-time — against the shipped getters, not a replica.
+A cached singleton whose construction fails leaves its cache at ``None``, so an
+ungated getter re-constructs and re-logs on every GUI tick. Every count below is
+taken over ``TICKS`` ticks of ``TICK_SECONDS`` against the shipped getters in
+``currency_rate_monitor`` and ``market_pairs_scout``, not a replica.
 """
 
 from __future__ import annotations
@@ -73,9 +71,6 @@ def armed():
         singleton.reset()
 
 
-# --------------------------------------------------------------------- #
-# The control: the shape this replaced, driven by the same loop          #
-# --------------------------------------------------------------------- #
 def test_the_replaced_shape_storms_under_this_loop() -> None:
     """A low count from the fixed getter means nothing unless this reads 150."""
     calls = {"n": 0}
@@ -95,9 +90,6 @@ def test_the_replaced_shape_storms_under_this_loop() -> None:
     assert calls["n"] == TICKS
 
 
-# --------------------------------------------------------------------- #
-# 1. The storm stops                                                     #
-# --------------------------------------------------------------------- #
 def test_currency_monitor_stops_storming(capture_log, clock, armed) -> None:
     """A count near 150 means the cooling-off does not gate construction."""
     guard = armed(crm._MONITOR, _boom, clock)
@@ -131,9 +123,6 @@ def test_scout_stops_storming(capture_log, clock, armed) -> None:
     assert len(records) == EXPECTED_ATTEMPTS
 
 
-# --------------------------------------------------------------------- #
-# 2. The first failure is visible and actionable                         #
-# --------------------------------------------------------------------- #
 def test_first_failure_is_an_error_naming_the_feature(
     capture_log,
     clock,
@@ -184,9 +173,6 @@ def test_repeats_are_summaries_not_per_tick_lines(
     assert "Next retry in 120 s" in records[2].getMessage()
 
 
-# --------------------------------------------------------------------- #
-# 3. Recovery                                                            #
-# --------------------------------------------------------------------- #
 def test_currency_monitor_recovers_and_says_so(
     capture_log,
     clock,
@@ -231,9 +217,6 @@ def test_scout_recovers_and_says_so(capture_log, clock, armed) -> None:
     assert "FEATURE RESTORED" in records[-1].getMessage()
 
 
-# --------------------------------------------------------------------- #
-# 4. Vacuous-pass control: the normal path still works                   #
-# --------------------------------------------------------------------- #
 def test_normal_path_returns_a_working_monitor(capture_log) -> None:
     """A getter that always returns None never storms either. This separates them."""
     crm.reset_currency_monitor_for_tests()
@@ -287,9 +270,6 @@ def test_normal_path_returns_a_working_scout(capture_log) -> None:
         mps.reset_scout_for_tests()
 
 
-# --------------------------------------------------------------------- #
-# 5. The caller never sees an exception                                  #
-# --------------------------------------------------------------------- #
 @pytest.mark.parametrize("getter_name", ["currency", "scout"])
 def test_getter_never_raises(clock, armed, getter_name: str) -> None:
     """A raise here reaches a GUI pump on a live trading platform."""
@@ -325,9 +305,6 @@ def test_getter_never_raises_when_the_exception_cannot_be_rendered(
     assert guard.fault.lost_reports == 0
 
 
-# --------------------------------------------------------------------- #
-# 6. The coin-icon call site                                             #
-# --------------------------------------------------------------------- #
 @pytest.fixture(scope="module")
 def qt_app():
     pytest.importorskip("PySide6")

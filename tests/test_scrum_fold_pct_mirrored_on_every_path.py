@@ -1,51 +1,23 @@
-"""``scrum_fold_pct`` means the same thing on every selling path.
+"""``scrum_fold_pct`` scales a sale the same way on every selling path.
 
-``_apply_scrum_fold_pct`` holds the one copy of the fold-ratio arithmetic, and
-every site that appends to ``_fold_tranches`` calls it with that site's own
-sale figures. ``GOLDEN_PRE_CHANGE`` pins the numbers to the bit, and
-``test_terminal_actions_build_no_tranche`` holds detonation and self-destruct
-outside it. Each ``_check_*`` helper runs twice, once on the shipping code and
-once on a copy carrying a planted defect that raises ``StalePlant`` when it no
-longer matches.
+``_apply_scrum_fold_pct`` holds the fold-ratio arithmetic and
+``GOLDEN_PRE_CHANGE`` pins its outputs to the bit. ``PATHS`` fires the
+real SCRUM, DIST and manual sells and compares each tranche book with
+``_reference_for_the_same_sale``. Every ``_check_*`` helper runs twice,
+once on the shipping code and once against a wrong arithmetic that must
+turn it red.
 """
 
 from __future__ import annotations
 
-import ast
 import asyncio
-import importlib.util
-import tempfile
-import textwrap
-from pathlib import Path
 
 import pytest
 
 from src.trading.scrumming_bot import ScrummingBot
 
-REPO = Path(__file__).resolve().parent.parent
-#: Every module the ScrummingBot engine is spread across. A scan of one
-#: of them alone would pass over code that moved to another.
-ENGINE_PATHS = tuple(
-    [REPO / "src" / "trading" / "scrumming_bot.py"]
-    + [
-        REPO / "src" / "trading" / "scrumming" / _n
-        for _n in (
-            "execution.py",
-            "fold_tranches.py",
-            "reconciliation.py",
-            "tick_phases.py",
-        )
-    ]
-)
-ENGINE_SRC = "\n".join(_p.read_text(encoding="utf-8") for _p in ENGINE_PATHS)
-SOURCE_PATH = ENGINE_PATHS[0]
-SOURCE = ENGINE_SRC
-
 # Money is compared to the bit; a tolerance would hide the drift.
 EXACT = 0.0
-
-_BLOCK_START = "_fold_pct = max(0, min(100, int(getattr("
-_BLOCK_END = "Cash buffer preserved against further drops."
 
 # name -> (scrum_usd, scrum_asset, tranche_count_before, tranches,
 #          {fold_pct: ((usd, units), ...)})
@@ -67,8 +39,7 @@ GOLDEN_PRE_CHANGE = {
             100: ((100.0, 10.0),),
         },
     ),
-    # Two lots from one sale. Scaling is per-tranche because each
-    # carries its own MEM-171 initial_buy_price floor.
+    # Two lots from one sale; each carries its own initial_buy_price.
     "two_lots": (
         100.0,
         10.0,
@@ -106,8 +77,7 @@ GOLDEN_PRE_CHANGE = {
             100: ((443.68, 10.0),),
         },
     ),
-    # No usable rate. The fallback treats everything as scrum proceeds
-    # rather than inventing an exemption it cannot justify.
+    # No usable rate. The fallback treats everything as scrum proceeds.
     "no_rate": (
         50.0,
         0.0,
@@ -124,8 +94,7 @@ GOLDEN_PRE_CHANGE = {
             100: ((50.0, 0.0),),
         },
     ),
-    # A tranche from an EARLIER sale is outside the slice and must not
-    # be re-scaled; re-scaling it would corrupt its MEM-171 contract.
+    # A tranche from an EARLIER sale is outside the slice.
     "older_tranche_present": (
         100.0,
         10.0,
@@ -208,6 +177,8 @@ class _Config:
         self.target_asset = target
         self.max_target_growth_pct = 1.0
         self.profit_folding_active = True
+        self.trading_fee_pct = 1.6
+        self.manual_fire_dust_band = 0.0
 
 
 class _Stats:
@@ -227,102 +198,59 @@ def _bare_bot(fold_pct, tranches):
     return bot
 
 
-# ── slicing the shipping arithmetic, for the planted controls ────────
-
-_GENERATED = '''"""Generated at test time from the shipping source."""
-
-
-def run(self, scrum_usd, scrum_asset, _tranche_count_before):
-{body}
-'''
+# ── the wrong arithmetics, for the controls ──────────────────────────
+# Each one drives a _check_* helper that must go red on it.
 
 
-class StalePlant(RuntimeError):
-    """A plant no longer matches the shipping text.
-
-    DELIBERATELY NOT AN ``AssertionError``. Every control below is
-    written as ``pytest.raises(AssertionError)``, so if a stale plant
-    raised one, the control would go GREEN for the wrong reason -- the
-    check would never have run and nothing would say so. A distinct
-    type makes a stale plant an ERROR that has to be fixed.
-    """
+def _ignores_the_setting(bot, before, usd, asset):
+    """Queue the whole sale whatever ``scrum_fold_pct`` says."""
+    return None
 
 
-def _block_source() -> str:
-    """The fold-ratio block, verbatim and dedented to column 0."""
-    lines = SOURCE.splitlines()
-    starts = [i for i, ln in enumerate(lines) if _BLOCK_START in ln]
-    ends = [i for i, ln in enumerate(lines) if _BLOCK_END in ln]
-    if len(starts) != 1:
-        raise StalePlant(
-            f"expected one fold-ratio block start, found {len(starts)}. "
-            f"Fix the anchors, do not delete the test."
+def _scales_wired_money(bot, before, usd, asset):
+    """Scale a tranche's summed USD, wired-in credit included."""
+    _frac = max(0, min(100, int(bot.config.scrum_fold_pct))) / 100.0
+    if _frac >= 1.0:
+        return None
+    for _t in bot._fold_tranches[before:]:
+        _t["usd"] = _t["usd"] * _frac
+        _t["units"] = _t["units"] * _frac
+    return None
+
+
+def _leaves_units_unscaled(bot, before, usd, asset):
+    """Scale the dollars and leave the units at their full quantity."""
+    _frac = max(0, min(100, int(bot.config.scrum_fold_pct))) / 100.0
+    if _frac >= 1.0:
+        return None
+    _rate = (usd / asset) if asset > 0 else 0.0
+    for _t in bot._fold_tranches[before:]:
+        _scrummed = (
+            min(max(_t["units"] * _rate, 0.0), _t["usd"]) if asset > 0 else _t["usd"]
         )
-    if len(ends) != 1 or ends[0] <= starts[0]:
-        raise StalePlant(f"fold-ratio block end is wrong: starts={starts} ends={ends}")
-    # The end anchor names the block's last statement, whose closing
-    # brackets a formatter can push onto lines below it.
-    end = ends[0]
-    for _ in range(12):
-        block = textwrap.dedent("\n".join(lines[starts[0] : end + 1]))
-        try:
-            ast.parse(block)
-            break
-        except SyntaxError:
-            end += 1
-    else:
-        raise StalePlant(
-            f"the fold-ratio block does not parse within 12 lines of its "
-            f"end anchor ({_BLOCK_END!r}). Re-anchor it, do not delete it."
+        _t["usd"] = (_t["usd"] - _scrummed) + _scrummed * _frac
+    return None
+
+
+def _rescales_older_tranches(bot, before, usd, asset):
+    """Scale every queued tranche, not only the ones this sale opened."""
+    return ScrummingBot._apply_scrum_fold_pct(bot, 0, usd, asset)
+
+
+def _runs_the_gate_at_one_hundred(bot, before, usd, asset):
+    """Scale even at 100, where the setting must be inert."""
+    _frac = max(0, min(100, int(bot.config.scrum_fold_pct))) / 100.0
+    _rate = (usd / asset) if asset > 0 else 0.0
+    _queued = 0.0
+    for _t in bot._fold_tranches[before:]:
+        _scrummed = (
+            min(max(_t["units"] * _rate, 0.0), _t["usd"]) if asset > 0 else _t["usd"]
         )
-    if not block.startswith("_fold_pct"):
-        raise StalePlant("dedent did not land the block at column 0; indentation moved")
-    return block
-
-
-def _load_block(*mutations: tuple[str, str]):
-    """Compile the shipping block, optionally carrying a planted defect."""
-    block = _block_source()
-    for old, new in mutations:
-        if old not in block:
-            raise StalePlant(
-                f"planted defect does not match the shipping source: "
-                f"{old!r}. The control cannot fire, so it proves nothing."
-            )
-        block = block.replace(old, new)
-    text = _GENERATED.format(body=textwrap.indent(block, "    "))
-    holder = tempfile.TemporaryDirectory()
-    path = Path(holder.name) / "sliced_fold_block.py"
-    path.write_text(text, encoding="utf-8")
-    spec = importlib.util.spec_from_file_location("sliced_fold_block", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    module._holder = holder
-    return module.run
-
-
-# The defect this whole unit is about, expressed inside the arithmetic:
-# ignore the setting and queue everything.
-PLANT_IGNORE_THE_SETTING = (("_fold_frac = _fold_pct / 100.0", "_fold_frac = 1.0"),)
-# Scale the summed usd, wire credit included -- the ISLAND_ABSORBFIX
-# defect, replanted here because the exemption must survive the move.
-PLANT_SCALE_WIRED_MONEY = (
-    (
-        '_t["usd"] = _wire_usd + _scrummed_usd * _fold_frac',
-        '_t["usd"] = _full_usd * _fold_frac',
-    ),
-)
-# Leave units alone: the queue would then hold more units than dollars.
-PLANT_UNITS_UNSCALED = (
-    ('_t["units"] = _full_units * _fold_frac', '_t["units"] = _full_units'),
-)
-# Re-scale every tranche, not just this sale's.
-PLANT_RESCALE_OLD_TRANCHES = (
-    (
-        "_new_tranches = self._fold_tranches[_tranche_count_before:]",
-        "_new_tranches = self._fold_tranches[0:]",
-    ),
-)
+        _t["usd"] = (_t["usd"] - _scrummed) + _scrummed * _frac
+        _t["units"] = _t["units"] * _frac
+        _queued += _t["usd"]
+    bot._bus.emit("bot.log", bot_id=bot.bot_id, message=f"FOLD RATIO: {_queued}")
+    return None
 
 
 # ── check 1: the arithmetic is the pre-change arithmetic ─────────────
@@ -332,8 +260,7 @@ def _check_goldens(apply_fold) -> None:
     """Every recorded pre-change output must be reproduced exactly.
 
     ``apply_fold(bot, count_before, scrum_usd, scrum_asset)`` runs the
-    thing under test. Read at the tranche dict, because that dict is
-    the money.
+    thing under test, and the tranche dict is where the money is read.
     """
     for name, (usd, asset, before, factory, table) in GOLDEN_PRE_CHANGE.items():
         for pct, expected in table.items():
@@ -365,338 +292,123 @@ def _apply_via_method(bot, before, usd, asset):
     bot._apply_scrum_fold_pct(before, usd, asset)
 
 
-def _apply_via(run):
-    def _inner(bot, before, usd, asset):
-        run(bot, usd, asset, before)
-
-    return _inner
-
-
 def test_the_shipping_method_reproduces_the_pre_change_numbers():
-    """The autonomous path's behaviour is unchanged, measured."""
+    """The fold-ratio arithmetic is unchanged, read at the tranche."""
     _check_goldens(_apply_via_method)
 
 
-def test_the_sliced_block_matches_the_method():
-    """The plants below act on the slice, so the slice must be live."""
-    _check_goldens(_apply_via(_load_block()))
-
-
 @pytest.mark.parametrize(
-    "plant, label",
+    "wrong, label",
     [
-        (PLANT_IGNORE_THE_SETTING, "queue everything regardless of the setting"),
-        (PLANT_SCALE_WIRED_MONEY, "scale wired-in money too"),
-        (PLANT_UNITS_UNSCALED, "leave units unscaled"),
-        (PLANT_RESCALE_OLD_TRANCHES, "re-scale earlier sales' tranches"),
+        (_ignores_the_setting, "queue everything regardless of the setting"),
+        (_scales_wired_money, "scale wired-in money too"),
+        (_leaves_units_unscaled, "leave units unscaled"),
+        (_rescales_older_tranches, "re-scale earlier sales' tranches"),
     ],
 )
-def test_control_the_goldens_catch_a_planted_defect(plant, label):
-    """CONTROL. Each plant must turn the golden check red."""
+def test_control_the_goldens_catch_a_wrong_arithmetic(wrong, label):
+    """CONTROL. Each wrong arithmetic must turn the golden check red."""
     with pytest.raises(AssertionError) as caught:
-        _check_goldens(_apply_via(_load_block(*plant)))
+        _check_goldens(wrong)
     assert str(caught.value).strip(), (
-        f"the plant '{label}' failed without saying what changed; a "
-        f"control that cannot be read is not evidence"
+        f"the wrong arithmetic '{label}' failed without saying what "
+        f"changed; a control that cannot be read is not evidence"
     )
 
 
-# ── check 2: every build site is wired to it ─────────────────────────
-
-TARGET_LIST = "_fold_tranches"
-FOLD_CALL = "_apply_scrum_fold_pct"
-TOPUP_CALL = "_top_up_remnant_fold_tranches"
-
-
-def _self_attr(node, name) -> bool:
-    if isinstance(node, ast.Subscript):
-        node = node.value
-    return (
-        isinstance(node, ast.Attribute)
-        and node.attr == name
-        and isinstance(node.value, ast.Name)
-        and node.value.id == "self"
-    )
-
-
-def _functions(tree):
-    return [
-        n
-        for n in ast.walk(tree)
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
-
-
-def _grows_the_list(node) -> bool:
-    """True for every way a statement can LENGTHEN the tranche list.
-
-    A grep for ``.append`` is blind to four of the five, and the fifth
-    would be the one somebody used.
-    """
-    if isinstance(node, ast.Call):
-        func = node.func
-        return (
-            isinstance(func, ast.Attribute)
-            and func.attr in {"append", "insert", "extend"}
-            and _self_attr(func.value, TARGET_LIST)
-        )
-    if isinstance(node, ast.AugAssign):
-        return _self_attr(node.target, TARGET_LIST) and isinstance(node.op, ast.Add)
-    if isinstance(node, ast.Assign):
-        return any(
-            isinstance(t, ast.Subscript) and _self_attr(t, TARGET_LIST)
-            for t in node.targets
-        )
-    return False
-
-
-def _self_calls(func, name):
-    out = []
-    for node in ast.walk(func):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == name
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "self"
-        ):
-            out.append(node)
-    return out
-
-
-def _sale_figures(func, build_line, floor):
-    """The (usd, asset) names the build loop divided, for this site.
-
-    The shipping loops all price a tranche as
-    ``(take / asset) * usd``. That expression is the ONLY place the
-    sale's own rate appears, and passing anything else to the helper
-    would make the wired-in-money split read the wrong rate.
-    """
-    best = None
-    for node in ast.walk(func):
-        if not isinstance(node, ast.Assign) or node.lineno >= build_line:
-            continue
-        if node.lineno <= floor:
-            continue
-        value = node.value
-        if (
-            isinstance(value, ast.BinOp)
-            and isinstance(value.op, ast.Mult)
-            and isinstance(value.left, ast.BinOp)
-            and isinstance(value.left.op, ast.Div)
-            and isinstance(value.left.right, ast.Name)
-            and isinstance(value.right, ast.Name)
-        ):
-            if best is None or node.lineno > best[0]:
-                best = (node.lineno, value.right.id, value.left.right.id)
-    return None if best is None else (best[1], best[2])
-
-
-def _check_every_site_is_wired(source: str) -> None:
-    """Each tranche-building site scales, in the right order, on its
-    own sale's figures."""
-    tree = ast.parse(source)
-    sites = []
-    for func in _functions(tree):
-        lines = sorted({n.lineno for n in ast.walk(func) if _grows_the_list(n)})
-        for index, line in enumerate(lines):
-            nxt = lines[index + 1] if index + 1 < len(lines) else 10**9
-            prev = lines[index - 1] if index else func.lineno
-            sites.append((func, line, prev, nxt))
-
-    if not sites:
-        raise AssertionError(
-            "no tranche-building site found at all; the walker is blind"
-        )
-
-    for func, line, prev, nxt in sites:
-        folds = [c for c in _self_calls(func, FOLD_CALL) if line < c.lineno < nxt]
-        if not folds:
-            raise AssertionError(
-                f"{func.name} appends a fold tranche at line {line} and "
-                f"never applies scrum_fold_pct to it. Every path that "
-                f"builds a tranche must scale it the way the autonomous "
-                f"scrum does."
-            )
-        fold = min(folds, key=lambda c: c.lineno)
-
-        tops = [c for c in _self_calls(func, TOPUP_CALL) if line < c.lineno < nxt]
-        if tops and min(t.lineno for t in tops) < fold.lineno:
-            raise AssertionError(
-                f"{func.name}: the top-up at line "
-                f"{min(t.lineno for t in tops)} runs before the "
-                f"scrum_fold_pct call at {fold.lineno}. The top-up moves "
-                f"this sale's money into an older tranche, outside the "
-                f"slice, where the ratio can no longer reach it."
-            )
-
-        figures = _sale_figures(func, line, prev)
-        if figures is None:
-            raise AssertionError(
-                f"{func.name}: could not find the `(take / asset) * usd` "
-                f"pricing for the site at line {line}"
-            )
-        usd_name, asset_name = figures
-        if len(fold.args) != 3:
-            raise AssertionError(
-                f"{func.name}: scrum_fold_pct call takes "
-                f"{len(fold.args)} positional arguments, expected 3"
-            )
-        got = tuple(
-            a.id if isinstance(a, ast.Name) else ast.dump(a) for a in fold.args[1:]
-        )
-        if got != (usd_name, asset_name):
-            raise AssertionError(
-                f"{func.name}: the site at line {line} priced its "
-                f"tranches with ({usd_name} / {asset_name}) but passes "
-                f"{got} to scrum_fold_pct. The helper would read a "
-                f"different rate than the tranches were built at, and "
-                f"the wired-in-money split would be wrong."
-            )
-
-
-def _plant_drop_one_call(source: str) -> str:
-    old = (
-        "            self._apply_scrum_fold_pct(\n"
-        "                _manual_tranche_count_before, fill_usd, fill_amount\n"
-        "            )"
-    )
-    if old not in source:
-        raise StalePlant("plant no longer matches the shipping source")
-    return source.replace(old, "            pass")
-
-
-def _plant_swap_the_rate(source: str) -> str:
-    old = (
-        "                        _dist_tranche_count_before, dist_usd, dist_asset\n"
-        "                        )"
-    )
-    if old not in source:
-        raise StalePlant("plant no longer matches the shipping source")
-    return source.replace(
-        old,
-        "                        _dist_tranche_count_before, dist_asset, dist_usd\n"
-        "                        )",
-    )
-
-
-def _plant_reorder_against_the_topup(source: str) -> str:
-    """Move the DIST scaling call to AFTER the top-up."""
-    lines = source.split("\n")
-    tree = ast.parse(source)
-    func = next(f for f in _functions(tree) if f.name == "_tick_distribute")
-    fold = max(_self_calls(func, FOLD_CALL), key=lambda c: c.lineno)
-    top = max(_self_calls(func, TOPUP_CALL), key=lambda c: c.lineno)
-    if not fold.lineno < top.lineno:
-        raise StalePlant("plant expects the DIST scaling call to precede its top-up")
-    fold_text = lines[fold.lineno - 1 : fold.end_lineno]
-    top_text = lines[top.lineno - 1 : top.end_lineno]
-    lines[fold.lineno - 1 : top.end_lineno] = top_text + fold_text
-    return "\n".join(lines)
-
-
-def _plant_a_fourth_unscaled_site(source: str) -> str:
-    anchor = "    def clear_fold_tranches("
-    if anchor not in source:
-        raise StalePlant("plant anchor is gone from the source")
-    new_method = (
-        "    def _rogue_builder(self, take, sale_asset, sale_usd):\n"
-        "        t_usd = (take / sale_asset) * sale_usd\n"
-        '        self._fold_tranches.append({"usd": t_usd})\n'
-        "\n"
-    )
-    return source.replace(anchor, new_method + anchor, 1)
-
-
-def test_every_tranche_building_site_applies_the_setting():
-    """The mirroring claim itself, checked on the shipping source."""
-    _check_every_site_is_wired(SOURCE)
-
-
-@pytest.mark.parametrize(
-    "plant, label",
-    [
-        (_plant_drop_one_call, "a site stops applying the setting"),
-        (_plant_swap_the_rate, "a site passes the wrong rate"),
-        (_plant_reorder_against_the_topup, "the top-up runs first"),
-        (_plant_a_fourth_unscaled_site, "a new unscaled site appears"),
-    ],
-)
-def test_control_the_wiring_check_catches_a_planted_defect(plant, label):
-    """CONTROL. Each plant must turn the wiring check red."""
-    with pytest.raises(AssertionError) as caught:
-        _check_every_site_is_wired(plant(SOURCE))
-    assert str(caught.value).strip(), (
-        f"the plant '{label}' failed without saying what changed; a "
-        f"control that cannot be read is not evidence"
-    )
-
-
-def test_terminal_actions_build_no_tranche():
-    """The operator's rule: detonation and self-destruct are terminal.
-
-    "Detonations and Self-Destruct actions do not spawn or populate
-    tranches. These two are considered 'terminal actions'." The code
-    agrees, so there is nothing here to scale. This pins it, because a
-    terminal action that grew a tranche would need scaling and would
-    otherwise slip past the wiring check as a new site.
-    """
-    tree = ast.parse(SOURCE)
-    for name in ("_execute_detonation", "self_destruct"):
-        func = next(f for f in _functions(tree) if f.name == name)
-        grew = [n.lineno for n in ast.walk(func) if _grows_the_list(n)]
-        assert grew == [], (
-            f"{name} lengthens the fold-tranche list at {grew}, but the "
-            f"operator's rule says terminal actions neither spawn nor "
-            f"populate tranches"
-        )
-
-
-# ── check 3: a manual fire scales the way an autonomous scrum does ───
+# ── the three real selling paths ─────────────────────────────────────
 
 
 class _Order:
     id = "order-1"
     filled = 0.0
     average = 0.0
+    side = "sell"
+    fee = 0.0
+    fee_currency = ""
 
 
-def _manual_bot(
-    fold_pct, *, holdings=1000.0, target=100.0, price=1.0, lots=None, wire_out=0.0
-):
-    """A bot that can run the real ``_execute_manual_rebalance``.
+class _Ticker:
+    def __init__(self, last):
+        self.last = last
+
+
+class _BB:
+    lower = 0.0
+    upper = 0.0
+
+
+DEFAULT_LOTS = (
+    {"units": 600.0, "initial_buy_price": 0.9},
+    {"units": 600.0, "initial_buy_price": 0.7},
+)
+SALE_UNITS = 900.0
+SALE_PRICE = 1.0
+
+
+def _path_bot(fold_pct, *, lots, price=SALE_PRICE, wire_out=0.0, bull_candles=0):
+    """A bot that can run any of the three real selling paths.
 
     Only the outward edges are stubbed -- the exchange, the wire
-    routing, the emitters. Everything between the sell and the tranche
-    list is the shipping code. Every stub RECORDS its arguments, so a
-    test can read what the shipping code actually asked for rather than
-    only what it did afterwards.
+    routing, the emitters; everything between the sell and the tranche
+    list is the shipping code.
     """
     bot = object.__new__(ScrummingBot)
-    bot.bot_id = "manual-bot"
-    bot.seen = {"placed": None, "settled": None, "balances": [], "routed": []}
+    bot.bot_id = "path-bot"
+    bot.seen = {"routed": [], "fold_calls": []}
     bot._bus = _Bus()
     bot.config = _Config(fold_pct)
     bot.stats = _Stats()
     bot._fold_tranches = []
-    bot._main_lots = (
-        lots
-        if lots is not None
-        else [
-            {"units": 600.0, "initial_buy_price": 0.9},
-            {"units": 600.0, "initial_buy_price": 0.7},
-        ]
-    )
-    bot._current_holdings = holdings
-    bot._target_balance = target
-    bot._anchor_target_balance = target
+    bot._main_lots = [dict(lot) for lot in lots]
     bot._quote_to_usd = 1.0
-    bot._manual_fire_pending = True
+    bot._last_sell_venue_fee = None
     bot._tranches_created_lifetime = 0
+    bot._tranches_discarded_lifetime = 0
+    bot._tranches_closed_lifetime = 0
+    bot._scrum_sells_lifetime = 0
+    bot._last_trend_bull_candles = bull_candles
     bot._fold_queue_usd = 0.0
+    bot._fold_queue_ref_price = 0.0
+    bot._fold_cycle_cap_consumed = 0.0
+    bot._pending_wire_credits = 0.0
+    bot._standing_surplus_usd = 0.0
+    bot._below_min_scrum_log_ts = 0.0
+    bot._scrum_target_mode = "search"
+    bot._scrum_target_side = None
+    bot._dist_accumulator = 0.0
+    bot._manual_fire_pending = True
     bot._last_trade_side = None
     bot._last_trade_price = 0.0
-    bot._pending_wire_credits = 0.0
+    bot._last_bb = _BB()
+    bot._current_holdings = sum(float(lot["units"]) for lot in lots)
+    bot._target_balance = 0.0
+    bot._anchor_target_balance = 0.0
+
+    def _route(scrum_usd, sell_fill, label):
+        bot.seen["routed"].append((scrum_usd, sell_fill, label))
+        return wire_out
+
+    bot._route_scrum_proceeds_via_wires = _route
+    bot._emit_trade_fire_snapshot = _record(bot, "fire_snapshots")
+    bot._emit_voting_panel_snapshot_at_fire = _record(bot, "snapshots")
+    bot._emit_gate_decision_at_fire = _record(bot, "gates")
+    bot._reset_opposing_hysteresis_after_fill = _record(bot, "disarms")
+    bot.note_scrum_retention_usd = _record(bot, "retained")
+    bot._emit_trade_notification = _record(bot, "notifications")
+
+    async def _limits(symbol):
+        bot.seen.setdefault("limits", []).append(symbol)
+        return 0.0, 0.0, 0.0
+
+    async def _sell(amount, price_arg, summary):
+        bot.seen.setdefault("sold", []).append((amount, price_arg, summary))
+        return price
+
+    async def _balance(currency):
+        bot.seen.setdefault("balances", []).append(currency)
+        _held = bot._current_holdings
+        return type("B", (), {"total": _held, "free": _held, "absent": False})()
 
     async def _refresh():
         return 1.0
@@ -709,62 +421,76 @@ def _manual_bot(
         bot.seen["settled"] = (order.id, symbol, requested, tick_price)
         return requested, price, True
 
-    async def _balance(currency):
-        bot.seen["balances"].append(currency)
-        return type("B", (), {"total": holdings, "free": holdings, "absent": False})()
-
-    def _route(scrum_usd, sell_fill, label):
-        bot.seen["routed"].append((scrum_usd, sell_fill, label))
-        return wire_out
-
+    bot._get_market_limits = _limits
+    bot._execute_sell = _sell
+    bot._get_balance = _balance
     bot._refresh_quote_to_usd = _refresh
     bot.guarded_place_order = _place
     bot._settled_fill = _settled
-    bot._get_balance = _balance
-    bot._route_scrum_proceeds_via_wires = _route
 
-    def _snapshot(side, trade_action):
-        bot.seen.setdefault("snapshots", []).append((side, trade_action))
+    _real_apply = bot._apply_scrum_fold_pct
 
-    def _gate(side, trade_action):
-        bot.seen.setdefault("gates", []).append((side, trade_action))
+    def _spy(before, usd, asset):
+        bot.seen["fold_calls"].append((before, usd, asset))
+        return _real_apply(before, usd, asset)
 
-    def _retained(retained_usd):
-        bot.seen.setdefault("retained", []).append(retained_usd)
-
-    bot._emit_voting_panel_snapshot_at_fire = _snapshot
-    bot._emit_gate_decision_at_fire = _gate
-    bot._reset_opposing_hysteresis_after_fill = lambda: bot.seen.setdefault(
-        "disarms", []
-    ).append(True)
-    bot.note_scrum_retention_usd = _retained
+    bot._apply_scrum_fold_pct = _spy
     return bot
 
 
-class _Ticker:
-    def __init__(self, last):
-        self.last = last
+def _record(bot, key):
+    def _inner(*args, **kwargs):
+        bot.seen.setdefault(key, []).append((args, kwargs))
+
+    return _inner
 
 
-def _fire_manual(bot, price=1.0, intent="manual_button"):
-    asyncio.run(bot._execute_manual_rebalance(_Ticker(price), intent))
+def _fire_scrum(bot, sale_units, price=SALE_PRICE):
+    asyncio.run(
+        bot._tick_execute_scrum(
+            _Ticker(price),
+            None,
+            _BB(),
+            -sale_units * price,
+            -1.0,
+            0.0,
+            0.5,
+            type("D", (), {"name": "BEARISH"})(),
+            0.9,
+            0.5,
+            0.0,
+            None,
+        )
+    )
+
+
+def _fire_dist(bot, sale_units, price=SALE_PRICE):
+    bot._dist_accumulator = sale_units
+    asyncio.run(bot._tick_distribute(_Ticker(price), None, _BB(), True))
+
+
+def _fire_manual(bot, sale_units, price=SALE_PRICE):
+    bot._current_holdings = sale_units
+    bot._target_balance = 0.0
+    bot._anchor_target_balance = 0.0
+    asyncio.run(bot._execute_manual_rebalance(_Ticker(price), "manual_button"))
+
+
+PATHS = {"DIST": _fire_dist, "MANUAL": _fire_manual, "SCRUM": _fire_scrum}
+PATH_NAMES = sorted(PATHS)
+FOLD_PCTS = [0, 1, 25, 50, 66, 99, 100]
+
+
+def _book(bot):
     return [(t["usd"], t["units"]) for t in bot._fold_tranches]
 
 
 def _reference_for_the_same_sale(fold_pct, sale_usd, sale_units, lots):
-    """What the autonomous path would leave, for the same sale.
+    """What the shared helpers leave, for the same sale.
 
-    Built by running the shipping build-bound-and-scale sequence: the
-    same highest-price-first split, then the same two helpers, in the
-    order ``tick`` calls them.
-
-    issue #133 unit 2 -- ``_bound_new_fold_tranches`` joined that
-    sequence and this reference had to join it too. Without the call
-    the reference is no longer "what the autonomous path would leave":
-    it is what the autonomous path left BEFORE the bound, and the
-    comparison would report a difference between the manual fire and a
-    path that no longer exists. The claim under test is unchanged and
-    is now checked across one more shared step.
+    Runs the same highest-``initial_buy_price``-first split, then
+    ``_bound_new_fold_tranches`` and ``_apply_scrum_fold_pct`` in the
+    order every selling path calls them.
     """
     lots = [dict(lot) for lot in lots]
     lots.sort(key=lambda lot: lot["initial_buy_price"], reverse=True)
@@ -774,6 +500,8 @@ def _reference_for_the_same_sale(fold_pct, sale_usd, sale_units, lots):
         if remaining <= 1e-12:
             break
         take = min(lot["units"], remaining)
+        if take <= 1e-12:
+            continue
         tranches.append(
             {
                 "usd": (take / sale_units) * sale_usd,
@@ -791,79 +519,207 @@ def _reference_for_the_same_sale(fold_pct, sale_usd, sale_units, lots):
     return [(t["usd"], t["units"]) for t in bot._fold_tranches]
 
 
-def _check_manual_matches_the_reference(bot_factory, fold_pct) -> None:
-    """Read at the tranche list after a real manual fire."""
-    lots = [
-        {"units": 600.0, "initial_buy_price": 0.9},
-        {"units": 600.0, "initial_buy_price": 0.7},
-    ]
-    bot = bot_factory(fold_pct, lots=[dict(lot) for lot in lots])
-    got = _fire_manual(bot)
-    # holdings 1000 at $1.00 against a $100 target sells $900 of units.
-    want = _reference_for_the_same_sale(fold_pct, 900.0, 900.0, lots)
+def _check_path_matches_the_reference(path, fold_pct, *, scaled=True) -> None:
+    """Read at the tranche list after a real sell on ``path``."""
+    lots = [dict(lot) for lot in DEFAULT_LOTS]
+    bot = _path_bot(fold_pct, lots=lots)
+    if not scaled:
+        bot._apply_scrum_fold_pct = lambda before, usd, asset: bot.seen.setdefault(
+            "skipped", []
+        ).append((before, usd, asset))
+    PATHS[path](bot, SALE_UNITS)
+    got = _book(bot)
+    want = _reference_for_the_same_sale(
+        fold_pct, SALE_UNITS * SALE_PRICE, SALE_UNITS, lots
+    )
     if len(got) != len(want):
         raise AssertionError(
-            f"manual fire produced {len(got)} tranches, the autonomous "
-            f"path produces {len(want)} for the same sale"
+            f"{path} left {len(got)} tranche(s) at scrum_fold_pct="
+            f"{fold_pct}, the shared helpers leave {len(want)}: "
+            f"{got} vs {want}"
         )
     for index, (have, expect) in enumerate(zip(got, want)):
         if abs(have[0] - expect[0]) > EXACT:
             raise AssertionError(
-                f"tranche {index}: manual fire queued ${have[0]!r} but an "
-                f"autonomous scrum of the same sale queues ${expect[0]!r} "
-                f"at scrum_fold_pct={fold_pct}"
+                f"{path} tranche {index}: queued ${have[0]!r} but the "
+                f"shared helpers queue ${expect[0]!r} at scrum_fold_pct="
+                f"{fold_pct}"
             )
         if abs(have[1] - expect[1]) > EXACT:
             raise AssertionError(
-                f"tranche {index}: manual fire queued {have[1]!r} units, "
-                f"autonomous queues {expect[1]!r}"
+                f"{path} tranche {index}: queued {have[1]!r} units, the "
+                f"shared helpers queue {expect[1]!r}"
             )
 
 
-def _unscaled_manual_bot(fold_pct, **kwargs):
-    """CONTROL BOT: the defect, reinstated. The site builds tranches and
-    the setting never reaches them -- which is exactly what shipped."""
-    bot = _manual_bot(fold_pct, **kwargs)
-
-    def _never_applied(before, usd, asset):
-        bot.seen.setdefault("skipped", []).append((before, usd, asset))
-
-    bot._apply_scrum_fold_pct = _never_applied
-    return bot
+@pytest.mark.parametrize("path", PATH_NAMES)
+@pytest.mark.parametrize("fold_pct", FOLD_PCTS)
+def test_every_selling_path_scales_the_sale_the_same_way(path, fold_pct):
+    """The mirroring claim, read at the book after a real sell."""
+    _check_path_matches_the_reference(path, fold_pct)
 
 
+@pytest.mark.parametrize("path", PATH_NAMES)
 @pytest.mark.parametrize("fold_pct", [0, 1, 25, 50, 66, 99])
-def test_a_manual_fire_scales_like_an_autonomous_scrum(fold_pct):
-    """The defect this unit exists to remove."""
-    _check_manual_matches_the_reference(_manual_bot, fold_pct)
-
-
-@pytest.mark.parametrize("fold_pct", [0, 1, 25, 50, 66, 99])
-def test_control_the_manual_check_catches_the_unscaled_path(fold_pct):
-    """CONTROL. With the setting not reaching the tranches -- which is
-    exactly what shipped before -- the check must go red."""
+def test_control_a_path_that_never_scales_is_caught(path, fold_pct):
+    """CONTROL. With the setting not reaching the tranches the check
+    must go red on every path."""
     with pytest.raises(AssertionError):
-        _check_manual_matches_the_reference(_unscaled_manual_bot, fold_pct)
+        _check_path_matches_the_reference(path, fold_pct, scaled=False)
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_every_selling_path_hands_the_helper_its_own_sale_figures(path):
+    """The USD and units passed are the ones the sale was priced at."""
+    bot = _path_bot(50, lots=[dict(lot) for lot in DEFAULT_LOTS])
+    PATHS[path](bot, SALE_UNITS)
+    assert bot.seen["fold_calls"] == [(0, SALE_UNITS * SALE_PRICE, SALE_UNITS)], (
+        f"{path} called the fold-ratio helper with "
+        f"{bot.seen['fold_calls']}; expected one call carrying this "
+        f"sale's own ${SALE_UNITS * SALE_PRICE} over {SALE_UNITS} units"
+    )
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_every_selling_path_queues_half_a_sale_at_fifty(path):
+    """The plainest reading of the setting, on each real path."""
+    bot = _path_bot(50, lots=[dict(lot) for lot in DEFAULT_LOTS])
+    PATHS[path](bot, SALE_UNITS)
+    total = sum(usd for usd, _ in _book(bot))
+    assert abs(total - 450.0) <= 1e-9, (
+        f"{path} queued ${total:.4f} of a $900 sale at "
+        f"scrum_fold_pct=50; expected $450.00"
+    )
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_every_selling_path_queues_the_whole_sale_at_one_hundred(path):
+    """29 of the operator's 37 bots run at 100; nothing may be retired."""
+    bot = _path_bot(100, lots=[dict(lot) for lot in DEFAULT_LOTS])
+    PATHS[path](bot, SALE_UNITS)
+    book = _book(bot)
+    total = sum(usd for usd, _ in book)
+    assert abs(total - 900.0) <= 1e-9, (
+        f"{path} queued ${total:.4f} of a $900 sale at " f"scrum_fold_pct=100"
+    )
+    assert sum(units for _, units in book) == pytest.approx(900.0)
+    assert not [
+        m for m in bot._bus.messages if "FOLD RATIO" in m
+    ], f"{path} emitted a FOLD RATIO line at 100, where the setting is inert"
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_the_operator_is_told_what_happened_on_every_path(path):
+    """The FOLD RATIO line is the only signal that the setting acted."""
+    bot = _path_bot(50, lots=[dict(lot) for lot in DEFAULT_LOTS])
+    PATHS[path](bot, SALE_UNITS)
+    ratio_lines = [m for m in bot._bus.messages if "FOLD RATIO" in m]
+    assert len(ratio_lines) == 1, (
+        f"expected one FOLD RATIO line after a {path} sell at 50%, got "
+        f"{ratio_lines}"
+    )
+    assert "scrum_fold_pct=50%" in ratio_lines[0]
 
 
 @pytest.mark.parametrize("intent", ["wire_stack", "max_cartridge"])
 def test_the_autonomous_callers_of_the_manual_method_scale_too(intent):
-    """Two of the three callers fire without the operator.
-
-    Wire Stack and Max Cartridge run the same method, so the gap was
-    never "manual only". They must scale as well.
-    """
-    bot = _manual_bot(50)
-    got = _fire_manual(bot, intent=intent)
-    assert got, f"{intent} built no tranche; the fire did not reach the build"
-    total = sum(usd for usd, _ in got)
+    """Wire Stack and Max Cartridge run the manual method without the
+    operator, so the gap was never "manual only"."""
+    bot = _path_bot(50, lots=[dict(lot) for lot in DEFAULT_LOTS])
+    bot._current_holdings = SALE_UNITS
+    asyncio.run(bot._execute_manual_rebalance(_Ticker(SALE_PRICE), intent))
+    book = _book(bot)
+    assert book, f"{intent} built no tranche; the fire did not reach the build"
+    total = sum(usd for usd, _ in book)
     assert abs(total - 450.0) <= 1e-9, (
         f"{intent} queued ${total:.4f} of a $900 sale at "
         f"scrum_fold_pct=50; expected $450.00"
     )
 
 
-# ── check 4: at 100 nothing changes ──────────────────────────────────
+# ── a lot holding no units is not a tranche ──────────────────────────
+
+EMPTY_LOT_LOTS = (
+    {"units": 300.0, "initial_buy_price": 9.0},
+    {"units": 0.0, "initial_buy_price": 5.0},
+    {"units": 300.0, "initial_buy_price": 0.9},
+)
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_a_lot_holding_no_units_opens_no_tranche(path):
+    """A ``_main_lots`` entry with no units must leave no record."""
+    bot = _path_bot(50, lots=[dict(lot) for lot in EMPTY_LOT_LOTS])
+    PATHS[path](bot, 600.0)
+    book = _book(bot)
+    assert len(book) == 1, (
+        f"{path} left {len(book)} tranche(s) for one sell over two "
+        f"lots and one empty lot: {book}. The empty lot opened a "
+        f"record and defeated the one-tranche-per-sell bound."
+    )
+    assert book[0][0] == pytest.approx(300.0), (
+        f"{path} queued ${book[0][0]:.4f} of a $600 sale at "
+        f"scrum_fold_pct=50; expected $300.00"
+    )
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_a_lot_holding_no_units_does_not_raise_the_created_counter(path):
+    """``created - closed - discarded == standing`` must still hold."""
+    bot = _path_bot(50, lots=[dict(lot) for lot in EMPTY_LOT_LOTS])
+    PATHS[path](bot, 600.0)
+    assert bot._tranches_created_lifetime == len(bot._fold_tranches), (
+        f"{path} counted {bot._tranches_created_lifetime} tranche(s) "
+        f"created against {len(bot._fold_tranches)} standing"
+    )
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_a_sale_over_only_empty_lots_leaves_an_empty_book(path):
+    """Every lot holding no units must leave no record and not raise."""
+    lots = [
+        {"units": 0.0, "initial_buy_price": 9.0},
+        {"units": 0.0, "initial_buy_price": 5.0},
+    ]
+    bot = _path_bot(50, lots=lots)
+    bot._current_holdings = 600.0
+    PATHS[path](bot, 600.0)
+    assert _book(bot) == [], f"{path} queued {_book(bot)} over lots holding no units"
+    assert bot._tranches_created_lifetime == 0, (
+        f"{path} counted {bot._tranches_created_lifetime} tranche(s) "
+        f"created and left none standing"
+    )
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_control_the_empty_lot_check_sees_a_real_lot(path):
+    """CONTROL. Give the empty lot units and the same sell keeps two
+    per-lot records under the strong-trend exception, so the check
+    above is reading the book and not a constant."""
+    lots = [dict(lot) for lot in EMPTY_LOT_LOTS]
+    lots[1]["units"] = 300.0
+    bot = _path_bot(50, lots=lots, bull_candles=20)
+    PATHS[path](bot, 600.0)
+    assert len(_book(bot)) == 2, (
+        f"{path} left {_book(bot)}; a strong trend keeps one record per "
+        f"lot consumed and this sell consumed two"
+    )
+
+
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_a_strong_trend_keeps_the_real_lots_and_drops_the_empty_one(path):
+    """The bound-lifted branch must not keep an empty record either."""
+    bot = _path_bot(100, lots=[dict(lot) for lot in EMPTY_LOT_LOTS], bull_candles=20)
+    PATHS[path](bot, 600.0)
+    book = _book(bot)
+    assert len(book) == 2, (
+        f"{path} left {book} under a strong trend; the two lots holding "
+        f"units are the only records this sell opened"
+    )
+    assert all(units > 0 for _, units in book), f"{path} kept an empty record: {book}"
+
+
+# ── at 100 nothing changes ───────────────────────────────────────────
 
 
 def _check_hundred_is_a_no_op(apply_fold) -> None:
@@ -890,41 +746,21 @@ def test_a_bot_at_one_hundred_percent_sees_no_change():
     _check_hundred_is_a_no_op(_apply_via_method)
 
 
-def test_control_the_hundred_percent_check_catches_a_planted_defect():
-    """CONTROL. Make the gate run at 100 and the check must go red."""
+def test_control_the_hundred_percent_check_catches_a_wrong_arithmetic():
+    """CONTROL. An arithmetic that runs at 100 must turn it red."""
     with pytest.raises(AssertionError):
-        _check_hundred_is_a_no_op(
-            _apply_via(
-                _load_block(
-                    (
-                        "if _fold_pct < 100 and _new_tranches:",
-                        "if _fold_pct <= 100 and _new_tranches:",
-                    )
-                )
-            )
-        )
+        _check_hundred_is_a_no_op(_runs_the_gate_at_one_hundred)
 
 
-def test_a_manual_fire_at_one_hundred_percent_queues_the_whole_sale():
-    """The same no-op, read at the end of a real manual fire."""
-    bot = _manual_bot(100)
-    got = _fire_manual(bot)
-    total = sum(usd for usd, _ in got)
-    assert (
-        abs(total - 900.0) <= 1e-9
-    ), f"a $900 manual sale at scrum_fold_pct=100 queued ${total:.4f}"
-    assert sum(units for _, units in got) == pytest.approx(900.0)
-
-
-# ── check 5: wired-in money is still exempt, told apart by units ─────
+# ── wired-in money is exempt, told apart by units ────────────────────
 
 
 def _check_wire_credit_survives(apply_fold) -> None:
     """Money another bot earned is not the operator's to retire here.
 
-    It is told apart BY UNITS: the absorb adds dollars and no units, so
-    whatever a tranche holds above its units at the sale's own rate was
-    wired in. The pool must come out whole at every percentage.
+    A tranche's wired-in share is whatever it holds above its units at
+    the sale's own rate, and that pool must come out whole at every
+    percentage.
     """
     parked = 343.68
     for pct in range(0, 100):
@@ -955,49 +791,92 @@ def test_wired_in_money_is_still_exempt():
     _check_wire_credit_survives(_apply_via_method)
 
 
-def test_control_the_wire_check_catches_the_pre_absorbfix_defect():
+def test_control_the_wire_check_catches_a_scaled_wire_credit():
     """CONTROL. Scale the summed usd and the check must go red."""
     with pytest.raises(AssertionError):
-        _check_wire_credit_survives(_apply_via(_load_block(*PLANT_SCALE_WIRED_MONEY)))
+        _check_wire_credit_survives(_scales_wired_money)
 
 
-def test_the_manual_path_reads_this_sales_own_rate():
-    """A wire credit sitting on a manual fire's tranche survives.
-
-    The manual site prices its tranches at ``fill_usd / fill_amount``
-    and hands the helper those same two figures, so a tranche's own
-    dollars are exactly its units at that rate and anything above them
-    is recognised as wired in. Passing any other rate would misclassify
-    the split; this reads the result at the tranche.
-    """
-    bot = _manual_bot(50)
+@pytest.mark.parametrize("path", PATH_NAMES)
+def test_a_wire_credit_on_a_new_tranche_survives_every_path(path):
+    """Dollars added without units are recognised as wired in."""
     parked = 40.0
-    original_apply = bot._apply_scrum_fold_pct
+    bot = _path_bot(50, lots=[dict(lot) for lot in DEFAULT_LOTS])
+    _real_apply = bot._apply_scrum_fold_pct
 
     def _absorb_then_apply(before, usd, asset):
-        # Stand in for _absorb_pending_wire_credits_into: dollars, and
-        # no units, added to the first tranche this fire built.
         bot._fold_tranches[before]["usd"] += parked
-        original_apply(before, usd, asset)
+        return _real_apply(before, usd, asset)
 
     bot._apply_scrum_fold_pct = _absorb_then_apply
-    got = _fire_manual(bot)
-    total = sum(usd for usd, _ in got)
+    PATHS[path](bot, SALE_UNITS)
+    total = sum(usd for usd, _ in _book(bot))
     assert abs(total - (450.0 + parked)) <= 1e-9, (
-        f"a $900 manual sale at 50% with ${parked:.2f} of wired-in money "
+        f"a $900 {path} sale at 50% with ${parked:.2f} of wired-in money "
         f"left ${total:.4f} queued; expected ${450.0 + parked:.2f}. The "
         f"wired-in money was scaled."
     )
 
 
-def test_the_operator_is_told_what_happened_on_a_manual_fire():
-    """The FOLD RATIO line is the operator's only signal that the
-    setting acted. It was absent on this path before the change."""
-    bot = _manual_bot(50)
-    _fire_manual(bot)
-    ratio_lines = [m for m in bot._bus.messages if "FOLD RATIO" in m]
-    assert len(ratio_lines) == 1, (
-        f"expected one FOLD RATIO line after a manual fire at 50%, got "
-        f"{ratio_lines}"
+# ── terminal actions leave no tranche ────────────────────────────────
+
+
+def _seeded(bot):
+    bot._fold_tranches = [
+        {"usd": 100.0, "units": 10.0, "ref": 10.0, "initial_buy_price": 8.0},
+        {"usd": 50.0, "units": 5.0, "ref": 10.0, "initial_buy_price": 7.0},
+    ]
+    bot._fold_queue_usd = 150.0
+    return bot
+
+
+def test_a_detonation_leaves_no_fold_tranche():
+    """Detonation is terminal: it queues nothing and clears the book."""
+    bot = _seeded(_path_bot(50, lots=[dict(lot) for lot in DEFAULT_LOTS]))
+    bot._current_holdings = 900.0
+    bot._anchor_target_balance = 100.0
+    asyncio.run(bot._execute_detonation(_Ticker(SALE_PRICE)))
+    assert bot._fold_tranches == [], (
+        f"detonation left {bot._fold_tranches}; the operator's rule is "
+        f"that a terminal action neither spawns nor populates tranches"
     )
-    assert "scrum_fold_pct=50%" in ratio_lines[0]
+
+
+def test_control_the_detonation_check_sees_a_book_that_survives():
+    """CONTROL. A detonation refused for want of a price leaves the two
+    seeded tranches, so the emptiness above is a real outcome."""
+    bot = _seeded(_path_bot(50, lots=[dict(lot) for lot in DEFAULT_LOTS]))
+    bot._current_holdings = 900.0
+    bot._anchor_target_balance = 100.0
+    asyncio.run(bot._execute_detonation(_Ticker(0.0)))
+    assert len(bot._fold_tranches) == 2, (
+        f"the seeded book did not survive a refused detonation: "
+        f"{bot._fold_tranches}"
+    )
+
+
+def test_a_self_destruct_leaves_no_fold_tranche():
+    """Self-destruct is terminal and empties the book as well."""
+    bot = _seeded(_path_bot(50, lots=[dict(lot) for lot in DEFAULT_LOTS]))
+    bot._current_holdings = 0.0
+
+    async def _no_units(currency):
+        bot.seen.setdefault("balances", []).append(currency)
+        return type("B", (), {"total": 0.0, "free": 0.0, "absent": False})()
+
+    bot._get_balance = _no_units
+    asyncio.run(bot.self_destruct("SELF-DESTRUCT"))
+    assert bot._fold_tranches == [], (
+        f"self-destruct left {bot._fold_tranches}; a terminal action "
+        f"neither spawns nor populates tranches"
+    )
+
+
+def test_control_the_self_destruct_check_sees_a_book_that_survives():
+    """CONTROL. A refused self-destruct leaves the two seeded tranches."""
+    bot = _seeded(_path_bot(50, lots=[dict(lot) for lot in DEFAULT_LOTS]))
+    asyncio.run(bot.self_destruct("wrong-token"))
+    assert len(bot._fold_tranches) == 2, (
+        f"the seeded book did not survive a refused self-destruct: "
+        f"{bot._fold_tranches}"
+    )

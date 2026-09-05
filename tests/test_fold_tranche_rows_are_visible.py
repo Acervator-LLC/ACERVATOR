@@ -1,65 +1,10 @@
-"""The Fold Tranches table draws its rows — issue #133, unit 1.
+"""The Fold Tranches table paints whole rows, counted off the pixels.
 
-WHAT THE OPERATOR SAW, v3.27.0, Bot Settings -> Fold Tranches, CHIP/USD
-`c8e5c5db`::
-
-    Open tranches: 1
-    Units marked (queue vs held): 101.500000 marked / 8,193.000000 held
-    Parked USD (in fold queue): $3.3184
-    #  Age  Units  USD parked  Sell ref $  Original cost $  Min rebuy $
-       Status  Source  Fire            <- the header, and nothing under it
-
-THE MECHANISM, RENDERED AND COUNTED
-===================================
-The row was BUILT. Every cell carried the right text and the Fire
-button was on it. The table was 69 pixels tall and spent 61 of them on
-chrome, so the operator was shown 8 pixels of a 30-pixel row.
-
-Measured under `cyberpunk_dark` in a 640x720 dialog, counting scanlines
-that actually carry the fold fill `#123a63`:
-
-    tranches   shipped                    repaired
-    1          69px table,  8 row px      101px table, 30 row px
-    58         86px table, 25 row px      611px table, 550 row px
-
-ZERO WHOLE ROWS EITHER WAY, which is why a long queue looked exactly as
-empty as a short one.
-
-TWO FAULTS, AND BOTH HAD TO GO
-==============================
-1. A CEILING IS NOT A PROMISE THAT ANYTHING IS SHOWN. The builder
-   called `setMaximumHeight`. The tab ends in `addStretch()`, so the
-   layout hands the table its `minimumSizeHint` — a flat 86px whatever
-   the cap says — and #98's 18-row cap was never reached.
-2. THE NUMBER WAS SHORT. `TRANCHE_TABLE_FRAME_PX` budgeted 4px of
-   chrome. The table spends 36: a 26px styled frame and a 10px
-   horizontal scroll bar. A floor built on the old constant still shows
-   8 of 30 pixels.
-
-`_ceiling_only` and `_old_chrome_constant` below put each fault back on
-its own and reproduce those numbers.
-
-WHY THE PIXELS AND NOT THE GEOMETRY
-===================================
-`viewport().height()` LIES HERE. Measured on the shipped panel it
-answered 30 and 409 on tables that painted 8 and 25 pixels of row. Every
-row claim in this file is counted off `widget.grab()` through
-`tests/qt_pixel.py`, which is the same reason that module exists.
-
-WHAT THIS FILE DOES NOT CLAIM
-=============================
-That a table drawing a row is a table that reads one correctly. A panel
-which admitted everything would pass every check above, so
-`TestARefusedTrancheIsStillRefused` holds a record the panel must not
-price: it is drawn, it is counted, and its cells stay em dashes.
-
-NOTHING WRITES UNDER `~/.acervator`. No StateManager is built, no Clear
-is pressed, no order is scheduled.
-
-FALSIFICATION: this file is wrong if (a) the shipped arithmetic paints a
-whole row, (b) either control paints a whole row, (c) the repaired panel
-paints fewer than 18 rows on a 58-tranche queue, or (d) a tranche whose
-`usd` cannot be read prints a dollar figure or leaves the queue count.
+Every row claim is counted from `widget.grab()` through `tests/qt_pixel.py`,
+not from `viewport().height()`, which answered 30 and 409 on tables painting 8
+and 25 pixels of row. `_ceiling_only` and `_old_chrome_constant` put each fault
+back on its own, and `TestARefusedTrancheIsStillRefused` holds a record the
+panel draws, counts, and still prices as em dashes.
 """
 
 from __future__ import annotations
@@ -96,10 +41,8 @@ COL_SOURCE = 8
 
 DASH = "—"
 
-#: CHIP/USD `c8e5c5db`, read from `~/.acervator/bot_state.json` under
-#: `scrumming_state.fold_tranches` on 2026-08-25. The two wire-credit
-#: members are carried because they are what makes this record's shape
-#: different from the fixtures already in the suite.
+#: One live CHIP/USD tranche. The two wire-credit members are what make its
+#: shape differ from every other fixture in the suite.
 LIVE_TRANCHE = {
     "usd": 3.3183661898345487,
     "units": 101.50000000000006,
@@ -157,9 +100,6 @@ def _tranche(i: int, *, usd: float = 1.0) -> dict:
     }
 
 
-# ══════════════════════════════════════════════════════════════════════
-# THE PANEL, IN THE NESTING THE OPERATOR OPENS
-# ══════════════════════════════════════════════════════════════════════
 class _Panel:
     """Dialog -> QTabWidget -> QScrollArea -> tab -> table, and shown.
 
@@ -314,9 +254,6 @@ def panel(monkeypatch):
         _destroy(built)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# A. THE DEFECT — a summary of one over a table of none
-# ══════════════════════════════════════════════════════════════════════
 class TestTheRowReachesTheScreen:
 
     def test_the_summary_counts_the_tranche(self, panel):
@@ -376,9 +313,6 @@ class TestTheRowReachesTheScreen:
             _destroy(built)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# B. THE CONTROLS — each fault put back on its own
-# ══════════════════════════════════════════════════════════════════════
 class TestTheControlsReproduceTheDefect:
     """Both halves of the repair are load-bearing, so both are blinded
     separately. A control that only ever restored the pair could not
@@ -421,9 +355,6 @@ class TestTheControlsReproduceTheDefect:
             _destroy(built)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# C. THE VALUES — the cells say what the record says
-# ══════════════════════════════════════════════════════════════════════
 class TestTheRowPrintsTheStoredRecord:
 
     def test_the_four_stored_quantities(self, panel):
@@ -475,10 +406,6 @@ class TestTheRowPrintsTheStoredRecord:
         assert button.text() == "Fire"
 
 
-# ══════════════════════════════════════════════════════════════════════
-# D. THE VACUOUS-PASS CONTROL — a table that draws everything hides
-#    nothing, so prove a bad record is still refused
-# ══════════════════════════════════════════════════════════════════════
 class TestARefusedTrancheIsStillRefused:
     """A record whose `usd` is `nan` — which `json.load` produces from a
     stored `NaN`. It must be DRAWN, COUNTED and REFUSED, all three."""
@@ -526,9 +453,6 @@ class TestARefusedTrancheIsStillRefused:
         assert mixed.cell(1, COL_USD) == DASH
 
 
-# ══════════════════════════════════════════════════════════════════════
-# E. THE CHROME IS MEASURED, NOT ASSUMED
-# ══════════════════════════════════════════════════════════════════════
 class TestTheChromeHelper:
 
     def test_it_reports_what_the_widget_spends(self, panel):

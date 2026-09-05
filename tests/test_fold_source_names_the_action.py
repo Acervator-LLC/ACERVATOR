@@ -1,61 +1,11 @@
-"""The Source column names the action that CREATED the row — #98 d5.
+"""The fold panel's Source column names the action that created the row.
 
-THE DEFECT
-==========
-The cell read::
-
-    src_str = ("manual fire" if t.get("operator_initiated")
-               else "auto scrum")
-
-``operator_initiated`` is written at ONE site, the SCRUM branch of
-``_execute_manual_rebalance`` (``src/trading/scrumming/execution.py``),
-and its value comes from that method's own intent map::
-
-    "manual_button": ("MANUAL_SCRUM", "MANUAL_FOLD", True)
-    "wire_stack":    ("WIRE_STACK_SCRUM", "WIRE_STACK_FOLD", False)
-    "max_cartridge": ("CARTRIDGE_SCRUM", "CARTRIDGE_FOLD", False)
-
-So the flag means MANUAL SCRUM — an operator-pressed SELL. A manual
-FIRE is the opposite operation: a BUY that REMOVES a tranche
-(``scrumming_bot.py:3548``). A tranche created by a manual fire cannot
-exist, so the label named an action that could not have produced the
-row it sat on. 219 live tranches carried it.
-
-THREE PROVENANCES, AND THE THIRD IS THE KEY'S ABSENCE
-=====================================================
-The two autonomous append sites — the SCRUM cycle and the DIST re-fold
-— write no ``operator_initiated`` key at all. ``TestTheWriteSites``
-below reads that off the AST rather than repeating it, and
-``TestTheAbsenceSurvivesASaveAndReload`` proves the absence is still
-there after a real round trip, which is what makes it readable by a
-panel at all.
-
-    key True     an operator pressed Manual Fire; the SELL leg of that
-                 rebalance created this tranche      -> "manual scrum"
-    key False    an AUTONOMOUS rebalance created it: Wire Stack Fire or
-                 Max Cartridge Fire                  -> "auto rebalance"
-    key absent   the ordinary scrum cycle, or the DIST re-fold
-                                                     -> "auto scrum"
-
-MEASURED ON THE LIVE FLEET, ``~/.acervator/bot_state.json`` opened
-READ-ONLY at 2026-08-23 19:28:19 — 1,687 open fold tranches on 38 bots:
-214 True, 1,189 False, 284 absent. The old code therefore printed an
-impossible action over 214 rows and one word over 1,473 rows that come
-from two different mechanisms. That file is not read here and is never
-written; the counts are recorded because they are what sized the
-defect.
-
-WHAT IS DELIBERATELY NOT DONE
-=============================
-Wire Stack and Max Cartridge are NOT told apart. Nothing on the tranche
-records which of the two fired, so a fourth label would be a guess. The
-tooltip says so outright and points at the trade log, which carries
-``WIRE_STACK_SCRUM`` or ``CARTRIDGE_SCRUM`` for the sale itself.
-
-FALSIFICATION: this file is wrong if (a) the panel ever prints "manual
-fire" again, (b) ``_with_the_old_two_way_label`` fails to reproduce the
-collapse, which would mean the control is not restoring the defect, or
-(c) the intent map moves and this file keeps asserting the old values.
+A tranche's `operator_initiated` key has three states and the panel gives
+each its own label: True is "manual scrum", False is "auto rebalance", and
+an absent key is "auto scrum". `TestTheWriteSites` reads which append site
+writes the key, `TestTheAbsenceSurvivesASaveAndReload` proves an absent key
+is still absent after a real round trip, and `_with_the_old_two_way_label`
+restores the two-way cell so the collapse it caused stays visible.
 """
 
 from __future__ import annotations
@@ -192,24 +142,8 @@ def table():
     # the last reference and Qt destroys the table mid-test.
     yield tables[0]
 
-    # TEARDOWN. See the same block in
-    # `tests/test_fold_panel_settles_after_a_clear.py` for the
-    # measurement: an undestroyed dialog here fails in a STRANGER's
-    # test, because `_open_dialogs(app)` in
-    # `test_sim_visuals_expand_reentrancy.py` takes element zero of
-    # every top-level QDialog in the process. Issue #101 holds the
-    # root cause.
-    #
-    # `deleteLater()` is deliberately NOT used: issue #96 measured that
-    # it moves ownership to C++ and the object then waits for an event
-    # `processEvents()` never delivers, so it PREVENTS the destruction
-    # it appears to request.
-    # `setParent(None)` alone is a NO-OP here: these widgets were never
-    # parented, and a parentless Qt widget is owned by Qt for the life
-    # of the process. Measured -- it left all 32 alive. The recipe that
-    # DOES destroy is the third row of issue #96's table: queue the
-    # delete, then DELIVER the event ourselves, because
-    # `processEvents()` does not deliver DeferredDelete.
+    # Queue the delete and deliver the event: `processEvents()` never
+    # delivers DeferredDelete, and an undestroyed dialog fails another test.
     from PySide6.QtCore import QCoreApplication, QEvent
 
     for _w in (widget, dialog):
@@ -275,18 +209,11 @@ def _cell_colours(table, image, row: int) -> dict:
     return dict(counts)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# THE CONTROL. Put the two-way test back and read the collapse.
-# ══════════════════════════════════════════════════════════════════════
 def _with_the_old_two_way_label(monkeypatch) -> None:
-    """Restore the shipped-until-#98 mapping, and nothing else.
+    """Replace `_fold_tranche_source_label` with the old two-way mapping.
 
-    The panel resolves ``_fold_tranche_source_label`` out of its own
-    MODULE on every build, so replacing that attribute restores the
-    exact pre-repair reading. The name is asserted callable FIRST:
-    ``monkeypatch.setattr`` raises on a renamed name, but a control
-    that quietly patched nothing would print the repair's own labels
-    and call them the defect's.
+    The panel resolves the name off its module on every build, and it is
+    asserted callable first so a control that patched nothing goes red.
     """
     from src.gui.live_settings import fold_tranches_tab as mod
 
@@ -301,9 +228,6 @@ def _with_the_old_two_way_label(monkeypatch) -> None:
     )
 
 
-# ══════════════════════════════════════════════════════════════════════
-# A. THE THREE LABELS.
-# ══════════════════════════════════════════════════════════════════════
 class TestEachProvenanceGetsItsOwnLabel:
 
     def test_a_stored_true_reads_manual_scrum(self, table):
@@ -354,21 +278,13 @@ class TestEachProvenanceGetsItsOwnLabel:
         assert len(set(old)) == 2
 
 
-# ══════════════════════════════════════════════════════════════════════
-# B. THE COLOUR AND THE TOOLTIPS. This unit renames a label; it does
-#    not re-tune a measured colour.
-# ══════════════════════════════════════════════════════════════════════
 class TestTheCellKeepsItsMeaningAndGainsItsExplanation:
 
     def test_only_the_manual_scrum_row_carries_the_cyan(self, table):
-        """READ OFF THE RENDER, not off the model alone.
+        """The colour is asserted on the model and on the render.
 
-        A model read reports what the cell was TOLD to paint.
-        Measured 2026-08-11 on this very table: a
-        `QTableWidget::item` stylesheet rule overrides the item brush
-        and the getter keeps returning the old value, so a model-only
-        assertion can pass over a screen showing another colour. Both
-        halves are asserted here, in one function, over one widget.
+        A `QTableWidget::item` stylesheet rule overrides the item brush while
+        the getter keeps returning the old value.
         """
         from src.gui.bot_live_settings import (
             FOLD_SOURCE_MANUAL_FG_HEX,
@@ -414,8 +330,7 @@ class TestTheCellKeepsItsMeaningAndGainsItsExplanation:
         assert len(seen[MANUAL_SCRUM_ROW]) > 1
 
     def test_every_row_carries_a_tooltip(self, table):
-        """Issue #98 item 6 measured 8 of 11 columns with no tooltip
-        anywhere. This column is not one of them any more."""
+        """Every Source cell carries a tooltip."""
         for row in range(table.rowCount()):
             assert table.item(row, COL_SOURCE).toolTip().strip()
 
@@ -434,10 +349,6 @@ class TestTheCellKeepsItsMeaningAndGainsItsExplanation:
         assert "is NOT stored" in tip
 
 
-# ══════════════════════════════════════════════════════════════════════
-# C. THE LABELS ARE GROUNDED IN THE WRITE SITES, read off the code.
-#    `src/trading/scrumming_bot.py` is READ here and never written.
-# ══════════════════════════════════════════════════════════════════════
 def _bot_tree() -> ast.Module:
     return ast.parse(ENGINE_SRC)
 
@@ -531,10 +442,6 @@ class TestTheWriteSites:
         assert LIVE_TRUE + LIVE_FALSE + LIVE_ABSENT == LIVE_TOTAL
 
 
-# ══════════════════════════════════════════════════════════════════════
-# D. THE ABSENCE IS DURABLE. A restore that stamped a default would
-#    turn every "auto scrum" row into an "auto rebalance" row.
-# ══════════════════════════════════════════════════════════════════════
 class TestTheAbsenceSurvivesASaveAndReload:
 
     def test_a_key_that_was_never_written_is_still_missing(self):

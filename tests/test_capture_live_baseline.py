@@ -51,11 +51,6 @@ def _write(path: Path, lines: list[str]) -> Path:
     return path
 
 
-# --------------------------------------------------------------------- #
-# blocker normaliser
-# --------------------------------------------------------------------- #
-
-
 def test_blocker_normaliser_groups_numeric_siblings():
     """Fails when a measured number keeps two readings of one gate apart."""
     keys = {clb.normalise_blocker(b) for b in _BLOCKER_SIBLINGS}
@@ -146,11 +141,6 @@ def test_gate_since_filter_drops_older_records(tmp_path):
     assert got["totals"]["skipped_by_since"] == 1
 
 
-# --------------------------------------------------------------------- #
-# console class grouper
-# --------------------------------------------------------------------- #
-
-
 def test_console_grouper_folds_one_error_class_and_splits_by_symbol(tmp_path):
     """Fails when the pre-flight rejections stop being one class split by pair."""
     rows = []
@@ -232,11 +222,6 @@ def test_symbol_pattern_is_none_without_usable_tickers():
     assert clb.build_symbol_pattern(["", "None", "x"]) is None
 
 
-# --------------------------------------------------------------------- #
-# emitter coverage
-# --------------------------------------------------------------------- #
-
-
 def test_emitter_capture_names_the_declared_pins_that_never_fired(tmp_path):
     """Fails when a pin that produced nothing is not reported as silent."""
     log = _write(
@@ -277,11 +262,6 @@ def test_template_pin_does_not_swallow_its_own_prefix():
     declared = {"c.3.raw.{}": "always_on"}
     assert clb.declared_pin_for("c.3.raw.rsi", declared) == "c.3.raw.{}"
     assert clb.declared_pin_for("c.3.raw.", declared) is None
-
-
-# --------------------------------------------------------------------- #
-# fleet read
-# --------------------------------------------------------------------- #
 
 
 def _fleet_payload():
@@ -364,11 +344,6 @@ def test_boolean_is_not_booked_as_a_number():
     assert clb.as_number(True) is None
     assert clb.as_number("20.0") is None
     assert clb.as_number(20) == 20.0
-
-
-# --------------------------------------------------------------------- #
-# comparison
-# --------------------------------------------------------------------- #
 
 
 def _snapshot(target_balance=261.0, fold_classes=("A(#)", "B(#)")):
@@ -467,11 +442,6 @@ def test_compare_mode_exits_nonzero_on_drift(tmp_path):
     b.write_text(json.dumps(_snapshot(fold_classes=("A(#)",))), encoding="utf-8")
     assert clb.main(["--compare", str(a), str(b), "--fail-on-drift"]) == 1
     assert clb.main(["--compare", str(a), str(a), "--fail-on-drift"]) == 0
-
-
-# --------------------------------------------------------------------- #
-# read-only discipline
-# --------------------------------------------------------------------- #
 
 
 def test_module_never_opens_a_file_for_writing_outside_write_snapshot():

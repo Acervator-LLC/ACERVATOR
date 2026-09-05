@@ -48,9 +48,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TAB_PATH = REPO_ROOT / "src/gui/risk_tab.py"
 SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/risk_tab_surface.py"
 
-# Every control file is named with its full path. Two files in this tree
-# share the basename ``history_tab.py`` and build different numbers of
-# timers, so a bare name would name neither.
+# Full paths: two files share the basename ``history_tab.py`` and differ in timers.
 WIRING_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
 SIGNAL_CONTROL_PATH = REPO_ROOT / "src/gui/launcher.py"
 TIMER_CONTROL_PATH = REPO_ROOT / "src/gui/history_tab.py"
@@ -63,9 +61,7 @@ DESCRIPTOR_CONTROL_PATH = REPO_ROOT / "src/gui/indicator_panel.py"
 PIXEL_SIZE = (900, 620)
 GAUGE_PIXEL_SIZE = (160, 160)
 
-# The design-system colours these lines and cells use, typed out here
-# rather than read from the surface, so a renamed or re-valued token
-# cannot move both sides together.
+# Typed out, not read from the surface, so a re-valued token cannot move both sides.
 SUCCESS_HEX = "#00ff88"
 ERROR_HEX = "#ff3366"
 WARNING_HEX = "#ffaa00"
@@ -647,9 +643,7 @@ GAUGE_REFUSAL_TYPES = {
     "text_max": "TypeError",
 }
 
-# One rule whose action is a number, kept out of the value comparison:
-# a table item built from a number prints nothing and carries the
-# number as its type, which is the platform's answer, not the tab's.
+# A numeric action, kept out of the value comparison: the empty cell is Qt's answer.
 NUMBER_ACTION_RULES = {"cap": {"threshold": 1.0, "action": 5, "enabled": True}}
 
 

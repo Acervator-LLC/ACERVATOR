@@ -107,11 +107,7 @@ def test_guard_references_no_late_bound_module_global():
         and getattr(n.value.func, "id", "") == "_check_stale_dist_binary"
     )
 
-    # Split top-level bindings by whether they land before or after the
-    # guard's call site. A name is only a hazard if it is bound EXCLUSIVELY
-    # after: main.py imports `os` at :45 and re-imports it at :135, and
-    # likewise `sys` at :129/:136, so looking only at the later binding
-    # reports both as unbound when neither is.
+    # A name is a hazard only when bound exclusively after the call site.
     early_bound: set[str] = set()
     late_bound: dict[str, int] = {}
     for node in tree.body:  # top level only, not walk

@@ -166,10 +166,8 @@ class TestSaveStateStillWorks:
         monkeypatch.setattr(sm, "detect_prune", boom)
         with pytest.raises(RuntimeError):
             sm.save_state([{"bot_id": "bot-a"}])
-        # Documents the ONE way the detector can still break a save: if
-        # the method itself is replaced by something that raises. The
-        # real implementation catches everything internally, which
-        # test_never_raises_even_when_everything_is_wrong proves.
+        # The one way the detector can break a save: `detect_prune` itself
+        # replaced by something that raises.
 
     def test_the_prune_this_cascade_exists_to_stop_no_longer_happens(
         self, sm, capture_log

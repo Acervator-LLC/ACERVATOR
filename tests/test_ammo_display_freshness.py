@@ -167,9 +167,8 @@ class TestTheManualFireBandSplit:
     cell says act and the button does nothing."""
 
     def test_a_delta_inside_manual_fires_band_is_flagged(self):
-        # target 100 -> cell band 0.10, Manual Fire band 1.00.
-        # position 100.5 -> delta 0.50: actionable to the cell, no-op to
-        # Manual Fire.
+        # Cell band 0.10, Manual Fire band 1.00: a 0.50 delta acts on the cell
+        # alone.
         out = _compose_ammo_cell(0.0, 1.0, 100.5, 1.0, 100.0)
         assert out["manual_fire_noop"] is True
         assert "MANUAL FIRE WILL NOT ACT" in out["tip"]

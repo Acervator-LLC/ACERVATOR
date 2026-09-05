@@ -1204,9 +1204,7 @@ def test_the_values_no_picture_carries_are_read_off_both_sides():
         assert old["cells"][index]["frame_shape"] == "NoFrame"
 
 
-# Values that reach no pixel, with the check that reads each off both
-# sides. None is proved by a picture: whether a value moves a pixel is a
-# fact about the host's fonts, not about the product.
+# Values that reach no pixel, with the check that reads each off both sides.
 INVISIBLE_TO_A_PICTURE = {
     "widget.object_name": "test_the_values_no_picture_carries_are_read_off_both_sides",
     "widget.accessible_name": (

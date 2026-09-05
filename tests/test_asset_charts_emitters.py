@@ -1,70 +1,11 @@
-"""Pins the five Asset Charts emitters -- queue item #10.6, subsystem `charts`.
+"""Pins the five `charts` emitters on `TradeChartsTab`.
 
-    charts.13.001.invariant.panels_mounted
-    charts.13.002.postcondition.panel_symbols_current
-    charts.13.003.postcondition.timeframe_rearmed
-    charts.13.004.postcondition.panel_refreshed
-    charts.13.005.invariant.panels_fresh
-
-THE TAB IS `TradeChartsTab`, in `src/gui/widgets/trade_charts_tab.py`. It
-holds one `ChartPanel` per qualifying bot and feeds each one from
-`ChartDataFetcher`. Every pin reads the state the NEXT caller uses -- the
-widgets really in the scroll layout, the symbol the fetch really hands
-the exchange, the combo the fetch really reads, the candles really on the
-chart, the `last_fetch` really in the dict. Not one reads `bot_statuses`
-back out as though the argument were the result.
-
-THIS IS THE FIRST INSTRUMENTED TAB WITH A CADENCE, and item #14 needs
-that stated rather than inferred. `MainWindow._setup_refresh_timer`
-starts a 2000 ms `QTimer` on `_refresh_dashboard`, which calls
-`update_charts` on every tick with at least one bot and schedules
-`fetch_chart_data` on every tick that also has exchange connectors. So
-`13-001`, `13-002`, `13-004` and `13-005` fire on a loop and silence from
-them means something. `13-003` alone is a toggle: the operator moves a
-timeframe combo, or it never fires.
-`test_the_cadence_declaration_is_what_the_source_does` holds that split
-against the syntax tree.
-
-THREE PINS CARRY `every=30.0` AND ONE DELIBERATELY DOES NOT. At 0.5 Hz an
-un-throttled pin writes 1800 records an hour; three of those would push
-the rest of the network out of `RETAIN_ROWS` inside a session, so
-`13-001`, `13-002` and `13-005` are folded to one record per 30 s fetch
-window with `count` saying how many passes it stands for. `13-004` is
-the exception on purpose: the synchroniser keys on (name, site) and its
-one site serves every panel, so a throttle would admit one panel per
-window and drop the rest -- hiding which panel went stale, which is all
-the pin is for. It is bounded already by the tab's own 30 s check.
-
-WHAT THE TAB HIDES, AND WHY `13-004` READS THE CHART. `fetch_chart_data`
-has three outcomes. Candles call `set_candles` then `set_source`; an
-empty answer calls `set_error(source)`; a raise calls
-`set_error(str(exc))`. NEITHER OF THE LAST TWO CLEARS THE CANDLES
-ALREADY ON THE CHART, so a panel last fed hours ago paints exactly like
-one fed a second ago.
-`test_a_panel_left_showing_candles_by_an_empty_fetch_is_reported` stages
-that exact divergence and asserts `ok` False with the source attribution
-beside it.
-
-WHAT `13-004` CANNOT SEE, AND WHY `13-005` EXISTS. Every path through the
-fetch loop body sets `last_fetch`, so a panel that stopped refreshing is
-one the loop SKIPPED -- and a skipped panel emits nothing at all, which
-reads exactly like a healthy quiet one.
-`test_a_panel_the_fetch_loop_skips_forever_is_reported` drives the tab's
-own `push_synthetic_candles` to plant a `*/USDC` panel, which the
-wildcard `continue` then declines for the rest of the process.
-
-ONE PIN CARRIES A DURATION AND IT IS THE ONLY ONE THAT MAY (E8).
-`13-004` is a `postcondition` behind a real network fetch; the other four
-walk a dict or a layout, and a number on any of them would be fabricated.
-`test_the_duration_tracks_two_different_fetch_workloads` proves the
-bracket measures the await rather than reporting a constant, and
-`test_only_the_fetch_pin_carries_a_duration` holds the shape at the
-source.
-
-NOTHING HERE TOUCHES `~/.acervator` OR `~/.acervator_logs`. The widget is
-constructed alone -- no `MainWindow`, no settings manager, no bot manager
--- and every fetch goes to a local stand-in, so no exchange and no
-network is reached. The sink is in memory and is never given a path.
+Each pin reads the state the next caller uses: the panels in the scroll layout,
+the symbol the fetch hands the exchange, the combo the fetch reads, the candles
+on the chart and `last_fetch`. `13-004` alone carries a duration, and
+`test_the_duration_tracks_two_different_fetch_workloads` proves the bracket
+measures the await. The widget is built alone and every fetch goes to a local
+stand-in, so no exchange is reached and the sink is never given a path.
 """
 
 from __future__ import annotations
@@ -80,11 +21,6 @@ from typing import TYPE_CHECKING, Any, Iterator
 
 import pytest
 
-# `tests/conftest.py` puts the repository root on `sys.path` before any
-# test module is imported, so these two import normally rather than
-# after a path insert. THAT IS WHY THERE IS NO `# noqa: E402` HERE: the
-# imports are at the top because they belong there, not because a
-# suppression was written over a real finding.
 from src.core import signal_contract as sc
 from src.core.signal_contract import SignalSink
 
@@ -95,10 +31,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 REPO = Path(__file__).resolve().parent.parent
 
 if TYPE_CHECKING:  # pragma: no cover
-    # Annotation only. PySide6 must not be imported at module scope: the
-    # three source-reading tests below are pure Python and have to run on
-    # a box without Qt. A skipped test is not evidence, so the skip is
-    # scoped to the fixture and not to the module.
     from PySide6.QtWidgets import QApplication
 
 MOUNTED = "charts.13.001.invariant.panels_mounted"
@@ -115,9 +47,7 @@ UNTHROTTLED = (REARMED, REFRESHED)
 
 TRADE_CHARTS = REPO / "src" / "gui" / "widgets" / "trade_charts_tab.py"
 
-# Substrings that must never appear in a record this tab writes. A
-# context is written to disk, and a bot id is operator-chosen text the
-# privacy registry masks in the bot table.
+# Substrings no serialised record from this tab may contain.
 FORBIDDEN = (
     "api_key",
     "apikey",
@@ -361,33 +291,14 @@ def test_panel_symbols_current_is_reported(qapp: QApplication) -> None:
 def test_a_panel_holding_a_pair_the_pass_does_not_name_is_reported(
     qapp: QApplication,
 ) -> None:
-    """THE FALSIFIER for `13-002`, rewritten by issue #46.
+    """The falsifier for `13-002`, staged inside one `update_charts` pass.
 
-    IT USED TO PIN THE DEFECT. `update_charts` wrote `info["symbol"]` in
-    the CREATE branch only, so two passes with two pairs left the stored
-    symbol on the first one and this test asserted `actual == 1`. That
-    made it a valid falsifier for the pin and an obstacle to the repair,
-    which is why the issue said the two had to move together. The repair
-    landed on `fix-46-chart-follows-the-symbol`; the sequence it used is
-    now asserted CLEAN in
-    `tests/test_asset_chart_symbol_change.py::
-    test_the_drift_pin_is_clean_across_a_symbol_change`, together with
-    the pair the fetch really asks for afterwards.
-
-    THE CONDITION IS STAGED DIRECTLY INSTEAD. One bot named TWICE in one
-    pass with two different pairs -- what a fleet snapshot looks like
-    when it is assembled either side of a symbol change -- leaves a
-    panel that can be current for at most one of the two, and the pin
-    counts the one it is not current for. The falsifier's job is to
-    prove the instrument still fires; the repair's proof is the fetch
-    target, which is read at the consumer in the file named above.
+    One bot named twice with two pairs leaves a panel current for at most one
+    of them, and the pin counts the one it is not current for.
     """
     with _collect() as sink, _tab(qapp) as tab:
         tab.update_charts([_status("alpha", "BTC/USD"), _status("alpha", "ETH/USD")])
         rec = _records(sink, SYMBOLS)[-1]
-        # One bot, one panel, two pairs claimed for it in one pass. The
-        # panel holds the last pair the pass named, which is the one
-        # `fetch_chart_data` will ask for.
         assert len(tab._chart_panels) == 1
         assert tab._chart_panels["alpha"]["symbol"] == "ETH/USD"
     assert rec.ok is False

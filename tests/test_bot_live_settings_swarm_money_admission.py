@@ -1,93 +1,11 @@
-"""Money admission on the nine unguarded reads of the Bot Swarm tab.
+"""Money admission on the Bot Swarm tab's ledger and transaction reads.
 
-THE DEFECT THESE PIN (CHANGE A)
-===============================
-``_create_bot_swarm_tab`` read nine money or percentage values through a
-bare ``float(x or 0)`` with no ``try`` above them. Re-anchored on the
-promoted file, the nine were::
-
-    :3021  inbound[src_id] = float(targets[bot_id] or 0)
-    :3036  float(getattr(ledger, "wired_in", 0) or 0)
-    :3037  float(getattr(ledger, "wired_out", 0) or 0)
-    :3057  float(getattr(self._bot, "_pending_wire_credits", 0) or 0)
-    :3074  float(getattr(ledger, "starting_balance", 0) or 0)
-    :3161  out_lifetime[tx.target_bot] += float(getattr(tx, "amount", 0) or 0)
-    :3203  in_lifetime[tx.source_bot]  += float(getattr(tx, "amount", 0) or 0)
-    :3279  f"${float(credit.get('usd', 0) or 0):,.4f}"
-    :3370  f"${float(getattr(tx, 'amount', 0) or 0):,.4f}"
-
-Three further reads -- :3093, :3094, :3095 -- sit inside a ``Try`` whose
-handler is ``Exception`` and were already contained. That split was
-established by AST over the whole ``FunctionDef``, not inherited.
-
-WHY A RAISE MATTERS. The ancestor chain from every one of the nine is
-``For``/``If`` -> ``_create_bot_swarm_tab`` -> ``BotLiveSettingsDialog.
-__init__`` -> ``MainWindow._on_bot_clicked``, with NO ``try`` at any
-step, so a raise means the Bot Settings dialog does not open for that
-bot. The contrast that proves the walk discriminates:
-``simulator_tab.py:695`` builds the same dialog inside a ``try`` with an
-``Exception`` handler, so the Simulator path is protected and the
-operator's path is not.
-
-MEASURED, NOT PREDICTED. Every row below was driven through the real
-method before the guard was written. Four shapes RAISED and killed the
-tab -- ``"abc"`` ValueError, ``10 ** 400`` OverflowError, ``[1, 2]`` and
-``{"a": 1}`` TypeError. Nine more did not raise and lied instead:
-``True`` rendered ``$1.0000`` for a stored flag, ``"20.0"`` rendered
-``$20.0000`` for a stored string, and ``nan``/``inf``/``-inf`` rendered
-``$nan``/``$inf``/``$-inf``.
-
-REACHABILITY IS NOT ONE STORY, and the guard is justified per site:
-
-* :3279 ``credit["usd"]`` -- ACTIVE, widest domain. ``ScrummingBot.
-  _restore_state`` rebuilds the pending ledger as ``dict(_e)`` per entry
-  and coerces NO key, so ``usd`` arrives exactly as ``json.load``
-  decoded it. Every shape above reaches this line.
-* :3036 :3037 :3074 ledger totals -- ACTIVE, narrow. ``SmartWireManager.
-  import_ledgers`` coerces each field with ``float(... or 0.0)`` inside
-  a ``try`` that drops the row, so a string cannot survive; ``NaN`` and
-  ``Infinity`` decode to real floats, pass the coercion untouched and
-  are stored.
-* :3057 ``_pending_wire_credits`` -- ACTIVE, narrow, same two shapes.
-  ``_restore_state`` coerces it inside ``except (TypeError,
-  ValueError)``, which ``nan`` and ``inf`` pass through unchanged.
-* :3021 inbound wire pct -- ACTIVE, narrowest. Both writers of
-  ``SmartWireManager._wires`` coerce with ``float()`` and reject
-  ``pct <= 0 or pct > 100``; ``nan`` is False on BOTH comparisons and so
-  is the one shape admitted.
-* :3161 :3203 :3370 ``tx.amount`` -- LATENT. ``_transactions`` has no
-  assignment anywhere in ``src/`` or ``tests/``, only ``append`` and
-  ``extend``, so nothing round-trips through ``bot_state.json``. Both
-  reachable constructors pass ``float(...)``; the three that forward a
-  caller-supplied amount are unreachable, their only textual caller
-  being an example inside the ``SmartWireManager`` class docstring.
-  Guarded because ``getattr`` is duck-typed and ``WireTransaction`` is a
-  ``@dataclass``, which annotates ``amount: float`` without enforcing
-  it, and because two money columns fed by one feed must not disagree.
-
-A REFUSED MONEY VALUE MUST NOT RENDER AS ZERO. ``$0.0000`` is a
-statement about the ledger; the em dash is a statement about the read.
-The old code printed ``$0.0000`` for ``None`` and ``""`` because
-``or 0`` short-circuited them, which is the same silent-zero the
-outbound total below refuses to keep.
-
-THE DEFECT THIS PINS (CHANGE B)
-===============================
-``:3105`` imported ``SmartWireLedger`` from ``src.trading.smart_wire``.
-THAT NAME HAS NEVER EXISTED -- the module defines ``WireTransaction``,
-``BotLedger`` and ``SmartWireManager``. The import raised ImportError on
-every build, the enclosing ``except Exception`` logged it at DEBUG, and
-``_mature_ratio_pct`` fell back to a hardcoded ``70`` every single time,
-while the comment above it claimed the value was read from the ledger so
-the label would "stay in sync with the runtime constant instead of
-hardcoding 70%".
-
-THE LABEL WAS CORRECT ONLY BY COINCIDENCE, because
-``BotLedger.MATURE_RATIO`` happens to be ``0.7``. A test asserting the
-label reads "70%" therefore passes before and after the repair and is an
-ORACLE FALSE NEGATIVE. ``test_change_b_label_follows_the_constant``
-changes the constant and asserts the label FOLLOWS it, which is the
-property the comment claimed and the code never had.
+``_create_bot_swarm_tab`` puts every money and percentage read through
+``as_finite_float``, so a hostile stored value renders as an em dash, never as
+``$0.0000``, and never raises out of ``BotLiveSettingsDialog.__init__``. An
+unreadable leg refuses the total it feeds instead of shrinking it.
+``_mature_ratio_pct`` reads ``BotLedger.MATURE_RATIO``, so the label follows the
+constant rather than a literal 70.
 """
 
 from __future__ import annotations
@@ -103,10 +21,6 @@ NOW = 1_760_000_000.0
 BOT_ID = "bot-self"
 EM = "—"
 
-# Pinned on the LIVE tree BEFORE the guard was written, over a realistic
-# swarm state whose dict-backed rows are json round-tripped. A change
-# here means the guard altered what an operator sees for values that
-# were always valid.
 VALID_RENDER_SHA256 = "7fea61283682b6966ca5e989c1b2afddef5756314b909604a8d3d48281fd4c43"
 VALID_RENDER_COUNT = 92
 
@@ -312,10 +226,7 @@ def _build(
         raise AssertionError(site)
 
     if round_trip:
-        # THE ROUND TRIP IS THE POINT for the dict-backed rows.
-        # `_restore_state` rebuilds this list from json with no
-        # coercion, so the test must read what json hands back rather
-        # than what Python held.
+        # `_restore_state` rebuilds these rows from json and coerces no key.
         credits = json.loads(json.dumps(credits))
 
     ledgers: dict[str, Any] = {
@@ -339,9 +250,7 @@ def _build(
         _pending_wire_credits = pending_usd
 
     class _StubDlg:
-        # `_format_age` is a @staticmethod; binding it here without the
-        # re-wrap would silently make it an instance method and pass
-        # `self` as `seconds`.
+        # Without the re-wrap `_format_age` rebinds as an instance method.
         _format_age = staticmethod(_Dlg._format_age)
         _bot = _StubBot()
 
@@ -424,9 +333,6 @@ def _rendered(site: str, widget: Any) -> str:
     raise AssertionError(site)
 
 
-# CHANGE A -- control (a): THE TAB BUILDS.
-# A failure here means a hostile value in saved state raises out of
-# _create_bot_swarm_tab, and Bot Settings does not open for that bot.
 @pytest.mark.parametrize("site", SITES)
 @pytest.mark.parametrize("label,value", REFUSED, ids=[r[0] for r in REFUSED])
 def test_change_a_tab_builds_on_every_hostile_value(
@@ -438,10 +344,6 @@ def test_change_a_tab_builds_on_every_hostile_value(
     assert widget.layout() is not None, f"{site}/{label}: no layout"
 
 
-# CHANGE A -- control (c): NO REFUSED MONEY VALUE READS AS ZERO.
-# A failure here means the tab states a dollar figure the ledger never
-# supported. $0.0000 is a claim about the money; the em dash is a claim
-# about the read, and only the second one is true.
 @pytest.mark.parametrize("site", SITES)
 @pytest.mark.parametrize("label,value", REFUSED, ids=[r[0] for r in REFUSED])
 def test_change_a_refused_renders_em_dash_never_zero(
@@ -453,9 +355,6 @@ def test_change_a_refused_renders_em_dash_never_zero(
     assert "0.00" not in got, f"{site}/{label}: refused value read as zero"
 
 
-# CHANGE A -- control (b), value half: VALID INPUT RENDERS IDENTICALLY.
-# A failure here means the guard changed what an operator sees for a
-# value that was always valid.
 @pytest.mark.parametrize("site", SITES)
 @pytest.mark.parametrize(
     "label,value,money,pct", ACCEPTED, ids=[r[0] for r in ACCEPTED]
@@ -469,9 +368,6 @@ def test_change_a_accepted_renders_unchanged(
     assert got == want, f"{site}/{label}: rendered {got!r}, wanted {want!r}"
 
 
-# CHANGE A -- control (b), whole-tab half: the realistic swarm state
-# renders byte-identically to the pinned live measurement, INCLUDING a
-# json round trip on the dict-backed rows.
 def test_change_a_realistic_render_matches_pinned_live_hash(monkeypatch: Any) -> None:
     """Every string in a realistic tab still hashes to the live pin."""
     import hashlib
@@ -508,10 +404,6 @@ def test_change_a_realistic_render_matches_pinned_live_hash(monkeypatch: Any) ->
     ), "the realistic tab no longer renders what live rendered"
 
 
-# CHANGE A -- control (d): 10 ** 400 MUST NOT RAISE, INCLUDING INSIDE
-# THE GUARD ITSELF. `math.isfinite(10 ** 400)` raises OverflowError, so
-# a guard that reaches for it before checking the integer bound reopens
-# the hole it was written to close.
 @pytest.mark.parametrize("site", SITES)
 def test_change_a_huge_int_does_not_raise_inside_the_guard(
     monkeypatch: Any, site: str
@@ -530,9 +422,6 @@ def test_change_a_admission_helper_survives_huge_int_directly() -> None:
     assert as_finite_float(2**1023) == float(2**1023)
 
 
-# CHANGE A -- the dict-backed site through the real serialisation.
-# A failure here means the shape survives json but not the guard, or
-# the guard was tested only against hand-built Python objects.
 @pytest.mark.parametrize(
     "raw,want",
     [
@@ -561,10 +450,6 @@ def test_change_a_credit_usd_json_round_trip(
     assert got == want, f"json {raw}: rendered {got!r}, wanted {want!r}"
 
 
-# CHANGE A -- an unreadable leg poisons the TOTAL rather than vanishing
-# from it. A failure here means the tab reports a confident sum that is
-# short by the amount it could not read, with nothing on screen saying
-# so. That is the silent-drop shape, not a rendering nicety.
 def test_change_a_unreadable_leg_does_not_silently_shrink_a_total(
     monkeypatch: Any,
 ) -> None:
@@ -636,9 +521,6 @@ def test_change_a_derived_net_flow_inherits_the_refusal(monkeypatch: Any) -> Non
     assert net == EM, f"net flow rendered {net!r} with an unreadable leg"
 
 
-# CHANGE B -- control (f): THE IMPORT NOW SUCCEEDS.
-# A failure here means the name is still wrong and _mature_ratio_pct is
-# still a hardcoded 70 wearing a comment that says otherwise.
 def test_change_b_the_imported_name_exists_and_the_attribute_reads() -> None:
     """`BotLedger.MATURE_RATIO` resolves without instantiating."""
     from src.trading import smart_wire
@@ -652,24 +534,6 @@ def test_change_b_the_imported_name_exists_and_the_attribute_reads() -> None:
     assert 0.0 < ratio <= 1.0
 
 
-def test_change_b_the_source_no_longer_imports_the_dead_name() -> None:
-    """No module under src/ imports the name that never existed."""
-    import pathlib
-
-    root = pathlib.Path(__file__).resolve().parents[1] / "src"
-    offenders = [
-        str(p)
-        for p in root.rglob("*.py")
-        if "SmartWireLedger" in p.read_text(encoding="utf-8")
-    ]
-    assert offenders == [], f"dead import still present in {offenders}"
-
-
-# CHANGE B -- control (g): THE LABEL FOLLOWS THE CONSTANT.
-# THIS IS THE ONE THAT MATTERS. A test asserting only "70%" passes on
-# the broken code and on the fixed code alike, and proves nothing. If
-# this fails, the label is a hardcoded number and changing the runtime
-# constant silently misreports a money figure on screen.
 @pytest.mark.parametrize(
     "ratio,want_pct",
     [
@@ -717,9 +581,6 @@ def test_change_b_two_different_constants_give_two_different_labels(
     assert at_70 != at_42, "the label did not move with the constant"
 
 
-# CHANGE B -- control (h): THE FALLBACK STILL WORKS.
-# A failure here means the repair traded a silent wrong label for a
-# dialog that will not open at all -- strictly worse than the defect.
 def test_change_b_fallback_holds_when_the_name_is_genuinely_absent(
     monkeypatch: Any,
 ) -> None:

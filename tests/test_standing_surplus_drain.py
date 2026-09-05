@@ -76,10 +76,6 @@ class _Bot:
 
     _apply_fold_target_growth = ScrummingBot._apply_fold_target_growth
 
-    # Issue #106 - `_apply_fold_target_growth` now reads the cap
-    # from `cycle_growth_cap_usd` instead of respelling
-    # `anchor * pct/100` inline. This stub carries only what the
-    # helper reads, so it has to carry the property too.
     cycle_growth_cap_usd = ScrummingBot.cycle_growth_cap_usd
 
     def __init__(

@@ -145,12 +145,6 @@ def test_stochrsi_series_last_bars_match_the_vote():
     details = indicator.compute(tape, "1h").details
     assert round(k_line[-1], 2) == details["k"]
 
-    # ``details`` rounds K to two places on a 0-100 scale, so the line
-    # above cannot see a divergence below 0.005. THE TAIL BOUND IS
-    # CHECKED AT FULL PRECISION instead: ``compute`` asks
-    # ``stoch_ratios`` for the last k_smooth + d_smooth entries and the
-    # chart asks for all of them, and narrowing the RANGE must not
-    # change a VALUE.
     rsi_values, _ = indicator.rsi_values([c.close for c in tape])
     full_from, full, _ = indicator.stoch_ratios(rsi_values)
     tail_need = indicator.k_smooth + indicator.d_smooth

@@ -1,150 +1,11 @@
 """A package name lives in `pyproject.toml` and nowhere else.
 
-WHAT WAS MEASURED
-=================
-Issue #94, on 2026-08-23, in a clone at commit 4965bab. The pip install
-list was hand-copied into eight places. No two of them agreed, and none
-of them agreed with `pyproject.toml`.
-
-    build_mac.sh:46          14 names
-    build_windows.ps1:28     14 names, the same 14
-    Acervator_win.spec:8     14 names, in a docstring
-    Acervator_mac.spec:8     14 names, in a docstring
-    BUILD.py:79              12 names, as (import name, pip name) pairs
-    deploy/kiosk/install.sh:177        11 names, plus 4 more at :192
-    deploy/kiosk/update.sh:71          11 names
-    README.md:123             6 names
-    pyproject.toml           11 names
-
-Two of the disagreements were defects and not merely drift.
-
-    `defusedxml` is imported at src/gui/crypto_news_ticker.py:51 and :52
-    at MODULE level, with no try block. Both .spec files name it in
-    `hiddenimports` and say, in a comment written against a control
-    build, that its absence is "an ImportError at module import". No
-    build list installed it. The build worked only because the package
-    was already on the machine.
-
-    `requests` was installed by four of the eight lists. No file in the
-    repository imports it. Measured with an AST walk over every `*.py`
-    at the repo root and under `src/`, `tools/` and `deploy/kiosk/`: 83 top-level
-    module names, and `requests` was not among them. It reaches the
-    machine anyway, as a dependency of ccxt:
-    `requirements/build-win32-py3.14.txt` pins `requests==2.34.2` and
-    records `# via ccxt`. That is why installing it by hand never
-    appeared to matter.
-
-WHAT THIS FILE ASSERTS
-======================
-Three contracts, each one able to fail on its own.
-
-    1. NO SHIPPED FILE HOLDS A LIST.
-       Every tracked text file is read, and a line that installs two or
-       more packages by name fails. The rule catches a NEW list as
-       readily as the old eight, which is the point: a guard that named
-       the eight would pass the day a ninth appeared.
-
-    2. EVERY CONSUMER NAMES AN EXTRA THAT EXISTS.
-       `tools/deps.py` maps a consumer to extras. Each extra must be in
-       `[project.optional-dependencies]`. Without this, renaming an
-       extra in `pyproject.toml` would leave the build asking for one
-       that is gone, and the failure would land on the operator during a
-       build rather than here.
-
-    3. EVERY THIRD-PARTY IMPORT IS DECLARED.
-       The other direction. An AST walk finds every top-level import in
-       the product tree, drops the standard library and the first-party
-       packages, and requires the rest to be in `dependencies` or in an
-       extra. Contract 1 alone would pass on a tree that declared
-       nothing at all.
-
-WHAT THIS FILE DOES NOT ASSERT
-==============================
-It does not check that a declared package is USED. `pandas` and `ta`
-are declared and no file imports either one; both are also named in
-`hiddenimports` in both .spec files, so removing them changes what
-PyInstaller collects. That is a build change, it was not verified by a
-build, and it is not this file's subject. Issue #94 reports it and
-leaves it declared.
-
-It does not read a lock file. `requirements/` holds a resolved set for
-one platform and one interpreter, and the Raspberry Pi target has
-neither. A test that compared the tree to a Windows lock would fail on
-the Pi for a correct reason and would teach the reader to ignore it.
-
-TWO-SIDED CONTROL
-=================
-Driven both ways on 2026-08-23.
-
-    IN THE SUITE  `TestTheInstrumentCanFail` drives the rule over nine
-                  shapes and requires a report on four of them: the
-                  exact fourteen-name line issue #94 removed, a
-                  two-name line, a list of packages `pyproject.toml`
-                  does not declare, and a list inside a string literal.
-                  It requires silence on five: a one-name line, a
-                  markdown table row, and the three derived forms the
-                  repaired scripts use. Without the first four, this
-                  file would pass because the scan found nothing.
-
-    ON THE REPO   The pre-fix pip line from `build_windows.ps1:28` was
-                  written back over the repaired call in the working
-                  tree. Two tests failed and fifteen passed.
-                  `test_no_tracked_file_holds_a_dependency_list` named
-                  `build_windows.ps1:35` and listed all fourteen
-                  packages: pyinstaller, PySide6, ccxt, cryptography,
-                  keyring, pandas, numpy, ta, tomli_w, aiohttp, certifi,
-                  requests, reportlab, pillow.
-                  `test_the_five_repaired_files_still_call_the_tool`
-                  failed as well, because the planted line had displaced
-                  the call to the tool. The file was then restored from
-                  a copy and kept its sha256, d39d5e874003ca8e5f55c4e1e
-                  5bb160b4453ada3bb7a94e45fe53b59953f437b before the
-                  plant and the same after it, and all seventeen
-                  tests passed again.
-
-ISSUE #92 - A BLIND SPOT IN CONTRACT 3
-======================================
-Measured 2026-08-23 in a clone at commit 5613bd1, the commit that
-merged issue #94. This file passed, and the suite stood at 7388 tests,
-while `contracts/deploy.py` imported three undeclared third-party
-packages: web3 at line 82, eth_account at line 83 and solcx at line 54.
-
-The cause was `PRODUCT_ROOTS`, which read ("src", "tools", "os").
-`contracts` was already in FIRST_PARTY, so an import OF that package
-was correctly skipped, but no walk ever ENTERED the directory, so the
-imports it MADE were never read. The tuple named the trees to read,
-FIRST_PARTY named the trees that are ours, and the two disagreed.
-
-Contract 1 missed the same file for a second and independent reason.
-Its word set is read out of pyproject.toml at run time, so a list of
-packages the one source has never heard of scores zero known words and
-cannot reach the floor of two. `contracts/deploy.py:8` read
-"pip install web3 eth-account py-solc-x" and the rule stayed silent.
-That blind spot closed as a CONSEQUENCE of the declaration, and not by
-a change to the rule. Measured in order, in the same clone:
-
-    1. `contracts` added to PRODUCT_ROOTS, nothing declared.
-       `test_no_third_party_import_is_undeclared` FAILED and named
-       eth_account, solcx and web3, each at contracts/deploy.py.
-       16 passed.
-    2. The file was restored from a copy and kept its sha256,
-       5921733f5042278481c2718c00a72211e910683baf18cf81ce564adbe829ec4a
-       before the plant and the same after it. 17 passed.
-    3. The `contracts` extra declared in pyproject.toml and the repair
-       applied. `test_no_third_party_import_is_undeclared` passed, and
-       `test_no_tracked_file_holds_a_dependency_list` FAILED with
-       "contracts/deploy.py:8 names ['web3', 'eth-account',
-       'py-solc-x']" - the SAME line, now visible, because the three
-       names had entered `install_words()`. 16 passed.
-    4. That docstring line replaced with the derived form, and
-       `install_deps()` removed. 17 passed, then 21 with the four
-       controls in `TestTheWalkReachesTheContractsTree` below.
-
-`src/competition/` was checked and is NOT part of this. Issue #92 says
-it needs web3, eth-account and py-solc-x. An AST walk over all ten of
-its modules finds one third-party import, `cryptography` at
-src/competition/bot_identity.py:34 and :36, and that has always been a
-core dependency. Nothing was declared for it.
+`TestNoFileHoldsAList` reads every tracked text file and fails a line that names
+two or more of `install_words()`. `TestEveryConsumerNamesARealExtra` requires
+every extra `tools/deps.py` maps to be declared. `TestEveryImportIsDeclared`
+walks `PRODUCT_ROOTS` and requires each import outside the standard library and
+FIRST_PARTY to be declared. `TestTheInstrumentCanFail` drives the rule to a
+report and to silence.
 """
 
 from __future__ import annotations
@@ -162,27 +23,14 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 
-# HISTORICAL RECORDS. These hold what was true when they were written and
-# they may not be edited to satisfy a rule. `docs/audits/` and
-# `docs-archive/llm-session-history/` are the session record. `requirements/`
-# is excluded because a lock file lists every resolved package by design;
-# that is what a lock file is.
-#
-# `CHANGELOG.md` was excluded here as a third historical record. Issue #80
-# made it a Keep a Changelog file holding no entries, and the narrative it
-# held measured ZERO lines matching `_PIP_INSTALL` before it moved, so the
-# allowance earned nothing and was dropped rather than repointed.
-#
-# This file excludes ITSELF, and nothing else. The controls below hold
-# the exact pre-fix lines as string literals and must trip the rule, so
-# the scan would report this file every run. `tools/deps.py` is NOT
-# excluded: it describes the eight removed lists by file and count and
-# never writes a `pip install` line, and it was measured at zero hits.
+# Session records and lock files, which list resolved packages by design.
 EXCLUDED_PREFIXES: tuple[str, ...] = (
     "docs-archive/llm-session-history/",
     "docs/audits/",
     "requirements/",
 )
+# This file only: the controls below hold the pre-fix lines as string literals
+# and trip the rule on their own evidence.
 EXCLUDED_FILES: tuple[str, ...] = ("tests/test_one_dependency_source.py",)
 
 # Extensions worth reading. A dependency list is written in a script, a
@@ -202,13 +50,8 @@ READABLE_SUFFIXES: tuple[str, ...] = (
     ".yaml",
 )
 
-# Distribution names this project can install. The rule fires on a line
-# that names TWO OR MORE of them, because one name on a line is a
-# sentence about a package and two names in sequence is a list.
-#
-# The set is READ from pyproject.toml at run time and is not written
-# here, so it grows when the one source grows. A fixed set would go
-# stale the first time a dependency was added.
+# `install_words()` adds these to the names read from pyproject.toml. The rule
+# fires on a line naming two or more; one name is a sentence, two are a list.
 EXTRA_INSTALL_WORDS: frozenset[str] = frozenset(
     {
         # Names that were in the removed lists and are not in pyproject.toml.
@@ -221,16 +64,8 @@ EXTRA_INSTALL_WORDS: frozenset[str] = frozenset(
     }
 )
 
-# A line that installs. Any of pip, pip3, or `python -m pip`.
-#
-# The character class before the command carries a quote as well as
-# whitespace. A first version did not, and it read the planted line in
-# `test_the_rule_reports_the_removed_windows_line` below as no match,
-# because a double quote sat in front of `pip`. A list inside a string
-# literal is still a list, and a script that built its pip argv as a
-# string would have slipped through. That is also why `tools/deps.py`
-# and this file are in EXCLUDED_FILES: with the quote in the class,
-# both of them now trip their own rule on the evidence they quote.
+# A line that installs. The class before the command carries a quote, so a pip
+# argv built inside a string literal still matches.
 _PIP_INSTALL = re.compile(
     r"""(?:^|[\s;&|("'`])(?:pip3?|python3?\s+-m\s+pip)\s+install\b""", re.IGNORECASE
 )
@@ -258,69 +93,29 @@ FIRST_PARTY: frozenset[str] = frozenset(
         "acervator_watchdog",
         "contracts",
         "deploy",
-        # Issue #74. The animation core the three presentation screens
-        # share. It is a root .py, so it is a TOP-LEVEL import name, and
-        # this set is what tells contract 3 that `import screen_fx` is ours
-        # and not a package somebody has to install.
+        # A root .py, so a top-level import name rather than a package root.
         "screen_fx",
     }
 )
 
-# Import name -> distribution name, for the cases where they differ.
-# Written out because there is no rule that derives one from the other:
-# `PIL` comes from `pillow` and `cv2` comes from `opencv-python`, and
-# nothing in either name says so.
+# Import name -> distribution name, for the cases where they differ. No rule
+# derives one from the other.
 IMPORT_TO_DISTRIBUTION: dict[str, str] = {
     "PIL": "pillow",
     "cv2": "opencv-python",
     "luma": "luma.oled",
     "ST7789": "st7789",
     "tomli": "tomli",
-    # Issue #92. `pip install eth_account` and `pip install solcx` both
-    # fail; the distributions are `eth-account` and `py-solc-x`. Without
-    # these two rows contract 3 would report a package that is declared.
     "eth_account": "eth-account",
     "solcx": "py-solc-x",
 }
 
-# Third-party imports the product tree makes that no consumer installs,
-# each with the reason it is not a declared dependency.
-#
-#   tomli   src/core/settings.py imports it only in the `except
-#           ImportError` arm below `import tomllib`. `requires-python`
-#           is ">=3.11" and tomllib is stdlib from 3.11, so that arm is
-#           unreachable on every interpreter this project supports.
-#   ST7789  TftColorAdapter.connect imports it inside a try that returns
-#           False. deploy/kiosk/install.sh installs it only as the
-#           optional `display` extra, never with the core set.
+# Contract 3 skips these: tomli sits in an unreachable `ImportError` arm below
+# `import tomllib`, ST7789 inside a `TftColorAdapter.connect` try returning False.
 UNDECLARED_ON_PURPOSE: frozenset[str] = frozenset({"tomli", "ST7789"})
 
-# Every Python file the product ships. The repo root carries ten of them
-# beside `main.py`, and two of those, `generate_essay_ja.py` and
-# `generate_essay_localized.py`, import reportlab. A walk that read only
-# `src/` would call reportlab unimported and would report the wrong set.
-# Issue #92 REPAIRED A BLIND SPOT HERE. This tuple read
-# ("src", "tools", "os"). `contracts` was in FIRST_PARTY above, so an
-# import OF it was skipped, but no walk ever entered it, so the imports
-# it MAKES were never read. `contracts/deploy.py` imported web3,
-# eth_account and solcx, none of them declared, and contract 3 passed
-# on 2026-08-23 at 7388 tests while it did.
-#
-# Contract 1 missed the same file for a second and independent reason.
-# Its word set is READ from pyproject.toml, so a list of packages the
-# one source has never heard of names zero known words and cannot reach
-# the floor of two. `contracts/deploy.py:8` read
-# "pip install web3 eth-account py-solc-x" and scored nothing. That
-# blind spot closes as a CONSEQUENCE of declaring the three packages,
-# not by a change to the rule: the moment pyproject.toml names them
-# they enter `install_words()`. This file does not widen the rule to
-# guess at unknown package names, because a guess would report every
-# `pip install` in every document.
-#
-# The rule this tuple now follows: every root named in FIRST_PARTY that
-# is a directory in the tree is walked. `tests` and `dev_harness` stay
-# out because neither ships, and `acervator_watchdog` is a file at the
-# root, already covered by the `*.py` glob below.
+# Every FIRST_PARTY root that is a shipped directory. `tests` and
+# `dev_harness` ship with nothing; the root `*.py` glob covers the rest.
 PRODUCT_ROOTS: tuple[str, ...] = ("src", "tools", "deploy", "contracts")
 
 
@@ -385,31 +180,9 @@ def install_words() -> set[str]:
 def hand_copied_list(line: str, words: set[str]) -> tuple[str, ...]:
     """Return the package names a line installs by hand, or an empty tuple.
 
-    A line qualifies when it runs pip install, it does NOT take its
-    names from the one source, and it names two or more DISTINCT
-    packages. Two is the floor because one name is a sentence and two in
-    sequence is a list.
-
-    Distinctness is measured on the normalised name, not on the token.
-    A first attempt deduplicated tokens and reported four false hits:
-    `src/exchange/ccxt_connector.py:930` says "CCXT version mismatch.
-    Try: pip install ccxt", and `CCXT` and `ccxt` are two tokens and one
-    package. `deploy/kiosk/install.sh:205` and two more files pair `ST7789` with
-    `st7789` the same way.
-
-    Only the text INSIDE the install command is counted. A second
-    attempt counted the whole line and reported two more false hits, in
-    a markdown table where one cell installs a package and the next
-    cell talks about another: `.claude/skills/acervator/SKILL.md:161`
-    reads "| `pip install pyright` | alternative type checker; often
-    finds what mypy misses |". One package is installed there and two
-    are named. The slice ends at the first character that closes a
-    command: a backtick, a quote, a pipe, a semicolon, an ampersand, a
-    comment mark or a closing bracket.
-
-    `_DERIVED` is still measured on the WHOLE line, because
-    `pip install -e ".[dev]"` carries its marker inside a quote and the
-    slice would cut it off.
+    A line qualifies when `_PIP_INSTALL` matches, `_DERIVED` does not, and the
+    text up to `_COMMAND_END` names two or more distinct entries of `words`
+    after `normalise`. `_DERIVED` is measured on the whole line.
     """
     match = _PIP_INSTALL.search(line)
     if match is None:
@@ -531,16 +304,6 @@ def third_party_imports(roots: tuple[str, ...] = PRODUCT_ROOTS) -> dict[str, lis
     }
 
 
-# git
-# S607 IS FIXED BY CONSTRUCTION, NOT SUPPRESSED, following the reasoning at
-# the top of dev_harness/harness/coding_archetype.py and the pattern already
-# measured clean in tests/test_no_committed_backup_copies.py: the spawn
-# resolves git to an absolute path with shutil.which, so a `git.cmd` planted
-# earlier on PATH cannot run under the developer token during a test. S603 is
-# the residue and is not avoidable, because every argv carrying a variable
-# draws it.
-
-
 def _git_exe() -> str:
     """Return an absolute git path, or fail. A skip is not evidence."""
     import shutil
@@ -555,7 +318,7 @@ def _git_exe() -> str:
 
 
 class TestNoFileHoldsAList:
-    """Issue #94's subject. Eight lists became zero."""
+    """No tracked file holds a hand-copied dependency list."""
 
     def test_no_tracked_file_holds_a_dependency_list(self) -> None:
         hits = scan_for_lists(tracked_files(), install_words())
@@ -767,20 +530,15 @@ class TestTheInstrumentCanFail:
         )
 
 
-# Two-sided control for the issue #92 repair
+# Two-sided control for the import walk
 
 
 class TestTheWalkReachesTheContractsTree:
-    """Drive the import walk with the broken tuple and the repaired one.
+    """Drive `third_party_imports` with `BROKEN_ROOTS` and with `PRODUCT_ROOTS`.
 
-    Issue #92. `PRODUCT_ROOTS` read ("src", "tools", "os"). The whole
-    `contracts/` tree was outside every walk, so contract 3 could not
-    see the imports it made. These three tests fail if that tuple ever
-    narrows again, and they fail for a reason a reader can act on: they
-    name the file and the modules, not a count.
+    A failure names the file and the modules in `CHAIN_MODULES`, not a count.
     """
 
-    #: The tuple as it stood before issue #92 repaired it.
     BROKEN_ROOTS: tuple[str, ...] = ("src", "tools", "os")
 
     #: The modules `contracts/deploy.py` imports.

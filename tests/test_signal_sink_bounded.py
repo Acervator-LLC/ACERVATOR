@@ -322,10 +322,8 @@ class TestUnderLoad:
         once — and a rename racing an append raises on Windows and costs
         the whole batch."""
         p = tmp_path / "session.jsonl"
-        # 10.3 — the ladder is deeper, and its depth is NAMED so the
-        # capacity guard below compares against the real thing rather
-        # than a literal that can drift away from it. Eight is the
-        # ceiling `_census` and `_slots` scan to.
+        # Named, so the capacity guard below reads the real depth. Eight is
+        # the ceiling `_census` and `_slots` scan to.
         LADDER_DEPTH = 8
         s = SignalSink(
             path=p, flush_every=1, max_bytes=40_000, backup_count=LADDER_DEPTH
@@ -342,20 +340,8 @@ class TestUnderLoad:
             t.join()
         s.flush()
 
-        # 10.3 — THE CAPACITY PRECONDITION IS ASSERTED, NOT ASSUMED.
-        #
-        # This test was sized so 960 records at the record width of the
-        # day only just fitted a 6-slot ladder. 10.3 added two fields,
-        # records grew about a tenth, the oldest generation aged off the
-        # end and `total` read 810. That is the ladder's bound working
-        # exactly as designed — retirement, not loss — but the failure
-        # was indistinguishable from the rename race this test exists to
-        # catch.
-        #
-        # So the two facts the old assertion depended on in silence are
-        # now checked out loud. Neither existed before, and the first of
-        # them means a run that never rotated can no longer pass: the
-        # old test asserted nothing about rotation at all.
+        # Both preconditions are asserted: a run that never rotated, or one
+        # whose records outgrew the ladder, would otherwise read as the race.
         occupied = _slots(p)
         assert occupied, (
             "no rotation happened, so no rollover was exercised and the "
@@ -499,37 +485,8 @@ class TestTheEmitterNeverStops:
         s.emit("ctl", actual=1)
         health = s.health()
         assert "capped" not in health
-        # 10.3 — RESTATED, NOT RELAXED. `health()` gained `identities`
-        # and `identity_overflow`, so the exact-set comparison is
-        # re-pinned to the nine keys it now publishes. A key that
-        # VANISHES still fails here, which is what the exact set was
-        # protecting.
-        #
-        # And the invariant this test NAMES is stronger than any key
-        # list, yet nothing asserted it: `capped` was bad because it was
-        # a permanently-False BOOLEAN that no reader could falsify. So
-        # no value in `health()` may be a bool at all. That catches the
-        # next `capped` under any spelling; the old list could only
-        # catch one called `capped`.
-        # 10.3 phase 2 -- RESTATED AGAIN, NOT RELAXED. `health()`
-        # gained `duration_rejected`, the count of durations the
-        # ingress guard refused, so the exact set is re-pinned to
-        # the ten keys it now publishes. A key that VANISHES still
-        # fails here, which is what the exact set protects, and
-        # the new one is an int, so the no-bool rule below still
-        # covers it.
-        # #62 -- RESTATED AGAIN, NOT RELAXED. `health()` gained the
-        # seven digest keys when the second ladder arrived, so the
-        # exact set is re-pinned to the seventeen it now publishes. A
-        # key that VANISHES still fails here, which is what the exact
-        # set protects.
-        #
-        # `digest_folded` is the one that MUST be in this dict. The
-        # digest thins the loud emitters by about 97%, and a reader who
-        # cannot see how much was folded is reading a thinned file as a
-        # complete one -- the same class of mistake `capped` was. It is
-        # an int, and `digest_interval` is a float, so the no-bool rule
-        # below still covers every new key.
+        # An exact set, so a key that VANISHES fails here too. The no-bool
+        # rule below is what catches the next permanently-False key.
         assert set(health) == {
             "emitted",
             "buffered",

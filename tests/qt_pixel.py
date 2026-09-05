@@ -87,9 +87,7 @@ def ensure_app() -> QCoreApplication:
     return app
 
 
-#: Widgets whose text is rasterised by Chromium rather than by Qt. A
-#: font set inside one changes no glyph and reaches into a foreign
-#: widget tree, so the walk stops at them.
+#: Widgets Chromium rasterises rather than Qt, so the font walk stops at them.
 FOREIGN_RASTERISERS = ("QWebEngine", "RenderWidgetHostViewQtDelegate")
 
 

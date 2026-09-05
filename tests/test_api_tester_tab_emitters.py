@@ -1,62 +1,13 @@
-"""Pins the five API Tester emitters -- queue item #10.9, subsystem `apitest`.
+"""Pins the five `apitest` emitters of `APITesterTab`.
 
-    apitest.16.001.postcondition.label_matches_session
-    apitest.16.002.postcondition.session_released
-    apitest.16.003.postcondition.reported_ok_ran_a_test
-    apitest.16.004.postcondition.green_probe_read_a_body
-    apitest.16.005.postcondition.indicator_is_mappable
-
-THIS IS THE ONLY TAB ON THE PLATFORM THAT HOLDS LIVE EXCHANGE API
-CREDENTIALS IN MEMORY. `_api_key`, `_api_secret` and `_api_pp` are
-`QLineEdit`s in `Password` echo mode, and `_do_connect` decrypts a
-stored key out of the settings vault when "Use stored credentials" is
-ticked. An emitter context is SERIALISED TO DISK, append-only, in plain
-text, into `~/.acervator_logs/signals/`. One careless context field
-would write the operator's live key into that file, and the operator
-trades real money on those keys.
-
-SO THE CREDENTIAL RULE IS THE GATE ON THIS MODULE, AND IT IS DRIVEN
-TWICE, TWO DIFFERENT WAYS.
-`test_no_context_expression_reads_a_credential_widget` walks the syntax
-tree of all five pins and refuses any reference to the three credential
-widgets or to the symbol box.
-`test_no_sentinel_credential_reaches_the_serialised_records` puts a
-known sentinel string into the key, the secret, the passphrase AND the
-symbol box, drives every path in the tab that emits -- including a
-venue error whose MESSAGE carries the sentinel, which is the way a real
-key escapes -- writes every record with the sink's own writer, and
-asserts the sentinel appears nowhere in the bytes on disk. That test
-carries its own positive control: it asserts the file really holds the
-five pin names first, because an absence proved against an empty file
-is an absence of evidence.
-
-NO TEST HERE REACHES A VENUE, AND THAT IS ENFORCED RATHER THAN
-INTENDED. An autouse fixture replaces `socket.create_connection` -- the
-single funnel every outbound TCP connection in this tree passes
-through, `urllib` and `http.client` included -- with a tripwire that
-RECORDS AND RAISES. A test that drives a network path replaces it in
-turn with a counting fake, which is the seam, and asserts the count.
-`test_no_test_in_this_module_reached_a_venue` reads the tripwire's
-ledger at the end and asserts it is empty.
-
-THE FAILURE SHAPE THIS TAB HAS IS A GREEN OVER NOTHING, and each pin
-reports it in a different place: a connect that painted "Connected"
-while holding no session (`16-001`), a disconnect that reports a closed
-session while an AUTHENTICATED one is still open (`16-002`), a test
-that logs `<test> OK` for a name the dispatch chain does not know
-(`16-003`), a probe that reports HTTP 200 having read an empty body
-(`16-004`), and a status verdict derived from a word the tab cannot map
-(`16-005`). Every one of those five is driven here as a falsifier.
-
-NOTHING READS AN ARGUMENT BACK AS THOUGH IT WERE A RESULT. `16-001` and
-`16-002` read the connection label off the widget and the session off
-the connector. `16-003` reads the headline off `_result_info` after
-`_log` painted it, and reads the result object's own identity for the
-other side. `16-004` counts two different things about the same probes.
-`16-005` reads the word out of the parsed document.
-
-NOTHING HERE TOUCHES `~/.acervator` OR `~/.acervator_logs`. The sink's
-file is written under `tmp_path`.
+The tab holds live credentials in `_api_key`, `_api_secret` and `_api_pp`, and
+a record is serialised to disk, so
+`test_no_context_expression_reads_a_credential_widget` and
+`test_no_sentinel_credential_reaches_the_serialised_records` refuse a
+credential in any record. An autouse fixture replaces
+`socket.create_connection` with a tripwire that records and raises, and
+`test_no_test_in_this_module_reached_a_venue` reads its ledger. Every record
+is written under `tmp_path`.
 """
 
 from __future__ import annotations
@@ -73,25 +24,14 @@ from typing import TYPE_CHECKING, Any, Iterator
 
 import pytest
 
-# `tests/conftest.py` puts the repository root on `sys.path` before any
-# test module is imported, so these import normally rather than after a
-# path insert. THAT IS WHY THERE IS NO `# noqa: E402` HERE: they are at
-# the top because they belong there, not because a suppression was
-# written over a real finding.
 from src.core import signal_contract as sc
 from src.core.signal_contract import SignalSink
 
-# Set before any fixture imports PySide6, which is this module's only
-# route to Qt. Nothing above touches it.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 REPO = Path(__file__).resolve().parent.parent
 
 if TYPE_CHECKING:  # pragma: no cover
-    # Annotation only. PySide6 must not be imported at module scope: the
-    # source-reading tests below are pure Python and have to run on a box
-    # without Qt. A skipped test is not evidence, so the skip is scoped
-    # to the fixture and not to the module.
     from PySide6.QtWidgets import QApplication
 
 CONNECTED = "apitest.16.001.postcondition.label_matches_session"
@@ -104,30 +44,13 @@ APITEST_PINS = (CONNECTED, RELEASED, RAN, PROBED, INDICATOR)
 
 API_TESTER = REPO / "src" / "gui" / "widgets" / "api_tester_tab.py"
 
-# The production geometry, restated so the tests drive the real thing.
 COINBASE_PROBES = 3
 STATUSPAGE_VOCABULARY = ("none", "minor", "major", "critical", "maintenance")
 
-# THE SENTINEL. Twenty characters of mixed case and digits, with no
-# word and no punctuation in it, so that EVERY four-character window of
-# it is also unlikely to appear in a file of JSON by accident. That
-# property is what lets the test below hunt for fragments rather than
-# only for the whole string.
-#
-# MEASURED, NOT ASSUMED. The first version of this test looked for the
-# whole sentinel and for one word inside it. A planted leak of
-# `self._api_key.text()[:6]` -- a six-character PREFIX, which is
-# exactly how a key gets logged "safely" -- passed it. A prefix is a
-# leak: it shrinks the search space for anyone holding the file. So
-# the test now refuses every fragment of four characters or more, and
-# the plant that slipped past is one of the mutations this unit was
-# checked against.
+# Mixed case and digits with no word in it, so no four-character window of it
+# lands in JSON by accident.
 SENTINEL = "Kx7qZv93RtLm5PwB2sYd"
 
-# Substrings that must never appear in a record this tab writes. The
-# first six are the credential vocabulary; `bot_id` is here because
-# every other tab's register row forbids it and this tab is no
-# exception.
 FORBIDDEN = (
     "api_key",
     "apikey",
@@ -139,16 +62,9 @@ FORBIDDEN = (
     "bot_id",
 )
 
-# The widgets whose text is a secret, plus the symbol box, which sits
-# one row below three password fields and holds operator free text.
 CREDENTIAL_WIDGETS = ("_api_key", "_api_secret", "_api_pp", "_symbol_input")
 
-# The two context KEYS allowed to contain a word from FORBIDDEN, named
-# here so the ban stays a ban everywhere else. `credentials_supplied`
-# is the one presence boolean this tab records; `used_stored_
-# credentials` is the checkbox's own state and is not
-# credential-derived at all. Both are KEYS. No VALUE anywhere in this
-# tab is computed from a credential except the first of these two.
+# Context keys, never values, that are allowed to hold a word from FORBIDDEN.
 DECLARED_CREDENTIAL_KEYS = ("credentials_supplied", "used_stored_credentials")
 
 
@@ -593,9 +509,6 @@ def test_a_connected_label_over_no_session_is_reported(
         tab._do_connect()
         rec = _only(sink, CONNECTED)
 
-        # THE FALSE GREEN, asserted on the widgets before the pin is
-        # read. The pin is only worth anything if the tab really does
-        # claim a connection it does not have.
         assert tab._conn_status.text().startswith("Connected")
         assert tab._disconnect_btn.isEnabled() is True
         assert tab._connector is not None
@@ -1200,9 +1113,6 @@ def test_no_context_expression_reads_a_credential_widget() -> None:
         rendered = " ".join(ast.dump(node) for node in judged)
         for widget in CREDENTIAL_WIDGETS:
             assert widget not in rendered, (_pin_name(call), widget)
-        # The two declared KEYS are removed before the ban is applied,
-        # so `credentials_supplied` cannot launder a real hit on
-        # "credential" past this test.
         stripped = rendered.lower()
         for declared in DECLARED_CREDENTIAL_KEYS:
             stripped = stripped.replace(declared, "")
@@ -1237,18 +1147,12 @@ def test_no_sentinel_credential_reaches_the_serialised_records(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """THE GATE ON THIS UNIT, driven end to end against the real writer.
+    """SENTINEL reaches no byte `SignalSink.flush` writes.
 
-    A known sentinel goes into the key, the secret, the passphrase AND
-    the symbol box. Every path in the tab that emits is driven --
-    including a venue error whose MESSAGE carries the sentinel, which
-    is how a real key escapes, and the stored-credentials path. The
-    records are then written by `SignalSink.flush`, the sink's own
-    writer, into a file under `tmp_path`, and the bytes are searched.
-
-    THE POSITIVE CONTROL COMES FIRST. The file is asserted to hold all
-    five pin names before the sentinel is looked for, because an
-    absence proved against an empty file is an absence of evidence.
+    The sentinel goes into `_api_key`, `_api_secret`, `_api_pp` and
+    `_symbol_input`, every emitting path is driven, and the file under
+    `tmp_path` is asserted to hold all five names in `APITEST_PINS` before any
+    fragment of SENTINEL is looked for.
     """
     from src.gui.widgets import api_tester_tab as mw
 
@@ -1272,57 +1176,33 @@ def test_no_sentinel_credential_reaches_the_serialised_records(
         tab._api_pp.setText(SENTINEL)
         tab._symbol_input.setText(SENTINEL)
 
-        # 1. a connect that works, 2. a test that ran, 3. the
-        # do-nothing arm, 4. the probe sweep, 5. the status page,
-        # 6. a disconnect that failed.
         tab._do_connect()
         tab._run_test("fetch_ticker")
-        # The do-nothing arm. Its name is NOT the sentinel: `test` is
-        # the fixed vocabulary the seven buttons pass and is recorded
-        # deliberately, so feeding the sentinel in here would be this
-        # test putting it on the record itself rather than the tab
-        # leaking it.
         tab._run_test("fetch_everything")
         tab._raw_http_probe()
         tab._check_exchange_status()
         connector_class.raise_on_disconnect = RuntimeError(SENTINEL)
         tab._do_disconnect()
 
-        # 7. A VENUE ERROR THAT ECHOES THE KEY. This is the shape that
-        # puts a live credential into an error message, and the tab
-        # paints it into its own result view.
         connector_class.raise_on_connect = RuntimeError(
             f"401 unauthorized for key={SENTINEL}"
         )
         tab._do_connect()
 
-        # 8. the stored-credentials branch, which reaches the settings
-        # vault and returns before any network call.
         tab._use_stored.setChecked(True)
         tab._do_connect()
 
-        # The operator really can see the sentinel on screen. That is
-        # the widget, not a file, and it is where a secret is allowed
-        # to be.
+        # The result view is a widget, not a file, and may hold the sentinel.
         assert SENTINEL in tab._result_view.toPlainText()
 
         sink.flush()
 
     written = path.read_bytes()
 
-    # THE POSITIVE CONTROL.
     for name in APITEST_PINS:
         assert name.encode() in written, name
     assert written.count(b"\n") >= len(APITEST_PINS)
 
-    # THE GATE, AND IT REFUSES FRAGMENTS.
-    #
-    # A prefix, a suffix or any middle run of four characters or more
-    # is a leak: it shrinks the search space for anyone holding the
-    # file, and a "safe" last-four or first-six is the commonest way a
-    # key reaches a log. A HASH is a leak too, because a secret this
-    # short is brute-forceable, so the three digests of the whole
-    # sentinel and of its head are refused by name.
     text = written.decode("utf-8", errors="replace")
     for start in range(len(SENTINEL)):
         for end in range(start + 4, len(SENTINEL) + 1):
@@ -1334,11 +1214,6 @@ def test_no_sentinel_credential_reaches_the_serialised_records(
             digest = hashlib.new(algorithm, value.encode()).hexdigest()
             assert digest not in text, (algorithm, value)
 
-    # A LENGTH IS A LEAK TOO, and it is the one fragment hunting cannot
-    # see. Nothing in this tab may record it, which is why
-    # `test_no_context_expression_reads_a_credential_widget` reads the
-    # syntax tree: that test is this one's other half, not a
-    # duplicate.
     for record in sink.records():
         rendered = record.to_json()
         assert SENTINEL not in rendered, record.name
@@ -1396,10 +1271,10 @@ def test_every_pin_in_this_tab_carries_a_duration() -> None:
 
 
 def test_no_pin_in_this_tab_carries_a_throttle() -> None:
-    """Item #14 reads this, so it is asserted and not narrated.
+    """No pin in `APITEST_PINS` passes `every`.
 
-    Every path in this tab is a button press. Silence from any of these
-    five says nothing about the tab's health, so none may fold.
+    Every emitting path in this tab is a button press, so silence from a pin
+    says nothing and none may fold.
     """
     for call in _apitest_emit_calls():
         assert _keyword(call, "every") is None, _pin_name(call)

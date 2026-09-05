@@ -1,30 +1,10 @@
-"""Pins the duration on `topology.09.002.postcondition.wires_received`.
+"""The duration on `topology.09.002.postcondition.wires_received` is real.
 
-Last of the six clean owners
-(docs/engineering-notes/2026-08-19_emitter_duration_classification.md). Sole emitter in
-`import_wires`; `topology.09.001` lives in `attach_bot`, is a dict insert, and
-is classified instantaneous -- it carries nothing.
-
-THIS ONE TIMES REAL WORK. The other five drive their interval with an injected
-delay because the operation is I/O. Here the import loop's cost scales with the
-number of rows offered, so the control feeds two genuinely different workloads
-and reads the duration off the real emitter. Nothing is stubbed.
-
-WARM UP BEFORE MEASURING, AND THIS IS NOT A COURTESY. Measured 2026-08-19: the
-FIRST `import_wires` call in a process cost 11.975 ms for 50 rows, while later
-calls cost 0.257 ms for 500 and 5.291 ms for 8000. That first figure is import
-and interpreter warmup, not work. A test that measured the small case first
-would record it as SLOWER than the large one and fail for a reason unrelated to
-the timer -- or, if the order were reversed, pass for the wrong reason.
-
-THE CLOCK STOPS BEFORE THE REPORT. `n` and `offered` are final once the loop
-ends; the accepted-count line, the lost-row tally and the operator warning that
-follow are REPORTING. Timing those would bill the report to the import, and
-making the log cheaper would read as a faster import.
-
-2026-08-22 -- THE ACCEPTED-COUNT LINE USED TO BE INSIDE THE CLOCK, and that is
-what made this control fail inside the release gate while it passed alone. See
-`LARGE_ROWS` for the measurement and `src/trading/smart_wire.py` for the repair.
+`import_wires` is the sole emitter and its cost scales with the rows offered,
+so `_fastest_import` reads the duration off the real emitter over two
+workloads and `_tracks_the_import` requires the large one to be more than
+twice the small one and above `LARGE_FLOOR_S`. `_warm_up` runs first: the
+first `import_wires` call in a process bills interpreter warmup to the import.
 """
 
 from __future__ import annotations
@@ -39,123 +19,15 @@ EMITTER = "topology.09.002.postcondition.wires_received"
 
 SMALL_ROWS = 1_000
 
-# THE LARGE WORKLOAD, and the measured failure that sets its size.
-#
-# WHAT WENT WRONG, 2026-08-22. This file passed alone and failed inside
-# the release gate. The cause was not a scheduling pause. `import_wires`
-# used to dispatch its "imported N wire(s)" log line INSIDE the timed
-# bracket. A log dispatch is a CONSTANT: it fires once whatever the row
-# count, and its price is set by how many handlers the root logger
-# carries. Alone, the root logger carries none and the line is free.
-# Inside the suite the GUI tests leave console handlers attached and the
-# root logger sits at DEBUG; measured 2026-08-22 with 16 attached, ONE
-# dispatch cost 0.001585 s, the minimum of twenty.
-#
-# A CONSTANT DESTROYS A RATIO. It lands on both readings, so it does not
-# move their difference at all -- it moves their QUOTIENT. Measured in
-# one process, same code, same machine:
-#
-#     handlers   small        large        ratio
-#     none       0.000290 s   0.003031 s   10.4
-#     16         0.001965 s   0.004853 s    2.4
-#
-# and 1 of 15 in-suite trials then recorded 1.898, below the 2.0 the
-# predicate asks for. THE MINIMUM DEFENDS NOTHING HERE. It discards a
-# pause that lands on one sample; this cost lands on every sample, so it
-# moves the FLOOR. The failing trial's five small readings were
-# 0.002281, 0.002426, 0.002252, 0.002292 and 0.002290 -- no outlier to
-# discard, the whole distribution had shifted.
-#
-# THE REPAIR IS IN THE SITE, not here: the log line now sits below the
-# stop clock, where the site's own comment always said the report
-# belongs. Re-measured in the same 16-handler process afterwards, small
-# returned to 0.000302 s and the ratio to 10.1.
-#
-# WHY THIS NUMBER ALSO CHANGED, and the arithmetic that sizes it. Write
-# S for the small reading and L for the large one. There are two ways to
-# invert the pair, and they take different amounts:
-#
-#   a constant C on BOTH readings breaks it at   C >= L - 2S
-#   a gain on the SMALL reading alone breaks it  at  L/2 - S
-#
-# and the second must land on all five samples, while the first lands on
-# every sample by definition.
-#
-# AT 10_000 ROWS THOSE NUMBERS WERE 2.45 ms AND 1.23 ms, with L =
-# 0.003031 s and S = 0.000290 s. The log dispatch measured 1.585 ms
-# idle. Under 48 busy processes the SAME dispatch measured 2.982 ms,
-# which is above 2.45 ms -- so the pair inverts, and the observed ratio
-# was 1.898. The failure was not bad luck. It was arithmetic, and the
-# margin was thin enough to make it certain under load.
-#
-# AT 200_000 ROWS THEY ARE 87.6 ms AND 43.8 ms, with L = 0.088229 s and
-# S = 0.000305 s. That is 29x the largest constant measured. The cost is
-# 0.80 s of suite time and about 100 MB of transient heap, and the large
-# workload is built AFTER the small readings are taken, so its
-# allocation cannot reach back and inflate them.
-#
-# WHAT THIS DOES NOT DO. It does not make the control immune to a
-# constant, and it does not make it immune to load. It moves the
-# breaking constant from 2.45 ms to 87.6 ms. A stall still breaks it if
-# it lands on all five small samples and is worth 43.8 ms each; the
-# largest single small sample seen in a full suite run was 0.000905 s,
-# and under 48 busy processes 0.118890 s -- one sample, not five. The
-# real immunity came from moving the report out of the bracket in
-# `src/trading/smart_wire.py`; this number is the guard band around that
-# repair, so that the next constant to appear inside the bracket is
-# caught by a red test rather than by a red gate.
+#: Sized so a constant cost inside the bracket cannot invert the pair: it
+#: would have to be worth 87.6 ms, and the largest measured is 3.0 ms.
 LARGE_ROWS = 200_000
 
-# HOW MANY TIMES EACH WORKLOAD IS MEASURED, and why the figure compared
-# is the MINIMUM of the samples rather than a single reading.
-#
-# A scheduling pause can only ADD to an elapsed-time reading. The
-# operating system can take the thread away part way through the import
-# loop and hand it back later; it cannot hand back time the loop never
-# spent. Every sample is therefore the true cost plus non-negative
-# noise, and the smallest of several samples is the closest estimate of
-# the true cost this machine can give.
-#
-# WHY THIS SITE NEEDS IT, MEASURED 2026-08-20 on the target machine.
-# Thirty pairs off the real emitter: 1_000 rows recorded 0.000307 s to
-# 0.000456 s, 10_000 rows recorded 0.003174 s to 0.005176 s, a median
-# ratio of 10.4 against a predicate asking only for 2. That margin
-# reads as enormous and it is 1.3 ms wide: the SMALL reading has to
-# gain 1.3 ms, once, for `_tracks` to refuse the pair. Inside a
-# 7000-test run on Windows with the live application trading, a pause
-# that size is ordinary, and on 2026-08-19 the release gate went red
-# here on exactly that -- while the same file passed 45 times in
-# isolation. Reproduced 2026-08-20 by burning 1.5 ms between two rows
-# of the import loop, which is where a real pause would land: small
-# 0.0018421, large 0.0035651, FAILED. One pause across five samples is
-# noise on one of them, and the minimum discards it.
-#
-# WHAT THE MINIMUM DOES NOT COVER, and this is the correction the
-# 2026-08-22 red gate forced. The paragraph above is about a PAUSE --
-# something that lands on one sample. A cost that lands on EVERY sample
-# moves the floor, and the minimum of a shifted distribution is shifted
-# too. That is the failure this file actually suffered; `LARGE_ROWS`
-# carries the measurement and the repair. Keep both defences: they
-# answer different attacks and neither replaces the other.
+#: A scheduling pause only adds to an elapsed reading, so `_fastest_import`
+#: takes the smallest of this many samples.
 SAMPLES = 5
 
-# THE FLOOR, and the measurement that says it is not optional.
-#
-# Move the stop clock above the work and the bracket spans nothing:
-# every reading collapses to the cost of two `time.monotonic()` calls,
-# and a ratio between two numbers that small is a coin flip rather than
-# a measurement. Measured 2026-08-20 with the stop clock planted above
-# the loop, 60 pairs off this emitter: every reading fell between 0.0 s
-# and 3.0e-07 s, the bare ratio ACCEPTED 16 of the 60, and the minimum
-# of five samples accepted 24 of the 60. The minimum is the right
-# estimator against a stall and it makes the dead clock WORSE, because
-# it drives the small reading to a hard zero and any positive large
-# reading then beats twice zero. So the floor is a SECOND rule, never
-# an alternative to the first.
-#
-# 0.0005 s sits 1667x above the largest dead-clock reading and 6.3x
-# below the smallest honest 10_000-row reading, so it separates the two
-# populations without standing near either.
+#: A stop clock above the work collapses every reading to under 3.0e-07 s.
 LARGE_FLOOR_S = 0.0005
 
 
@@ -285,11 +157,8 @@ def test_the_site_predicate_rejects_a_bracket_that_spans_nothing() -> None:
         0.0032, 0.0003
     ), "going backwards must not read as tracking"
 
-    # THE DEAD CLOCK, and the measured reason this site carries a floor
-    # the shared predicate does not. This pair is a real one: it came
-    # off the 2026-08-20 run with the stop clock planted above the
-    # import loop. `_tracks` accepts it. The floor rejects it. That is
-    # an addition to `_tracks`, never a relaxation of it.
+    # A real pair off a stop clock planted above the import loop. `_tracks`
+    # accepts it; `LARGE_FLOOR_S` is what rejects it.
     assert _tracks(
         0.0, 3.0e-07
     ), "the shared predicate is expected to accept a dead clock here"

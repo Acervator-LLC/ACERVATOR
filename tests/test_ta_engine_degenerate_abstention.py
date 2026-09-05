@@ -80,37 +80,8 @@ def _lcg(seed: int):
     return nxt
 
 
-# ── THE PEG TABLE, AND WHY IT HAS TWO HALVES ────────────────────────
-#
-# THIS FILE PREVIOUSLY BUILT EVERY FLAT TAPE AT 100.0, 3.2e-05 OR 1.0.
-# MEASURED, those are exactly the prices at which the rounding cancels:
-# a 20-bar flat window leaves `_stdev_tail` at EXACTLY 0.0, so a guard
-# that tests the DERIVED band width fires and the assertions below pass.
-#
-# They pass for a reason that has nothing to do with the market being
-# halted, and at a price the operator does not trade they stop passing.
-# Substitute 118.39 and a width-based guard reports BULLISH at
-# confidence 1.0000 against an asserted NEUTRAL. The fixture had been
-# shaped like its own assertion.
-#
-#   peg           sigma over 20 identical bars      width guard fires
-#   100.0         0.0                               yes
-#   3.2e-05       0.0                               yes
-#   1.0           0.0                               yes
-#   1.43          0.0                               yes
-#   118.39        1.4210854715202004e-14            NO
-#   0.11          1.3877787807814457e-17            NO
-#   61234.03      7.275957614183426e-12             NO
-#   0.03120002    3.469446951953614e-18             NO
-#
-# 0.03120002 and 0.11 are the operator's OWN scales -- SPK near $0.03,
-# CHIP near $0.08. Over 599 halted tapes built from venue decimal
-# strings, 154 landed in the lower half of this table.
-#
-# Both halves are kept and every abstention is driven over BOTH, so no
-# guard can pass this file by handling only the arithmetically
-# convenient case. `test_the_peg_table_still_spans_both_classes` fails
-# if either half ever empties.
+# A flat 20-bar window leaves `_stdev_tail` at exactly 0.0 for a cancelling
+# peg and strictly positive for a non-cancelling one.
 CANCELLING_PEGS = (100.0, 3.2e-05, 1.0, 1.43)
 NON_CANCELLING_PEGS = (118.39, 0.11, 61234.03, 0.03120002)
 ALL_PEGS = CANCELLING_PEGS + NON_CANCELLING_PEGS
@@ -220,12 +191,8 @@ def test_the_peg_table_still_spans_both_classes() -> None:
         assert sigma > 0.0, (peg, sigma)
         # And the halted window really is halted at the source.
         assert max([peg] * 20) == min([peg] * 20)
-        # THE DERIVED QUANTITY THE BLOCKED REPAIR TESTED. A Bollinger
-        # band width is 2 * std_dev * sigma; at these pegs it is
-        # strictly positive, so `if upper - lower <= 0.0` CANNOT fire
-        # and a guard written that way answers a halted market with a
-        # vote. Naming the quantity here means the table cannot drift
-        # into a state where a width guard would satisfy this file.
+        # The Bollinger band width is 2 * std_dev * sigma, so at these pegs
+        # a width guard cannot fire on a halted market.
         assert 2.0 * 2.0 * sigma > 0.0, (peg, sigma)
 
 
@@ -750,11 +717,7 @@ def _hash_signal(sig) -> str:
     return digest.hexdigest()[:16]
 
 
-# MEASURED ON THE PRE-REPAIR TREE, with this file's own `_hash_signal`
-# and this file's own `realistic_rows`. Taking them from the code as it
-# stood BEFORE the change is the whole point: the claim is "unchanged",
-# so the reference has to predate the change. Regenerating these from the
-# post-repair tree would turn the test into a tautology.
+# `_hash_signal` over `realistic_rows`, taken before the abstention repair.
 EXPECTED_HEALTHY_HASHES = {
     "adx": "a21a68f11b0ebe4e",
     "bollinger_bands": "d15bd21c3a386958",

@@ -24,9 +24,7 @@ from src.gui.main_window import _compose_table_target_denom_cell  # noqa: E402
 class TestComposeTableTargetDenomCell:
     def setup_method(self):
         reset_scout_for_tests()
-        # Also reset the currency monitor snapshot so tests are
-        # deterministic. It doesn't have a public reset — just re-
-        # snapshot with prices.
+        # The monitor has no public reset; re-snapshot with zero prices.
         get_currency_monitor().update_from_prices(0.0, 0.0)
 
     def _seed_rates(self, btc_usd=50_000.0, eth_usd=3000.0):

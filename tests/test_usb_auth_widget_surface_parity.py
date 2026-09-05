@@ -2221,9 +2221,8 @@ def test_both_completeness_checks_can_report():
 
 # The values a picture cannot see
 
-#: Every colour the panel names whose channels are not all different. A
-#: swap of two equal channels paints the same picture, so each is
-#: compared as exact text.
+#: Colours with two equal channels: a swap paints the same picture, so
+#: each is compared as exact text.
 EQUAL_CHANNEL_COLOURS = (
     "#0A0A14",
     "#0D0D20",

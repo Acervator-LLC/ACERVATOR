@@ -1,23 +1,10 @@
-"""v3.24.19 — suite-wide isolation from the operator's runtime tree.
+"""Suite-wide isolation from the operator's runtime tree.
 
-WHY
-===
-The pin tests construct real ``SimRunLog`` objects, and ``SimRunLog``
-defaulted to ``~/.acervator_logs/sim``. So every suite run wrote live
-run directories into the operator's own log tree. By 2026-08-04 that
-tree held 62 run directories of which 54 were 4-to-59-candle test
-artifacts, and diagnosing the GUI replay slowdown meant filtering
-them back out of the operator's performance record before the real
-runs were even visible.
-
-The standing constraint is explicit: test harnesses never write to
-``~/.acervator`` or ``~/.acervator_logs``. This file enforces it
-rather than leaving it to each test author to remember.
-
-Scope note: ``~/.acervator`` (bot_state.json, credentials) is
-operator-owned and read-only to the suite. Nothing here grants write
-access to it. The Simulator's own state file used to land there and
-now resolves through ``ACERVATOR_SIM_STATE_ROOT``, set below.
+``TEST_HOME_ENV`` and the overrides in ``_redirect_writable_roots`` point every
+writer at a throwaway directory, so no test writes into ``~/.acervator`` or
+``~/.acervator_logs``. ``_snapshot`` reads both ``_live_roots`` before and after the
+run and fails on a change the suite can be held to. ``_destroy_qt_widgets`` and
+``_assert_no_widget_leak`` stop a Qt widget outliving the file that built it.
 """
 
 from __future__ import annotations
@@ -64,60 +51,23 @@ choose_qt_platform()
 
 from src.trading.sim_run_log import SIM_LOG_ROOT_ENV  # noqa: E402
 
-# v3.24.xx — set at conftest IMPORT time, not in a fixture, and this is
-# the whole point.
-#
-# `main._get_crash_log_path` resolves the directory ONCE and caches it.
-# `main` installs its diagnostic hooks at module exec and immediately
-# emits a BOOT line, so the path is fixed the moment anything imports
-# main -- which happens during COLLECTION, before any session-scoped
-# fixture body runs. Setting this in the fixture below was too late: the
-# suite still created a real crash log in ~/.acervator_logs, and the
-# live-tree guard caught it on 2026-08-07.
-#
-# The other redirects can live in the fixture because their modules
-# re-read the environment on every call. This one cannot.
-#
-# conftest is imported before any test module, so this is early enough.
+# Set at import: `main._get_crash_log_path` caches its directory on the first call.
 _CRASH_LOG_TMP = Path(tempfile.mkdtemp(prefix="acervator-test-crash-"))
 os.environ.setdefault("ACERVATOR_CRASH_LOG_ROOT", str(_CRASH_LOG_TMP))
 
-# v3.25.x — the Simulator's own state file, set at conftest IMPORT time
-# for the same reason and one more.
-#
-# `save_sim_state` and `load_sim_state` now resolve the root on every
-# call, so a fixture would be soon enough for them. The module ALSO
-# keeps two backwards-compatible constants that bind while the module is
-# imported, and that import happens during COLLECTION, before any
-# fixture body runs. Setting the variable here means even a test that
-# reads the old constant gets the throwaway directory.
-#
-# What this prevents, measured: on 2026-08-22 a full run replaced
-# ~/.acervator/simulator_bot_state.json -- the operator's saved
-# Simulator fleet -- with one synthetic fixture bot. The writer is
-# test_fleet_sim_infrastructure.py::test_fleet_replay_panel_mounts. It
-# clicks Load on a real FleetReplayPanel; the spawn behind that button
-# calls `save_sim_state` with no path. The test redirected the file it
-# READ and nothing redirected the file it WROTE.
-#
-# The guard below SAW the write; it could not stop it. Only a redirect
-# can. The guard stays exactly as it is: it is the backstop, this is the
-# fix.
+# Set at import: `SIM_STATE_PATH` and `BOT_STATE_PATH` bind while their module loads.
 _SIM_STATE_TMP = Path(tempfile.mkdtemp(prefix="acervator-test-simstate-"))
 os.environ.setdefault("ACERVATOR_SIM_STATE_ROOT", str(_SIM_STATE_TMP))
 
 
 def _live_roots() -> tuple[Path, ...]:
-    """The operator's runtime tree. Injectable so the guard below can be
-    tested against fake roots instead of the real one -- a guard that can
-    only be exercised by damaging the thing it protects is untestable."""
+    """Return ``~/.acervator`` and ``~/.acervator_logs``, the roots the guard watches."""
     home = Path.home()
     return (home / ".acervator", home / ".acervator_logs")
 
 
 def _stone_tablet_root() -> Path:
-    """The immutable archive. Lives INSIDE ~/.acervator, so it is covered
-    by the roots above, but it gets its own stricter rule."""
+    """Return the stone tablet archive, a subtree of ``_live_roots`` with a stricter rule."""
     return Path.home() / ".acervator" / "stone_tablets"
 
 
@@ -134,11 +84,8 @@ def _home_is_redirected() -> bool:
 def _live_app_running() -> bool:
     """True if an Acervator process is running alongside the suite.
 
-    This is not paranoia: measured 2026-08-05 with the suite running,
-    two Acervator.exe processes were live and had rewritten
-    bot_state.json 12 seconds earlier. A guard that fails whenever the
-    operator has the app open is a guard that gets deleted, so
-    modification-level strictness is conditioned on this.
+    A live process writes the same tree ``_snapshot`` reads, so the guard
+    downgrades its verdict to a report while this is True.
     """
     try:
         import psutil  # type: ignore[import-untyped]
@@ -154,12 +101,8 @@ def _live_app_running() -> bool:
 def _snapshot(roots: tuple[Path, ...]) -> dict[str, tuple[int, int]]:
     """Map every file under `roots` to (size, mtime_ns).
 
-    stat() only -- nothing here ever OPENS a file. That is deliberate:
-    ~/.acervator holds coinbase_credentials.json, and a guard that hashed
-    file contents to protect the tree would itself be reading the
-    credentials. Size + mtime_ns is sufficient to detect mutation.
-
-    Measured cost: 0.05 s for 3,559 files across 7.6 GB.
+    Uses ``stat`` only and opens nothing, so the walk never reads
+    ``coinbase_credentials.json``.
     """
     out: dict[str, tuple[int, int]] = {}
     for root in roots:
@@ -179,13 +122,8 @@ def _snapshot(roots: tuple[Path, ...]) -> dict[str, tuple[int, int]]:
 def capture_log():
     """Capture records from a named logger, bypassing propagation.
 
-    ``caplog`` cannot see Acervator's loggers once the logging engine has
-    initialised: ``logging_engine.py:315`` sets
-    ``logging.getLogger("acervator").propagate = False`` so records stop
-    at that node and never reach the root handler pytest installs. A test
-    asserting on logs therefore passes in isolation and fails in a full
-    run, depending purely on whether some earlier test constructed the
-    engine — which is exactly the flake this fixture removes.
+    The logging engine sets ``propagate = False`` on the ``acervator`` node, so
+    records stop there and never reach the root handler ``caplog`` installs.
 
     Usage::
 
@@ -427,27 +365,11 @@ def _redirect_sim_log_root():
 
 @pytest.fixture(scope="session", autouse=True)
 def _redirect_writable_roots():
-    """Redirect every remaining live-tree writer for the whole session.
+    """Redirect every live-tree writer ``_redirect_sim_log_root`` does not cover.
 
-    v3.24.42 (C14 family). ``_redirect_sim_log_root`` covered the sim run
-    log and nothing else, so two writers kept reaching the operator's
-    runtime tree on every full run:
-
-      ~/.acervator/feature_telemetry.json      feature_telemetry
-      ~/.acervator_logs/feature_validation.md  feature_telemetry
-      ~/.acervator/settings.json               PrivacyMaskRegistry
-
-    The telemetry pair had a working override that nothing set. The
-    settings file had no override at all, and PrivacyMaskRegistry
-    auto-persists on EVERY set_masked, so any test touching privacy
-    behaviour silently rewrote the operator's real settings file.
-
-    This went unnoticed because the live-tree guard downgrades modified
-    pre-existing files to a warning while a live Acervator process is
-    running -- which it usually is on the developer's machine. The
-    breach only surfaced on a run with the app closed. A guard that is
-    conditional on the environment is a guard you have to run in the
-    right environment to trust.
+    Sets ``TELEMETRY_ROOT_ENV``, ``SETTINGS_ROOT_ENV``, ``RESERVATION_ROOT_ENV``
+    and the crash-log root at one throwaway directory for the whole session, and
+    restores each prior value on teardown.
     """
     from src.core.feature_telemetry import TELEMETRY_ROOT_ENV
     from src.core.privacy_mask_registry import SETTINGS_ROOT_ENV
@@ -457,24 +379,13 @@ def _redirect_writable_roots():
     (tmp_root / "acervator").mkdir(parents=True, exist_ok=True)
     (tmp_root / "acervator_logs").mkdir(parents=True, exist_ok=True)
 
-    # _telemetry_root returns the override AS-IS -- it does NOT append
-    # the ".acervator" / ".acervator_logs" leaf when one is set, so both
-    # of its files land directly in tmp_root. The privacy registry wants
-    # the directory that directly holds settings.json. Different shapes,
-    # which is why they are not one variable.
-    # v3.24.xx — the crash logger was the last unredirected writer. Its
-    # constant lives in main.py and main.py is NOT imported here on
-    # purpose: importing it installs the diagnostic hooks and emits a
-    # BOOT line, which is itself a write. The literal is locked to
-    # main.CRASH_LOG_ROOT_ENV by test_crash_log_redirect.py so a rename
-    # breaks a test rather than silently un-redirecting the guard.
+    # `_telemetry_root` returns the override as-is and appends no leaf to it.
+    # The crash-log key is a literal: importing main writes a BOOT line.
     overrides = {
         TELEMETRY_ROOT_ENV: str(tmp_root),
         SETTINGS_ROOT_ENV: str(tmp_root / "acervator"),
         "ACERVATOR_CRASH_LOG_ROOT": str(tmp_root / "acervator_logs"),
-        # The capital-reservation singleton (get_registry) autosaves to
-        # reservation_state.json; without this every test that touched it
-        # wrote into the operator's real ~/.acervator.
+        # `get_registry` autosaves reservation_state.json beneath this root.
         RESERVATION_ROOT_ENV: str(tmp_root / "acervator"),
     }
     prior = {k: os.environ.get(k) for k in overrides}
@@ -587,26 +498,6 @@ def _assert_no_live_tree_writes(_redirect_sim_log_root):
     problems: list[str] = []
     live_up = _live_app_running() and not _home_is_redirected()
 
-    # v3.24.42 — created and modified are now treated SYMMETRICALLY with
-    # respect to a running app.
-    #
-    # Rule 1 used to fail on any created path unconditionally, while
-    # rule 3 excused modified paths when a live Acervator process was
-    # up. That asymmetry made the app frame the suite: launching
-    # Acervator mid-run produces a preflight snapshot trio plus
-    # console_*/crash_*/faulthandler_* logs, all newly created, and the
-    # guard reported them as a suite breach. Observed 2026-08-06.
-    #
-    # A guard that cries wolf is worse than a lenient one, because the
-    # next real breach gets waved through by a developer who has learned
-    # to ignore it. So: with a live process up, both categories are
-    # reported loudly and not failed.
-    #
-    # THE COST, stated plainly: while Acervator is running, this guard
-    # cannot attribute a write and therefore cannot catch a real suite
-    # breach. The trustworthy configuration is a run with the app
-    # CLOSED, and the banner below says so on every degraded run rather
-    # than letting a green suite imply a verified one.
     if live_up and (created or modified or tablet_touched):
         print(
             f"\n[live-tree guard] DEGRADED — a live Acervator process is "
@@ -644,95 +535,10 @@ def _assert_no_live_tree_writes(_redirect_sim_log_root):
     )
 
 
-# ── Qt widget teardown, suite-wide ───────────────────────────────────
-#
-# v3.24.97. Qt keeps a PARENTLESS widget alive for the life of the
-# process. The GUI tests build whole SimulatorTab / FleetReplayPanel /
-# BotLiveSettingsDialog trees, so without an explicit teardown they
-# accumulate until the interpreter dies with SIGSEGV -- measured at
-# exit 139 around 90% of the suite, with NO failure summary printed.
-# The release gate reported "pytest failed:" followed by nothing, which
-# reads as a broken gate rather than a crashing suite.
-#
-# Placed here rather than in each GUI test file: it applies to every
-# test that ever builds a widget, including ones not yet written, and
-# six separate copies of the same fixture is six places for it to rot.
-#
-# ── issue #101, v3.26.x — THE RECIPE DESTROYED NOTHING ───────────────
-#
-# The fixture did `hide()`, `setParent(None)`, `deleteLater()`, then
-# `processEvents()`. Measured 2026-08-24, PySide6 on the offscreen
-# plugin, one line of output each:
-#
-#     parentless dialog, Python reference dropped     0 alive
-#     deleteLater() first, then reference dropped     1 alive
-#     after sendPostedEvents(None, DeferredDelete)    0 alive
-#
-# `deleteLater()` posts a `DeferredDelete` event, and
-# `QApplication.processEvents()` NEVER DELIVERS ONE. Only a running
-# event loop, or an explicit `sendPostedEvents`, does. So every widget
-# the fixture "cleaned up" stayed in `QApplication.topLevelWidgets()`
-# for the rest of the session, and anything that walks that list -- as
-# tests/test_sim_visuals_expand_reentrancy.py does -- read a stranger.
-#
-# ── WHAT THE OLD FIXTURE REALLY PROVIDED, AND WHICH LINE ─────────────
-#
-# It provided IMMORTALITY, not destruction, and that is what kept the
-# process alive. Measured 2026-08-24, one ExchangeTab built and the
-# script then allowed to exit:
-#
-#     no cleanup at all                        exit 127
-#     hide() + setParent(None)                 exit 127
-#     hide() + setParent(None) + deleteLater() exit 0
-#
-# `w.deleteLater()` IS THE LINE. It moves ownership from Python to C++
-# -- `Shiboken.ownedByPython` reads True before the call and False
-# after -- so Python's shutdown frees no widget and no widget is ever
-# destroyed. `hide()` and `setParent(None)` provide nothing here; the
-# first two rows above are the control that proves it.
-#
-# The same control at suite scale, 2026-08-24: with the body of this
-# fixture replaced by a bare `yield`, a full `pytest tests` run reached
-# 76% and died with exit 139 -- SIGSEGV, no failure summary. The
-# docstring's claim was true. Keep `deleteLater()`.
-#
-# WHY DESTRUCTION KILLS THE PROCESS. `ExchangeTab` owns a
-# `CryptoNewsTicker`, and `crypto_news_ticker.py:386` builds
-# `QThread(self)` -- a thread PARENTED to the widget. Destroying the
-# widget destroys a RUNNING QThread, which Qt answers with
-# `std::terminate`: no traceback, no failure summary, exit 127. The
-# first honest attempt at this repair -- a global
-# `sendPostedEvents(None, DeferredDelete)` -- died exactly there, 2573
-# tests into a full run, at `test_exchange_tab_boot_smoke.py`.
-#
-# ── THE REPAIR ───────────────────────────────────────────────────────
-#
-# 1. STOP THE THREADS FIRST. `quit()` then a bounded `wait()`. Measured
-#    on the news ticker: `wait(3000)` returned True after 0.54 s, and
-#    the widget then destroyed with exit 0.
-# 2. DELIVER PER WIDGET, NOT GLOBALLY. `sendPostedEvents(w, ...)` sends
-#    only the events posted to `w`. The global form also delivers the
-#    `deleteLater()` calls SHIPPED code made on objects this fixture
-#    never chose -- QThreads among them. Per-widget delivery destroys
-#    what the fixture handled and touches nothing else.
-# 3. SPARE WHAT WOULD ABORT. A widget whose thread will not stop keeps
-#    the old immortality, and its address is recorded so the leak guard
-#    below reports it by name instead of failing a file that has no fix
-#    for it.
-# 4. REPEAT UNTIL THE LIST IS EMPTY. Destroying a widget can EXPOSE new
-#    top-level widgets: measured on `test_suite_integrity.py`, tearing
-#    down a MainWindow left four `QMenu` popups behind with no parent
-#    and no Python owner. They were never in the first pass's list, so
-#    a single sweep could not reach them. The loop is bounded at
-#    `_MAX_TEARDOWN_PASSES` so a widget that respawns cannot hang the
-#    suite; a pass that destroys nothing ends it early.
 _MAX_TEARDOWN_PASSES = 4
 _WIDGET_TEARDOWN_WAIT_MS = 2000
 
-# Addresses of widgets deliberately left alive because destroying them
-# would abort the process. Runtime facts, not a name allowlist: the only
-# way onto this list is to still own a running QThread after a bounded
-# wait.
+# Widgets that still owned a running QThread after a bounded wait, by C++ address.
 _SPARED_WIDGETS: dict[int, str] = {}
 
 # Non-widget entries `QApplication.topLevelWidgets()` returned, by C++
@@ -817,6 +623,12 @@ def _stop_owned_threads(widget: QWidget) -> int:
 
 @pytest.fixture(autouse=True)
 def _destroy_qt_widgets() -> Iterator[None]:
+    """Destroy every top-level Qt widget a test left behind, after the test.
+
+    Runs up to ``_MAX_TEARDOWN_PASSES`` passes, since destroying a widget can
+    expose new top-level widgets, and records in ``_SPARED_WIDGETS`` any widget
+    whose threads ``_stop_owned_threads`` could not stop.
+    """
     yield
     try:
         from PySide6.QtCore import QCoreApplication, QEvent
@@ -836,9 +648,7 @@ def _destroy_qt_widgets() -> Iterator[None]:
                     continue
                 w.hide()
                 if _stop_owned_threads(w):
-                    # Destroying this one calls std::terminate. Hand it
-                    # to C++ and never deliver the event, which is what
-                    # the whole fixture used to do to everything.
+                    # Destroying a widget that owns a live QThread calls std::terminate.
                     _SPARED_WIDGETS[Shiboken.getCppPointer(w)[0]] = type(w).__name__
                     w.deleteLater()
                     continue
@@ -849,6 +659,7 @@ def _destroy_qt_widgets() -> Iterator[None]:
                 # Already destroyed by its own parent; nothing to do.
                 continue
         app.processEvents()
+        # processEvents() never delivers DeferredDelete; sendPostedEvents does.
         for w in doomed:
             try:
                 if Shiboken.isValid(w):
@@ -868,37 +679,6 @@ def _destroy_qt_widgets() -> Iterator[None]:
             break
 
 
-# ── A leak fails in the file that caused it ──────────────────────────
-#
-# issue #101. Before this fixture a leaked widget failed a STRANGER.
-# `tests/test_sim_visuals_expand_reentrancy.py` asks
-# `app.topLevelWidgets()` for every open QDialog and takes element
-# zero. One dialog left behind by ANY earlier file makes element zero
-# the wrong widget, and the test then reports its own subject as leaked
-# while it examines somebody else's. Three units spent a full diagnosis
-# each on that shape on 2026-08-23 -- issues #96 and #98, and the
-# referee who repaired #98's fallout. Every one of them started from
-# "a neighbour test broke".
-#
-# WHY THIS GUARD CANNOT BECOME THE FLAKY THING EVERYONE DISABLES:
-#
-#  1. IT IS BASELINE-RELATIVE. Each file is judged only on the widgets
-#     it ADDED. A leak from an earlier file cannot fail a later one, so
-#     one defect gives exactly one failure, and it is in the file that
-#     holds the fix. This one property stops the cascade.
-#  2. IT RUNS AFTER `_destroy_qt_widgets`. Module-scoped finalizers run
-#     after function-scoped ones, so it measures what survived a real
-#     destruction pass, not what a test left bound in a local.
-#  3. IT NEEDS NO RUN ORDER. No file's result depends on which files ran
-#     before it, so `-k`, a single-file run and a full run all agree.
-#  4. THERE IS NO ALLOWLIST AND NO ENVIRONMENT SWITCH. An allowlist rots
-#     into a list of accepted leaks, and a switch is how a guard dies.
-#     The only exclusion is `_SPARED_WIDGETS`, and a widget earns a
-#     place there by still owning a running QThread -- a fact measured
-#     at teardown, not a name written down in advance. Those are
-#     PRINTED with the file that made them, so they stay visible.
-#  5. A NON-GUI FILE PAYS NOTHING. With no QApplication both snapshots
-#     are empty dicts.
 @pytest.fixture(scope="module", autouse=True)
 def _assert_no_widget_leak(request: pytest.FixtureRequest) -> Iterator[None]:
     """Fail the FILE that left a top-level Qt widget alive."""
@@ -968,44 +748,6 @@ def _assert_no_widget_leak(request: pytest.FixtureRequest) -> Iterator[None]:
     )
 
 
-# --------------------------------------------------------------------------- #
-# CI lane markers, applied by file (see [tool.pytest.ini_options].markers).    #
-#                                                                              #
-# Two lanes keep PR CI fast without losing coverage on merge:                  #
-#   * `slow`      — end-to-end engine-replay suites. Each test builds a real   #
-#                   FleetReplayController and plays synthetic candles through  #
-#                   the live Scrum/Fold + TA engine; these are minutes of CPU  #
-#                   and dominate the suite's wall clock.                       #
-#   * `archetype` — archetype-harness tests. They shell out to heavy analyzers #
-#                   (semgrep/mypy/vulture/vale/opencv) that ship only in the   #
-#                   [dev] extra, so the fast lane — which installs [test] only #
-#                   — must deselect them.                                      #
-#                                                                              #
-# Marking by file here (rather than a `pytestmark` in each module) keeps the   #
-# lane definition in one auditable place and covers files added later that     #
-# match the pattern.                                                           #
-#                                                                              #
-# `lane_marks` is the one definition. `tests/test_ci_fast_lane_packages.py`    #
-# reads the same function to decide which files the fast lane collects.        #
-
-
-# ── A crashed worker says what it was doing ──────────────────────────
-#
-# `pytest -n auto` reports a dead worker as one line -- "worker 'gw0'
-# crashed while running <nodeid>" -- and nothing else. The worker's own
-# stderr does not reach the master's log, so a SIGSEGV or a
-# std::terminate arrives as silence. Measured on CI runs 33338069499 and
-# 33341814352: both named the node id and printed no traceback.
-#
-# Each process holds one breadcrumb file. `logstart` writes the node id
-# into it and re-arms faulthandler to dump there; `logfinish` empties it.
-# A file still holding a node id at the end of the run names the test the
-# process died inside, and carries the native traceback after it.
-#
-# faulthandler is re-armed per test, not once per session, because
-# another test re-points it: tests/test_faulthandler_log_redirect.py
-# drives the real `main._setup_faulthandler` and restores it to the
-# handle main opened, not to this one.
 _BREADCRUMB_ENV = "ACERVATOR_TEST_BREADCRUMBS"
 os.environ.setdefault(
     _BREADCRUMB_ENV, tempfile.mkdtemp(prefix="acervator-test-breadcrumb-")

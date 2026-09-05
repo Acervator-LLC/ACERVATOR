@@ -53,10 +53,8 @@ from PySide6.QtWidgets import (
 
 from src.gui import bot_wizard
 
-# The five controls ExtractorPoolPage builds that carry text, each with
-# one phrase that fixes its meaning. A phrase rather than the whole
-# string: a reworded tooltip is still a tooltip, a missing one is not,
-# and a tooltip moved onto the wrong control loses the phrase.
+# Each control ExtractorPoolPage builds that carries text, with one phrase
+# fixing its meaning: a reworded tooltip is still a tooltip.
 POOL_CONTROLS: dict[str, str] = {
     "_exchange": "re-scans",
     "_base": "accumulates",

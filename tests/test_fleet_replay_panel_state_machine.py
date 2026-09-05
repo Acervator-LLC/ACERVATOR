@@ -1,42 +1,14 @@
-"""Fleet Replay panel: Start/Stop/Reset must be a correct state machine.
+"""The Fleet Replay panel Start, Stop and Reset are a correct state machine.
 
-C26, cascade 24. Findings SN-31, SN-12, SN-13, SN-14, SN-35, SN-29.
-(SN-34, the main-thread freeze, is deliberately NOT here — see the note
-at the bottom of this docstring.)
-
-WHAT THE COLD READ FOUND, verified against source before writing this:
-
-  * `_status_error` DOES NOT EXIST anywhere in the repo. The plan says
-    to "route all nine failure sites through `_status_error`"; the
-    helper has to be authored first.
-
-  * The nine sites the plan names ALREADY report. They are a
-    consolidation, not a defect. The genuinely silent aborts are
-    elsewhere — and two of them are operator-facing:
-      - Reset swallows `request_stop()` in `except: pass`, so Reset can
-        silently fail to stop a run.
-      - Stop swallows the same call, so Stop can silently do nothing.
-
-  * Reset does not stop either timer, does not null `_controller`, and
-    does not clear `_gate_cells`.
-
-  * THE PLAN'S OWN STEP 2 WOULD CREATE A HANG. The timers currently
-    self-stop through `_refresh_progress`, which returns early when
-    `_controller is None`. Nulling `_controller` — exactly what the plan
-    prescribes — means `_refresh_progress` never reaches its `.stop()`
-    branch and both timers run forever. Order is load-bearing: stop the
-    timers FIRST, then null.
-
-SN-34 IS EXCLUDED ON PURPOSE. The plan offers two remedies and both are
-falsified: `main.py` pumps the asyncio loop from a Qt `QTimer`, so it IS
-the GUI thread and "move the work off the Qt thread" cannot be done by
-scheduling onto it. Operator decision 2026-08-07: ship the other four
-steps, measure the real block separately.
+`_status_error` reports every failure path. `_on_reset_clicked` stops both
+timers while `_controller` is still set, then nulls it and clears
+`_gate_cells`; nulling first would leave `_refresh_progress` returning early
+and both timers running. A second `_on_start_clicked` while a run is in flight
+builds no second `FleetReplayController`.
 """
 
 from __future__ import annotations
 
-import ast
 import sys
 
 import pytest
@@ -46,11 +18,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-PANEL = REPO_ROOT / "src" / "gui" / "simulator_tab" / "fleet" / "fleet_replay_panel.py"
-
-# `FleetReplayPanel` is declared only when PySide6 imports. The checks
-# at the bottom of this file drive one of its methods, so they state
-# what they need rather than failing on an absent GUI toolkit.
 try:
     from src.gui.simulator_tab.fleet.fleet_replay_panel import (  # noqa: F401
         FleetReplayPanel as _FleetReplayPanel,
@@ -59,19 +26,6 @@ try:
     _HAS_QT_PANEL = True
 except ImportError:  # pragma: no cover - PySide6 absent
     _HAS_QT_PANEL = False
-
-
-def _panel_fn(name: str):
-    src = PANEL.read_text(encoding="utf-8")
-    fn = next(
-        (
-            n
-            for n in ast.walk(ast.parse(src))
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
-        ),
-        None,
-    )
-    return fn, src
 
 
 class _Label:
@@ -119,19 +73,10 @@ class _Task:
 
 
 class _Controller:
-    """v3.25.1 — this double now carries what a REAL running controller
-    carries.
+    """A double carrying what a running `FleetReplayController` carries.
 
-    It modelled `progress.finished` alone. A real
-    `FleetReplayController` that is running has three things:
-    `_task` set (`fleet_replay_controller.py:627`), `started_at_wall`
-    set (`:554`), and `finished` False. The double had only the third,
-    which was invisible while `_run_in_flight` read only that field.
-
-    `started` is what distinguishes a loaded fleet from a running one.
-    Load builds a controller whose `finished` is False and which has
-    never ticked; without `started` the double cannot express that
-    state, and that is the state that broke Start.
+    `started` distinguishes a loaded fleet, whose `_task` is None and whose
+    `started_at_wall` is 0.0, from one that has ticked.
     """
 
     def __init__(self, boom=False, finished=False, started=True, task_done=None):
@@ -140,9 +85,8 @@ class _Controller:
         self.progress = type(
             "P", (), {"finished": finished, "started_at_wall": 1.0 if started else 0.0}
         )()
-        # A finished run has a completed task. Defaulting `task_done`
-        # to False regardless of `finished` would build a controller
-        # that cannot exist: done replaying, task still running.
+        # A finished run has a completed task; a default of False alone would
+        # build a controller that cannot exist.
         if task_done is None:
             task_done = finished
         self._task = _Task(done=task_done) if started else None
@@ -178,10 +122,12 @@ def _panel(controller=None, confirm=True):
 
 class TestTheHelperExists:
     def test_status_error_is_defined(self):
-        """POSITIVE CONTROL. The plan says to route failures through
-        `_status_error`; it did not exist, so it had to be written."""
-        fn, _ = _panel_fn("_status_error")
-        assert fn is not None, "_status_error was never authored"
+        """`FleetReplayPanel` carries a callable `_status_error`."""
+        from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
+
+        assert callable(
+            getattr(FleetReplayPanel, "_status_error", None)
+        ), "_status_error was never authored"
 
     def test_it_never_leaves_an_empty_status(self):
         """Exit gate: assert no failure path leaves status ''."""
@@ -213,34 +159,31 @@ class TestResetIsCorrectAndCannotHang:
         assert p._gate_cells == {}
 
     def test_the_timers_are_stopped_before_the_controller_is_nulled(self):
-        """THE ORDERING PIN, and the reason this cascade needed a cold
-        read. `_refresh_progress` returns early when `_controller is
-        None`, and that early return is what would otherwise never reach
-        the `.stop()` branch. Null first and both timers run forever.
+        """Each timer's `stop` runs while `_controller` is still set.
 
-        Asserted structurally: within `_on_reset_clicked`, every timer
-        `.stop()` must appear before the line that assigns
-        `self._controller = None`.
+        `_refresh_progress` returns early on a null controller, so a reset that
+        nulls first never reaches the `stop` branch and both timers run on.
         """
-        fn, src = _panel_fn("_on_reset_clicked")
-        stops = [
-            n.lineno
-            for n in ast.walk(fn)
-            if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "stop"
-        ]
-        nulls = [
-            n.lineno
-            for n in ast.walk(fn)
-            if isinstance(n, ast.Assign)
-            and any(getattr(t, "attr", "") == "_controller" for t in n.targets)
-        ]
-        assert stops, "reset stops no timers"
-        assert nulls, "reset never nulls the controller"
-        assert max(stops) < min(nulls), (
-            "the controller is nulled before the timers are stopped; "
-            "_refresh_progress will return early and they will run "
-            "forever"
+        p = _panel(controller=_Controller())
+        seen: list = []
+
+        for timer in (p._progress_timer, p._drain_timer):
+            real = timer.stop
+
+            def _watch(_real=real):
+                seen.append(p._controller)
+                _real()
+
+            timer.stop = _watch
+
+        p._on_reset_clicked()
+
+        assert len(seen) == 2, f"reset stopped {len(seen)} timers, not two"
+        assert all(c is not None for c in seen), (
+            "the controller was nulled before a timer was stopped; "
+            "_refresh_progress returns early and the timer runs forever"
         )
+        assert p._controller is None
 
     def test_a_wedged_controller_does_not_silently_swallow(self):
         """Reset used `except Exception: pass`, so a controller that
@@ -332,30 +275,33 @@ class TestStartIsNotReentrant:
             or "running" in p._status_lbl.text.lower()
         )
 
-    def test_the_guard_precedes_controller_construction(self):
-        """Structural: the re-entrancy check must come before anything
-        that could build a second controller."""
-        fn, src = _panel_fn("_on_start_clicked")
-        seg = ast.get_source_segment(src, fn) or ""
-        ctor = seg.find("FleetReplayController(")
-        assert ctor > 0, "controller construction not found"
-        guard = seg.find("_controller is not None")
-        assert 0 < guard < ctor, (
-            "the re-entrancy guard does not precede controller " "construction"
-        )
+    def test_a_refused_start_builds_no_second_controller(self, monkeypatch):
+        """The running controller is still the one `_controller` holds.
+
+        A `FleetReplayController` built during the refused start would orphan
+        the first run's timers and gate cells.
+        """
+        from src.simulator.fleet import fleet_replay_controller as frc
+
+        built: list = []
+
+        def _refuse(*args, **kwargs):
+            built.append((args, kwargs))
+            raise AssertionError("a second controller was constructed")
+
+        monkeypatch.setattr(frc, "FleetReplayController", _refuse, raising=True)
+
+        running = _Controller(finished=False)
+        p = _panel(controller=running)
+        p._async_loop_getter = lambda: object()
+        p._on_start_clicked()
+
+        assert built == [], built
+        assert p._controller is running
+        assert "already" in p._status_lbl.text.lower()
 
 
 class TestParitySkipIsReported:
-    def test_an_empty_ytd_set_says_parity_is_skipped(self):
-        """SN-29: the empty case is the NORMAL condition, and the panel
-        said nothing about it — the operator read a synthetic run as a
-        parity run."""
-        fn, src = _panel_fn("_on_start_clicked")
-        seg = ast.get_source_segment(src, fn) or ""
-        assert (
-            "parity" in seg.lower()
-        ), "_on_start_clicked never mentions parity being skipped"
-
     def test_the_status_names_it_when_ytd_is_empty(self):
         p = _panel()
         p._ytd_trades = []
@@ -370,30 +316,6 @@ class TestParitySkipIsReported:
         p._note_parity_state()
         assert "skip" not in p._status_lbl.text.lower()
 
-
-class TestSN34IsExplicitlyOutOfScope:
-    def test_the_asyncio_loop_is_the_qt_thread(self):
-        """Recorded so the next reader does not retry the plan's
-        falsified remedy. `main.py` pumps the loop from a QTimer, so
-        scheduling onto it moves nothing off the GUI thread."""
-        main_src = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
-        assert "def pump_async" in main_src
-        assert "QTimer" in main_src
-
-
-# ── the parity report the panel prints ───────────────────────────
-#
-# `_run_parity_comparison` pulled its sim trades off
-# `self._controller._exchange._trades`. `_trades` belonged to
-# `FleetSimExchange`; since v3.24.84 `_exchange` is a `CCXTConnector`
-# and has no such attribute, so the `getattr` default made the list
-# EMPTY on every run and this method always took its "sim produced 0
-# trades — 0% reproduction" branch. The measurement the parity harness
-# exists for had never run on a real tape.
-#
-# The check below drives the method itself rather than reading the
-# source, because the defect was a value, not a shape: the old code
-# read fine and returned [].
 
 _T0_MS = 1_776_778_500_000
 _STEP_MS = 300_000

@@ -1292,9 +1292,7 @@ PAYLOAD_KEYS = (
 )
 
 
-# Values the painter READS rather than carries: each decides a position,
-# a radius, a rate or a threshold inside an op, so the value itself is in
-# no leaf. Every one is proved read by the perturbation test below.
+# Values the painter reads rather than carries, so no leaf holds them.
 READ_BY_THE_PAINTER = {
     "BUILDER_RECT",
     "DESIGNER_ALIAS_RECT",

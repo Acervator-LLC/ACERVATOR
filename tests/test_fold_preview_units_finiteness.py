@@ -66,30 +66,13 @@ from tests.test_fold_gate_order_independence import (
     _Ticker,
 )
 
-# Well-formed, above the price, and THE SAME on every row so the sort
-# ties and the input order survives into the discharge loop.
-#
-# 0.56 RATHER THAN 0.6, AND THE CONTROL CHOSE IT. At 0.6 the row
-# surplus is 0.1/unit, so an 18-unit buy accumulates 1.8 against a cycle
-# cap of 1.75 and EVERY answer clamps to the cap -- which would have
-# made the order-independence sweep pass by flattening its own
-# measurement. `test_the_units_sweep_is_not_vacuous` caught exactly
-# that and reported `growth 1.75 against cap 1.75`. At 0.56 the surplus
-# is 0.06/unit and 18 units reach 1.08, comfortably unclamped, and the
-# distance gate still allows because 0.56 * 0.934 = 0.523 sits above the
-# 0.5 price.
+# Equal on every row so the sort ties, and low enough that no answer clamps to the cap.
 GOOD_REF = 0.56
 
-# `big` exceeds what one row can discharge against the buy, `small` does
-# not, and `zero` contributes nothing. Together they make the ladder
-# truncate rather than run to the end -- asserted, not assumed, by
-# `test_the_units_sweep_is_not_vacuous`.
+# Sized so the ladder truncates rather than running to the end.
 ALPHABET = (("nan", NAN), ("inf", INF), ("big", 10.0), ("small", 3.0), ("zero", 0.0))
 
-# The operator's own largest real ladder: bot c8e5c5db, 156 rows,
-# captured READ-ONLY from ~/.acervator/bot_state.json on 2026-08-15.
-# Held verbatim so the in-spec control runs on the shape his money
-# actually has, not on a shape chosen to suit the assertion.
+# A real 156-row ladder read out of a live bot, held verbatim.
 REAL_LADDER = (
     (0.02307, 16.05757596502564),
     (0.02307, 2.1225710445587276),

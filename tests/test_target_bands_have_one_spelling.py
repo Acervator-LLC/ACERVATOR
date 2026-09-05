@@ -1,7 +1,7 @@
 """The dashboard reads the tick's bands; it does not restate them.
 
-Issue #128 R2. Two thresholds decide whether a position counts as ON
-TARGET, and each was written out twice:
+Two thresholds decide whether a position counts as ON TARGET, and each
+was written out twice:
 
     park band    max(target * 0.001, 0.01)   tick(), and the Ammo cell
     Manual Fire  max(target * 0.01,  0.01)   _execute_manual_rebalance,
@@ -44,9 +44,7 @@ from src.trading.target_bands import (  # noqa: E402
     target_territory,
 )
 
-#: Sub-dollar through institutional. 8.0 is where the $0.01 floor stops
-#: binding on the Manual Fire band; 10.0 is where it stops binding on
-#: neither -- both edges are inside the sweep on purpose.
+#: Sub-dollar through institutional; 8.0 and 10.0 are the $0.01 floor's two edges.
 TARGETS = (0.03, 0.11, 1.0, 8.0, 10.0, 47.13, 100.0, 12500.0)
 
 

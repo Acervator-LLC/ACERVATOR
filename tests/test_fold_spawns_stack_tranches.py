@@ -1,31 +1,11 @@
-"""Item 7 -- A FOLD SPAWNS STACK TRANCHES.
+"""A fold spawns stack tranches, the mirror of the scrum that opens them.
 
-Operator spec:
-  "When a fold occurs, it should generate stack tranches and, when some
-   or all of those tranches fill, the fold tranches spawn on the other
-   side starting at the minimum opposing trade distance."
-  "Scrum fires using existing Stack Tranches, Fold Tranches Spawn, Fold
-   fires using existing Fold Tranches."
-
-The sell half already worked. The buy half did not: an AST walk of the
-two executors read ``_execute_sell -> ['_open_stack_from_scrum']`` and
-``_execute_buy -> []``, so a fold closed no pair.
-
-WHAT THIS FILE DOES NOT TEST. Merge, consumption, spacing arithmetic and
-distribution are separate items with their own specs and their own test
-files. Nothing here asserts a property of any of them. The spacing check
-below tests only that the fold spawn ROUTES THROUGH the configured
-mode -- that two modes give two ladders off the same fold -- never what
-either mode's numbers should be. ``test_stack_math.py`` and
-``test_ladder_spacing_modes.py`` own the numbers.
-
-TWO-SIDED CONTROL. Every verdict here is read at the surface it reports
-through: ``bot._stack_tranches``, the ledger a fold is supposed to fill,
-and the fill price ``_execute_buy`` returns. Each oracle is written once
-as a ``_check_*`` function, and ``TestPlantedFailures`` runs THE SAME
-FUNCTION against a deliberately broken mechanism and requires it to go
-red. A plant that re-asserted a hand-written constant instead of driving
-the real oracle would prove nothing, so none of them do that.
+``_execute_buy`` calls ``_open_stack_from_scrum`` on a filled fold, so
+``bot._stack_tranches`` gains a ladder anchored on the FILL price and starting at
+the minimum opposing distance. Each verdict is one ``_check_*`` oracle, and
+``TestPlantedFailures`` runs the same oracle against a broken mechanism and
+requires it to go red. The ladder's own arithmetic belongs to
+``test_stack_math.py``; nothing here asserts a spacing number.
 """
 
 import ast
@@ -42,17 +22,8 @@ FOLD_PRICE = 100.0
 FOLD_SIZE = 30.0
 # The stub's scrumming_interval_pct + trading_fee_pct.
 MIN_OPPOSING_PCT = 1.6
-# `_open_stack_from_scrum` reads `split_distance_pct` off the config.
-# ScrummingBotConfig does not define that name -- it defines
-# `split_distance` -- so the opener always takes its own 1.0 default.
-# This stub deliberately does NOT define either one, so the ladder here
-# is the ladder live would build. See the note in the return report.
+# `_StubConfig` sets no `split_distance`, so `_open_stack_from_scrum` takes its default.
 OPENER_GAP_PCT = 1.0
-
-
-# Stubs. Deliberately NOT ScrummingBot instances: each carries only the
-# surface the method under test reads, so an accidental dependence on
-# anything else surfaces as an AttributeError instead of passing.
 
 
 class _StubExchangeInterface:
@@ -175,18 +146,12 @@ class _BuyStubBot(_SpawnStubBot):
         self.notifications: list[tuple] = []
         self.reconcile_reasons: list[str] = []
         self.spawn_calls: list[dict] = []
-        # THE FILL NEVER EQUALS THE OFFER, and that is load-bearing.
-        # A stub that filled at exactly the price it was handed makes
-        # "anchored on the fill" and "anchored on the offer" the same
-        # number, so the anchor check would pass on either. Measured:
-        # with the two equal, mutating `_execute_buy` to hand the spawn
-        # the OFFERED price left this whole file green. They are kept
-        # apart so that mutation goes red.
+        # `fill_ratio` keeps the fill off the offer, so the anchor checks discriminate.
         self.offered_price = FOLD_PRICE
         self.fill_ratio = 0.97
 
     async def _verify_buy_safe_or_refuse(self, path: str = "") -> tuple[float, str]:
-        """MEM-257 verification satisfied: units known, no refusal."""
+        """Report units known and no refusal, so the buy is not held back."""
         self.reconcile_reasons.append(f"verify:{path}")
         return 0.0, ""
 
@@ -203,9 +168,7 @@ class _BuyStubBot(_SpawnStubBot):
                 "price": price,
             }
         )
-        # Invisible mode sends MARKET with price=None, so the fill is
-        # derived from the OFFERED price the test handed _execute_buy,
-        # scaled by fill_ratio. See the fill_ratio note in __init__.
+        # Invisible mode sends MARKET with price=None, so the fill comes from the offer.
         return _StubOrder(self.offered_price * self.fill_ratio)
 
     async def _reconcile_holdings(self, reason: str = "") -> None:
@@ -250,11 +213,6 @@ def _self_calls(func_name: str) -> set[str]:
         ):
             out.add(node.func.attr)
     return out
-
-
-# THE ORACLES. Written once, driven by the real tests below and by the
-# planted failures at the bottom. A plant that ran a different assertion
-# from the one it claims to control would be no control at all.
 
 
 def _check_gate_withheld_the_spawn(opened: int, tranches: list[dict]) -> None:
@@ -315,14 +273,6 @@ def _check_the_fill_survived(fill, messages: list[str]) -> None:
     assert not any(
         "BUY FAILED" in m for m in messages
     ), "the buy reported failure after it had already filled"
-
-
-# POSITIVE CONTROLS ON THE HARNESS ITSELF.
-#
-# Everything below reads `bot._stack_tranches`. If the stub cannot reach
-# the real opener, or `_execute_buy` cannot reach the spawn site, an
-# empty ledger means "the harness is broken", not "the code refused" --
-# and every no-spawn assertion in this file passes for the wrong reason.
 
 
 class TestTheHarnessCanSeeASpawn:
@@ -724,13 +674,6 @@ class TestTheSpawnCannotFailTheTrade:
             bot, fold_price=price, fold_size=size, summary=_Summary(), path="fold_rebuy"
         )
         _check_only_a_fold_spawned(opened, bot._stack_tranches)
-
-
-# PLANTED FAILURES.
-#
-# Each one breaks the real mechanism and runs THE SAME `_check_*` oracle
-# the corresponding test above runs, requiring it to go red. A check
-# never observed failing is not evidence.
 
 
 async def _ungated_spawn(bot, fold_price, fold_size, summary, path):

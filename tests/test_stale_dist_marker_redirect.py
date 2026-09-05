@@ -311,9 +311,7 @@ class TestTheDefaultStillReachesTheOperator:
         monkeypatch.delenv("ACERVATOR_DEBUG_BOOT", raising=False)
         monkeypatch.setattr(Path, "mkdir", fake_mkdir)
 
-        # POSITIVE CONTROL ON THE INTERCEPTION ITSELF. A test that
-        # assumed its own patch took would report a clean home tree for
-        # the one reason that matters least: that it never looked.
+        # Positive control: prove the `mkdir` patch took before trusting a clean tree.
         decoy = tmp_path / "decoy"
         with pytest.raises(PermissionError):
             decoy.mkdir(parents=True, exist_ok=True)

@@ -105,9 +105,8 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# The view builder the tab delegates to, as the test owns it. The Qt tab
-# is driven with one stand-in and the surface with its own. Neither side
-# reads the other's.
+# The view builder the tab delegates to. The Qt tab and the surface each
+# get their own stand-in.
 
 
 class QtDelegate:
@@ -1101,9 +1100,7 @@ CALL_CONSTANTS = (
     "BUILD_RETURN",
 )
 
-# The two values no snapshot key carries, each with the check that
-# covers it. METHOD is the name the bridge registers under and
-# PANE_MODEL is the tab state the bridge keeps between calls.
+# (constant no snapshot key carries, the test that covers it).
 NOT_IN_THE_SNAPSHOT = {
     "METHOD": "test_the_bridge_registers_the_market_inspector_method",
     "PANE_MODEL": "test_the_bridge_resets_the_tab_state_on_request",

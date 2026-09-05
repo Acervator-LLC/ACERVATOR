@@ -228,10 +228,7 @@ def _refusal_free(observable):
     ]
 
 
-# ── scenario vocabulary ──────────────────────────────────────────────
-#
-# A ladder is built from the refs alone; ``usd`` and ``units`` follow
-# from them so the numbers are self-consistent.
+# A ladder is built from the refs alone; ``usd`` and ``units`` follow from them.
 
 
 def _ladder(*refs, units=100.0):

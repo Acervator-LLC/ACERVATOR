@@ -1,4 +1,4 @@
-"""v3.23.61 — pin tests for bot_swarm_list.
+"""Pin tests for bot_swarm_list.
 
 Two surfaces:
   (a) BotSwarmLaneAllocator — pure algorithm, no Qt required
@@ -28,10 +28,26 @@ from src.gui.bot_swarm_list import (  # noqa: E402
     BotSwarmLaneAllocator,
 )
 
-# C09 — the canvas only paints on a real paintEvent. repaint() does NOT
-# fire one offscreen; render(QPixmap) does. The skip-counter pins below
-# depend on the paint actually running.
+# `repaint()` fires no paintEvent offscreen; `render(QPixmap)` does.
 from PySide6.QtGui import QPixmap  # noqa: E402
+
+RAMP_TOKENS = ("TEXT_MUTED", "PRIMARY_BRIGHT", "WARNING", "ERROR")
+# Wide enough for a laid-out row; a smaller render leaves the cell rect empty.
+RAMP_RENDER_SIZE = (640, 200)
+
+
+def _cell_colours(view, image, row, col):
+    """Count the painted colours inside one cell of `view`, by lowercase hex."""
+    import collections
+
+    rect = view.visualRect(view.model().index(row, col))
+    origin = view.viewport().mapTo(view, rect.topLeft())
+    bag: dict = collections.Counter()
+    for y in range(origin.y(), origin.y() + rect.height()):
+        for x in range(origin.x(), origin.x() + rect.width()):
+            bag[image.pixelColor(x, y).name().lower()] += 1
+    return bag
+
 
 # BotSwarmLaneAllocator — pure algorithm
 
@@ -137,7 +153,7 @@ class TestLaneAllocator:
 
 class TestSchema:
     def test_12_columns_total(self):
-        """v3.23.62 — %Out column added → 12 cols total."""
+        """The %Out column brings the table to twelve columns."""
         assert TOTAL_COLS == 12
         assert len(COLUMN_HEADERS) == 12
 
@@ -201,34 +217,32 @@ class TestHeadlessRender:
         assert lst.item(0, COL_OUTFLOW_PCT).text() == "25%"
         assert lst.item(1, COL_OUTFLOW_PCT).text() == "0%"
 
-    def test_outflow_pct_color_ramp(self):
-        """v3.23.62 — colour thresholds:
-        0 → grey  |  1-80 → cyan  |  81-99 → amber  |  100+ → red"""
+    @pytest.mark.parametrize(
+        "outflow_pct,token",
+        [(0, "TEXT_MUTED"), (80, "PRIMARY_BRIGHT"), (99, "WARNING"), (100, "ERROR")],
+        ids=RAMP_TOKENS,
+    )
+    def test_outflow_pct_color_ramp(self, outflow_pct, token):
+        """The % Out cell paints its own ramp token and none of the other three."""
         self._new_app()
+        from src.gui import design_system as ds
         from src.gui.bot_swarm_list import BotListView
+        from tests.qt_pixel import render_widget
 
         lst = BotListView()
-        lst.set_bots(
-            [
-                {"bot_id": "a", "symbol": "A/USD", "outflow_pct": 0},
-                {"bot_id": "b", "symbol": "B/USD", "outflow_pct": 25},
-                {"bot_id": "c", "symbol": "C/USD", "outflow_pct": 90},
-                {"bot_id": "d", "symbol": "D/USD", "outflow_pct": 120},
-            ]
-        )
-
-        def _col(row):
-            return lst.item(row, COL_OUTFLOW_PCT).foreground().color().name()
-
-        assert _col(0) == "#666666"  # grey
-        assert _col(1) == "#00ffee"  # cyan
-        assert _col(2) == "#ffaa00"  # amber
-        assert _col(3) == "#ff3366"  # red
+        lst.set_bots([{"bot_id": "a", "symbol": "A/USD", "outflow_pct": outflow_pct}])
+        image = render_widget(lst, size=RAMP_RENDER_SIZE)
+        painted = _cell_colours(lst, image, 0, COL_OUTFLOW_PCT)
+        counts = {name: painted[str(getattr(ds, name)).lower()] for name in RAMP_TOKENS}
+        assert counts[token] > 0, f"{outflow_pct}% painted no {token}: {counts}"
+        others = {k: v for k, v in counts.items() if k != token}
+        assert all(
+            v == 0 for v in others.values()
+        ), f"{outflow_pct}% should paint only {token}, but also painted {others}"
 
     def test_wire_paint_uses_wire_phase_for_animation(self):
-        """v3.23.62 — wire animation migrated to list view. The paint
-        loop must consume `wire['phase']` (set by BotVisualizationTab
-        ._animate at ~2.5/sec) so pulses travel source→target."""
+        """The paint loop consumes `wire['phase']`, so pulses travel
+        source to target."""
         self._new_app()
         from src.gui.bot_swarm_list import BotListView, LaneWireCanvas
 
@@ -289,20 +303,10 @@ class TestHeadlessRender:
         assert canvas._lane_assignments["w2"] == 1
 
     def test_wire_canvas_reports_unknown_bot(self):
-        """REPLACES test_wire_canvas_ignores_unknown_bot (C09, v3.24.52).
+        """An unknown bot id is skipped by the lane assignment AND reported.
 
-        The old pin was named "ignores", commented "wire silently
-        skipped", and asserted that the silent drop was correct. That is
-        finding SWARM-A3 written down as a requirement: it stayed green
-        through the defect and would only have gone red if someone fixed
-        it.
-
-        Replacement, not relaxation, per M7 with operator acknowledgement
-        recorded 2026-08-07 (see
-        docs/engineering-notes/2026-08-07_C09_pin_replacement_record.md). This
-        asserts STRICTLY MORE than the old pin: the original invariant
-        survives verbatim as the first assertion, and the silence is
-        withdrawn.
+        The first assertion keeps the original invariant; the second
+        withdraws the silence that hid a dropped wire.
         """
         self._new_app()
         from src.gui.bot_swarm_list import BotListView, LaneWireCanvas

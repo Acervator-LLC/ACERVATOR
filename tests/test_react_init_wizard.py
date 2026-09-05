@@ -375,10 +375,8 @@ def surface_text() -> tuple:
 
 PUBLISHED_VALUES, PUBLISHED_KEYS = surface_text()
 
-#: The payload's own vocabulary, which the module is entitled to name:
-#: the method it calls the bridge with, and every widget name it maps to
-#: a drawer. These are how a renderer addresses the payload, not wording
-#: it paints.
+#: The payload's own vocabulary: the bridge method and every widget name
+#: mapped to a drawer. None of it is wording the module paints.
 VOCABULARY = PUBLISHED_KEYS | set(surface.WIDGET_NAMES) | {surface.METHOD}
 SURFACE_VALUES = PUBLISHED_VALUES - VOCABULARY
 
@@ -455,9 +453,6 @@ def test_the_renderer_runs_the_module_after_react():
     assert runs_after(order, MODULE_NAME, "module_loader.js"), order
 
 
-# -- 9. the Qt wizard this module replaces is still there ---------------
-#
-# React does not replace a widget until the operational logs verify it.
 # Nothing here calls `exec`: a modal loop takes the process and does not
 # give it back.
 

@@ -47,10 +47,6 @@ that as a contract rather than leaving it to convention.
 """
 
 # ruff: noqa: S603
-# S607 is fixed by construction: the git spawns below resolve through
-# `shutil.which` and run by absolute path, following the reasoning in
-# tests/test_tools_are_reachable.py. S603 is the residue, because every
-# argv here carries a tmp_path, which is a variable by definition.
 
 from __future__ import annotations
 
@@ -1230,12 +1226,6 @@ class TestTheReportDoesNotReassure:
         want: str,
     ) -> None:
         assert repo_slug(url) == want
-
-
-# Issue #108. Two reasons `capture` skipped the issue data, and the issue
-# data is what the tool itself calls the most important thing the migration
-# must preserve. Each one is driven BOTH ways: the state it must now
-# accept, and the state it must still refuse.
 
 
 class TestGhIsFoundWhenItIsInstalledButOffPath:

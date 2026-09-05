@@ -71,9 +71,7 @@ EXPECTED_DEFAULT_SYMBOL = "BTC/USDT"
 EXPECTED_DEFAULT_THEME = "cyberpunk_dark"
 EXPECTED_LIBRARY_ASSET = "vendor/lightweight-charts.standalone.production.js"
 
-# The first line of the vendored bundle's own licence banner. Finding it
-# in the page proves the file's bytes reached the page, which naming the
-# asset does not.
+# The vendored bundle's own licence banner, so its bytes are proved to reach the page.
 EXPECTED_LIBRARY_BANNER = "TradingView Lightweight Charts"
 
 EXPECTED_THEMES = {
@@ -517,13 +515,7 @@ def outcome(work):
 
 # The enumeration: every item on one side has a counterpart
 
-# The widget class carries a private name and is published as
-# ``TradingViewChart``, so that the browser-less stub can be a separate
-# class under the same public name without redeclaring it.
-# The widget class carries a private name and is published under the
-# public one, so that the browser-less stub can be a separate class
-# without redeclaring the public name. Both names reach the same class,
-# so the inventory below lists both and pairs each with one counterpart.
+# Both names reach the same class, so the inventory below pairs each separately.
 WIDGET_NAMES = ("_ChartWidget", "TradingViewChart")
 
 SHIPPED_CLASSES = WIDGET_NAMES + ("ChartAssetMissing",)
@@ -1661,9 +1653,7 @@ def test_the_colours_two_names_share_are_compared_by_name():
 
 # Nothing the surface holds is left out of the snapshot
 
-# Every constant the surface exports and the payload key that carries
-# it. A comparison reading some of the constants passes whether the
-# rest match or not; this closes that gap for every one at once.
+# Every constant the surface exports, and the payload key that carries it.
 CONSTANT_LOCATION = {
     "WIDGET_ACCESSIBLE_NAME": ("accessible_name", None),
     "LOGGER_NAME": ("logger_name", None),

@@ -465,9 +465,8 @@ class TestGracefulDatas:
         react = run_spec(SPEC_DIR / spec, tmp_path, monkeypatch, variant="react")
         qt = run_spec(SPEC_DIR / spec, tmp_path, monkeypatch, variant="qt")
         for built, variant in ((react, "react"), (qt, "qt")):
-            # COLLECT names the dist folder and EXE names the executable
-            # inside it. BUILD.py looks for dist/<name>/<name>.exe, so both
-            # have to carry the version and the variant or it finds nothing.
+            # BUILD.py looks for dist/<name>/<name>.exe, so COLLECT and
+            # EXE must both carry the version and the variant.
             for stage in ("COLLECT", "EXE"):
                 name = built[stage]["name"]
                 assert (

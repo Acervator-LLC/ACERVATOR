@@ -1,10 +1,8 @@
-"""C05 step 3: rebuild_scope must not throw away the operator's place.
+"""``rebuild_scope`` must not throw away the operator's place.
 
-WHAT THE AUDIT CLAIMED vs WHAT THE CODE DOES
-The remediation doc listed "preserve scroll offset and checked sets".
-A cold read found the checked sets were already preserved (v3.23.13
-captures prior_src/prior_dst and re-checks on refill), so only half the
-finding was live. These tests keep BOTH halves pinned.
+Both halves are pinned: ``rebuild_scope`` captures ``prior_src`` and
+``prior_dst`` and re-checks them on refill, and it restores the scroll
+offset of both lists.
 
 WHY THE NAIVE MEASUREMENT SAID "FINE"
 `clear()` collapses the scrollbar range, and that clamps its value to 0
@@ -55,9 +53,7 @@ def qr():
     )
     matrix.rebuild_scope(IDS)
     app.processEvents()
-    # Constrain the height so the lists are actually scrollable; an
-    # unbounded offscreen list shows all 40 rows and the scrollbar
-    # range is 0..0, which would make every assertion below vacuous.
+    # Bounded, or an offscreen list shows all 40 rows and the scroll range is 0..0.
     matrix._source_list.setFixedHeight(120)
     matrix._dest_list.setFixedHeight(120)
     app.processEvents()
@@ -116,11 +112,7 @@ class TestScrollOffsetSurvivesRebuild:
         before = bar.value()
         assert before > 0
         _rebuild_with_relayout(matrix, app)
-        # The operator's place must survive the rebuild. EXACT on a real
-        # platform. Offscreen, the pumped relayout can restore against a
-        # transient scrollbar maximum and land one row short, which is not the
-        # RESET-to-top defect this guards, so one row of slack is allowed
-        # THERE and nowhere else.
+        # Offscreen, a pumped relayout can land one row short of the restored place.
         slack = 1 if os.environ.get("QT_QPA_PLATFORM") == "offscreen" else 0
         assert (
             bar.value() >= before - slack
@@ -156,7 +148,7 @@ class TestScrollOffsetSurvivesRebuild:
 
 
 class TestCheckedSetsSurviveRebuild:
-    """Already true since v3.23.13 -- pinned so it stays true."""
+    """``rebuild_scope`` re-checks the boxes that were checked before it ran."""
 
     def test_checked_sources_survive(self, qr):
         matrix, app = qr

@@ -1,12 +1,9 @@
-"""v3.24.19 — pin tests for the Simulator visual/replay decoupling.
+"""Pin tests for the Simulator visual/replay decoupling.
 
-Why this module exists
-----------------------
-Until v3.24.19 the replay worker thread called Qt widget setters
-directly (``update_gates``, ``append_tick``, ``update_bot_row``,
-``chart.update()``), justified by a docstring claiming Qt would
-marshal them. It does not — a direct method call is a direct method
-call. Replay throughput was therefore coupled to GUI paint cost.
+The replay worker thread must not call a Qt widget setter directly:
+``update_gates``, ``append_tick``, ``update_bot_row`` and
+``chart.update()`` are GUI-thread work, and calling them from the worker
+ties replay throughput to paint cost.
 
 Measured, from the operator's own persisted run logs
 (``~/.acervator_logs/sim/runs/*/meta.json``), same 35 bots, same box:
@@ -97,11 +94,7 @@ class _Controller:
     def __init__(self, bots=(), exchange=None, tape=None):
         self._bots = list(bots)
         self._exchange = exchange
-        # Issue #110 -- the LEDGER the stat strip reads is the tape,
-        # a different object from the connector the bots trade
-        # through. A stand-in that carries only `_exchange` is what
-        # let the strip read `_balances` off a `CCXTConnector` and
-        # report $0.00 on every run that traded.
+        # The stat strip reads the tape, not the connector the bots trade through.
         self._tape = tape
         self.progress = _Progress()
 
@@ -130,9 +123,7 @@ class _Panel:
         self._sim_price_chart = None
         self._sim_voting_readout = None
 
-    # The producer/consumer call these on ``self``; delegate to the
-    # real implementations so the stand-in never shadows the code
-    # under test with a simplified copy.
+    # Delegate, so the stand-in never shadows the code under test with a copy.
     def _collect_visual_snapshot(self):
         return frp.FleetReplayPanel._collect_visual_snapshot(self)
 
@@ -293,9 +284,9 @@ def test_producer_is_inert_without_a_controller():
 def _traded_tape(fills: int = 3) -> TabletBackend:
     """Return a REAL `TabletBackend` that has filled *fills* orders.
 
-    ISSUE #110. The stand-in this replaced carried `_balances` and
-    `_trades` — `FleetSimExchange`'s private attributes. The Simulator
-    stopped building that class in v3.24.84, so the double kept the
+    The stand-in this replaced carried `_balances` and `_trades` —
+    `FleetSimExchange`'s private attributes. The Simulator stopped
+    building that class, so the double kept the
     test green while the shipped strip read two `getattr` defaults off
     a `CCXTConnector` and printed Spendable $0.00 / Trades 0 on every
     run that traded. A double cannot drift from a shape it does not
@@ -360,7 +351,7 @@ def test_stat_fields_aggregate_across_bots():
 
 
 def test_the_strip_reports_the_cash_and_the_fills_a_traded_tape_holds() -> None:
-    """ISSUE #110 — the strip must show what the ledger actually holds.
+    """The strip must show what the ledger actually holds.
 
     The two fields this pins are the two the sweep found reading
     `FleetSimExchange`'s private attributes off a `CCXTConnector`.
@@ -389,7 +380,7 @@ def test_the_strip_reports_the_cash_and_the_fills_a_traded_tape_holds() -> None:
 
 
 def test_the_snapshot_strip_reads_the_tape_and_not_the_exchange() -> None:
-    """ISSUE #110 — WHICH object the frame took its numbers from.
+    """WHICH object the frame took its numbers from.
 
     The controller holds two: `_exchange`, the `CCXTConnector` the bots
     trade through, and `_tape`, the `TabletBackend` that owns the
@@ -424,8 +415,7 @@ def test_stat_fields_are_all_strings():
 
 
 def test_stat_fields_cover_every_strip_slot():
-    """A field the producer forgets renders as a dash forever — the
-    exact defect v3.24.9 was opened against."""
+    """A field the producer forgets renders as a dash forever."""
     panel = _Panel(_Controller())
     f = _call("_collect_stat_fields", panel, [], _traded_tape(fills=0))
     assert set(f) == {

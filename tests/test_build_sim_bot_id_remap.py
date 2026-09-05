@@ -102,9 +102,6 @@ class TestTheIdIsThePersistedOne:
                 _cfg("SOL/USD", "cccc3333"),
             ]
         )
-        # v3.24.82 -- ids are `simulated_<live id>`: self-identifying
-        # (a sim row can never be read as live) AND joinable (strip the
-        # prefix to get back to bot_state).
         assert {live_bot_id(b.bot_id) for b in ctl._bots} == {
             "aaaa1111",
             "bbbb2222",
@@ -134,9 +131,6 @@ class TestTheIdIsThePersistedOne:
             candles_by_symbol={"BTC/USD": _candles()},
         )
         ctl._build_sim()
-        # v3.24.82 -- ids are `simulated_<live id>`: self-identifying
-        # (a sim row can never be read as live) AND joinable (strip the
-        # prefix to get back to bot_state).
         assert {live_bot_id(b.bot_id) for b in ctl._bots} == {"aaaa1111"}
 
 

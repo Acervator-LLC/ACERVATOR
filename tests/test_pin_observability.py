@@ -1,28 +1,9 @@
-"""Every repaired pin can go BOTH WAYS on the real code path.
+"""Every repaired pin can go both ways on the real code path.
 
-Queue item 10.4. A pin whose verdict cannot vary is not an observation:
-it is decoration that reads as evidence. Three shapes were measured
-across the 40-pin network and all three are pinned here.
-
-    ALWAYS PASSES  `actual` and `expected` were the same expression, so
-                   `ok` derived True on every call for ever.
-    ALWAYS FAILS   the expectation was wrong, so a HEALTHY run reported
-                   ok=False on every record - 13, 13, 132 and 154 of
-                   154 respectively.
-    CANNOT FIRE    `emit_fit` had no caller anywhere in the tree, so
-                   `gui.04.001` was dead in the Simulator AND in live.
-
-WHY EVERY CHECK HERE IS DRIVEN TWICE. A repair that only shows the pin
-passing is indistinguishable from a silenced alarm. So each repaired
-check is driven to a state where it PASSES and to a state where it
-FAILS, both through the production call path, and the failing state is
-a defect a reader would want to hear about - not a contrived input.
-
-WHY THE FAILING STATES SUBSTITUTE THE TAPE AND NOT THE CONTROLLER. The
-defects these pins exist to catch live BELOW the controller: a tape
-that serves history the master clock has not reached, a tape that
-raises mid-tick, a tape that has a symbol but cannot produce its bar.
-The controller's own code runs untouched in every case.
+Each pin named in SECTIONS, CANDLES, TICKS, COVERAGE, FED, MODE, LOGLINE, FIT
+and the three `ytd` constants is driven to a passing state and to a failing one
+through the production call path. A failing state substitutes the tape, never
+the controller, so `FleetReplayController` runs untouched.
 """
 
 from __future__ import annotations
@@ -240,12 +221,8 @@ def _play(ctl, total_candles: int | None = None, stop_after: int | None = None) 
             return _original_step()
 
         ctl._tape.step = _step
-    # RE-INSTALL THE SINK AFTERWARDS, or a second run in one test
-    # records nothing. `_run`'s teardown restores `self._prior_sink`,
-    # which `start()` records and this harness deliberately never calls
-    # - so the first `_run` sets the global sink to None and every
-    # emitter in the next one fires into a no-op. Measured: a two-run
-    # test read one record and raised IndexError on the second.
+    # `_run` restores the sink `start()` recorded, and this harness never
+    # calls `start()`.
     from src.core.signal_contract import get_sink, set_sink
 
     _held = get_sink()
@@ -403,16 +380,8 @@ class _NoBarFor(_TapeSkin):
         return self._inner.has_data(symbol)
 
 
-# THE OPERATOR'S OWN SECTION SET, measured read-only from
-# `~/.acervator/bot_state.json` on 2026-08-15: 37 bots, and 37 of 37
-# carry these seven sections plus an inner `bot_id` equal to the map
-# key. Every value below is synthetic; only the SHAPE is his.
-#
-# This replaces a config-only fixture. That fixture had been built to
-# match the assertion `set(sections) <= {"config"}` rather than to match
-# the file the loader reads, so it agreed with a predicate that reported
-# ok=False on all 37 live bots and could never have caught it. A fixture
-# shaped like the check under test cannot falsify the check.
+# The seven sections every bot in the live state file carries, plus an inner
+# `bot_id` equal to the map key. Only the shape is real; every value is made up.
 REAL_SECTIONS = (
     "config",
     "phantom_config",
@@ -457,30 +426,11 @@ def _state(tmp_path: Path, bots: int = 37, mutate=None) -> Path:
     return path
 
 
-# ===================================================================== #
-# R1  fleet.03.003 - the fields were inverted                           #
-# ===================================================================== #
-
-
 class TestSectionsImportedReportsWhatWasSeen:
-    """The pin asserts the loader's OWN carry contract now.
+    """SECTIONS is measured against `CARRIED_SECTIONS` over every eligible bot.
 
-    It used to assert `set(sections_present) <= {"config"}`, against a
-    sample of one, and reported ok=False on the operator's real state on
-    every load: 37 of 37 of his bots carry seven sections. The assertion
-    was true of the v3.23.72 loader and was left behind when v3.24.81
-    added the `scrumming_state` and `stats` carries.
-
-    THE SAME INVARIANT, ASSERTED HARDER. "All pieces of the fleet must
-    import" is unchanged. What changed is that it is now measured
-    against `CARRIED_SECTIONS` - every section the loader is built to
-    forward, that the entry supplies, reaches the returned dict - over
-    EVERY eligible bot rather than the first one.
-
-    IF ANY OF THESE FAILS: the loader stopped forwarding a section it
-    still claims to forward, and a Fleet Replay run would start from a
-    fleet missing its lots, its tranches or its grown targets, with no
-    record saying so.
+    A red here says the loader stopped forwarding a section it still lists, so a
+    Fleet Replay run would start without its lots, tranches or grown targets.
     """
 
     def test_the_operators_real_shape_passes(self, sink, tmp_path):
@@ -566,10 +516,10 @@ class TestSectionsImportedReportsWhatWasSeen:
         assert line.index("expected=") < line.index("actual=")
 
     def test_the_dropped_sections_are_the_ones_genuinely_dropped(self, sink, tmp_path):
-        """F3. The old context named `scrumming_state` and `stats` as
-        dropped. Both are carried, at `bot_state_loader.py`'s
-        `_src_scrumming_state` and `_src_stats`, and have been since
-        v3.24.81 - so a reader chased an import bug that was not there.
+        """`dropped` names no section `CARRIED_SECTIONS` forwards.
+
+        `scrumming_state` and `stats` reach the config as
+        `_src_scrumming_state` and `_src_stats`.
         """
         from src.simulator.fleet.bot_state_loader import (
             CARRIED_SECTIONS,
@@ -618,11 +568,6 @@ class TestSectionsImportedReportsWhatWasSeen:
         assert rec.ok is False
         assert rec.actual == 0
         assert rec.expected == 5 * 4
-
-
-# ===================================================================== #
-# R2  sim.06.001 - expect the tape the run was ASKED to play            #
-# ===================================================================== #
 
 
 class TestCandlesSteppedExpectsWhatWasAsked:
@@ -704,11 +649,6 @@ class TestCandlesSteppedExpectsWhatWasAsked:
         assert rec.ok is False
 
 
-# ===================================================================== #
-# R3  sim.06.002 - every entered tick is accounted for                  #
-# ===================================================================== #
-
-
 class TestBotTicksAreAccountedFor:
     """`expected` was every tick ENTRY while the read-rate throttle
     skips most of them by design: 13 of 13 recorded runs read FAIL."""
@@ -760,11 +700,6 @@ class TestBotTicksAreAccountedFor:
         rec = sink.records(TICKS)[0]
         assert rec.ok is False
         assert rec.expected > rec.actual, (rec.actual, rec.expected)
-
-
-# ===================================================================== #
-# R4  ta.07.001 - the verdict is the bound, not the equality            #
-# ===================================================================== #
 
 
 class TestCoverageIsBounded:
@@ -827,11 +762,6 @@ class TestCoverageIsBounded:
             "no longer an independent control"
         )
         assert rec.context["state"] == "eligible_and_observed"
-
-
-# ===================================================================== #
-# R4b ta.07.001 - the pin must be able to report its own WORST case     #
-# ===================================================================== #
 
 
 class TestCoverageWalksTheUnion:
@@ -995,11 +925,6 @@ class TestCoverageWalksTheUnion:
             assert rec.context["state"] == "eligible_and_observed"
 
 
-# ===================================================================== #
-# R5  sim.06.011 - expect what the TAPE can feed, not the bot count     #
-# ===================================================================== #
-
-
 def _panel_with_run(rows: int = 400):
     """A panel wired to a controller mid-replay, as the GUI has it."""
     _qapp()
@@ -1135,11 +1060,6 @@ class TestTheChartFeedOnALegacyHost:
         assert rec.context["symbols"] == 2
 
 
-# ===================================================================== #
-# R6  sim.06.013 - read the transition back off the widget              #
-# ===================================================================== #
-
-
 def _tab():
     _qapp()
     from src.gui.simulator_tab.simulator_tab import SimulatorTab
@@ -1194,11 +1114,6 @@ class TestModeSelectedReadsTheStackBack:
         assert rec.ok is False
 
 
-# ===================================================================== #
-# R7  sim.06.014 - a sample, because no expectation exists here         #
-# ===================================================================== #
-
-
 class TestTheLogLineIsASample:
     """`actual` and `expected` were both the stream name. There is no
     independent expectation at this point and inventing one would be
@@ -1233,11 +1148,6 @@ class TestTheLogLineIsASample:
         rec = sink.records(LOGLINE)[0]
         assert rec.context["delivered"] is False
         assert rec.ok is None, "a paused pane is an operator action, not a failure"
-
-
-# ===================================================================== #
-# R8  gui.04.001 - the pin had no caller anywhere in the tree           #
-# ===================================================================== #
 
 
 def _voting_panel(width: int, height: int):
@@ -1342,11 +1252,6 @@ class TestTheVotingPanelFitPinFires:
         )
         assert rec.ok is False
         assert any(v for v in rec.context["detail"].values()), rec.context
-
-
-# ===================================================================== #
-# R9  ytd.10.001-003 - reachable, and the excuse was the harness's      #
-# ===================================================================== #
 
 
 class _StubBotManager:
