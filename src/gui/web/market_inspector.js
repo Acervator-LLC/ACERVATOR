@@ -16,6 +16,8 @@
   var CELLS = "cells";
   var COLORS = "colors";
   var ELEMENTS = "elements";
+  var EMITTED = "emitted";
+  var EMPTY_TEXTS = "empty_texts";
   var ERROR_META = "error_meta";
   var EXCHANGE_SOURCE_WIRED = "exchange_source_wired";
   var FETCH_TEXTS = "fetch_texts";
@@ -43,6 +45,8 @@
   var REFRESH_ENABLED = "refresh_enabled";
   var REFRESH_LABEL = "refresh_label";
   var REFRESH_TOOLTIP = "refresh_tooltip";
+  var SCAN = "scan";
+  var SCAN_STATE = "scan_state";
   var SCHEDULED = "scheduled";
   var SHOW_ACTIVE = "show_active";
   var SHOW_ACTIVE_CHECKED = "show_active_checked";
@@ -88,6 +92,8 @@
     CELLS,
     COLORS,
     ELEMENTS,
+    EMITTED,
+    EMPTY_TEXTS,
     ERROR_META,
     EXCHANGE_SOURCE_WIRED,
     FETCH_TEXTS,
@@ -115,6 +121,8 @@
     REFRESH_ENABLED,
     REFRESH_LABEL,
     REFRESH_TOOLTIP,
+    SCAN,
+    SCAN_STATE,
     SCHEDULED,
     SHOW_ACTIVE,
     SHOW_ACTIVE_CHECKED,
@@ -297,6 +305,41 @@
 
   var ERROR_META_FIELDS = [AGE_SECONDS, SOURCE, SYMBOL_COUNT];
 
+  var EMPTY_PAIRS = "pairs";
+  var EMPTY_SIGNALS = "signals";
+  var EMPTY_TEXT_FIELDS = [EMPTY_PAIRS, EMPTY_SIGNALS];
+
+  var SCAN_EMPTY_FORMAT = "empty_format";
+  var SCAN_ERROR_SUFFIX = "error_suffix";
+  var SCAN_FINISHED = "finished";
+  var SCAN_FINISHED_TOPIC = "finished_topic";
+  var SCAN_NOT_ASKED = "not_asked";
+  var SCAN_NO_DURATION_S = "no_duration_s";
+  var SCAN_NO_SCAN_FORMAT = "no_scan_format";
+  var SCAN_PAIRS_NOUN = "pairs_noun";
+  var SCAN_PHASES = "phases";
+  var SCAN_RUNNING = "running";
+  var SCAN_SCANNING_FORMAT = "scanning_format";
+  var SCAN_SIGNALS_NOUN = "signals_noun";
+  var SCAN_STARTED_TOPIC = "started_topic";
+  var SCAN_UNKNOWN_SOURCE = "unknown_source";
+  var SCAN_FIELDS = [
+    SCAN_EMPTY_FORMAT,
+    SCAN_ERROR_SUFFIX,
+    SCAN_FINISHED,
+    SCAN_FINISHED_TOPIC,
+    SCAN_NOT_ASKED,
+    SCAN_NO_DURATION_S,
+    SCAN_NO_SCAN_FORMAT,
+    SCAN_PAIRS_NOUN,
+    SCAN_PHASES,
+    SCAN_RUNNING,
+    SCAN_SCANNING_FORMAT,
+    SCAN_SIGNALS_NOUN,
+    SCAN_STARTED_TOPIC,
+    SCAN_UNKNOWN_SOURCE
+  ];
+
   var HIGHER_GROUP_TITLE = "higher_group_title";
   var HIGHER_LIMIT = "higher_limit";
   var HIGHER_ROW_ACTIVE_SUFFIX = "higher_row_active_suffix";
@@ -408,7 +451,9 @@
   BAG_FIELDS[CELLS] = CELL_FIELDS;
   BAG_FIELDS[COLORS] = COLOR_FIELDS;
   BAG_FIELDS[ELEMENTS] = ELEMENT_FIELDS;
+  BAG_FIELDS[EMPTY_TEXTS] = EMPTY_TEXT_FIELDS;
   BAG_FIELDS[ERROR_META] = ERROR_META_FIELDS;
+  BAG_FIELDS[SCAN] = SCAN_FIELDS;
   BAG_FIELDS[FETCH_TEXTS] = FETCH_TEXT_FIELDS;
   BAG_FIELDS[LOGS] = LOG_FIELDS;
   BAG_FIELDS[MARKS] = MARK_FIELDS;
@@ -426,6 +471,7 @@
     BUS_TOPICS,
     CALL_NAMES,
     CALLS,
+    EMITTED,
     GROUP_MARGINS_PX,
     LEFT_MARGINS_PX,
     OUTER_MARGINS_PX,
@@ -448,6 +494,7 @@
     CELLS,
     COLORS,
     ELEMENTS,
+    EMPTY_TEXTS,
     ERROR_META,
     FETCH_TEXTS,
     LAST_META,
@@ -455,6 +502,7 @@
     MARKS,
     PER_BOT,
     PER_BOT_VIEW,
+    SCAN,
     SIGNAL_NAMES,
     SKIN,
     SOURCES,
@@ -574,6 +622,7 @@
   var TABLE_GROUP_PART = "table-group";
   var GROUP_LEGEND_PART = "group-legend";
   var GROUP_BODY_PART = "group-body";
+  var EMPTY_NOTE_PART = "empty-note";
   var GRID_PART = "grid";
   var GRID_HEAD_PART = "grid-head";
   var HEAD_ROW_PART = "head-row";
@@ -600,6 +649,7 @@
 
   var PART_ATTR = "data-part";
   var TABLE_ATTR = "data-table";
+  var STATE_ATTR = "data-scan-state";
   var NAME_ATTR = "data-name";
   var COLUMN_ATTR = "data-column";
   var AT_ATTR = "data-at";
@@ -1049,6 +1099,24 @@
     );
   }
 
+  // EmptyNote names the scan state under a table that drew no rows, so a
+  // scan nobody asked for reads differently from one that found nothing.
+  function EmptyNote(props) {
+    var model = props.model;
+    if (listField(model, props.rowsField).length) {
+      return null;
+    }
+    var noteProps = { style: asLabel(styleOf(model[STATUS_STYLE]), true) };
+    noteProps[PART_ATTR] = EMPTY_NOTE_PART;
+    noteProps[TABLE_ATTR] = props.table;
+    noteProps[STATE_ATTR] = text(model[SCAN_STATE]);
+    return element(
+      SPAN_TAG,
+      noteProps,
+      text(objectField(model, EMPTY_TEXTS)[props.noteField])
+    );
+  }
+
   // TableGroup is the Qt group box holding one table under its title.
   function TableGroup(props) {
     var model = props.model;
@@ -1087,7 +1155,14 @@
           columnsField: props.columnsField,
           rowsField: props.rowsField
         })
-      )
+      ),
+      element(EmptyNote, {
+        key: EMPTY_NOTE_PART,
+        model: model,
+        table: props.table,
+        rowsField: props.rowsField,
+        noteField: props.noteField
+      })
     );
   }
 
@@ -1115,7 +1190,8 @@
         titleField: SIGNALS_GROUP_TITLE,
         heightField: SIGNALS_MAX_HEIGHT_PX,
         columnsField: SIGNAL_COLUMNS,
-        rowsField: SIGNAL_ROWS
+        rowsField: SIGNAL_ROWS,
+        noteField: EMPTY_SIGNALS
       }),
       element(TableGroup, {
         key: PAIRS_TABLE,
@@ -1124,7 +1200,8 @@
         titleField: PAIRS_GROUP_TITLE,
         heightField: PAIRS_MAX_HEIGHT_PX,
         columnsField: PAIR_COLUMNS,
-        rowsField: PAIR_ROWS
+        rowsField: PAIR_ROWS,
+        noteField: EMPTY_PAIRS
       }),
       element(Spacer, { key: LEFT_STRETCH_PART, part: LEFT_STRETCH_PART })
     );

@@ -59,8 +59,8 @@ SHARED_INSPECTOR_NAME = "_GLOBAL_INSPECTOR"
 # screen with `src/gui/market_inspector_topologies.py` seated in it.
 SCREEN_CONNECTIONS = 2
 SCREEN_WITH_PANE_CONNECTIONS = 4
-SCREEN_ELEMENTS = 48
-SCREEN_WITH_PANE_ELEMENTS = 59
+SCREEN_ELEMENTS = 50
+SCREEN_WITH_PANE_ELEMENTS = 61
 SCREEN_TIMER_BUILDS = 0
 SCREEN_BUS_SITES = 0
 SCREEN_SIGNAL_BUILDS = 0
@@ -652,6 +652,15 @@ def read_old(tab):
         "last_meta": dict(tab._last_meta),
         "pending_refresh": tab._pending_refresh,
         "exchange_source_wired": bool(tab._connectors_getter and tab._scheduler),
+        "scan_state": tab.scan_state(),
+        "empty_texts": {
+            "signals": tab._signals_empty_lbl.text(),
+            "pairs": tab._pairs_empty_lbl.text(),
+        },
+        "empty_shown": [
+            not tab._signals_empty_lbl.isHidden(),
+            not tab._pairs_empty_lbl.isHidden(),
+        ],
     }
 
 
@@ -703,6 +712,12 @@ def read_new(payload):
         "last_meta": payload["last_meta"],
         "pending_refresh": payload["pending_refresh"],
         "exchange_source_wired": payload["exchange_source_wired"],
+        "scan_state": payload["scan_state"],
+        "empty_texts": payload["empty_texts"],
+        "empty_shown": [
+            not payload["signal_rows"],
+            not payload["pair_rows"],
+        ],
     }
 
 
@@ -2016,6 +2031,13 @@ METHOD_MAP = {
     "MarketInspectorTab.set_exchange_source": (
         "MarketInspectorScreenModel.set_exchange_source"
     ),
+    "MarketInspectorTab.scan_state": "MarketInspectorScreenModel.scan_state",
+    "MarketInspectorTab._render_empty_notes": (
+        "MarketInspectorScreenModel.empty_notes"
+    ),
+    "MarketInspectorTab._finish_scan_record": (
+        "MarketInspectorScreenModel.finish_scan_record"
+    ),
     "MarketInspectorTab._start_fetch": "MarketInspectorScreenModel.start_fetch",
     "MarketInspectorTab._fetch_and_analyze": (
         "MarketInspectorScreenModel.fetch_and_analyze"
@@ -2033,6 +2055,8 @@ FUNCTION_MAP = {
     "_signal_color": "signal_color",
     "_fmt_tf_state": "timeframe_text",
     "build_per_bot_view": "build_per_bot_model",
+    "_empty_table_text": "empty_table_text",
+    "_emit_scan": "MarketInspectorScreenModel.finish_scan_record",
 }
 
 HELPER_MAP = {
@@ -2078,6 +2102,9 @@ SCREEN_MODEL_MEMBERS = {
     "on_toggle_show_active",
     "status_line",
     "render_signals",
+    "scan_state",
+    "empty_notes",
+    "finish_scan_record",
 }
 
 PER_BOT_MODEL_MEMBERS = {
@@ -2142,13 +2169,13 @@ def test_every_shipped_class_function_and_method_has_a_counterpart():
     assert shipped_functions() == set(FUNCTION_MAP), sorted(
         shipped_functions() ^ set(FUNCTION_MAP)
     )
-    assert len(FUNCTION_MAP) == 4
+    assert len(FUNCTION_MAP) == 6
     found = {}
     for name in sorted(shipped_classes()):
         for member in members(getattr(shipped, name)):
             found["%s.%s" % (name, member)] = member
     assert set(found) == set(METHOD_MAP), sorted(set(found) ^ set(METHOD_MAP))
-    assert len(METHOD_MAP) == 13
+    assert len(METHOD_MAP) == 16
     targets = (
         set(METHOD_MAP.values())
         | set(CLASS_MAP.values())
@@ -2161,7 +2188,7 @@ def test_every_shipped_class_function_and_method_has_a_counterpart():
     assert members(surface.MarketInspectorScreenModel) == SCREEN_MODEL_MEMBERS, sorted(
         members(surface.MarketInspectorScreenModel) ^ SCREEN_MODEL_MEMBERS
     )
-    assert len(SCREEN_MODEL_MEMBERS) == 17
+    assert len(SCREEN_MODEL_MEMBERS) == 20
     assert members(surface.PerBotViewModel) == PER_BOT_MODEL_MEMBERS, sorted(
         members(surface.PerBotViewModel) ^ PER_BOT_MODEL_MEMBERS
     )
@@ -2416,6 +2443,13 @@ def screen_painted_by_the_model(payload):
                 table.setItem(row_index, column_index, item)
         return table
 
+    def empty_note_of(text, rows):
+        note = QLabel(text)
+        note.setStyleSheet(payload["status_style"])
+        note.setWordWrap(True)
+        note.setVisible(not rows)
+        return note
+
     signals_group = QGroupBox(payload["signals_group_title"])
     signals_layout = QVBoxLayout(signals_group)
     signals_layout.addWidget(
@@ -2424,6 +2458,9 @@ def screen_painted_by_the_model(payload):
             payload["signal_rows"],
             payload["signals_max_height_px"],
         )
+    )
+    signals_layout.addWidget(
+        empty_note_of(payload["empty_texts"]["signals"], payload["signal_rows"])
     )
     layout.addWidget(signals_group)
 
@@ -2435,6 +2472,9 @@ def screen_painted_by_the_model(payload):
             payload["pair_rows"],
             payload["pairs_max_height_px"],
         )
+    )
+    pairs_layout.addWidget(
+        empty_note_of(payload["empty_texts"]["pairs"], payload["pair_rows"])
     )
     layout.addWidget(pairs_group)
     layout.addStretch()
@@ -2825,8 +2865,10 @@ def test_the_two_sides_write_the_same_lines_when_a_fetch_refuses(monkeypatch):
         level=logging.DEBUG,
     )
     assert old_said == new_said, (old_said, new_said)
-    assert len(old_said) == 1, old_said
+    assert len(old_said) == 2, old_said
     assert "market inspector fetch failed" in old_said[0]
+    assert "market inspector scan finished" in old_said[1]
+    assert "error=venue down" in old_said[1], old_said[1]
 
 
 def test_the_line_recorder_can_report():
@@ -3140,6 +3182,10 @@ PAYLOAD_KEY_SOURCES = {
     "active_symbols": "model.active_symbols",
     "last_meta": "model.last_meta",
     "pending_refresh": "model.pending_refresh",
+    "scan_state": "model.scan_phase",
+    "empty_texts": "model.scan_phase",
+    "scan": "SCAN_NOT_ASKED",
+    "emitted": "model.emitted",
     "exchange_source_wired": "model.connectors_getter",
     "scheduled": "model.scheduled",
     "colors": "COLOR_ENTRY_LONG_HIGH",
@@ -3169,6 +3215,7 @@ PAYLOAD_KEY_SOURCES = {
 NONE_SOURCES = ("NO_CELL",)
 
 GROUP_KEYS = {
+    "scan",
     "colors",
     "signal_names",
     "timeframe",
@@ -3186,7 +3233,7 @@ GROUP_KEYS = {
     "per_bot_view",
 }
 
-DERIVED_KEYS = {"active_symbols", "exchange_source_wired"}
+DERIVED_KEYS = {"active_symbols", "exchange_source_wired", "empty_texts"}
 
 
 def resolve_source(name, model):
@@ -3205,6 +3252,11 @@ def backed(key, value, source, model):
         return list(value) == sorted(held)
     if key == "exchange_source_wired":
         return value is bool(held and model.scheduler)
+    if key == "empty_texts":
+        return value == {
+            "signals": surface.empty_table_text(held, surface.SIGNALS_NOUN),
+            "pairs": surface.empty_table_text(held, surface.PAIRS_NOUN),
+        }
     return freeze(value) == freeze(held)
 
 

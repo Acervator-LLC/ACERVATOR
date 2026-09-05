@@ -102,6 +102,22 @@ CONTRACTS: tuple[EmitContract, ...] = (
         optional=("panel", "timeframe"),
         description="Voting-engine snapshot.",
     ),
+    EmitContract(
+        topic="market_inspector.scan_started",
+        required=("forced",),
+        optional=("connector_count", "active_symbols"),
+        nested_key=None,
+        description="An HTF scan began. Flat payload: the Market Inspector "
+        "emits its fields at the top level, not under `data`.",
+    ),
+    EmitContract(
+        topic="market_inspector.scan_finished",
+        required=("market_count", "duration_s"),
+        optional=("signal_count", "pair_count", "source", "error"),
+        nested_key=None,
+        description="An HTF scan ended, carrying the markets it covered and "
+        "how long it took, so a scan that found nothing is still recorded.",
+    ),
 )
 
 _BY_TOPIC = {c.topic: c for c in CONTRACTS}

@@ -1,27 +1,13 @@
-"""market_inspector.py — Market Inspector tab.
+"""``MarketInspectorTab``, the Market Inspector tab.
 
-Top-level tab that renders the HTF entry-opportunity view. Owns the
-fetch cycle and writes results to the module-level shared
-MarketInspector (`src.trading.market_inspector.get_shared_inspector`).
-The Bot Details per-bot Market Inspector tab reads back from the same
-shared analyzer via ``build_per_bot_view()``.
-
-Two panels stacked in a scroll area:
-
-  1. Filter row: [Refresh] button, [ ] Show active markets checkbox,
-     last-updated + source badge.
-  2. HTF Signals table: per-market row with signal chip, aggregate
-     score, and D/W BB position + tightening state.
-  3. Opposing Pairs table: long-side / short-side / 30-day correlation.
-
-Refresh cadence is enforced by the fetcher: it serves the last network
-result while it is younger than DEFAULT_MIN_REFRESH_S (15 min), and goes
-to the network when the Refresh button passes force_network=True. Before
-v3.25.9 neither half existed -- the constant was never read and the
-parameter did not exist, so every refresh hit the venue.
-
-sadp: R28 SSS + R70 RCN
-v3.23.37 — Initial implementation.
+``MarketInspectorTab`` owns the fetch cycle and writes each scan into the
+analyzer ``get_shared_inspector`` returns, which ``build_per_bot_view``
+reads back for the Bot Details page. ``scan_state`` reports whether a
+scan has been asked for, is running, or has finished, and
+``_empty_table_text`` turns that state into the sentence an empty table
+carries. ``_emit_scan`` publishes ``SCAN_STARTED_TOPIC`` and
+``SCAN_FINISHED_TOPIC`` so a run leaves a record of what the scan
+covered.
 """
 
 from __future__ import annotations
@@ -89,6 +75,44 @@ def _fmt_tf_state(a) -> str:
     return f"{tag} bb={a.bb_position:.2f} z={a.z_score:+.2f}{tight}"
 
 
+SCAN_NOT_ASKED = "not_asked"
+SCAN_RUNNING = "running"
+SCAN_FINISHED = "finished"
+
+SCAN_STARTED_TOPIC = "market_inspector.scan_started"
+SCAN_FINISHED_TOPIC = "market_inspector.scan_finished"
+
+SIGNALS_NOUN = "markets"
+PAIRS_NOUN = "opposing pairs"
+
+
+def _empty_table_text(scan_state: str, noun: str) -> str:
+    """The sentence an empty table carries for one scan state.
+
+    ``SCAN_NOT_ASKED``, ``SCAN_RUNNING`` and ``SCAN_FINISHED`` each get
+    their own wording, so the three never read alike.
+    """
+    if scan_state == SCAN_RUNNING:
+        return f"Scanning for {noun}…"
+    if scan_state == SCAN_FINISHED:
+        return f"Scan finished. No {noun} found."
+    return f"No scan yet. Press Refresh to look for {noun}."
+
+
+def _emit_scan(topic: str, **fields) -> None:
+    """Publish one scan record on the event bus.
+
+    An event bus that cannot be reached leaves a debug line and never
+    stops the scan that was reporting.
+    """
+    try:
+        from ..core.event_bus import get_event_bus
+
+        get_event_bus().emit(topic, **fields)
+    except ImportError as exc:
+        logger.debug("market inspector emit %s unavailable: %s", topic, exc)
+
+
 if _HAS_QT:
 
     class MarketInspectorTab(QWidget):
@@ -116,6 +140,7 @@ if _HAS_QT:
             self._show_active = False  # Default: hide markets already traded
             self._last_meta: dict = {}
             self._pending_refresh = False
+            self._scan_state = SCAN_NOT_ASKED
             # Wired by MainWindow's MarketInspectorTabMixin via set_exchange_source().
             self._connectors_getter = None
             self._scheduler = None
@@ -165,6 +190,12 @@ if _HAS_QT:
             self._signals_tbl.setAlternatingRowColors(True)
             self._signals_tbl.setMaximumHeight(360)
             sg.addWidget(self._signals_tbl)
+            self._signals_empty_lbl = QLabel(
+                _empty_table_text(self._scan_state, SIGNALS_NOUN)
+            )
+            self._signals_empty_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
+            self._signals_empty_lbl.setWordWrap(True)
+            sg.addWidget(self._signals_empty_lbl)
             layout.addWidget(self._signals_group)
 
             # --- Opposing Pairs table ---
@@ -182,6 +213,12 @@ if _HAS_QT:
             self._pairs_tbl.setAlternatingRowColors(True)
             self._pairs_tbl.setMaximumHeight(180)
             pg.addWidget(self._pairs_tbl)
+            self._pairs_empty_lbl = QLabel(
+                _empty_table_text(self._scan_state, PAIRS_NOUN)
+            )
+            self._pairs_empty_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
+            self._pairs_empty_lbl.setWordWrap(True)
+            pg.addWidget(self._pairs_empty_lbl)
             layout.addWidget(self._pairs_group)
 
             layout.addStretch()
@@ -202,8 +239,18 @@ if _HAS_QT:
             self._outer_splitter.setStretchFactor(0, 1)
             self._outer_splitter.setStretchFactor(1, 1)
             self._outer_splitter.setSizes([800, 800])
+            self._render_empty_notes()
 
         # ── external API ─────────────────────────────────────────────
+        def scan_state(self) -> str:
+            """Whether a scan is unasked, running, or finished.
+
+            One of ``SCAN_NOT_ASKED``, ``SCAN_RUNNING`` or
+            ``SCAN_FINISHED``, which is what tells an empty table apart
+            from one waiting on a scan nobody started.
+            """
+            return self._scan_state
+
         def update_active_symbols(self, bot_statuses: list) -> None:
             """Refresh the active-symbol set from the current bot roster.
             Called by the main window whenever the bot list changes."""
@@ -310,18 +357,39 @@ if _HAS_QT:
                 )
                 return
             self._pending_refresh = True
+            self._scan_state = SCAN_RUNNING
             self._refresh_btn.setEnabled(False)
             self._status_lbl.setText("Fetching…")
+            self._render_empty_notes()
+            logger.info(
+                "market inspector scan started: forced=%s connectors=%d "
+                "active_symbols=%d",
+                bool(force),
+                len(connectors),
+                len(self._active_symbols),
+            )
+            _emit_scan(
+                SCAN_STARTED_TOPIC,
+                forced=bool(force),
+                connector_count=len(connectors),
+                active_symbols=len(self._active_symbols),
+            )
             try:
                 self._scheduler(self._fetch_and_analyze(connectors, force=force))
             except Exception as exc:  # noqa: BLE001 - scheduler failure
                 self._pending_refresh = False
+                self._scan_state = SCAN_FINISHED
                 self._refresh_btn.setEnabled(True)
                 self._status_lbl.setText(f"Scheduler error: {exc}")
+                self._finish_scan_record(0.0, error=f"scheduler: {exc}")
+                self._render_empty_notes()
 
         async def _fetch_and_analyze(
             self, connectors: dict, force: bool = False
         ) -> None:
+            import time as _time
+
+            started_at = _time.monotonic()
             try:
                 from src.exchange.market_inspector_fetcher import fetch_htf_universe
 
@@ -340,7 +408,9 @@ if _HAS_QT:
                     "symbol_count": 0,
                 }
                 self._pending_refresh = False
+                self._scan_state = SCAN_FINISHED
                 self._refresh_btn.setEnabled(True)
+                self._finish_scan_record(_time.monotonic() - started_at, error=str(exc))
                 self._render_signals()
                 return
             self._last_meta = dict(res.meta or {})
@@ -356,12 +426,72 @@ if _HAS_QT:
             except Exception as exc:  # noqa: BLE001 - analyzer surface
                 logger.exception("market inspector scan failed: %s", exc)
                 self._status_lbl.setText(f"Analyzer error: {exc}")
+                self._pending_refresh = False
+                self._scan_state = SCAN_FINISHED
+                self._refresh_btn.setEnabled(True)
+                self._finish_scan_record(_time.monotonic() - started_at, error=str(exc))
+                self._render_signals()
+                return
             self._pending_refresh = False
+            self._scan_state = SCAN_FINISHED
             self._refresh_btn.setEnabled(True)
+            self._finish_scan_record(_time.monotonic() - started_at)
             self._render_signals()
 
         def _on_progress(self, msg: str) -> None:
             self._status_lbl.setText(msg)
+
+        def _finish_scan_record(self, duration_s: float, error: str = "") -> None:
+            """Log and publish what the scan just covered and how long it took.
+
+            Reads the counts back off the shared analyzer, so the record
+            carries what the scan produced rather than what it requested.
+            """
+            signal_count = 0
+            pair_count = 0
+            try:
+                from ..trading.market_inspector import get_shared_inspector
+
+                inspector = get_shared_inspector()
+                signal_count = len(inspector.last_signals or [])
+                pair_count = len(inspector.last_pairs or [])
+            except Exception as exc:  # noqa: BLE001 - analyzer surface
+                logger.debug("market inspector count read failed: %s", exc)
+            meta = self._last_meta or {}
+            market_count = int(meta.get("symbol_count", 0) or 0)
+            source = str(meta.get("source", "?"))
+            logger.info(
+                "market inspector scan finished: %d market(s), %d signal(s), "
+                "%d pair(s) in %.2fs source=%s%s",
+                market_count,
+                signal_count,
+                pair_count,
+                duration_s,
+                source,
+                f" error={error}" if error else "",
+            )
+            _emit_scan(
+                SCAN_FINISHED_TOPIC,
+                market_count=market_count,
+                duration_s=round(float(duration_s), 3),
+                signal_count=signal_count,
+                pair_count=pair_count,
+                source=source,
+                error=error,
+            )
+
+        def _render_empty_notes(self) -> None:
+            """Show each table's placeholder only while that table is empty.
+
+            The sentence names the scan state, so an empty table says
+            whether a scan was never asked for, is running, or finished.
+            """
+            for table, label, noun in (
+                (self._signals_tbl, self._signals_empty_lbl, SIGNALS_NOUN),
+                (self._pairs_tbl, self._pairs_empty_lbl, PAIRS_NOUN),
+            ):
+                label.setText(_empty_table_text(self._scan_state, noun))
+                label.setVisible(table.rowCount() == 0)
 
         # ── rendering ────────────────────────────────────────────────
         def _on_toggle_show_active(self, checked: bool) -> None:
@@ -404,6 +534,7 @@ if _HAS_QT:
             # Sort by score desc; only show scored rows (skip NONE).
             signals = [s for s in signals if s.score > 0.0]
             self._signals_tbl.setRowCount(len(signals))
+            self._render_empty_notes()
             for row, s in enumerate(signals):
                 self._signals_tbl.setItem(row, 0, QTableWidgetItem(s.symbol))
                 sig_item = QTableWidgetItem(s.signal)
@@ -424,6 +555,7 @@ if _HAS_QT:
             # Opposing pairs table
             pairs = inspector.last_pairs
             self._pairs_tbl.setRowCount(len(pairs))
+            self._render_empty_notes()
             for row, p in enumerate(pairs):
                 self._pairs_tbl.setItem(
                     row,
@@ -443,6 +575,8 @@ if _HAS_QT:
                     3,
                     QTableWidgetItem(f"{p.long_side.score + p.short_side.score:.2f}"),
                 )
+
+            self._render_empty_notes()
 
     def build_per_bot_view(bot) -> QWidget:
         """Build the Bot Details per-bot Market Inspector tab widget.

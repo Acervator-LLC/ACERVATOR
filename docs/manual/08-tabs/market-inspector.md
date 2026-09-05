@@ -96,6 +96,59 @@ Three helpers do the work inside it.
 | `_fetch_one_symbol` | Pulls per-symbol OHLCV on the connector's single-worker executor |
 | `_resample_daily_to_weekly` | Derives the weekly series on the client when the venue lists no weekly timeframe |
 
+## What a scan reports
+
+An empty table can mean three different things. The note under it says which:
+
+- no scan has run yet
+- a scan is running
+- a scan finished and found nothing
+
+Before this, all three looked the same. An empty table gave no sign of which one
+it was, so a tab that was working looked exactly like a tab that was broken.
+
+`src/gui/market_inspector.py` — `_empty_table_text`
+
+```python
+def _empty_table_text(scan_state: str, noun: str) -> str:
+    """The sentence an empty table carries for one scan state.
+
+    ``SCAN_NOT_ASKED``, ``SCAN_RUNNING`` and ``SCAN_FINISHED`` each get
+    their own wording, so the three never read alike.
+    """
+    if scan_state == SCAN_RUNNING:
+        return f"Scanning for {noun}…"
+    if scan_state == SCAN_FINISHED:
+        return f"Scan finished. No {noun} found."
+    return f"No scan yet. Press Refresh to look for {noun}."
+```
+
+`scan_state` reports the same three states to the renderer. The React side draws
+the note under the table, the same way the tab does.
+
+The scan also writes to the log. It writes one line when it starts and one line
+when it finishes.
+
+The start line names two things: whether Refresh forced the scan, and how many
+exchange connectors it reached.
+
+The finish line names four things: how many markets the scan covered, how many
+signals and pairs it scored, how long it took, and where the data came from.
+
+The finish line is always written. A scan that scored nothing still writes one.
+That is what makes a quiet market different from a scan that never ran.
+
+Each line also goes on the event bus as a record other parts of the platform can
+read.
+
+| Topic | Carries |
+| ----- | ------- |
+| `market_inspector.scan_started` | forced, connector count, active symbols |
+| `market_inspector.scan_finished` | market count, duration, signals, pairs, source, error |
+
+Both topics are declared in `src/core/emit_contracts.py`. A topic declared there
+is a tracked emitter, and a run that never fires it is reported.
+
 ## Right half: topology proposals
 
 `MarketInspectorTopologies` in `src/gui/market_inspector_topologies.py` renders
@@ -184,7 +237,7 @@ names.
 | Bridge method | Serves |
 | ------------- | ------ |
 | `market_inspector.state` | The scanner and its two tables |
-| `market_inspector_tab.state` | The surrounding chrome |
+| `market_inspector_tab.state` | The per-bot page in the Bot Details dialog |
 | `market_inspector_topologies.state` | The proposal cards |
 
 Back to [the subsystem index](README.md).
