@@ -9,8 +9,7 @@ tree with ``ACERVATOR_CRASH_LOG_ROOT`` set, two sequential bare
 
     step 1  live 3.25.7 / dist 3.25.6
             rc 0, stderr banner fires, marker written, 807 bytes,
-            naming "Live source version : 3.25.7 / dist/.exe version
-            : 3.25.6"
+            naming both versions
     step 2  dist rebuilt, live 3.25.7 / dist 3.25.7
             rc 0, banner correctly SILENT, and the marker STILL THERE,
             still 807 bytes, still sha256 4f18e5d4..., still naming
@@ -34,17 +33,17 @@ now honours ``ACERVATOR_CRASH_LOG_ROOT``, so a test run writes it into
 a temp root and a real run writes it to home. Two locations, one
 latched file, no clear.
 
-WHAT THIS FILE PINS, AND WHAT IT DELIBERATELY DOES NOT
-======================================================
-It pins the RESET only. What the guard detects, when it warns, and the
-banner text are all out of scope, and ``TestTheBannerIsUnchanged``
-holds them fixed against the byte-exact text measured above.
+WHAT THIS FILE PINS
+===================
+It pins the RESET, and ``TestTheMarkerIsTheBanner`` holds the marker's
+text equal to what the same call writes to stderr.
 
-The reset is armed by the SAME evidence as the warning, inverted: both
-sides state a version, and the two are equal. An unreadable version and
-a missing ``dist`` both mean "cannot tell", never "the mismatch is
-gone" -- clearing on either would delete a true warning, and a rebuild
-in flight is exactly when ``dist`` is momentarily unreadable.
+The reset is armed by the SAME evidence as the warning, inverted: the
+source states a version and a bundle in ``dist`` carries it. An
+unreadable version and a missing ``dist`` both mean "cannot tell", never
+"the mismatch is gone" -- clearing on either would delete a true
+warning, and a rebuild in flight is exactly when ``dist`` is momentarily
+unreadable.
 
 The two sides are no longer two ``__version__`` literals. The live side
 is what ``src/_version.py`` resolves, and the dist side is what the
@@ -122,18 +121,18 @@ _BUNDLE_PARTS = _SIB._BUNDLE_PARTS
 BANNER_TEMPLATE = (
     "\n"
     "============================================================\n"
-    "  ACERVATOR STALE BINARY WARNING (v3.15.97 guard)           \n"
+    "  ACERVATOR STALE BINARY WARNING\n"
     "============================================================\n"
     "  Live source version : {live}\n"
-    "  dist/.exe version   : {dist}\n"
-    "                                                            \n"
-    "  The PyInstaller binary in dist/Acervator/Acervator.exe   \n"
-    "  is OUT OF DATE relative to the source code in src/.       \n"
-    "  If you double-click the .exe, you are running OLD code   \n"
-    "  with bugs that have since been fixed.                     \n"
-    "                                                            \n"
-    "  ACTION: either run `python main.py` from this source     \n"
-    "  tree, or rebuild the .exe via BUILD.py before launching.  \n"
+    "\n"
+    "  No bundle in dist was built from this source. Launching\n"
+    "  any of the bundles below runs OLD code with bugs that\n"
+    "  have since been fixed:\n"
+    "\n"
+    "    dist/Acervator  (built from {dist})\n"
+    "\n"
+    "  ACTION: run `python main.py` from this source tree, or\n"
+    "  rebuild with BUILD.py before launching a bundle.\n"
     "============================================================\n"
 )
 
@@ -141,11 +140,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _plant_main(tree: Path) -> None:
-    """Copy the real main.py into a temp tree, bytes in, bytes out.
+    """Copy the real main.py into ``tree``, bytes in, bytes out.
 
-    ``read_bytes``/``write_bytes`` and not ``read_text``: main.py is
-    all-CRLF and a text round-trip on Windows would rewrite every line
-    ending in the copy under test.
+    ``read_bytes``/``write_bytes`` and not ``read_text``, so a text
+    round-trip cannot rewrite the copy's line endings.
     """
     tree.mkdir(parents=True, exist_ok=True)
     (tree / "main.py").write_bytes((REPO_ROOT / "main.py").read_bytes())
@@ -180,7 +178,7 @@ class Latch:
         return self.home / ".acervator_logs" / _MARKER_FILE
 
     def versions(self, live: str | None, dist: str | None) -> None:
-        """Lay out (or remove) the two version sources the guard compares."""
+        """Lay out (or remove) the source version and the one bundle under dist."""
         bundle = self.tree.joinpath(*_BUNDLE_PARTS)
         for path in (
             self.tree / "src" / "__init__.py",
@@ -355,12 +353,11 @@ class TestAnUnknownVersionDoesNotClear:
     """CONTROL (c) -- "cannot tell" is not "the mismatch is gone".
 
     DECISION, DEFENDED: an unreadable or unparseable version leaves the
-    marker exactly where it is. The warning side already treats an
-    unknown as no-evidence -- its condition is ``live_ver and dist_ver
-    and live_ver != dist_ver`` -- and the clear side is armed by the
-    same evidence inverted. Clearing here would delete a TRUE warning on
-    a transient read failure, and a rebuild in flight is precisely when
-    a version file is momentarily unreadable.
+    marker exactly where it is. A bundle that states no version is
+    dropped before the comparison, so it neither warns nor clears.
+    Clearing here would delete a TRUE warning on a transient read
+    failure, and a rebuild in flight is precisely when a version file is
+    momentarily unreadable.
 
     If this goes red, a locked file during a build silently deletes the
     operator's stale-binary warning.
@@ -439,14 +436,12 @@ class TestAnUnknownVersionDoesNotClear:
     def test_a_vanished_dist_keeps_the_marker(self, latch: Latch) -> None:
         """DECISION, DEFENDED: a missing ``dist`` does not clear.
 
-        The guard returns at the ``isfile`` check before a version is
-        ever read, and that early return is untouched. A dist that has
-        been deleted, renamed or moved aside is not a dist that was
-        rebuilt; it is a dist we can no longer measure. Deleting the
-        warning because the evidence was moved is deleting a true
-        warning -- and the same early return also covers a missing
-        ``src/__init__.py``, i.e. a tree whose layout we do not
-        recognise, which is the last place to start removing files.
+        The guard returns before the marker directory is resolved when no
+        bundle states a version. A dist that has been deleted, renamed or
+        moved aside is not a dist that was rebuilt; it is a dist we can no
+        longer measure. The same return also covers a missing
+        ``src/__init__.py``, i.e. a tree whose layout we do not recognise,
+        which is the last place to start removing files.
         """
         latch.versions("3.25.7", "3.25.6")
         latch.run()
@@ -663,12 +658,11 @@ class TestTheGuardStillNeverRaises:
                 marker.chmod(stat.S_IWRITE)
 
 
-class TestTheBannerIsUnchanged:
-    """CONTROL (f) -- the reset changed removal, nothing else.
+class TestTheMarkerIsTheBanner:
+    """CONTROL (f) -- the marker holds ``BANNER_TEMPLATE``.
 
-    Detection, timing and wording were explicitly out of scope. If this
-    goes red, the clear has altered the warning it was supposed to leave
-    alone.
+    The same ``Latch.run`` writes that string to stderr, and the two sinks
+    must not drift apart.
     """
 
     def test_the_marker_is_the_pinned_banner_character_for_character(
@@ -754,20 +748,6 @@ class TestTheClearIsStructurallyWhereItClaimsToBe:
         assert not offenders, (
             "the clear path calls mkdir; it would create a directory in "
             "order to look for a file that is not in it"
-        )
-
-    def test_the_clear_is_armed_by_both_versions_being_known(self) -> None:
-        """Pins the decision, not just today's behaviour."""
-        branch = self._branch()
-        assert len(branch.orelse) == 1 and isinstance(
-            branch.orelse[0], ast.If
-        ), "the clear is no longer an elif on the version comparison"
-        names = {
-            n.id for n in ast.walk(branch.orelse[0].test) if isinstance(n, ast.Name)
-        }
-        assert {"live_ver", "dist_ver"} <= names, (
-            f"the clear's condition reads {sorted(names)}; an unknown "
-            f"version can now reach it and delete a true warning"
         )
 
     def test_the_guard_reads_the_override_before_it_deletes(self) -> None:

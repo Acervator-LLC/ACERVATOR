@@ -9,12 +9,10 @@ writer in ``main.py``: ``_setup_faulthandler`` was taught to read
 hard-coded ``Path.home() / ".acervator_logs"`` and read no override at
 all. Same class, same file, same import, one of the two fixed.
 
-WHY IT WAS QUIET, AND WHAT ARMS IT
-==================================
-The guard only writes when the source version and the built version
-DIFFER. Measured 2026-08-14: ``src/__init__.py`` and
-``dist/Acervator/_internal/src/__init__.py`` both read 3.25.6, so the
-guard returned early and wrote nothing.
+WHAT ARMS IT
+============
+The guard writes only when ``dist`` holds at least one bundle and none
+of them carries the version the source resolves to.
 
 The operator's standard cascade bumps the version and then runs the
 gate. From that bump until ``dist`` is rebuilt -- normally many runs --
@@ -130,13 +128,10 @@ def _plant_package(root: Path) -> None:
 
 
 def _build_tree(root: Path, live_ver: str | None, dist_ver: str | None) -> None:
-    """Lay out the two version sources the guard compares.
+    """Lay out ``live_ver`` beside the package and ``dist_ver`` in the bundle.
 
-    A temp tree carries no repository, so ``resolve_version`` answers the
-    live side from the baked file beside the package. The dist side is
-    the bundle's own baked file. ``None`` means "this side states no
-    version", which is how the no-dist case -- most developers, and the
-    operator before their first build -- is expressed.
+    ``None`` on either side states no version at all, which is the no-dist
+    case ``_BUNDLE_PARTS`` then never resolves.
     """
     if live_ver is not None:
         _plant_package(root)
@@ -409,8 +404,8 @@ class TestTheTriggerStillTriggers:
         for expected in (
             "ACERVATOR STALE BINARY WARNING",
             "Live source version : 3.25.7",
-            "dist/.exe version   : 3.25.6",
-            "rebuild the .exe via BUILD.py",
+            "dist/Acervator  (built from 3.25.6)",
+            "rebuild with BUILD.py",
         ):
             assert expected in body, f"the marker never says {expected!r}"
 
@@ -538,7 +533,7 @@ class TestTheGuardComparesResolvedAgainstBaked:
 
         body = (landed / _MARKER_FILE).read_text(encoding="utf-8")
         assert "Live source version : 3.25.7" in body
-        assert "dist/.exe version   : 3.15.43" in body
+        assert "dist/Acervator  (built from 3.15.43)" in body
 
     def test_a_baked_file_outranks_a_literal_left_beside_it(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -559,7 +554,7 @@ class TestTheGuardComparesResolvedAgainstBaked:
         landed = _run_guard(monkeypatch, tree, tmp_path / "home", tmp_path / "override")
 
         body = (landed / _MARKER_FILE).read_text(encoding="utf-8")
-        assert "dist/.exe version   : 3.25.6" in body
+        assert "dist/Acervator  (built from 3.25.6)" in body
         assert "3.15.43" not in body
 
     def test_the_live_side_is_the_version_git_describes(
@@ -582,7 +577,7 @@ class TestTheGuardComparesResolvedAgainstBaked:
 
         body = (landed / _MARKER_FILE).read_text(encoding="utf-8")
         assert "Live source version : 9.9.9" in body, body
-        assert "dist/.exe version   : 1.1.1" in body, body
+        assert "dist/Acervator  (built from 1.1.1)" in body, body
 
     def test_a_bundle_baked_at_the_tag_is_silent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
