@@ -156,6 +156,33 @@ SCAN_FAILED_LOG = "market inspector scan failed: %s"
 PROPOSALS_FAILED_LOG = "topology proposal read failed: %s"
 TOPOLOGIES_MISSING_LOG = "topologies pane unavailable: %s"
 
+SCAN_NOT_ASKED = "not_asked"
+SCAN_RUNNING = "running"
+SCAN_FINISHED = "finished"
+SCAN_PHASES = (SCAN_NOT_ASKED, SCAN_RUNNING, SCAN_FINISHED)
+
+SCAN_STARTED_TOPIC = "market_inspector.scan_started"
+SCAN_FINISHED_TOPIC = "market_inspector.scan_finished"
+
+SIGNALS_NOUN = "markets"
+PAIRS_NOUN = "opposing pairs"
+
+SCANNING_FORMAT = "Scanning for {noun}…"
+SCAN_EMPTY_FORMAT = "Scan finished. No {noun} found."
+NO_SCAN_FORMAT = "No scan yet. Press Refresh to look for {noun}."
+
+UNKNOWN_SOURCE = "?"
+NO_DURATION_S = 0.0
+SCAN_STARTED_LOG = (
+    "market inspector scan started: forced=%s connectors=%d active_symbols=%d"
+)
+SCAN_FINISHED_LOG = (
+    "market inspector scan finished: %d market(s), %d signal(s), "
+    "%d pair(s) in %.2fs source=%s%s"
+)
+SCAN_ERROR_SUFFIX = " error={error}"
+COUNT_READ_FAILED_LOG = "market inspector count read failed: %s"
+
 ERROR_META_SOURCE = SOURCE_ERROR
 ERROR_META_AGE_S = 0.0
 ERROR_META_COUNT = 0
@@ -256,6 +283,8 @@ FETCH_FAILED = "fetch.failed"
 FETCH_ANSWERED = "fetch.answered"
 SCAN_FAILED = "scan.failed"
 SCAN_DONE = "scan.done"
+SCAN_STARTED = "scan.started"
+SCAN_RECORDED = "scan.recorded"
 PROGRESS_WRITTEN = "progress.written"
 SHOW_ACTIVE_TOGGLED = "show_active.toggled"
 STORE_HANDED = "store.handed"
@@ -284,6 +313,8 @@ CALL_NAMES = (
     FETCH_ANSWERED,
     SCAN_FAILED,
     SCAN_DONE,
+    SCAN_STARTED,
+    SCAN_RECORDED,
     PROGRESS_WRITTEN,
     SHOW_ACTIVE_TOGGLED,
     STORE_HANDED,
@@ -444,6 +475,19 @@ def fill_pair_row(cells: list, pair: Any) -> None:
     ]
 
 
+def empty_table_text(scan_state: Any, noun: Any) -> str:
+    """The sentence an empty table carries for one scan state.
+
+    ``SCAN_NOT_ASKED``, ``SCAN_RUNNING`` and ``SCAN_FINISHED`` each get
+    their own wording, so the three never read alike.
+    """
+    if scan_state == SCAN_RUNNING:
+        return SCANNING_FORMAT.format(noun=noun)
+    if scan_state == SCAN_FINISHED:
+        return SCAN_EMPTY_FORMAT.format(noun=noun)
+    return NO_SCAN_FORMAT.format(noun=noun)
+
+
 def shown_signals(signals: Any, show_active: bool) -> list:
     """The signals the table draws: scored, and active ones only on request."""
     found = list(signals)
@@ -602,6 +646,7 @@ class MarketInspectorScreenModel:
         self.show_active_checked = SHOW_ACTIVE_CHECKED
         self.last_meta: dict = {}
         self.pending_refresh = False
+        self.scan_phase = SCAN_NOT_ASKED
         self.connectors_getter: Any = None
         self.scheduler: Any = None
         self.refresh_enabled = True
@@ -609,6 +654,7 @@ class MarketInspectorScreenModel:
         self.signal_rows: list = []
         self.pair_rows: list = []
         self.scheduled: list = []
+        self.emitted: list = []
         self.calls: list = [[SCREEN_BUILT]]
 
     def inspector(self) -> Any:
@@ -622,6 +668,22 @@ class MarketInspectorScreenModel:
         from ...trading.market_inspector import get_shared_inspector
 
         return get_shared_inspector()
+
+    def scan_state(self) -> str:
+        """Whether a scan is unasked, running, or finished.
+
+        One of ``SCAN_NOT_ASKED``, ``SCAN_RUNNING`` or ``SCAN_FINISHED``,
+        which is what tells an empty table apart from one waiting on a
+        scan nobody started.
+        """
+        return self.scan_phase
+
+    def empty_notes(self) -> dict:
+        """The sentence each table shows while it holds no rows."""
+        return {
+            "signals": empty_table_text(self.scan_phase, SIGNALS_NOUN),
+            "pairs": empty_table_text(self.scan_phase, PAIRS_NOUN),
+        }
 
     def fetch_universe(self) -> Any:
         """The fetch the Refresh button runs, injected or the shipped one."""
@@ -708,12 +770,31 @@ class MarketInspectorScreenModel:
             self.calls.append([FETCH_NO_CONNECTORS])
             return
         self.pending_refresh = True
+        self.scan_phase = SCAN_RUNNING
         self.refresh_enabled = False
         self.status_label_text = FETCHING_TEXT
+        logger.info(
+            SCAN_STARTED_LOG,
+            bool(force),
+            len(connectors),
+            len(self.active_symbols),
+        )
+        self.emitted.append(
+            [
+                SCAN_STARTED_TOPIC,
+                {
+                    "forced": bool(force),
+                    "connector_count": len(connectors),
+                    "active_symbols": len(self.active_symbols),
+                },
+            ]
+        )
+        self.calls.append([SCAN_STARTED, bool(force)])
         try:
             self.scheduler(self.fetch_call(connectors, force))
         except Exception as exc:
             self.pending_refresh = False
+            self.scan_phase = SCAN_FINISHED
             self.refresh_enabled = True
             self.status_label_text = SCHEDULER_ERROR_FORMAT.format(error=exc)
             self.calls.append([FETCH_SCHEDULER_FAILED, type(exc).__name__])
@@ -744,8 +825,10 @@ class MarketInspectorScreenModel:
                 "symbol_count": ERROR_META_COUNT,
             }
             self.pending_refresh = False
+            self.scan_phase = SCAN_FINISHED
             self.refresh_enabled = True
             self.calls.append([FETCH_FAILED, type(exc).__name__])
+            self.finish_scan_record(NO_DURATION_S, error=str(exc))
             self.render_signals()
             return
         self.last_meta = dict(result.meta or {})
@@ -762,8 +845,62 @@ class MarketInspectorScreenModel:
             self.status_label_text = ANALYZER_ERROR_FORMAT.format(error=exc)
             self.calls.append([SCAN_FAILED, type(exc).__name__])
         self.pending_refresh = False
+        self.scan_phase = SCAN_FINISHED
         self.refresh_enabled = True
+        self.finish_scan_record(NO_DURATION_S)
         self.render_signals()
+
+    def finish_scan_record(self, duration_s: float, error: str = "") -> str:
+        """The record a finished scan leaves, as one log line.
+
+        Counts come off the analyzer the screen reads, so the record
+        carries what the scan produced rather than what it asked for.
+        Appends the emission to ``emitted`` in place of a bus.
+        """
+        signal_count = 0
+        pair_count = 0
+        try:
+            inspector = self.inspector()
+            signal_count = len(inspector.last_signals or [])
+            pair_count = len(inspector.last_pairs or [])
+        except Exception as exc:
+            logger.debug(COUNT_READ_FAILED_LOG, exc)
+        meta = self.last_meta or {}
+        market_count = int(meta.get("symbol_count", 0) or 0)
+        source = str(meta.get("source", UNKNOWN_SOURCE))
+        suffix = SCAN_ERROR_SUFFIX.format(error=error) if error else ""
+        logger.info(
+            SCAN_FINISHED_LOG,
+            market_count,
+            signal_count,
+            pair_count,
+            duration_s,
+            source,
+            suffix,
+        )
+        line = SCAN_FINISHED_LOG % (
+            market_count,
+            signal_count,
+            pair_count,
+            duration_s,
+            source,
+            suffix,
+        )
+        self.emitted.append(
+            [
+                SCAN_FINISHED_TOPIC,
+                {
+                    "market_count": market_count,
+                    "duration_s": round(float(duration_s), 3),
+                    "signal_count": signal_count,
+                    "pair_count": pair_count,
+                    "source": source,
+                    "error": error,
+                },
+            ]
+        )
+        self.calls.append([SCAN_RECORDED, market_count])
+        return line
 
     def on_progress(self, message: str) -> None:
         """Write one progress line into the status label."""
@@ -1073,6 +1210,8 @@ def build_view_model(
         "active_symbols": sorted(model.active_symbols),
         "last_meta": dict(model.last_meta),
         "pending_refresh": model.pending_refresh,
+        "scan_state": model.scan_state(),
+        "empty_texts": model.empty_notes(),
         "exchange_source_wired": bool(model.connectors_getter and model.scheduler),
         "scheduled": [list(found) for found in model.scheduled],
         "colors": {
@@ -1152,7 +1291,27 @@ def build_view_model(
             "scan_failed": SCAN_FAILED_LOG,
             "proposals_failed": PROPOSALS_FAILED_LOG,
             "topologies_missing": TOPOLOGIES_MISSING_LOG,
+            "scan_started": SCAN_STARTED_LOG,
+            "scan_finished": SCAN_FINISHED_LOG,
+            "count_read_failed": COUNT_READ_FAILED_LOG,
         },
+        "scan": {
+            "phases": list(SCAN_PHASES),
+            "not_asked": SCAN_NOT_ASKED,
+            "running": SCAN_RUNNING,
+            "finished": SCAN_FINISHED,
+            "started_topic": SCAN_STARTED_TOPIC,
+            "finished_topic": SCAN_FINISHED_TOPIC,
+            "signals_noun": SIGNALS_NOUN,
+            "pairs_noun": PAIRS_NOUN,
+            "scanning_format": SCANNING_FORMAT,
+            "empty_format": SCAN_EMPTY_FORMAT,
+            "no_scan_format": NO_SCAN_FORMAT,
+            "error_suffix": SCAN_ERROR_SUFFIX,
+            "unknown_source": UNKNOWN_SOURCE,
+            "no_duration_s": NO_DURATION_S,
+        },
+        "emitted": [list(one) for one in model.emitted],
         "error_meta": {
             "source": ERROR_META_SOURCE,
             "age_seconds": ERROR_META_AGE_S,
