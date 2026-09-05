@@ -53,9 +53,12 @@ dependencies = [
 #            ImportError. The sweep still runs and writes its JSON report.
 #   charts   src/design_system.py imports matplotlib at module level with
 #            NO guard. It is an extra and not a core dependency for a
-#            different reason: no tracked module imports
-#            `src.design_system`, and both .spec files list 'matplotlib'
-#            in `EXCLUDES`, so the frozen application never reaches that
+#            different reason: the only tracked modules importing
+#            `src.design_system` are tools/build_product_manual.py and
+#            tests/test_design_system_chart_tokens.py, neither .spec
+#            collects tools/, and `EXCLUDES` in tools/spec_common.py --
+#            which both .spec files pass to PyInstaller -- names
+#            'matplotlib', so the frozen application never reaches that
 #            import.
 #   monitor  `LiveMonitor._call` in src/trading/live_monitor.py imports
 #            httpx with no guard. No install list in the tree ever
@@ -150,6 +153,14 @@ dev = [
     # producer and neither .spec collects tools/, so it ships to no
     # target.
     "pypdf>=6.10.2",
+    # The manual-producer tests reach reportlab through
+    # tools/build_product_manual.py. They and
+    # tests/test_design_system_chart_tokens.py reach matplotlib through
+    # src/design_system.py.
+    "acervator[report]",
+    "acervator[charts]",
+    # tests/test_build_product_manual*.py import PIL to write a fixture PNG.
+    "pillow>=10.0.0",
 ]
 
 [project.scripts]
@@ -192,7 +203,7 @@ norecursedirs = ["__pycache__", ".git"]
 markers = [
     "caplog_may_be_empty(reason): this test watches a NON-Acervator logger and an empty caplog is its pass condition",    # CI lanes, applied by file in tests/conftest.py. Fast lane runs
     # `-m "not slow and not archetype"`; the full lane runs the complement.
-    "slow: end-to-end engine-replay suite; heavy CPU, deferred to the full CI lane",
+    "slow: deferred to the full CI lane, for heavy CPU or for a package only the [dev] extra installs",
     "archetype: archetype-harness test needing the [dev] analyzer toolchain",
 ]
 

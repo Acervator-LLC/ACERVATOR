@@ -15,14 +15,14 @@ which is the order [08-tabs.md](../08-tabs.md) runs its sections in.
 | ---- | ------ | ----- |
 | [portfolio-panels.md](portfolio-panels.md) | The header strip: spendable columns, five counter cards, privacy dots | Live |
 | [simulator.md](simulator.md) | Fleet Replay, Stone Tablets, the gate-latch criterion, Nuclear Mode | Live, rebuild in progress |
-| [paper-trader.md](paper-trader.md) | What the step is, and the proof no module implements it | Not built |
-| [proof-of-accumulation.md](proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain | Engine only, tabs shelved |
+| [paper-trader.md](paper-trader.md) | What the step is, and the two live surfaces that still offer it | Not built — issue #19 |
+| [proof-of-accumulation.md](proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain | Engine only — issue #147 |
 | [market-inspector.md](market-inspector.md) | Higher-timeframe scanner, opposing pairs, topology proposals, adopt | Live |
 | [bot-swarm.md](bot-swarm.md) | Nodes, Smart Wires, wire credits, the fold-tranche book | Live |
 | [asset-charts.md](asset-charts.md) | One candlestick panel per traded symbol | Live |
 | [history.md](history.md) | Venue trade history, grading, gate analysis | Live |
 | [console.md](console.md) | Python log tail and the emitter signal stream | Live |
-| [system-status.md](system-status.md) | Emitter Network and Watchdog, and the proof no tab exists | Not built |
+| [system-status.md](system-status.md) | Emitter Network and Watchdog, the two halves that run today | Not built — issue #34 |
 | [settings.md](settings.md) | The User page, the Exchanges page, and what each of the eleven pages persists | Live |
 | [promotion-pipeline.md](promotion-pipeline.md) | How a strategy earns its way to real money | Two of four steps |
 
@@ -48,8 +48,8 @@ CANONICAL_TAB_ORDER = [
 The Trading tab has its own section: [06-trading-tab.md](../06-trading-tab.md).
 The Indicator Voting Panel has [07-indicators.md](../07-indicators.md).
 
-Every screen the window no longer builds gets a sentinel instead of a widget,
-so a legacy reader gets that sentinel rather than an error. The list covers the
+Every screen the window does not build gets a sentinel instead of a widget, so
+a legacy reader gets that sentinel rather than an error. The list covers the
 Competition and Local Testnet tabs, the analytics, risk, journal, alerts and
 audio pages, and the Paper Trader.
 

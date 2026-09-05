@@ -1,24 +1,13 @@
-"""The CI fast lane: which files it runs, and which packages it installs.
+"""The CI lanes: which files each one runs, and which packages each installs.
 
-The fast lane installs the ``test`` extra and nothing else, then runs
-``-m "not slow and not archetype"``. The full lane installs ``dev`` and
-runs the complement. A file that needs a package outside the fast
-lane's set must carry one of those two marks, or it passes on a
-developer host and fails on the build machine.
-
-``tests/conftest.py`` applies the marks ``lane_marks`` names, and
-``tests/test_ci_fast_lane_packages.py`` reads the same function, so the
-lane rule has one definition and cannot drift between them.
-
-FALSIFICATION
-=============
-Wrong if (a) ``pyproject.toml`` renames the ``test`` extra or the
-``dependencies`` key, when ``fast_lane_distributions`` raises instead
-of reporting, (b) a requirement is installed by pip but reachable
-through no ``Requires-Dist`` chain, when the set is short and a real
-import reads as an offender, or (c) a requirement gated behind an
-extra of a fast-lane package is counted -- the set is then wider than
-what pip installs and a real offender reads as allowed.
+``SLOW_FILES`` and ``lane_marks`` decide the marks ``tests/conftest.py``
+applies, ``runs_in_fast_lane`` reads the same answer, and ``is_collected``
+separates a file pytest runs from one it only imports. The fast lane
+installs ``FAST_LANE_EXTRA`` and runs ``-m "not slow and not
+archetype"``; the full lane installs ``FULL_LANE_EXTRA`` and runs the
+complement. ``lane_distributions`` reads ``dependencies`` and one named
+extra out of ``pyproject.toml``, expands an ``acervator[other]``
+self-reference, and walks every recorded requirement.
 """
 
 from __future__ import annotations
@@ -34,10 +23,15 @@ SLOW_FILES = frozenset(
     {
         "test_pin_observability.py",
         "test_fleet_replay_controller.py",
+        "test_build_product_manual.py",
+        "test_build_product_manual_rendering.py",
+        "test_design_system_chart_tokens.py",
+        "test_extract_product_manual_keeps_additions.py",
     }
 )
 
 FAST_LANE_EXTRA = "test"
+FULL_LANE_EXTRA = "dev"
 
 
 def lane_marks(filename: str) -> frozenset[str]:
@@ -53,6 +47,18 @@ def lane_marks(filename: str) -> frozenset[str]:
 def runs_in_fast_lane(filename: str) -> bool:
     """True when the fast lane collects this file rather than deselecting it."""
     return not lane_marks(filename)
+
+
+def is_collected(filename: str) -> bool:
+    """True when pytest itself runs the file, matching ``python_files``.
+
+    ``conftest.py`` counts; a helper module a test imports does not.
+    """
+    return (
+        filename.startswith("test_")
+        or filename.endswith("_test.py")
+        or filename == "conftest.py"
+    )
 
 
 def normalise_distribution(requirement: str) -> str:
@@ -80,18 +86,42 @@ def _direct_requirements(distribution: str) -> list[str]:
     ]
 
 
-def fast_lane_distributions(pyproject: Path | None = None) -> frozenset[str]:
-    """Every distribution the CI fast lane installs, transitively.
+def _self_referenced_extras(requirement: str, project: str) -> tuple[str, ...]:
+    """The extras an ``acervator[a,b]`` self-reference names, else empty."""
+    head, bracket, tail = requirement.partition("[")
+    if not bracket or "]" not in tail:
+        return ()
+    if normalise_distribution(head) != project:
+        return ()
+    return tuple(part.strip() for part in tail.split("]")[0].split(",") if part.strip())
 
-    Reads the runtime ``dependencies`` and the ``test`` extra from
-    ``pyproject.toml``, then walks each one's recorded requirements, so
-    a package pulled in only as a dependency of a declared package is
-    part of the set.
+
+def lane_distributions(extra: str, pyproject: Path | None = None) -> frozenset[str]:
+    """Every distribution the CI lane installing `extra` gets, transitively.
+
+    Reads the runtime ``dependencies`` and `extra` from ``pyproject.toml``,
+    expands a self-reference into the extra it names, then walks each
+    requirement recorded against the installed distribution.
     """
     config = tomllib.loads((pyproject or PYPROJECT).read_text(encoding="utf-8"))
     project = config["project"]
+    own_name = normalise_distribution(project["name"])
+    declared_extras = project["optional-dependencies"]
+
     declared = list(project["dependencies"])
-    declared += list(project["optional-dependencies"][FAST_LANE_EXTRA])
+    pending_extras = [extra]
+    read_extras: set[str] = set()
+    while pending_extras:
+        name = pending_extras.pop()
+        if name in read_extras:
+            continue
+        read_extras.add(name)
+        for requirement in declared_extras[name]:
+            referenced = _self_referenced_extras(requirement, own_name)
+            if referenced:
+                pending_extras.extend(referenced)
+            else:
+                declared.append(requirement)
 
     pending = [normalise_distribution(item) for item in declared]
     installed: set[str] = set()
@@ -102,3 +132,8 @@ def fast_lane_distributions(pyproject: Path | None = None) -> frozenset[str]:
         installed.add(name)
         pending.extend(_direct_requirements(name))
     return frozenset(installed)
+
+
+def fast_lane_distributions(pyproject: Path | None = None) -> frozenset[str]:
+    """Every distribution the CI fast lane installs, transitively."""
+    return lane_distributions(FAST_LANE_EXTRA, pyproject)

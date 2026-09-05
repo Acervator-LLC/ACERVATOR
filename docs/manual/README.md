@@ -88,14 +88,14 @@ the screen's state.
 | [08-tabs/README.md](08-tabs/README.md) | Index of the files below, the live tab set, how a screen reaches its renderer |
 | [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md) | The header strip: spendable columns, counter cards, privacy dots |
 | [08-tabs/simulator.md](08-tabs/simulator.md) | Fleet Replay, Stone Tablets, the gate-latch criterion, Nuclear Mode |
-| [08-tabs/paper-trader.md](08-tabs/paper-trader.md) | What the step is, and the proof no module implements it |
+| [08-tabs/paper-trader.md](08-tabs/paper-trader.md) | What the step is, and the two live surfaces that still offer it |
 | [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain |
 | [08-tabs/market-inspector.md](08-tabs/market-inspector.md) | Signal table, opposing pairs, topology proposals, adopt |
 | [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md) | Nodes, Smart Wires, wire credits, the fold-tranche book |
 | [08-tabs/asset-charts.md](08-tabs/asset-charts.md) | One candlestick panel per traded symbol |
 | [08-tabs/history.md](08-tabs/history.md) | Venue trade history, grading, gate analysis |
 | [08-tabs/console.md](08-tabs/console.md) | Python log tail and the emitter signal stream |
-| [08-tabs/system-status.md](08-tabs/system-status.md) | Emitter Network and Watchdog, and the proof no tab exists |
+| [08-tabs/system-status.md](08-tabs/system-status.md) | Emitter Network and Watchdog, the two halves that run today |
 | [08-tabs/settings.md](08-tabs/settings.md) | The User page, the Exchanges page, and what each of the eleven pages persists |
 | [08-tabs/promotion-pipeline.md](08-tabs/promotion-pipeline.md) | How a strategy earns its way to real money |
 

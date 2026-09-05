@@ -1,37 +1,8 @@
 # System Status Tab
 
-Reference. Two halves, both running today. Neither has a screen.
-
-## The measurement
-
-I asked the repository for every path ever added, deleted or renamed, in every
-commit reachable from every ref. No answer carries the words system status or
-watchdog tab.
-
-```
-git log --all --diff-filter=ADR --name-only
-```
-
-The same query returns a surface module, a renderer module and two tests for
-the Live Status tab, which proves it finds files that existed. That one is the
-per-bot readout inside the Live Bot Settings dialog, not a platform-wide status
-screen.
-
-The tab row names seven screens, and this is not one of them.
-
-`src/gui/main_window.py` — `CANONICAL_TAB_ORDER`
-
-```python
-CANONICAL_TAB_ORDER = [
-    "Trading",
-    "Market Inspector",
-    "Bot Swarm",
-    "Asset Charts",
-    "History",
-    "Simulator",
-    "Console",
-]
-```
+Reference. The screen is not built. The tab row names seven screens and this is
+not one of them, and issue #34 carries the initial build-out. Both halves the
+operator's text describes run today, and this file is those two halves.
 
 ## Half one: the Emitter Network
 
@@ -120,6 +91,20 @@ nothing, and a coverage report read zero while hundreds of trades flowed past
 it. A key-name mismatch is invisible to the producer and to the consumer; only
 a declared contract makes it visible.
 
+The observer already has a formatter that turns its counts into operator-facing
+lines. One module calls it, the Nuclear fleet controller writing a run report,
+and no screen reads it.
+
+`src/core/emit_contracts.py` — `format_observer_lines`, what it returns
+
+```python
+d = obs.to_dict()
+out = [
+    f"Emit contracts: {d['topics_seen']}/{d['topics_declared']} "
+    "topic(s) observed",
+]
+```
+
 ## Half two: the Watchdog
 
 The Watchdog runs outside the process that can crash. It launches the
@@ -148,70 +133,8 @@ POSTMORTEM_MAX_AGE_DAYS: int = 30  # anything older is dropped
 POSTMORTEM_SIZE_WARN_BYTES: int = 5 * 1024 * 1024 * 1024  # 5 GB warning threshold
 ```
 
-## What the next build is
-
-Two panes, and the operator has already said which goes where: the Emitter
-Network readout moves off the Console, and the Watchdog sits under it.
-
-**One.** The tab needs a name in the row, the same way every other screen gets
-one. The list is the only thing that decides the order.
-
-*Proposed, not present, in `src/gui/main_window.py`:*
-
-```python
-CANONICAL_TAB_ORDER = [
-    "Trading",
-    "Market Inspector",
-    "Bot Swarm",
-    "Asset Charts",
-    "History",
-    "Simulator",
-    "Console",
-    "System Status",
-]
-```
-
-**Two.** The upper pane already has its renderer written and nothing calls it.
-The report turns an observer into operator-facing lines: how many declared
-topics were seen, how many times each fired, which fields arrived on each, and
-every violation.
-
-`src/core/emit_contracts.py` — `format_observer_lines`, what it already returns
-
-```python
-d = obs.to_dict()
-out = [
-    f"Emit contracts: {d['topics_seen']}/{d['topics_declared']} "
-    "topic(s) observed",
-]
-```
-
-Only one module calls it today, and that is the Nuclear fleet controller
-writing a run report. Nothing on any screen reads it.
-
-*Proposed, not present:*
-
-```python
-class SystemStatusTabMixin:
-    """Builds the System Status tab: the emitter report above, the Watchdog below."""
-
-    def _build_system_status_tab(self) -> None:
-        self._emit_observer = EmitObserver()
-        self._system_status = SystemStatusTab(self._emit_observer)
-        self._main_tabs.addTab(self._system_status, "System Status")
-```
-
-`EmitObserver` in `src/core/emit_contracts.py` is the class the Nuclear
-controller already constructs, so the pane reads the observer the platform
-already knows how to fill rather than a second one.
-
-**Three.** The lower pane is the Watchdog's own output, and the Watchdog is a
-separate process writing to files under the log root. The pane reads those
-files. Nothing in the application should reach into the Watchdog, because the
-whole point of it is that it survives the application dying.
-
-In development. What the Watchdog pane should show beyond the heartbeat age and
-the post-mortem list has not been decided, so nothing is proposed for it.
+The Watchdog writes to files under the log root, and nothing in the application
+reaches into it. Surviving the application dying is the whole point of it.
 
 ## Until the tab lands
 
