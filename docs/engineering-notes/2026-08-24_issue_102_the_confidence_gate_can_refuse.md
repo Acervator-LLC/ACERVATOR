@@ -158,9 +158,8 @@ reasons: `indicators/rsi.py:176,178` and `indicators/slingshot.py:416,420`
 (+0.15 clamped, but the nearest thresholds are 0.3/0.5/0.7 — still
 refuses); `indicators/ichimoku.py:281` and `indicators/volume.py:334`
 (the `+=` literals BUILD the score, they do not adjust a prior
-measurement); `triangular_swarm.py:186` (a convex weight, and
-`mr_penalty` reaches 0.0); all of `gate_chain.py` (precomputed booleans,
-no adjustment); `stocks/stock_accumulation_bot.py:268` (no adjustment);
+measurement); all of `gate_chain.py` (precomputed booleans, no
+adjustment); `stocks/stock_accumulation_bot.py:268` (no adjustment);
 every price / USD dust test (UNBOUNDED INPUT — the shape does not apply).
 
 ## 5. Calibration, before any zero was believed
