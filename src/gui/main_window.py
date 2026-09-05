@@ -15,6 +15,7 @@ from typing import Optional
 from ..core.event_bus import get_event_bus
 from .. import __version__
 from . import design_system as ds
+from .main_tabs.main_window_surface import CANONICAL_TAB_ORDER
 
 
 from .table_cells import (
@@ -286,17 +287,7 @@ if _HAS_QT:
             self._build_history_tab()
             self._build_console_tab()
 
-            # The builders above add tabs in construction order; the reorder fixes it.
-            CANONICAL_TAB_ORDER = [
-                "Trading",
-                "Market Inspector",
-                "Bot Swarm",
-                "Asset Charts",
-                "History",
-                "Simulator",
-                "Console",
-            ]
-            self._reorder_main_tabs(CANONICAL_TAB_ORDER)
+            self._reorder_main_tabs(list(CANONICAL_TAB_ORDER))
 
             self._main_tabs.currentChanged.connect(self._on_main_tab_changed)
 

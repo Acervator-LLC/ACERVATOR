@@ -1,19 +1,9 @@
-"""v3.23.77 — pin the operator's canonical main-tab order.
+"""The main tab book ends in the operator's canonical order.
 
-Operator directive 2026-08-XX: default tab layout must be
-Trading | Market Inspector | Bot Swarm | Asset Charts |
-History | Simulator | Console
-
-The reorder pass runs after all addTab/insertTab calls (see
-main_window.py:_reorder_main_tabs). Any future tab addition that
-isn't listed in CANONICAL_TAB_ORDER stays at the end — the caller
-is free to add without editing the reorder list, but the operator
-must update the list when they want a new tab to have a canonical
-position.
-
-This test binds the reorder helper to a synthetic QTabWidget so the
-pin can run without booting the full MainWindow (which drags in
-BotManager, event bus, splash timers, etc.).
+``MainWindow._setup_ui`` runs the tab builders and then hands
+``_reorder_main_tabs`` the order ``main_window_surface`` declares. Every
+case here drives those shipped methods and reads the labels back off a
+real ``QTabWidget``.
 """
 
 from __future__ import annotations
@@ -37,119 +27,228 @@ from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
     QLabel,
     QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
+
+import src.gui.main_window as mw  # noqa: E402
+from src.gui.main_tabs import main_window_surface as surface  # noqa: E402
+
+#: The order the operator reads left to right across the tab bar.
+OPERATOR_TAB_ORDER = [
+    "Trading",
+    "Market Inspector",
+    "Bot Swarm",
+    "Asset Charts",
+    "History",
+    "Simulator",
+    "Console",
+]
+
+#: A truthy ``_testnet_bridge`` makes ``install_on`` refuse before it builds a chain.
+BRIDGE_ALREADY_INSTALLED = object()
+
+RETIRED_SENTINELS = "<retired sentinels>"
 
 
 @pytest.fixture(scope="module")
 def qapp():
-    app = QApplication.instance() or QApplication(sys.argv)
-    yield app
+    """The one application object every case in this file renders against."""
+    return QApplication.instance() or QApplication(sys.argv)
 
 
-def _bind_reorder_helper(tabs: QTabWidget) -> None:
-    """Extract MainWindow._reorder_main_tabs as a plain callable and
-    bind it to any object exposing ``self._main_tabs``. Keeps the
-    test independent of MainWindow's full construction cost."""
-    import src.gui.main_window as mw
+def labels_of(book: QTabWidget) -> list:
+    """Every tab label in ``book``, left to right."""
+    return [book.tabText(index) for index in range(book.count())]
 
-    fn = mw.MainWindow.__dict__["_reorder_main_tabs"]
+
+def reorder_bound_to(book: QTabWidget) -> MethodType:
+    """The shipped ``_reorder_main_tabs`` bound to a holder carrying ``book``."""
 
     class _Holder:
-        pass
+        def __init__(self, tabs: QTabWidget) -> None:
+            self._main_tabs = tabs
 
-    holder = _Holder()
-    holder._main_tabs = tabs
-    holder._reorder = MethodType(fn, holder)
-    return holder._reorder
+    return MethodType(mw.MainWindow.__dict__["_reorder_main_tabs"], _Holder(book))
 
 
-def _make_tabs_in_wrong_order(qapp) -> QTabWidget:
-    """Mirror the actual current addTab order in main_window.py so the
-    pin test proves the reorder pass FIXES the ordering."""
-    tabs = QTabWidget()
-    tabs.addTab(QLabel("t"), "Trading")
-    tabs.addTab(QLabel("c"), "Asset Charts")
-    tabs.addTab(QLabel("b"), "Bot Swarm")
-    tabs.addTab(QLabel("m"), "Market Inspector")
-    tabs.insertTab(1, QLabel("s"), "Simulator")
-    tabs.addTab(QLabel("h"), "History")
-    tabs.addTab(QLabel("k"), "Console")
-    return tabs
+def tabs_in_construction_order(_qapp) -> QTabWidget:
+    """A book filled the way the shipped builders fill it.
+
+    Six builders append and ``_build_simulator_tab`` inserts at index 1.
+    """
+    book = QTabWidget()
+    book.addTab(QLabel("t"), "Trading")
+    book.addTab(QLabel("c"), "Asset Charts")
+    book.addTab(QLabel("b"), "Bot Swarm")
+    book.addTab(QLabel("m"), "Market Inspector")
+    book.insertTab(1, QLabel("s"), "Simulator")
+    book.addTab(QLabel("h"), "History")
+    book.addTab(QLabel("k"), "Console")
+    return book
 
 
-def test_reorder_produces_canonical_order(qapp):
-    tabs = _make_tabs_in_wrong_order(qapp)
-    reorder = _bind_reorder_helper(tabs)
-    canonical = [
-        "Trading",
-        "Market Inspector",
-        "Bot Swarm",
-        "Asset Charts",
-        "History",
-        "Simulator",
-        "Console",
-    ]
-    reorder(canonical)
-    actual = [tabs.tabText(i) for i in range(tabs.count())]
-    assert actual == canonical, f"tab order not canonical: {actual}"
-    tabs.deleteLater()
+class ShellWindow:
+    """Stands in for ``MainWindow`` while the shipped ``_setup_ui`` runs.
+
+    Each ``_build_*`` adds one ``QLabel`` where the matching mixin adds
+    its tab, and ``reorder_argument`` records what ``_setup_ui`` hands
+    the shipped ``_reorder_main_tabs``.
+    """
+
+    def __init__(self, layout: QVBoxLayout) -> None:
+        self._layout = layout
+        self._testnet_bridge = BRIDGE_ALREADY_INSTALLED
+        self._local_testnet = BRIDGE_ALREADY_INSTALLED
+        self._header_strip_container = None
+        self._history_tab = None
+        self._main_tabs: QTabWidget = QTabWidget()
+        self.built: list = []
+        self.reorder_argument: list = []
+        self.order_before_reorder: list = []
+        self.tab_changes: list = []
+
+    def _build_header_strip(self) -> QVBoxLayout:
+        return self._layout
+
+    def _append(self, name: str) -> None:
+        self.built.append(name)
+        self._main_tabs.addTab(QLabel(name), name)
+
+    def _build_trading_tab(self) -> None:
+        self._append(surface.TRADING_TAB)
+
+    def _build_charts_tab(self) -> None:
+        self._append(surface.ASSET_CHARTS_TAB)
+
+    def _build_bot_swarm_tab(self) -> None:
+        self._append(surface.BOT_SWARM_TAB)
+
+    def _build_market_inspector_tab(self) -> None:
+        self._append(surface.MARKET_INSPECTOR_TAB)
+
+    def _build_simulator_tab(self) -> None:
+        name = surface.SIMULATOR_TAB
+        self.built.append(name)
+        self._main_tabs.insertTab(1, QLabel(name), name)
+
+    def _install_retired_tab_sentinels(self) -> None:
+        self.built.append(RETIRED_SENTINELS)
+
+    def _build_history_tab(self) -> None:
+        self._append(surface.HISTORY_TAB)
+
+    def _build_console_tab(self) -> None:
+        self._append(surface.CONSOLE_TAB)
+
+    def _reorder_main_tabs(self, desired: list) -> None:
+        self.order_before_reorder = labels_of(self._main_tabs)
+        self.reorder_argument = list(desired)
+        MethodType(mw.MainWindow.__dict__["_reorder_main_tabs"], self)(desired)
+
+    def _on_main_tab_changed(self, index: int) -> None:
+        self.tab_changes.append(index)
 
 
-def test_reorder_preserves_widgets(qapp):
-    """moveTab must not destroy or swap widget instances."""
-    tabs = _make_tabs_in_wrong_order(qapp)
-    trading_widget_before = tabs.widget(0)
-    reorder = _bind_reorder_helper(tabs)
-    reorder(
-        [
-            "Trading",
-            "Market Inspector",
-            "Bot Swarm",
-            "Asset Charts",
-            "History",
-            "Simulator",
-            "Console",
-        ]
+@pytest.fixture()
+def shell(qapp):
+    """A ``ShellWindow`` the shipped ``_setup_ui`` has already run against."""
+    host = QWidget()
+    built = ShellWindow(QVBoxLayout(host))
+    MethodType(mw.MainWindow.__dict__["_setup_ui"], built)()
+    assert built._testnet_bridge is None, (
+        "install_on must refuse while a bridge is set, so no chain file is "
+        f"reached; _setup_ui left {built._testnet_bridge!r}"
     )
-    assert tabs.tabText(0) == "Trading"
-    assert tabs.widget(0) is trading_widget_before
-    tabs.deleteLater()
+    yield built
+    host.deleteLater()
 
 
-def test_reorder_leaves_unnamed_tabs_at_end(qapp):
-    """Tabs whose labels aren't in `desired` must keep their relative
-    position at the end — future tab additions get a graceful default
-    until the operator adds them to CANONICAL_TAB_ORDER."""
-    tabs = QTabWidget()
-    tabs.addTab(QLabel("a"), "Trading")
-    tabs.addTab(QLabel("b"), "FutureTab")
-    tabs.addTab(QLabel("c"), "History")
-    reorder = _bind_reorder_helper(tabs)
-    reorder(["Trading", "History"])
-    labels = [tabs.tabText(i) for i in range(tabs.count())]
-    assert labels[0] == "Trading"
-    assert labels[1] == "History"
-    assert "FutureTab" in labels
-    tabs.deleteLater()
+def test_the_window_takes_its_tab_order_from_the_one_declaration() -> None:
+    """``main_window`` reads the same object the surface declares."""
+    assert mw.CANONICAL_TAB_ORDER is surface.CANONICAL_TAB_ORDER, (
+        "the window must read the declared order, not restate it; "
+        f"window has {mw.CANONICAL_TAB_ORDER!r}, "
+        f"surface declares {surface.CANONICAL_TAB_ORDER!r}"
+    )
 
 
-def test_reorder_is_idempotent(qapp):
-    """Running the reorder twice must produce the same order (no
-    swapping / no infinite churn)."""
-    tabs = _make_tabs_in_wrong_order(qapp)
-    reorder = _bind_reorder_helper(tabs)
-    canonical = [
-        "Trading",
-        "Market Inspector",
-        "Bot Swarm",
-        "Asset Charts",
-        "History",
-        "Simulator",
-        "Console",
-    ]
-    reorder(canonical)
-    first_order = [tabs.tabText(i) for i in range(tabs.count())]
-    reorder(canonical)
-    second_order = [tabs.tabText(i) for i in range(tabs.count())]
-    assert first_order == second_order == canonical
-    tabs.deleteLater()
+def test_setup_ui_leaves_the_tabs_in_the_operators_order(shell) -> None:
+    """The shipped ``_setup_ui`` ends with ``OPERATOR_TAB_ORDER`` left to right."""
+    assert labels_of(shell._main_tabs) == OPERATOR_TAB_ORDER, labels_of(
+        shell._main_tabs
+    )
+
+
+def test_setup_ui_hands_the_reorder_the_declared_order(shell) -> None:
+    """``_setup_ui`` passes ``CANONICAL_TAB_ORDER`` itself, not a restatement."""
+    assert shell.reorder_argument == list(surface.CANONICAL_TAB_ORDER), (
+        "the reorder was handed an order the surface does not declare: "
+        f"{shell.reorder_argument}"
+    )
+
+
+def test_setup_ui_had_a_book_the_reorder_still_had_to_move(shell) -> None:
+    """The control for ``_reorder_main_tabs``: the builders leave it work."""
+    assert shell.order_before_reorder != OPERATOR_TAB_ORDER, (
+        "the builders already left canonical order, so the reorder proves "
+        f"nothing: {shell.order_before_reorder}"
+    )
+    assert sorted(shell.order_before_reorder) == sorted(OPERATOR_TAB_ORDER), (
+        "the builders added a different tab set than the order names: "
+        f"{shell.order_before_reorder}"
+    )
+
+
+def test_setup_ui_runs_every_tab_builder(shell) -> None:
+    """Each ``_build_*`` and ``_install_retired_tab_sentinels`` runs once."""
+    assert shell.built == [
+        surface.TRADING_TAB,
+        surface.ASSET_CHARTS_TAB,
+        surface.BOT_SWARM_TAB,
+        surface.MARKET_INSPECTOR_TAB,
+        surface.SIMULATOR_TAB,
+        RETIRED_SENTINELS,
+        surface.HISTORY_TAB,
+        surface.CONSOLE_TAB,
+    ], shell.built
+
+
+def test_reorder_produces_the_operators_order(qapp) -> None:
+    """``_reorder_main_tabs`` moves a construction-order book into canonical order."""
+    book = tabs_in_construction_order(qapp)
+    reorder_bound_to(book)(list(surface.CANONICAL_TAB_ORDER))
+    assert labels_of(book) == OPERATOR_TAB_ORDER, labels_of(book)
+    book.deleteLater()
+
+
+def test_reorder_keeps_the_widget_that_was_in_each_tab(qapp) -> None:
+    """``moveTab`` carries each widget with its label."""
+    book = tabs_in_construction_order(qapp)
+    carried = {book.tabText(i): book.widget(i) for i in range(book.count())}
+    reorder_bound_to(book)(list(surface.CANONICAL_TAB_ORDER))
+    after = {book.tabText(i): book.widget(i) for i in range(book.count())}
+    assert after == carried, f"a widget changed tab: {after} != {carried}"
+    book.deleteLater()
+
+
+def test_reorder_leaves_an_unnamed_tab_at_the_end(qapp) -> None:
+    """A tab ``desired`` does not name keeps a place after the named ones."""
+    book = QTabWidget()
+    book.addTab(QLabel("a"), "Trading")
+    book.addTab(QLabel("b"), "FutureTab")
+    book.addTab(QLabel("c"), "History")
+    reorder_bound_to(book)(["Trading", "History"])
+    assert labels_of(book) == ["Trading", "History", "FutureTab"], labels_of(book)
+    book.deleteLater()
+
+
+def test_reorder_is_idempotent(qapp) -> None:
+    """A second ``_reorder_main_tabs`` over an ordered book moves nothing."""
+    book = tabs_in_construction_order(qapp)
+    reorder = reorder_bound_to(book)
+    reorder(list(surface.CANONICAL_TAB_ORDER))
+    first = labels_of(book)
+    reorder(list(surface.CANONICAL_TAB_ORDER))
+    assert labels_of(book) == first == OPERATOR_TAB_ORDER, labels_of(book)
+    book.deleteLater()
