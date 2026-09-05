@@ -1649,7 +1649,7 @@ pf = self._sm.get("profit_folding", {})
 self._folding_active.setChecked(pf.get("active", True))
 ```
 
-Issue #322 carries that half of it. Four of the six keys then fail a second
+Issue #423 carries that half of it. Four of the six keys then fail a second
 time further down: the two target names and their two counts are four of the
 eleven the bot factory strips, listed under Settings > Trading above. A group
 that did round-trip still could not carry those four to a bot.
@@ -2008,7 +2008,7 @@ Save collapses all six into one dictionary holding the two flags and the list
 of active periodicities. The load path reads none of them back, so every open
 shows the build state rather than the stored one. No reader outside the dialog
 reads the group either, which leaves the six controls writing to a key nothing
-consults. Issue #322 carries this page.
+consults. Issue #423 carries this page.
 
 In development. What the load path should restore for this page has not been
 settled against the rest of the dialog, so nothing is proposed here.
