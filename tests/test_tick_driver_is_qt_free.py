@@ -271,15 +271,23 @@ def test_main_and_the_driver_agree_on_the_interval():
     )
 
 
-def test_the_qt_factory_uses_the_shared_pump_body():
+def test_the_qt_factory_uses_the_shared_pump_body(monkeypatch):
     """main's timer must call `pump_once`, not a private copy of it."""
-    import inspect
+    pytest.importorskip("PySide6.QtCore")
+    import src.core.tick_driver as tick_driver
 
-    source = inspect.getsource(main._make_async_pump_timer)
-    assert "pump_once" in source, (
-        "main._make_async_pump_timer no longer calls "
-        "src.core.tick_driver.pump_once. The Qt path and the headless "
-        "path can now diverge without any test noticing."
+    reached: list = []
+    monkeypatch.setattr(tick_driver, "pump_once", reached.append)
+    loop = _new_loop()
+    timer = main._make_async_pump_timer(loop)
+    assert reached == [], "the factory pumped before the timer fired"
+    timer.timeout.emit()
+    loop.close()
+    assert reached == [loop], (
+        f"main._make_async_pump_timer fired and "
+        f"src.core.tick_driver.pump_once saw {reached}. The Qt path no "
+        f"longer runs the shared pump body, so the Qt schedule and the "
+        f"headless schedule can diverge with no other symptom."
     )
 
 

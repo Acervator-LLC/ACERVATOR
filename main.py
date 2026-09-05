@@ -420,6 +420,48 @@ def _make_async_pump_timer(
     return timer
 
 
+def build_instance_guard(state_mgr, app_version: str):
+    """Return an InstanceGuard pointed at ``state_mgr.config_dir``.
+
+    The fleet and the guard read one directory, so no caller derives a
+    second location of its own.
+    """
+    from src.core.instance_guard import InstanceGuard
+
+    return InstanceGuard(state_mgr.config_dir, app_version=app_version)
+
+
+def autostart_gate(guard, decision, ask_consent, on_withheld, on_granted) -> bool:
+    """Answer whether the fleet may auto-start, and never start it here.
+
+    ``on_withheld`` takes the refusal reason and ``on_granted`` the grant
+    reason; a False answer means no bot may be started.
+    """
+    from src.core.instance_guard import AUTHORISED_ALREADY_OWNER, authorise_auto_start
+
+    authorised, why = authorise_auto_start(guard, decision, ask_consent)
+    if not authorised:
+        on_withheld(why)
+        return False
+    if why != AUTHORISED_ALREADY_OWNER:
+        on_granted(why)
+    return True
+
+
+def drain_pending_tasks(loop: asyncio.AbstractEventLoop) -> int:
+    """Cancel every unfinished task on ``loop`` and await it, returning the count.
+
+    Called before ``loop.close()`` so no task is destroyed while pending.
+    """
+    pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
+    if not pending:
+        return 0
+    for task in pending:
+        task.cancel()
+    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+    return len(pending)
+
+
 def main() -> int:
     """Build the Qt application, show the window, run the event loop and return its exit code."""
 
@@ -696,9 +738,7 @@ def main() -> int:
                 f"after splash screen completes..."
             )
 
-    from src.core.instance_guard import InstanceGuard
-
-    instance_guard = InstanceGuard(state_mgr.config_dir, app_version=current_version)
+    instance_guard = build_instance_guard(state_mgr, current_version)
     instance_decision = instance_guard.evaluate(_autostart_bot_count)
     if instance_decision.permits_auto_start:
         instance_guard.take_ownership()
@@ -979,20 +1019,11 @@ def main() -> int:
 
     def _trigger_auto_restart():
         try:
-            from src.core.instance_guard import (
-                AUTHORISED_ALREADY_OWNER,
-                authorise_auto_start,
-            )
             from src.gui.instance_consent_dialog import ask_for_consent
 
-            _authorised, _why = authorise_auto_start(
-                instance_guard,
-                instance_decision,
-                lambda d: ask_for_consent(d, parent=crypto_window),
-            )
-            if not _authorised:
+            def _log_withheld(why: str) -> None:
                 log_manager.warning(
-                    f"Auto-start WITHHELD ({_why}, verdict "
+                    f"Auto-start WITHHELD ({why}, verdict "
                     f"{instance_decision.verdict}). "
                     f"{_autostart_bot_count} bot(s) stay IDLE."
                 )
@@ -1002,13 +1033,22 @@ def main() -> int:
                     f"button when this machine should own the fleet.",
                     "warning",
                 )
-                return
-            if _why != AUTHORISED_ALREADY_OWNER:
+
+            def _log_granted(why: str) -> None:
                 log_manager.warning(
                     f"Instance guard: ownership granted to this machine "
-                    f"({instance_decision.identity.label}) by {_why}. "
+                    f"({instance_decision.identity.label}) by {why}. "
                     f"Auto-start proceeds."
                 )
+
+            if not autostart_gate(
+                instance_guard,
+                instance_decision,
+                lambda d: ask_for_consent(d, parent=crypto_window),
+                _log_withheld,
+                _log_granted,
+            ):
+                return
             eligible = [
                 b
                 for b in bot_manager._bots.values()
@@ -1134,17 +1174,13 @@ def main() -> int:
     except Exception as _lock_exc:  # noqa: BLE001
         log_manager.warning(f"Instance handle release raised: {_lock_exc}")
     loop.run_until_complete(bot_manager.stop_all())
-    # Drains pending tasks so loop.close() emits no "Task was destroyed" warning.
     try:
-        _pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
-        if _pending:
+        _drained = drain_pending_tasks(loop)
+        if _drained:
             log_manager.info(
-                "Cancelling %d still-pending asyncio tasks before " "loop.close()",
-                len(_pending),
+                "Cancelled %d still-pending asyncio tasks before loop.close()",
+                _drained,
             )
-            for _t in _pending:
-                _t.cancel()
-            loop.run_until_complete(asyncio.gather(*_pending, return_exceptions=True))
     except Exception as _cancel_exc:  # noqa: BLE001
         log_manager.warning("pending-task drain at shutdown raised: %s", _cancel_exc)
     loop.close()

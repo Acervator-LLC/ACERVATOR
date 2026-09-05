@@ -465,21 +465,50 @@ def test_snapshot_carries_stat_fields():
 # ── the coupling itself ──────────────────────────────────────────
 
 
-def test_producer_source_names_no_widget_setters():
-    """Structural guard. If someone reintroduces a widget call in the
-    producer the decoupling is silently undone and only a stopwatch
-    would catch it — so assert on the source."""
-    import inspect
+class _WidgetTouched(BaseException):
+    """A widget call, raised past the panel's own ``except Exception``."""
 
-    src = inspect.getsource(frp.FleetReplayPanel._collect_visual_snapshot)
-    for banned in (
-        "update_gates",
-        "append_tick",
-        "update_bot_row",
-        "setText",
-        "setEnabled",
-        ".update()",
-    ):
-        assert (
-            banned not in src
-        ), f"producer calls {banned!r} — Qt from the worker thread"
+
+class _Tripwire:
+    """A widget stand-in that refuses every call made on it."""
+
+    def __init__(self, name: str):
+        self._name = name
+
+    def __getattr__(self, attr):
+        def _refuse(*args, **kwargs):
+            del args, kwargs
+            raise _WidgetTouched(
+                f"the worker thread called {self._name}.{attr}() — Qt from "
+                f"off the GUI thread is the coupling this decoupling removed"
+            )
+
+        return _refuse
+
+
+def _wired_panel():
+    """A ``_Panel`` whose every widget refuses to be touched."""
+    panel = _Panel(
+        _Controller([_Bot("BTC/USD", gate_state={"scrum_armed": True})], _Exchange()),
+        _Tripwire("stat_strip"),
+    )
+    panel._sim_price_chart = _Tripwire("price_chart")
+    panel._sim_voting_readout = _Tripwire("voting_readout")
+    panel._gate_cells = {"BTC/USD": _Tripwire("gate_cell")}
+    return panel
+
+
+def test_the_producer_touches_no_widget():
+    """``_collect_visual_snapshot`` runs on the worker thread, so every
+    widget the panel holds refuses the call."""
+    snap = _call("_collect_visual_snapshot", _wired_panel())
+    assert snap["stat_fields"]["Bots"] == "1"
+    assert "BTC/USD" in snap["per_symbol"]
+
+
+def test_the_tripwire_catches_a_widget_call():
+    """POSITIVE CONTROL: ``_apply_stat_fields`` is the GUI-thread half
+    and does touch the strip, so the same tripwire fires on it."""
+    panel = _wired_panel()
+    with pytest.raises(_WidgetTouched, match="the worker thread called"):
+        _call("_apply_stat_fields", panel, {"Bots": "1"})
