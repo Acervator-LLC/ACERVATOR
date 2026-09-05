@@ -1,78 +1,16 @@
 """Every archetype stays reachable from every caller that names it.
 
-Why this file exists
---------------------
-Issue #84 moved the harness from `tools/harness/` to `dev_harness/harness/`.
-The operator's ruling on that move was explicit:
-
-    "Yeah, we can move but we are not retiring or disabling it at all.
-     It has to be used."
-
-A move cannot disable an archetype loudly. Every caller names its archetype
-by a STRING, and the two callers that matter route by string at run time:
-
-* the archetype-gate hook builds a module list, then imports it.
-* `dev_harness/touchset.py` maps module name to class name, then imports it.
-
-`importlib.import_module` on a stale string raises inside a caller that
-already catches import failure and degrades. So a missed caller does not
-crash the gate. It removes one archetype from the run and reports the rest
-as green. That is the exact outcome the ruling forbids, and no other test in
-the suite would see it.
-
-What this file measures
------------------------
-1. Each of the five archetypes imports at its declared path and exposes a
-   `review` method. That is reachability at the API level.
-2. Each archetype answers `python -m <module>` as a program. That is
-   reachability at the CLI level, which is how the operator and the skills
-   invoke them.
-3. Every harness module string written into a caller file resolves. This is
-   the anti-stale-caller check: it reads the callers, not a list kept here,
-   so a caller that keeps an old path fails this file.
-4. The five archetypes are each named by at least one caller. Without this,
-   check 3 would pass on a tree where every caller had been deleted.
-5. The OLD path is gone. A stale caller must break, not silently skip.
-
-Two-sided control
------------------
-`test_probe_rejects_a_module_that_does_not_exist` and
-`test_caller_scan_rejects_a_bogus_module_string` point the same helpers at a
-wrong path and require them to report FAILURE. Without those two, a helper
-that always returned "reachable" would satisfy every assertion above.
-
-Where the hook callers are — 2026-08-25
----------------------------------------
-Three of the callers are hook scripts, and the harness moved to user level
-at the CTO's request. Their location now comes from `tools.claude_home`,
-which searches user level first and then the repository, the order the
-router hook itself uses.
-
-A hook caller that is not installed anywhere is SKIPPED, with a reason that
-names every path searched. The repository cannot install the harness into
-another developer's clone, so failing there would report an unconfigured
-machine as a defect. A hook caller that is missing from a harness directory
-that DOES exist is a partial install, and
-`tests/test_hooks.py::test_the_install_is_not_partial` fails on it.
-
-The skip cannot hide a regression here, for two reasons. The repository
-callers alone name all five archetypes, so check 4 keeps its force with no
-hook installed at all; and `TestTheCallerSearchCanFail` carries no skip mark,
-runs in both states, and requires the resolver to report absence when there
-is nothing to find.
+``ARCHETYPES`` pins each module and the class it exposes; each is imported,
+asked for a ``review`` method, and spawned as ``python -m <module>``. Every
+harness module string written into a ``CALLERS`` file must resolve, and every
+archetype must be named by at least one caller. ``_OLD_PATH_RE`` requires the
+pre-move path to be gone outside ``_ALLOWED_PREFIXES`` and ``_ALLOWED_EXACT``,
+and ``TestTheCallerSearchCanFail`` is the control for the resolver.
 """
 
 # ruff: noqa: S603
-# S607 IS FIXED BY CONSTRUCTION, NOT SUPPRESSED, following the reasoning at the
-# top of dev_harness/harness/coding_archetype.py and the pattern already
-# measured clean in tests/test_pre_push_gate_hook.py. Both spawns below use an
-# absolute executable path — the interpreter via `sys.executable`, git via
-# `_git_exe()` resolved through shutil.which — so a `git.cmd` planted earlier
-# on PATH cannot run under the developer's token during a test.
-#
-# S603 remains and is not avoidable: an all-literal argv draws none, and every
-# argv carrying a variable draws one. A resolved interpreter path is a variable
-# by definition. This directive is the residue, narrowed to the one rule.
+# `sys.executable` and `_git_exe()` are resolved paths, so an all-literal argv
+# is impossible.
 from __future__ import annotations
 
 import importlib
@@ -100,9 +38,8 @@ def _git_exe() -> str:
     return _GIT
 
 
-# The five archetypes, and the class each one exposes. This list is the
-# CONTRACT. It is deliberately written out rather than discovered, because a
-# discovered list shrinks silently when a file disappears.
+# (module, the class it exposes). Written out, not discovered: a globbed
+# list shrinks in silence when a file disappears.
 ARCHETYPES: tuple[tuple[str, str], ...] = (
     ("dev_harness.harness.coding_archetype", "CodingArchetype"),
     ("dev_harness.harness.gui_archetype", "GUIArchetype"),
@@ -111,17 +48,8 @@ ARCHETYPES: tuple[tuple[str, str], ...] = (
     ("dev_harness.harness.watchdog_archetype", "WatchdogArchetype"),
 )
 
-# Files that name a harness module by string and import it later. A stale
-# string in any of these is a silently skipped check.
-#
-# The list is split by WHERE the file lives, not by what it does. The hook
-# scripts left the repository on 2026-08-25 and are resolved at run time;
-# the rest are tracked files and are read straight from the tree.
-#
-# "tools/emitter_registry_check.py" left this list with the pin system. It
-# named `watchdog_archetype` to resolve a pin through the syntax tree; the
-# file is deleted, and a caller entry that outlives its file names a path
-# this module reads unconditionally.
+# Files that name a harness module by string and import it later. The hook
+# scripts live outside the repository and `caller_path` resolves them.
 HOOK_CALLERS: tuple[str, ...] = (
     "archetype_gate.py",
     "prompt_router.py",
@@ -163,34 +91,8 @@ def _skip_if_uninstalled(name: str) -> None:
 # an import statement, a list literal, a subprocess argv or a printed hint.
 _MODULE_RE = re.compile(r"\bdev_harness\.harness\.[A-Za-z_][A-Za-z0-9_.]*")
 
-# The old home. Historical records keep it on purpose and are excluded.
-#
-# Issue #82 dropped a fifth entry. It named the settings backup
-# "settings.local.json.pre_consolidation_20260806" under the .claude
-# directory. That file was a committed copy of a settings file which a
-# global ignore rule keeps out of every commit. It held 3866 permission
-# entries, and 62 of them named the old harness path, so the scan had to
-# skip it. The file is deleted, so the entry now matches nothing. An
-# allowance that outlives its file widens the check in silence. The
-# sibling test test_the_named_exceptions_still_exist guards against that
-# same fault for _ALLOWED_EXACT.
-#
-# Issue #67 dropped a fourth entry, "tools/.island_ledger.jsonl", for the
-# same reason. The island tool was retired and its ledger was deleted, so
-# the entry named nothing. It also never earned its place: the ledger held
-# ZERO occurrences of the old path, measured before the deletion, so
-# removing the allowance changes no verdict here.
-#
-# Issue #81 added "docs/engineering-notes". It is not a new allowance: the
-# entry follows files that "docs/audits" already covered. 122 files left
-# docs/audits/ in that issue, and this test named exactly the 24 of them
-# that carry the old harness path before the entry was added. "docs/audits"
-# stays because 46 files remain there, pinned by dev_harness path constants.
-#
-# Issue #80 dropped "docs/harness_archive" and bare "CHANGELOG.md". The
-# directory is gone and its two files measured ZERO occurrences of the old
-# path, so they are scanned now. The narrative changelog carries 4, so its
-# allowance follows it to docs-archive/; the new root file carries none.
+# The harness's old home. `_HISTORY` names the trees whose records keep it
+# on purpose; `test_the_named_exceptions_still_exist` fails when one is gone.
 _OLD_PATH_RE = re.compile(r"tools[./]harness")
 _HISTORY = (
     "docs/audits",
@@ -199,16 +101,8 @@ _HISTORY = (
     "CHANGELOG-narrative-2026-08-04-to-2026-08-25.md",
 )
 
-# Two sets name the old path on purpose and stay green.
-#   1. The harness's own prose. Operator law forbids editing an archetype's
-#      contents, so comments inside it keep the wording they shipped with.
-#      Prose cannot route a call, so a stale comment disables no check.
-#   2. THIS file. Its controls import the old path deliberately, to prove the
-#      old path is gone. Without them the whole file could pass vacuously.
-#   3. The session handoffs. HOP8 names the old path once, in a table of dead
-#      commands, to say it is dead and give the replacement; HOP7 is a
-#      superseded handoff kept as written. Each is listed by name rather than
-#      by a glob, so a later HOP has to be judged on its own contents.
+# Paths that name the old harness path on purpose: the harness's own prose,
+# this file's controls, and the handoffs. Named, never globbed.
 _ALLOWED_PREFIXES = ("dev_harness/",)
 _ALLOWED_EXACT = frozenset(
     {
