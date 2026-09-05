@@ -439,10 +439,6 @@ Detail: [08-tabs/market-inspector.md](08-tabs/market-inspector.md).
 
 ## Bot Swarm Tab
 
-(List View)
-
-(Grid View)
-
 The Bot Swarm is a proprietary capital reinforcement network system that allows profit to be dynamically and strategically routed between positions with the primary intention of this being to accelerate accumulation curves. Smart Wires are dragged between active bots or the quick connection matrix can be used to route multiple streams to different destinations. Each wire can carry a different percentage amount of profit. Profit sent over Smart Wires are registered at the destination as Wire Credits and these are then distributed into standing Fold Tranches which allow them to have a Surplus that will be spent to increase the Target Balance up to the Maximum Growth Per Cycle. Yes, that is probably a mouth full but hopefully the settings and names are, for the most part, self-explanatory.
 
 Each bot draws as one locust card, and the tab switches between the list and
@@ -520,7 +516,9 @@ def restore_bots_from_state(self, state: dict) -> list[str]:
     """Recreate every persisted bot in IDLE state; return the ids restored.
 ```
 
-![The Bot Swarm tab in List view, with the quick routing matrix.](p30-i0.png)
+(List View)
+
+![](p30-i0.png)
 
 Three sub-tabs open the screen: Bot Swarm, Simulator Swarm and Paper Swarm. The
 header row holds the drag hint, an identifier privacy dot that masks the bot
@@ -571,7 +569,9 @@ if pct <= 0:
 A confirmation puts the count in front of the operator before Connect,
 Disconnect or Disconnect All runs.
 
-![The same tab in Grid view.](p30-i1.png)
+(Grid View)
+
+![](p30-i1.png)
 
 The view switch swaps the table for the node canvas. Each card carries the
 symbol above, the realised profit below it, and the first eight characters of
@@ -722,8 +722,6 @@ Detail: [08-tabs/asset-charts.md](08-tabs/asset-charts.md).
 
 ## History Tab
 
-History Tab (React):
-
 The History Tab is able to pull trade history from all active exchanges via their respective APIs. It also pairs each imported trade with its in-platform trading logic and applies our trade grading system.
 
 The tab fetches from every active venue and draws the rows with React. Every
@@ -804,7 +802,9 @@ counter itself, and the read contract already declares both, so two
 implementations of the same two strings stand in the tree. Issue #425 carries
 it.
 
-![The History tab during a fetch, with the header strip above it.](p32-i1.png)
+History Tab (React):
+
+![](p32-i1.png)
 
 The same tab, captured while the asynchronous fetch runs. Five fixed status
 strings cover the states before any row exists, and the one on screen is the
