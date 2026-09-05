@@ -72,6 +72,46 @@ class _Bot:
         self._tranches_created_lifetime = created
 
 
+#: Names that carry a trade decision: a target, a delta, a queue or a gate.
+TRADE_DECISION_STATE = (
+    "_target_balance",
+    "_anchor_target_balance",
+    "_standing_surplus_usd",
+    "_fold_cycle_cap_consumed",
+    "_fold_queue_usd",
+    "_pending_stack_buy_usd",
+    "_manual_fire_pending",
+    "_hyst_armed_scrum_side",
+    "_scrum_chain",
+    "_fold_chain",
+)
+
+
+class _TrapReached(Exception):
+    """Raised when ``_TrapBot`` is asked for a name in ``TRADE_DECISION_STATE``.
+
+    It is not an ``AttributeError``, so a ``getattr`` carrying a default cannot
+    swallow it.
+    """
+
+
+class _TrapBot(_Bot):
+    """A ``_Bot`` that refuses every name in ``TRADE_DECISION_STATE``."""
+
+    def __getattr__(self, name):
+        """Raise ``_TrapReached`` for a trade-decision name and ``AttributeError``
+        for anything else the helper does not set."""
+        if name in TRADE_DECISION_STATE:
+            raise _TrapReached(f"the helper read {name}")
+        raise AttributeError(name)
+
+    def __setattr__(self, name, value):
+        """Raise ``_TrapReached`` when a trade-decision name is written."""
+        if name in TRADE_DECISION_STATE:
+            raise _TrapReached(f"the helper wrote {name}")
+        object.__setattr__(self, name, value)
+
+
 def tranche(usd, units, ref, ibp, **extra) -> dict:
     t = {
         "usd": usd,
@@ -527,29 +567,36 @@ class TestNoCandidateIsNotAnErrorAndGetsNoFallback:
         assert len(bot._fold_tranches) == 2
 
     def test_the_helper_cannot_alter_any_trade_decision(self):
-        """It reads and writes tranche records only. It holds no
-        target, no delta, no gate and no queue, so an absent candidate
-        has nothing to block, delay or defer."""
-        import inspect
+        """``_TrapBot`` refuses every name in ``TRADE_DECISION_STATE``, and a
+        real merge still completes, so the helper reads and writes tranche
+        records only."""
+        low = tranche(1.0, 10.0, 0.10, 0.20, fold_partial_spent=True)
+        fresh = tranche(2.0, 20.0, 0.25, 0.20)
+        bot = _TrapBot([low, fresh], created=2)
 
-        body = inspect.getsource(ScrummingBot._top_up_remnant_fold_tranches)
-        code = "\n".join(
-            ln for ln in body.splitlines() if not ln.strip().startswith("#")
-        )
-        _, _, after_doc = code.partition('"""')
-        _, _, statements = after_doc.partition('"""')
-        for forbidden in (
-            "_target_balance",
-            "_target_delta",
-            "_anchor_target_balance",
-            "_standing_surplus",
-            "_fold_cycle_cap_consumed",
-            "return_defer",
-            "_pending",
-            "_hyst",
-            "_chain",
-        ):
-            assert forbidden not in statements, f"the top-up must not touch {forbidden}"
+        merged_n, merged_usd = bot._top_up_remnant_fold_tranches(1, 0.05, 0.40)
+
+        assert (merged_n, merged_usd) == (1, 2.0)
+        assert low["usd"] == pytest.approx(3.0)
+
+    def test_no_candidate_touches_nothing_either(self):
+        """The absent-candidate path runs on ``_TrapBot`` too, so an empty result
+        is not a refusal to reach the trap."""
+        rem = tranche(1.0, 10.0, 0.01, 0.20, fold_partial_spent=True)
+        fresh = tranche(2.0, 20.0, 0.25, 0.20)
+        bot = _TrapBot([rem, fresh], created=2)
+
+        assert bot._top_up_remnant_fold_tranches(1, 0.05, 0.40) == (0, 0.0)
+
+    @pytest.mark.parametrize("name", TRADE_DECISION_STATE)
+    def test_the_trap_fires_on_a_read_and_on_a_write(self, name):
+        """POSITIVE CONTROL. ``_TrapReached`` is not an ``AttributeError``, so a
+        ``getattr`` carrying a default does not swallow it."""
+        bot = _TrapBot([], created=0)
+        with pytest.raises(_TrapReached):
+            getattr(bot, name, "a default that must not be returned")
+        with pytest.raises(_TrapReached):
+            setattr(bot, name, 1.0)
 
     def test_target_delta_rezeroes_with_no_tranche_in_the_band(self):
         """Target Delta still re-zeroes when nothing compounds. The
