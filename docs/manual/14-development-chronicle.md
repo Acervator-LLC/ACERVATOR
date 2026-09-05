@@ -371,61 +371,7 @@ in this product where that reads as description rather than ornament. Almost
 everything above is something taken apart after it was found to be lying about
 itself, and put back in a form that can be checked.
 
-## The reviewer framework
-
-Source: LEGACY, the fourteen-part manual, Part 6 "Department Leads Review",
-pages 3 and 4. The claim audit calls this the strongest of the legacy results
-parts, and the reason it survives is stated on its own first page: the reviewers
-are openly fictional, so nothing in it depends on a person having said anything.
-
-The framework sets up ten reviewer roles. Each role owns one domain of critique
-and carries the published standards of that domain. A change that touches a
-domain is checkable against that role's standards, and a change that touches
-several must satisfy several. When a role objects, the objection is written
-down; an objection nobody wrote down comes back later as a failure mode.
-
-| Role | Domain |
-| ---- | ------ |
-| Market structure | accumulation phases, composite demand, structural reads |
-| Volatility bands | envelopes, bandwidth, band position, confirmation |
-| Mean reversion | regime-conditional reversion, precondition filters |
-| Oscillators and risk metrics | momentum oscillators, true range, trend strength |
-| Tail risk | fat tails, anti-fragility, asymmetric payoff |
-| Systematic discipline | trend following, mechanical rules, trader psychology |
-| Capital allocation | position sizing, risk-first design |
-| Empirical validation | statistical edge, out-of-sample discipline |
-| Multi-timeframe | multi-scale gating, alignment |
-| Pyramiding | line of least resistance, adding to winners |
-
-Each role names a real author as its provenance, and the legacy part is careful
-about what that attribution means. The chain runs one way: a body of published
-work inspired the role, and the role then evaluated the system. The role is the
-evaluator of record. Nobody's endorsement is claimed, and the part says so
-twice.
-
-This survives the audit where the rest of the legacy results parts do not,
-because it makes no checkable claim about this repository. It is a review
-method. The value is the method, and the method is still the one in use: name
-the domain, state the standard, write down the objection.
-
-The ten domain assertions in the pages that follow are field-standard trading
-principles and need no code to be true. They are not migrated here one by one,
-because each would need re-deriving against the product bullet it was written
-to defend, and a bullet re-derived without its measurement is an opinion with a
-citation. The three decisions those pages produced are migrated, in
-[12-adr-index-and-glossary.md](12-adr-index-and-glossary.md), because a decision
-not to build something is checkable and all three verify absent.
-
-The legacy part closes by crediting a review apparatus with having guarded its
-own numbers. No source for that apparatus exists here. That closing claim does
-not carry, and it matters more than its size: a results part that credits an
-instrument it cannot produce is asking to be believed on the instrument's
-authority.
-
 ## The trading-discipline arc
-
-Source: LEGACY, the fourteen-part manual, Part 7a "Development Chronicle", page
-12.
 
 Two regime gates landed in consecutive ships and neither did anything. The
 suppression gate reading trend strength and the gate reading the efficiency
@@ -438,20 +384,11 @@ worth keeping — a test that enumerates every gate class, every chain
 construction site and every voter, and asserts each is reached. That test is
 `tests/test_gate_coverage.py`.
 
-The legacy account of what happened next is disciplined, and the discipline is
-the reason to carry it. The live discipline ratios on four assets moved from
-about 0.99 to about 1.02 after the wiring landed. The account says the timing
-and the mechanism line up, calls it suggestive, and states plainly that a
-rigorous attribution would need an out-of-sample comparison it had not built.
-A chronicle that names its own evidence as correlational is doing the job.
-
-The same page carries a second thing worth keeping, in the operator's own
-framing: if you find them, they are yours. Defects surfaced by a piece of work
-close inside that work rather than becoming a queue.
+The practice that came out of the arc is the operator's own: if you find them,
+they are yours. Defects surfaced by a piece of work close inside that work
+rather than becoming a queue.
 
 ## The configuration-factory arc
-
-Source: LEGACY Part 7a, page 15.
 
 One configuration dataclass served two bot modes, and the two modes read two of
 its fields in opposite senses. For the Scrumming Bot the base currency is what
@@ -486,8 +423,6 @@ path that still resolves, and it no longer names the definition.
 
 ## The inverted extractor and its wizard surface
 
-Source: LEGACY Part 7a, page 18.
-
 The Extractor arrived as the second bot type: where the Scrumming Bot works one
 continuous oscillation, the Extractor fires fixed-dollar rounds at oversold dips
 across a ranked watchlist. The arc that followed spent its ships on the
@@ -495,9 +430,9 @@ watchlist field, the wizard flow, the settings gaps and the manual override, and
 it settled the two-bot architecture — two bots side by side out of one pool,
 neither aware of the other.
 
-The inverted mode came from an operator's observation, quoted in the legacy
-page: given a standing position in an asset, the same machinery should be able
-to use that asset as the ammunition and sell first instead of buying first.
+The inverted mode came from an operator's observation: given a standing position
+in an asset, the same machinery should be able to use that asset as the
+ammunition and sell first instead of buying first.
 
 Three fields carry it, all in `src/trading/container/config.py`:
 `extractor_direction`, which selects normal or inverted;
@@ -508,8 +443,6 @@ and it defines its pages under a Qt guard, so a naive scan of the module reports
 no classes at all. The seven pages are there, and
 `BotCreationWizard` is the one the main window builds.
 
-The claim the legacy page makes for inverted mode is that the strategies are
-symmetric — the same engine, run the other way. The configuration bears that
-out. The battery numbers it cites for the claim do not survive, because the
-engine that produced them has no source here.
+Normal and inverted are the same engine run the other way. The three fields
+above carry the whole difference between them.
 
