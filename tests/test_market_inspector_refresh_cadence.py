@@ -167,31 +167,6 @@ def test_no_connectors_still_reports_why():
     assert res.meta["error"]
 
 
-# =====================================================================
-# THE BUTTON -> FETCHER WIRING
-# =====================================================================
-#
-# Everything above calls `fetch_htf_universe` DIRECTLY, so all of it
-# stays green while the Refresh button is disconnected from the cadence
-# it is supposed to override. Three hops carry `force` from the click to
-# the parameter:
-#
-#     clicked            -> _start_fetch(force=True)
-#     _start_fetch       -> _fetch_and_analyze(connectors, force=force)
-#     _fetch_and_analyze -> fetch_htf_universe(..., force_network=force)
-#
-# Measured 2026-08-20: each hop was broken independently and the suite
-# stayed green (6 / 26 / 32 passed), because nothing in tests/ built the
-# tab and pressed Refresh. A break at any hop is the ORIGINAL defect
-# moved one layer up -- the button serves a scan up to 15 minutes old
-# while the operator watches "Fetching..." and believes the venue was
-# polled.
-#
-# OCIR, same as above: BOTH directions are driven. Asserting only that
-# the button reaches `force_network=True` is passed by hardcoding the
-# parameter to True, which deletes the cadence in the other direction
-# and puts every refresh back on the venue's rate budget.
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 

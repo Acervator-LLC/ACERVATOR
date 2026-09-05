@@ -69,24 +69,16 @@ from pathlib import Path
 import main
 import pytest
 
-# tests/conftest.py puts the repo root on sys.path at import time, and
-# pytest imports conftest before any test module, so `import main` is a
-# plain top-level import here. The sys.path insertion other test files
-# perform before importing main pushes that import below a statement,
-# which is what forces them to carry a lint directive. This file needs
-# none, and adding one would be the thing the harness forbids.
+# `tests/conftest.py` puts the repo root on sys.path before any test module,
+# so `import main` needs no path insert above it.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# 100 firings at the nominal 50 ms is ~5 s of wall clock. The first 20
-# are discarded: the process is still warming up its timer machinery,
-# and a startup transient is not what this measures.
+# The first 20 firings are discarded as timer warm-up.
 _FIRINGS = 100
 _DISCARD = 20
 
-# The nominal interval, plus 10%. CoarseTimer measured 25% over, so this
-# threshold separates the two configurations with margin on both sides.
-# The statistic is the MEDIAN, which is why a single scheduling stall on
-# a loaded machine cannot turn this red.
+# The nominal interval plus 10%. CoarseTimer measured 25% over, and the
+# statistic compared is the median.
 _TOLERANCE_MS = main.ASYNC_PUMP_INTERVAL_MS * 1.10
 
 # If the Qt event loop never quits, fail the test rather than hang the

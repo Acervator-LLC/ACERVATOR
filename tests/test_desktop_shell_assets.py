@@ -7,8 +7,8 @@ already ships and resolve every asset path the page names, which catches
 a syntax error and a missing file without a Node toolchain.
 
 The subjects are discovered, never written down. ``shipped_javascript``
-walks ``src/gui/web`` for the React modules and adds the three shell
-scripts, so a module a later unit adds is parsed with no edit here. A
+walks ``src/gui/web`` for the React modules and ``desktop`` for the shell
+scripts, so a file a later unit adds is parsed with no edit here. A
 hand-written list of three files is what left all 39 React modules
 unparsed by anything.
 
@@ -38,14 +38,19 @@ WEB_MODULES = REPO_ROOT / "src" / "gui" / "web"
 MANIFEST_JS = RENDERER / "module_manifest.js"
 WEB_PREFIX = "../../src/gui/web/"
 
-SHELL_SCRIPTS = (
-    DESKTOP / "main.js",
-    DESKTOP / "preload.js",
-    RENDERER / "boot.js",
-    RENDERER / "module_errors.js",
-    RENDERER / "module_manifest.js",
-    RENDERER / "module_loader.js",
-)
+
+def shell_scripts() -> tuple:
+    """Every shell script on disk: the two process scripts and the renderer's.
+
+    Walked rather than listed, so a renderer script a later unit adds is
+    parsed here with no edit.
+    """
+    return (DESKTOP / "main.js", DESKTOP / "preload.js") + tuple(
+        sorted(RENDERER.glob("*.js"))
+    )
+
+
+SHELL_SCRIPTS = shell_scripts()
 
 
 def web_modules() -> tuple:
@@ -146,10 +151,10 @@ def test_no_module_on_disk_goes_unloaded_by_tag_or_manifest():
     `module_manifest.js`."""
     reached = modules_the_page_loads() | set(manifest_names())
     unloaded = sorted({p.name for p in web_modules()} - reached)
-    assert not unloaded, (
-        str(len(unloaded))
-        + " modules ship but neither a script tag nor the manifest names "
-        "them: " + ", ".join(unloaded)
+    assert not unloaded, str(
+        len(unloaded)
+    ) + " modules ship but neither a script tag nor the manifest names " "them: " + ", ".join(
+        unloaded
     )
 
 

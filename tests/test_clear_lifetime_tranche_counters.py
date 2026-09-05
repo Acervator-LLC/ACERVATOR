@@ -1,78 +1,12 @@
-"""The operator can reset the lifetime tranche counters — issue #133 unit 3.
+"""The operator can reset the lifetime tranche counters from the Fold Tranches tab.
 
-WHAT WAS MEASURED
-=================
-The live fleet's CHIP/USD bot ``c8e5c5db`` carried, in
-``~/.acervator/bot_state.json`` under ``scrumming_state``::
-
-    tranches_created_lifetime      4925
-    tranches_closed_lifetime       4813
-    tranches_discarded_lifetime      91
-    tranches_malformed_dropped        0
-
-and, in its own ``stats`` section, a SECOND copy of one of them::
-
-    stats.tranches_discarded_lifetime  91
-
-Operator directive 2026-08-25, verbatim: "Lifetime tranche counts can be
-cleared since we are resetting to the new standard." The Fold Tranches
-tab offered ``Clear Fold Tranches`` and ``Clear Wire Credits`` and
-nothing that touched these.
-
-FOUR COUNTERS, FIVE FIGURES
-===========================
-The panel prints opened, closed, the cycle close ratio, discarded and
-dropped-as-malformed. Only four of those are stored: the ratio is
-``closed / (created - discarded)``, computed on the panel, so it follows
-the reset without being cleared. The ``stats`` mirror is a fifth WRITE
-site for the third counter and is cleared with it — without that the
-state file would hold 0 under ``scrumming_state`` and 91 under
-``stats``.
-
-THE ONE BEHAVIOURAL READER, AND WHY THE RESET CARRIES A STAMP
-=============================================================
-``_tranches_created_lifetime`` is not display-only. The init handshake
-reads ``== 0`` as "no scrum has ever fired" and adopts the exchange
-balance as the bot's opening position, REPLACING ``_main_lots`` with a
-single lot at one derived basis. Zeroing the counter alone would re-arm
-that on a bot with 4,925 scrums behind it, at the next launch, against
-real money. ``clear_lifetime_tranche_counters`` stamps
-``_tranches_counters_reset_ts``; the predicate reads it; a bot that
-genuinely never scrummed is left alone, stamp included, because on that
-bot the zero is its real history.
-
-WHAT THIS FILE PROVES
-=====================
-1. The four counters reach zero ON DISK, read back out of the state
-   file, plus the ``stats`` mirror.
-2. The panel shows the reset without the dialog being reopened.
-3. The clear leaves open tranches, parked USD, the wire-credit ledger,
-   the wire-credit discard total, the stack counters, holdings, lots,
-   cost basis and target exactly as they were — in memory and on disk.
-4. The opening-position adoption is not re-armed on a bot that has
-   traded, and is still armed on a bot that has not.
-5. The reset survives an export/import round trip.
-
-EVERY ASSERTION DRIVES SHIPPED CODE: a real ``ScrummingBot``, its real
-``clear_lifetime_tranche_counters``, a real ``BotManager``, a real
-``StateManager`` pointed at ``tmp_path``, and the real
-``BotLiveSettingsDialog._on_clear_lifetime_counters`` bound to a real
-dialog holding a real ``QTabWidget``.
-
-NOTHING WRITES UNDER ``~/.acervator``. The ``StateManager`` is
-constructed with ``config_dir=tmp_path``.
-
-TWO-SIDED BY CONSTRUCTION
-=========================
-Four controls put the tree back: no in-click save, no panel rebuild, no
-``stats`` mirror, no reset stamp. Each has a test that must go red when
-it is applied, and each of those tests names the mechanism it lost.
-
-FALSIFICATION: this file is wrong if (a) the counters read zero on disk
-with the in-click save disabled, (b) the panel agrees with the bot with
-the rebuild disabled, (c) the ``stats`` mirror reads zero with the
-mirror disabled, or (d) a cleared bot is still "never scrummed" with the
-stamp disabled.
+``BotLiveSettingsDialog._on_clear_lifetime_counters`` drives
+``ScrummingBot.clear_lifetime_tranche_counters``, which zeroes the four stored
+counters, the ``stats`` mirror of the discarded count, and stamps
+``_tranches_counters_reset_ts``. The stamp keeps ``_tick_initialise`` from
+re-adopting the exchange balance on a bot whose counters were cleared, while a bot
+that genuinely never scrummed is left unstamped. Open tranches, parked USD, the
+wire-credit ledger, the stack counters, holdings, lots and target are untouched.
 """
 
 from __future__ import annotations
@@ -87,14 +21,11 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-#: The operator's own numbers, so what this file prints is what the
-#: issue reports.
+#: The live CHIP/USD bot's counters, so the assertions carry real magnitudes.
 OPENED = 4925
 CLOSED = 4813
 DISCARDED = 91
-#: NOT the live bot's own 0. A counter that reads 0 before and 0 after
-#: is asserted by a clear that never touches it, so this one carries a
-#: value the reset has to move.
+#: Non-zero, so the clear has to move it.
 MALFORMED = 4
 
 #: Standing inventory the clear must not touch. Three tranches, a parked
@@ -238,8 +169,6 @@ class _Panel:
     def shows(self) -> dict:
         return self.dialog._fold_panel_shows()
 
-    # -- THE READER. One reader for every disk assertion in this file,
-    #    so the positive control below proves every one of them. ------ #
     def saved(self) -> dict | None:
         """The bot's ``scrumming_state`` and ``stats`` off the FILE.
 
@@ -327,7 +256,7 @@ def _build(tmp_path, *, opened=OPENED, closed=CLOSED, discarded=DISCARDED):
 
 
 def _destroy(panel) -> None:
-    """Issue #96's third row: queue the delete, then DELIVER the event.
+    """Queue the delete, then deliver the event.
 
     ``processEvents()`` does not deliver ``DeferredDelete``, and a widget
     left alive here fails a stranger's test — ``_open_dialogs(app)``
@@ -348,9 +277,6 @@ def panel(tmp_path):
     _destroy(built)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# THE CONTROLS. Each puts the tree back and must reproduce the defect.
-# ══════════════════════════════════════════════════════════════════════
 def _without_the_in_click_save(monkeypatch) -> None:
     from src.gui.bot_live_settings import BotLiveSettingsDialog
 
@@ -435,13 +361,6 @@ def _without_the_reset_stamp(monkeypatch) -> None:
     monkeypatch.setattr(ScrummingBot, "clear_lifetime_tranche_counters", _no_stamp)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# A. THE POSITIVE CONTROL ON THE READER. Every disk assertion below is
-#    made through `saved_counters`. A reader that finds nothing would
-#    report four Nones and pass every "is zero" test written against
-#    `not x`. This one saves the UNCLEARED bot and requires the
-#    operator's own numbers back out of the file.
-# ══════════════════════════════════════════════════════════════════════
 def test_POSITIVE_CONTROL_the_reader_finds_the_uncleared_counters(panel):
     """A file reader that cannot see a counter must not pass as a zero."""
     panel.manager.save_all_state()
@@ -475,9 +394,6 @@ def test_the_panel_starts_by_showing_the_operators_numbers(panel):
     assert shows["counters_reset_text"] is None
 
 
-# ══════════════════════════════════════════════════════════════════════
-# B. THE COUNTERS REACH ZERO ON DISK.
-# ══════════════════════════════════════════════════════════════════════
 class TestTheStateFileHoldsZero:
 
     def test_all_four_counters_are_zero_in_the_file(self, panel, monkeypatch):
@@ -525,9 +441,6 @@ class TestTheStateFileHoldsZero:
         assert found["stats_discarded"] == DISCARDED
 
 
-# ══════════════════════════════════════════════════════════════════════
-# C. THE PANEL FOLLOWS, WITHOUT A REOPEN.
-# ══════════════════════════════════════════════════════════════════════
 class TestThePanelFollowsTheClear:
 
     def test_the_opened_row_reads_zero(self, panel, monkeypatch):
@@ -583,10 +496,6 @@ class TestThePanelFollowsTheClear:
         assert panel.shows()["lifetime_opened_text"] == str(OPENED)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# D. THE LEAVE-ALONE CONTROL. A clear that zeroes everything also zeroes
-#    what it must not, and every assertion above would still be green.
-# ══════════════════════════════════════════════════════════════════════
 class TestTheClearTouchesNothingElse:
 
     def test_the_open_tranches_are_still_there(self, panel, monkeypatch):
@@ -642,46 +551,57 @@ class TestTheClearTouchesNothingElse:
         assert len(scr["main_lots"]) == 1
 
 
-# ══════════════════════════════════════════════════════════════════════
-# E. THE BEHAVIOURAL READER. `_tranches_created_lifetime == 0` is not a
-#    display fact: the init handshake adopts the exchange balance on it.
-# ══════════════════════════════════════════════════════════════════════
-def _never_scrummed(bot) -> bool:
-    """The predicate as the init handshake spells it, read off the bot.
+ADOPTION_PRICE = 10.0
+ADOPTION_HOLDINGS = 4.0
 
-    Written out here rather than called, because it is an expression
-    inside ``tick()`` with no seam. The test below pins the SOURCE of
-    that expression against this copy, so the two cannot drift.
+
+class _Ticker:
+    last = ADOPTION_PRICE
+    bid = ADOPTION_PRICE - 0.1
+    ask = ADOPTION_PRICE + 0.1
+
+
+class _Balance:
+    absent = False
+
+    def __init__(self, total: float) -> None:
+        self.total = total
+        self.free = total
+
+
+def _adopts_the_exchange_balance(bot, holdings: float = ADOPTION_HOLDINGS) -> bool:
+    """Run the shipped ``_tick_initialise`` and report whether it took `_main_lots`.
+
+    Stubs only the outward reads — ticker, balance and the quote refresh — so the
+    adoption branch under test is the one the bot runs at launch.
     """
-    return (
-        int(getattr(bot, "_tranches_created_lifetime", 0) or 0) == 0
-        and float(getattr(bot, "_tranches_counters_reset_ts", 0.0) or 0.0) <= 0.0
-    )
+    import asyncio
 
+    async def _ticker(_symbol):
+        return _Ticker()
 
-def test_the_predicate_here_is_the_predicate_in_tick():
-    """A copied predicate that drifts proves nothing about the shipped one."""
-    import inspect
+    async def _balance(_asset):
+        return _Balance(holdings)
 
-    from src.trading.scrumming_bot import ScrummingBot
+    async def _quote():
+        return None
 
-    source = inspect.getsource(ScrummingBot._tick_initialise)
-    assert "_never_scrummed = (" in source
-    assert 'int(getattr(self, "_tranches_created_lifetime", 0) or 0) == 0' in source
-    assert (
-        'and float(getattr(self, "_tranches_counters_reset_ts", 0.0) or 0.0)' in source
-    )
+    before = [dict(lot) for lot in bot._main_lots]
+    bot._get_ticker = _ticker
+    bot._get_balance = _balance
+    bot._refresh_quote_to_usd = _quote
+    asyncio.run(bot._tick_initialise(f"{bot.config.target_asset}/USD"))
+    return [dict(lot) for lot in bot._main_lots] != before
 
 
 class TestTheOpeningPositionAdoptionIsNotReArmed:
 
-    def test_a_cleared_bot_has_still_scrummed(self, panel, monkeypatch):
-        """Re-arming adoption replaces `_main_lots` with one derived lot."""
+    def test_a_cleared_bot_keeps_the_lots_it_earned(self, panel, monkeypatch):
+        """Adoption would replace `_main_lots` with one lot at a derived basis."""
         _patch_message_box(monkeypatch)
-        assert _never_scrummed(panel.bot) is False
         panel.dialog._on_clear_lifetime_counters()
         assert panel.bot._tranches_created_lifetime == 0
-        assert _never_scrummed(panel.bot) is False
+        assert _adopts_the_exchange_balance(panel.bot) is False
 
     def test_it_survives_an_export_import_round_trip(self, panel, monkeypatch):
         """The launch AFTER the reset is the one the adoption fires on."""
@@ -694,7 +614,7 @@ class TestTheOpeningPositionAdoptionIsNotReArmed:
             assert twin.bot._tranches_closed_lifetime == 0
             assert twin.bot._tranches_discarded_lifetime == 0
             assert twin.bot._tranches_malformed_dropped == 0
-            assert _never_scrummed(twin.bot) is False
+            assert _adopts_the_exchange_balance(twin.bot) is False
         finally:
             _destroy(twin)
 
@@ -705,26 +625,25 @@ class TestTheOpeningPositionAdoptionIsNotReArmed:
         _without_the_reset_stamp(monkeypatch)
         _patch_message_box(monkeypatch)
         panel.dialog._on_clear_lifetime_counters()
-        assert _never_scrummed(panel.bot) is True
+        assert _adopts_the_exchange_balance(panel.bot) is True
+        assert panel.bot._main_lots == [
+            {"units": ADOPTION_HOLDINGS, "initial_buy_price": ADOPTION_PRICE}
+        ]
 
     def test_a_bot_that_never_scrummed_is_left_alone(self, tmp_path):
-        """Stamping a new bot takes its opening-position adoption away."""
+        """Clearing a bot with nothing to clear leaves its adoption armed."""
         fresh = _build(tmp_path, opened=0, closed=0, discarded=0)
         try:
             fresh.bot._tranches_malformed_dropped = 0
             fresh.bot.stats.tranches_discarded_lifetime = 0
-            assert _never_scrummed(fresh.bot) is True
             report = fresh.bot.clear_lifetime_tranche_counters(reason="test")
             assert report["cleared"] == 0
             assert fresh.bot._tranches_counters_reset_ts == 0.0
-            assert _never_scrummed(fresh.bot) is True
+            assert _adopts_the_exchange_balance(fresh.bot) is True
         finally:
             _destroy(fresh)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# F. THE MESSAGES THE OPERATOR READS.
-# ══════════════════════════════════════════════════════════════════════
 class TestWhatTheOperatorIsTold:
 
     def test_the_confirmation_names_all_four_numbers(self, panel, monkeypatch):
@@ -804,9 +723,6 @@ class TestWhatTheOperatorIsTold:
             _destroy(fresh)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# G. THE BOT METHOD ON ITS OWN.
-# ══════════════════════════════════════════════════════════════════════
 class TestTheBotMethod:
 
     def test_it_reports_what_it_destroyed(self, panel):

@@ -29,9 +29,7 @@ REPO = Path(__file__).resolve().parent.parent
 WIZARD = REPO / "src" / "gui" / "bot_wizard.py"
 
 
-# ---------------------------------------------------------------------------
 # BotConfig dataclass surface pin
-# ---------------------------------------------------------------------------
 
 
 class TestBotConfigSurface:
@@ -87,9 +85,7 @@ class TestBotConfigSurface:
         assert not hasattr(cfg, "position_count")
 
 
-# ---------------------------------------------------------------------------
 # Bot wizard source pin — the fix must stay in place
-# ---------------------------------------------------------------------------
 
 
 class TestBotWizardSourcePins:
@@ -110,10 +106,8 @@ class TestBotWizardSourcePins:
     def test_no_position_count_kwarg_in_cfg_update(self, wizard_source):
         """The wizard must NEVER emit position_count as a config key.
         Match the specific pattern from the deleted grid branch."""
-        # We tolerate: comments mentioning position_count, and
-        # `defaults.get("default_position_count", ...)` (a defaults
-        # dict key, not a BotConfig kwarg).
-        # We reject: `"position_count": self._positions.value()` shape
+        # Tolerated: a `default_position_count` defaults-dict key. Rejected: a
+        # `position_count` BotConfig kwarg.
         assert (
             '"position_count":' not in wizard_source
             or '"default_position_count"' in wizard_source

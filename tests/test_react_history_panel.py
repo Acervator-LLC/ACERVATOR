@@ -1,25 +1,10 @@
-"""Issue #128 unit R4 — the React History panel renders the contract.
+"""The React History panel renders what the history contract serves.
 
-WHAT IS BEING PROVED, AND AGAINST WHAT
-======================================
-``src/gui/react_history_panel.py`` draws History a second time, in
-React, inside the Chromium PySide6 ships. The claim under test is that
-it draws exactly what ``src/exchange/history_read_contract.py`` serves
-and derives nothing of its own.
-
-THE EVIDENCE IS THE DOM, NOT THE PAYLOAD
-========================================
-The agreement tests read text, colour and tooltip back out of a live
-``QWebEngineView`` with ``runJavaScript``. Comparing the Python payload
-to the Python contract would compare a dict to the function that built
-it, which is an instrument agreeing with itself.
-
-THE VACUOUS-PASS CONTROL
-========================
-A panel that renders nothing disagrees with nothing. Every agreement
-test asserts a non-empty row count and non-empty cell text BEFORE it
-asserts agreement, and ``test_dom_agreement_control_*`` proves those
-assertions can fail.
+``react_history_panel`` draws History in React inside a
+``QWebEngineView``. Every agreement test reads text, colour and tooltip
+back out of that live DOM with ``runJavaScript``. Each asserts a
+non-empty row count and non-empty cell text first, and
+``test_dom_agreement_control_*`` proves those assertions can fail.
 """
 
 from __future__ import annotations
@@ -43,8 +28,7 @@ from src.gui import react_history_panel as rhp  # noqa: E402
 
 BASE_TS = 1_750_000_000.0
 
-#: Digests of the vendored React UMD bundles, taken when they were
-#: downloaded from unpkg on 2026-08-26. React 18.3.1.
+#: Digests of the vendored React 18.3.1 UMD bundles as downloaded.
 VENDOR_SHA256 = {
     "vendor/react.production.min.js": (
         "d949f1c3687aedadcedac85261865f29b17cd273997e7f6b2bfc53b2f9d4c4dd"
@@ -322,9 +306,7 @@ class _Page:
         self._view.deleteLater()
 
 
-# Reads what the SCREEN shows: `innerText` for text, the computed colour
-# for colour, the `title` attribute for tooltip. Serialised to JSON so
-# one round trip carries the whole table.
+# Reads `innerText`, the computed colour and the `title` attribute per cell.
 _DOM_DUMP_JS = r"""
 JSON.stringify((function () {
   var err = document.getElementById("panel-error");
@@ -419,11 +401,6 @@ def _model(trades: list, page_index: int = 0, filters=None) -> dict:
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 1. The hosting story, verified rather than cited
-# ═══════════════════════════════════════════════════════════════════════
-
-
 def test_web_widget_is_a_bundled_hidden_import() -> None:
     """The spec ships the web widget and excludes no Qt web module."""
     from tools.spec_common import COMMON_HIDDENIMPORTS, EXCLUDES
@@ -451,85 +428,48 @@ def test_the_panel_assets_reach_the_frozen_build() -> None:
     ), f"{assets} is under no datas pair in {shipped}"
 
 
-def test_the_bridge_is_the_one_tradingview_chart_uses() -> None:
-    """``runJavaScript``, and no second web host."""
-    source = (REPO / "src" / "gui" / "react_history_panel.py").read_text(
-        encoding="utf-8"
-    )
-    assert "runJavaScript" in source
-    assert "QWebEngineView" in source
-    chart = (REPO / "src" / "gui" / "tradingview_chart.py").read_text(encoding="utf-8")
-    assert "runJavaScript" in chart and "QWebEngineView" in chart
+def test_the_shipped_tab_renders_into_a_qwebengineview(qapp) -> None:
+    """``HistoryTab`` puts a live ``QWebEngineView`` on screen."""
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+
+    tab = _history_tab(qapp, _mixed_rows())
+    try:
+        assert isinstance(tab._table._web, QWebEngineView)
+        assert tab._table._web.page() is not None
+    finally:
+        tab.deleteLater()
 
 
-def _code_of(path: Path) -> str:
-    """The module's CODE, with docstrings and comments removed.
+def test_no_back_channel_exists_so_the_page_cannot_write(qapp) -> None:
+    """The live page holds no ``QWebChannel``.
 
-    A name discussed in prose is not a call. Scanning raw text would let
-    this module's own docstring -- which explains why QWebChannel is not
-    used -- fail the test that says it is not used.
+    A channel would hand the page a callable Python object, so
+    ``webChannel()`` answering ``None`` is what keeps the panel read-only.
     """
-    import io
-    import tokenize
-
-    source = path.read_text(encoding="utf-8")
-    kept: list[str] = []
-    previous = tokenize.INDENT
-    for tok in tokenize.generate_tokens(io.StringIO(source).readline):
-        if tok.type == tokenize.COMMENT:
-            continue
-        if tok.type == tokenize.STRING and previous in (
-            tokenize.INDENT,
-            tokenize.NEWLINE,
-            tokenize.NL,
-            tokenize.DEDENT,
-        ):
-            continue  # a docstring: the only string in statement position
-        if tok.type not in (tokenize.NL, tokenize.NEWLINE, tokenize.INDENT):
-            previous = tok.type
-        else:
-            previous = tok.type
-        kept.append(tok.string)
-    return " ".join(kept)
+    tab = _history_tab(qapp, _mixed_rows())
+    try:
+        assert tab._table._web.page().webChannel() is None
+    finally:
+        tab.deleteLater()
 
 
-@pytest.mark.parametrize("module", ["react_history_panel.py", "history_tab.py"])
-def test_no_back_channel_exists_so_the_page_cannot_write(module: str) -> None:
-    """The write proof is structural: there is no path page -> Python.
+def test_control_the_web_channel_getter_reports_an_installed_channel(qapp) -> None:
+    """The control for the back-channel test.
 
-    A ``QWebChannel`` or a ``setWebChannel`` would give the page a
-    callable Python object, and "read-only" would stop being a property
-    of the wiring. Both the host module and the tab that embeds it are
-    scanned, because either could open the channel.
-
-    ``row_count`` is not a back channel. Python asks and JavaScript
-    answers one number; the page can raise nothing of its own and holds
-    no Python object.
+    A ``QWebChannel`` set on a throwaway page comes back from
+    ``webChannel()``, so ``None`` on the shipped page is a real absence.
     """
-    code = _code_of(REPO / "src" / "gui" / module)
-    for forbidden in ("QWebChannel", "setWebChannel", "setUrlRequestInterceptor"):
-        assert forbidden not in code, f"{forbidden} opens a path back into Python"
+    from PySide6.QtWebChannel import QWebChannel
+    from PySide6.QtWebEngineWidgets import QWebEngineView
 
-
-def test_no_back_channel_control_the_scan_can_see_a_real_call() -> None:
-    """The control: the same scan DOES find the name in real code.
-
-    Without this, a scan that strips everything would pass the test
-    above on a module that really did open a channel.
-    """
-    code = _code_of(REPO / "src" / "gui" / "react_history_panel.py")
-    assert "runJavaScript" in code, "the scan stripped the code, not the prose"
-    prose = (REPO / "src" / "gui" / "react_history_panel.py").read_text(
-        encoding="utf-8"
-    )
-    assert (
-        "QWebChannel" in prose
-    ), "the docstring that makes this test non-trivial is gone"
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# 2. Assets: vendored, pinned, self-contained
-# ═══════════════════════════════════════════════════════════════════════
+    view = QWebEngineView()
+    try:
+        assert view.page().webChannel() is None
+        channel = QWebChannel(view)
+        view.page().setWebChannel(channel)
+        assert view.page().webChannel() is channel
+    finally:
+        view.deleteLater()
 
 
 @pytest.mark.parametrize("name", sorted(VENDOR_SHA256))
@@ -563,14 +503,29 @@ def test_the_page_fetches_nothing_from_the_network(page) -> None:
 def test_the_page_declares_no_external_asset() -> None:
     """And no tag asks for one, so an offline start cannot go blank.
 
-    ``tradingview_chart.py:72`` pulls its charting library from unpkg,
-    so that chart is empty with no network. This page inlines everything.
+    The candlestick chart used to fetch its charting library from a CDN
+    and drew nothing offline. It carries that library now, so the same
+    rule is asserted over both pages rather than as a contrast between
+    them.
     """
-    html = rhp.panel_html()
-    external = re.findall(r"<(?:script|link|img|iframe)[^>]*\b(?:src|href)\s*=", html)
-    assert external == [], f"the page declares external assets: {external}"
-    chart = (REPO / "src" / "gui" / "tradingview_chart.py").read_text(encoding="utf-8")
-    assert "unpkg.com" in chart, "the contrast this test draws is gone; re-check it"
+    from src.gui import tradingview_chart as chart
+
+    pattern = r"<(?:script|link|img|iframe)[^>]*\b(?:src|href)\s*="
+    colors = dict(chart.CHART_THEMES["cyberpunk_dark"])
+    colors["symbol"] = "BTC/USDT"
+    for name, html in (
+        ("history panel", rhp.panel_html()),
+        ("candlestick chart", chart.page_html(colors)),
+    ):
+        external = re.findall(pattern, html)
+        assert external == [], f"{name} declares external assets: {external}"
+
+
+def test_the_external_asset_check_can_see_a_tag_that_is_there() -> None:
+    """The check reports nothing whatever the page declares."""
+    pattern = r"<(?:script|link|img|iframe)[^>]*\b(?:src|href)\s*="
+    seeded = rhp.panel_html() + "<" + 'script src="x.js">' + "</" + "script>"
+    assert re.findall(pattern, seeded) != []
 
 
 def test_vendor_bundles_carry_no_script_terminator() -> None:
@@ -600,11 +555,6 @@ def test_panel_html_survives_percent_and_braces_in_the_bundle() -> None:
     assert html.startswith("<!DOCTYPE html>")
     assert 'id="root"' in html
     assert len(html) > 100_000
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# 3. The DOM shows what the contract serves
-# ═══════════════════════════════════════════════════════════════════════
 
 
 def _assert_not_vacuous(dom: dict, blank_ok: frozenset = frozenset()) -> None:
@@ -755,11 +705,6 @@ def test_the_summary_line_on_screen_is_the_contract_s(page) -> None:
     assert dom["summary"] == want
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 4. Paging boundaries: 1, PAGE_SIZE, PAGE_SIZE + 1
-# ═══════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.parametrize(
     "count,index,rows_on_page,pages,prev,next_",
     [
@@ -799,11 +744,6 @@ def test_page_two_shows_the_rows_page_one_did_not(page) -> None:
     assert len(first) == hrc.PAGE_SIZE and len(second) == 1
     assert first.isdisjoint(second)
     assert first | second == {r["id"] for r in trades}
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# 5. Break the bridge
-# ═══════════════════════════════════════════════════════════════════════
 
 
 def test_a_page_that_was_never_pushed_says_so(page) -> None:
@@ -864,11 +804,6 @@ def test_a_severed_push_leaves_the_last_good_render(page, monkeypatch) -> None:
     assert len(page.dom()["rows"]) == 9, "the restored push did not reach the DOM"
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 6. The JSON injection shape
-# ═══════════════════════════════════════════════════════════════════════
-
-
 #: Values that break the quote-wrapping injection shape. The last two
 #: are legal inside a JSON string and are line terminators in JS.
 HOSTILE_TEXT = 'IT\'S "x" \u2028 \u2029 </script> \\ end'
@@ -886,11 +821,7 @@ def test_hostile_text_in_the_data_survives_the_bridge(page) -> None:
     trades[0]["symbol"] = HOSTILE_TEXT
     page.push(_model(trades))
     dom = page.dom()
-    # NAMED, NOT FIXED, and it belongs to R3 rather than to this panel:
-    # `history_read_contract._bot_cell` serves "" -- not the "-" every
-    # other empty gets -- when no bot matches the symbol, and a hostile
-    # symbol matches none. The panel renders that "" faithfully, which is
-    # what this test is here to show.
+    # `history_read_contract._bot_cell` serves "" when no bot matches.
     _assert_not_vacuous(dom, blank_ok=frozenset({"bot"}))
     shown = {c["key"]: c["text"] for c in dom["rows"][0]["cells"]}
     assert shown["symbol"] == HOSTILE_TEXT
@@ -927,37 +858,48 @@ def test_injection_control_the_chart_shape_breaks_on_the_same_data(page) -> None
     assert verdict(unsafe) == "SyntaxError", "the chart shape survived hostile data"
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 7. The panel writes nothing
-# ═══════════════════════════════════════════════════════════════════════
+@pytest.fixture
+def refuse_writes(monkeypatch):
+    """Make ``open`` in a writing mode and the ``Path`` writers raise.
 
-_TRADING_STATE_FILES = (
-    REPO / "src" / "trading" / "scrumming_bot.py",
-    REPO / "src" / "trading" / "scrumming" / "execution.py",
-    REPO / "src" / "trading" / "scrumming" / "fold_tranches.py",
-    REPO / "src" / "trading" / "scrumming" / "reconciliation.py",
-    REPO / "src" / "trading" / "scrumming" / "tick_phases.py",
-    REPO / "src" / "exchange" / "history_read_contract.py",
-    REPO / "src" / "gui" / "history_tab.py",
-)
-
-
-def test_rendering_leaves_trading_state_byte_identical(page) -> None:
-    """Byte digests of the trading sources, before and after a render.
-
-    A weak check on its own; it is the file-level half of the structural
-    proof in ``test_no_back_channel_exists_so_the_page_cannot_write``.
+    Returns the guarded ``open`` so a control can drive it directly.
     """
-    before = {
-        p: hashlib.sha256(p.read_bytes()).hexdigest() for p in _TRADING_STATE_FILES
-    }
+    import builtins
+
+    real_open = builtins.open
+
+    def _guarded_open(file, mode="r", *args, **kwargs):
+        if any(flag in str(mode) for flag in "wax+"):
+            raise AssertionError(f"opened {file!r} for writing, mode {mode!r}")
+        return real_open(file, mode, *args, **kwargs)
+
+    def _guarded_write(self, *args, **kwargs):
+        raise AssertionError(f"wrote to {self!r}")
+
+    monkeypatch.setattr(builtins, "open", _guarded_open)
+    monkeypatch.setattr(Path, "write_text", _guarded_write)
+    monkeypatch.setattr(Path, "write_bytes", _guarded_write)
+    return _guarded_open
+
+
+def test_building_the_view_model_and_the_push_write_no_file(refuse_writes) -> None:
+    """``build_view_model`` and ``state_push_script`` open nothing to write."""
     trades = _mixed_rows()
-    page.push(_model(trades))
-    _assert_not_vacuous(page.dom())
-    after = {
-        p: hashlib.sha256(p.read_bytes()).hexdigest() for p in _TRADING_STATE_FILES
-    }
-    assert before == after
+    model = _model(trades)
+    assert model["page"]["rows"], "the model came back empty, nothing was exercised"
+    assert rhp.state_push_script(model)
+
+
+def test_control_the_write_guard_catches_a_write(refuse_writes, tmp_path) -> None:
+    """The control for the write guard.
+
+    ``Path.write_text`` and an ``open`` in mode ``w`` both raise under the
+    guard, so a clean run of the test above is a real absence of writes.
+    """
+    with pytest.raises(AssertionError):
+        (tmp_path / "written.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(AssertionError):
+        refuse_writes(tmp_path / "opened.json", "w")
 
 
 def test_building_a_view_model_does_not_mutate_the_trades(page=None) -> None:
@@ -969,18 +911,16 @@ def test_building_a_view_model_does_not_mutate_the_trades(page=None) -> None:
     assert json.dumps(trades, default=str, sort_keys=True) == snapshot
 
 
-def test_the_module_opens_no_file_for_writing() -> None:
-    """No write mode anywhere in the panel."""
-    source = (REPO / "src" / "gui" / "react_history_panel.py").read_text(
-        encoding="utf-8"
-    )
-    for shape in ('"w"', "'w'", '"a"', "'a'", '"wb"', "write_text", "write_bytes"):
-        assert shape not in source, f"{shape} is a write"
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# 8. The Qt host -- the shipped History tab
-# ═══════════════════════════════════════════════════════════════════════
+def test_a_full_render_through_the_shipped_tab_writes_no_file(
+    qapp, refuse_writes
+) -> None:
+    """A drive of ``HistoryTab`` through ``_apply_filters`` opens nothing to
+    write."""
+    tab = _history_tab(qapp, _mixed_rows())
+    try:
+        _assert_not_vacuous(_tab_dom(tab))
+    finally:
+        tab.deleteLater()
 
 
 def _history_tab(qapp, trades: list, from_ts: float = BASE_TS - 86_400):
@@ -1017,65 +957,69 @@ def _tab_dom(tab) -> dict:
     return json.loads(_eval_in(tab._table._web, _DOM_DUMP_JS))
 
 
-def test_the_history_tab_holds_no_qtablewidget() -> None:
-    """The Qt table is gone and the web table stands in its place.
+def test_the_react_variant_gives_the_history_tab_the_web_table() -> None:
+    """The React build resolves History to the web table, not a Qt table."""
+    from PySide6.QtWidgets import QTableWidget
 
-    Scanned as CODE. A class named in a comment is not a table, and the
-    module explains its own import fallback in prose.
-    """
-    code = _code_of(REPO / "src" / "gui" / "history_tab.py")
-    for gone in ("QTableWidget", "QTableWidgetItem", "setRowCount", "setCellWidget"):
-        assert gone not in code, f"{gone} survives in the History tab"
-    assert "HistoryWebTable" in code
+    from src._variant import QT, REACT
+    from src.gui.history_table_variant import history_table_class
 
+    react = history_table_class(REACT)
+    assert react.__name__ == "HistoryWebTable", (
+        "the React build must draw History with the web table; got " + react.__name__
+    )
+    assert not issubclass(react, QTableWidget), (
+        "the React History table must not be a QTableWidget; got " + react.__name__
+    )
 
-def test_the_qtablewidget_scan_can_see_a_real_table() -> None:
-    """The control: the same scan DOES find a QTableWidget in real code.
-
-    Without it, a scan that stripped everything would report the History
-    tab clean whatever it held.
-    """
-    code = _code_of(REPO / "src" / "gui" / "alerts_tab.py")
-    assert "QTableWidget" in code, "the scan stripped the code, not the prose"
-
-
-def _window_wiring() -> str:
-    """The window module and every per-tab builder, concatenated.
-
-    Each ``addTab`` call now sits in the mixin that builds that tab.
-    """
-    gui = REPO / "src" / "gui"
-    parts = [gui / "main_window.py"]
-    parts += sorted((gui / "main_tabs").glob("*.py"))
-    return "\n".join(p.read_text(encoding="utf-8") for p in parts)
+    qt = history_table_class(QT)
+    assert qt is not react, (
+        "the two builds exist to be compared, so they must not resolve to one "
+        "class; both gave " + qt.__name__
+    )
 
 
-def test_there_is_exactly_one_history_tab() -> None:
-    """One tab named History, and no second renderer beside it."""
-    wiring = _window_wiring()
-    added = re.findall(r'addTab\([^,]+,\s*"([^"]*[Hh]istory[^"]*)"\)', wiring)
-    assert added == ["History"], added
-    assert "ReactHistoryPanel" not in wiring
+class _TabBook:
+    """Carries the ``_main_tabs`` and ``_bot_manager`` a tab builder reads."""
+
+    def __init__(self, tabs: Any) -> None:
+        self._main_tabs = tabs
+        self._bot_manager = _bot_manager()
+        self._history_tab: Any = None
+
+
+def test_the_history_builder_adds_exactly_one_history_tab(qapp) -> None:
+    """``_build_history_tab`` leaves one tab, named History."""
+    from types import MethodType
+
+    from PySide6.QtWidgets import QTabWidget
+
+    from src.gui.history_tab import HistoryTab
+    from src.gui.main_tabs.history_tab import HistoryTabMixin
+
+    tabs = QTabWidget()
+    holder = _TabBook(tabs)
+    MethodType(HistoryTabMixin.__dict__["_build_history_tab"], holder)()
+    try:
+        assert holder._history_tab is not None, (
+            "_build_history_tab swallowed its own failure and added no tab; "
+            "see the acervator.gui warning for the cause"
+        )
+        labels = [tabs.tabText(i) for i in range(tabs.count())]
+        assert labels == ["History"], labels
+        assert isinstance(tabs.widget(0), HistoryTab), type(tabs.widget(0)).__name__
+    finally:
+        tabs.deleteLater()
+
+
+def test_the_history_tab_pages_at_the_contract_size() -> None:
+    """``HistoryTab.PAGE_SIZE`` is the size the read contract serves."""
     from src.gui.history_tab import HistoryTab
 
-    assert HistoryTab.PAGE_SIZE == hrc.PAGE_SIZE
-
-
-def test_the_canonical_tab_order_still_holds() -> None:
-    """History keeps its place in the seven-tab order."""
-    wiring = (REPO / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-    block = wiring[wiring.index("CANONICAL_TAB_ORDER = [") :]
-    block = block[: block.index("]")]
-    names = re.findall(r'"([^"]+)"', block)
-    assert names == [
-        "Trading",
-        "Market Inspector",
-        "Bot Swarm",
-        "Asset Charts",
-        "History",
-        "Simulator",
-        "Console",
-    ], names
+    assert HistoryTab.PAGE_SIZE == hrc.PAGE_SIZE, (
+        f"the tab pages at {HistoryTab.PAGE_SIZE} and the contract "
+        f"serves {hrc.PAGE_SIZE}"
+    )
 
 
 def test_the_shipped_tab_renders_the_contract_into_its_own_view(qapp) -> None:
@@ -1206,11 +1150,6 @@ def test_reset_puts_every_filter_back(qapp) -> None:
         )
     finally:
         tab.deleteLater()
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# 9. The gate lights, and the tooltips that carry markup
-# ═══════════════════════════════════════════════════════════════════════
 
 
 _LIGHT_DUMP_JS = r"""

@@ -120,6 +120,202 @@ class TestItDeclinesToJudgeWhatItCannotSee:
         assert ti.check("adx", {"adx": True}) == (None, None)
 
 
+class TestARaisingPredicateIsNotCountedAsChecked:
+    """`check` counts an `Invariant` only after its predicate returns."""
+
+    @staticmethod
+    def _exploding(_details):
+        raise ZeroDivisionError("predicate read a field outside Invariant.fields")
+
+    def _install(self, monkeypatch, name, invariants):
+        table = dict(ti.INDICATORS)
+        table[name] = invariants
+        monkeypatch.setattr(ti, "INDICATORS", table)
+
+    def test_an_indicator_whose_only_bound_raises_reads_as_unchecked(self, monkeypatch):
+        self._install(
+            monkeypatch,
+            "probe",
+            (ti.Invariant(("x",), "x >= 0", self._exploding),),
+        )
+        assert ti.check("probe", {"x": 1.0}) == (
+            None,
+            None,
+        ), "a bound that never evaluated must not read as a passing check"
+
+    def test_the_count_names_only_the_bounds_that_evaluated(self, monkeypatch):
+        self._install(
+            monkeypatch,
+            "probe",
+            (
+                ti.Invariant(("x",), "x >= 0", self._exploding),
+                ti.Invariant(("x",), "x <= 10", lambda d: float(d["x"]) <= 10.0),
+            ),
+        )
+        ok, rule = ti.check("probe", {"x": 1.0})
+        assert (ok, rule) == (True, "1 invariants"), (ok, rule)
+
+    def test_a_working_pair_still_counts_two(self, monkeypatch):
+        """Positive control: with no raise, both bounds count."""
+        self._install(
+            monkeypatch,
+            "probe",
+            (
+                ti.Invariant(("x",), "x >= 0", lambda d: float(d["x"]) >= 0.0),
+                ti.Invariant(("x",), "x <= 10", lambda d: float(d["x"]) <= 10.0),
+            ),
+        )
+        assert ti.check("probe", {"x": 1.0}) == (True, "2 invariants")
+
+
+class TestEveryDeclaredBoundEvaluates:
+    """A bound present in `INDICATORS` but never applied is invisible."""
+
+    FULL_DETAILS = {
+        "rsi": {"rsi": 50.0},
+        "stochastic_rsi": {"k": 50.0, "d": 40.0},
+        "adx": {
+            "adx": 25.0,
+            "di_plus": 20.0,
+            "di_minus": 15.0,
+            "ranging": False,
+            "developing": True,
+            "strong_trend": False,
+            "bull_dominant": True,
+            "bear_dominant": False,
+            "di_bull_cross": False,
+            "di_bear_cross": True,
+        },
+        "bollinger_bands": {
+            "lower": 9.0,
+            "middle": 10.0,
+            "upper": 11.0,
+            "band_width": 2.0,
+        },
+        "zscore": {"std": 1.5},
+        "kaufman_er": {"er": 0.5},
+        "vortex": {"vi_plus": 1.1, "vi_minus": 0.9},
+        "volume": {
+            "mfi": 55.0,
+            "cmf": 0.2,
+            "mfi_overbought": False,
+            "mfi_oversold": True,
+            "cmf_bull": True,
+            "cmf_bear": False,
+        },
+        "supertrend": {
+            "curr_atr": 12.0,
+            "dist_pct": 3.0,
+            "flip_bull": True,
+            "flip_bear": False,
+        },
+        "ichimoku": {
+            "cloud_top": 110.0,
+            "cloud_bottom": 100.0,
+            "cloud_thick_pct": 9.0,
+            "tk_above_cloud": True,
+            "tk_inside_cloud": False,
+            "tk_below_cloud": False,
+            "tk_bull_cross": True,
+            "tk_bear_cross": False,
+            "twist_to_bull": False,
+            "twist_to_bear": True,
+            "chikou_bull": True,
+            "chikou_bear": False,
+            "breakout_up": False,
+            "breakout_down": True,
+            "san_ko_shu_bull": True,
+            "san_ko_shu_bear": False,
+        },
+        "slingshot": {
+            "squeeze_conf": 0.6,
+            "snapback_conf": 0.4,
+            "curr_bw": 0.02,
+            "avg_bw": 0.03,
+            "squeeze_bull": True,
+            "squeeze_bear": False,
+        },
+        "macd": {"macd_line": 1.5, "signal_line": 1.0, "histogram": 0.5},
+    }
+
+    def test_every_indicator_in_the_table_has_a_full_details_case(self):
+        assert set(self.FULL_DETAILS) == set(ti.INDICATORS)
+
+    def test_a_full_details_dict_applies_every_declared_bound(self):
+        for indicator, details in self.FULL_DETAILS.items():
+            declared = len(ti.invariants_for(indicator))
+            ok, rule = ti.check(indicator, details)
+            assert (ok, rule) == (True, f"{declared} invariants"), (
+                indicator,
+                declared,
+                ok,
+                rule,
+            )
+
+
+BREACHES = {
+    "0 <= rsi <= 100": {"rsi": 761.52},
+    "0 <= k <= 100": {"k": 140.0},
+    "0 <= d <= 100": {"d": -1.0},
+    "0 <= adx <= 100": {"adx": 761.52},
+    "0 <= di_plus <= 100": {"di_plus": 140.0},
+    "0 <= di_minus <= 100": {"di_minus": -1.0},
+    "at most one of: ranging, developing, strong_trend": {"ranging": True},
+    "at most one of: bull_dominant, bear_dominant": {"bear_dominant": True},
+    "at most one of: di_bull_cross, di_bear_cross": {"di_bull_cross": True},
+    "lower <= middle <= upper": {"lower": 12.0},
+    "band_width >= 0": {"band_width": -1.0},
+    "std >= 0": {"std": -1e-9},
+    "0 <= er <= 1": {"er": 1.5},
+    "vi_plus >= 0": {"vi_plus": -0.5},
+    "vi_minus >= 0": {"vi_minus": -0.5},
+    "0 <= mfi <= 100": {"mfi": 140.0},
+    "-1 <= cmf <= 1": {"cmf": -1.5},
+    "at most one of: mfi_overbought, mfi_oversold": {"mfi_overbought": True},
+    "at most one of: cmf_bull, cmf_bear": {"cmf_bear": True},
+    "curr_atr >= 0": {"curr_atr": -1.0},
+    "dist_pct >= 0": {"dist_pct": -46.37},
+    "at most one of: flip_bull, flip_bear": {"flip_bear": True},
+    "cloud_bottom <= cloud_top": {"cloud_bottom": 120.0},
+    "cloud_thick_pct >= 0": {"cloud_thick_pct": -0.001},
+    "at most one of: tk_above_cloud, tk_inside_cloud, tk_below_cloud": {
+        "tk_below_cloud": True
+    },
+    "at most one of: tk_bull_cross, tk_bear_cross": {"tk_bear_cross": True},
+    "at most one of: twist_to_bull, twist_to_bear": {"twist_to_bull": True},
+    "at most one of: chikou_bull, chikou_bear": {"chikou_bear": True},
+    "at most one of: breakout_up, breakout_down": {"breakout_up": True},
+    "at most one of: san_ko_shu_bull, san_ko_shu_bear": {"san_ko_shu_bear": True},
+    "0 <= squeeze_conf <= 1": {"squeeze_conf": -0.2722},
+    "0 <= snapback_conf <= 1": {"snapback_conf": 1.5},
+    "curr_bw >= 0": {"curr_bw": -1e-6},
+    "avg_bw >= 0": {"avg_bw": -1e-6},
+    "at most one of: squeeze_bull, squeeze_bear": {"squeeze_bear": True},
+    "histogram == macd_line - signal_line": {"histogram": 0.501},
+}
+
+
+class TestEveryDeclaredBoundCanReportABreach:
+    """A breaching value must make `check` name that bound's rule."""
+
+    def test_a_breach_is_written_for_every_rule_in_the_table(self):
+        declared = {inv.rule for invs in ti.INDICATORS.values() for inv in invs}
+        assert declared == set(BREACHES)
+
+    def test_each_bound_names_itself_when_breached(self):
+        for indicator, good in TestEveryDeclaredBoundEvaluates.FULL_DETAILS.items():
+            for inv in ti.invariants_for(indicator):
+                details = dict(good)
+                details.update(BREACHES[inv.rule])
+                ok, rule = ti.check(indicator, details)
+                assert (ok, rule) == (False, inv.rule), (
+                    indicator,
+                    inv.rule,
+                    ok,
+                    rule,
+                )
+
+
 class TestItNeverRaises:
     def test_hostile_inputs(self):
         for bad in (

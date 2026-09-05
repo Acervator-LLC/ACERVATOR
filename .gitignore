@@ -25,6 +25,10 @@ dist/
 # source tree; this line is the backstop if a copy is ever made here.
 src/_baked_version.txt
 
+# The variant the build stamps into the bundle, written and reaching the
+# bundle exactly as the baked version above does.
+src/_baked_variant.txt
+
 # ── Tool caches ─────────────────────────────────────────────────
 .mypy_cache/
 .pytest_cache/
@@ -102,3 +106,7 @@ tools/.island_ledger.jsonl
 
 # Agent working files never enter the tree.
 scratchpad/
+
+# Captured output. Figures extracted from the product manual PDF land here;
+# docs/manual/FIGURES.md is the tracked inventory of what the directory holds.
+artifacts/

@@ -979,11 +979,17 @@ def test_an_alpha_already_written_as_a_fraction_is_left_alone(js: JsRuntime):
 
 
 MARK = '<img src="x" width="500">'
-PLAIN = 'img src="x" width="500"'
+
+# Two tags of one length whose declared widths are digit permutations.
+# Only a carrier that READS them takes the width each asks for.
+NARROW_IMAGE_PX = 129
+WIDE_IMAGE_PX = 921
+NARROW_IMAGE = '<img src="x" width="%d">' % NARROW_IMAGE_PX
+WIDE_IMAGE = '<img src="x" width="%d">' % WIDE_IMAGE_PX
 
 
 def carrier_widths(qapp, name: str) -> list:
-    """The width one carrier gives the marked text and the same characters."""
+    """The width one carrier gives each of the two declared image widths."""
     assert qapp is not None
     from PySide6.QtWidgets import (
         QCheckBox,
@@ -1024,7 +1030,7 @@ def carrier_widths(qapp, name: str) -> list:
         "QTableWidgetItem": item_width,
         "QHeaderView": header_width,
     }[name]
-    return [made(MARK), made(PLAIN)]
+    return [made(NARROW_IMAGE), made(WIDE_IMAGE)]
 
 
 READS_MARKUP = {
@@ -1039,16 +1045,21 @@ READS_MARKUP = {
 
 @pytest.mark.parametrize("carrier", sorted(READS_MARKUP))
 def test_each_carrier_on_this_panel_is_measured_for_markup(qapp, carrier: str):
-    marked, plain = carrier_widths(qapp, carrier)
-    reads = marked > plain * 2
-    assert reads is READS_MARKUP[carrier], (carrier, marked, plain)
+    narrow, wide = carrier_widths(qapp, carrier)
+    reads = narrow != wide
+    assert reads is READS_MARKUP[carrier], (carrier, narrow, wide)
 
 
 def test_the_markup_measurement_tells_the_two_apart(qapp):
-    marked, plain = carrier_widths(qapp, "QLabel")
-    assert marked == 500 and plain < marked
-    other, plain_other = carrier_widths(qapp, "QPushButton")
-    assert other > plain_other
+    """A carrier that reads the tags takes each declared width exactly; one that
+    prints them does not move at all, having drawn the characters."""
+    assert carrier_widths(qapp, "QLabel") == [NARROW_IMAGE_PX, WIDE_IMAGE_PX]
+    narrow, wide = carrier_widths(qapp, "QPushButton")
+    assert narrow == wide, f"the button took the declared width: {narrow}, {wide}"
+    assert narrow > NARROW_IMAGE_PX, (
+        "the button drew too little for its steadiness to mean anything",
+        narrow,
+    )
 
 
 @pytest.mark.parametrize(

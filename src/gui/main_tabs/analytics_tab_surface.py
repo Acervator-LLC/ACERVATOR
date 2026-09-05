@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from ..color_alpha import css_alpha
+
 METHOD = "analytics.tab"
 
 TAB_ACCESSIBLE_NAME = "Analytics Tab"
@@ -662,18 +664,53 @@ def build_view_model(
     }
 
 
+def css_stop(channels: Any) -> list:
+    """One four-channel colour with Qt's alpha byte as the share CSS reads."""
+    red, green, blue, alpha = channels
+    return [red, green, blue, css_alpha(alpha)]
+
+
+def css_payload(payload: dict) -> dict:
+    """One built view model with every alpha byte written as a CSS share.
+
+    The chart gradient stops and the two chart fills are the only values
+    carrying Qt's 0-to-255 alpha. A browser counts that field to 1 and
+    paints anything above 1 opaque, so the wash under the equity curve
+    would land as a solid block. The conversion happens here and not in
+    ``build_view_model`` because that model feeds the Qt painter, which
+    reads the byte, and not in the renderer, because a module that
+    scales a share again fades the wash twice.
+    """
+    chart = dict(payload["chart"])
+    gradient = dict(chart["gradient"])
+    if "stops" in gradient:
+        gradient["stops"] = [[at, css_stop(one)] for at, one in gradient["stops"]]
+    chart["gradient"] = gradient
+    skin = dict(payload["chart_skin"])
+    skin["rise_fill"] = [css_stop(one) for one in skin["rise_fill"]]
+    skin["fall_fill"] = [css_stop(one) for one in skin["fall_fill"]]
+    published = dict(payload)
+    published["chart"] = chart
+    published["chart_skin"] = skin
+    return published
+
+
 def view_model(params: dict) -> dict:
     """Bridge handler for ``analytics.tab``.
 
     Reads ``summary``, ``curve``, ``bots``, ``timeframes``, ``width``
-    and ``height`` from the request parameters. Nothing is held between
-    calls, so two calls with the same parameters answer the same.
+    and ``height`` from the request parameters and publishes the model
+    through ``css_payload``, so the renderer receives an alpha a browser
+    reads. Nothing is held between calls, so two calls with the same
+    parameters answer the same.
     """
-    return build_view_model(
-        params.get("summary"),
-        params.get("curve"),
-        params.get("bots"),
-        params.get("timeframes"),
-        params.get("width", 800),
-        params.get("height", 300),
+    return css_payload(
+        build_view_model(
+            params.get("summary"),
+            params.get("curve"),
+            params.get("bots"),
+            params.get("timeframes"),
+            params.get("width", 800),
+            params.get("height", 300),
+        )
     )

@@ -75,9 +75,7 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The inputs. One table for the card's five fields, one for the presses.
-# ---------------------------------------------------------------------
 
 
 LONG_TEXT = "L" * 200
@@ -163,9 +161,8 @@ REFUSING_FIELD_SPECS = (
     "nothing_where_the_feature_list_belongs",
 )
 
-# Refusals Qt words with its own signature list, which no product code
-# owns. Type and outcome are compared; the wording is pinned apart by
-# test_the_two_sides_word_a_text_refusal_differently.
+# Qt words these refusals from its own signature list. Type and outcome are
+# compared here; the wording is pinned apart.
 QT_WORDED_REFUSALS = (
     "a_number_where_a_title_belongs",
     "a_number_where_a_subtitle_belongs",
@@ -211,9 +208,7 @@ REFUSING_PRESS_SPECS = (
 )
 
 
-# ---------------------------------------------------------------------
 # Reading the shipped side
-# ---------------------------------------------------------------------
 
 
 def item_kind(item) -> str:
@@ -503,9 +498,7 @@ def new_window_outcome(presses) -> dict:
     return outcome(lambda: surface_window_trace(drive_new(presses)[1]))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", FIELD_NAMES)
@@ -578,9 +571,7 @@ def test_the_sample_screen_hashes_are_reported(name):
     assert digest(value) == digest(new_window_outcome(PRESS_SPECS[name])["value"])
 
 
-# ---------------------------------------------------------------------
 # Answers and refusals
-# ---------------------------------------------------------------------
 
 
 def test_both_answers_and_refusals_are_in_the_measured_card_set():
@@ -675,9 +666,7 @@ def test_a_text_feature_list_is_read_letter_by_letter_on_both_sides():
     assert new["value"]["features"] == old["value"]["features"]
 
 
-# ---------------------------------------------------------------------
 # The enumeration: signals, classes, methods, timers, bus topics
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -953,9 +942,7 @@ def test_the_screen_subscribes_to_no_bus_topic_and_the_counter_can_report():
     assert "wire.created" in neighbour
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 PAYLOAD_KEYS = {
@@ -1047,9 +1034,7 @@ PAYLOAD_KEYS = {
     "WORD_WRAP_ON": "word_wrap.on",
 }
 
-# Values the payload carries inside a list rather than at a path of
-# their own: the two card names, the two press kinds and the gradient's
-# horizontal position.
+# Values the payload carries inside a list, not at a path of their own.
 LIST_MEMBERS = {
     "BUTTON_PRESS": "press_kinds",
     "CARD_PRESS": "press_kinds",
@@ -1067,10 +1052,7 @@ CALL_CONSTANTS = (
     "STOCKS_SELECTED",
 )
 
-# The three values no payload key carries, each with the check that
-# covers it. METHOD is the name the bridge registers under, LOGGER_NAME
-# the logger the shipped screen names, and SCREEN_MODEL the screen state
-# the bridge keeps between calls.
+# (constant no payload key carries, the test that covers it).
 NOT_IN_THE_SNAPSHOT = {
     "METHOD": "test_the_bridge_registers_the_launcher_method",
     "LOGGER_NAME": "test_the_surface_names_the_same_logger_as_the_screen",
@@ -1196,9 +1178,7 @@ def test_every_branch_marker_fires_and_ties_to_what_the_operator_sees():
     assert loud_payload["cards"]["stocks_card"]["clicks"] == 0
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 def moved_label_class():
@@ -1283,9 +1263,7 @@ def test_the_surface_names_the_same_logger_as_the_screen():
     assert surface.LOGGER_NAME == "acervator.gui"
 
 
-# ---------------------------------------------------------------------
 # The colours
-# ---------------------------------------------------------------------
 
 
 def canonical(colour):
@@ -1354,9 +1332,7 @@ def test_every_named_colour_reaches_the_style_that_carries_it():
         assert colour in surface.COLORS.values()
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def model_payload(presses=None):
@@ -1629,9 +1605,7 @@ def test_two_feature_lines_of_equal_length_measure_different_widths():
     assert narrow.sizeHint().width() != wide.sizeHint().width()
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_values_no_picture_carries_are_read_off_both_sides():
@@ -1708,9 +1682,7 @@ def test_the_glow_the_card_asks_for_never_reaches_the_screen():
     assert kept.graphicsEffect() is not None, "a kept shadow does not attach either"
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):

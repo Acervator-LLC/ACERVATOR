@@ -1,7 +1,8 @@
-"""Configuration data for bots: modes, states, the BotConfig dataclass and its factory.
+"""Bot modes, states, the ``BotConfig`` dataclass and ``make_bot_config``.
 
-Leaf module: imports nothing from the trading package, so the container
-mixins can depend on it without an import cycle through bot_container.
+``BotConfig`` carries every operator setting and ``BotStats`` carries the
+runtime counters. ``make_bot_config`` refuses a kwarg foreign to the given
+``BotMode``. This module imports nothing from the trading package.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-# DOLLAR_PEGGED_CURRENCIES price at exactly 1.0 USD when no market price is available.
+# DOLLAR_PEGGED_CURRENCIES count as 1.00 USD; no market price is read for them.
 DOLLAR_PEGGED_CURRENCIES = frozenset(
     {
         "USD",
@@ -25,9 +26,6 @@ DOLLAR_PEGGED_CURRENCIES = frozenset(
 )
 
 
-# ---------------------------------------------------------------------------
-# Bot state machine
-# ---------------------------------------------------------------------------
 class BotState(str, Enum):
     IDLE = "idle"
     STARTING = "starting"
@@ -43,10 +41,7 @@ class BotMode(str, Enum):
     EXTRACTOR = "extractor"
 
 
-# ---------------------------------------------------------------------------
-# Bot configuration
-# ---------------------------------------------------------------------------
-#: Stack Mode value used only when a bot has no stored `stack_mode`.
+#: Default for ``BotConfig.stack_mode`` and the wizard's checkbox.
 STACK_MODE_DEFAULT: bool = True
 
 
@@ -60,17 +55,14 @@ class BotConfig:
     symbol: str = ""  # Derived: "BTC/USDT"
     mode: BotMode = BotMode.SCRUMMING
 
-    # --- Sizing ---
     investment_amount: float = 200.0  # Total bot capital
     increment_style: str = "linear"  # "linear" or "logarithmic"
     spacing_style: str = (
         "expanding"  # "expanding" (wider gaps) or "stacked" (fixed gap)
     )
 
-    # Profit folding flag (engine-consulted)
     profit_folding_active: bool = True
 
-    # --- Scrumming-specific ---
     target_balance: float = 200.0  # Balance the bot trades relative to
     # Caps USD adopted from an existing exchange balance; 0.0 uses target_balance.
     max_adoptable_usd: float = 0.0
@@ -85,53 +77,50 @@ class BotConfig:
     scrum_fold_pct: int = 100  # 1-100: % of scrum proceeds queued for fold
 
     # Read via despawn_threshold_days() below, never raw; 0 = off.
-    tranche_despawn_days: int = 0  # 0 = off; else delist at >= N days
+    tranche_despawn_days: int = 0  # 0 = off; else remove at >= N days
 
-    # Caps per-cycle target_balance growth as % of the cycle's anchor; consulted live.
-    max_target_growth_pct: float = 1.0  # 1-100: cap on target growth per cycle as %
+    # Caps per-cycle target_balance growth as a % of the cycle's anchor; 1-100.
+    max_target_growth_pct: float = 1.0
 
-    # Scrumming: Bollinger Band proximity settings
     bb_tolerance_pct: float = 1.0  # 0.25% to 5% tolerance for BB proximity
     bb_landing_strip_candles: int = (
         3  # Min consecutive tight HA candles for landing strip
     )
     ta_timeframe: str = "1h"  # Timeframe for TA indicator calculations
 
-    # Scrumming: advanced signal & risk parameters
-    scrum_detect_pct: int = 75  # DETECT threshold — % distance from BB midline
-    # before switching SEARCH→TRACK (10-90)
-    scrum_fire_pct: float = 0.5  # FIRE threshold — % distance from BB band
-    # to trigger a trade (0.1-10.0)
-    bb_midline_gate: bool = True  # When True: scrums only above midline,
-    # folds only below midline (bear-market friendly)
-    scrum_read_rate_min: int = 5  # SEARCH-mode read rate in minutes; TRACK mode
-    # reads 10x faster automatically
-    band_travel_pct: int = 70  # Secondary harvest trigger — % of BB band width
-    # price must travel since last fold (0 = off)
-    bb_bullseye_check: bool = True  # Rapid Fire override when price touches a BB
-    # band within 0.1% (overrides other gates)
-    hedge_rebalance_active: bool = True  # Enable a separate USD reserve for buying on
-    # sharp drawdowns (lets bot keep buying the dip)
-    hedge_balance: float = 200.0  # USD reserve amount for hedge rebalancing
-    # (not taken from target_balance)
+    # % distance from the BB midline that switches SEARCH to TRACK; 10-90.
+    scrum_detect_pct: int = 75
+    # % distance from a BB band that triggers a trade; 0.1-10.0.
+    scrum_fire_pct: float = 0.5
+    # True scrums only above the BB midline and folds only below it.
+    bb_midline_gate: bool = True
+    # SEARCH-mode read rate in minutes; TRACK mode reads 10x faster.
+    scrum_read_rate_min: int = 5
+    # % of BB band width price must travel since the last fold; 0 is off.
+    band_travel_pct: int = 70
+    # Rapid Fire override when price touches a BB band within 0.1%.
+    bb_bullseye_check: bool = True
+    # A separate USD reserve for buying sharp drawdowns.
+    hedge_rebalance_active: bool = True
+    # Hedge reserve in USD; not taken from target_balance.
+    hedge_balance: float = 200.0
 
-    # Soft = time-delay interrupt; Hard = pause requiring operator reset.
-    # Move measured as (high - low) / open x 100; direction from close vs open.
-    circuit_breaker_soft_pct: float = 25.0  # Soft trip threshold (default 25%)
-    circuit_breaker_hard_pct: float = 35.0  # Hard trip threshold (default 35%)
-    circuit_breaker_cooldown_candles: int = 3  # Candles to wait before soft re-opens
+    # Trip % is (high - low) / open x 100; the soft trip re-opens after the cooldown.
+    circuit_breaker_soft_pct: float = 25.0
+    circuit_breaker_hard_pct: float = 35.0
+    circuit_breaker_cooldown_candles: int = 3
 
     # 0 disables; otherwise triggers a rebalance once |delta| >= target_balance x
     # pct/100.
     max_cartridge_size_pct: float = 10.0
 
-    # When True, threshold derives from BB range, clamped between scrumming_interval_pct
-    # and max_cartridge_smart_ceiling_pct; when False, max_cartridge_size_pct applies.
+    # Derives the threshold from the BB range, clamped by
+    # max_cartridge_smart_ceiling_pct.
     max_cartridge_smart: bool = False
     max_cartridge_smart_ceiling_pct: float = 30.0
 
-    # Wire income buys target asset instead of parking, when |position-target| and
-    # price-vs-entry both fall within this %; 0 disables.
+    # Wire income buys the target asset when |position-target| and price-vs-entry
+    # are both within this %; 0 disables.
     wire_inflow_stack_pct: float = 1.0
 
     # SCRUM-side (sell at top):
@@ -140,75 +129,61 @@ class BotConfig:
         True  # trend_hold blocks scrum during sustained uptrend
     )
     scrum_defer_to_htf: bool = True  # Refuses scrum when higher-TF phantom is BULLISH
-    # FOLD-side (buy at bottom, mirror semantics):
+    # FOLD-side (buy at bottom), mirroring the three above:
     fold_require_ta_bearish: bool = True  # Requires is_bearish for auto-fold
     fold_hold_in_downtrend: bool = (
         True  # trend_hold blocks fold during sustained downtrend
     )
     fold_defer_to_htf: bool = True  # Refuses fold when higher-TF phantom is BEARISH
 
-    # --- Both modes ---
     visibility: str = "orderbook"  # "orderbook" or "internal"
     # Forces engine-initiated trades to execute as IOC-limit taker orders;
     # Manual Fire is unaffected.
     aggressive_trading: bool = False
 
-    # Splits a SCRUM sell across upward price levels; first tranche sits
-    # (scrumming_interval_pct + trading_fee_pct) above the trigger price.
-    # Later tranches space by stack_spacing_mode at split_distance intervals.
-    # visibility="orderbook" rests LIMIT SELL orders on the exchange; "internal"
-    # tracks internally and market-sells each tranche as price crosses.
+    # Splits a SCRUM sell across upward levels; "orderbook" rests LIMIT SELLs and
+    # "internal" market-sells each tranche as price crosses.
     stack_mode: bool = STACK_MODE_DEFAULT
     # Percent spacing between tranches, scaled by stack_spacing_mode.
     split_distance: float = 1.0
     # Target level count; actual count may drop for exchange min-order-size or
     # 0.1% merge.
     stack_tranche_count_target: int = 3
-    # Cumulative distance from anchor in units of split_distance: "linear" n -> 1,2,3,4;
-    # "quadratic" n^2 -> 1,4,9,16; "exponential" 2^(n-1) -> 1,2,4,8.
+    # Cumulative distance from anchor in units of split_distance: linear 1,2,3,4;
+    # quadratic 1,4,9,16; exponential 1,2,4,8.
     stack_spacing_mode: str = "linear"
 
-    # max_entry_price refuses auto-buy above it, min_entry_price below it;
-    # None means no bound.
-    # Manual Fire bypasses both; fold rebuy and hedge buy respect both.
+    # max_entry_price refuses auto-buy above it and min_entry_price below it;
+    # Manual Fire bypasses both.
     max_entry_price: Optional[float] = None
     min_entry_price: Optional[float] = None
 
-    # Effective hysteresis deviation = scrumming_interval_pct + trading_fee_pct;
-    # default 0.6 = Coinbase max tier.
+    # Effective hysteresis deviation is scrumming_interval_pct + trading_fee_pct;
+    # 0.6 is the Coinbase max tier.
     trading_fee_pct: float = 0.6
 
-    # position_ceiling_enabled caps accumulation at position_ceiling_multiple x the
-    # anchor target_balance.
-    # Fold interval tapers 100%->10% as the ratio runs 0.5->1.0, hard-stopping at 1.0.
-    # Scrum is unaffected; only fold is capped and eventually stopped.
+    # Caps accumulation at position_ceiling_multiple x the anchor target_balance;
+    # only fold is capped, and its interval tapers 100%->10% over ratio 0.5->1.0.
     position_ceiling_enabled: bool = False
-    position_ceiling_multiple: float = 5.0  # Range [1.0, 10.0], default 5x
-    # detonation_enabled watches detonation_timeframe for a BULLISH reversal at or
-    # above detonation_confidence_min.
-    # On detection it market-sells everything above the anchor and resets
-    # target_balance to it.
-    # Edge-triggered: it detonates once per reversal, not every tick while
-    # BULLISH holds.
+    position_ceiling_multiple: float = 5.0  # Range [1.0, 10.0]
+    # A BULLISH reversal on detonation_timeframe at or above
+    # detonation_confidence_min market-sells above the anchor, once per reversal.
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"  # "1d", "1w"
     detonation_confidence_min: float = (
         0.75  # BULLISH confidence threshold; operator-adjustable 0.50-1.00
     )
 
-    # Registers target-balance-worth of the target asset in CapitalReservationRegistry
-    # so other bots don't claim the same coins.
+    # Reserves target-balance-worth of the target asset in CapitalReservationRegistry.
     self_reserve_capital: bool = True
     # Target-asset units held out of the bot's decision math and reservation.
     personal_hold_qty: float = 0.0
 
-    # Extractor Bot (mode == EXTRACTOR) anchors to a base-asset pool and sends
-    # chunks into volatile ALT pairs to grow it; ExtractorBots spawn no child bots.
-    # Pair selection scans top-N */<base> pairs by 24h volume every
-    # extractor_scan_refresh_candles ticks.
-    #
-    # extractor_direction "normal" buys alt first for more base; "inverted" sells alt
-    # first for the quote currency, buying back more alt.
+    # BotMode.EXTRACTOR anchors to a base-asset pool and sends chunks into ALT
+    # pairs; it spawns no child bots.
+
+    # "normal" buys alt first for more base; "inverted" sells alt first for the
+    # quote currency.
     extractor_direction: str = "normal"
     # Operator-entered ALT quantity reserved at startup for the inverted direction.
     inverted_extractor_standing_alt_units: float = 0.0
@@ -299,11 +274,8 @@ class BotConfig:
         return violations
 
 
-# ---------------------------------------------------------------------------
-# BotConfig field manifests + typed factory
-# ---------------------------------------------------------------------------
-# These sets mark which fields are valid per mode; make_bot_config() raises
-# on a foreign field.
+# These sets mark which fields are valid per mode; make_bot_config raises on a
+# foreign field.
 
 #: Fields valid for either mode's make_bot_config(...) call, unmodified.
 _BOT_CONFIG_SHARED_FIELDS: frozenset = frozenset(
@@ -341,7 +313,8 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "profit_route_bot_id",
         "scrum_fold_pct",
         "max_target_growth_pct",
-        # The two ledgers this sweeps only exist on ScrummingBot.
+        # tranche_despawn_days sweeps the fold and stack ledgers, both
+        # ScrummingBot-only.
         "tranche_despawn_days",
         "bb_tolerance_pct",
         "bb_landing_strip_candles",
@@ -402,13 +375,12 @@ _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS: frozenset = frozenset(
 )
 
 
-#: Keys `_sanitize_deprecated_kwargs()` drops before BotConfig.__init__, so an
-#: older bot_state.json with these keys does not raise TypeError on load.
+#: Keys `_sanitize_deprecated_kwargs` drops before `BotConfig.__init__`.
 _DEPRECATED_KWARGS: frozenset = frozenset(
     {
-        "bulk_trading",  # renamed to stack_mode; historically always False
-        "bulk_partial_on_return",  # retired; never had a runtime consumer
-        "market_check_interval",  # retired; never had a runtime consumer
+        "bulk_trading",  # renamed to stack_mode
+        "bulk_partial_on_return",
+        "market_check_interval",
         "position_count",
         "position_distance_pct",
         "fold_mode",
@@ -421,22 +393,18 @@ _DEPRECATED_KWARGS: frozenset = frozenset(
 )
 
 
-#: Bound for as_finite_float's int branch; 2**1023 is under the float max, so
-#: comparing does not risk OverflowError.
+#: Bound for `as_finite_float`'s int branch; 2**1023 is under the float max.
 _FLOAT_SAFE_INT: int = 2**1023
 
-#: Days-to-seconds saturation cap (10,000 years); prevents days * 86400.0 from
-#: raising OverflowError on a corrupted value.
+#: Saturation cap for `despawn_threshold_days`, 10,000 years in whole days.
 DESPAWN_MAX_DAYS: int = 3_650_000
 
 
 def as_finite_float(value) -> Optional[float]:
-    """Return `value` as a float when it is exactly int or float and finite;
-    None for everything else.
+    """Return `value` as a float when its exact type is int or float and it is
+    finite.
 
-    Uses exact type, not isinstance, so a bool (a subclass of int) is not
-    accepted. An int outside +/-2**1023 is also refused rather than
-    overflowed into `float()`.
+    A bool is refused, and so is an int outside +/-`_FLOAT_SAFE_INT`.
 
     Args:
       value: anything, including a value read from a JSON-decoded state file.
@@ -454,17 +422,12 @@ def as_finite_float(value) -> Optional[float]:
 def despawn_threshold_days(config) -> int:
     """Return the tranche despawn threshold in whole days; 0 means OFF.
 
-    Reads `config.tranche_despawn_days`.
-    `ScrummingBot._despawn_aged_tranches` and the live-settings spinbox both
-    read through this function, so a stored value means the same thing to
-    the sweep and to the spinbox that sets it. A non-numeric, non-finite, or
-    negative setting reads as OFF. The value truncates toward zero and
-    saturates at DESPAWN_MAX_DAYS; it is not clamped to the spinbox's 0-365
-    display range.
+    Reads `config.tranche_despawn_days` through `as_finite_float`, truncates
+    toward zero and saturates at `DESPAWN_MAX_DAYS`. A non-numeric,
+    non-finite or negative setting reads as OFF.
 
     Args:
-      config: any object; the field is read with `getattr`, so a config
-        predating it reads as OFF.
+      config: any object; the field is read with `getattr`.
 
     Returns:
       Whole days in [0, DESPAWN_MAX_DAYS]. 0 means the timer is off.
@@ -475,17 +438,15 @@ def despawn_threshold_days(config) -> int:
     return min(DESPAWN_MAX_DAYS, max(0, int(days)))
 
 
-#: Candidate windows the Fold Tranches panel offers when the timer is OFF,
-#: so the operator reads a consequence instead of a blank.
+#: Candidate windows the Fold Tranches panel offers when the timer is OFF.
 DESPAWN_PREVIEW_WINDOWS: tuple[int, ...] = (7, 14, 30, 60)
 
 
 def _despawn_age_seconds(tranche: object, field: str, now: float) -> Optional[float]:
     """Return one tranche's age in seconds, or None when it has no usable timestamp.
 
-    Uses `as_finite_float` so a stored bool is not read as a timestamp and a
-    non-positive stamp reads as unset. Mirrors
-    `ScrummingBot._tranche_age_seconds`.
+    `as_finite_float` refuses a stored bool and a non-positive stamp reads as
+    unset, matching `ScrummingBot._tranche_age_seconds`.
 
     Args:
       tranche: one fold or stack tranche record.
@@ -530,8 +491,7 @@ def _despawn_preview_stack(
     """Count the stack ledger into `report` by age against `cutoff`; removes nothing.
 
     A pending tranche holding a live exchange order counts as
-    `stack_kept_live_order` instead of removable, since despawning it would
-    leave an untracked resting order.
+    `stack_kept_live_order`, never as removable.
     """
     for _t in stack:
         _age = _despawn_age_seconds(_t, "opened_ts", now)
@@ -555,11 +515,9 @@ def despawn_preview(
 
     Reads `fold_tranches` and `stack_tranches` without changing either list
     or any bot state. Applies the same predicate as
-    `ScrummingBot._despawn_aged_tranches`: age
-    >= days is removable, an ageless record is kept, and a stack tranche
-    holding a live exchange order is kept.
-    `tests/test_despawn_window_is_usable.py` asserts the two
-    implementations agree on every count.
+    `ScrummingBot._despawn_aged_tranches`: age >= days is removable, an
+    ageless record is kept, and a stack tranche holding a live exchange
+    order is kept.
 
     Args:
       fold_tranches: this bot's fold ledger, or None.
@@ -681,9 +639,6 @@ def make_bot_config(mode, **kwargs) -> BotConfig:
     return cfg
 
 
-# ---------------------------------------------------------------------------
-# Bot runtime stats
-# ---------------------------------------------------------------------------
 @dataclass
 class BotStats:
     """Mutable runtime statistics — updated by the bot during operation."""
@@ -700,9 +655,7 @@ class BotStats:
     position_value: float = 0.0
     accumulated_fold: float = 0.0  # Tracks toward extended position
     accumulated_distribute: float = 0.0  # Tracks toward extended position
-    # Fold tranches discarded by an operator clear, never folded; kept apart
-    # from any "closed" counter.
-    # See ScrummingBot.clear_fold_tranches.
+    # Fold tranches discarded by ScrummingBot.clear_fold_tranches, never folded.
     tranches_discarded_lifetime: int = 0
     # USD of parked wire credit released by an operator clear; an earmark,
     # not moved funds.
@@ -721,31 +674,22 @@ class BotStats:
     # all running bots.
     total_scrummed_usd: float = 0.0
     total_folded_usd: float = 0.0
-    # YTD USD totals since YTD_TRADE_ANCHOR_UTC (2026-04-01), pulled via
-    # sync_ytd_trade_count.
-    # Dashboard prefers these over the platform-run accumulators once
-    # exchange_data_fresh_ts > 0.
+    # USD since YTD_TRADE_ANCHOR_UTC, refreshed by sync_ytd_trade_count.
     ytd_scrummed_usd: float = 0.0
     ytd_folded_usd: float = 0.0
-    # Never resets, unlike consecutive_errors (clears on success) and the
-    # header's "Errors" stat (only bots CURRENTLY in ERROR).
+    # Never resets, unlike consecutive_errors, which clears on success.
     total_errors: int = 0
-    # Refreshed by the tick loop via the connector's get_my_trades and
-    # position_health; exchange-truth values, not the synthetic realised_pnl
-    # / unrealised_pnl accumulators.
-    # 0 means not yet refreshed; call sites should check
-    # exchange_data_fresh_ts for staleness.
+    # Exchange-truth values from the connector's get_my_trades; 0 until
+    # exchange_data_fresh_ts is set.
     realized_pnl_exchange: float = 0.0  # FIFO-matched realized P/L
     avg_entry_exchange: float = 0.0  # weighted-avg cost basis
-    cost_basis_total_exchange: float = 0.0  # qty × avg_entry
+    cost_basis_total_exchange: float = 0.0  # qty x avg_entry
     fees_paid_exchange: float = 0.0
     exchange_trade_count: int = 0
     exchange_data_fresh_ts: float = 0.0  # unix-seconds of last refresh
-    # Exchange wallet USD + USDC cash; the container aggregator takes the
-    # max value across bots (all share one wallet).
+    # Exchange wallet USD + USDC cash; the aggregator takes the max across bots.
     cash_balance_usd: float = 0.0
 
-    # Surplus profit parked when the cycle's growth cap is exhausted, drained into
-    # target_balance by later cycles. Mirrors ScrummingBot._standing_surplus_usd,
-    # read by the live settings tab's surplus display.
+    # Surplus parked when the cycle's growth cap is exhausted; mirrors
+    # ScrummingBot._standing_surplus_usd.
     standing_surplus_usd: float = 0.0

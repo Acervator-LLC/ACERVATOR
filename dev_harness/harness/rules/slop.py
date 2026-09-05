@@ -56,10 +56,6 @@ class Finding:
     message: str
 
 
-# --------------------------------------------------------------------- #
-# SL001 — duplicate try/except/pass                                     #
-# --------------------------------------------------------------------- #
-
 # Threshold: 3+ occurrences of the same (exception_type, body_shape)
 # pair signals slop. 2 occurrences is normal (paired invariant).
 _TRY_DUPE_THRESHOLD = 3
@@ -113,10 +109,6 @@ def _find_duplicate_try_except(
     return hits
 
 
-# --------------------------------------------------------------------- #
-# SL002 — over-long function                                            #
-# --------------------------------------------------------------------- #
-
 _LONG_FUNC_THRESHOLD = 200
 
 
@@ -134,21 +126,12 @@ def _find_long_functions(tree: ast.AST) -> list[tuple[int, str, int]]:
     return hits
 
 
-# --------------------------------------------------------------------- #
-# SL003 — file too big                                                  #
-# --------------------------------------------------------------------- #
-
 _BIG_FILE_THRESHOLD = 3000
 
 
 def _file_too_big(source: str) -> int | None:
     lines = source.count("\n") + 1
     return lines if lines > _BIG_FILE_THRESHOLD else None
-
-
-# --------------------------------------------------------------------- #
-# Public entry — called by coding_archetype only                       #
-# --------------------------------------------------------------------- #
 
 
 def scan(target: Path, source: str) -> list[Any]:

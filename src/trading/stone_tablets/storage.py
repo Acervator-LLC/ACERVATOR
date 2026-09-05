@@ -1,18 +1,10 @@
-"""storage.py — read/write per-tablet JSON files + MANIFEST.
+"""Stone Tablet files and the MANIFEST index.
 
-Isolated pure module — no async, no exchange, no runtime state.
-Consumers: registry.py + fetcher.py.
-
-Storage layout (per operator directive 2026-08-01):
-
-    ~/.acervator/stone_tablets/
-    ├── MANIFEST.json
-    ├── BTC_5m_2026.json         # canonical tablet
-    ├── ETH_5m_2026.json
-    └── _scratch/                # pre-verified fetches
-        └── SOL_5m_2026.json
-
-sadp: R28 SSS + R70 RCN
+``read_tablet`` and ``write_tablet`` move one ``Tablet`` between JSON and
+memory under ``STONE_TABLETS_DIR``, at the name ``tablet_filename`` builds from
+``asset``, ``timeframe``, ``year`` and ``exchange_id``. ``read_manifest`` and
+``write_manifest`` carry the ``TabletEntry`` index that ``entry_from_tablet``
+fills in from a ``Tablet``.
 """
 
 from __future__ import annotations
@@ -30,10 +22,6 @@ from ...core.io_utils import atomic_write_json
 
 logger = logging.getLogger("acervator.stone_tablets.storage")
 
-# --------------------------------------------------------------------- #
-# Paths                                                                 #
-# --------------------------------------------------------------------- #
-
 STONE_TABLETS_DIR: Path = Path(os.path.expanduser("~/.acervator/stone_tablets"))
 MANIFEST_PATH: Path = STONE_TABLETS_DIR / "MANIFEST.json"
 SCRATCH_DIR: Path = STONE_TABLETS_DIR / "_scratch"
@@ -41,21 +29,12 @@ SCRATCH_DIR: Path = STONE_TABLETS_DIR / "_scratch"
 SCHEMA_VERSION: int = 2
 
 
-# --------------------------------------------------------------------- #
-# Dataclasses                                                            #
-# --------------------------------------------------------------------- #
-
-
 @dataclass
 class TabletEntry:
-    """One row in the manifest — index of a tablet on disk.
+    """One MANIFEST row indexing the tablet named by ``file``.
 
-    v3.23.98: added ``exchange_id`` per operator directive 2026-08-01:
-    "some stone tablets are exchange specific ... will come into play
-    as soon as we get to feature-complete, multi-exchange verification
-    phase." Coinbase is the only exchange today; the field is
-    scaffolded now so multi-exchange doesn't require a schema
-    migration later.
+    ``read_manifest`` falls back to ``first_ts_ms`` for a row carrying no
+    ``listed_at_ms``.
     """
 
     asset: str
@@ -69,20 +48,16 @@ class TabletEntry:
     last_ts_ms: int
     fetched_at: str
     source: str
-    # v3.24.6 — explicit platform-level listing marker per operator
-    # directive 2026-08-01: "Add stone tablet level flags that the
-    # platform will recognize." For coverage that starts at YTD_START
-    # this equals first_ts_ms; for assets Coinbase listed AFTER
-    # YTD_START, this is the actual listing date (first candle) so
-    # consumers can emit "This asset was listed on Coinbase mm/dd/yyyy
-    # and no prior data exists." Reads with old manifests fall back
-    # to first_ts_ms in read_manifest().
+    # Timestamp of the asset's earliest candle on the exchange; 0 when unknown.
     listed_at_ms: int = 0
 
     @property
     def listed_at_iso(self) -> str:
-        """UTC ISO date string derived from listed_at_ms (or first_ts
-        as fallback for old manifests). Empty when neither is set."""
+        """``YYYY-MM-DD`` in UTC from ``listed_at_ms``, or ``first_ts_ms`` when
+        that is zero.
+
+        Returns an empty string when both are zero or negative.
+        """
         ts = self.listed_at_ms or self.first_ts_ms
         if ts <= 0:
             return ""
@@ -91,8 +66,11 @@ class TabletEntry:
 
 @dataclass
 class Tablet:
-    """Full tablet contents — schema v2 (v3.23.98 adds exchange_id,
-    v3.24.6 adds listed_at_ms as a computed property)."""
+    """One asset's ``candles`` with the metadata written beside them.
+
+    ``to_dict`` adds ``candle_count``, ``first_ts_ms``, ``last_ts_ms``,
+    ``listed_at_ms`` and ``checksum_sha256`` to the stored form.
+    """
 
     asset: str
     exchange_id: str
@@ -117,10 +95,11 @@ class Tablet:
 
     @property
     def listed_at_ms(self) -> int:
-        """v3.24.6 — the timestamp of this tablet's earliest candle.
-        Equals ``first_ts_ms``; kept as a semantic alias so platform
-        code that asks 'when was this asset listed?' reads naturally.
-        Zero when the tablet has no candles."""
+        """Timestamp of the earliest row in ``candles``, equal to
+        ``first_ts_ms``.
+
+        Zero when ``candles`` is empty.
+        """
         return self.first_ts_ms
 
     @property
@@ -132,8 +111,10 @@ class Tablet:
         ).strftime("%Y-%m-%d")
 
     def compute_checksum(self) -> str:
-        """SHA-256 over the candles list only — deterministic
-        regardless of fetched_at / source metadata drift."""
+        """SHA-256 over ``candles`` alone.
+
+        ``fetched_at`` and ``source`` do not change the digest.
+        """
         payload = json.dumps(self.candles, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -142,16 +123,9 @@ class Tablet:
         d["candle_count"] = self.candle_count
         d["first_ts_ms"] = self.first_ts_ms
         d["last_ts_ms"] = self.last_ts_ms
-        # v3.24.6 — persist listing marker so consumers reading the
-        # raw JSON file (not just the MANIFEST index) see it too.
         d["listed_at_ms"] = self.listed_at_ms
         d["checksum_sha256"] = self.compute_checksum()
         return d
-
-
-# --------------------------------------------------------------------- #
-# Filename convention                                                    #
-# --------------------------------------------------------------------- #
 
 
 def tablet_filename(
@@ -160,8 +134,10 @@ def tablet_filename(
     year: int,
     exchange_id: str = "coinbase",
 ) -> str:
-    # v3.23.98: exchange_id in filename so multi-exchange tablets
-    # co-exist without collision when that phase lands.
+    """Return ``ASSET_timeframe_year_exchangeid.json``.
+
+    ``asset`` is upper-cased and ``year`` is coerced to ``int``.
+    """
     return f"{asset.upper()}_{timeframe}_{int(year)}_{exchange_id}.json"
 
 
@@ -177,12 +153,11 @@ def tablet_path(
     )
 
 
-# --------------------------------------------------------------------- #
-# I/O                                                                    #
-# --------------------------------------------------------------------- #
-
-
 def ensure_root(root: Optional[Path] = None) -> Path:
+    """Create ``root`` and its ``_scratch`` subdirectory, then return ``root``.
+
+    ``STONE_TABLETS_DIR`` is used when ``root`` is None.
+    """
     r = root or STONE_TABLETS_DIR
     r.mkdir(parents=True, exist_ok=True)
     (r / "_scratch").mkdir(parents=True, exist_ok=True)
@@ -208,7 +183,6 @@ def read_tablet(path: Path) -> Optional[Tablet]:
         candles=list(data.get("candles", [])),
         schema_version=int(data.get("schema_version", SCHEMA_VERSION)),
     )
-    # Checksum audit — log if drift detected
     on_disk = str(data.get("checksum_sha256", ""))
     computed = tab.compute_checksum()
     if on_disk and on_disk != computed:
@@ -231,11 +205,6 @@ def write_tablet(tab: Tablet, root: Optional[Path] = None) -> Path:
     return path
 
 
-# --------------------------------------------------------------------- #
-# Manifest                                                              #
-# --------------------------------------------------------------------- #
-
-
 def read_manifest(
     root: Optional[Path] = None,
 ) -> list[TabletEntry]:
@@ -254,10 +223,6 @@ def read_manifest(
         if not isinstance(row, dict):
             continue
         try:
-            # v3.24.6 — listed_at_ms with backward-compat fallback to
-            # first_ts_ms so the 406 tablets from the v3.24.5 backfill
-            # (pre-field manifests) still expose the semantic marker
-            # without a migration step.
             _first_ts = int(row["first_ts_ms"])
             _listed_at = int(row.get("listed_at_ms", 0) or _first_ts)
             out.append(

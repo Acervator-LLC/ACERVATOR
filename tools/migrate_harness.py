@@ -1,29 +1,12 @@
-"""Move the harness to a new repository. A SCRIPT, not a checklist.
+"""Copy the Claude harness, the LOOSE_TOOLS files and the memory to a new repo.
 
-Why this exists. HOP6 told a human to copy the harness directory, copy the
-memory entries and copy `tools/queue_state.py`. None of it happened, and the
-new instance came up with no gate, no skills, no hooks and no durable rulings
-— the exact failure this project already measured once: BLOCKING MECHANISMS
-BIND, PROSE DOES NOT. A migration written as prose is prose.
+`claude_home.find` resolves the source, user level first, and the run REFUSES
+when it answers None or when the directory holds no skill or no hook.
+`copy_harness` carries only `HARNESS_SUBDIRS` and `HARNESS_ROOT_GLOB`.
+`report_absolute_paths` names every machine-specific path it finds, and nothing
+is written without `--apply`.
 
-Where the harness is — 2026-08-25. It moved to user level at the CTO's
-request, so the source is no longer inside this tree. Step 1 resolves it
-through `tools.claude_home`, user level first and then the repository. Before
-that repair the source directory did not exist, `copy_tree` answered (0, 0),
-and this tool printed "0 to copy" over "0 skills, 0 hooks" and returned 0. A
-migration that carries nothing and reports success is the precise failure the
-paragraph above exists to end, so an unresolvable harness is now REFUSED.
-
-Run from the OLD tree, which has everything:
-
-    python -m tools.migrate_harness --to "C:/path/to/new/repo"
-    python -m tools.migrate_harness --to "C:/path/to/new/repo" --apply
-
-Without --apply it reports what it WOULD do and changes nothing.
-
-It does NOT run the archetypes itself; it prints the two commands whose exit
-codes prove the gate is live, because a migration tool asserting its own success
-is the same self-reported verdict this repo refuses everywhere else.
+    python -m tools.migrate_harness --to <path> --apply
 """
 
 from __future__ import annotations
@@ -41,21 +24,8 @@ from tools import claude_home
 HERE = pathlib.Path(__file__).resolve().parent.parent
 CLAUDE_PROJECTS = pathlib.Path.home() / claude_home.CLAUDE_DIR_NAME / "projects"
 
-# Repo-relative files that live OUTSIDE the harness directory and so are not
-# carried by step 1. Add to this list rather than remembering them. Issue #84
-# moved touchset out of tools/, so these are whole paths, not bare names.
-#
-# `tools/island.py` left this list under issue #67, which deleted the file.
-# A missing source is REFUSED by name below, so a stale entry here would
-# have stopped every migration outright.
-#
-# `tools/claude_home.py` joined on 2026-08-25. It is what the hook tests and
-# step 1 below use to FIND the harness, so a tree without it cannot resolve
-# the harness at all.
-#
-# `tools/emitter_registry_check.py` left this list with the pin system, which
-# deleted the file. The same refusal below applies: a stale entry here stops
-# every migration outright.
+# Repo-relative paths outside the harness directory. An entry naming a file
+# that is not in the source tree REFUSES the whole migration.
 LOOSE_TOOLS = (
     "tools/queue_state.py",
     "dev_harness/touchset.py",
@@ -63,21 +33,12 @@ LOOSE_TOOLS = (
     "tools/migrate_harness.py",
 )
 
-# Step 4 measures absolute paths. It replaced a hand-kept PATCHES table
-# that named two files and one regex and was read by no code path. One
-# of the two files was a one-shot migration script, deleted under issue
-# #83 once its migration was shown to have run. A list of known-bad
-# paths that nothing consults is a checklist wearing a script's clothes,
-# which is the failure this whole file exists to end.
-# `report_absolute_paths` MEASURES the same fault over every tool in the
-# tree, so it cannot name a file that is no longer there.
-
 
 def project_key(repo: pathlib.Path) -> str:
-    """Reproduce Claude Code's project-directory key for a repo path.
+    """Reproduce Claude Code's project-directory key for `repo`.
 
-    Measured against this repo's own key: drive letter, then '--', then every
-    path segment joined by '-', with spaces and underscores also becoming '-'.
+    `project_key` joins the drive, '--' and the path segments with '-', and
+    turns each space and underscore into '-' as well.
     """
     resolved = repo.resolve()
     drive = resolved.drive.rstrip(":") or "C"
@@ -91,9 +52,7 @@ def sha(path: pathlib.Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
 
-# Inside the harness directory only `skills`, `hooks` and the root settings
-# files are the harness. `worktrees` measured 10,909 files and 562 MB of build
-# junk on 2026-08-16 and a naive rglob would have copied all of it.
+# Directory names `copy_tree` never descends into.
 SKIP_PARTS = {
     "worktrees",
     "__pycache__",
@@ -108,16 +67,10 @@ SKIP_PARTS = {
     "logs",
 }
 
-# The two subdirectories that ARE the harness. Named positively rather than
-# by growing SKIP_PARTS, because the user-level directory holds whatever
-# Claude Code decides to keep there. Measured 2026-08-25: the resolved
-# source held 4538 files, of which 4363 were per-project transcripts under
-# `projects/`. Step 3 already carries the memory entries, keyed to the
-# project path, so a deny list would have to be extended on every release
-# of the tool that writes them.
+# The only subdirectories `copy_harness` carries; everything else is left.
 HARNESS_SUBDIRS = ("skills", "hooks")
 
-# Root-level files that configure the harness. Depth 1 only.
+# Depth 1 only, so no nested json travels.
 HARNESS_ROOT_GLOB = "*.json"
 
 
@@ -141,11 +94,9 @@ def copy_tree(src: pathlib.Path, dst: pathlib.Path, apply: bool) -> tuple[int, i
 
 
 def copy_harness(src: pathlib.Path, dst: pathlib.Path, apply: bool) -> tuple[int, int]:
-    """Copy the harness parts of `src` into `dst`. Returns (copied, same).
+    """Copy the `HARNESS_SUBDIRS` and `HARNESS_ROOT_GLOB` parts of `src` into `dst`.
 
-    Only `HARNESS_SUBDIRS` and the root-level settings files travel. The
-    user-level directory also holds transcripts, caches and per-project
-    state that belong to Claude Code rather than to this project.
+    Returns (copied, identical), as `copy_tree` does.
     """
     copied = identical = 0
     for name in HARNESS_SUBDIRS:
@@ -169,10 +120,7 @@ def copy_harness(src: pathlib.Path, dst: pathlib.Path, apply: bool) -> tuple[int
 def report_settings_absolute_paths(source: pathlib.Path) -> list[str]:
     """Hook commands in the settings files that name an absolute path.
 
-    The move to user level rewrote every command to an absolute path on
-    THIS machine. Carried to another machine they resolve to nothing, and
-    a hook that cannot be found fails open in silence. This measures the
-    same fault `report_absolute_paths` measures over `tools/`.
+    `report_absolute_paths` measures the same fault over `tools/`.
     """
     hits: list[str] = []
     for path in sorted(source.glob(HARNESS_ROOT_GLOB)):
@@ -239,13 +187,6 @@ def main() -> int:
     mode = "APPLYING" if args.apply else "DRY RUN — nothing will be written"
     print(f"{mode}\n  from {HERE}\n    to {target}\n")
 
-    # 1. the harness itself, from wherever this machine keeps it.
-    #
-    # The source used to be `HERE / <dirname>` and nothing else. After the
-    # move to user level that directory was gone, copy_tree answered (0, 0)
-    # for a missing source, and the tool reported a successful migration
-    # that carried no hook and no skill. Both the resolution and the refusal
-    # below exist because of that.
     source = claude_home.find()
     if source is None:
         print(
@@ -278,13 +219,6 @@ def main() -> int:
         print("                       carry its own. Delete it otherwise:")
         print("                       two harnesses both fire.")
 
-    # 2. loose tools that live outside the harness directory.
-    #
-    # A missing source used to `continue`. Issue #84 moved touchset.py out
-    # of tools/, and under that skip the migration would have dropped it
-    # for ever while still printing a count and returning 0. A tool that
-    # does nothing and reports success is worse than one that crashes, so
-    # a missing source is now REFUSED by name.
     moved = []
     for name in LOOSE_TOOLS:
         src = HERE / name

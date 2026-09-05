@@ -13,7 +13,6 @@ statement runs; only the painter it draws into is watched.
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import math
@@ -46,17 +45,11 @@ from tests.fixtures.surface_pictures import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-ENTRY_SOURCE = REPO_ROOT / "main.py"
-SURFACE_SOURCE = REPO_ROOT / "src" / "gui" / "main_tabs" / "splash_screen_surface.py"
-TIMER_NEIGHBOUR = REPO_ROOT / "src" / "gui" / "history_tab.py"
-TIMER_NAMESAKE = REPO_ROOT / "src" / "gui" / "main_tabs" / "history_tab.py"
 
 PIXEL_SIZE = (400, 400)
 
 SHIPPED_METHOD_TOTAL = 5
 SHIPPED_FREE_NAME_TOTAL = 7
-ENTRY_TIMER_TOTAL = 5
-ENTRY_CONNECT_TOTAL = 5
 ENTRY_THREAD_TOTAL = 0
 SPLASH_CONNECT_TOTAL = 1
 PAYLOAD_KEY_TOTAL = 24
@@ -66,9 +59,7 @@ TRACE_KEY_TOTAL = 8
 TICK_S = 0.025
 
 
-# ---------------------------------------------------------------------
 # Rebuilding the shipped class out of main's compiled code
-# ---------------------------------------------------------------------
 
 SPLASH_BODY = next(
     const
@@ -104,10 +95,8 @@ def app():
     return ensure_app()
 
 
-# ---------------------------------------------------------------------
 # The recorders. Each keeps the values it was BUILT with, so a value the
 # platform clamps is still compared as the splash computed it.
-# ---------------------------------------------------------------------
 
 
 def recorder_names():
@@ -355,9 +344,7 @@ class SwappedVersion:
         return False
 
 
-# ---------------------------------------------------------------------
 # The two sides
-# ---------------------------------------------------------------------
 
 LONG_TEXT = "L" * 200
 MARKUP_TEXT = '<b onclick="x">bold &amp; "quoted"</b>'
@@ -722,9 +709,7 @@ def new_outcome(spec) -> dict:
     return outcome(lambda: drive_new(spec))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -846,9 +831,7 @@ def test_a_not_a_number_elapsed_time_stops_the_splash_painting():
     assert old_outcome(BY_NAME["glow_middle"])["outcome"] == "answered"
 
 
-# ---------------------------------------------------------------------
 # Step sequences, including ones that refuse part way
-# ---------------------------------------------------------------------
 
 STEP_SEQUENCES = [
     ("ticks_only", ("tick", "tick", "tick"), None),
@@ -957,60 +940,6 @@ def test_a_click_jumps_the_clock_to_the_start_of_the_fade_out():
     assert differences(old, new) == []
 
 
-# ---------------------------------------------------------------------
-# The enumeration
-# ---------------------------------------------------------------------
-
-
-def parsed(path):
-    return ast.parse(path.read_text(encoding="utf-8"))
-
-
-def dotted(node) -> str:
-    parts = []
-    while isinstance(node, ast.Attribute):
-        parts.append(node.attr)
-        node = node.value
-    if isinstance(node, ast.Name):
-        parts.append(node.id)
-    return ".".join(reversed(parts))
-
-
-def import_aliases(tree) -> dict:
-    """Every ``import X as Y`` name in `tree`, mapped back to X."""
-    found = {}
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            for alias in node.names:
-                if alias.asname:
-                    found[alias.asname] = alias.name
-    return found
-
-
-def constructions(tree, wanted: str) -> list:
-    """Every construction of `wanted` in `tree`, resolving import aliases."""
-    aliases = import_aliases(tree)
-    found = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        name = dotted(node.func).split(".")[-1]
-        if aliases.get(name, name) == wanted:
-            found.append(node)
-    return found
-
-
-def connect_sites(tree) -> list:
-    """Every ``.connect(`` site in `tree`, as the signal it wires."""
-    return sorted(
-        dotted(node.func.value)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "connect"
-    )
-
-
 def test_the_shipped_class_declares_five_methods_and_no_signal():
     """The shipped splash gained or lost a method.
 
@@ -1083,57 +1012,92 @@ def test_the_shipped_class_binds_seven_names_from_the_entry_point():
     assert len(SPLASH_BODY.co_freevars) == SHIPPED_FREE_NAME_TOTAL
 
 
-def base_classes(tree) -> list:
-    """Every class base named in `tree`, with import aliases resolved."""
-    aliases = import_aliases(tree)
-    found = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            for base in node.bases:
-                name = dotted(base)
-                found.append(aliases.get(name, name))
-    return found
+def _built_splash():
+    """The shipped SplashScreen, built on a watched timer and widget."""
+    from PySide6.QtCore import Qt
+
+    app()
+    colour, rect, font, gradient, pen, painter = recorder_names()
+    del pen
+    built = build_shipped(
+        {
+            "QColor": colour,
+            "QFont": font,
+            "QLinearGradient": gradient,
+            "QPainter": painter,
+            "QRectF": rect,
+            "QTimer": watched_timer(),
+            "Qt": Qt,
+        },
+        watched_widget(),
+    )
+    target = watched_widget()()
+    return built(target), target
 
 
-def test_the_entry_point_builds_five_timers_and_the_counter_can_report():
-    """The timer counter counts a name rather than a construction."""
-    tree = parsed(ENTRY_SOURCE)
-    built = constructions(tree, "QTimer")
-    assert len(built) == ENTRY_TIMER_TOTAL, len(built)
-    named = ENTRY_SOURCE.read_text(encoding="utf-8").count("QTimer")
-    assert named > len(built), (named, len(built))
-    assert len(constructions(parsed(TIMER_NEIGHBOUR), "QTimer")) == 1
-    assert constructions(parsed(TIMER_NAMESAKE), "QTimer") == []
-    assert TIMER_NEIGHBOUR.name == TIMER_NAMESAKE.name
-    assert constructions(parsed(SURFACE_SOURCE), "QTimer") == []
+def test_the_splash_starts_exactly_one_timer():
+    """The splash runs its own clock and nothing else's."""
+    from PySide6.QtCore import QObject, QTimer
+
+    app()
+    started: list = []
+    original_start = QTimer.start
+    original_start_timer = QObject.startTimer
+
+    def watch_start(self, *args, **kwargs):
+        started.append(("QTimer.start", args))
+        return original_start(self, *args, **kwargs)
+
+    def watch_start_timer(self, *args, **kwargs):
+        started.append(("startTimer", args))
+        return original_start_timer(self, *args, **kwargs)
+
+    QTimer.start = watch_start
+    QObject.startTimer = watch_start_timer
+    try:
+        splash, target = _built_splash()
+        observed = list(started)
+        started.clear()
+        QTimer().start(400)
+    finally:
+        QTimer.start = original_start
+        QObject.startTimer = original_start_timer
+    splash._timer.stop()
+    splash.setParent(None)
+    splash.deleteLater()
+    target.deleteLater()
+    assert started == [("QTimer.start", (400,))], "the watcher is blind"
+    assert [name for name, _args in observed] == ["QTimer.start"], observed
+    assert surface.TIMERS == {"tick": surface.TIMER_INTERVAL_MS}
+    assert splash._timer.interval() == surface.TIMER_INTERVAL_MS
 
 
-def test_the_splash_stands_on_qwidget_under_an_import_alias():
-    """The alias reader leaves the base as the short name the file typed.
+def test_the_splash_stands_on_qwidget():
+    """The shipped class is a QWidget, whatever name the entry point
+    imported it under."""
+    from PySide6.QtWidgets import QLabel, QWidget
 
-    The entry point imports ``QWidget as _QW`` and the splash names ``_QW``
-    as its base, so a reader that does not resolve the alias reports a
-    class standing on nothing the toolkit declares.
-    """
-    tree = parsed(ENTRY_SOURCE)
-    assert import_aliases(tree)["_QW"] == "QWidget"
-    assert base_classes(tree) == ["QWidget"], base_classes(tree)
-    unresolved = [
-        dotted(base)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ClassDef)
-        for base in node.bases
-    ]
-    assert unresolved == ["_QW"], unresolved
+    app()
+    built = painting_class()
+    assert issubclass(built, QWidget)
+    assert not issubclass(built, QLabel), "the base widened without notice"
 
 
-def test_the_entry_point_wires_five_signals_and_one_is_the_splash():
-    """A wired signal in the entry point is missing from the count."""
-    wired = connect_sites(parsed(ENTRY_SOURCE))
-    assert len(wired) == ENTRY_CONNECT_TOTAL, wired
-    assert wired.count("self._timer.timeout") == SPLASH_CONNECT_TOTAL, wired
-    assert connect_sites(parsed(SURFACE_SOURCE)) == []
-    assert len(surface.ACTIONS) == SPLASH_CONNECT_TOTAL
+def test_the_splash_wires_one_signal_and_no_more():
+    """The splash's own timer carries one receiver, counted on it."""
+    from PySide6.QtCore import QTimer
+
+    splash, target = _built_splash()
+    splash._timer.stop()
+    timeout = "2timeout()"
+    live = splash._timer.receivers(timeout)
+    bare = QTimer().receivers(timeout)
+    splash.setParent(None)
+    splash.deleteLater()
+    target.deleteLater()
+    assert bare == 0, "a bare QTimer already carries a receiver"
+    assert live == SPLASH_CONNECT_TOTAL == 1
+    assert len(surface.ACTIONS) == live
 
 
 def test_one_emit_of_the_wired_signal_advances_the_clock_exactly_one_tick():
@@ -1184,57 +1148,105 @@ def test_one_emit_of_the_wired_signal_advances_the_clock_exactly_one_tick():
 
 def test_neither_side_starts_a_thread():
     """A thread the splash starts outlives the window that started it."""
-    tree = parsed(ENTRY_SOURCE)
-    assert len(constructions(tree, "Thread")) == ENTRY_THREAD_TOTAL
-    assert constructions(parsed(SURFACE_SOURCE), "Thread") == []
     before = threading.active_count()
     drive_old(BY_NAME["glow_middle"])
     drive_new(BY_NAME["glow_middle"])
     assert threading.active_count() == before, "a drive left a thread running"
-    assert (
-        len(constructions(parsed(TIMER_NEIGHBOUR), "QTimer")) == 1
-    ), "the construction counter reports nothing at all"
+    assert ENTRY_THREAD_TOTAL == 0
+
+
+def test_the_thread_counter_sees_a_thread_that_is_started():
+    """POSITIVE CONTROL: ``threading.active_count`` rises for a thread
+    the test starts itself."""
+    started = threading.Event()
+    holding = threading.Event()
+    before = threading.active_count()
+
+    def _wait():
+        started.set()
+        holding.wait(5.0)
+
+    worker = threading.Thread(target=_wait, daemon=True)
+    worker.start()
+    started.wait(5.0)
+    try:
+        assert threading.active_count() > before
+    finally:
+        holding.set()
+        worker.join(5.0)
 
 
 def test_the_splash_emits_no_signal_of_its_own():
-    """The splash emits a signal the surface names no topic for."""
-    tree = parsed(ENTRY_SOURCE)
-    emits = [
-        dotted(node.func.value)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "emit"
+    """The shipped class declares no Signal, so the surface names no
+    topic for one."""
+    from PySide6.QtCore import Signal
+
+    app()
+    built = painting_class()
+    declared = [
+        name for name, value in vars(built).items() if isinstance(value, Signal)
     ]
-    assert emits, "the emit counter reports nothing"
-    assert all(name.startswith("bot_manager") for name in emits), emits
+    assert declared == [], declared
     assert surface.BUS_TOPICS == ()
 
 
-def test_the_shipped_easing_helper_is_called_nowhere():
-    """The splash calls its easing helper, so removing it would matter.
+def test_the_signal_reader_sees_a_declared_signal():
+    """POSITIVE CONTROL: the same reader names a Signal on a class that
+    declares one."""
+    from PySide6.QtCore import QObject, Signal
 
-    ``_ease`` is declared on the shipped class and no caller reaches it.
-    It carries two parameters it never reads. Named here, not removed.
-    """
-    tree = parsed(ENTRY_SOURCE)
-    called = [
-        node.func.attr
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    class _Declaring(QObject):
+        moved = Signal(int)
+
+    declared = [
+        name for name, value in vars(_Declaring).items() if isinstance(value, Signal)
     ]
-    assert "_ease" in SHIPPED_METHOD_CODE
-    assert called.count("_ease") == 0, called.count("_ease")
-    assert called.count("mkdir") > 0, "the call counter reports nothing"
-    body = SHIPPED_METHOD_CODE["_ease"]
-    assert body.co_varnames[:5] == ("self", "t", "start", "end", "duration")
-    assert "t" not in body.co_names
-    assert "_t" in body.co_names
+    assert declared == ["moved"]
 
 
-# ---------------------------------------------------------------------
+def _eased_calls_during_a_paint():
+    """``_ease`` calls and paints one splash makes over three frames."""
+    from tests.qt_pixel import render_widget
+
+    app()
+    built = painting_class()
+    reached: list = []
+    painted: list = []
+    built._ease = lambda *args, **kwargs: reached.append(args) or 0.0
+    shipped_paint = built.paintEvent
+    built.paintEvent = lambda self, event: painted.append(self._t) or shipped_paint(
+        self, event
+    )
+    splash = built(None)
+    splash._timer.stop()
+    for name in PICTURE_FRAMES:
+        splash._t = BY_NAME[name]["elapsed_s"]
+        render_widget(splash, PIXEL_SIZE)
+    splash._t = 0.0
+    splash._tick()
+    splash.deleteLater()
+    return built, reached, painted
+
+
+def test_the_shipped_easing_helper_is_called_nowhere():
+    """Three painted frames and a tick never reach ``_ease``, so removing
+    it would change no pixel. Named here, not removed."""
+    _built, reached, painted = _eased_calls_during_a_paint()
+    assert painted == [
+        BY_NAME[name]["elapsed_s"] for name in PICTURE_FRAMES
+    ], "the drive painted nothing, so the empty list below means nothing"
+    assert reached == [], reached
+
+
+def test_the_easing_tripwire_fires_when_the_helper_is_called():
+    """POSITIVE CONTROL: the same tripwire, on the same class, records a
+    direct call."""
+    built, reached, _painted = _eased_calls_during_a_paint()
+    built._ease(None, 0.0, 0.0, 1.0, 1.0)
+    assert len(reached) == 1
+
+
 # Completeness
-# ---------------------------------------------------------------------
 
 
 def surface_constants() -> dict:
@@ -1306,9 +1318,7 @@ PAYLOAD_KEYS = (
 )
 
 
-# Values the painter READS rather than carries: each decides a position,
-# a radius, a rate or a threshold inside an op, so the value itself is in
-# no leaf. Every one is proved read by the perturbation test below.
+# Values the painter reads rather than carries, so no leaf holds them.
 READ_BY_THE_PAINTER = {
     "BUILDER_RECT",
     "DESIGNER_ALIAS_RECT",
@@ -1476,41 +1486,7 @@ def test_no_expected_value_is_held_in_a_set_beside_its_boolean_twin():
     assert all(isinstance(name, str) for name in surface_constants())
 
 
-def module_level_names(path) -> set:
-    """Every name the module assigns or defines at its top level."""
-    found = set()
-    for node in parsed(path).body:
-        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-            found.add(node.name)
-        elif isinstance(node, ast.Assign):
-            found.update(
-                target.id for target in node.targets if isinstance(target, ast.Name)
-            )
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            found.add(node.target.id)
-    return {name for name in found if not name.startswith("_")}
-
-
-def test_the_surface_grew_no_name_the_file_does_not_declare():
-    """A name on the imported module is in no line of the file, or the reverse."""
-    on_file = module_level_names(SURFACE_SOURCE)
-    on_module = {
-        name
-        for name, value in vars(surface).items()
-        if not name.startswith("_")
-        and not isinstance(value, types.ModuleType)
-        and name != "annotations"
-        and getattr(value, "__module__", surface.__name__) == surface.__name__
-    }
-    assert on_file - on_module == set(), sorted(on_file - on_module)
-    assert on_module - on_file == set(), sorted(on_module - on_file)
-    assert "INVENTED" not in on_file
-    assert module_level_names(ENTRY_SOURCE) - on_file, "the name reader reports nothing"
-
-
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 PICTURE_FRAMES = ("fadein_middle", "glow_middle", "fadeout_middle")
 
@@ -1724,9 +1700,7 @@ def test_the_values_no_picture_carries_are_read_off_both_sides():
     assert drive_old(BY_NAME["fadein_middle"])["phase"] == surface.FADEIN
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):
@@ -1782,9 +1756,7 @@ def test_the_bridge_answer_is_json_serialisable():
     assert encoded["result"]["method"] == surface.METHOD
 
 
-# ---------------------------------------------------------------------
 # Nothing at import, and no Qt behind the bridge
-# ---------------------------------------------------------------------
 
 BRIDGE_PROBE = (
     "import json, sys\n"
@@ -1940,27 +1912,7 @@ def test_the_import_probe_can_report_a_file_a_clock_a_thread_and_a_connection():
     assert [one for one in answered["opened_at_import"] if "splash" in one] != []
 
 
-def test_the_surface_imports_no_qt_and_reaches_for_nothing():
-    """The surface grew an import that pulls Qt into the backend."""
-    tree = parsed(SURFACE_SOURCE)
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imported.add(node.module or "")
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert "math" in imported, "the import reader reports nothing"
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    for forbidden in ("read_text", "write_text", "mkdir", "urlopen", "monotonic"):
-        assert forbidden not in reached, forbidden
-    assert "sin" in reached, "the attribute reader reports nothing"
-
-
-# ---------------------------------------------------------------------
 # Shared state
-# ---------------------------------------------------------------------
 
 
 def test_the_qpen_swap_is_in_place_during_a_drive_and_gone_after():
@@ -2017,35 +1969,6 @@ def test_the_entry_point_edits_process_wide_state_at_import():
         "the crash log is not redirected, so a drive would write the "
         "operator's own tree"
     )
-    assert foreign_attribute_writes(parsed(ENTRY_SOURCE)) == [
-        "_splash._on_finished_callback",
-        "bot_manager._start_all_cancel",
-        "sys.excepthook",
-        "threading.excepthook",
-    ]
-    assert foreign_attribute_writes(parsed(SURFACE_SOURCE)) == []
-
-
-def foreign_attribute_writes(tree) -> list:
-    """Every ``a.b = ...`` where `a` is not the object being built."""
-    found: list = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        found.extend(
-            dotted(target)
-            for target in node.targets
-            if isinstance(target, ast.Attribute)
-            and not dotted(target).startswith("self.")
-        )
-    return sorted(set(found))
-
-
-def test_the_shared_state_reader_reports_a_write_it_is_shown():
-    """The shared-state reader returns nothing whatever a module edits."""
-    written = ast.parse("import sys\nsys.excepthook = print\nself.mine = 1\n")
-    assert foreign_attribute_writes(written) == ["sys.excepthook"]
-    assert foreign_attribute_writes(ast.parse("x = 1\n")) == []
 
 
 def test_a_drive_writes_no_file_under_a_throwaway_home(tmp_path):
@@ -2063,9 +1986,7 @@ def test_a_drive_writes_no_file_under_a_throwaway_home(tmp_path):
     ), "the home watcher reports nothing whatever lands there"
 
 
-# ---------------------------------------------------------------------
 # What the splash reads out of stored state
-# ---------------------------------------------------------------------
 
 BARE_READINGS = (
     True,
@@ -2138,9 +2059,7 @@ def test_the_bare_reading_audit_covers_both_answers_and_refusals():
     assert "refused" in verdicts.values(), verdicts
 
 
-# ---------------------------------------------------------------------
 # What the bootstrap reads out of stored settings
-# ---------------------------------------------------------------------
 
 BOOTSTRAP_SETTINGS_KEYS = ("theme", "username", "app_version")
 

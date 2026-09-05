@@ -63,9 +63,8 @@ BC_SRC = (REPO_ROOT / "src" / "trading" / "bot_container.py").read_text(
     encoding="utf-8"
 )
 
-# LIVE, CAP/USD, 2026-08-26. The only shape on the fleet that separates
-# the three ceiling expressions from each other: the only bot carrying
-# BOTH accrued growth and a non-zero in-cycle consumption.
+# The only live shape separating the three ceiling expressions: a bot
+# carrying both accrued growth and a non-zero in-cycle consumption.
 CAP_TARGET = 55.4148
 CAP_ANCHOR = 50.00
 CAP_CONSUMED = 0.5000
@@ -518,16 +517,28 @@ class TestAnOverCapTrancheIsPartConsumed:
         plan, _slices, _partial = b._plan_fold_consumption(rows, 2.6130)
         assert sum(u for _t, u, _x in plan) <= 2.6130 + 1e-9
 
-    def test_the_surface_no_longer_calls_an_over_cap_tranche_unspendable(self):
-        for src, name in ((BLS_SRC, "bot_live_settings"), (BC_SRC, "bot_container")):
-            assert "skipped on every cycle" not in src, (
-                f"{name} still tells the operator an over-cap tranche is "
-                f"skipped for ever; it is part-consumed"
-            )
-            assert "refuses to deploy part of one" not in src, name
-            assert "fits ENTIRELY" not in src, name
-        assert "PART-CONSUMED, NOT SKIPPED" in BLS_SRC
-        assert "PART-CONSUMED, not skipped" in BC_SRC
+    def test_a_second_cycle_takes_another_bite_of_the_same_tranche(self):
+        """An over-cap tranche is spendable: each cycle takes the cap."""
+        t = _tranche(CHIP_TRANCHE_USD, CHIP_TRANCHE_UNITS, CHIP_TRANCHE_REF)
+        b = _Bot(tranches=[t])
+        for _cycle in range(2):
+            plan, _slices, _partial = b._plan_fold_consumption([t], BONK_CAP)
+            b._settle_fold_plan(plan)
+
+        assert t["usd"] == pytest.approx(CHIP_TRANCHE_USD - 2 * BONK_CAP)
+        assert t["units"] == pytest.approx(
+            CHIP_TRANCHE_UNITS * (1 - 2 * BONK_CAP / CHIP_TRANCHE_USD)
+        )
+        assert b._fold_tranches == [t]
+
+    def test_DRIVEN_THE_OTHER_WAY_the_whole_only_twin_never_takes_a_bite(self):
+        """IF THIS FAILS: the twin spends, so the check above proves nothing."""
+        t = _tranche(CHIP_TRANCHE_USD, CHIP_TRANCHE_UNITS, CHIP_TRANCHE_REF)
+        for _cycle in range(2):
+            plan, _slices, _partial = _whole_only_plan([t], BONK_CAP)
+            assert plan == []
+
+        assert t["usd"] == pytest.approx(CHIP_TRANCHE_USD)
 
 
 # -- the chart ceiling, read at the value it draws ---------------------

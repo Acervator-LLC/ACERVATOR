@@ -71,9 +71,8 @@ if TYPE_CHECKING:  # pragma: no cover
 
 SYMBOLS = "charts.13.002.postcondition.panel_symbols_current"
 
-# The two markets the tests move a bot between. The candle VALUES are
-# generated per market below, so the tape a chart is holding names the
-# market it came from without a pinned constant anywhere.
+# The two markets a bot is moved between; candle values are generated per
+# market, so a tape names the market it came from.
 OLD_PAIR = "BTC/USD"
 NEW_PAIR = "ETH/USD"
 
@@ -157,9 +156,8 @@ class _Recorder:
         self.asked.append((symbol, timeframe, exchange))
         rows = self.book.get(symbol)
         if rows is None:
-            # What the real fetcher does with a market the venue does
-            # not list: an empty answer carrying the source that
-            # refused it.
+            # What the real fetcher returns for an unlisted market: an empty answer
+            # carrying the source that refused it.
             return [], f"exchange: no market {symbol}"
         return rows, f"exchange:{symbol}"
 
@@ -489,9 +487,7 @@ def test_the_panel_renders_the_new_pair_rather_than_the_old_one(
     assert old_paint != blank_paint  # the old tape came off screen
     assert new_paint != blank_paint  # the new tape went on screen
     assert new_paint != old_paint  # and it is not the old picture
-    # Not merely different -- a painted tape puts colours on the panel
-    # that the cleared one does not have. A chart that stopped drawing
-    # would satisfy the three inequalities above and fail these two.
+    # A painted tape puts colours on the panel a cleared one does not have.
     assert len(set(new_paint)) > len(set(blank_paint))
     assert len(set(old_paint)) > len(set(blank_paint))
 

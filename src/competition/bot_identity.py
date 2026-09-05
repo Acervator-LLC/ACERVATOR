@@ -1,24 +1,10 @@
-"""
-bot_identity.py — Acervator Bot Identity Layer
-================================================
-Every Acervator instance that participates in network competitions has a
-cryptographic identity: an Ed25519 keypair.
+"""The Ed25519 identity a bot signs its competition trades with.
 
-  Private key  →  signs every trade in the Merkle log
-  Public key   →  the bot's verifiable on-chain identity
-
-The bot's strategy parameters are NEVER signed or published.  The public
-key proves authorship of trade records.  The ZK performance proof later
-proves the trades produced a claimed advantage — without revealing how.
-
-This module handles:
-  - Keypair generation and persistent storage (AES-GCM encrypted)
-  - Trade record signing (canonical JSON + Ed25519 signature)
-  - Signature verification for incoming challenge submissions
-
-R28: All cryptographic failures raise explicitly — no silent fallbacks.
-R29: Key generation is idempotent — loading an existing key never overwrites.
-R33: Bot ID and creation timestamp are immutable once written.
+``BotIdentity.generate`` writes a keypair to ``KEY_FILE`` and loads an
+existing one rather than overwriting it. ``sign_trade`` populates a
+``TradeRecord.signature`` over ``canonical_bytes``, and ``verify_trade``
+checks one against the embedded public key. Strategy parameters are never
+signed or published.
 """
 
 from __future__ import annotations
@@ -42,8 +28,6 @@ try:
         NoEncryption,
     )
 
-    # v3.19.12 — removed unused BestAvailableEncryption + InvalidSignature
-    # imports (vulture-flagged; never referenced in this module).
     _CRYPTO_OK = True
 except ImportError:
     _CRYPTO_OK = False
@@ -63,11 +47,11 @@ class TradeRecord:
     """
 
     bot_pubkey: str  # hex-encoded Ed25519 public key
-    competition: str  # competition ID
+    competition: str
     symbol: str  # e.g. "BTC/USDT"
     side: str  # "buy" | "sell"
     quantity: float  # asset units
-    price: float  # execution price
+    price: float
     timestamp: float  # Unix time
     trade_seq: int  # monotonic sequence number within this competition
     role: str  # "SCRUM" | "FOLD" | "HEDGE" | "INIT"
@@ -130,6 +114,8 @@ class BotIdentity:
         self._pubkey = None
         self._pubkey_hex: str = ""
         self._created_at: float = 0.0
+        self._fallback_secret: bytes = b""
+        self._fallback_privkey_b64: str = ""
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -148,12 +134,7 @@ class BotIdentity:
         return self.bot_id[:12]
 
     def generate(self) -> "BotIdentity":
-
-        # sadp: R28 R29  # keypair gen: fail-loudly(R28) idempotent-load-not-overwrite(R29)
-        """
-        Generate a new Ed25519 keypair.
-        R29: If a key file already exists, load it instead of overwriting.
-        """
+        """Generate an Ed25519 keypair, or load the one already on disk."""
         if self._key_path.exists():
             return self.load()
         if not _CRYPTO_OK:
@@ -168,8 +149,6 @@ class BotIdentity:
         return self
 
     def load(self) -> "BotIdentity":
-
-        # sadp: R28  # keypair load: fail-loudly if missing(R28)
         """Load an existing identity from disk."""
         if not self._key_path.exists():
             raise FileNotFoundError(
@@ -186,8 +165,6 @@ class BotIdentity:
         return self
 
     def save(self):
-
-        # sadp: R28 R33  # keypair save: fail-loudly(R28) single-write identity(R33)
         """Persist the keypair to disk."""
         if _CRYPTO_OK and self._privkey:
             privkey_bytes = self._privkey.private_bytes(
@@ -211,12 +188,9 @@ class BotIdentity:
         )
 
     def sign_trade(self, record: TradeRecord) -> TradeRecord:
+        """Populate ``record.signature`` and return the same record.
 
-        # sadp: R28 R29  # fail-loudly-if-not-initialised(R28) signature-is-deterministic(R29)
-        """
-        Sign a TradeRecord with this bot's private key.
-        Returns the same record with the signature field populated.
-        R28: Raises if the identity is not initialised.
+        Raises ``RuntimeError`` when the identity is not initialised.
         """
         if not self._privkey:
             raise RuntimeError("BotIdentity not initialised.")
@@ -232,11 +206,9 @@ class BotIdentity:
 
     @staticmethod
     def verify_trade(record: TradeRecord) -> bool:
-        # sadp: R28  # returns-False-not-raises(R28 documented exception to fail-loudly for callers)
-        """
-        Verify a TradeRecord's signature using the embedded public key.
-        Returns True if valid, False if invalid.
-        R28: Does NOT raise — callers must check the return value.
+        """Verify ``record.signature`` against ``record.bot_pubkey``.
+
+        Returns False rather than raising, so the caller checks the value.
         """
         try:
             pubkey_bytes = bytes.fromhex(record.bot_pubkey)
@@ -254,8 +226,6 @@ class BotIdentity:
     # ── HMAC fallback (when cryptography library is unavailable) ─────────────
 
     def _generate_fallback(self) -> "BotIdentity":
-
-        # sadp: R28 R29  # keypair gen: fail-loudly(R28) idempotent-load-not-overwrite(R29)
         """HMAC-SHA256 fallback when Ed25519 is unavailable."""
         secret = secrets.token_bytes(32)
         self._fallback_secret = secret
@@ -267,8 +237,6 @@ class BotIdentity:
         return self
 
     def _load_fallback(self, data: dict) -> "BotIdentity":
-
-        # sadp: R28  # keypair load: fail-loudly if missing(R28)
         secret = base64.b64decode(data["privkey_b64"])
         self._fallback_secret = secret
         self._fallback_privkey_b64 = data["privkey_b64"]
@@ -280,6 +248,5 @@ class BotIdentity:
 
     @staticmethod
     def _fallback_verify(pubkey_bytes: bytes, sig_bytes: bytes, msg: bytes) -> bool:
-        # In fallback mode pubkey_bytes is SHA256(secret), sig is HMAC(secret,msg)
-        # We can't verify without the secret — accept as valid in test mode
+        # Without the secret this checks length only: any 32-byte value passes.
         return len(sig_bytes) == 32

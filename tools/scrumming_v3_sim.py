@@ -1,56 +1,13 @@
 #!/usr/bin/env python3
-"""Scrumming v3 scenario simulator. A script, not a test.
+"""Scrumming v3 scenario simulator.
 
-WHY THIS FILE IS IN ``tools/``
-==============================
-It sat at the repository root and it was called
-``test_scrumming_v3.py``. That name carries pytest's discovery prefix,
-so pytest matched it and took ZERO items out of it: the file defines no
-test function and no test class. Issue #93 measured that. Issue #93
-could not repair it, because the repair means editing the body, so it
-recorded an excusal in ``tests/test_every_test_file_is_collected.py``
-instead. The excusal is gone with this move, and the name now says what
-the file is.
-
-Run it the way every other tool in this directory is run:
+The four ``gen_`` generators build ``SimCandle`` streams from
+``numpy.random.default_rng(seed)``, so one seed always builds one scenario.
+``VortexIndicator``, ``MACD``, ``compute_heikin_ashi`` and
+``detect_bb_proximity`` read those candles and the run prints what each
+answered. Run it with ``-m`` so ``src`` resolves.
 
     python -m tools.scrumming_v3_sim
-
-``tools/`` carries no ``__init__.py``, and ``-m`` puts the working
-directory on ``sys.path``. That is how ``from src.trading.ta_engine
-import ...`` below resolves. ``python tools/scrumming_v3_sim.py`` puts
-``tools/`` on ``sys.path`` instead and raises ModuleNotFoundError for
-``src``. At the repository root the plain path form worked, because the
-script directory WAS the repository root.
-
-WHY ``tools/`` AND NOT ``tests/``
-=================================
-Issue #85 proposed ``tests/``. That destination is wrong and the suite
-proves it: ``tests/test_every_test_file_is_collected.py``
-::``test_every_collected_test_file_defines_at_least_one_test`` fails on
-any collected file that yields no test item. Moving a file with no test
-function under ``testpaths`` turns the suite red.
-
-``tools/`` is one of the ``PRODUCT_ROOTS`` in
-``tests/test_one_dependency_source.py``, so the import contract still
-reads this file after the move. A directory outside that tuple would
-have dropped the file out of the dependency walk with no message.
-
-WHY THE PRICE GENERATORS USE NUMPY AND NOT THE ``random`` MODULE
-================================================================
-The four generators need a REPRODUCIBLE stream. Each takes a ``seed``
-argument, and two runs at one seed must build the same scenario. ruff
-reports every call into the ``random`` module as S311 at HIGH.
-
-``splash_screen.py`` and ``investor_screen.py`` answered S311 with
-``secrets.SystemRandom()``. That answer is wrong here: a system-entropy
-generator takes no seed, so the scenarios stop repeating.
-
-``numpy.random.default_rng(seed)`` takes a seed, is not the ``random``
-module, and numpy is a declared dependency in ``pyproject.toml``. The
-number STREAM differs from the stream ``random.Random`` gave, so the
-figures this file prints differ from any figure recorded before this
-change. No test and no document pins those figures.
 """
 
 import argparse
@@ -362,13 +319,7 @@ class ScrumSim:
             "pnl": portfolio - self.investment,
             "passive_pnl": passive - self.investment,
             "advantage": portfolio - passive,
-            # The fold profit this run actually harvested. It was
-            # accumulated and then thrown away: the old return dict had a
-            # key called "pnl" that held `portfolio - investment`, a
-            # different quantity with the same name, and `self.pnl` was
-            # never read. vulture reported it as a dead attribute. The
-            # accumulator is named `harvested_usd` now and it is
-            # reported.
+            # Fold profit only; "pnl" above is `portfolio - investment`.
             "harvested": self.harvested_usd,
             "trades": self.trades,
             "scrums": self.scrums,
@@ -412,14 +363,8 @@ def run_scenario(name, candles, **kwargs):
 def main(argv: list[str] | None = None) -> int:
     """Run the six scenarios and print the comparison report.
 
-    A callable ``main`` is the contract every module under ``tools/``
-    owes ``tests/test_tools_are_reachable.py``. While this file lived at
-    the repository root it reached its scenarios from a bare ``__main__``
-    block, so nothing outside the interpreter could start it.
-
-    ``--seed`` is not a new feature. All four generators already took a
-    ``seed`` argument, and the block this replaces already used two
-    different values. The parser exposes what the functions already had.
+    ``--seed`` reaches every ``gen_`` generator; the fifth scenario uses it
+    for the bull half and ``seed + 1`` for the bear half.
     """
     parser = argparse.ArgumentParser(
         prog="python -m tools.scrumming_v3_sim",
@@ -438,12 +383,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     seed = args.seed
 
-    # The report draws its rules with U+2550 and U+2500 and its price
-    # arrow with U+2192. A Windows console hands Python a cp1252 stdout,
-    # which encodes none of them. MEASURED at HEAD on 2026-08-23: this
-    # file, as it stood at the repository root, raised UnicodeEncodeError
-    # inside the first `run_scenario` print and produced no scenario at
-    # all. The characters are right; the stream was wrong.
+    # `run_scenario` prints U+2550, U+2500 and U+2192, which cp1252 cannot encode.
     with contextlib.suppress(AttributeError, OSError, ValueError):
         sys.stdout.reconfigure(encoding="utf-8")
 

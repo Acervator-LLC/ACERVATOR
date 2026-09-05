@@ -34,6 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from dev_harness.harness.coding_archetype import CodingArchetype
 from dev_harness.harness.report import (
     OPTIONAL_ANALYZERS,
     REPO_ROOT as HARNESS_REPO_ROOT,
@@ -44,11 +45,19 @@ from dev_harness.harness.report import (
     scan_rule_modules,
 )
 
+#: Every analyzer ``CodingArchetype`` declares, read at import.
+CODING_RUNNERS = tuple(
+    sorted(
+        name
+        for name, value in vars(CodingArchetype).items()
+        if name.startswith("_run_") and callable(value)
+    )
+)
+
 SCAFFOLDING = (("scaffolding", "dev_harness.harness.rules.scaffolding"),)
 
-# Built at run time. Written as a literal, this file would trip the very
-# rule it uses as bait, which is how ta_archetype came to fail itself
-# three times for documenting the incident it was built from.
+# Built at run time: written as a literal it would trip the very rule it
+# uses as bait.
 PLACEHOLDER_BAIT = '"""Doc."""\n\n# ' + "FIX" + "ME: not done\n"
 
 ARCHETYPE_MODULES = (
@@ -346,35 +355,32 @@ class TestSilentToolFailureIsAnError:
         """CONTROL. A clean file legitimately prints nothing."""
         refuse_silent_failure(self._proc(0, ""), "mypy")
 
-    @pytest.mark.parametrize("module", ARCHETYPE_MODULES)
-    def test_no_runner_returns_ok_on_an_empty_non_zero_run(self, module):
-        """Every `subprocess.run` result is checked before it is parsed.
+    @pytest.mark.parametrize("runner", CODING_RUNNERS)
+    def test_no_runner_returns_ok_on_an_empty_non_zero_run(self, runner, monkeypatch):
+        """Every analyzer passes its ``CompletedProcess`` through
+        ``refuse_silent_failure`` before it parses one."""
+        import subprocess
 
-        Static, and deliberately so: this is the rule a SEVENTH analyzer
-        will break, and a behavioural test only covers the six that
-        exist today.
-        """
-        import ast
+        monkeypatch.setattr(
+            subprocess, "run", lambda *_a, **_kw: self._proc(2, "", "config broken")
+        )
+        run = getattr(CodingArchetype(), runner)
+        try:
+            _found, status = run(CODING_FIX / "known_good.py")
+        except RuntimeError as refused:
+            assert "without output" in str(refused), runner
+            return
+        assert status != "ok", (
+            f"{runner} reported ok on a run that exited 2 printing nothing, "
+            f"so a broken analyzer reads as a clean file"
+        )
 
-        src = (
-            HARNESS_REPO_ROOT / Path(*module.split(".")).with_suffix(".py")
-        ).read_text(encoding="utf-8")
-        tree = ast.parse(src)
-        runs = [
-            n
-            for n in ast.walk(tree)
-            if isinstance(n, ast.Call)
-            and isinstance(n.func, ast.Attribute)
-            and n.func.attr == "run"
-            and isinstance(n.func.value, ast.Name)
-            and n.func.value.id == "subprocess"
-        ]
-        for call in runs:
-            kwargs = {k.arg for k in call.keywords}
-            assert "cwd" in kwargs, (
-                f"{module}: a subprocess.run at line {call.lineno} does not "
-                f"pin cwd, so its verdict depends on where the caller stood"
-            )
+    def test_the_runner_sweep_covers_the_analyzers_that_exist(self):
+        """POSITIVE CONTROL. ``CODING_RUNNERS`` is read off
+        ``CodingArchetype`` at run time, so an added analyzer joins the
+        sweep."""
+        assert len(CODING_RUNNERS) >= 5, CODING_RUNNERS
+        assert "_run_ruff" in CODING_RUNNERS, CODING_RUNNERS
 
 
 class TestUnusedIgnoreSeverityIsReadOffTheMessage:
@@ -422,30 +428,62 @@ class TestTheVerdictDoesNotDependOnTheCallersDirectory:
     from the root and not at all from elsewhere.
     """
 
-    def test_mypy_writes_its_cache_where_the_harness_says(self):
-        """mypy defaults to ./.mypy_cache -- a cache per caller."""
-        import inspect
-        from dev_harness.harness.coding_archetype import CodingArchetype
-
-        src = inspect.getsource(CodingArchetype._run_mypy)
-        assert "--cache-dir" in src
-        assert "REPO_ROOT" in src
-
-    def test_ruff_answers_the_same_from_another_directory(self, tmp_path, monkeypatch):
-        """The real runner, twice, from two directories."""
-        from dev_harness.harness.coding_archetype import CodingArchetype
-
+    def test_mypy_leaves_no_cache_in_the_directory_it_was_called_from(
+        self, tmp_path, monkeypatch
+    ):
+        """``_run_mypy`` run from ``tmp_path`` writes no ``.mypy_cache``
+        there."""
         target = HARNESS_REPO_ROOT / "dev_harness" / "harness" / "claim_ledger.py"
         assert target.is_file(), "control invalid: the target is missing"
-        arch = CodingArchetype()
-        monkeypatch.chdir(HARNESS_REPO_ROOT)
-        from_root, status_root = arch._run_ruff(target)
         monkeypatch.chdir(tmp_path)
-        from_away, status_away = arch._run_ruff(target)
-        assert status_root == status_away == "ok"
+        _found, status = CodingArchetype()._run_mypy(target)
+        assert status in ("ok", "missing"), status
+        assert not (tmp_path / ".mypy_cache").exists(), sorted(
+            p.name for p in tmp_path.iterdir()
+        )
+
+    def test_a_bare_mypy_DOES_leave_a_cache_where_it_was_called(self, tmp_path):
+        """POSITIVE CONTROL. Without ``--cache-dir`` the cache lands in
+        the caller's directory, so the absence above is a real result."""
+        import subprocess
+
+        (tmp_path / "tiny.py").write_text('"""Doc."""\n', encoding="utf-8")
+        subprocess.run(
+            [sys.executable, "-m", "mypy", "--no-error-summary", "tiny.py"],
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        assert (tmp_path / ".mypy_cache").exists(), sorted(
+            p.name for p in tmp_path.iterdir()
+        )
+
+    @pytest.mark.parametrize("runner", CODING_RUNNERS)
+    def test_every_analyzer_answers_the_same_from_another_directory(
+        self, runner, tmp_path, monkeypatch
+    ):
+        """The real runner, twice, from two directories."""
+        target = HARNESS_REPO_ROOT / "dev_harness" / "harness" / "claim_ledger.py"
+        assert target.is_file(), "control invalid: the target is missing"
+        run = getattr(CodingArchetype(), runner)
+        monkeypatch.chdir(HARNESS_REPO_ROOT)
+        from_root, status_root = run(target)
+        monkeypatch.chdir(tmp_path)
+        from_away, status_away = run(target)
+        assert status_root == status_away, runner
         assert sorted(f.rule_id for f in from_root) == sorted(
             f.rule_id for f in from_away
-        )
+        ), runner
+
+    def test_the_directory_sweep_reads_a_file_that_has_findings(self):
+        """POSITIVE CONTROL. Two empty result lists would agree however
+        the analyzers behaved."""
+        target = HARNESS_REPO_ROOT / "dev_harness" / "harness" / "claim_ledger.py"
+        found, status = CodingArchetype()._run_ruff(target)
+        assert status == "ok"
+        assert found, "ruff found nothing in claim_ledger.py"
 
 
 class TestKnownGoodAndKnownBadStillDiscriminate:

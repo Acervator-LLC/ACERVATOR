@@ -1,22 +1,9 @@
-"""
-src/gui/preflight_check.py
-──────────────────────────────────────────────────────────────────────
-v3.13.8 MEM-185 / Chunk 1.5c — pre-flight symbol validation.
+"""Pre-flight validation of an (exchange, symbol) pair before a bot exists.
 
-Runs AFTER the bot wizard collects config but BEFORE BotConfig is
-instantiated. Verifies the chosen (exchange, symbol) pair is actually
-tradeable, surfaces Coinbase-style market constraints to the operator,
-and blocks bot creation when the constraints can't be met.
-
-Uses sync CCXT (same pattern as src/exchange/api_validator.py) so the
-check is quick, self-contained, and doesn't require the async event
-loop. Credentials are OPTIONAL — public market data works without auth
-on most exchanges including Coinbase.
-
-Returns a PreflightResult. Caller renders a QMessageBox with the
-findings and a Yes/No gate. This is DIAGNOSTIC + ADVISORY, not
-authoritative — the actual order-placement guard is CCXT's
-amount_to_precision / price_to_precision at order time.
+check_symbol runs sync CCXT against public market data and returns a
+PreflightResult carrying the venue's constraints and any warnings.
+format_result_for_user renders that for the wizard's Yes/No gate. The
+authoritative guard is still CCXT's precision rounding at order time.
 """
 
 from __future__ import annotations
@@ -24,6 +11,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import Optional
 
 from ..exchange.ccxt_connector import CCXT_DECIMAL_PLACES, precision_to_decimals
 
@@ -57,9 +45,9 @@ def check_symbol(
     exchange_id: str,
     symbol: str,
     target_balance: float,
-    api_key: str = "",
-    api_secret: str = "",
-    passphrase: str = "",
+    api_key: Optional[str] = None,
+    api_secret: Optional[str] = None,
+    passphrase: Optional[str] = None,
 ) -> PreflightResult:
     """Verify a (exchange, symbol) pair is tradeable at the target balance.
 
@@ -185,16 +173,6 @@ def check_symbol(
                 f"Target balance ${target_balance:.2f} is less than 3x min-order-cost "
                 f"(${min_cost:.2f}). Bot may only place a handful of trades."
             )
-        # MEM-250 (Session 26 operator directive): no "full unit" warning.
-        # Acervator is a USD-denominated accumulation strategy. Crypto is
-        # divisible. A $50 target on BTC buys 0.0005 BTC — that's entirely
-        # normal and correct. The only legitimate capacity warning is
-        # target_balance vs min_cost above (which uses USD). The previous
-        # "Current price exceeds target balance. Bot cannot buy a full unit."
-        # warning trained the wrong mental model (whole-unit thinking) and
-        # blocked operators from testing the strategy on BTC/ETH/expensive
-        # tokens. Deleted.
-
         elapsed = (time.monotonic() - start) * 1000
 
         return PreflightResult(

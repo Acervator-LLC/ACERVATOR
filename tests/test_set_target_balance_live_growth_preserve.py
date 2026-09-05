@@ -71,9 +71,7 @@ def method_body(source: str) -> str:
     return m.group(1)
 
 
-# ---------------------------------------------------------------------
 # The falsifier, kept as a record.
-# ---------------------------------------------------------------------
 
 
 def _without_the_anchor_reference(stub, new_target):

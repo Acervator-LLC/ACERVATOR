@@ -1,32 +1,12 @@
-"""fetcher.py — exchange-agnostic gap-driven Stone Tablet fetcher.
+"""Gap-driven Stone Tablet fetching.
 
-Per operator directive 2026-08-01:
-
-    "I want a exchange-agnostic (beyond API connector specifics which
-    are per exchange) fetcher that adapts to observable gaps in a
-    given user's Stone Tablets and then fills those gaps with the
-    correct data. Fetcher should identify active target assets and
-    download their historical YTD tapes. And, to mention it again,
-    if a Stone Tablet does not exist for a simulated and back tested
-    asset then one will be generated."
-
-Public surface:
-
-    * ExchangeAdapter          — abstract per-exchange fetch adapter
-    * CoinbaseAdapter          — proven v3.22.70 params (350/call, 1.3s)
-    * CoinGeckoAdapter         — recent-only fallback (free-tier limits)
-    * GapFiller                — walks missing_ranges + ingests chunks
-    * TargetAssetDiscovery     — from bot_state.json or bot_manager
-    * BuildOrchestrator        — top-level: discover + fill for all
-    * async ensure_asset_coverage(...)  — on-demand hook for sim
-
-CLI:
-    python -m src.trading.stone_tablets.fetcher build-ytd
-    python -m src.trading.stone_tablets.fetcher fill --asset BTC
-    python -m src.trading.stone_tablets.fetcher status
-    python -m src.trading.stone_tablets.fetcher ensure --asset X
-
-sadp: R28 SSS + R70 RCN
+``GapFiller`` walks the gaps ``missing_ranges`` reports for one asset and
+ingests every chunk an ``ExchangeAdapter`` returns, either ``CoinbaseAdapter``
+or ``CoinGeckoAdapter``. ``BuildOrchestrator.build_ytd`` takes its pairs from
+``TargetAssetDiscovery`` and ``build_universe`` takes them from
+``discover_all_exchange_markets``. ``main`` runs the ``status`` and ``discover``
+subcommands offline; ``build-ytd``, ``universe`` and ``ensure`` need a live
+connector.
 """
 
 from __future__ import annotations
@@ -52,28 +32,22 @@ from .registry import (
 
 logger = logging.getLogger("acervator.stone_tablets.fetcher")
 
-# --------------------------------------------------------------------- #
-# Constants                                                              #
-# --------------------------------------------------------------------- #
-
 YTD_START_MS: int = int(datetime(2026, 4, 1, tzinfo=timezone.utc).timestamp() * 1000)
-"""Operator-anchored YTD start (2026-04-01T00:00:00Z), matches
-history_helpers.DEFAULT_START_DATE. Fetcher fills coverage from
-this cursor forward."""
+"""2026-04-01T00:00:00Z in epoch milliseconds, the default ``since_ms`` for
+``build_ytd``, ``build_universe`` and ``ensure_asset_coverage``."""
 
 STEP_5M_MS: int = 300 * 1000
 
 BOT_STATE_PATH: Path = Path(os.path.expanduser("~/.acervator/bot_state.json"))
 
 
-# --------------------------------------------------------------------- #
-# Adapter — per-exchange fetch surface                                   #
-# --------------------------------------------------------------------- #
-
-
 @dataclass
 class FetchAttempt:
-    """One chunk-fetch result — passed to GapFiller for ingest."""
+    """One chunk result.
+
+    ``candles`` holds the rows on success and ``error`` the message on failure.
+    ``GapFiller`` counts each into a ``FillReport``.
+    """
 
     since_ms: int
     until_ms: int
@@ -82,7 +56,11 @@ class FetchAttempt:
 
 
 class ExchangeAdapter:
-    """Abstract base — each exchange declares chunk limits + fetch."""
+    """Base for per-exchange fetching.
+
+    A subclass sets ``chunk_limit`` and ``chunk_sleep_s`` and implements
+    ``fetch_chunk``.
+    """
 
     exchange_id: str = ""
     chunk_limit: int = 300
@@ -101,20 +79,24 @@ class ExchangeAdapter:
         until_ms: int,
         timeframe: str = NATIVE_TIMEFRAME,
     ) -> FetchAttempt:
-        """Fetch one chunk of OHLCV via the exchange connector.
-        Subclasses override to translate to exchange-specific
-        endpoints. Base implementation uses ccxt's get_ohlcv."""
+        """Fetch one OHLCV chunk between ``since_ms`` and ``until_ms``.
+
+        Raises ``NotImplementedError``; ``CoinbaseAdapter`` overrides it.
+        """
         raise NotImplementedError
 
     @property
     def chunk_span_ms(self) -> int:
-        """Milliseconds of coverage a single chunk provides at 5m."""
+        """``chunk_limit`` steps of ``STEP_5M_MS``, in milliseconds."""
         return self.chunk_limit * STEP_5M_MS
 
 
 class CoinbaseAdapter(ExchangeAdapter):
-    """Coinbase Advanced Trade — proven v3.22.70 params:
-    350 candles per call (~29h), 1.3s sleep between calls."""
+    """Coinbase Advanced Trade adapter.
+
+    ``fetch_chunk`` calls the connector's ``get_ohlcv`` with ``since`` in epoch
+    milliseconds and keeps the venue's own open, high, low, close and volume.
+    """
 
     exchange_id = "coinbase"
     chunk_limit = 350
@@ -133,19 +115,17 @@ class CoinbaseAdapter(ExchangeAdapter):
         symbol = f"{asset.upper()}/{quote.upper()}"
 
         async def _fetch_once() -> FetchAttempt:
-            # `since` is epoch MILLISECONDS, as ccxt's fetch_ohlcv takes
-            # it. `until_ms` is not sent: ccxt returns up to `limit`
-            # candles from `since`, so the tail is clipped below.
+            # until_ms is not sent; rows past it are dropped below.
             rows = await self._connector.get_ohlcv(
                 symbol, timeframe, limit=self.chunk_limit, since=int(since_ms)
             )
-            # rows are [[ts_ms, o, h, l, c, v], ...] per ccxt convention.
+            # Each row is [ts_ms, open, high, low, close, volume].
             cleaned: list[list[float]] = []
             for r in rows or []:
                 try:
                     ts = int(r[0])
                     if ts < 1e12:
-                        ts *= 1000  # defensive: convert sec→ms
+                        ts *= 1000
                     if ts > until_ms:
                         continue
                     cleaned.append(
@@ -197,8 +177,7 @@ class CoinbaseAdapter(ExchangeAdapter):
                 on_failure=_note_fetch_failure,
             )
         except Exception as exc:
-            # Every fetch error is reported, never raised: GapFiller
-            # counts a failed chunk and walks on to the next gap.
+            # Reported through FetchAttempt.error, never raised to GapFiller.
             return FetchAttempt(
                 since_ms=since_ms,
                 until_ms=until_ms,
@@ -208,15 +187,15 @@ class CoinbaseAdapter(ExchangeAdapter):
 
 
 class CoinGeckoAdapter(ExchangeAdapter):
-    """CoinGecko free-tier fallback — recent-only (last ~1 day for
-    5m per LTM finding at
-    _archive/docs_audits_pre_2026_07_24/2026-06-08_session_70_5min_ytd_sim_run.md).
-    Not usable as deep-history filler; positioned as a reliability
-    fallback for the last-24h edge cases."""
+    """CoinGecko free-tier fallback.
+
+    ``fetch_chunk`` returns a ``FetchAttempt`` carrying ``error`` and no
+    candles.
+    """
 
     exchange_id = "coingecko"
-    chunk_limit = 288  # 1 day of 5m candles
-    chunk_sleep_s = 6.0  # free-tier: 10 req/min
+    chunk_limit = 288  # one day of 5m candles
+    chunk_sleep_s = 6.0  # free tier allows 10 requests per minute
     retry_max = 3
     retry_base_s = 5.0
 
@@ -228,9 +207,6 @@ class CoinGeckoAdapter(ExchangeAdapter):
         until_ms: int,
         timeframe: str = NATIVE_TIMEFRAME,
     ) -> FetchAttempt:
-        # v1: not implemented — placeholder. Coinbase covers all
-        # currently-active operator assets. CoinGecko wiring lands
-        # only if the fallback path is exercised (v3.24.x if needed).
         return FetchAttempt(
             since_ms=since_ms,
             until_ms=until_ms,
@@ -238,11 +214,6 @@ class CoinGeckoAdapter(ExchangeAdapter):
             error="CoinGecko adapter is a placeholder in v3.23.99; "
             "Coinbase is primary for all current assets",
         )
-
-
-# --------------------------------------------------------------------- #
-# GapFiller — walks missing_ranges + ingests chunks                     #
-# --------------------------------------------------------------------- #
 
 
 @dataclass
@@ -258,10 +229,11 @@ class FillReport:
 
 
 class GapFiller:
-    """Reads registry.missing_ranges, walks each gap in chunks
-    respecting the adapter's chunk limit, ingests each chunk into
-    the registry immediately so a crash mid-fetch loses at most
-    one chunk."""
+    """Fills one asset's gaps from an ``ExchangeAdapter``.
+
+    ``fill_asset`` walks every range ``missing_ranges`` reports and ingests
+    each ``fetch_chunk`` result before requesting the next one.
+    """
 
     def __init__(
         self,
@@ -345,9 +317,7 @@ class GapFiller:
                             exchange_id=exchange_id,
                         )
                         report.candles_appended += appended
-                # Rate-limit sleep between calls
                 await asyncio.sleep(self._adapter.chunk_sleep_s)
-                # Advance cursor past what we just requested
                 cursor = chunk_end + STEP_5M_MS
         logger.info(
             "gap-fill %s@%s DONE: %d chunks OK, %d errors, " "%d candles appended",
@@ -360,16 +330,13 @@ class GapFiller:
         return report
 
 
-# --------------------------------------------------------------------- #
-# TargetAssetDiscovery                                                   #
-# --------------------------------------------------------------------- #
-
-
 def _parse_bot_state_targets(
     path: Path = BOT_STATE_PATH,
 ) -> list[tuple[str, str]]:
-    """Return unique (asset, exchange_id) pairs from every bot in
-    bot_state.json. Deterministic order."""
+    """Return sorted ``(asset, exchange_id)`` pairs from the bots in ``path``.
+
+    An absent or unreadable ``path`` yields an empty list.
+    """
     if not path.exists():
         return []
     try:
@@ -396,13 +363,17 @@ def _parse_bot_state_targets(
 def _parse_bot_manager_targets(
     bot_manager: Any,
 ) -> list[tuple[str, str]]:
-    """Live enumeration — matches history_helpers._pairs_from_bot_manager."""
+    """Return sorted ``(asset, exchange_id)`` pairs from ``bot_manager._bots``.
+
+    Each bot's ``config.symbol`` supplies the asset and ``config.exchange_id``
+    the exchange, defaulting to coinbase.
+    """
     if bot_manager is None:
         return []
     seen: set[tuple[str, str]] = set()
     try:
         bots = list(getattr(bot_manager, "_bots", {}).values())
-    except Exception:  # noqa: BLE001,S110 - bot_manager surface
+    except Exception:  # noqa: BLE001 - bot_manager surface
         return []
     for bot in bots:
         try:
@@ -422,11 +393,10 @@ def _parse_bot_manager_targets(
 
 
 class TargetAssetDiscovery:
-    """Enumerates (asset, exchange_id) pairs from bot state.
+    """Lists the ``(asset, exchange_id)`` pairs to fill.
 
-    Order of preference:
-      1. bot_manager (live, guaranteed current) if provided
-      2. bot_state.json (persistent, works even without app running)
+    ``enumerate`` returns ``_parse_bot_manager_targets`` when a ``bot_manager``
+    is set and yields pairs, and ``_parse_bot_state_targets`` otherwise.
     """
 
     def __init__(
@@ -443,11 +413,6 @@ class TargetAssetDiscovery:
             if live:
                 return live
         return _parse_bot_state_targets(self._state_path)
-
-
-# --------------------------------------------------------------------- #
-# BuildOrchestrator                                                      #
-# --------------------------------------------------------------------- #
 
 
 @dataclass
@@ -475,18 +440,10 @@ async def discover_all_exchange_markets(
     connector: Any,
     quote_filter: tuple = ("USD", "USDC"),
 ) -> list[tuple[str, str]]:
-    """v3.24.4 — enumerate every active market on a live exchange
-    connector matching the quote_filter (default USD + USDC).
+    """Return sorted ``(base, quote)`` pairs from ``connector.get_markets``.
 
-    Returns sorted list of ``(base, quote)`` tuples. Uses
-    ``connector.get_markets()`` which returns AssetInfo per
-    (base, quote, active, ...) — filters to active markets.
-
-    Operator directive 2026-08-01: "Collect the Stone Tablets for
-    all available assets on Coinbase going back to 4/1 so that we
-    can actually attempt to simulate the Market Inspector's
-    recommended Bot Swarm topologies and have everything available
-    locally."
+    A market is kept when it reports ``active`` and its quote is in
+    ``quote_filter``; a ``None`` connector returns an empty list.
     """
     if connector is None:
         return []
@@ -512,10 +469,11 @@ async def discover_all_exchange_markets(
 
 
 class BuildOrchestrator:
-    """Top-level: discover active targets, fill YTD coverage for
-    each via the appropriate adapter. Sequential per-asset with
-    rate-limit sleep between calls (concurrency deferred — one
-    exchange's rate limit is shared across all requests)."""
+    """Runs ``GapFiller`` over many assets, one at a time.
+
+    ``build_ytd`` fills every pair ``TargetAssetDiscovery.enumerate`` returns;
+    ``build_universe`` fills every market on one exchange.
+    """
 
     def __init__(
         self,
@@ -537,12 +495,12 @@ class BuildOrchestrator:
         until_ms: Optional[int] = None,
         quote_filter: tuple = ("USD", "USDC"),
     ) -> "BuildReport":
-        """v3.24.4 — fetch YTD tablets for EVERY active market on
-        the exchange matching quote_filter. Bounded by the
-        adapter's chunk rate limit; a 300-symbol full-universe fill
-        at Coinbase's 1.3s sleep + ~40 chunks per symbol ≈ 4.3h
-        wall clock for a first-time build. Subsequent runs only
-        fill gaps (usually seconds)."""
+        """Fill ``since_ms`` to ``until_ms`` for every market under
+        ``quote_filter``.
+
+        Returns an empty ``BuildReport`` when ``_adapters`` holds no adapter
+        for ``exchange_id``.
+        """
         if until_ms is None:
             until_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
         adapter = self._adapters.get(exchange_id)
@@ -620,12 +578,10 @@ async def ensure_asset_coverage(
     until_ms: Optional[int] = None,
     quote_currency: str = "USD",
 ) -> FillReport:
-    """On-demand hook for sim/backtest paths — call this before
-    reading candles for an asset whose Stone Tablet may not exist.
+    """Fill ``since_ms`` to ``until_ms`` for one ``(asset, exchange_id)`` pair.
 
-    Operator directive 2026-08-01: 'if a Stone Tablet does not exist
-    for a simulated and back tested asset then one will be generated.'
-    This function is the generator.
+    Returns a ``FillReport`` with ``chunks_error`` of 1 when ``_build_adapter``
+    knows no adapter for ``exchange_id``.
     """
     if until_ms is None:
         until_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
@@ -655,11 +611,6 @@ def _build_adapter(
     if exchange_id == "coingecko":
         return CoinGeckoAdapter(connector)
     return None
-
-
-# --------------------------------------------------------------------- #
-# CLI                                                                    #
-# --------------------------------------------------------------------- #
 
 
 def _cli_status(reg: StoneTabletsRegistry) -> int:
@@ -729,9 +680,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_uni = sub.add_parser(
         "universe",
         help=(
-            "Fetch YTD tablets for EVERY active USD/USDC market "
-            "on an exchange (v3.24.4). Enables Market Inspector "
-            "topology sim over any asset, not just currently-traded."
+            "Fetch YTD tablets for every active USD/USDC market "
+            "on an exchange, not only the assets bots trade today."
         ),
     )
     p_uni.add_argument("--exchange", default="coinbase")
@@ -762,14 +712,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.cmd == "discover":
         return _cli_discover()
 
-    # build-ytd and ensure both need live connectors. The CLI can't
-    # instantiate them (they need credentials + async loop set up
-    # by main.py). Print instruction instead of failing silently.
+    # build-ytd, universe and ensure need a connector this CLI cannot build.
     print(
-        f"[{args.cmd}] requires live exchange connector(s). Run this "
-        "from within the app via the Simulator panel's 'Fetch "
-        "missing coverage' button (v3.23.99b) — the CLI is a "
-        "diagnostic/observation surface only."
+        f"[{args.cmd}] requires a live exchange connector, which this CLI "
+        "does not build. Only 'status' and 'discover' run here."
     )
     return 1
 

@@ -82,9 +82,7 @@ def app():
     return ensure_app()
 
 
-# ---------------------------------------------------------------------
 # The widgets both sides are handed. One set per side, same kinds.
-# ---------------------------------------------------------------------
 
 
 class RecordingWidget:
@@ -140,9 +138,7 @@ def make_widget(name, kind):
     return KINDS[kind](name)
 
 
-# ---------------------------------------------------------------------
 # The inputs. One scenario drives both sides.
-# ---------------------------------------------------------------------
 
 
 def scenario(name, steps):
@@ -261,9 +257,7 @@ REFUSING_SCENARIOS = (
 )
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def trace(phase_before, phase_after, seen, registered, active, interval, fires) -> dict:
@@ -396,9 +390,7 @@ def refusal_headline(message) -> str:
     return message.splitlines()[0].strip() if message else ""
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -544,9 +536,7 @@ def test_the_sample_hashes_are_reported(name):
     assert digest(value) == digest(new_outcome(BY_NAME[name])["value"])
 
 
-# ---------------------------------------------------------------------
 # What one fire does
-# ---------------------------------------------------------------------
 
 
 def test_the_first_fire_hands_out_the_opacity_the_shipped_driver_computes():
@@ -721,9 +711,7 @@ def test_a_real_widget_refuses_a_text_opacity_in_the_librarys_own_words():
     assert taker.opacities == ["0.5"]
 
 
-# ---------------------------------------------------------------------
 # The clock is a value handed in
-# ---------------------------------------------------------------------
 
 
 def test_the_elapsed_time_handed_in_decides_how_many_fires_run():
@@ -829,9 +817,7 @@ def test_the_library_rewrites_an_odd_delay_and_the_surface_never_asks_for_one():
         timer.stop()
 
 
-# ---------------------------------------------------------------------
 # Start and stop, in sequence
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -877,9 +863,7 @@ def test_the_start_and_stop_counts_are_kept_on_the_surface():
     assert payload["timer"]["stops"] == 1
 
 
-# ---------------------------------------------------------------------
 # The enumeration
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1167,9 +1151,7 @@ def test_every_surface_class_and_extra_name_stands_for_something_shipped():
     assert functions == set(EXTRA_SURFACE_FUNCTIONS), sorted(functions)
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 def named_payloads() -> dict:
@@ -1500,9 +1482,7 @@ def test_the_reading_reports_two_widgets_registered_in_the_other_order():
     assert digest(new_trace(backwards)) == digest(other)
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_moved_in_the_shipped_driver(monkeypatch):
@@ -1635,9 +1615,7 @@ def test_no_value_either_side_answers_can_be_moved_by_a_font():
         assert isinstance(value, PLAIN_TYPES), (value, state)
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):

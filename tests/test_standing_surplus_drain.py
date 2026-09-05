@@ -1,53 +1,17 @@
-"""Phase 2 Steps 6-7 — the standing pool acquires an outlet.
+"""The standing surplus pool, its outlet and its clear.
 
-STEP 7, THE DRAIN
-`__init__` at :488-494 has always specified it:
-
-    per_cycle_growth_budget = anchor x (max_target_growth_pct / 100)
-    this_cycle_growth = min(this_cycle_surplus + standing_surplus,
-                            per_cycle_growth_budget)
-    target_balance += this_cycle_growth
-    standing_surplus = (this_cycle_surplus + standing_surplus)
-                       - this_cycle_growth
-
-The code implemented `min(_new_surplus_usd, _cap_remaining)` -- only THIS
-fold's surplus was eligible, and anything over the cap was ADDED to the
-pool. `_standing_surplus_usd` has no decrement anywhere else in src/
-either, so the pool took deposits and had no withdrawal. A later cycle
-with cap headroom to spare could not reach money parked yesterday.
-
-THE SECOND HALF, which the plan called out and the first draft missed
-A break-even fold returned before reaching the drain, so the pool could
-only ever be released by a PROFITABLE fold. The `[COMPOUND SKIPPED]`
-message immediately above that return says a break-even fold is
-EXPECTED -- "when a fold buys back at cost basis or when scrum->fold
-spread is eaten by fees" -- which is the common case on this platform.
-The pool's only outlet was the rare case. It now skips only when there is
-nothing new AND nothing parked.
-
-STEP 6, DETONATION HYGIENE
-The detonation clear bumped no counter, so a detonation silently broke
-the tranche accounting. It now counts them, and zeroes the standing pool:
-detonation resets the target to anchor by design, so carrying
-pre-detonation surplus forward would inject growth earned against a
-position that no longer exists.
-
-DELIBERATE DEVIATION FROM THE PLAN: it counts DISCARDED, not CLOSED.
-Those tranches did not fold -- detonation sells the position and abandons
-the queued rebuys -- and v3.24.44 established that `closed` means
-"actually folded". Counting an abandoned tranche as closed re-introduces
-the conflation that split was for.
-
-BLAST RADIUS, MEASURED
-Fleet standing surplus is $1.0992 (BIO/USD $0.6289, CAP/USD $0.4703),
-released at no more than anchor x max_target_growth_pct/100 per cycle.
-`detonation_enabled` is FALSE on all 35 bots, so Step 6 is dormant in
-practice -- verified read-only against live state, which the repair plan
-had explicitly not measured.
+``_apply_fold_target_growth`` releases ``_standing_surplus_usd`` up to
+``cycle_growth_cap_usd`` on every fold, a break-even fold included, and
+parks what the cap will not take. ``_execute_detonation`` zeroes
+``_standing_surplus_usd``, reports the amount it discharged in the same
+line that reports the target reset, and adds the abandoned tranches to
+``_tranches_discarded_lifetime``, leaving ``_tranches_closed_lifetime``
+and ``_fold_cycle_cap_consumed`` where they were.
 """
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -76,10 +40,6 @@ class _Bot:
 
     _apply_fold_target_growth = ScrummingBot._apply_fold_target_growth
 
-    # Issue #106 - `_apply_fold_target_growth` now reads the cap
-    # from `cycle_growth_cap_usd` instead of respelling
-    # `anchor * pct/100` inline. This stub carries only what the
-    # helper reads, so it has to carry the property too.
     cycle_growth_cap_usd = ScrummingBot.cycle_growth_cap_usd
 
     def __init__(
@@ -176,76 +136,196 @@ class TestTheDrain:
         assert "drained" in msg
 
 
+class _Order:
+    id = "det-1"
+    filled = 900.0
+    average_price = 1.0
+    price = 1.0
+
+
+class _Ticker:
+    last = 1.0
+
+
+class _DetBot:
+    """A bot the real ``_execute_detonation`` runs against.
+
+    ``guarded_place_order`` and ``_route_scrum_proceeds_via_wires``
+    record their arguments, and every counter starts non-zero.
+    """
+
+    _execute_detonation = ScrummingBot._execute_detonation
+
+    def __init__(self, *, tranches=3, pool=7.5, holdings=1000.0, anchor=100.0):
+        self.bot_id = "bot-test-0001"
+        self.config = type("C", (), {"symbol": "BIO/USD", "target_asset": "BIO"})()
+        self._bus = _Bus()
+        self._quote_to_usd = 1.0
+        self._current_holdings = holdings
+        self._anchor_target_balance = anchor
+        self._target_balance = anchor + 25.0
+        self._fold_tranches = [
+            {"units": 1.0, "ref": 2.0, "usd": 2.0} for _ in range(tranches)
+        ]
+        self._fold_queue_usd = float(tranches) * 2.0
+        self._standing_surplus_usd = pool
+        self._fold_cycle_cap_consumed = 0.75
+        self._tranches_discarded_lifetime = 4
+        self._tranches_closed_lifetime = 11
+        self._main_lots = [{"units": holdings, "initial_buy_price": 0.5}]
+        self._last_trade_price = 0.0
+        self.stats = type("S", (), {"standing_surplus_usd": pool, "total_trades": 6})()
+        self.placed = []
+        self.routed = []
+        self.fired = []
+
+    async def guarded_place_order(self, **kwargs):
+        self.placed.append(kwargs)
+        return _Order()
+
+    def _route_scrum_proceeds_via_wires(self, scrum_usd, sell_fill, label):
+        self.routed.append((scrum_usd, sell_fill, label))
+        return 0.0
+
+    def _emit_voting_panel_snapshot_at_fire(self, side, trade_action):
+        self.fired.append(("snapshot", side, trade_action))
+
+    def _emit_gate_decision_at_fire(self, side, trade_action):
+        self.fired.append(("gate", side, trade_action))
+
+
+def _detonate(**kwargs):
+    """One ``_DetBot`` run through the real ``_execute_detonation``."""
+    bot = _DetBot(**kwargs)
+    asyncio.run(bot._execute_detonation(_Ticker()))
+    return bot
+
+
 class TestDetonationHygiene:
+    def test_the_detonation_actually_sells(self):
+        """POSITIVE CONTROL. ``guarded_place_order`` ran and
+        ``_fold_tranches`` emptied."""
+        bot = _detonate()
+        assert bot.placed, "no order was placed, so nothing was driven"
+        assert bot.placed[0]["side"].value == "sell"
+        assert bot._fold_tranches == []
+        assert bot._target_balance == pytest.approx(bot._anchor_target_balance)
+
+    def test_a_refused_price_leaves_every_counter_alone(self):
+        """NEGATIVE CONTROL: a zero ticker price leaves
+        ``_standing_surplus_usd`` and ``_tranches_discarded_lifetime``
+        where they were."""
+        bot = _DetBot()
+        ticker = _Ticker()
+        ticker.last = 0.0
+        asyncio.run(bot._execute_detonation(ticker))
+        assert bot.placed == []
+        assert bot._standing_surplus_usd == pytest.approx(7.5)
+        assert bot._tranches_discarded_lifetime == 4
+        assert len(bot._fold_tranches) == 3
+
     def test_the_clear_counts_discarded_not_closed(self):
-        """Those tranches did not fold. `closed` means folded, which is
-        what makes created - closed - discarded = standing meaningful.
+        """``_tranches_discarded_lifetime`` takes the abandoned tranches
+        and ``_tranches_closed_lifetime`` does not move."""
+        bot = _detonate(tranches=3)
+        assert bot._tranches_discarded_lifetime == 7
+        assert bot._tranches_closed_lifetime == 11
 
-        Asserted over ASSIGNED ATTRIBUTE NAMES, not source text: the
-        comment recording this deviation necessarily names the counter it
-        declines to use, and text matching cannot tell a mention from a
-        write. This has now caught me five times in this cascade."""
-        import ast
-        import inspect
-
-        import src.trading.scrumming_bot as sbm
-
-        src = Path(
-            inspect.getsourcefile(sbm.ScrummingBot._execute_detonation)
-        ).read_text(encoding="utf-8")
-        fn = next(
-            n
-            for n in ast.walk(ast.parse(src))
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and n.name == "_execute_detonation"
-        )
-        written = set()
-        for node in ast.walk(fn):
-            tgts = []
-            if isinstance(node, ast.Assign):
-                tgts = node.targets
-            elif isinstance(node, ast.AugAssign):
-                tgts = [node.target]
-            for t in tgts:
-                if isinstance(t, ast.Attribute):
-                    written.add(t.attr)
-        assert "_tranches_discarded_lifetime" in written
-        assert "_tranches_closed_lifetime" not in written
+    def test_the_discarded_count_follows_the_queue_it_abandoned(self):
+        """``_tranches_discarded_lifetime`` moves by the length of
+        ``_fold_tranches``, never by a fixed step."""
+        assert _detonate(tranches=5)._tranches_discarded_lifetime == 9
+        assert _detonate(tranches=0)._tranches_discarded_lifetime == 4
 
     def test_it_zeroes_the_standing_pool(self):
-        import ast
-        import inspect
-
-        import src.trading.scrumming_bot as sbm
-
-        src = Path(
-            inspect.getsourcefile(sbm.ScrummingBot._execute_detonation)
-        ).read_text(encoding="utf-8")
-        fn = next(
-            n
-            for n in ast.walk(ast.parse(src))
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and n.name == "_execute_detonation"
-        )
-        seg = ast.get_source_segment(src, fn) or ""
-        assert "self._standing_surplus_usd = 0.0" in seg
+        """``_standing_surplus_usd`` and ``stats.standing_surplus_usd``
+        both reach zero."""
+        bot = _detonate(pool=7.5)
+        assert bot._standing_surplus_usd == pytest.approx(0.0)
+        assert bot.stats.standing_surplus_usd == pytest.approx(0.0)
 
     def test_it_does_NOT_clear_the_cycle_cap(self):
-        """NEGATIVE CONTROL. Zeroing _fold_cycle_cap_consumed unlatches
-        folds, which is a buy-TIMING change and belongs in Phase 3."""
-        import ast
-        import inspect
+        """NEGATIVE CONTROL. ``_fold_cycle_cap_consumed`` keeps its
+        value."""
+        bot = _detonate()
+        assert bot._fold_cycle_cap_consumed == pytest.approx(0.75)
 
-        import src.trading.scrumming_bot as sbm
 
-        src = Path(
-            inspect.getsourcefile(sbm.ScrummingBot._execute_detonation)
-        ).read_text(encoding="utf-8")
-        fn = next(
-            n
-            for n in ast.walk(ast.parse(src))
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and n.name == "_execute_detonation"
+def _completion_line(bot) -> str:
+    """The ``DETONATION COMPLETE`` message ``_execute_detonation`` emitted."""
+    for msg in bot._bus.msgs:
+        if msg.startswith("DETONATION COMPLETE"):
+            return msg
+    raise AssertionError(
+        "no DETONATION COMPLETE message was emitted; got " f"{bot._bus.msgs!r}"
+    )
+
+
+class TestTheDischargeIsReported:
+    def test_the_completion_line_names_the_discharged_pool(self):
+        bot = _detonate(pool=7.5)
+        line = _completion_line(bot)
+        assert "$7.5000 discharged" in line, line
+
+    def test_the_reported_figure_follows_the_pool_it_emptied(self):
+        """A fixed literal would report the same money for both pools."""
+        assert "$7.5000 discharged" in _completion_line(_detonate(pool=7.5))
+        assert "$0.6289 discharged" in _completion_line(_detonate(pool=0.6289))
+
+    def test_an_empty_pool_still_reports_a_zero_discharge(self):
+        """NEGATIVE CONTROL. The clause is unconditional, so a silent
+        line never means the pool was untouched."""
+        assert "$0.0000 discharged" in _completion_line(_detonate(pool=0.0))
+
+    def test_a_refused_detonation_reports_no_discharge(self):
+        """NEGATIVE CONTROL. A zero ticker price returns before the
+        clear, so no completion line exists to read."""
+        bot = _DetBot(pool=7.5)
+        ticker = _Ticker()
+        ticker.last = 0.0
+        asyncio.run(bot._execute_detonation(ticker))
+        assert not any(m.startswith("DETONATION COMPLETE") for m in bot._bus.msgs)
+        assert "discharged" not in bot._bus.text()
+
+
+class TestReadingThePoolRunsNoCode:
+    """``_execute_detonation`` reads ``_standing_surplus_usd`` with a bare
+    ``getattr``; that read must not reach a descriptor or a hook."""
+
+    def test_the_pool_is_a_plain_attribute_on_every_class_in_the_mro(self):
+        holders = [
+            cls.__name__
+            for cls in ScrummingBot.__mro__
+            if "_standing_surplus_usd" in vars(cls)
+        ]
+        assert holders == [], (
+            "_standing_surplus_usd is bound on a class, so the read may "
+            f"run a descriptor: {holders}"
         )
-        seg = ast.get_source_segment(src, fn) or ""
-        assert "_fold_cycle_cap_consumed = 0" not in seg
+
+    def test_the_scan_finds_a_descriptor_when_there_is_one(self):
+        """POSITIVE CONTROL. ``cycle_growth_cap_usd`` is a property, so
+        the same walk must report it."""
+        holders = [
+            cls.__name__
+            for cls in ScrummingBot.__mro__
+            if isinstance(vars(cls).get("cycle_growth_cap_usd"), property)
+        ]
+        assert holders == ["ScrummingBot"], holders
+
+    def test_no_class_in_the_mro_intercepts_attribute_access(self):
+        hooks = {
+            f"{cls.__name__}.{name}"
+            for cls in ScrummingBot.__mro__
+            if cls is not object
+            for name in ("__getattr__", "__getattribute__", "__setattr__")
+            if name in vars(cls)
+        }
+        assert hooks == set(), hooks
+
+    def test_the_pool_carries_a_float_on_a_built_bot(self):
+        """POSITIVE CONTROL for the ``float()`` the read wraps: the value
+        the running bot holds is already a float."""
+        bot = _DetBot(pool=7.5)
+        assert isinstance(bot._standing_surplus_usd, float)
+        assert float(bot._standing_surplus_usd) == pytest.approx(7.5)

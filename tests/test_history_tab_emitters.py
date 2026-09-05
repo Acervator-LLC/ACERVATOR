@@ -90,15 +90,12 @@ if str(REPO) not in sys.path:
 from src.core import signal_contract as sc  # noqa: E402
 from src.core.signal_contract import SignalSink  # noqa: E402
 
-# Imported, not forked. `_tracks` is the project's duration predicate and
-# this module has no standing to relax it; the site rule below WRAPS it
-# and only ever adds a condition.
+# `_tracks` is the shared duration predicate; the site rule below wraps it
+# and only adds conditions.
 from tests.test_signal_operation_duration import _busy_wait, _tracks  # noqa: E402
 
 if TYPE_CHECKING:  # pragma: no cover
-    # Annotation only. PySide6 must not be imported at module scope: the
-    # predicate control below is pure Python and has to run on a box
-    # without Qt.
+    # Annotation only; the predicate control below runs without Qt.
     from PySide6.QtWidgets import QApplication
 
     from src.gui.history_tab import HistoryTab
@@ -110,17 +107,8 @@ PAGE = "history.05.005.postcondition.page_rendered"
 JOINER = "history.05.006.postcondition.joiner_indexes_built"
 CSV = "history.05.007.postcondition.csv_exported"
 
-# The two workloads the duration lever drives, and the poll that quantises
-# them.
-#
-# `_kick_async_fetch` observes its future through a `QTimer` on a 400 ms
-# interval, so a recorded duration is the true fetch time plus up to one
-# poll. The levers are chosen so the quantum cannot close the gap: the
-# short reading cannot exceed 0.05 + 0.4 = 0.45 s and the long reading
-# cannot fall below 1.60 s, which is 3.6x clear of the 2x `_tracks` asks
-# for. The lever is `asyncio.sleep` on the fetch loop's own thread, which
-# is where the real fetch waits on the network, and it never touches the
-# clock, the emit call or the `duration` argument.
+# `_kick_async_fetch` polls on a 400 ms QTimer; these levers stay 3.6x
+# clear of the 2x `_tracks` asks for.
 POLL_S = 0.4
 LEVER_SHORT_S = 0.05
 LEVER_LONG_S = 1.60
@@ -187,9 +175,8 @@ def qapp() -> QApplication:
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication as _QApplication
 
-    # `instance()` is typed as the QCoreApplication base and can hand
-    # back a bare QCoreApplication in a non-GUI process, which has no
-    # widget machinery. Narrow it rather than assume.
+    # `instance()` can hand back a bare QCoreApplication, which has no
+    # widget machinery.
     running = _QApplication.instance()
     if isinstance(running, _QApplication):
         return running
@@ -340,9 +327,7 @@ def _run_fetch(
     async def _fake_fetch(
         bot_manager: _FakeBotManager, since_ts: float, *a: object, **kw: object
     ) -> list:
-        # The bot manager is captured, not discarded: the tab passes its
-        # own `_bot_manager` positionally, and a fetch handed the wrong
-        # object would return nothing and look like an empty account.
+        # The tab passes its own `_bot_manager` positionally; capture it.
         captured["bot_manager"] = bot_manager
         captured["since_ts"] = since_ts
         if delay_s > 0:
@@ -874,44 +859,8 @@ def test_a_short_write_is_reported(
         assert len(list(csv.reader(fh))) == 4  # header plus three
 
 
-# ── 10.3 durations: four History pins, each driven both ways ───────────
-#
-# WHY THIS BLOCK EXISTS
-# =====================
-# Queue item 10.3 made a duration MANDATORY IN THE RECORD -- not
-# mandatory as a number on every pin, which is impossible, but mandatory
-# as a DECLARATION the register carries and the checker holds against
-# the code. `tools/emitter_registry_check.py` rule E11 proves the
-# `duration=` keyword is present at a site the register calls
-# `measured`. It cannot prove the bracket spans the right work, because
-# no static rule can read that.
-#
-# THAT IS THE HOLE THESE TESTS FILL, AND IT IS THE ONLY ONE THAT
-# MATTERS. A bracket collapsed above the work still passes E11: the
-# keyword is there and the record carries a float. So each test below
-# drives the REAL emitter through two workloads that differ by a known
-# interval and requires the two recorded values to DIFFER. A duration
-# that is present but constant passes an existence check and fails
-# this one.
-#
-# THE LEVER IS ALWAYS INSIDE THE BRACKET AND NEVER TOUCHES THE CLOCK.
-# Nothing below patches `time.monotonic`, the `emit` call or the
-# `duration` argument. Each lever slows down real work the bracket is
-# supposed to be spanning: a combo rebuild, a filter pass, two log
-# reads, a CSV write. If the bracket does not span that work, the two
-# readings do not move apart and the test fails, which is the design.
-#
-# THE MINIMUM OF SEVERAL SAMPLES IS COMPARED, NOT ONE READING. A
-# scheduling pause can only ADD to an elapsed-time measurement: the
-# operating system can take the thread away inside the bracket, it
-# cannot hand back time that was never spent. So every sample is the
-# true cost plus non-negative noise, and the smallest is this machine's
-# closest estimate of the true cost. Measured on the sibling of this
-# rule in tests/test_wires_received_duration.py 2026-08-19: one failure
-# in a 7012-test gate run, with the same file passing 45 times in
-# isolation on the same commit. That is a single-sample measurement of
-# a small interval on a loaded Windows box with the live application
-# trading.
+# Each test drives the real emitter through two workloads a known interval
+# apart and requires the recorded durations to differ.
 
 SITE_SHORT_S = 0.005
 SITE_LONG_S = 0.060

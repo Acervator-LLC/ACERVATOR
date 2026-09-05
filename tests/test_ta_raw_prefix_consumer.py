@@ -35,9 +35,6 @@ from pathlib import Path
 from src.core.signal_contract import SignalSink, emit, get_sink, set_sink
 from src.trading.ta_engine import TA_RAW_PREFIX
 
-# `tests/conftest.py` puts the repository root on `sys.path` before any
-# test module is imported, so these two imports need no path juggling
-# above them and this file carries no suppression to excuse one.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONSUMER = REPO_ROOT / "src/simulator/fleet/fleet_replay_controller.py"
 ENGINE = REPO_ROOT / "src/trading/ta_engine.py"

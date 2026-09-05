@@ -1,4 +1,4 @@
-"""The Source | Rate | Destination wire matrix beside the bot grid."""
+"""QuickRoutingMatrix wires checked source bots to checked destination bots."""
 
 from __future__ import annotations
 
@@ -37,41 +37,16 @@ except ImportError:
 
 if _HAS_QT:
 
-    # -------------------------------------------------------------------
-    # v3.23.9 — Quick Routing Matrix
-    # -------------------------------------------------------------------
-    # Operator-pinned Q3: pick 1+ Source bots, 1+ Destination bots, an
-    # Amount %, and Connect wires every Source → every Destination at
-    # N% of source's profit-per-trade. Disconnect removes wires in the
-    # current selection. Disconnect All clears every wire globally.
-    #
-    # Persistence (Q5 (a)): wires live on each source bot's
-    # ``scrumming_state.smart_wire_routes`` list — `{dest_bot_id, pct}`
-    # dicts — inside ``~/.acervator/bot_state.json``. Saved immediately
-    # on every Connect / Disconnect / Disconnect All action.
-    #
-    # Exchange filter (Q4 (c)): the Source/Destination checkbox lists
-    # rebuild themselves from the parent tab's current exchange selector
-    # scope. Bots outside the scope are hidden from the matrix entirely.
-    # -------------------------------------------------------------------
     class QuickRoutingMatrix(QWidget):
-        """v3.23.18 — Three side-by-side Source | Rate | Destination zones,
-        each a single-bordered widget (no nested window-in-window), with
-        the three Connect / Disconnect / Disconnect All buttons horizontally
-        centered below them. Lives in the void to the right of the bot grid
-        per operator 2026-06-16 verbatim spec."""
+        """Three side-by-side zones: _source_list, _rate_input and _dest_list.
+
+        _on_connect_clicked, _on_disconnect_clicked and
+        _on_disconnect_all_clicked run from the buttons below them.
+        """
 
         def __init__(self, viz_tab: BotVisualizationTab):
             super().__init__(viz_tab)
             self._viz = viz_tab
-            # v3.23.18 layout per operator 2026-06-16:
-            #   outer = QVBoxLayout
-            #     col_row = QHBoxLayout(Source, Rate, Destination) — equal stretch=1
-            #     btn_row = QHBoxLayout(stretch, Connect, Disconnect, DisconnectAll, stretch)
-            # Source / Destination = QListWidget directly with frameShape=Box for
-            # the SINGLE rectangle border (no outer QGroupBox wrapping). Rate
-            # zone = QWidget containing label "Rate" + QLineEdit (no spinner).
-            # All three zones get equal stretch so they have equal width.
             outer = QVBoxLayout(self)
             outer.setContentsMargins(4, 0, 4, 0)
             outer.setSpacing(4)
@@ -80,10 +55,6 @@ if _HAS_QT:
             col_row.setSpacing(0)
             col_row.setContentsMargins(0, 0, 0, 0)
 
-            # v3.23.18 — Bare-QListWidget dark theme matching the
-            # v3.23.15 in-QGroupBox appearance (the QGroupBox is gone
-            # per single-rectangle spec, so the dark theme must be
-            # applied directly to the list).
             _list_style = (
                 f"QListWidget{{background:{ds.VIZ_LIST_SURFACE};color:{ds.VIZ_LIST_TEXT};"
                 f"border:1px solid {ds.VIZ_LIST_BORDER};font-family:Consolas;"
@@ -92,7 +63,6 @@ if _HAS_QT:
                 f"QListWidget::item:hover{{background:{ds.VIZ_INPUT_SURFACE};}}"
             )
 
-            # ── Source zone — single-rectangle QListWidget ────────────
             self._source_list = QListWidget()
             self._source_list.setSelectionMode(QListWidget.NoSelection)
             self._source_list.setSizePolicy(
@@ -106,7 +76,6 @@ if _HAS_QT:
             )
             col_row.addWidget(self._source_list, stretch=1)
 
-            # ── Rate zone — single-rectangle QWidget with QLineEdit ───
             rate_zone = QFrame()
             rate_zone.setFrameShape(QFrame.Box)
             rate_zone.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -137,7 +106,6 @@ if _HAS_QT:
             rate_lay.addStretch()
             col_row.addWidget(rate_zone, stretch=1)
 
-            # ── Destination zone — single-rectangle QListWidget ───────
             self._dest_list = QListWidget()
             self._dest_list.setSelectionMode(QListWidget.NoSelection)
             self._dest_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -150,7 +118,6 @@ if _HAS_QT:
 
             outer.addLayout(col_row, stretch=1)
 
-            # ── Button row — centered horizontal Connect/Disconnect/DisconnectAll ─
             btn_row = QHBoxLayout()
             btn_row.setSpacing(8)
             btn_row.setContentsMargins(0, 4, 0, 4)
@@ -181,31 +148,20 @@ if _HAS_QT:
             btn_row.addStretch()
             outer.addLayout(btn_row)
 
-        # ----------------------------------------------------------
-        # Scope rebuild — called when exchange filter changes
-        # ----------------------------------------------------------
         def rebuild_scope(self, bot_ids: list[str]) -> None:
-            """v3.23.13: Repopulate source + destination checkbox lists
-            from the current filtered set of bot_ids. Preserves which
-            bots were checked across the rebuild so the operator's
-            in-progress selection survives an exchange-filter change."""
+            """Repopulate _source_list and _dest_list from bot_ids.
+
+            Checked bot_ids and both scrollbar offsets carry across the
+            rebuild.
+            """
             prior_src = self._selected_sources()
             prior_dst = self._selected_destinations()
-            # v3.24.36 (C05) � scroll offset. clear() collapses the
-            # scrollbar range, which clamps its value to 0. That clamp
-            # only lands on the next relayout, so today the offset
-            # survives purely because nothing turns the event loop
-            # between the clear and the refill below � measured: force
-            # one processEvents() in between and a 35-row scroll goes
-            # to 0. Save and restore it so the operator's position is
-            # guaranteed rather than incidental.
+            # clear() collapses the scrollbar range and clamps its value to 0.
             prior_src_scroll = self._source_list.verticalScrollBar().value()
             prior_dst_scroll = self._dest_list.verticalScrollBar().value()
             self._source_list.clear()
             self._dest_list.clear()
-            # v3.23.20 — Operator 2026-06-16 directive Q2.a: when
-            # bot_swarm.identifiers is masked, render BOTH symbol AND
-            # hash as ****. Same field-id the locust labels consult.
+            # _mask_or hides sym and short in label under one field id.
             self._last_scope_ids = list(bot_ids)
             for bid in bot_ids:
                 sym = self._symbol_for(bid)
@@ -227,11 +183,7 @@ if _HAS_QT:
                 di.setCheckState(Qt.Checked if bid in prior_dst else Qt.Unchecked)
                 self._dest_list.addItem(di)
 
-            # v3.24.36 (C05) � restore the offsets saved above. The
-            # range is recomputed lazily, so a synchronous setValue can
-            # be clamped against a range that is still 0..0; the
-            # deferred pass runs after the relayout that fixes it.
-            # Both are needed � neither alone covers both orderings.
+            # The QTimer pass repeats setValue once the relayout fixes the range.
             for lst, val in (
                 (self._source_list, prior_src_scroll),
                 (self._dest_list, prior_dst_scroll),
@@ -244,7 +196,10 @@ if _HAS_QT:
                 )
 
         def _symbol_for(self, bot_id: str) -> str:
-            """Best-effort lookup of a bot's symbol for display."""
+            """Return the symbol for bot_id, read from _viz._bot_widgets.
+
+            Falls back to StateManager, then to a single question mark.
+            """
             try:
                 w = self._viz._bot_widgets.get(bot_id)
                 if w is not None:
@@ -264,15 +219,8 @@ if _HAS_QT:
             except Exception:
                 return "?"
 
-        # ----------------------------------------------------------
-        # Selected ids — v3.23.13: iterate checked items from
-        # multi-select QListWidget panels. Returns every checked bot_id
-        # so the (sources × destinations) cartesian product in
-        # _on_connect_clicked produces N×M wires from one click.
-        # ----------------------------------------------------------
         def _selected_sources(self) -> list[str]:
-            """All currently-checked source bot_ids (empty list if
-            none checked)."""
+            """Return every checked bot_id in _source_list."""
             out: list[str] = []
             for i in range(self._source_list.count()):
                 it = self._source_list.item(i)
@@ -283,8 +231,7 @@ if _HAS_QT:
             return out
 
         def _selected_destinations(self) -> list[str]:
-            """All currently-checked destination bot_ids (empty list if
-            none checked)."""
+            """Return every checked bot_id in _dest_list."""
             out: list[str] = []
             for i in range(self._dest_list.count()):
                 it = self._dest_list.item(i)
@@ -294,36 +241,18 @@ if _HAS_QT:
                         out.append(str(bid))
             return out
 
-        # ----------------------------------------------------------
-        # Button handlers
-        # ----------------------------------------------------------
         def _reject(self, why: str) -> None:
-            """Tell the operator why a Quick Routing click did nothing.
-
-            v3.24.36 (C05). Every rejection path below used to be a bare
-            `return`: an empty rate box, a stray character, nothing
-            checked, or 0% all produced exactly the same visible result
-            as success — nothing. In List view even the success case
-            draws nothing, so there was no way to distinguish "it
-            worked" from "it silently refused".
-            """
+            """Show why in a QMessageBox, and log it when the box cannot open."""
             try:
                 QMessageBox.warning(self, "Quick Routing", why)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("quick-routing rejection unshowable: %s", exc)
 
         def _confirm_mass(self, verb: str, n: int, detail: str) -> bool:
-            """Confirm an N x M wire operation. True to proceed.
+            """Ask before verb on n wires, and return True to proceed.
 
-            v3.24.36 (C05). `_selected_sources` / `_selected_destinations`
-            return EVERY checked item, and `rebuild_scope` populates both
-            columns with the entire in-scope swarm. On the operator's
-            35-bot fleet, checking both columns and clicking Connect is
-            1,190 wires from ONE unconfirmed click, each overwriting any
-            hand-tuned rate. Disconnect is the symmetric mass-destroy.
-
-            Only the THIRD button — Disconnect All — asked, and it is the
-            one nobody presses by accident. Defaults to No, matching it.
+            QMessageBox defaults to No; a box that cannot open returns
+            False.
             """
             try:
                 reply = QMessageBox.question(
@@ -343,7 +272,6 @@ if _HAS_QT:
                 )
                 return reply == QMessageBox.Yes
             except Exception as exc:  # noqa: BLE001
-                # Unconfirmable destructive/bulk action must not proceed.
                 logger.error(
                     "quick-routing confirmation unshowable (%s); refusing", exc
                 )
@@ -352,7 +280,7 @@ if _HAS_QT:
         def _on_connect_clicked(self) -> None:
             sources = self._selected_sources()
             dests = self._selected_destinations()
-            # v3.23.18 — Rate input is QLineEdit (no spinner); parse string.
+            # rstrip("%") lets "25%" parse the same as "25".
             raw = ""
             try:
                 raw = self._rate_input.text().strip().rstrip("%").strip()
@@ -399,11 +327,7 @@ if _HAS_QT:
             try:
                 self._viz._apply_routes_to_state(add=wires_created, remove=[])
             except Exception as exc:  # noqa: BLE001
-                # _apply_routes_to_state reloads a fresh dict from disk
-                # and its save is the ONLY durable effect, so a raise
-                # here means no wire was created anywhere. Emitting the
-                # bus events regardless would paint the canvas with
-                # wires that exist in no state at all.
+                # A raise here means _apply_routes_to_state saved nothing.
                 logger.error(
                     "quick-routing connect: persisting %d wire(s) FAILED "
                     "(%s); no wire was created",
@@ -415,7 +339,7 @@ if _HAS_QT:
                     f"failed:\n\n{exc}"
                 )
                 return
-            # Emit bus events so the canvas redraws
+            # wire.created reaches the canvas and SmartWireManager.
             try:
                 from ...core.event_bus import get_event_bus
 
@@ -423,11 +347,6 @@ if _HAS_QT:
                 for src, dst, p in wires_created:
                     bus.emit("wire.created", source_id=src, target_id=dst, pct=p)
             except Exception as exc:  # noqa: BLE001
-                # v3.24.36 (C05) — was a silent pass. The wires are
-                # already persisted at this point, so swallowing this
-                # leaves the operator looking at a canvas that never
-                # redrew after a confirmed bulk operation, with no way
-                # to tell whether anything happened.
                 logger.error(
                     "quick-routing connect: %d wire(s) were saved but "
                     "the redraw events FAILED (%s) — the canvas is stale, "
@@ -456,9 +375,6 @@ if _HAS_QT:
                     "Every selected pair is the same bot — nothing to " "disconnect."
                 )
                 return
-            # v3.24.36 (C05) — the symmetric mass-destroy. Same
-            # cardinality as Connect: on a 35-bot swarm with both columns
-            # checked this is 1,190 removals from one click.
             if not self._confirm_mass(
                 "Disconnect",
                 len(pairs),
@@ -468,11 +384,7 @@ if _HAS_QT:
             try:
                 self._viz._apply_routes_to_state(add=[], remove=pairs)
             except Exception as exc:  # noqa: BLE001
-                # _apply_routes_to_state reloads a fresh dict from disk
-                # and its save is the ONLY durable effect, so a raise
-                # here means nothing was removed anywhere. Emitting the
-                # bus events regardless would erase wires from the
-                # canvas that are still live in the state file.
+                # A raise here means _apply_routes_to_state removed nothing.
                 logger.error(
                     "quick-routing disconnect: persisting %d removal(s) "
                     "FAILED (%s); no wire was removed",
@@ -491,9 +403,6 @@ if _HAS_QT:
                 for src, dst in pairs:
                     bus.emit("wire.removed", source_id=src, target_id=dst)
             except Exception as exc:  # noqa: BLE001
-                # v3.24.36 (C05) — was a silent pass. The removals are
-                # already persisted, so swallowing this leaves a canvas
-                # still drawing wires the state file no longer has.
                 logger.error(
                     "quick-routing disconnect: %d removal(s) were saved "
                     "but the redraw events FAILED (%s) — the canvas is "
@@ -503,7 +412,6 @@ if _HAS_QT:
                 )
 
         def _on_disconnect_all_clicked(self) -> None:
-            # Confirm
             reply = QMessageBox.question(
                 self,
                 "Disconnect All Wires?",
@@ -516,13 +424,28 @@ if _HAS_QT:
                 return
             try:
                 removed = self._viz._clear_all_routes_in_state()
-            except Exception:
-                removed = []
+            except Exception as exc:
+                logger.error(
+                    "quick-routing disconnect-all: clearing every wire "
+                    "FAILED (%s); no wire was removed",
+                    exc,
+                )
+                self._reject(
+                    f"Nothing was changed — clearing the routing table "
+                    f"failed:\n\n{exc}"
+                )
+                return
             try:
                 from ...core.event_bus import get_event_bus
 
                 bus = get_event_bus()
                 for src, dst in removed:
                     bus.emit("wire.removed", source_id=src, target_id=dst)
-            except Exception:  # noqa: S110
-                pass
+            except Exception as exc:
+                logger.error(
+                    "quick-routing disconnect-all: %d removal(s) were "
+                    "saved but the redraw events FAILED (%s) — the "
+                    "canvas is stale, not wrong",
+                    len(removed),
+                    exc,
+                )

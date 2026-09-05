@@ -42,27 +42,27 @@ CRASH_LOG_ROOT_ENV = "ACERVATOR_CRASH_LOG_ROOT"
 
 
 def _check_stale_dist_binary() -> None:
-    """Write STALE_DIST_WARNING.txt when the source and dist versions differ, and delete it when they match."""
+    """Write STALE_DIST_WARNING.txt when dist holds bundles and none carries the source version, and delete it when one does."""
     try:
         here = os.path.dirname(os.path.abspath(__file__))
         live_init = os.path.join(here, "src", "__init__.py")
-        bundle_root = os.path.join(here, "dist", "Acervator", "_internal")
-        dist_init = os.path.join(bundle_root, "src", "__init__.py")
-        dist_baked = os.path.join(bundle_root, "src", "_baked_version.txt")
+        dist_root = os.path.join(here, "dist")
         if not os.path.isfile(live_init):
-            return
-        if not os.path.isfile(dist_baked) and not os.path.isfile(dist_init):
             return
 
         def _read_version(p):
+            """Return the quoted ``__version__`` literal in the file at p, or None."""
             try:
                 with open(p, "r", encoding="utf-8") as f:
                     for line in f:
                         s = line.strip()
-                        if s.startswith("__version__"):
-                            parts = s.split("=", 1)
-                            if len(parts) == 2:
-                                return parts[1].strip().strip('"').strip("'")
+                        if not s.startswith("__version__"):
+                            continue
+                        _, _, raw = s.partition("=")
+                        raw = raw.strip()
+                        quote = raw[:1]
+                        if quote in ('"', "'") and raw[1:].endswith(quote):
+                            return raw[1:-1]
             except Exception as _ver_exc:  # noqa: BLE001
                 _early_debug("stale-binary version parse skipped %s: %s", p, _ver_exc)
             return None
@@ -78,16 +78,31 @@ def _check_stale_dist_binary() -> None:
                 return None
             return None if resolved == UNKNOWN_VERSION else resolved
 
-        def _baked_or_literal_version():
-            """Read the bundle's baked version, falling back to its literal."""
+        def _bundle_version(internal):
+            """Read a bundle's baked version, falling back to its literal."""
             try:
                 from src._version import read_baked_version
 
-                baked = read_baked_version(bundle_root)
+                baked = read_baked_version(internal)
             except Exception as _baked_exc:  # noqa: BLE001
                 _early_debug("stale-binary baked version skipped: %s", _baked_exc)
                 baked = ""
-            return baked or _read_version(dist_init)
+            return baked or _read_version(os.path.join(internal, "src", "__init__.py"))
+
+        def _dist_bundles():
+            """Return each bundle directory name under dist and the version it holds."""
+            try:
+                names = sorted(os.listdir(dist_root))
+            except OSError as _ls_exc:
+                _early_debug("stale-binary dist listing skipped: %s", _ls_exc)
+                return []
+            found = []
+            for name in names:
+                internal = os.path.join(dist_root, name, "_internal")
+                if not os.path.isdir(os.path.join(internal, "src")):
+                    continue
+                found.append((name, _bundle_version(internal)))
+            return found
 
         def _marker_path():
             from pathlib import Path as _P
@@ -104,8 +119,8 @@ def _check_stale_dist_binary() -> None:
                     return
                 stream.write(
                     "ACERVATOR: the stale-binary marker could not be "
-                    f"removed: {path or '<unresolved>'} ({exc}). The "
-                    "source and dist versions now AGREE, so that file "
+                    f"removed: {path or '<unresolved>'} ({exc}). A bundle "
+                    "in dist now carries the source version, so that file "
                     "names versions that are no longer current. Delete "
                     "it by hand.\n"
                 )
@@ -114,23 +129,26 @@ def _check_stale_dist_binary() -> None:
                 _early_debug("stale-binary clear notice failed: %s", _rep_exc)
 
         live_ver = _live_version()
-        dist_ver = _baked_or_literal_version()
-        if live_ver and dist_ver and live_ver != dist_ver:
+        dated = [(name, ver) for name, ver in _dist_bundles() if ver]
+        if not live_ver or not dated:
+            return
+        if not any(ver == live_ver for _name, ver in dated):
+            listing = "".join(f"    dist/{n}  (built from {v})\n" for n, v in dated)
             msg = (
                 "\n"
                 "============================================================\n"
-                "  ACERVATOR STALE BINARY WARNING (v3.15.97 guard)           \n"
+                "  ACERVATOR STALE BINARY WARNING\n"
                 "============================================================\n"
                 f"  Live source version : {live_ver}\n"
-                f"  dist/.exe version   : {dist_ver}\n"
-                "                                                            \n"
-                "  The PyInstaller binary in dist/Acervator/Acervator.exe   \n"
-                "  is OUT OF DATE relative to the source code in src/.       \n"
-                "  If you double-click the .exe, you are running OLD code   \n"
-                "  with bugs that have since been fixed.                     \n"
-                "                                                            \n"
-                "  ACTION: either run `python main.py` from this source     \n"
-                "  tree, or rebuild the .exe via BUILD.py before launching.  \n"
+                "\n"
+                "  No bundle in dist was built from this source. Launching\n"
+                "  any of the bundles below runs OLD code with bugs that\n"
+                "  have since been fixed:\n"
+                "\n"
+                f"{listing}"
+                "\n"
+                "  ACTION: run `python main.py` from this source tree, or\n"
+                "  rebuild with BUILD.py before launching a bundle.\n"
                 "============================================================\n"
             )
             sys.stderr.write(msg)
@@ -142,7 +160,7 @@ def _check_stale_dist_binary() -> None:
                     f.write(msg)
             except Exception as _mk_exc:  # noqa: BLE001
                 _early_debug("stale-binary marker write failed: %s", _mk_exc)
-        elif live_ver and dist_ver:
+        else:
             marker_path = None
             try:
                 marker_path = _marker_path()
@@ -400,6 +418,48 @@ def _make_async_pump_timer(
     timer.setInterval(interval_ms)
     timer.timeout.connect(pump_async)
     return timer
+
+
+def build_instance_guard(state_mgr, app_version: str):
+    """Return an InstanceGuard pointed at ``state_mgr.config_dir``.
+
+    The fleet and the guard read one directory, so no caller derives a
+    second location of its own.
+    """
+    from src.core.instance_guard import InstanceGuard
+
+    return InstanceGuard(state_mgr.config_dir, app_version=app_version)
+
+
+def autostart_gate(guard, decision, ask_consent, on_withheld, on_granted) -> bool:
+    """Answer whether the fleet may auto-start, and never start it here.
+
+    ``on_withheld`` takes the refusal reason and ``on_granted`` the grant
+    reason; a False answer means no bot may be started.
+    """
+    from src.core.instance_guard import AUTHORISED_ALREADY_OWNER, authorise_auto_start
+
+    authorised, why = authorise_auto_start(guard, decision, ask_consent)
+    if not authorised:
+        on_withheld(why)
+        return False
+    if why != AUTHORISED_ALREADY_OWNER:
+        on_granted(why)
+    return True
+
+
+def drain_pending_tasks(loop: asyncio.AbstractEventLoop) -> int:
+    """Cancel every unfinished task on ``loop`` and await it, returning the count.
+
+    Called before ``loop.close()`` so no task is destroyed while pending.
+    """
+    pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
+    if not pending:
+        return 0
+    for task in pending:
+        task.cancel()
+    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+    return len(pending)
 
 
 def main() -> int:
@@ -678,9 +738,7 @@ def main() -> int:
                 f"after splash screen completes..."
             )
 
-    from src.core.instance_guard import InstanceGuard
-
-    instance_guard = InstanceGuard(state_mgr.config_dir, app_version=current_version)
+    instance_guard = build_instance_guard(state_mgr, current_version)
     instance_decision = instance_guard.evaluate(_autostart_bot_count)
     if instance_decision.permits_auto_start:
         instance_guard.take_ownership()
@@ -961,20 +1019,11 @@ def main() -> int:
 
     def _trigger_auto_restart():
         try:
-            from src.core.instance_guard import (
-                AUTHORISED_ALREADY_OWNER,
-                authorise_auto_start,
-            )
             from src.gui.instance_consent_dialog import ask_for_consent
 
-            _authorised, _why = authorise_auto_start(
-                instance_guard,
-                instance_decision,
-                lambda d: ask_for_consent(d, parent=crypto_window),
-            )
-            if not _authorised:
+            def _log_withheld(why: str) -> None:
                 log_manager.warning(
-                    f"Auto-start WITHHELD ({_why}, verdict "
+                    f"Auto-start WITHHELD ({why}, verdict "
                     f"{instance_decision.verdict}). "
                     f"{_autostart_bot_count} bot(s) stay IDLE."
                 )
@@ -984,13 +1033,22 @@ def main() -> int:
                     f"button when this machine should own the fleet.",
                     "warning",
                 )
-                return
-            if _why != AUTHORISED_ALREADY_OWNER:
+
+            def _log_granted(why: str) -> None:
                 log_manager.warning(
                     f"Instance guard: ownership granted to this machine "
-                    f"({instance_decision.identity.label}) by {_why}. "
+                    f"({instance_decision.identity.label}) by {why}. "
                     f"Auto-start proceeds."
                 )
+
+            if not autostart_gate(
+                instance_guard,
+                instance_decision,
+                lambda d: ask_for_consent(d, parent=crypto_window),
+                _log_withheld,
+                _log_granted,
+            ):
+                return
             eligible = [
                 b
                 for b in bot_manager._bots.values()
@@ -1116,17 +1174,13 @@ def main() -> int:
     except Exception as _lock_exc:  # noqa: BLE001
         log_manager.warning(f"Instance handle release raised: {_lock_exc}")
     loop.run_until_complete(bot_manager.stop_all())
-    # Drains pending tasks so loop.close() emits no "Task was destroyed" warning.
     try:
-        _pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
-        if _pending:
+        _drained = drain_pending_tasks(loop)
+        if _drained:
             log_manager.info(
-                "Cancelling %d still-pending asyncio tasks before " "loop.close()",
-                len(_pending),
+                "Cancelled %d still-pending asyncio tasks before loop.close()",
+                _drained,
             )
-            for _t in _pending:
-                _t.cancel()
-            loop.run_until_complete(asyncio.gather(*_pending, return_exceptions=True))
     except Exception as _cancel_exc:  # noqa: BLE001
         log_manager.warning("pending-task drain at shutdown raised: %s", _cancel_exc)
     loop.close()

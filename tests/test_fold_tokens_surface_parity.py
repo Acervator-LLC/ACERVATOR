@@ -46,9 +46,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIPPED_SOURCE = REPO_ROOT / "src" / "gui" / "live_settings" / "fold_tokens.py"
 SURFACE_SOURCE = REPO_ROOT / "src" / "gui" / "main_tabs" / "fold_tokens_surface.py"
 
-# Files measured only to prove a counter reports. Each is named with its
-# directory: two modules in this tree share the basename history_tab.py
-# and build different numbers of timers.
+# Controls proving each counter reports; two modules in this tree share
+# the basename history_tab.py, so each is named with its directory.
 WIRING_CONTROL = REPO_ROOT / "src" / "gui" / "widgets" / "privacy_dot.py"
 SIGNAL_CONTROL = REPO_ROOT / "src" / "gui" / "launcher.py"
 TIMER_BUILT_CONTROL = REPO_ROOT / "src" / "gui" / "history_tab.py"
@@ -64,9 +63,7 @@ SKIN_CONTROL_RULE = (
 )
 
 
-# ---------------------------------------------------------------------
 # Comparing two answers
-# ---------------------------------------------------------------------
 
 
 def canonical(value):
@@ -122,9 +119,7 @@ def call(fn, args) -> Answer:
         return Answer(refusal=type(exc).__name__)
 
 
-# ---------------------------------------------------------------------
 # The cases both sides are driven with
-# ---------------------------------------------------------------------
 
 
 class RefusingTranche(dict):
@@ -381,9 +376,8 @@ CASES = {
     "width_text_reading": (surface.STEP_WIDTH, ["x", 13]),
 }
 
-# The shipped name each step is driven through. The row composers are
-# private on the shipped module and the panel builder calls them by that
-# name, so there is no public route to them.
+# The shipped name each step is driven through; the row composers are
+# private on the shipped module.
 SHIPPED_BY_STEP = {
     surface.STEP_ORDER: "fold_display_order",
     surface.STEP_FILTER: "fold_row_matches_filter",
@@ -398,9 +392,8 @@ SHIPPED_BY_STEP = {
     surface.STEP_EXTRACTOR_TIP: "_compose_extractor_tranche_tooltip",
 }
 
-# Steps the shipped module reaches through a widget or a constant rather
-# than through a function of its own. Each is driven against the shipped
-# side by the test named here.
+# Steps the shipped module reaches through a widget or a constant, mapped
+# to the test that drives each against the shipped side.
 STEPS_DRIVEN_ELSEWHERE = {
     surface.STEP_FINITE: "test_the_admission_rule_matches_the_one_the_panel_imports",
     surface.STEP_CHROME: "test_the_chrome_arithmetic_matches_on_a_real_table",
@@ -438,9 +431,7 @@ def drive_both(step, args):
 COMPARED = sorted(name for name, (step, _) in CASES.items() if shipped_side(step))
 
 
-# ---------------------------------------------------------------------
 # The two sides answer alike
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", COMPARED)
@@ -521,9 +512,7 @@ def test_the_case_set_drives_every_refusal_the_panel_can_reach():
     assert all(refused.values()), refused
 
 
-# ---------------------------------------------------------------------
 # The comparison can report
-# ---------------------------------------------------------------------
 
 
 TWO_REAL_INPUTS = [
@@ -604,9 +593,7 @@ def test_the_refusal_recorder_keeps_the_type_and_not_the_wording():
     assert refused.digest != answered.digest
 
 
-# ---------------------------------------------------------------------
 # The five steps the shipped side reaches another way
-# ---------------------------------------------------------------------
 
 
 def test_the_admission_rule_matches_the_one_the_panel_imports():
@@ -660,9 +647,7 @@ def test_the_row_border_map_matches():
     assert len(surface.TRANCHE_ROW_BORDER_BY_BG) == 2
 
 
-# ---------------------------------------------------------------------
 # Step sequences, and one that refuses part way
-# ---------------------------------------------------------------------
 
 
 GOOD_SEQUENCE = [
@@ -670,9 +655,8 @@ GOOD_SEQUENCE = [
     [surface.STEP_AGE, 3661],
     [surface.STEP_RATIO, 10, 9, 0],
 ]
-# The age step refuses three different ways. Which name each refusal
-# carries is read off the SHIPPED side rather than written down, because
-# the platform words and types a refusal for itself.
+# The three inputs the age step refuses; each refusal's wording is read
+# off the shipped side.
 AGE_REFUSED_BY_TEXT = "x"
 AGE_REFUSED_BY_NOT_A_NUMBER = NAN
 AGE_REFUSED_BY_INFINITY = INF
@@ -793,9 +777,7 @@ def test_a_model_reused_after_a_refusal_still_holds_its_earlier_records():
     ]
 
 
-# ---------------------------------------------------------------------
 # The three helpers that read a live widget
-# ---------------------------------------------------------------------
 
 
 _alive: list = []
@@ -973,9 +955,7 @@ def test_the_health_row_edits_only_what_it_is_handed():
     assert value.toolTip() == "a tooltip"
 
 
-# ---------------------------------------------------------------------
 # Enumeration: what each side holds
-# ---------------------------------------------------------------------
 
 
 def parsed(path):
@@ -1420,9 +1400,7 @@ def test_the_row_age_takes_the_current_time_as_an_argument():
     assert shipped._compose_extractor_tranche_cells(EXTRACTOR_ROW, 90000.0) == first
 
 
-# ---------------------------------------------------------------------
 # Completeness: every exported value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 # A value the snapshot does not carry, named with the test that covers it.
@@ -1543,9 +1521,7 @@ def test_the_case_table_is_driven_and_holds_no_case_it_never_runs():
         assert CASES[name][0] in STEPS_DRIVEN_ELSEWHERE, name
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 SHARED_TOKENS = {
@@ -1617,9 +1593,8 @@ def test_the_surface_writes_its_own_values_and_reads_no_shipped_module():
         "typing.Any",
         "typing.Optional",
     ], imported
-    # Asked of the parsed tree, not of the file's text: the docstring
-    # names the module this surface replaces, and naming it is not
-    # reading it.
+    # Asked of the parsed tree; the docstring names the module this
+    # surface replaces.
     tree = parsed(SURFACE_SOURCE)
     reached = [
         node
@@ -1677,9 +1652,7 @@ def test_the_shared_token_check_reports_a_value_that_moved():
         assert hasattr(surface, name), name
 
 
-# ---------------------------------------------------------------------
 # Nothing is edited that was not handed over
-# ---------------------------------------------------------------------
 
 
 MUTATION_CASES = [
@@ -1722,9 +1695,7 @@ def test_a_refusing_run_edits_nothing_either(step, args):
     assert canonical(given) == before
 
 
-# ---------------------------------------------------------------------
 # Order independence and process-wide state
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_keeps_no_state_between_two_requests():
@@ -1815,9 +1786,7 @@ def test_the_shipped_module_holds_no_value_a_run_can_change():
     ] == []
 
 
-# ---------------------------------------------------------------------
 # The bridge, with no Qt in the process
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params):
@@ -2024,9 +1993,7 @@ def test_the_connection_counter_reaches_the_child_process(tmp_path):
     assert json.loads(counter.read_text(encoding="utf-8")) == 1
 
 
-# ---------------------------------------------------------------------
 # Pictures: the two sides paint one table
-# ---------------------------------------------------------------------
 
 
 ROW_CASES = {
@@ -2229,9 +2196,7 @@ def test_a_narrow_label_is_narrower_than_a_wide_one_with_real_fonts():
     assert app_font_advance_px(NARROW_LABEL) < app_font_advance_px(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # The shipped defect this conversion reproduces rather than corrects
-# ---------------------------------------------------------------------
 
 
 UNGUARDED_UNITS_SHAPES = [

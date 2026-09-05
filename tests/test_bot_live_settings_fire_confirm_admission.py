@@ -109,9 +109,7 @@ class _HasFloat:
         return "<HasFloat>"
 
 
-#: Every shape the confirmation must REFUSE, with what live showed for
-#: it. The third column is the whole point of the unit: what the
-#: operator would have read on a money-decision surface.
+#: Every shape the confirmation must refuse, with the line live showed for it.
 REFUSED = [
     pytest.param(True, "$1.0000", id="bool-True"),
     pytest.param(False, "$0.0000", id="bool-False"),
@@ -131,9 +129,7 @@ REFUSED = [
     pytest.param({"a": 1}, "TypeError", id="dict"),
 ]
 
-#: Values that MUST still be accepted, with the exact confirmation line
-#: live produced. Without these a guard refusing everything would pass
-#: every refusal test above.
+#: Values still accepted, with the confirmation line live produced for each.
 ACCEPTED = [
     pytest.param(20.0, "  USD parked:    $20.0000", id="float"),
     pytest.param(5, "  USD parked:    $5.0000", id="int"),
@@ -284,10 +280,8 @@ def _fire(tranche, monkeypatch, answer_yes=True):
     return res
 
 
-# --------------------------------------------------------------------
 # POSITIVE CONTROLS. A guard that refused everything would pass every
 # refusal test below while making the Fire button useless.
-# --------------------------------------------------------------------
 
 
 def test_valid_tranche_confirmation_is_byte_identical_to_live(monkeypatch):
@@ -338,9 +332,7 @@ def test_operator_answering_no_places_no_order(monkeypatch):
     assert res.order_calls == []
 
 
-# --------------------------------------------------------------------
 # THE REFUSAL
-# --------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("bad,_live_showed", REFUSED)

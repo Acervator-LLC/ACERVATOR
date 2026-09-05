@@ -64,6 +64,7 @@ def _destroy_widgets():
 SYMS = ["CHIP/USD", "SPK/USD"]
 T0 = 1_776_778_500_000
 STEP = 300_000
+MICRO_CAP_PRICE = 3.1e-06
 
 
 def _qapp():
@@ -117,6 +118,36 @@ class TestCandlesAreStored:
         ts, o, h, low, close = c._candles[SYMS[0]][-1]
         assert o == close == 2.0
         assert h == low == 2.0
+
+    def test_an_inverted_high_and_low_is_stored_the_right_way_up(self):
+        """A caller that swaps high and low must not store an upside-down bar."""
+        c = _chart()
+        c.append_tick(
+            SYMS[0],
+            close_price=1.0,
+            volume=1.0,
+            ts=T0,
+            open_price=1.0,
+            high=1.0,
+            low=5.0,
+        )
+        _ts, _o, high, low, _close = c._candles[SYMS[0]][-1]
+        assert high >= low, f"stored bar has high {high} below low {low}"
+
+    def test_a_well_formed_bar_keeps_its_own_high_and_low(self):
+        """CONTROL: the clamp must not rewrite a bar that was already right."""
+        c = _chart()
+        c.append_tick(
+            SYMS[0],
+            close_price=2.0,
+            volume=1.0,
+            ts=T0,
+            open_price=1.5,
+            high=3.0,
+            low=1.0,
+        )
+        _ts, o, high, low, close = c._candles[SYMS[0]][-1]
+        assert (o, high, low, close) == (1.5, 3.0, 1.0, 2.0)
 
     def test_storage_is_bounded(self):
         c = _chart()
@@ -238,6 +269,48 @@ class TestItPaints:
             )
         c.set_focus_symbol(SYMS[0])
         assert not self._render(c).isNull()
+
+    @staticmethod
+    def _focused_micro_cap(span):
+        c = _chart()
+        for i in range(30):
+            px = MICRO_CAP_PRICE + span * i / 29
+            c.append_tick(
+                SYMS[0],
+                close_price=px,
+                volume=1.0,
+                ts=T0 + i * STEP,
+                open_price=px,
+                high=px,
+                low=px,
+            )
+        c.set_focus_symbol(SYMS[0])
+        return c
+
+    @staticmethod
+    def _painted_rows(c):
+        from PySide6.QtGui import QPixmap
+
+        c.resize(700, max(400, c.minimumHeight()))
+        pm = QPixmap(c.width(), c.height())
+        c.render(pm)
+        img = pm.toImage()
+        rows = set()
+        for y in range(img.height()):
+            for x in range(img.width()):
+                if img.pixelColor(x, y).name() == "#00ff88":
+                    rows.add(y)
+        return rows
+
+    def test_a_rising_micro_cap_series_spreads_across_the_focused_band(self):
+        """A fixed span floor would outrank a BONK-scale move and flatten it."""
+        rows = self._painted_rows(self._focused_micro_cap(MICRO_CAP_PRICE * 2e-5))
+        assert len(rows) > 1, f"a rising micro-cap series painted {len(rows)} row(s)"
+
+    def test_a_flat_micro_cap_series_paints_one_row(self):
+        """CONTROL: with no span at all the same instrument sees one row."""
+        rows = self._painted_rows(self._focused_micro_cap(0.0))
+        assert len(rows) == 1, f"a flat micro-cap series painted {len(rows)} row(s)"
 
 
 class TestThePicker:

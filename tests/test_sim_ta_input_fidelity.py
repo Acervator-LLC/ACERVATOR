@@ -71,9 +71,7 @@ def _calls(path: Path, attr: str = "", name: str = ""):
     return out
 
 
-# --------------------------------------------------------------------
 # HAZARD GATE — keep the pool unreachable from sim
-# --------------------------------------------------------------------
 class TestSimNeverReachesTheLivePool:
     def test_no_simulator_module_calls_get_data_pool(self):
         """The collision is LATENT: sim bots' _data_pool is None because
@@ -118,9 +116,7 @@ class TestSimNeverReachesTheLivePool:
         )
 
 
-# --------------------------------------------------------------------
 # SN-57 — honour the persisted flag, with a toggle
-# --------------------------------------------------------------------
 class TestPhantomEnablementHonoursPersistedState:
     def test_the_persisted_flag_is_entry_level_and_false(self):
         """POSITIVE CONTROL for the whole SN-57 group, read from the
@@ -197,9 +193,7 @@ class TestPhantomEnablementHonoursPersistedState:
         assert resolve_phantoms_enabled({"phantoms_enabled": True}, force=False) is True
 
 
-# --------------------------------------------------------------------
 # SN-58 — carry the real venue
-# --------------------------------------------------------------------
 class TestTheSimBotCarriesTheRealVenue:
     def test_the_controller_no_longer_overwrites_exchange_id(self):
         """timeframes.py is keyed by lowercase venue id with a PERMISSIVE
@@ -219,15 +213,7 @@ class TestTheSimBotCarriesTheRealVenue:
                 ):
                     continue
                 seg = ast.get_source_segment(src, n.value) or ""
-                # The requirement is that the REAL venue wins when
-                # present — not that the sim id is unmentionable. A
-                # fallback for hand-built configs that carry no venue is
-                # correct and necessary: BotConfig has no default for
-                # exchange_id, and leaving it unset makes every such bot
-                # fail construction and the replay report "0 bots".
-                #
-                # An earlier version of this assertion forbade the
-                # string outright and failed that correct fallback.
+                # A fallback is allowed: `BotConfig` has no default for `exchange_id`.
                 assert "cfg" in seg or "_real_venue" in seg, (
                     f"line {n.lineno} sets exchange_id without consulting "
                     f"the config; the real venue is discarded"
@@ -260,9 +246,7 @@ class TestTheSimBotCarriesTheRealVenue:
         assert "fleet_sim" not in tf
 
 
-# --------------------------------------------------------------------
 # SN-1 — per-timeframe series
-# --------------------------------------------------------------------
 class TestSimExchangeServesTheRequestedTimeframe:
     def test_the_timeframe_is_no_longer_discarded(self):
         src = SIM_EXCHANGE.read_text(encoding="utf-8")
@@ -300,9 +284,7 @@ class TestSimExchangeServesTheRequestedTimeframe:
         assert used, "the timeframe parameter is never read"
 
 
-# --------------------------------------------------------------------
 # THE FOURTH DEFECT — cadence
-# --------------------------------------------------------------------
 class TestPhantomCadenceIsNotWallClockInSim:
     def test_the_run_loop_does_not_self_schedule_in_sim(self):
         """`await asyncio.sleep(min(candle_seconds, 60))` is 60 REAL

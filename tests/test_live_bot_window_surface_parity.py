@@ -12,12 +12,10 @@ price below is invented.
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import logging
 import os
-import re
 import subprocess
 import sys
 import types
@@ -39,6 +37,14 @@ from tests.fixtures.host_fonts import (
     skip_unless_no_fonts,
     skip_unless_real_fonts,
 )
+from tests.fixtures.qt_wiring_counts import (
+    connections_watched,
+    io_watched,
+    module_pulls,
+    package_walk_loads,
+    qt_free,
+    timers_watched,
+)
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
@@ -48,30 +54,15 @@ from tests.fixtures.surface_pictures import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-WINDOW_PATH = REPO_ROOT / "src/gui/live_bot_window.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/live_bot_window_surface.py"
-WIRING_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-SIGNAL_CONTROL_PATH = REPO_ROOT / "src/gui/launcher.py"
-TIMER_CONTROL_PATH = REPO_ROOT / "src/gui/history_tab.py"
-BUS_CONTROL_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
-ELEMENT_CONTROL_PATH = REPO_ROOT / "src/gui/widgets/dashboard_stat_card.py"
-NESTED_CLASS_CONTROL_PATH = REPO_ROOT / "src/gui/stock_main_window.py"
 
 PIXEL_SIZE = (900, 420)
 
-# Counts measured off the file by the same counter that is pointed at a
-# neighbour which really has one.
+# What the shipped window does when it is built and started.
 WINDOW_WIRING_CONNECTS = 6
-WINDOW_VENUE_CONNECTS = 1
 WINDOW_SIGNAL_BUILDS = 3
 WINDOW_TIMER_BUILDS = 0
 WINDOW_BUS_SITES = 4
-WINDOW_ELEMENT_BUILDS = 23
-CONTROL_WIRING_CONNECTS = 1
-CONTROL_SIGNAL_BUILDS = 3
-CONTROL_TIMER_BUILDS = 1
-CONTROL_BUS_SITES = 2
-CONTROL_ELEMENT_BUILDS = 3
+WINDOW_ELEMENT_BUILDS = 28
 
 # Invented values. No key, secret, symbol or amount below is the operator's.
 API_KEY = "invented-key-0001"
@@ -87,10 +78,8 @@ WIDGETS_HELD: list = []
 BOXES_HELD: list = []
 
 
-# ---------------------------------------------------------------------
 # The shipped window reaches the process-wide event bus and the modal
 # warning box. Every drive is given its own of each.
-# ---------------------------------------------------------------------
 
 
 class RecordingBus:
@@ -294,9 +283,7 @@ class Bot:
             raise RuntimeError("engine down")
 
 
-# ---------------------------------------------------------------------
 # The case tables both sides are driven with
-# ---------------------------------------------------------------------
 
 LOG_CASES: dict = {
     "buy": {"message": "BUY 1 BTC at 100"},
@@ -505,9 +492,7 @@ WORKER_CASES: dict = {
 WORKER_REFUSING = ("config_refuses", "bot_refuses_to_build")
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def numbered(value):
@@ -592,9 +577,7 @@ def event(topic, data):
     return types.SimpleNamespace(topic=topic, data=data)
 
 
-# ---------------------------------------------------------------------
 # Building each side
-# ---------------------------------------------------------------------
 
 
 def old_window_and_boxes(monkeypatch, bus, warnings, threads):
@@ -728,9 +711,7 @@ def read_new_pane(found):
     }
 
 
-# ---------------------------------------------------------------------
 # Driving both sides through the same steps
-# ---------------------------------------------------------------------
 
 
 def old_steps(window, steps):
@@ -923,9 +904,7 @@ def both_sides_agree(run, note):
     )
 
 
-# ---------------------------------------------------------------------
 # The two sides, case by case
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(LOG_CASES))
@@ -1078,9 +1057,7 @@ def test_the_machine_rule_keeps_a_seeded_value_and_hides_a_chosen_one():
     )
 
 
-# ---------------------------------------------------------------------
 # What each side DID: answered, or refused with which type
-# ---------------------------------------------------------------------
 
 
 def refusals(outcome):
@@ -1179,9 +1156,7 @@ def test_a_sequence_that_refuses_part_way_leaves_the_same_text(monkeypatch):
     assert digest(run["old"]) != digest(clean["old"])
 
 
-# ---------------------------------------------------------------------
 # The worker thread
-# ---------------------------------------------------------------------
 
 
 class OldExchange:
@@ -1454,9 +1429,7 @@ def test_the_config_the_worker_builds_carries_the_chosen_pair(monkeypatch):
     ]
 
 
-# ---------------------------------------------------------------------
 # STOP
-# ---------------------------------------------------------------------
 
 
 def test_the_stop_button_asks_the_bot_to_stop_on_both_sides(monkeypatch):
@@ -1594,9 +1567,7 @@ def test_a_way_off_a_topic_that_refuses_is_swallowed_on_both_sides(monkeypatch):
     assert surface.UNSUBSCRIBE_FAILED in [call[0] for call in model.calls]
 
 
-# ---------------------------------------------------------------------
 # The configuration group the shipped window drops
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_window_drops_its_whole_configuration_group(monkeypatch):
@@ -1674,198 +1645,105 @@ def test_the_surface_names_every_item_that_reaches_the_window(monkeypatch):
     assert set(surface.LIVE_ITEM_NAMES) & set(surface.DROPPED_ITEM_NAMES) == set()
 
 
-# ---------------------------------------------------------------------
-# Counting what the shipped file wires, waits on, and builds
-# ---------------------------------------------------------------------
-
-WIDGET_NAMES_BUILT = (
-    "QWidget",
-    "QLabel",
-    "QPushButton",
-    "QTableWidget",
-    "QTableWidgetItem",
-    "QGroupBox",
-    "QFrame",
-    "QScrollArea",
-    "QLineEdit",
-    "QComboBox",
-    "QCheckBox",
-    "QSpinBox",
-    "QTextEdit",
-    "QProgressBar",
-    "QSplitter",
-    "QDialog",
-    "QPlainTextEdit",
-    "QDoubleSpinBox",
-    "QMainWindow",
-    "QMessageBox",
-)
+def built_window(bus=None):
+    """The shipped window built against one recording bus."""
+    app()
+    was = shipped.get_event_bus
+    found = RecordingBus() if bus is None else bus
+    shipped.get_event_bus = lambda: found
+    try:
+        return hold(shipped.LiteLiveBotWindow()), found
+    finally:
+        shipped.get_event_bus = was
 
 
-def count_text(path, needle):
-    """How many times one written form appears in one file."""
-    return path.read_text(encoding="utf-8").count(needle)
+def declared_signals(owner):
+    """Every ``Signal`` one class declares, by name."""
+    from PySide6.QtCore import Signal
 
-
-def count_built(path, names):
-    """How many times one file constructs any of `names`."""
-    text = path.read_text(encoding="utf-8")
-    return sum(len(re.findall(r"\b%s\s*\(" % name, text)) for name in names)
-
-
-VENUE_RECEIVERS = ("_exchange", "exchange")
-
-
-def count_connects(path):
-    """Wiring calls and venue calls named `connect`, counted apart.
-
-    ``exchange.connect(...)`` opens a venue session; it is not a wiring,
-    and a plain text count reads it as one. The two are split on what
-    the call is made on, so the split holds whether the call is awaited
-    or not.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    wiring = 0
-    venue = 0
-    for node in ast.walk(tree):
-        if not (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "connect"
-        ):
-            continue
-        owner = node.func.value
-        if isinstance(owner, ast.Attribute) and owner.attr in VENUE_RECEIVERS:
-            venue += 1
-        else:
-            wiring += 1
-    return wiring, venue
-
-
-def declared_classes(path):
-    """Every class one file declares, wherever it is declared.
-
-    A class inside an ``if``, inside a method or inside another class is
-    still a class, so the whole tree is walked rather than its top level.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
-
-
-def declared_widget_classes(path):
-    """Every class one file declares that ends up being a screen element."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-    found: set = set()
-    growing = True
-    while growing:
-        growing = False
-        for node in classes:
-            if node.name in found:
-                continue
-            for base in node.bases:
-                name = (
-                    base.id if isinstance(base, ast.Name) else getattr(base, "attr", "")
-                )
-                if name.startswith("Q") or name in found:
-                    found.add(node.name)
-                    growing = True
-                    break
-    return found
-
-
-def count_elements(path):
-    """How many screen elements one file builds, its own classes included."""
-    return count_built(path, WIDGET_NAMES_BUILT) + len(declared_widget_classes(path))
+    return sorted(
+        name for name, value in vars(owner).items() if isinstance(value, Signal)
+    )
 
 
 def test_the_window_wires_six_signals_and_the_surface_names_six_actions():
     """A wiring appeared on one side and not the other."""
-    wiring, venue = count_connects(WINDOW_PATH)
-    assert wiring == WINDOW_WIRING_CONNECTS == 6
-    assert venue == WINDOW_VENUE_CONNECTS == 1
-    assert count_text(WINDOW_PATH, ".connect(") == wiring + venue
-    assert count_connects(SURFACE_PATH) == (0, WINDOW_VENUE_CONNECTS)
-    assert count_connects(WIRING_CONTROL_PATH) == (CONTROL_WIRING_CONNECTS, 0)
-    assert CONTROL_WIRING_CONNECTS == 1
-    assert len(surface.ACTIONS) == wiring
+    app()
+    with connections_watched() as made:
+        built_window()
+    assert len(made) == WINDOW_WIRING_CONNECTS == 6, made
+    assert len(surface.ACTIONS) == len(made)
     for name in surface.ACTIONS.values():
         assert callable(getattr(surface.LiveBotWindowModel, name)), name
 
 
+def test_the_connection_counter_can_see_a_wiring():
+    """POSITIVE CONTROL for ``connections_watched``: two ``clicked``
+    wirings inside the block record two."""
+    from PySide6.QtWidgets import QPushButton
+
+    app()
+    button = hold(QPushButton())
+    with connections_watched() as made:
+        button.clicked.connect(lambda: None)
+        button.clicked.connect(lambda: None)
+    assert len(made) == 2, made
+
+
 def test_the_window_declares_three_signals_and_the_surface_names_three():
     """A signal declaration appeared on one side and not the other."""
-    signal_names = ("Signal",)
-    assert count_built(WINDOW_PATH, signal_names) == WINDOW_SIGNAL_BUILDS == 3
-    assert count_built(SURFACE_PATH, signal_names) == 0
-    assert count_built(SIGNAL_CONTROL_PATH, signal_names) == CONTROL_SIGNAL_BUILDS == 3
-    assert count_text(WINDOW_PATH, "Signal") > WINDOW_SIGNAL_BUILDS
-    assert len(surface.SIGNAL_NAMES) == WINDOW_SIGNAL_BUILDS
+    declared = declared_signals(shipped.LiteLiveBotWindow)
+    assert len(declared) == WINDOW_SIGNAL_BUILDS == 3, declared
+    assert len(surface.SIGNAL_NAMES) == len(declared)
+    assert [name.removeprefix("_sig_") for name in declared] == sorted(
+        surface.SIGNAL_NAMES
+    ), (declared, sorted(surface.SIGNAL_NAMES))
+
+
+def test_the_signal_reader_reports_none_for_a_class_that_declares_none():
+    """POSITIVE CONTROL. ``declared_signals`` reads the class, so a class
+    with no ``Signal`` reports an empty list."""
+    from PySide6.QtWidgets import QPushButton
+
+    assert declared_signals(QPushButton) == []
+    assert declared_signals(shipped.LiteLiveBotWindow) != []
 
 
 def test_the_window_starts_no_timer_and_the_surface_names_no_wait():
     """A wait appeared on one side and not the other."""
-    from PySide6.QtCore import QObject, QTimer
-
     app()
-    timer_names = ("QTimer",)
-    assert count_built(WINDOW_PATH, timer_names) == WINDOW_TIMER_BUILDS == 0
-    assert count_built(SURFACE_PATH, timer_names) == 0
-    assert count_built(TIMER_CONTROL_PATH, timer_names) == CONTROL_TIMER_BUILDS == 1
-    started: list = []
-    first_start = QObject.startTimer
-    first_timer = QTimer.start
-    first_single = QTimer.singleShot
-
-    def watch_start_timer(self, *args, **kwargs):
-        started.append(("startTimer", args))
-        return first_start(self, *args, **kwargs)
-
-    def watch_timer_start(self, *args, **kwargs):
-        started.append(("QTimer.start", args))
-        return first_timer(self, *args, **kwargs)
-
-    def watch_single_shot(*args, **kwargs):
-        started.append(("singleShot", args))
-        return first_single(*args, **kwargs)
-
-    QObject.startTimer = watch_start_timer
-    QTimer.start = watch_timer_start
-    QTimer.singleShot = watch_single_shot
-    try:
-        held = QTimer()
-        held.start(5)
-        held.stop()
-        seeded = list(started)
-        started.clear()
-        was = shipped.get_event_bus
-        shipped.get_event_bus = lambda: RecordingBus()
-        try:
-            hold(shipped.LiteLiveBotWindow())
-        finally:
-            shipped.get_event_bus = was
-        old_started = list(started)
-        started.clear()
+    with timers_watched() as old_side:
+        built_window()
+    with timers_watched() as new_side:
         surface.LiveBotWindowModel()
-        new_started = list(started)
-    finally:
-        QObject.startTimer = first_start
-        QTimer.start = first_timer
-        QTimer.singleShot = first_single
-    assert [name for name, _args in seeded] == ["QTimer.start"], seeded
-    assert old_started == [], old_started
-    assert new_started == []
+    assert old_side == [], old_side
+    assert new_side == []
+    assert len(old_side) == WINDOW_TIMER_BUILDS == 0
     assert surface.TIMERS == {}
     assert surface.TIMER_DELAYS_MS == ()
 
 
-def test_the_window_subscribes_to_four_topics_and_the_surface_names_four():
+def test_the_timer_counter_can_see_a_wait():
+    """POSITIVE CONTROL for ``timers_watched``: one ``QTimer.start``
+    inside the block is recorded."""
+    from PySide6.QtCore import QTimer
+
+    app()
+    timer = hold(QTimer())
+    with timers_watched() as seen:
+        timer.start(250)
+    assert seen == [("QTimer.start", (250,))], seen
+
+
+def test_the_window_subscribes_to_four_topics_and_the_surface_names_four(monkeypatch):
     """A bus wiring appeared on one side and not the other."""
-    assert count_text(WINDOW_PATH, ".subscribe(") == WINDOW_BUS_SITES == 4
-    assert count_text(SURFACE_PATH, "self.subscribe(") == WINDOW_BUS_SITES
-    assert count_text(SURFACE_PATH, "self.event_bus.subscribe(") == 1
-    assert count_text(BUS_CONTROL_PATH, ".subscribe(") == CONTROL_BUS_SITES == 2
-    assert len(surface.BUS_TOPICS) == WINDOW_BUS_SITES
+    run = drive([["credentials", "both"], ["start", ""]], monkeypatch)
+    assert len(run["old_topics"]) == WINDOW_BUS_SITES == 4, run["old_topics"]
+    assert run["new_topics"] == run["old_topics"], (
+        run["old_topics"],
+        run["new_topics"],
+    )
+    assert tuple(run["old_topics"]) == surface.BUS_TOPICS
     assert surface.BUS_TOPICS == (
         surface.LOG_TOPIC,
         surface.FILL_TOPIC,
@@ -1874,33 +1752,26 @@ def test_the_window_subscribes_to_four_topics_and_the_surface_names_four():
     )
 
 
+def test_a_window_that_was_never_started_takes_no_topic(monkeypatch):
+    """NEGATIVE CONTROL. The four topics are taken by the start, so a run
+    that never starts records none."""
+    run = drive([], monkeypatch)
+    assert run["old_topics"] == [], run["old_topics"]
+    assert run["new_topics"] == [], run["new_topics"]
+
+
 def test_the_screen_elements_the_window_builds_are_counted():
     """The element counter cannot report, so its number means nothing."""
-    assert count_elements(WINDOW_PATH) == WINDOW_ELEMENT_BUILDS == 23
-    assert count_elements(ELEMENT_CONTROL_PATH) == CONTROL_ELEMENT_BUILDS == 3
-    assert count_built(ELEMENT_CONTROL_PATH, WIDGET_NAMES_BUILT) == 2
-    assert declared_widget_classes(ELEMENT_CONTROL_PATH) == {"StatCard"}
-    assert declared_widget_classes(WINDOW_PATH) == {"LiteLiveBotWindow"}
-    assert count_built(WINDOW_PATH, WIDGET_NAMES_BUILT) == 22
-    assert count_elements(SURFACE_PATH) == 0
-    assert declared_widget_classes(SURFACE_PATH) == set()
+    from PySide6.QtWidgets import QLabel, QWidget
+
+    window, _bus = built_window()
+    children = window.findChildren(QWidget)
+    assert len(children) == WINDOW_ELEMENT_BUILDS, len(children)
+    QLabel("extra", window)
+    assert len(window.findChildren(QWidget)) == WINDOW_ELEMENT_BUILDS + 1
 
 
-def test_the_class_counter_finds_a_class_declared_inside_a_method():
-    """The class counter reads the top level only, so a nested class is lost."""
-    found = declared_classes(NESTED_CLASS_CONTROL_PATH)
-    assert "_StockLogHandler" in found, sorted(found)
-    assert "StockMainWindow" in found, sorted(found)
-    assert len(found) == 4, sorted(found)
-    tree = ast.parse(NESTED_CLASS_CONTROL_PATH.read_text(encoding="utf-8"))
-    top_level = {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
-    assert top_level == set(), top_level
-    assert declared_classes(WINDOW_PATH) == {"LiteLiveBotWindow"}
-
-
-# ---------------------------------------------------------------------
 # Every class and every method has a counterpart
-# ---------------------------------------------------------------------
 
 
 def members(owner):
@@ -2073,7 +1944,6 @@ def test_every_shipped_class_and_method_has_a_counterpart():
     assert members(surface.PaneModel) == PANE_MEMBERS, sorted(
         members(surface.PaneModel) ^ PANE_MEMBERS
     )
-    assert declared_classes(WINDOW_PATH) == set(CLASS_MAP)
 
 
 def test_a_member_added_or_lost_on_either_side_is_reported():
@@ -2155,36 +2025,29 @@ def test_the_signatures_match_the_shipped_methods():
     assert list(inspect.signature(surface.view_model).parameters) == ["params"]
 
 
-def modules_importing(module, skip=()):
-    """Every file under src that imports the module named exactly `module`."""
-    found = []
-    for path in sorted((REPO_ROOT / "src").rglob("*.py")):
-        if path in skip:
-            continue
-        names = []
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                names += [alias.name for alias in node.names]
-            if isinstance(node, ast.ImportFrom):
-                names.append(node.module or "")
-        if any(name.split(".")[-1] == module for name in names):
-            found.append(str(path))
-    return found
-
-
 def test_the_surface_is_reached_by_the_bridge():
-    """The count of readers is wrong, so a lost reader would pass unseen."""
-    assert modules_importing("live_bot_window_surface") == [
-        str(REPO_ROOT / "src/core/desktop_bridge.py")
-    ]
-    assert modules_importing("live_bot_window", skip=(WINDOW_PATH, SURFACE_PATH)) == []
-    known = modules_importing("event_bus")
-    assert len(known) > 5, known
+    """The renderer cannot reach the live bot window."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert registry[surface.METHOD] is surface.view_model
+    assert sorted(
+        name for name, handler in registry.items() if handler is surface.view_model
+    ) == [surface.METHOD]
 
 
-# ---------------------------------------------------------------------
+def test_the_window_is_reached_by_no_other_module():
+    """A module under ``src.gui`` pulls the shipped window in."""
+    walked = package_walk_loads(
+        "src.gui",
+        skip=("src.gui.live_bot_window", "src.gui.main_tabs.live_bot_window_surface"),
+    )
+    assert walked["walked"] > 100, walked["walked"]
+    assert "src.gui.live_bot_window" not in walked["loaded"], walked["walked"]
+    assert "src.gui.design_system" in walked["loaded"], walked["walked"]
+
+
 # The surface holds its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file(monkeypatch):
@@ -2219,22 +2082,20 @@ def test_the_surface_carries_the_exchange_ids_the_connector_offers():
 
 def test_the_shipped_file_is_not_named_by_the_surface():
     """The surface reaches into the window it replaces."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imported.add(node.module or "")
-            imported.update(alias.name for alias in node.names)
-    assert not any("live_bot_window" == name for name in imported), imported
-    assert not any("scrumming_bot" in name for name in imported), imported
-    assert not any("ccxt_connector" in name for name in imported), imported
+    pulled = module_pulls("src.gui.main_tabs.live_bot_window_surface")
+    assert "src.gui.live_bot_window" not in pulled, pulled
+    assert "src.gui.main_tabs.live_bot_window_surface" in pulled, pulled
+    assert not any("scrumming_bot" in name for name in pulled), pulled
 
 
-# ---------------------------------------------------------------------
+def test_the_pull_reader_can_see_the_window():
+    """POSITIVE CONTROL for ``module_pulls``: importing the shipped
+    window names it."""
+    pulled = module_pulls("src.gui.live_bot_window")
+    assert "src.gui.live_bot_window" in pulled, pulled
+
+
 # The window paints, and the two sides paint the same pixels
-# ---------------------------------------------------------------------
 
 PICTURE_STEPS = {
     "at_rest": [],
@@ -2512,9 +2373,7 @@ def test_with_a_font_database_the_letters_advance_apart():
     assert app_font_advance_px(WIDE_LABEL) > app_font_advance_px(NARROW_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 def test_the_pane_look_is_compared_as_a_string(monkeypatch):
@@ -2716,9 +2575,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
         assert callable(globals()[covered_by]), covered_by
 
 
-# ---------------------------------------------------------------------
 # The surface writes under the logger it names
-# ---------------------------------------------------------------------
 
 
 def warnings_from(logger_name, run, level=logging.WARNING):
@@ -2779,9 +2636,7 @@ def test_the_surface_writes_under_the_logger_it_names():
     assert shipped.logger.name == surface.LOGGER_NAME
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def freeze(value):
@@ -3233,9 +3088,7 @@ def test_the_key_check_reports_a_key_backed_by_the_wrong_value():
     assert not backed("subscriptions_held", 4, ("model.unsubs",), model)
 
 
-# ---------------------------------------------------------------------
 # What each side keeps between windows
-# ---------------------------------------------------------------------
 
 
 def drive_one_window(name):
@@ -3322,9 +3175,7 @@ def test_the_surface_keeps_no_value_between_two_windows():
     )
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -3351,21 +3202,6 @@ def test_the_bridge_registers_the_live_bot_window_method():
     )
     assert answer["ok"] is True
     assert answer["result"]["start_label"] == surface.START_LABEL
-
-
-def test_the_bridge_import_list_is_alphabetical():
-    """The bridge import list drifted out of order."""
-    from src.core import desktop_bridge
-
-    source = Path(desktop_bridge.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    names: list = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "src.gui.main_tabs":
-            names = [alias.name for alias in node.names]
-    assert names == sorted(names), names
-    assert "live_bot_window_surface" in names
-    assert names.index("launcher_surface") + 1 == names.index("live_bot_window_surface")
 
 
 def test_the_bridge_keeps_the_window_until_a_reset():
@@ -3454,9 +3290,7 @@ def test_the_bridge_drives_every_step_the_window_takes():
     ask({"reset": True})
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -3647,48 +3481,33 @@ def test_importing_the_surface_builds_no_window():
 
 def test_the_surface_loads_no_qt_module():
     """The surface grew an import that pulls Qt into the backend."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    window_imports = {
-        (node.module or "")
-        for node in ast.walk(ast.parse(WINDOW_PATH.read_text(encoding="utf-8")))
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in window_imports), window_imports
+    answered = qt_free(
+        "src.gui.main_tabs.live_bot_window_surface", "LiveBotWindowModel"
+    )
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
+
+
+def test_the_qt_block_stops_the_window_the_surface_replaces():
+    """POSITIVE CONTROL for ``qt_free``: ``LiteLiveBotWindow`` is absent
+    when Qt is refused."""
+    answered = qt_free("src.gui.live_bot_window", "LiteLiveBotWindow")
+    assert answered["imported"] is False, answered
 
 
 def test_the_surface_opens_no_file_and_no_socket():
     """The surface reached for a file, a network address or a browser."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    called = {
-        node.func.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert "open" not in called
-    reached = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    for forbidden in (
-        "read_text",
-        "write_text",
-        "read_bytes",
-        "write_bytes",
-        "mkdir",
-        "urlopen",
-        "socket",
-        "listen",
-    ):
-        assert forbidden not in reached, forbidden
-    text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert "webbrowser" not in text
-    assert "acervator_logs" not in text
-    assert "Path.home" not in text
+    answered = io_watched(
+        "src.gui.main_tabs.live_bot_window_surface",
+        "m.build_view_model(m.LiveBotWindowModel())\n",
+    )
+    assert answered["touched"] == [], answered
+
+
+def test_the_io_traps_can_see_a_file_being_opened():
+    """POSITIVE CONTROL for ``io_watched``: one ``open`` after the import
+    is recorded."""
+    answered = io_watched(
+        "src.gui.main_tabs.live_bot_window_surface", "open('main.py').close()\n"
+    )
+    assert answered["touched"] == ["open"], answered

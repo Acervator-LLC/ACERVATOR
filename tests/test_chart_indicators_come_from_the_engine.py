@@ -13,9 +13,11 @@ Ichimoku   400 of 400 terms (80 candles x 5 lines) bit-identical.
 Vortex     66 drawn, 0 identical, max absolute difference 1.456e-10.
 StochRSI   52 drawn, 9 identical, max absolute difference 1.664e-08.
 
-The last two differ only in where the zero-denominator epsilon sits:
-the copy wrote ``sum(...) or 1e-9`` and the engine writes
-``sum(...) + 1e-9``. Both now come from the engine's spelling.
+The last two differ only in where the zero-denominator guard sits: the
+copy wrote ``sum(...) or 1e-9``, ``StochasticRSI`` writes
+``(high - low + 1e-9)``, and ``VortexIndicator.window_sums`` returns
+``None`` for a zero true-range total and divides by the total itself.
+Both now come from the engine's spelling.
 
 WHAT THE COPY GOT WRONG
 =======================
@@ -101,10 +103,8 @@ def _tape(n: int = 80) -> list[Candle]:
     return out
 
 
-# ---------------------------------------------------------------------------
 # 1. Each series agrees with the SAME indicator's vote, which is a
 #    second code path through the same published formula.
-# ---------------------------------------------------------------------------
 def test_bollinger_series_last_bar_matches_the_vote():
     tape = _tape()
     upper, middle, lower = BollingerBands(20, 2.0).bands(tape)[-1]
@@ -145,12 +145,6 @@ def test_stochrsi_series_last_bars_match_the_vote():
     details = indicator.compute(tape, "1h").details
     assert round(k_line[-1], 2) == details["k"]
 
-    # ``details`` rounds K to two places on a 0-100 scale, so the line
-    # above cannot see a divergence below 0.005. THE TAIL BOUND IS
-    # CHECKED AT FULL PRECISION instead: ``compute`` asks
-    # ``stoch_ratios`` for the last k_smooth + d_smooth entries and the
-    # chart asks for all of them, and narrowing the RANGE must not
-    # change a VALUE.
     rsi_values, _ = indicator.rsi_values([c.close for c in tape])
     full_from, full, _ = indicator.stoch_ratios(rsi_values)
     tail_need = indicator.k_smooth + indicator.d_smooth
@@ -168,9 +162,7 @@ def test_ichimoku_series_last_bar_matches_the_vote():
     assert chikou == tape[-1].close
 
 
-# ---------------------------------------------------------------------------
 # 2. The MACD repair, as numbers.
-# ---------------------------------------------------------------------------
 def test_macd_has_no_value_before_its_published_seed():
     """A failure here means an EMA is seeding on invented bars again.
 
@@ -203,10 +195,8 @@ def test_the_old_chart_macd_value_no_longer_reaches_the_screen():
         assert round(hist[index], 8) != wrong
 
 
-# ---------------------------------------------------------------------------
 # 3. The chart still RENDERS. Deleting a duplicate also stops it
 #    disagreeing, so "the copy is gone" proves nothing on its own.
-# ---------------------------------------------------------------------------
 pytest.importorskip("PySide6")
 
 

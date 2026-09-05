@@ -132,7 +132,6 @@ SLINGSHOT_EXPANSION_RATIO = 1.02
 SLINGSHOT_SQUEEZED_MINIMUM = 2
 SLINGSHOT_RECENT_WINDOW = 4
 SLINGSHOT_WINDOW_SLACK = 2
-SLINGSHOT_BANDWIDTH_EPSILON = 1e-9
 SLINGSHOT_BULL_COLOR = (38, 200, 170, 230)
 SLINGSHOT_BEAR_COLOR = (239, 90, 110, 230)
 SLINGSHOT_ANCHOR_OFFSET_PX = 14
@@ -270,7 +269,7 @@ PRICE_PAD_RATIO = 0.04
 FLAT_RANGE_RATIO = 0.01
 FLAT_RANGE_FALLBACK = 1.0
 GRID_TARGET_TICKS = 6
-GRID_EPSILON = 1e-12
+GRID_TICK_TOLERANCE = 1e-9
 NICE_STEP_BREAKS = ((1.5, 1), (3.5, 2), (7.5, 5))
 NICE_STEP_TOP = 10
 NICE_STEP_FALLBACK = 1.0
@@ -486,7 +485,6 @@ METRICS = {
     "slingshot_squeezed_minimum": SLINGSHOT_SQUEEZED_MINIMUM,
     "slingshot_recent_window": SLINGSHOT_RECENT_WINDOW,
     "slingshot_window_slack": SLINGSHOT_WINDOW_SLACK,
-    "slingshot_bandwidth_epsilon": SLINGSHOT_BANDWIDTH_EPSILON,
     "slingshot_anchor_offset_px": SLINGSHOT_ANCHOR_OFFSET_PX,
     "slingshot_diamond_px": SLINGSHOT_DIAMOND_PX,
     "slingshot_circle_px": SLINGSHOT_CIRCLE_PX,
@@ -579,7 +577,7 @@ METRICS = {
     "flat_range_ratio": FLAT_RANGE_RATIO,
     "flat_range_fallback": FLAT_RANGE_FALLBACK,
     "grid_target_ticks": GRID_TARGET_TICKS,
-    "grid_epsilon": GRID_EPSILON,
+    "grid_tick_tolerance": GRID_TICK_TOLERANCE,
     "nice_step_breaks": NICE_STEP_BREAKS,
     "nice_step_top": NICE_STEP_TOP,
     "nice_step_fallback": NICE_STEP_FALLBACK,
@@ -976,7 +974,7 @@ def price_grid(low: float, high: float, target_ticks: int = GRID_TARGET_TICKS) -
     if step > 0:
         first = math.ceil(low / step) * step
         tick = first
-        while tick <= high + GRID_EPSILON:
+        while tick <= high + step * GRID_TICK_TOLERANCE:
             ticks.append(
                 {
                     "price": tick,
@@ -1310,6 +1308,8 @@ def slingshot_bands(closes: Sequence[float]) -> list:
     for index in range(SLINGSHOT_BB_PERIOD - 1, len(closes)):
         window = closes[index - SLINGSHOT_BB_PERIOD + 1 : index + 1]
         middle_price = sum(window) / SLINGSHOT_BB_PERIOD
+        if middle_price <= 0:
+            continue
         variance = (
             sum((one - middle_price) ** 2 for one in window) / SLINGSHOT_BB_PERIOD
         )
@@ -1321,7 +1321,7 @@ def slingshot_bands(closes: Sequence[float]) -> list:
             upper_price,
             lower_price,
             middle_price,
-            (upper_price - lower_price) / (middle_price + SLINGSHOT_BANDWIDTH_EPSILON),
+            (upper_price - lower_price) / middle_price,
         )
     return rows
 

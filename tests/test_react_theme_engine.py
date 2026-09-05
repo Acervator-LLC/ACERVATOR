@@ -63,9 +63,8 @@ INDEX_HTML = REPO_ROOT / "desktop" / "renderer" / "index.html"
 
 JS_TIMEOUT_MS = 30_000
 
-#: Python type -> the JavaScript type the same value has after the
-#: bridge's ``json.dumps``. A value that changes shape in transit shows
-#: as a disagreement between this map and ``acervatorThemes.types()``.
+#: Python type -> the JavaScript type the same value has after the bridge's
+#: json.dumps, compared against acervatorThemes.types().
 JS_TYPE_OF = {
     "str": "string",
     "int": "number",
@@ -103,8 +102,7 @@ def token_payload() -> dict:
 
 
 #: A design-token table with the real module's three reader names.
-#: ``token`` raises for a name it does not hold, so a caller that skipped
-#: ``has`` fails loudly instead of resolving to undefined.
+#: token raises for a name it does not hold.
 TABLE_STANDIN = (
     "window.acervatorTokens = (function () {"
     "  var bag = JSON.parse(TOKENS).tokens;"
@@ -150,6 +148,16 @@ def js(qapp) -> JsRuntime:
     """The module, loaded in a fresh engine."""
     assert qapp is not None
     return JsRuntime(new_engine(), MODULE_PATH.read_text(encoding="utf-8"))
+
+
+def held_theme(name: str) -> dict:
+    """One theme as the payload hands it to the module.
+
+    The surface publishes for a browser, so its themes carry the alpha
+    share CSS reads while tes.THEMES keeps the byte Qt reads. The
+    module is answerable for what it was given, never for the Qt table.
+    """
+    return bridge_payload()["themes"][name]
 
 
 @pytest.fixture()
@@ -479,8 +487,8 @@ def test_switching_theme_changes_what_a_screen_would_paint(loaded: JsRuntime):
     after = loaded.json("acervatorThemes.painted()")
     changed = [f for f in before if after.get(f) != before[f]]
     assert changed, "the two themes paint identically, so the check cannot report"
-    assert before == tes.THEMES[FIRST_THEME]
-    assert after == tes.THEMES[SECOND_THEME]
+    assert before == held_theme(FIRST_THEME)
+    assert after == held_theme(SECOND_THEME)
 
 
 def test_switching_back_restores_every_value_exactly(loaded: JsRuntime):
@@ -520,7 +528,7 @@ def test_a_theme_the_module_does_not_hold_changes_nothing(loaded: JsRuntime):
     loaded.run("acervatorThemes.select(JSON.parse(FIRST));")
     assert loaded.json("acervatorThemes.select('no_such_theme')") is None
     assert loaded.json("acervatorThemes.current()") == FIRST_THEME
-    assert loaded.json("acervatorThemes.painted()") == tes.THEMES[FIRST_THEME]
+    assert loaded.json("acervatorThemes.painted()") == held_theme(FIRST_THEME)
 
 
 # -- the design tokens -------------------------------------------------
@@ -781,9 +789,8 @@ def test_a_name_the_payload_never_carried_is_not_a_theme(js: JsRuntime):
         assert js.json("acervatorThemes.theme(JSON.parse(NAME))") == {}
         assert js.json("acervatorThemes.tokenNames(JSON.parse(NAME))") == {}
         assert js.json("acervatorThemes.select(JSON.parse(NAME))") is None
-        # The TYPE, not the value. JSON.stringify turns a function into
-        # `undefined`, the same answer an absent name gives, so a value
-        # comparison cannot tell a leaked method from a real miss.
+        # The TYPE, not the value: JSON.stringify turns a function into
+        # `undefined`, the same answer an absent name gives.
         for reader in ("displayName", "styleSheet"):
             kind = js.json("typeof acervatorThemes." + reader + "(JSON.parse(NAME))")
             assert kind == "undefined", f"{reader}({inherited}) returned a {kind}"

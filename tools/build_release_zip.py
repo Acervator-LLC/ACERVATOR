@@ -1,62 +1,13 @@
-"""
-tools/build_release_zip.py — v3.20.36.
+"""Build the primary release zip and the additional-items zip beside the repo.
 
-Build the release zip suite (PRIMARY + ADDITIONAL_ITEMS) with the
-bloat-trim rules + archival-preservation discipline the operator
-surfaced 2026-05-31:
+`classify_path` puts every walked file in exactly one bucket: `primary`,
+`additional` or `junk`. `find_latest_manual` keeps one product manual in the
+primary zip and routes the rest to additional. `read_version` and
+`read_session_number` name the two archives, and `build` refuses when either
+answers nothing.
 
-  v3.20.35: only the LATEST `acervator_product_manual_v*.pdf` is
-            included in the release zip (8.4 MB / 97 files
-            excluded from the primary zip).
-  v3.20.36: rather than DELETE the discardables, package them into
-            a separate "Additional Items" zip. Primary stays lean
-            and organized; nothing is lost.
-
-Operator directive 2026-05-31:
-    "Rather than delete from the package all together. Package hard
-     delete items into Additional Items .zip to keep the primary
-     package more organized. The conversation back up is large and
-     important but not needed in the package."
-
-Partition invariant
-───────────────────
-Every file in the repo is classified into exactly ONE of three
-buckets:
-
-  • PRIMARY    — live source, active docs, tests, latest
-                 product manual. Lean release package.
-  • ADDITIONAL — historical artifacts, archived backups, old
-                 product manuals, stale reports, orphaned scripts.
-                 Preserved for archival but not part of the lean
-                 release.
-  • JUNK       — __pycache__, .git, .pytest_cache, .hypothesis,
-                 .mypy_cache, .ruff_cache, .venv, dist, build,
-                 node_modules, .coverage, *.pyc, *.pyo, *.zip.
-                 Excluded from both zips.
-
-The partition is enforced by `classify_path(rel_path, latest_manual_name)`
-which returns the bucket name. Every walked file produces exactly one
-classification.
-
-CLI
-───
-  python tools/build_release_zip.py          # build both zips
-  python tools/build_release_zip.py --dry-run
-                                             # list what would land
-                                             #   in each bucket
-  python tools/build_release_zip.py --primary-only
-                                             # build only the primary zip
-  python tools/build_release_zip.py --additional-only
-                                             # build only the additional zip
-  python tools/build_release_zip.py --print-latest-manual
-  python tools/build_release_zip.py --session 28
-
-The session number is MEASURED, never assumed. It comes from --session,
-or from the highest-version release package beside the repository, and
-the build prints which package it was read off. With neither source
-the build REFUSES. A guessed session number already shipped two
-packages as `session79`, and a wrongly named archive looks exactly
-like a right one.
+    python -m tools.build_release_zip --dry-run
+    python -m tools.build_release_zip --session 28
 """
 
 from __future__ import annotations
@@ -71,12 +22,6 @@ from typing import Optional
 
 _REPO = Path(__file__).resolve().parent.parent
 
-# ─────────────────────────────────────────────────────────────────────
-# Classification rules
-# ─────────────────────────────────────────────────────────────────────
-
-# JUNK — excluded from BOTH zips (true bloat, machine-specific, or
-# regenerable build artifacts).
 JUNK_DIRS = {
     ".git",
     ".venv",
@@ -90,33 +35,16 @@ JUNK_DIRS = {
     "build",
     ".idea",
     ".vscode",
-    # v3.24.35 — agent worktree scratch. Measured on the v3.24.35
-    # build: 1,414 of 1,901 primary-zip files (~30 MB) came from
-    # .claude/worktrees, swamping the 487 files of actual project
-    # content. Scratch, not deliverable.
     "worktrees",
 }
 JUNK_SUFFIXES = (".pyc", ".pyo", ".log", ".tmp")
-# Exclude .coverage data file (machine-specific paths), but keep
-# .coveragerc (the configuration file).
+# `.coveragerc` is not matched: only the data file `.coverage` is junk.
 JUNK_BASENAMES = {".coverage"}
 
-# v3.23.6 — additional name-substring blacklist for rotated/derived log
-# artifacts that the suffix rule would miss:
-#   *.log.scrubbed   — output of a gate-log scrubber
-#   *.log.scrubbed.N — pre-replace scratch from the same tool
-#   *.log.bak / *.log.bak.N — pre-scrub backups
-#   *.log.[0-9]+   — rotated NDJSON files (gate.log.1, trade.log.2, etc.)
-# These can grow large + machine-specific; never ship in any zip.
+# Derived log and backup names that `JUNK_SUFFIXES` cannot reach.
 JUNK_NAME_SUBSTRINGS = (
     ".log.scrubbed",
     ".log.bak",
-    # In-session backup files written before risky edits
-    # (e.g. main_window.py.PRIVACY_ARC_BACKUP_2026-06-14,
-    # bot_visualizer.py.BOT_SWARM_ARC_BACKUP_2026-06-14,
-    # scrumming_bot.py.RECOVERY_PRE_v3_23_7.BAK,
-    # history_tab.py.D01_BACKUP_2026-06-14).
-    # These are scratch — never ship in any zip.
     ".PRIVACY_ARC_BACKUP_",
     ".BOT_SWARM_ARC_BACKUP_",
     ".RECOVERY_PRE_",
@@ -126,63 +54,35 @@ JUNK_ROTATED_LOG_RE = re.compile(r"\.log\.\d+$")
 
 MANUAL_RE = re.compile(r"^acervator_product_manual_v(\d+)_(\d+)_(\d+)\.pdf$")
 
-# ADDITIONAL — route to the supplementary zip rather than the primary.
-# These are NOT junk (preserved for archival) but DO bloat the primary
-# release package if included. An operator audit on 2026-05-31
-# classified each item below.
-
-# Top-level directories that go in their entirety to ADDITIONAL.
+# Top-level directories routed whole to the additional zip.
 ADDITIONAL_DIRS = {
-    ".session26_backups",  # 1.7 MB · session-26 .bak files
-    "_archive",  # 2026-07-25 audit: all migrated content
+    ".session26_backups",
+    "_archive",
 }
 
-# Files that go to ADDITIONAL, matched on BASENAME at any depth. Issue
-# #80 moved five of them into docs-archive/llm-session-history/ and the
-# routing held.
+# Matched on basename at any depth by `_is_additional`.
 ADDITIONAL_FILES_EXACT = {
-    # Cat 1 — conversation backup (62.9 MB)
     "ACERVATOR_DEV_1_BACKUP_2026-05-20.jsonl",
-    # Cat 4 — old HOPs + dept review (superseded by HOP7)
     "ACERVATOR_HOP2.md",
     "ACERVATOR_HOP3.md",
     "ACERVATOR_HOP4.md",
     "ACERVATOR_DEPT_LEAD_REVIEW_v3_12_0.md",
-    # Cat 5 — stale test/report artifacts
     "pytest_out.txt",
     "pytest_v3_16_48.txt",
     "TESTNET_POA_VERIFY_REPORT.md",
-    # Cat 6 — zero-importer root scripts (orphan diagnostics +
-    # superseded one-offs). EXCHANGE_DIAGNOSTIC.py moved to
-    # tools/exchange_diagnostic.py and test_scrumming_v3.py became
-    # tests/test_scrumming_scenarios.py, so neither is listed here.
     "cartoon_screen.py",
     "download_archive.py",
     "generate_essay_ja.py",
     "generate_essay_localized.py",
     "investor_screen.py",
-    # Issue #74 extracted the animation core these three screens shared.
-    # It travels with them: it has no other consumer, and splitting a
-    # helper from every file that imports it across two zips would give
-    # the PRIMARY zip a module nothing there calls.
     "screen_fx.py",
-    # Issue #85 renamed `test_scrumming_v3.py` to
-    # `tools/scrumming_v3_sim.py`. This set matches a repo-relative
-    # string EXACTLY, so the old entry would have stopped matching in
-    # silence and the file would have joined the PRIMARY zip with no
-    # message. It joins the PRIMARY zip on purpose now: it is a tool in
-    # `tools/`, and every other tool in that directory ships there.
-    # Cat 7 — low-coupling promo (trailer chain). KEEP
-    # generate_essay.py in PRIMARY — it builds the live product
-    # manual. The trailer chain (splash + render) is dormant.
     "splash_screen.py",
     "render_trailer.py",
 }
 
 
 def _parse_manual_version(name: str) -> Optional[tuple[int, int, int]]:
-    """Parse 'acervator_product_manual_v3_20_33.pdf' -> (3, 20, 33).
-    Returns None if the name doesn't match the pattern."""
+    """The (major, minor, patch) `MANUAL_RE` reads out of `name`, or None."""
     m = MANUAL_RE.match(name)
     if not m:
         return None
@@ -193,8 +93,7 @@ def _parse_manual_version(name: str) -> Optional[tuple[int, int, int]]:
 
 
 def find_latest_manual(repo: Path = _REPO) -> Optional[Path]:
-    """Return the Path of the highest-versioned product manual PDF
-    in the repo root, or None if no manuals exist."""
+    """The highest-versioned manual PDF directly under `repo`, or None."""
     best: Optional[tuple[tuple[int, int, int], Path]] = None
     for p in repo.iterdir():
         if not p.is_file():
@@ -218,8 +117,6 @@ def _is_junk(rel_path: Path) -> bool:
         return True
     if rel_path.suffix == ".zip":
         return True
-    # v3.23.6 — rotated log files (.log.1 etc.) + scrubbed copies +
-    # pre-scrub backups never ship in a release zip.
     name = rel_path.name
     for needle in JUNK_NAME_SUBSTRINGS:
         if needle in name:
@@ -230,8 +127,7 @@ def _is_junk(rel_path: Path) -> bool:
 
 
 def _is_older_manual(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
-    """True if this is a product-manual PDF that ISN'T the latest
-    version (routes to ADDITIONAL)."""
+    """True when `rel_path` is a manual PDF other than `latest_manual_name`."""
     if not MANUAL_RE.match(rel_path.name):
         return False
     if latest_manual_name is None:
@@ -240,24 +136,20 @@ def _is_older_manual(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
 
 
 def _is_additional(rel_path: Path, latest_manual_name: Optional[str]) -> bool:
-    """True if the path routes to the ADDITIONAL_ITEMS zip rather
-    than the primary release zip. Junk filtering is checked BEFORE
-    this in `classify_path` — so anything reaching here is genuinely
-    archival, not bloat."""
-    # Top-level directory match (e.g. .session26_backups/)
+    """True when `rel_path` matches `ADDITIONAL_DIRS`, `ADDITIONAL_FILES_EXACT`
+    or `_is_older_manual`.
+
+    `classify_path` applies `_is_junk` first, so junk never reaches here.
+    """
     if rel_path.parts and rel_path.parts[0] in ADDITIONAL_DIRS:
         return True
-    # Basename match at any depth, so an archived file keeps its route.
     if rel_path.name in ADDITIONAL_FILES_EXACT:
         return True
-    # Historical product manual
     return _is_older_manual(rel_path, latest_manual_name)
 
 
 def classify_path(rel_path: Path, latest_manual_name: Optional[str]) -> str:
-    """Return 'junk', 'additional', or 'primary' for the given path.
-    The partition is mutually exclusive: every file lands in exactly
-    one bucket."""
+    """The one bucket for `rel_path`: 'junk', 'additional' or 'primary'."""
     if _is_junk(rel_path):
         return "junk"
     if _is_additional(rel_path, latest_manual_name):
@@ -265,17 +157,10 @@ def classify_path(rel_path: Path, latest_manual_name: Optional[str]) -> str:
     return "primary"
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Build orchestration
-# ─────────────────────────────────────────────────────────────────────
-
-
 def read_version() -> Optional[str]:
-    """Version this tree resolves to, or None when nothing can answer.
+    """What `resolve_version` answers for this tree, or None for `UNKNOWN_VERSION`.
 
-    Derived from the git tag, never from a literal. A tree that is not on
-    a version tag names its package after the commit it was built from,
-    so a package can never claim a release number it does not hold.
+    A tree on no version tag resolves to the commit it was built from.
     """
     if str(_REPO) not in sys.path:
         sys.path.insert(0, str(_REPO))
@@ -289,22 +174,10 @@ PACKAGE_RE = re.compile(r"^acervator_session(\d+)_CLOSE_hop5_v(\d+)_(\d+)_(\d+)\
 
 
 def read_session_number(parent: Path) -> Optional[tuple[int, str]]:
-    """Session number read off the newest release package beside the repo.
+    """(session, evidence) from the `PACKAGE_RE` file in `parent` with the
+    highest version tuple, or None.
 
-    Returns (session, evidence) where `evidence` names the package the
-    number came from, or None when no package is there.
-
-    The number comes from the package with the highest VERSION tuple, not
-    the highest session number and never the directory name. Measured
-    2026-08-16: session numbers on this disk do not rise with version, so
-    `max(session)` picks a package from a different era and names the new
-    drop after it.
-
-    This replaced a reader of an episodic-memory file under the retired
-    governance subsystem. That file is not in the tree, the read raised,
-    and the except branch returned a hardcoded 27 with no output. Every
-    build therefore produced a `session27` name whatever the truth was,
-    and reported success.
+    `evidence` names that file; the session number itself is never ordered on.
     """
     best: Optional[tuple[tuple[int, int, int], int, str]] = None
     if not parent.is_dir():
@@ -322,13 +195,8 @@ def read_session_number(parent: Path) -> Optional[tuple[int, str]]:
 
 
 def unmatched_rules(primary: list[Path], additional: list[Path]) -> list[str]:
-    """Every ADDITIONAL routing rule that matched no file in this tree.
-
-    A rule that matches nothing is invisible: the partition still prints a
-    count and the build still succeeds. Six of these rules named paths that
-    had been deleted, and no build said so. This makes each one visible on
-    every run without dropping a rule that may fire again.
-    """
+    """Every `ADDITIONAL_DIRS` and `ADDITIONAL_FILES_EXACT` entry that matched
+    nothing in `primary` or `additional`."""
     seen = {rel.as_posix() for rel in primary + additional}
     tops = {rel.parts[0] for rel in primary + additional if rel.parts}
     names = {rel.name for rel in primary + additional}
@@ -344,9 +212,8 @@ def unmatched_rules(primary: list[Path], additional: list[Path]) -> list[str]:
 def _walk_and_partition(
     latest_name: Optional[str],
 ) -> tuple[list[Path], list[Path], list[Path]]:
-    """Walk the repo and partition every file into
-    (primary, additional, junk). Same walk pass for all three lists
-    so the partition is provably mutually exclusive."""
+    """Every file under `_REPO` split by `classify_path` into
+    (primary, additional, junk)."""
     primary: list[Path] = []
     additional: list[Path] = []
     junk: list[Path] = []

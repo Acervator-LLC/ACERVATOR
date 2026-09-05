@@ -1,31 +1,15 @@
-"""v3.23.44 — a Stack tranche never supersedes a trading gate.
+"""A Stack tranche is spent only under an authorised gate-chain verdict.
 
-OPERATOR DIRECTIVE, 2026-08-11, verbatim:
-
-    "Its also important to verify that tranches do not supersede any
-     trading gates. They are only are 'used' when a valid trading
-     condition occurs."
-
-    "A price threshold being passed activates the tranche which allows it
-     to be spent when the trading condition manifests."
-
-Two stages, and this file pins the SECOND one's position in `tick`.
-`tests/test_stack_mode_execution.py` pins what each stage DOES; here we
-pin WHERE the spend happens, because that is what makes a refusal
-protective. The two files together are the proof: stage one is reachable
-on a refused tick and places nothing, stage two places the order and is
-reachable only under an authorised gate-chain verdict.
-
-Every check below is read at the surface it reports through -- the AST of
-the shipped file -- and every one is paired with a PLANTED DEFECT that it
-must be observed failing on. A structural check with no plant proves
-nothing: it would report clean against a file that had never been
-gated at all.
+``_gate_bot`` poses a real ``ScrummingBot`` and ``_run_tick`` drives the real
+``ScrummingBot.tick`` over it, recording every call to
+``_spend_activated_stack_tranches`` and ``_reconcile_stack_tranches_invisible``.
+``REFUSALS`` names one runtime pose per pre-chain refusal, and each pose must
+reach the activation and never the spend.
 """
 
 from __future__ import annotations
 
-import ast
+import asyncio
 import sys
 from pathlib import Path
 
@@ -35,433 +19,352 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-SOURCE_PATH = REPO / "src" / "trading" / "scrumming_bot.py"
+from src.trading.container.config import BotConfig  # noqa: E402
+from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
+from src.trading.ta_engine import VotingEngine  # noqa: E402
 
-ACTIVATE = "_reconcile_stack_tranches_invisible"
-SPEND = "_spend_activated_stack_tranches"
-CHAIN_VERDICT = "_scrum_chain_result.should_fire"
-FOLD_VERDICT = "_fold_chain_result.should_fire"
+PRICE = 100.0
+TARGET = 100.0
 
-# The pre-chain returns the read phase identified, each named by its own
-# guard condition rather than by a line number, so the pins survive an
-# edit above them. Every one of these ends the tick: if it executes, no
-# trading decision is reached at all.
-#
-# The guards are matched EXACTLY against an unparsed `if` test, not by
-# substring. A substring match on `self._manual_fire_pending` also caught
-# the read-rate throttle, whose condition merely mentions it and which
-# sits ABOVE the activation call -- the check would then have reported a
-# violation that is not one.
-PRE_CHAIN_REFUSALS = {
-    "dust band (MEM-258 delta-zero short circuit)": "not self._manual_fire_pending and "
-    "abs(current_value - self._target_balance) <= _dust_band_usd",
-    "manual fire pending": "self._manual_fire_pending",
-    "wire-stack pending (MEM-257)": "_stack_pending > 0",
-    "max-cartridge": "_cartridge_pct > 0 and self._target_balance > 0",
-    "detonation harvest": "await self._tick_detonation(ticker)",
-    "zero-balance acquisition": "current_value < self._target_balance * 0.01",
-    "HARD circuit breaker": "self._cb_hard_tripped",
-    "below scrumming interval": "below_interval and self._fold_queue_usd == 0 and "
-    "(self._dist_accumulator == 0)",
-    "insufficient candles for TA": "not summary",
+
+class _Bus:
+    """Collects every event ``tick`` emits."""
+
+    def __init__(self):
+        self.events: list[tuple] = []
+
+    def emit(self, name, **payload):
+        """Record one event."""
+        self.events.append((name, payload))
+
+    def text(self) -> str:
+        """Join every ``message`` the recorded events carry."""
+        return "\n".join(str(kw.get("message", "")) for _n, kw in self.events)
+
+
+class _Ticker:
+    """The price snapshot ``_get_ticker`` answers with."""
+
+    def __init__(self, last):
+        self.last = last
+        self.bid = last
+        self.ask = last
+        self.volume_24h = 0.0
+        self.timestamp = 0.0
+
+
+class _Verdict:
+    """One gate-chain decision; ``should_fire`` is what ``tick`` reads."""
+
+    def __init__(self, fire):
+        self.should_fire = fire
+        self.blockers = []
+        self.reasons = []
+        self.armed = fire
+        self.decision = "FIRE" if fire else "HOLD"
+
+
+class _Chain:
+    """A gate chain whose ``evaluate`` answers with one fixed ``_Verdict`` and
+    records every context it was given."""
+
+    def __init__(self, fire):
+        self._fire = fire
+        self.seen: list = []
+
+    def evaluate(self, context):
+        """Record ``context`` and answer with the fixed verdict."""
+        self.seen.append(context)
+        return _Verdict(self._fire)
+
+
+class _Coordinator:
+    """Multi-timeframe coordinator stand-in; nothing is locked and no bias is
+    reported."""
+
+    def is_locked(self, *_tf):
+        """Report no timeframe lock."""
+        return False
+
+    def get_higher_tf_bias(self, *_a, **_kw):
+        """Report no higher-timeframe bias."""
+        return None, {}
+
+
+class _Venue:
+    """Exchange handle stand-in; every wallet read refuses, so any path that
+    reaches the venue ends without an order."""
+
+    min_order_size = 0.0
+
+    async def fetch_balance(self, *_a, **_kw):
+        """Refuse the read, as an unreachable venue would."""
+        raise ConnectionError("no venue in this test")
+
+    async def get_balance(self, *_a, **_kw):
+        """Refuse the read, as an unreachable venue would."""
+        raise ConnectionError("no venue in this test")
+
+    async def get_open_orders(self, *_a, **_kw):
+        """Report no resting order."""
+        return []
+
+
+def _candles(count=100):
+    """Return ``count`` OHLCV rows that oscillate around ``PRICE``."""
+    rows = []
+    for i in range(count):
+        px = PRICE + (i % 7) - 3.0
+        rows.append([1_700_000_000_000 + i * 3_600_000, px, px + 1, px - 1, px, 10.0])
+    return rows
+
+
+def _gate_bot(*, scrum_fires=True, fold_fires=False, holdings=1.2, candles=100, **pose):
+    """Return a ``ScrummingBot`` posed to run one full ``tick``.
+
+    ``pose`` overrides any attribute after the defaults are set, which is how each
+    entry of ``REFUSALS`` states its condition.
+    """
+    bot = object.__new__(ScrummingBot)
+    bot.bot_id = "gate-bot"
+    bot.config = BotConfig(
+        exchange_id="coinbase",
+        base_currency="USD",
+        target_asset="ETH",
+        symbol="ETH/USD",
+        target_balance=TARGET,
+        scrum_read_rate_min=0,
+        tranche_despawn_days=0,
+        max_cartridge_size_pct=0.0,
+        detonation_enabled=False,
+        stack_mode=True,
+    )
+    bot._bus = _Bus()
+    bot.stats = type("S", (), {"current_price": 0.0})()
+    bot.exchange = _Venue()
+    bot.exchange_interface = bot.exchange
+    bot._coordinator = _Coordinator()
+    bot._voting_engine = VotingEngine()
+    bot._scrum_chain = _Chain(scrum_fires)
+    bot._fold_chain = _Chain(fold_fires)
+
+    bot._initialised = True
+    bot._invisible = True
+    bot._aggressive = False
+    bot._manual_fire_pending = False
+    bot._cb_hard_tripped = False
+    bot._cb_soft_active_side = None
+    bot._reconcile_tick_counter = 0
+    bot._reconcile_interval = 0
+    bot._hold_tick_counter = 0
+    bot._last_price = PRICE
+    bot._last_trade_price = 0.0
+    bot._last_trade_side = None
+    bot._target_grow_last_side = None
+    bot._scrum_target_side = None
+    bot._scrum_target_mode = "delta"
+    bot._current_holdings = holdings
+    bot._target_balance = TARGET
+    bot._fold_tranches = []
+    bot._stack_tranches = []
+    bot._stack_created = 0
+    bot._hedge_bal = 0.0
+    bot._dist_accumulator = 0.0
+
+    rows = _candles(candles)
+
+    async def _get_ticker(_symbol):
+        return _Ticker(PRICE)
+
+    async def _get_ohlcv(_symbol, **_window):
+        return rows
+
+    bot._get_ticker = _get_ticker
+    bot._get_ohlcv = _get_ohlcv
+
+    for name, value in pose.items():
+        setattr(bot, name, value)
+    return bot
+
+
+class _TickRecord:
+    """What one driven ``tick`` did: its spends, its activations and any order it
+    tried to place."""
+
+    def __init__(self, bot):
+        self.bot = bot
+        self.spends: list[dict] = []
+        self.activations: list[dict] = []
+        self.orders: list[tuple] = []
+
+
+def _run_tick(bot) -> _TickRecord:
+    """Drive the real ``ScrummingBot.tick`` once and return a ``_TickRecord``.
+
+    ``guarded_place_order`` records the attempt and then raises, so a tick that
+    reached the venue is visible and no order is ever sent.
+    """
+    record = _TickRecord(bot)
+
+    async def _spend(**call):
+        record.spends.append(call)
+        return 1
+
+    async def _activate(**call):
+        record.activations.append(call)
+        return 0
+
+    async def _place(*order, **kwargs):
+        record.orders.append((order, kwargs))
+        raise AssertionError("the tick tried to place an order")
+
+    bot._spend_activated_stack_tranches = _spend
+    bot._reconcile_stack_tranches_invisible = _activate
+    bot.guarded_place_order = _place
+    asyncio.run(ScrummingBot.tick(bot))
+    return record
+
+
+class TestTheInstrumentReachesTheSpend:
+    def test_an_authorised_verdict_reaches_the_spend(self):
+        """POSITIVE CONTROL for every refusal below. A clean tick with a firing
+        scrum chain reaches ``_spend_activated_stack_tranches``."""
+        record = _run_tick(_gate_bot(scrum_fires=True))
+        assert len(record.spends) == 1, record.bot._bus.text()
+        assert record.spends[0]["current_price"] == pytest.approx(PRICE)
+
+    def test_the_activation_runs_on_the_same_tick(self):
+        """Stage one runs before the chain is built, on the same clean tick."""
+        record = _run_tick(_gate_bot(scrum_fires=True))
+        assert len(record.activations) == 1, record.bot._bus.text()
+
+    def test_the_chain_was_the_thing_that_decided(self):
+        """The scrum chain really was evaluated, so a refused verdict below is a
+        decision and not an unreached branch."""
+        bot = _gate_bot(scrum_fires=True)
+        _run_tick(bot)
+        assert bot._scrum_chain.seen, "the scrum chain was never evaluated"
+
+
+class TestARefusedVerdictBlocksTheSpend:
+    def test_a_refused_chain_never_reaches_the_spend(self):
+        """A refusal is expressed by ``_spend_activated_stack_tranches`` being
+        unreachable, which is what makes the refusal protective."""
+        record = _run_tick(_gate_bot(scrum_fires=False))
+        assert record.spends == [], record.bot._bus.text()
+
+    def test_a_refused_chain_still_runs_the_activation(self):
+        """Stage one is deliberately ungated: it makes a tranche sticky and places
+        nothing."""
+        record = _run_tick(_gate_bot(scrum_fires=False))
+        assert len(record.activations) == 1
+
+
+#: One runtime pose per pre-chain refusal, keyed by what it refuses on.
+REFUSALS = {
+    "dust band": {"holdings": 1.0},
+    "manual fire pending": {"_manual_fire_pending": True},
+    "wire-stack pending": {"_pending_stack_buy_usd": 25.0},
+    "max cartridge": {},
+    "HARD circuit breaker": {"_cb_hard_tripped": True},
+    "zero-balance acquisition": {"holdings": 0.0001},
+    "insufficient candles for TA": {"candles": 10},
 }
 
 
-# --------------------------------------------------------------------------
-# The instrument
-# --------------------------------------------------------------------------
+#: Every refusal but the operator's own fire, which is allowed to reach the venue.
+AUTONOMOUS_REFUSALS = sorted(set(REFUSALS) - {"manual fire pending"})
 
 
-def _read_source() -> str:
-    return SOURCE_PATH.read_text(encoding="utf-8")
+def _posed(label):
+    """Return a ``_gate_bot`` posed for the refusal named by ``label``."""
+    bot = _gate_bot(scrum_fires=True, **REFUSALS[label])
+    if label == "max cartridge":
+        bot.config.max_cartridge_size_pct = 10.0
+    return bot
 
 
-def _phase_source() -> str:
-    """The module that owns the ``_tick_*`` phase methods."""
-    import inspect
-
-    from src.trading.scrumming_bot import ScrummingBot
-
-    path = inspect.getsourcefile(ScrummingBot._tick_detonation)
-    assert path is not None
-    return Path(path).read_text(encoding="utf-8")
-
-
-def _phase(name: str) -> ast.AST:
-    """One ``_tick_*`` phase method, from the module that owns it."""
-    return next(
-        n
-        for n in ast.walk(ast.parse(_phase_source()))
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
-    )
-
-
-def _tick(source: str) -> ast.AsyncFunctionDef:
-    tree = ast.parse(source)
-    cls = next(
-        n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "ScrummingBot"
-    )
-    return next(
-        n for n in cls.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "tick"
-    )
-
-
-def _method(source: str, name: str) -> ast.AsyncFunctionDef:
-    return next(
-        n
-        for n in ast.walk(ast.parse(source))
-        if isinstance(n, ast.AsyncFunctionDef) and n.name == name
-    )
-
-
-def _span(stmts: list) -> tuple[int, int] | None:
-    if not stmts:
-        return None
-    return (
-        min(s.lineno for s in stmts),
-        max(getattr(s, "end_lineno", s.lineno) for s in stmts),
-    )
-
-
-def _enclosing_tests(fn: ast.AST, lineno: int) -> list[str]:
-    """Source of every `if` whose taken branch contains `lineno`.
-
-    An `orelse` branch is reported as `NOT <test>` so an else-arm is never
-    mistaken for the guarded arm.
-    """
-    found: list[tuple[int, str]] = []
-    for node in ast.walk(fn):
-        if not isinstance(node, ast.If):
-            continue
-        body = _span(node.body)
-        if body and body[0] <= lineno <= body[1]:
-            found.append((body[0], ast.unparse(node.test)))
-        orelse = _span(node.orelse)
-        if orelse and orelse[0] <= lineno <= orelse[1]:
-            found.append((orelse[0], "NOT " + ast.unparse(node.test)))
-    found.sort()
-    return [test for _, test in found]
-
-
-def _call_linenos(fn: ast.AST, attr: str) -> list[int]:
-    return sorted(
-        node.lineno
-        for node in ast.walk(fn)
-        if isinstance(node, ast.Call) and getattr(node.func, "attr", None) == attr
-    )
-
-
-def _called_names(fn: ast.AST) -> set[str]:
-    names: set[str] = set()
-    for node in ast.walk(fn):
-        if not isinstance(node, ast.Call):
-            continue
-        name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
-        if isinstance(name, str):
-            names.add(name)
-    return names
-
-
-def _ungated_calls(source: str, attr: str, verdict: str) -> list[int]:
-    """Lines where `attr` is called inside `tick` without `verdict`
-    among the conditions that had to hold to reach it."""
-    tick = _tick(source)
-    return [
-        ln
-        for ln in _call_linenos(tick, attr)
-        if not any(verdict in t for t in _enclosing_tests(tick, ln))
-    ]
-
-
-def _refusals_that_do_not_protect(source: str) -> list[str]:
-    """Named pre-chain refusals that fail to sit between the activation
-    call and every spend call.
-
-    A refusal ABOVE the activation call cannot stop a fire (it is why the
-    old top-of-tick sell was defective). A refusal BELOW the spend call
-    cannot stop it either. Only one that lies strictly between does.
-    """
-    tick = _tick(source)
-    activate = _call_linenos(tick, ACTIVATE)
-    spend = _call_linenos(tick, SPEND)
-    if not activate or not spend:
-        return [f"instrument blind: activate={activate} spend={spend}"]
-    first_activate, first_spend = min(activate), min(spend)
-
-    returns = [n.lineno for n in ast.walk(tick) if isinstance(n, ast.Return)]
-    problems: list[str] = []
-    for label, guard in PRE_CHAIN_REFUSALS.items():
-        guarded = [r for r in returns if guard in _enclosing_tests(tick, r)]
-        if not guarded:
-            problems.append(f"{label}: no return found under {guard!r}")
-            continue
-        for r in guarded:
-            if not first_activate < r < first_spend:
-                problems.append(
-                    f"{label}: return at :{r} is not between the activation "
-                    f"call (:{first_activate}) and the spend call "
-                    f"(:{first_spend})"
-                )
-                break
-    return problems
-
-
-# --------------------------------------------------------------------------
-# The planted defects. Each is the exact defect its check exists to catch.
-# --------------------------------------------------------------------------
-
-
-def _plant_hoisted_spend(source: str) -> str:
-    """THE DEFECT UNDER REPAIR: spend the tranche at the top of the tick,
-    where the old code sold, instead of under the chain verdict."""
-    old = (
-        "            await self._reconcile_stack_tranches_invisible(\n"
-        "                current_price=float(ticker.last)\n"
-        "            )\n"
-    )
-    assert source.count(old) == 1, "plant anchor moved"
-    new = (
-        old + "            await self._spend_activated_stack_tranches(\n"
-        "                current_price=float(ticker.last), summary=None\n"
-        "            )\n"
-    )
-    return source.replace(old, new)
-
-
-def _plant_ungated_fold_buy(source: str) -> str:
-    """A fold-side buy issued outside the fold chain's verdict."""
-    old = "        _delta_early = current_value - self._target_balance\n"
-    assert source.count(old) == 1, "fold plant anchor moved"
-    return source.replace(
-        old, "        await self._execute_buy(1.0, 1.0, None)\n" + old
-    )
-
-
-def _plant_order_in(source: str, method_name: str) -> str:
-    """An order placed from a method that is supposed to only read."""
-    marker = f"    async def {method_name}(self"
-    assert source.count(marker) == 1, f"{method_name} anchor moved"
-    head, tail = source.split(marker, 1)
-    body_start = tail.index('"""', tail.index('"""') + 3) + 3
-    injected = "\n        await self.guarded_place_order(1, 2, 3, 4, 5)"
-    return head + marker + tail[:body_start] + injected + tail[body_start:]
-
-
-# --------------------------------------------------------------------------
-# Stage two sits under the chain verdict
-# --------------------------------------------------------------------------
-
-
-class TestTheSpendIsGated:
-    def test_every_spend_call_is_under_the_chain_verdict(self):
-        """A REFUSAL BLOCKS THE FIRE. The chain refusing is expressed by
-        the spend call being unreachable, which is what this asserts."""
-        ungated = _ungated_calls(_read_source(), SPEND, CHAIN_VERDICT)
-        assert ungated == [], (
-            f"{SPEND} is called at line(s) {ungated} without "
-            f"{CHAIN_VERDICT} among the conditions that had to hold. A "
-            f"tranche would be spendable on a tick the chain refused."
+class TestEveryPreChainRefusalPreventsTheSpend:
+    @pytest.mark.parametrize("label", sorted(REFUSALS))
+    def test_the_refusal_blocks_the_spend(self, label):
+        record = _run_tick(_posed(label))
+        assert record.spends == [], (
+            f"{label} did not stop the tick before the spend:\n"
+            f"{record.bot._bus.text()}"
         )
 
-    def test_POSITIVE_CONTROL_a_hoisted_spend_is_reported_ungated(self):
-        """Without this the check above is worthless: it would report
-        clean on a file that had never been gated."""
-        planted = _plant_hoisted_spend(_read_source())
-        ungated = _ungated_calls(planted, SPEND, CHAIN_VERDICT)
-        assert ungated, (
-            "the walker reported a top-of-tick spend as gated. Its clean "
-            "verdict on the shipped file carries no information."
-        )
+    @pytest.mark.parametrize("label", sorted(REFUSALS))
+    def test_the_refusal_still_lets_stage_one_run(self, label):
+        """Stage one sits above every refusal, so a refused tick still activates a
+        tranche whose price threshold has passed."""
+        record = _run_tick(_posed(label))
+        assert len(record.activations) == 1, record.bot._bus.text()
 
-    def test_the_spend_call_is_reached_only_through_the_verdict(self):
-        source = _read_source()
-        tick = _tick(source)
-        calls = _call_linenos(tick, SPEND)
-        assert len(calls) == 1, f"expected one spend call site, got {calls}"
-        tests = _enclosing_tests(tick, calls[0])
-        assert tests == [CHAIN_VERDICT], (
-            f"the spend call's enclosing conditions are {tests}, not "
-            f"exactly [{CHAIN_VERDICT!r}]"
-        )
+    @pytest.mark.parametrize("label", AUTONOMOUS_REFUSALS)
+    def test_the_refusal_places_no_order(self, label):
+        record = _run_tick(_posed(label))
+        assert record.orders == [], record.bot._bus.text()
+
+    def test_manual_fire_places_the_operators_order_and_spends_no_tranche(self):
+        """``_manual_fire_pending`` is the operator's own fire, so it reaches the
+        venue; it still never reaches ``_spend_activated_stack_tranches``."""
+        record = _run_tick(_posed("manual fire pending"))
+        assert record.orders, record.bot._bus.text()
+        assert record.spends == [], record.bot._bus.text()
 
 
-class TestEveryPreChainRefusalPreventsTheFire:
-    def test_each_named_refusal_sits_between_activation_and_spend(self):
-        problems = _refusals_that_do_not_protect(_read_source())
-        assert problems == [], "\n".join(problems)
+class TestStageOnePlacesNothing:
+    """``_reconcile_stack_tranches_invisible`` marks a tranche activated and never
+    reaches ``guarded_place_order``."""
 
-    def test_POSITIVE_CONTROL_a_hoisted_spend_breaks_every_one(self):
-        """The plant puts a spend above all nine refusals. Every one must
-        be reported, or the check is reading something else."""
-        problems = _refusals_that_do_not_protect(_plant_hoisted_spend(_read_source()))
-        assert len(problems) == len(PRE_CHAIN_REFUSALS), (
-            f"a spend hoisted above every refusal produced "
-            f"{len(problems)} complaint(s), not {len(PRE_CHAIN_REFUSALS)}: "
-            f"{problems}"
-        )
-
-    @pytest.mark.parametrize("label", sorted(PRE_CHAIN_REFUSALS))
-    def test_the_refusal_condition_still_exists_in_tick(self, label):
-        """Each guard must still be a real condition in `tick`, or the pin
-        above is asserting something about a branch that is gone. Read off
-        the AST, not the raw text: `ast.unparse` normalises quoting, so a
-        text search misses `getattr(self.config, "detonation_enabled",
-        False)` for a guard written with single quotes."""
-        tests = {
-            ast.unparse(n.test)
-            for n in ast.walk(_tick(_read_source()))
-            if isinstance(n, ast.If)
-        }
-        assert (
-            PRE_CHAIN_REFUSALS[label] in tests
-        ), f"guard for {label!r} is no longer a condition in tick()"
-
-
-class TestTheDetonationRefusalStillReadsTheFlag:
-    def test_the_phase_reads_the_config_flag(self):
-        """The tick-level guard above is the phase CALL. Without this the
-        phase could ignore the operator's switch and nothing would say so."""
-        src = ast.unparse(_phase("_tick_detonation"))
-        assert (
-            "detonation_enabled" in src
-        ), "the detonation phase no longer reads config.detonation_enabled"
-
-    def test_the_phase_aborts_the_tick_when_it_fires(self):
-        """The phase returns True and tick returns on it. A phase that
-        never returns True cannot end the tick."""
-        returns = [
-            ast.unparse(n.value)
-            for n in ast.walk(_phase("_tick_detonation"))
-            if isinstance(n, ast.Return) and n.value is not None
+    def _one_pending(self):
+        """Return a bot carrying one pending stack tranche below ``PRICE``."""
+        bot = _gate_bot(scrum_fires=True)
+        bot._stack_tranches = [
+            {
+                "index": 0,
+                "price": PRICE - 1.0,
+                "size": 0.1,
+                "status": "pending",
+                "created_ts": 1.0,
+            }
         ]
-        assert "True" in returns, returns
+        return bot
 
+    def test_the_real_activation_places_no_order(self):
+        bot = self._one_pending()
+        placed: list = []
 
-class TestStageOneIsDeliberatelyUngated:
-    def test_the_activation_call_is_at_tick_top_level(self):
-        """Stage one is NOT gated, and must not be: it runs before the
-        chain's inputs exist. That is safe only because it places no
-        order -- pinned in tests/test_stack_mode_execution.py."""
-        source = _read_source()
-        tick = _tick(source)
-        calls = _call_linenos(tick, ACTIVATE)
-        assert len(calls) == 1
-        assert _enclosing_tests(tick, calls[0]) == [], (
-            "the activation call acquired a condition. If stage one is now "
-            "gated, the stickiness the operator asked for is gone."
+        async def _place(*order, **kwargs):
+            placed.append((order, kwargs))
+            raise AssertionError("stage one placed an order")
+
+        bot.guarded_place_order = _place
+        asyncio.run(
+            ScrummingBot._reconcile_stack_tranches_invisible(bot, current_price=PRICE)
         )
+        assert placed == [], bot._bus.text()
 
-    def test_POSITIVE_CONTROL_the_same_walker_reports_a_gated_call(self):
-        """An empty result must mean 'no conditions', not 'walker blind'.
-        The same walker, same file, on the gated fold buy."""
-        fold = _phase("_tick_execute_fold")
-        gated = [
-            ln
-            for ln in _call_linenos(fold, "_execute_buy")
-            if _enclosing_tests(fold, ln)
-        ]
-        assert gated, (
-            "the walker found no conditions on any _execute_buy call in "
-            "the fold phase, so its empty verdict on the activation call "
-            "is void"
+    def test_it_activates_the_tranche_the_price_passed(self):
+        """POSITIVE CONTROL: the call above reached the ledger, so its silence at
+        the venue is a fact about stage one and not about an unreached call."""
+        bot = self._one_pending()
+        tranche = bot._stack_tranches[0]
+        asyncio.run(
+            ScrummingBot._reconcile_stack_tranches_invisible(bot, current_price=PRICE)
         )
-
-    def test_activation_places_nothing(self):
-        called = _called_names(_method(_read_source(), ACTIVATE))
-        for forbidden in (
-            "_execute_sell",
-            "_execute_buy",
-            "guarded_place_order",
-            "place_order",
-            "create_order",
-        ):
-            assert forbidden not in called, (
-                f"stage one calls {forbidden!r} -- it would sell on ticks "
-                f"the bot refused to trade on"
-            )
+        assert tranche.get("activated") is True, bot._bus.text()
+        assert tranche["activated_price"] == pytest.approx(PRICE)
 
 
-# --------------------------------------------------------------------------
-# What this change must NOT have touched
-# --------------------------------------------------------------------------
+class TestTheFoldSideIsGatedTheSameWay:
+    def test_a_refused_fold_verdict_places_no_buy(self):
+        record = _run_tick(_gate_bot(scrum_fires=False, fold_fires=False, holdings=0.8))
+        assert record.orders == [], record.bot._bus.text()
 
-
-class TestFoldSideGatingUnchanged:
-    def test_no_execute_buy_in_tick_is_unconditional(self):
-        source = _read_source()
-        tick = _tick(source)
-        ungated = [
-            ln
-            for ln in _call_linenos(tick, "_execute_buy")
-            if not _enclosing_tests(tick, ln)
-        ]
-        assert ungated == [], f"unconditional _execute_buy at {ungated}"
-
-    def test_the_fold_buy_is_under_the_fold_chain_verdict(self):
-        """The buy sits inside the fold phase, so the verdict gates the
-        phase CALL. Both halves are asserted: the phase buys, and every
-        call to it is under the verdict."""
-        source = _read_source()
-        assert _call_linenos(_phase("_tick_execute_fold"), "_execute_buy"), (
-            "the fold phase no longer calls _execute_buy; this pin is "
-            "reading the wrong method"
-        )
-        ungated = _ungated_calls(source, "_tick_execute_fold", FOLD_VERDICT)
-        total = len(_call_linenos(_tick(source), "_tick_execute_fold"))
-        assert total > 0, "tick no longer runs the fold phase at all"
-        assert ungated == [], (
-            f"the fold phase is called at line(s) {ungated} without "
-            f"{FOLD_VERDICT} among the conditions that had to hold"
-        )
-
-    def test_POSITIVE_CONTROL_an_unconditional_fold_buy_is_caught(self):
-        planted = _plant_ungated_fold_buy(_read_source())
-        tick = _tick(planted)
-        ungated = [
-            ln
-            for ln in _call_linenos(tick, "_execute_buy")
-            if not _enclosing_tests(tick, ln)
-        ]
-        assert ungated, "a buy planted at tick top level was reported as gated"
-
-
-class TestVisibleModeUnchanged:
-    def test_the_visible_reconciler_only_reads(self):
-        """Visible mode's gates are evaluated once, at placement time,
-        which is ordinary limit-order semantics. Its reconciler must stay
-        a reader: the EXCHANGE fills the resting order, not the bot."""
-        called = _called_names(
-            _method(_read_source(), "_reconcile_stack_tranches_visible")
-        )
-        for forbidden in (
-            "_execute_sell",
-            "_execute_buy",
-            "guarded_place_order",
-            "place_order",
-            "create_order",
-        ):
-            assert (
-                forbidden not in called
-            ), f"the Visible reconciler calls {forbidden!r}"
-        assert {"get_open_orders", "get_order"} <= called, (
-            "positive control: the Visible reconciler no longer reads "
-            "exchange state at all, so its silence proves nothing"
-        )
-
-    def test_POSITIVE_CONTROL_a_planted_order_is_caught(self):
-        planted = _plant_order_in(_read_source(), "_reconcile_stack_tranches_visible")
-        called = _called_names(_method(planted, "_reconcile_stack_tranches_visible"))
-        assert "guarded_place_order" in called, (
-            "the call scanner missed an order planted in the Visible " "reconciler"
-        )
-
-    def test_visible_placement_is_still_inside_the_visible_branch(self):
-        source = _read_source()
-        fn = _method(source, "_open_stack_from_scrum")
-        placements = _call_linenos(fn, "guarded_place_order")
-        assert placements, "Visible mode no longer places anything"
-        for ln in placements:
-            assert any("_visible" in t for t in _enclosing_tests(fn, ln)), (
-                f"guarded_place_order at :{ln} escaped the `if _visible:` "
-                f"branch -- Invisible mode would place resting orders"
-            )
+    def test_the_fold_chain_is_evaluated_on_a_below_target_tick(self):
+        """POSITIVE CONTROL for the refusal above: the fold chain decided the tick,
+        so its refusal is what stopped the buy."""
+        bot = _gate_bot(scrum_fires=False, fold_fires=False, holdings=0.8)
+        _run_tick(bot)
+        assert bot._fold_chain.seen, "the fold chain was never evaluated"

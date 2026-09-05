@@ -81,10 +81,7 @@ clamp.
 
 from __future__ import annotations
 
-# The Minimum Opposing Trade Distance must stay inside these bounds for
-# a sane gate. Below 0 the gate would over-fire (a rebuy at or above the
-# tranche's own ref); above 50 it would lock out (demanding the price
-# halve before any tranche is eligible).
+# Clamp bounds, in percent, for the Minimum Opposing Trade Distance.
 OTD_MIN_PCT = 0.0
 OTD_MAX_PCT = 50.0
 

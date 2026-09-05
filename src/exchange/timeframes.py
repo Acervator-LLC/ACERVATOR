@@ -71,12 +71,8 @@ _AVAILABILITY: dict[str, frozenset[str]] = {
     "okx": frozenset(
         {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
     ),
-    # The eight venues below reached this map through the permissive
-    # fallback, which claimed all eleven timeframes for each. Six of
-    # them offer fewer. Measured 2026-08-28 from ccxt 4.5.76 by reading
-    # `exchange.timeframes` after a public `load_markets()`; ccxt is the
-    # client Acervator uses, so a timeframe it will not send is one the
-    # bot cannot obtain.
+    # Read from ccxt 4.5.76 `exchange.timeframes` after a public
+    # `load_markets()`.
     "bitfinex": frozenset(
         {"1m", "5m", "15m", "30m", "1h", "4h", "6h", "12h", "1d", "1w"}
     ),

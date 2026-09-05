@@ -1,15 +1,10 @@
-"""v3.23.72 — pin tests for the Fleet Replay sim infrastructure.
+"""Pin tests for the Fleet Replay sim infrastructure.
 
-Covers:
-    * CandleSeries cursor semantics (never exposes future candles).
-    * FleetSimExchange MARKET fill + balance ledger.
-    * FleetSimExchange LIMIT sweep (fills when candle crosses price).
-    * FleetSimExchange contract: get_ticker, get_ohlcv, get_balances,
-      get_open_orders, cancel_order.
-    * bot_state_loader schema handling.
-
-Fleet Replay tick-loop / GUI panel are visual + async — not covered
-by these tests (headless smoke in the panel file).
+``CandleSeries`` never exposes a candle past its cursor. ``FleetSimExchange``
+fills a MARKET order against the ledger, sweeps a LIMIT order when the candle
+crosses its price, and answers ``get_ticker``, ``get_ohlcv``, ``get_balances``,
+``get_open_orders`` and ``cancel_order``. ``bot_state_loader`` filters by mode
+and reads both state schemas, and ``FleetReplayPanel`` mounts headless.
 """
 
 from __future__ import annotations
@@ -41,10 +36,6 @@ from src.exchange.base import (  # noqa: E402
     OrderStatus,
     OrderType,
 )
-
-# --------------------------------------------------------------------- #
-# CandleSeries                                                          #
-# --------------------------------------------------------------------- #
 
 
 def _rows(n=10, base_ts=1_700_000_000_000, dt=3600_000):
@@ -101,11 +92,6 @@ def test_candle_series_sorts_chronologically():
     s = build_candle_series_from_rows("X/USD", unsorted_rows)
     stamps = list(s.iter_ts())
     assert stamps == [1000.0, 2000.0, 3000.0]
-
-
-# --------------------------------------------------------------------- #
-# FleetSimExchange                                                      #
-# --------------------------------------------------------------------- #
 
 
 def _ex_with_series(price_series):
@@ -218,11 +204,6 @@ def test_sim_exchange_get_markets_lists_wired_symbols():
     assert symbols == {"BTC/USD", "ETH/USD"}
 
 
-# --------------------------------------------------------------------- #
-# bot_state_loader                                                       #
-# --------------------------------------------------------------------- #
-
-
 def test_loader_filters_by_mode(tmp_path):
     payload = {
         "bots": {
@@ -302,9 +283,28 @@ def test_loader_survives_malformed_json(tmp_path):
     assert load_bot_configs_from_state(p) == []
 
 
-# --------------------------------------------------------------------- #
-# FleetReplayPanel smoke (headless)                                      #
-# --------------------------------------------------------------------- #
+def test_loader_all_lists_every_public_function_the_module_defines():
+    import inspect
+
+    from src.simulator.fleet import bot_state_loader as loader
+
+    defined = {
+        name
+        for name, obj in vars(loader).items()
+        if not name.startswith("_")
+        and inspect.isfunction(obj)
+        and obj.__module__ == loader.__name__
+    }
+    assert defined, "no public functions found; the comparison below would be vacuous"
+    exported = set(loader.__all__)
+    assert not (defined - exported), (
+        "__all__ omits public functions that callers import: "
+        f"{sorted(defined - exported)}"
+    )
+    assert not (exported - set(vars(loader))), (
+        "__all__ names something the module does not define: "
+        f"{sorted(exported - set(vars(loader)))}"
+    )
 
 
 def test_fleet_replay_panel_mounts(tmp_path, monkeypatch):
@@ -340,23 +340,14 @@ def test_fleet_replay_panel_mounts(tmp_path, monkeypatch):
     panel = FleetReplayPanel()
     panel._on_load_clicked()
     assert len(panel.get_loaded_configs()) == 1
-    # v3.23.79-A: bare-list retired for QTableWidget (operator called
-    # the old row rendering "sloppy" 2026-07-31).
     assert panel._fleet_table.rowCount() == 1
     assert "1 bot" in panel._status_lbl.text()
-    # v3.23.79-A: Start button is enabled after configs load
-    # (was gated in v3.23.72 before the tick controller existed).
     assert panel._start_btn.isEnabled() is True
 
 
-# ── v3.24.17: sim exchange call-signature parity ─────────────────
-
-
 def test_get_my_trades_accepts_params_kwarg():
-    """ScrummingBot.sync_ytd_trade_count calls get_my_trades with
-    params={"paginate": True, ...}. Before v3.24.17 the sim raised
-    TypeError on every bot on every sync, so counts never populated
-    and each run emitted 35 identical failures."""
+    """ScrummingBot.sync_ytd_trade_count calls get_my_trades with a
+    ``params`` keyword, so the sim exchange must accept one."""
     import asyncio as _a
     from src.simulator.fleet.sim_exchange import FleetSimExchange
     from src.simulator.fleet.candle_series import build_candle_series_from_rows
@@ -399,14 +390,6 @@ def test_fill_carries_candle_address():
     addr = (trade.raw or {}).get("candle_address", "")
     assert addr.endswith("_BTC"), f"bad address {addr!r}"
     assert (trade.raw or {}).get("candle_index") == 2
-
-
-# ── v3.24.18: gate vocabulary rebuilt from the bot's real blockers ──
-# The prior 5-gate symmetric model was wrong three ways: "VOL" was a
-# phantom (volume guard is disabled by MEM-259, no blocker mentions
-# volume), "TGT" was shown on the fold side which has no delta check,
-# and nine real gates had no representation — including the
-# opposing-trade-distance hysteresis the operator named directly.
 
 
 def test_no_phantom_volume_gate():

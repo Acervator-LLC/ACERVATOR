@@ -59,7 +59,7 @@ class PerformanceSubmission:
     starting_value: float
     final_value: float
     advantage_usd: float  # final_value - starting_value
-    advantage_pct: float  # advantage_usd / starting_value * 100
+    advantage_pct: float  # advantage_usd / starting_value, as a percent
     sharpe: float  # if available
     submitted_at: float = field(default_factory=time.time)
     # The full log is kept private — only the root is submitted
@@ -121,11 +121,9 @@ class CompetitionEngine:
     def register_bot(
         self, identity: BotIdentity, capital_usd: float, config: Optional[dict] = None
     ) -> BotRegistration:
-
-        # sadp: R28 R29  # register: fail-loudly if not REGISTRATION(R28) idempotent(R29)
         """
         Register a bot for this competition.
-        R28: Raises if competition is not in REGISTRATION status.
+        Raises if competition is not in REGISTRATION status.
         """
         if self.status != CompetitionStatus.REGISTRATION:
             raise RuntimeError(f"Cannot register: competition is {self.status.value}")
@@ -146,11 +144,9 @@ class CompetitionEngine:
         return reg
 
     def open(self):
-
-        # sadp: R28  # open: fail-loudly if <2 bots(R28)
         """
         Close registration and open trading.
-        R28: Raises if fewer than 2 bots registered.
+        Raises if fewer than 2 bots registered.
         """
         if len(self._registrations) < 2:
             raise RuntimeError(
@@ -171,11 +167,9 @@ class CompetitionEngine:
         role: str = "UNKNOWN",
         skip_sig: bool = False,
     ) -> TradeRecord:
-
-        # sadp: R28 R29 R33  # fail-loudly-on-wrong-competition(R28) skip-duplicate-seq(R29) log-append-only(R33)
         """
         Record a signed trade in the bot's Merkle log.
-        R28: Raises if bot is not registered or competition is not ACTIVE.
+        Raises if bot is not registered or competition is not ACTIVE.
         """
         if self.status != CompetitionStatus.ACTIVE:
             raise RuntimeError(
@@ -203,8 +197,6 @@ class CompetitionEngine:
         return record
 
     def close(self, market_regime: str = "ANY"):
-
-        # sadp: R28 R33  # close: fail-loudly if not ACTIVE(R28) immutable(R33)
         """Close trading and move to SUBMISSION phase."""
         if self.status != CompetitionStatus.ACTIVE:
             raise RuntimeError(f"Cannot close: status={self.status.value}")
@@ -221,12 +213,10 @@ class CompetitionEngine:
         final_value: float,
         sharpe: float = 0.0,
     ) -> PerformanceSubmission:
-
-        # sadp: R28 R29 R33  # submit: fail-loudly on empty log(R28) idempotent(R29) immutable(R33)
         """
         Submit a performance claim for adjudication.
         The Merkle root proves the trades happened; the values are the claim.
-        R28: Raises if bot has no log or log is empty.
+        Raises if bot has no log or log is empty.
         """
         if self.status != CompetitionStatus.SUBMISSION:
             raise RuntimeError(f"Cannot submit: status={self.status.value}")
@@ -256,13 +246,11 @@ class CompetitionEngine:
     # ── Adjudication phase ────────────────────────────────────────────────────
 
     def adjudicate(self) -> CompetitionResult:
-
-        # sadp: R28 R29 R33  # fail-loudly(R28) idempotent-via-status-check(R29) results-immutable(R33)
         """
         Rank all submissions by advantage%, award tokens to the winner.
-        R29: Idempotent — calling twice returns the same result.
+        Idempotent — calling twice returns the same result.
         """
-        if self.status == CompetitionStatus.ADJUDICATED:
+        if self.status == CompetitionStatus.ADJUDICATED and self._result is not None:
             return self._result
 
         if self.status != CompetitionStatus.SUBMISSION:
@@ -389,7 +377,6 @@ class CompetitionEngine:
 
     def _save_result(self):
 
-        # sadp: R28 R33  # result save: fail-loudly(R28) append-only(R33)
         if not self._result:
             return
         self._results_dir.mkdir(parents=True, exist_ok=True)

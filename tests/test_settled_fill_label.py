@@ -24,23 +24,20 @@ message, captured by driving the pre-U1 module.
 
 from __future__ import annotations
 
-import ast
 import inspect
-from pathlib import Path
 from typing import Any
 
 import pytest
 
 from src.trading.scrumming_bot import ScrummingBot
+from tests.test_manual_fire_settled_fill import fire_manual
 
-# Distinguishes "no label argument at all" from "label=None". Both must
-# yield the manual default, but they are different call shapes and the
-# table has to cover each.
+# Distinguishes "no label argument" from "label=None": two call shapes,
+# one default.
 _ABSENT = object()
 
-# Captured from the module as it stood before U1, driven with
-# requested=2.5 and quoted=0.00004321. A change to any byte of this is
-# a change the operator would read in bot.log.
+# Captured with requested=2.5 and quoted=0.00004321; every byte is a
+# string the operator reads in bot.log.
 LIVE_FALLBACK_MESSAGE = (
     "MANUAL FIRE: exchange reported no settled fill for order oid-1; "
     "booking the ESTIMATE (2.500000 @ $0.00004321) instead of a "
@@ -217,45 +214,35 @@ async def test_POSITIVE_CONTROL_the_prefix_check_can_go_red() -> None:
 # ── the manual call sites still pass nothing ────────────────────────
 
 
-def _manual_rebalance_settled_fill_calls() -> list[ast.Call]:
-    """Every ``self._settled_fill(...)`` call inside the manual
-    rebalance, counted over the AST rather than over substrings: an
-    earlier test in this codebase counted substrings and read 3 for 2
-    real calls, because the third was the word inside a comment."""
-    source = Path(
-        inspect.getsourcefile(ScrummingBot._execute_manual_rebalance)
-    ).read_text(encoding="utf-8")
-    method: Any = next(
-        node
-        for node in ast.walk(ast.parse(source))
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == "_execute_manual_rebalance"
-    )
-    return [
-        node
-        for node in ast.walk(method)
-        if isinstance(node, ast.Call)
-        and getattr(node.func, "attr", "") == "_settled_fill"
-    ]
+def _manual_fallback_line(holdings: float) -> str:
+    """The fallback line one driven Manual Fire wrote to the bus.
 
-
-def test_POSITIVE_CONTROL_the_call_site_scanner_finds_the_calls() -> None:
-    """A scanner that finds nothing would pass the next test vacuously."""
-    assert len(_manual_rebalance_settled_fill_calls()) == 2
-
-
-def test_the_manual_path_passes_no_label() -> None:
-    """This is what makes U1 a zero-behaviour-change unit: the two
-    existing call sites are untouched, so the operator reads exactly the
-    string they have always produced.
-
-    If a later unit decides to label the manual rebalance, that IS a
-    behaviour change. Restate this pin with the reason; do not delete
-    it.
+    ``fire_manual`` runs the real ``_execute_manual_rebalance`` against a venue
+    that never settles, so ``_settled_fill`` reaches its estimate branch.
     """
-    for call in _manual_rebalance_settled_fill_calls():
-        assert not any(kw.arg == "label" for kw in call.keywords)
-        assert len(call.args) == 4
+    bot = fire_manual(holdings, exchange=_SilentExchange())
+    lines = [m.split("|", 1)[1] for m in bot._bus.messages if "ESTIMATE" in m]
+    assert len(lines) == 1, f"expected one estimate line, saw {lines}"
+    return lines[0]
+
+
+@pytest.mark.parametrize("holdings", [120.0, 80.0])
+def test_POSITIVE_CONTROL_a_driven_fire_reaches_the_fallback(holdings: float) -> None:
+    """A fire that settled would make the label assertion vacuous."""
+    assert "ESTIMATE" in _manual_fallback_line(holdings)
+
+
+@pytest.mark.parametrize("holdings", [120.0, 80.0])
+def test_the_manual_path_passes_no_label(holdings: float) -> None:
+    """Both branches leave the prefix at ``_SETTLED_FILL_DEFAULT_LABEL``.
+
+    A label passed at either call site would put a different token in front of
+    the colon, which is the string the operator reads in bot.log.
+    """
+    line = _manual_fallback_line(holdings)
+    assert line.startswith(
+        f"{ScrummingBot._SETTLED_FILL_DEFAULT_LABEL}: "
+    ), f"the manual path labelled its settled fill: {line!r}"
 
 
 def test_settled_fill_takes_label_as_an_optional_keyword() -> None:

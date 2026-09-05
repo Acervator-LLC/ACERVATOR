@@ -34,26 +34,11 @@ class MemorisedTrade:
 
 @dataclass(frozen=True)
 class SettledSellFee:
-    """The fee the VENUE reported for one settled sell.
+    """The fee the venue reported for one settled sell.
 
-    issue #133 unit 9b. A sell is credited NET: the venue keeps its
-    fee out of the proceeds. The fold-tranche loops valued a sell at
-    ``units x fill_price``, which is the GROSS notional, so every
-    tranche was booked richer than the wallet actually got.
-
-    This record carries the venue's own number from the point an
-    order settles to the point a tranche is valued. It NEVER carries
-    a fee derived from ``config.trading_fee_pct``: that is the bot's
-    configured estimate, the venue charges what it charges, and
-    synthesising one in place of the other books a number the
-    exchange never charged.
-
-    ``units`` and ``price`` identify the fill this fee belongs to. A
-    consumer that cannot match both books the gross, because a fee
-    from some other order is not this order's fee.
-
-    ``reported`` is False when the venue gave no fee. That case books
-    the gross and says so; it does not fall back to a rate.
+    ``units`` and ``price`` identify the fill, ``reported`` is False when the
+    venue gave no fee, and ``fee_amount`` is never derived from
+    ``config.trading_fee_pct``.
     """
 
     units: float
@@ -66,13 +51,11 @@ class SettledSellFee:
 class ExecutionEngineMixin:
     """Place orders at the venue and book what the venue reports back.
 
-    Every method here runs downstream of a gate decision; none of them
-    decides whether to trade.
+    ``_execute_sell``, ``_execute_buy``, ``_execute_detonation`` and
+    ``_execute_manual_rebalance`` each run after a tick has chosen the trade.
     """
 
-    # Supplied by ScrummingBot at runtime; declared so a type
-    # checker can resolve them. Annotations only: no attribute is
-    # created and the runtime base stays `object`.
+    # ScrummingBot supplies these at runtime; the annotations create no attributes.
     _anchor_target_balance: float
     _apply_fold_target_growth: Callable[..., Any]
     _apply_scrum_fold_pct: Callable[..., None]
@@ -123,11 +106,7 @@ class ExecutionEngineMixin:
     reset_swos_cycle: Callable[..., None]
     stats: Any
 
-    # issue #133 unit 9b -- a CLASS-LEVEL default, not only an
-    # `__init__` one. A sell must never raise `AttributeError` on a bot
-    # built without `__init__`, and both the suite and the restore
-    # paths build them that way. `None` is immutable and every write
-    # goes to the instance, so no bot can read another bot's fee.
+    # Class-level default; every write lands on the instance, never on the class.
     _last_sell_venue_fee: Optional["SettledSellFee"] = None
 
     _SETTLED_FILL_DEFAULT_LABEL = "MANUAL FIRE"
@@ -142,14 +121,10 @@ class ExecutionEngineMixin:
 
     @classmethod
     def _settled_fill_label(cls, label: object) -> str:
-        """Resolve ``label`` against the closed set above. Never raises.
+        """Resolve ``label`` against ``_SETTLED_FILL_LABELS``, never raising.
 
-        This runs AFTER an order is already placed. Raising on a bad
-        label would abandon the accounting for a trade that really
-        happened, which is strictly worse than logging the default.
-        ``None`` and ``""`` are accepted and mean "use the default".
-        Anything else unrecognised also degrades to the default, and
-        says so in the developer log so the caller gets fixed.
+        ``None`` and ``""`` return ``_SETTLED_FILL_DEFAULT_LABEL`` silently, and
+        any other unrecognised value returns it after a warning.
         """
         if isinstance(label, str) and label in cls._SETTLED_FILL_LABELS:
             return label
@@ -171,23 +146,11 @@ class ExecutionEngineMixin:
         quoted_price: float,
         label: str | None = None,
     ):
-        """Re-read a just-placed order so accounting books the REAL fill.
+        """Re-read a just-placed ``order`` until the venue reports a fill.
 
-        A market order is not settled the instant ``create_order``
-        returns, so this polls briefly rather than reading once.
-
-        ``label`` names the CALLER in that fallback line, drawn from a
-        closed set (see ``_settled_fill_label``). It is ABSENT on the
-        manual path, which keeps the message byte-identical to what the
-        operator has always read there.
-
-        Returns ``(fill_amount, fill_price, is_real)``.
-
-        issue #133 unit 9b -- also records the venue's fee, taken from
-        the SAME order object the accepted fill came from. That is the
-        re-read order when a re-read is what settled, not the object
-        the caller passed in. An ESTIMATE clears the record: the venue
-        confirmed nothing, so there is no fee to book.
+        Returns ``(fill_amount, fill_price, is_real)``, calls
+        ``_record_venue_fee`` on whichever order object settled, and clears
+        ``_last_sell_venue_fee`` when it books an estimate.
         """
         self._last_sell_venue_fee = None
 
@@ -251,39 +214,10 @@ class ExecutionEngineMixin:
         return _quote.strip().upper()
 
     def _record_venue_fee(self, order, units: float, price: float) -> None:
-        """Store the fee the VENUE reported for a just-settled sell.
+        """Store the fee the venue reported for a just-settled sell.
 
-        issue #133 unit 9b. Called from the two places that hold a
-        settled order object: `_execute_sell`, which serves SCRUM and
-        DIST, and `_settled_fill`, which serves the manual paths. It
-        reads `order.fee` and `order.fee_currency` only. The connector
-        fills both from the venue's own `fee.cost` / `fee.currency`
-        (`CCXTConnector._parse_order` in `src/exchange/ccxt_connector.py`),
-        so nothing here is computed.
-
-        A BUY clears the record instead of writing it. Sale proceeds
-        are the only consumer and a buy fee is not a sale fee.
-
-        WHAT REACHES THIS METHOD ON COINBASE, ESTABLISHED FROM SOURCE
-        rather than from a live call. `ccxt.coinbase.create_order`
-        returns `parse_order(response["success_response"])`, and that
-        body carries four keys -- `order_id`, `product_id`, `side`,
-        `client_order_id`. There is no `total_fees` in it, so
-        `fee.cost` parses to None and `Order.fee` is 0.0 on EVERY
-        just-placed Coinbase order. `fetch_order` is a different
-        endpoint and its documented body does carry `total_fees`;
-        whether Coinbase has settled a NON-ZERO value into it seconds
-        after a market fill is unobserved and is not assumed here.
-
-        So on live Coinbase the SCRUM and DIST paths, which read the
-        placed order and never re-read it, record no fee and book the
-        gross -- and say so, every time, in the operator's log. That
-        is the specified no-fee behaviour, not a silent one. The
-        manual paths re-read through `_settled_fill` and are the only
-        ones a Coinbase fee can currently reach.
-
-        Never raises. The order already executed, and losing the
-        accounting for a real trade is worse than losing a fee.
+        Reads ``order.fee`` and ``order.fee_currency`` only, computes nothing,
+        clears ``_last_sell_venue_fee`` on a buy, and never raises.
         """
         _side = getattr(order, "side", None)
         _side_txt = str(getattr(_side, "value", _side) or "").lower()
@@ -313,11 +247,8 @@ class ExecutionEngineMixin:
     def _take_venue_fee(self, units: float, price: float) -> Optional[SettledSellFee]:
         """Consume the stored fee, and only for the fill it belongs to.
 
-        Single use: the record is cleared whether or not it matched, so
-        one venue fee can never be subtracted from two valuations. A
-        record whose units or price disagree with the fill being valued
-        belongs to some other order, so it is discarded rather than
-        applied.
+        ``_last_sell_venue_fee`` is cleared on every call, and a record whose
+        ``units`` or ``price`` disagree with this fill returns None.
         """
         _rec = self._last_sell_venue_fee
         self._last_sell_venue_fee = None
@@ -337,29 +268,11 @@ class ExecutionEngineMixin:
     def _settled_sale_proceeds(
         self, units: float, price: float, *, label: str
     ) -> float:
-        """Value a settled sell at what the venue actually credited.
+        """Value a settled sell at ``units`` times ``price`` minus the venue fee.
 
-        issue #133 unit 9b. The three fold-tranche loops booked
-        `units x fill_price`, the GROSS notional. A venue credits the
-        NET: it keeps its fee out of the proceeds.
-
-        THE NUMBERS, EACH WITH ITS PROVENANCE. Bot c8e5c5db,
-        2026-08-26 21:50:57, 473 CHIP at $0.03376:
-
-        * $15.96848 booked gross -- LOGGED, `trade.log` and
-          `pnl/daily/2026-08-26.ndjson`, both carrying no fee field;
-        * 1.2% -- the venue's own rate, read off Coinbase's CSV export
-          of CHIP fills, 92 of 92 August 2026 fills at exactly 1.2000%
-          of subtotal, both sides;
-        * $15.77686 net -- INFERRED from those two. The export ends
-          2026-08-20, so the credited amount for this trade itself is
-          recorded nowhere and is not claimed as measured.
-
-        Returns the gross MINUS the fee the venue reported. Books the
-        gross, and emits the reason, when that fee cannot be used. It
-        never falls back to `config.trading_fee_pct`: that value was
-        1.6 on the measured trade and the venue charged 1.2, so a
-        synthesised fee books a number the exchange never charged.
+        ``_take_venue_fee`` supplying no usable fee books the gross and emits
+        the reason to ``bot.log``, and ``config.trading_fee_pct`` is never
+        substituted.
         """
         _units = float(units)
         _price = float(price)
@@ -411,39 +324,12 @@ class ExecutionEngineMixin:
     async def _execute_manual_rebalance(
         self, ticker, caller_intent: str = "manual_button"
     ) -> None:
-        """Rebalance holdings to target in one shot.
+        """Move holdings back to ``_target_balance`` with one market order.
 
-        Invoked from tick() when self._manual_fire_pending is True
-        (operator clicked Manual Fire), AND from two autonomous code
-        paths that piggyback on the same rebalance-to-center math:
-        Wire Stack Fire (L4213) and Max Cartridge Fire (L4477).
-
-          - ``"manual_button"`` (default) — operator clicked Fire.
-            Emits ``type="MANUAL_SCRUM"`` / ``"MANUAL_FOLD"`` with
-            ``operator_initiated=True``.
-          - ``"wire_stack"`` — autonomous Wire Stack Fire (L4213).
-            Emits ``type="WIRE_STACK_SCRUM"`` / ``"WIRE_STACK_FOLD"``
-            with ``operator_initiated=False``.
-          - ``"max_cartridge"`` — autonomous Max Cartridge Fire
-            (L4477). Emits ``type="CARTRIDGE_SCRUM"`` /
-            ``"CARTRIDGE_FOLD"`` with ``operator_initiated=False``.
-
-        Unknown values raise ``ValueError`` (fail-loud so the next
-        caller can't silently inherit the wrong attribution).
-
-        Semantic:
-          - Computes delta_usd = current_value - target_balance at
-            ticker.last
-          - delta > 0 → sell delta/price asset at MARKET
-          - delta < 0 → buy |delta|/price asset at MARKET (clipped by
-            available USD)
-          - |delta| within 1% dust band → no-op with operator log
-
-        The operator_initiated flag makes operator-clicked trades
-        visible to downstream audits (equity curve, P/L attribution,
-        reconciliation tools) so a manual intervention doesn't look
-        identical to an autonomous Wire Stack or Max Cartridge fire
-        in the trade log.
+        ``caller_intent`` picks the trade labels and the
+        ``operator_initiated`` flag out of ``_INTENT_MAP`` and raises
+        ``ValueError`` when unknown, and a delta inside
+        ``manual_fire_dust_band`` is a logged no-op.
         """
 
         _INTENT_MAP = {
@@ -567,27 +453,17 @@ class ExecutionEngineMixin:
                     )
                     return
 
-        if abs(delta_usd) < dust:
+        if abs(delta_usd) <= dust:
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
                     f"MANUAL FIRE: already within dust band "
-                    f"(|delta|=${abs(delta_usd):.4f} < "
+                    f"(|delta|=${abs(delta_usd):.4f} <= "
                     f"${dust:.2f}). No-op."
                 ),
             )
             return
-
-        class _ManualSummary:
-            consensus_confidence = 1.0
-            direction = None
-            raw_votes: dict = {}
-
-            def __repr__(self) -> str:
-                return "<ManualSummary operator_initiated=True>"
-
-        _ManualSummary()
 
         if delta_usd > 0:
             _denom_sc = price * _qrate
@@ -647,9 +523,6 @@ class ExecutionEngineMixin:
             if fill_price <= 0:
                 fill_price = price
 
-            # issue #133 unit 9b -- the venue credits the NET,
-            # exactly as on the SCRUM and DIST paths. `_settled_fill`
-            # carried the fee from whichever order object settled.
             fill_usd = self._settled_sale_proceeds(
                 fill_amount, fill_price, label=_scrum_label
             )
@@ -686,22 +559,12 @@ class ExecutionEngineMixin:
                     self._main_lots.remove(lot)
                 new_tranches_count += 1
 
-            # issue #133 unit 2 -- the third build loop, same rule. Two
-            # of this method's three callers fire autonomously, so
-            # leaving it out would bound the count everywhere the
-            # operator does not click and nowhere he does.
+            # Returns how many tranches the merge removed.
             new_tranches_count -= self._bound_new_fold_tranches(
                 _manual_tranche_count_before
             )
 
-            # 2026-08-12 — MIRRORED FROM THE SCRUM PATH. This method
-            # serves three callers -- Manual Fire, Wire Stack and Max
-            # Cartridge -- and two of the three fire autonomously, so
-            # the gap was never "manual only". `fill_usd` is already net
-            # of Smart Wire routing and is the same figure the build
-            # loop divided, so the units test inside the helper reads
-            # this sale's own rate. Runs before the _fold_queue_usd sum
-            # below so the derived scalar reports the scaled queue.
+            # Must precede the _fold_queue_usd sum below.
             self._apply_scrum_fold_pct(
                 _manual_tranche_count_before, fill_usd, fill_amount
             )
@@ -714,10 +577,6 @@ class ExecutionEngineMixin:
             )
             new_tranches_count -= _merged_n
 
-            # issue #133 unit 11 -- the parked pool exists only while the
-            # fold queue is empty. This sell has just filled it, so the
-            # pool lands here. After the top-up: the merge blends `ref`
-            # from `usd / ref` per record, and wire USD carries no units.
             self._land_pending_wire_credits()
 
             self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
@@ -1068,8 +927,7 @@ class ExecutionEngineMixin:
                 for t in self._fold_discharge_order():
                     if remaining <= 1e-12:
                         break
-                    # Finite, per _fold_discharge_order. Coerced so the
-                    # write-back below is float arithmetic.
+                    # _fold_discharge_order yields finite units.
                     t_units = float(t.get("units", 0.0) or 0.0)
                     take = min(t_units, remaining)
                     if take <= 1e-12:
@@ -1204,21 +1062,11 @@ class ExecutionEngineMixin:
             self._last_trade_price = fill_price
 
     async def _execute_detonation(self, ticker) -> None:
-        """Execute the detonation harvest.
+        """Sell everything above ``_anchor_target_balance`` and reset to it.
 
-        Operator Q3: "Sell everything above the ANCHOR, not above
-        current target (locks in full gains)."
-        Operator post-detonation semantic: "Yes — reset target to
-        anchor. 'Locks in' means fully reset; re-accumulate from
-        scratch."
-
-        Effect:
-          1. Compute excess = current_holdings_value - anchor
-          2. MARKET SELL excess/price asset
-          3. Reset self._target_balance = anchor (full reset)
-          4. Clear fold queue (no re-accumulation pressure)
-          5. Tag the trade and resulting tranches auto_detonated=True
-             for downstream audit visibility
+        Clears ``_fold_tranches`` and ``_standing_surplus_usd``, reseeds
+        ``_main_lots`` at the fill price, and emits ``trade.filled`` carrying
+        ``auto_detonated``.
         """
         price = getattr(ticker, "last", None)
         if not price or price <= 0:
@@ -1344,7 +1192,7 @@ class ExecutionEngineMixin:
             )
         self._fold_tranches.clear()
         self._fold_queue_usd = 0.0
-        float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0)
+        _discharged_surplus = float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0)
         self._standing_surplus_usd = 0.0
         try:
             self.stats.standing_surplus_usd = 0.0
@@ -1372,8 +1220,9 @@ class ExecutionEngineMixin:
                 f"${fill_price:.8f} = ${fill_usd:.2f}. "
                 f"target_balance reset ${prior_target:.2f} → "
                 f"${self._anchor_target_balance:.2f} (anchor). "
-                f"Fold queue cleared. Bot will re-accumulate "
-                f"from scratch on next dip."
+                f"Fold queue cleared. Standing surplus "
+                f"${_discharged_surplus:.4f} discharged. "
+                f"Bot will re-accumulate from scratch on next dip."
             ),
         )
 
@@ -1403,14 +1252,10 @@ class ExecutionEngineMixin:
         summary: VotingSummary,
         bypass_stack: bool = False,
     ) -> Optional[float]:
-        """Execute a sell order. Returns actual fill price captured from
-        original semantics.
+        """Place a market sell and return the fill price, or None when refused.
 
-        issue #133 unit 9b -- also records the fee the venue reported
-        for the settled order, so the SCRUM and DIST fold loops can
-        value the sale at what the wallet was credited. The record is
-        cleared on entry: a sell that never reaches the exchange must
-        not leave the previous sell's fee readable.
+        ``_last_sell_venue_fee`` is cleared on entry and written by
+        ``_record_venue_fee`` once the venue reports a settled order.
         """
         self._last_sell_venue_fee = None
 
@@ -1647,9 +1492,7 @@ class ExecutionEngineMixin:
             )
             if not actual_fill or actual_fill <= 0:
                 actual_fill = price
-            # issue #133 unit 9b -- the only point on the SCRUM and
-            # DIST paths that holds the settled order, so the venue's
-            # fee is carried from here.
+            # The only point on the SCRUM and DIST paths holding the settled order.
             self._record_venue_fee(order, amount, actual_fill)
             slippage_pct = ((actual_fill - price) / price * 100.0) if price > 0 else 0.0
 
@@ -1719,19 +1562,11 @@ class ExecutionEngineMixin:
         *,
         path: str,
     ) -> tuple[Optional[float], str]:
-        """Fail-closed ScrummingBot wrapper around the generalized
-        buy-safety helper at
-        ``src/trading/buy_safety.py::verify_buy_safe_or_refuse``.
+        """Check the position through ``verify_buy_safe_or_refuse``.
 
-        Returns ``(verified_units, refuse_reason)``. If
-        ``refuse_reason`` is non-empty, the caller MUST refuse the
-        buy and emit the reason to ``bot.log``. Otherwise
-        ``verified_units`` is the bot's current position in
-        ``target_asset`` units (may be ``0.0`` for legitimately-empty).
-
-        ScrummingBot's expected-units source: ``sum(lot["units"]
-        for lot in self._main_lots)`` — the bot's full attributed
-        position across all open lots.
+        Returns ``(verified_units, refuse_reason)`` for ``path``, with the
+        expected units summed from ``_main_lots``, and a non-empty
+        ``refuse_reason`` obliges the caller to refuse the buy.
         """
         from ..buy_safety import verify_buy_safe_or_refuse
 
@@ -1752,10 +1587,11 @@ class ExecutionEngineMixin:
         summary: VotingSummary,
         trace_context: Optional[dict] = None,
     ) -> Optional[float]:
-        """Execute a buy order. Returns actual fill price captured from
-        the exchange response. See _execute_sell docstring for the
-        Chunk 6 fill-price-capture design.
-        has full causal context on every buy."""
+        """Place a market buy and return the fill price, or None when refused.
+
+        ``trace_context`` supplies the ``path`` named in the buy trace this
+        emits to ``bot.log``.
+        """
 
         try:
             _ctx = dict(trace_context or {})

@@ -42,11 +42,6 @@ from ..core.privacy_mask_registry import (
 
 logger = logging.getLogger("acervator.gui")
 
-
-# ---------------------------------------------------------------------------
-# UNIT 1 — durable per-bot TA reads, stored outside bot_state.json.
-# ---------------------------------------------------------------------------
-
 #: Sidecar directory name, created under the live StateManager's dir.
 _TA_SNAPSHOT_DIRNAME = "ta_snapshots"
 
@@ -111,11 +106,7 @@ def _json_safe(value: object) -> object:
     if value is None or kind is str or kind is bool or kind is int:
         return value
     if kind is float and isinstance(value, float):
-        # `kind is float` plus `isinstance` narrows the type for the
-        # checkers without a suppression comment.
-        #
-        # NaN and the infinities are not valid JSON; json.dumps would
-        # emit them anyway, so they are dropped here.
+        # math.isfinite drops NaN and the infinities, which are not valid JSON.
         return value if math.isfinite(value) else None
     if isinstance(value, dict):
         return {str(k): _json_safe(v) for k, v in value.items()}
@@ -226,8 +217,6 @@ def load_ta_snapshot(
     except (TypeError, ValueError):
         return None
     if taken_at <= 0:
-        # A reading with no usable timestamp cannot carry its age, so
-        # it is refused rather than shown as current.
         return None
     return {
         "bot_id": str(payload.get("bot_id", bot_id)),
@@ -246,8 +235,7 @@ def format_age(seconds: float) -> str:
     if total != total:  # NaN
         return "age unknown"
     if total < 0:
-        # A snapshot timestamped in the future means the clock moved;
-        # report that instead of a negative age.
+        # A negative age means the snapshot is timestamped ahead of now.
         return "clock skew"
     if total < 5:
         return "just now"
@@ -272,10 +260,6 @@ def age_phrase(seconds: float) -> str:
         return text
     return f"{text} ago"
 
-
-# ---------------------------------------------------------------------------
-# UNIT 2 — one cause per empty state, never a disjunction of causes.
-# ---------------------------------------------------------------------------
 
 _NO_DATA_CAUSE_TEXT: dict[str, str] = {
     "no_selection": "no bot is selected — pick one from the Bot dropdown.",
@@ -350,6 +334,49 @@ def describe_no_data_cause(cause: str, detail: dict | None = None) -> str:
         return _UNKNOWN_CAUSE_TEXT.format(cause=str(cause))
 
 
+_U64_MASK = 0xFFFFFFFFFFFFFFFF
+_SPLITMIX_GAMMA = 0x9E3779B97F4A7C15
+_SPLITMIX_MIX_A = 0xBF58476D1CE4E5B9
+_SPLITMIX_MIX_B = 0x94D049BB133111EB
+_MANTISSA_SHIFT = 11
+_MANTISSA_SCALE = 1.0 / (1 << 53)
+
+
+class _DemoWalk:
+    """The number source behind ``_generate_demo_ta``'s synthetic candles.
+
+    ``uniform`` and ``gauss`` stand in for the same-named methods of
+    ``random.Random``, so one seed replays one series and the panel's
+    preview holds still across refreshes.
+    """
+
+    def __init__(self, seed: int) -> None:
+        self._state = int(seed) & _U64_MASK
+
+    def _next_u64(self) -> int:
+        """Advance the SplitMix64 state and return the mixed 64-bit output."""
+        self._state = (self._state + _SPLITMIX_GAMMA) & _U64_MASK
+        word = self._state
+        word = ((word ^ (word >> 30)) * _SPLITMIX_MIX_A) & _U64_MASK
+        word = ((word ^ (word >> 27)) * _SPLITMIX_MIX_B) & _U64_MASK
+        return word ^ (word >> 31)
+
+    def _unit(self) -> float:
+        """Return the next value in [0.0, 1.0), 53 bits wide."""
+        return (self._next_u64() >> _MANTISSA_SHIFT) * _MANTISSA_SCALE
+
+    def uniform(self, low: float, high: float) -> float:
+        """Return the next value in [low, high)."""
+        return low + (high - low) * self._unit()
+
+    def gauss(self, mu: float, sigma: float) -> float:
+        """Return the next normal deviate, Box-Muller over two units."""
+        first = self._unit() or _MANTISSA_SCALE
+        second = self._unit()
+        radius = math.sqrt(-2.0 * math.log(first))
+        return mu + sigma * radius * math.cos(2.0 * math.pi * second)
+
+
 try:
     from PySide6.QtWidgets import (
         QWidget,
@@ -379,12 +406,13 @@ except ImportError:
 
 if _HAS_QT:
 
-    # Lightweight privacy-mask dot for the IVP bot selector; duplicates
-    # main_window's PrivacyDot locally to avoid a circular import.
-    # Color contract matches main_window's PrivacyDot:
-    #   BLUE       = field is REVEALED. Click to mask.
-    #   DARK-BLUE  = field is MASKED.   Click to reveal.
     class _IVPPrivacyDot(QPushButton):
+        """A dot toggling one ``field_id`` in the privacy-mask registry.
+
+        ``refresh`` shows the state as the button's background colour;
+        ``widgets.privacy_dot.PrivacyDot`` shows it as a glyph instead.
+        """
+
         _SIZE_PX = 12
 
         def __init__(self, field_id: str, on_toggle=None, parent=None):
@@ -449,9 +477,6 @@ if _HAS_QT:
         ("rsi", "RSI", "M"),
     ]
 
-    # Row A: first 6 indicators plus aggregate columns (Net/Comp/Conf).
-    # Row B: last 6 indicators, no aggregates. Each mini-panel gets its
-    # own compact QTableWidget stacked above its own ConfidenceBarsWidget.
     _ROW_A_INDICATOR_COLS = INDICATOR_COLS[:6]  # BB VTX MACD SRsi Ichi Vol
     _ROW_B_INDICATOR_COLS = INDICATOR_COLS[6:]  # Sling ADX STrd ZSc KER RSI
 
@@ -682,20 +707,13 @@ if _HAS_QT:
             # TA snapshot directory; None until set_ta_state_dir()
             # injects the live StateManager path.
             self._ta_state_dir: Path | None = None
-            # bot_id → taken_at last written; skips rewriting an
-            # unchanged reading, avoiding 30 writes/minute per bot
-            # on the 2 s dashboard tick.
+            # bot_id → taken_at of the last snapshot written for it.
             self._ta_written_fingerprint: dict[str, float] = {}
-            # bot_id → loaded snapshot, or None meaning already
-            # checked and absent; keeps the no-data path off disk
-            # each tick.
+            # bot_id → its snapshot; None means read once and absent.
             self._ta_snapshot_cache: dict[str, dict | None] = {}
-            # UNIT 2 — last cause token and rendered sentence, held
-            # as attributes so a test can read the decision.
             self._no_data_cause: str = ""
             self._no_data_message: str = ""
-            # True while the table is showing a STORED reading rather
-            # than a live one.
+            # True while the table shows a stored reading, not a live one.
             self._showing_stored: bool = False
             from PySide6.QtWidgets import QSizePolicy
 
@@ -723,9 +741,6 @@ if _HAS_QT:
             self._bot_selector.addItem("(select a bot)", "")
             self._bot_selector.currentIndexChanged.connect(self._on_bot_selected)
             header.addWidget(self._bot_selector)
-            # Toggling masks the bot-selector dropdown text and symbol
-            # label; the dropdown's bot_id userData stays intact for
-            # selection.
             self._privacy_dot = _IVPPrivacyDot(
                 "ivp.bot_selector", on_toggle=self._apply_privacy_mask
             )
@@ -742,8 +757,7 @@ if _HAS_QT:
             header.addWidget(self._summary_label)
             layout.addLayout(header)
 
-            # UNIT 1 — amber staleness banner; shown only when the
-            # panel renders a stored (non-live) reading.
+            # Amber staleness banner, shown only for a stored reading.
             self._staleness_label = QLabel("")
             self._staleness_label.setStyleSheet(
                 "color: #ffb020; font-family: Consolas; font-size: 10px; "
@@ -788,9 +802,6 @@ if _HAS_QT:
             lock_row.addWidget(self._lock_status)
             layout.addLayout(lock_row)
 
-            # BTC/USD and ETH/USD spot with satoshi/wei-per-dollar
-            # derivations; update_currency_rates() refreshes it each
-            # dashboard tick.
             self._rate_strip = QLabel("BTC —   ETH —   (currency rates pending)")
             self._rate_strip.setStyleSheet(
                 "color: #66ccff; font-family: Consolas; "
@@ -817,15 +828,6 @@ if _HAS_QT:
                 self._tf_lock_combo.hide()
                 self._lock_status.hide()
 
-            # Table+bars split into two mini-panels; instantiated
-            # below once _HEADER_TOOLTIPS exists, since both reference it.
-
-            # Comp Net folds phantom-bot TF votes via
-            # phantom_balance.TimeframeCoordinator.get_higher_tf_bias;
-            # populated only on the parent bot's TF row, other rows
-            # read "—".
-            # ADX, ZSc and KER render a raw value, not a percent;
-            # _HEADER_TOOLTIPS below spells out each column's scale.
             self._HEADER_TOOLTIPS = {
                 "TF": (
                     "Timeframe identifier. Each row = one timeframe's "
@@ -941,9 +943,6 @@ if _HAS_QT:
                     "disagrees'. Green ≥60%, amber ≥30%, gray <30%."
                 ),
             }
-            # Two-row split: mini-panels each get table + bars via
-            # _make_indicator_row. Row A carries BB..Vol plus
-            # aggregates; Row B carries Sling..RSI. Equal stretch.
             row_a_container, self._table_a, self._conf_bars_a = (
                 self._make_indicator_row(_ROW_A_INDICATOR_COLS, include_aggregates=True)
             )
@@ -954,8 +953,6 @@ if _HAS_QT:
             )
             layout.addWidget(row_a_container, stretch=1)
             layout.addWidget(row_b_container, stretch=1)
-            # Back-compat aliases (a few helpers still reference the
-            # singular names — degrade to Row A rather than crash).
             self._table = self._table_a
             self._conf_bars = self._conf_bars_a
 
@@ -1003,9 +1000,6 @@ if _HAS_QT:
 
             col_names = ["TF"] + [short for _, short, _ in indicator_subset]
             if include_aggregates:
-                # "Comp Net" here reads "Comp": the full label needs 84px,
-                # which would force all 10 columns to 118px in a 584px
-                # viewport. The header tooltip still says Composite Net.
                 col_names += ["Net", "Comp", "Conf"]
             table.setColumnCount(len(col_names))
             table.setHorizontalHeaderLabels(col_names)
@@ -1021,9 +1015,6 @@ if _HAS_QT:
             _widest = max(
                 (_fm.horizontalAdvance(str(_n)) for _n in col_names), default=40
             )
-            # +2 px pad, not +10: a 10-column table needs 580px at
-            # +10 against a 544px viewport (1600x900) and truncates
-            # every column.
             hdr.setMinimumSectionSize(int(_widest) + 2)
             for _c in range(len(col_names)):
                 hdr.setSectionResizeMode(_c, QHeaderView.Stretch)
@@ -1239,8 +1230,6 @@ if _HAS_QT:
                     if self._bot_selector.itemData(i):
                         return True
             except Exception as exc:  # noqa: BLE001
-                # Unknown is not proof of absence. Answering False here
-                # would license fabrication on a panel we cannot read.
                 logger.warning(
                     "INDICATOR PANEL: bot selector unreadable (%s); "
                     "treating as populated so demo TA stays blocked",
@@ -1487,17 +1476,18 @@ if _HAS_QT:
                 return
             logger.info("INDICATOR PANEL: generating demo TA...")
             try:
-                import random, time as _time, hashlib
+                import hashlib
+                import time as _time
+
                 from ..trading.ta_engine import VotingEngine, Candle
 
                 bid = self._selected_bot_id or "default"
                 ta_tf = self._bot_timeframes.get(bid, "1h")
-                # Non-security RNG seeding for a per-bot demo color;
-                # usedforsecurity=False silences bandit's B324 false positive.
+                # The digest is only a per-bot seed for _DemoWalk.
                 seed = int(
                     hashlib.md5(bid.encode(), usedforsecurity=False).hexdigest()[:8], 16
                 )
-                rng = random.Random(seed)
+                rng = _DemoWalk(seed)
                 price = 100.0
                 candles = []
                 for i in range(60):
@@ -1588,8 +1578,7 @@ if _HAS_QT:
                     self._bot_timeframes[bot_id] = ta_timeframe
                 idx = self._bot_selector.findData(bot_id)
                 if idx >= 0:
-                    # Blocks signals during programmatic selection, like
-                    # update_bot_list; otherwise _on_bot_selected triggers
+                    # Unblocked, setCurrentIndex fires _on_bot_selected
                     # and the empty state renders twice.
                     _prev = self._bot_selector.blockSignals(True)
                     try:
@@ -1597,8 +1586,6 @@ if _HAS_QT:
                     finally:
                         self._bot_selector.blockSignals(_prev)
             self._data = {}
-            # UNIT 2 — cause="new_bot" tells this apart from a cold
-            # start or a parked bot.
             self.show_no_data(
                 bot_id=bot_id or self._selected_bot_id, symbol=symbol, cause="new_bot"
             )
@@ -1663,8 +1650,7 @@ if _HAS_QT:
                   - locks: list of active lock dicts
             """
             self._data = multi_tf_summary
-            # UNIT 1 — every render starts current; only
-            # _render_stored_reading re-raises the stale band afterward.
+            # Only _render_stored_reading raises the stale band after this.
             self._showing_stored = False
             self._staleness_label.setText("")
             self._staleness_label.hide()

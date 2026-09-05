@@ -1,72 +1,11 @@
-"""The Fold-Tranche panel's surface remainder — issue #98, 6/7/8/9/10.
+"""The Fold-Tranche panel surface, driven through `_Panel` on a real `ScrummingBot`.
 
-WHAT THIS FILE COVERS, AND WHAT IT DOES NOT
-===========================================
-Five defects from the 2026-08-23 evaluation
-(``docs/engineering-notes/2026-08-23_fold_tranche_panel_evaluation.md``). Defects
-1, 2, 3 and 5 are already repaired and are pinned elsewhere; defect 4 —
-the counters that do not reconcile — belongs to another unit and is not
-touched here, which is why the four counter rows on the health form are
-asserted to carry NO tooltip rather than a written one.
-
-  6  The panel's stated documentation did not exist. The comment beside
-     the table named "column headers + per-column tooltips" as the
-     authoritative per-tranche documentation after the prose explainer
-     was removed on operator directive 2026-07-26. Measured on the built
-     table: ZERO of the eleven headers carried a tooltip, no summary row
-     carried one, and only three columns carried a cell tooltip.
-
-  7  Eight visible rows of up to 230. ``setMaximumHeight(280)`` over
-     30px rows, ``setSortingEnabled`` zero times in the file, no filter
-     and no search. On TAO the summary named a 30.4-day oldest tranche
-     while rows one to three read 2.7d, 2.7d and 3.6d.
-
-  8  THE CORRECTNESS ONE. The Fire confirmation re-resolved the index at
-     click time and printed THAT, so a fold landing between the panel
-     being built and the button being pressed made the dialog name a
-     tranche the operator had not clicked — at the moment of an
-     irreversible market buy.
-
-  9  No allotment total. PUMP/USD had marked 1.99x the units it holds
-     and CAP/USD 1.34x, and the panel showed neither a total nor a
-     comparison against holdings.
-
- 10  Three persisted quantities were never shown:
-     ``wire_credits_discarded_lifetime`` (BTC $343.68, ETH $213.90),
-     ``tranches_malformed_dropped`` and ``fold_cycle_cap_consumed``.
-
-EVERY CHECK IS DRIVEN BOTH WAYS
-===============================
-A test that cannot fail is worthless. Every repair below has a control
-that puts the tree back the way it was and reproduces the measured
-BEFORE number on demand:
-
-  ``_without_the_click_time_capture``   defect 8
-  ``_without_the_header_tooltips``      defect 6
-  ``_without_the_row_order``            defect 7
-  ``_coerce_refused_to_zero``           defect 7, the sorter's admission
-
-FOR DEFECT 8 THE DIVERGENT CASE IS THE ONLY ONE THAT PROVES ANYTHING.
-A click where the row number and the resolved index coincide passes
-before and after the repair. So the fixture below CONSUMES a tranche
-ahead of the clicked one between the build and the click, which is
-exactly the live mechanism — an auto-fold shifting every later index —
-and then asserts that the confirmation names the row on screen while
-the ORDER still goes to the resolved index. Both halves are asserted:
-naming the right row and firing the right tranche are two different
-claims and a repair that traded one for the other would be worse than
-the defect.
-
-NOTHING WRITES UNDER ``~/.acervator``. No ``StateManager`` is
-constructed here, no Clear button is pressed, and no order is ever
-scheduled onto a real loop.
-
-FALSIFICATION: this file is wrong if (a) the confirmation names the
-clicked row while the control is active, (b) the built table shows the
-same eight rows after the height repair, (c) the sorter gives a refused
-tranche a position on the scale, (d) a header tooltip survives the
-control that empties the table, or (e) the allotment row prints a ratio
-against holdings it cannot read.
+`TestTheFireDialogNamesTheClickedRow` asserts the confirmation names the row on
+screen while the order goes to the resolved index. `TestTheHeightCap`,
+`TestEveryColumnIsDocumented`, `TestTheAllotmentTotal` and
+`TestThePersistedQuantities` cover the remaining rows. Each repair has a control
+named `_without_...` that puts the tree back and reproduces the measured before
+number. No `StateManager` is built and nothing writes outside `tmp_path`.
 """
 
 from __future__ import annotations
@@ -145,9 +84,6 @@ def _tao_tranches() -> list[dict]:
     return rows
 
 
-# ══════════════════════════════════════════════════════════════════════
-# THE FIXTURE. A real ScrummingBot, a real dialog, the shipped builder.
-# ══════════════════════════════════════════════════════════════════════
 class _Panel:
     """Kept as an object so Qt does not collect the tree mid-test."""
 
@@ -281,11 +217,10 @@ def _painted_colours(widget) -> set[str]:
 
 
 def _destroy(panel: _Panel) -> None:
-    """The recipe from issue #96, third row of its table.
+    """Tear ``panel`` down and deliver the delete.
 
-    ``setParent(None)`` is a NO-OP on a widget that never had a parent,
-    and ``processEvents()`` does not deliver ``DeferredDelete``. Queue
-    the delete, then DELIVER the event.
+    ``setParent(None)`` is a no-op on a widget that never had a parent, and
+    ``processEvents()`` does not deliver ``DeferredDelete`` on its own.
     """
     from PySide6.QtCore import QCoreApplication, QEvent
 
@@ -302,9 +237,6 @@ def panel(monkeypatch):
     _destroy(built)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# MESSAGE CAPTURE. Every dialog the handler raised, in order.
-# ══════════════════════════════════════════════════════════════════════
 class _Messages:
     def __init__(self):
         self.seen: list[dict] = []
@@ -412,9 +344,6 @@ def _patch_dispatch(monkeypatch, panel: _Panel) -> _Dispatch:
     return record
 
 
-# ══════════════════════════════════════════════════════════════════════
-# THE CONTROLS. Each puts the tree back and reproduces a BEFORE number.
-# ══════════════════════════════════════════════════════════════════════
 def _without_the_click_time_capture(tranche, panel, monkeypatch):
     """Call the handler exactly as the pre-repair button called it.
 
@@ -467,10 +396,6 @@ def _coerce_refused_to_zero(tranches, field, descending):
     return [(i, t) for i, t, _ in rows]
 
 
-# ══════════════════════════════════════════════════════════════════════
-# A. THE STARTING STATE. Without these, every "after" number below
-#    could be produced by a panel that renders nothing at all.
-# ══════════════════════════════════════════════════════════════════════
 def test_the_panel_starts_by_showing_all_58(panel):
     assert panel.table is not None
     assert panel.table.rowCount() == TAO_TRANCHES
@@ -485,12 +410,6 @@ def test_the_fixture_reproduces_taos_reach_problem(panel):
     assert panel.row_labelled("Oldest tranche age:")[1] == "30.4d"
 
 
-# ══════════════════════════════════════════════════════════════════════
-# B. DEFECT 8 — the confirmation names the row that was CLICKED.
-#    This outranks everything else in the file: a dialog that can name a
-#    different tranche than the row clicked is an instrument that lies
-#    at the moment of an irreversible action.
-# ══════════════════════════════════════════════════════════════════════
 class TestTheFireDialogNamesTheClickedRow:
 
     #: The row the operator presses, one-based, as printed on screen.
@@ -686,9 +605,6 @@ def test_the_button_carries_the_queue_index_under_a_sort(monkeypatch):
         _destroy(built)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# C. DEFECT 7 — the operator can REACH the tranche the headline names.
-# ══════════════════════════════════════════════════════════════════════
 class TestTheHeightCap:
 
     def test_the_old_cap_really_did_show_about_eight_rows(self):
@@ -899,17 +815,8 @@ class TestTheFilter:
         assert shown == [TAO_OLDEST_INDEX]
 
 
-# ══════════════════════════════════════════════════════════════════════
-# D. DEFECT 6 — the documentation the panel said it had.
-# ══════════════════════════════════════════════════════════════════════
-#: The operator's standard, issue #53: about ten words. Twelve is the
-#: bound asserted, so a tooltip that needs one qualifying clause is not
-#: rewritten into something less clear to save a word.
 TOOLTIP_WORD_LIMIT = 12
 
-#: Banned by the same directive: no MEM numbers, no version strings, no
-#: code identifiers. Measured across the shipped app when #53 was filed:
-#: 7 tooltips cited a MEM, 16 cited a version, 8 carried snake_case.
 BANNED_TOOLTIP_TOKENS = ("MEM-", "v3.", "_", "()")
 
 
@@ -963,10 +870,6 @@ class TestEveryColumnIsDocumented:
             FOLD_CYCLE_CAP_TOOLTIP,
             FOLD_SORT_TOOLTIP,
             FOLD_FILTER_TOOLTIP,
-            # issue #98 defect 4 - the four counter rows. The same
-            # standard, checked by the same assertions, so a tooltip
-            # written by a later unit cannot quietly be longer or
-            # carry an identifier.
             FOLD_OPENED_TOOLTIP,
             FOLD_CLOSED_TOOLTIP,
             FOLD_CLOSE_RATIO_TOOLTIP,
@@ -997,14 +900,6 @@ class TestTheSummaryRowsAreDocumented:
         "Fold budget this cycle:",
     )
 
-    #: THE HANDOFF, TAKEN. These three were asserted BARE by defect 6
-    #: because defect 4 owned the counters and they did not reconcile
-    #: with the standing list on 13 of 38 bots. Defect 4 has landed:
-    #: every site that removes a fold tranche now moves exactly one of
-    #: opened, closed or discarded, so the three rows describe
-    #: quantities that hold, and they carry the same tooltip standard
-    #: as every row above. The ratio row is named with the arithmetic
-    #: it performs, which is the other half of that defect.
     COUNTERS = (
         "Lifetime tranches opened:",
         "Lifetime tranches closed (fold-back fired):",
@@ -1020,13 +915,7 @@ class TestTheSummaryRowsAreDocumented:
             assert label_tip == value_tip, label
 
     def test_the_counter_rows_took_the_handoff(self, panel) -> None:
-        """Was `test_the_counter_rows_are_left_to_their_own_unit`.
-
-        It asserted these three BARE, and it was written to go red the
-        day defect 4 landed. It has, so the assertion is inverted
-        rather than deleted: both halves of each counter row now carry
-        the tooltip, exactly as the six rows above do.
-        """
+        """Both halves of every row in `COUNTERS` carry the same tooltip."""
         for label in self.COUNTERS:
             row = panel.row_labelled(label)
             assert row is not None, label
@@ -1034,19 +923,15 @@ class TestTheSummaryRowsAreDocumented:
             assert label_tip.strip(), label
             assert label_tip == value_tip, label
 
-    #: The fourth counter row. It is CONDITIONAL -- shown only once the
-    #: bot has discarded something -- so it cannot be asserted off the
-    #: shared fixture, whose bot has discarded none.
     DISCARDED_ROW = "Lifetime tranches discarded (not folded back):"
 
     def test_the_discard_row_carries_the_tooltip_too(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Issue #98 defect 4 owns this row with the other three.
+        """`DISCARDED_ROW` appears only once the bot has discarded something.
 
-        Its label lost the word "cleared": a clear is one of four ways
-        a tranche is discarded, and the despawn sweep, a detonation and
-        the unreadable-record drop write the same counter.
+        A clear, the despawn sweep, a detonation and the unreadable-record drop
+        all write the one counter this row reads.
         """
         built = _make_panel(
             [_tranche(0, age_days=1.0)],
@@ -1079,8 +964,7 @@ class TestTheSummaryRowsAreDocumented:
             _destroy(built)
 
     def test_the_despawn_rows_gained_their_label_half(self, panel):
-        """Issue #103 tooltipped the value and not the words beside it.
-        The text is that unit's and is unchanged here."""
+        """The label half of each despawn row carries the value half's tooltip."""
         for label in ("Tranche despawn timer:", "Despawn would remove:"):
             row = panel.row_labelled(label)
             assert row is not None, label
@@ -1088,10 +972,6 @@ class TestTheSummaryRowsAreDocumented:
             assert row[2] == row[3], label
 
 
-# ══════════════════════════════════════════════════════════════════════
-# E. DEFECT 9 — the allotment total.
-# ══════════════════════════════════════════════════════════════════════
-#: The two bots the evaluation caught, and the one that is fine.
 PUMP_MARKED, PUMP_HELD, PUMP_RATIO = 19870.72, 9987.78, "1.99x"
 CAP_MARKED, CAP_HELD, CAP_RATIO = 1075.61, 800.42, "1.34x"
 ZEC_MARKED, ZEC_HELD, ZEC_RATIO = 0.1598, 0.1762, "0.91x"
@@ -1193,10 +1073,6 @@ class TestTheAllotmentTotal:
             _destroy(built)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# F. DEFECT 10 — three persisted quantities that were never shown.
-# ══════════════════════════════════════════════════════════════════════
-#: The live figures when the issue was filed.
 BTC_WIRE_DISCARDED = 343.68244206
 ETH_WIRE_DISCARDED = 213.90
 

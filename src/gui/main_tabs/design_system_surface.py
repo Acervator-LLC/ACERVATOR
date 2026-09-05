@@ -29,11 +29,11 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from ..color_alpha import css_colours
+
 METHOD = "design_system.state"
 
-# ==========================================================================
 # COLOURS
-# ==========================================================================
 
 # ---- Surface elevation -------------------------------------------------
 SURFACE_0 = "#0a0a0f"
@@ -208,9 +208,7 @@ STOCK_LOG_DEBUG = "#444455"
 STOCK_LOG_TIMESTAMP = "#555566"
 STOCK_LOG_CRITICAL = "#ff0033"
 
-# ==========================================================================
 # TYPOGRAPHY
-# ==========================================================================
 
 # ---- Type ramp, in pixels ------------------------------------------------
 TYPE_DISPLAY = 36
@@ -237,9 +235,7 @@ WEIGHT_REGULAR = 400
 WEIGHT_MEDIUM = 500
 WEIGHT_BOLD = 700
 
-# ==========================================================================
 # SPACING, SHAPE, MOTION AND TARGET SIZE
-# ==========================================================================
 
 # ---- Spacing, in pixels ------------------------------------------------
 SPACE_XS = 4
@@ -288,9 +284,7 @@ SHADOW_2 = (2, 4, "50")
 SHADOW_3 = (4, 8, "60")
 SHADOW_4 = (8, 16, "70")
 
-# ==========================================================================
 # SECOND NAMES FOR A COLOUR ALREADY IN THE TABLE
-# ==========================================================================
 
 BG = "#0a0a0f"
 CARD = "#141420"
@@ -299,9 +293,7 @@ DIM = "#a8a8c5"
 HINT = "#8a8ab0"
 FOCUS_RING_COLOR = "#a0a0c0"
 
-# ==========================================================================
 # THE GROUPS
-# ==========================================================================
 
 COLOR_NAMES = (
     "SURFACE_0",
@@ -783,9 +775,7 @@ FOCUS = GROUPS["focus"]
 SHADOWS = GROUPS["shadows"]
 ALIASES = GROUPS["aliases"]
 
-# ==========================================================================
 # WHAT THE TABLE DOES NOT DO
-# ==========================================================================
 # The table declares style and runs nothing. These stay empty and a test
 # proves each one empty against the module the surface replaces.
 
@@ -841,10 +831,14 @@ def build_view_model(
     does not hold comes back under `unknown` with a null value. `group`
     carries one group name; a group the table does not hold comes back
     empty.
+
+    The table itself carries the alpha byte Qt reads. The payload leaves
+    under `src.gui.color_alpha.css_colours`, so the renderer receives the
+    share a browser reads and no colour is copied twice.
     """
     asked = requested_names(names)
     wanted = str(group) if group else ""
-    return {
+    payload = {
         "token_names": list(TOKEN_NAMES),
         "tokens": dict(TOKENS),
         "group_names": list(GROUP_NAMES),
@@ -876,6 +870,7 @@ def build_view_model(
         "skin": dict(SKIN),
         "style_sheet": STYLE_SHEET,
     }
+    return css_colours(payload)
 
 
 def view_model(params: dict) -> dict:

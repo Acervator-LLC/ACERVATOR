@@ -29,6 +29,9 @@ self-protecting and nothing new belongs in it.
 import mode the tests directory is on ``sys.path`` and a sibling test
 module imports this as ``from qt_pixel import ...``.
 
+The offscreen platform comes from ``tests/conftest.py``. This module
+reads it and never sets it.
+
 USAGE
 =====
     from qt_pixel import assert_pixel_colour, pixel_at, render_widget
@@ -51,15 +54,9 @@ pixel.
 
 from __future__ import annotations
 
-import os
-
-# Must precede any QApplication construction. setdefault, not
-# assignment: a caller that has already chosen a platform keeps it.
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-from PySide6.QtCore import QCoreApplication, QPoint, Qt  # noqa: E402
-from PySide6.QtGui import QColor, QFont, QImage  # noqa: E402
-from PySide6.QtWidgets import (  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QPoint, Qt
+from PySide6.QtGui import QColor, QFont, QImage
+from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QWidget,
@@ -90,9 +87,7 @@ def ensure_app() -> QCoreApplication:
     return app
 
 
-#: Widgets whose text is rasterised by Chromium rather than by Qt. A
-#: font set inside one changes no glyph and reaches into a foreign
-#: widget tree, so the walk stops at them.
+#: Widgets Chromium rasterises rather than Qt, so the font walk stops at them.
 FOREIGN_RASTERISERS = ("QWebEngine", "RenderWidgetHostViewQtDelegate")
 
 

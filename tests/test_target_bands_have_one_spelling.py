@@ -1,7 +1,7 @@
 """The dashboard reads the tick's bands; it does not restate them.
 
-Issue #128 R2. Two thresholds decide whether a position counts as ON
-TARGET, and each was written out twice:
+Two thresholds decide whether a position counts as ON TARGET, and each
+was written out twice:
 
     park band    max(target * 0.001, 0.01)   tick(), and the Ammo cell
     Manual Fire  max(target * 0.01,  0.01)   _execute_manual_rebalance,
@@ -27,10 +27,11 @@ percentage.
 
 from __future__ import annotations
 
-import ast
 import math
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -44,79 +45,59 @@ from src.trading.target_bands import (  # noqa: E402
     target_territory,
 )
 
-#: Sub-dollar through institutional. 8.0 is where the $0.01 floor stops
-#: binding on the Manual Fire band; 10.0 is where it stops binding on
-#: neither -- both edges are inside the sweep on purpose.
+#: Sub-dollar through institutional; 8.0 and 10.0 are the $0.01 floor's two edges.
 TARGETS = (0.03, 0.11, 1.0, 8.0, 10.0, 47.13, 100.0, 12500.0)
 
 
-def _owning_source(owner, method_name: str) -> str:
-    """Source of the module that really defines ``method_name``."""
-    import inspect
+BAND_CONSUMERS = (
+    ("src.trading.scrumming_bot", "at_target_dust_band"),
+    ("src.trading.scrumming.tick_phases", "at_target_dust_band"),
+    ("src.trading.scrumming.execution", "manual_fire_dust_band"),
+    ("src.gui.table_cells", "manual_fire_dust_band"),
+    ("src.gui.table_cells", "manual_fire_will_noop"),
+    ("src.gui.table_cells", "target_territory"),
+)
 
-    path = inspect.getsourcefile(getattr(owner, method_name))
-    assert path is not None, method_name
-    return Path(path).read_text(encoding="utf-8")
 
+@pytest.mark.parametrize(("module_name", "attribute"), BAND_CONSUMERS)
+def test_every_band_reader_holds_the_one_shared_function(module_name, attribute):
+    """A second spelling shows up as a second function object here."""
+    import importlib
 
-def _method_source(name: str) -> str:
-    import src.trading.scrumming_bot as sb
+    import src.trading.target_bands as bands
 
-    text = _owning_source(sb.ScrummingBot, name)
-    node = next(
-        n
-        for n in ast.walk(ast.parse(text))
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
+    held = getattr(importlib.import_module(module_name), attribute)
+    assert held is getattr(bands, attribute), (
+        f"{module_name} carries its own {attribute}; the shared one in "
+        f"src/trading/target_bands.py is no longer what it reads"
     )
-    return ast.get_source_segment(text, node) or ""
 
 
-def _tick_pass_source() -> str:
-    """``tick`` and every ``_tick_*`` phase method it calls.
-
-    The phases are separate methods, so a scan of ``tick`` alone would
-    pass over a park-band literal re-introduced inside one of them.
-    """
-    import src.trading.scrumming_bot as sb
-
-    names = ["tick"] + [
-        n
-        for n in dir(sb.ScrummingBot)
-        if n.startswith("_tick_") and callable(getattr(sb.ScrummingBot, n, None))
-    ]
-    return "\n".join(_method_source(n) for n in sorted(names))
-
-
-def test_the_tick_calls_the_band_and_spells_none_of_its_own():
-    body = _tick_pass_source()
-    assert body.count("at_target_dust_band(self._target_balance)") == 2, (
-        "the tick pass reads the park band at two sites -- the boot "
-        "handshake and the park guard. A lost witness means the scan "
-        "below is reading less than it used to."
-    )
-    assert "* 0.001" not in body, "a park-band literal is back in the tick pass"
-
-
-def test_manual_fire_calls_the_band_and_spells_none_of_its_own():
-    body = _method_source("_execute_manual_rebalance")
-    assert "manual_fire_dust_band(self._target_balance)" in body
-    assert "* 0.01" not in body, "a Manual Fire band literal is back in the engine"
-
-
-def test_the_ammo_cell_calls_the_band_and_spells_none_of_its_own():
+def test_the_cell_asks_the_shared_territory_rule_rather_than_deciding_itself(
+    monkeypatch,
+):
+    """Answering ``fold`` for every position turns the cell's colour."""
     import src.gui.table_cells as cells
 
-    text = Path(cells.__file__).read_text(encoding="utf-8")
-    node = next(
-        n
-        for n in ast.walk(ast.parse(text))
-        if isinstance(n, ast.FunctionDef) and n.name == "_compose_ammo_cell"
-    )
-    body = ast.get_source_segment(text, node) or ""
-    assert "target_territory(" in body
-    assert "manual_fire_dust_band(" in body
-    assert "* 0.001" not in body, "a park-band literal is back in the cell"
-    assert "_MANUAL_FIRE_DUST_PCT," not in body
+    scrum = _cell_colour(200.0, 100.0)
+    fold = _cell_colour(50.0, 100.0)
+    assert scrum != fold, "the colours are equal, so the swap below proves nothing"
+
+    monkeypatch.setattr(cells, "target_territory", lambda position, target: "fold")
+    assert _cell_colour(200.0, 100.0) == fold, "the cell decided the territory itself"
+
+
+def test_the_cell_asks_the_shared_no_op_rule_rather_than_deciding_itself(monkeypatch):
+    """Refusing every fire turns the cell's warning on where it was off."""
+    import src.gui.table_cells as cells
+    from src.gui.table_cells import _compose_ammo_cell
+
+    far = _compose_ammo_cell(0.0, 1.0, 200.0, 1.0, 100.0)
+    assert far["manual_fire_noop"] is False, "the case already warns"
+
+    monkeypatch.setattr(cells, "manual_fire_will_noop", lambda position, target: True)
+    warned = _compose_ammo_cell(0.0, 1.0, 200.0, 1.0, 100.0)
+    assert warned["manual_fire_noop"] is True, "the cell decided the no-op itself"
 
 
 def test_the_bands_are_the_published_percentages_at_every_scale():

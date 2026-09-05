@@ -1,24 +1,9 @@
 #!/usr/bin/env python3
-"""
-generate_essay_ja.py — Acervator Product Manual (Japanese Edition)
+"""Render the Japanese Acervator product manual with reportlab.
 
-CONTENT VERSION: v3.1.98 (last full translation, April 2026)
-SCAFFOLDING VERSION: v3.16.2 (April 28, 2026 — staleness warning + live
-    __version__ stamp; translation work itself NOT updated)
-
-⚠ STALENESS WARNING (RSK-007):
-The Japanese translation in this file reflects the v3.1.98 English manual.
-The English manual has since been updated through many ships covering:
-  - Smart Cartridge (v3.15.92), TD-003 circuit breaker (v3.15.98),
-    TD-004 idempotency (v3.15.98), R71-R77 SADP rules, volume-tolerance
-    sim model (v3.15.99), grid_bot deletion (v3.16.0), and more.
-
-This script will produce a PDF stamped with the CURRENT __version__ at
-generation time, but the BODY TEXT remains the v3.1.98 translation. Do
-NOT distribute the output as a current Japanese manual until a
-professional translator has updated the body content.
-
-See docs/ja/STATUS.md for the translation gap inventory and tracking.
+``build`` writes the PDF named by ``OUTPUT``, which carries ``__version__``.
+``_CONTENT_VERSION_FROZEN_AT`` records which English manual the Japanese body
+was translated from. A ``warnings.warn`` fires when the two disagree.
 """
 
 import sys
@@ -43,25 +28,16 @@ from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase import pdfmetrics
 
 sys.path.insert(0, str(Path(__file__).parent))
-# Issue #70 — no literal fallback. The old `except Exception: __version__ =
-# "3.1.98"` did two wrong things at once: it restated the version, and
-# because the literal equalled _CONTENT_VERSION_FROZEN_AT it also silenced
-# the staleness warning below on exactly the runs that needed it. A script
-# that stamps a PDF with the build version must fail if it cannot read one.
+# An unreadable __version__ raises here; the stamp has no literal fallback.
 from src import __version__
 
-# v3.16.2 — content/scaffolding version split. The PDF stamp uses
-# __version__ (current source); the translation body is fossilized at
-# v3.1.98. Emit a runtime warning so anyone running this script sees
-# the gap before they distribute the output.
 _CONTENT_VERSION_FROZEN_AT = "3.1.98"
 if __version__ != _CONTENT_VERSION_FROZEN_AT:
     warnings.warn(
         f"Japanese manual translation is STALE: body content is at "
         f"v{_CONTENT_VERSION_FROZEN_AT}, source code is at v{__version__}. "
         f"Generated PDF will mix old translation with current version stamp. "
-        f"See docs/ja/STATUS.md and RSK-007. Do NOT distribute output as "
-        f"a current Japanese manual.",
+        "Do NOT distribute output as a current Japanese manual.",
         UserWarning,
         stacklevel=2,
     )
@@ -83,9 +59,7 @@ DARKER = HexColor("#0A0A14")
 BODY_C = HexColor("#C8D8F0")
 HEAD_C = HexColor("#151530")
 
-# Issue #70 — the filename follows the stamp inside the PDF, which is
-# __version__. The old literal said v3.7.0 and matched neither the
-# stamp nor the frozen translation body.
+# OUTPUT carries the same __version__ the PDF is stamped with.
 OUTPUT = f"acervator_product_manual_v{__version__}_ja.pdf"
 PAGE_W, PAGE_H = letter
 MARGIN = 0.65 * inch

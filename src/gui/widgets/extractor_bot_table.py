@@ -19,35 +19,6 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
-    # Extractor Bot Status Table (v3.20.5)
-    # ---------------------------------------------------------------
-    # Operator directive 2026-05-23: Extractor bots need a separate
-    # partition from Scrumming bots in the dashboard so the column
-    # semantics (chunk-based accounting vs target-balance accounting)
-    # match the correct header labels.
-    #
-    # ExtractorBotTable mirrors BotStatusTable's shape (8 columns,
-    # same button widget styling so the visual match the operator
-    # called out is preserved) but with:
-    #   • Column 4 header: "Pool" (was: "Target")
-    #   • Column 5 header: "Liquid" (was: "Ammo")
-    #   • Numeric-only values (no "Chunk:" prefix, no "free / deployed"
-    #     suffix) — operator wants raw dollar amounts so the table
-    #     reads like a position ledger
-    #   • Fire button DISABLED (Extractor uses per-position Manual Fire
-    #     from the Detail dialog's Positions Held tab, not the global
-    #     row-level fire) — but built with the SAME styling as the
-    #     disabled Scrumming Fire button so the two tables stay
-    #     visually consistent.
-    #   • Detail button identical to ScrummingBot's — same font-size,
-    #     padding, tooltip pattern. The operator's specific callout:
-    #     "Previously existing object should have been referenced
-    #     multiple times already." Same widget shape achieves that.
-    #
-    # sadp: R28 FL  R55 GOV  R62 FRG  R68 DPA  R76 DMW
-    # 8 columns, indexed identically to BotStatusTable for any
-    # shared selection/render helpers — only the labels differ.
     EXTRACTOR_COLUMNS = ColumnSpec(
         labels=(
             "Bot ID",
@@ -100,8 +71,6 @@ if _HAS_QT:
         COLUMNS = EXTRACTOR_COLUMNS.labels
         COLUMN_TOOLTIPS = EXTRACTOR_COLUMNS.tooltips
 
-        # Same state→color mapping as BotStatusTable so the Mode cell
-        # color scheme matches across both tables.
         STATE_COLORS = {
             "running": QColor(ds.SUCCESS),
             "idle": QColor(ds.CARD_METRIC_LABEL),
@@ -112,8 +81,6 @@ if _HAS_QT:
             "starting": QColor(ds.STATE_STARTING),
         }
 
-        # Pool color mapping for the Liquid cell foreground —
-        # moved verbatim from BotStatusTable.EXTRACTOR_POOL_COLORS.
         POOL_COLORS = {
             "green": QColor(ds.SUCCESS),
             "yellow": QColor(ds.WARNING),
@@ -126,11 +93,8 @@ if _HAS_QT:
             self._bot_ids = []
 
         def update_bots(self, bot_statuses: list[dict]) -> None:
-            # issue #51 -- READ THE BOT UNDER THE HIGHLIGHT BEFORE THE
-            # REWRITE. Once `setRowCount` and `setItem` have run there
-            # is no way back from a row index to the bot that was on
-            # it. Restored by `_reanchor_bot_selection` at the end of
-            # this method.
+            # Read before `setRowCount` and the `_bot_ids` rebuild
+            # discard the old row-to-bot mapping.
             _selected_before = self.get_selected_bot_id()
             self.setRowCount(len(bot_statuses))
             self._bot_ids = []
@@ -146,9 +110,6 @@ if _HAS_QT:
                 pool_color_name = status.get("pool_color", "green")
                 base_currency = status.get("base_currency", "")
 
-                # USD-equivalent of currently-undeployed base units.
-                # Uses the chunk_size_usd ↔ chunk_size_base ratio so
-                # we display in the same units as Pool.
                 if chunk_size_base > 0:
                     deployed_base = max(chunk_size_base - chunk_free_base, 0.0)
                     usd_per_base = chunk_size_usd / chunk_size_base
@@ -159,11 +120,6 @@ if _HAS_QT:
                     free_usd = 0.0
                     deployed_usd = 0.0
 
-                # v3.20.5 — NUMERIC-ONLY values per operator directive.
-                # Previous render: "Chunk: $100.00" / "$100.00 free /
-                # $0.00 deployed". New: "$100.00" / "$100.00". The
-                # column header carries the semantic; the cell shows
-                # the number.
                 pool_text = f"${chunk_size_usd:,.2f}" if chunk_size_usd > 0 else "---"
                 liquid_text = f"${free_usd:,.2f}" if chunk_size_usd > 0 else "---"
                 liquid_color = self.POOL_COLORS.get(
@@ -219,16 +175,8 @@ if _HAS_QT:
                         item.setToolTip(liquid_tip)
                     self.setItem(row, col, item)
 
-                # Fire button — DISABLED, but styled identically to
-                # the BotStatusTable's disabled Fire so the two tables
-                # match visually. Same setFixedHeight(22), same
-                # font-size: 10px + padding: 1px 6px + color: #555
-                # styling as BotStatusTable's `else` branch at the
-                # bottom of its update_bots fire-button block.
                 fire_btn = QPushButton("Fire")
                 fire_btn.setFixedHeight(22)
-                # v3.20.62 — bug-3 fix: same NoFocus fix as
-                # BotStatusTable Fire button.
                 fire_btn.setFocusPolicy(Qt.NoFocus)
                 fire_btn.setEnabled(False)
                 fire_btn.setStyleSheet(
@@ -240,11 +188,6 @@ if _HAS_QT:
                 )
                 self.setCellWidget(row, 6, fire_btn)
 
-                # Detail button — IDENTICAL to BotStatusTable's:
-                # same font-size, padding, tooltip pattern. Operator's
-                # explicit callout: "Previously existing object should
-                # have been referenced multiple times already." Same
-                # widget shape achieves the visual match.
                 detail_btn = QPushButton("Detail")
                 detail_btn.setFixedHeight(22)
                 detail_btn.setStyleSheet("font-size: 10px; padding: 1px 6px;")
@@ -254,22 +197,18 @@ if _HAS_QT:
                 detail_btn.clicked.connect(lambda _checked, b=bid: self._on_detail(b))
                 self.setCellWidget(row, 7, detail_btn)
 
-            # issue #51 -- the highlight follows the BOT, not the row.
+            # `_reanchor_bot_selection` follows the bot, not the row index.
             _reanchor_bot_selection(self, _selected_before, self._bot_ids)
 
         def _on_detail(self, bot_id: str) -> None:
-            # issue #52 -- SELECT THE ROW FIRST. Both tables carry a
-            # Detail button and both flip `_last_clicked_table` through
-            # their `on_bot_clicked` callback, so both need this or the
-            # fallback hijack survives in one direction. See
-            # `_select_row_for_bot` for why the signal is not blocked.
+            # `_select_row_for_bot` moves the highlight before
+            # `_on_bot_clicked` fires.
             _select_row_for_bot(self, bot_id, self._bot_ids)
             if self._on_bot_clicked:
                 self._on_bot_clicked(bot_id)
 
         def get_selected_bot_id(self) -> str:
-            # v3.20.65 fix: gate on actual selection state. See
-            # BotStatusTable.get_selected_bot_id docstring (MEM-411).
+            # `clearSelection` leaves `currentRow` on the old row.
             if not self.selectedItems():
                 return ""
             row = self.currentRow()

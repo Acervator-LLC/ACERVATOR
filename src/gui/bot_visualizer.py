@@ -1,11 +1,9 @@
-"""
-bot_visualizer.py - Futuristic Bot Visualization Engine
-========================================================
-Custom-painted animated visualizations for active trading bots.
-Combines art, auto-trading data, and technical analysis into
-an immersive visual experience.
+"""The Bot Swarm tab and its Smart Wire canvas.
 
-Themes: Nebula, Matrix, Quantum Circuit, Deep Ocean
+``BotVisualizationTab`` holds a ``BotNodeWidget`` per bot, a
+``QuickRoutingMatrix``, and sub-tabs for the simulator and paper rows.
+``_WireCanvas`` paints the wires between bot nodes, and ``THEMES``
+supplies the accent colours.
 """
 
 from __future__ import annotations
@@ -24,11 +22,11 @@ try:
         get_privacy_mask_registry as _get_privacy_mask_registry,
         mask_or as _mask_or,
     )
-except Exception:  # R28-OK: import survives a missing registry, masking nothing.
+except Exception:  # a missing registry leaves _mask_or returning the raw value
     _get_privacy_mask_registry = None  # type: ignore[assignment]
 
     def _mask_or(value, field_id: str, mask: str = "****") -> str:
-        # Signature must match mask_or: callers pass mask= by keyword.
+        # Signature matches mask_or: callers pass mask= by keyword.
         del field_id, mask
         return str(value)
 
@@ -67,7 +65,7 @@ if _HAS_QT:
     from .visualizer.wire_canvas import _WireCanvas
 
     class BotVisualizationTab(QWidget):
-        """Main tab containing animated bot visualizations with wire connections."""
+        """The Bot Swarm tab, holding ``_bot_widgets`` and ``_wire_canvas``."""
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -78,13 +76,11 @@ if _HAS_QT:
             self._dragging_wire = False
             self._wire_start_id: str = ""
             self._wire_mouse_pos: Optional[QPointF] = None
-            # _wire_opacity_pct is 0-100, used as the alpha multiplier
-            # in both wire canvases.
+            # _wire_opacity_pct is 0-100, the alpha multiplier in both canvases.
             self._view_mode: str = "list"
             self._wire_opacity_pct: int = 100
 
-            # Both the startup restore and a wire drag emit wire.created,
-            # so one subscription draws wires from either path.
+            # The startup restore and a wire drag both emit wire.created.
             try:
                 from ..core.event_bus import get_event_bus
 
@@ -152,7 +148,7 @@ if _HAS_QT:
             self._exchange_combo.addItem("All", "")
             self._exchange_combo.setToolTip(
                 "Filter Bot Swarm visualizer + Quick Routing scope by "
-                "exchange (Q4 (c)). Default: All."
+                "exchange. Default: All."
             )
             self._exchange_combo.currentIndexChanged.connect(
                 self._on_exchange_filter_changed
@@ -174,7 +170,7 @@ if _HAS_QT:
             self._view_combo.setCurrentIndex(0)  # default: List
             self._view_combo.setToolTip(
                 "List: dense row-per-bot table with vertical-lane "
-                "wires (default v3.23.61).\n"
+                "wires (the default).\n"
                 "Grid: locust-avatar swarm view (legacy fallback)."
             )
             self._view_combo.currentIndexChanged.connect(self._on_view_mode_changed)
@@ -198,13 +194,10 @@ if _HAS_QT:
 
             viz_lay.addLayout(header)
 
-            # The locust grid is the only swarm view; no layout holds live
-            # rows. register_live_run therefore raises AttributeError on
-            # _live_rows_layout, which this file never sets.
+            # register_live_run raises AttributeError: nothing sets _live_rows_layout.
             self._live_bot_rows: dict = {}
 
-            # The bot grid has no scroll area; QGridLayout wraps the
-            # locusts across rows instead.
+            # No scroll area: _grid_layout wraps the locusts across rows.
             self._grid_widget = QWidget()
             self._grid_layout = QGridLayout(self._grid_widget)
             self._grid_layout.setSpacing(10)
@@ -225,8 +218,7 @@ if _HAS_QT:
             from PySide6.QtWidgets import QStackedWidget
 
             self._bot_list = BotListView()
-            # The overlay sits on the list viewport, so wire coordinates
-            # map straight onto row and lane positions.
+            # The overlay sits on the list viewport, in row and lane coordinates.
             self._lane_canvas = LaneWireCanvas(
                 self._bot_list, parent=self._bot_list.viewport()
             )
@@ -236,8 +228,7 @@ if _HAS_QT:
                 self._bot_list.viewport().width(),
                 self._bot_list.viewport().height(),
             )
-            # Wire coordinates move with the scroll position, so the
-            # overlay repaints on resize and on scroll.
+            # Wire coordinates move with the scroll position.
             _orig_resize = self._bot_list.viewport().resizeEvent
 
             def _list_viewport_resized(ev):
@@ -253,15 +244,14 @@ if _HAS_QT:
             )
 
             self._view_stack = QStackedWidget()
-            self._view_stack.addWidget(self._bot_list)  # idx 0 = List
-            self._view_stack.addWidget(self._grid_widget)  # idx 1 = Grid
-            self._view_stack.setCurrentIndex(0)  # default List
+            self._view_stack.addWidget(self._bot_list)  # index 0
+            self._view_stack.addWidget(self._grid_widget)  # index 1
+            self._view_stack.setCurrentIndex(0)
 
             self._quick_routing_matrix = QuickRoutingMatrix(self)
 
             inner_hbox = QHBoxLayout()
-            # No gap: the stacked view keeps its sizeHint width and the
-            # matrix takes every remaining pixel.
+            # No gap: _quick_routing_matrix takes every pixel the stack leaves.
             inner_hbox.setSpacing(0)
             inner_hbox.addWidget(self._view_stack)
             inner_hbox.addWidget(self._quick_routing_matrix, stretch=1)
@@ -271,8 +261,7 @@ if _HAS_QT:
             self._bot_swarm_tab = viz_tab
             self._tabs.addTab(viz_tab, "⚡ Bot Swarm")
 
-            # Each bot's stored routes are replayed as wire.created, so
-            # the canvas paints them through the same handler a drag uses.
+            # Stored routes replay as wire.created, through the drag handler.
             try:
                 painted = self._hydrate_smart_wire_routes_from_disk()
             except Exception:
@@ -510,16 +499,14 @@ if _HAS_QT:
 
             layout.addWidget(self._tabs)
 
-            # Wire overlay — floats above the viz sub-tab only.
-            # Hidden on Simulator/Paper tabs so they receive mouse events normally.
+            # _wire_canvas floats over the viz sub-tab, hidden on the others.
             self._wire_canvas = _WireCanvas(self)
             self._wire_canvas.setAttribute(Qt.WA_TransparentForMouseEvents, False)
             self._wire_canvas.setMouseTracking(True)
             self._wire_canvas.hide()  # starts hidden; shown only on viz tab
 
             def _on_tab_changed(idx):
-                # Grid mode only: the overlay is opaque to mouse events
-                # and would swallow every click it covers in List mode.
+                # Grid mode only: the opaque overlay would swallow List-mode clicks.
                 _is_grid = str(getattr(self, "_view_mode", "list")) == "grid"
                 if idx == 0 and _is_grid:
                     self._wire_canvas.show()
@@ -529,8 +516,7 @@ if _HAS_QT:
                     self._wire_canvas.hide()
 
             self._tabs.currentChanged.connect(_on_tab_changed)
-            # Qt does not fire currentChanged for the first tab, so the
-            # rule is applied once by hand here.
+            # Qt fires no currentChanged for the first tab.
             _on_tab_changed(self._tabs.currentIndex())
 
             # 33 ms is 30 frames a second.
@@ -539,7 +525,7 @@ if _HAS_QT:
             self._anim_timer.start(33)
 
         def _create_sim_bot_row(self):
-            """Add a new simulator bot row to the Simulator Swarm tab."""
+            """Append one row to ``_sim_bots`` and ``_sim_swarm_layout``."""
             idx = len(self._sim_bots) + 1
             row = QFrame()
             row.setStyleSheet(
@@ -684,7 +670,7 @@ if _HAS_QT:
             rem_btn.clicked.connect(_remove)
 
         def _create_paper_bot_row(self):
-            """Add a new paper trading bot row to the Paper Swarm tab."""
+            """Append one row to ``_paper_bots`` and ``_paper_swarm_layout``."""
             idx = len(self._paper_bots) + 1
             row = QFrame()
             row.setStyleSheet(
@@ -840,14 +826,11 @@ if _HAS_QT:
         }
 
         def _create_swarm_row(self, kind: str, label: str, cfg: dict):
-            """Build a unified swarm row widget for kind ∈ {live,sim,paper}.
+            """Build one swarm row for ``kind`` in {live, sim, paper}.
 
-            Returns a handle dict with the SAME keys regardless of kind:
-              widget, dot, id_lbl, context_lbl, mode_lbl, feed_lbl,
-              cap_lbl, status_lbl, metric_lbl, pnl_lbl, trades_lbl, kind.
-
-            This symmetry is what enables the parity invariant: any
-            code that updates one tab's row works on any tab's row.
+            The handle dict carries the same keys for every kind:
+            widget, dot, id_lbl, context_lbl, mode_lbl, feed_lbl,
+            cap_lbl, status_lbl, metric_lbl, pnl_lbl, trades_lbl, kind.
             """
             border, label_color, dot_color = self._SWARM_ACCENTS.get(
                 kind, self._SWARM_ACCENTS["sim"]
@@ -976,7 +959,7 @@ if _HAS_QT:
             }
 
         def _apply_stopped_style(self, handle: dict):
-            """Apply stopped/done visual state. Shared across kinds."""
+            """Clear a row handle's ``running`` flag and mute its colours."""
             handle["running"] = False
             handle["dot"].setStyleSheet(
                 f"color:{ds.VIZ_CAPTION};font-size:10px;font-weight:bold;"
@@ -992,7 +975,7 @@ if _HAS_QT:
             )
 
         def _apply_pnl_color(self, handle: dict, pnl: float):
-            """PnL coloring is identical across all three kinds."""
+            """Colour a row's ``pnl_lbl`` by the sign of ``pnl``."""
             col = ds.SUCCESS if pnl >= 0 else ds.ERROR
             handle["pnl_lbl"].setText(f"PnL {pnl:+,.2f}")
             handle["pnl_lbl"].setStyleSheet(
@@ -1001,16 +984,14 @@ if _HAS_QT:
             )
 
         def register_sim_run(self, sim_id: str, label: str, cfg: dict):
-            """Spawn a live-linked row in Simulator Swarm for an active sim.
-            Returns a handle with .update() and .stop() methods.
+            """Add one ``_live_sim_rows`` entry for an active sim.
 
-            Layout is delegated to _create_swarm_row, so Sim rows are
-            structurally identical to Paper and Live rows.
+            ``_create_swarm_row`` builds the widget; the returned handle
+            carries ``update`` and ``stop``.
             """
             _dur_t0 = time.monotonic()
             self._remove_live_sim(sim_id)
 
-            # Translate sim-specific cfg into the unified schema
             unified_cfg = {
                 "context": cfg.get("asset", cfg.get("label", label)),
                 "mode": cfg.get("mode", "SIM"),
@@ -1026,12 +1007,10 @@ if _HAS_QT:
             insert_pos = self._sim_swarm_layout.count() - 1
             self._sim_swarm_layout.insertWidget(insert_pos, handle["widget"])
 
-            # Timed before the emitter, so the emitter is not billed to
-            # the registration.
+            # Timed before the emitter, which is not billed to the registration.
             _dur_elapsed = time.monotonic() - _dur_t0
             self._live_sim_rows[sim_id] = handle
-            # `actual` is read back out of the store, not taken from the
-            # argument, so a row that landed in another layer is reported.
+            # `actual` is read back out of the store, never from the argument.
             try:
                 from src.core.signal_contract import emit as _sw_emit
 
@@ -1054,7 +1033,7 @@ if _HAS_QT:
         def update_sim_run(
             self, sim_id: str, pnl: float, trades: int, candle_idx: int = 0
         ):
-            """Update the live sim row. Uses shared PnL coloring."""
+            """Update one ``_live_sim_rows`` row from a sim tick."""
             h = self._live_sim_rows.get(sim_id)
             if h is None:
                 return
@@ -1067,7 +1046,7 @@ if _HAS_QT:
             self._update_sim_summary()
 
         def stop_sim_run(self, sim_id: str, pnl: float = 0.0, trades: int = 0):
-            """Mark a live sim row as stopped/complete."""
+            """Mark one ``_live_sim_rows`` row stopped."""
             h = self._live_sim_rows.get(sim_id)
             if h is None:
                 return
@@ -1085,11 +1064,10 @@ if _HAS_QT:
                 h["widget"].deleteLater()
 
         def register_paper_run(self, paper_id: str, label: str, cfg: dict):
-            """Spawn a live-linked row in Paper Swarm for a paper session.
+            """Add one ``_live_paper_rows`` entry for a paper session.
 
-            Uses _create_swarm_row, so Paper rows are structurally
-            identical to Sim and Live rows. The paper source and price
-            map onto the shared feed and metric columns.
+            ``_create_swarm_row`` builds the widget; the source lands in
+            the feed column and the price in the metric column.
             """
             _dur_t0 = time.monotonic()
             self._remove_live_paper(paper_id)
@@ -1108,12 +1086,10 @@ if _HAS_QT:
             insert_pos = self._paper_swarm_layout.count() - 1
             self._paper_swarm_layout.insertWidget(insert_pos, handle["widget"])
 
-            # Timed before the emitter, so the emitter is not billed to
-            # the registration.
+            # Timed before the emitter, which is not billed to the registration.
             _dur_elapsed = time.monotonic() - _dur_t0
             self._live_paper_rows[paper_id] = handle
-            # `actual` is read back out of the store, not taken from the
-            # argument, so a row that landed in another layer is reported.
+            # `actual` is read back out of the store, never from the argument.
             try:
                 from src.core.signal_contract import emit as _sw_emit
 
@@ -1136,7 +1112,7 @@ if _HAS_QT:
         def update_paper_run(
             self, paper_id: str, price: float, pnl: float, trades: int
         ):
-            """Update the live paper row with current tick state."""
+            """Update one ``_live_paper_rows`` row from a paper tick."""
             h = self._live_paper_rows.get(paper_id)
             if h is None:
                 return
@@ -1152,7 +1128,7 @@ if _HAS_QT:
             self._update_paper_summary()
 
         def stop_paper_run(self, paper_id: str, pnl: float = 0.0, trades: int = 0):
-            """Mark a live paper row as stopped."""
+            """Mark one ``_live_paper_rows`` row stopped."""
             h = self._live_paper_rows.get(paper_id)
             if h is None:
                 return
@@ -1169,9 +1145,10 @@ if _HAS_QT:
                 h["widget"].deleteLater()
 
         def register_live_run(self, bot_id: str, label: str, cfg: dict):
-            """Spawn a live-linked row in Bot Swarm Tab 1 for an active
-            real-exchange bot. Structurally identical to Sim/Paper rows.
-            cfg keys: pair|asset, mode, timeframe|source, capital
+            """Add one ``_live_bot_rows`` entry for a real-exchange bot.
+
+            ``cfg`` carries pair or asset, mode, timeframe or source,
+            and capital.
             """
             self._remove_live_bot_row(bot_id)
 
@@ -1202,8 +1179,7 @@ if _HAS_QT:
             trades: int = 0,
             status: str = None,
         ):
-            """Update a live bot row with current tick state.
-            Symmetrical to update_sim_run / update_paper_run."""
+            """Update one ``_live_bot_rows`` row from a bot tick."""
             h = self._live_bot_rows.get(bot_id)
             if h is None:
                 return
@@ -1221,8 +1197,7 @@ if _HAS_QT:
             h["_pnl"] = pnl
 
         def stop_live_run(self, bot_id: str, pnl: float = 0.0, trades: int = 0):
-            """Mark a live bot row as stopped. Symmetrical to
-            stop_sim_run / stop_paper_run."""
+            """Mark one ``_live_bot_rows`` row stopped."""
             h = self._live_bot_rows.get(bot_id)
             if h is None:
                 return
@@ -1261,13 +1236,10 @@ if _HAS_QT:
             self._paper_swarm_pnl.setText("Net PnL: —")
 
         def _reposition_wire_canvas(self):
-            """Put the wire overlay over the bot grid and nothing else.
+            """Size ``_wire_canvas`` to the bot grid and nothing wider.
 
-            The overlay is opaque to mouse events, so covering the whole
-            tab swallows every click that is not a bot click or a wire
-            right-click. Wires are only drawn between bots in the grid,
-            so the grid is all it needs to cover. A drag that starts on
-            the canvas keeps its mouse grab when the cursor leaves.
+            The canvas takes mouse events, and a wider rectangle would
+            swallow clicks outside the grid.
             """
             from PySide6.QtCore import QRect
 
@@ -1284,8 +1256,7 @@ if _HAS_QT:
 
         def resizeEvent(self, event):
             super().resizeEvent(event)
-            # Repositioned even while hidden: nothing else does it, so a
-            # resize in List mode would leave stale geometry for Grid.
+            # Repositioned while hidden: a List-mode resize would leave stale geometry.
             self._reposition_wire_canvas()
             if self._wire_canvas.isVisible():
                 self._wire_canvas.raise_()
@@ -1296,15 +1267,18 @@ if _HAS_QT:
                 widget.set_theme(self._theme_key)
 
         def _refresh_bot_swarm_privacy_dot(self) -> None:
-            """Draw the identifier privacy dot: filled when revealed,
-            hollow when masked, in the theme accent colour."""
+            """Draw the identifier privacy dot in the theme accent colour.
+
+            The dot is filled while identifiers are revealed and hollow
+            while they are masked.
+            """
             try:
                 if _get_privacy_mask_registry is None:
                     self._bot_swarm_privacy_dot.setText("●")
                     return
                 reg = _get_privacy_mask_registry()
                 masked = reg.is_masked("bot_swarm.identifiers")
-            except Exception:  # R28-OK: defensive — never break the paint
+            except Exception:  # a registry failure must not abort the paint
                 masked = False
             glyph = "○" if masked else "●"
             self._bot_swarm_privacy_dot.setText(glyph)
@@ -1314,11 +1288,10 @@ if _HAS_QT:
             )
 
         def _toggle_bot_swarm_identifier_mask(self) -> None:
-            """Flip the shared bot_swarm.identifiers mask.
+            """Flip the shared ``bot_swarm.identifiers`` mask.
 
-            Repaints the dot and every locust so the symbol and bot id
-            labels follow at once. A registry failure writes to stderr
-            and recolours the dot rather than doing nothing quietly.
+            The privacy dot and every ``BotNodeWidget`` repaint; a
+            registry failure writes to stderr and recolours the dot.
             """
             try:
                 if _get_privacy_mask_registry is None:
@@ -1349,13 +1322,15 @@ if _HAS_QT:
             self._refresh_bot_swarm_privacy_dot()
             for w in self._bot_widgets.values():
                 w.update()
-            # The Source and Destination lists re-render so their labels
-            # follow the toggle at once.
+            # The Source and Destination labels re-read the mask on re-render.
             self._rebuild_quick_routing_scope_in_place()
 
         def _refresh_privacy_mode_btn(self) -> None:
-            """Draw the Privacy Mode button: green on dark green when any
-            mask is on, muted when every mask is off."""
+            """Draw the Privacy Mode button.
+
+            It is green while any mask is on and muted while every mask
+            is off.
+            """
             try:
                 if _get_privacy_mask_registry is None:
                     self._privacy_mode_btn.setText("Privacy Mode: OFF")
@@ -1381,11 +1356,10 @@ if _HAS_QT:
                 )
 
         def _on_privacy_mode_btn_clicked(self) -> None:
-            """Turn every mask on, or every mask off.
+            """Turn every mask in the shared registry on, or every one off.
 
-            The register is a shared singleton, so the flip reaches the
-            Trading tab too. A register failure writes to stderr and
-            recolours the button rather than doing nothing quietly.
+            A registry failure writes to stderr and recolours the
+            Privacy Mode button.
             """
             try:
                 if _get_privacy_mask_registry is None:
@@ -1419,21 +1393,19 @@ if _HAS_QT:
             self._refresh_bot_swarm_privacy_dot()
             for w in self._bot_widgets.values():
                 w.update()
-            # The Source and Destination lists re-render so their labels
-            # follow the global toggle at once.
+            # The Source and Destination labels re-read the masks on re-render.
             self._rebuild_quick_routing_scope_in_place()
 
         def _rebuild_quick_routing_scope_in_place(self) -> None:
-            """Rebuild the Quick Routing lists over the bots already shown,
-            so their labels re-read the mask register. Does nothing while
-            the matrix holds no bots."""
+            """Rebuild the ``_quick_routing_matrix`` lists over the shown
+            bots, and do nothing while the matrix holds none.
+            """
             mx = getattr(self, "_quick_routing_matrix", None)
             if mx is None:
                 return
             ids = list(getattr(mx, "_last_scope_ids", []) or [])
             if not ids:
-                # No prior scope tracked — read the QListWidget items
-                # to rebuild from current state.
+                # No prior scope tracked: rebuild from the QListWidget items.
                 ids = [
                     mx._source_list.item(i).data(Qt.UserRole) or ""
                     for i in range(mx._source_list.count())
@@ -1442,12 +1414,10 @@ if _HAS_QT:
             mx.rebuild_scope(ids)
 
         def _bot_exchange_id(self, bot_id: str) -> str:
-            """This bot's exchange id, from the status data it was
-            rendered with. Returns "" if unknown.
+            """Return a bot's exchange id from the status data it holds.
 
-            Read out of memory, never off disk: _refresh_visible_bots
-            calls this once per bot, so a file read here would re-parse
-            bot_state.json once for every bot in the swarm.
+            The value comes from the widget, never from a disk read;
+            unknown returns "".
             """
             w = self._bot_widgets.get(bot_id)
             data = getattr(w, "_bot_data", None) if w is not None else None
@@ -1456,8 +1426,11 @@ if _HAS_QT:
             return ""
 
         def _all_bot_ids_in_scope(self) -> list[str]:
-            """Set of bot_ids that should be considered by the Quick
-            Routing matrix. Filters by the current Exchange selector."""
+            """Return the bot ids the Quick Routing matrix may route.
+
+            The Exchange selector narrows the list; an empty selection
+            returns every id in ``_bot_widgets``.
+            """
             sel = ""
             try:
                 sel = str(self._exchange_combo.currentData() or "")
@@ -1469,8 +1442,10 @@ if _HAS_QT:
             return [bid for bid in ids if self._bot_exchange_id(bid) == sel]
 
         def _rebuild_exchange_selector_items(self) -> None:
-            """Repopulate Exchange combo from distinct bot.config
-            exchange_ids across the current swarm + an "All" entry."""
+            """Refill ``_exchange_combo`` from the swarm's exchange ids.
+
+            An "All" entry heads the list.
+            """
             try:
                 combo = self._exchange_combo
             except AttributeError:
@@ -1490,7 +1465,6 @@ if _HAS_QT:
             combo.addItem("All", "")
             for eid in sorted(distinct):
                 combo.addItem(eid, eid)
-            # Restore prior selection if still present
             if current:
                 for i in range(combo.count()):
                     if str(combo.itemData(i) or "") == current:
@@ -1499,10 +1473,9 @@ if _HAS_QT:
             combo.blockSignals(False)
 
         def _refresh_visible_bots(self) -> None:
-            """Hide every bot the Exchange selector does not name.
+            """Hide every ``BotNodeWidget`` the Exchange selector omits.
 
-            The hidden widgets stay alive, so a wire end never dangles
-            when the filter changes.
+            A hidden widget stays alive and keeps its wire ends.
             """
             sel = ""
             try:
@@ -1516,7 +1489,7 @@ if _HAS_QT:
                 w.setVisible(self._bot_exchange_id(bid) == sel)
 
         def _refresh_quick_routing_scope(self) -> None:
-            """Re-sync the Quick Routing lists to the filtered bot set."""
+            """Re-sync ``_quick_routing_matrix`` to the filtered bot set."""
             mx = getattr(self, "_quick_routing_matrix", None)
             if mx is not None and hasattr(mx, "rebuild_scope"):
                 try:  # noqa: SIM105
@@ -1538,17 +1511,14 @@ if _HAS_QT:
             self._view_mode = mode
             _idx = 0 if mode == "list" else 1
             self._view_stack.setCurrentIndex(_idx)
-            # The top-level canvas carries grid coordinates, so it is
-            # hidden in List mode rather than painting stale wires.
+            # _wire_canvas carries grid coordinates and hides in List mode.
             if hasattr(self, "_wire_canvas") and self._wire_canvas:
                 self._wire_canvas.setVisible(mode == "grid")
-                # The stacked page has only just become visible, so this
-                # is the first moment its real rectangle exists.
+                # The stacked page just became visible; its rectangle exists now.
                 if mode == "grid":
                     self._reposition_wire_canvas()
                     self._wire_canvas.raise_()
-            # LaneWireCanvas is a child of the list viewport, so
-            # it stays put; just repaint.
+            # The lane canvas is a child of the list viewport and needs no move.
             if hasattr(self, "_lane_canvas") and self._lane_canvas:
                 self._lane_canvas.update()
 
@@ -1560,16 +1530,14 @@ if _HAS_QT:
                 self._lane_canvas.set_opacity_pct(self._wire_opacity_pct)
 
         def _refresh_bot_list_rows(self) -> None:
-            """Rebuild the BotListView from _bot_widgets.
+            """Rebuild the ``_bot_list`` rows from ``_bot_widgets``.
 
-            Called from update_bots once the grid is populated, so the
-            two views stay in step. Inflow and Outflow read $0.00 until
-            the exchange sync fills the year-to-date sums.
+            Inflow and Outflow read $0.00 until the exchange sync fills
+            the year-to-date sums.
             """
             if not hasattr(self, "_bot_list"):
                 return
-            # The % Out column shows the sum of a bot's outbound rates:
-            # two 25% wires read 50%, four 30% read 120% and turn red.
+            # The % Out column sums a bot's outbound rates and reddens over 100.
             _outflow_pct_by_bot: dict[str, float] = {}
             for _wire in self._wires:
                 _sid = str(_wire.get("source_id", "") or "")
@@ -1583,8 +1551,7 @@ if _HAS_QT:
                 _w = self._bot_widgets[bid]
                 _data = getattr(_w, "_bot_data", {}) or {}
                 _sym = str(_data.get("symbol", "") or "")
-                # Year-to-date sums, read whenever the exchange sync has
-                # filled them in.
+                # Year-to-date sums, filled in by the exchange sync.
                 _stats = _data.get("stats", {}) or {}
                 _in = float(
                     _stats.get("ytd_folded_usd", 0.0)
@@ -1598,8 +1565,7 @@ if _HAS_QT:
                 )
                 rows.append(
                     {
-                        # Masked here: bot_swarm_list.py holds no mask_or
-                        # call, so set_bots renders whatever it is handed.
+                        # Masked here: set_bots renders whatever it is handed.
                         "bot_id": bid,
                         "symbol": _mask_or(_sym, "bot_swarm.identifiers"),
                         "inflow_usd": _in,
@@ -1608,13 +1574,10 @@ if _HAS_QT:
                     }
                 )
             self._bot_list.set_bots(rows)
-            # Feed wires to the lane canvas so vertical segments
-            # align with row positions after the populate.
+            # The lane canvas needs the wires again to align its segments.
             self._lane_canvas.set_wires(self._wires)
 
-        # Routing lives on each source bot's scrumming_state
-        # .smart_wire_routes in bot_state.json, read and written here
-        # directly so the matrix works with no BotContainer attached.
+        # Routing lives in each source bot's scrumming_state.smart_wire_routes.
         def _load_bot_state_dict(self) -> dict:
             try:
                 from ..core.state_manager import StateManager
@@ -1624,25 +1587,12 @@ if _HAS_QT:
                 return {}
 
         def _save_bot_state_dict(self, state: dict) -> None:
-            """Write back to bot_state.json. The SECOND writer of that file.
+            """Write bot_state.json through ``atomic_write_json``.
 
-            SECOND WRITER WARNING. This is not the primary persistence
-            path — ``StateManager.save_state`` is — and the two write the
-            same file. The write goes through ``atomic_write_json``, whose
-            unique per-call staging file makes it impossible for either
-            writer to rename its partial write over the other's live
-            position file.
-
-            Its only purpose is maintaining
-            ``scrumming_state.smart_wire_routes``, and
-            ``export_scrumming_state`` does not emit that key — so the
-            next 60-second save rebuilds scrumming_state without it. The
-            durable Smart Wire channel is the top-level ``smart_wires``
-            key written through StateManager.
-
-            A failed write is logged, never swallowed: this is the
-            operator's position file, and a silent failure could persist
-            for weeks with no signal.
+            This is the second writer of that file after
+            ``StateManager.save_state``, and it maintains only
+            ``scrumming_state.smart_wire_routes``. A failed write is
+            logged.
             """
             try:
                 from pathlib import Path
@@ -1664,10 +1614,11 @@ if _HAS_QT:
         def _apply_routes_to_state(
             self, add: list[tuple[str, str, float]], remove: list[tuple[str, str]]
         ) -> None:
-            """Mutate bot_state.json — for each source bot, update its
-            scrumming_state.smart_wire_routes list. ``add`` entries are
-            deduped by dest_bot_id (replace pct if dest already wired).
-            Saves immediately."""
+            """Update each source bot's ``smart_wire_routes`` list and save.
+
+            An ``add`` entry is deduped by ``dest_bot_id``, replacing the
+            pct when that destination is already wired.
+            """
             state = self._load_bot_state_dict()
             bots = state.setdefault("bots", {})
 
@@ -1682,7 +1633,6 @@ if _HAS_QT:
 
             for src, dst, pct in add:
                 routes = _ensure_routes(src)
-                # Dedupe by dest_bot_id
                 replaced = False
                 for entry in routes:
                     if isinstance(entry, dict) and (entry.get("dest_bot_id") == dst):
@@ -1706,9 +1656,11 @@ if _HAS_QT:
             self._save_bot_state_dict(state)
 
         def _clear_all_routes_in_state(self) -> list[tuple[str, str]]:
-            """Disconnect All: zero out every bot's smart_wire_routes
-            list. Returns the (source, dest) pairs that existed before
-            so the caller can emit wire.removed events for each."""
+            """Empty every bot's ``smart_wire_routes`` list.
+
+            Returns the (source, dest) pairs that existed before the
+            call, one per ``wire.removed`` the caller emits.
+            """
             state = self._load_bot_state_dict()
             bots = state.get("bots", {}) if isinstance(state, dict) else {}
             removed_pairs: list[tuple[str, str]] = []
@@ -1735,11 +1687,9 @@ if _HAS_QT:
             seen: int,
             rejected: int,
         ) -> None:
-            """Record any route on disk that did not reach the canvas.
+            """Log each stored route that did not reach ``_wires``.
 
-            Silent when every route was painted, so the record
-            always means a real shortfall and never just that
-            hydration ran.
+            Writes nothing when every route was painted.
             """
             if painted == seen:
                 return
@@ -1755,13 +1705,10 @@ if _HAS_QT:
             )
 
         def _hydrate_smart_wire_routes_from_disk(self) -> int:
-            """Replay each bot's stored routes as wire.created events and
-            return how many were emitted.
+            """Emit one ``wire.created`` per stored route and return the count.
 
-            Runs alongside BotManager.restore_smart_wires_from_state;
-            both paths meet in _on_external_wire_created. Every route on
-            disk that does not reach the canvas is counted and recorded
-            before this returns.
+            ``_on_external_wire_created`` receives them, and any route
+            that does not reach ``_wires`` is recorded first.
             """
             state = self._load_bot_state_dict()
             bots = state.get("bots", {}) if isinstance(state, dict) else {}
@@ -1823,13 +1770,10 @@ if _HAS_QT:
             self._last_time = now
             for widget in self._bot_widgets.values():
                 widget.animate(dt)
-            # Animate wire glow
             for wire in self._wires:
                 wire["phase"] = wire.get("phase", 0) + dt * 2.5
             if self._wires or self._dragging_wire:
-                # Raised every frame so the stacking order cannot drift
-                # as bots come and go. raise_() does nothing when the
-                # overlay is already on top.
+                # Raised every frame: bots coming and going would drift the order.
                 if self._wire_canvas.isVisible():
                     self._wire_canvas.raise_()
                 self._wire_canvas.update()
@@ -1838,18 +1782,17 @@ if _HAS_QT:
                     self._lane_canvas.update()
 
         def _get_bot_center(self, bot_id: str) -> Optional[QPointF]:
-            """Get the center of a bot widget in canvas coordinates."""
+            """Return a ``BotNodeWidget`` centre in ``_wire_canvas`` coordinates."""
             w = self._bot_widgets.get(bot_id)
             if not w:
                 return None
-            # Map widget center to the canvas coordinate space
             center = QPointF(w.width() / 2, w.height() / 2)
             global_pt = w.mapToGlobal(center.toPoint())
             local_pt = self._wire_canvas.mapFromGlobal(global_pt)
             return QPointF(local_pt)
 
         def _bot_at_pos(self, pos: QPointF) -> str:
-            """Find which bot widget is at a canvas position."""
+            """Return the ``BotNodeWidget`` under a ``_wire_canvas`` position."""
             for bid, w in self._bot_widgets.items():
                 global_pt = self._wire_canvas.mapToGlobal(pos.toPoint())
                 local_pt = w.mapFromGlobal(global_pt)
@@ -1867,14 +1810,11 @@ if _HAS_QT:
             self._wire_canvas.update()
 
         def _confirm_wire_removal(self, pairs: list, why: str = "") -> bool:
-            """Ask before destroying live Smart Wire(s). True to proceed.
+            """Ask before removing wires, and return True to proceed.
 
             ``remove_wire`` emits ``wire.removed``, which reaches
-            ``SmartWireManager.unregister_wire``. That is engine state,
-            not a drawing, and there is no undo. The dialog defaults to
-            No, so a stray Return keypress cannot cut a wire. The rate
-            is shown because it is the part the operator cannot rebuild
-            from memory.
+            ``SmartWireManager.unregister_wire`` with no undo. The dialog
+            defaults to No and names each wire's rate.
             """
             if not pairs:
                 return False
@@ -1907,8 +1847,7 @@ if _HAS_QT:
                 )
                 return reply == QMessageBox.Yes
             except Exception as exc:  # noqa: BLE001
-                # If the dialog cannot be shown, REFUSE. An unconfirmable
-                # destructive action must not proceed unconfirmed.
+                # A dialog that cannot be shown refuses the removal.
                 logger.error(
                     "wire-removal confirmation could not be shown (%s); "
                     "refusing the removal",
@@ -1927,15 +1866,13 @@ if _HAS_QT:
                 return
 
             if target_id and target_id != start_id:
-                # Check for duplicate — if exists, this is a disconnect drag
                 existing = [
                     w
                     for w in self._wires
                     if w["source_id"] == start_id and w["target_id"] == target_id
                 ]
                 if existing:
-                    # The header advertises this gesture as connect, so
-                    # on an already-wired pair it is confirmed first.
+                    # An already-wired pair is confirmed before the drag disconnects it.
                     if not self._confirm_wire_removal(
                         [(start_id, target_id)],
                         "Dragging between two already-connected bots "
@@ -1950,9 +1887,7 @@ if _HAS_QT:
             elif not target_id:
                 wire_from_start = [w for w in self._wires if w["source_id"] == start_id]
                 if len(wire_from_start) == 1:
-                    # A press starts a drag anywhere on a locust, so a
-                    # release 2-3 px off its edge reaches here. Confirmed
-                    # first, because with one wire there is no picker.
+                    # A release a few px off a locust edge reaches here with no picker.
                     if not self._confirm_wire_removal(
                         [
                             (
@@ -1976,7 +1911,7 @@ if _HAS_QT:
             self._wire_canvas.update()
 
         def _show_disconnect_picker(self, bot_id: str, pos: QPointF):
-            """Show menu to pick which wire to disconnect when bot has multiple."""
+            """Offer a menu of a bot's wires and remove the one chosen."""
             menu = QMenu(self)
             menu.setStyleSheet(
                 f"QMenu {{ background: {ds.MENU_SURFACE}; color: {ds.TEXT_HIGH}; border: 1px solid {ds.MENU_BORDER}; }}"
@@ -2015,7 +1950,7 @@ if _HAS_QT:
                 self.remove_wire(src, tgt)
 
         def _show_wire_config(self, source_id: str, target_id: str):
-            """Show popup to configure wire percentage."""
+            """Ask for a wire's pct and write it back through ``_save_bot_state``."""
             from PySide6.QtWidgets import (
                 QDialog,
                 QFormLayout,
@@ -2058,7 +1993,6 @@ if _HAS_QT:
                         "phase": 0.0,
                     }
                 )
-                # Update source bot config
                 from ..core.event_bus import get_event_bus
 
                 bus = get_event_bus()
@@ -2072,10 +2006,9 @@ if _HAS_QT:
                 )
 
         def _on_external_wire_created(self, event) -> None:
-            """Take a wire.created event and add the wire if it is new.
+            """Add the ``wire.created`` event's wire to ``_wires`` when new.
 
-            Adding the same pair twice only updates its rate. The
-            startup state restore comes through here too.
+            A repeated pair updates its pct and adds no second entry.
             """
             try:
                 data = getattr(event, "data", None) or {}
@@ -2084,12 +2017,9 @@ if _HAS_QT:
                 pct = float(data.get("pct", 0) or 0)
                 if not src or not tgt or pct <= 0:
                     return
-                # Skip if this wire is already in the visualizer's list
-                # (avoids double-add when the user just dragged it —
-                # the drag path also emits wire.created).
+                # The drag path also emits wire.created, so a repeat only updates pct.
                 for w in self._wires:
                     if w.get("source_id") == src and w.get("target_id") == tgt:
-                        # Update pct if it changed
                         w["pct"] = pct
                         return
                 self._wires.append(
@@ -2100,17 +2030,13 @@ if _HAS_QT:
                         "phase": 0.0,
                     }
                 )
-                # Trigger a canvas repaint so the wire is visible.
                 if hasattr(self, "_wire_canvas") and self._wire_canvas:
                     self._wire_canvas.update()
             except Exception:  # noqa: S110
                 pass
 
         def _on_external_wire_removed(self, event) -> None:
-            """Take a wire.removed event and drop every wire it names.
-
-            Removing a pair that is not there does nothing.
-            """
+            """Drop from ``_wires`` every pair the ``wire.removed`` event names."""
             try:
                 data = getattr(event, "data", None) or {}
                 src = str(data.get("source_id", "") or "")
@@ -2146,7 +2072,7 @@ if _HAS_QT:
             )
 
         def _wire_at_pos(self, pos: QPointF, threshold: float = 12.0) -> dict | None:
-            """Find the wire closest to a canvas position, within threshold."""
+            """Return the ``_wires`` entry nearest a position, within threshold."""
             best_wire = None
             best_dist = threshold
 
@@ -2156,16 +2082,12 @@ if _HAS_QT:
                 if not src or not tgt:
                     continue
 
-                # Get offset for this wire (bidirectional routing)
                 offset = self._get_wire_offset(wire)
 
-                # Point-to-segment distance (with offset applied to midpoint)
                 mid_y_shift = offset
-                # Approximate: check distance to a few sample points along the wire
                 for t in [0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0]:
                     px = src.x() + (tgt.x() - src.x()) * t
                     py = src.y() + (tgt.y() - src.y()) * t
-                    # Add bezier offset at midpoint (max at t=0.5)
                     curve_offset = mid_y_shift * 4 * t * (1 - t)
                     py += curve_offset
                     dist = math.sqrt((pos.x() - px) ** 2 + (pos.y() - py) ** 2)
@@ -2176,17 +2098,18 @@ if _HAS_QT:
             return best_wire
 
         def _is_bidirectional(self, source_id: str, target_id: str) -> bool:
-            """Check if a reverse wire exists (target→source)."""
+            """Report whether ``_wires`` holds the target-to-source pair."""
             return any(
                 w["source_id"] == target_id and w["target_id"] == source_id
                 for w in self._wires
             )
 
         def _get_wire_offset(self, wire: dict) -> float:
-            """
-            Get vertical offset for a wire to prevent bidirectional overlap.
-            Left-to-right = lower slot (positive offset), right-to-left = upper slot (negative).
-            Only offsets if the reverse wire also exists.
+            """Return the vertical offset that keeps a wire pair apart.
+
+            A left-to-right wire takes the lower slot and a
+            right-to-left wire the upper; a wire with no reverse
+            partner takes 0.0.
             """
             src_center = self._get_bot_center(wire["source_id"])
             tgt_center = self._get_bot_center(wire["target_id"])
@@ -2196,14 +2119,14 @@ if _HAS_QT:
             if not self._is_bidirectional(wire["source_id"], wire["target_id"]):
                 return 0.0  # No offset needed for unidirectional
 
-            # Determine direction: source left of target = "left to right"
+            # A source left of its target takes the lower slot.
             if src_center.x() <= tgt_center.x():
                 return 25.0  # Lower slot
             else:
                 return -25.0  # Upper slot
 
         def _show_disconnect_menu(self, pos: QPointF, wire: dict):
-            """Show right-click context menu to disconnect a wire."""
+            """Offer the right-click menu that removes the wire under the cursor."""
             menu = QMenu(self)
             menu.setStyleSheet(
                 f"QMenu {{ background: {ds.MENU_SURFACE}; color: {ds.TEXT_HIGH}; border: 1px solid {ds.MENU_BORDER}; }}"
@@ -2226,7 +2149,6 @@ if _HAS_QT:
                 )
             )
 
-            # If bidirectional, offer to disconnect both
             if self._is_bidirectional(wire["source_id"], wire["target_id"]):
                 disconnect_both = menu.addAction("Disconnect Both Directions")
             else:
@@ -2245,18 +2167,13 @@ if _HAS_QT:
                 self.remove_wire(wire["target_id"], wire["source_id"])
 
         def update_bots(self, bot_statuses: list[dict]):
-            """Update visualizations from bot status data.
+            """Rebuild ``_bot_widgets`` and ``_live_bot_rows`` from status data.
 
-            In addition to the animated bot node grid, maintain the
-            unified row section so Tab 1 mirrors the Sim/Paper
-            structure. Same data feeds both views; user gets row
-            summary + animated detail side-by-side.
+            The same status dict feeds the locust grid and the row list.
             """
             current_ids = set()
 
-            # Grid position comes from insertion order. Wire geometry is
-            # measured from bot centres, so a stable order stops wires
-            # jumping when a bot is added or removed.
+            # Insertion order fixes grid position, and wire ends read bot centres.
             for status in bot_statuses:
                 bid = status.get("bot_id", "")
                 if not bid:
@@ -2280,7 +2197,6 @@ if _HAS_QT:
                     widget = self._bot_widgets.pop(bid)
                     self._grid_layout.removeWidget(widget)
                     widget.deleteLater()
-                    # Remove wires involving this bot
                     self._wires = [
                         w
                         for w in self._wires
@@ -2292,17 +2208,17 @@ if _HAS_QT:
             except Exception as _rl_exc:  # noqa: BLE001 - list mirror best-effort
                 logger.debug("list-view row refresh raised: %s", _rl_exc)
 
-            # Re-layout after any removal so grid stays compact (no holes).
+            # Re-laid out after a removal: the grid would otherwise hold a hole.
             if self._bot_widgets:
                 widgets_in_order = list(self._bot_widgets.values())
                 while self._grid_layout.count():
                     self._grid_layout.takeAt(0)
-                    # don't deleteLater — we own the widgets in _bot_widgets
+                    # No deleteLater: _bot_widgets still holds these widgets.
                 for idx, w in enumerate(widgets_in_order):
                     row = idx // self._grid_cols
                     col = idx % self._grid_cols
                     self._grid_layout.addWidget(w, row, col)
-                # Re-add the empty label at bottom (hidden) so it survives
+                # The empty label is re-added hidden and survives the rebuild.
                 self._grid_layout.addWidget(
                     self._empty_label,
                     (len(widgets_in_order) // self._grid_cols) + 1,
@@ -2314,9 +2230,7 @@ if _HAS_QT:
             if not self._bot_widgets:
                 self._empty_label.setVisible(True)
 
-            # Keep the wire overlay on top of the bot widgets after any
-            # layout change; otherwise newly-added widgets stack above the
-            # overlay and eat mouse events + occlude wires.
+            # A new widget would stack over _wire_canvas and eat its mouse events.
             if self._wire_canvas.isVisible():
                 self._reposition_wire_canvas()
                 self._wire_canvas.raise_()

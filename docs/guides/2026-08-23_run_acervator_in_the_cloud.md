@@ -68,48 +68,58 @@ whether to move the account across at all.
 
 ## What guards against a second copy today
 
-Nothing. [TREE]
+The instance guard does. [TREE]
 
-I searched your whole tree for every guard I know of: lock files, PID
-files, `QSharedMemory`, `QLocalServer`, `QSystemSemaphore`, named
-mutexes, `fcntl.flock`, `msvcrt.locking`, `filelock`, `portalocker`,
-socket binding used as a lock, and any "already running" message. The
-product code holds no matches.
+`src/core/instance_guard.py` runs before the saved fleet can auto-start, and
+`main.py` calls it on every launch. It does two things. It takes an exclusive
+operating-system lock on a file in the state directory and holds that lock for
+the life of the process. It also writes a claim file recording which machine
+owns that directory. A launch that cannot take the lock, or that reads a claim
+naming a different machine, is refused a silent start and is sent to a consent
+dialog instead.
 
-Three findings deserve your attention.
+```python
+VERDICT_FIRST_RUN = "first_run"
+VERDICT_SAME_MACHINE = "same_machine"
+VERDICT_LIVE_INSTANCE = "live_instance"
+VERDICT_FOREIGN_MACHINE = "foreign_machine"
+VERDICT_UNCLAIMED_FLEET = "unclaimed_fleet"
+VERDICT_UNCERTAIN = "uncertain"
 
-**You already know the problem, and nobody built the fix.** Your own design
-note at `docs/engineering-notes/2026-08-05_C01_save_state_merge_design.md:339`
-records the risk in plain words: "No single-instance guard." Line 381
-proposes the repair (an exclusive lock on `bot_state.lock`, and a modal
-warning in `main.py`). That repair does not exist anywhere in the code.
+AUTO_START_PERMITTED = frozenset({VERDICT_FIRST_RUN, VERDICT_SAME_MACHINE})
+```
 
-**Even the proposed fix would not have helped you here.** A lock on a
-file in `~/.acervator/` protects one computer. Your desktop and a cloud
-machine have separate disks and separate home folders. Both would take
-their own lock, and both would trade.
+Three findings still deserve your attention.
 
-**The watchdog makes detection worse, not better.** `main.py:582-597`
-writes a heartbeat file that holds a timestamp and a process id. The
-application never reads that file back as a claim of ownership. Worse,
-`acervator_watchdog.py:707-712` **deletes** that heartbeat file when it
-starts, on the assumption that any existing heartbeat is stale. A second
-launch therefore erases the first copy's only sign of life.
+**The guard protects one state directory, not two machines.** Both the lock and
+the claim live inside the folder they protect. Your desktop and a cloud machine
+have separate disks and separate home folders, so each one reads its own folder,
+calls the launch a first run, and starts. The guard stops the second copy only
+where the state directory travels with you: copy that folder to the cloud
+machine and the claim inside it names your desktop, the machine fingerprints
+differ, and the launch refuses to start the fleet on its own.
+
+**The watchdog makes detection worse, not better.** The application writes a
+heartbeat file holding a timestamp and a process id, and refreshes it every two
+seconds. It never reads that file back as a claim of ownership. The out-of-process
+watchdog **deletes** the heartbeat when it starts, on the assumption that any
+existing heartbeat is stale, so a second launch erases the first copy's only
+sign of life.
 
 **The state files carry no owner.** `bot_state.json` and
-`reservation_state.json` have no host name, no machine id, and no lease.
-Each write replaces the file. The last writer wins.
+`reservation_state.json` have no host name, no machine id, and no lease of their
+own. Each write replaces the file. The last writer wins. The claim sits beside
+them; it does not travel inside them.
 
-This matches what other trading platforms do. Your own research note at
-`docs/engineering-notes/2026-08-09_position_attribution_shared_account_research.md:76`
-records that Freqtrade's answer to multiple instances is to partition
-the money, not to prevent the second instance. No framework surveyed
-prevents it.
+This matches what other trading platforms do. Freqtrade's answer to multiple
+instances is to partition the money, not to prevent the second instance. No
+framework surveyed prevents it.
 
 ### The mechanism you must use instead
 
-Because the software will not stop you, the guard has to be a
-procedure that you perform, and it must be one you cannot forget.
+Because the instance guard cannot see across two machines, the second
+guard has to be a procedure that you perform, and it must be one you
+cannot forget.
 
 1. **Move the keys, do not copy them.** Keep one set of live Coinbase
    API keys. When the cloud machine becomes the authority, delete the
@@ -415,8 +425,9 @@ master = f"qat_{sm.get('username', 'user')}_vault"
 ```
 
 The passphrase is your username wrapped in fixed text. `settings.json`
-holds that username, in the same folder, beside the encrypted keys. Anybody who can read that folder holds both the locked box and
-the recipe for its key.
+in `~/.acervator/` holds that username, beside the encrypted keys.
+Anybody who can read that folder holds both the locked box and the
+recipe for its key.
 
 The encryption is therefore real cryptography protecting nothing.
 Treat `~/.acervator/` as if it holds your Coinbase keys in plain text,

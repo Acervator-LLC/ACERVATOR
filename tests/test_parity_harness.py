@@ -449,9 +449,8 @@ def test_the_caller_fix_alone_would_report_a_false_match_rate() -> None:
     }, "every fill read back at the epoch, not at its tablet instant"
     assert {d["amount"] for d in degraded} == {0.0}
 
-    # What the panel would print with ONLY the caller fixed: a report
-    # over a non-empty sim set, so the honest "0 trades" branch above
-    # it is never reached.
+    # What the panel prints with only the caller fixed: a report over a
+    # non-empty sim set, so the honest zero-trades branch is never reached.
     as_the_old_reader_saw_them = [
         _sim(d["ts"], d["symbol"], "", d["amount"]) for d in degraded
     ]

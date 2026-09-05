@@ -1,62 +1,11 @@
-"""parity_harness.py — sim decisions vs actual live trades.
+"""Sim replay fills measured against the live trades they should reproduce.
 
-Operator directive 2026-08-01:
-
-    "We have never been able to get the sim to match live by
-    playing back Stone Tablets and checking simulator trade logic
-    against historical trades that actually were initiated by the
-    platform. It must be able to play the entire 5m historical
-    tape for every traded asset detected in the YTD data. The
-    simulated bots must replicate the historical trade logic that
-    would result in the historical trade being triggered. This
-    must not be a forced or tweaked result from the simulated
-    bots but an actual matched response that verifies the
-    strategy."
-
-This module is the yardstick — it measures parity between sim
-output and real history so we can SEE whether the strategy
-actually reproduces.
-
-Contract:
-
-    live_trades  = fetch_all_history_chunked(bot_manager, since_ts)
-                   returns list[dict] with keys:
-                     {timestamp (unix sec), symbol, side, amount,
-                      price, exchange, ...}
-
-    sim_trades   = the replay's own fills, in EITHER of the two
-                   shapes the Simulator has produced:
-
-                     * ``TabletBackend.fetch_my_trades()`` -- ccxt
-                       DICTS with keys {timestamp (unix MILLIsec from
-                       the master clock), symbol, side (lowercase
-                       str), amount, price, cost, fee}. This is what
-                       the Simulator produces today.
-                     * ``FleetSimExchange``'s ``Trade`` OBJECTS with
-                       ``.symbol``, ``.side`` (OrderSide enum),
-                       ``.amount``, ``.timestamp`` (unix SECONDS).
-                       Still exported, so still read correctly.
-
-                   See THE MILLISECOND SEAM below.
-
-    tolerance_s  = time window a sim trade can drift from live
-                   and still count as matched. Default 300s (one
-                   5m candle) — a sim decision on the same tablet
-                   tick can settle up to a candle late (Coinbase
-                   fills happen mid-candle in real life).
-
-Output: ParityReport with:
-    matched         : list of (live_trade, sim_trade) pairs
-    live_only       : live trades with no sim match (sim UNDER-triggered)
-    sim_only        : sim trades with no live match (sim OVER-triggered)
-    counts          : matched / live_only / sim_only aggregates
-    per_symbol      : dict[symbol] → counts
-
-The report is deliberately structural — the operator (or a follow-on
-tool) reads it to see which specific divergences deserve investigation
-in the bot's gate chain vs the tablet content.
-
-sadp: R28 SSS + R70 RCN
+``live_trades`` are the ``fetch_all_history_chunked`` dicts in unix seconds.
+``sim_trades`` are either ``TabletBackend.fetch_my_trades`` dicts or
+``FleetSimExchange`` ``Trade`` objects, and ``_read_fill`` normalises both.
+``tolerance_s`` is how far a sim fill may drift and still match, and
+``ParityReport`` carries ``matched``, ``live_only``, ``sim_only`` and the
+per-symbol counts.
 """
 
 from __future__ import annotations
@@ -69,33 +18,10 @@ logger = logging.getLogger("acervator.stone_tablets.parity_harness")
 
 DEFAULT_TOLERANCE_S: float = 300.0  # one 5m candle
 
-# THE MILLISECOND SEAM
-# ====================
-# The two sim producers stamp a fill in DIFFERENT UNITS, and a
-# timestamp read in the wrong unit produces a plausible number rather
-# than an error -- so this seam has to be stated, not inferred.
-#
-# `TabletBackend` appends ccxt-shaped DICTS whose `timestamp` IS the
-# master clock in MILLISECONDS (`current_ts_ms`, tablet_backend.py).
-# `FleetSimExchange`, which it replaced in v3.24.84, passed `Trade`
-# OBJECTS carrying SECONDS on `.timestamp`. The same seam is already
-# resolved the same way one layer up, in
-# `fleet_replay_controller._read_fill`.
-#
-# The comparison is done in SECONDS, because the live side
-# (`fetch_all_history_chunked`) is unix seconds and `tolerance_s` is
-# seconds. So the DICT path divides and the OBJECT path does not.
-#
-# WHAT GETTING IT WRONG COSTS. A 2026 fill stamped 1_776_778_500_000 ms
-# read as seconds sits ~54,000 years from its live partner. Every drift
-# then exceeds any tolerance, nothing matches, and the report reads
-# "0.0% reproduction" over a full set of sim trades. That is a NUMBER,
-# not an error, and it is indistinguishable from a strategy that
-# genuinely reproduces nothing.
+# `TabletBackend` dicts stamp `timestamp` in milliseconds; `FleetSimExchange`
+# `Trade` objects stamp seconds. Every comparison here is in seconds.
 MS_PER_S: float = 1000.0
 
-# The unit each sim shape carries, stated so a reader does not have to
-# re-derive it from the branch below.
 SIM_DICT_TIMESTAMP_UNIT: str = "ms"
 SIM_OBJECT_TIMESTAMP_UNIT: str = "s"
 
@@ -169,21 +95,9 @@ def _live_side_str(trade: dict) -> str:
 def _sim_fields(trade: Any) -> tuple[str, str, float, float]:
     """``(symbol, side, timestamp in SECONDS, amount)`` from either shape.
 
-    ISSUE: THE SHAPE CHANGED AND THIS READER DID NOT. Every field here
-    used to be read with ``getattr(trade, ...)`` — the
-    ``FleetSimExchange`` object shape. ``getattr`` on a DICT does not
-    read a key and, with a default, never raises. So a `TabletBackend`
-    fill read through the old path returned ``symbol=""``, ``side=""``,
-    ``amount=0.0`` and ``timestamp=0.0`` (1 Jan 1970): a full report
-    over trades whose every field was a default.
-
-    The dict is therefore routed through the dict branch UP FRONT,
-    which is the same resolution ``fleet_replay_controller._read_fill``
-    applies to this exact ambiguity. An exception fallback cannot work
-    here, because the failure is silent by construction.
-
-    The DICT branch divides by ``MS_PER_S`` and the OBJECT branch does
-    not — see THE MILLISECOND SEAM at the top of this module.
+    A dict takes the dict branch first: ``getattr`` on a dict reads no key
+    and, with a default, never raises. The dict branch divides
+    ``timestamp`` by ``MS_PER_S`` and the object branch does not.
     """
     if isinstance(trade, dict):
         return (

@@ -12,9 +12,7 @@ from .types import (
 )
 
 
-# ---------------------------------------------------------------------------
 # 10. Z-Score — Absolute statistical price deviation from mean
-# ---------------------------------------------------------------------------
 class ZScoreIndicator:
     """
     Z-Score of price: how many standard deviations is the current close

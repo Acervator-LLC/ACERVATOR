@@ -91,10 +91,7 @@ class _Bot:
         self._hedge_trades = 0
         self._cb_hard_tripped = False
         self._compact_wire_credits = lambda *_a, **_k: None
-        # issue #133 unit 11 -- the restore lands a parked wire
-        # credit into a standing fold queue. Bound as the REAL
-        # methods, so the stub runs the shipping code rather
-        # than a stand-in that cannot fail.
+        # Bound as the real methods, so the stub runs the shipping restore.
         self._fold_tranches = []
         self._pending_wire_ledger = []
         self._fold_queue_usd = 0.0
@@ -187,33 +184,41 @@ class TestAnOlderFileStillLoads:
         assert bot._stack_tranches == [{"usd": 2.0}]
 
 
+class _RoundTripBot(_Bot):
+    """A bot ``export_scrumming_state`` runs against as well as
+    ``import_scrumming_state``."""
+
+    export_scrumming_state = ScrummingBot.export_scrumming_state
+
+    def __init__(self):
+        super().__init__()
+        self._quote_to_usd = 1.0
+        self._main_lots = []
+        self._scrum_target_mode = "usd"
+        self._scrum_target_side = None
+
+
 class TestBothSidesExist:
     """An export without an import is a write-only field: it looks
     persisted and restores to nothing."""
 
     @pytest.mark.parametrize("field", FIELDS)
-    def test_the_key_is_on_both_sides(self, field):
-        import ast
-        import inspect
+    def test_the_field_survives_a_save_and_a_load(self, field):
+        saved_bot = _RoundTripBot()
+        saved_bot.import_scrumming_state(dict(POPULATED))
+        saved = saved_bot.export_scrumming_state()
 
-        _sf = inspect.getsourcefile(ScrummingBot.export_scrumming_state)
-        assert _sf is not None
-        src = Path(_sf).read_text(encoding="utf-8")
+        blank = _RoundTripBot()
+        blank.import_scrumming_state({})
+
+        restored = _RoundTripBot()
+        restored.import_scrumming_state(saved)
+
         key = field.lstrip("_")
-        tree = ast.parse(src)
-        exp = next(
-            n
-            for n in ast.walk(tree)
-            if isinstance(n, ast.FunctionDef) and n.name == "export_scrumming_state"
-        )
-        imp = next(
-            n
-            for n in ast.walk(tree)
-            if isinstance(n, ast.FunctionDef) and n.name == "import_scrumming_state"
-        )
-        assert f'"{key}"' in (
-            ast.get_source_segment(src, exp) or ""
-        ), f"{key} is not exported"
-        assert f'"{key}"' in (
-            ast.get_source_segment(src, imp) or ""
+        assert key in saved, f"{key} is not exported"
+        assert getattr(saved_bot, field) != getattr(
+            blank, field
+        ), f"{key} was populated with its own default, so the load proves nothing"
+        assert getattr(restored, field) == getattr(
+            saved_bot, field
         ), f"{key} is exported but never restored -- write-only"

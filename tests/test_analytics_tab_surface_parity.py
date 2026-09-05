@@ -32,10 +32,6 @@ from tests.fixtures.surface_pictures import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-SHIPPED_PATH = REPO_ROOT / "src/gui/analytics_tab.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/analytics_tab_surface.py"
-BRIDGE_PATH = REPO_ROOT / "src/core/desktop_bridge.py"
-WIRED_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/widgets/bot_status_table.py"
 
 METHOD_NAME = "analytics.tab"
 
@@ -171,9 +167,7 @@ EXPECTED_CHART_RISE_FILL = [[0, 255, 136, 40], [0, 255, 136, 5]]
 EXPECTED_CHART_FALL_FILL = [[255, 51, 102, 40], [255, 51, 102, 5]]
 
 
-# ---------------------------------------------------------------------
 # The numbers both sides are driven with
-# ---------------------------------------------------------------------
 
 
 class Source:
@@ -432,9 +426,7 @@ AWKWARD_NUMBERS = (
 NON_TEXT_VALUES: tuple = (0, -1, 9.5, None, [], {}, True)
 
 
-# ---------------------------------------------------------------------
 # Reading each side
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -549,9 +541,7 @@ def both_displays(summary, curve, bots, timeframes):
     return old, new
 
 
-# ---------------------------------------------------------------------
 # The window built from the payload, and nothing else
-# ---------------------------------------------------------------------
 
 
 def _build_metric_card_class():
@@ -752,9 +742,7 @@ def full_payload():
     return payload_for(FULL_SUMMARY, RISING_CURVE, FULL_BOTS, FULL_TIMEFRAMES)
 
 
-# ---------------------------------------------------------------------
 # What the shipped file has, and where each item went
-# ---------------------------------------------------------------------
 
 SHIPPED_CLASSES = ("MetricCard", "MiniEquityChart", "AnalyticsTab")
 
@@ -803,6 +791,8 @@ SURFACE_FUNCTIONS = (
     "empty_chart",
     "chart_geometry",
     "build_view_model",
+    "css_stop",
+    "css_payload",
     "view_model",
 )
 
@@ -890,7 +880,7 @@ def test_the_surface_functions_are_reachable_and_described():
         and getattr(value, "__module__", "") == surface.__name__
     }
     assert found == set(SURFACE_FUNCTIONS), found
-    assert len(SURFACE_FUNCTIONS) == 23
+    assert len(SURFACE_FUNCTIONS) == 25
     for name in SURFACE_FUNCTIONS:
         member = getattr(surface, name)
         assert callable(member), name
@@ -909,15 +899,34 @@ def test_the_surface_functions_are_reachable_and_described():
 
 
 def test_the_connect_sites_match_the_actions():
-    """A signal wiring appeared on one side and not the other."""
-    shipped_text = SHIPPED_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert shipped_text.count(".connect(") == 0
-    assert surface_text.count(".connect(") == 0
-    assert len(surface.ACTIONS) == shipped_text.count(".connect(")
-    assert len(surface.ACTIONS) == surface_text.count(".connect(")
-    wired = WIRED_NEIGHBOUR_PATH.read_text(encoding="utf-8")
-    assert wired.count(".connect(") > 0, "the counter cannot report a wiring"
+    """A signal wiring appeared on one side and not the other.
+
+    ``connections`` counts what building each side really wires, so a signal
+    connected through a helper or a loop is counted the same as a literal one.
+    """
+    from tests.fixtures.qt_wiring_counts import connections
+
+    app()
+    shipped_wirings, tab = connections(lambda: shipped.AnalyticsTab(None))
+    assert tab is not None
+    assert shipped_wirings == 0, shipped_wirings
+
+    surface_wirings, payload = connections(lambda: surface.view_model({}))
+    assert payload
+    assert surface_wirings == 0, surface_wirings
+    assert len(surface.ACTIONS) == shipped_wirings
+
+
+def test_the_connection_counter_can_report_a_wiring():
+    """POSITIVE CONTROL. The neighbour this unit did not touch wires signals, so
+    a zero above is a fact about the analytics tab."""
+    from tests.fixtures.qt_wiring_counts import connections
+    from src.gui.widgets.bot_status_table import BotStatusTable
+
+    app()
+    wired, table = connections(BotStatusTable)
+    assert table is not None
+    assert wired > 0, "the counter cannot report a wiring"
 
 
 def test_the_tab_declares_no_action_no_timer_and_no_skin():
@@ -936,9 +945,7 @@ def test_the_tab_declares_no_action_no_timer_and_no_skin():
     assert len(neighbour.TIMERS) > 0, "the timer counter cannot report a timer"
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("index", range(CARD_TOTAL))
@@ -1202,9 +1209,7 @@ def test_every_cell_is_centred_on_both_sides():
     assert len(read_alignments(new_bots)) == 3 * BOT_COLUMN_TOTAL
 
 
-# ---------------------------------------------------------------------
 # Every widget, every column and every layout number
-# ---------------------------------------------------------------------
 
 
 def test_the_page_layout_matches_on_both_sides():
@@ -1447,9 +1452,7 @@ def test_set_data_replaces_the_points_the_chart_holds():
     assert surface.chart_geometry(RISING_CURVE, *CHART_SIZE)["empty"] is False
 
 
-# ---------------------------------------------------------------------
 # Every branch of every surface function
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("seconds,expected", sorted(EXPECTED_DURATIONS.items()))
@@ -1599,9 +1602,7 @@ def test_the_model_keeps_what_it_last_showed():
     assert surface.AnalyticsTabModel().refresh(None) is None
 
 
-# ---------------------------------------------------------------------
 # The chart geometry
-# ---------------------------------------------------------------------
 
 
 def test_the_chart_waits_for_a_second_point():
@@ -1716,35 +1717,58 @@ def test_the_chart_labels_the_latest_equity_and_the_scaled_floor():
     assert top["font_point_size"] == 9
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
+
+
+#: Refuses PySide6 and shiboken at the meta path, then reports what imported.
+BLOCKED_QT_PROBE = """
+import importlib.abc
+import json
+import sys
+
+
+class _NoQt(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        if name.split('.')[0] in ('PySide6', 'shiboken6'):
+            raise ImportError('Qt is blocked in this probe: ' + name)
+        return None
+
+
+sys.meta_path.insert(0, _NoQt())
+answer = {'module': '%s', 'imported': False, 'error': ''}
+try:
+    __import__(answer['module'])
+    answer['imported'] = True
+except Exception as exc:
+    answer['error'] = '%%s: %%s' %% (type(exc).__name__, exc)
+answer['qt_in_sys_modules'] = any(
+    m.split('.')[0] in ('PySide6', 'shiboken6') for m in sys.modules)
+print(json.dumps(answer))
+"""
 
 
 def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    import ast
+    """``BLOCKED_QT_PROBE`` refuses ``PySide6`` and ``shiboken6`` at the meta
+    path, so a transitive import through any other module is refused too."""
+    answered = run_script(BLOCKED_QT_PROBE % "src.gui.main_tabs.analytics_tab_surface")
+    assert answered["imported"] is True, answered
+    assert answered["qt_in_sys_modules"] is False, answered
 
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "typing"}
-    shipped_tree = ast.parse(SHIPPED_PATH.read_text(encoding="utf-8"))
-    shipped_imports = {
-        (node.module or "")
-        for node in ast.walk(shipped_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in shipped_imports)
+
+def test_the_colour_helper_the_surface_imports_loads_no_qt_either():
+    """``color_alpha`` is the surface's only repo import and carries the same
+    rule."""
+    answered = run_script(BLOCKED_QT_PROBE % "src.gui.color_alpha")
+    assert answered["imported"] is True, answered
+    assert answered["qt_in_sys_modules"] is False, answered
+
+
+def test_the_probe_refuses_a_module_that_needs_qt():
+    """POSITIVE CONTROL. ``BLOCKED_QT_PROBE`` reports ``bot_status_table`` as
+    unimportable, so the two greens above are facts about the surface."""
+    answered = run_script(BLOCKED_QT_PROBE % "src.gui.widgets.bot_status_table")
+    assert answered["imported"] is False, answered
+    assert "Qt is blocked" in answered["error"], answered
 
 
 def test_the_surface_does_not_follow_a_colour_moved_in_the_design_system(
@@ -1818,9 +1842,7 @@ def test_the_surface_does_not_follow_a_replaced_shipped_chart(monkeypatch):
     monkeypatch.undo()
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def font_note():
@@ -1970,9 +1992,7 @@ def test_the_host_font_question_is_asked_and_not_assumed():
         ), "the host reports no fonts and the glyphs still have their own widths"
 
 
-# ---------------------------------------------------------------------
 # What no picture can report, each read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_accessible_names_are_compared_as_text():
@@ -2107,13 +2127,9 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
     assert len(set(BLIND_TO_THE_PICTURE.values())) == 13
 
 
-# ---------------------------------------------------------------------
 # Nothing the surface holds is left out of the snapshot
-# ---------------------------------------------------------------------
 
-# Every constant the surface exports and the payload key that carries
-# it. A comparison reading some of the constants passes whether the
-# rest match or not; this closes that gap for every one at once.
+# Every constant the surface exports and the payload key that carries it.
 CONSTANT_LOCATION = {
     "TAB_ACCESSIBLE_NAME": ("accessible_name", None),
     "PAGE": ("page", None),
@@ -2278,9 +2294,7 @@ def test_the_completeness_check_can_report_a_missing_constant():
     assert "view_model" not in surface_constants()
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -2328,12 +2342,15 @@ def test_the_bridge_registers_the_analytics_tab_method():
     assert len(result["cards"]) == CARD_TOTAL
 
 
-def test_the_bridge_registration_is_two_lines_and_no_more():
-    """The bridge grew more than the one registration this unit adds."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    assert text.count("analytics_tab_surface") == 3
-    assert "analytics_tab_surface.METHOD: analytics_tab_surface.view_model" in text
-    assert "analytics_tab_surface,\n" in text
+def test_the_bridge_registers_this_surface_once_and_by_identity():
+    """The registry maps ``surface.METHOD`` to ``surface.view_model`` itself, and
+    to nothing else."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert registry[surface.METHOD] is surface.view_model
+    mine = [m for m, fn in registry.items() if fn is surface.view_model]
+    assert mine == [surface.METHOD], mine
 
 
 def test_the_bridge_answers_with_no_parameters_at_all():
@@ -2404,9 +2421,7 @@ def test_the_table_is_the_same_on_every_call():
     assert first["bot_columns"] == second["bot_columns"]
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt, proved in a process of its own
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -2509,3 +2524,70 @@ def test_the_qt_block_stops_the_shipped_tab():
     answered = run_script(probe)
     assert answered["has_qt"] is False
     assert answered["has_tab"] is False
+
+
+# The Qt tab stays reachable while the React panel is unproven
+
+#: Every widget the tab builds for itself. Qt furniture is left out; its count
+#: moves with the interface library.
+QT_CHILD_CENSUS = {
+    "MetricCard": 8,
+    "QLabel": 16,
+    "MiniEquityChart": 1,
+    "QGroupBox": 3,
+    "QSplitter": 2,
+    "QTableWidget": 2,
+}
+
+
+def qt_children(tab):
+    """How many of each widget class the tab holds, its own classes only."""
+    from PySide6.QtWidgets import QWidget
+
+    found: dict = {}
+    for child in tab.findChildren(QWidget):
+        name = type(child).__name__
+        if name in QT_CHILD_CENSUS:
+            found[name] = found.get(name, 0) + 1
+    return found
+
+
+def test_the_shipped_tab_still_builds_every_widget_it_ever_built():
+    """A Qt widget left the analytics tab.
+
+    The React panel that draws this tab renders but is not yet verified
+    by a run of the application, so the Qt tab it replaces must stay
+    whole and reachable. A widget removed here is caught by the count,
+    not by anyone noticing the screen is short.
+    """
+    tab = shipped_tab()
+    assert shipped._HAS_QT is True
+    assert qt_children(tab) == QT_CHILD_CENSUS
+    assert sum(QT_CHILD_CENSUS.values()) == 32
+
+
+def test_the_shipped_tab_still_fills_every_widget_from_a_source():
+    """The Qt tab stopped showing what a source hands it."""
+    source = Source(FULL_SUMMARY, RISING_CURVE, FULL_BOTS, FULL_TIMEFRAMES)
+    tab = shipped_tab(source)
+    assert qt_children(tab) == QT_CHILD_CENSUS
+    assert tab._bot_table.rowCount() == len(FULL_BOTS)
+    assert tab._tf_table.rowCount() == len(FULL_TIMEFRAMES)
+    assert tab._equity_chart._data == RISING_CURVE
+    assert read_cards(tab)[0][1] == "$+1,234.5679"
+
+
+def test_the_child_count_reports_a_widget_that_left_the_tab():
+    """The census counts nothing, so a missing widget would pass.
+
+    One card is taken off the built tab and the census must report the
+    loss. Nothing shipped is changed: the tab is thrown away afterwards.
+    """
+    tab = shipped_tab()
+    assert qt_children(tab) == QT_CHILD_CENSUS
+    tab._card_pnl.setParent(None)
+    short = qt_children(tab)
+    assert short != QT_CHILD_CENSUS
+    assert short["MetricCard"] == QT_CHILD_CENSUS["MetricCard"] - 1
+    assert short["QLabel"] == QT_CHILD_CENSUS["QLabel"] - 2
+    assert qt_children(shipped_tab()) == QT_CHILD_CENSUS

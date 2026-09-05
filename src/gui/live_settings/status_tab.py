@@ -18,15 +18,11 @@ from .. import design_system as ds
 class StatusTabMixin:
     """Read-only stats tab."""
 
-    # Supplied by BotLiveSettingsDialog at runtime; declared so a
-    # type checker can resolve them. Annotations only: no attribute
-    # is created and the runtime base stays `object`.
+    # Supplied by BotLiveSettingsDialog; annotations only, no attribute is created.
     _bot: Any
     _configure_form: Callable[..., Any]
 
-    # ---------------------------------------------------------------
     # Tab 1: Status (read-only)
-    # ---------------------------------------------------------------
     def _create_status_tab(self) -> QWidget:
         w = QWidget()
         layout = QVBoxLayout(w)
@@ -40,18 +36,8 @@ class StatusTabMixin:
         sf = QFormLayout(stats_group)
         self._configure_form(sf)
 
-        # v3.23.7 Anomaly B: internal `stats.realised_pnl` display row
-        # removed. Operator directive 2026-06-13: "Prefer to just pull
-        # from the exchange. It is the true indicator of position
-        # health." The exchange-pulled FIFO-matched realized P/L (see
-        # below) is the sole P/L displayed; the (exchange) qualifier
-        # is dropped from its label since it is now the only one.
-
-        # v3.16.47 — Exchange-pulled position health (updated every
-        # 5 min by tick loop; bootstrap-refreshed on first start).
-        # Operator directive 2026-05-10: position health belongs to
-        # the exchange. Display alongside internal so divergence is
-        # visible at a glance.
+        # Exchange-pulled fields, refreshed no more than every 300 s by
+        # ScrummingBot.refresh_exchange_position_health.
         _bot_stats = getattr(self._bot, "stats", None)
         if _bot_stats is not None:
             _re = float(getattr(_bot_stats, "realized_pnl_exchange", 0.0) or 0.0)

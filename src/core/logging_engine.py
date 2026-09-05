@@ -1,24 +1,14 @@
+"""Structured trade, gate-decision and P/L logging in NDJSON.
+
+``LogManager`` routes each ``LogEntry`` to an ``NDJSONWriter``: ``trade.log``,
+``gate.log``, ``voting.log`` and ``diagnostics.log`` under ``get_trade_dir()``,
+with the ``acervator`` logger going to ``system.log`` under
+``get_console_dir()``. ``PnLCascade`` writes one file per day under
+``get_pnl_dir()``, and ``build_weekly``, ``build_monthly`` and ``build_yearly``
+concatenate those days.
+"""
+
 from __future__ import annotations
-
-"""
-logging_engine.py — Structured trade & gate-decision logging
-============================================================
-
-Provides three log categories:
-
-  1. **Trade log** — every order placed, filled, cancelled, or failed.
-  2. **Gate-decision log** — one entry per bot per tick recording
-     whether the scrum and fold chains armed or which blockers held
-     them back.
-  3. **P/L log** — periodic profit/loss snapshots at configurable
-     intervals (24 h to 1 year). Weekly, monthly and yearly windows
-     each concatenate the daily NDJSON files under their date range.
-
-All logs are newline-delimited JSON (NDJSON). A ``LogManager``
-orchestrates the writers and their rotation, and resolves every
-bucket path through ``src/core/log_paths.py`` so the location is the
-same regardless of build mode.
-"""
 
 import json
 import logging
@@ -41,10 +31,8 @@ from src.core.log_paths import (
 def _emergency_stderr(text: str) -> bool:
     """Write one line to ``sys.stderr``; return whether it landed.
 
-    Last-resort channel for a fault inside the logging engine itself,
-    used only when the system logger is the one that failed. Probes
-    ``sys.stderr`` with ``getattr`` rather than assuming it exists,
-    since a windowed launch runs with ``sys.stderr`` set to ``None``.
+    ``_note_internal_failure`` calls it when ``_sys_logger`` also raised, and a
+    windowed launch leaves ``sys.stderr`` set to None.
     """
     stream = getattr(sys, "stderr", None)
     write = getattr(stream, "write", None)
@@ -57,28 +45,25 @@ def _emergency_stderr(text: str) -> bool:
     return True
 
 
-# ---------------------------------------------------------------------------
-# Log entry types
-# ---------------------------------------------------------------------------
 class LogCategory(str, Enum):
-    """Universal log-entry category enum."""
+    """The values the ``LogEntry.category`` field takes."""
 
     TRADE = "trade"
     PNL = "pnl"
     SYSTEM = "system"
-    GATE = "gate"  # One entry per bot per tick.
+    GATE = "gate"
 
 
 @dataclass
 class LogEntry:
-    """Universal log entry — serialisable to JSON."""
+    """One NDJSON record; ``to_json`` serialises it for an ``NDJSONWriter``."""
 
     timestamp: str = ""
     category: str = ""
     exchange: str = ""
     bot_id: str = ""
     data: dict = field(default_factory=dict)
-    highlight: bool = False  # True if entry is near a scrumming trade
+    highlight: bool = False
 
     def __post_init__(self) -> None:
         if not self.timestamp:
@@ -88,16 +73,12 @@ class LogEntry:
         return json.dumps(asdict(self), separators=(",", ":"))
 
 
-# ---------------------------------------------------------------------------
-# NDJSON file writer with rotation
-# ---------------------------------------------------------------------------
 class NDJSONWriter:
-    """
-    Append-only NDJSON writer with size-based rotation.
+    """Append-only NDJSON writer with size-based rotation.
 
-    Files rotate at *max_bytes* (default 50 MB).  Rotated files get a
-    numeric suffix: ``trade.log``, ``trade.log.1``, ``trade.log.2`` …
-    up to *backup_count* backups.
+    ``write`` rotates once the file reaches ``max_bytes`` and keeps
+    ``backup_count`` numbered backups, so ``trade.log`` plus ``trade.log.1``
+    through ``trade.log.5`` is the whole set.
     """
 
     def __init__(
@@ -113,7 +94,7 @@ class NDJSONWriter:
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
     def write(self, entry: LogEntry) -> None:
-        """Append one log entry (thread-safe)."""
+        """Append one ``LogEntry`` under ``_lock``, rotating first when due."""
         line = entry.to_json() + "\n"
         with self._lock:
             self._rotate_if_needed()
@@ -121,7 +102,7 @@ class NDJSONWriter:
                 f.write(line)
 
     def read_all(self) -> list[dict]:
-        """Read all entries from the current log file."""
+        """Return every parsed record in the current file, skipping bad lines."""
         if not self._path.exists():
             return []
         entries = []
@@ -140,47 +121,33 @@ class NDJSONWriter:
             return
         if self._path.stat().st_size < self._max_bytes:
             return
-        # Uses Path.replace(), not Path.rename(), which raises WinError
-        # 183 on Windows when the destination already exists.
+        # Path.rename raises WinError 183 on Windows when the destination exists.
         for i in range(self._backup_count - 1, 0, -1):
             src = self._path.parent / f"{self._path.name}.{i}"
             dst = self._path.parent / f"{self._path.name}.{i + 1}"
             if src.exists():
                 src.replace(dst)
-        # Current → .1
         backup = self._path.parent / f"{self._path.name}.1"
         self._path.replace(backup)
 
 
-# ---------------------------------------------------------------------------
-# Bounded handler for the standard-library "acervator" logger
-# ---------------------------------------------------------------------------
 SYSTEM_LOG_MAX_BYTES = 50 * 1024 * 1024
-"""Rotation threshold for ``console/system.log``, matching every
-``NDJSONWriter`` bucket in this module."""
+"""Rotation threshold for ``system.log``, matching the ``NDJSONWriter`` default."""
 
 SYSTEM_LOG_BACKUP_COUNT = 5
-"""Backups kept for ``console/system.log``. Bounds its footprint at
-6 x 50 MB = 300 MB total."""
+"""Backups kept for ``system.log``; six files bound it at 300 MiB."""
 
 
 class SizeBoundedFileHandler(RotatingFileHandler):
     """``RotatingFileHandler`` whose backup shift cannot raise WinError 183.
 
-    Overrides ``doRollover`` to shift backups with ``Path.replace()``
-    instead of the stdlib's ``os.rename``, which raises WinError 183
-    on Windows when the destination already exists. If ``replace()``
-    or a reopen still fails — the destination held open by another
-    process raises WinError 5, a stale one WinError 32 — the stream is
-    cleared to ``None`` before the shift runs rather than left bound
-    to a closed file object. ``shouldRollover`` and
-    ``FileHandler.emit`` both reopen whenever ``self.stream is None``,
-    so a failed rollover costs one record instead of leaving the
-    handler silently closed for the rest of the process.
+    ``_shift`` moves each backup with ``Path.replace``, and ``doRollover``
+    clears ``self.stream`` before the shift, which ``FileHandler.emit`` reopens
+    on the next record.
     """
 
     def _shift(self, source: str, dest: str) -> None:
-        """Move `source` onto `dest`, overwriting, if `source` exists."""
+        """Move ``source`` onto ``dest``, overwriting, when ``source`` exists."""
         if callable(self.rotator):
             self.rotator(source, dest)
             return
@@ -191,10 +158,8 @@ class SizeBoundedFileHandler(RotatingFileHandler):
     def doRollover(self) -> None:
         """Shift the backups and start a new current file.
 
-        Clears ``self.stream`` to ``None`` before the shift, then
-        reopens unconditionally in a ``finally`` — so a raise during
-        the shift or the reopen still leaves the handler able to
-        retry on the next record instead of holding a closed stream.
+        ``self.stream`` is cleared before the shift and reopened in a
+        ``finally``, leaving the handler usable when ``_shift`` raises.
         """
         if self.stream is not None:
             self.stream.close()
@@ -213,21 +178,12 @@ class SizeBoundedFileHandler(RotatingFileHandler):
             self.stream = self._open()
 
 
-# ---------------------------------------------------------------------------
-# P/L log cascade — larger periods concatenate smaller ones
-# ---------------------------------------------------------------------------
 class PnLCascade:
-    """
-    Maintains P/L snapshots at multiple periodicities. The daily log is
-    the atomic unit; weekly, monthly and yearly logs each concatenate
-    the daily files under their own date range directly, not each other.
+    """P/L snapshots in one directory per key of ``PERIODS``.
 
-    Directory layout, under ``trade/pnl/``::
-
-        daily/    ← one NDJSON per day
-        weekly/   ← 7 daily files concatenated
-        monthly/  ← 30 daily files concatenated
-        yearly/   ← 365 daily files concatenated
+    ``record_daily`` writes ``daily/<date>.ndjson``, and ``build_weekly``,
+    ``build_monthly`` and ``build_yearly`` each read ``daily/`` through
+    ``_concat_days``, never one another's output.
     """
 
     PERIODS = {
@@ -243,22 +199,22 @@ class PnLCascade:
             (self._base / period).mkdir(parents=True, exist_ok=True)
 
     def record_daily(self, entry: LogEntry) -> None:
-        """Append a P/L entry to today's daily log."""
+        """Append ``entry`` to ``daily/<today>.ndjson``."""
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         path = self._base / "daily" / f"{today}.ndjson"
         with open(path, "a", encoding="utf-8") as f:
             f.write(entry.to_json() + "\n")
 
     def build_weekly(self, week_start: str) -> list[dict]:
-        """Concatenate 7 daily logs starting from *week_start* (YYYY-MM-DD)."""
+        """Concatenate 7 daily files from ``week_start``, formatted YYYY-MM-DD."""
         return self._concat_days(week_start, 7, "weekly")
 
     def build_monthly(self, month_start: str) -> list[dict]:
-        """Concatenate ~30 daily logs starting from *month_start*."""
+        """Concatenate 30 daily files from ``month_start``, formatted YYYY-MM-DD."""
         return self._concat_days(month_start, 30, "monthly")
 
     def build_yearly(self, year_start: str) -> list[dict]:
-        """Concatenate ~365 daily logs starting from *year_start*."""
+        """Concatenate 365 daily files from ``year_start``, formatted YYYY-MM-DD."""
         return self._concat_days(year_start, 365, "yearly")
 
     def _concat_days(self, start: str, count: int, output_dir: str) -> list[dict]:
@@ -278,7 +234,6 @@ class PnLCascade:
                                 entries.append(json.loads(line))
                             except json.JSONDecodeError:
                                 continue
-        # Save the concatenated result
         out_path = self._base / output_dir / f"{start}_{count}d.ndjson"
         with open(out_path, "w", encoding="utf-8") as f:
             for e in entries:
@@ -286,29 +241,20 @@ class PnLCascade:
         return entries
 
 
-# ---------------------------------------------------------------------------
-# Log manager — orchestrates all writers
-# ---------------------------------------------------------------------------
 class LogManager:
-    """
-    Central logging orchestrator. Call ``log_trade()``,
-    ``log_gate_decision()``, ``log_voting_panel_snapshot()`` or
-    ``log_pnl()`` from any thread; the manager routes to the correct
-    writer and handles rotation.
+    """Routes every log call in this module to its ``NDJSONWriter``.
 
-    Also configures Python's ``logging`` module for system-level messages.
+    ``log_trade``, ``log_gate_decision``, ``log_voting_panel_snapshot`` and
+    ``log_pnl`` are callable from any thread, and ``__init__`` also attaches
+    ``SizeBoundedFileHandler`` to the ``acervator`` logger.
     """
 
     def __init__(self, log_dir: Optional[Path] = None) -> None:
-        # Set before anything else can fail: _note_internal_failure's
-        # except blocks assume this already exists.
+        # _note_internal_failure writes here from inside its own except blocks.
         self._internal_failures: dict[str, int] = {}
 
-        # ``log_dir`` is for test injection only (a tmp_path); production
-        # always resolves paths through the log_paths bucket helpers.
+        # log_dir is test injection; production resolves through log_paths.
         if log_dir is not None:
-            # Test-injection path: place trade.log + pnl/ + system.log
-            # under the supplied dir to keep the existing test surface.
             self._dir = log_dir
             self._dir.mkdir(parents=True, exist_ok=True)
             self._trade_dir = self._dir
@@ -316,35 +262,28 @@ class LogManager:
             self._pnl_root = self._dir / "pnl"
             self._pnl_root.mkdir(parents=True, exist_ok=True)
         else:
-            # Production path: bucket helpers resolve everything under
-            # ~/.acervator_logs/{trade,console,trade/pnl}.
+            # The three helpers resolve under ~/.acervator_logs.
             self._trade_dir = get_trade_dir()
             self._console_dir = get_console_dir()
             self._pnl_root = get_pnl_dir()
-            # self._dir points at the trade bucket, where trade.log,
-            # gate.log and pnl/ all land.
             self._dir = self._trade_dir
 
         self._trade_writer = NDJSONWriter(self._trade_dir / "trade.log")
         self._gate_writer = NDJSONWriter(self._trade_dir / "gate.log")
-        # Routes the `bot.log` bus topic to disk, unfiltered, bounded
-        # the same as every writer here: 50 MB x 5 backups.
+        # _on_bot_log_bus routes the bot.log topic here unfiltered.
         self._diag_writer = NDJSONWriter(self._trade_dir / "diagnostics.log")
         # One entry per fired trade, not per tick.
         self._voting_writer = NDJSONWriter(self._trade_dir / "voting.log")
         self._pnl_cascade = PnLCascade(self._pnl_root)
 
-        # Maps bot_id -> symbol, used by the bus handlers below when
-        # an event carries none.
+        # Maps bot_id to symbol for the bus handlers below.
         self._symbol_resolver: Optional[Callable[[str], str]] = None
 
-        # System logger (Python standard logging)
         self._sys_logger = logging.getLogger("acervator")
         self._sys_logger.setLevel(logging.DEBUG)
-        self._sys_logger.propagate = False  # Don't duplicate to root logger
+        self._sys_logger.propagate = False
         if not self._sys_logger.handlers:
-            # errors="replace": the default Windows codec (cp1252) raises
-            # on this codebase's arrow and em-dash glyphs, dropping the record.
+            # cp1252 raises on the arrow and em-dash glyphs, dropping the record.
             handler = SizeBoundedFileHandler(
                 self._console_dir / "system.log",
                 maxBytes=SYSTEM_LOG_MAX_BYTES,
@@ -357,15 +296,11 @@ class LogManager:
             )
             self._sys_logger.addHandler(handler)
 
-    # -- Internal-failure reporting -------------------------------------
     def _note_internal_failure(self, where: str, exc: BaseException) -> None:
-        """Record a fault inside the logging engine's own plumbing.
+        """Record a fault inside this module's own plumbing, raising nothing.
 
-        Must not raise for any input, since every caller is an
-        ``except`` block guarding the trading loop. Tries three
-        channels in order: the ``_internal_failures`` counter (read via
-        ``internal_failure_counts()``), then ``self._sys_logger``, then
-        ``sys.stderr`` if the system logger itself is the casualty.
+        It counts ``where`` in ``_internal_failures``, then tries
+        ``_sys_logger``, then ``_emergency_stderr``.
         """
         kind = type(exc).__name__
         self._internal_failures[where] = self._internal_failures.get(where, 0) + 1
@@ -388,26 +323,22 @@ class LogManager:
                 )
 
     def internal_failure_counts(self) -> dict[str, int]:
-        """Return a copy of the per-site internal-failure counters.
+        """Return a copy of ``_internal_failures``.
 
-        A non-empty result means the logging engine swallowed at least
-        one fault to protect the trading loop. The two reserved keys
-        ``_sys_logger`` and ``_stderr`` count failures of the report
-        channels themselves; every other key is a call site.
+        The keys ``_sys_logger`` and ``_stderr`` count report-channel failures;
+        every other key is a ``_note_internal_failure`` call site.
         """
         return dict(self._internal_failures)
 
     def set_symbol_resolver(self, resolver: "Callable[[str], str]") -> None:
-        """Register a bot_id -> symbol lookup function.
+        """Store ``resolver`` on ``_symbol_resolver`` as a bot_id to symbol lookup.
 
-        Used as a fallback by ``_on_trade_filled_bus``,
-        ``_on_gate_decision_bus``, ``_on_voting_panel_snapshot_bus`` and
-        ``_on_bot_log_bus`` whenever the bus event carries no symbol of
-        its own. ``_on_pnl_event_bus`` does not call it.
+        ``_on_trade_filled_bus``, ``_on_gate_decision_bus``,
+        ``_on_voting_panel_snapshot_bus`` and ``_on_bot_log_bus`` call it when
+        the event carries no symbol; ``_on_pnl_event_bus`` does not.
         """
         self._symbol_resolver = resolver
 
-    # -- Trade logging --------------------------------------------------
     def log_trade(
         self,
         exchange: str,
@@ -420,7 +351,7 @@ class LogManager:
         status: str = "filled",
         extra: Optional[dict] = None,
     ) -> None:
-        """Log a trade event."""
+        """Write one ``LogCategory.TRADE`` entry through ``_trade_writer``."""
         data = {
             "action": action,
             "symbol": symbol,
@@ -439,7 +370,6 @@ class LogManager:
         )
         self._trade_writer.write(entry)
 
-    # -- Gate-decision logging -------------------------------------------
     def log_gate_decision(
         self,
         exchange: str,
@@ -456,27 +386,25 @@ class LogManager:
         state_snapshot: Optional[dict] = None,
         extra: Optional[dict] = None,
     ) -> None:
-        """Log one gate-decision event per bot per tick, written to
-        ``gate.log``. The sanctioned connection point for sim and live
-        to read the same decision data.
+        """Write one ``LogCategory.GATE`` entry to ``gate.log``.
+
+        ``ScrummingBot._emit_gate_decision_at_fire`` reaches this once per fired
+        trade through ``_on_gate_decision_bus``.
 
         Args:
             exchange:           Source exchange tag.
             bot_id:             Bot identifier.
             symbol:             Asset symbol.
-            scrum_armed:        True if scrum chain decided to fire.
-            fold_armed:         True if fold chain decided to fire.
-            scrum_blockers:     Ordered list of gate names that blocked
-                                the scrum chain (empty when armed=True).
-            fold_blockers:      Same for fold chain.
+            scrum_armed:        True when the scrum chain decided to fire.
+            fold_armed:         True when the fold chain decided to fire.
+            scrum_blockers:     Names that blocked the scrum chain.
+            fold_blockers:      Names that blocked the fold chain.
             evaluated_at_tick:  Loop-tick counter or wall-clock proxy.
-            scrum_fixture:      The full chain-result fixture for scrum
-                                (gate names + pass/block per stage).
-            fold_fixture:       Same for fold chain.
-            indicators:         Snapshot of indicator values that drove
-                                the decision (bb_pos, delta_pct, etc.).
-            state_snapshot:     Bot state (holdings, target, fold_tranches).
-            extra:              Free-form passthrough for forensic context.
+            scrum_fixture:      Per-stage pass or block record for scrum.
+            fold_fixture:       Per-stage pass or block record for fold.
+            indicators:         Indicator values behind the decision.
+            state_snapshot:     Holdings, target and fold_tranches.
+            extra:              Free-form passthrough merged into data.
         """
         data: dict = {
             "symbol": symbol,
@@ -505,7 +433,6 @@ class LogManager:
         )
         self._gate_writer.write(entry)
 
-    # -- Voting-panel-snapshot logging ------------------------------------
     def log_voting_panel_snapshot(
         self,
         exchange: str,
@@ -516,20 +443,19 @@ class LogManager:
         panel: Optional[dict] = None,
         extra: Optional[dict] = None,
     ) -> None:
-        """Log one voting-panel snapshot at trade-execution time, not
-        per tick. ScrummingBot emits ``bot.voting_panel_snapshot``
-        immediately after each ``trade.filled`` so the panel state that
-        drove the decision is captured at the moment it became action.
+        """Write one entry with category "voting" to ``voting.log``.
+
+        ``ScrummingBot._emit_voting_panel_snapshot_at_fire`` reaches this once
+        per fired trade, not per tick.
 
         Args:
             exchange:     Source exchange tag.
             bot_id:       Bot identifier.
             symbol:       Asset symbol.
-            side:         BUY / SELL.
-            trade_action: SCRUM / FOLD / ENTRY / HEDGE / DIST / etc.
-            panel:        VotingSummary asdict snapshot. May be {} for
-                          early ticks with no summary yet.
-            extra:        Free-form forensic context.
+            side:         BUY or SELL.
+            trade_action: SCRUM, FOLD, ENTRY, HEDGE, DIST and the rest.
+            panel:        VotingSummary asdict snapshot, or {} when none.
+            extra:        Free-form passthrough merged into data.
         """
         data: dict = {
             "symbol": symbol,
@@ -539,8 +465,7 @@ class LogManager:
         }
         if extra:
             data.update(extra)
-        # Own writer and stream, not the GATE category, so consumers
-        # can filter on category="voting" alone.
+        # The category is "voting", never LogCategory.GATE.
         entry = LogEntry(
             category="voting",
             exchange=exchange,
@@ -549,7 +474,6 @@ class LogManager:
         )
         self._voting_writer.write(entry)
 
-    # -- P/L logging ----------------------------------------------------
     def log_pnl(
         self,
         exchange: str,
@@ -559,7 +483,7 @@ class LogManager:
         total_trades: int,
         extra: Optional[dict] = None,
     ) -> None:
-        """Record a P/L snapshot (goes into the daily cascade)."""
+        """Write one ``LogCategory.PNL`` entry via ``PnLCascade.record_daily``."""
         data = {
             "realised_pnl": realised_pnl,
             "unrealised_pnl": unrealised_pnl,
@@ -575,24 +499,15 @@ class LogManager:
         )
         self._pnl_cascade.record_daily(entry)
 
-    # -- Event-bus attachment ------------------------------------------
     def attach_to_bus(self, bus) -> None:
-        """Subscribe every bus-fed writer in this module: trade fills,
-        P/L events, gate decisions, voting-panel snapshots and bot.log
-        diagnostics, so each lands in its own NDJSON file under
-        ``trade/`` (``trade.log`` for fills, via ``get_trade_dir()``).
+        """Subscribe ``trade.filled``, ``pnl.event``, ``bot.gate_decision``,
+        ``bot.voting_panel_snapshot`` and ``bot.log`` to their handlers.
 
-        Each handler normalizes both ``Event.data`` shapes (flat kwargs
-        and ``data={"data": {...}}``) into one dict before logging, and
-        is fail-soft: any exception is caught and logged, never raised,
-        so a logging fault cannot break the trading loop.
-
-        Idempotent: calling twice replaces the prior subscriptions
-        rather than double-writing every event.
+        A second call unsubscribes the previous handlers first, and each
+        handler catches its own exceptions.
         """
         if getattr(self, "_bus_attached", False):
-            # A failed unsubscribe leaves the previous handler on the
-            # bus, so every event is then logged twice.
+            # A failed unsubscribe leaves the old handler on the bus, logging twice.
             try:
                 bus.unsubscribe("trade.filled", self._on_trade_filled_bus)
             except Exception as exc:
@@ -623,14 +538,11 @@ class LogManager:
                 self._note_internal_failure("attach_to_bus/unsubscribe bot.log", exc)
         try:
             bus.subscribe("trade.filled", self._on_trade_filled_bus)
-            # ScrummingBot emits pnl.event at SCRUM (USD-side gain) and
-            # FOLD (token-side gain) success sites.
+            # ScrummingBot emits pnl.event at the SCRUM and FOLD success sites.
             bus.subscribe("pnl.event", self._on_pnl_event_bus)
-            # ScrummingBot emits bot.gate_decision once per bot per tick
-            # after the scrum and fold chains finalize.
+            # ScrummingBot emits bot.gate_decision at fire time, once per trade.
             bus.subscribe("bot.gate_decision", self._on_gate_decision_bus)
-            # ScrummingBot emits bot.voting_panel_snapshot only at
-            # trade-execution sites, per fired trade rather than per tick.
+            # ScrummingBot emits bot.voting_panel_snapshot at fire time too.
             bus.subscribe(
                 "bot.voting_panel_snapshot", self._on_voting_panel_snapshot_bus
             )
@@ -638,18 +550,18 @@ class LogManager:
             self._bus_attached = True
             self.info(
                 "LogManager attached to bus: trade.filled → trade.log, "
-                "pnl.event → pnl/<day>.log, "
-                "bot.gate_decision → gate.log (v3.23.0 scaffold), "
-                "bot.voting_panel_snapshot → voting.log (v3.23.6)"
+                "pnl.event → pnl/daily/<day>.ndjson, "
+                "bot.gate_decision → gate.log, "
+                "bot.voting_panel_snapshot → voting.log, "
+                "bot.log → diagnostics.log"
             )
         except Exception as exc:
             self._sys_logger.warning("LogManager.attach_to_bus failed: %s", exc)
 
     def _on_bot_log_bus(self, event_obj) -> None:
-        """Route the ``bot.log`` bus topic to ``diagnostics.log``,
-        unfiltered — every message, not only known markers. Fail-soft:
-        an exception here is caught and logged, never raised, so this
-        diagnostic writer cannot break the trading loop it observes.
+        """Route every ``bot.log`` event to ``_diag_writer`` unfiltered.
+
+        An entry needs a ``message``; ``_symbol_resolver`` supplies the symbol.
         """
         try:
             data = getattr(event_obj, "data", None)
@@ -668,7 +580,7 @@ class LogManager:
             if self._symbol_resolver and bot_id:
                 try:
                     symbol = str(self._symbol_resolver(bot_id) or "")
-                except Exception:  # resolver failure falls back to empty string
+                except Exception:
                     symbol = ""
 
             self._diag_writer.write(
@@ -682,15 +594,10 @@ class LogManager:
             self._sys_logger.warning("LogManager._on_bot_log_bus failed: %s", exc)
 
     def _on_gate_decision_bus(self, event_obj) -> None:
-        """Handler for ``bot.gate_decision`` bus events, one per bot per
-        tick after the scrum and fold chains finalize. Routes the
-        payload into ``log_gate_decision()``.
+        """Route one ``bot.gate_decision`` event into ``log_gate_decision``.
 
-        Payload normalization mirrors ``_on_trade_filled_bus``: the bus
-        may wrap kwargs as ``Event.data = {"data": {...}}``, so any
-        inner dict is merged before reading fields.
-
-        Fail-soft: any exception is caught and logged, never raised.
+        An inner ``data`` dict is merged before the fields are read, and any
+        exception reaches ``_note_internal_failure``.
         """
         try:
             data = getattr(event_obj, "data", None)
@@ -706,7 +613,7 @@ class LogManager:
             if not symbol and self._symbol_resolver and bot_id:
                 try:
                     symbol = str(self._symbol_resolver(bot_id) or "")
-                except Exception:  # resolver failure falls back to empty string
+                except Exception:
                     symbol = ""
 
             self.log_gate_decision(
@@ -748,12 +655,11 @@ class LogManager:
             self._note_internal_failure("_on_gate_decision_bus", exc)
 
     def _on_voting_panel_snapshot_bus(self, event_obj) -> None:
-        """Handler for ``bot.voting_panel_snapshot`` events, one per
-        fired trade, not per tick. Routes the VotingSummary asdict
-        payload into ``log_voting_panel_snapshot()``.
+        """Route one ``bot.voting_panel_snapshot`` event into
+        ``log_voting_panel_snapshot``.
 
-        Payload normalization mirrors ``_on_gate_decision_bus``.
-        Fail-soft: any exception is caught and logged, never raised.
+        A ``panel`` that is not a dict becomes {}, and any exception reaches
+        ``_note_internal_failure``.
         """
         try:
             data = getattr(event_obj, "data", None)
@@ -769,7 +675,7 @@ class LogManager:
             if not symbol and self._symbol_resolver and bot_id:
                 try:
                     symbol = str(self._symbol_resolver(bot_id) or "")
-                except Exception:  # resolver failure falls back to empty string
+                except Exception:
                     symbol = ""
 
             panel = merged.get("panel")
@@ -803,11 +709,10 @@ class LogManager:
             self._note_internal_failure("_on_voting_panel_snapshot_bus", exc)
 
     def _on_pnl_event_bus(self, event_obj) -> None:
-        """Handler for ``pnl.event`` bus events.
+        """Route one ``pnl.event`` with a SCRUM or FOLD ``kind`` into ``log_pnl``.
 
-        Routes ScrummingBot's two-channel profit signals (SCRUM USD
-        gain, FOLD token gain) into the daily PnL cascade. Fail-soft:
-        any exception is caught and logged, never raised.
+        SCRUM reads ``usd_captured`` and FOLD reads ``growth_applied_usd``; any
+        other kind returns without writing.
         """
         try:
             data = getattr(event_obj, "data", None)
@@ -823,19 +728,12 @@ class LogManager:
             if kind not in ("SCRUM", "FOLD"):
                 return
 
-            # Realised PnL semantic differs by kind:
-            #   SCRUM → usd_captured (USD value of the sell event)
-            #   FOLD  → growth_applied_usd (the realised target growth
-            #           from this fold-back; the token-side gain is
-            #           also recorded as extra_asset in extras)
             if kind == "SCRUM":
                 realised = float(merged.get("usd_captured", 0.0) or 0.0)
             else:
                 realised = float(merged.get("growth_applied_usd", 0.0) or 0.0)
 
             extra: dict = {"kind": kind}
-            # Forward the per-kind details so the daily cascade preserves
-            # the full picture of each event.
             for k in (
                 "asset",
                 "symbol",
@@ -871,9 +769,11 @@ class LogManager:
             self._sys_logger.warning("LogManager._on_pnl_event_bus raised: %s", exc)
 
     def _on_trade_filled_bus(self, event_obj) -> None:
-        """Handler for ``trade.filled`` bus events, wired by
-        ``attach_to_bus``. Normalizes the payload and calls
-        ``log_trade()``."""
+        """Route one ``trade.filled`` event into ``log_trade``.
+
+        ``side`` is normalised to BUY or SELL, and ``usd`` falls back to
+        ``amount`` times ``price`` when the payload carries neither.
+        """
         try:
             data = getattr(event_obj, "data", None)
             if not isinstance(data, dict) or not data:
@@ -922,12 +822,11 @@ class LogManager:
                 except (TypeError, ValueError):
                     pass
 
-            # Falls back to the resolver when the payload has no symbol.
             _symbol = str(merged.get("symbol", "") or "")
             if not _symbol and self._symbol_resolver and bot_id:
                 try:
                     _symbol = str(self._symbol_resolver(bot_id) or "")
-                except Exception:  # resolver failure falls back to empty string
+                except Exception:
                     _symbol = ""
 
             self.log_trade(
@@ -945,9 +844,7 @@ class LogManager:
         except Exception as exc:
             self._note_internal_failure("_on_trade_filled_bus", exc)
 
-    # -- System logging -------------------------------------------------
-    # Accepts `*args, **kwargs` so callers can use stdlib-style deferred
-    # formatting, e.g. `log_manager.info("count=%d", n)`.
+    # args reach logging's deferred formatting: info("count=%d", n).
     def info(self, msg: str, *args, **kwargs) -> None:
         self._sys_logger.info(msg, *args, **kwargs)
 

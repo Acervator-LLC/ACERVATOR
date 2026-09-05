@@ -80,10 +80,8 @@ def app():
     return ensure_app()
 
 
-# ---------------------------------------------------------------------
 # The stored fleet. Read by the real loader out of a real bot_state file,
 # so neither side ever invents a topology.
-# ---------------------------------------------------------------------
 
 
 STORED_LOTS = [{"units": 1200.0, "price": 0.02}, {"units": 900.0, "price": 0.021}]
@@ -167,9 +165,7 @@ PARITY_LINES = [
 ]
 
 
-# ---------------------------------------------------------------------
 # The stand-ins. One set per side, never shared.
-# ---------------------------------------------------------------------
 
 
 class Swaps:
@@ -589,9 +585,7 @@ class Future:
         self.callbacks.append(callback)
 
 
-# ---------------------------------------------------------------------
 # One scenario is one panel, one fleet and one list of steps.
-# ---------------------------------------------------------------------
 
 
 def spec_bots(spec) -> list:
@@ -640,9 +634,7 @@ def spec_controller(spec):
     }
 
 
-# ---------------------------------------------------------------------
 # The shipped side: the real Qt panel, with its outward edges stood in.
-# ---------------------------------------------------------------------
 
 
 def shipped_module():
@@ -1067,9 +1059,7 @@ def shipped_payload(side) -> dict:
     }
 
 
-# ---------------------------------------------------------------------
 # The new side: the surface's model, driven through the same steps.
-# ---------------------------------------------------------------------
 
 
 class SurfaceSide:
@@ -1318,9 +1308,7 @@ def surface_payload(side) -> dict:
     }
 
 
-# ---------------------------------------------------------------------
 # The scenarios. Each one is a fleet, a controller and a list of steps.
-# ---------------------------------------------------------------------
 
 
 CHIP = {
@@ -1749,9 +1737,7 @@ def drive_new(spec) -> dict:
 NAMES = [one["name"] for one in SCENARIOS]
 
 
-# ---------------------------------------------------------------------
 # Both sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -1808,9 +1794,7 @@ def test_two_not_a_numbers_are_told_apart_by_the_hash():
     assert digest(left) != digest({"reading": float("inf")})
 
 
-# ---------------------------------------------------------------------
 # Refusals, compared by type
-# ---------------------------------------------------------------------
 
 
 REFUSALS = [
@@ -1848,9 +1832,7 @@ def test_the_refusal_comparison_tells_two_types_apart():
     assert one["status"]["text"] != other["status"]["text"]
 
 
-# ---------------------------------------------------------------------
 # Step sequences, including ones that refuse part way
-# ---------------------------------------------------------------------
 
 
 SEQUENCES = [
@@ -1927,9 +1909,7 @@ def test_the_refill_check_can_report_a_complete_refill():
     assert surface.PROGRESS_COLUMN in [call[0] for call in model.calls]
 
 
-# ---------------------------------------------------------------------
 # What the shipped panel holds, counted on the running object
-# ---------------------------------------------------------------------
 
 
 def panel_class():
@@ -2201,9 +2181,7 @@ def test_the_panel_carries_a_duration_on_exactly_the_pins_named():
     assert any(has is False for has in seen.values()), "every pin carried one"
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 def surface_constants() -> dict:
@@ -2333,9 +2311,7 @@ def test_the_payload_key_count_is_the_one_the_comparison_reads():
     assert len(payload) == PAYLOAD_KEY_TOTAL, sorted(payload)
 
 
-# ---------------------------------------------------------------------
 # The growth check: the file against the module
-# ---------------------------------------------------------------------
 
 
 SURFACE_SOURCE = (
@@ -2396,9 +2372,7 @@ def test_the_growth_check_can_report_a_name_on_one_side_only():
     assert len(in_file) > 100, len(in_file)
 
 
-# ---------------------------------------------------------------------
 # The branch markers
-# ---------------------------------------------------------------------
 
 
 def test_every_branch_the_surface_declares_is_taken_by_some_scenario():
@@ -2504,9 +2478,7 @@ def test_the_branch_reader_reports_a_branch_nobody_took():
     assert "a.branch.nobody.wrote" not in surface.CALL_NAMES
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 PICTURE_CASES = ["empty", "loaded"]
@@ -2722,9 +2694,7 @@ def test_the_two_sides_carry_one_skin(name):
     )
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture()
@@ -2932,9 +2902,7 @@ def test_the_qt_probe_reports_qt_when_it_is_loaded(tmp_path):
     assert loaded["frame"]["ok"] is True
 
 
-# ---------------------------------------------------------------------
 # The throwaway home
-# ---------------------------------------------------------------------
 
 
 def files_under(root) -> list:
@@ -2979,9 +2947,7 @@ def test_the_home_counter_reports_a_planted_file(tmp_path):
     assert files_under(home) == ["planted.txt"]
 
 
-# ---------------------------------------------------------------------
 # Shared state: what each side swaps, and that it goes back
-# ---------------------------------------------------------------------
 
 
 def test_a_drive_swaps_shared_values_and_puts_every_one_back():
@@ -3098,9 +3064,7 @@ def test_the_synthetic_candle_check_tells_two_symbols_apart():
     )
 
 
-# ---------------------------------------------------------------------
 # The bare-reading audit: what a stored value nobody checked does
-# ---------------------------------------------------------------------
 
 
 HOSTILE = [

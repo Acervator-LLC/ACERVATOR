@@ -1,25 +1,9 @@
-"""v3.24.21 — pin tests for Start All progress events.
+"""Pin the Start All progress events onto the dialog's signal.
 
-THE DEFECT
-==========
-``_on_progress_event`` read ``event.payload``. That attribute never
-existed. ``EventBus.emit`` builds ``Event(topic=topic, data=kwargs)``
-(``event_bus.py:136``) and ``Event.__getattr__`` raises
-``AttributeError("Event has no data field 'payload'")`` for any name not
-in ``data``.
-
-Every one of the six emits in ``BotManager.start_all`` passes its fields
-as kwargs, so they land in ``.data``. The handler therefore raised on
-*every* event — and a bare ``except Exception: pass`` swallowed it.
-
-Operator-visible symptom: Start All opens a dialog stuck on "Preparing to
-auto-start bots..." with an empty list and a disabled Close button for the
-whole staggered start, which then never auto-dismisses.
-
-The bug was invisible for its entire lifetime because the swallow removed
-the only evidence. That is the pattern these tests defend against: the
-assertion is that events actually reach the signal, not merely that
-nothing raised.
+``EventBus.emit`` puts its kwargs into ``Event.data``, and ``Event.__getattr__``
+raises ``AttributeError`` for every other name. ``_handle`` runs the real
+``StartAllProgressDialog._on_progress_event`` against a ``_Recorder`` standing in
+for the Qt signal. A malformed event on ``TOPIC`` is logged, not swallowed.
 """
 
 from __future__ import annotations

@@ -1,37 +1,12 @@
-"""history_helpers.py — pure helpers for the History tab rebuild.
+"""Pure helpers behind the History tab's trade rows.
 
-Reference specification (Diataxis: reference). Introduced v3.23.71
-2026-07-31 as part of the operator-directed History Tab rebuild:
-
-    "clean up for both the Simulator and History tabs ... isolate any
-     relevant or useful pieces but import them rather [than] operate
-     within the old code."
-
-Design doc:
-`docs/engineering-notes/2026-07-31_history_and_simulator_objectives_plan.md`.
-
-Isolated pieces (all pure, all testable without Qt):
-
-    * ``normalize_trade`` — exchange dataclass/dict → uniform row dict.
-    * ``fetch_all_history_chunked`` — v3.23.58-style chunked-window walk
-      per (exchange, symbol) so the operator's H5 "fewer trades in
-      History than boot-up YTD pull" bug is fixed by construction. The
-      prior implementation passed ``limit=500`` in a single
-      ``get_my_trades`` call — Coinbase's per-time-range cap dropped
-      any bot with > 500 trades (RAVE had 881 YTD). This helper walks
-      backwards in 30-day chunks with per-trade-id dedupe.
-    * ``build_page_gate_index`` / ``build_page_voting_index`` — per-page
-      indexes bucketed by ``(bot_id, ts // 60)`` for O(rows) join.
-    * ``lookup_gate_entry`` / ``lookup_voting_entry`` — probe the ±60s
-      neighborhood, pick the closest match by absolute time delta.
-    * ``gate_cell_tooltip`` / ``voting_cell_tooltip`` / ``grade_tooltip``
-      — rich HTML tooltip builders surfacing the full captured state
-      for H2/H3 (operator wanted "mouseover explaining the state at
-      the time of the trade").
-    * ``gate_cell_text`` / ``voting_cell_text`` — the compact table
-      cell text (S✓/F⛔ + net±).
-
-sadp: R28 SSS + R70 RCN
+``normalize_trade`` turns one exchange trade into a row dict and
+``fetch_all_history_chunked`` collects those rows for every (exchange, symbol)
+pair a bot manager exposes. ``build_page_gate_index`` and
+``build_page_voting_index`` bucket log entries by ``(bot_id, ts // 60)`` so
+``lookup_gate_entry`` and ``lookup_voting_entry`` can pick the closest one.
+``gate_cell_text`` and ``voting_cell_text`` render the cell, ``gate_cell_tooltip``
+returns plain text, and ``voting_cell_tooltip`` and ``grade_tooltip`` return HTML.
 """
 
 from __future__ import annotations
@@ -43,52 +18,33 @@ from typing import Any, Optional
 logger = logging.getLogger("acervator.gui.history_helpers")
 
 
-# --------------------------------------------------------------------- #
-# Defaults + tuning                                                      #
-# --------------------------------------------------------------------- #
-
 DEFAULT_START_DATE = datetime(2026, 4, 1, 0, 0, 0, tzinfo=timezone.utc)
-"""H1 (operator 2026-07-31): fixed launch date for all bots. If the
-operator ever launches new bots after a later date, override via
-Settings > default_history_start_date (not yet exposed)."""
+"""``fetch_all_history_chunked`` starts from this timestamp when its
+``since_ts`` argument is not positive."""
 
 CHUNK_WINDOW_DAYS = 30
-"""H5: 30-day chunks match the v3.23.58 YTD trade-sync fix pattern."""
+"""Default for the ``chunk_days`` argument of ``fetch_all_history_chunked``,
+which discards it."""
 
 CHUNK_PER_CALL_LIMIT = 500
-"""Coinbase's per-time-range cap. Chunked walk avoids the cap by
-sliding the (since, until) window backwards until we hit the target
-since_ts."""
+"""``_fetch_paginated`` passes this as the ``limit`` of each
+``get_my_trades`` call."""
 
 JOIN_TOLERANCE_SECONDS = 60.0
-"""Gate/voting log join half-window — matches v3.23.10 D-01 contract
-pin (operator 2026-06-13)."""
-
-
-# --------------------------------------------------------------------- #
-# Trade normalization                                                    #
-# --------------------------------------------------------------------- #
+"""Largest gap ``_best_entry_within_window`` accepts between a trade and a log
+entry, and the backdate the index builders apply to ``since``."""
 
 
 def normalize_trade(trade: Any, exchange_id: str) -> Optional[dict]:
-    """Convert an exchange ``Trade`` dataclass (or ccxt dict) into a
-    uniform row dict. Returns None for malformed inputs.
+    """Convert an exchange ``Trade`` dataclass or ccxt dict into a row dict.
 
-    Row shape (stable across cascades — Simulator's replay path reads
-    these too so field-name changes break parity):
-
-        id, exchange, symbol, side, amount, price, cost, fee,
-        fee_currency, timestamp (unix sec, float),
-        datetime (UTC aware or None).
+    Keys are id, exchange, symbol, side, amount, price, cost, fee,
+    fee_currency, timestamp in unix seconds, and datetime; a malformed
+    ``trade`` gives None.
     """
     if trade is None:
         return None
 
-    # Route dicts through the dict branch up-front. Falling back via
-    # exception (the pre-v3.23.71 pattern) fails silently when
-    # getattr returns falsy defaults instead of raising — a dict with
-    # amount/price kwargs still produced a zeroed-out record and got
-    # rejected by the guard, silently dropping every dict-shaped trade.
     if isinstance(trade, dict):
         tid = str(trade.get("id", "") or "")
         symbol = str(trade.get("symbol", "") or "")
@@ -114,7 +70,6 @@ def normalize_trade(trade: Any, exchange_id: str) -> Optional[dict]:
         elif "SELL" in side or side == "S":
             side = "SELL"
     else:
-        # Dataclass path
         try:
             tid = str(getattr(trade, "id", "") or "")
             symbol = str(getattr(trade, "symbol", "") or "")
@@ -155,11 +110,6 @@ def normalize_trade(trade: Any, exchange_id: str) -> Optional[dict]:
     }
 
 
-# --------------------------------------------------------------------- #
-# Chunked-window trade fetcher — H5 fix                                  #
-# --------------------------------------------------------------------- #
-
-
 def _bots_of(bot_manager: Any) -> list:
     if bot_manager is None:
         return []
@@ -195,21 +145,10 @@ async def _fetch_paginated(
     since_ts: float,
     per_page_limit: int = CHUNK_PER_CALL_LIMIT,
 ) -> list[Any]:
-    """One paginated ``get_my_trades`` call.
+    """One ``get_my_trades`` call for ``symbol`` with ``paginate`` set.
 
-    ``ccxt_connector.get_my_trades`` (see src/exchange/ccxt_connector.py
-    v3.23.57) accepts ``params={'paginate': True}`` — ccxt then walks
-    the cursor internally per-exchange and returns the full result
-    in a single call. This is the RIGHT primitive for Coinbase's
-    fills endpoint (which returns "most recent N within window"
-    rather than oldest-first, so a manual forward loop can't paginate
-    that shape).
-
-    Prior v3.23.71 impl walked (since, until) windows manually — but
-    the underlying connector doesn't accept ``until``, so every window
-    passed the same ``since`` and got the same recent-500 back,
-    hammering the rate limiter. v3.23.73 replaces that with the
-    paginate=True primitive.
+    An ``exch`` without ``get_my_trades`` gives an empty list, and a raising
+    call is logged and gives an empty list.
     """
     if not hasattr(exch, "get_my_trades"):
         return []
@@ -222,10 +161,8 @@ async def _fetch_paginated(
                 params={"paginate": True},
             )
         except TypeError:
-            # Connector doesn't accept ``params`` kwarg — fall back
-            # to the plain since+limit call. Coverage will be
-            # per_page_limit trades from since_ts, but that's still
-            # the best we can do without cursor pagination.
+            # A connector without a ``params`` kwarg returns at most
+            # ``per_page_limit`` trades from ``since_ts``.
             trades = await exch.get_my_trades(
                 symbol=symbol,
                 since=since_ts if since_ts > 0 else None,
@@ -245,22 +182,15 @@ async def _fetch_paginated(
 async def fetch_all_history_chunked(
     bot_manager: Any,
     since_ts: float,
-    chunk_days: int = CHUNK_WINDOW_DAYS,  # retained for signature compat
-    max_chunks: int = 48,  # retained for signature compat
+    chunk_days: int = CHUNK_WINDOW_DAYS,
+    max_chunks: int = 48,
 ) -> list[dict]:
-    """Pull trade history from every active (exchange, symbol) pair.
+    """One ``_fetch_paginated`` call per (exchange, symbol) pair, newest first.
 
-    v3.23.73 rewrite: one paginated call per (exchange, symbol) via
-    ``params={'paginate': True}``. Prior chunked-window walk was
-    broken by an incorrect ``until=`` param assumption — replaced.
-
-    ``chunk_days`` and ``max_chunks`` kept in the signature so callers
-    that pass them (tests) don't break; they no longer affect
-    behaviour (the pagination is fully ccxt-side).
-
-    Returns newest-first list of normalized trade dicts.
+    Rows repeat no ``(exchange, symbol, id)`` triple and drop below
+    ``since_ts``; ``chunk_days`` and ``max_chunks`` are accepted and discarded.
     """
-    del chunk_days, max_chunks  # noqa: F841 - kept for API compat
+    del chunk_days, max_chunks
     if bot_manager is None:
         return []
     if since_ts <= 0:
@@ -309,7 +239,10 @@ async def fetch_all_history_chunked(
 
 
 def resolve_bot_label(bot_manager: Any, exchange_id: str, symbol: str) -> str:
-    """Find the bot label 'TICKER/last4' for (exchange, symbol) or ''."""
+    """Label 'TICKER/last4' for the first bot whose config matches ``symbol``.
+
+    ``exchange_id`` takes no part in the match, and no match gives ''.
+    """
     if bot_manager is None:
         return ""
     for bot in _bots_of(bot_manager):
@@ -348,11 +281,6 @@ def resolve_bot_id_for_row(bot_manager: Any, row: dict) -> str:
     return ""
 
 
-# --------------------------------------------------------------------- #
-# Gate + voting log join                                                 #
-# --------------------------------------------------------------------- #
-
-
 def _parse_entry_ts(s: str) -> Optional[float]:
     if not s:
         return None
@@ -374,8 +302,11 @@ def _earliest_page_ts(page_rows: list[dict]) -> Optional[float]:
 
 
 def build_page_gate_index(page_rows: list[dict]) -> dict:
-    """Return ``{(bot_id, ts // 60): [entry, ...]}`` for gate.log
-    entries covering this page. Empty dict on any reader failure."""
+    """Bucket ``live_gate_decisions`` entries as ``{(bot_id, ts // 60): [entry]}``.
+
+    ``since`` backs off ``JOIN_TOLERANCE_SECONDS`` from the earliest
+    ``page_rows`` timestamp, and any failure gives an empty dict.
+    """
     if not page_rows:
         return {}
     min_ts = _earliest_page_ts(page_rows)
@@ -405,8 +336,12 @@ def build_page_gate_index(page_rows: list[dict]) -> dict:
 
 
 def build_page_voting_index(page_rows: list[dict]) -> dict:
-    """Return ``{(bot_id, ts // 60): [entry, ...]}`` for voting.log
-    entries covering this page. Empty dict on any reader failure."""
+    """Bucket ``live_voting_panel_snapshots`` entries the same way as
+    ``build_page_gate_index``.
+
+    ``since`` backs off ``JOIN_TOLERANCE_SECONDS`` from the earliest
+    ``page_rows`` timestamp, and any failure gives an empty dict.
+    """
     if not page_rows:
         return {}
     min_ts = _earliest_page_ts(page_rows)
@@ -442,13 +377,15 @@ def _best_entry_within_window(
     if not candidates:
         return None
     best = None
-    best_delta = JOIN_TOLERANCE_SECONDS + 1.0
+    best_delta = JOIN_TOLERANCE_SECONDS
     for e in candidates:
         ets = _parse_entry_ts(e.get("timestamp", ""))
         if ets is None:
             continue
         dt = abs(ets - target_ts)
-        if dt < best_delta:
+        if dt > JOIN_TOLERANCE_SECONDS:
+            continue
+        if best is None or dt < best_delta:
             best = e
             best_delta = dt
     return best
@@ -495,29 +432,12 @@ def lookup_voting_entry(
     return _best_entry_within_window(candidates, ts)
 
 
-# --------------------------------------------------------------------- #
-# Cell text + tooltip builders                                          #
-# --------------------------------------------------------------------- #
-
-
 def gate_cell_text(entry: Optional[dict]) -> str:
     """Compact text for the Gates column cell.
 
-    v3.24.98 — "no record" and "recorded, nothing armed" are no longer
-    the same character.
-
-    This returned "—" BOTH when no gate entry could be joined to the
-    trade AND when an entry existed but neither side was armed. Those
-    are opposite facts: the first is missing evidence, the second is
-    evidence of a deliberate hold, and the operator could not tell them
-    apart.
-
-    MEASURED on the operator's gate.log: 433 of 646 records (67%) have
-    NEITHER side armed, and every one of them names the gate that held
-    it -- `delta<=0`, `TA-not-bearish`, `no-tranches-queued`. Two thirds
-    of the column was rendering a dash over information that was
-    already there, which is why it read "as if the gates had nothing to
-    say".
+    A missing ``entry`` gives "no record"; an armed side gives "S✓" or "F✓",
+    an unarmed side names its first blocker as "S⊘" or "F⊘", and a recorded
+    entry with no blocker gives "held".
     """
     if not entry:
         return "no record"
@@ -529,8 +449,6 @@ def gate_cell_text(entry: Optional[dict]) -> str:
         parts.append("F✓")
     if parts:
         return " ".join(parts)
-    # Recorded and held. Name the gate that held it, first blocker per
-    # side -- that is the whole reason the row is interesting.
     s_b = list(data.get("scrum_blockers") or [])
     f_b = list(data.get("fold_blockers") or [])
     bits = []
@@ -546,15 +464,10 @@ def _html_escape(s: str) -> str:
 
 
 def gate_cell_tooltip(entry: Optional[dict]) -> str:
-    """Rich per-trade gate explanation.
+    """Plain-text per-trade gate explanation for the Gates column.
 
-    v3.24.98 — rewritten. Operator, 2026-08-08: "Mouse over information
-    is a bit confusing. Needs to be more clear."
-
-    Ordered the way the question is actually asked: did anything arm,
-    and if not, WHAT held it. The gate names are the same ones the
-    Simulator's gate row shows, so a reader moving between the two
-    surfaces is reading one vocabulary.
+    Each line names the symbol and bot state from ``entry``, then SCRUM and
+    FOLD with up to six blockers each.
     """
     if not entry:
         return (
@@ -572,10 +485,7 @@ def gate_cell_tooltip(entry: Optional[dict]) -> str:
     s_b = list(data.get("scrum_blockers") or [])
     f_b = list(data.get("fold_blockers") or [])
 
-    # Bot state belongs here: "held" means something different in
-    # TRACK than in COOLDOWN or PAUSED, and the old tooltip carried it.
-    # Dropping it in the rewrite was a real loss, caught by
-    # test_gate_tooltip_lists_scrum_and_fold_blockers.
+    # "held" carries a different meaning in TRACK, COOLDOWN and PAUSED.
     _state = str(data.get("state", "") or "")
     _ts = str(entry.get("timestamp", "") or "")
     _head = f"{sym} — gate state captured at trade time"
@@ -621,12 +531,10 @@ def voting_cell_text(entry: Optional[dict]) -> str:
 
 
 def voting_cell_tooltip(entry: Optional[dict]) -> str:
-    """Rich HTML tooltip listing every indicator signal with its
-    direction, confidence, timeframe, and weight at trade time.
+    """HTML tooltip for the Voting column, built from the ``panel`` in ``entry``.
 
-    Answers H3: operator wanted the Voting column expanded to show
-    individual indicator states; the data is captured per fired
-    trade in voting.log, we just weren't surfacing it.
+    It shows the vote counts, ``net_score`` and confidence, then the first 20
+    signals with direction, confidence, weight and timeframe.
     """
     if not entry:
         return "<i>No voting.log snapshot within ±60s of trade time.</i>"
@@ -683,11 +591,11 @@ def voting_cell_tooltip(entry: Optional[dict]) -> str:
 
 
 def grade_tooltip(grade: str, grade_context: Optional[dict] = None) -> str:
-    """Tooltip for the Grade column. Grades are A/B/C/D/F assigned
-    by ``src.trading.trade_grader`` based on trade context (position
-    vs mean, timing, etc.). Since the grader is deterministic and
-    on-demand, the tooltip explains the letter's meaning + any
-    surrounding context the grader emitted."""
+    """HTML tooltip for the Grade column.
+
+    The first letter of ``grade`` selects a line from ``meanings``, and the
+    first eight ``grade_context`` items follow it.
+    """
     letter = (grade or "").strip()[:1].upper()
     meanings = {
         "A": "Excellent — traded near local extreme with the trend",

@@ -1,67 +1,11 @@
-"""The operator can SEE the clear — issue #98 defects 1, 2 and 3.
+"""The Fold Tranches panel follows a clear, and the clear reaches disk at once.
 
-WHAT WAS MEASURED, AND WHY IT IS NOT A BROKEN BUTTON
-====================================================
-Both Clear buttons on the Fold Tranches tab already worked. The trade
-log records them on BTC bot ``7c39c7a2`` — ``WIRE CREDITS CLEARED ...
-$343.6824`` and ``FOLD TRANCHES CLEARED ... 42 tranche(s) holding
-$29.4268`` — and the state file agrees. Nothing here makes them clear
-harder.
-
-What the operator SAW was a panel that had not moved. Driven offscreen
-against a stub bot, with the confirmation accepted::
-
-    BEFORE  table rows 58   bot tranches 58   "Open tranches: 58"
-    AFTER   table rows 58   bot tranches  0   "Open tranches: 58"
-            clear button still "Clear 58 Fold Tranche(s)", enabled True
-            58 Fire buttons still live
-
-The dialog built its tabs once in ``__init__`` and had no refresh path,
-so the handler printed a disclaimer instead — and the disclaimer opened
-with "No order was placed", which is REASSURANCE standing where a
-RESULT belongs, after a button that appeared to have done nothing.
-
-Neither clear reached disk. ``clear_fold_tranches``
-(``src/trading/scrumming/fold_tranches.py``) and
-``clear_pending_wire_credits`` (``src/trading/scrumming/wire_routing.py``)
-both write memory only, and leave the write to the 60-second rolling
-save -- the ``periodic_save`` closure inside ``main()``, in ``main.py``.
-Clear, then close inside that window, and every record the operator
-destroyed came back.
-
-WHAT THIS FILE PROVES
-=====================
-1. The panel is rebuilt: rows, count label, both button labels and both
-   button enabled states all follow the bot, and every Fire button is
-   gone.
-2. The message names the RESULT first and the reassurance last.
-3. The clear is on DISK before the handler returns — asserted by
-   reading the state file back, not by asserting that a timer exists.
-4. A stale Fire button was already safe, and it is now unreachable.
-
-EVERY ASSERTION DRIVES SHIPPED CODE. A real ``ScrummingBot``, its real
-``clear_fold_tranches``, a real ``BotManager``, a real ``StateManager``
-pointed at ``tmp_path``, and the real
-``BotLiveSettingsDialog._on_clear_fold_tranches`` bound to a real
-dialog holding a real ``QTabWidget``. Nothing here re-implements a line
-of the panel.
-
-NOTHING WRITES UNDER ``~/.acervator``. The ``StateManager`` is
-constructed with ``config_dir=tmp_path``, so the operator's live state
-file is never opened, let alone written. No Clear or Fire button is
-pressed anywhere but on this fixture.
-
-TWO-SIDED BY CONSTRUCTION
-=========================
-``_without_the_refresh`` and ``_without_the_in_click_save`` put the
-tree back the way it was and reproduce the measured BEFORE numbers on
-demand. A repair test that cannot reproduce the defect is a test that
-proves nothing about the repair.
-
-FALSIFICATION: this file is wrong if (a) the panel agrees with the bot
-while the refresh is disabled, (b) the state file holds zero tranches
-while the in-click save is disabled, or (c) the "result first" test
-passes on a message that opens with "No order was placed".
+``BotLiveSettingsDialog._on_clear_fold_tranches`` rebuilds the tab, so the rows,
+the count label, both clear-button labels, their enabled states and the Fire
+buttons all follow ``ScrummingBot.clear_fold_tranches``. The handler's message
+names the result before the reassurance, and it saves through ``StateManager``
+before it returns rather than waiting for the rolling save.
+``_without_the_refresh`` and ``_without_the_in_click_save`` put each half back.
 """
 
 from __future__ import annotations
@@ -302,26 +246,7 @@ def panel(tmp_path):
     # YIELD so every object above stays referenced for the whole test.
     yield _Panel(bot, manager, state_manager, dialog, tabs)
 
-    # TEARDOWN, and the recipe matters. Measured 2026-08-23: without it
-    # this fixture left 32 `BotLiveSettingsDialog` and 30 `QTabWidget`
-    # alive at session end, and
-    # `test_sim_visuals_expand_reentrancy.py::TestTheDialogIsDestroyed`
-    # then failed -- because `_open_dialogs(app)` returns EVERY
-    # top-level QDialog in the process and takes element zero, so it
-    # examined one of ours and reported its own subject as leaked. A
-    # leak here fails in a stranger's test; see issue #101.
-    #
-    # `deleteLater()` is NOT used, on purpose. Issue #96 measured that
-    # it CAUSES the leak: it moves ownership from Python to C++, and the
-    # object then waits for a DeferredDelete event that
-    # `QApplication.processEvents()` never delivers. Dropping the last
-    # Python reference destroys the widget; `deleteLater()` prevents it.
-    # `setParent(None)` alone is a NO-OP here: these widgets were never
-    # parented, and a parentless Qt widget is owned by Qt for the life
-    # of the process. Measured -- it left all 32 alive. The recipe that
-    # DOES destroy is the third row of issue #96's table: queue the
-    # delete, then DELIVER the event ourselves, because
-    # `processEvents()` does not deliver DeferredDelete.
+    # processEvents() never delivers DeferredDelete; sendPostedEvents does.
     from PySide6.QtCore import QCoreApplication, QEvent
 
     for _w in (tabs, dialog):
@@ -330,10 +255,6 @@ def panel(tmp_path):
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# THE CONTROLS. Each one puts the tree back and must reproduce the
-# measured BEFORE numbers.
-# ══════════════════════════════════════════════════════════════════════
 def _without_the_refresh(monkeypatch) -> None:
     """Restore the pre-repair behaviour: no refresh path at all.
 
@@ -364,10 +285,6 @@ def _without_the_in_click_save(monkeypatch) -> None:
     )
 
 
-# ══════════════════════════════════════════════════════════════════════
-# A. THE STARTING STATE. Without these the "after" numbers below could
-#    be produced by a panel that never showed anything.
-# ══════════════════════════════════════════════════════════════════════
 def test_the_panel_starts_by_showing_all_58(panel):
     shows = panel.shows()
     assert shows["fold_rows"] == TRANCHE_COUNT
@@ -379,10 +296,6 @@ def test_the_panel_starts_by_showing_all_58(panel):
     assert len(panel.bot._fold_tranches) == TRANCHE_COUNT
 
 
-# ══════════════════════════════════════════════════════════════════════
-# B. DEFECT 1 — THE PANEL REFRESHES. The evaluation's measurement is
-#    the falsifier: each of its four stale readings gets its own test.
-# ══════════════════════════════════════════════════════════════════════
 class TestThePanelFollowsTheClear:
 
     def test_the_bot_holds_nothing(self, panel, monkeypatch):
@@ -450,9 +363,6 @@ class TestThePanelFollowsTheClear:
         assert len(panel.fire_buttons()) == TRANCHE_COUNT
 
 
-# ══════════════════════════════════════════════════════════════════════
-# C. DEFECT 2 — THE MESSAGE NAMES THE RESULT FIRST.
-# ══════════════════════════════════════════════════════════════════════
 class TestTheMessageLeadsWithTheResult:
 
     def test_the_first_line_is_what_happened(self, panel, monkeypatch):
@@ -524,11 +434,6 @@ class TestTheMessageLeadsWithTheResult:
         assert panel.saved_tranches() is None
 
 
-# ══════════════════════════════════════════════════════════════════════
-# D. DEFECT 3 — THE CLEAR SURVIVES AN IMMEDIATE CLOSE.
-#    Read off the state FILE. "A timer would have fired" is not a
-#    measurement of anything.
-# ══════════════════════════════════════════════════════════════════════
 class TestTheClearIsOnDiskBeforeTheHandlerReturns:
 
     def test_no_state_file_exists_before_the_click(self, panel):
@@ -582,12 +487,6 @@ class TestTheClearIsOnDiskBeforeTheHandlerReturns:
         assert panel.saved_tranches() is None
 
 
-# ══════════════════════════════════════════════════════════════════════
-# E2. THE PIN CARRIES THE PREDICTION.
-#     An island proof is a HYPOTHESIS. `gui.04.002` ships the expected
-#     result beside the observed one, so the operator's own machine
-#     answers it instead of this file standing in for it.
-# ══════════════════════════════════════════════════════════════════════
 @pytest.fixture
 def sink():
     """Install a signal sink for one test and take it out again."""
@@ -649,10 +548,6 @@ class TestThePinCarriesThePrediction:
         assert record.expected["saved"] is True
 
 
-# ══════════════════════════════════════════════════════════════════════
-# E. FIRE AFTER A CLEAR. The issue says it is safe. Verified rather
-#    than repeated, because it decides how urgent the button state is.
-# ══════════════════════════════════════════════════════════════════════
 class TestFiringAfterAClear:
 
     def test_a_stale_fire_refuses_and_places_no_order(self, panel, monkeypatch):

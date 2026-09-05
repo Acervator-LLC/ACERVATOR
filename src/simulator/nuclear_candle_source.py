@@ -1,46 +1,10 @@
-"""
-src/simulator/nuclear_candle_source.py — Tape-based candle feed.
+"""Tape-based candle feed for Nuclear Mode.
 
-v3.18.8 (Phase B revision) — REWRITTEN per operator directive 2026-05-20:
-
-    "For Nuclear Mode, we can just use the Candle Tapes from
-    RAIntSimBat. They represent organic price action data in two year
-    chunks. We can just play the tape forward for the full length, flip
-    it, run the full length, flip it again, and so on until Nuclear
-    Mode is turned off. The injected, smoothed randomized data that is
-    used instead of this has always been a sticking point for me. We
-    also do not have to maintain ticker associations. We just have Tape
-    A, Tape B, and so on."
-
-The v3.18.7 implementation used ``gen_from_anchors`` (smoothstep
-interpolation between 3 anchor points with gaussian noise) — that is
-the "injected, smoothed randomized data" the operator has flagged.
-Retired entirely.
-
-NEW MODEL:
-  • Scan ``sadp/RAIntSimBat/data/cache/*.json`` at construction.
-  • Each cache file = one TAPE of REAL historical OHLCV (fetched by
-    RAIntSimBat from CoinGecko for crypto + Yahoo Finance for equity).
-  • Cache file format (set by RAIntSimBat._save_cache):
-        {"symbol": "BTC", "year": "2023", "fetched": <ts>,
-         "candles": [[ts, o, h, l, c, v], ...]}
-  • Tapes assigned A, B, C, ... in scan order. Operator-facing label
-    includes the source: "Tape A — BTC 2023".
-  • Bot doesn't care about tickers. Internally the tapes are keyed by
-    letter; the NuclearSimExchange synthesizes "TAPEA/USD" style symbols
-    for the bot to trade against.
-
-PLAYBACK:
-  Play forward to the end, flip, play backward to the start, flip,
-  repeat indefinitely. Each direction-flip is a "wrap" event the
-  controller can count (Phase D may emit it on the perf log so the
-  operator sees how long the bot ran on each polarity).
-
-EMPTY-CACHE PATH:
-  If no cache files are found, NuclearCandleSource is constructable
-  (no crash) but has zero tapes. ``list_tapes()`` returns []. Callers
-  check this and surface an actionable message to the GUI ("Run the
-  RAIntSimBat battery once to populate the cache").
+``_discover_tapes_from_tablets`` indexes the Stone Tablet archive, and
+``_load_body`` reads one tablet of real exchange OHLCV per wired tape.
+``advance`` plays a ``_Tape`` to the end, flips its ``direction`` and plays
+back, counting every flip in ``wrap_count``. Only the prices and volumes
+``_perturb`` returns are synthesized; ``ts`` and the tablet files never change.
 """
 
 from __future__ import annotations
@@ -55,52 +19,46 @@ from typing import Optional
 logger = logging.getLogger("acervator.nuclear_sim")
 
 
-# Default location of RAIntSimBat's cache directory, relative to this
-# file. Resolved once at construction; can be overridden via the
-# constructor's ``cache_dir`` kwarg for tests.
 _NOISE_MIN_PCT = 0.10
 _NOISE_MAX_PCT = 0.25
-"""Per-pass noise amplitude bounds, operator directive 2026-08-04:
-"plays tapes forward and then backwards with a 10~25% random noise
-injection to vary the market structure conditions."
+"""Bounds on the amplitude ``reroll_noise`` draws into ``noise_pct``.
 
-The amplitude is drawn ONCE per pass (per direction flip), not per
-candle, so a single playthrough has a consistent volatility character
-rather than randomly alternating between calm and violent bar to bar.
+``reroll_noise`` draws once per direction flip, never once per candle.
 """
 
 _MIN_PRICE = 1e-12
-"""Perturbation floor. A price must stay strictly positive or downstream
-division (position sizing, VWAP, percentage gates) produces inf/NaN and
-the failure surfaces far from here."""
+"""Floor ``_perturb`` applies to each price, keeping every one strictly positive."""
 
 _MIN_TAPE_CANDLES = 20
-"""Below this a tape cannot warm up TA, so it is not a usable tape.
-Matches the threshold ``_load_tape`` has always applied to the legacy
-cache; shared so both discovery paths reject the same inputs."""
+"""Fewest candles a tape may hold and still warm up TA.
+
+``_load_tape`` and ``_load_body`` both reject a tape below this count.
+"""
 
 _DEFAULT_MAX_TAPES: Optional[int] = None
-"""How many tablets become tapes. ``None`` = all of them.
+"""Cap on how many tablets ``_discover_tapes_from_tablets`` turns into tapes.
 
-Was 12. Operator 2026-08-04: "Active Tape list appears to be
-incomplete" — it was hiding 394 of 406 tablets. The cap only existed
-because discovery used to load every body it offered; now that bodies
-load lazily in ``wire()``, listing the whole archive is free and the
-limit has no reason to exist. Kept as a parameter so tests can bound it.
+``None`` lists every usable tablet, and ``max_tapes`` overrides it.
 """
 
 
 def _default_cache_dir() -> Path:
+    """Return the legacy cache directory two parents above this file.
+
+    ``_discover_tapes`` falls through to ``_discover_tapes_from_tablets`` when
+    the directory is absent.
+    """
     here = Path(__file__).resolve()
-    # src/simulator/ → repo root is 2 parents up
     repo_root = here.parents[2]
     return repo_root / "sadp" / "RAIntSimBat" / "data" / "cache"
 
 
 @dataclass
 class _Tape:
-    """One playback tape. Plays forward then reverses then forwards
-    indefinitely, so the candle stream is infinite from the bot's POV.
+    """One tape of candles and the cursor that walks them.
+
+    ``advance`` runs ``cursor`` to either end and then flips ``direction``,
+    giving an endless stream from one finite ``candles`` list.
     """
 
     tape_id: str  # "A", "B", "C", ...
@@ -112,12 +70,11 @@ class _Tape:
     cursor: int = 0
     direction: str = "forward"  # "forward" | "reverse"
     wrap_count: int = 0  # incremented each direction-flip
-    # v3.24.20 — per-pass noise injection (operator directive 2026-08-04:
-    # "plays tapes forward and then backwards with a 10~25% random noise
-    # injection to vary the market structure conditions").
     declared_candles: int = 0
-    """Candle count from MANIFEST. Known before the body is read, so the
-    GUI can show tape size without paying for a load."""
+    """Candle count read from the tablet manifest.
+
+    ``tape_info`` reports it while ``candles`` is still empty.
+    """
     noise_enabled: bool = True
     noise_pct: float = 0.0  # re-rolled in [MIN,MAX] on each flip
     noise_seed: int = 0  # re-rolled on each flip
@@ -126,30 +83,20 @@ class _Tape:
         return len(self.candles)
 
     def reroll_noise(self, rng) -> None:
-        """Draw a fresh noise amplitude + seed for the next pass.
+        """Draw a fresh ``noise_pct`` and ``noise_seed`` from *rng*.
 
-        Called once per direction flip, NOT per candle. A pass is
-        internally coherent — the same index yields the same perturbed
-        candle for the whole pass — while successive passes over the same
-        tape present different market structure. That is the point: the
-        bot should not be able to learn one fixed tape.
+        ``advance`` calls this on each direction flip, giving successive passes
+        over one tape a different structure.
         """
         self.noise_pct = rng.uniform(_NOISE_MIN_PCT, _NOISE_MAX_PCT)
         self.noise_seed = rng.getrandbits(32)
 
     def _perturb(self, idx: int, candle: tuple) -> tuple:
-        """Return ``candle`` with deterministic per-pass noise applied.
+        """Return ``candle`` with per-pass noise on its prices and volume.
 
-        Deterministic in ``(noise_seed, idx)`` rather than drawn fresh on
-        each call. This matters: ``history()`` re-reads the same indices
-        on every tick, and if the values moved between reads the bot's TA
-        would be computed over a series that never existed. Same seed and
-        index always give the same candle.
-
-        OHLC validity is enforced after perturbation — ``high`` is raised
-        to bracket every other price and ``low`` lowered — so a noisy
-        candle is still a well-formed candle. Timestamps are never
-        touched; the master clock stays authoritative.
+        The result is fixed by ``noise_seed`` and ``idx``, ``ts`` is carried
+        through untouched, and the returned high and low bracket every other
+        price.
         """
         ts, o, h, low, c, v = candle
         amp = self.noise_pct
@@ -165,9 +112,7 @@ class _Tape:
             x ^= x >> 13
             return ((x & 0xFFFF) / 32767.5) - 1.0
 
-        # One shared drift moves the whole candle (preserving its shape),
-        # plus small independent jitter per price so the bar's internal
-        # geometry also varies.
+        # `drift` moves the whole bar; each price adds its own smaller jitter.
         drift = 1.0 + amp * jitter(0)
         no = max(o * (drift + amp * 0.25 * jitter(1)), _MIN_PRICE)
         nc = max(c * (drift + amp * 0.25 * jitter(2)), _MIN_PRICE)
@@ -190,37 +135,22 @@ class _Tape:
     def current(self):
         if not self.candles:
             return None
-        # Clamp defensively
         c = max(0, min(self.cursor, len(self.candles) - 1))
         return self._at(c)
 
     def history(self, limit: int) -> list:
-        """Return up to `limit` candles ending at the cursor, in
-        forward chronological order regardless of current direction.
+        """Return up to *limit* candles ending at ``cursor``, oldest first.
 
-        This is what ``get_ohlcv`` consumes — bots compute TA on a
-        chronologically-ordered window. When playing in reverse, the
-        underlying candle ordering is reversed relative to the source,
-        which is fine: BB/Vortex/MACD all operate on price-time, not
-        wall-clock-time, and a reversed real tape is still a valid
-        price-time series (it just has a different organic shape).
+        Each one comes through ``_at``, and a tape in ``reverse`` has its window
+        reversed before it is returned.
         """
         if not self.candles:
             return []
         end = max(0, min(self.cursor + 1, len(self.candles)))
         start = max(0, end - limit)
-        # v3.24.20 — read through _at so the TA window sees the same
-        # perturbed series the bot is trading. Building this from the raw
-        # candles instead would mean indicators computed on prices that
-        # never appeared at the cursor. Slicing produces a NEW list; the
-        # underlying tablet-derived candles are never modified.
+        # A new list every call; `candles` itself is never written.
         window = [self._at(i) for i in range(start, end)]
         if self.direction == "reverse":
-            # When in reverse, the cursor is decreasing — the "history"
-            # is the window of candles starting from cursor going
-            # back toward 0 (which is now the future from the bot's
-            # POV). Slice + reverse so the chronological order matches
-            # what TA expects.
             window = list(reversed(window))
         return window
 
@@ -229,32 +159,10 @@ def noised_series(
     rows: list,
     seed: int,
 ) -> tuple[list, float]:
-    """Return ``(noised_copy_of_rows, noise_pct)`` for one pass.
+    """Return ``(noised_rows, noise_pct)`` for one pass over *rows*.
 
-    v3.24.73 — THE canonical way to apply Nuclear-Mode market noise to a
-    plain row list. Promoted here, next to `_Tape`, so exactly one
-    perturbation implementation exists.
-
-    `topology_stress._noised_rows` had this logic and stated the reason
-    it must not be duplicated: a second implementation "could drift from
-    it, and then a stress result would describe a market structure the
-    operator never actually simulates." That argument applies with more
-    force now that Nuclear v2 uses it too — three copies would let the
-    stress backtester, Nuclear v1 and Nuclear v2 each simulate a
-    different market while reporting the same noise percentage.
-
-    THE STONE TABLETS ARE NEVER WRITTEN OVER. `rows` is copied, not
-    mutated, and nothing here touches disk. Operator directive
-    2026-08-02: "You do not modify the fucking stone tablets."
-
-    A pass is internally COHERENT: perturbation is deterministic in
-    (seed, index), so re-reading the same index during TA warm-up yields
-    the same candle. Drawing fresh noise per read would compute
-    indicators over a series that never existed.
-
-    Timestamps are never perturbed — the master clock stays
-    authoritative — and the OHLC invariant is re-established after
-    perturbation, so a noised candle is still a well-formed candle.
+    A ``_Tape`` seeded from *seed* perturbs a copy through ``_at``; *rows* is
+    left as it was and nothing here touches disk.
     """
     tape = _Tape(
         tape_id="N",
@@ -265,24 +173,19 @@ def noised_series(
         candles=[tuple(r) for r in rows],
         noise_enabled=True,
     )
-    tape.reroll_noise(random.Random(seed))  # noqa: S311 - not crypto
+    tape.reroll_noise(random.Random(seed))  # noqa: S311
     out = [list(tape._at(i)) for i in range(len(tape.candles))]
     return out, float(tape.noise_pct)
 
 
 class NuclearCandleSource:
-    """Pumps REAL historical candle data from RAIntSimBat's cache.
+    """Serve one tape of candles at a time to Nuclear Mode.
 
-    Public API consumed by NuclearSimExchange + NuclearController:
-        list_tapes() -> [tape_id, ...]            # alphabetic ids
-        tape_label(tape_id) -> str                # human-readable label
-        active_tapes() -> [tape_id, ...]          # ids that are wired up
-        wire(tape_id)                              # mark a tape as in use
-        advance(tape_id)                          # advance one candle
-        current(tape_id) -> tuple                 # (ts, o, h, l, c, v)
-        current_price(tape_id) -> float           # close of current candle
-        history(tape_id, limit) -> list           # last N candles
-        stats() -> dict                           # for diagnostics
+    ``_load_body`` reads real exchange OHLCV from a tablet and ``_at`` hands back
+    a perturbed copy of it. ``list_tapes``, ``tape_label`` and ``tape_info``
+    describe the tapes, and ``active_tapes`` names the ones through ``wire``.
+    ``advance``, ``current``, ``current_price``, ``history`` and ``stats`` drive
+    and report playback.
     """
 
     def __init__(
@@ -299,50 +202,21 @@ class NuclearCandleSource:
             None if max_tapes is None else max(1, int(max_tapes))
         )
         self._noise_enabled: bool = bool(noise_enabled)
-        # Seedable so a stress run can be replayed exactly. Left unseeded
-        # in normal use, which is the point — successive Nuclear runs
-        # should not present the same market structure twice.
-        # noqa justification: S311 flags non-cryptographic RNG. This
-        # generates market-structure noise for a backtester; it guards
-        # nothing and protects nothing. A CSPRNG here would be slower and
-        # unseedable, and seedability is a requirement (reproducible runs).
+        # Unseeded in normal use; `noise_rng_seed` makes a run reproducible.
         self._rng = random.Random(noise_rng_seed)  # noqa: S311
         self._tapes: dict[str, _Tape] = {}
-        # v3.24.28 — manifest row per tape, so a tape can be listed and
-        # described without its candle body being resident.
+        # One manifest row per tape id, kept for `_load_body` to read from.
         self._entries: dict[str, object] = {}
         self._wired: set[str] = set()
         self._discover_tapes()
 
-    # ─── Discovery ──────────────────────────────────────────────────────
-
     def _discover_tapes(self) -> None:
-        """Populate tapes, preferring the Stone Tablet archive.
+        """Fill ``_tapes`` from ``_cache_dir``, falling back to the tablets.
 
-        Idempotent — re-discovery rebuilds the dict. Tape A/B/C
-        assignment is deterministic in both paths so a tape id means the
-        same thing across runs.
-
-        v3.24.20 — SOURCE CHANGED. This used to scan only
-        ``sadp/RAIntSimBat/data/cache/*.json``. That directory does not
-        exist in this tree: SADP was deprecated as an authority and the
-        RAIntSimBat cache went with it. So ``list_tapes()`` returned []
-        on every call, the panel rendered its empty state, and Nuclear
-        Mode was inert — while telling the operator to "run an
-        RAIntSimBat battery", an instruction that could no longer be
-        followed.
-
-        The Stone Tablet archive is the correct source now: 406 assets /
-        7,230,993 real 5m candles at ``~/.acervator/stone_tablets``,
-        built this session. It is real exchange OHLCV, which is exactly
-        what the operator asked tapes to be:
-
-            "They represent organic price action data ... The injected,
-            smoothed randomized data that is used instead of this has
-            always been a sticking point for me."
-
-        The legacy cache is still honoured when present, so an operator
-        who restores that tree keeps their existing tape ids.
+        ``_load_tape`` reads every JSON file in ``_cache_dir`` when that
+        directory exists; otherwise ``_discover_tapes_from_tablets`` runs.
+        Calling it again rebuilds ``_tapes``, and ``_index_to_letter`` gives the
+        same position the same id every time.
         """
         self._tapes.clear()
         if self._cache_dir.is_dir():
@@ -362,15 +236,11 @@ class NuclearCandleSource:
         self._discover_tapes_from_tablets()
 
     def _discover_tapes_from_tablets(self) -> None:
-        """Build tapes from the Stone Tablet archive.
+        """Index the Stone Tablet archive into ``_tapes`` and ``_entries``.
 
-        Selection is by candle count, descending: the fullest tablets
-        are the assets with the longest continuous listing history, and
-        those are what a stress backtester wants. Ties break on asset
-        name so ordering is stable.
-
-        Tablets are READ ONLY here. Nothing in this path writes to the
-        archive.
+        ``read_manifest`` supplies the entries, ordered by ``candle_count``
+        descending with ties broken on ``asset``; only metadata is stored, and
+        ``_load_body`` reads a body when ``wire`` asks.
         """
         try:
             from src.trading.stone_tablets.storage import (
@@ -412,17 +282,6 @@ class NuclearCandleSource:
             )
             return
 
-        # v3.24.28 — INDEX ONLY, no bodies. Operator 2026-08-04: "Active
-        # Tape list appears to be incomplete." It was — 394 of 406
-        # tablets were hidden behind a 12-tape cap.
-        #
-        # That cap existed because this loop used to read_tablet() every
-        # tape it offered, and 406 bodies cost ~13 s and ~2.3 GB (the
-        # same defect just fixed in the Stone Tablets registry). Simply
-        # raising the cap would have reintroduced it.
-        #
-        # So the cap is gone and the read moved to wire(): every usable
-        # tablet is listed, and selecting one costs a single file read.
         for idx, entry in enumerate(chosen):
             tape_id = self._index_to_letter(idx)
             self._entries[tape_id] = entry
@@ -445,28 +304,25 @@ class NuclearCandleSource:
         )
 
     def _load_body(self, tape_id: str) -> bool:
-        """Read one tape's candles from disk. Idempotent.
+        """Read tape *tape_id*'s candles from its tablet. Idempotent.
 
-        Returns False when the tablet is missing or unusable, so the
-        caller can refuse the run rather than silently playing an empty
-        tape.
+        Returns True once ``candles`` is populated, and False when ``_tapes`` or
+        ``_entries`` has no row, ``read_tablet`` fails, or ``_sanitize_candles``
+        leaves fewer than ``_MIN_TAPE_CANDLES``.
         """
         tape = self._tapes.get(tape_id)
+        if tape is not None and tape.candles:
+            return True
         entry = self._entries.get(tape_id)
         if tape is None or entry is None:
             return False
-        if tape.candles:
-            return True
         try:
             from src.trading.stone_tablets.storage import (
                 read_tablet,
                 tablet_path,
             )
 
-            # Keyword args deliberately: the positional signature is
-            # (asset, timeframe, year, root, exchange_id) and calling it
-            # positionally put exchange_id in the timeframe slot, which
-            # surfaced as int('5m').
+            # `tablet_path` takes `root` before `exchange_id`; pass it by name.
             tab = read_tablet(
                 tablet_path(
                     entry.asset,
@@ -503,10 +359,7 @@ class NuclearCandleSource:
             return False
         tape.candles = clean
         if self._noise_enabled:
-            # Seed the FIRST pass too. Without this the opening forward
-            # run would be the unmodified tablet and only later passes
-            # would vary, so the bot would meet clean data exactly once
-            # — the least useful ordering.
+            # Seeds the first pass; the opening forward run is perturbed too.
             tape.reroll_noise(self._rng)
         logger.info(
             "NuclearCandleSource: tape %s (%s) loaded — %d candles",
@@ -518,9 +371,11 @@ class NuclearCandleSource:
 
     @staticmethod
     def _sanitize_candles(candles) -> list:
-        """Coerce raw OHLCV rows to ``(int, float x5)`` tuples, dropping
-        malformed rows. Shared by both discovery paths so a tablet-backed
-        tape and a cache-backed tape are indistinguishable downstream."""
+        """Coerce raw OHLCV rows to ``(int, float x5)`` tuples, dropping bad rows.
+
+        ``_load_body`` and ``_load_tape`` both feed their rows through it, giving
+        a tablet-backed and a cache-backed ``_Tape`` the same candle shape.
+        """
         clean = []
         for c in candles or []:
             if not isinstance(c, (list, tuple)) or len(c) < 6:
@@ -541,8 +396,10 @@ class NuclearCandleSource:
         return clean
 
     def _load_tape(self, tape_id: str, path: Path) -> Optional[_Tape]:
-        """Load one cache file into a Tape. Returns None if the file
-        is malformed or has too few candles to be useful.
+        """Load one legacy cache file at *path* into a ``_Tape``.
+
+        Returns None when the JSON is unreadable or ``_sanitize_candles`` leaves
+        fewer than ``_MIN_TAPE_CANDLES``.
         """
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -554,39 +411,23 @@ class NuclearCandleSource:
         candles = data.get("candles")
         symbol = str(data.get("symbol", path.stem))
         period = str(data.get("year", "?"))
-        if not isinstance(candles, list) or len(candles) < 20:
+        if not isinstance(candles, list) or len(candles) < _MIN_TAPE_CANDLES:
             logger.warning(
                 "NuclearCandleSource: skipping %s — only %d candles "
-                "(need >= 20 for TA warmup)",
+                "(need >= %d for TA warmup)",
                 path.name,
                 len(candles) if isinstance(candles, list) else 0,
+                _MIN_TAPE_CANDLES,
             )
             return None
-        # Each candle: [ts, o, h, l, c, v]. Coerce to tuple of floats
-        # so consumers don't have to handle two shapes.
-        clean = []
-        for c in candles:
-            if not isinstance(c, (list, tuple)) or len(c) < 6:
-                continue
-            try:
-                clean.append(
-                    (
-                        int(c[0]),
-                        float(c[1]),
-                        float(c[2]),
-                        float(c[3]),
-                        float(c[4]),
-                        float(c[5]),
-                    )
-                )
-            except (TypeError, ValueError):
-                continue
-        if len(clean) < 20:
+        clean = self._sanitize_candles(candles)
+        if len(clean) < _MIN_TAPE_CANDLES:
             logger.warning(
                 "NuclearCandleSource: skipping %s — after sanitization, "
-                "only %d valid candles",
+                "only %d valid candles (need >= %d)",
                 path.name,
                 len(clean),
+                _MIN_TAPE_CANDLES,
             )
             return None
         label = self._make_label(tape_id, symbol, period)
@@ -601,10 +442,10 @@ class NuclearCandleSource:
 
     @staticmethod
     def _make_label(tape_id: str, symbol: str, period: str) -> str:
-        """Operator-facing label: "Tape A — BTC 2023" or
-        "Tape B — GLD (equity) 2024" etc.
+        """Return an operator-facing label such as "Tape A — BTC 2023".
+
+        A *symbol* beginning ``EQ_`` renders as "Tape B — GLD (equity) 2024".
         """
-        # EQ_XXX prefix means equity (from RAIntSimBat.fetch_ohlcv_yahoo)
         if symbol.upper().startswith("EQ_"):
             symbol = symbol[3:] + " (equity)"
         return f"Tape {tape_id} — {symbol} {period}"
@@ -624,19 +465,10 @@ class NuclearCandleSource:
             n -= 1
         return "".join(reversed(chars))
 
-    # ─── Tape querying ──────────────────────────────────────────────────
-
     def list_tapes(self) -> list[str]:
-        """All discovered tape ids, in assignment order.
+        """Return every id in ``_tapes``, in the order it was assigned.
 
-        v3.24.28 — was ``sorted(self._tapes.keys())``. That was fine at
-        12 tapes (A..L) but wrong past Z: a string sort orders them
-        A, AA, AB, ... AZ, B, BA — so the second entry in a 406-tape
-        dropdown was "Tape AA", not "Tape B".
-
-        Ids are assigned by candle count descending, and dict insertion
-        order preserves that, so returning keys as-is puts the fullest
-        histories at the top where the operator expects them.
+        Sorting the keys would order them A, AA, AB, B past twenty-six tapes.
         """
         return list(self._tapes.keys())
 
@@ -666,29 +498,20 @@ class NuclearCandleSource:
         return bool(self._tapes)
 
     def cache_dir(self) -> Path:
-        """The cache directory path used for discovery. Surfaced for
-        the empty-cache GUI message so the operator sees exactly which
-        directory needs to be populated.
-        """
+        """Return ``_cache_dir``, the legacy directory ``_discover_tapes`` scans."""
         return self._cache_dir
 
-    # ─── Wiring + playback ──────────────────────────────────────────────
-
     def wire(self, tape_id: str) -> None:
-        """Mark a tape as in-use. Idempotent.
+        """Add *tape_id* to ``_wired`` and load its candles. Idempotent.
 
-        ``advance``/``current``/``history`` operate only on wired
-        tapes; this is just bookkeeping so ``stats()`` knows which
-        tapes the controller has subscribed to.
+        Raises ``KeyError`` for an id absent from ``_tapes`` and ``ValueError``
+        when ``_load_body`` finds no usable candles.
         """
         if tape_id not in self._tapes:
             raise KeyError(
                 f"NuclearCandleSource.wire: unknown tape_id "
                 f"{tape_id!r}. Available: {self.list_tapes()}"
             )
-        # v3.24.28 — this is where a tape's candles are actually read.
-        # Discovery is metadata-only so all usable tablets can be listed
-        # without paying the whole archive's load cost up front.
         if not self._load_body(tape_id):
             raise ValueError(
                 f"NuclearCandleSource.wire: tape {tape_id!r} has no "
@@ -700,10 +523,10 @@ class NuclearCandleSource:
         return sorted(self._wired)
 
     def advance(self, tape_id: str) -> None:
-        """Move the cursor forward one candle (or backward, if the
-        tape is currently in reverse direction). Auto-flips direction
-        when the cursor hits either boundary — gives an infinite
-        ping-pong stream from the bot's POV.
+        """Move *tape_id*'s ``cursor`` one candle along its ``direction``.
+
+        At either end ``direction`` flips, ``wrap_count`` increments and
+        ``reroll_noise`` draws a new amplitude.
         """
         tape = self._tapes.get(tape_id)
         if tape is None:
@@ -719,7 +542,7 @@ class NuclearCandleSource:
                 tape.direction = "reverse"
                 tape.wrap_count += 1
                 tape.reroll_noise(self._rng)
-        else:  # reverse
+        else:
             tape.cursor -= 1
             if tape.cursor <= 0:
                 tape.cursor = 0
@@ -738,8 +561,6 @@ class NuclearCandleSource:
     def history(self, tape_id: str, limit: int = 100) -> list:
         tape = self._tapes.get(tape_id)
         return tape.history(limit) if tape is not None else []
-
-    # ─── Diagnostics ────────────────────────────────────────────────────
 
     def stats(self) -> dict:
         return {

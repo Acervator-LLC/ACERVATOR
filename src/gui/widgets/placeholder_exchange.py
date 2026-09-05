@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 
-# ---------------------------------------------------------------
 # Placeholder exchange for bots in IDLE state
-# ---------------------------------------------------------------
 class _PlaceholderExchange:
     def __init__(self, exchange_id: str):
         self.exchange_id = exchange_id

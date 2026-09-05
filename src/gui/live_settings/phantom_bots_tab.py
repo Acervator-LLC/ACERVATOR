@@ -25,18 +25,13 @@ from .. import design_system as ds
 class PhantomBotsTabMixin:
     """Phantom timeframe toggles and the phantom state table."""
 
-    # Supplied by BotLiveSettingsDialog at runtime; declared so a
-    # type checker can resolve them. Annotations only: no attribute
-    # is created and the runtime base stays `object`.
+    # Supplied by BotLiveSettingsDialog at runtime; annotation only, so
+    # no attribute is created here.
     _bot: Any
     _configure_form: Callable[..., Any]
     _mark_changed: Callable[..., Any]
     _phantom_tf_checks: dict
 
-    # ---------------------------------------------------------------
-    # Tab 6: Phantom Bots (v3.23.39 — merged from Phantom Bot +
-    # Phantom State per operator directive 2026-07-27).
-    # ---------------------------------------------------------------
     def _create_phantom_bots_tab(self) -> QWidget:
         """Combined Phantom Balance Bots config + runtime view.
 

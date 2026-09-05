@@ -1,38 +1,10 @@
-"""
-triangular_swarm.py — Base Currency Surrounding Topology
-=========================================================
-Implements the "surrounding" strategy: place multiple accumulation bots
-on all pairs that share a target base currency (e.g. BTC), each using a
-different quote currency (USD, ETH, USDC, ADA, …).
+"""Surrounding topology: one accumulation arm per pair sharing a base currency.
 
-Smart Wire connections form interlocking triangles between bots.  The MR
-Inspector continuously scores each arm and each triad, spawning, parking,
-and rearranging bots to keep the topology optimally configured for the
-current market regime.
-
-TOPOLOGY EXAMPLE — BTC surrounded by 4 quote currencies:
-
-        BTC/USD ──── BTC/USDC
-           |    ╲  ╱    |
-           |     ╲╱     |     ← triangular Smart Wire mesh
-           |     ╱╲     |
-           |   ╱    ╲   |
-        BTC/ETH ──── BTC/ADA
-             ↘     ↗
-              BASE HEAP
-              (accumulated BTC)
-
-Each arm bot:
-  • Runs the full harvest-fold cycle independently
-  • Harvests BASE currency (BTC) when it rises above target in that pair
-  • Folds by buying BASE when it dips below target
-  • Wires surplus BASE to the central heap or a sibling arm in need
-
-Triangular arbitrage layer:
-  When BTC/ETH and BTC/USD and ETH/USD are simultaneously in the book,
-  a closed triangle exists.  Discrepancy in the triangle = pure profit.
-  MR Inspector detects when the triangle is mis-priced and signals a
-  "triangle close" operation.
+``TriadSpawner`` scores three-pair triangles and activates the best of them.
+``run_surrounding_swarm`` simulates the crypto arms of ``EXCHANGE_BASE_PAIRS``,
+routing each arm's surplus base currency to a central heap.
+``run_equity_surrounding_swarm`` does the same across the equity clusters in
+``EQUITY_SURROUNDINGS``, routing along their ``routing_priority`` instead.
 
 Copyright © 2025 Anthony L. Brown (Ekthelius the Accumulator).
 All rights reserved.
@@ -48,12 +20,7 @@ from dataclasses import dataclass
 log = logging.getLogger("acervator.triangular_swarm")
 
 
-# ═══════════════════════════════════════════════════════════════
-# KNOWN PAIR CONFIGURATIONS PER EXCHANGE
-# ═══════════════════════════════════════════════════════════════
-
-# Quote currencies available for each base on each exchange.
-# Pairs where the BASE is the target accumulation currency.
+# exchange -> accumulation base -> the quote currencies it can be bought against.
 EXCHANGE_BASE_PAIRS: dict[str, dict[str, list[str]]] = {
     "COINBASE": {
         "BTC": ["USD", "USDC", "EUR", "GBP", "USDT"],
@@ -89,11 +56,6 @@ EXCHANGE_BASE_PAIRS: dict[str, dict[str, list[str]]] = {
 }
 
 
-# ═══════════════════════════════════════════════════════════════
-# DATA STRUCTURES
-# ═══════════════════════════════════════════════════════════════
-
-
 @dataclass
 class ArmState:
     """Live state of one arm in the surrounding topology."""
@@ -109,9 +71,8 @@ class ArmState:
     base_farmed: float = 0.0  # net base currency accumulated above starting
     usd_equiv: float = 0.0  # current USD-equivalent portfolio value
     is_active: bool = True
-    oscillation_score: float = 0.0  # MR-derived score (0=flat, 1=ideal oscillation)
+    oscillation_score: float = 0.0  # score_arm_oscillation output, 0=flat, 1=ideal
     last_trade_price: float = 0.0
-    # For triangle close operations
     triangle_imbalance: float = 0.0  # USD value of open triangle
 
 
@@ -119,12 +80,10 @@ class ArmState:
 class TriadDefinition:
     """Three pairs that form a closed triangle."""
 
-    arm_a: str  # e.g. "BTC/USD"
-    arm_b: str  # e.g. "ETH/USD"
-    arm_c: str  # e.g. "BTC/ETH"  ← the cross pair
-    # Theoretical closed loop: BTC→USD→ETH→BTC should be unity
-    # Any deviation from unity is exploitable
-    loop_deviation: float = 0.0  # % deviation from 1.0
+    arm_a: str  # BASE/quote_a, e.g. "BTC/USD"
+    arm_b: str  # BASE/quote_b, e.g. "BTC/ETH"
+    arm_c: str  # the cross, quote_b/quote_a, e.g. "ETH/USD"
+    loop_deviation: float = 0.0  # mean % by which arm_a departs from arm_b * arm_c
     is_profitable: bool = False
     last_checked: float = 0.0
 
@@ -145,46 +104,36 @@ class SwarmCycleResult:
     triangle_profit: float  # USD profit from triangle operations
 
 
-# ═══════════════════════════════════════════════════════════════
-# MR SCORING — arm oscillation suitability
-# ═══════════════════════════════════════════════════════════════
-
-
 def score_arm_oscillation(prices: list[float], window: int = 50) -> float:
-    """
-    Score how well a price series is oscillating (vs trending).
-    Returns 0.0 (pure trend, bad for accumulation) to 1.0 (ideal oscillation).
+    """Score the last ``window`` prices from 0.0 (pure trend) to 1.0 (oscillating).
 
-    Method: ratio of zero-crossings of the de-meaned price to the maximum
-    possible zero-crossings.  High zero-crossings = oscillating.
-    Also penalises for extreme z-score (MR overextension).
+    The score weights de-meaned zero-crossings 0.50, normalised volatility 0.30
+    and a z-score penalty 0.20. Fewer than ``window`` prices returns 0.5.
     """
     if len(prices) < window:
-        return 0.5  # unknown — neutral score
+        return 0.5
 
     recent = prices[-window:]
     sma = sum(recent) / window
     de_meaned = [p - sma for p in recent]
 
-    # Count zero-crossings
     crossings = sum(
         1 for i in range(1, len(de_meaned)) if de_meaned[i - 1] * de_meaned[i] < 0
     )
     max_crossings = window - 1
     cross_score = crossings / max_crossings
 
-    # Standard deviation relative to price (normalised vol)
     variance = sum(x**2 for x in de_meaned) / window
     std_pct = math.sqrt(variance) / (sma + 1e-9)
 
-    # Ideal std_pct for accumulation: 0.003–0.015 (0.3%–1.5% hourly)
+    # vol_score peaks at std_pct 0.008 and falls to 0 at 0.028.
     vol_score = (
         min(std_pct / 0.008, 1.0)
         if std_pct < 0.008
         else max(0, 1.0 - (std_pct - 0.008) / 0.02)
     )
 
-    # MR z-score (penalise overextended prices)
+    # mr_penalty reaches 0 at three standard deviations from sma.
     if variance > 0:
         z = abs((recent[-1] - sma) / (math.sqrt(variance) + 1e-9))
         mr_penalty = max(0.0, 1.0 - z / 3.0)
@@ -199,16 +148,21 @@ def score_triad(
     prices_b: list[float],  # base/quote_b (e.g. BTC/ETH)
     prices_c: list[float],  # quote_b/quote_a (e.g. ETH/USD) — the cross pair
 ) -> dict:
-    """
-    Score a three-pair triangle for accumulation suitability and
-    triangular arbitrage opportunity.
+    """Score a three-pair triangle for accumulation and for loop deviation.
 
-    The loop constraint: p_a = p_b * p_c
-    If p_a ≠ p_b * p_c, deviation = (p_a - p_b*p_c) / p_a * 100
+    The closed loop holds when p_a == p_b * p_c, so the deviation reported is
+    (p_a - p_b * p_c) / p_a * 100. Every return carries the same keys, because
+    ``rank_triads`` reads ``arm_scores`` off whichever branch answered.
     """
     n = min(len(prices_a), len(prices_b), len(prices_c))
     if n < 20:
-        return {"score": 0.0, "loop_deviation": 0.0, "exploitable": False}
+        return {
+            "score": 0.0,
+            "arm_scores": {"a": 0.0, "b": 0.0, "c": 0.0},
+            "loop_deviation": 0.0,
+            "max_loop_deviation": 0.0,
+            "exploitable": False,
+        }
 
     sc_a = score_arm_oscillation(prices_a[-n:])
     sc_b = score_arm_oscillation(prices_b[-n:])
@@ -216,7 +170,6 @@ def score_triad(
 
     combined_score = (sc_a + sc_b + sc_c) / 3.0
 
-    # Triangle loop deviation over last 20 candles
     deviations = []
     for i in range(-20, 0):
         pa = prices_a[i]
@@ -239,22 +192,13 @@ def score_triad(
     }
 
 
-# ═══════════════════════════════════════════════════════════════
-# TRIAD SPAWNER — MR-driven topology management
-# ═══════════════════════════════════════════════════════════════
-
-
 class TriadSpawner:
-    """
-    Analyses available pairs and dynamically forms, ranks, and
-    rearranges triads to keep the swarm optimally configured.
+    """Form, score and rank the triads available for one base on one exchange.
 
-    Responsibilities:
-      1. Generate all possible triads from available pairs
-      2. Score each triad for oscillation suitability + loop deviation
-      3. Spawn the top-N triads as active bots
-      4. Park underperforming triads
-      5. Merge adjacent triads when Smart Wire identifies surplus routing opportunity
+    ``generate_all_triads`` enumerates them, ``rank_triads`` scores them,
+    ``spawn_optimal_triads`` moves the best into ``_active_triads`` and the rest
+    into ``_parked_triads``, and ``get_wire_topology`` reports the edges the
+    active ones imply.
     """
 
     def __init__(
@@ -269,7 +213,6 @@ class TriadSpawner:
         self.max_active = max_active
         self.min_score = min_score
 
-        # All available quote currencies for this base on this exchange
         exchange_data = EXCHANGE_BASE_PAIRS.get(self.exchange, {})
         self.available_quotes = exchange_data.get(self.base, [])
 
@@ -278,39 +221,29 @@ class TriadSpawner:
         self._triad_history: list[dict] = []
 
     def generate_all_triads(self) -> list[tuple[str, str, str]]:
-        """
-        Generate all possible three-pair triangles from the available
-        quote currencies.
+        """Return every ``(BASE/qa, BASE/qb, qb/qa)`` triangle from the quote pairs.
 
-        For base=BTC and quotes=[USD, ETH, USDC]:
-          Triangle 1: (BTC/USD, BTC/ETH, ETH/USD)  — cross=ETH/USD
-          Triangle 2: (BTC/USD, BTC/USDC, USDC/USD) — cross=USDC/USD (near 1:1)
-          Triangle 3: (BTC/ETH, BTC/USDC, USDC/ETH) — cross=USDC/ETH
+        The third arm is the cross that closes the loop, so for base=BTC and
+        quotes=[USD, ETH, USDC] the triangles are (BTC/USD, BTC/ETH, ETH/USD),
+        (BTC/USD, BTC/USDC, USDC/USD) and (BTC/ETH, BTC/USDC, USDC/ETH). That
+        order is the one ``score_triad`` reads, where p_a == p_b * p_c.
         """
         quotes = self.available_quotes
         triads = []
         for i in range(len(quotes)):
             for j in range(i + 1, len(quotes)):
                 qa, qb = quotes[i], quotes[j]
-                # Arm A: BASE/qa
-                # Arm B: BASE/qb
-                # Arm C: qa/qb (the closing cross pair)
                 triads.append(
                     (
                         f"{self.base}/{qa}",
                         f"{self.base}/{qb}",
-                        f"{qa}/{qb}",
+                        f"{qb}/{qa}",
                     )
                 )
         return triads
 
     def rank_triads(self, price_data: dict[str, list[float]]) -> list[dict]:
-        """
-        Score and rank all possible triads given current price data.
-
-        price_data: {pair_id: [close prices]}
-        Returns list of scored triads, sorted by score descending.
-        """
+        """Score every triad against ``{pair_id: closes}``, best score first."""
         all_triads = self.generate_all_triads()
         scored = []
 
@@ -320,9 +253,8 @@ class TriadSpawner:
             pc = price_data.get(arm_c, [])
 
             if len(pa) < 20 or len(pb) < 20:
-                # Cross pair may not have data — use synthetic from pa/pb
+                # An unlisted cross is synthesised: pa / pb is quote_b/quote_a.
                 if pa and pb and len(pa) == len(pb):
-                    # Synthetic cross: pa / pb approximation
                     pc = [a / b for a, b in zip(pa, pb) if b > 0]
 
             if not pa or not pb or not pc:
@@ -347,14 +279,11 @@ class TriadSpawner:
     def spawn_optimal_triads(
         self, price_data: dict[str, list[float]], verbose: bool = False
     ) -> list[TriadDefinition]:
-        """
-        Rank all triads and activate the top-N above min_score.
-        Park previously active triads that no longer qualify.
-        """
+        """Activate the best triads scoring at least ``min_score``, park the rest."""
         ranked = self.rank_triads(price_data)
 
-        new_active = []
-        for t in ranked[: self.max_active * 2]:  # look at 2× slots
+        new_active: list[TriadDefinition] = []
+        for t in ranked[: self.max_active * 2]:
             if t["score"] >= self.min_score and len(new_active) < self.max_active:
                 td = TriadDefinition(
                     arm_a=t["arm_a"],
@@ -370,7 +299,6 @@ class TriadSpawner:
                         f"  score={t['score']:.3f}  dev={t['loop_deviation']:.4f}%"
                     )
 
-        # Park old triads that didn't make the cut
         new_ids = {(t.arm_a, t.arm_b, t.arm_c) for t in new_active}
         for td in self._active_triads:
             if (td.arm_a, td.arm_b, td.arm_c) not in new_ids:
@@ -382,29 +310,21 @@ class TriadSpawner:
         return new_active
 
     def get_wire_topology(self) -> list[tuple[str, str]]:
-        """
-        Return the full interlocking wire topology as a list of
-        (from_pair, to_pair) connections.
+        """Return the three sides of every active triad as ``(from, to)`` pairs.
 
-        Each triad forms a triangle.  Adjacent triads that share an
-        arm are connected by a bridge wire.
+        Each side is stored alphabetically ordered, so a side shared by two
+        triads appears once.
         """
         edges: set[tuple[str, str]] = set()
         for td in self._active_triads:
-            # Three sides of each triangle
             for a, b in [
                 (td.arm_a, td.arm_b),
                 (td.arm_b, td.arm_c),
                 (td.arm_a, td.arm_c),
             ]:
-                edge = (min(a, b), max(a, b))  # canonical order
+                edge = (min(a, b), max(a, b))
                 edges.add(edge)
         return list(edges)
-
-
-# ═══════════════════════════════════════════════════════════════
-# SURROUNDING SWARM SIMULATION
-# ═══════════════════════════════════════════════════════════════
 
 
 def generate_surrounding_prices(
@@ -412,51 +332,36 @@ def generate_surrounding_prices(
     quote_vols: dict[str, float],  # quote_id → volatility (as % per candle)
     seed: int = 42,
 ) -> dict[str, list[float]]:
-    """
-    Generate synthetic price series for all surrounding pairs from
-    a single base asset's price series.
+    """Derive a BASE/QUOTE close series per quote currency, keyed by quote symbol.
 
-    For BTC/USD:   prices = base_closes (identity)
-    For BTC/ETH:   prices = base_closes / ETH_price  (derived)
-    For BTC/USDC:  prices ≈ base_closes * (1 + tiny noise)
-    etc.
-
-    quote_vols: how much the quote currency moves vs USD
-      USD:  0.000 (stablecoin, pegged)
-      USDC: 0.0001
-      EUR:  0.0003 (slow FX drift)
-      ETH:  0.006  (correlated crypto, own vol)
-      BNB:  0.007
-      ADA:  0.008
-      BTC:  identity
+    ``quote_vols`` gives each quote's per-candle volatility against USD, and
+    only the quotes it names are generated. A quote at volatility 0 tracks USD
+    exactly, so its series equals ``base_closes``. The seed drives a private
+    generator, so calling this leaves the process-wide ``random`` stream alone.
     """
-    random.seed(seed)
+    rng = random.Random(seed)
     n = len(base_closes)
     result = {}
 
-    # Each quote currency's USD price series
     quote_prices: dict[str, list[float]] = {}
 
-    # Stable quotes (near 1:1 with USD)
     stables = {"USD": 1.0, "USDC": 1.0, "USDT": 1.0, "BUSD": 1.0}
     for q, p in stables.items():
         if q in quote_vols:
             prices = [p]
             for _ in range(n - 1):
-                prices.append(
-                    prices[-1] * (1 + random.gauss(0, quote_vols.get(q, 0.0001)))
-                )
+                vol = quote_vols.get(q, 0.0001)
+                prices.append(prices[-1] * (1 + rng.gauss(0, vol)))
             quote_prices[q] = prices
 
-    # EUR / GBP — slow FX drift
     for q, base_p, drift in [("EUR", 1.08, 0.0003), ("GBP", 1.26, 0.0003)]:
         if q in quote_vols:
             prices = [base_p]
             for _ in range(n - 1):
-                prices.append(prices[-1] * (1 + random.gauss(0, drift)))
+                prices.append(prices[-1] * (1 + rng.gauss(0, drift)))
             quote_prices[q] = prices
 
-    # Correlated crypto quotes (share trend with base but add idiosyncratic vol)
+    # Each crypto quote tracks the base by corr and adds its own q_vol on top.
     for q, corr, q_vol in [
         ("ETH", 0.75, 0.005),
         ("BNB", 0.65, 0.006),
@@ -466,17 +371,15 @@ def generate_surrounding_prices(
         ("LINK", 0.45, 0.008),
     ]:
         if q in quote_vols:
-            prices = [base_closes[0] * random.uniform(0.001, 0.005)]
+            prices = [base_closes[0] * rng.uniform(0.001, 0.005)]
             for i in range(1, n):
                 base_ret = (base_closes[i] / base_closes[i - 1]) - 1
-                idio = random.gauss(0, q_vol * (1 - corr))
+                idio = rng.gauss(0, q_vol * (1 - corr))
                 q_ret = corr * base_ret + idio
                 prices.append(prices[-1] * (1 + q_ret))
             quote_prices[q] = prices
 
-    # Build BASE/QUOTE pair price series
     for q, q_prices in quote_prices.items():
-        # BASE/QUOTE price = base_USD_price / quote_USD_price
         pair_prices = [base_closes[i] / max(q_prices[i], 1e-9) for i in range(n)]
         result[q] = pair_prices
 
@@ -496,17 +399,16 @@ def run_surrounding_swarm(
     seed: int = 42,
     verbose: bool = True,
 ) -> dict:
-    """
-    Full surrounding swarm simulation.
+    """Run ``n_arms`` accumulation arms on one base, one arm per quote currency.
 
-    Runs n_arms accumulation bots simultaneously, each on a different
-    BASE/QUOTE pair.  Smart Wire routes surplus base currency between arms.
-    MR Inspector periodically re-scores triads and reconfigures the topology.
+    Each arm scrums and folds on its own BASE/QUOTE series. A quarter of every
+    arm's farmed surplus goes to a central heap, which reinforces the
+    lowest-scoring arm every 24 candles. ``rebalance_every`` candles the triads
+    are re-scored and any arm below 0.20 is deactivated. ``seed`` reaches only
+    ``generate_surrounding_prices``.
     """
-    random.seed(seed)
     n = len(candles)
 
-    # Get available quote currencies for this base/exchange
     ex_data = EXCHANGE_BASE_PAIRS.get(exchange.upper(), {})
     quotes = ex_data.get(symbol.upper(), ["USD"])[:n_arms]
 
@@ -516,7 +418,6 @@ def run_surrounding_swarm(
             print(f"    • {symbol}/{q}")
         print()
 
-    # Generate synthetic quote currency price series
     quote_vols = {
         "USD": 0,
         "USDC": 0.0001,
@@ -534,7 +435,6 @@ def run_surrounding_swarm(
     filtered_vols = {q: quote_vols.get(q, 0.001) for q in quotes}
     pair_prices = generate_surrounding_prices(candles, filtered_vols, seed=seed)
 
-    # Initialise arm states
     arms: dict[str, ArmState] = {}
     for q in quotes:
         pair_id = f"{symbol}/{q}"
@@ -549,19 +449,15 @@ def run_surrounding_swarm(
             base_target=target / init_price,
         )
 
-    # Central base heap — accumulated surplus base currency
     base_heap = 0.0
     heap_deploys = 0
 
-    # Triad spawner
     spawner = TriadSpawner(base=symbol, exchange=exchange, max_active=3)
 
-    # Stats
     total_scrums = total_folds = total_wires = total_tri_closes = 0
     total_tri_profit = 0.0
     tick_results: list[SwarmCycleResult] = []
 
-    # BB state per arm
     bb_bufs: dict[str, list[float]] = {pid: [] for pid in arms}
     osc_bufs: dict[str, list[float]] = {pid: [] for pid in arms}
     BB_WIN = 20
@@ -571,7 +467,6 @@ def run_surrounding_swarm(
         tick_scrums = tick_folds = tick_wires = tick_tri_c = 0
         tick_tri_profit = 0.0
 
-        # ── Per-arm accumulation tick ──────────────────────────
         for pair_id, arm in arms.items():
             if not arm.is_active:
                 continue
@@ -580,7 +475,6 @@ def run_surrounding_swarm(
             arm_prices = pair_prices.get(q, candles)
             arm_price = arm_prices[tick] if tick < len(arm_prices) else base_price
 
-            # BB for this arm's price series
             bb_bufs[pair_id].append(arm_price)
             if len(bb_bufs[pair_id]) > BB_WIN:
                 bb_bufs[pair_id].pop(0)
@@ -602,7 +496,6 @@ def run_surrounding_swarm(
             delta_pct = abs(delta) / (target_in_pair + 1e-9) * 100
             fold_ref = arm.last_trade_price or arm_price
 
-            # ── SCRUM (harvest base) ────────────────────────
             if delta > 0 and delta_pct >= interval_pct and bb_pos > 0.50:
                 scrum_qty = delta / arm_price
                 if scrum_qty > 0 and arm.base_held >= scrum_qty:
@@ -615,12 +508,10 @@ def run_surrounding_swarm(
                     total_scrums += 1
                     tick_scrums += 1
 
-            # ── FOLD (accumulate more base) ─────────────────
             elif arm.quote_held > 1.0 and bb_pos < 0.50 and arm_price < fold_ref:
                 avail = arm.quote_held
                 fee = avail * fee_pct
                 qty = (avail - fee) / arm_price
-                # Profit fold
                 at_ref = arm.quote_held / fold_ref if fold_ref > 0 else 0
                 extra = qty - at_ref
                 profit_base = max(extra, 0)
@@ -633,17 +524,14 @@ def run_surrounding_swarm(
                 total_folds += 1
                 tick_folds += 1
 
-            # ── Update oscillation score ────────────────────
             if len(osc_bufs[pair_id]) >= 20:
                 arm.oscillation_score = score_arm_oscillation(osc_bufs[pair_id])
 
-            # Compute USD equivalent
             arm.usd_equiv = arm.base_held * base_price + arm.quote_held
 
-        # ── Smart Wire: route surplus base to heap ──────────────
         sum(a.base_held for a in arms.values())
         for pair_id, arm in arms.items():
-            surplus = arm.base_farmed * 0.25  # wire 25% of farmed surplus
+            surplus = arm.base_farmed * 0.25
             if surplus > 0.0001:
                 base_heap += surplus
                 arm.base_held = max(0, arm.base_held - surplus)
@@ -651,8 +539,7 @@ def run_surrounding_swarm(
                 total_wires += 1
                 tick_wires += 1
 
-        # ── Heap deploy: reinforce lowest-score arm ─────────────
-        if base_heap > 0.001 and tick % 24 == 0:  # every 24 candles
+        if base_heap > 0.001 and tick % 24 == 0:
             worst_arm = min(
                 arms.values(), key=lambda a: a.oscillation_score if a.is_active else 999
             )
@@ -661,7 +548,6 @@ def run_surrounding_swarm(
             base_heap -= deploy
             heap_deploys += 1
 
-        # ── Triangle close detection ────────────────────────────
         quotes_list = list(arms.keys())
         for i in range(len(quotes_list)):
             for j in range(i + 1, len(quotes_list)):
@@ -680,28 +566,27 @@ def run_surrounding_swarm(
                     else 0
                 )
                 if pa > 0 and pb > 0 and base_price > 0:
-                    # Theoretical: BASE/qa = BASE/qb * qb/qa
+                    # theoretical is pb scaled by the smaller of pa and pb over
+                    # the larger, and dev measures base_price against it.
                     theoretical = pb * (pa / pb if pa < pb else pb / pa)
                     dev = (
                         abs(base_price - theoretical) / base_price * 100
                         if theoretical > 0
                         else 0
                     )
-                    if dev > 0.10:  # 0.10% triangle imbalance
-                        profit = dev * 0.01 * target  # tiny profit on each close
+                    if dev > 0.10:
+                        profit = dev * 0.01 * target
                         total_tri_profit += profit
                         tick_tri_profit += profit
                         tick_tri_c += 1
         total_tri_closes += tick_tri_c
 
-        # ── MR triad rebalance every N candles ──────────────────
         if tick > 50 and tick % rebalance_every == 0:
             price_data = {}
             for q in quotes:
                 pid = f"{symbol}/{q}"
                 price_data[pid] = pair_prices.get(q, candles)[: tick + 1]
             spawner.spawn_optimal_triads(price_data, verbose=False)
-            # Park lowest-scoring arm, activate next-best from parked
             sorted_arms = sorted(arms.values(), key=lambda a: a.oscillation_score)
             if sorted_arms and sorted_arms[0].oscillation_score < 0.2:
                 sorted_arms[0].is_active = False
@@ -721,7 +606,6 @@ def run_surrounding_swarm(
             )
         )
 
-    # Final portfolio value
     sum(a.base_held for a in arms.values()) + base_heap
     final_usd = sum(a.usd_equiv for a in arms.values())
     (target + hedge) * len(arms)
@@ -772,11 +656,6 @@ def run_surrounding_swarm(
     }
 
 
-# ═══════════════════════════════════════════════════════════════
-# BENCHMARK — single arm vs N-arm surrounding
-# ═══════════════════════════════════════════════════════════════
-
-
 def run_surrounding_benchmark(
     symbol: str,
     candles: list,
@@ -785,8 +664,10 @@ def run_surrounding_benchmark(
     fee_pct: float = 0.001,
     verbose: bool = True,
 ) -> list[dict]:
-    """
-    Compare 1-arm (single pair) vs N-arm surrounding topology.
+    """Run ``run_surrounding_swarm`` once per arm count and per exchange.
+
+    Every result carries ``improvement_vs_1arm``, the percentage change in
+    advantage against the run where ``n_arms`` was 1.
     """
     if exchanges is None:
         exchanges = ["COINBASE"]
@@ -842,25 +723,9 @@ def run_surrounding_benchmark(
     return results
 
 
-# ═══════════════════════════════════════════════════════════════
-# EQUITY SURROUNDING TOPOLOGY
-# ═══════════════════════════════════════════════════════════════
-# For equities the "cross-pair" concept doesn't apply — there is no
-# SPY/QQQ order book. Instead, the surrounding topology exploits
-# CYCLE PHASE OFFSET: correlated assets run independent accumulation
-# clocks that are rarely perfectly synchronised. When Asset A is
-# harvesting, Asset B is often folding. Smart Wire routes A's harvest
-# profits into B's fold, compounding both positions simultaneously.
-#
-# Anti-correlated pairs (SPY vs GLD, SPY vs TLT) provide the strongest
-# routing because their cycles are structurally opposed — GLD often
-# builds surplus exactly when SPY is drawing down.
-
+# Equity clusters have no cross pair, so routing_priority names the (from, to)
+# arms run_equity_surrounding_swarm routes a harvest along.
 EQUITY_SURROUNDINGS: dict[str, dict] = {
-    # ── Broad Market Macro Triad ──────────────────────────────
-    # Classic flight-to-safety rotation cluster.
-    # When equities sell off (SPY deficit), gold and bonds surge.
-    # Smart Wire: TLT/GLD profits feed SPY accumulation during drawdowns.
     "MACRO": {
         "target": "SPY",
         "arms": ["SPY", "GLD", "TLT"],
@@ -868,10 +733,6 @@ EQUITY_SURROUNDINGS: dict[str, dict] = {
         "correlations": {"SPY-GLD": -0.25, "SPY-TLT": -0.35, "GLD-TLT": 0.45},
         "routing_priority": [("TLT", "SPY"), ("GLD", "SPY"), ("SPY", "GLD")],
     },
-    # ── Tech Sector Cluster ───────────────────────────────────
-    # High-correlation tech names with independent cycle timing.
-    # NVDA runs a faster, more volatile cycle than MSFT/AAPL.
-    # AMD oscillates out of phase with NVDA (fab cycle dynamics).
     "TECH": {
         "target": "NVDA",
         "arms": ["NVDA", "AMD", "MSFT", "AAPL"],
@@ -879,10 +740,6 @@ EQUITY_SURROUNDINGS: dict[str, dict] = {
         "correlations": {"NVDA-AMD": 0.75, "NVDA-MSFT": 0.65, "AMD-MSFT": 0.60},
         "routing_priority": [("MSFT", "NVDA"), ("AAPL", "NVDA"), ("AMD", "NVDA")],
     },
-    # ── Commodity Cluster ─────────────────────────────────────
-    # Gold, silver, oil — commodity cycle rotation.
-    # GLD and SLV move together but SLV is more volatile.
-    # USO (oil) is negatively correlated with GLD during risk events.
     "COMMODITY": {
         "target": "GLD",
         "arms": ["GLD", "SLV", "USO", "SPY"],
@@ -890,9 +747,6 @@ EQUITY_SURROUNDINGS: dict[str, dict] = {
         "correlations": {"GLD-SLV": 0.80, "GLD-USO": 0.10, "GLD-SPY": -0.25},
         "routing_priority": [("SLV", "GLD"), ("SPY", "GLD"), ("USO", "GLD")],
     },
-    # ── Conservative Triad (Retirement/Preservation) ─────────
-    # Capital preservation cluster — low volatility, steady accumulation.
-    # All three have positive correlations but different cycle speeds.
     "CONSERVATIVE": {
         "target": "SPY",
         "arms": ["SPY", "QQQ", "GLD"],
@@ -900,8 +754,6 @@ EQUITY_SURROUNDINGS: dict[str, dict] = {
         "correlations": {"SPY-QQQ": 0.92, "SPY-GLD": -0.25, "QQQ-GLD": -0.20},
         "routing_priority": [("QQQ", "SPY"), ("GLD", "SPY")],
     },
-    # ── Aggressive Growth Triad ───────────────────────────────
-    # High volatility, maximum cycle frequency.
     "AGGRESSIVE": {
         "target": "NVDA",
         "arms": ["NVDA", "TSLA", "AMD"],
@@ -909,9 +761,6 @@ EQUITY_SURROUNDINGS: dict[str, dict] = {
         "correlations": {"NVDA-TSLA": 0.50, "NVDA-AMD": 0.75, "TSLA-AMD": 0.45},
         "routing_priority": [("AMD", "NVDA"), ("TSLA", "NVDA")],
     },
-    # ── Index Cluster ─────────────────────────────────────────
-    # All three major US indices — SP500, Nasdaq, Russell 2000.
-    # IWM (small cap) diverges most from SPY during risk-off periods.
     "INDEX": {
         "target": "SPY",
         "arms": ["SPY", "QQQ", "IWM"],
@@ -919,9 +768,6 @@ EQUITY_SURROUNDINGS: dict[str, dict] = {
         "correlations": {"SPY-QQQ": 0.92, "SPY-IWM": 0.85, "QQQ-IWM": 0.78},
         "routing_priority": [("QQQ", "SPY"), ("IWM", "SPY")],
     },
-    # ── Balanced 60/40 Triad ──────────────────────────────────
-    # The classic portfolio structure. With accumulation bots on EACH
-    # leg, the 60/40 becomes self-rebalancing through Smart Wire.
     "BALANCED_60_40": {
         "target": "SPY",
         "arms": ["SPY", "QQQ", "GLD", "IWM"],
@@ -929,9 +775,6 @@ EQUITY_SURROUNDINGS: dict[str, dict] = {
         "correlations": {"SPY-QQQ": 0.92, "SPY-GLD": -0.25, "SPY-IWM": 0.85},
         "routing_priority": [("GLD", "SPY"), ("QQQ", "SPY"), ("IWM", "SPY")],
     },
-    # ── Crypto-Adjacent Equity ────────────────────────────────
-    # For traders who want crypto exposure via equities.
-    # BITO (BTC futures ETF), MSTR (MicroStrategy), COIN (Coinbase).
     "CRYPTO_EQUITY": {
         "target": "BITO",
         "arms": ["BITO", "MSTR", "COIN"],
@@ -941,8 +784,7 @@ EQUITY_SURROUNDINGS: dict[str, dict] = {
     },
 }
 
-# Equity arm pairs mapped to validated RAIntSimBat symbols
-# (for offline simulation using embedded anchor data)
+# Every EQUITY_SURROUNDINGS arm name to the candle_data key it reads.
 EQUITY_ARM_TO_SYMBOL: dict[str, str] = {
     "SPY": "SPY",
     "QQQ": "QQQ",
@@ -955,7 +797,6 @@ EQUITY_ARM_TO_SYMBOL: dict[str, str] = {
     "MSFT": "MSFT",
     "TSLA": "TSLA",
     "AMD": "AMD",
-    # Live data (not in validated 26 — fetch from Yahoo)
     "TLT": "TLT",
     "BITO": "BITO",
     "MSTR": "MSTR",
@@ -969,25 +810,18 @@ def run_equity_surrounding_swarm(
     target: float = 200.0,
     hedge: float = 200.0,
     interval_pct: float = 2.0,
-    fee_pct: float = 0.0,  # Alpaca = 0% commission
-    smart_wire: bool = True,  # enable Smart Wire routing
-    seed: int = 42,
+    fee_pct: float = 0.0,
+    smart_wire: bool = True,
     verbose: bool = True,
 ) -> dict:
-    """
-    Run equity surrounding swarm.
+    """Run one accumulation arm per symbol in the ``config_name`` equity cluster.
 
-    Unlike crypto surrounding (which uses quote currency pairs),
-    equity surrounding exploits CYCLE PHASE OFFSET:
-    - Each arm runs an independent accumulation bot
-    - When arm A harvests while arm B is folding, Smart Wire routes
-      A's profits to reinforce B's position
-    - Anti-correlated arms (e.g. SPY + GLD) are most valuable because
-      their cycles are structurally opposed
-
-    fee_pct=0.0 default: Alpaca is commission-free for equities.
+    An arm harvesting sends 40% of its proceeds to any arm in ``routing_priority``
+    sitting more than 1% under target, and 1% of each routed amount goes to
+    ``wire_pool_usd``. Fewer than two arms with 50 closes returns an ``error``
+    key. ``fee_pct`` defaults to 0.0 because Alpaca charges no equity
+    commission.
     """
-    random.seed(seed)
     config = EQUITY_SURROUNDINGS.get(config_name)
     if not config:
         raise ValueError(f"Unknown equity surrounding config: {config_name}")
@@ -1001,14 +835,12 @@ def run_equity_surrounding_swarm(
         print(f"  {config['description']}")
         print()
 
-    # Validate data availability
     available = [a for a in arms_list if a in candle_data and len(candle_data[a]) >= 50]
     if len(available) < 2:
         return {"error": f"Insufficient data. Available: {available}"}
 
     n = min(len(candle_data[a]) for a in available)
 
-    # Initialise arm states
     class _Arm:
         def __init__(self, sym, closes):
             self.sym = sym
@@ -1034,7 +866,6 @@ def run_equity_surrounding_swarm(
         tick_harvesting = []
         tick_folding = []
 
-        # ── Per-arm accumulation tick ──────────────────────────
         for sym, arm in arms.items():
             price = arm.closes[tick]
             arm.bb_buf.append(price)
@@ -1054,7 +885,6 @@ def run_equity_surrounding_swarm(
             delta = val - arm.sim_target
             delta_pct = abs(delta) / (arm.sim_target + 1e-9) * 100
 
-            # Scrum
             if delta > 0 and delta_pct >= interval_pct and bb_pos > 0.50:
                 qty = delta / price
                 if qty > 0 and arm.holdings >= qty:
@@ -1067,7 +897,6 @@ def run_equity_surrounding_swarm(
                     arm.scrums += 1
                     tick_harvesting.append(sym)
 
-            # Fold
             elif arm.fold_q > 0 and bb_pos < 0.50 and price < arm.fold_ref:
                 avail = arm.fold_q
                 fee = avail * fee_pct
@@ -1082,25 +911,20 @@ def run_equity_surrounding_swarm(
                 arm.folds += 1
                 tick_folding.append(sym)
 
-        # ── Smart Wire routing: harvest → fold cross-routing ────
         if smart_wire and routing_priority:
-            # Check each routing rule: when from-arm is harvesting,
-            # if to-arm needs a fold reinforcement, route profits across
             for from_sym, to_sym in routing_priority:
                 if from_sym not in arms or to_sym not in arms:
                     continue
                 from_arm = arms[from_sym]
                 to_arm = arms[to_sym]
 
-                # Routing trigger: from-arm just harvested AND to-arm
-                # is near a fold point (price declining, in deficit)
                 if from_sym in tick_harvesting and from_arm.fold_q > 1.0:
                     to_price = to_arm.closes[tick]
                     to_val = to_arm.holdings * to_price
                     to_delta_pct = (
                         (to_val - to_arm.sim_target) / (to_arm.sim_target + 1e-9) * 100
                     )
-                    if to_delta_pct < -1.0:  # to-arm is in deficit
+                    if to_delta_pct < -1.0:
                         route_amt = from_arm.fold_q * 0.40
                         fee = route_amt * fee_pct
                         additional_qty = (route_amt - fee) / to_price
@@ -1108,10 +932,9 @@ def run_equity_surrounding_swarm(
                         from_arm.fold_q -= route_amt
                         from_arm.wire_sent += route_amt
                         to_arm.wire_received += route_amt
-                        wire_pool += route_amt * 0.01  # 1% pooling fee to heap
+                        wire_pool += route_amt * 0.01
                         total_wires += 1
 
-    # Final values
     results_per_arm = {}
     total_final = 0.0
     total_passive = 0.0

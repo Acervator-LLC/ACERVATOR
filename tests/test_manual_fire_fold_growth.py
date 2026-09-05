@@ -1,37 +1,15 @@
-"""The fold must acquire enough to BACK the compounding it triggers (M1).
+"""Manual Fire sizes its fold buy against the target it is about to grow.
 
-THE DEFECT
-Manual Fire sized its fold buy from ``-delta_usd`` against
-``_target_balance``, and only AFTER the fill did
-``_apply_fold_target_growth`` raise that target. So position landed on
-target_OLD while the target became target_OLD + growth: the residual
-deficit was IDENTICALLY the growth, and the fold logged success having
-structurally failed to re-zero.
-
-WHY IT COULD NEVER BE WORKED OFF
-Growth caps at 1% of ANCHOR (`:1418`) and `target >= anchor` is a setter
-invariant, while Manual Fire's own no-op band is 1% of TARGET (`:9248`).
-So the residual is ALWAYS inside the dust band -- firing again returns
-"already within dust band. No-op." The miss is permanent, silent, and
-invisible to the very tool meant to correct it.
-
-OPERATOR RULING, 2026-08-07:
-    "After growth is calculated so that the Fold does not acquire too
-     little and actually fails to compound."
-
-The growth must be backed by POSITION, not left in the wallet as cash.
-That is the cash-vs-portfolio frame error the open item named.
-
-WHY A FIXED POINT
-Buying more units discharges more tranches, which yields more growth.
-The feedback term is bounded by the cycle cap and strictly decreasing,
-so it converges in one or two passes.
+``_preview_fold_growth`` reports the growth the queued ``_fold_tranches``
+will yield at the fill price, and ``_execute_manual_rebalance`` adds it to
+the deficit before it places the buy. ``_apply_fold_target_growth`` then
+raises ``_target_balance`` by the same amount once the fill lands, so the
+position ends on the grown target and not below it.
 """
 
 from __future__ import annotations
 
-import ast
-import inspect
+import asyncio
 import sys
 from pathlib import Path
 
@@ -75,11 +53,7 @@ def _bot(
     b._fold_accumulator = 0.0
     b._target_grow_last_side = None
     b.stats = type("S", (), {})()
-    # The stub must ACCEPT the bus signature -- it takes 12 real
-    # calls of the form emit("bot.log", bot_id=..., message=...).
-    # Production wraps every emit in try/except-debug, so dropping
-    # these parameters would break the stub silently. Keep them;
-    # the leading underscore marks the names deliberately unused.
+    # Production wraps every emit in try/except, so a stub that refuses one is silent.
     b._bus = type("B", (), {"emit": lambda self, *_a, **_k: None})()
     return b
 
@@ -147,11 +121,7 @@ class TestItMatchesTheRealFormula:
     def test_only_units_actually_bought_count(self):
         """Growth is bounded by what the buy discharges, not by the
         whole queue."""
-        # Issue #106 - the TARGET is what lifts the cap out of the way
-        # now, so it is raised with the anchor. The old fixture raised
-        # only the anchor and left the target at $100, which is a state
-        # the setter invariant `target >= anchor` forbids: the cap was
-        # being lifted by a bot that could not exist.
+        # The target is raised with the anchor: the setter forbids target below anchor.
         b = _bot([_tr(10.0, 60.0)], anchor=10000.0, target=10000.0)
         assert b._preview_fold_growth(1.0, 50.0) == pytest.approx(10.0)
 
@@ -204,78 +174,124 @@ class TestDegenerateInputs:
         assert b._preview_fold_growth(1.0, 50.0) == pytest.approx(1.0)
 
     def test_the_quote_rate_is_applied(self):
-        # Issue #106 - same reason as above: the target carries the
-        # cap now, and target < anchor is not a reachable state.
+        # The target carries the cap, and target below anchor is unreachable.
         b = _bot([_tr(1.0, 60.0)], anchor=10000.0, target=10000.0, qrate=3.0)
         assert b._preview_fold_growth(1.0, 50.0) == pytest.approx(30.0)
+
+
+class _Order:
+    id = "fold-1"
+    filled = 0.0
+    amount = 0.0
+    price = 1.0
+
+
+class _Ticker:
+    def __init__(self, last):
+        self.last = last
+
+
+def _fire_bot(tranches, *, holdings=90.0, target=100.0, price=1.0, cap_pct=1.0):
+    """A bot the real ``_execute_manual_rebalance`` runs against.
+
+    Only the outward edges are stubbed, and ``seen`` records the order
+    the shipping code called ``_preview_fold_growth``,
+    ``guarded_place_order`` and ``_apply_fold_target_growth`` in.
+    """
+    bot = _bot(tranches, anchor=target, target=target, cap_pct=cap_pct)
+    bot.config.exchange_id = "coinbase"
+    bot.config.target_asset = "BTC"
+    bot.seen = []
+    bot.placed = []
+    bot._current_holdings = holdings
+    bot._manual_fire_pending = True
+    bot._fold_queue_usd = 0.0
+    bot._main_lots = []
+    bot._tranches_closed_lifetime = 0
+    bot._last_trade_side = None
+    bot._last_trade_price = 0.0
+    bot.stats.total_trades = 0
+    bot.stats.total_folded_usd = 0.0
+
+    real_preview = bot._preview_fold_growth
+    real_growth = bot._apply_fold_target_growth
+
+    def _preview(units, at_price):
+        bot.seen.append("preview")
+        return real_preview(units, at_price)
+
+    def _growth(profit_usd, source):
+        bot.seen.append("growth")
+        return real_growth(profit_usd, source=source)
+
+    async def _refresh():
+        return 1.0
+
+    async def _balance(*_args):
+        return type("B", (), {"total": 1e6, "free": 1e6, "absent": False})()
+
+    async def _place(**kwargs):
+        bot.seen.append("order")
+        bot.placed.append(kwargs)
+        return _Order()
+
+    async def _settled(_order, _symbol, requested, _tick_price):
+        return requested, price, True
+
+    bot._preview_fold_growth = _preview
+    bot._apply_fold_target_growth = _growth
+    bot._refresh_quote_to_usd = _refresh
+    bot._get_balance = _balance
+    bot.guarded_place_order = _place
+    bot._settled_fill = _settled
+    bot.reset_swos_cycle = lambda: None
+    bot._reset_opposing_hysteresis_after_fill = lambda: None
+    bot._emit_voting_panel_snapshot_at_fire = lambda **_kw: None
+    bot._emit_gate_decision_at_fire = lambda **_kw: None
+    return bot
+
+
+def _fire(bot, price=1.0):
+    """One ``_fire_bot`` run through the real fold path."""
+    asyncio.run(bot._execute_manual_rebalance(_Ticker(price), "manual_button"))
+    return bot
 
 
 class TestTheSizingActuallyUsesIt:
     """A preview nothing consults fixes nothing."""
 
-    def _fold_branch(self):
-        import src.trading.scrumming_bot as m
+    def test_a_fold_with_no_queue_buys_the_bare_deficit(self):
+        """POSITIVE CONTROL. ``_preview_fold_growth`` returns zero with an
+        empty queue, and ``guarded_place_order`` is asked for the bare
+        deficit."""
+        bot = _fire(_fire_bot([]))
+        assert bot.placed, "no order was placed; nothing was driven"
+        assert bot.placed[0]["amount"] == pytest.approx(10.0)
 
-        src = Path(
-            inspect.getsourcefile(m.ScrummingBot._execute_manual_rebalance)
-        ).read_text(encoding="utf-8")
-        fn = next(
-            n
-            for n in ast.walk(ast.parse(src))
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and n.name == "_execute_manual_rebalance"
-        )
-        return fn, src
+    def test_the_fold_buys_the_post_growth_size(self):
+        """``guarded_place_order`` is asked for the deficit plus the
+        growth ``_preview_fold_growth`` reports."""
+        bot = _fire(_fire_bot([_tr(1.0, 2.0)]))
+        assert bot.placed[0]["amount"] == pytest.approx(11.0)
 
-    def test_manual_fire_calls_the_preview(self):
-        fn, _ = self._fold_branch()
-        calls = [
-            n
-            for n in ast.walk(fn)
-            if isinstance(n, ast.Call)
-            and getattr(n.func, "attr", "") == "_preview_fold_growth"
-        ]
-        assert calls, "the fold still sizes against the pre-growth target"
-
-    def test_the_buy_target_is_no_longer_the_bare_delta(self):
-        """Asserted structurally: `buy_usd_target = -delta_usd` alone is
-        exactly the defect."""
-        fn, src = self._fold_branch()
-        for n in ast.walk(fn):
-            if isinstance(n, ast.Assign) and any(
-                getattr(t, "id", "") == "buy_usd_target" for t in n.targets
-            ):
-                seg = ast.get_source_segment(src, n.value) or ""
-                assert (
-                    seg.strip() != "-delta_usd"
-                ), "buy_usd_target must include the prospective growth"
+    def test_the_fold_lands_the_position_on_the_grown_target(self):
+        """``_current_holdings`` reaches ``_target_balance`` after
+        ``_apply_fold_target_growth`` has raised it."""
+        bot = _fire(_fire_bot([_tr(1.0, 2.0)]))
+        landed = bot._current_holdings * 1.0 * bot._quote_to_usd
+        assert bot._target_balance == pytest.approx(101.0)
+        assert landed == pytest.approx(bot._target_balance)
 
     def test_the_preview_runs_before_the_order(self):
-        """Sizing after the order would be no fix at all."""
-        fn, _ = self._fold_branch()
-        prev = [
-            n.lineno
-            for n in ast.walk(fn)
-            if isinstance(n, ast.Call)
-            and getattr(n.func, "attr", "") == "_preview_fold_growth"
-        ]
-        orders = [
-            n.lineno
-            for n in ast.walk(fn)
-            if isinstance(n, ast.Call)
-            and getattr(n.func, "attr", "") == "guarded_place_order"
-        ]
-        assert prev and orders and min(prev) < max(orders)
+        """``_preview_fold_growth`` is called before
+        ``guarded_place_order``."""
+        bot = _fire(_fire_bot([_tr(1.0, 2.0)]))
+        assert "preview" in bot.seen, bot.seen
+        assert bot.seen.index("preview") < bot.seen.index("order"), bot.seen
 
-    def test_growth_is_still_applied_exactly_once_after_the_fill(self):
-        """Sizing for the growth must not ALSO double-apply it."""
-        fn, _ = self._fold_branch()
-        applies = [
-            n
-            for n in ast.walk(fn)
-            if isinstance(n, ast.Call)
-            and getattr(n.func, "attr", "") == "_apply_fold_target_growth"
-        ]
-        assert (
-            len(applies) == 1
-        ), f"expected one growth application, found {len(applies)}"
+    def test_growth_is_applied_exactly_once_after_the_fill(self):
+        """``_apply_fold_target_growth`` runs once, after
+        ``guarded_place_order``."""
+        bot = _fire(_fire_bot([_tr(1.0, 2.0)]))
+        assert bot.seen.count("growth") == 1, bot.seen
+        assert bot.seen.index("order") < bot.seen.index("growth"), bot.seen

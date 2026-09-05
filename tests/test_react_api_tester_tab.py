@@ -2097,3 +2097,53 @@ def test_the_invented_word_check_would_see_one_word_no_payload_carries(
 def test_this_host_can_run_the_rendered_checks_at_all():
     """A host with no Chromium skips every rendered check, and says so."""
     pytest.importorskip("PySide6.QtWebEngineWidgets")
+
+
+#: Each control that draws its own name, beside the parameter the surface reads.
+NAMED_CONTROLS = (
+    ("exchange-select", "exchange_id", "kraken"),
+    ("use-stored", "use_stored", False),
+    ("symbol-box", "symbol", "ETH-USD"),
+)
+
+
+@pytest.mark.parametrize("part,param,sent", NAMED_CONTROLS)
+def test_each_named_control_draws_the_parameter_the_surface_reads(
+    browser: Browser, part: str, param: str, sent: Any
+):
+    parts = draw_tab(browser, connected_payload())
+    drawn = with_part(parts, part)
+    assert len(drawn) == 1, f"{part} drew {len(drawn)} elements"
+    assert drawn[0]["attrs"]["data-name"] == param, (
+        f"{part} draws data-name "
+        f"{drawn[0]['attrs'].get('data-name')!r}, not {param!r}"
+    )
+
+
+@pytest.mark.parametrize("part,param,sent", NAMED_CONTROLS)
+def test_the_surface_answers_every_parameter_a_named_control_draws(
+    part: str, param: str, sent: Any
+):
+    """The drawn name is one the handler acts on, not a word with no reader."""
+    surface.view_model({"reset": True})
+    try:
+        before = surface.view_model({})[param]
+        after = surface.view_model({param: sent})[param]
+    finally:
+        surface.view_model({"reset": True})
+    assert before != after, f"{param} was already {sent!r} before it was sent"
+    assert after == sent, f"the surface answered {after!r} for {param}={sent!r}"
+
+
+def test_the_named_control_check_would_see_a_name_the_surface_never_reads(
+    browser: Browser,
+):
+    """The positive control: the read sees a wrong name, so a pass means wiring."""
+    draw_tab(browser, connected_payload())
+    browser.js(
+        "window.HOST.querySelector('[data-part=\"symbol-box\"]')"
+        ".setAttribute('data-name', 'no_such_parameter');"
+    )
+    parts = json.loads(browser.js(READ_PARTS))
+    drawn = with_part(parts, "symbol-box")[0]
+    assert drawn["attrs"]["data-name"] == "no_such_parameter"

@@ -87,9 +87,7 @@ TRANSIENT_DELAYS = {
 _SYMBOL_SEQ = itertools.count()
 
 
-# ---------------------------------------------------------------------
 # doubles
-# ---------------------------------------------------------------------
 class RequestTimeout(Exception):
     """Class name carries the transient keyword 'request'."""
 
@@ -207,9 +205,7 @@ def _invoke(conn: Any, method: str) -> Any:
     return calls[method]()
 
 
-# ---------------------------------------------------------------------
 # fixtures
-# ---------------------------------------------------------------------
 @pytest.fixture
 def delays(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[float]]:
     """Record every delay asked for; never actually wait."""
@@ -250,9 +246,7 @@ def _run(error: BaseException, method: str) -> tuple[int, BaseException]:
     return backend.calls, caught.value
 
 
-# =====================================================================
 # inventory — which methods retry at all
-# =====================================================================
 def test_decorator_is_applied_to_exactly_these_methods() -> None:
     """The retry-carrying method set is fixed and excludes order submission.
 
@@ -339,9 +333,7 @@ def test_order_submission_is_never_retried(
     assert str(raised) == str(error)
 
 
-# =====================================================================
 # fetcher — reports, never raises
-# =====================================================================
 def test_fetcher_retries_every_error_and_reports_it(
     delays: dict[str, list[float]],
 ) -> None:
@@ -423,9 +415,7 @@ def test_coingecko_placeholder_makes_no_call(delays: dict[str, list[float]]) -> 
     assert out.error is not None
 
 
-# =====================================================================
 # primitives — the four knobs must stay independent
-# =====================================================================
 @pytest.mark.parametrize(
     ("name", "transient"),
     [

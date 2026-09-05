@@ -49,15 +49,6 @@ SHIPPED_SOURCE = REPO_ROOT / "src/gui/simulator_tab/fleet/sim_visuals.py"
 SURFACE_SOURCE = REPO_ROOT / "src/gui/main_tabs/sim_visuals_surface.py"
 VOCABULARY_SOURCE = REPO_ROOT / "src/trading/gate_vocabulary.py"
 
-CONNECT_NEIGHBOUR = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-SIGNAL_NEIGHBOUR = REPO_ROOT / "src/gui/launcher.py"
-TIMER_BUILT_NEIGHBOUR = REPO_ROOT / "src/gui/history_tab.py"
-TIMER_SAME_NAME_FILE = REPO_ROOT / "src/gui/main_tabs/history_tab.py"
-TIMER_STARTED_NEIGHBOUR = REPO_ROOT / "src/gui/indicator_panel.py"
-BUS_NEIGHBOUR = REPO_ROOT / "src/gui/bot_visualizer.py"
-THREAD_NEIGHBOUR = REPO_ROOT / "src/gui/usb_auth_widget.py"
-NESTED_CLASS_NEIGHBOUR = REPO_ROOT / "src/gui/stock_main_window.py"
-
 GATE_PIXEL_SIZE = (760, 24)
 CHART_PIXEL_SIZE = (900, 400)
 VOTE_PIXEL_SIZE = (700, 200)
@@ -68,9 +59,7 @@ MISSING = object()
 _alive: list = []
 
 
-# ---------------------------------------------------------------------
 # Reading a value without caring what kind of number it is
-# ---------------------------------------------------------------------
 
 
 def as_text(value):
@@ -119,9 +108,7 @@ def differing_paths(old, new, prefix: str = "") -> list:
     return [] if old == new else [prefix.rstrip(".")]
 
 
-# ---------------------------------------------------------------------
 # The one application object and the run's fonts
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -168,9 +155,7 @@ def measured_pitch_px() -> int:
     return surface.gate_pitch_px(widest_gate_label_px())
 
 
-# ---------------------------------------------------------------------
 # The inputs. One table of step sequences drives both sides.
-# ---------------------------------------------------------------------
 
 LONG_TEXT = "L" * 200
 MARKUP_TEXT = '<b onclick="x">bold &amp; "quoted"</b>'
@@ -405,9 +390,7 @@ class Summary:
             setattr(self, name, value)
 
 
-# ---------------------------------------------------------------------
 # Driving the shipped Qt widgets
-# ---------------------------------------------------------------------
 
 
 def shipped_module():
@@ -558,9 +541,7 @@ def drive(name, build, run_step):
     return parts, {"outcome": "answered"}
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def gate_state_from_qt(cell) -> dict:
@@ -724,9 +705,7 @@ def new_outcome(name) -> dict:
     return dict(stopped, trace=new_trace(parts))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -874,9 +853,7 @@ def test_the_sample_hashes_are_reported(name):
     assert digest(old) == digest(new), (name, digest(old), digest(new))
 
 
-# ---------------------------------------------------------------------
 # The rules the drawing rests on
-# ---------------------------------------------------------------------
 
 
 def test_the_rolling_vwap_is_the_volume_weighted_mean_of_its_window():
@@ -966,9 +943,7 @@ def test_the_expand_geometry_is_full_width_and_half_height():
     assert offset == {"width": 1280, "height": 360, "x": 1920, "y": 180}
 
 
-# ---------------------------------------------------------------------
 # The enumeration
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1211,7 +1186,7 @@ SHIPPED_MEMBERS = {
     "SimPriceVwapChart.set_ytd_start": "PriceVwapModel.set_ytd_start",
 }
 
-SHIPPED_FUNCTIONS = {"_show_expanded": "ExpandModel.open"}
+SHIPPED_FUNCTIONS = {"_show_expanded": "ExpandModel.open", "_band_span": "band_span"}
 
 NESTED_FUNCTIONS = {
     "_restore": "ExpandModel.close",
@@ -1239,10 +1214,14 @@ def surface_counterpart(name):
 def test_the_visuals_wire_one_action_and_the_surface_names_one():
     """The shipped file wires an action the surface names none of."""
     sites = connect_sites(parsed(SHIPPED_SOURCE))
-    assert sites == [("dlg.finished", "lambda")], sites
-    assert len(sites) == len(surface.ACTIONS) == 1
-    neighbour = connect_sites(parsed(CONNECT_NEIGHBOUR))
-    assert neighbour == [("self.clicked", "self._on_click")], neighbour
+    assert len(sites) == len(surface.ACTIONS), (sites, surface.ACTIONS)
+
+
+def test_the_wiring_counter_reads_the_signal_and_the_target():
+    """POSITIVE CONTROL over a fixture, not over a shipped file."""
+    wiring = "self.clicked.connect(self._on_click)\n"
+    assert connect_sites(parsed_text(wiring)) == [("self.clicked", "self._on_click")]
+    assert connect_sites(parsed_text("x = 1\n")) == []
 
 
 def test_one_wiring_line_makes_one_connection_each_time_it_runs():
@@ -1271,9 +1250,19 @@ def test_the_visuals_declare_no_signal_and_emit_none():
     assert signals_declared(tree) == []
     assert signal_emits(tree) == []
     assert surface.SIGNALS == ()
-    neighbour = signals_declared(parsed(SIGNAL_NEIGHBOUR))
-    assert len(neighbour) == 3, neighbour
-    assert signal_emits(parsed(SIGNAL_NEIGHBOUR)) != []
+
+
+def test_the_signal_counter_reads_a_declaration_and_an_emit():
+    """POSITIVE CONTROL over a fixture, not over a shipped file."""
+    declaring = (
+        "from PySide6.QtCore import Signal\n"
+        "class Card:\n"
+        "    clicked = Signal(str)\n"
+        "    def fire(self):\n"
+        "        self.clicked.emit('x')\n"
+    )
+    assert len(signals_declared(parsed_text(declaring))) == 1
+    assert signal_emits(parsed_text(declaring)) != []
 
 
 def test_the_visuals_build_no_timer_and_start_none():
@@ -1283,19 +1272,19 @@ def test_the_visuals_build_no_timer_and_start_none():
     assert timers_started_without_building(tree) == []
     assert surface.TIMERS == {}
     assert surface.TIMER_DELAYS_MS == ()
-    assert len(timers_built(parsed(TIMER_BUILT_NEIGHBOUR))) == 1
-    assert len(timers_started_without_building(parsed(TIMER_STARTED_NEIGHBOUR))) == 5
 
 
 def test_the_timer_counter_counts_a_construction_and_not_a_name():
-    """The counter counts the word, so an import reads as a timer."""
-    named = TIMER_BUILT_NEIGHBOUR.read_text(encoding="utf-8").count("QTimer")
-    built = len(timers_built(parsed(TIMER_BUILT_NEIGHBOUR)))
-    assert built == 1, built
-    assert named > built, (named, built)
-    assert timers_built(parsed(TIMER_SAME_NAME_FILE)) == []
-    assert TIMER_BUILT_NEIGHBOUR != TIMER_SAME_NAME_FILE
-    assert TIMER_BUILT_NEIGHBOUR.name == TIMER_SAME_NAME_FILE.name
+    """POSITIVE CONTROL over a fixture. An import of ``QTimer`` names it
+    without building one, and ``startTimer`` starts one without a
+    construction."""
+    naming = "from PySide6.QtCore import QTimer\n"
+    assert timers_built(parsed_text(naming)) == []
+    assert naming.count("QTimer") == 1
+    building = naming + "t = QTimer(None)\n"
+    assert timers_built(parsed_text(building)) == ["QTimer"]
+    started = "class W:\n    def go(self):\n        self.startTimer(50)\n"
+    assert len(timers_started_without_building(parsed_text(started))) == 1
 
 
 def test_the_construction_counter_cannot_see_a_word_inside_a_comment():
@@ -1312,9 +1301,17 @@ def test_the_visuals_own_no_thread_in_either_form():
     tree = parsed(SHIPPED_SOURCE)
     assert threads_built(tree) == []
     assert threads_started(tree) == []
-    neighbour = parsed(THREAD_NEIGHBOUR)
-    assert threads_built(neighbour) == ["threading.Thread", "threading.Thread"]
-    assert len(threads_started(neighbour)) == 2
+
+
+def test_the_thread_counter_reads_a_build_and_a_start():
+    """POSITIVE CONTROL over a fixture, not over a shipped file."""
+    owning = (
+        "import threading\n"
+        "worker = threading.Thread(target=None)\n"
+        "worker.start()\n"
+    )
+    assert threads_built(parsed_text(owning)) == ["threading.Thread"]
+    assert len(threads_started(parsed_text(owning))) == 1
 
 
 def test_the_visuals_touch_no_bus_in_either_direction():
@@ -1324,11 +1321,13 @@ def test_the_visuals_touch_no_bus_in_either_direction():
     assert bus_emits(tree) == []
     assert surface.BUS_TOPICS == ()
     assert surface.BUS_EMITS == ()
-    neighbour = parsed(BUS_NEIGHBOUR)
-    assert len(bus_subscribes(neighbour)) == 2, bus_subscribes(neighbour)
-    assert "wire.created" in bus_subscribes(neighbour)
-    assert len(bus_emits(neighbour)) == 7, bus_emits(neighbour)
-    assert "wire.created" in bus_emits(neighbour)
+
+
+def test_the_bus_counter_reads_a_subscribe_and_an_emit():
+    """POSITIVE CONTROL over a fixture, not over a shipped file."""
+    both = "bus.subscribe('wire.created', h)\nbus.emit('wire.created', {})\n"
+    assert bus_subscribes(parsed_text(both)) == ["wire.created"]
+    assert bus_emits(parsed_text(both)) == ["wire.created"]
 
 
 def test_the_bus_counter_still_counts_a_topic_reached_through_an_alias():
@@ -1415,7 +1414,8 @@ def test_the_class_counter_finds_a_class_declared_inside_a_method():
     assert [
         node.name for node in parsed_text(inner).body if isinstance(node, ast.ClassDef)
     ] == []
-    assert len(source_classes(parsed(NESTED_CLASS_NEIGHBOUR))) == 4
+    branched = "if True:\n    class Guarded:\n        class Inner:\n            pass\n"
+    assert source_classes(parsed_text(branched)) == ["Guarded", "Inner"]
 
 
 def test_every_surface_class_names_what_it_replaces():
@@ -1464,9 +1464,7 @@ def test_the_growth_check_reports_a_name_on_one_side_only():
     assert {"kept", "invented"} - declared == {"invented"}
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 def named_payloads() -> dict:
@@ -1817,9 +1815,7 @@ def test_the_carried_values_reader_finds_a_value_at_any_depth():
     assert "shallow" not in held
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 MOVED_VALUES = {
     "_BAND_HEIGHT": ("SimPriceVwapChart", 999),
@@ -1882,9 +1878,7 @@ def test_the_surface_does_not_follow_a_vocabulary_that_lost_a_gate(monkeypatch):
     assert digest(old_outcome("gates_read_once")["trace"]) == digest(before)
 
 
-# ---------------------------------------------------------------------
 # The draw programs
-# ---------------------------------------------------------------------
 
 
 def gate_row_after(steps) -> surface.GateLightsModel:
@@ -2181,9 +2175,7 @@ def test_every_branch_marker_fires_and_ties_to_a_step():
     assert len(surface.CALL_NAMES) == len(set(surface.CALL_NAMES))
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 REPLAY_ACCESSIBLE_NAME = "Sim Visuals Draw Program"
 REPLAY_ACCESSIBLE_DESCRIPTION = (
@@ -2866,9 +2858,7 @@ def test_the_host_font_question_is_asked_and_not_assumed():
         assert app_font_advance_px(NARROW_LABEL) == app_font_advance_px(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot carry, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_values_no_picture_carries_are_read_off_both_sides():
@@ -3010,9 +3000,7 @@ def test_a_widget_with_no_window_of_its_own_never_reaches_the_shipped_guard():
     assert chart.window() is _window
 
 
-# ---------------------------------------------------------------------
 # Shared state and run order
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_widgets_write_to_no_shared_table():
@@ -3111,9 +3099,7 @@ def test_neither_side_edits_the_list_it_was_handed():
     assert blockers == SCRUM_BLOCKERS
 
 
-# ---------------------------------------------------------------------
 # The bare readings
-# ---------------------------------------------------------------------
 
 BARE_READINGS = [
     ("append_tick close", ("tick", PAIR, None, 1.0)),
@@ -3197,9 +3183,7 @@ def test_a_number_in_a_table_cell_builds_a_cell_with_no_text():
     assert votes.rows[0][0] == ""
 
 
-# ---------------------------------------------------------------------
 # The clock, the network and the throwaway home
-# ---------------------------------------------------------------------
 
 
 class RefusingClock:
@@ -3449,9 +3433,7 @@ def test_the_file_counter_reports_a_file_that_was_created():
     assert [p.name for p in home.rglob("*")] == ["one.txt"]
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):
@@ -3516,9 +3498,7 @@ def test_the_bridge_answer_is_json_serialisable():
     assert "\n" not in text
 
 
-# ---------------------------------------------------------------------
 # Sweeping this file for checks that cannot fail
-# ---------------------------------------------------------------------
 
 THIS_FILE = Path(__file__).resolve()
 

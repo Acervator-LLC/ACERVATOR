@@ -1,15 +1,9 @@
-"""registry.py — StoneTabletsRegistry singleton.
+"""``StoneTabletsRegistry`` — the in-process index over the stone tablet archive.
 
-Public API — the surface v3.23.98 fetcher + v3.23.99 sim replay
-consume. Design:
-`docs/engineering-notes/2026-08-01_stone_tablets_rebuild_design.md`.
-
-Runtime state lives at `~/.acervator/stone_tablets/`. This module
-NEVER fetches — that's the fetcher's job. This module reads MANIFEST
-on init, holds tablets in memory, appends candles when ingested,
-persists atomically.
-
-sadp: R28 SSS + R70 RCN
+``_load_from_manifest`` reads MANIFEST into ``_entries`` at construction and
+``_tablet`` loads candle bodies on demand. ``ingest_candles`` appends candles
+and rewrites MANIFEST. ``get_candles`` serves ``NATIVE_TIMEFRAME`` directly and
+sends every other timeframe through ``_rollup``.
 """
 
 from __future__ import annotations
@@ -37,22 +31,10 @@ from .storage import (
 logger = logging.getLogger("acervator.stone_tablets.registry")
 
 _BODY_CACHE_MAX = 64
-"""Ceiling on resident tablet bodies.
-
-The archive is 406 tablets / 7,230,993 candles and holding all of them
-costs ~2.3 GB (each candle is a 6-element list of boxed floats, ~331
-bytes). A 35-bot fleet replay touches ~35 tablets, so 64 covers real
-workloads with headroom while stopping a 406-asset sweep from
-re-accumulating the whole archive.
-"""
-
-# --------------------------------------------------------------------- #
-# Timeframe support                                                      #
-# --------------------------------------------------------------------- #
+"""Most tablet bodies ``_evict_if_needed`` leaves resident in ``_tablets``."""
 
 NATIVE_TIMEFRAME: str = "5m"
-"""Everything is stored at 5m natively per operator directive
-2026-08-01. Higher TFs are derived via rollup."""
+"""Timeframe every tablet stores; ``_rollup`` derives all the others."""
 
 _TF_SECONDS: dict[str, int] = {
     "5m": 300,
@@ -78,16 +60,9 @@ def _rollup_factor(tf: str) -> int:
     return _TF_SECONDS[tf] // _TF_SECONDS[NATIVE_TIMEFRAME]
 
 
-# --------------------------------------------------------------------- #
-# Coverage helpers                                                       #
-# --------------------------------------------------------------------- #
-
-
 @dataclass
 class CoverageSummary:
-    """Per-(asset, exchange) coverage snapshot for GUI status display.
-    v3.23.98 added ``exchange_id`` — one row per (asset, exchange)
-    pair covered by the registry."""
+    """One row per (asset, ``exchange_id``) pair, built by ``coverage_summary``."""
 
     asset: str
     exchange_id: str
@@ -98,17 +73,8 @@ class CoverageSummary:
     years: list[int] = field(default_factory=list)
 
 
-# --------------------------------------------------------------------- #
-# v3.24.6 — availability metadata + window status                        #
-# --------------------------------------------------------------------- #
-
-
 class WindowStatus:
-    """Enum of what a caller learns when they ask 'is this window
-    covered?' Used by the fleet-replay panel + backtest harness to
-    emit precise notifications instead of silently returning short
-    tapes.
-    """
+    """Coverage verdicts ``check_window_availability`` returns for a window."""
 
     FULL = "full"  # data spans entire requested window
     LATE_LISTING = "late_listing"  # tablet begins AFTER requested since_ms
@@ -119,14 +85,10 @@ class WindowStatus:
 
 @dataclass
 class AvailabilityInfo:
-    """v3.24.6 — platform-level flags per operator directive 2026-08-01:
-    'Add stone tablet level flags that the platform will recognize.'
+    """Listing and coverage extents for one (asset, ``exchange_id``) pair.
 
-    Populated from the tablet's ``listed_at_ms`` + coverage extents.
-    Consumers (fleet replay, backtest harness, chart widgets) read
-    this to emit the operator's requested notification:
-        'This asset was listed on Coinbase mm/dd/yyyy and no prior
-        data exists.'
+    ``get_asset_availability`` builds it from MANIFEST rows and
+    ``listing_notice`` renders ``listed_at_iso`` for display.
     """
 
     asset: str
@@ -145,12 +107,11 @@ class AvailabilityInfo:
         ).strftime("%Y-%m-%d")
 
     def is_listed_before(self, ts_ms: int) -> bool:
-        """True when a candle at (or before) ts_ms exists in the
-        tablet — i.e., the asset had data BEFORE that timestamp."""
+        """True when ``listed_at_ms`` is positive and at or before ``ts_ms``."""
         return self.listed_at_ms > 0 and self.listed_at_ms <= ts_ms
 
     def listing_notice(self, exchange_display: str = "Coinbase") -> str:
-        """Human-readable notice for the Simulator Activity Log."""
+        """One line naming ``asset`` and ``listed_at_iso``, or reporting no data."""
         if self.listed_at_ms <= 0:
             return f"{self.asset}: no data in Stone Tablets on " f"{exchange_display}."
         return (
@@ -159,60 +120,30 @@ class AvailabilityInfo:
         )
 
 
-# --------------------------------------------------------------------- #
-# Registry                                                              #
-# --------------------------------------------------------------------- #
-
-
 class StoneTabletsRegistry:
-    """Singleton (via get_registry()) that owns the on-disk tablets.
+    """Index over the on-disk tablets, shared through ``get_registry``.
 
-    Thread-safety: a single lock guards mutation. Reads are done
-    under the lock too since ingest can happen concurrently with
-    sim reads. Cheap since tablets fit in memory.
+    ``_lock`` guards every read and mutation, ``_entries`` holds the MANIFEST
+    metadata, and ``_tablets`` caches at most ``_BODY_CACHE_MAX`` candle bodies.
     """
 
     def __init__(self, root: Optional[Path] = None) -> None:
         self._root = root or STONE_TABLETS_DIR
         ensure_root(self._root)
         self._lock = threading.RLock()
-        # v3.23.98: key includes exchange_id per operator directive
-        # 2026-08-01 ("some stone tablets are exchange specific").
-        # (asset, exchange_id, timeframe, year) -> Tablet
-        # v3.24.23 — LAZY BODIES. `_tablets` is now a bounded cache of
-        # candle bodies loaded on demand, not the authoritative index.
-        # `_entries` (manifest metadata) is the index.
+        # Key order is (asset, exchange_id, timeframe, year).
         self._tablets: dict[tuple[str, str, str, int], Tablet] = {}
         self._entries: dict[tuple[str, str, str, int], TabletEntry] = {}
-        # (asset, exchange_id) -> set of years at NATIVE_TIMEFRAME
+        # Key order is (asset, exchange_id); values are NATIVE_TIMEFRAME years.
         self._assets: dict[tuple[str, str], set[int]] = {}
         self._lru: list[tuple[str, str, str, int]] = []
         self._load_from_manifest()
 
-    # ── init / load ─────────────────────────────────────────────────
-
     def _load_from_manifest(self) -> None:
-        """Index the archive from MANIFEST metadata only.
+        """Index every MANIFEST row into ``_entries`` and ``_assets``.
 
-        v3.24.23 — this used to call ``read_tablet()`` on every manifest
-        row, fully parsing all 406 tablet files at construction.
-        Measured on the live archive:
-
-            construction      13.15 s
-            resident memory   +2,282 MB  (19.9 -> 2,301.9 MB)
-
-        ``main.py`` builds the registry at app boot, so that was a 13 s
-        blocking stall and 2.3 GB held for the life of the process that
-        executes real trades — for candle bodies boot never reads.
-
-        Everything the boot-path consumers need is already in MANIFEST:
-        asset, exchange_id, year, candle_count, first_ts_ms, last_ts_ms,
-        listed_at_ms. Verified against the live archive — summing
-        ``candle_count`` over the manifest alone gives 7,230,993, the
-        exact total. Reading it costs 0.0021 s and ~0.2 MB.
-
-        Bodies now load on first real need (``get_candles``,
-        ``missing_ranges``, ``ingest_candles``) via ``_tablet()``.
+        A row whose tablet file is gone is logged and skipped, and no candle
+        body is read here.
         """
         entries = read_manifest(self._root)
         missing = 0
@@ -220,9 +151,6 @@ class StoneTabletsRegistry:
             path = tablet_path(
                 e.asset, e.timeframe, e.year, root=self._root, exchange_id=e.exchange_id
             )
-            # Preserve the old warn-and-skip semantics for a MANIFEST row
-            # whose file is gone, without paying a full parse for it.
-            # os.stat is ~406 syscalls against 406 JSON parses.
             if not path.exists():
                 logger.warning(
                     "stone_tablets: MANIFEST references %s but "
@@ -246,10 +174,10 @@ class StoneTabletsRegistry:
         )
 
     def _tablet(self, key: tuple[str, str, str, int]) -> Optional[Tablet]:
-        """Return the tablet body for ``key``, loading it on first use.
+        """Return the tablet body for ``key``, loading it into ``_tablets`` once.
 
-        Caller must hold ``self._lock``. Corrupt-file semantics match the
-        old eager loader: warn once and treat as absent.
+        Caller must hold ``_lock``; an unreadable file drops the ``_entries``
+        row and returns None.
         """
         tab = self._tablets.get(key)
         if tab is not None:
@@ -286,12 +214,7 @@ class StoneTabletsRegistry:
         self._lru.append(key)
 
     def _evict_if_needed(self) -> None:
-        """Bound the body cache.
-
-        Without this, a 406-asset universe sweep re-accumulates the same
-        2.4 GB the lazy load exists to avoid. A 35-bot fleet replay
-        touches ~35 tablets, so the cap is set well above that.
-        """
+        """Drop the oldest ``_lru`` keys until ``_tablets`` fits ``_BODY_CACHE_MAX``."""
         while len(self._tablets) > _BODY_CACHE_MAX:
             oldest = self._lru.pop(0)
             self._tablets.pop(oldest, None)
@@ -302,12 +225,8 @@ class StoneTabletsRegistry:
         exchange_id: str,
         timeframe: str = NATIVE_TIMEFRAME,
     ) -> list[tuple[str, str, str, int]]:
-        """Index lookup for one (asset, exchange, timeframe).
-
-        Folds in audit finding #15 — several methods linear-scanned the
-        whole tablet dict for this. Reads metadata only, so it never
-        forces a body load.
-        """
+        """Return the ``_entries`` keys matching ``asset_u``, ``exchange_id``
+        and ``timeframe``, loading no tablet body."""
         return [
             k
             for k in self._entries
@@ -315,27 +234,14 @@ class StoneTabletsRegistry:
         ]
 
     def _persist_manifest(self) -> None:
-        """Write MANIFEST from the metadata index.
+        """Write MANIFEST from ``_entries``, sorted by asset, timeframe and year.
 
-        v3.24.23 — this used to rebuild every row via
-        ``entry_from_tablet()``, which calls ``Tablet.compute_checksum()``
-        on all 406 tablets. Measured at 7.46 s per call, and
-        ``ingest_candles`` calls it once per 350-candle chunk — roughly
-        103 chunks per asset for a YTD window.
-
-        Rebuilding from ``self._entries`` reuses each tablet's stored
-        checksum and recomputes only the row that actually changed
-        (``ingest_candles`` refreshes its dirty entry before calling
-        this). Writing MANIFEST every chunk is deliberate — the fetcher
-        relies on it so a crash mid-fetch loses at most one chunk — so
-        the fix is to make the write cheap, not less frequent.
+        Each row reuses the checksum already stored on its ``TabletEntry``.
         """
         entries = sorted(
             self._entries.values(), key=lambda e: (e.asset, e.timeframe, e.year)
         )
         write_manifest(entries, root=self._root)
-
-    # ── coverage queries ────────────────────────────────────────────
 
     def has_coverage(
         self,
@@ -345,9 +251,12 @@ class StoneTabletsRegistry:
         timeframe: str = NATIVE_TIMEFRAME,
         exchange_id: str = "coinbase",
     ) -> bool:
-        """True when the registry has continuous 5m candles across
-        the [since, until] window for the (asset, exchange). Rollup
-        happens at read time regardless of the requested timeframe."""
+        """True when ``_assets`` spans every year of the window and
+        ``_native_ts_bounds`` encloses it; interior gaps are not checked, so
+        ``missing_ranges`` still reports holes ``has_coverage`` accepts.
+
+        ``timeframe`` is not read here.
+        """
         with self._lock:
             asset_u = asset.upper()
             years = self._assets.get((asset_u, exchange_id), set())
@@ -368,9 +277,6 @@ class StoneTabletsRegistry:
         asset_u: str,
         exchange_id: str,
     ) -> tuple[Optional[int], Optional[int]]:
-        # v3.24.23 — reads MANIFEST metadata, never candle bodies.
-        # first_ts_ms / last_ts_ms are stored per row, so this answers
-        # from the index without touching disk.
         first: Optional[int] = None
         last: Optional[int] = None
         for key in self._keys_for(asset_u, exchange_id):
@@ -390,8 +296,8 @@ class StoneTabletsRegistry:
         timeframe: str = NATIVE_TIMEFRAME,
         exchange_id: str = "coinbase",
     ) -> list[tuple[int, int]]:
-        """Return list of [start_ms, end_ms] gaps in the requested
-        window at 5m granularity. Empty list = fully covered."""
+        """Return the ``[start_ms, end_ms]`` gaps in the window, stepped at
+        ``NATIVE_TIMEFRAME``. An empty list means every step is covered."""
         with self._lock:
             asset_u = asset.upper()
             step_ms = _TF_SECONDS[NATIVE_TIMEFRAME] * 1000
@@ -420,8 +326,6 @@ class StoneTabletsRegistry:
         asset_u: str,
         exchange_id: str,
     ) -> set[int]:
-        # v3.24.23 — genuinely needs candle bodies, so it loads them
-        # on demand rather than relying on an eager whole-archive load.
         out: set[int] = set()
         for key in self._keys_for(asset_u, exchange_id):
             tab = self._tablet(key)
@@ -431,8 +335,6 @@ class StoneTabletsRegistry:
                 out.add(int(row[0]))
         return out
 
-    # ── read ────────────────────────────────────────────────────────
-
     def get_candles(
         self,
         asset: str,
@@ -441,9 +343,11 @@ class StoneTabletsRegistry:
         timeframe: str = NATIVE_TIMEFRAME,
         exchange_id: str = "coinbase",
     ) -> list[list[float]]:
-        """Return chronological candles [[ts, o, h, l, c, v], ...]
-        within the window at the requested timeframe. Native (5m)
-        reads slice directly; higher TFs are rolled up on the fly."""
+        """Return chronological ``[ts, o, h, l, c, v]`` rows inside the window.
+
+        ``NATIVE_TIMEFRAME`` returns ``_native_slice`` unchanged; any other
+        ``timeframe`` goes through ``_rollup``.
+        """
         if timeframe not in _TF_SECONDS:
             raise ValueError(
                 f"unsupported timeframe {timeframe!r}; "
@@ -465,7 +369,6 @@ class StoneTabletsRegistry:
         since_ms: int,
         until_ms: int,
     ) -> list[list[float]]:
-        # v3.24.23 — body read; loads on demand.
         out: list[list[float]] = []
         for key in self._keys_for(asset_u, exchange_id):
             tab = self._tablet(key)
@@ -478,8 +381,6 @@ class StoneTabletsRegistry:
         out.sort(key=lambda r: r[0])
         return out
 
-    # ── ingest ──────────────────────────────────────────────────────
-
     def ingest_candles(
         self,
         asset: str,
@@ -488,10 +389,12 @@ class StoneTabletsRegistry:
         source: str,
         exchange_id: str = "coinbase",
     ) -> int:
-        """Append candles into the appropriate
-        (asset, exchange, tf, year) tablet(s), dedupe by ts, persist
-        to disk, update MANIFEST. Returns count of NEW candles
-        written."""
+        """Append ``rows`` into the matching year tablets, dropping timestamps
+        already present, then call ``write_tablet`` and ``_persist_manifest``.
+
+        Returns the number of candles added and raises unless ``timeframe`` is
+        ``NATIVE_TIMEFRAME``.
+        """
         if timeframe != NATIVE_TIMEFRAME:
             raise ValueError(
                 f"ingest requires native timeframe {NATIVE_TIMEFRAME!r}; "
@@ -512,9 +415,6 @@ class StoneTabletsRegistry:
             fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             for year, year_rows in by_year.items():
                 key = (asset_u, exchange_id, timeframe, year)
-                # v3.24.23 — _tablet() loads the body on demand. A brand
-                # new (asset, year) has no manifest row, so this returns
-                # None and we create the tablet, exactly as before.
                 tab = self._tablet(key)
                 if tab is None:
                     tab = Tablet(
@@ -536,11 +436,7 @@ class StoneTabletsRegistry:
                 tab.fetched_at = fetched_at
                 self._tablets[key] = tab
                 self._touch(key)
-                # Refresh ONLY this row's manifest entry. This is the
-                # single checksum recomputation per ingest; previously
-                # _persist_manifest re-checksummed all 406 tablets on
-                # every 350-candle chunk (7.46 s each, ~103 chunks per
-                # asset for a YTD fill).
+                # entry_from_tablet recomputes the checksum for this row alone.
                 self._entries[key] = entry_from_tablet(tab)
                 self._assets.setdefault((asset_u, exchange_id), set()).add(year)
                 write_tablet(tab, root=self._root)
@@ -550,14 +446,10 @@ class StoneTabletsRegistry:
                 self._evict_if_needed()
             return appended_total
 
-    # ── summary / diagnostics ───────────────────────────────────────
-
     def coverage_summary(self) -> list[CoverageSummary]:
+        """Return one ``CoverageSummary`` per (asset, exchange) pair in
+        ``_assets``, totalled from ``_entries`` without loading a body."""
         with self._lock:
-            # v3.24.23 — answered entirely from MANIFEST metadata.
-            # candle_count is stored per row; summing it over the live
-            # manifest reproduces the archive total (7,230,993) exactly,
-            # so no candle body is needed here.
             out: list[CoverageSummary] = []
             for asset_u, eid in sorted(self._assets.keys()):
                 first, last = self._native_ts_bounds(asset_u, eid)
@@ -577,30 +469,25 @@ class StoneTabletsRegistry:
                 )
             return out
 
-    # ── v3.24.6 — availability metadata + window check ─────────────
-
     def get_asset_availability(
         self,
         asset: str,
         exchange_id: str = "coinbase",
     ) -> Optional[AvailabilityInfo]:
-        """Return the platform-level availability flag block for
-        this (asset, exchange). None when no tablets exist for the
-        pair. Consumers use this to emit the operator's requested
-        listing notice."""
+        """Return the ``AvailabilityInfo`` for this (asset, exchange) pair,
+        folded from every ``_entries`` row the pair owns.
+
+        None when ``_assets`` holds no entry for the pair.
+        """
         with self._lock:
             asset_u = asset.upper()
             key = (asset_u, exchange_id)
             if key not in self._assets:
                 return None
-            # v3.24.23 — metadata only. MANIFEST rows carry
-            # listed_at_ms, last_ts_ms and candle_count directly.
             keys = self._keys_for(asset_u, exchange_id)
             if not keys:
                 return None
             rows = [self._entries[k] for k in keys]
-            # listed_at_ms = min first_ts across all year-tablets for
-            # the (asset, exchange). Zero-guard for empty tablets.
             listed = min(
                 (int(r.listed_at_ms) for r in rows if int(r.listed_at_ms) > 0),
                 default=0,
@@ -627,17 +514,12 @@ class StoneTabletsRegistry:
         stale_threshold_ms: int = 86_400_000,
         listing_tolerance_ms: int = 86_400_000,
     ) -> str:
-        """Return a ``WindowStatus`` string classifying how well the
-        tablets cover the requested [since_ms, until_ms] window.
+        """Return the ``WindowStatus`` for how ``get_asset_availability``
+        covers [``since_ms``, ``until_ms``].
 
-        stale_threshold_ms (default 24h) — a tablet ending within
-        this window of until_ms is still considered fresh; older
-        than that = STALE.
-        listing_tolerance_ms (default 24h) — an asset listed within
-        24h of since_ms still counts as FULL. Losing <288 candles
-        of a 35k-candle YTD (=0.8%) is not meaningful "lateness."
-        Assets flagged LATE_LISTING are the ones a backtest would
-        truly miss significant history for.
+        ``stale_threshold_ms`` bounds how far ``last_ts_ms`` may trail
+        ``until_ms``, and ``listing_tolerance_ms`` bounds how far
+        ``listed_at_ms`` may follow ``since_ms``.
         """
         avail = self.get_asset_availability(asset, exchange_id)
         if avail is None or avail.total_candles == 0:
@@ -660,9 +542,11 @@ class StoneTabletsRegistry:
         threshold_days: int = 2,
         exchange_id: Optional[str] = None,
     ) -> list[str]:
-        """Assets whose latest candle is older than threshold_days.
-        If exchange_id is given, restrict to that exchange; else
-        report any asset stale on any exchange."""
+        """Return the assets whose ``_native_ts_bounds`` end more than
+        ``threshold_days`` before ``now_ms``.
+
+        ``exchange_id`` restricts the scan to one exchange when given.
+        """
         _now = (
             now_ms
             if now_ms is not None
@@ -680,19 +564,15 @@ class StoneTabletsRegistry:
             return sorted(out)
 
 
-# --------------------------------------------------------------------- #
-# 5m → higher-TF rollup                                                 #
-# --------------------------------------------------------------------- #
-
-
 def _rollup(
     native_rows: list[list[float]],
     factor: int,
     bucket_ms: int,
 ) -> list[list[float]]:
-    """Deterministic OHLCV rollup. Groups by (ts // bucket_ms) so
-    incomplete tail buckets are still emitted (with whatever 5m
-    candles landed in them). Order preserved.
+    """Group ``native_rows`` into ``bucket_ms`` buckets and emit one OHLCV row
+    per bucket, ordered by bucket start.
+
+    A partial trailing bucket is emitted with the rows it holds.
     """
     if factor <= 1 or not native_rows:
         return list(native_rows)
@@ -713,10 +593,6 @@ def _rollup(
     return out
 
 
-# --------------------------------------------------------------------- #
-# Singleton                                                             #
-# --------------------------------------------------------------------- #
-
 _REGISTRY: Optional[StoneTabletsRegistry] = None
 _REGISTRY_LOCK = threading.Lock()
 
@@ -731,7 +607,7 @@ def get_registry() -> StoneTabletsRegistry:
 
 
 def reset_registry_for_tests() -> None:
-    """Test-only helper. Never call from production code."""
+    """Clear ``_REGISTRY``; the next ``get_registry`` call builds a new one."""
     global _REGISTRY
     with _REGISTRY_LOCK:
         _REGISTRY = None

@@ -1,0 +1,435 @@
+// The History tab's chrome and controls, as the Python surface serves them.
+//
+// The ROWS are not drawn here. `history_panel.js` is the one table
+// renderer, and this module hands it the columns and page off the same
+// payload, with the panel's own chrome turned off. Drawing a second
+// table here would be the second implementation of History that the
+// Python contract exists to prevent.
+(function (global) {
+  "use strict";
+
+  var METHOD = "history_tab.chrome";
+  var PANEL_CHROME = { summary: false, filters: false, pager: false };
+
+  var ACCESSIBLE_NAME = "accessible_name";
+  var ACTIONS = "actions";
+  var BUTTONS = "buttons";
+  var COLUMNS = "columns";
+  var EXPORT = "export";
+  var FILTERS = "filters";
+  var FILTER_GROUP_TITLE = "filter_group_title";
+  var LOADED = "loaded";
+  var PAGE = "page";
+  var PAGER = "pager";
+  var PROGRESS = "progress";
+  var SUMMARY = "summary";
+  var TITLE = "title";
+  var WIDGETS = "widgets";
+
+  var DECLARED_FIELDS = [
+    ACCESSIBLE_NAME,
+    ACTIONS,
+    BUTTONS,
+    COLUMNS,
+    EXPORT,
+    FILTERS,
+    FILTER_GROUP_TITLE,
+    LOADED,
+    PAGE,
+    PAGER,
+    PROGRESS,
+    SUMMARY,
+    TITLE,
+    WIDGETS
+  ];
+
+  var COMBOS = "combos";
+  var ENABLED = "enabled";
+  var KEY = "key";
+  var LABEL = "label";
+  var OPTIONS = "options";
+  var ROWS = "rows";
+  var STYLE_SHEET = "style_sheet";
+  var TEXT = "text";
+  var TOOLTIP = "tooltip";
+  var VALUE = "value";
+  var VISIBLE = "visible";
+
+  var MISSING_FAULT = "missing";
+  var NULL_FAULT = "null";
+  var NO_BRIDGE = "no bridge: window.acervator.call is not a function";
+  var NO_PANEL = "no table renderer: window.acervatorSetState is not a function";
+
+  // The keys whose value the surface answers without touching an
+  // exchange or a file. The other two need the host.
+  var BRIDGED = ["apply", "reset", "prev", "next"];
+
+  var SEMICOLON = ";";
+  var COLON = ":";
+  var QT_ONLY = "q";
+
+  var TAB_CLASS = "acervator-history-tab";
+  var FILTERS_CLASS = "acervator-history-filters";
+  var SUMMARY_CLASS = "acervator-history-summary";
+  var TABLE_CLASS = "acervator-history-table";
+  var FOOTER_CLASS = "acervator-history-footer";
+  var TABLE_MOUNT_ID = "history-tab-table";
+
+  var h = global.React ? global.React.createElement : null;
+
+  var model = null;
+  var modelFaults = [];
+  var loadFault = null;
+  var asked = null;
+
+  function isPlainObject(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function owns(bag, name) {
+    return Object.prototype.hasOwnProperty.call(bag, name);
+  }
+
+  function objectField(bag, field) {
+    return isPlainObject(bag) && isPlainObject(bag[field]) ? bag[field] : {};
+  }
+
+  function listField(bag, field) {
+    return isPlainObject(bag) && Array.isArray(bag[field]) ? bag[field] : [];
+  }
+
+  function fault(where, field, why) {
+    return { where: where, field: field, why: why };
+  }
+
+  function checkDeclared(state) {
+    modelFaults = [];
+    if (!isPlainObject(state)) {
+      modelFaults.push(fault(null, null, MISSING_FAULT));
+      return;
+    }
+    DECLARED_FIELDS.forEach(function (field) {
+      if (!owns(state, field)) {
+        modelFaults.push(fault(null, field, MISSING_FAULT));
+        return;
+      }
+      if (state[field] === null) {
+        modelFaults.push(fault(null, field, NULL_FAULT));
+      }
+    });
+  }
+
+  // A Qt style sheet as a React style object. A value Qt alone
+  // understands is dropped rather than handed to the browser.
+  function declarations(sheet) {
+    var found = [];
+    if (typeof sheet !== "string") {
+      return found;
+    }
+    sheet.split(SEMICOLON).forEach(function (one) {
+      var parts = one.split(COLON);
+      var property = String(parts.shift()).trim();
+      var value = parts.join(COLON).trim();
+      if (property && value) {
+        found.push({ property: property, value: value });
+      }
+    });
+    return found;
+  }
+
+  function camelCase(property) {
+    return property.replace(/-([a-z])/g, function (all, letter) {
+      return letter.toUpperCase();
+    });
+  }
+
+  function styleOf(sheet) {
+    var style = {};
+    declarations(sheet).forEach(function (one) {
+      if (one.value.slice(0, 1).toLowerCase() === QT_ONLY) {
+        return;
+      }
+      style[camelCase(one.property)] = one.value;
+    });
+    return style;
+  }
+
+  // -- the pieces -------------------------------------------------------
+
+  function Combo(props) {
+    var combo = props.combo;
+    return h(
+      "label",
+      { key: combo[KEY], className: "combo", "data-key": combo[KEY] },
+      combo[LABEL],
+      h(
+        "select",
+        {
+          id: "history-" + combo[KEY],
+          value: combo[VALUE],
+          onChange: function (event) {
+            props.onFilter(combo[KEY], event.target.value);
+          }
+        },
+        (combo[OPTIONS] || []).map(function (option) {
+          return h("option", { key: option, value: option }, option);
+        })
+      )
+    );
+  }
+
+  function DateBound(props) {
+    var bound = props.bound;
+    return h(
+      "label",
+      { className: "date", "data-key": props.name },
+      bound[LABEL],
+      h("input", {
+        id: "history-" + props.name,
+        type: "text",
+        readOnly: true,
+        title: bound[TOOLTIP],
+        value: String(bound.seconds)
+      })
+    );
+  }
+
+  function Button(props) {
+    var button = props.button;
+    return h(
+      "button",
+      {
+        key: button[KEY],
+        id: "history-" + button[KEY],
+        disabled: !button[ENABLED],
+        title: button[TOOLTIP],
+        onClick: function () {
+          props.onAct(button[KEY]);
+        }
+      },
+      button[TEXT]
+    );
+  }
+
+  function FilterBar(props) {
+    var filters = objectField(props.state, FILTERS);
+    return h(
+      "fieldset",
+      { className: FILTERS_CLASS },
+      h("legend", null, props.state[FILTER_GROUP_TITLE]),
+      h(DateBound, { key: "from", name: "from", bound: objectField(filters, "from") }),
+      h(DateBound, { key: "to", name: "to", bound: objectField(filters, "to") }),
+      listField(filters, COMBOS).map(function (combo) {
+        return h(Combo, { key: combo[KEY], combo: combo, onFilter: props.onFilter });
+      }),
+      props.buttons.filter(inBar).map(function (button) {
+        return h(Button, { key: button[KEY], button: button, onAct: props.onAct });
+      })
+    );
+  }
+
+  function inBar(button) {
+    return ["apply", "reset", "refresh"].indexOf(button[KEY]) !== -1;
+  }
+
+  function inFooter(button) {
+    return !inBar(button);
+  }
+
+  function Summary(props) {
+    var summary = objectField(props.state, SUMMARY);
+    return h(
+      "div",
+      {
+        id: "history-summary",
+        className: SUMMARY_CLASS,
+        style: styleOf(summary[STYLE_SHEET])
+      },
+      summary[TEXT]
+    );
+  }
+
+  function Footer(props) {
+    var pager = objectField(props.state, PAGER);
+    var progress = objectField(props.state, PROGRESS);
+    var ordered = ["prev", "next", "export"];
+    var buttons = props.buttons.filter(inFooter).sort(function (left, right) {
+      return ordered.indexOf(left[KEY]) - ordered.indexOf(right[KEY]);
+    });
+    return h(
+      "div",
+      { className: FOOTER_CLASS },
+      h(Button, { key: "prev", button: buttons[0], onAct: props.onAct }),
+      h("span", { id: "history-page-label" }, pager[LABEL]),
+      h(Button, { key: "next", button: buttons[1], onAct: props.onAct }),
+      progress[VISIBLE]
+        ? h("progress", { id: "history-progress" })
+        : null,
+      h(Button, { key: "export", button: buttons[2], onAct: props.onAct })
+    );
+  }
+
+  function Tab(props) {
+    var state = props.state;
+    var buttons = listField(state, BUTTONS);
+    return h(
+      "section",
+      { className: TAB_CLASS, "aria-label": state[ACCESSIBLE_NAME] },
+      h(FilterBar, {
+        state: state,
+        buttons: buttons,
+        onFilter: props.onFilter,
+        onAct: props.onAct
+      }),
+      h(Summary, { state: state }),
+      h("div", { id: TABLE_MOUNT_ID, className: TABLE_CLASS }),
+      h(Footer, { state: state, buttons: buttons, onAct: props.onAct })
+    );
+  }
+
+  // -- the table, drawn by the one renderer that draws tables ------------
+
+  function pushRows(state) {
+    if (typeof global.acervatorSetState !== "function") {
+      loadFault = NO_PANEL;
+      return false;
+    }
+    global.acervatorSetState({
+      columns: listField(state, COLUMNS),
+      page: objectField(state, PAGE),
+      summary: objectField(state, SUMMARY)[TEXT],
+      filters: objectField(objectField(state, FILTERS), "values"),
+      filter_options: {},
+      loaded: state[LOADED],
+      chrome: PANEL_CHROME
+    });
+    return true;
+  }
+
+  // -- the bridge -------------------------------------------------------
+
+  function call(params) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve(null);
+    }
+    return global.acervator
+      .call(METHOD, isPlainObject(params) ? params : {})
+      .then(function (next) {
+        loadFault = null;
+        setTab(next);
+        return next;
+      })
+      .catch(function (err) {
+        loadFault = err.message;
+        return null;
+      });
+  }
+
+  function loadTab(params) {
+    if (asked !== null) {
+      return asked;
+    }
+    asked = call(params).then(function (next) {
+      if (next === null) {
+        asked = null;
+      }
+      return next;
+    });
+    return asked;
+  }
+
+  function setTab(next) {
+    model = next;
+    checkDeclared(next);
+    return model;
+  }
+
+  function bridgedAction(key) {
+    return BRIDGED.indexOf(key) !== -1;
+  }
+
+  function forget() {
+    model = null;
+    modelFaults = [];
+    loadFault = null;
+    asked = null;
+  }
+
+  function renderTab(node, params) {
+    if (h === null || model === null) {
+      return null;
+    }
+    var pager = objectField(model, PAGER);
+    var held = isPlainObject(params) ? params : {};
+
+    function onAct(key) {
+      if (!bridgedAction(key)) {
+        return null;
+      }
+      var next = { page: pager[PAGE] };
+      if (key === "prev") {
+        next.page = pager[PAGE] - 1;
+      } else if (key === "next") {
+        next.page = pager[PAGE] + 1;
+      } else if (key === "reset") {
+        next.filters = {};
+        next.page = 0;
+      } else {
+        next.filters = held.filters || {};
+        next.page = 0;
+      }
+      next.trades = held.trades || [];
+      return call(next);
+    }
+
+    function onFilter(key, value) {
+      held.filters = held.filters || {};
+      held.filters[key] = value;
+      return onAct("apply");
+    }
+
+    var root = global.ReactDOM.createRoot(node);
+    root.render(h(Tab, { state: model, onFilter: onFilter, onAct: onAct }));
+    pushRows(model);
+    return root;
+  }
+
+  global.acervatorHistoryTab = {
+    method: METHOD,
+    panelChrome: PANEL_CHROME,
+    Tab: Tab,
+    FilterBar: FilterBar,
+    Summary: Summary,
+    Footer: Footer,
+    Button: Button,
+    Combo: Combo,
+    DateBound: DateBound,
+    declaredFields: function () {
+      return DECLARED_FIELDS.slice();
+    },
+    bridgedActions: function () {
+      return BRIDGED.slice();
+    },
+    isBridged: bridgedAction,
+    declarations: declarations,
+    styleOf: styleOf,
+    setTab: setTab,
+    loadTab: loadTab,
+    renderTab: renderTab,
+    pushRows: pushRows,
+    state: function () {
+      return model;
+    },
+    faults: function () {
+      return modelFaults.slice();
+    },
+    loadError: function () {
+      return loadFault;
+    },
+    isLoaded: function () {
+      return model !== null && modelFaults.length === 0;
+    },
+    forget: forget
+  };
+})(window);

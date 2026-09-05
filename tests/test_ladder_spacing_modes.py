@@ -68,9 +68,7 @@ def _gaps(distances: list[float]) -> list[float]:
     return out
 
 
-# ---------------------------------------------------------------------------
 # The default, and the operator's table
-# ---------------------------------------------------------------------------
 
 
 class TestQuadraticIsTheDefault:
@@ -146,9 +144,7 @@ class TestQuadraticIsQuadraticNotMerelyRising:
         assert second != pytest.approx([2.0] * len(second), rel=1e-9)
 
 
-# ---------------------------------------------------------------------------
 # The initial gap is configurable
-# ---------------------------------------------------------------------------
 
 
 class TestInitialGapIsConfigurable:
@@ -183,9 +179,7 @@ class TestInitialGapIsConfigurable:
         )
 
 
-# ---------------------------------------------------------------------------
 # Each mode's own stated sequence
-# ---------------------------------------------------------------------------
 
 
 class TestEachModeHasItsOwnSequence:
@@ -242,9 +236,7 @@ class TestEachModeHasItsOwnSequence:
             assert offs == pytest.approx([m * 3.0 for m in mult], rel=1e-12)
 
 
-# ---------------------------------------------------------------------------
 # Fibonacci is measured from the last candle close
-# ---------------------------------------------------------------------------
 
 
 class TestFibonacciMovesWithTheCandleClose:
@@ -287,9 +279,7 @@ class TestFibonacciMovesWithTheCandleClose:
             assert len(scrum_ladder_prices(100.0, 4, 1.0, mode)) == 4
 
 
-# ---------------------------------------------------------------------------
 # The BB constraint
-# ---------------------------------------------------------------------------
 
 
 class TestLevelOneMustSitInsideTheBand:
@@ -360,9 +350,7 @@ class TestLevelOneMustSitInsideTheBand:
             )
 
 
-# ---------------------------------------------------------------------------
 # Both sides, mirrored
-# ---------------------------------------------------------------------------
 
 
 class TestBothSidesAreMirrored:
@@ -439,9 +427,7 @@ class TestBothSidesAreMirrored:
         assert prices[-1] == pytest.approx(19.0, rel=1e-12)
 
 
-# ---------------------------------------------------------------------------
 # What counts as a number
-# ---------------------------------------------------------------------------
 
 
 class TestNumericAdmission:
@@ -491,9 +477,7 @@ class TestNumericAdmission:
         )
 
 
-# ---------------------------------------------------------------------------
 # Rule 2 — sweep the numeric domain rather than hand-writing rows
-# ---------------------------------------------------------------------------
 
 
 def _fib_reference(levels: int) -> list[float]:

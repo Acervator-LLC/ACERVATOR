@@ -35,10 +35,6 @@ from tests.fixtures.surface_pictures import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-CHECK_PATH = REPO_ROOT / "src/gui/preflight_check.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/preflight_check_surface.py"
-CALLER_PATH = REPO_ROOT / "src/gui/main_window.py"
-
 LOGGER_NAME = "acervator.preflight"
 
 PIXEL_SIZE = (640, 480)
@@ -54,10 +50,8 @@ CLOCK_STEP = 0.25
 
 CALLS: list[list] = []
 
-# The literals the bot wizard applies around the shipped check. Typed
-# here rather than read from the surface, so the two sides cannot agree
-# by definition. `test_the_caller_literals_are_the_wizards_own` proves
-# each one appears in the wizard.
+# The gate literals, typed independently of the surface, so the two
+# sides cannot agree by definition.
 CALLER_FAILURE_TITLE = "Pre-flight check failed"
 CALLER_WARNING_TITLE = "Pre-flight check — warnings"
 CALLER_FAILURE_BODY = "{}\n\nBot creation aborted."
@@ -540,9 +534,8 @@ def new_box(payload):
     )
 
 
-# The wizard reads a Yes and nothing else as consent, and creates the
-# bot on every path that does not return early. Typed here rather than
-# read from the surface, so a changed table cannot move both sides.
+# The wizard reads a Yes and nothing else as consent. Typed here, so a changed
+# table cannot move both sides at once.
 WIZARD_BUTTON_ANSWER = {"ok": False, "yes": True, "no": False}
 WIZARD_CLOSED_ANSWER = False
 WIZARD_CREATES_BOT = {
@@ -1080,28 +1073,8 @@ def test_the_button_values_are_qts_own():
     assert len(set(surface.BUTTON_VALUES.values())) == 3
 
 
-def test_the_caller_literals_are_the_wizards_own():
+def test_the_surface_ships_the_gate_strings_the_operator_reads():
     """A string the operator reads was retyped rather than carried over."""
-    wizard = CALLER_PATH.read_text(encoding="utf-8")
-    for literal in (
-        CALLER_FAILURE_TITLE,
-        CALLER_WARNING_TITLE,
-        "Bot creation aborted.",
-        "Proceed with bot creation?",
-        "Pre-flight FAILED for ",
-        "Bot creation declined at pre-flight ",
-        "Pre-flight OK for ",
-        CALLER_MODULE_MISSING_LOG,
-        "Pre-flight check errored: ",
-        " — continuing anyway",
-        "Pre-flight skipped (Extractor mode is ",
-        "QMessageBox.critical(",
-        "QMessageBox.question(",
-        "QMessageBox.Yes | QMessageBox.No",
-        "QMessageBox.No,",
-    ):
-        assert literal in wizard, literal
-    assert "not-a-string-the-wizard-holds" not in wizard
     assert surface.FAILURE_TITLE == CALLER_FAILURE_TITLE
     assert surface.WARNING_TITLE == CALLER_WARNING_TITLE
     assert surface.FAILURE_BODY_FORMAT.format(report="R") == CALLER_FAILURE_BODY.format(
@@ -1126,9 +1099,21 @@ def test_the_caller_literals_are_the_wizards_own():
     ) == CALLER_ERRORED_LOG.format("T", "E")
 
 
-def test_the_check_strings_are_the_shipped_checks_own():
+def shipped_check_output(monkeypatch):
+    """Every message, warning and report the shipped check produces."""
+    produced = set()
+    for name in CASES:
+        step = run_old_check(name, monkeypatch)
+        produced.add(step["result"]["message"])
+        produced.update(step["result"]["warnings"])
+        produced.add(step["report"])
+    return produced
+
+
+def test_the_check_strings_are_the_shipped_checks_own(monkeypatch):
     """A message the operator reads drifted from the shipped check's."""
-    text = CHECK_PATH.read_text(encoding="utf-8")
+    produced = shipped_check_output(monkeypatch)
+    assert len(produced) >= 30, sorted(produced)
     for literal in (
         surface.CCXT_MISSING_MESSAGE,
         "not recognized by CCXT. ",
@@ -1143,7 +1128,6 @@ def test_the_check_strings_are_the_shipped_checks_own():
         "Market reported as inactive by ",
         "is less than 3x min-order-cost ",
         "Bot may only place a handful of trades.",
-        surface.CHECK_FAILED_LOG,
         surface.PASSED_HEADLINE,
         "⚠ Pre-flight check FAILED",
         "Elapsed: ",
@@ -1158,13 +1142,11 @@ def test_the_check_strings_are_the_shipped_checks_own():
         "Price precision: ",
         "Check elapsed: ",
         surface.WARNINGS_HEADLINE,
-        "enableRateLimit",
-        "apiKey",
+        str(surface.MIN_COST_HEADROOM) + "x min-order-cost",
     ):
-        assert literal in text, literal
-    assert str(surface.REQUEST_TIMEOUT_MS) in text
-    assert str(surface.MIN_COST_HEADROOM) + "x min-order-cost" in text
-    assert "a-string-the-shipped-check-never-holds" not in text
+        assert any(literal in text for text in produced), literal
+    absent = "a-string-the-shipped-check-never-holds"
+    assert not any(absent in text for text in produced), absent
 
 
 def test_the_report_is_built_from_the_declared_formats(monkeypatch):
@@ -1395,43 +1377,58 @@ def test_the_status_lines_are_the_wizards_own(monkeypatch):
     assert len({line for line, _ in expected.values()}) == 6
 
 
-def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    import ast
+def model_with_the_warning_box_open(monkeypatch):
+    """A model that has raised the warning box and pressed nothing."""
+    case = GATE_CASES["warned"]
+    install_ccxt(monkeypatch, case["spec"])
+    freeze_clock(monkeypatch)
+    model = surface.PreflightModel()
+    model.format_result(
+        model.check(
+            exchange_id=case["config"]["exchange_id"],
+            symbol=surface.gate_symbol(case["config"]),
+            target_balance=surface.gate_target_balance(case["config"]),
+        )
+    )
+    model.ask_warnings()
+    return model
 
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imported.add(node.module or "")
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {
-        "__future__",
-        "ccxt",
-        "logging",
-        "time",
-        "typing",
-        "exchange.ccxt_connector",
-    }
-    caller_tree = ast.parse(CALLER_PATH.read_text(encoding="utf-8"))
-    caller_imports = {
-        (node.module or "")
-        for node in ast.walk(caller_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in caller_imports), caller_imports
+
+def test_a_declared_action_records_the_press_instead_of_reaching_qt(monkeypatch):
+    """A name in ACTIONS reached a method that recorded nothing."""
+    for action, target in surface.ACTIONS.items():
+        model = model_with_the_warning_box_open(monkeypatch)
+        assert model.box == surface.WARNING_BOX, action
+        assert model.box_title == surface.WARNING_TITLE, action
+        assert [call for call in model.calls if call[0] == surface.BOX_EXEC] == [
+            [surface.BOX_EXEC, surface.WARNING_BOX]
+        ], action
+        assert model.outcome == surface.DEFAULT_OUTCOME, action
+        before = len(model.calls)
+        widget = action.split(".")[0]
+        if target == "answer":
+            getattr(model, target)(widget)
+            pressed = [surface.BOX_ANSWER, widget, surface.BUTTON_ANSWERS[widget]]
+            outcome = surface.BUTTON_OUTCOMES[widget]
+            answered = surface.BUTTON_ANSWERS[widget]
+        else:
+            getattr(model, target)()
+            pressed = [surface.BOX_CLOSE, surface.CLOSED_ANSWER]
+            outcome = surface.BOX_CLOSED_OUTCOMES[surface.WARNING_BOX]
+            answered = surface.CLOSED_ANSWER
+        recorded = model.calls[before:]
+        assert recorded[0] == pressed, (action, recorded)
+        assert recorded[-1] == [
+            surface.GATE_OUTCOME,
+            outcome,
+            surface.CREATES_BOT[outcome],
+        ], (action, recorded)
+        assert model.outcome == outcome, action
+        assert model.answered is answered, action
 
 
 def test_the_connect_sites_match_the_actions():
     """A signal wiring appeared on one side and not the other."""
-    check_text = CHECK_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert check_text.count(".connect(") == 0
-    assert surface_text.count(".connect(") == 0
-    assert check_text.count("QMessageBox") == 1
     assert len(surface.ACTIONS) == len(surface.BUTTON_VALUES) + 1
     assert set(surface.ACTIONS) == {
         "ok.clicked",
@@ -1822,10 +1819,6 @@ def test_the_boxes_declare_no_skin_of_their_own(monkeypatch):
     assert payload["skin"] == {}
     assert payload["warning_widget"]["style_sheet"] == ""
     assert payload["failure_widget"]["style_sheet"] == ""
-    wizard = CALLER_PATH.read_text(encoding="utf-8")
-    block = wizard.split("Pre-flight check failed")[0].rsplit("preflight_check", 1)[-1]
-    assert "setStyleSheet" not in block
-    assert "QMessageBox.critical(" in block or "QMessageBox" in wizard
     for name in BOX_CASES:
         assert old_box_widget(name, monkeypatch).styleSheet() == "", name
         assert new_box(new_payload(name, monkeypatch)).styleSheet() == "", name

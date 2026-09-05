@@ -15,9 +15,8 @@ from .. import design_system as ds
 class PositionsHeldTabMixin:
     """One row per open ExtractorPosition."""
 
-    # Supplied by BotLiveSettingsDialog at runtime; declared so a
-    # type checker can resolve them. Annotations only: no attribute
-    # is created and the runtime base stays `object`.
+    # Supplied by BotLiveSettingsDialog at runtime; annotation only, so
+    # no attribute is created here.
     _bm: Any
     _bot: Any
     _configure_form: Callable[..., Any]
@@ -268,9 +267,8 @@ class PositionsHeldTabMixin:
                         )
                         return
 
-                    # Non-blocking dispatch. The bot.log subscription on
-                    # the main window surfaces the completion or the
-                    # refusal line.
+                    # Non-blocking: the completion or refusal line arrives
+                    # later on the main window's bot.log subscription.
                     QMessageBox.information(
                         self,
                         "Manual Fire dispatched",

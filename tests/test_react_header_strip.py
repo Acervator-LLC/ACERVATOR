@@ -381,9 +381,8 @@ def as_css(value: Any) -> set:
     return {printed, printed + "px"}
 
 
-#: The payload paths whose values skin or fill the strip. A colour, a
-#: size, a money text or a whole style sheet copied into the module from
-#: any of these would be a second source of truth.
+#: The payload paths whose values skin or fill the strip. A value copied
+#: from one into the module would be a second source of truth.
 SKIN_FIELDS = (
     "style_sheet",
     "label_style",
@@ -485,11 +484,8 @@ TOKEN_VALUES = token_values()
 PUBLISHED_STRINGS = published_strings()
 MODULE_LITERALS = js_literals(MODULE_SOURCE)
 
-#: The surface's own vocabulary the module writes as a text literal:
-#: field names, the slot names of ``top_row_order`` and the two compound
-#: alignment words. Every one is a NAME. None is a colour, a size or a
-#: text the strip shows. The single-word alignment and cursor names are
-#: object keys rather than text, so the literal scan does not see them.
+#: Names the module may write as a literal: field names, the slots of
+#: ``top_row_order`` and the two compound alignment words.
 NAMED_WORDS = sorted(
     {
         "actions",

@@ -19,21 +19,16 @@ logger = logging.getLogger("acervator.gui")
 class MarketInspectorTabMixin:
     """Per-bot view of the shared analyzer's most recent scan."""
 
-    # Supplied by BotLiveSettingsDialog at runtime; declared so a
-    # type checker can resolve them. Annotations only: no attribute
-    # is created and the runtime base stays `object`.
+    # Supplied by BotLiveSettingsDialog at runtime; annotation only, so
+    # no attribute is created here.
     _bot: Any
 
-    # ---------------------------------------------------------------
-    # Tab 5: Market Inspector (v3.23.37, scrumming-only)
-    # ---------------------------------------------------------------
-    # Delegates to src.gui.market_inspector.build_per_bot_view, which
-    # reads the shared analyzer's most recent scan (populated by the
-    # top-level Market Inspector tab's Refresh button). Renders this
-    # bot's asset card, higher-scoring markets, and opposing pairs.
-    # Replaces the retired Mr. Inspector tab (was a phantom for
-    # crypto bots — no caller wired ScrummingBot._mr_inspector).
     def _create_market_inspector_tab(self) -> QWidget:
+        """Render this bot's card from the shared analyzer's most recent scan.
+
+        ``build_per_bot_view`` reads the scan the top-level Market Inspector
+        tab's Refresh button populates.
+        """
         try:
             from ..market_inspector import build_per_bot_view
 

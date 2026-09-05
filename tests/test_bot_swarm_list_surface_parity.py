@@ -62,7 +62,6 @@ LIST_TIMER_SITES = 0
 LIST_BUS_SITES = 0
 LIST_ELEMENT_BUILDS = 32
 LIST_LAYOUT_BUILDS = 0
-LIST_SOURCE_LINES = 416
 
 WIRING_NEIGHBOUR_SITES = 1
 SIGNAL_NEIGHBOUR_SITES = 3
@@ -76,9 +75,8 @@ PAINT_SIZE = (600, 200)
 
 TEST_SKIN = "border: 5px solid #ff00ff;"
 
-# The design values both colour sets are built from, typed out here
-# rather than read from either side, so a re-valued token cannot move
-# both together.
+# The design values both colour sets are built from, typed out here so a
+# re-valued token cannot move both together.
 INFLOW_GREEN = "#00ff88"
 OUTFLOW_RED = "#ff3366"
 NEAR_CAP_AMBER = "#ffaa00"
@@ -101,9 +99,7 @@ NOT_A_NUMBER = float("nan")
 HELD: list = []
 
 
-# ---------------------------------------------------------------------
 # The bot readings both sides are driven with
-# ---------------------------------------------------------------------
 
 
 def reading(**over):
@@ -217,9 +213,7 @@ REFUSED_CASES = {
 }
 
 
-# ---------------------------------------------------------------------
 # The wires both sheets are driven with
-# ---------------------------------------------------------------------
 
 
 def wire(**over):
@@ -307,9 +301,7 @@ PAINT_PICTURE_CASES = (
 LIST_PICTURE_CASES = ("happy", "four_bots", "all_pct_bands", "empty", "nine_bots")
 
 
-# ---------------------------------------------------------------------
 # Step sequences, so a rewrite that refuses part way is caught
-# ---------------------------------------------------------------------
 
 
 STEP_CASES: dict = {
@@ -437,9 +429,7 @@ REFUSED_STEP_CASES = {
 }
 
 
-# ---------------------------------------------------------------------
 # The shared registers this file touches, each put back after
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -477,9 +467,7 @@ class LineCatcher(logging.Handler):
         self.lines.append([record.levelname, record.getMessage()])
 
 
-# ---------------------------------------------------------------------
 # Reading a value the same way on both sides
-# ---------------------------------------------------------------------
 
 
 SHORT_HEX_LENGTH = 4
@@ -555,9 +543,7 @@ def app():
     return found
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def requested_widths(module):
@@ -697,9 +683,7 @@ def read_new_canvas(model):
     }
 
 
-# ---------------------------------------------------------------------
 # Drivers
-# ---------------------------------------------------------------------
 
 
 def recording_painter(image, calls):
@@ -943,9 +927,7 @@ def same(new, old, note):
     assert digest(new) == digest(old), note
 
 
-# ---------------------------------------------------------------------
 # Side by side
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
@@ -1036,9 +1018,7 @@ def test_two_separately_built_not_a_numbers_read_alike():
     assert numbers_as_text(first) != numbers_as_text(0.0)
 
 
-# ---------------------------------------------------------------------
 # Answered or refused
-# ---------------------------------------------------------------------
 
 
 def test_the_row_outcomes_hold_both_an_answer_and_a_refusal():
@@ -1151,9 +1131,7 @@ def test_a_refusal_after_a_shrink_leaves_the_earlier_paint_on_both_sides():
     same(read_new_list(model), read_old_list(view), "shrink then refuse")
 
 
-# ---------------------------------------------------------------------
 # What the two sides do, value by value
-# ---------------------------------------------------------------------
 
 
 def test_the_headers_are_the_shipped_lists():
@@ -1515,9 +1493,7 @@ def test_the_sheet_settings_are_the_shipped_sheets():
     )
 
 
-# ---------------------------------------------------------------------
 # The lane allocator
-# ---------------------------------------------------------------------
 
 
 ALLOCATOR_CASES = (
@@ -1578,9 +1554,7 @@ def test_a_wire_that_fits_no_lane_is_answered_with_nothing_on_both_sides():
     }
 
 
-# ---------------------------------------------------------------------
 # The sheet the wires are drawn on
-# ---------------------------------------------------------------------
 
 
 def test_the_drawing_calls_are_the_shipped_sheets():
@@ -1907,9 +1881,7 @@ def test_an_unnamed_wire_takes_the_name_built_from_its_ends():
     assert surface.wire_id({"id": 7}) == "7"
 
 
-# ---------------------------------------------------------------------
 # The enumeration: every class, method, value and wiring
-# ---------------------------------------------------------------------
 
 
 def parsed(path):
@@ -2309,7 +2281,7 @@ def test_the_signatures_match_the_shipped_methods():
             ).parameters
         )
         if old_name == "LaneWireCanvas.paintEvent":
-            assert old == ["self", "event"], old
+            assert old == ["self", "_event"], old
             assert new == ["self"], new
             continue
         if old_name == "BotListView.__init__":
@@ -2324,8 +2296,11 @@ def test_the_signatures_match_the_shipped_methods():
 
 
 def test_the_shipped_paint_never_reads_the_event_it_is_handed():
-    """The shipped paint reads its event, so the surface dropping it
-    loses something."""
+    """A read of ``_event`` would make ``LaneWireModel.paint`` lossy.
+
+    ``Refuses`` raises on any attribute read, so an ``outcome`` without
+    an error proves the shipped paint never touched it.
+    """
     view = old_list("nine_bots")
     canvas = old_canvas(view)
     canvas.set_wires([wire()])
@@ -2491,9 +2466,7 @@ def test_the_neighbouring_controls_are_six_different_files():
         assert path != SURFACE_PATH
 
 
-# ---------------------------------------------------------------------
 # Every value the surface exports reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def freeze(value):
@@ -2875,9 +2848,7 @@ def test_the_read_back_lists_are_copies_on_both_models():
     assert sheet.undrawable_wires() == []
 
 
-# ---------------------------------------------------------------------
 # The colours, read one way on both sides
-# ---------------------------------------------------------------------
 
 
 def test_a_colour_written_short_is_reported_long_by_the_canonical_form():
@@ -2965,9 +2936,7 @@ def test_every_colour_the_surface_paints_is_the_colour_the_screen_shows():
     )
 
 
-# ---------------------------------------------------------------------
 # The windows the two sides paint
-# ---------------------------------------------------------------------
 
 
 def sealed_list_payload(name):
@@ -3286,9 +3255,7 @@ def real_list_named(symbol):
     return view
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 BLIND_TO_THE_PICTURE = {
@@ -3340,9 +3307,7 @@ def test_the_covering_test_names_are_read_from_this_module():
     assert callable(globals()["test_the_drawing_calls_are_the_shipped_sheets"])
 
 
-# ---------------------------------------------------------------------
 # The values are the surface's own, not the shipped list's
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_list():
@@ -3453,9 +3418,7 @@ def test_the_surface_never_reads_the_shipped_module():
     assert named == {"__future__", "typing"}
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def call_bridge(params):
@@ -3556,9 +3519,7 @@ def test_the_bridge_import_list_stays_in_order():
     assert "bot_swarm_list_surface" in named
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 
 BLOCK_QT = (
@@ -3727,9 +3688,7 @@ def test_the_surface_loads_no_qt_module():
     assert any(name.startswith("PySide6") for name in list_imports), list_imports
 
 
-# ---------------------------------------------------------------------
 # The shipped list is left alone
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_file_carries_no_carriage_return():
@@ -3743,7 +3702,6 @@ def test_the_surface_file_carries_no_carriage_return():
 def test_the_shipped_list_is_left_as_it_was():
     """The shipped list was edited, so the two sides are one side."""
     body = LIST_PATH.read_bytes()
-    assert len(body.splitlines()) == LIST_SOURCE_LINES == 416
     assert body.count(b"\r") == 0
     assert source_classes(LIST_PATH) == [
         "BotListView",

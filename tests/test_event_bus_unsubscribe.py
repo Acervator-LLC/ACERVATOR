@@ -1,29 +1,9 @@
-"""The EventBus must be able to retract a subscription (C17 / NF-9).
+"""``EventBus`` retracts a subscription by callback, not only by closure.
 
-THE DEFECT
-`event_bus.py` returns an unsubscribe CLOSURE from `subscribe` (:120)
-and has no unsubscribe METHOD. Every caller in `src/` discards the
-closure, so once a handler is attached it can never be removed. That is
-what makes the sim leak unfixable from outside: `BotManager.__init__`
-subscribes three handlers to the process-wide bus (:1598/:1602/:1603)
-before any caller can rebind `._bus`, and nothing can take them off
-again.
-
-TWO IMPLEMENTATION TRAPS, both of which produce a fix that LOOKS applied
-and removes nothing:
-
-  1. BOUND METHODS COMPARE UNEQUAL BY IDENTITY. Every handler in scope
-     is `self._on_something` — a bound method. CPython builds a fresh
-     bound-method object on each attribute access, so `obj.m is obj.m`
-     is False while `obj.m == obj.m` is True. An `is`-based
-     implementation silently matches nothing.
-
-  2. `_subscribers` IS A `defaultdict(list)` (:84). Subscripting it on a
-     miss CREATES an empty list, so a count accessor written with
-     `self._subscribers[topic]` mutates the structure it is measuring
-     and the before/after diff stops being deterministic.
-
-Both are pinned below, because both would pass a naive test.
+``EventBus.unsubscribe`` matches a bound method with ``==``; an identity test
+removes nothing, and ``TestTheInstrumentWorks`` pins delivery first.
+``subscriber_count`` and ``subscription_fingerprint`` read without creating an
+entry, and leave no empty topic behind.
 """
 
 from __future__ import annotations
@@ -39,16 +19,19 @@ from src.core.event_bus import EventBus  # noqa: E402
 
 
 class _Handler:
-    """Subscribers are invoked as `callback(event)` — one positional
-    argument. An earlier version of this double took only `**kw`, so
-    every delivery raised TypeError inside the bus and was swallowed;
-    the positive control below is what surfaced it."""
+    """A subscriber double taking the one positional argument the bus passes.
+
+    ``on_event`` counts its calls in ``calls`` and keeps each argument in
+    ``received``.
+    """
 
     def __init__(self):
         self.calls = 0
+        self.received = []
 
     def on_event(self, event=None):
         self.calls += 1
+        self.received.append(event)
 
 
 class TestTheInstrumentWorks:

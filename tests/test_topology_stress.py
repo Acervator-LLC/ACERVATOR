@@ -1,26 +1,10 @@
-"""v3.24.26 — pin tests for the topology stress backtester.
+"""Pin tests for the topology stress backtester.
 
-WHAT THIS MODULE IS FOR
-=======================
-``topology_proposals`` scores candidate topologies against one price
-history. A score computed on one history says nothing about whether the
-topology survives a different one.
-
-This runs the same proposal across several noise realisations and reports
-the DISTRIBUTION. The headline finding is dispersion, not the mean: a
-topology whose accumulation changes sign between trials was fitted to one
-particular sequence of price wiggles, and the score that recommended it
-is an artefact.
-
-Verified working end-to-end against the real Stone Tablet archive
-(BTC + ETH, 61,200 candles each, 3 trials at 12.19% / 18.72% / 12.22%
-noise): all three accumulated, dispersion 0.27, verdict ROBUST.
-
-WHAT THESE TESTS DEFEND
-=======================
-Mostly the VERDICT logic. A stress report that called a fragile topology
-robust would be worse than no stress test at all — it would launder a
-bad proposal through a process that looks rigorous.
+`topology_proposals` scores a candidate topology against one price history, and
+this runs the same proposal across several noise realisations to report the
+distribution. The headline is dispersion: a topology whose accumulation changes
+sign between trials was fitted to one sequence of wiggles. Most of these tests
+defend the verdict logic.
 """
 
 from __future__ import annotations
@@ -296,35 +280,11 @@ def test_no_data_report_shows_why():
     assert "boom" in text
 
 
-# ── the wallet the trial actually traded ─────────────────────────
-#
-# EVERY TEST ABOVE THIS LINE PASSES ON THE DEFECT. They build an
-# `AssetOutcome` by hand and check the arithmetic over it. Not one of
-# them runs a trial and reads a balance, so for the life of the module
-# `_run_one_trial` recorded
-# `base_start == base_end == quote_start == quote_end == 0.0` for every
-# asset and the suite stayed green.
-#
-# The reads it used, `exchange._balances` and
-# `exchange._opening_balances`, belonged to `FleetSimExchange`.
-# `TabletBackend` replaced it in v3.24.84 and `ctl._exchange` became a
-# `CCXTConnector`, which carries neither, so both `getattr` defaults
-# fired on every trial. Nothing raised and nothing warned.
-#
-# ZERO IS A LEGAL VALUE, which is why nothing below asserts that an
-# outcome EXISTS, or that a number is merely non-zero. Each balance is
-# asserted against a SECOND WITNESS — the tape's own trade ledger, read
-# on a different code path from the balance ledger the fix reads.
-
 TARGET_USD = 100.0
 TRIAL_CANDLES = 400
 
-# TWO ASSETS, because one does not trade. MEASURED on this tape: a
-# single-bot fleet seeded with its own $100 target fires nothing across
-# 399 candles, so a one-asset trial cannot tell a working balance read
-# from the broken one. Two bots sharing a $200 wallet fired 3 times.
-# The second asset's own outcome stays at zero base, and that zero is
-# checked against the ledger like every other number here.
+# Two assets: a single-bot fleet on this tape fires nothing across 399
+# candles, so one asset cannot tell a working balance read from a broken one.
 STRESS_ASSETS = ("CHIP", "SPK")
 SEEDED_USD = TARGET_USD * len(STRESS_ASSETS)
 
@@ -492,20 +452,6 @@ def test_the_outcome_wallet_matches_the_tape_ledger(traded_trial) -> None:
             f"at ${TARGET_USD:,.2f} and the controller seeds the wallet "
             "with the sum of the fleet's targets"
         )
-        # ISSUE #111 VIOLATION B. This used to require
-        # `base_start == 0.0`, on the reasoning that no config here
-        # carries a bot_state id so no lots could be restored. The
-        # operator ruled that a bot with NO bot_state opens with a
-        # LOCKED SIDE instead: `target_balance` of base at the tape's
-        # first close, so locked and spendable start equal. A fleet that
-        # opened flat had to buy its whole target first, and the shared
-        # wallet holds exactly `sum(target_balance)`, so the LAST bot
-        # was always short by the fees the earlier ones paid.
-        #
-        # The opening is now read off the tape rather than asserted to
-        # be a constant, which is what `_read_wallet` itself does
-        # (topology_stress.py:362) and the only form that survives a
-        # change to seeding.
         assert outcome.base_start == pytest.approx(opening.get(outcome.asset, 0.0)), (
             f"the trial opened holding {outcome.base_start} "
             f"{outcome.asset} against a tape that opened on "
@@ -549,17 +495,6 @@ def test_the_trial_reports_the_accumulation_it_performed(traded_trial) -> None:
     for outcome in trial.assets:
         assert abs(outcome.base_gained - base_delta.get(outcome.symbol, 0.0)) < 1e-9
     assert abs(trial.total_base_gained - sum(base_delta.values())) < 1e-9
-    # ISSUE #111 VIOLATION B. This used to require `quote_delta < 0.0`
-    # on the reasoning that the fleet's first act is always an opening
-    # acquisition. A bot that opens with a locked side is already AT
-    # target and buys nothing structural, so the sign of the quote leg
-    # is now whatever the trading did, and requiring one sign would pin
-    # a direction rather than a behaviour.
-    #
-    # What must NOT be true is the defect's reading, in which every
-    # wallet field came back 0.0 and both derived numbers were exactly
-    # zero. So the requirement is that the quote leg MOVED, and that it
-    # moved by what the fills say.
     assert quote_delta != 0.0, (
         "the fleet's quote leg did not move at all, which is the "
         "defect's zero rather than a trading outcome"

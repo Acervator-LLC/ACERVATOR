@@ -47,10 +47,6 @@ that as a contract rather than leaving it to convention.
 """
 
 # ruff: noqa: S603
-# S607 is fixed by construction: the git spawns below resolve through
-# `shutil.which` and run by absolute path, following the reasoning in
-# tests/test_tools_are_reachable.py. S603 is the residue, because every
-# argv here carries a tmp_path, which is a variable by definition.
 
 from __future__ import annotations
 
@@ -104,9 +100,7 @@ OLD_URL = "https://github.com/ekthelius/ACERVATOR.git"
 NEW_URL = "https://github.com/acervator-org/ACERVATOR.git"
 
 
-# --------------------------------------------------------------------------
 # Builders. A payload is a dict, so a test can state exactly one difference.
-# --------------------------------------------------------------------------
 
 
 def tree(label: str, **over: object) -> dict[str, Any]:
@@ -180,9 +174,7 @@ def detail_of(checks: list[Any], name: str) -> str:
     return next(check.detail for check in checks if check.name == name)
 
 
-# --------------------------------------------------------------------------
 # The refusal. The tool's central claim.
-# --------------------------------------------------------------------------
 
 
 class TestRefusalWithoutABaseline:
@@ -241,9 +233,7 @@ class TestRefusalWithoutABaseline:
         assert load_baseline(good)["schema"] == SCHEMA
 
 
-# --------------------------------------------------------------------------
 # hooksPath. The highest-value check.
-# --------------------------------------------------------------------------
 
 
 class TestHooksPath:
@@ -285,9 +275,7 @@ class TestHooksPath:
         assert statuses(check_hooks(absent))["hooks_path_desktop"] == UNKNOWN
 
 
-# --------------------------------------------------------------------------
 # Remotes. Two trees, and the stale one is the dangerous one.
-# --------------------------------------------------------------------------
 
 
 class TestRemotes:
@@ -361,9 +349,7 @@ class TestRemotes:
         assert statuses(check_remotes(payload(), after, ""))["remote_primary"] == RED
 
 
-# --------------------------------------------------------------------------
 # The gate stamp, and the history it binds to.
-# --------------------------------------------------------------------------
 
 
 class TestGateStamp:
@@ -441,9 +427,7 @@ class TestGateStamp:
         assert "rewritten" in detail_of(checks, "history_preserved")
 
 
-# --------------------------------------------------------------------------
 # Tracked files.
-# --------------------------------------------------------------------------
 
 
 class TestTrackedFiles:
@@ -468,9 +452,7 @@ class TestTrackedFiles:
         assert check_tracked(payload(), after).status == UNKNOWN
 
 
-# --------------------------------------------------------------------------
 # Issues. The reason to Transfer rather than re-push.
-# --------------------------------------------------------------------------
 
 
 class TestIssues:
@@ -529,9 +511,7 @@ class TestIssues:
         assert got["issue_numbers_and_titles"] == UNKNOWN
 
 
-# --------------------------------------------------------------------------
 # The citations in the tree.
-# --------------------------------------------------------------------------
 
 
 class TestReferences:
@@ -614,9 +594,7 @@ class TestReferences:
         assert got["issue_numbers_still_resolve"] == UNKNOWN
 
 
-# --------------------------------------------------------------------------
 # The citation pattern itself. The instrument needs a control.
-# --------------------------------------------------------------------------
 
 
 class TestTheCitationPatternIsCalibrated:
@@ -684,9 +662,7 @@ class TestTheCitationPatternIsCalibrated:
         assert scan_issue_references(tmp_path, ["blob.bin"])["total"] == 0
 
 
-# --------------------------------------------------------------------------
 # Branch protection. Informational, and never a RED.
-# --------------------------------------------------------------------------
 
 
 class TestBranchProtection:
@@ -708,9 +684,7 @@ class TestBranchProtection:
         assert "pre-push" in check_branch_protection(payload(), payload()).detail
 
 
-# --------------------------------------------------------------------------
 # Read-only. Enforced in code, so driven with the calls it must refuse.
-# --------------------------------------------------------------------------
 
 
 class TestTheToolIsReadOnly:
@@ -856,9 +830,7 @@ def _ok_spawn(argv: Sequence[str], cwd: Path | None) -> Completed:
     return Completed(0, "[]", "")
 
 
-# --------------------------------------------------------------------------
 # The GitHub seam.
-# --------------------------------------------------------------------------
 
 
 class FakeReader:
@@ -971,9 +943,7 @@ class TestNoNetworkInTests:
             JsonFileReader(export).issues("x")
 
 
-# --------------------------------------------------------------------------
 # The measurement layer, against real git repositories.
-# --------------------------------------------------------------------------
 
 
 def _git(tmp: Path, *args: str) -> None:
@@ -1159,9 +1129,7 @@ class TestAgainstRealGitRepositories:
         assert got["remote_primary"] == RED
 
 
-# --------------------------------------------------------------------------
 # Reporting and the command line.
-# --------------------------------------------------------------------------
 
 
 class TestTheReportDoesNotReassure:
@@ -1258,14 +1226,6 @@ class TestTheReportDoesNotReassure:
         want: str,
     ) -> None:
         assert repo_slug(url) == want
-
-
-# --------------------------------------------------------------------------
-# Issue #108. Two reasons `capture` skipped the issue data, and the issue
-# data is what the tool itself calls the most important thing the migration
-# must preserve. Each one is driven BOTH ways: the state it must now
-# accept, and the state it must still refuse.
-# --------------------------------------------------------------------------
 
 
 class TestGhIsFoundWhenItIsInstalledButOffPath:

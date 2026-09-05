@@ -1,17 +1,11 @@
-"""
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-native_chart.py — QPainter Candlestick Chart
-=================================================
-Pure Qt chart widget using QPainter.  No WebEngine dependency.
+"""QPainter candlestick chart widgets.
 
-Features:
-  • Sharp-outlined candlesticks with fill + 1px border
-  • Volume histogram with gradient opacity
-  • Current price line with label badge
-  • Grid level overlays (buy/sell lines)
-  • Position markers: distinct icons for Invisible vs Visible
-  • Crosshair with price/time readout
-  • Futuristic cyberpunk aesthetic
+``CandlestickChart`` paints candles, a volume strip, price grid lines,
+position markers and a crosshair without a WebEngine dependency.
+``ChartPanel`` wraps it with a timeframe selector and one checkbox per
+indicator overlay. ``Candle``, ``TradeMarker``, ``PositionMarker`` and
+``GridLine`` are the records it draws from.
 """
 
 from __future__ import annotations
@@ -20,7 +14,6 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-# Series come from the engine; this chart computes no indicator.
 from src.trading.ta_engine import (
     BollingerBands,
     IchimokuCloud,
@@ -30,6 +23,9 @@ from src.trading.ta_engine import (
 )
 
 logger = logging.getLogger("acervator.gui")
+
+# Fraction of one grid step the last price tick may overshoot by and still draw.
+GRID_TICK_TOLERANCE = 1e-9
 
 try:
     from PySide6.QtWidgets import (
@@ -82,7 +78,7 @@ class PositionMarker:
     price: float
     side: str  # "buy" or "sell"
     visibility: str  # "internal" (invisible) or "orderbook" (visible)
-    level: int = 0  # Grid level index
+    level: int = 0
     filled: bool = False
     asset_held: float = 0.0
 
@@ -164,8 +160,6 @@ if _HAS_QT:
             self._bbullseye_data: list = []
             self._tranche_floors: list[tuple] = []  # [(price, label), ...]
 
-            # Target Balance lines are price-axis values: the caller divides the
-            # USD anchor and ceiling by current holdings before setting them.
             self._tb_anchor_price: Optional[float] = None
             self._tb_ceiling_price: Optional[float] = None
             self._fire_armed_state: dict = {
@@ -178,26 +172,17 @@ if _HAS_QT:
             self.setMinimumHeight(200)
             self.setMouseTracking(True)
 
-            # Bottom 8px is the resize grip. _height_override holds a dragged
-            # height, and auto-expand never shrinks below it.
+            # _height_override holds a dragged height; auto-expand never goes under it.
             self._resize_grip_h = 8
             self._height_override: Optional[int] = None
             self._resize_active = False
             self._resize_start_y: Optional[int] = None
             self._resize_start_height: Optional[int] = None
 
-            # Viewport over the candle list: a window of [start .. start+count).
-            # _visible_start None fits all; _visible_count None derives from it.
-            # _y_zoom_pct scales the price-axis padding; 1.0 is the full range.
-            #   _visible_start = None  → "auto-fit" (show everything)
-            #   _visible_count = None  → derived from start+full-list
-            #   _y_zoom_pct = 1.0      → use full computed range
-            #   _y_zoom_pct < 1.0      → tighten (zoom in vertically)
-            #   _y_zoom_pct > 1.0      → widen (zoom out vertically)
+            # None on either bound fits all candles; _y_zoom_pct scales price padding.
             self._visible_start: Optional[int] = None
             self._visible_count: Optional[int] = None
             self._y_zoom_pct: float = 1.0
-            # Drag-pan tracking
             self._drag_active = False
             self._drag_start_x: Optional[int] = None
             self._drag_start_visible_start: Optional[int] = None
@@ -228,15 +213,10 @@ if _HAS_QT:
             self.update()
 
         def _compute_indicators(self):
-            """Ask the engine for every overlay this chart draws.
-
-            NOT A SECOND INDICATOR SUITE. Each series comes from the
-            class in ``src/trading/indicators`` that owns that
-            indicator's published formula, so the chart cannot draw a
-            number the trading engine did not compute.
-
-            A ``None`` entry means the published formula has no value
-            at that candle. The paint layer already skips those.
+            """Fill ``_bb_data``, ``_vortex_data``, ``_macd_data``,
+            ``_stochrsi_data`` and ``_ichimoku_data`` from the engine
+            classes. A ``None`` entry marks a candle with no value, and
+            ``paintEvent`` skips it.
             """
             candles = self._candles
             self._bb_data = BollingerBands(20, 2.0).bands(candles)
@@ -251,8 +231,7 @@ if _HAS_QT:
                 for ln, sg, hi in zip(macd_line, signal_line, histogram)
             ]
             self._stochrsi_data = StochasticRSI().lines(candles)
-            # Senkou A and B are drawn 26 bars forward and Chikou 26 back; the
-            # paint layer owns that shift, so each series arrives at its own index.
+            # IchimokuCloud returns unshifted series; paintEvent shifts them 26 bars.
             self._ichimoku_data = IchimokuCloud(9, 26, 52).lines(candles)
 
         def add_marker(self, marker: TradeMarker) -> None:
@@ -260,16 +239,11 @@ if _HAS_QT:
             self.update()
 
         def set_trade_history_markers(self, trades: list[dict]) -> None:
-            """Bulk-replace historical SCRUM/FOLD markers from a list of
-            platform-initiated trades.
+            """Replace ``_markers`` with one ``TradeMarker`` per trade dict.
 
-            Each trade dict should carry at minimum:
-                {"ts": <unix_seconds>, "side": "buy"|"sell",
-                 "price": float, "role": "SCRUM"|"FOLD"|"HEDGE",
-                 "operator_initiated": bool}
-
-            The caller (the Asset Charts tab) filters to
-            platform-initiated trades and calls this on refresh.
+            Each dict carries ``ts`` or ``time``, ``side``, ``price``
+            and ``role`` or ``label``; a dict without a positive ``ts``
+            or a positive ``price`` is dropped.
             """
             self._markers = []
             for t in trades:
@@ -277,7 +251,6 @@ if _HAS_QT:
                     ts = int(t.get("ts", t.get("time", 0)) or 0)
                     price = float(t.get("price", 0) or 0)
                     if ts <= 0 or price <= 0:
-                        # No timestamp or no price: nothing to anchor the marker to.
                         continue
                     m = TradeMarker(
                         time=ts,
@@ -291,11 +264,10 @@ if _HAS_QT:
             self.update()
 
         def set_tranche_floors(self, floors: list[tuple]) -> None:
-            """Set the horizontal dashed lines for active-tranche minimum
-            targets. Each tuple is (price, label). These are the
-            initial_buy_price floors — the bot will NOT fold below
-            these levels. Separate from set_grid_lines so grid and
-            tranche semantics do not conflate.
+            """Set ``_tranche_floors`` from (price, label) tuples.
+
+            Each price is a lot's ``initial_buy_price``, the level below
+            which that lot does not fold.
             """
             self._tranche_floors = list(floors)
             self.update()
@@ -311,13 +283,13 @@ if _HAS_QT:
         def set_target_balance_lines(
             self, anchor_price: Optional[float], ceiling_price: Optional[float]
         ) -> None:
-            """Set the Target Balance anchor + ceiling
-            horizontal lines on the price pane. Both are price-axis
-            values (USD/unit). Pass None for either to hide that
-            line. Caller (main_window.update_charts) computes
-            ``anchor_price = anchor_usd / current_holdings`` so the
-            line lands at the price where the bot's USD-denominated
-            anchor sits given its current inventory."""
+            """Set ``_tb_anchor_price`` and ``_tb_ceiling_price``, the
+            two dashed lines on the price pane.
+
+            ``TradeChartsTab.update_charts`` divides the USD anchor and
+            ceiling by holdings and the quote rate; ``None`` hides that
+            line.
+            """
             self._tb_anchor_price = anchor_price
             self._tb_ceiling_price = ceiling_price
             self.update()
@@ -329,10 +301,11 @@ if _HAS_QT:
             scrum_blockers: list = None,
             fold_blockers: list = None,
         ) -> None:
-            """Mirror the bot's _last_gate_state for live display of
-            whether auto-fire would fire RIGHT NOW. The chart paints a
-            green/red glow at the right edge when armed. Same data the
-            fire button reads."""
+            """Set ``_fire_armed_state`` from the bot's arming flags.
+
+            ``paintEvent`` paints a green right-edge glow while
+            ``scrum_armed`` and a red one while ``fold_armed``.
+            """
             self._fire_armed_state = {
                 "scrum_armed": bool(scrum_armed),
                 "fold_armed": bool(fold_armed),
@@ -345,13 +318,13 @@ if _HAS_QT:
             self._current_tf = tf
 
         def _natural_height_for_panes(self) -> int:
-            """Compute the minimum height needed to render
-            cleanly with the currently-toggled-on sub-panes. The price
-            pane gets at least 220px; volume strip adds 28; each
-            visible oscillator sub-pane adds 60. Plus header (28),
-            OHLC row (18), and time-axis (18). Operators can always
-            drag the grip downward beyond this; we never shrink below
-            it on toggle."""
+            """Return the pixel height the toggled-on panes need.
+
+            The price pane takes 220, ``_show_volume`` adds 28, and each
+            of ``_show_macd``, ``_show_vortex`` and ``_show_stochrsi``
+            with data adds 60, over a 64px header, OHLC row and time
+            axis.
+            """
             base = 28 + 18 + 220 + 18  # header + OHLC + price + time
             if self._show_volume:
                 base += 28
@@ -366,14 +339,11 @@ if _HAS_QT:
             return base
 
         def _apply_height_for_panes(self) -> None:
-            """Auto-expand the widget's minimum height to
-            accommodate all currently-toggled sub-panes. Called by
-            ChartPanel after each indicator toggle. Honors
-            ``_height_override`` (user drag) — never shrinks below
-            either the user's preference or the natural pane height,
-            whichever is taller. It also propagates to the parent
-            ChartPanel so the outer QVBoxLayout grows the panel and
-            pushes siblings down.
+            """Raise the minimum height to ``_natural_height_for_panes``.
+
+            ``_height_override`` from a grip drag wins when it is
+            taller, and the parent widget is raised to the same height
+            plus 36.
             """
             target = self._natural_height_for_panes()
             if self._height_override is not None:
@@ -386,10 +356,8 @@ if _HAS_QT:
                     try:
                         _parent.setMinimumHeight(target + 36)
                         _parent.updateGeometry()
-                    except (
-                        Exception
-                    ):  # R28-OK: parent resize is best-effort  # noqa: S110
-                        pass
+                    except Exception as exc:
+                        logger.debug("chart parent height not raised: %s", exc)
 
         def mouseMoveEvent(self, event):
             self._mouse_x = int(event.position().x())
@@ -399,7 +367,6 @@ if _HAS_QT:
                 self.setCursor(Qt.SizeVerCursor)
             else:
                 self.setCursor(Qt.ArrowCursor)
-            # Drag-resize adjusts the minimum height while the button is held.
             if self._resize_active and self._resize_start_y is not None:
                 delta = self._mouse_y - self._resize_start_y
                 new_h = max(200, (self._resize_start_height or 200) + delta)
@@ -411,14 +378,11 @@ if _HAS_QT:
                     try:
                         _parent.setMinimumHeight(new_h + 36)
                         _parent.updateGeometry()
-                    except (
-                        Exception
-                    ):  # R28-OK: parent may not support resize; chart still grows  # noqa: S110
-                        pass
+                    except Exception as exc:
+                        logger.debug("chart parent height not dragged: %s", exc)
                 self.updateGeometry()
                 self.update()
                 return
-            # Drag-pan shifts the visible window by the drag distance.
             if self._drag_active and self._drag_start_x is not None:
                 w = self.width()
                 ML, MR = 8, 78
@@ -457,16 +421,16 @@ if _HAS_QT:
                 self._resize_start_height = None
 
         def mouseDoubleClickEvent(self, event):
-            # Double-click returns to fit-all.
             self._visible_start = None
             self._visible_count = None
             self._y_zoom_pct = 1.0
             self.update()
 
         def wheelEvent(self, event):
-            """Wheel-zoom.
-            Plain wheel: horizontal zoom around cursor x.
-            Ctrl+wheel: vertical zoom (tighten/widen price-axis range).
+            """Zoom on the wheel.
+
+            A plain wheel moves ``_visible_count`` around the cursor;
+            Ctrl and the wheel move ``_y_zoom_pct``.
             """
             n = len(self._candles)
             if n == 0:
@@ -476,9 +440,7 @@ if _HAS_QT:
 
             modifiers = event.modifiers()
             if modifiers & Qt.ControlModifier:
-                # Vertical zoom — adjust price-axis padding scaling
                 new_y = self._y_zoom_pct * zoom_factor
-                # Clamp to sensible range: 0.05 (very tight) .. 4.0 (very wide)
                 self._y_zoom_pct = max(0.05, min(4.0, new_y))
                 self.update()
                 return
@@ -488,7 +450,6 @@ if _HAS_QT:
             new_count = max(8, min(n, int(cur_count * zoom_factor)))
             if new_count == cur_count:
                 return
-            # Anchor the zoom around the candle under the cursor
             mx = int(event.position().x())
             ML, MR = 8, 78
             chart_w = max(1, self.width() - ML - MR)
@@ -579,7 +540,6 @@ if _HAS_QT:
                 p.end()
                 return
 
-            # Slice the candle list down to the visible viewport.
             v_start = self._effective_visible_start()
             v_count = self._effective_visible_count()
             v_end = min(n_total, v_start + v_count)
@@ -616,7 +576,7 @@ if _HAS_QT:
             gap = max(1, cw * 0.18)
             bw = max(1, cw - gap)
 
-            # Range comes from the VISIBLE candles, so a horizontal zoom re-fits it.
+            # hi and lo come from visible_candles, never the full list.
             hi = max(c.high for c in visible_candles)
             lo = min(c.low for c in visible_candles)
             pr = hi - lo
@@ -635,7 +595,7 @@ if _HAS_QT:
 
             max_vol = max((c.volume for c in visible_candles), default=1) or 1
 
-            # Grid lines snap to 1/2/5 x 10^n so levels read as round numbers.
+            # _nice_step snaps the step to 1, 2 or 5 times a power of ten.
             def _nice_step(span: float, target_ticks: int = 6) -> float:
                 import math as _m
 
@@ -658,10 +618,9 @@ if _HAS_QT:
 
                 g0 = _m.ceil(lo / grid_step) * grid_step
                 g = g0
-                while g <= hi + 1e-12:
+                while g <= hi + grid_step * GRID_TICK_TOLERANCE:
                     y = int(p2y(g))
                     if price_top <= y <= price_bot:
-                        # Major lines on every 2nd step for rhythm
                         is_major = round((g - g0) / grid_step) % 2 == 0
                         gc = self.GRID_MAJOR if is_major else self.GRID_MINOR
                         p.setPen(QPen(gc, 1, Qt.DotLine))
@@ -700,7 +659,7 @@ if _HAS_QT:
 
             self._draw_positions(p, w, ML, MR, price_top, price_h, p2y, font_sm)
 
-            # Candles are ALWAYS Heikin-Ashi.
+            # Every candle body is Heikin-Ashi, never the raw OHLC.
             ha_candles = []
             if len(visible_candles) >= 2:
                 prev_o = visible_candles[0].open
@@ -762,7 +721,7 @@ if _HAS_QT:
                 p.setPen(QPen(self.GRID_MAJOR, 1))
                 p.drawLine(ML, int(vol_top), w - MR, int(vol_top))
 
-            # Current price line uses the LATEST candle, not the last visible one.
+            # The price line reads the latest candle, not the last visible one.
             if self._candles:
                 last_close = self._candles[-1].close
                 yp = p2y(last_close)
@@ -795,10 +754,9 @@ if _HAS_QT:
                             p.drawLine(prev, QPointF(x, y))
                         prev = QPointF(x, y)
 
-                # Sliced to the visible window so the cloud tracks the candles.
                 bb_visible = self._bb_data[v_start:v_end]
                 if self._show_bb and bb_visible:
-                    # Build polygon for cloud fill FIRST so lines paint on top
+                    # The cloud polygon paints before the span lines.
                     pts_upper = []
                     pts_lower = []
                     for i, b in enumerate(bb_visible):
@@ -819,9 +777,7 @@ if _HAS_QT:
                     _draw_line_series(middles, QColor(255, 200, 80, 160), 0.8, True)
                     _draw_line_series(lowers, QColor(80, 160, 240, 200), 1.2, False)
 
-                # Ichimoku (Hosoda 1969): Tenkan 9, Kijun 26, Senkou A = (T+K)/2,
-                # Senkou B 52, both shifted +26, Chikou the close shifted -26.
-                # The kumo is the band between Span A and Span B: green A>B, red A<B.
+                # The kumo is the band between Span A and Span B, both shifted +26.
                 if self._show_ichimoku and self._ichimoku_data:
                     SHIFT = 26
                     full_ichi = self._ichimoku_data
@@ -831,7 +787,6 @@ if _HAS_QT:
                     span_a_full = [None] * n_full
                     span_b_full = [None] * n_full
                     for k in range(n_full - SHIFT):
-                        # ichi[k] computed at index k; appears at k+SHIFT
                         d = full_ichi[k]
                         if d is None:
                             continue
@@ -851,13 +806,12 @@ if _HAS_QT:
                         for k in range(v_start, v_end)
                     ]
 
-                    # One polygon per run where both spans exist; a crossover
-                    # starts a new run.
-                    bull_color = QColor(38, 200, 130, 50)  # bullish kumo
-                    bear_color = QColor(239, 90, 110, 50)  # bearish kumo
-                    seg_pts_top = []  # the higher of SpA/SpB
-                    seg_pts_bot = []  # the lower of SpA/SpB
-                    seg_bullish = None  # current segment's polarity
+                    # One polygon per run of equal polarity; a missing span ends a run.
+                    bull_color = QColor(38, 200, 130, 50)
+                    bear_color = QColor(239, 90, 110, 50)
+                    seg_pts_top = []
+                    seg_pts_bot = []
+                    seg_bullish = None
 
                     def _flush_segment():
                         if not seg_pts_top or not seg_pts_bot:
@@ -871,7 +825,6 @@ if _HAS_QT:
                         sa = span_a[k]
                         sb = span_b[k]
                         if sa is None or sb is None:
-                            # Gap → flush current segment
                             _flush_segment()
                             seg_pts_top = []
                             seg_pts_bot = []
@@ -882,7 +835,6 @@ if _HAS_QT:
                         top_y = p2y(max(sa, sb))
                         bot_y = p2y(min(sa, sb))
                         if seg_bullish is not None and is_bull != seg_bullish:
-                            # Polarity flipped: close the run and start the next.
                             seg_pts_top.append(QPointF(x, top_y))
                             seg_pts_bot.append(QPointF(x, bot_y))
                             _flush_segment()
@@ -900,8 +852,7 @@ if _HAS_QT:
                     _draw_line_series(span_a, QColor(80, 220, 130, 200), 1.0)
                     _draw_line_series(span_b, QColor(239, 90, 110, 200), 1.0)
 
-                    # Chikou is plotted at visible index k for the close at absolute
-                    # index v_start + k + 26.
+                    # Chikou at visible k is the close at v_start + k + SHIFT.
                     chikou_color = QColor(180, 180, 220, 180)
                     p.setPen(QPen(chikou_color, 1.0))
                     prev_pt = None
@@ -922,9 +873,10 @@ if _HAS_QT:
                     WICK_TOL = 0.002  # 0.2%
 
                     def _band_zone_polygon(band_idx: int, tol: float):
-                        """Return upper+lower point lists tracing the
-                        ±tol envelope around BB band index 0=upper or
-                        2=lower at each visible candle."""
+                        """Return the upper and lower point lists of the
+                        ±``tol`` envelope around ``bb_visible`` entry
+                        ``band_idx``, 0 for upper and 2 for lower.
+                        """
                         upper_pts, lower_pts = [], []
                         for k, b in enumerate(bb_visible):
                             if b is None or b[band_idx] <= 0:
@@ -961,11 +913,10 @@ if _HAS_QT:
                         p.setBrush(QBrush(QColor(255, 80, 160, 95)))
                         p.drawPolygon(QPolygonF(poly))
 
-                # Slingshot mirrors SlingshotIndicator: BB(20, 2), squeeze_lookback 30,
-                # squeeze_threshold 0.6, snapback_lookback 5.
-                if self._show_slingshot and self._show_bb is not None:
-                    # Full history, not the visible window, so the left edge
-                    # has context.
+                # BB_PERIOD, BB_STD, SQ_LB, SQ_THR and SN_LB are SlingshotIndicator's
+                # defaults; its Keltner release test is not drawn here.
+                if self._show_slingshot:
+                    # Full history: the leftmost visible candle needs a run-up.
                     full_closes = [c.close for c in self._candles]
                     n_full = len(full_closes)
                     BB_PERIOD = 20
@@ -974,23 +925,23 @@ if _HAS_QT:
                     SN_LB = 5  # snapback lookback
                     SQ_THR = 0.6  # bandwidth threshold (fraction of avg)
                     if n_full >= BB_PERIOD + SQ_LB + 2:
-                        # Pre-compute SMA, stdev, BB tuples per candle
                         sl_bb = [None] * n_full
                         for k in range(BB_PERIOD - 1, n_full):
                             window = full_closes[k - BB_PERIOD + 1 : k + 1]
                             mid = sum(window) / BB_PERIOD
+                            if mid <= 0:
+                                continue
                             var = sum((x - mid) ** 2 for x in window) / BB_PERIOD
                             std = var**0.5
                             up = mid + BB_STD * std
                             lo = mid - BB_STD * std
-                            bw = (up - lo) / (mid + 1e-9)
+                            bw = (up - lo) / mid
                             sl_bb[k] = (full_closes[k], up, lo, mid, bw)
 
                         fires = (
                             []
                         )  # [(idx, kind, bullish)]; kind in {"squeeze","snapback"}
                         for k in range(BB_PERIOD + SQ_LB, n_full):
-                            # Squeeze: avg over [k-SQ_LB..k-1], current bandwidth
                             window = sl_bb[k - SQ_LB : k]
                             window = [b for b in window if b is not None]
                             if len(window) < SQ_LB - 2:
@@ -1011,24 +962,20 @@ if _HAS_QT:
                                 fires.append((k, "squeeze", bullish))
                                 continue  # squeeze fired; don't double-mark snapback
 
-                            # Snapback: a close in the last 5 bars was outside the band,
-                            # and this close is back inside moving toward the middle.
+                            # Snapback: a close broke the band within SN_LB bars.
                             for j in range(max(BB_PERIOD, k - SN_LB), k):
                                 past = sl_bb[j]
                                 if past is None:
                                     continue
                                 pc, pu, pl, pm, _ = past
                                 cc, cu, cl, cm, _ = curr
-                                # Bullish snapback
                                 if pc < pl and cl < cc < cm and cc > pc:
                                     fires.append((k, "snapback", True))
                                     break
-                                # Bearish snapback
                                 if pc > pu and cm < cc < cu and cc < pc:
                                     fires.append((k, "snapback", False))
                                     break
 
-                        # Render fire events that fall in the visible window
                         for idx, kind, bullish in fires:
                             if idx < v_start or idx >= v_end:
                                 continue
@@ -1037,11 +984,9 @@ if _HAS_QT:
                             cdl = visible_candles[vis_i]
                             if bullish:
                                 color = QColor(38, 200, 170, 230)
-                                # Below the low
                                 anchor_y = p2y(cdl.low) + 14
                             else:
                                 color = QColor(239, 90, 110, 230)
-                                # Above the high
                                 anchor_y = p2y(cdl.high) - 14
                             p.setBrush(QBrush(color))
                             p.setPen(QPen(color.lighter(140), 1.4))
@@ -1061,15 +1006,13 @@ if _HAS_QT:
                                 # Circle — mean-reversion snapback
                                 p.drawEllipse(QPointF(x, anchor_y), 5.5, 5.5)
 
-                # Target Balance anchor and ceiling, drawn as dashed lines with a
-                # right-edge badge.
+                # Both Target Balance lines are dashed, with a right-edge badge.
                 if self._tb_anchor_price is not None:
                     ay = p2y(float(self._tb_anchor_price))
                     if price_top <= ay <= price_bot:
                         anchor_color = QColor(120, 200, 255, 200)
                         p.setPen(QPen(anchor_color, 1.4, Qt.DashLine))
                         p.drawLine(ML, int(ay), w - MR, int(ay))
-                        # Badge
                         txt = f"TB-Anchor {self._fmt_price(self._tb_anchor_price)}"
                         tw = fm.horizontalAdvance(txt) + 10
                         badge = QRectF(ML + 4, ay - 8, tw, 14)
@@ -1104,7 +1047,6 @@ if _HAS_QT:
                     glow_x = w - MR - 4
                     glow_w = 6
                     if _scrum_on:
-                        # Green glow on upper half of price pane
                         scrum_top = price_top + 4
                         scrum_bot = price_top + (price_h * 0.5)
                         grad = QLinearGradient(
@@ -1118,7 +1060,6 @@ if _HAS_QT:
                             QRectF(glow_x, scrum_top, glow_w, scrum_bot - scrum_top)
                         )
                     if _fold_on:
-                        # Red glow on lower half of price pane
                         fold_top = price_top + (price_h * 0.5)
                         fold_bot = price_bot - 4
                         grad = QLinearGradient(
@@ -1161,9 +1102,10 @@ if _HAS_QT:
                 def _paint_oscillator(
                     top, bot, data, extract, color, width=1.2, vmin=None, vmax=None
                 ):
-                    """Draw a single oscillator line series scaled to the
-                    given vertical bounds. vmin/vmax fix the scale; if
-                    None they auto-fit to the data range.
+                    """Draw one oscillator line between ``top`` and ``bot``.
+
+                    ``vmin`` and ``vmax`` fix the scale; ``None`` on
+                    either fits it to the extracted values.
                     """
                     vals = [extract(d) for d in data if d is not None]
                     vals = [v for v in vals if v is not None]
@@ -1192,7 +1134,6 @@ if _HAS_QT:
                         last_val = v
                     return last_val
 
-                # Sliced to the visible window so the oscillators track the candles.
                 macd_visible = self._macd_data[v_start:v_end]
                 vortex_visible = self._vortex_data[v_start:v_end]
                 stochrsi_visible = self._stochrsi_data[v_start:v_end]
@@ -1200,7 +1141,6 @@ if _HAS_QT:
                 for sp_name, sp_top, sp_bot in sub_layout:
                     if sp_name == "macd" and macd_visible:
                         _paint_sub_grid(sp_top, sp_bot, "MACD (12, 26, 9)")
-                        # Auto-fit scale across line + signal + histogram
                         all_vals = []
                         for d in macd_visible:
                             if d is None:
@@ -1292,7 +1232,6 @@ if _HAS_QT:
                         _sub_axis_label(sp_top, sp_bot, last_plus, QColor(0, 200, 255))
                     elif sp_name == "stochrsi" and stochrsi_visible:
                         _paint_sub_grid(sp_top, sp_bot, "Stoch RSI (14, 14)")
-                        # 0.2 / 0.8 reference lines (dashed)
                         for ref in (0.2, 0.8):
                             ref_y = sp_bot - ref * (sp_bot - sp_top)
                             p.setPen(QPen(self.GRID_MINOR, 1, Qt.DashLine))
@@ -1333,13 +1272,10 @@ if _HAS_QT:
             default_sell = QColor(255, 60, 120)
 
             for m in self._markers:
-                # Find closest visible candle by time. Skip markers
-                # outside the visible window so we don't paint them at
-                # the chart edges where they'd be misleading.
+                # A marker outside the visible time range is skipped, not clamped.
                 best_i = min(
                     range(n), key=lambda i: abs(visible_candles[i].time - m.time)
                 )
-                # If marker is outside visible time range, skip
                 t_first = visible_candles[0].time
                 t_last = visible_candles[-1].time
                 if m.time < t_first or m.time > t_last:
@@ -1352,10 +1288,10 @@ if _HAS_QT:
                 sz = 5
                 diamond = QPolygonF(
                     [
-                        QPointF(mx, my - sz),  # top
-                        QPointF(mx + sz, my),  # right
-                        QPointF(mx, my + sz),  # bottom
-                        QPointF(mx - sz, my),  # left
+                        QPointF(mx, my - sz),
+                        QPointF(mx + sz, my),
+                        QPointF(mx, my + sz),
+                        QPointF(mx - sz, my),
                     ]
                 )
                 p.setBrush(QBrush(tc))
@@ -1398,10 +1334,8 @@ if _HAS_QT:
                 if ML <= mx <= w - MR and price_top <= my <= time_axis_y:
                     p.setPen(QPen(self.CROSSHAIR_COLOR, 1, Qt.DotLine))
                     p.drawLine(mx, int(price_top), mx, int(time_axis_y))
-                    # Horizontal line only inside the pane the cursor is in
                     p.drawLine(ML, my, w - MR, my)
 
-                    # Right-edge cursor-price badge — only in price pane
                     if price_top <= my <= price_bot:
                         cp = lo + pr * (1 - (my - price_top) / price_h)
                         cp_txt = self._fmt_price(cp)
@@ -1414,7 +1348,6 @@ if _HAS_QT:
                         p.setFont(font_sm)
                         p.drawText(badge, Qt.AlignCenter, cp_txt)
 
-                    # Bottom-edge time badge showing hovered candle time
                     ci = int((mx - ML) / cw)
                     if 0 <= ci < n:
                         import time as _t2
@@ -1433,7 +1366,6 @@ if _HAS_QT:
                             p.setPen(QPen(self.TEXT_LIGHT))
                             p.drawText(t_badge, Qt.AlignCenter, tstr)
 
-                        # Floating OHLCV tooltip in upper-left of chart area
                         is_up = c.close >= c.open
                         tip_color = self.UP_FILL if is_up else self.DOWN_FILL
                         chg = c.close - c.open
@@ -1466,8 +1398,6 @@ if _HAS_QT:
                             tip_w = max(tip_w, line_w)
                         tip_w += pad * 2
                         tip_h = line_h * len(lines) + pad * 2
-                        # Place in upper-left of chart area, but flip to
-                        # upper-right if cursor is on the left half
                         if mx < ML + chart_w / 2:
                             tx = w - MR - tip_w - 8
                         else:
@@ -1573,7 +1503,7 @@ if _HAS_QT:
                 icon_size = 7
 
                 if is_invisible:
-                    # INVISIBLE: filled diamond (stealth/hidden)
+                    # Internal visibility draws a filled diamond.
                     color = self.INVISIBLE_ICON
                     if pos.filled:
                         color = QColor(color.red(), color.green(), color.blue(), 100)
@@ -1589,7 +1519,7 @@ if _HAS_QT:
                     p.setPen(QPen(color.lighter(140), 1))
                     p.drawPolygon(diamond)
                 else:
-                    # VISIBLE (ORDER BOOK): open square with center dot
+                    # Order-book visibility draws an open square with a centre dot.
                     color = self.VISIBLE_ICON
                     if pos.filled:
                         color = QColor(color.red(), color.green(), color.blue(), 100)
@@ -1689,17 +1619,12 @@ if _HAS_QT:
             ):
                 cb = QCheckBox(name)
                 cb.setStyleSheet(f"color: {color}; font-size: 9px;")
-                cb.setToolTip(
-                    tooltip
-                    if enabled
-                    else tooltip + "  [spec pending — P1f / R46 MLHCI]"
-                )
+                cb.setToolTip(tooltip if enabled else tooltip + "  [not yet enabled]")
                 cb.setEnabled(enabled)
                 cb.toggled.connect(lambda v, a=attr: self._toggle_indicator(a, v))
                 ind_row.addWidget(cb)
                 return cb
 
-            # Vortex / MACD / StochRSI / Ichimoku — computed + painted.
             self._cb_vortex = _add_indicator_cb(
                 "Vortex",
                 "vortex",
@@ -1738,15 +1663,15 @@ if _HAS_QT:
                 "Sling",
                 "slingshot",
                 "#ff4488",
-                "Slingshot markers — placeholder paint at HA color flips "
-                "(final visual queued for Wave 2)",
+                "Slingshot markers — diamond at a Bollinger squeeze release, "
+                "circle at a snapback back inside the band",
             )
             self._cb_bbullseye = _add_indicator_cb(
                 "BBull",
                 "bbullseye",
                 "#ff00aa",
-                "BB Bullseye zone — placeholder shaded band at BB middle "
-                "(final visual queued for Wave 2)",
+                "BB Bullseye zones — shaded ±0.5% and ±0.2% envelopes around "
+                "the upper and lower Bollinger bands",
             )
 
             toolbar.addLayout(ind_row)
@@ -1785,19 +1710,16 @@ if _HAS_QT:
             self._chart.timeframe_changed.emit(tf)
 
         def _toggle_indicator(self, name: str, on: bool):
-            """Toggle an indicator overlay on/off.
+            """Set ``_show_<name>`` on the chart and repaint it.
 
-            Auto-expands the chart's minimum height when a sub-pane
-            indicator toggles on, so the price pane is not squeezed.
-            The chart's user-drag height override is preserved:
-            auto-expand never shrinks below it."""
+            ``_apply_height_for_panes`` then raises the chart's minimum
+            height for a newly visible sub-pane.
+            """
             setattr(self._chart, f"_show_{name}", on)
-            try:  # noqa: SIM105
+            try:
                 self._chart._apply_height_for_panes()
-            except (
-                Exception
-            ):  # R28-OK: best-effort UX polish; chart still updates without resize  # noqa: S110
-                pass
+            except Exception as exc:
+                logger.debug("chart height not re-applied on toggle: %s", exc)
             self._chart.update()
 
         def set_source(self, source: str):

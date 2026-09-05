@@ -1,0 +1,190 @@
+# Market Inspector Tab
+
+Reference. The higher-timeframe scanner and the topology proposal pane.
+First step of [the promotion pipeline](promotion-pipeline.md).
+
+## What builds it
+
+`MarketInspectorTabMixin._build_market_inspector_tab` in
+`src/gui/main_tabs/market_inspector_tab.py` constructs the tab and wires its
+three injection points before adding it to the row.
+
+The tab splits horizontally. The left half holds the scanner, the right half
+holds the proposal cards.
+
+## Left half: the scanner
+
+A filter row carries a Refresh button and an "Include active markets"
+checkbox. The default hides the markets already under a bot, which keeps the
+table on entry opportunities.
+
+`HTF Signals` lists one row per market: Asset, Signal, Score, Daily, Weekly,
+Active.
+
+`Opposing Pairs (30-day Pearson)` lists Long side, Short side, Correlation and
+the combined score.
+
+## Where the analysis happens
+
+`MarketInspector` in `src/trading/market_inspector.py` owns the maths. One
+method drives the whole pipeline and keeps the results on the analyzer.
+
+`src/trading/market_inspector.py` — `MarketInspector.scan_universe`
+
+```python
+def scan_universe(
+    self,
+    candles_by_symbol_by_tf: dict,
+    active_symbols: set,
+    closes_by_symbol: dict,
+) -> None:
+```
+
+Two steps run under it.
+
+| Step | Produces |
+| ---- | -------- |
+| `_analyze_tf` | One `TimeframeAnalysis` per timeframe |
+| `_score_market` | One `MarketSignal` per market |
+
+The pairing is a separate step. It enumerates every long against every short
+and keeps the ones whose thirty-day return correlation sits in the configured
+negative window.
+
+`src/trading/market_inspector.py` — `MarketInspector._find_opposing_pairs`
+
+```python
+def _find_opposing_pairs(self, signals: list, closes_by_symbol: dict) -> list:
+    """Enumerate long × short candidates; keep pairs whose 30-day
+    return correlation sits in the configured negative window."""
+    longs = [s for s in signals if s.direction == "long" and s.score >= 0.3]
+    shorts = [s for s in signals if s.direction == "short" and s.score >= 0.3]
+```
+
+One analyzer instance serves two readers. `get_shared_inspector` returns it,
+the tab owns the fetch cycle and writes into it, and the per-bot Market
+Inspector page in the Bot Details dialog reads back out of it through
+`build_per_bot_view`. One analyzer, two readers, no second copy of the score.
+
+## Fetching
+
+`set_exchange_source` binds a connectors getter and the application scheduler,
+so the tab always sees the current connector dict rather than a snapshot taken
+at build time.
+
+The fetch serves its last network result while that result stays young enough,
+and the Refresh button passes a flag that goes to the network regardless.
+
+`src/exchange/market_inspector_fetcher.py` — `fetch_htf_universe`
+
+```python
+async def fetch_htf_universe(
+    exchange_connectors: dict,
+    active_symbols: Optional[set] = None,
+    top_n: int = DEFAULT_TOP_N,
+    progress_cb=None,
+    force_network: bool = False,
+    min_refresh_s: float = DEFAULT_MIN_REFRESH_S,
+) -> FetchResult:
+```
+
+Three helpers do the work inside it.
+
+| Helper | What it does |
+| ------ | ------------ |
+| `_pick_universe` | Ranks each connector's bulk tickers by 24-hour quote volume |
+| `_fetch_one_symbol` | Pulls per-symbol OHLCV on the connector's single-worker executor |
+| `_resample_daily_to_weekly` | Derives the weekly series on the client when the venue lists no weekly timeframe |
+
+## Right half: topology proposals
+
+`MarketInspectorTopologies` in `src/gui/market_inspector_topologies.py` renders
+one card per proposal and opens a preview dialog on Preview.
+
+The engine behind the cards takes a plain dictionary, which keeps it free of
+any exchange or bot-manager coupling. It unions the detectors, drops
+overlapping proposals by asset and caps the result.
+
+`src/trading/topology_proposals.py` — `detect_all_topologies`
+
+```python
+def detect_all_topologies(
+    context: dict[str, Any],
+    cap: int = PROPOSAL_CAP,
+) -> list[dict[str, Any]]:
+    """Union every detector's proposals, dedupe them and cap at ``cap``.
+```
+
+Four detectors feed it.
+
+| Detector | Shape |
+| -------- | ----- |
+| `detect_momentum_funnel` | Correlated cluster, leader into laggers |
+| `detect_mean_reversion_pair` | Anti-correlated pair, wired both ways |
+| `detect_sector_cluster` | Same-sector star, hub into spokes |
+| `detect_distance_to_band` | One asset, scrum-deep into fold-deep |
+
+Two helpers read from disk under `src/trading/`. `suggested_target_usd` sizes
+each proposed bot from the asset target defaults, and the sector map names each
+asset's sector.
+
+## Dismissal
+
+Dismissing a card hides it for a day. The write-through never raises, because
+losing a dismissal is a nuisance and taking down the pane is not.
+
+`src/gui/market_inspector_topologies.py` — `_persist_dismissed`
+
+```python
+def _persist_dismissed(self) -> None:
+    """Best-effort write-through. Never raises: losing a
+    dismissal is a nuisance, taking down the pane is not."""
+    if self._dismiss_store is None:
+        return
+    try:
+        self._dismiss_store.set(DISMISS_SETTINGS_KEY, dict(self._dismissed))
+```
+
+That write fails on every call today, because the key it writes is not one the
+settings schema declares. The pane logs the failure and carries on, so the
+dismissed count reads zero on every launch. Issue #424 carries it.
+
+`set_dismiss_store` hands the pane the settings manager it persists through.
+The pane never resolves settings itself.
+
+## Adopt
+
+The pane emits an adopt request and the window handles it. The handler counts
+the new bots and their combined budget, asks which of the proposed wires
+already exist and would change, and shows all of it before anything is created.
+
+`src/gui/main_window.py` — `_adopt_topology_proposal`
+
+```python
+def _adopt_topology_proposal(self, proposal: dict) -> None:
+    """Confirm, open the wizard for each new bot, then emit `wire.created`."""
+```
+
+An adopt that aborts part way calls `_report_adopt_orphans`, which names the
+bot ids it created and left unwired.
+
+## Exchange comparison arbitrage
+
+`src/trading/arbitrage.py` holds the cross-exchange price monitor and its
+spread tracking. No module under `src/` imports it, and the tab draws no
+arbitrage panel. The first two proposal forms are on screen; the third is not.
+
+In development.
+
+## Bridge
+
+Three methods serve this screen, and the renderer modules carry the matching
+names.
+
+| Bridge method | Serves |
+| ------------- | ------ |
+| `market_inspector.state` | The scanner and its two tables |
+| `market_inspector_tab.state` | The surrounding chrome |
+| `market_inspector_topologies.state` | The proposal cards |
+
+Back to [the subsystem index](README.md).

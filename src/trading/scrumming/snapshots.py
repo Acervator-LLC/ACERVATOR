@@ -32,7 +32,7 @@ _RISK_GATE_NAMES: frozenset = frozenset(
 )
 
 
-def _build_panel_snapshot(summary: Optional["VotingSummary"]) -> dict:
+def _build_panel_snapshot(summary: Optional[VotingSummary]) -> dict:
     """Capture a compact ``{indicator: {dir, conf, weight, detail}}`` dict
     from ``VotingSummary.signals``. NEUTRAL voters are kept (informative for
     forensics). Returns ``{}`` when ``summary`` is None (pre-TA tick).
@@ -265,8 +265,7 @@ class SnapshotEmitterMixin(_Host):
                 compounding_snapshot=self._compounding_snapshot(),
             )
         except Exception as _gate_exc:  # noqa: BLE001
-            # Swallow so the trade path never breaks, but count the failure
-            # via telemetry so an unpaired gate row is visible.
+            # Counted in telemetry, so an unpaired gate row stays visible.
             try:
                 from ...core.feature_telemetry import get_telemetry
 

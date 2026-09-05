@@ -22,7 +22,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from src.gui import design_system as shipped
+from src.gui.color_alpha import css_colours
 from src.gui.main_tabs import design_system_surface as surface
+from tests.fixtures.qt_wiring_counts import qt_free
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
@@ -46,9 +48,7 @@ COLOR_TOTAL = 139
 ALIAS_TOTAL = 6
 GROUP_TOTAL = 13
 
-# Every token value, typed out here rather than read from either module.
-# Neither side can satisfy this table by copying the other, and an edit
-# made to both files together is still reported.
+# Typed out here, not read from either module, so neither can satisfy it by copying.
 EXPECTED = {
     "SURFACE_0": "#0a0a0f",
     "SURFACE_1": "#141420",
@@ -707,9 +707,7 @@ EXPECTED_GROUP_MEMBERS = {
 }
 
 
-# The shipped module defines no function and no class, so nothing here
-# has a counterpart upstream. These seven carry the view model the
-# renderer reads and are named so one added or lost is reported.
+# Surface-only names carrying the view model; the shipped module defines no callable.
 SURFACE_ONLY = (
     "token",
     "has_token",
@@ -775,9 +773,7 @@ SHAPE_TRIPLES = (
 SWATCH_ORDER = EXPECTED_COLOR_NAMES + EXPECTED_ALIAS_NAMES
 
 
-# ---------------------------------------------------------------------
 # The two token tables, and the panel painted from one of them
-# ---------------------------------------------------------------------
 
 
 def shipped_tokens():
@@ -788,6 +784,26 @@ def shipped_tokens():
 def surface_tokens():
     """Every token the surface exports, by name, stamped."""
     return sealed({name: surface.token(name) for name in surface.TOKEN_NAMES})
+
+
+#: The tokens whose value is an rgba call carrying Qt's alpha byte.
+ALPHA_BYTE_TOKEN_NAMES = (
+    "GLOW_PRIMARY",
+    "GLOW_SECONDARY",
+    "SCRIM",
+    "GLOW_PRIMARY_EDGE",
+    "GLOW_PRIMARY_FAINT",
+)
+
+
+def painted(value):
+    """One shipped value the way the payload carries it for a browser.
+
+    The table holds the alpha byte Qt reads and the payload leaves under
+    ``css_colours``, so a parity comparison against the shipped module
+    reads the shipped value through the same conversion.
+    """
+    return css_colours(value)
 
 
 def app():
@@ -973,9 +989,7 @@ def digest(payload):
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", shipped.__all__)
@@ -1063,9 +1077,7 @@ def test_the_hash_can_report_a_difference():
     assert digest(old) == digest(dict(old))
 
 
-# ---------------------------------------------------------------------
 # The names, their order and their count
-# ---------------------------------------------------------------------
 
 
 def test_the_token_names_are_the_shipped_modules_export_list():
@@ -1101,9 +1113,7 @@ def test_the_token_table_matches_the_name_list():
     assert surface.TOKENS == shipped_tokens()
 
 
-# ---------------------------------------------------------------------
 # The type each value carries
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", shipped.__all__)
@@ -1198,9 +1208,7 @@ def test_every_font_family_names_a_stack_the_shipped_module_ships():
     assert surface.FONT_FAMILY_MONO.count(",") == 3
 
 
-# ---------------------------------------------------------------------
 # The groups
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("group", sorted(EXPECTED_GROUP_MEMBERS))
@@ -1276,9 +1284,7 @@ def test_the_named_group_tables_are_the_group_map():
         assert table == {n: getattr(shipped, n) for n in EXPECTED_GROUP_MEMBERS[group]}
 
 
-# ---------------------------------------------------------------------
 # The six second names
-# ---------------------------------------------------------------------
 
 
 def test_every_second_name_carries_the_value_of_the_token_it_copies():
@@ -1317,9 +1323,7 @@ def test_the_six_second_names_are_the_only_repeated_colour_values():
         assert EXPECTED_ALIAS_TARGETS[names[1]] == names[0], names
 
 
-# ---------------------------------------------------------------------
 # What the five helpers return
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", shipped.__all__)
@@ -1417,26 +1421,36 @@ def test_requested_names_reads_a_list_and_refuses_anything_else():
     assert surface.requested_names(["<b>PRIMARY</b>"]) == ["<b>PRIMARY</b>"]
 
 
-# ---------------------------------------------------------------------
 # What the shipped module never had
-# ---------------------------------------------------------------------
 
 
-def test_the_connect_sites_match_the_actions():
-    """A signal wiring appeared on one side and not the other."""
-    shipped_text = SHIPPED_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert shipped_text.count(".connect(") == 0
-    assert surface_text.count(".connect(") == 0
+def test_neither_side_declares_a_signal_to_wire():
+    """The surface exports no action, and neither module carries a Signal
+    for a widget to connect."""
+    from PySide6.QtCore import Signal
+
     assert surface.ACTIONS == {}
-    assert len(surface.ACTIONS) == shipped_text.count(".connect(")
-    assert len(surface.ACTIONS) == surface_text.count(".connect(")
-    assert "import PySide6" not in shipped_text
-    assert "from PySide6" not in shipped_text
-    assert "import PySide6" not in surface_text
-    assert "from PySide6" not in surface_text
-    caller = CALLER_PATH.read_text(encoding="utf-8")
-    assert caller.count(".connect(") > 0
+    for module in (shipped, surface):
+        signals = [
+            name for name, value in vars(module).items() if isinstance(value, Signal)
+        ]
+        assert signals == [], (module.__name__, signals)
+
+
+def test_the_widget_that_reads_these_values_does_wire_its_own_signals():
+    """The signal check reports none whatever a module declares."""
+    from PySide6.QtCore import SignalInstance
+
+    from src.gui.widgets.bot_status_table import BotStatusTable
+
+    app()
+    table = BotStatusTable()
+    wired = [
+        name
+        for name in dir(BotStatusTable)
+        if isinstance(getattr(table, name, None), SignalInstance)
+    ]
+    assert wired, "the widget declares no signal at all"
 
 
 def test_the_tokens_declare_no_action_no_timer_and_no_skin():
@@ -1515,28 +1529,15 @@ def test_a_function_added_or_lost_on_either_side_is_reported():
 
 def test_the_surface_loads_no_qt_module():
     """The surface grew an import that pulls Qt into the backend."""
-    import ast
+    answered = qt_free("src.gui.main_tabs.design_system_surface", "TOKENS")
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
 
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "typing"}
-    caller_tree = ast.parse(CALLER_PATH.read_text(encoding="utf-8"))
-    caller_imports = {
-        (node.module or "")
-        for node in ast.walk(caller_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in caller_imports), caller_imports
+
+def test_the_qt_block_stops_the_shipped_side():
+    """POSITIVE CONTROL for ``qt_free``: src.gui.widgets.bot_status_table needs Qt to load."""
+    answered = qt_free("src.gui.widgets.bot_status_table", "BotStatusTable")
+    assert answered["imported"] is False, answered
 
 
 def test_the_surface_carries_its_own_copy_of_every_value(monkeypatch):
@@ -1562,9 +1563,7 @@ def test_the_surface_carries_its_own_copy_of_every_value(monkeypatch):
         assert getattr(shipped, name) == was, name
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def test_the_two_sides_paint_one_picture():
@@ -1848,9 +1847,7 @@ def test_the_panel_paints_something_to_compare():
     assert len(seen) > 1, "the panel painted one colour, so no defect could show"
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -1892,16 +1889,27 @@ def test_view_model_is_json_serialisable():
 def test_the_payload_carries_every_token_the_shipped_module_ships():
     """A token the shipped module ships never reaches the renderer."""
     payload = surface.build_view_model()
-    assert payload["tokens"] == shipped_tokens()
+    assert payload["tokens"] == painted(shipped_tokens())
     assert payload["requested"] == {}
     assert payload["unknown"] == []
     assert payload["group"] == ""
     assert payload["group_tokens"] == {}
     for group, names in EXPECTED_GROUP_MEMBERS.items():
         assert payload["group_members"][group] == list(names)
-        assert payload["groups"][group] == {
-            name: getattr(shipped, name) for name in names
-        }
+        assert payload["groups"][group] == painted(
+            {name: getattr(shipped, name) for name in names}
+        )
+
+
+def test_the_payload_carries_a_share_where_the_shipped_module_carries_a_byte():
+    """Without this the comparison above passes on a payload that converted
+    nothing, because both sides would read the shipped table."""
+    payload = surface.build_view_model()
+    for name in ALPHA_BYTE_TOKEN_NAMES:
+        shipped_value = getattr(shipped, name)
+        assert payload["tokens"][name] != shipped_value, name
+        assert float(payload["tokens"][name][len("rgba(") : -1].split(",")[3]) <= 1
+    assert payload["tokens"]["PRIMARY"] == shipped.PRIMARY
 
 
 def test_the_payload_hands_back_a_copy():
@@ -1913,7 +1921,7 @@ def test_the_payload_hands_back_a_copy():
     assert surface.token("PRIMARY") == shipped.PRIMARY
     assert surface.token("RADIUS_SM") == shipped.RADIUS_SM
     assert surface.ACTIONS == {}
-    assert surface.build_view_model()["tokens"] == shipped_tokens()
+    assert surface.build_view_model()["tokens"] == painted(shipped_tokens())
 
 
 def test_bridge_registers_the_design_system_method():
@@ -1944,15 +1952,21 @@ def test_bridge_registers_the_design_system_method():
         "WEIGHT_MEDIUM": 500,
         "WEIGHT_BOLD": 700,
     }
-    assert result["tokens"] == shipped_tokens()
+    assert result["tokens"] == painted(shipped_tokens())
 
 
-def test_the_bridge_registration_is_two_lines_and_no_more():
+def test_the_bridge_registers_one_handler_for_the_surface():
     """The bridge grew more than the one registration this unit adds."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    assert text.count("design_system_surface") == 3
-    assert "design_system_surface.METHOD: design_system_surface.view_model" in text
-    assert "design_system_surface,\n" in text
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert registry[surface.METHOD] is surface.view_model
+    from_surface = sorted(
+        method
+        for method, handler in registry.items()
+        if getattr(handler, "__module__", "") == surface.__name__
+    )
+    assert from_surface == [surface.METHOD], from_surface
 
 
 @pytest.mark.parametrize("group", sorted(EXPECTED_GROUP_MEMBERS))
@@ -1967,9 +1981,9 @@ def test_the_bridge_carries_every_group(group):
     )
     assert answer["ok"] is True
     assert answer["result"]["group"] == group
-    assert answer["result"]["group_tokens"] == {
-        name: getattr(shipped, name) for name in EXPECTED_GROUP_MEMBERS[group]
-    }
+    assert answer["result"]["group_tokens"] == painted(
+        {name: getattr(shipped, name) for name in EXPECTED_GROUP_MEMBERS[group]}
+    )
 
 
 @pytest.mark.parametrize("case", sorted(UNKNOWN_NAMES))
@@ -2014,7 +2028,7 @@ def test_the_bridge_ignores_a_parameter_it_does_not_know():
         registry,
     )
     assert plain["result"] == noisy["result"]
-    assert plain["result"]["tokens"] == shipped_tokens()
+    assert plain["result"]["tokens"] == painted(shipped_tokens())
 
 
 def test_the_table_is_the_same_on_every_call():
@@ -2028,9 +2042,7 @@ def test_the_table_is_the_same_on_every_call():
     assert digest(first["tokens"]) == digest(third["tokens"])
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt, proved in a process of its own
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -2156,14 +2168,9 @@ def test_the_shipped_module_needs_no_qt_either():
     assert answered["shadow"] == [4, 8, "60"]
 
 
-# ---------------------------------------------------------------------
 # Nothing the surface holds is left out of the snapshot
-# ---------------------------------------------------------------------
 
-# Every constant the surface exports that is not one of the 195 tokens,
-# and the payload key that carries it. A comparison reading 40 of 50
-# constants passes whether the other ten match or not; this closes that
-# gap for every one of them at once.
+# Every non-token constant the surface exports, and the payload key that carries it.
 PAYLOAD_KEYS = dict(
     (
         ("TOKEN_NAMES", "token_names"),
@@ -2210,9 +2217,7 @@ NAME_LIST_GROUPS = {
     "ALIAS_NAMES": "aliases",
 }
 
-# The four constants no snapshot key carries, each with the check that
-# covers it. `METHOD` is the name the bridge registers under. The other
-# three are the values the three lookups return when they find nothing.
+# The constants no snapshot key carries, each with the check that covers it.
 NOT_IN_THE_SNAPSHOT = dict(
     (
         ("METHOD", "test_bridge_registers_the_design_system_method"),
@@ -2257,15 +2262,15 @@ def test_every_constant_the_surface_holds_reaches_the_snapshot():
     unaccounted = []
     for name, value in constants.items():
         if name in surface.TOKENS:
-            assert payload["tokens"][name] == value, name
+            assert payload["tokens"][name] == painted(value), name
         elif name in PAYLOAD_KEYS:
             carried = payload[PAYLOAD_KEYS[name]]
             assert list(carried) == list(value), name
             if isinstance(value, dict):
                 for key in value:
-                    assert carried[key] == value[key] or list(carried[key]) == list(
-                        value[key]
-                    ), (name, key)
+                    assert carried[key] == painted(value[key]) or list(
+                        carried[key]
+                    ) == list(value[key]), (name, key)
         elif name in NAME_LIST_GROUPS:
             assert payload["group_members"][NAME_LIST_GROUPS[name]] == list(value), name
         elif name in NOT_IN_THE_SNAPSHOT:

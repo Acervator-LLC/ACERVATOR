@@ -1,32 +1,10 @@
-"""src/trading/capital_registry.py — central broker for wallet capital
-across all bots on the same exchange + base currency.
+"""``CapitalRegistry`` — one ``Reservation`` per bot against a wallet.
 
-Born v3.20.70 (Phase B of the v3.20.67 design doc). Closes the
-three confidence gaps documented in
-`docs/audits/2026-06-05_bot_coordination_audit.md`:
-
-  • Two Scrumming bots, same exchange/base — was 85%; broker enforces
-    via reservation invariant: sum(reservations) ≤ wallet_total.
-  • Scrumming + Extractor, same exchange/base — was 40% (Scrumming saw
-    Extractor's claim but not vice versa); broker is consulted by
-    BOTH classes; the asymmetry is closed.
-  • Two Extractors, same exchange/base — was 30% (no mutual visibility);
-    broker enforces the same invariant.
-
-Operator-locked parameters from v3.20.69 design lock-in:
-  • Q3 over-allocation UX in wizard: REFUSE OUTRIGHT (no warn-and-confirm)
-  • Q4 persistence: persisted to settings.json (survives crash)
-  • (Q1 reconciliation cadence + Q2 rate-spike threshold consumed in
-    Phases D + C respectively)
-
-R57 EPM binding: this module MUST be mirrored in
-sadp/RAIntSimBat/RAIntSimBat.py via a parallel
-`CapitalRegistryBattery` so the offline battery has matching semantics.
-The R6 cascade-gate check (v3.20.69, MEM-415) enforces that any cascade
-touching `src/trading/extractor_bot.py` or `scrumming_bot.py` must
-ALSO touch RAIntSimBat in the same cascade.
-
-MEM-416.
+``request_reservation`` refuses outright when the reservations on an
+(exchange, base) pair would exceed the wallet, and grants when
+``_wallet_usd`` cannot price the wallet. ``get_free`` and
+``reconcile_with_exchange`` report the wallet against those claims, and
+``_persist_locked`` hands the state to ``settings_callback``.
 """
 
 from __future__ import annotations
@@ -41,29 +19,14 @@ from typing import Optional
 logger = logging.getLogger("acervator.capital_registry")
 
 
-# ---------------------------------------------------------------------------
-# Public data class
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class Reservation:
-    """One bot's claim on capital for a specific (exchange, base) pair.
+    """One bot's claim on an (``exchange_id``, ``base_currency``) pair.
 
-    Fields:
-      bot_id: bot identifier
-      exchange_id: exchange the reservation is against (e.g. "coinbase")
-      base_currency: base/quote currency of the reservation (e.g. "USD")
-      reserved_usd: canonical USD-denominated reservation amount
-      reserved_base: snapshot of reserved_usd in base-currency units at
-          last_rate_usd_per_base — refreshed on rate updates
-      last_rate_usd_per_base: last known rate used to convert
-          reserved_usd to reserved_base
-      reserved_at_ts: unix seconds; when the reservation was originally
-          requested
-      last_refreshed_ts: unix seconds; when the snapshot was last updated
-      bot_mode: "scrumming" or "extractor" — used by reconciliation
-          and the GUI registry table (Phase D)
+    ``reserved_usd`` is the anchor and ``reserved_base`` its snapshot at
+    ``last_rate_usd_per_base``, which ``refresh_rate`` renews; ``bot_mode``
+    reaches the capital registry table and ``reconcile_with_exchange`` never
+    reads it.
     """
 
     bot_id: str
@@ -94,39 +57,23 @@ class Reservation:
         )
 
 
-# ---------------------------------------------------------------------------
-# CapitalRegistry — the broker
-# ---------------------------------------------------------------------------
-
-# Maps the canonical settings.json key for persistence
 _SETTINGS_KEY = "capital_registry_reservations"
 
-# USD-like assets — no rate conversion needed
+# _wallet_usd takes a balance in one of these as already USD.
 _USD_LIKE = frozenset({"USD", "USDC", "USDT", "DAI", "BUSD", "PYUSD", "FDUSD"})
 
 
 class CrossLoopAccessError(RuntimeError):
-    """Raised when the registry is accessed from an asyncio loop
-    different from the one it was created in. Mirrors the DataPool
-    v3.16.19 cross-loop poisoning detection (MEM-219)."""
+    """Raised by ``_check_loop`` when a call arrives from a different running
+    loop than the one that built the ``CapitalRegistry``."""
 
 
 class CapitalRegistry:
-    """Central broker for capital reservations across bots.
+    """Holds every bot's ``Reservation`` in ``_reservations``, keyed by bot_id,
+    behind one re-entrant ``_lock``.
 
-    Thread-safety: a single re-entrant lock guards all mutations and
-    most reads. Asyncio-loop discipline: the registry remembers the
-    loop it was created in (if any) and raises CrossLoopAccessError
-    if a future async user tries to mutate it from a different loop.
-    The current v3.20.70 surface is synchronous, but the loop check
-    is in place for Phase D's periodic-reconciliation coroutine.
-
-    Persistence: when `settings_callback` is provided at construction,
-    every mutation triggers a serialize-and-persist of the
-    reservations to settings.json via the callback. The callback
-    receives a dict that the caller embeds under the `_SETTINGS_KEY`
-    settings entry. On startup, callers can pass `initial_reservations`
-    (loaded from settings.json) to rehydrate the broker.
+    Every method that changes ``_reservations`` reaches ``_persist_locked``, and
+    every public method except ``serialize`` opens with ``_check_loop``.
     """
 
     def __init__(
@@ -136,32 +83,17 @@ class CapitalRegistry:
         settings_callback=None,
         initial_reservations: Optional[list[dict]] = None,
     ) -> None:
-        """Construct the broker.
+        """Build the registry, rehydrating ``_reservations`` from
+        ``initial_reservations`` and dropping any entry
+        ``Reservation.from_dict`` rejects.
 
-        Args:
-          wallet_balances_provider: optional callable
-            ``(exchange_id, base_currency) -> float`` returning the
-            current wallet balance in base-currency units. Used by
-            ``reconcile_with_exchange()`` and ``get_free()`` to compute
-            the free pool. If None, the registry operates in a degraded
-            mode where ``get_free()`` returns the negative of total
-            reservations (caller computes "free" as wallet - returned).
-          settings_callback: optional callable
-            ``(dict) -> None`` invoked after every mutation with the
-            registry's serializable state. Caller persists this under
-            the canonical settings key (`_SETTINGS_KEY`).
-          initial_reservations: optional list of dicts (as produced by
-            ``Reservation.to_dict()``) used to rehydrate state on
-            startup. Reservations with bot_ids not currently registered
-            with any active bot are kept (paused bots still own their
-            allocation per the v3.18.18 sibling-claim discipline).
+        ``wallet_balances_provider`` returns a base-currency balance for
+        ``_wallet_usd``; when it is None ``get_free`` returns negated totals.
         """
         self._lock = threading.RLock()
         self._reservations: dict[str, Reservation] = {}  # keyed by bot_id
         self._wallet_provider = wallet_balances_provider
         self._settings_callback = settings_callback
-        # Loop-poisoning detection — record the loop the registry was
-        # constructed in (None if no loop running). v3.16.19 pattern.
         try:
             self._origin_loop = asyncio.get_event_loop()
         except RuntimeError:
@@ -173,20 +105,18 @@ class CapitalRegistry:
                     r = Reservation.from_dict(d)
                     self._reservations[r.bot_id] = r
                 except (KeyError, ValueError, TypeError):
-                    # Malformed entry — skip without crashing the broker
                     pass
 
-    # ------------------------------------------------------------------
-    # Cross-loop guard (mirrors data_pool.py v3.16.19 fix)
-    # ------------------------------------------------------------------
     def _check_loop(self) -> None:
-        """Raise if called from a different running loop than the one
-        the registry was created in. Only fires when both the origin
-        and the current call site are inside an asyncio loop."""
+        """Raise ``CrossLoopAccessError`` when the running loop differs from
+        ``_origin_loop``.
+
+        Returns without raising unless both loops exist.
+        """
         try:
             current = asyncio.get_running_loop()
         except RuntimeError:
-            return  # not in an async context; sync access is allowed
+            return
         if self._origin_loop is not None and self._origin_loop is not current:
             raise CrossLoopAccessError(
                 f"CapitalRegistry created in loop {id(self._origin_loop)} "
@@ -195,9 +125,6 @@ class CapitalRegistry:
                 f"v3.16.19 / MEM-219 lineage for the same bug class."
             )
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
     def request_reservation(
         self,
         *,
@@ -208,14 +135,11 @@ class CapitalRegistry:
         current_rate_usd_per_base: float,
         bot_mode: str,
     ) -> tuple[bool, Optional[str], float]:
-        """Request a reservation. Returns ``(granted, reason, granted_usd)``.
+        """Create or replace ``bot_id``'s ``Reservation`` and return
+        ``(granted, reason, granted_usd)``.
 
-        - If the bot already has a reservation, the request is treated as
-          an UPDATE (the new usd_amount replaces the old).
-        - If the resulting sum-of-reservations exceeds the wallet pool,
-          the request is REFUSED OUTRIGHT (operator-locked Q3 — no
-          partial grant, no warn-and-confirm) and granted_usd == 0.
-        - On success, granted_usd == usd_amount.
+        A total above the ``_wallet_usd`` figure is refused whole with
+        ``granted_usd`` 0, and a ``_wallet_usd`` of None grants unchecked.
         """
         self._check_loop()
         with self._lock:
@@ -243,8 +167,6 @@ class CapitalRegistry:
                     0.0,
                 )
 
-            # Compute the would-be total: sum of all OTHER reservations
-            # on this (exchange, base) plus the new request
             other_total_usd = 0.0
             for r in self._reservations.values():
                 if r.bot_id == bot_id:
@@ -257,9 +179,7 @@ class CapitalRegistry:
 
             wallet_usd = self._wallet_usd(exchange_id, base, rate)
             if wallet_usd is None:
-                # No wallet provider — degrade gracefully: grant the
-                # reservation but log a sentinel rate so reconciliation
-                # can catch the gap on first wallet query.
+                # Nothing is logged or recorded here; the grant below is silent.
                 pass
             else:
                 if other_total_usd + usd_amount > wallet_usd + 1e-6:
@@ -277,7 +197,6 @@ class CapitalRegistry:
                         0.0,
                     )
 
-            # Grant — create or replace
             now_ts = float(time.time())
             reserved_base = usd_amount / rate
             self._reservations[bot_id] = Reservation(
@@ -295,7 +214,8 @@ class CapitalRegistry:
             return True, None, usd_amount
 
     def release_reservation(self, *, bot_id: str) -> float:
-        """Release the reservation for `bot_id`. Returns the freed USD."""
+        """Drop ``bot_id`` from ``_reservations`` and return its
+        ``reserved_usd``, or 0.0 when it held none."""
         self._check_loop()
         with self._lock:
             r = self._reservations.pop(bot_id, None)
@@ -309,28 +229,11 @@ class CapitalRegistry:
         additional_usd: float,
         current_rate_usd_per_base: Optional[float] = None,
     ) -> tuple[bool, Optional[str], float]:
-        """Grow an existing reservation by additional_usd. Born v3.20.72
-        Phase C-1 (MEM-418) for Extractor profit-cascade prevention.
+        """Add ``additional_usd`` to ``bot_id``'s ``reserved_usd`` and return
+        ``(success, reason, new_total_usd)``.
 
-        Locked operator Q6 — "Allow overshoot only on the SAME bot
-        that earned the profit; reject for other bots' requests during
-        the window":
-
-        - The bot's OWN reservation grows immediately (even if the
-          wallet provider hasn't yet observed the profit settlement).
-        - When OTHER bots call request_reservation() while wallet still
-          lags, the over-allocation check uses the freshly-grown
-          reservation totals — so a sibling can't claim the same USD.
-        - When the wallet eventually catches up, the cumulative
-          reservations equal the wallet (modulo lag) — no leak.
-
-        Returns ``(success, reason, new_total_usd)``. On success,
-        ``new_total_usd`` is the bot's reservation after growth.
-        Failure modes:
-        - bot_id unknown (no existing reservation) → False
-        - additional_usd ≤ 0 → False
-
-        Persistence callback fires on success.
+        The growth is not checked against ``_wallet_usd``; a later
+        ``request_reservation`` from another bot counts the grown total.
         """
         self._check_loop()
         with self._lock:
@@ -368,12 +271,6 @@ class CapitalRegistry:
                     0.0,
                 )
 
-            # Q6 same-bot-only overshoot: the bot's own profit auto-
-            # grows its reservation EVEN IF the wallet provider hasn't
-            # caught up yet. The settlement-lag protection comes from
-            # the next sibling request_reservation, which will see the
-            # full new_usd as a "claim against the wallet" — so
-            # siblings can't claim against profit they didn't earn.
             now_ts = float(time.time())
             r.reserved_usd = new_usd
             r.reserved_base = new_usd / rate
@@ -389,9 +286,11 @@ class CapitalRegistry:
         new_usd: float,
         current_rate_usd_per_base: float,
     ) -> tuple[bool, Optional[str]]:
-        """Update an existing reservation. Equivalent to a fresh
-        ``request_reservation()`` with the cached exchange/base from
-        the existing reservation. Returns ``(success, reason)``."""
+        """Re-run ``request_reservation`` for ``bot_id`` at ``new_usd``, reusing
+        the ``exchange_id``, ``base_currency`` and ``bot_mode`` it already holds.
+
+        Returns ``(success, reason)`` and refuses when ``bot_id`` holds none.
+        """
         self._check_loop()
         with self._lock:
             r = self._reservations.get(bot_id)
@@ -400,8 +299,6 @@ class CapitalRegistry:
                     f"No existing reservation for bot {bot_id}; "
                     f"call request_reservation() instead."
                 )
-            # Delegate to request_reservation (which handles the cap
-            # check for the new amount).
             granted, reason, _ = self.request_reservation(
                 bot_id=bot_id,
                 exchange_id=r.exchange_id,
@@ -419,10 +316,11 @@ class CapitalRegistry:
         base_currency: str,
         current_rate_usd_per_base: float,
     ) -> int:
-        """Refresh the snapshot rate on all reservations for the given
-        (exchange, base). Returns count of reservations updated.
-        Called by the connector/ticker pipeline when a fresh price
-        arrives so reserved_base snapshots track the USD anchor."""
+        """Recompute ``reserved_base`` and ``last_rate_usd_per_base`` on every
+        reservation matching ``exchange_id`` and ``base_currency``.
+
+        Returns how many were updated, and 0 for a non-positive rate.
+        """
         self._check_loop()
         with self._lock:
             base = (base_currency or "").upper()
@@ -448,11 +346,12 @@ class CapitalRegistry:
         base_currency: str,
         current_rate_usd_per_base: Optional[float] = None,
     ) -> tuple[float, float]:
-        """Returns ``(free_usd, free_base)`` for this (exchange, base).
-        free = wallet_total - sum(reservations). If the wallet provider
-        is unavailable, returns ``(-total_usd, -total_base)`` so the
-        caller can compute free = wallet + returned (the negative is
-        a sentinel that means "wallet unknown; subtract from raw")."""
+        """Return ``(free_usd, free_base)``, the ``_wallet_usd`` figure less the
+        reservations on this ``exchange_id`` and ``base_currency``.
+
+        A ``_wallet_usd`` of None returns the negated totals, and the caller
+        adds them to its own wallet figure.
+        """
         self._check_loop()
         with self._lock:
             base = (base_currency or "").upper()
@@ -473,7 +372,6 @@ class CapitalRegistry:
             free_usd = wallet_usd - total_usd
             if rate and rate > 0:
                 return free_usd, free_usd / rate
-            # No rate — only USD is meaningful
             return free_usd, 0.0
 
     def reconcile_with_exchange(
@@ -484,16 +382,12 @@ class CapitalRegistry:
         exchange_balance_base: float,
         current_rate_usd_per_base: float,
     ) -> dict:
-        """Compare the registry's view of (exchange, base) against the
-        live exchange balance. Refreshes the snapshot rate on the
-        relevant reservations and returns a drift report:
+        """Call ``refresh_rate``, then compare ``exchange_balance_base`` against
+        the reservations on this ``exchange_id`` and ``base_currency``.
 
-        ``{wallet_base, wallet_usd, reserved_usd, reserved_base,
-        free_usd, free_base, drift_usd, drift_pct}``
-
-        Phase D will invoke this periodically (every 5 min per the
-        operator-locked Q1 cadence) and emit operator notifications
-        when drift_pct exceeds the operator-tuned threshold.
+        Returns ``wallet_base``, ``wallet_usd``, ``reserved_usd``,
+        ``reserved_base``, ``free_usd``, ``free_base``, ``drift_usd`` and
+        ``drift_pct``, or an error entry for a non-positive rate.
         """
         self._check_loop()
         with self._lock:
@@ -539,8 +433,11 @@ class CapitalRegistry:
         exchange_id: Optional[str] = None,
         base_currency: Optional[str] = None,
     ) -> list[Reservation]:
-        """Snapshot list of reservations (optionally filtered). Used
-        by the GUI registry table in Phase D."""
+        """Return copied ``Reservation`` objects, narrowed by ``exchange_id``
+        and ``base_currency`` when either is given.
+
+        Each copy leaves ``_reservations`` unreachable to the caller.
+        """
         self._check_loop()
         with self._lock:
             base = (base_currency or "").upper() if base_currency else None
@@ -550,27 +447,26 @@ class CapitalRegistry:
                     continue
                 if base is not None and r.base_currency != base:
                     continue
-                # Shallow copy to avoid external mutation
                 result.append(Reservation(**asdict(r)))
             return result
 
     def serialize(self) -> dict:
-        """Serializable snapshot for settings.json persistence."""
+        """Return every ``Reservation`` as dicts under ``_SETTINGS_KEY``."""
         with self._lock:
             return {_SETTINGS_KEY: [r.to_dict() for r in self._reservations.values()]}
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
     def _wallet_usd(
         self,
         exchange_id: str,
         base_currency: str,
         rate: Optional[float],
     ) -> Optional[float]:
-        """Convert wallet base balance to USD using the provider + rate.
-        Returns None if the provider is unavailable or the rate is
-        missing for a non-USD-like base."""
+        """Return the ``_wallet_provider`` balance in USD, taking a
+        ``_USD_LIKE`` base as already USD.
+
+        None when ``_wallet_provider`` is absent or raises, or when ``rate`` is
+        missing for a base outside ``_USD_LIKE``.
+        """
         if self._wallet_provider is None:
             return None
         try:
@@ -584,9 +480,11 @@ class CapitalRegistry:
         return wallet_base * rate
 
     def _persist_locked(self) -> None:
-        """Invoke the settings callback with the current state. Caller
-        is responsible for actually writing to settings.json — we just
-        hand them the dict."""
+        """Hand ``_settings_callback`` every ``Reservation`` under
+        ``_SETTINGS_KEY``, leaving the write to the caller.
+
+        A raising callback is logged and swallowed.
+        """
         if self._settings_callback is None:
             return
         try:
@@ -594,19 +492,7 @@ class CapitalRegistry:
                 _SETTINGS_KEY: [r.to_dict() for r in self._reservations.values()]
             }
             self._settings_callback(payload)
-        except Exception as _pers_exc:  # noqa: BLE001 - see below
-            # Persistence failure must not crash the broker; the
-            # registry is in-memory authoritative and the next
-            # mutation will retry persistence.
-            #
-            # v3.24.21 — but it must not be SILENT. In-memory
-            # authoritative only holds for this process: if every
-            # persist fails, the reservations are gone on restart and
-            # capital the operator believes is reserved is free for
-            # other bots to claim. That is the shape of the 16,523
-            # orphaned reservations already cleaned up once. An
-            # operator who can see this line can act on it; one who
-            # cannot, cannot.
+        except Exception as _pers_exc:  # noqa: BLE001
             logger.warning(
                 "Capital reservation persistence FAILED (%s): %s — "
                 "%d reservation(s) held in memory only and will be LOST "
@@ -617,11 +503,6 @@ class CapitalRegistry:
             )
 
 
-# ---------------------------------------------------------------------------
-# Module-level convenience for the bot lifecycle
-# ---------------------------------------------------------------------------
-
-
 def settings_key() -> str:
-    """The canonical settings.json key for persisted reservations."""
+    """Return ``_SETTINGS_KEY``, the settings entry ``serialize`` writes under."""
     return _SETTINGS_KEY

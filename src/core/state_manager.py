@@ -1,18 +1,9 @@
-"""
-state_manager.py - Robust bot state persistence
-=================================================
-Saves and restores bot configurations, positions, and statistics
-between application sessions.
+"""Bot state persistence.
 
-SAFETY RULES:
-  - Bots are ALWAYS restored in PAUSED state, never auto-started
-  - No orders are placed during restore
-  - Exchange must be synced before resuming
-  - User must explicitly verify and resume each bot
-  - State is saved atomically (write temp, rename)
-  - Corrupt state files are backed up, not overwritten
-
-Storage: ~/.acervator/bot_state.json
+``StateManager`` reads and writes ``bot_state.json`` under ``_DEFAULT_DIR``
+through ``atomic_write_json``. ``save_state`` carries forward every record
+already on disk, and ``delete_bot`` is the only path that removes one.
+``load_state`` falls back to ``_try_backup`` when the primary will not parse.
 """
 
 from __future__ import annotations
@@ -31,26 +22,11 @@ _DEFAULT_DIR = Path.home() / ".acervator"
 
 
 class StateManager:
-    """
-    Persists bot state to disk. Thread-safe via atomic writes.
+    """Persists bot state to disk through ``atomic_write_json``.
 
-    State file structure:
-    {
-        "version": "1.9.4",
-        "saved_at": 1234567890.0,
-        "saved_at_human": "2025-04-12 03:00:00",
-        "bots": {
-            "bot_id_1": {
-                "config": { ... all BotConfig fields ... },
-                "state": "running",          # state when saved
-                "stats": { ... all BotStats fields ... },
-                "phantom_config": { ... },   # for scrumming bots
-                "scrumming_state": { ... },  # for scrumming bots (MEM-245)
-                "extractor_state": { ... },  # for extractor bots (v3.20.4)
-            },
-            ...
-        }
-    }
+    ``save_state`` writes ``version``, ``saved_at``, ``saved_at_human``,
+    ``bot_count``, ``smart_wires``, ``smart_wire_ledgers`` and a ``bots`` map
+    keyed by bot id.
     """
 
     def __init__(self, config_dir: Optional[Path] = None) -> None:
@@ -63,12 +39,8 @@ class StateManager:
     def config_dir(self) -> Path:
         """The directory this manager reads and writes.
 
-        Issue #96 added a single-instance guard, and that guard must
-        claim the SAME directory the fleet was loaded from. Re-deriving
-        `Path.home() / ".acervator"` at the guard would guard a
-        different directory whenever a caller passed `config_dir=`,
-        which every test does. So the guard asks the manager instead of
-        repeating the default.
+        ``__init__`` sets it from its ``config_dir`` argument or from
+        ``_DEFAULT_DIR``.
         """
         return self._dir
 
@@ -78,23 +50,10 @@ class StateManager:
         smart_wires: Optional[list[dict]] = None,
         smart_wire_ledgers: Optional[list[dict]] = None,
     ) -> None:
-        """
-        Save all bot states to disk atomically.
+        """Write ``bots`` to disk atomically, merged with the records already there.
 
-        Parameters
-        ----------
-        bots : list[dict]
-            List of bot state dicts from BotContainer.get_full_state()
-        smart_wires : Optional[list[dict]]
-            v3.15.68 — list of {source_id, target_id, pct} dicts from
-            SmartWireManager.export_wires(). When None, the current
-            file's existing wires field (if any) is preserved.
-        smart_wire_ledgers : Optional[list[dict]]
-            v3.16.57 — per-bot ledger snapshots from
-            SmartWireManager.export_ledgers(). Persists lifetime
-            wired_in / wired_out totals and provenance across restart.
-            Operator-reported bug 2026-05-13: "Smart Wire credits are
-            not persisting across platform restarts."
+        ``smart_wires`` and ``smart_wire_ledgers`` replace the stored topology
+        and ledger totals, and None for either writes an empty list.
         """
         from datetime import datetime
 
@@ -104,9 +63,7 @@ class StateManager:
             "saved_at_human": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "bot_count": len(bots),
             "bots": {},
-            # v3.15.68 — Bot Swarm state preservation
             "smart_wires": list(smart_wires or []),
-            # v3.16.57 — per-bot ledger totals (wired_in/wired_out, etc.)
             "smart_wire_ledgers": list(smart_wire_ledgers or []),
         }
 
@@ -115,28 +72,7 @@ class StateManager:
             if bid:
                 state["bots"][bid] = bot_data
 
-        # v3.24.35 (C01) — A SAVE NEVER REMOVES A BOT RECORD.
-        #
-        # Operator, 2026-08-05: "Why modify long term storage based on
-        # what could be a short term glitch?"
-        #
-        # This method used to rebuild "bots" purely from the list it was
-        # handed, and save_all_state hands it only bots currently in
-        # BotManager._bots. So any transient in-memory condition became
-        # permanent data loss on the next 60-second tick. The clearest
-        # case: register() returns (False, reason) on capital
-        # over-allocation (MEM-417) — a momentary allocation state — and
-        # 60 seconds later that bot's per-lot cost basis is gone. The
-        # live file holds 1,949 such lots and 829 fold tranches, none of
-        # it derivable from exchange fill history.
-        #
-        # A record now leaves this file only via delete_bot(), called
-        # from an explicit operator delete. Absence from memory means
-        # nothing.
-        #
-        # Wrapped so it can never abort a save: on a read failure we log
-        # and fall back to the old rebuild-from-memory behaviour, which
-        # is no worse than what shipped for the last year.
+        # A record leaves this file only through delete_bot.
         try:
             on_disk = self._read_bot_records()
             carried = [bid for bid in on_disk if bid not in state["bots"]]
@@ -158,20 +94,13 @@ class StateManager:
 
         state["bot_count"] = len(state["bots"])
 
-        # Regression tripwire. Under the rule this should report nothing;
-        # a non-empty report now means an explicit delete or a bug.
         self.detect_prune(set(state["bots"].keys()))
 
         def _refresh_backup() -> None:
-            """Copy the outgoing primary over the backup, unless it is
-            unparseable. Runs while the staged replacement is already
-            durable and the primary is still the old contents.
+            """Copy the primary over ``_backup_path`` before it is replaced.
 
-            A corrupt primary must not reach the backup: has_saved_state()
-            answers "no saved state" for an unreadable file, so the
-            platform launches with zero bots and writes an empty primary
-            on the next cycle. Copying the corrupt file first would take
-            the only recovery path with it.
+            ``_read_bot_ids`` returning None leaves the existing backup
+            untouched.
             """
             if not self._path.exists():
                 return
@@ -187,8 +116,6 @@ class StateManager:
             try:
                 self._backup_path.write_bytes(self._path.read_bytes())
             except OSError as _bk_exc:
-                # A missing backup is a degraded durability guarantee, not
-                # a cosmetic miss: load_state falls back to it.
                 logger.warning(
                     "Bot state backup FAILED (%s): %s — proceeding "
                     "with save, but %s will not be recoverable from "
@@ -211,30 +138,11 @@ class StateManager:
             logger.error("Failed to save bot state: %s", exc)
 
     def delete_bot(self, bot_id: str) -> bool:
-        """Remove one bot's record from disk. The ONLY removal path.
+        """Remove one ``bot_id`` record from disk, the only removal path.
 
-        v3.24.35 (C01). Until now, deleting a bot was not implemented
-        anywhere. ``BotManager.unregister()`` popped it out of memory —
-        it contains no reference to a state manager, no save call, no
-        file access at all — and the record vanished from disk purely
-        because the next ``save_state`` rebuilt the file from RAM.
-
-        Deletion was a SIDE EFFECT OF THE BUG. That is also why it was
-        never logged: there was no deletion operation to log. The
-        operator reported deleting bots and finding no record of it
-        anywhere, which is exactly right.
-
-        Now that a save carries records forward, that accidental
-        mechanism is gone, so deletion has to become a positive act —
-        otherwise a deleted bot would return on every subsequent save.
-
-        Also drops the bot's Smart Wire ledger row and any wire naming
-        it, so a delete does not leave the orphans it used to. (13 of 48
-        ledger rows on the live file are such orphans, 2 carrying
-        non-zero wired_out — the only surviving trace of bots already
-        deleted. Those are pre-existing and are NOT touched here.)
-
-        Idempotent. Returns True if a record was removed.
+        Also drops that bot's ``smart_wire_ledgers`` row and every
+        ``smart_wires`` entry naming it, and returns True when a record was
+        removed.
         """
         try:
             if not self._path.exists():
@@ -287,9 +195,7 @@ class StateManager:
                 before_replace=_refresh_backup,
             )
 
-            # ERROR level on purpose. This is irreversible and destroys
-            # data the exchange cannot reproduce; it should be findable
-            # in the logs a year from now.
+            # ERROR level marks an irreversible removal, not a failure.
             logger.error(
                 "state: DELETED bot %s from disk — %d lot(s), %d "
                 "tranche(s), and its wire/ledger rows are gone. "
@@ -311,12 +217,10 @@ class StateManager:
             return False
 
     def _read_bot_records(self, path=None) -> dict:
-        """The ``bots`` map from a state file, or {} if unreadable.
+        """The ``bots`` map from a state file, or {} when the file is absent.
 
-        Used by the carry-forward in save_state. RAISES nothing itself,
-        but returns {} on failure — and the caller treats {} as "carry
-        nothing", which is why the caller logs loudly rather than
-        silently accepting an empty result.
+        A decode error propagates to the caller, and ``save_state`` and
+        ``_read_bot_ids`` each catch it.
         """
         target = self._path if path is None else path
         if not target.exists():
@@ -325,11 +229,10 @@ class StateManager:
             return dict(json.load(f).get("bots") or {})
 
     def _read_bot_ids(self, path) -> "Optional[set]":
-        """Bot ids in a state file, or None if it cannot be read.
+        """Bot ids in a state file, or None when ``_read_bot_records`` raises.
 
-        None means "unknown", NOT "empty" — the distinction matters,
-        because treating an unreadable file as empty would report every
-        bot as being dropped.
+        ``detect_prune`` and ``diff_primary_vs_backup`` read None as unknown
+        and never as an empty file.
         """
         try:
             return set(self._read_bot_records(path).keys())
@@ -337,26 +240,10 @@ class StateManager:
             return None
 
     def detect_prune(self, incoming_ids: set) -> list:
-        """Report bot ids this save is about to DROP. Log-only.
+        """Return the bot ids on disk that ``incoming_ids`` omits, logged at ERROR.
 
-        v3.24.35 (C01 PR-0). ``save_state`` rebuilds ``"bots"`` from
-        scratch out of the list it is handed, with no read-merge against
-        disk. ``save_all_state`` hands it only bots present in
-        ``BotManager._bots``, so any bot that was skipped or refused
-        during restore is absent — and is erased by the 60-second save
-        timer. What is lost is not derivable from exchange history:
-        measured on the live file 2026-08-05, 35 bots holding 1,949
-        per-lot cost-basis entries and 829 fold tranches.
-
-        This detector changes nothing. It exists so the failure becomes
-        VISIBLE before the merge lands, and so a Phase-0 session
-        produces evidence about whether it ever fires in practice.
-        (It has not yet: zero restore-skip events across 3,012 log
-        files as of 2026-08-05.)
-
-        Returns the dropped ids so tests can assert on them without
-        parsing log output. NEVER raises: it sits on the live save path,
-        and a detector that can break saving is worse than the defect.
+        ``save_state`` calls this after its carry-forward, where a non-empty
+        result means the carry-forward raised; this never raises.
         """
         try:
             on_disk = self._read_bot_ids(self._path)
@@ -382,18 +269,10 @@ class StateManager:
             return []
 
     def diff_primary_vs_backup(self) -> list:
-        """Bot ids in the BACKUP but missing from the primary.
+        """Bot ids present in ``_backup_path`` but missing from ``_path``.
 
-        v3.24.35 (C01 PR-0). The only detector that can surface
-        PRE-EXISTING C01 damage. The backup is written immediately
-        before each overwrite, so it lags the primary by exactly one
-        save cycle — measured at 60 s on 2026-08-05. If a bot was pruned
-        by the last save, it is still in the backup and gone from the
-        primary, and this is the single window in which that is
-        recoverable. One more save closes it.
-
-        Returns the ids so a caller can surface them; logs at ERROR.
-        Never raises.
+        ``_read_bot_ids`` returning None for either file yields an empty
+        list; this logs at ERROR and never raises.
         """
         try:
             primary = self._read_bot_ids(self._path)
@@ -417,52 +296,20 @@ class StateManager:
             return []
 
     PREFLIGHT_KEEP = 10
-    """How many boot snapshots to retain. Bounded on purpose: each pair
-    is ~1.7 MB against the current 870 KB state file, and an unbounded
-    forensic directory inside the operator's runtime tree is its own
-    problem. Ten covers roughly a week of daily restarts."""
+    """How many snapshot sets ``preflight_snapshot`` keeps before pruning."""
 
     def _preflight_stamp(self) -> str:
-        """Timestamp for a snapshot filename, to 1-second resolution.
-
-        Its own method so tests can override it. Otherwise every test
-        exercising retention has to sleep past the granularity — 10.6
-        seconds of wall-clock across this file's cases, and tests that
-        depend on real time are flaky by construction.
-        """
+        """Timestamp for a ``preflight_snapshot`` filename, to 1-second resolution."""
         from datetime import datetime
 
         return datetime.now().strftime("%Y%m%d_%H%M%S")
 
     def preflight_snapshot(self) -> list:
-        """Copy the state files aside BEFORE anything can overwrite them.
+        """Copy ``_path`` and ``_backup_path`` into a ``preflight`` subdirectory.
 
-        v3.24.35 (C01 PR-0), method rule M11: back up before the first
-        destructive run.
-
-        The existing safety net is one cycle deep — ``bot_state.backup``
-        is refreshed immediately before every save, so it always holds
-        the previous 60 seconds and nothing older. That is enough to
-        survive one bad save and nothing more. If a boot goes wrong and
-        the timer ticks twice, both copies are gone.
-
-        This takes a dated copy of BOTH files at boot, before restore
-        runs and before the save timer starts, so there is always a
-        known-good pre-session copy independent of the rolling backup.
-
-        Design notes:
-          * Snapshots live in a ``preflight/`` SUBDIRECTORY so they do
-            not clutter the runtime root.
-          * Retention is bounded (``PREFLIGHT_KEEP``); the oldest are
-            pruned. An unbounded copy pile inside the operator's own
-            tree is not a kindness.
-          * A boot whose files are byte-identical to the newest existing
-            snapshot writes nothing — repeated restarts do not multiply
-            copies.
-          * Never raises. A backup step that can abort boot is worse
-            than no backup step.
-
-        Returns the paths written (empty if nothing needed writing).
+        Writes nothing when the digest of both files matches the newest
+        ``.stamp``, prunes sets beyond ``PREFLIGHT_KEEP``, never raises, and
+        returns the paths written.
         """
         import hashlib
         import shutil
@@ -481,7 +328,6 @@ class StateManager:
                 digest.update(p.read_bytes())
             stamp_now = digest.hexdigest()[:16]
 
-            # Identical to the most recent snapshot? Then skip.
             existing = sorted(root.glob("*.stamp"))
             if (
                 existing
@@ -499,7 +345,6 @@ class StateManager:
                 written.append(dest)
             (root / f"{ts}.stamp").write_text(stamp_now, encoding="utf-8")
 
-            # Prune oldest complete sets beyond PREFLIGHT_KEEP.
             stamps = sorted(root.glob("*.stamp"))
             for old in stamps[: -self.PREFLIGHT_KEEP]:
                 old_ts = old.stem
@@ -525,9 +370,9 @@ class StateManager:
             return written
 
     def load_state(self) -> dict:
-        """
-        Load saved bot state from disk.
-        Returns the full state dict, or empty dict if no state.
+        """Return the whole state dict from ``_path``, or {} when it is absent.
+
+        A ``json.JSONDecodeError`` routes to ``_try_backup``.
         """
         if not self._path.exists():
             return {}
@@ -546,7 +391,7 @@ class StateManager:
             return {}
 
     def _try_backup(self) -> dict:
-        """Attempt to load from backup if primary is corrupt."""
+        """Load ``_backup_path`` when ``load_state`` cannot parse the primary."""
         if not self._backup_path.exists():
             return {}
         try:
@@ -559,7 +404,7 @@ class StateManager:
             return {}
 
     def clear_state(self) -> None:
-        """Remove saved state (used on fresh start / version change)."""
+        """Delete ``_path`` and ``_backup_path``, reporting any unlink that fails."""
         cleared, failed = [], []
         for p in [self._path, self._backup_path]:
             if p.exists():
@@ -567,12 +412,6 @@ class StateManager:
                     p.unlink()
                     cleared.append(p.name)
                 except OSError as _rm_exc:
-                    # v3.24.21 — was `except Exception: pass`.
-                    # A failed unlink means state the caller believes is
-                    # gone is still on disk, so the next boot restores
-                    # bots the operator intended to clear. Reporting it
-                    # is the difference between a visible error and a
-                    # confusing resurrection.
                     failed.append(p.name)
                     logger.error(
                         "Failed to clear state file %s (%s): %s — stale "
@@ -592,27 +431,10 @@ class StateManager:
             logger.info("Bot state cleared")
 
     def probe(self) -> str:
-        """Three-valued state-file probe.
+        """Classify ``_path``: ``no_file``, ``empty``, ``has_bots``, ``unreadable``.
 
-        Returns one of ``"no_file"``, ``"empty"``, ``"has_bots"`` or
-        ``"unreadable"``.
-
-        v3.24.35 (C01 PR-0). ``has_saved_state()`` collapsed all four
-        onto a bare bool via ``except Exception: return False``, and
-        ``main.py:720`` gates the ENTIRE restore on it. So an unreadable
-        primary meant "there is no saved state", the platform launched
-        with zero bots, and ``load_state()``'s ``_try_backup()`` fallback
-        (:238) was never reached because the gate had already answered.
-
-        The second half is what makes it unrecoverable rather than
-        merely alarming: 60 seconds later the save timer runs
-        ``save_state([])``, whose backup step copies the CURRENT primary
-        over ``bot_state.backup.json``. The corrupt primary overwrites
-        the good backup, and then an empty state overwrites the primary.
-        One failed read destroys the fleet record and its recovery path
-        in the same cycle.
-
-        "unreadable" is therefore never silently equivalent to "empty".
+        ``has_saved_state`` is built on it, and an unreadable file logs at
+        ERROR and never reports as ``empty``.
         """
         try:
             if not self._path.exists():
@@ -634,13 +456,8 @@ class StateManager:
             return "unreadable"
 
     def has_saved_state(self) -> bool:
-        """Check if there's a saved state file with bots.
+        """Report whether ``probe`` returns ``has_bots``.
 
-        Built on ``probe()``. Behaviour for the three healthy outcomes is
-        unchanged. ``unreadable`` still returns False — changing the
-        launch policy is an open operator decision (halt and prompt for
-        recovery, vs launch empty) and is NOT decided here — but it is
-        now loud rather than silent, and the backup is protected from
-        being overwritten by the unreadable primary (see save_state).
+        ``no_file``, ``empty`` and ``unreadable`` all return False.
         """
         return self.probe() == "has_bots"

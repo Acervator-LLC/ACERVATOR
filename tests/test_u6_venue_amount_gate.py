@@ -48,9 +48,8 @@ from src.trading.bot_container import BotContainer
 
 SYMBOL = "RAVE/USD"
 
-# (min_amount, min_cost, amount_precision) as _get_market_limits returns
-# them. LIMITS is a symbol whose metadata was read. NOMETA is the
-# fail-open fallback the method uses when the metadata is absent.
+# `(min_amount, min_cost, amount_precision)` as `_get_market_limits` returns
+# them. NOMETA is the fail-open fallback when the metadata is absent.
 REGIMES = {
     "LIMITS": (0.001, 0.0, 8),
     "NOMETA": (0.0, 0.0, 8),

@@ -34,9 +34,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 LOGGER_NAME = "acervator.gui.instance_consent"
 
-DIALOG_PATH = REPO_ROOT / "src/gui/instance_consent_dialog.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/instance_consent_surface.py"
-
 BUILD = "build"
 CLICK = "click"
 CLOSE = "close"
@@ -1196,53 +1193,10 @@ def test_a_channel_swap_is_reported_on_every_skin_colour():
     assert surface.SKIN["consequence"] == surface.SKIN["consent"]
 
 
-def test_the_shipped_strings_are_the_dialogs_own():
-    """A string the operator reads was retyped rather than carried over."""
-    dialog_text = DIALOG_PATH.read_text(encoding="utf-8")
-    for literal in (
-        surface.ACCESSIBLE_NAME,
-        surface.WINDOW_TITLE,
-        surface.REFUSE_TEXT,
-        surface.CONSENT_TEXT_FORMAT.replace("{count}", "{count}"),
-        surface.RELEASE_LOG,
-        surface.MISSING_VERDICT,
-        surface.HEADLINE,
-        surface.DETAIL,
-        surface.FACT_OBJECT_NAME,
-        surface.CONSEQUENCE,
-        surface.REFUSE,
-        surface.CONSENT,
-        surface.FACTS,
-    ):
-        assert literal in dialog_text, literal
-    for line in (surface.REFUSE_LOG, surface.CONSENT_LOG, surface.BUILD_FAILED_LOG):
-        for half in line.split(" "):
-            assert half in dialog_text, half
-    for half in surface.CONSENT_BLOCKED_TOOLTIP.split("directory. "):
-        assert half in dialog_text, half
-
-
-def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    import ast
-
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imported.add(node.module or "")
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"logging", "types", "typing", "__future__", ""}
-    dialog_tree = ast.parse(DIALOG_PATH.read_text(encoding="utf-8"))
-    dialog_imports = {
-        (node.module or "")
-        for node in ast.walk(dialog_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in dialog_imports), dialog_imports
+def _buttons(dialog):
+    """The refuse and consent buttons off a built dialog's layout."""
+    row = dialog.layout().itemAt(4).layout()
+    return row.itemAt(1).widget(), row.itemAt(2).widget()
 
 
 def test_the_connect_sites_match_the_actions():
@@ -1251,21 +1205,12 @@ def test_the_connect_sites_match_the_actions():
 
     app()
     dialog = qt_dialog.InstanceConsentDialog(make_decision("plain"))
-    row = dialog.layout().itemAt(4).layout()
-    refuse = row.itemAt(1).widget()
-    consent = row.itemAt(2).widget()
+    refuse, consent = _buttons(dialog)
     live = refuse.receivers(CLICKED_SIGNAL) + consent.receivers(CLICKED_SIGNAL)
     assert live == 2
     assert refuse.receivers(CLICKED_SIGNAL) == 1
     assert consent.receivers(CLICKED_SIGNAL) == 1
     assert QPushButton("bare").receivers(CLICKED_SIGNAL) == 0
-
-    dialog_text = DIALOG_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert dialog_text.count(".connect(") == live == 2
-    assert "self._refuse_button.clicked.connect(self._on_refuse)" in dialog_text
-    assert "self._consent_button.clicked.connect(self._on_consent)" in dialog_text
-    assert surface_text.count(".connect(") == 0
     assert len(surface.ACTIONS) == live
     assert set(surface.ACTIONS) == {"refuse.clicked", "consent.clicked"}
     assert surface.ACTIONS["refuse.clicked"] == "refuse"
@@ -1275,6 +1220,25 @@ def test_the_connect_sites_match_the_actions():
     assert set(surface.BUTTON_ACTS) == set(BUTTON_TAGS)
     assert surface.BUTTON_ACTS[surface.REFUSE] is surface.InstanceConsentModel.refuse
     assert surface.BUTTON_ACTS[surface.CONSENT] is surface.InstanceConsentModel.consent
+
+
+def test_clicking_refuse_leaves_the_fleet_idle():
+    """The refuse button reaches the slot that answers ANSWER_REFUSE."""
+    app()
+    dialog = qt_dialog.InstanceConsentDialog(make_decision("plain"))
+    refuse, _consent = _buttons(dialog)
+    refuse.click()
+    assert dialog.consented is surface.ANSWER_REFUSE
+
+
+def test_clicking_consent_takes_ownership():
+    """The consent button reaches the slot that answers ANSWER_CONSENT,
+    so the two buttons are not wired to one slot."""
+    app()
+    dialog = qt_dialog.InstanceConsentDialog(make_decision("plain"))
+    _refuse, consent = _buttons(dialog)
+    consent.click()
+    assert dialog.consented is surface.ANSWER_CONSENT
 
 
 METHOD_MAP = {

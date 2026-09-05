@@ -1,9 +1,11 @@
-"""
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-risk_manager.py — Portfolio-level risk management engine.
+"""Portfolio-level risk monitoring.
 
-Monitors drawdown, exposure, correlation, and enforces safety limits
-across all running bots. Can auto-pause bots that breach thresholds.
+``RiskManager.evaluate`` builds a ``PortfolioSnapshot`` from ``list_bots`` and
+tests it against every enabled ``RiskRule``, returning the ``RiskAlert`` rows
+raised this cycle. ``_trigger_rule`` appends each row to ``_alerts`` and logs
+it. ``get_status`` reports the latest snapshot, the last hour of alerts and the
+current ``RiskRule`` settings.
 """
 
 from __future__ import annotations
@@ -34,13 +36,13 @@ class RiskRule:
     enabled: bool = True
     threshold: float = 0.0
     action: RiskAction = RiskAction.WARN
-    cooldown_seconds: float = 300  # Don't re-trigger for 5 min
+    cooldown_seconds: float = 300
     last_triggered: float = 0.0
 
 
 @dataclass
 class RiskAlert:
-    """A triggered risk event."""
+    """One raised alert: the ``rule_name`` that fired and its ``action_taken``."""
 
     timestamp: float
     rule_name: str
@@ -53,11 +55,11 @@ class RiskAlert:
 
 @dataclass
 class PortfolioSnapshot:
-    """Point-in-time snapshot of portfolio state."""
+    """One ``evaluate`` cycle's totals, with ``drawdown_pct`` against ``peak_pnl``."""
 
     timestamp: float
     total_pnl: float
-    total_exposure: float  # Total USD deployed across all bots
+    total_exposure: float  # USD: sum of target_balance over running bots only
     bot_count: int
     running_count: int
     peak_pnl: float
@@ -66,16 +68,7 @@ class PortfolioSnapshot:
     exchange_exposures: dict = field(default_factory=dict)  # exchange → USD exposure
 
 
-# --- Correlation matrix for major crypto assets ---
-# Approximate 30-day rolling correlation (updated periodically)
-# Values > 0.7 are considered highly correlated
-#
-# v3.19.39 FIX (sadp R28 FL): keys MUST be in sorted-tuple form because
-# get_correlation() does `tuple(sorted([a, b]))` before lookup. Pre-fix
-# 8 of 15 entries had unsorted keys (e.g. ("BTC", "AVAX") would never
-# match a lookup that produces ("AVAX", "BTC")), making most non-BTC/ETH
-# correlations unreachable and defaulting to 0.3. Discovered by
-# tests/test_risk_manager_coverage.py::test_correlation_table_keys_are_sorted_tuples.
+# Every key is a sorted tuple; get_correlation looks up tuple(sorted([a, b])).
 CRYPTO_CORRELATIONS = {
     ("ADA", "BTC"): 0.73,
     ("ADA", "DOT"): 0.71,
@@ -96,73 +89,68 @@ CRYPTO_CORRELATIONS = {
 
 
 def get_correlation(asset_a: str, asset_b: str) -> float:
-    """Get approximate correlation between two crypto assets."""
+    """Return the ``CRYPTO_CORRELATIONS`` entry for a sorted, upper-cased asset pair.
+
+    A pair absent from the table returns 0.3, which ``_find_correlated_groups``
+    reads as uncorrelated.
+    """
     if asset_a == asset_b:
         return 1.0
     key = tuple(sorted([asset_a.upper(), asset_b.upper()]))
-    return CRYPTO_CORRELATIONS.get(key, 0.3)  # Default low correlation
+    return CRYPTO_CORRELATIONS.get(key, 0.3)
 
 
 class RiskManager:
-    """
-    Portfolio-level risk management.
+    """Portfolio-level risk monitoring across the bots ``list_bots`` reports.
 
-    Monitors:
-    - Maximum drawdown (from peak P/L)
-    - Per-bot loss limits
-    - Total portfolio exposure
-    - Asset concentration (too much in one coin)
-    - Exchange concentration (too much on one exchange)
-    - Correlated asset exposure
-    - Rapid loss detection (flash crash protection)
-
-    Actions:
-    - Emit warnings via event bus
-    - Auto-pause individual bots
-    - Emergency stop all bots
+    ``evaluate`` checks drawdown against ``peak_pnl``, per-bot loss, asset and
+    exchange concentration, correlated exposure and rapid loss, appending one
+    ``RiskAlert`` per breach. ``_trigger_rule`` writes ``_alerts``, calls
+    ``logger.warning`` and adds a ``bot_id`` to ``_paused_by_risk``. No method
+    here pauses, stops or otherwise commands a bot.
     """
 
     DEFAULT_RULES = [
         RiskRule(
             name="max_drawdown",
             description="Maximum portfolio drawdown from peak P/L",
-            threshold=10.0,  # 10% drawdown
+            threshold=10.0,
             action=RiskAction.WARN,
         ),
         RiskRule(
             name="critical_drawdown",
-            description="Critical drawdown — emergency pause all bots",
-            threshold=25.0,  # 25% drawdown
+            description="Critical drawdown from peak P/L",
+            threshold=25.0,
             action=RiskAction.PAUSE_ALL,
         ),
         RiskRule(
             name="per_bot_loss",
-            description="Maximum loss per individual bot before auto-pause",
-            threshold=50.0,  # $50 loss
+            description="Maximum USD loss per individual bot",
+            threshold=50.0,
             action=RiskAction.PAUSE_BOT,
         ),
         RiskRule(
             name="asset_concentration",
             description="Maximum % of portfolio in a single asset",
-            threshold=40.0,  # 40% in one asset
+            threshold=40.0,
             action=RiskAction.WARN,
         ),
         RiskRule(
             name="exchange_concentration",
             description="Maximum % of portfolio on a single exchange",
-            threshold=60.0,  # 60% on one exchange
+            threshold=60.0,
             action=RiskAction.WARN,
         ),
         RiskRule(
             name="correlated_exposure",
-            description="Maximum combined exposure to highly correlated assets (r>0.7)",
-            threshold=50.0,  # 50% in correlated assets
+            description="Maximum combined exposure to correlated assets (r>=0.7)",
+            threshold=50.0,
             action=RiskAction.WARN,
         ),
         RiskRule(
             name="rapid_loss",
             description="Loss exceeding threshold in 5-minute window (flash crash)",
-            threshold=5.0,  # 5% drop in 5 min
+            threshold=5.0,
             action=RiskAction.PAUSE_ALL,
             cooldown_seconds=600,
         ),
@@ -170,13 +158,7 @@ class RiskManager:
 
     def __init__(self, bot_manager=None):
         self._bot_manager = bot_manager
-        # v3.19.39 FIX (sadp R28 FL): use dataclasses.replace() to create
-        # per-instance copies of each DEFAULT_RULES entry. Pre-fix the
-        # dict comprehension stored references to the shared class-level
-        # RiskRule instances, so mutations (last_triggered, threshold,
-        # enabled) leaked across every RiskManager instance. Discovered
-        # by tests/test_risk_manager_coverage.py batch-vs-isolated
-        # divergence. Each instance now has its own rule state.
+        # replace() gives this instance its own RiskRule copies, last_triggered included.
         self._rules: dict[str, RiskRule] = {
             r.name: replace(r) for r in self.DEFAULT_RULES
         }
@@ -184,10 +166,11 @@ class RiskManager:
         self._snapshots: list[PortfolioSnapshot] = []
         self._peak_pnl: float = 0.0
         self._peak_exposure: float = 0.0
-        self._paused_by_risk: set[str] = set()  # bot_ids paused by risk manager
+        # bot_ids that already raised per_bot_loss; no method removes an entry.
+        self._paused_by_risk: set[str] = set()
         self._enabled: bool = True
         self._max_alerts = 1000
-        self._max_snapshots = 8640  # 24 hours at 10-second intervals
+        self._max_snapshots = 8640
 
     @property
     def rules(self) -> dict[str, RiskRule]:
@@ -216,7 +199,11 @@ class RiskManager:
         enabled: bool = None,
         action: RiskAction = None,
     ):
-        """Update a risk rule's parameters."""
+        """Set ``threshold``, ``enabled`` or ``action`` on one named ``RiskRule``.
+
+        An argument left at None is not written, and an unknown ``name`` only
+        reaches ``logger.warning``.
+        """
         if name not in self._rules:
             logger.warning("Unknown risk rule: %s", name)
             return
@@ -229,11 +216,10 @@ class RiskManager:
             rule.action = action
 
     def evaluate(self, bot_manager=None) -> list[RiskAlert]:
+        """Test a fresh ``PortfolioSnapshot`` against every enabled ``RiskRule``.
 
-        # sadp: R28  # risk eval: fail-loudly on rule violation(R28)
-        """
-        Run all risk checks against current portfolio state.
-        Returns list of new alerts triggered this cycle.
+        Returns the ``RiskAlert`` rows raised this cycle; ``_trigger_rule`` has
+        already appended them to ``_alerts``.
         """
         if not self._enabled:
             return []
@@ -245,22 +231,19 @@ class RiskManager:
         now = time.time()
         new_alerts = []
 
-        # Build portfolio snapshot
         snapshot = self._build_snapshot(bm, now)
         self._snapshots.append(snapshot)
         if len(self._snapshots) > self._max_snapshots:
             self._snapshots = self._snapshots[-self._max_snapshots :]
 
-        # Track peak P/L
         if snapshot.total_pnl > self._peak_pnl:
             self._peak_pnl = snapshot.total_pnl
         if snapshot.total_exposure > self._peak_exposure:
             self._peak_exposure = snapshot.total_exposure
 
-        # --- Check each rule ---
         statuses = bm.list_bots()
 
-        # 1. Max drawdown
+        # drawdown_pct stays 0 until total_pnl has once been above 0.
         if self._peak_pnl > 0 and snapshot.drawdown_pct > 0:
             for rule_name in ["max_drawdown", "critical_drawdown"]:
                 rule = self._rules.get(rule_name)
@@ -276,7 +259,6 @@ class RiskManager:
                     if alert:
                         new_alerts.append(alert)
 
-        # 2. Per-bot loss limit
         rule = self._rules.get("per_bot_loss")
         if rule and rule.enabled:
             for status in statuses:
@@ -294,7 +276,6 @@ class RiskManager:
                     if alert:
                         new_alerts.append(alert)
 
-        # 3. Asset concentration
         rule = self._rules.get("asset_concentration")
         if rule and rule.enabled and snapshot.total_exposure > 0:
             for asset, exposure in snapshot.asset_exposures.items():
@@ -310,7 +291,6 @@ class RiskManager:
                     if alert:
                         new_alerts.append(alert)
 
-        # 4. Exchange concentration
         rule = self._rules.get("exchange_concentration")
         if rule and rule.enabled and snapshot.total_exposure > 0:
             for exch, exposure in snapshot.exchange_exposures.items():
@@ -326,7 +306,6 @@ class RiskManager:
                     if alert:
                         new_alerts.append(alert)
 
-        # 5. Correlated exposure
         rule = self._rules.get("correlated_exposure")
         if rule and rule.enabled and snapshot.total_exposure > 0:
             corr_groups = self._find_correlated_groups(snapshot.asset_exposures)
@@ -343,11 +322,11 @@ class RiskManager:
                     if alert:
                         new_alerts.append(alert)
 
-        # 6. Rapid loss (flash crash detection)
         rule = self._rules.get("rapid_loss")
         if rule and rule.enabled and len(self._snapshots) >= 2:
-            window = 300  # 5 minutes
+            window = 300
             old_snaps = [s for s in self._snapshots if now - s.timestamp <= window]
+            # A portfolio whose oldest in-window total_pnl is <= 0 raises nothing.
             if old_snaps and old_snaps[0].total_pnl > 0:
                 loss_pct = (
                     (old_snaps[0].total_pnl - snapshot.total_pnl)
@@ -368,7 +347,11 @@ class RiskManager:
         return new_alerts
 
     def _build_snapshot(self, bm, now: float) -> PortfolioSnapshot:
-        """Build a portfolio snapshot from current bot states."""
+        """Total the ``PortfolioSnapshot`` fields over ``bm.list_bots()``.
+
+        Only a bot whose state is ``running`` adds its ``target_balance`` to
+        ``total_exposure``; every bot contributes to ``total_pnl``.
+        """
         statuses = bm.list_bots()
         total_pnl = 0.0
         total_exposure = 0.0
@@ -381,22 +364,18 @@ class RiskManager:
             pnl = stats.get("realised_pnl", 0) + stats.get("unrealised_pnl", 0)
             total_pnl += pnl
 
-            # Estimate exposure as target_balance
             tb = s.get("target_balance", 0)
             if s.get("state") == "running":
                 running += 1
                 total_exposure += tb
 
-                # Asset exposure
                 sym = s.get("symbol", "")
                 asset = sym.split("/")[0] if "/" in sym else sym
                 asset_exp[asset] = asset_exp.get(asset, 0) + tb
 
-                # Exchange exposure
                 exch = s.get("exchange", "")
                 exchange_exp[exch] = exchange_exp.get(exch, 0) + tb
 
-        # Calculate drawdown
         drawdown = 0.0
         if self._peak_pnl > 0 and total_pnl < self._peak_pnl:
             drawdown = ((self._peak_pnl - total_pnl) / self._peak_pnl) * 100
@@ -414,7 +393,11 @@ class RiskManager:
         )
 
     def _find_correlated_groups(self, asset_exposures: dict) -> list[tuple]:
-        """Find groups of correlated assets and their combined exposure %."""
+        """Return ``([a, b], combined_pct)`` for each correlated asset pair.
+
+        A pair is correlated at ``get_correlation`` 0.7 or above, and
+        ``combined_pct`` is its share of ``asset_exposures``.
+        """
         assets = list(asset_exposures.keys())
         total = sum(asset_exposures.values()) or 1
         results = []
@@ -444,9 +427,11 @@ class RiskManager:
         bot_id: str = "",
         value: float = 0.0,
     ) -> Optional[RiskAlert]:
+        """Append a ``RiskAlert`` unless ``rule.cooldown_seconds`` has yet to elapse.
 
-        # sadp: R28 R33  # risk trigger: fail-loudly(R28) append-only log(R33)
-        """Trigger a rule if cooldown has expired."""
+        ``RiskAction.PAUSE_BOT`` adds ``bot_id`` to ``_paused_by_risk``, and
+        ``PAUSE_ALL`` takes no action here.
+        """
         if now - rule.last_triggered < rule.cooldown_seconds:
             return None
 
@@ -475,16 +460,19 @@ class RiskManager:
             "RISK ALERT [%s]: %s (action=%s)", rule.name, message, rule.action.value
         )
 
-        # Execute action
         if rule.action == RiskAction.PAUSE_BOT and bot_id:
             self._paused_by_risk.add(bot_id)
         elif rule.action == RiskAction.PAUSE_ALL:
-            pass  # Caller should handle this
+            pass
 
         return alert
 
     def get_status(self) -> dict:
-        """Return current risk status summary."""
+        """Return the latest ``PortfolioSnapshot`` figures and each ``RiskRule``.
+
+        ``alerts_1h`` and ``critical_alerts`` count only ``_alerts`` rows
+        stamped within the last hour.
+        """
         latest = self._snapshots[-1] if self._snapshots else None
         recent_alerts = [a for a in self._alerts if time.time() - a.timestamp < 3600]
 

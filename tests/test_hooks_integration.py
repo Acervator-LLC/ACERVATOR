@@ -129,9 +129,7 @@ class TestTheHarnessSearchCanFail:
         assert claude_home.skill_file("no-such-skill") is None
 
 
-# ---------------------------------------------------------------------------
 # Chain 1: prompt_router → archetype named in routing exists + runnable
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
@@ -188,9 +186,7 @@ class TestRouterNamesRealArchetype:
         )
 
 
-# ---------------------------------------------------------------------------
 # Chain 2: Write payload → archetype_gate runs → summary output
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
@@ -211,13 +207,8 @@ class TestArchetypeGateOnRealFile:
             ),
         )
         assert r.returncode == 0
-        # v3.25.6 - this asserted docs/audits was SKIPPED. The skip list
-        # was removed: exempting a directory meant a real defect could
-        # live in one and never be graded, which is how a dead command
-        # survived inside the hooks directory for a whole session. Fixture
-        # authoring still works because the gate blocks a RISE in high
-        # findings, not their presence - a known_bad fixture rewritten
-        # with its own content adds nothing and is allowed.
+        # There is no skip list: the gate blocks a RISE in high findings, not
+        # their presence, so fixture authoring still works.
         assert (
             "archetype-gate" in r.stdout
         ), f"a graded file must receive a verdict; got {r.stdout!r}"
@@ -245,9 +236,7 @@ class TestArchetypeGateOnRealFile:
         ), f"expected either a summary or a skip; got {r.stdout!r}"
 
 
-# ---------------------------------------------------------------------------
 # Chain 3: full release-gate deny → check → allow cycle
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
@@ -280,11 +269,8 @@ class TestReleaseGateCycle:
             payload = json.loads(r.stdout)
             assert payload["decision"] == "deny"
 
-            # Step 3: synthetic fresh sidecar.
-            # v3.24.34 (C43): must be a COMPLETE sidecar. This fixture
-            # previously wrote `tests: 0` with no `checks_run` -- the
-            # signature of a `--no-pytest` run -- and asserted ALLOW,
-            # which pinned the defect as correct behaviour.
+            # Step 3: a COMPLETE synthetic sidecar. `tests: 0` with no `checks_run`
+            # is the signature of a --no-pytest run and must not read as ALLOW.
             now = datetime.now(timezone.utc).replace(microsecond=0)
             iso = now.isoformat().replace("+00:00", "Z")
             sidecar.write_text(
@@ -325,9 +311,7 @@ class TestReleaseGateCycle:
                 backup.replace(sidecar)
 
 
-# ---------------------------------------------------------------------------
 # Chain 4: settings.json declared hooks all exist and are runnable
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks

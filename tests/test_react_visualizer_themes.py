@@ -1,4 +1,4 @@
-"""Issue #128 Stage 3 -- the React side of the visualizer themes.
+"""The React side of the visualizer themes.
 
 WHAT IS PROVED
 ==============
@@ -65,10 +65,7 @@ SECOND_TIER = surface.TIER_NAMES[1]
 FIRST_THEME_COLOUR_FIELD = surface.THEME_COLOUR_FIELDS[0]
 FIRST_TIER_COLOUR_FIELD = surface.TIER_COLOUR_FIELDS[0]
 
-#: The arithmetic constants a hex-colour splitter and an array index
-#: need. ``"9a"`` is a scanner artefact of the hex character class
-#: inside a regular expression, not a literal the module wrote.
-#: A number outside this set in the module is unexplained.
+#: Constants a hex splitter and an array index need; ``"9a"`` is a scanner artefact.
 ALGORITHM_NUMBERS = {"0", "1", "2", "3", "4", "6", "8", "16", "255", "9a"}
 
 
@@ -128,7 +125,9 @@ def test_the_theme_reach_check_names_a_theme_only_the_surface_holds(js: JsRuntim
     payload = bridge_payload()
     del payload["themes"][FIRST_THEME]
     js.push(payload)
-    missing = set(surface.THEME_NAMES) - set(js.json("acervatorVisualizerThemes.themeNames()"))
+    missing = set(surface.THEME_NAMES) - set(
+        js.json("acervatorVisualizerThemes.themeNames()")
+    )
     assert missing == {FIRST_THEME}
 
 
@@ -143,7 +142,9 @@ def test_the_tier_reach_check_names_a_tier_only_the_surface_holds(js: JsRuntime)
     payload = bridge_payload()
     del payload["tier_palettes"][FIRST_TIER]
     js.push(payload)
-    missing = set(surface.TIER_NAMES) - set(js.json("acervatorVisualizerThemes.tierNames()"))
+    missing = set(surface.TIER_NAMES) - set(
+        js.json("acervatorVisualizerThemes.tierNames()")
+    )
     assert missing == {FIRST_TIER}
 
 
@@ -168,7 +169,10 @@ def test_the_theme_value_check_names_a_changed_value(js: JsRuntime):
     js.push(payload)
     actual = js.theme_values(FIRST_THEME)
     assert actual[FIRST_THEME_COLOUR_FIELD] == "#11223344"
-    assert actual[FIRST_THEME_COLOUR_FIELD] != surface.THEMES[FIRST_THEME][FIRST_THEME_COLOUR_FIELD]
+    assert (
+        actual[FIRST_THEME_COLOUR_FIELD]
+        != surface.THEMES[FIRST_THEME][FIRST_THEME_COLOUR_FIELD]
+    )
 
 
 def test_every_value_of_every_tier_agrees_with_the_surface(loaded: JsRuntime):
@@ -185,10 +189,16 @@ def test_every_value_of_every_tier_agrees_with_the_surface(loaded: JsRuntime):
 def test_the_display_names_agree_with_the_surface(loaded: JsRuntime):
     for key, shown in surface.DISPLAY_NAMES.items():
         loaded.bind_json("K", key)
-        assert loaded.json("acervatorVisualizerThemes.themeDisplayName(JSON.parse(K))") == shown
+        assert (
+            loaded.json("acervatorVisualizerThemes.themeDisplayName(JSON.parse(K))")
+            == shown
+        )
     for key, shown in surface.TIER_DISPLAY_NAMES.items():
         loaded.bind_json("K", key)
-        assert loaded.json("acervatorVisualizerThemes.tierDisplayName(JSON.parse(K))") == shown
+        assert (
+            loaded.json("acervatorVisualizerThemes.tierDisplayName(JSON.parse(K))")
+            == shown
+        )
 
 
 def test_the_ceilings_and_top_tier_agree_with_the_surface(loaded: JsRuntime):
@@ -291,11 +301,17 @@ def test_channels_agrees_with_the_surface_for_every_real_colour(loaded: JsRuntim
     for name in surface.THEME_NAMES:
         for field in surface.THEME_COLOUR_FIELDS:
             colour = surface.THEMES[name][field]
-            assert loaded.channels(colour) == list(surface.channels(colour)), (name, field)
+            assert loaded.channels(colour) == list(surface.channels(colour)), (
+                name,
+                field,
+            )
     for name in surface.TIER_NAMES:
         for field in surface.TIER_COLOUR_FIELDS:
             colour = surface.TIER_PALETTES[name][field]
-            assert loaded.channels(colour) == list(surface.channels(colour)), (name, field)
+            assert loaded.channels(colour) == list(surface.channels(colour)), (
+                name,
+                field,
+            )
 
 
 def test_channels_refuses_a_short_colour(js: JsRuntime):
@@ -386,7 +402,9 @@ def test_tier_answer_matches_the_surface_on_a_boolean(loaded: JsRuntime):
     ]
 
 
-def test_tier_answer_refuses_text_the_way_the_surface_refuses_a_string(loaded: JsRuntime):
+def test_tier_answer_refuses_text_the_way_the_surface_refuses_a_string(
+    loaded: JsRuntime,
+):
     """The surface raises for a string balance. The module refuses rather than
     guessing by coercing the text to a number."""
     with pytest.raises(TypeError):
@@ -400,7 +418,9 @@ def test_tier_answer_refuses_null_and_a_list(loaded: JsRuntime):
     refused: tuple[Any, ...] = (None, [1, 2], {})
     for value in refused:
         loaded.bind_json("BALANCE", value)
-        tier, refusal = loaded.json("acervatorVisualizerThemes.tierAnswer(JSON.parse(BALANCE))")
+        tier, refusal = loaded.json(
+            "acervatorVisualizerThemes.tierAnswer(JSON.parse(BALANCE))"
+        )
         assert tier == ""
         assert refusal != ""
 
@@ -520,7 +540,9 @@ def test_the_requested_theme_and_tier_and_the_asked_answer_are_relayed(js: JsRun
         js.json("acervatorVisualizerThemes.tierPalette()")
         == surface.TIER_PALETTES[SECOND_TIER]
     )
-    assert js.json("acervatorVisualizerThemes.tier()") == surface.tier_for_target_balance(50)
+    assert js.json(
+        "acervatorVisualizerThemes.tier()"
+    ) == surface.tier_for_target_balance(50)
     assert js.json("acervatorVisualizerThemes.targetBalanceText()") == repr(50)
 
 
@@ -574,9 +596,7 @@ def test_the_module_asks_for_one_theme_and_tier_by_name(js: JsRuntime):
     js.run(BRIDGE_STUB)
     js.bind_json("NAME", SECOND_THEME)
     js.bind_json("TIER", SECOND_TIER)
-    js.run(
-        "acervatorLoadVisualizerThemes(JSON.parse(NAME), JSON.parse(TIER));"
-    )
+    js.run("acervatorLoadVisualizerThemes(JSON.parse(NAME), JSON.parse(TIER));")
     drain_events()
     sent = json.loads(js.json("window.CALLS")[0])
     assert sent == {"name": SECOND_THEME, "tier": SECOND_TIER}
@@ -668,7 +688,9 @@ def test_runs_after_reports_false_for_a_dependency_that_runs_later():
 
 
 def test_runs_after_reports_false_for_a_name_absent_from_the_order():
-    assert runs_after(["module_loader.js"], MODULE_PATH.name, "module_loader.js") is False
+    assert (
+        runs_after(["module_loader.js"], MODULE_PATH.name, "module_loader.js") is False
+    )
 
 
 # -- the module under the page's own policy -------------------------------

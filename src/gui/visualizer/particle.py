@@ -7,9 +7,7 @@ Qt dependency, so it is defined unconditionally.
 from __future__ import annotations
 
 
-# -------------------------------------------------------------------
 # Particle system for ambient animation
-# -------------------------------------------------------------------
 class Particle:
     def __init__(self, x, y, vx, vy, life, size):
         self.x, self.y = x, y

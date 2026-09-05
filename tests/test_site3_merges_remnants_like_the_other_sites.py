@@ -1,59 +1,10 @@
-"""Every spawn site must MERGE remnants, not just build tranches.
+"""``_execute_manual_rebalance`` merges remnant fold tranches like the tick sites.
 
-THE DEFECT
-==========
-Three places in ``scrumming_bot.py`` lengthen ``self._fold_tranches``:
-
-* the autonomous SCRUM sell in ``tick``     -- merged remnants,
-* the DIST re-fold sell in ``tick``         -- merged remnants,
-* ``_execute_manual_rebalance``             -- DID NOT.
-
-``_top_up_remnant_fold_tranches`` is what collapses a part-spent tranche
-back together with the next opposing trade's money. Without it on the
-third site, every fire there left a NEW record beside the remnants
-instead of merging into them, so the tranche list grew on that path
-alone.
-
-That site is not "the manual button". ``_INTENT_MAP`` routes three
-callers through the same build loop and two of them fire autonomously:
-Wire Stack and Max Cartridge. So the growth was never bounded by
-operator clicks.
-
-THE GOVERNING RULE, operator 2026-08-12: "Functionality should be
-mirrored between either side of the ladder." A path that spawns but
-never merges is not mirrored with the two that do.
-
-WHERE THE BAND COMES FROM
-=========================
-The merge only considers remnants whose ``ref`` sits inside the current
-Bollinger range. Sites 1 and 2 read ``bb_result``, a LOCAL of ``tick``.
-``_execute_manual_rebalance`` is a different method and cannot see it,
-and all three of its callers sit ABOVE the ``detect_bb_proximity`` call
-in ``tick``, so even a parameter would carry the previous tick's band.
-``self._last_bb`` IS that band, cached by ``tick`` itself, and it is
-already read this way by the Smart Cartridge gate. Nothing is
-recomputed: this path holds no candles. With no band, nothing merges.
-
-WHAT HAPPENS TO ``operator_initiated``
-======================================
-A merge keeps the OLDER record, so the surviving tranche keeps the tag
-it already had. Measured on the operator's pinned state (2026-08-12
-23:32:24): 389 of 515 open tranches carry ``operator_initiated=True``,
-so most merges will be like-for-like. When they are not, an
-operator-initiated tranche merged into an autonomous remnant is
-displayed afterwards as autonomous. Only the Fold Tranches "Source"
-column reads that field. ``trade.filled`` and ``pnl.event`` carry the
-attribution separately and no merge touches them. This file PINS that
-behaviour so it cannot drift silently; changing it means changing the
-SHARED helper, which is a change to sites 1 and 2 as well.
-
-EVERY CHECK CARRIES A TWO-SIDED CONTROL
-=======================================
-Each ``_check_*`` helper runs twice: on the shipping code, where it must
-pass, and against a planted defect of the kind that check exists to
-catch, where it must raise. A plant that no longer matches the shipping
-text raises ``StalePlant`` rather than skipping, so a stale plant cannot
-decay into a green run.
+``_top_up_remnant_fold_tranches`` runs after ``_apply_scrum_fold_pct``, so the fold
+ratio reaches the sale before the money moves into an older tranche. The merge keeps
+the older record, so the survivor keeps its own ``operator_initiated`` tag. Only
+remnants whose ``ref`` sits inside ``self._last_bb`` are candidates, and with no band
+nothing merges.
 """
 
 from __future__ import annotations
@@ -100,19 +51,6 @@ class StalePlant(RuntimeError):
     """A plant no longer matches the shipping source."""
 
 
-# ─────────────────────────────────────────────────────────────────────
-# THE PRE-CHANGE RECORD — sites 1 and 2, captured before this unit ran
-# ─────────────────────────────────────────────────────────────────────
-#
-# Taken from src/trading/scrumming_bot.py as it stood before the site-3
-# call was added. Sites 1 and 2 reach their behaviour through exactly
-# two things: the two call statements in ``tick``, and the shared helper
-# they call. If all three texts are byte-identical, neither site can
-# have changed.
-# The three digests below were re-derived 2026-08-25 after the black
-# normal-form pass, and site 1's again when the two sites moved into the
-# tick phase methods. Not a recalibration: each slice was proved
-# AST-identical to the slice its previous digest covered before it moved.
 PRE_CHANGE_TOPUP_HELPER_SHA256 = (
     "0893eb9b72bb0132e385836b55b14e6a3a0466ba06f48d867eec77bb9da6a975"
 )
@@ -207,11 +145,6 @@ def _is_self_call(node, attr) -> bool:
         and isinstance(node.func.value, ast.Name)
         and node.func.value.id == "self"
     )
-
-
-# ─────────────────────────────────────────────────────────────────────
-# 1. THE WIRING CLAIM — every spawn site merges, in the right order
-# ─────────────────────────────────────────────────────────────────────
 
 
 def _self_attr(node, name) -> bool:
@@ -370,11 +303,6 @@ def test_control_a_blind_walker_is_an_error_not_a_pass():
         _check_every_spawn_site_merges("def unrelated():\n    return 1\n")
 
 
-# ─────────────────────────────────────────────────────────────────────
-# 2. THE BAND SOURCE — cached, never recomputed on this path
-# ─────────────────────────────────────────────────────────────────────
-
-
 def _band_source_names(func) -> set[str]:
     """Locals in `func` assigned from a read of ``self._last_bb``.
 
@@ -487,11 +415,6 @@ def test_control_the_band_check_catches_a_planted_defect(plant, label):
     assert str(caught.value).strip(), label
 
 
-# ─────────────────────────────────────────────────────────────────────
-# 3. SITES 1 AND 2 ARE UNCHANGED
-# ─────────────────────────────────────────────────────────────────────
-
-
 def _check_sites_one_and_two_are_unchanged(source: str) -> None:
     """Read at the two surfaces those sites reach behaviour through."""
     helper = _segment(source, _named(source, TOPUP_CALL))
@@ -590,11 +513,6 @@ def test_control_the_unchanged_check_catches_a_planted_edit(plant, label):
     with pytest.raises(AssertionError) as caught:
         _check_sites_one_and_two_are_unchanged(plant(SOURCE))
     assert str(caught.value).strip(), label
-
-
-# ─────────────────────────────────────────────────────────────────────
-# THE RUNNING HARNESS — the real _execute_manual_rebalance
-# ─────────────────────────────────────────────────────────────────────
 
 
 class _Bus:
@@ -767,16 +685,9 @@ def _never_merges(bot):
     return bot
 
 
-# The sale every behaviour check below runs: holdings 1000 at $1.00
-# against a $100 target sells $900, and the single 600-unit lot prices
-# one tranche at (600 / 900) x 900 = $600.
+# Holdings of 1000 at $1.00 against a $100 target sell $900; the 600-unit lot takes $600.
 SALE_TRANCHE_USD = 600.0
 SALE_TRANCHE_UNITS = 600.0
-
-
-# ─────────────────────────────────────────────────────────────────────
-# 4. A SITE-3 SPAWN MERGES INSTEAD OF ADDING A RECORD
-# ─────────────────────────────────────────────────────────────────────
 
 
 def _check_the_spawn_merges(make) -> None:
@@ -854,11 +765,6 @@ def test_the_derived_queue_scalar_matches_the_merged_list():
     assert bot._fold_queue_usd == pytest.approx(sum(t["usd"] for t in after))
 
 
-# ─────────────────────────────────────────────────────────────────────
-# 5. THE LOWEST PRICED CANDIDATE INSIDE THE BAND RECEIVES IT
-# ─────────────────────────────────────────────────────────────────────
-
-
 def _check_lowest_priced_wins(pick) -> None:
     dear = remnant(10.0, 10.0, 1.2, 0.9)
     cheap = remnant(10.0, 10.0, 0.6, 0.9)
@@ -908,11 +814,6 @@ def test_a_tranche_that_was_never_part_spent_is_not_a_candidate():
     assert whole["usd"] == pytest.approx(10.0)
 
 
-# ─────────────────────────────────────────────────────────────────────
-# 6. A DIFFERENT initial_buy_price REFUSES THE MERGE  (MEM-171)
-# ─────────────────────────────────────────────────────────────────────
-
-
 def _check_a_different_floor_refuses(compare) -> None:
     """The incoming basis is 0.9, off the lot; the remnant's is 0.7."""
     rem = remnant(10.0, 10.0, 0.8, 0.7)
@@ -948,11 +849,6 @@ def test_the_merged_record_keeps_that_exact_floor():
     ), "the surviving floor was rewritten by the merge"
 
 
-# ─────────────────────────────────────────────────────────────────────
-# 7. NO BAND MEANS NO MERGE, AND NO INVENTED BAND
-# ─────────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.parametrize("band", [None, _Band(0.0, 0.0)])
 def test_with_no_band_reading_nothing_merges(band):
     rem = remnant(10.0, 10.0, 0.8, 0.9)
@@ -974,18 +870,6 @@ def test_a_bot_that_never_had_a_last_bb_attribute_still_fires():
     after = _fire(bot)
     assert len(after) == 2
     assert bot.stats.total_trades == 1, "the sale itself still happened"
-
-
-# ─────────────────────────────────────────────────────────────────────
-# 8. THE MERGE RUNS AFTER THE FOLD RATIO, NOT BEFORE
-# ─────────────────────────────────────────────────────────────────────
-#
-# At scrum_fold_pct=50 the $600 tranche is halved to $300 and only that
-# survives to merge, so the remnant ends at $310. Merging FIRST would
-# move the whole $600 into the remnant, which sits outside the slice the
-# ratio scales, and the remnant would end at $610 with the operator's
-# setting having touched nothing. The two orders give different numbers,
-# which is what makes this readable at all.
 
 
 def _run_in_order(order) -> float:
@@ -1033,11 +917,6 @@ def test_the_real_fire_produces_the_shipping_order_figure():
     assert rem["usd"] == pytest.approx(
         310.0
     ), "the fire merged money the fold ratio never got to scale"
-
-
-# ─────────────────────────────────────────────────────────────────────
-# 9. operator_initiated — PINNED, INCLUDING WHAT IT COSTS
-# ─────────────────────────────────────────────────────────────────────
 
 
 def _check_the_survivor_keeps_its_own_tag(make) -> None:
@@ -1128,11 +1007,6 @@ def test_each_caller_still_emits_its_own_attribution(intent, expected):
     assert filled[0]["data"]["operator_initiated"] is expected
 
 
-# ─────────────────────────────────────────────────────────────────────
-# 10. THE MERGE MOVES MONEY, IT DOES NOT MAKE OR LOSE ANY
-# ─────────────────────────────────────────────────────────────────────
-
-
 def test_total_queued_dollars_are_the_same_merged_or_not():
     rem_a = remnant(10.0, 10.0, 0.8, 0.9)
     rem_b = remnant(10.0, 10.0, 0.8, 0.9)
@@ -1151,15 +1025,6 @@ def test_the_blended_ref_preserves_units_at_sale():
     bot = _manual_bot(tranches=[rem])
     _fire(bot)
     assert rem["usd"] / rem["ref"] == pytest.approx(before)
-
-
-# ─────────────────────────────────────────────────────────────────────
-# 11. THE SELL ITSELF IS UNTOUCHED BY THE MERGE
-# ─────────────────────────────────────────────────────────────────────
-#
-# Read at the outward edges, from what each stub was CALLED with. The
-# merge happens after the order is placed and settled, so it must not
-# change the order, the routing, or anything the fire reports outward.
 
 
 def test_the_merge_changes_nothing_the_fire_asks_the_outside_world():

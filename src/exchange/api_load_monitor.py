@@ -1,24 +1,10 @@
-"""api_load_monitor.py — Per-exchange API load telemetry + gating.
+"""Per-exchange API load telemetry, read from the APIInteractionLog.
 
-Reads the process-wide APIInteractionLog and derives:
-  * calls-per-minute (CPM) on a trailing window
-  * P95 latency
-  * a load_score in [0, 1] against the connector's rate ceiling
-    (10 req/s = 600 CPM by default, matching CCXTConnector's
-    _min_request_interval=0.1)
-
-Provides two decision surfaces:
-  * ``load_score(exchange_id)`` — read-only telemetry.
-  * ``should_allow_new_phantom_set(exchange_id, tf_count)`` —
-    refuses new phantom-set creation when the projected CPM
-    would breach the safety threshold (default 75 % of ceiling).
-
-Additive: does not mutate the log, does not throttle callers,
-does not modify the connector's rate limit. Purely advisory.
-
-sadp: R28 SSS + R70 RCN
-v3.23.40 — Initial implementation (per phantom-bot design proposal
-docs/engineering-notes/2026-07-27_phantom_bots_audit_and_design_proposal.md § 3.3).
+``load_score`` derives calls-per-minute over a trailing window, P95 latency
+and a score in [0, 1] against the connector's rate ceiling.
+``should_allow_new_phantom_set`` refuses a new phantom set whose projected
+CPM would breach that ceiling. Neither call mutates the log or throttles the
+connector.
 """
 
 from __future__ import annotations
@@ -35,13 +21,8 @@ DEFAULT_CEILING_CPM = 600.0  # 10 rps × 60 s (matches connector 100 ms floor)
 DEFAULT_SAFETY_PCT = 0.75  # refuse new phantoms above this
 DEFAULT_WINDOW_SECONDS = 60.0
 
-# One phantom bot performs ~one exchange-heavy tick per candle.
-# The heaviest single-tick call is the OHLCV fetch (fetch_ohlcv on
-# the phantom's TF). Empirically this is ~1 API call per active
-# candle-cycle, so a phantom's steady-state cost is well approximated
-# as "1 CPM per phantom running on a sub-minute TF, less at higher
-# TFs". Being conservative for the estimate keeps the operator on
-# the safe side of the cap; the real steady-state is usually lower.
+# One phantom costs about one `fetch_ohlcv` per candle on its own
+# timeframe, which is fewer calls per minute above 1m.
 PHANTOM_CPM_ESTIMATE_PER_TF = 1.0
 
 
@@ -165,9 +146,7 @@ class APILoadMonitor:
         )
 
 
-# ---------------------------------------------------------------------
 # Process-wide shared monitor
-# ---------------------------------------------------------------------
 
 _GLOBAL_MONITOR: Optional[APILoadMonitor] = None
 

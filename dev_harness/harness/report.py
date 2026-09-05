@@ -78,6 +78,7 @@ to it is a declaration that the coverage is optional.
 FALSIFICATION
 =============
 This contract is wrong if: a report with `scanned=False` ever answers
+`passed=True`; a report with `unhandled=True` ever answers
 `passed=True`; a report carrying a tool status other than `ok` for a
 required analyzer ever answers `passed=True`; `by_severity` sums to a
 number other than `len(findings)`; or a target that WAS scanned with
@@ -92,18 +93,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# The tree this harness belongs to, and the directory EVERY analyzer
-# subprocess is run from.
-#
-# WHY IT IS PINNED. ruff and mypy read `pyproject.toml`, vale reads
-# `.vale.ini`, and mypy writes `./.mypy_cache`, all resolved against the
-# CURRENT DIRECTORY of the process. Nothing set that directory, so it
-# was whatever the caller happened to be standing in. MEASURED
-# 2026-08-13 on one unchanged absolute path: 75 findings from the repo
-# root against 78 from another directory, and the same `type: ignore`
-# reported MEDIUM from one and HIGH from the other, because the import
-# it depends on resolved in one case and not the other. A verdict must
-# be a function of the code, not of the caller.
+# The working directory every analyzer subprocess is run from.
 REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 
 # Severities that block. Kept here so five archetypes cannot disagree
@@ -113,12 +103,7 @@ BLOCKING_SEVERITIES: tuple[str, ...] = ("critical", "high")
 # The one status string that means "this analyzer ran and delivered".
 STATUS_OK = "ok"
 
-# Analyzers whose absence is reported but does NOT void the report.
-#
-# EMPTY, and deliberately so: an analyzer that did not run has not
-# cleared anything. The mechanism is kept for the next tool that cannot
-# be installed everywhere. Adding a name here is a declaration that its
-# coverage is optional, and it must come with the reason.
+# Analyzers whose absence is reported but does not void the report.
 OPTIONAL_ANALYZERS: frozenset[str] = frozenset()
 
 
@@ -153,6 +138,11 @@ class ArchetypeReport:
     analysis begins running over the target, so an early return -- an
     absent path, an empty directory -- leaves it False and the report
     cannot be green.
+
+    `unhandled` is the separate answer "this archetype carries no
+    analyzer for this file type". It is never `passed`, because nothing
+    ran, and it is not an entry in `errors` either, because nothing
+    failed.
     """
 
     target: str
@@ -161,6 +151,10 @@ class ArchetypeReport:
     errors: list[str] = field(default_factory=list)
     falsification: str = ""  # required - what would prove this report wrong
     scanned: bool = False
+    # The language the archetype detected. Empty for a target whose
+    # language it does not decide, such as a mixed directory.
+    language: str = ""
+    unhandled: bool = False
 
     def unavailable_required(self) -> list[str]:
         """Return the required analyzers that did not report `ok`.
@@ -183,10 +177,15 @@ class ArchetypeReport:
     def passed(self) -> bool:
         """True only when the run happened, was complete, and was clean.
 
-        Four conditions, and the first three are about the RUN: an
-        unscanned target, a run with an absent analyzer, and a run that
-        recorded an error are all NOT green, whatever the findings list
-        says.
+        Five conditions, and the first four are about the RUN: an
+        unhandled file type, an unscanned target, a run with an absent
+        analyzer, and a run that recorded an error are all NOT green,
+        whatever the findings list says.
+
+        `unhandled` blocks for the same reason `scanned` does. A file
+        type this archetype carries no analyzer for was never examined,
+        so answering True would make the verdict a rubber stamp for
+        every such file rather than a statement about the code.
 
         `errors` blocks because every append to it names a part of the
         run that did not happen. Measured on an empty directory before
@@ -195,6 +194,8 @@ class ArchetypeReport:
         means a future archetype that records a fault and forgets to set
         a status still fails closed.
         """
+        if self.unhandled:
+            return False
         if not self.scanned:
             return False
         if self.unavailable_required():
@@ -211,6 +212,12 @@ class ArchetypeReport:
         gate cannot describe the same verdict differently.
         """
         reasons: list[str] = []
+        if self.unhandled:
+            reasons.append(
+                f"no analyzer for {self.language or 'unknown'}: {self.target} "
+                f"- this file type was NOT examined, which is not the same "
+                f"as clean",
+            )
         if not self.scanned:
             reasons.append(
                 f"target was never scanned: {self.target} - an empty "
@@ -257,6 +264,8 @@ class ArchetypeReport:
             "target": self.target,
             "passed": self.passed,
             "scanned": self.scanned,
+            "language": self.language,
+            "unhandled": self.unhandled,
             "unavailable_required": self.unavailable_required(),
             "why_not_green": self.why_not_green(),
             "tool_availability": self.tool_availability,

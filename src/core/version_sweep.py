@@ -1,18 +1,11 @@
-"""
-version_sweep.py — Mandatory Version Bump Quality Gate
-========================================================
-Triggered by R25: for every 0.1v increment, a full code optimization
-and security sweep must pass before the release is considered valid.
+"""Release sweep driven by ``VersionSweep``.
 
-Run:
-    python src/core/version_sweep.py [--fix] [--report]
-
-    --fix     Apply auto-fixable issues (unused imports, trailing whitespace)
-    --report  Generate PDF report (requires reportlab)
-
-Exit codes:
-    0  All checks passed (or only warnings)
-    1  One or more CRITICAL or HIGH findings require manual resolution
+``main`` runs every entry of the ``checks`` list in ``VersionSweep.run``, then
+exits 1 when ``SweepResult.passed`` is False. Each ``Finding`` carries a
+``Severity`` and a category, and ``passed`` counts only CRITICAL and HIGH.
+A check that calls ``_no_subject`` lands in ``SweepResult.not_inspected`` and
+never prints the pass mark. ``--report`` adds ``save_pdf_report`` beside the
+``save_json_report`` output.
 """
 
 from __future__ import annotations
@@ -28,22 +21,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from src._version import resolve_version
+from src._version import UNKNOWN_VERSION, resolve_version
 from src.core.log_paths import get_reports_dir
 
 logger = logging.getLogger("acervator.version_sweep")
 
-# ── Project root ─────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 
-# ── Finding severity ──────────────────────────────────────────────────────────
 class Severity:
-    CRITICAL = "CRITICAL"  # Must fix before release
-    HIGH = "HIGH"  # Should fix before release
-    MEDIUM = "MEDIUM"  # Fix in next session
-    LOW = "LOW"  # Minor / informational
-    INFO = "INFO"  # Audit trail only
+    CRITICAL = "CRITICAL"
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+    INFO = "INFO"
 
 
 @dataclass
@@ -65,6 +56,7 @@ class SweepResult:
     files_scanned: int = 0
     lines_scanned: int = 0
     elapsed_sec: float = 0.0
+    not_inspected: dict[str, str] = field(default_factory=dict)
 
     @property
     def critical(self):
@@ -87,9 +79,316 @@ class SweepResult:
         return len(self.critical) == 0 and len(self.high) == 0
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CHECK REGISTRY
-# ─────────────────────────────────────────────────────────────────────────────
+VERSION_LITERAL = re.compile(
+    r"^\d+\.\d+(?:\.\d+){0,2}(?:[+-][0-9A-Za-z][0-9A-Za-z.]*)?$"
+)
+
+PYTHON_SUFFIXES = frozenset({".py", ".spec"})
+SCRIPT_SUFFIXES = frozenset({".sh", ".ps1", ".bat", ".cmd"})
+
+FROZEN_CONTENT_SUFFIX = "_FROZEN_AT"
+
+_NAME_WORDS = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+")
+
+# A word that, standing beside `version`, makes the value somebody else's.
+FOREIGN_VERSION_SUBJECTS = frozenset(
+    {
+        "api",
+        "electron",
+        "macos",
+        "max",
+        "min",
+        "minimum",
+        "node",
+        "os",
+        "osx",
+        "platform",
+        "protocol",
+        "python",
+        "qt",
+        "required",
+        "requires",
+        "schema",
+        "sdk",
+        "supported",
+        "system",
+        "target",
+        "windows",
+    }
+)
+
+_SCRIPT_ASSIGNMENT = re.compile(
+    r"^\s*(?:export\s+|set\s+)?\$?(?P<name>[A-Za-z_][A-Za-z0-9_:]*)\s*=\s*"
+    r"[\"']?(?P<value>[0-9A-Za-z.+-]+)[\"']?\s*$"
+)
+_SCRIPT_OPTION = re.compile(
+    r"--(?P<name>[A-Za-z][A-Za-z0-9_-]*)[=\s]+[\"']?(?P<value>[0-9A-Za-z.+-]+)"
+)
+
+
+@dataclass(frozen=True)
+class ShadowLiteral:
+    """A version string written down where the resolved version belongs."""
+
+    line: int
+    slot: str
+    name: str
+    value: str
+
+
+def is_version_literal(value: object) -> bool:
+    """Report whether a value is a version string such as ``1.2.3``."""
+    return isinstance(value, str) and bool(VERSION_LITERAL.match(value))
+
+
+def name_words(name: str) -> set[str]:
+    """Split an identifier, key or option into lowercase words.
+
+    Splits on separators and on camel-case boundaries, so
+    ``LSMinimumSystemVersion`` yields ``ls minimum system version``.
+    """
+    return {word.lower() for word in _NAME_WORDS.findall(name)}
+
+
+def names_a_version(name: str) -> bool:
+    """Report whether a name denotes THIS application's version.
+
+    ``version`` qualified by another subject states a requirement on
+    something else — ``LSMinimumSystemVersion`` is the macOS a bundle
+    needs, not the version Acervator reports.
+    """
+    words = name_words(name)
+    return "version" in words and words.isdisjoint(FOREIGN_VERSION_SUBJECTS)
+
+
+def is_bare_version_key(name: str) -> bool:
+    """Report whether a mapping key is the unqualified word ``version``.
+
+    A record stamps its own schema lineage under that key and nothing reads
+    it back as the application's version. A key that qualifies the word —
+    ``FileVersion``, ``ProductVersion``, ``app_version`` — names the
+    application, so a literal there is a restatement.
+    """
+    return name.strip("-_ ").lower() == "version"
+
+
+def is_frozen_content_name(name: str) -> bool:
+    """Report whether a name records the release some content was cut from.
+
+    ``generate_essay_ja.py`` pins ``_CONTENT_VERSION_FROZEN_AT``. That value
+    is a true statement about a translated body, not a claim about this
+    build, and the file warns at import when it differs from the running
+    version.
+    """
+    return name.endswith(FROZEN_CONTENT_SUFFIX)
+
+
+def defines_version_resolver(tree: ast.Module) -> bool:
+    """Report whether a module defines ``resolve_version``.
+
+    That module is the version authority. Its literals are the values the
+    resolver itself returns when git and the baked stamp are both absent,
+    so they restate nothing.
+    """
+    return any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "resolve_version"
+        for node in tree.body
+    )
+
+
+class _ShadowLiteralVisitor(ast.NodeVisitor):
+    """Collect version literals occupying a slot the resolved version fills."""
+
+    def __init__(self) -> None:
+        self.found: list[ShadowLiteral] = []
+        self._handlers = 0
+
+    def _record(self, node: ast.AST, slot: str, name: str, value: str) -> None:
+        """Add one literal, once. A name and its operand can both reach it."""
+        line = getattr(node, "lineno", 0)
+        if any(s.line == line and s.value == value for s in self.found):
+            return
+        self.found.append(ShadowLiteral(line, slot, name, value))
+
+    @staticmethod
+    def _literal(node: Optional[ast.AST]) -> Optional[str]:
+        if isinstance(node, ast.Constant) and is_version_literal(node.value):
+            return str(node.value)
+        return None
+
+    def _bind(self, target: ast.AST, value: ast.AST) -> None:
+        name = getattr(target, "id", None) or getattr(target, "attr", None)
+        if not name or not names_a_version(name) or is_frozen_content_name(name):
+            return
+        literal = self._literal(value)
+        if literal:
+            slot = "except fallback" if self._handlers else "assignment"
+            self._record(value, slot, name, literal)
+            return
+        if isinstance(value, ast.BoolOp) and isinstance(value.op, ast.Or):
+            fallback = value.values[-1]
+            literal = self._literal(fallback)
+            if literal:
+                self._record(fallback, "or fallback", name, literal)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        for target in node.targets:
+            self._bind(target, node.value)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None:
+            self._bind(node.target, node.value)
+        self.generic_visit(node)
+
+    def visit_Try(self, node: ast.Try) -> None:
+        for stmt in node.body:
+            self.visit(stmt)
+        for handler in node.handlers:
+            self._handlers += 1
+            for stmt in handler.body:
+                self.visit(stmt)
+            self._handlers -= 1
+        for stmt in [*node.orelse, *node.finalbody]:
+            self.visit(stmt)
+
+    def _parameter_defaults(self, args: ast.arguments) -> None:
+        positional = [*args.posonlyargs, *args.args]
+        tail = positional[len(positional) - len(args.defaults) :]
+        pairs = [*zip(tail, args.defaults), *zip(args.kwonlyargs, args.kw_defaults)]
+        for arg, default in pairs:
+            literal = self._literal(default)
+            if literal and names_a_version(arg.arg):
+                self._record(default, "parameter default", arg.arg, literal)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._parameter_defaults(node.args)
+        self.generic_visit(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._parameter_defaults(node.args)
+        self.generic_visit(node)
+
+    def _lookup_default(self, node: ast.Call) -> None:
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "get":
+            return
+        if len(node.args) != 2:
+            return
+        key, fallback = node.args
+        literal = self._literal(fallback)
+        if (
+            literal
+            and isinstance(key, ast.Constant)
+            and isinstance(key.value, str)
+            and names_a_version(key.value)
+        ):
+            self._record(fallback, "lookup default", key.value, literal)
+
+    def _keyword_defaults(self, node: ast.Call) -> None:
+        option = next(
+            (
+                arg.value
+                for arg in node.args
+                if isinstance(arg, ast.Constant)
+                and isinstance(arg.value, str)
+                and names_a_version(arg.value)
+            ),
+            None,
+        )
+        for keyword in node.keywords:
+            literal = self._literal(keyword.value)
+            if not literal or keyword.arg is None:
+                continue
+            if names_a_version(keyword.arg):
+                self._record(keyword.value, "keyword argument", keyword.arg, literal)
+            elif keyword.arg == "default" and option:
+                self._record(keyword.value, "option default", option, literal)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        self._lookup_default(node)
+        self._keyword_defaults(node)
+        self.generic_visit(node)
+
+    def visit_Dict(self, node: ast.Dict) -> None:
+        for key, value in zip(node.keys, node.values):
+            if not isinstance(key, ast.Constant) or not isinstance(key.value, str):
+                continue
+            literal = self._literal(value)
+            if (
+                literal
+                and names_a_version(key.value)
+                and not is_bare_version_key(key.value)
+            ):
+                self._record(value, "mapping entry", key.value, literal)
+        self.generic_visit(node)
+
+    @staticmethod
+    def _version_name_in(nodes: list[ast.expr]) -> Optional[str]:
+        for node in nodes:
+            for child in ast.walk(node):
+                name = getattr(child, "id", None) or getattr(child, "attr", None)
+                if isinstance(name, str) and names_a_version(name):
+                    return name
+        return None
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> None:
+        if isinstance(node.op, ast.Or):
+            fallback = node.values[-1]
+            literal = self._literal(fallback)
+            name = self._version_name_in(node.values[:-1]) if literal else None
+            if literal and name:
+                self._record(fallback, "or fallback", name, literal)
+        self.generic_visit(node)
+
+
+def find_python_shadow_literals(source: str) -> list[ShadowLiteral]:
+    """Return every version literal in Python source that shadows the version.
+
+    Covers Python-syntax build inputs as well, so a PyInstaller ``.spec``
+    is read the same way. Raises ``SyntaxError`` when the source does not
+    parse, so a caller records the file instead of scoring it clean.
+    """
+    tree = ast.parse(source)
+    if defines_version_resolver(tree):
+        return []
+    visitor = _ShadowLiteralVisitor()
+    visitor.visit(tree)
+    return visitor.found
+
+
+def find_script_shadow_literals(source: str) -> list[ShadowLiteral]:
+    """Return every version literal a shell or PowerShell script writes down."""
+    found: list[ShadowLiteral] = []
+    for line_no, raw in enumerate(source.splitlines(), 1):
+        line = raw.split(" #", 1)[0]
+        if line.lstrip().startswith("#"):
+            continue
+        assigned = _SCRIPT_ASSIGNMENT.match(line)
+        if (
+            assigned
+            and names_a_version(assigned["name"])
+            and not is_frozen_content_name(assigned["name"])
+            and is_version_literal(assigned["value"])
+        ):
+            found.append(
+                ShadowLiteral(
+                    line_no, "assignment", assigned["name"], assigned["value"]
+                )
+            )
+            continue
+        for option in _SCRIPT_OPTION.finditer(line):
+            if names_a_version(option["name"]) and is_version_literal(option["value"]):
+                found.append(
+                    ShadowLiteral(
+                        line_no,
+                        "option default",
+                        f"--{option['name']}",
+                        option["value"],
+                    )
+                )
+    return found
 
 
 class VersionSweep:
@@ -105,6 +404,18 @@ class VersionSweep:
         "cloud",
         "dist",
         "build",
+    }
+    # Directories the version check does not enter. A literal in a test
+    # tree, a document or the harness reaches no version-reporting surface.
+    VERSION_SKIP_DIRS = {
+        "tests",
+        "docs",
+        "docs-archive",
+        "dev_harness",
+        "harness_fixtures",
+        "site-packages",
+        ".venv",
+        "venv",
     }
     SKIP_EXTS = {
         ".pyc",
@@ -128,20 +439,14 @@ class VersionSweep:
         ),
         (r'password\s*=\s*["\'][^"\']{6,}["\']', "Possible hard-coded password"),
         (r'token\s*=\s*["\'][A-Za-z0-9_\-\.]{20,}["\']', "Possible hard-coded token"),
-        # AWS / common cloud keys
         (r"AKIA[0-9A-Z]{16}", "Possible AWS access key ID"),
         (r"(?:=|:)\s*[A-Za-z0-9/+]{40}", "Possible AWS secret key (40-char base64)"),
-        # Private key header
-        # PEM private key: flagged as INFO not CRITICAL since key-processing
-        # code legitimately references these strings for format normalization.
-        # Manually verify any hit is not actual embedded key material.
         (
             r"-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----",
             "PEM private key header — verify this is format-handling, not embedded key",
         ),
     ]
 
-    # Insecure function / import patterns
     INSECURE_PATTERNS = [
         (r"\bpickle\.loads?\b", "pickle.load is unsafe with untrusted data"),
         (r"\beval\s*\(", "eval() executes arbitrary code"),
@@ -170,7 +475,6 @@ class VersionSweep:
         ),
     ]
 
-    # Debug / development leftovers
     DEBUG_PATTERNS = [
         (r"\bbreakpoint\(\)", "breakpoint() left in production code"),
         (r"\bpdb\.set_trace\(\)", "pdb.set_trace() left in production code"),
@@ -185,20 +489,21 @@ class VersionSweep:
             version=self._get_version(),
             timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
         )
-        # v3.24.21 — files this sweep could not read or parse.
-        # Every scanning loop used `except Exception: continue`, so an
-        # unreadable file was silently dropped from EVERY check —
-        # including check_secrets. A sweep that skipped a file then
-        # reported "no hard-coded credentials" was reporting that it
-        # had not looked, in language indistinguishable from having
-        # looked and found nothing.
         self._skipped: list[tuple[str, str]] = []
+        self._no_subject_reason: Optional[str] = None
+
+    def _no_subject(self, reason: str) -> None:
+        """Record ``reason`` for the check that found nothing to read.
+
+        ``run`` copies it into ``SweepResult.not_inspected`` and prints NOT
+        INSPECTED in place of the pass mark.
+        """
+        self._no_subject_reason = reason
 
     def _read_or_skip(self, path: Path) -> Optional[str]:
-        """Read a file for scanning, recording (not swallowing) failure.
+        """Read a file for scanning, recording failure in ``self._skipped``.
 
-        Returns None when the file cannot be read; the caller continues
-        as before, but the skip is now attributable.
+        Returns None when the read raises OSError.
         """
         try:
             return path.read_text(encoding="utf-8", errors="replace")
@@ -262,8 +567,6 @@ class VersionSweep:
             )
         )
 
-    # ── CHECK 1: Syntax ───────────────────────────────────────────────────────
-
     def check_syntax(self):
         """Every .py file must parse cleanly."""
         for path in self._py_files():
@@ -282,79 +585,101 @@ class VersionSweep:
                     "Fix syntax before release.",
                 )
 
-    # ── CHECK 2: Version consistency ──────────────────────────────────────────
+    def _version_subject_files(self):
+        """Yield every file that could restate the application's version.
+
+        Subjects are discovered, so a file that starts carrying a literal
+        is swept the day it lands. Anything under ``VERSION_SKIP_DIRS`` is
+        out of scope: a literal there reaches no surface that reports a
+        version.
+        """
+        skip = self.SKIP_DIRS | self.VERSION_SKIP_DIRS
+        for dirpath, dirs, files in os.walk(self.root):
+            dirs[:] = [d for d in dirs if d not in skip]
+            for fname in files:
+                suffix = Path(fname).suffix.lower()
+                if suffix in PYTHON_SUFFIXES or suffix in SCRIPT_SUFFIXES:
+                    yield Path(dirpath) / fname
+
+    def _shadow_literals(self, path: Path, source: str) -> list[ShadowLiteral]:
+        """Return the shadow literals in one subject, or [] when it cannot parse."""
+        if path.suffix.lower() not in PYTHON_SUFFIXES:
+            return find_script_shadow_literals(source)
+        try:
+            return find_python_shadow_literals(source)
+        except SyntaxError as syn:
+            self._skipped.append((self._rel(path), f"SyntaxError: {syn}"))
+            logger.warning(
+                "version_sweep: %s failed to parse (%s) — EXCLUDED "
+                "from the version check",
+                path,
+                syn,
+            )
+            return []
 
     def check_version_consistency(self):
-        """No file may restate a version that differs from src/__init__.py.
+        """Flag every version literal that can shadow the resolved version.
 
-        A file carrying no version literal cannot drift, so absence is the
-        correct end state and scores nothing. A restatement that is present
-        must equal the canonical value.
-
-        An unreadable ``src/__init__.py`` scores HIGH rather than
-        returning. A skipped check that prints nothing is indistinguishable
-        from a check that found nothing.
+        A literal counts when it occupies a slot the resolved version fills:
+        bound to a version-named identifier, defaulting a version parameter,
+        answering an absent version key or option, or keying a version-info
+        field of a build spec. An unresolvable version scores HIGH on its
+        own, because a check that cannot name the value it compares against
+        reports nothing in language identical to a clean run.
         """
         canonical = self.result.version
-        if canonical == "unknown":
+        if canonical == UNKNOWN_VERSION:
             self._add(
                 Severity.HIGH,
                 "CONSISTENCY",
-                self.root / "src" / "__init__.py",
+                self.root / "src" / "_version.py",
                 0,
-                "Canonical __version__ unreadable — no version check ran",
-                "Restore src/__init__.py; until then this sweep verifies "
-                "no version anywhere in the tree.",
+                "Version unresolvable — no git tag and no baked stamp",
+                "Tag the repository; a baked stamp exists only in a bundle.",
             )
-            return
 
-        version_sources = {
-            self.root / "main.py": r'current_version\s*=\s*["\']([^"\']+)["\']',
-            self.root / "splash_screen.py": r'__version__\s*=\s*["\']([^"\']+)["\']',
-            self.root / "investor_screen.py": r'__version__\s*=\s*["\']([^"\']+)["\']',
-            self.root
-            / "generate_essay_ja.py": r'__version__\s*=\s*["\']([^"\']+)["\']',
-        }
-
-        for fpath, pattern in version_sources.items():
-            if not fpath.exists():
+        for path in self._version_subject_files():
+            source = self._read_or_skip(path)
+            if source is None:
                 continue
-            text = fpath.read_text(encoding="utf-8", errors="replace")
-            m = re.search(pattern, text)
-            # No match == the file imports __version__ == nothing can drift.
-            if m and m.group(1) != canonical:
+            for shadow in self._shadow_literals(path, source):
                 self._add(
                     Severity.HIGH,
                     "CONSISTENCY",
-                    fpath,
-                    0,
-                    f"Version mismatch: {m.group(1)!r} != canonical {canonical!r}",
-                    f"Import __version__ from src rather than restating {m.group(1)!r}.",
+                    path,
+                    shadow.line,
+                    f"Version literal {shadow.value!r} in {shadow.slot} "
+                    f"{shadow.name!r} shadows the resolved version {canonical!r}",
+                    "Read src.__version__ rather than restating the version.",
                 )
 
-        # Docs must also reference the right version
-        doc_files = [
-            self.root / "AI_DEVELOPER_GUIDE.md",
-            self.root / "CHANGELOG.md",
-        ]
-        for dpath in doc_files:
+        self._check_doc_versions(canonical)
+
+    def _check_doc_versions(self, canonical: str) -> None:
+        """Flag a doc naming a release of the current line that is not current.
+
+        The release line comes from the resolved version, so the check
+        follows the project across a major bump instead of watching one
+        hardcoded major forever.
+        """
+        release_line = canonical.split(".", 1)[0]
+        stale_pattern = re.compile(rf"\b{re.escape(release_line)}\.\d+\.\d+\b")
+        for dpath in (self.root / "AI_DEVELOPER_GUIDE.md", self.root / "CHANGELOG.md"):
             if not dpath.exists():
                 continue
             text = dpath.read_text(encoding="utf-8", errors="replace")
-            old_vers = re.findall(r"\b3\.\d+\.\d+\b", text)
-            old_refs = [v for v in old_vers if v != canonical]
-            if old_refs:
-                unique_old = list(set(old_refs))
+            stale = sorted(
+                {v for v in stale_pattern.findall(text) if not canonical.startswith(v)}
+            )
+            if stale:
                 self._add(
                     Severity.MEDIUM,
                     "CONSISTENCY",
                     dpath,
                     0,
-                    f"Stale version reference(s) found: {unique_old}",
+                    f"Stale version reference(s) found: {stale}",
                     f"Update all to {canonical}.",
                 )
-
-    # ── CHECK 3: Security — secrets ──────────────────────────────────────────
 
     def check_secrets(self):
         """No hard-coded credentials or key material in source."""
@@ -363,12 +688,8 @@ class VersionSweep:
             if text is None:
                 continue
 
-            # Skip the encryption.py and usb_auth.py constants — those are app secrets, not creds
             rel = self._rel(path)
             skip_for_secret = {"encryption.py", "usb_auth.py"}
-            # Skip documentation — prose can contain 40-char sequences
-            # contracts/ = Solidity address constants; *.md = prose documentation;
-            # sadp/ = SADP files that may contain hex in examples
             skip_dirs_secret = {
                 "docs",
                 "deploy/kiosk",
@@ -376,10 +697,6 @@ class VersionSweep:
                 "sadp",
                 ".session26_backups",
             }
-            # v3.16.14 — added .jsonl (SADP append-only logs containing
-            # descriptive text, occasionally false-flagged for 40-char
-            # base64 patterns). Logs never contain real credentials; the
-            # operator's secrets stay encrypted in keyring.
             skip_ext_secret = {".md", ".sol", ".txt", ".bak", ".jsonl"}
             if any(s in rel for s in skip_for_secret):
                 continue
@@ -413,33 +730,25 @@ class VersionSweep:
                             "Move to encrypted vault or environment variable.",
                         )
 
-    # ── CHECK 4: Security — insecure patterns ────────────────────────────────
-
     def check_insecure_patterns(self):
-        """Flag known insecure coding patterns.
-        GUI animation files may legitimately use random — skip visual-only files.
+        """Flag ``INSECURE_PATTERNS`` matches in the files it scans.
+
+        ``_visual_files``, test fixtures and version_sweep.py are skipped.
         """
-        # _skip_random applied in the pattern loop below
         for path in self._py_files():
             text = self._read_or_skip(path)
             if text is None:
                 continue
 
-            # exec() is intentionally used in root RAIntSimBat.py wrapper — skip that one
-            # random.random() is used for visual animation in splash — not security risk
             rel = self._rel(path)
-            # v3.16.14 — extended skip list for non-security random.random
-            # uses (audio synthesis white-noise + sim test fixtures).
+            # _visual_files use random.random for animation and white noise.
             _visual_files = {
                 "splash_screen.py",
                 "render_trailer.py",
                 "sound_engine.py",  # audio white-noise generator
-                # tests/investigate_*.py — test fixtures with synthetic candles
             }
             if path.name in _visual_files:
-                continue  # animation/audio code — random is not security-sensitive
-            # Test fixtures using random for synthetic data — skip.
-            # Use os.sep-agnostic check (Windows uses backslashes).
+                continue
             _norm_rel = rel.replace("\\", "/")
             if _norm_rel.startswith("tests/") and (
                 "investigate_" in path.name
@@ -450,32 +759,15 @@ class VersionSweep:
             # Self-exemption: version_sweep.py contains these patterns as data strings
             if "version_sweep.py" in rel:
                 continue
-            is_wrapper = "RAIntSimBat.py" in rel and "RAIntSimBat/" not in rel
 
             for line_no, line in enumerate(text.splitlines(), 1):
                 stripped = line.strip()
                 if stripped.startswith("#"):
                     continue
-                # v3.16.14 — recognize bandit-style `# nosec` and explicit
-                # `# version-sweep: accept` comments as operator-blessed
-                # exemptions. Avoids needing per-pattern allowlists for
-                # genuinely-defensive code (e.g., trusted-config shell=True).
                 if "# nosec" in line or "# version-sweep:" in line.lower():
                     continue
                 for pattern, desc in self.INSECURE_PATTERNS:
                     if re.search(pattern, line):
-                        # exec() in the root wrapper is intentional
-                        if "exec(" in pattern and is_wrapper:
-                            self._add(
-                                Severity.INFO,
-                                "SECURITY",
-                                path,
-                                line_no,
-                                f"{desc} (intentional wrapper — documented)",
-                                "Confirmed safe: exec() in root wrapper only.",
-                            )
-                            continue
-                        # random.random() in simulation/noise is fine
                         if "random.random" in pattern and (
                             "gen_from_anchors" in text or "sim" in rel.lower()
                         ):
@@ -497,14 +789,12 @@ class VersionSweep:
                             "Review and replace with secure alternative.",
                         )
 
-    # ── CHECK 5: Debug leftovers ──────────────────────────────────────────────
-
     def check_debug_leftovers(self):
         for path in self._py_files():
             text = self._read_or_skip(path)
             if text is None:
                 continue
-            # Self-exemption: pattern strings are data here
+            # DEBUG_PATTERNS strings would match themselves here.
             if "version_sweep.py" in self._rel(path):
                 continue
             for line_no, line in enumerate(text.splitlines(), 1):
@@ -520,8 +810,6 @@ class VersionSweep:
                             auto_fixable=False,
                         )
 
-    # ── CHECK 6: Unused imports ───────────────────────────────────────────────
-
     def check_unused_imports(self):
         """Flag obviously unused top-level imports."""
         for path in self._py_files():
@@ -531,8 +819,7 @@ class VersionSweep:
             try:
                 tree = ast.parse(source)
             except SyntaxError as _syn:
-                # v3.24.21 — a file that does not parse is excluded from
-                # every AST-based check. Record it rather than vanish.
+                # A file that does not parse is excluded from every AST check.
                 self._skipped.append((str(path), f"SyntaxError: {_syn}"))
                 logger.warning(
                     "version_sweep: %s failed to parse (%s) — EXCLUDED "
@@ -573,20 +860,18 @@ class VersionSweep:
                         auto_fixable=True,
                     )
 
-    # ── CHECK 7: R6 two-path consistency ─────────────────────────────────────
-
     def check_r6_two_paths(self):
-        """
-        R6: simulator has TWO execution paths. Verify key mechanism functions
-        exist in both simulator.py and RAIntSimBat.py.
-        Key gates that must appear in both:
-          MACD taper, VX ceiling, Ichimoku, Slingshot, CM Slingshot
+        """Compare the ``gate_pairs`` patterns across ``sim_path`` and ``bat_path``.
+
+        Reports through ``_no_subject`` when either path is absent.
         """
         sim_path = self.root / "src" / "gui" / "simulator.py"
         bat_path = self.root / "sadp" / "RAIntSimBat" / "RAIntSimBat.py"
 
-        if not sim_path.exists() or not bat_path.exists():
-            return
+        for required in (sim_path, bat_path):
+            if not required.exists():
+                self._no_subject(f"{self._rel(required)} absent")
+                return
 
         sim_text = sim_path.read_text(encoding="utf-8", errors="replace")
         bat_text = bat_path.read_text(encoding="utf-8", errors="replace")
@@ -596,10 +881,6 @@ class VersionSweep:
             ("VX CEILING", r"vip_at_ceiling|VX.*CEIL", r"VX.*ceil|_vip_ceil"),
             ("ICHIMOKU GATE", r"ichi_twist_bull|ICHIMOKU", r"ICHIMOKU|_ichi_"),
             ("CM SLINGSHOT SQUEEZE", r"squeeze_bull|SLINGSHOT", r"SLINGSHOT|_sq_bull"),
-            # Phantom Gate: intentionally disabled in simulator.py (documented in
-            # Section 19.18 of Product Manual — synthetic data limitation).
-            # Excluded from R6 violation check.
-            # ("PHANTOM GATE", r"phantom_lock|phantom", r"phantom_lock"),
         ]
 
         for name, sim_pat, bat_pat in gate_pairs:
@@ -623,8 +904,6 @@ class VersionSweep:
                     f"R6 VIOLATION: {name} gate in RAIntSimBat.py but NOT in simulator.py",
                     "Add matching gate to simulator.py confidence pipeline.",
                 )
-
-    # ── CHECK 8: Requirements coverage ───────────────────────────────────────
 
     def check_requirements(self):
         """Check that key imports have entries in requirements files."""
@@ -669,8 +948,6 @@ class VersionSweep:
                         f"Add '{pkg_name}' to requirements.txt or requirements-optional.txt",
                     )
 
-    # ── CHECK 9: File hygiene ─────────────────────────────────────────────────
-
     def check_file_hygiene(self):
         """Flag stale artifacts that shouldn't ship."""
         stale_patterns = [
@@ -696,17 +973,10 @@ class VersionSweep:
                             "Add to .gitignore and remove.",
                         )
 
-    # ── CHECK 11: ta[] snapshot key consistency ─────────────────────────────
-
     def check_snapshot_consistency(self):
-        """
-        Verify that every key READ via ta.get("key") or ta["key"] in the
-        simulator confidence gates exists in the snapshot dict that is SET
-        in _compute_ta_snapshot().
+        """Compare the snapshot keys read in ``sim_path`` against those it sets.
 
-        A missing key silently returns None (via .get()) — the gate branch
-        never fires and the indicator is effectively disabled. This class of
-        bug is invisible at runtime and undetectable by syntax checking.
+        Returns without a finding when ``sim_path`` is absent.
         """
         sim_path = self.root / "src" / "gui" / "simulator.py"
         if not sim_path.exists():
@@ -716,7 +986,6 @@ class VersionSweep:
 
         text = sim_path.read_text(encoding="utf-8", errors="replace")
 
-        # Keys SET in the snapshot dict
         snap_pat = r"snapshot\s*=\s*\{(.+?)\}\s*\n\s*# Landing"
         snap_m = re.search(snap_pat, text, re.S)
         if not snap_m:
@@ -786,8 +1055,6 @@ class VersionSweep:
                 f"Add {key!r} to snapshot dict with correct ichi_d.get() source.",
             )
 
-    # ── CHECK 10: TODO / FIXME count ─────────────────────────────────────────
-
     def check_todos(self):
         total = 0
         for path in self._py_files():
@@ -815,15 +1082,10 @@ class VersionSweep:
                 "Review before release.",
             )
 
-    # ── CHECK 12: Rule registry ──────────────────────────────────────────────
-
     def check_rule_registry(self):
-        """
-        Read sadp/RULE_REGISTRY.json and flag:
-          HIGH    — any CORE rule (R1, R5, R10, R11, R12) that is not LOCKED
-          MEDIUM  — any SUSPENDED rule (note it prominently for the session)
-          LOW     — any UNLOCKED rule (may be intentional, flag for awareness)
-          INFO    — registry missing (will be auto-created on first use)
+        """Flag every ``CORE`` entry of ``registry_path`` that is not locked.
+
+        Adds an INFO finding when ``registry_path`` is absent.
         """
         registry_path = self.root / "sadp" / "RULE_REGISTRY.json"
         if not registry_path.exists():
@@ -892,15 +1154,12 @@ class VersionSweep:
                     f"Run RULE LOCK {rule_id} when modification is complete.",
                 )
 
-    # ── CHECK 13: Complexity hotspots (R31, R34) ────────────────────────────
-
     def check_complexity_hotspots(self):
-        """Report top functions by complexity (R31 gate) and length (R34 signal)."""
+        """Report the ``scan_root`` functions with the most ``BRANCH_PAT`` matches."""
         import re as _re
         import ast as _ast
 
         BRANCH_PAT = _re.compile(r"\b(if|elif|for|while|except|and|or|case)\b")
-        # Scan only src/ — exclude generators, battery engine, etc.
         src_root = self.root / "src"
         scan_root = src_root if src_root.exists() else self.root
         for path in sorted(scan_root.rglob("*.py")):
@@ -938,8 +1197,6 @@ class VersionSweep:
                         "Document in TECH_DEBT.md. Do not add new branches.",
                     )
 
-    # ── Run all checks ────────────────────────────────────────────────────────
-
     def run(self) -> SweepResult:
         t0 = time.time()
         print(f"\n{'='*68}")
@@ -970,10 +1227,15 @@ class VersionSweep:
         for name, fn in checks:
             print(f"  Checking: {name}...", end=" ", flush=True)
             before = len(self.result.findings)
+            self._no_subject_reason = None
             fn()
+            reason = self._no_subject_reason
             after = len(self.result.findings)
             new_count = after - before
-            if new_count == 0:
+            if reason is not None:
+                self.result.not_inspected[name] = reason
+                print(f"NOT INSPECTED ({reason})")
+            elif new_count == 0:
                 print("✓")
             else:
                 sevs = [f.severity for f in self.result.findings[before:after]]
@@ -996,10 +1258,11 @@ class VersionSweep:
         self.result.elapsed_sec = round(time.time() - t0, 2)
         return self.result
 
-    # ── CHECK 14: SADP annotation validation (R38) ──────────────────────────
-
     def check_sadp_annotations(self):
-        """CHECK 14 — Validate # sadp: R[N] annotations (R38)."""
+        """Check the ``ann_pat`` annotations against ``MANDATORY``.
+
+        Suspended entries are read from ``registry_path``.
+        """
         import re as _re, json as _json
 
         registry_path = self.root / "sadp" / "RULE_REGISTRY.json"
@@ -1100,10 +1363,8 @@ class VersionSweep:
                 "",
             )
 
-    # ── CHECK 15: R28 silent failure patterns ────────────────────────────────
-
     def check_r28_silent_failures(self):
-        """CHECK 15 — R28 Fail Loudly: detect silent failure patterns."""
+        """Flag ``bare_except`` and ``swallow_pass`` matches under ``SCOPED``."""
         import re as _re
 
         SCOPED = {"trading", "competition"}
@@ -1160,10 +1421,11 @@ class VersionSweep:
                             "Use explicit key or safe non-None default.",
                         )
 
-    # ── CHECK 16: R29/R33 idempotency + immutability ─────────────────────────
-
     def check_r29_r33_gates(self):
-        """CHECK 16 — R29 Idempotency + R33 Immutable Log."""
+        """Flag ``submit_pat`` functions whose body has no ``idem_marker``.
+
+        A ``log_fn_pat`` function matching ``trunc_pat`` is reported too.
+        """
         import re as _re
 
         SCOPED = {"trading", "competition"}
@@ -1234,18 +1496,23 @@ class VersionSweep:
                 if in_log and lineno > log_start and line and not line[0].isspace():
                     in_log = False
 
-    # ── CHECK 17: SADP dependency graph propagation ──────────────────────────
-
     def check_sadp_dependency_graph(self):
-        """CHECK 17 — Suspended rules undermining their dependents."""
+        """Flag every ``reverse`` entry depending on a suspended rule.
+
+        Reports through ``_no_subject`` when ``registry_path`` is absent or
+        unreadable.
+        """
         import json as _json
 
         registry_path = self.root / "sadp" / "RULE_REGISTRY.json"
+        rel = self._rel(registry_path)
         if not registry_path.exists():
+            self._no_subject(f"{rel} absent")
             return
         try:
             registry = _json.loads(registry_path.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, ValueError) as exc:
+            self._no_subject(f"{rel} unreadable: {type(exc).__name__}")
             return
         suspended = {
             rid for rid, v in registry.items() if v.get("state") == "SUSPENDED"
@@ -1268,8 +1535,6 @@ class VersionSweep:
                     f"depends on it and may be partially undermined.",
                     f"RULE RESTORE {sus} or review {dep_rule} compliance.",
                 )
-
-    # ── Report ────────────────────────────────────────────────────────────────
 
     def print_report(self, result: SweepResult):
         sev_order = [
@@ -1309,6 +1574,11 @@ class VersionSweep:
 
         print(f"{'='*68}")
 
+        if result.not_inspected:
+            print(f"\n  ── NOT INSPECTED ({len(result.not_inspected)}) ──")
+            for check_name, reason in result.not_inspected.items():
+                print(f"  {check_name}: {reason}")
+
         for sev in sev_order:
             items = [f for f in result.findings if f.severity == sev]
             if not items:
@@ -1345,6 +1615,7 @@ class VersionSweep:
             "files_scanned": result.files_scanned,
             "lines_scanned": result.lines_scanned,
             "passed": result.passed,
+            "not_inspected": dict(result.not_inspected),
             "summary": {
                 "critical": len(result.critical),
                 "high": len(result.high),
@@ -1386,8 +1657,6 @@ class VersionSweep:
                 Table,
                 TableStyle,
             )
-
-            # v3.19.12 — removed unused TA_LEFT + Spacer + HRFlowable imports
         except ImportError:
             return None
 
@@ -1453,10 +1722,6 @@ class VersionSweep:
             c.drawRightString(W - MARGIN, 8 * mm, f"Page {doc.page}")
             c.restoreState()
 
-        # Annotated, because the list starts with two Paragraphs and
-        # later takes Tables as well. Without the annotation the element
-        # type is read as Paragraph, and SimpleDocTemplate.build() then
-        # gets list[Paragraph] where it asks for list[Flowable].
         story: list[Flowable] = [
             Paragraph(
                 f"Acervator v{result.version} — Version Sweep Report", SS["Title"]
@@ -1522,8 +1787,6 @@ class VersionSweep:
                     SS["SH"],
                 )
             )
-            # Annotated for the same reason: the header row holds plain
-            # strings and every data row below holds Paragraphs.
             rows: list[list[Flowable | str]] = [
                 ["Category", "File", "Line", "Description"]
             ]
@@ -1575,11 +1838,6 @@ class VersionSweep:
         return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI entry point
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 def _force_utf8_stdio() -> None:
     """Set stdout/stderr to UTF-8 for the CLI run.
 
@@ -1599,7 +1857,11 @@ def main():
     parser = argparse.ArgumentParser(
         description="Acervator version bump quality gate sweep"
     )
-    parser.add_argument("--fix", action="store_true", help="Auto-fix fixable issues")
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Accepted for compatibility; no finding is applied",
+    )
     parser.add_argument(
         "--report", action="store_true", help="Generate PDF report (requires reportlab)"
     )

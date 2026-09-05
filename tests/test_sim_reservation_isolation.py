@@ -39,9 +39,9 @@ only ever a means to that end.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import sys
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -186,29 +186,81 @@ def test_a_sim_bot_actually_obtains_a_reservation():
         )
 
 
-def test_the_ensure_path_still_reserves_rather_than_skipping():
-    """The structural half of the original requirement, kept.
+class _EnsureHost:
+    """The least a bot must be for ``_ensure_capital_reservation`` to run.
 
-    C16 may relax the holdings assertion; it may NOT reintroduce a bare
-    `if _sim_mode: return`. Asserted over the AST so the comment at
-    :1138 recording the v3.24.31 removal cannot satisfy or trip it.
+    ``_capital_registry`` is the injected private registry and ``_sim_mode``
+    picks the sim branch; every other attribute is a value the method reads.
     """
-    import ast
 
-    src = inspect.getsource(ScrummingBot._ensure_capital_reservation)
-    tree = ast.parse(textwrap.dedent(src))
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.If):
-            continue
-        test_src = ast.get_source_segment(textwrap.dedent(src), node.test)
-        if "_sim_mode" not in (test_src or ""):
-            continue
-        body = [s for s in node.body if not isinstance(s, ast.Pass)]
-        assert not (len(body) == 1 and isinstance(body[0], ast.Return)), (
-            f"bare sim-mode skip reintroduced at relative line "
-            f"{node.lineno}; isolation must come from the injected "
-            f"registry, not from refusing to reserve"
-        )
+    _ensure_capital_reservation = ScrummingBot._ensure_capital_reservation
+    _compute_reservation_qty = ScrummingBot._compute_reservation_qty
+    _crr = ScrummingBot._crr
+
+    def __init__(self, registry, sim_mode: bool, holdings: float = 1.0):
+        self.bot_id = "sim-ensure-bot"
+        self.config = type(
+            "C",
+            (),
+            {
+                "self_reserve_capital": True,
+                "target_asset": "BTC",
+                "personal_hold_qty": 0.0,
+            },
+        )()
+        self._capital_registry = registry
+        self._sim_mode = sim_mode
+        self._crr_token = None
+        self._crr_last_reserved_qty = 0.0
+        self._target_balance = 100.0
+        self._quote_to_usd = 1.0
+        self._holdings = holdings
+
+    async def _get_cached_exchange_balance(self, _asset):
+        return self._holdings
+
+
+def _run_ensure(registry, sim_mode: bool, price: float = 100.0):
+    """Claims held after one real ``_ensure_capital_reservation`` call."""
+    host = _EnsureHost(registry, sim_mode)
+    asyncio.run(host._ensure_capital_reservation(price))
+    return [r for r in registry._reservations.values() if r.bot_id == host.bot_id]
+
+
+def test_the_ensure_path_still_reserves_in_sim(tmp_path):
+    """C16 may relax the holdings assertion; it may NOT reintroduce a
+    bare ``if _sim_mode: return``."""
+    private = CapitalReservationRegistry(
+        state_path=tmp_path / "sim.json", autosave=False
+    )
+    mine = _run_ensure(private, sim_mode=True)
+    assert len(mine) == 1, (
+        "a sim bot ran the real ensure path and obtained no reservation; "
+        "isolation must come from the injected registry, not from "
+        "refusing to reserve"
+    )
+    assert mine[0].asset == "BTC"
+
+
+def test_a_live_bot_reserves_on_the_same_path(tmp_path):
+    """POSITIVE CONTROL: the rig reserves with ``_sim_mode`` off too, so
+    the sim green above is not an artefact of the host."""
+    private = CapitalReservationRegistry(
+        state_path=tmp_path / "live.json", autosave=False
+    )
+    assert len(_run_ensure(private, sim_mode=False)) == 1
+
+
+def test_the_ensure_path_claims_nothing_when_the_feature_is_off(tmp_path):
+    """NEGATIVE CONTROL: ``self_reserve_capital`` False reaches the
+    registry with no claim, so a reservation is a real event."""
+    private = CapitalReservationRegistry(
+        state_path=tmp_path / "off.json", autosave=False
+    )
+    host = _EnsureHost(private, sim_mode=True)
+    host.config.self_reserve_capital = False
+    asyncio.run(host._ensure_capital_reservation(100.0))
+    assert private._reservations == {}
 
 
 def test_bot_accepts_an_injected_registry():
@@ -240,14 +292,43 @@ def test_crr_falls_back_to_the_singleton_when_uninjected():
 # ── the fleet actually injects it ────────────────────────────────
 
 
-def test_fleet_controller_builds_and_injects_a_private_registry():
-    from src.simulator.fleet import fleet_replay_controller as frc
+SIM_BOT_CONFIG = {
+    "mode": "scrumming",
+    "symbol": "CHIP/USD",
+    "target_asset": "CHIP",
+    "base_currency": "USD",
+    "target_balance": 100.0,
+    "bot_id": "crr-injection-bot",
+}
 
-    src = inspect.getsource(frc)
-    assert "_make_sim_capital_registry" in src
-    assert (
-        "capital_registry=capital_registry" in src
-    ), "fleet controller must pass the private registry into the bot"
+
+class _SimExchange:
+    exchange_id = "sim"
+
+
+def test_the_fleet_controller_injects_its_private_registry_into_the_bot():
+    """The bot ``_instantiate_bot`` builds holds the registry it was
+    handed, and ``_crr`` resolves to that one, not to ``get_registry``."""
+    from src.simulator.fleet.fleet_replay_controller import (
+        _instantiate_bot,
+        _make_sim_capital_registry,
+    )
+    from src.trading.capital_reservation import get_registry
+
+    private = _make_sim_capital_registry()
+    bot = _instantiate_bot(dict(SIM_BOT_CONFIG), _SimExchange(), private)
+    assert bot is not None, "the controller built no bot at all"
+    assert bot._capital_registry is private
+    assert bot._crr() is private
+    assert bot._crr() is not get_registry()
+
+
+def test_a_bot_built_without_a_registry_is_refused():
+    """POSITIVE CONTROL for the injection above: ``_instantiate_bot``
+    with no registry answers None."""
+    from src.simulator.fleet.fleet_replay_controller import _instantiate_bot
+
+    assert _instantiate_bot(dict(SIM_BOT_CONFIG), _SimExchange(), None) is None
 
 
 def test_the_phantom_subsystem_stays_reachable_in_sim():

@@ -14,13 +14,17 @@ Contract:
     await ctrl.stopped_event.wait()   # optional: block until fully stopped
 
 Per-tick loop:
-    1. Advance the TabletBackend cursor one candle across all symbols.
-    2. For each bot: call bot.tick() (real class code, unmodified).
-    3. Update progress state (candles played, per-bot trades, etc.).
-    4. Repeat until every series exhausts or request_stop() is called.
+    1. For each bot: call bot.tick() (real class code, unmodified).
+    2. Advance the TabletBackend cursor across all symbols -- one
+       candle, or as many as ``set_load_feed`` asks for.
+    3. Update progress state (candles played, trades per bot and per
+       symbol).
+    4. Repeat until every series exhausts, ``max_candles`` is reached,
+       or request_stop() is called.
 
-Tick rate: ``tick_delay_s`` sets the sleep between ticks. 0.0 plays
-at wall-clock speed; a caller can raise it for observability.
+Tick rate: ``tick_delay_s`` sets the sleep between ticks. 0.0 sleeps
+not at all and plays as fast as the event loop allows; a caller can
+raise it for observability.
 """
 
 from __future__ import annotations
@@ -44,8 +48,6 @@ from src.exchange.tablet_backend import TabletBackend
 from .sim_exchange import make_symbol_series_map
 
 if TYPE_CHECKING:
-    # String annotations only, under `from __future__ import annotations`;
-    # the module takes on no import of these at run time.
     from src.exchange.base import ExchangeInterface, Trade
 
 logger = logging.getLogger("acervator.simulator.fleet.controller")
@@ -53,41 +55,41 @@ logger = logging.getLogger("acervator.simulator.fleet.controller")
 
 @dataclass
 class ReplayProgress:
-    """Snapshot of what the controller has done. Read by the GUI on
-    a QTimer for the status line + per-bot trade counters."""
+    """Snapshot of what the controller has done. Read by the GUI on a
+    QTimer for the status line and the per-symbol trade counters."""
 
     candles_played: int = 0
     total_candles: int = 0
     bots_ticked: int = 0
     trades_fired: int = 0
     exceptions: int = 0
-    # Candles fast-skipped in anchored mode; non-zero means a
-    # screening pass, not authoritative parity.
+    # Candles skipped in anchored mode; non-zero marks a screening pass,
+    # not an authoritative parity run.
     candles_skipped: int = 0
-    # Event-loop yields so far; divided by candles_played it predicts
-    # replay throughput under the GUI's asyncio pump.
+    # Event-loop yields so far; over candles_played it bounds replay
+    # speed under the GUI's 50 ms pump.
     yields_emitted: int = 0
     anchored: bool = False
     started_at_wall: float = 0.0
     finished: bool = False
     stop_requested: bool = False
     last_error: Optional[str] = None
-    # Count of each distinct exception signature seen, so repeated
-    # failures collapse to one diagnosable line instead of flooding.
+    # Count per distinct exception signature, so repeated failures
+    # collapse to one line.
     exception_samples: dict[str, int] = field(default_factory=dict)
+    # Keyed by sim bot id, `simulated_<live id>`.
     per_bot_trade_count: dict[str, int] = field(default_factory=dict)
-    # Trade count keyed by symbol; each symbol maps to exactly one
-    # bot in the fleet.
+    # Keyed by symbol; this is the counter the Fleet Replay panel reads.
     per_symbol_trade_count: dict[str, int] = field(default_factory=dict)
     # Ticks skipped because the symbol's tablet had not started yet.
     bot_ticks_before_tape: int = 0
-    # Splits bots_ticked, which counts tick entries only, into
-    # worked, throttled and unknown outcomes.
+    # Splits bots_ticked, which counts tick entries only, into worked,
+    # throttled and unknown.
     bot_ticks_worked: int = 0
     bot_ticks_throttled: int = 0
     bot_ticks_unknown: int = 0
-    # Candles advanced past the first on one tick, driven by
-    # Nuclear's load pulse.
+    # Candles advanced past the first on one tick, driven by Nuclear's
+    # load pulse.
     candles_fed_under_load: int = 0
 
 
@@ -98,8 +100,8 @@ the live id by stripping the prefix."""
 
 
 def sim_bot_id(live_bot_id: str) -> str:
-    """`simulated_<live id>`. Idempotent: prefixing twice is a bug that
-    would silently break the wire join, so it is refused here."""
+    """``simulated_<live id>``. Idempotent -- an id that already carries
+    the prefix is returned unchanged."""
     _s = str(live_bot_id or "")
     return _s if _s.startswith(SIM_ID_PREFIX) else SIM_ID_PREFIX + _s
 
@@ -128,8 +130,6 @@ def _make_sim_capital_registry():
             state_path=tmp / "reservation_state.json", autosave=False
         )
     except Exception as exc:
-        # Fails closed rather than falling back to the process-wide
-        # registry, which autosaves into the operator's live state.
         logger.error(
             "sim capital registry could not be created (%s) — aborting "
             "rather than resolving the process-wide registry",
@@ -178,9 +178,8 @@ def _instantiate_bot(
     Returns None, with a logged warning, on any construction error;
     the caller skips that bot and continues.
     """
-    # Refused before any construction: a bot built with no injected
-    # registry would resolve the process-wide one, which autosaves to
-    # the operator's live reservation state.
+    # A sim bot with no injected registry reserves nothing: `_crr`
+    # fails closed in sim mode and returns None.
     if capital_registry is None:
         logger.warning(
             "FleetReplayController: refusing to construct sim bot %s — "
@@ -201,9 +200,8 @@ def _instantiate_bot(
         return None
 
     try:
-        # Every BotConfig field present on `cfg` passes through, using
-        # bot_container's own Extractor-only exclusion set so the two
-        # cannot drift apart.
+        # Uses bot_container's own Extractor-only exclusion set, so the
+        # two filters cannot drift apart.
         import dataclasses as _dc
 
         from src.trading.bot_container import (
@@ -219,15 +217,11 @@ def _instantiate_bot(
             and k not in ("mode", "exchange_id")
             and k not in _EXTRACTOR_ONLY
         }
-        # exchange_id carries the venue from `cfg`, not the sim
-        # exchange object: `timeframes.py` keys phantom availability by
-        # venue id, and the counterparty is decided by which exchange
-        # object the bot holds, not by this string.
+        # Phantom availability is keyed by the real venue id, not the sim exchange.
         _real_venue = str(cfg.get("exchange_id") or "").strip()
         passthrough["exchange_id"] = _real_venue or exchange.exchange_id
-        # base_currency and target_asset have no BotConfig default;
-        # a hand-built config omitting them would otherwise fail to
-        # construct.
+        # `base_currency` has no BotConfig default; `make_bot_config`
+        # already supplies `target_asset` when a caller omits it.
         passthrough.setdefault("base_currency", "USD")
         passthrough.setdefault("target_asset", "BTC")
         _dropped = sorted(k for k in cfg if k not in _fields and not k.startswith("_"))
@@ -241,10 +235,8 @@ def _instantiate_bot(
             )
 
         bot_config = make_bot_config(BotMode.SCRUMMING, **passthrough)
-        # sim_mode=True suppresses trade-notification bus emits so
-        # main_window's sound engine stays silent during Fleet Replay.
-        # enable_phantoms is read from the persisted per-bot flag; see
-        # resolve_phantoms_enabled.
+        # sim_mode=True gives the bot a private EventBus, so its
+        # `trade.filled` never reaches main_window's sound engine.
         return ScrummingBot(
             bot_config,
             exchange,
@@ -261,8 +253,8 @@ def _instantiate_bot(
         return None
 
 
-# ccxt OHLCV column order is [ts, open, high, low, close, volume]; the
-# close TabletBackend.fetch_ticker reads sits at index 4.
+# ccxt OHLCV column order is [ts, open, high, low, close, volume];
+# TabletBackend.fetch_ticker reads the close at index 4.
 OHLCV_CLOSE = 4
 
 
@@ -309,8 +301,8 @@ def opening_lot_for_lotless(target_balance: object, rows: list[list]) -> Optiona
 
 class FleetReplayController:
     """Owns the async tick loop that plays YTD candles through sim
-    bots. All GUI interactions run through callbacks so the
-    controller stays testable outside Qt."""
+    bots. Every GUI interaction goes through a callback; this module
+    imports no Qt."""
 
     def __init__(
         self,
@@ -325,21 +317,21 @@ class FleetReplayController:
         smart_wires: Optional[list[dict]] = None,
     ) -> None:
         self._configs = list(configs or [])
-        # Passed in rather than read from bot_state, so the controller
-        # stays free of file IO and is constructible without one.
+        # The panel reads these off bot_state and passes them in; this
+        # class does no file IO.
         self._smart_wires = list(smart_wires or [])
-        # symbol -> live bot id, for attributing sim fills; populated
-        # in _build_sim, since the exchange reports a fill by symbol.
+        # symbol -> sim bot id; the exchange reports a fill by symbol,
+        # never by bot. Populated in _build_sim.
         self._bot_id_for_symbol: dict = {}
-        # Per-bot TA observation counts; a fleet-wide ratio would be
-        # meaningless across tablets with different start dates.
+        # Per-bot TA observation counts; tablets start on different
+        # dates, so a fleet-wide ratio has no denominator.
         self._ta_observed: dict = {}
         self._signal_sink = None
         # Set by Nuclear to drive candles-per-tick. None = 1.
         self._load_feed_cb = None
         self._ta_eligible: dict = {}
-        # Built in _build_sim, only for a fleet joinable to bot_state;
-        # owns a private EventBus.
+        # Built by _build_smart_wires for a fleet joinable to bot_state;
+        # holds a private EventBus.
         self._smart_wire_mgr: Optional[Any] = None
         self._sim_bus: Optional[Any] = None
         self._candles_by_symbol = dict(candles_by_symbol or {})
@@ -347,26 +339,26 @@ class FleetReplayController:
         self._perf = performance_log_cb or (lambda _m: None)
         self._tick_delay = float(tick_delay_s)
         self._max_candles = max_candles
-        # YTD window bounds; when set, only candles with ts in
-        # [window_since_ms, window_until_ms] play.
+        # Stored, never read: no code filters candles by them, so the
+        # whole series plays.
         self._window_since_ms = window_since_ms
         self._window_until_ms = window_until_ms
         # The connector the bots hold: a real CCXTConnector served by
         # the tape.
         self._exchange: Optional[Any] = None
-        # Owns the replay's clock, cursors and ledger seeding.
-        # Assigned in _build_sim.
+        # Owns the replay's clock, cursors and ledger seeding; assigned
+        # in _build_sim.
         self._tape: Optional[TabletBackend] = None
         self._bots: list[Any] = []
         self._task: Optional[asyncio.Task] = None
-        # Durable per-run record under ~/.acervator_logs/sim/; opened
-        # in start(), closed in the run loop's finally block.
+        # Durable per-run record under ~/.acervator_logs/sim/; opened in
+        # start(), closed in the run loop's finally block.
         self._run_log: Optional[Any] = None
         # Anchored screening mode: None evaluates every candle
         # (authoritative); a set of indices evaluates only those.
         self._anchor_indices: Optional[set[int]] = None
-        # Candles where a historical trade is expected. Kept separate
-        # from _anchor_indices so trade markers work in both modes.
+        # Candles where a historical trade is expected; separate from
+        # _anchor_indices so markers work in both modes.
         self._expected_indices: Optional[set[int]] = None
         self._candle_i: int = 0
         # Markers produced by the worker, drained by the GUI thread.
@@ -374,11 +366,9 @@ class FleetReplayController:
         self.progress = ReplayProgress()
         self.stopped_event = asyncio.Event()
         self.stopped_event.set()  # not-yet-started = "already stopped"
-        # Visual refresh callback + cadence; the panel wires this via
-        # set_visual_refresh_cb() after construction.
         self._visual_refresh_cb: Optional[Callable[[int], None]] = None
-        # Set again in start(); initialised here so _maybe_yield is
-        # safe if called before a run begins.
+        # Set again in start(); initialised here so _maybe_yield is safe
+        # before a run begins.
         self._last_yield: float = time.perf_counter()
         self._visual_refresh_every: int = 100
 
@@ -397,10 +387,7 @@ class FleetReplayController:
             # is still running.
             self._activity("Controller already running.")
             return False
-        # Sink installed before _build_sim, whose emitters
-        # (fleet.03.005 through .008) need it live; no run directory
-        # exists yet, so records buffer in memory until the path is
-        # attached below.
+        # The sink buffers in memory until the run directory is attached below.
         try:
             from src.core.signal_contract import SignalSink, get_sink, set_sink
 
@@ -431,26 +418,20 @@ class FleetReplayController:
         self.progress.started_at_wall = time.time()
         self._last_yield = time.perf_counter()
 
-        # Opens the durable run record and hooks each sim bot's
-        # private bus: these handlers cannot see live events, and
-        # live subscribers cannot see these.
+        # Hooks each sim bot's private bus: these handlers cannot see
+        # live events, and live subscribers cannot see these.
         try:
             from src.trading.sim_run_log import SimRunLog
 
             self._run_log = SimRunLog()
-            # Signal sink is scoped to the run, not the process:
-            # opened beside the run log, cleared in the same finally
-            # that closes it, so a finished run cannot keep collecting.
             self._run_log.start_run(
                 config={
                     "bots": len(self._bots),
                     "symbols": sorted(self._candles_by_symbol.keys()),
                     "total_candles": self.progress.total_candles,
                     "max_candles": self._max_candles,
-                    # Anchored mode skips bot.tick() on candles with no
-                    # expected trade, so per-tick state can drift from
-                    # full evaluation; parity checks need full
-                    # evaluation, not anchored screening.
+                    # Anchored mode skips bot.tick() where no trade is
+                    # expected, so a parity check needs full evaluation.
                     "anchored": bool(self._anchor_indices),
                     "full_evaluation": not bool(self._anchor_indices),
                     "anchor_candles": (
@@ -458,8 +439,8 @@ class FleetReplayController:
                     ),
                 }
             )
-            # SimRunLog._dir is created by start_run, not __init__, so
-            # the sink's path can only be attached after this call.
+            # start_run creates the run directory, not __init__, so the
+            # sink's path can only be attached after that call.
             try:
                 _rl_dir = getattr(self._run_log, "_dir", None)
                 if _rl_dir is not None and self._signal_sink is not None:
@@ -485,10 +466,9 @@ class FleetReplayController:
     def tape(self) -> Optional[TabletBackend]:
         """The run's ``TabletBackend`` -- the replay's ledger and clock.
 
-        Public, so a consumer outside this class can read balances and
-        fills through ``balances()``, ``snapshot()`` and
-        ``fetch_my_trades()``, each returning a copy. None before
-        ``_build_sim`` has run.
+        A consumer outside this class reads balances and fills through
+        ``balances()``, ``snapshot()`` and ``fetch_my_trades()``, each
+        returning a copy. None before ``_build_sim`` has run.
         """
         return self._tape
 
@@ -511,20 +491,16 @@ class FleetReplayController:
         Time-based rather than count-based: under the GUI,
         ``main._make_async_pump_timer`` drives the loop through
         ``src.core.tick_driver.pump_once`` on a 50 ms QTimer, so every
-        yield costs a full pump period regardless of how many are
-        requested in that window. A headless ``asyncio.run()`` loop is
-        free-running, so a yield there costs microseconds.
-
-        Do not shorten the GUI's pump interval to speed this up: the
-        same pump drives every live bot tick.
+        yield costs a full pump period however many are requested in
+        that window. That same pump drives every live bot tick. A
+        headless ``asyncio.run()`` loop is free-running, so a yield
+        there costs microseconds.
         """
         if time.perf_counter() - self._last_yield < _YIELD_BUDGET_S:
             return
         self.progress.yields_emitted += 1
         await asyncio.sleep(0)
-        # Stamped after the await, not before: taken earlier, the
-        # elapsed time on resume would already exceed the budget and
-        # every call would yield.
+        # Stamped after the await, so a resumed call starts its budget at zero.
         self._last_yield = time.perf_counter()
 
     def set_visual_refresh_cb(
@@ -548,23 +524,18 @@ class FleetReplayController:
             if self._tape is None:
                 return 0
             return int(self._tape.total_clock_ticks())
-        except Exception:  # noqa: BLE001,S110 - progress best-effort
+        except Exception:  # noqa: BLE001 - progress best-effort
             return 0
 
     def _build_sim(self) -> None:
         if not self._candles_by_symbol:
             self._activity("No candle series provided.")
             return
-        # Stone Tablets stay immutable; the YTD window is applied via
-        # CandleSeries.step_to_ts at iteration time, not by trimming
-        # the series.
+        # Only the symbol set is taken from the series map; the tape
+        # below is built from the raw rows instead.
         series_map = make_symbol_series_map(self._candles_by_symbol)
         available_symbols = set(series_map.keys())
 
-        # Wallet seed sums each bot's target_balance ("locked"), per
-        # quote currency, across bots with a Stone Tablet -- so
-        # spendable starts equal to locked and a partial fleet gets a
-        # proportionally-sized wallet.
         seed_by_quote: dict[str, float] = {}
         for cfg in self._configs:
             sym = str(cfg.get("symbol", "") or "")
@@ -579,9 +550,8 @@ class FleetReplayController:
                 continue
         seed_usd = sum(seed_by_quote.values())
         if seed_usd <= 0:
-            # No usable targets — fall back to a nominal float so the
-            # exchange is still constructible, and say so rather than
-            # silently simulating with an arbitrary balance.
+            # A nominal float keeps the exchange constructible; the
+            # activity line below says the wallet is not the fleet's.
             seed_by_quote = {"USD": 1000.0}
             seed_usd = 1000.0
             self._activity(
@@ -599,11 +569,9 @@ class FleetReplayController:
                 f"({_detail}); spendable starts equal to locked."
             )
 
-        # One private registry per replay, shared by that replay's
-        # bots, so cross-bot reservation contention is exercised
-        # without reaching live state.
+        # One private registry per replay; never the process-wide live registry.
         self._sim_capital_registry = _make_sim_capital_registry()
-        # BotConfig.trading_fee_pct is a percent (e.g. 1.6); the
+        # BotConfig.trading_fee_pct is a percent, defaulting to 0.6; the
         # exchange multiplies notional by a fraction, hence the /100.
         _fees = {}
         for cfg in self._configs:
@@ -614,11 +582,7 @@ class FleetReplayController:
                 _fees[_sym] = float(cfg.get("trading_fee_pct", 0.6) or 0.0) / 100.0
             except (TypeError, ValueError):
                 continue
-        # Bots hold a real CCXTConnector; TabletBackend implements the
-        # ccxt surface beneath it, so normalisation and fee logic are
-        # the same code path as live. `_tape` owns the replay's clock,
-        # cursors and seeding, and no bot touches it directly; bots
-        # see only the connector, as in live.
+        # TabletBackend implements the ccxt surface beneath a real CCXTConnector.
         self._tape = TabletBackend(
             {
                 sym: [list(r) for r in rows]
@@ -639,9 +603,8 @@ class FleetReplayController:
             )
         self._tape.on_trade(self._on_sim_trade)
 
-        # Whether the fleet joins back to bot_state at all, decided
-        # once for the whole fleet: a per-config decision would make a
-        # broken join look like a synthetic fleet.
+        # Decided once for the whole fleet: a per-config decision would
+        # make a broken join look like a synthetic fleet.
         _n_configs = len(self._configs)
         _n_joinable = sum(
             1 for c in self._configs if str(c.get("_src_bot_id", "") or "").strip()
@@ -662,13 +625,11 @@ class FleetReplayController:
                 "hand-built fleet; NOT expected for a bot_state replay."
             )
 
-        # Instantiate bots. Skip any whose symbol isn't in the
-        # candle series (can't sim without price data).
         _imported_state = 0
         _import_failed = 0
         _import_missing = 0
-        # Bots with no `_src_scrumming_state`; see the locked-side
-        # block below the loop.
+        # Bots with no `_src_scrumming_state`; handed to
+        # _open_locked_sides after the loop.
         _no_bot_state: list[tuple[Any, dict]] = []
         for cfg in self._configs:
             sym = str(cfg.get("symbol", "") or "")
@@ -676,17 +637,7 @@ class FleetReplayController:
                 continue
             bot = _instantiate_bot(cfg, self._exchange, self._sim_capital_registry)
             if bot is not None:
-                # BotContainer.__init__ mints a fresh uuid4 bot_id;
-                # carrying the persisted one here is what lets
-                # SmartWireManager.get_outgoing_wires and parity
-                # attribution resolve against bot_state.
-                #
-                # Checked at the FLEET level: a partial join (some
-                # configs carrying `_src_bot_id`, some not) raises,
-                # since it would silently drop that bot's wires. A
-                # fleet with none is synthetic and gets fresh uuid4s,
-                # expected for a proposal fleet built by
-                # `topology_stress._config_for`.
+                # BotContainer.__init__ mints a fresh bot_id; the persisted one is carried in.
                 if _joinable:
                     _src = str(cfg.get("_src_bot_id", "") or "").strip()
                     if not _src:
@@ -700,21 +651,12 @@ class FleetReplayController:
                         )
                     bot.bot_id = sim_bot_id(_src)
 
-                # bot_state is the only source of initiating state.
-                # import_scrumming_state is the inverse of
-                # export_scrumming_state; live calls the same pair
-                # during restore (container/restore.py).
                 _scrum = cfg.get("_src_scrumming_state")
                 if isinstance(_scrum, dict) and hasattr(bot, "import_scrumming_state"):
                     try:
                         bot.import_scrumming_state(_scrum)
                         _imported_state += 1
-                        # Round-trips the imported state through
-                        # export_scrumming_state and compares
-                        # field-for-field by canonical JSON, so a lot
-                        # list with the right length but wrong
-                        # contents fails. Differing field names are
-                        # recorded in context, not just a count.
+                        # Compared by canonical JSON, so contents match, not just length.
                         try:
                             import json as _pj
 
@@ -756,8 +698,8 @@ class FleetReplayController:
                 # Records the join for trade attribution.
                 if sym:
                     self._bot_id_for_symbol[sym] = bot.bot_id
-                # Warns when a bot's quote leg opened at zero; it can
-                # never afford a buy, but nothing here skips the bot.
+                # A bot whose quote leg opened at zero can never afford a
+                # buy, but nothing here skips it.
                 _q = str(cfg.get("base_currency", "USD") or "USD").upper()
                 if float(seed_by_quote.get(_q, 0.0)) <= 0.0:
                     self._activity(
@@ -767,14 +709,10 @@ class FleetReplayController:
                         "the wallet seed."
                     )
         self._build_smart_wires(_joinable)
-        # A bot with no bot_state opens with a locked side, so the
-        # credit loop below has lots to seed it from.
+        # Runs before the credit loop below, which reads the lots it
+        # writes.
         self._open_locked_sides(_no_bot_state)
-        # Seeds the exchange from the fleet's own restored lots.
-        # bot_state is the only source of initiating state; the
-        # authoritative unit count is the restored `_main_lots`,
-        # matching the invariant `ReconciliationEngineMixin` keeps:
-        # sum(l["units"] for l in _main_lots) == _current_holdings.
+        # The invariant: sum(lot["units"] for lot in _main_lots) == _current_holdings.
         _seeded = 0
         _seeded_units = 0.0
         for _b in self._bots:
@@ -831,22 +769,17 @@ class FleetReplayController:
     def _open_locked_sides(self, lotless: list[tuple[Any, dict]]) -> None:
         """Open every bot that carries no bot_state with a locked side.
 
-        Locked and spendable start equal. Called immediately before
-        the credit loop in `_build_sim`, since the lots this writes
-        are what that loop reads.
-
-        A proposal fleet built by `topology_stress._config_for`
-        carries no `_src_scrumming_state`, so the import in
-        `_build_sim` never runs and every such bot would otherwise
-        open flat; `opening_lot_for_lotless` computes the lot this
-        writes.
+        Locked and spendable start equal. A proposal fleet built by
+        `topology_stress._config_for` carries no `_src_scrumming_state`,
+        so the import in `_build_sim` never runs and every such bot
+        would otherwise open flat; `opening_lot_for_lotless` computes
+        the lot written here.
 
         Writes through the same export_scrumming_state /
         import_scrumming_state pair `_build_sim` uses on a restored
-        fleet, replacing only `main_lots`; every other field is the
-        bot's own current value. The tape itself is not touched here --
-        the credit loop in `_build_sim` reads `_main_lots` and credits
-        the venue for both paths alike.
+        fleet, replacing only `main_lots`. The tape is not touched: the
+        credit loop in `_build_sim` reads `_main_lots` and credits the
+        venue for both paths alike.
         """
         opened = 0
         units = 0.0
@@ -896,12 +829,10 @@ class FleetReplayController:
         Called after the bot loop, since a wire has two endpoints and
         both must exist before the active count means anything.
 
-        The manager gets a dedicated EventBus rather than an unbussed
-        one: `SmartWireManager.__init__` defaults `bus=None` and then
-        resolves the process-wide bus, which is why live instead
-        passes its own (`BotManager.__init__`). Each sim bot already
-        builds its own private `EventBus()`, so there is no single
-        "sim bus" to reuse.
+        The manager is given a dedicated EventBus because
+        `SmartWireManager.__init__` defaults `bus=None` and then
+        resolves the process-wide one. Each sim bot builds its own
+        private `EventBus()`, so there is no single "sim bus" to reuse.
 
         A synthetic fleet (uuid4 ids, not joined to bot_state) gets no
         manager at all: wires are keyed by the persisted bot id, and
@@ -928,9 +859,8 @@ class FleetReplayController:
             bot.set_smart_wire(mgr)
             sim_ids.add(bot.bot_id)
 
-        # bot_state's wires are keyed by the live bot id, but sim bots
-        # carry `simulated_<live id>`; both endpoints are remapped here
-        # so the topology's edges and percentages carry over intact.
+        # bot_state keys a wire by the live bot id and sim bots carry
+        # `simulated_<live id>`, so both endpoints are remapped.
         _sim_wires = []
         for _w in self._smart_wires or []:
             if not isinstance(_w, dict):
@@ -942,8 +872,8 @@ class FleetReplayController:
 
         imported = mgr.import_wires(_sim_wires)
 
-        # `import_wires` performs no existence check; `active` counts
-        # only wires whose both endpoints exist in this run's fleet.
+        # `import_wires` checks only that the ids are non-empty, so
+        # `active` is what counts endpoints present in this fleet.
         active = sum(
             1
             for w in _sim_wires
@@ -964,9 +894,8 @@ class FleetReplayController:
                 "compounding is inert, so the accumulation curve will "
                 "understate live's."
             )
-        # Ledgers are not imported: seeding live's accrued
-        # wired_in/wired_out totals would pass a non-zero check without
-        # a single sim wire firing during this replay.
+        # Ledgers stay unimported: live's accrued wired_in/wired_out
+        # totals would read as non-zero without one sim wire routing.
 
     def _assert_capital_isolation(self) -> None:
         """Every constructed sim bot must be off the live registry.
@@ -978,11 +907,7 @@ class FleetReplayController:
         can trade. Aborts the run rather than let a replay write sim
         reservations into the operator's live capital state.
         """
-        # Checks the `autosave` property, not identity against the
-        # live singleton: comparing against `get_registry()` would
-        # resolve -- and construct, if absent -- the process-wide
-        # registry from a sim path. Pinned by
-        # tests/test_singleton_isolation.py.
+        # Never calls get_registry(), which would build the process-wide registry.
         leaked = []
         for bot in self._bots:
             reg = getattr(bot, "_capital_registry", None)
@@ -1024,13 +949,10 @@ class FleetReplayController:
                 return
             _tf = str(getattr(bot.config, "ta_timeframe", "") or "5m")
             _need = int(getattr(self, "_ta_observe_window", 0) or 200)
-            # Reads from the tape directly, not through the connector,
-            # so it does not inherit the ccxt page-size limit that
-            # governs what a bot's own exchange call receives.
+            # Reads the tape directly, so the ccxt page-size limit does not apply.
             _rows = self._tape.history(_sym, _need)
             if not _rows or len(_rows) < 51:
-                # 51 is the engine's deepest guard (ZScore, period + 1);
-                # below it some indicators have no basis to compute on.
+                # Below 51 rows ZScore abstains; Ichimoku needs 79 and abstains longer.
                 return
             from src.trading.ta_engine import candles_from_raw
 
@@ -1046,12 +968,11 @@ class FleetReplayController:
     def _candle_address_for(self, symbol: str) -> str:
         """``NNNNNN_TICKER`` for the candle under the tape's cursor.
 
-        ``TabletBackend`` has no address concept of its own -- it
-        serves rows, and an address is a Stone Tablet idea -- so this
-        resolves it from the same cursor the fill was priced off,
-        through the same ``format_address`` ``FleetSimExchange`` uses.
-        Empty string when it cannot be resolved: the fill still
-        records, it just carries no address rather than a wrong one.
+        ``TabletBackend`` serves rows and has no address of its own, so
+        this resolves one from the cursor the fill was priced off,
+        through the same ``format_address`` ``FleetSimExchange`` calls.
+        Empty string when it cannot be resolved: the fill still records,
+        carrying no address rather than a wrong one.
         """
         tape = self._tape
         if tape is None:
@@ -1096,9 +1017,7 @@ class FleetReplayController:
             amount = float(getattr(trade, "amount", 0) or 0)
             price = float(getattr(trade, "price", 0) or 0)
             ts_ms = raw.get("sim_master_ts_ms")
-        # `OrderSide` is an enum on the object path and a plain
-        # lowercase string on the dict path. `.value` unwraps the first
-        # and passes the second through.
+        # OrderSide is an enum on the object path and a lowercase string on the dict path.
         side = str(getattr(side_obj, "value", side_obj) or "")
         addr = str(raw.get("candle_address", "") or "")
         if not addr and symbol:
@@ -1123,9 +1042,7 @@ class FleetReplayController:
             try:
                 self._run_log.record_trade(
                     symbol=_sym,
-                    # Resolved by symbol: the exchange does not report
-                    # which bot placed the order. These are the live
-                    # bot ids, carried in from bot_state.
+                    # The exchange names no bot, so the symbol resolves the sim id.
                     bot_id=self._bot_id_for_symbol.get(_sym, ""),
                     # Schema declares both `action` and `side`.
                     action=fill["side"],
@@ -1142,16 +1059,17 @@ class FleetReplayController:
                 )
             except Exception as _rl_exc:  # noqa: BLE001 - logging is advisory
                 logger.debug("sim run log: trade record failed: %s", _rl_exc)
-        # Attributed by symbol: the exchange does not report which
-        # bot placed an order.
         try:
             if _sym:
                 self.progress.per_symbol_trade_count[_sym] = (
                     self.progress.per_symbol_trade_count.get(_sym, 0) + 1
                 )
-                # Queues a chart marker: green if this candle carries
-                # a historical trade, red if not. Queued because the
-                # chart is a Qt widget and this runs on the worker.
+                _bid = self._bot_id_for_symbol.get(_sym, "")
+                if _bid:
+                    self.progress.per_bot_trade_count[_bid] = (
+                        self.progress.per_bot_trade_count.get(_bid, 0) + 1
+                    )
+                # Queued: the chart is a Qt widget and this runs on the worker.
                 _exp = self._expected_indices
                 _ok = bool(_exp) and self._candle_i in _exp
                 self._pending_markers.append((_sym, _ok))
@@ -1161,13 +1079,12 @@ class FleetReplayController:
     def _spendable_now(self) -> float:
         """Quote-currency cash across the sim wallet.
 
-        Sums every quote leg (USD + USDC + ...) rather than just
-        "USD": the fleet is multi-quote, and reading one leg would
-        under-report by whatever sits in the others.
+        Sums every quote leg (USD + USDC + ...) rather than just "USD":
+        the fleet is multi-quote, and reading one leg would under-report
+        by whatever sits in the others.
 
-        Reads ``TabletBackend.balances()``, the ledger's own public
-        accessor, which returns a copy; this reaches into no private
-        state and cannot mutate the wallet it reports.
+        Reads ``TabletBackend.balances()``, which returns a copy, so
+        this cannot mutate the wallet it reports.
         """
         tape = self._tape
         if tape is None:
@@ -1200,19 +1117,7 @@ class FleetReplayController:
                 if self.progress.stop_requested:
                     self._activity(f"Stopped after {candle_i} candle(s).")
                     break
-                # Anchored (screening) mode: when _anchor_indices is
-                # set, only candles in that set get a full bot
-                # evaluation; the rest just advance the cursor.
-                #
-                # Two costs stay live even though bot.tick() is
-                # skipped: the skip path still steps the exchange
-                # below, which sweeps resting limit orders, so a
-                # skipped candle can settle a fill placed on an
-                # earlier anchored one; and hysteresis arming, which
-                # evolves on delta-sign crossings, loses crossings on
-                # skipped ticks. A screening pass, never the
-                # authoritative parity run. Default is None (evaluate
-                # every candle).
+                # The skip still steps the tape, so a skipped candle can settle a fill.
                 if (
                     self._anchor_indices is not None
                     and candle_i not in self._anchor_indices
@@ -1229,50 +1134,23 @@ class FleetReplayController:
                     if candle_i % 500 == 0:
                         await asyncio.sleep(0)
                     continue
-                # Tick every bot for this candle
                 self._candle_i = candle_i
                 for _bi, bot in enumerate(self._bots):
                     if _bi > 0:
                         await self._maybe_yield()
                     try:
-                        # A bot does not tick before its own symbol's
-                        # tablet has data: the master clock is the
-                        # union of every series' timestamps, so a
-                        # symbol whose tablet starts later would
-                        # otherwise read a candle stamped after the
-                        # clock -- a price from its own future.
+                        # The master clock is the union of every series' timestamps.
                         if not self._tape.has_data(bot.config.symbol):
                             self.progress.bot_ticks_before_tape += 1
                             continue
                         await bot.tick()
                         self.progress.bots_ticked += 1
-                        # Observes TA on every ticked candle, not only
-                        # the ones where ScrummingBot.tick's read-rate
-                        # throttle lets an action through. compute_all
-                        # is pure and places no orders, so this changes
-                        # no trade behaviour.
-                        #
-                        # Counts this bot's own eligible candles, not
-                        # the fleet's: a bot has no candle at a
-                        # master-clock tick that predates its own
-                        # tablet, so a candles_played x bots
-                        # denominator would be wrong by construction.
                         if self._tape.cursor_for(bot.config.symbol) > 0:
                             self._ta_eligible[bot.bot_id] = (
                                 self._ta_eligible.get(bot.bot_id, 0) + 1
                             )
                         self._observe_ta(bot)
-                        # `bots_ticked` counts tick entries
-                        # unconditionally, so it cannot distinguish a
-                        # bot that acted from one that returned early.
-                        # ScrummingBot.tick throttles by read rate: it
-                        # returns early while `_tick_counter <
-                        # _tick_skip`, and resets the counter to 0 only
-                        # on an action tick. So a post-tick counter of
-                        # 0 means work happened; non-zero means it was
-                        # throttled. getattr-with-default so a bot
-                        # without the attribute records as unknown
-                        # rather than silently counted as working.
+                        # ScrummingBot.tick zeroes _tick_counter only on an action tick.
                         _tc = getattr(bot, "_tick_counter", None)
                         if _tc is None:
                             self.progress.bot_ticks_unknown += 1
@@ -1280,19 +1158,17 @@ class FleetReplayController:
                             self.progress.bot_ticks_worked += 1
                         else:
                             self.progress.bot_ticks_throttled += 1
-                    except Exception as _tick_exc:  # noqa: BLE001
+                    except Exception as _tick_exc:
                         self.progress.exceptions += 1
                         _exc_key = (
                             f"{type(_tick_exc).__name__}: " f"{str(_tick_exc)[:120]}"
                         )
                         self.progress.last_error = _exc_key
-                        # Counts distinct exception signatures so
-                        # repeated failures collapse to one summary.
                         self.progress.exception_samples[_exc_key] = (
                             self.progress.exception_samples.get(_exc_key, 0) + 1
                         )
-                        # Logs only the first occurrence of each
-                        # distinct exception at warning level.
+                        # Only the first of each distinct exception is
+                        # logged at warning level; the rest go to debug.
                         if self.progress.exception_samples[_exc_key] == 1:
                             logger.warning(
                                 "sim bot tick raised: %s " "(bot=%s, symbol=%s)",
@@ -1303,13 +1179,7 @@ class FleetReplayController:
                             )
                         else:
                             logger.debug("sim bot tick raised (dupe): %s", _exc_key)
-                # Normally one candle per tick. Under Nuclear's load
-                # pulse, `_load_feed_cb` (SystemLoadOscillator.
-                # tick_workload) returns how many candles this tick
-                # should advance -- the depth half of the pulse; the
-                # rate half is `_tick_delay`. Every fed candle still
-                # steps the exchange and counts, so resting limits
-                # sweep and the master clock stays authoritative.
+                # Every fed candle steps the exchange, so resting limits still sweep.
                 _feed = 1
                 if self._load_feed_cb is not None:
                     try:
@@ -1344,9 +1214,7 @@ class FleetReplayController:
                         f" · {self.progress.trades_fired} sim trades"
                         f" · {self.progress.exceptions} exceptions"
                     )
-                # Visual refresh signal for GUI widgets (gate lights,
-                # price+VWAP chart), sent every N candles rather than
-                # every candle. Callback set via set_visual_refresh_cb().
+                # A cadence signal only; the panel repaints from its own QTimer.
                 if (
                     self._visual_refresh_cb is not None
                     and candle_i % self._visual_refresh_every == 0
@@ -1363,14 +1231,6 @@ class FleetReplayController:
                 from src.core.signal_contract import emit as _s2
 
                 _p = self.progress
-                # `expected` is what the run was asked to play, not
-                # the whole tape: the loop stops at `_max_candles` by
-                # design. `outcome` names which of the four loop exits
-                # applied (operator stop, cap, exhausted tape,
-                # exception), so a deliberate stop is never read as a
-                # shortfall. `overran_the_ask` is reachable: the load
-                # feed steps `_feed` candles before the cap is
-                # re-checked.
                 _asked = (
                     _p.total_candles
                     if self._max_candles is None
@@ -1403,12 +1263,6 @@ class FleetReplayController:
                         "fed_under_load": _p.candles_fed_under_load,
                     },
                 )
-                # `bots_ticked` counts tick entries and the read-rate
-                # throttle skips most of them by design, so `expected`
-                # is derived from the worked/throttled/unknown split
-                # rather than from the raw entry count; a tick that
-                # disappears between the entry count and the
-                # classifier drives expected above actual.
                 _worked = _p.bot_ticks_worked
                 _s2(
                     "sim.06.002.postcondition.bot_ticks_did_work",
@@ -1427,25 +1281,6 @@ class FleetReplayController:
                         ),
                     },
                 )
-                # Per-bot TA coverage: observed / that bot's own
-                # eligible candles, emitted per bot so one starved
-                # symbol cannot hide inside a fleet average.
-                #
-                # Walks the UNION of `_ta_eligible` and `_ta_observed`
-                # keys, not eligible alone: a bot with observations but
-                # zero eligibility is the maximal bound violation and
-                # must still get a record. A bot in neither map (a
-                # tablet that starts after the window) gets no bound
-                # and no fabricated green; it is counted instead in
-                # `fleet_bots_with_no_record`.
-                #
-                # Identity the record count satisfies:
-                # records == len(set(eligible) | set(observed)), and
-                # len(self._bots) == bots_in_union +
-                # fleet_bots_with_no_record. `bots_in_union` is carried
-                # in every record so the count can be reconciled from
-                # the log alone. `pct` is None, not 0.0, where there
-                # is no eligibility to divide by.
                 _ta_union = set(self._ta_eligible) | set(self._ta_observed)
                 _ta_absent = len(self._bots) - len(_ta_union)
                 for _bid in sorted(_ta_union):
@@ -1471,19 +1306,9 @@ class FleetReplayController:
                             "pct": (round(100.0 * _obs / _elig, 2) if _elig else None),
                         },
                     )
-                # Rolls the per-candle `ta.07.004.postcondition.raw.*`
-                # records into one row per indicator, whose `ok`
-                # answers whether any candle left the range that
-                # indicator's own formula defines. Derived from the
-                # sink's retained records rather than from counters
-                # kept during the run, so the hot path stays free of
-                # tallying state.
                 try:
                     from src.core.signal_contract import get_sink as _gs
 
-                    # The prefix is a named constant owned by the
-                    # engine that emits it, so a rename cannot
-                    # decouple this filter from what it is matching.
                     from src.trading.ta_engine import TA_RAW_PREFIX
 
                     _sink = _gs()
@@ -1506,9 +1331,6 @@ class FleetReplayController:
                                 _slot["violated"] += 1
                                 if _ind not in _firsts:
                                     _c = _r.context or {}
-                                    # The ADDRESS of the first breach,
-                                    # so it can be reproduced from the
-                                    # tablet without grepping the log.
                                     _firsts[_ind] = {
                                         "rule": _r.expected,
                                         "symbol": _c.get("symbol"),
@@ -1528,9 +1350,6 @@ class FleetReplayController:
                         )
                 except Exception as _inv_exc:  # noqa: BLE001
                     logger.debug("invariant rollup failed: %s", _inv_exc)
-                # Causality accounting: on a staggered fleet these
-                # skips are expected, so the useful signal is the
-                # count and share, not a pass/fail.
                 _s2(
                     "sim.06.003.counter.ticks_before_tape",
                     actual=_p.bot_ticks_before_tape,
@@ -1550,11 +1369,6 @@ class FleetReplayController:
                 )
                 _s2("sim.06.004.counter.trades_fired", actual=_p.trades_fired)
                 _s2("sim.06.005.invariant.exceptions", actual=_p.exceptions, expected=0)
-                # Window actually played -- a run that cannot say what
-                # data it consumed cannot be re-checked. Reads
-                # TabletBackend.clock_window() directly rather than a
-                # getattr-with-default on an attribute the connector
-                # does not carry.
                 _first = _last = None
                 try:
                     if self._tape is not None:
@@ -1589,9 +1403,6 @@ class FleetReplayController:
                 f" candles, {self.progress.trades_fired} sim trades, "
                 f"{self.progress.exceptions} exceptions."
             )
-            # Closes the run record before the telemetry/report block
-            # below, so a failure in reporting cannot cost the run's
-            # data.
             if self._run_log is not None:
                 try:
                     _el = 0.0
@@ -1629,11 +1440,11 @@ class FleetReplayController:
                             "visuals_attached": bool(
                                 self._visual_refresh_cb is not None
                             ),
-                            # yields_per_candle bounds candles/s under
-                            # the GUI's pump.
                             "candles_skipped": self.progress.candles_skipped,
                             "bots_ticked": self.progress.bots_ticked,
                             "yields_emitted": self.progress.yields_emitted,
+                            # Bounds candles/s under the GUI's 50 ms
+                            # pump: one yield costs a full pump period.
                             "yields_per_candle": (
                                 round(
                                     self.progress.yields_emitted
@@ -1651,17 +1462,13 @@ class FleetReplayController:
                         f" trades, {self._run_log.gate_count} gates -> "
                         f"{_d if _d else '(not written)'}"
                     )
-                    # Reported unconditionally, including a pass that
-                    # removed nothing, so retention stays observable
-                    # rather than silent between runs.
+                    # Reported even when the pass removed nothing, so
+                    # retention is never silent between runs.
                     _ret = getattr(self._run_log, "retention", None)
                     if _ret is not None:
                         self._perf(_ret.summary())
                 except Exception as _rl_exc:  # noqa: BLE001 - advisory
                     logger.warning("sim run log close failed: %s", _rl_exc)
-            # Names any declared Simulator feature that never ran this
-            # replay, and persists so a feature that goes silent
-            # shows up as stalled on the next run.
             try:
                 from src.core.feature_telemetry import get_telemetry
 
@@ -1698,15 +1505,14 @@ def clock_timestamps_from_candles(
 ) -> list[int]:
     """The master clock's index space, derived from raw candle rows.
 
-    Must stay bit-identical to ``MasterClock.from_series`` -- sorted
-    union of every series's timestamps -- since this is the space
-    anchor indices are compared against at run time. Pinned against it
-    by ``tests/test_fleet_replay_anchors.py``.
+    Must stay bit-identical to ``MasterClock.from_series`` -- the
+    sorted union of every series's timestamps -- since this is the
+    space anchor indices are compared against at run time. Pinned
+    against it by ``tests/test_fleet_replay_anchors.py``.
 
-    Exists because the panel builds anchors before ``start()`` calls
-    ``_build_sim()``, before any exchange or clock exists; the panel
-    already holds the raw ``candles`` dict, so the union is derivable
-    there.
+    The panel builds anchors before ``start()`` calls ``_build_sim()``,
+    when no exchange or clock exists yet, and it already holds the raw
+    ``candles`` dict.
     """
     union: set[int] = set()
     for rows in (candles_by_symbol or {}).values():
@@ -1753,9 +1559,8 @@ def build_anchor_indices(
     warm = max(0, int(warmup))
 
     if clock_ts_ms:
-        # Exact. bisect_right - 1 gives the candle CONTAINING the trade
-        # (a trade exactly at a candle's open belongs to that candle),
-        # matching the floor-division semantics of the grid path.
+        # bisect_right - 1 gives the candle containing the trade,
+        # matching the floor division of the ruler path.
         bound = len(clock_ts_ms)
         if n_candles > 0:
             bound = min(bound, int(n_candles))

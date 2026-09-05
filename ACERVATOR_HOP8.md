@@ -51,9 +51,12 @@ than the entire context window.** Attachments cannot be compacted away.
 **Four rules, and they are not optional:**
 
 1. **The standing sweep brief is a file.** Point at it; never retype it.
-   `C:/Users/brown/AppData/Local/Temp/claude/SWEEP_UNIT_BRIEF.md`
+   `<scratchpad>/SWEEP_UNIT_BRIEF.md`
    A dispatch carries the file path, its prose count, two or three facts
    specific to that file, and a pointer. Nothing else.
+   `<scratchpad>` is the session's own temp directory, named in the system
+   prompt. It does NOT survive a session, so a new instance writes the brief
+   once at the start and points every dispatch at it.
 2. **Never paste data into a prompt.** Exports go on disk; read with `grep`,
    `sed -n`, or pandas. The Coinbase CSVs are already at
    `Desktop/ACERTAVOR PRODUCT DOCUMENTATION/9c46231b-…__csv_.csv` — eleven of
@@ -62,7 +65,7 @@ than the entire context window.** Attachments cannot be compacted away.
 4. **`grep` and `sed -n`, not `Read`,** for anything you do not need whole.
 
 Measure it yourself before you trust this:
-`python C:/Users/brown/AppData/Local/Temp/claude/measure_context.py`
+`python <scratchpad>/measure_context.py`
 
 ---
 
@@ -116,7 +119,7 @@ everywhere else.
 7. When may you edit a failing test.
 8. How many controls in one unit, and why not "as many as it needs".
 
-Answers to 5–8 are in `C:/Users/brown/.claude/skills/harness-law/` and the
+Answers to 5–8 are in `~/.claude/skills/harness-law/` and the
 memory directory.
 
 **Then prove the harness is live — both halves:**
@@ -225,8 +228,8 @@ not.
 | 2026-08-27 `fc0d778` | Ekthelius | issue #81: sort `docs/audits` into engineering notes and calibration fixtures → this is where `harness_fixtures/` came from |
 
 **The 16 skills and the hooks are USER-level**, at
-`C:/Users/brown/.claude/skills/` — `acervator`, `archetype-peer-review`,
-`close-package`, `descriptive-comments-only`, `development-island`,
+`~/.claude/skills/` — `acervator`, `archetype-peer-review`,
+`close-package`, `descriptive-comments-only`, `branch-discipline`,
 `harness-law`, `hyper-refocus`, `job-watch`, `log-pruning`, `ocir`,
 `prompt-distillation`, `simple-technical-english`, `ta-canon`,
 `two-sided-control`, `unit-decomposition`, `variable-naming-precision`.
@@ -299,61 +302,54 @@ Trading, Charts, Bot Swarm, Market Inspector, Simulator, History, Console.
 
 ## #128 — THE CONVERSION. RESUME HERE.
 
-**Measured 2026-09-03 on `current`, `d9937ef`. Refresh before you act:**
+**Refresh before you act:**
 
 ```bash
-python C:/Users/brown/AppData/Local/Temp/claude/conversion_state.py
+python -m tools.conversion_state
 ```
 
 ```
-60   React modules, vendor excluded
-72   src/gui .py importing PySide6
-41     of those, a .js of the same name exists
-31     of those, NO React counterpart   <- the remaining surface
+74   renderer modules the page loads
+67   bridge methods a renderer module speaks
+68   src/gui .py importing PySide6
+63     paired, a React module serves it
+ 5     not a screen, Qt plumbing
+ 0     UNPAIRED, the work that is left
 ```
 
-**What that instrument does and does not prove.** It matches file stems. A
-`.py` and a `.js` sharing a name means a React module was written for that
-surface; it does **not** prove the React one is live or the Qt one retired.
-Treat 41 as "started", never as "done", and confirm at the surface itself. Its
-control is `bot_swarm_list`, which must land in `paired`; `theme_engine` and
-`design_tokens` correctly report "no .py at all" because they were born React.
+**What that instrument proves.** It reads the chain the running frontend uses:
+a surface publishes a bridge method, `src/core/desktop_bridge.py` registers it,
+a module under `src/gui/web` speaks it, and the renderer manifest loads that
+module. A Qt module that loads a renderer module itself pairs on that alone. No
+`.py` name is compared with a `.js` name. A pair means React can draw the
+screen; it does not prove the Qt one is retired, so confirm at the surface.
+Its control is `bot_swarm_list`, which must land in `paired`; `theme_engine`
+and `design_tokens` report "born React" because they have no Qt module.
 
-**The 31 with no React counterpart, largest first — this is the work:**
+**Qt plumbing, which can never be converted:** `src/gui/main_window.py`,
+`src/gui/stock_main_window.py` and `src/gui/live_bot_window.py` are the desktop
+windows the web view lives inside; `src/gui/widgets/__init__.py` is a package
+marker; `src/gui/qt_safe_events.py` defines no class. Counting these as
+outstanding is what made the item look permanently incompletable.
+
+**The 14 with no renderer module, largest first — this is the work:**
 
 | lines | file |
 |---|---|
-| 3,550 | `src/gui/main_window.py` |
 | 2,000 | `src/gui/indicator_panel.py` |
 | 1,560 | `src/gui/live_settings/settings_tab.py` |
-| 1,430 | `src/gui/main_tabs/stock_main_window_surface.py` |
-| 1,213 | `src/gui/main_tabs/audio_suite_surface.py` |
 | 777 | `src/gui/history_tab.py` |
-| 753 | `src/gui/main_tabs/buy_confirmation_surface.py` |
-| 716 | `src/gui/stock_main_window.py` |
-| 671 | `src/gui/main_tabs/tradingview_chart_surface.py` |
 | 648 | `src/gui/testnet_tab.py` |
 | 643 | `src/gui/audio_suite.py` |
 | 627 | `src/gui/usb_auth_widget.py` |
-| 423 | `src/gui/live_bot_window.py` |
 | 379 | `src/gui/risk_tab.py` |
 | 378 | `src/gui/shared_testnet.py` |
 | 355 | `src/gui/competition_tab.py` |
 | 331 | `src/gui/alerts_tab.py` |
-| 326 | `src/gui/react_history_panel.py` |
 | 322 | `src/gui/analytics_tab.py` |
-| 306 | `src/gui/live_settings/positions_held_tab.py` |
 | 286 | `src/gui/instance_consent_dialog.py` |
-| 276 | `src/gui/buy_confirmation_dialog.py` |
 | 272 | `src/gui/init_wizard.py` |
-| 234 | `src/gui/main_tabs/console_log_handler.py` |
-| 233 | `src/gui/start_all_progress_dialog.py` |
-| 221 | `src/gui/widgets/__init__.py` |
 | 211 | `src/gui/launcher.py` |
-| 145 | `src/gui/visualizer/themes.py` |
-| 131 | `src/gui/live_settings/status_tab.py` |
-| 88 | `src/gui/qt_safe_events.py` |
-| 77 | `src/gui/widgets/capital_registry_panel.py` |
 
 **Ranked by live use, not by size.** The measured live tab set is Trading,
 Charts, Bot Swarm, Market Inspector, Simulator, History, Console. `history_tab`
@@ -451,10 +447,10 @@ those first.**
 | 494 | 1,188 | `src/simulator/nuclear_fleet_controller.py` |
 | 441 | 1,041 | `src/trading/scrumming/fold_tranches.py` |
 
-Refresh with `python C:/Users/brown/AppData/Local/Temp/claude/audit_progress.py`.
+Refresh with `python <scratchpad>/audit_progress.py`.
 
 **The brief is a file. Point at it.**
-`C:/Users/brown/AppData/Local/Temp/claude/SWEEP_UNIT_BRIEF.md`
+`<scratchpad>/SWEEP_UNIT_BRIEF.md`
 
 **The identity proof, which is the whole unit.** Parse before and after with
 `ast` and **strip every bare string statement at every depth**, not only
@@ -592,7 +588,7 @@ nan is False. `type(inf) is float` is True; `math.isfinite(10**400)` raises.
 
 | what | where |
 |---|---|
-| the law, 16 skills | `C:/Users/brown/.claude/skills/` — **user level, not the repo** |
+| the law, 16 skills | `~/.claude/skills/` — **user level, not the repo** |
 | the three auto-loaded rules | `.claude/rules/` in the repo |
 | durable rulings | this repo's project `memory/`, indexed by `MEMORY.md` |
 | the sweep brief | `%TEMP%/claude/SWEEP_UNIT_BRIEF.md` |

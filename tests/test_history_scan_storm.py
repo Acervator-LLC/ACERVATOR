@@ -63,9 +63,8 @@ class _CountingExchange:
         self._lock = threading.Lock()
 
     def fetch_my_trades(self, symbol, limit=None):
-        # `limit` is part of ccxt's signature and TradeHistorian passes
-        # it; accepted and ignored because this stand-in returns no
-        # trades. Named so the call shape stays honest.
+        # `limit` is in ccxt's signature and TradeHistorian passes it; this
+        # stand-in accepts and ignores it.
         del limit
         with self._lock:
             self.calls.append(str(symbol))

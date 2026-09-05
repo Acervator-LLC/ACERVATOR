@@ -71,11 +71,6 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Stone Tablet feed — the determinism
-# ─────────────────────────────────────────────────────────────────────
-
-
 class TabletFeed:
     """Serves one fixed candle window as if it were an exchange.
 
@@ -139,10 +134,6 @@ def _load_windows(assets: list[str], per_asset: int, window: int) -> list[dict]:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Scenarios — everything held constant, stated out loud
-# ─────────────────────────────────────────────────────────────────────
-
 SCENARIOS: dict[str, dict] = {
     # A position above target with the operator toggles ON: the state in
     # which a SCRUM is plausible, so the SCRUM chain is actually exercised.
@@ -177,9 +168,7 @@ SCENARIOS: dict[str, dict] = {
         "scrum_ok": True,
         "fold_ok_midline": True,
     },
-    # Every operator toggle OFF. TA-dependent gates stop gating, so this
-    # isolates whether a TA change reaches decisions through some OTHER
-    # path than the toggles.
+    # Isolates whether a TA change reaches a decision by a path other than the toggles.
     "toggles_off": {
         "delta": 250.0,
         "delta_pct": 5.0,
@@ -229,9 +218,6 @@ def build_context(snapshot: Any, scenario: dict, symbol: str, last_close: float)
     eff = dict(FIXED)
     eff.update(scenario)
 
-    # Operator toggles are applied here exactly as ScrummingBot applies
-    # them when it builds its own context: a flag that is OFF means the
-    # corresponding TA condition stops constraining the gate.
     is_bull = bool(snapshot.is_bullish)
     is_bear = bool(snapshot.is_bearish)
     hold = bool(snapshot.trend_hold)
@@ -257,10 +243,6 @@ def build_context(snapshot: Any, scenario: dict, symbol: str, last_close: float)
         **eff,
     )
 
-
-# ─────────────────────────────────────────────────────────────────────
-# Run
-# ─────────────────────────────────────────────────────────────────────
 
 DEFAULT_ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "LINK"]
 

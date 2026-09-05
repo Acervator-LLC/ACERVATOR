@@ -125,11 +125,8 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
-# The bot manager, the bridge, the market reader and one alert, as the
-# test owns them. The Qt window is driven with these; the surface is
-# driven with its own. Neither side reads the other's.
-# ---------------------------------------------------------------------
+# The manager, bridge, market reader and alert the Qt window is driven
+# with; the surface is driven with its own.
 
 
 class Manager:
@@ -287,9 +284,7 @@ class RaisingPanel:
         raise RuntimeError("no indicator panel in this run")
 
 
-# ---------------------------------------------------------------------
 # The seams the Qt side is driven through, and the proof they came back
-# ---------------------------------------------------------------------
 
 
 class CrashRecorder(logging.Handler):
@@ -436,9 +431,7 @@ class QtSeams:
         )
 
 
-# ---------------------------------------------------------------------
 # The cases both sides are driven with
-# ---------------------------------------------------------------------
 
 
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
@@ -666,9 +659,7 @@ ALL_CASES = list(CASES) + list(REFUSING_CASES.values())
 ALL_BY_NAME = {spec["name"]: spec for spec in ALL_CASES}
 
 
-# ---------------------------------------------------------------------
 # Driving the Qt window
-# ---------------------------------------------------------------------
 
 
 def build_window(spec, seams):
@@ -892,9 +883,7 @@ def splitter_of(window):
     return window.findChildren(QSplitter)[0]
 
 
-# ---------------------------------------------------------------------
 # Driving the surface
-# ---------------------------------------------------------------------
 
 
 def alert_stamp(timestamp):
@@ -1043,9 +1032,7 @@ def new_state(driven):
     }
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", [spec["name"] for spec in ALL_CASES])
@@ -1135,9 +1122,7 @@ def test_two_not_a_numbers_are_compared_as_the_text_they_print():
         assert not isinstance(value, float) or not math.isnan(value)
 
 
-# ---------------------------------------------------------------------
 # Step sequences, including one that refuses part way
-# ---------------------------------------------------------------------
 
 
 STEP_SEQUENCE = [
@@ -1199,9 +1184,7 @@ def test_a_sequence_that_refuses_part_way_keeps_what_it_recorded():
     assert model.warnings[0].startswith("Paper Trader tab unavailable")
 
 
-# ---------------------------------------------------------------------
 # What the shipped window declares, counted off the file
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1399,9 +1382,7 @@ def test_the_bus_counters_report_none_and_can_report_a_real_call():
     assert len(neighbour) >= 2, "the bus counter reports nothing"
 
 
-# ---------------------------------------------------------------------
 # Completeness
-# ---------------------------------------------------------------------
 
 
 def at_path(payload, path):
@@ -1784,9 +1765,7 @@ def test_the_console_append_records_its_own_refusal():
     assert model.console_lines == [surface.handler_line("INFO", "a line")]
 
 
-# ---------------------------------------------------------------------
 # The colours, read off the surface and off the shipped window's data
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -1847,9 +1826,7 @@ def test_a_channel_swap_is_reported_where_the_channels_differ():
     assert surface.pnl_color(1.0) != swapped
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 PICTURE_CASES = ["no_manager", "bridge_running", "webhook_start"]
@@ -2164,9 +2141,7 @@ def test_the_two_sides_paint_the_same_size():
     assert_pictures_match(old_side=old, new_side=new)
 
 
-# ---------------------------------------------------------------------
 # What the shipped window asks for that no picture carries
-# ---------------------------------------------------------------------
 
 
 def test_the_split_the_window_asks_for_is_the_one_the_surface_declares():
@@ -2347,9 +2322,7 @@ def test_the_launcher_return_hides_the_window_on_both_sides():
     assert [call[0] for call in model.calls].count(surface.LAUNCHER_ABSENT) == 1
 
 
-# ---------------------------------------------------------------------
 # Order independence, shared state and the world
-# ---------------------------------------------------------------------
 
 
 def test_the_shipped_window_adds_one_handler_to_the_shared_root_logger():
@@ -2481,9 +2454,7 @@ def test_the_throwaway_home_check_reports_a_file_that_was_written(tmp_path):
     assert sorted(home.rglob("*")) == [home / "seeded.json"]
 
 
-# ---------------------------------------------------------------------
 # The bridge, and a process that never loads Qt
-# ---------------------------------------------------------------------
 
 
 def fresh_pane_model():

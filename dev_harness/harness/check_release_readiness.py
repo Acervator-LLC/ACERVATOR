@@ -70,34 +70,8 @@ DOCS_GOOD = (
     / "known_good.md"
 )
 
-# Analyzers whose absence is reported but does not fail the gate.
-# Everything NOT listed here is required: if it cannot run, the run is
-# not evidence and the gate refuses to go green.
-#
-# EMPTY as of v3.24.34 — every analyzer is required.
-#
-# vale was the only member. It was installed (3.17.1, ~/bin), given a
-# .vale.ini + write-good style package, and `_run_vale` was fixed to
-# raise on a runtime failure instead of returning "ok", so it now
-# reports honestly and has been promoted to required.
-#
-# The mechanism is deliberately kept for the next tool that cannot be
-# installed everywhere. Adding a name here is a declaration that its
-# coverage is optional — it must come with the reason, and its absence
-# is still printed as a [NOTE].
-#
-# CONSEQUENCE: a clone without vale on PATH now FAILS the gate rather
-# than passing with reduced coverage. That is the intended semantics —
-# an analyzer that did not run has not cleared anything — but it does
-# mean vale is a hard build dependency. `.vale/styles` is committed so
-# no network fetch is needed at gate time.
-#
-# 2026-08-13: the set is now DEFINED in tools/harness/report.py and
-# re-exported here. It used to be declared twice — once here for the
-# release gate, and once, implicitly, by every archetype CLI that
-# had no notion of a required analyzer at all. That is why the gate
-# was protected and the individual CLIs were not, which is the
-# surface that tooling and agents actually call.
+# Analyzers whose absence is reported but does not fail the gate. Every
+# analyzer not listed is required, and its absence turns the gate red.
 OPTIONAL_ANALYZERS: frozenset[str] = _SHARED_OPTIONAL_ANALYZERS
 
 
@@ -128,26 +102,8 @@ def _run_pytest() -> tuple[bool, int, str]:
     """Returns (passed, test_count, output). test_count is 0 if we couldn't parse."""
     if not TESTS_DIR.exists():
         return False, 0, "tests/ directory not found"
-    # Literal argv, and the only variable moved to `cwd`.
-    #
-    # This is a REMOVAL of ruff S603, not a suppression of it.
-    # Measured with ruff 0.16 across six argv shapes: an argv of
-    # string literals draws no S603, any argv carrying a variable
-    # draws one, and a `cwd=` keyword does not count against it.
-    # "tests" resolved against REPO is the same directory
-    # TESTS_DIR names, and pinning the working directory also
-    # stops the gate depending on where it was invoked from.
-    #
-    # A TIMEOUT IS A FAILED GATE, never a traceback and never a pass.
-    # MEASURED 2026-08-13: `timeout=` with no handler let
-    # subprocess.TimeoutExpired escape `main()`, so the gate exited 1
-    # with a raw traceback. To a script reading only the exit code that
-    # is indistinguishable from a gate that found a real test failure.
-    # The suite takes 480s measured alone on this machine against a 600s
-    # budget, on a machine that also runs the operator's live
-    # application, so the margin was 120s under contention. The budget
-    # is now 1800s AND the timeout is caught: a bigger budget on its own
-    # only makes the crash rarer.
+    # Literal argv with the only variable moved to `cwd`, so ruff draws no
+    # S603 here and no suppression is needed. "tests" under REPO is TESTS_DIR.
     try:
         proc = subprocess.run(
             [sys.executable, "-m", "pytest", "tests", "-q", "--tb=no"],
@@ -223,16 +179,7 @@ def _run_archetype_selfcheck() -> tuple[bool, list[str], list[str]]:
             )
         if not report.falsification:
             errors.append(f"{label}: falsification field is empty")
-        # An analyzer that did not run has not cleared anything. Without
-        # this, uninstalling a tool silently shrinks coverage while the
-        # gate stays green - the fixture passes precisely BECAUSE the
-        # analyzer that would have flagged it never ran.
-        #
-        # Required vs optional is declared explicitly rather than
-        # inferred: hard-failing on every absent tool would wedge the
-        # gate on a prose linter, and passing silently is the defect
-        # this closes. An optional analyzer's absence is REPORTED, so
-        # the coverage gap is visible instead of invisible.
+        # A fixture can pass because the analyzer that would flag it never ran.
         absent = sorted(
             t
             for t, s in getattr(report, "tool_availability", {}).items()
@@ -348,10 +295,6 @@ def main(argv: list[str] | None = None) -> int:
         if not claims_ok:
             failures.append(f"claim ledger: {msg}")
 
-    # 4. A skipped check is not a passed check. The --no-* flags stay
-    #    available for dev inspection, but they can no longer produce an
-    #    [OK] line or a green sidecar: with all three set, `failures` was
-    #    previously empty and this printed "[OK] Release-ready (…, 0 tests)".
     skipped = sorted(k for k, v in checks_run.items() if v == "skipped")
     if skipped:
         failures.append(

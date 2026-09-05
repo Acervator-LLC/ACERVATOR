@@ -21,7 +21,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from src.gui import theme_engine as shipped
+from src.gui.color_alpha import css_colours
 from src.gui.main_tabs import theme_engine_surface as surface
+from tests.fixtures.qt_wiring_counts import qt_free
 from tests.fixtures.host_fonts import has_real_fonts
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
@@ -131,9 +133,8 @@ EXPECTED_DEFAULTS = {
     "radius_lg": "12px",
 }
 
-# Every value of every theme, typed out here rather than read from
-# either module. Neither side can satisfy this table by copying the
-# other, and an edit made to both files together is still reported.
+# Typed out here, not read from either module, so an edit made to both
+# files together is still reported.
 EXPECTED = {
     "cyberpunk_dark": dict(
         EXPECTED_DEFAULTS,
@@ -275,9 +276,7 @@ EXPECTED_STYLE_SHEET_LENGTHS = {
     "glass_metal": 7372,
 }
 
-# The nine values the style-sheet template never carries. Every one is
-# read off both sides instead, because no render can report a value the
-# style sheet does not hold.
+# Values `QSS_TEMPLATE` never carries, so no render can report them.
 NEVER_IN_THE_STYLE_SHEET = (
     "name",
     "accent_success",
@@ -290,9 +289,8 @@ NEVER_IN_THE_STYLE_SHEET = (
     "radius_lg",
 )
 
-# The three values the style sheet carries where no still picture
-# reaches them: one sits inside a comment, two sit behind a pointer
-# state a grabbed image never enters.
+# Values a grabbed image cannot reach: one is inside a comment, two sit
+# behind a pointer state.
 UNREACHED_BY_A_STILL_PICTURE = {
     "display_name": "comment",
     "bg_hover": "state",
@@ -334,9 +332,7 @@ FIELD_CASES = [
 MARKER_FORMAT = "<<%s>>"
 
 
-# ---------------------------------------------------------------------
 # The two theme tables, and the panel painted from one of them
-# ---------------------------------------------------------------------
 
 
 def shipped_theme(name):
@@ -349,6 +345,20 @@ def shipped_theme(name):
 def surface_theme(name):
     """One surface theme's 34 values, by field name."""
     return dict(surface.THEMES[name])
+
+
+#: The theme fields whose value is an rgba call carrying Qt's alpha byte.
+ALPHA_BYTE_FIELD_NAMES = ("border_accent", "glow_color")
+
+
+def painted(value):
+    """One shipped value the way the payload carries it for a browser.
+
+    The theme table holds the alpha byte Qt reads and the payload leaves
+    under ``css_colours``, so a parity comparison against the shipped
+    module reads the shipped value through the same conversion.
+    """
+    return css_colours(value)
 
 
 def shipped_style_sheet(name):
@@ -547,9 +557,7 @@ def build_panel(qss):
     return root
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("theme,field", FIELD_CASES)
@@ -713,9 +721,7 @@ def test_the_hash_can_report_a_difference():
     assert text_digest("a") == text_digest("a")
 
 
-# ---------------------------------------------------------------------
 # The style sheet each theme builds
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("theme", EXPECTED_THEME_NAMES)
@@ -772,9 +778,7 @@ def test_generate_qss_reads_the_values_it_is_handed():
     assert marked == shipped_marked
 
 
-# ---------------------------------------------------------------------
 # Which fields the style sheet uses, counted on both sides
-# ---------------------------------------------------------------------
 
 
 def test_both_sides_use_the_same_fields_the_same_number_of_times():
@@ -828,9 +832,7 @@ def test_the_shown_name_sits_inside_a_comment():
     assert not any(start < colour_at < end for start, end in spans)
 
 
-# ---------------------------------------------------------------------
 # What the shipped module has, and where each item went
-# ---------------------------------------------------------------------
 
 SURFACE_FUNCTIONS = (
     "build_theme",
@@ -858,17 +860,33 @@ MANAGER_MEMBERS = (
 )
 
 
-def test_the_connect_sites_match_the_actions():
-    """A signal wiring appeared on one side and not the other."""
-    shipped_text = SHIPPED_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert shipped_text.count(".connect(") == 0
-    assert surface_text.count(".connect(") == 0
+def test_neither_side_declares_a_signal_to_wire():
+    """The surface exports no action, and neither module carries a Signal
+    for a widget to connect."""
+    from PySide6.QtCore import Signal
+
     assert surface.ACTIONS == {}
-    assert len(surface.ACTIONS) == shipped_text.count(".connect(")
-    assert len(surface.ACTIONS) == surface_text.count(".connect(")
-    caller = CALLER_PATH.read_text(encoding="utf-8")
-    assert caller.count(".connect(") > 0
+    for module in (shipped, surface):
+        signals = [
+            name for name, value in vars(module).items() if isinstance(value, Signal)
+        ]
+        assert signals == [], (module.__name__, signals)
+
+
+def test_the_widget_that_reads_these_values_does_wire_its_own_signals():
+    """The signal check reports none whatever a module declares."""
+    from PySide6.QtCore import SignalInstance
+
+    from src.gui.widgets.bot_status_table import BotStatusTable
+
+    app()
+    table = BotStatusTable()
+    wired = [
+        name
+        for name in dir(BotStatusTable)
+        if isinstance(getattr(table, name, None), SignalInstance)
+    ]
+    assert wired, "the widget declares no signal at all"
 
 
 def test_the_shipped_definitions_each_have_a_counterpart():
@@ -949,9 +967,7 @@ def test_the_theme_table_declares_no_action_no_timer_and_no_skin():
     assert len(surface.ACTIONS) == len(surface.TIMERS) == 0
 
 
-# ---------------------------------------------------------------------
 # Every branch of every function
-# ---------------------------------------------------------------------
 
 
 def test_list_themes_returns_the_same_five_pairs():
@@ -1162,35 +1178,27 @@ def test_unknown_theme_message_names_the_value_it_was_given():
     )
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_loads_no_qt_module():
     """The surface grew an import that pulls Qt into the backend."""
-    import ast
+    answered = qt_free("src.gui.main_tabs.theme_engine_surface", "ThemeManagerModel")
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
 
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "typing"}
-    caller_tree = ast.parse(CALLER_PATH.read_text(encoding="utf-8"))
-    caller_imports = {
-        (node.module or "")
-        for node in ast.walk(caller_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in caller_imports), caller_imports
+
+def test_the_shipped_theme_engine_is_qt_free_too():
+    """``ThemeManager`` writes stylesheet text and never builds a widget."""
+    answered = qt_free("src.gui.theme_engine", "ThemeManager")
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
+
+
+def test_the_qt_block_stops_a_module_that_needs_qt():
+    """POSITIVE CONTROL for ``qt_free``: a widget module cannot load without it."""
+    answered = qt_free("src.gui.widgets.bot_status_table", "BotStatusTable")
+    assert answered["imported"] is False, answered
 
 
 def test_the_surface_carries_its_own_copy_of_every_value(monkeypatch):
@@ -1226,9 +1234,7 @@ def test_the_surface_style_sheet_does_not_follow_the_shipped_template(monkeypatc
     assert shipped.generate_qss is was
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("theme", EXPECTED_THEME_NAMES)
@@ -1423,9 +1429,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
     assert len(PAINTED_FIELDS) == 22
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -1433,7 +1437,7 @@ def test_view_model_is_json_serialisable():
     payload = surface.view_model({"name": "glass_metal"})
     text = json.dumps(payload, ensure_ascii=True)
     back = json.loads(text)
-    assert back["themes"]["glass_metal"] == EXPECTED["glass_metal"]
+    assert back["themes"]["glass_metal"] == painted(EXPECTED["glass_metal"])
     assert back["requested"] == "glass_metal"
     assert back["current"] == "glass_metal"
     assert back["style_sheets"]["glass_metal"] == shipped_style_sheet("glass_metal")
@@ -1444,10 +1448,27 @@ def test_the_payload_carries_every_theme_the_shipped_module_ships():
     payload = surface.build_view_model()
     assert list(payload["theme_names"]) == list(shipped.THEMES)
     for theme in EXPECTED_THEME_NAMES:
-        assert payload["themes"][theme] == shipped_theme(theme), theme
+        assert payload["themes"][theme] == painted(shipped_theme(theme)), theme
         assert payload["style_sheets"][theme] == shipped_style_sheet(theme), theme
     assert payload["theme_list"] == shipped.ThemeManager().list_themes()
     assert len(payload["themes"]) == THEME_TOTAL
+
+
+def test_the_payload_carries_a_share_where_the_shipped_theme_carries_a_byte():
+    """Without this the comparison above passes on a payload that converted
+    nothing, because both sides would read the shipped table."""
+    payload = surface.build_view_model()
+    for theme in EXPECTED_THEME_NAMES:
+        for field in ALPHA_BYTE_FIELD_NAMES:
+            carried = payload["themes"][theme][field]
+            shipped_value = getattr(shipped.THEMES[theme], field)
+            if not shipped_value.startswith("rgba("):
+                continue
+            assert carried != shipped_value, (theme, field)
+            assert float(carried[len("rgba(") : -1].split(",")[3]) <= 1, (theme, field)
+        assert payload["themes"][theme]["bg_primary"] == (
+            shipped.THEMES[theme].bg_primary
+        )
 
 
 def test_the_payload_hands_back_a_copy():
@@ -1481,7 +1502,7 @@ def test_the_payload_applies_the_theme_it_is_asked_for():
     assert payload["current"] == "classic_terminal"
     assert payload["current_before"] is None
     assert payload["requested"] == "classic_terminal"
-    assert payload["requested_tokens"] == EXPECTED["classic_terminal"]
+    assert payload["requested_tokens"] == painted(EXPECTED["classic_terminal"])
     assert payload["requested_style_sheet"] == shipped_style_sheet("classic_terminal")
     assert payload["unknown"] == []
     assert payload["unknown_message"] == ""
@@ -1531,19 +1552,25 @@ def test_bridge_registers_the_theme_engine_method():
     assert answer["ok"] is True
     result = answer["result"]
     assert result["requested"] == "neon_light"
-    assert result["requested_tokens"] == EXPECTED["neon_light"]
+    assert result["requested_tokens"] == painted(EXPECTED["neon_light"])
     assert result["unknown"] == []
-    assert result["themes"] == {
-        theme: shipped_theme(theme) for theme in EXPECTED_THEME_NAMES
-    }
+    assert result["themes"] == painted(
+        {theme: shipped_theme(theme) for theme in EXPECTED_THEME_NAMES}
+    )
 
 
-def test_the_bridge_registration_is_two_lines_and_no_more():
+def test_the_bridge_registers_one_handler_for_the_surface():
     """The bridge grew more than the one registration this unit adds."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    assert text.count("theme_engine_surface") == 3
-    assert "theme_engine_surface.METHOD: theme_engine_surface.view_model" in text
-    assert "theme_engine_surface,\n" in text
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert registry[surface.METHOD] is surface.view_model
+    from_surface = sorted(
+        method
+        for method, handler in registry.items()
+        if getattr(handler, "__module__", "") == surface.__name__
+    )
+    assert from_surface == [surface.METHOD], from_surface
 
 
 @pytest.mark.parametrize("theme", EXPECTED_THEME_NAMES)
@@ -1558,7 +1585,7 @@ def test_the_bridge_carries_every_theme(theme):
     )
     assert answer["ok"] is True
     result = answer["result"]
-    assert result["requested_tokens"] == shipped_theme(theme)
+    assert result["requested_tokens"] == painted(shipped_theme(theme))
     assert result["requested_style_sheet"] == shipped_style_sheet(theme)
     assert result["current"] == theme
 
@@ -1633,9 +1660,7 @@ def test_the_table_is_the_same_on_every_call():
     assert first["current"] == "glass_metal"
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt, proved in a process of its own
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -1695,7 +1720,7 @@ def test_the_surface_answers_over_the_bridge_without_loading_qt():
     assert answered["frame"]["ok"] is True
     result = answered["frame"]["result"]
     assert result["requested"] == "glass_metal"
-    assert result["requested_tokens"] == EXPECTED["glass_metal"]
+    assert result["requested_tokens"] == painted(EXPECTED["glass_metal"])
     assert result["theme_names"] == list(shipped.THEMES)
     assert result["current"] == "glass_metal"
     assert len(result["themes"]) == THEME_TOTAL
@@ -1764,13 +1789,9 @@ def test_the_shipped_module_needs_no_qt_either():
     assert answered["length"] == EXPECTED_STYLE_SHEET_LENGTHS["glass_metal"]
 
 
-# ---------------------------------------------------------------------
 # Nothing the surface holds is left out of the snapshot
-# ---------------------------------------------------------------------
 
-# Every constant the surface exports, and the payload key that carries
-# it. A comparison reading 10 of 22 constants passes whether the other
-# 12 match or not; this closes that gap for every one of them at once.
+# (surface constant, the payload key that carries it).
 PAYLOAD_KEYS = {
     "THEME_NAMES": "theme_names",
     "DISPLAY_NAMES": "display_names",
@@ -1795,9 +1816,7 @@ THEME_CONSTANTS = {
     "GLASS_METAL": "glass_metal",
 }
 
-# The five constants no snapshot key carries, each with the check that
-# covers it. `METHOD` is the name the bridge registers under. The other
-# four are what the lookups return when they find nothing.
+# (constant no snapshot key carries, the test that covers it).
 NOT_IN_THE_SNAPSHOT = {
     "METHOD": "test_bridge_registers_the_theme_engine_method",
     "UNKNOWN_THEME_MESSAGE": "test_unknown_theme_message_names_the_value_it_was_given",
@@ -1841,9 +1860,9 @@ def test_every_constant_the_surface_holds_reaches_the_snapshot():
             assert list(carried) == list(value), name
             if isinstance(value, dict):
                 for key in value:
-                    assert carried[key] == value[key], (name, key)
+                    assert carried[key] == painted(value[key]), (name, key)
         elif name in THEME_CONSTANTS:
-            assert payload["themes"][THEME_CONSTANTS[name]] == value, name
+            assert payload["themes"][THEME_CONSTANTS[name]] == painted(value), name
         elif name in NOT_IN_THE_SNAPSHOT:
             covered_by = NOT_IN_THE_SNAPSHOT[name]
             assert covered_by in globals(), (name, covered_by)

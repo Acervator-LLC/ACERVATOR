@@ -1,27 +1,10 @@
-"""market_inspector_fetcher.py — Exchange-based HTF OHLC fetcher.
+"""fetch_htf_universe serves the Market Inspector its daily and weekly OHLC.
 
-v3.23.38 retooled per operator directive 2026-07-27 ("Reconfigure it to
-use active exchange APIs. We do not need to look anywhere we are not
-farming or not already configured to farm."). CoinGecko was gated by
-free-tier rate limits and only surfaced ~4 markets on live testing.
-
-Sourcing strategy:
-  Tier 1 — connected exchange bulk tickers (single call → filter to
-           */base pairs, drop stablecoins, sort by 24 h volume).
-  Tier 2 — per-symbol daily OHLCV via ``connector.get_ohlcv``.
-  Tier 3 — per-symbol weekly OHLCV where the exchange supports the
-           1 w timeframe; otherwise resample from daily on the client.
-
-All exchange calls route through the connector's serialised executor
-(MEM-220), so they compose safely with other CCXT traffic (bot ticks,
-dashboard refreshes).
-
-Universe cap: default 100 top-volume markets. Active-bot target
-symbols are always included even if outside the top-100. Monthly is
-deferred (365-day daily gives ~12 monthly bars, below the
-20-period BB minimum).
-
-sadp: R28 SSS + R70 RCN
+_pick_universe ranks each connector's bulk tickers by 24 h quote volume.
+_fetch_one_symbol then pulls per-symbol OHLCV from connector.get_ohlcv on
+the connector's single-worker executor. _resample_daily_to_weekly derives
+the weekly series on the client when the venue does not list the 1w
+timeframe.
 """
 
 from __future__ import annotations
@@ -35,27 +18,12 @@ logger = logging.getLogger("acervator.market_inspector_fetcher")
 
 
 DEFAULT_TOP_N = 100
-DEFAULT_MIN_REFRESH_S = 15 * 60  # 15 minutes
-"""Minimum seconds between NETWORK fetches, unless the caller forces one.
-
-This constant was declared on the first implementation and never read, so no
-cadence was enforced and every Refresh hit the venue. `meta["source"]` and
-`meta["age_seconds"]` were already carried for a cache path that did not
-exist -- `source` was hardcoded "exchange" and `age_seconds` hardcoded 0.0.
-This is that path.
-
-WHY A CADENCE AT ALL: the Market Inspector scans the top-N universe across
-every connected exchange. Paper and Live compete for the same API budget, so
-an unbounded refresh here is taken out of their allowance.
-"""
+DEFAULT_MIN_REFRESH_S = 15 * 60
+"""Default for the min_refresh_s argument of fetch_htf_universe, in seconds."""
 
 _LAST_RESULT: Optional["FetchResult"] = None
 _LAST_FETCH_MONO: float = 0.0
-"""Last successful NETWORK result and when it landed, on the monotonic clock.
-
-Monotonic, not wall clock: a wall clock can step backwards and would then
-report a negative age, which reads as "just fetched" and defeats the cadence.
-"""
+"""The last network FetchResult and the time.monotonic() reading it landed at."""
 DAILY_BARS = 365
 WEEKLY_BARS = 200
 
@@ -87,7 +55,7 @@ DEFAULT_QUOTES = ("USD", "USDC", "USDT")  # accept these as USD-equivalent
 
 @dataclass
 class _Candle:
-    """Minimal OHLC candle used by the analyzer + tightening detector."""
+    """One OHLC bar built by _ohlcv_to_candles, with timestamp in seconds."""
 
     timestamp: int
     open: float
@@ -97,21 +65,17 @@ class _Candle:
     volume: float = 0.0
 
 
-# ---------------------------------------------------------------------
-# Universe selection
-# ---------------------------------------------------------------------
-
-
 def _pick_universe(
     tickers: dict,
     top_n: int,
     active_symbols: set,
     accepted_quotes: Iterable[str] = DEFAULT_QUOTES,
 ) -> list[str]:
-    """Filter a bulk tickers dict to top-N */base symbols by 24 h volume.
+    """Rank tickers by 24 h quote volume and return the top_n CCXT symbols
+    whose quote is in accepted_quotes.
 
-    Always keeps active bot targets even if they fall outside top-N.
-    Returns fully-qualified CCXT symbol strings (e.g. ``"BTC/USD"``).
+    A base in active_symbols is appended even when it falls outside top_n,
+    and a base in STABLECOIN_DENYLIST is dropped.
     """
     quotes = tuple(accepted_quotes)
     scored: list[tuple[float, str, str]] = []
@@ -125,7 +89,6 @@ def _pick_universe(
             continue
         if base_u in STABLECOIN_DENYLIST:
             continue
-        # 24 h quote volume is the useful ranking signal
         vol = 0.0
         try:
             vol = float(tk.get("quoteVolume") or tk.get("baseVolume", 0) or 0)
@@ -134,18 +97,12 @@ def _pick_universe(
         scored.append((vol, base_u, sym))
     scored.sort(key=lambda t: -t[0])
     top = [sym for _v, _b, sym in scored[:top_n]]
-    # Ensure every active-bot symbol is present.
     seen_bases = {sym.split("/", 1)[0].upper() for sym in top}
     for _v, base_u, sym in scored:
         if base_u in active_symbols and base_u not in seen_bases:
             top.append(sym)
             seen_bases.add(base_u)
     return top
-
-
-# ---------------------------------------------------------------------
-# OHLCV fetch + resample
-# ---------------------------------------------------------------------
 
 
 def _ohlcv_to_candles(rows: list) -> list[_Candle]:
@@ -170,7 +127,10 @@ def _ohlcv_to_candles(rows: list) -> list[_Candle]:
 
 
 def _resample_daily_to_weekly(daily: list[_Candle]) -> list[_Candle]:
-    """7-day rolling chunks. Not calendar-aligned — fine for BB."""
+    """Group daily into non-overlapping 7-bar windows, not calendar aligned.
+
+    Returns an empty list when daily holds under 7 bars.
+    """
     if len(daily) < 7:
         return []
     out: list[_Candle] = []
@@ -192,7 +152,7 @@ def _resample_daily_to_weekly(daily: list[_Candle]) -> list[_Candle]:
 
 
 def _exchange_supports_tf(connector, tf: str) -> bool:
-    """Best-effort check that the wrapped CCXT exchange lists ``tf``."""
+    """Return True when connector._ex lists tf in its timeframes map."""
     try:
         ex = getattr(connector, "_ex", None)
         tfs = getattr(ex, "timeframes", None) or {}
@@ -207,8 +167,12 @@ async def _fetch_one_symbol(
     symbol: str,
     weekly_native: bool,
 ) -> Optional[dict]:
-    """Fetch daily (+ optional native weekly) OHLCV for one symbol.
-    Returns ``{"1d": [_Candle], "1w": [_Candle]}`` or ``None``."""
+    """Fetch DAILY_BARS daily candles for symbol, and WEEKLY_BARS weekly
+    ones when weekly_native is set.
+
+    Returns a map holding "1d", carrying "1w" only with 20 or more weekly
+    bars, or None with under 20 daily bars.
+    """
     try:
         daily_raw = await connector.get_ohlcv(symbol, "1d", DAILY_BARS)
     except Exception as _exc:  # noqa: BLE001 - per-symbol best-effort
@@ -237,22 +201,14 @@ async def _fetch_one_symbol(
     return tf_map
 
 
-# ---------------------------------------------------------------------
-# FetchResult
-# ---------------------------------------------------------------------
-
-
 @dataclass
 class FetchResult:
     candles_by_symbol_by_tf: dict  # {base_sym: {"1d": [_Candle], "1w": [_Candle]}}
-    closes_by_symbol: dict  # {base_sym: [close_float, ...]}
-    universe: list  # list of full CCXT symbols scanned
-    meta: dict  # source, age_seconds, error, symbol_count
-
-
-# ---------------------------------------------------------------------
-# Public coroutine — invoked by the tab, scheduled onto the app loop
-# ---------------------------------------------------------------------
+    closes_by_symbol: dict  # {base_sym: [daily close float, ...]}
+    universe: list  # full CCXT symbols scanned
+    # source, age_seconds, error, symbol_count, plus elapsed_seconds once a
+    # scan has run
+    meta: dict
 
 
 async def fetch_htf_universe(
@@ -263,11 +219,11 @@ async def fetch_htf_universe(
     force_network: bool = False,
     min_refresh_s: float = DEFAULT_MIN_REFRESH_S,
 ) -> FetchResult:
-    """Fetch HTF OHLC for the top-N (+ active) markets on any connected
-    exchange.
+    """Fetch daily and weekly OHLC for the top_n markets plus active_symbols
+    across every connector in exchange_connectors.
 
-    Iterates all connectors and unions their offerings. Per-symbol
-    OHLCV goes through the connector's serialised executor (MEM-220).
+    Serves _LAST_RESULT while it is younger than min_refresh_s unless
+    force_network is set, and skips a base an earlier connector covered.
     """
     active = set(active_symbols or set())
     if not exchange_connectors:
@@ -283,15 +239,8 @@ async def fetch_htf_universe(
             },
         )
 
-    # ── CADENCE GATE ────────────────────────────────────────────────
-    # Serve the last network result while it is younger than
-    # `min_refresh_s`, unless the caller forces a network fetch. The
-    # Refresh button forces; the periodic path does not.
-    #
-    # `age_seconds` is now a MEASUREMENT rather than a hardcoded 0.0, and
-    # `source` says which path answered, so a reader can tell a cached
-    # answer from a fresh one instead of assuming.
     global _LAST_RESULT, _LAST_FETCH_MONO
+    # On this path age_seconds is measured and source reads "cache".
     if not force_network and _LAST_RESULT is not None:
         age = time.monotonic() - _LAST_FETCH_MONO
         if 0.0 <= age < float(min_refresh_s):
@@ -345,27 +294,12 @@ async def fetch_htf_universe(
                         f"[{eid}] fetched {i + 1}/{len(sub_universe)}: " f"{base_u}"
                     )
                 except Exception as _cb_exc:  # noqa: BLE001
-                    # Progress reporting is best-effort and must never
-                    # break a fetch, but swallowing it silently is the
-                    # exact shape this project removes elsewhere: a
-                    # callback that stops working looks identical to one
-                    # that never fired. Record it at debug and move on.
                     logger.debug(
                         "market inspector progress callback failed: %s", _cb_exc
                     )
 
     elapsed = time.time() - fetch_start
-    # THE EMPTY-SCAN GUARD IS THIS RETURN. An empty scan leaves here and
-    # never reaches the cache write at the bottom, so `_LAST_RESULT` can
-    # only ever hold a result WITH DATA. Caching an empty one would serve
-    # nothing for 15 minutes and look like a working feed.
-    #
-    # The cache write below used to repeat the check as
-    # `if candles_by_symbol_by_tf:` with a comment claiming it was what
-    # enforced the property. It could never be false -- this return had
-    # already fired -- so it read as the enforcement while doing nothing,
-    # and a reader hardening the property would have hardened the dead
-    # branch. Pinned by test_an_empty_result_is_not_cached.
+    # An empty scan returns here, so _LAST_RESULT only ever holds data.
     if not candles_by_symbol_by_tf:
         return FetchResult(
             candles_by_symbol_by_tf={},
@@ -392,7 +326,6 @@ async def fetch_htf_universe(
             "elapsed_seconds": elapsed,
         },
     )
-    # Reached only with data -- see the early return above.
     _LAST_RESULT = result
     _LAST_FETCH_MONO = time.monotonic()
     return result

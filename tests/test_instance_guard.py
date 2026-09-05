@@ -34,7 +34,6 @@ and nothing else.
 
 from __future__ import annotations
 
-import ast
 import contextlib
 import gc
 import hashlib
@@ -43,6 +42,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Iterator, Optional
 
 import pytest
@@ -541,9 +541,6 @@ def test_the_pin_fires_on_a_refusal_too(
     records = [r for r in sink.records() if r.name == PIN]
     assert len(records) == 1
     record = records[0]
-    # `ok` says the flag and the evidence AGREE. Both are False here, so
-    # the check passes while the verdict refuses -- those are two
-    # different questions and the pin must not merge them.
     assert record.ok is True
     assert record.context["verdict"] == ig.VERDICT_FOREIGN_MACHINE
     assert record.context["owner_machine"].startswith("desk-01")
@@ -837,100 +834,127 @@ def test_a_consent_surface_that_raises_counts_as_a_refusal(
     assert why == ig.WITHHELD_BY_OPERATOR
 
 
-# ── the wiring in main.py ──────────────────────────────────────────────
-#
-# These read main.py's SYNTAX TREE, not its text. `main()` is one
-# 841-line function that no test can call - it builds a QApplication,
-# reads the operator's real state directory and starts trading - so the
-# alternative to a structural assertion is no assertion at all. The
-# tree is checked rather than the characters, so re-indenting, renaming
-# a local or re-wrapping a comment cannot make these pass or fail. What
-# they catch is the gate being deleted or moved after the bots start.
+class _GateCalls:
+    """Every callback ``main.autostart_gate`` made, in order."""
 
-_MAIN = Path(__file__).resolve().parent.parent / "main.py"
+    def __init__(self) -> None:
+        self.asked: list = []
+        self.withheld: list[str] = []
+        self.granted: list[str] = []
 
+    def refuse(self, decision) -> bool:
+        self.asked.append(decision)
+        return False
 
-def _main_tree() -> "ast.Module":
-    return ast.parse(_MAIN.read_text(encoding="utf-8"))
-
-
-def _function_named(name: str) -> "ast.FunctionDef":
-    for node in ast.walk(_main_tree()):
-        if isinstance(node, ast.FunctionDef) and node.name == name:
-            return node
-    missing = f"main.py has no function named {name!r}"
-    raise AssertionError(missing)
+    def consent(self, decision) -> bool:
+        self.asked.append(decision)
+        return True
 
 
-def test_the_auto_restart_trigger_asks_the_guard_before_it_starts_bots() -> None:
-    """The gate must run BEFORE the eligible list is built.
+def _gate(guard, decision, ask, calls: "_GateCalls") -> bool:
+    """Drive the shipped ``main.autostart_gate`` against ``calls``."""
+    import main
 
-    Order is the whole assertion. A consent check that ran after the
-    first bot started would collect consent for a decision already made.
-    """
-    trigger = _function_named("_trigger_auto_restart")
-    gate_lines = [
-        node.lineno
-        for node in ast.walk(trigger)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "authorise_auto_start"
-    ]
-    assert gate_lines, "_trigger_auto_restart no longer asks the guard"
-
-    start_lines = [
-        node.lineno
-        for node in ast.walk(trigger)
-        if isinstance(node, ast.Attribute) and node.attr == "_on_bot_command"
-    ]
-    assert start_lines, "the trigger no longer starts any bot"
-    assert min(gate_lines) < min(start_lines)
-
-    returns = [
-        node.lineno for node in ast.walk(trigger) if isinstance(node, ast.Return)
-    ]
-    assert any(
-        min(gate_lines) < line < min(start_lines) for line in returns
-    ), "the trigger has no way to stop between the gate and the start"
+    return main.autostart_gate(
+        guard, decision, ask, calls.withheld.append, calls.granted.append
+    )
 
 
-def test_main_gives_the_guard_the_state_managers_own_directory() -> None:
-    """Never a second `Path.home()` derivation.
+def test_the_gate_refuses_when_the_operator_withholds_consent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``autostart_gate`` answers False and hands ``on_withheld`` the
+    refusal constant. Its caller stops before any bot starts."""
+    _claim_owned_by(tmp_path, MACHINE_A, host="desk-01")
+    _be_machine(monkeypatch, MACHINE_B, host="cloud-vm-01")
 
-    A guard pointed at a different directory from the one the fleet was
-    loaded from would claim the wrong thing, and every test passes
-    `config_dir=` to the state manager.
-    """
-    import ast
+    calls = _GateCalls()
+    with _guard(tmp_path) as guard:
+        answered = _gate(guard, guard.evaluate(FLEET), calls.refuse, calls)
 
-    constructions = [
-        node
-        for node in ast.walk(_main_tree())
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "InstanceGuard"
-    ]
-    assert len(constructions) == 1, "main.py builds the guard exactly once"
-    first = constructions[0].args[0]
-    assert isinstance(first, ast.Attribute)
-    assert first.attr == "config_dir"
-    assert isinstance(first.value, ast.Name)
-    assert first.value.id == "state_mgr"
+    assert answered is False
+    assert calls.withheld == [ig.WITHHELD_BY_OPERATOR]
+    assert calls.granted == []
 
 
-def test_main_releases_the_exclusive_handle_at_shutdown() -> None:
-    """A handle held past exit would refuse this machine's next launch."""
-    main_fn = _function_named("main")
-    released = [
-        node
-        for node in ast.walk(main_fn)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "release"
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "instance_guard"
-    ]
-    assert released, "main() never releases the instance handle"
+def test_the_gate_permits_the_machine_that_already_owns_the_fleet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """POSITIVE CONTROL: ``autostart_gate`` answers True on the owner's
+    own machine and asks nobody."""
+    _claim_owned_by(tmp_path, MACHINE_A, host="desk-01")
+    _be_machine(monkeypatch, MACHINE_A, host="desk-01")
+
+    calls = _GateCalls()
+    with _guard(tmp_path) as guard:
+        answered = _gate(guard, guard.evaluate(FLEET), calls.refuse, calls)
+
+    assert answered is True
+    assert calls.withheld == []
+    assert calls.asked == [], "the owner was asked to consent to its own fleet"
+
+
+def test_the_gate_reports_a_grant_that_took_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Consent from a second machine answers True and hands
+    ``on_granted`` ``AUTHORISED_BY_OPERATOR``."""
+    _claim_owned_by(tmp_path, MACHINE_A, host="desk-01")
+    _be_machine(monkeypatch, MACHINE_B, host="cloud-vm-01")
+
+    calls = _GateCalls()
+    with _guard(tmp_path) as guard:
+        answered = _gate(guard, guard.evaluate(FLEET), calls.consent, calls)
+
+    assert answered is True
+    assert calls.granted == [ig.AUTHORISED_BY_OPERATOR]
+    assert calls.withheld == []
+
+
+def test_main_gives_the_guard_the_state_managers_own_directory(
+    tmp_path: Path,
+) -> None:
+    """``build_instance_guard`` claims in ``state_mgr.config_dir``, never
+    in a ``Path.home()`` derivation of its own."""
+    import main
+
+    state_mgr = SimpleNamespace(config_dir=tmp_path)
+    guard = main.build_instance_guard(state_mgr, "test")
+    try:
+        guard.evaluate(FLEET)
+        guard.take_ownership()
+    finally:
+        guard.release()
+    assert (tmp_path / ig.CLAIM_FILENAME).is_file(), (
+        f"the guard claimed somewhere other than {tmp_path}; "
+        f"it holds {sorted(p.name for p in tmp_path.iterdir())}"
+    )
+
+
+def test_a_released_handle_can_be_taken_again(tmp_path: Path) -> None:
+    """``release`` frees the exclusive handle, so the next launch on this
+    machine is not refused by the one before it."""
+    first = ig.InstanceGuard(tmp_path, app_version="test")
+    first.evaluate(FLEET)
+    first.release()
+    second = ig.InstanceGuard(tmp_path, app_version="test")
+    try:
+        assert second.evaluate(FLEET).verdict != ig.VERDICT_LIVE_INSTANCE
+    finally:
+        second.release()
+
+
+def test_an_unreleased_handle_is_seen_by_the_next_guard(tmp_path: Path) -> None:
+    """POSITIVE CONTROL for the release above: a guard that never called
+    ``release`` leaves ig.VERDICT_LIVE_INSTANCE for the next one."""
+    first = ig.InstanceGuard(tmp_path, app_version="test")
+    first.evaluate(FLEET)
+    second = ig.InstanceGuard(tmp_path, app_version="test")
+    try:
+        assert second.evaluate(FLEET).verdict == ig.VERDICT_LIVE_INSTANCE
+    finally:
+        second.release()
+        first.release()
 
 
 # ── the positive control on the instrument ─────────────────────────────

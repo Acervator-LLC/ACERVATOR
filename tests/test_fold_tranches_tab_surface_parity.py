@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import time
+import types
 from pathlib import Path
 
 import pytest
@@ -41,13 +42,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 TAB_PATH = REPO_ROOT / "src/gui/live_settings/fold_tranches_tab.py"
 SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/fold_tranches_tab_surface.py"
-NESTED_CLASS_CONTROL = REPO_ROOT / "src/gui/stock_main_window.py"
-NESTED_METHOD_CONTROL = REPO_ROOT / "src/gui/indicator_panel.py"
-SIGNAL_CONTROL = REPO_ROOT / "src/gui/launcher.py"
-TIMER_CONTROL = REPO_ROOT / "src/gui/history_tab.py"
-NO_TIMER_CONTROL = REPO_ROOT / "src/gui/main_tabs/history_tab.py"
-BUS_CONTROL = REPO_ROOT / "src/gui/bot_visualizer.py"
-LIVE_SKIN_CONTROL = REPO_ROOT / "tests/test_alerts_tab_surface_parity.py"
 
 PIXEL_SIZE = (1180, 700)
 CONTROL_RULE = "QGroupBox { background: #3a1414; border: 3px solid #7a1414; }"
@@ -62,9 +56,7 @@ THOUSAND_MILLION = 1_000_000_000.0
 _alive: list = []
 
 
-# ---------------------------------------------------------------------
 # The shipped side, driven through a stub host
-# ---------------------------------------------------------------------
 
 
 class HostConfig:
@@ -223,9 +215,7 @@ def otd_for(spec):
     return [pct, fold_rebuy_factor_from_pct(pct)]
 
 
-# ---------------------------------------------------------------------
 # Reading one side into one snapshot
-# ---------------------------------------------------------------------
 
 
 def reset_stamp(value):
@@ -383,9 +373,7 @@ def digest(body):
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The cases, each driven through both sides
-# ---------------------------------------------------------------------
 
 
 def tranche(**over):
@@ -728,9 +716,7 @@ def new_snapshot(name):
     return read_new_tab(new_model(name))
 
 
-# ---------------------------------------------------------------------
 # Value for value, and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", CASE_NAMES)
@@ -777,9 +763,7 @@ def test_the_same_case_twice_hashes_alike_on_each_side():
     assert first_old == first_new, (first_old, first_new)
 
 
-# ---------------------------------------------------------------------
 # The number columns and the counters, guarded against bare
-# ---------------------------------------------------------------------
 
 REFUSED_SHAPES = {
     "stored_true": True,
@@ -896,9 +880,7 @@ def cells_units(row):
     return surface.extractor_row_cells(row, NOW)[2]
 
 
-# ---------------------------------------------------------------------
 # The step sequences, including ones that refuse part way
-# ---------------------------------------------------------------------
 
 CLEAR_STEPS = {
     "fold_declined": ["fold", surface.NO_BUTTON_VALUE, surface.OUTCOME_DECLINED],
@@ -1195,9 +1177,7 @@ def test_a_refusal_is_told_apart_by_type_and_never_by_wording():
     assert kinds == {"ValueError", "OverflowError", "TypeError", "RuntimeError"}
 
 
-# ---------------------------------------------------------------------
 # The enumeration, counted off the parsed file
-# ---------------------------------------------------------------------
 
 TIMER_BUILDERS = {"QTimer"}
 THREAD_BUILDERS = {"QThread", "Thread"}
@@ -1295,51 +1275,147 @@ OLD = enumerate_file(TAB_PATH)
 NEW = enumerate_file(SURFACE_PATH)
 
 
-def test_the_counter_sees_a_class_hidden_inside_a_method():
+NESTED_CLASS_SOURCE = (
+    "class Outer:\n"
+    "    def make(self):\n"
+    "        class Buried:\n"
+    "            pass\n"
+    "\n"
+    "        return Buried\n"
+    "\n"
+    "\n"
+    "def free():\n"
+    "    class Loose:\n"
+    "        pass\n"
+    "\n"
+    "    return Loose\n"
+)
+
+NESTED_METHOD_SOURCE = (
+    "class Holder:\n"
+    "    def held(self):\n"
+    "        return 1\n"
+    "\n"
+    "    class Inner:\n"
+    "        def plain(self):\n"
+    "            return 2\n"
+    "\n"
+    "        async def waiting(self):\n"
+    "            return 3\n"
+)
+
+SIGNAL_SOURCE = (
+    "from PySide6.QtCore import Signal\n"
+    "\n"
+    "\n"
+    "class ModeCard:\n"
+    "    clicked = Signal(str)\n"
+    "\n"
+    "    def press(self):\n"
+    "        return None\n"
+)
+
+TIMER_SOURCE = (
+    "from PySide6.QtCore import QTimer\n"
+    "\n"
+    "\n"
+    "def wait(owner):\n"
+    "    owner.poll_timer = QTimer(owner)\n"
+    "    owner.poll_timer.start(1000)\n"
+)
+
+NO_TIMER_SOURCE = "def wait(owner):\n    return owner\n"
+
+BUS_SOURCE = (
+    "from src.core.event_bus import emit as _sw_emit\n"
+    "from src.core.event_bus import subscribe\n"
+    "\n"
+    "\n"
+    "def wire(handler):\n"
+    "    subscribe('one', handler)\n"
+    "    subscribe('two', handler)\n"
+    "    _sw_emit('three')\n"
+    "    _sw_emit('four')\n"
+    "\n"
+    "\n"
+    "class Node:\n"
+    "    def go(self, value):\n"
+    "        self.changed.emit(value)\n"
+)
+
+
+def module_written(where, name, body):
+    """One module written as `body` under `where`/`name`, for enumerate_file."""
+    made = where / name
+    made.parent.mkdir(parents=True, exist_ok=True)
+    made.write_text(body, encoding="utf-8", newline="\n")
+    return made
+
+
+def test_the_counter_sees_a_class_hidden_inside_a_method(tmp_path):
     """A full walk and a top-level read gave one answer."""
-    control = enumerate_file(NESTED_CLASS_CONTROL)
-    assert len(control["classes_all"]) == 4, control["classes_all"]
-    assert control["classes_top"] == [], control["classes_top"]
+    counted = enumerate_file(module_written(tmp_path, "buried.py", NESTED_CLASS_SOURCE))
+    assert set(counted["classes_all"]) == {
+        "Outer",
+        "Buried",
+        "Loose",
+    }, counted["classes_all"]
+    assert counted["classes_top"] == ["Outer"], counted["classes_top"]
 
 
-def test_the_counter_sees_methods_on_a_nested_class():
+def test_the_counter_sees_methods_on_a_nested_class(tmp_path):
     """Methods declared inside a nested class went uncounted."""
-    control = enumerate_file(NESTED_METHOD_CONTROL)
-    assert len(control["classes_all"]) == 4, control["classes_all"]
-    assert len(control["methods"]) > 40, len(control["methods"])
+    counted = enumerate_file(
+        module_written(tmp_path, "holder.py", NESTED_METHOD_SOURCE)
+    )
+    assert set(counted["methods"]) == {
+        "Holder.held",
+        "Inner.plain",
+        "Inner.waiting",
+    }, counted["methods"]
+    assert counted["classes_top"] == ["Holder"], counted["classes_top"]
 
 
-def test_a_signal_is_counted_as_a_signal_and_not_as_a_method():
+def test_a_signal_is_counted_as_a_signal_and_not_as_a_method(tmp_path):
     """A declared signal was counted among the methods."""
-    control = enumerate_file(SIGNAL_CONTROL)
-    assert "ModeCard.clicked" in control["signals"], control["signals"]
-    assert "ModeCard.clicked" not in control["methods"], control["methods"]
+    counted = enumerate_file(module_written(tmp_path, "card.py", SIGNAL_SOURCE))
+    assert counted["signals"] == ["ModeCard.clicked"], counted["signals"]
+    assert counted["methods"] == ["ModeCard.press"], counted["methods"]
 
 
-def test_the_timer_counter_tells_two_files_of_one_name_apart():
+def test_the_timer_counter_tells_two_files_of_one_name_apart(tmp_path):
     """Two files sharing a basename were counted as one."""
-    assert len(enumerate_file(TIMER_CONTROL)["timers_built"]) == 1
-    assert enumerate_file(NO_TIMER_CONTROL)["timers_built"] == []
+    waits = module_written(tmp_path / "waits", "panel.py", TIMER_SOURCE)
+    still = module_written(tmp_path / "still", "panel.py", NO_TIMER_SOURCE)
+    assert waits.name == still.name
+    assert enumerate_file(waits)["timers_built"] == ["QTimer"]
+    assert enumerate_file(waits)["timers_started"] == ["start"]
+    assert enumerate_file(still)["timers_built"] == []
 
 
-def test_the_bus_counter_reads_both_directions_and_follows_an_alias():
+def test_the_bus_counter_reads_both_directions_and_follows_an_alias(tmp_path):
     """An emit imported under another name went uncounted."""
-    control = enumerate_file(BUS_CONTROL)
-    assert len(control["subscribes"]) == 2, control["subscribes"]
-    assert len(control["emits"]) == 7, control["emits"]
-    assert control["emits"].count("_sw_emit") == 2, control["emits"]
+    counted = enumerate_file(module_written(tmp_path, "wiring.py", BUS_SOURCE))
+    assert counted["subscribes"] == ["subscribe", "subscribe"], counted["subscribes"]
+    assert counted["emits"].count("_sw_emit") == 2, counted["emits"]
+    assert counted["emits"].count("emit") == 1, counted["emits"]
 
 
-def test_the_tab_declares_one_class_and_twelve_methods():
+def test_the_tab_declares_one_class_and_the_methods_the_mixin_carries():
     """A method appeared on one side and not the other."""
+    carried = {
+        f"FoldTranchesTabMixin.{name}"
+        for name, value in vars(shipped.FoldTranchesTabMixin).items()
+        if isinstance(value, (types.FunctionType, staticmethod, classmethod))
+    }
     assert OLD["classes_top"] == ["FoldTranchesTabMixin"], OLD["classes_top"]
-    assert len(OLD["methods"]) == 12, OLD["methods"]
+    assert carried, sorted(vars(shipped.FoldTranchesTabMixin))
+    assert set(OLD["methods"]) == carried, sorted(set(OLD["methods"]) ^ carried)
     assert OLD["signals"] == [], OLD["signals"]
 
 
 def test_the_connect_sites_match_the_actions():
     """A signal wiring appeared on one side and not the other."""
-    assert len(OLD["connects"]) == 6, OLD["connects"]
     assert NEW["connects"] == [], NEW["connects"]
     assert len(surface.ACTIONS) == len(OLD["connects"])
     assert set(surface.ACTIONS) == {
@@ -1356,11 +1432,12 @@ def test_the_connect_sites_match_the_actions():
 
 def test_the_tab_builds_one_timer_and_starts_it():
     """A wait appeared on one side and not the other."""
-    assert len(OLD["timers_built"]) == 1, OLD["timers_built"]
-    assert len(OLD["timers_started"]) == 1, OLD["timers_started"]
+    assert OLD["timers_built"], OLD["timers_built"]
+    assert len(OLD["timers_started"]) == len(OLD["timers_built"]), OLD
     assert NEW["timers_built"] == [], NEW["timers_built"]
     assert NEW["timers_started"] == [], NEW["timers_started"]
     assert len(surface.TIMERS) == len(OLD["timers_built"])
+    assert len(surface.TIMER_DELAYS_MS) == len(surface.TIMERS)
     assert list(surface.TIMER_DELAYS_MS) == [surface.FIRE_POLL_INTERVAL_MS]
 
 
@@ -1393,9 +1470,7 @@ def test_the_surface_emits_the_topic_the_tab_emits():
     assert actual["fold_rows"] == expected["fold_rows"] == 0
 
 
-# ---------------------------------------------------------------------
 # Completeness
-# ---------------------------------------------------------------------
 
 
 def freeze(value):
@@ -1582,33 +1657,20 @@ def test_the_key_check_reports_a_key_backed_by_the_wrong_value():
     assert not backed({"absent": 1}, "missing", None)
 
 
-def test_a_value_added_later_fails_rather_than_slipping_through():
-    """A new exported value never reaches the comparison.
+def test_a_value_added_later_fails_rather_than_slipping_through(monkeypatch):
+    """A value put on the surface reaches ``surface_constants`` and is
+    reported missing, so the sweep cannot be outgrown."""
+    assert "USD_FORMAT" in surface_constants()
+    values = payload_values(compared_payloads())
+    assert missing_from_payload(surface_constants(), values) == []
 
-    The names are parsed off the file and matched against the names the
-    imported module carries, so neither count is typed here.
-    """
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    parsed = set()
-    for node in tree.body:
-        targets = []
-        if isinstance(node, ast.Assign):
-            targets = node.targets
-        elif isinstance(node, ast.AnnAssign):
-            targets = [node.target]
-        for one in targets:
-            if isinstance(one, ast.Name) and one.id.isupper():
-                parsed.add(one.id)
-    imported = set(surface_constants())
-    assert parsed - imported == set(), sorted(parsed - imported)
-    assert imported - parsed == set(), sorted(imported - parsed)
-    assert len(parsed) == len(imported)
-    assert "USD_FORMAT" in parsed
+    monkeypatch.setattr(surface, "A_LATER_VALUE", "a-later-value", raising=False)
+    named = surface_constants()
+    assert named["A_LATER_VALUE"] == "a-later-value"
+    assert missing_from_payload(named, values) == ["A_LATER_VALUE"]
 
 
-# ---------------------------------------------------------------------
 # The rest of the surface, against the shipped side
-# ---------------------------------------------------------------------
 
 
 def test_the_admission_rule_agrees_with_the_shipped_one():
@@ -1884,9 +1946,7 @@ def test_the_despawn_threshold_is_the_shipped_rule():
         ), days
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 BRIDGE_BOT = {
     "symbol": "BTC/USD",
@@ -1968,9 +2028,7 @@ def test_the_bridge_carries_every_action():
     bridge_call({"reset": True})
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -2187,9 +2245,7 @@ def test_a_run_under_a_throwaway_home_writes_no_file():
         assert answered["written"] == [str(control)], answered["written"]
 
 
-# ---------------------------------------------------------------------
 # Order independence
-# ---------------------------------------------------------------------
 
 
 def test_the_clock_swap_is_restored_after_a_drive():
@@ -2242,9 +2298,7 @@ def test_two_models_do_not_share_a_state():
     assert surface.PANE_MODEL is not second
 
 
-# ---------------------------------------------------------------------
 # Pictures
-# ---------------------------------------------------------------------
 
 
 def old_payload(name):
@@ -2403,9 +2457,7 @@ def test_with_fonts_two_equal_length_rows_paint_apart():
     assert app_font_advance_px(NARROW_LABEL) < app_font_advance_px(WIDE_LABEL)
 
 
-# ---------------------------------------------------------------------
 # This file's own checks
-# ---------------------------------------------------------------------
 
 
 SKIN_READERS = (
@@ -2442,10 +2494,28 @@ def test_this_file_reads_no_skin_off_a_live_widget():
     assert reads_a_live_skin(SURFACE_PATH) == []
 
 
-def test_the_live_skin_sweep_reports_a_file_that_really_reads_one():
+SKIN_READER_SOURCE = (
+    "def look(widget):\n"
+    "    widget.styleSheet()\n"
+    "    widget.palette()\n"
+    "    widget.background()\n"
+    "    widget.foreground()\n"
+    "    widget.property('flat')\n"
+    "    widget.color()\n"
+    "    widget.brush()\n"
+)
+
+NO_SKIN_READER_SOURCE = "def look(widget):\n    widget.setVisible(True)\n"
+
+
+def test_the_live_skin_sweep_reports_a_file_that_really_reads_one(tmp_path):
     """The sweep returns nothing whatever a file reads."""
-    found = reads_a_live_skin(LIVE_SKIN_CONTROL)
-    assert len(found) >= 6, found
+    found = reads_a_live_skin(
+        module_written(tmp_path, "skinned.py", SKIN_READER_SOURCE)
+    )
+    assert sorted(one.split(" .")[-1] for one in found) == sorted(SKIN_READERS), found
+    blind = module_written(tmp_path, "blind.py", NO_SKIN_READER_SOURCE)
+    assert reads_a_live_skin(blind) == []
 
 
 def compared_to_itself(path):
@@ -2491,30 +2561,23 @@ def test_no_assertion_here_reads_only_a_constant():
     assert constant_only_assertions(Path(__file__)) == []
 
 
-def test_the_two_blind_assertion_sweeps_report_what_they_look_for():
+BLIND_ASSERTION_SOURCE = (
+    "def check():\n    assert 1 == 1\n    assert len([]) == len([])\n"
+)
+
+SEEING_ASSERTION_SOURCE = (
+    "def check(left, right):" + chr(10) + "    assert left == right" + chr(10)
+)
+
+
+def test_the_two_blind_assertion_sweeps_report_what_they_look_for(tmp_path):
     """Either sweep returns nothing whatever the source holds."""
-    made = REPO_ROOT / "tests" / "_fold_tranches_sweep_control.py"
-    made.write_text(
-        "def check():\n    assert 1 == 1\n    assert len([]) == len([])\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-    try:
-        assert compared_to_itself(made) == [
-            f"{made.name}:2",
-            f"{made.name}:3",
-        ], compared_to_itself(made)
-        assert constant_only_assertions(made) == [f"{made.name}:2"]
-        clean = REPO_ROOT / "tests" / "_fold_tranches_sweep_clean.py"
-        clean.write_text(
-            "def check(left, right):" + chr(10) + "    assert left == right" + chr(10),
-            encoding="utf-8",
-            newline=chr(10),
-        )
-        try:
-            assert compared_to_itself(clean) == []
-            assert constant_only_assertions(clean) == []
-        finally:
-            clean.unlink()
-    finally:
-        made.unlink()
+    made = module_written(tmp_path, "blind.py", BLIND_ASSERTION_SOURCE)
+    assert compared_to_itself(made) == [
+        f"{made.name}:2",
+        f"{made.name}:3",
+    ], compared_to_itself(made)
+    assert constant_only_assertions(made) == [f"{made.name}:2"]
+    clean = module_written(tmp_path, "seeing.py", SEEING_ASSERTION_SOURCE)
+    assert compared_to_itself(clean) == []
+    assert constant_only_assertions(clean) == []

@@ -1,4 +1,4 @@
-"""Issue #105 — the news ticker must never destroy a running QThread.
+"""The news ticker must never destroy a running QThread.
 
 WHAT WAS WRONG. ``force_refresh`` built ``QThread(self)``, a thread
 PARENTED TO THE WIDGET, and ``_teardown_worker`` called ``wait(50)``
@@ -80,12 +80,7 @@ class _Blocker:
         self.honours_stop = honours_stop
         self.limit_s = limit_s
         self.entered = threading.Event()
-        # An OUT-OF-BAND release, for teardown only. It is
-        # deliberately not the product stop flag: a test that
-        # needs an unstoppable fetch must still get one, or it is
-        # not testing the abandon path. This lets such a test hand
-        # the thread back in milliseconds instead of idling out
-        # `limit_s`.
+        # Out-of-band release for teardown only; the product stop flag stays untouched.
         self.released = threading.Event()
 
     def __call__(self, *_a, **kw):
@@ -111,9 +106,7 @@ def _run_fetch(ticker, blocker: _Blocker, qt_app: QApplication) -> None:
     )
 
 
-# ------------------------------------------------------------------
 # The ownership defect itself.
-# ------------------------------------------------------------------
 
 
 class TestThreadOwnership:
@@ -135,7 +128,7 @@ class TestThreadOwnership:
     def test_the_registry_holds_thread_and_worker(self, monkeypatch, ticker, qt_app):
         """A FAILURE HERE MEANS the only reference to a running worker
         belongs to the widget, so the widget going away collects the
-        worker mid-emit -- issue #58."""
+        worker mid-emit."""
         blocker = _Blocker(honours_stop=True)
         monkeypatch.setattr(cnt, "fetch_all", blocker)
         _run_fetch(ticker, blocker, qt_app)
@@ -223,7 +216,7 @@ class TestStopIsBounded:
         thread = ticker._worker_thread
         assert thread is not None, (
             "the reference was dropped, so force_refresh can start a "
-            "second fetch beside the first -- issue #58 tail"
+            "second fetch beside the first"
         )
         assert Shiboken.isValid(thread), "a running thread was destroyed"
         assert thread.isRunning()
@@ -282,9 +275,7 @@ class TestStopIsBounded:
         present OR absent, which is what shows the other two shapes
         fail for the guard and not for some unrelated reason.
         """
-        # Long enough that no wait in this test can succeed, so an
-        # unguarded extra stop fails its own wait and logs its own
-        # error rather than quietly succeeding.
+        # Longer than any wait here, so an unguarded extra stop fails its own wait.
         blocker = _Blocker(honours_stop=False, limit_s=30.0)
         monkeypatch.setattr(cnt, "fetch_all", blocker)
         widget = cnt.CryptoNewsTicker()
@@ -345,7 +336,7 @@ class TestStopIsBounded:
 
 class TestWorkerStaysSilentAfterStop:
     def test_a_stopped_worker_emits_nothing(self, qt_app):
-        """Issue #58, the emit half. A FAILURE HERE MEANS a result
+        """The emit half. A FAILURE HERE MEANS a result
         arrives at a widget that asked to be left alone."""
         assert qt_app is not None
         worker = cnt._FetchWorker()
@@ -386,9 +377,7 @@ class TestWorkerStaysSilentAfterStop:
         )
 
 
-# ------------------------------------------------------------------
 # The reason 50 ms could never work: the fetch had no bound.
-# ------------------------------------------------------------------
 
 
 class TestFetchIsBounded:
@@ -480,21 +469,7 @@ class _Stream:
         return chunk
 
 
-# ------------------------------------------------------------------
-# The falsifier, out of process. This is the recipe that produced the
-# abort on the shipped file.
-#
-# A SEPARATE PROCESS IS THE POINT. `std::terminate` prints no
-# traceback and no failure summary, so a suite that meets it reports
-# nothing at all -- measured here: with the repair reverted, a run of
-# this very file ended with status 3221226505 and printed no FAILED
-# line. An exit code is the only thing left to read, and only a child
-# process has one.
-#
-# `multiprocessing` rather than `subprocess`: a spawned child re-imports
-# this module and runs `_shipped_recipe` by name, so there is no argv
-# to build and no command string for a reader to have to trust.
-# ------------------------------------------------------------------
+# A child process: `std::terminate` prints no traceback, so only an exit code survives.
 
 
 def _shipped_recipe(mode: str) -> None:
@@ -555,9 +530,7 @@ def test_the_shipped_recipe_no_longer_aborts(mode):
     assert proc.exitcode == 0, f"child exit {proc.exitcode}"
 
 
-# ------------------------------------------------------------------
 # The real fetch path, against a host that never finishes.
-# ------------------------------------------------------------------
 
 
 def _start_drip_server():
@@ -614,9 +587,7 @@ def test_stop_beats_a_host_that_never_finishes(monkeypatch, qt_app):
     real_fetch_all = cnt.fetch_all
 
     def _local_fetch_all(*_a, **kw):
-        # fetch_all binds NEWS_SOURCES as a DEFAULT argument, so
-        # rebinding the module global would not reach it. Nothing here
-        # leaves 127.0.0.1.
+        # `fetch_all` binds NEWS_SOURCES as a default, so a module global misses it.
         return real_fetch_all(sources, **kw)
 
     monkeypatch.setattr(cnt, "fetch_all", _local_fetch_all)

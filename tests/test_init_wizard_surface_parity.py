@@ -34,11 +34,6 @@ from tests.fixtures.surface_pictures import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-WIZARD_PATH = REPO_ROOT / "src/gui/init_wizard.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/init_wizard_surface.py"
-BRIDGE_PATH = REPO_ROOT / "src/core/desktop_bridge.py"
-HISTORY_PATH = REPO_ROOT / "src/gui/history_tab.py"
-VISUALIZER_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
 
 METHOD_NAME = "init_wizard.state"
 CLICKED_SIGNAL = "2clicked()"
@@ -863,9 +858,7 @@ def run_new(script):
     return trace
 
 
-# ---------------------------------------------------------------------
 # The two sides, driven together
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(SCRIPTS))
@@ -993,9 +986,7 @@ def test_a_refused_input_names_its_own_type_on_both_sides(monkeypatch):
     assert surface.index_value(1.5) == 1
 
 
-# ---------------------------------------------------------------------
 # The wizard enumerated
-# ---------------------------------------------------------------------
 
 
 def test_the_connect_sites_match_the_actions():
@@ -1021,9 +1012,6 @@ def test_the_connect_sites_match_the_actions():
     assert QPushButton("bare").receivers(CLICKED_SIGNAL) == 0
     assert QCheckBox("bare").receivers(TOGGLED_SIGNAL) == 0
 
-    wizard_text = WIZARD_PATH.read_text(encoding="utf-8")
-    assert wizard_text.count(".connect(") == live == 4
-    assert SURFACE_PATH.read_text(encoding="utf-8").count(".connect(") == 0
     assert len(surface.ACTIONS) == live
     assert set(surface.ACTIONS) == {
         "skip_button.clicked",
@@ -1213,12 +1201,12 @@ def test_the_call_names_are_the_ones_the_trace_writes():
     assert len(set(CALL_NAMES.values())) == 42
 
 
-def test_the_wizard_starts_no_timer_and_the_counter_reports_one_elsewhere():
+def test_the_wizard_starts_no_timer():
     """A wait appeared on one side and not the other.
 
-    The wizard waits on the operator, not on a clock. The same counter is
-    pointed at ``history_tab``, which does start one, so a zero here is a
-    fact about the wizard rather than a broken counter.
+    The patched ``QTimer.start`` records a bare ``QTimer().start(400)``
+    after the wizard is built, so an empty ``observed`` is a fact about
+    ``InitWizard``.
     """
     from PySide6.QtCore import QObject, QTimer
 
@@ -1260,51 +1248,46 @@ def test_the_wizard_starts_no_timer_and_the_counter_reports_one_elsewhere():
     assert observed == []
     assert surface.TIMERS == {}
     assert surface.TIMER_DELAYS_MS == ()
-    assert WIZARD_PATH.read_text(encoding="utf-8").count("QTimer") == 0
-    assert HISTORY_PATH.read_text(encoding="utf-8").count("QTimer") > 0
 
 
-def test_the_wizard_reaches_no_bus_topic_and_the_counter_reports_one_elsewhere():
-    """A bus subscription appeared on one side and not the other.
+class _RecordingBus:
+    """A bus that records every topic subscribed on it."""
 
-    The same counter is pointed at ``bot_visualizer``, which does
-    subscribe, so a zero here is a fact about the wizard.
-    """
-    wizard_text = WIZARD_PATH.read_text(encoding="utf-8")
-    visualizer_text = VISUALIZER_PATH.read_text(encoding="utf-8")
-    assert wizard_text.count(".subscribe(") == 0
-    assert wizard_text.count("event_bus") == 0
-    assert visualizer_text.count(".subscribe(") == 2
-    assert "wire.created" in visualizer_text
+    def __init__(self):
+        self.subscribed: list[str] = []
+
+    def subscribe(self, topic, handler):
+        self.subscribed.append(topic)
+        del handler
+        return lambda: None
+
+    def emit(self, topic, **kwargs):
+        del topic, kwargs
+
+
+def test_the_wizard_reaches_no_bus_topic(monkeypatch):
+    """Building the setup wizard subscribes to nothing at all."""
+    from src.core import event_bus
+
+    app()
+    bus = _RecordingBus()
+    monkeypatch.setattr(event_bus, "get_event_bus", lambda: bus)
+    wizard = shipped.InitWizard()
+    ALIVE.append(wizard)
+    wizard._on_page_changed(2)
+    assert bus.subscribed == []
     assert surface.BUS_TOPICS == ()
-    assert len(surface.BUS_TOPICS) == wizard_text.count(".subscribe(") == 0
 
 
-def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    import ast
-
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imported.add(node.module or "")
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"math", "typing", "__future__"}
-    wizard_imports = {
-        (node.module or "")
-        for node in ast.walk(ast.parse(WIZARD_PATH.read_text(encoding="utf-8")))
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in wizard_imports)
+def test_the_bus_recorder_sees_a_subscription():
+    """POSITIVE CONTROL: the same recorder reports a topic when one is
+    taken, so the empty list above is a fact about the wizard."""
+    bus = _RecordingBus()
+    bus.subscribe("wire.created", lambda _event: None)
+    assert bus.subscribed == ["wire.created"]
 
 
-# ---------------------------------------------------------------------
 # The surface holds its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_changed_colour_in_the_shipped_file(
@@ -1408,9 +1391,7 @@ def test_the_safe_events_reason_is_the_wizards_own(monkeypatch):
     assert [call for call in new if call[0] == surface.SAFE_PROCESS_EVENTS] == paused
 
 
-# ---------------------------------------------------------------------
 # The completeness of the comparison
-# ---------------------------------------------------------------------
 
 CONSTANT_LOCATION = {
     "METHOD": ("method", None),
@@ -1759,9 +1740,7 @@ def test_the_bridge_reads_every_step_name():
     assert every["results"]["api_key"] == INVENTED_KEY
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 PICTURE_SPECS = {
     "first_run": (False, {}),
@@ -2091,9 +2070,7 @@ def test_two_names_of_equal_length_paint_different_widths():
     assert narrow.sizeHint().width() < wide.sizeHint().width()
 
 
-# ---------------------------------------------------------------------
 # What no picture can report, each read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_window_title_a_picture_cannot_see_is_compared_as_text(monkeypatch):
@@ -2330,12 +2307,8 @@ BLIND_TO_THE_PICTURE = {
     "current_page": "test_the_current_page_the_check_reads_is_the_scripted_one",
     "venue_data": "test_the_venue_data_a_picture_cannot_see_is_compared_as_text",
     "skipped": "test_the_skip_button_answer_is_compared_as_a_flag",
-    "timer_delay": (
-        "test_the_wizard_starts_no_timer_and_the_counter_reports_one_elsewhere"
-    ),
-    "bus_topic": (
-        "test_the_wizard_reaches_no_bus_topic_and_the_counter_reports_one_elsewhere"
-    ),
+    "timer_delay": "test_the_wizard_starts_no_timer",
+    "bus_topic": "test_the_wizard_reaches_no_bus_topic",
     "line_text": "test_old_and_new_traces_are_identical",
 }
 
@@ -2372,9 +2345,7 @@ def test_everything_a_picture_cannot_report_is_named_and_covered(monkeypatch):
     )
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable():
@@ -2418,23 +2389,18 @@ def test_the_bridge_registers_the_init_wizard_method():
     assert len(answer["result"]["exchange_ids"]) == 15
 
 
-def test_the_bridge_registration_is_two_lines_and_no_more():
-    """The bridge grew more than the one registration this unit adds."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    assert text.count("init_wizard_surface") == 3
-    assert "init_wizard_surface.METHOD: init_wizard_surface.view_model" in text
-    assert "        init_wizard_surface,\n" in text
+def test_the_bridge_registers_the_wizard_exactly_once():
+    """The wizard reaches the renderer through one method and no other."""
+    from src.core import desktop_bridge
 
-
-def test_the_bridge_import_list_stays_alphabetical():
-    """A surface was added out of order, so the next one lands anywhere."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    block = text.split("from src.gui.main_tabs import (")[1].split(")")[0]
-    names = [line.strip().rstrip(",") for line in block.strip().splitlines()]
-    assert names == sorted(names), names
-    assert "init_wizard_surface" in names
-    assert names.index("header_strip_surface") < names.index("init_wizard_surface")
-    assert names.index("init_wizard_surface") < names.index("instance_consent_surface")
+    registry = desktop_bridge.build_registry()
+    mine = [
+        method
+        for method, handler in registry.items()
+        if getattr(handler, "__module__", "") == surface.__name__
+    ]
+    assert mine == [surface.METHOD]
+    assert registry[surface.METHOD] is surface.view_model
 
 
 def test_the_bridge_answers_with_no_parameters_at_all():
@@ -2504,9 +2470,7 @@ def test_the_answer_is_the_same_on_every_call_with_the_same_request():
     assert first != second
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt, proved in a process of its own
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

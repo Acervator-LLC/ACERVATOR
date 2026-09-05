@@ -15,9 +15,9 @@ from typing import Optional
 
 TOTAL_SUPPLY_CAP = 10_000_000  # Hard cap — immutable
 GENESIS_SEASON = 1
-INITIAL_REWARD = 500_000  # Season 1 reward pool
-DECAY_FACTOR = 0.85  # Each season awards 85% of the prior season
-MIN_SEASON_REWARD = 100  # Floor — never less than this per season
+INITIAL_REWARD = 500_000  # season 1 pool, in ACRV tokens
+DECAY_FACTOR = 0.85
+MIN_SEASON_REWARD = 100
 
 
 def season_reward(season: int) -> int:
@@ -46,7 +46,7 @@ class RarityTier:
     emoji: str
     description: str
     rank_pct_max: float  # top N% of field qualifies (1.0 = all)
-    condition: str  # human-readable additional condition
+    condition: str
     max_ever: Optional[int]  # None = unlimited within season budget
     base_value: int  # ACRV tokens awarded per win
 

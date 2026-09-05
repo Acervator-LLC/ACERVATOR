@@ -1,23 +1,9 @@
-"""Issue #128 R6 — the History tab keeps every control after the swap.
+"""The History tab keeps every control after the table became `HistoryWebTable`.
 
-WHAT IS BEING PROVED
-====================
-``HistoryTab``'s ``QTableWidget`` is now a ``HistoryWebTable``: React
-inside the Chromium PySide6 ships. Everything else in the tab is
-unchanged. This module drives the twenty-one History functions named in
-``docs/engineering-notes/2026-08-25_subsystem_capability_matrix.md`` (level two,
-``HISTORY/*``) and asserts each one still does what it did.
-
-DRIVEN, NOT INSPECTED. A control that exists is not a control that works.
-The CSV file is read back off disk, the fetch runs, a filter narrows the
-rows the BROWSER drew, and the Simulator's slot receives the list.
-
-THE VACUOUS-PASS CONTROL
-========================
-A tab that renders nothing loses no feature detectably.
-``test_the_fixture_is_not_vacuous`` asserts non-empty rows and non-empty
-cells first, and ``test_a_severed_push_leaves_the_table_empty`` proves
-that assertion can fail.
+Each test drives one function: the CSV is read back off disk, `refresh` runs the
+real fetch, a filter narrows the rows the browser drew, and the Simulator slot
+receives the list. `_assert_not_vacuous` requires rows and filled cells first,
+and `test_a_severed_push_leaves_the_table_empty` proves that assertion can fail.
 """
 
 from __future__ import annotations
@@ -209,35 +195,6 @@ def _voting_entry(bot_id: str, ts: float) -> dict:
 # ── the browser reader ─────────────────────────────────────────────────
 
 
-def _code_of(path: Path) -> str:
-    """The module's CODE, with docstrings and comments removed.
-
-    A name discussed in prose is not a call. This tab's comments carry a
-    changelog naming the fetcher it retired, so a raw text scan would
-    report a second data source that is not there.
-    """
-    import io
-    import tokenize
-
-    kept: list[str] = []
-    previous = tokenize.INDENT
-    with open(path, "r", encoding="utf-8") as handle:
-        text = handle.read()
-    for tok in tokenize.generate_tokens(io.StringIO(text).readline):
-        if tok.type == tokenize.COMMENT:
-            continue
-        if tok.type == tokenize.STRING and previous in (
-            tokenize.INDENT,
-            tokenize.NEWLINE,
-            tokenize.NL,
-            tokenize.DEDENT,
-        ):
-            continue  # a docstring: the only string in statement position
-        previous = tok.type
-        kept.append(tok.string)
-    return " ".join(kept)
-
-
 def _eval_in(view: Any, script: str) -> Any:
     """Evaluate ``script`` in ``view``. A stalled browser raises.
 
@@ -342,11 +299,6 @@ def _assert_not_vacuous(dom: dict) -> None:
     assert any(t.strip() for t in filled), "every cell is blank"
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# The vacuous-pass control, and the wiring cut that must go red
-# ═══════════════════════════════════════════════════════════════════════
-
-
 def test_the_fixture_is_not_vacuous(qapp: QApplication) -> None:
     """Thirteen rows, thirteen columns, and a colour actually set."""
     tab = _loaded(qapp)
@@ -386,11 +338,6 @@ def test_a_severed_push_leaves_the_table_empty(
             _assert_not_vacuous(dom)
     finally:
         tab.deleteLater()
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# HISTORY/trade-list
-# ═══════════════════════════════════════════════════════════════════════
 
 
 def test_from_the_exchange(
@@ -491,35 +438,64 @@ def test_which_bot_made_it(qapp: QApplication) -> None:
         tab.deleteLater()
 
 
-def test_only_live_bots(qapp: QApplication) -> None:
-    """HISTORY/trade-list/only-live-bots — no Simulator fill appears.
+def test_only_live_bots(
+    qapp: QApplication, async_loop, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The drawn rows are exactly what `fetch_all_history_chunked` returned.
 
-    The exclusion lives in ``history_helpers``' fetch, which walks the
-    live bot manager's own (exchange, symbol) pairs. The tab must still
-    take its rows from that fetcher and add no second source.
+    A Simulator fill that fetcher withholds reaches no cell of `_dom`.
     """
-    from src.gui import history_tab as hist
+    import src.exchange.history_helpers as helpers
 
-    source = Path(hist.__file__).read_text(encoding="utf-8")
-    imports = [
-        line
-        for line in source.splitlines()
-        if "import" in line and "fetch_all_history_chunked" in line
-    ]
-    assert len(imports) == 1, imports
-    assert "history_helpers" in imports[0]
-    # No second source. Scanned as CODE: the tab's comments carry a
-    # changelog that names the retired fetcher in prose.
-    code = _code_of(Path(hist.__file__))
-    for forbidden in ("get_my_trades", "SimBot", "simulator_tab"):
-        assert forbidden not in code, forbidden
-    assert "fetch_all_history_chunked" in code
+    live = _mixed_rows(4)
+    simulator = _row("sim-fill-1", symbol="SIMU/USD", ts=BASE_TS - 30)
+
+    async def _live_only(bot_manager: Any, since_ts: float, *a: Any, **kw: Any) -> list:
+        del bot_manager, since_ts, a, kw
+        return list(live)
+
+    monkeypatch.setattr(helpers, "fetch_all_history_chunked", _live_only)
+    tab = _tab(qapp, async_loop)
+    try:
+        tab._from_dt.setDateTime(QDateTime.fromSecsSinceEpoch(int(BASE_TS - 86_400)))
+        tab.refresh()
+        assert _pump(qapp, lambda: len(tab._all_trades) == len(live)), "no rows landed"
+        assert _pump(qapp, lambda: len(_dom(tab)["rows"]) == len(live))
+        dom = _dom(tab)
+        _assert_not_vacuous(dom)
+        drawn = [r["id"] for r in dom["rows"]]
+        assert drawn == [r["id"] for r in live], drawn
+        assert simulator["id"] not in drawn, drawn
+    finally:
+        tab.deleteLater()
 
 
-def test_the_second_source_scan_can_see_a_real_call() -> None:
-    """The control: the same scan DOES find a venue call in real code."""
-    code = _code_of(REPO / "src" / "exchange" / "history_helpers.py")
-    assert "get_my_trades" in code, "the scan stripped the code, not the prose"
+def test_the_table_would_have_drawn_the_simulator_fill(
+    qapp: QApplication, async_loop, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same fill is drawn once `fetch_all_history_chunked` returns it.
+
+    Without this the absence in `test_only_live_bots` is a claim about `_dom`.
+    """
+    import src.exchange.history_helpers as helpers
+
+    rows = _mixed_rows(4) + [_row("sim-fill-1", symbol="SIMU/USD", ts=BASE_TS - 30)]
+
+    async def _with_sim(bot_manager: Any, since_ts: float, *a: Any, **kw: Any) -> list:
+        del bot_manager, since_ts, a, kw
+        return list(rows)
+
+    monkeypatch.setattr(helpers, "fetch_all_history_chunked", _with_sim)
+    tab = _tab(qapp, async_loop)
+    try:
+        tab._from_dt.setDateTime(QDateTime.fromSecsSinceEpoch(int(BASE_TS - 86_400)))
+        tab.refresh()
+        assert _pump(qapp, lambda: len(tab._all_trades) == len(rows)), "no rows landed"
+        assert _pump(
+            qapp, lambda: "sim-fill-1" in [r["id"] for r in _dom(tab)["rows"]]
+        ), "the table never drew the fill the fetcher supplied"
+    finally:
+        tab.deleteLater()
 
 
 def test_busy_bar_and_timeout(
@@ -558,11 +534,6 @@ def test_busy_bar_and_timeout(
     assert "> 60.0" in source
     assert "Fetch timeout (60s). Exchange may be rate-" in source
     assert hrc.FETCH_TIMEOUT_S == 60.0
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# HISTORY/filters
-# ═══════════════════════════════════════════════════════════════════════
 
 
 def test_refresh_button(
@@ -736,11 +707,6 @@ def test_reset_button(qapp: QApplication) -> None:
         tab.deleteLater()
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# HISTORY/trade-explanations
-# ═══════════════════════════════════════════════════════════════════════
-
-
 def test_grade_column(qapp: QApplication) -> None:
     """HISTORY/trade-explanations/grade-column — the A-to-F letter."""
     rows = [
@@ -864,11 +830,6 @@ def test_hover_text(qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None
         tab.deleteLater()
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# HISTORY/paging-and-export
-# ═══════════════════════════════════════════════════════════════════════
-
-
 def test_paging(qapp: QApplication) -> None:
     """HISTORY/paging-and-export/paging — Prev, Next, the page counter."""
     rows = [_row(f"p-{i:04d}", ts=BASE_TS - i * 60) for i in range(hrc.PAGE_SIZE + 7)]
@@ -953,11 +914,6 @@ def test_export_csv(
         assert [line[-1] for line in written[1:]] == [r["id"] for r in rows]
     finally:
         tab.deleteLater()
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# HISTORY/feeds-the-simulator and HISTORY/emitter-network
-# ═══════════════════════════════════════════════════════════════════════
 
 
 def test_hands_over_ytd(

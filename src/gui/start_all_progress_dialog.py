@@ -1,20 +1,11 @@
-"""
-src/gui/start_all_progress_dialog.py — v3.16.7
+"""Progress dialog for ``BotManager.start_all``.
 
-Progress dialog for staggered bulk bot starts. Operator directive
-2026-04-28: "need to stagger auto-start bots with a pop-up notice.
-Tired of starting them one by one with each new build."
-
-Behavior:
-  - Modeless QDialog with a count "{started}/{total} bots started"
-  - List of bots already started (live-updates as each comes online)
-  - Cancel button (calls bot_manager.cancel_start_all())
-  - Auto-closes when phase=='done' or phase=='cancelled'
-
-The dialog subscribes to the event bus's
-'bot_manager.start_all_progress' topic. The engine emits these
-events from BotManager.start_all() with phase ∈
-{begin, bot_started, done, cancelled}.
+``StartAllProgressDialog`` subscribes to ``start_all_progress_surface.TOPIC``
+and re-emits each event on ``_progress_signal`` for the GUI thread.
+``_handle_progress_main_thread`` answers the phases begin, bot_starting,
+bot_started, bot_timeout, done and cancelled, and ``_on_cancel`` calls
+``cancel_start_all``. Every word, colour, size and delay it paints is read
+from ``start_all_progress_surface`` at the moment it paints it.
 """
 
 from __future__ import annotations
@@ -23,9 +14,10 @@ import logging
 from typing import Optional
 
 from PySide6 import QtCore, QtWidgets
-from . import design_system as ds
 
-logger = logging.getLogger("acervator.gui.start_all")
+from .main_tabs import start_all_progress_surface as surface
+
+logger = logging.getLogger(surface.LOGGER_NAME)
 
 
 class StartAllProgressDialog(QtWidgets.QDialog):
@@ -33,99 +25,67 @@ class StartAllProgressDialog(QtWidgets.QDialog):
 
     def __init__(self, bot_manager, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
-        self.setAccessibleName("Start All Progress Dialog")
+        self.setAccessibleName(surface.ACCESSIBLE_NAME)
         self._bot_manager = bot_manager
-        self.setWindowTitle("Auto-starting bots")
-        self.setModal(False)  # operator can keep using the rest of the GUI
-        self.setMinimumWidth(420)
-        self.resize(520, 360)
-        self.setStyleSheet(
-            f"QDialog {{ background: {ds.MAIN_TOOLBAR_SURFACE}; color: {ds.TEXT_CONSOLE}; }}"
-            f"QLabel {{ color: {ds.TEXT_CONSOLE}; font-family: Consolas; font-size: 11px; }}"
-            f"QListWidget {{ background: {ds.SURFACE_CHART}; color: {ds.TEXT_CONSOLE}; "
-            f"border: 1px solid {ds.MAIN_SEPARATOR}; font-family: Consolas; font-size: 10px; }}"
-            f"QPushButton {{ background: {ds.MAIN_BUTTON_SURFACE}; color: {ds.TEXT_CONSOLE}; "
-            f"border: 1px solid {ds.MAIN_BUTTON_BORDER}; padding: 6px 18px; "
-            "font-family: Consolas; font-size: 10px; }"
-            f"QPushButton:hover {{ background: {ds.MAIN_BUTTON_HOVER}; }}"
-            f"QPushButton:disabled {{ color: {ds.TEXT_PLACEHOLDER}; "
-            f"border-color: {ds.MAIN_SEPARATOR}; }}"
-        )
+        self.setWindowTitle(surface.WINDOW_TITLE)
+        self.setModal(surface.MODAL)  # operator can keep using the rest of the GUI
+        self.setMinimumWidth(surface.MINIMUM_WIDTH_PX)
+        self.resize(*surface.SIZE_PX)
+        self.setStyleSheet(surface.STYLE_SHEET)
 
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(*surface.MARGINS_PX)
+        layout.setSpacing(surface.SPACING_PX)
 
-        self._headline = QtWidgets.QLabel("Preparing to auto-start bots...")
+        self._headline = QtWidgets.QLabel(surface.HEADLINE_INITIAL_TEXT)
         f = self._headline.font()
-        f.setPointSize(12)
-        f.setBold(True)
+        f.setPointSize(surface.HEADLINE_POINT_SIZE)
+        f.setBold(surface.HEADLINE_BOLD)
         self._headline.setFont(f)
         layout.addWidget(self._headline)
 
-        self._subline = QtWidgets.QLabel(
-            "Bots are started one at a time with a ~2.5-second pause "
-            "between each (verify-then-next + a 2s minimum gap so the "
-            "per-exchange CCXT call queue has time to drain). Click "
-            "Cancel to abort the remaining bots — bots already started "
-            "will keep running."
-        )
-        self._subline.setWordWrap(True)
-        self._subline.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL};")
+        self._subline = QtWidgets.QLabel(surface.SUBLINE_TEXT)
+        self._subline.setWordWrap(surface.SUBLINE_WORD_WRAP)
+        self._subline.setStyleSheet(surface.SUBLINE_STYLE)
         layout.addWidget(self._subline)
 
         self._list = QtWidgets.QListWidget()
-        layout.addWidget(self._list, 1)
+        layout.addWidget(self._list, surface.LIST_STRETCH)
 
         button_row = QtWidgets.QHBoxLayout()
-        button_row.addStretch(1)
+        button_row.addStretch(surface.BUTTON_ROW_LEADING_STRETCH)
 
-        self._cancel_btn = QtWidgets.QPushButton("Cancel remaining")
+        self._cancel_btn = QtWidgets.QPushButton(surface.CANCEL_TEXT)
+        self._cancel_btn.setEnabled(surface.CANCEL_ENABLED_AT_START)
         self._cancel_btn.clicked.connect(self._on_cancel)
         button_row.addWidget(self._cancel_btn)
 
-        self._close_btn = QtWidgets.QPushButton("Close")
-        self._close_btn.setEnabled(False)
+        self._close_btn = QtWidgets.QPushButton(surface.CLOSE_TEXT)
+        self._close_btn.setEnabled(surface.CLOSE_ENABLED_AT_START)
         self._close_btn.clicked.connect(self.accept)
         button_row.addWidget(self._close_btn)
 
         layout.addLayout(button_row)
 
-        # Subscribe to engine events
         try:
             from src.core.event_bus import get_event_bus
 
             self._bus = get_event_bus()
-            self._unsub = self._bus.subscribe(
-                "bot_manager.start_all_progress", self._on_progress_event
-            )
-        except Exception:
+            self._unsub = self._bus.subscribe(surface.TOPIC, self._on_progress_event)
+        except Exception as _sub_exc:
+            logger.exception(surface.SUBSCRIBE_FAILED_LOG, _sub_exc)
             self._bus = None
             self._unsub = None
 
-        # Bridge cross-thread events to the GUI thread via Qt signal
         self._progress_signal.connect(self._handle_progress_main_thread)
 
-    # Signal carries (phase, total, started, bot_id_or_empty)
+    # Signal carries (phase, total, started, bot_id)
     _progress_signal = QtCore.Signal(str, int, int, str)
 
     def _on_progress_event(self, event) -> None:
-        """Subscriber callback. Runs on whatever thread emitted the event.
-        Re-emit as a Qt signal so the actual UI update runs on the GUI thread."""
-        # v3.24.21 — `event.payload` never existed. EventBus.emit builds
-        # `Event(topic=topic, data=kwargs)` (event_bus.py:136), and
-        # Event.__getattr__ raises AttributeError("Event has no data
-        # field 'payload'") for anything not in `data`. Every one of the
-        # six emits in BotManager.start_all passes its fields as kwargs,
-        # so they land in `.data`.
-        #
-        # The bare `except Exception: pass` below swallowed that
-        # AttributeError on every single event, so _progress_signal never
-        # fired and _handle_progress_main_thread was unreachable. The
-        # operator-visible symptom: Start All opens a dialog stuck on
-        # "Preparing to auto-start bots..." with an empty list and a
-        # disabled Close button for the entire staggered start, which
-        # then never auto-dismisses.
+        """Read ``phase``, ``total``, ``started`` and ``bot_id`` off
+        ``event.data``. Re-emits them on ``_progress_signal``."""
+        # EventBus.emit puts its kwargs in Event.data; there is no payload field.
         try:
             data = event.data
             phase = data.get("phase", "")
@@ -134,64 +94,58 @@ class StartAllProgressDialog(QtWidgets.QDialog):
             bot_id = str(data.get("bot_id", "") or "")
             self._progress_signal.emit(phase, total, started, bot_id)
         except (AttributeError, TypeError, ValueError) as _pe_exc:
-            logger.exception(
-                "Start All progress event dropped (%s): %s",
-                type(_pe_exc).__name__,
-                _pe_exc,
-            )
+            logger.exception(surface.EVENT_DROPPED_LOG, type(_pe_exc).__name__, _pe_exc)
 
     @QtCore.Slot(str, int, int, str)
     def _handle_progress_main_thread(
         self, phase: str, total: int, started: int, bot_id: str
     ) -> None:
-        if phase == "begin":
+        if phase == surface.BEGIN:
             if total == 0:
-                # Nothing to do — close immediately so the dialog
-                # doesn't linger over an idle screen.
-                self._headline.setText("No bots to auto-start.")
+                self._headline.setText(surface.HEADLINE_NO_BOTS)
                 self._cancel_btn.setEnabled(False)
                 self._close_btn.setEnabled(True)
-                QtCore.QTimer.singleShot(800, self.accept)
+                QtCore.QTimer.singleShot(surface.NO_BOTS_CLOSE_DELAY_MS, self.accept)
                 return
-            self._headline.setText(f"Auto-starting {total} bots (0/{total} verified)")
+            self._headline.setText(surface.HEADLINE_BEGIN.format(total=total))
             self._list.clear()
-        elif phase == "bot_starting":
-            # v3.16.11 — show the bot is currently being verified
+        elif phase == surface.BOT_STARTING:
             self._headline.setText(
-                f"Auto-starting {total} bots "
-                f"({started}/{total} verified, starting {bot_id}...)"
+                surface.HEADLINE_BOT_STARTING.format(
+                    total=total, started=started, bot_id=bot_id
+                )
             )
             if bot_id:
-                self._list.addItem(f"⏳ {bot_id} (starting...)")
+                self._list.addItem(surface.ITEM_BOT_STARTING.format(bot_id=bot_id))
                 self._list.scrollToBottom()
-        elif phase == "bot_started":
+        elif phase == surface.BOT_STARTED:
             self._headline.setText(
-                f"Auto-starting {total} bots ({started}/{total} verified)"
+                surface.HEADLINE_BOT_STARTED.format(total=total, started=started)
             )
-            if bot_id:
-                # Replace the "starting..." line with a verified line
-                self._replace_last_matching(bot_id, f"✓ {bot_id}")
-        elif phase == "bot_timeout":
-            # v3.16.11 — verify timeout; bot may still come up but we
-            # moved on. Mark as a warning so operator can review.
             if bot_id:
                 self._replace_last_matching(
-                    bot_id, f"⚠ {bot_id} (start verify timed out — may still come up)"
+                    bot_id, surface.ITEM_BOT_STARTED.format(bot_id=bot_id)
                 )
-        elif phase == "done":
-            self._headline.setText(f"Done — {total} bot(s) processed.")
+        elif phase == surface.BOT_TIMEOUT:
+            if bot_id:
+                self._replace_last_matching(
+                    bot_id, surface.ITEM_BOT_TIMEOUT.format(bot_id=bot_id)
+                )
+        elif phase == surface.DONE:
+            self._headline.setText(surface.HEADLINE_DONE.format(total=total))
             self._cancel_btn.setEnabled(False)
             self._close_btn.setEnabled(True)
-            # Auto-dismiss after 2 seconds so it doesn't linger
-            QtCore.QTimer.singleShot(2000, self.accept)
-        elif phase == "cancelled":
-            self._headline.setText(f"Cancelled — {started}/{total} bots had started.")
+            QtCore.QTimer.singleShot(surface.DONE_CLOSE_DELAY_MS, self.accept)
+        elif phase == surface.CANCELLED:
+            self._headline.setText(
+                surface.HEADLINE_CANCELLED.format(started=started, total=total)
+            )
             self._cancel_btn.setEnabled(False)
             self._close_btn.setEnabled(True)
 
     def _replace_last_matching(self, bot_id: str, new_text: str) -> None:
-        """Find the most-recent list item containing `bot_id` and replace
-        its text with `new_text`. Used to flip 'starting...' → 'verified'."""
+        """Replace the newest ``_list`` item holding ``bot_id`` with
+        ``new_text``. Appends ``new_text`` when no item matches."""
         for i in range(self._list.count() - 1, -1, -1):
             item = self._list.item(i)
             if item is None:
@@ -200,34 +154,25 @@ class StartAllProgressDialog(QtWidgets.QDialog):
                 item.setText(new_text)
                 self._list.scrollToBottom()
                 return
-        # Not found — append a new line
         self._list.addItem(new_text)
         self._list.scrollToBottom()
 
     def _on_cancel(self) -> None:
-        # v3.24.21 — was a bare swallow. If cancellation fails the UI
-        # still says "Cancelling..." while bots keep starting, so the
-        # operator is told the opposite of what is happening.
         try:
             self._bot_manager.cancel_start_all()
-        except Exception as _c_exc:  # noqa: BLE001 - UI must still respond
-            logger.exception("cancel_start_all failed: %s", _c_exc)
-            self._headline.setText("Cancel FAILED — bots may still be starting")
+        except Exception as _c_exc:
+            logger.exception(surface.CANCEL_FAILED_LOG, _c_exc)
+            self._headline.setText(surface.HEADLINE_CANCEL_FAILED)
             self._cancel_btn.setEnabled(False)
             return
         self._cancel_btn.setEnabled(False)
-        self._headline.setText("Cancelling...")
+        self._headline.setText(surface.HEADLINE_CANCELLING)
 
     def closeEvent(self, event):
-        """Unsubscribe on close to avoid leaking handlers."""
-        # v3.24.21 — was a bare swallow. A failed unsubscribe leaks this
-        # dialog's handler onto the bus for the process lifetime; the
-        # next Start All then drives a destroyed widget.
+        """Call ``_unsub``, then hand ``event`` to ``QDialog.closeEvent``."""
         try:
             if self._unsub and callable(self._unsub):
                 self._unsub()
-        except Exception as _u_exc:  # noqa: BLE001 - close must proceed
-            logger.exception(
-                "Start All progress unsubscribe failed, handler leaked: " "%s", _u_exc
-            )
+        except Exception as _u_exc:
+            logger.exception(surface.UNSUBSCRIBE_FAILED_LOG, _u_exc)
         super().closeEvent(event)

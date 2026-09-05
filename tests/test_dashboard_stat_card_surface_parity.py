@@ -110,10 +110,8 @@ def digest(value) -> str:
     return hashlib.sha256(repr(canonical(value)).encode("utf-8")).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The privacy registry is process-wide. Both sides read it, so every
 # test is given a fresh one and the process singleton is put back.
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -160,9 +158,7 @@ def set_masks(field_ids) -> None:
         live.set_masked(field_id, True)
 
 
-# ---------------------------------------------------------------------
 # The inputs. One scenario drives both sides.
-# ---------------------------------------------------------------------
 
 LONG_TEXT = "L" * 200
 MARKUP_TEXT = '<b onclick="x">bold &amp; "quoted"</b>'
@@ -359,9 +355,7 @@ TYPE_NAMED_WORDING = (
 REFUSING_SCENARIOS = SHARED_WORDING + TYPE_NAMED_WORDING
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def press_event(button_name):
@@ -452,9 +446,7 @@ def flip_registry(field_id) -> None:
     live.set_masked(field_id, not live.is_masked(field_id))
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides
-# ---------------------------------------------------------------------
 
 
 def property_name(widget) -> str:
@@ -612,9 +604,7 @@ def new_outcome(spec):
     return outcome(lambda: surface_trace(surface.build_view_model(drive_new(spec))))
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", SCENARIO_NAMES)
@@ -777,9 +767,7 @@ def test_a_left_press_fires_the_signal_and_a_right_press_does_not():
     )
 
 
-# ---------------------------------------------------------------------
 # The enumeration: connect sites, classes, methods, signals, timers, bus
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -993,9 +981,7 @@ def test_the_card_subscribes_to_no_bus_topic_and_the_counter_can_report():
     assert "wire.created" in neighbour
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 def named_payloads() -> dict:
@@ -1245,9 +1231,7 @@ def test_every_branch_marker_fires_and_ties_to_what_the_operator_sees():
     assert ignored.clicks == 0
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_moved_in_the_shipped_card(monkeypatch):
@@ -1343,9 +1327,7 @@ def test_the_field_ids_this_card_carries_are_ones_the_registry_knows():
     assert UNKNOWN_FIELD_ID not in registered
 
 
-# ---------------------------------------------------------------------
 # The colours
-# ---------------------------------------------------------------------
 
 
 def canonical_colour(colour):
@@ -1402,9 +1384,7 @@ def test_the_white_hover_colour_is_compared_as_text_because_its_channels_match()
     assert ds.TEXT_MAX in old["dot"]["style_sheet"]
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 @functools.lru_cache(maxsize=1)
@@ -1659,9 +1639,7 @@ def test_the_mask_marker_and_a_label_measure_different_widths():
     assert QLabel(marker).sizeHint().width() != QLabel(label).sizeHint().width()
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_values_no_picture_carries_are_read_off_both_sides():
@@ -1710,9 +1688,7 @@ def test_the_property_reader_tells_the_two_declared_properties_apart():
     assert value.property("muted") is None
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def bridge_answer(params, request_id=1):

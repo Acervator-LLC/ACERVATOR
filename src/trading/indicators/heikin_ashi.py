@@ -18,9 +18,7 @@ from .types import (
 )
 
 
-# ---------------------------------------------------------------------------
 # Heikin Ashi candle conversion
-# ---------------------------------------------------------------------------
 @dataclass
 class HACandle:
     """Heikin Ashi candle."""

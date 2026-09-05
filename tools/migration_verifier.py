@@ -1,74 +1,12 @@
-"""Prove that a GitHub organization migration kept what the repository needs.
+"""Compare a repository against facts captured before a GitHub organization move.
 
-Why this exists
----------------
-Moving this repository to an organization touches things that no test in
-the suite watches. Four of them fail SILENTLY, which is the whole problem:
-
-* `core.hooksPath` is LOCAL CONFIG, not repository content. It reads
-  `.githooks` in the operator's tree today. A fresh clone has it UNSET, and
-  `.githooks/pre-push` then never runs. The gate-stamp refusal stops
-  guarding and nothing announces it. This is the highest-value single check
-  in this file.
-* A second working tree carries its own `origin`. Updating one and not the
-  other leaves a push, or a build, going to the wrong place. `--desktop`
-  names that tree; with no argument only the primary tree is measured.
-* `.gate_stamp.json` binds a commit SHA. A transfer preserves SHAs; a
-  history rewrite does not, and the stamp then proves a commit that no
-  longer exists.
-* The tree cites issue numbers in prose -- "issue #96 measured that ...",
-  "#102's harness". Those citations are not links. Nothing breaks if the
-  numbers stop matching; the text simply becomes wrong-but-plausible.
-
-The central design problem
---------------------------
-A verifier cannot check "the issue count matches" without knowing what it
-was. A verifier with no baseline can only check SELF-CONSISTENCY, and
-self-consistency is exactly what a silent failure preserves. So this tool
-has two modes and the second one refuses without the first:
-
-    python -m tools.migration_verifier capture --out migration_baseline.json
-    python -m tools.migration_verifier verify --baseline migration_baseline.json
-
-`capture` runs BEFORE the move and records the facts that must survive.
-`verify` runs AFTER, re-measures the same facts, and answers GREEN or RED
-per item, naming what moved. With no baseline it REFUSES. It does not
-print a partial answer, because a partial answer reads like a pass.
-
-Three statuses, and UNKNOWN is not a pass
------------------------------------------
-GREEN, RED, UNKNOWN. UNKNOWN is what a check reports when it could not
-measure its subject -- no `gh`, no token, a tree that is not on this
-machine. The exit code separates it from GREEN (see `main`), because a
-check that did not run must never read as a check that passed.
-
-This tool is READ-ONLY, by construction and not by intention
-------------------------------------------------------------
-It reports; the operator acts. The read-only property is enforced in code
-rather than promised in a docstring:
-
-* `run_git` validates the subcommand against `GIT_READS` before spawning
-  anything, and validates the FLAGS too, because `git config` and
-  `git remote` both write in some argument forms and read in others.
-* `GhCliReader.run` validates against `GH_READS` and refuses any `--method`
-  that is not GET.
-* `assert_writable` refuses any output path under `~/.acervator/` or
-  `~/.acervator_logs/`. The tool never reads credentials and never writes
-  into the runtime directories.
-
-`tests/test_migration_verifier.py` drives each of those guards with the
-call it must refuse. A guard with no control is decoration.
-
-The network is injectable
--------------------------
-Nothing here calls GitHub during a test. `capture` and `verify` take a
-`GitHubReader`; the default one shells out to `gh`, and the tests pass a
-fake built from fixtures. `gh` is looked for on PATH FIRST and then in
-the standard install directories, because a GitHub CLI that is
-installed but off PATH is the machine the operator actually has. When
-`gh` is in neither place the reader raises `GitHubUnavailable`, the
-GitHub-facing checks report UNKNOWN with the reason, and `--issues-json`
-lets the operator supply an export instead.
+`capture` records both working trees, the tracked file list, the `#N`
+citations in prose and the GitHub issue set; `verify` re-measures them and
+returns one `Check` per fact, each `GREEN`, `RED` or `UNKNOWN`.
+`load_baseline` refuses without a capture file and `main` gives `UNKNOWN` an
+exit code of its own. `run_git`, `GhCliReader` and `assert_writable` hold the
+module to reads, and `GitHubReader` lets a test supply issue data without a
+network call.
 """
 
 from __future__ import annotations
@@ -87,62 +25,22 @@ from pathlib import Path
 from typing import Any, Protocol
 
 # ruff: noqa: S603
-# S607 is fixed by construction below and NOT suppressed, following the
-# reasoning at the top of dev_harness/harness/coding_archetype.py. Both
-# `git` and `gh` resolve through `resolve_program` and are spawned by
-# absolute path, so no executable planted earlier on PATH can run under
-# the operator's token. `resolve_program` asks `shutil.which` first and
-# then a FIXED list of standard install directories held in this file;
-# it never searches a caller-supplied directory and never walks a tree,
-# so the fallback adds no directory that a PATH entry could not already
-# hold. S603 is the residue: every argv here carries a
-# caller-supplied path or repository name, which is a variable by
-# definition, and ruff draws S603 on any argv holding a variable.
+# Every argv here carries a caller-supplied path or repository name.
 
 SCHEMA = "acervator.migration_baseline/1"
 
-#: No second tree unless `--desktop` names one. A stale remote in a build
-#: tree is worse than one in the primary tree, so it is worth naming.
+#: The `--desktop` default: no second tree is measured.
 NO_SECOND_TREE = ""
 
-#: Never read, never written. The tool has no business in either.
 FORBIDDEN_DIRS = (".acervator", ".acervator_logs")
 
-#: An issue citation in prose. Four forms, because bare `#N` DOES NOT WORK
-#: and the measurement that proved it is worth keeping.
-#:
-#: A bare `#(\d+)` was tried first and scored 2040 hits across 200 files.
-#: Sampling the sites showed most of them were not issues at all:
-#:
-#:     ACERVATOR_HOP3.md:372   Captions: #2d0000 | Table body: #1a0000
-#:     generate_essay_ja.py:75 DARK = HexColor("#0C0C18")
-#:     .../01b_stack_mode_redesign_props.md:131  (Open Q #7)
-#:     docs/EMITTER_IDENTIFICATION.md:738        Queue item #2 instrumented
-#:
-#: CSS hex colours (`#888`, `#555`, `#2d0000`) and ordinals ("Queue item
-#: #2", "Open Q #7") dominated the count. `#2` alone scored 140 and `#0`
-#: scored 96. A pattern that wide would make `issue_numbers_still_resolve`
-#: report false REDs forever, because no issue #888 exists and none should.
-#:
-#: The anchored form below scores 479 hits in 125 files, and its shape
-#: matches the operator's independent 2026-08-13 measurement EXACTLY where
-#: that measurement is stable: 5 `.sh`, 2 `.spec`, 1 `.toml`, 1 `.ps1`, 1
-#: no-suffix file (`.gitignore`). `.py` and `.md` read higher (91 and 21
-#: against 77 and 17) because issues #94 to #104 landed in between. Two
-#: independent measurements agreeing on six of eight buckets is the
-#: evidence that this is the right pattern.
-#:
-#: It still matches foreign issues -- `#26170` is a ccxt issue cited in
-#: src/exchange/market_pairs_scout.py. That is harmless, because every
-#: reference check is BASELINE-RELATIVE: a citation that did not resolve
-#: before the move is not something the move broke. See the long note in
-#: `check_references` for why that framing is the only sound one.
+#: An unanchored `#(\d+)` also matches hex colours and ordinals.
 ISSUE_REF = re.compile(
     r"(?i)(?:"
-    r"issues?\s+#(\d{1,5})"  # "issue #96 measured that ..."
-    r"|#(\d{1,5})[\u2019']s"  # "#102's harness"
-    r"|\(#(\d{1,5})\)"  # "fix(#101): ..."
-    r"|/issues/(\d{1,5})"  # a full GitHub issue URL
+    r"issues?\s+#(\d{1,5})"
+    r"|#(\d{1,5})[\u2019']s"
+    r"|\(#(\d{1,5})\)"
+    r"|/issues/(\d{1,5})"
     r")",
 )
 
@@ -150,14 +48,8 @@ ISSUE_REF = re.compile(
 def issue_citations(text: str) -> list[tuple[str, int]]:
     """Every issue citation in `text` as (number, 1-based line).
 
-    Scans the WHOLE text rather than line by line, because `issues?\\s+#`
-    spans a line break in wrapped docstrings -- "... repaired under\\n
-    issue #68". A per-line scan silently drops those, which is the same
-    class of quiet undercount this whole tool exists to catch. The line
-    number is derived from the match offset instead.
-
-    `ISSUE_REF` has one group per citation form, so exactly one group is
-    populated per match. Flattening here keeps callers from knowing that.
+    `ISSUE_REF` is applied to the whole `text`, so a citation wrapped across
+    a line break still matches, and one group per form is flattened to one.
     """
     found: list[tuple[str, int]] = []
     for match in ISSUE_REF.finditer(text):
@@ -172,8 +64,8 @@ def issue_numbers_in(text: str) -> list[str]:
     return [number for number, _line in issue_citations(text)]
 
 
-#: Read-only git subcommands. `config` and `remote` appear here because
-#: SOME of their argument forms read; `_git_flags_are_read_only` decides.
+#: `config` and `remote` also have writing forms; `_git_flags_are_read_only`
+#: separates them.
 GIT_READS = frozenset(
     {
         "cat-file",
@@ -187,22 +79,11 @@ GIT_READS = frozenset(
     }
 )
 
-#: Read-only `gh` subcommands. `api` appears because a GET reads;
-#: `_gh_flags_are_read_only` refuses every other method.
+#: `_gh_flags_are_read_only` narrows `api` to GET and `issue` to `list`.
 GH_READS = frozenset({"api", "issue"})
 
-#: Where the GitHub CLI puts itself when it does not reach PATH.
-#:
-#: Measured 2026-08-24 on the operator's machine: `shutil.which("gh")`
-#: returns None in Git Bash AND in PowerShell, while
-#: `C:\\Program Files\\GitHub CLI\\gh.exe` exists and runs. A `capture`
-#: that asks PATH only then prints `gh is not installed`, which is
-#: FALSE, and sends the operator to reinstall what he already has.
-#:
-#: Each row is (environment variable, directory under it). A row whose
-#: variable is unset contributes nothing. An empty variable name means
-#: the directory is absolute, for the POSIX installs. The list is FIXED
-#: here: no row is read from PATH, no directory is walked.
+#: Rows are (environment variable, directory under it); an empty variable
+#: name marks an absolute POSIX directory.
 GH_INSTALL_DIRS: tuple[tuple[str, str], ...] = (
     ("ProgramFiles", "GitHub CLI"),
     ("ProgramW6432", "GitHub CLI"),
@@ -216,8 +97,7 @@ GH_INSTALL_DIRS: tuple[tuple[str, str], ...] = (
     ("", "/opt/homebrew/bin"),
 )
 
-#: The file names `gh` carries. PATHEXT is not consulted, because
-#: nothing in the fallback resolves through PATH.
+#: `gh_candidates` joins each of these to every `GH_INSTALL_DIRS` row.
 GH_EXE_NAMES = ("gh.exe", "gh")
 
 GREEN = "GREEN"
@@ -255,7 +135,7 @@ class Check:
 
 
 class GitHubReader(Protocol):
-    """The injectable seam. Tests pass a fake; nothing calls the network."""
+    """What `capture` and `verify` accept in place of `GhCliReader`."""
 
     def issues(self, repo: str) -> list[dict[str, Any]]:
         """Every issue, each a dict with number, title and state."""
@@ -266,23 +146,13 @@ class GitHubReader(Protocol):
         ...
 
 
-# --------------------------------------------------------------------------
-# Guards. Each one has a control in the test file that drives the refusal.
-# --------------------------------------------------------------------------
-
-
 def forbidden_roots(home: Path) -> tuple[Path, ...]:
     """The runtime directories this tool must never touch."""
     return tuple((home / name).resolve() for name in FORBIDDEN_DIRS)
 
 
 def assert_writable(path: Path, home: Path) -> None:
-    """Refuse an output path under the runtime directories.
-
-    Credentials live in `~/.acervator/`, and the logs the bot writes live
-    in `~/.acervator_logs/`. A migration tool has no reason to write into
-    either, so it cannot.
-    """
+    """Raise `ReadOnlyViolation` when `path` is under a `forbidden_roots` entry."""
     target = path.resolve()
     for root in forbidden_roots(home):
         if target == root or root in target.parents:
@@ -294,12 +164,9 @@ def assert_writable(path: Path, home: Path) -> None:
 
 
 def _git_flags_are_read_only(args: Sequence[str]) -> bool:
-    """Decide whether a `config` or `remote` invocation only reads.
+    """True when a `config` or `remote` argument form only reads.
 
-    `git config core.hooksPath x` writes and `git config --get
-    core.hooksPath` reads, and the subcommand is identical. The same is
-    true of `git remote get-url` against `git remote set-url`. Allowing
-    the subcommand without reading the flags would allow a mutation.
+    Every other subcommand in `GIT_READS` answers True unconditionally.
     """
     if not args:
         return False
@@ -316,14 +183,9 @@ def gh_candidates(
     *,
     posix: bool | None = None,
 ) -> tuple[Path, ...]:
-    """Every standard `gh` install path, in search order.
+    """Every `GH_INSTALL_DIRS` path joined to `GH_EXE_NAMES`, in search order.
 
-    Built from `GH_INSTALL_DIRS`, which is a fixed list in this file.
-    Nothing here reads PATH and nothing walks a directory tree, so the
-    fallback cannot reach a location that a caller chose.
-
-    `env` and `posix` are seams, so a test can drive the search on a
-    platform it is not running on. Both default to this machine.
+    `env` and `posix` default to this machine and let a caller drive another.
     """
     source = os.environ if env is None else env
     on_posix = os.name != "nt" if posix is None else posix
@@ -331,11 +193,7 @@ def gh_candidates(
     for variable, tail in GH_INSTALL_DIRS:
         if not variable:
             if not on_posix:
-                # A bare POSIX path is DRIVE-RELATIVE on Windows.
-                # `Path("/usr/bin/gh")` probes `C:\usr\bin\gh` from
-                # a C: working directory and `D:\usr\bin\gh` from a
-                # D: one, so the directory probed would depend on
-                # where the operator stood. Skip these rows there.
+                # On Windows a bare POSIX path resolves against the current drive.
                 continue
             base = Path(tail)
         else:
@@ -354,11 +212,9 @@ def resolve_program(
     name: str,
     env: Mapping[str, str] | None = None,
 ) -> str | None:
-    """Find `name` on PATH first, then in the standard install dirs.
+    """The absolute path to `name`, from PATH first and then `gh_candidates`.
 
-    PATH answers first, so an operator who put a chosen `gh` on PATH
-    keeps that one. Only `gh` has a fallback list. `git` needs none: a
-    machine that cloned this repository has `git` on PATH already.
+    Only `gh` has the `gh_candidates` fallback; any other `name` gets PATH alone.
     """
     on_path = shutil.which(name)
     if on_path is not None:
@@ -372,14 +228,17 @@ def resolve_program(
 
 
 def _not_found(name: str) -> str:
-    """Say where the program was looked for. The message must be TRUE."""
+    """The message naming where `resolve_program` looked for `name`."""
     if name == "gh":
         return "gh was not found on PATH or in any standard install " "directory"
     return f"{name} was not found on PATH"
 
 
 def default_runner(argv: Sequence[str], cwd: Path | None) -> Completed:
-    """Spawn a program by ABSOLUTE path, so PATH cannot be hijacked."""
+    """Spawn `argv` with its program resolved by `resolve_program`.
+
+    Returns `Completed` with code 127 when `resolve_program` answers None.
+    """
     exe = resolve_program(argv[0])
     if exe is None:
         return Completed(127, "", _not_found(argv[0]))
@@ -404,11 +263,10 @@ def run_git(
     tree: Path,
     runner: Runner | None = None,
 ) -> Completed:
-    """Run one READ-ONLY git command in `tree`.
+    """Run one git command in `tree` and return its `Completed`.
 
-    Raises ReadOnlyViolation before spawning anything when the subcommand
-    or its flags could mutate. The check happens here, once, rather than
-    at each call site, so a new call site cannot forget it.
+    Raises `ReadOnlyViolation` before spawning when `GIT_READS` or
+    `_git_flags_are_read_only` refuses the argument form.
     """
     if not args:
         msg = "run_git needs a subcommand"
@@ -427,11 +285,6 @@ def run_git(
     return use(["git", "-C", str(tree), *args], None)
 
 
-# --------------------------------------------------------------------------
-# GitHub, behind the seam.
-# --------------------------------------------------------------------------
-
-
 def _gh_flags_are_read_only(args: Sequence[str]) -> bool:
     """Refuse any `gh api` call that is not a GET, and any field write."""
     if args and args[0] == "issue":
@@ -447,21 +300,10 @@ def _gh_flags_are_read_only(args: Sequence[str]) -> bool:
 
 
 class GhCliReader:
-    r"""Reads GitHub through the `gh` CLI, GET only.
+    """Reads GitHub through the `gh` CLI.
 
-    Measured 2026-08-24: `gh` IS installed on the operator's machine,
-    at `C:\Program Files\GitHub CLI\gh.exe`, and it is on PATH in
-    neither Git Bash nor PowerShell. So `run` resolves the program
-    through `resolve_program`, which asks PATH first and the standard
-    install directories second. When neither answers, this reader
-    raises and the GitHub-facing checks report UNKNOWN. That is the
-    honest outcome, and the message then says where it looked.
-    `--issues-json` exists so the operator can still capture issue
-    facts from an export.
-
-    Discovery happens INSIDE the runner, after `run` has validated the
-    subcommand and the flags. A wider search therefore reaches no
-    command that the narrow one refused.
+    `run` validates against `GH_READS` and `_gh_flags_are_read_only` before the
+    runner resolves `gh`, and raises `GitHubUnavailable` when nothing answers.
     """
 
     def __init__(self, runner: Runner | None = None) -> None:
@@ -516,12 +358,9 @@ class GhCliReader:
         return [row for row in parsed if isinstance(row, dict)]
 
     def branch_protection(self, repo: str, branch: str) -> tuple[str, str]:
-        """Probe branch protection without asserting what it should be.
+        """Return (state, detail) for `branch` in `repo`.
 
-        Measured 2026-08-13 on the personal account: HTTP 403, "Upgrade to
-        GitHub Pro or make this repository public." An organization may
-        change that answer, which is the reason to re-probe rather than
-        carry the old result forward.
+        A plan that withholds the endpoint answers `unavailable-on-plan`.
         """
         try:
             raw = self.run(
@@ -543,24 +382,18 @@ class GhCliReader:
 
 
 class JsonFileReader:
-    """Reads issue facts from an export instead of from the network.
+    """Reads issue facts from a `gh issue list --json` export at `path`.
 
-    The export is whatever `gh issue list --json number,title,state`
-    produces, saved to a file, with a BOM or without one. This keeps
-    `capture` usable on a machine that cannot reach `gh` at all.
+    `branch_protection` always answers UNKNOWN: an export records no rules.
     """
 
     def __init__(self, path: Path) -> None:
         self.path = path
 
     def issues(self, repo: str) -> list[dict[str, Any]]:
-        """Every issue in the export. `repo` is accepted and not used.
+        """Every issue in `self.path`, decoded as `utf-8-sig`.
 
-        Read as `utf-8-sig`, which accepts a BOM and accepts its
-        absence. The documented way to make this export is `gh issue
-        list --json number,title,state | Out-File -Encoding utf8`, and
-        Windows PowerShell 5.1 writes a BOM there. Plain `utf-8` then
-        refuses the file that the tool's own instruction produced.
+        `repo` is accepted and not used.
         """
         del repo
         try:
@@ -631,11 +464,6 @@ def probe_github(
     }
 
 
-# --------------------------------------------------------------------------
-# Measuring one working tree.
-# --------------------------------------------------------------------------
-
-
 def _first_line(text: str) -> str:
     """The first non-blank line, stripped, or ''."""
     stripped = text.strip()
@@ -643,11 +471,9 @@ def _first_line(text: str) -> str:
 
 
 def effective_hooks_path(tree: Path, runner: Runner | None = None) -> str:
-    """The hooksPath git itself would use, or '' when unset.
+    """The `core.hooksPath` git resolves in `tree`, or '' when unset.
 
-    Read through `git config --get`, not out of `.git/config`, because the
-    value can come from the global file. Reading only the local file would
-    report UNSET for a tree where it is set globally, which is a false RED.
+    Read through `git config --get`, which answers from the global file too.
     """
     done = run_git(["config", "--get", "core.hooksPath"], tree, runner)
     return _first_line(done.out) if done.code == 0 else ""
@@ -681,10 +507,9 @@ def measure_tree(
     tree: Path | None,
     runner: Runner | None = None,
 ) -> dict[str, Any]:
-    """Every fact this tool holds about one working tree.
+    """Every fact `capture` records about one working tree, under `label`.
 
-    `tree` is None when no tree was named. Reporting that as absent keeps
-    the two-tree comparison from reading one tree twice and agreeing.
+    A `tree` of None returns the same shape with `exists` False and a reason.
     """
     if tree is None:
         return {
@@ -732,13 +557,8 @@ def measure_tree(
     }
 
 
-# --------------------------------------------------------------------------
-# Measuring the issue citations in the tree.
-# --------------------------------------------------------------------------
-
-
 def _is_text(path: Path) -> bool:
-    """A file with a NUL byte in its first block is not prose."""
+    """False when `path` holds a NUL byte in its first 8192 bytes."""
     try:
         with path.open("rb") as handle:
             return b"\x00" not in handle.read(8192)
@@ -751,10 +571,9 @@ def scan_issue_references(
     relpaths: Iterable[str],
     site_cap: int = 12,
 ) -> dict[str, Any]:
-    """Count every `#N` citation in the tracked text files.
+    """Count every `ISSUE_REF` citation across `relpaths` under `tree`.
 
-    Records the SITES as well as the counts. A count alone can say that a
-    number vanished; only a site can say which sentence now lies.
+    Each number also carries up to `site_cap` `path:line` sites.
     """
     counts: dict[str, int] = {}
     sites: dict[str, list[str]] = {}
@@ -812,11 +631,6 @@ def scan_commit_references(
     }
 
 
-# --------------------------------------------------------------------------
-# capture
-# --------------------------------------------------------------------------
-
-
 def repo_slug(url: str) -> str:
     """owner/name from a remote URL, or '' when it does not parse."""
     text = url.strip().removesuffix(".git")
@@ -853,11 +667,6 @@ def capture(
     }
 
 
-# --------------------------------------------------------------------------
-# verify
-# --------------------------------------------------------------------------
-
-
 def _tree_of(payload: dict[str, Any], label: str) -> dict[str, Any]:
     """The measured facts for one labelled tree, or an empty dict."""
     for tree in payload.get("trees", []):
@@ -877,12 +686,9 @@ def check_remotes(
     after: dict[str, Any],
     expect: str,
 ) -> list[Check]:
-    """Both trees must point at the same NEW place, and neither at the old.
+    """Whether both trees' `origin` moved, and whether they now agree.
 
-    This is the check the operator described: a migration that updates one
-    remote and not the other leaves him building from the wrong place. So
-    the question is not "did origin change" but "do BOTH agree, and has
-    either been left behind".
+    `expect` pins the exact URL; without it a URL equal to `before` is RED.
     """
     out: list[Check] = []
     urls: dict[str, str] = {}
@@ -940,12 +746,9 @@ def check_remotes(
 
 
 def check_hooks(after: dict[str, Any]) -> list[Check]:
-    """The highest-value check in the file.
+    """Whether each tree's `core.hooksPath` names a directory holding `pre-push`.
 
-    `core.hooksPath` is local config. It does not travel. A fresh clone --
-    which is exactly what a migration tempts you into making -- has it
-    unset, and `.githooks/pre-push` then never runs. Nothing announces
-    that. The gate-stamp refusal simply stops happening.
+    `measure_tree` reads `hooks_path` from local config, which no clone carries.
     """
     out: list[Check] = []
     for label in ("primary", "desktop"):
@@ -996,7 +799,7 @@ def check_gate_stamp(
     after: dict[str, Any],
     runner: Runner | None = None,
 ) -> list[Check]:
-    """The stamp binds a SHA. A transfer keeps SHAs; a rewrite does not."""
+    """Whether `read_gate_stamp` still names HEAD and the baseline commit exists."""
     out: list[Check] = []
     tree = _tree_of(after, "primary")
     was = _tree_of(before, "primary")
@@ -1080,7 +883,7 @@ def check_gate_stamp(
 
 
 def check_tracked(before: dict[str, Any], after: dict[str, Any]) -> Check:
-    """A transfer moves bytes, not content. The file list must match."""
+    """Whether `tracked_digest` and `tracked_count` still match the baseline."""
     was = _tree_of(before, "primary")
     now = _tree_of(after, "primary")
     if not now.get("exists"):
@@ -1153,19 +956,7 @@ def check_references(
         )
         return out
 
-    #: BASELINE-RELATIVE on purpose, and this is the subtle part.
-    #:
-    #: The obvious check is "every cited number exists on GitHub now". It
-    #: has a false-positive class that would make it useless: `gh issue
-    #: list` returns ISSUES ONLY, while issue and pull-request numbers come
-    #: from ONE shared sequence. Every merged PR is therefore a gap in the
-    #: issue set, and a commit message citing `fix(#101)` where 101 was a
-    #: PR would go RED forever, through no fault of the migration.
-    #:
-    #: A citation that did not resolve BEFORE the move is not something
-    #: the move broke. The question this tool exists to answer is narrower
-    #: and completely sound: did the move take away an issue that the tree
-    #: still talks about?
+    # A number absent from both sides is a pull request, not a lost issue.
     was_known = {str(number) for number in _as_dict(was_github, "issues")}
     now_known = {str(number) for number in _as_dict(now_github, "issues")}
     if not was_known:
@@ -1221,7 +1012,7 @@ def check_references(
 
 
 def check_issues(before: dict[str, Any], after: dict[str, Any]) -> list[Check]:
-    """Numbers, titles and counts. The reason to Transfer and not re-push."""
+    """Whether every baseline issue number, title and open/closed count survived."""
     out: list[Check] = []
     was = _as_dict(before, "github")
     now = _as_dict(after, "github")
@@ -1301,14 +1092,7 @@ def check_branch_protection(
     before: dict[str, Any],
     after: dict[str, Any],
 ) -> Check:
-    """Informational, never RED. It is a possibility, not a requirement.
-
-    On the personal account this was measured unavailable on 2026-08-13:
-    403, "Upgrade to GitHub Pro or make this repository public." An
-    organization may lift that. If it does, the green-gate rule can be
-    enforced SERVER-SIDE instead of by a local hook that a fresh clone
-    silently drops -- which is the failure `check_hooks` exists to catch.
-    """
+    """The branch-protection state, as GREEN or UNKNOWN and never RED."""
     was = _as_dict(before, "github")
     now = _as_dict(after, "github")
     old = str(was.get("protection", UNKNOWN.lower()))
@@ -1352,11 +1136,6 @@ def verify(
     checks.extend(check_references(before, after))
     checks.append(check_branch_protection(before, after))
     return checks
-
-
-# --------------------------------------------------------------------------
-# Command line.
-# --------------------------------------------------------------------------
 
 
 def load_baseline(path: Path) -> dict[str, Any]:

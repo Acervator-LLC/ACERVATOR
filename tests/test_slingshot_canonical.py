@@ -57,6 +57,8 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from src.trading.ta_engine import (
     Candle,
     SignalDirection,
@@ -126,10 +128,8 @@ class TestDirectionIsMomentumNotMidline:
         assert d["squeeze_bull"] is True, d
         assert d["fire_momentum"] > 0.0, d["fire_momentum"]
 
-        # NEGATIVE CONTROL -- the retired predicate, on these same
-        # candles. It calls this bar BEARISH. If this ever stops
-        # disagreeing, the series has drifted and the test above is
-        # no longer exercising the repair.
+        # Negative control: the retired predicate calls this same bar BEARISH. If
+        # it stops disagreeing, the series has drifted.
         old_squeeze_bull = close > mid
         old_squeeze_bear = close < mid
         assert old_squeeze_bull is False
@@ -151,8 +151,8 @@ class TestDirectionIsMomentumNotMidline:
         assert old_squeeze_bear != d["squeeze_bear"]
 
     def test_the_two_flags_stay_mutually_exclusive(self):
-        """`ta_invariants.py:217` pins `_excl(squeeze_bull,
-        squeeze_bear)`. A momentum sign cannot be both."""
+        """`ta_invariants.INDICATORS["slingshot"]` carries
+        `_excl(squeeze_bull, squeeze_bear)`. A momentum sign cannot be both."""
         for params in (
             self.BULL_BELOW_MID,
             self.BEAR_ABOVE_MID,
@@ -364,55 +364,117 @@ class TestOpposingSignalIsRecorded:
 # ── NO BLENDING ──────────────────────────────────────────────────────
 
 
+FORBIDDEN = (
+    ("src.trading.indicators.heikin_ashi", "compute_heikin_ashi"),
+    ("src.trading.indicators.atr", "ATRIndicator"),
+    ("src.trading.indicators.bollinger", "BollingerBands"),
+    ("src.trading.indicators.ichimoku", "IchimokuCloud"),
+    ("src.trading.indicators.helpers", "_true_range"),
+)
+
+OWN_ARITHMETIC = ("_sma_tail", "_stdev_tail", "_linreg_endpoint", "_bandwidth")
+
+
+class _Poison:
+    """Raises on any use, so a caller that reaches it cannot stay quiet."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __call__(self, *args, **kwargs):
+        del args, kwargs
+        raise AssertionError(f"Slingshot reached {self.name}")
+
+    def __getattr__(self, attribute):
+        raise AssertionError(f"Slingshot reached {self.name}.{attribute}")
+
+
+def _blend_series() -> dict:
+    """Five tapes that between them drive every branch ``compute`` has."""
+    return {
+        "flat": [
+            Candle(TS0 + i * STEP, 100.0, 100.0, 100.0, 100.0, 100.0) for i in range(80)
+        ],
+        "squeeze": _chop(44, 2.4, 0.02, (0.0, 0.0, 1.0)),
+        "release_up": _chop(44, 2.4, 0.02, (0.0, 4.0, 6.0)),
+        "release_down": _chop(44, 2.4, 0.02, (0.0, -4.0, -6.0)),
+        "trend": [_row(i, 100.0 + i * 0.5, 0.4) for i in range(80)],
+    }
+
+
+def _readable(signal) -> tuple:
+    return (signal.direction, round(signal.confidence, 12))
+
+
 class TestNoBlending:
-    """Every input must be raw candle data or Slingshot's own
-    arithmetic. This is a source-level check because a runtime one
-    would pass whenever the forbidden branch simply did not execute."""
+    """Slingshot reads raw candle fields and its own arithmetic, nothing else."""
 
-    FORBIDDEN = (
-        "compute_heikin_ashi",
-        "ATRIndicator",
-        "BollingerBands",
-        "IchimokuCloud",
-        "_true_range",
-    )
+    def test_the_module_binds_none_of_the_other_indicators(self):
+        """A blended import shows up as a name in the module's namespace."""
+        from src.trading.indicators import slingshot
 
-    def _source(self):
-        import ast
-        import inspect
+        bound = vars(slingshot)
+        for _module_name, name in FORBIDDEN:
+            assert name not in bound, f"blending: slingshot binds {name}"
 
-        from src.trading import ta_engine
+    def test_it_computes_the_same_signal_with_every_other_indicator_poisoned(
+        self, monkeypatch
+    ):
+        """Each forbidden callable is replaced where it lives, so an alias
+        or an attribute route reaches the poison too."""
+        import importlib
 
-        src = inspect.getsource(ta_engine.SlingshotIndicator)
-        return src, ast.parse(src.lstrip())
+        before = {
+            name: _readable(SlingshotIndicator().compute(candles))
+            for name, candles in _blend_series().items()
+        }
+        assert len(before) == 5, before
+        for module_name, name in FORBIDDEN:
+            monkeypatch.setattr(
+                importlib.import_module(module_name), name, _Poison(name)
+            )
+        after = {
+            name: _readable(SlingshotIndicator().compute(candles))
+            for name, candles in _blend_series().items()
+        }
+        assert after == before, "the poison changed the answer"
 
-    def test_no_other_indicator_is_called(self):
-        src, _ = self._source()
-        for name in self.FORBIDDEN:
-            assert f"{name}(" not in src, f"blending: {name} called"
+    def test_POSITIVE_CONTROL_the_poison_raises_when_it_is_reached(self, monkeypatch):
+        """An indicator that does blend fails the sweep above."""
+        import importlib
 
-    def test_reads_only_candle_fields_and_own_helpers(self):
-        src, _ = self._source()
-        # The shared scalar maths helpers are allowed; indicator
-        # classes are not. Assert the allowed set is what is used.
-        for allowed in ("_sma_tail", "_stdev_tail", "_linreg_endpoint", "_bandwidth"):
-            assert allowed in src, allowed
+        module_name, name = FORBIDDEN[1]
+        module = importlib.import_module(module_name)
+        monkeypatch.setattr(module, name, _Poison(name))
+        with pytest.raises(AssertionError, match=name):
+            getattr(module, name)()
 
-    def test_heikin_ashi_is_not_claimed_as_a_direction_input(self):
-        """The old docstring listed HA as a bullet under "Direction
-        determined by". The method never computed one. Under the
-        no-blending rule the claim is removed, not honoured.
+    @pytest.mark.parametrize("helper", OWN_ARITHMETIC)
+    def test_each_piece_of_its_own_arithmetic_is_really_called(self, helper):
+        """A helper nothing calls is not what the answer was built from."""
+        from src.trading.indicators import slingshot
 
-        The assertion targets the BULLET form. The new docstring names
-        the retired claim in prose while explaining its removal, and a
-        bare substring match would fire on that explanation -- which is
-        what the first version of this test did.
-        """
-        from src.trading.ta_engine import SlingshotIndicator as S
+        owner = (
+            SlingshotIndicator
+            if helper in ("_linreg_endpoint", "_bandwidth")
+            else slingshot
+        )
+        real = getattr(owner, helper)
+        called = []
 
-        doc = S.__doc__ or ""
-        assert "• HA candle direction" not in doc
-        assert "Direction determined by:" not in doc
+        def _spy(*args, **kwargs):
+            called.append(args)
+            return real(*args, **kwargs)
+
+        setattr(owner, helper, staticmethod(_spy) if owner is not slingshot else _spy)
+        try:
+            for candles in _blend_series().values():
+                SlingshotIndicator().compute(candles)
+        finally:
+            setattr(
+                owner, helper, staticmethod(real) if owner is not slingshot else real
+            )
+        assert called, f"{helper} was never called"
 
 
 # ── DOMAIN + INVARIANTS ──────────────────────────────────────────────
@@ -458,8 +520,8 @@ class TestDomainAndInvariants:
                     assert 0.0 <= d[key] <= 1.0, (name, key, d[key])
 
     def test_bandwidth_fields_stay_non_negative(self):
-        """`ta_invariants.py:215-216` pins `_nonneg(curr_bw)` and
-        `_nonneg(avg_bw)`."""
+        """`ta_invariants.INDICATORS["slingshot"]` carries
+        `_nonneg(curr_bw)` and `_nonneg(avg_bw)`."""
         for name, cs in self._series().items():
             d = SlingshotIndicator().compute(cs).details
             for key in ("curr_bw", "avg_bw"):
@@ -478,8 +540,9 @@ class TestDomainAndInvariants:
         assert sig.confidence == 0.0
 
     def test_details_schema_keeps_every_consumed_field(self):
-        """`ta_invariants.py:212-218` reads five of these, and the
-        `ta.raw.slingshot` emitter payload carries all twelve."""
+        """`ta_invariants.INDICATORS["slingshot"]` reads five of these, and
+        the `ta.07.004.postcondition.raw.slingshot` payload carries all
+        twelve."""
         d = SlingshotIndicator().compute(_chop(44, 2.0, 0.01, (0.0, 0.0, 1.0))).details
         for key in (
             "slingshot_type",
@@ -496,3 +559,80 @@ class TestDomainAndInvariants:
             "avg_bw",
         ):
             assert key in d, key
+
+
+# ── D7: THE MOMENTUM DELTA USES sma(close, N), NOT close ─────────────
+
+
+class TestMomentumDeltaUsesTheMovingAverage:
+    """LazyBear's ``val`` subtracts ``avg(donchian_mid, sma(close, N))``
+    from the close. Substituting the close itself for that SMA is a
+    different formula, and the reported ``momentum`` shows which ran."""
+
+    SQUEEZE_LOOKBACK = 10
+
+    @staticmethod
+    def _tape(n: int = 40) -> list:
+        out = []
+        px = 100.0
+        for i in range(n):
+            px += math.sin(i / 3.0) * 0.8 + (0.05 if i % 7 else -0.3)
+            out.append(_row(i, px, 0.8))
+        return out
+
+    @staticmethod
+    def _canonical_momentum(candles: list, period: int) -> float:
+        closes = [c.close for c in candles]
+
+        def delta(i: int) -> float:
+            j0 = max(0, i - period + 1)
+            window = closes[j0 : i + 1]
+            hi = max(c.high for c in candles[j0 : i + 1])
+            lo = min(c.low for c in candles[j0 : i + 1])
+            sma_i = sum(window) / len(window)
+            return closes[i] - ((hi + lo) / 2.0 + sma_i) / 2.0
+
+        last = len(candles) - 1
+        seg = [delta(k) for k in range(max(0, last - period + 1), last + 1)]
+        return SlingshotIndicator._linreg_endpoint(seg)
+
+    def test_reported_momentum_matches_the_published_linreg(self):
+        cs = self._tape()
+        ind = SlingshotIndicator(squeeze_lookback=self.SQUEEZE_LOOKBACK)
+        got = ind.compute(cs).details["momentum"]
+        want = round(self._canonical_momentum(cs, ind.bb_period), 8)
+        assert got == want, (
+            f"momentum {got} departs from linreg(close - avg(donchian_mid, "
+            f"sma(close, {ind.bb_period})), {ind.bb_period}, 0) = {want}"
+        )
+
+    def test_substituting_the_close_for_the_sma_gives_a_different_number(self):
+        """Negative control: the formula this repair removed, recomputed
+        inline, disagrees with the canonical one on the same candles."""
+        cs = self._tape()
+        ind = SlingshotIndicator(squeeze_lookback=self.SQUEEZE_LOOKBACK)
+        closes = [c.close for c in cs]
+        period = ind.bb_period
+        reach = ind.squeeze_lookback + 5
+
+        def delta(i: int) -> float:
+            j0 = max(0, i - period + 1)
+            hi = max(c.high for c in cs[j0 : i + 1])
+            lo = min(c.low for c in cs[j0 : i + 1])
+            window = closes[j0 : i + 1]
+            sma_i = (
+                sum(window) / len(window)
+                if i >= len(cs) - reach
+                else closes[i]  # the substitution the repair removed
+            )
+            return closes[i] - ((hi + lo) / 2.0 + sma_i) / 2.0
+
+        last = len(cs) - 1
+        seg = [delta(k) for k in range(max(0, last - period + 1), last + 1)]
+        old = round(SlingshotIndicator._linreg_endpoint(seg), 8)
+        want = round(self._canonical_momentum(cs, period), 8)
+        assert old != want, (
+            "the negative control computes the same number as the canonical "
+            f"formula ({old}), so it cannot detect the substitution"
+        )
+        assert ind.compute(cs).details["momentum"] != old

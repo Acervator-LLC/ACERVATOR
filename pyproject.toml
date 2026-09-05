@@ -39,64 +39,59 @@ dependencies = [
     "aiohttp>=3.9.0",
     "psutil>=5.9.0",
     "defusedxml>=0.7.1",
-    # Issue #94 - certifi was installed by seven of the eight
-    # hand-copied lists and was declared here by none of them. Three
-    # shipped files import it to build the TLS trust store for exchange
-    # calls: src/exchange/ccxt_connector.py:477,
-    # src/gui/main_window.py:4101 and :4147. A fourth,
-    # tools/exchange_diagnostic.py:35 imports it. It is
-    # declared now, so the set the build installs is the set this file
-    # states.
+    # certifi builds the TLS trust store for exchange calls. Three files
+    # call certifi.where(): src/exchange/ccxt_connector.py,
+    # src/gui/widgets/api_tester_tab.py and tools/exchange_diagnostic.py.
     "certifi>=2024.2.2",
 ]
 
 # Issue #94 - EXTRAS. Each one names its consumer and the guard that
 # proves the code survives its absence. Nothing goes here on taste.
 #
-#   report   src/core/version_sweep.py:1046-1051 imports reportlab
-#            inside `try:` and `except ImportError: return None`. The
-#            sweep runs and answers None instead of a PDF path.
-#   charts   src/design_system.py:48-51 imports matplotlib at module
-#            level with NO guard. It is an extra and not a core
-#            dependency for a different reason: no module in `src/`,
-#            `tools/`, `main.py` or `tests/` imports
-#            `src.design_system`, and both .spec files list
-#            'matplotlib' in `excludes`, so the frozen application
-#            never reaches that import.
-#   monitor  src/trading/live_monitor.py:181 imports httpx inside
-#            `_call` with no guard. No install list in the tree ever
+#   report   `VersionSweep.save_pdf_report` in src/core/version_sweep.py
+#            imports reportlab inside `try:` and answers None on
+#            ImportError. The sweep still runs and writes its JSON report.
+#   charts   src/design_system.py imports matplotlib at module level with
+#            NO guard. It is an extra and not a core dependency for a
+#            different reason: the only tracked modules importing
+#            `src.design_system` are tools/build_product_manual.py and
+#            tests/test_design_system_chart_tokens.py, neither .spec
+#            collects tools/, and `EXCLUDES` in tools/spec_common.py --
+#            which both .spec files pass to PyInstaller -- names
+#            'matplotlib', so the frozen application never reaches that
+#            import.
+#   monitor  `LiveMonitor._call` in src/trading/live_monitor.py imports
+#            httpx with no guard. No install list in the tree ever
 #            installed it. This extra declares that dependency; it does
 #            not make it optional.
-#   contracts  issue #92. `contracts/deploy.py` is a standalone CLI
-#            that deploys ACRV.sol and CompetitionRegistry.sol to Base
-#            Sepolia or Base Mainnet. It imports web3, eth_account and
-#            solcx. It is an extra, and not a core dependency, for the
-#            same reason `charts` is: no code in the product reaches
-#            it. No file in the tree imports `contracts.deploy`,
-#            neither .spec file collects `contracts/`, and
-#            `acrv_address` and `registry_address` in
-#            src/competition/base_config.py:56, :57, :70 and :71 are
-#            all the empty string, so the deployment has never
-#            completed on any machine. The three imports now sit
-#            inside `try:` with an `except ImportError` that names
-#            this extra, so the script states what to install instead
-#            of pip-installing behind the operator.
+#   contracts  `contracts/deploy.py` is a standalone CLI that deploys
+#            ACRV.sol and CompetitionRegistry.sol to Base Sepolia or Base
+#            Mainnet. It imports web3, eth_account and solcx. It is an
+#            extra, and not a core dependency, for the same reason
+#            `charts` is: no code in the product reaches it. No file in
+#            the tree imports `contracts.deploy`, neither .spec file
+#            collects `contracts/`, and `acrv_address` and
+#            `registry_address` in src/competition/base_config.py are all
+#            the empty string, so the deployment has never completed on
+#            any machine. The three imports sit inside `try:` with an
+#            `except ImportError` that names this extra, so the script
+#            states what to install instead of pip-installing behind the
+#            operator.
 #            NO LOWER BOUND IS STATED, and that is deliberate. A bound
 #            would be a guess: none of the three has been resolved,
 #            installed or run anywhere this project has measured.
 #            `python -m tools.deps lock contracts` pins them the first
 #            time one is.
-#            `src/competition/` needs NONE of these. Issue #92 says it
-#            does. An AST walk over all ten of its modules finds one
-#            third-party import, `cryptography` at
-#            src/competition/bot_identity.py:34 and :36, and that is
-#            already a core dependency above.
-#   display  src/core/mini_display.py imports luma (:239, :301),
-#            ST7789 (:362), RPLCD (:442) and smbus2 (:577), each inside
-#            `try:` with an `except` that returns False, so a machine
-#            with no panel reports "not connected". Raspberry Pi only.
-#            ST7789 and waveshare_epd stay out: `deploy/kiosk/install.sh` says
-#            they are hardware-specific and installs neither.
+#            `src/competition/` needs NONE of these. An AST walk over its
+#            modules finds one third-party import, `cryptography` in
+#            src/competition/bot_identity.py, and that is already a core
+#            dependency above.
+#   display  src/core/mini_display.py imports luma, ST7789, RPLCD and
+#            smbus2, each inside `try:` with an `except` that returns
+#            False, so a machine with no panel reports "not connected".
+#            Raspberry Pi only. ST7789 and waveshare_epd stay out of the
+#            extra: `deploy/kiosk/install.sh` says they are
+#            hardware-specific and installs neither.
 #   build    PyInstaller host only. The TARGET never needs it.
 #   dev      the tools `dev_harness/harness/coding_archetype.py` and
 #            `docs_archetype.py` spawn, plus the type stubs two files
@@ -153,6 +148,19 @@ dev = [
     # Issue #94 - the lockfile generator. `requirements/` holds what it
     # produced; `python -m tools.deps lock` regenerates it.
     "pip-tools>=7.6.1",
+    # tools/build_product_manual.py and tools/extract_product_manual.py
+    # import pypdf at module level. No src/ module imports either
+    # producer and neither .spec collects tools/, so it ships to no
+    # target.
+    "pypdf>=6.10.2",
+    # The manual-producer tests reach reportlab through
+    # tools/build_product_manual.py. They and
+    # tests/test_design_system_chart_tokens.py reach matplotlib through
+    # src/design_system.py.
+    "acervator[report]",
+    "acervator[charts]",
+    # tests/test_build_product_manual*.py import PIL to write a fixture PNG.
+    "pillow>=10.0.0",
 ]
 
 [project.scripts]
@@ -195,7 +203,7 @@ norecursedirs = ["__pycache__", ".git"]
 markers = [
     "caplog_may_be_empty(reason): this test watches a NON-Acervator logger and an empty caplog is its pass condition",    # CI lanes, applied by file in tests/conftest.py. Fast lane runs
     # `-m "not slow and not archetype"`; the full lane runs the complement.
-    "slow: end-to-end engine-replay suite; heavy CPU, deferred to the full CI lane",
+    "slow: deferred to the full CI lane, for heavy CPU or for a package only the [dev] extra installs",
     "archetype: archetype-harness test needing the [dev] analyzer toolchain",
 ]
 

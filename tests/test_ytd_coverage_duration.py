@@ -63,15 +63,6 @@ GAUGES = (
     "ytd.10.003.gauge.per_symbol_counts",
 )
 
-# The two workloads. The lever is `asyncio.sleep` on the fetch's own
-# loop, which is where the real call waits on the network, and it never
-# touches the clock, the emit call or the `duration` argument.
-#
-# WIDER THAN THE IN-PROCESS SITES, AND FOR A REASON. This lever crosses
-# a thread boundary -- the coroutine is scheduled onto a loop running in
-# another thread -- so the readings carry scheduling noise the
-# single-threaded sites do not. 0.02 s against 0.30 s is 15x, against
-# the 2x the predicate asks for.
 LEVER_SHORT_S = 0.02
 LEVER_LONG_S = 0.30
 FLOOR_S = LEVER_LONG_S / 2.0

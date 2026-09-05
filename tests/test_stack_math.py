@@ -40,9 +40,7 @@ from src.trading.stack_math import (
     split_scrum_into_tranches,
 )
 
-# ---------------------------------------------------------------------------
 # First-tranche placement
-# ---------------------------------------------------------------------------
 
 
 class TestAnchorAndLevelOnePlacement:
@@ -112,9 +110,7 @@ class TestAnchorAndLevelOnePlacement:
             ), f"mode {mode!r}: level 1 must sit at exactly the initial gap"
 
 
-# ---------------------------------------------------------------------------
 # Spacing model math (operator's Δp sequences)
-# ---------------------------------------------------------------------------
 
 
 class TestSpacingModelSequences:
@@ -136,9 +132,8 @@ class TestSpacingModelSequences:
         return [(t.price / anchor - 1.0) * 100.0 for t in tranches]
 
     def _assert_matches_law(self, mode: str, gap: float, expected: list[float]):
-        # Fibonacci anchors on the last candle close; set it equal to the
-        # trigger price so every mode's distances are read off 100.0 and
-        # the four sequences are directly comparable.
+        # Fibonacci anchors on the last candle close, set equal to the trigger
+        # price so all four sequences are read off 100.0.
         r = split_scrum_into_tranches(
             scrum_price=100.0,
             scrum_size=100.0,
@@ -202,9 +197,7 @@ class TestSpacingModelSequences:
             assert b == pytest.approx(a * 2.0, abs=1e-9)
 
 
-# ---------------------------------------------------------------------------
 # Invariants: monotone, sum, count
-# ---------------------------------------------------------------------------
 
 
 class TestInvariants:
@@ -244,9 +237,7 @@ class TestInvariants:
         assert [t.index for t in r] == list(range(len(r)))
 
 
-# ---------------------------------------------------------------------------
 # 0.1% merge rule
-# ---------------------------------------------------------------------------
 
 
 class TestMergeRule:
@@ -311,9 +302,7 @@ class TestMergeRule:
         assert len(r) == 4
 
 
-# ---------------------------------------------------------------------------
 # min_order_size restriction
-# ---------------------------------------------------------------------------
 
 
 class TestMinOrderSize:
@@ -361,9 +350,7 @@ class TestMinOrderSize:
         assert r[0].size == pytest.approx(0.3, abs=1e-9)
 
 
-# ---------------------------------------------------------------------------
 # Input validation
-# ---------------------------------------------------------------------------
 
 
 class TestInputValidation:
@@ -445,9 +432,7 @@ class TestInputValidation:
             )
 
 
-# ---------------------------------------------------------------------------
 # to_dict serialization (for the runtime ledger + GUI)
-# ---------------------------------------------------------------------------
 
 
 class TestSerialization:
@@ -464,9 +449,7 @@ class TestSerialization:
         assert set(d.keys()) == {"index", "price", "size"}
 
 
-# ---------------------------------------------------------------------------
 # Constants
-# ---------------------------------------------------------------------------
 
 
 class TestConstants:

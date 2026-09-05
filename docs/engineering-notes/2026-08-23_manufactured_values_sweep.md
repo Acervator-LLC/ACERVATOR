@@ -1,9 +1,8 @@
 # Manufactured values — the sweep issue #99 opened
 
 Date: 2026-08-23. Scope: `src/trading/indicators/*.py` and
-`src/trading/ta_engine.py`. Read-only survey. **Nothing in this
-document was repaired.** Issue #99 repaired `_ema` and its direct
-consequences only. Every item below is NAMED, not fixed.
+`src/trading/ta_engine.py`. Read-only survey. Issue #99 repaired `_ema`
+and its direct consequences; every item below is still in the code.
 
 ## The question
 
@@ -97,9 +96,9 @@ price scale. The load-bearing ones:
 - `atr.py:57-58` — when `5 <= len(true_ranges) < 10`, `older` is the
   WHOLE series and overlaps `recent`, so `expanding`/`contracting`
   compare a window against itself. Unreachable at `period = 14`, live
-  for any configured `period < 9`. **Named in issue #99; not fixed.**
+  for any configured `period < 9`. **Named in issue #99, and still present.**
 - `bollinger.py` `bb_period` / `bb_std` parameters are accepted and not
-  wired at some call sites. **Named in issue #99; not fixed.**
+  wired at some call sites. **Named in issue #99, and still present.**
 
 ### F. Alignment assumed, not asserted
 

@@ -47,7 +47,10 @@ from pathlib import Path
 
 import pytest
 
+from src._variant import BAKED_FILENAME as VARIANT_BAKED_FILENAME
 from src._version import BAKED_FILENAME, baked_path
+from tests.fixtures.spec_runner import run_spec
+from tools.build_variants import sanitise, windows_file_version
 from tools.spec_common import (
     COMMON_HIDDENIMPORTS,
     EXCLUDES,
@@ -64,6 +67,8 @@ REPO = Path(__file__).resolve().parent.parent
 WIN_SPEC = REPO / "Acervator_win.spec"
 MAC_SPEC = REPO / "Acervator_mac.spec"
 SHARED_MODULE = REPO / "tools" / "spec_common.py"
+SPEC_DIR = REPO
+
 
 # The names both specs must take from the shared module. Losing any one of
 # them means that spec has grown a private copy again.
@@ -96,9 +101,7 @@ def mac_src() -> str:
     return MAC_SPEC.read_text(encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
 # The rules, as functions, so the controls at the bottom can drive them
-# ---------------------------------------------------------------------------
 
 
 def shared_names_imported(src: str) -> set[str]:
@@ -138,9 +141,7 @@ def top_level_imports(path: Path) -> set[str]:
     return names
 
 
-# ---------------------------------------------------------------------------
 # The files exist
-# ---------------------------------------------------------------------------
 
 
 class TestSpecsExist:
@@ -165,9 +166,7 @@ class TestSpecsExist:
         ).is_file(), "build_windows.ps1 missing — BUILD.py runs it."
 
 
-# ---------------------------------------------------------------------------
 # Both specs take the shared content from the shared module
-# ---------------------------------------------------------------------------
 
 
 class TestSpecsUseTheSharedModule:
@@ -213,9 +212,7 @@ class TestSpecsUseTheSharedModule:
         assert imported == {"__future__", "os", "src"}
 
 
-# ---------------------------------------------------------------------------
 # The shared hidden imports
-# ---------------------------------------------------------------------------
 
 
 class TestHiddenImports:
@@ -255,9 +252,7 @@ class TestHiddenImports:
         )
 
 
-# ---------------------------------------------------------------------------
 # The shared excludes
-# ---------------------------------------------------------------------------
 
 
 class TestExcludes:
@@ -270,9 +265,7 @@ class TestExcludes:
         assert len(set(EXCLUDES)) == len(EXCLUDES)
 
 
-# ---------------------------------------------------------------------------
 # The shared version reader
-# ---------------------------------------------------------------------------
 
 
 class TestVersionHelper:
@@ -308,24 +301,43 @@ class TestVersionHelper:
             r"CFBundleShortVersionString['\"]\s*:\s*ACERVATOR_VERSION", mac_src
         )
 
-    def test_win_file_description_comes_from_the_reader(self, win_src):
-        assert "f'Acervator v{ACERVATOR_VERSION}'" in win_src
+    def test_win_file_description_carries_the_resolved_version(
+        self, tmp_path, monkeypatch
+    ):
+        """Read the resource EXE was handed, under the keyword EXE reads."""
+        built = run_spec(SPEC_DIR / "Acervator_win.spec", tmp_path, monkeypatch)
+        resource = str(built["EXE"]["version"])
+        assert built["version"] in resource, (
+            f"the version resource does not carry the resolved version "
+            f"{built['version']!r}:\n{resource}"
+        )
+
+    def test_win_numeric_resource_fields_are_not_a_literal(self, tmp_path, monkeypatch):
+        """FileVersion and ProductVersion read a hardcoded 1.1.0 until this seam."""
+        built = run_spec(SPEC_DIR / "Acervator_win.spec", tmp_path, monkeypatch)
+        resource = str(built["EXE"]["version"])
+        expected = windows_file_version(built["version"])
+        numbers = tuple(int(part) for part in expected.split("."))
+        assert f"filevers={numbers}" in resource, f"filevers is not {numbers}"
+        assert f"prodvers={numbers}" in resource, f"prodvers is not {numbers}"
+        assert f"StringStruct('FileVersion', '{expected}')" in resource
+        assert f"StringStruct('ProductVersion', '{expected}')" in resource
+        assert "1.1.0" not in resource, f"the retired literal is back:\n{resource}"
 
 
-# ---------------------------------------------------------------------------
 # The shared datas builder
-# ---------------------------------------------------------------------------
 
 
 class TestGracefulDatas:
     def test_src_ships_first(self):
         assert datas_candidates("/root")[0][1] == "src"
 
-    def test_raintsimbat_probes_sadp_before_legacy(self):
-        dests = [dest for _, dest in datas_candidates("/root")]
-        sadp = [i for i, d in enumerate(dests) if "sadp" in d]
-        legacy = [i for i, d in enumerate(dests) if d == "RAIntSimBat"]
-        assert sadp and legacy and sadp[0] < legacy[0]
+    def test_every_candidate_is_a_directory_this_repository_can_hold(self):
+        dests = [Path(dest).as_posix() for _, dest in datas_candidates("/root")]
+        assert dests == ["src", "resources", "data/historical"], (
+            f"datas_candidates offers {dests}; every entry must name a "
+            f"directory a build of this repository can actually produce"
+        )
 
     def test_absent_paths_are_skipped(self, tmp_path):
         assert build_graceful_datas(str(tmp_path)) == []
@@ -344,18 +356,62 @@ class TestGracefulDatas:
         assert [dest for _, dest in pairs] == ["src"]
         assert Path(pairs[0][0]).name == BAKED_FILENAME
 
-    def test_both_specs_ship_the_baked_version(self, win_src, mac_src):
+    @pytest.mark.parametrize("spec", ["Acervator_win.spec", "Acervator_mac.spec"])
+    def test_both_specs_ship_the_baked_version(self, spec, tmp_path, monkeypatch):
         """A spec that dropped the pair would build a bundle with no version."""
-        for label, src in (("win", win_src), ("mac", mac_src)):
-            assert (
-                "build_graceful_datas(PROJECT_ROOT) + "
-                "bake_version_datas(PROJECT_ROOT)" in src
-            ), f"{label} spec does not add the baked version to datas"
+        built = run_spec(SPEC_DIR / spec, tmp_path, monkeypatch)
+        shipped = dict(
+            (Path(source).name, dest) for source, dest in built["Analysis"]["datas"]
+        )
+        assert shipped.get(BAKED_FILENAME) == "src", (
+            f"{spec} does not ship {BAKED_FILENAME} to src; "
+            f"it ships {sorted(shipped)}"
+        )
+        baked = tmp_path / "build" / "version" / BAKED_FILENAME
+        assert (
+            baked.read_text(encoding="utf-8").strip() == built["version"]
+        ), f"{spec} baked a version that is not the one it resolved"
+
+    @pytest.mark.parametrize("spec", ["Acervator_win.spec", "Acervator_mac.spec"])
+    def test_both_specs_ship_the_baked_variant(self, spec, tmp_path, monkeypatch):
+        """The variant travels into the bundle the same way the version does."""
+        built = run_spec(SPEC_DIR / spec, tmp_path, monkeypatch, variant="qt")
+        shipped = dict(
+            (Path(source).name, dest) for source, dest in built["Analysis"]["datas"]
+        )
+        assert shipped.get(VARIANT_BAKED_FILENAME) == "src", (
+            f"{spec} does not ship {VARIANT_BAKED_FILENAME} to src; "
+            f"it ships {sorted(shipped)}"
+        )
+        baked = tmp_path / "build" / "version" / VARIANT_BAKED_FILENAME
+        assert baked.read_text(encoding="utf-8").strip() == "qt"
+
+    @pytest.mark.parametrize("spec", ["Acervator_win.spec", "Acervator_mac.spec"])
+    def test_the_output_name_carries_the_version_and_the_variant(
+        self, spec, tmp_path, monkeypatch
+    ):
+        """Two variants of one version must not claim the same folder."""
+        react = run_spec(SPEC_DIR / spec, tmp_path, monkeypatch, variant="react")
+        qt = run_spec(SPEC_DIR / spec, tmp_path, monkeypatch, variant="qt")
+        for built, variant in ((react, "react"), (qt, "qt")):
+            # BUILD.py looks for dist/<name>/<name>.exe, so COLLECT and
+            # EXE must both carry the version and the variant.
+            for stage in ("COLLECT", "EXE"):
+                name = built[stage]["name"]
+                assert (
+                    sanitise(built["version"]) in name
+                ), f"{stage} name {name!r} omits the version"
+                assert variant in name, f"{stage} name {name!r} omits the variant"
+            assert built["COLLECT"]["name"] == built["EXE"]["name"], (
+                f"folder {built['COLLECT']['name']!r} and executable "
+                f"{built['EXE']['name']!r} disagree; BUILD.py would find neither"
+            )
+        assert (
+            react["COLLECT"]["name"] != qt["COLLECT"]["name"]
+        ), "both variants claimed the same output folder"
 
 
-# ---------------------------------------------------------------------------
 # Entry point
-# ---------------------------------------------------------------------------
 
 
 class TestEntryPoint:
@@ -366,9 +422,7 @@ class TestEntryPoint:
             ), f"{label} spec must build from main.py"
 
 
-# ---------------------------------------------------------------------------
 # Two-sided control — every rule above must be able to report
-# ---------------------------------------------------------------------------
 
 
 class TestTheInstrumentCanFail:

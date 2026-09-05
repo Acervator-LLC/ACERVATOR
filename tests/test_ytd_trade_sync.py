@@ -26,9 +26,12 @@ def _run(coro):
     return asyncio.new_event_loop().run_until_complete(coro)
 
 
-def _make_trade(ts):
-    """Minimal Trade-shaped object with a timestamp attribute."""
-    return SimpleNamespace(timestamp=ts)
+def _make_trade(ts, trade_id=None):
+    """Minimal Trade-shaped object carrying a timestamp and an id.
+
+    ``trade_id`` is the field ``sync_ytd_trade_count`` dedupes on.
+    """
+    return SimpleNamespace(timestamp=ts, id=trade_id)
 
 
 def _make_stub_bot(persisted_count: int, exchange, symbol="CHIP/USD"):
@@ -65,11 +68,7 @@ class TestSyncBehavior:
         Dedupe by id collapses cross-window duplicates → 350 unique."""
         anchor = ScrummingBot.YTD_TRADE_ANCHOR_UTC
         # Give each trade a stable id so cross-window dedupe works.
-        trades = []
-        for i in range(350):
-            tr = _make_trade(anchor + i * 10.0)
-            tr.id = f"tr-{i}"
-            trades.append(tr)
+        trades = [_make_trade(anchor + i * 10.0, f"tr-{i}") for i in range(350)]
         ex = SimpleNamespace(get_my_trades=AsyncMock(return_value=trades))
         stub = _make_stub_bot(persisted_count=200, exchange=ex)
         result = _run(stub.sync_ytd_trade_count())
@@ -88,9 +87,7 @@ class TestSyncBehavior:
 
         # Make trades with explicit IDs so dedupe can work.
         def _t(i, ts_offset=0.0):
-            tr = _make_trade(anchor + ts_offset + i * 10.0)
-            tr.id = f"trade-{i}"
-            return tr
+            return _make_trade(anchor + ts_offset + i * 10.0, f"trade-{i}")
 
         window_pages = [
             [_t(i) for i in range(400)],  # w1: 400 unique
@@ -100,7 +97,7 @@ class TestSyncBehavior:
         ] * 20  # empty for subsequent windows
         pages_iter = iter(window_pages)
         ex = SimpleNamespace(
-            get_my_trades=AsyncMock(side_effect=lambda *a, **k: next(pages_iter))
+            get_my_trades=AsyncMock(side_effect=lambda *_a, **_k: next(pages_iter))
         )
         stub = _make_stub_bot(persisted_count=0, exchange=ex)
         result = _run(stub.sync_ytd_trade_count())
@@ -127,11 +124,8 @@ class TestSyncBehavior:
             "API result — protects against partial pages / rate limits."
         )
         assert stub.stats.total_trades == 750
-        # v3.23.56 — exchange_trade_count also floored at the max
-        # of (persisted, previous_exchange, this_sync). Prevents the
-        # dashboard "Trades" column from toggling downward when a
-        # partial-page / rate-limited response returns fewer than
-        # what was last known.
+        # `exchange_trade_count` is floored at the max of persisted, previous and
+        # this sync, so a short page cannot walk the Trades column downward.
         assert stub.stats.exchange_trade_count == 750
 
     def test_does_not_toggle_downward_when_prev_exchange_higher(self):
@@ -176,8 +170,5 @@ class TestSyncBehavior:
         assert result is None
         assert stub.stats.total_trades == 100
 
-    # v3.23.57 — retired two tests:
-    #   - test_stops_when_since_ignored (manual loop bail-on-no-progress
-    #     is no longer needed; ccxt handles cursor advancement)
-    #   - test_pagination_max_pages_ceiling (ccxt has its own internal
-    #     cap; we don't manage a page counter anymore)
+    # ccxt walks the cursor and caps its own pages, so no test here manages
+    # a page counter.

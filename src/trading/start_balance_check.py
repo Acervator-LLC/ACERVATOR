@@ -1,38 +1,8 @@
-"""src/trading/start_balance_check.py — pre-start wallet sufficiency check.
+"""Pre-start wallet sufficiency check, in the units each bot mode uses.
 
-Extracted v3.20.66 from main_window.py:_connect_exchange_for_bot per
-operator escalation 2026-06-05: the inline check at line ~4495 was
-applying Scrumming-shaped logic to Extractor bots, producing this
-nonsense error for a $50-configured Extractor on */BTC with 0.0030
-BTC ($189) in the pool:
-
-    Cannot start bot 3ddd92fe: Insufficient balance on Coinbase:
-    [EXTRACTOR */BTC] BTC: 0.0030 free (pool). Bot requires BTC to
-    place orders. Deposit funds or reduce target balance
-    (currently $100.00).
-
-THREE concrete defects in the prior code:
-
-1. **Hardcoded `base_free < 1.0` threshold in base-asset units.** For
-   Extractor on */BTC, base=BTC so the check demanded ≥ 1 BTC ($63k+)
-   to start a bot configured at $50. The threshold was implicitly
-   USD-denominated for Scrumming but applied without unit conversion
-   for Extractor.
-
-2. **"reduce target balance" wording on the Extractor branch.** An
-   Extractor bot does not have a "target balance" — it has an
-   "extractor chunk size". The Scrumming-shaped phrasing was reused
-   verbatim.
-
-3. **`bot.config.target_balance` value read for Extractor.** That
-   field is Scrumming-only with a default of 200.0 (or 100.0 in some
-   builds). For an Extractor configured at $50 via
-   `extractor_chunk_size_usd`, the error displayed the unrelated
-   Scrumming default — making the error message both conceptually
-   wrong AND numerically wrong.
-
-This module is mode-aware and unit-tested in
-`tests/test_extractor_start_balance_v3_20_66.py`. MEM-412.
+``check_start_balance`` reads the pool balance for the bot's base asset and
+compares it in USD wherever a price is available. An Extractor is sized by
+``extractor_chunk_size_usd``, so ``target_balance`` is not its threshold.
 """
 
 from __future__ import annotations
@@ -93,9 +63,8 @@ def check_start_balance(
         elif base_usd_price is not None and base_usd_price > 0:
             base_free_usd = base_free * base_usd_price
         else:
-            # No price oracle — let the bot start if there's ANY
-            # base balance. The bot's internal sizing will report
-            # a more specific error if it can't actually trade.
+            # `None` skips the USD comparison below; any base balance
+            # is enough to start.
             base_free_usd = None
 
         if base_free_usd is None:

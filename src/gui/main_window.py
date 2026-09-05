@@ -15,6 +15,7 @@ from typing import Optional
 from ..core.event_bus import get_event_bus
 from .. import __version__
 from . import design_system as ds
+from .main_tabs.main_window_surface import CANONICAL_TAB_ORDER
 
 
 from .table_cells import (
@@ -286,17 +287,7 @@ if _HAS_QT:
             self._build_history_tab()
             self._build_console_tab()
 
-            # The builders above add tabs in construction order; the reorder fixes it.
-            CANONICAL_TAB_ORDER = [
-                "Trading",
-                "Market Inspector",
-                "Bot Swarm",
-                "Asset Charts",
-                "History",
-                "Simulator",
-                "Console",
-            ]
-            self._reorder_main_tabs(CANONICAL_TAB_ORDER)
+            self._reorder_main_tabs(list(CANONICAL_TAB_ORDER))
 
             self._main_tabs.currentChanged.connect(self._on_main_tab_changed)
 
@@ -634,11 +625,9 @@ if _HAS_QT:
                     return
                 connectors = getattr(self, "_exchange_connectors", {}) or {}
                 if connectors:
-                    self._cancel_if_pending(
-                        getattr(self, "_pending_scout_refresh", None)
-                    )
-                    self._pending_scout_refresh = self._schedule_async(
-                        scout.refresh_from_connectors(connectors)
+                    self._schedule_coalesced(
+                        "_pending_scout_refresh",
+                        scout.refresh_from_connectors(connectors),
                     )
                 self._scout_pump_fault.note_success()
             except Exception as exc:  # noqa: BLE001
@@ -1267,13 +1256,11 @@ if _HAS_QT:
                         and self._exchange_connectors
                     ):
                         try:  # noqa: SIM105
-                            self._cancel_if_pending(
-                                getattr(self, "_pending_chart_fetch", None)
-                            )
-                            self._pending_chart_fetch = self._schedule_async(
+                            self._schedule_coalesced(
+                                "_pending_chart_fetch",
                                 self._charts_tab.fetch_chart_data(
                                     self._exchange_connectors
-                                )
+                                ),
                             )
                         except Exception:  # noqa: S110
                             pass
@@ -2312,6 +2299,17 @@ if _HAS_QT:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 pool.submit(asyncio.run, coro)
             return None
+
+        def _schedule_coalesced(self, slot: str, coro):
+            """Cancel the future in ``slot``, schedule ``coro`` and store it there.
+
+            Every pump that must not stack a second in-flight task calls this,
+            so no call site carries a coalescing rule of its own.
+            """
+            self._cancel_if_pending(getattr(self, slot, None))
+            found = self._schedule_async(coro)
+            setattr(self, slot, found)
+            return found
 
         @staticmethod
         def _cancel_if_pending(fut) -> None:

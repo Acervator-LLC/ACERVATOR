@@ -46,15 +46,8 @@ SIM_DIRS = [
     REPO_ROOT / "src" / "gui" / "simulator_tab",
 ]
 
-# Resolvers that hand back process-wide, LIVE-PERSISTING state, keyed by
-# the module they come from.
-#
-# The module matters. A first draft keyed on the bare name `get_registry`
-# and immediately flagged two false positives --
-# fleet_replay_panel.py:690 and nuclear_fleet_controller.py:305 -- both
-# of which import `get_registry` from `stone_tablets`, whose registry is
-# a READ-ONLY tablet index and entirely legitimate for sim. A guard that
-# cannot tell those apart gets switched off.
+# Resolvers handing back process-wide, live-persisting state, keyed by the
+# module they come from. `stone_tablets` is a read-only index and is not one.
 LIVE_SINGLETONS = {
     ("event_bus", "get_event_bus"),
     ("capital_reservation", "get_registry"),
@@ -88,21 +81,34 @@ class TestFailsClosed:
         assert _make_sim_capital_registry() is not None
 
 
+class _PrivateRegistry:
+    """A stand-in registry object; ``_crr`` must hand back this exact instance."""
+
+
+def _bot_with(registry, sim_mode):
+    """Return a ``ScrummingBot`` carrying only what ``_crr`` reads."""
+    from src.trading.scrumming_bot import ScrummingBot
+
+    bot = object.__new__(ScrummingBot)
+    bot.bot_id = "bot-crr"
+    bot._capital_registry = registry
+    bot._sim_mode = sim_mode
+    return bot
+
+
 class TestInjectedRegistryWins:
     def test_crr_returns_the_injected_registry(self):
-        """The positive half: when a private registry IS supplied, the
-        bot must use it rather than the singleton."""
-        import inspect
-        from src.trading import scrumming_bot as sb
+        """A supplied ``_capital_registry`` is what ``_crr`` answers with, not the
+        process-wide singleton."""
+        private = _PrivateRegistry()
+        assert _bot_with(private, sim_mode=True)._crr() is private
+        assert _bot_with(private, sim_mode=False)._crr() is private
 
-        src = inspect.getsource(
-            sb.ScrummingBot._crr.fget
-            if isinstance(sb.ScrummingBot._crr, property)
-            else sb.ScrummingBot._crr
-        )
-        assert (
-            "_capital_registry is not None" in src
-        ), "_crr no longer prefers the injected registry"
+    def test_a_sim_bot_with_no_registry_gets_none(self):
+        """Positive control for the pair above: ``_crr`` reaches its refusal when
+        ``_capital_registry`` is None, so returning the injected object is a
+        decision and not the only branch."""
+        assert _bot_with(None, sim_mode=True)._crr() is None
 
 
 class TestNoSimPathResolvesALiveSingleton:

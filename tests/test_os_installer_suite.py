@@ -138,10 +138,8 @@ SHELL_PROVIDED = frozenset(
     }
 )
 
-# The libraries the Qt xcb platform plugin needs before it will load.
-# `libxcb-cursor0` is the one issue #95 found missing; the rest were
-# already there and must stay there. A name leaves this set only when
-# somebody proves Qt no longer needs it.
+# The libraries the Qt xcb platform plugin needs before it will load. A
+# name leaves this set only on proof Qt no longer needs it.
 QT_WINDOW_PACKAGES = (
     "libxcb-cursor0",  # required from Qt 6.5.0 - issue #95 defect two
     "libxcb-xinerama0",
@@ -164,9 +162,7 @@ QT_WINDOW_PACKAGES = (
 QT_CURSOR_REQUIRED_FROM = (6, 5)
 
 
-# ---------------------------------------------------------------------------
 # The shell reader
-# ---------------------------------------------------------------------------
 
 _ASSIGN = re.compile(
     r"(?:^|[;&|(){}\s])"
@@ -180,9 +176,8 @@ _HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 _BARE_WORD = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SOURCE_LINE = re.compile(r"^\s*(?:source|\.)\s+\S*lib/common\.sh")
 
-# A parameter expansion that supplies a default, an alternative or a
-# message is SAFE under `set -u`. `${FOO:-}` is the correct idiom and
-# must never be reported.
+# A parameter expansion supplying a default, an alternative or a message
+# is safe under `set -u` and must never be reported.
 _SAFE_SUFFIX = (":-", "-", ":=", "=", ":+", "+", ":?", "?")
 
 # The shell builtin, held as a name so that no scanner reads the bare
@@ -401,9 +396,7 @@ def run_dry(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-# ---------------------------------------------------------------------------
 # Contract 0 — the instrument answers on a known fault
-# ---------------------------------------------------------------------------
 
 
 class TestTheReaderWorks:
@@ -474,9 +467,7 @@ class TestTheReaderWorks:
         assert "unbound variable" in result.stderr
 
 
-# ---------------------------------------------------------------------------
 # Contract 1 — no variable is read above its first assignment
-# ---------------------------------------------------------------------------
 
 
 class TestNoOrderingFault:
@@ -510,9 +501,7 @@ class TestNoOrderingFault:
         )
 
 
-# ---------------------------------------------------------------------------
 # Contract 2 — the packages Qt needs to open a window
-# ---------------------------------------------------------------------------
 
 
 class TestQtCanOpenAWindow:
@@ -551,9 +540,7 @@ class TestQtCanOpenAWindow:
         assert "tigervnc-standalone-server" in text
 
 
-# ---------------------------------------------------------------------------
 # Contract 3 — the installer reaches its last line
-# ---------------------------------------------------------------------------
 
 
 class TestTheInstallerCompletes:
@@ -626,9 +613,7 @@ class TestTheInstallerCompletes:
         assert result.returncode == 0, result.stderr
 
 
-# ---------------------------------------------------------------------------
 # Contract 4 — one exclude set, and no dead subsystem
-# ---------------------------------------------------------------------------
 
 
 class TestOneExcludeSet:
@@ -695,9 +680,7 @@ class TestOneExcludeSet:
         assert hits == [], hits
 
 
-# ---------------------------------------------------------------------------
 # Contract 5 — port 5901 stays shut, and the advice agrees
-# ---------------------------------------------------------------------------
 
 
 class TestTheViewerPortStaysShut:
@@ -768,9 +751,7 @@ class TestTheViewerPortStaysShut:
         assert "ssh -L 5901:localhost:5901" in text or "SSH tunnel" in text
 
 
-# ---------------------------------------------------------------------------
 # Contract 6 — the Python floor comes from pyproject.toml
-# ---------------------------------------------------------------------------
 
 
 def pyproject_python_floor() -> tuple[int, int]:

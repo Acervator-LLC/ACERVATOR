@@ -32,9 +32,7 @@ from src.trading.bot_container import (  # noqa: E402
     make_bot_config,
 )
 
-# ---------------------------------------------------------------------------
 # BotConfig schema
-# ---------------------------------------------------------------------------
 
 
 class TestBotConfigSchema:
@@ -80,9 +78,7 @@ class TestBotConfigSchema:
         assert f.default == "linear"
 
 
-# ---------------------------------------------------------------------------
 # _sanitize_deprecated_kwargs — the position_count-class safety net
-# ---------------------------------------------------------------------------
 
 
 class TestSanitizeDeprecatedKwargs:
@@ -124,15 +120,11 @@ class TestSanitizeDeprecatedKwargs:
         assert out == cur
 
 
-# ---------------------------------------------------------------------------
 # make_bot_config with old bot_state.json shape must succeed
-# ---------------------------------------------------------------------------
 
 
 class TestOlderBotStateCompatibility:
-    # Required BotConfig kwargs that every construction must include.
-    # Not part of the compatibility surface being tested — just the
-    # minimum shape.
+    # Required `BotConfig` kwargs, not part of the compatibility surface.
     _REQ = {
         "exchange_id": "coinbase",
         "base_currency": "USD",
@@ -168,9 +160,7 @@ class TestOlderBotStateCompatibility:
         assert cfg.mode == BotMode.SCRUMMING
 
 
-# ---------------------------------------------------------------------------
 # Restore paths in bot_container.py + main_window.py
-# ---------------------------------------------------------------------------
 
 
 class TestRestorePaths:
@@ -209,9 +199,7 @@ class TestRestorePaths:
         assert '"bulk_partial_on_return": config.get(' not in src
 
 
-# ---------------------------------------------------------------------------
 # Settings widget renames + new widgets
-# ---------------------------------------------------------------------------
 
 
 class TestSettingsWidgets:
@@ -277,9 +265,7 @@ class TestSettingsWidgets:
         )
 
 
-# ---------------------------------------------------------------------------
 # v3.23.26 — Stack Mode ledger on ScrummingBot
-# ---------------------------------------------------------------------------
 
 
 class TestScrummingBotStackLedger:
@@ -302,9 +288,7 @@ class TestScrummingBotStackLedger:
         assert "self._stack_created: int = 0" in src
 
 
-# ---------------------------------------------------------------------------
 # v3.23.26 — sanitize helper promotes deprecated "logarithmic" → "quadratic"
-# ---------------------------------------------------------------------------
 
 
 class TestSpacingModeMigration:

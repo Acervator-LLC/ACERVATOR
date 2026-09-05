@@ -1,8 +1,4 @@
-"""John Bollinger's bands: SMA(20) +/- 2 sigma.
-
-Moved out of ``ta_engine.py`` for issue #73. The body below is a
-verbatim line slice of that file: no arithmetic was retyped.
-"""
+"""John Bollinger's bands: the ``bands`` envelope and the ``compute`` vote."""
 
 from __future__ import annotations
 
@@ -17,22 +13,19 @@ from .helpers import (
     _window_has_no_range,
 )
 
-#: ``(upper, middle, lower)`` for one candle, or ``None`` before the
-#: window closes -- see ``BollingerBands.bands``.
+#: One ``BollingerBands.bands`` entry: ``(upper, middle, lower)``, or
+#: ``None`` before the window closes.
 _Band = tuple[float, float, float] | None
 
 
-# ---------------------------------------------------------------------------
-# 1. Bollinger Bands
-# ---------------------------------------------------------------------------
 class BollingerBands:
-    """
-    Bollinger Bands: SMA(20) ± 2σ.
-    Signals:
-      - Price near lower band → bullish (oversold)
-      - Price near upper band → bearish (overbought)
-      - Band squeeze (narrow width) → breakout imminent
-      - Band expansion → trend confirmation
+    """A voting indicator over Bollinger's bands, and the band series itself.
+
+    ``bands`` draws the envelope one entry per candle for the chart.
+    ``compute`` returns the vote ``VotingEngine.compute_all`` collects: a
+    close near the lower band is bullish (oversold), near the upper band
+    bearish (overbought), and a band narrow beside its own recent history
+    damps whichever vote it produced.
     """
 
     def __init__(self, period: int = 20, std_dev: float = 2.0, weight: float = 1.0):
@@ -41,27 +34,18 @@ class BollingerBands:
         self.weight = weight
 
     def bands(self, candles: list[Candle]) -> list[_Band]:
-        """Upper, middle and lower band, ONE ENTRY PER CANDLE.
+        """One ``(upper, middle, lower)`` per candle, ``None`` below ``period - 1``.
 
-        THE PUBLISHED DEFINITION. Bollinger, and StockCharts
-        reproducing him:
+        THE PUBLISHED DEFINITION, Bollinger and StockCharts reproducing
+        him:
 
             Middle Band = SMA(period)
             Upper Band  = Middle + std_dev * sigma(period)
             Lower Band  = Middle - std_dev * sigma(period)
 
-        with sigma the POPULATION deviation over the same window --
-        ``helpers._stdev_tail``, the one this package already uses.
-
-        NO BAND BEFORE THE WINDOW CLOSES. A 20-period band needs 20
-        closes, so entries below ``period - 1`` are ``None``. The
-        helper below fills those with a SHORTER-window average, which
-        is a warm-up convenience ``compute``'s squeeze history reads
-        and a chart must never draw as a band.
-
-        THE CANDLE CHART'S SERIES. It carried its own copy of this
-        composition, over its own inline SMA and deviation, until
-        issue #128 R2.
+        with sigma the POPULATION deviation over the same window,
+        ``_stdev_tail``, and the loop starting past every short-divisor
+        ``_sma_tail`` entry.
         """
         closes = [c.close for c in candles]
         sma = _sma_tail(closes, self.period, tail=None)
@@ -77,6 +61,13 @@ class BollingerBands:
         return out
 
     def compute(self, candles: list[Candle], timeframe: str = "1h") -> Signal:
+        """Vote on where the last close sits inside the bands.
+
+        Abstains below ``period`` closes and on a window with no range.
+        ``details`` carries the three bands, %B, BandWidth and the
+        squeeze flag, which ``VotingEngine.compute_all`` records per
+        candle and ``detect_volume_confirmed_spring`` reads.
+        """
         closes = [c.close for c in candles]
         if len(closes) < self.period:
             return Signal(
@@ -88,11 +79,6 @@ class BollingerBands:
                 abstained=True,
             )
 
-        # v3.24.22 — suffix-only. Consumes sma[-1]/std[-1] plus the
-        # widths slice over the last `period` entries, so `period` is
-        # exactly the depth needed. Derived from config, not the module
-        # default, so a bot configured with a longer period still gets
-        # every value it reads.
         sma = _sma_tail(closes, self.period, tail=self.period)
         std = _stdev_tail(closes, self.period, tail=self.period)
 
@@ -100,83 +86,25 @@ class BollingerBands:
         upper = mid + self.std_dev * std[-1]
         lower = mid - self.std_dev * std[-1]
         price = closes[-1]
-        band_width = (upper - lower) / (mid + 1e-9)
+        # BandWidth = (Upper - Lower) / Middle. `candles_from_raw` admits
+        # only positive closes, so `mid` cannot be zero.
+        band_width = (upper - lower) / mid
 
-        # Squeeze detection (width below 20-period average width)
-        #
-        # v3.24.22 — the comprehension bound was `range(len(sma))`, i.e.
-        # the ENTIRE history, while only the last `period` entries are
-        # ever consumed by the `widths[-self.period:]` slice below.
-        #
-        # This is also the hard blocker for narrowing _sma/_stdev: it is
-        # the only site that indexes sma/std across the whole range, so
-        # until it is bounded, a suffix-only _sma would be read at
-        # indices it never filled (TypeError: float * NoneType).
-        #
-        # The arithmetic expression is deliberately left VERBATIM rather
-        # than simplified to `2 * std_dev * std[i]`. Every consumer of
-        # these values is a threshold comparison, and changing the order
-        # of float operations changes the last bits.
-        #
-        # v3.24.83 — DIVIDED BY sma[i]. IT WAS A UNITS MISMATCH.
-        #
-        # `band_width` above is `(upper - lower) / mid` — DIMENSIONLESS.
-        # These historical widths were `(sma + k*std) - (sma - k*std)`;
-        # the `sma[i]` terms cancel exactly, leaving `2*k*std[i]` in
-        # PRICE UNITS, never normalised. Line below then compared the
-        # ratio against the absolute width.
-        #
-        # So `squeeze` was a test on PRICE, not on volatility. Setting
-        # sigma ~ sigma_avg, `band_width < 0.75 * avg_width` reduces to
-        # `mid > 1.33` — an asset cheaper than about $1.33 can never
-        # register a squeeze, and a dearer one almost always can.
-        # MEASURED on the operator's own fleet: CHIP at $0.08 squeezed
-        # 0 times in 400 candles, SPK at $0.03 zero in 402, XRP at
-        # $1.44 226 of 379 (59.6%).
-        #
-        # It reaches trading: `confidence *= 0.7` below fires only when
-        # squeezed, so the damping was applied by asset price.
-        #
-        # The correct form already existed twenty feet away —
-        # `native_chart.py`'s `CandlestickChart.paintEvent` averages
-        # bandwidth and compares bandwidth. The chart drew squeezes the
-        # engine could not see.
-        #
-        # Numerator kept verbatim per the note above; only the
-        # normalisation that `band_width` already had is added.
+        # The loop starts at the first closed window, index `period - 1`.
         widths = [
+            # Matches `band_width`'s float operation order; folding to
+            # `2 * std_dev * std[i]` would not.
             ((sma[i] + self.std_dev * std[i]) - (sma[i] - self.std_dev * std[i]))
-            / (sma[i] + 1e-9)
-            for i in range(max(0, len(sma) - self.period), len(sma))
+            / sma[i]
+            for i in range(max(self.period - 1, len(sma) - self.period), len(sma))
         ]
-        # `width_count` is a COUNT of windows, not a bandwidth. Naming
-        # it keeps the length test out of the bandwidth comparison on
-        # the next line.
+        # `band_width` and `avg_width` are both BandWidths over the midline.
         width_count = len(widths)
-        avg_width = (
-            sum(widths[-self.period :]) / self.period
-            if width_count >= self.period
-            else band_width
-        )
+        avg_width = sum(widths) / width_count if width_count else band_width
         squeeze = band_width < avg_width * 0.75
 
-        # Position within bands (0 = lower, 1 = upper)
-        #
-        # %B is a position WITHIN a channel. A window whose price never
-        # moved has no channel, so there is no position to report and no
-        # vote to cast. Resolving 0/0 through the epsilon gave
-        # bb_pos = 0.0, which the first branch below reads as hard
-        # against the LOWER band and answers with confidence 1.0000 --
-        # the largest vote any indicator in this engine casts, at weight
-        # 1.0.
-        #
-        # The test is on the CLOSES, not on `upper - lower`. The band
-        # width is 4*sigma out of `_stdev_tail`, and on a halted window
-        # that rounds to a few ULPs rather than to zero on 154 of 599
-        # measured price pegs, so a test of the width misses exactly the
-        # markets this guard exists for. `upper - lower <= 0.0` is kept
-        # underneath as a subordinate floor: it can only ever make this
-        # abstain more often, never less.
+        # `_window_has_no_range` reads the closes: sigma over a halted
+        # window rounds to ULPs, not to zero.
         if _window_has_no_range(closes[-self.period :]) or upper - lower <= 0.0:
             return Signal(
                 "bollinger_bands",
@@ -187,7 +115,8 @@ class BollingerBands:
                 abstained=True,
             )
 
-        bb_pos = (price - lower) / (upper - lower + 1e-9)
+        # %B: 0 at the lower band, 1 at the upper, outside [0, 1] beyond them.
+        bb_pos = (price - lower) / (upper - lower)
 
         direction = SignalDirection.NEUTRAL
         confidence = 0.0
@@ -206,7 +135,7 @@ class BollingerBands:
             confidence = 0.2
 
         if squeeze:
-            confidence *= 0.7  # Less confident during squeeze
+            confidence *= 0.7
 
         return Signal(
             indicator="bollinger_bands",

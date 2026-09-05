@@ -34,9 +34,7 @@ from PySide6.QtWidgets import (
 logger = logging.getLogger("acervator.gui.usb_auth")
 
 
-# ---------------------------------------------------------------------------
 # Colours (matches Acervator dark palette)
-# ---------------------------------------------------------------------------
 _C_BG = "#0A0A14"
 _C_PANEL = "#0D0D20"
 _C_BORDER = "#1a1a3f"
@@ -50,9 +48,7 @@ _C_LOCKED = "#FF6666"
 _C_UNLOCKED = "#00FF88"
 
 
-# ---------------------------------------------------------------------------
 # Worker thread for async USB operations
-# ---------------------------------------------------------------------------
 
 
 class _USBWorker(QObject):
@@ -94,9 +90,7 @@ class _USBWorker(QObject):
             self.export_complete.emit(False, str(e))
 
 
-# ---------------------------------------------------------------------------
 # USB Status Indicator (compact, for toolbar/status bar)
-# ---------------------------------------------------------------------------
 
 
 class USBStatusIndicator(QWidget):
@@ -139,9 +133,7 @@ class USBStatusIndicator(QWidget):
         p.drawEllipse(3, 3, 16, 16)
 
 
-# ---------------------------------------------------------------------------
 # Per-exchange hardware mode status row
-# ---------------------------------------------------------------------------
 
 
 class _ExchangeHWRow(QFrame):
@@ -257,9 +249,7 @@ class _ExchangeHWRow(QFrame):
         )
 
 
-# ---------------------------------------------------------------------------
 # Main USB Auth Management Widget
-# ---------------------------------------------------------------------------
 
 
 class USBAuthWidget(QWidget):

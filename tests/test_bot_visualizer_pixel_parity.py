@@ -71,9 +71,8 @@ SHIPPED = {
     "VIZ_TAB_TEXT": "#666677",
 }
 
-# Grounds only a `:hover` rule paints. The offscreen platform never delivers
-# a mouse-over, so no render can carry them. Each maps to the base ground of
-# the same button, which IS rendered and proves the sheet reaches the screen.
+# Grounds only a `:hover` rule paints, which the offscreen platform never
+# reaches. Each maps to the base ground of the same button.
 HOVER_ONLY = {
     "VIZ_GO_HOVER_DEEP": ("#00290f", "#001a0a"),
     "VIZ_STOP_HOVER_DEEP": ("#2a0018", "#1a0011"),
@@ -324,11 +323,8 @@ def test_hover_rules_carry_their_shipped_literals() -> None:
             assert _contains(image, base), f"{token} button does not paint {base}"
 
 
-# The renders above never enter `BotNodeWidget.paintEvent` or
-# `_WireCanvas.paintEvent`: the grid view is empty and the canvas has no
-# wires. Both are now separate modules, so both need their own render.
-# Values are the `THEMES` literals, written out rather than read from the
-# dict, so a changed palette entry fails instead of moving with the test.
+# `BotNodeWidget` and `_WireCanvas` need their own render. The values are
+# the `THEMES` literals written out, so a changed entry fails.
 THEME_SHIPPED = {
     "QUANTUM_BG": "#0a0f19",
     "QUANTUM_ACCENT": "#00c8ff",

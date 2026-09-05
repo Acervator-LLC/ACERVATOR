@@ -1,48 +1,9 @@
-"""
-rule_registry.py — SADP Administrative Control Layer
-=====================================================
-Provides the backend for the RULE command syntax that allows
-administrative lock, unlock, suspension, and status of any rule
-in the SADP governance framework.
+"""Lock state for the rule ids in ``RULE_META``.
 
-COMMAND SYNTAX (typed in conversation — AI parses and executes)
----------------------------------------------------------------
-  RULE LOCK    R<N> [--reason "..."]
-  RULE UNLOCK  R<N> [--reason "..."]
-  RULE SUSPEND R<N> --reason "..." [--expires v<X.X.X>]
-  RULE RESTORE R<N>
-  RULE STATUS  [R<N>]
-  RULE LIST    [--locked | --unlocked | --suspended | --all]
-  RULE AUDIT   [--last N]
-
-LOCK STATES
------------
-  LOCKED      Active and immutable. AI cannot bypass, waive, or modify
-              without explicit RULE UNLOCK from the administrator.
-              Attempting to work around a LOCKED rule is a R25 violation.
-
-  UNLOCKED    Active, normal operation. Rule may be temporarily waived
-              or modified with explicit justification.
-
-  SUSPENDED   Temporarily inactive. Mandatory reason required. Optional
-              version expiry. AI notes suspension in every R25 re-read.
-
-  DEPRECATED  Rule has been superseded by a newer rule. Retained for
-              historical record. No longer enforced.
-
-PROTECTION CLASSES
-------------------
-  CORE        Algorithm invariants (R1, R5, R10, R11, R12). Cannot be
-              SUSPENDED or DEPRECATED — only LOCKED or UNLOCKED.
-              Attempting to suspend a CORE rule returns an error.
-
-  STANDARD    All other rules. Can be in any state.
-
-PERSISTENCE
------------
-  State is stored in sadp/RULE_REGISTRY.json.
-  The registry is machine-readable (R24: human docs → PDF, not JSON).
-  The version_sweep (R25) reads the registry and flags anomalies.
+``parse_rule_command`` turns a ``RULE`` line into a call on ``RuleRegistry``,
+which holds one ``RuleEntry`` per id in one of ``VALID_STATES`` and writes them
+to ``REGISTRY_PATH``. A rule in ``CORE_RULES`` refuses ``suspend``. No module
+imports this one; only its ``__main__`` block calls ``initialise_defaults``.
 """
 
 from __future__ import annotations
@@ -56,10 +17,6 @@ from typing import Optional
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 REGISTRY_PATH = ROOT / "sadp" / "RULE_REGISTRY.json"
-
-# ---------------------------------------------------------------------------
-# Rule metadata
-# ---------------------------------------------------------------------------
 
 RULE_META = {
     "R1": {
@@ -189,7 +146,6 @@ RULE_META = {
         "group": "F",
         "protection": "STANDARD",
     },
-    # SADP Group G — Financial Software Standards
     "R28": {
         "title": "Fail loudly — explicit failure over silent default",
         "group": "G",
@@ -200,7 +156,6 @@ RULE_META = {
         "group": "G",
         "protection": "STANDARD",
     },
-    # SADP Group H — Code Quality Standards
     "R30": {
         "title": "Semantic versioning — MAJOR.MINOR.PATCH discipline",
         "group": "H",
@@ -216,7 +171,6 @@ RULE_META = {
         "group": "H",
         "protection": "STANDARD",
     },
-    # SADP Group I — Architecture Standards
     "R33": {
         "title": "Immutable audit log — append-only financial records",
         "group": "I",
@@ -227,7 +181,6 @@ RULE_META = {
         "group": "I",
         "protection": "STANDARD",
     },
-    # SADP Group J — Session Management
     "R35": {
         "title": "Context fill monitoring — report fill%% at every R25/R26",
         "group": "J",
@@ -235,25 +188,22 @@ RULE_META = {
     },
 }
 
-VALID_RULES = set(RULE_META.keys())  # auto-derived from RULE_META
+VALID_RULES = set(RULE_META.keys())
 CORE_RULES = {r for r, m in RULE_META.items() if m["protection"] == "CORE"}
 VALID_STATES = {"LOCKED", "UNLOCKED", "SUSPENDED", "DEPRECATED"}
 
 
-# ---------------------------------------------------------------------------
-# Registry entry
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class RuleEntry:
+    """One rule's state, with every prior state kept in ``history``."""
+
     rule: str
-    state: str  # LOCKED | UNLOCKED | SUSPENDED | DEPRECATED
+    state: str  # one of VALID_STATES
     reason: str = ""
-    expires: str = ""  # version string, e.g. "v3.7.0" — for SUSPENDED
+    expires: str = ""  # set by suspend, cleared by lock, unlock and restore
     changed_by: str = "admin"
     timestamp: str = ""
-    history: list = field(default_factory=list)  # previous states
+    history: list = field(default_factory=list)
 
     def __post_init__(self):
         if not self.timestamp:
@@ -264,26 +214,16 @@ class RuleEntry:
 
     @classmethod
     def from_dict(cls, d: dict) -> "RuleEntry":
-        # v3.19.56 FIX (sadp R28 FL): filter unknown keys before constructor.
-        # Pre-fix, RuleEntry(**d) crashed with TypeError if the JSON had
-        # any extra fields (e.g. depends_on / title / group — fields used
-        # by sadp/RULE_REGISTRY.json but not part of the RuleEntry shape).
-        # Discovered by tests/test_rule_registry_coverage.py invoking
-        # parse_rule_command() which constructs RuleRegistry() with the
-        # default REGISTRY_PATH pointing at the real schema-extended file.
+        """Build an entry from ``d``, dropping keys the dataclass does not declare."""
         known = {f.name for f in cls.__dataclass_fields__.values()}
         return cls(**{k: v for k, v in d.items() if k in known})
 
 
-# ---------------------------------------------------------------------------
-# Registry
-# ---------------------------------------------------------------------------
-
-
 class RuleRegistry:
-    """
-    Manages the persistent state of all governance rules.
-    Loaded from / saved to RULE_REGISTRY.json.
+    """Every rule in ``RULE_META`` and its current ``RuleEntry``.
+
+    ``_load`` reads ``path`` at construction and ``_save`` rewrites the whole
+    file after each command.
     """
 
     def __init__(self, path: Path = REGISTRY_PATH):
@@ -292,7 +232,11 @@ class RuleRegistry:
         self._load()
 
     def _load(self):
-        """Load from JSON; initialise missing rules as LOCKED (default safe state)."""
+        """Read ``path`` and give every rule in ``VALID_RULES`` a ``RuleEntry``.
+
+        A rule absent from the file, and every rule when the file is missing or
+        unparseable, starts LOCKED.
+        """
         data = {}
         if self.path.exists():
             try:
@@ -304,7 +248,6 @@ class RuleRegistry:
             if rule in data:
                 self._entries[rule] = RuleEntry.from_dict(data[rule])
             else:
-                # Default: all rules start LOCKED
                 self._entries[rule] = RuleEntry(
                     rule=rule,
                     state="LOCKED",
@@ -320,15 +263,18 @@ class RuleRegistry:
         )
 
     def _validate_rule(self, rule: str) -> str:
-        """Normalise and validate rule identifier. Returns uppercase e.g. 'R6'."""
+        """Upper-case ``rule``, add a leading R, and check it against ``VALID_RULES``.
+
+        Raises ``ValueError`` naming the range ``VALID_RULES`` covers.
+        """
         rule = rule.upper().strip()
         if not rule.startswith("R"):
             rule = "R" + rule
         if rule not in VALID_RULES:
-            raise ValueError(f"Unknown rule: {rule!r}. Valid rules: R1–R27.")
+            lo = min(VALID_RULES, key=lambda r: int(r[1:]))
+            hi = max(VALID_RULES, key=lambda r: int(r[1:]))
+            raise ValueError(f"Unknown rule: {rule!r}. Valid rules: {lo}–{hi}.")
         return rule
-
-    # ── Commands ─────────────────────────────────────────────────────────────
 
     def lock(self, rule: str, reason: str = "") -> str:
         rule = self._validate_rule(rule)
@@ -477,7 +423,6 @@ class RuleRegistry:
         if rule:
             rule = self._validate_rule(rule)
             return self._format_single(rule)
-        # All rules summary
         lines = [
             "═══════════════════════════════════════════════════════",
             "  SADP RULE REGISTRY — STATUS OVERVIEW",
@@ -500,7 +445,6 @@ class RuleRegistry:
                 f"  {rule_id:<6} {sym} {e.state:<10} Grp:{m['group']}  "
                 f"{m['protection']:<9} {title_trunc}"
             )
-        # Summary counts
         from collections import Counter
 
         counts = Counter(e.state for e in self._entries.values())
@@ -510,7 +454,6 @@ class RuleRegistry:
             f"SUSPENDED: {counts['SUSPENDED']}  DEPRECATED: {counts['DEPRECATED']}",
             "═══════════════════════════════════════════════════════",
         ]
-        # Show any suspended rules prominently
         suspended = [r for r, e in self._entries.items() if e.state == "SUSPENDED"]
         if suspended:
             lines.append("  ⚠  SUSPENDED RULES (verify before proceeding):")
@@ -541,7 +484,7 @@ class RuleRegistry:
         lines.append(f"  Changed:    {e.timestamp}")
         if e.history:
             lines.append(f"  History ({len(e.history)} changes):")
-            for h in e.history[-3:]:  # last 3
+            for h in e.history[-3:]:
                 lines.append(f"    {h['timestamp']}  {h['from']} → {h['to']}")
                 if h.get("reason"):
                     lines.append(f"      Reason: {h['reason']}")
@@ -572,7 +515,10 @@ class RuleRegistry:
         return header + "\n" + "\n".join(rows) + f"\n{'─'*55}"
 
     def audit(self, last: int = 10) -> str:
-        """Return chronological audit trail of recent state changes."""
+        """Return the newest ``last`` entries across every ``RuleEntry.history``.
+
+        Ordering is by the ``timestamp`` string each change carries.
+        """
         events = []
         for rule_id, e in self._entries.items():
             for h in e.history:
@@ -615,53 +561,37 @@ class RuleRegistry:
         return "\n".join(lines)
 
     def get_suspended(self) -> list[str]:
-        """Return list of currently suspended rule IDs — used by R25 re-read."""
+        """Return the rule ids whose ``RuleEntry.state`` is SUSPENDED.
+
+        Nothing in the tree calls this.
+        """
         return [r for r, e in self._entries.items() if e.state == "SUSPENDED"]
 
     def is_locked(self, rule: str) -> bool:
-        """True if rule is LOCKED. Use during R25 compliance checks."""
+        """Report whether ``rule`` is LOCKED, after ``_validate_rule`` accepts it.
+
+        Nothing in the tree calls this.
+        """
         rule = self._validate_rule(rule)
         return self._entries[rule].state == "LOCKED"
 
     def is_active(self, rule: str) -> bool:
-        """True if rule is LOCKED or UNLOCKED (i.e. currently enforced)."""
+        """Report whether ``rule`` is LOCKED or UNLOCKED.
+
+        Nothing in the tree calls this.
+        """
         rule = self._validate_rule(rule)
         return self._entries[rule].state in ("LOCKED", "UNLOCKED")
-
-
-# ---------------------------------------------------------------------------
-# CLI — parse RULE commands from conversation
-# ---------------------------------------------------------------------------
 
 
 def parse_rule_command(
     text: str,
     registry_path: Path | None = None,
 ) -> Optional[str]:
-    """
-    Parse a RULE command from conversation text.
-    Returns formatted response string, or None if not a RULE command.
+    """Run one LOCK, UNLOCK, SUSPEND, RESTORE, STATUS, LIST or AUDIT line.
 
-    Args:
-        text: The RULE command line.
-        registry_path: Optional registry path. ``None`` (default) uses
-        the production REGISTRY_PATH; tests MUST pass an explicit
-        ``tmp_path`` so the helper never writes to the production
-        registry. Added in v3.19.57 hotfix after coverage tests using
-        ``patch("src.core.rule_registry.REGISTRY_PATH", ...)`` failed
-        to isolate — function defaults bind at def-time, so the
-        patched module-level path is never read by ``RuleRegistry()``.
-
-    Supports:
-      RULE LOCK   R<N> [--reason "..."]
-      RULE UNLOCK R<N> [--reason "..."]
-      RULE SUSPEND R<N> --reason "..." [--expires v<X.X.X>]
-      RULE RESTORE R<N>
-      RULE STATUS  [R<N>]
-      RULE LIST    [--locked | --unlocked | --suspended | --all]
-      RULE AUDIT   [--last N]
-
-    sadp: R28 FL  R55 GOV  R68 DPA
+    Returns the ``RuleRegistry`` reply, or ``None`` when ``text`` does not open
+    with RULE; a ``registry_path`` of ``None`` writes to ``REGISTRY_PATH``.
     """
     text = text.strip()
     if not re.match(r"^RULE\s+", text, re.I):
@@ -673,19 +603,15 @@ def parse_rule_command(
         else RuleRegistry()
     )
 
-    # Extract --reason "..."
     reason_m = re.search(r'--reason\s+"([^"]+)"', text, re.I)
     reason = reason_m.group(1) if reason_m else ""
 
-    # Extract --expires v<X.X.X>
     expires_m = re.search(r"--expires\s+(v[\d.]+)", text, re.I)
     expires = expires_m.group(1) if expires_m else ""
 
-    # Extract --last N
     last_m = re.search(r"--last\s+(\d+)", text, re.I)
     last_n = int(last_m.group(1)) if last_m else 10
 
-    # Extract filter flags
     filter_state = None
     if re.search(r"--locked\b", text, re.I):
         filter_state = "LOCKED"
@@ -696,11 +622,9 @@ def parse_rule_command(
     if re.search(r"--deprecated\b", text, re.I):
         filter_state = "DEPRECATED"
 
-    # Extract rule identifier
     rule_m = re.search(r"\b(R\d+)\b", text, re.I)
     rule = rule_m.group(1).upper() if rule_m else None
 
-    # Parse subcommand
     sub_m = re.match(r"^RULE\s+(\w+)", text, re.I)
     if not sub_m:
         return "⚠  Unrecognised RULE command. Try: RULE STATUS"
@@ -738,29 +662,13 @@ def parse_rule_command(
         return f"⚠  {e}"
 
 
-# ---------------------------------------------------------------------------
-# Initialise registry with sensible defaults
-# ---------------------------------------------------------------------------
-
-
 def initialise_defaults(path: Path | None = None) -> RuleRegistry:
-    """
-    Create RULE_REGISTRY.json with all rules set to LOCKED by default.
-    Idempotent — skips rules already in the registry.
+    """Write the registry file and return the ``RuleRegistry`` behind it.
 
-    Args:
-        path: Optional registry path. Defaults to production
-        REGISTRY_PATH when ``None``. Pass an explicit path in tests
-        so the helper never touches the production registry. (Adding
-        this parameter was a v3.19.57 hotfix after a coverage test
-        polluted sadp/RULE_REGISTRY.json by relying on the default —
-        function defaults bind at def-time, so monkeypatching the
-        module-level REGISTRY_PATH does not work.)
-
-    sadp: R28 FL  R55 GOV  R68 DPA
+    A ``path`` of ``None`` uses ``REGISTRY_PATH``; ``_load`` keeps the state of
+    every rule already in the file and locks the rest.
     """
     reg = RuleRegistry(path=path) if path is not None else RuleRegistry()
-    # Registry auto-initialises all rules to LOCKED in _load()
     reg._save()
     return reg
 

@@ -44,11 +44,24 @@ from .. import design_system as ds
 
 METHOD = "main_window.state"
 
-# ---------------------------------------------------------------------
 # Chrome
-# ---------------------------------------------------------------------
 
 WINDOW_TITLE_FORMAT = "Acervator v{version}"
+
+
+def running_version() -> str:
+    """The version the title carries when the caller names none.
+
+    Read when asked rather than at import, so the surface stays importable
+    without the package having resolved its version yet. A literal default
+    here would title the bridge's window differently from the Qt window,
+    which reads ``src.__version__`` directly.
+    """
+    from src import __version__
+
+    return str(__version__)
+
+
 MINIMUM_WIDTH_PX = 1400
 MINIMUM_HEIGHT_PX = 900
 
@@ -124,6 +137,7 @@ CANONICAL_TAB_ORDER = (
     CONSOLE_TAB,
 )
 
+# The order `_setup_ui` runs the builders in, which is not the order the bar ends in.
 BUILT_TAB_ORDER = (
     TRADING_TAB,
     ASSET_CHARTS_TAB,
@@ -134,6 +148,8 @@ BUILT_TAB_ORDER = (
     CONSOLE_TAB,
 )
 
+SIMULATOR_BUILD_INDEX = 1
+
 ISOLATED_TABS = (SIMULATOR_TAB, PAPER_TRADER_TAB)
 
 HISTORY_STALE_AFTER_S = 300
@@ -143,9 +159,7 @@ PULSE_TICK_MS = 80
 TOOLTIP_TICK_MS = 5000
 TOOLTIP_FIRST_SCAN_MS = 500
 
-# ---------------------------------------------------------------------
 # Status line
-# ---------------------------------------------------------------------
 
 STATUS_READY_TEXT = "Ready"
 
@@ -173,9 +187,7 @@ AI_OFF_COLOUR = ds.TEXT_PLACEHOLDER
 AI_READY_TEXT = "AI: READY"
 AI_READY_COLOUR = ds.STATUS_AUTHENTICATED
 
-# ---------------------------------------------------------------------
 # The six stat cards and the spendable panel
-# ---------------------------------------------------------------------
 
 SCRUMMED_FORMAT = "${value:,.2f}"
 FOLDED_FORMAT = "${value:,.2f}"
@@ -197,9 +209,7 @@ CRYPTO_VALUE_KEY = "crypto_position_value_usd"
 
 SPENDABLE_UNKNOWN = None
 
-# ---------------------------------------------------------------------
 # The console pause button
-# ---------------------------------------------------------------------
 
 CONSOLE_PAUSE_TEXT = "⏸  Pause"
 CONSOLE_RESUME_TEXT = "▶  Resume"
@@ -216,9 +226,7 @@ SIGNAL_GAP_MARKER_FORMAT = (
     "~/.acervator_logs/signals/session.jsonl ────"
 )
 
-# ---------------------------------------------------------------------
 # The API interaction log
-# ---------------------------------------------------------------------
 
 API_EVENT_HEAD_FORMAT = "[{stamp}] {exchange} {action}"
 API_EVENT_REASON_FORMAT = "  Reason: {reason}"
@@ -231,9 +239,7 @@ API_EVENT_BUFFERED = "buffered"
 API_EVENT_APPENDED = "appended"
 MAIN_THREAD_NAME = "MainThread"
 
-# ---------------------------------------------------------------------
 # The indicator panel's empty state
-# ---------------------------------------------------------------------
 
 CAUSE_BOT_MISSING = "bot_missing"
 CAUSE_NOT_RUNNING = "not_running"
@@ -247,9 +253,7 @@ ERROR_STATE = "error"
 CANDLES_REQUIRED = 30
 DEFAULT_TIMEFRAME = "1h"
 
-# ---------------------------------------------------------------------
 # The sounds the window decides on
-# ---------------------------------------------------------------------
 
 FIRE_SOUND = "fire"
 PROFIT_SOUND = "profit"
@@ -267,9 +271,7 @@ BEEP_SILENT = "silent"
 BEEP_THROTTLED = "throttled"
 BEEP_PLAYED = "played"
 
-# ---------------------------------------------------------------------
 # The pulse
-# ---------------------------------------------------------------------
 
 PULSE_PHASE_STEP = 0.05
 PULSE_OPACITY_MID = 0.91
@@ -278,9 +280,7 @@ GLOW_BLUR_MID = 17.0
 GLOW_BLUR_SWING = 5.0
 GLOW_PHASE_RATE = 1.6
 
-# ---------------------------------------------------------------------
 # The boxes the window raises
-# ---------------------------------------------------------------------
 
 BOX_QUESTION = "question"
 BOX_WARNING = "warning"
@@ -408,9 +408,7 @@ DEFAULT_THEME = "cyberpunk_dark"
 AI_RECONFIGURED_LOG_FORMAT = "AI Monitor reconfigured (phrase: '{phrase}...')"
 AI_PHRASE_CHARACTERS = 20
 
-# ---------------------------------------------------------------------
 # The bus this window subscribes to, and what it never gives back
-# ---------------------------------------------------------------------
 
 BUS_SUBSCRIPTIONS = (
     "bot.log",
@@ -423,9 +421,7 @@ BUS_SUBSCRIPTIONS = (
 BUS_UNSUBSCRIPTIONS: tuple = ()
 ERROR_BUFFER_MAX = 200
 
-# ---------------------------------------------------------------------
 # Wiring: named here, modelled by the surface each tab already has
-# ---------------------------------------------------------------------
 
 WIRED_TABS = (
     "_build_trading_tab",
@@ -475,9 +471,7 @@ WIRED_PATHS = (
     "set_async_loop",
 )
 
-# ---------------------------------------------------------------------
 # The abbreviation tooltips the window applies to its own children
-# ---------------------------------------------------------------------
 
 ABBREVIATION_TOOLTIPS = (
     ("P/L", "Profit / Loss - net gain or loss from closed trades"),
@@ -602,9 +596,7 @@ TOOLTIP_STYLE = (
 )
 
 
-# ---------------------------------------------------------------------
 # Pure decisions
-# ---------------------------------------------------------------------
 
 
 def window_title(version: Any) -> str:
@@ -615,6 +607,24 @@ def window_title(version: Any) -> str:
 def wing_title(mode: Any) -> str:
     """The title bar after the operator flips the trading wing."""
     return WING_TITLES[mode]
+
+
+def constructed_tabs(failed: Any = None) -> list:
+    """The tab bar the builders leave, with every name in `failed` skipped.
+
+    Each builder in `BUILT_TAB_ORDER` appends; the Simulator's inserts at
+    `SIMULATOR_BUILD_INDEX`.
+    """
+    skipped = set(failed or ())
+    order: list = []
+    for name in BUILT_TAB_ORDER:
+        if name in skipped:
+            continue
+        if name == SIMULATOR_TAB:
+            order.insert(SIMULATOR_BUILD_INDEX, name)
+        else:
+            order.append(name)
+    return order
 
 
 def reordered_tabs(labels: Any, desired: Any) -> list:
@@ -990,9 +1000,7 @@ def mode_tab_styles(mode: Any, tabs_ready: Any) -> dict:
     return {STOCK_MODE: active, CRYPTO_MODE: MODE_TAB_STYLE_CLEARED}
 
 
-# ---------------------------------------------------------------------
 # Stand-ins
-# ---------------------------------------------------------------------
 
 
 class LoadSample:
@@ -1203,9 +1211,7 @@ class ModelCall:
         return {"name": self.name, "detail": self.detail}
 
 
-# ---------------------------------------------------------------------
 # The model
-# ---------------------------------------------------------------------
 
 
 class MainWindowModel:
@@ -1219,7 +1225,7 @@ class MainWindowModel:
 
     def __init__(
         self,
-        version: Any = "0.0.0",
+        version: Any = None,
         fleet: Any = None,
         settings: Any = None,
         themes: Any = None,
@@ -1233,7 +1239,7 @@ class MainWindowModel:
         tabs_ready: Any = True,
         failed_tabs: Any = None,
     ) -> None:
-        self.version = version
+        self.version = running_version() if version is None else version
         self.fleet = fleet
         self.settings = settings
         self.themes = themes if themes is not None else ThemeSource()
@@ -1297,7 +1303,7 @@ class MainWindowModel:
         self._record("menus", [menu["title"] for menu in self.menus])
         self.subscriptions = list(BUS_SUBSCRIPTIONS)
         self._record("subscribe", self.subscriptions)
-        built = [name for name in BUILT_TAB_ORDER if name not in self.failed_tabs]
+        built = constructed_tabs(self.failed_tabs)
         self.tab_labels = reordered_tabs(built, CANONICAL_TAB_ORDER)
         self._record("tabs", list(self.tab_labels))
         self.timers = [
@@ -1733,7 +1739,7 @@ def build_view_model(params: Any = None) -> dict:
             statuses=given["fleet"].get("statuses"),
         )
     model = MainWindowModel(
-        version=given.get("version", "0.0.0"),
+        version=given.get("version"),
         fleet=fleet,
         settings=settings,
         themes=themes,

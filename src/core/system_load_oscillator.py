@@ -1,39 +1,12 @@
-"""
-src/core/system_load_oscillator.py — v3.13.7 Nuclear Mode speed oscillator.
+"""Nuclear Mode speed oscillator for tick rate and per-tick workload.
 
-User directive Session 18 (turn 11):
-  "Nuclear Mode - Upgrade - Instead of system speed being a manual
-  control, it now oscillates in 2m intervals with a 30s sustain at
-  max load speed per cycle with increase system sensing."
-
-Confirmed spec (3 verify-first answers):
-  Q1 — Oscillates: BOTH tick rate AND per-tick workload ("true load pulse")
-  Q2 — Peak ratio: 4× base (0.8s → 0.2s tick, 1× → 4× workload)
-  Q3 — Sensing:    5× sampling + tighter thresholds + COOLING regime
-
-Shape (symmetric):
-  ╭─ 45s cosine ramp up ─╮╭─ 30s sustain at 4× ─╮╭─ 45s cosine ramp down ─╮
-  │                       ││                      ││                        │
-  │   1.0×  ─────────►    ││        4.0×          ││    ◄───────── 1.0×     │
-  ╰───────────────────────╯╰──────────────────────╯╰────────────────────────╯
-                              120s cycle, repeat
-
-COOLING protection:
-  - Background daemon samples SystemLoadMR at 5Hz (0.2s)
-  - STRESS or CRITICAL regime → enter COOLING
-  - COOLING state: multiplier capped at 1.5× regardless of cycle
-  - 3 consecutive CALM samples → exit COOLING
-
-Workload application:
-  Deterministic accumulator: each engine tick adds current multiplier
-  to the accumulator; the integer part becomes the number of
-  _tick_feed iterations that tick. Fractional remainder preserved
-  across ticks → expected value matches multiplier exactly, without
-  stochastic variance.
-
-sadp: R60 (override approved — user explicit override of 'run current
-build' queue order this turn), R61 CBF (fail-loudly at sampling
-thread boundary — no silent-swallow).
+``SystemLoadOscillator.current_multiplier`` walks a ``CYCLE_SEC`` cycle:
+``RAMP_UP_SEC`` of cosine rise, ``SUSTAIN_SEC`` at ``PEAK_MULTIPLIER``, then
+``RAMP_DOWN_SEC`` back to ``BASE_MULTIPLIER``. A daemon samples
+``SystemLoadMR`` at ``SAMPLING_HZ`` and caps the multiplier at
+``COOLING_CAP`` until ``COOLING_EXIT_CALM_COUNT`` CALM samples follow.
+``tick_workload`` returns the integer part of a running accumulator, so the
+fractional remainder carries into the next tick.
 """
 
 from __future__ import annotations
@@ -54,40 +27,26 @@ def _cosine_ramp(phase: float) -> float:
 
 
 class SystemLoadOscillator:
-    """Dual-oscillator for Nuclear Mode tick rate + per-tick workload.
+    """Dual oscillator for Nuclear Mode tick rate and per-tick workload.
 
-    Thread-safe. Caller gets current multiplier via
-    `current_multiplier()` on each tick; the engine scales both
-    tick_interval (via division) and workload count (via integer
-    accumulator).
-
-    The oscillator starts at `start()`, which takes a monotonic
-    reference time and spawns the COOLING monitor daemon. `stop()`
-    joins the daemon and invalidates state. Safe to call stop()
-    multiple times; calling current_multiplier() before start()
-    returns BASE_MULTIPLIER.
-
-    sadp: R61 CBF — sampling thread uses try/except with stderr
-    surfacing, not silent swallow.
+    ``start`` takes the monotonic reference and spawns the COOLING
+    daemon; ``stop`` joins it and is idempotent. ``current_multiplier``
+    returns ``BASE_MULTIPLIER`` before ``start``.
     """
 
-    # ── Cycle geometry ─────────────────────────────────────────────
-    CYCLE_SEC = 120.0  # full period
-    RAMP_UP_SEC = 45.0  # cosine ease up
-    SUSTAIN_SEC = 30.0  # flat at peak
-    RAMP_DOWN_SEC = 45.0  # cosine ease down
-    # Invariant: RAMP_UP + SUSTAIN + RAMP_DOWN == CYCLE_SEC
+    # RAMP_UP_SEC + SUSTAIN_SEC + RAMP_DOWN_SEC must equal CYCLE_SEC.
+    CYCLE_SEC = 120.0
+    RAMP_UP_SEC = 45.0
+    SUSTAIN_SEC = 30.0
+    RAMP_DOWN_SEC = 45.0
 
-    # ── Intensity ─────────────────────────────────────────────────
     BASE_MULTIPLIER = 1.0
     PEAK_MULTIPLIER = 4.0
-    COOLING_CAP = 1.5  # max multiplier while in COOLING
+    COOLING_CAP = 1.5  # ceiling applied while COOLING
 
-    # ── COOLING state machine ─────────────────────────────────────
-    COOLING_EXIT_CALM_COUNT = 3  # consecutive CALM samples to exit
+    COOLING_EXIT_CALM_COUNT = 3  # consecutive CALM samples needed to exit
 
-    # ── Sampling ──────────────────────────────────────────────────
-    SAMPLING_HZ = 5.0  # samples per second (0.2s interval)
+    SAMPLING_HZ = 5.0
 
     def __init__(self, system_load_mr):
         """Initialize bound to a SystemLoadMR for COOLING detection.
@@ -146,14 +105,7 @@ class SystemLoadOscillator:
         return elapsed % self.CYCLE_SEC
 
     def current_multiplier(self) -> float:
-        """Multiplier in [BASE, PEAK], clamped by COOLING if active.
-
-        Shape:
-          0 ≤ t < 45  — cosine-ease ramp up (1.0 → 4.0)
-          45 ≤ t < 75 — sustain at 4.0
-          75 ≤ t < 120 — cosine-ease ramp down (4.0 → 1.0)
-        """
-        # Compute geometric multiplier first
+        """Multiplier in [BASE_MULTIPLIER, PEAK_MULTIPLIER], capped while COOLING."""
         with self._lock:
             st = self._start_time
         if st is None:
@@ -178,16 +130,10 @@ class SystemLoadOscillator:
         return m
 
     def tick_workload(self) -> int:
-        """Return integer workload count for this tick using a
-        deterministic accumulator. Expected value over many ticks
-        equals current_multiplier exactly.
+        """Return this tick's integer workload count from the accumulator.
 
-        Example: multiplier=2.3 produces sequence 2, 3, 2, 3, 2, 2, 3, ...
-        (accumulator wraps: 2.3 → 2 (rem 0.3), +2.3=2.6 → 2 (rem 0.6),
-        +2.3=2.9 → 2 (rem 0.9), +2.3=3.2 → 3 (rem 0.2), ...)
-
-        Clamped to [1, ceil(PEAK)] so a bot always advances at
-        least 1 candle per tick (engine invariant).
+        The running mean equals ``current_multiplier``; the result is
+        clamped to ``[1, ceil(PEAK_MULTIPLIER)]``.
         """
         m = self.current_multiplier()
         with self._lock:
@@ -244,19 +190,13 @@ class SystemLoadOscillator:
                                 self._cooling = False
                                 self.cooling_exit_count += 1
                                 self._cooling_calm_count = 0
-                    # Anything else (e.g., new 'COOLING' regime if
-                    # someone later renames): treat as non-CALM, don't
-                    # exit COOLING
             except Exception as exc:
-                # R61 CBF — surface, don't swallow
                 import sys as _s, traceback as _tb
 
                 _s.stderr.write(
                     f"SystemLoadOscillator sampler: " f"{type(exc).__name__}: {exc}\n"
                 )
                 _tb.print_exc(file=_s.stderr)
-                # Don't kill the thread; back off one interval and try
-                # again
-            # Honor stop_event even during sleep — wait() returns early
+            # wait() returns early on stop_event, so stop() is not delayed.
             if self._stop_event.wait(timeout=interval):
                 break

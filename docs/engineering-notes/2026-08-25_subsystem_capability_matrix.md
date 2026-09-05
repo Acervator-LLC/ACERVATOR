@@ -174,7 +174,7 @@ actually recorded in this repository. No rule here is invented.
 
 | Key | The rule | Where it is recorded |
 | --- | --- | --- |
-| **R-VENUE** | "Simulator, Paper, and Live Scrumming bots are and must be the same with the exception of their data source. Live is the only one with bidirectional API access since it trades on the exchange." | `docs/engineering-notes/2026-08-25_the_venue_seam.md:10-14` (operator verbatim). Restated in code at `src/gui/simulator_tab/fleet/fleet_replay_controller.py:454`: "Live, Paper and Sim may differ only in where market data comes from." |
+| **R-VENUE** | "Simulator, Paper, and Live Scrumming bots are and must be the same with the exception of their data source. Live is the only one with bidirectional API access since it trades on the exchange." | `docs/engineering-notes/2026-08-25_the_venue_seam.md:10-14` (operator verbatim). Restated in code at `src/simulator/fleet/fleet_replay_controller.py:454`: "Live, Paper and Sim may differ only in where market data comes from." |
 | **R-VENUE-2** | "If the bot is not acting like a live trading bot with a different data feed, I do not want to hear about it, because any variation is a violation of the design spec." | `docs/engineering-notes/2026-08-25_the_venue_seam.md:16-18` |
 | **R-EXCHANGE** | Operator, 2026-08-22, verbatim: "ANYTHING that induces disagreement with exchange values is broken." Internal ledgers reconcile TO the venue and never override it. | `tests/test_drift_up_adopts_the_exchange.py:9` (operator verbatim). Also `tests/test_sim_bot_agrees_with_its_venue.py:9-11`, `src/core/instance_guard.py:5`. `export_scrumming_state` (`src/trading/scrumming/state_io.py:30`) still omits `_current_holdings` from the exported dict, enforcing the rule; the narrative comment explaining why was removed by a later comment sweep. **`docs/engineering-notes/2026-07-25_bot_details_status_tab/REPORT.md` no longer exists anywhere in the tree.** |
 | **R-TRANCHE** | "MERGE, DESPAWN and CLEAR are the only three things that collapse or remove a tranche." Despawn REMOVES; it does not delist. | `src/gui/live_settings/fold_chrome.py:160` and `src/gui/live_settings/settings_tab.py:879` (operator-facing text). Reasoning at `src/gui/live_settings/fold_chrome.py:315` — "the operator's model has exactly three verbs - merge, despawn, clear". |
@@ -242,8 +242,7 @@ prove that from the guard alone. Re-run with Acervator closed for that proof.
 ## WHAT THIS MATRIX DOES NOT COVER — read this before you trust a row
 
 A complete-looking matrix that is partial is the failure this document exists to stop. The
-gaps below are named so the next unit does not believe a subsystem is understood when it
-is not.
+gaps below are what the matrix does not establish.
 
 1. **No live network call was made.** Every statement about how the real Coinbase venue
    behaves rests on the ccxt contract, not on a Coinbase response. This audit ran offline
@@ -1445,8 +1444,8 @@ This is the level a work brief is written from. The operator does not need to re
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `SIM/emitter-network/sim-pins` | The Simulator's own emitters | BUILT | WORKING | 14 pins across `simulator_tab.py`, `fleet/fleet_replay_panel.py`, `fleet/fleet_replay_controller.py` | **removed, see R-EMITTER** | `tests/test_feature1_fleet_load_emitters.py` | [M] |
 | `SIM/emitter-network/fleet-pins` | The fleet loader's emitters | BUILT | WORKING | 8 pins across `fleet/bot_state_loader.py`, `fleet/fleet_replay_controller.py` | **removed, see R-EMITTER** | `tests/test_feature1_fleet_load_emitters.py` | [M] |
-| `SIM/emitter-network/count-matches-the-spec` | The network holds the number the spec names | **PARTIAL** | **BROKEN** — 22 against a specified 40 | measured across `src/` | **removed, see R-EMITTER** | `tools/emitter_registry_check.py` (whole-tree, not per-subsystem) | [M] |
-| `SIM/emitter-network/every-pin-has-a-row` | Every emitter is in the register and every register row has an emitter | BUILT | WORKING | `tools/emitter_registry_check.py:137` | **removed, see R-EMITTER** | `python -m tools.emitter_registry_check` — 78 and 78, controls OK, exit 0 | [M] |
+| `SIM/emitter-network/count-matches-the-spec` | The network holds the number the spec names | **PARTIAL** | **BROKEN** — 22 against a specified 40 | measured across `src/` | **removed, see R-EMITTER** | NO TEST — the whole-tree checker was retired with the pin register | [M] |
+| `SIM/emitter-network/every-pin-has-a-row` | Every emitter is in the register and every register row has an emitter | **ABSENT** | **BROKEN** — the pin register and its checker were both removed; `src/core/emit_contracts.py` is the current mechanism and it keys on topic, not on a pin row | no site | **removed, see R-EMITTER** | `tests/test_emit_contracts.py` | [M] |
 | `SIM/emitter-network/pins-carry-a-prediction` | Each emitter reports its prediction beside what it observed | BUILT | WORKING | `src/core/signal_contract.py:1146` (`emit`, which takes both `actual` and `expected`) | R-PREDICTION | `tests/test_emitter_eviction_and_digest.py` | [T] |
 | `SIM/emitter-network/operation-duration` | Each emitter records how long its operation took | **PARTIAL** | **BROKEN** — 0 of 40 carry one | item 10.3 phase 2, not done | `docs/engineering-notes/2026-08-19_emitter_duration_classification.md` | NO TEST | [S] |
 | `SIM/emitter-network/every-emitter-proved` | Each emitter is verified against the spec | **ABSENT** | **BROKEN** — item 10.4 not done | no site | **removed, see R-EMITTER** row 10.4 | NO TEST | [S] |

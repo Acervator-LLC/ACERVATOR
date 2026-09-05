@@ -88,9 +88,7 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# ---------------------------------------------------------------------
 # The inputs. One table for the tab the sheet reads, one for the mouse.
-# ---------------------------------------------------------------------
 
 
 LONG_TEXT = "L" * 200
@@ -308,9 +306,7 @@ EVENT_SPECS = {
 EVENT_NAMES = sorted(EVENT_SPECS)
 
 
-# ---------------------------------------------------------------------
 # The visualizer tab both sides are driven against
-# ---------------------------------------------------------------------
 
 
 def driven_tab_class():
@@ -386,9 +382,7 @@ def driven_tab_class():
     return DrivenTab
 
 
-# ---------------------------------------------------------------------
 # The painter the shipped sheet draws through
-# ---------------------------------------------------------------------
 
 
 def colour_of(value):
@@ -543,9 +537,7 @@ def recorder_class(image):
     return RecordingPainter
 
 
-# ---------------------------------------------------------------------
 # The drawing engine both sides are given
-# ---------------------------------------------------------------------
 
 
 def qt_sample(src, control, tgt, percent):
@@ -569,9 +561,7 @@ def qt_advance(label):
     return QFontMetrics(font).horizontalAdvance(label)
 
 
-# ---------------------------------------------------------------------
 # Driving the two sides
-# ---------------------------------------------------------------------
 
 
 def qt_event(kind, button, x, y):
@@ -809,9 +799,7 @@ def partial_new(spec, events=()):
     return [list(one) for one in model.draw_calls], refusal
 
 
-# ---------------------------------------------------------------------
 # The two sides, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", TAB_NAMES)
@@ -1008,9 +996,7 @@ def test_the_dragged_wire_carries_the_colour_its_branch_names(name):
     assert old[-3] == model.draw_calls[-3]
 
 
-# ---------------------------------------------------------------------
 # Answers and refusals
-# ---------------------------------------------------------------------
 
 
 def test_both_answers_and_refusals_are_in_the_measured_tab_set():
@@ -1074,9 +1060,7 @@ def test_a_flag_where_an_opacity_belongs_is_read_as_one_percent():
     assert surface.opacity_percent(False) == 0
 
 
-# ---------------------------------------------------------------------
 # The enumeration: wiring, signals, classes, methods, timers, bus topics
-# ---------------------------------------------------------------------
 
 
 def dotted(node) -> str:
@@ -1181,9 +1165,8 @@ def methods_in(module) -> list:
 
 SHIPPED_CLASSES = {"_WireCanvas": "WireCanvasModel"}
 
-# The surface holds one class the shipped file does not: the visualizer
-# tab the sheet reads, which lives in another file and is stood in for
-# here so the sheet can be driven with no visualizer built.
+# The visualizer tab the sheet reads lives in another file and is stood in for
+# here.
 EXTRA_SURFACE_CLASSES = {"CanvasTabState": "BotVisualizationTab"}
 
 SHIPPED_METHODS = {
@@ -1297,9 +1280,7 @@ def test_the_counterpart_reader_reports_a_missing_counterpart():
         getattr(surface, "InventedModel")
 
 
-# ---------------------------------------------------------------------
 # The completeness check
-# ---------------------------------------------------------------------
 
 
 PAYLOAD_KEYS = {
@@ -1390,9 +1371,7 @@ PAYLOAD_KEYS = {
     "ZERO_LENGTH_FALLBACK": "arrow.zero_length_fallback",
 }
 
-# Values the payload carries inside a list rather than at a path of
-# their own: the drawing call names, the mouse route names, the branch
-# names, the mouse event kinds and the three curve point kinds.
+# Values the payload carries inside a list rather than at a path of their own.
 LIST_MEMBERS = {
     "BASE_MOVE": "route_names",
     "BASE_PRESS": "route_names",
@@ -1443,9 +1422,7 @@ KEY_MEMBERS = {
     "RIGHT_BUTTON": "buttons",
 }
 
-# The two values no payload key carries, each with the check that covers
-# it. METHOD is the name the bridge registers under and CANVAS_MODEL the
-# sheet state the bridge keeps between calls.
+# The values no payload key carries, each with the check that covers it.
 NOT_IN_THE_SNAPSHOT = {
     "METHOD": "test_the_bridge_registers_the_wire_canvas_method",
     "CANVAS_MODEL": "test_the_bridge_resets_the_sheet_state_on_request",
@@ -1553,9 +1530,7 @@ def test_the_completeness_check_can_report_a_missing_value():
         at_path(payload, "attributes.9")
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own values
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -1669,9 +1644,7 @@ def test_the_surface_keeps_no_state_between_two_sheets():
     assert canonical(fresh) == canonical(again)
 
 
-# ---------------------------------------------------------------------
 # The colours
-# ---------------------------------------------------------------------
 
 
 def canonical_colour(value):
@@ -1760,9 +1733,7 @@ def test_the_alpha_of_every_wire_layer_is_the_one_declared():
     assert gradient[3][1][1] == list(surface.PULSE_EDGE_COLOR)
 
 
-# ---------------------------------------------------------------------
 # The pictures
-# ---------------------------------------------------------------------
 
 
 def model_payload(name, events=()):
@@ -2029,9 +2000,7 @@ def test_the_surface_default_curve_agrees_with_the_drawing_library():
     assert abs(off[0] - qt_sample(src, control, tgt, 0.7)[0]) > 1.0
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see, read off both sides instead
-# ---------------------------------------------------------------------
 
 
 def test_the_values_no_picture_carries_are_read_off_both_sides():
@@ -2101,9 +2070,7 @@ def test_the_questions_the_sheet_asks_the_tab_are_read_off_both_sides():
     assert [surface.TAB_WIRE_OFFSET, "alpha->beta"] not in skipped["paint_asks"]
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)

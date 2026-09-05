@@ -7,6 +7,9 @@ Linux host with fontconfig. With none every family resolves to a box
 font advancing one em per character, so two strings of equal length
 paint the same picture whatever they say.
 
+The platform itself comes from ``tests/conftest.py``. This module reads
+the font state and never chooses it.
+
 A parity test that compares rendered pictures asks this before it
 decides which way its comparison must go. Importing this is the only
 supported way to ask -- a test that asserts a fixed answer pins the
@@ -43,7 +46,8 @@ built the database and every guard reads no fonts, or (c) a guard is
 applied to a test whose claim in fact holds in both states, which no
 run would report because the guard only ever skips, or (d) the
 application font is itself fixed-width, so ``NARROW_LABEL`` and
-``WIDE_LABEL`` measure alike on a run that holds fonts.
+``WIDE_LABEL`` measure alike on a run that holds fonts, or (e)
+importing this module changes ``QT_QPA_PLATFORM``.
 """
 
 from __future__ import annotations
@@ -53,10 +57,6 @@ import os
 from pathlib import Path
 
 import pytest
-
-# Must precede any QApplication construction. setdefault, not
-# assignment: a caller that has already chosen a platform keeps it.
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 FONT_ENV = "ACERVATOR_TEST_FONTS"
 
@@ -112,15 +112,20 @@ def load_run_fonts() -> bool:
     return True
 
 
+def _families() -> list[str]:
+    """The families the platform names right now."""
+    from PySide6.QtGui import QFontDatabase
+
+    return list(QFontDatabase.families())
+
+
 def has_real_fonts() -> bool:
     """True when the platform exposes a font database.
 
     Imported by every parity test whose picture comparison changes
     direction with the host's fonts.
     """
-    from PySide6.QtGui import QFontDatabase
-
-    return len(QFontDatabase.families()) > 0
+    return bool(_families())
 
 
 def app_font_advance_px(text: str) -> int:
@@ -138,6 +143,23 @@ def app_font_advance_px(text: str) -> int:
     return QFontMetrics(QApplication.font()).horizontalAdvance(text)
 
 
+def missing_font_source() -> str:
+    """Why this run holds no font database, named so a skip is actionable.
+
+    Read by the real-fonts guard. A test that needs glyphs and does not
+    get them says which of the two lending steps was absent instead of
+    reporting only that the database is empty.
+    """
+    if os.environ.get(FONT_ENV) != "1":
+        return "%s is not set to 1, so no font file was lent" % FONT_ENV
+    if lendable_font_file() is None:
+        return (
+            "%s=1 but DejaVuSans.ttf was not found; it ships with "
+            "matplotlib, which is in the charts extra" % FONT_ENV
+        )
+    return "a font file was lent and the platform still names no family"
+
+
 def _guard(test, wanted: bool):
     """Wrap `test` so it skips when the run's font state is not `wanted`."""
 
@@ -146,10 +168,14 @@ def _guard(test, wanted: bool):
         load_run_fonts()
         found = has_real_fonts()
         if found is not wanted:
-            pytest.skip(
-                "needs a run %s a font database; this run has %s"
-                % ("with" if wanted else "without", "one" if found else "none")
-            )
+            if wanted:
+                reason = "needs a run with a font database; %s" % missing_font_source()
+            else:
+                reason = (
+                    "needs a run without a font database; this run names "
+                    "%d families" % len(_families())
+                )
+            pytest.skip(reason)
         return test(*args, **kwargs)
 
     return guarded

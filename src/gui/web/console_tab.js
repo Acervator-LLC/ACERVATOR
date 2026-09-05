@@ -82,7 +82,7 @@
   var FORMAT = "format";
   var DATEFMT = "datefmt";
   var LOGGERS = "loggers";
-  var ROOT_LEVEL = "root_level";
+  var HANDLER_LEVEL = "handler_level";
 
   // Each discrete skin field beside the CSS property its own sheet writes.
   var SKIN_PAIRS = [
@@ -180,7 +180,7 @@
   var VALUE_ATTR = "data-value";
   var FORMAT_ATTR = "data-format";
   var DATEFMT_ATTR = "data-datefmt";
-  var ROOT_LEVEL_ATTR = "data-root-level";
+  var HANDLER_LEVEL_ATTR = "data-handler-level";
   var LOGGER_ATTR = "data-logger";
   var ARIA_LABEL = "aria-label";
   var ARIA_READONLY = "aria-readonly";
@@ -540,7 +540,7 @@
     handlerProps[PART_ATTR] = LOG_HANDLER_PART;
     handlerProps[FORMAT_ATTR] = text(handler[FORMAT]);
     handlerProps[DATEFMT_ATTR] = text(handler[DATEFMT]);
-    handlerProps[ROOT_LEVEL_ATTR] = text(handler[ROOT_LEVEL]);
+    handlerProps[HANDLER_LEVEL_ATTR] = text(handler[HANDLER_LEVEL]);
 
     return element(
       DIV_TAG,
@@ -977,6 +977,16 @@
     consoleFaults = [];
     loadFault = null;
     asked = null;
+  }
+
+  // The shell draws this tab by its module name; the host reads that name
+  // off the script tag running now, so it is written down nowhere.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderTab,
+      load: loadConsole,
+      loadError: loadError
+    });
   }
 
   global.acervatorSetConsole = setConsole;

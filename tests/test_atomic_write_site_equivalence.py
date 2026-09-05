@@ -1,31 +1,18 @@
-"""Behaviour pins for the ten sites now served by src/core/io_utils.py.
+"""Behaviour pins for the ten sites served by `src/core/io_utils.py`.
 
-Each site used to carry its own temp-file-then-rename idiom. This module
-pins what each one writes, and what the shared helper guarantees.
-
-What each group would mean if it went red
------------------------------------------
-equivalence   A migrated site's bytes moved away from what its own old
-              idiom produced. The only differences this suite accepts are
-              the two declared here: text-mode CRLF translation is gone,
-              and capital_reservation now names its encoding.
-kwargs        A site stopped passing its own json.dumps arguments, so its
-              file changed shape (indent, sort_keys, separators, default).
-atomicity     A failure part-way through reached the destination. The
-              destination is bot_state.json on the live path.
-fsync         The staged file is renamed before its contents are on the
-              platter. A power loss then promotes an empty or truncated
-              file.
-collision     Two writers of one destination share a staging path again.
-              StateManager and bot_visualizer both staged bot_state.json
-              through bot_state.tmp before this change.
+Each `_old_*` helper reproduces the idiom its site carried before, and each
+site is driven so the bytes it writes today are compared against them.
+`_Recorder` keeps the `json.dumps` keywords each site passes, so a shape
+change in `indent`, `sort_keys`, `separators` or `default` goes red.
+`SITE_DRIVERS` runs all ten under `_record_staging`, which requires every
+staged temp file to come from `atomic_write_json`.
 """
 
 from __future__ import annotations
 
-import ast
 import json
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -40,10 +27,6 @@ from src.gui import indicator_panel as IP
 from src.simulator.fleet import simulator_bot_state as SBS
 from src.trading import capital_reservation as CR
 from src.trading.stone_tablets import storage as ST
-
-# ------------------------------------------------------------------ #
-# The old idioms, reproduced verbatim. Each writes and returns bytes. #
-# ------------------------------------------------------------------ #
 
 
 def _old_open_w_utf8(tmp: Path, payload, **dump_kwargs) -> bytes:
@@ -87,11 +70,6 @@ def _crlf_to_lf(data: bytes) -> bytes:
     return data.replace(b"\r\n", b"\n")
 
 
-# ------------------------------------------------------------------ #
-# Recorder: wraps a module's helper name, delegates, keeps the call.  #
-# ------------------------------------------------------------------ #
-
-
 class _Recorder:
     """Captures every (path, payload, kwargs) a site hands the helper."""
 
@@ -129,11 +107,6 @@ def _dumped(payload, kwargs: dict) -> str:
     return json.dumps(payload, **_dump_kwargs(kwargs))
 
 
-# ------------------------------------------------------------------ #
-# Realistic payloads                                                  #
-# ------------------------------------------------------------------ #
-
-
 def _bot_record(bot_id: str) -> dict:
     return {
         "bot_id": bot_id,
@@ -148,11 +121,6 @@ def _bot_record(bot_id: str) -> dict:
             "fold_tranches": [{"qty": 0.0004, "trigger": 63000.0}],
         },
     }
-
-
-# ================================================================== #
-# equivalence + kwargs, one test per site                            #
-# ================================================================== #
 
 
 def test_state_manager_save_state_bytes(tmp_path, monkeypatch):
@@ -331,85 +299,185 @@ def test_shared_testnet_bytes(tmp_path, monkeypatch):
     assert _crlf_to_lf(old) == dest.read_bytes()
 
 
-# ------------------------------------------------------------------ #
-# bot_visualizer is not driven: its destination is hardcoded to        #
-# ~/.acervator/bot_state.json, the operator's live position file.      #
-# Its call is pinned in the source, and the bytes those arguments      #
-# produce are pinned beside it.                                        #
-# ------------------------------------------------------------------ #
+def _run_bot_visualizer_saver(tmp_path, monkeypatch, state=None):
+    """Drive `_save_bot_state_dict` with `Path.home` pointed at `tmp_path`.
 
-_BV_PATH = Path(__file__).resolve().parents[1] / "src" / "gui" / "bot_visualizer.py"
+    The shipped method hardcodes `~/.acervator/bot_state.json`, so the home
+    it reads is redirected before the call and the live file is never opened.
+    """
+    pytest.importorskip("PySide6.QtWidgets")
+    from src.gui import bot_visualizer as BV
+
+    home = tmp_path / "home"
+    (home / ".acervator").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(Path, "home", classmethod(lambda _cls: home))
+    if state is None:
+        state = {"bots": {"bot-a": _bot_record("bot-a")}, "obj": object()}
+    BV.BotVisualizationTab._save_bot_state_dict(object(), state)
+    return home / ".acervator" / "bot_state.json", state
 
 
-def _bot_visualizer_saver() -> ast.FunctionDef:
-    tree = ast.parse(_BV_PATH.read_text(encoding="utf-8"))
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "_save_bot_state_dict":
-            return node
-    raise AssertionError("_save_bot_state_dict not found in bot_visualizer.py")
-
-
-def test_bot_visualizer_calls_the_shared_helper():
+def test_bot_visualizer_writes_bot_state_through_the_shared_helper(
+    tmp_path, monkeypatch
+):
     """Red: the GUI's second writer of bot_state.json went back to its
     own staging name, which is how it collided with StateManager."""
-    fn = _bot_visualizer_saver()
-    source = ast.unparse(fn)
-    assert "atomic_write_json(p, state, indent=2, default=str)" in source
-    assert ".tmp" not in source
-    assert "write_text" not in source
+    rec = _install(monkeypatch, IO, "atomic_write_json")
+    dest, state = _run_bot_visualizer_saver(tmp_path, monkeypatch)
+
+    path, payload, kwargs = rec.only
+    assert path == dest, f"the GUI writer aimed at {path}, not {dest}"
+    assert payload is state
+    assert _dump_kwargs(kwargs) == {"indent": 2, "default": str}
+    assert [p.name for p in dest.parent.iterdir()] == ["bot_state.json"], sorted(
+        p.name for p in dest.parent.iterdir()
+    )
 
 
-def test_bot_visualizer_arguments_reproduce_the_old_bytes(tmp_path):
+def test_bot_visualizer_arguments_reproduce_the_old_bytes(tmp_path, monkeypatch):
     """Red: the arguments the GUI writer passes no longer reproduce what
     its own old idiom wrote."""
-    state = {"bots": {"bot-a": _bot_record("bot-a")}, "obj": object()}
-    dest = tmp_path / "bot_state.json"
-    IO.atomic_write_json(dest, state, indent=2, default=str)
+    dest, state = _run_bot_visualizer_saver(tmp_path, monkeypatch)
     old = _old_write_text_utf8(tmp_path / "old.bytes", state, indent=2, default=str)
     assert _crlf_to_lf(old) == dest.read_bytes()
 
 
-# ================================================================== #
-# The helper's own guarantees                                        #
-# ================================================================== #
+def _record_staging(monkeypatch) -> list:
+    """Record the module each `mkstemp` and `NamedTemporaryFile` call comes
+    from. Each wrapper delegates to the real `tempfile` function."""
+    import tempfile
+
+    seen: list[str] = []
+
+    def wrap(name):
+        real = getattr(tempfile, name)
+
+        def spy(*args, **kwargs):
+            seen.append(str(sys._getframe(1).f_globals.get("__name__")))
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(tempfile, name, spy)
+
+    wrap("mkstemp")
+    wrap("NamedTemporaryFile")
+    return seen
 
 
-def _code_without_comments_or_strings(path: Path) -> str:
-    """Source with every comment and string literal removed, so a marker
-    named in a docstring is not read as a call."""
-    import tokenize
-
-    kept = []
-    with path.open("rb") as handle:
-        for tok in tokenize.tokenize(handle.readline):
-            if tok.type in (tokenize.COMMENT, tokenize.STRING):
-                continue
-            kept.append(tok.string)
-    return " ".join(kept)
+def _drive_state_manager(tmp_path, monkeypatch):
+    SM.StateManager(config_dir=tmp_path).save_state([_bot_record("bot-a")])
 
 
-def test_no_migrated_site_stages_its_own_temp_file():
+def _drive_privacy_mask(tmp_path, monkeypatch):
+    reg = PMR.PrivacyMaskRegistry(
+        settings_path=tmp_path / "settings.json", autosave=False
+    )
+    reg.set_masked(sorted(PMR.ALL_FIELD_IDS)[0], True)
+    reg._persist_unlocked()
+
+
+def _drive_feature_telemetry(tmp_path, monkeypatch):
+    tel = FT.FeatureTelemetry(path=tmp_path / "feature_telemetry.json", autoload=False)
+    tel.declare("gui.fold_panel")
+    assert tel.save() is True
+
+
+def _drive_instance_guard(tmp_path, monkeypatch):
+    IG.write_claim(
+        tmp_path,
+        IG.MachineIdentity(
+            fingerprint="f" * 16,
+            host="kiosk",
+            os_user="operator",
+            platform="Windows-11",
+            strength="strong",
+            source="uuid",
+        ),
+        app_version="3.25.8",
+    )
+
+
+def _drive_indicator_panel(tmp_path, monkeypatch):
+    assert (
+        IP.save_ta_snapshot(
+            "bot-a",
+            "BTC/USD",
+            {"5m": {"rsi": 61.2}},
+            state_dir=tmp_path,
+            taken_at=1756000000.0,
+        )
+        is not None
+    )
+
+
+def _drive_simulator_bot_state(tmp_path, monkeypatch):
+    SBS.save_sim_state({"bot_count": 0, "bots": {}}, tmp_path / "sim_state.json")
+
+
+def _drive_capital_reservation(tmp_path, monkeypatch):
+    CR.CapitalReservationRegistry(state_path=tmp_path / "reservation.json")._save()
+
+
+def _drive_stone_tablets(tmp_path, monkeypatch):
+    ST.write_tablet(
+        ST.Tablet(
+            asset="BTC",
+            exchange_id="coinbase",
+            timeframe="5m",
+            year=2026,
+            source="ccxt",
+            fetched_at="2026-08-27T00:00:00+00:00",
+            candles=[[1756000000000, 61000.0, 61500.0, 60900.0, 61200.0, 12.5]],
+        ),
+        root=tmp_path,
+    )
+
+
+def _drive_shared_testnet(tmp_path, monkeypatch):
+    from src.gui import shared_testnet as STN
+
+    STN.SharedTestnetBridge._save_now(
+        SimpleNamespace(
+            _persist_path=tmp_path / "testnet_chain.json",
+            _serialize_state=lambda: {"block_number": 7},
+        )
+    )
+
+
+SITE_DRIVERS = [
+    pytest.param(_drive_state_manager, id="state_manager"),
+    pytest.param(_drive_privacy_mask, id="privacy_mask_registry"),
+    pytest.param(_drive_feature_telemetry, id="feature_telemetry"),
+    pytest.param(_drive_instance_guard, id="instance_guard"),
+    pytest.param(_drive_indicator_panel, id="indicator_panel"),
+    pytest.param(_drive_simulator_bot_state, id="simulator_bot_state"),
+    pytest.param(_drive_capital_reservation, id="capital_reservation"),
+    pytest.param(_drive_stone_tablets, id="stone_tablets"),
+    pytest.param(_drive_shared_testnet, id="shared_testnet"),
+    pytest.param(_run_bot_visualizer_saver, id="bot_visualizer"),
+]
+
+STAGING_OWNER = "src.core.io_utils"
+
+
+@pytest.mark.parametrize("drive", SITE_DRIVERS)
+def test_only_the_shared_helper_stages_a_temp_file(drive, tmp_path, monkeypatch):
     """Red: a site went back to naming its own staging path, which is how
     StateManager and bot_visualizer came to share bot_state.tmp."""
-    root = Path(__file__).resolve().parents[1] / "src"
-    offenders = []
-    for rel in [
-        "core/state_manager.py",
-        "core/privacy_mask_registry.py",
-        "core/feature_telemetry.py",
-        "core/instance_guard.py",
-        "gui/indicator_panel.py",
-        "gui/bot_visualizer.py",
-        "gui/shared_testnet.py",
-        "simulator/fleet/simulator_bot_state.py",
-        "trading/capital_reservation.py",
-        "trading/stone_tablets/storage.py",
-    ]:
-        code = _code_without_comments_or_strings(root / rel)
-        for marker in ("mkstemp", "NamedTemporaryFile"):
-            if marker in code:
-                offenders.append(f"{rel}:{marker}")
-    assert offenders == []
+    seen = _record_staging(monkeypatch)
+    drive(tmp_path, monkeypatch)
+    assert seen, "the site staged nothing; the recorder has no input"
+    assert set(seen) == {STAGING_OWNER}, seen
+
+
+def test_the_staging_recorder_names_a_site_that_stages_its_own(tmp_path, monkeypatch):
+    """The control: `_record_staging` names a caller outside `io_utils`."""
+    import tempfile
+
+    seen = _record_staging(monkeypatch)
+    handle, name = tempfile.mkstemp(dir=str(tmp_path))
+    os.close(handle)
+    os.unlink(name)
+    assert seen == [__name__], seen
 
 
 def test_helper_writes_lf_on_every_platform(tmp_path):

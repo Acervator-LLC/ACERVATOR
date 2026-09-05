@@ -1,58 +1,12 @@
-"""gate_coverage.py — pair trades with the gate decision behind them.
+"""Pair each trade with the gate decision behind it.
 
-Operator directive 2026-08-02:
-
-    "The other piece that has yet to be brought into this version of
-    the sim are the trading gate logs that were previously
-    implemented during legacy live to sim parity attempts. Since
-    these were introduced late, it will create a blind spot prior to
-    this feature being added so we will need to: 1) Find and
-    validate the logic gate tracking logs and import to the current
-    build, 2) Create error handling for trade actions that do not
-    have logic gate data, and 3) Determine if any improvements to
-    this process can be made."
-
-This module is (2): every trade is classified by WHY it does or
-does not have gate data, so a missing gate decision is an explicit,
-named condition rather than a silent absence.
-
-MEASURED STATE OF THE GATE LOGS (verified 2026-08-02)
-=====================================================
-    ~/.acervator_logs/trade/gate.log     626 KB    446 entries
-                                         2026-06-14 -> 2026-08-02
-    gate.log.1 .. gate.log.5             52 MB ea  ~165k entries
-                                         2026-06-09 -> 2026-06-11
-
-The rotations are dense (~197k entries per 33 hours). The current
-file is sparse (446 entries per 7 weeks) with a 28-day hole from
-2026-06-26 to 2026-07-24. Gate data therefore exists for only a
-fraction of the YTD trade window that starts 2026-04-01.
-
-Classification distinguishes the causes, because they need
-different responses:
-
-    HAS_GATE          — a gate decision was found. Parity can run.
-    BEFORE_LOGGING    — trade predates the earliest gate entry that
-                        exists. This is the operator's "blind spot";
-                        it is NOT a bug and cannot be backfilled.
-    LOG_GAP           — trade falls between two gate entries that
-                        are far enough apart that the log was not
-                        being written then (app not running, or the
-                        writer stalled). Recoverable in future by
-                        keeping the app up; not recoverable for past
-                        trades.
-    NO_GATE_FOR_BOT   — gate entries exist in this time range, but
-                        none for this bot_id. Suggests the bot was
-                        not evaluating, or its gate emission path is
-                        broken while others work. THIS one is worth
-                        investigating as a defect.
-    NO_GATE_DATA      — no gate entries at all were supplied.
-
-Only HAS_GATE trades can participate in a strict parity claim.
-Reporting the rest by cause is what stops a 11%-coverage run from
-being mistaken for a 100%-agreement result.
-
-sadp: R28 SSS + R70 RCN
+``classify_trades`` gives every trade one ``GateStatus`` and returns a
+``GateCoverageReport`` whose ``coverage_pct`` counts only ``HAS_GATE``.
+``build_gate_index`` groups the gate entries by ``bot_id``, ``_nearest`` picks
+the closest one inside ``DEFAULT_TOLERANCE_S``, and ``_in_log_gap`` separates
+``LOG_GAP`` from ``NO_GATE_IN_TOLERANCE`` at ``LOG_GAP_THRESHOLD_S``.
+``compute_validation_window`` turns that coverage into a ``ValidationWindow``,
+which ``format_window_lines`` renders beside ``format_coverage_lines``.
 """
 
 from __future__ import annotations
@@ -66,13 +20,10 @@ from typing import Any, Iterable, Optional
 logger = logging.getLogger("acervator.gate_coverage")
 
 DEFAULT_TOLERANCE_S: float = 300.0
-"""±one 5m candle. A gate decision that produced a trade is
-evaluated on the candle the trade fired within."""
+"""One 5m candle either side of a trade, the window ``_nearest`` searches."""
 
 LOG_GAP_THRESHOLD_S: float = 1800.0
-"""Gap between consecutive gate entries above which we call the log
-'not being written' rather than merely quiet. 30 min = 6 missed 5m
-candles."""
+"""Six 5m candles of silence, above which ``_in_log_gap`` returns True."""
 
 
 class GateStatus:
@@ -81,23 +32,13 @@ class GateStatus:
     LOG_GAP = "log_gap"
     NO_GATE_FOR_BOT = "no_gate_for_bot"
     NO_GATE_DATA = "no_gate_data"
-    # v3.24.24 — the bot WAS logging either side of this trade, but no
-    # entry landed inside the pairing tolerance.
-    #
-    # This case previously fell through to LOG_GAP. `classify_trades`
-    # assigned LOG_GAP in BOTH the `elif _in_log_gap(...)` branch and the
-    # `else`, so the scan's result was computed and discarded, and two
-    # genuinely different situations were reported as one: "the app was
-    # down / the writer stalled" versus "the app was running and logging
-    # normally, but this trade has no decision near it." The second is
-    # the more alarming of the two and was invisible.
+    # The bot logged either side of the trade, none within the tolerance.
     NO_GATE_IN_TOLERANCE = "no_gate_in_tolerance"
 
 
 @dataclass
 class TradeGatePairing:
-    """One trade and the gate decision behind it (or why there is
-    none)."""
+    """One trade, its `status`, and the `gate_entry` behind it when there is one."""
 
     trade_ts: float
     bot_id: str
@@ -125,8 +66,7 @@ class TradeGatePairing:
         return bool((self.gate_entry.get("data") or {}).get("fold_armed"))
 
     def blockers(self) -> list[str]:
-        """Blockers recorded on the side matching this trade —
-        a SELL is a scrum, a BUY is a fold."""
+        """Return `scrum_blockers` when `side` holds SELL, else `fold_blockers`."""
         if not self.gate_entry:
             return []
         data = self.gate_entry.get("data") or {}
@@ -161,9 +101,10 @@ class GateCoverageReport:
 
 
 def _ts_of(entry: dict) -> float:
-    """Parse an ISO timestamp from a log entry. 0.0 when absent or
-    malformed — callers filter those out rather than treating them
-    as epoch-zero events."""
+    """Return `entry`'s "timestamp" as epoch seconds, or 0.0.
+
+    `build_gate_index` drops every entry this returns 0.0 for.
+    """
     s = str(entry.get("timestamp", "") or "")
     if not s:
         return 0.0
@@ -179,23 +120,15 @@ _RETAINED_GATE_FIELDS = (
     "scrum_blockers",
     "fold_blockers",
 )
-"""The only fields any consumer of ``TradeGatePairing.gate_entry`` reads.
-
-Verified by grep: ``gate_entry`` is consumed exclusively by
-``scrum_armed`` / ``fold_armed`` / ``blockers`` in this module.
-``history_helpers.lookup_gate_entry`` is a different index and is
-unaffected.
-"""
+"""The only ``data`` keys ``TradeGatePairing.scrum_armed``, ``fold_armed`` and
+``blockers`` read out of ``gate_entry``."""
 
 
 def _project(entry: dict) -> dict:
-    """Keep only what pairing consumers read.
+    """Return `entry` reduced to "timestamp", "bot_id" and _RETAINED_GATE_FIELDS.
 
-    v3.24.24 — the index used to retain the whole parsed log line. On the
-    operator's real gate.log (165,047 rows / 262.1 MB of NDJSON, average
-    1,603 B/line) that was measured at **1.03 GB of Python heap**, held
-    synchronously on the Qt thread. Retaining a four-field projection
-    lets the full parsed line be collected inside the generator loop.
+    `build_gate_index` stores this projection, and the full parsed line is
+    collectable once it returns.
     """
     data = entry.get("data") or {}
     return {
@@ -208,20 +141,11 @@ def _project(entry: dict) -> dict:
 def build_gate_index(
     gate_entries: Iterable[dict],
 ) -> tuple[dict[str, list[tuple[float, dict]]], float, float]:
-    """Index gate entries by bot_id, each list sorted by timestamp.
+    """Return ``(index, earliest_ts, latest_ts)``, each list sorted by timestamp.
 
-    Returns ``(index, earliest_ts, latest_ts)``. Entries with an
-    unparseable timestamp are dropped and counted in the log, since
-    an un-timestamped gate decision cannot be paired with anything.
-
-    NOTE: ``live_log_reader.live_gate_decisions()`` yields the
-    current file BEFORE the rotated ones, so its output is NOT in
-    chronological order. This function sorts, so callers may pass
-    the reader's output directly.
-
-    v3.24.24 — takes any ``Iterable``, so callers can stream a generator
-    instead of materialising every row first. Combined with the
-    projection below, peak heap drops by roughly 20x.
+    ``gate_entries`` may be any ``Iterable``, including the unsorted output of
+    ``live_log_reader.live_gate_decisions``; entries ``_ts_of`` reads as 0.0
+    are dropped and counted in a debug line.
     """
     index: dict[str, list[tuple[float, dict]]] = {}
     earliest = float("inf")
@@ -252,34 +176,18 @@ def _nearest(
     target: float,
     tolerance_s: float,
 ) -> tuple[Optional[dict], float]:
-    """Closest entry within tolerance.
+    """Return the `candidates` entry closest to `target` within `tolerance_s`.
 
-    v3.24.24 — bisect, not a linear scan. The old docstring claimed
-    "per-bot lists are small relative to the total"; measured against the
-    operator's real gate.log that is false — 83 distinct bot_ids with an
-    average of 1,988 entries each and 12,366 for the busiest. 597 trades
-    scanning their bot's list is 3,413,906 iterations, measured at
-    0.971 s, on the Qt thread.
-
-    ``build_gate_index`` already sorts each per-bot list, so the ordering
-    this needs was being built and then ignored.
-
-    EXACTNESS
-    =========
-    On a sorted list the minimiser of ``|ts - target|`` is always at the
-    insertion point or immediately before it, so probing those two is not
-    an approximation.
-
-    ``i - 1`` is probed FIRST to preserve the original first-wins
-    tie-break: the linear scan used strict ``<``, so on two entries
-    equidistant from the target it kept the earlier one.
+    On the sorted list `build_gate_index` produces, the minimiser of
+    ``|ts - target|`` is at the ``bisect_left`` insertion point or the index
+    before it, so probing those two is exact.
     """
     if not candidates:
         return None, 0.0
     i = bisect.bisect_left(candidates, (target,))
     best: Optional[dict] = None
     best_drift = float("inf")
-    for j in (i - 1, i):  # order matters — see tie-break above
+    for j in (i - 1, i):  # i - 1 first, so an equidistant tie keeps the earlier
         if 0 <= j < len(candidates):
             ts, e = candidates[j]
             drift = abs(ts - target)
@@ -293,14 +201,16 @@ def _in_log_gap(
     target: float,
     gap_threshold_s: float,
 ) -> bool:
-    """True when target falls inside a stretch where this bot
-    produced no gate entries for longer than the threshold."""
+    """Return True when `candidates` is silent around `target`.
+
+    The silence must exceed `gap_threshold_s`, and a `target` past the last
+    entry measures it from that entry.
+    """
     prev_ts = None
     for ts, _e in candidates:
         if prev_ts is not None and prev_ts < target < ts:
             return (ts - prev_ts) > gap_threshold_s
         prev_ts = ts
-    # Past the last entry — a gap if the trailing silence is long.
     if prev_ts is not None and target > prev_ts:
         return (target - prev_ts) > gap_threshold_s
     return False
@@ -313,14 +223,11 @@ def classify_trades(
     gap_threshold_s: float = LOG_GAP_THRESHOLD_S,
     address_resolver: Optional[Any] = None,
 ) -> GateCoverageReport:
-    """Pair every trade with its gate decision, or name why not.
+    """Give every trade one GateStatus and return a GateCoverageReport.
 
-    ``address_resolver`` is an optional callable
-    ``(symbol, ts_ms) -> Optional[str]`` returning a candle address
-    (see stone_tablets.addressing). When supplied, each pairing
-    carries the address of the candle the trade fired within, which
-    lets parity compare on exact candle identity rather than a
-    timestamp tolerance window.
+    ``address_resolver`` is a ``(symbol, ts_ms) -> Optional[str]`` callable
+    from ``stone_tablets.addressing``; it fills ``candle_address`` on each
+    TradeGatePairing.
     """
     index, earliest, latest = build_gate_index(gate_entries)
     report = GateCoverageReport(
@@ -361,8 +268,6 @@ def classify_trades(
 
         candidates = index.get(bot_id, [])
         if not candidates:
-            # Gate data exists overall, none for this bot. Worth
-            # investigating — other bots emitted, this one did not.
             pairing.status = GateStatus.NO_GATE_FOR_BOT
             report.pairings.append(pairing)
             continue
@@ -377,10 +282,6 @@ def classify_trades(
         elif _in_log_gap(candidates, ts, gap_threshold_s):
             pairing.status = GateStatus.LOG_GAP
         else:
-            # v3.24.24 — was also LOG_GAP, which made the _in_log_gap
-            # call above dead work and merged two distinct findings.
-            # The bot was logging on both sides of this trade; nothing
-            # landed within tolerance.
             pairing.status = GateStatus.NO_GATE_IN_TOLERANCE
         report.pairings.append(pairing)
 
@@ -391,7 +292,10 @@ def format_coverage_lines(
     report: GateCoverageReport,
     max_examples: int = 5,
 ) -> list[str]:
-    """Operator-facing summary for the Performance Log."""
+    """Render `report` as operator-facing lines, one per GateStatus.
+
+    `max_examples` caps the bot_ids listed for NO_GATE_FOR_BOT.
+    """
     lines: list[str] = []
     counts = report.by_status()
     lines.append(
@@ -399,9 +303,7 @@ def format_coverage_lines(
         f"have a gate decision ({report.coverage_pct:.1f}%)"
     )
     if report.gate_entry_count:
-        # timezone-aware: utcfromtimestamp is deprecated and slated
-        # for removal (surfaced as a DeprecationWarning by the pin
-        # tests on 2026-08-02).
+
         def _fmt(ts: float) -> str:
             if not ts:
                 return "?"
@@ -449,38 +351,19 @@ __all__ = [
 ]
 
 
-# --------------------------------------------------------------------- #
-# v3.24.15 — validation-scoped replay window                            #
-# --------------------------------------------------------------------- #
-#
-# Operator directive 2026-08-03:
-#
-#   "the oldest trade with all validation data in the trade gate log
-#    should emit a soft start read date cap of which the user will be
-#    informed via the simulation log."
-#
-# Before this, Fleet Replay played the entire tablet span (2026-04-01
-# onward, 35,282 candles / ~47 min at the measured 12.5 candles/s)
-# even though gate logging only began 2026-06-10. Everything before
-# that point is unvalidatable by construction — no gate row exists to
-# compare a sim decision against — so replaying it burns time and
-# produces nothing.
-#
-# The cap is SOFT: it bounds the default window, it does not delete
-# tablet data and it does not stop the operator asking for the full
-# span. Tablets remain immutable.
-
-
 @dataclass
 class ValidationWindow:
-    """Where a replay should start so every candle it plays can
-    actually be validated."""
+    """The replay bounds `compute_validation_window` derives from coverage.
+
+    `has_cap` is False until `soft_start_ms` is set, and no tablet data is
+    deleted or withheld by either value.
+    """
 
     soft_start_ms: int = 0
-    """Oldest trade that HAS gate data — the validation floor."""
+    """The oldest `HAS_GATE` trade, in epoch milliseconds."""
 
     replay_start_ms: int = 0
-    """soft_start minus TA warm-up. The value the sim should use."""
+    """`soft_start_ms` less `warmup_candles` of `step_ms`, floored at 0."""
 
     warmup_candles: int = 0
     trades_validatable: int = 0
@@ -500,17 +383,11 @@ def compute_validation_window(
     warmup_candles: int = 100,
     step_ms: int = 300_000,
 ) -> ValidationWindow:
-    """Derive the soft start cap from gate coverage.
+    """Return the ValidationWindow `coverage` supports.
 
-    The floor is the OLDEST trade whose status is ``has_gate`` — not
-    simply the first gate-log entry. Those differ when the log begins
-    before the first trade it covers, and using the trade keeps the
-    window tied to something we can actually check.
-
-    ``warmup_candles`` is subtracted so indicators are primed before
-    the first validatable decision; a bot evaluated on a cold TA
-    window would diverge from live for reasons that have nothing to
-    do with strategy.
+    ``soft_start_ms`` is the oldest ``HAS_GATE`` trade, not
+    ``coverage.gate_first_ts``, and ``replay_start_ms`` backs it off by
+    ``warmup_candles`` steps of ``step_ms``.
     """
     win = ValidationWindow(
         warmup_candles=max(0, int(warmup_candles)), gate_first_ts=coverage.gate_first_ts
@@ -554,7 +431,11 @@ def format_window_lines(
     full_candles: int = 0,
     scoped_candles: int = 0,
 ) -> list[str]:
-    """Operator-facing explanation for the Simulator Activity Log."""
+    """Render `win` as operator-facing lines for the Simulator Activity Log.
+
+    Without `has_cap` only `win.reason` is returned; `full_candles` and
+    `scoped_candles` add the line naming how far the window narrowed.
+    """
     if not win.has_cap:
         return [f"Validation window: {win.reason}"]
     lines = [

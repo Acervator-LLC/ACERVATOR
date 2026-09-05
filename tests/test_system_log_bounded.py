@@ -21,7 +21,7 @@ makes a bound safe to have:
   * a rollover that FAILS does not leave the handler holding a closed
     stream, which is how the stdlib turns one bad rename into permanent
     silence
-  * the encoding contract from v3.24.53 survives rotation, in every slot
+  * the encoding contract survives rotation, in every slot
 
 WHAT A FAILURE HERE WOULD MEAN
 ==============================
@@ -32,8 +32,7 @@ large to open while explaining nothing.
 `test_no_record_is_lost_across_the_boundary` red: the log drops exactly
 the line that was interesting enough to cross the cap.
 
-`test_a_full_ladder_still_rolls` red: v3.23.5 has been un-learned and
-the writer stalls.
+`test_a_full_ladder_still_rolls` red: the writer stalls on a full ladder.
 
 `test_a_failed_rollover_does_not_kill_the_handler` red: one locked file
 silences the system log for the rest of the process, with nothing said.
@@ -92,14 +91,19 @@ def clean_acervator_logger():
     log.setLevel(saved_level)
 
 
-def _census(base):
-    """(total lines, distinct lines) across the current file and backups."""
+def _census(base, prefix):
+    """(total, distinct) lines starting with `prefix` across the file and backups.
+
+    The `acervator` logger is process-global, so a thread another test left
+    running can write into the same handler; only this test's own records count.
+    """
     lines = []
     for name in [base.name] + ["%s.%d" % (base.name, i) for i in range(1, 9)]:
         p = base.parent / name
         if p.is_file():
             lines.extend(p.read_text(encoding="utf-8", errors="replace").splitlines())
-    return len(lines), len(set(lines))
+    mine = [line for line in lines if line.startswith(prefix)]
+    return len(mine), len(set(mine))
 
 
 def _slots(base):
@@ -114,15 +118,8 @@ class TestTheBoundExists:
         installs, not on the source text, because a source that says
         `maxBytes` and a handler that rotates are different claims."""
         log = clean_acervator_logger
-        # `clean_acervator_logger` empties the logger at fixture setup, but
-        # pytest's logging plugin attaches its own LogCaptureHandler to the
-        # (process-global) "acervator" logger around the call phase — i.e.
-        # AFTER setup. Left in place that foreign handler both inflates the
-        # count and, worse, trips LogManager's "install only when the logger
-        # has none" guard, so LogManager installs nothing and the test reads
-        # pytest's handlers instead of the one under test. Order-dependent, so
-        # it only surfaced once the suite ran in parallel. Clear immediately
-        # before, and assert on the handler LogManager installs.
+        # pytest attaches its own handler after fixture setup, and LogManager
+        # installs only when the logger has none.
         for h in list(log.handlers):
             log.removeHandler(h)
         LogManager(log_dir=tmp_path)
@@ -136,22 +133,16 @@ class TestTheBoundExists:
         assert h.baseFilename.endswith("system.log")
 
     def test_the_bound_matches_every_other_writer_in_the_module(self):
-        """50 MB x 5 is not a new number. It is what NDJSONWriter has
-        used for trade.log, gate.log, diagnostics.log and voting.log
-        since v3.23.5, measured holding on the operator's disk."""
+        """50 MB x 5 is what NDJSONWriter uses for trade.log, gate.log,
+        diagnostics.log and voting.log."""
         assert SYSTEM_LOG_MAX_BYTES == 50 * 1024 * 1024
         assert SYSTEM_LOG_BACKUP_COUNT == 5
 
     def test_the_encoding_contract_survived_the_change(
         self, tmp_path, clean_acervator_logger
     ):
-        """v3.24.53 cost 825 dropped records. Swapping the handler class
-        is exactly the kind of change that would quietly undo it."""
-        # LogManager only installs its handler when the logger has none, and
-        # under pytest's logging plugin the "acervator" logger carries a
-        # LogCaptureHandler -- which would both suppress the install and make
-        # handlers[0] the wrong handler. Drop those first, then install, then
-        # select the real file handler by type.
+        """Swapping the handler class must not undo the encoding contract."""
+        # LogManager installs only when the logger has none, and pytest leaves one.
         for x in list(clean_acervator_logger.handlers):
             clean_acervator_logger.removeHandler(x)
         LogManager(log_dir=tmp_path)
@@ -178,7 +169,7 @@ class TestTheRolloverBoundary:
         for i in range(400):
             clean_acervator_logger.warning("record-%05d" % i)
         h.flush()
-        total, distinct = _census(base)
+        total, distinct = _census(base, "record-")
         assert _slots(base), "nothing rotated, so there is no boundary"
         assert total == 400, "records were lost at a rollover"
         assert distinct == 400, "records were duplicated at a rollover"
@@ -373,9 +364,6 @@ class TestAFailedRolloverIsSurvivable:
             "the transient never fired, so this test proved "
             "nothing about a failed reopen"
         )
-        # THE PROPERTY. Not "a stream exists" -- a CLOSED stream also
-        # exists, and that is exactly the bug. The slot must be empty,
-        # because an empty slot is what makes shouldRollover reopen.
         assert h.stream is None, (
             "doRollover left a closed file object bound to self.stream; "
             "shouldRollover only reopens when it is None, so every later "
@@ -487,6 +475,6 @@ class TestUnderLoad:
         for t in threads:
             t.join()
         h.flush()
-        total, distinct = _census(base)
+        total, distinct = _census(base, "t")
         assert total == 1200
         assert distinct == 1200

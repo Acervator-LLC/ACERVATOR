@@ -97,7 +97,6 @@ def _bars(n: int) -> list:
     return TA.candles_from_raw(raw)
 
 
-# =====================================================================
 class TestAbstentionLeavesTheDenominator:
     """The positive assertion."""
 
@@ -152,7 +151,6 @@ class TestAbstentionLeavesTheDenominator:
         assert with_abstainer >= alone
 
 
-# =====================================================================
 class TestAMeasuredNeutralStaysInTheDenominator:
     """The paired control on the other side.
 
@@ -215,7 +213,6 @@ class TestAMeasuredNeutralStaysInTheDenominator:
         assert out.bearish_count == 0
 
 
-# =====================================================================
 class TestTheVotersSaySo:
     """The aggregator can only act on a signal the voters send.
 
@@ -306,7 +303,6 @@ class TestTheVotersSaySo:
                 assert s.weighted_score == 0.0, s.indicator
 
 
-# =====================================================================
 class TestNobodyVoted:
     """The 0/0 path.
 
@@ -356,7 +352,6 @@ class TestNobodyVoted:
         assert out.consensus_confidence == pytest.approx(0.5)
 
 
-# =====================================================================
 class TestTheFlagSurvivesTheMultiTimeframeRebuild:
     """``aggregate_multi_timeframe`` does not forward its signals.
 

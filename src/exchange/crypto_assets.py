@@ -13,7 +13,7 @@ Logo caching: logos are downloaded once and cached in
 
 from __future__ import annotations
 
-from ..core.safe_url import safe_urlopen
+from ..core.safe_url import SafeRequest, safe_urlopen
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,30 +24,25 @@ logger = logging.getLogger("acervator.assets")
 LOGO_CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "resources" / "logos"
 
 
-# ---------------------------------------------------------------------------
 # Asset descriptor
-# ---------------------------------------------------------------------------
 @dataclass
 class CryptoAsset:
     """Metadata for a cryptocurrency."""
 
     symbol: str  # e.g. "BTC"
-    name: str  # e.g. "Bitcoin"
+    name: str
     coingecko_id: str = ""  # e.g. "bitcoin"
-    logo_url: str = ""  # Primary logo URL
-    logo_fallback_url: str = ""  # Fallback CDN
-    whitepaper_url: str = ""  # Link to official whitepaper
+    logo_url: str = ""
+    logo_fallback_url: str = ""
+    whitepaper_url: str = ""
     website: str = ""
-    description: str = ""  # Internal description from whitepaper
+    description: str = ""
     consensus: str = ""  # e.g. "Proof of Work"
-    max_supply: str = ""  # e.g. "21,000,000"
+    max_supply: str = ""  # formatted, e.g. "21,000,000"
     launch_year: int = 0
     category: str = ""  # e.g. "Currency", "Smart Contract Platform"
 
 
-# ---------------------------------------------------------------------------
-# Comprehensive asset database (top 50+ cryptos)
-# ---------------------------------------------------------------------------
 ASSETS: dict[str, CryptoAsset] = {}
 
 
@@ -476,9 +471,7 @@ for sym, name, cgid, cat, desc in [
     )
 
 
-# ---------------------------------------------------------------------------
 # Asset manager
-# ---------------------------------------------------------------------------
 class AssetManager:
     """
     Access cryptocurrency metadata and manage logo caching.
@@ -523,10 +516,9 @@ class AssetManager:
             return None
 
         try:
-            import urllib.request
-
             dest = self._cache_dir / f"{symbol.upper()}.png"
-            req = urllib.request.Request(url, headers={"User-Agent": "Acervator/2.8"})
+            req = SafeRequest(url)
+            req.add_header("User-Agent", "Acervator/2.8")
             with safe_urlopen(req, timeout=10) as resp:
                 data = resp.read()
             if len(data) > 100:  # Valid image

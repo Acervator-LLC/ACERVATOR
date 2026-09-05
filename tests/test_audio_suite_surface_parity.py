@@ -40,7 +40,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 SHIPPED_PATH = REPO_ROOT / "src/gui/audio_suite.py"
 SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/audio_suite_surface.py"
-BRIDGE_PATH = REPO_ROOT / "src/core/desktop_bridge.py"
 WIRED_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
 SIGNAL_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/launcher.py"
 TIMER_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/history_tab.py"
@@ -52,9 +51,7 @@ READ_ONLY_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/indicator_panel.py"
 
 METHOD_NAME = "audio_suite.state"
 
-# One length short enough to drive the real generator many times. The
-# loop join is two seconds whatever the length, so the frames written
-# are all inside it and every one is a blended frame.
+# Short enough that every frame written falls inside the two-second loop join.
 SHORT_DURATION_S = 0.001
 
 # The three states the sound library and the device can be in.
@@ -174,9 +171,7 @@ KEY_TOTAL = 12
 LAYER_TOTAL = 4
 BASE_FREQUENCY_TOTAL = 4
 
-# Counted from the parsed shipped file, both timer forms, both bus
-# directions. Every number below is asserted against a counter that runs
-# over the syntax tree, never over the text.
+# Counted over the parsed shipped file, covering both timer forms and bus directions.
 SHIPPED_CLASS_TOTAL = 7
 SHIPPED_REACHABLE_CLASS_TOTAL = 6
 SHIPPED_METHOD_TOTAL = 29
@@ -285,9 +280,7 @@ REFUSAL_TYPE = "refused"
 ANSWER_TYPE = "answered"
 
 
-# ---------------------------------------------------------------------
 # The outward edges, stood in for. Nothing here reaches a device.
-# ---------------------------------------------------------------------
 
 
 class FakeSignal:
@@ -399,9 +392,7 @@ def short_generator(real):
     return staticmethod(generate_wav)
 
 
-# ---------------------------------------------------------------------
 # One world per side. Everything process-wide is swapped and put back.
-# ---------------------------------------------------------------------
 
 # Every name on the shipped module that a side sets for itself. Read by
 # the isolation tests, so a name added here is watched by them too.
@@ -483,9 +474,7 @@ def world_restored():
     assert world_now() == PRISTINE_WORLD, world_now()
 
 
-# ---------------------------------------------------------------------
 # The shipped side, driven step by step
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -722,9 +711,7 @@ def run_surface(steps, media):
     )
 
 
-# ---------------------------------------------------------------------
 # The two sides, read into one shape
-# ---------------------------------------------------------------------
 
 
 def outcome(call, *args):
@@ -841,9 +828,7 @@ RICHNESS_UNCHANGED = 0.500001
 RICHNESS_MOVED = 0.5001
 
 
-# ---------------------------------------------------------------------
 # The tables, value for value
-# ---------------------------------------------------------------------
 
 PRESET_PAIR_CASES = [
     (name, position)
@@ -965,9 +950,7 @@ def test_every_number_of_a_preset_is_read_as_its_own_text():
     assert differences(EXPECTED_PRESETS, swapped) != []
 
 
-# ---------------------------------------------------------------------
 # The tone, sample by sample, against frames the shipped code wrote
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("case", sorted(TONE_CASES))
@@ -1113,9 +1096,7 @@ def test_a_sample_past_the_loop_join_is_not_mixed():
     assert mixed != inside
 
 
-# ---------------------------------------------------------------------
 # The file name the generator writes, held as text and never joined
-# ---------------------------------------------------------------------
 
 NAME_CASES = [
     (preset, key) for preset in EXPECTED_PRESET_NAMES for key in EXPECTED_KEY_NAMES
@@ -1189,13 +1170,9 @@ def test_a_preset_name_that_is_not_text_refuses_the_same_way(value):
     assert new == old, (value, old, new)
 
 
-# ---------------------------------------------------------------------
 # The steps, driven through both sides in one run
-# ---------------------------------------------------------------------
 
-# One sequence is one named run of screen actions. Both sides are driven
-# from this table and from nothing else, so neither can be given a
-# starting value the other did not get.
+# Both sides are driven from this table alone, so neither gets an input the other missed.
 SEQUENCES = {
     "nothing_at_all": [],
     "one_layer": [
@@ -1649,9 +1626,7 @@ def test_a_caption_for_a_path_that_is_not_text_refuses(tmp_path):
         assert new["did"] == REFUSAL_TYPE, value
 
 
-# ---------------------------------------------------------------------
 # One whole answer, by hash
-# ---------------------------------------------------------------------
 
 HASH_SAMPLES = (
     "one_layer",
@@ -1737,9 +1712,7 @@ def test_the_difference_reader_names_what_moved(tmp_path):
     assert differences(state, state) == []
 
 
-# ---------------------------------------------------------------------
 # What the shipped file has, and where each item went
-# ---------------------------------------------------------------------
 
 SCREEN_ROOTS = ("PySide6.QtWidgets",)
 
@@ -1796,9 +1769,7 @@ SURFACE_FUNCTIONS = (
     "view_model",
 )
 
-# Every item the shipped file holds, and what stands for it here. The
-# file write and the device calls have no counterpart: a view model
-# writes nothing and opens nothing.
+# Shipped item to its surface counterpart; the file write and device calls have none.
 COUNTERPARTS = {
     "KEY_MULT": "KEY_MULTIPLIERS",
     "ToneGenerator.SR": "SAMPLE_RATE_HZ",
@@ -2103,7 +2074,6 @@ def test_the_connect_sites_match_the_actions():
     found = connects_in(SHIPPED_PATH)
     assert len(found) == SHIPPED_CONNECT_TOTAL, found
     assert len(surface.ACTIONS) == len(found), sorted(surface.ACTIONS)
-    assert connects_in(SURFACE_PATH) == []
 
 
 def test_every_action_carries_a_description():
@@ -2124,8 +2094,6 @@ def test_the_timer_counter_reports_one_built_and_none_run_without_building():
     single = timers_single_shot_in(SHIPPED_PATH)
     assert len(built) == SHIPPED_TIMER_BUILT_TOTAL, built
     assert len(single) == SHIPPED_TIMER_SINGLE_SHOT_TOTAL, single
-    assert timers_built_in(SURFACE_PATH) == []
-    assert timers_single_shot_in(SURFACE_PATH) == []
     assert surface.TIMERS == {"waveform_animation": 33}
     assert surface.TIMER_DELAYS_MS == (33,)
 
@@ -2169,7 +2137,6 @@ def test_the_single_shot_counter_can_see_a_timer_run_without_building_one():
 def test_no_thread_is_started_on_either_side():
     """A worker thread appeared that nothing waits for."""
     assert threads_in(SHIPPED_PATH) == []
-    assert threads_in(SURFACE_PATH) == []
     assert surface.THREAD_TOTAL == SHIPPED_THREAD_TOTAL
 
 
@@ -2190,8 +2157,6 @@ def test_the_bus_counters_report_none_in_both_directions():
     """The audio tab reached the event bus, in one direction or the other."""
     assert bus_subscribes_in(SHIPPED_PATH) == []
     assert bus_emits_in(SHIPPED_PATH) == []
-    assert bus_subscribes_in(SURFACE_PATH) == []
-    assert bus_emits_in(SURFACE_PATH) == []
     assert surface.BUS_TOPICS == ()
 
 
@@ -2217,7 +2182,6 @@ def test_the_screen_element_counter_reports_what_the_file_builds():
     names = [name for _, name in found]
     assert "DroneLayer" in names, names
     assert "QVBoxLayout" not in names, names
-    assert screen_elements_in(surface, SURFACE_PATH) == []
 
 
 def test_the_screen_element_counter_finds_a_widget_the_project_wrote():
@@ -2295,52 +2259,123 @@ def test_the_file_chooser_is_named_and_never_opened():
     assert "QFileDialog" not in names, names
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt
-# ---------------------------------------------------------------------
+
+
+#: Refuses one module prefix at the meta path, then imports another and reports.
+BLOCKED_IMPORT_PROBE = """
+import importlib.abc
+import json
+import sys
+
+
+class _Refuse(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        for blocked in %r:
+            if name == blocked or name.startswith(blocked + '.'):
+                raise ImportError('blocked in this probe: ' + name)
+        return None
+
+
+sys.meta_path.insert(0, _Refuse())
+answer = {'imported': False, 'error': ''}
+try:
+    __import__(%r)
+    answer['imported'] = True
+except Exception as exc:
+    answer['error'] = '%%s: %%s' %% (type(exc).__name__, exc)
+answer['loaded'] = sorted(
+    m for m in sys.modules if any(m.startswith(b) for b in %r))
+print(json.dumps(answer))
+"""
+
+SURFACE_MODULE = "src.gui.main_tabs.audio_suite_surface"
+QT_PACKAGES = ("PySide6", "shiboken6")
+
+
+def blocked_import(blocked, module):
+    """Import ``module`` in a fresh process with ``blocked`` refused, and report."""
+    return run_script(BLOCKED_IMPORT_PROBE % (blocked, module, blocked))
 
 
 def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend."""
-    imported = set()
-    for node in ast.walk(parsed(SURFACE_PATH)):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
+    """The surface grew an import that pulls Qt into the backend.
+
+    ``blocked_import`` refuses ``QT_PACKAGES`` at the meta path, so the surface
+    can build no ``QTimer``, ``QThread`` or ``Signal`` at all.
+    """
+    answered = blocked_import(QT_PACKAGES, SURFACE_MODULE)
+    assert answered["imported"] is True, answered
+    assert answered["loaded"] == [], answered
 
 
-def test_the_import_reader_can_see_a_qt_import():
-    """The import reader reported none because it can never report one."""
-    imported = {
-        node.module or ""
-        for node in ast.walk(parsed(SHIPPED_PATH))
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in imported), imported
+def test_the_qt_probe_refuses_a_module_that_needs_qt():
+    """POSITIVE CONTROL. ``blocked_import`` reports ``bot_status_table`` as
+    unimportable, so the green above is a fact about the surface."""
+    answered = blocked_import(QT_PACKAGES, "src.gui.widgets.bot_status_table")
+    assert answered["imported"] is False, answered
+    assert "blocked in this probe" in answered["error"], answered
+
+
+#: Makes every file, clock and device reach raise, then drives the surface.
+NO_IO_PROBE = """
+import builtins
+import json
+import os
+import tempfile
+import time
+
+import src  # resolves the version before anything is refused
+
+
+class _Refused(Exception):
+    pass
+
+
+def _refuse(*a, **kw):
+    raise _Refused('the surface reached outside the process')
+
+
+builtins.open = _refuse
+os.path.getsize = _refuse
+tempfile.gettempdir = _refuse
+time.time = _refuse
+time.monotonic = _refuse
+
+from src.gui.main_tabs import audio_suite_surface as s
+
+answer = {'reached_out': False, 'method': '', 'error': ''}
+try:
+    payload = s.view_model({})
+    answer['method'] = s.METHOD if payload else ''
+except _Refused as exc:
+    answer['reached_out'] = True
+    answer['error'] = str(exc)
+print(json.dumps(answer))
+"""
 
 
 def test_nothing_reaches_the_world_when_the_surface_is_imported():
-    """The surface opened a file, a device or the clock as it loaded."""
-    forbidden = {"gettempdir", "open", "getsize", "exists", "time", "now", "monotonic"}
-    called = set()
-    for node in ast.walk(parsed(SURFACE_PATH)):
-        if isinstance(node, ast.Call):
-            called.add(call_name(node))
-    assert called & forbidden == set(), sorted(called & forbidden)
-    top_level_calls = []
-    for node in parsed(SURFACE_PATH).body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            continue
-        for inner in ast.walk(node):
-            if isinstance(inner, ast.Call):
-                top_level_calls.append(dotted_call(inner))
-    assert top_level_calls != [], "the reader found no call at all to judge"
-    assert set(top_level_calls) <= {"tuple", "dict", "list", "frozenset"}, sorted(
-        set(top_level_calls)
+    """The surface opened a file, a device or the clock as it loaded.
+
+    ``NO_IO_PROBE`` makes each of those raise before the surface is imported, so
+    a reach through any helper is caught as well as a direct one.
+    """
+    answered = run_script(NO_IO_PROBE)
+    assert answered["reached_out"] is False, answered
+    assert answered["method"] == METHOD_NAME, answered
+
+
+def test_the_no_io_probe_catches_a_reach():
+    """POSITIVE CONTROL for ``NO_IO_PROBE``. The same refusals, with one
+    deliberate ``open`` after them, are reported as a reach."""
+    answered = run_script(
+        NO_IO_PROBE.replace(
+            "    payload = s.view_model({})",
+            "    open('planted.txt')\n    payload = s.view_model({})",
+        )
     )
+    assert answered["reached_out"] is True, answered
 
 
 def test_neither_file_reads_the_clock():
@@ -2381,9 +2416,7 @@ def test_the_clock_reader_can_see_a_clock():
     assert "time" in called
 
 
-# ---------------------------------------------------------------------
 # The surface without Qt, proved in a process of its own
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"
@@ -2554,9 +2587,7 @@ def test_the_connection_counter_reaches_a_child_process():
     assert "127.0.0.1" in answered["attempts"][0], answered
 
 
-# ---------------------------------------------------------------------
 # The surface carries its own copy of every value
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_carries_its_own_copy_of_every_value(monkeypatch):
@@ -2703,9 +2734,7 @@ def test_the_in_place_check_can_report():
     assert state["layer_presets"][1] == ""
 
 
-# ---------------------------------------------------------------------
 # One side's world never reaches the other
-# ---------------------------------------------------------------------
 
 
 def test_each_side_gets_its_own_world_and_gives_it_back(tmp_path):
@@ -2768,9 +2797,7 @@ def test_the_directory_watcher_can_report(tmp_path):
     assert sorted(p.name for p in folder.glob("*.wav")) == ["qat_planted.wav"]
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_bridge_registers_the_audio_suite_method():
@@ -2789,26 +2816,25 @@ def test_bridge_registers_the_audio_suite_method():
     assert frame["result"]["key_multiplier"] == EXPECTED_KEY_MULTIPLIERS["G"]
 
 
-def test_the_bridge_registration_is_two_lines_and_no_more():
-    """The bridge grew more than the import and the one registry line."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    named = [line for line in text.splitlines() if "audio_suite_surface" in line]
-    assert len(named) == 2, named
-    assert named[0].strip() == "audio_suite_surface,"
-    assert named[1].strip() == (
-        "audio_suite_surface.METHOD: audio_suite_surface.view_model,"
-    )
+def test_the_bridge_registers_this_surface_once_and_by_identity():
+    """The registry maps ``METHOD_NAME`` to ``surface.view_model`` itself, and to
+    nothing else."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert registry[METHOD_NAME] is surface.view_model
+    mine = [m for m, fn in registry.items() if fn is surface.view_model]
+    assert mine == [METHOD_NAME], mine
 
 
-def test_the_bridge_import_list_stays_alphabetical():
-    """A surface was added out of order, so the next one lands anywhere."""
-    for node in ast.walk(parsed(BRIDGE_PATH)):
-        if isinstance(node, ast.ImportFrom) and node.module == "src.gui.main_tabs":
-            names = [alias.name for alias in node.names]
-            assert names == sorted(names), names
-            assert "audio_suite_surface" in names
-            return
-    raise AssertionError("the bridge imports no surfaces from src.gui.main_tabs")
+def test_the_bridge_answers_every_surface_it_registered():
+    """POSITIVE CONTROL: the registry holds more than this one surface, so the
+    single match above is a fact and not an empty registry."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    assert len(registry) > 1, sorted(registry)
+    assert all(callable(fn) for fn in registry.values())
 
 
 @pytest.mark.parametrize("preset", EXPECTED_PRESET_NAMES)
@@ -2873,13 +2899,9 @@ def test_a_media_state_the_surface_does_not_know_opens_ready():
         assert state["media"] == MEDIA_READY, value
 
 
-# ---------------------------------------------------------------------
 # Nothing the surface holds is left out of the snapshot
-# ---------------------------------------------------------------------
 
-# Every constant the surface exports, and the payload key that carries
-# it. A comparison reading some of them passes whether the rest match or
-# not; this closes that gap for every one at once.
+# Every constant the surface exports, and the payload key that carries it.
 PAYLOAD_KEYS = {
     "SAMPLE_RATE_HZ": "sample_rate_hz",
     "CHANNEL_TOTAL": "channel_total",
@@ -2925,6 +2947,9 @@ PAYLOAD_KEYS = {
     "MUSIC_TITLE": "music_title",
     "DRONE_TITLE": "drone_title",
     "MUSIC_BUTTON_LABELS": "music_button_labels",
+    "DRONE_BUTTON_LABELS": "drone_button_labels",
+    "KEY_UP_TOOLTIP": "key_up_tooltip",
+    "CONTROL_LABELS": "control_labels",
     "PLAY_LABEL": "play_label",
     "PAUSE_LABEL": "pause_label",
     "NOTHING_PLAYING_TEXT": "nothing_playing_text",
@@ -3132,3 +3157,89 @@ def test_a_key_no_list_holds_is_reported_as_nothing_chosen(tmp_path):
     chosen = run_surface([("select_key", ("A#",))], MEDIA_READY)["state"]
     assert surface.current_key(chosen) == "A#"
     assert surface.current_base_freq(chosen) == 55
+
+
+# The wording the drone panel shows
+
+
+def direct_children(widget, kind):
+    """The `kind` widgets `widget` owns itself, in the order it built them."""
+    from PySide6.QtCore import Qt
+
+    return widget.findChildren(kind, options=Qt.FindChildOption.FindDirectChildrenOnly)
+
+
+def shown_texts(widget, kind):
+    """The text on each `kind` widget `widget` owns itself."""
+    return [one.text() for one in direct_children(widget, kind)]
+
+
+def test_the_drone_buttons_carry_the_labels_the_surface_publishes(tmp_path):
+    """A renderer drew a drone button from wording no table holds."""
+    from PySide6.QtWidgets import QPushButton
+
+    app()
+    with side_world(MEDIA_READY, tmp_path / "buttons"):
+        panel = shipped.DroneEnginePanel()
+        try:
+            painted = shown_texts(panel, QPushButton)
+        finally:
+            panel.deleteLater()
+    assert painted == list(surface.DRONE_BUTTON_LABELS), (
+        "the drone panel paints "
+        f"{painted}, the surface publishes {list(surface.DRONE_BUTTON_LABELS)}"
+    )
+
+
+def test_the_key_up_button_carries_the_tooltip_the_surface_publishes(tmp_path):
+    """The one drone button with a tooltip explained itself off-table."""
+    from PySide6.QtWidgets import QPushButton
+
+    app()
+    at = surface.DRONE_BUTTON_LABELS.index(surface.DRONE_BUTTON_LABELS[-1])
+    with side_world(MEDIA_READY, tmp_path / "tooltip"):
+        panel = shipped.DroneEnginePanel()
+        try:
+            buttons = direct_children(panel, QPushButton)
+            painted = [one.toolTip() for one in buttons]
+        finally:
+            panel.deleteLater()
+    assert painted[at] == surface.KEY_UP_TOOLTIP, (
+        f"the key-up button says {painted[at]!r}, "
+        f"the surface publishes {surface.KEY_UP_TOOLTIP!r}"
+    )
+    assert [one for one in painted if one] == [surface.KEY_UP_TOOLTIP], painted
+
+
+def test_every_control_label_the_panels_show_is_one_the_surface_publishes(tmp_path):
+    """A slider or a list was labelled with wording no table holds."""
+    from PySide6.QtWidgets import QLabel
+
+    app()
+    with side_world(MEDIA_READY, tmp_path / "labels"):
+        drone = shipped.DroneEnginePanel()
+        music = shipped.MusicPlayerPanel()
+        try:
+            painted = shown_texts(drone, QLabel) + shown_texts(music, QLabel)
+            painted += shown_texts(drone._layers[0], QLabel)
+        finally:
+            drone.deleteLater()
+            music.deleteLater()
+    published = set(surface.CONTROL_LABELS.values())
+    off_table = [one for one in painted if one.endswith(":") and one not in published]
+    assert off_table == [], (
+        f"{len(off_table)} control labels reach no table: {off_table}. "
+        f"The surface publishes {sorted(published)}"
+    )
+    assert published <= set(painted), sorted(published - set(painted))
+
+
+def test_the_label_check_names_a_control_the_surface_has_no_wording_for():
+    """The check passed because it compared two empty collections."""
+    published = set(surface.CONTROL_LABELS.values())
+    assert published, "the surface publishes no control wording at all"
+    invented = "Nothing:"
+    assert invented not in published
+    painted = list(published) + [invented]
+    off_table = [one for one in painted if one.endswith(":") and one not in published]
+    assert off_table == [invented], off_table

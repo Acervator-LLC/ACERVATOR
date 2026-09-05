@@ -148,6 +148,22 @@ def test_no_shipped_python_imports_the_dead_package() -> None:
     assert offenders == []
 
 
+def test_no_build_datas_pair_ships_a_dead_subsystem() -> None:
+    """The PyInstaller datas list may not name a directory that never existed.
+
+    `_hits` reads files; this drives the real builder, which no file scan
+    covers: a dead path here reaches a build, not a document.
+    """
+    from tools.spec_common import datas_candidates
+
+    named = [
+        dest
+        for _, dest in datas_candidates("/root")
+        if any(dead.lower() in dest.lower() for dead in DEAD_NAMES)
+    ]
+    assert named == [], f"datas_candidates would ship {named}"
+
+
 def test_every_shipped_tool_imports() -> None:
     """A tool in tools/ must at least reach its own main().
 

@@ -58,20 +58,13 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-# ---------------------------------------------------------------------------
-# The inventory
-# ---------------------------------------------------------------------------
-#
 # Every TRACKED file at the repository root, with the reason it is at the
-# root and not in a directory. Untracked files are not subjects: the root
-# also carries gitignored scratch output (``gate_*.log``, ``pytest_out
-# .txt``), and a guard that failed on those would fail on a normal
-# working tree.
-#
-# A new entry needs a reason that names a MECHANISM. "tidier here" is not
-# one. Three of the entries below say plainly that nothing requires the
-# location; they are at the root because moving them costs more than it
-# buys, and the entry says so rather than inventing a requirement.
+# root. Untracked scratch output is not a subject.
+
+_HOP_REASON = (
+    "session handoff. tools/hop_check.py globs ACERVATOR_HOP*.md at the root, "
+    "and a fresh clone has to find orientation without being told where to look"
+)
 
 INVENTORY: dict[str, str] = {
     # -- repository and tool configuration ------------------------------
@@ -80,6 +73,12 @@ INVENTORY: dict[str, str] = {
     ".python-version": "the ONE interpreter pin. actions/setup-python reads it through python-version-file, and pyproject.toml requires-python must agree",
     ".git-blame-ignore-revs": "git blame --ignore-revs-file reads it at the root; it holds the whole-tree reformat commit so blame skips over it",
     "CLAUDE.md": "repository guidance an agent reads on entry; tooling looks for it at the root and nowhere else",
+    "ACERVATOR_HOP2.md": _HOP_REASON,
+    "ACERVATOR_HOP3.md": _HOP_REASON,
+    "ACERVATOR_HOP4.md": _HOP_REASON,
+    "ACERVATOR_HOP5.md": _HOP_REASON,
+    "ACERVATOR_HOP7.md": _HOP_REASON,
+    "ACERVATOR_HOP8.md": _HOP_REASON,
     ".gitignore": "git reads it at the root only",
     ".vale.ini": "vale reads it from the directory it runs in",
     "pyproject.toml": "the one source for dependencies, pytest config, coverage and "
@@ -113,7 +112,7 @@ INVENTORY: dict[str, str] = {
     "CHANGELOG.md": "Keep a Changelog release notes, read at the root by GitHub "
     "and named by CONTRIBUTING.md. src/core/version_sweep.py reads it "
     'at `self.root / "CHANGELOG.md"` and requires every version string '
-    "in it to equal the canonical one",
+    "in it on the current release line to equal the canonical one",
     # -- the animation core the three screens share ----------------------
     "screen_fx.py": "issue #74. splash_screen.py, cartoon_screen.py and "
     "investor_screen.py all say `import screen_fx`, a top-level "
@@ -127,21 +126,18 @@ INVENTORY: dict[str, str] = {
     "splash_screen.py": "tests/test_screen_rng_and_signatures.py says `import "
     "splash_screen`, a top-level import that resolves only because "
     "conftest puts the root on sys.path. src/core/version_sweep.py "
-    'reads it at `self.root / "splash_screen.py"`. Moving it '
-    "under src/ or resources/ would also ship it in every build",
+    "discovers it wherever it sits and flags any version literal in "
+    "it. Moving it under src/ or resources/ would also ship it in "
+    "every build",
     "investor_screen.py": "tests/test_screen_rng_and_signatures.py says `import "
     "investor_screen` and reads its `_cached_prices` signature. "
-    "src/core/version_sweep.py reads it at "
-    '`self.root / "investor_screen.py"`',
+    "src/core/version_sweep.py discovers it wherever it sits",
     "generate_essay_ja.py": "tests/test_check_release_readiness.py reads it at "
     '`REPO_ROOT / "generate_essay_ja.py"` in three tests, one of '
     "them the positive control for the `*_FROZEN_AT` exemption. "
-    "src/core/version_sweep.py reads it at the root as well",
-    # -- scripts nothing requires at the root ----------------------------
-    #
-    # Each of these three could move. Issue #85 measured what the move
-    # would buy and left them where they are. The entry records the
-    # measurement, so the next reader does not repeat it.
+    "src/core/version_sweep.py honours that same exemption",
+    # Scripts nothing requires at the root; the entry records the measured
+    # cost of moving each one.
     "cartoon_screen.py": "a 60-second marketing animation. Nothing imports it and no "
     "test reads it; its stated renderer, render.py, is not in the "
     "tree. It is the one root file with no consumer of any kind. "
@@ -158,17 +154,13 @@ INVENTORY: dict[str, str] = {
     "reads worse than leaving both here",
 }
 
-# Root files that pytest's discovery patterns must NOT match. Issue #85
-# emptied this set by renaming `test_scrumming_v3.py` to
-# `tools/scrumming_v3_sim.py`. It stays as a named rule rather than an
-# implicit one, because the rule is what matters, not the count.
+# Root files pytest discovery must not match. The set is empty and stays
+# as a named rule.
 PYTEST_DISCOVERY_PREFIXES = ("test_",)
 PYTEST_DISCOVERY_SUFFIXES = ("_test.py",)
 
 
-# ---------------------------------------------------------------------------
 # Reading the tree
-# ---------------------------------------------------------------------------
 
 
 def tracked_root_files() -> set[str]:
@@ -209,9 +201,7 @@ def _module_source(relative: str) -> str:
     return (REPO_ROOT / relative).read_text(encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
 # The rules
-# ---------------------------------------------------------------------------
 
 
 def test_the_inventory_names_every_tracked_root_file() -> None:
@@ -379,9 +369,7 @@ def test_the_root_is_inside_the_dependency_import_contract() -> None:
     ), "the file issue #85 moved has left the dependency walk"
 
 
-# ---------------------------------------------------------------------------
 # Two-sided: each rule, driven with the case it exists for
-# ---------------------------------------------------------------------------
 
 
 class TestTheRulesFire:

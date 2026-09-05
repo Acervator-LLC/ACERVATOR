@@ -16,11 +16,6 @@ except ImportError:
 
 if _HAS_QT:
 
-    # ---------------------------------------------------------------
-    # Notification Spool - replaces All Bots Overview
-    # ---------------------------------------------------------------
-    # DPA: Q-001 exception — fixed 100px height caps visible content;
-    # HTML formatting useful for notification styling.
     class NotificationSpool(QTextEdit):
         """Horizontal-style scrolling notification area for market status
         and bot events. Shows timestamped events in a compact format."""

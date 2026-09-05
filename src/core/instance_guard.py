@@ -1,75 +1,11 @@
-r"""
-instance_guard.py - one Acervator starts a fleet; a second one must ask
-=======================================================================
+"""Ownership of one Acervator state directory.
 
-Issue #96. Every bot reconciles its holdings against the exchange
-balance. Two copies of Acervator on one Coinbase account read the same
-wallet, act on it, and each reads the other copy's fills as unexplained
-drift. That is the Target Delta condition of issue #65, made continuous.
-
-Before this module the tree held no guard at all: no lock file, no PID
-claim, no `QSharedMemory`, no `QLocalServer`, no mutex and no socket
-bind. `bot_state.json` and `reservation_state.json` carry no owner, no
-host and no lease, so the last writer wins. The application also starts
-every idle bot about 9.25 seconds after launch (`main.py:970`, `:1005`,
-`:1437-1457`), which turns the hazard into a ten-second one.
-
-WHAT THIS MODULE DOES, AND WHAT IT DELIBERATELY DOES NOT
---------------------------------------------------------
-It answers ONE question at launch: **may this process start the saved
-fleet without asking the operator?** It answers with a verdict and a
-sentence the operator can read. It never starts a bot, never stops one,
-and never touches `bot_state.json`.
-
-THE DISTINCTION IT IS BUILT TO DRAW
------------------------------------
-The same machine resuming its own fleet after a crash or a reboot is a
-FEATURE. `StateRestoreMixin.restore_bots_from_state` in
-`src/trading/container/restore.py` records `_was_running` for exactly
-that reason. A repair that makes the operator hand-start 37 bots after every
-crash is a worse product than the defect.
-
-A DIFFERENT machine adopting that fleet is the hazard. So the guard has
-to tell those two apart, and the whole design turns on one property:
-
-**THE MACHINE IDENTITY IS NEVER READ OUT OF THE STATE DIRECTORY.**
-
-A machine id written into `~/.acervator/` travels with a copy of
-`~/.acervator/`, so it identifies nothing - a copy would present the
-original's id and pass. This module derives the identity from a fact
-that lives OUTSIDE that directory and cannot be copied with it:
-
-    Windows   HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid
-    Linux     /etc/machine-id, then /var/lib/dbus/machine-id
-    macOS     IOPlatformUUID from /usr/sbin/ioreg
-
-The claim file inside `~/.acervator/` holds only the PREVIOUS owner's
-derived value. Copying the directory copies that value, and the copy
-then computes its OWN value from its own host and finds they disagree.
-The copy is what makes the mismatch visible, which is why the copy case
-is caught rather than missed.
-
-`uuid.getnode()` is NOT used. Measured on the operator's own machine
-2026-08-23: it returns `0xe93f41f2586c` with the locally-administered
-bit set, which is a virtual adapter, and virtual adapters appear and
-vanish when Hyper-V, WSL or a VPN is installed. An identity that changes
-when a VPN is installed would refuse the operator's own fleet.
-
-THE DEFAULT WHEN IT CANNOT TELL IS TO REFUSE
----------------------------------------------
-A guard that assumes safety when it is uncertain is not a guard. Every
-path that cannot PROVE this machine is the owner returns a verdict
-outside `AUTO_START_PERMITTED`. That includes a platform id that cannot
-be read, a claim file that will not parse, and a lock that cannot be
-taken.
-
-WHY THE CONSTRUCTOR TAKES A REQUIRED `config_dir`
---------------------------------------------------
-The operator's Acervator is running and trading real money while this
-code is written and tested. A default of `~/.acervator` would let one
-forgotten argument in one test write a lock into the live directory. The
-parameter therefore has NO default: a caller must name the directory it
-means, and every test names a temporary one.
+``InstanceGuard.evaluate`` returns a ``GuardDecision`` whose verdict falls in
+``AUTO_START_PERMITTED`` only when this launch may start the saved fleet with
+no prompt. ``read_machine_identity`` builds ``MachineIdentity`` from the
+platform machine id, never from a file under ``config_dir``. ``InstanceLock``
+holds an exclusive OS handle on ``LOCK_FILENAME``, and ``take_ownership``
+writes ``CLAIM_FILENAME``.
 """
 
 from __future__ import annotations
@@ -93,72 +29,51 @@ from src.core.io_utils import atomic_write_json
 logger = logging.getLogger("acervator.instance")
 
 CLAIM_FILENAME = "instance_claim.json"
-"""The owner claim. Written only when ownership is granted or taken."""
+"""Name of the file ``write_claim`` writes under ``config_dir``."""
 
 LOCK_FILENAME = "instance.lock"
-"""The exclusive OS handle. Held open for the life of the process."""
+"""Name of the file ``InstanceLock`` opens and holds for the process's life."""
 
 CLAIM_VERSION = 1
 
-# --------------------------------------------------------------------- #
-# Verdicts                                                              #
-# --------------------------------------------------------------------- #
-
 VERDICT_FIRST_RUN = "first_run"
-"""No claim and no saved fleet. Nothing exists to start, so nothing can
-collide. The claim is written and the launch owns the directory."""
+"""No ``InstanceClaim`` and no saved fleet; ``_decide`` permits a silent start."""
 
 VERDICT_SAME_MACHINE = "same_machine"
-"""The claim names THIS machine and no other process holds the lock.
-This is the crash-recovery and reboot path, and it must stay silent."""
+"""The ``InstanceClaim`` names this machine and ``InstanceLock`` was acquired."""
 
 VERDICT_LIVE_INSTANCE = "live_instance"
-"""Another process holds the lock right now. One machine, two copies."""
+"""``InstanceLock.acquire`` returned ``LOCK_HELD_BY_OTHER``."""
 
 VERDICT_FOREIGN_MACHINE = "foreign_machine"
-"""The claim names a different machine. This is the copied-directory
-case: the claim travelled with the files, the machine identity did not."""
+"""The stored ``InstanceClaim.fingerprint`` differs from this machine's."""
 
 VERDICT_UNCLAIMED_FLEET = "unclaimed_fleet"
-"""A saved fleet exists with no claim beside it. Two causes produce this
-and no evidence separates them: the first launch of a build that carries
-this guard, and a directory copied from a build that did not. The guard
-refuses and asks, because guessing here is guessing about real money."""
+"""A saved fleet with no ``InstanceClaim`` beside it; ``_decide`` refuses."""
 
 VERDICT_UNCERTAIN = "uncertain"
-"""The guard could not establish ownership. A platform id that would not
-read, a claim that would not parse, a lock that could not be taken, or a
-partial match. Fail closed."""
+"""``_decide`` could not establish ownership and refuses."""
 
 AUTO_START_PERMITTED = frozenset({VERDICT_FIRST_RUN, VERDICT_SAME_MACHINE})
-"""The only two verdicts that allow a silent fleet start."""
+"""The verdicts ``GuardDecision.permits_auto_start`` reports as True."""
 
 STRENGTH_STRONG = "strong"
-"""The platform's own machine id was read. It lives outside the state
-directory, so a copy of that directory cannot carry it."""
+"""``read_machine_identity`` read the platform machine id."""
 
 STRENGTH_WEAK = "weak"
-"""No platform machine id. Host name and OS user are all that is left,
-and both are trivially equal across two cloud machines built from one
-image, so a weak identity never proves ownership."""
+"""``read_machine_identity`` hashed ``host`` and ``os_user`` alone."""
 
 LOCK_ACQUIRED = "acquired"
 LOCK_HELD_BY_OTHER = "held_by_other"
 LOCK_UNAVAILABLE = "unavailable"
 
 _FINGERPRINT_SALT = "acervator-instance-guard-v1"
-"""Domain separation. The digest of a machine id is not the machine id,
-so the claim file never carries the raw platform identifier."""
-
-
-# --------------------------------------------------------------------- #
-# Machine identity                                                      #
-# --------------------------------------------------------------------- #
+"""Prefix ``read_machine_identity`` hashes with the platform machine id."""
 
 
 @dataclass(frozen=True)
 class MachineIdentity:
-    """What this process can establish about the machine it runs on."""
+    """What this process establishes about the machine it runs on."""
 
     fingerprint: str
     host: str
@@ -169,22 +84,20 @@ class MachineIdentity:
 
     @property
     def label(self) -> str:
-        """The short name the operator recognises on sight."""
+        """``host`` and ``os_user`` in one string."""
         return f"{self.host} ({self.os_user})"
 
     @property
     def short_fingerprint(self) -> str:
-        """Twelve hex characters. Enough for a human to compare two."""
+        """The first twelve characters of ``fingerprint``."""
         return self.fingerprint[:12]
 
 
 def _machine_id_windows() -> Optional[str]:
-    """Read `MachineGuid` from the registry.
+    """Return ``MachineGuid`` from the Windows registry, or None.
 
-    Windows writes this value at install time. It survives every reboot,
-    it is not in any user directory, and a copy of `~/.acervator/` cannot
-    carry it. It changes when Windows is reinstalled, which is honestly a
-    different machine as far as this guard is concerned.
+    ``winreg`` reads it under ``HKEY_LOCAL_MACHINE``, outside any ``config_dir``
+    a copy could carry.
     """
     try:
         import winreg
@@ -206,18 +119,10 @@ def _machine_id_windows() -> Optional[str]:
 
 
 def _machine_id_linux() -> Optional[str]:
-    """Read `/etc/machine-id`, then the D-Bus copy.
+    """Return ``/etc/machine-id`` or the D-Bus copy, or None.
 
-    systemd generates this at first boot and documents it as stable for
-    the life of the installation. Both paths are outside any home
-    directory.
-
-    KNOWN LIMIT, STATED RATHER THAN HIDDEN. A machine cloned from a full
-    DISK IMAGE carries the image's `/etc/machine-id` until something
-    regenerates it. Cloud images normally do regenerate it on first boot,
-    but this module cannot verify that from here. The host-name check in
-    `compare` is the second gate for exactly that case: two cloud
-    machines from one image are given different host names.
+    A disk-image clone carries the same value; ``_decide`` also compares
+    ``InstanceClaim.host`` against ``MachineIdentity.host``.
     """
     for path in (Path("/etc/machine-id"), Path("/var/lib/dbus/machine-id")):
         try:
@@ -230,12 +135,10 @@ def _machine_id_linux() -> Optional[str]:
 
 
 def _machine_id_darwin() -> Optional[str]:
-    """Read `IOPlatformUUID` from the I/O registry.
+    """Return ``IOPlatformUUID`` from ``/usr/sbin/ioreg``, or None.
 
-    macOS holds no stable machine id in a readable file, so the only
-    route is the `ioreg` tool. It is called by ABSOLUTE PATH with a fixed
-    argument list and no shell, so nothing on `PATH` and nothing in the
-    environment can change which program runs.
+    ``subprocess.run`` names the absolute path with a fixed argument list and
+    ``shell=False``.
     """
     try:
         completed = subprocess.run(
@@ -260,7 +163,7 @@ def _machine_id_darwin() -> Optional[str]:
 
 
 def _platform_machine_id() -> tuple[Optional[str], str]:
-    """Return the platform's own machine id and the source that gave it."""
+    """Return the machine id for ``sys.platform`` and the source that gave it."""
     if sys.platform.startswith("win"):
         return _machine_id_windows(), "windows:MachineGuid"
     if sys.platform.startswith("linux"):
@@ -285,13 +188,10 @@ def _safe_user() -> str:
 
 
 def read_machine_identity() -> MachineIdentity:
-    """Derive this machine's identity from facts outside the state dir.
+    """Return a ``MachineIdentity`` derived from outside ``config_dir``.
 
-    The digest covers the platform machine id and nothing else when that
-    id is available. Host name and OS user are recorded ALONGSIDE it and
-    compared separately, so renaming the machine produces a partial match
-    the operator is asked about, rather than a silent refusal he cannot
-    explain.
+    ``fingerprint`` covers the platform machine id alone when one is available;
+    ``host`` and ``os_user`` sit beside it and ``_decide`` compares them apart.
     """
     host = _safe_host()
     user = _safe_user()
@@ -300,9 +200,7 @@ def read_machine_identity() -> MachineIdentity:
         material = f"{_FINGERPRINT_SALT}|{sys.platform}|{machine_id}"
         strength = STRENGTH_STRONG
     else:
-        # No platform id. Host and user are all that is left, and two
-        # cloud machines from one image share both, so this identity is
-        # marked weak and can never on its own permit a silent start.
+        # Two machines built from one image share host and os_user.
         material = f"{_FINGERPRINT_SALT}|weak|{sys.platform}|{host}|{user}"
         strength = STRENGTH_WEAK
         source = f"{source}:absent"
@@ -316,14 +214,9 @@ def read_machine_identity() -> MachineIdentity:
     )
 
 
-# --------------------------------------------------------------------- #
-# The claim on disk                                                     #
-# --------------------------------------------------------------------- #
-
-
 @dataclass(frozen=True)
 class InstanceClaim:
-    """The previous owner's recorded identity, read back from disk."""
+    """One ``CLAIM_FILENAME`` payload, as ``read_claim_state`` returns it."""
 
     fingerprint: str
     host: str
@@ -352,20 +245,17 @@ def _claim_path(config_dir: Path) -> Path:
 
 
 def read_claim(config_dir: Path) -> Optional[InstanceClaim]:
-    """Return the claim on disk, or None when there is not a usable one.
+    """Return the ``InstanceClaim`` under ``config_dir``, or None.
 
-    None means one of two different things and the CALLER must not merge
-    them: the file is absent, or the file is present and unreadable. The
-    second is reported as a warning here and lands the caller on
-    `VERDICT_UNCERTAIN` through `read_claim_state`, never on the
-    permissive `no claim` path.
+    None covers both the absent and the unreadable state; ``read_claim_state``
+    tells them apart and ``_decide`` reads that state.
     """
     state, claim = read_claim_state(config_dir)
     return claim if state == "present" else None
 
 
 def read_claim_state(config_dir: Path) -> tuple[str, Optional[InstanceClaim]]:
-    """Return ("present"|"absent"|"unreadable", claim or None)."""
+    """Return "present", "absent" or "unreadable" with the ``InstanceClaim``."""
     path = _claim_path(config_dir)
     try:
         raw = path.read_text(encoding="utf-8")
@@ -413,12 +303,10 @@ def read_claim_state(config_dir: Path) -> tuple[str, Optional[InstanceClaim]]:
 def write_claim(
     config_dir: Path, identity: MachineIdentity, app_version: str = ""
 ) -> Path:
-    """Write the claim atomically. Returns the path written.
+    """Write ``CLAIM_FILENAME`` under ``config_dir`` via ``atomic_write_json``.
 
-    Atomic because a claim half-written by a power cut would read as
-    `unreadable`, and `unreadable` refuses the operator's own fleet on
-    the next launch. The temporary file sits in the same directory so the
-    replace is a rename inside one filesystem.
+    The payload carries every ``MachineIdentity`` field, the current pid and
+    ``app_version``, and the path written is returned.
     """
     directory = Path(config_dir)
     directory.mkdir(parents=True, exist_ok=True)
@@ -440,23 +328,11 @@ def write_claim(
     return path
 
 
-# --------------------------------------------------------------------- #
-# The exclusive handle                                                  #
-# --------------------------------------------------------------------- #
-
-
 class InstanceLock:
-    """An exclusive OS handle on one file, held for the process's life.
+    """An exclusive OS handle on ``LOCK_FILENAME``, held for the process's life.
 
-    This is the SAME-MACHINE half of the guard, and it is the half the
-    machine fingerprint cannot do: two copies on one computer present the
-    identical fingerprint, so only the operating system can say which of
-    them is running now.
-
-    A crash releases it. The operating system drops every handle a dead
-    process held, so the fleet that comes back after a crash finds the
-    lock free and resumes without a prompt. That is the behaviour issue
-    #96 must not break.
+    Two copies on one machine share a ``MachineIdentity.fingerprint``, and only
+    ``acquire`` separates them; a dead process leaves the handle free.
     """
 
     def __init__(self, config_dir: Path) -> None:
@@ -469,7 +345,7 @@ class InstanceLock:
         return self._path
 
     def acquire(self) -> str:
-        """Try to take the handle. Returns one of the three LOCK_ values."""
+        """Return ``LOCK_ACQUIRED``, ``LOCK_HELD_BY_OTHER`` or ``LOCK_UNAVAILABLE``."""
         if self._fd is not None:
             return self.state
         try:
@@ -495,15 +371,16 @@ class InstanceLock:
         try:
             os.write(fd, f"pid={os.getpid()}\n".encode("utf-8"))
         except OSError:
-            # The handle is what matters. The text is a courtesy for a
-            # human reading the directory, so a failed write is not a
-            # failed lock and must not be reported as one.
+            # The pid text is a note; the fd is what LOCK_ACQUIRED reports.
             logger.debug("instance lock note not written")
         return self.state
 
     @staticmethod
     def _try_lock(fd: int) -> Optional[bool]:
-        """True locked, False another process holds it, None no facility."""
+        """Return True when ``fd`` was locked, False when another process holds it.
+
+        None means neither ``msvcrt`` nor ``fcntl`` could be imported.
+        """
         if os.name == "nt":
             try:
                 import msvcrt
@@ -525,9 +402,11 @@ class InstanceLock:
         return True
 
     def release(self) -> None:
-        """Drop the handle. The file itself stays, and that is deliberate:
-        deleting it would race a second process that has already opened
-        it and would leave two processes locking two different inodes."""
+        """Unlock and close the handle; ``LOCK_FILENAME`` is left on disk.
+
+        ``state`` returns to ``LOCK_UNAVAILABLE`` and ``acquire`` can take the
+        handle again.
+        """
         fd, self._fd = self._fd, None
         if fd is None:
             return
@@ -550,14 +429,9 @@ class InstanceLock:
         self.state = LOCK_UNAVAILABLE
 
 
-# --------------------------------------------------------------------- #
-# The decision                                                          #
-# --------------------------------------------------------------------- #
-
-
 @dataclass(frozen=True)
 class GuardDecision:
-    """One verdict, and every fact the operator needs to judge it."""
+    """One ``verdict`` with the ``MachineIdentity`` and ``InstanceClaim`` behind it."""
 
     verdict: str
     permits_auto_start: bool
@@ -571,7 +445,7 @@ class GuardDecision:
 
     @property
     def owner_line(self) -> str:
-        """Which machine last wrote the state, and when."""
+        """The ``claim`` label, its short fingerprint and its age, in one line."""
         if self.claim is None:
             return "This fleet carries no record of the machine that last used it."
         age = self.claim.age_seconds()
@@ -592,22 +466,16 @@ class GuardDecision:
 
     @property
     def consent_is_possible(self) -> bool:
-        """Whether consent can be offered at all for this verdict.
+        """True when ``lock_state`` is ``LOCK_ACQUIRED``.
 
-        It cannot when another process holds the exclusive handle. That
-        copy is not inferred from a file, it is proved by the operating
-        system, and no answer the operator gives makes two copies on one
-        account safe. The surface therefore states the fact and offers
-        no way past it, rather than collecting a consent it must ignore.
-
-        It also cannot when the handle could not be taken at all, because
-        this process cannot then promise it is the only one.
+        On any other ``lock_state`` ``InstanceGuard.take_ownership`` refuses the
+        write, and no consent is collected.
         """
         return self.lock_state == LOCK_ACQUIRED
 
     @property
     def consequence_line(self) -> str:
-        """What happens if the operator continues. Say the money part."""
+        """The sentence naming ``fleet_bot_count`` and the shared exchange account."""
         return (
             f"If you continue, this machine takes ownership and starts "
             f"{self.fleet_bot_count} bot(s) against the live exchange "
@@ -618,7 +486,7 @@ class GuardDecision:
 
 
 def _age_phrase(seconds: float) -> str:
-    """A duration a person reads at a glance, not a float."""
+    """Return ``seconds`` as a phrase in seconds, minutes, hours or days."""
     if seconds < 90.0:
         return f"{int(seconds)} seconds"
     if seconds < 5400.0:
@@ -631,7 +499,7 @@ def _age_phrase(seconds: float) -> str:
 def _describe(
     verdict: str, claim: Optional[InstanceClaim], identity: MachineIdentity
 ) -> tuple[str, str]:
-    """Return the headline and the reason for one verdict."""
+    """Return the headline and detail text for one ``verdict``."""
     if verdict == VERDICT_FIRST_RUN:
         return (
             "This machine now owns this Acervator directory.",
@@ -680,10 +548,7 @@ def _describe(
 class InstanceGuard:
     """Decides whether this launch may start the saved fleet silently.
 
-    `config_dir` HAS NO DEFAULT ON PURPOSE. See the module docstring: the
-    operator's Acervator is live while this code runs, and a default
-    would let one forgotten argument write a lock into the directory his
-    running application reads.
+    ``config_dir`` has no default; every caller names the directory it means.
     """
 
     def __init__(self, config_dir: Path, app_version: str = "") -> None:
@@ -706,11 +571,10 @@ class InstanceGuard:
         return self._decision
 
     def evaluate(self, fleet_bot_count: int) -> GuardDecision:
-        """Read the evidence and return the verdict. Writes no claim.
+        """Return a ``GuardDecision`` for ``fleet_bot_count``, writing no claim.
 
-        The claim is written only by `take_ownership`, so a refusal
-        leaves the previous owner's record untouched and a second look
-        reaches the same verdict.
+        Only ``take_ownership`` writes ``CLAIM_FILENAME``; a refusal leaves the
+        previous ``InstanceClaim`` in place.
         """
         started = time.monotonic()
         identity = read_machine_identity()
@@ -743,13 +607,9 @@ class InstanceGuard:
         return decision
 
     def take_ownership(self) -> bool:
-        """Record this machine as the owner. Returns True when written.
+        """Write this machine's ``InstanceClaim`` and return True on success.
 
-        Called on the permitted path to refresh the record, and on the
-        refused path ONLY after the operator has consented in the dialog.
-        It refuses to write while another process holds the lock: taking
-        the record from a copy that is demonstrably alive would tell the
-        next launch a lie.
+        It returns False when ``InstanceLock.state`` is not ``LOCK_ACQUIRED``.
         """
         if self._lock.state != LOCK_ACQUIRED:
             logger.warning(
@@ -768,7 +628,7 @@ class InstanceGuard:
         return True
 
     def release(self) -> None:
-        """Drop the exclusive handle at shutdown."""
+        """Release the ``InstanceLock`` handle."""
         self._lock.release()
 
 
@@ -779,23 +639,10 @@ def _decide(
     lock_state: str,
     fleet_bot_count: int,
 ) -> str:
-    """The whole decision, as one readable ladder.
+    """Return the verdict for one ``identity``, ``claim_state``, claim and lock.
 
-    Order matters and each rung earns its place.
-
-    1. A live copy dominates everything. It is the only condition proved
-       by the operating system rather than inferred from a file.
-    2. A lock that could not be taken at all proves nothing, so it is
-       uncertain rather than safe.
-    3. An unreadable claim is uncertain. It is NOT the same as no claim,
-       and merging the two would let a corrupt file open the silent path.
-    4. No claim with no fleet is a genuine first run. No claim WITH a
-       fleet is the upgrade-or-copy pair, which nothing on disk splits.
-    5. A weak identity on either side never proves ownership.
-    6. A different fingerprint is a different machine.
-    7. A matching fingerprint with a different host or user is a partial
-       match: a renamed machine, or two machines cloned from one disk
-       image. Both are asked about rather than assumed.
+    ``LOCK_HELD_BY_OTHER`` outranks every other input, and any state that does
+    not prove ownership ends at ``VERDICT_UNCERTAIN``.
     """
     if lock_state == LOCK_HELD_BY_OTHER:
         return VERDICT_LIVE_INSTANCE
@@ -815,14 +662,10 @@ def _decide(
 
 
 def _emit_decision(decision: GuardDecision, elapsed: float) -> None:
-    """Pin 17-001. The operator has to be able to see this decision.
+    """Emit the auto-start postcondition for one ``decision``.
 
-    The check is not a restatement of the verdict. `actual` is the flag
-    the caller will ACT on, and `expected` is rebuilt from the evidence
-    fields on the record - the lock state and the claim comparison -
-    without consulting the verdict at all. The two disagree only if the
-    ladder and the evidence have come apart, which is the failure a
-    reader of this record needs to catch.
+    ``expected`` is rebuilt from ``lock_state``, ``claim_state`` and the
+    ``MachineIdentity`` comparison, never from ``decision.verdict``.
     """
     try:
         from src.core.signal_contract import emit as _guard_emit
@@ -866,10 +709,6 @@ def _emit_decision(decision: GuardDecision, elapsed: float) -> None:
         logger.debug("instance guard pin suppressed: %s", exc)
 
 
-# --------------------------------------------------------------------- #
-# The seam main.py calls                                                #
-# --------------------------------------------------------------------- #
-
 AUTHORISED_ALREADY_OWNER = "already_owner"
 AUTHORISED_BY_OPERATOR = "operator_consent"
 WITHHELD_BY_OPERATOR = "operator_refused"
@@ -881,23 +720,10 @@ def authorise_auto_start(
     decision: GuardDecision,
     ask_consent: Callable[[GuardDecision], bool],
 ) -> tuple[bool, str]:
-    """Return (may the fleet start, the reason in one word).
+    """Return whether the fleet may start, with one of the four reason constants.
 
-    THIS FUNCTION EXISTS SO THE SEQUENCE CAN BE TESTED. Written inline in
-    `main()` it would sit inside an 841-line function that no test can
-    call, and the order of its three steps is the whole point:
-
-      1. An owner never sees a dialog. That is the crash-recovery path
-         and it must stay silent.
-      2. A refusal from the operator ends it. Nothing else is tried.
-      3. Consent is not enough on its own. `take_ownership` still has to
-         succeed, and it refuses without the exclusive handle - which
-         means another copy is provably alive, and no answer the
-         operator gives makes two copies on one account safe.
-
-    `ask_consent` takes the decision and returns a bool. It is passed in
-    rather than imported so this module needs no Qt, and so a test can
-    supply an operator who says yes and an operator who says no.
+    ``ask_consent`` runs only when ``decision.permits_auto_start`` is False, and
+    a granted consent still needs ``guard.take_ownership`` to return True.
     """
     if decision.permits_auto_start:
         return (True, AUTHORISED_ALREADY_OWNER)

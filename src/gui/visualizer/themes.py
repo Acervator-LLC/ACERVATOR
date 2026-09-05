@@ -16,42 +16,18 @@ except ImportError:
 
 if _HAS_QT:
 
-    # -------------------------------------------------------------------
-    # Visual Themes
-    # -------------------------------------------------------------------
-    # ─────────────────────────────────────────────────────────────────
-    # Tier palettes (Scope A locust refresh, post-Session-26).
-    #
-    # Grounded in sadp/VISUAL_CRAFT.md:
-    #   - Pillar 1 (DawnBringer): limited palettes produce consistency;
-    #     hue-shifted ramps, NOT luminance-only, are the highest-value
-    #     lesson in small-palette work. Shadow shifts toward cool/warm
-    #     opposite of the light direction, not just darker base.
-    #   - Pillar 5 (ACRV tier hierarchy): four tiers each carry a visual
-    #     family so bot cards differentiate by a glance, not just by
-    #     reading the symbol label.
-    #
-    # Tier assignment is by target_balance bucket (operator can override
-    # later). Harvest: <$100, Great: <$1k, Bumper: <$10k, Ekthelius: >=$10k.
-    #
-    # Each tier's `base` is the main insect-body tone; `shadow` and
-    # `highlight` are the hue-shifted ramp stops; `glow` is the ambient
-    # aura color. `accent` is the wing-vein / detail stroke color.
-    # ─────────────────────────────────────────────────────────────────
+    # ``base`` is the body tone, ``shadow`` and ``highlight`` the ramp stops,
+    # ``glow`` the aura, ``accent`` the wing-vein stroke.
     TIER_PALETTES = {
         "harvest": {
-            # DB32-family green (base) with cool-blue shadow, warm-yellow
-            # highlight. The workaday locust — most bots live here.
             "name": "Harvest",
             "base": QColor(80, 180, 110),
-            "shadow": QColor(40, 100, 140),  # hue-shifted toward blue/cool
-            "highlight": QColor(180, 220, 130),  # hue-shifted toward yellow/warm
+            "shadow": QColor(40, 100, 140),
+            "highlight": QColor(180, 220, 130),
             "accent": QColor(210, 240, 160),
             "glow": QColor(120, 220, 150),
         },
         "great": {
-            # Cyan-jade tier — cleaner, cooler, slightly richer than Harvest.
-            # Hue-shift: shadow toward deep teal, highlight toward pale mint.
             "name": "Great",
             "base": QColor(60, 200, 180),
             "shadow": QColor(20, 100, 130),
@@ -60,9 +36,6 @@ if _HAS_QT:
             "glow": QColor(90, 230, 200),
         },
         "bumper": {
-            # Amber-rust tier — cool-to-warm shift per VISUAL_CRAFT Pillar 5.
-            # Shadow toward violet (complementary of amber), highlight toward
-            # pale gold.
             "name": "Bumper",
             "base": QColor(220, 150, 70),
             "shadow": QColor(110, 60, 120),
@@ -71,8 +44,6 @@ if _HAS_QT:
             "glow": QColor(240, 180, 90),
         },
         "ekthelius": {
-            # Gold + purple, custom per VISUAL_CRAFT Pillar 5 — rare
-            # trophy tier. Shadow deep indigo, highlight pale gold.
             "name": "Ekthelius",
             "base": QColor(200, 170, 80),
             "shadow": QColor(70, 40, 130),

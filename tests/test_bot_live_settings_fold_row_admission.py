@@ -1,53 +1,10 @@
-"""Numeric admission on the FOLD tranche row of bot_live_settings.
+"""Numeric admission on the fold-tranche row of the Bot Settings dialog.
 
-THE DEFECT THESE PIN
-====================
-`_create_fold_tranches_tab` read seven numbers off each fold-tranche
-dict. Five were bare ``float(t.get(key, 0) or 0)`` and two were an
-exact-type guard that closed the TYPE and left the VALUE open.
-
-Measured on live, through the real tab builder, before the fix:
-
-* ``usd``/``units``/``ref``/``initial_buy_price`` — ``True`` printed
-  ``$1.0000`` (a stored flag priced as one dollar), ``False``/``None``/
-  ``""`` printed ``$0.0000`` (an ABSENCE priced at zero), ``nan`` and
-  ``inf`` printed ``"$nan"``/``"$inf"``, ``10 ** 400`` raised
-  OverflowError, and a list or dict raised TypeError.
-* The parked-USD row was a ``sum``, so ONE bad entry took the whole
-  total to ``$nan``/``$inf`` or raised out of the summary.
-* ``created_ts`` used ``(type(cts) is int or type(cts) is float) and
-  cts > 0``. ``type(inf) is float`` is True and ``inf > 0`` is True, so
-  the guard ADMITTED ``inf``; ``int(seconds)`` inside ``_format_age``
-  then raised OverflowError. A huge int was admitted the same way and
-  raised from ``float()``.
-
-A TYPE IS NOT A DOMAIN. That guard was cited by an earlier unit as the
-good precedent. It was not sufficient, and this file is the record of
-why: exact type closes the type, never the value.
-
-WHY IT MATTERS: the AST ancestor chain from every one of the seven
-sites runs ``_create_fold_tranches_tab`` -> ``BotLiveSettingsDialog.
-__init__`` -> ``MainWindow._on_bot_clicked`` with no ``try`` at any
-step, so a raise means the Bot Settings dialog does not open for that
-bot at all. The contrast that proves the walk discriminates:
-``simulator_tab.py:695`` builds the same dialog inside a ``try`` with an
-``Exception`` handler, so the Simulator path is protected and the
-operator's path is not.
-
-REACHABILITY: fold tranches round-trip through ``bot_state.json``
-verbatim, container-checked only. ``json.loads`` yields a real ``True``
-from ``true``, ``nan`` from ``NaN``, ``inf`` from ``Infinity`` and an
-unbounded ``int`` from a 400-digit literal — all measured.
-
-AND THE GUARD MUST NOT OPEN THE HOLE IT CLOSES: ``math.isfinite(10 **
-400)`` itself raises OverflowError. ``as_finite_float`` bounds ints with
-an integer comparison, which cannot raise. ``test_huge_int_*`` is the
-row that tells the two apart.
-
-Every table below carries POSITIVE CONTROLS — real numbers whose
-rendering was captured from live and pasted here byte for byte. Without
-them a guard that refused everything would pass every refusal test while
-blanking the panel.
+`_build` drives the shipped `_create_fold_tranches_tab` through a stub `self`,
+so every assertion is about the tab an operator opens. `TestTheDialogOpens`,
+`TestTheRefusalIsHonest` and `TestTheParkedTotalCountsWhatItCannotRead` hold
+every shape in REFUSED to DASH, and `TestValidInputIsByteIdentical` holds
+LIVE_LABELS and LIVE_ROW as the positive control.
 """
 
 from __future__ import annotations
@@ -184,9 +141,8 @@ def _build(tranches, monkeypatch, cur_price=31000.0):
             return {"stats": {"current_price": cur_price}}
 
     class _StubDlg:
-        # `_format_age` is a @staticmethod; binding it here without the
-        # re-wrap would silently make it an instance method and pass
-        # `self` as `seconds`.
+        # Without the re-wrap `_format_age` binds as an instance method and
+        # takes `self` as `seconds`.
         _format_age = staticmethod(_Dlg._format_age)
         _paint_fold_tranche_row = _Dlg._paint_fold_tranche_row
         _paint_extractor_tranche_rows = _Dlg._paint_extractor_tranche_rows
@@ -201,10 +157,6 @@ def _build(tranches, monkeypatch, cur_price=31000.0):
         def _on_clear_wire_credits(self):
             return None
 
-        # issue #133 unit 3 - the tab's THIRD clear button. This stub
-        # stands in for the whole dialog, so a button the builder
-        # connects and the stub does not answer raises out of the
-        # builder before one row is read.
         def _on_clear_lifetime_counters(self):
             return None
 
@@ -247,50 +199,7 @@ def _parked(labels):
     return _summary(labels, "Parked USD (in fold queue):")
 
 
-def _fold_tab_source():
-    """The shipped method's own source, dedented so it parses."""
-    import inspect
-    import textwrap
-
-    from src.gui.bot_live_settings import BotLiveSettingsDialog
-
-    return textwrap.dedent(
-        inspect.getsource(BotLiveSettingsDialog._create_fold_tranches_tab)
-    )
-
-
-def _bare_tranche_float_reads(source):
-    """Every `float(t.get(...))` read of a tranche key in `source`.
-
-    Walks the AST rather than the text. `float(x or 0)` is unwrapped,
-    because the `or 0` is what mapped None and "" onto a confident zero
-    and it is part of the shape being refused.
-    """
-    import ast
-
-    found = []
-    for node in ast.walk(ast.parse(source)):
-        if not isinstance(node, ast.Call):
-            continue
-        if not (isinstance(node.func, ast.Name) and node.func.id == "float"):
-            continue
-        inner = node.args[0] if node.args else None
-        if isinstance(inner, ast.BoolOp):
-            inner = inner.values[0]
-        if (
-            isinstance(inner, ast.Call)
-            and isinstance(inner.func, ast.Attribute)
-            and inner.func.attr == "get"
-            and isinstance(inner.func.value, ast.Name)
-            and inner.func.value.id in ("t", "_pt")
-        ):
-            found.append(ast.unparse(node))
-    return found
-
-
-# ---------------------------------------------------------------------
 # CONTROL A - THE DIALOG OPENS
-# ---------------------------------------------------------------------
 
 
 class TestTheDialogOpens:
@@ -347,57 +256,9 @@ class TestTheDialogOpens:
         assert rows[1][COL_AGE] == DASH
 
 
-# ---------------------------------------------------------------------
 # CONTROL B - VALID INPUT RENDERS IDENTICALLY
-# ---------------------------------------------------------------------
 
-# TWO CELLS IN `LIVE_ROW` MOVED ONCE, AND THE REASON IS RECORDED HERE
-# RATHER THAN DELETED WITH THEM.
-#
-# Until v3.26.0 this table pinned:
-#
-#     Min rebuy $  "≤$29550.00000000"
-#     Status       "Need price ≤ OTD (+4.91%)"
-#
-# `_Cfg` below sets `scrumming_interval_pct = 1.5` and NO
-# `trading_fee_pct`. Those two strings are `ref × (1 - 1.5/100)` — the
-# scrumming interval alone. The executor's own per-tranche fold filter
-# uses the Minimum Opposing Trade Distance, `interval + trading fee`
-# (`src/trading/otd_math.py`), and reads a missing fee as 0.6. The panel
-# was therefore printing a rebuy price the executor refuses, on 24 of
-# the operator's 38 live bots, and showing six green "Price-OK" rows for
-# buys that could not fire (GitHub issue #97, measured 2026-08-23).
-#
-# The pin is RESTATED, not dropped: 2.1% instead of 1.5%, so
-# `30000 × 0.979 = 29370` and `31000` sits `+5.55%` above it. The
-# falsifier that keeps the panel asking `otd_math` instead of doing its
-# own arithmetic lives in
-# `tests/test_fold_panel_asks_the_executor.py`, together with the
-# `_without_the_fee_in_the_panel` control that reproduces the two
-# strings above on demand.
-#
-# A THIRD CELL MOVED, AND FOR THE SAME KIND OF REASON.
-#
-# Until issue #98 this table pinned:
-#
-#     Source       "auto scrum"
-#
-# `_valid_tranche` stores `operator_initiated: False`. That value is
-# written at ONE site, the SCRUM branch of `_execute_manual_rebalance`
-# (`src/trading/scrumming/execution.py`), and `False` there means the
-# caller was `wire_stack` or `max_cartridge` - an AUTONOMOUS rebalance
-# fire. The ordinary scrum cycle and the DIST re-fold write no
-# `operator_initiated` key at all, and THAT absence is what "auto
-# scrum" names. So this row was reading one mechanism and printing the
-# name of another.
-#
-# The pin is RESTATED, not dropped: "auto rebalance" for a stored
-# `False`. `tests/test_fold_source_names_the_action.py` holds all three
-# provenances against their write sites, with the live fleet counts
-# that measured the defect.
-#
-#: Captured from LIVE, through the same builder, before the change.
-#: Not one character of these may move.
+#: Captured from a live bot through the same builder, asserted byte for byte.
 LIVE_LABELS = [
     "Open tranches:",
     "1",
@@ -405,25 +266,8 @@ LIVE_LABELS = [
     "$250.0000",
     "Oldest tranche age:",
     "1.0h",
-    # issue #98 defect 9, 2026-08-24 - THE ALLOTMENT TOTAL. The panel
-    # printed per-row Units and no total, so PUMP/USD marking 1.99x the
-    # units it holds looked exactly like a queue that had marked half.
-    # This fixture's stub bot carries no `_current_holdings` at all, so
-    # the row prints the marked total and says plainly that it cannot
-    # read the holdings - it does NOT print a ratio against a number it
-    # does not have.
     "Units marked (queue vs held):",
     "1.500000 marked / holdings unreadable",
-    # issue #103, 2026-08-24 - the two despawn rows. The capture grew
-    # by four entries because the panel gained two rows, and that is a
-    # DELIBERATE change to what a valid tranche makes this tab show.
-    # Recorded here rather than relaxed away: the assertion is still
-    # byte-for-byte, so the next unintended drift still fails.
-    #
-    # This fixture's tranche is one hour old and the timer reads Off,
-    # which is the live fleet's state on all 38 bots, so every window
-    # prints zero. The row proves the panel says WHAT IT WOULD REMOVE
-    # even when the answer is nothing.
     "Tranche despawn timer:",
     "Off  -  Settings tab > Advanced > Tranche Despawn Timer",
     "Despawn would remove:",
@@ -435,36 +279,12 @@ LIVE_LABELS = [
     "10",
     "Lifetime tranches closed (fold-back fired):",
     "6",
-    # issue #98 defect 4, 2026-08-24 - THE HEADLINE HEALTH METRIC. The
-    # label now names the arithmetic it performs: discards leave the
-    # denominator, because a discarded tranche did not fail to fold
-    # back, it was removed before it could. This stub has discarded
-    # none, so the NUMBER is unchanged at 60.00% (6/10) and only the
-    # words moved - which is the shape a re-definition should have on a
-    # bot the re-definition does not apply to.
     "Cycle close ratio (folded / opened minus discarded):",
     "60.00%  (6/10)",
-    # issue #98 defect 10, 2026-08-24 - two of the three persisted
-    # quantities the panel never showed. The third,
-    # `_wire_credits_discarded_lifetime`, follows the tranche-discard
-    # row's convention and appears only once it is non-zero; this stub
-    # has never cleared, so it is absent here BY DESIGN and its
-    # presence on a bot that HAS cleared is pinned in
-    # `tests/test_fold_panel_surface_remainder.py`.
-    #
-    # The malformed row is shown even at zero, and that is the point of
-    # it: 0 on all 38 bots is a positive statement that no stored
-    # tranche was ever unreadable, and a hidden row would make that
-    # reading indistinguishable from a panel that does not count drops.
     "Tranches dropped as malformed:",
     "0",
     "Fold budget this cycle:",
     "$0.0000 spent of $0.0000",
-    # issue #98 defect 7, 2026-08-24 - the label on the row-order
-    # combo. `_build` harvests every `QLabel` in the built tab, and the
-    # two reach controls sit above the table, so the order label lands
-    # in this capture with no value beside it. The filter box is a
-    # `QLineEdit` with a placeholder and no label, so it adds nothing.
     "Order:",
 ]
 LIVE_ROW = [
@@ -608,9 +428,7 @@ class TestValidInputIsByteIdentical:
         assert _summary(labels, "Oldest tranche age:") == "no open tranches"
 
 
-# ---------------------------------------------------------------------
 # CONTROL C - THE REFUSAL IS HONEST
-# ---------------------------------------------------------------------
 
 
 class TestTheRefusalIsHonest:
@@ -641,10 +459,6 @@ class TestTheRefusalIsHonest:
         if key == "created_ts":
             assert _cell(key, value, monkeypatch) == base_rows[0][COL_AGE]
         else:
-            # `units`, `usd` and `initial_buy_price` default an ABSENT
-            # key to 0 and print a real zero, which is unchanged. The
-            # em dash is the branch a PRESENT-but-unusable value takes,
-            # and it is the same string the Age cell uses.
             assert _cell(key, value, monkeypatch) == DASH
 
     @pytest.mark.parametrize("value", REFUSED)
@@ -683,9 +497,7 @@ class TestTheRefusalIsHonest:
         assert (rows[0][COL_USD] == DASH) == ("unreadable" in _parked(labels))
 
 
-# ---------------------------------------------------------------------
 # CONTROL D - THE SUM
-# ---------------------------------------------------------------------
 
 
 class TestTheParkedTotalCountsWhatItCannotRead:
@@ -760,9 +572,7 @@ class TestTheParkedTotalCountsWhatItCannotRead:
         assert _parked(labels) == "$6.0000  (+1 unreadable)"
 
 
-# ---------------------------------------------------------------------
 # CONTROL E - 10 ** 400 RAISES NOWHERE, INCLUDING INSIDE THE GUARD
-# ---------------------------------------------------------------------
 
 
 class TestHugeIntDoesNotRaiseAnywhere:
@@ -798,20 +608,6 @@ class TestHugeIntDoesNotRaiseAnywhere:
 
         with pytest.raises(OverflowError):
             math.isfinite(10**400)
-
-
-# ---------------------------------------------------------------------
-# CONTROL F - PRECISION IN THE BAND ABOVE 2 ** 53
-# ---------------------------------------------------------------------
-#
-# Routing an accepted int through `as_finite_float` sends it through a
-# float, and these are MONEY columns. Measured on live BEFORE the change
-# and on the island AFTER it: identical, because every one of the seven
-# sites already went through a bare `float()`. The fix is precision
-# neutral by construction; it neither introduces nor removes a rounding.
-#
-# Keeping integer precision here would CHANGE what an accepted value
-# displays, which is the one thing this unit is not allowed to do.
 
 
 class TestPrecisionBandIsUnchanged:
@@ -887,9 +683,7 @@ class TestPrecisionBandIsUnchanged:
         assert float(2**1023 + 1) == float(2**1023)
 
 
-# ---------------------------------------------------------------------
 # The admission rule is the repo's, not a fourth variant
-# ---------------------------------------------------------------------
 
 
 class TestAdmissionHelperIsTheRepoRule:
@@ -897,47 +691,46 @@ class TestAdmissionHelperIsTheRepoRule:
     this file and two more in `bot_container` must answer the same
     question the same way, or the panels contradict each other."""
 
-    def test_the_fold_tab_reads_through_as_finite_float(self):
-        """Structural, deliberately. A passing behaviour test plus the
-        shipped helper being the thing that ran is stronger than the
-        behaviour test alone: a hand-rolled copy could pass every row
-        above and then drift away from the Stack panel's answer."""
-        assert "as_finite_float as _as_finite_float" in _fold_tab_source()
-        assert "type(cts) is int" not in _fold_tab_source()
+    @pytest.mark.parametrize("key", MONEY_KEYS)
+    def test_the_panel_verdict_matches_the_helper_verdict(self, key, monkeypatch):
+        """Every money cell agrees with `as_finite_float` shape for shape.
 
-    def test_no_bare_float_reads_a_tranche_key(self):
-        """AST, NOT a substring. `_as_finite_float(t.get("usd", 0))`
-        CONTAINS the text `float(t.get("usd"`, so a substring test
-        would pass on the defect and fail on the fix — exactly
-        backwards. The walk asks what the code DOES."""
-        assert _bare_tranche_float_reads(_fold_tab_source()) == []
+        The oracle is the helper's own answer, so a hand-rolled guard that
+        drifts from it prints a number where the helper says None.
+        """
+        from src.trading.bot_container import as_finite_float
 
-    def test_the_walk_catches_the_defect_it_looks_for(self):
-        """POSITIVE CONTROL for the row above. A checker that finds
-        nothing is worthless until it has been shown finding something,
-        and the something here is the five lines this unit removed,
-        pasted verbatim."""
-        removed = (
-            "def _old():\n"
-            "    parked_usd = sum(float(t.get('usd', 0) or 0)"
-            " for t in tranches)\n"
-            "    units = float(t.get('units', 0) or 0)\n"
-            "    usd_v = float(t.get('usd', 0) or 0)\n"
-            "    ref_v = float(t.get('ref', 0) or 0)\n"
-            "    ceiling_v = float(t.get('initial_buy_price', 0) or 0)\n"
+        shapes = [
+            True,
+            False,
+            _FloatSub(7.0),
+            Decimal("2.5"),
+            Fraction(5, 2),
+            "2.5",
+            "",
+            None,
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+            10**400,
+            _HasFloat(),
+            [1.0],
+            {"a": 1},
+            1.5,
+            250.0,
+            0,
+        ]
+        verdicts = [as_finite_float(v) is None for v in shapes]
+        assert any(verdicts) and not all(verdicts), (
+            "the oracle must both refuse and accept, or agreement is vacuous; "
+            f"got {verdicts}"
         )
-        assert len(_bare_tranche_float_reads(removed)) == 5
-
-    def test_the_walk_does_not_fire_on_the_replacement(self):
-        """The other side of the control: the shape that REPLACED those
-        five lines must read as clean, or the row above is only passing
-        because the walk fires on everything."""
-        replacement = (
-            "def _new():\n"
-            "    units = _as_finite_float(t.get('units', 0))\n"
-            "    usd_v = _as_finite_float(t.get('usd', 0))\n"
-        )
-        assert _bare_tranche_float_reads(replacement) == []
+        for shape, refused in zip(shapes, verdicts):
+            cell = _cell(key, shape, monkeypatch)
+            if refused:
+                assert cell == DASH, (key, shape, cell)
+            else:
+                assert cell != DASH, (key, shape, cell)
 
     def test_helper_refuses_every_shape_the_panel_refuses(self):
         from src.trading.bot_container import as_finite_float
@@ -970,9 +763,7 @@ class TestAdmissionHelperIsTheRepoRule:
         assert as_finite_float(NOW) == NOW
 
 
-# ---------------------------------------------------------------------
 # Reachability - the shapes above are what the saved file produces
-# ---------------------------------------------------------------------
 
 
 class TestTheHostileShapesAreReachable:

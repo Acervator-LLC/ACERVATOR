@@ -1,38 +1,10 @@
 """Pins the duration on `sim.06.007.postcondition.fleet_spawned`.
 
-Fifth of the six clean owners
-(docs/engineering-notes/2026-08-19_emitter_duration_classification.md).
-
-`_spawn_sim_fleet` holds THREE emitters and only `sim.06.007` claims the
-interval. `sim.06.008` and `sim.06.009` are invariants over persisted state and
-carry NOTHING -- Finding 1: 32 of the 40 emitters share an enclosing function,
-and if each claimed that function's elapsed time they would report the SAME
-number, a fabricated distinction item 17 would read as health.
-
-WHAT THE INTERVAL COVERS. `sim.06.007` carries `missing_tablets` in its
-context, so the operation it observes includes LOADING CANDLES from the tablet
-registry, not merely constructing the controller. Both knobs below -- tablet
-read cost and `_build_sim` cost -- therefore move the same duration, and the
-tests drive each independently to prove the bracket spans both.
-
-WHAT THE INTERVAL MUST NOT COVER. `_spawn_sim_fleet` imports the registry and
-the controller lazily, INSIDE the function. On the first call in a process
-those two imports run the interpreter's whole module-load path; on every call
-after it they are served from `sys.modules` for nothing. Inside the bracket
-that made record 1 incomparable to record 2 and the first spawn of a process
-permanently the slow one. A test that only checks "a duration exists" cannot
-see it, and a test process has already imported both modules, so the naive
-version measures the cached case twice and proves nothing. The pin below makes
-the re-import genuinely expensive by a known amount and asserts the duration
-does not move.
-
-BOTH EARLY RETURNS EMIT NOTHING (no configs, no candles). The test asserts the
-ABSENCE of a record there, because "refused" and "measured nothing" are
-different states.
-
-Driven by calling the method UNBOUND against a stand-in. `FleetReplayPanel` is
-a Qt widget; constructing one needs a QApplication, and the code under test
-should be the shipping code rather than a copy of it.
+The interval spans the tablet read and `_build_sim`, and the tests drive each
+independently. `LAZY_IMPORTS` names the two modules `_spawn_sim_fleet` imports
+inside itself; the pin makes a re-import cost `IMPORT_DELAY_S` and asserts the
+duration does not move. Both early returns emit no record at all, and
+`SIBLINGS` carry no duration.
 """
 
 from __future__ import annotations
@@ -57,67 +29,21 @@ SIBLINGS = ("sim.06.008.invariant.state_persisted", "sim.06.009.invariant.spawn_
 SHORT_S = 0.005
 LONG_S = 0.030
 
-# HOW MANY TIMES EACH WORKLOAD IS MEASURED, and why the figure compared
-# is the MINIMUM of the samples rather than a single reading.
-#
-# A scheduling pause can only ADD to an elapsed-time reading. The
-# operating system can take the thread away inside the bracketed region
-# and hand it back later; it cannot hand back time that was never
-# spent. So every sample is the true cost plus non-negative noise, and
-# the smallest of several samples is the closest estimate of the true
-# cost this machine can give. Averaging would not do it -- an average
-# carries the noise it was given -- and raising the ratio would not do
-# it either, because the ratio is not what is wrong.
-#
-# WHY THE CLASS NEEDED IT. On 2026-08-19 the release gate went red on
-# the sibling of this test in tests/test_wires_received_duration.py:
-# one failure in a 7012-test run, with the same file passing 45 times
-# in isolation on the same commit. Reproduced 2026-08-20 by burning
-# 1.5 ms inside the SHORT measurement, which is where a real scheduler
-# pause would land. That is the whole failure: a single-sample
-# measurement of a small interval, taken once, on a loaded Windows box
-# with the live application trading.
-#
-# THIS SITE, MEASURED 2026-08-20, 60 single readings off the real
-# emitter: a spawn levered at 0.005 s recorded 0.0100073 s to 0.0100317 s
-# and one levered at 0.030 s recorded 0.0350065 s to 0.0350332 s.
-# THIS IS THE TIGHTEST MARGIN OF THE SIX: the readings differ by
-# 3.5x because BOTH carry the other lever's 0.005 s, and the
-# predicate asks for 2. The lever is what the bracket is asked to see, so
-# a pause of 7.5 ms inside the SHORT region is all it takes to close
-# a gap that reads as comfortable.
+# Readings per workload. A scheduling pause can only add to an elapsed time,
+# so the minimum of the samples is the closest estimate this machine can give.
 SAMPLES = 5
 
-# THE FLOOR, and the measurement that says it is not optional.
-#
-# Move the stop clock above the work and the bracket spans nothing:
-# every reading collapses to the cost of two `time.monotonic()` calls,
-# and a ratio between two numbers that small is a coin flip rather than
-# a measurement. Measured 2026-08-20 with the stop clock planted above
-# the work at this exact site, 120 readings: every reading fell between 0.0 s and 6.0e-07 s. The bare ratio
-# ACCEPTED 6 of 30 pairs, and the minimum of five samples accepted 3 of 30.
-#
-# READ THAT SECOND FIGURE AGAIN. The minimum is the right estimator
-# against a stall and it does NOT close the dead-clock hole; at some
-# sites it widens it, because it drives the short reading to a hard
-# zero and any positive long reading then beats twice zero. The floor
-# is a SECOND rule, never an alternative to the first.
-#
-# Half the long lever separates the two populations by four orders of
-# magnitude without standing near either.
+# A bracket that spans no work reads under a microsecond, which `_tracks`
+# accepts on ratio alone. `_tracks_the_spawn` adds this floor.
 LONG_FLOOR_S = LONG_S / 2.0
 
-# The two modules `_spawn_sim_fleet` imports lazily, in the order it imports
-# them. Named here so a rename breaks this test rather than silently turning
-# the pin below into a no-op that still passes.
+# The modules `_spawn_sim_fleet` imports lazily, in import order.
 LAZY_IMPORTS = (
     "src.trading.stone_tablets.registry",
     "src.simulator.fleet.fleet_replay_controller",
 )
 
-# The cost this test INSTALLS on each of those imports. Chosen, not measured:
-# the real figure is machine-specific (~0.48 s on the adversary's box) and an
-# assertion against it would pass or fail on hardware.
+# Chosen, not measured: the real cost is machine-specific.
 IMPORT_DELAY_S = 0.120
 
 
@@ -225,11 +151,8 @@ class _SlowReimport:
         self._installed = False
         self.hits: list = []
 
-    # -- sys.meta_path protocol ---------------------------------------
     # `_path` and `_target` are the finder protocol's second and third
-    # positional arguments. The import machinery always passes them
-    # positionally, and this finder answers from `fullname` alone, so they
-    # are named as unused rather than silenced.
+    # positional arguments; this finder answers from `fullname` alone.
     def find_spec(self, fullname, _path=None, _target=None):
         module = self._saved.get(fullname)
         if module is None:
@@ -239,13 +162,11 @@ class _SlowReimport:
             fullname, _SlowLoader(module, self._delay_s)
         )
 
-    # -- lifecycle ----------------------------------------------------
     def install(self) -> None:
         for name in self._names:
             module = sys.modules.get(name)
-            # Not a convenience check: if the module were absent the eviction
-            # would be a no-op, the import would run normally and the test
-            # would measure nothing while still passing.
+            # An absent module makes the eviction a no-op and the test
+            # measures nothing while still passing.
             assert module is not None, f"{name} is not imported; cannot evict"
             self._saved[name] = module
             self._saved_attrs[name] = (
@@ -423,11 +344,7 @@ def test_the_site_predicate_rejects_a_bracket_that_spans_nothing() -> None:
         LONG_S, SHORT_S
     ), "going backwards must not read as tracking"
 
-    # THE DEAD CLOCK, and the measured reason this site carries a floor
-    # the shared predicate does not. This pair is a real one, harvested
-    # 2026-08-20 with the stop clock planted above the work. `_tracks`
-    # accepts it. The floor rejects it. That is an addition to
-    # `_tracks`, never a relaxation of it.
+    # A dead-clock pair: `_tracks` accepts it and the floor rejects it.
     assert _tracks(
         0.0, 6.0e-07
     ), "the shared predicate is expected to accept a dead clock here"
@@ -507,10 +424,8 @@ def test_the_duration_excludes_the_cost_of_its_own_lazy_imports(
     _drive(monkeypatch, sink)  # warm: imports are cached
     wall = _drive_cold(monkeypatch, sink, slow_reimport)
 
-    # POSITIVE CONTROL, before reading the durations at all. A zero here
-    # would be a statement about the instrument, not about the code: if the
-    # eviction or the finder silently did nothing, the two spawns are
-    # identical and the assertion below passes while measuring nothing.
+    # Positive control: without both finder hits the two spawns are identical
+    # and the durations below prove nothing.
     assert sorted(slow_reimport.hits) == sorted(
         LAZY_IMPORTS
     ), f"the finder did not serve both imports: {slow_reimport.hits}"

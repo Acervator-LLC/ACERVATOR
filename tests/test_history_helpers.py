@@ -112,9 +112,8 @@ class _FakeExchange:
             if t.symbol == symbol and (since is None or t.timestamp >= since)
         ]
         window.sort(key=lambda t: t.timestamp, reverse=True)
-        # If caller requested pagination, return everything (ccxt
-        # walks the exchange's cursor internally). Otherwise honor
-        # the per-call cap the exchange would enforce.
+        # With pagination, return everything; ccxt walks the cursor internally.
+        # Otherwise honour the per-call cap the exchange would enforce.
         if params and params.get("paginate"):
             return window
         return window[: min(self._cap, limit)]
@@ -247,12 +246,8 @@ def test_gate_tooltip_lists_scrum_and_fold_blockers():
         },
     }
     tt = h.gate_cell_tooltip(entry)
-    # v3.24.98 — asserts the PROPERTIES, not the phrasing. The wording
-    # was rewritten (operator 2026-08-08: "Mouse over information is a
-    # bit confusing. Needs to be more clear.") and the old assertions
-    # pinned "SCRUM:" / "blocked" literally, so a clarity change read
-    # as a regression. What must hold is that both sides are described,
-    # their states are distinguishable, and EVERY blocker is named.
+    # Asserts the properties, not the phrasing: both sides described, states
+    # distinguishable, and every blocker named.
     up = tt.upper()
     assert "SCRUM" in up and "FOLD" in up
     assert "ARMED" in up  # the scrum side, which is armed
@@ -351,3 +346,41 @@ def test_history_tab_has_history_refreshed_signal():
     from src.gui.history_tab import HistoryTab
 
     assert HistoryTab.history_refreshed is not None
+
+
+# ---- gate/voting join window ----------------------------------------- #
+
+
+def _gate_index_at(bot_id, entry_ts):
+    stamp = datetime.fromtimestamp(entry_ts, tz=timezone.utc)
+    entry = {
+        "bot_id": bot_id,
+        "timestamp": stamp.isoformat().replace("+00:00", "Z"),
+        "data": {"symbol": "BTC/USD", "scrum_armed": True},
+    }
+    return {(bot_id, int(entry_ts) // 60): [entry]}
+
+
+def test_an_entry_inside_the_join_tolerance_is_returned():
+    trade_ts = 1_700_000_000.0
+    inside = trade_ts - (h.JOIN_TOLERANCE_SECONDS - 0.5)
+    index = _gate_index_at("bot1", inside)
+
+    found = h.lookup_gate_entry(index, "bot1", trade_ts)
+
+    assert found is not None, (
+        "an entry 59.5s from the trade must join; the probe reached " f"{sorted(index)}"
+    )
+
+
+def test_an_entry_past_the_join_tolerance_is_not_returned():
+    trade_ts = 1_700_000_000.0
+    outside = trade_ts - (h.JOIN_TOLERANCE_SECONDS + 0.5)
+    index = _gate_index_at("bot1", outside)
+
+    found = h.lookup_gate_entry(index, "bot1", trade_ts)
+
+    assert found is None, (
+        "an entry 60.5s from the trade is outside JOIN_TOLERANCE_SECONDS "
+        f"and must not join; got {found}"
+    )

@@ -195,6 +195,21 @@ DRONE_TITLE = "Ambient Drone Engine"
 
 MUSIC_BUTTON_LABELS = ("Add", "Play", "Stop", "Next")
 
+DRONE_BUTTON_LABELS = ("Generate All", "Play All", "Stop All", "Key +1")
+
+KEY_UP_TOOLTIP = "Shift key up and regenerate"
+
+# The wording beside one control. No other table carries it, so a screen
+# built from the payload alone has unlabelled sliders and lists.
+CONTROL_LABELS = {
+    "volume": "Vol:",
+    "key": "Key:",
+    "base": "Base:",
+    "detune": "Detune:",
+    "lfo": "LFO:",
+    "richness": "Rich:",
+}
+
 PLAY_LABEL = "Play"
 
 PAUSE_LABEL = "Pause"
@@ -1107,6 +1122,9 @@ def build_view_model(
         "music_title": MUSIC_TITLE,
         "drone_title": DRONE_TITLE,
         "music_button_labels": list(MUSIC_BUTTON_LABELS),
+        "drone_button_labels": list(DRONE_BUTTON_LABELS),
+        "key_up_tooltip": KEY_UP_TOOLTIP,
+        "control_labels": dict(CONTROL_LABELS),
         "play_label": PLAY_LABEL,
         "pause_label": PAUSE_LABEL,
         "nothing_playing_text": NOTHING_PLAYING_TEXT,

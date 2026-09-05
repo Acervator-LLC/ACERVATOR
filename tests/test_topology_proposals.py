@@ -1,15 +1,10 @@
-"""v3.23.67 — pin tests for src/trading/topology_proposals.py.
+"""Pin tests for ``src/trading/topology_proposals.py``.
 
-Covers tests 1-9 from the design doc § 8:
-  1. momentum_funnel finds correlated cluster
-  2. momentum_funnel ranks leader by 24h volume
-  3. momentum_funnel skips clusters below min size
-  4. mean_reversion consumes precomputed opposing-pair table
-  5. mean_reversion liquidity gate
-  6. sector_cluster hub = highest volume within sector
-  7. distance_to_band pairs deep_scrum → deep_fold
-  8. detect_all_topologies dedupes by asset overlap
-  9. proposal shape matches spec § 4
+Each detector is driven on its own fixture, then
+``detect_all_topologies`` is checked for asset-overlap dedupe, the
+archetype tie order, and the shape ``make_proposal`` returns.
+``load_sector_map`` and ``load_target_defaults`` are read from the
+shipped files.
 """
 
 from __future__ import annotations
@@ -25,10 +20,6 @@ if str(REPO) not in sys.path:
 
 from src.trading import topology_proposals as tp  # noqa: E402
 
-# --------------------------------------------------------------------- #
-# Fixtures                                                              #
-# --------------------------------------------------------------------- #
-
 
 def _ticker(
     quote="USD", symbol=None, base_volume=1_000_000.0, last=100.0, existing_bot_id=""
@@ -40,11 +31,6 @@ def _ticker(
         "last": last,
         "existing_bot_id": existing_bot_id,
     }
-
-
-# --------------------------------------------------------------------- #
-# Test 1: momentum_funnel finds correlated cluster                       #
-# --------------------------------------------------------------------- #
 
 
 def test_momentum_funnel_finds_correlated_cluster():
@@ -69,11 +55,6 @@ def test_momentum_funnel_finds_correlated_cluster():
     assert all(w["pct"] == tp.MOMENTUM_WIRE_PCT for w in p["wires"])
 
 
-# --------------------------------------------------------------------- #
-# Test 2: momentum_funnel ranks leader by volume                        #
-# --------------------------------------------------------------------- #
-
-
 def test_momentum_funnel_ranks_leader_by_volume():
     tickers = {
         "A": _ticker(symbol="A/USD", base_volume=100.0),
@@ -92,11 +73,6 @@ def test_momentum_funnel_ranks_leader_by_volume():
     assert leader_bots[0]["asset"] == "B"
 
 
-# --------------------------------------------------------------------- #
-# Test 3: momentum_funnel skips clusters below min size                 #
-# --------------------------------------------------------------------- #
-
-
 def test_momentum_funnel_skips_clusters_below_min_size():
     tickers = {
         "X": _ticker(symbol="X/USD", base_volume=1e6),
@@ -104,11 +80,6 @@ def test_momentum_funnel_skips_clusters_below_min_size():
     }
     corr = {("X", "Y"): 0.95}
     assert tp.detect_momentum_funnel(tickers, corr) == []
-
-
-# --------------------------------------------------------------------- #
-# Test 4: mean_reversion consumes opposing pair table                   #
-# --------------------------------------------------------------------- #
 
 
 def test_mean_reversion_uses_opposing_pairs():
@@ -127,11 +98,6 @@ def test_mean_reversion_uses_opposing_pairs():
     assert targets == {"BTC", "GOLD"}
 
 
-# --------------------------------------------------------------------- #
-# Test 5: mean_reversion liquidity gate                                 #
-# --------------------------------------------------------------------- #
-
-
 def test_mean_reversion_liquidity_gate():
     opposing = [{"long_asset": "DUST", "short_asset": "BTC", "corr": -0.90}]
     tickers = {
@@ -140,11 +106,6 @@ def test_mean_reversion_liquidity_gate():
         "BTC": _ticker(symbol="BTC/USD", base_volume=1_000, last=50_000),
     }
     assert tp.detect_mean_reversion_pair(opposing, tickers) == []
-
-
-# --------------------------------------------------------------------- #
-# Test 6: sector_cluster hub = highest volume within sector             #
-# --------------------------------------------------------------------- #
 
 
 def test_sector_cluster_hub_by_highest_volume():
@@ -163,11 +124,6 @@ def test_sector_cluster_hub_by_highest_volume():
     assert hub_bots[0]["asset"] == "MATIC"
     spoke_assets = {b["asset"] for b in p["bots"] if b["role"] == "spoke"}
     assert spoke_assets == {"ARB", "OP", "STRK"}
-
-
-# --------------------------------------------------------------------- #
-# Test 7: distance_to_band pairs deep_scrum → deep_fold                 #
-# --------------------------------------------------------------------- #
 
 
 def test_distance_to_band_pairs_deep_scrum_to_fold():
@@ -200,15 +156,9 @@ def test_distance_to_band_pairs_deep_scrum_to_fold():
     assert p["wires"][0]["pct"] == tp.DISTANCE_WIRE_PCT
 
 
-# --------------------------------------------------------------------- #
-# Test 8: detect_all_topologies dedupes by asset overlap                #
-# --------------------------------------------------------------------- #
-
-
 def test_detect_all_topologies_dedupes_by_asset_overlap():
-    # Craft two proposals that share ≥ 50% assets → dedup keeps higher
-    # score. Momentum cluster of 3 correlated L1s at score ~90; sector
-    # cluster of the same 3 (all sector "l1") plus a 4th at score ~66.
+    # `detect_all_topologies` drops the lower-scoring proposal when two share
+    # at least two assets and half of the smaller one.
     tickers = {
         "ETH": _ticker(symbol="ETH/USD", base_volume=10_000_000),
         "SOL": _ticker(symbol="SOL/USD", base_volume=3_000_000),
@@ -230,9 +180,6 @@ def test_detect_all_topologies_dedupes_by_asset_overlap():
     }
     out = tp.detect_all_topologies(ctx)
     ids = [p["id"] for p in out]
-    # After dedup, only the higher-scoring momentum proposal survives
-    # (or at least the sector proposal is eliminated because its
-    # assets overlap ≥ 50% with momentum).
     assert any("momentum_funnel" in i for i in ids)
     momentum_assets = {
         a for p in out if p["archetype"] == "momentum_funnel" for a in p["assets"]
@@ -243,11 +190,6 @@ def test_detect_all_topologies_dedupes_by_asset_overlap():
         if p["archetype"] == "sector_cluster" and set(p["assets"]) & momentum_assets
     ]
     assert len(sector_proposals) == 0
-
-
-# --------------------------------------------------------------------- #
-# Test 9: proposal shape matches spec § 4                               #
-# --------------------------------------------------------------------- #
 
 
 def test_proposal_shape_matches_spec():
@@ -299,11 +241,6 @@ def test_proposal_shape_matches_spec():
         assert isinstance(p["adopt_notes"], list)
 
 
-# --------------------------------------------------------------------- #
-# Bonus: config loaders behave                                          #
-# --------------------------------------------------------------------- #
-
-
 def test_load_sector_map_returns_dict():
     m = tp.load_sector_map()
     # Ships with a curated map; at minimum BTC + ETH must be tagged.
@@ -321,3 +258,83 @@ def test_suggested_target_usd_uses_map_then_fallback():
     d = {"FOO": 111.11}
     assert tp.suggested_target_usd("FOO", d, 25.0) == pytest.approx(111.11)
     assert tp.suggested_target_usd("BAR", d, 25.0) == pytest.approx(25.0)
+
+
+def _tied_context():
+    """Build a context whose three archetypes score exactly 75.0.
+
+    ``detect_momentum_funnel``, ``detect_mean_reversion_pair`` and
+    ``detect_distance_to_band`` each emit one proposal over disjoint
+    assets, on values that divide exactly in binary.
+    """
+    tickers = {
+        "ETH": _ticker(symbol="ETH/USD", base_volume=10_000_000),
+        "ARB": _ticker(symbol="ARB/USD", base_volume=3_000_000),
+        "OP": _ticker(symbol="OP/USD", base_volume=2_000_000),
+        "AAA": _ticker(symbol="AAA/USD"),
+        "BBB": _ticker(symbol="BBB/USD"),
+    }
+    return {
+        "tickers_by_asset": tickers,
+        "correlations": {
+            ("ARB", "ETH"): 0.75,
+            ("ETH", "OP"): 0.75,
+            ("ARB", "OP"): 0.75,
+        },
+        "opposing_pairs": [
+            {"long_asset": "AAA", "short_asset": "BBB", "corr": -0.75},
+        ],
+        "sector_map": {},
+        "bots_snapshot": [
+            {
+                "bot_id": "scrumdeep",
+                "asset": "SOL",
+                "quote": "USD",
+                "symbol": "SOL/USD",
+                "position_val": 137.5,
+                "target_balance": 100.0,
+            },
+            {
+                "bot_id": "folddeep",
+                "asset": "SOL",
+                "quote": "USD",
+                "symbol": "SOL/USD",
+                "position_val": 62.5,
+                "target_balance": 100.0,
+            },
+        ],
+        "target_defaults": {},
+        "target_fallback": 25.0,
+        "now": 1000.0,
+    }
+
+
+def test_the_three_archetypes_really_do_tie_on_score():
+    """POSITIVE CONTROL for the ordering pin below.
+
+    ``_tied_context`` must hand ``detect_all_topologies`` three proposals
+    on one identical score, or the archetype key is never reached.
+    """
+    out = tp.detect_all_topologies(_tied_context())
+    by_archetype = {p["archetype"]: p["score"] for p in out}
+    assert set(by_archetype) == {
+        "momentum_funnel",
+        "mean_reversion_pair",
+        "distance_to_band",
+    }, by_archetype
+    assert set(by_archetype.values()) == {75.0}, by_archetype
+
+
+def test_a_score_tie_ranks_momentum_then_mean_reversion_then_distance():
+    """Tied proposals fall to archetype priority, never to ``title``.
+
+    Alphabetical ``title`` order would put ``Distance handoff`` first, so
+    ``detect_all_topologies`` can only produce this order from the
+    archetype key.
+    """
+    out = tp.detect_all_topologies(_tied_context())
+    assert [p["archetype"] for p in out] == [
+        "momentum_funnel",
+        "mean_reversion_pair",
+        "distance_to_band",
+    ], [(p["archetype"], p["score"], p["title"]) for p in out]

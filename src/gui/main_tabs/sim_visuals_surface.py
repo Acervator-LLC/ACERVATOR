@@ -54,9 +54,7 @@ ALIGN_LABEL = "hcenter|vcenter"
 ALIGN_MARKER = "right|vcenter"
 ALIGN_SYMBOL = "left|vcenter"
 
-# ---------------------------------------------------------------------
 # The expand dialog
-# ---------------------------------------------------------------------
 
 EXPAND_STYLE = "QDialog{background:#0a0a14;}"
 EXPAND_MARGINS_PX = (8, 8, 8, 8)
@@ -146,9 +144,7 @@ class ExpandModel:
         }
 
 
-# ---------------------------------------------------------------------
 # GateLightsCell -- one labelled row of trading gates
-# ---------------------------------------------------------------------
 
 GATE_LED_PX = 9
 GATE_GAP_PX = 4
@@ -235,9 +231,8 @@ def gate_cell_min_width_px(pitch_px: Any) -> int:
 class GateLightsModel:
     """One bot's gate row between updates, with no Qt object behind it.
 
-    ``clear_gates`` returns the row to the not-evaluated state. It
-    releases the scrum landing strip and leaves the fold landing strip
-    where it was, which is what the shipped row does.
+    ``clear_gates`` returns the row to the not-evaluated state and releases
+    both ``scrum_landing_strip`` and ``fold_landing_strip``.
     """
 
     def __init__(self) -> None:
@@ -277,6 +272,7 @@ class GateLightsModel:
         self.scrum_blocked = set()
         self.fold_blocked = set()
         self.scrum_landing_strip = False
+        self.fold_landing_strip = False
         self.calls.append(GATES_CLEARED)
 
     def bank(self, name: str) -> dict:
@@ -381,9 +377,7 @@ def gate_program(model: "GateLightsModel", pitch_px: Any) -> list:
     return program
 
 
-# ---------------------------------------------------------------------
 # GateStatusPanel -- every bot's gate row in one scrollable pane
-# ---------------------------------------------------------------------
 
 PANEL_ACCESSIBLE_NAME = "Gate Status Panel"
 PANEL_MARGINS_PX = (0, 0, 0, 0)
@@ -459,9 +453,7 @@ class GatePanelModel:
         return found
 
 
-# ---------------------------------------------------------------------
 # SimPriceVwapChart -- stacked bands, or one bot's candles
-# ---------------------------------------------------------------------
 
 CHART_BAND_HEIGHT_PX = 36
 CHART_LABEL_WIDTH_PX = 128
@@ -561,6 +553,15 @@ CHART_CALL_NAMES = (
 def candle_step_px() -> int:
     """The horizontal step one candle takes, body and gap together."""
     return CHART_CANDLE_WIDTH_PX + CHART_CANDLE_GAP_PX
+
+
+def band_span(low: float, high: float) -> float:
+    """Return the divisor for a band running low to high.
+
+    A fixed floor would outrank the real span at BONK scale; the
+    substitute applies only when high equals low.
+    """
+    return (high - low) or 1.0
 
 
 def rolling_vwap(window: list, close_price: float) -> float:
@@ -726,14 +727,17 @@ class PriceVwapModel:
         high: Any = None,
         low: Any = None,
     ) -> None:
-        """Take one bar. A bar with only a close degenerates to a doji."""
+        """Take one bar. A bar with only a close degenerates to a doji.
+
+        The stored bar always keeps ``highest`` at or above ``lowest``.
+        """
         if symbol not in self.series:
             self.calls.append(CHART_TICK_IGNORED)
             return
         close = float(close_price)
         opened = float(open_price) if open_price is not None else close
-        highest = float(high) if high is not None else max(opened, close)
-        lowest = float(low) if low is not None else min(opened, close)
+        highest = max(opened, close, float(high) if high is not None else close)
+        lowest = min(opened, close, float(low) if low is not None else close)
         bars = self.candles.setdefault(symbol, [])
         bars.append((int(ts) if ts is not None else 0, opened, highest, lowest, close))
         if len(bars) > CHART_MAX_CANDLES:
@@ -817,7 +821,7 @@ def band_program(model: "PriceVwapModel", width_px: Any) -> list:
         plot_y = band_y + CHART_BAND_INSET_PX
         both = prices + vwaps
         low = min(both)
-        span = max(max(both) - low, CHART_FLAT_SPAN)
+        span = band_span(low, max(both))
         count = len(prices)
         step_px = plot_w / max(count - 1, 1)
 
@@ -1116,9 +1120,7 @@ def chart_program(model: "PriceVwapModel", width_px: Any, height_px: Any) -> lis
     return band_program(model, width_px)
 
 
-# ---------------------------------------------------------------------
 # PerBotVotingReadout -- one row per bot, the voting summary
-# ---------------------------------------------------------------------
 
 VOTE_COLUMNS = ("Symbol", "Net", "Conf", "Bull", "Bear", "Direction")
 VOTE_PLACEHOLDER = "—"
@@ -1264,9 +1266,7 @@ class VotingReadoutModel:
         ]
 
 
-# ---------------------------------------------------------------------
 # The whole screen
-# ---------------------------------------------------------------------
 
 ACTIONS = {"dialog_finished": "ExpandModel.close"}
 TIMERS: dict = {}

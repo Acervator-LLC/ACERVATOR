@@ -53,12 +53,8 @@ from src.core.safe_url import (  # noqa: E402
     safe_urlopen,
 )
 
-# The distinct keyword shapes real callers pass to safe_urlopen. The
-# module narrowed its signature away from *args/**kwargs, so these bind
-# each shape against the current signature — a narrowing that broke a
-# caller shows up here rather than in production. No source location is
-# pinned: a test that knew where a caller lived would break on any
-# refactor that moved it, proving nothing about the contract.
+# The distinct keyword shapes real callers pass to safe_urlopen, bound
+# against the current signature. No source location is pinned.
 _CALL_KWARGS: tuple[dict, ...] = (
     {"timeout": 10},
     {"timeout": 15},

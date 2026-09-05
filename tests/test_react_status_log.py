@@ -570,10 +570,8 @@ TOKEN_VALUES = token_values()
 PUBLISHED_STRINGS = published_strings()
 MODULE_LITERALS = js_literals(MODULE_SOURCE)
 
-#: The surface's own vocabulary the module writes as a text literal: the
-#: field names of the payload, of one line, of the widget block and of
-#: the health block, and the five kind names it branches on. Every one is
-#: a NAME. None is a colour, a size or a text the log shows.
+#: Field and kind names the module writes as text literals. None is a colour,
+#: a size or a text the log shows.
 NAMED_WORDS = sorted(
     {
         "accessible_name",
@@ -1185,9 +1183,8 @@ WATCH_VIOLATIONS = (
     "  window.VIOLATIONS.push(e.violatedDirective + ' ' + e.blockedURI); });"
 )
 
-#: The width the host element is given before the log is drawn. The view
-#: is never shown, so its own width is zero and every line would wrap at
-#: one character. This is the test's container, not a published value.
+#: The width the host element is given. The view is never shown, so its own
+#: width is zero and every line would wrap at one character.
 HOST_WIDTH_PX = 900
 
 PAGE_HELPERS = (

@@ -1,70 +1,16 @@
-"""Every script under `tools/` runs, and the ones that were deleted stay gone.
+"""The `tools/` inventory, checked in both directions and driven as programs.
 
-Why this file exists
---------------------
-Issue #83 audited `tools/`. Four kinds of rot were found in one directory:
-
-* a shim that raised `ModuleNotFoundError` before its first statement
-  (`orphan_widget_scan.py`, repaired under issue #68);
-* three one-shot migration scripts whose migrations had already run, kept
-  on disk as if they were still tools;
-* a migration script that skipped a missing source file with `continue`,
-  so it could copy nothing and still print a count and exit 0;
-* three more tools that could each scan an empty tree, report zeroes and
-  exit 0, which reads exactly like a clean result.
-
-Every one of those passed every check in the repository, because nothing
-in the suite ever ran a tool.
-
-Why this is a separate file from `test_harness_is_reachable.py`
----------------------------------------------------------------
-That file measures ONE contract: the five archetypes under `dev_harness/`
-stay reachable from the callers that name them by string. Its subject is
-the harness move of issue #84. This file measures a different contract:
-the INVENTORY of `tools/`. The two share the probe pattern and the
-two-sided-control discipline, and they share nothing else. Folding the
-inventory into the harness file would give that file two subjects and
-would make a failure there ambiguous about which contract broke.
-
-`tests/test_no_dead_sadp_references.py` already asserts that every tool
-imports. It discovers the list by glob, so a tool that DISAPPEARS leaves
-no trace: the loop simply has one fewer item and still passes. This file
-holds the inventory as a written contract instead, so both directions
-fail loudly -- a new tool must be declared, and a deleted tool must be
-removed from the list.
-
-Importing is not running
-------------------------
-A tool that imports can still be unable to reach its own `main()`. So the
-tools that carry an argument parser are spawned as programs, and the one
-that does not is checked at the API level with the reason written down.
-
-What each tool must refuse
---------------------------
-The last class of tests is the point of the file. Each repaired tool is
-driven into the state where it used to do nothing and report success, and
-must now refuse. Each of those is paired with the state where it must
-still succeed, because a tool that refuses everything guards nothing.
-
-Two-sided control
------------------
-`TestTheInstrumentCanFail` points the probes at a module that does not
-exist and at a module with no `main()`, and requires FAILURE. Without it
-a probe that always returned "reachable" would satisfy every assertion
-above.
+`INVENTORY`, `LIBRARIES` and `DELETED_ONE_SHOTS` are written out, not globbed:
+a vanished file fails `test_every_declared_tool_is_on_disk` and a new one fails
+`test_every_tool_on_disk_is_declared`. Each tool marked runnable is spawned
+with `--help`, and `TestARefusalWhereSilenceUsedToBe` drives every repaired
+tool into the state where it used to exit 0 on nothing.
+`TestTheInstrumentCanFail` holds the controls for `probe_import` and for the
+inventory comparison.
 """
 
 # ruff: noqa: S603
-# S607 IS FIXED BY CONSTRUCTION, NOT SUPPRESSED, following the reasoning at
-# the top of dev_harness/harness/coding_archetype.py and the pattern already
-# measured clean in tests/test_harness_is_reachable.py. The spawn below uses
-# an absolute executable path through `sys.executable`, so no planted
-# executable earlier on PATH can run under the developer's token.
-#
-# S603 remains and is not avoidable: an all-literal argv draws none, and any
-# argv carrying a variable draws one. A resolved interpreter path is a
-# variable by definition. This directive is the residue, narrowed to the one
-# rule.
+# `sys.executable` is a resolved path, so an all-literal argv is impossible.
 from __future__ import annotations
 
 import ast
@@ -81,111 +27,39 @@ from tools import claude_home
 REPO = Path(__file__).resolve().parents[1]
 TOOLS = REPO / "tools"
 
-# The inventory. Written out, never discovered, because a discovered list
-# shrinks in silence when a file disappears. Each entry is
-# (module suffix, reachable as a program).
-#
-# `gate.py` is False on purpose and the reason is load-bearing: it carries
-# no argument parser, so `python -m tools.gate --help` would not print a
-# usage line, it would RUN THE RELEASE GATE. A test may not do that. Its
-# entry point is checked at the API level instead, one test below.
-#
-# `island` left this list under issue #67. It was a branch-and-merge
-# simulator, retired by operator decision on 2026-08-19 when the work moved
-# to git. `test_every_tool_on_disk_is_declared` below already fails if the
-# file returns undeclared; `tests/test_island_machinery_stays_retired.py`
-# holds the wider contract, because the tool had a ledger, a test file and
-# seven skill documents around it.
-#
-# `deps` entered this list under issue #94. It reads the dependency set
-# out of pyproject.toml so that no script has to hold one. It carries an
-# argument parser and three subcommands, so it is True.
-#
-# `emitter_registry_check` left this list with the pin system. It held the
-# emitter register in `docs/EMITTER_IDENTIFICATION.md` against the pins in
-# `src/` by file, name and line, and the line half of that key moved on
-# every edit above a pin. `test_every_tool_on_disk_is_declared` below
-# fails if the file returns undeclared.
+# (module suffix, reachable as a program). `gate` is False: it has no parser,
+# so spawning it would run the release gate.
 INVENTORY: tuple[tuple[str, bool], ...] = (
+    ("build_product_manual", True),
     ("build_release_zip", True),
-    # Counts comments by tokenising, and proves a comment cleanup left
-    # executable code unchanged by comparing parsed trees. Two
-    # subcommands, `count` and `prove`, so it is True.
+    ("build_variants", True),
     ("comment_audit", True),
-    # Reads the runtime trees read-only and writes one snapshot under
-    # `_logs/`. Its parser carries a capture and a compare mode.
     ("capture_live_baseline", True),
-    # Judges every comment a branch adds, carrying a parser over the base
-    # ref and the paths, so it is True.
     ("check_added_comments", True),
+    ("conversion_state", False),
     ("deps", True),
-    # Moved in from the repository root as EXCHANGE_DIAGNOSTIC.py. The move
-    # also gave it the `main()` and `__main__` guard it never had: importing
-    # the root file opened 15 sockets and then blocked on input().
+    ("extract_product_manual", True),
     ("exchange_diagnostic", True),
     ("gate", False),
+    ("hop_check", False),
+    ("local_ci", True),
     ("migrate_harness", True),
-    # Issue #105 added this. It captures the facts a GitHub
-    # organization migration must preserve, then verifies them
-    # afterwards. It carries an argument parser with two
-    # subcommands, `capture` and `verify`, so it is True.
     ("migration_verifier", True),
     ("orphan_widget_scan", True),
     ("queue_state", True),
-    # Writes `desktop/renderer/module_manifest.js` from the modules in
-    # `src/gui/web`. Takes no argument, so it is False.
     ("sync_renderer_modules", False),
-    # Issue #85 moved this in from the repository root, where it was
-    # called `test_scrumming_v3.py`. It wore pytest's discovery prefix,
-    # sat outside `testpaths`, and defined no test function, so nothing
-    # collected it and nothing ran it. It reached its scenarios from a
-    # bare `__main__` block; the move gave it the `main()` and the parser
-    # this inventory requires, so it is True.
     ("scrumming_v3_sim", True),
 )
 
-# Deleted under issue #83. Each was a one-shot whose migration had already
-# run, proved by the artefacts it left on disk. They are named here so the
-# deletion is a contract: restoring one silently would fail this file.
+# Named here so restoring one silently fails `test_the_file_is_gone`.
 DELETED_ONE_SHOTS: tuple[str, ...] = (
     "migrate_stone_tablets",
     "purge_orphan_reservations",
     "quarantine_sim_contamination",
 )
 
-# Shared LIBRARIES under `tools/`. A library is IMPORTED and never run, so
-# the `main` contract above is the wrong question to ask of one.
-#
-# `spec_common` entered this directory under issue #87, which lifted the
-# text both `.spec` files shared into one module: `read_acervator_version`,
-# `datas_candidates`, `build_graceful_datas`, `hiddenimports_for`,
-# `COMMON_HIDDENIMPORTS`, `KEYRING_BACKENDS` and `EXCLUDES`. PyInstaller
-# EXECS a spec file, and the spec then says
-# `from tools.spec_common import ...`. Nothing starts spec_common as a
-# program, and nothing should: a `main()` on it would be an entry point
-# with no caller.
-#
-# Issue #85 measured it undeclared and RED at 0bb82bb and refused it while
-# issue #87 still owned the file. #87 is merged, so the row is taken here.
-# It is NOT a tool row with a softer rule. A library owes three things,
-# and `TestEveryLibraryIsALibrary` asks for all three:
-#
-#   1. it imports;
-#   2. it exposes every name its importers ask for, READ FROM THE
-#      IMPORTERS rather than restated in this file;
-#   3. it exposes NO `main`.
-#
-# Rule 3 is what stops this category becoming a hiding place. A tool whose
-# entry point broke cannot be moved here to silence the failure, because
-# the ABSENCE of `main` is what makes a library a library.
-#
-# `claude_home` entered this list on 2026-08-25, when the harness directory
-# moved to user level and five repository files were left resolving it
-# against the repository root. One of them imported a hook at module scope,
-# so the whole suite failed during COLLECTION. The module states the search
-# ONCE -- user level first, then the repository, the order the router hook
-# uses for a skill -- so that five callers cannot hold five opinions about
-# where the harness is. Nothing runs it, and it carries no `main`.
+# (module suffix, reason). `TestEveryLibraryIsALibrary` requires each to
+# import, to serve its importers, and to expose no `main`.
 LIBRARIES: tuple[tuple[str, str], ...] = (
     (
         "spec_common",
@@ -518,12 +392,8 @@ class TestARefusalWhereSilenceUsedToBe:
         assert mod.read_session_number(tmp_path) is None
 
     def test_release_zip_takes_the_session_off_the_newest_version(self, tmp_path):
-        """The number follows the highest VERSION, never the highest session.
-
-        Measured on 2026-08-16: session numbers on this disk do not rise
-        with version, and `max(session)` named two packages `session79`
-        off a build that was v3.25.x.
-        """
+        """`read_session_number` takes the session off the highest version,
+        never the highest session number."""
         mod = importlib.import_module("tools.build_release_zip")
         for name in (
             "acervator_session79_CLOSE_hop5_v3_23_20.zip",
@@ -561,13 +431,10 @@ class TestARefusalWhereSilenceUsedToBe:
 
     @staticmethod
     def _plant_harness(home: Path, skills: int, hooks: int) -> Path:
-        """Build a harness directory under `home` and point the search at it.
+        """Plant `skills` skill directories and `hooks` hook files under `home`.
 
-        The caller sets HOME and USERPROFILE. Planting rather than reading
-        the machine's own harness is what keeps these three cases
-        deterministic: the harness is in the ignore list and travels with
-        no clone, so a test that read the real one would answer
-        differently on the operator's machine and on a fresh checkout.
+        Zero counts create nothing, which `_drive_migrate` uses to drive
+        `migrate_harness` down its absent-harness path.
         """
         root = home / claude_home.CLAUDE_DIR_NAME
         for index in range(skills):
@@ -581,9 +448,6 @@ class TestARefusalWhereSilenceUsedToBe:
                 (hook_dir / f"planted_{index}.py").write_text(
                     "x = 1\n", encoding="utf-8"
                 )
-        # Nothing at all is created when both counts are zero, so the
-        # search reports absence rather than an empty directory. The two
-        # states carry different exit codes and the tests separate them.
         return root
 
     def _drive_migrate(self, tmp_path, monkeypatch, skills, hooks):
@@ -613,11 +477,8 @@ class TestARefusalWhereSilenceUsedToBe:
     def test_migrate_harness_refuses_when_no_harness_can_be_found(
         self, tmp_path, monkeypatch
     ):
-        """2026-08-25. The harness left the tree, the source directory
-        stopped existing, `copy_tree` answered (0, 0) for a missing
-        source, and the tool printed a count over "0 skills, 0 hooks"
-        and returned 0. That is the silence this whole class exists to
-        replace, so it now refuses."""
+        """`migrate_harness` returns 4 when no harness is found, in place of
+        printing "0 skills, 0 hooks" and returning 0."""
         assert self._drive_migrate(tmp_path, monkeypatch, skills=0, hooks=0) == 4
 
     def test_migrate_harness_refuses_a_harness_with_no_hook(

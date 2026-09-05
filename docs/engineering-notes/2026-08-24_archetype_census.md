@@ -356,8 +356,8 @@ absent. The census surfaced these without a dedicated hunt.
    `pyright`, `vulture` and `semgrep`. 15 of the 57 files in `src/gui/` report
    `passed=True` under `gui_archetype` and `passed=False` under
    `coding_archetype`. `src/gui/native_chart.py` is one of them, and its
-   `coding_archetype` findings are exactly the four another unit reported tonight:
-   unused imports of `field`, `QPushButton`, `QTimer` and `QPainterPath`. A green
+   `coding_archetype` findings are exactly four: unused imports of
+   `field`, `QPushButton`, `QTimer` and `QPainterPath`. A green
    `gui_archetype` verdict is not evidence that a GUI file is clean, and View 1
    above (7 GUI failures) understates the truth by a factor of three (22 under
    View 2).

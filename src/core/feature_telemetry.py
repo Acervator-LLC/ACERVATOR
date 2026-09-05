@@ -1,75 +1,12 @@
-"""feature_telemetry.py — runtime proof that a feature actually ran.
+"""Runtime proof that a feature actually ran.
 
-Operator directive 2026-08-02:
-
-    "Also, want errors and feedback loops for our features that you
-    can read in the logs. More data about the features are doing and
-    not doing will be a solid benefit add as well."
-    "We can add this network to all tabs retroactively to find old
-    scaffolding or hidden gaps."
-
-WHY THIS EXISTS
-===============
-The static archetype rules (scaffolding S001-S004, hallucination
-H001-H003) are text-pattern matchers. They cannot see the failure
-class that has caused every operator-reported scaffolding defect in
-this project:
-
-    A widget is constructed, mounted into a layout, and given a
-    working feed API — and nothing ever calls the feed.
-
-Confirmed instances (2026-08-02 manual audit):
-    * ``SimStatStrip.set()``            — 0 call sites; header row
-                                          shows dashes forever.
-    * ``parity_harness.compare_trades`` — 0 call sites; 12 green pin
-                                          tests, never invoked.
-    * ``_real_candles`` (v3.23.87)      — referenced, never populated.
-
-A feature that runs and does nothing is indistinguishable from a
-feature that runs and works — UNLESS it counts its own work. That is
-this module's entire job.
-
-DESIGN
-======
-* ``FeatureCounter`` — per-feature record: calls, skips (with
-  reasons), exceptions (by type), first/last activity timestamps.
-* ``FeatureTelemetry`` — process-wide registry. Thread-safe.
-* Persistence at ``~/.acervator/feature_telemetry.json`` so a
-  feature that worked last week and silently stopped is visible
-  (the gate.log-stall failure shape from 2026-06-11).
-* ``report_lines()`` — human-readable dump for the log + GUI panels.
-  Zero-call features are flagged EXPLICITLY rather than being left
-  for someone to notice by absence.
-
-USAGE
-=====
-    from src.core.feature_telemetry import get_telemetry
-    tel = get_telemetry()
-
-    tel.record_call("sim.stat_strip.feed")
-    tel.record_skip("sim.gate_lights", reason="no gate state on bot")
-    tel.record_exception("sim.tick", exc)
-
-    # or as a context manager that records call/exception for you:
-    with tel.track("sim.price_chart.append"):
-        chart.append_tick(...)
-
-    for line in tel.report_lines(scope="sim."):
-        logger.info(line)
-
-FALSIFICATION
-=============
-This module is wrong if:
-  (a) a feature reports calls > 0 while its underlying work is a
-      no-op (counter placed at the wrong level — count the WORK,
-      not the wrapper);
-  (b) persistence silently fails and stale counts are reported as
-      current (guarded: load errors reset to empty + log WARNING);
-  (c) the registry itself is never wired, making it the exact
-      class of defect it exists to detect (guarded: validated
-      against known-dead components before being trusted).
-
-sadp: R28 SSS + R70 RCN
+``FeatureCounter`` records one feature's calls, skips by reason, exceptions
+by type, and first and last activity. ``FeatureTelemetry`` is the registry:
+``declare`` names features that should fire, ``track`` records a call or an
+exception around a block, and ``report_lines`` flags every zero-call feature
+explicitly. State persists to ``telemetry_path()``, whose root
+``TELEMETRY_ROOT_ENV`` overrides, and ``get_telemetry`` returns the shared
+registry.
 """
 
 from __future__ import annotations
@@ -89,19 +26,10 @@ from .io_utils import atomic_write_json
 logger = logging.getLogger("acervator.feature_telemetry")
 
 TELEMETRY_ROOT_ENV = "ACERVATOR_TELEMETRY_ROOT"
-"""Override the telemetry output root.
+"""Environment variable ``_telemetry_root`` reads in place of the home directory.
 
-v3.24.32 — set by the simulator and by tests so neither writes into the
-operator's runtime tree. Both output files were landing in live
-directories on every replay:
-
-    ~/.acervator/feature_telemetry.json
-    ~/.acervator_logs/feature_validation.md
-
-Observed on disk 2026-08-05 10:16, written by a sim run. That is the
-same isolation breach class as the sim run-log and the capital registry
-— a sim artefact in a live directory — and it violates the standing
-directive that sim never writes to ~/.acervator or ~/.acervator_logs.
+The simulator and ``tests/conftest.py`` set it so neither writes into the
+operator's runtime tree.
 """
 
 
@@ -114,29 +42,15 @@ def _telemetry_root(default_dir: str) -> Path:
 
 
 def telemetry_path() -> Path:
-    """Resolve the telemetry file path AT CALL TIME.
+    """Resolve the telemetry file path at call time.
 
-    v3.24.35 (C14). ``TELEMETRY_ROOT_ENV`` existed and ``_telemetry_root``
-    honoured it — but ``TELEMETRY_PATH`` below binds the result at IMPORT
-    time, and the tracker's constructor used that constant. So a sim
-    replay that set the override after ``feature_telemetry`` had already
-    been imported (which it always has been, transitively, by the time a
-    replay starts) wrote to the operator's live tree regardless.
-
-    That is why the earlier fix did not take: the override was correct
-    and unreachable. The defect is the binding moment, not the lookup, so
-    a setter would have been the wrong repair too — it would have added a
-    second way to be wrong.
-
-    Resolving here means the override is honoured whenever a tracker is
-    constructed, which is what sim isolation actually needs.
+    ``FeatureTelemetry.__init__`` calls this so a ``TELEMETRY_ROOT_ENV``
+    set after import is still honoured.
     """
     return _telemetry_root(".acervator") / "feature_telemetry.json"
 
 
-# Backwards-compatible module constant. Still the import-time value, so
-# anything reading it directly gets the OLD behaviour — nothing does
-# except __all__. New code calls telemetry_path().
+# Bound at import; only __all__ still names it. Callers use telemetry_path().
 TELEMETRY_PATH: Path = telemetry_path()
 SCHEMA_VERSION: int = 1
 
@@ -212,23 +126,14 @@ class FeatureCounter:
 class FeatureTelemetry:
     """Process-wide feature activity registry.
 
-    Thread-safe: a single RLock guards all mutation. Counter updates
-    are cheap (dict increment) so lock contention is negligible even
-    at sim-replay tick rates.
+    One ``RLock`` guards every mutation of ``_counters`` and ``_declared``.
     """
 
     def __init__(self, path: Optional[Path] = None, autoload: bool = True) -> None:
-        # v3.24.35 (C14) — resolve at CONSTRUCTION, not at import. The
-        # module constant was captured when feature_telemetry was first
-        # imported, which is long before any sim replay sets the
-        # override, so sim runs wrote into ~/.acervator.
         self._path = path or telemetry_path()
         self._lock = threading.RLock()
         self._counters: dict[str, FeatureCounter] = {}
-        # Features that have DECLARED themselves but may never fire.
-        # Declaration is what makes a zero-call feature visible —
-        # without it, a dead feature is simply absent from the
-        # registry and therefore invisible.
+        # Names passed to declare(); a declared feature with no counter is dead.
         self._declared: set[str] = set()
         self._session_start = time.time()
         if autoload:

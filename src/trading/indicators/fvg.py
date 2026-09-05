@@ -1,12 +1,11 @@
 """Fair Value Gap -- three-candle structural imbalance zones.
 
-Moved out of ``ta_engine.py`` for issue #73. The body below is a
-verbatim line slice of that file: no arithmetic was retyped.
+``FVGIndicator.compute`` reports the zone flags, the zone counts and the
+nearest-zone bounds as a flat dict.
 """
 
 from __future__ import annotations
 
-# ── FVG (Fair Value Gap) — named constants (R44: no magic numbers) ────────
 FVG_LOOKBACK = 24  # candles to scan for 3-candle gap patterns
 
 
@@ -20,24 +19,13 @@ FVG_BEAR_BOOST = 0.08  # scrum confidence boost when inside bearish FVG
 
 
 class FVGIndicator:
-    """Fair Value Gap detection — structural imbalance zones.
+    """Fair Value Gap detection over a three-candle window.
 
-    3-candle FVG pattern:
-      Bullish FVG: candles[k-1].high < candles[k+1].low  (gap up)
-      Bearish FVG: candles[k-1].low  > candles[k+1].high (gap down)
-
-    Price statistically returns to fill these gaps ~40-60% of the time
-    within 48h (validated across BTC/ETH/SOL/ADA/GLD Apr24-Apr25 in Hop 3).
-    When price is inside or approaching a bullish FVG from above, it acts
-    as a fold magnet — accumulation confidence boost. When price is inside
-    a bearish FVG, scrum confidence boost (expectation: gap fills up).
-
-    Returns flat dict of booleans + nearest-zone bounds so downstream
-    consumers (sim engine, battery engine, chart overlay) can read without
-    coupling to the indicator class itself.
+    A bullish gap is ``candles[k-1].high < candles[k+1].low`` and a bearish
+    gap is ``candles[k-1].low > candles[k+1].high``; ``compute`` reports the
+    nearest active zone of each kind within ``lookback`` candles.
     """
 
-    # sadp: R38, R42, R44
     def __init__(
         self, lookback: int = FVG_LOOKBACK, proximity_pct: float = FVG_PROXIMITY_PCT
     ):
@@ -60,9 +48,7 @@ class FVGIndicator:
         price = candles[-1].close
         if price <= 0:
             return default
-        # Scan window: oldest index that still has k-1 and k+1 valid.
-        # Use len(candles)-1 as exclusive upper bound so we never peek
-        # past the last candle (it has no k+1).
+        # The last candle has no k+1, so it is never the middle of a window.
         scan_end = len(candles) - 1
         scan_start = max(1, scan_end - self.lookback)
         bull_zones: list = []
@@ -74,9 +60,7 @@ class FVGIndicator:
                 bull_zones.append((c_next.low, c_prev.high))  # (top, bot)
             if c_prev.low > c_next.high:
                 bear_zones.append((c_prev.low, c_next.high))  # (top, bot)
-        # Bull trigger: price inside zone OR just above top (approaching
-        # from above within proximity_pct). Pick highest-top active zone
-        # (nearest to current price — fold magnet pulls downward).
+        # Highest top wins: it is the zone nearest a price coming down onto it.
         nearest_bull = None
         for top, bot in bull_zones:
             in_zone = bot <= price <= top

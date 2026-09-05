@@ -24,9 +24,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 
-# ---------------------------------------------------------------------------
 # Source-shape pins
-# ---------------------------------------------------------------------------
 
 
 #: Every module the ScrummingBot engine is spread across. A scan of one
@@ -124,10 +122,7 @@ class TestManualCartridgePathUsesHelper:
         WIRE_STACK_FOLD (the whole-bot _execute_manual_rebalance FOLD
         branch — identified by `"type": _fold_label`) must put
         _growth_applied into 'profit', not the hardcoded 0.0."""
-        # Match specifically the block that uses `_fold_label` as type
-        # (that's THIS Option B fix's target — NOT the per-tranche
-        # MANUAL_TRANCHE_FOLD path which has its own literal type
-        # string).
+        # Matches the block typed `_fold_label`, not the MANUAL_TRANCHE_FOLD path.
         m = re.search(
             r'self\._bus\.emit\(\s*"trade\.filled",\s*bot_id=self\.bot_id,\s*'
             r'data=\{[^}]*?"type":\s*_fold_label\b[^}]*?\}',
@@ -145,9 +140,7 @@ class TestManualCartridgePathUsesHelper:
         )
 
 
-# ---------------------------------------------------------------------------
 # Behavioural pins on the helper
-# ---------------------------------------------------------------------------
 
 
 def _make_stub(
@@ -161,16 +154,13 @@ def _make_stub(
     fold_accumulator: float = 0.0,
 ):
     class _Bus:
-        # Must ACCEPT the real bus signature; production swallows a
-        # bad emit into a debug log, so a wrong shape here would go
-        # unnoticed. Underscore marks the names deliberately unused.
+        # Accepts the real bus signature; production swallows a bad emit into a
+        # debug log.
         def emit(self, *_a, **_kw):
             pass
 
-    # Issue #106 - the helper reads `cycle_growth_cap_usd`, and a
-    # property cannot live on a bare SimpleNamespace INSTANCE. A
-    # subclass carries it on the class, where `property` is a data
-    # descriptor and therefore wins over the instance dict.
+    # A subclass, because `cycle_growth_cap_usd` is a property and a property
+    # only wins over the instance dict from the class.
     class _Stub(SimpleNamespace):
         cycle_growth_cap_usd = ScrummingBot.cycle_growth_cap_usd
 

@@ -1,31 +1,11 @@
-"""Sim and Live must fill the same fields of the same dataclasses.
+"""Sim and Live fill the same fields of the same ``src.exchange.base`` dataclasses.
 
-Operator directive 2026-08-09: the Simulator must handle its different
-data source "in an identical, verifiable manner so that we have a valid
-test environment on which to build."
-
-`FleetSimExchange` subclasses `ExchangeInterface`, so Python's ABC
-machinery already guarantees every method EXISTS. It guarantees nothing
-about what those methods put inside the objects they return. Both sides
-construct the real `Ticker` / `Balance` / `Order` / `Trade` /
-`OrderBook` dataclasses from `src/exchange/base.py` -- which is good,
-they are not lookalikes -- but a field left at its default on one side
-and populated on the other is invisible to the type system and to the
-ABC.
-
-That is the same shape as the defect found on the OHLCV seam: the sim
-satisfied the declared interface while behaving differently from live
-in a way nothing checked.
-
-HOW THIS CHECKS. Parses both modules and collects, per dataclass, the
-fields each side populates -- constructor keywords AND post-construction
-attribute assignment. The second half matters: `sim_exchange.py:580`
-sets `order.average` after the constructor, so a constructor-only diff
-reports a mismatch that is not real. This test was written after making
-exactly that error.
-
-MEASURED at the time of writing: Ticker, Balance, Trade and OrderBook
-have identical populated field sets. `Order` differs on three fields.
+``_populated`` collects, per name in ``DATACLASSES``, the fields each module sets
+by constructor keyword and by attribute assignment, so a value written after the
+constructor is not reported as missing. ``KNOWN_UNPOPULATED`` is empty, and
+``test_the_exempt_fields_are_still_unread`` is the condition on any entry added to
+it. ``test_the_simulator_binds_the_live_dataclasses`` asserts identity, so the two
+sides can never be lookalikes.
 """
 
 from __future__ import annotations
@@ -50,17 +30,8 @@ CONSUMER_DIRS = ("src/trading", "src/gui")
 
 DATACLASSES = ("Ticker", "Balance", "Order", "Trade", "OrderBook")
 
-# Fields live populates and the Simulator does not.
-#
-# EMPTY, AND IT STAYS EMPTY. Operator directive 2026-08-09: "If the code
-# is not bit identical to live and only varies by calling the Stone
-# Tablets and YTD as its source of data, you have failed."
-#
-# An earlier version of this file exempted Order.fee / fee_currency /
-# raw on the grounds that nothing read them. That is not a standard —
-# it dates the guarantee to the last time someone grepped. The sim
-# already computed the fee and stamped it on the Trade; it now stamps
-# the Order too.
+# Fields live populates and the Simulator does not. Empty, and it stays
+# empty: the sim is bit identical to live but for its data source.
 KNOWN_UNPOPULATED: dict = {}
 
 
@@ -105,6 +76,52 @@ def test_sim_populates_every_field_live_does(cls):
     )
 
 
+def _reads_of(field: str, paths) -> list[str]:
+    """Every ``obj.field`` read in ``paths``, skipping ``self`` and ``cls``."""
+    found: list[str] = []
+    for py in paths:
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8"))
+        except (SyntaxError, OSError):
+            continue
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Attribute)
+                and node.attr == field
+                and isinstance(node.ctx, ast.Load)
+            ):
+                text = ast.unparse(node)
+                if text.startswith(("self.", "cls.")):
+                    continue
+                found.append(f"{py.name}:{node.lineno} reads {text}")
+    return found
+
+
+def _consumer_files():
+    """Every file under ``CONSUMER_DIRS`` other than ``LIVE`` and ``SIM``."""
+    skip = {LIVE.resolve(), SIM.resolve()}
+    for d in CONSUMER_DIRS:
+        for py in (REPO_ROOT / d).rglob("*.py"):
+            if py.resolve() not in skip:
+                yield py
+
+
+def test_the_reader_scan_sees_a_read_and_ignores_a_write(tmp_path):
+    """POSITIVE CONTROL for ``_reads_of``. ``KNOWN_UNPOPULATED`` is empty, so the
+    test below scans nothing and its green says only that the dict is empty."""
+    module = tmp_path / "consumer.py"
+    module.write_text(
+        "def go(order):\n"
+        "    order.fee = 1.0\n"
+        "    self.fee = 2.0\n"
+        "    return order.fee\n",
+        encoding="utf-8",
+    )
+    hits = _reads_of("fee", [module])
+    assert hits == ["consumer.py:4 reads order.fee"], hits
+    assert _reads_of("average", [module]) == []
+
+
 def test_the_exempt_fields_are_still_unread():
     """THE CONDITION ON THE EXEMPTION.
 
@@ -112,31 +129,14 @@ def test_the_exempt_fields_are_still_unread():
     This is what stops "accepted difference" from decaying into "silent
     divergence" the first time someone writes `order.fee`.
     """
+    consumers = list(_consumer_files())
+    assert consumers, "the consumer scan found no file to read"
     offenders = []
     for cls, fields in KNOWN_UNPOPULATED.items():
         for field in fields:
-            for d in CONSUMER_DIRS:
-                for py in (REPO_ROOT / d).rglob("*.py"):
-                    if py.resolve() in (LIVE.resolve(), SIM.resolve()):
-                        continue
-                    try:
-                        tree = ast.parse(py.read_text(encoding="utf-8"))
-                    except (SyntaxError, OSError):
-                        continue
-                    for node in ast.walk(tree):
-                        # An attribute READ, not a write and not a string.
-                        if (
-                            isinstance(node, ast.Attribute)
-                            and node.attr == field
-                            and isinstance(node.ctx, ast.Load)
-                        ):
-                            src = ast.unparse(node)
-                            if src.startswith(("self.", "cls.")):
-                                continue
-                            offenders.append(
-                                f"{py.relative_to(REPO_ROOT).as_posix()}:"
-                                f"{node.lineno} reads {src} ({cls}.{field})"
-                            )
+            offenders += [
+                f"{hit} ({cls}.{field})" for hit in _reads_of(field, consumers)
+            ]
     assert not offenders, (
         "a field exempted as unread is now being read; the Simulator "
         "must populate it or the exemption must be re-justified:\n  "
@@ -144,35 +144,39 @@ def test_the_exempt_fields_are_still_unread():
     )
 
 
-def _base_import_target(path: Path) -> str | None:
-    """Resolve the module a file imports ``ExchangeInterface`` from.
+def test_the_simulator_binds_the_live_dataclasses():
+    """Not lookalikes: every name in ``DATACLASSES`` that ``sim_exchange`` binds is
+    the object ``src.exchange.base`` declares."""
+    from src.simulator.fleet import sim_exchange
 
-    Reads the RESOLVED module, not the dot count. A relocation changes the
-    spelling of a relative import without changing what it names.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    pkg = path.resolve().relative_to(REPO_ROOT).with_suffix("").parts[:-1]
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ImportFrom):
-            continue
-        if not any(a.name == "ExchangeInterface" for a in node.names):
-            continue
-        if node.level:
-            base = list(pkg[: len(pkg) - (node.level - 1)])
-            return ".".join(base + ([node.module] if node.module else []))
-        return node.module
-    return None
-
-
-def test_both_sides_use_the_same_dataclasses():
-    """Not lookalikes. If the sim ever defines its own Ticker/Order,
-    every field comparison above becomes meaningless."""
-    src = SIM.read_text(encoding="utf-8")
-    assert _base_import_target(SIM) == "src.exchange.base"
-    for cls in DATACLASSES:
-        assert f"class {cls}" not in src, (
-            f"the Simulator defines its own {cls}; it must use the one " f"live returns"
+    bound = {cls: getattr(sim_exchange, cls, None) for cls in DATACLASSES}
+    assert None not in bound.values(), bound
+    for cls, obj in bound.items():
+        assert obj is getattr(B, cls), (
+            f"sim_exchange.{cls} is {obj!r}, not the {cls} live returns; every "
+            f"field comparison above compares two different classes"
         )
+
+
+def test_the_simulator_subclasses_the_live_interface():
+    """``FleetSimExchange`` is a real ``ExchangeInterface``, so ABC machinery still
+    covers the method set the field comparison assumes."""
+    from src.simulator.fleet.sim_exchange import FleetSimExchange
+
+    assert issubclass(FleetSimExchange, B.ExchangeInterface)
+
+
+def test_the_connector_binds_the_live_dataclasses():
+    """Whatever ``ccxt_connector`` binds at module level is the live object; the
+    names it imports inside a method are absent here and skipped."""
+    from src.exchange import ccxt_connector
+
+    checked = [
+        cls for cls in DATACLASSES if getattr(ccxt_connector, cls, None) is not None
+    ]
+    assert len(checked) >= 4, checked
+    for cls in checked:
+        assert getattr(ccxt_connector, cls) is getattr(B, cls), cls
 
 
 def test_the_parser_sees_attribute_assignment():

@@ -1,37 +1,15 @@
-"""Item 7 -- A FOLD SPAWNS STACK TRANCHES.
+"""A fold spawns stack tranches, the mirror of the scrum that opens them.
 
-Operator spec:
-  "When a fold occurs, it should generate stack tranches and, when some
-   or all of those tranches fill, the fold tranches spawn on the other
-   side starting at the minimum opposing trade distance."
-  "Scrum fires using existing Stack Tranches, Fold Tranches Spawn, Fold
-   fires using existing Fold Tranches."
-
-The sell half already worked. The buy half did not: an AST walk of the
-two executors read ``_execute_sell -> ['_open_stack_from_scrum']`` and
-``_execute_buy -> []``, so a fold closed no pair.
-
-WHAT THIS FILE DOES NOT TEST. Merge, consumption, spacing arithmetic and
-distribution are separate items with their own specs and their own test
-files. Nothing here asserts a property of any of them. The spacing check
-below tests only that the fold spawn ROUTES THROUGH the configured
-mode -- that two modes give two ladders off the same fold -- never what
-either mode's numbers should be. ``test_stack_math.py`` and
-``test_ladder_spacing_modes.py`` own the numbers.
-
-TWO-SIDED CONTROL. Every verdict here is read at the surface it reports
-through: ``bot._stack_tranches``, the ledger a fold is supposed to fill,
-and the fill price ``_execute_buy`` returns. Each oracle is written once
-as a ``_check_*`` function, and ``TestPlantedFailures`` runs THE SAME
-FUNCTION against a deliberately broken mechanism and requires it to go
-red. A plant that re-asserted a hand-written constant instead of driving
-the real oracle would prove nothing, so none of them do that.
+``_execute_buy`` calls ``_open_stack_from_scrum`` on a filled fold, so
+``bot._stack_tranches`` gains a ladder anchored on the FILL price and starting at
+the minimum opposing distance. Each verdict is one ``_check_*`` oracle, and
+``TestPlantedFailures`` runs the same oracle against a broken mechanism and
+requires it to go red. The ladder's own arithmetic belongs to
+``test_stack_math.py``; nothing here asserts a spacing number.
 """
 
-import ast
 import asyncio
 import inspect
-import textwrap
 
 import pytest
 
@@ -42,19 +20,8 @@ FOLD_PRICE = 100.0
 FOLD_SIZE = 30.0
 # The stub's scrumming_interval_pct + trading_fee_pct.
 MIN_OPPOSING_PCT = 1.6
-# `_open_stack_from_scrum` reads `split_distance_pct` off the config.
-# ScrummingBotConfig does not define that name -- it defines
-# `split_distance` -- so the opener always takes its own 1.0 default.
-# This stub deliberately does NOT define either one, so the ladder here
-# is the ladder live would build. See the note in the return report.
+# `_StubConfig` sets no `split_distance`, so `_open_stack_from_scrum` takes its default.
 OPENER_GAP_PCT = 1.0
-
-
-# ---------------------------------------------------------------------------
-# Stubs. Deliberately NOT ScrummingBot instances: each carries only the
-# surface the method under test reads, so an accidental dependence on
-# anything else surfaces as an AttributeError instead of passing.
-# ---------------------------------------------------------------------------
 
 
 class _StubExchangeInterface:
@@ -101,10 +68,19 @@ class _StubExchange:
 
     def __init__(self) -> None:
         self.open_order_queries: list[str] = []
+        self.ohlcv_queries: list[str] = []
 
     async def get_open_orders(self, symbol: str) -> list:
         self.open_order_queries.append(symbol)
         return []
+
+    async def get_ohlcv(self, symbol: str, timeframe: str, limit: int = 100) -> list:
+        """A flat tape long enough for the detonation trigger to grade."""
+        self.ohlcv_queries.append(f"{symbol}:{timeframe}:{limit}")
+        return [
+            [1_800_000_000_000 + i * 60_000, 100.0, 101.0, 99.0, 100.0, 10.0]
+            for i in range(limit)
+        ]
 
 
 class _Summary:
@@ -177,18 +153,12 @@ class _BuyStubBot(_SpawnStubBot):
         self.notifications: list[tuple] = []
         self.reconcile_reasons: list[str] = []
         self.spawn_calls: list[dict] = []
-        # THE FILL NEVER EQUALS THE OFFER, and that is load-bearing.
-        # A stub that filled at exactly the price it was handed makes
-        # "anchored on the fill" and "anchored on the offer" the same
-        # number, so the anchor check would pass on either. Measured:
-        # with the two equal, mutating `_execute_buy` to hand the spawn
-        # the OFFERED price left this whole file green. They are kept
-        # apart so that mutation goes red.
+        # `fill_ratio` keeps the fill off the offer, so the anchor checks discriminate.
         self.offered_price = FOLD_PRICE
         self.fill_ratio = 0.97
 
     async def _verify_buy_safe_or_refuse(self, path: str = "") -> tuple[float, str]:
-        """MEM-257 verification satisfied: units known, no refusal."""
+        """Report units known and no refusal, so the buy is not held back."""
         self.reconcile_reasons.append(f"verify:{path}")
         return 0.0, ""
 
@@ -205,9 +175,7 @@ class _BuyStubBot(_SpawnStubBot):
                 "price": price,
             }
         )
-        # Invisible mode sends MARKET with price=None, so the fill is
-        # derived from the OFFERED price the test handed _execute_buy,
-        # scaled by fill_ratio. See the fill_ratio note in __init__.
+        # Invisible mode sends MARKET with price=None, so the fill comes from the offer.
         return _StubOrder(self.offered_price * self.fill_ratio)
 
     async def _reconcile_holdings(self, reason: str = "") -> None:
@@ -225,6 +193,20 @@ def _spawn(bot, **kwargs):
     return asyncio.run(ScrummingBot._spawn_stack_from_fold(bot, **kwargs))
 
 
+def _terminal_bot(**overrides):
+    """A ``_TerminalStubBot`` holding a position above its anchor."""
+    bot = _TerminalStubBot(**overrides)
+    bot.offered_price = FOLD_PRICE
+    return bot
+
+
+def _sell(bot, amount, price):
+    """Drive the REAL ``_execute_sell`` on a stub."""
+    return asyncio.run(
+        ScrummingBot._execute_sell(bot, amount=amount, price=price, summary=_Summary())
+    )
+
+
 def _buy(bot, cost, price, path):
     """Drive the REAL ``_execute_buy`` on a stub."""
     bot.offered_price = price
@@ -239,26 +221,87 @@ def _buy(bot, cost, price, path):
     )
 
 
-def _self_calls(func_name: str) -> set[str]:
-    """Every ``self.<attr>()`` a named ScrummingBot method makes."""
-    src = textwrap.dedent(inspect.getsource(getattr(ScrummingBot, func_name)))
-    out: set[str] = set()
-    for node in ast.walk(ast.parse(src)):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "self"
-        ):
-            out.add(node.func.attr)
-    return out
+class _Ticker:
+    def __init__(self, last):
+        self.last = last
 
 
-# ---------------------------------------------------------------------------
-# THE ORACLES. Written once, driven by the real tests below and by the
-# planted failures at the bottom. A plant that ran a different assertion
-# from the one it claims to control would be no control at all.
-# ---------------------------------------------------------------------------
+class _TerminalStubBot(_BuyStubBot):
+    """A bot whose buy executor and both openers record every call.
+
+    ``terminal_calls`` names the ones a driven method reached, so a run
+    that opened a tranche is visible without reading any source.
+    """
+
+    def __init__(self, **cfg_overrides: object) -> None:
+        super().__init__(**cfg_overrides)
+        self.terminal_calls: list[str] = []
+        self.sold: list[dict] = []
+        self.state = None
+        self._standing_surplus_usd = 0.0
+        self._retained_this_cycle_usd = 0.0
+        self._last_sell_venue_fee = None
+        self._scrum_sells_lifetime = 0
+        self._current_holdings = 20.0
+        self._anchor_target_balance = 1000.0
+        self._detonation_last_check_ts = 0.0
+        self._detonation_last_signal_bullish = False
+        self._fold_queue_usd = 0.0
+        self._tranches_closed_lifetime = 0
+
+    def _reset_opposing_hysteresis_after_fill(self, *args: object) -> None:
+        del args
+
+    def _emit_voting_panel_snapshot_at_fire(self, *args: object, **kw: object) -> None:
+        del args, kw
+
+    def _emit_gate_decision_at_fire(self, *args: object, **kw: object) -> None:
+        del args, kw
+
+    def _route_scrum_proceeds_via_wires(self, *args: object, **kwargs: object):
+        del args, kwargs
+        return 0.0
+
+    def note_scrum_retention_usd(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    async def _execute_buy(self, **kwargs: object):
+        self.terminal_calls.append("_execute_buy")
+        return await ScrummingBot._execute_buy(self, **kwargs)
+
+    async def _open_stack_from_scrum(self, **kwargs: object) -> int:
+        self.terminal_calls.append("_open_stack_from_scrum")
+        return await ScrummingBot._open_stack_from_scrum(self, **kwargs)
+
+    async def _spawn_stack_from_fold(self, **kwargs: object) -> int:
+        self.terminal_calls.append("_spawn_stack_from_fold")
+        self.spawn_calls.append(dict(kwargs))
+        return await ScrummingBot._spawn_stack_from_fold(self, **kwargs)
+
+    async def guarded_place_order(self, symbol, side, order_type, amount, price):
+        _side = getattr(side, "value", side)
+        if _side == "sell":
+            self.sold.append({"amount": amount, "price": price})
+        return await _BuyStubBot.guarded_place_order(
+            self, symbol, side, order_type, amount, price
+        )
+
+    async def _get_balance(self, currency: str):
+        units = self._current_holdings if currency == "ETH" else 1_000_000.0
+        return type("B", (), {"total": units, "free": units, "absent": False})()
+
+    async def _get_ticker(self, _symbol: str):
+        return _Ticker(self.offered_price)
+
+    async def _refresh_quote_to_usd(self) -> float:
+        return 1.0
+
+    async def _settled_fill(self, order, symbol_, requested, tick_price):
+        del order, symbol_, tick_price
+        return requested, self.offered_price * self.fill_ratio, True
+
+    def _record_venue_fee(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
 
 
 def _check_gate_withheld_the_spawn(opened: int, tranches: list[dict]) -> None:
@@ -321,16 +364,6 @@ def _check_the_fill_survived(fill, messages: list[str]) -> None:
     ), "the buy reported failure after it had already filled"
 
 
-# ---------------------------------------------------------------------------
-# POSITIVE CONTROLS ON THE HARNESS ITSELF.
-#
-# Everything below reads `bot._stack_tranches`. If the stub cannot reach
-# the real opener, or `_execute_buy` cannot reach the spawn site, an
-# empty ledger means "the harness is broken", not "the code refused" --
-# and every no-spawn assertion in this file passes for the wrong reason.
-# ---------------------------------------------------------------------------
-
-
 class TestTheHarnessCanSeeASpawn:
     def test_the_stub_reaches_the_real_opener(self):
         bot = _SpawnStubBot()
@@ -353,10 +386,12 @@ class TestTheHarnessCanSeeASpawn:
             "every no-spawn assertion below would be vacuous"
         )
 
-    def test_the_call_reader_is_not_blind(self):
-        """The known edge must be visible, or the terminal-path zeros
-        and the sell-side regression check mean nothing."""
-        assert "_open_stack_from_scrum" in _self_calls("_execute_sell")
+    def test_the_call_recorder_is_not_blind(self):
+        """POSITIVE CONTROL: the same recorder that reports zero on a
+        terminal action sees ``_open_stack_from_scrum`` on a real sell."""
+        bot = _TerminalStubBot()
+        _sell(bot, amount=FOLD_SIZE, price=FOLD_PRICE)
+        assert "_open_stack_from_scrum" in bot.terminal_calls
 
     def test_the_fill_is_distinguishable_from_the_offer(self):
         """THE CONTROL THAT WAS MISSING, and its absence was measured.
@@ -376,9 +411,7 @@ class TestTheHarnessCanSeeASpawn:
         assert bot.spawn_calls, "no spawn to read an anchor from"
 
 
-# ---------------------------------------------------------------------------
 # THE UNIT: a fold spawns stack tranches.
-# ---------------------------------------------------------------------------
 
 
 class TestAFoldSpawnsStackTranches:
@@ -606,12 +639,33 @@ class TestTerminalActionsSpawnNothing:
     rather than in a live account.
     """
 
-    @pytest.mark.parametrize(
-        "terminal",
-        ["self_destruct", "_execute_detonation", "_check_detonation_trigger"],
-    )
-    def test_a_terminal_action_never_reaches_the_buy_executor(self, terminal):
-        _check_terminal_never_reaches_the_buy_executor(_self_calls(terminal))
+    def test_a_detonation_sells_and_opens_nothing(self):
+        bot = _terminal_bot()
+        asyncio.run(ScrummingBot._execute_detonation(bot, _Ticker(FOLD_PRICE)))
+        assert bot.sold, (
+            f"the detonation placed no sell, so the zero below means "
+            f"nothing; logs: {bot.log_messages()}"
+        )
+        _check_terminal_never_reaches_the_buy_executor(set(bot.terminal_calls))
+        assert bot._stack_tranches == []
+
+    def test_a_self_destruct_sells_and_opens_nothing(self):
+        bot = _terminal_bot()
+        answer = asyncio.run(ScrummingBot.self_destruct(bot, "SELF-DESTRUCT"))
+        assert answer["ok"] is True, answer
+        assert bot.sold, f"self_destruct placed no sell; logs: {bot.log_messages()}"
+        _check_terminal_never_reaches_the_buy_executor(set(bot.terminal_calls))
+        assert bot._stack_tranches == []
+
+    def test_a_detonation_check_reads_candles_and_opens_nothing(self):
+        bot = _terminal_bot(detonation_enabled=True)
+        asyncio.run(ScrummingBot._check_detonation_trigger(bot, _Ticker(FOLD_PRICE)))
+        assert bot.exchange.ohlcv_queries, (
+            f"the trigger never reached the candle fetch, so it proves "
+            f"nothing; logs: {bot.log_messages()}"
+        )
+        _check_terminal_never_reaches_the_buy_executor(set(bot.terminal_calls))
+        assert bot._stack_tranches == []
 
     def test_a_terminal_label_handed_to_the_spawn_is_refused(self):
         """Belt as well as braces: even if a future path did route a
@@ -684,7 +738,9 @@ class TestTheSellSideIsUnchanged:
     """
 
     def test_execute_sell_still_spawns_the_way_it_did(self):
-        _check_sell_still_spawns_fold_tranches(_self_calls("_execute_sell"))
+        bot = _TerminalStubBot()
+        _sell(bot, amount=FOLD_SIZE, price=FOLD_PRICE)
+        _check_sell_still_spawns_fold_tranches(set(bot.terminal_calls))
 
     def test_the_opener_keeps_its_old_arity_for_old_callers(self):
         """`origin` must be optional, or every existing caller breaks."""
@@ -732,15 +788,6 @@ class TestTheSpawnCannotFailTheTrade:
             bot, fold_price=price, fold_size=size, summary=_Summary(), path="fold_rebuy"
         )
         _check_only_a_fold_spawned(opened, bot._stack_tranches)
-
-
-# ---------------------------------------------------------------------------
-# PLANTED FAILURES.
-#
-# Each one breaks the real mechanism and runs THE SAME `_check_*` oracle
-# the corresponding test above runs, requiring it to go red. A check
-# never observed failing is not evidence.
-# ---------------------------------------------------------------------------
 
 
 async def _ungated_spawn(bot, fold_price, fold_size, summary, path):

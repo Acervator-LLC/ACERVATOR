@@ -129,16 +129,7 @@ exercise both.
 """
 
 # ruff: noqa: S603
-# S607 IS FIXED BY CONSTRUCTION, NOT SUPPRESSED, following the pattern
-# measured clean in tests/test_no_committed_backup_copies.py. Every spawn
-# below runs git through `_git_exe()`, which resolves an absolute path with
-# shutil.which, so a `git.cmd` planted earlier on PATH cannot run under the
-# developer's token during a test.
-#
-# S603 remains and is not avoidable: an all-literal argv draws none, and
-# every argv carrying a variable draws one. A resolved executable path is a
-# variable by definition. This directive is the residue, narrowed to the one
-# rule.
+# `_git_exe()` returns a resolved path, never a literal.
 from __future__ import annotations
 
 import importlib
@@ -166,9 +157,8 @@ RETIRED_MODULE = "tools.island"
 # The directories the cascade section claimed were tracked on purpose.
 CASCADE_DIRECTORIES: tuple[str, ...] = ("_archive", ".session26_backups")
 
-# Every import form that reaches the retired module. Matched at the start
-# of a line, with leading space allowed, so that prose naming the module
-# inside a sentence is not a subject. Prose cannot route a call.
+# Import forms that reach the retired module, matched at the start of a line
+# so prose naming it inside a sentence is not a subject.
 _IMPORTS_ISLAND = re.compile(
     r"^[ \t]*(?:from[ \t]+tools[ \t]+import[ \t]+island\b"
     r"|import[ \t]+tools\.island\b"
@@ -176,11 +166,8 @@ _IMPORTS_ISLAND = re.compile(
     re.MULTILINE,
 )
 
-# Trees whose Python is live code. `dev_harness/` is excluded: operator law
-# forbids editing it, its references are prose in comments, and it never
-# imported the module. Historical records are excluded for the same reason
-# they are excluded in tests/test_harness_is_reachable.py -- they record
-# what was true, and rewriting them would destroy the record.
+# Trees whose Python is live code. `dev_harness/` and the historical records
+# are excluded: they hold prose, never an import.
 _LIVE_TREES: tuple[str, ...] = ("src", "tests", "tools")
 
 _GIT = shutil.which("git")

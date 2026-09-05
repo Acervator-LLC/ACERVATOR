@@ -209,7 +209,7 @@ def qt_trace(host, tabs) -> dict:
                 for name in TOUCHED
                 if host._console_log_handler in logging.getLogger(name).handlers
             ],
-            "root_level": logging.getLogger().level,
+            "handler_level": host._console_log_handler.level,
         },
         "ledger": {
             "seq": host._signal_seq,

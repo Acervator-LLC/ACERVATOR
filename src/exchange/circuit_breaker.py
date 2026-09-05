@@ -1,46 +1,12 @@
-"""
-src/exchange/circuit_breaker.py — TD-003 closure (v3.15.98, v3.16.6 tuned).
+"""Three-state circuit breaker for exchange API calls.
 
-v3.16.6 tuning (operator-reported 2026-04-28):
-  Operator's CHIP/USD bot tripped the breaker on first build with 30s
-  cooldown blocking real trades. Root cause: the v3.15.98 implementation
-  counted ALL Exception types as outage signals, including operator-
-  fixable logic errors (insufficient funds, auth, invalid order). These
-  errors are NOT "exchange is down" — they're "your config is wrong" —
-  but the breaker locked the bot out and hid the real error message.
-
-  v3.16.6 fixes:
-    1. Only count transient/network errors toward the breaker (timeout,
-       connection error, rate-limit, gateway 5xx). Logic errors pass
-       through with their original message so the operator sees the
-       real failure.
-    2. Default threshold raised 5 → 20 (less trip-happy on noise).
-    3. Cooldown 30s → 5s (operator can resume quickly).
-    4. ACERVATOR_BREAKER_DISABLE=1 env var short-circuits the breaker
-       entirely as a safety valve.
-    5. force-close-all on registry init so prior open state doesn't
-       carry across restarts.
-
-Three-state circuit breaker for exchange API calls:
-
-    CLOSED      — normal operation; calls pass through; failures counted
-    OPEN        — circuit is tripped; calls FAIL FAST without hitting the
-                  exchange; cooldown timer is running
-    HALF_OPEN   — cooldown elapsed; one probe call is allowed; success
-                  closes the circuit, failure re-opens it
-
-The breaker prevents retry storms from depleting the operator's API
-rate-limit quota during exchange outages. Without it, a 30-second
-exchange outage with 8 bots running 1Hz tick rate = 240 wasted calls
-per outage, plus IP-ban risk on some venues (Binance: 6 strikes/minute).
-
-Per-symbol breakers — an outage on BTC/USD shouldn't trip ETH/USD.
-
-CONFIG (defaults; tuned for spot trading on Coinbase + Kraken):
-  - failure_threshold = 5      (5 consecutive failures → OPEN)
-  - cooldown_seconds  = 30.0   (wait 30s before HALF_OPEN probe)
-  - success_threshold = 2      (HALF_OPEN: 2 consecutive successes → CLOSED)
-  - rolling_window    = 60.0   (failures older than 60s don't count)
+``CircuitBreaker`` starts CLOSED and passes calls through, while
+``record_failure`` counts transient errors and opens it at
+``failure_threshold``. ``is_call_allowed`` refuses every call while OPEN and
+allows one probe once ``cooldown_seconds`` elapses.
+``CircuitBreakerRegistry`` holds one breaker per symbol or endpoint,
+and ``ACERVATOR_BREAKER_DISABLE`` makes ``_breaker_disabled`` allow
+everything.
 """
 
 from __future__ import annotations
@@ -56,37 +22,32 @@ from typing import Callable, Optional, TypeVar, Awaitable
 logger = logging.getLogger(__name__)
 
 
-# v3.16.6 — only these exception name patterns count as breaker-relevant
-# failures. Everything else passes through unchanged (raised) so the
-# operator sees the real error message. Match by exception class NAME
-# (not isinstance) so we don't need to import every CCXT exception type.
+# Substrings of an exception class NAME; no ccxt exception type is imported.
 TRANSIENT_ERROR_NAME_PATTERNS: tuple[str, ...] = (
     "Timeout",  # ccxt.RequestTimeout, asyncio.TimeoutError, socket.timeout
     "ConnectionError",  # urllib3.ConnectionError, requests.ConnectionError
-    "ConnectionReset",  # connection reset by peer
-    "NetworkError",  # ccxt.NetworkError
-    "DDoSProtection",  # ccxt.DDoSProtection (cloudflare etc.)
-    "ExchangeNotAvailable",  # ccxt.ExchangeNotAvailable
-    "RateLimitExceeded",  # ccxt.RateLimitExceeded — transient, retry will work
-    "OnMaintenance",  # ccxt.OnMaintenance
-    "BadResponse",  # ccxt.BadResponse — usually transient
+    "ConnectionReset",
+    "NetworkError",
+    "DDoSProtection",
+    "ExchangeNotAvailable",
+    "RateLimitExceeded",
+    "OnMaintenance",
+    "BadResponse",
     "GatewayTimeout",
     "ServiceUnavailable",
 )
 
 
 def _is_transient_error(exc: BaseException) -> bool:
-    """True if `exc` looks like a transient/network failure that the
-    breaker should count. False for logic errors (auth, insufficient
-    funds, invalid order, bad symbol) which the operator must fix —
-    those should pass through with their original message."""
+    """True when the class name of ``exc`` contains a
+    ``TRANSIENT_ERROR_NAME_PATTERNS`` entry. ``record_failure`` counts only
+    these toward ``failure_threshold``."""
     name = type(exc).__name__
     return any(pat in name for pat in TRANSIENT_ERROR_NAME_PATTERNS)
 
 
 def _breaker_disabled() -> bool:
-    """Operator can short-circuit the breaker entirely with an env var.
-    Returns True if `ACERVATOR_BREAKER_DISABLE` is set to a truthy value."""
+    """True when ``ACERVATOR_BREAKER_DISABLE`` holds 1, true, yes or on."""
     val = os.environ.get("ACERVATOR_BREAKER_DISABLE", "").strip().lower()
     return val in ("1", "true", "yes", "on")
 
@@ -128,9 +89,6 @@ class CircuitBreaker:
     def __init__(
         self,
         key: str,
-        # v3.16.6 — defaults relaxed. Only transient/network errors
-        # count; logic errors pass through. So the threshold can be
-        # higher without missing real outages.
         failure_threshold: int = 20,
         cooldown_seconds: float = 5.0,
         success_threshold: int = 1,
@@ -152,10 +110,8 @@ class CircuitBreaker:
             return self.stats.state
 
     def is_call_allowed(self) -> bool:
-        """True if a call should be attempted; False = fail fast.
-
-        v3.16.6 — env-var disable short-circuits to always-allowed.
-        """
+        """True when a call may be attempted. ``_breaker_disabled`` forces
+        True; an OPEN ``stats.state`` gives False."""
         if _breaker_disabled():
             return True
         with self._lock:
@@ -181,18 +137,15 @@ class CircuitBreaker:
                 if self.stats.consecutive_half_open_successes >= self.success_threshold:
                     self._transition_to_closed()
             elif self.stats.state == BreakerState.CLOSED:
-                self.stats.consecutive_failures = 0  # success resets failure run
+                self.stats.consecutive_failures = 0
 
     def record_failure(self, exc: Optional[BaseException] = None) -> None:
-        """v3.16.6 — only count transient/network errors. Logic errors
-        (auth, insufficient funds, invalid order, bad symbol) are
-        operator-fixable and should pass through with their original
-        error message rather than locking the bot out behind a stale
-        circuit-open state."""
+        """Count one failure and open the breaker at ``failure_threshold``.
+
+        An ``exc`` that ``_is_transient_error`` refuses raises
+        ``total_failures`` only and leaves ``consecutive_failures`` alone.
+        """
         if exc is not None and not _is_transient_error(exc):
-            # Operator-fixable error — record total but don't count
-            # toward consecutive-failure trip. Caller still sees the
-            # raised exception with its original message.
             with self._lock:
                 self.stats.total_failures += 1
                 self.stats.last_failure_at = time.time()
@@ -202,7 +155,6 @@ class CircuitBreaker:
             self.stats.consecutive_failures += 1
             self.stats.last_failure_at = time.time()
             if self.stats.state == BreakerState.HALF_OPEN:
-                # Probe failed → re-open immediately
                 self._transition_to_open(exc)
             elif self.stats.state == BreakerState.CLOSED:
                 if self.stats.consecutive_failures >= self.failure_threshold:
@@ -306,8 +258,6 @@ def get_breaker_registry() -> CircuitBreakerRegistry:
         with _registry_lock:
             if _registry is None:
                 _registry = CircuitBreakerRegistry()
-                # v3.16.6 — at first registry use in this process, log
-                # the disable state so operators can verify config.
                 if _breaker_disabled():
                     logger.info(
                         "Circuit breaker DISABLED via "

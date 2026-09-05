@@ -2,7 +2,7 @@
 """
 Acervator_win.spec — PyInstaller spec for Windows
 ==========================================================
-Produces: dist/Acervator/Acervator.exe
+Produces: dist/Acervator-<version>-<variant>/Acervator-<version>-<variant>.exe
 
 Build command (run on Windows):
     pip install $(python -m tools.deps requirements build)
@@ -23,7 +23,7 @@ follow.
 
 The resulting .exe is a standalone Windows application.
 No NSIS, no separate installer — the dist/ folder IS the application.
-Optionally zip dist/Acervator/ for distribution.
+Optionally zip one build folder under dist/ for distribution.
 """
 
 import os
@@ -42,7 +42,23 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from PyInstaller.utils.hooks import collect_submodules  # noqa: E402
+from PyInstaller.utils.win32.versioninfo import (  # noqa: E402
+    FixedFileInfo,
+    StringFileInfo,
+    StringStruct,
+    StringTable,
+    VarFileInfo,
+    VarStruct,
+    VSVersionInfo,
+)
 
+from tools.build_variants import (  # noqa: E402
+    bake_variant_datas,
+    requested_variant,
+    unique_output_basename,
+    windows_file_version_tuple,
+    windows_version_fields,
+)
 from tools.spec_common import (  # noqa: E402
     EXCLUDES,
     bake_version_datas,
@@ -54,8 +70,36 @@ from tools.spec_common import (  # noqa: E402
 block_cipher = None
 
 ACERVATOR_VERSION = read_acervator_version(PROJECT_ROOT)
+ACERVATOR_VARIANT = requested_variant()
+
+# The output carries the version and the variant, and steps past a name
+# already in dist rather than replacing it. The operator runs builds from
+# dist and keeps several side by side; a rebuild must never remove or
+# overwrite a bundle a live process may hold open.
+OUTPUT_NAME = unique_output_basename(DISTPATH, ACERVATOR_VERSION, ACERVATOR_VARIANT)
 
 ICON_PATH = os.path.join(PROJECT_ROOT, 'resources', 'icon.ico')
+
+# EXE reads `version`; a `version_info` dict is dropped without a warning and
+# ships an executable whose Properties pane is blank.
+VERSION_NUMBERS = windows_file_version_tuple(ACERVATOR_VERSION)
+VERSION_RESOURCE = VSVersionInfo(
+    ffi=FixedFileInfo(filevers=VERSION_NUMBERS, prodvers=VERSION_NUMBERS),
+    kids=[
+        StringFileInfo([
+            StringTable(
+                '040904B0',
+                [
+                    StringStruct(name, value)
+                    for name, value in windows_version_fields(
+                        ACERVATOR_VERSION, ACERVATOR_VARIANT, OUTPUT_NAME
+                    ).items()
+                ],
+            )
+        ]),
+        VarFileInfo([VarStruct('Translation', [0x0409, 1200])]),
+    ],
+)
 
 # ---------------------------------------------------------------------------
 # Collect all source modules.
@@ -66,7 +110,11 @@ a = Analysis(
     [os.path.join(PROJECT_ROOT, 'main.py')],
     pathex=[PROJECT_ROOT],
     binaries=[],
-    datas=build_graceful_datas(PROJECT_ROOT) + bake_version_datas(PROJECT_ROOT),
+    datas=(
+        build_graceful_datas(PROJECT_ROOT)
+        + bake_version_datas(PROJECT_ROOT)
+        + bake_variant_datas(PROJECT_ROOT, ACERVATOR_VARIANT)
+    ),
     hiddenimports=collect_submodules('src') + hiddenimports_for('windows'),
     hookspath=[],
     hooksconfig={},
@@ -88,7 +136,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='Acervator',
+    name=OUTPUT_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -99,21 +147,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     icon=ICON_PATH,
-    # FileVersion and ProductVersion below are Windows resource fields
-    # and they are NOT the Acervator version. They have read '1.1.0'
-    # since the file was written. FileDescription carries the real
-    # version. Left as found: these fields are Windows installed-app
-    # identity, the same class of value as the macOS bundle_identifier,
-    # and changing them is the operator's call.
-    version_info={
-        'CompanyName': 'Quantum Trading Systems',
-        'FileDescription': f'Acervator v{ACERVATOR_VERSION}',
-        'FileVersion': '1.1.0.0',
-        'InternalName': 'Acervator',
-        'OriginalFilename': 'Acervator.exe',
-        'ProductName': 'Acervator',
-        'ProductVersion': '1.1.0',
-    } if os.path.exists(ICON_PATH) else None,
+    version=VERSION_RESOURCE,
 )
 
 coll = COLLECT(
@@ -124,5 +158,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='Acervator',
+    name=OUTPUT_NAME,
 )

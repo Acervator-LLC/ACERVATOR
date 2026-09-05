@@ -1,22 +1,12 @@
 """
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-data_pool.py — Shared Market Data Pool
+Shared market-data cache for candles, tickers and balances.
 
-Centralises API data fetching so that all bots on the same symbol+timeframe
-share a single cached result rather than each bot making its own API call.
-
-Architecture:
-  - One data fetch per (exchange, symbol, timeframe) combination per cycle
-  - Bots register their data needs; the pool fetches once and distributes
-  - Stale data detection: each cache entry has a TTL matching its timeframe
-  - At most one API pull per available timeframe, not one per bot
-
-Example:
-  pool = get_data_pool()
-  pool.register("binance", "BTC/USDT", "5m")   # Bot A
-  pool.register("binance", "BTC/USDT", "5m")   # Bot B — same cache slot
-  pool.register("binance", "BTC/USDT", "1h")   # Bot C — separate slot
-  await pool.refresh_all(connectors)            # 2 API calls, not 3
+``MarketDataPool`` holds one ``CacheEntry``, ``TickerEntry`` or ``BalanceEntry``
+per exchange, symbol and timeframe. ``get_or_fetch_ticker``,
+``get_or_fetch_ohlcv`` and ``get_or_fetch_balance`` return a fresh entry from
+cache and coalesce concurrent misses behind one ``asyncio.Lock``.
+``get_data_pool`` returns the process-wide singleton.
 """
 
 from __future__ import annotations
@@ -29,7 +19,6 @@ from typing import Optional, cast
 
 logger = logging.getLogger("acervator.data_pool")
 
-# Timeframe to seconds
 TF_SECONDS = {
     "1m": 60,
     "3m": 180,
@@ -49,7 +38,11 @@ TF_SECONDS = {
 
 @dataclass
 class CacheEntry:
-    """Cached data for one (exchange, symbol, timeframe) key."""
+    """Candles for one exchange, symbol and timeframe.
+
+    ``ttl_seconds`` reads ``TF_SECONDS`` for ``timeframe`` and falls back
+    to 3600.
+    """
 
     exchange_id: str
     symbol: str
@@ -75,12 +68,11 @@ class CacheEntry:
 
 @dataclass
 class BalanceEntry:
-    """Cached balance for one (exchange, currency) pair.
+    """Free, used and total for one exchange and currency.
 
-    v3.23.76 — mirror of TickerEntry / CacheEntry. Balances change only
-    on trades or wire transfers, so a generous TTL (10s default) cuts
-    the CPM burn from the 9+ get_balance sites ScrummingBot hits per
-    action tick without introducing meaningful staleness."""
+    ``is_stale`` turns True 10 seconds after ``fetch_time``. ``has_data`` is
+    False until the first fetch lands.
+    """
 
     exchange_id: str
     currency: str
@@ -93,8 +85,6 @@ class BalanceEntry:
 
     @property
     def is_stale(self) -> bool:
-        # 10s TTL — balances change on trade fills / wire transfers,
-        # which the caller's post-trade paths invalidate explicitly.
         return (time.time() - self.fetch_time) > 10.0
 
     @property
@@ -104,7 +94,10 @@ class BalanceEntry:
 
 @dataclass
 class TickerEntry:
-    """Cached ticker for one (exchange, symbol)."""
+    """Last, bid and ask for one exchange and symbol.
+
+    ``is_stale`` turns True 5 seconds after ``fetch_time``.
+    """
 
     exchange_id: str
     symbol: str
@@ -118,11 +111,11 @@ class TickerEntry:
 
     @property
     def is_stale(self) -> bool:
-        return (time.time() - self.fetch_time) > 5.0  # 5s TTL for tickers
+        return (time.time() - self.fetch_time) > 5.0
 
     @property
     def has_data(self) -> bool:
-        """True once at least one successful fetch has populated the entry."""
+        """True once ``fetch_time`` and ``last`` are both above zero."""
         return self.fetch_time > 0.0 and self.last > 0.0
 
 
@@ -139,11 +132,10 @@ def _balance_key(exchange_id: str, currency: str) -> str:
 
 
 class MarketDataPool:
-    """
-    Shared market data pool with time-aligned caching.
+    """Cache of ``CacheEntry``, ``TickerEntry`` and ``BalanceEntry`` slots.
 
-    All bots on the same (exchange, symbol, timeframe) share a single
-    API fetch. One call per unique combination per refresh cycle.
+    Bots sharing an exchange, symbol and timeframe share one slot, and each
+    ``get_or_fetch_*`` method fetches only when that slot is stale.
     """
 
     def __init__(self):
@@ -152,46 +144,20 @@ class MarketDataPool:
         self._lock = asyncio.Lock()
         self._total_fetches = 0
         self._cache_hits = 0
-        # v3.16.17 (P0d) — per-(exchange,symbol) ticker fetch locks.
-        # Prevents the "thundering herd" where N bots simultaneously
-        # observe a stale entry, all decide to fetch, and all flood
-        # CCXT's per-connector queue. The first awaiter populates the
-        # entry; the rest read from cache after the lock releases.
         self._ticker_fetch_locks: dict[str, asyncio.Lock] = {}
-        # v3.16.17 — per-symbol coalesced fetch counters (telemetry only)
         self._ticker_fetches = 0
         self._ticker_cache_hits = 0
         self._ticker_queue_full_skips = 0
         self._ticker_batch_refreshes = 0
         self._ticker_batch_symbols = 0
         self._ticker_batch_races = 0
-        # v3.23.74 — mirror of ticker locks for OHLCV slot fetches.
-        # Prior to v3.23.74, ScrummingBot bypassed the pool for OHLCV,
-        # calling self.exchange.get_ohlcv directly at two hot sites on
-        # every action tick, so 35 bots × 2 hot sites =
-        # ~70 raw OHLCV calls / TRACK-mode 30s cycle — the biggest
-        # contributor to the operator-observed 500/600 CPM saturation.
-        # Those two direct call sites no longer exist; both routed
-        # through the ScrummingBot._get_ohlcv wrapper below instead.
-        # v3.23.74 adds get_or_fetch_ohlcv (this pool method) + a
-        # ScrummingBot._get_ohlcv wrapper that routes through it, so
-        # N bots on the same (exchange, symbol, TF) share ONE fetch
-        # per TF-matched TTL window.
         self._ohlcv_fetch_locks: dict[str, asyncio.Lock] = {}
         self._ohlcv_fetches = 0
         self._ohlcv_cache_hits = 0
-        # v3.23.76 — balance coalescing. ScrummingBot calls
-        # self.exchange.get_balance() at 9+ sites per action tick
-        # (target-asset check, USD sweep, USDC sweep, sanity gates,
-        # etc.). Prior to v3.23.76 those all hit the connector
-        # directly. Now they share ONE fetch per (exchange, currency)
-        # per 10s TTL.
         self._balances: dict[str, BalanceEntry] = {}
         self._balance_fetch_locks: dict[str, asyncio.Lock] = {}
         self._balance_fetches = 0
         self._balance_cache_hits = 0
-
-    # ── Registration ───────────────────────────────────────────────
 
     def register(self, exchange_id: str, symbol: str, timeframe: str):
         """Register a bot's data need. Same combo = shared cache slot."""
@@ -224,8 +190,6 @@ class MarketDataPool:
             if te.subscribers <= 0:
                 del self._tickers[tkey]
 
-    # ── Data Access ────────────────────────────────────────────────
-
     def get_candles(self, exchange_id: str, symbol: str, timeframe: str) -> list:
         """Get cached OHLCV candles. Returns [] if none."""
         key = _candle_key(exchange_id, symbol, timeframe)
@@ -246,55 +210,27 @@ class MarketDataPool:
         entry = self._candles.get(key)
         return entry is not None and not entry.is_stale
 
-    # ── Coalesced fetch (v3.16.17 P0d) ─────────────────────────────
-
     async def get_or_fetch_ticker(
         self,
         connector,
         exchange_id: str,
         symbol: str,
     ):
-        """Coalesced ticker fetch. One concurrent fetch per (exchange, symbol).
+        """Return a ``Ticker`` for ``symbol``, fetching when the entry is stale.
 
-        Decision flow:
-          1. If a fresh cache entry exists (within 5s TTL), return it
-             immediately as a Ticker dataclass (zero API calls).
-          2. Else acquire the per-(exchange, symbol) fetch lock.
-             A second awaiter that arrives while the first is fetching
-             will block here, then double-check freshness on entry —
-             if the first awaiter populated the entry, the second
-             returns from cache without fetching.
-          3. On CCXTQueueFullError specifically: if we have ANY
-             prior successful fetch (even stale), return it with a
-             debug telemetry increment rather than raising. The
-             caller's loop will retry next tick. If we have no prior
-             data, the exception propagates so the caller can decide.
-
-        Returns
-        -------
-        Ticker dataclass (from src.exchange.base). Drop-in compatible
-        with the result of ``connector.get_ticker(symbol)``.
-
-        Raises
-        ------
-        Whatever ``connector.get_ticker`` raises, EXCEPT
-        CCXTQueueFullError when a prior cache entry exists (served
-        from cache instead).
+        Concurrent misses on one ``_ticker_key`` queue on a single lock, and a
+        ``CCXTQueueFullError`` is answered from a stale entry that ``has_data``.
         """
-        # Lazy import to avoid circular dependency at module load
         from .base import Ticker
 
         try:
             from .ccxt_connector import CCXTQueueFullError
-        except (
-            Exception
-        ):  # R28-OK: import-resolution probe; defensive fallback when ccxt module unavailable
+        except Exception:
             CCXTQueueFullError = RuntimeError  # type: ignore
 
         tkey = _ticker_key(exchange_id, symbol)
         entry = self._tickers.get(tkey)
 
-        # Fast path: entry exists and is fresh
         if entry is not None and not entry.is_stale and entry.has_data:
             self._ticker_cache_hits += 1
             return Ticker(
@@ -306,26 +242,14 @@ class MarketDataPool:
                 timestamp=entry.timestamp,
             )
 
-        # Slow path: need to fetch. Get/create the per-symbol lock.
-        # v3.16.19 — defense-in-depth against cross-loop Lock
-        # poisoning. v3.16.19 fixed the primary cause (bootstrap
-        # dispatched on a throwaway loop), but a stale Lock from
-        # an in-flight operator session, or any future code path
-        # that accidentally awaits on a different loop, would
-        # leave the cached Lock bound to a dead loop. We detect
-        # that case via RuntimeError matching "different event
-        # loop" / "got Future <Future ...> attached to a different
-        # loop" and self-heal by replacing the poisoned Lock.
+        # A Lock bound to a dead loop is replaced, not awaited.
         lock = self._ticker_fetch_locks.get(tkey)
         _need_new_lock = False
         if lock is None:
             _need_new_lock = True
         else:
-            # Sanity check: if the lock has a recorded loop and it
-            # differs from the current running loop, it's poisoned.
-            # asyncio.Lock stores the loop it was bound to in
-            # ._loop on first acquire (private API; cheap to read,
-            # falls through harmlessly if attribute is missing).
+            # asyncio.Lock records its loop in the private ``_loop`` on
+            # first acquire.
             try:
                 _bound_loop = getattr(lock, "_loop", None)
                 _running_loop = asyncio.get_running_loop()
@@ -339,21 +263,13 @@ class MarketDataPool:
                         id(_running_loop),
                     )
                     _need_new_lock = True
-            except (
-                RuntimeError
-            ):  # R28-OK: get_running_loop raises when no loop running; treat as "trust the cached lock"
+            except RuntimeError:
                 pass
         if _need_new_lock:
             lock = asyncio.Lock()
             self._ticker_fetch_locks[tkey] = lock
 
-        # v3.23.94: pyright's flow analysis can't see that lock is
-        # non-None here (either the cached lock passed the loop check
-        # OR _need_new_lock allocated a fresh one). cast() narrows
-        # the type at zero runtime cost — no assert (bandit B101).
         async with cast(asyncio.Lock, lock):
-            # Double-check freshness — another awaiter may have
-            # populated the entry while we were waiting for the lock.
             entry = self._tickers.get(tkey)
             if entry is not None and not entry.is_stale and entry.has_data:
                 self._ticker_cache_hits += 1
@@ -366,17 +282,15 @@ class MarketDataPool:
                     timestamp=entry.timestamp,
                 )
 
-            # Create entry if missing (e.g., USD-conversion symbols
-            # that aren't formally registered)
+            # ``register`` is not a precondition; USD-conversion symbols
+            # arrive here first.
             if entry is None:
                 entry = TickerEntry(exchange_id=exchange_id, symbol=symbol)
                 self._tickers[tkey] = entry
 
-            # Actually fetch
             try:
                 ticker = await connector.get_ticker(symbol)
             except CCXTQueueFullError:
-                # Queue saturated. Serve last-known data if we have any.
                 self._ticker_queue_full_skips += 1
                 if entry.has_data:
                     logger.debug(
@@ -393,10 +307,8 @@ class MarketDataPool:
                         volume_24h=entry.volume_24h,
                         timestamp=entry.timestamp,
                     )
-                # No prior data — propagate so caller skips this iteration
                 raise
 
-            # Successful fetch — populate cache and return
             entry.last = float(getattr(ticker, "last", 0) or 0)
             entry.bid = float(getattr(ticker, "bid", 0) or 0)
             entry.ask = float(getattr(ticker, "ask", 0) or 0)
@@ -407,63 +319,17 @@ class MarketDataPool:
             return ticker
 
     async def refresh_all_tickers(self, connector, exchange_id: str) -> int:
-        """Warm every already-cached ticker for one exchange in ONE call.
+        """Refill every ``_tickers`` entry for ``exchange_id`` from one
+        ``get_all_tickers`` call.
 
-        WHY THIS EXISTS (operator item 1, 2026-08-06: "the Ammo read out
-        is not updating often enough")
-
-        ``stats.current_price`` is written after the read-rate gate in
-        ``ScrummingBot.tick``, so a bot's displayed price refreshes at
-        its DECISION cadence. Measured on live state: 18 of 35 bots
-        refreshed at 60s or slower, worst ALLO/USDC at 300s, while the
-        dashboard repainted every 2s.
-
-        The fleet runs 35 distinct symbols with zero overlap, so the
-        per-symbol cache has exactly one writer each and reading it
-        cannot be fresher than the bot that owns it. A bulk fetch has no
-        such ceiling: ``get_all_tickers`` returns every symbol for one
-        rate-limited call, where per-bot polling spends 35 to cover the
-        same ground.
-
-        Warming the shared cache here means bots hit the fast path in
-        ``get_or_fetch_ticker`` instead of issuing their own request, so
-        this REPLACES per-bot traffic rather than adding to it. Measured
-        projection: 10,272 ticker fetches/hour becomes ~720 at a 5s
-        batch interval.
-
-        WHAT THIS DOES **NOT** FIX, corrected 2026-08-07
-        An earlier version of this docstring claimed worst-case display
-        staleness drops from 300s to 5s. That was wrong. The dashboard
-        reads ``stats.current_price`` (``BotStatusTable.update_bots`` in
-        ``src/gui/widgets/bot_status_table.py``), whose only recurring
-        writer is ``ScrummingBot.tick`` in ``src/trading/scrumming_bot.py``
-        -- downstream of the gate. Warming this cache does not write that field, so
-        the READOUT is exactly as stale as before. What does improve is
-        the price a bot sees when it does fetch, and the fleet's API
-        volume. Display freshness requires a reader that consults this
-        cache directly; see ``MarketDataPool.get_ticker``.
-
-        This does NOT change any bot's decision cadence. Bots still act
-        on their own gated schedule; that schedule now sees a fresher
-        price. Operator ruled pool-level over display-only on 2026-08-06
-        with that distinction stated.
-
-        ONLY refreshes symbols already present in the cache. The bulk
-        response carries every pair the exchange lists, and adopting all
-        of them would grow this dict without bound for symbols no bot
-        trades.
-
-        Never raises. A background refresher that can take down its
-        caller is worse than a stale price.
-
-        Returns the number of entries updated.
+        Symbols absent from ``_tickers`` are skipped, an entry written after
+        ``batch_start`` is left alone, and every exception is logged and
+        swallowed. Returns the number of entries updated.
         """
         batch_start = time.time()
         try:
             raw = await connector.get_all_tickers()
-        except (
-            Exception
-        ) as exc:  # R28-OK: background refresher must not propagate; bots retain their own fetch path
+        except Exception as exc:
             logger.warning(
                 "DataPool: bulk ticker refresh failed for %s (%s); bots "
                 "fall back to individual fetches.",
@@ -490,17 +356,13 @@ class MarketDataPool:
                 continue
             last = float(row.get("last", 0) or 0)
             if last <= 0:
-                # A junk row must not blank a good entry.
                 continue
             if entry.fetch_time > batch_start:
-                # An individual fetch landed while this batch was in
-                # flight. That value is newer; leave it alone.
+                # A newer individual fetch already wrote this entry.
                 self._ticker_batch_races += 1
                 continue
-            # Field mapping matches CCXTConnector.get_ticker exactly:
-            # volume_24h comes from quoteVolume (NOT baseVolume) and
-            # timestamp is milliseconds converted to seconds. Diverging
-            # here would silently corrupt the cache for every consumer.
+            # quoteVolume and millisecond timestamps match
+            # CCXTConnector.get_ticker's own mapping.
             entry.last = last
             entry.bid = float(row.get("bid", 0) or 0)
             entry.ask = float(row.get("ask", 0) or 0)
@@ -520,8 +382,6 @@ class MarketDataPool:
         )
         return updated
 
-    # ── Coalesced OHLCV fetch (v3.23.74) ───────────────────────────
-
     async def get_or_fetch_ohlcv(
         self,
         connector,
@@ -530,28 +390,15 @@ class MarketDataPool:
         timeframe: str,
         limit: int = 100,
     ) -> list:
-        """Coalesced OHLCV fetch. Mirrors get_or_fetch_ticker.
+        """Return the last ``limit`` candles, fetching when the slot is stale.
 
-        Cache TTL matches the timeframe (5m TF → 300s TTL, 1h → 3600s,
-        etc.) so bots on the same (exchange, symbol, TF) share one
-        API call per candle interval. Before v3.23.74 ScrummingBot
-        called ``self.exchange.get_ohlcv`` directly on every action
-        tick — with 35 bots × 30s TRACK-mode cadence that produced
-        ~70 raw candle calls per minute alone.
-
-        Behaviour:
-          1. Fresh cache entry (age < TTL) with enough rows → return
-             immediately (zero API calls).
-          2. Stale or missing → acquire the per-slot lock; the first
-             awaiter fetches, populates cache; subsequent awaiters
-             hit the cache after the lock releases.
-          3. On fetch exception → propagate; caller decides what to
-             do (typically ScrummingBot skips the TA pass this tick).
+        The slot lives ``CacheEntry.ttl_seconds`` for ``timeframe``, concurrent
+        misses on one ``_candle_key`` queue on a single lock, and a connector
+        exception propagates.
         """
         key = _candle_key(exchange_id, symbol, timeframe)
         entry = self._candles.get(key)
 
-        # Fast path: fresh + has enough rows
         if (
             entry is not None
             and not entry.is_stale
@@ -559,11 +406,8 @@ class MarketDataPool:
             and len(entry.candles) >= limit
         ):
             self._ohlcv_cache_hits += 1
-            # Return the last `limit` rows (bots ask for a window
-            # of the most-recent-N).
             return list(entry.candles[-limit:])
 
-        # Slow path: acquire per-slot lock.
         lock = self._ohlcv_fetch_locks.get(key)
         _need_new_lock = False
         if lock is None:
@@ -587,12 +431,7 @@ class MarketDataPool:
             lock = asyncio.Lock()
             self._ohlcv_fetch_locks[key] = lock
 
-        # v3.23.94: pyright's flow analysis can't see that lock is
-        # non-None here (either the cached lock passed the loop check
-        # OR _need_new_lock allocated a fresh one). cast() narrows
-        # the type at zero runtime cost — no assert (bandit B101).
         async with cast(asyncio.Lock, lock):
-            # Double-check freshness (another awaiter may have filled)
             entry = self._candles.get(key)
             if (
                 entry is not None
@@ -603,8 +442,7 @@ class MarketDataPool:
                 self._ohlcv_cache_hits += 1
                 return list(entry.candles[-limit:])
 
-            # Create slot on demand (bots that never called `register`
-            # for this (exchange, symbol, TF) can still coalesce here).
+            # ``register`` is not a precondition for a slot.
             if entry is None:
                 entry = CacheEntry(
                     exchange_id=exchange_id, symbol=symbol, timeframe=timeframe
@@ -620,31 +458,23 @@ class MarketDataPool:
             self._ohlcv_fetches += 1
             return list(entry.candles[-limit:])
 
-    # ── Coalesced balance fetch (v3.23.76) ─────────────────────────
-
     async def get_or_fetch_balance(
         self,
         connector,
         exchange_id: str,
         currency: str,
     ):
-        """Coalesced balance fetch. Mirrors get_or_fetch_ticker /
-        get_or_fetch_ohlcv.
+        """Return a ``Balance`` for ``currency``, fetching when the entry is
+        stale.
 
-        Cache TTL 10s: balances change on trade fills or wire
-        transfers, both of which the callers explicitly invalidate
-        via ``invalidate_balance`` after a fill. Between events,
-        multiple balance reads for the same (exchange, currency)
-        collapse to one API call per 10s window.
-
-        Returns a ``Balance`` dataclass (matches connector.get_balance).
+        ``BalanceEntry.is_stale`` sets the 10-second window and
+        ``invalidate_balance`` ends it early.
         """
         from .base import Balance
 
         bkey = _balance_key(exchange_id, currency)
         entry = self._balances.get(bkey)
 
-        # Fast path
         if entry is not None and not entry.is_stale and entry.has_data:
             self._balance_cache_hits += 1
             return Balance(
@@ -655,7 +485,6 @@ class MarketDataPool:
                 absent=entry.absent,
             )
 
-        # Slow path — per-slot lock, cross-loop self-heal
         lock = self._balance_fetch_locks.get(bkey)
         _need_new_lock = False
         if lock is None:
@@ -679,12 +508,7 @@ class MarketDataPool:
             lock = asyncio.Lock()
             self._balance_fetch_locks[bkey] = lock
 
-        # v3.23.94: pyright's flow analysis can't see that lock is
-        # non-None here (either the cached lock passed the loop check
-        # OR _need_new_lock allocated a fresh one). cast() narrows
-        # the type at zero runtime cost — no assert (bandit B101).
         async with cast(asyncio.Lock, lock):
-            # Double-check freshness
             entry = self._balances.get(bkey)
             if entry is not None and not entry.is_stale and entry.has_data:
                 self._balance_cache_hits += 1
@@ -715,13 +539,11 @@ class MarketDataPool:
         exchange_id: str,
         currency: Optional[str] = None,
     ) -> int:
-        """Force the next get_or_fetch_balance for this (exchange,
-        currency) to re-fetch from the connector. Called by
-        post-trade paths so the freshly-adjusted balance shows up
-        immediately.
+        """Zero ``fetch_time`` on matching ``_balances`` slots; the next
+        ``get_or_fetch_balance`` then re-fetches.
 
-        If ``currency`` is None, invalidates every balance slot for
-        the exchange. Returns count invalidated.
+        A ``currency`` of None clears every slot for ``exchange_id``. Returns
+        the number cleared.
         """
         invalidated = 0
         for bkey, entry in list(self._balances.items()):
@@ -733,18 +555,12 @@ class MarketDataPool:
             invalidated += 1
         return invalidated
 
-    # ── Pull-rate telemetry (v3.23.74) ─────────────────────────────
-
     def seconds_until_next_pull(self) -> float:
-        """DEPRECATED semantically. With passive on-demand coalescing
-        (bots pull → cache serves; no scheduler), "seconds until next
-        pull" isn't well-defined: as soon as any slot goes stale, the
-        min-remaining-TTL hits 0 and stays there until a bot requests
-        that slot. The GUI now uses ``freshest_age_s`` /
-        ``oldest_age_s`` instead. Kept for back-compat callers.
+        """Return the smallest remaining TTL across the ticker, candle and
+        balance slots.
 
-        Returns min remaining TTL across ticker/OHLCV/balance slots,
-        or inf when no slots have been fetched yet.
+        Returns inf when no slot has been fetched; ``pull_rate_summary`` is the
+        only caller in ``src``.
         """
         best = float("inf")
         now = time.time()
@@ -769,15 +585,11 @@ class MarketDataPool:
         return best
 
     def slot_ages(self) -> dict:
-        """v3.23.76 — return freshness telemetry across all slot
-        types. Ignores never-fetched slots (fetch_time=0).
+        """Return freshness telemetry across the ticker, candle and balance
+        slots, ignoring any whose ``fetch_time`` is 0.
 
-        Returns dict with:
-            freshest_age_s : age of the most recently fetched slot
-            oldest_age_s   : age of the least recently fetched slot
-            fetched_slots  : number of slots with fetch_time > 0
-            stale_slots    : number of fetched slots past their TTL
-        Both ages are None when no slot has been fetched yet.
+        The dict carries ``freshest_age_s`` and ``oldest_age_s`` (None when
+        nothing has been fetched), ``fetched_slots`` and ``stale_slots``.
         """
         now = time.time()
         ages: list[tuple[float, bool]] = []  # (age, is_stale)
@@ -812,16 +624,11 @@ class MarketDataPool:
         }
 
     def pull_rate_summary(self) -> dict:
-        """Return telemetry for the GUI's pull-rate indicator.
+        """Return every ``slot_ages`` key plus the ticker, OHLCV and balance
+        slot counts, cache hits and fetch counts.
 
-        Fields:
-            next_pull_s   — seconds until the next expected fetch
-            ticker_slots  — number of ticker cache slots
-            ohlcv_slots   — number of candle cache slots
-            ticker_hits   — cumulative coalesced-cache hits
-            ohlcv_hits    — cumulative coalesced-cache hits
-            ticker_fetches — cumulative actual API pulls
-            ohlcv_fetches  — cumulative actual API pulls
+        ``next_pull_s`` carries ``seconds_until_next_pull``, which no scheduler
+        drives.
         """
         ages = self.slot_ages()
         return {
@@ -841,26 +648,18 @@ class MarketDataPool:
             "balance_fetches": self._balance_fetches,
         }
 
-    # ── Refresh ────────────────────────────────────────────────────
-
     async def refresh_all(self, connectors: dict) -> dict:
-        """
-        Refresh all stale cache entries. One API call per unique slot.
+        """Refresh every stale slot that still has subscribers, one connector
+        call per slot.
 
-        Parameters
-        ----------
-        connectors : dict[str, exchange_connector]
-
-        Returns
-        -------
-        {fetched, skipped, errors}
+        ``connectors`` maps an exchange_id to its connector. Returns counts
+        under ``fetched``, ``skipped`` and ``errors``.
         """
         async with self._lock:
             fetched = 0
             skipped = 0
             errors = 0
 
-            # Refresh stale tickers
             for tkey, te in self._tickers.items():
                 if te.subscribers <= 0 or not te.is_stale:
                     continue
@@ -884,7 +683,6 @@ class MarketDataPool:
                         exc,
                     )
 
-            # Refresh stale candle caches
             for key, entry in self._candles.items():
                 if entry.subscribers <= 0:
                     continue
@@ -916,13 +714,10 @@ class MarketDataPool:
 
             return {"fetched": fetched, "skipped": skipped, "errors": errors}
 
-    # ── Status ─────────────────────────────────────────────────────
-
     def get_status(self) -> dict:
         unique = len(self._candles)
         total_subs = sum(e.subscribers for e in self._candles.values())
         saved = max(0, total_subs - unique)
-        # v3.16.17 — ticker coalescing telemetry
         _t_total = self._ticker_fetches + self._ticker_cache_hits
         _t_savings_pct = round(self._ticker_cache_hits / max(_t_total, 1) * 100, 1)
         return {
@@ -943,7 +738,6 @@ class MarketDataPool:
         }
 
 
-# Singleton
 _pool: Optional[MarketDataPool] = None
 
 

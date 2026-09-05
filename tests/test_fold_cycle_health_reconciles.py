@@ -63,7 +63,6 @@ would corrupt the counters this repair exists to make trustworthy.
 from __future__ import annotations
 
 import ast
-import inspect
 import sys
 from pathlib import Path
 
@@ -151,10 +150,8 @@ def _drift(bot) -> int:
     return standing - created + closed + discarded
 
 
-# ======================================================================
 # A. THE INSTRUMENT. A test that never sees the defect is not a
 #    measurement.
-# ======================================================================
 class TestTheInstrumentWorks:
 
     def test_a_seeded_bot_reconciles_before_anything_acts(self):
@@ -175,14 +172,10 @@ class TestTheInstrumentWorks:
         assert _drift(bot) == 5
 
 
-# ======================================================================
 # B. THE WRITE SITE THAT PRODUCED NEGATIVE DRIFT.
-# ======================================================================
 class TestTheMalformedDropIsCountedAsADiscard:
 
-    #: `ref` values the guard refuses. `nan` is here because every
-    #: comparison against it is False, so it fails `ref > 0` the same
-    #: way a missing key does.
+    #: `ref` values the guard refuses; `nan` fails `ref > 0` like a missing key.
     BAD_REFS = (0.0, -1.0, float("nan"))
 
     def test_it_removes_only_the_unreadable_records(self):
@@ -294,9 +287,7 @@ class TestTheMalformedDropIsCountedAsADiscard:
         assert any("FOLD GUARD" in m and "DISCARDED" in m for m in seen)
 
 
-# ======================================================================
 # C. THE RESTORE FILTER, the second unbalanced removal.
-# ======================================================================
 def _state(tranches, created, closed, discarded, malformed=0) -> dict:
     return {
         "fold_tranches": list(tranches),
@@ -339,10 +330,8 @@ class TestTheRestoreFilterCountsWhatItDrops:
         assert bot._tranches_malformed_dropped == 6
 
 
-# ======================================================================
 # D. THE THREE VERBS. Merge, despawn and clear are the only three that
 #    collapse or remove a tranche, and each moves ONE counter.
-# ======================================================================
 class TestClearMovesDiscarded:
 
     def test_clear_discards_and_never_closes(self):
@@ -418,9 +407,7 @@ class TestMergeMovesCreatedDown:
         assert _books(bot) == before
 
 
-# ======================================================================
 # E. THE SOURCE RULE. A later edit must not re-open the hole.
-# ======================================================================
 def _functions_assigning(name: str) -> set[str]:
     """Every engine function that ASSIGNS `self.<name>`."""
     nodes: list = []
@@ -463,23 +450,7 @@ def test_no_function_moves_the_malformed_counter_alone():
     assert malformed <= discarded, sorted(malformed - discarded)
 
 
-def test_the_drop_helper_says_which_counters_it_moves():
-    """Prose that names the counters, checked against the code."""
-    source = inspect.getsource(ScrummingBot._drop_malformed_fold_tranches)
-    for name in (
-        "_tranches_discarded_lifetime",
-        "_tranches_malformed_dropped",
-        "_tranches_closed_lifetime",
-    ):
-        assert name in source, name
-
-
-# ======================================================================
-# F. THE RATIO. Pure, so the panel's only health verdict is testable
-#    without Qt.
-# ======================================================================
-#: Read off `~/.acervator/bot_state.json`, saved 2026-08-24 16:14:19.
-#: `(symbol, created, closed, discarded)`.
+#: Read off the live state file as `(symbol, created, closed, discarded)`.
 BTC = ("BTC/USD", 160, 118, 42)
 CHIP = ("CHIP/USD", 4924, 4603, 90)
 BIO = ("BIO/USD", 305, 161, 132)

@@ -1,9 +1,4 @@
-# S101  - pytest's assert IS the assertion syntax; -O would strip them
-#         and make this file inert. Nobody runs pytest with -O.
-# SLF001 - this file reads `_bots`, `_build_sim` and `_main_lots`. The
-#         question it answers is "what does a bot OPEN holding", and an
-#         opening book is not on a public surface.
-"""Issue #111 violation B - fleet size must not decide who can trade.
+"""Fleet size must not decide which sim bot can trade.
 
 THE RULING THIS FILE ENFORCES. Live, Paper and Sim differ ONLY in where
 market data comes from. Operator ruling on this defect: a lot-less bot
@@ -15,7 +10,7 @@ before it can do anything else, and that costs `target x (1 + fee)`. N
 targets cannot fund N such acquisitions, so the LAST bot is always short
 by the fees the earlier ones paid. The path is reached whenever a config
 carries no `_src_scrumming_state`, which is exactly what
-`topology_stress._config_for` (topology_stress.py:216) builds.
+`topology_stress._config_for` builds.
 
 MEASURED before the fix, on the 400-candle synthetic tapes below.
 Wallet closing USD 100.00 / 99.40 / 98.80 at fleet sizes 1 / 2 / 3 - the
@@ -87,8 +82,8 @@ def _sawtooth(n: int = TAPE_CANDLES) -> list[list[float]]:
     """Return a tape that moves a position far enough off target.
 
     Fifty candles up at 0.2% a candle, then fifty down. The swing is
-    about 10%, which clears the MEM-258 dust band (0.1% of target,
-    ``at_target_dust_band`` in ``src/trading/target_bands.py``) by two
+    about 10%, which clears the dust band ``at_target_dust_band``
+    returns (0.1% of target) by two
     orders of magnitude, so a bot that opens AT target still has
     something to do.
     """
@@ -101,7 +96,7 @@ def _sawtooth(n: int = TAPE_CANDLES) -> list[list[float]]:
 
 
 def _oscillating(n: int = TAPE_CANDLES) -> list[list[float]]:
-    """Return the tape the issue #111 fleet-size table was measured on."""
+    """Return the tape the fleet-size table was measured on."""
     out: list[list[float]] = []
     px = 1.0
     for i in range(n):
@@ -503,14 +498,7 @@ class TestTheFleetCanStillTrade:
             "size still decides how much a bot trades."
         )
 
-        # The aggregate alone would pass if one bot fired everything and
-        # the LAST bot fired nothing, which is the pre-fix shape exactly.
-        #
-        # `per_symbol_trade_count` is the counter with a writer
-        # (fleet_replay_controller.py:1642); `per_bot_trade_count` is
-        # initialised beside it and never written, which its own comment
-        # at :96-102 records. Each symbol carries exactly one bot in this
-        # fleet, so the symbol counter IS the per-bot one.
+        # `per_bot_trade_count` has no writer, and each symbol here carries one bot.
         per_symbol = dict(crowd.progress.per_symbol_trade_count or {})
         assert set(per_symbol) == set(SYMBOLS), (
             f"the run counted {sorted(per_symbol)} against a fleet of "

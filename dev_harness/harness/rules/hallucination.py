@@ -81,22 +81,13 @@ class Finding:
     message: str
 
 
-# --------------------------------------------------------------------- #
-# H001 — dead path reference                                            #
-# --------------------------------------------------------------------- #
-
-# Match patterns like `src/foo/bar.py`, `docs/audits/2026-…/x.md`,
-# `.claude/hooks/foo.py`, `tests/test_x.py`. Anchor on at least one
-# slash + a recognised code/docs extension so we don't fire on prose
-# containing dotted names ("scrumming_bot.py" alone is ambiguous).
+# One slash plus a code or docs extension, so a bare dotted name is not a path.
 _PATH_PATTERN = re.compile(
     r"[a-zA-Z0-9_\-./]*[a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-./]+"
     r"\.(py|md|markdown|json|toml|yaml|yml|csv|txt|log)"
 )
 
-# Prefixes that indicate a path is INSIDE the repo root and should be
-# resolved relative to it. Any path starting with these + is a valid
-# extension is checked against disk.
+# A path under one of these is resolved against the repo root and checked on disk.
 _REPO_PATH_PREFIXES = (
     "src/",
     "src\\",
@@ -143,10 +134,6 @@ def _find_dead_paths(source: str, repo_root: Path) -> list[tuple[int, str]]:
     return hits
 
 
-# --------------------------------------------------------------------- #
-# H002 — dead architecture reference                                    #
-# --------------------------------------------------------------------- #
-
 _RETIRED_NAMES = (
     "sadp/",
     "sadp\\",
@@ -157,9 +144,7 @@ _RETIRED_NAMES = (
     "basic_modes_panel",  # retired v3.23.79-A
 )
 
-# Files under these directories are ALLOWED to mention retired names
-# (they're the retirement documentation itself, changelogs, or archived
-# copies that predate the retirement).
+# A file under one of these may name a retired module without drawing H002.
 _H002_EXEMPT_DIRS = (
     "_archive/",
     "_archive\\",
@@ -190,10 +175,6 @@ def _find_dead_architecture(
                 break
     return hits
 
-
-# --------------------------------------------------------------------- #
-# H003 — import of local module that doesn't exist                     #
-# --------------------------------------------------------------------- #
 
 _LOCAL_IMPORT_PREFIXES = ("src.", "tests.", "tools.")
 
@@ -229,15 +210,6 @@ def _find_dead_imports(tree: ast.AST, repo_root: Path) -> list[tuple[int, str]]:
                     hits.append((node.lineno, name))
     return hits
 
-
-# --------------------------------------------------------------------- #
-# Repo root discovery                                                   #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
-# H004 — citation past the end of the file it names                     #
-# --------------------------------------------------------------------- #
 
 # Both spellings a citation uses: a colon before the number, or the
 # word "line". A range is caught by its first number.
@@ -283,10 +255,6 @@ def _find_out_of_range_citations(
                 hits.append((i, raw, number, total))
     return hits
 
-
-# --------------------------------------------------------------------- #
-# H005 — a dotted name split across adjacent string literals            #
-# --------------------------------------------------------------------- #
 
 _DOTTED_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+){3,}$")
 
@@ -343,11 +311,6 @@ def _find_repo_root(start: Path) -> Path:
         if (candidate / "src").is_dir() and (candidate / "tools").is_dir():
             return candidate
     return start.parent if start.is_file() else start
-
-
-# --------------------------------------------------------------------- #
-# Public entry                                                          #
-# --------------------------------------------------------------------- #
 
 
 def scan(target: Path, source: str) -> list[Any]:

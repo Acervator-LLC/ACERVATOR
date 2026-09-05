@@ -122,9 +122,7 @@ def _src(*parts: str) -> str:
     return (REPO.joinpath(*parts)).read_text(encoding="utf-8", errors="replace")
 
 
-# ---------------------------------------------------------------------------
 # A new bot folds the whole scrum back
-# ---------------------------------------------------------------------------
 
 
 class TestANewBotFoldsTheWholeScrum:
@@ -173,9 +171,7 @@ class TestANewBotFoldsTheWholeScrum:
             wizard.deleteLater()
 
 
-# ---------------------------------------------------------------------------
 # THE CONTROL — a stored value is never overridden
-# ---------------------------------------------------------------------------
 
 
 class TestAStoredValueSurvives:
@@ -229,9 +225,7 @@ class TestAStoredValueSurvives:
             )
 
 
-# ---------------------------------------------------------------------------
 # A state file older than the field
-# ---------------------------------------------------------------------------
 
 
 class TestPreFieldStateGetsTheDefault:
@@ -258,9 +252,7 @@ class TestPreFieldStateGetsTheDefault:
         assert cfg.scrum_fold_pct == FOLD_PCT_DEFAULT
 
 
-# ---------------------------------------------------------------------------
 # Every site that decides the value agrees on it
-# ---------------------------------------------------------------------------
 
 
 class TestEveryDeclarationSiteAgrees:

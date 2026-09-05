@@ -1,36 +1,61 @@
-"""State serialization for ScrummingBot: export/import of compounding state."""
+"""ScrummingBot compounding-state serialization.
+
+``StateSerializerMixin.export_scrumming_state`` returns a JSON-serializable
+dict of cost-basis lots, fold tranches, set-points and counters.
+``import_scrumming_state`` restores one, and neither carries the unit
+holdings the exchange reports.
+"""
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..bot_container import BotState, as_finite_float
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 logger = logging.getLogger("acervator.scrumming")
 
-if TYPE_CHECKING:
-    # Mixins are only ever composed into ScrummingBot; typing the base as the
-    # host resolves the `self.*` attributes without any runtime coupling.
-    from ..scrumming_bot import ScrummingBot as _Host
-else:
-    _Host = object
 
-
-class StateSerializerMixin(_Host):
+class StateSerializerMixin:
     """Persist and restore the bot's compounding state as a plain dict.
 
-    Exchange-derivable fields (unit holdings) are intentionally not
-    persisted: the exchange is authoritative and the boot handshake
-    repopulates them. Only state the exchange cannot report is saved —
-    cost-basis lots, fold tranches, operator set-points, internal counters,
-    and the trade state machine.
+    ``export_scrumming_state`` omits unit holdings; ``import_scrumming_state``
+    writes back ``_main_lots``, ``_fold_tranches``, the set-points and the
+    lifetime counters, then clears ``_initialised``.
     """
+
+    # Supplied by ScrummingBot at runtime; annotations only, no attribute
+    # is created.
+    _anchor_target_balance: float
+    _bus: Any
+    _compact_wire_credits: Callable[..., int]
+    _current_holdings: float
+    _dist_accumulator: float
+    _fold_queue_usd: float
+    _fold_tranches: list[dict]
+    _hedge_bal: float
+    _hedge_trades: int
+    _initialised: bool
+    _land_pending_wire_credits: Callable[..., float]
+    _last_trade_price: float
+    _last_trade_side: str | None
+    _main_lots: list[dict]
+    _quote_to_usd: float
+    _scrum_target_mode: str
+    _scrum_target_side: str | None
+    _target_balance: float
+    bot_id: Any
+    config: Any
+    state: Any
 
     def export_scrumming_state(self) -> dict:
         """Export compounding state as a JSON-serializable dict.
 
-        Called by ``BotContainer.get_full_state()``.
+        ``BotContainer.get_full_state`` stores the result under the
+        ``scrumming_state`` key.
         """
         return {
             "target_balance": float(self._target_balance),
@@ -50,10 +75,7 @@ class StateSerializerMixin(_Host):
             "pending_stack_buy_usd": float(
                 getattr(self, "_pending_stack_buy_usd", 0.0) or 0.0
             ),
-            # issue #107 -- the detonation edge latch and the date of
-            # the last completed check. Written verbatim; the trigger
-            # decides when the latch has aged out, because only it knows
-            # the detonation timeframe and the elapsed time.
+            # Written verbatim; _check_detonation_trigger retires the latch.
             "detonation_last_signal_bullish": bool(
                 getattr(self, "_detonation_last_signal_bullish", False)
             ),
@@ -137,24 +159,21 @@ class StateSerializerMixin(_Host):
     def import_scrumming_state(self, data: dict) -> None:
         """Restore compounding state from an ``export_scrumming_state`` dict.
 
-        Safe against missing keys (treated as defaults). Called by
-        ``BotContainer.restore_bots_from_state()`` after construction but
-        before registration. The boot handshake reconciles against exchange
-        reality afterward.
+        ``StateRestoreMixin.restore_bots_from_state`` calls this after
+        construction and before registration; a missing key takes its default.
         """
         if not isinstance(data, dict):
             return
 
-        # Anchor restored first so the Smart Ceiling check below can evaluate
-        # against the restored target.
+        # _anchor_target_balance is restored first; the ceiling check below
+        # reads it.
         self._anchor_target_balance = float(
             data.get("anchor_target_balance", self._anchor_target_balance)
         )
         _restored_target = float(data.get("target_balance", self._target_balance))
 
-        # A restored target above anchor is expected (organic growth). But if
-        # Smart Ceiling is enabled, refuse a target past the maturity ceiling —
-        # that would be stale pre-detonation state; snap it back.
+        # A persisted target above position_ceiling_multiple x anchor is
+        # stale; snap it to the ceiling.
         if getattr(self.config, "position_ceiling_enabled", False):
             try:
                 _smart_mult = float(
@@ -217,8 +236,8 @@ class StateSerializerMixin(_Host):
                 self._pending_wire_credits = 0.0
         except (TypeError, ValueError):
             self._pending_wire_credits = 0.0
-        # current_holdings is not restored: the exchange is authoritative and
-        # the boot handshake repopulates it. Leaves the __init__ default here.
+        # _current_holdings is not restored here; the exchange supplies it on
+        # the next tick.
         self._last_trade_price = float(
             data.get("last_trade_price", self._last_trade_price)
         )
@@ -252,20 +271,13 @@ class StateSerializerMixin(_Host):
             )
         except (TypeError, ValueError):
             self._hyst_ref_scrum_side = 0.0
-        # Armed but no reference is incoherent — force disarm.
+        # Armed with no reference price is incoherent; force disarm.
         if self._hyst_armed_fold_side and self._hyst_ref_fold_side <= 0:
             self._hyst_armed_fold_side = False
         if self._hyst_armed_scrum_side and self._hyst_ref_scrum_side <= 0:
             self._hyst_armed_scrum_side = False
-        # issue #107 -- a detonation that already fired on a bull run
-        # must not fire again on the same run after a restart, so the
-        # edge latch persists like a tripped breaker does. Restored
-        # verbatim: this method is the export's inverse, and the trigger
-        # holds the expiry rule. `as_finite_float` because JSON admits
-        # NaN and Infinity, and a non-finite timestamp makes every
-        # elapsed comparison in the trigger False, which would hold the
-        # latch for the life of the bot. A negative timestamp predates
-        # the epoch and is not a check that happened.
+        # as_finite_float: a non-finite or negative detonation_last_check_ts
+        # is not a check that happened.
         self._detonation_last_signal_bullish = bool(
             data.get("detonation_last_signal_bullish", False)
         )
@@ -323,21 +335,14 @@ class StateSerializerMixin(_Host):
         if isinstance(lots_raw, list):
             self._main_lots = [dict(lot) for lot in lots_raw if isinstance(lot, dict)]
         tranches_raw = data.get("fold_tranches", [])
-        # issue #98 defect 4 - THIS FILTER IS A REMOVAL SITE. A stored
-        # entry that is not a record is dropped here, and a removal that
-        # moves no counter is one unit of permanent negative drift in
-        # `created - closed - discarded == standing`. The count is only
-        # MEASURED here; it is applied further down, beside the counter
-        # restores, because `_tranches_malformed_dropped` has not been
-        # read out of `data` yet and a bump written here would be
-        # overwritten by that read.
+        # Counted here, applied below once _tranches_malformed_dropped has
+        # been read out of data.
         _unreadable_tranches = 0
         if isinstance(tranches_raw, list):
             self._fold_tranches = [dict(t) for t in tranches_raw if isinstance(t, dict)]
             _unreadable_tranches = len(tranches_raw) - len(self._fold_tranches)
-            # Compact wire-credit provenance carried in from older saves so a
-            # tranche that never receives another credit stops re-serializing
-            # thousands of detail entries.
+            # _compact_wire_credits rolls oversized wire-credit detail into
+            # the aggregate on restored tranches.
             _rolled = self._compact_wire_credits()
             if _rolled:
                 logger.info(
@@ -364,29 +369,13 @@ class StateSerializerMixin(_Host):
         self._tranches_malformed_dropped = int(
             data.get("tranches_malformed_dropped", 0) or 0
         )
-        # issue #133 unit 3 -- the second an operator cleared the four
-        # counters, 0.0 when they never were. Read through
-        # `as_finite_float` because it comes straight off JSON, where
-        # `NaN` and `Infinity` are both representable and a bare
-        # `float()` would carry either into the predicate that decides
-        # whether this bot adopts the exchange balance as its opening
-        # position.
+        # as_finite_float: the reset timestamp comes straight off JSON, where
+        # NaN and Infinity are both representable.
         self._tranches_counters_reset_ts = float(
             as_finite_float(data.get("tranches_counters_reset_ts", 0.0)) or 0.0
         )
-        # issue #98 defect 4 - the restore filter above removed records.
-        # They did not fold, so they are DISCARDED; they were unreadable,
-        # so they are ALSO malformed-dropped. The malformed counter is a
-        # SUB-COUNT of the discarded one, never a fourth term: only
-        # `discarded` appears in the reconciliation the panel prints, and
-        # a removal that moved the malformed counter alone left that
-        # reconciliation short by exactly the number dropped.
-        #
-        # NO `stats` MIRROR HERE, DELIBERATELY, AND IT IS NOT AN
-        # OVERSIGHT. This restore mirrors NOTHING to `stats` -- not
-        # created, not closed, not discarded -- so a mirror written for
-        # this one counter would be the only one in the method and would
-        # read as a rule the method does not keep.
+        # _tranches_malformed_dropped is a sub-count of
+        # _tranches_discarded_lifetime, so one dropped record moves both.
         if _unreadable_tranches:
             self._tranches_malformed_dropped += _unreadable_tranches
             self._tranches_discarded_lifetime += _unreadable_tranches
@@ -435,10 +424,8 @@ class StateSerializerMixin(_Host):
             _closed = _created
         self._tranches_created_lifetime = _created
         self._tranches_closed_lifetime = _closed
-        # issue #133 unit 2 -- default 0 on a state file written before
-        # the key existed. NO BACK-FILL from `_created`: the count bound
-        # is a rule about sells made from here on, and inventing a
-        # matching history would publish a ratio nothing measured.
+        # Defaults to 0 on a save written before the key existed; never
+        # back-filled from _created.
         self._scrum_sells_lifetime = int(data.get("scrum_sells_lifetime", 0) or 0)
 
         try:
@@ -450,21 +437,18 @@ class StateSerializerMixin(_Host):
         except Exception:
             self._target_grow_last_side = None
 
-        # issue #133 unit 11 -- a state file written before the build
-        # loops landed the pool can carry `pending_wire_credits` beside
-        # standing `fold_tranches`. Both are restored above, so the
-        # invariant is re-asserted here rather than waiting for the next
-        # sell.
+        # _land_pending_wire_credits moves _pending_wire_credits into the
+        # fold tranches restored above.
         self._land_pending_wire_credits()
 
-        # Recompute the aggregate from per-tranche sums so a drifted saved
-        # value self-heals.
+        # _fold_queue_usd is re-derived from the tranche sums, not read out
+        # of data.
         self._fold_queue_usd = sum(
             float(t.get("usd", 0.0)) for t in self._fold_tranches
         )
 
-        # Warn (don't block) if lots disagree with holdings; the handshake
-        # reconciles against the exchange next tick.
+        # Drift between _main_lots and _current_holdings warns only; the
+        # exchange settles it on the next tick.
         lots_sum = sum(float(lot.get("units", 0.0)) for lot in self._main_lots)
         if self._current_holdings > 0 and lots_sum > 0:
             drift = abs(lots_sum - self._current_holdings) / max(
@@ -492,6 +476,5 @@ class StateSerializerMixin(_Host):
                         self._current_holdings,
                     )
 
-        # Force uninitialised so the boot handshake re-verifies exchange
-        # balance next tick and catches drift from the restart window.
+        # _initialised False routes the next tick into _tick_initialise.
         self._initialised = False

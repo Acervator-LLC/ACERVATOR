@@ -209,10 +209,8 @@ class MarketPairsScout:
             return True
         return (_now - last) > (self._refresh_s * 2)
 
-    # -------------------------------------------------------------
     # Ingest — either directly from a raw tickers dict (tests) or
     # by polling a set of connectors (production).
-    # -------------------------------------------------------------
 
     def ingest_tickers(
         self,
@@ -303,9 +301,7 @@ class MarketPairsScout:
         return out
 
 
-# ---------------------------------------------------------------------
 # Process-wide shared scout
-# ---------------------------------------------------------------------
 
 _SCOUT: LazySingleton[MarketPairsScout] = LazySingleton(
     MarketPairsScout,

@@ -1068,6 +1068,16 @@
     asked = null;
   }
 
+  // The shell draws this strip by its module name; the host reads that name
+  // off the script tag running now, so it is written down nowhere.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderStrip,
+      load: loadHeader,
+      loadError: loadError
+    });
+  }
+
   global.acervatorSetHeader = setHeader;
   global.acervatorLoadHeader = loadHeader;
   global.acervatorHeader = {

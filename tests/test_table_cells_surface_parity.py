@@ -25,6 +25,7 @@ pytest.importorskip("PySide6")
 
 from src.gui import table_cells as shipped
 from src.gui.main_tabs import table_cells_surface as surface
+from tests.fixtures.qt_wiring_counts import qt_free
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
@@ -46,10 +47,8 @@ CALLS: list[list] = []
 
 CLOCK_NOW = 1_700_000_000.0
 
-# The literals the table applies around the two cells. Typed here rather
-# than read from the surface, so the two sides cannot agree by
-# definition. `test_the_cell_placement_is_the_tables_own` proves each
-# one against a real BotStatusTable.
+# Typed out, not read from the surface, so the two sides cannot agree by
+# definition. `test_the_cell_placement_is_the_tables_own` checks each.
 CALLER_TARGET_BTC_COLUMN = 5
 CALLER_TARGET_ETH_COLUMN = 6
 CALLER_AMMO_COLUMN = 7
@@ -77,9 +76,7 @@ LONG_SYMBOL = "X" * 200 + "/USD"
 
 FILLER_TEXT = "row"
 
-# ---------------------------------------------------------------------
 # The collaborators both sides reach, each recording what it was asked.
-# ---------------------------------------------------------------------
 
 
 class FakeTicker:
@@ -215,9 +212,7 @@ def freeze_clock(monkeypatch):
     monkeypatch.setattr(time, "time", lambda: CLOCK_NOW)
 
 
-# ---------------------------------------------------------------------
 # The engine calls both cells make, wrapped so the trace is real.
-# ---------------------------------------------------------------------
 
 TERRITORY_ASK = "band.territory"
 DUST_ASK = "band.dust"
@@ -248,9 +243,7 @@ def watch_bands(monkeypatch, module):
     monkeypatch.setattr(module, "manual_fire_will_noop", watched_noop)
 
 
-# ---------------------------------------------------------------------
 # Cases
-# ---------------------------------------------------------------------
 
 AMMO_CASES = {
     "scrum": (0.0, 5.0, 20.0, 1.0, 50.0, None),
@@ -495,9 +488,7 @@ PRICE_CASES = {
 PRICE_HIT_CASES = ("hit", "hit_old", "future_fetch_time", "very_large_last")
 
 
-# ---------------------------------------------------------------------
 # Drivers
-# ---------------------------------------------------------------------
 
 
 def digest(trace):
@@ -608,9 +599,7 @@ def new_price_model(name, monkeypatch):
     return model, _guarded(lambda: model.fresh_price(model.price_pool(), *args))
 
 
-# ---------------------------------------------------------------------
 # Side by side, value for value and by hash
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(AMMO_CASES))
@@ -705,9 +694,7 @@ def test_the_sample_hashes_are_reported(monkeypatch):
     assert digest(changed) != samples["scrum"][0]
 
 
-# ---------------------------------------------------------------------
 # The paths every case reaches
-# ---------------------------------------------------------------------
 
 
 def test_every_ammo_case_reaches_the_path_it_names(monkeypatch):
@@ -849,9 +836,7 @@ def test_every_denom_case_carries_the_text_it_names(monkeypatch):
     assert len(cells) == len(DENOM_CASES) - len(DENOM_RAISING_CASES)
 
 
-# ---------------------------------------------------------------------
 # The pieces both sides share
-# ---------------------------------------------------------------------
 
 
 def test_the_magnitude_format_is_the_shipped_cells_own(monkeypatch):
@@ -1038,39 +1023,6 @@ def test_the_format_strings_carry_their_own_placeholders():
 
 def test_the_tips_are_the_shipped_cells_own(monkeypatch):
     """A tooltip the operator reads drifted from the shipped cell's."""
-    text = CELLS_PATH.read_text(encoding="utf-8")
-    for literal in (
-        "Scrum territory — sell surplus on bullish",
-        "Fold territory — buy deficit on bearish",
-        "Within dust band — no action pending",
-        "No position — initial entry pending. ",
-        "Ammo = full target (bot must buy in).",
-        "Holdings present (",
-        ") but price not ",
-        "yet fetched. Ammo will update on first tick.",
-        "MANUAL FIRE WILL NOT ACT: |delta| ",
-        "is inside Manual Fire's own dust ",
-        "band of $",
-        "(1% of target). The autonomous ",
-        "engine still works this range; the button will no-op.",
-        "STALE — price unavailable this tick, so this is the last ",
-        "known position value ($",
-        "), not a current ",
-        "one. Do not fire on it.",
-        "s OLD — this figure is computed ",
-        "from a price that has not refreshed recently, so the ",
-        "true delta may differ. Manual Fire will act on the ",
-        "CURRENT price, not this one.",
-        "(stale)",
-        "pending…",
-        '"---"',
-        "pending",
-        "—",
-        surface.POOL_UNAVAILABLE_LOG,
-        surface.POOL_LOOKUP_FAILED_LOG,
-    ):
-        assert literal in text, literal
-    assert "a-tip-the-shipped-cell-never-holds" not in text
     for name, tip in (
         ("scrum", surface.SCRUM_TIP),
         ("fold", surface.FOLD_TIP),
@@ -1137,9 +1089,7 @@ def test_the_stale_branch_overwrites_the_manual_fire_note(monkeypatch):
     assert aged["tip"] == surface.AGED_PRICE_TIP_FORMAT.format(price_age_s=25.0)
 
 
-# ---------------------------------------------------------------------
 # The debug logs
-# ---------------------------------------------------------------------
 
 
 def test_the_debug_logs_are_the_shipped_modules_own(monkeypatch, capture_log):
@@ -1190,9 +1140,7 @@ def test_the_denom_cell_writes_no_log(monkeypatch, capture_log):
     assert len(heard) == 1
 
 
-# ---------------------------------------------------------------------
 # The table the two cells are painted into
-# ---------------------------------------------------------------------
 
 
 def app():
@@ -1474,9 +1422,7 @@ def test_the_text_shape_a_picture_may_not_see_is_compared_as_a_string(monkeypatc
     assert len(set(changed.values())) == 7
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 def test_the_tooltip_a_picture_cannot_see_is_compared_as_a_string(monkeypatch):
@@ -1621,22 +1567,121 @@ def test_the_cell_placement_is_the_tables_own():
     }
     assert set(surface.CELLS) == set(surface.CELL_COLUMNS)
     assert list(surface.CELLS) == sorted(surface.CELLS, key=surface.CELL_COLUMNS.get)
-    caller = CALLER_PATH.read_text(encoding="utf-8")
-    for literal in (
-        "item.setTextAlignment(Qt.AlignCenter)",
-        "if col == 5:",
-        "if col == 6:",
-        "if col == 7:",
-        "item.setForeground(QColor(target_btc_color))",
-        "item.setForeground(QColor(target_eth_color))",
-        "item.setForeground(ammo_color)",
-        "item.setToolTip(ammo_tip)",
-        CALLER_AMMO_MASK_KEY,
-        CALLER_TARGET_MASK_KEY,
-    ):
-        assert literal in caller, literal
-    assert "setSortingEnabled" not in caller
-    assert "a-call-the-table-never-makes" not in caller
+
+
+PAINTED_STATUS = {
+    "bot_id": "bot-cells-0001",
+    "symbol": "XRP/USD",
+    "mode": "scrumming",
+    "state": "running",
+    "exchange": "coinbase",
+    "current_holdings": 104.8,
+    "quote_to_usd": 1.0,
+    "live_target_balance": 50.0,
+    "target_balance": 40.0,
+    "stats": {"total_trades": 7, "position_value": 149.85, "current_price": 1.43},
+}
+
+
+def painted_table():
+    """One real BotStatusTable carrying one painted row."""
+    table = real_table()
+    table.update_bots([dict(PAINTED_STATUS)])
+    assert table.rowCount() == 1, table.rowCount()
+    return table
+
+
+def test_the_painted_row_places_the_three_cells_where_the_surface_says():
+    """The real table paints the row; every column read here is the
+    surface's own number."""
+    from PySide6.QtCore import Qt
+
+    table = painted_table()
+    for cell, column in surface.CELL_COLUMNS.items():
+        item = table.item(0, column)
+        assert item is not None, cell
+        assert item.textAlignment() == int(Qt.AlignCenter.value), cell
+        assert item.text() != "", cell
+    assert table.isSortingEnabled() is False, "the table started sorting itself"
+
+
+def test_the_painted_row_carries_a_tooltip_only_where_the_surface_says():
+    """The Ammo cell explains itself; the two denom cells do not."""
+    table = painted_table()
+    for cell, wanted in surface.CELL_TOOLTIPS.items():
+        item = table.item(0, surface.CELL_COLUMNS[cell])
+        assert bool(item.toolTip()) is wanted, (cell, item.toolTip())
+
+
+def test_the_painted_row_carries_the_cells_own_tooltip():
+    """The Ammo item's tooltip is the string the shipped cell composed."""
+    table = painted_table()
+    ammo = table.item(0, surface.CELL_COLUMNS[surface.AMMO_CELL])
+    cell = shipped._compose_ammo_cell(
+        PAINTED_STATUS["stats"]["position_value"],
+        PAINTED_STATUS["current_holdings"],
+        PAINTED_STATUS["stats"]["current_price"],
+        PAINTED_STATUS["quote_to_usd"],
+        PAINTED_STATUS["live_target_balance"],
+    )
+    assert ammo.toolTip() == cell["tip"]
+    assert ammo.text() == cell["text"]
+
+
+def test_the_painted_row_takes_the_ammo_colour_from_the_cell(monkeypatch):
+    """Only the cell's colour is swapped, so a different picture can come
+    from nothing else."""
+    import src.gui.widgets.bot_status_table as table_module
+
+    real = shipped._compose_ammo_cell
+
+    def recoloured(*args, **kwargs):
+        cell = dict(real(*args, **kwargs))
+        cell["color"] = surface.TERRITORY_COLORS[surface.TERRITORY_FOLD]
+        return cell
+
+    before = render_offscreen(painted_table(), PIXEL_SIZE)
+    monkeypatch.setattr(table_module, "_compose_ammo_cell", recoloured)
+    after = render_offscreen(painted_table(), PIXEL_SIZE)
+    assert_pictures_differ(
+        old_side=before,
+        new_side=after,
+        note="the table paints the Ammo cell's own colour",
+    )
+
+
+@pytest.mark.parametrize(
+    ("masked_key", "hidden_cells"),
+    [
+        (CALLER_TARGET_MASK_KEY, (surface.TARGET_BTC_CELL, surface.TARGET_ETH_CELL)),
+        (CALLER_AMMO_MASK_KEY, (surface.AMMO_CELL,)),
+    ],
+)
+def test_masking_one_key_hides_exactly_the_cells_that_carry_it(
+    masked_key, hidden_cells
+):
+    """The mask key each cell is painted under, read off the painted row."""
+    from src.core.privacy_mask_registry import get_privacy_mask_registry
+
+    registry = get_privacy_mask_registry()
+    revealed = {
+        cell: painted_table().item(0, column).text()
+        for cell, column in surface.CELL_COLUMNS.items()
+    }
+    registry.set_masked(masked_key, True)
+    try:
+        masked = {
+            cell: painted_table().item(0, column).text()
+            for cell, column in surface.CELL_COLUMNS.items()
+        }
+    finally:
+        registry.set_masked(masked_key, False)
+    for cell in surface.CELL_COLUMNS:
+        if cell in hidden_cells:
+            assert masked[cell] != revealed[cell], cell
+        else:
+            assert masked[cell] == revealed[cell], cell
+    assert surface.CELL_MASK_KEYS[hidden_cells[0]] == masked_key
 
 
 SORTING_OFF = False
@@ -1693,10 +1738,9 @@ def test_the_cells_start_no_timer(monkeypatch):
 def test_the_cells_declare_no_skin_of_their_own(monkeypatch):
     """A colour the surface ships is one the table never paints.
 
-    The cells carry no style sheet of their own. The application theme
-    paints the table, and it paints both sides the same. The style sheet
-    is read off both built rows, and the two shipped sides paint one
-    picture.
+    The cells carry no style sheet of their own. ``SKIN`` and
+    ``STYLE_SHEET`` are empty on the surface and in the payload, and the two
+    shipped sides paint one picture.
     """
     app()
     assert surface.SKIN == {}
@@ -1704,8 +1748,6 @@ def test_the_cells_declare_no_skin_of_their_own(monkeypatch):
     payload = surface.build_view_model(surface.TableCellsModel())
     assert payload["skin"] == {}
     assert payload["style_sheet"] == ""
-    assert build_row(old_row_values("scrum", monkeypatch)).styleSheet() == ""
-    assert build_row(new_row_values("scrum", monkeypatch)).styleSheet() == ""
     assert_pictures_match(
         old_side=render_offscreen(
             build_row(old_row_values("scrum", monkeypatch)), PIXEL_SIZE
@@ -1776,9 +1818,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered(monkeypatch):
     )
 
 
-# ---------------------------------------------------------------------
 # The pool and the price reader
-# ---------------------------------------------------------------------
 
 
 def test_the_price_pool_is_the_shipped_pools_own(monkeypatch):
@@ -1872,9 +1912,7 @@ def test_the_price_feeds_the_ammo_cells_age(monkeypatch):
     )
 
 
-# ---------------------------------------------------------------------
 # The counterpart map
-# ---------------------------------------------------------------------
 
 
 METHOD_MAP = {
@@ -2045,61 +2083,46 @@ def test_the_signatures_match_the_shipped_functions():
     )
 
 
-def test_the_connect_sites_match_the_actions():
-    """A signal wiring appeared on one side and not the other."""
-    cells_text = CELLS_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert cells_text.count(".connect(") == 0
-    assert surface_text.count(".connect(") == 0
+def test_neither_cell_module_declares_a_signal_to_wire():
+    """The surface exports no action, and neither module carries a Signal
+    for the table to connect."""
+    from PySide6.QtCore import Signal
+
     assert surface.ACTIONS == {}
-    assert len(surface.ACTIONS) == cells_text.count(".connect(")
-    assert "import PySide6" not in cells_text
-    assert "from PySide6" not in cells_text
-    assert "import PySide6" not in surface_text
-    assert "from PySide6" not in surface_text
-    caller = CALLER_PATH.read_text(encoding="utf-8")
-    assert caller.count(".connect(") > 0
+    for module in (shipped, surface):
+        signals = [
+            name for name, value in vars(module).items() if isinstance(value, Signal)
+        ]
+        assert signals == [], (module.__name__, signals)
+
+
+def test_the_table_that_paints_the_cells_does_wire_its_own_signals():
+    """The signal check reports none whatever a module declares."""
+    from PySide6.QtCore import SignalInstance
+
+    table = real_table()
+    wired = [
+        name
+        for name in dir(type(table))
+        if isinstance(getattr(table, name, None), SignalInstance)
+    ]
+    assert wired, "the real table declares no signal at all"
 
 
 def test_the_surface_loads_no_qt_module():
     """The surface grew an import that pulls Qt into the backend."""
-    import ast
-
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {
-        "__future__",
-        "logging",
-        "time",
-        "typing",
-        "design_system",
-        "trading.target_bands",
-        "exchange.data_pool",
-        "src.exchange.currency_rate_monitor",
-        "src.exchange.market_pairs_scout",
-    }
-    caller_tree = ast.parse(CALLER_PATH.read_text(encoding="utf-8"))
-    caller_imports = {
-        (node.module or "")
-        for node in ast.walk(caller_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in caller_imports), caller_imports
+    answered = qt_free("src.gui.main_tabs.table_cells_surface", "TableCellsModel")
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
 
 
-# ---------------------------------------------------------------------
+def test_the_qt_block_stops_the_shipped_side():
+    """POSITIVE CONTROL for ``qt_free``: src.gui.widgets.bot_status_table needs Qt to load."""
+    answered = qt_free("src.gui.widgets.bot_status_table", "BotStatusTable")
+    assert answered["imported"] is False, answered
+
+
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def test_view_model_is_json_serialisable(monkeypatch):
@@ -2292,9 +2315,7 @@ def test_the_bridge_carries_the_price_reading(monkeypatch):
     )
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

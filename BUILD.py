@@ -2,6 +2,7 @@
 BUILD - Acervator Build Launcher
 Double-click this file to build the application.
 Automatically detects and installs all required dependencies.
+``parse_variants`` reads ``--variant NAME``; a double-click builds every variant.
 """
 
 # S607 IS FIXED BY CONSTRUCTION, NOT SUPPRESSED, following the reasoning at
@@ -14,10 +15,13 @@ Automatically detects and installs all required dependencies.
 # argv carrying a variable draws one. A resolved executable path is a variable
 # by definition. This directive is the residue, narrowed to the one rule.
 # ruff: noqa: S603
+import argparse
 import os
 import shutil
 import subprocess
 import sys
+
+from tools.build_variants import selected_variants
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 try:
@@ -216,8 +220,28 @@ def powershell_exe() -> str:
     return shutil.which("powershell") or ""
 
 
-def run_build() -> bool:
-    """Execute the PowerShell build script."""
+def parse_variants(argv: list[str] | None = None) -> tuple[str, ...]:
+    """Return the variants ``--variant`` names in ``argv``, or every known one.
+
+    Raises ``ValueError`` through ``selected_variants`` on an unknown name.
+    """
+    parser = argparse.ArgumentParser(
+        prog="BUILD.py",
+        description="Build Acervator. Every variant is built unless one is named.",
+    )
+    parser.add_argument(
+        "--variant",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="build only this variant; repeat or comma-separate for several",
+    )
+    parsed = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    return selected_variants(parsed.variant)
+
+
+def run_build(variants: tuple[str, ...]) -> bool:
+    """Execute the PowerShell build script for ``variants``."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     ps1_path = os.path.join(script_dir, "build_windows.ps1")
 
@@ -233,19 +257,30 @@ def run_build() -> bool:
         return False
 
     print(f"\n  Script: {ps1_path}")
+    print(f"  Variants: {', '.join(variants)}")
     print("  Starting build...\n")
     print("=" * 60)
 
-    # Use absolute path and set working directory explicitly
+    # The spec reads the variant from the environment, and build_windows.ps1
+    # sets it per variant. -Variant takes one comma-joined argv token.
     result = subprocess.run(
-        [powershell, "-ExecutionPolicy", "Bypass", "-File", ps1_path],
+        [
+            powershell,
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            ps1_path,
+            "-Variant",
+            ",".join(variants),
+        ],
         cwd=script_dir,
         check=False,
     )
     print("=" * 60)
 
-    # Try to add Defender exclusion (requires admin)
-    exe_path = os.path.join("dist", "Acervator")
+    # Try to add Defender exclusion (requires admin). The whole dist root,
+    # because each build adds another folder under it and none are removed.
+    exe_path = "dist"
     if os.path.isdir(exe_path):
         print("\n  Adding Windows Defender exclusion...")
         exe_quoted = f'"{os.path.abspath(exe_path)}"'
@@ -267,8 +302,48 @@ def run_build() -> bool:
     return result.returncode == 0
 
 
+def build_outputs() -> list:
+    """Return every built executable under dist, newest first.
+
+    The build names each folder after the version and the variant it
+    produced, so there is no single fixed path to look at any more. Every
+    folder is reported and none is removed; the operator picks which build
+    to run.
+    """
+    dist_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist")
+    if not os.path.isdir(dist_dir):
+        return []
+    found = []
+    for name in os.listdir(dist_dir):
+        exe = os.path.join(dist_dir, name, f"{name}.exe")
+        if os.path.exists(exe):
+            found.append(exe)
+    found.sort(key=os.path.getmtime, reverse=True)
+    return found
+
+
+def write_smartscreen_help(folder: str) -> None:
+    """Write the "if Windows blocks this" note beside a built executable."""
+    help_path = os.path.join(folder, "IF_BLOCKED_READ_THIS.txt")
+    try:
+        with open(help_path, "w", encoding="utf-8") as handle:
+            handle.write(SMARTSCREEN_HELP)
+        print(f"  Help file: {help_path}")
+    except OSError as exc:
+        # Printed and not swallowed. The build succeeded; only the note
+        # beside the exe is missing, and the reader must be able to see why.
+        print(f"  NOTE: help file not written: {exc}")
+
+
 def main() -> None:
     print(HEADER)
+
+    try:
+        variants = parse_variants()
+    except ValueError as exc:
+        print(f"\n  ERROR: {exc}")
+        input("\nPress Enter to close...")
+        return
 
     print("[1/3] Checking Python...")
     if not check_python():
@@ -284,26 +359,17 @@ def main() -> None:
         return
 
     print("\n[3/3] Building application...")
-    success = run_build()
+    success = run_build(variants)
 
     if success:
-        exe = os.path.join("dist", "Acervator", "Acervator.exe")
-        if os.path.exists(exe):
-            print(f"\n  Build complete: {os.path.abspath(exe)}")
-
-            # Create help file next to exe
-            help_path = os.path.join("dist", "Acervator", "IF_BLOCKED_READ_THIS.txt")
-            try:
-                with open(help_path, "w", encoding="utf-8") as handle:
-                    handle.write(SMARTSCREEN_HELP)
-                print(f"  Help file: {os.path.abspath(help_path)}")
-            except OSError as exc:
-                # Printed and not swallowed. The build succeeded; only the
-                # note beside the exe is missing, and the reader must be
-                # able to see why.
-                print(f"  NOTE: help file not written: {exc}")
-
+        built = build_outputs()
+        for exe in built:
+            print(f"\n  Build complete: {exe}")
+            write_smartscreen_help(os.path.dirname(exe))
+        if built:
             print(SMARTSCREEN_NOTICE)
+        else:
+            print("\n  Build reported success but no executable was found in dist.")
     else:
         print("\n  Build failed. Check the output above for errors.")
 

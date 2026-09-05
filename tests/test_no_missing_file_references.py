@@ -1,122 +1,19 @@
 """A shipped file may not name a path that is not in the tree.
 
-WHAT WAS MEASURED
-=================
-Issue #69, on 2026-08-22, in a clone at commit b1bcd8b. Every path the
-issue listed was checked with ``Path.exists()``. All of them were absent:
-
-    RAIntSimBat.py            generate_essay.py       WHY_SADP.md
-    ARCHITECTURE.md           docs/RISK_REGISTER.md   qa_baselines/
-    tests/obsolete/           cloud/                  requirements.txt
-    requirements-optional.txt tests/test_swarm_row_parity.py
-    acervator_product_manual_v3_13_7.pdf
-
-They fall into three classes, and the class decides the repair:
-
-  INERT      ``--ignore=tests/obsolete`` and
-             ``--ignore=tests/test_swarm_row_parity.py`` in pytest
-             ``addopts``. pytest accepts an ignore for a path that is
-             not in the tree. Collection returned 7382 tests with the
-             two entries present and 7382 with them gone. Removal
-             changed nothing except the truth of the file.
-
-  BROKEN     The README install step ran ``pip install -r
-             requirements.txt``, and no requirements file is in the
-             tree, so the documented setup stopped at its first command.
-             The README Project Structure block drew 8 documents under
-             ``docs/``, a whole ``logs/`` subtree and 9 modules under
-             ``src/`` that are not there.
-
-  DEAD       ``[tool.mutmut]`` described a mutation-testing capability
-             the tree does not have. It could not run, for two
-             independent reasons. mutmut 3.5.0 refuses this platform:
-             ``python -m mutmut run`` prints "To run mutmut on Windows,
-             please use the WSL" and exits 1 at import, before it reads
-             any config. Separately, its ``runner`` named
-             ``tests/test_verify_buy_safe_helper.py`` and
-             ``tests/test_mem228_buy_confirmation_gate.py``, and that
-             command exits 4 because neither file is in the tree.
-             Nothing read a qa_baselines file either: the two tests the
-             config said would read one
-             (``tests/test_coverage_floor.py``,
-             ``tests/test_mutation_baseline.py``) are not in the tree.
-             So the baselines were never load-bearing, and no number in
-             the suite rests on them. ``git log`` over all 107 commits
-             shows that no commit ever added any of these paths. They
-             are not deleted files. They are references that never had
-             a referent in this repository.
-
-WHAT ISSUE #89 MEASURED
-=======================
-The Docker build was retired on 2026-08-22, not repaired. ``Dockerfile``
-and ``docker-compose.yml`` are deleted. Five findings, each one on its
-own sufficient:
-
-  NO SOURCE   The image ran ``cloud/acervator_daemon.py`` and mounted
-              ``cloud/config.json``. Neither ``cloud/`` nor
-              ``RAIntSimBat.py`` is in the tree, and ``git log`` over
-              all 109 commits shows that no commit ever added either
-              one. The build failed at line 21, its first COPY.
-
-  NO ENTRY    The one entry point is ``main:main``. It builds a
-              QApplication and it exits with a message when PySide6 is
-              absent. No headless runner is in the tree. The Dockerfile
-              installed no Qt and said so: "No Qt, no PySide6, no
-              display server needed". So the image could not start the
-              only program this repository has, whatever its
-              dependencies.
-
-  NO SERVER   The HEALTHCHECK polled a /health route on port 8080. No
-              HTTP server, no such route and no --status-port option is
-              in the tree, so the container would report unhealthy for
-              its whole life.
-
-  NO READER   The compose file passed BINANCE_API_KEY, ALPACA_API_KEY,
-              ANTHROPIC_API_KEY and TELEGRAM_BOT_TOKEN. No module reads
-              any of those names. The platform reads its credentials
-              from a user directory, not from the environment.
-
-  NO CALLER   Literal "docker", case-insensitive, over every tracked
-              file hit three: the compose file itself, this test, and
-              two lines in the harness archive. There is no CI (issue
-              #91). Nothing ever built the image.
-
-The deployment this repository does maintain is ``deploy/kiosk/`` - AcervatorOS
-on Raspberry Pi OS or Debian. It installs a systemd unit that sets
-DISPLAY and QT_QPA_PLATFORM=xcb, because the program needs a display. A
-container and that unit are two answers to one question, and only one
-of them has code.
-
-Docker is not installed on the machine that made this change: no
-binary, no service, no install directory. So no repaired image could be
-built and proved. A build file that is only believed to build is the
-same false claim in a new coat.
-
-WHY A GUARD AND NOT A CLEANUP
-=============================
-``docs_archetype`` passed README.md green on 2026-08-22 while that
-README named seven files which are not in the tree. No instrument in the
-repo reads a shipped document and asks whether its paths resolve. This
-test is that instrument.
-
-HOW A DOCUMENT SAYS A FILE IS GONE
-==================================
-A document must be able to record an absence. A block of text may name a
-path that is not in the tree when the same block carries one of the
-phrases in ABSENCE_MARKERS. The marker is per block, not per file, so
-one sentence cannot excuse a whole document.
-
-TWO-SIDED CONTROL
-==================
-Driven both ways on 2026-08-22 against the same tree. The reverted files
-failed the matching tests; the restored files passed and matched their
-recorded sha256.
+Every path a file in ``SHIPPED`` names is checked with ``Path.exists()``, and
+the pytest ``addopts``, the README install step and the README project
+structure are each read the same way; ``doc_pages`` extends the scan to every
+Markdown page under ``docs/`` except the ``MEASUREMENT_RECORDS``. A block of
+prose may name an absent path when that same block carries one of
+``ABSENCE_MARKERS``. ``RETIRED_DOCKER`` names the two deployment files that
+must stay deleted.
 """
 
 from __future__ import annotations
 
 import re
 import tomllib
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -125,8 +22,7 @@ from tests.fixtures.repo_tree import source_files
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Files that ship to a user or drive a build. The same line issue #68
-# drew for the retired-subsystem guard.
+# Files that ship to a user or drive a build.
 SHIPPED = (
     "pyproject.toml",
     "README.md",
@@ -161,10 +57,15 @@ _TOKEN = re.compile(
 )
 _URL = re.compile(r"https?://\S+")
 
-# A block that carries one of these may name a path that is gone.
+# A block that carries one of these may name a path that is gone. Each
+# asserts the absence in the page's own words, so a reader is not sent
+# looking for a file.
 ABSENCE_MARKERS = (
     "not in the tree",
     "not in this repository",
+    "no commit that added",
+    "none is committed",
+    "not committed",
 )
 
 # TOML table headers read as paths: ``[tool.coverage.json]`` ends in
@@ -174,9 +75,7 @@ _TOML_HEADER_PREFIX = "tool."
 # Path claims that are true for a reason the scanner cannot see. Every
 # entry carries that reason. This map may not grow without one.
 ALLOWED: dict[tuple[str, str], str] = {
-    # Coverage WRITE target. Measured 2026-08-22: ``python -m pytest
-    # --cov --cov-report=json`` created ``qa_baselines/`` and wrote the
-    # file. It is an output path, not a file the repo must ship.
+    # A coverage output path, not a file the repo ships.
     (
         "pyproject.toml",
         "qa_baselines/coverage_current.json",
@@ -247,6 +146,14 @@ def _block_excused(block: list[str]) -> bool:
     return any(marker in joined for marker in ABSENCE_MARKERS)
 
 
+def _line_excused(line: str) -> bool:
+    """Whether one line carries an ``ABSENCE_MARKERS`` entry of its own.
+
+    One table row is excused while every other row in that block is read.
+    """
+    return any(marker in " ".join(line.split()) for marker in ABSENCE_MARKERS)
+
+
 def _bad_tokens(name: str, names: set[str]) -> list[str]:
     bad: list[str] = []
     for start, block in _blocks(REPO_ROOT / name):
@@ -267,6 +174,189 @@ def test_shipped_file_names_no_missing_path(name: str) -> None:
     path = REPO_ROOT / name
     assert path.is_file(), f"{name} is missing"
     assert _bad_tokens(name, _file_names()) == []
+
+
+# ── documentation pages ──────────────────────────────────────────────
+
+DOCS = REPO_ROOT / "docs"
+
+# Pages whose dead citations are ROWS OF A MEASUREMENT TABLE: each row
+# names a file the run read, on the dated tree the page names. Repointing
+# a row would report a measurement that was never taken, so the scan does
+# not read these pages. A page joins this list only when its table rows
+# are the citations; prose that names a dead path belongs in no record.
+MEASUREMENT_RECORDS: dict[str, str] = {
+    "docs/audits/manual-original-parts-audit.md": (
+        "the manual read against the tree of the day; it also quotes the "
+        "tokens the PDF extractor damaged"
+    ),
+    "docs/engineering-notes/2026-08-24_archetype_census.md": (
+        "one archetype run over every file present that day"
+    ),
+    "docs/engineering-notes/2026-08-25_subsystem_capability_matrix.md": (
+        "one capability sweep; the rows are the files it read"
+    ),
+    "docs/engineering-notes/2026-08-25_the_venue_seam.md": (
+        "one probe run; the probe files were removed after it"
+    ),
+    "docs/engineering-notes/2026-08-26_issue_revalidation.md": (
+        "one probe run; the probe files were removed after it"
+    ),
+    "docs/engineering-notes/2026-08-27_gui_hex_literal_inventory.md": (
+        "one tokenizer pass over src/gui/ at the commit it names"
+    ),
+    "docs/engineering-notes/2026-08-27_simulator_fleet_nuclear_divergence.md": (
+        "one import census over tests/ at the commit it names"
+    ),
+}
+
+# The two roots the running platform owns, kept outside this repository.
+_RUNTIME_ROOTS = (".acervator/", ".acervator_logs/")
+
+# A block naming one of these describes a tree outside this repository:
+# the platform's runtime state, or the operator's Claude Code harness.
+_EXTERNAL_ROOTS = ("~/.acervator", "~/.claude")
+
+# Only a DATA file is excused inside an external-root block. A module or
+# a page named there must still resolve, so a dead citation cannot hide
+# in a paragraph that happens to mention the runtime tree.
+_DATA_EXT = frozenset(
+    {"cfg", "ini", "json", "jsonl", "log", "toml", "txt", "yaml", "yml"}
+)
+
+# A path segment of this shape is a deployment placeholder.
+_PLACEHOLDER = re.compile(r"^__[A-Z_]+__$")
+
+
+def doc_pages() -> list[str]:
+    """Every Markdown page under ``docs/`` that the scan reads."""
+    return sorted(
+        rel
+        for rel in (
+            path.relative_to(REPO_ROOT).as_posix() for path in DOCS.rglob("*.md")
+        )
+        if rel not in MEASUREMENT_RECORDS
+    )
+
+
+@cache
+def _generated_names() -> frozenset[str]:
+    """File names the repository's own ``.gitignore`` excludes.
+
+    ``.release_ready.json`` and ``bot_state.json`` are written at run time
+    and the tree never holds them.
+    """
+    names: set[str] = set()
+    text = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+    for line in text.split("\n"):
+        entry = line.split("#", 1)[0].strip().lstrip("!")
+        if not entry or entry.endswith("/"):
+            continue
+        leaf = entry.rsplit("/", 1)[-1]
+        if not set(leaf) & set("*?["):
+            names.add(leaf)
+    return frozenset(names)
+
+
+@cache
+def _path_suffixes() -> frozenset[str]:
+    """Every trailing run of path parts of every source file.
+
+    A page writes ``scrumming/fold_tranches.py`` for
+    ``src/trading/scrumming/fold_tranches.py``, and the shorter form names
+    the same file.
+    """
+    out: set[str] = set()
+    for path in source_files():
+        parts = path.relative_to(REPO_ROOT).parts
+        out.update("/".join(parts[start:]) for start in range(len(parts)))
+    return frozenset(out)
+
+
+def _block_names_an_external_root(block: list[str]) -> bool:
+    joined = " ".join(block)
+    return any(root in joined for root in _EXTERNAL_ROOTS)
+
+
+def _doc_resolves(token: str, page: Path, outside: bool, external: bool) -> bool:
+    if token.startswith(_RUNTIME_ROOTS):
+        return True
+    if token.rsplit("/", 1)[-1] in _generated_names():
+        return True
+    if outside or any(_PLACEHOLDER.match(part) for part in token.split("/")):
+        return True
+    if external and token.rsplit(".", 1)[-1] in _DATA_EXT:
+        return True
+    if "/" not in token:
+        return token in _file_names()
+    if token in _path_suffixes():
+        return True
+    candidate = (page.parent / token).resolve()
+    return candidate.is_relative_to(REPO_ROOT) and candidate.exists()
+
+
+def _scan_page(page: Path, label: str) -> list[str]:
+    """Every path claim in ``page`` that resolves to nothing."""
+    bad: list[str] = []
+    for start, block in _blocks(page):
+        if _block_excused(block):
+            continue
+        external = _block_names_an_external_root(block)
+        for offset, line in enumerate(block):
+            if _line_excused(line):
+                continue
+            masked = _URL.sub(" ", line)
+            for match in _TOKEN.finditer(masked):
+                token = match.group(0)
+                outside = match.start() > 0 and masked[match.start() - 1] in "/\\"
+                if _doc_resolves(token, page, outside, external):
+                    continue
+                bad.append(f"{label}:{start + offset}: {token}")
+    return bad
+
+
+@pytest.mark.parametrize("rel", doc_pages())
+def test_doc_page_names_no_missing_path(rel: str) -> None:
+    """Every path a documentation page names must be in the tree."""
+    assert _scan_page(REPO_ROOT / rel, rel) == []
+
+
+def test_every_measurement_record_is_still_a_page() -> None:
+    """A record that leaves the tree must leave the exclusion list with it.
+
+    An entry naming a page that is gone would silence a later page of the
+    same name.
+    """
+    missing = [rel for rel in MEASUREMENT_RECORDS if not (REPO_ROOT / rel).is_file()]
+    assert missing == [], f"MEASUREMENT_RECORDS names pages that are gone: {missing}"
+
+
+def test_the_doc_scan_reports_a_dead_path(tmp_path: Path) -> None:
+    """The control for the scan above: a dead path must be reported."""
+    page = tmp_path / "planted.md"
+    page.write_text(
+        "The panel is built in `src/gui/not_in_the_tree_at_all.py`.\n",
+        encoding="utf-8",
+    )
+    assert _scan_page(page, "planted.md") == [
+        "planted.md:1: src/gui/not_in_the_tree_at_all.py"
+    ]
+
+
+def test_the_doc_scan_leaves_a_live_path_alone(tmp_path: Path) -> None:
+    """The other half of the control: a real path must not be reported."""
+    page = tmp_path / "planted.md"
+    page.write_text(
+        "The log root is set in `src/core/log_paths.py`.\n", encoding="utf-8"
+    )
+    assert _scan_page(page, "planted.md") == []
+
+
+def test_a_measurement_record_is_not_scanned() -> None:
+    """No page in ``MEASUREMENT_RECORDS`` reaches the parametrised scan."""
+    scanned = set(doc_pages())
+    assert scanned & set(MEASUREMENT_RECORDS) == set()
+    assert scanned, "doc_pages found no page to scan"
 
 
 # ── README Project Structure tree ────────────────────────────────────
@@ -373,9 +463,8 @@ def test_pytest_addopts_ignores_nothing_that_is_gone() -> None:
 def test_readme_install_step_names_a_real_dependency_source() -> None:
     """The install step must name a dependency source that is present.
 
-    Before issue #69 it ran ``pip install -r requirements.txt``, and no
-    requirements file is in the tree, so the documented setup failed at
-    its first command.
+    A step naming ``requirements.txt`` fails at once, because no
+    requirements file is in the tree.
     """
     text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     for match in re.finditer(r"pip install\s+(?:--\S+\s+)*-r\s+(\S+)", text):
@@ -388,8 +477,6 @@ def test_readme_install_step_names_a_real_dependency_source() -> None:
         "installs nothing"
     )
 
-
-# ── Retired Docker build (issue #89) ─────────────────────────────────
 
 RETIRED_DOCKER = ("Dockerfile", "docker-compose.yml")
 
@@ -451,7 +538,7 @@ def _docker_mentions() -> list[str]:
 
 
 def test_retired_docker_build_files_are_gone() -> None:
-    """Issue #89 deleted the Docker build, and it may not return.
+    """The Docker build is deleted, and it may not return.
 
     The image copied a directory that no commit ever added, so it could
     not build; and it excluded the toolkit that the one entry point

@@ -133,7 +133,6 @@ import inspect
 import math
 import re
 import sys
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -356,41 +355,42 @@ def test_delta_stays_flat_when_the_quote_is_not_usd():
 # ── atomicity ───────────────────────────────────────────────────────
 
 
-def _method_tree():
-    src = textwrap.dedent(
-        inspect.getsource(ScrummingBot.apply_extractor_tranche_return)
-    )
-    return ast.parse(src)
+#: The three interpreter predicates that answer "can this call suspend".
+SUSPENDS = (
+    inspect.iscoroutinefunction,
+    inspect.isgeneratorfunction,
+    inspect.isasyncgenfunction,
+)
 
 
 def test_the_arrival_block_cannot_yield_to_the_event_loop():
-    """The atomicity guarantee, stated as the property that produces it.
-
-    Every coroutine in this app runs on the Qt GUI thread, so a
-    synchronous block that never yields cannot be observed half
-    applied. An ``await`` inside the method would hand control back to
-    the loop between the two halves and reintroduce the transient delta.
-    """
-    assert not inspect.iscoroutinefunction(ScrummingBot.apply_extractor_tranche_return)
-    suspends = [
-        n
-        for n in ast.walk(_method_tree())
-        if isinstance(n, (ast.Await, ast.Yield, ast.YieldFrom))
-    ]
-    assert (
-        suspends == []
-    ), f"{len(suspends)} suspension point(s) inside the arrival method"
+    """``apply_extractor_tranche_return`` is none of the three shapes in
+    ``SUSPENDS``, so the loop has no point at which to see it half applied."""
+    for predicate in SUSPENDS:
+        assert not predicate(ScrummingBot.apply_extractor_tranche_return), (
+            f"{predicate.__name__} is True for the arrival method; it can hand "
+            f"control back between the two halves"
+        )
 
 
-def test_POSITIVE_CONTROL_the_suspension_scanner_sees_an_await():
-    """The scanner above must not be blind."""
-    probe = ast.parse("async def f():\n" "    x = 1\n" "    await g()\n" "    y = 2\n")
-    suspends = [
-        n
-        for n in ast.walk(probe)
-        if isinstance(n, (ast.Await, ast.Yield, ast.YieldFrom))
-    ]
-    assert len(suspends) == 1
+def test_POSITIVE_CONTROL_the_suspension_predicates_see_each_shape():
+    """The predicates in ``SUSPENDS`` must not answer False for everything."""
+
+    async def _coroutine():
+        return 1
+
+    def _generator():
+        yield 1
+
+    async def _async_generator():
+        yield 1
+
+    def _plain():
+        return 1
+
+    shapes = (_coroutine, _generator, _async_generator)
+    assert [any(p(f) for p in SUSPENDS) for f in shapes] == [True, True, True]
+    assert not any(p(_plain) for p in SUSPENDS)
 
 
 class _ObservingBus:
@@ -631,10 +631,6 @@ def test_repeated_returns_accumulate_both_halves():
     assert _delta(bot, 200.0) == pytest.approx(0.0)
 
 
-# ════════════════════════════════════════════════════════════════════
-# v3.25.6 — the defects the v3.25.5 suite could not see
-# ════════════════════════════════════════════════════════════════════
-
 SOURCE_PATH = REPO_ROOT / "src" / "trading" / "scrumming_bot.py"
 
 #: Every module the ScrummingBot engine is spread across. A sweep of
@@ -653,123 +649,98 @@ ENGINE_PATHS = tuple(
 )
 
 
-def _source_lines() -> list[str]:
-    return SOURCE_PATH.read_text(encoding="utf-8").split("\n")
+#: The four values an arrival moves, and the ledger it appends to.
+ARRIVAL_STATE = (
+    "_current_holdings",
+    "_target_balance",
+    "_anchor_target_balance",
+    "_main_lots",
+)
 
 
-def _self_writes(func) -> set[str]:
-    """Every ``self.<attr>`` written anywhere in ``func``.
+class _WriteRecorder:
+    """Records every attribute name a driven method assigns on the bot."""
 
-    AST rather than grep: a plain assignment, an augmented assignment
-    and an annotated assignment are three different nodes, and a scan
-    that missed one would report a write site as clean.
-    """
-    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
-    out: set[str] = set()
-    for node in ast.walk(tree):
-        targets: list = []
-        if isinstance(node, ast.Assign):
-            targets = list(node.targets)
-        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
-            targets = [node.target]
-        for tgt in targets:
-            if (
-                isinstance(tgt, ast.Attribute)
-                and isinstance(tgt.value, ast.Name)
-                and tgt.value.id == "self"
-            ):
-                out.add(tgt.attr)
-    return out
+    def __init__(self, bot):
+        self.bot = bot
+        self.written: list[str] = []
+        bot.__dict__["_recorder"] = self
+
+    def __enter__(self):
+        type(self.bot).__setattr__ = self._setattr
+        return self
+
+    def __exit__(self, *_exc):
+        del type(self.bot).__setattr__
+
+    @staticmethod
+    def _setattr(bot, name, value):
+        """Record ``name`` on the bot's recorder, then store the value."""
+        bot.__dict__["_recorder"].written.append(name)
+        object.__setattr__(bot, name, value)
 
 
-def _lot_appends(func) -> list[int]:
-    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
-    return [
-        n.lineno
-        for n in ast.walk(tree)
-        if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "append"
-        and "main_lots" in ast.unparse(n.func.value)
-    ]
+def _writes_of(bot, run) -> set[str]:
+    """Return the ``self.<attr>`` names ``run`` assigned while driving ``bot``."""
+    with _WriteRecorder(bot) as recorder:
+        run()
+    return set(recorder.written)
 
 
-# ── D1: nothing is coerced inside the atomic block ──────────────────
+def _state_of(bot) -> dict:
+    """Snapshot the values in ``ARRIVAL_STATE``, the ledger copied by value."""
+    return {
+        "_current_holdings": bot._current_holdings,
+        "_target_balance": bot._target_balance,
+        "_anchor_target_balance": bot._anchor_target_balance,
+        "_main_lots": [dict(lot) for lot in bot._main_lots],
+    }
 
 
-def _atomic_block_tree() -> ast.Module:
-    """Parse only the statements between the two ATOMIC ARRIVAL banners.
-
-    The banners are load-bearing text, not decoration: they are what
-    tells a future editor where the no-coercion rule applies, and this
-    scanner reads them as the rule's boundary.
-    """
-    lines = textwrap.dedent(
-        inspect.getsource(ScrummingBot.apply_extractor_tranche_return)
-    ).split("\n")
-    start = end = None
-    for i, line in enumerate(lines):
-        if "ATOMIC ARRIVAL" in line and "END ATOMIC" not in line:
-            start = i
-        elif "END ATOMIC ARRIVAL" in line:
-            end = i
-    assert start is not None, "the atomic block's opening banner is gone"
-    assert end is not None, "the atomic block's closing banner is gone"
-    assert end > start
-    return ast.parse(textwrap.dedent("\n".join(lines[start + 1 : end])))
+# ── D1: a refused arrival writes nothing ────────────────────────────
 
 
-def test_the_atomic_block_contains_assignments_only():
-    """D1. The rule that makes a partial write impossible.
+#: One hostile value per field the arrival reads before it writes.
+HOSTILE_FIELDS = (
+    ("_anchor_target_balance", "not-a-number"),
+    ("_target_balance", "not-a-number"),
+    ("_current_holdings", "not-a-number"),
+    ("_quote_to_usd", "not-a-number"),
+)
 
-    v3.25.5 coerced ``_anchor_target_balance`` INSIDE this block, as the
-    last of four writes. A stored "not-a-number" raised ValueError with
-    the other three already durable. No amount of care at the call site
-    fixes that; only the structural rule does -- every value the block
-    writes is a validated local computed above it, and the block itself
-    can do nothing but store them.
-    """
-    tree = _atomic_block_tree()
-    assert tree.body, "the scanner found no statements; it proves nothing"
 
-    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
-    assert len(calls) == 1, (
-        f"the atomic block makes {len(calls)} calls; exactly one is "
-        f"allowed, the ledger append, and it must take a name"
-    )
-    assert isinstance(calls[0].func, ast.Attribute)
-    assert calls[0].func.attr == "append"
-    assert calls[0].args and isinstance(calls[0].args[0], ast.Name), (
-        "the lot must be built and bound ABOVE the block; a dict "
-        "literal here is a construction inside the atomic region"
+@pytest.mark.parametrize("field,value", HOSTILE_FIELDS)
+def test_a_refused_arrival_leaves_every_value_where_it_was(field, value):
+    """D1. A stored value the arrival cannot read must produce a refusal and no
+    partial write, whichever of the four fields carries it."""
+    bot = _bot(target=200.0, holdings=1.0, price=200.0)
+    setattr(bot, field, value)
+    before = _state_of(bot)
+
+    out = bot.apply_extractor_tranche_return(
+        usd_value=20.0, source="extractor-1", base_units=0.1
     )
 
-    arithmetic = [
-        n
-        for n in ast.walk(tree)
-        if isinstance(n, (ast.BinOp, ast.BoolOp, ast.Compare, ast.IfExp, ast.Subscript))
-    ]
-    assert arithmetic == [], (
-        f"{len(arithmetic)} computation(s) inside the atomic block; "
-        f"every one is a place a raise can strand a half write"
+    assert out["applied"] is False, out
+    assert _state_of(bot) == before, f"{field} refusal left a partial write"
+
+
+def test_POSITIVE_CONTROL_a_clean_arrival_moves_every_value():
+    """The refusals above mean nothing unless the same drive moves all four
+    entries of ``ARRIVAL_STATE`` when nothing is hostile."""
+    bot = _bot(target=200.0, holdings=1.0, price=200.0)
+    before = _state_of(bot)
+
+    out = bot.apply_extractor_tranche_return(
+        usd_value=20.0, source="extractor-1", base_units=0.1
     )
 
-    for node in tree.body:
-        assert isinstance(node, (ast.Assign, ast.Expr)), (
-            f"{type(node).__name__} in the atomic block; assignments "
-            f"and the single append only"
-        )
-
-
-def test_POSITIVE_CONTROL_the_block_scanner_sees_a_coercion():
-    """The scanner above must not be blind to the shape it screens for."""
-    probe = ast.parse("x = float(y) + 1\nz.append({'a': 1})\n")
-    calls = [n for n in ast.walk(probe) if isinstance(n, ast.Call)]
-    arithmetic = [n for n in ast.walk(probe) if isinstance(n, ast.BinOp)]
-    literal_args = [n for n in calls if n.args and isinstance(n.args[0], ast.Dict)]
-    assert len(calls) == 2
-    assert len(arithmetic) == 1
-    assert len(literal_args) == 1
+    assert out["applied"] is True, out
+    after = _state_of(bot)
+    assert after["_current_holdings"] != before["_current_holdings"]
+    assert after["_target_balance"] != before["_target_balance"]
+    assert after["_anchor_target_balance"] != before["_anchor_target_balance"]
+    assert len(after["_main_lots"]) == len(before["_main_lots"]) + 1
 
 
 def test_a_non_numeric_anchor_refuses_and_writes_nothing():
@@ -1237,11 +1208,23 @@ def test_POSITIVE_CONTROL_the_condition_is_not_vacuous():
 # ── D5: the pairing does not survive reconciliation ─────────────────
 
 
+def _reconciled_writes(bot, free_units):
+    """Drive the real ``_reconcile_holdings`` and return the names it assigned."""
+
+    async def _balance(_asset):
+        return type("B", (), {"free": free_units})()
+
+    bot._get_balance = _balance
+    return _writes_of(bot, lambda: asyncio.run(bot._reconcile_holdings(reason="test")))
+
+
 def test_reconcile_holdings_never_writes_the_target_balance():
-    """D5, structurally. The claim the docstring's limitation rests on."""
-    writes = _self_writes(ScrummingBot._reconcile_holdings)
-    assert "_current_holdings" in writes
-    assert "_main_lots" in writes
+    """D5. A drift rescale moves the holdings and the ledger; the target it leaves
+    alone is what the ``KNOWN LIMITATION`` section rests on."""
+    bot = _bot(target=200.0, anchor=200.0, holdings=1.0, price=200.0)
+    writes = _reconciled_writes(bot, free_units=0.5)
+    assert "_current_holdings" in writes, writes
+    assert "_main_lots" in writes, writes
     assert "_target_balance" not in writes, (
         "reconcile now moves the target; the KNOWN LIMITATION section of "
         "apply_extractor_tranche_return is stale and must be rewritten"
@@ -1287,64 +1270,161 @@ def test_KNOWN_LIMITATION_drift_down_reconcile_breaks_the_pairing():
 # ── D7: how the rest of the file really maintains the two halves ────
 
 
-def test_execute_buy_moves_the_scalar_and_appends_no_lot():
-    """D7. The premise the v3.25.5 summary asserted, and got backwards.
+class _NoOpenOrders:
+    """Exchange stand-in for ``_execute_buy``; nothing is ever resting."""
 
-    It claimed "every other credit site appends a lot AND moves the
-    scalar". ``_execute_buy`` moves the scalar and appends nothing; its
-    callers append after the await returns. That split is precisely why
-    a caller-side pairing is unsafe, and therefore why this method owns
-    both halves itself.
-    """
-    assert inspect.iscoroutinefunction(ScrummingBot._execute_buy)
-    assert _lot_appends(ScrummingBot._execute_buy) == [], (
+    async def get_open_orders(self, _symbol):
+        """Answer with no resting orders, so the buy path cancels nothing."""
+        return []
+
+
+class _BuyOrder:
+    """The filled order ``_BuyStubBot.guarded_place_order`` answers with."""
+
+    def __init__(self, average):
+        self.id = "stub-buy"
+        self.average = average
+        self.price = average
+
+
+class _BuyStubBot:
+    """The surface the real ``_execute_buy`` reads, with every gate permissive."""
+
+    def __init__(self, holdings=1.0, price=200.0):
+        self.bot_id = "buy-stub"
+        self._market_fill = price
+        self.config = type(
+            "C",
+            (),
+            {
+                "symbol": "ETH/USD",
+                "target_asset": "ETH",
+                "scrumming_interval_pct": 1.0,
+                "trading_fee_pct": 0.6,
+                "stack_mode": False,
+                "position_ceiling_enabled": False,
+                "max_target_growth_pct": 1.0,
+            },
+        )()
+        self.stats = type(
+            "S",
+            (),
+            {
+                "verify_samples": 0,
+                "verify_clean": 0,
+                "verify_adjusted": 0,
+                "verify_canceled": 0,
+                "total_buys": 0,
+                "total_trades": 0,
+                "trade_volume": 0.0,
+                "last_trade_time": 0.0,
+            },
+        )()
+        self._bus = _Bus()
+        self.exchange = _NoOpenOrders()
+        self._quote_to_usd = 1.0
+        self._current_holdings = holdings
+        self._target_balance = 100000.0
+        self._anchor_target_balance = 100000.0
+        self._fold_tranches = []
+        self._main_lots = [{"units": holdings, "initial_buy_price": price}]
+        self._initialised = True
+        self._invisible = True
+        self._hyst_armed_fold_side = False
+        self._hyst_ref_fold_side = 0.0
+        self._memorised_trades = []
+        self.placed_orders: list[dict] = []
+        self.notifications: list[tuple] = []
+        self.spawns: list[tuple] = []
+
+    def _crr(self):
+        """No capital registry; the buy path skips every reservation step."""
+        return None
+
+    def _emit_trade_notification(self, *notification):
+        """Record the operator-facing notification and answer nothing."""
+        self.notifications.append(notification)
+
+    async def _verify_buy_safe_or_refuse(self, **_gate):
+        """Report no fresh units and no refusal."""
+        return 0.0, None
+
+    async def _reconcile_holdings(self, **_reason):
+        """Reconcile nothing; a rescale here would hide the write under test."""
+        return None
+
+    async def _spawn_stack_from_fold(self, **spawn):
+        """Record the stack spawn a filled fold offers and open nothing."""
+        self.spawns.append(spawn)
+        return None
+
+    async def guarded_place_order(self, symbol, side, **order):
+        """Record the order and fill it at ``_market_fill`` when it names no price."""
+        self.placed_orders.append({"symbol": symbol, "side": side, **order})
+        return _BuyOrder(float(order.get("price") or self._market_fill))
+
+
+def _run_buy(bot, cost, price):
+    """Drive the real ``_execute_buy`` and return the fill it reports."""
+    return asyncio.run(
+        ScrummingBot._execute_buy(
+            bot,
+            cost=cost,
+            price=price,
+            summary=type(
+                "V", (), {"consensus_direction": "buy", "consensus_confidence": 0.75}
+            )(),
+            trace_context={"path": "fold_rebuy"},
+        )
+    )
+
+
+def test_execute_buy_moves_the_scalar_and_appends_no_lot():
+    """D7. ``_execute_buy`` moves ``_current_holdings`` and leaves ``_main_lots``
+    the length it found it; its callers append after the await returns."""
+    bot = _BuyStubBot(holdings=1.0, price=200.0)
+    lots_before = len(bot._main_lots)
+    writes = _writes_of(bot, lambda: _run_buy(bot, cost=20.0, price=200.0))
+
+    assert bot.placed_orders, "the buy never reached the exchange"
+    assert "_current_holdings" in writes, writes
+    assert len(bot._main_lots) == lots_before, (
         "_execute_buy now appends a lot; the docstring's derivation of "
         "the two shapes is stale"
     )
-    assert "_current_holdings" in _self_writes(ScrummingBot._execute_buy)
 
 
 def test_the_containment_method_does_both_halves_without_suspending():
-    """The contrast that makes the split above matter.
+    """The contrast that makes the split above matter: the arrival writes the
+    scalar, the target, the anchor and one lot, in one call that never suspends."""
+    bot = _bot(target=200.0, holdings=1.0, price=200.0)
+    lots_before = len(bot._main_lots)
+    writes = _writes_of(
+        bot,
+        lambda: bot.apply_extractor_tranche_return(
+            usd_value=20.0, source="extractor-1", base_units=0.1
+        ),
+    )
 
-    ``_lot_appends`` is not the right scanner here: this method binds
-    the ledger to a local (``lots = getattr(self, "_main_lots", None)``)
-    so the refusal path can run before any write, so the append reads
-    ``lots.append(...)`` and not ``self._main_lots.append(...)``. The
-    atomic-block scanner is the exact instrument, and it already proves
-    there is precisely one append and that it takes a bound name.
-    """
-    assert not inspect.iscoroutinefunction(ScrummingBot.apply_extractor_tranche_return)
-    appends = [
-        n
-        for n in ast.walk(_atomic_block_tree())
-        if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "append"
-    ]
-    assert len(appends) == 1
-    writes = _self_writes(ScrummingBot.apply_extractor_tranche_return)
     for attr in ("_current_holdings", "_target_balance", "_anchor_target_balance"):
-        assert attr in writes
+        assert attr in writes, writes
+    assert len(bot._main_lots) == lots_before + 1
+    assert not any(p(ScrummingBot.apply_extractor_tranche_return) for p in SUSPENDS)
 
 
-def test_POSITIVE_CONTROL_the_append_scanner_finds_a_real_append():
-    """The scanner used above must not report empty for every function."""
-    assert _lot_appends(ScrummingBot._execute_manual_rebalance)
+def test_POSITIVE_CONTROL_the_write_recorder_sees_a_write():
+    """``_writes_of`` must not answer with an empty set for every drive."""
+    bot = _bot(target=200.0, holdings=1.0, price=200.0)
+
+    def _touch():
+        bot._target_balance = 201.0
+
+    assert _writes_of(bot, _touch) == {"_target_balance"}
+    assert _writes_of(bot, lambda: None) == set()
 
 
 # ── D8 and D9: citations must point at what they claim ──────────────
 
-# Every method whose prose is allowed to cite a line. v3.25.7 widened
-# this from two to five: the three parsers acquired citations of their
-# own, and a citation the checker does not read is a citation that rots.
-#
-# U2 widens it to eight, on the same reasoning. The two new units
-# parsers cite their three neighbours to say how their contracts
-# differ, and `_reconcile_holdings` cites the bootstrap clamp that
-# created the divergence it now detects. Prose that names a line has to
-# be readable by this checker or it rots exactly the way the numbers it
-# replaced did.
 # ── D10: the fail-closed promise, made true ─────────────────────────
 
 
@@ -1517,11 +1597,6 @@ def test_POSITIVE_CONTROL_both_branches_carry_the_same_measurements():
     assert _fields(good) == _fields(bad)
     assert len(_fields(good)) >= 5
     assert {"lot", "holdings", "target", "anchor"} <= _fields(good)
-
-
-# ════════════════════════════════════════════════════════════════════
-# v3.25.7 — the eleven defects the v3.25.6 suite could not see
-# ════════════════════════════════════════════════════════════════════
 
 
 def _deaf_bot(*dropped: str, **kwargs) -> ScrummingBot:
@@ -1809,8 +1884,10 @@ def test_POSITIVE_CONTROL_the_condition_holds_when_both_rates_agree():
 
 
 def test_reconcile_holdings_never_writes_the_anchor_target_balance():
-    """R7, structurally. The half of the claim v3.25.6 left out."""
-    writes = _self_writes(ScrummingBot._reconcile_holdings)
+    """R7. The anchor a drift rescale leaves behind is the wider half of the
+    ``KNOWN LIMITATION``."""
+    bot = _bot(target=200.0, anchor=200.0, holdings=1.0, price=200.0)
+    writes = _reconciled_writes(bot, free_units=0.5)
     assert "_anchor_target_balance" not in writes, (
         "reconcile now moves the anchor; the KNOWN LIMITATION section of "
         "apply_extractor_tranche_return is stale and must be rewritten"

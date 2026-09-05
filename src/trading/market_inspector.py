@@ -350,9 +350,7 @@ class MarketInspector:
         return None
 
 
-# ---------------------------------------------------------------------
 # Module-level shared instance (single analyzer feeds both GUI surfaces)
-# ---------------------------------------------------------------------
 
 _GLOBAL_INSPECTOR: Optional[MarketInspector] = None
 

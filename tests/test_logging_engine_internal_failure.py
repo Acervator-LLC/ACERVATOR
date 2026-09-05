@@ -28,6 +28,7 @@ WHAT A FAILURE OF THIS MODULE WOULD MEAN
 from __future__ import annotations
 
 import logging
+import re
 
 import pytest
 
@@ -135,9 +136,7 @@ def _break_writers(mgr: LogManager) -> None:
         setattr(getattr(mgr, attr), "write", explode)
 
 
-# --------------------------------------------------------------------
 # Sites 1-5 -- the five bus teardowns
-# --------------------------------------------------------------------
 @pytest.mark.parametrize("topic", TEARDOWN_TOPICS)
 def test_refused_unsubscribe_is_recorded_and_does_not_raise(tmp_path, topic):
     """A bus that refuses to detach one topic is counted, not swallowed.
@@ -199,9 +198,7 @@ def test_refused_unsubscribe_reaches_the_system_logger(tmp_path):
         assert any(topic in m for m in logged), topic
 
 
-# --------------------------------------------------------------------
 # Sites 6-8 -- the three handler recovery blocks
-# --------------------------------------------------------------------
 @pytest.mark.parametrize(("method", "payload"), HANDLERS)
 def test_handler_survives_writer_and_logger_both_failing(
     tmp_path, capsys, method, payload
@@ -228,10 +225,6 @@ def test_handler_survives_writer_and_logger_both_failing(
     assert counts.get("_sys_logger") == 1
     assert dead.calls == 1
 
-    # The stderr line carries a bracketed "[LogManager]" prefix, not the
-    # system logger's phrasing. Asserted against the observed artefact --
-    # the first draft of this test guessed the logger's wording and went
-    # red on all three handlers.
     err = capsys.readouterr().err
     assert "[LogManager] internal failure at " + method in err
     assert "system logger also failed" in err
@@ -258,9 +251,7 @@ def test_handler_with_live_logger_does_not_touch_stderr(
     assert "[LogManager]" not in capsys.readouterr().err
 
 
-# --------------------------------------------------------------------
 # The instrument's own controls
-# --------------------------------------------------------------------
 def test_clean_run_records_nothing(tmp_path):
     """A healthy attach + handler pass leaves the counters empty.
 
@@ -340,3 +331,57 @@ def test_emergency_stderr_reports_true_on_success(capsys):
     """
     assert _emergency_stderr("unit-r-probe") is True
     assert "unit-r-probe" in capsys.readouterr().err
+
+
+def test_the_attach_line_names_the_pnl_file_log_pnl_actually_writes(tmp_path):
+    """``attach_to_bus`` announces the bucket ``log_pnl`` writes into.
+
+    The bucket is read back off disk, so renaming it fails this test.
+    """
+    records: list[logging.LogRecord] = []
+
+    class Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    logger = logging.getLogger("acervator")
+    probe = Capture()
+    logger.addHandler(probe)
+    try:
+        mgr = LogManager(log_dir=tmp_path)
+        mgr.attach_to_bus(WorkingBus())
+        mgr.log_pnl("coinbase", "b1", 1.0, 0.0, 1)
+    finally:
+        logger.removeHandler(probe)
+
+    lines = [r.getMessage() for r in records if "attached to bus" in r.getMessage()]
+    assert len(lines) == 1, f"expected one attach announcement, got {records!r}"
+    line = lines[0]
+
+    written = sorted((tmp_path / "pnl").rglob("*.ndjson"))
+    assert written, "log_pnl wrote no file, so the announcement cannot be checked"
+    bucket = written[0].parent.relative_to(tmp_path).as_posix()
+    assert bucket in line, f"announcement {line!r} omits the bucket {bucket!r}"
+    suffix = written[0].suffix
+    assert suffix in line, f"announcement {line!r} omits {suffix!r}"
+
+
+def test_the_attach_line_carries_no_version_string(tmp_path):
+    """``attach_to_bus`` announces no version. A version goes stale on disk."""
+    records: list[logging.LogRecord] = []
+
+    class Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    logger = logging.getLogger("acervator")
+    probe = Capture()
+    logger.addHandler(probe)
+    try:
+        LogManager(log_dir=tmp_path).attach_to_bus(WorkingBus())
+    finally:
+        logger.removeHandler(probe)
+
+    lines = [r.getMessage() for r in records if "attached to bus" in r.getMessage()]
+    assert len(lines) == 1, f"expected one attach announcement, got {records!r}"
+    assert re.search(r"v\d+\.\d+\.\d+", lines[0]) is None, lines[0]

@@ -1,82 +1,12 @@
 """A file that wears pytest's name must be collected, or be excused.
 
-WHAT WAS MEASURED
-=================
-Issue #93, on 2026-08-23, in a clone at commit 2551795. Every file in
-the tree whose name matches pytest's discovery patterns was listed from
-disk, and the list was compared against what ``pytest tests
---collect-only`` really collects:
-
-    272  files on disk match ``test_*.py`` or ``*_test.py``
-    268  of them are collected, and every one yields at least one item
-      4  are collected by nothing
-
-Those counts are from BEFORE this file existed. Adding it makes 273
-and 269, and takes collection from 7407 items to 7423 -- the 16 this
-file contributes, and nothing else moved.
-
-Issue #85 then renamed the first of the four out of pytest's discovery
-patterns, so the disk figure is 272 and the uncollected figure is 3.
-Nothing about the rule changed; one subject left it.
-
-The four, as issue #93 found them:
-
-  ``test_scrumming_v3.py`` at the repository root. It sat outside
-  ``testpaths``, so pytest never read it. It also defined NO test
-  function, so bringing it in would have added nothing:
-  ``pytest test_scrumming_v3.py --collect-only`` answered "no tests
-  collected" and exited 5. It is not a stale copy of anything either.
-  Its whole import list -- ``VortexIndicator``, ``MACD``,
-  ``BollingerBands``, ``compute_heikin_ashi``, ``detect_bb_proximity``
-  -- is exercised by collected tests that DO assert, in
-  ``test_ta_engine_confidence_bounds.py``,
-  ``test_ta_engine_degenerate_abstention.py``,
-  ``test_bollinger_squeeze_scale_invariance.py``,
-  ``test_slingshot_canonical.py`` and three others. So it was a script
-  wearing a test prefix, and it added no coverage.
-
-  RESOLVED by issue #85 on 2026-08-23. Issue #93 excused it here and
-  said the repair "belongs to whichever unit may edit its body". Issue
-  #85 is that unit. The file is now ``tools/scrumming_v3_sim.py``: the
-  name no longer matches pytest's discovery patterns, so no excusal is
-  needed and the entry is gone from ``EXCUSED`` below. Its excusal was
-  the ONLY one in this map that named a live script rather than a
-  calibration fixture.
-
-  Issue #85 did NOT move it to ``tests/``, which is what issue #85
-  originally proposed. ``test_every_collected_test_file_defines_at
-  _least_one_test`` below fails on any collected file that yields no
-  test item, so ``tests/`` would have turned the suite red. That test
-  is the reason the proposal was refused, and it is a two-sided control
-  on the refusal: put a test-function-free file under ``testpaths`` and
-  it reports the file by name.
-
-  Three archetype fixtures under ``harness_fixtures/``. They are DELIBERATE,
-  they must never be collected, and each one says so in its own
-  docstring. They are the known-good and known-bad halves the GUI and
-  coding archetypes are calibrated against; a fixture built to fail
-  would turn the suite red on purpose. ``harness_fixtures/`` is the fixture
-  record and issue #93 did not edit it.
-
-WHY A NEW GUARD
-===============
-Nothing measured this. ``test_suite_integrity.py`` counts files INSIDE
-``tests/`` and fails if the count collapses, so a test file that never
-arrives in ``tests/`` is invisible to it.
-``test_no_missing_file_references.py`` checks that an ``--ignore=``
-entry names a real path, which is the opposite direction: it catches an
-exclusion with no file, not a file with no collection.
-
-Every rule here is STATIC. It reads the tree and the ini, not the
-current session's collected items. A rule that read collected items
-would pass vacuously whenever pytest is pointed at a single file, and
-that is how the suite is run during a repair.
-
-WHAT THIS GUARD DOES NOT DO
-===========================
-It does not assert a collected-item count. ``test_suite_integrity.py``
-owns the floors, and a count assertion is only valid on a full-suite
-run.
+Every file whose name matches ``PYTEST_DEFAULT_PYTHON_FILES`` is listed off the
+tree and must either sit under ``testpaths`` or carry a reason in ``EXCUSED``.
+Every collected test file must also yield at least one item, and every
+``norecursedirs``, ``--ignore=`` and ``--ignore-glob=`` entry must name a
+subject that is in the tree. Each rule reads the tree and the ini rather than
+the current session's collected items, so a single-file run cannot pass it
+vacuously; ``test_suite_integrity.py`` owns the item-count floors.
 """
 
 from __future__ import annotations
@@ -94,24 +24,15 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# pytest's default ``python_files``. The ini does not set the option, so
-# this is what discovery really uses.
-# ``test_effective_discovery_patterns_are_the_ones_this_guard_reads``
-# fails if the ini ever sets it, so this constant cannot drift away from
-# the configuration.
+# pytest's default ``python_files``; the ini sets no override.
 PYTEST_DEFAULT_PYTHON_FILES = ("test_*.py", "*_test.py")
 
-# Directories the walk never enters, and the reason for each. A dot
-# directory is a tool cache or an editor setting, and pytest's own
-# built-in ``norecursedirs`` default starts with ``.*``.
+# Directories the walk never enters, each with its reason.
 WALK_SKIP_EXACT = {
     "__pycache__": "bytecode, not source",
 }
 
-# A discovery-named file that pytest must NOT collect. Each entry gives
-# the reason. This map may not grow without one, and
-# ``test_every_excusal_names_a_file_that_is_in_the_tree`` deletes an
-# entry's cover the moment its file leaves.
+# Discovery-named files pytest must not collect, each with its reason.
 EXCUSED: dict[str, str] = {
     # Every entry is a GUI/coding archetype calibration body under
     # `tests/fixtures/`, kept out of collection by `norecursedirs`.
@@ -231,9 +152,7 @@ def _defines_a_test(path: Path) -> bool:
 def test_every_discovery_named_file_is_collected_or_excused() -> None:
     """A test-named file outside ``testpaths`` runs nowhere.
 
-    It reads as coverage in the tree and contributes nothing to the
-    gate. ``test_scrumming_v3.py`` sat at the root in exactly this
-    state until issue #85 renamed it ``tools/scrumming_v3_sim.py``.
+    It reads as coverage in the tree and contributes nothing to the gate.
     """
     stragglers = [
         rel
@@ -272,8 +191,7 @@ def test_every_collected_test_file_defines_at_least_one_test() -> None:
 def test_every_excusal_names_a_file_that_is_in_the_tree() -> None:
     """An excusal for a file that has gone is dead cover.
 
-    It reads as a live decision long after its subject left, which is
-    the rot issue #69 removed from ``addopts``.
+    It reads as a live decision long after its subject left.
     """
     gone = [rel for rel in EXCUSED if not (REPO_ROOT / rel).is_file()]
     assert gone == [], f"EXCUSED names files that are not in the tree: {gone}"
@@ -294,9 +212,9 @@ def test_pytest_exclusions_name_something_that_is_in_the_tree() -> None:
     pytest accepts all three for a subject that is not there, and says
     nothing, so a dead entry survives until something reads it.
 
-    Issue #69 emptied ``addopts``, so the second half reads no entry
-    today. ``test_the_dead_ignore_scan_answers_both_ways`` is what keeps
-    that half from being a check with no demonstrated failure.
+    ``addopts`` is empty, so the second half reads no entry today;
+    ``test_the_dead_ignore_scan_answers_both_ways`` shows it can still
+    report.
     """
     ini = _ini()
     names = _tree_entry_names()
@@ -368,9 +286,8 @@ def test_the_exclusion_rule_has_entries_to_read() -> None:
 def test_the_dead_ignore_scan_answers_both_ways() -> None:
     """The ini sets no ``addopts``, so nothing else can show this scan reporting.
 
-    A sibling-style guard asserting the key is present would fail on
-    sight: issue #69 removed the entries deliberately. Driving the scan
-    over a synthetic option string proves it can still go red.
+    A guard asserting the key is present would fail on sight, so the scan
+    is driven over a synthetic option string to prove it can go red.
     """
     live = "tests"
     dead = "tests/a_path_that_is_not_in_the_tree.py"

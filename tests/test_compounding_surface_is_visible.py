@@ -172,12 +172,7 @@ class TestTheStaleClaimWasCorrected:
         assert "standing_surplus" in GUI_SRC
 
 
-# ── main's functional half, kept alongside the source-text half ─────
-#
-# The four tests below cover four of the subjects above by RUNNING
-# get_status instead of reading its source. Both halves are kept: the
-# functional one cannot be fooled by a comment, and the source-text one
-# still pins the eleven GUI-render facts a stubbed bot cannot reach.
+# The tests below run `get_status` instead of reading its source.
 from src.trading.bot_container import BotStats  # noqa: E402
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 

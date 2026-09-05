@@ -19,9 +19,7 @@ from .types import (
 )
 
 
-# ---------------------------------------------------------------------------
 # Math helpers
-# ---------------------------------------------------------------------------
 def _ema(values: list[float], period: int) -> list[float | None]:
     """Exponential moving average, candle-aligned, NO VALUE BEFORE THE SEED.
 
@@ -78,9 +76,7 @@ def _ema(values: list[float], period: int) -> list[float | None]:
     result[period - 1] = prev
     multiplier = 2.0 / (period + 1)
     for i in range(period, n):
-        # `prev` holds exactly what ``result[i - 1]`` holds. Carrying it
-        # in a float local keeps the recursion off the Optional list, so
-        # the arithmetic is the published one with nothing to unwrap.
+        # `prev` mirrors ``result[i - 1]`` as a plain float.
         prev = (values[i] - prev) * multiplier + prev
         result[i] = prev
     return result

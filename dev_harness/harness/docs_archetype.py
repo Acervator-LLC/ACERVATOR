@@ -22,24 +22,6 @@ Design (in one paragraph):
 """
 
 # ruff: noqa: S603
-# S607 WAS SUPPRESSED HERE AND IT WAS NOT A FALSE POSITIVE.
-#
-# The directive claimed "resolved paths". Measured 2026-08-13 by
-# stripping it: two S603 and one S607, at the vale runner.
-# `_run_vale` called `shutil.which("vale")` into `vale_bin`, and the
-# whole file referenced that name exactly twice -- the assignment
-# and an `is None` test. The spawn discarded it and made the
-# operating system search PATH a SECOND time. That is a
-# time-of-check-to-time-of-use gap: `which` proves one binary
-# exists and `subprocess.run` may then spawn a different one, on
-# every gated Markdown write. A wrong `vale` scoring documentation
-# would report findings the operator would read as this gate's
-# verdict. The resolved path is now the thing that is spawned, so
-# S607 reports zero here BY CONSTRUCTION rather than by suppression.
-#
-# S603 stays: measured across six argv shapes with ruff 0.16, an
-# all-literal argv draws none and any argv carrying a variable draws
-# one, and both runners must pass the target path.
 from __future__ import annotations
 
 import json
@@ -64,54 +46,13 @@ from dev_harness.harness.report import (
 __all__ = ["ArchetypeReport", "DocsArchetype", "Finding", "main"]
 
 
-# `Finding` and `ArchetypeReport` now live in tools/harness/report.py.
-# Five archetypes each carried a copy. The copies drifted, and the
-# drift shipped a green report for a run that checked nothing: an
-# early return left `findings` empty, and "no high finding" answered
-# True. `passed` now also requires that the target was scanned and
-# that every required analyzer reported `ok`.
-
-
-# ---------------------------------------------------------------------------
-# proselint severity normalization
-# ---------------------------------------------------------------------------
-
-# proselint uses check names like `weasel_words.misc` and severity strings
-# "error" | "warning" | "suggestion". Map to normalized levels.
-# A curated set of proselint check families we consider material for a
-# technical-documentation harness. Others still surface as low.
+# proselint check families scored high, whatever severity proselint gave them.
 _PROSELINT_HIGH_FAMILIES = {
     "misc.illogic",  # logical errors
     "security",  # credentials-in-docs class
 }
 
-# v3.24.20 — typography.symbols DEMOTED out of the blocking set.
-#
-# It was listed above with the comment "actual bugs in text". Measured
-# against the real corpus (40 markdown files under docs/ and the repo
-# root, tools/harness/../scratchpad/prose_measure.py):
-#
-#     typography.symbols     747   96.6%   <- the entire blocking signal
-#       .curly_quotes        735
-#       .ellipsis             10
-#       .copyright             2
-#     misc.illogic             0
-#     security                 0
-#     everything else         26    3.4%
-#
-# So the docs gate blocked exclusively on curly quotes, and the two
-# families that would catch something substantive have never fired once.
-# Straight-vs-curly quotes is a house-style preference, not a defect, and
-# in this repo the documents are audit reports whose bodies are quoted
-# source code — "correcting" those quotes would corrupt the samples.
-#
-# Two concrete false positives this produced:
-#   - `O(R)` (Big-O over reservations) matched typography.symbols.trademark
-#     and was reported as "use the symbol (R)".
-#   - `DB_PASSWORD = "hunter2"` inside a code span was linted as prose.
-#
-# The second is fixed properly by _strip_markdown_code below; this
-# demotion handles the severity half.
+# House-style families, scored low whatever severity proselint gave them.
 _PROSELINT_STYLE_FAMILIES = ("typography.",)
 
 
@@ -155,11 +96,6 @@ def _strip_markdown_code(text: str) -> str:
     return "\n".join(out)
 
 
-# ---------------------------------------------------------------------------
-# The archetype
-# ---------------------------------------------------------------------------
-
-
 class DocsArchetype:
     """Documentation-quality archetype. Invokes proselint (installed),
     and Vale if on PATH. Also does a light structural check for
@@ -193,10 +129,8 @@ class DocsArchetype:
             report.falsification = self._build_falsification(report)
             return report
 
-        # Both returns above scanned NOTHING, and `scanned` stays
-        # False for both. A directory holding no markdown is not a
-        # directory of clean markdown, and neither is a path that
-        # does not exist.
+        # `scanned` stays False on both returns above, so an empty report
+        # cannot answer passed=True.
         report.scanned = True
 
         for tool_name, runner in [
@@ -218,20 +152,6 @@ class DocsArchetype:
                 report.tool_availability[tool_name] = "error"
                 report.errors.append(f"{tool_name}: {type(e).__name__}: {e}")
 
-        # v3.23.90 + v3.23.91 — universal rule modules. For markdown
-        # targets, scaffolding S004 (placeholder text) + hallucination
-        # H001 (dead path reference) + H002 (dead architecture ref)
-        # all apply. S001-S003 and H003 are Python-only per their
-        # suffix guards.
-        #
-        # 2026-08-13 — the rules now run over the files this archetype
-        # ENUMERATED, not over `target.read_text()`. On a directory that
-        # read raises, the caller substituted "" and both modules
-        # reported `ok` having scanned nothing. MEASURED on a directory
-        # holding one markdown file that cites a path which does not
-        # exist: the FILE target reported hallucination H001, the
-        # DIRECTORY target reported none and stayed green. For a single
-        # file `files` is [target], so nothing changes there.
         scan_rule_modules(
             report,
             target,
@@ -274,11 +194,8 @@ class DocsArchetype:
         )
         return " ".join(parts)
 
-    # v3.23.44 — path patterns whose contents are provenance /
-    # capture artefacts, not authored documentation. Excluded from
-    # the docs archetype scan so their typographic style isn't
-    # policed. Currently: raw subagent transcripts saved during
-    # the archetype-peer-review harness build (2026-07-24 batch).
+    # Captured transcripts, not authored documentation, so their prose is
+    # not policed.
     _EXCLUDED_SEGMENTS = (
         "/raw/peer_reviewer_",
         "/raw_v2/peer_reviewer_",
@@ -329,10 +246,8 @@ class DocsArchetype:
             r"(?P<check>[A-Za-z0-9_.]+):\s+(?P<msg>.+)$"
         )
         for f in files:
-            # v3.24.20 — lint PROSE, not code. proselint has no markdown
-            # model, so fenced blocks and inline spans were being linted as
-            # English. Strip them to a line-count-preserving copy first so
-            # reported line numbers still resolve against the real file.
+            # The stripped copy preserves the line count, so a reported line
+            # still resolves against the real file.
             tmp: Optional[Path] = None
             try:
                 stripped = _strip_markdown_code(
@@ -386,15 +301,8 @@ class DocsArchetype:
             raise FileNotFoundError("vale not on PATH")
         findings: list[Finding] = []
         for f in files:
-            # `vale_bin`, not "vale". The resolved absolute path was
-            # computed and thrown away, and the spawn searched PATH a
-            # second time -- so what `which` proved and what ran were
-            # two different lookups.
             proc = subprocess.run(
-                # cwd pinned: vale resolves `.vale.ini` against the
-                # current directory, so an unpinned caller got an
-                # unconfigured vale and a RuntimeError instead of a
-                # review.
+                # vale resolves `.vale.ini` against the current directory.
                 [vale_bin, "--output=JSON", str(f)],
                 cwd=str(REPO_ROOT),
                 capture_output=True,
@@ -403,21 +311,8 @@ class DocsArchetype:
                 errors="replace",
                 timeout=120,
             )
-            # v3.24.34 (C43 follow-on) — vale reports RUNTIME errors as
-            # JSON on STDERR and leaves stdout EMPTY. The bare
-            # `if not proc.stdout.strip(): continue` below then treated
-            # a total failure as "nothing to report" and the function
-            # returned "ok".
-            #
-            # Measured with vale 3.17.1 installed and no .vale.ini:
-            #   stdout : (empty)
-            #   stderr : {"Code":"E100","Text":"E100 [.vale.ini not
-            #             found] Runtime error ... no config file found"}
-            #   rc     : 2
-            # and the archetype reported vale:'ok', 0 findings,
-            # passed=True. An installed-but-unconfigured vale was
-            # strictly worse than an absent one, because absence was at
-            # least reported honestly as 'missing'.
+            # vale reports a runtime error as JSON on stderr and leaves
+            # stdout empty, which the check below would read as clean.
             refuse_silent_failure(proc, "vale")
             if not proc.stdout.strip():
                 continue

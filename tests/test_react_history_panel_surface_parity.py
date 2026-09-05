@@ -29,18 +29,18 @@ from tests.fixtures.host_fonts import (
     skip_unless_no_fonts,
     skip_unless_real_fonts,
 )
+from tests.fixtures.qt_wiring_counts import (
+    bus_subscriptions_watched,
+    connections_watched,
+    qt_free,
+    timers_watched,
+)
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-PANEL_PATH = REPO_ROOT / "src/gui/react_history_panel.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/react_history_panel_surface.py"
-TIMER_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/history_tab.py"
-BUS_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
-CHART_PATH = REPO_ROOT / "src/gui/tradingview_chart.py"
 
 PIXEL_SIZE = (900, 620)
 SMALL_PIXEL_SIZE = (400, 300)
@@ -70,9 +70,8 @@ FETCH_MARKERS: tuple[str, ...] = (
     "document.write",
 )
 
-# The addresses the vendored React bundle carries as text: five element
-# namespace names and the link its own error message prints. Nothing
-# fetches any of them.
+# Addresses the vendored React bundle carries as text. Nothing fetches
+# any of them.
 PAGE_ADDRESSES: list = [
     "http://www.w3.org/1998/Math/MathML",
     "http://www.w3.org/1999/xhtml",
@@ -82,9 +81,8 @@ PAGE_ADDRESSES: list = [
     "https://reactjs.org/docs/error-decoder.html?invariant=",
 ]
 
-# The chrome colours the chart's theme table holds, typed out here rather
-# than read from either side, so a re-valued theme cannot move both
-# together.
+# Typed out, not read from either side, so a re-valued theme cannot move
+# both together.
 CYBERPUNK_BG = "#0a0a0f"
 CYBERPUNK_ACCENT = "#00ffcc"
 NEON_BG = "#f5f5fa"
@@ -115,9 +113,7 @@ INFINITY = float("inf")
 HELD: list = []
 
 
-# ---------------------------------------------------------------------
 # The browser the shipped panel talks to, recording every ask
-# ---------------------------------------------------------------------
 
 
 def recording_web_view():
@@ -204,9 +200,7 @@ def new_panel(theme=surface.DEFAULT_THEME, parent=None):
     return panel
 
 
-# ---------------------------------------------------------------------
 # The trades and filters both sides read
-# ---------------------------------------------------------------------
 
 
 def trade(
@@ -439,9 +433,7 @@ def row_count_callback(value):
     return value
 
 
-# ---------------------------------------------------------------------
 # Reading the two sides into one shape
-# ---------------------------------------------------------------------
 
 
 def guarded(run):
@@ -501,9 +493,7 @@ def read_new_host(model):
     }
 
 
-# ---------------------------------------------------------------------
 # Drivers
-# ---------------------------------------------------------------------
 
 
 def run_steps(host, steps, is_old):
@@ -584,9 +574,7 @@ def no_live_logs(monkeypatch):
     monkeypatch.setattr(reader, "live_voting_panel_snapshots", empty)
 
 
-# ---------------------------------------------------------------------
 # Side by side
-# ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(HOST_CASES))
@@ -701,9 +689,7 @@ def test_two_genuinely_different_cases_hash_apart():
     assert digest(new_view("happy")) == digest(old_view("happy"))
 
 
-# ---------------------------------------------------------------------
 # Answered or refused
-# ---------------------------------------------------------------------
 
 
 def test_the_outcome_set_holds_both_an_answer_and_a_refusal():
@@ -821,9 +807,7 @@ def test_the_path_set_covers_every_branch_the_host_holds():
     assert len(surface.LOAD_PATHS) == 3
 
 
-# ---------------------------------------------------------------------
 # What the two sides do, value by value
-# ---------------------------------------------------------------------
 
 
 def test_a_model_held_before_the_page_loads_is_pushed_by_the_load():
@@ -1074,9 +1058,7 @@ def test_the_chrome_the_client_asks_for_reaches_the_view_model():
     assert new_view("happy")["answer"]["chrome"] == {}
 
 
-# ---------------------------------------------------------------------
 # The window the browser draws
-# ---------------------------------------------------------------------
 
 
 def render_offscreen(widget, size):
@@ -1203,9 +1185,7 @@ def test_with_a_font_database_the_window_is_still_flat():
     assert colour_count(render_offscreen(real_panel("cyberpunk_dark"), PIXEL_SIZE)) == 1
 
 
-# ---------------------------------------------------------------------
 # What a picture cannot see
-# ---------------------------------------------------------------------
 
 
 BLIND_TO_THE_PICTURE = {
@@ -1274,9 +1254,7 @@ def test_the_layout_numbers_are_compared_as_values():
     assert panel.layout().metaObject().className() == surface.LAYOUT_KIND
 
 
-# ---------------------------------------------------------------------
 # The counterpart map
-# ---------------------------------------------------------------------
 
 
 METHOD_MAP = {
@@ -1450,25 +1428,36 @@ def test_the_signatures_match_the_shipped_methods():
     assert len(inspect.signature(shipped.build_view_model).parameters) == 10
 
 
-def count_sites(path, needle):
-    """How many times one wiring call appears in one file."""
-    return path.read_text(encoding="utf-8").count(needle)
-
-
 def test_the_connect_sites_match_the_actions():
     """A signal wiring appeared on one side and not the other."""
-    assert count_sites(PANEL_PATH, ".connect(") == PANEL_CONNECT_SITES == 1
-    assert count_sites(SURFACE_PATH, ".connect(") == 0
-    assert len(surface.ACTIONS) == count_sites(PANEL_PATH, ".connect(")
+    app()
+    with connections_watched() as made:
+        panel = new_panel()
+    assert len(made) == PANEL_CONNECT_SITES == 1, made
+    assert len(surface.ACTIONS) == len(made)
     assert set(surface.ACTIONS) == {"web.loadFinished"}
-    assert count_sites(PANEL_PATH, "loadFinished.connect(") == 1
-    assert count_sites(PANEL_PATH, "a-call-this-panel-never-makes") == 0
-    panel = new_panel()
     assert panel._web.isSignalConnected(
         panel._web.metaObject().method(
             panel._web.metaObject().indexOfSignal("loadFinished(bool)")
         )
     )
+
+
+def test_the_connection_counter_can_see_a_wiring():
+    """POSITIVE CONTROL for ``connections_watched``: an empty block
+    records nothing and two ``clicked`` wirings record two."""
+    from PySide6.QtWidgets import QPushButton
+
+    app()
+    button = QPushButton()
+    HELD.append(button)
+    with connections_watched() as quiet:
+        pass
+    assert quiet == []
+    with connections_watched() as made:
+        button.clicked.connect(lambda: None)
+        button.clicked.connect(lambda: None)
+    assert len(made) == 2, made
 
 
 def test_the_wired_signal_runs_the_method_the_surface_names():
@@ -1486,62 +1475,52 @@ def test_the_wired_signal_runs_the_method_the_surface_names():
 
 
 def test_the_panel_starts_no_timer():
-    """A wait appeared on one side and not the other.
-
-    The counter is proved able to report by counting a neighbouring file
-    that really does start one, and by starting one under the watcher.
-    """
-    from PySide6.QtCore import QObject, QTimer
-
+    """A wait appeared on one side and not the other."""
     app()
-    assert count_sites(PANEL_PATH, "QTimer") == PANEL_TIMER_SITES == 0
-    assert count_sites(SURFACE_PATH, "QTimer") == 0
-    assert count_sites(TIMER_NEIGHBOUR_PATH, "QTimer") > 0
-    started: list = []
-    original_start_timer = QObject.startTimer
-    original_timer_start = QTimer.start
-    original_single_shot = QTimer.singleShot
-
-    def watch_start_timer(self, *args, **kwargs):
-        started.append(("startTimer", args))
-        return original_start_timer(self, *args, **kwargs)
-
-    def watch_timer_start(self, *args, **kwargs):
-        started.append(("QTimer.start", args))
-        return original_timer_start(self, *args, **kwargs)
-
-    def watch_single_shot(*args, **kwargs):
-        started.append(("singleShot", args))
-        return original_single_shot(*args, **kwargs)
-
-    QObject.startTimer = watch_start_timer
-    QTimer.start = watch_timer_start
-    QTimer.singleShot = watch_single_shot
-    try:
+    with timers_watched() as seen:
         for name in ("held_then_loaded", "row_count_after_load"):
             old_host(name)
             new_host(name)
-        observed = list(started)
-        started.clear()
-        QTimer().start(250)
-    finally:
-        QObject.startTimer = original_start_timer
-        QTimer.start = original_timer_start
-        QTimer.singleShot = original_single_shot
-    assert started == [("QTimer.start", (250,))]
-    assert observed == []
+    assert seen == [], seen
+    assert len(seen) == PANEL_TIMER_SITES == 0
     assert surface.TIMERS == {}
     assert surface.TIMER_DELAYS_MS == ()
-    assert len(surface.TIMERS) == len(observed) == 0
+
+
+def test_the_timer_counter_can_see_a_wait():
+    """POSITIVE CONTROL for ``timers_watched``: one ``QTimer.start``
+    inside the block is recorded."""
+    from PySide6.QtCore import QTimer
+
+    app()
+    timer = QTimer()
+    HELD.append(timer)
+    with timers_watched() as seen:
+        timer.start(250)
+    assert seen == [("QTimer.start", (250,))], seen
 
 
 def test_the_panel_subscribes_to_no_bus_topic():
     """A bus wiring appeared on one side and not the other."""
-    assert count_sites(PANEL_PATH, ".subscribe(") == PANEL_BUS_SITES == 0
-    assert count_sites(SURFACE_PATH, ".subscribe(") == 0
-    assert count_sites(BUS_NEIGHBOUR_PATH, ".subscribe(") > 0
+    app()
+    with bus_subscriptions_watched() as taken:
+        for name in ("held_then_loaded", "row_count_after_load"):
+            old_host(name)
+            new_host(name)
+    assert taken == [], taken
     assert surface.BUS_TOPICS == ()
-    assert len(surface.BUS_TOPICS) == count_sites(PANEL_PATH, ".subscribe(")
+    assert len(surface.BUS_TOPICS) == len(taken) == PANEL_BUS_SITES == 0
+
+
+def test_the_bus_counter_can_see_a_subscription():
+    """POSITIVE CONTROL for ``bus_subscriptions_watched``: one
+    ``subscribe`` inside the block is recorded."""
+    from src.core.event_bus import EventBus
+
+    bus = EventBus()
+    with bus_subscriptions_watched() as taken:
+        bus.subscribe("probe.topic", lambda _event: None)
+    assert taken == ["probe.topic"], taken
 
 
 def test_the_panel_declares_no_skin_of_its_own():
@@ -1558,42 +1537,23 @@ def test_the_panel_declares_no_skin_of_its_own():
     assert new_panel().styleSheet() == ""
     assert real_panel("cyberpunk_dark").styleSheet() == ""
     assert surface.WIDGETS[0]["style_sheet"] == ""
-    assert count_sites(PANEL_PATH, "setStyleSheet(") == 0
-    assert count_sites(CHART_PATH, "background") > 0
 
 
 def test_the_surface_loads_no_qt_module():
     """The surface grew an import that pulls Qt into the backend."""
-    import ast
+    answered = qt_free(
+        "src.gui.main_tabs.react_history_panel_surface", "HistoryPanelModel"
+    )
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
 
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {
-        "__future__",
-        "datetime",
-        "json",
-        "pathlib",
-        "src.exchange",
-        "sys",
-        "typing",
-    }
-    panel_tree = ast.parse(PANEL_PATH.read_text(encoding="utf-8"))
-    panel_imports = {
-        (node.module or "")
-        for node in ast.walk(panel_tree)
-        if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in panel_imports), panel_imports
+
+def test_the_qt_block_stops_the_class_that_hosts_the_page():
+    """POSITIVE CONTROL for ``qt_free``: ``HistoryWebTable`` is absent
+    when Qt is refused."""
+    answered = qt_free("src.gui.react_history_panel", "HistoryWebTable")
+    assert answered["imported"] is False, answered
+    assert answered["error"] == "AttributeError", answered
 
 
 def test_the_widget_tree_is_the_panels_own():
@@ -1640,9 +1600,7 @@ def test_the_host_takes_the_parent_the_caller_gives_it():
     assert new_panel().parent() is None
 
 
-# ---------------------------------------------------------------------
 # Every value reaches the compared snapshot
-# ---------------------------------------------------------------------
 
 
 def normalise(value):
@@ -1983,9 +1941,7 @@ def test_the_recorded_calls_are_compared_as_values():
     assert len(model.calls) == 16
 
 
-# ---------------------------------------------------------------------
 # The values are the surface's own, not the shipped panel's
-# ---------------------------------------------------------------------
 
 
 def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_panel():
@@ -2045,9 +2001,7 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_panel():
     assert surface.palette("neon_light") == shipped._palette("neon_light")
 
 
-# ---------------------------------------------------------------------
 # The bridge
-# ---------------------------------------------------------------------
 
 
 def call_bridge(params):
@@ -2151,9 +2105,7 @@ def test_the_bridge_reports_a_request_it_cannot_serve():
     assert call_bridge({"reset": True})["ok"] is True
 
 
-# ---------------------------------------------------------------------
 # Without Qt at all
-# ---------------------------------------------------------------------
 
 BLOCK_QT = (
     "import sys\n"

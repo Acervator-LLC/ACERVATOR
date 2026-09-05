@@ -102,9 +102,6 @@ class TestTheIdIsThePersistedOne:
                 _cfg("SOL/USD", "cccc3333"),
             ]
         )
-        # v3.24.82 -- ids are `simulated_<live id>`: self-identifying
-        # (a sim row can never be read as live) AND joinable (strip the
-        # prefix to get back to bot_state).
         assert {live_bot_id(b.bot_id) for b in ctl._bots} == {
             "aaaa1111",
             "bbbb2222",
@@ -134,9 +131,6 @@ class TestTheIdIsThePersistedOne:
             candles_by_symbol={"BTC/USD": _candles()},
         )
         ctl._build_sim()
-        # v3.24.82 -- ids are `simulated_<live id>`: self-identifying
-        # (a sim row can never be read as live) AND joinable (strip the
-        # prefix to get back to bot_state).
         assert {live_bot_id(b.bot_id) for b in ctl._bots} == {"aaaa1111"}
 
 
@@ -146,7 +140,7 @@ class TestSyntheticFleetsAreLegITIMATEAndKeepTheirUuids:
 
     The first draft raised whenever `_src_bot_id` was absent from a
     config. That broke 8 existing tests, and chasing the breakage found
-    the real reason: `topology_stress._config_for` (:214) builds configs
+    the real reason: `topology_stress._config_for` builds configs
     from PROPOSAL bot entries — hypothetical bots that do not exist in
     bot_state and never will. There is no persisted id to carry and
     nothing to join to. Raising there would have broken the Nuclear

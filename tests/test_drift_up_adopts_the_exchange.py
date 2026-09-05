@@ -1,32 +1,13 @@
-"""Target Delta's first operand must come from the exchange.
+"""Target Delta's first operand comes from the exchange.
 
-Operator directive, 2026-08-22, verbatim:
-
-    "Target Delta is supposed to be a simple calculation of Current
-     Balance (from the exchange) vs. Target Balance (anchor / in app).
-     There should be no other control."
-
-    "ANYTHING that induces disagreement with exchange values is broken."
-
-THE DEFECT THESE PIN. ``_reconcile_holdings`` refused every upward
-correction. A bot whose lot book fell behind the wallet kept trading on
-the stale number for as long as it ran.
-
-Measured on the live fleet 2026-08-22, bot 95340bda (BILL/USD): the book
-held 14131 units, the exchange held 15778, and the gap was 1647 units the
-bot had itself bought and failed to book. The Ammo cell then rendered
-"buy $16.27" on a position roughly $17 ABOVE its target -- the signal
-inverted, on an accumulation platform.
-
-WHAT MUST SURVIVE. The refusal existed for a reason: on 2026-07-27 a
-fresh ETH/BTC bot claimed about $178 of the operator's personal coin.
-That protection is kept, expressed as attribution rather than as a
-blanket refusal:
+``_reconcile_holdings`` adopts an exchange balance above the lot book and
+books the difference as a ``reconciled_to_exchange`` lot.
+``_claimable_exchange_units`` bounds what it may adopt::
 
     claimable = exchange - personal_hold_qty - sibling_tracked_units
 
-Both subtrahends are declarations, not inferences. Anything above
-``claimable`` is genuinely foreign and is still refused.
+Anything above ``claimable`` is still refused, and downward drift still
+rescales the book.
 """
 
 import asyncio
@@ -121,9 +102,7 @@ def _book(bot):
     return sum(float(l["units"]) for l in bot._main_lots)
 
 
-# ---------------------------------------------------------------------
 # The live defect
-# ---------------------------------------------------------------------
 
 
 class TestTheBillDefect:
@@ -135,9 +114,7 @@ class TestTheBillDefect:
         assert bot._current_holdings == pytest.approx(15778.0)
 
     def test_the_lot_book_follows_the_scalar(self):
-        # sum(_main_lots units) == _current_holdings is what makes the
-        # delta computable at all. An adopt that moved only the scalar
-        # would trade one broken invariant for another.
+        # `_main_lots` units must keep summing to `_current_holdings`.
         bot = _bot(14131.0, 15778.0)
         _run(bot)
         assert _book(bot) == pytest.approx(bot._current_holdings)
@@ -153,9 +130,7 @@ class TestTheBillDefect:
         assert added[0]["initial_buy_price"] == pytest.approx(0.02059)
 
     def test_the_target_delta_is_computed_from_the_exchange(self):
-        # The whole point. Target 307.65; the wallet's 15778 units at
-        # 0.02059 is 324.87, so the delta is POSITIVE -- sell surplus.
-        # On the stale 14131 it read negative, i.e. buy.
+        # Target 307.65 against the wallet's 324.87: a positive delta.
         bot = _bot(14131.0, 15778.0)
         stale_delta = bot._current_holdings * 0.02059 - 307.65431093420716
         _run(bot)
@@ -164,10 +139,7 @@ class TestTheBillDefect:
         assert live_delta > 0, "the exchange figure says SELL"
 
     def test_the_log_line_reports_what_it_actually_did(self):
-        # The defect emitted "Resetting internal state to exchange
-        # reality" and then preserved -- 735 times on BILL. A line that
-        # names an action the code did not take is the thing that hid
-        # this for weeks.
+        # The emitted line must name the action the code took.
         bot = _bot(14131.0, 15778.0)
         _run(bot)
         joined = "\n".join(bot._bus.messages)
@@ -175,9 +147,7 @@ class TestTheBillDefect:
         assert "Preserving internal state" not in joined
 
 
-# ---------------------------------------------------------------------
 # What must still be refused — the 2026-07-27 protection
-# ---------------------------------------------------------------------
 
 
 class TestTheOperatorsCoinIsStillSafe:
@@ -214,9 +184,7 @@ class TestTheOperatorsCoinIsStillSafe:
         assert "Personal hold" in joined
 
 
-# ---------------------------------------------------------------------
 # No regression on the arm this repair does not touch
-# ---------------------------------------------------------------------
 
 
 class TestDownwardDriftIsUnchanged:
@@ -236,43 +204,44 @@ class TestDownwardDriftIsUnchanged:
         assert len(bot._main_lots) == 1
 
 
-# ---------------------------------------------------------------------
-# Falsifier, restated rather than deleted
-# ---------------------------------------------------------------------
+def test_the_attribution_helper_subtracts_both_declarations():
+    """``_claimable_exchange_units`` returns the wallet less both holds.
 
-
-def test_without_the_adopt_the_book_stayed_behind_the_wallet():
-    """Records what the code did before this repair.
-
-    Reads the live source so it cannot drift into describing a tree that
-    does not exist. If someone restores the blanket refusal, this fails.
+    It also reports the ``personal`` and ``sibling`` figures it subtracted.
     """
-    from pathlib import Path
+    bot = _bot(14131.0, 15778.0, personal=100.0, sibling=250.0)
+    claimable, personal, sibling = bot._claimable_exchange_units(15778.0)
 
-    import inspect
+    assert personal == 100.0
+    assert sibling == 250.0
+    assert claimable == 15778.0 - 100.0 - 250.0
 
-    from src.trading.scrumming_bot import ScrummingBot
 
-    src = Path(inspect.getsourcefile(ScrummingBot._reconcile_holdings))
-    text = src.read_text(encoding="utf-8")
-    # Matched on a contiguous token. The operator-facing sentence is
-    # split across f-string literals, so asserting the rendered phrase
-    # against the SOURCE would pass or fail on line wrapping rather
-    # than on behaviour.
-    assert "reconciled_to_exchange" in text, (
-        "the drift-UP branch no longer books a reconciliation lot -- "
-        "the Target Delta operand has stopped coming from the exchange"
-    )
-    # v3.25.10 moved this expression out of the branch and into
-    # `_claimable_exchange_units`, so that `bootstrap_exchange_state`
-    # asks the same question the same way. The token asserted here
-    # moved with it; the arithmetic is character-for-character the one
-    # that was in the branch.
-    assert "exchange_units - _personal - _sib_units" in text, (
-        "the attribution arithmetic is gone; upward drift is either "
-        "refused wholesale again or claiming units it has not attributed"
-    )
-    assert "def _claimable_exchange_units(" in text, (
-        "the shared attribution helper is gone, so the reconcile and "
-        "the bootstrap pre-fill can drift apart again"
-    )
+def test_the_reconcile_asks_the_shared_attribution_helper():
+    """``_reconcile_holdings`` routes through ``_claimable_exchange_units``.
+
+    That call is the seam ``bootstrap_exchange_state`` shares with it.
+    """
+    bot = _bot(14131.0, 15778.0)
+    real = bot._claimable_exchange_units
+    seen = []
+
+    def _spy(exchange_units):
+        seen.append(exchange_units)
+        return real(exchange_units)
+
+    bot._claimable_exchange_units = _spy
+    _run(bot)
+
+    assert seen == [15778.0], f"the reconcile did not ask the helper: {seen}"
+
+
+def test_control_an_uninstalled_spy_records_nothing():
+    """The control for ``test_the_reconcile_asks_the_shared_attribution_helper``.
+
+    A ``seen`` list no ``_spy`` writes to stays empty across ``_run``.
+    """
+    bot = _bot(14131.0, 15778.0)
+    seen = []
+    _run(bot)
+    assert seen == [], "the list recorded a call nothing was wired to make"

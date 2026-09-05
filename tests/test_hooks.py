@@ -184,9 +184,7 @@ def test_the_install_is_not_partial():
     assert not absent, f"{HOOKS} is missing hook script(s): {absent}"
 
 
-# ---------------------------------------------------------------------------
 # prompt_router.py
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
@@ -273,9 +271,7 @@ class TestPromptRouter:
         assert r.returncode == 0  # fail-open, never crash CC
 
 
-# ---------------------------------------------------------------------------
 # archetype_gate.py
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
@@ -364,9 +360,7 @@ class TestArchetypeGate:
         assert CODING in got, f"coding must run on every .py file, got {got}"
         assert GUI in got, f"Qt widget must also get gui, got {got}"
 
-        # A plain Python file gets coding and NOT gui. This is the
-        # negative half: without it, a router that returned every
-        # archetype for every file would pass the assertion above.
+        # The negative half: a plain Python file gets coding and not gui.
         coding_fixture = (
             REPO / "harness_fixtures" / "coding_archetype" / "known_good.py"
         )
@@ -378,13 +372,8 @@ class TestArchetypeGate:
         md = REPO / "harness_fixtures" / "docs_archetype" / "known_good.md"
         assert pick(md, md.read_text(encoding="utf-8")) == [DOCS]
 
-        # v3.25.6 - routing must follow the PENDING source, not the
-        # bytes on disk. Routing on disk meant a write that ADDED a
-        # Qt widget was graded by the coding archetype alone: the
-        # saved file had no widget yet, so the GUI archetype was
-        # never called on the change that introduced one. Measured
-        # before the fix: on-disk routing [coding], pending routing
-        # [coding, gui].
+        # Routing follows the PENDING source, not the bytes on disk: a write that
+        # adds a Qt widget must reach the gui archetype.
         widget_pending = (
             "from PySide6.QtWidgets import QWidget\n\n" "class W(QWidget):\n    pass\n"
         )
@@ -402,16 +391,10 @@ class TestArchetypeGate:
         # Unknown extension → nothing.
         assert pick(REPO / "LICENSE", "") == []
 
-        # v3.25.6 - the singular _pick_archetype shim was removed with
-        # the rest of the one-archetype-per-file design. Nothing in the
-        # live tree calls it; the only remaining references are inside
-        # old git worktree snapshots. Asserting consistency with a
-        # function that no longer exists tests nothing.
+        # The singular _pick_archetype shim is gone; nothing in the tree calls it.
 
 
-# ---------------------------------------------------------------------------
 # verify_release_gate.py
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
@@ -524,9 +507,7 @@ class TestVerifyReleaseGate:
         assert r.returncode == 0
 
 
-# ---------------------------------------------------------------------------
 # session_stop_backstop.py
-# ---------------------------------------------------------------------------
 
 
 @_needs_hooks
