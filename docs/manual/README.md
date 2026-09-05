@@ -58,7 +58,6 @@ All 55 legacy images are inventoried, one row each, in
 | [04-manual-parts.md](04-manual-parts.md) | 1 | ORIGINAL | 8 to 9 | The manual's own part list and tab list |
 | [17-legacy-overview.md](17-legacy-overview.md) | 1 | LEGACY | — | The harvest-fold summary, the bot types that run, and the four headline counts re-measured |
 | [05-novel-concepts.md](05-novel-concepts.md) | 2 | ORIGINAL | 10 to 14 | Novel concepts and patent candidate catalogue, entries 1 to 17 |
-| [15-patent-portfolio.md](15-patent-portfolio.md) | 2 | LEGACY | — | The seventeen anchored inventions, the two with a corrected constant, and the seven with no code |
 | [06-trading-tab.md](06-trading-tab.md) | 3 | ORIGINAL + LEGACY | 14 to 27 | System architecture, then the Trading Tab walkthrough |
 | [07-indicators.md](07-indicators.md) | 3 | ORIGINAL + UPDATES + LEGACY | 27 to 29 | Indicator Voting Panel and the twelve indicators |
 | [08-tabs.md](08-tabs.md) | 3 | ORIGINAL + UPDATES + LEGACY | 29 to 44 | Main Window, Simulator, Paper Trader, Proof of Accumulation, Market Inspector, Bot Swarm, Asset Charts, History, Console, System Status, and the eleven Settings pages |

@@ -262,8 +262,8 @@ illustrates, and named there in prose.
 
 | Set | Figures | Described in |
 | --- | ------: | ------------ |
-| Legacy Part 5b, pages 3 to 6 | 4 | [15-patent-portfolio.md](15-patent-portfolio.md), and the rows above |
-| Legacy Part 5c, pages 4 and 5 | 2 | [15-patent-portfolio.md](15-patent-portfolio.md), and the rows above |
+| Legacy Part 5b, pages 3 to 6 | 4 | [17-legacy-overview.md](17-legacy-overview.md), and the rows above |
+| Legacy Part 5c, pages 4 and 5 | 2 | [17-legacy-overview.md](17-legacy-overview.md), and the rows above |
 | Legacy Part 8, pages 25 to 28 | 8 | [13-live-evidence.md](13-live-evidence.md), and the rows above |
 | Legacy Part 8, pages 36 to 40 | 8 | [13-live-evidence.md](13-live-evidence.md), and the rows above |
 | Legacy Part 8, pages 44 to 48 | 8 | [13-live-evidence.md](13-live-evidence.md), and the rows above |

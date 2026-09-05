@@ -307,8 +307,7 @@ forward unchanged.
 ## Risk controls, as one table
 
 Source: LEGACY Part 4 page 7. Each row below names the control and the symbol
-that carries it today. Rows whose mechanism has no source here are marked, and
-the reason is in [15-patent-portfolio.md](15-patent-portfolio.md).
+that carries it today. Rows whose mechanism has no source here are marked.
 
 | Control | What it does | Where it runs |
 | ------- | ------------ | ------------- |
@@ -329,8 +328,7 @@ the reason is in [15-patent-portfolio.md](15-patent-portfolio.md).
 Four rows of the legacy table name mechanisms with no source here: the volume
 guard's fill-price verification, the charge-up threshold, satiety decay and
 Spectre isolation. The runtime parity harness is a fifth. Each is recorded in
-[15-patent-portfolio.md](15-patent-portfolio.md) or in the claim audit, with the
-identifier probed and both controls.
+the claim audit, with the identifier probed and both controls.
 
 The efficiency-ratio row is the one the legacy manual gets wrong twice and in
 opposite directions. Page 7 says the gate suppresses above 0.7; page 27 says it

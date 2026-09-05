@@ -51,8 +51,8 @@ The legacy summary names three production bot types. Two exist.
 
 The third named type has no source here. The identifier the legacy manual gives
 it has never appeared in any Python file in any commit, and the whole of the
-legacy Part 5c rests on it. [15-patent-portfolio.md](15-patent-portfolio.md)
-carries the probe and both of its controls.
+legacy Part 5c rests on it. The claim audit carries the probe and both of its
+controls.
 
 ## The two counts that hold, and the two that do not
 

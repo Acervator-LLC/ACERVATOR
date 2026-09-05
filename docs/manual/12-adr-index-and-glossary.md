@@ -186,8 +186,7 @@ file already says such words belong.
   Bollinger Band width, so the threshold follows volatility.
   `band_travel_pct` in `src/trading/container/config.py:100`, default 70.
 - **Explode** — the liquidation trigger of the bear-regime accumulator, at a
-  recovery to 98 percent of entry. No source in this repository; see
-  [15-patent-portfolio.md](15-patent-portfolio.md).
+  recovery to 98 percent of entry. No source in this repository.
 - **Fold** — a profit-realisation event. The target grows by the realised
   amount.
 - **Heikin-Ashi candle** — a smoothed price bar. The landing strip reads them,

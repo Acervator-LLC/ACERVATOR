@@ -822,7 +822,7 @@ The manual's three sources are kept apart and labelled per file and per section.
 | From | Pages | Destination | Manual part |
 |---|---|---|---|
 | Part 1 | 5–6 | [17-legacy-overview.md](../manual/17-legacy-overview.md) | 1 |
-| Part 2 | 5–17, 30–46, 49–51 | [15-patent-portfolio.md](../manual/15-patent-portfolio.md) | 2 |
+| Part 2 | 5–17, 30–46, 49–51 | [05-novel-concepts.md](../manual/05-novel-concepts.md) | 2 |
 | Part 3 | 16 | [07-indicators.md](../manual/07-indicators.md) | 3 |
 | Part 3 | 17 | [06-trading-tab.md](../manual/06-trading-tab.md) | 3 |
 | Part 3 | 19 | [08-tabs.md](../manual/08-tabs.md), System Status | 3 |
