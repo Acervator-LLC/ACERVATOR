@@ -1,7 +1,7 @@
 # Conceptual Hopscotch
 
-Reference. Three subjects that a reader meets in the older manual and cannot
-find in the code: the handoff file that carries a session across a context
+Reference. Three subjects a reader meets around this repository and cannot find
+in the running code: the handoff file that carries a session across a context
 boundary, the rule registry no running module reads, and the development
 protocol, which exists in two versions — one with no source in this repository,
 one running today.
@@ -83,32 +83,46 @@ program consults, and they carry no authority.
 
 ## Version one of the protocol
 
-The manual this one replaces documents a development protocol across 51 pages,
-under 26 file names and 77 numbered rules. None of it has a source in this
-repository. `git log --all --diff-filter=ADR --name-only` limited to paths under
-`sadp/` returns nothing, while the same query naming `src/core/log_paths.py`
-returns the commit that added it. The two file names the version sweep still
-reads, `RAIntSimBat.py` and `RULE_REGISTRY.json`, return nothing on the same
-query, and so does `src/gui/simulator.py`, the other half of one of those
-comparisons — the live file is `src/gui/simulator_tab/simulator_tab.py`.
+Version one was never built here. It named a directory, and the history holds no
+commit that ever added that directory or anything inside it, the battery file
+and the registry file included. The version sweep still reads three of those
+paths: the battery file, the registry file, and a simulator module that is not
+there either. Run the same query against a file that is real and it answers with
+the commit that added it, which is the control saying the query works.
 
-The id overlap with the live registry is a coincidence. The 42 ids from R36
-upward have no entry in `RULE_META` at all, and of the 35 that do collide, not
-one describes the same rule: the older manual's first rule is a lock-state
-default where the registry's is a target increment after a fold, and its third is
-an append-only log where the registry's is a targeting-mode reset. The two are
-unrelated id spaces that share a shape. Version one was never built and its
-R-numbers were never live. `docs/audits/manual-original-parts-audit.md` carries
-the full count.
+`git log --all --diff-filter=ADR --name-only`, one path per run
 
-What did ship was a set of references to it. `tests/test_no_dead_sadp_references.py`
-holds the line: `pyproject.toml`, `README.md` and `CONTRIBUTING.md` may not name
-the protocol or its battery, no module under `src/` or `tools/` may
-import it, and `datas_candidates` in `tools/spec_common.py` may not ship a path
-naming it. The test module records both directions of its own control: reverting
-the five files to their earlier state failed four of its checks, and restoring
-them passed all seven. Fifty-one annotation comments naming those ids survive in
-`src/` across 21 files, and they bind nothing.
+```
+sadp/, and RAIntSimBat.py and RULE_REGISTRY.json inside it   nothing
+src/gui/simulator.py                                         nothing
+src/core/log_paths.py                       the commit that added it
+```
+
+The live file behind the second row is `src/gui/simulator_tab/simulator_tab.py`.
+Version one's R-numbers were never live and must not be cited as though they
+were.
+
+What did ship was a set of references to it, and one test module holds the line
+against their return. Two front-door documents and the build config may not name
+the protocol or its battery, no shipped module may import it, and no build may
+carry a path naming it. Fifty-one annotation comments naming those ids survive
+in the source across 21 files, and they bind nothing.
+
+`tests/test_no_dead_sadp_references.py` — the seven checks
+
+```python
+def test_sadp_directory_is_absent() -> None:
+def test_build_config_names_no_dead_subsystem(name: str) -> None:
+def test_front_door_docs_name_no_dead_subsystem(name: str) -> None:
+def test_readme_says_the_harness_was_retired() -> None:
+def test_no_shipped_python_imports_the_dead_package() -> None:
+def test_no_build_datas_pair_ships_a_dead_subsystem() -> None:
+def test_every_shipped_tool_imports() -> None:
+```
+
+The module records both directions of its own control: reverting the five files
+to their earlier state failed four of the seven, and restoring them passed all
+seven.
 
 ## Version two of the protocol
 
@@ -229,51 +243,6 @@ a reader who searches this repository for them finds nothing, and that is the
 correct result rather than a missing file. The contrast with version one is the
 point: version one's subject has no source anywhere, in this repository or on
 disk.
-
-## Declared means wired
-
-Source: LEGACY, the fourteen-part manual, Part 7b "Rules Registry", page 11.
-
-The legacy registry catalogues 77 numbered rules. The registry that exists in
-this repository defines 35, the numbers above 35 have no entry at all, and of
-the identifiers that do collide, not one describes the same rule. The two are
-unrelated namespaces that happen to share a number space, and the legacy one is
-the one with no code. Its numbers are not live and must not be cited as though
-they were.
-
-One entry survives that comparison, because it is a standing engineering rule
-rather than a numbered claim, and because this repository can show it working.
-
-**A declared interface that nothing invokes is a defect, not a placeholder.**
-
-The measured case is the gate pair in
-[07-indicators.md](07-indicators.md#gate-call-site-activation). Two gate classes
-existed, sat in the chain, and returned pass on every tick, because the context
-field each one reads defaults to `0.0` and no call site filled it. The gate was
-declared. The gate was not wired. Nothing failed, nothing warned, and the only
-visible symptom was a live trading result that did not move.
-
-The same shape appeared a second time in the bot configuration. One dataclass
-served two bot modes, so a field meaningful to one mode could be passed into the
-other, sit on the object, and mean nothing. The field existed. The behaviour did
-not. The repair was structural rather than local: a factory that owns
-construction, a field manifest per mode, refusal of a mode-foreign field at
-build time, and a test that bans direct construction outside the factory.
-`make_bot_config` at `src/trading/container/config.py:578` is that factory, and
-`_BOT_CONFIG_SCRUMMING_ONLY_FIELDS` and `_BOT_CONFIG_EXTRACTOR_ONLY_FIELDS` are
-those manifests.
-
-The rule generalises to a check anyone can run. Enumerate every declared thing
-of a kind — every gate class, every construction site, every voter — and assert
-that each one is reached. `tests/test_gate_coverage.py` does exactly that. A
-rule written as prose cannot fail. A rule written as an enumeration fails the
-moment somebody adds the eighteenth gate and forgets the chain.
-
-Two further declarations in this repository are in the unwired state right now,
-and neither is hidden: `apply_profit_fold` in `src/trading/profit_fold.py`
-records in its own docstring that no module imports it, and
-`src/trading/poa_tournament.py` has no caller anywhere, including in the tests.
-Naming them is the rule working.
 
 ## Related parts
 
