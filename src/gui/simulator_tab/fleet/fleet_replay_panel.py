@@ -146,9 +146,8 @@ if _HAS_QT:
             # Load and Fetch YTD are independent: neither reads the other's
             # state.
             self._bot_manager = None
-            self._connectors_getter = None  # retained shim; unused
-            # SimulatorTab calls set_log_callbacks after mount. With no
-            # callback the lines reach the console logger, which no panel reads.
+            # SimulatorTab calls set_log_callbacks after mount; until then the
+            # lines reach the console logger, which no panel reads.
             self._activity_log_cb: Optional[Callable[[str], None]] = None
             self._performance_log_cb: Optional[Callable[[str], None]] = None
             # The replay worker writes a snapshot here; a timer on the Qt
@@ -784,7 +783,7 @@ if _HAS_QT:
                 if not float(getattr(prog, "started_at_wall", 0.0) or 0.0):
                     return False
                 return not bool(getattr(prog, "finished", False))
-            except Exception:  # R28-OK: unreadable progress -> assume in flight
+            except Exception:  # unreadable progress reads as still in flight
                 return True
 
         def _confirm_reset(self) -> bool:
@@ -805,7 +804,7 @@ if _HAS_QT:
                     QMessageBox.No,
                 )
                 return bool(reply == QMessageBox.Yes)
-            except Exception as exc:  # R28-OK: no dialog -> do not destroy work
+            except Exception as exc:  # no dialog means the work is kept
                 logger.warning(
                     "reset confirmation unavailable (%s); refusing to "
                     "reset a running replay",
@@ -841,7 +840,7 @@ if _HAS_QT:
                 if _t is not None:
                     try:
                         _t.stop()
-                    except Exception as exc:  # R28-OK: reset must complete
+                    except Exception as exc:  # the reset still completes
                         logger.debug("timer stop failed on reset: %s", exc)
 
             self._controller = None
@@ -1570,8 +1569,6 @@ if _HAS_QT:
             try:
                 snap = self._collect_visual_snapshot()
             except Exception as _snap_exc:  # noqa: BLE001
-                # Route a dropped frame to telemetry: debug-only logging hides a
-                # total feed failure.
                 _tel_exc("sim.visual_snapshot.collect", _snap_exc)
                 logger.warning("visual snapshot failed: %s", _snap_exc)
                 return

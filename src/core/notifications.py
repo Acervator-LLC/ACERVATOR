@@ -160,12 +160,8 @@ class NotificationManager:
     }
 
     def __init__(self):
-        # Per-instance copies of each AlertRule. ``dict(self.DEFAULT_RULES)``
-        # alone would do a shallow copy — the AlertRule values would still
-        # be class-level singletons, so ``rule.last_sent = now`` in ``send``
-        # would mutate shared state and leak cooldowns across instances.
-        # Same bug class as risk_manager v3.19.39 / MEM-318. Closed in
-        # v3.19.58 / MEM-337. sadp: R28 FL  R68 DPA
+        # ``replace`` copies each AlertRule; a shallow dict copy would share the
+        # class-level instances and leak ``last_sent`` between instances.
         self._rules: dict[AlertEvent, AlertRule] = {
             k: replace(v) for k, v in self.DEFAULT_RULES.items()
         }
@@ -207,22 +203,9 @@ class NotificationManager:
             "Telegram notifications configured (chat_id=%s)", chat_id[:6] + "..."
         )
 
-    def configure_sms(
-        self,
-        phone: str,
-        provider: str = "twilio",
-        account_sid: str = "",
-        auth_token: str = "",
-        from_number: str = "",
-    ):
-        """Set SMS credentials."""
-        self._sms_config = {
-            "phone": phone,
-            "provider": provider,
-            "account_sid": account_sid,
-            "auth_token": auth_token,
-            "from_number": from_number,
-        }
+    def configure_sms(self, phone: str, provider: str = "twilio"):
+        """Record the SMS destination. ``sms_engine`` holds the credentials."""
+        self._sms_config = {"phone": phone, "provider": provider}
 
     def set_rule(
         self,
@@ -261,7 +244,7 @@ class NotificationManager:
             return None
 
         rule.last_sent = now
-        channels_sent = []
+        channels_sent: list[str] = []
 
         for channel in rule.channels:
             handler = self._handlers.get(channel)
@@ -324,12 +307,6 @@ class NotificationManager:
 
     def _send_in_app(self, title: str, message: str, priority: AlertPriority):
         """In-app notification (logged, picked up by GUI)."""
-        # NOTE: this handler logs every priority at logger.info. A prior
-        # `level` ladder (warning for HIGH, error for CRITICAL) was computed
-        # here but never used — removed as dead code. Flagged for review: if
-        # in-app alerts should log at their priority's severity, wire the
-        # level into a logger.log(...) call rather than reinstating the dead
-        # variable.
         logger.info("NOTIFICATION [%s]: %s — %s", priority.value, title, message)
 
     def _send_telegram(self, title: str, message: str, priority: AlertPriority):
