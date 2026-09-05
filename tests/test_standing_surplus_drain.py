@@ -3,7 +3,8 @@
 ``_apply_fold_target_growth`` releases ``_standing_surplus_usd`` up to
 ``cycle_growth_cap_usd`` on every fold, a break-even fold included, and
 parks what the cap will not take. ``_execute_detonation`` zeroes
-``_standing_surplus_usd`` and adds the abandoned tranches to
+``_standing_surplus_usd``, reports the amount it discharged in the same
+line that reports the target reset, and adds the abandoned tranches to
 ``_tranches_discarded_lifetime``, leaving ``_tranches_closed_lifetime``
 and ``_fold_cycle_cap_consumed`` where they were.
 """
@@ -248,3 +249,83 @@ class TestDetonationHygiene:
         value."""
         bot = _detonate()
         assert bot._fold_cycle_cap_consumed == pytest.approx(0.75)
+
+
+def _completion_line(bot) -> str:
+    """The ``DETONATION COMPLETE`` message ``_execute_detonation`` emitted."""
+    for msg in bot._bus.msgs:
+        if msg.startswith("DETONATION COMPLETE"):
+            return msg
+    raise AssertionError(
+        "no DETONATION COMPLETE message was emitted; got " f"{bot._bus.msgs!r}"
+    )
+
+
+class TestTheDischargeIsReported:
+    def test_the_completion_line_names_the_discharged_pool(self):
+        bot = _detonate(pool=7.5)
+        line = _completion_line(bot)
+        assert "$7.5000 discharged" in line, line
+
+    def test_the_reported_figure_follows_the_pool_it_emptied(self):
+        """A fixed literal would report the same money for both pools."""
+        assert "$7.5000 discharged" in _completion_line(_detonate(pool=7.5))
+        assert "$0.6289 discharged" in _completion_line(_detonate(pool=0.6289))
+
+    def test_an_empty_pool_still_reports_a_zero_discharge(self):
+        """NEGATIVE CONTROL. The clause is unconditional, so a silent
+        line never means the pool was untouched."""
+        assert "$0.0000 discharged" in _completion_line(_detonate(pool=0.0))
+
+    def test_a_refused_detonation_reports_no_discharge(self):
+        """NEGATIVE CONTROL. A zero ticker price returns before the
+        clear, so no completion line exists to read."""
+        bot = _DetBot(pool=7.5)
+        ticker = _Ticker()
+        ticker.last = 0.0
+        asyncio.run(bot._execute_detonation(ticker))
+        assert not any(m.startswith("DETONATION COMPLETE") for m in bot._bus.msgs)
+        assert "discharged" not in bot._bus.text()
+
+
+class TestReadingThePoolRunsNoCode:
+    """``_execute_detonation`` reads ``_standing_surplus_usd`` with a bare
+    ``getattr``; that read must not reach a descriptor or a hook."""
+
+    def test_the_pool_is_a_plain_attribute_on_every_class_in_the_mro(self):
+        holders = [
+            cls.__name__
+            for cls in ScrummingBot.__mro__
+            if "_standing_surplus_usd" in vars(cls)
+        ]
+        assert holders == [], (
+            "_standing_surplus_usd is bound on a class, so the read may "
+            f"run a descriptor: {holders}"
+        )
+
+    def test_the_scan_finds_a_descriptor_when_there_is_one(self):
+        """POSITIVE CONTROL. ``cycle_growth_cap_usd`` is a property, so
+        the same walk must report it."""
+        holders = [
+            cls.__name__
+            for cls in ScrummingBot.__mro__
+            if isinstance(vars(cls).get("cycle_growth_cap_usd"), property)
+        ]
+        assert holders == ["ScrummingBot"], holders
+
+    def test_no_class_in_the_mro_intercepts_attribute_access(self):
+        hooks = {
+            f"{cls.__name__}.{name}"
+            for cls in ScrummingBot.__mro__
+            if cls is not object
+            for name in ("__getattr__", "__getattribute__", "__setattr__")
+            if name in vars(cls)
+        }
+        assert hooks == set(), hooks
+
+    def test_the_pool_carries_a_float_on_a_built_bot(self):
+        """POSITIVE CONTROL for the ``float()`` the read wraps: the value
+        the running bot holds is already a float."""
+        bot = _DetBot(pool=7.5)
+        assert isinstance(bot._standing_surplus_usd, float)
+        assert float(bot._standing_surplus_usd) == pytest.approx(7.5)
