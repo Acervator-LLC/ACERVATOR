@@ -1,31 +1,11 @@
-"""Sim and Live must fill the same fields of the same dataclasses.
+"""Sim and Live fill the same fields of the same ``src.exchange.base`` dataclasses.
 
-Operator directive 2026-08-09: the Simulator must handle its different
-data source "in an identical, verifiable manner so that we have a valid
-test environment on which to build."
-
-`FleetSimExchange` subclasses `ExchangeInterface`, so Python's ABC
-machinery already guarantees every method EXISTS. It guarantees nothing
-about what those methods put inside the objects they return. Both sides
-construct the real `Ticker` / `Balance` / `Order` / `Trade` /
-`OrderBook` dataclasses from `src/exchange/base.py` -- which is good,
-they are not lookalikes -- but a field left at its default on one side
-and populated on the other is invisible to the type system and to the
-ABC.
-
-That is the same shape as the defect found on the OHLCV seam: the sim
-satisfied the declared interface while behaving differently from live
-in a way nothing checked.
-
-HOW THIS CHECKS. Parses both modules and collects, per dataclass, the
-fields each side populates -- constructor keywords AND post-construction
-attribute assignment. The second half matters: `sim_exchange.py:580`
-sets `order.average` after the constructor, so a constructor-only diff
-reports a mismatch that is not real. This test was written after making
-exactly that error.
-
-MEASURED at the time of writing: Ticker, Balance, Trade and OrderBook
-have identical populated field sets. `Order` differs on three fields.
+``_populated`` collects, per name in ``DATACLASSES``, the fields each module sets
+by constructor keyword and by attribute assignment, so a value written after the
+constructor is not reported as missing. ``KNOWN_UNPOPULATED`` is empty, and
+``test_the_exempt_fields_are_still_unread`` is the condition on any entry added to
+it. ``test_the_simulator_binds_the_live_dataclasses`` asserts identity, so the two
+sides can never be lookalikes.
 """
 
 from __future__ import annotations
