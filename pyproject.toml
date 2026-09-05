@@ -150,6 +150,12 @@ dev = [
     # producer and neither .spec collects tools/, so it ships to no
     # target.
     "pypdf>=6.10.2",
+    # The manual-producer tests reach reportlab through
+    # tools/build_product_manual.py and matplotlib through src/design_system.py.
+    "acervator[report]",
+    "acervator[charts]",
+    # tests/test_build_product_manual*.py import PIL to write a fixture PNG.
+    "pillow>=10.0.0",
 ]
 
 [project.scripts]
