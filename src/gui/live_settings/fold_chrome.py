@@ -1,8 +1,9 @@
-"""Qt widgets, the row-border delegate and the reach controls of the Fold
-Tranches panel.
+"""The Fold Tranches panel chrome: row border, despawn rows, order and filter.
 
-The reach controls are module functions and not methods: several test
-files build the tab through a stub dialog that never runs ``__init__``.
+``_TrancheRowBorderDelegate`` strokes the row edges.
+``install_despawn_rows`` adds the timer and preview rows.
+``build_fold_row_controls``, ``on_fold_sort_changed`` and
+``on_fold_filter_changed`` are module functions a stub dialog drives unbound.
 """
 
 from __future__ import annotations
@@ -42,41 +43,11 @@ logger = logging.getLogger("acervator.gui")
 
 
 class _TrancheRowBorderDelegate(QStyledItemDelegate):
-    """Strokes a container edge on top of a painted tranche row.
+    """Strokes a row edge over a painted tranche row.
 
-    Installed on the Open Tranches table ONLY, via
-    `setItemDelegate`. This is the first item delegate in the
-    repository, which is a real architectural addition rather than
-    a tweak, so the reason it is required is recorded here.
-
-    WHY NOT A STYLESHEET. Adding ANY `QTableWidget::item` rule to
-    this table DESTROYS every per-cell `setBackground`. Measured
-    offscreen against a four-row replica: with an `::item` border
-    rule the rows came back as the plain alternating background and
-    BOTH fills were gone — item 4's red included. Qt routes item
-    painting through QStyleSheetStyle once an `::item` rule exists
-    and the item's BackgroundRole is dropped.
-
-    That failure is silent and would not be caught by the existing
-    suite. `tests/test_extractor_tranche_listing.py` asserts
-    `cell.background().color().name()`, which reads the MODEL. The
-    item keeps its brush; only the painting ignores it. A
-    stylesheet implementation would therefore ship a green suite
-    over a surface with no colour on it at all. The tests added
-    alongside this class sample RENDERED PIXELS for that reason.
-
-    WHY NOT GRID LINES. `gridline-color` recolours both axes
-    equally, which produces a bright four-way grid — a spreadsheet,
-    not a container. And `setShowGrid(False)` is worse here:
-    measured, two adjacent blue rows then butt together with no
-    separator and merge into one slab.
-
-    The delegate keeps both fills intact because `super().paint()`
-    honours BackgroundRole and this only strokes afterwards.
-    Measured on the same replica: fills survived, the rule drew at
-    the intended colour, and the vertical seam between columns
-    stayed fill-coloured, so the rules read as one row-spanning
-    edge rather than ten little boxes.
+    ``paint`` calls ``super().paint`` first, keeping the cell's own
+    ``BackgroundRole`` brush, which a ``QTableWidget::item`` stylesheet
+    rule would drop.
     """
 
     def paint(
@@ -85,12 +56,10 @@ class _TrancheRowBorderDelegate(QStyledItemDelegate):
         option: QStyleOptionViewItem,
         index: QModelIndex | QPersistentModelIndex,
     ) -> None:
-        """Paint the cell normally, then stroke its row edges.
+        """Paint the cell, then stroke the row's top and bottom edges.
 
-        The border colour comes from the cell's own background
-        brush through `TRANCHE_ROW_BORDER_BY_BG`. A cell whose fill
-        is not in that map gets no stroke at all, so this cannot
-        draw on a row it was not designed for.
+        `TRANCHE_ROW_BORDER_BY_BG` maps the cell's own fill to the border
+        colour; a fill missing from that map gets no stroke.
         """
         super().paint(painter, option, index)
 
@@ -100,8 +69,7 @@ class _TrancheRowBorderDelegate(QStyledItemDelegate):
         try:
             fill = brush.color().name()
         except AttributeError:
-            # A BackgroundRole carrying a QColor rather than a
-            # QBrush. Qt permits both; neither is an error.
+            # Qt permits a QColor in BackgroundRole as well as a QBrush.
             try:
                 fill = QColor(brush).name()
             except (TypeError, ValueError):
@@ -112,15 +80,11 @@ class _TrancheRowBorderDelegate(QStyledItemDelegate):
 
         painter.save()
         pen = QPen(QColor(border_hex), TRANCHE_ROW_BORDER_PX)
-        # Square caps, or a 2px pen rounds past the cell edge and
-        # the seam between two columns picks up a visible nub.
+        # A rounded cap would overshoot the cell edge at 2px.
         pen.setCapStyle(Qt.PenCapStyle.FlatCap)
         painter.setPen(pen)
         rect = option.rect
-        # Inset by half the pen width so the stroke lands INSIDE
-        # the cell. A line drawn exactly on `top()` is half
-        # clipped, which reads as a 1px line on one row and 2px on
-        # its neighbour.
+        # A line drawn on `rect.top()` itself is half clipped by the cell.
         inset = TRANCHE_ROW_BORDER_PX // 2
         top = rect.top() + inset
         bottom = rect.bottom() - inset
@@ -129,21 +93,7 @@ class _TrancheRowBorderDelegate(QStyledItemDelegate):
         painter.restore()
 
 
-#: What the despawn rows say a despawn DOES, in the operator's own
-#: three verbs. MERGE collapses tranches into each other, DESPAWN
-#: removes an aged one, CLEAR is the operator's manual removal.
-#: Nothing else collapses or removes a tranche.
-#:
-#: WHERE THE VALUE GOES, and it is the question a removal has to
-#: answer. A fold tranche is an EARMARK, not custody: the scrum
-#: SELL already happened, the units already left `_main_lots`, and
-#: the dollars are already sitting in the shared exchange wallet.
-#: The record is the bot's queued intent to buy those units back at
-#: or below `ref`. Removing it places no order, cancels no order
-#: and moves no balance, so nothing the exchange reports changes.
-#: What is lost is the INTENT and the `initial_buy_price`
-#: provenance that came with it: those dollars stop being a queued
-#: rebuy and go back to being ordinary spendable balance.
+#: Tooltip carried by both rows `install_despawn_rows` adds.
 DESPAWN_ROW_TOOLTIP = (
     "DESPAWN removes a tranche once it reaches this age.\n\n"
     "The control is on the Settings tab, under Advanced -\n"
@@ -163,13 +113,9 @@ DESPAWN_ROW_TOOLTIP = (
 
 
 def despawn_timer_text(days: int) -> str:
-    """Name the armed threshold and where the control lives.
+    """Return the timer row text for `days`, naming where it is set.
 
-    THE POINTER IS PART OF THE ANSWER. The spinbox sits on the
-    Settings tab under Advanced, well below the fold, which is the
-    measured reason the operator never found it. A row that
-    reported "Off" and stopped would restate the problem without
-    moving anybody toward the fix.
+    `days` of 0 or less reads as Off.
     """
     _where = "Settings tab > Advanced > Tranche Despawn Timer"
     if days <= 0:
@@ -178,17 +124,10 @@ def despawn_timer_text(days: int) -> str:
 
 
 def despawn_preview_text(days: int, armed: dict, windows: list) -> str:
-    """Say what a sweep takes, in records, dollars and units.
+    """Render the preview row: records first, then dollars and units.
 
-    DOLLARS ALONE WOULD UNDERSTATE IT. The smallest live tranche
-    holds $0.00000022 and 87% of the fleet's tranches hold under a
-    dollar, so a USD-only line reads as "nothing" for a removal
-    that drops hundreds of records. The count leads; the money and
-    the units follow.
-
-    THE OFF FORM IS A MENU, not a verdict. Each candidate window
-    prints its own count and money, so the operator chooses a
-    threshold against this bot's real ages.
+    `days` above 0 describes `armed` at that threshold; otherwise each
+    entry in `windows` prints its own count and dollars.
     """
     if days > 0:
         parts = [
@@ -224,27 +163,12 @@ def pin_despawn_rows(
     now_ts: float,
     elapsed: float,
 ) -> None:
-    """Pin the two rendered rows against the bot's own ledgers.
+    """Emit the two rendered despawn rows beside the same rows re-read.
 
-    `actual` IS A WIDGET READ AND `expected` IS A MODEL READ, so the
-    two cannot agree by construction. The two labels are asked what
-    text they now carry; the expectation is rendered from the bot's
-    live ledgers, read again here rather than from the snapshot the
-    builder held. A builder that rendered a stale list, wrote the
-    wrong label, or had its text overwritten further down the tab
-    shows up as a mismatch on the operator's own machine.
-
-    WHAT IT DOES NOT PROVE, said plainly: both sides go through
-    `despawn_preview`, so this pin cannot show that the shared
-    predicate matches the SWEEP. That is
-    `tests/test_despawn_window_is_usable.py`'s job, and it does it
-    by driving the shipped sweep and this preview over one fixture.
-
-    THE DURATION SPANS THE PREVIEW, not the row build. Five passes
-    over both ledgers run on the Qt GUI thread every time this tab
-    is built or rebuilt, and BILL/USD carries 230 fold tranches
-    today. That is the cost worth measuring on the operator's
-    machine rather than arguing about here.
+    `actual` is what `_fold_despawn_timer_lbl` and
+    `_fold_despawn_preview_lbl` now carry; `expected` re-renders
+    `despawn_timer_text` and `despawn_preview_text` from the bot's live
+    ledgers, not from `fold_snapshot` and `stack_snapshot`.
     """
     import contextlib
 
@@ -295,59 +219,23 @@ def pin_despawn_rows(
 def install_despawn_rows(
     dialog: BotLiveSettingsDialog, form: QFormLayout, tranches: list, now_ts: float
 ) -> dict:
-    """Add the two despawn rows to the health form; return the preview.
+    """Add the timer and preview rows to `form`; return the armed preview.
 
-    THE DEFECT THIS REPAIRS IS NOT A BROKEN SWEEP. Item 9's despawn
-    timer shipped on 2026-08-13 and works. Measured against the
-    operator's state file on 2026-08-24: it reads 0 - Off - on all
-    38 bots, every one of the 1,680 open fold tranches carries a
-    usable `created_ts`, and the feature has never run once. The
-    count that worries the operator is on THIS tab; the control is
-    on the Settings tab; and nothing on either surface said what
-    turning it on would do. So the panel now names the setting
-    where the problem is already on screen, and prints the
-    consequence BEFORE it is committed rather than after.
-
-    NO BUTTON IS ADDED HERE, DELIBERATELY. Despawn is the
-    AGE-driven removal and Clear is the operator's manual one. A
-    "despawn now" button would be a second manual removal wearing
-    the age function's name, and the operator's model has exactly
-    three verbs - merge, despawn, clear. The setting stays the only
-    way to arm this, and these rows exist to make that setting an
-    informed choice.
-
-    WHEN THE TIMER IS OFF the row prints one window per candidate
-    in `DESPAWN_PREVIEW_WINDOWS`, so the operator picks a number
-    against real counts instead of guessing. WHEN IT IS ON the row
-    prints what the next sweep takes at the armed threshold.
-
-    THE COUNTS COME FROM THE SHARED RULE, never from arithmetic
-    written here. `despawn_preview` carries the sweep's own
-    predicate - inclusive boundary, ageless records kept, stack
-    records with live orders kept - and a second copy on this
-    surface is exactly the defect that made the Min-rebuy column
-    print a price the executor refuses.
-
-    A MODULE FUNCTION AND NOT A METHOD, and that is load-bearing
-    rather than style. `_create_fold_tranches_tab` is driven as an
-    UNBOUND function by several existing test files, against stub
-    dialogs that carry `_bot` and nothing else; a new `self.` call
-    made 332 of those tests raise `AttributeError` when it was one.
-    Resolved from the module, this reaches every caller the tab
-    already has, and the handles are set on whatever object is
-    passed.
+    `despawn_preview` counts what a sweep at `despawn_threshold_days`
+    would take, and the timer row turns amber only when that threshold is
+    off while the widest `DESPAWN_PREVIEW_WINDOWS` entry already holds
+    records.
 
     Args:
       dialog: the dialog building the tab. Only `_bot` is read;
         the two label handles are set on it.
       form: the Fold-Tranche Cycle Health `QFormLayout`.
       tranches: this bot's fold tranches, as the builder read them.
-      now_ts: the wall clock the rest of the tab ages against, so
-        the preview and the Age column cannot disagree.
+      now_ts: the wall clock the Age column ages against.
 
     Returns:
-      The preview at the ARMED threshold, which is all zeroes when
-      the timer is off.
+      The preview at the armed threshold, all zeroes when the timer is
+      off.
 
     """
     import time as _clock
@@ -371,20 +259,10 @@ def install_despawn_rows(
 
     timer_lbl = QLabel(despawn_timer_text(_days))
     timer_lbl.setToolTip(DESPAWN_ROW_TOOLTIP)
-    # AMBER ONLY WHEN THE COLOUR IS TRUE. Off with nothing aged is
-    # a correct, quiet state, and colouring it would teach the
-    # operator to ignore the row. Off while the widest candidate
-    # window already holds records is the state this unit exists
-    # for, and it is the only one marked.
     _widest = windows[-1][1] if windows else armed
     if _days <= 0 and (_widest["fold_removed"] + _widest["stack_removed"]):
         timer_lbl.setStyleSheet(f"color: {ds.FOLD_RATIO_AMBER};")
     dialog._fold_despawn_timer_lbl = timer_lbl
-    # issue #98 defect 6 - BOTH HALVES OF THE ROW. These two rows
-    # already carried `DESPAWN_ROW_TOOLTIP` on the value; the words
-    # the operator actually points at carried nothing. The text is
-    # issue #103's and is not rewritten here - only the label half
-    # is given the tooltip the value half already had.
     install_health_row(form, "Tranche despawn timer:", timer_lbl, DESPAWN_ROW_TOOLTIP)
 
     preview_lbl = QLabel(despawn_preview_text(_days, armed, windows))
@@ -395,39 +273,10 @@ def install_despawn_rows(
     return armed
 
 
-# ── The operator can REACH a tranche (issue #98 defect 7) ────────
-#
-# WHAT WAS WRONG. 280px over 30px rows put about EIGHT of up to 230
-# rows on screen, `setSortingEnabled` appeared zero times in this
-# file, and no filter or search existed. On TAO the summary named a
-# 30.4-day oldest tranche while rows one to three read 2.7d, 2.7d
-# and 3.6d. The row the headline was about could not be reached.
-#
-# THREE PARTS. The height cap follows the row count; the order is
-# chosen from stored fields and applied by rebuilding; the filter
-# HIDES rows without moving any. Qt's own `setSortingEnabled` is
-# still not used, and the reason is at `FOLD_SORT_ORDERS`: it moves
-# items and leaves `setCellWidget` widgets behind, which would
-# detach every Fire button from the row it is drawn on.
-#
-# MODULE FUNCTIONS AND NOT METHODS, for the reason
-# `install_despawn_rows` above records: `_create_fold_tranches_tab`
-# is driven as an UNBOUND function by several existing test files
-# against stub dialogs that carry `_bot` and little else, and a new
-# `self.` call inside the builder makes every one of them raise
-# `AttributeError`. Measured, not predicted: writing these as two
-# methods and calling them from the builder failed 324 tests across
-# five files. The dialog is passed in, and every attribute is read
-# with `getattr` and a default, so a stub builds the tab exactly as
-# the real dialog does.
 def fold_sort_order(dialog: BotLiveSettingsDialog) -> str:
-    """Return the order the operator picked, or queue order.
+    """Return the order stored on `dialog`, or `FOLD_SORT_QUEUE_ORDER`.
 
-    READ THROUGH ONE FUNCTION so the builder never guesses a
-    default, and so a rebuild started by anything else - a clear, a
-    refresh - keeps the operator's choice instead of silently
-    snapping back to queue order. An order this panel does not
-    offer is refused rather than passed through to the sorter.
+    An order outside `FOLD_SORT_ORDERS` reads as queue order.
     """
     order = getattr(dialog, "_fold_sort_key", FOLD_SORT_QUEUE_ORDER)
     if order not in FOLD_SORT_ORDERS:
@@ -445,11 +294,7 @@ def build_fold_row_controls(dialog: BotLiveSettingsDialog) -> QHBoxLayout:
     combo.addItems(list(FOLD_SORT_ORDERS))
     combo.setCurrentText(fold_sort_order(dialog))
     combo.setToolTip(FOLD_SORT_TOOLTIP)
-    # `activated` AND NOT `currentIndexChanged`. The rebuild below
-    # destroys this combo and builds a new one with the chosen
-    # order already selected; `currentIndexChanged` would fire
-    # again on that programmatic `setCurrentText` and start a
-    # second rebuild from inside the first.
+    # `currentIndexChanged` would refire on the rebuild's `setCurrentText`.
     combo.activated.connect(
         lambda _index, dlg=dialog, box=combo: on_fold_sort_changed(
             dlg, box.currentText()
@@ -471,17 +316,10 @@ def build_fold_row_controls(dialog: BotLiveSettingsDialog) -> QHBoxLayout:
 
 
 def on_fold_sort_changed(dialog: BotLiveSettingsDialog, order: str) -> None:
-    """Remember the order and rebuild the tab to apply it.
+    """Store `order` on `dialog` and rebuild the table to apply it.
 
-    THE REBUILD IS DEFERRED BY ONE EVENT-LOOP TURN, and that is
-    load-bearing rather than tidy. `_refresh_fold_tranches_tab`
-    deletes the page this combo lives on, and this function runs
-    inside that combo's own signal. Handing the rebuild to the
-    event loop means the signal has returned before the sender is
-    torn down.
-
-    NOTHING IS REBUILT FOR AN ORDER THIS PANEL DOES NOT OFFER, and
-    nothing is rebuilt when the order did not change.
+    An `order` outside `FOLD_SORT_ORDERS`, or one `fold_sort_order`
+    already returns, rebuilds nothing.
     """
     if order not in FOLD_SORT_ORDERS:
         logger.warning("Fold Tranches: ignoring unknown row order %r", order)
@@ -494,19 +332,14 @@ def on_fold_sort_changed(dialog: BotLiveSettingsDialog, order: str) -> None:
         return
     from PySide6.QtCore import QTimer as _QTimer
 
+    # `_refresh_fold_tranches_tab` deletes the combo this signal came from.
     _QTimer.singleShot(0, rebuild)
 
 
 def on_fold_filter_changed(dialog: BotLiveSettingsDialog, needle: str) -> None:
-    """Hide every row that does not contain `needle`.
+    """Hide every row whose `_fold_row_texts` entry does not match `needle`.
 
-    HIDING, NOT RE-ORDERING, AND NOT REBUILDING. `setRowHidden`
-    leaves every row where it is, so the Fire button drawn on a row
-    still belongs to that row's tranche. A rebuild would work too
-    and costs a whole widget tree on every keystroke.
-
-    The text it matches is `_fold_row_texts`, harvested from the
-    built table, so the filter reads exactly what is on screen.
+    `setRowHidden` moves no row; each Fire button stays on its tranche.
     """
     table = getattr(dialog, "_fold_tranche_table", None)
     if table is None:
