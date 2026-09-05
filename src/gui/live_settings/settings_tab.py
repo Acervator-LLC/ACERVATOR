@@ -29,18 +29,17 @@ logger = logging.getLogger("acervator.gui")
 class SettingsTabMixin:
     """Editable bot configuration, written on Apply."""
 
-    # Supplied by BotLiveSettingsDialog at runtime; declared so a
-    # type checker can resolve them. Annotations only: no attribute
-    # is created and the runtime base stays `object`.
+    # Annotations only; BotLiveSettingsDialog supplies these at runtime.
     _bot: Any
     _configure_form: Callable[..., Any]
     _mark_changed: Callable[..., Any]
 
     def _refresh_target_denom_rows(self) -> None:
-        """v3.23.48 — repaint the Target-BTC + Target-ETH rows
-        using current scout + currency-monitor data. Idempotent
-        and non-raising; called by the periodic timer AND once at
-        construction."""
+        """Repaint the Target-BTC and Target-ETH rows.
+
+        Reads the scout and the currency monitor. Idempotent and
+        non-raising; the periodic timer and construction both call it.
+        """
         try:
             _btc_lbl = getattr(self, "_target_btc_lbl", None)
             _eth_lbl = getattr(self, "_target_eth_lbl", None)
@@ -112,7 +111,6 @@ class SettingsTabMixin:
         except Exception as _denom_exc:  # noqa: BLE001 - refresh best-effort
             logger.debug("target denom row refresh raised: %s", _denom_exc)
 
-    # v3.15.62 — Self-destruct handler with type-to-confirm
     def _on_self_destruct_clicked(self) -> None:
         """Operator-initiated SELF-DESTRUCT. Two-step confirmation:
         (1) modal dialog explains the consequences and requires
@@ -161,17 +159,10 @@ class SettingsTabMixin:
                 "Confirmation token did not match. No action taken.",
             )
             return
-        # Run the async self_destruct method. We use asyncio.run on
-        # a fresh thread so we don't block the GUI nor require an
-        # event loop in the dialog thread.
         import threading, asyncio as _aio
 
         def _run():
-            # SELF_DESTRUCT_TOKEN is an operator confirmation phrase,
-            # not a credential — extracted into a local so Bandit's
-            # B106 (function-arg literal) heuristic doesn't misread
-            # it. Suppressed via nosec on the assignment.
-            _sd_phrase = "SELF-DESTRUCT"  # nosec B105
+            _sd_phrase = "SELF-DESTRUCT"
             try:
                 result = _aio.run(
                     self._bot.self_destruct(confirmation_token=_sd_phrase)
@@ -197,8 +188,6 @@ class SettingsTabMixin:
         layout.setSpacing(6)
 
         cfg = self._bot.config
-        # v3.20.4 — is_grid removed (grid_bot deleted v3.16.0;
-        # BotMode.GRID dropped from the enum).
         is_scrumming = cfg.mode.value == "scrumming"
 
         info = QLabel(
@@ -228,20 +217,6 @@ class SettingsTabMixin:
         )
         mf.addRow("Order Visibility:", self._vis)
 
-        # v3.23.25 — Check Interval widget removed (audit 2026-07-25).
-        # Backing field `market_check_interval` was declared but no
-        # runtime code ever read it; tick_interval is hardcoded 5.0.
-        # Operator directive 2026-07-25: "The Check Interval setting
-        # can be removed as the bot does not need a secondary poll
-        # rate to make trade decisions."
-
-        # Aggressive trading
-        # v3.23.25 — Aggressive Trading redefined per operator
-        # directive 2026-07-25: forces all engine-initiated orders
-        # to execute as IOC-limit taker orders (immediate-or-cancel
-        # limit priced through the spread). Manual fire is
-        # unaffected. Runtime enforcement lives in scrumming_bot's
-        # _execute_* paths; that wiring lands in Sub-phase 2D.
         self._aggressive = QCheckBox("Aggressive Trading (force IOC-limit takers)")
         self._aggressive.setChecked(cfg.aggressive_trading)
         self._aggressive.setToolTip(
@@ -256,11 +231,6 @@ class SettingsTabMixin:
         )
         mf.addRow(self._aggressive)
 
-        # v3.23.25 — Stack Mode (renamed from Bulk Trading).
-        # Splits a SCRUM (sell) into N tranches spaced upward from
-        # the Minimum Opposing Trade Distance (== scrumming_interval_pct
-        # above the trigger price) per stack_spacing_mode at
-        # split_distance intervals.
         self._stack_mode = QCheckBox("Stack Mode (split SCRUM across upward tranches)")
         self._stack_mode.setChecked(getattr(cfg, "stack_mode", False))
         self._stack_mode.setToolTip(
@@ -276,7 +246,6 @@ class SettingsTabMixin:
         self._stack_mode.toggled.connect(lambda v: self._mark_changed("stack_mode", v))
         mf.addRow(self._stack_mode)
 
-        # v3.23.25 — Split Distance (percent between tranches).
         self._split_distance = QDoubleSpinBox()
         self._split_distance.setRange(0.1, 20.0)
         self._split_distance.setDecimals(2)
@@ -293,9 +262,6 @@ class SettingsTabMixin:
         )
         mf.addRow("Split Distance:", self._split_distance)
 
-        # v3.23.25 — Target tranche count. Actual count at runtime
-        # may be lower due to exchange min-order-size restrictions
-        # or the 0.1% merge rule.
         self._stack_count = QSpinBox()
         self._stack_count.setRange(2, 20)
         self._stack_count.setValue(int(getattr(cfg, "stack_tranche_count_target", 3)))
@@ -311,11 +277,6 @@ class SettingsTabMixin:
         )
         mf.addRow("Tranche Count:", self._stack_count)
 
-        # v3.23.26 — Spacing mode. Middle option renamed from
-        # "Logarithmic" to "Quadratic" per operator directive
-        # 2026-07-25 for mathematical accuracy (Δp grows
-        # arithmetically → tranche positions follow a triangular /
-        # quadratic sequence).
         self._stack_spacing = QComboBox()
         self._stack_spacing.addItem("Linear (1, 2, 3, 4…)", "linear")
         self._stack_spacing.addItem("Quadratic (1, 2, 4, 7…)", "quadratic")
@@ -336,9 +297,6 @@ class SettingsTabMixin:
         )
         mf.addRow("Spacing:", self._stack_spacing)
 
-        # v3.23.42 — F65 personal_hold_qty. Live-editable — the
-        # bot re-computes its registry reservation on the next
-        # tick using the new value.
         self._personal_hold_qty = QDoubleSpinBox()
         self._personal_hold_qty.setRange(0.0, 1_000_000_000.0)
         self._personal_hold_qty.setDecimals(10)
@@ -356,26 +314,6 @@ class SettingsTabMixin:
 
         layout.addWidget(mode_group)
 
-        # v3.20.4 — Grid Settings + Profit Folding (grid) groups
-        # removed. grid_bot deleted v3.16.0; this UI was unreachable
-        # since BotMode.GRID was dropped from the enum.
-
-        # --- Scrumming-specific ---
-        #
-        # v3.24.87 — `scrum_group` and `sf` were bound INSIDE
-        # `if is_scrumming:` and then read unconditionally from the
-        # compounding surface below all the way to
-        # `layout.addWidget(scrum_group)`. `_create_settings_tab` is
-        # called for EVERY bot mode (the Settings tab is added with
-        # no mode test), and `BotMode.EXTRACTOR` is live and
-        # constructible, so opening this dialog on an Extractor bot
-        # raised NameError on the first `sf.addRow` — the operator
-        # got a traceback instead of a Settings tab.
-        #
-        # Binding both before the branch. The scrumming path is
-        # unchanged: same group, same rows, same order. The title is
-        # the one thing that must not lie on the non-scrumming path,
-        # since those shared rows are not scrumming settings.
         scrum_group = QGroupBox(
             "Scrumming Settings" if is_scrumming else "Trading Parameters (continued)"
         )
@@ -391,10 +329,6 @@ class SettingsTabMixin:
             self._scrum_interval.valueChanged.connect(
                 lambda v: self._mark_changed("scrumming_interval_pct", v)
             )
-            # v3.15.53 — operator directive 2026-04-25: rename
-            # "Scrumming Interval" → "Opposing Trade Interval" in
-            # the GUI. Underlying config field name unchanged
-            # (scrumming_interval_pct) to avoid a wide refactor.
             sf.addRow("Opposing Trade Interval:", self._scrum_interval)
 
             self._bb_tol = QDoubleSpinBox()
@@ -415,8 +349,7 @@ class SettingsTabMixin:
             )
             sf.addRow("Landing Strip Candles:", self._landing)
 
-            # v3.15.61 — filter TF list to what the bot's exchange
-            # actually supports. Coinbase has no 4h, 12h, 1w, etc.
+            # Filtered to the timeframes the bot's exchange supports.
             self._ta_tf = QComboBox()
             try:
                 from ...exchange.timeframes import available_timeframes
@@ -472,17 +405,6 @@ class SettingsTabMixin:
             )
             sf.addRow("Target Balance:", self._target_bal)
 
-        # v3.24.50 (Phase 1 Step 3) — the compounding surface.
-        #
-        # HAZARD, honoured deliberately: the spinbox above keeps
-        # showing `cfg.target_balance` and is NOT repointed at the
-        # grown value. The change-detector diffs edits against
-        # `cfg.target_balance`, so a spinbox holding a different
-        # number would register as an operator edit on every panel
-        # open and could fire `set_target_balance_live`, which
-        # collapses the anchor and wipes accrued growth. The spinbox
-        # is the operator's INPUT; the grown value goes in the
-        # read-only rows below.
         _live_tb = float(getattr(self._bot, "_target_balance", 0.0) or 0.0)
         _anchor_tb = float(getattr(self._bot, "_anchor_target_balance", 0.0) or 0.0)
         _accrued = _live_tb - _anchor_tb
@@ -519,12 +441,6 @@ class SettingsTabMixin:
             )
         sf.addRow("Standing surplus:", _surplus_lbl)
 
-        # Issue #106 - was `_anchor_tb * pct / 100`, the frozen
-        # input value. The bot bounds each Fold with
-        # `cycle_growth_cap_usd`, whose base is the grown target, so
-        # this row and the "Over-cap tranches" row below it both
-        # used to describe a budget the bot had stopped using. Read
-        # the property rather than respelling it.
         _budget = round(
             float(getattr(self._bot, "cycle_growth_cap_usd", 0.0) or 0.0), 8
         )
@@ -534,15 +450,6 @@ class SettingsTabMixin:
             QLabel(f"${_budget:,.4f} — consumed ${_consumed:,.4f}"),
         )
 
-        # issue #133 unit 10 - A TRANCHE LARGER THAN THE BUDGET IS
-        # PART-CONSUMED, NOT SKIPPED. `_plan_fold_consumption` takes
-        # `take_usd = room` from the first tranche that does not fit
-        # and leaves the remainder queued with its `ref` and
-        # `initial_buy_price` untouched. This row counts tranches
-        # that need more than one cycle to fold back in full, not
-        # tranches the filter refuses. Measured 2026-08-26: a
-        # $16.0523 tranche against a $1.0103 cap gives up $1.0103
-        # and 31.469011 units and stays queued holding $15.0420.
         _tranches = list(getattr(self._bot, "_fold_tranches", []) or [])
         _over = [
             float(t.get("usd", 0) or 0)
@@ -564,36 +471,7 @@ class SettingsTabMixin:
                 "cycle to fold back in full."
             )
             sf.addRow("Over-cap tranches:", _over_lbl)
-        # v3.24.86 - DE-INDENTED OUT OF `if _over:`.
-        #
-        # The `if _over:` branch above reports fold tranches larger
-        # than the whole per-cycle budget. Its body was meant to be
-        # the two statements that build and add `_over_lbl`. Instead
-        # it had swallowed 287 statements -- every settings group
-        # from here to the end of the scrumming section:
-        #   Scrumming Settings, Advanced Scrumming, Hedge, Circuit
-        #   Breakers, Self-Destruct, Risk, Gates, Routing.
-        #
-        # Those groups were still CONSTRUCTED, then added to the
-        # layout only when `_over` was non-empty -- i.e. only for a
-        # bot holding an over-cap fold tranche. A brand-new bot has
-        # no tranches at all, so `_over` is empty and the operator
-        # saw Trading Parameters followed by nothing.
-        #
-        # Operator report 2026-08-09: BICO/USDC and IMU/USDC, both
-        # created that day, showed no scrumming settings while
-        # AERO/USDC showed them in full. Both are USDC pairs, so the
-        # base currency was never the discriminator -- having traded
-        # was.
 
-        # v3.23.48 — cross-pair denomination rows. Per operator
-        # directive 2026-07-28: show the target's equivalent in
-        # BTC + ETH plus Δ24h vs USD % so cross-pair divergence
-        # is visible at a glance. Rows are read-only and hidden
-        # when the pair isn't listed on the exchange OR when
-        # the target asset IS BTC/ETH itself (self-reference
-        # meaningless). Data comes from MarketPairsScout +
-        # CurrencyRateMonitor; refreshes every 5 s via QTimer.
         self._target_btc_lbl = QLabel("—")
         self._target_btc_lbl.setToolTip(
             "Target USD ÷ (BTC/USD spot). Δ24h vs USD = "
@@ -623,11 +501,6 @@ class SettingsTabMixin:
         except Exception as _tmr_exc:  # noqa: BLE001 - timer setup best-effort
             logger.debug("denom-row refresh timer failed to start: %s", _tmr_exc)
 
-        # v3.15.51 — Operator-set entry-price bounds.
-        # Operator directive 2026-04-25: "Bot max / min entry
-        # price should be able to be set by user." 0.0 in either
-        # field means "no bound" (matches BotConfig default of
-        # None — UI emits float, _apply_changes maps 0→None).
         self._max_entry_px = QDoubleSpinBox()
         self._max_entry_px.setRange(0.0, 10_000_000.0)
         self._max_entry_px.setDecimals(8)
@@ -660,12 +533,6 @@ class SettingsTabMixin:
         )
         sf.addRow("Min Entry Price:", self._min_entry_px)
 
-        # v3.15.52 — Trading fee tier (Coinbase). Operator
-        # directive 2026-04-25: "total scrum interval will now
-        # be the setting plus trading fees ... default at 0.6%."
-        # Used by the opposite-direction hysteresis safety:
-        # effective deviation threshold = scrumming_interval_pct
-        # + trading_fee_pct.
         self._trading_fee = QDoubleSpinBox()
         self._trading_fee.setRange(0.0, 5.0)
         self._trading_fee.setSuffix("%")
@@ -685,9 +552,6 @@ class SettingsTabMixin:
         )
         sf.addRow("Trading Fee %:", self._trading_fee)
 
-        # MEM-252 — Max Target Growth % feature-parity with wizard.
-        # ONLY mechanism that may grow the effective target ceiling via
-        # fold surplus. Identical widget shape as bot_wizard.py.
         self._max_target_growth = QDoubleSpinBox()
         self._max_target_growth.setRange(0.0, 100.0)
         self._max_target_growth.setSuffix("%")
@@ -707,10 +571,6 @@ class SettingsTabMixin:
         )
         sf.addRow("Max Target Growth %:", self._max_target_growth)
 
-        # v3.23.34 — wizard-parity add: profit_folding_active.
-        # The ONLY consumer that grows the effective target via
-        # fold surplus (routes through _apply_fold_target_growth,
-        # v3.23.30 Option B). Off = target frozen at anchor.
         self._profit_folding_active = QCheckBox("Profit Folding Active")
         self._profit_folding_active.setChecked(
             bool(getattr(cfg, "profit_folding_active", True))
@@ -729,10 +589,7 @@ class SettingsTabMixin:
 
         layout.addWidget(scrum_group)
 
-        # --- Advanced (P1.9 parity with wizard) ---
-        # MEM-232: these fields existed on BotConfig since v3.13.8 but
-        # were not exposed in the live-settings dialog. Adding them
-        # here closes the parity gap between wizard and live dialog.
+        # --- Advanced ---
         adv_group = QGroupBox("Advanced Scrumming (P1.9)")
         af = QFormLayout(adv_group)
         self._configure_form(af)
@@ -817,7 +674,6 @@ class SettingsTabMixin:
         )
         af.addRow(self._bullseye)
 
-        # MEM-234 — Scrum Fold Ratio (wizard parity).
         self._scrum_fold_pct = QSpinBox()
         self._scrum_fold_pct.setRange(1, 100)
         self._scrum_fold_pct.setSuffix(" %")
@@ -833,35 +689,6 @@ class SettingsTabMixin:
         )
         af.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
 
-        # Item 9 (2026-08-13) — Tranche Despawn Timer. DESPAWNS
-        # aged tranches from both ledgers, from this one control.
-        # Whole days, the unit the Fold Tranches panel already
-        # reports ages in. 0 shows as "Off" and is the default.
-        #
-        # issue #103 — THE DEFAULT STAYS 0, and that is a measured
-        # decision rather than an omission. All 38 live bots store
-        # `tranche_despawn_days` EXPLICITLY as 0, and the loader
-        # reads the stored value (`StateRestoreMixin.restore_bots_from_state`
-        # in `src/trading/container/restore.py`), so
-        # changing the dataclass default would not reach one bot on
-        # this fleet. It would only arm the timer on bots created
-        # afterwards, silently, on records their operator never
-        # opted in for. What was actually missing is a surface that
-        # says the setting exists and what it would cost; that is
-        # now on the Fold Tranches tab, where the tranche count the
-        # operator worries about already is.
-        #
-        # THE SEED IS READ THROUGH THE CONSUMER'S OWN RULE.
-        # `despawn_threshold_days` is the function the sweep calls,
-        # so this control cannot display a number the bot would not
-        # act on. It also refuses a non-finite stored value, which
-        # matters here and not only in the bot: reading the field
-        # raw would put `int(float("nan"))` — a ValueError — in the
-        # middle of building the Settings tab, and the operator
-        # would get a traceback instead of a dialog.
-        #
-        # setValue BEFORE valueChanged is connected, so seeding the
-        # control does not register as an operator edit.
         from ...trading.bot_container import despawn_threshold_days
 
         self._tranche_despawn_days = QSpinBox()
@@ -900,7 +727,6 @@ class SettingsTabMixin:
         )
         af.addRow("Tranche Despawn Timer:", self._tranche_despawn_days)
 
-        # v3.23.34 — wizard-parity add: wire_inflow_stack_pct.
         self._wire_inflow_stack_pct = QDoubleSpinBox()
         self._wire_inflow_stack_pct.setRange(0.0, 100.0)
         self._wire_inflow_stack_pct.setDecimals(2)
@@ -953,7 +779,6 @@ class SettingsTabMixin:
 
         layout.addWidget(hedge_group)
 
-        # v3.15.58 — Circuit Breakers (operator directive 2026-04-25)
         cb_group = QGroupBox("Circuit Breakers (v3.15.58)")
         cf = QFormLayout(cb_group)
         self._configure_form(cf)
@@ -1008,7 +833,6 @@ class SettingsTabMixin:
         )
         cf.addRow("Soft CB Cooldown:", self._cb_cooldown)
 
-        # v3.15.63 — Maximum Cartridge Size
         self._max_cartridge_pct = QDoubleSpinBox()
         self._max_cartridge_pct.setRange(0.0, 200.0)
         self._max_cartridge_pct.setDecimals(1)
@@ -1029,7 +853,6 @@ class SettingsTabMixin:
         )
         cf.addRow("Max Cartridge Size:", self._max_cartridge_pct)
 
-        # v3.15.92 — Smart Cartridge calibration
         self._cartridge_smart_chk = QCheckBox("Calibrate to BB range")
         self._cartridge_smart_chk.setChecked(
             bool(getattr(cfg, "max_cartridge_smart", False))
@@ -1065,12 +888,6 @@ class SettingsTabMixin:
         )
         cf.addRow("Smart Ceiling:", self._cartridge_smart_ceiling)
 
-        # Operator-initiated reset button.
-        # NOTE: QPushButton + QHBoxLayout are already imported
-        # at module top from PySide6.QtWidgets. The previous
-        # version had a stray PyQt5 import here which broke
-        # the entire dialog construction (operator-reported
-        # "bot details button broken"). Fixed v3.15.60.
         reset_row = QHBoxLayout()
         self._cb_reset_all_btn = QPushButton("Reset All Breakers")
         self._cb_reset_all_btn.setToolTip(
@@ -1089,9 +906,7 @@ class SettingsTabMixin:
                         result.get("applied", []) if isinstance(result, dict) else []
                     )
                     status = "Reset applied" if applied else "Nothing to reset"
-                except (
-                    Exception
-                ) as _reset_exc:  # noqa: BLE001 - status-flash best-effort
+                except Exception as _reset_exc:
                     logger.debug("reset_circuit_breaker raised: %s", _reset_exc)
             self._cb_reset_all_btn.setText(status)
             from PySide6.QtCore import QTimer as _QTimer
@@ -1104,15 +919,6 @@ class SettingsTabMixin:
 
         layout.addWidget(cb_group)
 
-        # v3.15.62 — SELF-DESTRUCT button (operator directive
-        # 2026-04-26: "Bots will now have a self-destruct button
-        # under the details panel. This will aggressively exit
-        # the entire position when activated.").
-        #
-        # Styled distinct from other buttons (red border, red
-        # text) so misclick risk is minimized. Confirmation
-        # dialog requires operator to type SELF-DESTRUCT
-        # literally before the action fires.
         sd_group = QGroupBox("DANGER ZONE — Self-Destruct (v3.15.62)")
         sd_group.setStyleSheet(
             f"QGroupBox{{border:1px solid {ds.ERROR};color:{ds.ERROR};}}"
@@ -1143,11 +949,6 @@ class SettingsTabMixin:
         sdv.addWidget(self._self_destruct_btn)
         layout.addWidget(sd_group)
 
-        # MEM-244 — Risk Controls group (Position Ceiling +
-        # Detonation). Operator directive: "Make that a switch.
-        # Institutions are going to want it for sure. 1x~10x
-        # should be reasonable. Bot should detonate on 1D or
-        # higher Timeframe on BULLISH condition detection."
         risk_group = QGroupBox("Risk Controls (MEM-244)")
         rf = QFormLayout(risk_group)
         self._configure_form(rf)
@@ -1237,11 +1038,6 @@ class SettingsTabMixin:
 
         layout.addWidget(risk_group)
 
-        # v3.23.34 — wizard-parity: Strategy Gate Flags group.
-        # Operator picks Conservative (all ON, default) vs Lean
-        # (all OFF, band-intersection harvesting). See v3.16.15
-        # A/B battery — both profiles ~94.9% win rate; choice is
-        # about which scenarios to optimize for.
         gates_group = QGroupBox("Strategy Gate Flags (v3.16.15)")
         gf = QFormLayout(gates_group)
         self._configure_form(gf)
@@ -1317,10 +1113,6 @@ class SettingsTabMixin:
 
         layout.addWidget(gates_group)
 
-        # v3.23.34 — wizard-parity: Profit Routing group.
-        # Where realized profit flows on fold. fold_to_target =
-        # compound; spendable = mark for withdrawal; split =
-        # use fold % below; cross_bot = route to a target bot ID.
         routing_group = QGroupBox("Profit Routing (v3.20.85)")
         pr = QFormLayout(routing_group)
         self._configure_form(pr)
@@ -1346,12 +1138,6 @@ class SettingsTabMixin:
         )
         pr.addRow("Route:", self._profit_route)
 
-        # profit_fold_pct intentionally omitted — schema field
-        # retired v3.23.3 (see bot_container.py:629 deprecated
-        # set); the wizard's matching widget is also dead. The
-        # 'split' route uses profit_folding_active + max_target_
-        # growth_pct upstream.
-
         self._profit_route_bot_id = QLineEdit()
         self._profit_route_bot_id.setText(
             str(getattr(cfg, "profit_route_bot_id", "") or "")
@@ -1373,17 +1159,6 @@ class SettingsTabMixin:
 
         layout.addWidget(routing_group)
 
-        # --- v3.19.28 — Extractor-specific live settings ---
-        # Operator-reported gap (2026-05-22): Settings tab on a live
-        # Extractor bot was showing ONLY the shared Trading Parameters
-        # group (visibility / check_interval / aggressive / bulk).
-        # The Extractor-specific knobs (chunk_size, artillery_size,
-        # scan_top_n, exit_pct, etc.) were unreachable. The wizard
-        # captures them at creation but operators couldn't tune them
-        # after the bot was running. v3.19.28 mirrors the wizard's
-        # _extractor_group widget set into the live settings dialog
-        # so every Extractor parameter the wizard exposes is also
-        # editable live.
         if cfg.mode.value == "extractor":
             ext_group = QGroupBox("Extractor — Pool & Artillery")
             ef = QFormLayout(ext_group)
@@ -1405,10 +1180,6 @@ class SettingsTabMixin:
             self._ext_chunk_size.valueChanged.connect(
                 lambda v: self._mark_changed("extractor_chunk_size_usd", v)
             )
-            # v3.20.5 — operator-renamed "Chunk size" → "Pool size".
-            # The internal config field name (`extractor_chunk_size_usd`)
-            # stays — this is a label-only change for the operator's
-            # UX. Same field, same semantic.
             ef.addRow("Pool size (USD):", self._ext_chunk_size)
 
             self._ext_artillery_size = QDoubleSpinBox()
@@ -1524,10 +1295,6 @@ class SettingsTabMixin:
 
             layout.addWidget(ext_group)
 
-            # Sub-group: operator alt-targets (live editable)
-            # v3.19.28 — surface the manual override list. Read-only
-            # display for now (multi-select live editor is a larger
-            # follow-up); shows the operator what the bot is using.
             alts_group = QGroupBox("Alt Targets (manual override)")
             af = QVBoxLayout(alts_group)
             alts = list(getattr(cfg, "extractor_alt_targets", []) or [])

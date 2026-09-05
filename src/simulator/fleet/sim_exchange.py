@@ -651,10 +651,7 @@ class FleetSimExchange(ExchangeInterface):
                     symbol=sym,
                     base=base.upper(),
                     quote=quote.upper(),
-                    # Placeholder: real per-symbol limits are not available
-                    # offline. The four limits match NuclearSimExchange so
-                    # one strategy cannot get two trade counts; the fees
-                    # do not, because it reports its own fee_pct.
+                    # Placeholder limits matching NuclearSimExchange; real ones are online only.
                     min_amount=1e-8,
                     min_cost=1.0,
                     amount_precision=8,

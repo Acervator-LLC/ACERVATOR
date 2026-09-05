@@ -12,9 +12,7 @@ import time
 
 from . import design_system as ds
 
-# THE ENGINE OWNS THE BANDS. The Ammo cell says what the tick and the
-# Fire button are about to do, so it reads their thresholds rather than
-# restating them. See ``_compose_ammo_cell``.
+# The Ammo cell reads the engine's thresholds rather than restating them.
 from ..trading.target_bands import (
     MANUAL_FIRE_PCT,
     manual_fire_dust_band,
@@ -24,33 +22,17 @@ from ..trading.target_bands import (
 
 logger = logging.getLogger("acervator.gui")
 
-# v3.24.38 (C10 / NF-5) — appended to any dashboard figure that could
-# not be recomputed this tick. A module constant so pins assert against
-# the same string the renderer uses rather than a copy that can drift.
+# Appended to any dashboard figure that could not be recomputed this tick.
 _STALE_MARKER = "(stale)"
 
 _AMMO_SCRUM = ds.SUCCESS
 _AMMO_FOLD = ds.ERROR
 _AMMO_NEUTRAL = ds.TEXT_MED
 
-# v3.24.xx — the age past which a displayed price is called out as old.
-# The bulk refresher (BotManager._ticker_refresh_loop) rewarms the shared
-# cache every 5s, so anything materially older than that means the
-# refresher is not running and the reading came from the bot's own gated
-# fetch instead.
+# The age past which a displayed price is called old; the refresher rewarms every 5s.
 _PRICE_STALE_AFTER_S = 20.0
 
-# Manual Fire's own no-op band, RE-EXPORTED from the engine rather than
-# mirrored. The dashboard's actionable band is 0.1% and this one is 1%,
-# so there is a 10x window in which the cell renders a confident signal
-# colour and Manual Fire silently returns "already within dust band ...
-# No-op". Operator 2026-08-06: "strange, intermittent and hard to
-# explain amounts". Zero is one of those amounts, and the cell warns.
-#
-# It used to be a literal copy of ``scrumming_bot.py``'s, kept honest by
-# a test that read the engine's SOURCE TEXT for "* 0.01". Issue #128 R2
-# made both sides call ``src/trading/target_bands.py``, so there is now
-# one number and nothing to keep in step.
+# Manual Fire's no-op band is ten times the dashboard's actionable band.
 _MANUAL_FIRE_DUST_PCT = MANUAL_FIRE_PCT
 
 
@@ -65,7 +47,7 @@ def _ammo_price_pool():
         from ..exchange.data_pool import get_data_pool
 
         return get_data_pool()
-    except Exception:  # R28-OK: display must render without a pool
+    except Exception:
         logger.debug("Ammo: data pool unavailable", exc_info=True)
         return None
 
@@ -73,28 +55,10 @@ def _ammo_price_pool():
 def _fresh_display_price(pool, exchange_id: str, symbol: str, fallback_price: float):
     """Best available price for DISPLAY, plus its age in seconds.
 
-    WHY THIS EXISTS (corrects a wrong fix shipped 2026-08-06)
-    The dashboard reads ``stats.current_price``, whose only recurring
-    writer is ``ScrummingBot.tick`` (``src/trading/scrumming_bot.py``)
-    -- downstream of the read-rate
-    gate. Measured 2026-08-06: that field refreshes no faster than every
-    60s on 29 bots and every 300s on 6, while the cell repaints every
-    2s. The bulk ticker refresher was shipped believing it fixed this;
-    it does not, because it warms the shared cache and never writes
-    ``stats.current_price``. This reader is the half that was missing.
-
-    DISPLAY ONLY. The trading path keeps reading ``stats.current_price``
-    on its own cadence, so nothing here changes what any bot decides or
-    transacts.
-
-    The pool entry is never older than ``stats.current_price``: the bot
-    populates that field FROM a pool fetch, so the cache is written at
-    or before the same instant. Preferring it is therefore always a
-    freshness win, never a regression.
-
-    Returns ``(price, age_seconds_or_None)``. Falls back to the passed
-    price when the pool is unavailable, unwired, or has no entry -- the
-    dashboard must render in test harnesses and paper mode too.
+    Prefers the ``pool`` entry over ``fallback_price``: a bot writes
+    ``stats.current_price`` FROM a pool fetch, so the pool entry is never the
+    older of the two. Returns ``(price, age_seconds_or_None)``, falling back
+    to ``fallback_price`` when the pool is unavailable or holds no entry.
     """
     try:
         entry = pool.get_ticker(exchange_id, symbol) if pool else None
@@ -103,7 +67,7 @@ def _fresh_display_price(pool, exchange_id: str, symbol: str, fallback_price: fl
             fetched = float(getattr(entry, "fetch_time", 0) or 0)
             if last > 0 and fetched > 0:
                 return last, max(0.0, time.time() - fetched)
-    except Exception:  # R28-OK: display path must never raise on a cache read
+    except Exception:
         logger.debug(
             "Ammo: pool price lookup failed for %s/%s",
             exchange_id,
@@ -123,30 +87,10 @@ def _compose_ammo_cell(
 ) -> dict:
     """Compute the Ammo cell: distance from target, and its signal.
 
-    v3.24.38 (C10 / NF-5). Extracted from ``update_bots`` so the most
-    safety-critical number on the dashboard can be tested without
-    booting a window — the same shape as the existing
-    ``_compose_table_target_denom_cell`` helper. Deliberately Qt-free:
-    it returns a colour NAME and the caller builds the QColor.
-
-    THE DEFECT THIS REPLACES
-    ``position_val = max(stats_pv, fresh_pv)``, justified in-line as
-    "whichever is non-zero is the real exposure". That holds only when
-    one of them IS zero. With both non-zero, max() picks the larger,
-    which is the STALE one exactly when the price has fallen:
-
-        target $50, holdings 5, price 20 -> 8
-          max()  : pv=100  delta=+50  SCRUM (sell surplus)
-          fresh  : pv= 40  delta=-10  FOLD  (buy deficit)
-
-    A full inversion of the signal on the Manual Fire surface, biased in
-    one direction only: it is correct while prices rise and wrong while
-    they fall. delta also stays pinned at the high-water mark no matter
-    how far the price drops, so the worse the fall the more wrong it
-    gets. On an ACCUMULATION platform it says sell precisely when it
-    should say buy.
-
-    Returns {text, color, tip, delta, stale, position_val}.
+    Recomputes ``position_val`` from ``holdings * cur_price * qrate`` whenever
+    both are present and falls back to ``stats_pv`` marked stale otherwise.
+    Qt-free: returns ``{text, color, tip, delta, stale, position_val}`` with a
+    colour name the caller turns into a QColor.
     """
 
     def _mag(v: float) -> str:
@@ -162,9 +106,7 @@ def _compose_ammo_cell(
         position_val, stale = stats_pv, stats_pv > 0
 
     if position_val <= 0 and holdings <= 0:
-        # Genuinely empty position (never held, never traded). Ammo =
-        # full target as a Fold signal; the operator needs initial
-        # entry. Not hidden, and not a rogue $0.
+        # An empty position reads as a full-target Fold, never as $0.
         delta = 0.0 - target_val
         return {
             "text": _mag(delta) if target_val > 0 else "---",
@@ -194,9 +136,6 @@ def _compose_ammo_cell(
         }
 
     delta = position_val - target_val
-    # THE ENGINE'S OWN TEST, not a copy of it. ``target_territory``
-    # applies the same band ``tick()`` parks inside, so the colour on
-    # this cell cannot say SCRUM while the tick sits at target.
     territory = target_territory(position_val, target_val)
     if territory == "scrum":
         color = _AMMO_SCRUM
@@ -208,15 +147,8 @@ def _compose_ammo_cell(
         color = _AMMO_NEUTRAL
         tip = "Within dust band — no action pending"
 
-    # Manual Fire refuses to act inside its OWN band, which is 10x this
-    # one (1% of target vs 0.1% here). In that window the cell would
-    # otherwise render a confident signal colour for an order that
-    # silently never happens. Say so on the cell rather than letting the
-    # operator discover it by firing.
     mf_dust = manual_fire_dust_band(target_val)
-    # ``0 < abs(delta)`` is the DISPLAY half and is not the engine's
-    # rule: a bot sitting exactly on target has nothing to fire, so
-    # warning about a refusal there would be noise.
+    # 0 < abs(delta) is a display test, not the engine's rule.
     manual_fire_noop = 0 < abs(delta) and manual_fire_will_noop(
         position_val, target_val
     )
@@ -230,10 +162,7 @@ def _compose_ammo_cell(
 
     text = _mag(delta) if target_val > 0 else "---"
     if stale:
-        # The value came from the cached stats field because holdings x
-        # price was not computable this tick. Show it, but never as a
-        # confident number, and never wearing a signal colour — an
-        # unmarked figure of unknown age is what NF-5 was.
+        # The cached stats field was used; it never wears a signal colour.
         color = _AMMO_NEUTRAL
         text = f"{text} {_STALE_MARKER}"
         tip = (
@@ -242,10 +171,7 @@ def _compose_ammo_cell(
             f"one. Do not fire on it."
         )
     elif price_age_s is not None and price_age_s > _PRICE_STALE_AFTER_S:
-        # Computable, but from an old price. Distinct from the branch
-        # above: the arithmetic ran, the INPUT is what aged. Previously
-        # this was rendered as a confident number with nothing to
-        # distinguish a 2-second price from a 5-minute one.
+        # The arithmetic ran; the input price is what aged.
         color = _AMMO_NEUTRAL
         text = f"{text} {_STALE_MARKER}"
         tip = (
@@ -266,23 +192,18 @@ def _compose_ammo_cell(
     }
 
 
-# v3.23.49 — pure formatter for the main BotStatusTable Target-BTC /
-# Target-ETH cells. Module-level so pin tests import without Qt.
-#
-# Returns ``(cell_text, color_hex)``. Reads MarketPairsScout +
-# CurrencyRateMonitor at call time. Blank ("") + neutral grey when:
-#   - target asset is the same as the quote (self-reference), OR
-#   - the <base>/<quote> pair isn't listed on the bot's exchange, OR
-#   - the currency-rate monitor hasn't populated the USD spot yet.
-#
-# Cell format: "0.00400 (+1.5%)"  — single line, ~14 chars. The
-# color hex is applied by the caller via item.setForeground(QColor(hex)).
 def _compose_table_target_denom_cell(
     quote_currency: str,
     base_asset: str,
     exchange_id: str,
     target_usd: float,
 ) -> tuple[str, str]:
+    """`(cell_text, color_hex)` for a Target-BTC or Target-ETH cell.
+
+    Returns an empty `cell_text` when `base_asset` equals `quote_currency`,
+    when `target_usd` is not positive, or when the pair is unlisted on
+    `exchange_id`.
+    """
     _quote = (quote_currency or "").upper()
     _base = (base_asset or "").upper()
     _neutral = ds.TEXT_MED

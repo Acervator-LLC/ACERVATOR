@@ -14,31 +14,17 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QFormLayout, QTableWidget, QWidget
 
 
-# ── Extractor Tranche row colours ─────────────────────────────────────
-# White on EXTRACTOR_TRANCHE_SURFACE (#b3261e) measures 6.54:1, clearing
-# WCAG AA's 4.5:1 floor.
+# White on EXTRACTOR_TRANCHE_SURFACE measures 6.54:1, clearing WCAG AA.
 EXTRACTOR_TRANCHE_BG_HEX = ds.EXTRACTOR_TRANCHE_SURFACE
 EXTRACTOR_TRANCHE_FG_HEX = ds.TEXT_MAX
 
 
-# ── Fold Tranche row colours ──────────────────────────────────────────
-# FOLD_TRANCHE_SURFACE (#123a63) clears 4.5:1 against every existing row
-# foreground: status green, amber, source cyan and body text.
-#
-# A foreground must be set explicitly: seven of the ten fold columns
-# otherwise inherit the theme's own text colour, which measures 1.47:1
-# on the two light themes.
+# A foreground must be set explicitly; the theme's own text measures 1.47:1 here.
 FOLD_TRANCHE_BG_HEX = ds.FOLD_TRANCHE_SURFACE
 FOLD_TRANCHE_FG_HEX = ds.TEXT_HIGH
 
 
-# ── Row border colours ─────────────────────────────────────────────────
-# Each border is derived from its own fill: no shared colour clears 3:1
-# (WCAG SC 1.4.11) against both. FOLD_TRANCHE_BORDER measures 4.56:1 on
-# its own fill, EXTRACTOR_TRANCHE_BORDER measures 3.74:1 on its own.
-#
-# A stylesheet `QTableWidget::item` rule destroys every per-cell
-# background, so this is painted by `_TrancheRowBorderDelegate` instead.
+# No shared colour clears WCAG SC 1.4.11's 3:1 against both fills.
 FOLD_TRANCHE_BORDER_HEX = ds.FOLD_TRANCHE_BORDER
 EXTRACTOR_TRANCHE_BORDER_HEX = ds.EXTRACTOR_TRANCHE_BORDER
 
@@ -60,18 +46,13 @@ TRANCHE_ROW_HEIGHT_PX = 30
 TRANCHE_FIRE_BTN_INSET_PX = 8
 
 
-# ── The Arbiter column ─────────────────────────────────────────────────
-# Appended after column 9 (Fire), which two tests pin by literal index
-# and which dispatches a real market buy; renumbering it is unsafe.
+# Appended after column 9 (Fire), which dispatches a real market buy.
 ARBITER_COLUMN_INDEX = 10
 ARBITER_COLUMN_HEADER = "Arbiter"
 
 # A fold tranche has no Arbiter; only an Extractor Tranche does.
 ARBITER_NOT_APPLICABLE = "—"
 
-# ── The Source column ──────────────────────────────────────────────────
-# `_fold_tranche_source_label` below reads `operator_initiated` off the
-# stored tranche; see its docstring for the three cases.
 FOLD_SOURCE_MANUAL_SCRUM = "manual scrum"
 FOLD_SOURCE_AUTO_REBALANCE = "auto rebalance"
 FOLD_SOURCE_AUTO_SCRUM = "auto scrum"
@@ -104,13 +85,6 @@ FOLD_SOURCE_TOOLTIPS = {
 }
 
 
-# ── Row order the operator chooses ────────────────────────────────────
-# `QTableWidget` sorting moves items but not the Fire and Arbiter cell
-# widgets, mismatching a row's button to its tranche. The order is
-# applied to the list instead, and the table is rebuilt from it.
-#
-# The `#` column always prints queue position in `_fold_tranches`, not
-# visual row, so re-ordering the display never renumbers a tranche.
 TRANCHE_TABLE_VISIBLE_ROWS = 18
 
 # Fallback only; the builder passes the measured `fold_table_chrome_px(table)`.
@@ -153,9 +127,7 @@ def fold_table_max_height_px(
     return visible * TRANCHE_ROW_HEIGHT_PX + int(header_px) + int(chrome_px)
 
 
-# ── Table width, not a QAbstractScrollArea size hint ──────────────────
-# `sizeHint` does not sum column widths, so the tab holding this table
-# can hint narrower than one full row.
+# QAbstractScrollArea.sizeHint does not sum column widths.
 
 
 def fold_table_natural_width_px(table: QTableWidget) -> int:
@@ -179,10 +151,7 @@ def fold_table_natural_width_px(table: QTableWidget) -> int:
     )
 
 
-# ── Sort keys read fields already on the tranche ──────────────────────
-# `created_ts` is written at all three tranche-creation sites; `usd` is
-# the parked cash the "USD parked" column already prints. No order
-# derives or invents a quantity.
+# Every sort key reads a field already stored on the tranche.
 FOLD_SORT_QUEUE_ORDER = "Queue order"
 FOLD_SORT_OLDEST_FIRST = "Oldest first"
 FOLD_SORT_NEWEST_FIRST = "Newest first"
@@ -260,9 +229,6 @@ def fold_row_matches_filter(cell_texts: list, needle: str) -> bool:
     return any(text in str(cell or "").casefold() for cell in cell_texts)
 
 
-# ── Column header tooltips ────────────────────────────────────────────
-# These document the column; the longer per-row tooltips on Min rebuy,
-# Status, Source and Arbiter separately document that row's value.
 FOLD_COLUMN_TOOLTIPS = (
     "Position of this tranche in the fold queue.",
     "Time since the scrum created this tranche.",
@@ -282,9 +248,7 @@ FOLD_SORT_TOOLTIP = "Choose the row order. Unreadable rows stay last."
 FOLD_FILTER_TOOLTIP = "Show only rows that contain this text."
 FOLD_FILTER_PLACEHOLDER = "Filter rows..."
 
-# ── Summary-row tooltips ───────────────────────────────────────────────
-# Every fold-tranche removal site moves exactly one of opened, closed or
-# discarded, so `opened - closed - discarded == open tranches` always.
+# The invariant: opened - closed - discarded == open tranches.
 FOLD_OPEN_COUNT_TOOLTIP = "Fold tranches this bot holds in its queue now."
 FOLD_PARKED_USD_TOOLTIP = "Total cash parked by every open fold tranche."
 FOLD_OLDEST_AGE_TOOLTIP = "Age of the oldest tranche in this queue."
@@ -321,12 +285,7 @@ def install_health_row(
     return widget
 
 
-# ── The allotment total ────────────────────────────────────────────────
-# `_current_holdings` (`ScrummingBot.__init__`) is a stored field, kept
-# to the invariant `sum(lot["units"]) == _current_holdings` and exported
-# as `current_holdings` by `BotContainer.get_status`. This row reports
-# that field against the queue's summed `units`; it does not attribute
-# the cause of any excess.
+# The row reports _current_holdings against the queue's summed units.
 
 # Above 1.00x the queue claims more asset than the bot owns; the
 # threshold is a ledger fact, not a chosen level.
@@ -514,9 +473,7 @@ def _compose_extractor_tranche_cells(row: dict, now_ts: float) -> list[str]:
 
     units = float(row.get("base_deployed", 0.0) or 0.0)
 
-    # `as_finite_float` refuses bool, nan, inf and int overflow; each
-    # previously reached this format and printed a false or crashing
-    # value.
+    # as_finite_float refuses bool, nan, inf and int overflow.
     mark_usd = as_finite_float(row.get("mark_value_usd"))
     usd_text = f"${mark_usd:,.4f}" if mark_usd is not None else "—"
 

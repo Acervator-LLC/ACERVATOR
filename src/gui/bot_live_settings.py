@@ -1,9 +1,7 @@
-"""
-bot_live_settings.py — Live Bot Settings Dialog.
+"""Live Bot Settings dialog.
 
-Opens when clicking the Detail button on a running bot. Allows editing
-bot configuration in real-time. (Prior to v3.20.4 also hosted an
-"Adjust Stack" tab for Grid bots — removed alongside grid_bot cleanup.)
+``BotLiveSettingsDialog`` opens from the Detail button on a running bot and
+edits its configuration while the bot runs.
 """
 
 from __future__ import annotations
@@ -193,23 +191,7 @@ except ImportError:
     _HAS_QT = False
 
 
-# ── The dialog opens at the size its tabs need (issue #133 unit 4) ───
-# WHAT THE OPERATOR SAW. `Bot Settings — CHIP/USD [c8e5c5db]` opens at
-# `setMinimumSize(640, 720)` and hands each tab a 616x584 viewport. Its
-# tabs want up to 1907x2652, so the Fold-Tranche Cycle Health rows and
-# every Settings group below "Scrumming Settings" are off the window
-# until he drags the corner.
-#
-# THE MECHANISM, AND IT IS ONE LINE OF QT. `QScrollArea::sizeHint` ends
-# in `boundedTo(QSize(36 * h, 24 * h))`, `h` being the font height — 13px
-# under `cyberpunk_dark`, so 468x312. Every tab is wrapped in one
-# (MEM-240), so the dialog's layout is told a 1036x2652 Settings tab
-# wants 432x288 and sizes itself to fit that. Reading the wrapper is
-# what makes the dialog small; reading its CHILD is the repair.
-
-#: Screen pixels left clear of the dialog on each axis. The window frame
-#: sits OUTSIDE this size: about 8px per border across, and a title bar
-#: down.
+#: Screen pixels left clear of the dialog; the window frame sits outside this size.
 DIALOG_SCREEN_MARGIN_W_PX = 32
 DIALOG_SCREEN_MARGIN_H_PX = 72
 
@@ -324,28 +306,15 @@ if _HAS_QT:
         StatusTabMixin,
         QDialog,
     ):
-        """
-        Editable bot detail dialog for running bots.
+        """Editable bot detail dialog for running bots.
 
-        Tab 1: Status — read-only stats
-        Tab 2: Settings — editable config fields (applied immediately)
-        (Pre-v3.20.4 also had Tab 3: Adjust Stack — removed alongside
-        grid_bot cleanup.)
+        The Status tab is read-only; the Settings tab applies each edited
+        config field immediately.
         """
 
         settings_changed = Signal(str, dict)  # bot_id, {field: new_value}
 
-        # issue #98 defect 7 - the row order the operator chose, held
-        # on the dialog so a rebuild started by anything at all - a
-        # clear, a refresh, a second order change - keeps their choice.
-        #
-        # A CLASS ATTRIBUTE, NOT AN `__init__` LINE, and the reason is
-        # the same one that made the reach controls module functions:
-        # several test files build this tab through a STUB dialog that
-        # never runs `__init__`. A class default is inherited by a real
-        # dialog and read through `getattr` by a stub, so one spelling
-        # serves both. `fold_sort_order` still refuses a value this
-        # panel does not offer, whichever way it arrived.
+        # A class default, so a stub dialog that never runs __init__ still reads it.
         _fold_sort_key: str = FOLD_SORT_QUEUE_ORDER
 
         def __init__(self, bot, bot_manager=None, parent=None):
@@ -353,25 +322,13 @@ if _HAS_QT:
             self._bot = bot
             self._bm = bot_manager
             self._changes: dict = {}
-            # v3.16.18 — navigation between sibling bots without
-            # closing the dialog manually. Set by the Prev/Next
-            # buttons; main_window._on_bot_clicked reads after
-            # exec() returns and re-opens the dialog for the
-            # target bot at the same geometry + active tab.
+            # main_window._on_bot_clicked reads this after exec() returns.
             self._pending_navigate_to: str | None = None
 
             cfg = bot.config
             bid = bot.bot_id
             self.setWindowTitle(f"Bot Settings — {cfg.symbol} [{bid[:8]}]")
-            # MEM-240 — minimum raised from (620, 580) because the
-            # Settings tab alone contains ~980px of controls across 4
-            # group boxes (Trading Parameters, Scrumming Settings,
-            # Advanced Scrumming, Hedge Rebalance). At 580px the
-            # QFormLayout rows compressed to sub-minimum heights,
-            # causing QDoubleSpinBox/QComboBox/QCheckBox to render
-            # as striped bands (Qt's native widget paint code can't
-            # draw controls below ~24px tall). Tabs now also wrap in
-            # QScrollArea as a safety net for smaller screens.
+            # Qt cannot paint a spin box or combo box below about 24px tall.
             self.setMinimumSize(640, 720)
 
             layout = QVBoxLayout(self)
@@ -404,11 +361,7 @@ if _HAS_QT:
             hdr_row.addWidget(state_lbl)
             hdr_row.addStretch()
 
-            # v3.16.18 — Prev / Next bot navigation buttons.
-            # Lets the operator cycle through sibling bots without
-            # closing+re-opening the Detail panel manually. Order
-            # follows BotManager._bots insertion order, with wrap-around
-            # at both ends. Buttons are hidden if there's only one bot.
+            # Order follows BotManager._bots insertion order, wrapping at both ends.
             nav_btn_qss = (
                 f"QPushButton {{ background: {ds.SURFACE_CONTROL}; color: {ds.PRIMARY}; "
                 f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: 4px; "
@@ -447,10 +400,7 @@ if _HAS_QT:
 
             # Tabs
             tabs = QTabWidget()
-            self._tabs = tabs  # v3.16.18 — used by navigation to
-            # report the active tab back to the
-            # parent so the next bot's dialog
-            # opens on the same tab.
+            self._tabs = tabs
 
             # --- Tab 1: Status ---
             tabs.addTab(self._wrap_scrollable(self._create_status_tab()), "Status")
@@ -458,83 +408,37 @@ if _HAS_QT:
             # --- Tab 2: Settings ---
             tabs.addTab(self._wrap_scrollable(self._create_settings_tab()), "Settings")
 
-            # --- Tab 3: Fold Tranches (Scrumming only — v3.16.39 P2-VIS) ---
-            # Operator directive 2026-05-08 (post live-trading evaluation):
-            # surface the bot's two-leg cycle machinery — open
-            # _fold_tranches, parked USD, oldest tranche age,
-            # lifetime created/closed counters — so the operator can
-            # see Leg-1/Leg-2 health at a glance instead of needing
-            # post-hoc CSV analysis. MEM-171 / ADR-004 mechanics.
+            # --- Tab 3: Fold Tranches (Scrumming only) ---
             if cfg.mode.value == "scrumming":
-                # issue #98 defect 1 - installed through the one site
-                # that also records the page, so a clear can rebuild
-                # this tab in place instead of telling the operator to
-                # reopen the dialog.
                 self._install_fold_tranches_tab(tabs)
 
             # --- Tab 3.5: Stack Tranches (Scrumming only) ---
-            # v3.23.28 — mirror of Fold Tranches for the Stack Mode
-            # ledger.
-            # v3.23.29 — dropped the `stack_mode` sub-gate: the tab
-            # now always renders for scrumming bots (matching Fold
-            # Tranches behaviour). When the ledger is empty OR
-            # stack_mode is off, _create_stack_tranches_tab() renders
-            # a friendly "no tranches yet" panel with the enable hint
-            # instead of the tab being invisible. Operator-reported
-            # 2026-07-25: the sub-gate hid the tab even while inspecting
-            # the feature, defeating the reason for adding it.
             if cfg.mode.value == "scrumming":
                 self._install_stack_tranches_tab(tabs)
 
-            # --- Tab 4: Bot Swarm (Scrumming only — v3.16.44 P2-VIS) ---
-            # Operator directive 2026-05-08: pre-emptively surface Smart
-            # Wire / Bot Swarm state — outbound wires, inbound wires,
-            # pending credits, provenance, recent transactions — so issues
-            # in this code path can be caught BEFORE they accumulate (same
-            # pattern that Fold Tranches tab caught the compound bug).
+            # --- Tab 4: Bot Swarm (Scrumming only) ---
             if cfg.mode.value == "scrumming":
                 tabs.addTab(
                     self._wrap_scrollable(self._create_bot_swarm_tab()), "Bot Swarm"
                 )
 
-            # --- Tab 5: Market Inspector (Scrumming only — v3.23.37) ---
-            # Per-bot view of the shared Market Inspector's most recent
-            # HTF scan. Renders this bot's asset card, higher-scoring
-            # markets in the top-50 universe, and opposing pairs that
-            # feature this bot's asset. Reads from
-            # src.trading.market_inspector.get_shared_inspector(); the
-            # top-level Market Inspector tab owns the fetch cycle.
-            # Replaced the legacy Mr. Inspector tab which was a
-            # phantom for crypto bots (no caller wired
-            # ScrummingBot._mr_inspector).
+            # --- Tab 5: Market Inspector (Scrumming only) ---
+            # The top-level Market Inspector tab owns the fetch cycle; this reads its scan.
             if cfg.mode.value == "scrumming":
                 tabs.addTab(
                     self._wrap_scrollable(self._create_market_inspector_tab()),
                     "Market Inspector",
                 )
 
-            # --- Tab 6: Phantom Bots (Scrumming only — merged v3.23.39) ---
-            # Single tab combining the retired "Phantom State" (runtime
-            # view) with the "Phantom Bot" config surface. Per operator
-            # directive 2026-07-27: consolidate so the two aspects of the
-            # phantom subsystem live in one place. Order inside the tab:
-            # config (enable + TFs + lock) → coordinator status →
-            # per-phantom table → active locks.
+            # --- Tab 6: Phantom Bots (Scrumming only) ---
             if cfg.mode.value == "scrumming":
                 tabs.addTab(
                     self._wrap_scrollable(self._create_phantom_bots_tab()),
                     "Phantom Bots",
                 )
 
-            # v3.20.4 — Adjust Stack tab removed (grid_bot deleted
-            # v3.16.0; cfg.mode.value can never be "grid" since
-            # BotMode.GRID was dropped from the enum).
-
-            # --- v3.19.3: Positions Held (Extractor only) ---
-            # Operator decision #7 from the Extractor design doc:
-            # per-position Manual Fire buttons in a dedicated tab.
-            # No global fire — each open position has its own button
-            # that closes that specific position at market.
+            # --- Positions Held (Extractor only) ---
+            # Each open position has its own Fire button; there is no global fire.
             if cfg.mode.value == "extractor":
                 tabs.addTab(
                     self._wrap_scrollable(self._create_positions_held_tab()),
@@ -575,9 +479,6 @@ if _HAS_QT:
             self._change_lbl.setStyleSheet(f"color: {ds.WARNING}; font-size: 11px;")
             layout.addWidget(self._change_lbl)
 
-            # v3.16.18 — Ctrl+Left / Ctrl+Right keyboard shortcuts
-            # for Prev/Next navigation. Only wire up when we actually
-            # have siblings to navigate between.
             try:
                 from PySide6.QtGui import QShortcut, QKeySequence
 
@@ -592,17 +493,12 @@ if _HAS_QT:
                         self,
                         activated=lambda: self._navigate_to_sibling(1),
                     )
-            except (
-                Exception
-            ) as _shortcut_exc:  # noqa: BLE001 - keyboard shortcut wiring is optional
+            except Exception as _shortcut_exc:
                 logger.debug(
                     "sibling navigation shortcuts unavailable: %s", _shortcut_exc
                 )
 
-            # issue #133 unit 4 - LAST, because it measures the tabs
-            # and the tabs must all exist. `main_window` calls
-            # `setGeometry` after this when the operator is navigating
-            # between bots, so their own size still wins.
+            # Last: it measures the tabs, so every tab must already exist.
             self.open_at_content_size()
 
         def open_at_content_size(
@@ -610,19 +506,9 @@ if _HAS_QT:
         ) -> tuple[int, int]:
             """Resize so the largest tab fits, and report the size set.
 
-            `available` overrides the screen so a test can drive a small
-            display without owning one. Left None it reads
-            `availableGeometry`, which already excludes the taskbar.
-
-            NOT A MINIMUM. Raising `setMinimumSize` to the content size
-            would make a dialog the operator cannot shrink and, on a
-            display smaller than the content, one he cannot fully see
-            either. This sets the size it OPENS at; the 640x720 floor
-            MEM-240 put there is untouched.
-
-            issue #133 unit 12 - the tab's hint now carries a whole
-            tranche row: the table declares its column width as a
-            minimum, and `QWidgetItem.sizeHint` expands to it.
+            ``available`` overrides the screen; left None it reads
+            ``availableGeometry``. This sets the size the dialog opens at and
+            leaves ``setMinimumSize`` alone.
             """
             tabs = getattr(self, "_tabs", None)
             layout = self.layout()
@@ -652,7 +538,6 @@ if _HAS_QT:
             self.resize(width, height)
             return width, height
 
-        # ── v3.16.18 — sibling navigation ──────────────────────────
         def _sibling_bot_ids(self) -> list:
             """Return the ordered list of bot ids in the current
             BotManager, in insertion order. Empty list when no
@@ -662,9 +547,7 @@ if _HAS_QT:
                 return []
             try:
                 return list(self._bm._bots.keys())
-            except (
-                Exception
-            ):  # R28-OK: bot-manager probe; treat as no siblings on access failure
+            except Exception:
                 return []
 
         def _navigate_to_sibling(self, direction: int) -> None:
@@ -687,46 +570,29 @@ if _HAS_QT:
             try:
                 cur_idx = ids.index(self._bot.bot_id)
             except ValueError:
-                # Current bot was unregistered while the dialog was
-                # open — fall through to opening the first bot in
-                # the list rather than crashing.
+                # The current bot was unregistered while the dialog was open.
                 cur_idx = 0 if direction > 0 else 1
             new_idx = (cur_idx + direction) % len(ids)
             self._pending_navigate_to = ids[new_idx]
             self.accept()
 
         def active_tab_index(self) -> int:
-            """v3.16.18 — Used by main_window so the next bot's
-            dialog opens on the same tab the operator was viewing
-            (e.g., they navigated from the Settings tab; the next
-            bot's dialog should open on Settings, not Status)."""
+            """The index of the tab the operator is viewing.
+
+            ``main_window`` reads it so the next bot's dialog opens on the
+            same tab.
+            """
             try:
                 return int(self._tabs.currentIndex())
-            except (
-                Exception
-            ):  # R28-OK: tab-index probe; default to Status (0) on access failure
+            except Exception:
                 return 0
 
         def _wrap_scrollable(self, content: QWidget) -> QScrollArea:
-            """MEM-240 — Wrap a tab's content widget in a QScrollArea
-            so QFormLayout rows never get compressed below their
-            natural height.
+            """Wrap a tab's ``content`` widget in a ``QScrollArea``.
 
-            Background: when the dialog is smaller than the tab's
-            intrinsic size, QTabWidget hands the tab less vertical
-            space. Without a scroll area in between, QVBoxLayout
-            redistributes that shortage down into the child
-            QGroupBoxes, which in turn compresses their QFormLayout
-            rows. Rows compressed below ~24px cause Qt's native
-            widget paint to fail, rendering QDoubleSpinBox /
-            QComboBox / QCheckBox as horizontal striped bands rather
-            than controls. A scroll area fixes this by giving the
-            content its natural size and introducing a scroll bar
-            when the viewport is too small.
-
-            setWidgetResizable(True) = the child widget expands
-            horizontally with the viewport but keeps its own
-            vertical size; that's exactly what we want here.
+            ``setWidgetResizable(True)`` lets ``content`` keep its own
+            vertical size, so a ``QFormLayout`` row is never compressed below
+            the height Qt needs to paint its controls.
             """
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
@@ -735,16 +601,10 @@ if _HAS_QT:
             return scroll
 
         def _configure_form(self, form: QFormLayout) -> None:
-            """MEM-240 — Apply row-sizing defaults that keep form rows
-            at natural height regardless of container pressure.
+            """Apply row-sizing defaults to ``form``.
 
-            - fieldGrowthPolicy=AllNonFixedFieldsGrow: fields expand
-              horizontally to fill available width (prevents labels
-              wrapping unpredictably).
-            - rowWrapPolicy=DontWrapRows: labels and fields stay on
-              the same line at dialog minimum widths.
-            - Generous spacing so rows don't visually collide even
-              when the theme-provided row baseline is small.
+            Sets ``AllNonFixedFieldsGrow``, ``DontWrapRows`` and the row
+            spacing that keeps a row at its natural height.
             """
             form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
             form.setRowWrapPolicy(QFormLayout.DontWrapRows)
@@ -754,9 +614,7 @@ if _HAS_QT:
 
         def _mark_changed(self, field: str, value):
             """Track a changed field and enable Apply button."""
-            # MEM-232: phantom fields aren't on BotConfig — read the
-            # current runtime value from the bot instance for the
-            # comparison so "pending change" logic is accurate.
+            # Phantom fields are runtime attributes on ScrummingBot, not BotConfig fields.
             if field == "enable_phantoms":
                 original = getattr(self._bot, "_phantoms_enabled", None)
             elif field == "phantom_timeframes":
@@ -789,9 +647,7 @@ if _HAS_QT:
             cfg = self._bot.config
             applied = []
 
-            # MEM-232: phantom fields don't live on BotConfig — they're
-            # runtime attributes on ScrummingBot. Route them through
-            # update_phantom_config() which handles mid-session safely.
+            # Routed through update_phantom_config, which is safe mid-session.
             _PHANTOM_FIELDS = {
                 "enable_phantoms",
                 "phantom_timeframes",
@@ -813,40 +669,20 @@ if _HAS_QT:
                         logger.info(
                             "Bot %s phantom caveat: %s", self._bot.bot_id[:8], caveat
                         )
-                except Exception as exc:  # sadp: R61 CBF — surface in log
+                except Exception as exc:
                     logger.warning(
                         "Bot %s: phantom config update failed: %s",
                         self._bot.bot_id[:8],
                         exc,
                     )
 
-            # Session 26 (2026-04-24) operator-reported bug: setattr on
-            # config alone leaves the bot's RUNTIME attributes stale.
-            # Some fields have runtime parallels on ScrummingBot that
-            # must be updated in lockstep. Route those through the
-            # bot's own live-update methods; plain config-only fields
-            # keep the old setattr path.
-            # Session 26 full Settings→Functions audit (2026-04-24):
-            # fields whose values are snapshotted into ScrummingBot
-            # runtime attrs at __init__ and consumed via those attrs
-            # (not re-read from config each tick) MUST be routed through
-            # a bot method that updates both surfaces. Otherwise live
-            # setattr on config leaves the runtime stale. Full list in
-            # docs/operator_logs/AUDIT_2026-04-24_settings_to_functions.md.
+            # A field snapshotted into a runtime attribute is routed through a bot method.
             _RUNTIME_ROUTED = {
                 "target_balance": "set_target_balance_live",
                 "visibility": "set_visibility_live",
                 "aggressive_trading": "set_aggressive_live",
                 "hedge_balance": "set_hedge_balance_live",
-                # v3.20.5 — Pool Size live-update (Extractor only).
-                # Operator-reported 2026-05-23 that editing this field
-                # didn't refresh the dashboard's Pool/Liquid numerics —
-                # root cause was no runtime hook. ExtractorBot.
-                # set_chunk_size_usd() recomputes chunk_size_base from
-                # the rate captured at construction, scales _chunk_free_
-                # base proportionally so deployed positions aren't
-                # disturbed, and resizes the CapitalReservationRegistry
-                # claim so concurrent ScrummingBots see the new number.
+                # set_chunk_size_usd also rescales _chunk_free_base and the registry claim.
                 "extractor_chunk_size_usd": "set_chunk_size_usd",
             }
             for field, value in other_changes.items():
@@ -915,32 +751,10 @@ if _HAS_QT:
         def _save_fleet_state_now(self, what: str) -> tuple[bool, str]:
             """Persist the fleet in this click. Return (saved, reason).
 
-            issue #98 defect 3. `FoldTrancheAccountingMixin.clear_fold_tranches`
-            (`src/trading/scrumming/fold_tranches.py`) and
-            `WireRoutingMixin.clear_pending_wire_credits`
-            (`src/trading/scrumming/wire_routing.py`) both write memory
-            only and rely on the
-            60-second rolling save. Clear, then close inside that
-            window, and everything the operator destroyed comes back.
-
-            WHY THIS SAVES WHERE THE ARBITER TOGGLE DELIBERATELY DOES
-            NOT. That toggle's comment is right about the cost: a fleet
-            serialise plus a backup copy on the GUI thread is the freeze
-            class. It is also right about the risk it weighed - a
-            TOGGLE lost to a crash is set again in one click. A CLEAR
-            lost to a crash RESTORES records the operator deliberately
-            destroyed, and no second click can un-restore them. The two
-            are not the same trade, so they do not get the same answer.
-            The cost is stated rather than hidden: this call blocks the
-            GUI thread for as long as the fleet takes to serialise, and
-            the pin beside it carries that duration, so the cost is
-            measured on the operator's own machine instead of argued
-            about here.
-
-            THE FAILURE IS REPORTED, NEVER SWALLOWED. A clear that ran
-            in memory and did not reach disk is exactly the gap the
-            operator relies on this button to close, so the reason comes
-            back as text and goes into the message they read.
+            ``clear_fold_tranches`` and ``clear_pending_wire_credits`` write
+            memory only, so ``what`` is not on disk until this runs. The call
+            blocks the GUI thread for the length of the serialise, and a
+            failure comes back as the reason string.
             """
             manager = self._bot_manager_for_save()
             saver = getattr(manager, "save_all_state", None)
@@ -972,8 +786,3 @@ if _HAS_QT:
                 return f"{hrs:.1f}h"
             days = seconds / 86400
             return f"{days:.1f}d"
-
-        # v3.20.4 — Tab 4 (Adjust Stack) + _create_adjust_stack_tab +
-        # _execute_adjust_stack removed. The tab was Grid-bots-only and
-        # grid_bot.py was deleted v3.16.0; the methods became
-        # unreachable when BotMode.GRID was dropped from the enum.

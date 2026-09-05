@@ -31,9 +31,7 @@ PLACEHOLDER_CARD_BORDER_ALPHA = 68
 class TradingTabMixin:
     """Exchange layers, the indicator panel and the two log panes."""
 
-    # Supplied by MainWindow at runtime; declared so a type checker
-    # can resolve them. Annotations only: no attribute is created and
-    # the runtime base stays `object`.
+    # Annotations only; MainWindow supplies these at runtime.
     _add_exchange: Callable[..., Any]
     _bot_manager: Any
     _main_tabs: Any
@@ -165,28 +163,6 @@ class TradingTabMixin:
 
         top_splitter.setSizes([600, 500])
 
-        # 10.5 -- TRADING TAB ASSEMBLY.
-        #
-        # This tab computes nothing. It builds a structure and
-        # then makes claims about that structure in its own
-        # comments: two layer pages in one QStackedWidget,
-        # Crypto first and Stock second, the indicator panel to
-        # the right of the stack, and a legacy alias pointing at
-        # the layer the operator can actually see. Every claim
-        # is READ BACK OUT of the widget that now holds it. Not
-        # one of them echoes the call that made it: indexOf asks
-        # the stack and the splitter where a widget really sits,
-        # and currentIndex asks the stack what it really shows.
-        #
-        # _faults counts the claims that came back wrong, so the
-        # verdict is one number and the context names which
-        # claim produced it. actual is that count and expected
-        # is 0 -- different expressions, so the check can fail
-        # (E9).
-        #
-        # NO DURATION. Assembly is widget construction on the
-        # GUI thread with no bounded operation behind it, and a
-        # number here would be fabricated (E8).
         _crypto_host = (
             self._crypto_tab_widget.parentWidget() if self._crypto_tab_widget else None
         )
@@ -248,20 +224,7 @@ class TradingTabMixin:
         bottom_splitter.setHandleWidth(5)
         bottom_splitter.setChildrenCollapsible(False)
 
-        # MEM-247 — Notifications spool REMOVED per Session 26 operator
-        # directive ("The Notification section can be ripped out").
-        # `self._spool.notify(level, msg)` was called from ~6 sites (exchange
-        # credential status, bot startup errors, etc.). Rather than
-        # audit+delete every callsite, we route notifications into the
-        # Activity Log (status_log) so operator still sees them. The
-        # `_NotifyStub` import above preserves the .notify() signature.
-        # Also REMOVED: global Start All / Pause All / Stop All buttons.
-        # Per-bot Start / Pause / Stop controls remain accessible via the
-        # bot detail dialog + Fire button in the row.
-
-        # status_log is created a few lines below; defer _spool assignment
-        # until after it exists. See "self._spool = self._NotifyStub(...)"
-        # immediately after self._status_log = StatusLog().
+        # _spool is assigned after self._status_log exists.
         self._NotifyStub = _NotifyStub
         # Notifications block intentionally not added to bottom_splitter.
 
@@ -274,8 +237,7 @@ class TradingTabMixin:
         activity_layout = QVBoxLayout(activity_widget)
         activity_layout.setContentsMargins(2, 2, 2, 2)
         activity_layout.setSpacing(2)
-        # v3.15.67 — header row with title + pause toggle so the
-        # operator can freeze the spool to capture errors.
+        # The pause toggle freezes the spool so the operator can read errors.
         activity_header_row = QHBoxLayout()
         activity_label = QLabel("Activity Log")
         activity_label.setStyleSheet(f"color: {ds.PRIMARY}; font-weight: bold;")
@@ -305,13 +267,6 @@ class TradingTabMixin:
             else:
                 self._status_log.resume()
                 self._activity_pause_btn.setText("⏸  Pause Console")
-            # 10.5 -- trading.12.005. The handler's whole job is
-            # to turn a button state into a log state, so the
-            # log's own state is what gets read back. A pause
-            # that never took returns as cleanly as one that
-            # did, and the operator only learns the difference
-            # when the errors he paused for scroll away.
-            # NO DURATION: a flag flip has no operation (E8).
             import contextlib
 
             with contextlib.suppress(Exception):
@@ -336,25 +291,11 @@ class TradingTabMixin:
         self._status_log = StatusLog()
         self._status_log.setMaximumHeight(16777215)  # Remove height limit
         activity_layout.addWidget(self._status_log)
-        # MEM-247 — wire notify-stub now that status_log exists. See the
-        # _NotifyStub class defined in the notifications-removal block above.
+        # self._status_log must exist before the stub wraps it.
         self._spool = self._NotifyStub(self._status_log)
         log_splitter.addWidget(activity_widget)
 
-        # v3.16.35 — Activity-Log throughput watchdog (operator
-        # 2026-05-06: "Activity Log has stopped spooling around
-        # 5 to 6 AM but am not seeing any explicit errors").
-        # Polls StatusLog.health_stats() every 60s. When it
-        # detects:
-        #   • render_errors went up since last check → write a
-        #     bypass-paused warning into the log itself + file
-        #     logger
-        #   • last_render_age_sec > 600 (10 min) → write a
-        #     visible bypass-paused warning + file logger
-        #   • last_render_age_sec > 1800 (30 min) → escalate
-        #     to a CRITICAL log entry + repeat every 30 min
-        # Watchdog itself is in the GUI thread so it can safely
-        # call force_log() without cross-thread issues.
+        # Polls StatusLog.health_stats() every 60s on the GUI thread.
         self._activity_log_last_errors = 0
         self._activity_log_alert_sent_at = 0.0
         self._activity_log_critical_sent_at = 0.0
@@ -362,9 +303,7 @@ class TradingTabMixin:
         def _activity_log_watchdog():
             try:
                 stats = self._status_log.health_stats()
-            except (
-                Exception
-            ) as _wd_exc:  # R28-OK: defensive — never let watchdog itself crash
+            except Exception as _wd_exc:
                 logger.warning("Activity-Log watchdog stat fetch failed: %s", _wd_exc)
                 return
             import time as _t
@@ -425,7 +364,6 @@ class TradingTabMixin:
         api_layout = QVBoxLayout(api_widget)
         api_layout.setContentsMargins(2, 2, 2, 2)
         api_layout.setSpacing(2)
-        # v3.15.67 — header row with pause toggle for the API log.
         api_header_row = QHBoxLayout()
         api_label = QLabel("API Interaction Log")
         api_label.setStyleSheet(f"color: {ds.PRIMARY}; font-weight: bold;")
@@ -445,9 +383,7 @@ class TradingTabMixin:
             "happening; the buffer just stops appending to the view. "
             "v3.15.67."
         )
-        # Pause state lives on the main_window since QPlainTextEdit
-        # doesn't have a custom subclass like StatusLog. The
-        # _on_api_event handler checks this flag.
+        # _on_api_event reads this flag; QPlainTextEdit has no StatusLog subclass.
         self._api_log_paused: bool = False
         self._api_log_pause_buffer: list[str] = []
         self._api_log_pause_buffer_cap: int = 2000
@@ -471,7 +407,6 @@ class TradingTabMixin:
         self._api_pause_btn.toggled.connect(_on_api_pause_toggled)
         api_header_row.addWidget(self._api_pause_btn)
         api_layout.addLayout(api_header_row)
-        # MEM-204 — QPlainTextEdit (same reason as the main Console).
         self._api_log_view = QPlainTextEdit()
         self._api_log_view.setReadOnly(True)
         self._api_log_view.setPlaceholderText(

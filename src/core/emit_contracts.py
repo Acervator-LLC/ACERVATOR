@@ -1,52 +1,9 @@
-"""emit_contracts.py — expected-shape validation for bus emissions.
+"""Expected-shape validation for bus emissions.
 
-Operator directive 2026-08-05:
-
-    "You also develop emit detection intelligence... We are always
-    dealing with expected inputs and outputs. Each are formatted a
-    certain way, should contain certain data, and should appear or be
-    produced as expected. We should be approaching all of our testing
-    analytics from this standpoint in order to bolster our
-    troubleshooting capacity."
-
-WHY THIS EXISTS
-===============
-It was written immediately after this failure, which is the exact shape
-it is designed to catch:
-
-The Nuclear feature verifier read ``data["action"]`` from
-``trade.filled``. The bot writes that field as ``data["type"]``
-(``TickPhaseMixin._tick_initial_entry`` / ``_tick_execute_scrum`` /
-``_tick_execute_fold`` in ``src/trading/scrumming/tick_phases.py``);
-``"action"`` is the LOG schema's name, not the bus's. Nothing failed.
-No exception, no warning.
-The verifier recorded zero for every trade and reported "coverage
-0/17" while 665 trades flowed past it.
-
-A key-name mismatch between producer and consumer is invisible to both
-sides: the producer emits successfully, the consumer reads successfully
-and gets ``None``. Only a declared contract makes the gap visible.
-
-THE THREE FAILURE CLASSES
-=========================
-1. **Never emitted** — a topic that is declared but never fires. This
-   is the zero-call class that hid ``SimStatStrip.set()``,
-   ``compare_trades()``, ``SystemLoadOscillator`` and
-   ``register_sim_run()``, each of which passed its tests without ever
-   running.
-2. **Missing / renamed field** — the topic fires but the payload lacks
-   a required key. The ``action`` vs ``type`` case above.
-3. **Bad value** — the key is present but holds something outside its
-   declared vocabulary, e.g. a trade type the consumer cannot map.
-
-All three are silent by default. None raise. Each is reported here.
-
-DESIGN
-======
-Observation only. A contract violation NEVER raises into the producer:
-this validates trading emissions, and an assertion that killed a live
-tick to report a schema nit would be a worse defect than the nit.
-Violations are collected and reported.
+``CONTRACTS`` declares each topic's required fields and ``TRADE_TYPES`` its
+accepted trade vocabulary, both taken from the emit sites. ``EmitObserver``
+collects one ``Violation`` per breach and never raises into the producer.
+``format_observer_lines`` renders what it collected.
 """
 
 from __future__ import annotations
@@ -96,14 +53,7 @@ class Violation:
         return (self.topic, self.kind, self.detail)
 
 
-# --------------------------------------------------------------------- #
-# Declared contracts                                                     #
-# --------------------------------------------------------------------- #
-#
-# Field names are taken from the EMIT SITES, not from the log schema.
-# The two disagree — `trade.filled` carries `type`, while the persisted
-# trade row calls the same thing `action` — and that disagreement is
-# what this module exists to surface rather than paper over.
+# Field names come from the emit sites: trade.filled carries type, the log row action.
 
 TRADE_TYPES: tuple[str, ...] = (
     "SCRUM",
