@@ -324,7 +324,7 @@ there. The ratio table above comes from the export directly, on the same two
 columns the charts read.
 
 No committed file produces these charts. A walk of every path any commit ever
-added, renamed or deleted reaches 1,606 distinct paths, and exactly one of them
+added, renamed or deleted reaches 1,626 distinct paths, and exactly one of them
 carries the letters vwap: a Simulator test for the price band. A pickaxe over
 every Python file in every commit returns nothing for the three names a chart
 builder would carry. The charts and the record behind them belong to the
@@ -332,7 +332,7 @@ operator. This repository cannot regenerate either.
 
 ```
 git log --all --diff-filter=ADR --name-only
-    1,606 distinct paths
+    1,626 distinct paths
     tests/test_vwap_band_scales_to_price.py     the one vwap name
 
 git log -S<name> -- '*.py'
