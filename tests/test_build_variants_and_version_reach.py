@@ -35,10 +35,6 @@ from tools.build_variants import (
     windows_file_version,
 )
 
-# --------------------------------------------------------------------- #
-# Output naming: the version and the variant are both in the name         #
-# --------------------------------------------------------------------- #
-
 
 def test_the_output_name_carries_both_the_version_and_the_variant():
     name = output_basename("3.28.0", REACT)
@@ -66,11 +62,6 @@ def test_a_local_version_segment_does_not_reach_the_folder_name():
 
 def test_sanitise_never_answers_empty():
     assert sanitise("+++") == "unknown", "an all-unsafe version produced no name"
-
-
-# --------------------------------------------------------------------- #
-# Accumulation: a name already on disk is stepped past, never replaced    #
-# --------------------------------------------------------------------- #
 
 
 def test_a_first_build_claims_the_plain_name(tmp_path):
@@ -106,11 +97,6 @@ def test_naming_a_build_reads_the_disk_and_writes_nothing(tmp_path):
     assert list(tmp_path.iterdir()) == [], "naming a build created something in dist"
 
 
-# --------------------------------------------------------------------- #
-# The variant the build asked for                                        #
-# --------------------------------------------------------------------- #
-
-
 def test_an_unset_build_variant_falls_back_to_the_default():
     assert requested_variant({}) == DEFAULT_VARIANT
 
@@ -131,11 +117,6 @@ def test_every_declared_variant_normalises_to_itself(name):
 
 def test_normalise_refuses_a_name_that_is_not_a_variant():
     assert normalise("qt6") == "", "an unknown name was accepted as a variant"
-
-
-# --------------------------------------------------------------------- #
-# The variant the application resolves                                   #
-# --------------------------------------------------------------------- #
 
 
 def test_a_baked_variant_is_what_a_bundle_reports(tmp_path, monkeypatch):
@@ -160,11 +141,6 @@ def test_an_unstamped_checkout_reports_the_default(tmp_path, monkeypatch):
     monkeypatch.setattr(_variant, "is_frozen", lambda: False)
     monkeypatch.delenv(_variant.ENV_VAR, raising=False)
     assert resolve_variant(tmp_path) == DEFAULT_VARIANT
-
-
-# --------------------------------------------------------------------- #
-# The variant reaches the History table choice                           #
-# --------------------------------------------------------------------- #
 
 
 def test_the_qt_variant_selects_the_qt_table():
@@ -206,11 +182,6 @@ def test_both_tables_answer_the_calls_the_history_tab_makes():
         assert hasattr(HistoryWebTable, name), f"the React table has no {name}"
 
 
-# --------------------------------------------------------------------- #
-# Windows resource fields are derived, not literal                       #
-# --------------------------------------------------------------------- #
-
-
 def test_the_windows_file_version_follows_the_resolved_version():
     assert windows_file_version("3.28.0") == "3.28.0.0"
 
@@ -230,11 +201,6 @@ def test_the_windows_file_version_is_always_four_numbers():
 def test_the_windows_file_version_is_not_the_old_literal():
     """The resource fields read a hardcoded 1.1.0 until this seam existed."""
     assert windows_file_version("3.28.0") != "1.1.0.0"
-
-
-# --------------------------------------------------------------------- #
-# The version reaches every consumer                                     #
-# --------------------------------------------------------------------- #
 
 
 def test_the_package_version_is_the_resolved_version():
