@@ -494,6 +494,9 @@ class TestTheLiveAppExcuseIsNamedAndConditional:
             (".acervator_logs", "console_20260904_160357.log"),
             (".acervator_logs", "crash_20260904_160357.log"),
             (".acervator_logs", "faulthandler_20260904_160357.log"),
+            (".acervator_logs", "postmortem_20260903_120921/SUMMARY.txt"),
+            (".acervator_logs", "postmortem_20260903_120921/crash_20260831_153128.log"),
+            (".acervator_logs", "thread_violation_20260627.log"),
         ],
     )
     def test_every_shape_the_running_app_creates_is_covered(
@@ -533,6 +536,27 @@ class TestTheLiveAppExcuseIsNamedAndConditional:
     def test_a_name_that_only_starts_like_a_listed_one_is_not_excused(self, tmp_path):
         root = tmp_path / ".acervator"
         assert cf._excused_by_the_live_app(str(root / "preflight.json"), (root,)) == ""
+
+    def test_an_unlisted_path_still_fails_beside_a_listed_one(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """One excused creation must not carry an unexcused one through."""
+        root = _redirected_root(tmp_path)
+        snaps = root / "ta_snapshots"
+        snaps.mkdir()
+
+        def mutate():
+            (snaps / "7c39c7a2.ff6d62e7.json").write_text("{}", encoding="utf-8")
+            (root / "leaked.json").write_text("{}", encoding="utf-8")
+
+        with pytest.raises(AssertionError) as caught:
+            _drive_guard(
+                monkeypatch, (root,), root / "stone_tablets", mutate, live_app=True
+            )
+        message = str(caught.value)
+        assert "leaked.json" in message, message
+        assert "created 1 path" in message, message
+        assert "EXCUSED" in capsys.readouterr().out
 
 
 def test_a_clean_run_stays_green_and_silent(monkeypatch, tmp_path, capsys):

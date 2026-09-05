@@ -466,6 +466,14 @@ _LIVE_APP_CREATES: dict[str, str] = {
     ".acervator_logs/faulthandler_": (
         "main._setup_faulthandler opens faulthandler_<timestamp>.log per launch"
     ),
+    ".acervator_logs/postmortem_": (
+        "acervator_watchdog.write_postmortem bundles the logs of a child it "
+        "found crashed or stalled"
+    ),
+    ".acervator_logs/thread_violation_": (
+        "_on_api_event appends thread_violation_<date>.log when it refuses a "
+        "call arriving off the GUI thread"
+    ),
 }
 """The only new paths a running Acervator writes under ``_live_roots``.
 
