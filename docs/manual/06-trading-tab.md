@@ -24,9 +24,9 @@ self._trading_stack.addWidget(stock_page)  # index 1
 self._trading_stack.setCurrentIndex(0)  # start in crypto
 ```
 
-**Design intention.** One terminal, several investment domains at once. The
-two-layer stack is the part of that aim you can use today. Pressing the mode
-button swaps the whole wing, tables and Paper Trader together.
+**Design intention.** The two-layer stack is the part of the multi-domain aim
+you can use today. Pressing the mode button swaps the whole wing, tables and
+Paper Trader together.
 
 `src/gui/main_window.py` — `_toggle_trading_mode`
 
@@ -37,8 +37,8 @@ self._mode_btn.setChecked(True)
 self._trading_stack.setCurrentIndex(1)
 ```
 
-The Modulus Bot and the Paper Trading layer named in the paragraph above have
-no module behind them. This manual marks them unbuilt where it reaches them.
+The Modulus Bot and the Paper Trading layer this section names have no module
+behind them. This manual marks them unbuilt where it reaches them.
 
 #### The header strip
 
@@ -93,7 +93,8 @@ self._spendable_widget.update_profits(
 ```
 
 `total_realised_pnl` is already read two lines above this call, for the
-Scrummed card. Mature has no source yet and stays an em dash.
+Scrummed card. Mature has no source yet and stays an em dash. Issue #418
+carries this.
 
 [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md) covers the strip in
 full.
@@ -121,10 +122,9 @@ self._reorder_main_tabs(CANONICAL_TAB_ORDER)
 
 **Design intention.** The order should read as the working order. Trade first,
 then the screens that inspect the trade, then the screens that replay it. One
-list decides it, so the order cannot drift as tabs are added. A tab the list
-never names is left exactly where it was.
+list decides it, so the order cannot drift as tabs are added.
 
-`src/gui/main_window.py` — `_reorder_main_tabs`
+`src/gui/main_window.py` — the move loop
 
 ```python
 tab_bar = self._main_tabs.tabBar()
@@ -169,13 +169,12 @@ def _sync_exchange_tabs(self) -> None:
 **Functional.** The Scrumming Bots table carries ten columns. Nine are named
 and the tenth is blank, because that one holds the Detail button. Mode is the
 coloured cell: green while running, amber while paused, grey while idle or
-stopped, red on error, orange in cooldown, cyan while starting. Ammo is the
-distance between what the position is worth now and its Target. It draws green
-above the target, red below it, and neutral grey inside the dust band. Target
-BTC and Target ETH restate the Target in those two assets, and go blank when
-the pair is unlisted or when the target already is that asset. The Extractor
-table sits underneath. Both tables start hidden and appear when their own list
-gains a row.
+stopped, red on error, orange in cooldown, cyan while starting. The Ammo cell
+draws green above the target, red below it, and neutral grey inside the dust
+band. Target BTC and Target ETH restate the Target in those two assets, and go
+blank when the pair is unlisted or when the target already is that asset. The
+Extractor table sits underneath. Both tables start hidden and appear when their
+own list gains a row.
 
 `src/gui/widgets/bot_status_table.py` — `BotStatusTable.SCRUMMING_COLUMNS`
 
@@ -195,9 +194,9 @@ SCRUMMING_COLUMNS = ColumnSpec(
     ),
 ```
 
-**Design intention.** Ammo is the operator's own word for Target Delta, defined
-under Scrumming Bot Terms below. The column exists so you can see, in one
-sweep of the table, how much value each bot is holding ready to fire.
+**Design intention.** The Ammo cell measures against the live target, not the
+frozen number typed into the wizard, so the reading follows the grown balance
+the engine re-zeroes to.
 
 `src/gui/widgets/bot_status_table.py` — the target the Ammo cell measures
 against
@@ -209,9 +208,6 @@ target_val = float(
     or 0.0
 )
 ```
-
-The live target comes first, so the reading follows the grown balance the
-engine re-zeroes to rather than the frozen number typed into the wizard.
 
 #### The command bar
 
@@ -301,37 +297,14 @@ def nextId(self):
         return PAGE_ASSET
 ```
 
-**Design intention.** These two entries become Strategies, in the operator's
-own words above. A strategy list is the shape wanted; two radio buttons is the
-shape built. What a strategy entry should carry beyond a label has not been
-decided, so nothing is proposed here.
-
-In development.
-
 ![The wizard's asset page: exchange, base currency and target asset.](p17-i0.png)
 
 After Scrumming / Accumulation is selected, next we are presented with Exchange, Base Currency, and Target Asset options.
 
 Exchange - A privately and federally licensed financial platform that allows API interfacing for remote or automated trade execution.
 
-Base Currency - This will be a National Currency, Stable Coin, or High Volume Crypto (BTC, ETH, BNB) for which multiple trading pairs are available on the selected exchange.
-
-Target Asset - This is the asset in which the scrumming bot bases its position. If $50 and ZEC are selected, it will strive to maintain and compound against a balance of $50 in ZEC until it is shut down or some other adverse market condition occurs.
-
-**Functional.** Four rows. Pick the exchange and the page re-scans that venue,
-keeping only the spot markets the venue itself marks active. Base Currency is a
-fixed list of seven. Target Asset then lists every asset trading against the
-base you chose, each with a cached coin icon and, where the venue reported one,
-a 24-hour volume figure. The list sorts by that volume. The round information
-button opens a written description of the selected asset. The line under the
-rows counts the pairs found, and says the list is in volume order when at least
-one pair carried a volume.
-
-`src/gui/bot_wizard.py` — `AssetSelectionPage`, the base list
-
-```python
-self._base.addItems(["USDT", "USDC", "BTC", "ETH", "BNB", "EUR", "USD"])
-```
+The row lists the venues already connected. Picking one re-scans that venue and
+keeps only the spot markets the venue itself marks active.
 
 `src/gui/bot_wizard.py` — the market filter inside `_fetch_markets`
 
@@ -344,12 +317,25 @@ for sym, info in exch.markets.items():
         continue
 ```
 
-**Design intention.** The three definitions above are the intention for these
-rows, and the code meets them. The base list holds exactly the national
-currencies, stable coins and high-volume crypto named there. Sorting by volume
-puts the tradeable pairs at the top of a list that runs to several hundred
-entries on a large venue, and the sort reads a cached figure rather than
-fetching one, so opening the list never stalls the screen.
+Base Currency - This will be a National Currency, Stable Coin, or High Volume Crypto (BTC, ETH, BNB) for which multiple trading pairs are available on the selected exchange.
+
+The page offers a fixed list of seven, and it holds exactly the national
+currencies, stable coins and high-volume crypto named above.
+
+`src/gui/bot_wizard.py` — `AssetSelectionPage`, the base list
+
+```python
+self._base.addItems(["USDT", "USDC", "BTC", "ETH", "BNB", "EUR", "USD"])
+```
+
+Target Asset - This is the asset in which the scrumming bot bases its position. If $50 and ZEC are selected, it will strive to maintain and compound against a balance of $50 in ZEC until it is shut down or some other adverse market condition occurs.
+
+The list holds every asset trading against the base you chose, each with a
+cached coin icon and, where the venue reported one, a 24-hour volume figure.
+The round information button opens a written description of the selected asset,
+and the line under the rows counts the pairs found. Sorting by volume puts the
+tradeable pairs at the top of a list that runs to several hundred entries on a
+large venue, and the sort reads a cached figure rather than fetching one.
 
 `src/gui/bot_wizard.py` — the volume sort
 
@@ -366,24 +352,21 @@ Next we come to the combined Scrumming Bot configuration page which has several 
 
 ![The Trading Parameters group of the wizard's parameter page.](p18-i0.png)
 
-**Functional.** This page holds eight groups for a Scrumming Bot and one for an
-Extractor, all in one scroll area. You see one side or the other, never both.
-The first group holds seven controls, listed here with the range each accepts
-and the value it starts at:
+Order Visibility - Trades are listed on the order books or tracked internally to the platform.
 
-- Order Visibility: Order Book (Visible) or Internal (Invisible).
-- Aggressive Trading (force IOC-limit takers), a checkbox, off at the start.
-- Stack Mode (split SCRUM across upward tranches). Its start state is read from
-  the engine, not typed into the page twice.
-- Split Distance, a percentage from 0.10 to 20.00, at 1.00 %.
-- Tranche Count, a whole number from 2 to 20, at 3.
-- Spacing: Linear, Quadratic or Exponential. The sequence beside each name is
-  the cumulative distance from the anchor in units of Split Distance.
-- Personal Hold (units), target-asset units the bot holds out of its own
-  decision maths and out of any sibling bot's view.
+Two entries, Order Book (Visible) and Internal (Invisible). `ScrummingBot`
+reads the choice once at construction and holds it as its invisible flag.
 
-Tranche Spread appears in the list below. The page carries no such control, and
-this group emits no setting of that name.
+Aggressive Trading - Trades are priced so that they fill immediately. Trading like this is a bit like guerilla warfare. In and out before anyone notices.
+
+A checkbox, off at the start. Every engine-initiated order then leaves as an
+immediate-or-cancel limit priced through the spread, so it pays the taker fee
+for an immediate fill. Manual Fire is unaffected.
+
+Stack Mode - Stack Mode enables Stack Tranches which operate on the Sell or Scrum side. This forms the “upside” of the organic ladder structure whereas Fold Tranches form its “downside”.
+
+The box takes its start state from the engine rather than from a second literal
+typed onto the page.
 
 `src/gui/bot_wizard.py` — `TradingParamsPage`, the Stack Mode default
 
@@ -397,8 +380,47 @@ self._stack_mode = QCheckBox(
 self._stack_mode.setChecked(STACK_MODE_DEFAULT)
 ```
 
+Split Distance - This setting determines the spacing between tranches if Tranche Spread (not available yet) is being used.
+
+A percentage from 0.10 to 20.00, at 1.00 % to start. The bot hands it to the
+stack maths as the gap between one tranche and the next.
+
+Tranche Spread - This allows a given Scrum or Fold to divide its result X# of times across multiple incremented (as dictated by Split Distance) positions.
+
+The page carries no control of that name, and no setting named
+`tranche_spread` reaches the engine.
+
+The same sweep run for `split_distance` returns a declaration, a restore entry
+and a reader, so the sweep itself finds a setting when one is there.
+
+In development.
+
+Tranche Count - This can also be referred to as Spread Count. It determines how pieces a given Scrum or Fold is split into and distributed across incremented tranches as opposed to just one.
+
+A whole number from 2 to 20, at 3 to start, written out as
+`stack_tranche_count_target`.
+
+Spacing - This adds a scaling factor Split Distance and works in conjunction with Tranche Spread and Tranche Count to induce curves and more aggressive growth within the ladder structure.
+
+Three entries: Linear, Quadratic and Exponential. The sequence beside each name
+is the cumulative distance from the anchor in units of Split Distance.
+
+Personal Hold - Setting to be removed.
+
+The control is still on the page. `TradingParamsPage.get_config` still emits
+`personal_hold_qty`, and the capital reservation mixin still reads it, adding
+it to the units the bot claims against its siblings. A removal has that reader
+to retire with it.
+
+`src/trading/scrumming/capital_reservation_mixin.py` —
+`_compute_reservation_qty`
+
+```python
+_hold = float(getattr(self.config, "personal_hold_qty", 0.0) or 0.0)
+```
+
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings this
-group emits
+group emits, in the order of the rows above
 
 ```python
 "stack_mode": self._stack_mode.isChecked(),
@@ -408,59 +430,65 @@ group emits
 "personal_hold_qty": float(self._personal_hold_qty.value()),
 ```
 
-**Design intention.** The operator says it plainly in the paragraph above the
-figure: read each description below as a design intention, not as a report of
-what happens. Tranche Spread is the clearest case. He describes it, he marks it
-"not available yet", and Split Distance and Tranche Count are already there
-waiting for it. What the control should look like on the page has not been
-decided, so nothing is proposed here.
-
-In development.
-
-Order Visibility - Trades are listed on the order books or tracked internally to the platform.
-
-Aggressive Trading - Trades are priced so that they fill immediately. Trading like this is a bit like guerilla warfare. In and out before anyone notices.
-
-Stack Mode - Stack Mode enables Stack Tranches which operate on the Sell or Scrum side. This forms the “upside” of the organic ladder structure whereas Fold Tranches form its “downside”.
-
-Split Distance - This setting determines the spacing between tranches if Tranche Spread (not available yet) is being used.
-
-Tranche Spread - This allows a given Scrum or Fold to divide its result X# of times across multiple incremented (as dictated by Split Distance) positions.
-
-Tranche Count - This can also be referred to as Spread Count. It determines how pieces a given Scrum or Fold is split into and distributed across incremented tranches as opposed to just one.
-
-Spacing - This adds a scaling factor Split Distance and works in conjunction with Tranche Spread and Tranche Count to induce curves and more aggressive growth within the ladder structure.
-
-Personal Hold - Setting to be removed.
+The same method writes `visibility` and `aggressive_trading` before it branches
+on the kind of bot, so an Extractor carries those two as well.
 
 ![The Scrumming Settings group.](p19-i0.png)
 
-**Functional.** The same page, scrolled down. Ten rows, each named here with
-the range the widget accepts and the value it starts at:
+Scrolling down we next find the first block of Scrumming Settings. These are the core or basic metrics for a Scrumming Bot.
 
-- Opposing Trade Interval, 0.10 % to 20.00 %, at 1.00 %.
-- BB Tolerance, 0.25 % to 5.00 %, at 1.00 %.
-- Landing Strip Candles, 2 to 10, at 3.
-- TA Timeframe. The list starts with seven entries and 1h chosen. Pick an
-  exchange and the list is rebuilt from the timeframes that venue carries, so a
-  venue without 4h does not offer it.
-- Target Balance, $1.00 to $1,000,000.00. Its start value is whatever default
-  the wizard was handed.
-- Max Entry Price, eight decimal places, at $0.00000000, where zero means no
-  ceiling.
-- Min Entry Price, the same shape, where zero means no floor.
-- Trading Fee %, 0.00 % to 5.00 %, at 0.60 %.
-- Max Target Growth %, 0.00 % to 100.00 %, at 1.00 %.
-- Scrum Fold Ratio, 1 % to 100 %, at 100 %.
+Opposing Trade Interval - Establishes the minimum travel distance required by price action from the point a given trade in order the next trade of the opposite type to occur.
 
-Two of these read differently in the engine than their labels suggest. The buy
-path is the only place either entry-price field is read. It refuses a buy above
-the ceiling and refuses a buy below the floor. Neither number ever reaches the
-sell path, so the pair works as a buy window and nothing else. Manual Fire runs
-its own rebalance and reads neither.
+A percentage from 0.10 to 20.00, at 1.00 % to start.
+
+BB Tolerance - Determines the minimum distance of the Bollinger Band extent price action must be in order for a trade action to occur.
+
+A percentage from 0.25 to 5.00, at 1.00 % to start. The band-proximity detector
+takes it as its tolerance.
+
+Landing Strip Candles - Determines the strictness of Landing Strip detection. Minimum is three candles. Longer Landing Strips are historically more likely to indicate an impending market reversal than shorter ones assuming the taper remains intact or grows tighter.
+
+A whole number of candles from 2 to 10, at 3 to start. The widget accepts 2,
+one below the minimum of three the description names, and the number reaches
+only one of the two landing-strip detectors. Issue #432 carries this.
+
+TA Timeframe - This is the timeframe at which the bot operates and denotes the price chart it will monitor for trade decisions.
+
+Seven entries to start, with 1h chosen. Pick an exchange and the list is
+rebuilt from the timeframes that venue carries, so a venue without 4h does not
+offer it.
+
+Target Balance - This is the intended starting and locked value for the investment position that the Scrumming Bot is controlling.
+
+From $1.00 to $1,000,000.00. Its start value is whatever default the wizard was
+handed.
+
+Max Entry Price - If the new bot does not detect the requisite amount (as dictated by Target Balance) of the Target Asset, this price threshold sets a limit at which it will attempt to perform the initiating Fold.
+
+Eight decimal places, at $0.00000000, where zero means no ceiling. The buy path
+is the only reader, and it refuses a buy above the ceiling.
+
+Min Entry (Should Be Exit) Price - If the new bot detects a requisite amount (as dictated by the Target Balance) of the Target Asset, this price threshold sets a limit at which it will attempt to perform the initiating Scrum.
+
+The same shape, where zero means no floor. The buy path is the only reader here
+too, so the number refuses a buy below the floor and never reaches a sell.
+
+Trading Fee % - This allows the trading fee for the target exchange to be set. This is added to Minimum Opposing Trade Distance to further ensure buys / sells are properly distant and that a given bot is not losing an excessive amount to fee chop in volatile but overly tight market regimes.
+
+A percentage from 0.00 to 5.00, at 0.60 % to start, which is the Coinbase
+Advanced Trade maximum tier.
+
+Max Target Growth % - This determines the maximum amount of growth the Target Balance can increase in a given Market Cycle with a cycle being a Fold / Scrum / Fold sequence. Essentially any Fold preceded by a Scrum will be allowed to Fold an amount of profit back in and, if Surplus remains after the Target Delta is re-zero’d, it can be used to increase Target Balance up to this hard limit for that cycle. This is the organic compounding mechanic.
+
+A percentage from 0.00 to 100.00, at 1.00 % to start. Setting it to zero
+freezes Target Balance.
+
+Scrum Fold Ratio - This precedes Surplus calculation as described under Max Target Growth %. It determines how much of a given trade’s profits will be redistributed to directly contribute to its own organic compounding. Note that this does not interfere with normal Target Delta re-zeroing and is intended to only serve as a “cushion” to slow runaway compounding when Wire Credits are being received from multiple sources.
+
+A whole percentage from 1 to 100, at 100 % to start.
 
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings this
-group emits
+group emits, in the order of the rows above
 
 ```python
 "scrumming_interval_pct": self._scrumming_interval.value(),
@@ -475,6 +503,17 @@ group emits
 "scrum_fold_pct": self._scrum_fold_pct.value(),
 ```
 
+**Where the code departs.** Two of these rows read differently in the engine
+than the entries above say.
+
+Min Entry Price is the first. The entry above writes the correction into its
+own heading, and the code follows the label on screen rather than that
+correction. The buy
+path is the only place either entry-price field is read; it refuses a buy above
+the ceiling and refuses a buy below the floor. Neither number reaches the sell
+path, so a bot that holds the asset and reaches that price sells nothing.
+Manual Fire runs its own rebalance and reads neither.
+
 `src/trading/scrumming/execution.py` — `_execute_buy`
 
 ```python
@@ -487,13 +526,8 @@ except (TypeError, ValueError):
 if _max_ep is not None and _px > 0 and _px > float(_max_ep):
 ```
 
-**Design intention.** The operator's definitions below carry the intention for
-each row, and two of them do not match what runs.
-
-He calls Min Entry Price an exit threshold. He goes further and writes "(Should
-Be Exit)" into the heading himself. The buy path is the only reader, so a bot
-that holds the asset and reaches that price sells nothing. The sell path takes
-the price already, so the check has somewhere to attach.
+The sell path already takes the price, so the floor check has somewhere to
+attach.
 
 *Proposed, not present, in `_execute_sell`:*
 
@@ -514,11 +548,11 @@ if _min_ep is not None and price > 0 and price < float(_min_ep):
 `min_entry_price` is declared in `src/trading/container/config.py` and reaches
 the bot through the wizard block above, so the proposal adds no new setting.
 
-The second gap is Max Target Growth %. He describes one hard limit per market
-cycle. The engine holds two different answers for a bot whose stored config
-lacks the key: nine read sites fall back to 1.0 and three fall back to 0.0. A
-bot then compounds or freezes depending on which site read it first. The
-declared default is 1.0, and the three outliers should say the same.
+Max Target Growth % is the second. The engine holds two answers for a bot whose
+stored config lacks the key. Ten read sites take it with a fallback: seven fall
+back to 1.0 and three fall back to 0.0. A bot compounds or freezes depending on
+which site read it first. The declared default is 1.0, and the three outliers
+should say the same.
 
 *Proposed, not present, at each of the three sites:*
 
@@ -527,7 +561,7 @@ _growth = float(getattr(self.config, "max_target_growth_pct", 1.0) or 0.0)
 ```
 
 The three outliers are the manual rebalance, the compounding snapshot and the
-SWOS inputs.
+SWOS inputs. Issue #409 carries this.
 
 ```
 src/trading/scrumming/execution.py   _execute_manual_rebalance
@@ -535,51 +569,60 @@ src/trading/scrumming/snapshots.py   _compounding_snapshot
 src/trading/scrumming_bot.py         get_swos_inputs
 ```
 
-Scrolling down we next find the first block of Scrumming Settings. These are the core or basic metrics for a Scrumming Bot.
-
-Opposing Trade Interval - Establishes the minimum travel distance required by price action from the point a given trade in order the next trade of the opposite type to occur.
-
-BB Tolerance - Determines the minimum distance of the Bollinger Band extent price action must be in order for a trade action to occur.
-
-Landing Strip Candles - Determines the strictness of Landing Strip detection. Minimum is three candles. Longer Landing Strips are historically more likely to indicate an impending market reversal than shorter ones assuming the taper remains intact or grows tighter.
-
-TA Timeframe - This is the timeframe at which the bot operates and denotes the price chart it will monitor for trade decisions.
-
-Target Balance - This is the intended starting and locked value for the investment position that the Scrumming Bot is controlling.
-
-Max Entry Price - If the new bot does not detect the requisite amount (as dictated by Target Balance) of the Target Asset, this price threshold sets a limit at which it will attempt to perform the initiating Fold.
-
-Min Entry (Should Be Exit) Price - If the new bot detects a requisite amount (as dictated by the Target Balance) of the Target Asset, this price threshold sets a limit at which it will attempt to perform the initiating Scrum.
-
-Trading Fee % - This allows the trading fee for the target exchange to be set. This is added to Minimum Opposing Trade Distance to further ensure buys / sells are properly distant and that a given bot is not losing an excessive amount to fee chop in volatile but overly tight market regimes.
-
-Max Target Growth % - This determines the maximum amount of growth the Target Balance can increase in a given Market Cycle with a cycle being a Fold / Scrum / Fold sequence. Essentially any Fold preceded by a Scrum will be allowed to Fold an amount of profit back in and, if Surplus remains after the Target Delta is re-zero’d, it can be used to increase Target Balance up to this hard limit for that cycle. This is the organic compounding mechanic.
-
-Scrum Fold Ratio - This precedes Surplus calculation as described under Max Target Growth %. It determines how much of a given trade’s profits will be redistributed to directly contribute to its own organic compounding. Note that this does not interfere with normal Target Delta re-zeroing and is intended to only serve as a “cushion” to slow runaway compounding when Wire Credits are being received from multiple sources.
-
 ![The Advanced Scrumming and Hedge Rebalance groups.](p20-i0.png)
 
-**Functional.** Seven rows in the advanced group, then two in the hedge group:
+Next are the “advanced” Scrumming settings which primarily affect when the bot is allowed to fire a trade. These can be thought of as “calibrating the scope”.
 
-- Detect Threshold, 10 % to 90 %, at 75 %. The distance from the Bollinger
-  midline to the band, as a percentage, before the bot moves from search to
-  track. At 75 the engine reads that as a lower mark of 0.125 and an upper mark
-  of 0.875, measured across the band rather than in dollars.
-- Fire Threshold, 0.10 % to 10.00 %, at 0.50 %.
-- BB Midline Gate, a checkbox, on at the start. When on, a scrum fires only
-  above the midline and a fold only below it.
-- Read Rate, 1 to 60 minutes, at 5 minutes. The search-mode read rate.
-- Band Travel, 0 % to 100 %, at 70 %. Zero switches it off.
-- BB Bullseye Check, a checkbox, on at the start.
-- Wire Inflow Stack, 0.00 % to 100.00 %, at 1.00 %.
-- Hedge Rebalance Active, a checkbox, on at the start.
-- Hedge Balance, at $200.00, a reserve held apart from Target Balance.
+Detect Threshold - Intended as the point at which the bot “takes the safety off” and starts looking for a shot. To be re-evaluated.
 
-The group title on screen carries an internal release identifier after the
-words Advanced Scrumming.
+A whole percentage from 10 to 90, at 75 % to start. The engine reads 75 as a
+lower mark of 0.125 and an upper mark of 0.875, measured across the band rather
+than in dollars.
+
+`src/trading/scrumming/circuit_breakers.py` — `_bb_detect_thresholds`
+
+```python
+detect_frac = max(0.0, min(1.0, detect_pct / 100.0))
+half = detect_frac * 0.5
+return (0.5 - half, 0.5 + half)
+```
+
+Fire Threshold - The final Bollinger Band approach metric. Once satisfied, the bot can fire a trade.
+
+A percentage from 0.10 to 10.00, at 0.50 % to start.
+
+BB Midline Gate - This is another, perhaps redundant layer, of Bollinger Band travel protection. It is different in that it is concerned with distance from the midline instead of the entire local width.
+
+A checkbox, on at the start. While it is on, a scrum fires only above the
+midline and a fold only below it.
+
+Read Rate - To be re-evaluated.
+
+From 1 to 60 minutes, at 5 minutes to start. It sets the search-mode read rate;
+track mode reads ten times faster.
+
+Band Travel - Previously described. To be re-evaluated.
+
+A whole percentage from 0 to 100, at 70 % to start. Zero switches it off.
+
+BB Bullseye Check - If current price and Bollinger Band thresholds are equal, the user can opt to perform a double-sized trade.
+
+A checkbox, on at the start.
+
+Wire Inflow Stack - To be re-evaluated.
+
+A percentage from 0.00 to 100.00, at 1.00 % to start.
+
+Hedge Rebalance Active - Determines if Current Price drifting below Initial Entry Price will have a limited amount of funds that can be used to keep re-zeroing the Target Delta at key bearish thresholds or areas of possible reversal.
+
+A checkbox, on at the start.
+
+Hedge Balance - Sets a limit on the amount of additional liquidity a given bot is allowed to absorb when Current Price drifts below Initial Entry Price.
+
+At $200.00 to start, a reserve the bot holds apart from Target Balance.
 
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings these
-two groups emit
+two groups emit, in the order of the rows above
 
 ```python
 "scrum_detect_pct": self._scrum_detect_pct.value(),
@@ -593,64 +636,43 @@ two groups emit
 "hedge_balance": self._hedge_amount.value(),
 ```
 
-`src/trading/scrumming/circuit_breakers.py` — `_bb_detect_thresholds`, where
-Detect Threshold becomes a band position
-
-```python
-detect_frac = max(0.0, min(1.0, detect_pct / 100.0))
-half = detect_frac * 0.5
-return (0.5 - half, 0.5 + half)
-```
-
-**Design intention.** Calibrating the scope, in the operator's words below.
-Four of the nine rows carry his own note, "To be re-evaluated": Detect
-Threshold, Read Rate, Band Travel and Wire Inflow Stack. Read those four as
-open questions rather than settled design. No replacement has been chosen for
-any of them.
-
-In development.
-
-Next are the “advanced” Scrumming settings which primarily affect when the bot is allowed to fire a trade. These can be thought of as “calibrating the scope”.
-
-Detect Threshold - Intended as the point at which the bot “takes the safety off” and starts looking for a shot. To be re-evaluated.
-
-Fire Threshold - The final Bollinger Band approach metric. Once satisfied, the bot can fire a trade.
-
-BB Midline Gate - This is another, perhaps redundant layer, of Bollinger Band travel protection. It is different in that it is concerned with distance from the midline instead of the entire local width.
-
-Read Rate - To be re-evaluated.
-
-Band Travel - Previously described. To be re-evaluated.
-
-BB Bullseye Check - If current price and Bollinger Band thresholds are equal, the user can opt to perform a double-sized trade.
-
-Wire Inflow Stack - To be re-evaluated.
-
-Hedge Rebalance Active - Determines if Current Price drifting below Initial Entry Price will have a limited amount of funds that can be used to keep re-zeroing the Target Delta at key bearish thresholds or areas of possible reversal.
-
-Hedge Balance - Sets a limit on the amount of additional liquidity a given bot is allowed to absorb when Current Price drifts below Initial Entry Price.
+The group title on screen carries an internal release identifier after the
+words Advanced Scrumming. Issue #420 carries that, and four more group titles
+with it.
 
 ![The Circuit Breakers group.](p21-i0.png)
 
-**Functional.** Six rows:
+Now we arrive at some safety controls. Circuit Breakers are designed to fully inhibit trade actions for a given period should an extreme volatility (pump and dump) event occur. Soft Circuit Breakers have a candle-count based timer whereas Hard Circuit Breakers require the user to clear the bot to continue trading.
 
-- Soft CB Threshold, 0.0 % to 100.0 %, at 25.0 %. Zero switches it off.
-- Hard CB Threshold, the same range, at 35.0 %. Zero switches it off.
-- Soft CB Cooldown, 1 to 100 candles, at 3.
-- Max Cartridge Size, 0.0 % to 200.0 %, at 10.0 %. The largest target
-  delta, as a percentage of Target Balance, before the bot fires an aggressive
-  rebalance.
-- Smart Cartridge, one checkbox labelled Calibrate to BB range, off at the
-  start.
-- Smart Ceiling, 1.0 % to 100.0 %, at 30.0 %. It caps the cartridge threshold
-  while Smart Cartridge is on.
+Soft CB Threshold - The amount of instantaneous, single-candle price action required for the bot to pause trading for a number of candles denoted by Soft CB Cooldown.
 
-The group title on screen carries an internal release identifier after the words
-Circuit Breakers. A trip stops a trade at one gate on each side of the chain,
-and [07-indicators.md](07-indicators.md) lists both chains in full.
+A percentage from 0.0 to 100.0, at 25.0 % to start. Zero switches it off.
+
+Hard CB Threshold - The amount of instantaneous, single-candle price action required for the bot to be hard stopped at which point the user must re-authorize trading.
+
+The same range, at 35.0 % to start. Zero switches it off.
+
+Soft CB Cooldown - This is the number of candles that must close before the Soft Circuit Breaker opens again.
+
+From 1 to 100 candles, at 3 to start.
+
+Max Cartridge Size - This is the maximum amount of deviation allowed for the Target Delta. At this threshold the bot is actively and aggressively looking for a trade opportunity.
+
+A percentage from 0.0 to 200.0, at 10.0 % to start. Crossing it fires an
+aggressive rebalance that bypasses the detection, hysteresis and soft-breaker
+checks.
+
+Smart Cartridge - This allows the Max Cartridge Size to organically resize in response to current price range as defined by the current-candle Bollinger Band reading.
+
+One checkbox labelled Calibrate to BB range, off at the start.
+
+Smart Ceiling - To be re-evaluated.
+
+A percentage from 1.0 to 100.0, at 30.0 % to start. It caps the cartridge
+threshold while Smart Cartridge is on.
 
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings this
-group emits
+group emits, in the order of the rows above
 
 ```python
 "circuit_breaker_soft_pct": self._cb_soft_pct.value(),
@@ -661,11 +683,8 @@ group emits
 "max_cartridge_smart_ceiling_pct": self._cartridge_smart_ceiling.value(),
 ```
 
-**Design intention.** A pump and dump should stop the bot, not feed it. The
-operator splits that aim in two below. A soft breaker clears itself after a
-number of candles. A hard breaker holds until a person clears it by hand. Both
-halves are built, and the gate on each side of the chain is where the stop
-lands.
+A trip stops a trade at one gate on each side of the chain, and
+[07-indicators.md](07-indicators.md) lists both chains in full.
 
 `src/trading/gate_chain.py` — the two breaker gates in the built chains
 
@@ -679,39 +698,25 @@ CircuitBreakerGate(side="scrum"),
 CircuitBreakerGate(side="fold"),
 ```
 
-Now we arrive at some safety controls. Circuit Breakers are designed to fully inhibit trade actions for a given period should an extreme volatility (pump and dump) event occur. Soft Circuit Breakers have a candle-count based timer whereas Hard Circuit Breakers require the user to clear the bot to continue trading.
-
-Soft CB Threshold - The amount of instantaneous, single-candle price action required for the bot to pause trading for a number of candles denoted by Soft CB Cooldown.
-
-Hard CB Threshold - The amount of instantaneous, single-candle price action required for the bot to be hard stopped at which point the user must re-authorize trading.
-
-Soft CB Cooldown - This is the number of candles that must close before the Soft Circuit Breaker opens again.
-
-Max Cartridge Size - This is the maximum amount of deviation allowed for the Target Delta. At this threshold the bot is actively and aggressively looking for a trade opportunity.
-
-Smart Cartridge - This allows the Max Cartridge Size to organically resize in response to current price range as defined by the current-candle Bollinger Band reading.
-
-Smart Ceiling - To be re-evaluated.
-
 ![The Risk Controls and Strategy Gate Flags groups.](p22-i0.png)
 
-**Functional.** Five rows of risk control, then five gate checkboxes:
+After Circuit Breakers, which help defend against extreme volatility, we come to Risk Controls. These are designed to cap the amount of profit or growth a given bot can earn before performing a full position exit.
 
-- Enable Position Ceiling, off at the start.
-- Ceiling Multiple, 1.0 to 10.0, at 5.0x anchor. The anchor is the target
-  balance the bot was created with.
-- Enable Detonation (auto-harvest on bullish TF), off at the start.
-- Detonation TF: 1d or 1w.
-- Min Confidence, 0.50 to 1.00, at 0.75.
-- SCRUM requires bullish TA, SCRUM holds in sustained uptrend, SCRUM defers to
-  higher-TF bullish, FOLD requires bearish TA, and FOLD defers to higher-TF
-  bearish. All five start checked.
+Enable Position Ceiling - Enables a growth cap for a given position.
 
-Detonation does what its label says. It needs the box ticked, a position worth
+A checkbox, off at the start.
+
+Ceiling Multiple - This setting caps the maximum amount of growth a position at a multiple of the Target Balance (anchor) and, once reached (and under higher timeframe bullish conditions with Detonation enabled) will allow the entire position to be sold and the corresponding bot will pause all further operations. Without Detonation enabled, this becomes a user notification.
+
+From 1.0 to 10.0, at 5.0x anchor to start. The anchor is the target balance the
+bot was created with, not the balance it has grown to.
+
+Enable Detonation - Enables an entire remaining position to be sold after the Ceiling Multiple growth threshold is crossed.
+
+A checkbox, off at the start. Detonation needs the box ticked, a position worth
 more than its anchor, and a bullish reading at or above the confidence you set.
-It also needs the reading to have just turned bullish. A tape that was already
-bullish last time fires nothing, and a bearish tape fires nothing. The two
-group titles on screen carry internal identifiers after their names.
+It also needs the reading to have just turned bullish, so a tape that was
+already bullish last time fires nothing.
 
 `src/trading/scrumming_bot.py` — `ScrummingBot._check_detonation_trigger`
 
@@ -725,8 +730,16 @@ is_bullish = (
 fired = is_bullish and not self._detonation_last_signal_bullish
 ```
 
-`src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings these
-two groups emit
+Detonation TF - Selects the timeframe for the chart that is being evaluated for bullish conditions that will allow the detonation to occur.
+
+Two entries, 1d and 1w.
+
+Min Confidence - This is the minimum technical analysis confidence index (via the Indicator Voting Panel) that will allow the detonation to occur.
+
+From 0.50 to 1.00, at 0.75 to start.
+
+`src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings this
+group emits, in the order of the rows above
 
 ```python
 "position_ceiling_enabled": self._position_ceiling_enabled.isChecked(),
@@ -734,6 +747,19 @@ two groups emit
 "detonation_enabled": self._detonation_enabled.isChecked(),
 "detonation_timeframe": self._detonation_timeframe.currentData(),
 "detonation_confidence_min": self._detonation_confidence_min.value(),
+```
+
+Next we use the Strategy Gate Flags which allows top-level trade restrictions to be enabled or disabled thus relaxing or restricting the conditions under which a trade action can occur. The settings, in this case, are self-descriptive.
+
+**Functional.** The box draws five checkboxes, all ticked at the start: SCRUM
+requires bullish TA, SCRUM holds in sustained uptrend, SCRUM defers to
+higher-TF bullish, FOLD requires bearish TA, and FOLD defers to higher-TF
+bearish.
+
+`src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the six flags this
+group emits
+
+```python
 "scrum_require_ta_bullish": self._gate_scrum_ta_chk.isChecked(),
 "scrum_hold_in_uptrend": self._gate_scrum_uptrend_chk.isChecked(),
 "scrum_defer_to_htf": self._gate_scrum_htf_chk.isChecked(),
@@ -742,16 +768,11 @@ two groups emit
 "fold_defer_to_htf": self._gate_fold_htf_chk.isChecked(),
 ```
 
-**Design intention.** Cap what one bot can grow to, then take the whole
-position off the table once the cap is crossed. Both halves of that are built
-and both run.
-
-The gate flags are a different story. Six flags are declared, the box shows
-five, and the missing one is the fold-side twin of a scrum gate that works. It
-is written out as a hard True with the note "reserved, no gate" beside it, and
-nothing in the engine ever reads it. Its scrum mirror holds a sell during a
-sustained uptrend, and the fold twin would hold a buy during a sustained
-downtrend.
+**Design intention.** Six flags are declared, the box shows five, and the
+missing one is the fold-side twin of a scrum gate that works. It goes out as a
+hard True, and nothing in the engine reads it. Its scrum mirror holds a sell
+during a sustained uptrend, and the fold twin would hold a buy during a
+sustained downtrend.
 
 *Proposed, not present, in `src/trading/gate_chain.py`:*
 
@@ -776,54 +797,31 @@ The gate would join the fold chain beside its scrum twin, and
 checkbox has to arrive with it, or the flag stays a hard True. Issue #419
 carries this.
 
-After Circuit Breakers, which help defend against extreme volatility, we come to Risk Controls. These are designed to cap the amount of profit or growth a given bot can earn before performing a full position exit.
-
-Enable Position Ceiling - Enables a growth cap for a given position.
-
-Ceiling Multiple - This setting caps the maximum amount of growth a position at a multiple of the Target Balance (anchor) and, once reached (and under higher timeframe bullish conditions with Detonation enabled) will allow the entire position to be sold and the corresponding bot will pause all further operations. Without Detonation enabled, this becomes a user notification.
-
-Enable Detonation - Enables an entire remaining position to be sold after the Ceiling Multiple growth threshold is crossed.
-
-Detonation TF - Selects the timeframe for the chart that is being evaluated for bullish conditions that will allow the detonation to occur.
-
-Min Confidence - This is the minimum technical analysis confidence index (via the Indicator Voting Panel) that will allow the detonation to occur.
-
-Next we use the Strategy Gate Flags which allows top-level trade restrictions to be enabled or disabled thus relaxing or restricting the conditions under which a trade action can occur. The settings, in this case, are self-descriptive.
-
 ![The Profit Routing group.](p22-i1.png)
 
-**Functional.** Two rows:
+Moving onto the final section, we have Profit Routing which was intended to allow profits to be routed differently during initial set-up. This will be re-evaluated and potentially removed.
 
-- Route offers four destinations: fold back to target balance, send to
-  spendable, split fold and spendable by percentage, and route to another bot.
-- Target bot ID, a free-text field. The placeholder says to leave it blank
-  unless you chose the cross-bot route.
+Route - Destination for profits.
 
-The group title on screen carries an internal release identifier after the words
-Profit Routing.
+Four destinations: fold back to target balance, send to spendable, split fold
+and spendable by percentage, and route to another bot.
+
+Target bot ID - Field for manually a bot ID which was intended to create a Smart Wire under the Bot Swarm tab.
+
+A free-text field. Its placeholder tells you to leave it blank unless you chose
+the cross-bot route.
 
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings this
-group emits
+group emits, in the order of the rows above
 
 ```python
 "profit_route": self._profit_route.currentData(),
 "profit_route_bot_id": self._profit_route_bot_id.text().strip(),
 ```
 
-**Design intention.** The operator marks this group for re-evaluation and
-possible removal below, and says the cross-bot route was meant to create a
-Smart Wire under the Bot Swarm tab. Read the whole group as provisional. A
-group that may be deleted gets no proposal.
-
-In development.
-
-Moving onto the final section, we have Profit Routing which was intended to allow profits to be routed differently during initial set-up. This will be re-evaluated and potentially removed.
-
-Route - Destination for profits.
-
-Target bot ID - Field for manually a bot ID which was intended to create a Smart Wire under the Bot Swarm tab.
-
 ![The Phantom Balance Bots page.](p23-i0.png)
+
+Lastly we have the selection for the Phantom (Balance) Bots. These are intended to provide trade action overrides from higher timeframe charts and indicator sets which, in turn, may result in an improved trade or prevent a premature one.
 
 **Functional.** This is the last page on the scrumming path:
 
@@ -854,16 +852,12 @@ def get_config(self):
     }
 ```
 
-**Design intention.** A higher timeframe should be able to override a trade the
-primary timeframe wanted, either improving it or holding it back. That is the
-aim below. The operator states the present position himself in the Indicator
-Voting Panel section: "Phantom bots are still in active development so any
-related features are not yet working." This page is the settings surface for an
-engine he marks unfinished, so it gets no proposal here.
+**Design intention.** The engine behind this page is unfinished. The Indicator
+Voting Panel section of this manual records that phantom bots are still in
+active development and that related features do not yet work, so nothing is
+proposed for the page.
 
 In development.
-
-Lastly we have the selection for the Phantom (Balance) Bots. These are intended to provide trade action overrides from higher timeframe charts and indicator sets which, in turn, may result in an improved trade or prevent a premature one.
 
 ### Extractor Bot (Partially Built; Untested)
 
@@ -887,9 +881,7 @@ else:
     config.update(self._phantom_page.get_config())
 ```
 
-**Design intention.** The Extractor is a sibling, not a peer. It lives off a
-base-currency Scrumming Bot and trades against alt pairs rather than holding
-one target of its own. Phantom overrides and profit folding belong to the
+**Design intention.** Phantom overrides and profit folding belong to the
 parent, and the two hard False values above are that decision written down. The
 mode is stamped onto the config at the very top of the same method, so nothing
 downstream has to guess which kind of bot it received.
@@ -939,11 +931,9 @@ return {
 }
 ```
 
-**Design intention.** Get more of a base currency by trading against alternate
-pairs. That is the aim in the operator's paragraph above, and the five pool
-bases are exactly the assets he names as base currencies. Leaving the list
-empty hands the choice back to the bot, and only a box that is both ticked and
-available reaches the config.
+**Design intention.** The five pool bases are exactly the assets named as base
+currencies above. Leaving the list empty hands the choice back to the bot, and
+only a box that is both ticked and available reaches the config.
 
 `src/gui/bot_wizard.py` — how a ticked alt is collected
 
@@ -959,25 +949,7 @@ for i in range(self._alt_list.count()):
 ![The Extractor group of the parameter page, first nine rows.](p25-i0.png)
 
 **Functional.** Choosing the Extractor hides the eight scrumming groups and
-shows this one. The two sides never appear together. Nine rows here and five
-more in the figure below:
-
-- Chunk size (USD), $10.00 to $10,000,000.00, at $100.00.
-- Artillery size (USD), $0.50 to $100,000.00, at $5.00.
-- Watch list top-N, 5 to 10, at 8.
-- Watch list refresh, 10 to 240 candles, at 60.
-- Pool reserve, 0.0 % to 90.0 %, at 50.0 %.
-- Exit %, 10.0 % to 100.0 %, at 100.0 %.
-- Max compounding tier, 1 to 10, at 3.
-- Max cost-basis multiple, 1.0x to 10.0x, at 2.0x. Setting it to 1.0 stops
-  averaging down.
-- Direction: Normal (base to alt, buy first) or Inverted (standing alt to base,
-  sell first).
-
-The group title in the source reads Extractor, an em dash, Pool, an ampersand,
-then Artillery. Qt reads that ampersand as a keyboard-mnemonic marker, so the
-rendered title drops it and underlines the A of Artillery. The figure shows the
-gap the dropped character leaves.
+shows this one. The two sides never appear together.
 
 `src/gui/bot_wizard.py` — `TradingParamsPage.set_mode`, the group swap
 
@@ -997,8 +969,50 @@ for g in (
 self._extractor_group.setVisible(is_extractor)
 ```
 
+The group title in the source reads Extractor, an em dash, Pool, an ampersand,
+then Artillery. Qt reads that ampersand as a keyboard-mnemonic marker, so the
+rendered title drops it and underlines the A of Artillery. The figure shows the
+gap the dropped character leaves. Issue #421 carries this.
+
+Chunk size (USD) - This determines the maximum amount of the parent’s pool that the Extractor can use.
+
+From $10.00 to $10,000,000.00, at $100.00 to start.
+
+Artillery size (USD) - This determines the individual size of Extractor Tranches.
+
+From $0.50 to $100,000.00, at $5.00 to start.
+
+Watch list top-N - The determines the number of Alternate Currency pairs the bot will scan for potential extraction.
+
+From 5 to 10, at 8 to start.
+
+Watch list refresh - This determines the rate at which the Extractor will scan its watched markets. This is the equivalent of a Timeframe for the Extractor but covers multiple pairs.
+
+From 10 to 240 candles, at 60 to start.
+
+Pool Reserve - To be re-evaluated.
+
+A percentage from 0.0 to 90.0, at 50.0 % to start.
+
+Exit % - To be re-evaluated.
+
+A percentage from 10.0 to 100.0, at 100.0 % to start.
+
+Max compounding tier - Allows the Extractor to attempt a number of compounding Swing Trades with a given Extractor Tranche with subsequent re-entries based upon the Parent Scrumming Bot’s Minimum Opposing Trade Distance + Trade Fee + Bollinger Band extension settings.
+
+From 1 to 10, at 3 to start.
+
+Max cost-basis multiple - To be re-evaluated.
+
+From 1.0x to 10.0x, at 2.0x to start. Setting it to 1.0 stops averaging down.
+
+Direction - To be re-evaluated.
+
+Two entries: Normal, which runs base to alt and buys first, and Inverted, which
+runs standing alt to base and sells first.
+
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the settings this
-group emits
+group emits, in the order of the rows above
 
 ```python
 "extractor_chunk_size_usd": self._ext_chunk_size_usd.value(),
@@ -1009,45 +1023,36 @@ group emits
 ),
 "extractor_pool_reserve_pct": self._ext_pool_reserve.value(),
 "extractor_exit_pct": self._ext_exit_pct.value(),
+"extractor_max_compounding_tier": int(
+    self._ext_max_tier.value()
+),
+"extractor_max_cost_basis_multiple": self._ext_max_cost_basis.value(),
+"extractor_direction": self._ext_direction.currentData(),
 ```
-
-**Design intention.** The operator marks the whole Extractor "Partially Built;
-Untested" in this section's heading, and puts "To be re-evaluated" against four
-of these nine rows: Pool Reserve, Exit %, Max cost-basis multiple and
-Direction. This is a settings surface sitting ahead of a settled design, and
-nothing about the four is decided.
-
-In development.
-
-Chunk size (USD) - This determines the maximum amount of the parent’s pool that the Extractor can use.
-
-Artillery size (USD) - This determines the individual size of Extractor Tranches.
-
-Watch list top-N - The determines the number of Alternate Currency pairs the bot will scan for potential extraction.
-
-Watch list refresh - This determines the rate at which the Extractor will scan its watched markets. This is the equivalent of a Timeframe for the Extractor but covers multiple pairs.
-
-Pool Reserve - To be re-evaluated.
-
-Exit % - To be re-evaluated.
-
-Max compounding tier - Allows the Extractor to attempt a number of compounding Swing Trades with a given Extractor Tranche with subsequent re-entries based upon the Parent Scrumming Bot’s Minimum Opposing Trade Distance + Trade Fee + Bollinger Band extension settings.
-
-Max cost-basis multiple - To be re-evaluated.
-
-Direction - To be re-evaluated.
 
 ![The Extractor group, remaining five rows.](p26-i0.png)
 
-**Functional.**
+Standing alt units (inverted) - To be re-evaluated.
 
-- Standing alt units (Inverted), eight decimal places, at 0. The Inverted
-  direction reads it; the Normal direction ignores it.
-- Correction skip candles, 0 to 100, at 4.
-- Drawdown threshold, 0.00 % to 50.00 %, at 3.00 %.
-- Hedge budget (USD), at $0.00, which switches it off. Neither of the manual's
-  own lists names this control.
-- Trend strength threshold, 0.000 to 1.000, at 0.650.
+Eight decimal places, at 0 to start. The Inverted direction reads it; the
+Normal direction ignores it.
+
+Correction skip candles - To be re-evaluated.
+
+From 0 to 100 candles, at 4 to start.
+
+Drawdown threshold - To be re-evaluated.
+
+A percentage from 0.00 to 50.00, at 3.00 % to start.
+
+Trend Strength Threshold - To be re-evaluated.
+
+From 0.000 to 1.000, at 0.650 to start.
+
+A sixth control sits in this part of the group and no entry above names it.
+Hedge budget (USD) starts at $0.00, which switches it off. Above zero, the bot
+converts it into a base-currency reserve held out of artillery rotation. This
+manual states that the control exists and claims nothing about what it is for.
 
 `src/gui/bot_wizard.py` — `TradingParamsPage.get_config`, the remaining
 Extractor settings
@@ -1061,21 +1066,6 @@ Extractor settings
 "extractor_hedge_budget_usd": self._ext_hedge_budget.value(),
 "extractor_trend_strength_threshold": self._ext_trend_strength.value(),
 ```
-
-**Design intention.** All four rows the operator names below carry his "To be
-re-evaluated". The fifth control, Hedge budget, he does not name at all. It
-sits on the page and no text of his describes it, so this manual states the
-control exists and claims nothing about what it is for.
-
-In development.
-
-Standing alt units (inverted) - To be re-evaluated.
-
-Correction skip candles - To be re-evaluated.
-
-Drawdown threshold - To be re-evaluated.
-
-Trend Strength Threshold - To be re-evaluated.
 
 ### Additional Main Window > Trading Tab Features
 
@@ -1102,30 +1092,27 @@ for a message you must not miss. A timer checks the pane's health every sixty
 seconds and writes a warning into the pane itself when the render-error count
 rises, or when nothing has rendered for ten minutes while bots are running.
 
-`src/gui/widgets/status_log.py` — `StatusLog.log`
+`src/gui/widgets/status_log.py` — `StatusLog.log`, the pause branch
 
 ```python
-def log(self, message: str, level: str = "info") -> None:
-    ts = datetime.now().strftime("%H:%M:%S")
-    if self._paused:
-        # A full ``_pause_buffer`` drops the newest entry, not the oldest.
-        if len(self._pause_buffer) < self._pause_buffer_cap:
-            self._pause_buffer.append((ts, message, level))
-        return
-    self._render(ts, message, level)
+if len(self._pause_buffer) < self._pause_buffer_cap:
+    self._pause_buffer.append((ts, message, level))
+return
 ```
 
-**Design intention.** This pane is the spool for trading logic and gate
-activity, in the operator's words above. Two decisions follow from that. The
-buffer drops the newest line rather than the oldest, so the lines around the
-moment you hit pause are the ones that survive. And a pane that has gone quiet
-says so in the pane, because silence otherwise reads as calm.
+**Design intention.** Two decisions follow from the pane's job. The buffer
+drops the newest line rather than the oldest, so the lines around the moment
+you hit pause are the ones that survive. And a pane that has gone quiet says so
+in the pane, because silence otherwise reads as calm.
 
 `src/gui/main_tabs/trading_tab.py` — the silence check
 
 ```python
+bots_active = self._bot_manager and any(
+    b.state.value == "running"
+    for b in getattr(self._bot_manager, "_bots", {}).values()
+)
 if bots_active and age > 600:
-    # Throttle: re-alert every 10 min while silent
 ```
 
 #### API Interaction Log
@@ -1143,17 +1130,12 @@ action and a Reason line, then Endpoint, Result, Response time and Data usage
 wherever the record holds them. Pause API Log buffers up to 2,000 lines and
 flushes them on resume with a count.
 
-`src/gui/main_window.py` — `_on_api_event`
+`src/gui/main_window.py` — `_on_api_event`, the thread check
 
 ```python
-def _on_api_event(self, entry: dict) -> None:
-    """Append one API entry to `_api_log_view`, refusing off-thread calls."""
-    # Touching a widget off the GUI thread ends the process through Qt.
-    import threading as _threading
-
-    current = _threading.current_thread().name
-    origin = entry.get("_thread_name", "unknown")
-    if current != "MainThread":
+current = _threading.current_thread().name
+origin = entry.get("_thread_name", "unknown")
+if current != "MainThread":
 ```
 
 **Design intention.** The pane should tell you what the platform did with the
@@ -1204,11 +1186,8 @@ add_btn.clicked.connect(self._add_exchange)
 tab_w.setCornerWidget(add_btn)
 ```
 
-**Design intention.** More than one exchange, each with its own bot swarm. The
-operator names the defect himself above: the button opens the Settings Panel on
-the User tab when it should open Exchanges. The handler already knows which
-wing you are in and passes that to the dialog, so it has somewhere to say which
-tab to open.
+**Design intention.** The handler already knows which wing you are in and
+passes that to the dialog, so it has somewhere to say which tab to open.
 
 `src/gui/main_window.py` — `_add_exchange` today
 
@@ -1339,4 +1318,3 @@ or the chunk is resized. `import_state` restores it from a stored position.
 The position never asks the exchange for a balance. Its accounting is the chunk,
 which is what keeps two Extractor positions on the same base currency from each
 counting the same money as their own.
-
