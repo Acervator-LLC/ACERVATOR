@@ -4,6 +4,23 @@ This panel shows the readings for each of the 12 as well the collated indices an
 
 TF Lock - To be re-evaluated.
 
+A drop-down of eleven entries: None, then Lock below each of ten timeframes from
+5m to 1w. It opens on the fifth entry, Lock below 1h. Choosing one writes a
+status line beside the box and puts the timeframe on the event bus.
+
+The main window takes that event and sets `_lock_timeframe` on the coordinator
+of every running Scrumming Bot. Nothing declares or reads that name, so the
+choice reaches the coordinator and stops there. The tooltip on the box says the
+lock feeds directly into active Scrumming Bots. Issue #155 carries this.
+
+`src/gui/main_window.py` — `_on_tf_lock_changed`
+
+```python
+for bot in self._bot_manager._bots.values():
+    if isinstance(bot, ScrummingBot) and hasattr(bot, "_coordinator"):
+        bot._coordinator._lock_timeframe = tf
+```
+
 Bot - Drop down menu for selecting which bot’s TA signals are displayed.
 
 TF - Timeframe for the selected bot.
