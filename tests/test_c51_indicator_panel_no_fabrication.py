@@ -218,12 +218,10 @@ class TestFailureIsNotSilent:
         panel._generate_demo_ta()
         assert panel._data  # populated first
 
-        import random
-
         def _boom(*a, **kw):
             raise RuntimeError("rng exploded")
 
-        monkeypatch.setattr(random, "Random", _boom)
+        monkeypatch.setattr("src.gui.indicator_panel._DemoWalk", _boom)
         panel._generate_demo_ta()
         assert panel._last_demo_error, "a failed generation left no record at all"
         assert "rng exploded" in panel._last_demo_error
