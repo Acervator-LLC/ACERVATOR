@@ -1,12 +1,8 @@
-"""MACD -- Gerald Appel's moving-average convergence/divergence.
+"""``MACD``, Gerald Appel's moving-average convergence/divergence.
 
-Moved out of ``ta_engine.py`` for issue #73. The body below was a
-verbatim line slice of that file: no arithmetic was retyped.
-
-Issue #99 then repaired WHERE THE SIGNAL LINE STARTS. The five lines
-that build the three series were duplicated in two methods; they are
-now one method, ``_lines``, which carries the published definition and
-its citation.
+``_lines`` builds the MACD line, the signal line and the histogram.
+``compute``, ``lines`` and ``compute_histogram_series`` all read those
+three series from there.
 """
 
 from __future__ import annotations
@@ -20,25 +16,22 @@ from .helpers import (
     _ema,
 )
 
-#: One entry per candle. ``None`` where the published formula has no
-#: value yet -- see ``MACD._lines``.
+#: One entry per candle, ``None`` before ``MACD._lines`` has a value.
 _Line = list[float | None]
 
 #: ``_ema`` returns a leading run of None and a value at every index
-#: after it, so the MACD line does too. A hole in the middle would mean
-#: that contract broke, and the signal EMA below would silently seed on
-#: the wrong bars.
+#: after it.
 _INTERIOR_GAP = (
     "MACD line has an interior gap; _ema must return a "
     "leading run of None and nothing else"
 )
 
 
-# 3. MACD
 class MACD:
-    """
-    MACD: EMA(12) - EMA(26), Signal EMA(9), Histogram.
-    Enhanced with divergence detection.
+    """``compute`` votes on the crossover, the histogram and divergence.
+
+    ``fast``, ``slow`` and ``signal_period`` set the three EMA lengths
+    ``_lines`` uses.
     """
 
     def __init__(
@@ -50,40 +43,11 @@ class MACD:
         self.weight = weight
 
     def _lines(self, closes: list[float]) -> tuple[_Line, _Line, _Line]:
-        """MACD Line, Signal Line and Histogram, one per candle.
+        """``macd_line``, ``signal_line`` and ``histogram``, one per candle.
 
-        THE PUBLISHED DEFINITION. StockCharts, reproducing Appel:
-
-            MACD Line:      (12-day EMA - 26-day EMA)
-            Signal Line:    9-day EMA of MACD Line
-            MACD Histogram: MACD Line - Signal Line
-
-        WHERE EACH SERIES STARTS, and this is the whole of issue #99.
-        An EMA has no value before its seed, so:
-
-          * ``ema_slow`` starts at index ``slow - 1``; ``ema_fast``
-            starts earlier. The MACD Line is their difference, so IT
-            starts at ``slow - 1`` -- index 25 at the defaults.
-          * The Signal Line is a ``signal``-period EMA OF THAT SERIES.
-            It is not an EMA of the candles. So it seeds on the first
-            ``signal`` REAL MACD-line values and its first entry sits at
-            ``slow + signal - 2`` -- index 33 at the defaults.
-
-        WHAT THIS REPAIRED. ``_ema`` used to back-fill its leading
-        indices with the seed, so ``macd_line[0 .. 24]`` carried 25
-        manufactured numbers. The signal line then averaged nine of them
-        for its seed and recursed through the other sixteen. The
-        arithmetic was right and the INPUT was invented; for those bars
-        the signal line was not computed from the candles at all.
-
-        Entries with no value are ``None``, candle-aligned. Reading one
-        is a TypeError at the point of misuse rather than a plausible
-        wrong number -- the contract ``helpers._sma_tail`` already
-        states.
-
-        ONE DEFINITION, TWO CALLERS. ``compute`` and
-        ``compute_histogram_series`` both come here. They used to carry
-        a copy of these five lines each.
+        ``macd_line`` first has a value at index ``max(fast, slow) - 1``
+        and ``signal_line`` ``signal_period - 1`` entries after that;
+        every earlier entry is ``None``.
         """
         ema_fast = _ema(closes, self.fast)
         ema_slow = _ema(closes, self.slow)
@@ -92,11 +56,8 @@ class MACD:
             for f, s in zip(ema_fast, ema_slow)
         ]
 
-        # ``_ema`` returns a leading run of ``None`` and then a value at
-        # every remaining index, so ``macd_line`` does too and its real
-        # part is a contiguous suffix. The signal EMA runs over THAT
-        # suffix and its output is put back at the suffix's own indices,
-        # which is what keeps every series candle-aligned.
+        # macd_line's real part is a contiguous suffix; signal_line is
+        # padded back to its indices.
         first = len(macd_line)
         for i, v in enumerate(macd_line):
             if v is not None:
@@ -117,29 +78,17 @@ class MACD:
         return macd_line, signal_line, histogram
 
     def lines(self, candles: list[Candle]) -> tuple[_Line, _Line, _Line]:
-        """``_lines`` over a candle list. The chart's series.
+        """``_lines`` over the closes of ``candles``.
 
-        The same three series ``compute`` votes on and
-        ``compute_histogram_series`` trims, taken from the same
-        method, so a chart cannot draw a MACD the engine did not
-        compute.
-
-        THE CANDLE CHART'S OLD COPY SEEDED EVERY EMA AT ``closes[0]``
-        and back-filled from index 0, so its MACD line existed 25 bars
-        before the published one and its signal line 33. Measured over
-        an 80-bar tape: 47 indices carried a value in both, and NONE
-        of the 47 matched; peak histogram divergence 237%. Issue #128
-        R2 removed that copy.
+        ``compute`` and ``compute_histogram_series`` read the same three
+        series.
         """
         return self._lines([c.close for c in candles])
 
     def compute(self, candles: list[Candle], timeframe: str = "1h") -> Signal:
         closes = [c.close for c in candles]
-        # THE PUBLISHED WARM-UP, EXACTLY. The signal line's first value
-        # sits at index ``slow + signal - 2``, and the block below reads
-        # ``[-2]``, so it needs ``n - 2 >= slow + signal - 2``, i.e.
-        # ``n >= slow + signal``. That is the condition already written
-        # here. It was right before this repair and it stays.
+        # At the default fast < slow, signal_line's first value sits at
+        # index slow + signal_period - 2 and the block below reads -2.
         if len(closes) < self.slow + self.signal_period:
             return Signal(
                 "macd",
@@ -166,10 +115,8 @@ class MACD:
             or prev_macd is None
             or prev_signal is None
         ):
-            # Unreachable at any ``fast < slow``: see the guard note
-            # above. An explicit abstention, not an assert, so a
-            # non-default parameterisation states that it has no
-            # reading instead of returning one it did not compute.
+            # Reached only when fast > slow, where the guard above still
+            # leaves signal_line[-2] None.
             return Signal(
                 "macd",
                 timeframe,
@@ -184,7 +131,6 @@ class MACD:
         crossover = False
         divergence = ""
 
-        # Crossover detection
         if prev_macd <= prev_signal and curr_macd > curr_signal:
             direction = SignalDirection.BULLISH
             crossover = True
@@ -216,15 +162,8 @@ class MACD:
             direction = SignalDirection.BEARISH
             confidence = 0.15
 
-        # Divergence detection (price makes new low but MACD doesn't)
-        #
-        # THE WINDOWS COUNT REAL MACD VALUES, NOT CANDLES. The test
-        # compares a 20-bar MACD extreme against the 20 bars before it,
-        # so it needs 20 (and 40) values the MACD line actually has.
-        # The candle count is not that number: the line starts at index
-        # ``slow - 1``, so a 35-candle tape carries 10 MACD values, not
-        # 35. Counting candles here read back-filled entries as if they
-        # were readings.
+        # real_macd drops the None head; the 20- and 40-bar windows
+        # count MACD values, not candles.
         real_macd = [v for v in macd_line if v is not None]
         n_macd = len(real_macd)
         if len(closes) >= 20 and n_macd >= 20:
@@ -267,26 +206,11 @@ class MACD:
         )
 
     def compute_histogram_series(self, candles: list, n: int = 12) -> list[float]:
+        """Return the last ``n`` values of the ``_lines`` histogram, oldest first.
 
-        # sadp: R28  # indicator compute: fail-loudly(R28)
-        """
-        Return the last `n` MACD histogram values as a list (oldest→newest).
-
-        Single O(N) computation — more efficient than calling compute() N times.
-        Used by the simulator snapshot to populate macd_histogram_buf, which
-        feeds detect_macd_taper() in the confidence gate.
-
-        Returns [] if fewer candles than the MACD warmup period.
-
-        FEWER THAN ``n`` IS A REAL ANSWER. The histogram starts where
-        the signal line does, at index ``slow + signal - 2``, so a tape
-        just over the warm-up carries only a handful of bars. This
-        returns the ones that exist and never pads the rest. Values that
-        do not exist are dropped, not sent as zeros:
-        ``detect_macd_taper`` reads ``len(histogram) < lookback`` and
-        already answers "none" on a short list, which is the honest
-        outcome. Before this repair the list was always ``n`` long
-        because ``_ema`` back-filled it.
+        Fewer than ``n`` on a short tape and ``[]`` below ``slow +
+        signal_period`` candles; ``None`` entries are dropped, never
+        padded.
         """
         closes = [c.close for c in candles]
         min_len = self.slow + self.signal_period
