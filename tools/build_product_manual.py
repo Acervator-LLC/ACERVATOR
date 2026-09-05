@@ -3,8 +3,10 @@
 ``read_manifest`` orders the part files from ``docs/manual/README.md`` and
 ``parse_part_list`` renumbers the parts of ``04-manual-parts.md``. ``paginate``
 re-renders until every ``TocEntry`` names the page its heading reached.
-``verify_toc_pages``, ``verify_sections_present``, ``verify_part_numbers`` and
-``verify_count_word`` measure the written PDF.
+``parse_markdown`` reads a pipe table, a fenced block and a ``parse_mermaid``
+diagram as their own ``Block``. ``verify_toc_pages``, ``verify_sections_present``,
+``verify_part_numbers``, ``verify_count_word`` and ``verify_no_raw_markup``
+measure the written PDF.
 """
 
 from __future__ import annotations
@@ -30,13 +32,16 @@ from reportlab.platypus import (
     PageBreak,
     PageTemplate,
     Paragraph,
+    Preformatted,
     Spacer,
+    Table,
+    TableStyle,
 )
 
 from src.design_system import COLORS, GRID, TYPE, validate_contrast
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Iterator, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DOCS_DIR = REPO_ROOT / "docs" / "manual"
@@ -52,6 +57,7 @@ MANIFEST_CELLS = 2
 
 BULLET = "•"
 ELLIPSIS = "…"
+BREAK_JOIN = " — "
 NUMBER_WORDS = (
     "zero",
     "one",
@@ -76,6 +82,46 @@ LINK_CELL = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 PART_FILE_NAME = re.compile(r"^\d{2}-.+\.md$")
 SEPARATOR_CELL = re.compile(r"^:?-{2,}:?$")
 HEADING_STYLES = {1: "section", 2: "sub", 3: "sub2", 4: "sub2", 5: "sub2", 6: "sub2"}
+
+FENCE_LINE = re.compile(r"^(?P<mark>`{3,}|~{3,})[ \t]*(?P<info>[^\s`~]*)[ \t]*$")
+CODE_SPAN = re.compile(r"`([^`\n]+)`")
+LINK_SPAN = re.compile(r"\[([^\]\n]+)\]\([^)\s]+\)")
+STRONG_SPAN = re.compile(r"(?<![\w*])\*\*(?!\s)(.+?)(?<!\s)\*\*(?![\w*])")
+EMPHASIS_SPAN = re.compile(r"(?<![\w*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![\w*])")
+CODE_MARK = "\x01{}\x02"
+CODE_TOKEN = re.compile("\x01(\\d+)\x02")
+DIAGRAM_INFO = "mermaid"
+DIAGRAM_HEAD = re.compile(r"^(?P<shape>flowchart|graph)\s+(?P<direction>[A-Za-z]{2})\b")
+DIAGRAM_NODE = re.compile(
+    r"(?P<id>[A-Za-z_]\w*)[ \t]*(?P<open>[\[{(])[ \t]*\"?"
+    r"(?P<label>.*?)\"?[ \t]*(?P<close>[\]})])"
+)
+DIAGRAM_LINK = re.compile(
+    r"\s*(?:"
+    r"-{2,}>[ \t]*\|[ \t]*\"?(?P<solid_label>[^|]*?)\"?[ \t]*\|"
+    r"|-\.[ \t]*\"(?P<dotted_label>[^\"]*)\"[ \t]*\.-*>"
+    r"|-\.-*>"
+    r"|-{2,}>"
+    r")\s*"
+)
+BREAK_TAG = re.compile(r"<br\s*/?>", re.IGNORECASE)
+DIAGRAM_WORD = re.compile(r"\b" + DIAGRAM_INFO + r"\b", re.IGNORECASE)
+RAW_TABLE_ROW = re.compile(r"^[ \t]*\|", re.MULTILINE)
+RAW_PIPE_RUN = re.compile(r" \| [^|\n]* \| ")
+
+DIRECTIONS = {
+    "TD": "top to bottom",
+    "TB": "top to bottom",
+    "BT": "bottom to top",
+    "LR": "left to right",
+    "RL": "right to left",
+}
+ARROW_SOLID = "->"
+ARROW_DOTTED = "..>"
+MONO_POINT_FLOOR = 6.0
+EDGE_PIECES = 3
+LEAKS_REPORTED = 8
+TABLE_HEAD_FACE = "Helvetica-Bold"
 
 
 def ink(name: str) -> str:
@@ -103,6 +149,8 @@ PAGE_SIZE = (
     max(space("page_w_in"), space("page_h_in")) * inch,
 )
 MARGIN = space("margin_in") * inch
+FRAME_WIDTH = PAGE_SIZE[0] - MARGIN * 2
+FRAME_HEIGHT = PAGE_SIZE[1] - MARGIN * 2
 
 
 def escape(text: str) -> str:
@@ -110,14 +158,67 @@ def escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def plain(text: str) -> str:
+    """Return ``text`` with its code span, link and emphasis markers removed."""
+    stripped = CODE_SPAN.sub(r"\1", LINK_SPAN.sub(r"\1", text))
+    return EMPHASIS_SPAN.sub(r"\1", STRONG_SPAN.sub(r"\1", stripped))
+
+
+def _marked_up(segment: str) -> str:
+    escaped = LINK_SPAN.sub(r"\1", escape(segment))
+    bolded = STRONG_SPAN.sub(r"<b>\1</b>", escaped)
+    return EMPHASIS_SPAN.sub(r"<i>\1</i>", bolded)
+
+
+def inline(text: str) -> str:
+    """Return ``text`` as reportlab markup, its code spans set in the mono face.
+
+    A link keeps its label and drops its target; ``**`` becomes bold and ``*``
+    italic, both only where the marker hugs the word it opens or closes.
+    """
+    spans: list[str] = []
+
+    def hold(match: re.Match[str]) -> str:
+        spans.append(match.group(1))
+        return CODE_MARK.format(len(spans) - 1)
+
+    face = font_name("mono")
+    marked = _marked_up(CODE_SPAN.sub(hold, text))
+    return CODE_TOKEN.sub(
+        lambda token: f'<font face="{face}">'
+        f"{escape(spans[int(token.group(1))])}</font>",
+        marked,
+    )
+
+
 @dataclass(frozen=True)
 class Block:
-    """One markdown block: a heading, paragraph, quote line, bullet or image."""
+    """One markdown block.
+
+    ``kind`` is heading, para, quote, bullet, image, table, code or diagram.
+    ``rows`` carries the cells of a table and is empty for every other ``kind``.
+    """
 
     kind: str
     text: str
     level: int = 0
     src: str = ""
+    rows: tuple[tuple[str, ...], ...] = ()
+
+
+@dataclass(frozen=True)
+class Diagram:
+    """One mermaid block read as printable rows.
+
+    ``edges`` holds a ``(source, target, label, dotted)`` row per link, ``loose``
+    the node labels no link names, and ``source`` the cleaned lines a block with
+    no link falls back to.
+    """
+
+    caption: str
+    edges: tuple[tuple[str, str, str, bool], ...]
+    loose: tuple[str, ...]
+    source: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -181,34 +282,107 @@ class BuildResult:
         return all(ok for _name, ok, _detail in self.checks)
 
 
-def parse_markdown(text: str) -> list[Block]:
-    """Return the blocks of ``text``, joining the lines of a paragraph with a space."""
+def split_fences(text: str) -> Iterator[tuple[str, str, str]]:
+    """Yield ``(kind, info, body)`` for ``text``, kind ``prose`` or ``fence``.
+
+    A fence body keeps its lines exactly as written and ``info`` names its
+    language; an unterminated fence still yields the lines it opened.
+    """
+    prose: list[str] = []
+    body: list[str] = []
+    mark = ""
+    info = ""
+    for line in text.split("\n"):
+        if mark:
+            if line.strip().startswith(mark):
+                yield "fence", info, "\n".join(body)
+                mark, info, body = "", "", []
+            else:
+                body.append(line)
+            continue
+        opening = FENCE_LINE.match(line)
+        if opening:
+            yield "prose", "", "\n".join(prose)
+            prose = []
+            mark, info = opening.group("mark"), opening.group("info")
+            continue
+        prose.append(line)
+    if mark:
+        yield "fence", info, "\n".join(body)
+    yield "prose", "", "\n".join(prose)
+
+
+def _pipe_runs(lines: Sequence[str]) -> list[tuple[bool, list[str]]]:
+    runs: list[tuple[bool, list[str]]] = []
+    for line in lines:
+        piped = line.startswith("|")
+        if runs and runs[-1][0] == piped:
+            runs[-1][1].append(line)
+        else:
+            runs.append((piped, [line]))
+    return runs
+
+
+def _bullet_blocks(lines: Sequence[str]) -> list[Block]:
+    out: list[Block] = []
+    for line in lines:
+        if line.startswith(("- ", "* ")):
+            out.append(Block("bullet", line[2:].strip()))
+        elif out:
+            out[-1] = Block("bullet", f"{out[-1].text} {line}")
+    return out
+
+
+def _run_blocks(lines: Sequence[str]) -> list[Block]:
+    heading = HEADING_LINE.match(lines[0])
+    if heading:
+        return [Block("heading", heading.group(2).strip(), len(heading.group(1)))]
+    if lines[0].startswith(">"):
+        return [
+            Block("quote", body)
+            for body in (line.lstrip(">").strip() for line in lines)
+            if body
+        ]
+    image = IMAGE_LINE.match(lines[0])
+    if image:
+        return [Block("image", image.group("alt"), src=image.group("src"))]
+    if lines[0].startswith(("- ", "* ")):
+        return _bullet_blocks(lines)
+    return [Block("para", " ".join(lines))]
+
+
+def _prose_blocks(text: str) -> list[Block]:
     blocks: list[Block] = []
     for chunk in re.split(r"\n[ \t]*\n", text):
         lines = [line.strip() for line in chunk.split("\n") if line.strip()]
         if not lines:
             continue
-        heading = HEADING_LINE.match(lines[0])
-        if heading:
-            blocks.append(
-                Block("heading", heading.group(2).strip(), len(heading.group(1)))
-            )
-            continue
-        if lines[0].startswith(">"):
-            blocks.extend(
-                Block("quote", body)
-                for body in (line.lstrip(">").strip() for line in lines)
-                if body
-            )
-            continue
-        image = IMAGE_LINE.match(lines[0])
-        if image:
-            blocks.append(Block("image", image.group("alt"), src=image.group("src")))
-            continue
-        if lines[0].startswith(("- ", "* ")):
-            blocks.extend(Block("bullet", line[2:].strip()) for line in lines)
-            continue
-        blocks.append(Block("para", " ".join(lines)))
+        for piped, run in _pipe_runs(lines):
+            if piped:
+                cells = _table_rows("\n".join(run))
+                if cells:
+                    blocks.append(
+                        Block("table", "", rows=tuple(tuple(row) for row in cells))
+                    )
+            else:
+                blocks.extend(_run_blocks(run))
+    return blocks
+
+
+def parse_markdown(text: str) -> list[Block]:
+    """Return the blocks of ``text``, joining the lines of a paragraph with a space.
+
+    A pipe table becomes one ``table`` block, a fence a ``code`` block, and a
+    mermaid fence a ``diagram`` block whose text stays exactly as written.
+    """
+    blocks: list[Block] = []
+    for kind, info, body in split_fences(text):
+        if kind != "fence":
+            blocks.extend(_prose_blocks(body))
+        elif info.lower() == DIAGRAM_INFO:
+            blocks.append(Block("diagram", body, src=info))
+        else:
+            blocks.append(Block("code", body, src=info))
     return blocks
 
 
@@ -279,6 +453,83 @@ def _table_rows(text: str) -> list[list[str]]:
             continue
         rows.append(cells)
     return rows
+
+
+def _diagram_text(label: str) -> str:
+    return plain(BREAK_TAG.sub(BREAK_JOIN, label).replace("&quot;", '"')).strip()
+
+
+def _strip_nodes(line: str, labels: dict[str, str]) -> str:
+    out: list[str] = []
+    position = 0
+    for match in DIAGRAM_NODE.finditer(line):
+        labels[match.group("id")] = _diagram_text(match.group("label"))
+        out.append(line[position : match.start()])
+        out.append(match.group("id"))
+        position = match.end()
+    out.append(line[position:])
+    return "".join(out).strip()
+
+
+def _link_pieces(line: str) -> list[object]:
+    pieces: list[object] = []
+    position = 0
+    for match in DIAGRAM_LINK.finditer(line):
+        pieces.append(line[position : match.start()].strip())
+        label = match.group("solid_label") or match.group("dotted_label") or ""
+        pieces.append((_diagram_text(label), match.group(0).lstrip().startswith("-.")))
+        position = match.end()
+    pieces.append(line[position:].strip())
+    return pieces
+
+
+def _line_edges(line: str, labels: dict[str, str]) -> list[tuple[str, str, str, bool]]:
+    pieces = _link_pieces(line)
+    if len(pieces) < EDGE_PIECES:
+        return []
+    edges: list[tuple[str, str, str, bool]] = []
+    for index in range(0, len(pieces) - 2, 2):
+        source = cast("str", pieces[index])
+        label, dotted = cast("tuple[str, bool]", pieces[index + 1])
+        target = cast("str", pieces[index + 2])
+        if not source or not target:
+            continue
+        edges.append(
+            (labels.get(source, source), labels.get(target, target), label, dotted)
+        )
+    return edges
+
+
+def parse_mermaid(text: str) -> Diagram:
+    """Return the ``Diagram`` the mermaid block ``text`` describes.
+
+    ``Diagram.edges`` carries one row per link with the node labels resolved, and
+    ``Diagram.source`` holds the cleaned lines when no link parses.
+    """
+    labels: dict[str, str] = {}
+    edges: list[tuple[str, str, str, bool]] = []
+    lines: list[str] = []
+    shape = "diagram"
+    direction = ""
+    for raw in text.split("\n"):
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("%%"):
+            continue
+        head = DIAGRAM_HEAD.match(stripped)
+        if head and not lines:
+            shape = head.group("shape")
+            direction = DIRECTIONS.get(head.group("direction").upper(), "")
+            continue
+        lines.append(_diagram_text(stripped))
+        edges.extend(_line_edges(_strip_nodes(raw, labels), labels))
+    named = {name for edge in edges for name in edge[:2]}
+    caption = f"Diagram: {shape}, {direction}" if direction else f"Diagram: {shape}"
+    return Diagram(
+        caption=caption,
+        edges=tuple(edges),
+        loose=tuple(label for label in labels.values() if label not in named),
+        source=tuple(lines),
+    )
 
 
 def read_manifest(readme: Path, docs_dir: Path) -> list[ManifestRow]:
@@ -471,6 +722,27 @@ def build_styles() -> dict[str, ParagraphStyle]:
             textColor=strong,
             spaceAfter=space("pad_m"),
         ),
+        "mono": ParagraphStyle(
+            "mono",
+            fontName=font_name("mono"),
+            fontSize=size("mono"),
+            leading=size("mono") * 1.35,
+            textColor=body,
+        ),
+        "cell": ParagraphStyle(
+            "cell",
+            fontName=font_name("cap"),
+            fontSize=size("cap"),
+            leading=size("cap") * 1.3,
+            textColor=body,
+        ),
+        "cell_head": ParagraphStyle(
+            "cell_head",
+            fontName=TABLE_HEAD_FACE,
+            fontSize=size("cap"),
+            leading=size("cap") * 1.3,
+            textColor=strong,
+        ),
     }
 
 
@@ -615,11 +887,13 @@ def _cover_flowables(manual: Manual, styles: dict[str, ParagraphStyle]) -> list[
     out: list[object] = [Spacer(1, PAGE_SIZE[1] * 0.18)]
     for block in parse_markdown(manual.cover.path.read_text(encoding="utf-8")):
         if block.kind == "heading":
-            out.append(Paragraph(escape(block.text), styles["cover"]))
+            out.append(Paragraph(inline(block.text), styles["cover"]))
         elif block.kind == "quote":
-            out.append(Paragraph(escape(block.text), styles["epigraph"]))
+            out.append(Paragraph(inline(block.text), styles["epigraph"]))
+        elif block.kind == "table":
+            out.extend(_table_flowables(block, styles))
         else:
-            out.append(Paragraph(escape(block.text), styles["body"]))
+            out.append(Paragraph(inline(block.text), styles["body"]))
     return out
 
 
@@ -643,22 +917,181 @@ def _part_list_flowables(
 ) -> list[object]:
     out: list[object] = [
         Marked(
-            escape(part_list.heading),
+            inline(part_list.heading),
             styles["section"],
             level=1,
-            label=part_list.heading,
-            target=part_list.heading,
+            label=plain(part_list.heading),
+            target=plain(part_list.heading),
         ),
-        Paragraph(escape(part_list.intro), styles["body"]),
+        Paragraph(inline(part_list.intro), styles["body"]),
     ]
     if part_list.column_header:
-        out.append(Paragraph(escape(part_list.column_header), styles["eyebrow"]))
+        out.append(Paragraph(inline(part_list.column_header), styles["eyebrow"]))
     for part in part_list.parts:
-        out.append(Paragraph(escape(f"{part.number}  {part.title}"), styles["sub2"]))
+        out.append(Paragraph(inline(f"{part.number}  {part.title}"), styles["sub2"]))
         out.extend(
-            Paragraph(escape(bullet), styles["bullet"], bulletText=BULLET)
+            Paragraph(inline(bullet), styles["bullet"], bulletText=BULLET)
             for bullet in part.bullets
         )
+    return out
+
+
+def _span_width(text: str, points: float, face: str) -> float:
+    mono = font_name("mono")
+    total = 0.0
+    position = 0
+    for span in CODE_SPAN.finditer(text):
+        total += stringWidth(text[position : span.start()], face, points)
+        total += stringWidth(span.group(1), mono, points)
+        position = span.end()
+    return total + stringWidth(text[position:], face, points)
+
+
+def _word_width(text: str, points: float, face: str) -> float:
+    words = plain(text).split()
+    if not words:
+        return 0.0
+    return max(stringWidth(word, face, points) for word in words)
+
+
+def column_widths(rows: Sequence[Sequence[str]]) -> list[float]:
+    """Return one width per column, shrunk to ``FRAME_WIDTH`` when the table is wider.
+
+    A column never falls below the width of its longest single word, so a cell
+    wraps instead of overflowing the frame.
+    """
+    points = size("cap")
+    pad = space("pad_xs") * 2 + 1.0
+    columns = range(len(rows[0]))
+    faces = [TABLE_HEAD_FACE, *[font_name("cap")] * (len(rows) - 1)]
+    paired = list(zip(rows, faces, strict=True))
+    natural = [
+        max(_span_width(row[i], points, face) for row, face in paired) + pad
+        for i in columns
+    ]
+    floor = [
+        max(_word_width(row[i], points, face) for row, face in paired) + pad
+        for i in columns
+    ]
+    total = sum(natural)
+    if total <= FRAME_WIDTH:
+        return natural
+    slack = FRAME_WIDTH - sum(floor)
+    room = sum(n - f for n, f in zip(natural, floor, strict=True))
+    if slack <= 0 or room <= 0:
+        return [width * FRAME_WIDTH / total for width in natural]
+    return [f + (n - f) * slack / room for n, f in zip(natural, floor, strict=True)]
+
+
+def _rectangular(rows: Sequence[Sequence[str]]) -> list[list[str]]:
+    width = max(len(row) for row in rows)
+    return [[*row, *([""] * (width - len(row)))] for row in rows]
+
+
+def _table_flowables(block: Block, styles: dict[str, ParagraphStyle]) -> list[object]:
+    rows = _rectangular(block.rows)
+    head, *body = rows
+    cells: list[list[object]] = [
+        [Paragraph(inline(text), styles["cell_head"]) for text in head]
+    ]
+    cells.extend(
+        [Paragraph(inline(text), styles["cell"]) for text in row] for row in body
+    )
+    table = Table(cells, colWidths=column_widths(rows), repeatRows=1, hAlign="LEFT")
+    table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, HexColor(ink("rule"))),
+                ("BACKGROUND", (0, 0), (-1, 0), HexColor(ink("bg_subtle"))),
+                ("LINEBELOW", (0, 0), (-1, 0), 1.0, HexColor(ink("accent"))),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), space("pad_xs")),
+                ("RIGHTPADDING", (0, 0), (-1, -1), space("pad_xs")),
+                ("TOPPADDING", (0, 0), (-1, -1), space("pad_xs") * 0.75),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), space("pad_xs") * 0.75),
+            ]
+        )
+    )
+    return [table, Spacer(1, space("pad_s"))]
+
+
+def _boxed(flowable: Flowable) -> Table:
+    box = Table([[flowable]], colWidths=[FRAME_WIDTH], hAlign="LEFT")
+    box.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), HexColor(ink("bg_subtle"))),
+                ("LINEBEFORE", (0, 0), (0, -1), 2.0, HexColor(ink("accent"))),
+                ("BOX", (0, 0), (-1, -1), 0.5, HexColor(ink("rule"))),
+                ("LEFTPADDING", (0, 0), (-1, -1), space("pad_m")),
+                ("RIGHTPADDING", (0, 0), (-1, -1), space("pad_s")),
+                ("TOPPADDING", (0, 0), (-1, -1), space("pad_s")),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), space("pad_s")),
+            ]
+        )
+    )
+    return box
+
+
+def code_points(lines: Sequence[str], room: float) -> float:
+    """Return the point size at which the widest of ``lines`` fits ``room``.
+
+    The size never falls below ``MONO_POINT_FLOOR``, where a longer line wraps
+    instead.
+    """
+    points = size("mono")
+    mono = font_name("mono")
+    widest = max((stringWidth(line, mono, points) for line in lines), default=0.0)
+    if widest <= room or widest <= 0:
+        return points
+    return max(MONO_POINT_FLOOR, points * room / widest)
+
+
+def _code_flowables(block: Block, styles: dict[str, ParagraphStyle]) -> list[object]:
+    lines = [line.rstrip() for line in block.text.split("\n")]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        return []
+    room = FRAME_WIDTH - space("pad_m") - space("pad_s")
+    points = code_points(lines, room)
+    style = ParagraphStyle(
+        "code_block", parent=styles["mono"], fontSize=points, leading=points * 1.35
+    )
+    per_char = stringWidth("0", font_name("mono"), points) or 1.0
+    limit = int(room / per_char)
+    widest = max(len(line) for line in lines)
+    listing = Preformatted(
+        "\n".join(lines), style, maxLineLength=None if widest <= limit else limit
+    )
+    tall = style.leading * len(lines) + space("pad_s") * 2 > FRAME_HEIGHT - space(
+        "pad_l"
+    )
+    return [listing if tall else _boxed(listing), Spacer(1, space("pad_s"))]
+
+
+def _diagram_flowables(block: Block, styles: dict[str, ParagraphStyle]) -> list[object]:
+    diagram = parse_mermaid(block.text)
+    out: list[object] = [Paragraph(escape(diagram.caption), styles["eyebrow"])]
+    for source, target, label, dotted in diagram.edges:
+        arrow = escape(ARROW_DOTTED if dotted else ARROW_SOLID)
+        note = f" <i>({inline(label)})</i>" if label else ""
+        out.append(
+            Paragraph(
+                f"{inline(source)} {arrow} <b>{inline(target)}</b>{note}",
+                styles["bullet"],
+                bulletText=BULLET,
+            )
+        )
+    out.extend(
+        Paragraph(inline(name), styles["bullet"], bulletText=BULLET)
+        for name in diagram.loose
+    )
+    if not diagram.edges and not diagram.loose:
+        out.append(_boxed(Preformatted("\n".join(diagram.source), styles["mono"])))
+    out.append(Spacer(1, space("pad_s")))
     return out
 
 
@@ -674,8 +1107,48 @@ def _figure_flowables(
     image.drawHeight = image.imageHeight * scale
     out: list[object] = [image]
     if block.text:
-        out.append(Paragraph(escape(block.text), styles["caption"]))
+        out.append(Paragraph(inline(block.text), styles["caption"]))
     return out
+
+
+def _heading_flowable(block: Block, styles: dict[str, ParagraphStyle]) -> object:
+    style = styles[HEADING_STYLES[min(block.level, max(HEADING_STYLES))]]
+    if block.level not in TOC_LEVELS:
+        return Paragraph(inline(block.text), style)
+    return Marked(
+        inline(block.text),
+        style,
+        level=block.level,
+        label=plain(block.text),
+        target=plain(block.text),
+    )
+
+
+def _text_flowables(block: Block, styles: dict[str, ParagraphStyle]) -> list[object]:
+    if block.kind == "heading":
+        return [_heading_flowable(block, styles)]
+    if block.kind == "quote":
+        return [Paragraph(inline(block.text), styles["quote"])]
+    if block.kind == "bullet":
+        return [Paragraph(inline(block.text), styles["bullet"], bulletText=BULLET)]
+    return [Paragraph(inline(block.text), styles["body"])]
+
+
+def _block_flowables(
+    block: Block,
+    row: ManifestRow,
+    manual: Manual,
+    styles: dict[str, ParagraphStyle],
+) -> list[object]:
+    if block.kind == "image":
+        return _figure_flowables(block, row.path, manual.figures_dir, styles)
+    if block.kind == "table":
+        return _table_flowables(block, styles)
+    if block.kind == "code":
+        return _code_flowables(block, styles)
+    if block.kind == "diagram":
+        return _diagram_flowables(block, styles)
+    return _text_flowables(block, styles)
 
 
 def _file_flowables(
@@ -685,30 +1158,7 @@ def _file_flowables(
         return _part_list_flowables(manual.part_list, styles)
     out: list[object] = []
     for block in parse_markdown(row.path.read_text(encoding="utf-8")):
-        if block.kind == "heading":
-            style = styles[HEADING_STYLES[min(block.level, max(HEADING_STYLES))]]
-            if block.level in TOC_LEVELS:
-                out.append(
-                    Marked(
-                        escape(block.text),
-                        style,
-                        level=block.level,
-                        label=block.text,
-                        target=block.text,
-                    )
-                )
-            else:
-                out.append(Paragraph(escape(block.text), style))
-        elif block.kind == "quote":
-            out.append(Paragraph(escape(block.text), styles["quote"]))
-        elif block.kind == "bullet":
-            out.append(
-                Paragraph(escape(block.text), styles["bullet"], bulletText=BULLET)
-            )
-        elif block.kind == "image":
-            out.extend(_figure_flowables(block, row.path, manual.figures_dir, styles))
-        else:
-            out.append(Paragraph(escape(block.text), styles["body"]))
+        out.extend(_block_flowables(block, row, manual, styles))
     return out
 
 
@@ -721,16 +1171,16 @@ def body_flowables(manual: Manual, styles: dict[str, ParagraphStyle]) -> list[ob
         out.append(Paragraph(escape(f"Part {part.number}"), styles["eyebrow"]))
         out.append(
             Marked(
-                escape(part.title),
+                inline(part.title),
                 styles["part"],
                 level=PART_LEVEL,
-                label=f"Part {part.number}  {part.title}",
-                target=part.title,
+                label=plain(f"Part {part.number}  {part.title}"),
+                target=plain(part.title),
             )
         )
         out.append(Rule(palette[(part.number - 1) % len(palette)]))
         out.extend(
-            Paragraph(escape(bullet), styles["bullet"], bulletText=BULLET)
+            Paragraph(inline(bullet), styles["bullet"], bulletText=BULLET)
             for bullet in part.bullets
         )
         for row in manual.rows:
@@ -836,11 +1286,30 @@ def verify_sections_present(
     missing = [
         row.path.name
         for row in listed
-        if _normalise(first_heading(row.path.read_text(encoding="utf-8"))) not in text
+        if _normalise(plain(first_heading(row.path.read_text(encoding="utf-8"))))
+        not in text
     ]
     if missing:
         return False, f"listed but absent from the PDF: {', '.join(missing)}"
     return True, f"{len(listed)} listed sections present"
+
+
+def verify_no_raw_markup(pdf_path: Path) -> tuple[bool, str]:
+    """Return whether no page carries a backtick, a mermaid keyword or a pipe row."""
+    pages = _pdf_page_texts(pdf_path)
+    leaks: list[str] = []
+    for number, text in enumerate(pages, start=1):
+        for name, hits in (
+            ("backtick", text.count("`")),
+            ("mermaid source", len(DIAGRAM_WORD.findall(text))),
+            ("markdown table row", len(RAW_TABLE_ROW.findall(text))),
+            ("pipe run", len(RAW_PIPE_RUN.findall(text))),
+        ):
+            if hits:
+                leaks.append(f"page {number}: {hits} {name}")
+    if leaks:
+        return False, "; ".join(leaks[:LEAKS_REPORTED])
+    return True, f"{len(pages)} pages carry no raw markup"
 
 
 def verify_part_numbers(parts: Iterable[Part]) -> tuple[bool, str]:
@@ -877,6 +1346,7 @@ def build(docs_dir: Path, figures_dir: Path, output: Path) -> BuildResult:
             *verify_sections_present(output, (manual.cover, *manual.rows)),
         ),
         ("contents pages", *verify_toc_pages(output, entries)),
+        ("no raw markup", *verify_no_raw_markup(output)),
     )
     return BuildResult(output=output, entries=tuple(entries), checks=checks)
 
