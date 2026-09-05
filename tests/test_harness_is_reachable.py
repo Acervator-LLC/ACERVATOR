@@ -9,8 +9,7 @@ and ``TestTheCallerSearchCanFail`` is the control for the resolver.
 """
 
 # ruff: noqa: S603
-# `sys.executable` and `_git_exe()` are resolved paths, so an all-literal argv
-# is impossible.
+# `sys.executable` and `_git_exe()` are resolved paths, never literals.
 from __future__ import annotations
 
 import importlib
