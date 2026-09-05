@@ -1,59 +1,17 @@
-"""A fold tranche must have a Scrum behind it.
+"""One sell opens one fold tranche, unless the trend is strong.
 
-THE OPERATOR'S RULE, issue #133 unit 2, 2026-08-25
-==================================================
-    "We should never see more Fold tranches than Scrums that have
-     occurred except during strong trends."
-
-WHERE THE COUNT CAME FROM
-=========================
-Three loops build fold tranches -- the autonomous SCRUM sell in
-``scrumming_bot.tick``, the DIST re-fold sell in the same method, and
-``scrumming.execution._execute_manual_rebalance``, which serves Manual Fire, Wire Stack
-and Max Cartridge. All three walk ``_main_lots`` and append ONE tranche
-per lot they consume, so that each lot's ``initial_buy_price`` travels
-with its own units. ``_main_lots`` gains an entry on every buy, so the
-count grew with the LOT BOOK and not with the sells.
-
-Measured read-only on the operator's saved state, 2026-08-25, at
-``scrumming_state.tranches_created_lifetime``: 16,042 tranches opened
-against 445 recorded sells across 38 bots, 37 of the 38 over 1.0, CHIP
-at 4,925 against 461 exchange trades counting BOTH sides.
-
-WHAT "STRONG TREND" MEANS HERE, AND WHY IT IS NOT ADX
-=====================================================
-``_STRONG_TREND_MIN_BULL_CANDLES`` is the TREND-HOLD threshold ``tick``
-already carried -- more than 13 of the last 20 candles closing up, which
-is the 0.65 share that line held, written as its two counts.
-The file names two other strong-trend readings and neither can serve:
-``ADXIndicator`` reports ``strong_trend`` at ADX >= 35, and
-``ADXTrendSuppressionGate`` refuses a SCRUM at ADX >= 30. Both are
-SCRUM SUPPRESSORS, and ``RipeHarvestScrumOverride`` lists
-``midline_scrum``, ``target_fires``, ``trend_hold`` and ``ta_bullish``
--- not ``adx_trend_suppression`` -- so nothing lifts the ADX gate and
-the sell that would open the extra tranches never fires. TREND-HOLD IS
-lifted, by ``tick``'s own band-travel arm, whose comment says it exists
-to catch harvests "during strong trends". That is the sell the
-exception is about.
-
-WHAT EACH FAILURE HERE MEANS
-============================
-Every test below states it in one line. The two that matter most:
-
-* the BOUND tests going red means a sell can again open one tranche per
-  lot, and the panel count is back to measuring the lot book;
-* the EXCEPTION test going red means the bound became unconditional.
-  That is the vacuous pass this file exists to refuse -- a cap that
-  always caps satisfies every bound-only assertion while destroying the
-  behaviour the operator protected by name.
+``_bound_new_fold_tranches`` merges the slice a single sell appended and
+carries ``_scrum_sells_lifetime``, so ``_tranches_created_lifetime``
+counts sells and not ``_main_lots`` entries. The three build loops that
+answer it are ``_tick_execute_scrum``, ``_tick_distribute`` and
+``_execute_manual_rebalance``. The exception keeps the per-lot split
+when ``_last_trend_bull_candles`` passes
+``_STRONG_TREND_MIN_BULL_CANDLES`` out of ``_STRONG_TREND_CANDLES``.
 """
 
 from __future__ import annotations
 
-import ast
 import asyncio
-import inspect
-import textwrap
 
 import pytest
 
@@ -563,38 +521,132 @@ def test_the_reproduced_build_loop_matches_the_shipping_one():
             assert abs(got[key] - want[key]) <= EXACT, key
 
 
-def _bound_calls(func):
-    """Every ``self._bound_new_fold_tranches(...)`` inside ``func``.
+class _BbResult:
+    lower = 0.0
+    upper = 0.0
 
-    ``inspect.getsource`` returns a method still carrying its class
-    indentation, which ``ast.parse`` refuses. Dedenting first is what
-    makes the scanner read a method at all rather than raise.
+
+def _tick_bot(*, lots, bull=0, fill=1.0, units=60.0):
+    """A bot the real tick sell phases run against.
+
+    ``_execute_sell`` and ``_get_balance`` are stubbed and everything
+    from the build loop to ``_bound_new_fold_tranches`` is the shipping
+    code.
     """
-    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
-    return [
-        n
-        for n in ast.walk(tree)
-        if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "_bound_new_fold_tranches"
+    bot = _bot(lots=lots, bull=bull)
+    bot._quote_to_usd = 1.0
+    bot._target_balance = 100.0
+    bot._anchor_target_balance = 100.0
+    bot._fold_cycle_cap_consumed = 0.0
+    bot._fold_queue_usd = 0.0
+    bot._fold_queue_ref_price = 0.0
+    bot._pending_wire_credits = 0.0
+    bot._dist_accumulator = units
+    bot._below_min_scrum_log_ts = 0.0
+    bot._last_trade_side = None
+    bot._last_trade_price = 0.0
+    bot._scrum_target_mode = "usd"
+    bot._scrum_target_side = None
+
+    async def _sell(_amount, _price, _summary):
+        return fill
+
+    async def _balance(_asset):
+        return units
+
+    async def _limits(_symbol):
+        return 0.0, 0.0, 0.0
+
+    bot._execute_sell = _sell
+    bot._get_balance = _balance
+    bot._get_market_limits = _limits
+    bot._settled_sale_proceeds = lambda amount, price, label: amount * price
+    bot._route_scrum_proceeds_via_wires = lambda **_kw: 0.0
+    bot._emit_trade_fire_snapshot = lambda *_a, **_kw: None
+    bot._emit_voting_panel_snapshot_at_fire = lambda **_kw: None
+    bot._emit_gate_decision_at_fire = lambda **_kw: None
+    bot._reset_opposing_hysteresis_after_fill = lambda: None
+    bot.note_scrum_retention_usd = lambda _usd: None
+    return bot
+
+
+def _scrum_tick(bot, units=60.0, fill=1.0):
+    """One ``_tick_bot`` run through the real SCRUM sell phase."""
+    asyncio.run(
+        bot._tick_execute_scrum(
+            _Ticker(fill),
+            None,
+            _BbResult(),
+            units * fill,
+            1.0,
+            units * fill,
+            0.5,
+            type("D", (), {"name": "BULLISH"}),
+            1.0,
+            0.0,
+            0.0,
+            None,
+        )
+    )
+    return bot
+
+
+def _dist_tick(bot):
+    """One ``_tick_bot`` run through the real DIST re-fold phase."""
+    asyncio.run(bot._tick_distribute(_Ticker(1.0), None, _BbResult(), True))
+    return bot
+
+
+def test_the_scrum_sell_phase_leaves_one_tranche():
+    """Red means the SCRUM build loop escaped
+    ``_bound_new_fold_tranches``."""
+    bot = _scrum_tick(_tick_bot(lots=_lots(9)))
+    assert bot._main_lots == [], "the sell never walked the lot book"
+    assert len(bot._fold_tranches) == 1
+    assert bot._tranches_created_lifetime == 1
+    assert bot._scrum_sells_lifetime == 1
+
+
+def test_the_scrum_sell_phase_keeps_its_split_in_a_strong_trend():
+    """Red means ``_strong_trend_now`` does not reach the SCRUM path."""
+    bot = _scrum_tick(_tick_bot(lots=_lots(9), bull=_STRONG_TREND_MIN_BULL_CANDLES + 1))
+    assert len(bot._fold_tranches) > 1
+    assert bot._scrum_sells_lifetime == 1
+
+
+def test_the_dist_refold_phase_leaves_one_tranche():
+    """Red means the DIST build loop escaped
+    ``_bound_new_fold_tranches``."""
+    bot = _dist_tick(_tick_bot(lots=_lots(9)))
+    assert bot._main_lots == [], "the sell never walked the lot book"
+    assert len(bot._fold_tranches) == 1
+    assert bot._tranches_created_lifetime == 1
+    assert bot._scrum_sells_lifetime == 1
+
+
+def test_the_dist_refold_phase_keeps_its_split_in_a_strong_trend():
+    """Red means ``_strong_trend_now`` does not reach the DIST path."""
+    bot = _dist_tick(_tick_bot(lots=_lots(9), bull=_STRONG_TREND_MIN_BULL_CANDLES + 1))
+    assert len(bot._fold_tranches) > 1
+    assert bot._scrum_sells_lifetime == 1
+
+
+def test_the_top_up_opens_no_sell_and_counts_none():
+    """NEGATIVE CONTROL. ``_top_up_remnant_fold_tranches`` is not a sell,
+    so it must not move ``_scrum_sells_lifetime``."""
+    bot = _tick_bot(lots=_lots(9))
+    bot._fold_tranches = [
+        {
+            "usd": 1.0,
+            "units": 1.0,
+            "ref": 1.0,
+            "initial_buy_price": 0.5,
+            "created_ts": 1.0,
+        }
     ]
-
-
-def test_all_three_build_loops_call_the_bound():
-    """Red means a path can build tranches without answering the rule."""
-    autonomous = _bound_calls(ScrummingBot._tick_execute_scrum) + _bound_calls(
-        ScrummingBot._tick_distribute
-    )
-    assert len(autonomous) == 2, (
-        "the tick builds fold tranches on two paths, the SCRUM sell and the "
-        "DIST re-fold, and both must answer the count rule"
-    )
-    assert _bound_calls(ScrummingBot._execute_manual_rebalance)
-
-
-def test_POSITIVE_CONTROL_the_call_scanner_can_report_none():
-    """The scanner above must not find its subject in every method."""
-    assert _bound_calls(ScrummingBot._top_up_remnant_fold_tranches) == []
+    bot._top_up_remnant_fold_tranches(0, 0.0, 0.0)
+    assert bot._scrum_sells_lifetime == 0
+    assert bot._tranches_created_lifetime == 0
 
 
 # ── THE COUNTER SURVIVES A ROUND TRIP ────────────────────────────────

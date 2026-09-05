@@ -1,9 +1,8 @@
 """Which paths in the repository are source, for a test that walks the tree.
 
-A bare `Path.rglob` also returns build output. `dist/Acervator/_internal/`
-holds a copy of every `src/` module after a PyInstaller run, so a test
-asserting a file name appears once finds it twice on any machine that has
-built, and passes on one that has not.
+`is_source` drops any path holding a build-output, cache or vendor part.
+A PyInstaller run writes a copy of every `src` module under `dist`, which
+`named` and `source_files` would otherwise return a second time.
 """
 
 from __future__ import annotations
