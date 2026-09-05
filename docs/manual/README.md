@@ -7,10 +7,11 @@ or removed, and only whitespace was normalised.
 Six part files hold that transcription alone.
 [07-indicators.md](07-indicators.md) and [08-tabs.md](08-tabs.md) transcribe
 the PDF and add sections of their own.
-Four files transcribe nothing, because the PDF carries no body text for the
+Five files transcribe nothing, because the PDF carries no body text for the
 parts they belong to:
-[09-updates-and-versioning.md](09-updates-and-versioning.md) and
-[10-live-trade-history.md](10-live-trade-history.md), written from the source
+[09-updates-and-versioning.md](09-updates-and-versioning.md),
+[10-live-trade-history.md](10-live-trade-history.md) and
+[13-live-evidence.md](13-live-evidence.md), written from the source
 and from measurements over the operator's own venue export; and
 [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md)
 and [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md), written from
@@ -29,6 +30,7 @@ meaning; the Part column below is what places a file in the manual.
 | [06-trading-tab.md](06-trading-tab.md) | 3 | 14 to 27 | System architecture, then the Trading Tab walkthrough |
 | [07-indicators.md](07-indicators.md) | 3 | 27 to 29 | Indicator Voting Panel and the twelve indicators |
 | [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Main Window, Simulator, Paper Trader, Proof of Accumulation, Market Inspector, Bot Swarm, Asset Charts, History, Console, System Status, and the eleven Settings pages |
+| [13-live-evidence.md](13-live-evidence.md) | 4 | — | The readers of the year-to-date venue record, the connectors, and what the exchange tests reach |
 | [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
 | [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
 | [09-updates-and-versioning.md](09-updates-and-versioning.md) | 7 | — | Version derivation, the six readers, the baked bundle value, the release gate |
@@ -78,8 +80,8 @@ carrying `—` is not manual text and is not rendered. The order of the rows is
 the order the PDF prints them, and the first row is the title page. A row naming
 a file that is not on disk, and a `NN-*.md` file this table does not list, both
 stop the build. A `—` in the Manual pages column marks a file the PDF is not
-the source of. Parts 4 and 8 have no file; they print a part page and appear in
-the contents, and a new row here folds a file into its part.
+the source of. Part 8 has no file; it prints a part page and appears in the
+contents, and a new row here folds a file into its part.
 
 ## Figures
 
@@ -107,8 +109,9 @@ sit. That is the flag for a corrected PDF.
 files under [08-tabs/](08-tabs/README.md),
 [09-updates-and-versioning.md](09-updates-and-versioning.md),
 [10-live-trade-history.md](10-live-trade-history.md),
-[11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md)
-and [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) are not among
+[11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md),
+[12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) and
+[13-live-evidence.md](13-live-evidence.md) are not among
 them and are never written.
 
 - 44 pages, 9,759 whitespace-separated tokens, 38 embedded images.
@@ -133,7 +136,7 @@ both whitespace only:
 Compared token by token against the PDF, the transcription holds 9,759 tokens in
 the same order, with no loss. The added sections in
 [07-indicators.md](07-indicators.md) and [08-tabs.md](08-tabs.md) sit outside
-that count. The four files the PDF is not the source of sit outside it in full.
+that count. The five files the PDF is not the source of sit outside it in full.
 
 ### Headings
 
