@@ -171,3 +171,86 @@ the operator uses them, and no module implements any of them.
 - **Conceptual hopscotch** — his name for a session hopping across a context
   boundary, which the handoff file exists to carry.
 - **Ekthelius the Accumulator** — his handle.
+
+## Trading-engine vocabulary from the legacy manual
+
+Source: LEGACY, the fourteen-part manual, Part 7c "ADR Index and Glossary", page
+8. The claim audit calls the trading-engine vocabulary accurate, and it carries
+here with each entry re-anchored. The technical-analysis vocabulary from page 10
+of the same part is in [07-indicators.md](07-indicators.md), which is where this
+file already says such words belong.
+
+- **Advantage** — the final portfolio value minus what passive holding would
+  have produced on the same capital. A run wins when this is above zero.
+- **Band travel** — price displacement measured as a fraction of the current
+  Bollinger Band width, so the threshold follows volatility.
+  `band_travel_pct` in `src/trading/container/config.py:100`, default 70.
+- **Explode** — the liquidation trigger of the bear-regime accumulator, at a
+  recovery to 98 percent of entry. No source in this repository; see
+  [15-patent-portfolio.md](15-patent-portfolio.md).
+- **Fold** — a profit-realisation event. The target grows by the realised
+  amount.
+- **Heikin-Ashi candle** — a smoothed price bar. The landing strip reads them,
+  in `src/trading/indicators/landing_strip.py`.
+- **Interval** — the profit-take threshold for one trade, in percent.
+  `scrumming_interval_pct`, default 1.0.
+- **Landing strip** — several consecutive same-colour Heikin-Ashi candles with a
+  narrow body range against a band boundary. `detect_landing_strip_v2`.
+- **Phantom** — a read-only copy of the position at a longer timeframe, read by
+  the bias gates. `src/trading/phantom_balance.py`.
+- **Price floor** — the invariant that every unit bought back after a fold costs
+  at or under the lot's original price. The test is in
+  `src/trading/scrumming/tick_phases.py`.
+- **Regime** — the market classification a timeframe's indicators produce.
+- **Scrum** — a trade inside the zone. In the main bot, a profit-take followed
+  by a target increase.
+- **Target** — the running dollar goal. It grows on a fold and never shrinks.
+- **Tier** — a signal's importance, from structural down to contextual. A
+  structural signal can open a trade; a contextual one can only move confidence.
+- **Tranche** — one buy kept as its own cost-basis lot, so the fold can decide
+  lot by lot. `self._fold_tranches` in `src/trading/scrumming/tick_phases.py`.
+
+The legacy glossary also defines the simulation battery at one size, and the
+same legacy manual gives it two other sizes on other pages. No battery engine
+has any source in this repository, so no size is the right one to carry. The
+entry is dropped and the reason is here.
+
+## Three things deliberately not built
+
+Source: LEGACY, the fourteen-part manual, Part 6 "Department Leads Review",
+pages 10 to 17. These are product decisions rather than deferred work, each with
+a stated reason, and the claim audit verified each subject absent from the code.
+They belong in this file because a decision not to build is still a decision,
+and nothing else in this repository records them.
+
+### No classical trend following
+
+Moving-average crossovers, Donchian channels and channel breakouts are absent,
+and stay absent. Adding them would put a second trading system inside one
+engine, on a different thesis from accumulation. The trend-signal class that
+belongs in an accumulation bot is already covered by the MACD voter and its
+divergence reading, in `src/trading/ta_engine.py`. A dedicated trend follower
+would be a separate product.
+
+### No hard stops
+
+A stop-loss contradicts the price floor. The floor asserts that every unit held
+was bought at or under the lot's original price, and a stop would liquidate
+exactly the units that structural defence exists to carry through a temporary
+drawdown. What the platform has instead is bounded per-event damage:
+`CircuitBreakerGate` and the soft and hard trip percentages, and
+`SmartCeilingGate` with the position ceiling. Those bound one event. They do not
+promise that a long decline costs nothing, and
+[16-operator-settings.md](16-operator-settings.md) says so in the same words the
+legacy section used.
+
+### No tape reading and no order-book depth
+
+Level-two order-book data varies widely in quality between venues and would need
+its own data pipeline. At the size this platform trades, the extra signal does
+not pay for the infrastructure. The bot reads the line of least resistance from
+candle patterns and band positions instead, which the legacy section calls a
+derivative signal and admits as such. The decision is scale-based, and the note
+that comes with it is the honest part: revisit when the size grows enough for
+microstructure to matter.
+
