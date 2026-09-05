@@ -1,44 +1,10 @@
-"""Two holes in one restore loop, both closed 2026-08-15.
+"""Two pct values that reach `_wires` through `import_wires` and `register_wire`.
 
-HOLE 1 - THE EXCEPT TUPLE WAS TOO NARROW. `import_wires` coerced the
-saved pct with `float(w.get("pct", 0))` under
-`except (TypeError, ValueError)`. float() has a third failure mode
-neither covers: OverflowError, on an integer too large for a double.
-`json.loads` parses integer literals at arbitrary precision, so a bare
-309-to-4300-digit integer in a corrupt, truncated or hand-edited save
-reached that line and raised.
-
-The escape cost the WHOLE restore, not the row. It left `_wires`
-partially applied, ran neither the per-row DROPPED line nor the
-reconciling headline (both live after the loop), and never reached the
-emitter - so topology.09.002 produced NO RECORD AT ALL.
-`BotManager.restore_smart_wires_from_state` then caught it, returned 0,
-and thereby skipped the ledger import AND the `wire.created` re-emit.
-Measured on the operator's own 33-row topology: one planted row
-destroyed 33 wires and 50 ledgers, and wrote one line that named none of
-them.
-
-HOLE 2 - nan PASSED THE RANGE GUARD AND WAS COUNTED AS A SUCCESS. nan is
-unordered, so `nan <= 0` and `nan > 100` are both False and a nan pct
-satisfied every clause. It was stored, counted as imported, reported as
-a clean restore, and then computed `share = profit * nan / 100 = nan` in
-`distribute_fold_profit`, which booked it as a COMPLETED transfer. The
-dust floor could not stop it either, because `nan < min_wire` is False.
-It was the one bad shape that was broken AND silent AND counted as a
-success; every other one was at least refused and named.
-
-BOTH HOLES EXISTED AT BOTH WRITERS INTO `_wires`. `register_wire` is the
-other one, and it is where a NaN-bearing save comes from: it accepted
-nan, `export_wires` wrote it, and `json.dumps` emitted a bare `NaN`
-token. It also carried the identical narrow tuple, so
-`register_wire("a", "b", int("9" * 400))` RAISED out of a method whose
-whole documented contract is to return {"applied": ..., "reason": ...}.
-That third defect was found by this unit's own control, not by the work
-order, and is closed here with the other two.
-
-EACH TEST STATES WHAT ITS OWN FAILURE WOULD MEAN. The first class is a
-positive control: if log or emit capture goes blind, every later
-assertion here is vacuous rather than passing.
+A `WIDE_INT` pct makes `float()` raise OverflowError; both writers catch it,
+name the exception and keep going. A nan pct is unordered, satisfies every
+range clause, and is refused by name at both writers and over the whole
+`DOMAIN`. `TestTheWidenedExceptHidesNothing` holds the other side, where a
+raise outside the coercion still escapes.
 """
 
 from __future__ import annotations
@@ -51,9 +17,6 @@ import sys
 
 import pytest
 
-# NO sys.path BLOCK AND NO E402 SUPPRESSION. tests/conftest.py inserts
-# the repo root at conftest import time, which pytest runs before any
-# test module loads. This file carries zero forbidden directives.
 from src.core.signal_contract import SignalSink, set_sink
 from src.trading import smart_wire as smart_wire_module
 from src.trading.smart_wire import SmartWireManager
@@ -72,9 +35,6 @@ WIDE_INT = int("9" * 400)
 GOOD = {"source_id": "A", "target_id": "B", "pct": 25.0}
 
 
-# --------------------------------------------------------------------- #
-# helpers                                                               #
-# --------------------------------------------------------------------- #
 def _warnings(records) -> list[str]:
     return [
         r.getMessage()
@@ -116,11 +76,10 @@ def _has_nan(mgr: SmartWireManager) -> bool:
 
 
 def _boom(message: str):
-    """A logger stand-in that raises instead of logging.
+    """Return a logger stand-in that raises RuntimeError carrying message.
 
-    Not a lambda: a lambda's `*a, **k` are unused variables the coding
-    archetype reports, and consuming them here also puts the call shape
-    into the message, so a red says WHICH log call was reached.
+    The raised text names the positional and keyword counts of the call that
+    reached it.
     """
 
     def raise_it(*args, **kwargs):
@@ -133,14 +92,17 @@ def _boom(message: str):
 
 
 class _Unprintable:
-    """A source_id whose str() raises, ON THE STORE LINE.
-
-    The store is `self._wires.setdefault(str(src), {})[str(tgt)] = pct`,
-    which sits AFTER the guarded region. This plant proves the widened
-    except does not reach it.
-    """
+    """A source_id whose str() raises where `import_wires` stores the row."""
 
     def __str__(self):
+        raise RuntimeError("PLANTED store-line failure")
+
+
+class _UnstorableWires(dict):
+    """A `_wires` stand-in whose setdefault raises where either writer stores a row."""
+
+    def setdefault(self, *args, **kwargs):
+        """Raise RuntimeError naming the planted store-line failure."""
         raise RuntimeError("PLANTED store-line failure")
 
 
@@ -152,13 +114,9 @@ class _Hostile:
 
 
 class _Target:
-    """A bot stand-in on the REAL apply_wire_income signature.
+    """A bot stand-in carrying the `apply_wire_income(share, source, ref)` signature.
 
-    smart_wire.py calls `apply_wire_income(share, source=..., ref=...)`.
-    A stand-in with the wrong keyword makes the route raise and be
-    booked applied=False, which would let a nan share pass for entirely
-    the wrong reason. It did, on the first run of the probe this test
-    came from, and that is why the signature is stated here.
+    `got` records every amount handed in and `calls` the source and ref beside it.
     """
 
     def __init__(self):
@@ -166,7 +124,7 @@ class _Target:
         self.calls = []
 
     def apply_wire_income(self, amount, source, ref=""):
-        """Accept anything, so the guard under test is the only one."""
+        """Record amount in `got`, the source and ref in `calls`, and apply."""
         self.got.append(amount)
         self.calls.append((source, ref))
         return {"applied": True, "amount": amount}
@@ -174,13 +132,10 @@ class _Target:
 
 @pytest.fixture
 def wirelog(capture_log):
-    """Records from acervator.smart_wire, bypassing propagation.
+    """Records from `LOGGER_NAME`, captured with `capture_log`.
 
-    NOT `caplog`. `logging_engine` sets
-    `logging.getLogger("acervator").propagate = False`, so records never
-    reach the root handler pytest installs and caplog sees nothing once
-    any earlier test has built the engine - an oracle false negative
-    that depends purely on collection order.
+    `logging_engine` sets `propagate = False` on the acervator logger, and
+    `caplog` then sees no record from `LOGGER_NAME`.
     """
     with capture_log(LOGGER_NAME, logging.DEBUG) as records:
         yield records
@@ -194,13 +149,8 @@ def sink():
     set_sink(None)
 
 
-# --------------------------------------------------------------------- #
-# POSITIVE CONTROLS — run these first or nothing below means anything    #
-# --------------------------------------------------------------------- #
 class TestTheInstrumentSees:
-    """FAILURE MEANS: the instrument is blind and every assertion in
-    this file is vacuous rather than passing. A silence assertion read
-    through a dead capture is the cheapest false green there is."""
+    """`wirelog` sees an INFO and a DROPPED line, and `sink` sees `PIN`."""
 
     def test_log_capture_sees_the_clean_info_line(self, wirelog):
         SmartWireManager().import_wires([dict(GOOD)])
@@ -221,27 +171,21 @@ class TestTheInstrumentSees:
         )
 
 
-# --------------------------------------------------------------------- #
-# HOLE 1 — the narrow except tuple                                       #
-# --------------------------------------------------------------------- #
 class TestHoleOneTheWideIntegerNoLongerAbortsTheImport:
-    """FAILURE MEANS: one corrupt pct in a saved topology still takes
-    the whole restore with it. Every wire, every ledger and every
-    wire.created re-emit vanish for the session, the operator's fold
-    profit stops being divided, and the only trace is one line that
-    names no bot."""
+    """A `WIDE_INT` pct is counted and named by `import_wires`, and does not raise.
+
+    The remaining rows of the payload still import.
+    """
 
     def test_overflow_error_is_outside_the_old_tuple(self):
-        """The mechanism itself, so a later reader need not re-derive
-        it. FAILURE MEANS: the premise of this whole class is wrong."""
+        """`float(WIDE_INT)` raises OverflowError, not TypeError or ValueError."""
         assert not issubclass(OverflowError, (TypeError, ValueError))
         assert issubclass(OverflowError, ArithmeticError)
         with pytest.raises(OverflowError):
             float(WIDE_INT)
 
     def test_json_delivers_the_bare_integer_intact(self):
-        """FAILURE MEANS: this input shape cannot actually arrive, and
-        the repair is defending against something imaginary."""
+        """`json.dumps` and `json.loads` carry `WIDE_INT` through exactly."""
         payload = json.dumps([{"source_id": "A", "target_id": "B", "pct": WIDE_INT}])
         assert "e+" not in payload, "json must not float-ify it"
         assert json.loads(payload)[0]["pct"] == WIDE_INT
@@ -279,10 +223,7 @@ class TestHoleOneTheWideIntegerNoLongerAbortsTheImport:
         assert "the save is corrupt" in dropped[0]
 
     def test_the_message_no_longer_claims_it_is_not_a_number(self, wirelog):
-        """RESTATED CONTRACT. The old wording was 'pct is %r, which is
-        not a number'. FAILURE MEANS: the log tells the operator
-        something false - a 400-digit integer IS a number, it simply has
-        no double to land on - and sends him after the wrong defect."""
+        """The DROPPED line for a `WIDE_INT` pct names what float() did."""
         SmartWireManager().import_wires(
             [{"source_id": "C", "target_id": "D", "pct": WIDE_INT}]
         )
@@ -302,23 +243,11 @@ class TestHoleOneTheWideIntegerNoLongerAbortsTheImport:
         assert tuple(int(g) for g in heads[0].groups()) == (2, 3, 1, 0, 1, 0)
 
     def test_the_digit_boundary_is_swept_not_asserted(self, wirelog):
-        """A THRESHOLD IS NOT CLOSED BY A HAND-WRITTEN ROW. An all-nines
-        integer pct crosses THREE regimes as it grows, and the sweep
-        finds the widths rather than assuming them:
+        """`import_wires` sorts an all-nines integer pct by its width.
 
-          1-2 digits   9 and 99 are valid percentages: ACCEPTED
-          3-308 digits representable, and simply exceeds 100: UNROUTABLE
-          309+ digits  no double to land on: UNREADABLE, and this is the
-                       band the repair opened
-
-        FAILURE MEANS: the accept/reject frontier moved, or a width
-        inside the reachable window raises instead of being counted.
-
-        THE FIRST DRAFT OF THIS TEST ASSERTED `got == 0` FOR EVERY
-        WIDTH AND WENT RED ON ONE DIGIT, because 9 is a perfectly good
-        pct. The code was right and the test's model of the low end was
-        wrong. It is written out here because that is the red this test
-        was actually shown to produce."""
+        1-2 digits are accepted, 3-308 are unroutable, and 309 and wider are
+        unreadable; the sweep measures `first_overflow` and never assumes it.
+        """
         first_overflow = None
         for digits in range(1, 400):
             try:
@@ -367,20 +296,17 @@ class TestHoleOneTheWideIntegerNoLongerAbortsTheImport:
                 )
 
     def test_above_the_json_limit_is_a_different_defect(self):
-        """FAILURE MEANS: the window this repair covers is not bounded
-        where it is claimed to be, so the claim is wrong even though the
-        tests pass."""
+        """`json.loads` refuses an integer wider than `sys.get_int_max_str_digits`."""
         assert sys.get_int_max_str_digits() == 4300
         with pytest.raises(ValueError):
             json.loads('{"pct": ' + "9" * 4301 + "}")
 
 
 class TestHoleOneTheRestoreDownstreamNowRuns:
-    """FAILURE MEANS: the caller still loses the ledgers and the GUI
-    re-emit. The wires being right is not the whole repair - the escape
-    made BotManager return 0, and the two blocks after that return are
-    what rehydrate every bot's wired_in/wired_out and what draws the
-    topology on screen."""
+    """A `WIDE_INT` row leaves `restore_smart_wires_from_state` still importing ledgers.
+
+    The `wire.created` re-emit that draws the topology runs with it.
+    """
 
     @staticmethod
     def _drive(rows):
@@ -441,10 +367,10 @@ class TestHoleOneTheRestoreDownstreamNowRuns:
 
 
 class TestHoleOneAtTheOriginWriter:
-    """FAILURE MEANS: `register_wire` still RAISES on a value it is
-    supposed to refuse. Its entire documented contract is to return
-    {"applied": bool, "reason": str}; an exception instead of a refusal
-    is a crash in every caller that reads the dict."""
+    """`register_wire` refuses a `WIDE_INT` pct with a reason, and does not raise.
+
+    Its contract is a dict carrying "applied" and "reason".
+    """
 
     def test_a_wide_int_is_refused_not_raised(self):
         got = SmartWireManager().register_wire("a", "b", WIDE_INT)
@@ -463,8 +389,7 @@ class TestHoleOneAtTheOriginWriter:
 
     @pytest.mark.parametrize("bad", [0, -5, 101, "x", None, [], {}])
     def test_every_previously_refused_value_is_still_refused(self, bad):
-        """FAILURE MEANS: widening the except changed a verdict it had
-        no business changing."""
+        """`register_wire` returns applied False for every previously refused pct."""
         assert SmartWireManager().register_wire("a", "b", bad)["applied"] is False
 
     @pytest.mark.parametrize("good", [25.0, 100, 0.001, "25", True])
@@ -472,17 +397,11 @@ class TestHoleOneAtTheOriginWriter:
         assert SmartWireManager().register_wire("a", "b", good)["applied"] is True
 
 
-# --------------------------------------------------------------------- #
-# HOLE 2 — nan passed the range guard                                    #
-# --------------------------------------------------------------------- #
 class TestHoleTwoNanIsRefusedCountedAndNamed:
-    """FAILURE MEANS: a nan wire is stored and reported as a successful
-    import again. It is the only bad shape that used to be broken AND
-    silent AND counted as a success, and it reaches the money path."""
+    """Both writers refuse a nan pct, count it unroutable and name it unordered."""
 
     def test_the_mechanism_is_what_the_message_says(self):
-        """FAILURE MEANS: the explanation in the log and the comment is
-        wrong, whatever the guard now does."""
+        """A nan pct satisfies every range clause, and the dust floor passes it."""
         nan = float("nan")
         assert (nan <= 0) is False
         assert (nan > 100) is False
@@ -497,9 +416,7 @@ class TestHoleTwoNanIsRefusedCountedAndNamed:
         assert not _has_nan(mgr)
 
     def test_the_nan_row_is_named_as_nan_not_as_out_of_range(self, wirelog):
-        """FAILURE MEANS: the operator is told the value was outside
-        0 < pct <= 100. It was not - nan is unordered, both comparisons
-        return False, and that is exactly why the row used to pass."""
+        """The DROPPED line names a nan pct as unordered, not as out of range."""
         SmartWireManager().import_wires(
             [{"source_id": "C", "target_id": "D", "pct": float("nan")}]
         )
@@ -540,9 +457,7 @@ class TestHoleTwoNanIsRefusedCountedAndNamed:
         )
 
     def test_a_nan_can_never_be_exported_so_never_saved(self):
-        """FAILURE MEANS: the save file can still grow a bare `NaN`
-        token, which is not valid JSON, and the next launch reads it
-        back. Closing only the importer would leave this open."""
+        """`export_wires` returns nothing after either writer is handed a nan pct."""
         mgr = SmartWireManager()
         mgr.register_wire("A", "B", float("nan"))
         mgr.import_wires([{"source_id": "C", "target_id": "D", "pct": float("nan")}])
@@ -550,10 +465,6 @@ class TestHoleTwoNanIsRefusedCountedAndNamed:
         assert "NaN" not in json.dumps({"smart_wires": mgr.export_wires()})
 
 
-# The whole input universe json.loads can deliver, plus the edges of
-# every numeric frontier this method has. NOT a table of interesting
-# cases: the point is that the accepted set may not contain a nan for
-# ANY of them, at EITHER writer.
 DOMAIN = [
     25.0,
     100,
@@ -595,9 +506,10 @@ DOMAIN = [
 
 
 class TestNoNanSurvivesAnywhere:
-    """FAILURE MEANS: some value still reaches `_wires` as a nan, and
-    every downstream number computed from it is a nan that no guard
-    below can see."""
+    """No `DOMAIN` value reaches `_wires` as a nan through either writer.
+
+    `_has_nan` reads the stored pct back through `export_wires`.
+    """
 
     @pytest.mark.parametrize("value", DOMAIN, ids=[repr(v)[:24] for v in DOMAIN])
     def test_neither_writer_stores_a_nan_and_neither_raises(self, value):
@@ -611,9 +523,7 @@ class TestNoNanSurvivesAnywhere:
 
     @pytest.mark.parametrize("value", DOMAIN, ids=[repr(v)[:24] for v in DOMAIN])
     def test_the_two_writers_agree_on_every_value(self, value):
-        """FAILURE MEANS: the same pct is accepted through the GUI and
-        refused on restore, or the reverse - a wire the operator drew
-        disappears on the next launch with nothing said."""
+        """`register_wire` and `import_wires` agree on every `DOMAIN` value."""
         register = SmartWireManager()
         by_register = register.register_wire("A", "B", value)["applied"]
         importer = SmartWireManager()
@@ -628,10 +538,11 @@ class TestNoNanSurvivesAnywhere:
 
 
 class TestNoNanReachesTheMoneyPath:
-    """FAILURE MEANS: `distribute_fold_profit` computes
-    `share = profit * nan / 100`, hands a nan to apply_wire_income, and
-    books it as a COMPLETED WireTransaction. The dust floor cannot stop
-    it, because `nan < min_wire` is False."""
+    """No nan share reaches `apply_wire_income` through `distribute_fold_profit`.
+
+    `_Target` carries the real `apply_wire_income` signature and records the
+    amounts it is handed.
+    """
 
     def test_a_nan_wire_cannot_be_built_so_nothing_nan_is_routed(self):
         mgr = SmartWireManager()
@@ -662,15 +573,12 @@ class TestNoNanReachesTheMoneyPath:
         assert stats["total_wired"] == 10.0
 
 
-# --------------------------------------------------------------------- #
-# THE HAZARD IN THE FIX — a broader except can hide a real bug           #
-# --------------------------------------------------------------------- #
 class TestTheWidenedExceptHidesNothing:
-    """FAILURE MEANS: the guarded region grew past the coercion. A
-    failed store swallowed as 'unreadable' would shrink the topology
-    while the headline still reconciled - a lie that reads as truth -
-    and a broken log call swallowed there would make a row vanish with
-    no line at all, the exact defect this method was repaired for."""
+    """Only the pct coercion is guarded; a raise anywhere else escapes both writers.
+
+    A store-line or log-call failure counted as an unreadable pct would shrink
+    the topology while `HEADLINE` still reconciled.
+    """
 
     def test_a_raise_on_the_store_line_still_escapes(self, wirelog):
         with pytest.raises(RuntimeError, match="PLANTED store-line"):
@@ -691,8 +599,7 @@ class TestTheWidenedExceptHidesNothing:
             SmartWireManager().import_wires(["not-a-dict"])
 
     def test_a_raise_in_the_widened_handler_itself_still_escapes(self, monkeypatch):
-        """FAILURE MEANS: the handler is somehow re-protected, so the
-        row it was reporting on disappears with no line at all."""
+        """A raise inside the handler for a `WIDE_INT` row escapes `import_wires`."""
         monkeypatch.setattr(
             smart_wire_module.logger, "warning", _boom("PLANTED handler failure")
         )
@@ -702,9 +609,7 @@ class TestTheWidenedExceptHidesNothing:
             )
 
     def test_a_raise_from_the_coercion_is_caught_counted_and_named(self, wirelog):
-        """THE OTHER SIDE. FAILURE MEANS: the except is too narrow
-        again, and an arbitrary coercion failure abandons every
-        remaining row."""
+        """A `_Hostile` pct is caught and named, and the next row still imports."""
         mgr = SmartWireManager()
         got = mgr.import_wires(
             [
@@ -733,30 +638,21 @@ class TestTheWidenedExceptHidesNothing:
         with pytest.raises(RuntimeError, match="PLANTED overwrite"):
             mgr.register_wire("A", "B", 50.0)
 
-    @pytest.mark.parametrize(
-        "needle", ['pct = float(w.get("pct", 0))', "p = float(pct)"]
-    )
-    def test_each_guarded_region_is_textually_one_statement(self, needle):
-        """FAILURE MEANS: somebody widened the BLOCK rather than the
-        except, and a future defect inside it will be reported as a
-        corrupt saved row."""
-        from pathlib import Path
+    def test_a_raise_on_register_wires_store_line_still_escapes(self):
+        """A store-line failure escapes `register_wire`, unreported as a pct."""
+        mgr = SmartWireManager()
+        mgr._wires = _UnstorableWires()
+        with pytest.raises(RuntimeError, match="PLANTED store-line"):
+            mgr.register_wire("A", "B", 25.0)
 
-        source = (
-            Path(smart_wire_module.__file__)
-            .read_text(encoding="utf-8", newline="")
-            .split("\n")
-        )
-        hits = [i for i, line in enumerate(source) if line.strip() == needle]
-        assert len(hits) == 1, f"{needle}: {len(hits)} matches"
-        idx = hits[0]
-        assert source[idx - 1].strip() == "try:"
-        assert source[idx + 1].strip().startswith("except ")
+    def test_a_raise_on_import_wires_store_line_still_escapes(self):
+        """A store-line failure escapes `import_wires` with no DROPPED line written."""
+        mgr = SmartWireManager()
+        mgr._wires = _UnstorableWires()
+        with pytest.raises(RuntimeError, match="PLANTED store-line"):
+            mgr.import_wires([GOOD])
 
 
-# --------------------------------------------------------------------- #
-# CONSERVATION — accepted + lost == offered, read off the headline       #
-# --------------------------------------------------------------------- #
 def _pool():
     """Row factories tagged with the cause the GUARD ORDER assigns."""
     return [
@@ -830,12 +726,7 @@ def _pool():
 
 
 def _lcg(seed: int):
-    """Deterministic index stream, hand-rolled.
-
-    `random.Random` is a ruff S311 finding and a suppression is
-    forbidden. Determinism is what a control wants anyway: a batch that
-    fails must be re-drivable, and an irreproducible red says nothing.
-    """
+    """Yield a deterministic index stream from seed, one congruential step apart."""
     value = seed & 0x7FFFFFFF
     while True:
         value = (value * 1103515245 + 12345) & 0x7FFFFFFF
@@ -843,10 +734,11 @@ def _lcg(seed: int):
 
 
 class TestConservationStillHolds:
-    """FAILURE MEANS: the two new branches broke the reconciliation the
-    unit before this one built. A row is lost without being counted, or
-    counted under the wrong cause, and a wrong total reads as a checked
-    one - which is worse than no total at all."""
+    """The `HEADLINE` numbers reconcile with the `_pool` rows handed to `import_wires`.
+
+    Every batch is checked cause by cause, and the `WIDE_INT` and nan rows
+    are among the causes drawn.
+    """
 
     def test_random_mixed_batches_reconcile(self, wirelog, sink):
         stream = _lcg(20260815)
@@ -906,11 +798,6 @@ class TestConservationStillHolds:
             )
 
 
-# --------------------------------------------------------------------- #
-# THE PIN — both sides                                                   #
-# --------------------------------------------------------------------- #
-# 33 rows, the size and shape of the operator's real topology, measured
-# read-only from his save on 2026-08-15: 33 offered, 33 accepted, 0 lost.
 OPERATOR_SHAPED = [
     {
         "source_id": f"bot{i:02d}",
@@ -922,9 +809,7 @@ OPERATOR_SHAPED = [
 
 
 class TestThePinStillFiresAndCanStillFail:
-    """FAILURE MEANS: topology.09.002 stopped firing, or its `expected`
-    stopped being the true offered count, or it can no longer disagree.
-    A pin that cannot fail is noise that reads as assurance."""
+    """`PIN` fires with `expected` set to the offered count, and can still disagree."""
 
     def test_a_clean_restore_passes(self, sink):
         SmartWireManager().import_wires(list(OPERATOR_SHAPED))
@@ -932,9 +817,7 @@ class TestThePinStillFiresAndCanStillFail:
         assert (record.actual, record.expected, record.ok) == (33, 33, True)
 
     def test_the_pin_can_fail_on_a_row_that_was_always_caught(self, sink):
-        """THE CONTROL FOR THE TWO BELOW. FAILURE MEANS: the pin is
-        vacuous, and its green on the nan and wide-int cases proves
-        nothing at all."""
+        """Control that `PIN` reports ok False on a row every guard caught."""
         SmartWireManager().import_wires(
             [
                 dict(GOOD),
@@ -946,9 +829,7 @@ class TestThePinStillFiresAndCanStillFail:
         assert (record.actual, record.expected, record.ok) == (2, 3, False)
 
     def test_hole_two_now_fails_the_pin(self, sink):
-        """It used to read actual=3 expected=3 ok=True: correct and
-        useless at the same time, because the nan row was accepted so
-        accepted == offered. FAILURE MEANS: it reads green again."""
+        """A nan row leaves `PIN` at actual 2 of expected 3, with ok False."""
         SmartWireManager().import_wires(
             [
                 dict(GOOD),
@@ -960,9 +841,7 @@ class TestThePinStillFiresAndCanStillFail:
         assert (record.actual, record.expected, record.ok) == (2, 3, False)
 
     def test_hole_one_now_produces_a_record_at_all(self, sink):
-        """It used to produce NO RECORD, because the emitter sits after
-        the loop and the raise passed it. FAILURE MEANS: the pin is
-        blind to the failure mode with the largest blast radius."""
+        """A `WIDE_INT` row still reaches the emitter, which sits after the row loop."""
         SmartWireManager().import_wires(
             [
                 dict(GOOD),
@@ -980,17 +859,8 @@ class TestThePinStillFiresAndCanStillFail:
         assert (record.actual, record.expected, record.ok) == (0, 0, True)
 
 
-# --------------------------------------------------------------------- #
-# NO FALSE ALARM                                                         #
-# --------------------------------------------------------------------- #
 class TestNoFalseAlarmOnACleanTopology:
-    """FAILURE MEANS: the repair fires on a launch that used to be
-    clean. The operator restores on every start and carries a
-    guard-clean 33-row topology, so a line he sees every time is one he
-    learns to ignore - which is the same defect as silence.
-
-    Verified against his real save, read-only, on 2026-08-15: the
-    emitted output is byte-identical before and after this change."""
+    """`OPERATOR_SHAPED` imports whole, and `import_wires` writes no WARNING."""
 
     def test_an_operator_sized_topology_says_nothing_new(self, wirelog):
         mgr = SmartWireManager()

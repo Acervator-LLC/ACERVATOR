@@ -1,31 +1,22 @@
-"""v3.23.64 — pin tests for the Smart Wire Outflow Safety
-Arithmetic (SWOS) function.
+"""`compute_safe_outflow_pct` reserves fold cash and compound growth before export.
 
-Full spec:
-docs/engineering-notes/2026-07-31_smart_wire_outflow_safety_arithmetic.md
-
-Ten explicit tests locked per §7 of the spec plus one extra to
-pin the operator-answered §8 decisions (steeper 0.2/2.0 endpoints
-and 1 % minimum-export floor)."""
+`TestSWOSFormula` drives the pure function over the safety band, the compound
+target and the 1% export floor. `TestSWOSIntegration` drives the same
+arithmetic through `SmartWireManager.distribute_fold_profit`, where the safe
+percentage is divided across the outbound wires and capped by the operator rate.
+"""
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
-REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
-
-from src.trading.smart_wire import compute_safe_outflow_pct  # noqa: E402
+from src.trading.smart_wire import SmartWireManager, compute_safe_outflow_pct
 
 
-# Small helper: default-args kwargs so each test only supplies the
-# fields it cares about. Everything else is chosen to be "already
-# satisfied" (fold cash covered, no compound target, mid-band).
 def _call(**overrides) -> float:
+    """Call `compute_safe_outflow_pct` with a satisfied baseline plus overrides."""
     defaults = dict(
         scrum_profit_usd=100.0,
         target_balance_usd=1000.0,
@@ -59,8 +50,7 @@ class TestSWOSFormula:
             compound_growth_pct=0.0,
             retained_this_cycle_usd=0.0,
         )
-        # Safety factor at band_lower = 2.0 (per v3.23.64 steeper
-        # endpoints). shortfall=100, reserve=100*2.0=200, exportable=0
+        # Factor 2.0 at band_lower: 100 shortfall reserves 200, leaving 0.
         assert pct == 0.0, (
             f"At band_lower with zero cash, 200 reserve > 200 profit "
             f"→ 0 exportable. Got {pct}"
@@ -119,9 +109,6 @@ class TestSWOSFormula:
         )
         # fold_reserve = 40 * 1.1 = 44 → exportable = 56 → 56 %
         assert pct == pytest.approx(56.0, abs=0.5)
-        # Caller composes: min(operator_rate=25, 56) = 25 (illustrated
-        # in the SmartWireManager path; the pure function itself does
-        # NOT apply the operator ceiling — that's the spec).
 
     # 7 — Safety binds low case
     def test_safety_binds_low(self):
@@ -185,11 +172,8 @@ class TestSWOSFormula:
         # reserve = 100; exportable = 100; safe_pct = 50 %
         assert pct == 50.0
 
-    # +1 — pin the operator's §8 answers.
-    def test_swos_v3_23_64_operator_decisions_pinned(self):
-        """The v3.23.64 spec's §8 answers must remain locked:
-        - steeper safety factor (0.2 → 2.0)
-        - 1 % minimum-export floor drops sub-1 % results to 0."""
+    def test_the_steep_safety_endpoints_and_the_one_percent_floor_are_pinned(self):
+        """The safety factor runs 0.2 to 2.0, and a sub-1% share snaps to 0."""
         # At band_lower + 0 cash + tiny shortfall, factor=2.0.
         pct = _call(
             scrum_profit_usd=100.0,
@@ -235,9 +219,7 @@ class TestSWOSFormula:
             compound_growth_pct=9.5,  # target=95
             target_balance_usd=1000.0,
         )
-        # fold_reserve = 900 * 0.2 = 180
-        # compound_reserve = 95
-        # total reserve = 275, exportable = 725, safe_pct = 72.5
+        # fold 180 + compound 95 = 275 reserved of 1000; 725 exportable.
         assert pct_real_dust > 70.0
         # Actual dust construction: tune so exportable is 0.5 % of 1000
         pct_tiny = _call(
@@ -257,16 +239,13 @@ class TestSWOSFormula:
         ), f"1 % floor must snap sub-1 % results to 0, got {pct_tiny}"
 
 
-# v3.23.65 — integration tests exercise the SmartWireManager call
-# path: get_swos_inputs → compute_safe_outflow_pct → divide by N
-# outbound wires → min(raw_pct, per_wire_safe_pct).
-
-from unittest.mock import MagicMock  # noqa: E402
-
-from src.trading.smart_wire import SmartWireManager  # noqa: E402
-
-
 class TestSWOSIntegration:
+    """`distribute_fold_profit` divides the safe percentage across the outbound wires.
+
+    The source bot supplies `get_swos_inputs`, and each wire fires at
+    `min(operator_pct, per_wire_safe_pct)`.
+    """
+
     def _mk_manager(self):
         m = SmartWireManager(wire_back_pct=0.30, mr_fund_pct=0.15)
         m._enabled = True
@@ -312,9 +291,7 @@ class TestSWOSIntegration:
         m._wires["src"] = {"tgt": 50.0}  # operator wants 50 %
         results = m.distribute_fold_profit("src", 100.0, ref="t")
         assert len(results) == 1
-        # safe = (60 shortfall * 1.1 mid-safety) = 66 reserve;
-        # exportable = 34 → 34 %. One wire, per_wire = 34.
-        # min(50, 34) = 34.
+        # 60 shortfall x 1.1 mid-band = 66 reserved; 34 exportable over one wire.
         assert results[0]["pct"] == pytest.approx(34.0, abs=1.0)
         assert results[0]["applied"] is True
 
@@ -333,9 +310,7 @@ class TestSWOSIntegration:
                 retained_this_cycle_usd=0.0,
             )
         )
-        # safety_factor at band_upper = 0.2 → reserve=200*0.2=40
-        # exportable = 60 → safe = 60 %
-        # 3 wires → per-wire = 20 %
+        # 200 shortfall x 0.2 at band_upper = 40 reserved; 60 exportable over 3 wires.
         m._bot_refs["src"] = src
         for tid in ("t1", "t2", "t3"):
             m._bot_refs[tid] = self._mk_target_bot()

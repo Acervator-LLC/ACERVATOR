@@ -1,37 +1,9 @@
-"""import_wires must make a lost wire VISIBLE, and must stay silent
-when nothing was lost.
+"""`SmartWireManager.import_wires` reports every wire row it drops.
 
-WHAT WAS WRONG. `SmartWireManager.import_wires` drops rows at three
-guards and had no per-loop counter and no warning. Its NUMBER was
-already honest — the topology.09.002 emitter sends
-`expected=len(wires)`, the true offered count — but the operator-visible
-REPORT was missing. A six-row topology losing four rows wrote exactly
-one line, "SmartWire: imported 2 wire(s) from saved state": true,
-cheerful, and hiding four vanished transfer routes. On total loss the
-method wrote nothing at all, because that INFO is guarded by `n > 0`.
-
-WHY IT MATTERS. `_wires` is read by exactly one money-moving consumer,
-`distribute_fold_profit`, which returns immediately when the source has
-no outgoing map. A lost wire means that source bot's realised fold
-profit is never divided and the target's `wired_in` never grows — and
-every visibility log in that method sits inside the loop over the
-outgoing map, so it is the one failure it cannot report.
-
-EACH TEST STATES WHAT ITS OWN FAILURE WOULD MEAN. A test with no
-control is not evidence, so the first class here is a positive control:
-if log capture or emit capture goes blind, every later assertion in this
-file is vacuous and these three tests say so first.
-
-ONE DEFECT IS STILL PINNED HERE, NOT FIXED HERE (one thing at a
-time): duplicate rows for one route are counted twice while only one
-route exists.
-
-THE OTHER PIN WAS CASHED IN ON 2026-08-15. `pct = nan` was ACCEPTED by
-both writers, stored, and counted as a successful import; it is now
-REFUSED, counted as unroutable and named as nan by both. The rows below
-that used to pin the defect now pin the repair, and each says so where
-it changed. Full coverage of that hole, and of the OverflowError hole
-beside it, lives in tests/test_smart_wire_import_wires_holes.py.
+`import_wires` names each dropped row with its ordinal and cause, closes
+with the reconciling headline `HEADLINE` matches, and stays silent on a
+guard-clean payload. Each test drives the real manager and reads
+`LOGGER_NAME` through `wirelog`, or the `PIN` records through `sink`.
 """
 
 from __future__ import annotations
@@ -42,21 +14,12 @@ import re
 
 import pytest
 
-# NO sys.path BLOCK, AND THEREFORE NO E402 SUPPRESSION. Most test files
-# here insert the repo root themselves and then silence E402 on the
-# imports that follow. tests/conftest.py:30-32 already does that
-# insertion at conftest IMPORT time, which pytest runs before any test
-# module is loaded, so the block is redundant and the suppression it
-# forces is not. A new file starts at zero forbidden directives and
-# this one keeps that.
 from src.core.signal_contract import SignalSink, set_sink
 from src.trading.smart_wire import SmartWireManager
 
 LOGGER_NAME = "acervator.smart_wire"
 PIN = "topology.09.002.postcondition.wires_received"
 
-# The reconciling headline, parsed rather than matched loosely, so the
-# six numbers it carries can be checked against what was handed in.
 HEADLINE = re.compile(
     r"import accepted (\d+) of (\d+) wire row\(s\) offered; "
     r"(\d+) lost \((\d+) not a row, (\d+) had an unreadable pct, "
@@ -64,9 +27,6 @@ HEADLINE = re.compile(
 )
 
 
-# --------------------------------------------------------------------- #
-# helpers                                                               #
-# --------------------------------------------------------------------- #
 def _accepted(mgr: SmartWireManager) -> dict:
     """The accepted set, read through the public snapshot API."""
     out: dict[str, dict[str, float]] = {}
@@ -76,20 +36,7 @@ def _accepted(mgr: SmartWireManager) -> dict:
 
 
 def _same_wires(got: dict, want: dict) -> bool:
-    """Exact equality, and NO NaN is permitted on either side.
-
-    2026-08-15 - THIS HELPER WAS INVERTED, DELIBERATELY. It used to
-    treat two NaNs as the same value, because `pct = nan` was accepted
-    and a NaN-bearing topology had to be comparable at all: plain `==`
-    reports False for NaN against itself, so such a topology looked
-    changed on every comparison.
-
-    Both writers now refuse nan, so a NaN in the accepted set is a
-    DEFECT rather than a shape to tolerate. Returning False on one is
-    strictly stronger than the special case it replaces: the old
-    version would have reported a resurfaced NaN as "unchanged", which
-    is the one answer that must never be given about it.
-    """
+    """Report got equal to want, treating a nan pct on either side as a difference."""
     for side in (got, want):
         for targets in side.values():
             for pct in targets.values():
@@ -116,20 +63,10 @@ def _infos(records) -> list[str]:
 
 @pytest.fixture
 def wirelog(capture_log):
-    """Records from acervator.smart_wire, bypassing propagation.
+    """Records from `LOGGER_NAME`, captured with `capture_log`.
 
-    NOT `caplog`. `logging_engine` sets
-    `logging.getLogger("acervator").propagate = False`, so records stop
-    at that node and never reach the root handler pytest installs, and
-    caplog sees nothing once any earlier test has constructed the
-    engine.
-
-    MEASURED HERE 2026-08-15: the first draft of this file used caplog,
-    passed 62/62 alone, and failed 2 of 62 in the full 6402-test run —
-    including its own positive control, which is an oracle false
-    negative that depends purely on collection order.
-    tests/test_smart_wire_evidence.py records the same recurrence for
-    2026-08-14, which is why `capture_log` exists in conftest.
+    `logging_engine` sets `propagate = False` on the acervator logger, and
+    `caplog` then sees no record from `LOGGER_NAME`.
     """
     with capture_log(LOGGER_NAME, logging.DEBUG) as records:
         yield records
@@ -145,10 +82,6 @@ def sink():
 
 GOOD = {"source_id": "A", "target_id": "B", "pct": 25.0}
 
-# name, payload, accepted set, returned count.
-# Every shape measured against the live method before the repair; the
-# accepted set and the count are what live produced, and this unit
-# changes NEITHER. It changes only what is counted and reported.
 ROW_SHAPES = [
     ("good", [GOOD], {"A": {"B": 25.0}}, 1),
     ("good_plus_string", [GOOD, "not-a-dict"], {"A": {"B": 25.0}}, 1),
@@ -165,10 +98,6 @@ ROW_SHAPES = [
     ),
     ("pct_101", [{"source_id": "A", "target_id": "B", "pct": 101}], {}, 0),
     ("pct_negative", [{"source_id": "A", "target_id": "B", "pct": -1}], {}, 0),
-    # 2026-08-15 - CHANGED, and it is the whole point of that change.
-    # This row used to read `{"A": {"B": nan}}, 1`: a nan pct was
-    # STORED and COUNTED as an imported wire, because nan is unordered
-    # and fails both `pct <= 0` and `pct > 100`. It is now refused.
     ("pct_nan", [{"source_id": "A", "target_id": "B", "pct": float("nan")}], {}, 0),
     ("pct_inf", [{"source_id": "A", "target_id": "B", "pct": float("inf")}], {}, 0),
     (
@@ -177,8 +106,6 @@ ROW_SHAPES = [
         {},
         0,
     ),
-    # 2026-08-15 - CHANGED with the row above; `float("nan")` is the
-    # same value however it is spelled in the save.
     ("pct_nan_string", [{"source_id": "A", "target_id": "B", "pct": "nan"}], {}, 0),
     (
         "pct_numeric_string",
@@ -192,9 +119,6 @@ ROW_SHAPES = [
         {"A": {"B": 1.0}},
         1,
     ),
-    # 2026-08-15 - NEW. A bare integer too wide for a double used to
-    # RAISE OverflowError out of the method, taking the whole restore
-    # with it; it is now a counted, named row like any other.
     (
         "pct_wide_int",
         [{"source_id": "A", "target_id": "B", "pct": int("9" * 400)}],
@@ -236,14 +160,8 @@ ROW_SHAPES = [
 NON_LIST_ARGS = [("dict_arg", {"source_id": "A"}), ("none_arg", None)]
 
 
-# --------------------------------------------------------------------- #
-# POSITIVE CONTROLS — run these first or nothing below means anything    #
-# --------------------------------------------------------------------- #
 class TestTheInstrumentSees:
-    """FAILURE MEANS: the instrument is blind, and every assertion in
-    the rest of this file is vacuous rather than passing. An earlier
-    probe in this arc listened on the wrong logger name and reported a
-    confident zero for every case."""
+    """`wirelog` sees an INFO and a WARNING, and `sink` sees `PIN`."""
 
     def test_log_capture_sees_the_clean_info_line(self, wirelog):
         SmartWireManager().import_wires([GOOD])
@@ -267,15 +185,8 @@ class TestTheInstrumentSees:
         )
 
 
-# --------------------------------------------------------------------- #
-# CONTROL A — the accepted set is unchanged                              #
-# --------------------------------------------------------------------- #
 class TestTheAcceptedSetIsUnchanged:
-    """FAILURE MEANS: this unit changed which wires are restored — what
-    transfers, how much, or to whom. That is the standing prohibition on
-    this file, in a unit whose whole warrant is that it changes only
-    what is counted and reported. Any diff here voids the unit however
-    good the logging is."""
+    """`import_wires` stores the set and returns the count `ROW_SHAPES` names."""
 
     @pytest.mark.parametrize(
         ("label", "payload", "want", "count"),
@@ -306,12 +217,8 @@ class TestTheAcceptedSetIsUnchanged:
         assert mgr.get_outgoing_wires("nobody") == {}
 
 
-# --------------------------------------------------------------------- #
-# CONTROL B — every lost row is named, and the total reconciles          #
-# --------------------------------------------------------------------- #
-# Each pool entry is (cause, factory). The cause is what the row is
-# HANDED IN as; the headline must attribute it to that same bucket.
 def _pool():
+    """Row factories tagged with the `HEADLINE` bucket each row counts under."""
     return [
         (
             "accepted",
@@ -325,16 +232,10 @@ def _pool():
             "accepted",
             lambda i: {"source_id": f"s{i}", "target_id": f"t{i}", "pct": 100},
         ),
-        # 2026-08-15 - MOVED from "accepted" to "unroutable". A nan
-        # pct is now refused by the range guard and reported under the
-        # third cause, so the conservation check must expect it there.
         (
             "unroutable",
             lambda i: {"source_id": f"s{i}", "target_id": f"t{i}", "pct": float("nan")},
         ),
-        # 2026-08-15 - NEW. Before the repair this row made the whole
-        # batch raise, so the conservation control could never have
-        # contained one.
         (
             "unreadable",
             lambda i: {
@@ -376,13 +277,7 @@ def _pool():
 
 
 def _lcg(seed: int):
-    """Deterministic index stream, hand-rolled.
-
-    `random.Random` is a ruff S311 finding here and a suppression is
-    forbidden, so the stream is a plain linear congruential generator.
-    Determinism is what a control wants anyway: a batch that fails must
-    be re-drivable, and an irreproducible red says nothing.
-    """
+    """Yield a deterministic index stream from seed, one congruential step apart."""
     x = seed & 0x7FFFFFFF
     while True:
         x = (x * 1103515245 + 12345) & 0x7FFFFFFF
@@ -390,11 +285,11 @@ def _lcg(seed: int):
 
 
 class TestTheTotalReconciles:
-    """FAILURE MEANS: the new counters inherited the exact defect
-    import_ledgers was repaired for — `offered` counted after a guard,
-    so loss is under-reported in the reassuring direction and a six-row
-    payload losing four reports 'accepted 2 of 3'. A wrong
-    reconciliation reads as a checked one, which is worse than none."""
+    """The `HEADLINE` numbers reconcile with the rows handed to `import_wires`.
+
+    Each `_pool` row is tagged with the bucket it belongs in, and the six
+    captured groups are checked against those tags batch by batch.
+    """
 
     def test_random_mixed_batches_reconcile(self, wirelog):
         stream = _lcg(20260815)
@@ -457,14 +352,12 @@ class TestTheTotalReconciles:
             )
 
 
-# --------------------------------------------------------------------- #
-# CONTROL C — the silent case speaks                                     #
-# --------------------------------------------------------------------- #
 class TestTheSilentCaseSpeaks:
-    """FAILURE MEANS: the failure mode this unit exists to repair is
-    back. Before the repair, a payload of only guard-droppable rows
-    produced NO output whatsoever — no INFO, because that line is
-    guarded by `n > 0`, and no warning, because no counter existed."""
+    """A payload `import_wires` drops in full still writes one line per row.
+
+    The `n > 0` guard keeps the INFO line silent, and `HEADLINE` carries the
+    ordinal, the cause and the operator consequence for every dropped row.
+    """
 
     def test_total_loss_is_reported(self, wirelog):
         payload = [
@@ -499,13 +392,6 @@ class TestTheSilentCaseSpeaks:
         rows = [w for w in _warnings(wirelog) if "DROPPED" in w]
         assert len(rows) == 5, "one line per lost row"
         assert "row 1 of 5" in rows[0] and "not a row" in rows[0]
-        # 2026-08-15 - the wording changed and the assertion is
-        # STRONGER for it. It used to require "not a number", which the
-        # message no longer says because it was FALSE for a wide
-        # integer - that is a number with no double to land on. The
-        # message now names what float() did and which exception it
-        # raised, so this asserts the type is present rather than a
-        # phrase that was sometimes a lie.
         assert "row 2 of 5" in rows[1] and "float() refused" in rows[1]
         assert "ValueError" in rows[1], (
             "a widened except that does not name what it caught is the "
@@ -545,12 +431,6 @@ class TestTheSilentCaseSpeaks:
         assert "wired_in never grows" in head[0]
 
 
-# --------------------------------------------------------------------- #
-# CONTROL D — no false alarm                                             #
-# --------------------------------------------------------------------- #
-# 33 rows, the shape and size of the operator's real topology, measured
-# read-only from his save on 2026-08-15: 33 offered, 33 accepted, 0
-# lost. Bot ids here are synthetic; the SHAPE is what is under test.
 OPERATOR_SHAPED = [
     {
         "source_id": f"bot{i:02d}",
@@ -562,10 +442,11 @@ OPERATOR_SHAPED = [
 
 
 class TestNoFalseAlarm:
-    """FAILURE MEANS: the repair fires on every launch. The operator
-    restores on every start and carries a guard-clean topology, so he
-    would learn to ignore the line within a week and the warning would
-    become decoration — the same defect as silence."""
+    """A guard-clean payload leaves `import_wires` with no WARNING at all.
+
+    `OPERATOR_SHAPED`, an export round trip, a repeated import and an empty
+    list each import whole.
+    """
 
     def test_a_real_export_import_round_trip_says_nothing_new(self, wirelog):
         source = SmartWireManager()
@@ -601,14 +482,12 @@ class TestNoFalseAlarm:
         assert _infos(wirelog) == []
 
 
-# --------------------------------------------------------------------- #
-# CONTROL E — the emitter still works, and can still fail                #
-# --------------------------------------------------------------------- #
 class TestTheEmitterIsUnchanged:
-    """FAILURE MEANS: a registered, load-bearing pin changed meaning.
-    Every historical record of topology.09.002 would become
-    incomparable with every future one, and a pin whose `expected` is
-    the offered count would stop being able to fail."""
+    """`import_wires` emits `PIN` once, with `expected` set to the offered count.
+
+    A lossy payload leaves the record with `ok` False, and a non-list argument
+    emits nothing.
+    """
 
     @pytest.mark.parametrize(
         ("label", "payload", "want", "count"),
@@ -660,20 +539,12 @@ class TestTheEmitterIsUnchanged:
         )
 
 
-# --------------------------------------------------------------------- #
-# NAMED, NOT FIXED — pinned so they cannot drift behind this change      #
-# --------------------------------------------------------------------- #
 class TestTheNanPinIsNowAFixPin:
-    """THE PIN BELOW WAS CASHED IN. It used to read
-    `test_nan_pct_is_still_accepted_and_still_unreported` and assert
-    that a nan pct was stored, counted and silent - a DEFECT, pinned so
-    it could not drift behind a reporting change. 2026-08-15 closed it,
-    so the pin is restated against the repair.
+    """`import_wires` refuses a nan pct, counts it unroutable and names it unordered.
 
-    FAILURE MEANS: nan is accepted again. That is the one bad shape
-    that is broken AND silent AND counted as a success, and it reaches
-    `distribute_fold_profit`, where `share = profit * nan / 100` is a
-    nan the dust floor cannot stop."""
+    An accepted nan would reach `distribute_fold_profit`, where the dust floor
+    does not stop it.
+    """
 
     def test_nan_pct_is_now_refused_counted_and_named(self, wirelog):
         row = {"source_id": "A", "target_id": "B", "pct": float("nan")}
@@ -703,10 +574,11 @@ class TestTheNanPinIsNowAFixPin:
 
 
 class TestKnownDefectsArePinnedNotFixed:
-    """FAILURE MEANS: behaviour changed inside a reporting change. One
-    shape is still a DEFECT and is named as such; repairing it is a
-    separate unit, and until then the pin is what proves it did not
-    move while the logging was added."""
+    """`import_wires` counts rows, and two rows for one route return 2.
+
+    The stored topology holds the one route at the second row's pct, and no
+    row was lost.
+    """
 
     def test_duplicate_rows_are_still_counted_twice(self, wirelog):
         payload = [
