@@ -291,8 +291,8 @@ Four carry the domain.
 
 ### The hooks, outside the repository
 
-Seven hooks sit under `~/.claude/hooks/`, also machine-local and also not
-committed. They are the blocking layer, and five of them deny a call outright
+Eight hooks sit under `~/.claude/hooks/`, also machine-local and also not
+committed. They are the blocking layer, and six of them deny a call outright
 rather than warn about it.
 
 - `archetype_gate.py` — in its pre mode, denies a write whose pending content
@@ -305,6 +305,8 @@ rather than warn about it.
 - `block_unanchored_docstring.py` — denies a Python docstring that argues rather
   than describes: a justification clause, or a sentence naming no identifier from
   its own file.
+- `check_directive_drift.py` — denies a dispatch brief that contradicts a pinned
+  directive.
 - `verify_release_gate.py` — denies a write to either file that carries the
   version when the release-ready record is absent or older than an hour, and
   allows every other path through.
@@ -320,6 +322,29 @@ main.py                 current_version = _acervator_version
 Two add context rather than deny: `prompt_router.py` names the archetype a task
 will need, and `session_stop_backstop.py` writes a forensic record of whatever
 is uncommitted at a session boundary.
+
+The count reads the directory, not a list. Eight names end in `.py` and each of
+those runs. Six saved copies and one cache directory sit beside them, and the
+listing marks every entry the count leaves out.
+
+```
+~/.claude/hooks/
+    archetype_gate.py                            counted, denies
+    block_heavy_run.py                           counted, denies
+    block_heredoc.py                             counted, denies
+    block_unanchored_docstring.py                counted, denies
+    check_directive_drift.py                     counted, denies
+    verify_release_gate.py                       counted, denies
+    prompt_router.py                             counted, adds context
+    session_stop_backstop.py                     counted, adds context
+    archetype_gate.py.before_pointer_repair      not counted, a saved copy
+    prompt_router.py.before_catalogue_routing    not counted, a saved copy
+    prompt_router.py.before_env_conflict         not counted, a saved copy
+    prompt_router.py.before_pointer_repair       not counted, a saved copy
+    prompt_router.py.before_skill_pointer_fix    not counted, a saved copy
+    verify_release_gate.py.before_pointer_repair not counted, a saved copy
+    __pycache__/                                 not counted, a directory
+```
 
 ### Where each layer resolves
 

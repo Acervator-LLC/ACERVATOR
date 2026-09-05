@@ -183,5 +183,5 @@ git log --all -S<name> -- "*.py"
     buy_vwap                  0 commits
     avg_entry                16 commits      control
     sync_ytd_trade_count      7 commits      control
-    ZZQQNOTATOKEN             0 commits      coined term
+    chartwright               0 commits      coined term
 ```
