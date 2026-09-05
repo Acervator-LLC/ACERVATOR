@@ -8,7 +8,6 @@ shown name, a different tier for a balance or a different refusal than
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import inspect
 import json
@@ -26,6 +25,13 @@ pytest.importorskip("PySide6")
 from src.gui.main_tabs import visualizer_themes_surface as surface
 from src.gui.visualizer import themes as shipped
 from tests.fixtures.host_fonts import skip_unless_no_fonts, skip_unless_real_fonts
+from tests.fixtures.qt_wiring_counts import (
+    bus_subscriptions_watched,
+    connections_watched,
+    qt_free,
+    run_probe,
+    timers_watched,
+)
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
@@ -34,14 +40,6 @@ from tests.fixtures.surface_pictures import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-SHIPPED_PATH = REPO_ROOT / "src/gui/visualizer/themes.py"
-SURFACE_PATH = REPO_ROOT / "src/gui/main_tabs/visualizer_themes_surface.py"
-BRIDGE_PATH = REPO_ROOT / "src/core/desktop_bridge.py"
-WIRED_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/widgets/privacy_dot.py"
-SIGNAL_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/launcher.py"
-TIMER_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
-TOPIC_NEIGHBOUR_PATH = REPO_ROOT / "src/gui/bot_visualizer.py"
 
 METHOD_NAME = "visualizer_themes.state"
 
@@ -998,30 +996,17 @@ def class_methods(owner):
     return {name for name, value in vars(owner).items() if inspect.isfunction(value)}
 
 
-def test_the_connect_sites_match_the_actions():
-    """A signal wiring appeared on one side and not the other."""
-    shipped_text = SHIPPED_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert shipped_text.count(".connect(") == 0
-    assert surface_text.count(".connect(") == 0
-    assert len(surface.ACTIONS) == shipped_text.count(".connect(")
-    assert len(surface.ACTIONS) == surface_text.count(".connect(")
+def test_neither_side_wires_waits_or_subscribes_when_it_loads():
+    """Loading either module built a timer, a wiring or a subscription."""
+    import importlib
 
-
-def test_the_connect_counter_can_see_a_wiring():
-    """The wiring counter reported none because it can never report one."""
-    neighbour = WIRED_NEIGHBOUR_PATH.read_text(encoding="utf-8")
-    assert neighbour.count(".connect(") > 0, WIRED_NEIGHBOUR_PATH
-
-
-def test_the_two_sides_declare_no_timer_and_no_bus_topic():
-    """The surface gained a timer or a bus topic the table never had."""
-    shipped_text = SHIPPED_PATH.read_text(encoding="utf-8")
-    surface_text = SURFACE_PATH.read_text(encoding="utf-8")
-    assert shipped_text.count("QTimer") == 0
-    assert surface_text.count("QTimer") == 0
-    assert shipped_text.count(".subscribe(") == 0
-    assert surface_text.count(".subscribe(") == 0
+    with connections_watched() as made, timers_watched() as seen:
+        with bus_subscriptions_watched() as taken:
+            importlib.reload(shipped)
+            importlib.reload(surface)
+    assert made == [], made
+    assert seen == [], seen
+    assert taken == [], taken
     assert surface.TIMERS == {}
     assert surface.TIMER_DELAYS_MS == ()
     assert surface.BUS_TOPICS == ()
@@ -1029,12 +1014,26 @@ def test_the_two_sides_declare_no_timer_and_no_bus_topic():
     assert surface.ACTIONS == {}
 
 
-def test_the_timer_and_topic_counters_can_see_one():
-    """The timer and topic counters reported none because they see nothing."""
-    neighbour = TIMER_NEIGHBOUR_PATH.read_text(encoding="utf-8")
-    assert neighbour.count("QTimer") > 0, TIMER_NEIGHBOUR_PATH
-    topics = TOPIC_NEIGHBOUR_PATH.read_text(encoding="utf-8")
-    assert topics.count(".subscribe(") > 0, TOPIC_NEIGHBOUR_PATH
+def test_the_load_counters_can_see_one_of_each():
+    """POSITIVE CONTROL. ``connections_watched``, ``timers_watched`` and
+    ``bus_subscriptions_watched`` each record their own event."""
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication, QPushButton
+
+    from src.core.event_bus import EventBus
+
+    QApplication.instance() or QApplication([])
+    button = QPushButton()
+    timer = QTimer()
+    bus = EventBus()
+    with connections_watched() as made, timers_watched() as seen:
+        with bus_subscriptions_watched() as taken:
+            button.clicked.connect(lambda: None)
+            timer.start(250)
+            bus.subscribe("probe.topic", lambda _event: None)
+    assert len(made) == 1, made
+    assert ("QTimer.start", (250,)) in seen, seen
+    assert taken == ["probe.topic"], taken
 
 
 def test_the_two_sides_define_the_same_number_of_classes():
@@ -1097,17 +1096,60 @@ def test_the_surface_functions_are_reachable_and_described():
         surface.no_such_helper()
 
 
+def tier_palette_walk():
+    """Every ``src.gui`` module in a fresh process bound to the tier table.
+
+    ``held`` leaves out the module that declares the table, and
+    ``imported`` says how many modules the walk actually loaded.
+    """
+    probe = (
+        "import importlib, json, pkgutil\n"
+        "from src.gui.visualizer import themes\n"
+        "import src.gui\n"
+        "held = []\n"
+        "loaded = 0\n"
+        "for info in pkgutil.walk_packages(src.gui.__path__, 'src.gui.'):\n"
+        "    try:\n"
+        "        module = importlib.import_module(info.name)\n"
+        "    except BaseException:\n"
+        "        continue\n"
+        "    loaded += 1\n"
+        "    if info.name == themes.__name__:\n"
+        "        continue\n"
+        "    if getattr(module, 'TIER_PALETTES', None) is themes.TIER_PALETTES:\n"
+        "        held.append(info.name)\n"
+        "print(json.dumps({'held': sorted(held), 'imported': loaded}))\n"
+    )
+    return run_probe(probe)
+
+
 def test_nothing_in_the_product_reads_the_tier_palettes():
-    """The tier table gained a reader, so the count below is stale."""
-    readers = 0
-    for path in sorted((REPO_ROOT / "src").rglob("*.py")):
-        if path in (SHIPPED_PATH, SURFACE_PATH):
-            continue
-        readers += path.read_text(encoding="utf-8").count("TIER_PALETTES")
-    assert readers == TIER_PALETTE_READERS, readers
-    assert (REPO_ROOT / "src/gui/bot_visualizer.py").read_text(encoding="utf-8").count(
-        "from .visualizer.themes import THEMES"
-    ) == 1
+    """A ``src.gui`` module other than the shipped table holds it."""
+    walked = tier_palette_walk()
+    assert walked["imported"] > 50, walked
+    assert walked["held"] == [], walked
+    assert len(walked["held"]) == TIER_PALETTE_READERS
+
+
+def test_the_holder_scan_can_see_a_holder(monkeypatch):
+    """POSITIVE CONTROL. The same identity test names ``bot_visualizer``
+    once that module is bound to the tier table."""
+    from src.gui import bot_visualizer
+
+    monkeypatch.setattr(
+        bot_visualizer, "TIER_PALETTES", shipped.TIER_PALETTES, raising=False
+    )
+    assert bot_visualizer.TIER_PALETTES is shipped.TIER_PALETTES
+    assert surface.TIER_PALETTES is not shipped.TIER_PALETTES
+
+
+def test_the_visualizer_takes_the_theme_table_by_identity():
+    """``bot_visualizer.THEMES`` is the shipped table and
+    ``surface.THEMES`` is its own copy."""
+    from src.gui import bot_visualizer
+
+    assert bot_visualizer.THEMES is shipped.THEMES
+    assert surface.THEMES is not shipped.THEMES
 
 
 # The surface without Qt
@@ -1115,28 +1157,17 @@ def test_nothing_in_the_product_reads_the_tier_palettes():
 
 def test_the_surface_loads_no_qt_module():
     """The surface grew an import that pulls Qt into the backend."""
-    tree = ast.parse(SURFACE_PATH.read_text(encoding="utf-8"))
-    imported = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.add(node.module)
-            else:
-                imported.update(alias.name for alias in node.names)
-    assert not any(name.startswith("PySide6") for name in imported), imported
-    assert not any(name.startswith("shiboken") for name in imported), imported
-    assert imported == {"__future__", "typing"}
+    answered = qt_free("src.gui.main_tabs.visualizer_themes_surface", "view_model")
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
 
 
-def test_the_import_reader_can_see_a_qt_import():
-    """The import reader reported none because it can never report one."""
-    tree = ast.parse(SHIPPED_PATH.read_text(encoding="utf-8"))
-    imported = {
-        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
-    }
-    assert any(name.startswith("PySide6") for name in imported), imported
+def test_the_qt_block_stops_the_table_the_surface_replaces():
+    """POSITIVE CONTROL for ``qt_free``: ``THEMES`` is absent from the
+    shipped table when Qt is refused."""
+    answered = qt_free("src.gui.visualizer.themes", "THEMES")
+    assert answered["imported"] is False, answered
+    assert answered["error"] == "AttributeError", answered
 
 
 def test_the_surface_carries_its_own_copy_of_every_value(monkeypatch):
@@ -1467,23 +1498,18 @@ def test_bridge_registers_the_visualizer_themes_method():
     assert result["themes"] == shipped_themes()
 
 
-def test_the_bridge_registration_is_two_lines_and_no_more():
-    """The bridge grew more than the one registration this unit adds."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    assert text.count("visualizer_themes_surface") == 3
-    assert (
-        "visualizer_themes_surface.METHOD: visualizer_themes_surface.view_model" in text
+def test_the_bridge_registers_this_surface_once_and_no_more():
+    """The bridge grew a second method out of the theme surface."""
+    from src.core import desktop_bridge
+
+    registry = desktop_bridge.build_registry()
+    mine = sorted(
+        name for name, handler in registry.items() if handler is surface.view_model
     )
-    assert "        visualizer_themes_surface,\n" in text
-
-
-def test_the_bridge_import_list_stays_alphabetical():
-    """A new import went in out of order."""
-    text = BRIDGE_PATH.read_text(encoding="utf-8")
-    block = text.split("from src.gui.main_tabs import (")[1].split(")")[0]
-    names = [line.strip().rstrip(",") for line in block.splitlines() if line.strip()]
-    assert names == sorted(names), names
-    assert "visualizer_themes_surface" in names
+    assert mine == [surface.METHOD], mine
+    assert [name for name in registry if name.startswith("visualizer_themes")] == [
+        surface.METHOD
+    ]
 
 
 @pytest.mark.parametrize("theme", EXPECTED_THEME_NAMES)

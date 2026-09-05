@@ -1,7 +1,10 @@
-"""v3.23.59 — pin tests for _cancel_if_pending helper + source
-discipline for the two coalesced call sites (chart fetch, scout
-refresh). Confirms the pending-task-destruction warnings from prior
-crash logs stay silenced."""
+"""One in-flight task per pump, and none left when the loop closes.
+
+``MainWindow._cancel_if_pending`` drops a future that is still running and
+``_schedule_coalesced`` puts the next one in its place, so the chart-fetch
+and scout-refresh pumps never stack. ``main.drain_pending_tasks`` clears
+whatever is left before ``loop.close()``.
+"""
 
 from __future__ import annotations
 
@@ -17,8 +20,7 @@ if str(REPO) not in sys.path:
 
 
 class TestCancelIfPendingHelper:
-    """The helper is a staticmethod on CryptoMainWindow. Test it via
-    its class attribute so we don't need a QApplication."""
+    """``_cancel_if_pending`` is a staticmethod, driven off the class."""
 
     def _get_helper(self):
         pytest.importorskip("PySide6.QtWidgets")
@@ -67,51 +69,190 @@ class TestCancelIfPendingHelper:
         h(fut)  # must swallow
 
 
-class TestCoalesceSourceDiscipline:
-    """v3.23.59 — assert the two known task-leak sources are wired
-    through _cancel_if_pending + _pending_* slots. Guards against a
-    regression to the pre-v3.23.59 fire-and-forget pattern that
-    produced 'Task was destroyed but pending' warnings at shutdown."""
+class _Future:
+    """A future the coalescing seam can cancel, recording that it was."""
 
-    def _src(self) -> str:
-        p = REPO / "src" / "gui" / "main_window.py"
-        return p.read_text(encoding="utf-8")
+    def __init__(self, name: str):
+        self.name = name
+        self.cancelled = False
 
-    def test_chart_fetch_uses_pending_slot(self):
-        src = self._src()
-        assert "_pending_chart_fetch" in src, (
-            "Chart-fetch pump lost its coalescing slot — the "
-            "'Task was destroyed but pending' warnings for "
-            "TradeChartsTab.fetch_chart_data will return."
+    def done(self) -> bool:
+        return False
+
+    def cancel(self) -> bool:
+        self.cancelled = True
+        return True
+
+
+class _Window:
+    """A host the REAL coalescing seam runs against, recording futures.
+
+    ``_cancel_if_pending`` and ``_coalesce_impl`` are MainWindow's own
+    functions; ``_schedule_async`` is the one outward edge stubbed.
+    """
+
+    def __init__(self, cancel_if_pending, coalesce_impl):
+        self.scheduled: list = []
+        self.futures: list[_Future] = []
+        self._cancel_if_pending = cancel_if_pending
+        self._coalesce_impl = coalesce_impl
+
+    def _schedule_async(self, coro):
+        found = _Future(str(coro))
+        self.scheduled.append(coro)
+        self.futures.append(found)
+        return found
+
+    def _schedule_coalesced(self, slot, coro):
+        return self._coalesce_impl(self, slot, coro)
+
+
+def _main_window_class():
+    """The shipped MainWindow, with a QApplication in place."""
+    pytest.importorskip("PySide6.QtWidgets")
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication([])
+    from src.gui.main_window import MainWindow
+
+    return MainWindow
+
+
+def _window():
+    """A ``_Window`` carrying MainWindow's real coalescing functions."""
+    shipped = _main_window_class()
+    return _Window(shipped._cancel_if_pending, shipped._schedule_coalesced)
+
+
+def _coalesce(window, slot, coro):
+    """Drive the shipped ``_schedule_coalesced`` against ``window``."""
+    return window._schedule_coalesced(slot, coro)
+
+
+class TestTheCoalescingSeam:
+    """One in-flight task per slot: a second schedule cancels the first."""
+
+    def test_the_first_schedule_cancels_nothing(self):
+        window = _window()
+        _coalesce(window, "_pending_chart_fetch", "first")
+        assert [f.cancelled for f in window.futures] == [False]
+
+    def test_the_second_schedule_cancels_the_first(self):
+        window = _window()
+        _coalesce(window, "_pending_chart_fetch", "first")
+        _coalesce(window, "_pending_chart_fetch", "second")
+        assert [f.cancelled for f in window.futures] == [True, False], (
+            "the second schedule left the first task in flight — the "
+            "'Task was destroyed but pending' warnings return"
         )
-        assert (
-            "_cancel_if_pending" in src
-        ), "Coalescing helper _cancel_if_pending removed."
 
-    def test_scout_refresh_uses_pending_slot(self):
-        src = self._src()
-        assert "_pending_scout_refresh" in src, (
-            "MarketPairsScout pump lost its coalescing slot — the "
-            "'Task was destroyed but pending' warning for "
-            "MarketPairsScout.refresh_from_connectors will return."
+    def test_the_slot_holds_the_newest_future(self):
+        window = _window()
+        _coalesce(window, "_pending_scout_refresh", "first")
+        _coalesce(window, "_pending_scout_refresh", "second")
+        assert window._pending_scout_refresh is window.futures[-1]
+
+    def test_two_slots_do_not_cancel_one_another(self):
+        """NEGATIVE CONTROL: the chart pump and the scout pump coalesce
+        separately."""
+        window = _window()
+        _coalesce(window, "_pending_chart_fetch", "chart")
+        _coalesce(window, "_pending_scout_refresh", "scout")
+        assert [f.cancelled for f in window.futures] == [False, False]
+
+
+def _raise_pump_fault(exc):
+    """Fail loudly: _pump_market_pairs_scout swallows what it hits."""
+    raise AssertionError(f"_pump_market_pairs_scout raised {exc!r}")
+
+
+class _Scout:
+    def __init__(self):
+        self.calls: list = []
+
+    def refresh_from_connectors(self, connectors):
+        self.calls.append(connectors)
+        return f"refresh-{len(self.calls)}"
+
+
+class TestTheScoutPumpCoalesces:
+    """The real ``_pump_market_pairs_scout``, driven twice."""
+
+    def _pump_twice(self, monkeypatch):
+        from src.exchange import market_pairs_scout
+
+        window = _window()
+        main_window = _main_window_class()
+
+        scout = _Scout()
+        monkeypatch.setattr(market_pairs_scout, "get_scout", lambda: scout)
+        window._exchange_connectors = {"binance": object()}
+        window._scout_pump_fault = SimpleNamespace(
+            note_success=lambda: None, note_failure=_raise_pump_fault
+        )
+        main_window._pump_market_pairs_scout(window)
+        main_window._pump_market_pairs_scout(window)
+        return window, scout
+
+    def test_the_pump_reaches_the_scout_twice(self, monkeypatch):
+        """POSITIVE CONTROL for the cancellation below: the pump really
+        scheduled two refreshes."""
+        window, scout = self._pump_twice(monkeypatch)
+        assert len(scout.calls) == 2
+        assert len(window.futures) == 2
+
+    def test_the_second_pump_cancels_the_first_refresh(self, monkeypatch):
+        window, _scout = self._pump_twice(monkeypatch)
+        assert [f.cancelled for f in window.futures] == [True, False], (
+            "MarketPairsScout.refresh_from_connectors stacked a second "
+            "in-flight task on top of the first"
         )
 
 
 class TestShutdownDrain:
-    def test_main_drains_pending_tasks_before_loop_close(self):
-        """main.py must cancel + await pending tasks before
-        loop.close() so shutdown emits no 'destroyed pending'
-        warnings even for tasks that weren't caught by the
-        _pending_* slots (per-bot ticks etc.)."""
-        p = REPO / "main.py"
-        src = p.read_text(encoding="utf-8")
-        # Order: asyncio.all_tasks → cancel → gather → loop.close
-        idx_all = src.find("asyncio.all_tasks(loop)")
-        idx_cancel_all = src.find("_t.cancel()")
-        idx_gather = src.find("asyncio.gather(*_pending")
-        # rfind — the ACTUAL loop.close() call is the last one, after
-        # the drain block. The earlier mention is inside a comment.
-        idx_close = src.rfind("loop.close()")
-        assert (
-            0 < idx_all < idx_cancel_all < idx_gather < idx_close
-        ), "Shutdown-drain block missing or out of order."
+    """``main.drain_pending_tasks`` leaves nothing for ``loop.close()``."""
+
+    @staticmethod
+    def _loop_with_a_sleeper():
+        """A stopped loop holding one started, unfinished task.
+
+        The sleep is short so a drain that forgets to cancel finishes and
+        reports a wrong answer instead of blocking the run.
+        """
+        import asyncio
+
+        loop = asyncio.new_event_loop()
+        loop.set_exception_handler(lambda _loop, _ctx: None)
+        task = loop.create_task(asyncio.sleep(0.05))
+        loop.run_until_complete(asyncio.sleep(0))
+        return loop, task
+
+    def test_a_pending_task_survives_an_undrained_loop(self):
+        """POSITIVE CONTROL: without the drain the task is still pending
+        when the loop stops."""
+        loop, task = self._loop_with_a_sleeper()
+        assert not task.done()
+        task.cancel()
+        loop.close()
+
+    def test_the_drain_cancels_and_awaits_every_pending_task(self):
+        import main
+
+        loop, task = self._loop_with_a_sleeper()
+        drained = main.drain_pending_tasks(loop)
+        loop.close()
+        assert drained == 1, f"drain_pending_tasks reported {drained}"
+        assert task.done()
+        assert task.cancelled()
+
+    def test_the_drain_on_a_quiet_loop_reports_nothing(self):
+        import asyncio
+
+        import main
+
+        loop = asyncio.new_event_loop()
+        assert main.drain_pending_tasks(loop) == 0
+        loop.close()
