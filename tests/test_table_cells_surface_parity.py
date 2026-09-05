@@ -25,6 +25,7 @@ pytest.importorskip("PySide6")
 
 from src.gui import table_cells as shipped
 from src.gui.main_tabs import table_cells_surface as surface
+from tests.fixtures.qt_wiring_counts import qt_free
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
     assert_pictures_match,
@@ -2109,20 +2110,16 @@ def test_the_table_that_paints_the_cells_does_wire_its_own_signals():
 
 
 def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend.
-
-    Read off ``sys.modules`` after the import, so a module reached through
-    another module is counted the same as a direct one.
-    """
-    answered = run_script(QT_MODULES_PROBE)
-    assert answered["surface"] is True, answered
-    assert answered["qt"] == [], answered["qt"]
+    """The surface grew an import that pulls Qt into the backend."""
+    answered = qt_free("src.gui.main_tabs.table_cells_surface", "TableCellsModel")
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
 
 
-def test_the_qt_module_probe_reports_a_qt_module():
-    """The Qt-module probe reports nothing whatever a process imports."""
-    answered = run_script(QT_MODULES_PROBE.replace(BLOCK_QT, "import PySide6.QtCore\n"))
-    assert answered["qt"] != [], answered
+def test_the_qt_block_stops_the_shipped_side():
+    """POSITIVE CONTROL for ``qt_free``: src.gui.widgets.bot_status_table needs Qt to load."""
+    answered = qt_free("src.gui.widgets.bot_status_table", "BotStatusTable")
+    assert answered["imported"] is False, answered
 
 
 # The bridge
@@ -2373,15 +2370,6 @@ HEADLESS_PROBE = (
     "    'denom': list(denom), 'denom_path': model.denom_path,\n"
     "    'stale_text': stale['text'], 'stale_color': stale['color'],\n"
     "    'calls': len(model.calls)}))\n"
-)
-
-
-QT_MODULES_PROBE = (
-    BLOCK_QT + FAKE_MARKET + "import json, sys\n"
-    "from src.gui.main_tabs import table_cells_surface as s\n"
-    "print(json.dumps({'surface': s.CELLS is not None,\n"
-    "    'qt': sorted(m for m in sys.modules\n"
-    "        if m.split('.')[0] in ('PySide6', 'shiboken6'))}))\n"
 )
 
 

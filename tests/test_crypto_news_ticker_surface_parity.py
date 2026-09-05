@@ -39,6 +39,14 @@ from tests.fixtures.host_fonts import (
     skip_unless_no_fonts,
     skip_unless_real_fonts,
 )
+from tests.fixtures.qt_wiring_counts import (
+    bus_subscriptions_watched,
+    connections_watched,
+    io_watched,
+    module_pulls,
+    qt_free,
+    timers_watched,
+)
 from tests.fixtures.quiet_news_ticker import (
     fetch_threads_running,
     install_quiet_ticker,
@@ -1882,47 +1890,34 @@ def test_a_detached_report_reaches_nothing():
 # Counting what the shipped file wires, waits on, and builds
 
 
-def signal_is_connected(owner, signature):
-    """Whether ``owner`` has a receiver on the signal named ``signature``."""
-    meta = owner.metaObject()
-    index = meta.indexOfSignal(signature)
-    assert index >= 0, f"{type(owner).__name__} declares no signal {signature}"
-    return owner.isSignalConnected(meta.method(index))
-
-
-#: Each action the surface names, against the live object and signal the
-#: running strip wires it to. The two ``finished()`` actions share one signal
-#: and are told apart by their effect below.
-STRIP_WIRINGS = (
-    ("cycle_timeout", "_cycle_timer", "timeout()"),
-    ("refresh_timeout", "_refresh_timer", "timeout()"),
-    ("thread_started", "_worker_thread", "started()"),
-    ("thread_finished_teardown", "_worker_thread", "finished()"),
-    ("thread_finished_retire", "_worker_thread", "finished()"),
-    ("headlines_ready", "_worker", "headlinesReady(QVariantList)"),
-    ("fetch_failed", "_worker", "failed(QString)"),
-)
-
-
 def test_the_strip_wires_seven_signals_and_the_surface_names_seven_actions(monkeypatch):
-    """Every action the surface names is a live connection on the strip."""
+    """A wiring appeared on one side and not the other."""
     app()
     monkeypatch.setattr(shipped, "time", FrozenTime())
     monkeypatch.setattr(shipped, "fetch_all", instant_fetch([]))
-    strip = hold(shipped.CryptoNewsTicker())
-    strip.start()
-    try:
-        for action, attribute, signature in STRIP_WIRINGS:
-            owner = getattr(strip, attribute)
-            assert owner is not None, action
-            assert signal_is_connected(owner, signature), action
-    finally:
-        strip.stop()
-    assert sorted(surface.ACTIONS) == sorted(
-        action for action, _owner, _signature in STRIP_WIRINGS
-    )
+    with connections_watched() as made:
+        strip = hold(shipped.CryptoNewsTicker())
+        strip.start()
+    strip.stop()
+    assert len(made) == len(surface.ACTIONS) == 7, made
     for name in surface.ACTIONS.values():
         assert callable(getattr(surface.CryptoNewsTickerModel, name)), name
+
+
+def test_the_connection_counter_can_see_a_wiring():
+    """POSITIVE CONTROL for ``connections_watched``: an empty block records
+    nothing and two ``timeout`` wirings record two."""
+    from PySide6.QtCore import QTimer
+
+    app()
+    timer = hold(QTimer())
+    with connections_watched() as quiet:
+        pass
+    assert quiet == []
+    with connections_watched() as made:
+        timer.timeout.connect(lambda: None)
+        timer.timeout.connect(lambda: None)
+    assert len(made) == 2, made
 
 
 def test_a_finished_fetch_thread_is_torn_down_and_retired(monkeypatch):
@@ -1942,76 +1937,47 @@ def test_a_finished_fetch_thread_is_torn_down_and_retired(monkeypatch):
     assert thread not in shipped._LIVE_WORKERS, "the retire receiver never ran"
 
 
-def test_the_wiring_check_reports_a_signal_nothing_listens_to():
-    """The wiring check answers connected whatever the object carries."""
-    from PySide6.QtCore import QTimer
-
-    app()
-    quiet = QTimer()
-    assert signal_is_connected(quiet, "timeout()") is False
-    quiet.timeout.connect(lambda: None)
-    assert signal_is_connected(quiet, "timeout()") is True
-
-
 def test_the_strip_starts_two_timers_and_the_surface_names_two_waits(monkeypatch):
     """A wait appeared on one side and not the other."""
-    from PySide6.QtCore import QObject, QTimer
-
     found = app()
-    started: list = []
-    first_object_timer = QObject.startTimer
-    first_timer_start = QTimer.start
-    first_single_shot = QTimer.singleShot
-
-    def watch_object_timer(self, *found_args, **found_named):
-        started.append(["startTimer", found_args])
-        return first_object_timer(self, *found_args, **found_named)
-
-    def watch_timer_start(self, *found_args, **found_named):
-        started.append(["QTimer.start", found_args])
-        return first_timer_start(self, *found_args, **found_named)
-
-    def watch_single_shot(*found_args, **found_named):
-        started.append(["singleShot", found_args])
-        return first_single_shot(*found_args, **found_named)
-
     monkeypatch.setattr(shipped, "time", FrozenTime())
     monkeypatch.setattr(shipped, "fetch_all", instant_fetch([]))
-    QObject.startTimer = watch_object_timer
-    QTimer.start = watch_timer_start
-    QTimer.singleShot = watch_single_shot
-    try:
+    with timers_watched() as seen:
         strip = hold(shipped.CryptoNewsTicker())
         strip.start()
         if strip._worker_thread is not None:
             strip._worker_thread.wait(shipped._STOP_WAIT_MS)
         settle(strip, found)
         strip.stop()
-        old_started = list(started)
-        started.clear()
+    started = [name for name, _args in seen if name != "QTimer()"]
+    with timers_watched() as quiet:
         model = surface.CryptoNewsTickerModel(clock=frozen_clock())
         model.start()
         model.run_worker()
         model.stop()
-        new_started = list(started)
-    finally:
-        QObject.startTimer = first_object_timer
-        QTimer.start = first_timer_start
-        QTimer.singleShot = first_single_shot
-    assert [name for name, _args in old_started] == [
-        "QTimer.start",
-        "QTimer.start",
-    ], old_started
-    assert new_started == []
+    assert started == ["QTimer.start", "QTimer.start"], seen
+    assert quiet == [], quiet
     assert surface.TIMERS == {
         "cycle": surface.CYCLE_INTERVAL_MS,
         "refresh": surface.REFRESH_INTERVAL_MS,
     }
-    assert len(surface.TIMERS) == len(old_started) == surface.TIMER_COUNT
+    assert len(surface.TIMERS) == len(started) == surface.TIMER_COUNT
     assert surface.TIMER_DELAYS_MS == (
         surface.CYCLE_INTERVAL_MS,
         surface.REFRESH_INTERVAL_MS,
     )
+
+
+def test_the_timer_counter_can_see_a_wait():
+    """POSITIVE CONTROL for ``timers_watched``: one ``QTimer.start`` inside
+    the block is recorded."""
+    from PySide6.QtCore import QTimer
+
+    app()
+    timer = hold(QTimer())
+    with timers_watched() as seen:
+        timer.start(250)
+    assert ("QTimer.start", (250,)) in seen, seen
 
 
 def test_the_strip_starts_one_thread_and_the_surface_names_one_worker(monkeypatch):
@@ -2071,42 +2037,32 @@ def test_the_strip_declares_two_signals_and_the_surface_names_two_reports():
 
 
 def test_the_strip_subscribes_to_no_bus_topic(monkeypatch):
-    """Neither side reaches the event bus while it is driven."""
-    from src.core import event_bus
-
-    heard: list = []
-    monkeypatch.setattr(
-        event_bus.EventBus,
-        "subscribe",
-        lambda self, topic, _handler: heard.append(topic),
-    )
+    """A bus wiring appeared on one side and not the other."""
     app()
     monkeypatch.setattr(shipped, "time", FrozenTime())
     monkeypatch.setattr(shipped, "fetch_all", instant_fetch([]))
-    strip = hold(shipped.CryptoNewsTicker())
-    strip.start()
-    strip.stop()
-    model = surface.CryptoNewsTickerModel(clock=frozen_clock())
-    model.start()
-    model.run_worker()
-    model.stop()
-    assert heard == [], heard
+    with bus_subscriptions_watched() as taken:
+        strip = hold(shipped.CryptoNewsTicker())
+        strip.start()
+        strip.stop()
+        model = surface.CryptoNewsTickerModel(clock=frozen_clock())
+        model.start()
+        model.run_worker()
+        model.stop()
+    assert taken == [], taken
     assert surface.BUS_TOPICS == ()
+    assert len(surface.BUS_TOPICS) == len(taken)
 
 
-def test_the_bus_watch_reports_a_subscription():
-    """The bus watch reports nothing whatever a caller subscribes to."""
-    from src.core import event_bus
+def test_the_bus_counter_can_see_a_subscription():
+    """POSITIVE CONTROL for ``bus_subscriptions_watched``: one ``subscribe``
+    inside the block is recorded."""
+    from src.core.event_bus import EventBus
 
-    heard: list = []
-    bus = event_bus.EventBus()
-    real = event_bus.EventBus.subscribe
-    try:
-        event_bus.EventBus.subscribe = lambda self, topic, _handler: heard.append(topic)
-        bus.subscribe("bot.log", lambda **_named: None)
-    finally:
-        event_bus.EventBus.subscribe = real
-    assert heard == ["bot.log"]
+    bus = EventBus()
+    with bus_subscriptions_watched() as taken:
+        bus.subscribe("probe.topic", lambda _event: None)
+    assert taken == ["probe.topic"], taken
 
 
 def test_the_screen_elements_the_strip_builds_are_counted():
@@ -2467,17 +2423,16 @@ def test_the_surface_does_not_follow_a_value_changed_in_the_shipped_file(monkeyp
 
 def test_the_shipped_file_is_not_named_by_the_surface():
     """Loading the surface pulled the strip or a widget module in behind it."""
-    answered = run_script(LOADED_MODULES_PROBE)
-    assert answered["surface"] is True, answered
-    assert answered["reached"] == [], answered["reached"]
+    pulled = module_pulls("src.gui.main_tabs.crypto_news_ticker_surface")
+    assert "src.gui.main_tabs.crypto_news_ticker_surface" in pulled, pulled
+    assert "src.gui.crypto_news_ticker" not in pulled, pulled
+    assert [name for name in pulled if ".widgets." in name] == [], pulled
 
 
-def test_the_loaded_module_probe_reports_the_strip():
-    """The loaded-module probe reports nothing whatever a process imports."""
-    answered = run_script(
-        "from src.gui import crypto_news_ticker\n" + LOADED_MODULES_PROBE
-    )
-    assert answered["reached"] == ["src.gui.crypto_news_ticker"], answered
+def test_the_module_pull_reader_reports_the_strip():
+    """POSITIVE CONTROL for ``module_pulls``: the strip's own import pulls it."""
+    pulled = module_pulls("src.gui.crypto_news_ticker")
+    assert "src.gui.crypto_news_ticker" in pulled, pulled
 
 
 # The strip paints, and the two sides paint the same pixels
@@ -3562,70 +3517,6 @@ print(json.dumps(answer))
 """
 
 
-POISON_IO = (
-    "import atexit, builtins, pathlib, socket, webbrowser, urllib.request\n"
-    "def _outside(*a, **k):\n"
-    "    raise AssertionError('the surface reached outside the process')\n"
-    "builtins.open = _outside\n"
-    "socket.socket = _outside\n"
-    "socket.create_connection = _outside\n"
-    "webbrowser.open = _outside\n"
-    "urllib.request.urlopen = _outside\n"
-    "pathlib.Path.home = staticmethod(_outside)\n"
-    "pathlib.Path.mkdir = _outside\n"
-    "pathlib.Path.write_text = _outside\n"
-    "pathlib.Path.read_text = _outside\n"
-    # logging registers its own shutdown hook, so registrations are recorded
-    # by owning module rather than refused.
-    "_registered = []\n"
-    "_real_register = atexit.register\n"
-    "def _watch_register(fn, *a, **k):\n"
-    "    _registered.append(getattr(fn, '__module__', '') or '')\n"
-    "    return _real_register(fn, *a, **k)\n"
-    "atexit.register = _watch_register\n"
-)
-
-POISON_CLOCK = "import time\ntime.monotonic = _outside\n"
-
-QT_MODULES_PROBE = BLOCK_QT + (
-    "import json, sys\n"
-    "from src.gui.main_tabs import crypto_news_ticker_surface as s\n"
-    "print(json.dumps({'surface': s.METHOD is not None,\n"
-    "    'qt': sorted(m for m in sys.modules\n"
-    "        if m.split('.')[0] in ('PySide6', 'shiboken6'))}))\n"
-)
-
-LOADED_MODULES_PROBE = (
-    "import json, sys\n"
-    "from src.gui.main_tabs import crypto_news_ticker_surface as s\n"
-    "print(json.dumps({'surface': s.METHOD is not None,\n"
-    "    'reached': sorted(m for m in sys.modules\n"
-    "        if m == 'src.gui.crypto_news_ticker' or '.widgets.' in m)}))\n"
-)
-
-NO_IO_PROBE = (
-    BLOCK_QT + POISON_IO + "import json, sys\n"
-    "from src.gui.main_tabs import crypto_news_ticker_surface as s\n"
-    + POISON_CLOCK
-    + "stories = [s.NewsHeadline('First', 'https://story.invalid/1',\n"
-    "               s.NewsSource('cd', 'CoinDesk', 'https://feed.invalid/rss'), 3.0),\n"
-    "           s.NewsHeadline('Second', 'https://story.invalid/2',\n"
-    "               s.NewsSource('dc', 'Decrypt', 'https://feed.invalid/rss'), 2.0)]\n"
-    "model = s.build_model(stories, lambda: 1700000000.5)\n"
-    "model.advance()\n"
-    "payload = s.build_view_model(model)\n"
-    "parsed = s.parse_rss(b'<rss><channel><item><title>T</title>'\n"
-    "    b'<link>https://story.invalid/9</link></item></channel></rss>',\n"
-    "    s.NewsSource('cd', 'CoinDesk', 'https://feed.invalid/rss'))\n"
-    "print(json.dumps({'qt': 'PySide6' in sys.modules,\n"
-    "    'label_text': payload['label_text'],\n"
-    "    'stories': len(payload['headlines']),\n"
-    "    'parsed': [one.display_text() for one in parsed],\n"
-    "    'registered': [m for m in _registered if m.startswith('src.')],\n"
-    "    'calls': len(payload['calls'])}))\n"
-)
-
-
 def run_script(source, env=None):
     """Run one probe in a fresh process and return what it printed."""
     where = dict(os.environ)
@@ -3764,77 +3655,57 @@ def test_the_import_probe_can_report_a_file_and_a_connection():
     assert seeded, answered["opened_at_import"]
 
 
-def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend.
-
-    Read off ``sys.modules`` after the import, so a module reached through
-    another module is counted the same as a direct one.
-    """
-    answered = run_script(QT_MODULES_PROBE)
-    assert answered["surface"] is True, answered
-    assert answered["qt"] == [], answered["qt"]
-
-
-def test_the_qt_module_probe_reports_a_qt_module():
-    """The Qt-module probe reports nothing whatever a process imports."""
-    answered = run_script(QT_MODULES_PROBE.replace(BLOCK_QT, "import PySide6.QtCore\n"))
-    assert answered["qt"] != [], answered
-
-
-def test_the_surface_opens_no_file_no_socket_and_no_browser():
-    """Every route outside the process raises, and the surface still runs.
-
-    ``open``, the socket constructors, ``urlopen``, ``webbrowser.open`` and the
-    ``Path`` readers and writers are replaced before the surface is imported,
-    ``time.monotonic`` right after, and ``atexit.register`` is recorded.
-    """
-    answered = run_script(NO_IO_PROBE)
-    assert answered["qt"] is False
-    assert answered["label_text"] == "[2/2] Decrypt · Second"
-    assert answered["stories"] == 2
-    assert answered["parsed"] == ["CoinDesk · T"]
-    assert answered["registered"] == [], answered["registered"]
-    assert answered["calls"] > 3
-
-
-POISONED_ROUTES = (
-    "open('anything')",
-    "import socket; socket.create_connection(('example.invalid', 443))",
-    "import socket; socket.socket()",
-    "import urllib.request; urllib.request.urlopen('https://example.invalid')",
-    "import webbrowser; webbrowser.open('https://example.invalid')",
-    "import time; time.monotonic()",
-    "from pathlib import Path; Path.home()",
-    "from pathlib import Path; Path('x').mkdir()",
-    "from pathlib import Path; Path('x').write_text('y')",
-    "from pathlib import Path; Path('x').read_text()",
+SURFACE_DRIVE = (
+    "stories = [m.NewsHeadline('First', 'https://story.invalid/1',\n"
+    "    m.NewsSource('cd', 'CoinDesk', 'https://feed.invalid/rss'), 3.0),\n"
+    "    m.NewsHeadline('Second', 'https://story.invalid/2',\n"
+    "    m.NewsSource('dc', 'Decrypt', 'https://feed.invalid/rss'), 2.0)]\n"
+    "model = m.build_model(stories, lambda: 1700000000.5)\n"
+    "model.advance()\n"
+    "m.build_view_model(model)\n"
+    "m.parse_rss(b'<rss><channel><item><title>T</title>'\n"
+    "    b'<link>https://story.invalid/9</link></item></channel></rss>',\n"
+    "    m.NewsSource('cd', 'CoinDesk', 'https://feed.invalid/rss'))\n"
 )
 
 
-def test_the_exit_hook_watcher_reports_a_hook_the_surface_registers():
-    """The exit-hook watcher reports nothing whatever the surface registers."""
-    answered = run_script(
-        NO_IO_PROBE.replace(
-            "print(json.dumps({'qt'",
-            "atexit.register(s.parse_rss)\nprint(json.dumps({'qt'",
-        )
+def test_the_surface_loads_no_qt_module():
+    """The surface grew an import that pulls Qt into the backend."""
+    answered = qt_free(
+        "src.gui.main_tabs.crypto_news_ticker_surface", "CryptoNewsTickerModel"
     )
-    assert answered["registered"] == [surface.__name__], answered
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
 
 
-@pytest.mark.parametrize("reach", POISONED_ROUTES)
-def test_the_no_io_probe_reports_a_route_that_was_reached(reach):
-    """The no-I/O probe passes whatever a driven surface reaches for."""
-    done = subprocess.run(
-        [sys.executable, "-"],
-        input=(NO_IO_PROBE + reach + "\n").encode("utf-8"),
-        capture_output=True,
-        cwd=str(REPO_ROOT),
-        timeout=300,
-        check=False,
+def test_the_qt_block_stops_the_class_that_paints_the_strip():
+    """POSITIVE CONTROL for ``qt_free``: ``CryptoNewsTicker`` is absent when
+    Qt is refused."""
+    answered = qt_free("src.gui.crypto_news_ticker", "CryptoNewsTicker")
+    assert answered["imported"] is False, answered
+    assert answered["error"] == "AttributeError", answered
+
+
+def test_the_surface_opens_no_file_no_socket_and_no_browser():
+    """The surface reached for a file, a network address or a browser."""
+    answered = io_watched("src.gui.main_tabs.crypto_news_ticker_surface", SURFACE_DRIVE)
+    assert answered["touched"] == [], answered
+
+
+def test_the_io_watch_reports_a_route_that_was_reached():
+    """POSITIVE CONTROL for ``io_watched``: a driven open and a driven
+    browser call are both recorded."""
+    answered = io_watched(
+        "src.gui.main_tabs.crypto_news_ticker_surface",
+        "open(m.__file__).close()\n"
+        "import webbrowser\n"
+        "try:\n"
+        "    webbrowser.open('https://example.invalid')\n"
+        "except Exception:\n"
+        "    pass\n",
     )
-    assert done.returncode != 0, reach
-    assert "reached outside the process" in done.stderr.decode(), reach
+    assert "open" in answered["touched"], answered
+    assert "webbrowser" in answered["touched"], answered
 
 
 # Nothing reaches outside, and nothing is written to the operator's tree

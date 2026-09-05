@@ -23,6 +23,7 @@ pytest.importorskip("PySide6")
 from src.gui import theme_engine as shipped
 from src.gui.color_alpha import css_colours
 from src.gui.main_tabs import theme_engine_surface as surface
+from tests.fixtures.qt_wiring_counts import qt_free
 from tests.fixtures.host_fonts import has_real_fonts
 from tests.fixtures.surface_pictures import (
     assert_pictures_differ,
@@ -1181,20 +1182,23 @@ def test_unknown_theme_message_names_the_value_it_was_given():
 
 
 def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend.
-
-    Read off ``sys.modules`` after the import, so a module reached through
-    another module is counted the same as a direct one.
-    """
-    answered = run_script(QT_MODULES_PROBE)
-    assert answered["surface"] is True, answered
-    assert answered["qt"] == [], answered["qt"]
+    """The surface grew an import that pulls Qt into the backend."""
+    answered = qt_free("src.gui.main_tabs.theme_engine_surface", "ThemeManagerModel")
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
 
 
-def test_the_qt_module_probe_reports_a_qt_module():
-    """The Qt-module probe reports nothing whatever a process imports."""
-    answered = run_script(QT_MODULES_PROBE.replace(BLOCK_QT, "import PySide6.QtCore\n"))
-    assert answered["qt"] != [], answered
+def test_the_shipped_theme_engine_is_qt_free_too():
+    """``ThemeManager`` writes stylesheet text and never builds a widget."""
+    answered = qt_free("src.gui.theme_engine", "ThemeManager")
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
+
+
+def test_the_qt_block_stops_a_module_that_needs_qt():
+    """POSITIVE CONTROL for ``qt_free``: a widget module cannot load without it."""
+    answered = qt_free("src.gui.widgets.bot_status_table", "BotStatusTable")
+    assert answered["imported"] is False, answered
 
 
 def test_the_surface_carries_its_own_copy_of_every_value(monkeypatch):
@@ -1692,15 +1696,6 @@ TABLE_PROBE = BLOCK_QT + (
     "    'refusal': s.unknown_theme_message('NOPE'),\n"
     "    'listed': s.ThemeManagerModel().list_themes(),\n"
     "    'current': s.ThemeManagerModel().current}))\n"
-)
-
-
-QT_MODULES_PROBE = BLOCK_QT + (
-    "import json, sys\n"
-    "from src.gui.main_tabs import theme_engine_surface as s\n"
-    "print(json.dumps({'surface': s.METHOD is not None,\n"
-    "    'qt': sorted(m for m in sys.modules\n"
-    "        if m.split('.')[0] in ('PySide6', 'shiboken6'))}))\n"
 )
 
 

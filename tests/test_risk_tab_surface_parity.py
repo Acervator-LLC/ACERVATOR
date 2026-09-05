@@ -26,6 +26,7 @@ pytest.importorskip("PySide6")
 
 from src.gui import risk_tab as shipped
 from src.gui.main_tabs import risk_tab_surface as surface
+from tests.fixtures.qt_wiring_counts import bus_subscriptions_watched, qt_free
 from tests.fixtures.host_fonts import (
     NARROW_LABEL,
     WIDE_LABEL,
@@ -2960,36 +2961,25 @@ def test_the_tab_starts_no_timer():
     assert len(surface.TIMERS) == len(observed) == 0
 
 
-def test_the_tab_subscribes_to_no_bus_topic(monkeypatch):
-    """Neither side reaches the event bus while it is driven."""
-    from src.core import event_bus
-
-    heard: list = []
-    monkeypatch.setattr(
-        event_bus.EventBus,
-        "subscribe",
-        lambda self, topic, _handler: heard.append(topic),
-    )
+def test_the_tab_subscribes_to_no_bus_topic():
+    """A bus wiring appeared on one side and not the other."""
     app()
-    old_picture_tab("asset_bands")
-    new_picture_tab("asset_bands")
-    assert heard == [], heard
+    with bus_subscriptions_watched() as taken:
+        old_picture_tab("asset_bands")
+        new_picture_tab("asset_bands")
+    assert taken == [], taken
     assert surface.BUS_TOPICS == ()
 
 
-def test_the_bus_watch_reports_a_subscription():
-    """The bus watch reports nothing whatever a caller subscribes to."""
-    from src.core import event_bus
+def test_the_bus_counter_can_see_a_subscription():
+    """POSITIVE CONTROL for ``bus_subscriptions_watched``: one ``subscribe``
+    inside the block is recorded."""
+    from src.core.event_bus import EventBus
 
-    heard: list = []
-    bus = event_bus.EventBus()
-    real = event_bus.EventBus.subscribe
-    try:
-        event_bus.EventBus.subscribe = lambda self, topic, _handler: heard.append(topic)
-        bus.subscribe("bot.log", lambda **_named: None)
-    finally:
-        event_bus.EventBus.subscribe = real
-    assert heard == ["bot.log"]
+    bus = EventBus()
+    with bus_subscriptions_watched() as taken:
+        bus.subscribe("probe.topic", lambda _event: None)
+    assert taken == ["probe.topic"], taken
 
 
 def test_the_screen_elements_the_tab_builds_are_counted():
@@ -3102,20 +3092,16 @@ def test_the_widget_tree_is_the_tabs_own():
 
 
 def test_the_surface_loads_no_qt_module():
-    """The surface grew an import that pulls Qt into the backend.
-
-    Read off ``sys.modules`` after the import, so a module the surface reaches
-    through a sibling is counted the same as a direct one.
-    """
-    answered = run_script(QT_MODULES_PROBE)
-    assert answered["surface"] is True, answered
-    assert answered["qt"] == [], answered["qt"]
+    """The surface grew an import that pulls Qt into the backend."""
+    answered = qt_free("src.gui.main_tabs.risk_tab_surface", "RiskTabModel")
+    assert answered["imported"] is True, answered
+    assert answered["qt"] == [], answered
 
 
-def test_the_qt_module_probe_reports_a_qt_module():
-    """The Qt-module probe reports nothing whatever a process imports."""
-    answered = run_script(QT_MODULES_PROBE.replace(BLOCK_QT, "import PySide6.QtCore\n"))
-    assert answered["qt"] != [], answered
+def test_the_qt_block_stops_the_shipped_side():
+    """POSITIVE CONTROL for ``qt_free``: src.gui.risk_tab needs Qt to load."""
+    answered = qt_free("src.gui.risk_tab", "RiskTab")
+    assert answered["imported"] is False, answered
 
 
 # The surface holds its own values
@@ -3807,15 +3793,6 @@ HEADLESS_PROBE = (
     "    'band': drawn['band'], 'steps': len(drawn['steps']),\n"
     "    'refresh_path': model.refresh_path, 'widgets': len(s.WIDGETS),\n"
     "    'calls': len(model.calls)}))\n" % RECENT_STAMP
-)
-
-
-QT_MODULES_PROBE = BLOCK_QT + (
-    "import json, sys\n"
-    "from src.gui.main_tabs import risk_tab_surface as s\n"
-    "print(json.dumps({'surface': s.WIDGETS is not None,\n"
-    "    'qt': sorted(m for m in sys.modules\n"
-    "        if m.split('.')[0] in ('PySide6', 'shiboken6'))}))\n"
 )
 
 
