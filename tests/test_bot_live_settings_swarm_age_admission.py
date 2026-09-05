@@ -1,71 +1,11 @@
-"""Age admission on the two Bot Swarm tables of bot_live_settings.
+"""Age admission on the two Bot Swarm tables of ``bot_live_settings``.
 
-THE DEFECT THESE PIN
-====================
-``_create_bot_swarm_tab`` rendered two Age columns from a bare
-``float(... or 0)`` followed by ``> 0``:
-
-* the PENDING WIRE CREDITS table, reading ``credit["ts"]`` off a dict;
-* the RECENT WIRE TRANSACTIONS table, reading ``tx.timestamp`` off an
-  object.
-
-These were the last two of six ``_format_age`` callers in the file. The
-other four were closed by earlier units.
-
-THE SHAPE HERE IS NOT THE SHAPE THE FOLD SITES HAD, and the difference
-decides which values are dangerous. These coerce with ``float(x or 0)``
-FIRST and compare ``> 0`` SECOND. Measured through the real expression:
-
-* ``or 0`` short-circuits every FALSY value before ``float()`` sees it,
-  so ``None``, ``""``, ``[]``, ``{}``, ``False`` and ``0`` already
-  rendered the dash. They were never the hole.
-* ``nan`` survived ``float()`` and was then filtered by ``nan > 0``
-  being False. Also already safe.
-* ``inf`` survived BOTH — ``inf > 0`` is True — and reached
-  ``_format_age``, whose ``int(seconds)`` raised OverflowError.
-* A TRUTHY non-number raised at the ``float()`` itself, before any guard
-  could run: ``"abc"`` ValueError, ``[1, 2]`` and ``{"a": 1}``
-  TypeError, and ``10 ** 400`` OverflowError (it exceeds float range).
-* ``True`` did not raise. It read as one second past the epoch and
-  printed a confident ``"20833.3d"`` for a stored flag.
-
-So five shapes raised and two lied. That is the table this file pins,
-and it was derived for THESE sites rather than carried over.
-
-WHY A RAISE MATTERS: the AST ancestor chain from both sites is
-``For`` -> ``If`` -> ``_create_bot_swarm_tab`` -> ``BotLiveSettings
-Dialog.__init__`` -> ``MainWindow._on_bot_clicked``, with NO ``try`` at
-any step. A raise means the Bot Settings dialog does not open for that
-bot. The contrast that proves the walk discriminates:
-``simulator_tab.py:695`` builds the same dialog inside a ``try`` with an
-``Exception`` handler, so the Simulator path is protected and the
-operator's path is not.
-
-REACHABILITY DIFFERS BETWEEN THE TWO SITES, and they are not one story:
-
-* PENDING LEDGER — ACTIVE. ``ScrummingBot._restore_state`` rebuilds the
-  list as ``dict(_e)`` per entry and coerces no key, so ``ts`` arrives
-  exactly as ``json.load`` decoded it. ``json.loads("Infinity")``
-  returns a real ``inf`` and JSON has no integer width limit.
-  ``test_dict_site_json_round_trip_*`` drives that path rather than
-  asserting it.
-* RECENT TRANSACTIONS — LATENT. ``SmartWireManager._transactions`` has
-  no assignment anywhere in ``src/`` or ``tests/``; it is only appended
-  to. Both reachable constructors pass ``int(time.time())``. It is
-  guarded because ``getattr`` is duck-typed and ``WireTransaction`` is a
-  ``@dataclass``, which annotates ``timestamp: int`` without enforcing
-  it — and because two Age columns in one tab must not disagree about
-  what an unreadable timestamp means.
-
-AND THE GUARD MUST NOT OPEN THE HOLE IT CLOSES: ``math.isfinite(10 **
-400)`` itself raises OverflowError. ``as_finite_float`` bounds ints with
-an integer comparison, which cannot raise. ``test_huge_int_*`` is the
-row that tells the two apart.
-
-Every table below carries POSITIVE CONTROLS — real timestamps whose
-rendering was captured from the shipped code and pasted here byte for
-byte. Without them a guard that refused everything would pass every
-refusal test while blanking both columns.
+``_create_bot_swarm_tab`` renders one Age column from ``credit["ts"]`` and
+one from ``tx.timestamp``, and both read their stamp through
+``as_finite_float``. ``REFUSED`` lists every shape whose cell must be
+``DASH``; ``ACCEPTED`` pins the string each readable stamp renders, so a
+guard that dashed everything would fail. ``_build`` drives the real method
+through a stub ``self``, so every row below is the tab an operator opens.
 """
 
 from __future__ import annotations
@@ -86,9 +26,7 @@ if str(REPO) not in sys.path:
 #: "an hour ago" is not expressible and every age drifts between runs.
 NOW = 1_800_000_000.0
 
-#: The refusal string. NOT a new one — this is the exact text both
-#: columns already printed for a credit or a transaction with no
-#: timestamp, and closing the admission must land in that same branch.
+#: The text both columns print for a credit or transaction with no timestamp.
 DASH = "—"
 
 #: Column 0 is Age in both tables.
@@ -111,9 +49,6 @@ class _HasFloat:
         return 1.0
 
 
-#: Shapes that must render the dash. Each is a value the old code either
-#: raised on, lied about, or already dashed — after the fix all three
-#: groups land in the one branch that already existed.
 REFUSED = [
     pytest.param(True, id="bool-True"),
     pytest.param(False, id="bool-False"),
@@ -136,9 +71,7 @@ REFUSED = [
     pytest.param({"a": 1}, id="dict"),
 ]
 
-#: Shapes that must still render a real age, with the exact string the
-#: shipped code produced. Without these the refusal tests are satisfied
-#: by a guard that dashes everything.
+#: (stamp, the exact string the shipped code renders for it).
 ACCEPTED = [
     pytest.param(NOW - 30.0, "30s", id="float-seconds"),
     pytest.param(NOW - 1800.0, "30m", id="float-half-hour"),
@@ -147,11 +80,8 @@ ACCEPTED = [
     pytest.param(NOW - 43200.0, "12.0h", id="float-half-day"),
     pytest.param(int(NOW) - 90000, "1.0d", id="int-one-day"),
     pytest.param(NOW - 172800.0, "2.0d", id="float-two-days"),
-    # 2**53+1 is INSIDE the helper's int bound, so it is admitted and
-    # renders a nonsense but non-raising age. Pinned because it is the
-    # behaviour the shipped code already had — the guard neither
-    # widened nor narrowed it, and a future change to the bound would
-    # show up here rather than silently.
+    # Inside the helper's 2**1023 int bound, so it is admitted and renders
+    # nonsense without raising.
     pytest.param(2**53 + 1, "-9007197454740992s", id="int-2**53+1"),
 ]
 
@@ -256,9 +186,8 @@ def _build(monkeypatch, credits=None, txs=None, full=False):
         _pending_wire_credits = 42.5
 
     class _StubDlg:
-        # `_format_age` is a @staticmethod; binding it here without the
-        # re-wrap would silently make it an instance method and pass
-        # `self` as `seconds`.
+        # Re-wrapped: an unwrapped bind makes `_format_age` an instance
+        # method and passes `self` as `seconds`.
         _format_age = staticmethod(_Dlg._format_age)
         _bot = _StubBot()
 
@@ -326,11 +255,6 @@ def _obj_age(value, monkeypatch, *, omit=False):
     return rows[0][COL_AGE]
 
 
-# (a) THE TAB BUILDS.
-#     A failure here means a corrupted or hand-edited bot_state.json
-#     stops the Bot Settings dialog from opening for that bot at all.
-
-
 @pytest.mark.parametrize("value", REFUSED)
 def test_dict_site_refuses_without_raising(value, monkeypatch):
     assert _dict_age(value, monkeypatch) == DASH
@@ -370,11 +294,6 @@ def test_object_site_one_bad_row_keeps_the_others(monkeypatch):
     ages = [r[COL_AGE] for r in _rows(widget, RECENT_HEADERS)]
     # `recent_tx` reverses the feed, so the hostile row renders first.
     assert ages == [DASH, "2.0h"]
-
-
-# (b) VALID INPUT RENDERS IDENTICALLY.
-#     A failure here means the guard changed a real, readable age —
-#     the fix would be silently rewriting the operator's data.
 
 
 @pytest.mark.parametrize("value,expected", ACCEPTED)
@@ -440,11 +359,6 @@ def test_the_other_transaction_cells_are_untouched(monkeypatch):
     assert row == ["2.0h", "OUT →", "bot-child", "$17.2500", "SCRUM_ROUTE"]
 
 
-# (c) THE REFUSAL USES THE EXISTING BRANCH.
-#     A failure here means the fix invented a new "no value" string,
-#     so the same absence would read two different ways in one tab.
-
-
 def test_refusal_string_equals_the_absent_timestamp_string(monkeypatch):
     """A refused value must render what an ABSENT one already rendered.
 
@@ -464,13 +378,6 @@ def test_refusal_is_the_dash_the_file_already_used():
     """The dash is U+2014, not a hyphen and not an en dash."""
     assert DASH == "—"
     assert len(DASH) == 1
-
-
-# (d) THE GUARD MUST NOT OPEN THE HOLE IT CLOSES.
-#     A failure here means the guard itself raises on the value it
-#     exists to refuse — `math.isfinite(10 ** 400)` raises
-#     OverflowError, so an isfinite-first guard would be worse than
-#     none at all.
 
 
 def test_huge_int_does_not_raise_inside_the_guard():
@@ -494,80 +401,65 @@ def test_huge_int_does_not_raise_through_either_tab_site(value, monkeypatch):
     assert _obj_age(value, monkeypatch) == DASH
 
 
-# THE CALL SITES THEMSELVES.
-#     A failure here means a sixth variant of the admission rule was
-#     written instead of the shipped helper being reused, or a bare
-#     read was reintroduced beside a guarded one.
+def _spy_on_the_shipped_helper(monkeypatch):
+    """Record every value `bot_container.as_finite_float` is asked about.
 
-
-def _swarm_tab_source():
-    import inspect
-    import textwrap
-
-    from src.gui.bot_live_settings import BotLiveSettingsDialog
-
-    return textwrap.dedent(
-        inspect.getsource(BotLiveSettingsDialog._create_bot_swarm_tab)
-    )
-
-
-def test_no_bare_float_read_feeds_format_age(monkeypatch):
-    """Walk the AST: every `_format_age` argument must be guarded.
-
-    Text matching would pass on a commented-out example. This resolves
-    the name each call's argument was assigned from and requires it to
-    come from the admission helper.
+    The real helper still answers, so `_build` renders exactly as it does
+    unpatched.
     """
-    import ast
+    from src.trading import bot_container
 
-    tree = ast.parse(_swarm_tab_source())
-    guarded = set()
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Assign)
-            and isinstance(node.value, ast.Call)
-            and isinstance(node.value.func, ast.Name)
-            and node.value.func.id == "_as_finite_float"
-        ):
-            for tgt in node.targets:
-                if isinstance(tgt, ast.Name):
-                    guarded.add(tgt.id)
+    real = bot_container.as_finite_float
+    seen: list = []
 
-    calls = [
-        n
-        for n in ast.walk(tree)
-        if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "_format_age"
-    ]
-    assert len(calls) == 2, "both Age columns must still be here"
+    def spy(value):
+        seen.append(value)
+        return real(value)
 
-    for call in calls:
-        arg = call.args[0]
-        names = {n.id for n in ast.walk(arg) if isinstance(n, ast.Name)}
-        assert names & guarded, (
-            f"_format_age argument {ast.unparse(arg)!r} is not fed by "
-            "_as_finite_float"
-        )
+    monkeypatch.setattr(bot_container, "as_finite_float", spy)
+    return seen
 
 
-def test_the_guard_is_the_shipped_helper_not_a_local_copy():
-    """No sixth variant: the name must resolve to bot_container's."""
-    import ast
+def test_both_age_columns_read_their_timestamp_through_the_shipped_helper(
+    monkeypatch,
+):
+    """Both `ts` and `timestamp` reach `bot_container.as_finite_float`."""
+    seen = _spy_on_the_shipped_helper(monkeypatch)
+    credit = _valid_credit()
+    credit["ts"] = NOW - 3600.0
+    tx = _valid_tx()
+    tx.timestamp = int(NOW) - 7200
 
-    tree = ast.parse(_swarm_tab_source())
-    imported = [
-        n
-        for n in ast.walk(tree)
-        if isinstance(n, ast.ImportFrom)
-        and any(
-            a.name == "as_finite_float" and a.asname == "_as_finite_float"
-            for a in n.names
-        )
-    ]
-    assert imported, "the helper must be imported, not redefined"
-    assert not [
-        n
-        for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name.endswith("finite_float")
-    ], "a local re-implementation of the admission rule"
+    rows = _rows(_build(monkeypatch, credits=[credit], txs=[tx]), RECENT_HEADERS)
+
+    assert seen, "the tab asked the shipped helper about nothing"
+    assert NOW - 3600.0 in seen, (
+        "the pending-credit `ts` never reached bot_container.as_finite_float; "
+        f"the helper was asked about {seen!r}"
+    )
+    assert int(NOW) - 7200 in seen, (
+        "the transaction `timestamp` never reached "
+        f"bot_container.as_finite_float; the helper was asked about {seen!r}"
+    )
+    assert rows[0][COL_AGE] == "2.0h", "the spy changed what the tab renders"
+
+
+def test_both_age_columns_dash_when_the_shipped_helper_refuses(monkeypatch):
+    """A refusing `bot_container.as_finite_float` dashes both Age columns.
+
+    A private copy of the admission rule inside `_create_bot_swarm_tab`
+    would still render an age and leave this red.
+    """
+    from src.trading import bot_container
+
+    monkeypatch.setattr(bot_container, "as_finite_float", lambda value: None)
+    widget = _build(monkeypatch, credits=[_valid_credit()], txs=[_valid_tx()])
+    assert _rows(widget, PENDING_HEADERS)[0][COL_AGE] == DASH
+    assert _rows(widget, RECENT_HEADERS)[0][COL_AGE] == DASH
+
+
+def test_the_control_arm_renders_a_real_age_with_the_helper_unpatched(monkeypatch):
+    """The control for the refusal above: unpatched, both columns render."""
+    widget = _build(monkeypatch, credits=[_valid_credit()], txs=[_valid_tx()])
+    assert _rows(widget, PENDING_HEADERS)[0][COL_AGE] == "1.0h"
+    assert _rows(widget, RECENT_HEADERS)[0][COL_AGE] == "2.0h"

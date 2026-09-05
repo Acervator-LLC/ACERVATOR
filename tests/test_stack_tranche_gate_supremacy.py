@@ -42,16 +42,8 @@ SPEND = "_spend_activated_stack_tranches"
 CHAIN_VERDICT = "_scrum_chain_result.should_fire"
 FOLD_VERDICT = "_fold_chain_result.should_fire"
 
-# The pre-chain returns the read phase identified, each named by its own
-# guard condition rather than by a line number, so the pins survive an
-# edit above them. Every one of these ends the tick: if it executes, no
-# trading decision is reached at all.
-#
-# The guards are matched EXACTLY against an unparsed `if` test, not by
-# substring. A substring match on `self._manual_fire_pending` also caught
-# the read-rate throttle, whose condition merely mentions it and which
-# sits ABOVE the activation call -- the check would then have reported a
-# violation that is not one.
+# Each pre-chain return, keyed by its own guard condition. The guard is
+# matched exactly against an unparsed `if` test, never by substring.
 PRE_CHAIN_REFUSALS = {
     "dust band (MEM-258 delta-zero short circuit)": "not self._manual_fire_pending and "
     "abs(current_value - self._target_balance) <= _dust_band_usd",

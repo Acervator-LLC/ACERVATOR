@@ -46,10 +46,8 @@ CALLS: list[list] = []
 
 CLOCK_NOW = 1_700_000_000.0
 
-# The literals the table applies around the two cells. Typed here rather
-# than read from the surface, so the two sides cannot agree by
-# definition. `test_the_cell_placement_is_the_tables_own` proves each
-# one against a real BotStatusTable.
+# Typed out, not read from the surface, so the two sides cannot agree by
+# definition. `test_the_cell_placement_is_the_tables_own` checks each.
 CALLER_TARGET_BTC_COLUMN = 5
 CALLER_TARGET_ETH_COLUMN = 6
 CALLER_AMMO_COLUMN = 7

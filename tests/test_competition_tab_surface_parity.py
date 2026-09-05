@@ -295,8 +295,7 @@ LEADERBOARD_CASES: dict = {
 LEADERBOARD_REFUSING = ("no_rank_key", "no_win_rate_key")
 
 # A cell built from a number prints nothing on the widget side and
-# carries the number on the surface side. The pair is read apart
-# rather than compared as equal.
+# carries the number on the surface side, so the pair is read apart.
 CELL_KEPT_BY_ONE_SIDE = ("number_where_text_belongs",)
 
 
@@ -1011,8 +1010,7 @@ def workspace(bot_id=BOT_KEY, awards=(), elo=(), broken=()):
 
 
 # Every case writes an identity file, valid or unreadable, so the tab
-# always loads a key rather than making one. No test here generates a
-# key or writes one to disk.
+# always loads a key and never generates one.
 BROKEN_IDENTITY = ("bot_identity.json",)
 
 TAB_CASES: dict = {

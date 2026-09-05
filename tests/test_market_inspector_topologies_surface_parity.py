@@ -2117,9 +2117,7 @@ CALL_CONSTANTS = (
 # The log levels, each carried inside logger.levels.
 LEVEL_CONSTANTS = ("LEVEL_ERROR", "LEVEL_INFO", "LEVEL_WARNING")
 
-# The two values no snapshot key carries, each with the check that
-# covers it. METHOD is the name the bridge registers under and
-# PANE_MODEL is the pane state the bridge keeps between calls.
+# (constant no snapshot key carries, the test that covers it).
 NOT_IN_THE_SNAPSHOT = {
     "METHOD": "test_the_bridge_registers_the_topology_method",
     "PANE_MODEL": "test_the_bridge_resets_the_pane_state_on_request",

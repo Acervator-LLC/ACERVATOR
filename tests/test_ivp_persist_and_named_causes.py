@@ -44,16 +44,8 @@ import time
 
 import pytest
 
-# One import block, and it is the first statement after the plain
-# imports above, so E402 never fires and this file carries no lint
-# suppression of any kind. Counting them by tokenizing comments is how
-# that is checked, and a comment naming the directive would register as
-# one -- hence the circumlocution.
-# `tests/conftest.py` already puts the repo root on sys.path at import
-# time, and pytest loads it before this module, so the path juggling
-# other test files carry is unnecessary here. QT_QPA_PLATFORM is set in
-# the `qapp` fixture instead of at module scope, because Qt reads it
-# when a QApplication is CONSTRUCTED, not when PySide6 is imported.
+# `tests/conftest.py` puts the repo root on sys.path before this module
+# loads. `qapp` sets QT_QPA_PLATFORM, which Qt reads at construction.
 try:
     from PySide6.QtWidgets import QApplication, QLayout
 
@@ -70,9 +62,8 @@ try:
 except ImportError as _import_exc:  # pragma: no cover
     pytest.skip(f"PySide6 stack unavailable: {_import_exc}", allow_module_level=True)
 
-# The exact sentence main_window.py printed for every running bot before
-# Unit 2. It is the negative fixture: the detectors below must call it a
-# conflation, or their verdicts on the new sentences mean nothing.
+# The negative fixture: the detectors below must call this sentence a
+# conflation, or their verdicts on the new ones mean nothing.
 OLD_CONFLATED_SENTENCE = (
     "running — no TA read yet (first read can take ~60s; a bot parked "
     "at target evaluates no TA)"

@@ -46,9 +46,8 @@ from dev_harness.harness.report import (
 
 SCAFFOLDING = (("scaffolding", "dev_harness.harness.rules.scaffolding"),)
 
-# Built at run time. Written as a literal, this file would trip the very
-# rule it uses as bait, which is how ta_archetype came to fail itself
-# three times for documenting the incident it was built from.
+# Built at run time: written as a literal it would trip the very rule it
+# uses as bait.
 PLACEHOLDER_BAIT = '"""Doc."""\n\n# ' + "FIX" + "ME: not done\n"
 
 ARCHETYPE_MODULES = (

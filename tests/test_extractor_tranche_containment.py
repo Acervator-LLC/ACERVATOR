@@ -631,10 +631,6 @@ def test_repeated_returns_accumulate_both_halves():
     assert _delta(bot, 200.0) == pytest.approx(0.0)
 
 
-# ════════════════════════════════════════════════════════════════════
-# v3.25.6 — the defects the v3.25.5 suite could not see
-# ════════════════════════════════════════════════════════════════════
-
 SOURCE_PATH = REPO_ROOT / "src" / "trading" / "scrumming_bot.py"
 
 #: Every module the ScrummingBot engine is spread across. A sweep of
@@ -1335,16 +1331,6 @@ def test_POSITIVE_CONTROL_the_append_scanner_finds_a_real_append():
 
 # ── D8 and D9: citations must point at what they claim ──────────────
 
-# Every method whose prose is allowed to cite a line. v3.25.7 widened
-# this from two to five: the three parsers acquired citations of their
-# own, and a citation the checker does not read is a citation that rots.
-#
-# U2 widens it to eight, on the same reasoning. The two new units
-# parsers cite their three neighbours to say how their contracts
-# differ, and `_reconcile_holdings` cites the bootstrap clamp that
-# created the divergence it now detects. Prose that names a line has to
-# be readable by this checker or it rots exactly the way the numbers it
-# replaced did.
 # ── D10: the fail-closed promise, made true ─────────────────────────
 
 
@@ -1517,11 +1503,6 @@ def test_POSITIVE_CONTROL_both_branches_carry_the_same_measurements():
     assert _fields(good) == _fields(bad)
     assert len(_fields(good)) >= 5
     assert {"lot", "holdings", "target", "anchor"} <= _fields(good)
-
-
-# ════════════════════════════════════════════════════════════════════
-# v3.25.7 — the eleven defects the v3.25.6 suite could not see
-# ════════════════════════════════════════════════════════════════════
 
 
 def _deaf_bot(*dropped: str, **kwargs) -> ScrummingBot:

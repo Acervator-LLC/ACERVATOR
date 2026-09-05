@@ -148,13 +148,8 @@ def _pre_change():
     return _TWIN.ScrummingBot
 
 
-# -- the tape ---------------------------------------------------------
-#
-# A sawtooth on the 5-minute grid the Stone Tablets sit on: fifty
-# candles up at 0.2% each, then fifty down. The swing is about 10%, two
-# orders of magnitude outside the MEM-258 dust band, so every decision
-# below is a trading decision rather than an arrival artefact.
-
+# A sawtooth on the 5-minute grid: fifty candles up at 0.2% each, then fifty
+# down, a swing wide enough that no decision below is an arrival artefact.
 T0 = 1_776_778_500_000
 STEP = 300_000
 SYM = "CHIP/USD"
@@ -165,11 +160,8 @@ OPENING_USD = 88.0
 FIRST_BOTH_FIRE = 60
 # Coinbase charges this on the tape, so an order for $X leaves $X*1.006.
 FEE = 1.006
-# The tolerance every dollar comparison below carries. It is NOT slack
-# for the arithmetic: `verify_hit` prices the order at intended x
-# (1 + |gauss(0, 0.0008)|), so the venue charges against a fill price
-# the records above the order do not hold. The seed fixes which draw
-# lands; it does not remove the draw. 5e-3 is about six of those sigma.
+# About six sigma of the slippage `verify_hit` draws, not slack for the
+# arithmetic: the venue charges against a fill price the records do not hold.
 SLIPPAGE_REL = 5e-3
 
 
@@ -224,9 +216,8 @@ def _run(cls, *, growth_pct: float = 1.0) -> dict:
             target_balance=TARGET,
             ta_timeframe="5m",
             max_target_growth_pct=growth_pct,
-            # The Max Cartridge safety valve fires an aggressive
-            # rebalance through a different method entirely; off, so
-            # this file measures the tick's own two buy paths.
+            # Off: Max Cartridge rebalances through another method, and this
+            # file measures the tick's own two buy paths.
             max_cartridge_size_pct=0.0,
         ),
         conn,
@@ -293,10 +284,8 @@ def _run(cls, *, growth_pct: float = 1.0) -> dict:
             tick_no[0] = i
             if i >= 55:
                 px = float(rows[i][4])
-                # Re-stock so the queue is never empty. A bot that runs
-                # out of tranches stops exercising the ordering this
-                # file measures, and a green run on an empty queue
-                # would be the vacuous pass.
+                # Re-stock: an empty queue exercises no ordering, so a green
+                # run on one would be vacuous.
                 while len(bot._fold_tranches) < 2:
                     bot._fold_tranches.append(_tranche(px))
                 bot._fold_queue_usd = sum(float(t["usd"]) for t in bot._fold_tranches)

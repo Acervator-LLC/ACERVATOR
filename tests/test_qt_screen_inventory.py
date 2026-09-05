@@ -55,9 +55,8 @@ MIN_SCREEN_MODULES = 47
 MIN_SCREEN_CLASSES = 83
 MIN_CONSTRUCTIBLE = 50
 
-# react_history_panel and tradingview_chart each define one constructible
-# widget class only when QtWebEngineWidgets imports. Without it they define
-# none, so a fixed floor would state a fact about the host, not the product.
+# `react_history_panel` and `tradingview_chart` define a widget class
+# only when QtWebEngineWidgets imports, so the floor is not fixed.
 WEBENGINE_ONLY_SCREENS = 2
 
 MISSING_COLLABORATOR = (

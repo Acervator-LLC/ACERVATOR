@@ -63,9 +63,8 @@ INDEX_HTML = REPO_ROOT / "desktop" / "renderer" / "index.html"
 
 JS_TIMEOUT_MS = 30_000
 
-#: Python type -> the JavaScript type the same value has after the
-#: bridge's ``json.dumps``. A value that changes shape in transit shows
-#: as a disagreement between this map and ``acervatorThemes.types()``.
+#: Python type -> the JavaScript type the same value has after the bridge's
+#: json.dumps, compared against acervatorThemes.types().
 JS_TYPE_OF = {
     "str": "string",
     "int": "number",
@@ -103,8 +102,7 @@ def token_payload() -> dict:
 
 
 #: A design-token table with the real module's three reader names.
-#: ``token`` raises for a name it does not hold, so a caller that skipped
-#: ``has`` fails loudly instead of resolving to undefined.
+#: token raises for a name it does not hold.
 TABLE_STANDIN = (
     "window.acervatorTokens = (function () {"
     "  var bag = JSON.parse(TOKENS).tokens;"
@@ -791,9 +789,8 @@ def test_a_name_the_payload_never_carried_is_not_a_theme(js: JsRuntime):
         assert js.json("acervatorThemes.theme(JSON.parse(NAME))") == {}
         assert js.json("acervatorThemes.tokenNames(JSON.parse(NAME))") == {}
         assert js.json("acervatorThemes.select(JSON.parse(NAME))") is None
-        # The TYPE, not the value. JSON.stringify turns a function into
-        # `undefined`, the same answer an absent name gives, so a value
-        # comparison cannot tell a leaked method from a real miss.
+        # The TYPE, not the value: JSON.stringify turns a function into
+        # `undefined`, the same answer an absent name gives.
         for reader in ("displayName", "styleSheet"):
             kind = js.json("typeof acervatorThemes." + reader + "(JSON.parse(NAME))")
             assert kind == "undefined", f"{reader}({inherited}) returned a {kind}"

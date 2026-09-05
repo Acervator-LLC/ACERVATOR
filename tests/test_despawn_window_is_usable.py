@@ -1,92 +1,12 @@
-"""The despawn window is usable — issue #103.
+"""The tranche despawn window, from `despawn_preview` to the panel row.
 
-WHAT WAS MEASURED, AND WHY IT IS NOT A BROKEN SWEEP
-===================================================
-Item 9's tranche despawn timer shipped on 2026-08-13 and it works.
-Measured on 2026-08-24 against the operator's own `bot_state.json`,
-opened read-only and never written:
-
-    open fold tranches            1,680 across 38 bots
-    open stack tranches               0 on every bot
-    tranches with `created_ts`    1,680 of 1,680 (100%)
-    `tranche_despawn_days`        0 (Off) on all 38 bots
-    the key stored explicitly     38 of 38 configs
-
-    age distribution   >= 7 d  343   >= 14 d  209
-                       >= 30 d   80   >= 60 d   19   >= 90 d  0
-
-    a sweep at 30 days today      80 tranches, $31.2291, 2,853.77 units
-                                  across 9 bots, emptying none of them
-
-The feature has never run once. The setting is on the Settings tab
-under Advanced; the tranche count that worries the operator is on the
-Fold Tranches tab; and neither surface said the other existed. A
-control that names no consequence is a control nobody moves.
-
-THE DEFAULT IS NOT THE DEFECT, and this file records why rather than
-arguing it. All 38 configs store the key EXPLICITLY as 0 and the loader
-reads the stored value, so changing the dataclass default would reach
-none of them. It would only arm the timer on bots created afterwards,
-silently. The repair is a surface, not a new number.
-
-WHAT DESPAWN ACTUALLY DOES TO VALUE
-===================================
-MERGE, DESPAWN and CLEAR are the only three things that collapse or
-remove a tranche. This file drives the shipped despawn against a
-fixture and records the answer: the record is REMOVED from the ledger,
-and nothing else moves. Holdings, `_main_lots`, target balance and
-anchor are untouched, no order is placed or cancelled, and
-`_fold_queue_usd` is recomputed off what is left. A fold tranche is an
-EARMARK, not custody — the scrum sale already happened and the dollars
-are already in the shared wallet — so removing it returns that money
-from "queued rebuy" to ordinary spendable balance and induces no
-disagreement with anything the exchange reports.
-
-QUEUE ITEM 20 IS NOT ALREADY SATISFIED, and this file is the evidence.
-A wire credit CAN attach to a tranche: `apply_wire_income` Case 1 adds
-its share to `t["usd"]` and appends a `wire_credits` provenance entry
-(`scrumming_bot.py:2465`). 211 of the 1,680 live fold tranches carry
-one today, holding $7.81 between them.
-`test_a_despawn_takes_an_attached_wire_credit_with_it` drives it: the
-credit goes with the record and `_pending_wire_credits` does not move.
-Nothing here builds the redistribution — that is item 20's own unit.
-
-WHAT THIS FILE PROVES
-=====================
-1. The shared preview and the SHIPPED sweep agree, record for record,
-   over one fixture holding every edge the sweep names.
-2. A despawn removes the record and moves no value.
-3. An attached wire credit goes with the tranche.
-4. The operator can see the consequence BEFORE it runs: the Fold
-   Tranches panel names the setting, says where the control lives, and
-   prints what each candidate window would remove.
-5. The operator can see the result AFTER it runs: the sweep emits a
-   bus line carrying the counts and the money.
-
-EVERY ASSERTION DRIVES SHIPPED CODE. A real `ScrummingBot`, its real
-`_despawn_aged_tranches`, its real `apply_wire_income`, and the real
-`BotLiveSettingsDialog._create_fold_tranches_tab` built offscreen.
-Nothing here re-implements a line of either.
-
-NOTHING TOUCHES LIVE STATE. No `~/.acervator` path is opened. No Clear
-or Fire button is pressed. No despawn is run against anything but the
-fixtures below.
-
-TWO-SIDED BY CONSTRUCTION
-=========================
-`test_without_the_despawn_rows_the_panel_names_nothing` puts the
-panel back the way it was and
-reproduces the measured BEFORE: a Fold-Tranche Cycle Health form that
-says nothing about despawn at all. `test_the_pin_goes_not_ok_against_a_lying_preview`
-replaces the rendered row with a fabricated count and shows the panel pin goes
-not-ok. A repair test that cannot reproduce the defect proves nothing
-about the repair.
-
-FALSIFICATION: this file is wrong if (a) the preview and the sweep
-disagree on any fixture below, (b) a despawn changes holdings, lots,
-target or anchor, (c) the panel names the despawn setting while the
-rows are reverted, or (d) the pin stays ok against a fabricated
-preview.
+`despawn_preview` and the shipped `_despawn_aged_tranches` are driven over
+one fixture and must agree record for record, and a despawn must remove the
+record while holdings, `_main_lots`, target balance and anchor stay put. An
+attached `wire_credits` entry leaves with its tranche and
+`_pending_wire_credits` does not move. `_create_fold_tranches_tab` is built
+offscreen to read what the operator sees before the sweep runs, and
+`test_the_pin_goes_not_ok_against_a_lying_preview` is its control.
 """
 
 from __future__ import annotations
@@ -101,27 +21,12 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-#: THE CLOCK, CAPTURED ONCE. Every age below is stated against it.
-#:
-#: IT IS THE WALL CLOCK AND NOT A ROUND CONSTANT, because the shipped
-#: panel reads `time.time()` when it builds the tab and nothing lets a
-#: test inject one. A fixture pinned to a fixed epoch would be
-#: FUTURE-DATED against that read, every age would come out negative,
-#: and the panel would truthfully report that nothing is old enough —
-#: a green-looking run measuring nothing. Captured here, the panel's
-#: own read lands LATER, which moves every age forward only. The
-#: nearest fixture record to a threshold therefore sits a full DAY
-#: under it, not a second: in a 1,940-test run the two reads were 17
-#: seconds apart, which is enough to carry a one-second-young record
-#: across. The exact one-second case has its own test, with the clock
-#: injected.
+#: The wall clock, not a fixed epoch: `_create_fold_tranches_tab` reads
+#: `time.time()` itself and takes no injected clock.
 NOW = time.time()
 
 DAY = 86400.0
 
-#: The armed threshold these tests use. It is the window the fleet
-#: measurement above reports 80 tranches against, so the numbers in
-#: this file and the numbers in the issue are the same number.
 ARMED_DAYS = 30
 
 PIN = "gui.04.003.postcondition.despawn_rows_match_ledger"
@@ -157,33 +62,13 @@ def _stack(
 
 
 def _fixture_ledgers() -> tuple[list, list]:
-    """Both ledgers, holding every edge the sweep names.
+    """Both ledgers, holding every edge `despawn_preview` names.
 
-    Fold side, 6 records:
-      * two well over the threshold, one of them the smallest live
-        tranche size on the fleet ($0.00000022);
-      * one EXACTLY at the threshold, because the boundary is
-        inclusive and an off-by-one there is invisible otherwise;
-      * one a WHOLE DAY under it. A one-second margin was measured
-        failing on 2026-08-24: this fixture ages against the clock
-        captured at import, the panel reads the clock again when it
-        builds, and inside a 1,940-test run those two reads were 17
-        seconds apart — enough to carry a one-second-young record over
-        the line and report four removals where a control sweep took
-        three. The one-second case is tested on its own in
-        `test_the_boundary_is_inclusive`, which injects the clock and
-        cannot drift.
-      * one fresh;
-      * one AGELESS, which must be kept and counted apart.
-
-    Stack side, 4 records:
-      * one aged and filled, which goes;
-      * one aged and PENDING WITH AN ORDER ID, which is kept because
-        removing a record that owns a resting exchange order would
-        strand it;
-      * one aged and pending with NO order id, an Invisible-mode
-        record, which goes;
-      * one fresh.
+    Fold: two over the threshold, one exactly at it, one a whole day under
+    it, one fresh, and one ageless. Stack: one aged and filled, one aged and
+    pending with an `order_id`, one aged and pending without one, and one
+    fresh. `test_the_boundary_is_inclusive` covers the one-second case with
+    an injected clock.
     """
     fold = [
         _fold(10.0, 1.0, 40),
@@ -223,29 +108,10 @@ def _bot(days: int = 0, fold=None, stack=None):
     return bot
 
 
-# ---------------------------------------------------------------- #
-# 1. The shared rule and the shipped sweep are the same rule        #
-# ---------------------------------------------------------------- #
-
-
 def test_the_preview_and_the_shipped_sweep_agree() -> None:
-    """THE BINDING TEST. Two implementations, one fixture, one answer.
-
-    `ScrummingBot._despawn_aged_tranches` cannot call `despawn_preview`
-    today: it lives in a file another unit holds open, and
-    `bot_container` is imported BY `scrumming_bot`, so the dependency
-    runs one way only. Two implementations that agree today drift the
-    next time either one moves — that is exactly how the Min-rebuy
-    column came to print a price the executor refuses. This test is
-    what stops it here.
-
-    THE SWEEP'S REPORT STILL SPELLS ITS COUNTS `*_delisted`. The
-    operator's ruling of 2026-08-24 is that tranches do not delist —
-    merge, despawn and clear are the only three verbs — so the preview
-    spells them `*_removed`. The keys are mapped explicitly below
-    rather than matched by name, and renaming the sweep's own report
-    belongs to whoever next holds `scrumming_bot.py`.
-    """
+    """`despawn_preview` and `_despawn_aged_tranches` answer identically over
+    one fixture. The sweep's report still spells its counts `*_delisted` and
+    the preview spells them `*_removed`, so the keys are mapped by hand."""
     from src.trading.bot_container import despawn_preview
 
     fold, stack = _fixture_ledgers()
@@ -320,11 +186,6 @@ def test_an_unusable_clock_removes_nothing() -> None:
         assert out["stack_removed"] == 0, bad
 
 
-# ---------------------------------------------------------------- #
-# 2. What a despawn does to value                                   #
-# ---------------------------------------------------------------- #
-
-
 def test_a_despawn_removes_the_record_and_moves_no_value() -> None:
     """DESPAWN removes. It does not sell, buy, reserve or transfer.
 
@@ -395,11 +256,6 @@ def test_a_stack_record_holding_a_live_order_survives() -> None:
     assert any(t.get("order_id") == "live-order-1" for t in bot._stack_tranches)
 
 
-# ---------------------------------------------------------------- #
-# 3. Queue item 20 — a wire credit CAN attach to a tranche          #
-# ---------------------------------------------------------------- #
-
-
 def test_a_wire_credit_can_attach_to_a_tranche() -> None:
     """ESTABLISHED, NOT ASSUMED. Credits are not per-bot only.
 
@@ -423,23 +279,10 @@ def test_a_wire_credit_can_attach_to_a_tranche() -> None:
 def test_a_despawn_takes_an_attached_wire_credit_with_it() -> None:
     """ITEM 20 IS NOT ALREADY SATISFIED, and this is the evidence.
 
-    The aged tranche carries $1.00 of routed wire income. The despawn
-    removes the record, and that dollar goes with it: it does NOT
-    return to `_pending_wire_credits` and it is not redistributed
-    across the tranches that remain. The bot's parked pool is exactly
-    what it was before the sweep.
-
-    THIS FILE FIXES NOTHING HERE. Redistributing a despawned tranche's
-    credits back into the pool is queue item 20 and is its own unit.
-    What this test does is stop that hole being invisible, and fail the
-    day somebody claims it was never there.
-
-    THE LIVE EXPOSURE TODAY IS ZERO, and that is a measurement rather
-    than a reassurance: 211 of the 1,680 live fold tranches carry
-    attached credits totalling $7.81, and none of those 211 is yet 14
-    days old, so a sweep at any window in `DESPAWN_PREVIEW_WINDOWS`
-    would orphan nothing this morning. That is a fact about today's
-    ages, not about the mechanism.
+    The aged tranche's $1.00 of routed wire income leaves with the record:
+    `_pending_wire_credits` does not move and no remaining tranche gains a
+    share. `report["usd_delisted"]` carries the tranche's own USD plus that
+    credit.
     """
     bot = _bot(
         days=ARMED_DAYS, fold=[_fold(10.0, 1.0, 40), _fold(10.0, 1.0, 1)], stack=[]
@@ -464,20 +307,9 @@ def test_a_despawn_takes_an_attached_wire_credit_with_it() -> None:
     )
 
 
-# ---------------------------------------------------------------- #
-# 4. The operator sees the result AFTER it runs                     #
-# ---------------------------------------------------------------- #
-
-
 def test_the_sweep_reports_what_it_did() -> None:
-    """A sweep that ran silently is a sweep the operator cannot trust.
-
-    The shipped sweep emits one `bot.log` line carrying both counts,
-    the money and the threshold. This asserts the line exists and
-    carries the numbers, so the operator who arms the setting can tell
-    it worked — the same defect issue #98 repaired for the clear
-    buttons.
-    """
+    """`_despawn_aged_tranches` emits one `bot.log` line carrying both
+    counts, the money and the threshold."""
     bot = _bot(days=ARMED_DAYS)
     seen: list[str] = []
     bot._bus.subscribe(
@@ -508,11 +340,6 @@ def test_a_sweep_that_removed_nothing_stays_quiet() -> None:
     )
     bot._despawn_aged_tranches(now=NOW)
     assert not [m for m in seen if "TRANCHES DESPAWNED" in m]
-
-
-# ---------------------------------------------------------------- #
-# 5. The operator sees the consequence BEFORE it runs                #
-# ---------------------------------------------------------------- #
 
 
 def _qt_or_skip():
@@ -559,12 +386,8 @@ def _panel_for(bot):
 
 
 def _destroy(panel) -> None:
-    """Tear the dialog down without `deleteLater`.
-
-    Issue #96 measured that `deleteLater` CAUSES the leak here: it
-    moves ownership to C++ and the dialog outlives the test, where a
-    stranger's leak assertion then finds it and fails.
-    """
+    """Tear `panel.dialog` down without `deleteLater`, which moves ownership
+    to C++ and leaves the dialog alive after the test."""
     panel.page.setParent(None)
     panel.dialog.setParent(None)
     panel.dialog.close()
@@ -651,19 +474,9 @@ def test_the_panel_adds_no_removal_button(panel_off) -> None:
     assert not [t for t in texts if "despawn" in t], texts
 
 
-# ---------------------------------------------------------------- #
-# 6. The two-sided controls                                          #
-# ---------------------------------------------------------------- #
-
-
 def test_without_the_despawn_rows_the_panel_names_nothing(monkeypatch) -> None:
-    """REVERT CONTROL. Put the panel back and the BEFORE returns.
-
-    With `_install_despawn_rows` neutered the Fold-Tranche Cycle Health
-    form is exactly what the operator has been looking at since
-    2026-08-13: a tranche count, a parked total, an oldest age, and no
-    mention anywhere that a setting exists which would act on them.
-    """
+    """With `install_despawn_rows` neutered the Fold-Tranche Cycle Health form
+    names no despawn setting at all."""
     import src.gui.live_settings.fold_tranches_tab as tab
 
     monkeypatch.setattr(tab, "install_despawn_rows", lambda *_a, **_k: {}, raising=True)

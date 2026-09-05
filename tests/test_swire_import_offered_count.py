@@ -1,44 +1,9 @@
-"""SmartWireManager.import_ledgers must count every row it was offered.
+"""`SmartWireManager.import_ledgers` counts every row it was offered.
 
-THE DEFECT THIS PINS
-====================
-``import_ledgers`` reports how many ledger rows a restore kept. Its
-``offered`` counter used to start incrementing AFTER the loop's two
-guard clauses, so a row dropped for not being a dict, or for carrying
-no ``bot_id``, was invisible to it. Measured on the live file before
-this change, a six-row payload that lost four rows reported::
-
-    SmartWire: import accepted 2 of 3 ledger row(s) offered; 1 dropped
-
-Six were offered and four were lost. Three of those four were lost in
-total silence. The number was wrong in the direction that reassures.
-
-The worse shape: if every loss goes to a guard rather than an
-exception, ``dropped`` stays 0, the WARNING never fires, and the
-operator sees only the "imported N ledger(s)" INFO — the exact silence
-the surrounding logging exists to end.
-
-WHY A GUARD-DROP IS A REAL LOSS
-===============================
-No writer in this codebase can emit either shape. ``export_ledgers``
-always appends a dict carrying ``"bot_id": str(bot_id)``;
-``StateManager.save_state`` stores that list verbatim; and
-``StateManager.delete_bot`` only filters rows out. So either shape
-means the save is corrupt, truncated or foreign — and the bot behind
-that row reads $0.00 wired_in / $0.00 wired_out for the whole session,
-exactly as after an exception-drop. It is the same kind of loss, and
-it is counted, but it is counted under its own cause because a
-guard-drop cannot name the bot while an exception-drop can.
-
-WHAT THIS FILE MUST NOT ALLOW
-=============================
-This unit changes what is COUNTED and REPORTED. It must not change
-what is imported. Every expected ledger state below was measured on
-the promoted live file BEFORE the change, including the partial-apply
-on the raising row, which is a separate pre-existing defect and is
-pinned here so that it stays exactly as it was.
-
-Nothing here writes to disk or touches ~/.acervator.
+`ROW_SHAPES` pins the ledger state each row shape leaves behind, so a change
+to the count cannot change what is imported. `_summaries` reads the one
+WARNING the import writes, and accepted plus lost must equal the rows the
+caller handed in, each loss named under its own cause.
 """
 
 from __future__ import annotations
@@ -158,10 +123,8 @@ LEDGER_B = {
     "starting_balance": 50.0,
     "mature_profit_allocated": 0.0,
 }
-# The raiser leaves a skeleton behind: the BotLedger is created, then
-# float("not-a-number") raises before ANY overlay field is written, so
-# wired_in stays 0.0 although the row carried 1.0. That partial apply
-# is pre-existing and deliberately unchanged by this unit.
+# The BotLedger exists but `wired_in` stays 0.0: `RAISER` raises before any
+# overlay field is written.
 LEDGER_R_PARTIAL = {
     "bot_id": "botR",
     "asset": "XRP/USD",
@@ -174,11 +137,6 @@ LEDGER_R_PARTIAL = {
     "mature_profit_allocated": 0.0,
 }
 
-
-# --- CONTROL (a) — THE IMPORTED STATE IS UNTOUCHED --------------------
-# A failure here means this unit changed what the restore keeps or
-# drops. That is money history, and counting it is not licence to move
-# it. Every expectation was measured on live before the change.
 
 ROW_SHAPES = [
     ("a good row", [GOOD_A], 1, {"botA": LEDGER_A}),
@@ -214,11 +172,6 @@ def test_a2_a_lost_row_never_reaches_the_ledger_map():
     )
     assert state == {}
 
-
-# --- CONTROL (b) — THE COUNT IS NOW COMPLETE --------------------------
-# A failure here means the summary still under-reports: kept plus lost
-# would not add up to what the caller handed in, and the operator would
-# read a loss as smaller than it is.
 
 FINDING_SIX = [GOOD_A, GOOD_B, RAISER, NON_DICT, NO_BOT_ID, EMPTY_BOT_ID]
 
@@ -257,12 +210,6 @@ def test_b3_the_named_row_warning_still_fires_for_an_exception():
     assert "PARTIALLY applied" in named[0]
 
 
-# --- CONTROL (c) — THE OPERATOR IS TOLD WHEN A GUARD DROPS A ROW ------
-# A failure here means the completely silent case survived: rows lost
-# only to the guards, no exception anywhere, and the operator hears
-# nothing but a cheerful "imported N ledger(s)".
-
-
 def test_c_a_guard_only_loss_is_reported():
     payload = [GOOD_A, NON_DICT, None, NO_BOT_ID, EMPTY_BOT_ID]
     n, state, logs = _run(payload)
@@ -297,12 +244,6 @@ def test_c3_a_guard_only_loss_of_every_row_is_reported():
     assert len(summary) == 1, f"total loss was silent: {logs}"
     assert "accepted 0 of 4 ledger row(s) offered" in summary[0]
     assert "4 lost" in summary[0]
-
-
-# --- CONTROL (d) — NO FALSE ALARM ON A CLEAN IMPORT -------------------
-# A failure here means the new count cries loss on a well-formed save.
-# A false alarm about money history is its own defect, and it would
-# train the operator to ignore the real one.
 
 
 def _realistic_save() -> list[dict]:

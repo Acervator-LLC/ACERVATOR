@@ -105,9 +105,8 @@ def _live_settings_source(gui_dir):
 
 BLS_SRC = _live_settings_source(REPO_ROOT / "src" / "gui")
 
-# The live IMU bot, read-only from ~/.acervator/bot_state.json on
-# 2026-08-24 and pinned here so the arithmetic below is the operator's
-# own state rather than a fixture nobody has seen.
+# One bot's real saved state, pinned so the arithmetic below runs on a
+# shape the operator holds.
 IMU_ANCHOR = 50.00
 IMU_TARGET = 63.53
 IMU_PCT = 1.0
@@ -426,14 +425,8 @@ def _code_only(src: str) -> str:
     )
 
 
-# From Python 3.12 an f-string is NOT a STRING token. It arrives as
-# FSTRING_START / FSTRING_MIDDLE / FSTRING_END with the interpolations
-# tokenised as ordinary code between them. Every emit in
-# `scrumming_bot.py` is an f-string, so a filter that named only
-# `tokenize.STRING` would leave every operator-facing message in the
-# "code" view and take none of them into the "literals" view -- both
-# scanners below would then be measuring the opposite of what they
-# claim. `getattr` because the names do not exist before 3.12.
+# From Python 3.12 an f-string is a FSTRING_START/MIDDLE/END run, not a
+# STRING token; `getattr` because those names predate 3.12.
 _FSTRING_START = getattr(tokenize, "FSTRING_START", -101)
 _FSTRING_MIDDLE = getattr(tokenize, "FSTRING_MIDDLE", -102)
 _FSTRING_END = getattr(tokenize, "FSTRING_END", -103)
