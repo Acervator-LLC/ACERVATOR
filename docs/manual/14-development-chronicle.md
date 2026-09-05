@@ -112,9 +112,14 @@ time.
 
 ## Stage three: the repository
 
-**Record three.** The first commit, `6e4f46b`, 18 August 2026, subject
-`initial upload`, holds 650 files, 470 of them Python. A second root commit,
-`be6aa04`, carries the same subject and date and merges into the same history.
+**Record three.** The history opens with two root commits carrying the same
+subject and the same date, and merging into one line. The first holds 650
+files, 470 of them Python.
+
+```
+6e4f46b   18 Aug 2026   initial upload    650 files, 470 Python
+be6aa04   18 Aug 2026   initial upload    the second root
+```
 
 The operator's account ends at 74 Python files. Roughly 400 arrived with no
 commit, no diff and no review of any kind. My opinion is that this one fact
@@ -133,14 +138,13 @@ The instruments themselves, all reachable and all runnable:
   `passed` field. A unit reports that field and never an improvement over a
   previous run, because a report that got better is still a report that failed.
   The gate first reaches a commit subject on 22 August 2026, four days into the
-  history, in `3cfd35d`: `repair: four files pass the Coding Archetype (44 high
-  -> 0, zero suppressions)`.
+  history, in commit 3cfd35d: repair: four files pass the Coding Archetype (44
+  high -> 0, zero suppressions).
 - **Fixture controls before any verdict.** Each archetype scores a known-good
   and a known-bad fixture under `harness_fixtures/` first. Measured on this
-  branch: `harness_fixtures/docs_archetype/known_good.md` exits 0 with
-  `passed=true`, and `harness_fixtures/docs_archetype/known_bad.md` exits 1 with
-  `passed=false`. A green from an instrument that cannot produce a red is a
-  green about nothing.
+  branch, the documentation archetype's known-good fixture exits 0 with a true
+  verdict and its known-bad fixture exits 1 with a false one. A green from an
+  instrument that cannot produce a red is a green about nothing.
 - **A positive control on every zero.** Each absence in this part carries the
   query that proves the instrument returns something when something is there.
 - **Program identity for a prose-only change.** Parse before and after, strip
@@ -168,8 +172,8 @@ The instruments themselves, all reachable and all runnable:
 
 **What changed.** Versioning moved from a number typed by hand into two files
 that had to agree, to `resolve_version` in `src/_version.py`, which asks git and
-falls back to a value baked into a frozen bundle. That landed as `ef105f5`, 27
-August 2026.
+falls back to a value baked into a frozen bundle. That landed 27 August 2026,
+in commit ef105f5.
 
 ## Stage four: the audits
 
@@ -179,17 +183,29 @@ prose.
 **The comment audit.** Issue 319 asks whether every comment in the tree states
 something true, and it remains open. Twenty-six commits carry its number in
 their subject; they touch 136 files and write 5,834 lines to remove 10,447.
-`tools/comment_audit.py` counts what is left across `src`, `tests`,
-`dev_harness` and `tools`: 927 files, 14,748 comments on their own line, 2,424
-trailing comments, 1,322 multi-line blocks totalling 7,331 lines.
+`tools/comment_audit.py` counts what is left across the source, the tests, the
+harness and the tools.
+
+```
+927 files
+14,748 comments on their own line
+2,424 trailing comments
+1,322 multi-line blocks, 7,331 lines
+```
 
 Its real yield was not tidier prose. Reading a comment against the code beneath
-it kept turning up code that did not do what the comment said. `aa74c8f`,
-`fix(319): TradeJournal.verify recomputes the hash chain, it did not` — a
-verifier that could not refuse. `2f99732`, `fix(ta): Wilder RS divides by
-avg_loss, not avg_loss plus an epsilon` — a constant invisible at a four-figure
-price and large enough to invert the indicator at the prices some of these bots
-actually trade. `ba50496`, `fix(319): remove every committed machine path`.
+it kept turning up code that did not do what the comment said. Three of the
+commits it produced:
+
+```
+aa74c8f   fix(319): TradeJournal.verify recomputes the hash chain, it did not
+2f99732   fix(ta): Wilder RS divides by avg_loss, not avg_loss plus an epsilon
+ba50496   fix(319): remove every committed machine path
+```
+
+The first is a verifier that could not refuse. The second is a constant
+invisible at a four-figure price and large enough to invert the indicator at
+the prices some of these bots actually trade.
 
 This is the audit I would keep if I could keep only one. Prose is where a wrong
 belief about the code gets written down, and reading it forces a comparison
@@ -352,11 +368,17 @@ reader can check.
 ## Where the work stands
 
 The Qt-to-React conversion, issue 128, is measurable rather than assertable.
-`tools/conversion_state.py` reports 75 renderer modules loaded by the page, 67
-bridge methods, and 69 files under the GUI package importing the Qt binding: 63
-paired with a React module, 5 that are shell or plumbing and never convertible,
-and 1 unpaired, `src/gui/history_qt_table.py`. The tool carries its own control,
-in that a converted name must report `paired`, and three do.
+`tools/conversion_state.py` reports 75 renderer modules loaded by the page and
+67 bridge methods, and it splits the GUI files that still import the Qt binding
+three ways. The tool carries its own control, in that a converted name must
+report as paired, and three do.
+
+```
+69 GUI files importing the Qt binding
+    63   paired with a React module
+     5   shell or plumbing, never convertible
+     1   unpaired: src/gui/history_qt_table.py
+```
 
 The instruments cost real time and I would rather say so than imply the
 discipline is free. The coding archetype takes about thirteen seconds on
@@ -407,19 +429,24 @@ The repair took four steps and none of them was a patch at the site.
 3. Move every construction site onto the factory.
 4. Ban direct construction outside the factory, with a test.
 
-`make_bot_config` at `src/trading/container/config.py:578` is that factory. It
+`make_bot_config` in `src/trading/container/config.py` is that factory. It
 refuses a mode that is not a bot mode, strips the deprecated keys, refuses a
 field belonging to the other mode, applies the mode-aware default for the target
 asset, constructs, and re-raises anything the shape check reports. Five call
 sites use it and no production code constructs the dataclass directly.
-`_BOT_CONFIG_SCRUMMING_ONLY_FIELDS` holds 40 names,
-`_BOT_CONFIG_EXTRACTOR_ONLY_FIELDS` holds 15, and every name in both resolves to
-a real field.
 
-One detail in the factory's own error message is now stale: it points a reader
-at `bot_container.py` for the two manifests, and both moved to
-`container/config.py`, which `bot_container.py` re-exports. The message names a
-path that still resolves, and it no longer names the definition.
+Two manifests in the same module hold the mode-only field names, and every name
+in both resolves to a real field.
+
+```python
+_BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(...)   # 40 names
+_BOT_CONFIG_EXTRACTOR_ONLY_FIELDS: frozenset = frozenset(...)   # 15 names
+```
+
+One detail in the factory's own error message is now stale. It points a reader
+at `bot_container.py` for the two manifests, and both moved into the
+configuration module named above, which that file re-exports. The message names
+a path that still resolves, and it no longer names the definition.
 
 ## The inverted extractor and its wizard surface
 
@@ -434,15 +461,21 @@ The inverted mode came from an operator's observation: given a standing position
 in an asset, the same machinery should be able to use that asset as the
 ammunition and sell first instead of buying first.
 
-Three fields carry it, all in `src/trading/container/config.py`:
-`extractor_direction`, which selects normal or inverted;
-`inverted_extractor_standing_alt_units`, which declares how much of the standing
-position the bot may deploy; and the refusal in `make_bot_config` of the pair of
-inverted and zero units. `src/gui/bot_wizard.py` is the surface that sets them,
-and it defines its pages under a Qt guard, so a naive scan of the module reports
-no classes at all. The seven pages are there, and
-`BotCreationWizard` is the one the main window builds.
+Two fields and one refusal carry it, all in `src/trading/container/config.py`.
+The direction field selects normal or inverted, the standing-units field
+declares how much of the standing position the bot may deploy, and the factory
+refuses the pair of inverted and zero units.
 
-Normal and inverted are the same engine run the other way. The three fields
-above carry the whole difference between them.
+```python
+extractor_direction: str = "normal"
+inverted_extractor_standing_alt_units: float = 0.0
+```
+
+`src/gui/bot_wizard.py` is the surface that sets them, and it defines its pages
+under a Qt guard, so a naive scan of the module reports no classes at all. The
+seven pages are there, and `BotCreationWizard` is the one the main window
+builds.
+
+Normal and inverted are the same engine run the other way. The two fields and
+the refusal above carry the whole difference between them.
 
