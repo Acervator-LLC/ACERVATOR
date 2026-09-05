@@ -121,9 +121,7 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# The bot, its config, its phantoms and its coordinator, as the test owns
-# them. The Qt tab is driven with these; the surface is driven with its
-# own. Neither side reads the other's.
+# The bot, config, phantoms and coordinator, one set per side, neither shared.
 
 
 class Config:
@@ -1813,9 +1811,7 @@ CALL_CONSTANTS = (
     "LOCK_CHANGED",
 )
 
-# The two values no snapshot key carries, each with the check that
-# covers it. METHOD is the name the bridge registers under and
-# PANE_MODEL is the tab state the bridge keeps between calls.
+# The values no snapshot key carries, each with the check that covers it.
 NOT_IN_THE_SNAPSHOT = {
     "METHOD": "test_the_bridge_registers_the_phantom_bots_method",
     "PANE_MODEL": "test_the_bridge_resets_the_tab_state_on_request",

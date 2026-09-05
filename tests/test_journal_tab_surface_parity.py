@@ -69,9 +69,7 @@ def digest(value) -> str:
     ).hexdigest()
 
 
-# The three services, as the test owns them. The Qt tab is driven with
-# these; the surface is driven with its own. Neither side reads the
-# other's.
+# The three services, one instance per side, so neither reads the other's.
 
 
 class Journal:
@@ -1274,10 +1272,7 @@ CALL_CONSTANTS = (
     "FILTER_RETURN",
 )
 
-# The three values no snapshot key carries, each with the check that
-# covers it. METHOD is the name the bridge registers under, LOGGER_NAME
-# the logger the shipped screen names, and PANE_MODEL the screen state
-# the bridge keeps between calls.
+# The values no snapshot key carries, each with the check that covers it.
 NOT_IN_THE_SNAPSHOT = {
     "METHOD": "test_the_bridge_registers_the_journal_tab_method",
     "LOGGER_NAME": "test_the_surface_names_the_same_logger_as_the_screen",

@@ -44,9 +44,7 @@ from src.trading.bot_container import BotManager, BotMode  # noqa: E402
 from src.trading.extractor_bot import ExtractorBot, ExtractorPosition  # noqa: E402
 from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
-# The one sale every row uses, so the rows differ only in the thing they
-# are testing. Eight alt units leave at 0.00125 base each, so 0.01 base
-# comes back. The bot's stored money rate turns 0.01 base into $20.
+# One sale for every row: 8 alt units at 0.00125 return 0.01 base, worth $20.
 SOLD_UNITS = 8.0
 FILL_PRICE = 0.00125
 BASE_BACK = SOLD_UNITS * FILL_PRICE
@@ -56,9 +54,7 @@ USD_BACK = BASE_BACK * USD_PER_BASE
 PARENT_START_TARGET = 200.0
 PARENT_START_HOLDINGS = 1.0
 
-# The one exchange every bot in this file runs on. A parent and its
-# Extractor are bound to one exchange, so the sale can only reach a
-# parent that names the same one.
+# A parent and its Extractor share one exchange, so a sale reaches no other.
 EXCHANGE = "coinbase"
 
 

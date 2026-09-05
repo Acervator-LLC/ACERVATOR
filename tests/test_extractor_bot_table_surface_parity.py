@@ -51,10 +51,7 @@ TABLE_CONNECT_SITES = 1
 TABLE_TIMER_SITES = 0
 TABLE_BUS_SITES = 0
 
-# The design values the two colour maps are built from, typed out here
-# rather than read from either side, so a re-valued token cannot move
-# both together. `#888` is the one token written at three digits; the
-# screen reports it at six.
+# Typed out, not read from either side, so a re-valued token cannot move both.
 RUNNING_COLOR = "#00ff88"
 IDLE_SHORT_HEX = "#888"
 IDLE_COLOR = "#888888"
@@ -288,9 +285,7 @@ STEP_CASES: dict = {
 
 PICTURE_CASES = ("happy", "two_bots", "three_bots", "all_states", "empty")
 
-# The keys the widget can report for a button. The action a click runs is
-# a wiring, not a property of the button, so it is compared where the
-# wiring is compared.
+# The button keys; a click's action is a wiring and is compared with the wiring.
 COMPARED_BUTTON_KEYS = (
     "kind",
     "text",

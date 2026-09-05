@@ -75,18 +75,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 # Top-level directories whose name equals a stdlib top-level module name.
-#
-# Measured 2026-08-27: none. Issue #86 renamed the one entry, `os`, to
-# `deploy/kiosk/`.
-#
-# A NEW name landing here is not automatically a defect, but it is
-# automatically a review: it must satisfy
-# `test_no_stdlib_named_root_directory_is_a_package` as well.
 KNOWN_STDLIB_NAMED_ROOT_DIRS: frozenset[str] = frozenset()
 
-# A directory becomes importable as a real package when it holds one of
-# these. Source, bytecode and extension forms all give PathFinder a
-# loader, and a loader is what beats the stdlib module.
+# A directory holding one of these gives PathFinder a loader, which beats the stdlib.
 PACKAGE_MARKERS: tuple[str, ...] = (
     "__init__.py",
     "__init__.pyc",

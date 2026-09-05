@@ -1,8 +1,3 @@
-# S101  - pytest's assert IS the assertion syntax; -O would strip them
-#         and make this file inert. Nobody runs pytest with -O.
-# SLF001 - this file reads `_bots`, `_build_sim` and `_main_lots`. The
-#         question it answers is "what does a bot OPEN holding", and an
-#         opening book is not on a public surface.
 """Issue #111 violation B - fleet size must not decide who can trade.
 
 THE RULING THIS FILE ENFORCES. Live, Paper and Sim differ ONLY in where
@@ -503,14 +498,7 @@ class TestTheFleetCanStillTrade:
             "size still decides how much a bot trades."
         )
 
-        # The aggregate alone would pass if one bot fired everything and
-        # the LAST bot fired nothing, which is the pre-fix shape exactly.
-        #
-        # `per_symbol_trade_count` is the counter with a writer
-        # (fleet_replay_controller.py:1642); `per_bot_trade_count` is
-        # initialised beside it and never written, which its own comment
-        # at :96-102 records. Each symbol carries exactly one bot in this
-        # fleet, so the symbol counter IS the per-bot one.
+        # `per_bot_trade_count` has no writer, and each symbol here carries one bot.
         per_symbol = dict(crowd.progress.per_symbol_trade_count or {})
         assert set(per_symbol) == set(SYMBOLS), (
             f"the run counted {sorted(per_symbol)} against a fleet of "

@@ -57,9 +57,7 @@ class _StubBot:
         self._bus = _StubBus()
         self._stack_tranches: list[dict] = []
         self._stack_created: int = 0
-        # v3.23.28 — Invisible=True keeps _open_stack out of the
-        # Visible-mode exchange placement branch (which needs a real
-        # exchange). Set _aggressive default to False.
+        # Invisible keeps `_open_stack` out of the Visible-mode placement branch.
         self._invisible: bool = True
         self._aggressive: bool = False
 
@@ -142,20 +140,6 @@ class TestOpenStackFromScrumBehavior:
             "STACK OPEN FAILED" in kwargs.get("message", "")
             for _, kwargs in bot._bus.messages
         )
-
-
-# Invisible-mode tranche FIRE path — drives the real _execute_sell.
-#
-# The source-shape pins above never execute _execute_sell, so they were
-# blind to this: _open_stack_from_scrum accepted `summary` and dropped it,
-# and the reconciler passed summary=None into _execute_sell, which
-# dereferences summary.consensus_confidence at the "SELL signal:" emit —
-# BEFORE guarded_place_order. The AttributeError was swallowed by the
-# method's own `except Exception`, which emitted "SELL FAILED" and
-# returned None, so no invisible tranche could ever fire.
-#
-# These tests execute the real method. Each negative assertion is paired
-# with a positive control that must FAIL if the stub goes blind.
 
 
 class _StubOrder:

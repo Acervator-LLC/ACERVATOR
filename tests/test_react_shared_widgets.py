@@ -79,9 +79,7 @@ PAGE_ATTEMPTS = 2
 SETTLE_MS = 500
 NETWORK_SETTLE_MS = 1500
 
-#: Python type -> the JavaScript type the same value has after the
-#: bridge's ``json.dumps``. A value that changes shape in transit shows
-#: as a disagreement between this map and ``acervatorWidgets.types()``.
+#: Python type to the JavaScript type the same value has after ``json.dumps``.
 JS_TYPE_OF = {
     "str": "string",
     "int": "number",
@@ -1216,9 +1214,7 @@ READ_TABLE = (
     "    modes: cells.map(function (c) {"
     "      return c.getAttribute('data-resize-mode'); }),"
     "    titles: cells.map(function (c) { return c.getAttribute('title'); }),"
-    # A table redistributes its columns, so a cell's used width is a
-    # layout fact. What the cell ASKED for is resolved on a plain element
-    # instead, which still runs the var() and calc() the component wrote.
+    # A table redistributes columns, so the asked-for width is resolved off-table.
     "    widths: cells.map(function (c) {"
     "      if (!c.style.width) { return null; }"
     "      var probe = document.createElement('div');"

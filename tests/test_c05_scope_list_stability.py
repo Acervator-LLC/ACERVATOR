@@ -55,9 +55,7 @@ def qr():
     )
     matrix.rebuild_scope(IDS)
     app.processEvents()
-    # Constrain the height so the lists are actually scrollable; an
-    # unbounded offscreen list shows all 40 rows and the scrollbar
-    # range is 0..0, which would make every assertion below vacuous.
+    # Bounded, or an offscreen list shows all 40 rows and the scroll range is 0..0.
     matrix._source_list.setFixedHeight(120)
     matrix._dest_list.setFixedHeight(120)
     app.processEvents()
@@ -116,11 +114,7 @@ class TestScrollOffsetSurvivesRebuild:
         before = bar.value()
         assert before > 0
         _rebuild_with_relayout(matrix, app)
-        # The operator's place must survive the rebuild. EXACT on a real
-        # platform. Offscreen, the pumped relayout can restore against a
-        # transient scrollbar maximum and land one row short, which is not the
-        # RESET-to-top defect this guards, so one row of slack is allowed
-        # THERE and nowhere else.
+        # Offscreen, a pumped relayout can land one row short of the restored place.
         slack = 1 if os.environ.get("QT_QPA_PLATFORM") == "offscreen" else 0
         assert (
             bar.value() >= before - slack

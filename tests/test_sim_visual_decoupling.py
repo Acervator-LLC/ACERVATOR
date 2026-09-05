@@ -97,11 +97,7 @@ class _Controller:
     def __init__(self, bots=(), exchange=None, tape=None):
         self._bots = list(bots)
         self._exchange = exchange
-        # Issue #110 -- the LEDGER the stat strip reads is the tape,
-        # a different object from the connector the bots trade
-        # through. A stand-in that carries only `_exchange` is what
-        # let the strip read `_balances` off a `CCXTConnector` and
-        # report $0.00 on every run that traded.
+        # The stat strip reads the tape, not the connector the bots trade through.
         self._tape = tape
         self.progress = _Progress()
 
@@ -130,9 +126,7 @@ class _Panel:
         self._sim_price_chart = None
         self._sim_voting_readout = None
 
-    # The producer/consumer call these on ``self``; delegate to the
-    # real implementations so the stand-in never shadows the code
-    # under test with a simplified copy.
+    # Delegate, so the stand-in never shadows the code under test with a copy.
     def _collect_visual_snapshot(self):
         return frp.FleetReplayPanel._collect_visual_snapshot(self)
 
