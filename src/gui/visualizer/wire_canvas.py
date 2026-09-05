@@ -80,7 +80,7 @@ if _HAS_QT:
 
             p = QPainter(self)
             p.setRenderHint(QPainter.Antialiasing)
-            # v3.23.61 — respect operator's wire-opacity slider.
+            # _wire_opacity_pct is BotVisualizationTab's opacity slider, 0-100.
             _opacity = max(
                 0, min(100, int(getattr(self._viz, "_wire_opacity_pct", 100)))
             )

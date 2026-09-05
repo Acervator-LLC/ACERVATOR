@@ -1,11 +1,9 @@
-"""
-reconciliation.py — State recovery, order reconciliation, and trade journaling.
+"""State recovery, order reconciliation, and trade journaling.
 
-Handles:
-- Reconciling local bot state against actual exchange orders on startup
-- Detecting and handling orphaned orders
-- Maintaining a persistent trade journal with TA context
-- Crash recovery state snapshots
+``TradeJournal.record`` and ``CrashRecovery.save_snapshot`` are driven from
+``main_window``'s tick. ``ReconciliationEngine`` is constructed there and
+handed to the journal tab, but nothing calls ``reconcile`` or
+``cancel_orphaned``.
 """
 
 from __future__ import annotations
@@ -190,7 +188,7 @@ class TradeJournal:
         if not self._entries:
             return {"total_entries": 0, "unique_bots": 0, "date_range": ""}
 
-        actions = {}
+        actions: dict[str, int] = {}
         for e in self._entries:
             actions[e.action] = actions.get(e.action, 0) + 1
 
@@ -229,7 +227,6 @@ class TradeJournal:
                         if line:
                             try:
                                 d = json.loads(line)
-                                # Convert dict keys that are nested dicts
                                 entry = JournalEntry(
                                     **{
                                         k: v
@@ -238,10 +235,12 @@ class TradeJournal:
                                     }
                                 )
                                 self._entries.append(entry)
-                            except (
-                                Exception
-                            ):  # R28-OK: reconciliation probe best-effort
-                                pass
+                            except Exception as _line_exc:
+                                logger.debug(
+                                    "journal line skipped (%s): %s",
+                                    type(_line_exc).__name__,
+                                    _line_exc,
+                                )
             logger.info("Loaded %d journal entries from disk", len(self._entries))
         except Exception as e:
             logger.warning("Failed to load journal: %s", e)
@@ -259,10 +258,10 @@ class ReconciliationEngine:
     async def reconcile(
         self, exchange, bot_manager, exchange_id: str
     ) -> ReconciliationResult:
+        """Compare ``exchange.fetch_open_orders`` against ``local_order_ids``.
 
-        # sadp: R28 R29  # reconciliation: fail-loudly(R28) idempotent(R29)
-        """
-        Compare all open orders on exchange against local bot state.
+        No caller invokes this; ``_results`` stays empty for
+        ``get_latest_result``.
         """
         now = time.time()
         result = ReconciliationResult(
@@ -274,24 +273,9 @@ class ReconciliationEngine:
             open_orders = await exchange.fetch_open_orders()
             result.orders_checked = len(open_orders)
 
-            # Get all local bot order IDs.
-            # v3.20.4 — grid-bot collection removed. grid_bot.py was
-            # deleted v3.16.0; ScrummingBot tracks open orders via
-            # main_lots/fold_tranches (and ExtractorBot via positions),
-            # neither of which exposes a `grid` attribute. The branch
-            # below collected zero IDs in production for over a month
-            # — making `local_order_ids` empty and every open exchange
-            # order get reported as an orphan. Symptom-masking
-            # bug surfaced during the v3.20.4 grid-cleanup audit.
+            # Never populated, so every open order below is called an orphan.
             local_order_ids: set = set()
-            # TODO(v3.20.5+): walk ScrummingBot._main_lots /
-            # ExtractorBot._positions to populate local_order_ids so
-            # reconciliation can flag genuinely orphaned exchange
-            # orders. For now the branch returns empty (matches prior
-            # production behavior; no behavior regression on this
-            # cascade).
 
-            # Compare
             for order in open_orders:
                 oid = order.get("id", "")
                 if oid in local_order_ids:

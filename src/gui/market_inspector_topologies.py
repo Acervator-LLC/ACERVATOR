@@ -54,18 +54,16 @@ except ImportError:  # pragma: no cover - GUI-only guard
     _HAS_QT = False
 
 
-DISMISS_TTL_SECONDS: int = 24 * 60 * 60  # design doc § 10 answer 3
-# v3.24.57 (C35) — settings key holding {proposal_id: expiry_epoch}.
-# Older builds simply ignore an unknown key, so this is additive and
-# rolls back cleanly.
+DISMISS_TTL_SECONDS: int = 24 * 60 * 60
+# Settings key whose value is {proposal_id: expiry_epoch_seconds}.
 DISMISS_SETTINGS_KEY: str = "topology_dismissed_proposals"
-AUTO_REFRESH_MS: int = 10 * 60 * 1000  # 10 min
+AUTO_REFRESH_MS: int = 10 * 60 * 1000
 SCORE_HIGH: float = 80.0
 SCORE_MID: float = 50.0
 
 
 def _score_color(score: float) -> str:
-    """Colour ramp per design doc § 6."""
+    """Return the hex colour a proposal card is drawn in for ``score``."""
     if score >= SCORE_HIGH:
         return "#00cccc"
     if score >= SCORE_MID:
@@ -335,17 +333,7 @@ if _HAS_QT:
             self._proposal_source: Optional[Callable[[], list[dict]]] = None
             # dismissed_id -> expiry_epoch_seconds
             self._dismissed: dict[str, float] = {}
-            # v3.24.57 (C35 / SWARM-4.29) — the cache above is memory
-            # only, so a dismissal died with the widget while the button
-            # tooltip and the confirm dialog both promise 24 HOURS.
-            # Restarting the tab resurrected every dismissed card.
-            #
-            # INJECTED, never constructed here. `SettingsManager()`
-            # defaults to `Path.home()/".acervator"` with no env
-            # override, so building one inside a widget would write the
-            # operator's live settings from any test that renders this
-            # pane. Unset means memory-only — exactly today's behaviour,
-            # which keeps headless construction free of disk entirely.
+            # Injected by ``set_dismiss_store``; unset keeps dismissals in memory.
             self._dismiss_store: Optional[Any] = None
             self._proposals: list[dict[str, Any]] = []
 
@@ -445,9 +433,6 @@ if _HAS_QT:
             if not proposal_id:
                 return
             self._dismissed[proposal_id] = _now + DISMISS_TTL_SECONDS
-            # C35 — write through immediately. Deferring to close would
-            # lose the dismissal on a crash, which is precisely when the
-            # operator least wants the card back.
             self._persist_dismissed()
             self._proposals = [p for p in self._proposals if p.get("id") != proposal_id]
             self._render()
@@ -473,27 +458,19 @@ if _HAS_QT:
             if expired:
                 self._persist_dismissed()
 
-        # ── dismissal persistence (C35 / SWARM-4.29) ─────────────────
-
         def set_dismiss_store(self, store: Optional[Any]) -> None:
-            """Attach the settings-backed store and load what it holds.
+            """Attach ``store`` and load ``DISMISS_SETTINGS_KEY`` from it.
 
-            `store` needs only `get(key, default)` and `set(key, value)`
-            — the `SettingsManager` surface — so a test can pass a
-            tmp-backed double and this widget never resolves a path of
-            its own.
-
-            Entries already expired at load time are dropped rather than
-            imported: a dismissal that lapsed while the app was closed
-            has lapsed, and re-suppressing it on restart would extend a
-            24 h promise indefinitely across restarts.
+            ``store`` needs only ``get(key, default)`` and
+            ``set(key, value)``. Entries whose expiry has passed are
+            dropped at load and never enter ``_dismissed``.
             """
             self._dismiss_store = store
             if store is None:
                 return
             try:
                 raw = store.get(DISMISS_SETTINGS_KEY, {}) or {}
-            except Exception as exc:  # R28-OK: a bad store must not break the pane
+            except Exception as exc:  # a bad store must not break the pane
                 logger.warning(
                     "topology dismissals could not be loaded (%s); "
                     "continuing with an empty cache",
@@ -523,13 +500,12 @@ if _HAS_QT:
             )
 
         def _persist_dismissed(self) -> None:
-            """Best-effort write-through. Never raises: losing a
-            dismissal is a nuisance, taking down the pane is not."""
+            """Write ``_dismissed`` to the store. Logs and returns on failure."""
             if self._dismiss_store is None:
                 return
             try:
                 self._dismiss_store.set(DISMISS_SETTINGS_KEY, dict(self._dismissed))
-            except Exception as exc:  # R28-OK: persistence is best-effort
+            except Exception as exc:  # persistence is best-effort
                 logger.warning(
                     "topology dismissal could not be persisted (%s); it "
                     "will not survive restart",

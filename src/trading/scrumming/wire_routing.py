@@ -8,7 +8,7 @@ open), and keeps per-tranche wire-credit provenance bounded.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -75,6 +75,11 @@ class WireRoutingMixin(_Host):
     Methods keep ``self``; composed into ``ScrummingBot``. Outflow
     routing is best-effort and never raises into the caller's sell path.
     """
+
+    # ScrummingBot supplies these at runtime; the annotations create no attributes.
+    _anchor_target_balance: float
+    _pending_wire_ledger: list[dict]
+    _target_balance: Any
 
     def set_smart_wire(self, manager) -> None:
         """Attach a Smart Wire manager for cross-compounding."""
@@ -312,10 +317,8 @@ class WireRoutingMixin(_Host):
 
         credit = {"ts": _t.time(), "source": src, "usd": u, "ref": rf}
 
-        # Stack-at-entry: when the bot sits at center line AND at its
-        # entry price, wire income bumps the target and queues an
-        # aggressive buy for the next tick instead of feeding the fold
-        # queue. All conditions below must hold.
+        # Stack-at-entry: at centre line and at entry price, the wire raises
+        # _target_balance and queues a buy instead of feeding the fold queue.
         try:
             stack_pct = float(getattr(self.config, "wire_inflow_stack_pct", 1.0) or 0)
         except (TypeError, ValueError):

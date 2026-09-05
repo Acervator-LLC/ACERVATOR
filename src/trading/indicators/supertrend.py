@@ -1,7 +1,8 @@
 """Supertrend -- ATR trailing stop (Oliver Seban).
 
-Moved out of ``ta_engine.py`` for issue #73. The body below is a
-verbatim line slice of that file: no arithmetic was retyped.
+``SupertrendIndicator.compute`` builds Wilder's ATR from ``_true_range``
+and returns a ``Signal`` whose direction follows the sticky band it last
+crossed.
 """
 
 from __future__ import annotations
@@ -15,31 +16,22 @@ from .helpers import (
 )
 
 
-# 9. Supertrend — ATR-based dynamic support/resistance
 class SupertrendIndicator:
-    """
-    Supertrend (Oliver Seban popularised; ATR trailing stop concept).
-    Places a dynamic line above price in downtrend, below in uptrend.
-    When price crosses the line, it flips direction.
+    """ATR trailing stop over one candle list, emitting a ``Signal``.
 
-    Unlike Ichimoku (26-bar displacement, complex), Supertrend is reactive:
-    it gives a timestamped trend flip at the exact candle it occurs.
-    The combination of Ichimoku (predictive) + Supertrend (reactive) gives
-    both "what is coming" and "has it started."
+    THE PUBLISHED DEFINITION, Seban's Supertrend as StockCharts and
+    TradingView reproduce it::
 
-    Computation:
-      ATR over period
-      Upper band = (H + L)/2 + multiplier × ATR
-      Lower band = (H + L)/2 - multiplier × ATR
-      Supertrend is bullish when close > lower band
-      Supertrend is bearish when close < upper band
-      Bands are "sticky" — only update when price crosses them
+        basic upper = (high + low) / 2 + multiplier * ATR(period)
+        basic lower = (high + low) / 2 - multiplier * ATR(period)
+        final upper = basic upper if basic upper < prev final upper
+                      or prev close > prev final upper, else prev final upper
+        final lower = basic lower if basic lower > prev final lower
+                      or prev close < prev final lower, else prev final lower
 
-    For accumulation:
-      Flip bearish→bullish = highest-quality fold entry (trend changed NOW)
-      Flip bullish→bearish = harvest NOW, trend changed
-      Bullish + close near line = Kijun-equivalent fold dip entry
-      Distance from line = trend conviction
+    The state is sticky: a bullish bar stays bullish while ``close`` holds
+    at or above the final lower band, and a bearish bar turns bullish only
+    when ``close`` exceeds the final upper band.
     """
 
     def __init__(self, period: int = 10, multiplier: float = 3.0, weight: float = 1.0):
@@ -59,18 +51,9 @@ class SupertrendIndicator:
                 abstained=True,
             )
 
-        # ATR (Wilder) -- THE WHOLE TRUE RANGE SERIES, FIRST BAR
-        # INCLUDED. Supertrend is an ATR trailing stop, so its ATR
-        # is Wilder's ATR and it is seeded the same way: the average
-        # of the first `period` True Ranges, of which the first is
-        # `high - low` (StockCharts, reproducing Wilder's
-        # worksheet). This comprehension started at bar 1 and
-        # dropped that value. `_true_range` is the module's one
-        # definition; the per-bar expression is the identical max
-        # of the identical three terms.
+        # Wilder's ATR averages every True Range, bar 0 included.
         tr_list = _true_range(candles)
 
-        # Simple ATR smoothing (Wilder)
         atr = [0.0] * (self.period)
         if len(tr_list) >= self.period:
             first_atr = sum(tr_list[: self.period]) / self.period
@@ -88,19 +71,10 @@ class SupertrendIndicator:
                 abstained=True,
             )
 
-        # Align. `tr_list[k]` is now the True Range of candle k, so
-        # `atr[0] = mean(tr_list[:period])` is the ATR AT candle
-        # `period - 1`, and `atr[j]` is the ATR at candle
-        # `period - 1 + j`. Re-anchored below as
-        # `idx_atr = i - (period - 1)`.
-        #
-        # The band loop still starts at candle `period`, so the
-        # same candles carry bands as before -- only the ATR values
-        # move, by the seed the line above restored.
+        # atr[j] is the ATR at candle period - 1 + j; see idx_atr below.
         start = self.period
         curr_atr = atr[-1]
 
-        # Build Supertrend series (need history for sticky bands)
         ub = [0.0]
         lb = [0.0]
         st = [True]  # True = bullish
@@ -139,19 +113,18 @@ class SupertrendIndicator:
 
         curr_bull = st[-1]
         prev_bull = st[-2] if len(st) >= 2 else curr_bull
-        flip_bull = curr_bull and not prev_bull  # just turned bullish
-        flip_bear = not curr_bull and prev_bull  # just turned bearish
+        flip_bull = curr_bull and not prev_bull
+        flip_bear = not curr_bull and prev_bull
 
         price = candles[-1].close
         st_line = lb[-1] if curr_bull else ub[-1]
         dist_pct = abs(price - st_line) / (st_line + 1e-9)
 
-        # Near-line: price within 0.5% of Supertrend line (fold entry in bull)
         near_line = dist_pct < 0.005
 
         confidence = 0.0
         if flip_bull or flip_bear:
-            confidence = 0.85  # flip = strong signal
+            confidence = 0.85
         elif curr_bull:
             confidence = max(0.0, min(0.6, dist_pct * 5 + 0.2))
         else:
