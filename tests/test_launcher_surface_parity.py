@@ -161,9 +161,8 @@ REFUSING_FIELD_SPECS = (
     "nothing_where_the_feature_list_belongs",
 )
 
-# Refusals Qt words with its own signature list, which no product code
-# owns. Type and outcome are compared; the wording is pinned apart by
-# test_the_two_sides_word_a_text_refusal_differently.
+# Qt words these refusals from its own signature list. Type and outcome are
+# compared here; the wording is pinned apart.
 QT_WORDED_REFUSALS = (
     "a_number_where_a_title_belongs",
     "a_number_where_a_subtitle_belongs",
@@ -1035,9 +1034,7 @@ PAYLOAD_KEYS = {
     "WORD_WRAP_ON": "word_wrap.on",
 }
 
-# Values the payload carries inside a list rather than at a path of
-# their own: the two card names, the two press kinds and the gradient's
-# horizontal position.
+# Values the payload carries inside a list, not at a path of their own.
 LIST_MEMBERS = {
     "BUTTON_PRESS": "press_kinds",
     "CARD_PRESS": "press_kinds",
@@ -1055,10 +1052,7 @@ CALL_CONSTANTS = (
     "STOCKS_SELECTED",
 )
 
-# The three values no payload key carries, each with the check that
-# covers it. METHOD is the name the bridge registers under, LOGGER_NAME
-# the logger the shipped screen names, and SCREEN_MODEL the screen state
-# the bridge keeps between calls.
+# (constant no payload key carries, the test that covers it).
 NOT_IN_THE_SNAPSHOT = {
     "METHOD": "test_the_bridge_registers_the_launcher_method",
     "LOGGER_NAME": "test_the_surface_names_the_same_logger_as_the_screen",

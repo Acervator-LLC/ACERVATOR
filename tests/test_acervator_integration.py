@@ -22,9 +22,8 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 
-# MAJOR.MINOR.PATCH with an optional PEP 440 local segment. The version is
-# derived from the git tag, so a tree that is not exactly on a clean tag
-# reports the release plus a `+` segment.
+# MAJOR.MINOR.PATCH with an optional PEP 440 local segment: a tree off a
+# clean tag reports the release plus a `+` segment.
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(\+[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$")
 
 # Every word a local segment may open with. Anything else means the resolver
@@ -151,9 +150,7 @@ class TestBuildSpecHiddenImportsResolve:
         importlib.import_module("acervator_watchdog")
 
 
-# Trading subpackage contracts — key symbols must remain importable.
-# These are pins against the specific class of failure the operator hit
-# with the BotConfig position_count error (silent surface drift).
+# Key trading symbols that must stay importable.
 
 
 class TestTradingSurface:
@@ -173,12 +170,8 @@ class TestTradingSurface:
         import pkgutil
 
         found: list[str] = []
-        # Issue #87 - the loop below used to swallow every import failure
-        # with a bare `continue`. A module that stopped importing was
-        # therefore invisible here: the search simply skipped it, and the
-        # test still passed as long as SOME other module held BotConfig.
-        # The failures are collected now and printed with the result, so
-        # a broken module is visible whether the search succeeds or not.
+        # Collected, not swallowed: a module that stopped importing is
+        # printed with the result whether the search succeeds or not.
         unimportable: list[str] = []
         for info in pkgutil.iter_modules(pkg.__path__, prefix="src.trading."):
             try:
