@@ -539,7 +539,7 @@ module, so it works. For these it returns nothing.
 ```
 RAIntSimBat, a batch simulation runner        0 paths
 Spectre, in any Python file in any commit     0 paths
-the builders of the fourteen original PDFs    0 paths
+the builders of the fourteen legacy PDFs      0 paths
 ```
 
 The best of these is a whole subsystem. A protocol called SADP was documented in
@@ -552,17 +552,11 @@ tree today holds a test whose job is to stop those references coming back, at
 [test_no_dead_sadp_references.py](../../tests/test_no_dead_sadp_references.py).
 
 The last row of the block above is not a phantom, which makes it sharper. The
-fourteen original manual documents exist, 479 pages of them, and something built
-them. No commit here ever added that something. The same shape has a live issue
-against this manual: the 39 charts in Part 9 are embedded as images with no
-producer in the tree, so a clean checkout cannot rebuild them. That is issue
+fourteen superseded manual documents exist, 479 pages of them, and something
+built them. No commit here ever added that something. The same shape has a live
+issue against this manual: the 39 charts in Part 9 are embedded as images with
+no producer in the tree, so a clean checkout cannot rebuild them. That is issue
 431, and it is open against me rather than against anybody else.
-
-A matching case sits inside the code. The protocol section of the operator's
-original manual described 77 rules, counted in
-[manual-original-parts-audit.md](../audits/manual-original-parts-audit.md). The
-rule registry in the tree defines 35, and of the identifiers that appear in
-both, not one describes the same rule.
 
 ## A note on the two archived records
 
