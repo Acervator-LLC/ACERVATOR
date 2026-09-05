@@ -311,8 +311,9 @@ it".
   names a spec document rather than this file — pre-change 488-494 is
   the phantom-timeframe filter — so a cross-document reference was left
   alone rather than corrupted.
-- `docs/EMITTER_IDENTIFICATION.md` — 8 pin line numbers shifted +68 and
-  each verified against the line it now names.
+- The emitter identification document — 8 pin line numbers shifted +68
+  and each verified against the line it now named. That document has
+  since been removed with the pin register.
 - `tests/test_fold_hold_reason_is_true.py` — three source-level pins
   RESTATED for the new local, two added: one that both floors can refuse
   a reading of exactly 0.0, one that no addition reaches the measurement.
@@ -323,8 +324,8 @@ it".
 
 | check | result |
 |---|---|
-| `python -m tools.emitter_registry_check` before | exit 0, 76 pins, no E, no W1 |
-| `python -m tools.emitter_registry_check` after | exit 0, 76 pins, no E, no W1 |
+| `emitter_registry_check` before | exit 0, 76 pins, no E, no W1 |
+| `emitter_registry_check` after | exit 0, 76 pins, no E, no W1 |
 | `coding_archetype` / `ta_archetype`, per file | `passed=true`, `errors == []`, 0 high, 0 critical |
 | `scrumming_bot.py` archetype baseline | low 573 → 572, medium 552 → 551, info 3 → 3 (no finding added) |
 | the 84 test files that touch the subject | **3,273 passed, 1 skipped** |

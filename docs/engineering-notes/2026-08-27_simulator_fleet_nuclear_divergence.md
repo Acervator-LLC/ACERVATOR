@@ -479,13 +479,11 @@ unit 3 depends on nothing.
 
 Owns: `src/simulator/nuclear_controller.py` (462 lines).
 
-Also touches: `tests/test_nuclear_scout_isolation.py`,
-`tests/test_nuclear_panel_drives_v2.py:140-142`,
-`tests/test_bus_injection_isolation.py:128-160`,
-`tests/test_nuclear_stop_is_responsive.py:117`,
-`tests/test_nuclear_capital_registry_fail_closed.py`,
-`tests/test_event_bus_unsubscribe.py:178`,
-`tests/test_sim_capital_registry_fail_closed.py:24`.
+Also touches three surviving test files: `tests/test_bus_injection_isolation.py`,
+`tests/test_event_bus_unsubscribe.py` and
+`tests/test_sim_capital_registry_fail_closed.py`. The four Nuclear-named
+files this list once carried — scout isolation, panel drives v2, stop is
+responsive, capital registry fail closed — have since been retired.
 
 Those tests pin invariants against v1's source text — bus-unsubscribe
 discipline, capital-registry fail-closed, scout isolation. The invariants
@@ -505,11 +503,11 @@ Owns: `src/simulator/nuclear_sim_exchange.py` (544 lines).
 Blocked on unit 1: `nuclear_controller.py:44` is its only production
 importer.
 
-Also touches: `tests/test_nuclear_limit_fill_price.py`,
-`tests/test_sim_balance_precondition.py`, `tests/test_sim_ioc_limit.py`,
-`tests/test_sim_market_limits_agree.py`.
+Also touches `tests/test_sim_balance_precondition.py`,
+`tests/test_sim_ioc_limit.py` and `tests/test_sim_market_limits_agree.py`.
+A fourth, the limit-fill-price test, has since been retired.
 
-Three of those four are **cross-venue agreement** tests — they assert
+All three are **cross-venue agreement** tests — they assert
 `FleetSimExchange` and `NuclearSimExchange` behave the same on limits,
 IOC and the balance precondition. Deleting one side deletes the
 comparison. The live venue is `TabletBackend` behind `CCXTConnector`;

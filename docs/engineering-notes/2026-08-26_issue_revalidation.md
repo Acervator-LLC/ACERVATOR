@@ -294,7 +294,7 @@ path has never run in a replay.
 
 - **A1 — still true.** `BotMode` has exactly two members: `SCRUMMING` and
   `EXTRACTOR` (`bot_container.py:99-100`). The only file in the repository with
-  "paper" in its name is `docs/engineering-notes/2026-08-05_paper_trader_concept_spec.md`.
+  "paper" in its name is the manual page `docs/manual/08-tabs/paper-trader.md`.
   No backend, no bot, no mode value, no source file.
 - **A2 — still true.** `class TabletBackend:` (`tablet_backend.py:103`).
   Subclasses nothing.

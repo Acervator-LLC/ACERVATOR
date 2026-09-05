@@ -47,7 +47,7 @@ floor**, so the favour alone could not carry a reading over the gate.
 The shipped code reaches +0.40. `bb_confidence_boost` is documented at
 +0.35 and the shipped code reaches +0.60, because the tightening term
 was added on top of a term the manual describes as the whole quantity.
-The generator `docs/tools/build_product_manual.py` is NOT in this
+The generator `tools/build_product_manual.py` is NOT in this
 repository, so the document could not be corrected in this unit. That is
 named, not fixed.
 
@@ -82,7 +82,7 @@ Both FAVOUR a comparison. The evidence, per site:
    downstream, so its confidence contribution there only ever favoured a
    comparison that had already been decided.
 
-So the #102 shape fits, and it is what was shipped.
+The #102 shape therefore fits, and it is what was shipped.
 
 ---
 
@@ -325,7 +325,7 @@ derivations agree on all 42 anchors.
 | both, `tests/test_extractor_tranche_containment.py` | `passed=true`, unchanged from baseline |
 | both, `tests/test_fold_hold_reason_is_true.py` | `passed=true`, low 46 / medium 21 / info 16 (baseline 39 / 16 / 12; the file grew by 107 lines) |
 | both, the new sweep harness | `passed=true`, `errors=[]`, 0 high or critical |
-| `python -m tools.emitter_registry_check` | exit 0, 76 pins, no E lines, **no W1 lines**. Eight pin rows in `scrumming_bot.py` shifted +52 and each was verified against the line it now names |
+| `emitter_registry_check` | exit 0, 76 pins, no E lines, **no W1 lines**. Eight pin rows in `scrumming_bot.py` shifted +52 and each was verified against the line it now names |
 | tests | 3,981 passed / 1 pre-existing skip across the 94 files that touch `ScrummingBot`; 420 passed across the 16 further TA and gate files |
 
 The full release gate was NOT run and the version was NOT bumped, per
@@ -340,7 +340,7 @@ the work order.
    +0.1437. Both detections firing on one reading is possible in source
    and did not happen in 2,436 readings.
 2. **The product manual's §6.5.5 equation is still wrong** and could not
-   be corrected: `docs/tools/build_product_manual.py` is not in this
+   be corrected: `tools/build_product_manual.py` is not in this
    repository.
 3. **The sweep replicates the gate rather than calling it.** `tick()` is
    a 4,500-line coroutine needing an exchange, a bus and a live ladder.

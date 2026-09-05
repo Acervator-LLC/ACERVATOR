@@ -303,8 +303,8 @@ files cite against the tree, with the 1,606-path control:
 | `sim_scrumming_bot.py` under the same tree | no | no |
 | A live-log reader under that tree's tools directory | no | no |
 | `tools/check_sim_live_boundary.py` | no | no |
-| `tools/harness/decision_diff.py` | no | yes, before a move |
-| `tools/harness/check_release_readiness.py` | no | yes, before a move |
+| The decision-diff tool, at its pre-move address | at `dev_harness/harness/decision_diff.py` | yes |
+| The release gate, at its pre-move address | at `dev_harness/harness/check_release_readiness.py` | yes |
 
 The first four come from an entry dated 13 June 2026, deep in the gap. It sets
 out a sound rule — the simulator forks class bodies rather than importing live's

@@ -178,7 +178,7 @@ This unit checked `07-004` further. Its prefix constant is
 `VotingEngine._create_indicators` wires 12 indicators. The run recorded
 all 12 leaves and no thirteenth.
 
-This unit ran `python -m tools.emitter_registry_check` before and after.
+This unit ran `emitter_registry_check` before and after.
 Both times: exit 0, `pins in src 74`, `registry rows 74`,
 `instrument controls OK`, no `E` line, no `W1` line.
 
@@ -258,10 +258,9 @@ Coverage agrees with the walk. `register_sim_run` ran; the body of
 `BotVisualizationTab` and drove the Nuclear path that reaches its
 sibling.
 
-The repo already knew. `docs/audits/2026-08-05_paper_trader_concept_
-spec.md` line 41 records `register_paper_run` with "zero callers".
-Nothing has changed since, and 10.2 gave the pin a name and a register
-row anyway.
+The repo already knew. A Paper Trader concept spec, since removed from the
+tree, recorded `register_paper_run` with "zero callers". Nothing has changed
+since, and 10.2 gave the pin a name and a register row anyway.
 
 This is a FINDING, not a repair. This unit does not fix it. A pin that
 can never produce a verdict is decoration that reads as evidence, and
@@ -455,6 +454,6 @@ what a later run needs to rebuild them.
 
 - `pyproject.toml` sets `omit = ["src/gui/*"]` for coverage, so every coverage number this repo has ever produced says nothing about the GUI tree.
 - `BotVisualizationTab.update_paper_run` and `stop_paper_run` have the same zero references as `register_paper_run`; nothing calls the paper-swarm row API at all.
-- `tools/harness/coding_archetype` parses a Markdown file as Python, so no `.md` file in `docs/audits/` can pass it; `docs_archetype` is the matching one.
+- `dev_harness.harness.coding_archetype` parses a Markdown file as Python, so no `.md` file in `docs/audits/` can pass it; `docs_archetype` is the matching one.
 - `emit` accepts a `duration` on a non-`postcondition` pin at run time; rule E8 refuses it statically only. The planted control pin carried `duration=0.5` on an `event` and the sink stored it.
 - Three fired `measured` pins produced one record each in this run, so this run alone cannot show their duration varying: `06-007`, `10-002`, `11-001`.
