@@ -1,15 +1,10 @@
-"""v3.23.72 — pin tests for the Fleet Replay sim infrastructure.
+"""Pin tests for the Fleet Replay sim infrastructure.
 
-Covers:
-    * CandleSeries cursor semantics (never exposes future candles).
-    * FleetSimExchange MARKET fill + balance ledger.
-    * FleetSimExchange LIMIT sweep (fills when candle crosses price).
-    * FleetSimExchange contract: get_ticker, get_ohlcv, get_balances,
-      get_open_orders, cancel_order.
-    * bot_state_loader schema handling.
-
-Fleet Replay tick-loop / GUI panel are visual + async — not covered
-by these tests (headless smoke in the panel file).
+``CandleSeries`` never exposes a candle past its cursor. ``FleetSimExchange``
+fills a MARKET order against the ledger, sweeps a LIMIT order when the candle
+crosses its price, and answers ``get_ticker``, ``get_ohlcv``, ``get_balances``,
+``get_open_orders`` and ``cancel_order``. ``bot_state_loader`` filters by mode
+and reads both state schemas, and ``FleetReplayPanel`` mounts headless.
 """
 
 from __future__ import annotations
@@ -41,10 +36,6 @@ from src.exchange.base import (  # noqa: E402
     OrderStatus,
     OrderType,
 )
-
-# --------------------------------------------------------------------- #
-# CandleSeries                                                          #
-# --------------------------------------------------------------------- #
 
 
 def _rows(n=10, base_ts=1_700_000_000_000, dt=3600_000):
@@ -101,11 +92,6 @@ def test_candle_series_sorts_chronologically():
     s = build_candle_series_from_rows("X/USD", unsorted_rows)
     stamps = list(s.iter_ts())
     assert stamps == [1000.0, 2000.0, 3000.0]
-
-
-# --------------------------------------------------------------------- #
-# FleetSimExchange                                                      #
-# --------------------------------------------------------------------- #
 
 
 def _ex_with_series(price_series):
@@ -218,11 +204,6 @@ def test_sim_exchange_get_markets_lists_wired_symbols():
     assert symbols == {"BTC/USD", "ETH/USD"}
 
 
-# --------------------------------------------------------------------- #
-# bot_state_loader                                                       #
-# --------------------------------------------------------------------- #
-
-
 def test_loader_filters_by_mode(tmp_path):
     payload = {
         "bots": {
@@ -326,11 +307,6 @@ def test_loader_all_lists_every_public_function_the_module_defines():
     )
 
 
-# --------------------------------------------------------------------- #
-# FleetReplayPanel smoke (headless)                                      #
-# --------------------------------------------------------------------- #
-
-
 def test_fleet_replay_panel_mounts(tmp_path, monkeypatch):
     pytest.importorskip("PySide6")
     import os
@@ -423,14 +399,6 @@ def test_fill_carries_candle_address():
     addr = (trade.raw or {}).get("candle_address", "")
     assert addr.endswith("_BTC"), f"bad address {addr!r}"
     assert (trade.raw or {}).get("candle_index") == 2
-
-
-# ── v3.24.18: gate vocabulary rebuilt from the bot's real blockers ──
-# The prior 5-gate symmetric model was wrong three ways: "VOL" was a
-# phantom (volume guard is disabled by MEM-259, no blocker mentions
-# volume), "TGT" was shown on the fold side which has no delta check,
-# and nine real gates had no representation — including the
-# opposing-trade-distance hysteresis the operator named directly.
 
 
 def test_no_phantom_volume_gate():

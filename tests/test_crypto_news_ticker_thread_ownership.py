@@ -80,12 +80,7 @@ class _Blocker:
         self.honours_stop = honours_stop
         self.limit_s = limit_s
         self.entered = threading.Event()
-        # An OUT-OF-BAND release, for teardown only. It is
-        # deliberately not the product stop flag: a test that
-        # needs an unstoppable fetch must still get one, or it is
-        # not testing the abandon path. This lets such a test hand
-        # the thread back in milliseconds instead of idling out
-        # `limit_s`.
+        # Out-of-band release for teardown only; the product stop flag stays untouched.
         self.released = threading.Event()
 
     def __call__(self, *_a, **kw):
@@ -280,9 +275,7 @@ class TestStopIsBounded:
         present OR absent, which is what shows the other two shapes
         fail for the guard and not for some unrelated reason.
         """
-        # Long enough that no wait in this test can succeed, so an
-        # unguarded extra stop fails its own wait and logs its own
-        # error rather than quietly succeeding.
+        # Longer than any wait here, so an unguarded extra stop fails its own wait.
         blocker = _Blocker(honours_stop=False, limit_s=30.0)
         monkeypatch.setattr(cnt, "fetch_all", blocker)
         widget = cnt.CryptoNewsTicker()
@@ -476,19 +469,7 @@ class _Stream:
         return chunk
 
 
-# The falsifier, out of process. This is the recipe that produced the
-# abort on the shipped file.
-#
-# A SEPARATE PROCESS IS THE POINT. `std::terminate` prints no
-# traceback and no failure summary, so a suite that meets it reports
-# nothing at all -- measured here: with the repair reverted, a run of
-# this very file ended with status 3221226505 and printed no FAILED
-# line. An exit code is the only thing left to read, and only a child
-# process has one.
-#
-# `multiprocessing` rather than `subprocess`: a spawned child re-imports
-# this module and runs `_shipped_recipe` by name, so there is no argv
-# to build and no command string for a reader to have to trust.
+# A child process: `std::terminate` prints no traceback, so only an exit code survives.
 
 
 def _shipped_recipe(mode: str) -> None:
@@ -606,9 +587,7 @@ def test_stop_beats_a_host_that_never_finishes(monkeypatch, qt_app):
     real_fetch_all = cnt.fetch_all
 
     def _local_fetch_all(*_a, **kw):
-        # fetch_all binds NEWS_SOURCES as a DEFAULT argument, so
-        # rebinding the module global would not reach it. Nothing here
-        # leaves 127.0.0.1.
+        # `fetch_all` binds NEWS_SOURCES as a default, so a module global misses it.
         return real_fetch_all(sources, **kw)
 
     monkeypatch.setattr(cnt, "fetch_all", _local_fetch_all)
