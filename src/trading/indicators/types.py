@@ -1,8 +1,8 @@
 """The signal vocabulary and the candle domain.
 
-Shared by every indicator: the words a vote is said in, and the
-constraints a candle passes before any arithmetic sees it. Data and
-types only -- no indicator maths lives here.
+``Signal`` and ``SignalDirection`` carry one indicator's vote, and
+``VotingSummary`` carries the aggregate. ``Candle`` and ``candles_from_raw``
+hold the OHLCV rows every indicator reads.
 """
 
 from __future__ import annotations
@@ -13,26 +13,22 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 
-# Units
-# A threshold that bounds a RATIO is carried in PERCENT and divided by
-# this constant once, so both operands of the comparison are ratios.
+# PERCENT_PER_RATIO_UNIT divides a percent threshold down to a ratio.
 PERCENT_PER_RATIO_UNIT = 100.0
 
 
-# One percentage point of a candle's own high-low range: the unit
-# `HACandle.body_pct` is measured in.
+# HA_BODY_PCT_UNIT is one percentage point of HACandle.body_pct.
 HA_BODY_PCT_UNIT = 1.0
 
 
-# A body that did not shrink at all: norm[j] == norm[j - 1].
+# NO_SHRINK_RATIO is the ratio an unchanged body produces.
 NO_SHRINK_RATIO = 1.0
 
 
-# A volume spike is this percentage of the window's average volume.
+# VOLUME_SPIKE_PCT is a multiple of the window's average volume, in percent.
 VOLUME_SPIKE_PCT = 200.0
 
 
-# Core data types
 class SignalDirection(int, Enum):
     BEARISH = -1
     NEUTRAL = 0
@@ -47,23 +43,11 @@ class Signal:
     timeframe: str
     direction: SignalDirection
     confidence: float  # 0.0 - 1.0
-    weight: float = 1.0  # Configurable importance
+    weight: float = 1.0
     details: dict = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
-    # ``True`` means this indicator CAST NO VOTE: too little history for
-    # its formula, or a denominator that was exactly zero on an
-    # admissible bar. ``direction is NEUTRAL`` is the other statement --
-    # the indicator MEASURED and found no direction.
-    #
-    # ``VotingEngine._aggregate`` divides by the summed weight, so an
-    # abstention has to be declared rather than inferred from an empty
-    # ``details``: ``rsi.py`` returns a fabricated ``{"rsi": 50.0, ...}``
-    # on a tape shorter than ``period + 1``.
-    #
-    # It sits AFTER ``timestamp`` because ``Signal`` is built
-    # positionally in this tree; inserting it earlier would re-bind the
-    # seventh positional argument from a wall clock to a boolean.
+    # abstained is no vote at all; a NEUTRAL direction is a measured result.
     abstained: bool = False
 
     @property
@@ -95,7 +79,6 @@ class VotingSummary:
         return SignalDirection.NEUTRAL
 
 
-# OHLCV candle helper
 @dataclass
 class Candle:
     """Single OHLCV candle."""
@@ -111,35 +94,14 @@ class Candle:
 class CandleDomainError(ValueError):
     """A raw OHLCV row carried a value that is not a price.
 
-    A ``ValueError``, so the call sites that already guard
-    :func:`candles_from_raw` with ``except Exception`` catch it through
-    the handlers that exist instead of needing new ones.
+    ``candles_from_raw`` raises it, and it subclasses ``ValueError``.
     """
 
 
-# THE CLOSED DOMAIN OF AN OHLC BAR
-# Each constraint is the DEFINITION of an OHLC bar, so none of them is
-# calibrated and none invents a scale:
-#
-#   * every field is a real, finite number -- NaN, an infinity, a bool
-#     and a string are not quantities a price can take;
-#   * open/high/low/close are PRICES, and a traded price is > 0;
-#   * ``low <= high``, because the two name one range;
-#   * ``low <= open <= high`` and ``low <= close <= high``, because the
-#     open and the close are trades that happened INSIDE that range.
-#
-# A bar that is internally consistent but absurd against its NEIGHBOURS
-# -- a x1000 spike that lifts close and high together -- passes.
-# Refusing that needs a threshold no published source supplies.
-
-
 def _candle_field(value: object, field: str, row: int) -> float:
-    """Return ``value`` as a finite float, or refuse it.
+    """Return ``value`` as a finite float, or raise ``CandleDomainError``.
 
-    The type test is EXACT, not ``isinstance``: ``bool`` is a subclass of
-    ``int``, so a price of ``True`` would coerce to 1.0 and read as a
-    dollar. Nothing on the candle path produces a numeric subclass --
-    there is no numpy and no Decimal anywhere in it.
+    The type test is exact, not ``isinstance``: ``bool`` subclasses ``int``.
     """
     if type(value) not in (int, float):
         raise CandleDomainError(f"row {row}: {field}={value!r} is not a number")
@@ -150,11 +112,9 @@ def _candle_field(value: object, field: str, row: int) -> float:
 
 
 def candles_from_raw(raw: Sequence[Sequence[object]]) -> list[Candle]:
-    """Convert [[ts, O, H, L, C, V], ...] to Candle list.
+    """Convert [[ts, O, H, L, C, V], ...] to a ``Candle`` list.
 
-    Refuses any row outside the closed domain described above, so a
-    value that is not a price cannot reach an indicator's arithmetic.
-    A short row still raises ``IndexError`` exactly as it always has.
+    A row shorter than six fields raises ``IndexError``.
 
     Raises
     ------
