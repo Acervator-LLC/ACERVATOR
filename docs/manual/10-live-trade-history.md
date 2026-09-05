@@ -77,17 +77,29 @@ all.
 
 The eight lines are the eight assets with the most fills. Each one is that
 asset's running buy VWAP divided by its own first buy VWAP, which puts BONK at
-`5.71e-06` and ZEC at `359.67` on one axis and one scale. The rule at 1.0 marks
-the first value. The legend names the asset and its fill count in three
-columns. The note under the axis reads `38 charted bases. USD and USDC are
-excluded as quote currencies.`
+5.71e-06 and ZEC at 359.67 on one axis and one scale. The rule at 1.0 marks the
+first value. The legend names the asset and its fill count in three columns.
+The note under the axis reads:
 
-Five pens carry the eight lines. The chart keeps the `COLORS["series"]` entries
-of `src/design_system.py` whose `contrast_ratio` against `COLORS["bg"]` reaches
-3.0 — `#0072B2` at 5.19, `#009E73` at 3.42, `#CC79A7` at 3.06, `#D55E00` at
-3.87 and `#000000` at 21.00 — and drops `#E69F00` at 2.25, `#56B4E9` at 2.31
-and `#F0E442` at 1.32. The five run solid for the first five assets and dashed
-for the last three.
+```
+38 charted bases. USD and USDC are excluded as quote currencies.
+```
+
+Five pens carry the eight lines. The chart takes the series palette from
+`src/design_system.py` and keeps only the colours reaching a contrast ratio of
+3.0 against the page background. Five of the eight qualify. The five run solid
+for the first five assets and dashed for the last three.
+
+| Series colour | Contrast on the page background | In the chart |
+| --- | ---: | --- |
+| #000000 | 21.00 | yes |
+| #0072B2 | 5.19 | yes |
+| #D55E00 | 3.87 | yes |
+| #009E73 | 3.42 | yes |
+| #CC79A7 | 3.06 | yes |
+| #56B4E9 | 2.31 | no |
+| #E69F00 | 2.25 | no |
+| #F0E442 | 1.32 | no |
 
 Measured over the same 5,661 fills, the eight lines end here:
 
@@ -127,12 +139,18 @@ root, a path `.gitignore` excludes. [FIGURES.md](FIGURES.md) inventories the
 images the manual itself embeds. No chart image is committed to this
 repository.
 
-The 39 charts of this part live one level down, in
-`artifacts/vwap-charts/`, a directory of their own next to
-`artifacts/manual-figures/` and under the same `.gitignore` rule. Keeping the
-two sets apart keeps the manual's own 38 images and this part's 39 charts from
-mixing. The combined view above sits in `vwap_combined.png`, and each charted
-base has one chart of its own in `vwap_<ASSET>.png`.
+The 39 charts of this part live one level down, in a directory of their own
+beside the manual figures and under the same ignore rule. Keeping the two sets
+apart keeps the manual's own 38 images and this part's 39 charts from mixing.
+The combined view above sits in the first file below, and each charted base has
+one chart of its own.
+
+```
+artifacts/manual-figures/       the manual's own 38 images
+artifacts/vwap-charts/
+    vwap_combined.png           the eight-line combined chart
+    vwap_<ASSET>.png            one per charted base, 38 of them
+```
 
 ## How to read a per-asset chart
 
@@ -151,8 +169,20 @@ The lower panel draws net units accumulated — every bought quantity minus ever
 sold quantity, running — in `COLORS["accent"]`, filled down to zero. It answers
 what the price panel cannot: whether the base position grew.
 
-`src/design_system.py` supplies the colours, the type sizes and the page size,
-through `COLORS`, `TYPE`, `GRID`, `apply_rcparams` and `contrast_ratio`.
+Every chart in this part draws its colours, its type sizes and its page size
+from `src/design_system.py`, which holds them under five names.
+
+```python
+COLORS = {"bg": ..., "ink": ..., "accent": ..., "series": [...]}
+TYPE = {"h1": ..., "body": ..., "cap": ...}
+GRID = {"unit": 8, "page_w_in": 11.0, "page_h_in": 8.5}
+
+
+def apply_rcparams(): ...
+
+
+def contrast_ratio(fg: str, bg: str) -> float: ...
+```
 
 Read the buy line as a trajectory of average cost. A falling line says the
 average cost of the units bought so far fell. That fall is not profit, for the
@@ -164,28 +194,67 @@ The rows behind the charts take the shape `fetch_all_history_chunked` in
 `src/exchange/history_helpers.py` returns for the History tab, one dict per
 fill.
 
-The closest committed figure to the buy line is `avg_entry`, which
-`compute_position_health` in `src/exchange/position_health.py` derives from
-`get_my_trades` records. The two differ, and the difference matters to a reader
-holding a chart beside the platform, because `avg_entry` follows the open
-position only: a buy re-weights it, a sell leaves it alone, and a full close
-resets it to zero. The buy line here counts every buy in the record and never
-resets.
+The closest committed figure to the buy line is the average entry price
+`compute_position_health` derives in `src/exchange/position_health.py` from the
+records a venue returns for its own trade history. The two differ, and the
+difference matters to a reader holding a chart beside the platform. The average
+entry follows the open position only: a buy re-weights it, a sell leaves it
+alone, and a full close resets it to zero. The buy line here counts every buy
+in the record and never resets.
+
+```python
+if t.side == OrderSide.BUY:     # t is one get_my_trades record
+    new_qty = qty + t.amount
+    if new_qty > 0:
+        avg_entry = (qty * avg_entry + t.amount * t.price) / new_qty
+    qty = new_qty
+elif t.side == OrderSide.SELL:
+    qty -= t.amount
+    if qty < 1e-12:
+        qty = 0.0
+        avg_entry = 0.0
+```
 
 No committed module computes an average sell price, and none computes a ratio
-of one average over the other. A search across `src/`, `dev_harness/` and
-`tools/` for `avg_sell`, `average_sell`, `sell_vwap`, `avg_sell_price` and
-`sb_ratio` returns no file, against a control of 13 files for `avg_entry` and 5
-for `vwap`. The charts carry no such ratio either. Each line stands alone.
+of one average over the other. Five names were searched across the source, the
+harness and the tools, and every one of them returns no file. The control
+returns files for both of its terms.
 
-No committed file produces these charts. `git log --all --diff-filter=ADR
---name-only` reaches 1,606 distinct paths and returns one whose name carries
-`vwap`: `tests/test_vwap_band_scales_to_price.py`, which drives the Simulator's
-price band. A pickaxe over every `.py` in every commit returns nothing for
-`draw_combined`, `vwap_combined` or `buy_vwap`, against controls of 16 commits
-for `avg_entry`, 7 for `sync_ytd_trade_count`, and 0 for a coined term. The
-charts and the record behind them belong to the operator. This repository
-cannot regenerate either.
+```
+searched in src/, dev_harness/ and tools/
+    avg_sell             0 files
+    average_sell         0 files
+    sell_vwap            0 files
+    avg_sell_price       0 files
+    sb_ratio             0 files
+control
+    avg_entry           13 files
+    vwap                 5 files
+```
+
+The charts carry no such ratio either. Each line stands alone.
+
+No committed file produces these charts. A walk of every path any commit ever
+added, renamed or deleted reaches 1,606 distinct paths, and exactly one of them
+carries the letters vwap: a Simulator test for the price band. A pickaxe over
+every Python file in every commit returns nothing for the three names a chart
+builder would carry. The charts and the record behind them belong to the
+operator. This repository cannot regenerate either.
+
+```
+git log --all --diff-filter=ADR --name-only
+    1,606 distinct paths
+    tests/test_vwap_band_scales_to_price.py     the one vwap name
+
+git log -S<name> -- '*.py'
+    draw_combined         0 commits
+    vwap_combined         0 commits
+    buy_vwap              0 commits
+control
+    avg_entry            16 commits
+    sync_ytd_trade_count  7 commits
+    a coined term         0 commits
+```
 
 ## The 38 per-asset charts
 
@@ -522,18 +591,47 @@ window, 0.0114 down to 0.0088.
 
 ## Trade grading
 
-`grade_trade` in `src/trading/trade_grader.py` grades one fill on four axes and
-no more: `_score_execution` against a reference price at the decision,
-`_score_timing` across the prices after the trade, `_score_strategic` across
-the shift in the rolling S/B figure, and `_score_outcome` against realised
-profit per unit. An axis whose `PriceContext` inputs are absent is left out.
-`TradeGrade.overall_numeric` is the unweighted mean of the axes that scored,
-and 0.5 when none of them could.
+One function in `src/trading/trade_grader.py` grades a completed fill, on four
+axes and no more. Execution scores against a reference price at the decision,
+timing across the prices after the trade, strategy across the shift in the
+rolling S/B figure, and outcome against realised profit per unit. An axis whose
+price inputs are absent is left out, and the overall figure is the unweighted
+mean of the axes that scored — 0.5 when none of them could.
 
-`_letter_from_numeric` maps that mean to `A+`, `A`, `B`, `C`, `D` or `F`.
-`PriceContext.regime_tag` reaches `TradeGrade.regime` and the rationale text
-carrying no sub-score of its own, which is why a rationale can read five terms
-while the grade rests on four. `grade_trades` runs the batch.
+```python
+def grade_trade(record: TradeRecord, ctx: PriceContext) -> TradeGrade: ...
+
+
+def _score_execution(...): ...
+def _score_timing(...): ...
+def _score_strategic(...): ...
+def _score_outcome(...): ...
+```
+
+A second function maps that mean to a letter.
+
+```python
+def _letter_from_numeric(num: float) -> str:
+    if num >= 0.93:
+        return "A+"
+    elif num >= 0.85:
+        return "A"
+    elif num >= 0.70:
+        return "B"
+    elif num >= 0.55:
+        return "C"
+    elif num >= 0.40:
+        return "D"
+    else:
+        return "F"
+```
+
+The market regime rides beside the grade rather than inside it.
+`PriceContext.regime_tag` reaches `TradeGrade.regime` and the rationale text,
+and it carries no sub-score of its own, which is why a rationale can read five
+terms while the grade rests on four.
+
+`grade_trades` runs the batch.
 
 The screen these grades reach is in
 [the History tab reference](08-tabs/history.md).
@@ -549,19 +647,39 @@ draw their lights from that one function, so both surfaces name the same gates
 in the same order. The labels themselves, and the indicator readings behind
 them, are in [the indicator reference](07-indicators.md).
 
-`classify_trades` in `src/trading/gate_coverage.py` pairs each fill with the
-nearest gate entry for the same bot and gives it one `GateStatus`.
-`DEFAULT_TOLERANCE_S` is 300 seconds, one five-minute candle either side of the
-fill. A fill that finds an entry inside that window is `HAS_GATE`, and
-`GateCoverageReport.coverage_pct` counts only those.
+`src/trading/gate_coverage.py` pairs each fill with the nearest gate entry for
+the same bot and gives it one status out of six. The tolerance is 300 seconds,
+one five-minute candle either side of the fill, and a fill that finds an entry
+inside that window has a gate. The reported coverage counts only those.
 
-The five remaining statuses each name a different reason a fill has no gate.
-`BEFORE_LOGGING` marks a fill older than
-the first gate entry. `LOG_GAP` marks a fill sitting inside a silence longer
-than `LOG_GAP_THRESHOLD_S`, six candles. `NO_GATE_IN_TOLERANCE` marks a bot
-that logged either side of the fill but not inside the window.
-`NO_GATE_FOR_BOT` marks a bot with no entries at all, and `NO_GATE_DATA` marks
-a run given no gate log. A fill the log could not have seen and a fill the log
-should have seen are different findings, and the report keeps them apart rather
-than folding both into one coverage shortfall. `format_coverage_lines` renders
-the counts, one line per status.
+```python
+DEFAULT_TOLERANCE_S: float = 300.0
+LOG_GAP_THRESHOLD_S: float = 1800.0
+
+
+class GateStatus:
+    HAS_GATE = "has_gate"
+    BEFORE_LOGGING = "before_logging"
+    LOG_GAP = "log_gap"
+    NO_GATE_FOR_BOT = "no_gate_for_bot"
+    NO_GATE_DATA = "no_gate_data"
+    NO_GATE_IN_TOLERANCE = "no_gate_in_tolerance"
+```
+
+`classify_trades` returns the pairings and `GateCoverageReport.coverage_pct`
+gives the percentage.
+
+The five statuses that are not a gate each name a different reason a fill has
+none. A fill the log could not have seen and a fill the log should have seen
+are different findings, and the report keeps them apart rather than folding
+both into one coverage shortfall.
+
+| Status | What it marks |
+| --- | --- |
+| before_logging | a fill older than the first gate entry |
+| log_gap | a fill inside a silence longer than 1,800 seconds, six candles |
+| no_gate_in_tolerance | a bot logging either side of the fill but not inside the window |
+| no_gate_for_bot | a bot with no entries at all |
+| no_gate_data | a run given no gate log |
+
+`format_coverage_lines` renders the counts, one line per status.

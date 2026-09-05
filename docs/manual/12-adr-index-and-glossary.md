@@ -15,16 +15,22 @@ different question.
 - `.claude/rules/` — three binding standards, on code comments, on documentation
   and on tests. `CLAUDE.md` at the root holds the repository rules above them:
   one role per folder, and no machine-specific path anywhere committed.
-- Executable guards under `tests/`. `test_repo_root_inventory.py` holds a reason
-  for every tracked file at the repository root, and a reason has to name a
-  mechanism. `test_no_dead_sadp_references.py` holds the retirement of the older
-  protocol, and records driving itself both ways: reverting the five files it
-  guards failed four of its checks and restoring them passed all seven. A
-  decision written as a guard fails when someone reverses it, which a decision
-  written as prose does not.
+- Executable guards in the test suite. One holds a reason for every tracked file
+  at the repository root, and a reason has to name a mechanism. A second holds
+  the retirement of the older protocol, and it records driving itself both ways:
+  reverting the five files it guards failed four of its checks, and restoring
+  them passed all seven. A decision written as a guard fails when someone
+  reverses it, which a decision written as prose does not.
 - `CHANGELOG.md` and the commit history. See
   [09-updates-and-versioning.md](09-updates-and-versioning.md) for what the
   changelog holds today.
+
+The two guards:
+
+```
+tests/test_repo_root_inventory.py         a reason per tracked root file
+tests/test_no_dead_sadp_references.py     the older protocol's retirement
+```
 
 `docs/engineering-notes/ci_failure_ledger.md` is the narrowest of these: one row
 per continuous-integration failure, its class, the change that closed it, and
@@ -76,37 +82,59 @@ tranche. [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md) describes each in full.
   `src/trading/scrumming_bot.py`. One per traded symbol.
 - **Extractor Bot** — `ExtractorBot` in `src/trading/extractor_bot.py`, a chunked
   state machine rather than a scrum/fold engine.
-- **Smart Wire** — a capital reinforcement link between two bots.
-  `SmartWireManager`, `BotLedger` and `WireTransaction` in
+- **Smart Wire** — a capital reinforcement link between two bots, in
   `src/trading/smart_wire.py`.
-- **Phantom balance** — a bot's view of holdings it may not sell yet.
-  `PhantomBalanceManager` and `PhantomBalanceBot` in
+- **Phantom balance** — a bot's view of holdings it may not sell yet, in
   `src/trading/phantom_balance.py`.
 - **Capital claim** — one bot's hold on a quantity of an asset.
   `effective_available` in `src/trading/capital_reservation.py` answers holdings
   minus every other bot's claim on the same asset, never the caller's own.
 - **Fleet** — the bots a run holds, with their wires, ledgers and tranches. All
-  of it loads from `bot_state.json` through `StateManager` in
-  `src/core/state_manager.py`, which is the only source.
+  of it loads from `bot_state.json` through `StateManager`, which is the only
+  source.
+
+The classes behind the wire, the phantom balance and the fleet load:
+
+```python
+class SmartWireManager: ...     # src/trading/smart_wire.py
+class BotLedger: ...
+class WireTransaction: ...
+
+class PhantomBalanceManager: ...    # src/trading/phantom_balance.py
+class PhantomBalanceBot: ...
+
+class StateManager: ...     # src/core/state_manager.py
+```
 
 ### Deciding a trade
 
 - **Voter** — one indicator's contribution to a direction and a confidence.
   `VotingEngine` in `src/trading/ta_engine.py` runs the twelve.
-- **Gate chain** — the ordered checks a candidate trade passes before it fires.
-  `GateChain` and `GateContext` in `src/trading/gate_chain.py`. The sell chain
-  and the buy chain differ, and [07-indicators.md](07-indicators.md) lists both.
+- **Gate chain** — the ordered checks a candidate trade passes before it fires,
+  in `src/trading/gate_chain.py`. The sell chain and the buy chain differ, and
+  [07-indicators.md](07-indicators.md) lists both.
 - **Heikin-Ashi candle** — a smoothed price bar. `detect_landing_strip_v2` in
   `src/trading/indicators/landing_strip.py` reads them.
 - **Landing Strip** — a tightening detector, `detect_landing_strip_v2` in
   `src/trading/indicators/landing_strip.py`.
 - **Band travel** — the mean-reversion read, `MRInspector` in
   `src/trading/mr_inspector.py`.
-- **Trade grade** — a letter per completed trade. `grade_trade` in
-  `src/trading/trade_grader.py` returns a `TradeGrade` from four scored axes,
-  `_score_execution`, `_score_timing`, `_score_strategic` and `_score_outcome`.
-  The market regime is recorded beside them and never scored. See
-  [10-live-trade-history.md](10-live-trade-history.md).
+- **Trade grade** — a letter per completed trade, from four scored axes in
+  `src/trading/trade_grader.py`. The market regime is recorded beside them and
+  never scored. See [10-live-trade-history.md](10-live-trade-history.md).
+
+The gate chain's two classes and the grader's five entry points:
+
+```python
+class GateChain: ...    # src/trading/gate_chain.py
+class GateContext: ...
+
+def grade_trade(record, ctx) -> TradeGrade: ...     # src/trading/trade_grader.py
+def _score_execution(...): ...
+def _score_timing(...): ...
+def _score_strategic(...): ...
+def _score_outcome(...): ...
+```
 
 ### Getting a strategy to real money
 
@@ -136,7 +164,7 @@ tranche. [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md) describes each in full.
 - **Archetype** — a domain quality gate under `dev_harness/harness/`, reporting a
   `passed` boolean.
 - **Handoff** — `ACERVATOR_HOP8.md`, measured for drift by `tools/hop_check.py`.
-- **Rule id** — an `RN` name in `RULE_META` in `src/core/rule_registry.py`. The
+- **Rule id** — an RN name in `RULE_META`, in `src/core/rule_registry.py`. The
   registry has no production importer and the ids bind nothing.
 
 [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md)
@@ -146,10 +174,13 @@ describes all three.
 
 - **Solve et coagula** — dissolve and reform, the sense the epigraph
   *Turbator aequilibrii dissolvendus reformandusque* carries on
-  [01-title.md](01-title.md). `harvest_svg` in
-  `src/competition/trophy_generator.py` letters `SOLVE · ET · COAGULA` around the
-  outer arc of the harvest trophy, which is the one place the phrase appears in
-  the code.
+  [01-title.md](01-title.md). One function letters SOLVE · ET · COAGULA around
+  the outer arc of the harvest trophy, and that is the one place the phrase
+  appears in the code.
+
+```python
+def harvest_svg(d: TrophyData) -> str: ...      # src/competition/trophy_generator.py
+```
 
 ## The operator's own words
 
