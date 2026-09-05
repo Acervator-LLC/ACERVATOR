@@ -132,9 +132,8 @@ EXPECTED_DEFAULTS = {
     "radius_lg": "12px",
 }
 
-# Every value of every theme, typed out here rather than read from
-# either module. Neither side can satisfy this table by copying the
-# other, and an edit made to both files together is still reported.
+# Typed out here, not read from either module, so an edit made to both
+# files together is still reported.
 EXPECTED = {
     "cyberpunk_dark": dict(
         EXPECTED_DEFAULTS,
@@ -276,9 +275,7 @@ EXPECTED_STYLE_SHEET_LENGTHS = {
     "glass_metal": 7372,
 }
 
-# The nine values the style-sheet template never carries. Every one is
-# read off both sides instead, because no render can report a value the
-# style sheet does not hold.
+# Values `QSS_TEMPLATE` never carries, so no render can report them.
 NEVER_IN_THE_STYLE_SHEET = (
     "name",
     "accent_success",
@@ -291,9 +288,8 @@ NEVER_IN_THE_STYLE_SHEET = (
     "radius_lg",
 )
 
-# The three values the style sheet carries where no still picture
-# reaches them: one sits inside a comment, two sit behind a pointer
-# state a grabbed image never enters.
+# Values a grabbed image cannot reach: one is inside a comment, two sit
+# behind a pointer state.
 UNREACHED_BY_A_STILL_PICTURE = {
     "display_name": "comment",
     "bg_hover": "state",
@@ -1778,9 +1774,7 @@ def test_the_shipped_module_needs_no_qt_either():
 
 # Nothing the surface holds is left out of the snapshot
 
-# Every constant the surface exports, and the payload key that carries
-# it. A comparison reading 10 of 22 constants passes whether the other
-# 12 match or not; this closes that gap for every one of them at once.
+# (surface constant, the payload key that carries it).
 PAYLOAD_KEYS = {
     "THEME_NAMES": "theme_names",
     "DISPLAY_NAMES": "display_names",
@@ -1805,9 +1799,7 @@ THEME_CONSTANTS = {
     "GLASS_METAL": "glass_metal",
 }
 
-# The five constants no snapshot key carries, each with the check that
-# covers it. `METHOD` is the name the bridge registers under. The other
-# four are what the lookups return when they find nothing.
+# (constant no snapshot key carries, the test that covers it).
 NOT_IN_THE_SNAPSHOT = {
     "METHOD": "test_bridge_registers_the_theme_engine_method",
     "UNKNOWN_THEME_MESSAGE": "test_unknown_theme_message_names_the_value_it_was_given",
