@@ -190,8 +190,8 @@ fell**, and none passed the 1.0 cap.
 consensus_confidence == round(min(1.0, abs(net) / voted_weight), 4)
 ```
 
-with **0 mismatches**, and no row reaches the 1.0 cap. So each row's
-move is fully determined by one ratio, `asked_weight / voted_weight`.
+with **0 mismatches**, and no row reaches the 1.0 cap. Each row's move is
+therefore fully determined by one ratio, `asked_weight / voted_weight`.
 
 | bars | MOVED | held: no voter abstained | held: the 4-dp rounding absorbed it |
 |---|---|---|---|
@@ -245,8 +245,8 @@ before it was believed.
 | 100 | 2 | 23 | 168 | 0.0859 |
 | 400 | 1 | 18 | 173 | 0.0886 |
 
-So a sweep at the bare floor would nearly return a zero, and that zero
-would be an artefact of the harness.
+A sweep at the bare floor would therefore nearly return a zero, and that
+zero would be an artefact of the harness.
 
 **The BB-priority skew alone cannot be the answer either.** `+0.30`
 (`tick():8195-8205`) makes the floor `conf >= -0.05`, which every
@@ -293,8 +293,8 @@ the ONLY gate that ever blocks is `ta_bullish` / `ta_bearish`. Every
 other gate — `delta_positive`, `interval`, `trend_hold`, `midline`,
 `target_fires`, `bb_proximity`, `circuit_breaker`, `htf_defer`,
 `hysteresis`, `adx`, `efficiency_ratio`, `zscore_extremity`,
-`tranches_queued`, `smart_ceiling` — passes on every row. So a chain
-verdict here is attributable to the TA gate and to nothing else.
+`tranches_queued`, `smart_ceiling` — passes on every row. A chain verdict
+here is therefore attributable to the TA gate and to nothing else.
 
 Driven through the real chains, at the bare floor:
 
@@ -411,7 +411,7 @@ suppression was added anywhere; the one `# noqa` in the new test file is
 `E402`, the sys-path-before-import pattern
 `test_indicator_numeric_identity.py` already uses.
 
-**Emitter registry.** `python -m tools.emitter_registry_check` before
+**Emitter registry.** `emitter_registry_check` before
 and after: exit 0, 76 pins, 76 registry rows, no `E` lines, no `W1`
 lines, output byte-identical. Pins `07-003` and `07-004` did not need
 re-anchoring — every edit to `ta_engine.py` is BELOW both, at lines 507

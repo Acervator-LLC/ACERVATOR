@@ -119,14 +119,13 @@ That must not survive the port.
 | 6 | Market Inspector to React | Small and clean, but it has **zero emitters**, so today a port cannot be proved correct. Fix that first (issue #18). |
 | 7 | Asset Charts to React | Only after the duplicate indicator maths is deleted. Never re-implement an indicator in JavaScript. |
 | 8 | Bot Swarm to React | 4,038 lines of hand-drawn graphics, and it is the widget that writes to `bot_state.json`. |
-| 9 | Simulator to React | 5,815 lines of panels, once the engine has moved out. |
+| 9 | Simulator to React | 5,815 lines of panels. The engine has already moved out. |
 | 10 | Trading tab to React, last | 24,040 lines, 21 money-moving call sites, the Fire button. This is the live-money surface. |
 
 ## What I recommend you do first
 
-**Do step 0 this week.** Moving 9,580 lines out of `src/gui/` costs almost nothing, breaks
-nothing, and it is worth doing whether or not you ever go to React. It is the single change
-that turns "the boundary" from an idea into a fact you can see in the folder tree.
+**Step 0 is done.** 9,580 lines have moved out of `src/gui/`. It broke nothing, and it is the
+change that turns "the boundary" from an idea into a fact you can see in the folder tree.
 
 **Do not let anyone start React before step 2.** A React screen with no API behind it will
 grow its own copy of your logic to fill the gap. That is exactly the failure this migration
@@ -163,7 +162,7 @@ This audit did not re-do that census. It checked whether the census still holds.
 
 | Matrix claim | Measured today | Verdict |
 | --- | --- | --- |
-| 78 emitter pins, 78 registry rows, controls OK, exit 0 | `python -m tools.emitter_registry_check` returns `pins in src: 78 / registry rows: 78 / instrument: controls OK`, **exit 0** | **exact** |
+| 78 emitter pins, 78 registry rows, controls OK, exit 0 | `emitter_registry_check` returns `pins in src: 78 / registry rows: 78 / instrument: controls OK`, **exit 0** | **exact** |
 | 376 stable IDs | 378 found by regex | within 1 per class |
 | 77 framing features | 78 found | within 1 |
 | 299 functions | 300 found | within 1 |
@@ -492,7 +491,7 @@ gives 16 raw and 6 live — **62.5%** false positives, all six being docstrings.
 
 **Runners-up:** `src/gui/settings_dialog.py:381-384` (a dialog encrypts and writes API
 credentials onto `ExchangeConfig`); `src/gui/preflight_check.py:169`
-(`target_balance < min_cost * 3` blocks bot creation); `src/gui/start_balance_check.py:137`
+(`target_balance < min_cost * 3` blocks bot creation); `src/trading/start_balance_check.py:137`
 (`sufficient = (base_free >= 1.0) or (target_free > 0)`, a hardcoded $1.00 start gate);
 `src/gui/shared_testnet.py:364-379` (9 assignments rehydrating a testnet chain's private
 balances and total supply).
@@ -526,52 +525,53 @@ trading side once every two seconds.
 **39 bindings refresh a display only** — pulse animation, news ticker, console drain, tooltip
 scan, screen recorder, progress bars, USB scan, splash animation.
 
-### 3.5 Engine code shelved inside the GUI package
+### 3.5 Engine code that carries no Qt import
 
-**9,580 lines in 18 files under `src/gui/` never import Qt.** Two independent counts agree
-exactly.
+**9,580 lines in 18 files never import Qt.** Two independent counts agree exactly. When this
+was measured all 18 sat inside the GUI package. The tree now holds the 13 Simulator files
+under `src/simulator/`, and four of the other five under `src/exchange/` and `src/trading/`.
 
 **The Simulator engine — 13 files, 7,756 lines:**
 
 | Lines | File | What it is |
 | ---: | --- | --- |
-| 2,649 | `src/gui/simulator_tab/fleet/fleet_replay_controller.py` | Ticks real `ScrummingBot` instances against a replay tape. `await bot.tick()` at `:1894`. |
-| 1,186 | `src/gui/simulator_tab/nuclear_fleet_controller.py` | Looped multi-cycle fleet runner |
-| 851 | `src/gui/simulator_tab/fleet/sim_exchange.py` | A venue: order placement, fills, fees, cancellation |
-| 751 | `src/gui/simulator_tab/nuclear_candle_source.py` | Tape construction and deterministic noise |
-| 544 | `src/gui/simulator_tab/nuclear_sim_exchange.py` | A second venue implementation |
-| 462 | `src/gui/simulator_tab/nuclear_controller.py` | The v1 single-tape controller |
-| 385 | `src/gui/simulator_tab/fleet/bot_state_loader.py` | Reads `bot_state.json` into `BotConfig` |
-| 359 | `src/gui/simulator_tab/fleet/simulator_bot_state.py` | Sim state persistence |
-| 206 | `src/gui/simulator_tab/populate_nuclear_cache.py` | Cache warmer |
-| 169 | `src/gui/simulator_tab/fleet/candle_series.py` | Candle cursor |
-| 110 | `src/gui/simulator_tab/fleet/master_clock.py` | Clock |
+| 2,649 | `src/simulator/fleet/fleet_replay_controller.py` | Ticks real `ScrummingBot` instances against a replay tape. `await bot.tick()` at `:1894`. |
+| 1,186 | `src/simulator/nuclear_fleet_controller.py` | Looped multi-cycle fleet runner |
+| 851 | `src/simulator/fleet/sim_exchange.py` | A venue: order placement, fills, fees, cancellation |
+| 751 | `src/simulator/nuclear_candle_source.py` | Tape construction and deterministic noise |
+| 544 | `src/simulator/nuclear_sim_exchange.py` | A second venue implementation |
+| 462 | `src/simulator/nuclear_controller.py` | The v1 single-tape controller |
+| 385 | `src/simulator/fleet/bot_state_loader.py` | Reads `bot_state.json` into `BotConfig` |
+| 359 | `src/simulator/fleet/simulator_bot_state.py` | Sim state persistence |
+| 206 | `src/simulator/populate_nuclear_cache.py` | Cache warmer |
+| 169 | `src/simulator/fleet/candle_series.py` | Candle cursor |
+| 110 | `src/simulator/fleet/master_clock.py` | Clock |
 | 84 | two `__init__.py` | Re-exports |
 
 Their imports are stdlib plus `src.trading.*`, `src.exchange.*`, `src.core.*`. **Zero Qt.
 Zero third-party.**
 
-**Five more sit loose in `src/gui/` — 1,824 lines:**
+**Five more — 1,824 lines. Only `preflight_check.py` is still in the GUI package:**
 
 | Lines | File | What it is |
 | ---: | --- | --- |
-| 727 | `src/gui/history_helpers.py` | Exchange trade-history ETL: chunked 30-day pagination, gate and voting log join on plus/minus 60 s |
-| 398 | `src/gui/market_inspector_fetcher.py` | Three-tier exchange OHLC fetcher |
-| 303 | `src/gui/chart_data.py` | Multi-source OHLCV fetcher with CoinGecko fallback |
+| 727 | `src/exchange/history_helpers.py` | Exchange trade-history ETL: chunked 30-day pagination, gate and voting log join on plus/minus 60 s |
+| 398 | `src/exchange/market_inspector_fetcher.py` | Three-tier exchange OHLC fetcher |
+| 303 | `src/exchange/chart_data.py` | Multi-source OHLCV fetcher with CoinGecko fallback |
 | 250 | `src/gui/preflight_check.py` | Sync CCXT symbol validation — **blocks bot creation** |
-| 146 | `src/gui/start_balance_check.py` | Wallet sufficiency gate — **blocks bot start** |
+| 146 | `src/trading/start_balance_check.py` | Wallet sufficiency gate — **blocks bot start** |
 
-**The real reverse edge runs the other way.** `src/trading/topology_stress.py:216` and `:294`
-import from `src.gui.simulator_tab`. Both are function-local, deferred imports. Both target
-shelved engine code, not widgets. **This is a packaging error, not a Qt coupling**, and step
-0 fixes it for free.
+**The reverse edge ran the other way.** `src/trading/topology_stress.py` reached into the GUI
+package for engine code, not for widgets. **That was a packaging error, not a Qt coupling.**
+Its two function-local, deferred imports now name `src.simulator.nuclear_candle_source` and
+`src.simulator.fleet.fleet_replay_controller`, so the edge is closed.
 
-**281 references across 127 files in `tests/`, `tools/` and `dev_harness/` already depend on
-these modules.** The move is a rename plus an import sweep. It changes no behaviour.
+**281 references across 127 files in `tests/`, `tools/` and `dev_harness/` depended on these
+modules.** The move was a rename plus an import sweep. It changed no behaviour.
 
-**Coverage note.** `pyproject.toml:229` excludes `src/gui/*` from coverage measurement. All
-9,580 lines of shelved engine code are therefore invisible to the coverage tool. Step 0 makes
-them visible.
+**Coverage note.** `pyproject.toml` still excludes `src/gui/*` from coverage measurement. Of
+the 18 files here, only `preflight_check.py` and its 250 lines remain inside that exclusion.
+The other 9,330 are now measured.
 
 ### 3.6 The dependency edges, counted
 
@@ -749,7 +749,7 @@ ratio is **297 Qt to 27 bus**. Most GUI wiring is Qt-native and does not survive
 `src/core/signal_contract.py:1146` (`emit`), `:635` (`SignalSink`), `:471` (frozen `Signal`
 dataclass, **14 fields**: `name, site, actual, expected, ok, seq, ts, context, module, kind,
 count, dt, nth, duration`). **The 78-pin count, `docs/EMITTER_IDENTIFICATION.md` and
-`tools/emitter_registry_check.py` are stale.** Both the registry doc and the check tool were
+`emitter_registry_check` are stale.** Both the registry doc and the check tool were
 removed in the "remove the 'pin' system" commit (`e3054e4`) and its follow-up (`2b01465`).
 `src/core/emit_contracts.py` is the current mechanism, and it is a topic-keyed contract, not
 a line-numbered pin count — the 78/78 verification cannot be re-run as this paragraph
@@ -768,7 +768,7 @@ the same `expected` and `actual` pairs as the Qt version.
 
 **Shape.** `@dataclass Candle` — 6 fields, `time` in unix **seconds**, then `open`, `high`,
 `low`, `close`, `volume` (`src/gui/native_chart.py:51-58`). A second isomorphic dataclass
-`OHLCVCandle` (`src/gui/chart_data.py:140-147`) is re-boxed field by field at
+`OHLCVCandle` (`src/exchange/chart_data.py:140-147`) is re-boxed field by field at
 `main_window.py:1712-1722`. **No pandas on this path.**
 
 **Points per series — the number is not what the code asks for.** Verified at source, on the
@@ -884,7 +884,7 @@ Plus a **write** channel carrying the 74 privileged operations from section 3.3.
 | **`QSplitter`** | 30 references | No HTML equivalent. Hand-built or a library. |
 | **444 `setStyleSheet` calls, 287 hex literals** | 33 files | Rebuilt as CSS. The tokens must be recovered from the pixels: only 42 are named in a design-system module. |
 | **`QMediaPlayer` and `QAudioOutput`** | `src/gui/audio_suite.py` (7 plus 4 refs) | HTML `<audio>`, or drop. |
-| **The screen recorder** | `src/gui/screen_recorder.py` — 755 lines, `widget.grab()` frame capture | Rewritten or dropped. Electron has `desktopCapturer`. |
+| **The screen recorder** | 755 lines, `widget.grab()` frame capture | Dropped. The tree no longer carries it. |
 | **The USB auth widget** | `src/gui/usb_auth_widget.py` — 627 lines | Rewritten. An Electron main process has filesystem access; a renderer does not. |
 | **The instance consent dialog** | `src/gui/instance_consent_dialog.py` — 286 lines | Rewritten. **The guard behind it (`src/core/instance_guard.py`, 924 lines) is Qt-free and survives untouched.** |
 
@@ -912,11 +912,10 @@ so rendered is a panel that Electron will later host unchanged.
 
 ### 6.1 Steps 0 to 3 — prerequisites, none of them React
 
-**Step 0 — move the engine out of `src/gui/`.** 18 files, 9,580 lines, zero Qt imports, 281
-existing references in `tests/`, `tools/` and `dev_harness/` to re-point. It is a `git mv`
-plus an import sweep. It changes no behaviour, it fixes the `topology_stress.py` reverse edge,
-and it makes those lines visible to coverage for the first time (`pyproject.toml:229` excludes
-`src/gui/*`). **Worth doing whether or not React ever happens.**
+**Step 0 — move the engine out of `src/gui/`. Done.** 18 files, 9,580 lines, zero Qt imports,
+281 references in `tests/`, `tools/` and `dev_harness/` re-pointed. It was a `git mv` plus an
+import sweep. It changed no behaviour, it closed the `topology_stress.py` reverse edge, and it
+made those lines visible to coverage. The Simulator engine now sits under `src/simulator/`.
 
 **Step 1 — give the engine its own clock.** `main.py:401` (50 ms pump), `main.py:959` (60 s
 save), `main.py:1078-1092` (start-all sequencer), `main.py:1107` (auto-restart). Four sites.
@@ -949,9 +948,9 @@ field. One shape, then serve it.
    `:199` and a comment at `:911`). It holds `self._bot_manager` and only reads through it.
    Verified at `:403`, `:414`, `:433`, `:673`, `:814`, `:881`, `:1355`.
 2. **Its own module.** 1,427 lines in one file, not carved out of an 11,013-line god file.
-3. **The boundary is already proved there.** `src/gui/history_helpers.py` is **727 lines and
-   imports no Qt at all.** It is already the backend serializer. It moves in step 0 and is
-   then reused unchanged.
+3. **The boundary is already proved there.** `src/exchange/history_helpers.py` is **727 lines and
+   imports no Qt at all.** It is already the backend serializer. Step 0 has moved it, and it
+   is reused unchanged.
 4. **The clearest data contract in the app.** 13 named columns (`history_tab.py:314-330`),
    `PAGE_SIZE = 100` (`:174`), and a CSV export that already flattens the same rows (`:1251`).
 5. **Seven emitters — the second-largest set of any tab — and they are postconditions.**
@@ -1002,7 +1001,7 @@ the authority — and a migration is the correct moment to stop shipping it.
 | 6 | Market Inspector | 1,574 | Small and clean — **gated on issue #18 giving it emitters** |
 | 7 | Asset Charts | 2,831 | **Gated on deleting `native_chart.py:276-424`.** Never re-implement an indicator in JavaScript |
 | 8 | Bot Swarm | 4,452 | 34 `draw*` calls; also the `bot_state.json` second writer |
-| 9 | Simulator panels | 5,815 | Only after step 0 removes the engine beneath it |
+| 9 | Simulator panels | 5,815 | Unblocked: step 0 has removed the engine beneath it |
 | 10 | **Trading** | 24,040 | Last. 21 money-moving call sites, the Fire button, the god file |
 
 Then: the wizards (`bot_wizard.py` 2,083, `init_wizard.py` 270), the dialogs
@@ -1110,8 +1109,8 @@ wrong.**
 
 **Bucket C (999 tests) is mostly the shelved engine** — `test_fleet_replay_controller.py`,
 `test_nuclear_tablet_tapes.py`, `test_sim_spawn_drift.py`, `test_topology_stress.py` and
-their neighbours. **Those survive the migration untouched.** They only import `src.gui`
-because of the packaging error that step 0 fixes.
+their neighbours. **Those survive the migration untouched.** They imported `src.gui` only
+because of the packaging error, and step 0 has closed it.
 
 ### 8.3 Per-test classification — the tight number
 
@@ -1269,7 +1268,7 @@ goals and they have different answers.** The CTO should say which one #128 is fo
 | Qt symbol census | regex `\bQ[A-Z]\w+\b` on non-comment lines | resolved against 728 real PySide6 symbols | 4,097 real, 31 false, **0.75% FP** |
 | Test collection | `pytest --collect-only -q` | exit code checked | 8,812, **exit 0** |
 | Per-test Qt coupling | `ast` classifier | 2 positive controls (4/4, 9/11), 2 negative (0/29, 0/32), plus a 5,671-test negative at scale | **0.55% FP**, slight under-report |
-| Emitter registry | `python -m tools.emitter_registry_check` | the tool's own instrument controls | 78/78, controls OK, **exit 0** |
+| Emitter registry | `emitter_registry_check` | the tool's own instrument controls | 78/78, controls OK, **exit 0** |
 | Bus topic count | `ast`, two independent sweeps | raw grep gives 78 distinct strings — **65% noise** | both sweeps give **27** |
 | `trade.filled` shapes | `ast` over `scrumming_bot.py` | keyword lists printed per site | 5 nested, 5 flat, verified |
 | Matrix citation survival | node IDs versus the full collected list | a fabricated node ID was reported broken | 136/140 = **97.1%** |
@@ -1324,7 +1323,7 @@ This report is wrong if any of the following holds.
    rate.** Re-run it. The controls are named in section 8.3 and are re-runnable.
 4. **`src/gui/history_tab.py` writes to trading state anywhere.** Section 6.2 claims zero
    write sites. One real write moves History out of first place.
-5. **`src/gui/history_helpers.py` imports Qt.** It is claimed to be 727 Qt-free lines that
+5. **`src/exchange/history_helpers.py` imports Qt.** It is claimed to be 727 Qt-free lines that
    move to the backend unchanged.
 6. **The capability matrix's citations resolve at materially less than 97.1%.** That number
    is what makes it usable as the React specification.
