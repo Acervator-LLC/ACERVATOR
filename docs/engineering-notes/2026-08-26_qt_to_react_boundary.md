@@ -237,7 +237,7 @@ functions or methods**.
 | 888 | 4 | 2 | 27 | `src/gui/crypto_news_ticker.py` |
 | 816 | 1 | 1 | 14 | `src/gui/simulator_tab/nuclear_mode_panel.py` |
 | 759 | 4 | 4 | 23 | `src/gui/stock_main_window.py` |
-| 755 | 4 | 2 | 35 | `src/gui/screen_recorder.py` |
+| 755 | 4 | 2 | 35 | `src/gui/screen_recorder.py`, since removed and not in the tree |
 | 648 | 2 | 1 | 17 | `src/gui/testnet_tab.py` |
 | 638 | 7 | 5 | 30 | `src/gui/audio_suite.py` |
 | 627 | 4 | 4 | 25 | `src/gui/usb_auth_widget.py` |
@@ -634,7 +634,7 @@ window is never constructed.
 
 Plus **30 `QTimer.singleShot` sites**.
 
-**Dead timers (5):** `audio_suite.py:630`, `screen_recorder.py:197`, `screen_recorder.py:678`,
+**Dead timers (5):** `audio_suite.py:630`, `screen_recorder.py:197`, `screen_recorder.py:678` — that module is not in the tree any more —
 `testnet_tab.py:148`, `stock_main_window.py:514`. Hosts are nulled at
 `src/gui/main_tabs/retired_tabs.py:45` and `:76`, or never constructed.
 
@@ -748,8 +748,8 @@ ratio is **297 Qt to 27 bus**. Most GUI wiring is Qt-native and does not survive
 
 `src/core/signal_contract.py:1146` (`emit`), `:635` (`SignalSink`), `:471` (frozen `Signal`
 dataclass, **14 fields**: `name, site, actual, expected, ok, seq, ts, context, module, kind,
-count, dt, nth, duration`). **The 78-pin count, `docs/EMITTER_IDENTIFICATION.md` and
-`emitter_registry_check` are stale.** Both the registry doc and the check tool were
+count, dt, nth, duration`). **The 78-pin count is stale, and `docs/EMITTER_IDENTIFICATION.md` is not in the tree**, nor is
+`emitter_registry_check`. Both the registry doc and the check tool were
 removed in the "remove the 'pin' system" commit (`e3054e4`) and its follow-up (`2b01465`).
 `src/core/emit_contracts.py` is the current mechanism, and it is a topic-keyed contract, not
 a line-numbered pin count — the 78/78 verification cannot be re-run as this paragraph
@@ -1108,7 +1108,7 @@ wrong.**
 **A plus B is 3,141 tests (35.6%) living in a file that imports Qt. That is the upper bound.**
 
 **Bucket C (999 tests) is mostly the shelved engine** — `test_fleet_replay_controller.py`,
-`test_nuclear_tablet_tapes.py`, `test_sim_spawn_drift.py`, `test_topology_stress.py` and
+`test_sim_spawn_drift.py`, `test_topology_stress.py` and
 their neighbours. **Those survive the migration untouched.** They imported `src.gui` only
 because of the packaging error, and step 0 has closed it.
 

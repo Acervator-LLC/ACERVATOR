@@ -1,7 +1,7 @@
 """Pin the parts of `tools/local_ci.py` that decide a verdict without a lane.
 
 `classify_changes` selects lanes from a diff and the exit-code reader turns a
-return code into a verdict; no lane is run here. `A_DOC`, `A_DOC_ARTEFACT` and
+return code into a verdict; no lane is run here. `A_DOC`, `A_NESTED_DOC` and
 `A_SOURCE_FILE` are real paths in this repository. Every negative assertion in
 `local_ci` sits beside its positive control.
 """
@@ -15,7 +15,7 @@ import pytest
 from tools import local_ci
 
 A_DOC = "docs/desktop_shell.md"
-A_DOC_ARTEFACT = "docs/engineering-notes/2026-08-22_item_10_4_evidence/callers.json"
+A_NESTED_DOC = "docs/engineering-notes/ci_failure_ledger.md"
 A_SOURCE_FILE = "src/trading/scrumming_bot.py"
 
 
@@ -41,7 +41,7 @@ def test_one_source_file_beside_the_docs_runs_the_code_lanes() -> None:
     [
         ".claude/rules/tests.md",
         A_DOC,
-        A_DOC_ARTEFACT,
+        A_NESTED_DOC,
         "CHANGELOG.md",
         "LICENSE",
         ".gitignore",

@@ -299,10 +299,10 @@ files cite against the tree, with the 1,606-path control:
 
 | Named in a memory entry | On disk | Ever committed |
 | ----------------------- | ------- | -------------- |
-| `sim_bot.py` under a tree named `sadp` | no | no |
-| `sim_scrumming_bot.py` under the same tree | no | no |
+| `sim_bot.py` under a tree named `sadp` | not in the tree | no |
+| `sim_scrumming_bot.py` under the same tree | not in the tree | no |
 | A live-log reader under that tree's tools directory | no | no |
-| `tools/check_sim_live_boundary.py` | no | no |
+| `tools/check_sim_live_boundary.py` | not in the tree | no |
 | The decision-diff tool, at its pre-move address | at `dev_harness/harness/decision_diff.py` | yes |
 | The release gate, at its pre-move address | at `dev_harness/harness/check_release_readiness.py` | yes |
 
@@ -354,16 +354,16 @@ all references, with the 1,606-path result as its control.
 | RAIntSimBat, the batch simulation runner | 0 |
 | A protocol tree named `sadp` | 0 |
 | Spectre, in any Python file in any commit | 0, against 18 for the control term |
-| `generate_essay.py` | 0, while `generate_essay_ja.py` returns commits |
+| `generate_essay.py`, not in the tree | 0, while `generate_essay_ja.py` returns commits |
 | The battery engine | 0 |
 
 The protocol part of the original manual described 77 rules. `RULE_META` in
 `src/core/rule_registry.py` defines 35, and of the identifiers that collide, not
 one describes the same rule.
 
-One more absence, and this one is not a phantom. Fourteen builder scripts,
-`build_manual_v4_part1.py` through `part10.py` including the lettered splits,
-sit on the operator's disk and produced the fourteen original documents. The
+One more absence, and this one is not a phantom. Fourteen builder scripts not in
+the tree, `build_manual_v4_part1.py` through `part10.py` including the lettered
+splits, sit on the operator's disk and produced the fourteen originals. The
 same query returns no commit that ever added any of them. They were real, they
 ran, and the repository has no idea they existed. That is the argument of this
 part in one example: a thing can be entirely real and still leave nothing a

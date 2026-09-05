@@ -54,10 +54,10 @@ changed to clear WCAG AA. Neither change reached a widget.
 
 `#ff3366` is the most-used colour in the GUI. `#4fc3ff` is rendered
 nowhere. The accessibility fix was made in the token module and the read
-path was never migrated, so the screen never changed. This unit does NOT
-repaint them: it adds `ERROR = "#ff3366"` and `STATUS_INFO = "#00aaff"`
-for what the widgets actually draw, and leaves `DANGER` and `INFO` at
-their corrected values. Deciding whether the GUI adopts the corrected
+path was never migrated, so the screen never changed. The widgets are
+not repainted: `ERROR = "#ff3366"` and `STATUS_INFO = "#00aaff"` name
+what they actually draw, and `DANGER` and `INFO` keep their corrected
+values. Deciding whether the GUI adopts the corrected
 reds and blues is a product call.
 
 ## `theme_engine.py` versus `design_system.py`
@@ -159,12 +159,11 @@ carried the role in widget code: `FOLD_RATIO_AMBER`, `FOLD_SOURCE_MANUAL`,
 `EXTRACTOR_TRANCHE_SURFACE`, `EXTRACTOR_TRANCHE_BORDER`. Those constants
 in `bot_live_settings.py` are the migration target for their file.
 
-## Migration order for the remaining units
+## Migration order for the remaining files
 
-`analytics_tab.py` is migrated in this unit: 22 literals to 0.
+`analytics_tab.py` is migrated: 22 literals to 0.
 
-Counts are rendered literals; "untokened" is what still has no exact
-token after this unit.
+Counts are rendered literals; "untokened" is what has no exact token.
 
 
 ### Phase 1 -- every literal already has a token
@@ -317,7 +316,7 @@ sit inside the Phase 2 and Phase 3 files.
 | `#333355` | 1 | usb_auth_widget.py |
 | `#222244` | 1 | usb_auth_widget.py |
 
-## What this unit did not do
+## Colours the migration does not reach
 
 - `analytics_tab.py:96-101` builds the equity-curve gradient from
   `QColor(0, 255, 136, 40)` and `QColor(255, 51, 102, 40)`. Those are

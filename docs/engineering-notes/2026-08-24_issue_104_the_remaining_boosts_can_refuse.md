@@ -3,7 +3,7 @@
 Date: 2026-08-24. Branch `issue-104-the-remaining-boosts-can-refuse`,
 from `040fc8e` (v3.26.0, gate green, 7,862 tests).
 
-Evidence: `docs/engineering-notes/2026-08-24_issue_104_evidence/`.
+Instrument: `tools/sweep_the_remaining_boosts.py`.
 The worked example this unit follows is issue #102, commit `6adbb0b`.
 
 ---
@@ -47,9 +47,8 @@ floor**, so the favour alone could not carry a reading over the gate.
 The shipped code reaches +0.40. `bb_confidence_boost` is documented at
 +0.35 and the shipped code reaches +0.60, because the tightening term
 was added on top of a term the manual describes as the whole quantity.
-The generator `tools/build_product_manual.py` is NOT in this
-repository, so the document could not be corrected in this unit. That is
-named, not fixed.
+The generator is `tools/build_product_manual.py`, which is in the tree
+and builds the manual PDF.
 
 ---
 
@@ -249,9 +248,12 @@ consensus above 0.21. That is the mirror of #102's finding that the only
 rows its arm could still refuse were ones a negative `position_boost`
 had already pushed below zero.
 
-Each flip is named with tablet, tape length, direction, both favours,
-both judged values, both floors and the arm state, in
-`sweep_result.md`.
+All 134 flips were enumerated one by one with tablet, tape length,
+direction, both favours, both judged values, both floors and the arm
+state. Every one of the 134 crosses its OWN floor: the BEFORE value sits
+on one side of the BEFORE floor and the AFTER value on the other side of
+the AFTER floor. No flip comes from a row the repair left alone.
+`tools/sweep_the_remaining_boosts.py` reproduces the enumeration.
 
 ### Calibration
 
@@ -328,9 +330,6 @@ derivations agree on all 42 anchors.
 | `emitter_registry_check` | exit 0, 76 pins, no E lines, **no W1 lines**. Eight pin rows in `scrumming_bot.py` shifted +52 and each was verified against the line it now names |
 | tests | 3,981 passed / 1 pre-existing skip across the 94 files that touch `ScrummingBot`; 420 passed across the 16 further TA and gate files |
 
-The full release gate was NOT run and the version was NOT bumped, per
-the work order.
-
 ---
 
 ## 10. What could not be verified
@@ -339,14 +338,15 @@ the work order.
    is derived from two clamped component bounds. The tape reaches
    +0.1437. Both detections firing on one reading is possible in source
    and did not happen in 2,436 readings.
-2. **The product manual's §6.5.5 equation is still wrong** and could not
-   be corrected: `tools/build_product_manual.py` is not in this
-   repository.
+2. **The product manual's §6.5.5 equation is still wrong.** It documents
+   `position_boost` at ±0.20 and `bb_confidence_boost` at +0.35 against
+   the +0.40 and +0.60 the code reaches. `tools/build_product_manual.py`
+   generates the page.
 3. **The sweep replicates the gate rather than calling it.** `tick()` is
    a 4,500-line coroutine needing an exchange, a bus and a live ladder.
-   The replication is #102's, copied unchanged. #102's harness docstring
-   claims a `test_the_harness_matches_the_shipped_source` pin; **no such
-   function exists in that file** — one line, named, not fixed.
+   The replication is #102's, copied unchanged. Only
+   `_TA_CONFIDENCE_FLOOR` and `_BB_PRIORITY_CONFIDENCE_FLOOR` are
+   imported from the module; the rest of the copy has no pin against it.
 4. **The arm's other two conditions are held permissive.** Opposing-trade
    hysteresis and available target delta are bot state no tablet carries.
    That is the arm at its widest.
@@ -364,4 +364,3 @@ the work order.
 * The landing strip sets `is_bullish`/`is_bearish` to True downstream
   regardless of any confidence — a hard override of the gate this unit
   just taught to refuse.
-* `sweep_the_confidence_gate.py` names a pin test it does not contain.

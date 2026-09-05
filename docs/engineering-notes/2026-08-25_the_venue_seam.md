@@ -569,7 +569,7 @@ live rows (I1-I7). **GAP 4 contains the largest unfixed measured divergence (H1)
 
 29 + 22 = 51 listed rows.
 
-## 6.3 What this list does NOT cover — stated so the next unit does not believe it is done
+## 6.3 What this list does NOT cover
 
 1. **No live network call was made.** Where a row says "Live raises `InvalidOrder`", the
    evidence is ccxt's contract, not a Coinbase response. Rows E1, E2, E3, E4, E7, E10 and

@@ -12,9 +12,9 @@ WHY THE GATE IS REPLICATED HERE RATHER THAN CALLED. ``tick()`` is a
 confidence pipeline inside it is a pure function of the candle tape, and
 that is what this file rebuilds: the voting engine, the two boosts, the
 BB zones and the arm's proximity test, each copied from the shipping
-source at the line it lives on. ``test_the_harness_matches_the_shipped_
-source`` below pins the copy against the module, so a drift in either
-turns the sweep red instead of quietly measuring the wrong gate.
+source at the line it lives on. ``_TA_CONFIDENCE_FLOOR`` and
+``_BB_PRIORITY_CONFIDENCE_FLOOR`` are imported from the module rather
+than restated; the rest of the copy has no pin against the module.
 
 WHAT IS SWEPT AND WHAT IS HELD. Proximity is MEASURED from the tape. The
 arm's other two conditions -- opposing-trade hysteresis and an available
@@ -44,7 +44,7 @@ from pathlib import Path
 
 logger = logging.getLogger("acervator.audits.issue_102")
 
-REPO = Path(__file__).resolve().parents[3]
+REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from src.trading.gate_chain import (  # noqa: E402
@@ -63,7 +63,7 @@ from src.trading.scrumming_bot import (  # noqa: E402
 from src.trading.ta_engine import VotingEngine  # noqa: E402
 
 TABLETS = Path.home() / ".acervator" / "stone_tablets"
-OUT = Path(__file__).resolve().parent
+OUT = REPO / "artifacts" / "confidence-gate-sweep"
 BARS = (35, 40, 60, 100, 200, 400)
 
 # BotConfig defaults, src/trading/bot_container.py:201-209.

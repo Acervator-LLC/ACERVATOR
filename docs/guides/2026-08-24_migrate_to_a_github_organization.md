@@ -206,6 +206,7 @@ removal.
       machine that has it and pass the file:
 
       ```
+      # both files are written by these commands and are not in the tree
       gh issue list --repo ekthelius/ACERVATOR---THE-ACCUMULATION-TRADING-PLATFORM \
           --state all --limit 1000 --json number,title,state > issues.json
       python -m tools.migration_verifier --issues-json issues.json capture --out ..\migration_baseline.json
@@ -387,5 +388,5 @@ and the hook stops being the only guard.
       No pre-push hook prints anything; it was retired. See section 3.
 - [ ] **10.2** Push from the second tree, if you have one. Same check.
 - [ ] **10.3** Re-run the verifier. Expect exit 0.
-- [ ] **10.4** Keep `migration_baseline.json`. It holds the only record of
+- [ ] **10.4** Keep `..\migration_baseline.json`. It holds the only record of
       correct. You will want it if something looks wrong in a month.

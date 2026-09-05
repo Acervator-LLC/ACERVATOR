@@ -98,7 +98,7 @@ call site passed a duration the sink refused.
 
 ### 2. The line-execution instrument
 
-`coverage.py` recorded which lines the run executed. This is what turns
+The `coverage` package recorded which lines the run executed. This is what turns
 "did not fire" into a measurement and splits it by cause.
 
 **Positive control, and the defect it caught.** Every file a pin FIRED
@@ -158,7 +158,7 @@ here from the register text, and the two agree.
 | ID emitter number disagrees with the name | 0 |
 | signal type in the name disagrees with the column | 0 |
 | previous name is not `subsystem.slug` | 0 |
-| source does not resolve to `file.py:line` | 0 |
+| source does not resolve to `<file>:<line>` | 0 |
 | duplicate ID, duplicate name or duplicate site | 0 |
 | planned-names table disagrees with the register | 0 of 74 |
 
@@ -262,9 +262,8 @@ The repo already knew. A Paper Trader concept spec, since removed from the
 tree, recorded `register_paper_run` with "zero callers". Nothing has changed
 since, and 10.2 gave the pin a name and a register row anyway.
 
-This is a FINDING, not a repair. This unit does not fix it. A pin that
-can never produce a verdict is decoration that reads as evidence, and
-that is the exact defect the register exists to prevent.
+A pin that can never produce a verdict is decoration that reads as
+evidence, and that is the exact defect the register exists to prevent.
 
 ## Per-pin results
 
@@ -410,9 +409,9 @@ them.
 `ACERVATOR_SIM_LOG_ROOT` and `ACERVATOR_TELEMETRY_ROOT` to throwaway
 directories. The driver refuses to start if `HOME` is not the sandbox
 and refuses if any of the three roots is unset. The sandbox holds
-copies of `bot_state.json`, `settings.json`, `settings.toml`,
-`reservation_state.json`, `ta_snapshots`, all 407 Stone Tablet files,
-and the gate and trade logs. It does NOT hold
+copies of `~/.acervator/`'s `bot_state.json`, `settings.json`,
+`settings.toml`, `reservation_state.json`, `ta_snapshots`, all 407
+Stone Tablet files, and the gate and trade logs. It does NOT hold
 `coinbase_credentials.json`, which was never read, echoed or copied.
 
 **Measured containment.** This unit hashed every file under
@@ -433,24 +432,28 @@ writes all held their hash:
 | `~/.acervator/sim_logs/` | no new file. Newest is from April |
 | `~/.acervator_logs/sim/` | no run directory. The run's `signals.jsonl` and SimRunLog went to the throwaway root |
 
-## Evidence on disk
+## What the run captured
 
-`docs/engineering-notes/2026-08-22_item_10_4_evidence/` holds the raw output.
+Four records came off the run and every table above is derived from
+them: the per-(sink, name, site) record tally with three examples per
+name and each sink's `health()`; one verdict per pin with the fault kind
+for every silent pin, the coverage control and the drain control; all 74
+call sites read off the syntax tree, each with its emit line, name
+literal, kwargs, enclosing function and body span; and, per pin, the
+direct calls, attribute references, bare name loads and string literals
+of its enclosing function's name, each with a file and a line.
 
-| file | what it holds |
-|---|---|
-| `mainrun.json` | the run's phases, its per-(sink, name, site) record tally, three examples per name, and each sink's `health()` |
-| `verdicts.json` | one verdict per pin, the fault kind for every silent pin, the coverage control result and the drain control result |
-| `callsites.json` | all 74 call sites read off the syntax tree: the emit line, the name literal, the kwargs, the enclosing function and its body span |
-| `callers.json` | per pin, the direct calls, attribute references, bare name loads and string literals of its enclosing function's name, each with a file and a line |
+Two cross-checks read straight off those records. The 36 fired pins
+produce **47 distinct emitted names**, which is 35 fixed names plus the
+12 leaves `ta.07.004.postcondition.raw.{}` builds — the thirteenth leaf
+that a mis-wired `VotingEngine` would have added is absent. And the
+observer's tally equals each sink's own lifetime `emitted` counter on
+all three sinks, with `dropped` and `duration_rejected` at 0 on each.
 
-The driver scripts stay outside the tree. They are measuring
-instruments for one unit, not platform code, and a permanent harness is
-its own unit with its own two-sided control. This document states each
-instrument, its control and the defect that control caught, which is
-what a later run needs to rebuild them.
+This document states each instrument, its control and the defect that
+control caught, which is what a later run needs to rebuild them.
 
-## Adjacent defects, named and not fixed
+## Adjacent defects
 
 - `pyproject.toml` sets `omit = ["src/gui/*"]` for coverage, so every coverage number this repo has ever produced says nothing about the GUI tree.
 - `BotVisualizationTab.update_paper_run` and `stop_paper_run` have the same zero references as `register_paper_run`; nothing calls the paper-swarm row API at all.
