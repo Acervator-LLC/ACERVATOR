@@ -1,83 +1,11 @@
 """A noisy emitter must not be able to evict a quiet one.
 
-WHAT WAS MEASURED, READ-ONLY, ON THE OPERATOR'S OWN DISK
-========================================================
-``~/.acervator_logs`` on 2026-08-24, nothing written, nothing pruned:
-
-    whole tree                 1,990,281,407 bytes   4,183 files
-    sim/                         700,386,599
-    trade/                       536,205,818
-    signals/                     274,889,372
-    console/                     271,722,225
-
-All six generations of ``signals/session.jsonl``, every line parsed,
-zero decode failures and zero nameless records (that is the control --
-a per-emitter count is only a fact about the world if the reader read
-every line):
-
-    488,000 records      267.4 MB      125.4 MB per hour
-    span of the WHOLE 300 MB ladder: 2.13 hours
-    distinct emitters present: 28, against 77 pins in the tree
-    top 5 emitters: 44.0% of the bytes
-    top 8 emitters: 62.9% of the bytes
-
-So 49 of 77 pins are not in the retained window at all, and the window
-is two hours wide. The standing rule on this platform is that every
-emitter is tracked and every pin carries a prediction beside its
-observed value. An emitter whose records are evicted before anybody
-reads them is an emitter that does not exist. THAT is the defect. The
-disk footprint is the symptom.
-
-WHY THE OLD POLICY CANNOT FIX ITSELF
-====================================
-The main ladder is bounded by BYTES and evicted by AGE, one whole file
-at a time. Nothing in it decides what is worth keeping. Whatever
-arrived most recently wins, so the emitters that write most decide how
-far back every OTHER emitter can be read. A rare event from four hours
-ago is gone; a routine indicator reading from four minutes ago is
-retained.
-
-WHAT A FAILURE IN THIS FILE MEANS
-=================================
-`test_the_current_policy_evicts_every_quiet_emitter` red:
-    the reproduction has stopped reproducing. Either the fixture no
-    longer models the real traffic, or something else changed the
-    ladder. Re-measure before trusting anything else here -- every
-    other test in this file is judged against this one.
-
-`test_the_reader_finds_every_emitter_before_the_ladder_rolls` red:
-    THE INSTRUMENT IS BROKEN, and the test above is reporting a fact
-    about the reader rather than about the ladder. This is the positive
-    control for it and it must be read first. A zero from a reader that
-    cannot see anything is not a measurement.
-
-`test_the_digest_keeps_every_quiet_emitter_the_main_ladder_lost` red:
-    the fix is not fixing it. Quiet channels are being evicted again.
-
-`test_no_observation_is_unaccounted_for` red:
-    THE WORST ONE. The digest is dropping records silently. Every
-    observation must be on the main ladder verbatim AND accounted for
-    in the digest, either as its own line or inside the `folded` count
-    on a later line of the same identity. A digest that quietly loses
-    records is a thinned file that reads as a complete one.
-
-`test_a_loud_emitter_cannot_outspend_a_quiet_one` red:
-    the fairness is gone. This is the property the whole design turns
-    on and it is meant to hold BY CONSTRUCTION, not because today's
-    traffic happens to be shaped conveniently.
-
-`test_breaking_the_rate_limit_puts_the_defect_straight_back` red:
-    the tests above cannot fail, which makes them worthless. This one
-    breaks the fix on purpose and requires the green assertions to go
-    red naming the real problem.
-
-NO LOGGER IS CAPTURED IN THIS FILE
-==================================
-Every test here drives `SignalSink` directly and asserts on files under
-`tmp_path`. Nothing requests `caplog`, so the silent-capture guard has
-nothing to judge -- and `caplog` would be blind here anyway, because
-`logging_engine` sets ``acervator.propagate = False``. Nothing in this
-file reads, writes or even resolves ``~/.acervator_logs``.
+The main ladder is bounded by bytes and evicted by age, so the identities that
+write most decide how far back every other identity can be read.
+`test_the_current_policy_evicts_every_quiet_emitter` reproduces that, and
+`test_the_reader_finds_every_emitter_before_the_ladder_rolls` is its positive
+control. Every test drives `SignalSink` directly against files under
+`tmp_path`.
 """
 
 import json
@@ -87,16 +15,8 @@ import pytest
 from src.core import signal_contract as sc
 from src.core.signal_contract import SignalSink, read_records
 
-# ── the fixture: a few loud emitters and many quiet ones ────────────
-#
-# Shaped from the measurement in the module docstring rather than
-# invented. The real file has fifteen identities emitting 3.6-4.0
-# records per second on a live loop and a tail of identities emitting
-# roughly twice an hour. The ratio is what matters, so it is kept and
-# the wall-clock is compressed: the run below is 900 simulated seconds
-# instead of two hours, and the ladders are 40 KB instead of 50 MB, so
-# the same eviction happens in a test that finishes in seconds.
-
+# A few loud identities and many quiet ones, at the live file's ratio. The
+# wall clock and the ladder size are compressed; the ratio is not.
 LOUD = 5
 QUIET = 20
 LOUD_PERIOD = 0.25  # seconds between emissions, per loud identity
@@ -438,9 +358,8 @@ class TestTheDigestKeepsTheQuietChannels:
             "observation whatever it stands for"
         )
         assert all(d["folded"] >= 1 for d in lines)
-        # The quiet emitters are under the rate limit, so every one of
-        # their lines stands for exactly itself. If this ever fails the
-        # rate limit is biting channels it was never meant to touch.
+        # A fold above 1 on a quiet name means the rate limit is biting a
+        # channel under it.
         quiet = {
             n: [d["folded"] for d in lines if d["name"] == n] for n in _quiet_names()
         }
@@ -493,9 +412,8 @@ class TestTheDigestKeepsTheQuietChannels:
             recs.extend(read_records(f))
         assert recs
         assert {r.name for r in recs} >= set(_quiet_names())
-        # The extra field is IGNORED, never fatal, and never invented:
-        # `read_records` does not model `folded`, so a record it hands
-        # back carries the field's absence rather than a made-up value.
+        # `read_records` does not model `folded`, so it drops the field rather
+        # than inventing a value for it.
         assert all(not hasattr(r, "folded") for r in recs)
 
     def test_the_digest_follows_a_path_assigned_after_construction(self, tmp_path):
@@ -582,15 +500,8 @@ class TestDriveItRed:
         Reproduced here by exempting failures from the rate limit and
         showing the quiet channels go under.
         """
-        # `flush_every` is 100 here rather than 500, and the reason is
-        # a real property of this platform's rotation rather than a
-        # tuning knob. Rotation is checked ONCE PER FLUSH, before the
-        # batch is appended, so a ladder file can overrun its cap by up
-        # to one whole batch. At 500 records a batch is larger than the
-        # 40 KB cap, so each file would hold an entire batch and the
-        # ladder would keep six of them — far more than the cap says.
-        # A batch smaller than the cap makes the ladder behave as its
-        # bytes claim, which is what this test needs to measure.
+        # Rotation is checked once per flush, so a batch must be smaller than
+        # LADDER_BYTES for the ladder to hold its cap.
         p = tmp_path / "session.jsonl"
         sink = SignalSink(
             path=p,
@@ -625,10 +536,7 @@ class TestDriveItRed:
         ]
         evts.sort(key=lambda e: (e[0], e[1]))
 
-        # The SAME driver the green tests use, on the same clock, with
-        # one identity's records made to fail. Anything else here would
-        # let the falsifier and the test it falsifies disagree about
-        # the fixture rather than about the policy.
+        # The same `_drive` the green tests use, with one identity failing.
         _drive(sink, evts, failing=failing)
 
         kept = {d["name"] for d in _digest_lines(sink.digest_path)}
@@ -652,11 +560,8 @@ class TestDriveItRed:
 
         real_open = type(p).open
 
-        # The first parameter is the PATH being opened, not a test
-        # instance: this function is bound onto the Path class below,
-        # so it is called as `some_path.open(...)`. It is named
-        # `target` rather than `self` for exactly that reason -- a
-        # `self` here reads as the test object and is neither.
+        # `_refuse` is bound onto the Path class, so `target` is the path being
+        # opened.
         def _refuse(target, *a, **k):
             if target.name.endswith(".digest.jsonl"):
                 raise OSError(28, "no space left on device")
