@@ -82,7 +82,7 @@ def _child(bot_id: str) -> ExtractorBot:
         inverted_extractor_standing_alt_units=0,
     )
     bot._positions = {}
-    bot._chunk_to_base_rate = 3000.0
+    bot._usd_per_base_rate = 3000.0
     return bot
 
 

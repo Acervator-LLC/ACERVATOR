@@ -99,9 +99,7 @@ def _child(
         inverted_extractor_standing_alt_units=0,
     )
     bot._positions = {}
-    # `_base_to_usd` multiplies by this, so it is USD per base unit despite
-    # the `base_per_usd` parameter name it arrives under.
-    bot._chunk_to_base_rate = rate_usd_per_base
+    bot._usd_per_base_rate = rate_usd_per_base
     bot._chunk_size_base = 1.0
     bot._chunk_free_base = 1.0
     # What `export_state` writes and `import_state` reads, so the

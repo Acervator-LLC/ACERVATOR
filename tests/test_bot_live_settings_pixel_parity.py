@@ -167,7 +167,7 @@ def _extractor_child(bot_id, base_currency):
     position.last_price_base_per_alt = 0.006
     position.last_priced_at = FROZEN_NOW - 60
     bot._positions = {position.pair: position}
-    bot._chunk_to_base_rate = 3000.0
+    bot._usd_per_base_rate = 3000.0
     return bot
 
 
