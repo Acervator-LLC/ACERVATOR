@@ -1,11 +1,7 @@
 """Heikin Ashi candle conversion (Munehisa Homma).
 
-A candle TRANSFORM, not a voter: it returns candles, not
-a Signal. Both Landing Strip detectors read it, and that
-is the only cross-module edge in this package.
-
-Moved out of ``ta_engine.py`` for issue #73. The body below is a
-verbatim line slice of that file: no arithmetic was retyped.
+``compute_heikin_ashi`` transforms candles into ``HACandle`` values and
+returns no Signal.
 """
 
 from __future__ import annotations
@@ -32,9 +28,16 @@ class HACandle:
 
 
 def compute_heikin_ashi(candles: list[Candle]) -> list[HACandle]:
+    """Convert standard candles to Heikin Ashi.
 
-    # sadp: R28  # indicator compute: fail-loudly(R28)
-    """Convert standard candles to Heikin Ashi."""
+    Homma's transform, with ``body_pct`` carrying ``abs(ha_close - ha_open)``
+    as a percent of ``hl_range``, and ``math.nan`` where ``hl_range`` is zero:
+
+        ha_close = (open + high + low + close) / 4
+        ha_open  = (prev ha_open + prev ha_close) / 2
+        ha_high  = max(high, ha_open, ha_close)
+        ha_low   = min(low, ha_open, ha_close)
+    """
     if not candles:
         return []
     ha: list[HACandle] = []
@@ -47,20 +50,13 @@ def compute_heikin_ashi(candles: list[Candle]) -> list[HACandle]:
         ha_high = max(c.high, ha_open, ha_close)
         ha_low = min(c.low, ha_open, ha_close)
         hl_range = ha_high - ha_low
-        # A bar whose Heikin Ashi high equals its low has no range, so
-        # the body's share OF that range does not exist. It is not zero:
-        # the only consumer of this field tests
-        # `body_pct <= tight_body_pct`, and 0.0 is the TIGHTEST possible
-        # reading, so resolving 0/0 that way manufactured a
-        # consolidation out of a market that had not moved. `nan` is
-        # what "no ratio" means, and that consumer names the case
-        # explicitly rather than leaning on comparison semantics.
-        #
         # `ha_high` and `ha_low` are the max and min of the same three
-        # numbers, so this IS the source-quantity test for this bar.
+        # numbers, so this test is exact at every price scale. A body has no
+        # share of a range that does not exist, and 0.0 would read to
+        # `detect_bb_proximity` as the tightest possible consolidation.
         if hl_range <= 0.0:
             body_pct = math.nan
         else:
-            body_pct = abs(ha_close - ha_open) / (hl_range + 1e-12) * 100
+            body_pct = abs(ha_close - ha_open) / hl_range * 100
         ha.append(HACandle(c.timestamp, ha_open, ha_high, ha_low, ha_close, body_pct))
     return ha

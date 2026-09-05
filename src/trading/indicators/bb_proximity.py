@@ -90,7 +90,9 @@ def detect_bb_proximity(
 
     bb_range = upper - lower
 
-    bb_pos = (price - lower) / (bb_range + 1e-12)
+    # %B = (Price - Lower) / (Upper - Lower). The abstention above returns
+    # on `upper - lower <= 0`, so `bb_range` is strictly positive here.
+    bb_pos = (price - lower) / bb_range
 
     tol_val = bb_range * (tolerance_pct / 100.0)
     near_upper = price >= (upper - tol_val)

@@ -75,7 +75,7 @@ class ADXIndicator:
         s_dmm = self._wilder_smooth(dm_minus, self.period)
         s_tr = self._wilder_smooth(tr_list, self.period)
 
-        if not s_tr or s_tr[-1] < 1e-9:
+        if not s_tr or s_tr[-1] <= 0.0:
             return Signal(
                 "adx",
                 timeframe,
@@ -88,7 +88,7 @@ class ADXIndicator:
         di_plus = 100.0 * s_dmp[-1] / s_tr[-1]
         di_minus = 100.0 * s_dmm[-1] / s_tr[-1]
 
-        if len(s_tr) >= 2 and s_tr[-2] > 1e-9:
+        if len(s_tr) >= 2 and s_tr[-2] > 0.0:
             p_dip = 100.0 * s_dmp[-2] / s_tr[-2]
             p_dim = 100.0 * s_dmm[-2] / s_tr[-2]
         else:
@@ -103,7 +103,7 @@ class ADXIndicator:
             dip_j = 100.0 * s_dmp[j] / s_tr[j]
             dim_j = 100.0 * s_dmm[j] / s_tr[j]
             ds = dip_j + dim_j
-            dx_series.append(100.0 * abs(dip_j - dim_j) / ds if ds > 1e-9 else 0.0)
+            dx_series.append(100.0 * abs(dip_j - dim_j) / ds if ds > 0.0 else 0.0)
 
         # _dx_valid drops the zero pad _wilder_smooth writes before its
         # first real value.
