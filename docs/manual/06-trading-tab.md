@@ -1274,7 +1274,7 @@ _standing = float(
 )
 if self._is_inverted and _standing > 0:
     self._chunk_size_base = _standing
-    self._chunk_size_usd = _standing * base_per_usd
+    self._chunk_size_usd = _standing * usd_per_base
 ```
 
 Correction skip candles - To be re-evaluated.

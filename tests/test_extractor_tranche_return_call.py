@@ -153,7 +153,7 @@ def _extractor(sale, manager):
     )()
     bot._bus = _Bus()
     bot._bot_manager = manager
-    bot._chunk_to_base_rate = USD_PER_BASE
+    bot._usd_per_base_rate = USD_PER_BASE
     bot._chunk_free_base = 0.0
     bot._cycle_extracted_total = 0.0
     bot._lifetime_extracted_total = 0.0

@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("acervator.extractor")
 
 
-# Percent-to-ratio conversion factor used by update_base_usd_rate().
+# Percent-to-ratio conversion factor used by update_usd_per_base_rate().
 PERCENT_PER_RATIO_UNIT = 100.0
 
 POSITION_STATE_PENDING = "pending"  # (transitional — never persisted on a Position)
@@ -154,12 +154,12 @@ class ExtractorBot(BotContainer):
 
         # Sized from the assigned chunk, never from exchange.get_balance.
         self._chunk_size_usd: float = float(config.extractor_chunk_size_usd)
-        self._chunk_to_base_rate: float = 1.0  # base/USD; set externally
+        self._usd_per_base_rate: float = 1.0  # dollars per base unit; set externally
         self._chunk_size_base: float = self._chunk_size_usd  # rebased when rate is set
         self._chunk_free_base: float = self._chunk_size_base
         self._chunk_extracted_total: float = 0.0  # cumulative base extracted
 
-        # update_base_usd_rate falls back to this window's median on a spike.
+        # update_usd_per_base_rate falls back to this window's median on a spike.
         self._recent_rates: list[float] = []  # last 3 accepted rates
         self._rate_spike_threshold_pct: float = 10.0
         self._rate_spike_window: int = 3
@@ -207,42 +207,42 @@ class ExtractorBot(BotContainer):
 
     # ── Public chunk-rate setter ────────────────────────────────────
 
-    def set_initial_chunk_rate(self, base_per_usd: float) -> None:
+    def set_initial_chunk_rate(self, usd_per_base: float) -> None:
         """Rebase the USD-denominated chunk into base-currency units.
 
-        Called before the bot's first tick, once ``base_per_usd`` (the
-        USD value of one base unit) is known:
-        ``chunk_size_base = chunk_size_usd / base_per_usd``.
+        ``usd_per_base`` is the dollar price of one base unit, the number
+        ``BotContainer._usd_per_base_for`` returns:
+        ``chunk_size_base = chunk_size_usd / usd_per_base``.
         """
-        if base_per_usd <= 0:
+        if usd_per_base <= 0:
             logger.warning(
                 "Bot %s set_initial_chunk_rate: rate %s invalid; "
                 "leaving chunk at 1:1 default",
                 self.bot_id,
-                base_per_usd,
+                usd_per_base,
             )
             return
-        self._chunk_to_base_rate = float(base_per_usd)
+        self._usd_per_base_rate = float(usd_per_base)
         # With a standing ALT quantity set, chunk_size_usd is an observation, not an input.
         _standing = float(
             getattr(self.config, "inverted_extractor_standing_alt_units", 0) or 0
         )
         if self._is_inverted and _standing > 0:
             self._chunk_size_base = _standing
-            self._chunk_size_usd = _standing * base_per_usd
+            self._chunk_size_usd = _standing * usd_per_base
             logger.info(
                 "Bot %s Inverted Extractor: imported standing "
                 "position of %.6f ALT (= $%.2f at $%.4f/ALT)",
                 self.bot_id,
                 _standing,
                 self._chunk_size_usd,
-                base_per_usd,
+                usd_per_base,
             )
         else:
-            self._chunk_size_base = self._chunk_size_usd / base_per_usd
+            self._chunk_size_base = self._chunk_size_usd / usd_per_base
         self._chunk_free_base = self._chunk_size_base
         if self._hedge_budget_usd > 0:
-            self._hedge_free_base = self._hedge_budget_usd / base_per_usd
+            self._hedge_free_base = self._hedge_budget_usd / usd_per_base
 
         # Reserved in asset quantity, not USD; a raising registry leaves this bot unreserved.
         base_asset = (self.config.base_currency or "").upper()
@@ -260,7 +260,7 @@ class ExtractorBot(BotContainer):
                         f"Extractor chunk + hedge — "
                         f"chunk_usd=${self._chunk_size_usd:.2f}, "
                         f"hedge_usd=${self._hedge_budget_usd:.2f}, "
-                        f"base_per_usd={base_per_usd:.6g}"
+                        f"usd_per_base={usd_per_base:.6g}"
                     ),
                     bot_kind="extractor",
                 )
@@ -295,7 +295,7 @@ class ExtractorBot(BotContainer):
         `config.extractor_chunk_size_usd` and the runtime chunk fields
         in lockstep, since neither re-reads the other after
         construction: recomputes `_chunk_size_base` from the current
-        chunk-to-base rate, scales `_chunk_free_base` to preserve the
+        `_usd_per_base_rate`, scales `_chunk_free_base` to preserve the
         deployed-vs-free ratio, and resizes the
         CapitalReservationRegistry claim so concurrent ScrummingBots
         see it immediately. The hedge budget is untouched. Idempotent:
@@ -316,7 +316,7 @@ class ExtractorBot(BotContainer):
 
         old_base = float(self._chunk_size_base)
         old_free_base = float(self._chunk_free_base)
-        rate = float(self._chunk_to_base_rate or 0.0)
+        rate = float(self._usd_per_base_rate or 0.0)
 
         self._chunk_size_usd = new_value
         self.config.extractor_chunk_size_usd = new_value
@@ -599,14 +599,14 @@ class ExtractorBot(BotContainer):
     # ── USD ↔ base conversion ───────────────────────────────────────
 
     def _usd_to_base(self, usd: float) -> float:
-        """Convert USD to base-currency units using cached chunk rate."""
-        if self._chunk_to_base_rate <= 0:
+        """Divide ``usd`` by ``_usd_per_base_rate`` to reach base-currency units."""
+        if self._usd_per_base_rate <= 0:
             return 0.0
-        return float(usd) / float(self._chunk_to_base_rate)
+        return float(usd) / float(self._usd_per_base_rate)
 
     def _base_to_usd(self, base: float) -> float:
-        """Convert base-currency units to USD via cached chunk rate."""
-        return float(base) * float(self._chunk_to_base_rate)
+        """Multiply ``base`` by ``_usd_per_base_rate`` to reach USD."""
+        return float(base) * float(self._usd_per_base_rate)
 
     # ── Inverted Extractor ────────────────────────────────────────────
 
@@ -698,39 +698,39 @@ class ExtractorBot(BotContainer):
         """
         self._bot_manager = manager
 
-    def update_base_usd_rate(self, rate_base_per_usd: float) -> tuple[bool, str]:
-        """Update the cached base/USD rate each artillery shot is sized at.
+    def update_usd_per_base_rate(self, rate_usd_per_base: float) -> tuple[bool, str]:
+        """Update the dollars-per-base-unit rate each artillery shot is sized at.
 
         A zero or negative rate is refused; the last-known-good rate
         stays in effect. A rate diverging more than
         ``_rate_spike_threshold_pct`` from the most recent accepted
-        sample is spike-protected: ``_chunk_to_base_rate`` falls back
+        sample is spike-protected: ``_usd_per_base_rate`` falls back
         to the median of ``_recent_rates`` instead. Otherwise the rate
-        is accepted, ``_chunk_to_base_rate`` updates, and the sample is
+        is accepted, ``_usd_per_base_rate`` updates, and the sample is
         appended to ``_recent_rates`` (trimmed to
         ``_rate_spike_window``).
 
         Returns ``(accepted, reason)``.
         """
         # Fail-closed on zero / negative — the rate must be positive.
-        if rate_base_per_usd is None or rate_base_per_usd <= 0:
+        if rate_usd_per_base is None or rate_usd_per_base <= 0:
             self._rate_refuse_events += 1
             return False, (
-                f"refused: invalid rate {rate_base_per_usd!r} " f"(must be > 0)"
+                f"refused: invalid rate {rate_usd_per_base!r} " f"(must be > 0)"
             )
-        new_rate = float(rate_base_per_usd)
+        new_rate = float(rate_usd_per_base)
 
         # First-ever update: accept unconditionally.
         if not self._recent_rates:
             self._recent_rates.append(new_rate)
-            self._chunk_to_base_rate = new_rate
+            self._usd_per_base_rate = new_rate
             return True, "accepted (first sample)"
 
         # Spike check against the most recent accepted sample.
         last_rate = self._recent_rates[-1]
         if last_rate <= 0:  # defensive: window should always hold > 0
             self._recent_rates = [new_rate]
-            self._chunk_to_base_rate = new_rate
+            self._usd_per_base_rate = new_rate
             return True, "accepted (recovered from invalid window)"
 
         # Both are dimensionless ratios, not percentages.
@@ -746,7 +746,7 @@ class ExtractorBot(BotContainer):
                 median = window[mid]
             else:
                 median = (window[mid - 1] + window[mid]) / 2.0
-            self._chunk_to_base_rate = median
+            self._usd_per_base_rate = median
             return False, (
                 f"spike-protected: incoming {new_rate:.6f} diverges "
                 f"{divergence_ratio * PERCENT_PER_RATIO_UNIT:.2f}% from "
@@ -759,7 +759,7 @@ class ExtractorBot(BotContainer):
         self._recent_rates.append(new_rate)
         if len(self._recent_rates) > self._rate_spike_window:
             self._recent_rates = self._recent_rates[-self._rate_spike_window :]
-        self._chunk_to_base_rate = new_rate
+        self._usd_per_base_rate = new_rate
         return True, "accepted"
 
     # ── State-machine evaluators ────────────────────────────────────
@@ -769,8 +769,8 @@ class ExtractorBot(BotContainer):
         pos: ExtractorPosition,
         alt_price_in_base: float,
     ) -> float:
-        """USD value of the position: alt_units × alt_price_in_base × base_per_USD."""
-        return pos.alt_units * alt_price_in_base * self._chunk_to_base_rate
+        """USD value of the position: alt_units × alt_price_in_base × usd_per_base."""
+        return pos.alt_units * alt_price_in_base * self._usd_per_base_rate
 
     def _is_in_drawdown(
         self,
@@ -1161,7 +1161,7 @@ class ExtractorBot(BotContainer):
         if (
             gain_base > 0
             and self._bot_manager is not None
-            and self._chunk_to_base_rate > 0
+            and self._usd_per_base_rate > 0
         ):
             try:
                 gain_usd = self._base_to_usd(gain_base)
@@ -1473,7 +1473,7 @@ class ExtractorBot(BotContainer):
         rows: list[dict] = []
         for p in self._positions.values():
             current_price = p.avg_buy_price_base_per_alt
-            current_value_usd = p.alt_units * current_price * self._chunk_to_base_rate
+            current_value_usd = p.alt_units * current_price * self._usd_per_base_rate
             entry_value_usd = p.artillery_size_usd_at_entry
             delta_pct = (
                 ((current_value_usd - entry_value_usd) / entry_value_usd * 100.0)
@@ -1568,13 +1568,11 @@ class ExtractorBot(BotContainer):
         """
         rows: list[dict] = []
         base_asset = str(getattr(self.config, "base_currency", "") or "")
-        rate = float(self._chunk_to_base_rate or 0.0)
+        rate = float(self._usd_per_base_rate or 0.0)
         for p in self._positions.values():
             mark_price = float(p.last_price_base_per_alt or 0.0)
             if mark_price > 0:
                 mark_value_base = float(p.alt_units) * mark_price
-                # `_chunk_to_base_rate` is USD per one base unit despite
-                # its name; multiply, don't divide, to reach USD.
                 mark_value_usd = mark_value_base * rate if rate > 0 else None
             else:
                 mark_value_base = None
@@ -1646,7 +1644,8 @@ class ExtractorBot(BotContainer):
             "version": 1,
             "mode": "extractor",
             "chunk_size_usd": self._chunk_size_usd,
-            "chunk_to_base_rate": self._chunk_to_base_rate,
+            # On-disk key of _usd_per_base_rate; kept so saved state restores.
+            "chunk_to_base_rate": self._usd_per_base_rate,
             "chunk_size_base": self._chunk_size_base,
             "chunk_free_base": self._chunk_free_base,
             "chunk_extracted_total": self._chunk_extracted_total,
@@ -1689,8 +1688,8 @@ class ExtractorBot(BotContainer):
         if not isinstance(state, dict):
             return
         self._chunk_size_usd = float(state.get("chunk_size_usd", self._chunk_size_usd))
-        self._chunk_to_base_rate = float(
-            state.get("chunk_to_base_rate", self._chunk_to_base_rate)
+        self._usd_per_base_rate = float(
+            state.get("chunk_to_base_rate", self._usd_per_base_rate)
         )
         self._chunk_size_base = float(
             state.get("chunk_size_base", self._chunk_size_base)

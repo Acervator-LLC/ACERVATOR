@@ -74,9 +74,7 @@ def _child(bot_id="ext-1", base_currency=ETH, exchange=COINBASE):
         inverted_extractor_standing_alt_units=0,
     )
     bot._positions = {}
-    # USD PER ONE BASE UNIT, whatever the parameter name says
-    # elsewhere: `_position_value_usd` multiplies a base amount by it.
-    bot._chunk_to_base_rate = 3000.0
+    bot._usd_per_base_rate = 3000.0
     bot._chunk_size_base = 1.0
     bot._chunk_free_base = 1.0
     bot._chunk_size_usd = 3000.0
