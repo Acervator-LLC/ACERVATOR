@@ -1,36 +1,15 @@
-"""Sim reservations must succeed, without inflating sim inventory (C16).
+"""A sim bot reserves its capital without inflating the sim inventory.
 
-Finding SN-5. Tier sim-only. Hard after C15.
-
-THE DEFECT
-`_compute_reservation_qty` claims `target / (price x quote_to_usd)` with
-a **10% safety margin** so tick-to-tick drift cannot leave a live bot
-under-reserved. Sim holdings are seeded at exactly `target / open_px`.
-So the claim is ~110% of the seeded inventory, `reserve()` sees
-`qty > total_holdings`, raises on over-commit, and the reservation fails
-for every bot on every tick.
-
-Consequence: the "SELL REFUSED (capital reservation)" branch is
-UNREACHABLE in sim. A gate that can never fire is a gate the simulator
-cannot tell you anything about.
-
-THE FIX, AND THE TRAP IN THE OBVIOUS ALTERNATIVE
-Pass `total_holdings=None` on the first sim ensure. The over-commit
-check exists to protect LIVE inventory accounting across bots sharing
-one exchange balance; a sim fleet holds a private registry (C15) and no
-live inventory, so the check is measuring the wrong thing.
-
-The tempting alternative — seed sim holdings at the reservation ceiling
-— is WRONG and the cascade says so explicitly. The 1.10 is live
-over-commit headroom, not an inventory target. Seeding there hands every
-sim bot 110% of a live bot's base units, so sim out-scrums live and the
-inflation reads as the fix working. `test_sim_seed_is_unchanged` pins
-that the seed did not move.
+`_compute_reservation_qty` claims `target / price` with a 10% margin, and a sim
+fleet is seeded at exactly `target / open_px`, so the claim exceeds the seed.
+`_ensure_capital_reservation` passes `total_holdings=None` on the first sim
+ensure, which skips `reserve`s over-commit check. The seed itself does not
+move: `opening_lot_for_lotless` is held to `TARGET_USD` at `OPEN_PX`.
 """
 
 from __future__ import annotations
 
-import ast
+import asyncio
 import sys
 from pathlib import Path
 
@@ -44,11 +23,49 @@ from src.trading.capital_reservation import (  # noqa: E402
     CapitalReservationRegistry,
 )
 
-SB = REPO_ROOT / "src" / "trading" / "scrumming" / "capital_reservation_mixin.py"
+OPEN_PX = 50_000.0
+TARGET_USD = 100.0
+SEEDED_UNITS = TARGET_USD / OPEN_PX
 
 
 def _registry(tmp_path):
     return CapitalReservationRegistry(state_path=tmp_path / "res.json", autosave=False)
+
+
+def _ensure_host(registry, *, sim_mode: bool):
+    """A host carrying only what `_ensure_capital_reservation` reads.
+
+    Holdings are seeded at `SEEDED_UNITS`, exactly `TARGET_USD` at `OPEN_PX`.
+    """
+    from src.trading.scrumming.capital_reservation_mixin import (
+        CapitalReservationMixin,
+    )
+
+    class _Host(CapitalReservationMixin):
+        def __init__(self) -> None:
+            self.bot_id = "sim" if sim_mode else "live"
+            self.config = type(
+                "C",
+                (),
+                {
+                    "self_reserve_capital": True,
+                    "target_asset": "BTC",
+                    "personal_hold_qty": 0.0,
+                },
+            )()
+            self._target_balance = TARGET_USD
+            self._quote_to_usd = 1.0
+            self._sim_mode = sim_mode
+            self._crr_token = None
+            self._crr_last_reserved_qty = 0.0
+
+        def _crr(self):
+            return registry
+
+        async def _get_cached_exchange_balance(self, _asset):
+            return SEEDED_UNITS
+
+    return _Host()
 
 
 class TestTheDefectIsReal:
@@ -82,31 +99,32 @@ class TestTheDefectIsReal:
 
 
 class TestTheMarginIsNotAnInventoryTarget:
-    def test_the_margin_is_ten_percent_headroom(self):
-        """The 1.10 is live over-commit headroom. Seeding sim inventory
-        at it would give every sim bot 110% of a live bot's base units,
-        and sim would out-scrum live while looking fixed."""
-        src = SB.read_text(encoding="utf-8")
-        fn = next(
-            n
-            for n in ast.walk(ast.parse(src))
-            if isinstance(n, ast.FunctionDef) and n.name == "_compute_reservation_qty"
-        )
-        seg = ast.get_source_segment(src, fn) or ""
-        assert (
-            "1.10" in seg or "1.1" in seg
-        ), "the safety margin moved; re-derive C16 before trusting it"
+    def test_the_claim_is_ten_percent_above_the_target(self, tmp_path):
+        """`_compute_reservation_qty` returns `target / price` scaled by 1.10.
 
-    def test_sim_seed_is_unchanged(self):
-        """C16 step 2: sim holdings stay at exactly target/open_px so
-        sim and live start from identical inventory. Asserted against
-        the seeding site, not against a number I chose."""
-        fc = REPO_ROOT / "src" / "simulator" / "fleet" / "fleet_replay_controller.py"
-        src = fc.read_text(encoding="utf-8")
-        assert "1.10" not in src, (
-            "the reservation ceiling leaked into the sim seeding path; "
-            "sim inventory would exceed live"
+        The margin is live over-commit headroom, not an inventory target.
+        """
+        bot = _ensure_host(_registry(tmp_path), sim_mode=False)
+        assert bot._compute_reservation_qty(OPEN_PX) == pytest.approx(
+            SEEDED_UNITS * 1.10
         )
+
+    def test_the_sim_seed_is_the_target_and_not_the_claim(self):
+        """`opening_lot_for_lotless` seeds `target / open_px`, never 110% of it.
+
+        A seed at the reservation ceiling would hand every sim bot more base
+        units than a live bot holds.
+        """
+        from src.simulator.fleet.fleet_replay_controller import (
+            opening_lot_for_lotless,
+        )
+
+        candles = [[1_776_778_500_000, OPEN_PX, OPEN_PX, OPEN_PX, OPEN_PX, 1.0]]
+        lot = opening_lot_for_lotless(TARGET_USD, candles)
+
+        assert lot is not None, "the seeding helper produced no lot"
+        assert float(lot["units"]) == pytest.approx(SEEDED_UNITS)
+        assert float(lot["units"]) < SEEDED_UNITS * 1.10
 
 
 class TestTheRegistryContract:
@@ -147,52 +165,31 @@ class TestTheRegistryContract:
 
 
 class TestTheSimPathPassesNone:
-    def test_the_first_sim_ensure_does_not_assert_holdings(self):
-        """Structural: the sim branch must reach `reserve` without
-        handing it a holdings figure the 10% margin guarantees it
-        exceeds."""
-        src = SB.read_text(encoding="utf-8")
-        tree = ast.parse(src)
-        fn = next(
-            (
-                n
-                for n in ast.walk(tree)
-                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and "_ensure_capital_reservation" in n.name
-            ),
-            None,
-        )
-        assert fn is not None, "the ensure method was renamed"
+    def test_a_sim_bots_first_ensure_reserves(self, tmp_path):
+        """A sim bot claims its 110% against holdings seeded at 100%.
 
-        # AST, not substring. An earlier version of this test checked
-        # `"_sim_mode" in seg` and PASSED against unfixed code, because
-        # the method carries a comment at :1138 recording a DIFFERENT
-        # `if _sim_mode: return` removed in v3.24.31. That is trap #5 in
-        # docs/engineering-notes/2026-08-07_traps_that_pass_a_naive_test.md, sprung
-        # inside the test written to verify the fix for it.
-        sim_branches = [
-            n
-            for n in ast.walk(fn)
-            if isinstance(n, ast.If)
-            and "_sim_mode" in (ast.get_source_segment(src, n.test) or "")
-        ]
-        assert sim_branches, (
-            "the ensure path has no executable sim branch; sim "
-            "reservations still fail the over-commit check every tick"
-        )
+        `_ensure_capital_reservation` runs unmodified; only the registry, the
+        balance read and the config are stood in for.
+        """
+        reg = _registry(tmp_path)
+        bot = _ensure_host(reg, sim_mode=True)
+        asyncio.run(bot._ensure_capital_reservation(OPEN_PX))
 
-    def test_the_reason_is_recorded_at_the_site(self):
-        """Someone will read `total_holdings=None` and 'fix' it back."""
-        src = SB.read_text(encoding="utf-8")
-        tree = ast.parse(src)
-        fn = next(
-            n
-            for n in ast.walk(tree)
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and "_ensure_capital_reservation" in n.name
-        )
-        seg = ast.get_source_segment(src, fn) or ""
-        # The guard that must not be "fixed" away: a sim bot's first reserve
-        # passes holdings=None so the 110% claim can't fail over-commit.
-        assert 'getattr(self, "_sim_mode", False) and self._crr_token is None' in seg
-        assert "_total_holdings = None" in seg
+        assert bot._crr_token is not None, "the sim bot reserved nothing"
+        mine = [r for r in reg._reservations.values() if r.bot_id == bot.bot_id]
+        assert len(mine) == 1
+        assert mine[0].qty == pytest.approx(SEEDED_UNITS * 1.10)
+
+    def test_a_live_bot_on_the_same_numbers_is_clamped_to_its_holdings(self, tmp_path):
+        """The control: without the sim branch the claim is cut to holdings.
+
+        Same price, same target, same seeded balance, `_sim_mode` off.
+        """
+        reg = _registry(tmp_path)
+        bot = _ensure_host(reg, sim_mode=False)
+        asyncio.run(bot._ensure_capital_reservation(OPEN_PX))
+
+        mine = [r for r in reg._reservations.values() if r.bot_id == bot.bot_id]
+        assert len(mine) == 1
+        assert mine[0].qty == pytest.approx(SEEDED_UNITS)
+        assert mine[0].qty < SEEDED_UNITS * 1.10

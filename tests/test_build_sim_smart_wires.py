@@ -1,33 +1,10 @@
-"""The sim's Smart Wire manager must route, and must not touch live (C20).
+"""The sim Smart Wire manager routes, and never touches the live bus.
 
-TWO FAILURES THIS FILE EXISTS TO CATCH, both of which the cascade plan
-would have shipped.
-
-1. A HARNESS THAT REPORTS WIRES AND ROUTES NOTHING.
-   `import_wires` (smart_wire.py:456-478) does no existence check — it
-   `setdefault`s each well-formed row and returns the count. Import 40
-   wires keyed by persisted ids into a manager whose `_bot_refs` hold
-   different ids and it returns 40 while every scrum takes the early
-   return at scrumming_bot.py:1788. The plan's own exit criterion was
-   "the replay reports 40 wires active", which that satisfies.
-   So: never assert an IMPORT count. Assert money moved, and assert the
-   ACTIVE count is endpoint-resolved.
-
-2. A SIM MANAGER EMITTING ON THE OPERATOR'S LIVE BUS.
-   `SmartWireManager.__init__` takes `bus=None` (smart_wire.py:217) and
-   both emit paths resolve `get_event_bus()` when it is None
-   (:507-511, :695-698), then emit `bot.log`. The class comment at
-   :220-226 quotes the plan's "this class has no bus" and answers "That
-   correction is itself wrong."
-   The plan cited nuclear_fleet_controller.py:551 `SmartWireManager()`
-   as the PRECEDENT TO COPY. That line is the leak — bus-less, while the
-   sim bots around it are fail-closed onto private buses
-   (scrumming_bot.py:393-394). The model is live's own:
-   `BotManager.__init__` in `src/trading/bot_container.py`,
-   `SmartWireManager(bus=self._bus)`.
-
-Note there is no single "sim bus" to borrow — each sim bot constructs its
-own `EventBus()` — so the controller owns a dedicated one.
+`import_wires` counts well-formed rows without checking an endpoint exists, so
+no test here asserts an import count: `test_money_actually_moves_to_the_target_bot`
+asserts money moved and the active count is endpoint-resolved.
+`SmartWireManager` resolves `get_event_bus()` when its `bus` is None, so
+`TestNothingReachesTheLiveBus` requires the controller to own a private one.
 """
 
 from __future__ import annotations
@@ -117,7 +94,11 @@ class TestTheWiresActuallyRoute:
         ctl = _built(FLEET, WIRE)
         tgt = next(b for b in ctl._bots if b.config.symbol == "ETH/USD")
         seen = []
-        tgt.apply_wire_income = lambda usd, source, **kw: seen.append((usd, source))
+
+        def _income(usd, source, ref=""):
+            seen.append((usd, source, ref))
+
+        tgt.apply_wire_income = _income
 
         src = next(b for b in ctl._bots if b.config.symbol == "BTC/USD")
         ctl._smart_wire_mgr.distribute_fold_profit(

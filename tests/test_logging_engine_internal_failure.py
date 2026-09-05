@@ -225,10 +225,6 @@ def test_handler_survives_writer_and_logger_both_failing(
     assert counts.get("_sys_logger") == 1
     assert dead.calls == 1
 
-    # The stderr line carries a bracketed "[LogManager]" prefix, not the
-    # system logger's phrasing. Asserted against the observed artefact --
-    # the first draft of this test guessed the logger's wording and went
-    # red on all three handlers.
     err = capsys.readouterr().err
     assert "[LogManager] internal failure at " + method in err
     assert "system logger also failed" in err

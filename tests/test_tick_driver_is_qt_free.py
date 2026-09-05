@@ -91,9 +91,7 @@ from src.core.tick_driver import (  # noqa: E402
 from src.exchange.base import ExchangeInterface  # noqa: E402
 from src.trading.bot_container import BotConfig, BotContainer  # noqa: E402
 
-# A one-second window at 50 ms is 20 pumps. Long enough that a doubled
-# driver shows as 40 rather than as jitter; short enough to run in a
-# suite.
+# A one-second window at 50 ms is 20 pumps, so a doubled driver reads as 40.
 _WINDOW_S = 1.0
 _EXPECTED_PUMPS = int(_WINDOW_S * 1000 / PUMP_INTERVAL_MS)
 
