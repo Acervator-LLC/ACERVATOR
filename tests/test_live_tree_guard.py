@@ -26,6 +26,7 @@ touches the real tree.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 from pathlib import Path
 
@@ -177,6 +178,23 @@ def _fixture_func(fix):
     return fix
 
 
+def _drive_guard(monkeypatch, roots, tablet_root, mutate, *, live_app=False):
+    """Run ``_assert_no_live_tree_writes`` over `roots`, calling `mutate` inside it.
+
+    ``TEST_HOME_ENV`` is cleared, so `live_app` alone decides what the guard
+    treats as unattributable.
+    """
+    monkeypatch.delenv(cf.TEST_HOME_ENV, raising=False)
+    monkeypatch.setattr(cf, "_live_roots", lambda: roots)
+    monkeypatch.setattr(cf, "_stone_tablet_root", lambda: tablet_root)
+    monkeypatch.setattr(cf, "_live_app_running", lambda: live_app)
+    gen = _fixture_func(cf._assert_no_live_tree_writes)(None)
+    next(gen)  # before-snapshot
+    mutate()
+    with contextlib.suppress(StopIteration):
+        next(gen)  # after-snapshot + assertions
+
+
 class TestFixtureIsActuallyArmed:
     """End-to-end, not just the pure helpers.
 
@@ -187,18 +205,8 @@ class TestFixtureIsActuallyArmed:
     """
 
     def _drive(self, monkeypatch, roots, tablet_root, mutate):
-        monkeypatch.setattr(cf, "_live_roots", lambda: roots)
-        monkeypatch.setattr(cf, "_stone_tablet_root", lambda: tablet_root)
         # No live app, so modifications are strict.
-        monkeypatch.setattr(cf, "_live_app_running", lambda: False)
-        gen = _fixture_func(cf._assert_no_live_tree_writes)(None)
-        next(gen)  # before-snapshot
-        mutate()
-        try:
-            next(gen)  # after-snapshot + assertions
-        except StopIteration:
-            return None  # fixture completed without complaint
-        return None
+        _drive_guard(monkeypatch, roots, tablet_root, mutate, live_app=False)
 
     def test_created_file_fails_the_session(self, monkeypatch, tmp_path):
         root = tmp_path / "acervator"
@@ -311,3 +319,226 @@ def test_live_app_detection_never_raises(monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", no_psutil)
     assert cf._live_app_running() is False
+
+
+# ── the three rules, with a live application up ─────────────────────
+
+
+def _redirected_root(tmp_path):
+    """A throwaway ``.acervator`` root, named as the live one so the
+    ``_LIVE_APP_CREATES`` keys resolve against it."""
+    root = tmp_path / ".acervator"
+    root.mkdir()
+    return root
+
+
+class TestCreationAndTabletsCarryNoLiveAppExcuse:
+    """Rules 1 and 2 fail whether or not Acervator is running.
+
+    Every test drives the session fixture with ``_live_app_running`` true and
+    the watched roots redirected into ``tmp_path``.
+    """
+
+    def test_a_created_path_fails_while_the_app_runs(self, monkeypatch, tmp_path):
+        root = _redirected_root(tmp_path)
+        with pytest.raises(AssertionError, match="created"):
+            _drive_guard(
+                monkeypatch,
+                (root,),
+                root / "stone_tablets",
+                lambda: (root / "leaked.json").write_text("{}", encoding="utf-8"),
+                live_app=True,
+            )
+
+    def test_a_topology_snapshot_fails_while_the_app_runs(self, monkeypatch, tmp_path):
+        """The shape that got through: an adopt test wrote two files into
+        ``topology_snapshots`` and the suite stayed green."""
+        root = _redirected_root(tmp_path)
+        snaps = root / "topology_snapshots"
+        snaps.mkdir()
+        with pytest.raises(AssertionError, match="created"):
+            _drive_guard(
+                monkeypatch,
+                (root,),
+                root / "stone_tablets",
+                lambda: (snaps / "wires_before_adopt.20260905_073313.json").write_text(
+                    "{}", encoding="utf-8"
+                ),
+                live_app=True,
+            )
+
+    def test_a_touched_tablet_fails_while_the_app_runs(self, monkeypatch, tmp_path):
+        root = _redirected_root(tmp_path)
+        tablets = root / "stone_tablets"
+        tablets.mkdir()
+        tab = tablets / "BTC_5m_2026.json"
+        tab.write_text("[]", encoding="utf-8")
+        with pytest.raises(AssertionError, match="immutable"):
+            _drive_guard(
+                monkeypatch,
+                (root,),
+                tablets,
+                lambda: tab.write_text("[1]", encoding="utf-8"),
+                live_app=True,
+            )
+
+    def test_a_new_tablet_fails_while_the_app_runs(self, monkeypatch, tmp_path):
+        root = _redirected_root(tmp_path)
+        tablets = root / "stone_tablets"
+        tablets.mkdir()
+        with pytest.raises(AssertionError, match="immutable"):
+            _drive_guard(
+                monkeypatch,
+                (root,),
+                tablets,
+                lambda: (tablets / "ETH_5m_2026.json").write_text(
+                    "[]", encoding="utf-8"
+                ),
+                live_app=True,
+            )
+
+
+class TestModificationKeepsTheLiveAppExcuse:
+    """Rule 3 is the one exception, and it still prints."""
+
+    def _state_file(self, tmp_path):
+        root = _redirected_root(tmp_path)
+        state = root / "bot_state.json"
+        state.write_text("{}", encoding="utf-8")
+        return root, state
+
+    def test_a_modification_only_prints_while_the_app_runs(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        root, state = self._state_file(tmp_path)
+        _drive_guard(
+            monkeypatch,
+            (root,),
+            root / "stone_tablets",
+            lambda: state.write_text('{"bots": {}}', encoding="utf-8"),
+            live_app=True,
+        )
+        out = capsys.readouterr().out
+        assert "DEGRADED" in out, f"the excused modification was not reported: {out!r}"
+        assert state.name in out, f"the report named no file: {out!r}"
+
+    def test_the_same_modification_fails_with_no_app_running(
+        self, monkeypatch, tmp_path
+    ):
+        """Positive control for the test above: the instrument does fail here."""
+        root, state = self._state_file(tmp_path)
+        with pytest.raises(AssertionError, match="modified"):
+            _drive_guard(
+                monkeypatch,
+                (root,),
+                root / "stone_tablets",
+                lambda: state.write_text('{"bots": {}}', encoding="utf-8"),
+                live_app=False,
+            )
+
+
+class TestTheLiveAppExcuseIsNamedAndConditional:
+    """``_LIVE_APP_CREATES`` covers the listed locations and nothing else."""
+
+    def test_a_listed_path_is_excused_while_the_app_runs(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        root = _redirected_root(tmp_path)
+        snaps = root / "ta_snapshots"
+        snaps.mkdir()
+        _drive_guard(
+            monkeypatch,
+            (root,),
+            root / "stone_tablets",
+            lambda: (snaps / "7c39c7a2.ff6d62e7.json").write_text(
+                "{}", encoding="utf-8"
+            ),
+            live_app=True,
+        )
+        out = capsys.readouterr().out
+        assert "EXCUSED" in out, f"an excused creation went unreported: {out!r}"
+        assert "indicator_panel" in out, f"the report named no writer: {out!r}"
+
+    def test_the_same_listed_path_fails_with_no_app_running(
+        self, monkeypatch, tmp_path
+    ):
+        """Positive control: nothing is excused once the application is closed."""
+        root = _redirected_root(tmp_path)
+        snaps = root / "ta_snapshots"
+        snaps.mkdir()
+        with pytest.raises(AssertionError, match="created"):
+            _drive_guard(
+                monkeypatch,
+                (root,),
+                root / "stone_tablets",
+                lambda: (snaps / "7c39c7a2.ff6d62e7.json").write_text(
+                    "{}", encoding="utf-8"
+                ),
+                live_app=False,
+            )
+
+    def test_a_listed_directory_answers_with_its_writer(self, tmp_path):
+        root = tmp_path / ".acervator"
+        reason = cf._excused_by_the_live_app(
+            str(root / "ta_snapshots" / "a.b.json"), (root,)
+        )
+        assert "indicator_panel" in reason, reason
+
+    @pytest.mark.parametrize(
+        ("root_name", "rest"),
+        [
+            (".acervator", "preflight/20260904_160358.stamp"),
+            (".acervator", "preflight/bot_state.20260904_160358.json"),
+            (".acervator", "ta_snapshots/7c39c7a2.ff6d62e7.json"),
+            (".acervator_logs", "trade/pnl/daily/2026-09-05.ndjson"),
+            (".acervator_logs", "console_20260904_160357.log"),
+            (".acervator_logs", "crash_20260904_160357.log"),
+            (".acervator_logs", "faulthandler_20260904_160357.log"),
+        ],
+    )
+    def test_every_shape_the_running_app_creates_is_covered(
+        self, tmp_path, root_name, rest
+    ):
+        """Each case is a path a running Acervator was measured creating."""
+        root = tmp_path / root_name
+        path = root.joinpath(*rest.split("/"))
+        assert cf._excused_by_the_live_app(str(path), (root,)), rest
+
+    @pytest.mark.parametrize(
+        ("root_name", "rest"),
+        [
+            (".acervator", "bot_state.json"),
+            (".acervator", "topology_snapshots/wires_before_adopt.json"),
+            (".acervator", "stone_tablets/BTC_5m_2026.json"),
+            (".acervator", "reservation_state.json"),
+            (".acervator_logs", "trade/gate.log"),
+            (".acervator_logs", "sim/runs/run_1/candles.json"),
+        ],
+    )
+    def test_the_rest_of_the_tree_is_never_excused(self, tmp_path, root_name, rest):
+        """Negative control for the case above: nothing else matches a key."""
+        root = tmp_path / root_name
+        path = root.joinpath(*rest.split("/"))
+        assert cf._excused_by_the_live_app(str(path), (root,)) == "", rest
+
+    def test_an_unlisted_directory_is_never_excused(self, tmp_path):
+        root = tmp_path / ".acervator"
+        assert (
+            cf._excused_by_the_live_app(
+                str(root / "topology_snapshots" / "wires.json"), (root,)
+            )
+            == ""
+        )
+
+    def test_a_name_that_only_starts_like_a_listed_one_is_not_excused(self, tmp_path):
+        root = tmp_path / ".acervator"
+        assert cf._excused_by_the_live_app(str(root / "preflight.json"), (root,)) == ""
+
+
+def test_a_clean_run_stays_green_and_silent(monkeypatch, tmp_path, capsys):
+    root = _redirected_root(tmp_path)
+    (root / "untouched.json").write_text("{}", encoding="utf-8")
+    _drive_guard(
+        monkeypatch, (root,), root / "stone_tablets", lambda: None, live_app=True
+    )
+    assert capsys.readouterr().out == ""
