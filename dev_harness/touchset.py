@@ -148,10 +148,7 @@ ROUTING_CITATION = f"{GATE_RELPATH}:_pick_archetypes"
 
 DEFAULT_PIN = "tools/.touchset_pin.json"
 
-# v2 adds: per-entry sha256 and size, a whole-pin digest, eol counts,
-# recorded degraded-tool sets that `check` actually compares, and the
-# directive-set label. A v1 pin cannot be compared like-for-like and is
-# refused rather than half-read.
+# A pin written at an earlier version is refused, never half-read.
 PIN_VERSION = 2
 
 # Directories never walked when sweeping for files the pin never saw.
@@ -171,9 +168,7 @@ SKIP_DIR_NAMES = frozenset(
 
 ISLAND_MANIFEST = ".island.json"
 
-# Every archetype this module knows how to invoke, and the class that
-# exposes `review(Path) -> ArchetypeReport`. The gate names modules, so
-# modules are the key.
+# Module name to the class exposing `review(Path) -> ArchetypeReport`.
 ARCHETYPE_CLASSES: dict[str, str] = {
     "dev_harness.harness.coding_archetype": "CodingArchetype",
     "dev_harness.harness.gui_archetype": "GUIArchetype",
@@ -190,16 +185,10 @@ FROM_GATE = ROUTING_CITATION
 
 SEVERE = ("critical", "high")
 
-# Forbidden directives. The first seven are the set named in the build
-# brief. The last four are an EXTENSION made here and labelled as such
-# in the pin: `nosemgrep` and both `mypy:` forms silence semgrep and
-# mypy, which coding_archetype.py:306 actually runs, so omitting them
-# would leave MODE 2 open under a different spelling.
 DIRECTIVE_SET_LABEL = "brief-seven+nosemgrep+mypy2+pylint-skip-file"
 
-# Ordered longest-form-first, because these are matched with `re.match`
-# against the start of a comment segment and alternation is ordered:
-# `ruff: noqa` must win over the bare `noqa` inside it.
+# Longest form first: `re.match` alternation is ordered, so `ruff: noqa`
+# must come before the bare `noqa` inside it.
 DIRECTIVE_RE = re.compile(
     r"ruff:\s*noqa"
     r"|flake8:\s*noqa"
@@ -223,11 +212,8 @@ SCAN_MARKERS = "marker-anchored-conservative"
 
 DEFAULT_JOBS = 4
 
-# Wall-clock ceiling for ONE archetype on ONE file. coding_archetype's
-# own six subprocess timeouts sum to 840s worst case, so this never
-# fires on a healthy run; it exists so a wedged archetype cannot hang
-# the gate silently. An archetype runs in a thread and a thread cannot
-# be killed, so a timeout is reported and the process exits hard.
+# Wall-clock ceiling for one archetype on one file. An archetype runs in a
+# thread and a thread cannot be killed, so a timeout exits the process hard.
 DEFAULT_TIMEOUT = 1800
 
 # How many never-pinned files `check` will measure before refusing.
@@ -293,11 +279,6 @@ def git_head(root: Path) -> str | None:
         return (root / ".git" / ref).read_text(encoding="utf-8").strip() or None
     except OSError:
         return None
-
-
-# ---------------------------------------------------------------------------
-# Routing — imported from the hook, never reimplemented
-# ---------------------------------------------------------------------------
 
 
 def load_gate() -> ModuleType:
@@ -391,11 +372,6 @@ def load_routing() -> Routing:
     )
 
 
-# ---------------------------------------------------------------------------
-# Bytes, text and line endings
-# ---------------------------------------------------------------------------
-
-
 def decode_text(data: bytes) -> tuple[str, bool]:
     """Return (text, decoded_faithfully) for raw file bytes.
 
@@ -461,11 +437,6 @@ def eol_signature(data: bytes) -> tuple[str, dict[str, int]]:
 def is_determined(kind: str) -> bool:
     """Report whether a line-ending kind is evidence rather than absence."""
     return kind != DETERMINED_UNKNOWN
-
-
-# ---------------------------------------------------------------------------
-# Forbidden directives
-# ---------------------------------------------------------------------------
 
 
 def _normalise_directive(text: str) -> str:
@@ -561,11 +532,6 @@ def count_directives(
         key for comment in comments for key in _pragma_in_comment(comment)
     )
     return total, kinds, method
-
-
-# ---------------------------------------------------------------------------
-# One archetype verdict
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -695,11 +661,6 @@ def run_archetype(
         degraded=_degraded_tools(payload.get("tool_availability")),
         ran=True,
     )
-
-
-# ---------------------------------------------------------------------------
-# One file
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -847,11 +808,6 @@ def measure(
     if modules:
         entry.archetypes = _submit_archetypes(target, modules, jobs, timeout)
     return entry
-
-
-# ---------------------------------------------------------------------------
-# Path handling
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -1004,11 +960,6 @@ def directory_eol_majority(
     return max(counts.items(), key=lambda kv: (kv[1], kv[0]))[0], counts
 
 
-# ---------------------------------------------------------------------------
-# Reduced-coverage reporting
-# ---------------------------------------------------------------------------
-
-
 def say_reduced(only: tuple[str, ...]) -> None:
     """Print the reduced-coverage banner whenever `--only` narrowed the set.
 
@@ -1024,11 +975,6 @@ def say_reduced(only: tuple[str, ...]) -> None:
     _say(f"  measured: {', '.join(sorted(only))}")
     _say(f"  NEVER MEASURED: {', '.join(skipped)}")
     _say("  This pin is not complete. The default run is.")
-
-
-# ---------------------------------------------------------------------------
-# The pin
-# ---------------------------------------------------------------------------
 
 
 def pin_digest(payload: dict[str, object]) -> str:
@@ -1143,11 +1089,6 @@ def pin_degraded_union(entries: list[dict[str, object]]) -> set[str]:
     return tools
 
 
-# ---------------------------------------------------------------------------
-# Printing one measured file
-# ---------------------------------------------------------------------------
-
-
 def _say_entry(entry: Entry, prefix: str = "") -> None:
     """Print the one-file summary line and its per-archetype detail."""
     _say(f"  {prefix}{entry.rel}")
@@ -1193,11 +1134,6 @@ def _say_counts(entries: list[Entry]) -> None:
     if ungraded:
         _say("  A file no archetype routes to is still line-ending and")
         _say("  directive protected, but it carries NO archetype verdict.")
-
-
-# ---------------------------------------------------------------------------
-# baseline
-# ---------------------------------------------------------------------------
 
 
 def _refuse_paths(problems: list[PathProblem]) -> int:
@@ -1274,11 +1210,6 @@ def baseline(
     _say("")
     _say(f"Pin written: {pin_path}")
     return 0
-
-
-# ---------------------------------------------------------------------------
-# check — comparisons
-# ---------------------------------------------------------------------------
 
 
 def _pinned_directives(pinned: dict[str, object]) -> tuple[int, dict[str, int]]:
@@ -1404,11 +1335,6 @@ def _compare_degraded(
     return lines
 
 
-# ---------------------------------------------------------------------------
-# check — the never-pinned sweep
-# ---------------------------------------------------------------------------
-
-
 def _new_file_reasons(
     entry: Entry,
     island: Path,
@@ -1505,11 +1431,6 @@ def _sweep_new_files(
         failures.extend(_new_file_reasons(entry, island, exclude))
         failures.extend(_compare_degraded(rel, {}, entry, machine))
     return failures, notes
-
-
-# ---------------------------------------------------------------------------
-# check
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -1720,11 +1641,6 @@ def check(pin_path: Path, against: Path, options: CheckOptions) -> int:
         len(pinned_entries),
         reduced=bool(only) and not options.accept_reduced,
     )
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 
 def build_parser() -> argparse.ArgumentParser:

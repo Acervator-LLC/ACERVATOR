@@ -79,29 +79,8 @@ __all__ = ["ArchetypeReport", "Finding", "TAArchetype", "main"]
 
 logger = logging.getLogger("acervator.ta_archetype")
 
-# ---------------------------------------------------------------------
-# Report shapes come from tools/harness/report.py, which every
-# archetype now shares.
-#
-# This file used to carry its own copy, and the copy was missing
-# `by_severity`. Measured 2026-08-13: `.claude/hooks/archetype_gate.py`
-# sums that key to print the finding count, so on a real ta report
-# over src/trading/scrumming_bot.py carrying 81 findings it printed
-#   "passed=True (0 findings, no high/critical)"
-# directly above
-#   "by tool: ruff=81".
-# The VERDICT was never wrong -- the deny path reads findings and
-# severity directly -- but the number a reader saw was.
-# ---------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------
-# Domain knowledge. Published definitional ranges, not tuned thresholds.
-# ---------------------------------------------------------------------
-
-# name -> (low, high). These come from the indicator DEFINITIONS, not
-# from observing what this codebase currently outputs. An observed range
-# is what produced `adx_threshold = 500`.
+# name -> (low, high), taken from the published indicator definitions and
+# never from observed output.
 BOUNDED: dict = {
     "adx": (0.0, 100.0),
     "di_plus": (0.0, 100.0),
@@ -143,18 +122,8 @@ class _TAAnalyzer(ast.NodeVisitor):
         doc = ast.get_docstring(node) or ""
         if not AVERAGE_WORDS.search(doc):
             return
-        # v1.1 — the SEED must be divided, not merely some expression
-        # elsewhere in the body.
-        #
-        # The first version asked "does the body divide at all". It
-        # passed `_wilder_smooth`, whose recursion divides
-        # (`result[-1] / period`) while its SEED does not
-        # (`sum(values[:period])`). That is precisely the shipped
-        # defect, so the rule was blind to the incident it was written
-        # for.
-        #
-        # A `sum(...)` whose result is stored or returned WITHOUT a
-        # division applied to that same expression is the signature.
+        # The signature is a `sum(...)` stored or returned with no division
+        # applied to that same expression, not a division anywhere in the body.
         bare_sum = False
         for n in ast.walk(node):
             if not (
@@ -191,20 +160,8 @@ class _TAAnalyzer(ast.NodeVisitor):
             )
         )
 
-    # -- TA002: one-sided clamp on a bounded quantity ----------------
-    # Denominators that PRESERVE units. Dividing a price by a count
-    # gives a price; only dividing by another price makes the result
-    # dimensionless. This distinction is the whole of TA004: the
-    # Bollinger defect divided BOTH sides -- band_width by `mid` (a
-    # price, so normalising) and avg_width by `period` (a count, so
-    # not) -- and comparing them mixed units anyway.
-    # v1.2 - a STEP or INTERVAL denominator also yields a count.
-    #
-    # `(ts_ms - base_ts_ms) // step_ms` divides a duration by a
-    # duration and produces a candle INDEX, which is legitimately
-    # compared against `n_candles`. Treating `step_ms` as a
-    # normalising denominator made that a false units mismatch at
-    # fleet_replay_controller.py:2027.
+    # Denominators that preserve units. Dividing by one of these leaves the
+    # numerator's unit, so the quotient is not dimensionless.
     COUNT_DENOM = re.compile(
         r"^(period|periods|n|count|length|window|size|len|total|num|"
         r"samples?|bars?|step|step_ms|interval|interval_ms|tf|"
@@ -387,10 +344,7 @@ def _strip_prose(src: str) -> str:
             starts.append(acc)
             acc += len(ln) + 1
         for tok in tokenize.generate_tokens(io.StringIO(src).readline):
-            # Python 3.12+ tokenises f-strings as FSTRING_MIDDLE,
-            # not STRING, so the prose inside an f-string survived
-            # the strip. This archetype's own message text mentions
-            # the adx threshold incident and failed itself on it.
+            # Python 3.12+ tokenises f-strings as FSTRING_MIDDLE, not STRING.
             _prose = {tokenize.COMMENT, tokenize.STRING}
             for _n in ("FSTRING_MIDDLE", "FSTRING_START", "FSTRING_END"):
                 _t = getattr(tokenize, _n, None)
@@ -429,27 +383,10 @@ def _run_quant(target: Path) -> list[Finding]:
     an.visit(tree)
     findings = list(an.findings)
 
-    # -- TA003: a threshold outside its indicator's own range --------
-    # v1.2b - SCAN CODE, NOT PROSE.
-    #
-    # The regex ran over the raw file text, so a comment or
-    # docstring that MENTIONS a bound tripped the rule. This
-    # archetype documents the adx threshold incident it was built
-    # from, and therefore failed itself three times. Any file that
-    # explains the defect would fail the same way.
     code = _strip_prose(src)
 
-    # v1.2 - WHOLE-WORD match on the indicator name.
-    #
-    # v1.0 used `if k in name`, so the bound for `er` (Kaufman
-    # Efficiency Ratio, [0,1]) matched every identifier containing the
-    # letters "er": `every`, `every_n_candles`, `_MAX_MARKERS`,
-    # `WORKER_WAIT_CAP_S`. Four of the seventeen findings in the first
-    # full-archetype scan were that bug, and every one was noise.
-    #
-    # The name must be the whole identifier or a snake_case component
-    # of it, so `adx_threshold` still matches `adx` while `WORKER` no
-    # longer matches `er`.
+    # The indicator name matches the whole identifier or a snake_case part
+    # of it, so `adx_threshold` matches `adx` and `WORKER` does not match `er`.
     for m in re.finditer(
         r"([A-Za-z_][A-Za-z0-9_]*)\s*" r"(?:=|>=|<=|>|<)\s*([0-9]+(?:\.[0-9]+)?)", code
     ):
@@ -558,9 +495,8 @@ class TAArchetype:
             return ""
 
     def review(self, target: Path) -> ArchetypeReport:
-        # Resolved, like the other four archetypes. The ruff subprocess
-        # below is pinned to the repo root, so a relative target would
-        # otherwise be resolved against the wrong directory.
+        # The ruff subprocess below is pinned to the repo root, so a relative
+        # target must be resolved here.
         target = Path(target).resolve()
         rep = ArchetypeReport(target=str(target))
         rep.falsification = (
@@ -579,19 +515,10 @@ class TAArchetype:
             rep.errors.append(f"target not found: {target}")
             return rep
 
-        # Past this line the rules actually run over the target.
-        # `scanned` stays False on the early return above, so an empty
-        # report can no longer answer passed=True. Before this, a
-        # confirmed-absent path produced exit 0, passed=true, 0
-        # findings and one line in `errors` that nothing read.
+        # `scanned` stays False on the early return, so an empty report
+        # cannot answer passed=True.
         rep.scanned = True
 
-        # Both halves used to read `target` themselves and swallow the
-        # failure: `_run_quant` answered one TA000 info finding and
-        # `_run_chart` answered an empty list, while `review` recorded
-        # both as `ok`. MEASURED 2026-08-13 on a directory: exit 0,
-        # passed=True, ta-quant `ok`, nothing scanned. A source that
-        # could not be read is coverage that was not provided.
         sources, failures = read_rule_sources(rule_source_files(target, (".py",)))
         if failures or not sources:
             for detail in failures:
@@ -607,12 +534,6 @@ class TAArchetype:
         rep.tool_availability["ta-quant"] = "ok"
         rep.tool_availability["ta-chart"] = "ok"
         try:
-            # The suppression on the next line is the residue of a
-            # rule with no compliant form. Measured with ruff 0.16
-            # across six argv shapes: an all-literal argv draws no
-            # S603, and any argv carrying a variable draws one. This
-            # runner must pass the target path, which is a variable
-            # by definition.
             proc = subprocess.run(  # noqa: S603
                 [
                     sys.executable,
@@ -632,13 +553,8 @@ class TAArchetype:
                 check=False,
                 timeout=60,
             )
-            # An absent `python -m ruff` does NOT raise: the
-            # interpreter writes "No module named ruff" to stderr,
-            # exits non-zero and leaves stdout EMPTY. Without this
-            # branch the next line parsed "[]" and this runner
-            # reported "ok" -- byte-identical to "ruff ran and found
-            # nothing". The other archetypes closed that hole in
-            # v3.24.34; this one did not.
+            # An absent `python -m ruff` does not raise: stdout is empty and
+            # the return code is non-zero.
             if proc.returncode != 0 and not (proc.stdout or "").strip():
                 detail = (proc.stderr or "").strip().replace("\n", " ")
                 if "No module named ruff" in detail:
@@ -664,10 +580,6 @@ class TAArchetype:
                     )
                 )
         except Exception as exc:
-            # "error", not a free-form string. `unavailable: ...` was
-            # a status no consumer matched, so a broken ruff read as
-            # neither ok nor missing and slipped past every check that
-            # tested for those two words.
             rep.tool_availability["ruff"] = "error"
             rep.errors.append(f"ruff: {type(exc).__name__}: {exc}")
         return rep

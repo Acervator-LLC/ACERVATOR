@@ -93,18 +93,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# The tree this harness belongs to, and the directory EVERY analyzer
-# subprocess is run from.
-#
-# WHY IT IS PINNED. ruff and mypy read `pyproject.toml`, vale reads
-# `.vale.ini`, and mypy writes `./.mypy_cache`, all resolved against the
-# CURRENT DIRECTORY of the process. Nothing set that directory, so it
-# was whatever the caller happened to be standing in. MEASURED
-# 2026-08-13 on one unchanged absolute path: 75 findings from the repo
-# root against 78 from another directory, and the same `type: ignore`
-# reported MEDIUM from one and HIGH from the other, because the import
-# it depends on resolved in one case and not the other. A verdict must
-# be a function of the code, not of the caller.
+# The working directory every analyzer subprocess is run from.
 REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 
 # Severities that block. Kept here so five archetypes cannot disagree
@@ -114,12 +103,7 @@ BLOCKING_SEVERITIES: tuple[str, ...] = ("critical", "high")
 # The one status string that means "this analyzer ran and delivered".
 STATUS_OK = "ok"
 
-# Analyzers whose absence is reported but does NOT void the report.
-#
-# EMPTY, and deliberately so: an analyzer that did not run has not
-# cleared anything. The mechanism is kept for the next tool that cannot
-# be installed everywhere. Adding a name here is a declaration that its
-# coverage is optional, and it must come with the reason.
+# Analyzers whose absence is reported but does not void the report.
 OPTIONAL_ANALYZERS: frozenset[str] = frozenset()
 
 

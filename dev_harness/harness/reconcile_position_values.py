@@ -105,9 +105,6 @@ def main(argv: list[str] | None = None) -> int:
         print("no bots in state; nothing to reconcile", file=sys.stderr)
         return 2
 
-    # POSITIVE CONTROL. Every recomputed value being zero means the field
-    # names moved and this tool is measuring nothing -- which would
-    # otherwise render as a clean bill of health. Fail loudly instead.
     live = [r for r in rows if r["recomputed_position_value"] > 0]
     if not live:
         print(

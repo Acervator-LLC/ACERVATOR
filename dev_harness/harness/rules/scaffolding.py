@@ -66,11 +66,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-# --------------------------------------------------------------------- #
-# Public schema — mirrors ArchetypeReport's Finding dataclass so rule   #
-# modules stay decoupled from the archetype import chain.               #
-# --------------------------------------------------------------------- #
-
 
 @dataclass
 class Finding:
@@ -81,10 +76,6 @@ class Finding:
     rule_id: str
     message: str
 
-
-# --------------------------------------------------------------------- #
-# Fallback-string vocabulary (S001)                                     #
-# --------------------------------------------------------------------- #
 
 _FALLBACK_PHRASES = (
     "returned no ",
@@ -115,10 +106,6 @@ _STATUS_CALL_NAMES = {
 }
 
 
-# --------------------------------------------------------------------- #
-# Placeholder-text vocabulary (S004)                                    #
-# --------------------------------------------------------------------- #
-
 _PLACEHOLDER_PATTERNS = tuple(
     re.compile(p, re.IGNORECASE)
     for p in (
@@ -132,12 +119,6 @@ _PLACEHOLDER_PATTERNS = tuple(
         r"pending Phase",
     )
 )
-
-
-# --------------------------------------------------------------------- #
-# S002 detector — walks the AST to find the wall-clock completion      #
-# pattern.                                                             #
-# --------------------------------------------------------------------- #
 
 
 def _find_wallclock_completion_functions(tree: ast.AST) -> list[tuple[int, str]]:
@@ -181,16 +162,7 @@ def _slot_name(node: ast.AST) -> str | None:
     return None
 
 
-# --------------------------------------------------------------------- #
-# S003 detector — walk each class, collect init-assigned attrs, then   #
-# check every method for reads/writes of self._x not in that set.      #
-# --------------------------------------------------------------------- #
-
-# Attrs commonly inherited from stdlib / Qt bases. When a class extends
-# one of these, we treat the base's methods as "known" to avoid false
-# positives. This is a shortlist — a fuller fix would resolve MRO and
-# inspect base classes, but that requires the code to be importable
-# which archetype scans don't guarantee.
+# Attrs a stdlib or Qt base supplies, counted as known on any class extending it.
 _INHERITED_ATTRS_BY_BASE: dict[str, frozenset[str]] = {
     "NodeVisitor": frozenset({"visit", "generic_visit"}),
     "NodeTransformer": frozenset({"visit", "generic_visit"}),
@@ -227,9 +199,7 @@ _INHERITED_ATTRS_BY_BASE: dict[str, frozenset[str]] = {
             "shortDescription",
         }
     ),
-    # Qt widget bases share so many methods that trying to list them
-    # ends up net-noisy. Suppress S003 entirely for classes inheriting
-    # from any QWidget-family base by mapping to a sentinel value.
+    # The "*" sentinel suppresses S003 for the whole class, not one attr.
     "QWidget": frozenset({"*"}),
     "QDialog": frozenset({"*"}),
     "QMainWindow": frozenset({"*"}),
@@ -428,19 +398,11 @@ def _find_uninitialized_attrs(
     aliases: dict[str, str] | None = None,
     local_classes: dict[str, ast.ClassDef] | None = None,
 ) -> list[tuple[int, str]]:
-    # v3.23.90 — Qt-family + subclass of stdlib visitor/testcase bases
-    # get the whole rule suppressed, since MRO isn't resolvable from
-    # a static scan alone. v3.23.88 — aliases arg lets us resolve
-    # ``class SplashScreen(_QW):`` back to the real Qt base.
-    # v3.24.10 — unresolvable (out-of-file) bases also suppress; see
-    # _class_skips_s003 for why.
     locals_map = local_classes or {}
     if _class_skips_s003(cls, aliases, set(locals_map)):
         return []
     init_attrs = _collect_init_attrs(cls) | _inherited_attrs(cls, aliases)
-    # v3.24.10 — merge __init__ attrs from bases declared in THIS
-    # file, walking transitively. Depth-capped at 10 to stop a
-    # cyclic/self-referential base declaration from hanging the scan.
+    # The depth cap stops a cyclic base declaration hanging the walk.
     _pending = list(_base_names(cls, aliases))
     _seen: set[str] = set()
     _depth = 0
@@ -462,9 +424,7 @@ def _find_uninitialized_attrs(
             continue
         if node.name == "__init__":
             continue
-        # Also treat attrs set on any method as "known" — a common
-        # pattern is a `set_foo()` helper that first initializes the
-        # attr. Collect these before scanning reads.
+        # An attr stored by any method counts as known, not only by __init__.
         method_stores: set[str] = set()
         for sub in ast.walk(node):
             if isinstance(sub, ast.Assign):
@@ -494,12 +454,6 @@ def _find_uninitialized_attrs(
                 seen_missing.add(key)
                 hits.append((sub.lineno, attr))
     return hits
-
-
-# --------------------------------------------------------------------- #
-# S001 detector — walk the AST for setText/log/print calls with        #
-# fallback-phrase string literals.                                     #
-# --------------------------------------------------------------------- #
 
 
 def _find_fallback_strings(tree: ast.AST) -> list[tuple[int, str, str]]:
@@ -542,11 +496,6 @@ def _extract_string(node: ast.AST) -> str | None:
     return None
 
 
-# --------------------------------------------------------------------- #
-# S004 detector — text scan of source (works for .py + .md).           #
-# --------------------------------------------------------------------- #
-
-
 def _find_placeholder_text(source: str) -> list[tuple[int, str]]:
     hits: list[tuple[int, str]] = []
     for i, line in enumerate(source.splitlines(), start=1):
@@ -556,11 +505,6 @@ def _find_placeholder_text(source: str) -> list[tuple[int, str]]:
                 hits.append((i, m.group(0)))
                 break
     return hits
-
-
-# --------------------------------------------------------------------- #
-# Public entry — called by every archetype.                             #
-# --------------------------------------------------------------------- #
 
 
 def scan(target: Path, source: str) -> list[Any]:
@@ -614,10 +558,6 @@ def scan(target: Path, source: str) -> list[Any]:
                     )
                 )
             aliases = _collect_alias_map(tree)
-            # v3.24.10 — index every class declared in this file so
-            # _find_uninitialized_attrs can merge base-class __init__
-            # attrs when the base is visible, and suppress cleanly
-            # when it is not.
             local_classes: dict[str, ast.ClassDef] = {
                 n.name: n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)
             }

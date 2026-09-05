@@ -178,11 +178,6 @@ def check_no_open(session: str | None = None) -> int:
     return 1
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="claim_ledger", description="structural show-don't-tell"
