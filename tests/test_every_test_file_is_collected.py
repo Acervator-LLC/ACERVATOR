@@ -94,24 +94,15 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# pytest's default ``python_files``. The ini does not set the option, so
-# this is what discovery really uses.
-# ``test_effective_discovery_patterns_are_the_ones_this_guard_reads``
-# fails if the ini ever sets it, so this constant cannot drift away from
-# the configuration.
+# pytest's default ``python_files``; the ini sets no override.
 PYTEST_DEFAULT_PYTHON_FILES = ("test_*.py", "*_test.py")
 
-# Directories the walk never enters, and the reason for each. A dot
-# directory is a tool cache or an editor setting, and pytest's own
-# built-in ``norecursedirs`` default starts with ``.*``.
+# Directories the walk never enters, each with its reason.
 WALK_SKIP_EXACT = {
     "__pycache__": "bytecode, not source",
 }
 
-# A discovery-named file that pytest must NOT collect. Each entry gives
-# the reason. This map may not grow without one, and
-# ``test_every_excusal_names_a_file_that_is_in_the_tree`` deletes an
-# entry's cover the moment its file leaves.
+# Discovery-named files pytest must not collect, each with its reason.
 EXCUSED: dict[str, str] = {
     # Every entry is a GUI/coding archetype calibration body under
     # `tests/fixtures/`, kept out of collection by `norecursedirs`.

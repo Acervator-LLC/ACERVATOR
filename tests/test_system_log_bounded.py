@@ -114,15 +114,8 @@ class TestTheBoundExists:
         installs, not on the source text, because a source that says
         `maxBytes` and a handler that rotates are different claims."""
         log = clean_acervator_logger
-        # `clean_acervator_logger` empties the logger at fixture setup, but
-        # pytest's logging plugin attaches its own LogCaptureHandler to the
-        # (process-global) "acervator" logger around the call phase — i.e.
-        # AFTER setup. Left in place that foreign handler both inflates the
-        # count and, worse, trips LogManager's "install only when the logger
-        # has none" guard, so LogManager installs nothing and the test reads
-        # pytest's handlers instead of the one under test. Order-dependent, so
-        # it only surfaced once the suite ran in parallel. Clear immediately
-        # before, and assert on the handler LogManager installs.
+        # pytest attaches its own handler after fixture setup, and LogManager
+        # installs only when the logger has none.
         for h in list(log.handlers):
             log.removeHandler(h)
         LogManager(log_dir=tmp_path)
@@ -147,11 +140,7 @@ class TestTheBoundExists:
     ):
         """v3.24.53 cost 825 dropped records. Swapping the handler class
         is exactly the kind of change that would quietly undo it."""
-        # LogManager only installs its handler when the logger has none, and
-        # under pytest's logging plugin the "acervator" logger carries a
-        # LogCaptureHandler -- which would both suppress the install and make
-        # handlers[0] the wrong handler. Drop those first, then install, then
-        # select the real file handler by type.
+        # LogManager installs only when the logger has none, and pytest leaves one.
         for x in list(clean_acervator_logger.handlers):
             clean_acervator_logger.removeHandler(x)
         LogManager(log_dir=tmp_path)
@@ -373,9 +362,6 @@ class TestAFailedRolloverIsSurvivable:
             "the transient never fired, so this test proved "
             "nothing about a failed reopen"
         )
-        # THE PROPERTY. Not "a stream exists" -- a CLOSED stream also
-        # exists, and that is exactly the bug. The slot must be empty,
-        # because an empty slot is what makes shouldRollover reopen.
         assert h.stream is None, (
             "doRollover left a closed file object bound to self.stream; "
             "shouldRollover only reopens when it is None, so every later "
