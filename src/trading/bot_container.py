@@ -95,10 +95,8 @@ class BotContainer:
         self._pause_event.set()  # Not paused initially
         self._start_time: float = 0.0
         self._bus = get_event_bus()
-        self._volume_guard = None  # Set by BotManager if available
-        self._data_pool = None  # Set by BotManager if available
-        # symbol -> (min_amount, min_cost, amount_precision) from
-        # exchange.get_markets(), filled on first use.
+        self._volume_guard = None  # set by BotManager.set_volume_guard
+        self._data_pool = None  # set by BotManager.set_data_pool
         self._market_limits_cache: dict[str, tuple] = {}
         self._phantoms_enabled: bool = False
         self._phantom_config: dict = {}
@@ -624,9 +622,9 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         self._restore_completed: bool = False
         self._bus = bus if bus is not None else get_event_bus()
         self._state_manager = None
-        self._volume_guard = None  # Shared VolumeGuard for all bots
-        self._data_pool = None  # Shared MarketDataPool for API efficiency
-        self._ticker_refresh_task = None  # Bulk ticker refresher handle
+        self._volume_guard = None  # one VolumeGuard shared by every bot
+        self._data_pool = None  # one MarketDataPool shared by every bot
+        self._ticker_refresh_task = None
         self._ticker_refresh_stop = False
         self._live_monitor = None  # AI feedback loop (LiveMonitor)
         self._connector = None  # CcxtConnector — set via set_connector()

@@ -448,9 +448,6 @@ class FoldTrancheAccountingMixin:
             # Only the Fold Tranches table reads this tag; no order or
             # amount does.
             _merged["operator_initiated"] = True
-        # Rebound, not slice-assigned: the wiring scan in
-        # `test_scrum_fold_pct_mirrored_on_every_path` reads a subscript
-        # write to `_fold_tranches` as a tranche-build site.
         self._fold_tranches = self._fold_tranches[:first_new_index] + [_merged]
 
         _removed = len(_fresh) - 1

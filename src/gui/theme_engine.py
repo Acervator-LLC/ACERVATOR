@@ -1,31 +1,11 @@
 """
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-theme_engine.py — Visual theme system
-======================================
-Provides the cyberpunk dark mode default theme and alternate visual styles.
-Themes are implemented as Qt stylesheets (QSS) with CSS variable-like
-token substitution for consistent color application across all widgets.
+Qt stylesheet themes, as flat colour tokens.
 
-Supported themes:
-  • Cyberpunk Dark (default) — neon accents, dark backgrounds, futuristic
-  • Neon Light — bright, high-contrast with neon highlights
-  • Classic Terminal — green-on-black retro aesthetic
-  • Minimal Modern — clean, flat, understated
-  • Glass Metal — metallic textures with translucent overlays
-
-EXTERNAL GROUNDING (per R63 ERG + R65 GDG):
-  - WCAG 2.2 Level AA contrast (SC 1.4.3, SC 1.4.11) — every token pair
-    verified via relative luminance audit. Changes to hex values require
-    re-audit; see tools/wcag_audit.py (chunk C9).
-  - M3 color roles — see src/gui/design_system.py for canonical role-based
-    tokens. `theme_engine.py` preserves the legacy flat-token shape for
-    compatibility; new widget code should import from design_system.py.
-
-LINEAGE:
-  - C2 (this edit): fixed 4 WCAG AA violations in Cyberpunk Dark defaults
-    (text_muted, accent_danger, accent_info, border_primary, border_secondary).
-  - C1 (sibling): src/gui/design_system.py — canonical GUI tokens.
-  - R65 GDG MEM-157 — rule birth.
+``ThemeTokens`` holds the colours one theme paints from and ``generate_qss``
+renders them into a stylesheet. ``ThemeManager`` serves Cyberpunk Dark, Neon
+Light, Classic Terminal, Minimal Modern and Glass Metal. Every ``ThemeTokens``
+pair meets WCAG 2.2 AA contrast, and a changed hex value needs a fresh audit.
 """
 
 from __future__ import annotations
@@ -71,9 +51,9 @@ class ThemeTokens:
         "#4fc3ff"  # was "#00aaff" — WCAG C2: widened contrast margin (SC 1.4.3)
     )
 
-    # Borders (SC 1.4.11 — UI components require ≥3:1 contrast against adjacent colors)
-    border_primary: str = "#7a7a9c"  # was "#2a2a44" — WCAG C2: 1.42:1 → 4.79:1
-    border_secondary: str = "#5e5e80"  # was "#1e1e33" — WCAG C2: 1.21:1 → 3.19:1
+    # WCAG SC 1.4.11 wants at least 3:1 against the adjacent colour.
+    border_primary: str = "#7a7a9c"
+    border_secondary: str = "#5e5e80"
     border_accent: str = rgba("#00ffcc", 68)
 
     # Special

@@ -51,9 +51,7 @@ try:
 
     _HAS_QT = True
 except ImportError:
-    # Same form as react_history_panel.py: no Qt means no widget class,
-    # the module still imports, and asking for the widget fails by name
-    # at the import site.
+    # No Qt means no widget class; the module still imports.
     _HAS_QT = False
 
 logger = logging.getLogger("acervator.gui.history_qt_table")

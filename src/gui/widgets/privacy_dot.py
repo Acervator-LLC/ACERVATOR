@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 from ...core.privacy_mask_registry import get_privacy_mask_registry
 
 from .. import design_system as ds
+
+logger = logging.getLogger("acervator.gui.privacy_dot")
 
 try:
     from PySide6.QtWidgets import QPushButton
@@ -17,42 +21,18 @@ except ImportError:
 
 if _HAS_QT:
 
-    # Privacy Mask Dot — clickable indicator per masked field (v3.23.7)
-    # A small ~10×10px clickable dot widget that toggles the masked
-    # state of a single field_id in the PrivacyMaskRegistry. Color
-    # encodes state from the operator's point of view:
-    #   RED   = field is REVEALED (visible). Click to mask.
-    #   GRAY  = field is MASKED   (hidden).  Click to reveal.
-    #
-    # Operator directive (v3.23.7 spec Q7): "operator can see at a
-    # glance which cells are masked." Red = open eye / visible; gray
-    # = closed / hidden. The dot does NOT redraw on every refresh —
-    # it only repaints when its own state changes or when a parent
-    # widget calls refresh().
-    #
-    # Wiring: parent widgets pass a callable `on_toggle` that is
-    # invoked AFTER the registry is updated. Typical callback re-runs
-    # the parent's value-render path so the masked text reflows.
     class PrivacyDot(QPushButton):
-        """Clickable dot toggling one field's privacy-mask state.
+        """Clickable dot toggling one ``field_id`` in the privacy-mask registry.
 
-        v3.23.23 restyle (operator directive 2026-07-25): renders as a
-        Unicode glyph (● revealed / ○ masked) in cyan #00FFEE on a
-        transparent, flat button — matching the Bot Swarm dot
-        (bot_visualizer.py:2154) and the Scrumming Bots column-header
-        dot (main_window.py:1318). Prior styling was a 12px solid-blue
-        square, which visibly diverged from the header/bot-swarm style.
-
-        QPushButton subclass (rather than QLabel) preserves native
-        click hit-testing + focus semantics.
+        ``refresh`` paints ● for revealed and ○ for masked, and ``on_toggle``
+        is called after the registry write so the parent can re-render.
         """
 
         def __init__(self, field_id: str, on_toggle=None, parent=None):
             super().__init__(parent)
             self._field_id = field_id
             self._on_toggle = on_toggle
-            # v3.23.23 — no setFixedSize; let text sizing carry the
-            # width so the glyph renders at natural text metrics.
+            # No setFixedSize: the glyph sizes to its own text metrics.
             self.setFlat(True)
             self.setFocusPolicy(Qt.NoFocus)
             self.setCursor(Qt.PointingHandCursor)
@@ -66,29 +46,20 @@ if _HAS_QT:
             try:
                 reg = get_privacy_mask_registry()
                 reg.set_masked(self._field_id, not reg.is_masked(self._field_id))
-            except (
-                Exception
-            ):  # R28-OK: GUI repaint never crashes on registry  # noqa: S110
-                pass
+            except Exception as exc:
+                logger.debug("privacy toggle failed for %s: %s", self._field_id, exc)
             self.refresh()
             if callable(self._on_toggle):
-                try:  # noqa: SIM105
+                try:
                     self._on_toggle()
-                except Exception:  # R28-OK  # noqa: S110
-                    pass
+                except Exception as exc:
+                    logger.debug("on_toggle failed for %s: %s", self._field_id, exc)
 
         def refresh(self) -> None:
-            """Repaint the dot from current registry state.
+            """Repaint the dot and its tooltip from current registry state.
 
-            v3.23.23 — Operator directive 2026-07-25: unify the dot
-            style with the Bot Swarm dot (bot_visualizer.py:2154) and
-            the Scrumming Bots column-header dot (this file:1318).
-            Style spec:
-              - Unicode glyph: ● (revealed) / ○ (masked)
-              - Cyan text color #00FFEE (Acervator theme accent)
-              - Transparent, borderless flat button
-              - 14px font — matches header + bot-swarm sizing
-            Prior v3.23.15 style (12px solid-blue square) is retired.
+            The glyph is ● when revealed and ○ when masked, in
+            ``ds.PRIMARY_BRIGHT`` on a transparent flat button.
             """
             try:
                 masked = get_privacy_mask_registry().is_masked(self._field_id)

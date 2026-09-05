@@ -244,9 +244,9 @@ if _HAS_QT:
             )
 
             self._view_stack = QStackedWidget()
-            self._view_stack.addWidget(self._bot_list)  # idx 0 = List
-            self._view_stack.addWidget(self._grid_widget)  # idx 1 = Grid
-            self._view_stack.setCurrentIndex(0)  # default List
+            self._view_stack.addWidget(self._bot_list)  # index 0
+            self._view_stack.addWidget(self._grid_widget)  # index 1
+            self._view_stack.setCurrentIndex(0)
 
             self._quick_routing_matrix = QuickRoutingMatrix(self)
 

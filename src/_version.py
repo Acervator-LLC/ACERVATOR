@@ -19,9 +19,8 @@ DIRTY_SUFFIX = ".dirty"
 UNKNOWN_VERSION = "0.1.0+unknown"
 UNTAGGED_RELEASE = "0.1.0"
 
-# Only a tag of the form v<digit>... is a version tag. Without this guard
-# `git describe --tags` answers with whatever tag is nearest, and the tags
-# on this repository are local backups such as `pre-rejoin-backup`.
+# Without this glob `git describe --tags` answers with the nearest tag of
+# any kind, including local backup tags.
 TAG_GLOB = "v[0-9]*"
 
 _DESCRIBE_PARTS = 3

@@ -460,9 +460,8 @@ if _HAS_QT:
                 out.append(r)
             self._filtered = out
             _filter_s = time.monotonic() - _filter_t0
-            # Re-read from the widgets, not the loop's locals, so a mis-wired
-            # predicate disagrees. The To bound is read back too: an advance
-            # the bound reported but never stored shows up here.
+            # Read back from the widgets, not the loop locals, so a
+            # mis-wired predicate disagrees here.
             _v_exch = self._exch_combo.currentText()
             _v_sym = self._sym_combo.currentText()
             _v_side = self._side_combo.currentText()
