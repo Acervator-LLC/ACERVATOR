@@ -1517,7 +1517,7 @@ def test_the_screen_wires_its_signals_and_the_surface_wires_none():
     ``connections`` counts what building each side really wires, so a signal
     connected inside a widget the tab builds is counted the same as a literal one.
     """
-    from tests.fixtures.qt_wiring import connections
+    from tests.fixtures.qt_wiring_counts import connections
 
     app()
     wired, tab = connections(lambda: old_tab(names=["happy"]))
@@ -1539,7 +1539,7 @@ def test_the_surface_names_one_action_per_thing_the_operator_can_do():
 def test_the_connection_counter_can_report_a_wiring():
     """POSITIVE CONTROL for ``connections``. ``PrivacyDot`` wires one signal while
     it is built and is counted as one."""
-    from tests.fixtures.qt_wiring import connections
+    from tests.fixtures.qt_wiring_counts import connections
     from src.gui.widgets.privacy_dot import PrivacyDot
 
     app()
@@ -1616,7 +1616,7 @@ def test_the_signal_reader_can_report_a_declaration():
 
 def test_the_screen_subscribes_to_no_bus_topic():
     """A bus wiring appeared on one side and not the other."""
-    from tests.fixtures.qt_wiring import bus_subscriptions
+    from tests.fixtures.qt_wiring_counts import bus_subscriptions
 
     app()
     subscribed, tab = bus_subscriptions(lambda: old_tab(names=["happy"]))
@@ -1632,7 +1632,7 @@ def test_the_screen_subscribes_to_no_bus_topic():
 def test_the_bus_counter_can_report_a_subscription():
     """POSITIVE CONTROL for ``bus_subscriptions``. ``_subscribe_once`` takes one
     topic and is counted as one."""
-    from tests.fixtures.qt_wiring import bus_subscriptions
+    from tests.fixtures.qt_wiring_counts import bus_subscriptions
     from src.core.event_bus import get_event_bus
 
     def _subscribe_once():

@@ -688,7 +688,7 @@ def test_the_connect_sites_match_the_actions():
     ``connections`` counts what building each side really wires, so a signal
     connected through a helper or a loop is counted the same as a literal one.
     """
-    from tests.fixtures.qt_wiring import connections
+    from tests.fixtures.qt_wiring_counts import connections
 
     with recording_web_view():
         shipped_wirings, chart = connections(old_chart)
@@ -706,7 +706,7 @@ def test_the_connection_counter_can_report_a_wiring():
     it is built and is counted as one."""
     from PySide6.QtCore import QObject, Signal
 
-    from tests.fixtures.qt_wiring import connections
+    from tests.fixtures.qt_wiring_counts import connections
 
     app()
 
@@ -724,7 +724,7 @@ def test_the_connection_counter_can_report_a_wiring():
 
 def test_the_chart_starts_no_timer_and_subscribes_to_no_topic():
     """The surface gained behaviour the chart it replaces never had."""
-    from tests.fixtures.qt_wiring import bus_subscriptions, timer_starts
+    from tests.fixtures.qt_wiring_counts import bus_subscriptions, timer_starts
 
     with recording_web_view():
         started, chart = timer_starts(old_chart)
@@ -751,7 +751,7 @@ def test_the_chart_starts_no_timer_and_subscribes_to_no_topic():
 def test_the_timer_and_bus_counters_can_report():
     """POSITIVE CONTROL for the two zeros above. The console surface declares
     timers, and a neighbour that subscribes is seen subscribing."""
-    from tests.fixtures.qt_wiring import bus_subscriptions
+    from tests.fixtures.qt_wiring_counts import bus_subscriptions
     from src.core.event_bus import get_event_bus
     from src.gui.main_tabs import console_tab_surface as neighbour
 

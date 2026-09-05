@@ -1769,7 +1769,7 @@ def test_the_screen_wires_two_signals_and_the_pane_wires_two_more():
     ``connections`` counts what building the screen really wires, so a signal
     connected through a helper or a loop is counted the same as a literal one.
     """
-    from tests.fixtures.qt_wiring import connections
+    from tests.fixtures.qt_wiring_counts import connections
 
     app()
     alone, screen = connections(lambda: old_screen(right_pane=False))
@@ -1784,7 +1784,7 @@ def test_the_screen_wires_two_signals_and_the_pane_wires_two_more():
 def test_the_surface_wires_nothing_and_still_names_every_action():
     """The surface builds no Qt object, so it connects nothing, and each entry of
     ``ACTIONS`` still names a real ``MarketInspectorScreenModel`` method."""
-    from tests.fixtures.qt_wiring import connections
+    from tests.fixtures.qt_wiring_counts import connections
 
     app()
     surface_wired, model = connections(new_screen)
@@ -1798,7 +1798,7 @@ def test_the_surface_wires_nothing_and_still_names_every_action():
 def test_the_connection_counter_can_report_a_wiring():
     """POSITIVE CONTROL for ``connections``. ``PrivacyDot`` wires one signal while
     it is built and is counted as one."""
-    from tests.fixtures.qt_wiring import connections
+    from tests.fixtures.qt_wiring_counts import connections
     from src.gui.widgets.privacy_dot import PrivacyDot
 
     app()
@@ -1884,7 +1884,7 @@ def test_the_signal_reader_can_report_a_declaration():
 
 def test_the_screen_subscribes_to_no_bus_topic():
     """A bus wiring appeared on one side and not the other."""
-    from tests.fixtures.qt_wiring import bus_subscriptions
+    from tests.fixtures.qt_wiring_counts import bus_subscriptions
 
     app()
     subscribed, screen = bus_subscriptions(old_screen)
@@ -1900,7 +1900,7 @@ def test_the_screen_subscribes_to_no_bus_topic():
 def test_the_bus_counter_can_report_a_subscription():
     """POSITIVE CONTROL for ``bus_subscriptions``. ``_subscribe_once`` takes one
     topic and is counted as one."""
-    from tests.fixtures.qt_wiring import bus_subscriptions
+    from tests.fixtures.qt_wiring_counts import bus_subscriptions
     from src.core.event_bus import get_event_bus
 
     def _subscribe_once():

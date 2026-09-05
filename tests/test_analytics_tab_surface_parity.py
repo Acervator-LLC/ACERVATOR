@@ -904,7 +904,7 @@ def test_the_connect_sites_match_the_actions():
     ``connections`` counts what building each side really wires, so a signal
     connected through a helper or a loop is counted the same as a literal one.
     """
-    from tests.fixtures.qt_wiring import connections
+    from tests.fixtures.qt_wiring_counts import connections
 
     app()
     shipped_wirings, tab = connections(lambda: shipped.AnalyticsTab(None))
@@ -920,7 +920,7 @@ def test_the_connect_sites_match_the_actions():
 def test_the_connection_counter_can_report_a_wiring():
     """POSITIVE CONTROL. The neighbour this unit did not touch wires signals, so
     a zero above is a fact about the analytics tab."""
-    from tests.fixtures.qt_wiring import connections
+    from tests.fixtures.qt_wiring_counts import connections
     from src.gui.widgets.bot_status_table import BotStatusTable
 
     app()
