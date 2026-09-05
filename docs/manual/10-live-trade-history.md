@@ -62,8 +62,14 @@ at $10 and three at $20 give 17.50 by hand, and both the float path and the
 
 Each asset has a chart of its running buy VWAP against time. The line is the
 trajectory of the average as accumulation proceeds, and the shape of that
-trajectory is the reading. An end-of-period ratio of sell VWAP over buy VWAP
-answers a different question and is not what these charts carry.
+trajectory is the reading.
+
+Two metrics run through this part and they answer different questions. The
+trajectory answers what the units now held cost on average, and it keeps moving
+while the position is open. The sell-over-buy ratio answers whether the trades
+already closed sold above what they cost, and it is one settled figure per asset
+across the whole record. One reads the position, the other reads the realised
+trades. This part carries both, and neither stands in for the other.
 
 The combined chart indexes every asset to its own first buy VWAP and plots the
 running buy VWAP divided by that first value, so an asset priced in cents and
@@ -74,7 +80,7 @@ ZEC and ALLO trend up.
 
 Read the line as what it is. A falling running buy VWAP says the average cost
 of the base units now held fell as more were bought. It is not profit. It does
-not become profit until units are sold, and the ratio carries no sale in it at
+not become profit until units are sold, and the index carries no sale in it at
 all.
 
 ![The running buy VWAP of the eight assets with the most fills, each divided by its own first buy VWAP.](../../artifacts/vwap-charts/vwap_combined.png)
@@ -120,6 +126,82 @@ Measured over the same 5,661 fills, the eight lines end here:
 
 Six of the eight end below 1.0 and two end above it. Of the six, five land
 between 0.408 and 0.588, and BILL lands at 0.301.
+
+## The buy and sell ratio
+
+The second metric is one figure per asset: the sell VWAP divided by the buy
+VWAP, across every fill in the record. Above 1.000 the average sale price beat
+the average buy price. Below it the average sale came in under the average cost.
+The figure reads how the closed trades performed, and nothing else.
+
+No chart needs redrawing for it. Every per-asset chart already carries both
+lines, and the ratio is where the two of them finish: the sell line's last value
+over the buy line's last value. Both averages come from the same two columns as
+the charts, the export's Price at Transaction and its Quantity Transacted. Each
+side keeps its own pair of sums, so neither average pulls on the other.
+
+Of the 38 charted bases, 35 have enough fills on both sides for the figure to
+mean anything. 23 of those finish above 1.000 and 12 below, and none lands
+exactly on it. PUMP is the highest at 1.351 and BICO the lowest at 0.879.
+
+| Asset | Buys | Sells | Buy VWAP | Sell VWAP | Ratio |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| RAVE | 538 | 362 | 0.672605 | 0.610801 | 0.908 |
+| CHIP | 265 | 230 | 0.044733 | 0.0453964 | 1.015 |
+| BILL | 275 | 184 | 0.0357413 | 0.040867 | 1.143 |
+| ALLO | 143 | 179 | 0.298528 | 0.328486 | 1.100 |
+| ZEC | 140 | 121 | 485.048 | 536.675 | 1.106 |
+| KAT | 138 | 92 | 0.00645325 | 0.00627872 | 0.973 |
+| BIO | 155 | 71 | 0.0325805 | 0.0317443 | 0.974 |
+| SPK | 140 | 80 | 0.0226113 | 0.0212018 | 0.938 |
+| ORCA | 113 | 83 | 1.38181 | 1.34298 | 0.972 |
+| BONK | 104 | 87 | 5.98261e-06 | 6.10717e-06 | 1.021 |
+| CAP | 75 | 103 | 0.0297901 | 0.036577 | 1.228 |
+| PENGU | 98 | 61 | 0.00762374 | 0.00758363 | 0.995 |
+| VVV | 69 | 78 | 14.6904 | 15.4413 | 1.051 |
+| ETH | 95 | 46 | 1996.6 | 2047.62 | 1.026 |
+| BTC | 95 | 29 | 68918 | 68393.6 | 0.992 |
+| TAO | 69 | 55 | 242.103 | 238.855 | 0.987 |
+| ONDO | 66 | 53 | 0.36133 | 0.38167 | 1.056 |
+| XRP | 82 | 37 | 1.39501 | 1.40129 | 1.005 |
+| IMU | 57 | 56 | 0.00276124 | 0.00283892 | 1.028 |
+| BICO | 32 | 55 | 0.0336835 | 0.0296231 | 0.879 |
+| LINK | 43 | 40 | 9.06192 | 9.27909 | 1.024 |
+| DOGE | 43 | 37 | 0.0881513 | 0.0882367 | 1.001 |
+| SOL | 43 | 34 | 82.9528 | 83.4024 | 1.005 |
+| GROVE | 47 | 28 | 0.0116845 | 0.0116532 | 0.997 |
+| SUI | 41 | 33 | 0.857863 | 0.824958 | 0.962 |
+| RE | 41 | 32 | 0.475448 | 0.497449 | 1.046 |
+| XLM | 45 | 28 | 0.198142 | 0.21519 | 1.086 |
+| HYPE | 29 | 37 | 61.99 | 66.8959 | 1.079 |
+| PUMP | 23 | 40 | 0.00205112 | 0.00277049 | 1.351 |
+| NEAR | 27 | 31 | 2.03969 | 2.09155 | 1.025 |
+| HBAR | 16 | 9 | 0.0828047 | 0.0787786 | 0.951 |
+| AERO | 8 | 16 | 0.431039 | 0.480832 | 1.116 |
+| ENA | 8 | 15 | 0.145768 | 0.164984 | 1.132 |
+| ADA | 10 | 13 | 0.174843 | 0.202243 | 1.157 |
+| AGLD | 9 | 7 | 0.160515 | 0.164726 | 1.026 |
+| LTC | 3 | 3 | 46.4508 | 51.1833 | not read |
+| WLFI | 3 | 3 | 0.0589505 | 0.0591535 | not read |
+| LSETH | 1 | 4 | 2148.63 | 2576.19 | not read |
+
+Three rows carry no ratio and the reason is the fill counts beside them. LSETH
+has one buy, so its buy figure is a single price and not an average of anything.
+LTC and WLFI have three buys and three sells each. A mean over three fills moves
+with any one of them, so a ratio built on it says more about which trade landed
+last than about how the asset performed. The table keeps both averages, since
+the export supports each one, and leaves the division out, since a number there
+would read as a result.
+
+Every other row rests on at least seven fills a side, and 30 of the 38 rest on
+at least 23 a side.
+
+The two metrics leave out different things and both gaps matter. The ratio
+counts only what completed on both sides, so it says nothing about units still
+held — and on most of these assets the held position is the larger part of the
+story. The trajectory counts every buy and no sale at all, so it says nothing
+about whether a sale ever cleared its cost. A cycle needs both readings. Either
+one alone overstates what it knows.
 
 ## Traps in the export
 
@@ -221,11 +303,11 @@ elif t.side == OrderSide.SELL:
 
 No committed module computes an average sell price, and none computes a ratio
 of one average over the other. Five names were searched across the source, the
-harness and the tools, and every one of them returns no file. The control
-returns files for both of its terms.
+harness and the tools, ignoring case, and every one of them returns no file. The
+control returns files for both of its terms and none for a coined one.
 
 ```
-searched in src/, dev_harness/ and tools/
+searched in src/, dev_harness/ and tools/, ignoring case
     avg_sell             0 files
     average_sell         0 files
     sell_vwap            0 files
@@ -233,10 +315,13 @@ searched in src/, dev_harness/ and tools/
     sb_ratio             0 files
 control
     avg_entry           13 files
-    vwap                 5 files
+    vwap                 6 files
+    a coined term        0 files
 ```
 
-The charts carry no such ratio either. Each line stands alone.
+The chart module computes no ratio either. It draws the two lines and stops
+there. The ratio table above comes from the export directly, on the same two
+columns the charts read.
 
 No committed file produces these charts. A walk of every path any commit ever
 added, renamed or deleted reaches 1,606 distinct paths, and exactly one of them
