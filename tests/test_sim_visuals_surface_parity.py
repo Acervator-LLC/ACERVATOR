@@ -48,7 +48,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIPPED_SOURCE = REPO_ROOT / "src/gui/simulator_tab/fleet/sim_visuals.py"
 SURFACE_SOURCE = REPO_ROOT / "src/gui/main_tabs/sim_visuals_surface.py"
 VOCABULARY_SOURCE = REPO_ROOT / "src/trading/gate_vocabulary.py"
-NESTED_CLASS_NEIGHBOUR = REPO_ROOT / "src/gui/stock_main_window.py"
 
 GATE_PIXEL_SIZE = (760, 24)
 CHART_PIXEL_SIZE = (900, 400)
@@ -1415,7 +1414,8 @@ def test_the_class_counter_finds_a_class_declared_inside_a_method():
     assert [
         node.name for node in parsed_text(inner).body if isinstance(node, ast.ClassDef)
     ] == []
-    assert len(source_classes(parsed(NESTED_CLASS_NEIGHBOUR))) == 4
+    branched = "if True:\n    class Guarded:\n        class Inner:\n            pass\n"
+    assert source_classes(parsed_text(branched)) == ["Guarded", "Inner"]
 
 
 def test_every_surface_class_names_what_it_replaces():

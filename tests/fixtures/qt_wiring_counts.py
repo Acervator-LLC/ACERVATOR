@@ -47,6 +47,53 @@ def connections_watched():
         yield made
 
 
+def caller_in_src():
+    """The repository file nearest the call that reached this, or ``""``."""
+    import traceback
+
+    source = REPO_ROOT / "src"
+    for frame in reversed(traceback.extract_stack()):
+        found = Path(frame.filename).resolve()
+        if found.is_relative_to(source):
+            return found.relative_to(REPO_ROOT).as_posix()
+    return ""
+
+
+@contextlib.contextmanager
+def connection_origins():
+    """The source file behind every signal connection made in the block."""
+    from PySide6.QtCore import SignalInstance
+
+    made: list = []
+    with pytest.MonkeyPatch.context() as patch:
+        real = SignalInstance.connect
+
+        def watched(self, *args, **kwargs):
+            made.append(caller_in_src())
+            return real(self, *args, **kwargs)
+
+        patch.setattr(SignalInstance, "connect", watched)
+        yield made
+
+
+@contextlib.contextmanager
+def connection_targets():
+    """The name of the slot behind every connection made in the block."""
+    from PySide6.QtCore import SignalInstance
+
+    made: list = []
+    with pytest.MonkeyPatch.context() as patch:
+        real = SignalInstance.connect
+
+        def watched(self, *args, **kwargs):
+            slot = args[0] if args else None
+            made.append(getattr(slot, "__qualname__", type(slot).__name__))
+            return real(self, *args, **kwargs)
+
+        patch.setattr(SignalInstance, "connect", watched)
+        yield made
+
+
 @contextlib.contextmanager
 def timers_watched():
     """One entry per timer built or started inside the block."""
@@ -136,6 +183,17 @@ def qt_free(module, attribute=None):
         "    if name.split('.')[0] in ('PySide6', 'shiboken6')\n"
         ")\n"
         "print(json.dumps(out))\n"
+    )
+    return run_probe(probe)
+
+
+def module_pulls(module):
+    """Import ``module`` alone and report the ``src`` modules it pulled in."""
+    probe = (
+        "import importlib, json, os, sys\n"
+        "os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')\n"
+        "importlib.import_module(%r)\n" % module + "print(json.dumps(sorted(\n"
+        "    name for name in sys.modules if name.startswith('src.'))))\n"
     )
     return run_probe(probe)
 
