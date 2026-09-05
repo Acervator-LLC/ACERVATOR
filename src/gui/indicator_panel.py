@@ -346,6 +346,49 @@ def describe_no_data_cause(cause: str, detail: dict | None = None) -> str:
         return _UNKNOWN_CAUSE_TEXT.format(cause=str(cause))
 
 
+_U64_MASK = 0xFFFFFFFFFFFFFFFF
+_SPLITMIX_GAMMA = 0x9E3779B97F4A7C15
+_SPLITMIX_MIX_A = 0xBF58476D1CE4E5B9
+_SPLITMIX_MIX_B = 0x94D049BB133111EB
+_MANTISSA_SHIFT = 11
+_MANTISSA_SCALE = 1.0 / (1 << 53)
+
+
+class _DemoWalk:
+    """The number source behind ``_generate_demo_ta``'s synthetic candles.
+
+    ``uniform`` and ``gauss`` stand in for the same-named methods of
+    ``random.Random``, so one seed replays one series and the panel's
+    preview holds still across refreshes.
+    """
+
+    def __init__(self, seed: int) -> None:
+        self._state = int(seed) & _U64_MASK
+
+    def _next_u64(self) -> int:
+        """Advance the SplitMix64 state and return the mixed 64-bit output."""
+        self._state = (self._state + _SPLITMIX_GAMMA) & _U64_MASK
+        word = self._state
+        word = ((word ^ (word >> 30)) * _SPLITMIX_MIX_A) & _U64_MASK
+        word = ((word ^ (word >> 27)) * _SPLITMIX_MIX_B) & _U64_MASK
+        return word ^ (word >> 31)
+
+    def _unit(self) -> float:
+        """Return the next value in [0.0, 1.0), 53 bits wide."""
+        return (self._next_u64() >> _MANTISSA_SHIFT) * _MANTISSA_SCALE
+
+    def uniform(self, low: float, high: float) -> float:
+        """Return the next value in [low, high)."""
+        return low + (high - low) * self._unit()
+
+    def gauss(self, mu: float, sigma: float) -> float:
+        """Return the next normal deviate, Box-Muller over two units."""
+        first = self._unit() or _MANTISSA_SCALE
+        second = self._unit()
+        radius = math.sqrt(-2.0 * math.log(first))
+        return mu + sigma * radius * math.cos(2.0 * math.pi * second)
+
+
 try:
     from PySide6.QtWidgets import (
         QWidget,
@@ -1483,7 +1526,9 @@ if _HAS_QT:
                 return
             logger.info("INDICATOR PANEL: generating demo TA...")
             try:
-                import random, time as _time, hashlib
+                import hashlib
+                import time as _time
+
                 from ..trading.ta_engine import VotingEngine, Candle
 
                 bid = self._selected_bot_id or "default"
@@ -1493,7 +1538,7 @@ if _HAS_QT:
                 seed = int(
                     hashlib.md5(bid.encode(), usedforsecurity=False).hexdigest()[:8], 16
                 )
-                rng = random.Random(seed)
+                rng = _DemoWalk(seed)
                 price = 100.0
                 candles = []
                 for i in range(60):
