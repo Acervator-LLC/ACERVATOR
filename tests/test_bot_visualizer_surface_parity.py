@@ -1575,9 +1575,7 @@ def test_the_names_left_out_of_the_completeness_check_are_still_carried():
             assert leaves(one) <= carried, (name, one)
 
 
-# A tuple, not a set: `True` equals `1` and `False` equals `0`, so a set
-# holding both a boolean and the number beside it keeps only one of them
-# and the other reads as never driven.
+# A tuple, not a set: `True` equals `1`, so a set would keep only one of them.
 DRIVEN_INTO_THE_SNAPSHOT = (
     "BTC-USD-0001",
     "ETH-USD-0002",

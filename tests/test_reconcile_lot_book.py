@@ -1,97 +1,17 @@
-"""``_reconcile_holdings`` must audit the LOT BOOK, not only the scalar.
+"""`_reconcile_holdings` audits the LOT BOOK, not only the holdings scalar.
 
-THE DEFECT THIS PINS
-====================
-``bootstrap_exchange_state`` sets the holdings scalar with
-
-    self._current_holdings = min(
-        max(0.0, _units), _tracked_units_bootstrap)
-
-(``bootstrap_exchange_state``, ``src/trading/scrumming/reconciliation.py``).
-``min`` can pull the SCALAR down to the
-wallet. It can never pull the LOT LIST down with it, and it can never
-leave the scalar above the lot sum. So the divergence it creates runs in
-exactly one direction.
-
-``_reconcile_holdings`` (``src/trading/scrumming/reconciliation.py``)
-then read ``internal_units =
-self._current_holdings`` -- the very number the clamp had already set
-equal to the wallet. For ORCA that compared 48.73 against 48.73,
-reported alignment, and never looked at the 5.32 units stranded in
-``_main_lots``. A counter nobody audits does not self-correct.
-
-Measured in a read-only pin of ``~/.acervator/bot_state.json`` taken
-2026-08-13T19:18:32Z (sha256
-0cedbc2d9354a004075e101510bf8ff6c5b26910725bdcc9ab5b60adb0eeecd3,
-838489 bytes): 20 of 37 bots carry a lot book ABOVE their scalar and
-ZERO carry one below.
-
-WHY CAP IS THE CONTROL AND NOT THE COUNTEREXAMPLE
-=================================================
-CAP's excess had reached the AUDITED counter as well -- lot sum and
-scalar both 1136.227658 -- so the old comparison could see it, and at
-12.43% it cleared the deadband and fired at 2026-08-13T08:10:54Z. CAP
-now reads -0.00%. The rows that REMAIN are the ones where the same
-excess hides in the counter nobody audits. CAP was the most VISIBLE
-case, never the worst one.
-
-THE FIXTURE BOOK IS A RECORDING, NOT AN INVENTION
-=================================================
-``ORCA_UNITS`` below is ORCA's real 48-lot book, read out of that pin.
-A literal that pinned "what the bot used to hold" would prove nothing
-if the literal were made up, so it is a capture: ``sum(ORCA_UNITS)`` is
-54.053407815409216 and the bot's scalar and wallet both read 48.73.
-
-WHICH VENUE NUMBER THE AUDIT READS
-==================================
-Coinbase reports TWO numbers per coin. ``total`` is every coin owned.
-``free`` is only the coins not tied up in a resting order:
-``free = total - used``.
-
-``_reconcile_holdings`` read ``balance.free``. The startup handshake,
-``_tick_initialise`` (``src/trading/scrumming/tick_phases.py``), reads
-``total`` (MEM-255) and so does ``bootstrap_exchange_state``. One
-wallet, three readers, and one of them on a different field.
-
-That was inert while the rescale almost never ran. U2 makes it run, and
-the rescale multiplies EVERY lot by ``venue / internal``: on a bot with
-a resting order ``free`` is short by exactly the committed units, so the
-book would be rescaled down to exclude coins the operator still owns and
-their ``initial_buy_price`` would go with them. The drift-UP branch
-never claims units back, so that loss is permanent.
-
-Measured in the pin: ``active_buy_orders`` and ``active_sell_orders``
-are 0 on all 37 bots, so exposure TODAY is zero. Stack tranches place
-resting orders.
-
-AN ABSENT READING IS NOT A ZERO
-===============================
-``ccxt_connector.get_balance`` returns ``Balance(free=0, used=0,
-total=0, absent=True)`` when the exchange response OMITTED the currency
-(``ccxt_connector.py:1136``), and ``absent=False`` with the same three
-zeros when the exchange really did report zero (``:1131``). The audit
-read only the numbers, so both arrived as the same ``0.0``.
-
-Read as a zero it is maximally destructive on the branch U2 makes
-reachable: ratio 0.0, every lot multiplied to zero, every lot dropped by
-the ``> 1e-12`` filter, holdings 0.0 -- a whole position and its cost
-basis erased from a response that never mentioned the coin. No
-information is not a reading.
-
-WHY THE DEADBAND IS SWEPT AND NOT TABULATED
-===========================================
-The fire/silent decision turns on a 0.5% threshold. A hand-written pair
-of rows either side of it encodes the same mental model as the code and
-agrees with itself. ``test_the_deadband_decision_matches_an_independent
-_model`` sweeps the ratio instead and compares every outcome against a
-model written from the tolerance rule alone.
+`bootstrap_exchange_state` can clamp the scalar down to the wallet and leaves
+`_main_lots` above it, so an audit that compares the scalar to the wallet sees
+nothing. ORCA_UNITS is a real 48-lot book whose sum sits above ORCA_WALLET.
+The audit reads `total` first and `free` only as a fallback, matching
+`_tick_initialise` and `bootstrap_exchange_state`. A balance marked `absent`
+is refused rather than read as a zero.
 """
 
 from __future__ import annotations
 
 import asyncio
 import copy
-import inspect
 import logging
 import math
 
@@ -419,11 +339,9 @@ def test_drift_up_above_both_counters_is_adopted_from_the_exchange():
     that part of this unit is unchanged.
     """
     lots = [{"units": 54.05340782, "initial_buy_price": 1.10}]
+    # The adopt refuses a lot with no price, so the fixture carries the one a
+    # running bot always has.
     bot = _bot(lots=lots, scalar=48.73, venue=60.0)
-    # v3.25.10 — the adopt refuses to book a lot with no price, so the
-    # fixture now carries the one a running bot always has. Without
-    # this the test measured the deferral path while claiming to
-    # measure the adopt.
     bot.stats = type("S", (), {"current_price": 1.10, "position_value": 0.0})()
     assert _run(bot) is True
     messages = _messages(bot)
@@ -455,11 +373,6 @@ def test_drift_up_without_a_price_defers_instead_of_booking_a_zero_basis():
     assert bot._current_holdings == 48.73
     assert any("ADOPTION DEFERRED" in m for m in _messages(bot))
 
-
-# ── THE CLOSED INPUT TABLE ──────────────────────────────────────────
-#
-# A type is not a domain. Every row here is a VALUE, and each names
-# which of the three inputs carries it.
 
 ACCEPT_ROWS = [
     ("empty book, sum([]) is int 0", [], 0.0, 0.0, True),
@@ -646,10 +559,6 @@ def test_the_coercion_accepts_and_refuses_the_right_values():
     # -0.0 is a zero AND is normalised, so no caller formats "-0.00".
     assert coerce(-0.0) == 0.0
     assert math.copysign(1.0, coerce(-0.0)) == 1.0
-    # `"12.5"` and `True` were ACCEPTED by an earlier draft. Both are
-    # refused now -- strictly fewer inputs accepted, never more.
-    # `type(True) is bool` and bool subclasses int, so `float(True)` is
-    # 1.0 and every numeric test below would have passed it through.
     for bad in (
         NAN,
         INF,
@@ -841,32 +750,59 @@ def test_the_venue_falls_back_to_free_exactly_as_the_handshake_does():
     assert bot._current_holdings == 0.0
 
 
-def test_the_reconcile_reads_the_same_field_as_the_startup_handshake():
-    """Read the two call sites, not a behaviour that could agree by luck.
+HANDSHAKE_BALANCES = [
+    ("total wins over a resting-order free", 48.73, 12.0, 48.73),
+    ("free carries the read when total is zero", 0.0, 48.73, 48.73),
+    ("neither field ends at zero, never a raise", 0.0, 0.0, 0.0),
+]
 
-    WHAT A FAILURE HERE WOULD MEAN. The two readers of one wallet have
-    drifted onto different fields again, which is the whole defect.
+
+@pytest.mark.parametrize(
+    "label,total,free,expected",
+    HANDSHAKE_BALANCES,
+    ids=[r[0] for r in HANDSHAKE_BALANCES],
+)
+def test_the_reconcile_reads_the_same_field_as_the_startup_handshake(
+    label, total, free, expected
+):
+    """`_reconcile_holdings` and `bootstrap_exchange_state` read one wallet alike.
+
+    Both are driven on the same balance object, so a reader that drifted onto
+    the other field lands a different `_current_holdings`.
     """
-    recon = inspect.getsource(ScrummingBot._reconcile_holdings)
-    assert 'getattr(balance, "total", 0)' in recon
-    assert (
-        "float(balance.free or 0.0)" not in recon
-    ), "the reconcile is reading FREE as its venue number again"
-    assert recon.index('getattr(balance, "total", 0)') < recon.index(
-        "or balance.free"
-    ), "free must be the fallback, never the first choice"
-    # The fail-closed pin, at the source. A `getattr` DEFAULT on free
-    # is what let a None balance become an invented 0.0, and a 0.0
-    # against a real book is a 100% drift DOWN that empties it.
-    assert 'getattr(balance, "free"' not in recon, (
-        "a getattr default on free swallows a broken balance object; "
-        "the read must be bare so it raises into the fetch handler"
-    )
+    lots = [{"units": 48.73, "initial_buy_price": 1.10}]
 
-    handshake = inspect.getsource(ScrummingBot._tick_initialise)
-    assert 'getattr(_bal1, "total", 0)' in handshake
-    bootstrap = inspect.getsource(ScrummingBot.bootstrap_exchange_state)
-    assert 'getattr(_bal, "total", 0)' in bootstrap
+    recon_bot = _bot(lots=lots, scalar=expected, venue=total, free=free)
+    assert _run(recon_bot) is True, label
+    assert recon_bot._current_holdings == expected, label
+
+    adopted: list = []
+
+    class _Exchange:
+        async def get_balance(self, _currency):
+            raise AssertionError("the bootstrap must go through _get_balance")
+
+    def _adopt(units, _tracked, _price, _asset):
+        adopted.append(units)
+
+    async def _ticker(_symbol):
+        return type("T", (), {"last": 1.10})()
+
+    async def _quote():
+        return 1.0
+
+    boot_bot = _bot(lots=lots, scalar=0.0, venue=total, free=free)
+    boot_bot.exchange = _Exchange()
+    boot_bot.stats = type("S", (), {"current_price": 1.10, "position_value": 0.0})()
+    boot_bot._bootstrap_adopt_from_exchange = _adopt
+    boot_bot._get_ticker = _ticker
+    boot_bot._refresh_quote_to_usd = _quote
+    asyncio.run(boot_bot.bootstrap_exchange_state())
+
+    assert adopted == [expected], (
+        f"{label}: the bootstrap read {adopted} off the same balance the "
+        f"reconcile read {expected} from"
+    )
 
 
 # ── AN ABSENT READING IS NOT A ZERO ─────────────────────────────────
@@ -1006,13 +942,6 @@ def test_POSITIVE_CONTROL_the_naive_widening_really_does_go_silent():
     for venue in (48.73, 0.0, 1e300):
         bot = _bot(lots=[{"units": 30.0}, {"units": INF}], scalar=48.73, venue=venue)
         assert _run(bot) is False, venue
-
-
-# ── A MISSING READING IS NOT A ZERO READING, VIA THE OBJECT ─────────
-#
-# The absent MARKER and a broken balance OBJECT are the same mistake
-# arriving by two routes. Both used to end as an invented 0.0, and a
-# 0.0 against a real book is a 100% drift DOWN.
 
 
 def _bot_with_balance(balance_factory, *, lots=None, scalar=48.73):

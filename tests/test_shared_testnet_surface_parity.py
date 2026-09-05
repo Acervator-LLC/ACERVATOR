@@ -178,9 +178,8 @@ def payload_with(**changes) -> dict:
     return built
 
 
-# What reading the saved file produces, keyed by scenario name. A None
-# means the file is never created; a string is written as raw text; a
-# dict is written as JSON.
+# Reading the saved file, per scenario. None means no file; a string is raw
+# text; a dict is JSON.
 LOAD_FILES = {
     "no_file": None,
     "unreadable": "{ not json at all",
@@ -793,11 +792,8 @@ for _load_name in sorted(LOAD_FILES):
 
 SCENARIO_NAMES = sorted(SCENARIOS)
 
-# The shipped bridge replaces the block rows before it reads the
-# transaction rows, so a payload whose transactions are unreadable leaves
-# the chain half restored. The view model builds the whole chain before
-# it keeps any of it. Every other key is compared; the chain is pinned by
-# test_a_torn_restore_is_named_and_only_the_chain_moves.
+# Scenarios where the shipped bridge leaves the chain half restored. Every
+# other key is compared.
 TORN_RESTORE_SCENARIOS = (
     "load_bad_supply_infinity",
     "load_bad_supply_infinity_then_save",
@@ -2164,9 +2160,8 @@ def test_the_surface_names_the_saved_file_without_opening_it():
         assert not isinstance(value, Path), "the surface holds a real path"
 
 
-# What the two-sided comparison cannot see, each read off both sides by a
-# named check instead. Each is a moment, an order or a state the trace has
-# no place for, never a product value the comparison hides.
+# Moments, orders and states the trace has no place for, each read off both
+# sides by the named check.
 BLIND_TO_THE_COMPARISON = {
     "the moment a save stamps": (
         "test_the_shipped_side_stamps_a_real_time_where_the_clock_is_hidden"

@@ -1,51 +1,11 @@
-"""Pins the two Bot Swarm registration emitters — 10.5, subsystem `swarm`.
+"""Pins `swarm.11.001` and `swarm.11.002` on `BotVisualizationTab`.
 
-    swarm.11.001.postcondition.sim_run_registered
-    swarm.11.002.postcondition.paper_run_registered
-
-THERE IS NO THIRD, AND THE LIVE PATH IS NOT INSTRUMENTED. Read that
-before anything else in this file. A pin numbered
-`swarm.11.003.postcondition.live_run_registered` was planned for
-`register_live_run` and withdrawn. That function raises AttributeError
-on `self._live_rows_layout`, which src/gui/bot_visualizer.py reads near
-line 2388 and defines nowhere, so the live path cannot be driven and a
-pin placed in it would never fire. The defect is tracked as issue #25
-and is not repaired here. An earlier revision of this docstring listed
-the live pin among the emitters this module covers. It does not cover
-it, it never did, and a reader auditing coverage from that list
-concluded that the layer rendering real-money bots was watched. It is
-not.
-
-WHAT THEY ASSERT, AND WHY IT IS NOT THE ARGUMENT THAT WENT IN. Each
-emitter reads the row back OUT of its layer's store and reports the
-row's `kind` against the layer the function is for. `register_sim_run`
-and `register_paper_run` take the same shape of argument and differ
-only in which store and layout they touch, so a registration that lands
-in the wrong layer returns exactly as cleanly as a correct one.
-Reporting the argument back would never catch that.
-
-THE ROUTING CONTROL IS THE MISROUTE. `test_a_misrouted_row_is_reported`
-forces `_create_swarm_row` to hand back a row of the wrong kind and
-asserts the emitter reports the wrong kind with `ok` False. Without it
-these tests would prove only that the emitters fire, which is the
-"40 wires, $0.00 routed" shape: a count that looks right while nothing
-landed where it was addressed.
-
-THE DURATION CONTROL IS THE LEVER. `duration` was pinned here by an
-existence check alone — `is not None` and `>= 0.0` — and an existence
-check is passed by a literal, by a stop clock moved above the work, and
-by any other blinding that leaves the field's SHAPE intact. Measured
-2026-08-19: substituting the literal `1.0` at both emit sites changed no
-result. `test_the_duration_tracks_the_real_registration` drives the same
-registration at two known workloads and asserts the recorded value moved
-with them. See `_tracks_the_registration` for the predicate and
-`test_the_registration_duration_predicate_can_fail` for the other half
-of it.
-
-The entry points had ZERO callers before this (`nuclear_verification.py:19`
-and `nuclear_mode_panel.py:561` both say so, and `emit_contracts.py:33`
-lists `register_sim_run()` among functions that "passed its tests without
-ever running"). These tests are the first thing to drive them.
+Each emitter reads the row back out of its layer store and reports the row
+`kind` against the layer, so `test_a_misrouted_row_is_reported` forces
+`_create_swarm_row` to hand back the wrong kind and asserts `ok` is False.
+`test_the_duration_tracks_the_real_registration` drives one registration at
+`LEVER_SHORT_S` and `LEVER_LONG_S` and reads the clock. There is no pin on
+`register_live_run`, which raises AttributeError on `_live_rows_layout`.
 """
 
 from __future__ import annotations
@@ -66,15 +26,9 @@ if str(REPO) not in sys.path:
 from src.core import signal_contract as sc  # noqa: E402
 from src.core.signal_contract import SignalSink  # noqa: E402
 
-# Imported, not forked. `_tracks` is the project's duration predicate
-# and this module has no standing to relax it; the site rule below
-# WRAPS it and only ever adds a condition.
 from tests.test_signal_operation_duration import _busy_wait, _tracks  # noqa: E402
 
 if TYPE_CHECKING:  # pragma: no cover
-    # Annotation only. PySide6 must not be imported at module scope:
-    # the predicate control below is pure Python and has to run on a
-    # box without Qt.
     from PySide6.QtWidgets import QApplication
 
 SIM = "swarm.11.001.postcondition.sim_run_registered"
@@ -82,21 +36,8 @@ PAPER = "swarm.11.002.postcondition.paper_run_registered"
 
 LAYERS = ((SIM, "sim"), (PAPER, "paper"))
 
-# The two workloads the duration lever drives.
-#
-# MEASURED 2026-08-20, offscreen Qt on the target machine. An unlevered
-# registration records 0.00109 s to 0.00114 s over 8 samples per layer.
-# With the lever the same registration records, over 5 samples each:
-#
-#     lever 0.010 s  ->  0.01112 s .. 0.01195 s
-#     lever 0.120 s  ->  0.12135 s .. 0.12247 s
-#
-# The bands are 10.8x apart with 0.109 s of clear air between them, and
-# `_tracks` asks only for a factor of 2. The short reading would have to
-# inflate 5.4x, or the long reading collapse 5.4x, before scheduler
-# noise could close the gap. The lever is a busy wait and not
-# `time.sleep`: it never yields, so the Qt event loop cannot be
-# scheduled inside it and cannot widen an interval by a whole tick.
+# The two workloads `_busy_wait` levers. A busy wait never yields, so the Qt
+# event loop cannot be scheduled inside a measured region.
 LEVER_SHORT_S = 0.010
 LEVER_LONG_S = 0.120
 
@@ -113,9 +54,8 @@ def qapp() -> QApplication:
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication as _QApplication
 
-    # `instance()` is typed as the QCoreApplication base and can hand
-    # back a bare QCoreApplication in a non-GUI process, which has no
-    # widget machinery. Narrow it rather than assume.
+    # `instance()` can hand back a bare QCoreApplication, which has no widget
+    # machinery.
     running = _QApplication.instance()
     if isinstance(running, _QApplication):
         return running
@@ -153,26 +93,10 @@ def _records(sink: SignalSink, name: str):
 
 
 def _tracks_the_registration(short: float | None, long_: float | None) -> bool:
-    """Ask `_tracks`, then add a floor. The floor is the whole point.
+    """Ask `_tracks`, then require `long_` to hold half of `LEVER_LONG_S`.
 
-    `_tracks` asks that the long reading be more than twice the short
-    one. That is the right rule at a site whose readings are real, and
-    it is not sufficient here. Move the stop clock above the work and
-    the bracket spans nothing: both readings collapse to the cost of two
-    `time.monotonic()` calls, and two values that small differ by more
-    than a factor of two on ordinary clock jitter.
-
-    MEASURED 2026-08-20 with the stop clock planted above the work, 60
-    pairs off the real sim site: every reading fell between 9.99e-08 s
-    and 5.00e-07 s, and `_tracks` alone ACCEPTED 3 of the 60. A detector
-    that misses one blinding in twenty is not a detector, it is a coin
-    the suite flips, so the rule here removes the flip instead of
-    tightening the ratio and hoping.
-
-    So this adds one rule and relaxes none: the long reading must hold
-    at least half the interval the lever burned. The lever is 0.120 s
-    and an unlevered registration measured 0.0011 s, so any reading
-    under 0.060 s is a bracket that did not span the work.
+    A bracket that spans no work reads a fraction of a microsecond at both
+    levers, which `_tracks` accepts on ratio alone.
     """
     if short is None or long_ is None:
         return False
@@ -321,9 +245,7 @@ def test_the_duration_tracks_the_real_registration(
     that swallowed it, a literal in its place, or a timer bracketing the
     emit instead of the work.
     """
-    # Drain anything Qt has queued so it cannot be billed to the first
-    # bracketed region. The measured region must contain the lever and
-    # the registration, nothing else.
+    # Drain Qt's queue so it is not billed to the first bracketed region.
     qapp.processEvents()
 
     short = _duration_of_a_registration(
@@ -335,9 +257,8 @@ def test_the_duration_tracks_the_real_registration(
 
     assert short is not None, "no duration recorded for the short workload"
     assert long_ is not None, "no duration recorded for the long workload"
-    # These tolerances cover the unlevered registration cost (0.0011 s
-    # measured) plus headroom for a slower box. They are not the
-    # control; the control is the predicate below.
+    # The tolerances cover the unlevered registration cost and a slower box.
+    # `_tracks_the_registration` below is the control, not these.
     assert short == pytest.approx(LEVER_SHORT_S, abs=0.020), short
     assert long_ == pytest.approx(LEVER_LONG_S, abs=0.030), long_
     assert _tracks_the_registration(
@@ -365,13 +286,8 @@ def test_the_registration_duration_predicate_can_fail() -> None:
         0.121, 0.011
     ), "going backwards must not read as tracking"
 
-    # The zero-length bracket, and the measured reason this site carries
-    # a floor that `_tracks` does not. This pair is a real one: the
-    # 2026-08-20 dead-clock run recorded 1.00000761e-07 against
-    # 4.00003046e-07, rounded here to the significant figures, which
-    # does not move either verdict. The shared predicate ACCEPTS it. The
-    # site rule rejects it. That is an addition to `_tracks`, never a
-    # relaxation of it.
+    # A zero-length bracket: `_tracks` accepts this pair, the site rule adds a
+    # floor and rejects it.
     assert _tracks(
         1.0e-07, 4.0e-07
     ), "the shared predicate is expected to accept a dead clock here"

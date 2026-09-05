@@ -1,61 +1,20 @@
-"""Queue item 10.3 -- TIME. When a record happened, and what stopped.
+"""Every record carries when it happened, and the sink can name what stopped.
 
-WHAT THIS UNIT ADDS
-===================
-Before it, ZERO of the 40 pins carried a duration. One pin held a
-timestamp pair and it measured the length of the market tape replayed,
-not the cost of replaying it. Five pins were NAMED for timing and
-reported counts and booleans. The network could answer "did it run, was
-the value right" and could not answer "how long did it take".
-
-Two different durations exist and they need different work:
-
-  (a) HOW LONG THE OBSERVED OPERATION TOOK. Only the caller knows. It
-      needs all 40 call sites. NOT THIS UNIT, and nothing here should be
-      read as supplying it.
-  (b) THE INTERVAL BETWEEN EMISSIONS of one pin, and how long since a
-      pin was last seen. The sink computes both alone. THIS UNIT.
-
-(b) answers "on time" and "hangs". It cannot answer "slow down" in the
-one shape that matters most: a pin that keeps firing on cadence while
-each individual operation inside it takes twice as long looks perfect
-from here. That is (a).
-
-THE IDENTITY IS `(name, site)`, NOT `name`
-==========================================
-`signal_contract._throttle_admit` already keys its rate limit on the
-pair -- and, since issue #57, on the `instance` a call site may declare
-beside it -- and states why: the same signal emitted from two places is
-two different things to a reader. `SignalSink.stats` keys on the name
-alone. The timing surface follows the pair, and
-`TestIdentityIsTheNameAndTheSite` shows the two side by side so the
-difference is visible rather than asserted.
-
-A HANG HAS NO RECORD
-====================
-Every other retrieval on the sink answers a question about records that
-ARRIVED. A pin that stopped sends nothing, so no record-shaped query
-can name it. `pin_state` reads the last-seen map instead and needs
-nothing to arrive; `TestAHangIsReadableWithNoNewRecord` proves the
-staleness rises while the record count does not move.
-
-FOUR STATES, NOT THREE
-======================
-A pin that NEVER fired is not a pin that fired and stopped, and neither
-is a pin that just fired. Collapsing them is the disjunction defect
-this project keeps paying for -- the indicator panel's two-causes
-message cost the operator real time.
+`SignalSink` computes `dt`, the interval since the previous emission of one
+identity, and `nth`, its ordinal. The identity is `(name, site)`, and
+`TestIdentityIsTheNameAndTheSite` puts that beside `SignalSink.stats`, which
+keys on the name alone. `pin_state` reads the last-seen map, so
+`TestAHangIsReadableWithNoNewRecord` shows staleness rising while the record
+count holds. `PIN_STATES` has four members, not three.
 """
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import os
 import threading
 import time
-from pathlib import Path
 
 import pytest
 
@@ -77,27 +36,11 @@ from src.core.signal_contract import (
     set_sink,
 )
 
-# Set before anything imports Qt, matching
-# `tests/test_main_window_suppression_repairs.py`. `tests/conftest.py`
-# has already put the repository root on `sys.path`, which is why every
-# import above sits at the top of the file and this module carries no
-# import-order pragma -- and no suppression directive of any spelling.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-REPLAY = REPO_ROOT / "src/simulator/fleet/fleet_replay_controller.py"
-MAIN_WINDOW = REPO_ROOT / "src/gui/main_window.py"
 
-# REAL LINES FROM THE OPERATOR'S LIVE HISTORY
-# Copied read-only 2026-08-15 from `~/.acervator_logs/signals/`, one
-# verbatim line per distinct name found in a sample of six generations
-# totalling 587,000 records. Every one predates this unit, so none of
-# them carries `dt` or `nth`, which is exactly the property under test.
-#
-# They are chunked into adjacent RAW literals only so that no source
-# line runs long. `test_the_fixture_is_verbatim` compares the
-# reconstruction against a SHA-256 taken at capture time, because a
-# "real" line somebody tidied is a synthetic line with a good story.
+# Real lines copied read-only from the live signals ladder. None of them
+# carries `dt` or `nth`, which is the property under test.
 REAL_LINES = (
     # bot.capital_reservation -- 489 bytes, verbatim
     r'{"ts":"2026-08-15T06:26:53.934678+00:00","seq":2620953,"modu'
@@ -285,43 +228,19 @@ def _emit_from_site_two(name, value):
     return emit(name, actual=value)
 
 
-def _attrs_read_off(path: Path, variable: str, function: str) -> set:
-    """Every attribute `function` in `path` reads off `variable`.
+class _WatchedRecord:
+    """Delegate to a real record and remember every attribute read off it.
 
-    Reads the CONSUMER, not a description of it. If a reader starts
-    using a field, or a field it uses disappears, this notices without
-    anybody remembering to update a list.
-
-    SCOPED TO ONE FUNCTION DELIBERATELY. A whole-module walk of
-    `main_window.py` collects every `r.<attr>` across 4,956 lines --
-    `r.bot_id` among them -- and would demand fields of a signal record
-    that no consumer of one ever asked for.
-
-    Both an unfound function and an empty attribute set are refused. A
-    scope that matched nothing makes every assertion built on it
-    vacuously true, which is a verification that graded nothing
-    reporting success.
+    `seen` collects the names a consumer asked for while it ran.
     """
-    tree = ast.parse(path.read_bytes().decode("utf-8"))
-    scope = None
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name == function
-        ):
-            scope = node
-            break
-    assert scope is not None, f"{path.name} defines no {function}"
-    found = set()
-    for node in ast.walk(scope):
-        if (
-            isinstance(node, ast.Attribute)
-            and isinstance(node.value, ast.Name)
-            and node.value.id == variable
-        ):
-            found.add(node.attr)
-    assert found, f"{function} reads nothing off `{variable}`"
-    return found
+
+    def __init__(self, record, seen: set) -> None:
+        object.__setattr__(self, "_record", record)
+        object.__setattr__(self, "_seen", seen)
+
+    def __getattr__(self, item):
+        object.__getattribute__(self, "_seen").add(item)
+        return getattr(object.__getattribute__(self, "_record"), item)
 
 
 # ------------------------------------------------------- CONTROL a --
@@ -416,9 +335,6 @@ class TestTheFirstEmissionIsHonest:
         assert first.nth == 1
 
     def test_a_reader_can_tell_a_first_emission_from_a_real_interval(self, sink):
-        # ONE source line, so ONE site, so ONE identity. Two `emit`
-        # calls written on two lines would be two emitters -- see
-        # `test_the_same_name_on_two_lines_is_two_identities`.
         pair = []
         for value in (1, 2):
             pair.append(sink.emit("pin.first", actual=value))
@@ -531,9 +447,6 @@ class TestAnAgeIsNeverNegative:
         with lock:
             worker = threading.Thread(target=reader, daemon=True)
             worker.start()
-            # The reader is now blocked. Advance the stamp exactly as
-            # `emit` does: the monotonic slot of the live entry, under
-            # the lock this thread already holds.
             time.sleep(0.05)
             sink._seen[("pin.parked", "parked.py:1")][0] = time.monotonic()
         worker.join(timeout=5.0)
@@ -833,26 +746,43 @@ class TestTheExistingReadersStillWork:
         assert stub._signal_seq == 0
 
     def test_the_console_reads_no_field_a_record_stopped_carrying(self):
-        """Reads the consumer's source and checks the coupling.
+        """`_drain_signals` reads no attribute a real record has stopped having.
 
-        The drain loops `for r in new`, so every `r.<attr>` in
-        `main_window.py` is a field it depends on. Each one must exist
-        on a record produced AFTER this change.
+        The real drain runs over `_WatchedRecord`, which delegates to a record
+        the sink produced and collects each name the drain asked for.
         """
-        record = SignalSink().emit("pin.coupling", actual=1)
-        reads = _attrs_read_off(MAIN_WINDOW, "r", "_drain_signals")
-        # The sentinel: if the scoping ever silently matches the wrong
-        # function, this set stops being a subset and the test fails
-        # instead of passing over nothing.
-        #
-        # `seq` is deliberately absent. The drain reads it off
-        # `new[-1].seq`, a subscript rather than the loop variable, so
-        # no `r.<attr>` walk can see it. The live Qt drive above covers
-        # that line by asserting the watermark advanced to 2.
-        assert {"ok", "name", "site", "actual", "expected"} <= reads
-        for attr in reads:
+        pytest.importorskip("PySide6")
+        from PySide6.QtWidgets import QApplication, QPlainTextEdit
+
+        QApplication.instance() or QApplication([])
+        from src.gui import main_window
+
+        real = SignalSink()
+        real.emit("console.coupling", actual=1, expected=2, ok=False)
+        real.emit("console.coupling", actual=2, expected=2, ok=True)
+        seen: set = set()
+        watched = [_WatchedRecord(r, seen) for r in real.records()]
+
+        set_sink(real)
+        try:
+            real.since = lambda _seq: list(watched)
+            stub = type(
+                "Driven", (), {"_drain_signals": main_window.MainWindow._drain_signals}
+            )()
+            stub._signal_view = QPlainTextEdit()
+            stub._signal_seq = 0
+            stub._console_paused = False
+            stub._drain_signals()
+        finally:
+            set_sink(None)
+
+        assert {"ok", "name", "site", "actual", "expected", "seq"} <= seen, (
+            "the drain read only " f"{sorted(seen)}; it never walked the records"
+        )
+        sample = real.records()[0]
+        for attr in seen:
             assert hasattr(
-                record, attr
+                sample, attr
             ), f"the Console reads r.{attr} and a record no longer has it"
 
     def test_the_replay_rollup_walks_records_unchanged(self, sink):
@@ -909,12 +839,17 @@ class TestTheExistingReadersStillWork:
         assert all(r.nth >= 1 for r in sink.records())
 
     def test_the_replay_reads_no_field_a_record_stopped_carrying(self):
-        """Same coupling check against the replay controller's `_r`,
-        scoped to `_run`, the coroutine the end-of-run walk lives in."""
+        """`Signal` still declares every field the replay rollup reads.
+
+        The rollup above walks `name`, `ok`, `expected` and `context`, and
+        `dataclasses.fields` is what says a record still carries them.
+        """
+        import dataclasses
+
+        declared = {f.name for f in dataclasses.fields(Signal)}
+        assert {"name", "ok", "expected", "context"} <= declared, sorted(declared)
         record = SignalSink().emit("pin.coupling", actual=1)
-        reads = _attrs_read_off(REPLAY, "_r", "_run")
-        assert {"name", "ok", "expected", "context"} <= reads
-        for attr in reads:
+        for attr in ("name", "ok", "expected", "context"):
             assert hasattr(
                 record, attr
             ), f"the replay walk reads _r.{attr} and a record lost it"

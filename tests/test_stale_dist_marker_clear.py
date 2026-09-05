@@ -117,12 +117,8 @@ _MARKER_FILE = "STALE_DIST_WARNING.txt"
 _BAKED_FILE = _SIB._BAKED_FILE
 _BUNDLE_PARTS = _SIB._BUNDLE_PARTS
 
-# The banner, byte for byte, as the unpatched main.py produced it on
-# 2026-08-14: 807 bytes on disk with CRLF endings, sha256
-# 4f18e5d405bd9624c1712eb8382b6e37deb7ca97bec20bd13bbd2bbfa5d33ec4, and
-# the file's contents were identical to what went to stderr. Written
-# with \n here and compared through read_text, whose universal-newline
-# decode makes the comparison say the same thing on either platform.
+# The banner byte for byte, compared through `read_text`, whose
+# universal-newline decode reads the same on either platform.
 BANNER_TEMPLATE = (
     "\n"
     "============================================================\n"
@@ -431,6 +427,7 @@ class TestAnUnknownVersionDoesNotClear:
         latch.run()
         assert latch.marker.is_file()
 
+        # `versions` removes the old version files, so it runs before the veto.
         latch.versions("3.25.7", "3.25.7")
         latch.run()
 
@@ -476,6 +473,7 @@ class TestNoDirectoryIsCreatedByTheClearPath:
     def test_a_missing_override_root_is_still_missing_afterwards(
         self, latch: Latch
     ) -> None:
+        # `versions` removes the old version files, so it runs before the veto.
         latch.versions("3.25.7", "3.25.7")
         assert not latch.override.exists(), "the fixture pre-created it"
 
@@ -488,6 +486,7 @@ class TestNoDirectoryIsCreatedByTheClearPath:
 
     def test_the_home_log_root_is_not_created_either(self, latch: Latch) -> None:
         """The same question on the branch that reaches the operator."""
+        # `versions` removes the old version files, so it runs before the veto.
         latch.versions("3.25.7", "3.25.7")
 
         latch.run(override=False)
@@ -542,9 +541,7 @@ class TestTheGuardStillNeverRaises:
         def vetoed(_self: Path, **_kw: object) -> None:
             raise PermissionError("simulated: another process holds it")
 
-        # Rebuild the tree BEFORE the veto is installed. `versions`
-        # removes the old version files, so patching first would make
-        # the test's own scaffolding raise and never reach the guard.
+        # `versions` removes the old version files, so it runs before the veto.
         latch.versions("3.25.7", "3.25.7")
         monkeypatch.setattr(Path, "unlink", vetoed)
 
@@ -605,6 +602,7 @@ class TestTheGuardStillNeverRaises:
         a clear that reached for ``rmtree`` would be deleting a tree it
         was never asked about.
         """
+        # `versions` removes the old version files, so it runs before the veto.
         latch.versions("3.25.7", "3.25.7")
         latch.override.mkdir(parents=True, exist_ok=True)
         imposter = latch.override / _MARKER_FILE
@@ -660,9 +658,7 @@ class TestTheGuardStillNeverRaises:
                     f"nothing: {result.stderr!r}"
                 )
         finally:
-            # The child clears the marker on success (the behaviour under
-            # test), so it may no longer exist; only restore write permission
-            # for tmp cleanup if it survived.
+            # The child clears the marker on success, so it may be gone.
             if marker.exists():
                 marker.chmod(stat.S_IWRITE)
 
@@ -704,6 +700,7 @@ class TestTheBannerIsUnchanged:
         latch.run()
         capsys.readouterr()
 
+        # `versions` removes the old version files, so it runs before the veto.
         latch.versions("3.25.7", "3.25.7")
         latch.run()
 

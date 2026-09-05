@@ -124,9 +124,7 @@ class TestSanitizeDeprecatedKwargs:
 
 
 class TestOlderBotStateCompatibility:
-    # Required BotConfig kwargs that every construction must include.
-    # Not part of the compatibility surface being tested — just the
-    # minimum shape.
+    # Required `BotConfig` kwargs, not part of the compatibility surface.
     _REQ = {
         "exchange_id": "coinbase",
         "base_currency": "USD",

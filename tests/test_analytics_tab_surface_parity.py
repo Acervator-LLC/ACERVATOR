@@ -2102,9 +2102,7 @@ def test_everything_a_picture_cannot_see_is_named_and_covered():
 
 # Nothing the surface holds is left out of the snapshot
 
-# Every constant the surface exports and the payload key that carries
-# it. A comparison reading some of the constants passes whether the
-# rest match or not; this closes that gap for every one at once.
+# Every constant the surface exports and the payload key that carries it.
 CONSTANT_LOCATION = {
     "TAB_ACCESSIBLE_NAME": ("accessible_name", None),
     "PAGE": ("page", None),
@@ -2500,10 +2498,8 @@ def test_the_qt_block_stops_the_shipped_tab():
 
 # The Qt tab stays reachable while the React panel is unproven
 
-#: Every widget the tab builds for itself, and how many of each it holds.
-#: Qt's own furniture -- scroll bars, splitter handles, header views and
-#: the viewports Qt gives a table -- is left out, because its count moves
-#: with the interface library rather than with this tab.
+#: Every widget the tab builds for itself. Qt furniture is left out; its count
+#: moves with the interface library.
 QT_CHILD_CENSUS = {
     "MetricCard": 8,
     "QLabel": 16,

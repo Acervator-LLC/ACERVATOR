@@ -193,20 +193,6 @@ def test_sim_state_path_is_not_bot_state():
     assert SIM_STATE_PATH.name != "bot_state.json"
 
 
-# ── the root override ────────────────────────────────────────────────
-#
-# WHY THESE EXIST. Until v3.25.x this module built its save path from
-# `Path.home() / ".acervator"` with no way to point it anywhere else. On
-# 2026-08-22 a full suite run overwrote the operator's saved Simulator
-# fleet with one synthetic fixture bot. It cannot be reconstructed. The
-# writer was test_fleet_sim_infrastructure.py, which clicks Load on a
-# real FleetReplayPanel; the spawn behind that button saves with no path.
-#
-# Each control below is paired against its own opposite: a redirect that
-# always redirected would pass a test that only checks the redirect, so
-# the default is checked too.
-
-
 def test_the_default_root_is_the_live_folder_when_the_variable_is_unset(monkeypatch):
     """CONTROL: the shipping application is unchanged.
 

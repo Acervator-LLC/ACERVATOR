@@ -104,11 +104,6 @@ def test_pull_rate_label_updates_without_raising():
     )
     # Direct call (bypasses QTimer scheduling for deterministic testing)
     tab._update_pull_rate_label()
-    # Empty pool → label reports "idle" or "awaiting first fetch".
-    # v3.23.76: text prefix changed from "Next data pull:" to
-    # "Data pool:" — the countdown semantic was misleading under
-    # passive on-demand coalescing (see data_pool.py:seconds_until
-    # _next_pull docstring).
     txt = tab._pull_rate_lbl.text()
     assert "Data pool" in txt
     tab.deleteLater()

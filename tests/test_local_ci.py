@@ -1,16 +1,9 @@
-"""Pin the two parts of `tools/local_ci.py` that decide a verdict on their own.
+"""Pin the parts of `tools/local_ci.py` that decide a verdict without a lane.
 
-The lanes themselves are black, flake8 and pytest; running them here would
-prove nothing about this module and would be the whole-suite run the tool
-exists to schedule. What is worth pinning is everything that happens WITHOUT a
-lane running: which lanes get selected from a diff, and how a return code is
-read once one has.
-
-Every path used as test data is a real path in this repository, so the
-hallucination rule stays a live instrument over this file.
-
-Each negative assertion carries the positive control beside it, so a green
-here cannot mean the check went blind.
+`classify_changes` selects lanes from a diff and the exit-code reader turns a
+return code into a verdict; no lane is run here. `A_DOC`, `A_DOC_ARTEFACT` and
+`A_SOURCE_FILE` are real paths in this repository. Every negative assertion in
+`local_ci` sits beside its positive control.
 """
 
 from __future__ import annotations
@@ -24,11 +17,6 @@ from tools import local_ci
 A_DOC = "docs/desktop_shell.md"
 A_DOC_ARTEFACT = "docs/engineering-notes/2026-08-22_item_10_4_evidence/callers.json"
 A_SOURCE_FILE = "src/trading/scrumming_bot.py"
-
-
-# --------------------------------------------------------------------------- #
-# Lane selection: mirroring ci.yml's `changes` job                             #
-# --------------------------------------------------------------------------- #
 
 
 def test_a_docs_only_change_skips_the_code_lanes() -> None:
@@ -121,11 +109,6 @@ def test_a_clean_tree_reports_no_paths() -> None:
     assert local_ci.status_paths("") == []
 
 
-# --------------------------------------------------------------------------- #
-# Exit-code interpretation                                                     #
-# --------------------------------------------------------------------------- #
-
-
 def test_zero_is_the_only_passing_code() -> None:
     assert local_ci.interpret_exit(0).passed is True
     assert local_ci.interpret_exit(0).code == 0
@@ -204,11 +187,6 @@ def test_a_lint_lane_does_not_borrow_pytest_exit_code_meanings() -> None:
     assert "no tests collected" not in verdict.detail
 
 
-# --------------------------------------------------------------------------- #
-# Lane commands                                                                #
-# --------------------------------------------------------------------------- #
-
-
 @pytest.mark.parametrize("lane", ["fast", "full"])
 def test_a_pytest_lane_caps_xdist_at_four_workers(lane: str) -> None:
     argv = local_ci.lane_command(lane)
@@ -253,11 +231,6 @@ def test_black_checks_and_never_rewrites() -> None:
 def test_an_unknown_lane_is_refused_rather_than_silently_skipped() -> None:
     with pytest.raises(ValueError, match="unknown lane"):
         local_ci.lane_command("typecheck")
-
-
-# --------------------------------------------------------------------------- #
-# The verdict main() returns                                                   #
-# --------------------------------------------------------------------------- #
 
 
 def _stub_lanes(
@@ -375,10 +348,6 @@ def test_a_lane_that_exits_zero_is_reported_as_a_pass(
     monkeypatch.setattr(local_ci.subprocess, "run", clean)
     assert local_ci.run_lane("black", 1).verdict.passed is True
 
-
-# --------------------------------------------------------------------------- #
-# The git reader                                                               #
-# --------------------------------------------------------------------------- #
 
 _GIT_CLEAN_TREE = {
     "rev-parse": (0, "abc123"),

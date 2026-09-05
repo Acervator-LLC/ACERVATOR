@@ -36,9 +36,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6")
 
-# The colour StatusLog renders an "error" level line in. Asserting on it
-# is how a test reads the LEVEL at the surface the operator sees rather
-# than trusting the argument that was passed in.
+# The colour StatusLog paints an "error" line, so a test reads the level off
+# the surface rather than off the argument.
 ERROR_COLOUR = "#ff3366"
 
 
@@ -505,11 +504,6 @@ def test_h6_never_raises_over_the_closed_input_table(event, gui_log):
     """
     del gui_log
     _error_log_win()._on_bot_error_for_log(event)
-
-
-# ---------------------------------------------------------------- H7 --
-# The thread-violation diagnostic wrote nothing when it could not
-# write. OBSERVABILITY.
 
 
 def _call_off_gui_thread(win) -> list[BaseException]:

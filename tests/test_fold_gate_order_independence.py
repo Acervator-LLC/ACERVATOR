@@ -1,104 +1,11 @@
-"""The fold path's answer must not depend on ladder ORDER -- at BOTH sites.
+"""The fold path answers the same whatever order the ladder rows sit in.
 
-TWO SITES, ONE ROOT CAUSE, AND THEY LAND TOGETHER
-=================================================
-A value sets an ordering or a threshold ONLY IF IT IS A FINITE NUMBER.
-The fold money path broke that rule twice, and the second half of this
-file exists because fixing only the first would have been a net
-worsening.
-
-  SITE A, the rebuy-distance GATE. ``max`` over ``ref * factor``. It
-    decides WHETHER the fold fires. Covered from "THE DEFECT" below.
-
-  SITE B, the discharge SORT inside ``_preview_fold_growth``. It decides
-    the AMOUNT sent to the exchange. Covered from "SITE B" onward.
-
-MEASURED ACROSS THREE TREES, exhaustive ordered tuples over
-{nan, inf, good, zero} at sizes 2, 3 and 4, grouped by sorted multiset,
-at the operator's own config (interval 5.0, fee 1.6, growth cap 1.0):
-
-    tree                       autonomous     manual_button
-                               (130 buckets)  (65 buckets)
-    neither site fixed          50 split       22 split
-    SITE A ONLY                 30 split       22 split
-    both sites fixed             0 split        0 split
-
-The middle row is why this is one unit. With only the gate repaired,
-THIRTY autonomous buckets still gave two answers, and every one of them
-differed on the AMOUNT alone -- 17.4976 units against 18.0 for the same
-ladder at the same price. The gate's repair makes MORE folds fire, and
-each extra fire was then sized by a sort whose key could receive ``nan``.
-159 of the 195 buckets held more than one ordering, so the zero in the
-last row is not the arithmetic of single-ordering buckets.
-
-THE DEFECT
-==========
-The gate computed its threshold with a bare ``max`` over a generator::
-
-    _best_rebuy = max(
-        float(t.get("ref", 0)) * _fold_factor
-        for t in self._fold_tranches)
-
-``max`` keeps whichever operand it saw FIRST whenever the comparison is
-False, and EVERY comparison against ``nan`` is False. So ``max``
-DISCARDS a ``nan`` it meets late and KEEPS one it meets first. Measured
-on the shipped code, one ``nan`` ref beside one plainly eligible
-``ref=1.0`` at price 0.5::
-
-    [nan, good]  ->  AUTONOMOUS FIRE REFUSED, "best rebuy nan"
-    [good, nan]  ->  PLACED BUY
-
-Same ladder, same price, opposite answer, decided by list position.
-Driven over every permutation of four ladder contents, 4 of 7 contents
-gave more than one answer; a 4-row ladder holding one ``nan`` refused on
-6 permutations and bought on 18.
-
-``+inf`` is the same hole facing the other way, and it is the worse
-one. ``inf`` WINS every comparison, ``price <= inf`` is True for every
-price, and the gate is then fully DISABLED -- measured: a ladder holding
-only an ``inf`` ref placed a buy at a price no tranche could justify.
-
-THE TREATMENT: SKIP THE UNREADABLE ROW, AND SAY SO
-==================================================
-A row sets the threshold only if its threshold is a finite number.
-
-This is NOT a new policy. It is the policy the gate already had for
-every other malformed ref, and the shipped tests already pin it: a
-missing key reads 0.0 through the ``get`` default, and 0.0 and a
-negative both LOSE the ``max``. All three therefore already failed to
-set the threshold while the gate answered on the readable rows --
-``test_a_ladder_of_only_malformed_refs_refuses`` and the "a zero ref and
-a negative ref sit beside a good one" row of ``IN_SPEC`` are that
-contract. ``nan`` was the single value that escaped, because it is the
-single value ``max`` cannot order.
-
-WHY NOT PURGE, WHICH IS WHAT THE TICK PATH DOES
-===============================================
-The tick path's guard DELETES malformed rows and bumps
-``_tranches_malformed_dropped``. It can, because it runs after its fold
-has committed to acting. This site can ``return`` WITHOUT firing, so a
-purge here would destroy ladder rows on a fire that never happened --
-and ``test_an_autonomous_fold_is_refused_when_no_tranche_is_eligible``
-already asserts "the ladder was disturbed by a fire that never
-happened". ``manual_button`` skips the whole block, so a purge would
-also make ladder CONTENT depend on which caller fired. Mutation is a
-second verb and it is not this one's.
-
-WHY NOT REFUSE THE WHOLE FIRE ON ANY nan
-========================================
-Because the tick path, on the same data, FIRES: it drops the ``nan``
-row and its per-tranche filter then finds the good ref eligible. The
-gate's stated purpose is to ask "the same question" that path asks, and
-``test_the_gate_agrees_with_the_tick_path_on_every_config`` pins the
-agreement. Refusing here would make the two fold paths disagree about
-the same tranche on the same tick, which is the drift ``otd_math`` was
-extracted to end. One corrupt row would also disable autonomous folding
-for a whole bot; the operator's live state holds one ladder of 150.
-
-WHAT A FAILURE OF EACH TEST WOULD MEAN is stated in its own docstring.
-No test here plants a defect to watch it go red: the reds that shaped
-this file were the real ones the change produced while it was being
-written, and they are recorded in the unit's report.
+A row sets a threshold or an ordering only when its value is finite. The
+rebuy-distance gate decides whether a fold fires; the discharge sort inside
+`_preview_fold_growth` decides the amount. Both are swept over every ordered
+tuple of ALPHABET at sizes 2, 3 and 4, grouped by sorted multiset, and
+`test_the_sweep_is_not_vacuous` proves the sweep can still tell orderings
+apart.
 """
 
 from __future__ import annotations
@@ -347,15 +254,8 @@ def test_the_permutation_sweep_actually_varies_the_ladder(label, refs):
         assert len(seen) > 1, f"{label}: the sweep produced one ordering only"
 
 
-# ── b. THE IN-SPEC FOLD IS UNTOUCHED ─────────────────────────────────
-#
-# The whole-observable comparison against a byte-provable pre-change
-# twin lives in test_autonomous_fold_price_gate.py and covers 12
-# scenarios by 3 intents. It is not restated here. What IS asserted
-# here is the arithmetic claim this change rests on: where every ref is
-# finite, the new filtered threshold equals the old bare-max formula
-# EXACTLY, so no all-finite ladder can have moved.
-
+# Ladders where every ref is finite, so the filtered threshold must equal the
+# bare-max formula exactly.
 FINITE_LADDERS = [
     (1.0,),
     (1.0, 0.9),
@@ -542,12 +442,8 @@ def test_an_allowed_fire_does_not_purge_for_unreadability_either():
     )
 
 
-# ── d. THE FULL VALUE DOMAIN ON ref, EACH IN BOTH POSITIONS ──────────
-#
-# The OBSERVED answer, recorded by driving the real method, never
-# predicted. Two rows disagree with what a reader might expect and are
-# called out in the docstring below rather than smoothed over.
-
+# Every value `ref` can hold, in both ladder positions. Each verdict was read
+# off the real method, never predicted.
 GOOD = 1.0
 
 DOMAIN = [
@@ -644,55 +540,21 @@ def test_an_inf_ref_no_longer_disables_the_gate_for_its_neighbours():
     assert _decision(_ladder(1.0, INF), price=5.0) == "REFUSED"
 
 
-# ═════════════════════════════════════════════════════════════════════
-# SITE B -- THE SORT THAT SIZES THE ORDER
-# ═════════════════════════════════════════════════════════════════════
-#
-# Everything above tests the DECISION. Site B decides the AMOUNT, and
-# the two are separate defects with the same root cause:
-#
-#     key=lambda t: float(t.get("ref", 0.0) or 0.0)
-#
-# `nan` is TRUTHY, so `or 0.0` never fires and the key receives it.
-# Every comparison against nan is False, `sorted` cannot place it, and
-# the result depends on where the nan started.
-#
-# THIS SECTION WAS BUILT WRONG THE FIRST TIME AND THE CORRECTION IS THE
-# POINT. `_preview_fold_growth` takes `min(units, _remaining)` from each
-# row in sorted order. When the ladder's TOTAL units fit inside the buy,
-# every row contributes in full and the sum is the same in ANY order --
-# the sort cannot matter and every assertion passes against known-broken
-# code. The first sweep was built that way and reported a clean zero
-# against the shipped defect.
-#
-# So the numbers below make `_remaining` BIND. The buy is 16 units, each
-# row offers 10, and a `zero` row earns nothing while still CONSUMING
-# the remainder -- so whether it sits before or after a `good` row
-# changes the surplus. Measured on the pre-change code, ONE content
-# {good, nan} gave 17.4976 units for one ordering and 18.0 for the
-# other. `test_the_sweep_is_not_vacuous` asserts the sweep still has
-# that property, so a future edit that re-clamps it goes red instead of
-# green.
+# A 16-unit buy over 10-unit rows makes `_remaining` bind, so a `zero` row's
+# position changes the surplus `_preview_fold_growth` returns.
 
 SIZING_PRICE = 0.5
 SIZING_UNITS = 10.0
 SIZING_HOLDINGS = 334.0
 SIZING_TARGET = 175.0
-# The operator's own: interval 5.0, fee 1.6, growth cap 1.0. At that
-# factor (0.934) a ref of 0.6 sets a threshold of 0.5604, above the 0.5
-# price, so the distance gate ALLOWS and the sweep measures sizing.
+# At this factor a ref of 0.6 sets a threshold above SIZING_PRICE, so the
+# distance gate allows and the sweep measures sizing.
 OPERATOR_CFG = {"interval": 5.0, "fee": 1.6}
 ALPHABET = (("nan", NAN), ("inf", INF), ("good", 0.6), ("zero", 0.0))
 EVERY_INTENT = AUTONOMOUS + ("manual_button",)
 
-# Three well-formed refs, DESCENDING, for the truncation control below.
-# The buy takes ~18 base units and each row offers 10, so the discharge
-# is exhausted inside the SECOND row and the third is never reached --
-# which is what makes "deleting the last row changes nothing" a true
-# statement about truncation rather than about arithmetic. The refs sit
-# just above the 0.5 price so the accumulator peaks near 1.0 against a
-# cycle cap of 1.75, leaving the result unclamped; a clamped preview
-# would return the cap for every variant and prove nothing.
+# Three descending refs. The discharge is exhausted inside the second row, so
+# deleting the third changes nothing, and the result stays under the cycle cap.
 TRUNCATING = (0.56, 0.55, 0.54)
 
 
@@ -828,23 +690,8 @@ def test_the_sweep_is_not_vacuous_on_the_amount():
         f"cannot influence the amount and the sweep is vacuous"
     )
 
-    # And the truncation itself, OBSERVED THROUGH THE SHIPPING METHOD.
-    #
-    # This used to compare the ladder's units against a hand-recomputed
-    # buy size, `(target - holdings * price) / price`. That number is
-    # NOT the one the shipping caller passes: the real caller adds the
-    # growth term to the numerator inside a four-iteration fixed point,
-    # so the check was an approximation of the very quantity it claimed
-    # to verify, and it also compared a summed magnitude against a
-    # divided one (`ta_archetype` TA004).
-    #
-    # Truncation has an exact observable signature instead. If the buy
-    # runs out BEFORE the discharge reaches the lowest-ref row, then
-    # deleting that row cannot change the answer. Deleting the HIGHEST
-    # row must change it -- otherwise no row contributes at all and the
-    # first equality would be vacuous in its own right. Both halves are
-    # read from the shipping `_preview_fold_growth`, at the units the
-    # shipping caller really passed, captured here rather than derived.
+    # Truncation's observable: deleting the lowest-ref row cannot move the
+    # answer and deleting the highest row must.
     seen: list[float] = []
     probe = _sizing_bot(TRUNCATING)
     _real_preview = probe._preview_fold_growth

@@ -541,9 +541,6 @@ def test_the_pin_fires_on_a_refusal_too(
     records = [r for r in sink.records() if r.name == PIN]
     assert len(records) == 1
     record = records[0]
-    # `ok` says the flag and the evidence AGREE. Both are False here, so
-    # the check passes while the verdict refuses -- those are two
-    # different questions and the pin must not merge them.
     assert record.ok is True
     assert record.context["verdict"] == ig.VERDICT_FOREIGN_MACHINE
     assert record.context["owner_machine"].startswith("desk-01")
@@ -836,16 +833,6 @@ def test_a_consent_surface_that_raises_counts_as_a_refusal(
     assert authorised is False
     assert why == ig.WITHHELD_BY_OPERATOR
 
-
-# ── the wiring in main.py ──────────────────────────────────────────────
-#
-# These read main.py's SYNTAX TREE, not its text. `main()` is one
-# 841-line function that no test can call - it builds a QApplication,
-# reads the operator's real state directory and starts trading - so the
-# alternative to a structural assertion is no assertion at all. The
-# tree is checked rather than the characters, so re-indenting, renaming
-# a local or re-wrapping a comment cannot make these pass or fail. What
-# they catch is the gate being deleted or moved after the bots start.
 
 _MAIN = Path(__file__).resolve().parent.parent / "main.py"
 

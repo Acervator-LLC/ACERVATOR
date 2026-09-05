@@ -27,9 +27,8 @@ from tools import comment_audit as audit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Two shipped files nobody edits. The operator's standing rule is hands
-# off dev_harness/harness/, so their comment profiles do not move under
-# a cleanup unit the way a file under src/ would.
+# Two files under the hands-off `dev_harness` tree, so their comment profiles
+# do not move under a cleanup unit.
 UNEDITED_SPARSE = REPO_ROOT / "dev_harness" / "harness" / "claim_ledger.py"
 UNEDITED_DENSE = REPO_ROOT / "dev_harness" / "harness" / "coding_archetype.py"
 
