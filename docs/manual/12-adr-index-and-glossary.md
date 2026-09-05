@@ -240,9 +240,7 @@ exactly the units that structural defence exists to carry through a temporary
 drawdown. What the platform has instead is bounded per-event damage:
 `CircuitBreakerGate` and the soft and hard trip percentages, and
 `SmartCeilingGate` with the position ceiling. Those bound one event. They do not
-promise that a long decline costs nothing, and
-[16-operator-settings.md](16-operator-settings.md) says so in the same words the
-legacy section used.
+promise that a long decline costs nothing.
 
 ### No tape reading and no order-book depth
 
