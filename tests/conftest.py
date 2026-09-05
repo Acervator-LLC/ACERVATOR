@@ -429,11 +429,8 @@ def _classify(
     after: dict[str, tuple[int, int]],
     tablet_root: Path,
 ) -> tuple[list[str], list[str], list[str]]:
-    """Split the diff into (created, tablet_touched, modified).
-
-    Separated from the fixture so it can be unit-tested on synthetic
-    dicts -- see tests/test_live_tree_guard.py.
-    """
+    """Split the diff between two ``_snapshot`` results into
+    (created, tablet_touched, modified)."""
     created = sorted(set(after) - set(before))
     removed = sorted(set(before) - set(after))
     modified = sorted(p for p in (set(before) & set(after)) if before[p] != after[p])
@@ -449,44 +446,64 @@ def _classify(
     return created, tablet_touched, modified
 
 
+_LIVE_APP_CREATES: dict[str, str] = {
+    ".acervator/preflight/": (
+        "StateManager.preflight_snapshot copies bot_state.json under a "
+        "launch timestamp"
+    ),
+    ".acervator/ta_snapshots/": (
+        "indicator_panel writes one hash-named snapshot per indicator read"
+    ),
+    ".acervator_logs/trade/pnl/daily/": (
+        "PnLCascade opens <date>.ndjson when the date changes"
+    ),
+    ".acervator_logs/console_": (
+        "acervator_watchdog opens console_<timestamp>.log per launch"
+    ),
+    ".acervator_logs/crash_": (
+        "main._get_crash_log_path opens crash_<timestamp>.log per launch"
+    ),
+    ".acervator_logs/faulthandler_": (
+        "main._setup_faulthandler opens faulthandler_<timestamp>.log per launch"
+    ),
+    ".acervator_logs/postmortem_": (
+        "acervator_watchdog.write_postmortem bundles the logs of a child it "
+        "found crashed or stalled"
+    ),
+    ".acervator_logs/thread_violation_": (
+        "_on_api_event appends thread_violation_<date>.log when it refuses a "
+        "call arriving off the GUI thread"
+    ),
+}
+"""The only new paths a running Acervator writes under ``_live_roots``.
+
+``_excused_by_the_live_app`` matches these keys as literal prefixes and
+nothing else, and only while ``_live_app_running`` is true.
+"""
+
+
+def _excused_by_the_live_app(path: str, roots: tuple[Path, ...]) -> str:
+    """Return the ``_LIVE_APP_CREATES`` reason covering `path`, or "" for none."""
+    for root in roots:
+        prefix = f"{root}{os.sep}"
+        if not path.startswith(prefix):
+            continue
+        rest = f"{root.name}/{path[len(prefix):]}".replace(os.sep, "/")
+        for key, reason in _LIVE_APP_CREATES.items():
+            if rest.startswith(key):
+                return reason
+    return ""
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _assert_no_live_tree_writes(_redirect_sim_log_root):
     """Fail if the suite mutated the operator's runtime tree.
 
-    WHAT THE PREVIOUS VERSION MISSED
-    ================================
-    It watched exactly one directory -- ``~/.acervator_logs/sim/runs`` --
-    and compared only the NAMES of its immediate children. ``_LIVE_ROOTS[0]``
-    (``~/.acervator``) was defined and never used. So it could not see:
-
-      * anything written anywhere under ``~/.acervator`` -- bot_state.json,
-        reservation_state.json, feature_telemetry.json, credentials
-      * anything in ``~/.acervator_logs`` outside ``sim/runs``
-      * modification or deletion of an EXISTING file, only new names
-      * the Stone Tablet archive
-
-    Both isolation breaches this project has shipped landed in
-    ``~/.acervator`` -- the sim capital registry autosaving
-    reservation_state.json, and feature_telemetry writing to the live
-    tree. **Both happened while this guard was green.** It was not a
-    weak guard; for those two defects it was not a guard at all.
-
-    THREE RULES, DELIBERATELY DIFFERENT IN STRICTNESS
-    =================================================
-    1. **Any newly created path fails, always.** The suite has no
-       business creating files here, and this is the shape both real
-       breaches took.
-    2. **Any change under the Stone Tablet archive fails, always** --
-       created, modified or deleted. Operator's standing rule is
-       absolute, and normal trading never writes there.
-    3. **Modification of a pre-existing file fails only when no live
-       Acervator process is running.** Measured 2026-08-05: the operator
-       had two Acervator.exe processes up while the suite ran, and the
-       live app had rewritten bot_state.json 12 seconds earlier. Failing
-       on that would make the guard fire on almost every run, and a
-       guard that cries wolf gets deleted. When the app IS running the
-       modifications are still PRINTED, so a real breach stays visible
-       rather than silent.
+    ``_snapshot`` brackets the session and ``_classify`` splits the diff into
+    three rules of deliberately different strictness: every path in ``created``
+    fails except the ones ``_excused_by_the_live_app`` names, every
+    ``tablet_touched`` path fails, and ``modified`` fails only while
+    ``_live_app_running`` is false and is printed otherwise.
     """
     roots = _live_roots()
     tablet_root = _stone_tablet_root()
@@ -498,33 +515,49 @@ def _assert_no_live_tree_writes(_redirect_sim_log_root):
     problems: list[str] = []
     live_up = _live_app_running() and not _home_is_redirected()
 
-    if live_up and (created or modified or tablet_touched):
+    excused: list[str] = []
+    if live_up and created:
+        kept: list[str] = []
+        for path in created:
+            reason = _excused_by_the_live_app(path, roots)
+            if reason:
+                excused.append(f"{path}\n      {reason}")
+            else:
+                kept.append(path)
+        created = kept
+
+    if excused:
+        print(
+            f"\n[live-tree guard] EXCUSED {len(excused)} path(s) a running "
+            f"Acervator creates:\n    " + "\n    ".join(excused[:8])
+        )
+
+    if live_up and modified:
         print(
             f"\n[live-tree guard] DEGRADED — a live Acervator process is "
-            f"running, so live-tree changes cannot be attributed to the "
-            f"suite and are NOT being failed.\n"
-            f"  created {len(created)}, modified {len(modified)}, "
-            f"tablet {len(tablet_touched)}\n"
-            f"  This run does NOT verify test isolation. Re-run with "
-            f"Acervator closed for that.\n  "
-            + "\n  ".join((created + modified + tablet_touched)[:8])
+            f"running, so a modified pre-existing file cannot be attributed "
+            f"to the suite and is NOT being failed.\n"
+            f"  modified {len(modified)}\n"
+            f"  This run does NOT verify isolation against modification. "
+            f"Re-run with Acervator closed for that.\n  " + "\n  ".join(modified[:8])
         )
-    else:
-        if created:
-            problems.append(
-                f"created {len(created)} path(s) in the operator's live "
-                f"tree:\n  " + "\n  ".join(created[:10])
-            )
-        if tablet_touched:
-            problems.append(
-                f"touched {len(tablet_touched)} Stone Tablet file(s) -- the "
-                f"archive is immutable:\n  " + "\n  ".join(tablet_touched[:10])
-            )
-        if modified:
-            problems.append(
-                f"modified {len(modified)} pre-existing file(s) with no live "
-                f"Acervator process running:\n  " + "\n  ".join(modified[:10])
-            )
+        modified = []
+
+    if created:
+        problems.append(
+            f"created {len(created)} path(s) in the operator's live "
+            f"tree:\n  " + "\n  ".join(created[:10])
+        )
+    if tablet_touched:
+        problems.append(
+            f"touched {len(tablet_touched)} Stone Tablet file(s) -- the "
+            f"archive is immutable:\n  " + "\n  ".join(tablet_touched[:10])
+        )
+    if modified:
+        problems.append(
+            f"modified {len(modified)} pre-existing file(s) with no live "
+            f"Acervator process running:\n  " + "\n  ".join(modified[:10])
+        )
 
     assert not problems, (
         "the test suite mutated the operator's runtime tree.\n\n"

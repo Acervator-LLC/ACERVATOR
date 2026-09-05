@@ -118,13 +118,24 @@ def imports_outside(tree: ast.Module, skip: set[int]) -> list[tuple[int, str]]:
     return found
 
 
+def _parse(path: Path) -> ast.Module | None:
+    """Parse `path`, or None when it vanished after the scan listed it."""
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return ast.parse(source)
+
+
 def unguarded_imports(path: Path) -> list[tuple[int, str]]:
     """Every dotted module name `path` imports without a guard.
 
     Covers a function body as well as module level, unlike
     ``import_time_imports``.
     """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    tree = _parse(path)
+    if tree is None:
+        return []
     return imports_outside(tree, guarded_lines(tree))
 
 
@@ -134,7 +145,9 @@ def import_time_imports(path: Path) -> list[tuple[int, str]]:
     Drops the lines ``deferred_lines`` reports, which a caller reaches only
     by calling the function holding them.
     """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    tree = _parse(path)
+    if tree is None:
+        return []
     return imports_outside(tree, guarded_lines(tree) | deferred_lines(tree))
 
 
@@ -367,6 +380,21 @@ def test_the_fast_lane_scan_reads_the_files_the_fast_lane_collects():
     assert "test_ci_fast_lane_packages.py" in names, sorted(names)
     assert "test_design_system_chart_tokens.py" not in names, sorted(names)
     assert "test_extract_product_manual_keeps_additions.py" not in names, sorted(names)
+
+
+def test_a_file_that_vanished_after_the_listing_is_skipped(tmp_path):
+    """``rglob`` names a file another process can delete before the read."""
+    gone = tmp_path / "gone.py"
+    assert unguarded_imports(gone) == []
+    assert import_time_imports(gone) == []
+
+
+def test_a_file_that_is_present_is_still_read(tmp_path):
+    """Positive control for the skip above."""
+    present = tmp_path / "present.py"
+    present.write_text("import numpy\n", encoding="utf-8")
+    assert unguarded_imports(present) == [(1, "numpy")]
+    assert import_time_imports(present) == [(1, "numpy")]
 
 
 def test_no_full_lane_test_imports_a_package_ci_does_not_install():
