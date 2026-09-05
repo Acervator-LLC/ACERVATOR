@@ -88,8 +88,8 @@ the exchange refuses the second.
 
 Three structural causes, each verified rather than assumed.
 
-**The contract describes shapes, not behaviour.** `src/exchange/base.py` is 282 lines. It
-names methods and the types they return. It contains **one** statement about what happens
+**The contract describes shapes, not behaviour.** `src/exchange/base.py` names
+methods and the types they return. It contains **one** statement about what happens
 when something fails (`get_my_trades` raises `NotImplementedError` if unimplemented).
 Nothing in it says what a venue does when funds are short, when a symbol is unknown, when
 an order does not exist, or when a price is missing. Every one of those is a divergence
@@ -226,7 +226,7 @@ on purpose** when it knows it is a simulator.
 
 ## 3.2 Layer 1 — the `ExchangeInterface` surface (17 members)
 
-Declared at `src/exchange/base.py:159-282`. Consumed by the bot as follows.
+Declared at `src/exchange/base.py`. Consumed by the bot as follows.
 
 | Member | Called from | Line(s) |
 | --- | --- | --- |
@@ -308,7 +308,7 @@ contract. `[S]` source reading. Verdict: **VIOLATION** or **LEGITIMATE**.
 | A2 | The venue is covered by the declared contract | `CCXTConnector(ExchangeInterface)` | `TabletBackend` subclasses **nothing**; its required surface is a docstring at `ccxt_connector.py:1003` | — | [S] | **VIOLATION** |
 | A3 | Number of Simulator venue implementations | 1 | **3** (`TabletBackend` alive, `FleetSimExchange` dead, `NuclearSimExchange` dead) | — | [S] | **VIOLATION** |
 | A4 | Dead venues still carry the parity tests | — | 11 test files import `FleetSimExchange`; 5 import `NuclearSimExchange`; both are instantiated zero times in `src/` | — | [S] | **VIOLATION** |
-| A5 | The contract states failure behaviour | `base.py` is 282 lines and contains **one** statement of failure behaviour (`base.py:271`, `get_my_trades` → `NotImplementedError`). Nothing states what a venue does on insufficient funds, unknown symbol, unknown order, or missing price | — | — | [S] | **VIOLATION** — this is the root cause of Group E |
+| A5 | The contract states failure behaviour | `base.py` contains **one** statement of failure behaviour (`get_my_trades` → `NotImplementedError`). Nothing states what a venue does on insufficient funds, unknown symbol, unknown order, or missing price | — | — | [S] | **VIOLATION** — this is the root cause of Group E |
 
 ## GROUP B — Connection lifecycle (5 rows, 3 violations, 2 legitimate)
 
@@ -333,7 +333,7 @@ hardcoded template at `tablet_backend.py:201-218`.
 | C3 | `limits.cost.min` | real per-symbol minimum | **`1.0` hardcoded for every symbol** | [S] | **VIOLATION** |
 | C4 | `maker` / `taker` in the market dict | real, per-symbol, fee-tier dependent | `0.006` / `0.012` hardcoded for every symbol — and these **disagree with the fee the same class actually charges** (per-symbol from `bot_state`, default `0.006`). The venue's advertised fee and its charged fee are different numbers | [M] | **VIOLATION** |
 | C5 | Market `id` | the venue's own id | mechanical `symbol.replace("/","-")` | [S] | **VIOLATION** (low impact) |
-| C6 | `AssetInfo.amount_precision` | **[M]** `int(1e-08) == 0`, then `int(... or 8)` at `ccxt_connector.py:1339` rescues it to `8` | `8` | [M] | **VIOLATION (latent)** — the two agree at `8` **by accident of an `or 8` fallback**, not by design. Remove the fallback and they diverge |
+| C6 | `AssetInfo.amount_precision` | **[M]** `int(1e-08) == 0`, then `int(... or 8)` at `ccxt_connector.py` rescues it to `8` | `8` | [M] | **VIOLATION (latent)** — the two agree at `8` **by accident of an `or 8` fallback**, not by design. Remove the fallback and they diverge |
 
 ## GROUP D — Market data reads (6 rows, 5 violations, 1 legitimate)
 
@@ -360,7 +360,7 @@ This is the group #111A lived in, and it is still the largest.
 | E6 | Partial fills and slippage | routine | **[M]** a 1,000,000-unit market buy filled **100%** at exactly the candle close. Slippage `0.0`. The Simulator has never produced a partial fill | [M] | **VIOLATION** |
 | E7 | Duplicate `client_order_id` | the venue refuses the duplicate (Coinbase 409, Binance −2010) — the entire point of `src/exchange/idempotency.py` | **[M]** same coid twice → two distinct order ids, **two fills, 2.0 CHIP booked** | [M]/[C] | **VIOLATION** |
 | E8 | Funds held by a resting order | held at placement; visible as `used`, removed from `free` | **[M]** resting BUY for 5 units at 50: `free` **unchanged** at 1000.0, `used` **0.0**, `_reserved` map **empty**. `used` is never written anywhere in `TabletBackend` | [M] | **VIOLATION** — the Simulator can commit the same money twice |
-| E9 | A resting order that cannot fund when the sweep crosses it | unreachable in Live (funds were held at placement) | **[M]** backend marks it `rejected`; a later `get_order` returns `Order(status=FAILED, filled=0.0, average=0.0)` — a state Live cannot produce. Documented and accepted at `tablet_backend.py:595-599` | [M] | **VIOLATION** |
+| E9 | A resting order that cannot fund when the sweep crosses it | unreachable in Live (funds were held at placement) | **[M]** backend marks it `rejected`; a later `get_order` returns `Order(status=FAILED, filled=0.0, average=0.0)` — a state Live cannot produce. Documented and accepted at `tablet_backend.py` | [M] | **VIOLATION** |
 | E10 | Unknown order on `cancel_order` / `get_order` | `ccxt.OrderNotFound` | **[M]** `ValueError("no such order 'nope'")` | [M]/[C] | **VIOLATION** |
 | E11 | `Order.raw` / `info` content | the venue's response | `{"sim": True, "params": {...}}` | [M] | **VIOLATION** (low impact; any consumer reading `raw` sees different content) |
 
@@ -431,7 +431,7 @@ therefore **not** the same code in both venues.
 | # | The fact | Live | Simulator | Ev | Verdict |
 | --- | --- | --- | --- | --- | --- |
 | J1 | `on_trade` | **no such thing.** Live's fill accounting comes from the event bus | the venue calls **into** the application on every fill (`tablet_backend.py:303, 643`). Not declared in `ExchangeInterface`. `scrumming_bot.py:535` states the Simulator counts fills through this callback and *not* the bus | [M] | **VIOLATION** — an entire feedback channel exists on one side only |
-| J2 | The callback's argument shape | — | `TabletBackend` passes a **dict** (ms timestamps, `side` a lowercase string). `FleetSimExchange` passes a **`Trade` object** (seconds, `side` an enum). Both shapes are still handled at `src/simulator/fleet/fleet_replay_controller.py:1640-1654` | [M] | **VIOLATION** — this is issue #110's exact home, still two-shaped |
+| J2 | The callback's argument shape | — | `TabletBackend` passes a **dict** (ms timestamps, `side` a lowercase string). `FleetSimExchange` passes a **`Trade` object** (seconds, `side` an enum). Both shapes are still handled at `src/simulator/fleet/fleet_replay_controller.py` | [M] | **VIOLATION** — this is issue #110's exact home, still two-shaped |
 
 ## 4.1 The tally
 
@@ -647,17 +647,17 @@ All four were run with `python -m pytest <file> -p no:randomly -q -s`, so
 
 | Subject | Location |
 | --- | --- |
-| The contract (shape only) | `src/exchange/base.py:159-282`; its one failure statement at `:271` |
+| The contract (shape only) | `src/exchange/base.py` |
 | Live connector | `src/exchange/ccxt_connector.py:239` |
 | The injection point | `src/exchange/ccxt_connector.py:968` (`_ex`), `:999` (`attach_backend`), `:1013` (marks connected), `:1027` (rate limiter to 0) |
 | Retry decorator | `src/exchange/ccxt_connector.py:207-233` |
 | `get_ohlcv` `since`-slot defect | `src/exchange/ccxt_connector.py:1095-1152` |
-| `get_markets` precision read | `src/exchange/ccxt_connector.py:1339` |
+| `get_markets` precision read | `src/exchange/ccxt_connector.py` |
 | Simulator's venue | `src/exchange/tablet_backend.py:103` |
 | Hardcoded market template | `src/exchange/tablet_backend.py:201-218` |
 | Fee rate (one number, no side) | `src/exchange/tablet_backend.py:469-470` |
-| `create_order` and the #111A fix | `src/exchange/tablet_backend.py:473-556` |
-| Sweep leaves `rejected` | `src/exchange/tablet_backend.py:586-609, 654-675` |
+| `create_order` and the #111A fix | `src/exchange/tablet_backend.py` |
+| Sweep leaves `rejected` | `src/exchange/tablet_backend.py` |
 | `on_trade` invocation | `src/exchange/tablet_backend.py:303, 640-651` |
 | Simulator wiring | `src/simulator/fleet/fleet_replay_controller.py:1007-1026` |
 | Wallet seeding (#111B) | `src/simulator/fleet/fleet_replay_controller.py:923-934, 1240-1256` |

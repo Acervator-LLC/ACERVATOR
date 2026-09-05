@@ -72,8 +72,8 @@ the executor:
 
     fold_tranches_tab.py:1406   _otd_pct = minimum_opposing_trade_distance_pct_from_config(...)
     fold_tranches_tab.py:1409   _otd_factor = fold_rebuy_factor_from_pct(_otd_pct)
-    fold_tranches_tab.py:1641   min_rebuy_v = ref_v * _otd_factor
-    fold_tranches_tab.py:1674   otd_thresh = ref_v * _otd_factor
+    fold_tranches_tab.py   min_rebuy_v = ref_v * _otd_factor
+    fold_tranches_tab.py   otd_thresh = ref_v * _otd_factor
 
 The Minimum Opposing Trade Distance is `interval + fee`, clamped, and it has
 one definition in `src/trading/otd_math.py`:
@@ -120,7 +120,7 @@ field and named another.
 
 **Status: FIXED (issue #98 defect 4, v3.26.0). Re-verified 2026-09-03 by cold
 read.** The ratio and its colour now come from one pure composer,
-`compose_cycle_close_ratio` (`src/gui/live_settings/fold_tokens.py:619`), and
+`compose_cycle_close_ratio` (`src/gui/live_settings/fold_tokens.py`), and
 the denominator excludes discards. This section is kept as the record of the
 defect, not as an open item.
 
@@ -225,7 +225,7 @@ The precedent for the fix is the Reset-all-errors handler, which calls
 `save_all_state()` inside the click at `src/gui/main_window.py:2086`.
 
 The panel documents its reason for NOT forcing a save on the Arbiter
-**toggle** at `src/gui/live_settings/fold_tranches_tab.py:1908` — a fleet
+**toggle** at `src/gui/live_settings/fold_tranches_tab.py` — a fleet
 serialise on the GUI thread is the freeze class the toggle avoids. A toggle
 lost to a crash is set again in one click. A clear lost to a crash restored
 records the operator deliberately destroyed, which is why the clear buttons,
@@ -259,7 +259,7 @@ both clear handlers and the Manual Fire handler call the latter through
 The stale Fire buttons were already safe. Each captured its tranche by
 identity, so a click after a clear resolved nothing and showed a refusal —
 the refusal message now lives at
-`src/gui/live_settings/fold_tranches_tab.py:2086`. No wrong trade was
+`src/gui/live_settings/fold_tranches_tab.py`. No wrong trade was
 possible even before the fix.
 
 ### F5 — The Source column names the wrong action
@@ -275,7 +275,7 @@ could not have created them.**
                else "auto scrum")
 
 That two-way test is gone. The column now calls
-`_fold_tranche_source_label` (`src/gui/live_settings/fold_tokens.py:667`):
+`_fold_tranche_source_label` (`src/gui/live_settings/fold_tokens.py`):
 
     if tranche.get("operator_initiated"):
         return FOLD_SOURCE_MANUAL_SCRUM
@@ -388,7 +388,7 @@ reordering them.
 
 Row order is still insertion order, and that is still load-bearing. The Fire
 button resolves its target by `tranches.index(tranche)` against
-`_fold_tranches` (`src/gui/live_settings/fold_tranches_tab.py:2072`), so the
+`_fold_tranches` (`src/gui/live_settings/fold_tranches_tab.py`), so the
 filter hides rows rather than removing or reordering them.
 
 On TAO the summary reported an oldest tranche of 30.4 days, with the first
@@ -432,7 +432,7 @@ makes the confirmation correct too.
 **Status: OPEN. Re-verified 2026-09-03 by cold read.** Issue #98's other nine
 defects were repaired in the same unit; this one was not addressed, and the
 Status column tooltip still names only the price gate and TA
-(`src/gui/live_settings/fold_tranches_tab.py:1684`).
+(`src/gui/live_settings/fold_tranches_tab.py`).
 
 **Cost: a green Price-OK on a tranche the bot will skip.**
 
@@ -458,7 +458,7 @@ of 1,701 tranches were price-eligible.
 **Status: Visibility FIXED (issue #98 defect 9, v3.26.0). Re-verified
 2026-09-03 by cold read. The excess itself is not attributed, then or now.**
 A summary row now states the total and its ratio and turns red above 1.00x
-(`compose_units_marked_row`, `src/gui/live_settings/fold_tokens.py:572`),
+(`compose_units_marked_row`, `src/gui/live_settings/fold_tokens.py`),
 called from `src/gui/live_settings/fold_tranches_tab.py:1058`. It attributes
 nothing. This section is kept as the record of the defect, not as an open
 item.
@@ -516,12 +516,12 @@ wall-clock epoch second written at creation.
 
 Three creation sites, all writing the field:
 
-    scrumming/tick_phases.py:1248   "created_ts": time.time(),   auto scrum
-    scrumming/tick_phases.py:2030   "created_ts": time.time(),   distribute leg
-    scrumming/execution.py:678      "created_ts": time.time(),   manual rebalance
+    scrumming/tick_phases.py   "created_ts": time.time(),   auto scrum
+    scrumming/tick_phases.py   "created_ts": time.time(),   distribute leg
+    scrumming/execution.py     "created_ts": time.time(),   manual rebalance
 
 The panel reads it at `src/gui/live_settings/fold_tranches_tab.py:1559` and
-formats it with `_format_age` (`src/gui/bot_live_settings.py:962`), which
+formats it with `_format_age` (`src/gui/bot_live_settings.py`), which
 prints seconds, minutes, hours, then days to one decimal.
 
 **All 1,701 live tranches carried a valid `created_ts`** at measurement time.
@@ -592,7 +592,7 @@ now do (F7).
 |---|---|---|---|
 | Clear N Fold Tranche(s) | `Clear 58 Fold Tranche(s)` | Calls `clear_fold_tranches` (`src/trading/scrumming/fold_tranches.py:614`). Empties `_fold_tranches`, zeroes `_fold_queue_usd`, adds to `_tranches_discarded_lifetime`, emits `bot.log`. Places no order. Touches no holding, no cost basis and no target balance. Did not save state — F3, now FIXED | **F4 FIXED.** The table, the counters and the button label now rebuild after a clear. The message no longer reads as an error — F6, now FIXED |
 | Clear $X Wire Credits | `Clear $343.68 Wire Credits` | Calls `clear_pending_wire_credits` (`src/trading/scrumming/wire_routing.py:653`). Zeroes `_pending_wire_credits` and `_pending_wire_ledger`, adds to `_wire_credits_discarded_lifetime`, emits `bot.log`. Releases an earmark. Moves no money. Did not save state — F3, now FIXED | **F4 FIXED.** The lifetime it writes now has a row on the panel — F12, now FIXED |
-| Fire (one per row) | `Fire` | Resolves the tranche by identity, refuses unreadable stored values before it offers a confirmation (`src/gui/live_settings/fold_tranches_tab.py:2168`), then schedules `manual_fire_tranche(idx)` on the async loop. A market buy. Bypasses TA, OTD and Target Delta. Smart Ceiling still applies | **F4 FIXED.** A polling QTimer shows the fill dialog (`src/gui/live_settings/fold_tranches_tab.py:2301`), and the table now updates. The confirmation naming a different number from the row is FIXED — F9 |
+| Fire (one per row) | `Fire` | Resolves the tranche by identity, refuses unreadable stored values before it offers a confirmation (`src/gui/live_settings/fold_tranches_tab.py`), then schedules `manual_fire_tranche(idx)` on the async loop. A market buy. Bypasses TA, OTD and Target Delta. Smart Ceiling still applies | **F4 FIXED.** A polling QTimer shows the fill dialog (`src/gui/live_settings/fold_tranches_tab.py`), and the table now updates. The confirmation naming a different number from the row is FIXED — F9 |
 
 Both confirmation dialogs were honest and complete. The fold-tranche one
 names the parked wire credit and the absorb-window trap. The wire one names
