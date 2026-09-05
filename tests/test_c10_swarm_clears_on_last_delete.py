@@ -65,12 +65,14 @@ class TestUpdateBotsClearsOnEmpty:
     def test_bots_render_first(self, qapp):
         """Positive control: if nothing ever populated, the clearing
         assertion below would pass against any implementation."""
+        assert qapp is not None
         tab = BotVisualizationTab()
         tab.update_bots([_status("a"), _status("b")])
         assert len(tab._bot_widgets) == 2
         tab.deleteLater()
 
     def test_an_empty_list_removes_every_widget(self, qapp):
+        assert qapp is not None
         tab = BotVisualizationTab()
         tab.update_bots([_status("a"), _status("b")])
         tab.update_bots([])
@@ -80,6 +82,7 @@ class TestUpdateBotsClearsOnEmpty:
     def test_a_partial_delete_removes_only_the_missing(self, qapp):
         """Negative control: clearing on empty must not mean clearing
         on every update."""
+        assert qapp is not None
         tab = BotVisualizationTab()
         tab.update_bots([_status("a"), _status("b")])
         tab.update_bots([_status("a")])

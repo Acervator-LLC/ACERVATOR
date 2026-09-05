@@ -88,6 +88,7 @@ def _make_proposal(pid: str = "test:AAA-BBB"):
 
 
 def test_dialog_blocks_adopt_when_disabled(qapp):
+    assert qapp is not None
     p = _make_proposal()
     dlg = TopologyPreviewDialog(p, force_adopt_disabled=True)
     assert dlg._adopt_btn.isEnabled() is False
@@ -98,6 +99,7 @@ def test_dialog_blocks_adopt_when_disabled(qapp):
 
 
 def test_dialog_enables_adopt_when_flag_off(qapp):
+    assert qapp is not None
     p = _make_proposal()
     dlg = TopologyPreviewDialog(p, force_adopt_disabled=False)
     assert dlg._adopt_btn.isEnabled() is True
@@ -105,6 +107,7 @@ def test_dialog_enables_adopt_when_flag_off(qapp):
 
 
 def test_dialog_adopt_click_emits_proposal(qapp):
+    assert qapp is not None
     p = _make_proposal("test:XYZ")
     dlg = TopologyPreviewDialog(p, force_adopt_disabled=False)
     captured = []
@@ -119,6 +122,7 @@ def test_dialog_adopt_click_emits_proposal(qapp):
 
 
 def test_dismiss_suppresses_proposal(qapp):
+    assert qapp is not None
     w = MarketInspectorTopologies()
     p = _make_proposal("test:DISM")
     w.set_proposal_source(lambda: [p])
@@ -133,6 +137,7 @@ def test_dismiss_suppresses_proposal(qapp):
 
 
 def test_dismiss_expires_after_ttl(qapp):
+    assert qapp is not None
     w = MarketInspectorTopologies()
     now = 1_000_000.0
     w.dismiss("test:EXP", now=now)
@@ -144,6 +149,7 @@ def test_dismiss_expires_after_ttl(qapp):
 
 
 def test_empty_source_shows_placeholder(qapp):
+    assert qapp is not None
     w = MarketInspectorTopologies()
     w.set_proposal_source(lambda: [])
     w.refresh()
@@ -152,6 +158,7 @@ def test_empty_source_shows_placeholder(qapp):
 
 
 def test_refresh_swallows_source_exception(qapp):
+    assert qapp is not None
     w = MarketInspectorTopologies()
 
     def bad():
@@ -200,6 +207,7 @@ def _bind_adopt_helpers(fake):
 def test_adopt_button_enabled_by_default_v3_23_69(qapp):
     """Adopt was gated in v3.23.68; v3.23.69 flips the default to
     ENABLED so operator-facing preview modals can adopt live."""
+    assert qapp is not None
     p = _make_proposal()
     dlg = TopologyPreviewDialog(p)  # default force_adopt_disabled
     assert dlg._adopt_btn.isEnabled() is True
@@ -216,6 +224,7 @@ def test_orchestrator_emits_wire_created_per_wire(qapp, monkeypatch):
     booting the entire main window (dozens of subsystems) while still
     exercising the real code path.
     """
+    assert qapp is not None
     from types import MethodType, SimpleNamespace
 
     # Load the real orchestrator function from the module.
@@ -226,7 +235,7 @@ def test_orchestrator_emits_wire_created_per_wire(qapp, monkeypatch):
     # Fake QMessageBox.question so the confirm prompt returns "Ok".
     from PySide6.QtWidgets import QMessageBox
 
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **kw: QMessageBox.Ok)
+    monkeypatch.setattr(QMessageBox, "question", lambda *_a, **_kw: QMessageBox.Ok)
 
     emissions = []
 
@@ -254,8 +263,8 @@ def test_orchestrator_emits_wire_created_per_wire(qapp, monkeypatch):
     fake = SimpleNamespace()
     fake._bot_manager = FakeBotMgr()
     fake._bus = FakeBus()
-    fake._status_log = SimpleNamespace(log=lambda *a, **kw: None)
-    fake._spool = SimpleNamespace(notify=lambda *a, **kw: None)
+    fake._status_log = SimpleNamespace(log=lambda *_a, **_kw: None)
+    fake._spool = SimpleNamespace(notify=lambda *_a, **_kw: None)
     fake._create_bot = MethodType(lambda self, **kw: None, fake)
     _bind_adopt_helpers(fake)
 
@@ -313,6 +322,7 @@ def test_orchestrator_emits_wire_created_per_wire(qapp, monkeypatch):
 def test_orchestrator_aborts_on_confirm_cancel(qapp, monkeypatch):
     """Cancel at the confirm gate → no wire.created emitted, no
     _create_bot called."""
+    assert qapp is not None
     from types import MethodType, SimpleNamespace
     import src.gui.main_window as mw
 
@@ -320,7 +330,7 @@ def test_orchestrator_aborts_on_confirm_cancel(qapp, monkeypatch):
 
     from PySide6.QtWidgets import QMessageBox
 
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **kw: QMessageBox.Cancel)
+    monkeypatch.setattr(QMessageBox, "question", lambda *_a, **_kw: QMessageBox.Cancel)
 
     emissions = []
     create_calls = []
@@ -336,8 +346,8 @@ def test_orchestrator_aborts_on_confirm_cancel(qapp, monkeypatch):
     fake = SimpleNamespace()
     fake._bot_manager = FakeBotMgr()
     fake._bus = FakeBus()
-    fake._status_log = SimpleNamespace(log=lambda *a, **kw: None)
-    fake._spool = SimpleNamespace(notify=lambda *a, **kw: None)
+    fake._status_log = SimpleNamespace(log=lambda *_a, **_kw: None)
+    fake._spool = SimpleNamespace(notify=lambda *_a, **_kw: None)
 
     def _fake_create(self, **kw):
         create_calls.append(kw)
@@ -374,6 +384,7 @@ def test_adopt_signal_reaches_pane_handler(qapp):
     """The dialog's adoptClicked signal must reach the pane's
     adoptRequested signal (so the pane can forward to the orchestrator
     wired via main_window.set_adopt_handler)."""
+    assert qapp is not None
     from src.gui.market_inspector import MarketInspectorTab
 
     tab = MarketInspectorTab()
