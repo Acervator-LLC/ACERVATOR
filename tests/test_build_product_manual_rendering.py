@@ -179,6 +179,28 @@ def test_a_stray_backtick_is_reported_so_a_clean_page_means_something(manual_tre
     assert "backtick" in detail, detail
 
 
+def test_a_backtick_a_fenced_block_quotes_is_source_and_not_a_leak(manual_tree):
+    docs, figures, output = manual_tree
+    quoted = dict(FIXTURE_FILES)
+    quoted["05-tables.md"] = TABLES.replace(ALIGNED, f"{ALIGNED}\n# `tr_all` is one")
+    build(_write(docs.parent / "quoted", quoted), figures, output)
+
+    assert "`tr_all` is one" in _pdf_text(
+        output
+    ), "the quoted comment never reached the page, so a clean scan proves nothing"
+    ok, detail = verify_no_raw_markup(output)
+    assert ok, f"a backtick a code block quotes was called a leak: {detail}"
+
+    loose = dict(FIXTURE_FILES)
+    loose["05-tables.md"] = TABLES.replace(
+        "Prose above the table.", "Prose above the `tr_all is one table."
+    )
+    build(_write(docs.parent / "loose", loose), figures, output)
+    ok, detail = verify_no_raw_markup(output)
+    assert not ok, "the same character left in prose was reported clean"
+    assert "backtick" in detail, detail
+
+
 def test_a_mermaid_block_never_reaches_the_pdf_as_source(manual_tree):
     docs, figures, output = manual_tree
     build(docs, figures, output)

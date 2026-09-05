@@ -1264,6 +1264,34 @@ def _pdf_page_texts(pdf_path: Path) -> list[str]:
     return [page.extract_text() or "" for page in reader.pages]
 
 
+def _pdf_page_prose(pdf_path: Path) -> list[tuple[str, str]]:
+    """Return per page its whole text and the run of it set in a prose face.
+
+    A code block and a mermaid fallback are set in the ``font_name`` mono family;
+    every heading, paragraph, bullet, caption and table cell is not.
+    """
+    family = font_name("mono").split("-")[0]
+    pages: list[tuple[str, str]] = []
+    for page in PdfReader(str(pdf_path)).pages:
+        prose: list[str] = []
+
+        def keep(
+            text: str,
+            _matrix: object,
+            _text_matrix: object,
+            font: object,
+            _points: object,
+            sink: list[str] = prose,
+        ) -> None:
+            face = str(font.get("/BaseFont", "")) if isinstance(font, dict) else ""
+            if family not in face:
+                sink.append(text)
+
+        whole = page.extract_text(visitor_text=keep) or ""
+        pages.append((whole, "".join(prose)))
+    return pages
+
+
 def verify_toc_pages(pdf_path: Path, entries: Iterable[TocEntry]) -> tuple[bool, str]:
     """Return whether each entry's ``text`` is on the page its contents row names."""
     pages = _pdf_page_texts(pdf_path)
@@ -1295,20 +1323,30 @@ def verify_sections_present(
 
 
 def verify_no_raw_markup(pdf_path: Path) -> tuple[bool, str]:
-    """Return whether no page carries a backtick, a mermaid keyword or a pipe row."""
-    pages = _pdf_page_texts(pdf_path)
+    """Return whether the pages of ``_pdf_page_prose`` carry no markdown markup.
+
+    A backtick and a ``RAW_PIPE_RUN`` are read over the prose alone, where a
+    code block quotes both as source; the other two scans read the whole page.
+    """
+    pages = _pdf_page_prose(pdf_path)
     leaks: list[str] = []
-    for number, text in enumerate(pages, start=1):
+    total = 0
+    for number, (whole, prose) in enumerate(pages, start=1):
         for name, hits in (
-            ("backtick", text.count("`")),
-            ("mermaid source", len(DIAGRAM_WORD.findall(text))),
-            ("markdown table row", len(RAW_TABLE_ROW.findall(text))),
-            ("pipe run", len(RAW_PIPE_RUN.findall(text))),
+            ("backtick", prose.count("`")),
+            ("mermaid source", len(DIAGRAM_WORD.findall(whole))),
+            ("markdown table row", len(RAW_TABLE_ROW.findall(whole))),
+            ("pipe run", len(RAW_PIPE_RUN.findall(prose))),
         ):
             if hits:
+                total += hits
                 leaks.append(f"page {number}: {hits} {name}")
     if leaks:
-        return False, "; ".join(leaks[:LEAKS_REPORTED])
+        shown = "; ".join(leaks[:LEAKS_REPORTED])
+        return (
+            False,
+            f"{total} leaks over {len(leaks)} rows; first {LEAKS_REPORTED} - {shown}",
+        )
     return True, f"{len(pages)} pages carry no raw markup"
 
 
