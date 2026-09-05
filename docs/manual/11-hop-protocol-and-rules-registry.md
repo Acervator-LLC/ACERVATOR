@@ -12,11 +12,17 @@ one running today.
 one this manual describes. The earlier `ACERVATOR_HOP*.md` files at the root
 hold archives of sessions that closed, and nothing in them binds.
 
-`tests/test_repo_root_inventory.py` records why the handoff sits at the root
-rather than in a directory: `tools/hop_check.py` globs `ACERVATOR_HOP*.md`
-there, and a fresh clone has to find its orientation without being told where to
-look. Each root file in that inventory carries a reason naming a mechanism, and
-a new root file without one fails the check.
+A root-file inventory test records why the handoff sits at the root rather than
+in a directory: the drift check looks for it there, and a fresh clone has to find
+its orientation without being told where to look. Each root file in that
+inventory carries a reason naming a mechanism, and a new root file without one
+fails the check.
+
+```python
+def test_the_inventory_names_every_tracked_root_file() -> None: ...  # tests/test_repo_root_inventory.py
+def test_the_inventory_names_no_file_that_has_left() -> None: ...
+def test_every_inventory_entry_carries_a_reason() -> None: ...
+```
 
 The handoff holds current state and an index, never a history. Its own three
 standing instructions are to rewrite a section that has drifted rather than
@@ -31,11 +37,14 @@ quantities.
 - Commits landed since the handoff was last written, from `git rev-list --count`
   against the commit that last touched it. `STALE_AFTER` is 15; at or past that
   count the report calls the file drifted.
-- Cited paths that no longer exist. `TRACKED` matches a backticked path under
-  `src`, `tests`, `tools`, `docs`, `desktop`, `dev_harness`, `harness_fixtures`
-  or `.github`.
+- Cited paths that no longer exist, matched as a backticked path under one of
+  eight tracked directories.
 - Cited commits that no longer resolve, matched as a backticked hex string of
   seven characters or more and checked with `git cat-file -t`.
+
+```python
+TRACKED = r"`((?:src|tests|tools|docs|desktop|dev_harness|harness_fixtures|\.github)/[\w./-]+)`"
+```
 
 Any one of the three returns exit 1. Run against the tree, the report reads 107
 commits since the handoff was written, three paths declared absent on purpose,
@@ -49,34 +58,56 @@ rather than a check on one.
 
 ### The sort key picks the wrong file at ten
 
-`newest_hop` sorts the glob by `Path.stem` as a string and takes the last entry.
-Every handoff suffix holds one digit today, and the answer is correct. Driven
-with a two-digit name added, `ACERVATOR_HOP10` sorts ahead of `ACERVATOR_HOP2`,
-the last entry stays `ACERVATOR_HOP8.md`, and the drift report then describes a
-superseded file. Driven again with only the two newest names present, the answer
-is the same. The check needs a numeric key before a tenth handoff exists.
+The picker sorts the file names as strings and takes the last one. Every handoff
+suffix holds one digit today, so the answer is correct. Driven with a two-digit
+name added, `ACERVATOR_HOP10` sorts ahead of the single digits, the last entry
+stays `ACERVATOR_HOP8.md`, and the drift report then describes a superseded file.
+Driven again with only the two newest names present, the answer is the same. The
+check needs a numeric key before a tenth handoff exists.
+
+```python
+def newest_hop() -> pathlib.Path | None:        # tools/hop_check.py
+    """Returns the highest-numbered ACERVATOR_HOP*.md at the repository root."""
+    found = sorted(ROOT.glob("ACERVATOR_HOP*.md"), key=lambda p: p.stem)
+    return found[-1] if found else None
+```
 
 ## The rules registry
 
-`RULE_META` in `src/core/rule_registry.py` declares 35 rule ids, R1 through R35,
-across ten lettered groups. `RuleRegistry` holds one `RuleEntry` per id in one of
-the four `VALID_STATES` — LOCKED, UNLOCKED, SUSPENDED and DEPRECATED — and
-`parse_rule_command` turns a `RULE` line into a call on it. `CORE_RULES` derives
-the five ids marked CORE: R1, R5, R10, R11 and R12.
+The registry module declares 35 rule ids, R1 through R35, across ten lettered
+groups. It holds one entry per id in one of four states — LOCKED, UNLOCKED,
+SUSPENDED and DEPRECATED — and a parser turns a `RULE` line into a call on the
+registry. Five ids are marked CORE: R1, R5, R10, R11 and R12.
 
-`suspend` refuses a CORE id. Driven both ways against a registry file in a
-temporary directory, `suspend("R1")` returns a refusal and leaves R1 LOCKED,
-while `suspend("R2")` moves R2 to SUSPENDED. The refusal is a real one rather
-than a declared one.
+```python
+RULE_META = {...}       # src/core/rule_registry.py, 35 ids, R1 through R35
+CORE_RULES = {r for r, m in RULE_META.items() if m["protection"] == "CORE"}
+VALID_STATES = {"LOCKED", "UNLOCKED", "SUSPENDED", "DEPRECATED"}
 
-Nothing in the product reads any of it. `REGISTRY_PATH` resolves to
-`RULE_REGISTRY.json` inside a top-level `sadp` directory, and no commit in this
-repository has ever added a path under that directory. An import scan over 957
-Python files — parsing each file and reading its import nodes, rather than
-matching text — finds one importer, `tests/test_rule_registry_validation.py`,
-which is also the only caller of any symbol in the module. The same scan against
-`src/core/log_paths.py` returns three importers, so the instrument does find an
-importer where one exists.
+class RuleEntry: ...
+class RuleRegistry: ...
+def parse_rule_command(...): ...
+```
+
+The suspend call refuses a CORE id. Driven both ways against a registry file in a
+temporary directory, R1 draws a refusal and stays LOCKED while R2 moves to
+SUSPENDED. The refusal is a real one rather than a declared one.
+
+```python
+def suspend(self, rule: str, reason: str, expires: str = "") -> str: ...     # src/core/rule_registry.py
+```
+
+Nothing in the product reads any of it. The registry path resolves into a
+top-level directory that no commit in this repository has ever added. An import
+scan over 957 Python files — parsing each file and reading its import nodes,
+rather than matching text — finds one importer,
+`tests/test_rule_registry_validation.py`, which is also the only caller of any
+symbol in the module. The same scan against `src/core/log_paths.py` returns three
+importers, so the instrument does find an importer where one exists.
+
+```python
+REGISTRY_PATH = ROOT / "sadp" / "RULE_REGISTRY.json"        # src/core/rule_registry.py
+```
 
 The module's own docstring says as much. The ids name nothing the running
 program consults, and they carry no authority.
@@ -131,15 +162,21 @@ is in this repository.
 
 ### The harness, in the repository
 
-`dev_harness/harness/` holds twelve modules and the shared report contract. Each
-runs as `python -m dev_harness.harness.<name> <path>` and reports a `passed`
-boolean, exiting non-zero when `passed` is false. `passed` in
-`dev_harness/harness/report.py` needs five conditions and the first four concern
-the run rather than the findings: an unhandled file type, an unscanned target, an
-analyzer that did not report `ok`, and a recorded error each hold it false. A
-`refuse_silent_failure` call around every subprocess raises on a tool that wrote
-to standard error and exited non-zero with empty output, which is how an
+The harness directory holds twelve modules and the shared report contract. Each
+runs from the command line against one path and reports a `passed` boolean,
+exiting non-zero when it is false. That boolean needs five conditions, and the
+first four concern the run rather than the findings: an unhandled file type, an
+unscanned target, an analyzer that did not report ok, and a recorded error each
+hold it false. A guard around every subprocess raises on a tool that wrote to
+standard error and exited non-zero with empty output, which is how an
 installed-but-unconfigured linter used to report a clean run.
+
+```
+python -m dev_harness.harness.<name> <path>
+
+passed                  dev_harness/harness/report.py
+refuse_silent_failure   dev_harness/harness/report.py
+```
 
 Five archetypes, one per domain:
 
@@ -157,12 +194,11 @@ Five archetypes, one per domain:
 
 The gate and the ledger:
 
-- `check_release_readiness.py` — the release gate. It runs the suite under
-  `tests/`, runs each archetype against its `known_good` fixture, and reads the
-  claim ledger. It declines to declare a release ready when a step was skipped or
-  when a green pytest run collected nothing. No copy lives under `tools/`; the
-  older `tools/check_release_readiness.py` and the whole `tools/harness/`
-  directory are gone from the working tree.
+- `check_release_readiness.py` — the release gate. It runs the suite, runs each
+  archetype against its good fixture, and reads the claim ledger. It declines to
+  declare a release ready when a step was skipped or when a green pytest run
+  collected nothing. The older copy under `tools/`, and the whole harness
+  directory beside it, are gone from the working tree.
 - `claim_ledger.py` — one JSONL row per claim, each carrying a status of `open`,
   `verified` or `refuted`, which leaves a claim without a measurement visible.
 
@@ -176,16 +212,27 @@ Four analysis tools, each answering one question about live behaviour:
 - `ytd_compounding_replay.py` — a venue year-to-date export walked per asset for
   fold-back opportunities.
 
-Four rule modules under `dev_harness/harness/rules/` run inside the archetypes
-rather than alone: `hallucination.py` for a dead path, a dead subsystem name, an
-import of a module that is not there, a citation past the end of the file it
-names, and a dotted name split across string literals; `numeric_guard.py`,
-`scaffolding.py` and `slop.py` for the other three families.
+Four rule modules run inside the archetypes rather than alone. The first catches
+a dead path, a dead subsystem name, an import of a module that is not there, a
+citation past the end of the file it names, and a dotted name split across string
+literals. The other three carry the numeric, scaffolding and slop families.
 
-`harness_fixtures/` holds the calibration bodies — a `known_good` and a
-`known_bad` per archetype. The pair is the control on the gate: the good fixture
-exits 0 and the bad one exits 1, and a run of the archetypes that skips the pair
-proves nothing about the archetypes.
+```
+dev_harness/harness/rules/
+    hallucination.py        dead path, dead subsystem, absent import, bad citation, split name
+    numeric_guard.py
+    scaffolding.py
+    slop.py
+```
+
+The fixtures directory holds the calibration bodies — a good body and a bad body
+per archetype. The pair is the control on the gate, and a run of the archetypes
+that skips the pair proves nothing about the archetypes.
+
+```
+harness_fixtures/<archetype>/known_good.<ext>       exits 0
+harness_fixtures/<archetype>/known_bad.<ext>        exits 1
+```
 
 ### The skills, outside the repository
 
@@ -227,9 +274,17 @@ rather than warn about it.
 - `block_unanchored_docstring.py` — denies a Python docstring that argues rather
   than describes: a justification clause, or a sentence naming no identifier from
   its own file.
-- `verify_release_gate.py` — denies a write to `src/__init__.py` or `main.py`
-  when `.release_ready.json` is absent or older than an hour, and allows every
-  other path through.
+- `verify_release_gate.py` — denies a write to either file that carries the
+  version when the release-ready record is absent or older than an hour, and
+  allows every other path through.
+
+The two files that hook protects, and the record it reads:
+
+```
+src/__init__.py         __version__ = resolve_version()
+main.py                 current_version = _acervator_version
+.release_ready.json     written by the release gate, good for one hour
+```
 
 Two add context rather than deny: `prompt_router.py` names the archetype a task
 will need, and `session_stop_backstop.py` writes a forensic record of whatever

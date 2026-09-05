@@ -102,20 +102,30 @@ the screen's state.
 ## Figures
 
 The manual carries 38 embedded images. They are captured output, so they are not
-tracked: `tools/extract_product_manual.py` writes them to
-`artifacts/manual-figures/` under the repository root, a path `.gitignore`
-excludes. [FIGURES.md](FIGURES.md) lists every one with its page, index, file
-name, byte size, pixel size, and whether its page also carries text.
+tracked. The extractor writes them to a directory under the repository root that
+the ignore file excludes. [FIGURES.md](FIGURES.md) lists every one with its page,
+index, file name, byte size, pixel size, and whether its page also carries text.
 
-That count of 38 covers the images the source PDF embeds, and a deep walk of
-the PDF's resource tree — every page's `/XObject`, recursing into every `/Form`
-— returns the same 38, across 38 distinct objects, with none nested inside a
-form and no inline image anywhere. Part 9 adds a second set:
-[10-live-trade-history.md](10-live-trade-history.md) embeds 39 VWAP charts
-built from the operator's venue export. Those live in
-`artifacts/vwap-charts/`, a directory of their own under the same `.gitignore`
-rule, and [FIGURES.md](FIGURES.md) inventories them beside the first set.
-Counting both sets, the built PDF embeds 77 images.
+Where the extractor puts them:
+
+```python
+REPO_ROOT = Path(__file__).resolve().parents[1]     # tools/extract_product_manual.py
+DEFAULT_FIGURES_DIR = REPO_ROOT / "artifacts" / "manual-figures"
+```
+
+That count of 38 covers the images the source PDF embeds. A deep walk of the
+PDF's resource tree — every page's `/XObject`, recursing into every `/Form` —
+returns the same 38, across 38 distinct objects, with none nested inside a form
+and no inline image anywhere. Part 9 adds a second set:
+[10-live-trade-history.md](10-live-trade-history.md) embeds 39 VWAP charts built
+from the operator's venue export. They live one level down, in a directory of
+their own under the same ignore rule, and [FIGURES.md](FIGURES.md) inventories
+them beside the first set. Counting both sets, the built PDF embeds 77 images.
+
+```
+artifacts/manual-figures/       the manual's own 38 images
+artifacts/vwap-charts/          the 39 charts of Part 9
+```
 
 ## Extraction record
 
@@ -183,10 +193,19 @@ reportlab, taking its colours, type sizes and page grid from
 python -m tools.build_product_manual
 ```
 
-The PDF is generated output, so it is not tracked: it is written to
-`artifacts/manual/Acervator-Product-Manual.pdf`, beside the figures, under the
-same `.gitignore` rule. `--docs-dir`, `--figures-dir` and `--output` move all
-three.
+The PDF is generated output, so it is not tracked. It is written beside the
+figures, under the same ignore rule. Three flags move the input directory, the
+figures directory and the output file.
+
+```python
+DEFAULT_DOCS_DIR = REPO_ROOT / "docs" / "manual"        # tools/build_product_manual.py
+DEFAULT_FIGURES_DIR = REPO_ROOT / "artifacts" / "manual-figures"
+DEFAULT_OUTPUT = REPO_ROOT / "artifacts" / "manual" / "Acervator-Product-Manual.pdf"
+
+parser.add_argument("--docs-dir", type=Path, default=DEFAULT_DOCS_DIR)
+parser.add_argument("--figures-dir", type=Path, default=DEFAULT_FIGURES_DIR)
+parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+```
 
 The tool renumbers the parts of [04-manual-parts.md](04-manual-parts.md) from
 one and sets its count word to match. It builds a table of contents down to the
@@ -199,11 +218,18 @@ does not hold stops the build by name.
 
 ## Other document producers in this repository
 
-`generate_essay.py` is named by the handoff documents, the archived development
-chronicle and the missing-reference guard, and it is not in the tree.
-`git log --all --diff-filter=ADR` returns no commit that ever added it; the same
-query for `generate_essay_ja.py` returns commits, so the query does find a file
-that existed.
+The handoff documents, the archived development chronicle and the
+missing-reference guard all name `generate_essay.py`, and it is not in the tree.
+A log over every branch, filtered to additions, deletions and renames, returns no
+commit that ever added it. The same query for the Japanese producer returns three
+commits, so the query does find a file that once existed.
+
+The query and its control:
+
+```
+git log --all --diff-filter=ADR --name-only -- generate_essay.py       # no commits
+git log --all --diff-filter=ADR --name-only -- generate_essay_ja.py    # three commits
+```
 
 | Producer | Output |
 | -------- | ------ |
