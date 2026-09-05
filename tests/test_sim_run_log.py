@@ -318,12 +318,8 @@ def test_unserialisable_payload_is_skipped(tmp_path):
         assert isinstance(row, dict)
 
 
-# ── v3.24.17: tablet traceability on fills ───────────────────────
-# Operator directive 2026-08-03: fills must carry the "expected Stone
-# Tablet Candle Address" so a sim trade is traceable to the exact
-# candle it fired on. record_trade accepted the parameter since
-# v3.24.13 but nothing supplied one, so the field was empty on every
-# persisted trade — a parameter that existed but never became data.
+# A fill carries the candle address it fired on, so a sim trade traces
+# back to one Stone Tablet candle.
 
 
 def test_candle_address_survives_roundtrip(tmp_path):
