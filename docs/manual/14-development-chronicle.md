@@ -160,13 +160,17 @@ The instruments themselves, all reachable and all runnable:
   426 — a fold gate declared in configuration that no module reads, a Start
   button that changes a label, and a control announcing a paper trader that no
   module implements.
-- **Seven hooks and nineteen skills**, held outside the repository under the
-  operator's tool home. Five of the seven deny outright rather than warn: the
-  archetype gate on every file write, the release-gate verifier, and blocks on
-  shell heredocs, unanchored docstrings and whole-suite test runs. Advice
-  arrives as text and competes with everything else in a context window. A
-  denial returns before the write happens. The difference is not one of degree,
-  and I say that having tried to run a heredoc during this unit and been refused.
+- **Eight hooks and twenty skills**, held outside the repository under the
+  operator's tool home. Six of the eight deny outright rather than warn: the
+  archetype gate on every file write, the release-gate verifier, the
+  directive-drift check, and blocks on shell heredocs, unanchored docstrings
+  and whole-suite test runs. Two of the six return the refusal as a decision on
+  standard output and still exit zero, so a count that reads exit codes alone
+  reports four and misses them. Part 5 lists all eight beside the seven saved
+  copies and cache directories the count rejects. Advice arrives as text and
+  competes with everything else in a context window. A denial returns before the
+  write happens. The difference is not one of degree, and I say that having
+  tried to run a heredoc during this unit and been refused.
 
 **What failed, and how it was caught.** See the two sections after the audits.
 
