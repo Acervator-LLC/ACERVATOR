@@ -875,7 +875,7 @@ self._sm.set(
 
 ![Settings, the TA Indicators page.](p38-i0.png)
 
-`_create_ta_tab` builds one slider per entry in `DEFAULT_WEIGHTS` from
+`_create_ta_tab` builds one slider per weight the voting engine declares in
 `src/trading/ta_engine.py`, twelve in all, each labelled from its key. The
 value beside a slider follows it as it moves.
 
@@ -943,9 +943,11 @@ weights. `aggregate_multi_timeframe` in `src/trading/ta_engine.py` runs the
 same list from 1m at 0.3 up to 1w at 1.6, so a heavier chart counts for more
 when several are combined.
 
-These three controls carry the same gap the TA Indicators page carries:
-`_save` reads none of them, `_load_current` restores none, and `AppSettings`
-declares no field for a phantom default. Issue #423 carries this page.
+These three controls carry the same gap the TA Indicators page carries.
+`_save` reads none of them and `_load_current` restores none.
+
+`AppSettings` declares no field for a phantom default either, so nothing on
+this page has anywhere to land. Issue #423 carries it.
 
 The per-bot equivalents do persist. `PhantomConfigPage` in
 `src/gui/bot_wizard.py` emits the same three names into the bot's own config,
@@ -1063,8 +1065,10 @@ self._sm.set(
 
 `_create_sound_tab` builds the master switch, eight event checkboxes, a
 volume slider and six test buttons. Every checkbox is checked at build, and
-each names its sound in its own label. The key behind each control is a field
-of `SoundConfig` in `src/core/sound_engine.py`.
+each names its sound in its own label.
+
+The key behind each control below is a field of `SoundConfig` in
+`src/core/sound_engine.py`.
 
 Enable sound notifications - Turns every sound on or off at once. Key
 `enabled`, a checkbox, on.
@@ -1131,8 +1135,10 @@ new_cfg = SoundConfig(
 ![Settings, the SMS page.](p43-i0.png)
 
 `_create_sms_tab` builds a scrolling page holding the master switch and three
-groups, seventeen controls in all. The key behind each control is a field of
-`SMSConfig` in `src/core/sms_engine.py`.
+groups, seventeen controls in all.
+
+The key behind each control below is a field of `SMSConfig` in
+`src/core/sms_engine.py`.
 
 Enable SMS notifications - Turns every message on or off at once. Key
 `enabled`, a checkbox, clear at build.
@@ -1146,8 +1152,8 @@ Phone Number - Sets the number every message goes to. Key `phone_number`,
 free text, empty, with a placeholder showing the international shape.
 
 Carrier - Names the carrier whose gateway address a message would be built
-for. Filled from `CARRIER_GATEWAYS`, ten entries, at AT&T. It has no stored
-field of its own, and nothing on the page reads the choice.
+for. Filled from `CARRIER_GATEWAYS`, ten entries, opening on the first. It has
+no stored field of its own, and nothing on the page reads the choice.
 
 Gateway Email - Sets the full gateway address the message is sent to. Key
 `gateway_email`, free text, empty.
@@ -1188,8 +1194,8 @@ Max messages per hour - Caps how many messages one hour may carry. Key
 Min time between messages - Sets the wait between two messages. Key
 `cooldown_seconds`, 5 to 300 seconds, at 30. Below the area the figure shows.
 
-None of it reaches `SMSEngine`. `_save` reads no widget on this page and
-`AppSettings` declares no SMS field. Issue #423 carries this page.
+None of it reaches the sending engine. `_save` reads no widget on this page
+and `AppSettings` declares no SMS field. Issue #423 carries this page.
 
 Two further gaps sit inside the page itself. Neither provider label the combo
 offers matches a stored provider value, which are `email_gateway` and
@@ -1239,9 +1245,9 @@ line, a journal hash, a completed-check count and a Test Handshake button.
 The three readings report and the button acts. None of the four stores
 anything, so the page holds seven settings and four other things.
 
-`_save` writes all seven controls into one `ai_monitor` dictionary and
-`_load_current` reads all seven back, which makes this the one page besides
-User whose whole state round-trips.
+`_save` writes all seven controls into that one group and `_load_current`
+reads all seven back, which makes this the one page besides User whose whole
+state round-trips.
 
 Six of the seven then reach the engine. `configure_live_monitor` in
 `src/trading/bot_container.py` reads five of them and builds or clears the

@@ -262,8 +262,8 @@ illustrates, and named there in prose.
 
 | Set | Figures | Described in |
 | --- | ------: | ------------ |
-| Legacy Part 5b, pages 3 to 6 | 4 | the rows above, and no part file |
-| Legacy Part 5c, pages 4 and 5 | 2 | the rows above, and no part file |
+| Legacy Part 5b, pages 3 to 6 | 4 | no part file, and the rows above |
+| Legacy Part 5c, pages 4 and 5 | 2 | no part file, and the rows above |
 | Legacy Part 8, pages 25 to 28 | 8 | [13-live-evidence.md](13-live-evidence.md), and the rows above |
 | Legacy Part 8, pages 36 to 40 | 8 | [13-live-evidence.md](13-live-evidence.md), and the rows above |
 | Legacy Part 8, pages 44 to 48 | 8 | [13-live-evidence.md](13-live-evidence.md), and the rows above |
