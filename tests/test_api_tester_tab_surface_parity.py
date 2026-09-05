@@ -88,7 +88,6 @@ FROZEN_MONOTONIC = 1000.0
 BUNDLE_MARK = "<a certificate file this machine happens to hold>"
 SEEDED_BUNDLE = "/invented/ca-bundle.pem"
 
-# Invented values. No key, secret or passphrase below is the operator's.
 # The three invented values the scripted vault hands back, in the order
 # the credential row lays its boxes out. None is the operator's.
 INVENTED_CREDENTIALS = (
@@ -867,9 +866,8 @@ STEPS: dict = {
     "status_unlisted_venue": [["status_page"]],
 }
 
-# The shipped screen catches every failure on every button, so no press
-# on either side raises. These are the inputs a screen without those
-# catches would raise on, and both sides report them on screen instead.
+# Inputs a screen without the shipped catches would raise on. Both sides
+# report them on screen instead.
 CAUGHT_NOT_RAISED = (
     "number_where_text_belongs",
     "status_number_indicator",

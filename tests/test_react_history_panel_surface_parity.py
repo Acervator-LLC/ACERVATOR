@@ -70,9 +70,8 @@ FETCH_MARKERS: tuple[str, ...] = (
     "document.write",
 )
 
-# The addresses the vendored React bundle carries as text: five element
-# namespace names and the link its own error message prints. Nothing
-# fetches any of them.
+# Addresses the vendored React bundle carries as text. Nothing fetches
+# any of them.
 PAGE_ADDRESSES: list = [
     "http://www.w3.org/1998/Math/MathML",
     "http://www.w3.org/1999/xhtml",
@@ -82,9 +81,8 @@ PAGE_ADDRESSES: list = [
     "https://reactjs.org/docs/error-decoder.html?invariant=",
 ]
 
-# The chrome colours the chart's theme table holds, typed out here rather
-# than read from either side, so a re-valued theme cannot move both
-# together.
+# Typed out, not read from either side, so a re-valued theme cannot move
+# both together.
 CYBERPUNK_BG = "#0a0a0f"
 CYBERPUNK_ACCENT = "#00ffcc"
 NEON_BG = "#f5f5fa"

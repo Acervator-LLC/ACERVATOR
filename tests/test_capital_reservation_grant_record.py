@@ -80,10 +80,8 @@ from src.trading.scrumming_bot import ScrummingBot  # noqa: E402
 
 PIN = "bot.01.002.postcondition.capital_reservation"
 
-# The bot below wants $200 at $100 a unit. `_compute_reservation_qty`
-# adds the 10 % drift margin, so it needs 2.20 units.
-# `test_the_needed_quantity_is_what_this_file_says_it_is` is the
-# positive control for that number; nothing here hard-codes it blind.
+# $200 at $100 a unit plus the 10% drift margin `_compute_reservation_qty`
+# adds, which `test_the_needed_quantity_is_what_this_file_says_it_is` checks.
 TARGET_BALANCE = 200.0
 PRICE = 100.0
 NEEDED = 2.20
@@ -93,9 +91,8 @@ NEEDED = 2.20
 INSIDE_BAND = NEEDED * 1.005
 OUTSIDE_BAND = NEEDED * 1.05
 
-# Plenty of inventory, so the over-commit cap above the record leaves
-# `_qty` alone and `capped` stays False. A capped tick is a different
-# story and is not what this file is about.
+# Enough inventory that the over-commit cap leaves `_qty` alone and
+# `capped` stays False.
 HOLDINGS = 100.0
 
 
