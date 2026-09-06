@@ -86,6 +86,7 @@ PART_ATTRIBUTE = "data-panel-part"
 #: declares none and ``acervatorPanelHost.requestOf`` asks it with ``{}``.
 PANEL_REQUESTS: dict[str, dict[str, Any]] = {
     "market_inspector_tab": {"reset": True, "build": True},
+    "simulator_tab": {"reset": True, "panel": {"gate": True}, "nuclear": True},
     "trade_charts_tab": {"reset": True},
 }
 
