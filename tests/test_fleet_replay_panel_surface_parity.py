@@ -2489,9 +2489,25 @@ def picture_configs(name) -> list:
 
 
 def panel_painted_by_the_panel(name="empty"):
-    """The shipped panel, put into one case with no outward edge touched."""
+    """The shipped panel, put into one case with no outward edge touched.
+
+    ``ENV_VAR`` is held at ``QT`` across ``panel_class``, which is the side
+    ``FleetReplayPanelModel`` describes.
+    """
+    import os
+
+    from src._variant import ENV_VAR, QT
+
     app()
-    panel = panel_class()()
+    was = os.environ.get(ENV_VAR)
+    os.environ[ENV_VAR] = QT
+    try:
+        panel = panel_class()()
+    finally:
+        if was is None:
+            os.environ.pop(ENV_VAR, None)
+        else:
+            os.environ[ENV_VAR] = was
     configs = picture_configs(name)
     if configs:
         panel._configs = configs

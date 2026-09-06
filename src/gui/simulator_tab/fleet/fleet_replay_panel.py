@@ -129,8 +129,9 @@ if _HAS_QT:
             self._gate_host_kind = "panel"
             self._gate_panel = None
             try:
-                from .sim_visuals import GateStatusPanel as _gsp
+                from ...variant_surface import GATE_STATUS_PANEL, surface_class
 
+                _gsp = surface_class(GATE_STATUS_PANEL)
                 # Parented here. Built with no parent it is a top-level
                 # window, and enough leaked ones segfault Qt (exit 139).
                 self._gate_panel = _gsp(self)

@@ -465,6 +465,8 @@ NAMING_VALUES = {
     svs.ALIGN_MARKER,
     svs.TEXT,
     svs.ELLIPSE,
+    svs.FILL,
+    svs.DASH_LINE,
     svs.NO_PEN,
     "empty",
     "row",
