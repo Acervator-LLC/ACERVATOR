@@ -1069,9 +1069,11 @@
   }
 
   // The shell draws this strip by its module name; the host reads that name
-  // off the script tag running now, so it is written down nowhere.
+  // off the script tag running now, so it is written down nowhere. The strip
+  // is chrome, so it takes no tab and stays on screen for every tab.
   if (global.acervatorPanelHost) {
     global.acervatorPanelHost.register({
+      kind: global.acervatorPanelHost.chromeKind,
       render: renderStrip,
       load: loadHeader,
       loadError: loadError
