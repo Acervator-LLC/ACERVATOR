@@ -2,10 +2,6 @@
 
 Each hook in `dev_harness/hooks/` runs at the event below.
 
-## PostToolUse
-
-- `archetype_gate.py` on `Write|Edit`
-
 ## PreToolUse
 
 - `verify_release_gate.py` on `Write|Edit`
@@ -22,6 +18,16 @@ Each hook in `dev_harness/hooks/` runs at the event below.
 - `block_custom_test_run.py` on `Bash|PowerShell`
 - `block_coined_instrument.py` on `Agent|SendMessage|Write|NotebookEdit`
 - `block_alt_grounding.py` on `Agent|SendMessage`
+- `block_detour.py` on `Agent|SendMessage|Write|NotebookEdit`
+- `block_table_search.py` on `Bash|PowerShell|Grep|Glob`
+
+## PostToolUse
+
+- `archetype_gate.py` on `Write|Edit`
+
+## UserPromptSubmit
+
+- `prompt_router.py` on `(any)`
 
 ## Stop
 
@@ -29,7 +35,8 @@ Each hook in `dev_harness/hooks/` runs at the event below.
 - `block_long_reply.py` on `(any)`
 - `block_unanchored_claim.py` on `(any)`
 
-## UserPromptSubmit
+## Not registered
 
-- `prompt_router.py` on `(any)`
+These files sit in the directory and no event runs them.
 
+- `block_missing_skills.py`
