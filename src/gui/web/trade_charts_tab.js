@@ -199,6 +199,11 @@
   var BOT_ATTR = "data-bot";
   var INDEX_ATTR = "data-index";
   var SYMBOL_ATTR = "data-symbol";
+  var CHILD_ATTR = "data-child-module";
+
+  var SELECT_OPEN = "[";
+  var SELECT_IS = "=\"";
+  var SELECT_CLOSE = "\"]";
   var EXCHANGE_ATTR = "data-exchange";
   var FETCHED_ATTR = "data-last-fetch";
   var SYNTHETIC_ATTR = "data-synthetic";
@@ -1162,13 +1167,55 @@
     return target;
   }
 
+  function chartMounts(target) {
+    return target.querySelectorAll(
+      SELECT_OPEN + PART_ATTR + SELECT_IS + CHART_PART + SELECT_CLOSE
+    );
+  }
+
+  // Qt builds one ChartPanel inside each panel, so every chart slot asks
+  // native_chart.js for the chart of the symbol its panel was built with.
+  // The surface holds one chart at a time, so the slots are drawn in turn.
+  function renderChartMounts(target) {
+    var api = global.acervatorChart;
+    var mounts = chartMounts(target);
+    var reachable =
+      Boolean(global.acervator) && typeof global.acervator.call === "function";
+    if (!api || typeof api.renderChart !== "function" || !reachable) {
+      return Promise.resolve([]);
+    }
+    var drawn = [];
+    var chain = Promise.resolve();
+    Array.prototype.forEach.call(mounts, function (mount) {
+      var symbol = mount.getAttribute(SYMBOL_ATTR);
+      chain = chain
+        .then(function () {
+          return global.acervator.call(api.method, {
+            reset: true,
+            symbol: symbol,
+            timeframe: mount.getAttribute(CHART_TF_ATTR)
+          });
+        })
+        .then(function (model) {
+          mount.setAttribute(CHILD_ATTR, CHART_SLOT);
+          api.renderChart(mount, model);
+          drawn.push(symbol);
+        });
+    });
+    return chain.then(function () {
+      return drawn;
+    });
+  }
+
   function renderTab(target, model) {
     var payload = model;
     if (!isPlainObject(payload)) {
       payload = held === null ? null : held.model;
     }
     lastTarget = target;
-    return draw(target, element(Tab, { model: payload }));
+    var shown = draw(target, element(Tab, { model: payload }));
+    renderChartMounts(target);
+    return shown;
   }
 
   // The last target is drawn again after the surface answers a timeframe change.
@@ -1253,6 +1300,7 @@
     loadError: loadError,
     isLoaded: isLoaded,
     renderTab: renderTab,
+    renderChartMounts: renderChartMounts,
     forget: forget
   };
 })(window);

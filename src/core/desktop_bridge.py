@@ -351,6 +351,9 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
     }
     if live is not None:
         registry[history_surface.METHOD] = history_surface.bind_live(live)
+        registry[trade_charts_tab_surface.METHOD] = trade_charts_tab_surface.bind_live(
+            live
+        )
     return registry
 
 

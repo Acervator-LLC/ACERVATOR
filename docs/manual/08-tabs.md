@@ -2855,7 +2855,7 @@ tab row.
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | no |
 | `src/gui/history_qt_table.py` | no | - | no | no | no | no |
 | `src/gui/history_tab.py` | `history_tab.js` | yes | yes | yes | yes | yes |
-| `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | no | no |
+| `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | no | yes |
 | `src/gui/init_wizard.py` | `init_wizard.js` | yes | yes | yes | no | no |
 | `src/gui/instance_consent_dialog.py` | `instance_consent_dialog.js` | yes | no | yes | no | no |
 | `src/gui/journal_tab.py` | `journal_tab.js` | yes | yes | yes | no | no |
@@ -2883,7 +2883,7 @@ tab row.
 | `src/gui/main_window.py` | no | - | yes | no | no | no |
 | `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | no | yes |
 | `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | no | yes |
-| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | no | no |
+| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | no | yes |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | no |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | no |
 | `src/gui/react_history_tab.py` | no | - | no | no | no | no |
@@ -2916,7 +2916,7 @@ tab row.
 | `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | no | no |
 | `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | no |
 | `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | no | no |
-| `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | no | no |
+| `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | no | yes |
 | `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes |
 
 Totals across the 76 rows above, measured on 5 September 2026:
@@ -2927,7 +2927,7 @@ Uses React                53
 Bridge                    67
 Manifest                  54
 Registers in Electron      8
-RENDERS                   10
+RENDERS                   13
 ```
 
 Four columns are all but complete. The fifth is at one.
