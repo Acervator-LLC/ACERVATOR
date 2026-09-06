@@ -22,6 +22,8 @@ from src.exchange import history_read_contract as hrc
 
 METHOD = "history.view_model"
 
+SECTION = "history"
+
 
 def date_text(ts: int) -> str:
     """Render a filter bound as text. A bound of 0 or less is inactive."""
@@ -93,25 +95,66 @@ def build_view_model(
     }
 
 
-def view_model(params: dict) -> dict:
-    """Bridge handler for ``history.view_model``.
+def filters_from(params: dict) -> Any:
+    """Return the ``HistoryFilters`` a request asked for.
 
-    Reads ``trades``, ``page``, ``last_fetched_ts``, ``now_ts`` and
-    ``chrome`` from the request parameters. Filters arrive as the
-    contract's own field names; any the caller omits keep the value
-    ``history_read_contract.default_filters`` chose.
+    Filters arrive as the contract's own field names; any the caller omits
+    keep the value ``history_read_contract.default_filters`` chose.
     """
-    trades = params.get("trades") or []
     supplied = params.get("filters") or {}
     filters = hrc.default_filters(params.get("now_ts"))
     known = {k: supplied[k] for k in hrc.HistoryFilters().as_dict() if k in supplied}
     if known:
         filters = replace(filters, **known)
+    return filters
+
+
+def view_model(params: dict) -> dict:
+    """Bridge handler for ``history.view_model``.
+
+    Reads ``trades``, ``page``, ``last_fetched_ts``, ``now_ts`` and
+    ``chrome`` from the request parameters, and its filters from
+    ``filters_from``.
+    """
     return build_view_model(
-        trades,
-        filters,
+        params.get("trades") or [],
+        filters_from(params),
         page=int(params.get("page") or 0),
         last_fetched_ts=float(params.get("last_fetched_ts") or 0.0),
         now_ts=params.get("now_ts"),
         chrome=params.get("chrome"),
     )
+
+
+def live_view_model(params: dict, live: Any) -> dict:
+    """Build the History view model from ``live``, not from the request.
+
+    ``live.section(SECTION)`` carries the trades and the fetch time the
+    running History tab published, and ``live.bot_manager`` names each
+    row's bot; ``view_model`` answers while that section holds no trades.
+    """
+    published = live.section(SECTION)
+    if "trades" not in published:
+        return view_model(params)
+    return build_view_model(
+        published.get("trades") or [],
+        filters_from(params),
+        page=int(params.get("page") or 0),
+        bot_manager=getattr(live, "bot_manager", None),
+        last_fetched_ts=float(published.get("last_fetched_ts") or 0.0),
+        now_ts=params.get("now_ts"),
+        chrome=params.get("chrome"),
+    )
+
+
+def bind_live(live: Any) -> Any:
+    """Return a ``history.view_model`` handler reading ``live``.
+
+    ``src.core.desktop_bridge.build_registry`` calls this when the running
+    program serves the bridge, and the handler defers to ``live_view_model``.
+    """
+
+    def handler(params: dict) -> dict:
+        return live_view_model(params or {}, live)
+
+    return handler
