@@ -2581,6 +2581,18 @@ class SettingsDialogModel:
         self._record("cancel")
         self.rejected = True
 
+    def admit(self, name: str, value: Any) -> Any:
+        """Store ``value`` under ``name`` as that control admits it.
+
+        A ``list`` control keeps the lines it is given; every other kind
+        goes through ``_seed_control``.
+        """
+        if spec_for(name)["kind"] == LIST:
+            self.values[name] = list(value or [])
+        else:
+            self.values[name] = self._seed_control(name, value)
+        return self.values[name]
+
     def edit(self, name: str, value: Any) -> None:
         """One operator edit, admitted as the control admits it.
 
@@ -2588,7 +2600,7 @@ class SettingsDialogModel:
         and every action wired to that control then runs.
         """
         spec = spec_for(name)
-        self.values[name] = self._seed_control(name, value)
+        self.admit(name, value)
         self._record("edit", name)
         signal = signal_for(spec)
         if signal is None:
