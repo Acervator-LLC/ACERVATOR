@@ -17,8 +17,8 @@ class RetiredTabsMixin:
         ``main_window`` tests ``_analytics_tab``, ``_risk_tab``,
         ``_journal_tab`` and ``_alerts_tab`` before refreshing them.
         """
-        # No module named `paper_trader_tab` exists; `_paper_trader`
-        # never leaves None.
+        # `EmptyTabsMixin` builds the Paper Trader tab; `_paper_trader` is the
+        # retired widget and never leaves None.
         self._paper_trader = None
         self._paper_trader_stack = None
         self._paper_trader_crypto = None

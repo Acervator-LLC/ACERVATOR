@@ -1,8 +1,30 @@
 # System Status Tab
 
-Reference. The screen is not built. The tab row names seven screens and this is
-not one of them, and issue #34 carries the initial build-out. Both halves the
-operator's text describes run today, and this file is those two halves.
+Reference. The screen is not built. The tab row carries a skeleton, and issue
+#34 carries the build-out. Both halves the operator's text describes run today,
+and this file is those two halves.
+
+## The skeleton
+
+The tab exists and draws three lines: its name, one sentence saying it is not
+built, and the issue that owns it. It reads no emitter, no heartbeat and no
+post-mortem.
+
+`src/gui/main_tabs/system_status_tab_surface.py` — the whole empty state
+
+```python
+HEADING = "System Status"
+ISSUE = 34
+BUILT = False
+STATE_TEXT = "This tab is not built."
+ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
+```
+
+Two frontends draw that one view model. `EmptyTabsMixin` in
+`src/gui/main_tabs/empty_tabs.py` builds the Qt tab, and
+`src/gui/web/system_status_tab.js` registers a panel with the Electron shell's
+panel host. `src.core.desktop_bridge` serves the model under
+`system_status_tab.state`.
 
 ## Half one: the Emitter Network
 
