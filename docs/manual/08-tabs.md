@@ -472,6 +472,38 @@ The footer names the auto-refresh period and the adopt route. The status bar
 under it carries the API load pill, drawn green below half load, amber above
 it, and red past the monitor's safety percentage, then the `AI:` state label.
 
+React draws this screen. Both halves are one web page inside a single view,
+and the build decides which class the tab builder makes.
+`src/gui/main_tabs/market_inspector_tab.py` — `_build_market_inspector_tab`
+
+```python
+from ..variant_surface import MARKET_INSPECTOR, surface_class
+
+self._market_inspector = surface_class(MARKET_INSPECTOR)()
+```
+
+`MarketInspectorReactTab` subclasses the Qt tab, so the scan cycle, the
+filtering and the analyzer writes are the same code on both sides. Five
+accessors are what the two sides answer differently: `_set_status`,
+`_set_refresh_enabled`, `_shown_signals`, `_fill_signal_rows` and
+`_fill_pair_rows`. The Qt tab writes them into its widgets and the React tab
+writes them into the page.
+
+`src/gui/react_market_inspector_tab.py` — `MarketInspectorReactTab._build_ui`
+
+```python
+self._web = QWebEngineView(self)
+self._web_page = MarketInspectorPage(self)
+self._web.setPage(self._web_page)
+self._web.loadFinished.connect(self._on_load_finished)
+self._web.setHtml(tab_html())
+```
+
+Refresh and the Include active markets checkbox report their press back to
+Python, and the right pane reports Refresh proposals, Preview, Dismiss, Cancel
+and Adopt the same way. Setting `ACERVATOR_VARIANT` to `qt` builds the Qt
+widgets instead, unchanged.
+
 Detail: [08-tabs/market-inspector.md](08-tabs/market-inspector.md).
 
 ## Bot Swarm Tab
@@ -2849,8 +2881,8 @@ tab row.
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes |
 | `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | no |
 | `src/gui/main_window.py` | no | - | yes | no | no | no |
-| `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | no | no |
-| `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | no | no |
+| `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | no | yes |
+| `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | no | yes |
 | `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | no | no |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | no |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | no |
@@ -2890,11 +2922,12 @@ tab row.
 Totals across the 76 rows above, measured on 5 September 2026:
 
 ```
-React module              53
+React module              54
+Uses React                53
 Bridge                    67
 Manifest                  54
 Registers in Electron      8
-RENDERS                    8
+RENDERS                   10
 ```
 
 Four columns are all but complete. The fifth is at one.

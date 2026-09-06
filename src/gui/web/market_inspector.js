@@ -664,6 +664,7 @@
   var loadFault = null;
   var asked = null;
   var roots = [];
+  var hostTarget = null;
 
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -930,7 +931,10 @@
       type: BUTTON_TYPE,
       style: { flex: FLEX_NONE },
       title: label(model[REFRESH_TOOLTIP]),
-      disabled: model[REFRESH_ENABLED] !== true
+      disabled: model[REFRESH_ENABLED] !== true,
+      onClick: function () {
+        act(REFRESH_PART, true);
+      }
     };
     buttonProps[PART_ATTR] = REFRESH_PART;
     buttonProps[ARIA_LABEL] = label(model[REFRESH_LABEL]);
@@ -947,7 +951,9 @@
     var boxProps = {
       type: CHECKBOX_TYPE,
       checked: model[SHOW_ACTIVE_CHECKED] === true,
-      readOnly: true
+      onChange: function (event) {
+        act(SWITCH_BOX_PART, event.target.checked === true);
+      }
     };
     boxProps[PART_ATTR] = SWITCH_BOX_PART;
     boxProps[ARIA_LABEL] = label(model[SHOW_ACTIVE_LABEL]);
@@ -2041,6 +2047,27 @@
     return draw(target, element(Screen, { model: payloadOr(model) }));
   }
 
+  // act hands one control press to whatever host is holding the screen.
+  function act(key, value) {
+    return global.acervatorMarketInspectorAction(key, value);
+  }
+
+  function renderTab(target, model) {
+    hostTarget = target;
+    if (isPlainObject(model)) {
+      setScreen(model);
+    }
+    return renderScreen(target, null);
+  }
+
+  function setTab(model) {
+    var report = setScreen(model);
+    if (hostTarget !== null) {
+      renderScreen(hostTarget, null);
+    }
+    return report;
+  }
+
   function renderPerBot(target, model) {
     return draw(target, element(PerBotView, { model: payloadOr(model) }));
   }
@@ -2050,12 +2077,20 @@
     screenFaults = [];
     loadFault = null;
     asked = null;
+    hostTarget = null;
   }
+
+  // A Qt host replaces this; the default keeps a press from raising.
+  global.acervatorMarketInspectorAction = function () {
+    return null;
+  };
 
   global.acervatorSetMarketInspector = setScreen;
   global.acervatorLoadMarketInspector = loadScreen;
   global.acervatorMarketInspector = {
     method: METHOD,
+    renderTab: renderTab,
+    setTab: setTab,
     Screen: Screen,
     Split: Split,
     LeftPane: LeftPane,
