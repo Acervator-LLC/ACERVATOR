@@ -44,6 +44,7 @@ window.ACERVATOR_MODULES = [
   "fold_tranches_tab.js",
   "stack_tranches_tab.js",
   "phantom_bots_tab.js",
+  "main_window.js",
   "positions_held.js",
   "tradingview_chart.js",
   "crypto_news_ticker.js",
