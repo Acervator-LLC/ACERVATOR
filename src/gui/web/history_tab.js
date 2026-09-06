@@ -81,6 +81,9 @@
   var modelFaults = [];
   var loadFault = null;
   var asked = null;
+  var host = null;
+  var root = null;
+  var held = {};
 
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -178,6 +181,31 @@
     );
   }
 
+  function pad(value) {
+    return (value < 10 ? "0" : "") + value;
+  }
+
+  function stampOf(seconds) {
+    var when = new Date(Number(seconds) * 1000);
+    return (
+      when.getFullYear() +
+      "-" +
+      pad(when.getMonth() + 1) +
+      "-" +
+      pad(when.getDate()) +
+      "T" +
+      pad(when.getHours()) +
+      ":" +
+      pad(when.getMinutes())
+    );
+  }
+
+  function secondsOf(stamp) {
+    var when = new Date(stamp);
+    var epoch = when.getTime();
+    return epoch !== epoch ? 0 : Math.floor(epoch / 1000);
+  }
+
   function DateBound(props) {
     var bound = props.bound;
     return h(
@@ -186,10 +214,12 @@
       bound[LABEL],
       h("input", {
         id: "history-" + props.name,
-        type: "text",
-        readOnly: true,
+        type: "datetime-local",
         title: bound[TOOLTIP],
-        value: String(bound.seconds)
+        value: stampOf(bound.seconds),
+        onChange: function (event) {
+          props.onBound(props.name, secondsOf(event.target.value));
+        }
       })
     );
   }
@@ -217,8 +247,18 @@
       "fieldset",
       { className: FILTERS_CLASS },
       h("legend", null, props.state[FILTER_GROUP_TITLE]),
-      h(DateBound, { key: "from", name: "from", bound: objectField(filters, "from") }),
-      h(DateBound, { key: "to", name: "to", bound: objectField(filters, "to") }),
+      h(DateBound, {
+        key: "from",
+        name: "from",
+        bound: objectField(filters, "from"),
+        onBound: props.onBound
+      }),
+      h(DateBound, {
+        key: "to",
+        name: "to",
+        bound: objectField(filters, "to"),
+        onBound: props.onBound
+      }),
       listField(filters, COMBOS).map(function (combo) {
         return h(Combo, { key: combo[KEY], combo: combo, onFilter: props.onFilter });
       }),
@@ -279,6 +319,7 @@
         state: state,
         buttons: buttons,
         onFilter: props.onFilter,
+        onBound: props.onBound,
         onAct: props.onAct
       }),
       h(Summary, { state: state }),
@@ -317,7 +358,9 @@
       .call(METHOD, isPlainObject(params) ? params : {})
       .then(function (next) {
         loadFault = null;
-        setTab(next);
+        if (isPlainObject(next)) {
+          setTab(next);
+        }
         return next;
       })
       .catch(function (err) {
@@ -342,6 +385,7 @@
   function setTab(next) {
     model = next;
     checkDeclared(next);
+    draw();
     return model;
   }
 
@@ -354,46 +398,89 @@
     modelFaults = [];
     loadFault = null;
     asked = null;
+    host = null;
+    root = null;
+    held = {};
   }
 
-  function renderTab(node, params) {
-    if (h === null || model === null) {
+  // Refresh needs an exchange and Export needs a file dialog, so a host
+  // that can reach those answers them through acervatorHistoryTabHostAction.
+  function onAct(key) {
+    if (!bridgedAction(key)) {
+      if (typeof global.acervatorHistoryTabHostAction === "function") {
+        return global.acervatorHistoryTabHostAction(key);
+      }
       return null;
     }
     var pager = objectField(model, PAGER);
-    var held = isPlainObject(params) ? params : {};
-
-    function onAct(key) {
-      if (!bridgedAction(key)) {
-        return null;
-      }
-      var next = { page: pager[PAGE] };
-      if (key === "prev") {
-        next.page = pager[PAGE] - 1;
-      } else if (key === "next") {
-        next.page = pager[PAGE] + 1;
-      } else if (key === "reset") {
-        next.filters = {};
-        next.page = 0;
-      } else {
-        next.filters = held.filters || {};
-        next.page = 0;
-      }
-      next.trades = held.trades || [];
-      return call(next);
+    var next = { action: key, page: pager[PAGE] };
+    if (key === "prev") {
+      next.page = pager[PAGE] - 1;
+    } else if (key === "next") {
+      next.page = pager[PAGE] + 1;
+    } else if (key === "reset") {
+      next.filters = {};
+      next.page = 0;
+    } else {
+      next.filters = held.filters || {};
+      next.page = 0;
     }
+    next.trades = held.trades || [];
+    return call(next);
+  }
 
-    function onFilter(key, value) {
-      held.filters = held.filters || {};
-      held.filters[key] = value;
-      return onAct("apply");
+  function onFilter(key, value) {
+    held.filters = held.filters || {};
+    held.filters[key] = value;
+    return onAct("apply");
+  }
+
+  function onBound(name, seconds) {
+    held.filters = held.filters || {};
+    held.filters[name + "_ts"] = seconds;
+    return onAct("apply");
+  }
+
+  function draw() {
+    if (h === null || model === null || host === null) {
+      return null;
     }
-
-    var root = global.ReactDOM.createRoot(node);
-    root.render(h(Tab, { state: model, onFilter: onFilter, onAct: onAct }));
+    if (root === null) {
+      root = global.ReactDOM.createRoot(host);
+    }
+    // flushSync, as the panel does: the rows are pushed synchronously below,
+    // so a scheduled chrome render would trail them by one click.
+    global.ReactDOM.flushSync(function () {
+      root.render(
+        h(Tab, {
+          state: model,
+          onFilter: onFilter,
+          onBound: onBound,
+          onAct: onAct
+        })
+      );
+    });
     pushRows(model);
+    if (typeof global.acervatorHistoryTabDrawn === "function") {
+      global.acervatorHistoryTabDrawn();
+    }
     return root;
   }
+
+  function renderTab(node, params) {
+    host = node;
+    held = isPlainObject(params) ? params : {};
+    return draw();
+  }
+
+  // A Qt host replaces acervatorHistoryTabHostAction and acervatorHistoryTabDrawn.
+  global.acervatorHistoryTabHostAction = function () {
+    return null;
+  };
+
+  global.acervatorHistoryTabDrawn = function () {
+    return false;
+  };
 
   // The shell draws this tab by its module name; the host reads that name
   // off the script tag running now, so it is written down nowhere.
@@ -431,6 +518,8 @@
     setTab: setTab,
     loadTab: loadTab,
     renderTab: renderTab,
+    stampOf: stampOf,
+    secondsOf: secondsOf,
     pushRows: pushRows,
     state: function () {
       return model;

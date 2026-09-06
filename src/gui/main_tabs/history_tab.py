@@ -9,7 +9,10 @@ logger = logging.getLogger("acervator.gui")
 
 
 class HistoryTabMixin:
-    """``_build_history_tab`` adds the History tab and wires it to the Simulator."""
+    """``_build_history_tab`` adds the History tab and wires it to the Simulator.
+
+    ``variant_surface`` decides whether that tab is the Qt one or the React one.
+    """
 
     # MainWindow supplies _bot_manager and _main_tabs; annotations only, no attribute.
     _bot_manager: Any
@@ -18,9 +21,9 @@ class HistoryTabMixin:
     def _build_history_tab(self) -> None:
         """Add ``HistoryTab`` to ``_main_tabs`` and connect ``history_refreshed``."""
         try:
-            from ..history_tab import HistoryTab
+            from ..variant_surface import HISTORY, surface_class
 
-            self._history_tab = HistoryTab()
+            self._history_tab = surface_class(HISTORY)()
             self._history_tab.set_bot_manager(self._bot_manager)
             self._main_tabs.addTab(self._history_tab, "History")
             # MainWindow and ApiTesterTab read _trade_history_tab under this name.

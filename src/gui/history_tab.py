@@ -213,6 +213,118 @@ if _HAS_QT:
 
             outer.addLayout(foot)
 
+        # -- what the fetch, the filter and the render read and write ----
+        # A variant that draws this tab another way overrides these and
+        # inherits the fetch, filter, page and export behaviour unchanged.
+
+        def _since_ts(self) -> float:
+            """The From bound in unix seconds, or thirty days back."""
+            try:
+                return self._from_dt.dateTime().toSecsSinceEpoch()
+            except Exception as _from_exc:  # noqa: BLE001 - a torn-down date edit
+                logger.debug("history: From bound not readable: %s", _from_exc)
+                return time.time() - 30 * 86400
+
+        def _set_status(self, text: str) -> None:
+            """Write ``text`` into the line above the table."""
+            self._summary.setText(text)
+
+        def _set_fetching(self, fetching: bool) -> None:
+            """Show the busy bar and refuse Refresh while a fetch is in flight."""
+            self._fetch_in_flight = fetching
+            self._progress.setVisible(fetching)
+            self._refresh_btn.setEnabled(not fetching)
+
+        def _filter_options(self) -> dict:
+            """The exchange and symbol values the filter bar offers now."""
+            return {
+                "exchange": {
+                    self._exch_combo.itemText(i)
+                    for i in range(self._exch_combo.count())
+                }
+                - {"(all)"},
+                "symbol": {
+                    self._sym_combo.itemText(i) for i in range(self._sym_combo.count())
+                }
+                - {"(all)"},
+            }
+
+        def _set_filter_options(self, exchanges: list, symbols: list) -> None:
+            """Refill the two choice lists, keeping the current selection."""
+            for combo, values in (
+                (self._exch_combo, exchanges),
+                (self._sym_combo, symbols),
+            ):
+                chosen = combo.currentText()
+                combo.blockSignals(True)
+                combo.clear()
+                combo.addItem("(all)")
+                for value in values:
+                    combo.addItem(value)
+                index = combo.findText(chosen)
+                if index >= 0:
+                    combo.setCurrentIndex(index)
+                combo.blockSignals(False)
+
+        def _reset_filter_values(self) -> None:
+            """Return the five filters to the values the tab opens on."""
+            from PySide6.QtCore import QDate, QTime
+
+            self._from_dt.setDateTime(QDateTime(QDate(2026, 4, 1), QTime(0, 0, 0)))
+            self._to_dt.setDateTime(QDateTime.currentDateTime())
+            self._remember_to_bound()
+            self._exch_combo.setCurrentIndex(0)
+            self._sym_combo.setCurrentIndex(0)
+            self._side_combo.setCurrentIndex(0)
+
+        def _build_model(self) -> dict:
+            """The payload the table draws for the current page."""
+            from .react_history_panel import TABLE_ONLY_CHROME, build_view_model
+
+            return build_view_model(
+                self._all_trades,
+                self._current_filters(),
+                self._page,
+                self._bot_manager,
+                last_fetched_ts=self._last_fetched_ts,
+                filtered=self._filtered,
+                gate_index=self._page_gate_index,
+                voting_index=self._page_voting_index,
+                chrome=TABLE_ONLY_CHROME,
+            )
+
+        def _paint_chrome(self, total: int, max_page: int) -> None:
+            """Write the page counter, the two pager buttons and the summary."""
+            if total == 0:
+                self._page_label.setText("No matches")
+            else:
+                self._page_label.setText(
+                    f"Page {self._page + 1} / {max_page + 1} " f"({total} trades)"
+                )
+            self._prev_btn.setEnabled(self._page > 0)
+            self._next_btn.setEnabled(self._page < max_page)
+
+            if self._last_fetched_ts > 0:
+                age_s = int(time.time() - self._last_fetched_ts)
+                fetched_str = f"fetched {age_s}s ago"
+            else:
+                fetched_str = "no fetch yet"
+            total_loaded = len(self._all_trades)
+            buy_count = sum(1 for r in self._filtered if r.get("side") == "BUY")
+            sell_count = sum(1 for r in self._filtered if r.get("side") == "SELL")
+            buy_usd = sum(
+                r.get("cost", 0) for r in self._filtered if r.get("side") == "BUY"
+            )
+            sell_usd = sum(
+                r.get("cost", 0) for r in self._filtered if r.get("side") == "SELL"
+            )
+            self._set_status(
+                f"{total} of {total_loaded} trades shown · "
+                f"BUYs: {buy_count} (${buy_usd:,.2f}) · "
+                f"SELLs: {sell_count} (${sell_usd:,.2f}) · "
+                f"{fetched_str}"
+            )
+
         def _remember_to_bound(self) -> None:
             """Record the To value the tab itself wrote, read back off the
             widget so any precision Qt drops is recorded as stored."""
@@ -250,25 +362,19 @@ if _HAS_QT:
             if self._fetch_in_flight:
                 return
             if self._bot_manager is None:
-                self._summary.setText("Bot manager unavailable — cannot fetch history.")
+                self._set_status("Bot manager unavailable — cannot fetch history.")
                 return
-            try:
-                qdt = self._from_dt.dateTime()
-                since_ts = qdt.toSecsSinceEpoch()
-            except Exception:
-                since_ts = time.time() - 30 * 86400
+            since_ts = self._since_ts()
 
             loop = getattr(self._bot_manager, "_async_loop", None)
             if loop is None:
-                self._summary.setText(
+                self._set_status(
                     "Async loop not ready — try again after platform starts."
                 )
                 return
 
-            self._fetch_in_flight = True
-            self._progress.setVisible(True)
-            self._refresh_btn.setEnabled(False)
-            self._summary.setText("Fetching trade history from exchanges…")
+            self._set_fetching(True)
+            self._set_status("Fetching trade history from exchanges…")
 
             try:
                 from src.exchange.history_helpers import fetch_all_history_chunked
@@ -277,10 +383,8 @@ if _HAS_QT:
                     fetch_all_history_chunked(self._bot_manager, since_ts), loop
                 )
             except Exception as exc:
-                self._fetch_in_flight = False
-                self._progress.setVisible(False)
-                self._refresh_btn.setEnabled(True)
-                self._summary.setText(f"Schedule failed: {exc}")
+                self._set_fetching(False)
+                self._set_status(f"Schedule failed: {exc}")
                 return
 
             # Poll the future without blocking the GUI.
@@ -292,15 +396,11 @@ if _HAS_QT:
                 try:
                     if future.done():
                         poll_timer.stop()
-                        self._fetch_in_flight = False
-                        self._progress.setVisible(False)
-                        self._refresh_btn.setEnabled(True)
+                        self._set_fetching(False)
                         try:
                             result = future.result(timeout=0.1)
                         except Exception as rx:
-                            self._summary.setText(
-                                f"Fetch raised: {type(rx).__name__}: {rx}"
-                            )
+                            self._set_status(f"Fetch raised: {type(rx).__name__}: {rx}")
                             logger.warning("history fetch raised: %s", rx)
                             return
                         self._all_trades = list(result or [])
@@ -350,59 +450,30 @@ if _HAS_QT:
                         return
                     if time.monotonic() - start_ts > 60.0:
                         poll_timer.stop()
-                        self._fetch_in_flight = False
-                        self._progress.setVisible(False)
-                        self._refresh_btn.setEnabled(True)
-                        self._summary.setText(
+                        self._set_fetching(False)
+                        self._set_status(
                             "Fetch timeout (60s). Exchange may be rate-"
                             "limited; try again."
                         )
                 except Exception as exc:
                     poll_timer.stop()
-                    self._fetch_in_flight = False
-                    self._progress.setVisible(False)
-                    self._refresh_btn.setEnabled(True)
+                    self._set_fetching(False)
                     logger.warning("history poll exception: %s", exc)
 
             poll_timer.timeout.connect(_check)
             poll_timer.start()
 
         def _populate_filter_options(self) -> None:
-            """Refresh the exchange/symbol comboboxes from the loaded data."""
+            """Refresh the exchange and symbol choices from the loaded data."""
             _build_t0 = time.monotonic()
-            cur_exch = self._exch_combo.currentText()
-            self._exch_combo.blockSignals(True)
-            self._exch_combo.clear()
-            self._exch_combo.addItem("(all)")
-            for x in sorted(
-                {r["exchange"] for r in self._all_trades if r.get("exchange")}
-            ):
-                self._exch_combo.addItem(x)
-            idx = self._exch_combo.findText(cur_exch)
-            if idx >= 0:
-                self._exch_combo.setCurrentIndex(idx)
-            self._exch_combo.blockSignals(False)
-
-            cur_sym = self._sym_combo.currentText()
-            self._sym_combo.blockSignals(True)
-            self._sym_combo.clear()
-            self._sym_combo.addItem("(all)")
-            for s in sorted({r["symbol"] for r in self._all_trades if r.get("symbol")}):
-                self._sym_combo.addItem(s)
-            idx = self._sym_combo.findText(cur_sym)
-            if idx >= 0:
-                self._sym_combo.setCurrentIndex(idx)
-            self._sym_combo.blockSignals(False)
-            _build_s = time.monotonic() - _build_t0
-
             _want_exch = {r["exchange"] for r in self._all_trades if r.get("exchange")}
             _want_sym = {r["symbol"] for r in self._all_trades if r.get("symbol")}
-            _have_exch = {
-                self._exch_combo.itemText(i) for i in range(self._exch_combo.count())
-            } - {"(all)"}
-            _have_sym = {
-                self._sym_combo.itemText(i) for i in range(self._sym_combo.count())
-            } - {"(all)"}
+            self._set_filter_options(sorted(_want_exch), sorted(_want_sym))
+            _build_s = time.monotonic() - _build_t0
+
+            _offered = self._filter_options()
+            _have_exch = _offered["exchange"]
+            _have_sym = _offered["symbol"]
             _mismatched = len(_want_exch ^ _have_exch) + len(_want_sym ^ _have_sym)
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _hist_emit
@@ -435,13 +506,11 @@ if _HAS_QT:
                 self._kick_async_fetch()
                 return
             to_ts = self._to_bound_ts()
-            try:
-                from_ts = self._from_dt.dateTime().toSecsSinceEpoch()
-            except Exception:
-                from_ts = 0
-            exch_f = self._exch_combo.currentText()
-            sym_f = self._sym_combo.currentText()
-            side_f = self._side_combo.currentText()
+            chosen = self._current_filters()
+            from_ts = chosen.from_ts
+            exch_f = chosen.exchange
+            sym_f = chosen.symbol
+            side_f = chosen.side
 
             _filter_t0 = time.monotonic()
             out: list[dict] = []
@@ -460,12 +529,13 @@ if _HAS_QT:
                 out.append(r)
             self._filtered = out
             _filter_s = time.monotonic() - _filter_t0
-            # Read back from the widgets, not the loop locals, so a
+            # Read back from the controls, not the loop locals, so a
             # mis-wired predicate disagrees here.
-            _v_exch = self._exch_combo.currentText()
-            _v_sym = self._sym_combo.currentText()
-            _v_side = self._side_combo.currentText()
-            _v_to = int(self._to_dt.dateTime().toSecsSinceEpoch())
+            _verify = self._current_filters()
+            _v_exch = _verify.exchange
+            _v_sym = _verify.symbol
+            _v_side = _verify.side
+            _v_to = _verify.to_ts
             _violations = 0
             for _r in self._filtered:
                 _rts = float(_r.get("timestamp", 0) or 0)
@@ -501,14 +571,7 @@ if _HAS_QT:
             self._render_page()
 
         def _reset_filters(self) -> None:
-            from PySide6.QtCore import QDate, QTime
-
-            self._from_dt.setDateTime(QDateTime(QDate(2026, 4, 1), QTime(0, 0, 0)))
-            self._to_dt.setDateTime(QDateTime.currentDateTime())
-            self._remember_to_bound()
-            self._exch_combo.setCurrentIndex(0)
-            self._sym_combo.setCurrentIndex(0)
-            self._side_combo.setCurrentIndex(0)
+            self._reset_filter_values()
             self._apply_filters()
 
         def _current_filters(self):
@@ -529,8 +592,6 @@ if _HAS_QT:
             )
 
         def _render_page(self) -> None:
-            from .react_history_panel import TABLE_ONLY_CHROME, build_view_model
-
             total = len(self._filtered)
             max_page = max(0, (total - 1) // self.PAGE_SIZE)
             if self._page > max_page:
@@ -543,17 +604,7 @@ if _HAS_QT:
 
             self._build_joiner_indexes_for_page(rows)
 
-            model = build_view_model(
-                self._all_trades,
-                self._current_filters(),
-                self._page,
-                self._bot_manager,
-                last_fetched_ts=self._last_fetched_ts,
-                filtered=self._filtered,
-                gate_index=self._page_gate_index,
-                voting_index=self._page_voting_index,
-                chrome=TABLE_ONLY_CHROME,
-            )
+            model = self._build_model()
             self._table.set_model(model)
 
             # _want_rows recomputes the slice from total and the clamped page.
@@ -587,35 +638,7 @@ if _HAS_QT:
             if not self._table.row_count(_emit_drawn):
                 _emit_drawn(-1)
 
-            if total == 0:
-                self._page_label.setText("No matches")
-            else:
-                self._page_label.setText(
-                    f"Page {self._page + 1} / {max_page + 1} " f"({total} trades)"
-                )
-            self._prev_btn.setEnabled(self._page > 0)
-            self._next_btn.setEnabled(self._page < max_page)
-
-            if self._last_fetched_ts > 0:
-                age_s = int(time.time() - self._last_fetched_ts)
-                fetched_str = f"fetched {age_s}s ago"
-            else:
-                fetched_str = "no fetch yet"
-            total_loaded = len(self._all_trades)
-            buy_count = sum(1 for r in self._filtered if r.get("side") == "BUY")
-            sell_count = sum(1 for r in self._filtered if r.get("side") == "SELL")
-            buy_usd = sum(
-                r.get("cost", 0) for r in self._filtered if r.get("side") == "BUY"
-            )
-            sell_usd = sum(
-                r.get("cost", 0) for r in self._filtered if r.get("side") == "SELL"
-            )
-            self._summary.setText(
-                f"{total} of {total_loaded} trades shown · "
-                f"BUYs: {buy_count} (${buy_usd:,.2f}) · "
-                f"SELLs: {sell_count} (${sell_usd:,.2f}) · "
-                f"{fetched_str}"
-            )
+            self._paint_chrome(total, max_page)
 
         def _grade_row(self, row_i: int, page_rows: list, r: dict) -> str:
             """Return the A-to-F grade for one row, delegating to grade_row."""

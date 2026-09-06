@@ -1284,6 +1284,7 @@ HELPER_MAP = {
     "asset_dir": "asset_dir",
     "read_asset": "read_asset",
     "_palette": "palette",
+    "page_html": "page_html",
     "panel_html": "panel_html",
     "_date_text": "date_text",
     "build_view_model": "build_view_model",
@@ -1370,7 +1371,7 @@ def test_every_shipped_class_and_method_has_a_counterpart():
     assert len(MODEL_MEMBERS) == 10
     assert {target.split(".")[-1] for target in METHOD_MAP.values()} < MODEL_MEMBERS
     assert module_functions(shipped) == set(HELPER_MAP)
-    assert len(HELPER_MAP) == 7
+    assert len(HELPER_MAP) == 8
     for target in HELPER_MAP.values():
         assert callable(resolve(target)), target
     assert module_functions(surface) == set(HELPER_MAP.values()) | set(

@@ -97,8 +97,14 @@ def _palette(theme: str) -> dict:
     }
 
 
-def panel_html(theme: str = "cyberpunk_dark") -> str:
-    """The whole page as one string, with no network fetch.
+def page_html(
+    style_assets: tuple,
+    script_assets: tuple,
+    body: str,
+    theme: str = "cyberpunk_dark",
+    inline_scripts: tuple = (),
+) -> str:
+    """One page as a string: styles, ``body``, the assets, then ``inline_scripts``.
 
     ``parts`` is joined, never ``%``-formatted: the minified bundles named in
     ``ASSET_NAMES`` carry both ``%`` and braces.
@@ -108,19 +114,33 @@ def panel_html(theme: str = "cyberpunk_dark") -> str:
         "<!DOCTYPE html>",
         '<html><head><meta charset="utf-8">',
         "<style>",
-        read_asset(STYLE_ASSET),
-        ":root{",
-        overrides,
-        "}",
-        "</style></head><body>",
-        '<div id="root"></div>',
     ]
-    for name in ASSET_NAMES:
+    for name in style_assets:
+        parts.append(read_asset(name))
+    parts.extend(
+        [
+            ":root{",
+            overrides,
+            "}",
+            "</style></head><body>",
+            body,
+        ]
+    )
+    for name in script_assets:
         parts.append("<script>")
         parts.append(read_asset(name))
         parts.append("</script>")
+    for source in inline_scripts:
+        parts.append("<script>")
+        parts.append(source)
+        parts.append("</script>")
     parts.append("</body></html>")
     return "\n".join(parts)
+
+
+def panel_html(theme: str = "cyberpunk_dark") -> str:
+    """The whole page as one string, with no network fetch."""
+    return page_html((STYLE_ASSET,), ASSET_NAMES, '<div id="root"></div>', theme)
 
 
 def _date_text(ts: int) -> str:
