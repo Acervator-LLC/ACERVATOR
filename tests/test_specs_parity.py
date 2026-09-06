@@ -48,19 +48,25 @@ from pathlib import Path
 import pytest
 
 from src._variant import BAKED_FILENAME as VARIANT_BAKED_FILENAME
+from src._variant import QT, REACT, VARIANTS
 from src._version import BAKED_FILENAME, baked_path
 from tests.fixtures.spec_runner import run_spec
 from tools.build_variants import sanitise, windows_file_version
 from tools.spec_common import (
     COMMON_HIDDENIMPORTS,
+    DESKTOP_DIRNAME,
+    ELECTRON_RUNTIME,
     EXCLUDES,
     FALLBACK_VERSION,
     KEYRING_BACKENDS,
+    SHELL_FILES,
+    SHELL_RENDERER,
     bake_version_datas,
     build_graceful_datas,
     datas_candidates,
     hiddenimports_for,
     read_acervator_version,
+    shell_candidates,
 )
 
 REPO = Path(__file__).resolve().parent.parent
@@ -328,30 +334,70 @@ class TestVersionHelper:
 # The shared datas builder
 
 
-class TestGracefulDatas:
-    def test_src_ships_first(self):
-        assert datas_candidates("/root")[0][1] == "src"
+SHELL_DESTS = [
+    *[DESKTOP_DIRNAME for _ in SHELL_FILES],
+    Path(DESKTOP_DIRNAME, SHELL_RENDERER).as_posix(),
+    Path(DESKTOP_DIRNAME, ELECTRON_RUNTIME).as_posix(),
+]
 
-    def test_every_candidate_is_a_directory_this_repository_can_hold(self):
-        dests = [Path(dest).as_posix() for _, dest in datas_candidates("/root")]
-        assert dests == ["src", "resources", "data/historical"], (
-            f"datas_candidates offers {dests}; every entry must name a "
-            f"directory a build of this repository can actually produce"
+EVERY_BUILD_SHIPS = ["src", "resources", "data/historical"]
+
+
+class TestGracefulDatas:
+    @pytest.mark.parametrize("variant", VARIANTS)
+    def test_src_ships_first(self, variant):
+        assert datas_candidates("/root", variant)[0][1] == "src"
+
+    def test_the_qt_build_ships_only_the_three_directories(self):
+        dests = [Path(dest).as_posix() for _, dest in datas_candidates("/root", QT)]
+        assert dests == EVERY_BUILD_SHIPS, (
+            f"datas_candidates offers {dests} for the qt build; the shell is "
+            f"the react surface and must not ride in the qt bundle"
+        )
+
+    def test_the_react_build_ships_the_shell_after_the_three_directories(self):
+        dests = [Path(dest).as_posix() for _, dest in datas_candidates("/root", REACT)]
+        assert dests == EVERY_BUILD_SHIPS + SHELL_DESTS, (
+            f"datas_candidates offers {dests} for the react build; without "
+            f"{SHELL_DESTS} the bundle holds no page and no electron"
+        )
+
+    def test_the_shell_pairs_name_the_electron_executable_directory(self):
+        sources = [Path(source).as_posix() for source, _ in shell_candidates("/root")]
+        assert sources[-1].endswith("desktop/node_modules/electron/dist"), (
+            f"shell_candidates ends at {sources[-1]}; npm writes electron "
+            f"there and nothing else in the tree holds the runtime"
+        )
+        assert [Path(name).name for name in sources[: len(SHELL_FILES)]] == list(
+            SHELL_FILES
         )
 
     def test_absent_paths_are_skipped(self, tmp_path):
-        assert build_graceful_datas(str(tmp_path)) == []
+        assert build_graceful_datas(str(tmp_path), REACT) == []
 
     def test_a_present_path_is_kept(self, tmp_path):
         (tmp_path / "src").mkdir()
-        kept = build_graceful_datas(str(tmp_path))
+        kept = build_graceful_datas(str(tmp_path), QT)
         assert [dest for _, dest in kept] == ["src"]
+
+    def test_a_present_shell_file_is_kept(self, tmp_path):
+        """``build_graceful_datas`` read isdir once, which dropped every
+        ``SHELL_FILES`` entry silently."""
+        desktop = tmp_path / DESKTOP_DIRNAME
+        desktop.mkdir()
+        (desktop / SHELL_FILES[0]).write_text("//\n", encoding="utf-8")
+        kept = build_graceful_datas(str(tmp_path), REACT)
+        assert [dest for _, dest in kept] == [DESKTOP_DIRNAME], (
+            f"build_graceful_datas kept {kept}; a shell file is a file and "
+            f"the react bundle needs it"
+        )
+        assert build_graceful_datas(str(tmp_path), QT) == []
 
     def test_the_baked_version_is_a_separate_pair(self, tmp_path):
         """The bake must not ride inside build_graceful_datas: that builder
         answers [] for an empty tree, and a version file hidden in it would
         make the empty answer non-empty."""
-        assert build_graceful_datas(str(tmp_path)) == []
+        assert build_graceful_datas(str(tmp_path), REACT) == []
         pairs = bake_version_datas(str(tmp_path))
         assert [dest for _, dest in pairs] == ["src"]
         assert Path(pairs[0][0]).name == BAKED_FILENAME
@@ -492,4 +538,4 @@ class TestTheInstrumentCanFail:
         """`test_absent_paths_are_skipped` expects [], which is also what
         a broken builder returns. This is its positive control."""
         (tmp_path / "resources").mkdir()
-        assert build_graceful_datas(str(tmp_path)) != []
+        assert build_graceful_datas(str(tmp_path), QT) != []

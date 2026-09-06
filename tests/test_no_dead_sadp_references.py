@@ -154,11 +154,13 @@ def test_no_build_datas_pair_ships_a_dead_subsystem() -> None:
     `_hits` reads files; this drives the real builder, which no file scan
     covers: a dead path here reaches a build, not a document.
     """
+    from src._variant import VARIANTS
     from tools.spec_common import datas_candidates
 
     named = [
-        dest
-        for _, dest in datas_candidates("/root")
+        (variant, dest)
+        for variant in VARIANTS
+        for _, dest in datas_candidates("/root", variant)
         if any(dead.lower() in dest.lower() for dead in DEAD_NAMES)
     ]
     assert named == [], f"datas_candidates would ship {named}"
