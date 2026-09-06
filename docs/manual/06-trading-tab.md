@@ -328,6 +328,47 @@ function modelFor(exchangeId) {
 }
 ```
 
+**Functional.** The Extractor table underneath is drawn the same way, by
+`extractor_bot_table.js` into the second named space the exchange screen keeps.
+Its rows come from the same fleet list, kept to the records whose mode is
+extractor. The Detail button is the one control the Extractor table offers;
+Fire stays disabled on this screen, because Manual Fire is per position and
+lives in the Positions Held tab of the bot's own window.
+
+`src/gui/main_tabs/extractor_bot_table_surface.py` — `extractor_statuses`
+
+```python
+def extractor_statuses(statuses: Any) -> list:
+    """The records of ``statuses`` whose mode is ``MODE_TEXT``.
+
+    ``update_bots`` builds a row for every record it is handed, so only the
+    Extractor bots reach the Extractor table.
+    """
+    return [
+        found
+        for found in statuses or []
+        if isinstance(found, dict) and found.get("mode") == MODE_TEXT
+    ]
+```
+
+**Functional.** The exchange screen mounts both tables in one step, each into
+its own space and each asked for its own view model.
+
+`src/gui/web/exchange_tab.js` — `mountChildren`
+
+```javascript
+function mountChildren(target, model) {
+  return Promise.all([
+    mountScrumTable(target, model),
+    mountExtractorTable(target, model)
+  ]).then(function (drawn) {
+    return drawn.filter(function (name) {
+      return name !== null;
+    });
+  });
+}
+```
+
 #### The command bar
 
 **Functional.** Start, Pause, Stop, Restart and Delete all act on one bot. Two

@@ -1550,7 +1550,12 @@ SURFACE_FUNCTIONS = {
     "buttons",
     "row_values",
     "build_payload",
+    "pane_model_for",
+    "drive",
     "view_model",
+    "extractor_statuses",
+    "live_view_model",
+    "bind_live",
 }
 
 VALUE_MAP = {
@@ -1636,7 +1641,7 @@ def test_every_shipped_class_and_method_has_a_counterpart():
     assert {target.split(".")[-1] for target in METHOD_MAP.values()} < MODEL_MEMBERS
     assert module_functions(shipped) == set()
     assert module_functions(surface) == SURFACE_FUNCTIONS
-    assert len(SURFACE_FUNCTIONS) == 14
+    assert len(SURFACE_FUNCTIONS) == 19
 
 
 def test_the_method_counter_leaves_a_signal_out():
@@ -2096,6 +2101,15 @@ PAYLOAD_KEY_SOURCES = {
     "detail_path": ("model.detail_path",),
     "detail_calls": ("model.detail_calls",),
     "has_parent": ("model.parent",),
+    "exchange_id": ("model.exchange_id",),
+    "reset_param": ("RESET_PARAM",),
+    "action_param": ("ACTION_PARAM",),
+    "bot_statuses_param": ("BOT_STATUSES_PARAM",),
+    "bot_id_param": ("BOT_ID_PARAM",),
+    "exchange_id_param": ("EXCHANGE_ID_PARAM",),
+    "update_action": ("UPDATE_ACTION",),
+    "detail_action": ("DETAIL_ACTION",),
+    "select_action": ("SELECT_ACTION",),
     "calls": ("model.calls",),
 }
 
@@ -2127,7 +2141,7 @@ def test_no_snapshot_key_exists_that_no_value_backs():
     model._on_detail("bot-b")
     payload = surface.build_payload(model)
     assert set(payload) == set(PAYLOAD_KEY_SOURCES)
-    assert len(payload) == 77
+    assert len(payload) == 86
     for key, sources in PAYLOAD_KEY_SOURCES.items():
         for name in sources:
             if name.startswith("model."):
