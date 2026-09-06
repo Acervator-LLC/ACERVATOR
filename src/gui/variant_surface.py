@@ -3,7 +3,7 @@
 
 ``register`` records a screen's two loaders. ``surface_class`` returns the
 class the running variant selects and ``draws_react`` answers which side
-that is. ``HISTORY`` and ``BOT_SWARM`` each carry both.
+that is. ``HISTORY``, ``BOT_SWARM`` and ``CONSOLE`` each carry both.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from typing import Callable, Dict, Tuple
 from src._variant import QT, resolve_variant
 
 BOT_SWARM = "Bot Swarm"
+CONSOLE = "Console"
 HISTORY = "History"
 HISTORY_TABLE = "History table"
 MARKET_INSPECTOR = "Market Inspector"
@@ -95,6 +96,20 @@ def _react_bot_swarm() -> type:
     return BotSwarmReactTab
 
 
+def _qt_console() -> type:
+    """Import and return the Qt Console tab."""
+    from .qt_console_tab import ConsoleQtTab
+
+    return ConsoleQtTab
+
+
+def _react_console() -> type:
+    """Import and return the React Console tab."""
+    from .react_console_tab import ConsoleReactTab
+
+    return ConsoleReactTab
+
+
 def _qt_market_inspector() -> type:
     """Import and return the Qt Market Inspector tab."""
     from .market_inspector import MarketInspectorTab
@@ -140,6 +155,7 @@ def _react_sim_stat_strip() -> type:
 register(HISTORY, _qt_history, _react_history)
 register(HISTORY_TABLE, _qt_history_table, _react_history_table)
 register(BOT_SWARM, _qt_bot_swarm, _react_bot_swarm)
+register(CONSOLE, _qt_console, _react_console)
 register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)
 register(NUCLEAR_MODE, _qt_nuclear_mode, _react_nuclear_mode)
 register(SIM_STAT_STRIP, _qt_sim_stat_strip, _react_sim_stat_strip)

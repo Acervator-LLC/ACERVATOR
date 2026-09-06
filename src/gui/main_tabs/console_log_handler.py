@@ -54,7 +54,8 @@ class _QtLogHandler(logging.Handler):
     """Format each record and hand it to ``_QtLogRelay`` to paint.
 
     ``set_paused`` holds lines in ``_buffer`` up to ``_buffer_max``, and
-    ``buffered_count`` reports how many are held.
+    ``buffered_count`` reports how many are held. A ``painter`` takes the
+    line in place of ``_te``.
     """
 
     COLORS = {
@@ -66,9 +67,11 @@ class _QtLogHandler(logging.Handler):
     }
     HIGHLIGHT = QColor(ds.PRIMARY)  # Painted for messages holding "INDICATOR PANEL".
 
-    def __init__(self, text_edit):
+    def __init__(self, text_edit, painter: Callable[[str, int, int, int], None] = None):
+        """Paint into ``text_edit``, or into ``painter`` when one is given."""
         logging.Handler.__init__(self)
         self._te = text_edit
+        self._painter = painter
         self._paused = False
         self._buffer: list[tuple[str, int, int, int]] = []
         self._buffer_max = 5000
@@ -128,6 +131,9 @@ class _QtLogHandler(logging.Handler):
                     self._buffer_dropped += 1
                     return
                 self._buffer.append((msg, r, g, b))
+                return
+            if self._painter is not None:
+                self._painter(msg, r, g, b)
                 return
             color = QColor(r, g, b)
             cursor = self._te.textCursor()

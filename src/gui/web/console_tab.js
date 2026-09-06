@@ -128,6 +128,10 @@
   var BAR_CLASS = "acervator-console-bar";
   var PANE_CLASS = "acervator-console-pane";
   var BLOCK_CLASS = "acervator-console-block";
+  var BLOCK_COLORS = "block_colors";
+  var RGB_OPEN = "rgb(";
+  var COMMA = ",";
+  var CLOSE = ")";
 
   var TAB_PART = "tab";
   var CONTROL_BAR_PART = "control-bar";
@@ -154,6 +158,7 @@
   var READ_ONLY_ATTR = "data-read-only";
   var WRAP_ATTR = "data-wrap";
   var CENTER_ON_SCROLL_ATTR = "data-center-on-scroll";
+  var BLOCK_COLORS_ATTR = "data-block-colors";
   var MAX_BLOCKS_ATTR = "data-max-blocks";
   var DECLARED_BLOCKS_ATTR = "data-declared-blocks";
   var HELD_BLOCKS_ATTR = "data-held-blocks";
@@ -325,10 +330,14 @@
     return global.React.createElement.apply(null, arguments);
   }
 
+  // A block takes its own colour where the pane published one for it.
   function Block(props) {
     var blockProps = { className: BLOCK_CLASS };
     blockProps[PART_ATTR] = BLOCK_PART;
     blockProps[INDEX_ATTR] = String(props.at);
+    if (Array.isArray(props.channels) && props.channels.length) {
+      blockProps.style = { color: RGB_OPEN + props.channels.join(COMMA) + CLOSE };
+    }
     return element(DIV_TAG, blockProps, text(props.line));
   }
 
@@ -346,6 +355,7 @@
     paneProps[ARIA_READONLY] = text(pane[READ_ONLY]);
     paneProps[READ_ONLY_ATTR] = text(pane[READ_ONLY]);
     paneProps[WRAP_ATTR] = text(pane[WRAP]);
+    paneProps[BLOCK_COLORS_ATTR] = String(listField(pane, BLOCK_COLORS).length);
     paneProps[CENTER_ON_SCROLL_ATTR] = text(pane[CENTER_ON_SCROLL]);
     paneProps[MAX_BLOCKS_ATTR] = text(pane[MAX_BLOCKS]);
     paneProps[DECLARED_BLOCKS_ATTR] = text(pane[BLOCK_COUNT]);
@@ -360,7 +370,12 @@
       DIV_TAG,
       paneProps,
       lines.map(function (line, at) {
-        return element(Block, { key: String(at), at: at, line: line });
+        return element(Block, {
+          key: String(at),
+          at: at,
+          line: line,
+          channels: listField(pane, BLOCK_COLORS)[at]
+        });
       })
     );
   }

@@ -211,14 +211,15 @@ def log_record(fields: dict) -> logging.LogRecord:
 
 
 @pytest.fixture()
-def qt_console(qapp):
-    """The shipped Console tab, built by the mixin MainWindow uses.
+def qt_console(qapp, monkeypatch):
+    """The Qt Console tab, built by the mixin MainWindow uses.
 
-    The mixin attaches its handler to the root logger and starts two
-    timers, so both are put back before the next test runs.
+    ``ACERVATOR_VARIANT`` is set to ``qt`` for the build, and the handler
+    and the two timers the mixin starts are put back after.
     """
     widgets = qt_available()
     assert qapp is not None
+    monkeypatch.setenv("ACERVATOR_VARIANT", "qt")
     from src.gui.main_tabs.console_tab import ConsoleTabMixin
 
     class ConsoleTabWindow(ConsoleTabMixin, widgets.QWidget):
