@@ -9,6 +9,7 @@ from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
 
 from .. import design_system as ds
 from ..color_alpha import css_colours
+from . import main_window_surface
 
 METHOD = "header.strip"
 
@@ -40,7 +41,8 @@ TOP_ROW_ORDER = [
     "mode_button",
 ]
 
-ISOLATED_TABS = ("Simulator", "Paper Trader")
+#: The window's own tuple, so a tab renamed there renames here too.
+ISOLATED_TABS = main_window_surface.ISOLATED_TABS
 
 SPENDABLE_STYLE = (
     "SpendableProfitsWidget { "

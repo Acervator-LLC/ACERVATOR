@@ -114,20 +114,6 @@ More than anything else perhaps, the creation of Acervator represents an explici
 
 The highest goal is for Acervator to be a self-contained retirement platform that provides a powerful option for anyone seeking to take a direct, elegant, self-contained approach to their digital asset portfolio management. It aspires to be the lens, the manager, and the fiduciary while only requiring users to test it, suggest new features, and / or donate to its continued development. Regardless, this will be my last attempt to help humanity see past the wiggly chart illusions but, honestly, I do not think anything else will be required.
 
-If Acervator has helped you accumulate or you wish to support development directly (I am a one man show…), consider sending a tip to the inventor.
-
-USDT 0x6Eb5bc78f43b71F5f09B87ED54e7FF3bD8a3428B
-
-ETH 0x8b1022d836d19aA848Ebc9E09A6FC2921d9EB7d41
-
-BTC 3HutPgxaMTftWQY3KyRkC7Dckp6A1zdfdp0
-
-PayPalUSD 0x52D75aD65a98f98fA2d1D3675Bd5781ee547426D
-
-BTC 2 bc1qn3mkssem0k2tyhwl5yeea4hj222k8j9rr6ruff
-
-ETH 2 0x56d1Ee9F683d7535D2637F242a1A2B338aC5aC12
-
 LAST NOTE: This manual, like the software it discusses, is a work in progress and it will be updated on a regular basis as features are added and finalized..
 
 ## Product Manual Parts

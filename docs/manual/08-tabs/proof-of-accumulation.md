@@ -1,11 +1,11 @@
 # Proof of Accumulation
 
 Reference. **Not built.** The window builds neither the Competition tab nor the
-Local Testnet tab, and issue #147 carries the initial build-out.
-`src/competition/` is the Proof of Accumulation package, and its engine runs
-today with no screen in front of it. The rest of this file describes that
-engine and the contract design behind it, as a design, not as a shipped
-feature.
+Local Testnet tab. The tab row carries a Proof of Accumulation skeleton in
+their place, and issue #147 carries the build-out. `src/competition/` is the
+Proof of Accumulation package, and its engine runs today with no screen in
+front of it. The rest of this file describes that engine and the contract
+design behind it, as a design, not as a shipped feature.
 
 The design is an on-chain competition layer where bots compete publicly and the
 winners are awarded ACRV tokens on Base, which is Coinbase's L2. It evolved
@@ -16,6 +16,28 @@ tree, and at the end the bot submits only the Merkle root — a 32-byte hash tha
 commits to the whole trade history without revealing one trade of it. The
 strategy stays private, the proof is public, and the winner takes ACRV and an
 NFT trophy.
+
+## The skeleton
+
+The tab exists and draws three lines: its name, one sentence saying it is not
+built, and the issue that owns it. It reads no competition, no token balance
+and no trophy.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — the whole empty state
+
+```python
+HEADING = "Proof of Accumulation"
+ISSUE = 147
+BUILT = False
+STATE_TEXT = "This tab is not built."
+ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
+```
+
+Two frontends draw that one view model. `EmptyTabsMixin` in
+`src/gui/main_tabs/empty_tabs.py` builds the Qt tab, and
+`src/gui/web/proof_of_accumulation_tab.js` registers a panel with the Electron
+shell's panel host. `src.core.desktop_bridge` serves the model under
+`proof_of_accumulation_tab.state`.
 
 ## Identity
 

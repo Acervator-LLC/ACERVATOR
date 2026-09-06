@@ -115,10 +115,12 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         native_chart_surface,
         notification_spool_surface,
         nuclear_mode_panel_surface,
+        paper_trader_tab_surface,
         phantom_bots_tab_surface,
         positions_held_surface,
         preflight_check_surface,
         privacy_dot_surface,
+        proof_of_accumulation_tab_surface,
         pulse_manager_surface,
         qt_safe_events_surface,
         quick_routing_surface,
@@ -135,6 +137,7 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         start_all_progress_surface,
         status_log_surface,
         stock_main_window_surface,
+        system_status_tab_surface,
         table_cells_surface,
         testnet_tab_surface,
         theme_engine_surface,
@@ -202,6 +205,11 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
             market_inspector_topologies_surface.view_model
         ),
         native_chart_surface.METHOD: native_chart_surface.view_model,
+        paper_trader_tab_surface.METHOD: paper_trader_tab_surface.view_model,
+        proof_of_accumulation_tab_surface.METHOD: (
+            proof_of_accumulation_tab_surface.view_model
+        ),
+        system_status_tab_surface.METHOD: system_status_tab_surface.view_model,
         phantom_bots_tab_surface.METHOD: phantom_bots_tab_surface.view_model,
         positions_held_surface.METHOD: positions_held_surface.view_model,
         privacy_dot_surface.METHOD: privacy_dot_surface.view_model,

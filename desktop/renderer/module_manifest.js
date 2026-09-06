@@ -73,4 +73,7 @@ window.ACERVATOR_MODULES = [
   "init_wizard.js",
   "launcher.js",
   "history_tab.js",
+  "paper_trader_tab.js",
+  "proof_of_accumulation_tab.js",
+  "system_status_tab.js",
 ];
