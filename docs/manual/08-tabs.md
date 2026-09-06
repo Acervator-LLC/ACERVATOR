@@ -3131,6 +3131,33 @@ The two that register are the Console tab panel and the header strip. The full
 per-file record is in
 [docs/audits/2026-09-05_128_file_verification.md](../audits/2026-09-05_128_file_verification.md).
 
+### The tab bar the shell draws now
+
+The shell builds the same ten tabs the application builds, with the same labels
+and in the same order. It holds no list of its own. `main_window.state` reports
+`tab_labels` and `tab_methods`; the bar keeps one tab per label, filled by the
+registered panel that calls that label's bridge method.
+
+```
+Trading  Market Inspector  Bot Swarm  Asset Charts  History
+Simulator  Console  Paper Trader  System Status  Proof of Accumulation
+```
+
+A module that draws a screen inside a dialog registers no bridge method and
+takes no tab. `market_inspector_tab.js` and `bot_swarm_tab.js` are the two:
+both belong to the Live Bot Settings dialog.
+
+Measured in one Electron launch, with the backend serving a two-bot fleet:
+
+```
+tabs on the bar                     10
+panels that drew text               10
+panels that failed to draw           0
+child panels drawn inside a tab      7
+```
+
+The header strip stays above the bar for every tab.
+
 ### How to read the table
 
 Each row is a Qt module the running window builds. The columns are the steps of

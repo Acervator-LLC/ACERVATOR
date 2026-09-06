@@ -39,6 +39,11 @@
   var CHROME_ID = "chrome";
   var HISTORY_PANEL = "history_tab";
   var HISTORY_SECTION = "history";
+  var CONSOLE_PANEL = "console_tab";
+  var CONSOLE_METHOD = "console.tab";
+  var CLEAR_LOG = "clear_log_pane";
+  var TOGGLE_PAUSE = "toggle_console_pause";
+  var consolePaused = false;
 
   function hasBridge() {
     return Boolean(global.acervator) && typeof global.acervator.call === "function";
@@ -126,6 +131,31 @@
     );
   }
 
+  // The Qt Console tab hands a button press up to the main window. The shell
+  // is that host: Clear reaches `console.tab` and redraws the pane, and Pause
+  // reaches the window the pause state lives on.
+  function consoleAction(action) {
+    if (!hasBridge()) {
+      return Promise.resolve(null);
+    }
+    if (action === TOGGLE_PAUSE) {
+      consolePaused = !consolePaused;
+      return global.acervator
+        .call(WINDOW_METHOD, { console_pause: consolePaused })
+        .then(function (model) {
+          return (model || {}).console_paused;
+        });
+    }
+    return global.acervator
+      .call(CONSOLE_METHOD, { clear: action === CLEAR_LOG })
+      .then(function (model) {
+        var area = document.getElementById(PANELS_ID);
+        var host = global.acervatorPanelHost;
+        host.mount(CONSOLE_PANEL, host.hostFor(area, CONSOLE_PANEL), model);
+        return model;
+      });
+  }
+
   // The tab book `main_window.state` reports is the one the application
   // builds, so the shell's bar carries no order or label of its own.
   function applyAppTabs() {
@@ -181,6 +211,7 @@
   global.acervatorBuildChrome = buildChrome;
   global.acervatorBuildTabs = buildTabs;
   global.acervatorApplyAppTabs = applyAppTabs;
+  global.acervatorConsoleAction = consoleAction;
   global.acervatorFollowHistory = followHistory;
   global.acervatorJoinPushes = joinPushes;
   loadTokens();

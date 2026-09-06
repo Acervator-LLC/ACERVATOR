@@ -396,6 +396,9 @@
     buttonProps[FONT_FAMILY_ATTR] = text(button[FONT_FAMILY]);
     buttonProps[FONT_SIZE_ATTR] = text(button[FONT_SIZE_PX]);
     buttonProps[PADDING_ATTR] = text(button[PADDING_PX]);
+    buttonProps.onClick = function () {
+      global.acervatorConsoleAction(props.action);
+    };
     return element(BUTTON_TAG, buttonProps, text(button[TEXT]));
   }
 
@@ -1004,6 +1007,12 @@
       loadError: loadError
     });
   }
+
+  // The Qt tab hands a button press up to the main window rather than acting
+  // on it. A host replaces this; the default keeps a press from raising.
+  global.acervatorConsoleAction = function () {
+    return null;
+  };
 
   global.acervatorSetConsole = setConsole;
   global.acervatorLoadConsole = loadConsole;
