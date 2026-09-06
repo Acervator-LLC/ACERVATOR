@@ -26,6 +26,7 @@ if str(REPO_ROOT) not in sys.path:  # pragma: no cover
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from src._variant import ENV_VAR, QT
 from src.core import desktop_bridge
 from src.gui.main_tabs import empty_tabs
 from src.gui.main_tabs import paper_trader_tab_surface
@@ -514,9 +515,14 @@ def qt_words(panel: Any) -> dict:
 
 
 @pytest.fixture()
-def tabs(qapp):
-    """The Qt tab book, or a skip on a host without PySide6."""
+def tabs(qapp, monkeypatch):
+    """The Qt tab book, or a skip on a host without PySide6.
+
+    ``ENV_VAR`` is pinned to ``QT`` so the builders draw the Qt panels these
+    checks read; the React build draws the same words in a browser instead.
+    """
     pytest.importorskip("PySide6.QtWidgets")
+    monkeypatch.setenv(ENV_VAR, QT)
     return qt_tabs(qapp)
 
 
@@ -540,7 +546,7 @@ def test_the_qt_reader_reports_the_words_the_widget_was_given(qapp):
     assert qapp is not None
     model = payload_of(SKELETONS[0])
     model["heading"] = SENTINEL
-    assert qt_words(empty_tabs.empty_tab_widget(model))["heading"] == SENTINEL
+    assert qt_words(empty_tabs.EmptyTabQtPanel(model))["heading"] == SENTINEL
 
 
 @pytest.mark.slow
