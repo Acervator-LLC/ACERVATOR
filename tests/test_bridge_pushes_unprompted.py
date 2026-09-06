@@ -37,6 +37,7 @@ from src.exchange import history_surface  # noqa: E402
 from src.gui.main_tabs import bot_status_table_surface  # noqa: E402
 from src.gui.main_tabs import exchange_tab_surface  # noqa: E402
 from src.gui.main_tabs import extractor_bot_table_surface  # noqa: E402
+from src.gui.main_tabs import market_inspector_surface  # noqa: E402
 from src.gui.main_tabs import trade_charts_tab_surface  # noqa: E402
 from src.gui.main_tabs import trading_tab_surface  # noqa: E402
 
@@ -558,7 +559,7 @@ def test_a_second_publish_waits_for_the_first_one_to_offer_its_frame() -> None:
 
 
 def test_build_registry_with_no_argument_keeps_todays_table() -> None:
-    """``build_registry`` rebinds the six surfaces that read a
+    """``build_registry`` rebinds the seven surfaces that read a
     ``LiveSystem`` and names the same methods either way.
     """
     plain = build_registry()
@@ -576,10 +577,17 @@ def test_build_registry_with_no_argument_keeps_todays_table() -> None:
             exchange_tab_surface.METHOD,
             extractor_bot_table_surface.METHOD,
             history_surface.METHOD,
+            market_inspector_surface.METHOD,
             trade_charts_tab_surface.METHOD,
             trading_tab_surface.METHOD,
         ]
     ), rebound
+    for name in rebound:
+        assert plain[name].__name__ == "view_model", (
+            f"{name} answers {plain[name].__name__} with no LiveSystem, "
+            "so the no-argument table is not today's"
+        )
     assert plain[history_surface.METHOD] is history_surface.view_model
     assert plain[trade_charts_tab_surface.METHOD] is trade_charts_tab_surface.view_model
+    assert plain[market_inspector_surface.METHOD] is market_inspector_surface.view_model
     assert plain["bridge.ping"]({}) == {"protocol": PROTOCOL_VERSION}
