@@ -119,9 +119,13 @@ The highest goal is for Acervator to be a self-contained retirement platform tha
 If Acervator has helped you accumulate or you wish to support development directly (I am a one man show…), consider sending a tip to the inventor or supporting via Git Contribution or Patreon:
 
 USDT 0x6Eb5bc78f43b71F5f09B87ED54e7FF3bD8a3428B
+
 ETH 0x8b1022d836d19aA848Ebc9E09A6FC2921d9EB7d41
+
 BTC 3HutPgxaMTftWQY3KyRkC7Dckp6A1zdfdp0
+
 BTC 2 bc1qn3mkssem0k2tyhwl5yeea4hj222k8j9rr6ruff
+
 ETH 2 0x56d1Ee9F683d7535D2637F242a1A2B338aC5aC12
 
 Patreon: https://www.patreon.com/ekthelius
