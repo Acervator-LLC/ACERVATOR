@@ -2355,6 +2355,7 @@ def test_the_screen_is_reached_by_two_windows_and_the_surface_by_the_bridge():
     assert set(readers).isdisjoint(analyzer_readers), "two files share a name"
     assert modules_importing("src.gui.main_tabs.market_inspector_surface") == [
         str(REPO_ROOT / "src/core/desktop_bridge.py"),
+        str(REPO_ROOT / "src/gui/main_tabs/main_window_surface.py"),
         str(REPO_ROOT / "src/gui/react_market_inspector_tab.py"),
     ]
     known = modules_importing("src.gui.design_system")

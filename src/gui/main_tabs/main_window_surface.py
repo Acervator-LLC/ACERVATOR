@@ -41,9 +41,16 @@ import math
 from typing import Any, Optional
 
 from .. import design_system as ds
+from . import bot_visualizer_surface
+from . import console_tab_surface
+from . import history_tab_surface
+from . import market_inspector_surface
 from . import paper_trader_tab_surface
 from . import proof_of_accumulation_tab_surface
+from . import simulator_tab_surface
 from . import system_status_tab_surface
+from . import trade_charts_tab_surface
+from . import trading_tab_surface
 
 METHOD = "main_window.state"
 
@@ -147,6 +154,21 @@ CANONICAL_TAB_ORDER = (
     SYSTEM_STATUS_TAB,
     PROOF_OF_ACCUMULATION_TAB,
 )
+
+# The bridge method that serves each tab. A frontend with no tab book of its
+# own joins its panels to this window's tabs on the method each one calls.
+TAB_METHODS = {
+    TRADING_TAB: trading_tab_surface.METHOD,
+    MARKET_INSPECTOR_TAB: market_inspector_surface.METHOD,
+    BOT_SWARM_TAB: bot_visualizer_surface.METHOD,
+    ASSET_CHARTS_TAB: trade_charts_tab_surface.METHOD,
+    HISTORY_TAB: history_tab_surface.METHOD,
+    SIMULATOR_TAB: simulator_tab_surface.METHOD,
+    CONSOLE_TAB: console_tab_surface.METHOD,
+    PAPER_TRADER_TAB: paper_trader_tab_surface.METHOD,
+    SYSTEM_STATUS_TAB: system_status_tab_surface.METHOD,
+    PROOF_OF_ACCUMULATION_TAB: proof_of_accumulation_tab_surface.METHOD,
+}
 
 # The order `_setup_ui` runs the builders in, which is not the order the bar ends in.
 BUILT_TAB_ORDER = (
@@ -1271,6 +1293,7 @@ class MainWindowModel:
         self.minimum_size = (MINIMUM_WIDTH_PX, MINIMUM_HEIGHT_PX)
         self.menus: list = []
         self.tab_labels: list = []
+        self.tab_methods = dict(TAB_METHODS)
         self.tabs_movable = TABS_MOVABLE
         self.current_tab = ""
         self.header_strip_shown = True
@@ -1702,6 +1725,7 @@ class MainWindowModel:
             "minimum_size": list(self.minimum_size),
             "menus": self.menus,
             "tab_labels": list(self.tab_labels),
+            "tab_methods": dict(self.tab_methods),
             "tabs_movable": self.tabs_movable,
             "current_tab": self.current_tab,
             "header_strip_shown": self.header_strip_shown,

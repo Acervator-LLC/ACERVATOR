@@ -15,6 +15,11 @@
 // unprompted frames to `deliver`, which keeps the newest values of a section
 // one deep and redraws every panel following it. A panel that names no
 // section is never redrawn by a push.
+//
+// A registration may name the bridge `method` the panel calls. `methodOf`
+// answers it, and the tab bar matches it against the method the running
+// application serves each of its own tabs from. A screen naming no method
+// draws under no tab: that is how a module belonging to a dialog registers.
 
 "use strict";
 
@@ -29,6 +34,7 @@
   var UNNAMED = "(unnamed)";
   var panels = {};
   var kinds = {};
+  var methods = {};
   var recorded = [];
   var follows = {};
   var held = {};
@@ -193,6 +199,8 @@
     panels[name] = spec;
     dropFault(name);
     kinds[name] = declaredKind(name, spec);
+    methods[name] =
+      typeof spec.method === "string" && spec.method !== "" ? spec.method : null;
     follow(name, spec.section);
     return name;
   }
@@ -201,6 +209,12 @@
     return Object.prototype.hasOwnProperty.call(kinds, name)
       ? kinds[name]
       : SCREEN_KIND;
+  }
+
+  function methodOf(name) {
+    return Object.prototype.hasOwnProperty.call(methods, name)
+      ? methods[name]
+      : null;
   }
 
   function reasonFor(name) {
@@ -455,6 +469,7 @@
   function forget() {
     panels = {};
     kinds = {};
+    methods = {};
     recorded = [];
     follows = {};
     held = {};
@@ -473,6 +488,7 @@
     names: names,
     wanted: wanted,
     kindOf: kindOf,
+    methodOf: methodOf,
     screens: screens,
     chrome: chrome,
     reasonFor: reasonFor,

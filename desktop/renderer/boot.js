@@ -14,8 +14,10 @@
 // one host element each, and only when the bridge is there to answer.
 //
 // `tab_bar.js` puts one tab in `#tabs` for each screen and shows the
-// selected one on its own. `acervatorMountPanels` still draws them all
-// at once for a caller that wants the whole set.
+// selected one on its own. `applyAppTabs` then asks the backend which
+// tabs the application itself builds and narrows the bar to those, in the
+// application's order and under its labels. `acervatorMountPanels` still
+// draws them all at once for a caller that wants the whole set.
 //
 // A panel that registers as chrome takes no tab. It is drawn once into
 // `#chrome`, above the bar, and stays there whichever tab is selected.
@@ -29,6 +31,9 @@
 
 (function (global) {
   var METHOD = "history.view_model";
+  var WINDOW_METHOD = "main_window.state";
+  var TAB_LABELS = "tab_labels";
+  var TAB_METHODS = "tab_methods";
   var PANELS_ID = "panels";
   var TABS_ID = "tabs";
   var CHROME_ID = "chrome";
@@ -121,6 +126,32 @@
     );
   }
 
+  // The tab book `main_window.state` reports is the one the application
+  // builds, so the shell's bar carries no order or label of its own.
+  function applyAppTabs() {
+    if (!global.acervatorTabBar || !hasBridge()) {
+      return Promise.resolve([]);
+    }
+    return global.acervator
+      .call(WINDOW_METHOD, {})
+      .then(function (model) {
+        var held = model || {};
+        var drawn = global.acervatorTabBar.apply(
+          held[TAB_LABELS],
+          held[TAB_METHODS]
+        );
+        var absent = global.acervatorTabBar.unclaimed();
+        if (absent.length) {
+          showError("no panel draws " + absent.join(", "));
+        }
+        return drawn;
+      })
+      .catch(function (err) {
+        showError("the application's tab list never arrived: " + err.message);
+        return [];
+      });
+  }
+
   // `load` is History's redraw, so the rows follow the published section
   // whether or not the History tab is the one selected.
   function followHistory() {
@@ -149,6 +180,7 @@
   global.acervatorMountPanels = mountPanels;
   global.acervatorBuildChrome = buildChrome;
   global.acervatorBuildTabs = buildTabs;
+  global.acervatorApplyAppTabs = applyAppTabs;
   global.acervatorFollowHistory = followHistory;
   global.acervatorJoinPushes = joinPushes;
   loadTokens();
@@ -157,6 +189,7 @@
   if (hasBridge()) {
     buildChrome();
     buildTabs();
+    applyAppTabs();
     joinPushes();
   }
 })(window);

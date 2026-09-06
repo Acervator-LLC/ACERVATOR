@@ -1,8 +1,10 @@
 // The main window's own chrome: the tab bar, drawn by React.
 //
 // `label` derives a tab's text from its screen name -- a trailing `_tab` is
-// dropped and each word capitalised. `renderTabBar` draws one button per name
-// into a host element and marks the selected one with `data-selected`.
+// dropped and each word capitalised. A caller that knows the application's own
+// label for a name passes it in `labels`, and that text is drawn instead.
+// `renderTabBar` draws one button per name into a host element and marks the
+// selected one with `data-selected`.
 //
 // Both hosts of the bar draw through this module: the Electron shell reaches
 // it from `desktop/renderer/tab_bar.js`, and the Qt window reaches it from
@@ -77,6 +79,10 @@
     return element("button", made, props.text);
   }
 
+  function textFor(name, given) {
+    return given && typeof given[name] === "string" ? given[name] : label(name);
+  }
+
   function TabBar(props) {
     var made = [];
     for (var index = 0; index < props.names.length; index++) {
@@ -85,7 +91,7 @@
           key: props.names[index],
           at: index,
           name: props.names[index],
-          text: label(props.names[index]),
+          text: textFor(props.names[index], props.labels),
           selected: props.selected,
           onSelect: props.onSelect,
           onMove: props.onMove
@@ -123,6 +129,7 @@
       root.render(
         element(TabBar, {
           names: Array.isArray(model.names) ? model.names : [],
+          labels: model.labels,
           selected: model.selected,
           onSelect:
             typeof model.onSelect === FUNCTION_KIND ? model.onSelect : ignore,
