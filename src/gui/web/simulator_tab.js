@@ -265,6 +265,16 @@
     GATE_PANEL_MOUNT
   ];
 
+  var FLEET_MODULE = "fleet_replay_panel";
+  var NUCLEAR_MODULE = "nuclear_mode_panel";
+  var VISUALS_MODULE = "sim_visuals";
+
+  var CHILD_ATTR = "data-child-module";
+  var CHILD_FAULT_ATTR = "data-child-error";
+  var SELECT_OPEN = "[";
+  var SELECT_IS = '="';
+  var SELECT_CLOSE = '"]';
+
   var PART_ATTR = "data-part";
   var SLOT_ATTR = "data-slot";
   var KEY_ATTR = "data-key";
@@ -1743,12 +1753,89 @@
     return target;
   }
 
+  // Qt builds the fleet replay panel, Nuclear Mode and the gate pane inside
+  // this tab, so each mount asks its own module for a view model and draws it.
+  function childPanels() {
+    return [
+      {
+        slot: FLEET_REPLAY_MOUNT,
+        module: FLEET_MODULE,
+        api: global.acervatorFleetReplay,
+        draw: "renderPanel",
+        loader: global.acervatorLoadFleetReplay
+      },
+      {
+        slot: NUCLEAR_MOUNT,
+        module: NUCLEAR_MODULE,
+        api: global.acervatorNuclearPanel,
+        draw: "renderPanel",
+        loader: global.acervatorLoadNuclearPanel
+      },
+      {
+        slot: GATE_PANEL_MOUNT,
+        module: VISUALS_MODULE,
+        api: global.acervatorSimVisuals,
+        draw: "renderPane",
+        loader: global.acervatorLoadSimVisuals
+      }
+    ];
+  }
+
+  function drawChild(child, mount) {
+    var wait =
+      typeof child.loader === "function"
+        ? child.loader({})
+        : Promise.resolve(null);
+    return Promise.resolve(wait).then(
+      function (payload) {
+        mount.setAttribute(CHILD_ATTR, child.module);
+        child.api[child.draw](mount, payload);
+        return child.module;
+      },
+      function (err) {
+        mount.setAttribute(CHILD_FAULT_ATTR, String(err && err.message ? err.message : err));
+        return null;
+      }
+    );
+  }
+
+  function mountChildren(target) {
+    var reachable =
+      Boolean(global.acervator) && typeof global.acervator.call === "function";
+    if (!reachable) {
+      return Promise.resolve([]);
+    }
+    var asked = [];
+    childPanels().forEach(function (child) {
+      var mount = target.querySelector(
+        SELECT_OPEN + SLOT_ATTR + SELECT_IS + child.slot + SELECT_CLOSE
+      );
+      if (mount === null || !child.api || typeof child.api[child.draw] !== "function") {
+        return;
+      }
+      asked.push(drawChild(child, mount));
+    });
+    return Promise.all(asked).then(function (drawn) {
+      return drawn.filter(function (name) {
+        return name !== null;
+      });
+    });
+  }
+
   function renderTab(target, model) {
     var payload = model;
     if (!isPlainObject(payload)) {
       payload = held === null ? null : held.model;
     }
-    return draw(target, element(Tab, { model: payload }));
+    var shown = draw(target, element(Tab, { model: payload }));
+    mountChildren(target);
+    return shown;
+  }
+
+  // Qt hands this tab a fleet replay panel with its gate pane, and a Nuclear
+  // Mode panel. The shell supplies all three, so the tab opens wired for them.
+  function openingRequest() {
+    return { reset: true, panel: { gate: true }, nuclear: true };
   }
 
   function forget() {
@@ -1763,9 +1850,11 @@
   // off the script tag running now, so it is written down nowhere.
   if (global.acervatorPanelHost) {
     global.acervatorPanelHost.register({
+      method: METHOD,
       render: renderTab,
       load: loadSimulatorTab,
-      loadError: loadError
+      loadError: loadError,
+      request: openingRequest
     });
   }
 
@@ -1822,6 +1911,7 @@
     loadError: loadError,
     isLoaded: isLoaded,
     renderTab: renderTab,
+    mountChildren: mountChildren,
     forget: forget
   };
 })(window);
