@@ -3129,7 +3129,7 @@ the parts of the Main Window that sit outside the tab row.
 | `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | no |
 | `src/gui/buy_confirmation_dialog.py` | no | - | no | no | no | - | no |
 | `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no |
-| `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | no |
+| `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | yes |
 | `src/gui/history_qt_table.py` | no | - | no | no | no | - | no |
 | `src/gui/history_tab.py` | `history_tab.js` | yes | yes | yes | yes | yes | yes |
 | `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | no | yes | yes |
@@ -3205,7 +3205,7 @@ Bridge                   67
 Manifest                 55
 Registers in Electron    15
 Ships in the build       55
-RENDERS                  27
+RENDERS                  28
 ```
 
 Four columns are all but complete. The fifth is at one.

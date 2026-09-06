@@ -2634,6 +2634,7 @@ PAYLOAD_KEY_SOURCES = {
     "privacy_focus_policy": ("PRIVACY_FOCUS_POLICY",),
     "privacy_focusable": ("PRIVACY_FOCUSABLE",),
     "news_ticker_stretch": ("NEWS_TICKER_STRETCH",),
+    "news_ticker_module": ("NEWS_TICKER_MODULE",),
     "news_ticker_failed_log": ("NEWS_TICKER_FAILED_LOG",),
     "news_ticker_built": ("model.news_ticker",),
     "news_ticker_started": ("model.news_ticker_started",),

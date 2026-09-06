@@ -501,7 +501,16 @@
     if (!hasBridge()) {
       return null;
     }
-    return global.acervator.call(METHOD, copyOf(params));
+    // An answer that is not a payload is named and the strip keeps its story.
+    return global.acervator.call(METHOD, copyOf(params)).then(function (answer) {
+      if (!isPlainObject(answer)) {
+        tickerFaults = [fault(null, null, NOT_AN_OBJECT_FAULT, kindOf(answer))];
+        return answer;
+      }
+      setTicker(answer);
+      redraw();
+      return answer;
+    });
   }
 
   function request(field, value) {
@@ -1123,6 +1132,14 @@
     return draw(target, element(Ticker, { model: payload }));
   }
 
+  // Every host this module has drawn into, re-drawn from the held payload.
+  function redraw() {
+    roots.forEach(function (pair) {
+      draw(pair.node, element(Ticker, { model: heldModel() }));
+    });
+    return roots.length;
+  }
+
   // The exchange screen leaves one named slot, which mount finds and fills.
   function mount(root) {
     var target = root === undefined || root === null ? global.document : root;
@@ -1182,6 +1199,7 @@
     isLoaded: isLoaded,
     renderTicker: renderTicker,
     mount: mount,
+    redraw: redraw,
     forget: forget
   };
 })(window);

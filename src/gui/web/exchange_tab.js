@@ -25,6 +25,7 @@
   var HEADER_STRETCH = "header_stretch";
   var KIND = "kind";
   var NEWS_TICKER_BUILT = "news_ticker_built";
+  var NEWS_TICKER_MODULE_FIELD = "news_ticker_module";
   var NEWS_TICKER_STRETCH = "news_ticker_stretch";
   var NEW_BOT_PARAM = "new_bot_param";
   var PINS = "pins";
@@ -115,6 +116,7 @@
     "news_ticker_failed_log",
     "news_ticker_started",
     NEWS_TICKER_STRETCH,
+    NEWS_TICKER_MODULE_FIELD,
     "no_bot_id",
     "no_every",
     "no_hits",
@@ -320,6 +322,8 @@
   var EXTRACTOR_TABLE_MODULE = "extractor_bot_table";
   var EXTRACTOR_TABLE_API = "acervatorExtractorTable";
   var LOAD_EXTRACTOR_TABLE = "acervatorLoadExtractorTable";
+  var TICKER_API = "acervatorTicker";
+  var LOAD_TICKER = "acervatorLoadTicker";
   var CHILD_ATTR = "data-child-module";
 
   var PART_ATTR = "data-part";
@@ -1378,6 +1382,27 @@
     });
   }
 
+  // `crypto_news_ticker.js` draws the headline strip into the header space
+  // this screen keeps, which it finds by that space's own slot name.
+  function renderNewsTicker(target, moduleName) {
+    var api = global[TICKER_API];
+    var space = spaceNamed(target, NEWS_TICKER_PART);
+    if (!api || typeof api.mount !== "function" || space === null) {
+      return null;
+    }
+    space.setAttribute(CHILD_ATTR, moduleName);
+    return api.mount(target);
+  }
+
+  function mountNewsTicker(target, model) {
+    var named = text(paramNamed(model, NEWS_TICKER_MODULE_FIELD));
+    var loader = global[LOAD_TICKER];
+    var wait = typeof loader === "function" ? loader({}) : Promise.resolve(null);
+    return Promise.resolve(wait).then(function () {
+      return renderNewsTicker(target, named) === null ? null : named;
+    });
+  }
+
   function mountExtractorTable(target, model) {
     var loader = global[LOAD_EXTRACTOR_TABLE];
     var wait =
@@ -1396,7 +1421,8 @@
   function mountChildren(target, model) {
     return Promise.all([
       mountScrumTable(target, model),
-      mountExtractorTable(target, model)
+      mountExtractorTable(target, model),
+      mountNewsTicker(target, model)
     ]).then(function (drawn) {
       return drawn.filter(function (name) {
         return name !== null;
@@ -1464,8 +1490,10 @@
     renderTab: renderTab,
     renderScrumTable: renderScrumTable,
     renderExtractorTable: renderExtractorTable,
+    renderNewsTicker: renderNewsTicker,
     mountScrumTable: mountScrumTable,
     mountExtractorTable: mountExtractorTable,
+    mountNewsTicker: mountNewsTicker,
     mountChildren: mountChildren,
     askFor: askFor,
     exchangeOf: exchangeOf,

@@ -215,6 +215,15 @@ def ticker_payload() -> dict:
     )
 
 
+def no_ticker_payload() -> dict:
+    """The state a news strip that would not build leaves.
+
+    ``build_model`` with no ``news_ticker_factory`` is the fallback the
+    shipped screen takes when ``CryptoNewsTicker`` raises.
+    """
+    return encoded(ets.build_view_model(ets.build_model(statuses=BOTH_KINDS)))
+
+
 def token_payload() -> dict:
     return json.loads(json.dumps(dss.view_model({}), ensure_ascii=True))
 
@@ -1511,7 +1520,7 @@ def test_the_named_spaces_are_drawn_empty(browser: Browser):
 
 
 def test_the_news_strip_space_is_drawn_only_where_the_strip_built(browser: Browser):
-    plain = draw_tab(browser, state_payload("both"))
+    plain = draw_tab(browser, no_ticker_payload())
     assert at_path(plain, NEWS_TICKER) == []
     assert only(plain, HEADER_STRETCH)["style"]["flexGrow"] == "1"
     built = draw_tab(browser, ticker_payload())
