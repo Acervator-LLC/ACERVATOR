@@ -194,8 +194,8 @@ STATES = {
     "paths": ({"statuses": PATH_STATUSES},),
     "skipped": ({"statuses": MIXED_STATUSES},),
     "masked": ({"statuses": TWO_BOTS}, {"header_click": 0}),
-    "selected": ({"statuses": TWO_BOTS}, {"detail": "beta-two"}),
-    "fired": ({"statuses": TWO_BOTS}, {"fire": "alpha-one"}),
+    "selected": ({"statuses": TWO_BOTS}, {"detail_bot": "beta-two"}),
+    "fired": ({"statuses": TWO_BOTS}, {"fire_bot": "alpha-one"}),
     "charted": ({"statuses": TWO_BOTS}, {"cell_click": [0, bsts.SYMBOL_COLUMN]}),
 }
 STATE_NAMES = tuple(STATES)

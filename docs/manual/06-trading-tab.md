@@ -274,6 +274,60 @@ target_val = float(
 )
 ```
 
+**Functional.** In the React build the Scrumming Bots table is drawn by
+`bot_status_table.js`. The exchange screen keeps a named empty space for it and
+fills that space when it draws itself. The rows come from the backend, not from
+the exchange screen: the renderer asks the bridge for the table's own state and
+names the exchange it wants rows for. Each exchange gets its own table state, so
+two exchange screens on one page never share rows or a highlight.
+
+`src/gui/web/exchange_tab.js` — `mountScrumTable`
+
+```javascript
+function mountScrumTable(target, model) {
+  var loader = global[LOAD_BOT_TABLE];
+  var wait =
+    typeof loader === "function" ? loader(askFor(model)) : Promise.resolve(null);
+  return Promise.resolve(wait).then(function () {
+    return renderScrumTable(target, exchangeOf(model)) === null
+      ? null
+      : BOT_TABLE_MODULE;
+  });
+}
+```
+
+**Functional.** The four things the operator can press on the table each send
+one request and redraw from the answer. A column header toggles that column's
+privacy mask, a Symbol cell opens the chart address, Fire hands the bot to
+Manual Fire, and Detail selects the row and opens the bot. `on_detail` is the
+handler behind the Detail button.
+
+`src/gui/main_tabs/bot_status_table_surface.py` — `BotStatusTableModel.on_detail`
+
+```python
+def on_detail(self, bot_id: str) -> None:
+    """Select the row, then hand the bot to whatever opens the detail."""
+    self.select_row_for_bot(bot_id)
+    self.detail_clicks.append(bot_id)
+    self.calls.append([DETAIL_CLICKED, bot_id])
+    if self.on_bot_clicked:
+        self.on_bot_clicked(bot_id)
+```
+
+**Design intention.** The exchange screen redraws itself once a second to keep
+the data-pool line fresh. Each redraw re-fills the table space, so the table is
+drawn from the state the renderer holds for that exchange rather than from the
+answer captured at first paint. A row the operator selected therefore survives
+the next redraw.
+
+`src/gui/web/bot_status_table.js` — `modelFor`
+
+```javascript
+function modelFor(exchangeId) {
+  return owns(models, String(exchangeId)) ? models[String(exchangeId)] : null;
+}
+```
+
 #### The command bar
 
 **Functional.** Start, Pause, Stop, Restart and Delete all act on one bot. Two

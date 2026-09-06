@@ -27,6 +27,7 @@ from typing import Any, Dict, Optional
 
 from ...core.privacy_mask_registry import get_privacy_mask_registry
 from .. import design_system as ds
+from .bot_status_table_surface import EXCHANGE_ID_PARAM as SCRUM_TABLE_EXCHANGE_PARAM
 
 logger = logging.getLogger("acervator.gui")
 
@@ -927,6 +928,7 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "bus_topics": list(BUS_TOPICS),
         "actions": dict(ACTIONS),
         "reset_param": RESET_PARAM,
+        "scrum_table_exchange_param": SCRUM_TABLE_EXCHANGE_PARAM,
         "exchange_id_param": EXCHANGE_ID_PARAM,
         "exchange_name_param": EXCHANGE_NAME_PARAM,
         "statuses_param": STATUSES_PARAM,

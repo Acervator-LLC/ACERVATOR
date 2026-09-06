@@ -19,7 +19,7 @@ renderer reaches it. Nothing here imports Qt.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
 from ...exchange.exchange_chart_urls import chart_url
@@ -491,6 +491,7 @@ class BotStatusTableModel:
     def __init__(self, on_bot_clicked=None, on_fire_clicked=None) -> None:
         self.on_bot_clicked = on_bot_clicked
         self.on_fire_clicked = on_fire_clicked
+        self.exchange_id = ""
         self.bot_ids: list = []
         self.last_statuses: list = []
         self.rows: list = []
@@ -928,7 +929,46 @@ class BotStatusTableModel:
         return url
 
 
-PANE_MODEL = BotStatusTableModel()
+PANE_MODEL: Optional[BotStatusTableModel] = None
+
+PANE_MODELS: Dict[str, BotStatusTableModel] = {}
+
+
+def pane_model() -> BotStatusTableModel:
+    """The one ``BotStatusTableModel`` the bridge keeps between calls.
+
+    ``BotStatusTableModel`` is built on the first call and never at import,
+    since ``refresh_header_dots`` reads the privacy register.
+    """
+    global PANE_MODEL
+    if PANE_MODEL is None:
+        PANE_MODEL = BotStatusTableModel()
+    return PANE_MODEL
+
+
+RESET_PARAM = "reset"
+STATUSES_PARAM = "statuses"
+HEADER_CLICK_PARAM = "header_click"
+CELL_CLICK_PARAM = "cell_click"
+# The three request names below differ from the row keys ``fire``, ``detail``
+# and ``exchange_id`` the payload already carries.
+FIRE_PARAM = "fire_bot"
+DETAIL_PARAM = "detail_bot"
+EXCHANGE_ID_PARAM = "for_exchange"
+
+
+def pane_model_for(exchange_id: str) -> BotStatusTableModel:
+    """The table ``PANE_MODELS`` keeps for one exchange.
+
+    One ``BotStatusTableModel`` per exchange id, so two screens on the
+    same page do not share rows or a highlight.
+    """
+    held = PANE_MODELS.get(exchange_id)
+    if held is None:
+        held = BotStatusTableModel()
+        PANE_MODELS[exchange_id] = held
+    held.exchange_id = exchange_id
+    return held
 
 
 def build_model(statuses: Optional[list] = None) -> BotStatusTableModel:
@@ -1076,33 +1116,95 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "timer_delays_ms": list(TIMER_DELAYS_MS),
         "bus_topics": list(BUS_TOPICS),
         "actions": dict(ACTIONS),
+        "exchange_id": model.exchange_id,
+        "reset_param": RESET_PARAM,
+        "statuses_param": STATUSES_PARAM,
+        "exchange_id_param": EXCHANGE_ID_PARAM,
+        "header_click_param": HEADER_CLICK_PARAM,
+        "cell_click_param": CELL_CLICK_PARAM,
+        "fire_param": FIRE_PARAM,
+        "detail_param": DETAIL_PARAM,
         "logger_name": LOGGER_NAME,
         "skip_logger_name": SKIP_LOGGER_NAME,
         "calls": [list(call) for call in model.calls],
     }
 
 
+def drive(model: BotStatusTableModel, params: dict) -> dict:
+    """Apply one request to ``model``, reading each ``*_PARAM`` field.
+
+    ``view_model`` and ``live_view_model`` both run their request here.
+    """
+    statuses = params.get(STATUSES_PARAM)
+    if statuses is not None:
+        model.update_bots(statuses)
+    if params.get(HEADER_CLICK_PARAM) is not None:
+        model.on_header_clicked(params[HEADER_CLICK_PARAM])
+    if params.get(CELL_CLICK_PARAM) is not None:
+        row, column = params[CELL_CLICK_PARAM]
+        model.on_cell_clicked(row, column)
+    if params.get(FIRE_PARAM) is not None:
+        model.on_fire(params[FIRE_PARAM])
+    if params.get(DETAIL_PARAM) is not None:
+        model.on_detail(params[DETAIL_PARAM])
+    return build_view_model(model)
+
+
 def view_model(params: dict) -> dict:
     """Bridge handler for ``bot_status_table.state``.
 
-    Reads ``reset``, ``statuses``, ``header_click``, ``cell_click``,
-    ``fire`` and ``detail`` from the request parameters. The table keeps
+    Reads each request field a ``*_PARAM`` constant names. The table keeps
     its rows and its highlight between calls because the shipped table
-    does; ``reset`` is what a fresh paint sends.
+    does; ``RESET_PARAM`` is what a fresh paint sends.
     """
     global PANE_MODEL
-    if params.get("reset", False):
+    if params.get(RESET_PARAM, False):
         PANE_MODEL = BotStatusTableModel()
-    statuses = params.get("statuses")
-    if statuses is not None:
-        PANE_MODEL.update_bots(statuses)
-    if params.get("header_click") is not None:
-        PANE_MODEL.on_header_clicked(params["header_click"])
-    if params.get("cell_click") is not None:
-        row, column = params["cell_click"]
-        PANE_MODEL.on_cell_clicked(row, column)
-    if params.get("fire") is not None:
-        PANE_MODEL.on_fire(params["fire"])
-    if params.get("detail") is not None:
-        PANE_MODEL.on_detail(params["detail"])
-    return build_view_model(PANE_MODEL)
+    held = pane_model()
+    held.exchange_id = str(params.get(EXCHANGE_ID_PARAM) or "")
+    return drive(held, params)
+
+
+def scrumming_statuses(statuses: Any) -> list:
+    """The records of ``statuses`` whose mode is ``MODE_SCRUMMING``.
+
+    ``update_bots`` skips and logs any other mode, so the Scrumming table
+    is only ever handed the bots that belong in it.
+    """
+    return [
+        found
+        for found in statuses or []
+        if isinstance(found, dict) and found.get("mode") == MODE_SCRUMMING
+    ]
+
+
+def live_view_model(params: dict, live: Any) -> dict:
+    """Build the table ``EXCHANGE_ID_PARAM`` names from the running fleet.
+
+    ``live.bot_manager.list_bots_by_exchange`` names the bots, filtered to
+    ``MODE_SCRUMMING``; ``view_model`` answers while no manager is bound.
+    """
+    manager = getattr(live, "bot_manager", None)
+    if manager is None or not hasattr(manager, "list_bots_by_exchange"):
+        return view_model(params)
+    asked = dict(params or {})
+    exchange_id = str(asked.get(EXCHANGE_ID_PARAM) or "")
+    if asked.pop(RESET_PARAM, False):
+        PANE_MODELS.pop(exchange_id, None)
+    if asked.get(STATUSES_PARAM) is None:
+        asked[STATUSES_PARAM] = scrumming_statuses(
+            manager.list_bots_by_exchange(exchange_id)
+        )
+    return drive(pane_model_for(exchange_id), asked)
+
+
+def bind_live(live: Any) -> Any:
+    """Return a ``bot_status_table.state`` handler reading ``live``.
+
+    ``build_registry`` calls this when the running program serves the bridge.
+    """
+
+    def handler(params: dict) -> dict:
+        return live_view_model(params or {}, live)
+
+    return handler

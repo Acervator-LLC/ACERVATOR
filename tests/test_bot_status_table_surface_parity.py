@@ -1433,7 +1433,8 @@ def test_the_table_is_reached_by_the_window_and_the_surface_by_the_bridge():
         str(REPO_ROOT / "src/gui/widgets/exchange_tab.py"),
     ], readers
     assert modules_importing("bot_status_table_surface") == [
-        str(REPO_ROOT / "src/core/desktop_bridge.py")
+        str(REPO_ROOT / "src/core/desktop_bridge.py"),
+        str(REPO_ROOT / "src/gui/main_tabs/exchange_tab_surface.py"),
     ]
     known = modules_importing("design_system")
     assert len(known) > 5, known
@@ -2208,6 +2209,14 @@ PAYLOAD_KEY_SOURCES = {
     "timer_delays_ms": ("TIMER_DELAYS_MS",),
     "bus_topics": ("BUS_TOPICS",),
     "actions": ("ACTIONS",),
+    "exchange_id": ("model.exchange_id",),
+    "reset_param": ("RESET_PARAM",),
+    "statuses_param": ("STATUSES_PARAM",),
+    "exchange_id_param": ("EXCHANGE_ID_PARAM",),
+    "header_click_param": ("HEADER_CLICK_PARAM",),
+    "cell_click_param": ("CELL_CLICK_PARAM",),
+    "fire_param": ("FIRE_PARAM",),
+    "detail_param": ("DETAIL_PARAM",),
     "logger_name": ("LOGGER_NAME",),
     "skip_logger_name": ("SKIP_LOGGER_NAME",),
     "calls": ("model.calls",),

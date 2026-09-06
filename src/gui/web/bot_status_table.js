@@ -14,6 +14,7 @@
   var BOT_IDS = "bot_ids";
   var BUTTON_HEIGHT = "button_height";
   var CALLS = "calls";
+  var CELL_CLICK_PARAM = "cell_click_param";
   var COLUMN_COUNT = "column_count";
   var COLUMN_TOOLTIPS = "column_tooltips";
   var COLUMNS = "columns";
@@ -22,9 +23,16 @@
   var DETAIL_COLUMN = "detail_column";
   var DETAIL_LABEL = "detail_label";
   var DETAIL_STYLE = "detail_style";
+  var DETAIL_PARAM = "detail_param";
   var DETAIL_TOOLTIP = "detail_tooltip";
   var EMPTY_TEXT = "empty_text";
+  var EXCHANGE_ID = "exchange_id";
+  var EXCHANGE_ID_PARAM_FIELD = "exchange_id_param";
   var FIRE_COLUMN = "fire_column";
+  var FIRE_PARAM = "fire_param";
+  var HEADER_CLICK_PARAM = "header_click_param";
+  var RESET_PARAM_FIELD = "reset_param";
+  var STATUSES_PARAM_FIELD = "statuses_param";
   var FIRE_GLOWS = "fire_glows";
   var FIRE_LABEL = "fire_label";
   var FIRE_PATHS = "fire_paths";
@@ -60,6 +68,7 @@
     "browser_new_window",
     "bus_topics",
     "button_columns",
+    CELL_CLICK_PARAM,
     BUTTON_HEIGHT,
     CALLS,
     "ceiling_approach_format",
@@ -79,14 +88,18 @@
     DEFAULT_STATE_COLOR,
     "detail_clicks",
     DETAIL_COLUMN,
+    DETAIL_PARAM,
     DETAIL_LABEL,
     DETAIL_STYLE,
     DETAIL_TOOLTIP,
     "detonation_format",
     "edit_triggers",
     EMPTY_TEXT,
+    EXCHANGE_ID,
+    EXCHANGE_ID_PARAM_FIELD,
     "fire_clicks",
     FIRE_COLUMN,
+    FIRE_PARAM,
     FIRE_GLOWS,
     "fire_inactive_tooltip_format",
     FIRE_LABEL,
@@ -102,6 +115,7 @@
     GLOW_OFFSET,
     "glows",
     HAS_SELECTION,
+    HEADER_CLICK_PARAM,
     "header_resize_mode",
     "header_state_tip_format",
     "header_text_format",
@@ -131,6 +145,7 @@
     PRIVACY_FIELD_BY_COL,
     "quote_btc",
     "quote_eth",
+    RESET_PARAM_FIELD,
     "revealed_glyph",
     ROW_COUNT,
     ROWS,
@@ -146,6 +161,7 @@
     STATE_COLORS,
     "state_masked",
     "state_revealed",
+    STATUSES_PARAM_FIELD,
     STYLE_SHEET,
     "symbol_column",
     "symbol_separator",
@@ -235,6 +251,9 @@
 
   var NO_BRIDGE = "the preload bridge is not present";
 
+  // MODEL_KEY names the payload each drawn host keeps beside its React root.
+  var MODEL_KEY = "model";
+
   // QT_ONLY names the Qt paint function no stylesheet can run.
   var QT_ONLY = "qlineargradient";
 
@@ -265,6 +284,7 @@
   var BOT_ID_ATTR = "data-bot-id";
   var SKIPPED_ATTR = "data-skipped";
   var SELECTED_ATTR = "data-selected";
+  var EXCHANGE_ATTR = "data-exchange";
   var PATH_ATTR = "data-path";
   var GLOW_ATTR = "data-glow";
   var FIELD_ID_ATTR = "data-field-id";
@@ -300,6 +320,10 @@
   var loadFault = null;
   var asked = null;
   var roots = [];
+  var dispatched = [];
+  // One payload per exchange, so a re-mount redraws that screen's own rows
+  // rather than whichever exchange answered last.
+  var models = {};
 
   // -- reading a payload safely ----------------------------------------
 
@@ -481,6 +505,9 @@
     headProps[ARIA_LABEL] = label(header[TEXT]);
     if (isFilledText(header[FIELD_ID])) {
       headProps[ACTION_ATTR] = text(objectField(model, ACTIONS)[HEADER_CLICKED]);
+      headProps.onClick = function () {
+        sendHeaderClick(model, column);
+      };
     }
     return element(HEAD_CELL_TAG, headProps, text(header[TEXT]));
   }
@@ -502,7 +529,10 @@
       style: style,
       title: label(button[TOOLTIP]),
       type: BUTTON_TYPE,
-      disabled: !button[ENABLED]
+      disabled: !button[ENABLED],
+      onClick: function () {
+        sendFire(model, props.botId);
+      }
     };
     buttonProps[PART_ATTR] = FIRE_PART;
     buttonProps[PATH_ATTR] = text(button[PATH]);
@@ -526,7 +556,10 @@
       style: style,
       title: label(button[TOOLTIP]),
       type: BUTTON_TYPE,
-      disabled: !button[ENABLED]
+      disabled: !button[ENABLED],
+      onClick: function () {
+        sendDetail(model, props.botId);
+      }
     };
     buttonProps[PART_ATTR] = DETAIL_PART;
     buttonProps[BOT_ID_ATTR] = text(props.botId);
@@ -562,6 +595,9 @@
     cellProps[CHART_URL_ATTR] = text(found[CHART_URL]);
     if (isFilledText(found[CHART_URL])) {
       cellProps[ACTION_ATTR] = text(objectField(model, ACTIONS)[CELL_CLICKED]);
+      cellProps.onClick = function () {
+        sendCellClick(model, props.at, column);
+      };
     }
     if (props.children !== undefined) {
       return element(CELL_TAG, cellProps, props.children);
@@ -592,6 +628,7 @@
         model: model,
         cell: cells[column],
         column: column,
+        at: at,
         children: buttonAt(model, row, column, botId)
       });
     });
@@ -623,6 +660,7 @@
       style: styleOf(model[STYLE_SHEET])
     };
     tableProps[PART_ATTR] = TABLE_PART;
+    tableProps[EXCHANGE_ATTR] = text(model[EXCHANGE_ID]);
     tableProps[ARIA_LABEL] = label(model[ACCESSIBLE_NAME]);
     tableProps[DECLARED_ROWS_ATTR] = text(model[ROW_COUNT]);
     tableProps[HELD_ROWS_ATTR] = String(rows.length);
@@ -877,6 +915,9 @@
       return { declared: null, held: null, faults: tableFaults.slice() };
     }
     held = { model: model };
+    if (isFilledText(model[EXCHANGE_ID])) {
+      models[model[EXCHANGE_ID]] = model;
+    }
     tableFaults = [];
     checkFields(model);
     checkHeaders(model);
@@ -885,28 +926,130 @@
     return report();
   }
 
-  // loadTable asks METHOD once, clearing asked so a refusal retries.
+  // loadTable asks METHOD once per distinct request, clearing asked so a
+  // refusal retries and so a second screen is not answered with the first
+  // screen's rows.
   function loadTable(params) {
-    if (asked !== null) {
-      return asked;
+    var wanted = isPlainObject(params) ? params : {};
+    var key = JSON.stringify(wanted);
+    if (asked !== null && asked.key === key) {
+      return asked.wait;
     }
     if (!global.acervator || typeof global.acervator.call !== "function") {
       loadFault = NO_BRIDGE;
       return Promise.resolve(null);
     }
-    asked = global.acervator
-      .call(METHOD, isPlainObject(params) ? params : {})
-      .then(function (model) {
-        loadFault = null;
-        setTable(model);
-        return model;
-      })
-      .catch(function (err) {
-        loadFault = err.message;
-        asked = null;
-        return null;
+    asked = {
+      key: key,
+      wait: global.acervator
+        .call(METHOD, wanted)
+        .then(function (model) {
+          loadFault = null;
+          setTable(model);
+          return model;
+        })
+        .catch(function (err) {
+          loadFault = err.message;
+          asked = null;
+          return null;
+        })
+    };
+    return asked.wait;
+  }
+
+  // -- driving the table's own controls --------------------------------
+
+  function heldModel() {
+    return held === null ? {} : held.model;
+  }
+
+  function actionNamed(model, name) {
+    return objectField(model, ACTIONS)[name];
+  }
+
+  // One request, keyed by the name the surface publishes for that field
+  // and naming the exchange the clicked screen was drawn for.
+  function request(model, field, value) {
+    var params = {};
+    params[String(model[field])] = value;
+    params[String(model[EXCHANGE_ID_PARAM_FIELD])] = text(model[EXCHANGE_ID]);
+    return params;
+  }
+
+  // The answer replaces only the screens drawn for that same exchange, so
+  // a click on one exchange's table leaves another exchange's rows alone.
+  function dispatch(model, name, params) {
+    var exchange = text(model[EXCHANGE_ID]);
+    dispatched.push({ action: name, params: params, exchange: exchange });
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      return null;
+    }
+    return global.acervator.call(METHOD, params).then(function (answer) {
+      setTable(answer);
+      roots.forEach(function (pair) {
+        if (text(objectField(pair, MODEL_KEY)[EXCHANGE_ID]) === exchange) {
+          pair.model = answer;
+          draw(pair.node, element(Table, { model: answer }));
+        }
       });
-    return asked;
+      return answer;
+    });
+  }
+
+  function sendHeaderClick(model, column) {
+    return dispatch(
+      model,
+      actionNamed(model, HEADER_CLICKED),
+      request(model, HEADER_CLICK_PARAM, column)
+    );
+  }
+
+  function sendCellClick(model, row, column) {
+    return dispatch(
+      model,
+      actionNamed(model, CELL_CLICKED),
+      request(model, CELL_CLICK_PARAM, [row, column])
+    );
+  }
+
+  function sendFire(model, botId) {
+    return dispatch(
+      model,
+      actionNamed(model, FIRE_CLICKED),
+      request(model, FIRE_PARAM, botId)
+    );
+  }
+
+  function sendDetail(model, botId) {
+    return dispatch(
+      model,
+      actionNamed(model, DETAIL_CLICKED),
+      request(model, DETAIL_PARAM, botId)
+    );
+  }
+
+  function sent() {
+    return dispatched.slice();
+  }
+
+  // The payload this module holds for one exchange, or null for none.
+  function modelFor(exchangeId) {
+    return owns(models, String(exchangeId)) ? models[String(exchangeId)] : null;
+  }
+
+  // The exchange each host this module has drawn into is holding rows for.
+  function drawnExchanges() {
+    return roots.map(function (pair) {
+      return text(objectField(pair, MODEL_KEY)[EXCHANGE_ID]);
+    });
+  }
+
+  // Every host this module has drawn into, re-drawn from its own model.
+  function redraw() {
+    roots.forEach(function (pair) {
+      draw(pair.node, element(Table, { model: objectField(pair, MODEL_KEY) }));
+    });
+    return roots.length;
   }
 
   // -- reading the held payload ----------------------------------------------------------
@@ -1117,7 +1260,13 @@
     if (!isPlainObject(drawn)) {
       drawn = held === null ? null : held.model;
     }
-    return draw(target, element(Table, { model: drawn }));
+    var host = draw(target, element(Table, { model: drawn }));
+    roots.forEach(function (pair) {
+      if (pair.node === target) {
+        pair.model = drawn;
+      }
+    });
+    return host;
   }
 
   function forget() {
@@ -1125,6 +1274,8 @@
     tableFaults = [];
     loadFault = null;
     asked = null;
+    dispatched = [];
+    models = {};
   }
 
   global.acervatorSetBotTable = setTable;
@@ -1173,6 +1324,14 @@
     loadError: loadError,
     isLoaded: isLoaded,
     renderTable: renderTable,
+    redraw: redraw,
+    modelFor: modelFor,
+    drawnExchanges: drawnExchanges,
+    sendHeaderClick: sendHeaderClick,
+    sendCellClick: sendCellClick,
+    sendFire: sendFire,
+    sendDetail: sendDetail,
+    sent: sent,
     forget: forget
   };
 })(window);

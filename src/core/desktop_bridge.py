@@ -358,6 +358,9 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         )
         registry[trading_tab_surface.METHOD] = trading_tab_surface.bind_live(live)
         registry[exchange_tab_surface.METHOD] = exchange_tab_surface.bind_live(live)
+        registry[bot_status_table_surface.METHOD] = bot_status_table_surface.bind_live(
+            live
+        )
     return registry
 
 

@@ -2705,6 +2705,7 @@ PAYLOAD_KEY_SOURCES = {
     "bus_topics": ("BUS_TOPICS",),
     "actions": ("ACTIONS",),
     "reset_param": ("RESET_PARAM",),
+    "scrum_table_exchange_param": ("SCRUM_TABLE_EXCHANGE_PARAM",),
     "exchange_id_param": ("EXCHANGE_ID_PARAM",),
     "exchange_name_param": ("EXCHANGE_NAME_PARAM",),
     "statuses_param": ("STATUSES_PARAM",),
