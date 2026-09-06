@@ -35,9 +35,32 @@ product lines   +14,872   -6,134
 fail-edit-rerun loop, and it is where the hours went. Fourteen commits reached
 the Electron shell, which was the item.
 
-## The canon
+## Canon means a named, imported, third-party tool
 
-A test belongs to exactly one archetype, by type. Run it through that archetype
+**Call every tool by its official name.** `pdb`. `debugpy`. `ruff`. `mypy`.
+`pyright`. `bandit`. `vulture`. `semgrep`. `black`. `flake8`. `vale`.
+`proselint`. Each is maintained by someone other than this project, documented
+publicly, and answerable to its own release notes.
+
+**A coined label is not a tool.** "the canon tool", "the canonical check", "the
+parity harness", "the collector" — every one of those names something written
+here and dressed as standard. If you cannot name the package and the command,
+it is not canon and it does not run.
+
+```
+✅  python -m pdb -c continue main.py
+✅  python -m debugpy --listen 5678 main.py
+✅  python -m ruff check src/gui/history_tab.py
+❌  "run the canon tool"
+❌  "the canonical check over every row"
+```
+
+The archetypes are wrappers that call those tools and report their findings.
+**Name the tool the finding came from**, not just the wrapper.
+
+## The archetypes
+
+A file belongs to exactly one archetype, by type. Run it through that archetype
 and no other path.
 
 | type | owner | command |

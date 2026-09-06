@@ -12,6 +12,7 @@ import sys
 
 TEST_PATH = re.compile(r"(^|[\\/])tests?[\\/]", re.IGNORECASE)
 HARNESS = re.compile(r"harness_fixtures[\\/]", re.IGNORECASE)
+CODE = re.compile(r"\.(?:py|ipynb)$", re.IGNORECASE)
 WRITERS = {"Write", "NotebookEdit"}
 
 
@@ -24,6 +25,8 @@ def is_new_test(payload):
     if not isinstance(raw, str) or not raw:
         return False
     if not TEST_PATH.search(raw) or HARNESS.search(raw):
+        return False
+    if not CODE.search(raw):
         return False
     return not pathlib.Path(raw).exists()
 

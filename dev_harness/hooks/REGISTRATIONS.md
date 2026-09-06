@@ -20,11 +20,14 @@ Each hook in `dev_harness/hooks/` runs at the event below.
 - `block_narrowed_bar.py` on `Agent|SendMessage`
 - `block_subsystem_anchor.py` on `Agent|SendMessage`
 - `block_custom_test_run.py` on `Bash|PowerShell`
+- `block_coined_instrument.py` on `Agent|SendMessage|Write|NotebookEdit`
+- `block_alt_grounding.py` on `Agent|SendMessage`
 
 ## Stop
 
 - `session_stop_backstop.py` on `*`
 - `block_long_reply.py` on `(any)`
+- `block_unanchored_claim.py` on `(any)`
 
 ## UserPromptSubmit
 

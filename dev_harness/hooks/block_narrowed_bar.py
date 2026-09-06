@@ -45,8 +45,17 @@ def brief_of(payload):
     return "\n".join(part for part in parts if isinstance(part, str))
 
 
+COMMISSIONING = re.compile(
+    r"##\s*YOUR UNIT\b|\bwhat this unit delivers\b|\byour boundary\b"
+    r"|\byou (?:will )?build\b|\bthe deliverable is\b",
+    re.IGNORECASE,
+)
+
+
 def missing(text):
     """Returns a reason for every pair whose subject appears unmet in the text."""
+    if not COMMISSIONING.search(text):
+        return []
     found = []
     for subject, required, reason in PAIRS:
         if subject.search(text) and not required.search(text):
