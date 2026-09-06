@@ -2481,6 +2481,9 @@ def module_level_names(source):
             found.add(node.target.id)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             found.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                found.add((alias.asname or alias.name).split(".")[0])
     return found
 
 
@@ -2494,12 +2497,7 @@ def test_every_name_the_file_binds_is_on_the_imported_module():
 def test_every_name_on_the_module_is_bound_by_the_file():
     """The module grew a name the file does not bind."""
     parsed_names = module_level_names(SURFACE_SOURCE)
-    imported = {"annotations", "math", "Any", "Optional", "ds"}
-    live_names = {
-        name
-        for name in dir(surface)
-        if not name.startswith("__") and name not in imported
-    }
+    live_names = {name for name in dir(surface) if not name.startswith("__")}
     assert sorted(live_names - parsed_names) == []
 
 
