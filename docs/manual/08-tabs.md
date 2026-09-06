@@ -2897,14 +2897,16 @@ same screen. Both sides are plain Python data and neither has to be displayed.
 A passing test proves the two descriptions agree with each other. It does not
 prove either one is on screen.
 
+`parity_pins` reads only a parity test that imports exactly one surface module
+and exactly one Qt module. It collects the names on both sides and pairs them.
+
 `tools/conversion_state.py` — `parity_pins`, what a pin reads
 
 ```python
 def parity_pins(root: pathlib.Path) -> dict[str, set[str]]:
-    """Surface module to the Qt modules a parity test pins it against.
-
-    Only a `test_*_surface_parity.py` importing exactly one of each is read.
-    """
+    qt_by_name = {dotted_name(root, path) for path in qt_modules(root)}
+    surfaces = surface_methods(root)
+    pins: dict[str, set[str]] = {}
 ```
 
 Both readings were true. Neither measured the item, and the RENDERS column is
