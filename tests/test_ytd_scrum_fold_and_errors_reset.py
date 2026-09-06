@@ -168,15 +168,33 @@ class TestErrorsCardAndResetSourceDiscipline:
             )
         )
 
-    def test_lifetime_qualifier_dropped_from_card_label(self):
-        src = self._src()
-        assert 'StatCard("Errors (lifetime)"' not in src, (
-            "Errors card must not carry '(lifetime)' qualifier "
-            "per operator directive 2026-07-31."
-        )
-        assert (
-            'StatCard("Errors", "0")' in src
-        ), "Errors card label must be plain 'Errors'."
+    def test_lifetime_qualifier_dropped_from_card_label(self, monkeypatch):
+        """The Errors counter in the built header strip is captioned Errors."""
+        monkeypatch.setenv("ACERVATOR_VARIANT", "qt")
+        from PySide6.QtWidgets import QApplication, QMainWindow
+
+        from src.gui.main_tabs.header_strip import HeaderStripMixin
+
+        QApplication.instance() or QApplication([])
+
+        class _Host(QMainWindow, HeaderStripMixin):
+            def _show_error_log_dialog(self):
+                return None
+
+            def _toggle_trading_mode(self):
+                return None
+
+            def _update_mode_btn_style(self):
+                return None
+
+        host = _Host()
+        try:
+            host._build_header_strip()
+            drawn = host._stat_errors._label.text()
+        finally:
+            host.close()
+            host.deleteLater()
+        assert drawn == "Errors", drawn
 
     def test_lifetime_wording_dropped_from_dialog_header(self):
         src = self._src()

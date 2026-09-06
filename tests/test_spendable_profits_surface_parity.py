@@ -41,7 +41,7 @@ PIXEL_SIZE = (900, 110)
 
 CONNECT_TOTAL = 0
 SHIPPED_CLASS_TOTAL = 1
-SHIPPED_METHOD_TOTAL = 7
+SHIPPED_METHOD_TOTAL = 8
 PAYLOAD_KEY_TOTAL = 17
 CONSTANT_TOTAL = 49
 TRACE_KEY_TOTAL = 5
@@ -558,6 +558,7 @@ def test_the_strip_connects_no_signal_and_the_counter_can_report():
 
 SHIPPED_METHODS = {
     "__init__": "SpendableProfitsModel.__init__",
+    "_setup_ui": "SpendableProfitsModel.__init__",
     "update_profits": "SpendableProfitsModel.update_profits",
     "_on_privacy_toggle": "SpendableProfitsModel.privacy_toggled",
     "refresh_privacy_dots": "SpendableProfitsModel.refresh_privacy_dots",

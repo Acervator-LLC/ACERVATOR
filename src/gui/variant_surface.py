@@ -15,6 +15,7 @@ from src._variant import QT, resolve_variant
 BOT_LIVE_SETTINGS = "Bot live settings"
 BOT_SWARM = "Bot Swarm"
 CONSOLE = "Console"
+DASHBOARD_STAT_CARD = "Dashboard stat card"
 HISTORY = "History"
 HISTORY_TABLE = "History table"
 MARKET_INSPECTOR = "Market Inspector"
@@ -23,7 +24,9 @@ GATE_STATUS_PANEL = "Gate status panel"
 NUCLEAR_MODE = "Nuclear Mode"
 SETTINGS_DIALOG = "Settings dialog"
 SIM_PRICE_CHART = "Sim price chart"
+SPENDABLE_PROFITS = "Spendable profits"
 SIM_STAT_STRIP = "Sim stat strip"
+START_ALL_PROGRESS = "Start All progress dialog"
 
 Loader = Callable[[], type]
 
@@ -213,6 +216,48 @@ def _react_settings_dialog() -> type:
     return SettingsDialogReact
 
 
+def _qt_dashboard_stat_card() -> type:
+    """Import and return the Qt header stat card."""
+    from .widgets.dashboard_stat_card import StatCard
+
+    return StatCard
+
+
+def _react_dashboard_stat_card() -> type:
+    """Import and return the React header stat card."""
+    from .react_dashboard_stat_card import StatCardReact
+
+    return StatCardReact
+
+
+def _qt_spendable_profits() -> type:
+    """Import and return the Qt spendable-profits strip."""
+    from .widgets.spendable_profits import SpendableProfitsWidget
+
+    return SpendableProfitsWidget
+
+
+def _react_spendable_profits() -> type:
+    """Import and return the React spendable-profits strip."""
+    from .react_spendable_profits import SpendableProfitsReact
+
+    return SpendableProfitsReact
+
+
+def _qt_start_all_progress() -> type:
+    """Import and return the Qt Start All progress dialog."""
+    from .start_all_progress_dialog import StartAllProgressDialog
+
+    return StartAllProgressDialog
+
+
+def _react_start_all_progress() -> type:
+    """Import and return the React Start All progress dialog."""
+    from .react_start_all_progress import StartAllProgressReactDialog
+
+    return StartAllProgressReactDialog
+
+
 def _qt_sim_stat_strip() -> type:
     """Import and return the Qt Simulator stat strip."""
     from .simulator_tab.sim_stat_strip import SimStatStrip
@@ -239,3 +284,6 @@ register(FLEET_REPLAY, _qt_fleet_replay, _react_fleet_replay)
 register(SIM_STAT_STRIP, _qt_sim_stat_strip, _react_sim_stat_strip)
 register(SETTINGS_DIALOG, _qt_settings_dialog, _react_settings_dialog)
 register(BOT_LIVE_SETTINGS, _qt_bot_live_settings, _react_bot_live_settings)
+register(SPENDABLE_PROFITS, _qt_spendable_profits, _react_spendable_profits)
+register(DASHBOARD_STAT_CARD, _qt_dashboard_stat_card, _react_dashboard_stat_card)
+register(START_ALL_PROGRESS, _qt_start_all_progress, _react_start_all_progress)

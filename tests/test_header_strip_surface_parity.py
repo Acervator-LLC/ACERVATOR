@@ -71,8 +71,13 @@ def qapp():
 
 
 @pytest.fixture
-def built(qapp):
-    """The header strip built by the Qt mixin, and its host window."""
+def built(qapp, monkeypatch):
+    """The header strip built by the Qt mixin, and its host window.
+
+    The variant is pinned to Qt, so the strip and the cards are the widgets
+    this comparison reads rather than the React pages.
+    """
+    monkeypatch.setenv("ACERVATOR_VARIANT", "qt")
     from PySide6.QtWidgets import QMainWindow
 
     from src.gui.main_tabs.header_strip import HeaderStripMixin

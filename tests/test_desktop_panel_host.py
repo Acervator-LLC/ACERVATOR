@@ -266,10 +266,15 @@ def qt_console_lines(tab, records: list) -> list:
 
 
 @pytest.fixture()
-def qt_header(qapp):
-    """The shipped header strip, built by the mixin MainWindow uses."""
+def qt_header(qapp, monkeypatch):
+    """The shipped header strip, built by the mixin MainWindow uses.
+
+    The variant is pinned to Qt, so the counters are the widgets this
+    comparison reads rather than the React pages.
+    """
     widgets = qt_available()
     assert qapp is not None
+    monkeypatch.setenv("ACERVATOR_VARIANT", "qt")
     from src.gui.main_tabs.header_strip import HeaderStripMixin
 
     class HeaderStripWindow(HeaderStripMixin, widgets.QMainWindow):
