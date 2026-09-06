@@ -115,6 +115,7 @@
   var CANCEL_IS_DEFAULT = "cancel_is_default";
   var CANCEL_TEXT = "cancel_text";
   var COLUMN_TOTAL = "column_total";
+  var GROUP_MARGINS = "group_margins";
   var HEADER_TITLE_FORMAT = "header_title_format";
   var HEADER_TITLE_STYLE = "header_title_style";
   var MIN_HEIGHT = "min_height";
@@ -160,6 +161,7 @@
   var LIST_GROUP_TITLE = "list_group_title";
   var REFRESH_TEXT = "refresh_text";
   var REFRESH_TOOLTIP = "refresh_tooltip";
+  var SCROLL_FRAME = "scroll_frame";
   var SCROLL_MARGINS = "scroll_margins";
   var SCROLL_SPACING = "scroll_spacing";
   var SCROLL_WIDGET_RESIZABLE = "scroll_widget_resizable";
@@ -238,6 +240,7 @@
     CANCEL_IS_DEFAULT,
     CANCEL_TEXT,
     COLUMN_TOTAL,
+    GROUP_MARGINS,
     HEADER_TITLE_FORMAT,
     HEADER_TITLE_STYLE,
     MARGINS,
@@ -286,11 +289,13 @@
     EMPTY_WORD_WRAP,
     FOOTER_STYLE,
     FOOTER_TEXT,
+    GROUP_MARGINS,
     LABEL_CLASS,
     LIST_GROUP_TITLE,
     MARGINS,
     REFRESH_TEXT,
     REFRESH_TOOLTIP,
+    SCROLL_FRAME,
     SCROLL_MARGINS,
     SCROLL_SPACING,
     SCROLL_WIDGET_RESIZABLE,
@@ -391,6 +396,8 @@
   // Qt reads an eight-digit hex alpha first, CSS reads it last.
   var HEX_ARGB = "AARRGGBB";
 
+  var MARGINS_PROPERTY = "margin";
+
   var PADDING_SIDES = [
     "paddingLeft",
     "paddingTop",
@@ -409,11 +416,17 @@
   var COLUMN_WAY = "column";
   var FULL = "100%";
   var COLLAPSE = "collapse";
+  var MAX_CONTENT = "max-content";
+  var MIN_CONTENT = "min-content";
+  var FIT_CONTENT = "fit-content";
+  // The Qt word a header reads when each column takes its own content width.
+  var TO_CONTENTS_MODE = "ResizeToContents";
   var CLIPPED = "hidden";
   var SCROLLED = "auto";
   var NO_SELECT = "none";
   var PRE = "pre";
   var PRE_WRAP = "pre-wrap";
+  var INHERITED = "inherit";
   var LEFT_WAY = "left";
 
   var ZERO = Number(EMPTY);
@@ -640,6 +653,17 @@
     return api === undefined ? {} : api.styleOf(keptSheet(sheet));
   }
 
+  // Qt draws a sheet margin inside the widget rect; CSS draws it outside.
+  function sheetMargin(sheet) {
+    var found = ZERO;
+    declarations(sheet).forEach(function (one) {
+      if (one.property === MARGINS_PROPERTY) {
+        found = parseFloat(one.value) || ZERO;
+      }
+    });
+    return found;
+  }
+
   // variableFor asks acervatorWidgets, which owns the one-carrier token rule.
   function variableFor(value) {
     var api = global.acervatorWidgets;
@@ -727,6 +751,19 @@
     return style;
   }
 
+  // A badge keeps the spaces its format pads the score with; HTML drops them.
+  function asBadge(style) {
+    style.whiteSpace = PRE;
+    return style;
+  }
+
+  // Qt draws every push button in the application font.
+  function asButton(style) {
+    style.font = INHERITED;
+    style.flex = FLEX_NONE;
+    return style;
+  }
+
   function Spacer(props) {
     var spacerProps = { style: { flex: AUTO } };
     spacerProps[PART_ATTR] = props.part;
@@ -758,7 +795,7 @@
     var pane = objectField(props.model, PANE);
     var buttonProps = {
       type: BUTTON_TYPE,
-      style: { flex: FLEX_NONE },
+      style: asButton({}),
       title: label(pane[REFRESH_TOOLTIP])
     };
     buttonProps[PART_ATTR] = REFRESH_PART;
@@ -811,12 +848,14 @@
 
   function CardButtons(props) {
     var card = objectField(props.model, CARD);
-    var rowProps = { style: { display: FLEX, flexDirection: ROW_WAY } };
+    var rowProps = {
+      style: { display: FLEX, flexDirection: ROW_WAY, gap: length(card[SPACING]) }
+    };
     rowProps[PART_ATTR] = CARD_BUTTONS_PART;
     var previewProps = {
       key: PREVIEW_BUTTON_PART,
       type: BUTTON_TYPE,
-      style: { flex: FLEX_NONE },
+      style: asButton({}),
       title: label(card[PREVIEW_TOOLTIP])
     };
     previewProps[PART_ATTR] = PREVIEW_BUTTON_PART;
@@ -824,8 +863,7 @@
     previewProps.onClick = function () {
       act(PREVIEW_BUTTON_PART, props.name);
     };
-    var dismissStyle = styleOf(card[DISMISS_STYLE]);
-    dismissStyle.flex = FLEX_NONE;
+    var dismissStyle = asButton(styleOf(card[DISMISS_STYLE]));
     var dismissProps = {
       key: DISMISS_BUTTON_PART,
       type: BUTTON_TYPE,
@@ -862,12 +900,18 @@
       style: boxStyle(asList(card[MARGINS]), card[SPACING], COLUMN_WAY)
     };
     bodyProps[PART_ATTR] = CARD_BODY_PART;
-    var topProps = { style: { display: FLEX, flexDirection: ROW_WAY } };
+    var topProps = {
+      style: { display: FLEX, flexDirection: ROW_WAY, gap: length(card[SPACING]) }
+    };
     topProps[PART_ATTR] = CARD_TOP_PART;
-    var badgeProps = { key: CARD_BADGE_PART, style: styleOf(entry[BADGE_STYLE]) };
+    var badgeProps = { key: CARD_BADGE_PART, style: asBadge(styleOf(entry[BADGE_STYLE])) };
     badgeProps[PART_ATTR] = CARD_BADGE_PART;
     var metaProps = { style: asLabel(styleOf(card[META_STYLE]), false) };
     metaProps[PART_ATTR] = CARD_META_PART;
+    // The Qt title carries the row's stretch, so the badge sits at the edge.
+    var titleStyle = asLabel({}, card[TITLE_WORD_WRAP] === true);
+    titleStyle.flex = ONE;
+    titleStyle.minWidth = ZERO;
     return element(
       DIV_TAG,
       cardProps,
@@ -883,7 +927,7 @@
             tag: STRONG_TAG,
             pieces: listField(objectField(model, MARKS), CARD_TITLES)[props.at],
             name: props.name,
-            style: asLabel({}, card[TITLE_WORD_WRAP] === true),
+            style: titleStyle,
             bodyStyle: { fontWeight: text(objectField(model, MARKS)[STRONG_WEIGHT]) }
           }),
           element(SPAN_TAG, badgeProps, text(entry[BADGE]))
@@ -923,9 +967,13 @@
   function Scroll(props) {
     var model = props.model;
     var pane = objectField(model, PANE);
+    var apart = sheetMargin(objectField(model, CARD)[STYLE]) * TWO;
+    var frame = pane[SCROLL_FRAME];
     var style = boxStyle(
-      asList(pane[SCROLL_MARGINS]),
-      pane[SCROLL_SPACING],
+      asList(pane[SCROLL_MARGINS]).map(function (side) {
+        return side + frame;
+      }),
+      Math.max(ZERO, pane[SCROLL_SPACING] - apart),
       COLUMN_WAY
     );
     style.flex = ONE;
@@ -945,9 +993,12 @@
 
   function ListGroup(props) {
     var model = props.model;
-    var groupProps = {
-      style: { display: FLEX, flexDirection: COLUMN_WAY, flex: ONE, minHeight: ZERO }
-    };
+    var style = marginStyle(asList(objectField(model, PANE)[GROUP_MARGINS]));
+    style.display = FLEX;
+    style.flexDirection = COLUMN_WAY;
+    style.flex = ONE;
+    style.minHeight = ZERO;
+    var groupProps = { style: style };
     groupProps[PART_ATTR] = LIST_GROUP_PART;
     var legendProps = { style: asLabel({}, false) };
     legendProps[PART_ATTR] = LIST_LEGEND_PART;
@@ -984,8 +1035,14 @@
     );
   }
 
+  // Qt sizes each column to its content and stretches the last one.
+  function contentWide(mode, last) {
+    return mode === TO_CONTENTS_MODE && !last ? MIN_CONTENT : undefined;
+  }
+
   function HeadCell(props) {
-    var cellProps = { style: { textAlign: LEFT_WAY } };
+    var style = { textAlign: LEFT_WAY, width: contentWide(props.mode, props.last) };
+    var cellProps = { style: style };
     cellProps[PART_ATTR] = HEAD_CELL_PART;
     cellProps[TABLE_ATTR] = props.table;
     cellProps[COLUMN_ATTR] = text(props.name);
@@ -993,7 +1050,10 @@
   }
 
   function BodyCell(props) {
-    var style = { color: colour(props.paint) };
+    var style = {
+      color: colour(props.paint),
+      width: contentWide(props.mode, props.last)
+    };
     var cellProps = { style: style };
     cellProps[PART_ATTR] = GRID_CELL_PART;
     cellProps[COLUMN_ATTR] = text(props.column);
@@ -1016,7 +1076,9 @@
           key: String(at),
           column: column,
           body: cells[at],
-          paint: paints[at]
+          paint: paints[at],
+          mode: props.mode,
+          last: at === props.columns.length - ONE
         });
       })
     );
@@ -1046,7 +1108,13 @@
           TR_TAG,
           headRowProps,
           columns.map(function (name, at) {
-            return element(HeadCell, { key: String(at), name: name, table: props.table });
+            return element(HeadCell, {
+              key: String(at),
+              name: name,
+              table: props.table,
+              mode: props.mode,
+              last: at === columns.length - ONE
+            });
           })
         )
       ),
@@ -1061,6 +1129,7 @@
             paints: asList(props.paints)[at],
             columns: columns,
             name: rowNameOf(row, props.keyColumns),
+            mode: props.mode,
             at: at
           });
         })
@@ -1071,10 +1140,12 @@
   function TableGroup(props) {
     var model = props.model;
     var dialog = objectField(model, DIALOG);
-    var groupProps = {
-      style: { display: FLEX, flexDirection: COLUMN_WAY, flex: ONE, minWidth: ZERO },
-      title: label(dialog[props.tipField])
-    };
+    var style = marginStyle(asList(dialog[GROUP_MARGINS]));
+    style.display = FLEX;
+    style.flexDirection = COLUMN_WAY;
+    style.flex = ONE;
+    style.minWidth = ZERO;
+    var groupProps = { style: style, title: label(dialog[props.tipField]) };
     groupProps[PART_ATTR] = TABLE_GROUP_PART;
     groupProps[TABLE_ATTR] = props.table;
     var legendProps = { style: asLabel({}, false) };
@@ -1090,6 +1161,7 @@
         rows: asList(props.rows),
         paints: props.paints,
         keyColumns: props.keyColumns,
+        mode: dialog[RESIZE_MODE],
         alternating: dialog[ALTERNATING_ROW_COLORS]
       })
     );
@@ -1101,7 +1173,10 @@
     var dialog = objectField(model, DIALOG);
     var headerProps = { style: { display: FLEX, flexDirection: ROW_WAY } };
     headerProps[PART_ATTR] = PREVIEW_HEADER_PART;
-    var badgeProps = { key: PREVIEW_BADGE_PART, style: styleOf(entry[BADGE_STYLE]) };
+    var badgeProps = {
+      key: PREVIEW_BADGE_PART,
+      style: asBadge(styleOf(entry[BADGE_STYLE]))
+    };
     badgeProps[PART_ATTR] = PREVIEW_BADGE_PART;
     return element(
       DIV_TAG,
@@ -1123,12 +1198,14 @@
   function PreviewButtons(props) {
     var dialog = objectField(props.model, DIALOG);
     var entry = props.entry;
-    var rowProps = { style: { display: FLEX, flexDirection: ROW_WAY } };
+    var rowProps = {
+      style: { display: FLEX, flexDirection: ROW_WAY, gap: length(dialog[SPACING]) }
+    };
     rowProps[PART_ATTR] = BUTTON_ROW_PART;
     var cancelProps = {
       key: CANCEL_PART,
       type: BUTTON_TYPE,
-      style: { flex: FLEX_NONE },
+      style: asButton({}),
       autoFocus: dialog[CANCEL_IS_DEFAULT] === true
     };
     cancelProps[PART_ATTR] = CANCEL_PART;
@@ -1138,7 +1215,7 @@
     var adoptProps = {
       key: ADOPT_PART,
       type: BUTTON_TYPE,
-      style: { flex: FLEX_NONE },
+      style: asButton({}),
       disabled: entry[ADOPT_ENABLED] !== true,
       title: label(entry[ADOPT_TOOLTIP])
     };
@@ -1175,12 +1252,16 @@
     var style = boxStyle(asList(dialog[MARGINS]), dialog[SPACING], COLUMN_WAY);
     style.minWidth = length(dialog[MIN_WIDTH]);
     style.minHeight = length(dialog[MIN_HEIGHT]);
+    // The Qt screen takes its minimum size, not the width of whatever holds it.
+    style.width = FIT_CONTENT;
+    style.height = FIT_CONTENT;
     var previewProps = { style: style };
     previewProps[PART_ATTR] = PREVIEW_PART;
     previewProps[ARIA_LABEL] = label(entry[WINDOW_TITLE]);
-    var bodyProps = {
-      style: boxStyle([], dialog[BODY_SPACING], ROW_WAY)
-    };
+    var bodyStyle = boxStyle([], dialog[BODY_SPACING], ROW_WAY);
+    bodyStyle.flex = ONE;
+    bodyStyle.minHeight = ZERO;
+    var bodyProps = { style: bodyStyle };
     bodyProps[PART_ATTR] = PREVIEW_BODY_PART;
     return element(
       DIV_TAG,

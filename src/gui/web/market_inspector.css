@@ -28,7 +28,11 @@ body {
   overflow: auto;
 }
 
-[data-part="refresh-button"] {
+[data-part="refresh-button"],
+[data-part="preview-button"],
+[data-part="dismiss-button"],
+[data-part="cancel-button"],
+[data-part="adopt-button"] {
   background: var(--btn-bg);
   color: var(--text);
   border: 1px solid var(--border);
@@ -37,7 +41,8 @@ body {
   font: inherit;
 }
 
-[data-part="refresh-button"]:disabled {
+[data-part="refresh-button"]:disabled,
+[data-part="adopt-button"]:disabled {
   color: var(--grid);
   border-color: var(--grid);
 }
@@ -91,8 +96,9 @@ body {
   overflow: auto;
 }
 
+/* Painted, not bordered: a border-left costs the pane 1px of width. */
 [data-part="topology-slot"] {
-  border-left: 1px solid var(--border);
+  box-shadow: inset 1px 0 0 var(--border);
   overflow: auto;
 }
 

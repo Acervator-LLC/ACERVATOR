@@ -71,9 +71,13 @@ TAB_SCRIPT_ASSETS: tuple[str, ...] = (
 #: against it and the tab draws as tall as the Qt tab does.
 SCREEN_ROOT_STYLE = "height:100%"
 
+#: The pane root fills the slot it is moved into, so the pane's own full
+#: height resolves against it instead of against its cards.
+TOPOLOGY_ROOT_STYLE = "height:100%"
+
 TAB_BODY = (
     f'<div id="{SCREEN_ROOT_ID}" style="{SCREEN_ROOT_STYLE}"></div>\n'
-    f'<div id="{TOPOLOGY_ROOT_ID}"></div>\n'
+    f'<div id="{TOPOLOGY_ROOT_ID}" style="{TOPOLOGY_ROOT_STYLE}"></div>\n'
     f'<div id="{PREVIEW_ROOT_ID}" hidden></div>'
 )
 
@@ -137,6 +141,12 @@ def screen_push_script(model: dict) -> str:
     )
 
 
+#: The index that empties the preview. Clearing the element instead leaves
+#: React holding a tree that no longer matches it, and the next preview draws
+#: nothing.
+NO_PREVIEW_AT = -1
+
+
 def topology_push_script(model: dict, preview_at: Optional[int]) -> str:
     """The JS that hands ``model`` to the pane and draws one preview.
 
@@ -150,7 +160,12 @@ def topology_push_script(model: dict, preview_at: Optional[int]) -> str:
         + ");"
     )
     if preview_at is None:
-        return head + "p.hidden=true;p.replaceChildren();"
+        return (
+            head
+            + "window.acervatorTopologies.renderPreview(p,"
+            + json.dumps(NO_PREVIEW_AT)
+            + ",null);p.hidden=true;"
+        )
     return (
         head
         + "p.hidden=false;window.acervatorTopologies.renderPreview(p,"

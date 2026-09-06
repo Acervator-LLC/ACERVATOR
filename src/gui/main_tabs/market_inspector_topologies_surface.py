@@ -98,6 +98,9 @@ TREE_ROOT_IS_DECORATED = False
 TREE_ALTERNATING_ROW_COLORS = True
 TREE_RESIZE_MODE = "ResizeToContents"
 
+# QGroupBox layout contentsMargins, the inset Bots, Wires and the card list share.
+GROUP_MARGINS_PX = (9, 9, 9, 9)
+
 SUMMARY_FORMAT = (
     EMPHASIS_OPEN
     + "New bots to create: {new_bots}  ·  target capital: ${budget}"
@@ -162,6 +165,8 @@ LIST_GROUP_TITLE = "Topology Proposals"
 SCROLL_WIDGET_RESIZABLE = True
 SCROLL_MARGINS = (0, 0, 0, 0)
 SCROLL_SPACING = 4
+# QScrollArea.frameWidth, the inset between the scroll area and its card list.
+SCROLL_FRAME_PX = 2
 FOOTER_TEXT = "Auto-refresh: every 10 min  ·  Adopt: live (Bot Wizard handoff)"
 FOOTER_STYLE = "color: #666; font-size: 10px;"
 EMPTY_TEXT = "No proposals right now.  Try Refresh, or wait for market state to shift."
@@ -913,6 +918,7 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "wires_tooltip": WIRES_TOOLTIP,
             "wire_pct_format": WIRE_PCT_FORMAT,
             "column_total": TREE_COLUMN_TOTAL,
+            "group_margins": list(GROUP_MARGINS_PX),
             "root_is_decorated": TREE_ROOT_IS_DECORATED,
             "alternating_row_colors": TREE_ALTERNATING_ROW_COLORS,
             "resize_mode": TREE_RESIZE_MODE,
@@ -958,8 +964,10 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "status_count_format": STATUS_COUNT_FORMAT,
             "status_error_format": STATUS_ERROR_FORMAT,
             "status_style": STATUS_STYLE,
+            "group_margins": list(GROUP_MARGINS_PX),
             "list_group_title": LIST_GROUP_TITLE,
             "scroll_widget_resizable": SCROLL_WIDGET_RESIZABLE,
+            "scroll_frame": SCROLL_FRAME_PX,
             "scroll_margins": list(SCROLL_MARGINS),
             "scroll_spacing": SCROLL_SPACING,
             "footer_text": FOOTER_TEXT,
