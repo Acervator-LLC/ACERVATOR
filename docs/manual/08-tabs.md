@@ -1041,22 +1041,24 @@ The tab builds both panes into a vertical splitter. The upper one is a raw log
 tail: a handler formats each record and a relay paints it on the GUI thread,
 which lets a log call from any thread reach the pane safely.
 
-`src/gui/main_tabs/console_tab.py` — `ConsoleTabMixin._build_console_tab`
+`src/gui/qt_console_tab.py` — `ConsoleQtTab.__init__`
 
 ```python
-self._console = QPlainTextEdit()
-self._console.setReadOnly(True)
-self._console.setFont(QFont("Consolas", 9))
+self.log_pane = QPlainTextEdit()
+self.log_pane.setReadOnly(True)
+self.log_pane.setFont(
+    QFont(surface.PANE_FONT_FAMILY, surface.PANE_FONT_POINT_SIZE)
+)
 ```
 
 The tab sets its own handler to debug and changes no logger's level; an earlier
 build raised the root logger and never restored it.
 
-`src/gui/main_tabs/console_tab.py` — `ConsoleTabMixin._build_console_tab`
+`src/gui/qt_console_tab.py` — `ConsoleQtTab.__init__`
 
 ```python
 # The tab sets its own handler's level and leaves every logger level alone.
-qt_handler.setLevel(logging.DEBUG)
+self.log_handler.setLevel(surface.HANDLER_LEVEL)
 ```
 
 Pause holds lines in a bounded buffer and announces anything it had to drop.
@@ -1092,6 +1094,48 @@ pane.
 
 Each line in the upper pane carries the time, the level, the logger name and
 the message, coloured by level. Three logger names appear in the figure.
+
+React draws this tab. The choice is made in one place, under the screen name
+`CONSOLE`. A build stamped for Qt gets the pane set above. Every other build
+gets the web one, which holds the whole tab in a single view.
+
+`src/gui/main_tabs/console_tab.py` — `ConsoleTabMixin._build_console_tab`
+
+```python
+        from ..variant_surface import CONSOLE, surface_class
+
+        tab = surface_class(CONSOLE)()
+        self._console_tab = tab
+        self._console = tab.log_pane
+        self._signal_view = tab.signal_view
+        self._console_pause_btn = tab.pause_button
+        self._console_pause_indicator = tab.pause_indicator
+```
+
+Both tabs name the same six parts, so the pause, the drain and the health timer
+call one set of methods whichever side is built. The pause buffer, the level
+colours and the drop notice stay in the one handler both sides attach.
+
+`src/gui/main_tabs/console_log_handler.py` — `_QtLogHandler.__init__`
+
+```python
+    def __init__(self, text_edit, painter: Callable[[str, int, int, int], None] = None):
+        """Paint into ``text_edit``, or into ``painter`` when one is given."""
+```
+
+A line reaches the page as markup the surface writes, with the message escaped,
+so a log message holding a tag is shown rather than read as one.
+
+`src/gui/main_tabs/console_tab_surface.py` — `line_html`
+
+```python
+def line_html(text: Any, red: int, green: int, blue: int) -> str:
+    """One console line as the markup a pane paints it with.
+
+    The text is escaped, so a message holding a tag is shown rather than
+    read as markup.
+    """
+```
 
 | Logger | Writes |
 | ------ | ------ |
@@ -2942,7 +2986,7 @@ tab row.
 | `src/gui/live_settings/status_tab.py` | no | - | yes | no | no | no |
 | `src/gui/main_tabs/audio_suite_surface.py` | no | - | yes | no | no | no |
 | `src/gui/main_tabs/buy_confirmation_surface.py` | no | - | yes | no | no | no |
-| `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | no | no |
+| `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | yes | yes |
 | `src/gui/main_tabs/console_tab.py` | `console_tab.js` | yes | yes | yes | yes | yes |
 | `src/gui/main_tabs/empty_tabs.py` | no | - | no | no | no | no |
 | `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes |
@@ -2995,8 +3039,8 @@ React module             55
 Uses React               53
 Bridge                   67
 Manifest                 55
-Registers in Electron    13
-RENDERS                  19
+Registers in Electron    14
+RENDERS                  20
 ```
 
 Four columns are all but complete. The fifth is at one.

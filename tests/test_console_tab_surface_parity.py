@@ -8,7 +8,6 @@ on the same input.
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import logging
@@ -24,7 +23,6 @@ from src.gui.main_tabs import console_tab_surface as surface
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TAB_SOURCE = REPO_ROOT / "src" / "gui" / "main_tabs" / "console_tab.py"
 
 TOUCHED = ("", "acervator")
 
@@ -43,16 +41,17 @@ def qapp():
 
 
 @pytest.fixture
-def booted(qapp):
-    """The Console tab built by the Qt mixin, with its tab widget.
+def booted(qapp, monkeypatch):
+    """The Qt Console tab built by the mixin, with its tab widget.
 
-    Logger handlers and levels for every node the build touches are
-    restored afterwards, so the module leaves nothing behind for the rest
-    of the suite.
+    ``ACERVATOR_VARIANT`` is set to ``qt`` for the build, and the logger
+    handlers and levels every node the build touches are restored after.
     """
     from PySide6.QtWidgets import QTabWidget, QWidget
 
     from src.gui.main_tabs.console_tab import ConsoleTabMixin
+
+    monkeypatch.setenv("ACERVATOR_VARIANT", "qt")
 
     saved = {
         name: (list(logging.getLogger(name).handlers), logging.getLogger(name).level)
@@ -66,18 +65,19 @@ def booted(qapp):
             QWidget.__init__(self)
             self.setAccessibleName("Console tab parity host")
             self._main_tabs = tabs
+            self.reached: list = []
 
         def _drain_signals(self) -> None:
-            return None
+            self.reached.append(surface.ACTIONS["drain.timeout"])
 
         def _emit_console_health(self) -> None:
-            return None
+            self.reached.append(surface.ACTIONS["health.timeout"])
 
         def _refresh_console_pause_indicator(self) -> None:
-            return None
+            self.reached.append(surface.ACTIONS["pause_refresh.timeout"])
 
         def _toggle_console_pause(self) -> None:
-            return None
+            self.reached.append(surface.ACTIONS["pause_button.clicked"])
 
     tabs = QTabWidget()
     host = _Host(tabs)
@@ -331,62 +331,33 @@ def test_the_trace_carries_every_part_of_the_tab(booted):
     assert sorted(old["ledger"]) == sorted(surface.LEDGER_FIELDS)
 
 
-def dotted(node) -> str:
-    parts = []
-    while isinstance(node, ast.Attribute):
-        parts.append(node.attr)
-        node = node.value
-    if isinstance(node, ast.Name):
-        parts.append(node.id)
-    return ".".join(reversed(parts))
+def test_every_action_the_surface_names_is_wired(booted, qapp):
+    """Driving each control and timer reaches the action the surface names."""
+    host, tabs = booted
+    tab = tabs.widget(0)
+    seen = []
+    tab.on_pressed(seen.append)
+    tab.pause_button.click()
+    tab.clear_button.click()
+    host._signal_timer.timeout.emit()
+    host._console_health_timer.timeout.emit()
+    host._console_pause_refresh.timeout.emit()
+    qapp.processEvents()
+    reached = set(seen) | set(host.reached)
+    assert reached == set(surface.ACTIONS.values()), sorted(reached)
 
 
-def connect_sites() -> list:
-    """Every ``.connect(`` site in the Qt tab, as signal and target."""
-    tree = ast.parse(TAB_SOURCE.read_text(encoding="utf-8"))
-    found = []
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "connect"
-        ):
-            found.append((dotted(node.func.value), dotted(node.args[0])))
-    return sorted(found)
-
-
-QT_SIGNAL_NAMES = {
-    "self._console_pause_btn.clicked": "pause_button.clicked",
-    "clear_btn.clicked": "clear_button.clicked",
-    "self._signal_timer.timeout": "drain.timeout",
-    "self._console_health_timer.timeout": "health.timeout",
-    "self._console_pause_refresh.timeout": "pause_refresh.timeout",
-}
-
-QT_TARGET_NAMES = {
-    "self._toggle_console_pause": "toggle_console_pause",
-    "self._console.clear": "clear_log_pane",
-    "self._drain_signals": "drain_signals",
-    "self._emit_console_health": "emit_console_health",
-    "self._refresh_console_pause_indicator": "refresh_console_pause_indicator",
-}
-
-
-def test_the_connect_sets_match():
-    """The Qt tab connects a signal the surface names no action for."""
-    sites = connect_sites()
-    assert len(sites) == 5
-    translated = {
-        QT_SIGNAL_NAMES[signal]: QT_TARGET_NAMES[target] for signal, target in sites
-    }
-    assert translated == surface.ACTIONS
-
-
-def test_the_connect_reader_finds_the_real_sites():
-    """The connect reader returns an empty set whatever the source holds."""
-    sites = connect_sites()
-    assert ("self._signal_timer.timeout", "self._drain_signals") in sites
-    assert TAB_SOURCE.read_text(encoding="utf-8").count(".connect(") == len(sites)
+def test_a_control_that_reaches_nothing_is_reported(booted, qapp):
+    """Positive control: a timer left unfired leaves its action unreached."""
+    host, tabs = booted
+    tab = tabs.widget(0)
+    seen = []
+    tab.on_pressed(seen.append)
+    tab.pause_button.click()
+    qapp.processEvents()
+    reached = set(seen) | set(host.reached)
+    assert reached != set(surface.ACTIONS.values())
+    assert surface.ACTIONS["clear_button.clicked"] not in reached
 
 
 def insert_into(pane, text) -> None:

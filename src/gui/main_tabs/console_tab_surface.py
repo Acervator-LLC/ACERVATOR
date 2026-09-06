@@ -18,6 +18,8 @@ it. Nothing here imports Qt, so the same code serves any frontend.
 from __future__ import annotations
 
 import logging
+import re
+from html import unescape
 from typing import Any, Optional
 
 from .. import design_system as ds
@@ -51,6 +53,11 @@ PAUSE_BUTTON_TEXT = "⏸  Pause"
 CLEAR_BUTTON_TEXT = "Clear"
 PAUSE_INDICATOR_TEXT = ""
 SIGNAL_HEADER_TEXT = "  SIGNALS — name · expected · actual"
+#: A console line paints in these channels where its markup names none.
+DEFAULT_LINE_COLOR = (224, 224, 240)
+
+TAG_PATTERN = re.compile(r"<[^>]*>")
+COLOR_PATTERN = re.compile(r"color\s*:\s*(#[0-9a-fA-F]{6}|rgb\(([^)]*)\))")
 
 PANE_STYLE = (
     f"QPlainTextEdit {{ background: {ds.SURFACE_CHART}; color: "
@@ -247,6 +254,40 @@ def format_record(fields: Any) -> str:
     return FORMATTER.format(record)
 
 
+def line_text(markup: Any) -> str:
+    """One console line as plain words, with every tag taken out.
+
+    ``unescape`` puts back an entity the markup carried, so the Qt pane
+    and a page show one line the same way.
+    """
+    body = "" if markup is None else str(markup)
+    return unescape(TAG_PATTERN.sub("", body))
+
+
+def line_channels(markup: Any, fallback: tuple = DEFAULT_LINE_COLOR) -> list:
+    """The three channels one line paints in, read off its first colour."""
+    found = COLOR_PATTERN.search("" if markup is None else str(markup))
+    if found is None:
+        return list(fallback)
+    digits = found.group(1)
+    if digits.startswith("#"):
+        body = digits[1:]
+        return [int(body[at : at + 2], 16) for at in (0, 2, 4)]
+    return [int(one) for one in found.group(2).split(",")]
+
+
+def record_channels(fields: Any, line: Any) -> list:
+    """The three channels one record's line paints in.
+
+    ``console_log_surface`` owns the level colours, so a page and the Qt
+    pane paint one record the same.
+    """
+    from . import console_log_surface
+
+    level = str(fields.get("level") or console_log_surface.DEFAULT_LEVEL)
+    return list(console_log_surface.line_color(level, str(line)))
+
+
 class ConsolePane:
     """The capped block buffer behind one console pane.
 
@@ -259,30 +300,44 @@ class ConsolePane:
     def __init__(self, max_blocks: int = PANE_MAX_BLOCKS) -> None:
         self.max_blocks = max_blocks
         self._blocks: list[str] = []
+        self._colors: list[list] = []
 
-    def insert(self, text: Any) -> None:
-        """Append text at the end. An empty string changes nothing."""
+    def insert(self, text: Any, color: Any = None) -> None:
+        """Append text at the end, in ``color``. An empty string changes nothing."""
         body = "" if text is None else str(text)
         if not body:
             return
         parts = body.split("\n")
+        channels = list(color) if color else list(DEFAULT_LINE_COLOR)
         if not self._blocks:
             self._blocks = parts
+            self._colors = [list(channels) for _ in parts]
         else:
             self._blocks[-1] += parts[0]
             self._blocks.extend(parts[1:])
+            if not self._colors:
+                self._colors = [list(channels)]
+            self._colors[-1] = list(channels)
+            self._colors.extend(list(channels) for _ in parts[1:])
         self._trim()
 
     def _trim(self) -> None:
         if self.max_blocks > 0 and len(self._blocks) > self.max_blocks:
-            del self._blocks[: len(self._blocks) - self.max_blocks]
+            dropped = len(self._blocks) - self.max_blocks
+            del self._blocks[:dropped]
+            del self._colors[:dropped]
 
     def clear(self) -> None:
         """Empty the pane, the way the Clear button does."""
         self._blocks = []
+        self._colors = []
 
     def blocks(self) -> list[str]:
         return list(self._blocks)
+
+    def block_colors(self) -> list:
+        """One set of three channels per block, in block order."""
+        return [list(one) for one in self._colors]
 
     def block_count(self) -> int:
         """Blocks held. An empty pane counts as one, as the Qt pane does."""
@@ -298,6 +353,7 @@ class ConsolePane:
         return {
             "text": self.text(),
             "blocks": self.blocks(),
+            "block_colors": self.block_colors(),
             "block_count": self.block_count(),
             "is_empty": self.is_empty(),
         }
@@ -352,10 +408,13 @@ def build_view_model(
         except Exception as exc:
             logger.warning("console record skipped: %s", exc)
             continue
-        log_pane.insert(line if log_pane.is_empty() else "\n" + line)
+        channels = record_channels(record, line)
+        log_pane.insert(line if log_pane.is_empty() else "\n" + line, channels)
     for line in signal_lines or []:
-        body = "" if line is None else str(line)
-        signal_pane.insert(body if signal_pane.is_empty() else "\n" + body)
+        body = line_text(line)
+        signal_pane.insert(
+            body if signal_pane.is_empty() else "\n" + body, line_channels(line)
+        )
     return {
         "tab_title": TAB_TITLE,
         "container": CONTAINER,

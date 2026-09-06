@@ -622,6 +622,7 @@ NAMED_WORDS = sorted(
         "signal_box",
         "signal_header",
         "signal_pane",
+        "block_colors",
         "spacing_px",
         "splitter",
         "stretch",
