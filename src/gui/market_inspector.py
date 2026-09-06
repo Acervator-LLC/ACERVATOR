@@ -85,6 +85,25 @@ SCAN_FINISHED_TOPIC = "market_inspector.scan_finished"
 SIGNALS_NOUN = "markets"
 PAIRS_NOUN = "opposing pairs"
 
+ATA_SPM_MODULE = "ata_spm"
+OPPOSING_TRADES_MODULE = "opposing_trades"
+ARBITRAGE_MODULE = "arbitrage"
+
+ATA_SPM_GROUP_TITLE = "ATA-SPM"
+OPPOSING_TRADES_GROUP_TITLE = "Opposing Trades"
+ARBITRAGE_GROUP_TITLE = "Multi-Exchange Arbitrage"
+
+ATA_SPM_UNWIRED_TEXT = "Phase source not wired."
+ATA_SPM_NO_RUN_TEXT = "No run yet. Ready to Send holds 0."
+ATA_SPM_PHASE_KEY = "phase"
+ATA_SPM_READY_KEY = "ready_to_send"
+
+# The share a bullish bot feeds to the bot on the opposite market condition.
+OPPOSING_TRADES_PROFIT_SHARE_PCT = 50
+OPPOSING_TRADES_NOUN = "opposing trades"
+
+MODULE_STATUS_STYLE = "color: #aaa; font-size: 11px;"
+
 
 def _empty_table_text(scan_state: str, noun: str) -> str:
     """The sentence an empty table carries for one scan state.
@@ -97,6 +116,69 @@ def _empty_table_text(scan_state: str, noun: str) -> str:
     if scan_state == SCAN_FINISHED:
         return f"Scan finished. No {noun} found."
     return f"No scan yet. Press Refresh to look for {noun}."
+
+
+def _ata_spm_text(run) -> str:
+    """The ATA-SPM region's line for what the phase source reports.
+
+    ``None`` says no source is wired, an empty report says no run has
+    been made, and a report carrying a phase names it beside the count
+    the Ready to Send bucket holds.
+    """
+    if run is None:
+        return ATA_SPM_UNWIRED_TEXT
+    phase = str(run.get(ATA_SPM_PHASE_KEY) or "")
+    if not phase:
+        return ATA_SPM_NO_RUN_TEXT
+    count = int(run.get(ATA_SPM_READY_KEY) or 0)
+    return f"{phase}. Ready to Send holds {count}."
+
+
+def _opposing_trades_text(scan_state: str, count: int) -> str:
+    """The Opposing Trades region's line for one scan state and pair count.
+
+    An unasked, a running and a finished scan each get their own
+    wording, and a finished scan holding pairs names the profit share
+    the bullish side feeds to the opposite one.
+    """
+    found = int(count or 0)
+    if scan_state != SCAN_FINISHED or not found:
+        return _empty_table_text(scan_state, OPPOSING_TRADES_NOUN)
+    return (
+        f"{found} {OPPOSING_TRADES_NOUN}. "
+        f"{OPPOSING_TRADES_PROFIT_SHARE_PCT}% of profit goes to the opposite side."
+    )
+
+
+def _arbitrage_text(connectors) -> str:
+    """The Multi-Exchange Arbitrage region's line for the venues in reach.
+
+    ``None`` says no exchange source is wired, which no caller can
+    confuse with a wired source carrying no connector. One venue names
+    itself and says a second is needed to compare.
+    """
+    if connectors is None:
+        return "Exchange source not wired."
+    names = sorted(str(one) for one in connectors)
+    if not names:
+        return "No exchange connected."
+    joined = ", ".join(names)
+    if len(names) == 1:
+        return f"1 venue connected: {joined}. A second venue is needed to compare."
+    return f"{len(names)} venues connected: {joined}."
+
+
+def _left_module_rows(run, scan_state: str, pair_count: int, connectors) -> list:
+    """The three left-side regions as key, title and status, in screen order."""
+    return [
+        [ATA_SPM_MODULE, ATA_SPM_GROUP_TITLE, _ata_spm_text(run)],
+        [
+            OPPOSING_TRADES_MODULE,
+            OPPOSING_TRADES_GROUP_TITLE,
+            _opposing_trades_text(scan_state, pair_count),
+        ],
+        [ARBITRAGE_MODULE, ARBITRAGE_GROUP_TITLE, _arbitrage_text(connectors)],
+    ]
 
 
 def _emit_scan(topic: str, **fields) -> None:
@@ -132,11 +214,14 @@ if _HAS_QT:
             # Wired by MainWindow's MarketInspectorTabMixin via set_exchange_source().
             self._connectors_getter = None
             self._scheduler = None
+            self._ata_run_source = None
             self._build_ui()
 
         def _build_ui(self) -> None:
-            """Build the splitter, the filter row and the two tables.
+            """Build the splitter, the three modules, the filter row and the tables.
 
+            The modules are ATA-SPM, Opposing Trades and Multi-Exchange
+            Arbitrage, in that order above the filter row.
             ``MarketInspectorReactTab`` replaces this with one web view and
             keeps every method below it.
             """
@@ -151,6 +236,20 @@ if _HAS_QT:
             layout = QVBoxLayout(left_pane)
             layout.setContentsMargins(6, 6, 6, 6)
             layout.setSpacing(6)
+
+            # --- The three left-side modules ---
+            self._module_labels: dict = {}
+            for key, title, status in _left_module_rows(
+                None, self._scan_state, 0, None
+            ):
+                group = QGroupBox(title)
+                box = QVBoxLayout(group)
+                line = QLabel(status)
+                line.setStyleSheet(MODULE_STATUS_STYLE)
+                line.setWordWrap(True)
+                box.addWidget(line)
+                layout.addWidget(group)
+                self._module_labels[key] = line
 
             # --- Filter row ---
             top_row = QHBoxLayout()
@@ -247,6 +346,50 @@ if _HAS_QT:
             self._outer_splitter.setStretchFactor(1, 1)
             self._outer_splitter.setSizes([800, 800])
             self._render_empty_notes()
+
+        # ── the three left-side modules ──────────────────────────────
+        def set_ata_run_source(self, getter) -> None:
+            """Take the callable the ATA-SPM region reads its run report from.
+
+            ``getter`` is a zero-arg callable answering the phase and the
+            Ready to Send count. Until one is wired the region says so.
+            """
+            self._ata_run_source = getter
+            self._render_left_modules()
+
+        def _ata_run(self):
+            """The ATA-SPM run report, or None while no source answers."""
+            getter = self._ata_run_source
+            if getter is None:
+                return None
+            try:
+                return dict(getter() or {})
+            except Exception as exc:  # noqa: BLE001 - optional producer
+                logger.debug("ATA-SPM run read failed: %s", exc)
+                return None
+
+        def _connectors_now(self):
+            """The exchange connectors in reach, or None while none is wired."""
+            if not (self._connectors_getter and self._scheduler):
+                return None
+            try:
+                return dict(self._connectors_getter() or {})
+            except Exception as exc:  # noqa: BLE001 - optional producer
+                logger.debug("exchange connector read failed: %s", exc)
+                return None
+
+        def _render_left_modules(self) -> None:
+            """Write each left-side module's line from the state it can read."""
+            rows = _left_module_rows(
+                self._ata_run(),
+                self._scan_state,
+                self._pairs_tbl.rowCount(),
+                self._connectors_now(),
+            )
+            for key, _title, status in rows:
+                line = self._module_labels.get(key)
+                if line is not None:
+                    line.setText(status)
 
         # ── the widgets the logic below writes through ───────────────
         def _set_status(self, text: str) -> None:
@@ -394,6 +537,7 @@ if _HAS_QT:
             """
             self._connectors_getter = connectors_getter
             self._scheduler = scheduler
+            self._render_left_modules()
 
         # ── fetch cycle ──────────────────────────────────────────────
         def _start_fetch(self, force: bool = False) -> None:
@@ -417,6 +561,7 @@ if _HAS_QT:
             self._set_refresh_enabled(False)
             self._set_status("Fetching…")
             self._render_empty_notes()
+            self._render_left_modules()
             logger.info(
                 "market inspector scan started: forced=%s connectors=%d "
                 "active_symbols=%d",
@@ -439,6 +584,7 @@ if _HAS_QT:
                 self._set_status(f"Scheduler error: {exc}")
                 self._finish_scan_record(0.0, error=f"scheduler: {exc}")
                 self._render_empty_notes()
+                self._render_left_modules()
 
         async def _fetch_and_analyze(
             self, connectors: dict, force: bool = False
@@ -592,6 +738,7 @@ if _HAS_QT:
             self._fill_signal_rows(self._shown_signals(inspector.last_signals))
             self._fill_pair_rows(list(inspector.last_pairs))
             self._render_empty_notes()
+            self._render_left_modules()
 
     def _per_bot_label(one: dict) -> QLabel:
         """One row of the per-bot view as the label the tab shows."""

@@ -537,6 +537,41 @@ the status line reads `No data yet — press Refresh.` until a scan lands, which
 is the state the figure captures. Leaving the checkbox clear hides the markets
 a bot already holds.
 
+Three modules run down the left side above that row, in this order: ATA-SPM,
+Opposing Trades and Multi-Exchange Arbitrage. Each is a group box carrying one
+line, and the line is the state that module can read rather than a fixed
+caption. A module with no source names the source it waits for, so a module
+that found nothing never reads the same as a module nobody wired.
+
+`src/gui/main_tabs/market_inspector_surface.py` — `left_module_rows`
+
+```python
+def left_module_rows(
+    run: Any, scan_state: Any, pair_count: Any, connectors: Any
+) -> list:
+```
+
+ATA-SPM reads a phase run. Nothing wires one yet, so its line reads
+`Phase source not wired.` A wired source that has run names its phase beside
+the count the Ready to Send bucket holds.
+
+Opposing Trades counts the pairs the scan found, and names the share a bullish
+bot feeds to the bot on the opposite market condition. Its wording follows the
+scan: unasked, running, finished and empty, or finished with pairs.
+
+`src/gui/main_tabs/market_inspector_surface.py` — `OPPOSING_TRADES_FOUND_FORMAT`
+
+```python
+OPPOSING_TRADES_FOUND_FORMAT = (
+    "{count} {noun}. {share}% of profit goes to the opposite side."
+)
+```
+
+Multi-Exchange Arbitrage reads the exchange connectors the tab already holds
+and names them. One venue says a second is needed before anything can be
+compared. The module compares no price, and `src/trading/arbitrage.py` still
+has no importer.
+
 HTF Signals carries six columns: Asset, Signal, Score, Daily, Weekly and
 Active. Opposing Pairs carries four: Long side, Short side, Correlation and
 Score. The pairing enumerates every long against every short and keeps the ones

@@ -68,6 +68,16 @@ body {
   padding: 0 4px;
 }
 
+/* The width and the padding come from the payload; this is colour only. */
+[data-part="module-group"] {
+  border-color: var(--border);
+  border-radius: 3px;
+}
+
+[data-part="module-legend"] {
+  color: var(--accent);
+}
+
 [data-part="grid"] {
   width: 100%;
   border-collapse: collapse;

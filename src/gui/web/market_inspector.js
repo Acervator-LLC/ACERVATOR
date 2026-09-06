@@ -25,11 +25,17 @@
   var GROUP_SPACING_PX = "group_spacing_px";
   var LAST_META = "last_meta";
   var LEFT_MARGINS_PX = "left_margins_px";
+  var LEFT_MODULE_KEYS = "left_module_keys";
+  var LEFT_MODULE_TITLES = "left_module_titles";
+  var LEFT_MODULES = "left_modules";
   var LEFT_SPACING_PX = "left_spacing_px";
   var LOGGER_NAME = "logger_name";
   var LOGS = "logs";
   var MARKS = "marks";
   var METHOD_FIELD = "method";
+  var MODULE_FRAME_PX = "module_frame_px";
+  var MODULE_MARGINS_PX = "module_margins_px";
+  var MODULE_TITLE_PADDING_PX = "module_title_padding_px";
   var NO_CELL = "no_cell";
   var OUTER_MARGINS_PX = "outer_margins_px";
   var OUTER_SPACING_PX = "outer_spacing_px";
@@ -103,11 +109,17 @@
     GROUP_SPACING_PX,
     LAST_META,
     LEFT_MARGINS_PX,
+    LEFT_MODULE_KEYS,
+    LEFT_MODULE_TITLES,
+    LEFT_MODULES,
     LEFT_SPACING_PX,
     LOGGER_NAME,
     LOGS,
     MARKS,
     METHOD_FIELD,
+    MODULE_FRAME_PX,
+    MODULE_MARGINS_PX,
+    MODULE_TITLE_PADDING_PX,
     NO_CELL,
     OUTER_MARGINS_PX,
     OUTER_SPACING_PX,
@@ -478,6 +490,11 @@
     EMITTED,
     GROUP_MARGINS_PX,
     LEFT_MARGINS_PX,
+    LEFT_MODULE_KEYS,
+    LEFT_MODULE_TITLES,
+    LEFT_MODULES,
+    MODULE_MARGINS_PX,
+    MODULE_TITLE_PADDING_PX,
     OUTER_MARGINS_PX,
     PAIR_COLUMNS,
     PAIR_ROWS,
@@ -590,6 +607,10 @@
   var NO_SELECT = "none";
   var PRE = "pre";
   var PRE_WRAP = "pre-wrap";
+  var RELATIVE = "relative";
+  var ABSOLUTE = "absolute";
+  var SOLID = "solid";
+  var NO_OFFSET = 0;
 
   var ZERO = Number(EMPTY);
   var ONE = Number(true);
@@ -624,6 +645,9 @@
   var SWITCH_TEXT_PART = "switch-text";
   var FILTER_STRETCH_PART = "filter-stretch";
   var STATUS_PART = "status-line";
+  var MODULE_GROUP_PART = "module-group";
+  var MODULE_LEGEND_PART = "module-legend";
+  var MODULE_STATUS_PART = "module-status";
   var TABLE_GROUP_PART = "table-group";
   var GROUP_LEGEND_PART = "group-legend";
   var GROUP_BODY_PART = "group-body";
@@ -1195,6 +1219,53 @@
     );
   }
 
+  // ModuleGroup is one left-side region: its Qt group box and its status line.
+  function ModuleGroup(props) {
+    var model = props.model;
+    var entry = asList(props.entry);
+    var style = boxStyle(
+      listField(model, MODULE_MARGINS_PX),
+      model[GROUP_SPACING_PX],
+      COLUMN_WAY
+    );
+    var frame = Number(model[MODULE_FRAME_PX]);
+    style.flex = FLEX_NONE;
+    style.position = RELATIVE;
+    style.borderWidth = length(model[MODULE_FRAME_PX]);
+    style.borderStyle = SOLID;
+    var groupProps = { style: style };
+    groupProps[PART_ATTR] = MODULE_GROUP_PART;
+    groupProps[NAME_ATTR] = text(entry[ZERO]);
+    groupProps[ARIA_LABEL] = label(entry[ONE]);
+    // The Qt title is drawn in the group's own margin, so it takes no row.
+    var titleStyle = marginStyle(listField(model, MODULE_TITLE_PADDING_PX));
+    titleStyle.position = ABSOLUTE;
+    titleStyle.left = length(isFinite(frame) ? -frame : NO_OFFSET);
+    titleStyle.top = length(isFinite(frame) ? -frame : NO_OFFSET);
+    var legendProps = { style: asLabel(titleStyle, false) };
+    legendProps[PART_ATTR] = MODULE_LEGEND_PART;
+    var lineProps = { style: asLabel(styleOf(model[STATUS_STYLE]), true) };
+    lineProps[PART_ATTR] = MODULE_STATUS_PART;
+    lineProps[NAME_ATTR] = text(entry[ZERO]);
+    return element(
+      FIELDSET_TAG,
+      groupProps,
+      element(LEGEND_TAG, legendProps, text(entry[ONE])),
+      element(SPAN_TAG, lineProps, text(entry[TWO]))
+    );
+  }
+
+  // The three left-side regions, in the order the surface publishes them.
+  function moduleGroups(model) {
+    return listField(model, LEFT_MODULES).map(function (entry, at) {
+      return element(ModuleGroup, {
+        key: MODULE_GROUP_PART + PATH_SPLIT + String(at),
+        model: model,
+        entry: entry
+      });
+    });
+  }
+
   function LeftPane(props) {
     var model = props.model;
     var sizes = listField(model, SPLITTER_SIZES_PX);
@@ -1211,6 +1282,7 @@
     return element(
       DIV_TAG,
       paneProps,
+      moduleGroups(model),
       element(FilterRow, { key: FILTER_ROW_PART, model: model }),
       element(TableGroup, {
         key: SIGNALS_TABLE,
@@ -1601,6 +1673,31 @@
     });
   }
 
+  // Each left-side region carries a key, a title and a status line.
+  function checkModules(model) {
+    var words = model[STATUS_INITIAL_TEXT];
+    var keys = listField(model, LEFT_MODULE_KEYS);
+    var entries = listField(model, LEFT_MODULES);
+    if (entries.length !== keys.length) {
+      note(null, LEFT_MODULES, COLUMN_COUNT_FAULT, entries.length);
+    }
+    entries.forEach(function (entry, at) {
+      var spot = LEFT_MODULES + PATH_SPLIT + String(at);
+      if (!Array.isArray(entry) || entry.length !== THREE) {
+        note(spot, LEFT_MODULES, NOT_A_LIST_FAULT, kindOf(entry));
+        return;
+      }
+      if (at < keys.length && entry[ZERO] !== keys[at]) {
+        note(spot, LEFT_MODULES, DUPLICATE_NAME_FAULT, entry[ZERO]);
+      }
+      entry.forEach(function (one, column) {
+        var here = spot + PATH_SPLIT + String(column);
+        checkTypeAgainst(here, LEFT_MODULES, one, words);
+        checkMarkup(here, LEFT_MODULES, one);
+      });
+    });
+  }
+
   // paints answers whether one declaration survives into a CSS style.
   function paints(one) {
     var alone = String(one.property) + COLON + GAP + String(one.value);
@@ -1809,6 +1906,7 @@
     checkTypes(model);
     checkTable(model, SIGNAL_COLUMNS, SIGNAL_ROWS);
     checkTable(model, PAIR_COLUMNS, PAIR_ROWS);
+    checkModules(model);
     checkOrder(model);
     checkSheets(model);
     checkColours(model);
@@ -1889,6 +1987,13 @@
       : listField(held.model, rowsField).map(function (row) {
           return rowName(row);
         });
+  }
+
+  // The key each left-side region carries, in the order it is drawn.
+  function moduleOrder() {
+    return list(LEFT_MODULES).map(function (entry) {
+      return text(asList(entry)[ZERO]);
+    });
   }
 
   function signalOrder() {
@@ -2163,6 +2268,8 @@
     ActiveSwitch: ActiveSwitch,
     StatusLine: StatusLine,
     TableGroup: TableGroup,
+    ModuleGroup: ModuleGroup,
+    moduleOrder: moduleOrder,
     Grid: Grid,
     BodyRow: BodyRow,
     BodyCell: BodyCell,

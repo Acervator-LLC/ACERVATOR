@@ -309,6 +309,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             screen.pending_refresh = self._pending_refresh
             screen.connectors_getter = self._connectors_getter
             screen.scheduler = self._scheduler
+            screen.ata_run_source = self._ata_run_source
             return surface.build_view_model(screen)
 
         def push(self) -> None:
@@ -388,6 +389,14 @@ if _HAS_QT and _HAS_WEBENGINE:
         def _render_empty_notes(self) -> None:
             """Carry the scan state the two empty sentences are built from."""
             self._screen.scan_phase = self._scan_state
+            self.push()
+
+        def _render_left_modules(self) -> None:
+            """Redraw the three left-side modules from the state they read.
+
+            ``build_model`` builds their lines, so the push is what the
+            page needs; the Qt tab writes its own labels instead.
+            """
             self.push()
 
         # -- internals ------------------------------------------------------

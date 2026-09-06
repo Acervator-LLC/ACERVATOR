@@ -4,7 +4,10 @@ Describes the fleet-wide Market Inspector tab and the per-bot view the
 Live Bot Settings window shows. The screen holds a Refresh button, an
 "Include active markets" switch, a status line, an HTF Signals table of
 six columns, an Opposing Pairs table of four, and a right pane carrying
-the topology proposals. ``build_per_bot_model`` describes the per-bot
+the topology proposals. ``left_module_rows`` describes the three regions
+above them: ATA-SPM, Opposing Trades and Multi-Exchange Arbitrage, each
+carrying the state its own source answers with.
+``build_per_bot_model`` describes the per-bot
 screen: the bot's own asset card, the higher-scoring markets and the
 opposing pairs that feature the asset.
 
@@ -62,6 +65,56 @@ SIGNALS_MAX_HEIGHT_PX = 360
 PAIRS_GROUP_TITLE = "Opposing Pairs (30-day Pearson)"
 PAIR_COLUMNS = ("Long side", "Short side", "Correlation", "Score (Long+Short)")
 PAIRS_MAX_HEIGHT_PX = 180
+
+ATA_SPM_MODULE = "ata_spm"
+OPPOSING_TRADES_MODULE = "opposing_trades"
+ARBITRAGE_MODULE = "arbitrage"
+
+ATA_SPM_GROUP_TITLE = "ATA-SPM"
+OPPOSING_TRADES_GROUP_TITLE = "Opposing Trades"
+ARBITRAGE_GROUP_TITLE = "Multi-Exchange Arbitrage"
+
+ATA_SPM_UNWIRED_TEXT = "Phase source not wired."
+ATA_SPM_NO_RUN_TEXT = "No run yet. Ready to Send holds 0."
+ATA_SPM_RUN_FORMAT = "{phase}. Ready to Send holds {count}."
+ATA_SPM_PHASE_KEY = "phase"
+ATA_SPM_READY_KEY = "ready_to_send"
+
+#: The share a bullish bot feeds to the bot on the opposite market condition.
+OPPOSING_TRADES_PROFIT_SHARE_PCT = 50
+OPPOSING_TRADES_NOUN = "opposing trades"
+OPPOSING_TRADES_FOUND_FORMAT = (
+    "{count} {noun}. {share}% of profit goes to the opposite side."
+)
+
+ARBITRAGE_UNWIRED_TEXT = "Exchange source not wired."
+ARBITRAGE_NO_VENUE_TEXT = "No exchange connected."
+ARBITRAGE_ONE_VENUE_FORMAT = (
+    "1 venue connected: {names}. A second venue is needed to compare."
+)
+ARBITRAGE_VENUES_FORMAT = "{count} venues connected: {names}."
+VENUE_SEPARATOR = ", "
+ONE_VENUE = 1
+
+#: The frame a themed ``QGroupBox`` draws round one left module. Measured
+#: 1 px on the running widget, whose ``contentsRect`` starts at x 1.
+MODULE_FRAME_PX = 1
+
+#: The margins the group layout keeps inside that frame, as left, top, right
+#: and bottom. The top carries the band the title is drawn in, measured 41 px
+#: from the widget edge, less the frame, plus the layout's own 9 px.
+MODULE_MARGINS_PX = (9, 49, 9, 9)
+
+#: The padding the theme gives ``QGroupBox::title``, as left, top, right and
+#: bottom. The title is drawn in the group's own margin, so it takes no row.
+MODULE_TITLE_PADDING_PX = (12, 4, 12, 4)
+
+LEFT_MODULE_KEYS = (ATA_SPM_MODULE, OPPOSING_TRADES_MODULE, ARBITRAGE_MODULE)
+LEFT_MODULE_TITLES = (
+    ATA_SPM_GROUP_TITLE,
+    OPPOSING_TRADES_GROUP_TITLE,
+    ARBITRAGE_GROUP_TITLE,
+)
 
 #: The height a ``QTableWidget`` takes when nothing sizes it. Measured 192 px,
 #: and the same whatever the row count, so each table draws this tall until
@@ -165,6 +218,8 @@ FETCH_FAILED_LOG = "market inspector fetch failed: %s"
 SCAN_FAILED_LOG = "market inspector scan failed: %s"
 PROPOSALS_FAILED_LOG = "topology proposal read failed: %s"
 TOPOLOGIES_MISSING_LOG = "topologies pane unavailable: %s"
+ATA_RUN_FAILED_LOG = "ATA-SPM run read failed: %s"
+CONNECTORS_READ_FAILED_LOG = "exchange connector read failed: %s"
 
 SCAN_NOT_ASKED = "not_asked"
 SCAN_RUNNING = "running"
@@ -306,6 +361,7 @@ ADOPT_UNREACHABLE = "adopt.unreachable"
 PROPOSALS_READ = "proposals.read"
 PROPOSALS_UNREADABLE = "proposals.unreadable"
 EXCHANGE_SOURCE_SET = "exchange.set"
+ATA_SOURCE_SET = "ata_run.set"
 
 CALL_NAMES = (
     SCREEN_BUILT,
@@ -336,6 +392,7 @@ CALL_NAMES = (
     PROPOSALS_READ,
     PROPOSALS_UNREADABLE,
     EXCHANGE_SOURCE_SET,
+    ATA_SOURCE_SET,
 )
 
 
@@ -496,6 +553,73 @@ def empty_table_text(scan_state: Any, noun: Any) -> str:
     if scan_state == SCAN_FINISHED:
         return SCAN_EMPTY_FORMAT.format(noun=noun)
     return NO_SCAN_FORMAT.format(noun=noun)
+
+
+def ata_spm_text(run: Any) -> str:
+    """The ATA-SPM region's line for what the phase source reports.
+
+    ``None`` says no source is wired, an empty report says no run has
+    been made, and a report carrying a phase names it beside the count
+    the Ready to Send bucket holds.
+    """
+    if run is None:
+        return ATA_SPM_UNWIRED_TEXT
+    phase = str(run.get(ATA_SPM_PHASE_KEY) or "")
+    if not phase:
+        return ATA_SPM_NO_RUN_TEXT
+    return ATA_SPM_RUN_FORMAT.format(
+        phase=phase, count=int(run.get(ATA_SPM_READY_KEY) or 0)
+    )
+
+
+def opposing_trades_text(scan_state: Any, count: Any) -> str:
+    """The Opposing Trades region's line for one scan state and pair count.
+
+    An unasked, a running and a finished scan each get their own
+    wording, and a finished scan holding pairs names the profit share
+    the bullish side feeds to the opposite one.
+    """
+    found = int(count or 0)
+    if scan_state != SCAN_FINISHED or not found:
+        return empty_table_text(scan_state, OPPOSING_TRADES_NOUN)
+    return OPPOSING_TRADES_FOUND_FORMAT.format(
+        count=found,
+        noun=OPPOSING_TRADES_NOUN,
+        share=OPPOSING_TRADES_PROFIT_SHARE_PCT,
+    )
+
+
+def arbitrage_text(connectors: Any) -> str:
+    """The Multi-Exchange Arbitrage region's line for the venues in reach.
+
+    ``None`` says no exchange source is wired, which no caller can
+    confuse with a wired source carrying no connector. One venue names
+    itself and says a second is needed to compare.
+    """
+    if connectors is None:
+        return ARBITRAGE_UNWIRED_TEXT
+    names = sorted(str(one) for one in connectors)
+    if not names:
+        return ARBITRAGE_NO_VENUE_TEXT
+    joined = VENUE_SEPARATOR.join(names)
+    if len(names) == ONE_VENUE:
+        return ARBITRAGE_ONE_VENUE_FORMAT.format(names=joined)
+    return ARBITRAGE_VENUES_FORMAT.format(count=len(names), names=joined)
+
+
+def left_module_rows(
+    run: Any, scan_state: Any, pair_count: Any, connectors: Any
+) -> list:
+    """The three left-side regions as key, title and status, in screen order."""
+    return [
+        [ATA_SPM_MODULE, ATA_SPM_GROUP_TITLE, ata_spm_text(run)],
+        [
+            OPPOSING_TRADES_MODULE,
+            OPPOSING_TRADES_GROUP_TITLE,
+            opposing_trades_text(scan_state, pair_count),
+        ],
+        [ARBITRAGE_MODULE, ARBITRAGE_GROUP_TITLE, arbitrage_text(connectors)],
+    ]
 
 
 def shown_signals(signals: Any, show_active: bool) -> list:
@@ -659,6 +783,7 @@ class MarketInspectorScreenModel:
         self.scan_phase = SCAN_NOT_ASKED
         self.connectors_getter: Any = None
         self.scheduler: Any = None
+        self.ata_run_source: Any = None
         self.refresh_enabled = True
         self.status_label_text = STATUS_INITIAL_TEXT
         self.signal_rows: list = []
@@ -731,6 +856,50 @@ class MarketInspectorScreenModel:
             "signals": empty_table_text(self.scan_phase, SIGNALS_NOUN),
             "pairs": empty_table_text(self.scan_phase, PAIRS_NOUN),
         }
+
+    def set_ata_run_source(self, getter: Any) -> None:
+        """Take the callable the ATA-SPM region reads its run report from."""
+        self.ata_run_source = getter
+        self.calls.append([ATA_SOURCE_SET])
+
+    def ata_run(self) -> Any:
+        """The ATA-SPM run report, or None while no source answers.
+
+        A source that raises reads as no source, so the region says it
+        is unwired rather than showing a run nobody can read back.
+        """
+        getter = self.ata_run_source
+        if getter is None:
+            return None
+        try:
+            return dict(getter() or {})
+        except Exception as exc:  # noqa: BLE001 - optional producer
+            logger.debug(ATA_RUN_FAILED_LOG, exc)
+            return None
+
+    def connectors_now(self) -> Any:
+        """The exchange connectors in reach, or None while none is wired.
+
+        An unwired source and a wired source holding no connector are
+        two answers, which is what lets the arbitrage region name which
+        of them it is waiting on.
+        """
+        if not (self.connectors_getter and self.scheduler):
+            return None
+        try:
+            return dict(self.connectors_getter() or {})
+        except Exception as exc:  # noqa: BLE001 - optional producer
+            logger.debug(CONNECTORS_READ_FAILED_LOG, exc)
+            return None
+
+    def left_modules(self) -> list:
+        """The three left-side regions, each with the state it can read."""
+        return left_module_rows(
+            self.ata_run(),
+            self.scan_phase,
+            len(self.pair_rows),
+            self.connectors_now(),
+        )
 
     def fetch_universe(self) -> Any:
         """The fetch the Refresh button runs, injected or the shipped one."""
@@ -1233,6 +1402,12 @@ def build_view_model(
         "pair_columns": list(PAIR_COLUMNS),
         "pairs_max_height_px": PAIRS_MAX_HEIGHT_PX,
         "pair_rows": [[list(cell) for cell in row] for row in model.pair_rows],
+        "left_modules": [list(one) for one in model.left_modules()],
+        "left_module_keys": list(LEFT_MODULE_KEYS),
+        "left_module_titles": list(LEFT_MODULE_TITLES),
+        "module_frame_px": MODULE_FRAME_PX,
+        "module_margins_px": list(MODULE_MARGINS_PX),
+        "module_title_padding_px": list(MODULE_TITLE_PADDING_PX),
         "table_viewport_px": TABLE_VIEWPORT_PX,
         "table_resize_mode": TABLE_RESIZE_MODE,
         "table_edit_triggers": TABLE_EDIT_TRIGGERS,
@@ -1337,6 +1512,8 @@ def build_view_model(
             "scan_failed": SCAN_FAILED_LOG,
             "proposals_failed": PROPOSALS_FAILED_LOG,
             "topologies_missing": TOPOLOGIES_MISSING_LOG,
+            "ata_run_failed": ATA_RUN_FAILED_LOG,
+            "connectors_read_failed": CONNECTORS_READ_FAILED_LOG,
             "scan_started": SCAN_STARTED_LOG,
             "scan_finished": SCAN_FINISHED_LOG,
             "count_read_failed": COUNT_READ_FAILED_LOG,
