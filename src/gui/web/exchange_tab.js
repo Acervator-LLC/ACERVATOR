@@ -15,6 +15,7 @@
   var DRAWN = "drawn";
   var DRAWN_ROWS = "drawn_rows";
   var EXCHANGE_ID = "exchange_id";
+  var EXCHANGE_ID_PARAM = "exchange_id_param";
   var EXCHANGE_NAME = "exchange_name";
   var EXTRACTOR_SECTION_LABEL = "extractor_section_label";
   var EXTRACTOR_SECTION_STYLE = "extractor_section_style";
@@ -91,7 +92,7 @@
     "default_exchange_name",
     "default_table",
     EXCHANGE_ID,
-    "exchange_id_param",
+    EXCHANGE_ID_PARAM,
     EXCHANGE_NAME,
     "exchange_name_param",
     EXTRACTOR_SECTION_LABEL,
@@ -538,12 +539,21 @@
     return Boolean(global.acervator) && typeof global.acervator.call === "function";
   }
 
+  // The answer replaces the held model and repaints every host this
+  // module has drawn into, so a pressed control shows its new state.
   function dispatch(name, params) {
     dispatched.push({ action: name, params: params });
     if (!hasBridge()) {
       return null;
     }
-    return global.acervator.call(METHOD, copyOf(params));
+    var current = heldModel();
+    var asking = copyOf(params);
+    asking[String(paramNamed(current, EXCHANGE_ID_PARAM))] = current[EXCHANGE_ID];
+    return global.acervator.call(METHOD, asking).then(function (answer) {
+      setExchangeTab(answer);
+      redraw();
+      return answer;
+    });
   }
 
   function actionNamed(model, name) {
@@ -1115,28 +1125,43 @@
     return report(model);
   }
 
-  // A failed load is not remembered, so a later ask reaches the bridge.
+  // One held ask per exchange id, so a second screen is not answered
+  // with the first one's model. A failed load is not remembered, so a
+  // later ask reaches the bridge.
   function loadExchangeTab(params) {
-    if (asked !== null) {
-      return asked;
+    var wanted = isPlainObject(params) ? params : {};
+    var key = String(wanted[EXCHANGE_ID] === undefined ? EMPTY : wanted[EXCHANGE_ID]);
+    if (asked !== null && asked.key === key) {
+      return asked.wait;
     }
     if (!hasBridge()) {
       loadFault = NO_BRIDGE;
       return Promise.resolve(null);
     }
-    asked = global.acervator
-      .call(METHOD, isPlainObject(params) ? params : {})
-      .then(function (model) {
-        loadFault = null;
-        setExchangeTab(model);
-        return model;
-      })
-      .catch(function (err) {
-        loadFault = err.message;
-        asked = null;
-        return null;
-      });
-    return asked;
+    asked = {
+      key: key,
+      wait: global.acervator
+        .call(METHOD, wanted)
+        .then(function (model) {
+          loadFault = null;
+          setExchangeTab(model);
+          return model;
+        })
+        .catch(function (err) {
+          loadFault = err.message;
+          asked = null;
+          return null;
+        })
+    };
+    return asked.wait;
+  }
+
+  // Every host this module has drawn into, re-drawn from the held model.
+  function redraw() {
+    roots.forEach(function (pair) {
+      renderTab(pair.node, payload());
+    });
+    return roots.length;
   }
 
   function payload() {
@@ -1351,6 +1376,7 @@
     isLoaded: isLoaded,
     renderTab: renderTab,
     renderScrumTable: renderScrumTable,
+    redraw: redraw,
     forget: forget
   };
 })(window);

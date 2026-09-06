@@ -111,8 +111,10 @@ NAMED_SUB_KEYS = {
     "children_collapsible",
     "color",
     "corner_widget",
+    "current_exchange",
     "current_index",
     "exchange_tabs",
+    "placeholder_shown",
     "font_size_px",
     "handle_width_px",
     "header_row",
@@ -546,6 +548,24 @@ def test_the_module_names_only_the_surface_key_names_it_must_read(js: JsRuntime)
     assert (
         not NAMED_SUB_KEYS - written
     ), f"the list allows {sorted(NAMED_SUB_KEYS - written)} the module never writes"
+
+
+def test_the_module_asks_for_a_layer_page_under_the_name_the_surface_reads(
+    js: JsRuntime,
+):
+    """A tab click sends a field name ``view_model`` never looks at."""
+    asked = js.json("acervatorTrading.exchangeParam")
+    assert asked == tts.EXCHANGE_PARAM, asked
+    card = tts.layer_card("crypto", {"kraken": "Kraken", "coinbase": "Coinbase"})
+    assert card["current_exchange"] == "kraken", card
+    chosen = tts.build_view_model(
+        exchanges=[
+            {"exchange_id": "kraken", "display_name": "Kraken"},
+            {"exchange_id": "coinbase", "display_name": "Coinbase"},
+        ],
+        current_exchange="coinbase",
+    )
+    assert chosen["layers"][0]["current_exchange"] == "coinbase", chosen["layers"][0]
 
 
 def test_the_token_group_names_the_module_writes_are_no_value_it_paints():

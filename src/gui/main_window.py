@@ -16,6 +16,7 @@ from ..core.event_bus import get_event_bus
 from .. import __version__
 from . import design_system as ds
 from .main_tabs.main_window_surface import CANONICAL_TAB_ORDER, ISOLATED_TABS
+from .main_tabs.trading_tab_surface import exchange_display_name
 
 
 from .table_cells import (
@@ -3037,7 +3038,7 @@ if _HAS_QT:
             _wanted: list[str] = []
             for exch in self._settings.list_exchanges():
                 eid = exch.get("exchange_id", "")
-                name = exch.get("display_name", eid.capitalize())
+                name = exchange_display_name(exch)
                 if not eid:
                     continue
                 _wanted.append(eid)

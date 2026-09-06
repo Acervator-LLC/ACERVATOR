@@ -709,6 +709,34 @@
     return draw(target, element(Log, { model: payload }));
   }
 
+  // Every host this module has drawn into, re-drawn from the held model.
+  function redraw() {
+    roots.forEach(function (pair) {
+      renderLog(pair.node, held === null ? null : held.model);
+    });
+    return roots.length;
+  }
+
+  // The pane's own pause, which ``StatusLog.pause`` and ``resume`` set.
+  function setPaused(flag) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve(null);
+    }
+    return global.acervator
+      .call(METHOD, { paused: flag === true })
+      .then(function (model) {
+        loadFault = null;
+        setLog(model);
+        redraw();
+        return model;
+      })
+      .catch(function (err) {
+        loadFault = err.message;
+        return null;
+      });
+  }
+
   function forget() {
     held = null;
     logFaults = [];
@@ -753,6 +781,8 @@
     loadError: loadError,
     isLoaded: isLoaded,
     renderLog: renderLog,
+    redraw: redraw,
+    setPaused: setPaused,
     forget: forget
   };
 })(window);
