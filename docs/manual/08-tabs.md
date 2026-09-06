@@ -231,6 +231,37 @@ Start and Stop buttons and the seventeen live-status rows. A press on the page
 runs the inherited Python and comes back as a redraw. Setting the variant to
 `qt` builds the Qt panel instead, unchanged.
 
+The two drawn panels follow the same route. `SimPriceVwapChartReact` inherits
+the price and VWAP chart, so the ticks, the thinning and the trade markers stay
+one piece of Python, and `GateStatusPanelReact` inherits the gate pane.
+
+`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._price_chart_class`
+
+```python
+from ..variant_surface import SIM_PRICE_CHART, surface_class
+
+return surface_class(SIM_PRICE_CHART)
+```
+
+Neither panel is redrawn in JavaScript. Python builds the whole draw program —
+every line, box, dot and label, with its colour and its position — and
+`sim_visuals.js` runs that program on one canvas. The picture is decided on the
+Python side, so the two builds cannot draw different charts from the same ticks.
+
+`src/gui/main_tabs/sim_visuals_surface.py` — `chart_program`
+
+```python
+if not model.symbols:
+    return []
+if model.focus:
+    return focused_program(model, width_px, height_px)
+return band_program(model, width_px)
+```
+
+The gate pane draws one labelled row per bot and nineteen lights on each, and a
+gate reading written from Python changes what those lights show. An empty pane
+still says "No fleet loaded."
+
 Everything else on this tab is still drawn by Qt.
 
 Mode is the picker beside it. Three modes, each with its own line saying what
@@ -2992,7 +3023,7 @@ tab row.
 | `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | no | no |
 | `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | no |
 | `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | no |
-| `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | no |
+| `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | yes |
 | `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes |
 | `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes |
 | `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes |
@@ -3028,7 +3059,7 @@ Uses React               53
 Bridge                   67
 Manifest                 55
 Registers in Electron    13
-RENDERS                  20
+RENDERS                  21
 ```
 
 Four columns are all but complete. The fifth is at one.

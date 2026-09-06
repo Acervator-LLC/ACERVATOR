@@ -16,7 +16,9 @@ BOT_SWARM = "Bot Swarm"
 HISTORY = "History"
 HISTORY_TABLE = "History table"
 MARKET_INSPECTOR = "Market Inspector"
+GATE_STATUS_PANEL = "Gate status panel"
 NUCLEAR_MODE = "Nuclear Mode"
+SIM_PRICE_CHART = "Sim price chart"
 SIM_STAT_STRIP = "Sim stat strip"
 
 Loader = Callable[[], type]
@@ -123,6 +125,34 @@ def _react_nuclear_mode() -> type:
     return NuclearModeReactPanel
 
 
+def _qt_gate_status_panel() -> type:
+    """Import and return the Qt gate status panel."""
+    from .simulator_tab.fleet.sim_visuals import GateStatusPanel
+
+    return GateStatusPanel
+
+
+def _react_gate_status_panel() -> type:
+    """Import and return the React gate status panel."""
+    from .react_sim_visuals import GateStatusPanelReact
+
+    return GateStatusPanelReact
+
+
+def _qt_sim_price_chart() -> type:
+    """Import and return the Qt Simulator price and VWAP chart."""
+    from .simulator_tab.fleet.sim_visuals import SimPriceVwapChart
+
+    return SimPriceVwapChart
+
+
+def _react_sim_price_chart() -> type:
+    """Import and return the React Simulator price and VWAP chart."""
+    from .react_sim_visuals import SimPriceVwapChartReact
+
+    return SimPriceVwapChartReact
+
+
 def _qt_sim_stat_strip() -> type:
     """Import and return the Qt Simulator stat strip."""
     from .simulator_tab.sim_stat_strip import SimStatStrip
@@ -142,4 +172,6 @@ register(HISTORY_TABLE, _qt_history_table, _react_history_table)
 register(BOT_SWARM, _qt_bot_swarm, _react_bot_swarm)
 register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)
 register(NUCLEAR_MODE, _qt_nuclear_mode, _react_nuclear_mode)
+register(SIM_PRICE_CHART, _qt_sim_price_chart, _react_sim_price_chart)
+register(GATE_STATUS_PANEL, _qt_gate_status_panel, _react_gate_status_panel)
 register(SIM_STAT_STRIP, _qt_sim_stat_strip, _react_sim_stat_strip)

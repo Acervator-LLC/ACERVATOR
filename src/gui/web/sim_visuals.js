@@ -191,10 +191,33 @@
   var OP = "op";
   var OP_TEXT = "text";
   var OP_ELLIPSE = "ellipse";
+  var OP_LINE = "line";
+  var OP_RECT = "rect";
+  var OP_FILL = "fill";
   var PEN = "pen";
   var BRUSH = "brush";
   var RECT = "rect";
   var ALIGN = "align";
+  var LINE_FIELD = "line";
+  var WIDTH_FIELD = "width";
+  var STYLE_FIELD = "style";
+  var AT_FIELD = "at";
+
+  // NO_PAINT is the pen and the brush the surface writes for "do not paint".
+  var NO_PAINT = "none";
+  var TRANSPARENT = "transparent";
+  var DASH_LINE = "dash";
+  var CONTEXT_2D = "2d";
+  // READ_BACK keeps the surface on the processor, so a whole repaint every
+  // tick costs no upload and the painted pixels stay readable.
+  var READ_BACK = { willReadFrequently: true };
+  var CANVAS_TAG = "canvas";
+  var CHART_CANVAS_PART = "chart-canvas";
+  var BLOCK = "block";
+  var MIDDLE = "middle";
+  var LEFT = "left";
+  var RIGHT = "right";
+  var FUNCTION_KIND = "function";
   var TEXT_FIELD = "text";
   var BANK = "bank";
   var LABEL = "label";
@@ -283,6 +306,13 @@
   var ZERO = Number(EMPTY);
   var ONE = Number(true);
   var TWO = ONE + ONE;
+  var THREE = TWO + ONE;
+  var FOUR = TWO + TWO;
+  var EIGHT = FOUR + FOUR;
+  // HALF puts a one-pixel stroke on the pixel centre, as Qt's painter does.
+  var HALF = Math.pow(TWO, -ONE);
+  // BYTE_STEP turns the alpha Qt counts in bytes into the fraction CSS reads.
+  var BYTE_STEP = Math.pow(Math.pow(TWO, EIGHT) - ONE, -ONE);
 
   var DIV_TAG = "div";
   var SPAN_TAG = "span";
@@ -352,6 +382,10 @@
 
   function owns(bag, name) {
     return Object.prototype.hasOwnProperty.call(bag, name);
+  }
+
+  function isNumber(value) {
+    return typeof value === "number" && isFinite(value);
   }
 
   function objectField(model, field) {
@@ -771,7 +805,122 @@
     );
   }
 
-  // ChartMount frames the chart and leaves its primitives to the slot filler.
+  // paintOn is the surface's draw program executed on a 2D context.
+  function paintOn(surface, program) {
+    program.forEach(function (step) {
+      var box = listField(step, RECT);
+      var ends = listField(step, LINE_FIELD);
+      surface.lineWidth = isNumber(step[WIDTH_FIELD]) ? step[WIDTH_FIELD] : ONE;
+      surface.setLineDash(step[STYLE_FIELD] === DASH_LINE ? [FOUR, THREE] : []);
+      surface.strokeStyle = brushText(step[PEN]);
+      surface.fillStyle = brushText(step[BRUSH]);
+      if (step[OP] === OP_LINE && ends.length === FOUR) {
+        surface.beginPath();
+        surface.moveTo(ends[ZERO] + HALF, ends[ONE] + HALF);
+        surface.lineTo(ends[TWO] + HALF, ends[THREE] + HALF);
+        surface.stroke();
+        return;
+      }
+      if (box.length !== FOUR) {
+        return;
+      }
+      if (step[OP] === OP_FILL) {
+        surface.fillRect(box[ZERO], box[ONE], box[TWO], box[THREE]);
+        return;
+      }
+      if (step[OP] === OP_RECT) {
+        paintShape(surface, step, function () {
+          surface.rect(box[ZERO] + HALF, box[ONE] + HALF, box[TWO], box[THREE]);
+        });
+        return;
+      }
+      if (step[OP] === OP_ELLIPSE) {
+        paintShape(surface, step, function () {
+          surface.ellipse(
+            box[ZERO] + box[TWO] * HALF,
+            box[ONE] + box[THREE] * HALF,
+            Math.max(box[TWO] * HALF, HALF),
+            Math.max(box[THREE] * HALF, HALF),
+            ZERO,
+            ZERO,
+            TWO * Math.PI
+          );
+        });
+        return;
+      }
+      if (step[OP] === OP_TEXT) {
+        paintText(surface, step, box);
+      }
+    });
+  }
+
+  // brushText answers a CSS colour for a name, an rgba list, or "none".
+  function brushText(value) {
+    if (Array.isArray(value)) {
+      var parts = value.slice();
+      var alpha = parts.length === FOUR ? parts.pop() * BYTE_STEP : ONE;
+      return RGBA_OPEN + parts.join(COMMA) + COMMA + alpha + CLOSE;
+    }
+    return value === NO_PAINT || value === undefined ? TRANSPARENT : String(value);
+  }
+
+  function paintShape(surface, step, trace) {
+    surface.beginPath();
+    trace();
+    if (step[BRUSH] !== NO_PAINT && step[BRUSH] !== undefined) {
+      surface.fill();
+    }
+    if (step[PEN] !== NO_PAINT && step[PEN] !== undefined) {
+      surface.stroke();
+    }
+  }
+
+  // paintText places one label in its box, on the alignment the surface named.
+  function paintText(surface, step, box) {
+    var written = String(step[TEXT_FIELD] === undefined ? EMPTY : step[TEXT_FIELD]);
+    var at = listField(step, AT_FIELD);
+    surface.fillStyle = brushText(step[PEN]);
+    surface.textBaseline = MIDDLE;
+    if (at.length === TWO) {
+      surface.textAlign = LEFT;
+      surface.fillText(written, at[ZERO], at[ONE]);
+      return;
+    }
+    if (box.length !== FOUR) {
+      return;
+    }
+    var middle = box[ONE] + box[THREE] * HALF;
+    if (step[ALIGN] === ALIGN_LABEL) {
+      surface.textAlign = CENTER;
+      surface.fillText(written, box[ZERO] + box[TWO] * HALF, middle);
+      return;
+    }
+    if (step[ALIGN] === ALIGN_MARKER) {
+      surface.textAlign = RIGHT;
+      surface.fillText(written, box[ZERO] + box[TWO], middle);
+      return;
+    }
+    surface.textAlign = LEFT;
+    surface.fillText(written, box[ZERO], middle);
+  }
+
+  // chartCanvas sizes the canvas to its box and repaints it from the program.
+  function chartCanvas(node, program) {
+    if (node === null || typeof node.getContext !== FUNCTION_KIND) {
+      return null;
+    }
+    node.width = Math.max(node.clientWidth || node.parentNode.clientWidth, ONE);
+    node.height = Math.max(node.clientHeight || node.parentNode.clientHeight, ONE);
+    var surface = node.getContext(CONTEXT_2D, READ_BACK);
+    if (surface === null) {
+      return null;
+    }
+    surface.clearRect(ZERO, ZERO, node.width, node.height);
+    paintOn(surface, program);
+    return node;
+  }
+
+  // ChartMount frames the chart and paints its program onto one canvas.
   function ChartMount(props) {
     if (!isPlainObject(props.model)) {
       return null;
@@ -788,14 +937,22 @@
     style.width = across === POLICY_EXPANDING ? FULL : MIN_CONTENT;
     style.overflow = CLIPPED;
     var mountProps = { style: style };
+    var program = listField(chart, PROGRAM);
     mountProps[PART_ATTR] = CHART_MOUNT_PART;
     mountProps[SLOT_ATTR] = CHART_SLOT;
     mountProps[ARIA_LABEL] = text(chart[ACCESSIBLE_NAME]);
     mountProps[ARIA_DESCRIPTION] = text(chart[ACCESSIBLE_DESCRIPTION]);
     mountProps[TITLE_ATTR] = text(chart[TOOLTIP]);
     mountProps[FOCUS_ATTR] = text(chart[FOCUS]);
-    mountProps[OPS_ATTR] = String(listField(chart, PROGRAM).length);
-    return element(DIV_TAG, mountProps, null);
+    mountProps[OPS_ATTR] = String(program.length);
+    var canvasProps = {
+      style: { display: BLOCK, width: FULL, flexGrow: ONE, minHeight: ZERO },
+      ref: function (node) {
+        chartCanvas(node, program);
+      }
+    };
+    canvasProps[PART_ATTR] = CHART_CANVAS_PART;
+    return element(DIV_TAG, mountProps, element(CANVAS_TAG, canvasProps));
   }
 
   // toContents narrows the first column, which Qt sizes to its own text.
@@ -1501,7 +1658,8 @@
       EXPAND_FIELDS,
       LIGHT_FIELDS,
       [KIND, VISIBLE, SYMBOL, LIGHTS, PROGRAM, CELLS, DIRECTION_COLOUR],
-      [OP, PEN, BRUSH, RECT, ALIGN, TEXT_FIELD]
+      [OP, PEN, BRUSH, RECT, ALIGN, TEXT_FIELD],
+      [LINE_FIELD, WIDTH_FIELD, STYLE_FIELD, AT_FIELD]
     );
   }
 

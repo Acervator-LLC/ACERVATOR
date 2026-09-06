@@ -252,9 +252,7 @@ class SimulatorTab(QWidget):
         _ind_inner.setContentsMargins(0, 0, 0, 0)
         _ind_inner.setSpacing(0)
         try:
-            from .fleet.sim_visuals import SimPriceVwapChart
-
-            self._sim_price_chart = SimPriceVwapChart()
+            self._sim_price_chart = self._price_chart_class()()
             # The Trading Tab's own panel, same feed contract:
             # update_data(multi_tf_summary, symbol).
             from ..indicator_panel import IndicatorVotingPanel
@@ -461,6 +459,22 @@ class SimulatorTab(QWidget):
             from .sim_stat_strip import SimStatStrip
 
             return SimStatStrip(self)
+
+    def _price_chart_class(self) -> type:
+        """The price and VWAP chart class the build variant asks for.
+
+        ``variant_surface`` holds the Qt chart and the React chart under
+        ``SIM_PRICE_CHART``; both answer ``append_tick`` and ``set_symbols``.
+        """
+        try:
+            from ..variant_surface import SIM_PRICE_CHART, surface_class
+
+            return surface_class(SIM_PRICE_CHART)
+        except Exception as exc:  # noqa: BLE001 - GUI import guard
+            logger.warning("price chart unavailable, using the Qt chart: %s", exc)
+            from .fleet.sim_visuals import SimPriceVwapChart
+
+            return SimPriceVwapChart
 
     def _nuclear_panel_class(self) -> type:
         """The Nuclear Mode panel class the build variant asks for.
