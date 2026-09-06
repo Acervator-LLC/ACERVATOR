@@ -3071,6 +3071,10 @@ The Tab column names the tab builder whose closure reaches the module. Header
 strip and window chrome are the parts of the Main Window that sit outside the
 tab row.
 
+The table carries eight columns and no tab column. The screen a module draws is
+named in that screen's own section above. Header strip and window chrome are
+the parts of the Main Window that sit outside the tab row.
+
 ### The conversion table
 
 | Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS |

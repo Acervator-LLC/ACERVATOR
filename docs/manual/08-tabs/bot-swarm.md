@@ -15,6 +15,19 @@ the tab row. The tab holds three sub-tabs.
 | Simulator Swarm | Rows the Simulator registers while a run plays |
 | Paper Swarm | Chrome only — see [paper-trader.md](paper-trader.md) |
 
+The builder asks `variant_surface` for the tab class under the screen name
+`BOT_SWARM`. A build stamped for Qt gets the old widget. Every other build gets
+the React tab, which holds the whole screen in one web view. React is the
+running choice.
+
+`src/gui/main_tabs/bot_swarm_tab.py` — `BotSwarmTabMixin._build_bot_swarm_tab`
+
+```python
+from ..variant_surface import BOT_SWARM, surface_class
+
+built = surface_class(BOT_SWARM)()
+```
+
 ## The nodes
 
 Each bot draws as one locust card, painted with QPainter. A theme module
@@ -29,6 +42,28 @@ class BotNodeWidget(QWidget):
     paintEvent draws the wings, abdomen, thorax and head, then the
     symbol, the P/L and the bot_id as text.
     """
+```
+
+In the React build the card is drawn by `bot_node.js` from the payload
+`bot_node_surface` publishes. The tab page carries that module beside the wire
+canvas, the quick routing matrix, the list and the theme palettes.
+
+`src/gui/react_bot_swarm_tab.py` — `TAB_SCRIPT_ASSETS`
+
+```python
+TAB_SCRIPT_ASSETS: tuple[str, ...] = (
+    "vendor/react.production.min.js",
+    "vendor/react-dom.production.min.js",
+    "design_tokens.js",
+    "shared_widgets.js",
+    "header_strip.js",
+    "visualizer_themes.js",
+    "bot_node.js",
+    "wire_canvas.js",
+    "quick_routing.js",
+    "bot_swarm_list.js",
+    "bot_visualizer.js",
+)
 ```
 
 One handler switches between the list and the grid. The wire overlay covers the

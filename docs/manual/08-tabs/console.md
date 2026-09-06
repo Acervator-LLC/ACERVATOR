@@ -9,6 +9,54 @@ in the lower one.
 builds both panes into a vertical splitter, weighted three to two, and starts
 three timers.
 
+The builder does not hold the panes. It asks `variant_surface` for the tab
+class, takes the parts off it, and adds it to the tab row.
+
+`src/gui/main_tabs/console_tab.py` — `ConsoleTabMixin._build_console_tab`
+
+```python
+tab = surface_class(CONSOLE)()
+self._console_tab = tab
+self._console = tab.log_pane
+self._signal_view = tab.signal_view
+self._console_pause_btn = tab.pause_button
+self._console_pause_indicator = tab.pause_indicator
+```
+
+Two classes answer that call. `ConsoleQtTab` builds the Qt panes, the control
+bar and the vertical splitter. `ConsoleReactTab` holds the same six parts and
+draws all of them in one web view. React is the running choice.
+
+`src/gui/variant_surface.py` — the two loaders for the Console
+
+```python
+def _qt_console() -> type:
+    """Import and return the Qt Console tab."""
+    from .qt_console_tab import ConsoleQtTab
+
+    return ConsoleQtTab
+
+
+def _react_console() -> type:
+    """Import and return the React Console tab."""
+    from .react_console_tab import ConsoleReactTab
+
+    return ConsoleReactTab
+```
+
+`_start_console_timers` starts two timers, the signal drain and the console
+health. The pause refresh timer is built with the tab and started by the pause
+action.
+
+`src/gui/main_tabs/console_tab.py` — `ConsoleTabMixin._start_console_timers`
+
+```python
+self._signal_timer = QTimer(self)
+self._signal_timer.setInterval(surface.DRAIN_INTERVAL_MS)
+self._signal_timer.timeout.connect(self._drain_signals)
+self._signal_timer.start()
+```
+
 ## Upper pane: the Python log
 
 The upper pane is a read-only text view capped at two thousand blocks, which is
@@ -20,6 +68,20 @@ what bounds its memory.
 self._console = QPlainTextEdit()
 self._console.setReadOnly(True)
 self._console.setFont(QFont("Consolas", 9))
+```
+
+`ConsoleQtTab` builds that view. Under React the same calls land on `PagePane`,
+which holds the blocks and pushes them to the page.
+
+`src/gui/qt_console_tab.py` — `ConsoleQtTab.__init__`
+
+```python
+self.log_pane = QPlainTextEdit()
+self.log_pane.setReadOnly(True)
+self.log_pane.setFont(
+    QFont(surface.PANE_FONT_FAMILY, surface.PANE_FONT_POINT_SIZE)
+)
+self.log_pane.setMaximumBlockCount(surface.PANE_MAX_BLOCKS)
 ```
 
 A log handler formats each record and hands the line to a relay. The relay
@@ -38,6 +100,16 @@ logging.getLogger().addHandler(qt_handler)
 logging.getLogger("acervator").addHandler(qt_handler)
 ```
 
+The builder reads those two names from the surface and adds the tab's own
+handler to each.
+
+`src/gui/main_tabs/console_tab.py` — `ConsoleTabMixin._build_console_tab`
+
+```python
+for name in surface.HANDLER_LOGGERS:
+    logging.getLogger(name).addHandler(tab.log_handler)
+```
+
 ### The handler level
 
 The tab sets its own handler to debug and changes no logger's level. An earlier
@@ -50,6 +122,18 @@ handler instead keeps the verbosity local to this pane.
 ```python
 # The tab sets its own handler's level and leaves every logger level alone.
 qt_handler.setLevel(logging.DEBUG)
+```
+
+Each tab class sets that level on its own handler, from `HANDLER_LEVEL` in the
+surface.
+
+`src/gui/qt_console_tab.py` — `ConsoleQtTab.__init__`
+
+```python
+self.log_handler.setFormatter(
+    logging.Formatter(surface.LOG_FORMAT, datefmt=surface.LOG_DATEFMT)
+)
+self.log_handler.setLevel(surface.HANDLER_LEVEL)
 ```
 
 ## Pausing
