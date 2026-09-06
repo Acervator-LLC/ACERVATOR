@@ -503,13 +503,14 @@ def start_bridge(live):
     """Serve the desktop bridge on this process's own stdin and stdout.
 
     ``sys.stdout`` is rebound to ``sys.stderr`` before the first request is
-    read, and ``serve_on_thread`` returns the thread answering them.
+    read. ``serve_and_push`` returns the thread answering requests and gives
+    ``live`` the channel that writes each later ``publish`` down the same pipe.
     """
-    from src.core.desktop_bridge import build_registry, serve_on_thread
+    from src.core.desktop_bridge import build_registry, serve_and_push
 
     channel = sys.stdout.buffer
     sys.stdout = sys.stderr
-    return serve_on_thread(sys.stdin.buffer, channel, build_registry(live))
+    return serve_and_push(sys.stdin.buffer, channel, build_registry(live), live)
 
 
 def main() -> int:
