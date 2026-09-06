@@ -933,6 +933,12 @@
     return report();
   }
 
+  // `reset` drops the panels an earlier paint left, so a fresh open draws
+  // only the bots this answer carries.
+  function openingRequest() {
+    return { reset: true };
+  }
+
   // A failed load is not remembered, so a later ask reaches the bridge.
   function loadCharts(params) {
     if (asked !== null) {
@@ -1187,7 +1193,8 @@
     global.acervatorPanelHost.register({
       render: renderTab,
       load: loadCharts,
-      loadError: loadError
+      loadError: loadError,
+      request: openingRequest
     });
   }
 

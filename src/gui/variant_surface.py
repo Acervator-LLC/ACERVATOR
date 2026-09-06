@@ -14,6 +14,7 @@ from src._variant import QT, resolve_variant
 
 HISTORY = "History"
 HISTORY_TABLE = "History table"
+MARKET_INSPECTOR = "Market Inspector"
 
 Loader = Callable[[], type]
 
@@ -77,5 +78,20 @@ def _react_history_table() -> type:
     return HistoryWebTable
 
 
+def _qt_market_inspector() -> type:
+    """Import and return the Qt Market Inspector tab."""
+    from .market_inspector import MarketInspectorTab
+
+    return MarketInspectorTab
+
+
+def _react_market_inspector() -> type:
+    """Import and return the React Market Inspector tab."""
+    from .react_market_inspector_tab import MarketInspectorReactTab
+
+    return MarketInspectorReactTab
+
+
 register(HISTORY, _qt_history, _react_history)
 register(HISTORY_TABLE, _qt_history_table, _react_history_table)
+register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)

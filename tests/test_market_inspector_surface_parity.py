@@ -2048,6 +2048,16 @@ METHOD_MAP = {
     ),
     "MarketInspectorTab._status_line": "MarketInspectorScreenModel.status_line",
     "MarketInspectorTab._render_signals": ("MarketInspectorScreenModel.render_signals"),
+    "MarketInspectorTab._build_ui": "MarketInspectorScreenModel.build_ui",
+    "MarketInspectorTab._set_status": "MarketInspectorScreenModel.set_status",
+    "MarketInspectorTab._set_refresh_enabled": (
+        "MarketInspectorScreenModel.set_refresh_enabled"
+    ),
+    "MarketInspectorTab._shown_signals": ("MarketInspectorScreenModel.shown_signals"),
+    "MarketInspectorTab._fill_signal_rows": (
+        "MarketInspectorScreenModel.fill_signal_rows"
+    ),
+    "MarketInspectorTab._fill_pair_rows": ("MarketInspectorScreenModel.fill_pair_rows"),
 }
 
 FUNCTION_MAP = {
@@ -2105,6 +2115,12 @@ SCREEN_MODEL_MEMBERS = {
     "scan_state",
     "empty_notes",
     "finish_scan_record",
+    "build_ui",
+    "set_status",
+    "set_refresh_enabled",
+    "shown_signals",
+    "fill_signal_rows",
+    "fill_pair_rows",
 }
 
 PER_BOT_MODEL_MEMBERS = {
@@ -2175,7 +2191,7 @@ def test_every_shipped_class_function_and_method_has_a_counterpart():
         for member in members(getattr(shipped, name)):
             found["%s.%s" % (name, member)] = member
     assert set(found) == set(METHOD_MAP), sorted(set(found) ^ set(METHOD_MAP))
-    assert len(METHOD_MAP) == 16
+    assert len(METHOD_MAP) == 22
     targets = (
         set(METHOD_MAP.values())
         | set(CLASS_MAP.values())
@@ -2188,7 +2204,7 @@ def test_every_shipped_class_function_and_method_has_a_counterpart():
     assert members(surface.MarketInspectorScreenModel) == SCREEN_MODEL_MEMBERS, sorted(
         members(surface.MarketInspectorScreenModel) ^ SCREEN_MODEL_MEMBERS
     )
-    assert len(SCREEN_MODEL_MEMBERS) == 20
+    assert len(SCREEN_MODEL_MEMBERS) == 26
     assert members(surface.PerBotViewModel) == PER_BOT_MODEL_MEMBERS, sorted(
         members(surface.PerBotViewModel) ^ PER_BOT_MODEL_MEMBERS
     )
@@ -2330,13 +2346,15 @@ def test_the_screen_is_reached_by_two_windows_and_the_surface_by_the_bridge():
     )
     assert readers == [
         str(REPO_ROOT / "src/gui/live_settings/market_inspector_tab.py"),
-        str(REPO_ROOT / "src/gui/main_tabs/market_inspector_tab.py"),
+        str(REPO_ROOT / "src/gui/react_market_inspector_tab.py"),
+        str(REPO_ROOT / "src/gui/variant_surface.py"),
     ], readers
     analyzer_readers = modules_importing("src.trading.market_inspector")
     assert str(REPO_ROOT / "src/gui/main_window.py") in analyzer_readers
     assert set(readers).isdisjoint(analyzer_readers), "two files share a name"
     assert modules_importing("src.gui.main_tabs.market_inspector_surface") == [
-        str(REPO_ROOT / "src/core/desktop_bridge.py")
+        str(REPO_ROOT / "src/core/desktop_bridge.py"),
+        str(REPO_ROOT / "src/gui/react_market_inspector_tab.py"),
     ]
     known = modules_importing("src.gui.design_system")
     assert len(known) > 5, known
