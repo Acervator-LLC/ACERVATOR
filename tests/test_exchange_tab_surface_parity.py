@@ -53,7 +53,7 @@ PIXEL_SIZE = (900, 220)
 # `tests/fixtures/quiet_news_ticker.py` in place of the real strip, so these are
 # the tab's own wiring and elements.
 TAB_CONNECTIONS = 13
-SURFACE_ACTION_TOTAL = 6
+SURFACE_ACTION_TOTAL = 7
 TAB_TIMER_BUILDS = 1
 TAB_BUS_SITES = 0
 TAB_SIGNAL_BUILDS = 0
@@ -1216,6 +1216,27 @@ def test_the_new_bot_button_names_its_own_exchange_on_both_sides():
     assert model.new_bot_asks == [OTHER_EXCHANGE_ID]
 
 
+def test_the_new_bot_press_keeps_the_module_that_draws_the_wizard():
+    """The screen kept no wizard after the press that opens one."""
+    model = surface.screen(OTHER_EXCHANGE_ID, "Kraken")
+    assert model.bot_wizard is None
+    assert surface.build_view_model(model)["bot_wizard_open"] is False
+    model.on_new_bot_clicked()
+    assert model.bot_wizard == surface.BOT_WIZARD_MODULE
+    assert surface.build_view_model(model)["bot_wizard_open"] is True
+
+
+def test_closing_the_wizard_leaves_the_screen_holding_none():
+    """The screen kept the wizard open after it closed."""
+    model = surface.screen(OTHER_EXCHANGE_ID, "Kraken")
+    model.on_new_bot_clicked()
+    assert surface.build_view_model(model)["bot_wizard_open"] is True
+    model.close_bot_wizard()
+    assert model.bot_wizard is None
+    assert surface.build_view_model(model)["bot_wizard_open"] is False
+    assert [surface.BOT_WIZARD_CLOSED, OTHER_EXCHANGE_ID] in model.calls
+
+
 def test_a_new_bot_button_with_nothing_wired_asks_for_nothing():
     """An unwired button asked for a bot anyway."""
     app()
@@ -1531,7 +1552,7 @@ def test_the_screen_wires_its_signals_and_the_surface_wires_none():
 
 def test_the_surface_names_one_action_per_thing_the_operator_can_do():
     """Each entry of ``ACTIONS`` names a real ``ExchangeTabModel`` method."""
-    assert len(surface.ACTIONS) == SURFACE_ACTION_TOTAL == 6
+    assert len(surface.ACTIONS) == SURFACE_ACTION_TOTAL == 7
     for name in surface.ACTIONS.values():
         assert callable(getattr(surface.ExchangeTabModel, name)), name
 
@@ -1781,6 +1802,7 @@ TAB_MODEL_MEMBERS = {
     "__init__",
     "build_news_ticker",
     "on_new_bot_clicked",
+    "close_bot_wizard",
     "update_pull_rate_label",
     "scrum_clicked",
     "extractor_clicked",
@@ -1849,7 +1871,7 @@ def test_every_shipped_class_and_method_has_a_counterpart():
     assert members(surface.ExchangeTabModel) == TAB_MODEL_MEMBERS, sorted(
         members(surface.ExchangeTabModel) ^ TAB_MODEL_MEMBERS
     )
-    assert len(TAB_MODEL_MEMBERS) == 14
+    assert len(TAB_MODEL_MEMBERS) == 15
     assert members(surface.HostedTableModel) == HOSTED_TABLE_MEMBERS, sorted(
         members(surface.HostedTableModel) ^ HOSTED_TABLE_MEMBERS
     )
@@ -2517,6 +2539,10 @@ def compared_payloads():
         pressed.cmd(command)
     pressed.on_new_bot_clicked()
     payloads.append(surface.build_view_model(pressed))
+    walked = surface.screen(surface.DEFAULT_EXCHANGE_ID, surface.DEFAULT_EXCHANGE_NAME)
+    walked.on_new_bot_clicked()
+    walked.close_bot_wizard()
+    payloads.append(surface.build_view_model(walked))
     refused = new_model(status_log=RecordingLog())
     refused.cmd("stop")
     payloads.append(surface.build_view_model(refused))
@@ -2717,6 +2743,10 @@ PAYLOAD_KEY_SOURCES = {
     "pull_rate_param": ("PULL_RATE_PARAM",),
     "command_param": ("COMMAND_PARAM",),
     "new_bot_param": ("NEW_BOT_PARAM",),
+    "close_bot_wizard_param": ("CLOSE_BOT_WIZARD_PARAM",),
+    "bot_wizard_module": ("BOT_WIZARD_MODULE",),
+    "bot_wizard_stretch": ("BOT_WIZARD_STRETCH",),
+    "bot_wizard_open": ("model.bot_wizard",),
     "privacy_param": ("PRIVACY_PARAM",),
     "logger_name": ("LOGGER_NAME",),
     "calls": ("model.calls",),
@@ -2742,7 +2772,7 @@ def backed(key, value, sources, model, held=None):
         return freeze(value) == freeze(surface.table_view(resolved))
     if key in FREE_SHAPE_KEYS:
         return len(value) == len(resolved)
-    if key == "news_ticker_built":
+    if key in ("news_ticker_built", "bot_wizard_open"):
         return value is (resolved is not None)
     if key == "refusal_types":
         return list(value) == sorted(resolved)
@@ -2980,6 +3010,7 @@ def test_every_control_is_driven_by_the_field_name_the_payload_publishes():
         published["select_extractor_param"]: 0,
         published["command_param"]: "start",
         published["new_bot_param"]: True,
+        published["close_bot_wizard_param"]: True,
         published["pull_rate_param"]: True,
         published["privacy_param"]: True,
     }

@@ -2051,6 +2051,17 @@ def test_the_pool_page_draws_every_alt_with_its_own_tick(browser: Browser):
     ]
 
 
+def test_every_alt_tick_is_announced_by_the_pair_it_ticks(browser: Browser):
+    """A tick box announced as unlabelled, so no reader can name what it ticks."""
+    payload = state_payload("picked_alts")
+    parts = draw_wizard(browser, payload)
+    boxes = with_part(parts, "alt-check")
+    assert boxes, "the pool page drew no alt tick at all"
+    assert [one["attrs"].get("aria-label") for one in boxes] == [
+        one[0] for one in payload["pool_page"]["alt_items"]
+    ]
+
+
 def test_the_alt_tick_check_would_see_a_tick_on_the_wrong_alt(browser: Browser):
     """The alt tick check reads the same tick for every alt."""
     payload = state_payload("picked_alts")
@@ -2368,6 +2379,53 @@ def test_every_step_name_a_press_sends_is_one_the_surface_reads(js: JsRuntime):
 def test_the_step_name_check_would_see_a_step_the_surface_never_reads(js: JsRuntime):
     """The step-name check counts any name at all as a name the surface reads."""
     assert "no_such_step" not in surface.STEP_NAMES
+
+
+#: A bridge that records what a press asks for and answers nothing.
+BRIDGE_STUB = (
+    "window.ASKED = [];"
+    "window.acervator = { call: function (method, params) {"
+    "  window.ASKED.push({ method: method,"
+    "    params: JSON.parse(JSON.stringify(params)) });"
+    "  return { then: function () { return this; } }; } };"
+)
+
+
+def asked(js: JsRuntime) -> list:
+    return js.json("window.ASKED")
+
+
+def test_a_press_asks_with_every_step_taken_so_far(js: JsRuntime):
+    """A press asked with one step, so the wizard forgot the earlier ones."""
+    js.push(state_payload("params"))
+    js.run(BRIDGE_STUB)
+    js.run(API + 'pressNumber("trading_fee", 1.25)')
+    js.run(API + 'pressWalk("next")')
+    sent = asked(js)
+    assert [one["method"] for one in sent] == [surface.METHOD, surface.METHOD], sent
+    assert sent[0]["params"] == {"numbers": {"trading_fee": 1.25}}
+    assert sent[1]["params"] == {"numbers": {"trading_fee": 1.25}, "walk": ["next"]}
+    assert js.json(API + "steps()") == sent[1]["params"]
+
+
+def test_what_a_press_asks_with_moves_the_wizard_the_surface_lays_out(js: JsRuntime):
+    """A press asked with a shape the surface reads no step out of."""
+    js.push(state_payload("params"))
+    js.run(BRIDGE_STUB)
+    js.run(API + 'pressWalk("next")')
+    sent = asked(js)[-1]["params"]
+    start = surface.view_model({})["pages"]["current"]
+    assert surface.view_model(sent)["pages"]["current"] != start
+    wrapped = {"steps": [{"walk": ["next"]}]}
+    assert surface.view_model(wrapped)["pages"]["current"] == start
+
+
+def test_the_wizard_reports_itself_shut_once_the_walk_cancels(js: JsRuntime):
+    """The wizard called itself open after the walk that closes it."""
+    js.push(state_payload("params"))
+    assert js.json(API + "isOpen()") is True
+    js.push(state_payload("cancelled"))
+    assert js.json(API + "isOpen()") is False
 
 
 # A long, marked or broken value on the drawn page

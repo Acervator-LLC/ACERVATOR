@@ -3145,7 +3145,7 @@ rather than typed.
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | no | in scope, built by main_window.py, simulator_tab.py |
 | `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | no | in scope, built by bot_status_table.py, extractor_bot_table.py, main_window.py |
+| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | yes | in scope, built by bot_status_table.py, extractor_bot_table.py, main_window.py |
 | `src/gui/buy_confirmation_dialog.py` | no | - | no | no | no | - | no | in scope, built by main_window.py |
 | `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | yes | in scope |
@@ -3224,8 +3224,8 @@ Bridge                   67
 Manifest                 55
 Registers in Electron    15
 Ships in the build       55
-RENDERS                  29
-RENDERS, in scope        29 of 43
+RENDERS                  30
+RENDERS, in scope        30 of 43
 out of scope             33
 ```
 
@@ -3245,6 +3245,24 @@ RENDERS                  29
 
 Only the last column moved. The Settings row already carried a React module, a
 bridge method and a manifest entry; what it gained is the screen.
+
+Re-measured later on 6 September 2026, counted off the same 76 rows:
+
+```
+React module             55
+Uses React               53
+Bridge                   67
+Manifest                 55
+Registers in Electron    15
+Ships in the build       55
+RENDERS                  30
+RENDERS, in scope        30 of 43
+out of scope             33
+```
+
+The Create Auto Trader wizard is the row that moved. `bot_wizard.js` draws it
+into a space the React exchange screen keeps once + New Bot is pressed, so the
+wizard is a screen and no longer a module with nowhere to draw.
 
 The Paper Trader, Proof of Accumulation and System Status tabs have no Qt
 module to replace and no React module to replace it with, so the table carries

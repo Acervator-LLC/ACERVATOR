@@ -1203,6 +1203,50 @@ EXTRACTOR_SECTION = TAB + "/extractor-section"
 EXTRACTOR_TABLE = TAB + "/extractor-table"
 COMMAND_BAR = TAB + "/command-bar"
 COMMAND_BUTTON = COMMAND_BAR + "/command-button"
+BOT_WIZARD = TAB + "/bot-wizard-page"
+
+
+def wizard_open_payload() -> dict:
+    """The state "+ New Bot" leaves, taken from the surface's own request."""
+    ets.view_model({ets.RESET_PARAM: True})
+    return encoded(ets.view_model({ets.NEW_BOT_PARAM: True}))
+
+
+def wizard_shut_payload() -> dict:
+    """The state the wizard's own close leaves on the screen behind it."""
+    ets.view_model({ets.RESET_PARAM: True})
+    ets.view_model({ets.NEW_BOT_PARAM: True})
+    return encoded(ets.view_model({ets.CLOSE_BOT_WIZARD_PARAM: True}))
+
+
+def test_the_wizard_space_is_drawn_only_after_new_bot_is_pressed(browser: Browser):
+    """The screen kept a wizard space before anybody asked for a wizard."""
+    shut = state_payload(FULL_STATE)
+    assert shut["bot_wizard_open"] is False
+    assert at_path(draw_tab(browser, shut), BOT_WIZARD) == []
+    opened = wizard_open_payload()
+    assert opened["bot_wizard_open"] is True
+    space = only(draw_tab(browser, opened), BOT_WIZARD)
+    assert space["attrs"]["data-slot"] == "bot-wizard-page"
+    browser.settle(SETTLE_MS)
+    drawn = only(json.loads(browser.js(READ_PARTS)), BOT_WIZARD)
+    assert drawn["attrs"]["data-child-module"] == opened["bot_wizard_module"]
+
+
+def test_closing_the_wizard_takes_its_space_off_the_screen(browser: Browser):
+    """The space the wizard drew into outlived the wizard."""
+    assert only(draw_tab(browser, wizard_open_payload()), BOT_WIZARD)
+    shut = wizard_shut_payload()
+    assert shut["bot_wizard_open"] is False
+    assert at_path(draw_tab(browser, shut), BOT_WIZARD) == []
+
+
+def test_the_open_space_names_the_module_the_surface_publishes(browser: Browser):
+    """The screen kept a space for a module the surface never named."""
+    opened = wizard_open_payload()
+    assert opened["bot_wizard_module"] == ets.BOT_WIZARD_MODULE
+    space = only(draw_tab(browser, opened), BOT_WIZARD)
+    assert space["style"]["flexGrow"] == str(opened["bot_wizard_stretch"])
 
 
 def test_the_page_loads_the_module_under_its_own_policy(browser: Browser):
@@ -1508,11 +1552,12 @@ def test_the_privacy_button_is_left_out_of_the_keyboard_order(browser: Browser):
 
 
 def test_the_named_spaces_are_drawn_empty(browser: Browser):
-    """One unit each fills the news strip and the Extractor table."""
+    """One module each fills the news strip, the Extractor table and the wizard."""
     parts = draw_tab(browser, state_payload("both"))
     assert browser.parsed("acervatorExchangeTab.emptySpaces()") == [
         "news-ticker",
         "extractor-table",
+        "bot-wizard-page",
     ]
     assert only(parts, EXTRACTOR_TABLE)["children"] == 0
     assert only(parts, EXTRACTOR_TABLE)["text"] == ""

@@ -2755,6 +2755,7 @@ def build_view_model(
         "walk": {
             "outcome": model.outcome,
             "closed": model.closed_page,
+            "open_outcome": OUTCOME_OPEN,
             "outcomes": list(OUTCOMES),
             "refusal": model.refusal,
             "refusals": list(model.refusals),

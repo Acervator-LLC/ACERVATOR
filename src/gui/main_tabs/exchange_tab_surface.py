@@ -75,6 +75,8 @@ NEWS_TICKER_MODULE = "crypto_news_ticker"
 
 ADD_BOT_LABEL = "+ New Bot"
 ADD_BOT_ACCENT = True
+BOT_WIZARD_MODULE = "bot_wizard"
+BOT_WIZARD_STRETCH = 1
 
 PULL_RATE_INITIAL_TEXT = "Next data pull: — "
 PULL_RATE_STYLE = f"color:{ds.MAIN_BADGE_TEXT}; font-size:11px; padding:2px 6px;"
@@ -170,11 +172,13 @@ POOL_SUMMARY_PARAM = "pool_summary"
 PULL_RATE_PARAM = "pull_rate"
 COMMAND_PARAM = "command"
 NEW_BOT_PARAM = "new_bot"
+CLOSE_BOT_WIZARD_PARAM = "close_bot_wizard"
 PRIVACY_PARAM = "privacy"
 
 ACTIONS = {
     "privacy_clicked": "on_global_privacy_clicked",
     "add_bot_clicked": "on_new_bot_clicked",
+    "bot_wizard_closed": "close_bot_wizard",
     "pull_rate_timeout": "update_pull_rate_label",
     "scrum_selection_changed": "on_scrum_selection_changed",
     "extractor_selection_changed": "on_extractor_selection_changed",
@@ -194,6 +198,7 @@ COMMAND_SENT = "command.sent"
 BOT_OPENED = "bot.opened"
 SIBLING_CLEARED = "sibling.cleared"
 NEW_BOT_ASKED = "bot.new"
+BOT_WIZARD_CLOSED = "wizard.closed"
 PRIVACY_FLIPPED = "privacy.flipped"
 PRIVACY_UNREADABLE = "privacy.unreadable"
 PRIVACY_RESTYLED = "privacy.restyled"
@@ -476,6 +481,7 @@ class ExchangeTabModel:
         self.scrum_table = HostedTableModel(TABLE_SCRUMMING)
         self.extractor_table = HostedTableModel(TABLE_EXTRACTOR)
         self.last_clicked_table = DEFAULT_TABLE
+        self.bot_wizard = None
         self.build_news_ticker()
         self.refresh_privacy_mode_btn_style()
         self.calls.append([TAB_BUILT, exchange_id])
@@ -505,12 +511,23 @@ class ExchangeTabModel:
         self.calls.append([NEWS_TICKER_ADDED, NEWS_TICKER_STRETCH])
 
     def on_new_bot_clicked(self) -> None:
-        """Ask the window for a new bot on this exchange."""
+        """Ask the window for a new bot on this exchange.
+
+        Keeps whatever ``on_new_bot`` answers in ``bot_wizard``, which is
+        the module the screen holds a space for while the wizard is open.
+        """
         if not self.on_new_bot:
             return
         self.new_bot_asks.append(self.exchange_id)
         self.calls.append([NEW_BOT_ASKED, self.exchange_id])
-        self.on_new_bot(self.exchange_id)
+        self.bot_wizard = self.on_new_bot(self.exchange_id)
+
+    def close_bot_wizard(self) -> None:
+        """Drop the wizard, so the screen keeps no space for it."""
+        if self.bot_wizard is None:
+            return
+        self.bot_wizard = None
+        self.calls.append([BOT_WIZARD_CLOSED, self.exchange_id])
 
     def update_pull_rate_label(self) -> None:
         """Rewrite the data-pool freshness line under the "+ New Bot" button."""
@@ -795,14 +812,27 @@ def react_news_ticker() -> str:
     return NEWS_TICKER_MODULE
 
 
+def react_bot_wizard(exchange_id: str) -> str:
+    """The module that draws the Create Auto Trader wizard for ``exchange_id``.
+
+    ``ExchangeTabModel`` calls this as its ``on_new_bot``, so
+    ``on_new_bot_clicked`` puts the module name in ``bot_wizard``.
+    """
+    return BOT_WIZARD_MODULE
+
+
 def screen(exchange_id: str, exchange_name: str) -> ExchangeTabModel:
     """One ``ExchangeTabModel`` wired to ``react_news_ticker``.
 
     ``pane_model``, ``pane_model_for`` and ``view_model`` all build through
-    here, so every screen the bridge serves carries the news strip.
+    here, so every screen the bridge serves carries the news strip and
+    opens the wizard ``react_bot_wizard`` names.
     """
     return ExchangeTabModel(
-        exchange_id, exchange_name, news_ticker_factory=react_news_ticker
+        exchange_id,
+        exchange_name,
+        news_ticker_factory=react_news_ticker,
+        on_new_bot=react_bot_wizard,
     )
 
 
@@ -887,6 +917,9 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "add_bot_label": ADD_BOT_LABEL,
         "add_bot_accent": ADD_BOT_ACCENT,
         "new_bot_asks": list(model.new_bot_asks),
+        "bot_wizard_module": BOT_WIZARD_MODULE,
+        "bot_wizard_open": model.bot_wizard is not None,
+        "bot_wizard_stretch": BOT_WIZARD_STRETCH,
         "pull_rate_text": model.pull_rate_label_text,
         "pull_rate_initial_text": PULL_RATE_INITIAL_TEXT,
         "pull_rate_style": PULL_RATE_STYLE,
@@ -964,6 +997,7 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "pull_rate_param": PULL_RATE_PARAM,
         "command_param": COMMAND_PARAM,
         "new_bot_param": NEW_BOT_PARAM,
+        "close_bot_wizard_param": CLOSE_BOT_WIZARD_PARAM,
         "privacy_param": PRIVACY_PARAM,
         "logger_name": LOGGER_NAME,
         "calls": [list(call) for call in model.calls],
@@ -992,6 +1026,8 @@ def drive(model: ExchangeTabModel, params: dict) -> dict:
         model.cmd(params[COMMAND_PARAM])
     if params.get(NEW_BOT_PARAM, False):
         model.on_new_bot_clicked()
+    if params.get(CLOSE_BOT_WIZARD_PARAM, False):
+        model.close_bot_wizard()
     if params.get(PRIVACY_PARAM, False):
         model.on_global_privacy_clicked()
     return build_view_model(model)
