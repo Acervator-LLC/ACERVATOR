@@ -547,7 +547,13 @@
     return style;
   }
 
+  // privacy_dot.js draws the dot where the page loads it; header_strip.js
+  // paints the bare glyph span otherwise.
   function dotSpan() {
+    var own = global.acervatorDot;
+    if (own && own.Dot) {
+      return own.Dot;
+    }
     var api = global.acervatorHeader;
     return api && api.PrivacyDot ? api.PrivacyDot : null;
   }
@@ -590,7 +596,7 @@
       element(
         "div",
         dotProps,
-        span === null ? text(dot[TEXT]) : element(span, { dot: dot })
+        span === null ? text(dot[TEXT]) : element(span, { dot: dot, model: dot })
       )
     );
   }

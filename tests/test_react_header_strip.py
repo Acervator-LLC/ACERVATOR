@@ -481,6 +481,10 @@ def published_strings() -> set:
 
 SKIN_VALUES = strip_values()
 TOKEN_VALUES = token_values()
+
+#: The two mask markers the dot paints. A module spelling one out would
+#: hold a second source of truth for whether an amount is hidden.
+GLYPH_VALUES = {hss.DOT_REVEALED_GLYPH, hss.DOT_MASKED_GLYPH}
 PUBLISHED_STRINGS = published_strings()
 MODULE_LITERALS = js_literals(MODULE_SOURCE)
 
@@ -596,6 +600,12 @@ def test_every_named_word_is_a_name_and_not_a_value_the_strip_shows():
     assert not overlap, f"these named words are values the strip paints: {overlap}"
 
 
+def test_no_string_in_the_module_equals_a_mask_glyph():
+    """A glyph written here would say hidden or shown without the payload."""
+    written = sorted(set(MODULE_LITERALS["strings"]) & GLYPH_VALUES)
+    assert not written, f"header_strip.js spells out mask glyphs: {written}"
+
+
 def test_the_module_hides_no_value_behind_a_regular_expression():
     """The scan parses no regular expression, so a value inside one would
     pass unread. The module carries none."""
@@ -633,6 +643,8 @@ def caught_by_scan(source: str) -> set:
         caught.add("skin_value")
     if strings & TOKEN_VALUES:
         caught.add("token_value")
+    if strings & GLYPH_VALUES:
+        caught.add("glyph")
     if found["slashes"]:
         caught.add("regex")
     return caught
