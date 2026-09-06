@@ -327,10 +327,13 @@ def test_no_marketing_screen_sits_in_a_directory_the_build_ships() -> None:
     at the root they ship in NO build. Under either proposed destination
     they would ship in EVERY build.
     """
+    from src._variant import VARIANTS
     from tools.spec_common import datas_candidates
 
     shipped_dirs = {
-        Path(source).name for source, _dest in datas_candidates(str(REPO_ROOT))
+        Path(source).name
+        for variant in VARIANTS
+        for source, _dest in datas_candidates(str(REPO_ROOT), variant)
     }
     assert {"src", "resources"} <= shipped_dirs, (
         f"the spec no longer ships src and resources wholesale "

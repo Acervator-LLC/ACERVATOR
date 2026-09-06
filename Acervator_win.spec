@@ -111,7 +111,7 @@ a = Analysis(
     pathex=[PROJECT_ROOT],
     binaries=[],
     datas=(
-        build_graceful_datas(PROJECT_ROOT)
+        build_graceful_datas(PROJECT_ROOT, ACERVATOR_VARIANT)
         + bake_version_datas(PROJECT_ROOT)
         + bake_variant_datas(PROJECT_ROOT, ACERVATOR_VARIANT)
     ),

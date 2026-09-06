@@ -490,13 +490,17 @@ _SCAN_SUFFIXES = {
 }
 
 
-def _docker_mentions() -> list[str]:
-    """Every line of a live source file that names Docker."""
+def _docker_mentions_under(root: Path) -> list[str]:
+    """Every line under ``root`` that ``source_files`` calls source and names Docker.
+
+    ``source_files`` drops ``node_modules``, which ``npm install`` writes under
+    ``desktop`` and which carries the word in third-party changelogs.
+    """
     hits: list[str] = []
-    for path in REPO_ROOT.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in _SCAN_SUFFIXES:
+    for path in source_files(root):
+        if path.suffix.lower() not in _SCAN_SUFFIXES:
             continue
-        rel = path.relative_to(REPO_ROOT)
+        rel = path.relative_to(root)
         if set(rel.parts) & _SCAN_SKIP_PARTS or rel.name in _SCAN_SKIP_FILES:
             continue
         if any(rel.is_relative_to(skip) for skip in _SCAN_SKIP_DIRS):
@@ -508,6 +512,11 @@ def _docker_mentions() -> list[str]:
             if "docker" in line.lower()
         ]
     return hits
+
+
+def _docker_mentions() -> list[str]:
+    """Every line of a live source file in this repository that names Docker."""
+    return _docker_mentions_under(REPO_ROOT)
 
 
 def test_retired_docker_build_files_are_gone() -> None:
@@ -529,3 +538,22 @@ def test_nothing_references_the_retired_docker_build() -> None:
     that still calls it moves the false claim instead of ending it.
     """
     assert _docker_mentions() == []
+
+
+def test_the_docker_scan_reports_a_script_that_calls_it(tmp_path: Path) -> None:
+    """Control: the scan above expects [], and so does a scan reading nothing."""
+    (tmp_path / "deploy").mkdir()
+    (tmp_path / "deploy" / "run.sh").write_text(
+        "#!/bin/sh\ndocker compose up\n", encoding="utf-8"
+    )
+    assert _docker_mentions_under(tmp_path) == ["deploy/run.sh:2: docker compose up"]
+
+
+def test_the_docker_scan_skips_an_installed_dependency(tmp_path: Path) -> None:
+    """``npm install`` writes changelogs naming Docker under ``node_modules``."""
+    vendored = tmp_path / "desktop" / "node_modules" / "progress"
+    vendored.mkdir(parents=True)
+    (vendored / "CHANGELOG.md").write_text(
+        "* Fix: prevent crash in Docker\n", encoding="utf-8"
+    )
+    assert _docker_mentions_under(tmp_path) == []
