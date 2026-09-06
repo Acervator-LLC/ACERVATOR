@@ -27,6 +27,7 @@ from src.gui.main_tabs import bot_swarm_list_surface as swarm_list_surface
 from src.gui.main_tabs import console_tab_surface as console_surface
 from src.gui.main_tabs import design_system_surface as dss
 from src.gui.main_tabs import header_strip_surface as header_surface
+from src.gui.main_tabs import bot_visualizer_surface as visualizer_surface
 from src.gui.main_tabs import history_tab_surface as history_chrome_surface
 from src.gui.main_tabs import market_inspector_tab_surface as inspector_surface
 from src.gui.main_tabs import paper_trader_tab_surface as paper_surface
@@ -53,6 +54,7 @@ PANEL_SURFACES = {
     CONSOLE_PANEL: console_surface,
     HEADER_PANEL: header_surface,
     "bot_swarm_tab": swarm_list_surface,
+    "bot_visualizer": visualizer_surface,
     "history_tab": history_chrome_surface,
     "market_inspector_tab": inspector_surface,
     "paper_trader_tab": paper_surface,
@@ -209,14 +211,15 @@ def log_record(fields: dict) -> logging.LogRecord:
 
 
 @pytest.fixture()
-def qt_console(qapp):
-    """The shipped Console tab, built by the mixin MainWindow uses.
+def qt_console(qapp, monkeypatch):
+    """The Qt Console tab, built by the mixin MainWindow uses.
 
-    The mixin attaches its handler to the root logger and starts two
-    timers, so both are put back before the next test runs.
+    ``ACERVATOR_VARIANT`` is set to ``qt`` for the build, and the handler
+    and the two timers the mixin starts are put back after.
     """
     widgets = qt_available()
     assert qapp is not None
+    monkeypatch.setenv("ACERVATOR_VARIANT", "qt")
     from src.gui.main_tabs.console_tab import ConsoleTabMixin
 
     class ConsoleTabWindow(ConsoleTabMixin, widgets.QWidget):
