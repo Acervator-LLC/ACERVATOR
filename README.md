@@ -29,8 +29,8 @@ Read it that way.
 Built and running on live capital: the Trading tab, the Market Inspector, the
 Bot Swarm, the Asset Charts, the History tab and the Console.
 
-**Not built: the Simulator, the Paper Trader, and Proof of Accumulation.** The
-manual describes each of the three at length as a design. This product ships no
+**Not built: the Simulator, the Paper Trader, System Status and Proof of Accumulation.** The
+manual describes each of the four at length as a design. This product ships no
 backtesting engine, no paper-trading engine and no competition screen. Each one
 is named again, with its issue, under
 [the map](#three-subsystems-that-are-not-built).
