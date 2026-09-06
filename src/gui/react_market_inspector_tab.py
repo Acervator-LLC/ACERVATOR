@@ -17,7 +17,7 @@ from typing import Any, Callable, Optional
 from .main_tabs import market_inspector_surface as surface
 from .main_tabs import market_inspector_topologies_surface as topo_surface
 from .market_inspector import _HAS_QT, MarketInspectorTab
-from .react_history_panel import page_html
+from .react_history_panel import STYLE_SOURCE_ASSETS, page_html
 
 try:
     from PySide6.QtWebEngineCore import QWebEnginePage
@@ -59,12 +59,12 @@ ACCESSIBLE_NAME = "React Market Inspector Tab"
 #: The style sheet the page carries.
 TAB_STYLE_ASSETS: tuple[str, ...] = ("market_inspector.css",)
 
-#: The four scripts the page carries. Order is load order.
+#: The scripts the page carries. Order is load order, and the style source
+#: comes before the two screen modules, which parse their sheets with it.
 TAB_SCRIPT_ASSETS: tuple[str, ...] = (
-    "vendor/react.production.min.js",
-    "vendor/react-dom.production.min.js",
-    "market_inspector.js",
-    "market_inspector_topologies.js",
+    ("vendor/react.production.min.js", "vendor/react-dom.production.min.js")
+    + STYLE_SOURCE_ASSETS
+    + ("market_inspector.js", "market_inspector_topologies.js")
 )
 
 TAB_BODY = (
