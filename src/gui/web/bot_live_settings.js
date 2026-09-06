@@ -965,14 +965,13 @@
     var state = hooks().useState(currentTab(model));
     var at = state.shift();
     var setAt = state.shift();
-    var opened = listField(model, OPENED_SIZE_PX).slice();
     var floor = listField(model, MINIMUM_SIZE_PX).slice();
+    // No width or height here: bot_live_settings.css sizes the window to its
+    // view, so the page follows the dialog the operator resized.
     var style = {
       display: FLEX,
       flexDirection: COLUMN,
       overflow: HIDDEN,
-      width: length(opened.shift()),
-      height: length(opened.shift()),
       minWidth: length(floor.shift()),
       minHeight: length(floor.shift())
     };
@@ -1517,6 +1516,24 @@
     loadFault = null;
     asked = null;
     dispatched = [];
+  }
+
+  // A fresh open, so the bridge builds the window rather than answering
+  // an empty model kept from an earlier request.
+  function openingRequest() {
+    return { reset: true, build: true };
+  }
+
+  // The shell draws this window by its module name; the host reads that name
+  // off the script tag running now. It names no bridge method, so it takes no
+  // tab: the window belongs to a bot row, not to the tab bar.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderWindow,
+      load: loadBotLiveSettings,
+      loadError: loadError,
+      request: openingRequest
+    });
   }
 
   global.acervatorSetBotLiveSettings = setBotLiveSettings;

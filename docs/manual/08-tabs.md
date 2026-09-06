@@ -3212,7 +3212,7 @@ rather than typed.
 
 | Unit | Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `src/gui/bot_live_settings.py` | bot_live_settings.js | yes | yes | yes | no | yes | yes |
+| 1 | `src/gui/bot_live_settings.py` | bot_live_settings.js | yes | yes | yes | yes | yes | yes |
 | 2 | `src/gui/bot_swarm_list.py` | bot_swarm_list.js | yes | yes | yes | no | yes | yes |
 | 3 | `src/gui/bot_visualizer.py` | bot_visualizer.js | yes | yes | yes | yes | yes | yes |
 | 4 | `src/gui/bot_wizard.py` | bot_wizard.js | yes | yes | yes | no | yes | yes |
@@ -3260,7 +3260,7 @@ units                    40
 React module             36
 Bridge                   40
 Manifest                 36
-Registers in Electron    10
+Registers in Electron    11
 Ships in the build       36
 RENDERS                  40
 ```

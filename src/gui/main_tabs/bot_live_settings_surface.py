@@ -213,6 +213,7 @@ SAVE_FAILED_LOG = (
 )
 
 SAVE_METHOD = "save_all_state"
+HELD_BOTS_ATTR = "_bots"
 BOT_MANAGER_ATTRIBUTE = "_bot_manager"
 NO_MANAGER_REASON = "no bot manager is attached to this panel"
 SAVED_REASON = ""
@@ -699,11 +700,21 @@ class BotLiveSettingsModel:
         return None
 
     def sibling_bot_ids(self) -> list:
-        """The ordered bot ids in the manager, or none when it cannot answer."""
+        """The ordered bot ids in the manager, or none when it cannot answer.
+
+        ``BotManager`` keeps the fleet in ``_bots`` in insertion order and
+        offers no ``ordered_bot_ids``, so both routes are read.
+        """
         if self.bot_manager is None:
             return list(NO_SIBLINGS)
         try:
             return list(self.bot_manager.ordered_bot_ids())
+        except AttributeError:
+            pass
+        except Exception:
+            return list(NO_SIBLINGS)
+        try:
+            return list(getattr(self.bot_manager, HELD_BOTS_ATTR).keys())
         except Exception:
             return list(NO_SIBLINGS)
 
