@@ -40,6 +40,13 @@ from tools.build_variants import (
     selected_variants,
     windows_version_fields,
 )
+from tools.spec_common import (
+    DESKTOP_DIRNAME,
+    ELECTRON_RUNTIME,
+    SHELL_FILES,
+    SHELL_RENDERER,
+    shell_candidates,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 WIN_SPEC = REPO / "Acervator_win.spec"
@@ -472,6 +479,58 @@ def test_the_windows_resource_reaches_the_keyword_pyinstaller_reads(
         f"VSVersionInfo reaches the executable"
     )
     assert "version_info" not in built["EXE"], "the ignored keyword is back"
+
+
+# The react bundle carries the Electron shell, and the qt bundle does not
+
+
+def plant_shell(root: Path) -> None:
+    """Write the ``shell_candidates`` sources a react build ships under ``root``."""
+    desktop = root / DESKTOP_DIRNAME
+    (desktop / SHELL_RENDERER).mkdir(parents=True)
+    (desktop / ELECTRON_RUNTIME).mkdir(parents=True)
+    for name in SHELL_FILES:
+        (desktop / name).write_text("{}\n", encoding="utf-8")
+
+
+def shipped_destinations(built: dict) -> set[str]:
+    """Return every destination the spec handed ``Analysis`` as datas."""
+    return {Path(dest).as_posix() for _, dest in built["Analysis"]["datas"]}
+
+
+@pytest.mark.parametrize("spec", SPECS)
+def test_the_react_bundle_carries_the_shell_and_the_electron_runtime(
+    spec, tmp_path, monkeypatch
+):
+    """The bundle held src and no page, so the modules in it drew nothing."""
+    plant_shell(tmp_path)
+    shipped = shipped_destinations(run_spec(REPO / spec, tmp_path, monkeypatch, REACT))
+    wanted = {
+        DESKTOP_DIRNAME,
+        Path(DESKTOP_DIRNAME, SHELL_RENDERER).as_posix(),
+        Path(DESKTOP_DIRNAME, ELECTRON_RUNTIME).as_posix(),
+    }
+    assert wanted <= shipped, (
+        f"{spec} ships {sorted(shipped)} for the react build; {sorted(wanted - shipped)} "
+        f"is missing and the executable holds no shell to run"
+    )
+
+
+@pytest.mark.parametrize("spec", SPECS)
+def test_the_qt_bundle_carries_no_shell(spec, tmp_path, monkeypatch):
+    """Control at parity: the same tree and spec, and only the variant differs."""
+    plant_shell(tmp_path)
+    shipped = shipped_destinations(run_spec(REPO / spec, tmp_path, monkeypatch, QT))
+    carried = {dest for dest in shipped if dest.split("/")[0] == DESKTOP_DIRNAME}
+    assert carried == set(), f"{spec} put {sorted(carried)} in the qt bundle"
+    assert "src" in shipped, "the qt run shipped nothing, so it proves nothing"
+
+
+def test_the_shell_sources_the_spec_names_are_in_the_tree():
+    """A renamed shell file would drop out of the bundle with no build error."""
+    tracked = [source for source, _ in shell_candidates(str(REPO))][:-1]
+    absent = [path for path in tracked if not Path(path).exists()]
+    assert not absent, f"shell_candidates names {absent}, which the tree does not hold"
 
 
 # Builds accumulate in dist
