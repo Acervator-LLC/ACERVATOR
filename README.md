@@ -1,16 +1,18 @@
 # ⬡ Acervator
 
-**Accumulation trading platform.** Most retail traders lose because they try to
-predict which way a chart will move. Acervator does the opposite: it treats
-every price oscillation as fuel. When your holdings rise above a dollar target,
-it sells the excess. When price dips below the sell reference, it buys back
-more than it sold. The structural guarantee — every completed cycle ends with
-more asset than it began with — holds regardless of market direction.
+**Acervator - The Accumulation Trading Platform.** 
+
+Most retail traders lose because they try to predict which way a chart will move. 
+Acervator does the opposite: it treats every price oscillation as fuel. When 
+your holdings rise above a dollar target, it sells the excess. When price dips 
+below the sell reference, it buys back more than it sold. The structural 
+guarantee — every completed cycle ends with more asset than it began with 
+— holds regardless of market direction.
 
 No prediction required. The volatility that destroys emotional traders is the
 engine.
 
-> *"Stop predicting. Start accumulating."*
+> *"Stop predicting. Stop HODLing. Stop waiting. Start accumulating."*
 
 Built by Anthony L. Brown, Ekthelius the Accumulator. Released to humanity.
 
@@ -27,8 +29,8 @@ Read it that way.
 Built and running on live capital: the Trading tab, the Market Inspector, the
 Bot Swarm, the Asset Charts, the History tab and the Console.
 
-**Not built: the Simulator, the Paper Trader, and Proof of Accumulation.** The
-manual describes each of the three at length as a design. This product ships no
+**Not built: the Simulator, the Paper Trader, System Status and Proof of Accumulation.** The
+manual describes each of the four at length as a design. This product ships no
 backtesting engine, no paper-trading engine and no competition screen. Each one
 is named again, with its issue, under
 [the map](#three-subsystems-that-are-not-built).
