@@ -12,7 +12,7 @@ guarantee — every completed cycle ends with more asset than it began with
 No prediction required. The volatility that destroys emotional traders is the
 engine.
 
-> *"Stop predicting. Start accumulating."*
+> *"Stop predicting. Stop HODLing. Stop waiting. Start accumulating."*
 
 Built by Anthony L. Brown, Ekthelius the Accumulator. Released to humanity.
 
