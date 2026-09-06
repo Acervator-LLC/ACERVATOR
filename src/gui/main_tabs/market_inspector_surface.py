@@ -655,7 +655,44 @@ class MarketInspectorScreenModel:
         self.pair_rows: list = []
         self.scheduled: list = []
         self.emitted: list = []
-        self.calls: list = [[SCREEN_BUILT]]
+        self.calls: list = []
+        self.build_ui()
+
+    def build_ui(self) -> None:
+        """Build the filter row, the status line and the two empty tables."""
+        self.refresh_enabled = True
+        self.show_active_checked = SHOW_ACTIVE_CHECKED
+        self.status_label_text = STATUS_INITIAL_TEXT
+        self.signal_rows = []
+        self.pair_rows = []
+        self.calls.append([SCREEN_BUILT])
+
+    def set_status(self, text: str) -> None:
+        """Show ``text`` on the status line."""
+        self.status_label_text = text
+
+    def set_refresh_enabled(self, enabled: bool) -> None:
+        """Let the operator press Refresh, or refuse while a scan runs."""
+        self.refresh_enabled = bool(enabled)
+
+    def shown_signals(self, signals: Any) -> list:
+        """The scored signals the table shows under the active filter."""
+        return shown_signals(signals, self.show_active)
+
+    def fill_signal_rows(self, signals: list) -> None:
+        """Draw one HTF Signals row per entry of ``signals``."""
+        set_row_count(self.signal_rows, len(signals), len(SIGNAL_COLUMNS))
+        for index, found in enumerate(signals):
+            fill_signal_row(self.signal_rows[index], found)
+        self.calls.append([SIGNALS_DRAWN, len(self.signal_rows)])
+
+    def fill_pair_rows(self, pairs: Any) -> None:
+        """Draw one Opposing Pairs row per entry of ``pairs``."""
+        rows = list(pairs)
+        set_row_count(self.pair_rows, len(rows), len(PAIR_COLUMNS))
+        for index, found in enumerate(rows):
+            fill_pair_row(self.pair_rows[index], found)
+        self.calls.append([PAIRS_DRAWN, len(self.pair_rows)])
 
     def inspector(self) -> Any:
         """The analyzer this screen reads, injected or process-wide.
@@ -761,18 +798,18 @@ class MarketInspectorScreenModel:
             self.calls.append([FETCH_BLOCKED])
             return
         if not (self.connectors_getter and self.scheduler):
-            self.status_label_text = NOT_WIRED_TEXT
+            self.set_status(NOT_WIRED_TEXT)
             self.calls.append([FETCH_UNWIRED])
             return
         connectors = self.connectors_getter() or {}
         if not connectors:
-            self.status_label_text = NO_CONNECTORS_TEXT
+            self.set_status(NO_CONNECTORS_TEXT)
             self.calls.append([FETCH_NO_CONNECTORS])
             return
         self.pending_refresh = True
         self.scan_phase = SCAN_RUNNING
-        self.refresh_enabled = False
-        self.status_label_text = FETCHING_TEXT
+        self.set_refresh_enabled(False)
+        self.set_status(FETCHING_TEXT)
         logger.info(
             SCAN_STARTED_LOG,
             bool(force),
@@ -795,8 +832,8 @@ class MarketInspectorScreenModel:
         except Exception as exc:
             self.pending_refresh = False
             self.scan_phase = SCAN_FINISHED
-            self.refresh_enabled = True
-            self.status_label_text = SCHEDULER_ERROR_FORMAT.format(error=exc)
+            self.set_refresh_enabled(True)
+            self.set_status(SCHEDULER_ERROR_FORMAT.format(error=exc))
             self.calls.append([FETCH_SCHEDULER_FAILED, type(exc).__name__])
             return
         self.calls.append([FETCH_SCHEDULED, bool(force)])
@@ -826,7 +863,7 @@ class MarketInspectorScreenModel:
             }
             self.pending_refresh = False
             self.scan_phase = SCAN_FINISHED
-            self.refresh_enabled = True
+            self.set_refresh_enabled(True)
             self.calls.append([FETCH_FAILED, type(exc).__name__])
             self.finish_scan_record(NO_DURATION_S, error=str(exc))
             self.render_signals()
@@ -842,11 +879,11 @@ class MarketInspectorScreenModel:
             self.calls.append([SCAN_DONE])
         except Exception as exc:
             logger.exception(SCAN_FAILED_LOG, exc)
-            self.status_label_text = ANALYZER_ERROR_FORMAT.format(error=exc)
+            self.set_status(ANALYZER_ERROR_FORMAT.format(error=exc))
             self.calls.append([SCAN_FAILED, type(exc).__name__])
         self.pending_refresh = False
         self.scan_phase = SCAN_FINISHED
-        self.refresh_enabled = True
+        self.set_refresh_enabled(True)
         self.finish_scan_record(NO_DURATION_S)
         self.render_signals()
 
@@ -904,7 +941,7 @@ class MarketInspectorScreenModel:
 
     def on_progress(self, message: str) -> None:
         """Write one progress line into the status label."""
-        self.status_label_text = message
+        self.set_status(message)
         self.calls.append([PROGRESS_WRITTEN])
 
     def press_show_active(self, checked: bool) -> None:
@@ -933,21 +970,13 @@ class MarketInspectorScreenModel:
         try:
             inspector = self.inspector()
         except Exception:
-            self.status_label_text = ANALYZER_UNAVAILABLE_TEXT
+            self.set_status(ANALYZER_UNAVAILABLE_TEXT)
             self.calls.append([ANALYZER_UNREACHABLE])
             return
-        self.status_label_text = self.status_line()
+        self.set_status(self.status_line())
         self.calls.append([STATUS_WRITTEN])
-        drawn = shown_signals(inspector.last_signals, self.show_active)
-        set_row_count(self.signal_rows, len(drawn), len(SIGNAL_COLUMNS))
-        for index, found in enumerate(drawn):
-            fill_signal_row(self.signal_rows[index], found)
-        self.calls.append([SIGNALS_DRAWN, len(self.signal_rows)])
-        pairs = inspector.last_pairs
-        set_row_count(self.pair_rows, len(pairs), len(PAIR_COLUMNS))
-        for index, found in enumerate(pairs):
-            fill_pair_row(self.pair_rows[index], found)
-        self.calls.append([PAIRS_DRAWN, len(self.pair_rows)])
+        self.fill_signal_rows(self.shown_signals(inspector.last_signals))
+        self.fill_pair_rows(inspector.last_pairs)
 
 
 class PerBotViewModel:

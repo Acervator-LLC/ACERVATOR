@@ -505,6 +505,7 @@
   var loadFault = null;
   var asked = null;
   var roots = [];
+  var hostTarget = null;
 
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -762,6 +763,9 @@
     };
     buttonProps[PART_ATTR] = REFRESH_PART;
     buttonProps[ARIA_LABEL] = label(pane[REFRESH_TEXT]);
+    buttonProps.onClick = function () {
+      act(REFRESH_PART, null);
+    };
     return element(BUTTON_TAG, buttonProps, text(pane[REFRESH_TEXT]));
   }
 
@@ -817,6 +821,9 @@
     };
     previewProps[PART_ATTR] = PREVIEW_BUTTON_PART;
     previewProps[NAME_ATTR] = text(props.name);
+    previewProps.onClick = function () {
+      act(PREVIEW_BUTTON_PART, props.name);
+    };
     var dismissStyle = styleOf(card[DISMISS_STYLE]);
     dismissStyle.flex = FLEX_NONE;
     var dismissProps = {
@@ -827,6 +834,9 @@
     };
     dismissProps[PART_ATTR] = DISMISS_BUTTON_PART;
     dismissProps[NAME_ATTR] = text(props.name);
+    dismissProps.onClick = function () {
+      act(DISMISS_BUTTON_PART, props.name);
+    };
     return element(
       DIV_TAG,
       rowProps,
@@ -1122,6 +1132,9 @@
       autoFocus: dialog[CANCEL_IS_DEFAULT] === true
     };
     cancelProps[PART_ATTR] = CANCEL_PART;
+    cancelProps.onClick = function () {
+      act(CANCEL_PART, props.at);
+    };
     var adoptProps = {
       key: ADOPT_PART,
       type: BUTTON_TYPE,
@@ -1130,6 +1143,9 @@
       title: label(entry[ADOPT_TOOLTIP])
     };
     adoptProps[PART_ATTR] = ADOPT_PART;
+    adoptProps.onClick = function () {
+      act(ADOPT_PART, props.at);
+    };
     return element(
       DIV_TAG,
       rowProps,
@@ -1221,7 +1237,8 @@
       element(PreviewButtons, {
         key: BUTTON_ROW_PART,
         model: model,
-        entry: entry
+        entry: entry,
+        at: props.at
       })
     );
   }
@@ -2037,6 +2054,27 @@
     return draw(target, element(Pane, { model: payloadOr(model) }));
   }
 
+  // act hands one button press to whatever host is holding the pane.
+  function act(key, name) {
+    return global.acervatorTopologiesAction(key, name);
+  }
+
+  function renderTab(target, model) {
+    hostTarget = target;
+    if (isPlainObject(model)) {
+      setPane(model);
+    }
+    return renderPane(target, null);
+  }
+
+  function setTab(model) {
+    var report = setPane(model);
+    if (hostTarget !== null) {
+      renderPane(hostTarget, null);
+    }
+    return report;
+  }
+
   function renderPreview(target, at, model) {
     var carried = payloadOr(model);
     return draw(
@@ -2054,12 +2092,20 @@
     screenFaults = [];
     loadFault = null;
     asked = null;
+    hostTarget = null;
   }
+
+  // A Qt host replaces this; the default keeps a press from raising.
+  global.acervatorTopologiesAction = function () {
+    return null;
+  };
 
   global.acervatorSetTopologies = setPane;
   global.acervatorLoadTopologies = loadPane;
   global.acervatorTopologies = {
     method: method,
+    renderTab: renderTab,
+    setTab: setTab,
     Pane: Pane,
     TopRow: TopRow,
     RefreshButton: RefreshButton,
