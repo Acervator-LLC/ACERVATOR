@@ -2667,3 +2667,281 @@ self._live_monitor = LiveMonitor(
     confirm_phrase=settings.get("confirm_phrase", ""),
 )
 ```
+
+## Converting the Interface to React
+
+Every screen in this application is drawn by Qt. Issue #128 replaces them with
+React and keeps the backend in Python. This section is the running record of
+that work. One row per screen, one column per step, and a mark only where the
+step is finished.
+
+One screen draws React in the application today: the History table. It runs
+inside the Chromium that the Qt toolkit already ships, not inside Electron.
+
+`src/gui/react_history_panel.py` — `HistoryWebTable._setup_ui`
+
+```python
+self._web = QWebEngineView()
+self._web.loadFinished.connect(self._on_load_finished)
+self._web.setHtml(panel_html(theme))
+layout.addWidget(self._web, 1)
+```
+
+### What the tree holds
+
+Measured on 5 September 2026 over the tracked files.
+
+```
+React modules             70 files, 80,292 lines, 0 stub markers
+                          65 of them call React.createElement
+                          React and ReactDOM are vendored on disk
+View-model modules        74 files, 74,207 lines
+Parity tests              72 files, 170,244 lines
+Electron shell             8 code files, 791 lines, plus a package manifest
+Renderer manifest         70 names
+Qt modules under src/gui  69, every one importing PySide6
+Tabs drawn by React        0
+```
+
+No file in this repository has ever carried a JavaScript extension other than
+plain `.js`. A history search over every branch returns no commit that added,
+deleted or renamed one, and the same search for the plain extension returns 81
+paths, so the search does find a file that existed.
+
+```
+git log --all --diff-filter=ADR --name-only -- "*.jsx" "*.tsx" "*.ts"   no commits
+git log --all --diff-filter=ADR --name-only -- "*.js"                   81 paths
+```
+
+### What the Electron shell drew
+
+The shell has been started once, and what it drew is measured. All 70 renderer
+modules loaded and none failed. Two of them register a panel for the page to
+draw, so the page had nothing to ask the other 68 for. The window showed an
+empty History table, with no tab bar and no navigation.
+
+```
+React modules the page list names   70
+modules that failed to load          0
+modules that register a panel        2
+panels the page asked to draw        2
+panels that failed to draw           0
+```
+
+The two that register are the Console tab panel and the header strip. The full
+per-file record is in
+[docs/audits/2026-09-05_128_file_verification.md](../audits/2026-09-05_128_file_verification.md).
+
+### How to read the table
+
+Each row is a Qt module the running window builds. The columns are the steps of
+the conversion, in the order the work happens.
+
+| Column | What the mark means |
+| ------ | ------------------- |
+| React module | A renderer module in `src/gui/web` serves this screen |
+| Surface | A Python view model of the screen exists, with no toolkit in it |
+| Bridge | The view model is registered as a method the frontend may call |
+| Manifest | The renderer module is named in the shell's module list |
+| RENDERS | What the operator sees when he opens that screen |
+
+The last column is the item. A row is finished only when it reads `yes`. Every
+other column can be marked while the operator sees no change, and that is the
+difference between wiring written and a screen replaced.
+
+The RENDERS column takes three values, and none of them is derived from the
+bridge or the manifest. `yes` means React draws where Qt used to. `shell` means
+the module draws in the Electron shell and nowhere else. A dash means the Qt
+widget is still the screen.
+
+The Tab column names the tab builder whose closure reaches the module. Header
+strip and window chrome are the parts of the Main Window that sit outside the
+tab row.
+
+### The conversion table
+
+| Tab | Qt module | React module | Surface | Bridge | Manifest | RENDERS |
+| --- | --------- | ------------ | ------- | ------ | -------- | ------- |
+| Trading | `indicator_panel.py` | yes | yes | yes | yes | -- |
+| Trading | `main_tabs/trading_tab.py` | yes | yes | yes | yes | -- |
+| Trading | `widgets/status_log.py` | yes | yes | yes | yes | -- |
+| Market Inspector | `market_inspector.py` | yes | yes | yes | yes | -- |
+| Market Inspector | `market_inspector_topologies.py` | yes | yes | yes | yes | -- |
+| Bot Swarm | `bot_swarm_list.py` | yes | yes | yes | yes | -- |
+| Bot Swarm | `bot_visualizer.py` | yes | yes | yes | yes | -- |
+| Bot Swarm | `visualizer/bot_node.py` | yes | yes | yes | yes | -- |
+| Bot Swarm | `visualizer/quick_routing.py` | yes | yes | yes | yes | -- |
+| Bot Swarm | `visualizer/themes.py` | yes | yes | yes | yes | -- |
+| Bot Swarm | `visualizer/wire_canvas.py` | yes | yes | yes | yes | -- |
+| Asset Charts | `native_chart.py` | yes | yes | yes | yes | -- |
+| Asset Charts | `widgets/trade_charts_tab.py` | yes | yes | yes | yes | -- |
+| History | `history_qt_table.py` | -- | -- | -- | -- | -- |
+| History | `history_tab.py` | yes | yes | yes | yes | -- |
+| History | `react_history_panel.py` | yes | yes | yes | yes | yes |
+| History | `tradingview_chart.py` | yes | yes | yes | yes | -- |
+| Simulator | `bot_live_settings.py` | yes | yes | yes | yes | -- |
+| Simulator | `bot_wizard.py` | yes | yes | yes | yes | -- |
+| Simulator | `live_settings/bot_swarm_tab.py` | yes | yes | yes | yes | -- |
+| Simulator | `live_settings/fold_chrome.py` | yes | yes | yes | yes | -- |
+| Simulator | `live_settings/fold_tokens.py` | yes | yes | yes | yes | -- |
+| Simulator | `live_settings/fold_tranches_tab.py` | yes | yes | yes | yes | -- |
+| Simulator | `live_settings/market_inspector_tab.py` | yes | yes | yes | yes | -- |
+| Simulator | `live_settings/phantom_bots_tab.py` | yes | yes | yes | yes | -- |
+| Simulator | `live_settings/positions_held_tab.py` | yes | yes | yes | yes | -- |
+| Simulator | `live_settings/settings_tab.py` | yes | yes | yes | yes | -- |
+| Simulator | `live_settings/stack_tranches_tab.py` | yes | yes | yes | yes | -- |
+| Simulator | `live_settings/status_tab.py` | yes | yes | yes | yes | -- |
+| Simulator | `qt_safe_events.py` | -- | yes | yes | -- | -- |
+| Simulator | `simulator_tab/fleet/fleet_replay_panel.py` | yes | yes | yes | yes | -- |
+| Simulator | `simulator_tab/fleet/sim_visuals.py` | yes | yes | yes | yes | -- |
+| Simulator | `simulator_tab/nuclear_mode_panel.py` | yes | yes | yes | yes | -- |
+| Simulator | `simulator_tab/sim_stat_strip.py` | yes | yes | yes | yes | -- |
+| Simulator | `simulator_tab/simulator_tab.py` | yes | yes | yes | yes | -- |
+| Simulator | `widgets/bot_selection.py` | yes | yes | yes | yes | -- |
+| Simulator | `widgets/bot_status_table.py` | yes | yes | yes | yes | -- |
+| Console | `main_tabs/console_log_handler.py` | yes | yes | yes | yes | -- |
+| Console | `main_tabs/console_tab.py` | yes | yes | yes | yes | shell |
+| Header strip | `main_tabs/header_strip.py` | yes | yes | yes | yes | shell |
+| Header strip | `widgets/dashboard_stat_card.py` | yes | yes | yes | yes | -- |
+| Header strip | `widgets/privacy_dot.py` | yes | yes | yes | yes | -- |
+| Header strip | `widgets/spendable_profits.py` | yes | yes | yes | yes | -- |
+| Window chrome | `buy_confirmation_dialog.py` | yes | yes | yes | yes | -- |
+| Window chrome | `crypto_news_ticker.py` | yes | yes | yes | yes | -- |
+| Window chrome | `instance_consent_dialog.py` | yes | yes | yes | yes | -- |
+| Window chrome | `main_window.py` | -- | yes | yes | -- | -- |
+| Window chrome | `settings_dialog.py` | yes | yes | yes | yes | -- |
+| Window chrome | `shared_testnet.py` | yes | yes | yes | yes | -- |
+| Window chrome | `start_all_progress_dialog.py` | yes | yes | yes | yes | -- |
+| Window chrome | `widgets/exchange_tab.py` | yes | yes | yes | yes | -- |
+| Window chrome | `widgets/extractor_bot_table.py` | yes | yes | yes | yes | -- |
+| Paper Trader | not built | -- | -- | -- | -- | -- |
+| Proof of Accumulation | not built | -- | -- | -- | -- | -- |
+| System Status | not built | -- | -- | -- | -- | -- |
+
+Totals across the 52 rows above:
+
+```
+React module   49
+Surface        51
+Bridge         51
+Manifest       49
+RENDERS  yes   1
+RENDERS  shell 2
+```
+
+Four columns are all but complete. The fifth is at one.
+
+The three unmarked rows at the foot of the table are the tabs the manual
+already carries as unbuilt: the Paper Trader, Proof of Accumulation and System
+Status. They have no Qt module to replace and no React module to replace it
+with, so every column is empty and an empty row is the honest state.
+
+In development.
+
+### The gap
+
+Issue #128 says this item replaces the Qt screens with React. Measured against
+that sentence:
+
+```
+screens the running window builds     52
+screens that draw React                1
+screens that draw in the shell only    2
+tabs drawn by React                     0
+```
+
+The renderer manifest names 70 modules. The application the operator runs hosts
+no manifest, and loads exactly one of those modules: the History table's, which
+one Qt widget puts on a page of its own. The shell that does host the manifest
+draws two panels and offers no way to reach a third.
+
+One call site carries the whole difference between the React build and the Qt
+build. `src/gui/history_table_variant.py` holds the only call to the variant
+resolver in the tree, and every other tab builds the same Qt widget either way.
+
+`src/gui/history_table_variant.py` — `history_table_class`
+
+```python
+chosen = resolve_variant() if variant is None else variant
+if chosen == QT:
+    from .history_qt_table import HistoryQtTable
+
+    return HistoryQtTable
+from .react_history_panel import HistoryWebTable
+
+return HistoryWebTable
+```
+
+### Why the count read as near-complete
+
+Two instruments report on this work, and both answer a narrower question than
+the item asks.
+
+The progress tool marks a screen paired when a bridge method reaches a renderer
+module the manifest names. A manifest entry declares that the shell would load
+the file. It does not put a screen in front of the operator.
+
+`tools/conversion_state.py` — `served_methods`, the pairing rule
+
+```python
+def served_methods(root: pathlib.Path) -> dict[str, str]:
+    """Bridge method to the renderer module that speaks it, loaded ones only.
+
+    A method absent from `registered_surfaces` is left out of the result.
+    """
+    loaded = renderer_modules(root)
+```
+
+The parity tests compare a Qt view model against the React view model of the
+same screen. Both sides are plain Python data and neither has to be displayed.
+A passing test proves the two descriptions agree with each other. It does not
+prove either one is on screen.
+
+`tools/conversion_state.py` — `parity_pins`, what a pin reads
+
+```python
+def parity_pins(root: pathlib.Path) -> dict[str, set[str]]:
+    """Surface module to the Qt modules a parity test pins it against.
+
+    Only a `test_*_surface_parity.py` importing exactly one of each is read.
+    """
+```
+
+Both readings were true. Neither measured the item, and the RENDERS column is
+the one that does.
+
+### Not reached from a live tab
+
+These Qt modules are not built by the live window or by any of its tab
+builders. They are outside this conversion. One row is a package marker rather
+than a screen, and it stays where it is.
+
+| Qt module | Why it is out of scope |
+| --------- | ---------------------- |
+| `alerts_tab.py` | Not reachable from a live tab |
+| `analytics_tab.py` | Not reachable from a live tab |
+| `audio_suite.py` | Not reachable from a live tab |
+| `competition_tab.py` | Not reachable from a live tab |
+| `init_wizard.py` | Not reachable from a live tab |
+| `journal_tab.py` | Not reachable from a live tab |
+| `launcher.py` | Not reachable from a live tab |
+| `live_bot_window.py` | Not reachable from a live tab |
+| `risk_tab.py` | Not reachable from a live tab |
+| `stock_main_window.py` | Not reachable from a live tab |
+| `testnet_tab.py` | Not reachable from a live tab |
+| `usb_auth_widget.py` | Not reachable from a live tab |
+| `widgets/__init__.py` | Package marker, no screen |
+| `widgets/api_tester_tab.py` | Not reachable from a live tab |
+| `widgets/capital_registry_panel.py` | Not reachable from a live tab |
+| `widgets/notification_spool.py` | Not reachable from a live tab |
+| `widgets/pulse_manager.py` | Not reachable from a live tab |
+
+The reachability walk is rooted at the window and its tab builders, and an edge
+is a use rather than an import: a call, a base class, or a returned class. An
+import alone is not an edge, so the re-export block in the main window leaves a
+widget unreached. Ten screens known to be built and eleven known to be dead
+were run through the walk as a control, and all twenty-one came back on the
+expected side.
+
+Detail on each live screen sits one file down, in
+[08-tabs/README.md](08-tabs/README.md).
