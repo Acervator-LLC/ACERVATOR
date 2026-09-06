@@ -48,7 +48,7 @@ PIXEL_SIZE = (220, 70)
 
 CONNECT_TOTAL = 0
 SHIPPED_CLASS_TOTAL = 1
-SHIPPED_METHOD_TOTAL = 6
+SHIPPED_METHOD_TOTAL = 7
 SHIPPED_SIGNAL_TOTAL = 1
 PAYLOAD_KEY_TOTAL = 18
 CONSTANT_TOTAL = 51
@@ -819,6 +819,7 @@ def test_the_card_connects_no_signal_and_the_counter_can_report():
 
 SHIPPED_METHODS = {
     "__init__": "StatCardModel.__init__",
+    "_setup_ui": "StatCardModel.__init__",
     "set_value": "StatCardModel.set_value",
     "attach_privacy_dot": "StatCardModel.attach_privacy_dot",
     "refresh_privacy_dot": "StatCardModel.refresh_privacy_dot",
