@@ -17,6 +17,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import os
 import subprocess
 import sys
@@ -2864,6 +2865,15 @@ def lines_from(logger_name, run, level=logging.WARNING):
     return found
 
 
+def without_elapsed(lines):
+    """Every line with its measured seconds replaced by a fixed marker.
+
+    The scan-finished line carries wall-clock time, which the two sides
+    cannot be asked to match.
+    """
+    return [re.sub(r" in \d+\.\d+s ", " in <elapsed> ", line) for line in lines]
+
+
 def test_the_two_sides_write_the_same_lines_when_a_fetch_refuses(monkeypatch):
     """A failed fetch is announced differently on one side."""
     invented_fetcher(monkeypatch, {}, raises=RuntimeError("venue down"))
@@ -2882,7 +2892,10 @@ def test_the_two_sides_write_the_same_lines_when_a_fetch_refuses(monkeypatch):
         lambda: asyncio.run(model.fetch_and_analyze({"venue": object()})),
         level=logging.DEBUG,
     )
-    assert old_said == new_said, (old_said, new_said)
+    assert without_elapsed(old_said) == without_elapsed(new_said), (
+        old_said,
+        new_said,
+    )
     assert len(old_said) == 2, old_said
     assert "market inspector fetch failed" in old_said[0]
     assert "market inspector scan finished" in old_said[1]

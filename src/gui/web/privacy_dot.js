@@ -175,7 +175,13 @@
     if (owns(CURSOR_BY_NAME, model[CURSOR_SHAPE])) {
       style.cursor = CURSOR_BY_NAME[model[CURSOR_SHAPE]];
     }
-    var hostProps = { className: HOST_CLASS, style: style, onClick: clicked };
+    var hostProps = {
+      className: HOST_CLASS,
+      style: style,
+      onClick: function () {
+        return clickedDot(model);
+      }
+    };
     hostProps[PART_ATTR] = HOST_PART;
     hostProps[ROLE_ATTR] = BUTTON_ROLE;
     hostProps[FLAT_ATTR] = text(model[FLAT]);
@@ -333,6 +339,35 @@
         setDot(model);
         redraw();
         return model;
+      })
+      .catch(function (err) {
+        loadFault = err.message;
+        return null;
+      });
+  }
+
+  // One dot on a page carrying several asks for its own field, so a
+  // strip of five dots cannot ask on behalf of another.
+  function clickedDot(model) {
+    if (!isPlainObject(model)) {
+      return clicked();
+    }
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve(null);
+    }
+    var params = {};
+    params[FIELD_ID] = model[FIELD_ID];
+    params[CLICKS] = ONE_CLICK;
+    return global.acervator
+      .call(METHOD, params)
+      .then(function (answer) {
+        loadFault = null;
+        if (isPlainObject(answer)) {
+          setDot(answer);
+          redraw();
+        }
+        return answer;
       })
       .catch(function (err) {
         loadFault = err.message;
@@ -559,6 +594,7 @@
     method: METHOD,
     Dot: Dot,
     clicked: clicked,
+    clickedDot: clickedDot,
     hoverCss: hoverCss,
     fieldId: fieldId,
     masked: masked,

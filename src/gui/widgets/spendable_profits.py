@@ -52,6 +52,10 @@ if _HAS_QT:
 
         def __init__(self, parent=None):
             super().__init__(parent)
+            self._setup_ui()
+
+        def _setup_ui(self) -> None:
+            """Build the frame, the five KPI columns and their privacy dots."""
             self.setFrameShape(QFrame.StyledPanel)
             self.setStyleSheet(
                 "SpendableProfitsWidget { "

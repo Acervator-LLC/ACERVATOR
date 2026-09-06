@@ -7,6 +7,8 @@ from typing import Any, Optional
 
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
 
+from . import privacy_dot_surface
+
 from .. import design_system as ds
 
 METHOD = "spendable_profits.state"
@@ -76,6 +78,9 @@ DOT_REVEALED_GLYPH = "●"
 DOT_MASKED_GLYPH = "○"
 DOT_REVEALED_STATE = "REVEALED. Click to mask."
 DOT_MASKED_STATE = "MASKED. Click to reveal."
+
+#: The ``dot_view`` fields one column's dot carries.
+_DOT_FIELDS = ("field_id", "masked", "text", "tooltip", "style_sheet")
 
 REALISED_DEFAULT = None
 EXCHANGE_COUNT_DEFAULT = None
@@ -200,16 +205,12 @@ def is_masked(field_id: Any) -> bool:
 
 
 def privacy_dot(field_id: str, masked: Optional[bool] = None) -> dict:
-    """The glyph, tooltip and skin one amount's privacy dot carries."""
-    hidden = is_masked(field_id) if masked is None else bool(masked)
-    state = DOT_MASKED_STATE if hidden else DOT_REVEALED_STATE
-    return {
-        "field_id": field_id,
-        "masked": hidden,
-        "text": DOT_MASKED_GLYPH if hidden else DOT_REVEALED_GLYPH,
-        "tooltip": f"{field_id}: {state}",
-        "style_sheet": DOT_STYLE,
-    }
+    """``privacy_dot_surface.dot_view`` cut to ``_DOT_FIELDS``.
+
+    ``_DOT_FIELDS`` names the glyph, tooltip and skin one column carries.
+    """
+    painted = privacy_dot_surface.dot_view(field_id, masked)
+    return {name: painted[name] for name in _DOT_FIELDS}
 
 
 def spendable_cell(value: Any) -> dict:

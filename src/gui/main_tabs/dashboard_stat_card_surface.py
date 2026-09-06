@@ -22,6 +22,8 @@ from typing import Any, Optional
 
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
 
+from . import privacy_dot_surface
+
 from .. import design_system as ds
 
 METHOD = "dashboard_stat_card.state"
@@ -70,6 +72,9 @@ DOT_REVEALED_GLYPH = "●"
 DOT_MASKED_GLYPH = "○"
 DOT_REVEALED_STATE = "REVEALED. Click to mask."
 DOT_MASKED_STATE = "MASKED. Click to reveal."
+
+#: The ``dot_view`` fields the card's own dot carries, beside ``align``.
+_DOT_FIELDS = ("field_id", "masked", "text", "tooltip", "style_sheet")
 
 ACTIONS: dict = {}
 TIMERS: dict = {}
@@ -140,17 +145,14 @@ def is_masked(field_id: Any) -> bool:
 
 
 def privacy_dot(field_id: Any, masked: Optional[bool] = None) -> dict:
-    """The glyph, tooltip and skin the card's privacy dot carries."""
-    hidden = is_masked(field_id) if masked is None else bool(masked)
-    state = DOT_MASKED_STATE if hidden else DOT_REVEALED_STATE
-    return {
-        "field_id": field_id,
-        "masked": hidden,
-        "text": DOT_MASKED_GLYPH if hidden else DOT_REVEALED_GLYPH,
-        "tooltip": f"{field_id}: {state}",
-        "style_sheet": DOT_STYLE,
-        "align": DOT_ALIGN,
-    }
+    """``privacy_dot_surface.dot_view`` cut to ``_DOT_FIELDS``, plus ``align``.
+
+    ``DOT_ALIGN`` names where under the amount the dot sits.
+    """
+    painted = privacy_dot_surface.dot_view(field_id, masked)
+    carried = {name: painted[name] for name in _DOT_FIELDS}
+    carried["align"] = DOT_ALIGN
+    return carried
 
 
 def label_row_items() -> list:

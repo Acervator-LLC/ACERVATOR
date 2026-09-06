@@ -12,14 +12,25 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..widgets.dashboard_stat_card import StatCard
-from ..widgets.spendable_profits import SpendableProfitsWidget
+
+def _spendable_profits_class() -> type:
+    """The strip class the running variant draws, Qt or React."""
+    from ..variant_surface import SPENDABLE_PROFITS, surface_class
+
+    return surface_class(SPENDABLE_PROFITS)
+
+
+def _stat_card_class() -> type:
+    """The stat card class the running variant draws, Qt or React."""
+    from ..variant_surface import DASHBOARD_STAT_CARD, surface_class
+
+    return surface_class(DASHBOARD_STAT_CARD)
 
 
 class HeaderStripMixin:
     """``HeaderStripMixin`` owns the header strip widgets.
 
-    ``_build_header_strip`` lays out ``SpendableProfitsWidget``, five
+    ``_build_header_strip`` lays out the spendable-profits strip, five
     ``StatCard`` counters and ``_mode_btn``.
     """
 
@@ -44,17 +55,18 @@ class HeaderStripMixin:
         top_row.setSpacing(4)
         top_row.setContentsMargins(0, 0, 0, 0)
 
-        self._spendable_widget = SpendableProfitsWidget()
+        self._spendable_widget = _spendable_profits_class()()
         top_row.addWidget(self._spendable_widget, stretch=3)
 
-        self._stat_scrummed = StatCard("Scrummed", "$0.00")
+        card_class = _stat_card_class()
+        self._stat_scrummed = card_class("Scrummed", "$0.00")
         self._stat_scrummed.setToolTip(
             "Total Scrummed (high score) — cumulative USD sold "
             "across all bots since the platform run started. Grows "
             "with every SCRUM (sell at upper-band) + MANUAL_SCRUM "
             "fill. Resets to $0.00 only on a fresh process start."
         )
-        self._stat_folded = StatCard("Folded", "$0.00")
+        self._stat_folded = card_class("Folded", "$0.00")
         self._stat_folded.setToolTip(
             "Total Folded (high score) — cumulative USD bought "
             "across all bots since the platform run started. Grows "
@@ -62,17 +74,17 @@ class HeaderStripMixin:
             "fill. Resets to $0.00 only on a fresh process start."
         )
         # _stat_pnl is never added to top_row; MainWindow still calls set_value on it.
-        self._stat_pnl = StatCard("P/L", "$0.00")
+        self._stat_pnl = card_class("P/L", "$0.00")
         self._stat_pnl.setVisible(False)
-        self._stat_trades = StatCard("Trades", "0")
+        self._stat_trades = card_class("Trades", "0")
         self._stat_trades.setToolTip(
             "Total executed buy and sell trades across all active bots."
         )
-        self._stat_bots = StatCard("Bots", "0")
+        self._stat_bots = card_class("Bots", "0")
         self._stat_bots.setToolTip(
             "Bots currently in RUNNING state (actively trading)."
         )
-        self._stat_errors = StatCard("Errors", "0")
+        self._stat_errors = card_class("Errors", "0")
         self._stat_errors.setToolTip(
             "Error count across all bots since last reset. "
             "Click to open the Error Log; use the Reset button "
@@ -81,7 +93,7 @@ class HeaderStripMixin:
         )
         self._stat_errors.set_clickable(True, "Click to open the error log.")
         self._stat_errors.clicked.connect(self._show_error_log_dialog)
-        # StatCard.set_value renders through mask_or once a dot is attached.
+        # set_value renders through mask_or once a dot is attached.
         self._stat_scrummed.attach_privacy_dot("counter.scrummed")
         self._stat_folded.attach_privacy_dot("counter.folded")
         self._stat_trades.attach_privacy_dot("counter.trades")

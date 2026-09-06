@@ -3189,11 +3189,11 @@ rather than typed.
 | `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no | shelved |
-| `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | yes | in scope, built by main_window.py, simulator_tab.py |
+| `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | yes | in scope, built by bot_status_table.py, extractor_bot_table.py, main_window.py |
-| `src/gui/buy_confirmation_dialog.py` | no | - | no | no | no | - | no | in scope, built by main_window.py |
+| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | no | yes | no | in scope, built by main_window.py |
 | `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/history_qt_table.py` | no | - | no | no | no | - | no | React side |
@@ -3205,15 +3205,15 @@ rather than typed.
 | `src/gui/launcher.py` | `launcher.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/live_bot_window.py` | no | - | yes | no | no | - | no | shelved |
 | `src/gui/live_settings/bot_swarm_tab.py` | `bot_swarm_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/live_settings/fold_chrome.py` | `fold_chrome.js` | yes | yes | yes | no | yes | yes | in scope, built by fold_tranches_tab.py |
+| `src/gui/live_settings/fold_chrome.py` | `fold_chrome.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/live_settings/fold_tokens.py` | `fold_tokens.js` | yes | yes | yes | no | yes | no | not a screen |
-| `src/gui/live_settings/fold_tranches_tab.py` | `fold_tranches_tab.js` | yes | yes | yes | no | yes | yes | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/fold_tranches_tab.py` | `fold_tranches_tab.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/live_settings/market_inspector_tab.py` | `market_inspector_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/live_settings/phantom_bots_tab.py` | `phantom_bots_tab.js` | yes | yes | yes | no | yes | yes | in scope, built by bot_live_settings.py |
-| `src/gui/live_settings/positions_held_tab.py` | no | - | no | no | no | - | yes | in scope, built by bot_live_settings.py |
-| `src/gui/live_settings/settings_tab.py` | no | - | yes | no | no | - | yes | in scope, built by bot_live_settings.py |
-| `src/gui/live_settings/stack_tranches_tab.py` | `stack_tranches_tab.js` | yes | yes | yes | no | yes | yes | in scope, built by bot_live_settings.py |
-| `src/gui/live_settings/status_tab.py` | no | - | yes | no | no | - | yes | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/phantom_bots_tab.py` | `phantom_bots_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/live_settings/positions_held_tab.py` | no | - | no | no | no | - | yes | in scope |
+| `src/gui/live_settings/settings_tab.py` | `live_settings_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/live_settings/stack_tranches_tab.py` | `stack_tranches_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/live_settings/status_tab.py` | no | - | yes | no | no | - | yes | in scope |
 | `src/gui/main_tabs/audio_suite_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/buy_confirmation_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | yes | - | yes | in scope |
@@ -3238,7 +3238,7 @@ rather than typed.
 | `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/start_all_progress_dialog.py` | no | - | no | no | no | - | no | in scope, built by main_window.py |
+| `src/gui/start_all_progress_dialog.py` | `start_all_progress.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/stock_main_window.py` | no | - | yes | no | no | - | no | shelved |
 | `src/gui/testnet_tab.py` | `testnet_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/tradingview_chart.py` | `tradingview_chart.js` | yes | yes | yes | no | yes | no | shelved |
@@ -3252,13 +3252,13 @@ rather than typed.
 | `src/gui/widgets/bot_selection.py` | `bot_selection.js` | yes | yes | yes | no | yes | no | not a screen |
 | `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/capital_registry_panel.py` | no | - | no | no | no | - | no | shelved |
-| `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | no | yes | no | in scope, built by header_strip.py |
+| `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/notification_spool.py` | `notification_spool.js` | yes | yes | yes | no | yes | no | shelved |
-| `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | no | yes | no | in scope, built by dashboard_stat_card.py, spendable_profits.py |
+| `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | yes | no | shelved |
-| `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | no | yes | no | in scope, built by header_strip.py |
+| `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 
@@ -3336,6 +3336,117 @@ no row for them. `empty_tabs.py` draws all three as skeletons, and its own row
 reads `builds the shell`.
 
 In development.
+
+Counted once more on 6 September 2026, after the header strip and the Start All
+dialog went over:
+
+```
+React module             58
+Uses React               56
+Bridge                   69
+Manifest                 58
+Registers in Electron    15
+Ships in the build       58
+RENDERS                  42
+RENDERS, in scope        42 of 43
+out of scope             33
+```
+
+Six rows moved. Three are the header strip parts. One is the Start All progress
+dialog. One is the Live Bot Settings screen tab, where the React module cell was
+the wrong one and now names the module that draws it. The last is the buy
+confirmation dialog, which gained a module, a bridge method and a build entry and
+still reads `no` under RENDERS.
+
+### The header strip
+
+The strip and the five counters above the tab row are no longer built by name.
+`HeaderStripMixin._build_header_strip` asks the variant seam for each class, so
+one builder draws the Qt widgets or the React pages.
+
+```python
+        self._spendable_widget = _spendable_profits_class()()
+        top_row.addWidget(self._spendable_widget, stretch=3)
+
+        card_class = _stat_card_class()
+        self._stat_scrummed = card_class("Scrummed", "$0.00")
+```
+
+The spendable strip is drawn by `SpendableProfitsReact`, which hosts the strip
+module in one web view. It answers the two calls the main window makes, and
+writes both into the same view model the Qt strip is described by.
+
+```python
+        def update_profits(self, data: dict) -> None:
+            self._model.update_profits(data)
+            self._push()
+```
+
+Each column carries a privacy dot drawn by the dot module. A press on one runs
+the model in `privacy_dot_surface`, which flips the field in the process privacy
+registry and repaints the amount as four stars.
+
+```python
+    def clicked(self) -> None:
+        self.calls.append(CLICKED)
+        try:
+            registry = get_privacy_mask_registry()
+            registry.set_masked(self._field_id, not registry.is_masked(self._field_id))
+        except Exception:
+            self.calls.append(TOGGLE_FAILED)
+        self.refresh()
+```
+
+One card is drawn by `StatCardReact`. A press on the card emits the card's one
+signal, and only while the header strip has armed it.
+
+The glyph, the tooltip and the skin of a dot now have one home. Both header
+surfaces return what the dot surface paints, so the card and the strip cannot
+drift apart.
+
+```python
+def privacy_dot(field_id: str, masked: Optional[bool] = None) -> dict:
+    painted = privacy_dot_surface.dot_view(field_id, masked)
+    return {name: painted[name] for name in _DOT_FIELDS}
+```
+
+### The Start All progress dialog
+
+The dialog the Start All button opens is drawn by
+`StartAllProgressReactDialog`. It replaces only the method that builds the
+controls. The progress handling, the Cancel press and the unsubscribe on close
+are the same code the Qt dialog runs.
+
+```python
+        def store(self) -> surface.StartAllProgressModel:
+            return self._model
+```
+
+Every control it needs is a small holder over that store. The list answers
+`addItem` and `count`; the buttons answer `setEnabled`. Both build sites, in the
+main window and in the launcher, now ask the variant seam for the class.
+
+### The buy confirmation dialog
+
+This is the one in-scope row that still reads `no`, and the reason is
+reachability rather than missing work.
+
+The main window builds the broker in this file. Nothing calls the broker's
+request method, which is the only sender of the signal that opens the dialog, so
+the running window has no path to the screen.
+
+```python
+        async def request_confirmation(
+            self,
+            *,
+            bot_id: str,
+            symbol: str,
+            reason: str,
+```
+
+Measured by walking every call in `src` and `main.py`: zero call sites, and no
+import of that name under another. The module, the bridge method and the build
+entry are all present, so the screen is one caller away.
 
 ### The gap
 

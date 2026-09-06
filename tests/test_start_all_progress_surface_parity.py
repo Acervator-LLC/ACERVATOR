@@ -942,6 +942,7 @@ def test_the_buttons_match_the_dialog(monkeypatch):
 
 
 METHOD_MAP = {
+    "_setup_ui": "WIDGET",
     "_on_progress_event": "progress_fields",
     "_handle_progress_main_thread": "handle_progress",
     "_replace_last_matching": "replace_last_matching",

@@ -426,13 +426,18 @@ def test_capital_registry_panel_paints_its_rows() -> None:
         assert _count_colour(image, colour) > 0, colour
 
 
-def test_main_window_chrome_paints_its_shipped_colours() -> None:
-    """A failure means the toolbar, console or gate-log chrome changed colour."""
+def test_main_window_chrome_paints_its_shipped_colours(monkeypatch) -> None:
+    """A failure means the toolbar, console or gate-log chrome changed colour.
+
+    The variant is pinned to Qt, so the Console tab in the window is the
+    widget that carries the toolbar and pane sheets CHROME names.
+    """
     from PySide6.QtWidgets import QWidget
 
     from tests.qt_pixel import ensure_app, render_widget
     from src.gui.main_window import MainWindow
 
+    monkeypatch.setenv("ACERVATOR_VARIANT", "qt")
     ensure_app()
     window = MainWindow(bot_manager=None, settings_manager=None)
     try:

@@ -32,6 +32,10 @@ if _HAS_QT:
 
         def __init__(self, label: str, value: str = "---", parent=None):
             super().__init__(parent)
+            self._setup_ui(label, value)
+
+        def _setup_ui(self, label: str, value: str) -> None:
+            """Build the caption, the amount and the dot slot under them."""
             self.setFrameShape(QFrame.StyledPanel)
             layout = QVBoxLayout(self)
             layout.setContentsMargins(8, 4, 8, 4)
