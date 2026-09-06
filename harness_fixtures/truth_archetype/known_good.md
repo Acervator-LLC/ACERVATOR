@@ -33,3 +33,10 @@ never stands for a resolved claim.
 
 The other half of the pair is `harness_fixtures/truth_archetype/known_bad.md`,
 which carries one planted defect per rule.
+
+## The item the scope rule grounds against
+
+T007 needs one item. This file cites issue #128 once, and cites no other
+number, so the scope rule reads that item and decides every subject in this
+file against it. A file citing two numbers leaves it nothing to choose, and a
+file citing none leaves the report short of a scope verdict.
