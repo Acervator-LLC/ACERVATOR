@@ -141,7 +141,16 @@ Qt    left pane 697   handle 7   right pane 696 at x=704
 React left pane 701              right pane 699 at x=701
 ```
 
-### 7 Both variants build clean under the strictest interpreter mode
+### 7 One element is drawn on the Qt side only
+
+The Qt table keeps a narrow gutter down its left edge carrying a row number.
+The React table draws no gutter, and neither does the manual figure for this
+screen. Thirty named elements have a counterpart on both sides. This gutter is
+the one that does not.
+
+### Two checks that found nothing
+
+Both variants build clean under the strictest interpreter mode:
 
 ```
 PYTHONWARNINGS=error python -X dev -X faulthandler ...
@@ -157,7 +166,7 @@ scan_state not_asked
 EXIT=0
 ```
 
-### 8 One run under debugpy answered nothing
+One run under `debugpy` answered nothing, and is recorded rather than counted:
 
 ```
 COMMAND: python -m debugpy --listen 5678 main.py --bridge
