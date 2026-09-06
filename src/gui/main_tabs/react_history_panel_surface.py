@@ -295,8 +295,14 @@ def palette(theme: str) -> dict:
     }
 
 
-def panel_html(theme: str = DEFAULT_THEME) -> str:
-    """The whole page, self-contained: no network fetch, no CDN.
+def page_html(
+    style_assets: tuple,
+    script_assets: tuple,
+    body: str,
+    theme: str = DEFAULT_THEME,
+    inline_scripts: tuple = (),
+) -> str:
+    """One page, self-contained: no network fetch, no CDN.
 
     Built by joining, never by ``%`` or ``str.format``: the minified
     React bundle carries both ``%`` and braces, and either would raise.
@@ -305,23 +311,25 @@ def panel_html(theme: str = DEFAULT_THEME) -> str:
         OVERRIDE_FORMAT.format(key=key, value=value)
         for key, value in palette(theme).items()
     )
-    parts = [
-        HTML_DOCTYPE,
-        HTML_HEAD_OPEN,
-        HTML_STYLE_OPEN,
-        read_asset(STYLE_ASSET),
-        HTML_ROOT_OPEN,
-        overrides,
-        HTML_ROOT_CLOSE,
-        HTML_STYLE_CLOSE,
-        HTML_ROOT_DIV,
-    ]
-    for name in ASSET_NAMES:
+    parts = [HTML_DOCTYPE, HTML_HEAD_OPEN, HTML_STYLE_OPEN]
+    for name in style_assets:
+        parts.append(read_asset(name))
+    parts.extend([HTML_ROOT_OPEN, overrides, HTML_ROOT_CLOSE, HTML_STYLE_CLOSE, body])
+    for name in script_assets:
         parts.append(HTML_SCRIPT_OPEN)
         parts.append(read_asset(name))
         parts.append(HTML_SCRIPT_CLOSE)
+    for source in inline_scripts:
+        parts.append(HTML_SCRIPT_OPEN)
+        parts.append(source)
+        parts.append(HTML_SCRIPT_CLOSE)
     parts.append(HTML_TAIL)
     return HTML_JOIN.join(parts)
+
+
+def panel_html(theme: str = DEFAULT_THEME) -> str:
+    """The whole page, self-contained: no network fetch, no CDN."""
+    return page_html((STYLE_ASSET,), ASSET_NAMES, HTML_ROOT_DIV, theme)
 
 
 def date_text(ts: int) -> str:

@@ -1,0 +1,105 @@
+/* React History tab chrome: the filter bar, the summary line and the
+ * footer that surround the table `history_panel.css` styles. Loaded after
+ * that file, so `.acervator-history-table .panel` may retake its height.
+ */
+html,
+body {
+  height: 100%;
+}
+
+.acervator-history-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 8px;
+  gap: 6px;
+}
+
+.acervator-history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.acervator-history-filters legend {
+  padding: 0 4px;
+  color: var(--accent);
+}
+
+.acervator-history-filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.acervator-history-filters input,
+.acervator-history-filters select {
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 2px 4px;
+  font: inherit;
+}
+
+.acervator-history-filters input {
+  min-width: 150px;
+}
+
+.acervator-history-filters select {
+  min-width: 120px;
+}
+
+.acervator-history-summary {
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.acervator-history-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.acervator-history-table .panel {
+  height: 100%;
+}
+
+.acervator-history-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.acervator-history-footer #history-page-label {
+  min-width: 120px;
+  text-align: center;
+}
+
+.acervator-history-footer #history-export {
+  margin-left: auto;
+}
+
+.acervator-history-footer progress {
+  max-width: 150px;
+}
+
+button {
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 3px 10px;
+  font: inherit;
+}
+
+button:disabled {
+  color: var(--grid);
+  border-color: var(--grid);
+}
