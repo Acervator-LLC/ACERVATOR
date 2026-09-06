@@ -324,7 +324,11 @@ if _HAS_QT:
             self._changes: dict = {}
             # main_window._on_bot_clicked reads this after exec() returns.
             self._pending_navigate_to: str | None = None
+            self._setup_ui()
 
+        def _setup_ui(self) -> None:
+            """Build the header, the tabs the bot's mode is given and the footer."""
+            bot = self._bot
             cfg = bot.config
             bid = bot.bot_id
             self.setWindowTitle(f"Bot Settings — {cfg.symbol} [{bid[:8]}]")
@@ -483,16 +487,10 @@ if _HAS_QT:
                 from PySide6.QtGui import QShortcut, QKeySequence
 
                 if _can_nav:
-                    QShortcut(
-                        QKeySequence("Ctrl+Left"),
-                        self,
-                        activated=lambda: self._navigate_to_sibling(-1),
-                    )
-                    QShortcut(
-                        QKeySequence("Ctrl+Right"),
-                        self,
-                        activated=lambda: self._navigate_to_sibling(1),
-                    )
+                    back = QShortcut(QKeySequence("Ctrl+Left"), self)
+                    back.activated.connect(lambda: self._navigate_to_sibling(-1))
+                    forward = QShortcut(QKeySequence("Ctrl+Right"), self)
+                    forward.activated.connect(lambda: self._navigate_to_sibling(1))
             except Exception as _shortcut_exc:
                 logger.debug(
                     "sibling navigation shortcuts unavailable: %s", _shortcut_exc

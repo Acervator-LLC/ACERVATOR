@@ -395,6 +395,12 @@ class ShippedSide:
         signal_contract.set_sink(self.sink)
         self.previous_dialog = shipped_settings.BotLiveSettingsDialog
         shipped_settings.BotLiveSettingsDialog = SideDialog
+        # The Simulator asks variant_surface which window to open, so the
+        # stand-in is registered there as well as on the module.
+        from src.gui import variant_surface as vs
+
+        self.previous_loaders = vs._LOADERS.get(vs.BOT_LIVE_SETTINGS)
+        vs.register(vs.BOT_LIVE_SETTINGS, lambda: SideDialog, lambda: SideDialog)
         SideDialog.opened = []
         try:
             self.tab = shipped.SimulatorTab()
@@ -422,6 +428,12 @@ class ShippedSide:
     def close(self):
         signal_contract.set_sink(self.previous_sink)
         shipped_settings.BotLiveSettingsDialog = self.previous_dialog
+        from src.gui import variant_surface as vs
+
+        if self.previous_loaders is None:
+            vs._LOADERS.pop(vs.BOT_LIVE_SETTINGS, None)
+        else:
+            vs._LOADERS[vs.BOT_LIVE_SETTINGS] = self.previous_loaders
 
     def step(self, index, name, argument=None):
         tab = self.tab

@@ -1803,6 +1803,7 @@ CLASS_MAP = {"BotLiveSettingsDialog": "BotLiveSettingsModel"}
 
 METHOD_MAP = {
     "BotLiveSettingsDialog.__init__": "BotLiveSettingsModel.build",
+    "BotLiveSettingsDialog._setup_ui": "BotLiveSettingsModel.build",
     "BotLiveSettingsDialog.open_at_content_size": (
         "BotLiveSettingsModel.open_at_content_size"
     ),
@@ -1921,7 +1922,7 @@ def test_every_shipped_class_method_and_function_has_a_counterpart():
         for member in members(getattr(shipped, name)):
             found["%s.%s" % (name, member)] = member
     assert set(found) == set(METHOD_MAP), sorted(set(found) ^ set(METHOD_MAP))
-    assert len(METHOD_MAP) == 12
+    assert len(METHOD_MAP) == 13
     for target in (
         set(METHOD_MAP.values())
         | set(CLASS_MAP.values())

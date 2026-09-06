@@ -2250,13 +2250,14 @@ if _HAS_QT:
             if not bot:
                 return
 
-            from .bot_live_settings import BotLiveSettingsDialog
+            from .variant_surface import BOT_LIVE_SETTINGS, surface_class
 
+            _cls = surface_class(BOT_LIVE_SETTINGS)
             saved_geometry = None
             saved_tab_index = None
             current_bot = bot
             while current_bot is not None:
-                dlg = BotLiveSettingsDialog(current_bot, self._bot_manager, self)
+                dlg = _cls(current_bot, self._bot_manager, self)
                 dlg.settings_changed.connect(self._on_live_settings_changed)
                 if saved_geometry is not None:
                     try:  # noqa: SIM105
