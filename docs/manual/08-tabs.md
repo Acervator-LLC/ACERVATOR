@@ -3186,7 +3186,7 @@ rather than typed.
 | Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `splash_screen.py` | no | - | yes | no | no | - | no | shelved |
-| `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | no | yes | yes | shelved |
 | `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | yes | in scope |
@@ -3425,6 +3425,29 @@ reason as the row above: the newest bundle under `dist` carries 70 renderer
 modules and these three are not among them.
 
 No row now reads `builds the shell`.
+
+Counted again on 6 September 2026, after the Notifications and Alerts tab went
+over:
+
+```
+React module             60
+Uses React               58
+Bridge                   70
+Manifest                 60
+Registers in Electron    16
+Ships in the build       58
+RENDERS                  46
+RENDERS, in scope        45 of 45
+out of scope             31
+```
+
+One row moved, and it is `alerts_tab.py`. Its Scope cell still reads `shelved`,
+because nothing the running window builds reaches the screen. `variant_surface`
+now holds the row under the name `ALERTS`, so the React build makes
+`AlertsReactTab` and the Qt build makes `AlertsTab` unchanged. The React tab
+draws the whole screen in one web view from `src/gui/web/alerts_tab.js`, and
+`AlertsTab.refresh`, `AlertsTab._save_config`, `AlertsTab._test_telegram` and
+`AlertsTab._acknowledge_all` are the same methods on both sides.
 
 ### The window's own tab bar
 
@@ -3768,6 +3791,13 @@ than a screen, and it stays where it is.
 | `widgets/capital_registry_panel.py` | Not reachable from a live tab |
 | `widgets/notification_spool.py` | Not reachable from a live tab |
 | `widgets/pulse_manager.py` | Not reachable from a live tab |
+
+The rows in that table are inside this item. The operator's 6 September 2026
+directive puts the whole interface in scope, so a screen the window does not
+build is converted like any other. A converted row keeps `shelved` in the Scope
+cell of the table above, because that cell answers reachability. Its RENDERS
+cell reads `yes` once `variant_surface` holds the row and the React class draws
+the screen.
 
 The reachability walk is rooted at the window and its tab builders, and an edge
 is a use rather than an import: a call, a base class, or a returned class. An
