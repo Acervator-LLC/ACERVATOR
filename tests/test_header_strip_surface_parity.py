@@ -635,15 +635,16 @@ def test_the_stats_keys_match_the_window():
 
 
 def test_the_isolated_tabs_match_the_window():
-    """The window hides the strip on a tab the surface does not name."""
-    tree = ast.parse(WINDOW_SOURCE.read_text(encoding="utf-8"))
-    found = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        if "isolated_tabs" in ast.unparse(node.targets[0]):
-            found.append({element.value for element in node.value.elts})
-    assert found == [set(surface.ISOLATED_TABS)]
+    """The window hides the strip on a tab the surface does not name.
+
+    ``main_window`` binds the surface's own tuple, so the two cannot drift.
+    """
+    import src.gui.main_window as window_module
+
+    assert window_module.ISOLATED_TABS is surface.ISOLATED_TABS, (
+        f"the window holds {window_module.ISOLATED_TABS!r} and the surface "
+        f"declares {surface.ISOLATED_TABS!r}"
+    )
 
 
 def test_the_window_hides_the_strip_on_the_isolated_tabs(window):
@@ -656,7 +657,10 @@ def test_the_window_hides_the_strip_on_the_isolated_tabs(window):
     assert seen == {name: surface.strip_visible(name) for name in seen}
     hidden = {name for name, shown in seen.items() if not shown}
     assert hidden == set(surface.ISOLATED_TABS) & set(seen)
-    assert hidden == {"Simulator"}
+    assert hidden == set(surface.ISOLATED_TABS), (
+        "every isolated tab is on the bar and hides the strip; the bar held "
+        f"{sorted(seen)}"
+    )
     assert len(seen) > len(hidden)
 
 

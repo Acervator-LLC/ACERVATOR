@@ -1,9 +1,32 @@
 # Proof of Accumulation
 
 Reference. The screen is not built. The window builds neither the Competition
-tab nor the Local Testnet tab, and issue #147 carries the initial build-out.
-`src/competition/` is the Proof of Accumulation package, and its engine runs
-today with no screen in front of it. The rest of this file is that engine.
+tab nor the Local Testnet tab, and the tab row carries a skeleton in their
+place. Issue #147 carries the build-out. `src/competition/` is the Proof of
+Accumulation package, and its engine runs today with no screen in front of it.
+The rest of this file is that engine.
+
+## The skeleton
+
+The tab exists and draws three lines: its name, one sentence saying it is not
+built, and the issue that owns it. It reads no competition, no token balance
+and no trophy.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — the whole empty state
+
+```python
+HEADING = "Proof of Accumulation"
+ISSUE = 147
+BUILT = False
+STATE_TEXT = "This tab is not built."
+ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
+```
+
+Two frontends draw that one view model. `EmptyTabsMixin` in
+`src/gui/main_tabs/empty_tabs.py` builds the Qt tab, and
+`src/gui/web/proof_of_accumulation_tab.js` registers a panel with the Electron
+shell's panel host. `src.core.desktop_bridge` serves the model under
+`proof_of_accumulation_tab.state`.
 
 ## Identity
 

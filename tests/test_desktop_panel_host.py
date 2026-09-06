@@ -3,9 +3,9 @@
 ``desktop/renderer/panel_host.js`` takes the panel roster from the
 generated manifest, draws each registered panel into its own host element
 under ``#panels``, and writes the reason onto the page for a panel that
-did not draw. The two panels proved here are the Console tab and the
-header strip; each is compared against the Qt widget it stands for, built
-from the shipped mixin and read at run time.
+did not draw. ``PANEL_SURFACES`` names every module that registers; the
+Console tab and the header strip are each compared against the Qt widget
+they stand for, built from the shipped mixin and read at run time.
 """
 
 from __future__ import annotations
@@ -25,6 +25,9 @@ if str(REPO_ROOT) not in sys.path:
 from src.gui.main_tabs import console_tab_surface as console_surface
 from src.gui.main_tabs import design_system_surface as dss
 from src.gui.main_tabs import header_strip_surface as header_surface
+from src.gui.main_tabs import paper_trader_tab_surface as paper_surface
+from src.gui.main_tabs import proof_of_accumulation_tab_surface as poa_surface
+from src.gui.main_tabs import system_status_tab_surface as status_surface
 from tools import sync_renderer_modules as renderer_modules
 
 RENDERER = REPO_ROOT / "desktop" / "renderer"
@@ -35,6 +38,19 @@ CONSOLE_PANEL = "console_tab"
 HEADER_PANEL = "header_strip"
 SPARE_PANEL = "status_log"
 ABSENT_PANEL = "no_such_panel"
+
+#: Every module that calls ``register`` on the panel host, and the surface it
+#: asks for its view model. A module joins by registering; adding one here
+#: without that call fails the roster check below.
+PANEL_SURFACES = {
+    CONSOLE_PANEL: console_surface,
+    HEADER_PANEL: header_surface,
+    "paper_trader_tab": paper_surface,
+    "proof_of_accumulation_tab": poa_surface,
+    "system_status_tab": status_surface,
+}
+
+REGISTERING_PANELS = sorted(PANEL_SURFACES)
 
 JS_TIMEOUT_MS = 30_000
 READY_ROUNDS = 100
@@ -317,13 +333,11 @@ class Browser:
             if attempt:
                 self.open_page()
             for _ in range(READY_ROUNDS):
-                if self.parsed("acervatorPanelHost.registered()") == sorted(
-                    [CONSOLE_PANEL, HEADER_PANEL]
-                ):
+                if self.parsed("acervatorPanelHost.registered()") == REGISTERING_PANELS:
                     return
                 self.settle(READY_STEP_MS)
         raise AssertionError(
-            "the page never registered both panels: host "
+            "the page never registered every panel: host "
             + str(self.js("typeof window.acervatorPanelHost"))
             + ", scripts "
             + str(self.js("document.scripts.length"))
@@ -442,41 +456,45 @@ def test_the_panel_roster_is_the_generated_manifest(browser: Browser):
     assert browser.parsed("acervatorPanelHost.names()") == declared
 
 
-def test_the_registered_panels_are_the_two_modules_that_asked_for_a_host(
+def test_the_registered_panels_are_the_modules_that_asked_for_a_host(
     browser: Browser,
 ):
     """A module joins the roster by registering from its own script tag,
-    and the host reads the name off that tag rather than a literal."""
-    assert browser.parsed("acervatorPanelHost.registered()") == sorted(
-        [CONSOLE_PANEL, HEADER_PANEL]
-    )
+    and the host reads the name off that tag."""
+    assert browser.parsed("acervatorPanelHost.registered()") == REGISTERING_PANELS
+    declared = manifest_panels()
     assert browser.parsed("acervatorPanelHost.wanted()") == [
-        HEADER_PANEL,
-        CONSOLE_PANEL,
+        name for name in declared if name in PANEL_SURFACES
     ]
 
 
 # -- the shell draws both ----------------------------------------------
 
 
-def test_the_shell_draws_both_registered_panels_into_their_own_hosts(
+def panel_models() -> dict:
+    """One view model per registering panel, keyed by its bridge method."""
+    answers = {
+        console_surface.METHOD: console_payload(RECORDS),
+        header_surface.METHOD: header_payload(),
+    }
+    for name, source in PANEL_SURFACES.items():
+        if name not in (CONSOLE_PANEL, HEADER_PANEL):
+            answers[source.METHOD] = source.view_model({})
+    return answers
+
+
+def test_the_shell_draws_every_registered_panel_into_its_own_host(
     browser: Browser,
 ):
-    """The whole claim of this unit: one page, two panels, each addressed
+    """The whole claim of this unit: one page, many panels, each addressed
     by its own name and drawn into its own element."""
     give_tokens(browser)
-    bind(
-        browser,
-        "PANEL_MODELS",
-        {
-            console_surface.METHOD: console_payload(RECORDS),
-            header_surface.METHOD: header_payload(),
-        },
-    )
+    bind(browser, "PANEL_MODELS", panel_models())
     browser.js(FAKE_BRIDGE)
     browser.js("acervatorMountPanels();")
-    drawn = wait_for_hosts(browser, [HEADER_PANEL, CONSOLE_PANEL])
-    assert [one["name"] for one in drawn] == [HEADER_PANEL, CONSOLE_PANEL]
+    wanted = browser.parsed("acervatorPanelHost.wanted()")
+    drawn = wait_for_hosts(browser, wanted)
+    assert [one["name"] for one in drawn] == wanted
     assert browser.parsed("acervatorPanelHost.faults()") == []
     lines = browser.parsed(
         "window.readParts(window.hostOf(" + json.dumps(CONSOLE_PANEL) + "))"

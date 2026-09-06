@@ -4,8 +4,10 @@ Reference. Each heading below names a screen. The manual's own text for it
 comes first, and under that is what the code does today. Longer descriptions
 live one file per screen in [08-tabs/](08-tabs/README.md).
 
-One list names the seven tabs the window builds, and every screen below that
-the window does not build says as much in its own entry.
+One list names the ten tabs the window builds, and every screen below that the
+window does not build says as much in its own entry. The last three are
+skeletons: each draws its name, one sentence saying it is not built, and the
+issue that carries the build-out.
 
 `src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
 
@@ -18,12 +20,17 @@ CANONICAL_TAB_ORDER = (
     HISTORY_TAB,
     SIMULATOR_TAB,
     CONSOLE_TAB,
+    PAPER_TRADER_TAB,
+    SYSTEM_STATUS_TAB,
+    PROOF_OF_ACCUMULATION_TAB,
 )
 ```
 
-Each of those seven names is a constant holding the label the tab bar shows.
+Each of those names is a constant holding the label the tab bar shows. The
+three skeletons take their label from their own surface, so the bar and the
+screen cannot carry two spellings of one name.
 
-`src/gui/main_tabs/main_window_surface.py` — the seven labels
+`src/gui/main_tabs/main_window_surface.py` — the labels
 
 ```python
 TRADING_TAB = "Trading"
@@ -33,6 +40,10 @@ ASSET_CHARTS_TAB = "Asset Charts"
 HISTORY_TAB = "History"
 SIMULATOR_TAB = "Simulator"
 CONSOLE_TAB = "Console"
+
+PAPER_TRADER_TAB = paper_trader_tab_surface.HEADING
+SYSTEM_STATUS_TAB = system_status_tab_surface.HEADING
+PROOF_OF_ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 ```
 
 The Trading tab has its own section, [06-trading-tab.md](06-trading-tab.md),
@@ -257,8 +268,22 @@ Detail: [08-tabs/simulator.md](08-tabs/simulator.md).
 
 Real-time, API-fed trades against a fake budget. This is designed as the second tier of strategy validation within the platform.
 
-The screen is not built. No module implements it, the tab row does not name
-it, and issue #19 carries the initial build-out.
+The screen is not built. The tab row now carries a Paper Trader skeleton, which
+draws its name, one sentence saying it is not built, and the issue that owns
+it. Issue #19 carries the build-out.
+
+`src/gui/main_tabs/paper_trader_tab_surface.py` — the whole empty state
+
+```python
+HEADING = "Paper Trader"
+ISSUE = 19
+BUILT = False
+STATE_TEXT = "This tab is not built."
+ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
+```
+
+The Qt tab and the `src/gui/web/paper_trader_tab.js` panel both draw that one
+view model, so neither can drift from the other.
 
 Live, Paper and the Simulator differ in one thing only, where the data comes
 from. The trading logic stays one body of pure code all three call, and only
@@ -283,8 +308,20 @@ Detail: [08-tabs/paper-trader.md](08-tabs/paper-trader.md).
 This is currently proposed as a concept but will likely require the building of a supporting blockchain team for proper / full implementation. This system is designed to enable users of Acervator to compete against each anonymously via our own Proof of Accumulation blockchain. The idea is to convert trades executed into videogame metrics such as damage to a coliseum style monster or a fellow trader in a 1v1 face off. This further positions the platform as a surgical tool that can be finely tuned and customized to produce intense competition scenarios between entire groups of traders. This, of course, opens the door for actual tokenized Trading Guilds who may require their members to have a certain number of PoA tokens under their belt to join. There will be much more to follow on this as I do intend to scaffold it out for internal testing.
 
 The screen is not built. The window builds neither the Competition tab nor the
-Local Testnet tab, and issue #147 carries the initial build-out. The engine
-behind them runs today, and the rest of this section is that engine.
+Local Testnet tab. The tab row now carries a Proof of Accumulation skeleton,
+which draws its name, one sentence saying it is not built, and the issue that
+owns it. Issue #147 carries the build-out. The engine behind it runs today, and
+the rest of this section is that engine.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — the whole empty state
+
+```python
+HEADING = "Proof of Accumulation"
+ISSUE = 147
+BUILT = False
+STATE_TEXT = "This tab is not built."
+ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
+```
 
 `src/competition/` is the Proof of Accumulation package. Each bot signs every
 trade with an Ed25519 key and signs no strategy parameter, so authorship is
@@ -1065,9 +1102,20 @@ tab's signal pane reads them.
 
 This tab consists of two distinct but closely related parts. The Emitter Network is an embedded system of data activity detectors intended to allow for detailed subsystem performance monitoring. The Watchdog is the raw signal capture for the Emitter Network’s output.
 
-The screen is not built. The tab row names seven screens and this is not one of
-them, and issue #34 carries the initial build-out. Both halves run today, and
-the Console tab shows the first of them.
+The screen is not built. The tab row now carries a System Status skeleton, which
+draws its name, one sentence saying it is not built, and the issue that owns it.
+Issue #34 carries the build-out. Both halves run today, and the Console tab
+shows the first of them.
+
+`src/gui/main_tabs/system_status_tab_surface.py` — the whole empty state
+
+```python
+HEADING = "System Status"
+ISSUE = 34
+BUILT = False
+STATE_TEXT = "This tab is not built."
+ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
+```
 
 The Emitter Network is one plain function and one sink. A call site says what
 it expected and what it actually saw, and a satisfied expectation is recorded
