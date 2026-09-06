@@ -37,6 +37,7 @@ INVENTORY: tuple[tuple[str, bool], ...] = (
     ("comment_audit", True),
     ("capture_live_baseline", True),
     ("check_added_comments", True),
+    ("conversion_scope", True),
     ("conversion_state", False),
     ("conversion_table", True),
     ("deps", True),
