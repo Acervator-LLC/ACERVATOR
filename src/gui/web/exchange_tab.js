@@ -54,6 +54,7 @@
   var SCRUM_SECTION_VISIBLE = "scrum_section_visible";
   var SCRUM_TABLE = "scrum_table";
   var SCRUM_TABLE_EXCHANGE_PARAM = "scrum_table_exchange_param";
+  var EXTRACTOR_TABLE_EXCHANGE_PARAM = "extractor_table_exchange_param";
   var SELECTED_BOT_ID = "selected_bot_id";
   var SELECT_EXTRACTOR_PARAM = "select_extractor_param";
   var SELECT_FIRST_MESSAGE = "select_first_message";
@@ -100,6 +101,7 @@
     EXTRACTOR_SECTION_STYLE,
     EXTRACTOR_SECTION_VISIBLE,
     EXTRACTOR_TABLE,
+    EXTRACTOR_TABLE_EXCHANGE_PARAM,
     HEADER_STRETCH,
     "last_clicked_table",
     "logged",
@@ -315,6 +317,9 @@
   var BOT_TABLE_MODULE = "bot_status_table";
   var BOT_TABLE_API = "acervatorBotTable";
   var LOAD_BOT_TABLE = "acervatorLoadBotTable";
+  var EXTRACTOR_TABLE_MODULE = "extractor_bot_table";
+  var EXTRACTOR_TABLE_API = "acervatorExtractorTable";
+  var LOAD_EXTRACTOR_TABLE = "acervatorLoadExtractorTable";
   var CHILD_ATTR = "data-child-module";
 
   var PART_ATTR = "data-part";
@@ -1340,18 +1345,32 @@
     return text(isPlainObject(model) ? model[EXCHANGE_ID] : EMPTY);
   }
 
-  // The rows request names its exchange under the field this screen publishes
-  // for the bot table, so neither module spells that name out.
-  function askFor(model) {
+  // `extractor_bot_table.js` draws its own rows into the space this screen
+  // keeps, from the payload it holds for this exchange.
+  function renderExtractorTable(target, exchangeId) {
+    var api = global[EXTRACTOR_TABLE_API];
+    var space = spaceNamed(target, EXTRACTOR_TABLE_PART);
+    if (!api || typeof api.renderTable !== "function" || space === null) {
+      return null;
+    }
+    space.setAttribute(CHILD_ATTR, EXTRACTOR_TABLE_MODULE);
+    return api.renderTable(space, api.modelFor(exchangeId));
+  }
+
+  // A rows request names its exchange under the field this screen publishes
+  // for that table, so neither module spells that name out.
+  function askFor(model, field) {
     var params = {};
-    params[String(paramNamed(model, SCRUM_TABLE_EXCHANGE_PARAM))] = exchangeOf(model);
+    params[String(paramNamed(model, field))] = exchangeOf(model);
     return params;
   }
 
   function mountScrumTable(target, model) {
     var loader = global[LOAD_BOT_TABLE];
     var wait =
-      typeof loader === "function" ? loader(askFor(model)) : Promise.resolve(null);
+      typeof loader === "function"
+        ? loader(askFor(model, SCRUM_TABLE_EXCHANGE_PARAM))
+        : Promise.resolve(null);
     return Promise.resolve(wait).then(function () {
       return renderScrumTable(target, exchangeOf(model)) === null
         ? null
@@ -1359,10 +1378,26 @@
     });
   }
 
+  function mountExtractorTable(target, model) {
+    var loader = global[LOAD_EXTRACTOR_TABLE];
+    var wait =
+      typeof loader === "function"
+        ? loader(askFor(model, EXTRACTOR_TABLE_EXCHANGE_PARAM))
+        : Promise.resolve(null);
+    return Promise.resolve(wait).then(function () {
+      return renderExtractorTable(target, exchangeOf(model)) === null
+        ? null
+        : EXTRACTOR_TABLE_MODULE;
+    });
+  }
+
   // Qt builds the two bot tables and the news strip inside this screen, so
   // each one is asked for its own view model and drawn into its own space.
   function mountChildren(target, model) {
-    return Promise.all([mountScrumTable(target, model)]).then(function (drawn) {
+    return Promise.all([
+      mountScrumTable(target, model),
+      mountExtractorTable(target, model)
+    ]).then(function (drawn) {
       return drawn.filter(function (name) {
         return name !== null;
       });
@@ -1428,7 +1463,9 @@
     isLoaded: isLoaded,
     renderTab: renderTab,
     renderScrumTable: renderScrumTable,
+    renderExtractorTable: renderExtractorTable,
     mountScrumTable: mountScrumTable,
+    mountExtractorTable: mountExtractorTable,
     mountChildren: mountChildren,
     askFor: askFor,
     exchangeOf: exchangeOf,

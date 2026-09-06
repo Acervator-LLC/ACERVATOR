@@ -15,7 +15,7 @@ renderer reaches it. Nothing here imports Qt.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 from .. import design_system as ds
 
@@ -482,6 +482,7 @@ class ExtractorBotTableModel:
     ) -> None:
         self._on_bot_clicked = on_bot_clicked
         self._bot_ids: list = []
+        self.exchange_id = ""
         self.parent = parent
         self.rows: list = []
         self.row_count = 0
@@ -627,6 +628,31 @@ class ExtractorBotTableModel:
 
 PANE_MODEL = ExtractorBotTableModel()
 
+PANE_MODELS: Dict[str, ExtractorBotTableModel] = {}
+
+RESET_PARAM = "reset"
+ACTION_PARAM = "action"
+BOT_STATUSES_PARAM = "bot_statuses"
+BOT_ID_PARAM = "bot_id"
+# The request names its exchange under a field no payload key already spells.
+EXCHANGE_ID_PARAM = "for_exchange"
+
+UPDATE_ACTION, DETAIL_ACTION, SELECT_ACTION = BRIDGE_ACTIONS
+
+
+def pane_model_for(exchange_id: str) -> ExtractorBotTableModel:
+    """The table ``PANE_MODELS`` keeps for one exchange.
+
+    One ``ExtractorBotTableModel`` per exchange id, so two screens on the
+    same page do not share rows or a highlight.
+    """
+    held = PANE_MODELS.get(exchange_id)
+    if held is None:
+        held = ExtractorBotTableModel()
+        PANE_MODELS[exchange_id] = held
+    held.exchange_id = exchange_id
+    return held
+
 
 def build_payload(model: ExtractorBotTableModel) -> dict:
     """Return the whole surface state as one serialisable dict."""
@@ -709,6 +735,15 @@ def build_payload(model: ExtractorBotTableModel) -> dict:
         "detail_path": model.detail_path,
         "detail_calls": list(model.detail_calls),
         "has_parent": model.parent is not None,
+        "exchange_id": model.exchange_id,
+        "reset_param": RESET_PARAM,
+        "action_param": ACTION_PARAM,
+        "bot_statuses_param": BOT_STATUSES_PARAM,
+        "bot_id_param": BOT_ID_PARAM,
+        "exchange_id_param": EXCHANGE_ID_PARAM,
+        "update_action": UPDATE_ACTION,
+        "detail_action": DETAIL_ACTION,
+        "select_action": SELECT_ACTION,
         "calls": [list(call) for call in model.calls],
     }
 
@@ -721,13 +756,68 @@ def view_model(params: dict) -> dict:
     does; ``reset`` is what a fresh paint sends.
     """
     global PANE_MODEL
-    if params.get("reset", False):
+    if params.get(RESET_PARAM, False):
         PANE_MODEL = ExtractorBotTableModel()
-    action = params.get("action", MISSING_TEXT)
-    if action == "update_bots":
-        PANE_MODEL.update_bots(params.get("bot_statuses") or [])
-    elif action == "detail":
-        PANE_MODEL._on_detail(str(params.get("bot_id", NO_BOT)))
-    elif action == "select_row":
-        PANE_MODEL._select_row_for_bot(str(params.get("bot_id", NO_BOT)))
-    return build_payload(PANE_MODEL)
+    PANE_MODEL.exchange_id = str(params.get(EXCHANGE_ID_PARAM) or MISSING_TEXT)
+    return drive(PANE_MODEL, params)
+
+
+def drive(model: ExtractorBotTableModel, params: dict) -> dict:
+    """Apply one request to ``model``, reading each ``*_PARAM`` field.
+
+    ``view_model`` and ``live_view_model`` both run their request here.
+    """
+    action = params.get(ACTION_PARAM, MISSING_TEXT)
+    if action == UPDATE_ACTION:
+        model.update_bots(params.get(BOT_STATUSES_PARAM) or [])
+    elif action == DETAIL_ACTION:
+        model._on_detail(str(params.get(BOT_ID_PARAM, NO_BOT)))
+    elif action == SELECT_ACTION:
+        model._select_row_for_bot(str(params.get(BOT_ID_PARAM, NO_BOT)))
+    return build_payload(model)
+
+
+def extractor_statuses(statuses: Any) -> list:
+    """The records of ``statuses`` whose mode is ``MODE_TEXT``.
+
+    ``update_bots`` builds a row for every record it is handed, so only the
+    Extractor bots reach the Extractor table.
+    """
+    return [
+        found
+        for found in statuses or []
+        if isinstance(found, dict) and found.get("mode") == MODE_TEXT
+    ]
+
+
+def live_view_model(params: dict, live: Any) -> dict:
+    """Build the table ``EXCHANGE_ID_PARAM`` names from the running fleet.
+
+    ``live.bot_manager.list_bots_by_exchange`` names the bots, filtered to
+    ``MODE_TEXT``; ``view_model`` answers while no manager is bound.
+    """
+    manager = getattr(live, "bot_manager", None)
+    if manager is None or not hasattr(manager, "list_bots_by_exchange"):
+        return view_model(params)
+    asked = dict(params or {})
+    exchange_id = str(asked.get(EXCHANGE_ID_PARAM) or MISSING_TEXT)
+    if asked.pop(RESET_PARAM, False):
+        PANE_MODELS.pop(exchange_id, None)
+    if asked.get(ACTION_PARAM) is None:
+        asked[ACTION_PARAM] = UPDATE_ACTION
+        asked[BOT_STATUSES_PARAM] = extractor_statuses(
+            manager.list_bots_by_exchange(exchange_id)
+        )
+    return drive(pane_model_for(exchange_id), asked)
+
+
+def bind_live(live: Any) -> Any:
+    """Return an ``extractor_bot_table.state`` handler reading ``live``.
+
+    ``build_registry`` calls this when the running program serves the bridge.
+    """
+
+    def handler(params: dict) -> dict:
+        return live_view_model(params or {}, live)
+
+    return handler

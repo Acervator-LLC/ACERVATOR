@@ -42,15 +42,25 @@
   var TABLE_KIND = "table_kind";
   var TABLE_STYLE_SHEET = "table_style_sheet";
   var UNSET_ITEM_TYPE = "unset_item_type";
+  var EXCHANGE_ID = "exchange_id";
+  var EXCHANGE_ID_PARAM_FIELD = "exchange_id_param";
+  var ACTION_PARAM_FIELD = "action_param";
+  var BOT_ID_PARAM_FIELD = "bot_id_param";
+  var DETAIL_ACTION_FIELD = "detail_action";
+  // MODEL_KEY names the payload each drawn host keeps beside its React root.
+  var MODEL_KEY = "model";
 
   // DECLARED_FIELDS lists every top-level name the payload carries.
   var DECLARED_FIELDS = [
     ACCESSIBLE_NAME,
     ACTIONS,
+    "action_param",
     ALIGNMENT,
     ALIGNMENT_VALUE,
     "base_kind",
     BOT_IDS,
+    "bot_id_param",
+    "bot_statuses_param",
     "bridge_actions",
     BUILT_ROW_COUNT,
     "bus_topics",
@@ -66,6 +76,7 @@
     COLUMN_TOOLTIPS,
     CURRENT_ROW,
     "default_pool_color_name",
+    DETAIL_ACTION_FIELD,
     "detail_calls",
     "detail_enabled",
     "detail_focus_policy",
@@ -75,6 +86,8 @@
     DETAIL_STYLE_SHEET,
     "detail_tooltip",
     EMPTY_TIP,
+    EXCHANGE_ID,
+    EXCHANGE_ID_PARAM_FIELD,
     "fire_enabled",
     FIRE_FOCUS_POLICY,
     FIRE_LABEL,
@@ -99,8 +112,10 @@
     POOL_COLORS,
     "pool_fallback_color",
     "pool_text_format",
+    "reset_param",
     ROW_COUNT,
     ROWS,
+    "select_action",
     "select_path",
     "select_paths",
     SELECTED_BOT_ID,
@@ -119,6 +134,7 @@
     "timers",
     "trades_key",
     "unknown_state_text",
+    "update_action",
     "unset_brush",
     "unset_color",
     UNSET_ITEM_TYPE
@@ -323,6 +339,10 @@
   var loadFault = null;
   var asked = null;
   var roots = [];
+  var dispatched = [];
+  // One payload per exchange, so a re-mount redraws that screen's own rows
+  // rather than whichever exchange answered last.
+  var models = {};
 
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -519,7 +539,10 @@
       style: style,
       title: label(button[TOOLTIP]),
       type: BUTTON_TYPE,
-      disabled: button[ENABLED] !== true
+      disabled: button[ENABLED] !== true,
+      onClick: function () {
+        sendDetail(model, props.botId);
+      }
     };
     if (button[FOCUS_POLICY] === model[FIRE_FOCUS_POLICY]) {
       buttonProps.tabIndex = NOT_FOCUSABLE;
@@ -904,6 +927,9 @@
       return { declared: null, held: null, faults: tableFaults.slice() };
     }
     held = { model: model };
+    if (isFilledText(model[EXCHANGE_ID])) {
+      models[model[EXCHANGE_ID]] = model;
+    }
     tableFaults = [];
     checkFields(model);
     checkShapes(model);
@@ -916,28 +942,89 @@
     return report();
   }
 
-  // Asks METHOD once, clearing asked so a refused first ask is retried.
+  // Asks METHOD once per distinct request, clearing asked so a refused first
+  // ask is retried and so a second screen is not answered with the first
+  // screen's rows.
   function loadTable(params) {
-    if (asked !== null) {
-      return asked;
+    var wanted = isPlainObject(params) ? params : {};
+    var key = JSON.stringify(wanted);
+    if (asked !== null && asked.key === key) {
+      return asked.wait;
     }
     if (!global.acervator || typeof global.acervator.call !== "function") {
       loadFault = NO_BRIDGE;
       return Promise.resolve(null);
     }
-    asked = global.acervator
-      .call(METHOD, isPlainObject(params) ? params : {})
-      .then(function (model) {
-        loadFault = null;
-        setTable(model);
-        return model;
-      })
-      .catch(function (err) {
-        loadFault = err.message;
-        asked = null;
-        return null;
+    asked = {
+      key: key,
+      wait: global.acervator
+        .call(METHOD, wanted)
+        .then(function (model) {
+          loadFault = null;
+          setTable(model);
+          return model;
+        })
+        .catch(function (err) {
+          loadFault = err.message;
+          asked = null;
+          return null;
+        })
+    };
+    return asked.wait;
+  }
+
+  // -- driving the table's own controls --------------------------------
+
+  // One request, keyed by the names the surface publishes for those fields
+  // and naming the exchange the clicked screen was drawn for.
+  function request(model, action, botId) {
+    var params = {};
+    params[String(model[ACTION_PARAM_FIELD])] = action;
+    params[String(model[BOT_ID_PARAM_FIELD])] = botId;
+    params[String(model[EXCHANGE_ID_PARAM_FIELD])] = text(model[EXCHANGE_ID]);
+    return params;
+  }
+
+  // The answer replaces only the screens drawn for that same exchange, so a
+  // click on one exchange's table leaves another exchange's rows alone.
+  function dispatch(model, action, botId) {
+    var exchange = text(model[EXCHANGE_ID]);
+    var params = request(model, action, botId);
+    dispatched.push({ action: action, params: params, exchange: exchange });
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      return null;
+    }
+    return global.acervator.call(METHOD, params).then(function (answer) {
+      setTable(answer);
+      roots.forEach(function (pair) {
+        if (text(objectField(pair, MODEL_KEY)[EXCHANGE_ID]) === exchange) {
+          pair.model = answer;
+          draw(pair.node, element(Table, { model: answer }));
+        }
       });
-    return asked;
+      return answer;
+    });
+  }
+
+  function sendDetail(model, botId) {
+    return dispatch(model, model[DETAIL_ACTION_FIELD], botId);
+  }
+
+  function sent() {
+    return dispatched.slice();
+  }
+
+  // The payload this module holds for one exchange, or null for none.
+  function modelFor(exchangeId) {
+    return owns(models, String(exchangeId)) ? models[String(exchangeId)] : null;
+  }
+
+  // Every host this module has drawn into, re-drawn from its own model.
+  function redraw() {
+    roots.forEach(function (pair) {
+      draw(pair.node, element(Table, { model: objectField(pair, MODEL_KEY) }));
+    });
+    return roots.length;
   }
 
   function payload() {
@@ -1170,7 +1257,14 @@
   }
 
   function renderTable(target, model) {
-    return draw(target, element(Table, { model: payloadOr(model) }));
+    var drawn = payloadOr(model);
+    var host = draw(target, element(Table, { model: drawn }));
+    roots.forEach(function (pair) {
+      if (pair.node === target) {
+        pair.model = drawn;
+      }
+    });
+    return host;
   }
 
   // The named empty space the exchange screen left, inside `root` or `root` itself.
@@ -1199,6 +1293,8 @@
     tableFaults = [];
     loadFault = null;
     asked = null;
+    dispatched = [];
+    models = {};
   }
 
   global.acervatorSetExtractorTable = setTable;
@@ -1249,6 +1345,10 @@
     isLoaded: isLoaded,
     renderTable: renderTable,
     fill: fill,
+    redraw: redraw,
+    modelFor: modelFor,
+    sendDetail: sendDetail,
+    sent: sent,
     forget: forget
   };
 })(window);

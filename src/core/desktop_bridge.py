@@ -361,6 +361,9 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         registry[bot_status_table_surface.METHOD] = bot_status_table_surface.bind_live(
             live
         )
+        registry[extractor_bot_table_surface.METHOD] = (
+            extractor_bot_table_surface.bind_live(live)
+        )
     return registry
 
 

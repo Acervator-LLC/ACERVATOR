@@ -3144,7 +3144,7 @@ tab row.
 | `src/gui/widgets/capital_registry_panel.py` | no | - | no | no | no | - | no |
 | `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | no | yes | no |
 | `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | no |
+| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | yes |
 | `src/gui/widgets/notification_spool.py` | `notification_spool.js` | yes | yes | yes | no | yes | no |
 | `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | no | yes | no |
 | `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | yes | no |
@@ -3161,7 +3161,7 @@ Bridge                   67
 Manifest                 55
 Registers in Electron    15
 Ships in the build       55
-RENDERS                  26
+RENDERS                  27
 ```
 
 Four columns are all but complete. The fifth is at one.
