@@ -170,6 +170,18 @@
     return true;
   }
 
+  // The request the panel's own loader is called with. A panel that
+  // declares no `request` is asked with an empty one.
+  function requestOf(spec) {
+    if (!spec || typeof spec.request !== "function") {
+      return {};
+    }
+    var asked = spec.request();
+    return Object.prototype.toString.call(asked) === "[object Object]"
+      ? asked
+      : {};
+  }
+
   // Asks the panel's own loader for its view model, then draws it. Both
   // outcomes of the promise are handled here: a refusal is named on the
   // host element rather than dropped.
@@ -184,7 +196,7 @@
     if (typeof spec.load !== "function") {
       return Promise.resolve(mount(name, target, null));
     }
-    return spec.load({}).then(
+    return spec.load(requestOf(spec)).then(
       function (model) {
         var refused =
           typeof spec.loadError === "function" ? spec.loadError() : null;
@@ -275,6 +287,7 @@
     wanted: wanted,
     reasonFor: reasonFor,
     hostFor: hostFor,
+    requestOf: requestOf,
     mount: mount,
     open: open,
     mountAll: mountAll,
