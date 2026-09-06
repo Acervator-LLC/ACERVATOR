@@ -748,6 +748,62 @@ def test_page_two_shows_the_rows_page_one_did_not(page) -> None:
     assert first | second == {r["id"] for r in trades}
 
 
+_STUB_BRIDGE_JS = """
+window.ASKED = [];
+window.acervator = {
+  call: function (method, params) {
+    window.ASKED.push({ method: method, params: params });
+    return Promise.resolve(window.NEXT_MODEL);
+  }
+};
+"""
+
+
+def _turned(page, button_id: str) -> dict:
+    """Click ``button_id`` and return what the stub bridge was asked for."""
+    page.js('document.getElementById("%s").click();' % button_id)
+    for _ in range(200):
+        asked = page.js("JSON.stringify(window.ASKED);")
+        if json.loads(asked):
+            return json.loads(asked)[-1]
+    raise AssertionError("the pager never reached the bridge")
+
+
+def test_the_pagers_next_button_asks_the_backend_for_the_next_page(page) -> None:
+    """Next reaches the bridge and the answer it brings back is drawn."""
+    trades = _mixed_rows(hrc.PAGE_SIZE + 1)
+    page.js(_STUB_BRIDGE_JS)
+    page.js("window.NEXT_MODEL = " + json.dumps(_model(trades, page_index=1)) + ";")
+    page.push(_model(trades, page_index=0))
+    assert page.dom()["pager"]["page"] == 0
+    asked = _turned(page, "pager-next")
+    assert asked["method"] == "history.view_model", asked
+    assert asked["params"]["page"] == 1, asked
+    assert page.dom()["pager"]["page"] == 1, "the answer was never drawn"
+
+
+def test_the_pagers_prev_button_asks_the_backend_for_the_page_before(page) -> None:
+    """Prev asks for the page below, so the two ends are not one handler."""
+    trades = _mixed_rows(hrc.PAGE_SIZE + 1)
+    page.js(_STUB_BRIDGE_JS)
+    page.js("window.NEXT_MODEL = " + json.dumps(_model(trades, page_index=0)) + ";")
+    page.push(_model(trades, page_index=1))
+    assert page.dom()["pager"]["page"] == 1
+    asked = _turned(page, "pager-prev")
+    assert asked["params"]["page"] == 0, asked
+    assert page.dom()["pager"]["page"] == 0, "the answer was never drawn"
+
+
+def test_a_disabled_pager_end_asks_the_backend_for_nothing(page) -> None:
+    """Control on both: the end of the range reaches no bridge call."""
+    trades = _mixed_rows(hrc.PAGE_SIZE + 1)
+    page.js(_STUB_BRIDGE_JS)
+    page.push(_model(trades, page_index=0))
+    assert page.dom()["pager"]["prev_enabled"] is False
+    page.js('document.getElementById("pager-prev").click();')
+    assert json.loads(page.js("JSON.stringify(window.ASKED);")) == []
+
+
 def test_a_page_that_was_never_pushed_says_so(page) -> None:
     """No push means the banner, not a blank table that agrees with
     everything."""

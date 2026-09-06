@@ -71,6 +71,9 @@ STATUS_TEXT = {
 variable ones are ``Schedule failed: {exc}`` and
 ``Fetch raised: {type}: {exc}``."""
 
+PAGE_LABEL_IDLE = "Page —"
+"""The page counter before a page is drawn, ahead of any ``page_label`` call."""
+
 _SIDE_COLOR = {"BUY": "#00ff88", "SELL": "#ff5566"}
 _GRADE_COLOR = {
     "A": "#00ff88",
@@ -702,6 +705,7 @@ __all__ = [
     "DEFAULT_FROM_LOCAL",
     "FETCH_POLL_INTERVAL_S",
     "FETCH_TIMEOUT_S",
+    "PAGE_LABEL_IDLE",
     "PAGE_SIZE",
     "ROW_ORDER",
     "SIDES",

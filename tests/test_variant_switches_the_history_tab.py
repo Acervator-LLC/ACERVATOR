@@ -65,6 +65,13 @@ READ_CHROME_JS = (
     "})());"
 ) % json.dumps(list(CHROME_IDS))
 
+READ_IDLE_JS = (
+    "JSON.stringify({"
+    '  pager: document.getElementById("history-page-label").textContent,'
+    '  headers: document.querySelectorAll("#panel-root thead th").length'
+    "});"
+)
+
 PICK_KRAKEN_JS = (
     'var choice = document.getElementById("history-exchange");'
     'choice.value = "kraken";'
@@ -374,6 +381,41 @@ def test_the_pages_reset_button_returns_the_tab_to_every_row(qapp) -> None:
         qapp, lambda: tab._current_filters().exchange == hrc.ALL
     ), "Reset never reached the tab"
     assert len(tab._filtered) == 250
+    tab.deleteLater()
+
+
+def test_an_apply_after_reset_leaves_the_cleared_filter_cleared(qapp) -> None:
+    """Reset clears what the page held, so the next Apply keeps every row."""
+    tab = _react_tab(qapp, _trades(250))
+    _evaluate(tab._web, PICK_KRAKEN_JS)
+    assert _until(qapp, lambda: tab._current_filters().exchange == "kraken")
+    _evaluate(tab._web, _click("history-reset"))
+    assert _until(qapp, lambda: tab._current_filters().exchange == hrc.ALL)
+    tab._page = 1
+    _evaluate(tab._web, _click("history-apply"))
+    assert _until(qapp, lambda: tab._page == 0), "Apply never reached the tab"
+    assert tab._current_filters().exchange == hrc.ALL
+    assert len(tab._filtered) == 250, "Apply brought the cleared filter back"
+    tab.deleteLater()
+
+
+def test_the_page_holds_the_idle_counter_and_no_column_header_before_a_page(
+    qapp,
+) -> None:
+    """Before a page is drawn the React tab reads what the Qt tab reads."""
+    tab = _react_tab(qapp)
+    idle = json.loads(_evaluate(tab._web, READ_IDLE_JS))
+    assert idle["pager"] == hrc.PAGE_LABEL_IDLE, idle
+    assert idle["headers"] == 0, idle
+    tab.deleteLater()
+
+
+def test_the_page_draws_every_column_header_once_a_page_is_drawn(qapp) -> None:
+    """Control on the idle read: the counter and the headers arrive together."""
+    tab = _react_tab(qapp, _trades(250))
+    drawn = json.loads(_evaluate(tab._web, READ_IDLE_JS))
+    assert drawn["pager"] == hrc.page_label(0, 250), drawn
+    assert drawn["headers"] == len(hrc.COLUMNS), drawn
     tab.deleteLater()
 
 

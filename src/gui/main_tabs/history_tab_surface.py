@@ -80,7 +80,7 @@ NEXT_TEXT = "Next ▶"
 EXPORT_TEXT = "Export CSV…"
 EXPORT_TOOLTIP = "Export the currently-filtered history view to a CSV file."
 
-PAGE_LABEL_IDLE = "Page —"
+PAGE_LABEL_IDLE = hrc.PAGE_LABEL_IDLE
 
 SUMMARY_TEXT_COLOUR = ds.TEXT_INACTIVE
 SUMMARY_PADDING = "2px 6px"
@@ -317,13 +317,17 @@ def build_view_model(
     status: Optional[str] = None,
     gate_index: Optional[dict] = None,
     voting_index: Optional[dict] = None,
+    painted: bool = True,
 ) -> dict:
     """The whole tab -- chrome, controls and rows -- as one dict.
 
     ``status`` replaces the summary line while the tab has nothing to
     summarise, which is what the Qt tab paints into the same label before
-    a fetch lands. The rows come from the contract's own page builder, so
-    the page a renderer draws and the page the Qt table draws are one
+    a fetch lands. ``painted`` is False until the tab has drawn a page:
+    the counter then reads ``PAGE_LABEL_IDLE`` and a renderer draws no
+    column header, which is the Qt tab's own state before its first
+    ``_render_page``. The rows come from the contract's own page builder,
+    so the page a renderer draws and the page the Qt table draws are one
     answer.
     """
     retained = hrc.apply_filters(trades, filters)
@@ -355,8 +359,9 @@ def build_view_model(
             for column in hrc.COLUMNS
         ],
         "page": rendered.as_dict(),
+        "painted": bool(painted),
         "pager": {
-            "label": page_label(page, total),
+            "label": page_label(page, total) if painted else PAGE_LABEL_IDLE,
             "page": page,
             "pages": hrc.page_count(total),
             "total": total,
@@ -390,9 +395,9 @@ def view_model(params: dict) -> dict:
     """Bridge handler for ``history_tab.chrome``.
 
     Reads ``trades``, ``page``, ``last_fetched_ts``, ``now_ts``,
-    ``fetching`` and ``status`` from the request parameters. Filters
-    arrive as the contract's own field names; any the caller omits keep
-    the value ``history_read_contract.default_filters`` chose.
+    ``fetching``, ``status`` and ``painted`` from the request parameters.
+    Filters arrive as the contract's own field names; any the caller
+    omits keep the value ``history_read_contract.default_filters`` chose.
     """
     trades = params.get("trades") or []
     supplied = params.get("filters") or {}
@@ -409,4 +414,5 @@ def view_model(params: dict) -> dict:
         now_ts=params.get("now_ts"),
         fetching=bool(params.get("fetching", False)),
         status=status_text(status) if status else None,
+        painted=bool(params.get("painted", True)),
     )

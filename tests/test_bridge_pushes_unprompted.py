@@ -34,7 +34,11 @@ from src.core.desktop_bridge import (  # noqa: E402
     serve_and_push,
 )
 from src.exchange import history_surface  # noqa: E402
+from src.gui.main_tabs import bot_status_table_surface  # noqa: E402
+from src.gui.main_tabs import exchange_tab_surface  # noqa: E402
+from src.gui.main_tabs import extractor_bot_table_surface  # noqa: E402
 from src.gui.main_tabs import trade_charts_tab_surface  # noqa: E402
+from src.gui.main_tabs import trading_tab_surface  # noqa: E402
 
 PAUSE_SECONDS = 0.75
 
@@ -554,9 +558,8 @@ def test_a_second_publish_waits_for_the_first_one_to_offer_its_frame() -> None:
 
 
 def test_build_registry_with_no_argument_keeps_todays_table() -> None:
-    """``build_registry`` rebinds only ``history_surface`` and
-    ``trade_charts_tab_surface`` when a ``LiveSystem`` is passed, and names
-    the same methods either way.
+    """``build_registry`` rebinds the six surfaces that read a
+    ``LiveSystem`` and names the same methods either way.
     """
     plain = build_registry()
     lived = build_registry(LiveSystem())
@@ -568,7 +571,14 @@ def test_build_registry_with_no_argument_keeps_todays_table() -> None:
 
     assert set(plain) == set(lived)
     assert rebound == sorted(
-        [history_surface.METHOD, trade_charts_tab_surface.METHOD]
+        [
+            bot_status_table_surface.METHOD,
+            exchange_tab_surface.METHOD,
+            extractor_bot_table_surface.METHOD,
+            history_surface.METHOD,
+            trade_charts_tab_surface.METHOD,
+            trading_tab_surface.METHOD,
+        ]
     ), rebound
     assert plain[history_surface.METHOD] is history_surface.view_model
     assert plain[trade_charts_tab_surface.METHOD] is trade_charts_tab_surface.view_model
