@@ -3105,7 +3105,7 @@ Bridge                   67
 Manifest                 55
 Registers in Electron    14
 Ships in the build       55
-RENDERS                  22
+RENDERS                  23
 ```
 
 Four columns are all but complete. The fifth is at one.
