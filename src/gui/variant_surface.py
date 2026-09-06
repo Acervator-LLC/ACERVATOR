@@ -19,6 +19,7 @@ CONSOLE = "Console"
 DASHBOARD_STAT_CARD = "Dashboard stat card"
 HISTORY = "History"
 HISTORY_TABLE = "History table"
+MAIN_TAB_BOOK = "Main tab book"
 MARKET_INSPECTOR = "Market Inspector"
 FLEET_REPLAY = "Fleet replay panel"
 GATE_STATUS_PANEL = "Gate status panel"
@@ -117,6 +118,20 @@ def _react_console() -> type:
     from .react_console_tab import ConsoleReactTab
 
     return ConsoleReactTab
+
+
+def _qt_main_tab_book() -> type:
+    """Import and return the Qt main tab book."""
+    from PySide6.QtWidgets import QTabWidget
+
+    return QTabWidget
+
+
+def _react_main_tab_book() -> type:
+    """Import and return the React main tab book."""
+    from .react_main_window import MainTabBookReact
+
+    return MainTabBookReact
 
 
 def _qt_market_inspector() -> type:
@@ -289,6 +304,7 @@ def _react_sim_stat_strip() -> type:
 
 register(HISTORY, _qt_history, _react_history)
 register(HISTORY_TABLE, _qt_history_table, _react_history_table)
+register(MAIN_TAB_BOOK, _qt_main_tab_book, _react_main_tab_book)
 register(BOT_SWARM, _qt_bot_swarm, _react_bot_swarm)
 register(CONSOLE, _qt_console, _react_console)
 register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)

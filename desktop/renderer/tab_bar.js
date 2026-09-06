@@ -6,26 +6,31 @@
 // registers as chrome draws outside the bar and gets no tab. A tab's label is
 // its module name with a trailing `_tab` dropped and each word capitalised.
 //
+// The buttons are drawn by `acervatorMainWindow.renderTabBar`, the one React
+// bar both the shell and the Qt window use, so the two cannot drift.
+//
 // Selecting a tab shows that screen's host element and every element declaring
 // itself a part of that screen, and hides the rest. A panel is asked for its
 // view model the first time its tab is selected.
 
 "use strict";
 
-(function (global, doc) {
+(function (global) {
   var TAB_ATTRIBUTE = "data-tab";
   var SELECTED_ATTRIBUTE = "data-selected";
-  var SELECTED_ARIA = "aria-selected";
-  var SUFFIX = "_tab";
-  var SEPARATOR = "_";
-  var SPACE = " ";
+  var FUNCTION_KIND = "function";
   var opened = {};
   var current = null;
   var bar = null;
   var container = null;
+  var onMove = null;
 
   function host() {
     return global.acervatorPanelHost || null;
+  }
+
+  function react() {
+    return global.acervatorMainWindow || null;
   }
 
   function names() {
@@ -34,19 +39,8 @@
   }
 
   function label(name) {
-    var text = String(name);
-    var at = text.length - SUFFIX.length;
-    if (at > 0 && text.slice(at) === SUFFIX) {
-      text = text.slice(0, at);
-    }
-    var words = text.split(SEPARATOR);
-    var shown = [];
-    for (var index = 0; index < words.length; index++) {
-      if (words[index]) {
-        shown.push(words[index].charAt(0).toUpperCase() + words[index].slice(1));
-      }
-    }
-    return shown.join(SPACE);
+    var drawn = react();
+    return drawn === null ? String(name) : drawn.label(name);
   }
 
   function elements(attribute) {
@@ -95,20 +89,23 @@
     }
   }
 
-  function mark(name) {
-    if (bar === null) {
-      return;
+  function draw() {
+    var drawn = react();
+    var found = names();
+    if (bar === null || drawn === null) {
+      return found;
     }
-    var buttons = bar.querySelectorAll("[" + TAB_ATTRIBUTE + "]");
-    for (var index = 0; index < buttons.length; index++) {
-      var chosen = buttons[index].getAttribute(TAB_ATTRIBUTE) === name;
-      buttons[index].setAttribute(SELECTED_ARIA, chosen ? "true" : "false");
-      if (chosen) {
-        buttons[index].setAttribute(SELECTED_ATTRIBUTE, "true");
-      } else {
-        buttons[index].removeAttribute(SELECTED_ATTRIBUTE);
-      }
-    }
+    drawn.renderTabBar(bar, {
+      names: found,
+      selected: current,
+      onSelect: select,
+      onMove: onMove
+    });
+    return found;
+  }
+
+  function mark() {
+    draw();
   }
 
   function select(name) {
@@ -118,37 +115,22 @@
     current = name;
     var target = host().hostFor(container, name);
     show(name);
-    mark(name);
+    mark();
     if (opened[name] === undefined) {
       opened[name] = host().open(name, target);
     }
     return opened[name];
   }
 
-  function button(name) {
-    var made = doc.createElement("button");
-    made.setAttribute("type", "button");
-    made.setAttribute("role", "tab");
-    made.setAttribute(TAB_ATTRIBUTE, name);
-    made.textContent = label(name);
-    made.addEventListener("click", function () {
-      select(name);
-    });
-    return made;
-  }
-
-  function build(barElement, panelContainer) {
+  function build(barElement, panelContainer, moveHandler) {
     if (!barElement || !panelContainer || host() === null) {
       return [];
     }
     bar = barElement;
     container = panelContainer;
+    onMove = typeof moveHandler === FUNCTION_KIND ? moveHandler : null;
     bar.setAttribute("role", "tablist");
-    bar.textContent = "";
-    var found = names();
-    for (var index = 0; index < found.length; index++) {
-      bar.appendChild(button(found[index]));
-    }
+    var found = draw();
     if (found.length) {
       select(found[0]);
     }
@@ -160,10 +142,15 @@
   }
 
   function forget() {
+    var drawn = react();
+    if (drawn !== null) {
+      drawn.forget();
+    }
     opened = {};
     current = null;
     bar = null;
     container = null;
+    onMove = null;
   }
 
   global.acervatorTabBar = {
@@ -177,4 +164,4 @@
     visible: visible,
     forget: forget
   };
-})(window, document);
+})(window);

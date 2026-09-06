@@ -35,10 +35,16 @@ from .table_cells import (
 logger = logging.getLogger("acervator.gui")
 
 
+def _main_tab_book_class() -> type:
+    """The main tab book class the running variant draws, Qt or React."""
+    from .variant_surface import MAIN_TAB_BOOK, surface_class
+
+    return surface_class(MAIN_TAB_BOOK)
+
+
 try:
     from PySide6.QtWidgets import (
         QMainWindow,
-        QTabWidget,
         QLabel,
         QPushButton,
         QStatusBar,
@@ -278,7 +284,7 @@ if _HAS_QT:
                 self._local_testnet = None
                 self._testnet_bridge = None
 
-            self._main_tabs = QTabWidget()
+            self._main_tabs = _main_tab_book_class()()
             self._main_tabs.setMovable(True)
 
             self._build_trading_tab()

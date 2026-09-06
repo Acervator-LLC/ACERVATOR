@@ -3193,7 +3193,7 @@ rather than typed.
 | `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | no | yes | yes | in scope, built by main_window.py |
+| `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/history_qt_table.py` | no | - | no | no | no | - | no | React side |
@@ -3223,7 +3223,7 @@ rather than typed.
 | `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | - | no | React side |
-| `src/gui/main_window.py` | no | - | yes | no | no | - | no | builds the shell |
+| `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | no | yes | in scope |
 | `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | no | yes | yes | in scope |
@@ -3375,6 +3375,92 @@ out of scope             33
 One row moved. It is the buy confirmation dialog, and it was the last in-scope
 row reading `no`. The count comes from `tools/conversion_table.py`, which reads
 the cells of the table above.
+
+Counted again on 6 September 2026, after the window's own tab bar went over:
+
+```
+React module             59
+Uses React               57
+Bridge                   69
+Manifest                 59
+Registers in Electron    15
+Ships in the build       58
+RENDERS                  44
+RENDERS, in scope        44 of 44
+out of scope             32
+```
+
+One row moved, and it is `main_window.py`. The row read `builds the shell`
+because the module filled the tab bar rather than sitting in it; the bar it
+fills is now React, so the row is in scope and it renders. `Ships in the build`
+stays `no`: the newest bundle under `dist` carries 70 renderer modules and
+`main_window.js` is not one of them, because the module is newer than that
+build.
+
+### The window's own tab bar
+
+The row of tab names across the top of the window is drawn by React under the
+React build. `MainWindow._setup_ui` no longer builds a `QTabWidget` by name. It
+asks the variant seam for the tab book, so one builder gives the operator the
+Qt bar he runs today or the React one.
+
+```python
+            self._main_tabs = _main_tab_book_class()()
+            self._main_tabs.setMovable(True)
+```
+
+Under the Qt build the seam answers with the widget the operator runs today and
+nothing changes. Under the React build it answers with a book that keeps that
+widget as the stack of pages, hides its own bar, and puts a web view above it.
+Every call the window makes is answered over the widget behind the bar, so the
+tab order and the pages are the same objects on both sides.
+
+```python
+        def addTab(self, widget, label: str) -> int:
+            """Add ``widget`` under ``label`` and redraw the bar."""
+            index = self._book.addTab(widget, label)
+            self._push_tabs()
+            return index
+```
+
+The bar itself is the Electron shell's navigation, run inside the window. The
+page is built from the shell's own scripts, read off disk, and the buttons are
+drawn by one React module both sides reach. Neither host holds a bar of its
+own, so the two cannot draw a different one.
+
+```python
+#: The shell's own navigation, read from ``desktop/renderer`` and inlined.
+SHELL_SCRIPTS: tuple[str, ...] = ("panel_host.js", "tab_bar.js")
+```
+
+The shell's navigation asks that React module for the buttons and passes it the
+tab names, the selected one, and what to do with a press and a drop. It holds
+no button of its own.
+
+```javascript
+    drawn.renderTabBar(bar, {
+      names: found,
+      selected: current,
+      onSelect: select,
+      onMove: onMove
+    });
+```
+
+A press on a button is reported back to Python, which moves the real tab book
+to that tab. Dragging a tab onto another reports the two slots the same way,
+and the same handler hands them to the hidden bar, so a drag reorders the pages
+as it did before.
+
+```python
+            move = request.get("move") or {}
+            if "from" in move and "to" in move:
+                self._book.tabBar().moveTab(int(move["from"]), int(move["to"]))
+```
+
+The menu bar, the window title, the window icon and the status bar are still
+Qt. `MainWindow._setup_menu` builds the four menus and `_setup_status_bar`
+builds the status line; neither was changed, and every menu action the window
+offered before it is on it now.
 
 ### The header strip
 
