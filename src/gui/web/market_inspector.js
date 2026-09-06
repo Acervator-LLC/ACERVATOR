@@ -2085,6 +2085,17 @@
     return null;
   };
 
+  // The shell draws this screen by its module name; the host reads that name
+  // off the script tag running now, so it is written down nowhere.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      method: METHOD,
+      render: renderTab,
+      load: loadScreen,
+      loadError: loadError
+    });
+  }
+
   global.acervatorSetMarketInspector = setScreen;
   global.acervatorLoadMarketInspector = loadScreen;
   global.acervatorMarketInspector = {

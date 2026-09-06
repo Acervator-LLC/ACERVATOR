@@ -1798,6 +1798,7 @@
   // off the script tag running now, so it is written down nowhere.
   if (global.acervatorPanelHost) {
     global.acervatorPanelHost.register({
+      method: METHOD,
       render: renderTab,
       load: loadTrading,
       loadError: loadError

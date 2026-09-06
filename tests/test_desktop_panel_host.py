@@ -29,6 +29,7 @@ from src.gui.main_tabs import console_tab_surface as console_surface
 from src.gui.main_tabs import design_system_surface as dss
 from src.gui.main_tabs import header_strip_surface as header_surface
 from src.gui.main_tabs import history_tab_surface as history_chrome_surface
+from src.gui.main_tabs import market_inspector_surface as screen_surface
 from src.gui.main_tabs import market_inspector_tab_surface as inspector_surface
 from src.gui.main_tabs import paper_trader_tab_surface as paper_surface
 from src.gui.main_tabs import proof_of_accumulation_tab_surface as poa_surface
@@ -56,6 +57,7 @@ PANEL_SURFACES = {
     "bot_swarm_tab": swarm_list_surface,
     "bot_visualizer": bot_visualizer_surface,
     "history_tab": history_chrome_surface,
+    "market_inspector": screen_surface,
     "market_inspector_tab": inspector_surface,
     "paper_trader_tab": paper_surface,
     "proof_of_accumulation_tab": poa_surface,
@@ -82,7 +84,7 @@ PART_ATTRIBUTE = "data-panel-part"
 
 #: The opening request each panel hands its own loader. A panel absent here
 #: declares none and ``acervatorPanelHost.requestOf`` asks it with ``{}``.
-PANEL_REQUESTS = {
+PANEL_REQUESTS: dict[str, dict[str, Any]] = {
     "market_inspector_tab": {"reset": True, "build": True},
     "trade_charts_tab": {"reset": True},
 }

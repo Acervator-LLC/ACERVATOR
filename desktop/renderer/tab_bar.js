@@ -6,6 +6,12 @@
 // registers as chrome draws outside the bar and gets no tab. A tab's label is
 // its module name with a trailing `_tab` dropped and each word capitalised.
 //
+// `apply` takes the tab book the running application reports and narrows the
+// bar to it: the order and every label come from the application, and each tab
+// is filled by the registered screen calling the bridge method the application
+// serves that tab from. A screen calling none of those methods draws under no
+// tab; `unclaimed` names an application tab no registered screen draws.
+//
 // The buttons are drawn by `acervatorMainWindow.renderTabBar`, the one React
 // bar both the shell and the Qt window use, so the two cannot drift.
 //
@@ -24,6 +30,9 @@
   var bar = null;
   var container = null;
   var onMove = null;
+  var ordered = null;
+  var labels = {};
+  var missing = [];
 
   function host() {
     return global.acervatorPanelHost || null;
@@ -34,13 +43,65 @@
   }
 
   function names() {
+    if (ordered !== null) {
+      return ordered.slice();
+    }
     var found = host();
     return found ? found.screens() : [];
   }
 
   function label(name) {
+    if (Object.prototype.hasOwnProperty.call(labels, name)) {
+      return labels[name];
+    }
     var drawn = react();
     return drawn === null ? String(name) : drawn.label(name);
+  }
+
+  function drawnBy(method) {
+    var found = host();
+    var screens = found === null ? [] : found.screens();
+    for (var index = 0; index < screens.length; index++) {
+      if (found.methodOf(screens[index]) === method) {
+        return screens[index];
+      }
+    }
+    return null;
+  }
+
+  // The application's own tab book decides the order and every label. A tab
+  // no registered screen draws is left off the bar and named by `unclaimed`.
+  function apply(appTabs, appMethods) {
+    var listed = Object.prototype.toString.call(appTabs) === "[object Array]";
+    if (host() === null || !listed || !appMethods) {
+      return names();
+    }
+    ordered = [];
+    labels = {};
+    missing = [];
+    for (var index = 0; index < appTabs.length; index++) {
+      var drawer = drawnBy(appMethods[appTabs[index]]);
+      if (drawer === null) {
+        missing.push(appTabs[index]);
+        continue;
+      }
+      ordered.push(drawer);
+      labels[drawer] = appTabs[index];
+    }
+    if (bar !== null && container !== null) {
+      if (ordered.indexOf(current) < 0) {
+        current = null;
+      }
+      draw();
+      if (current === null && ordered.length) {
+        select(ordered[0]);
+      }
+    }
+    return names();
+  }
+
+  function unclaimed() {
+    return missing.slice();
   }
 
   function elements(attribute) {
@@ -97,6 +158,7 @@
     }
     drawn.renderTabBar(bar, {
       names: found,
+      labels: labels,
       selected: current,
       onSelect: select,
       onMove: onMove
@@ -151,6 +213,9 @@
     bar = null;
     container = null;
     onMove = null;
+    ordered = null;
+    labels = {};
+    missing = [];
   }
 
   global.acervatorTabBar = {
@@ -159,6 +224,8 @@
     names: names,
     label: label,
     build: build,
+    apply: apply,
+    unclaimed: unclaimed,
     select: select,
     selected: selected,
     visible: visible,
