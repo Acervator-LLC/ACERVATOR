@@ -1,12 +1,14 @@
-// The shell's navigation: one tab per registered panel, one panel on screen.
+// The shell's navigation: one tab per registered screen, one screen on show.
 //
-// The tab set is `acervatorPanelHost.wanted()` — the generated manifest kept to
-// the modules that registered — so the bar holds no list of its own and a
-// module that lands or leaves moves the bar with it. A tab's label is its
-// module name with a trailing `_tab` dropped and each word capitalised.
+// The tab set is `acervatorPanelHost.screens()` — the generated manifest kept
+// to the modules that registered as a screen — so the bar holds no list of its
+// own and a module that lands or leaves moves the bar with it. A panel that
+// registers as chrome draws outside the bar and gets no tab. A tab's label is
+// its module name with a trailing `_tab` dropped and each word capitalised.
 //
-// A panel is asked for its view model the first time its tab is selected, and
-// its host element stays on the page hidden after that.
+// Selecting a tab shows that screen's host element and every element declaring
+// itself a part of that screen, and hides the rest. A panel is asked for its
+// view model the first time its tab is selected.
 
 "use strict";
 
@@ -28,7 +30,7 @@
 
   function names() {
     var found = host();
-    return found ? found.wanted() : [];
+    return found ? found.screens() : [];
   }
 
   function label(name) {
@@ -47,35 +49,49 @@
     return shown.join(SPACE);
   }
 
-  function hosts() {
-    var found = host();
-    if (found === null || container === null) {
+  function elements(attribute) {
+    if (container === null) {
       return [];
     }
     return Array.prototype.slice.call(
-      container.querySelectorAll("[" + found.hostAttribute + "]")
+      container.querySelectorAll("[" + attribute + "]")
     );
   }
 
-  function nameOf(element) {
-    return element.getAttribute(host().hostAttribute);
+  // Every element the bar shows and hides: a screen's host, and any mount
+  // declared a part of that screen.
+  function governed() {
+    var found = host();
+    if (found === null) {
+      return [];
+    }
+    return elements(found.hostAttribute).concat(elements(found.partAttribute));
+  }
+
+  function screenOf(element) {
+    var found = host();
+    return (
+      element.getAttribute(found.hostAttribute) ||
+      element.getAttribute(found.partAttribute)
+    );
   }
 
   function visible() {
     var shown = [];
-    var all = hosts();
+    var all = governed();
     for (var index = 0; index < all.length; index++) {
-      if (!all[index].hidden) {
-        shown.push(nameOf(all[index]));
+      var name = screenOf(all[index]);
+      if (!all[index].hidden && shown.indexOf(name) < 0) {
+        shown.push(name);
       }
     }
     return shown;
   }
 
   function show(name) {
-    var all = hosts();
+    var all = governed();
     for (var index = 0; index < all.length; index++) {
-      all[index].hidden = nameOf(all[index]) !== name;
+      all[index].hidden = screenOf(all[index]) !== name;
     }
   }
 

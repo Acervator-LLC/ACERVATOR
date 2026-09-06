@@ -12,9 +12,11 @@
   </head>
   <body>
     <div id="bridge-error" hidden></div>
+    <div id="chrome"></div>
     <nav id="tabs"></nav>
-    <div id="root"></div>
-    <div id="panels"></div>
+    <div id="panels">
+      <div id="root" data-panel-part="history_tab"></div>
+    </div>
     <script src="module_errors.js"></script>
     <script src="panel_host.js"></script>
     <script src="../../src/gui/web/vendor/react.production.min.js"></script>

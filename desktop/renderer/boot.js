@@ -13,9 +13,12 @@
 // Every other converted panel is drawn by `panel_host.js` into `#panels`,
 // one host element each, and only when the bridge is there to answer.
 //
-// `tab_bar.js` puts one tab in `#tabs` for each of those panels and shows
-// the selected one on its own. `acervatorMountPanels` still draws them all
+// `tab_bar.js` puts one tab in `#tabs` for each screen and shows the
+// selected one on its own. `acervatorMountPanels` still draws them all
 // at once for a caller that wants the whole set.
+//
+// A panel that registers as chrome takes no tab. It is drawn once into
+// `#chrome`, above the bar, and stays there whichever tab is selected.
 
 "use strict";
 
@@ -23,6 +26,7 @@
   var METHOD = "history.view_model";
   var PANELS_ID = "panels";
   var TABS_ID = "tabs";
+  var CHROME_ID = "chrome";
 
   function hasBridge() {
     return Boolean(global.acervator) && typeof global.acervator.call === "function";
@@ -80,6 +84,25 @@
     );
   }
 
+  // Every panel that registered as chrome, drawn into `#chrome` above the
+  // bar. No tab selection reaches it.
+  function buildChrome() {
+    if (!global.acervatorPanelHost) {
+      showError("the panel host is not present");
+      return Promise.resolve([]);
+    }
+    var host = global.acervatorPanelHost;
+    var area = document.getElementById(CHROME_ID);
+    var asked = host.chrome();
+    var opened = [];
+    for (var index = 0; index < asked.length; index++) {
+      opened.push(host.open(asked[index], host.hostFor(area, asked[index])));
+    }
+    return Promise.all(opened).then(function () {
+      return asked;
+    });
+  }
+
   function buildTabs() {
     if (!global.acervatorTabBar) {
       showError("the tab bar is not present");
@@ -94,10 +117,12 @@
   global.acervatorReload = load;
   global.acervatorReloadTokens = loadTokens;
   global.acervatorMountPanels = mountPanels;
+  global.acervatorBuildChrome = buildChrome;
   global.acervatorBuildTabs = buildTabs;
   loadTokens();
   load();
   if (hasBridge()) {
+    buildChrome();
     buildTabs();
   }
 })(window);
