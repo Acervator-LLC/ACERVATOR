@@ -1,11 +1,13 @@
 # ⬡ Acervator
 
-**Accumulation trading platform.** Most retail traders lose because they try to
-predict which way a chart will move. Acervator does the opposite: it treats
-every price oscillation as fuel. When your holdings rise above a dollar target,
-it sells the excess. When price dips below the sell reference, it buys back
-more than it sold. The structural guarantee — every completed cycle ends with
-more asset than it began with — holds regardless of market direction.
+**Acervator - The Accumulation Trading Platform.** 
+
+Most retail traders lose because they try to predict which way a chart will move. 
+Acervator does the opposite: it treats every price oscillation as fuel. When 
+your holdings rise above a dollar target, it sells the excess. When price dips 
+below the sell reference, it buys back more than it sold. The structural 
+guarantee — every completed cycle ends with more asset than it began with 
+— holds regardless of market direction.
 
 No prediction required. The volatility that destroys emotional traders is the
 engine.
