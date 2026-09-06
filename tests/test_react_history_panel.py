@@ -419,13 +419,15 @@ def test_the_panel_assets_reach_the_frozen_build() -> None:
     file under ``src/gui/web/`` needs no spec change. Measured against
     the spec, NOT against a build: no build was run for this unit.
     """
+    from src._variant import VARIANTS
     from tools.spec_common import datas_candidates
 
-    shipped = [Path(s).resolve() for s, _ in datas_candidates(str(REPO))]
     assets = (REPO / "src" / "gui" / "web").resolve()
-    assert any(
-        assets == root or root in assets.parents for root in shipped
-    ), f"{assets} is under no datas pair in {shipped}"
+    for variant in VARIANTS:
+        shipped = [Path(s).resolve() for s, _ in datas_candidates(str(REPO), variant)]
+        assert any(
+            assets == root or root in assets.parents for root in shipped
+        ), f"{assets} is under no {variant} datas pair in {shipped}"
 
 
 def test_the_shipped_tab_renders_into_a_qwebengineview(qapp) -> None:

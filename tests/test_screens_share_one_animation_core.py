@@ -143,9 +143,14 @@ def test_the_shared_module_is_not_in_a_directory_the_build_ships() -> None:
     ``src/gui/screen_fx.py``. Nothing in the application imports these
     screens, so at the repository root the module ships in NO build.
     """
+    from src._variant import VARIANTS
     from tools.spec_common import datas_candidates
 
-    shipped = {Path(source).name for source, _dest in datas_candidates(str(REPO_ROOT))}
+    shipped = {
+        Path(source).name
+        for variant in VARIANTS
+        for source, _dest in datas_candidates(str(REPO_ROOT), variant)
+    }
     assert {"src", "resources"} <= shipped, (
         f"the spec no longer ships src and resources wholesale "
         f"({sorted(shipped)}); this rule's premise has changed and the "

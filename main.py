@@ -462,6 +462,56 @@ def drain_pending_tasks(loop: asyncio.AbstractEventLoop) -> int:
     return len(pending)
 
 
+BRIDGE_FLAG = "--bridge"
+
+
+def bridge_requested(argv) -> bool:
+    """Answer whether ``argv`` carries ``BRIDGE_FLAG``."""
+    return BRIDGE_FLAG in list(argv or [])
+
+
+def build_live_system(bot_manager):
+    """Return the ``LiveSystem`` the bridge surfaces read this process through."""
+    from src.core.desktop_bridge import LiveSystem
+
+    return LiveSystem(bot_manager=bot_manager)
+
+
+def wire_history_publisher(live, window):
+    """Publish the History tab's trades into ``live`` on every refresh.
+
+    Returns the connected slot, or None when ``window`` has no
+    ``_history_tab`` carrying ``history_refreshed``.
+    """
+    tab = getattr(window, "_history_tab", None)
+    signal = getattr(tab, "history_refreshed", None)
+    if signal is None:
+        return None
+
+    def publish_history(trades) -> None:
+        live.publish(
+            "history",
+            trades=list(trades or []),
+            last_fetched_ts=float(getattr(tab, "_last_fetched_ts", 0.0) or 0.0),
+        )
+
+    signal.connect(publish_history)
+    return publish_history
+
+
+def start_bridge(live):
+    """Serve the desktop bridge on this process's own stdin and stdout.
+
+    ``sys.stdout`` is rebound to ``sys.stderr`` before the first request is
+    read, and ``serve_on_thread`` returns the thread answering them.
+    """
+    from src.core.desktop_bridge import build_registry, serve_on_thread
+
+    channel = sys.stdout.buffer
+    sys.stdout = sys.stderr
+    return serve_on_thread(sys.stdin.buffer, channel, build_registry(live))
+
+
 def main() -> int:
     """Build the Qt application, show the window, run the event loop and return its exit code."""
 
@@ -702,6 +752,24 @@ def main() -> int:
             exch.get("exchange_id", "unknown"),
             exch.get("display_name", "Unknown"),
         )
+
+    live_system = build_live_system(bot_manager)
+    if wire_history_publisher(live_system, crypto_window) is None:
+        log_manager.warning(
+            "History tab exposed no history_refreshed signal; the desktop "
+            "bridge serves this process's bots and no live trades."
+        )
+    if bridge_requested(sys.argv):
+        try:
+            start_bridge(live_system)
+            log_manager.info(
+                "Desktop bridge serving on this process's stdin and stdout."
+            )
+        except Exception as _bridge_exc:  # noqa: BLE001
+            log_manager.warning(
+                f"Desktop bridge not started: {_bridge_exc}. The GUI runs "
+                f"unchanged and the shell reaches no backend."
+            )
     # Read unconditionally below; assigned only inside the restore branch.
     _autostart_bot_count = 0
     if state_mgr.has_saved_state():

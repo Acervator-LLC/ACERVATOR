@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (  # noqa: E402
 import src.gui.main_window as mw  # noqa: E402
 import src.gui.simulator_tab as simulator_package  # noqa: E402
 from src.gui.main_tabs import main_window_surface as surface  # noqa: E402
+from src.gui.main_tabs.empty_tabs import EmptyTabsMixin  # noqa: E402
 from src.gui.main_tabs.simulator_tab import SimulatorTabMixin  # noqa: E402
 
 #: The order the operator reads left to right across the tab bar.
@@ -46,6 +47,9 @@ OPERATOR_TAB_ORDER = [
     "History",
     "Simulator",
     "Console",
+    "Paper Trader",
+    "System Status",
+    "Proof of Accumulation",
 ]
 
 #: A truthy ``_testnet_bridge`` makes ``install_on`` refuse before it builds a chain.
@@ -112,13 +116,13 @@ def tabs_in_construction_order(_qapp) -> QTabWidget:
     return book
 
 
-class ShellWindow:
+class ShellWindow(EmptyTabsMixin):
     """Stands in for ``MainWindow`` while the shipped ``_setup_ui`` runs.
 
-    Each ``_build_*`` adds one ``QLabel``, except ``_build_simulator_tab``,
-    which runs the shipped ``SimulatorTabMixin`` over a ``SimulatorStub``.
-    ``reorder_argument`` records what ``_setup_ui`` hands
-    ``_reorder_main_tabs``; a name in ``failed`` never reaches the tab bar.
+    Each ``_build_*`` adds one ``QLabel``, except ``_build_simulator_tab`` over
+    a ``SimulatorStub`` and the three ``EmptyTabsMixin`` builders, which run
+    shipped code; ``reorder_argument`` records what ``_setup_ui`` hands
+    ``_reorder_main_tabs``, and a name in ``failed`` never reaches the tab bar.
     """
 
     def __init__(self, layout: QVBoxLayout, failed: tuple = ()) -> None:
@@ -171,6 +175,24 @@ class ShellWindow:
 
     def _build_console_tab(self) -> None:
         self._append(surface.CONSOLE_TAB)
+
+    def _empty(self, name: str, method: str) -> None:
+        """Run one shipped ``EmptyTabsMixin`` builder unless ``name`` failed."""
+        self.built.append(name)
+        if name in self._failed:
+            return
+        MethodType(EmptyTabsMixin.__dict__[method], self)()
+
+    def _build_paper_trader_tab(self) -> None:
+        self._empty(surface.PAPER_TRADER_TAB, "_build_paper_trader_tab")
+
+    def _build_system_status_tab(self) -> None:
+        self._empty(surface.SYSTEM_STATUS_TAB, "_build_system_status_tab")
+
+    def _build_proof_of_accumulation_tab(self) -> None:
+        self._empty(
+            surface.PROOF_OF_ACCUMULATION_TAB, "_build_proof_of_accumulation_tab"
+        )
 
     def _reorder_main_tabs(self, desired: list) -> None:
         self.order_before_reorder = labels_of(self._main_tabs)
@@ -253,6 +275,9 @@ def test_setup_ui_runs_every_tab_builder(shell) -> None:
         RETIRED_SENTINELS,
         surface.HISTORY_TAB,
         surface.CONSOLE_TAB,
+        surface.PAPER_TRADER_TAB,
+        surface.SYSTEM_STATUS_TAB,
+        surface.PROOF_OF_ACCUMULATION_TAB,
     ], shell.built
 
 

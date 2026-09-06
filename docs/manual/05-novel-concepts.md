@@ -835,10 +835,11 @@ TOTAL_SUPPLY_CAP = 10_000_000  # Hard cap — immutable
 ```
 
 Nothing in the running platform starts a competition. Every module that would
-request one sits outside the running application, the retired-tab sentinels
-assign nothing to the competition and testnet tabs, and the canonical tab order
-lists seven tabs, none of them PoA. Issue #147 covers the tab as an initial
-implementation.
+request one sits outside the running application, and the retired-tab sentinels
+assign nothing to the competition and testnet tabs. The canonical tab order now
+lists a Proof of Accumulation tab, and that tab is a skeleton: it draws its
+name, one sentence saying it is not built, and issue #147, which covers the
+build-out.
 
 `src/competition/local_testnet.py` — the in-platform chain, built every session
 

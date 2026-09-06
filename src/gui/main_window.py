@@ -15,7 +15,7 @@ from typing import Optional
 from ..core.event_bus import get_event_bus
 from .. import __version__
 from . import design_system as ds
-from .main_tabs.main_window_surface import CANONICAL_TAB_ORDER
+from .main_tabs.main_window_surface import CANONICAL_TAB_ORDER, ISOLATED_TABS
 
 
 from .table_cells import (
@@ -51,6 +51,7 @@ try:
     from .main_tabs.bot_swarm_tab import BotSwarmTabMixin
     from .main_tabs.charts_tab import ChartsTabMixin
     from .main_tabs.console_tab import ConsoleTabMixin
+    from .main_tabs.empty_tabs import EmptyTabsMixin
     from .main_tabs.header_strip import HeaderStripMixin
     from .main_tabs.history_tab import HistoryTabMixin
     from .main_tabs.market_inspector_tab import MarketInspectorTabMixin
@@ -141,6 +142,7 @@ if _HAS_QT:
         BotSwarmTabMixin,
         ChartsTabMixin,
         ConsoleTabMixin,
+        EmptyTabsMixin,
         HeaderStripMixin,
         HistoryTabMixin,
         MarketInspectorTabMixin,
@@ -286,6 +288,9 @@ if _HAS_QT:
             self._install_retired_tab_sentinels()
             self._build_history_tab()
             self._build_console_tab()
+            self._build_paper_trader_tab()
+            self._build_system_status_tab()
+            self._build_proof_of_accumulation_tab()
 
             self._reorder_main_tabs(list(CANONICAL_TAB_ORDER))
 
@@ -309,7 +314,7 @@ if _HAS_QT:
                 tab_name = self._main_tabs.tabText(index)
             except Exception:
                 return
-            isolated_tabs = {"Simulator", "Paper Trader"}
+            isolated_tabs = set(ISOLATED_TABS)
             container = getattr(self, "_header_strip_container", None)
             if container is not None:
                 container.setVisible(tab_name not in isolated_tabs)

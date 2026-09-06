@@ -3,7 +3,8 @@
 ``COMMON_HIDDENIMPORTS`` and ``EXCLUDES`` hold the names both spec files pass to
 PyInstaller, and ``hiddenimports_for`` adds the one ``KEYRING_BACKENDS`` entry
 that is per-platform. ``read_acervator_version`` and ``bake_version_datas``
-resolve the version and write it under ``BAKE_SUBDIR`` for the bundle to carry.
+resolve the version and write it under ``BAKE_SUBDIR`` for the bundle to carry,
+and ``datas_candidates`` adds ``shell_candidates`` to a ``REACT`` build.
 Nothing here imports PyInstaller, so ``tests/test_specs_parity.py`` reads this
 module on a machine that has none.
 """
@@ -12,12 +13,20 @@ from __future__ import annotations
 
 import os
 
+from src._variant import REACT, normalise
 from src._version import BAKED_FILENAME, UNKNOWN_VERSION, resolve_version
 
 FALLBACK_VERSION = UNKNOWN_VERSION
 
 # Regenerable and gitignored; `bake_version_datas` writes nothing into src/.
 BAKE_SUBDIR = os.path.join("build", "version")
+
+DESKTOP_DIRNAME = "desktop"
+SHELL_RENDERER = "renderer"
+SHELL_FILES: tuple[str, ...] = ("main.js", "preload.js", "package.json")
+
+# npm writes this; a clone without `npm install` has the shell and no runtime.
+ELECTRON_RUNTIME = os.path.join("node_modules", "electron", "dist")
 
 
 def read_acervator_version(project_root: str) -> str:
@@ -38,12 +47,36 @@ def bake_version_datas(project_root: str) -> list[tuple[str, str]]:
     return [(out_path, "src")]
 
 
-def datas_candidates(project_root: str) -> list[tuple[str, str]]:
-    """Every (source, destination) pair a build would ship, present or not.
+def shell_candidates(project_root: str) -> list[tuple[str, str]]:
+    """Every (source, destination) pair the Electron shell needs, present or not.
 
-    ``build_graceful_datas`` drops the entries whose source directory is absent.
+    ``SHELL_FILES`` and ``SHELL_RENDERER`` keep the layout ``DESKTOP_DIRNAME``
+    has on disk, and ``ELECTRON_RUNTIME`` carries the electron executable.
     """
-    return [
+    desktop = os.path.join(project_root, DESKTOP_DIRNAME)
+    pairs = [(os.path.join(desktop, name), DESKTOP_DIRNAME) for name in SHELL_FILES]
+    pairs.append(
+        (
+            os.path.join(desktop, SHELL_RENDERER),
+            os.path.join(DESKTOP_DIRNAME, SHELL_RENDERER),
+        )
+    )
+    pairs.append(
+        (
+            os.path.join(desktop, ELECTRON_RUNTIME),
+            os.path.join(DESKTOP_DIRNAME, ELECTRON_RUNTIME),
+        )
+    )
+    return pairs
+
+
+def datas_candidates(project_root: str, variant: str) -> list[tuple[str, str]]:
+    """Every (source, destination) pair a ``variant`` build would ship.
+
+    ``REACT`` adds ``shell_candidates`` to the three directories every build
+    ships; every other variant returns those three alone.
+    """
+    pairs = [
         (os.path.join(project_root, "src"), "src"),
         (os.path.join(project_root, "resources"), "resources"),
         # download_archive.py populates data/historical; a build without it works.
@@ -52,16 +85,19 @@ def datas_candidates(project_root: str) -> list[tuple[str, str]]:
             os.path.join("data", "historical"),
         ),
     ]
+    if normalise(variant) == REACT:
+        pairs.extend(shell_candidates(project_root))
+    return pairs
 
 
-def build_graceful_datas(project_root: str) -> list[tuple[str, str]]:
-    """Return the ``datas_candidates`` pairs whose source directory exists.
+def build_graceful_datas(project_root: str, variant: str) -> list[tuple[str, str]]:
+    """Return the ``datas_candidates`` pairs for ``variant`` whose source exists.
 
     A missing source is printed and skipped; PyInstaller aborts on one it keeps.
     """
     result = []
-    for src_path, dest_path in datas_candidates(project_root):
-        if os.path.isdir(src_path):
+    for src_path, dest_path in datas_candidates(project_root, variant):
+        if os.path.exists(src_path):
             result.append((src_path, dest_path))
         else:
             print(f"  [spec] Skipping missing optional datas path: {src_path}")

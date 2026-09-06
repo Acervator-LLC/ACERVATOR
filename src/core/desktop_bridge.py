@@ -24,6 +24,7 @@ import json
 import logging
 import math
 import sys
+import threading
 from typing import Any, BinaryIO, Callable, Dict
 
 logger = logging.getLogger("acervator.core.desktop_bridge")
@@ -32,18 +33,42 @@ Handler = Callable[[dict], Any]
 
 PROTOCOL_VERSION = 1
 
+BRIDGE_THREAD_NAME = "acervator-bridge"
+
 
 class UnknownMethod(LookupError):
     """The request named a method no surface is registered for."""
 
 
-def build_registry() -> Dict[str, Handler]:
+class LiveSystem:
+    """The running program's own objects, offered to the bridge surfaces.
+
+    ``bot_manager`` is the fleet this process holds, and ``publish`` and
+    ``section`` exchange whole named sections under ``_lock``.
+    """
+
+    def __init__(self, bot_manager: Any = None) -> None:
+        """Hold ``bot_manager`` and an empty section map guarded by ``_lock``."""
+        self.bot_manager = bot_manager
+        self._lock = threading.Lock()
+        self._sections: Dict[str, dict] = {}
+
+    def publish(self, name: str, **values: Any) -> None:
+        """Replace the section ``name`` with ``values`` as one whole dict."""
+        with self._lock:
+            self._sections[name] = dict(values)
+
+    def section(self, name: str) -> dict:
+        """Return a copy of the section ``name``, empty when none was published."""
+        with self._lock:
+            return dict(self._sections.get(name) or {})
+
+
+def build_registry(live: Any = None) -> Dict[str, Handler]:
     """Return the methods the frontend may call, keyed by method name.
 
-    This is the wiring point for the whole frontend: a surface is
-    reachable exactly when it appears here. Surfaces are imported inside
-    the function so that the transport above carries no dependency on any
-    one domain package.
+    A ``live`` ``LiveSystem`` rebinds the surfaces that read it; with
+    ``live`` omitted every handler reads only its own params.
     """
     from src.exchange import history_surface
     from src.gui.main_tabs import (
@@ -90,10 +115,12 @@ def build_registry() -> Dict[str, Handler]:
         native_chart_surface,
         notification_spool_surface,
         nuclear_mode_panel_surface,
+        paper_trader_tab_surface,
         phantom_bots_tab_surface,
         positions_held_surface,
         preflight_check_surface,
         privacy_dot_surface,
+        proof_of_accumulation_tab_surface,
         pulse_manager_surface,
         qt_safe_events_surface,
         quick_routing_surface,
@@ -110,6 +137,7 @@ def build_registry() -> Dict[str, Handler]:
         start_all_progress_surface,
         status_log_surface,
         stock_main_window_surface,
+        system_status_tab_surface,
         table_cells_surface,
         testnet_tab_surface,
         theme_engine_surface,
@@ -122,7 +150,7 @@ def build_registry() -> Dict[str, Handler]:
         wire_canvas_surface,
     )
 
-    return {
+    registry: Dict[str, Handler] = {
         history_surface.METHOD: history_surface.view_model,
         console_log_surface.METHOD: console_log_surface.view_model,
         console_tab_surface.METHOD: console_tab_surface.view_model,
@@ -177,6 +205,11 @@ def build_registry() -> Dict[str, Handler]:
             market_inspector_topologies_surface.view_model
         ),
         native_chart_surface.METHOD: native_chart_surface.view_model,
+        paper_trader_tab_surface.METHOD: paper_trader_tab_surface.view_model,
+        proof_of_accumulation_tab_surface.METHOD: (
+            proof_of_accumulation_tab_surface.view_model
+        ),
+        system_status_tab_surface.METHOD: system_status_tab_surface.view_model,
         phantom_bots_tab_surface.METHOD: phantom_bots_tab_surface.view_model,
         positions_held_surface.METHOD: positions_held_surface.view_model,
         privacy_dot_surface.METHOD: privacy_dot_surface.view_model,
@@ -201,6 +234,27 @@ def build_registry() -> Dict[str, Handler]:
         widgets_package_surface.METHOD: widgets_package_surface.view_model,
         "bridge.ping": lambda params: {"protocol": PROTOCOL_VERSION},
     }
+    if live is not None:
+        registry[history_surface.METHOD] = history_surface.bind_live(live)
+    return registry
+
+
+def serve_on_thread(
+    reader: BinaryIO, writer: BinaryIO, registry: Dict[str, Handler]
+) -> threading.Thread:
+    """Run ``serve`` on a started daemon thread named ``BRIDGE_THREAD_NAME``.
+
+    ``serve`` blocks on ``reader`` until the pipe closes, and the calling
+    thread returns from ``serve_on_thread`` at once.
+    """
+    thread = threading.Thread(
+        target=serve,
+        args=(reader, writer, registry),
+        name=BRIDGE_THREAD_NAME,
+        daemon=True,
+    )
+    thread.start()
+    return thread
 
 
 def dispatch(method: str, params: dict, registry: Dict[str, Handler]) -> Any:

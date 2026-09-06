@@ -1,8 +1,8 @@
 """main_window_surface.py -- the main application window, without Qt.
 
 Describes the window every tab lives inside: its title, its smallest
-size, its four menus, its seven-tab book and the order they sit in, its
-status line, and the values it formats before it shows them.
+size, its four menus, the ``CANONICAL_TAB_ORDER`` book and the order they
+sit in, its status line, and the values it formats before it shows them.
 
 The window BUILDS many tabs and WIRES them to the bot manager. That part
 is named in ``WIRED_TABS`` and ``WIRED_PATHS`` and is not re-modelled
@@ -41,6 +41,9 @@ import math
 from typing import Any, Optional
 
 from .. import design_system as ds
+from . import paper_trader_tab_surface
+from . import proof_of_accumulation_tab_surface
+from . import system_status_tab_surface
 
 METHOD = "main_window.state"
 
@@ -125,7 +128,12 @@ ASSET_CHARTS_TAB = "Asset Charts"
 HISTORY_TAB = "History"
 SIMULATOR_TAB = "Simulator"
 CONSOLE_TAB = "Console"
-PAPER_TRADER_TAB = "Paper Trader"
+
+# Each unbuilt tab is labelled by its own surface, so the bar and the empty
+# state it draws cannot carry two spellings of one name.
+PAPER_TRADER_TAB = paper_trader_tab_surface.HEADING
+SYSTEM_STATUS_TAB = system_status_tab_surface.HEADING
+PROOF_OF_ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 
 CANONICAL_TAB_ORDER = (
     TRADING_TAB,
@@ -135,6 +143,9 @@ CANONICAL_TAB_ORDER = (
     HISTORY_TAB,
     SIMULATOR_TAB,
     CONSOLE_TAB,
+    PAPER_TRADER_TAB,
+    SYSTEM_STATUS_TAB,
+    PROOF_OF_ACCUMULATION_TAB,
 )
 
 # The order `_setup_ui` runs the builders in, which is not the order the bar ends in.
@@ -146,6 +157,9 @@ BUILT_TAB_ORDER = (
     SIMULATOR_TAB,
     HISTORY_TAB,
     CONSOLE_TAB,
+    PAPER_TRADER_TAB,
+    SYSTEM_STATUS_TAB,
+    PROOF_OF_ACCUMULATION_TAB,
 )
 
 SIMULATOR_BUILD_INDEX = 1

@@ -1,8 +1,29 @@
 # Paper Trader Tab
 
 Reference. The third step of [the promotion pipeline](promotion-pipeline.md).
-The screen is not built. No module implements it, the tab row does not name it,
-and issue #19 carries the initial build-out.
+The screen is not built. The tab row carries a skeleton, and issue #19 carries
+the build-out.
+
+## The skeleton
+
+The tab exists and draws three lines: its name, one sentence saying it is not
+built, and the issue that owns it. It reads no bot, no price and no trade.
+
+`src/gui/main_tabs/paper_trader_tab_surface.py` — the whole empty state
+
+```python
+HEADING = "Paper Trader"
+ISSUE = 19
+BUILT = False
+STATE_TEXT = "This tab is not built."
+ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
+```
+
+Two frontends draw that one view model. `EmptyTabsMixin` in
+`src/gui/main_tabs/empty_tabs.py` builds the Qt tab, and
+`src/gui/web/paper_trader_tab.js` registers a panel with the Electron shell's
+panel host. `src.core.desktop_bridge` serves the model under
+`paper_trader_tab.state`.
 
 ## What the step is
 
