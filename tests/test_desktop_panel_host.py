@@ -64,6 +64,30 @@ PANEL_SURFACES = {
 
 REGISTERING_PANELS = sorted(PANEL_SURFACES)
 
+#: The opening request each panel hands its own loader. A panel absent here
+#: declares none and ``acervatorPanelHost.requestOf`` asks it with ``{}``.
+PANEL_REQUESTS = {
+    "market_inspector_tab": {"reset": True, "build": True},
+    "trade_charts_tab": {"reset": True},
+}
+
+INSPECTOR_PANEL = "market_inspector_tab"
+CHARTS_PANEL = "trade_charts_tab"
+
+#: The Market Inspector request with ``build`` taken out, which is what the
+#: shell asked before a panel supplied its own.
+INSPECTOR_REQUEST_WITHOUT_BUILD = {"reset": True}
+
+CHART_STATUSES = [
+    {"bot_id": "chart-bot", "symbol": "BTC/USD", "mode": "scrum", "state": "running"}
+]
+
+SPARE_REQUEST = {"symbol": "BTC/USD"}
+
+INSPECTOR_HEADLINE = "tab/fallback/message/headline"
+INSPECTOR_DETAIL = "tab/fallback/message/detail"
+CHART_HEADER = "tab/scroll/content/chart-panel/panel-header"
+
 JS_TIMEOUT_MS = 30_000
 READY_ROUNDS = 100
 READY_STEP_MS = 100
@@ -311,6 +335,29 @@ FAKE_BRIDGE = (
     "} };"
 )
 
+#: The same bridge, keeping every method and params pair it was called with.
+RECORDING_BRIDGE = (
+    "window.ASKED = [];"
+    "window.acervator = { call: function (method, params) {"
+    "  window.ASKED.push({ method: method, params: params });"
+    "  var answers = window.PANEL_MODELS || {};"
+    "  if (!Object.prototype.hasOwnProperty.call(answers, method)) {"
+    "    return Promise.reject(new Error('the backend has no ' + method));"
+    "  }"
+    "  return Promise.resolve(JSON.parse(JSON.stringify(answers[method])));"
+    "} };"
+)
+
+#: Registers ``SPARE_PANEL`` with a loader that keeps the request it was given.
+SPARE_LOADER = (
+    "window.ASKED_SPARE = null;"
+    "acervatorPanelHost.register({"
+    "  render: function (target) { target.textContent = 'drawn'; },"
+    "  load: function (params) {"
+    "    window.ASKED_SPARE = params;"
+    "    return Promise.resolve({}); }"
+)
+
 
 class Browser:
     """Drives the real renderer page in the Chromium PySide6 ships."""
@@ -484,14 +531,20 @@ def test_the_registered_panels_are_the_modules_that_asked_for_a_host(
 
 
 def panel_models() -> dict:
-    """One view model per registering panel, keyed by its bridge method."""
+    """One view model per registering panel, keyed by its bridge method.
+
+    Each surface answers the request ``PANEL_REQUESTS`` gives its panel, so a
+    panel that changes what it asks for changes what the shell draws here.
+    """
     answers = {
         console_surface.METHOD: console_payload(RECORDS),
         header_surface.METHOD: header_payload(),
     }
     for name, source in PANEL_SURFACES.items():
         if name not in (CONSOLE_PANEL, HEADER_PANEL):
-            answers[source.METHOD] = source.view_model({})
+            answers[source.METHOD] = source.view_model(
+                dict(PANEL_REQUESTS.get(name, {}))
+            )
     return answers
 
 
@@ -833,3 +886,146 @@ def test_a_tab_label_drops_the_module_suffix_and_capitalises_each_word(
     )
     assert browser.js("acervatorTabBar.label('header_strip')") == "Header Strip"
     assert browser.js("acervatorTabBar.label('trading_tab')") == "Trading"
+
+
+# -- the request each panel opens with ----------------------------------
+
+
+def open_spare(browser: Browser, registration: str) -> Any:
+    """Register ``SPARE_PANEL`` from ``registration`` and open it once.
+
+    Returns the request ``window.ASKED_SPARE`` held after the loader ran.
+    """
+    browser.js(registration)
+    browser.js("window.spareHost();")
+    browser.js(
+        "acervatorPanelHost.open(" + json.dumps(SPARE_PANEL) + ", window.SPARE);"
+    )
+    for _ in range(DRAW_ROUNDS):
+        if browser.js("window.ASKED_SPARE !== null"):
+            break
+        browser.settle(DRAW_STEP_MS)
+    return browser.parsed("window.ASKED_SPARE")
+
+
+def test_a_panel_that_declares_no_request_is_asked_with_an_empty_one(
+    browser: Browser,
+):
+    """``acervatorPanelHost.requestOf`` answers ``{}`` for a spec carrying no
+    ``request``, and the loader is called with that."""
+    asked = open_spare(browser, SPARE_LOADER + "}, " + json.dumps(SPARE_PANEL) + ");")
+    assert asked == {}, f"the host asked the panel with {asked}"
+
+
+def test_a_panel_that_declares_a_request_is_asked_with_it(browser: Browser):
+    """The control for the check above. A host that always sent ``{}`` would
+    pass it and lose every value ``SPARE_REQUEST`` names."""
+    asked = open_spare(
+        browser,
+        SPARE_LOADER
+        + ", request: function () { return "
+        + json.dumps(SPARE_REQUEST)
+        + "; } }, "
+        + json.dumps(SPARE_PANEL)
+        + ");",
+    )
+    assert asked == SPARE_REQUEST, f"the host asked the panel with {asked}"
+
+
+def test_a_panel_whose_request_is_not_an_object_is_asked_with_an_empty_one(
+    browser: Browser,
+):
+    """``requestOf`` refuses a value the bridge cannot carry as params, so the
+    loader still receives an object."""
+    asked = open_spare(
+        browser,
+        SPARE_LOADER
+        + ", request: function () { return 7; } }, "
+        + json.dumps(SPARE_PANEL)
+        + ");",
+    )
+    assert asked == {}, f"the host asked the panel with {asked}"
+
+
+def test_every_mounted_panel_asks_its_backend_method_with_its_own_request(
+    browser: Browser,
+):
+    """The shell asks no panel a question of its own. ``window.ASKED`` holds
+    the request each panel handed its loader, and it is ``PANEL_REQUESTS``."""
+    give_tokens(browser)
+    bind(browser, "PANEL_MODELS", panel_models())
+    browser.js(RECORDING_BRIDGE)
+    browser.js("acervatorMountPanels();")
+    wanted = browser.parsed("acervatorPanelHost.wanted()")
+    wait_for_hosts(browser, wanted)
+    asked = {one["method"]: one["params"] for one in browser.parsed("window.ASKED")}
+    for name in wanted:
+        method = PANEL_SURFACES[name].METHOD
+        assert method in asked, f"{name} asked the backend nothing; asked {asked}"
+        assert asked[method] == PANEL_REQUESTS.get(
+            name, {}
+        ), f"{name} asked {method} with {asked[method]}"
+
+
+# -- the two panels that drew nothing -----------------------------------
+
+
+def test_the_market_inspector_panel_draws_the_line_its_own_request_returns(
+    browser: Browser,
+):
+    """The Market Inspector host held no text while the shell sent ``{}``. For
+    ``PANEL_REQUESTS`` it draws ``FALLBACK_HEADLINE_TEXT`` and the detail."""
+    give_tokens(browser)
+    model = inspector_surface.view_model(dict(PANEL_REQUESTS[INSPECTOR_PANEL]))
+    assert model["order"] == ["QLabel", "stretch"], f"the surface answered {model}"
+    assert mount(browser, INSPECTOR_PANEL, model) is True
+    parts = spare_parts(browser)
+    assert at_path(parts, INSPECTOR_HEADLINE) == [
+        inspector_surface.FALLBACK_HEADLINE_TEXT
+    ], f"the panel drew {parts}"
+    assert at_path(parts, INSPECTOR_DETAIL) == [model["detail"]]
+    assert browser.js("window.SPARE.textContent") != ""
+
+
+def test_the_market_inspector_panel_draws_nothing_without_build_in_the_request(
+    browser: Browser,
+):
+    """The control for the check above, and the state the shell was in. Drop
+    ``build`` and the surface answers an empty ``order`` the panel cannot draw."""
+    give_tokens(browser)
+    model = inspector_surface.view_model(dict(INSPECTOR_REQUEST_WITHOUT_BUILD))
+    assert model["order"] == [], f"the surface answered {model}"
+    assert mount(browser, INSPECTOR_PANEL, model) is True
+    parts = spare_parts(browser)
+    assert at_path(parts, INSPECTOR_HEADLINE) == [], f"the panel drew {parts}"
+    assert browser.js("window.SPARE.textContent") == ""
+
+
+def test_the_asset_charts_panel_draws_one_chart_for_each_bot_in_the_answer(
+    browser: Browser,
+):
+    """The Asset Charts panel draws whatever ``statuses`` names. Given
+    ``CHART_STATUSES`` it holds that bot's panel header."""
+    give_tokens(browser)
+    request = dict(PANEL_REQUESTS[CHARTS_PANEL])
+    request["statuses"] = CHART_STATUSES
+    model = charts_surface.view_model(request)
+    assert model["panel_count"] == 1, f"the surface answered {model['panel_count']}"
+    assert mount(browser, CHARTS_PANEL, model) is True
+    parts = spare_parts(browser)
+    assert at_path(parts, CHART_HEADER) == [
+        CHART_STATUSES[0]["symbol"]
+    ], f"the panel drew {parts}"
+
+
+def test_the_asset_charts_panel_holds_no_chart_when_the_answer_names_no_bot(
+    browser: Browser,
+):
+    """The control for the check above, and the state the running shell is in.
+    ``PANEL_REQUESTS`` carries no ``statuses`` and the panel draws no header."""
+    give_tokens(browser)
+    model = charts_surface.view_model(dict(PANEL_REQUESTS[CHARTS_PANEL]))
+    assert model["panel_count"] == 0, f"the surface answered {model['panel_count']}"
+    assert mount(browser, CHARTS_PANEL, model) is True
+    assert at_path(spare_parts(browser), CHART_HEADER) == []
+    assert browser.js("window.SPARE.textContent") == ""

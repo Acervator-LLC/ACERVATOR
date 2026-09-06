@@ -505,6 +505,12 @@
     return report();
   }
 
+  // `build` runs the delegation the Qt tab runs on open; `reset` starts it
+  // from a fresh tab.
+  function openingRequest() {
+    return { reset: true, build: true };
+  }
+
   // loadTab asks METHOD once, clearing asked so a refusal retries.
   function loadTab(params) {
     if (asked !== null) {
@@ -703,7 +709,8 @@
     global.acervatorPanelHost.register({
       render: renderTab,
       load: loadTab,
-      loadError: loadError
+      loadError: loadError,
+      request: openingRequest
     });
   }
 
