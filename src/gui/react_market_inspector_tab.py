@@ -67,8 +67,12 @@ TAB_SCRIPT_ASSETS: tuple[str, ...] = (
     + ("market_inspector.js", "market_inspector_topologies.js")
 )
 
+#: The screen root fills the view, so the screen's own full height resolves
+#: against it and the tab draws as tall as the Qt tab does.
+SCREEN_ROOT_STYLE = "height:100%"
+
 TAB_BODY = (
-    f'<div id="{SCREEN_ROOT_ID}"></div>\n'
+    f'<div id="{SCREEN_ROOT_ID}" style="{SCREEN_ROOT_STYLE}"></div>\n'
     f'<div id="{TOPOLOGY_ROOT_ID}"></div>\n'
     f'<div id="{PREVIEW_ROOT_ID}" hidden></div>'
 )

@@ -62,6 +62,7 @@
   var SOURCES = "sources";
   var SPLITTER_ORIENTATION = "splitter_orientation";
   var SPLITTER_PANES = "splitter_panes";
+  var SPLITTER_HANDLE_PX = "splitter_handle_px";
   var SPLITTER_SIZES_PX = "splitter_sizes_px";
   var SPLITTER_STRETCH = "splitter_stretch";
   var STATUS_FORMATS = "status_formats";
@@ -73,6 +74,7 @@
   var TABLE_ALTERNATING_ROWS = "table_alternating_rows";
   var TABLE_EDIT_TRIGGERS = "table_edit_triggers";
   var TABLE_RESIZE_MODE = "table_resize_mode";
+  var TABLE_VIEWPORT_PX = "table_viewport_px";
   var TIMEFRAME = "timeframe";
   var TIMER_DELAYS_MS = "timer_delays_ms";
   var TIMERS = "timers";
@@ -136,6 +138,7 @@
     SIGNALS_MAX_HEIGHT_PX,
     SKIN,
     SOURCES,
+    SPLITTER_HANDLE_PX,
     SPLITTER_ORIENTATION,
     SPLITTER_PANES,
     SPLITTER_SIZES_PX,
@@ -149,6 +152,7 @@
     TABLE_ALTERNATING_ROWS,
     TABLE_EDIT_TRIGGERS,
     TABLE_RESIZE_MODE,
+    TABLE_VIEWPORT_PX,
     TIMEFRAME,
     TIMER_DELAYS_MS,
     TIMERS,
@@ -578,6 +582,7 @@
   var CENTER = "center";
   var FULL = "100%";
   var MIN_CONTENT = "min-content";
+  var MAX_CONTENT = "max-content";
   var COLLAPSE = "collapse";
   var CLIPPED = "hidden";
   var ELLIPSIS = "ellipsis";
@@ -657,6 +662,8 @@
   var ALTERNATING_ATTR = "data-alternating";
   var ROWS_ATTR = "data-rows";
   var SLOT_ATTR = "data-slot";
+  var SLOT_SELECTOR = "[data-slot=\"market-inspector-topologies\"]";
+  var FUNCTION_KIND = "function";
   var ARIA_LABEL = "aria-label";
 
   var held = null;
@@ -1057,7 +1064,11 @@
     var rows = listField(model, props.rowsField);
     var mode = model[TABLE_RESIZE_MODE];
     var gridProps = {
-      style: { width: FULL, borderCollapse: COLLAPSE, tableLayout: AUTO }
+      style: {
+        width: mode === TO_CONTENTS_MODE ? MAX_CONTENT : FULL,
+        borderCollapse: COLLAPSE,
+        tableLayout: AUTO
+      }
     };
     gridProps[PART_ATTR] = GRID_PART;
     gridProps[TABLE_ATTR] = props.table;
@@ -1123,6 +1134,17 @@
     );
   }
 
+  // tableHeight answers what the Qt table draws: its own viewport height,
+  // cut short by the group's maximum. An empty table keeps that height.
+  function tableHeight(model, heightField) {
+    var viewport = Number(model[TABLE_VIEWPORT_PX]);
+    var most = Number(model[heightField]);
+    if (!isFinite(viewport)) {
+      return most;
+    }
+    return isFinite(most) && most < viewport ? most : viewport;
+  }
+
   // TableGroup is the Qt group box holding one table under its title.
   function TableGroup(props) {
     var model = props.model;
@@ -1140,6 +1162,7 @@
     legendProps[PART_ATTR] = GROUP_LEGEND_PART;
     var bodyProps = {
       style: {
+        height: length(tableHeight(model, props.heightField)),
         maxHeight: length(model[props.heightField]),
         overflow: AUTO,
         flex: FLEX_NONE
@@ -1235,6 +1258,7 @@
       style: {
         display: FLEX,
         flexDirection: across ? ROW_WAY : COLUMN_WAY,
+        gap: length(model[SPLITTER_HANDLE_PX]),
         flex: AUTO,
         overflow: CLIPPED
       }
@@ -2043,8 +2067,37 @@
     return held === null ? null : held.model;
   }
 
+  // fillSlot draws the proposals pane into the right-hand slot when no host
+  // has claimed it. A Qt host moves its own pane node in and declares
+  // acervatorMountTopologies, so the slot is left alone there.
+  function fillSlot(target) {
+    if (typeof global.acervatorMountTopologies === FUNCTION_KIND) {
+      return null;
+    }
+    var pane = global.acervatorTopologies;
+    if (!pane || typeof pane.renderTab !== FUNCTION_KIND) {
+      return null;
+    }
+    if (!target || typeof target.querySelector !== FUNCTION_KIND) {
+      return null;
+    }
+    var slot = target.querySelector(SLOT_SELECTOR);
+    if (slot === null || slot.children.length > ZERO) {
+      return null;
+    }
+    pane.renderTab(slot, null);
+    if (typeof global.acervatorLoadTopologies === FUNCTION_KIND) {
+      global.acervatorLoadTopologies().then(function () {
+        pane.renderTab(slot, null);
+      });
+    }
+    return slot;
+  }
+
   function renderScreen(target, model) {
-    return draw(target, element(Screen, { model: payloadOr(model) }));
+    var drawn = draw(target, element(Screen, { model: payloadOr(model) }));
+    fillSlot(target);
+    return drawn;
   }
 
   // act hands one control press to whatever host is holding the screen.

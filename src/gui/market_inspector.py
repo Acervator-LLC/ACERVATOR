@@ -361,32 +361,27 @@ if _HAS_QT:
                 return
             adopt_signal.connect(handler)
 
-        def current_topology_proposals(self) -> list:
-            """Proposals currently on display, for a SIMULATOR to stress.
+        def current_topology_proposals(self) -> "list | None":
+            """The proposals on display, for a simulator to read and wire.
 
-            v3.24.79 — the read half of the topology seam. Nuclear Mode
-            pulls these at Start and wires them across sim bots, which
-            is the topology injection the mode exists to exercise.
-            (The operator's "strategy injection" wording; in Market
-            Inspector a strategy IS a topology — same thing, and the
-            precise term is topology.)
+            ``None`` says the right pane never built or refused the read,
+            and a list says the pane answered. An empty list therefore
+            means the pane holds no proposals, which no caller can
+            confuse with a pane that is not there.
 
-            Distinct from `set_adopt_handler` above in the way that
-            matters: adoption creates real bots and wires on the live
-            fleet, while this only lets a simulator read the shape.
-            Returns [] if the pane never constructed, so a build without
-            the topology UI loses injections rather than the ability to
-            run a soak.
+            Distinct from ``set_adopt_handler``: adopting creates real
+            bots and wires on the live fleet, while this only lets a
+            simulator read the shape.
             """
             pane = getattr(self, "_topologies_pane", None)
             getter = getattr(pane, "current_proposals", None)
             if getter is None:
-                return []
+                return None
             try:
                 return list(getter() or [])
             except Exception as exc:  # noqa: BLE001 - optional producer
                 logger.debug("topology proposal read failed: %s", exc)
-                return []
+                return None
 
         def set_exchange_source(self, connectors_getter, scheduler) -> None:
             """Wire the exchange-based data path.

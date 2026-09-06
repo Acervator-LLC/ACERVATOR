@@ -37,6 +37,6 @@ class SimulatorTabMixin:
                         getattr(self, "_market_inspector", None),
                         "current_topology_proposals",
                     )
-                    else []
+                    else None
                 )
             )

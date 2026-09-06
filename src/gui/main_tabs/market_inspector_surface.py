@@ -63,6 +63,11 @@ PAIRS_GROUP_TITLE = "Opposing Pairs (30-day Pearson)"
 PAIR_COLUMNS = ("Long side", "Short side", "Correlation", "Score (Long+Short)")
 PAIRS_MAX_HEIGHT_PX = 180
 
+#: The height a ``QTableWidget`` takes when nothing sizes it. Measured 192 px,
+#: and the same whatever the row count, so each table draws this tall until
+#: its own maximum cuts it shorter.
+TABLE_VIEWPORT_PX = 192
+
 TABLE_RESIZE_MODE = "ResizeToContents"
 TABLE_EDIT_TRIGGERS = "NoEditTriggers"
 TABLE_ALTERNATING_ROWS = True
@@ -71,6 +76,11 @@ SPLITTER_ORIENTATION = "Horizontal"
 SPLITTER_STRETCH = (1, 1)
 SPLITTER_SIZES_PX = (800, 800)
 SPLITTER_PANES = 2
+
+#: The drag handle a ``QSplitter`` keeps between the two panes. Measured 7 px
+#: under the shipped theme, which is the width the splitter reports, so the
+#: panes share what is left rather than the whole tab.
+SPLITTER_HANDLE_PX = 7
 
 OUTER_MARGINS_PX = (0, 0, 0, 0)
 OUTER_SPACING_PX = 0
@@ -770,19 +780,24 @@ class MarketInspectorScreenModel:
         adopt_signal.connect(handler)
         self.calls.append([ADOPT_WIRED])
 
-    def current_topology_proposals(self) -> list:
-        """The proposals on display, for a simulator to read."""
+    def current_topology_proposals(self) -> Optional[list]:
+        """The proposals on display, for a simulator to read.
+
+        ``None`` says the right pane never built or refused the read, and
+        a list says the pane answered, so an empty pane and an absent one
+        never look alike to a caller.
+        """
         pane = self.topologies_pane
         getter = getattr(pane, "current_proposals", None)
         if getter is None:
             self.calls.append([PROPOSALS_UNREADABLE])
-            return []
+            return None
         try:
             found = list(getter() or [])
         except Exception as exc:
             logger.debug(PROPOSALS_FAILED_LOG, exc)
             self.calls.append([PROPOSALS_UNREADABLE])
-            return []
+            return None
         self.calls.append([PROPOSALS_READ, len(found)])
         return found
 
@@ -1218,12 +1233,14 @@ def build_view_model(
         "pair_columns": list(PAIR_COLUMNS),
         "pairs_max_height_px": PAIRS_MAX_HEIGHT_PX,
         "pair_rows": [[list(cell) for cell in row] for row in model.pair_rows],
+        "table_viewport_px": TABLE_VIEWPORT_PX,
         "table_resize_mode": TABLE_RESIZE_MODE,
         "table_edit_triggers": TABLE_EDIT_TRIGGERS,
         "table_alternating_rows": TABLE_ALTERNATING_ROWS,
         "splitter_orientation": SPLITTER_ORIENTATION,
         "splitter_stretch": list(SPLITTER_STRETCH),
         "splitter_sizes_px": list(SPLITTER_SIZES_PX),
+        "splitter_handle_px": SPLITTER_HANDLE_PX,
         "splitter_panes": SPLITTER_PANES,
         "outer_margins_px": list(OUTER_MARGINS_PX),
         "outer_spacing_px": OUTER_SPACING_PX,
