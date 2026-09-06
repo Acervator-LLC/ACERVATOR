@@ -57,6 +57,7 @@ from src.simulator.nuclear_fleet_controller import (
 )
 
 from ..color_alpha import rgba
+from ..main_tabs import nuclear_mode_panel_surface as surface
 
 logger = logging.getLogger("acervator.nuclear_panel")
 
@@ -425,15 +426,7 @@ class NuclearModePanel(QWidget):
         if not cfgs:
             self._set_fleet_detail("—")
             self._set_start_enabled(False)
-            self._set_empty_notice(
-                "bot_state has no scrumming bots, so there is no fleet to "
-                "stress.\n\n"
-                "Nuclear Mode loops the LIVE fleet's own Stone Tablets "
-                "under varying\nmarket structure and system load. It does "
-                "not synthesise bots, and it\nnever writes to bot_state or "
-                "to the tablet archive.",
-                True,
-            )
+            self._set_empty_notice(surface.EMPTY_FLEET_TEXT, True)
             return
 
         symbols = sorted(

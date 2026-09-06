@@ -289,8 +289,10 @@ def view_model(params: dict) -> dict:
     """Bridge handler for ``market_inspector_tab.state``.
 
     Reads ``reset``, ``bot``, ``error``, ``view`` and ``build`` from the
-    request parameters. The tab's last state persists between calls
-    because the tab does; ``reset`` is what a fresh paint sends.
+    request parameters, and runs ``MarketInspectorTabModel.build`` only
+    once ``error`` or ``view`` has given the model a source. The tab's
+    last state persists between calls because the tab does; ``reset`` is
+    what a fresh paint sends.
     """
     global PANE_MODEL
     if params.get("reset", False):
@@ -309,4 +311,5 @@ def view_model(params: dict) -> dict:
         driven = True
     if "bot" in params:
         PANE_MODEL.bot = params["bot"]
-    return build_view_model(PANE_MODEL, params.get("build", driven))
+    asked = params.get("build", driven)
+    return build_view_model(PANE_MODEL, asked and PANE_MODEL.source is not None)
