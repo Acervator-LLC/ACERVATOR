@@ -860,6 +860,35 @@ so both screens ask the same question in the same words.
         """
 ```
 
+The List view draws the same twelve-column table in the React tab. The tab
+surface builds the list payload once, from the rows the last fleet load sent
+and the wires the board holds, and hands it to the list module inside the page.
+
+`src/gui/main_tabs/bot_visualizer_surface.py` — `swarm_list`
+
+```python
+def swarm_list(model: BotVisualizerModel) -> dict:
+    """The dense list payload, from the rows ``update_bots`` last sent.
+
+    ``bot_swarm_list_surface`` builds it, so the list draws the table and
+    the lane wires the Qt ``BotListView`` and ``LaneWireCanvas`` paint.
+    """
+```
+
+The list module draws the table and the see-through lane sheet over it in one
+box, so a wire runs down a lane column between the two rows it joins.
+
+`src/gui/web/bot_swarm_list.js` — `SwarmList`
+
+```javascript
+    return element(
+      DIV_TAG,
+      swarmProps,
+      element(ListTable, { key: LIST_PART, model: model }),
+      element(LaneSheet, { key: SHEET_PART, model: model })
+    );
+```
+
 Detail: [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md).
 
 ## Asset Charts
@@ -3051,7 +3080,7 @@ tab row.
 | `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no |
 | `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no |
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | no |
-| `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | no | yes | no |
+| `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | yes | yes | yes |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes |
 | `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | no |
 | `src/gui/buy_confirmation_dialog.py` | no | - | no | no | no | - | no |
@@ -3130,9 +3159,9 @@ React module             55
 Uses React               53
 Bridge                   67
 Manifest                 55
-Registers in Electron    14
+Registers in Electron    15
 Ships in the build       55
-RENDERS                  24
+RENDERS                  25
 ```
 
 Four columns are all but complete. The fifth is at one.
