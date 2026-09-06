@@ -23,7 +23,7 @@ reaches it. Nothing here imports Qt.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from ...core.privacy_mask_registry import get_privacy_mask_registry
 from .. import design_system as ds
@@ -778,6 +778,8 @@ class ExchangeTabModel:
 
 PANE_MODEL: Optional[ExchangeTabModel] = None
 
+PANE_MODELS: Dict[str, ExchangeTabModel] = {}
+
 
 def pane_model() -> ExchangeTabModel:
     """The one screen the bridge keeps between calls.
@@ -790,6 +792,19 @@ def pane_model() -> ExchangeTabModel:
     if PANE_MODEL is None:
         PANE_MODEL = ExchangeTabModel(DEFAULT_EXCHANGE_ID, DEFAULT_EXCHANGE_NAME)
     return PANE_MODEL
+
+
+def pane_model_for(exchange_id: str, exchange_name: str) -> ExchangeTabModel:
+    """The screen ``PANE_MODELS`` keeps for one exchange.
+
+    One ``ExchangeTabModel`` per exchange id, so two screens on the same
+    page do not share a selection, a privacy state or a table.
+    """
+    held = PANE_MODELS.get(exchange_id)
+    if held is None:
+        held = ExchangeTabModel(exchange_id, exchange_name)
+        PANE_MODELS[exchange_id] = held
+    return held
 
 
 def build_model(
@@ -927,15 +942,11 @@ def build_view_model(model: ExchangeTabModel) -> dict:
     }
 
 
-def view_model(params: dict) -> dict:
-    """Bridge handler reading each request field a ``*_PARAM`` constant names."""
-    global PANE_MODEL
-    if params.get(RESET_PARAM, False):
-        PANE_MODEL = ExchangeTabModel(
-            params.get(EXCHANGE_ID_PARAM, DEFAULT_EXCHANGE_ID),
-            params.get(EXCHANGE_NAME_PARAM, DEFAULT_EXCHANGE_NAME),
-        )
-    model = pane_model()
+def drive(model: ExchangeTabModel, params: dict) -> dict:
+    """Apply one request to ``model``, reading each ``*_PARAM`` field.
+
+    ``view_model`` and ``live_view_model`` both run their request here.
+    """
     statuses = params.get(STATUSES_PARAM)
     if statuses is not None:
         model.update_bots(statuses)
@@ -956,3 +967,45 @@ def view_model(params: dict) -> dict:
     if params.get(PRIVACY_PARAM, False):
         model.on_global_privacy_clicked()
     return build_view_model(model)
+
+
+def view_model(params: dict) -> dict:
+    """Bridge handler reading each request field a ``*_PARAM`` constant names."""
+    global PANE_MODEL
+    if params.get(RESET_PARAM, False):
+        PANE_MODEL = ExchangeTabModel(
+            params.get(EXCHANGE_ID_PARAM, DEFAULT_EXCHANGE_ID),
+            params.get(EXCHANGE_NAME_PARAM, DEFAULT_EXCHANGE_NAME),
+        )
+    return drive(pane_model(), params)
+
+
+def live_view_model(params: dict, live: Any) -> dict:
+    """Build the screen ``EXCHANGE_ID_PARAM`` names from the running fleet.
+
+    ``live.bot_manager.list_bots_by_exchange`` names the bots the two
+    tables draw; ``view_model`` answers while no manager is bound.
+    """
+    manager = getattr(live, "bot_manager", None)
+    if manager is None or not hasattr(manager, "list_bots_by_exchange"):
+        return view_model(params)
+    asked = dict(params or {})
+    exchange_id = str(asked.get(EXCHANGE_ID_PARAM) or DEFAULT_EXCHANGE_ID)
+    exchange_name = str(asked.get(EXCHANGE_NAME_PARAM) or DEFAULT_EXCHANGE_NAME)
+    if asked.pop(RESET_PARAM, False):
+        PANE_MODELS.pop(exchange_id, None)
+    if asked.get(STATUSES_PARAM) is None:
+        asked[STATUSES_PARAM] = list(manager.list_bots_by_exchange(exchange_id))
+    return drive(pane_model_for(exchange_id, exchange_name), asked)
+
+
+def bind_live(live: Any) -> Any:
+    """Return an ``exchange_tab.state`` handler reading ``live``.
+
+    ``build_registry`` calls this when the running program serves the bridge.
+    """
+
+    def handler(params: dict) -> dict:
+        return live_view_model(params or {}, live)
+
+    return handler

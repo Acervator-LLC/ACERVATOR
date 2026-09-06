@@ -53,13 +53,15 @@ class UnknownMethod(LookupError):
 class LiveSystem:
     """The running program's own objects, offered to the bridge surfaces.
 
-    ``bot_manager`` is the fleet this process holds, and ``publish`` and
+    ``bot_manager`` is the fleet this process holds, ``settings_manager``
+    names the exchanges it is configured for, and ``publish`` and
     ``section`` exchange whole named sections under ``_lock``.
     """
 
-    def __init__(self, bot_manager: Any = None) -> None:
-        """Hold ``bot_manager`` and an empty section map guarded by ``_lock``."""
+    def __init__(self, bot_manager: Any = None, settings_manager: Any = None) -> None:
+        """Hold ``bot_manager``, ``settings_manager`` and a section map."""
         self.bot_manager = bot_manager
+        self.settings_manager = settings_manager
         self._lock = threading.Lock()
         self._sections: Dict[str, dict] = {}
         self._push: Any = None
@@ -354,6 +356,8 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         registry[trade_charts_tab_surface.METHOD] = trade_charts_tab_surface.bind_live(
             live
         )
+        registry[trading_tab_surface.METHOD] = trading_tab_surface.bind_live(live)
+        registry[exchange_tab_surface.METHOD] = exchange_tab_surface.bind_live(live)
     return registry
 
 

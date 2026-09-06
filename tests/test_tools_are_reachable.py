@@ -38,6 +38,7 @@ INVENTORY: tuple[tuple[str, bool], ...] = (
     ("capture_live_baseline", True),
     ("check_added_comments", True),
     ("conversion_state", False),
+    ("conversion_table", True),
     ("deps", True),
     ("extract_product_manual", True),
     ("exchange_diagnostic", True),

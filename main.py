@@ -470,11 +470,11 @@ def bridge_requested(argv) -> bool:
     return BRIDGE_FLAG in list(argv or [])
 
 
-def build_live_system(bot_manager):
+def build_live_system(bot_manager, settings_manager=None):
     """Return the ``LiveSystem`` the bridge surfaces read this process through."""
     from src.core.desktop_bridge import LiveSystem
 
-    return LiveSystem(bot_manager=bot_manager)
+    return LiveSystem(bot_manager=bot_manager, settings_manager=settings_manager)
 
 
 def wire_history_publisher(live, window):
@@ -748,13 +748,15 @@ def main() -> int:
         bot_manager=bot_manager,
         settings_manager=settings,
     )
-    for exch in settings.list_exchanges():
-        crypto_window.add_exchange_tab(
-            exch.get("exchange_id", "unknown"),
-            exch.get("display_name", "Unknown"),
-        )
+    from src.gui.main_tabs.trading_tab_surface import exchange_display_name
 
-    live_system = build_live_system(bot_manager)
+    for exch in settings.list_exchanges():
+        exchange_id = exch.get("exchange_id", "")
+        if not exchange_id:
+            continue
+        crypto_window.add_exchange_tab(exchange_id, exchange_display_name(exch))
+
+    live_system = build_live_system(bot_manager, settings)
     if wire_history_publisher(live_system, crypto_window) is None:
         log_manager.warning(
             "History tab exposed no history_refreshed signal; the desktop "

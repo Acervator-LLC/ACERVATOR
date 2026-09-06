@@ -64,6 +64,8 @@
   var ADD_BUTTON = "add_button";
   var PLACEHOLDER = "placeholder";
   var EXCHANGE_TABS = "exchange_tabs";
+  var CURRENT_EXCHANGE = "current_exchange";
+  var PLACEHOLDER_SHOWN = "placeholder_shown";
   var TEXT = "text";
   var TOOLTIP = "tooltip";
   var MINIMUM_WIDTH = "minimum_width_px";
@@ -193,6 +195,8 @@
   var TITLE_PART = "placeholder-title";
   var PLACEHOLDER_ADD_PART = "placeholder-add";
   var HINT_PART = "placeholder-hint";
+  var EXCHANGE_PANE_PART = "exchange-pane";
+  var EXCHANGE_TAB_BUTTON_PART = "exchange-tab-button";
   var INDICATOR_PART = "indicator-panel";
   var HEADER_ROW_PART = "header-row";
   var PANE_LABEL_PART = "pane-label";
@@ -205,8 +209,17 @@
 
   var STATUS_LOG_MODULE = "status_log";
   var INDICATOR_MODULE = "indicator_panel";
+  var EXCHANGE_MODULE = "exchange_tab";
   var LOAD_LOG = "acervatorLoadLog";
   var LOAD_INDICATOR = "acervatorLoadIndicatorPanel";
+  var LOAD_EXCHANGE = "acervatorLoadExchangeTab";
+  var EXCHANGE_API = "acervatorExchangeTab";
+  var EXCHANGE_ID_PARAM = "exchange_id";
+  var EXCHANGE_NAME_PARAM = "exchange_name";
+  var EXCHANGE_PARAM = "exchange";
+  var ACTIVITY_PAUSED_PARAM = "activity_paused";
+  var API_PAUSED_PARAM = "api_paused";
+  var LOG_API = "acervatorLog";
 
   var PART_ATTR = "data-part";
   var CHILD_ATTR = "data-child-module";
@@ -218,6 +231,7 @@
   var COLLAPSIBLE_ATTR = "data-collapsible";
   var LAYER_ATTR = "data-layer";
   var CURRENT_ATTR = "data-current";
+  var EXCHANGE_ATTR = "data-exchange";
   var HOVERED_ATTR = "data-hovered";
   var CHECKED_ATTR = "data-checked";
   var BLOCKS_ATTR = "data-block-count";
@@ -631,6 +645,45 @@
     return element(DIV_TAG, splitterProps, drawn);
   }
 
+  // One request to the tab's own method, whose answer replaces the held
+  // model and repaints every host this module has drawn into.
+  function askTrading(params) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve(null);
+    }
+    return global.acervator
+      .call(METHOD, params)
+      .then(function (model) {
+        loadFault = null;
+        setTrading(model);
+        redraw();
+        return model;
+      })
+      .catch(function (err) {
+        loadFault = err.message;
+        return null;
+      });
+  }
+
+  // `_add_exchange` ends in `_sync_exchange_tabs`, which re-reads the
+  // configured exchanges; the answer carries whatever was added.
+  function addExchangeAsked() {
+    return askTrading({});
+  }
+
+  // Qt's toggle pauses the pane as well as flipping the caption.
+  function pauseToggled(slot, checked) {
+    var wanted = checked !== true;
+    var params = {};
+    params[slot === ACTIVITY_PANE ? ACTIVITY_PAUSED_PARAM : API_PAUSED_PARAM] = wanted;
+    var api = global[LOG_API];
+    if (slot === ACTIVITY_PANE && api && typeof api.setPaused === "function") {
+      api.setPaused(wanted);
+    }
+    return askTrading(params);
+  }
+
   function AddButton(props) {
     var model = objectField(props.layer, ADD_BUTTON);
     var style = { minWidth: length(model[MINIMUM_WIDTH]) };
@@ -638,7 +691,8 @@
       className: LAYER_CLASS,
       style: style,
       type: BUTTON_TYPE,
-      title: label(model[TOOLTIP])
+      title: label(model[TOOLTIP]),
+      onClick: addExchangeAsked
     };
     buttonProps[PART_ATTR] = ADD_BUTTON_PART;
     buttonProps[KEY_ATTR] = text(props.layer[KEY]);
@@ -664,7 +718,12 @@
       style[name] = least[name];
     });
     centred(style, model[ALIGN]);
-    var buttonProps = { className: LAYER_CLASS, style: style, type: BUTTON_TYPE };
+    var buttonProps = {
+      className: LAYER_CLASS,
+      style: style,
+      type: BUTTON_TYPE,
+      onClick: addExchangeAsked
+    };
     buttonProps[PART_ATTR] = PLACEHOLDER_ADD_PART;
     buttonProps[KEY_ATTR] = text(props.layerKey);
     buttonProps[ACTION_ATTR] = text(props.actions[PLACEHOLDER_ADD_ACTION]);
@@ -745,6 +804,55 @@
     );
   }
 
+  // Clicking a tab moves the layer's tab widget to that exchange.
+  function exchangeChosen(exchangeId) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve(null);
+    }
+    var params = {};
+    params[EXCHANGE_PARAM] = exchangeId;
+    return global.acervator
+      .call(METHOD, params)
+      .then(function (model) {
+        loadFault = null;
+        setTrading(model);
+        redraw();
+        return model;
+      })
+      .catch(function (err) {
+        loadFault = err.message;
+        return null;
+      });
+  }
+
+  function ExchangeTabButton(props) {
+    var buttonProps = {
+      className: LAYER_CLASS,
+      style: { flex: FLEX_NONE },
+      type: BUTTON_TYPE,
+      onClick: function () {
+        exchangeChosen(props.exchangeId);
+      }
+    };
+    buttonProps[PART_ATTR] = EXCHANGE_TAB_BUTTON_PART;
+    buttonProps[LAYER_ATTR] = props.layerKey;
+    buttonProps[EXCHANGE_ATTR] = props.exchangeId;
+    buttonProps[CURRENT_ATTR] = text(props.current);
+    buttonProps[ARIA_LABEL] = label(props.caption);
+    return element(BUTTON_TAG, buttonProps, text(props.caption));
+  }
+
+  // `exchange_tab.js` draws its own screen into this space, so React
+  // never gives it a child.
+  function ExchangePane(props) {
+    var paneProps = { style: { display: FLEX, flexDirection: COLUMN, flex: AUTO } };
+    paneProps[PART_ATTR] = EXCHANGE_PANE_PART;
+    paneProps[LAYER_ATTR] = props.layerKey;
+    paneProps[EXCHANGE_ATTR] = props.exchangeId;
+    return element(DIV_TAG, paneProps, null);
+  }
+
   // One layer page: a tab bar carrying the corner add button, and the
   // body of the tab on show.
   function LayerPage(props) {
@@ -767,6 +875,11 @@
     barProps[PART_ATTR] = TAB_BAR_PART;
     barProps[LAYER_ATTR] = text(layer[KEY]);
 
+    var tabs = objectField(layer, EXCHANGE_TABS);
+    var named = Object.keys(tabs);
+    var onShow = text(layer[CURRENT_EXCHANGE]);
+    var empty = layer[PLACEHOLDER_SHOWN] !== false;
+
     var tabProps = { style: { flex: FLEX_NONE } };
     tabProps[PART_ATTR] = TAB_BUTTON_PART;
     tabProps[LAYER_ATTR] = text(layer[KEY]);
@@ -785,6 +898,22 @@
     widgetProps[PART_ATTR] = TAB_WIDGET_PART;
     widgetProps[LAYER_ATTR] = text(layer[KEY]);
 
+    var barTabs = empty
+      ? [element(SPAN_TAG, tabProps, text(placeholder[TAB_TITLE_FIELD]))]
+      : named.map(function (one) {
+          return element(ExchangeTabButton, {
+            key: one,
+            layerKey: text(layer[KEY]),
+            exchangeId: one,
+            caption: text(tabs[one]),
+            current: one === onShow
+          });
+        });
+
+    var body = empty
+      ? element(Placeholder, { layer: layer, actions: props.actions })
+      : element(ExchangePane, { layerKey: text(layer[KEY]), exchangeId: onShow });
+
     return element(
       DIV_TAG,
       pageProps,
@@ -794,15 +923,11 @@
         element(
           DIV_TAG,
           barProps,
-          element(SPAN_TAG, tabProps, text(placeholder[TAB_TITLE_FIELD])),
+          barTabs,
           element(DIV_TAG, spacerProps, null),
           element(AddButton, { layer: layer, actions: props.actions })
         ),
-        element(
-          DIV_TAG,
-          bodyProps,
-          element(Placeholder, { layer: layer, actions: props.actions })
-        )
+        element(DIV_TAG, bodyProps, body)
       )
     );
   }
@@ -861,6 +986,9 @@
       style: style,
       type: BUTTON_TYPE,
       title: label(model[TOOLTIP]),
+      onClick: function () {
+        pauseToggled(props.slot, model[CHECKED] === true);
+      },
       onMouseOver: function () {
         setHovered(true);
       },
@@ -1560,6 +1688,67 @@
     return api.renderPanel(slot);
   }
 
+  // The layers whose tab widget has an exchange page on show.
+  function shownExchanges() {
+    var model = held === null ? null : held.model;
+    return listField(model, LAYERS)
+      .filter(function (layer) {
+        return isPlainObject(layer) && layer[PLACEHOLDER_SHOWN] === false;
+      })
+      .map(function (layer) {
+        var tabs = objectField(layer, EXCHANGE_TABS);
+        var one = text(layer[CURRENT_EXCHANGE]);
+        return { exchangeId: one, caption: text(tabs[one]) };
+      })
+      .filter(function (one) {
+        return one.exchangeId !== EMPTY;
+      });
+  }
+
+  // `exchange_tab.js` draws one exchange's screen into the space the
+  // layer keeps for the tab on show.
+  function renderExchangePane(target, shown) {
+    var api = global[EXCHANGE_API];
+    var slot = target.querySelector(
+      SELECT_OPEN +
+        PART_ATTR +
+        SELECT_IS +
+        EXCHANGE_PANE_PART +
+        SELECT_CLOSE +
+        SELECT_OPEN +
+        EXCHANGE_ATTR +
+        SELECT_IS +
+        shown.exchangeId +
+        SELECT_CLOSE
+    );
+    if (!api || typeof api.renderTab !== "function" || slot === null) {
+      return null;
+    }
+    slot.setAttribute(CHILD_ATTR, EXCHANGE_MODULE);
+    return api.renderTab(slot, shown.model);
+  }
+
+  function askExchange(shown) {
+    var loader = global[LOAD_EXCHANGE];
+    if (typeof loader !== "function") {
+      return Promise.resolve(null);
+    }
+    var params = {};
+    params[EXCHANGE_ID_PARAM] = shown.exchangeId;
+    params[EXCHANGE_NAME_PARAM] = shown.caption;
+    return Promise.resolve(loader(params));
+  }
+
+  function mountExchanges(target) {
+    var asked = shownExchanges().map(function (shown) {
+      return askExchange(shown).then(function (model) {
+        shown.model = model;
+        return renderExchangePane(target, shown) === null ? null : EXCHANGE_MODULE;
+      });
+    });
+    return Promise.all(asked);
+  }
+
   // Qt builds the voting panel and the activity log inside this tab, so each
   // one is asked for its own view model and drawn into the slot kept for it.
   function mountChildren(target) {
@@ -1575,11 +1764,27 @@
         return child.draw(target) === null ? null : child.module;
       });
     });
+    asked.push(
+      mountExchanges(target).then(function (names) {
+        var drawn = names.filter(function (one) {
+          return one !== null;
+        });
+        return drawn.length ? drawn[ZERO] : null;
+      })
+    );
     return Promise.all(asked).then(function (drawn) {
       return drawn.filter(function (name) {
         return name !== null;
       });
     });
+  }
+
+  // Every host this module has drawn into, re-drawn from the held model.
+  function redraw() {
+    roots.forEach(function (pair) {
+      renderTab(pair.node, held === null ? null : held.model);
+    });
+    return roots.length;
   }
 
   function forget() {
@@ -1614,6 +1819,8 @@
     PauseButton: PauseButton,
     ApiLogView: ApiLogView,
     IndicatorPanel: IndicatorPanel,
+    ExchangeTabButton: ExchangeTabButton,
+    ExchangePane: ExchangePane,
     field: field,
     declaredNames: declaredNames,
     splitterNames: splitterNames,
@@ -1648,7 +1855,16 @@
     renderTab: renderTab,
     renderActivityLog: renderActivityLog,
     renderIndicatorPanel: renderIndicatorPanel,
+    renderExchangePane: renderExchangePane,
     mountChildren: mountChildren,
+    mountExchanges: mountExchanges,
+    shownExchanges: shownExchanges,
+    exchangeChosen: exchangeChosen,
+    exchangeParam: EXCHANGE_PARAM,
+    askTrading: askTrading,
+    addExchangeAsked: addExchangeAsked,
+    pauseToggled: pauseToggled,
+    redraw: redraw,
     forget: forget
   };
 })(window);
