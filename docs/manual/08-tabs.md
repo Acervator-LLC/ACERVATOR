@@ -3218,7 +3218,7 @@ rather than typed.
 | `src/gui/main_tabs/buy_confirmation_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | yes | - | yes | in scope |
 | `src/gui/main_tabs/console_tab.py` | `console_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/main_tabs/empty_tabs.py` | no | - | no | no | no | - | no | builds the shell |
+| `src/gui/main_tabs/empty_tabs.py` | `paper_trader_tab.js`, `system_status_tab.js`, `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
@@ -3337,6 +3337,11 @@ reads `builds the shell`.
 
 In development.
 
+That is no longer the state. Each of the three has a renderer module in
+`src/gui/web`, a bridge method and a manifest entry, and `empty_tabs.py`
+carries the row for all three. Its Scope cell reads `in scope` and its RENDERS
+cell reads `yes`. The section below says what each tab draws.
+
 Counted once more on 6 September 2026, after the header strip and the Start All
 dialog went over:
 
@@ -3396,6 +3401,30 @@ fills is now React, so the row is in scope and it renders. `Ships in the build`
 stays `no`: the newest bundle under `dist` carries 70 renderer modules and
 `main_window.js` is not one of them, because the module is newer than that
 build.
+
+Counted again on 6 September 2026, after the three unbuilt tabs went over:
+
+```
+React module             60
+Uses React               58
+Bridge                   70
+Manifest                 60
+Registers in Electron    16
+Ships in the build       58
+RENDERS                  45
+RENDERS, in scope        45 of 45
+out of scope             31
+```
+
+One row moved, and it is `empty_tabs.py`. It is the second row that read
+`builds the shell`, and it is the only row naming three React modules: the
+Paper Trader, System Status and Proof of Accumulation skeletons each have a
+renderer module, a bridge method and a manifest entry, and all three register a
+panel with the Electron shell. `Ships in the build` reads `no` for the same
+reason as the row above: the newest bundle under `dist` carries 70 renderer
+modules and these three are not among them.
+
+No row now reads `builds the shell`.
 
 ### The window's own tab bar
 
@@ -3461,6 +3490,50 @@ The menu bar, the window title, the window icon and the status bar are still
 Qt. `MainWindow._setup_menu` builds the four menus and `_setup_status_bar`
 builds the status line; neither was changed, and every menu action the window
 offered before it is on it now.
+
+### The three tabs with nothing behind them yet
+
+Paper Trader, System Status and Proof of Accumulation are named on the tab bar
+and are not built. Each one draws a heading, a sentence saying the tab is not
+built, and the issue that carries the build-out. Every word of it comes from
+that tab's own Python surface, so the page invents nothing.
+
+```python
+    return {
+        "accessible_name": HEADING,
+        "built": BUILT,
+        "heading": HEADING,
+        "issue": ISSUE,
+        "issue_text": ISSUE_TEXT,
+        "method": METHOD,
+        "state_text": STATE_TEXT,
+    }
+```
+
+Under the Qt build the three sentences are Qt labels, as before. Under the
+React build the same view model goes to the tab's renderer module, which draws
+it in a web view. The builder asks the variant seam which of the two to make,
+and it hands both the same values.
+
+```python
+        model = surface.view_model({})
+        panel = _empty_tab_class()(model)
+```
+
+Neither side holds a colour or a size of its own. `SKIN` names the ground, the
+two text colours, the two text sizes, the padding and the gap; the Qt style
+sheets are built from it and the page reads it as custom properties.
+
+```python
+SKIN = {
+    "--empty-tab-ground": ds.SURFACE_0,
+    "--empty-tab-heading-colour": ds.TEXT_MAX,
+    "--empty-tab-body-colour": ds.TEXT_EMPTY_STATE,
+```
+
+The page runs the Electron shell's `panel_host.js`, so the module is drawn the
+same way the shell draws it: by name, into one host element, with the reason
+written onto the page when it does not draw.
 
 ### The header strip
 

@@ -17,6 +17,7 @@ BOT_SWARM = "Bot Swarm"
 BUY_CONFIRMATION = "Buy confirmation dialog"
 CONSOLE = "Console"
 DASHBOARD_STAT_CARD = "Dashboard stat card"
+EMPTY_TAB = "Empty tab"
 HISTORY = "History"
 HISTORY_TABLE = "History table"
 MAIN_TAB_BOOK = "Main tab book"
@@ -118,6 +119,20 @@ def _react_console() -> type:
     from .react_console_tab import ConsoleReactTab
 
     return ConsoleReactTab
+
+
+def _qt_empty_tab() -> type:
+    """Import and return the Qt empty-tab panel."""
+    from .main_tabs.empty_tabs import EmptyTabQtPanel
+
+    return EmptyTabQtPanel
+
+
+def _react_empty_tab() -> type:
+    """Import and return the React empty-tab panel."""
+    from .react_empty_tab import EmptyTabReactPanel
+
+    return EmptyTabReactPanel
 
 
 def _qt_main_tab_book() -> type:
@@ -305,6 +320,7 @@ def _react_sim_stat_strip() -> type:
 register(HISTORY, _qt_history, _react_history)
 register(HISTORY_TABLE, _qt_history_table, _react_history_table)
 register(MAIN_TAB_BOOK, _qt_main_tab_book, _react_main_tab_book)
+register(EMPTY_TAB, _qt_empty_tab, _react_empty_tab)
 register(BOT_SWARM, _qt_bot_swarm, _react_bot_swarm)
 register(CONSOLE, _qt_console, _react_console)
 register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)

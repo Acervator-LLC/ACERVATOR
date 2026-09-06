@@ -1,0 +1,35 @@
+/* An unbuilt tab's empty state. Every value arrives as an `--empty-tab-`
+   custom property from `src/gui/main_tabs/empty_tabs.py`, which paints the
+   Qt side from the same numbers. */
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--empty-tab-ground);
+}
+
+.acervator-empty-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--empty-tab-gap);
+  min-height: 100%;
+  margin: 0;
+  padding: var(--empty-tab-pad);
+  background: var(--empty-tab-ground);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.acervator-empty-tab-heading {
+  margin: 0;
+  color: var(--empty-tab-heading-colour);
+  font-size: var(--empty-tab-heading-size);
+  font-weight: bold;
+}
+
+.acervator-empty-tab-state,
+.acervator-empty-tab-issue {
+  margin: 0;
+  color: var(--empty-tab-body-colour);
+  font-size: var(--empty-tab-body-size);
+}
