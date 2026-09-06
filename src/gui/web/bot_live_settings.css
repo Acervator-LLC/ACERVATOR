@@ -1,0 +1,213 @@
+/* React Live Bot Settings chrome: the page ground, the header row, the tab
+ * strip, the eight tab pages and the footer `bot_live_settings.js` draws, plus
+ * the shared shapes the eight tab modules draw inside their own page space.
+ * The state badge, the header label and the pending line each arrive with
+ * their own `style` attribute from the Python payload, so no rule here may set
+ * a `color` on those three parts.
+ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.5 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+[data-part="bot-live-settings"] {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 10px;
+  gap: 8px;
+}
+
+[data-part="header-row"] {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+[data-part="header-stretch"],
+[data-part="footer-stretch"] {
+  flex-grow: 1;
+}
+
+[data-part="tab-bar"] {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+button[data-part="tab-button"] {
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  padding: 5px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+button[data-part="tab-button"][data-current="true"] {
+  background: var(--bg);
+  color: var(--accent);
+  font-weight: bold;
+}
+
+[data-part="tab-pages"] {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+[data-part$="-page"] {
+  padding: 8px 2px;
+}
+
+[data-part="tab-fault"] {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+[data-part="footer-row"] {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+button[data-part="prev-button"],
+button[data-part="next-button"],
+button[data-part="apply-button"],
+button[data-part="close-button"] {
+  background: var(--btn-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+button[data-part="apply-button"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: bold;
+}
+
+button[data-part="prev-button"]:focus,
+button[data-part="next-button"]:focus,
+button[data-part="apply-button"]:focus,
+button[data-part="close-button"]:focus,
+button[data-part="tab-button"]:focus {
+  outline: 1px solid var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The eight tab modules draw into their own page space. These reach the
+ * shapes every one of them uses: a group, a form row, a control and a table.
+ */
+.acervator-status-tab,
+.acervator-live-settings,
+.acervator-fold-tranches,
+.acervator-stack-tranches,
+.acervator-bot-swarm-settings,
+.acervator-market-inspector-tab,
+.acervator-phantom-bots,
+.acervator-positions-held {
+  min-width: 0;
+}
+
+[data-part="group"],
+[data-part="stats-group"] {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+[data-part="group-title"] {
+  font-weight: bold;
+  color: var(--accent);
+}
+
+[data-part="form-row"],
+[data-part="stat-row"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+[data-part="row-label"],
+[data-part="stat-label"] {
+  flex: 0 0 210px;
+  text-align: right;
+}
+
+[data-part="control"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 6px;
+  font: inherit;
+}
+
+input[data-part="control"][type="checkbox"] {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
+[data-part="control"]:focus {
+  outline: 1px solid var(--accent);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--grid);
+  padding: 3px 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  color: var(--accent);
+  font-weight: bold;
+}
+
+[hidden] {
+  display: none !important;
+}

@@ -891,6 +891,53 @@ box, so a wire runs down a lane column between the two rows it joins.
 
 Detail: [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md).
 
+### The window a bot row opens
+
+Clicking a bot opens its own settings window. Which window opens depends on the
+build. The React build draws the header, the tab strip and every tab inside one
+embedded browser; the Qt build draws the widget tree those tabs describe. The
+Simulator opens the same window from its own bot rows.
+
+`src/gui/main_window.py` — `_on_bot_clicked`
+
+```python
+from .variant_surface import BOT_LIVE_SETTINGS, surface_class
+
+_cls = surface_class(BOT_LIVE_SETTINGS)
+dlg = _cls(current_bot, self._bot_manager, self)
+```
+
+The React side is a subclass, not a rewrite. It replaces only the method that
+builds the widgets, so an edit still travels the same route into the bot.
+`_mark_changed` records the field against what the bot holds now, and
+`_apply_changes` writes it. The window carries no second copy of that logic.
+
+`src/gui/react_bot_live_settings.py` — `BotLiveSettingsReactDialog.apply_edit`
+
+```python
+field = field_for(str(asked.get("name") or ""))
+if not field:
+    return
+self._mark_changed(field, asked.get("value"))
+```
+
+Each tab is drawn by its own renderer module into a named empty space the
+window leaves for it. `TAB_PLAN` pairs the tab with that space, its module and
+the surface that builds its payload from the bot. A tab whose surface refuses
+the bot draws the reason in that space rather than nothing.
+
+`src/gui/react_bot_live_settings.py` — `TAB_PLAN`, the first two rows
+
+```python
+("Status", "status-page", "acervatorLiveStatus", "live_status_tab_surface"),
+(
+    "Settings",
+    "settings-page",
+    "acervatorLiveSettingsTab",
+    "live_settings_tab_surface",
+),
+```
+
 ## Asset Charts
 
 Under the Asset Charts Tab, you will find our active bot (position) chart display. This will be upgraded to display only one chart at a time and will be able to display all indicators found in the Indicator Voting Panel.
@@ -3142,7 +3189,7 @@ rather than typed.
 | `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no | shelved |
-| `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | no | in scope, built by main_window.py, simulator_tab.py |
+| `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | yes | in scope, built by main_window.py, simulator_tab.py |
 | `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | yes | in scope, built by bot_status_table.py, extractor_bot_table.py, main_window.py |
@@ -3158,15 +3205,15 @@ rather than typed.
 | `src/gui/launcher.py` | `launcher.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/live_bot_window.py` | no | - | yes | no | no | - | no | shelved |
 | `src/gui/live_settings/bot_swarm_tab.py` | `bot_swarm_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/live_settings/fold_chrome.py` | `fold_chrome.js` | yes | yes | yes | no | yes | no | in scope, built by fold_tranches_tab.py |
+| `src/gui/live_settings/fold_chrome.py` | `fold_chrome.js` | yes | yes | yes | no | yes | yes | in scope, built by fold_tranches_tab.py |
 | `src/gui/live_settings/fold_tokens.py` | `fold_tokens.js` | yes | yes | yes | no | yes | no | not a screen |
-| `src/gui/live_settings/fold_tranches_tab.py` | `fold_tranches_tab.js` | yes | yes | yes | no | yes | no | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/fold_tranches_tab.py` | `fold_tranches_tab.js` | yes | yes | yes | no | yes | yes | in scope, built by bot_live_settings.py |
 | `src/gui/live_settings/market_inspector_tab.py` | `market_inspector_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/live_settings/phantom_bots_tab.py` | `phantom_bots_tab.js` | yes | yes | yes | no | yes | no | in scope, built by bot_live_settings.py |
-| `src/gui/live_settings/positions_held_tab.py` | no | - | no | no | no | - | no | in scope, built by bot_live_settings.py |
-| `src/gui/live_settings/settings_tab.py` | no | - | yes | no | no | - | no | in scope, built by bot_live_settings.py |
-| `src/gui/live_settings/stack_tranches_tab.py` | `stack_tranches_tab.js` | yes | yes | yes | no | yes | no | in scope, built by bot_live_settings.py |
-| `src/gui/live_settings/status_tab.py` | no | - | yes | no | no | - | no | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/phantom_bots_tab.py` | `phantom_bots_tab.js` | yes | yes | yes | no | yes | yes | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/positions_held_tab.py` | no | - | no | no | no | - | yes | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/settings_tab.py` | no | - | yes | no | no | - | yes | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/stack_tranches_tab.py` | `stack_tranches_tab.js` | yes | yes | yes | no | yes | yes | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/status_tab.py` | no | - | yes | no | no | - | yes | in scope, built by bot_live_settings.py |
 | `src/gui/main_tabs/audio_suite_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/buy_confirmation_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | yes | - | yes | in scope |
@@ -3263,6 +3310,25 @@ out of scope             33
 The Create Auto Trader wizard is the row that moved. `bot_wizard.js` draws it
 into a space the React exchange screen keeps once + New Bot is pressed, so the
 wizard is a screen and no longer a module with nowhere to draw.
+
+Counted once more the same day, after the Live Bot Settings window went over:
+
+```
+React module             55
+Uses React               53
+Bridge                   67
+Manifest                 55
+Registers in Electron    15
+Ships in the build       55
+RENDERS                  38
+RENDERS, in scope        38 of 43
+out of scope             33
+```
+
+Eight rows moved together: the window a bot row opens, six of the files its
+tabs are built from, and the delegate that draws the fold-tranche row borders.
+`fold_tokens.py` keeps its dash. Its colours are on the drawn rows, and the
+file names no screen of its own.
 
 The Paper Trader, Proof of Accumulation and System Status tabs have no Qt
 module to replace and no React module to replace it with, so the table carries

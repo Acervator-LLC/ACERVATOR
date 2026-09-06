@@ -12,6 +12,7 @@ from typing import Callable, Dict, Tuple
 
 from src._variant import QT, resolve_variant
 
+BOT_LIVE_SETTINGS = "Bot live settings"
 BOT_SWARM = "Bot Swarm"
 CONSOLE = "Console"
 HISTORY = "History"
@@ -184,6 +185,20 @@ def _react_sim_price_chart() -> type:
     return SimPriceVwapChartReact
 
 
+def _qt_bot_live_settings() -> type:
+    """Import and return the Qt Live Bot Settings window."""
+    from .bot_live_settings import BotLiveSettingsDialog
+
+    return BotLiveSettingsDialog
+
+
+def _react_bot_live_settings() -> type:
+    """Import and return the React Live Bot Settings window."""
+    from .react_bot_live_settings import dialog_class
+
+    return dialog_class()
+
+
 def _qt_settings_dialog() -> type:
     """Import and return the Qt Settings dialog."""
     from .settings_dialog import SettingsDialog
@@ -223,3 +238,4 @@ register(GATE_STATUS_PANEL, _qt_gate_status_panel, _react_gate_status_panel)
 register(FLEET_REPLAY, _qt_fleet_replay, _react_fleet_replay)
 register(SIM_STAT_STRIP, _qt_sim_stat_strip, _react_sim_stat_strip)
 register(SETTINGS_DIALOG, _qt_settings_dialog, _react_settings_dialog)
+register(BOT_LIVE_SETTINGS, _qt_bot_live_settings, _react_bot_live_settings)

@@ -563,9 +563,9 @@ class SimulatorTab(QWidget):
             )
             return
         try:
-            from ..bot_live_settings import BotLiveSettingsDialog
+            from ..variant_surface import BOT_LIVE_SETTINGS, surface_class
 
-            dlg = BotLiveSettingsDialog(bot, None, self)
+            dlg = surface_class(BOT_LIVE_SETTINGS)(bot, None, self)
             dlg.exec()
         except Exception as exc:  # noqa: BLE001
             logger.warning("sim detail dialog failed: %s", exc)
