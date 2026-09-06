@@ -19,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.gui.main_tabs import bot_swarm_list_surface as bsls
 from src.gui.main_tabs import bot_visualizer_surface as bvs
 from src.gui.main_tabs import design_system_surface as dss
 from tests.fixtures.web_js_modules import (
@@ -1251,8 +1252,14 @@ INNER_ROW = SWARM_PANE + "/inner-row"
 VIEW_STACK = INNER_ROW + "/view-stack"
 LIST_PAGE = VIEW_STACK + "/list-page"
 LIST_MOUNT = LIST_PAGE + "/bot-swarm-list"
-LIST_ROW = LIST_MOUNT + "/list-row"
-LIST_CELL = LIST_ROW + "/list-cell"
+LIST_SWARM = LIST_MOUNT + "/swarm"
+LIST_TABLE = LIST_SWARM + "/list"
+LIST_HEAD_ROW = LIST_TABLE + "/head-row"
+LIST_HEADER = LIST_HEAD_ROW + "/header"
+LIST_ROW = LIST_TABLE + "/row"
+LIST_CELL = LIST_ROW + "/cell"
+LANE_SHEET = LIST_SWARM + "/sheet"
+TICKER_COLUMN = str(bsls.COL_TICKER)
 GRID_PAGE = VIEW_STACK + "/grid-page"
 LOCUST = GRID_PAGE + "/locust"
 EMPTY = GRID_PAGE + "/empty"
@@ -1291,8 +1298,13 @@ EXPECTED_PARTS = (
     VIEW_STACK,
     LIST_PAGE,
     LIST_MOUNT,
+    LIST_SWARM,
+    LIST_TABLE,
+    LIST_HEAD_ROW,
+    LIST_HEADER,
     LIST_ROW,
     LIST_CELL,
+    LANE_SHEET,
     GRID_PAGE,
     LOCUST,
     WIRE_CANVAS,
@@ -1365,6 +1377,7 @@ def test_the_drawn_tab_names_every_child_a_check_reads(browser: Browser):
     payload["bot_ids"] = state_payload("fleet")["bot_ids"]
     payload["grid_cells"] = state_payload("fleet")["grid_cells"]
     payload["rows_sent"] = state_payload("fleet")["rows_sent"]
+    payload["swarm_list"] = state_payload("fleet")["swarm_list"]
     payload["live_rows"] = state_payload("live_registered")["live_rows"]
     payload["live_row_order"] = state_payload("live_registered")["live_row_order"]
     parts = draw_tab(browser, payload)
@@ -1857,21 +1870,28 @@ def test_the_grid_place_check_names_a_moved_bot(browser: Browser):
     assert len(moved) == 1, "the check did not see the moved bot"
 
 
+def reversed_list(payload: dict) -> dict:
+    """``payload`` with the list module's rows and bot ids back to front."""
+    held = payload["swarm_list"]
+    held["rows"] = list(reversed(held["rows"]))
+    held["bot_ids"] = list(reversed(held["bot_ids"]))
+    return payload
+
+
 def test_the_dense_list_draws_one_row_per_bot_in_the_order_the_fleet_gives(
     browser: Browser,
 ):
     payload = state_payload("fleet")
     parts = draw_tab(browser, payload)
-    drawn = [one["attrs"]["data-key"] for one in at_path(parts, LIST_ROW)]
+    drawn = [one["attrs"]["data-bot-id"] for one in at_path(parts, LIST_ROW)]
     assert drawn == [row["bot_id"] for row in payload["rows_sent"][-1]]
 
 
 def test_the_list_order_check_names_a_reordered_list(browser: Browser):
     payload = state_payload("fleet")
     shipped = [row["bot_id"] for row in payload["rows_sent"][-1]]
-    payload["rows_sent"][-1] = list(reversed(payload["rows_sent"][-1]))
-    parts = draw_tab(browser, payload)
-    drawn = [one["attrs"]["data-key"] for one in at_path(parts, LIST_ROW)]
+    parts = draw_tab(browser, reversed_list(payload))
+    drawn = [one["attrs"]["data-bot-id"] for one in at_path(parts, LIST_ROW)]
     assert drawn != shipped
     assert drawn == list(reversed(shipped))
 
@@ -1892,34 +1912,44 @@ def cells_at(parts: list, path: str, key: str) -> dict:
     }
 
 
+def cells_by_row(parts: list, columns: int) -> list:
+    """Every drawn list cell's text, cut into one list per row."""
+    drawn = [one["text"] for one in at_path(parts, LIST_CELL)]
+    return [drawn[at : at + columns] for at in range(0, len(drawn), columns)]
+
+
+def written_cells(payload: dict) -> list:
+    """The cell text the list surface wrote, one list per row."""
+    return [
+        ["" if one is None else one["text"] for one in row]
+        for row in payload["swarm_list"]["rows"]
+    ]
+
+
 def test_the_list_cells_carry_the_values_the_surface_wrote_for_that_bot(
     browser: Browser,
 ):
     payload = state_payload("fleet")
     parts = draw_tab(browser, payload)
-    for row in payload["rows_sent"][-1]:
-        drawn = cells_at(parts, LIST_CELL, row["bot_id"])
-        expected = {name: js_text(value) for name, value in row.items()}
-        assert drawn == expected, f"{row['bot_id']}: {drawn}"
+    drawn = cells_by_row(parts, payload["swarm_list"]["total_cols"])
+    assert drawn == written_cells(payload), f"drawn {drawn}"
 
 
 def test_the_list_value_check_names_two_bots_whose_values_were_swapped(
     browser: Browser,
 ):
     payload = state_payload("fleet")
-    before = draw_tab(browser, payload)
-    rows = payload["rows_sent"][-1]
-    first, second = rows[0], rows[1]
-    was = {row["bot_id"]: cells_at(before, LIST_CELL, row["bot_id"]) for row in rows}
-    first["inflow_usd"], second["inflow_usd"] = (
-        second["inflow_usd"],
-        first["inflow_usd"],
+    was = cells_by_row(draw_tab(browser, payload), payload["swarm_list"]["total_cols"])
+    rows = payload["swarm_list"]["rows"]
+    at = bsls.COL_INFLOW
+    rows[0][at]["text"], rows[1][at]["text"] = (
+        rows[1][at]["text"],
+        rows[0][at]["text"],
     )
-    after = draw_tab(browser, payload)
-    now = {row["bot_id"]: cells_at(after, LIST_CELL, row["bot_id"]) for row in rows}
-    moved = sorted(name for name in was if was[name] != now[name])
-    assert moved == sorted([first["bot_id"], second["bot_id"]]), f"moved {moved}"
-    assert list(was) == list(now), "the swap moved a row as well as its values"
+    now = cells_by_row(draw_tab(browser, payload), payload["swarm_list"]["total_cols"])
+    moved = sorted(index for index in range(len(was)) if was[index] != now[index])
+    assert moved == [0, 1], f"moved {moved}"
+    assert len(was) == len(now), "the swap moved a row as well as its values"
 
 
 def test_the_layer_rows_are_drawn_in_the_order_the_surface_publishes(
@@ -2173,7 +2203,7 @@ def test_a_two_hundred_letter_symbol_is_drawn_whole_and_never_wrapped(
     drawn = [
         one
         for one in at_path(parts, LIST_CELL)
-        if one["attrs"]["data-column"] == "symbol"
+        if one["attrs"]["data-column"] == TICKER_COLUMN
     ]
     assert drawn[0]["text"] == "M" * 200
     assert drawn[0]["style"]["whiteSpace"] == "nowrap"
@@ -2410,12 +2440,13 @@ def test_every_column_a_caller_writes_into_is_drawn_as_text(
 
 def test_the_symbol_a_caller_writes_into_the_list_is_drawn_as_text(browser: Browser):
     payload = state_payload("fleet")
-    payload["rows_sent"][-1][0]["symbol"] = HOSTILE_LABELS["markup"]
+    ticker = payload["swarm_list"]["rows"][0][bsls.COL_TICKER]
+    ticker["text"] = HOSTILE_LABELS["markup"]
     parts = draw_tab(browser, payload)
     drawn = [
         one
         for one in at_path(parts, LIST_CELL)
-        if one["attrs"]["data-column"] == "symbol"
+        if one["attrs"]["data-column"] == TICKER_COLUMN
     ]
     assert drawn[0]["text"] == HOSTILE_LABELS["markup"]
     assert drawn[0]["children"] == 0

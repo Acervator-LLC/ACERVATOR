@@ -49,6 +49,7 @@ TAB_SCRIPT_ASSETS: tuple[str, ...] = (
     "bot_node.js",
     "wire_canvas.js",
     "quick_routing.js",
+    "bot_swarm_list.js",
     "bot_visualizer.js",
 )
 
