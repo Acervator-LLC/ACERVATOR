@@ -17,6 +17,7 @@ CONSOLE = "Console"
 HISTORY = "History"
 HISTORY_TABLE = "History table"
 MARKET_INSPECTOR = "Market Inspector"
+NUCLEAR_MODE = "Nuclear Mode"
 SIM_STAT_STRIP = "Sim stat strip"
 
 Loader = Callable[[], type]
@@ -123,6 +124,20 @@ def _react_market_inspector() -> type:
     return MarketInspectorReactTab
 
 
+def _qt_nuclear_mode() -> type:
+    """Import and return the Qt Nuclear Mode panel."""
+    from .simulator_tab.nuclear_mode_panel import NuclearModePanel
+
+    return NuclearModePanel
+
+
+def _react_nuclear_mode() -> type:
+    """Import and return the React Nuclear Mode panel."""
+    from .react_nuclear_mode_panel import NuclearModeReactPanel
+
+    return NuclearModeReactPanel
+
+
 def _qt_sim_stat_strip() -> type:
     """Import and return the Qt Simulator stat strip."""
     from .simulator_tab.sim_stat_strip import SimStatStrip
@@ -142,4 +157,5 @@ register(HISTORY_TABLE, _qt_history_table, _react_history_table)
 register(BOT_SWARM, _qt_bot_swarm, _react_bot_swarm)
 register(CONSOLE, _qt_console, _react_console)
 register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)
+register(NUCLEAR_MODE, _qt_nuclear_mode, _react_nuclear_mode)
 register(SIM_STAT_STRIP, _qt_sim_stat_strip, _react_sim_stat_strip)

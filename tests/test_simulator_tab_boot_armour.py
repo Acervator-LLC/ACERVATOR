@@ -43,7 +43,11 @@ def qapp():
 
 @pytest.fixture
 def exploding_nuclear(monkeypatch):
-    """Make the Nuclear panel constructor raise, the way a bad repoint would."""
+    """Make the Nuclear panel constructor raise, the way a bad repoint would.
+
+    ``variant_surface`` picks the Qt panel or the React panel, and both
+    loaders read their class at call time, so both names are replaced.
+    """
     import src.gui.simulator_tab.nuclear_mode_panel as npanel
 
     class _Boom:
@@ -54,6 +58,9 @@ def exploding_nuclear(monkeypatch):
     import src.gui.simulator_tab.simulator_tab as stab
 
     monkeypatch.setattr(stab, "NuclearModePanel", _Boom, raising=False)
+    import src.gui.react_nuclear_mode_panel as rpanel
+
+    monkeypatch.setattr(rpanel, "NuclearModeReactPanel", _Boom, raising=False)
     return _Boom
 
 

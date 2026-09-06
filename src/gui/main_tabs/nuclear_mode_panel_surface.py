@@ -988,16 +988,10 @@ def build_view_model(
     return model.build()
 
 
-def view_model(params: dict) -> dict:
-    """The bridge handler for ``nuclear_mode_panel.state``."""
-    params = params or {}
+def envelope(screen: dict) -> dict:
+    """``screen`` with the seven fields ``nuclear_mode_panel.js`` reads."""
     return {
-        "screen": build_view_model(
-            bot_configs=list(params.get("bot_configs", ()) or ()),
-            smart_wires=list(params.get("smart_wires", ()) or ()),
-            cycle_candles=int(params.get("cycle_candles", DEFAULT_CYCLE_CANDLES)),
-            max_cycles=int(params.get("max_cycles", MAX_CYCLES_DEFAULT)),
-        ),
+        "screen": screen,
         "status_fields": [list(pair) for pair in STATUS_FIELDS],
         "actions": dict(ACTIONS),
         "timers": dict(TIMERS),
@@ -1005,3 +999,16 @@ def view_model(params: dict) -> dict:
         "bus_topics": list(BUS_TOPICS),
         "step_names": list(STEP_NAMES),
     }
+
+
+def view_model(params: dict) -> dict:
+    """The bridge handler for ``nuclear_mode_panel.state``."""
+    params = params or {}
+    return envelope(
+        build_view_model(
+            bot_configs=list(params.get("bot_configs", ()) or ()),
+            smart_wires=list(params.get("smart_wires", ()) or ()),
+            cycle_candles=int(params.get("cycle_candles", DEFAULT_CYCLE_CANDLES)),
+            max_cycles=int(params.get("max_cycles", MAX_CYCLES_DEFAULT)),
+        )
+    )

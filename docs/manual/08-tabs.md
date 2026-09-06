@@ -199,6 +199,38 @@ field name the strip does not carry is still ignored, and an empty value still
 falls back to the em dash. Setting `ACERVATOR_VARIANT` to `qt` builds the Qt
 strip instead, unchanged.
 
+React draws the Nuclear Mode page too. The tab asks the same seam for the
+panel class that it asks for the strip.
+
+`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._nuclear_panel_class`
+
+```python
+from ..variant_surface import NUCLEAR_MODE, surface_class
+
+return surface_class(NUCLEAR_MODE)
+```
+
+`NuclearModeReactPanel` inherits the Qt panel, so the fleet preview, Start,
+Stop and the half-second status tick are one piece of Python on both sides.
+Every widget write moved behind a named accessor. The Qt panel answers those
+with labels, spin boxes and tick boxes; the React panel answers them by
+writing into its view model and redrawing the page.
+
+`src/gui/react_nuclear_mode_panel.py` — `NuclearModeReactPanel._set_status_text`
+
+```python
+def _set_status_text(self, key: str, text: str) -> None:
+    """Show ``text`` on the live-status row ``key`` names."""
+    if key in self._panel.status_text:
+        self._panel.status_text[key] = text
+        self.push()
+```
+
+The page draws the header card, the fleet readout, the four run settings, the
+Start and Stop buttons and the seventeen live-status rows. A press on the page
+runs the inherited Python and comes back as a redraw. Setting the variant to
+`qt` builds the Qt panel instead, unchanged.
+
 Everything else on this tab is still drawn by Qt.
 
 Mode is the picker beside it. Three modes, each with its own line saying what
@@ -3005,7 +3037,7 @@ tab row.
 | `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | no |
 | `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | no |
 | `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | no |
-| `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | no |
+| `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes |
 | `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes |
 | `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes |
 | `src/gui/start_all_progress_dialog.py` | no | - | no | no | no | no |
@@ -3040,7 +3072,7 @@ Uses React               53
 Bridge                   67
 Manifest                 55
 Registers in Electron    14
-RENDERS                  20
+RENDERS                  21
 ```
 
 Four columns are all but complete. The fifth is at one.
