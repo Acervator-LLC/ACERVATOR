@@ -12,6 +12,7 @@ from typing import Callable, Dict, Tuple
 
 from src._variant import QT, resolve_variant
 
+ALERTS = "Notifications and Alerts"
 BOT_LIVE_SETTINGS = "Bot live settings"
 BOT_SWARM = "Bot Swarm"
 BUY_CONFIRMATION = "Buy confirmation dialog"
@@ -63,6 +64,20 @@ def surface_class(screen: str, variant: str | None = None) -> type:
     """
     qt_loader, react_loader = _LOADERS[screen]
     return react_loader() if draws_react(screen, variant) else qt_loader()
+
+
+def _qt_alerts() -> type:
+    """Import and return the Qt Notifications and Alerts tab."""
+    from .alerts_tab import AlertsTab
+
+    return AlertsTab
+
+
+def _react_alerts() -> type:
+    """Import and return the React Notifications and Alerts tab."""
+    from .react_alerts_tab import AlertsReactTab
+
+    return AlertsReactTab
 
 
 def _qt_history() -> type:
@@ -317,6 +332,7 @@ def _react_sim_stat_strip() -> type:
     return SimStatStripWebStrip
 
 
+register(ALERTS, _qt_alerts, _react_alerts)
 register(HISTORY, _qt_history, _react_history)
 register(HISTORY_TABLE, _qt_history_table, _react_history_table)
 register(MAIN_TAB_BOOK, _qt_main_tab_book, _react_main_tab_book)
