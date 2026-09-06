@@ -17,6 +17,7 @@ CONSOLE = "Console"
 HISTORY = "History"
 HISTORY_TABLE = "History table"
 MARKET_INSPECTOR = "Market Inspector"
+FLEET_REPLAY = "Fleet replay panel"
 GATE_STATUS_PANEL = "Gate status panel"
 NUCLEAR_MODE = "Nuclear Mode"
 SIM_PRICE_CHART = "Sim price chart"
@@ -140,6 +141,20 @@ def _react_nuclear_mode() -> type:
     return NuclearModeReactPanel
 
 
+def _qt_fleet_replay() -> type:
+    """Import and return the Qt Fleet Replay panel."""
+    from .simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
+
+    return FleetReplayPanel
+
+
+def _react_fleet_replay() -> type:
+    """Import and return the React Fleet Replay panel."""
+    from .react_fleet_replay_panel import FleetReplayReactPanel
+
+    return FleetReplayReactPanel
+
+
 def _qt_gate_status_panel() -> type:
     """Import and return the Qt gate status panel."""
     from .simulator_tab.fleet.sim_visuals import GateStatusPanel
@@ -190,4 +205,5 @@ register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)
 register(NUCLEAR_MODE, _qt_nuclear_mode, _react_nuclear_mode)
 register(SIM_PRICE_CHART, _qt_sim_price_chart, _react_sim_price_chart)
 register(GATE_STATUS_PANEL, _qt_gate_status_panel, _react_gate_status_panel)
+register(FLEET_REPLAY, _qt_fleet_replay, _react_fleet_replay)
 register(SIM_STAT_STRIP, _qt_sim_stat_strip, _react_sim_stat_strip)

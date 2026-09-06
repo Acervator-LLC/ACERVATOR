@@ -165,6 +165,10 @@ if _HAS_QT:
             self._ytd_trades: list[dict] = []
             self._real_candles: dict[str, list[list[float]]] = {}
 
+            self._build_ui()
+
+        def _build_ui(self) -> None:
+            """Build the header, the two button rows, the fleet table and the status lines."""
             outer = QVBoxLayout(self)
             outer.setContentsMargins(10, 10, 10, 10)
             outer.setSpacing(10)
@@ -204,7 +208,7 @@ if _HAS_QT:
             self._load_btn.clicked.connect(self._on_load_clicked)
             load_row.addWidget(self._load_btn)
             self._fetch_ytd_btn = QPushButton("Fetch YTD")
-            self._fetch_ytd_btn.setEnabled(False)
+            self._set_fetch_enabled(False)
             self._fetch_ytd_btn.setToolTip(
                 "Pull real 1d OHLCV (limit=200 candles ≈ 6.5 months) "
                 "per loaded-bot symbol from the connected exchange. "
@@ -270,7 +274,7 @@ if _HAS_QT:
             run_row = QHBoxLayout()
             run_row.addStretch()
             self._start_btn = QPushButton("Start Replay")
-            self._start_btn.setEnabled(False)
+            self._set_start_enabled(False)
             self._start_btn.setToolTip(
                 "Play synthetic candles through each loaded bot's "
                 "tick(). Real YTD data lands v3.23.79-B."
@@ -278,13 +282,70 @@ if _HAS_QT:
             self._start_btn.clicked.connect(self._on_start_clicked)
             run_row.addWidget(self._start_btn)
             self._stop_btn = QPushButton("Stop")
-            self._stop_btn.setEnabled(False)
+            self._set_stop_enabled(False)
             self._stop_btn.setToolTip(
                 "Cooperative stop; tick loop drains its current " "iteration and exits."
             )
             self._stop_btn.clicked.connect(self._on_stop_clicked)
             run_row.addWidget(self._stop_btn)
             outer.addLayout(run_row)
+
+        def _set_status(self, text: str) -> None:
+            """Show ``text`` on the status line."""
+            self._status_lbl.setText(text)
+
+        def _set_progress(self, text: str) -> None:
+            """Show ``text`` on the progress line."""
+            self._progress_lbl.setText(text)
+
+        def _set_start_enabled(self, enabled: bool) -> None:
+            """Let the operator press Start Replay, or refuse."""
+            self._start_btn.setEnabled(bool(enabled))
+
+        def _set_stop_enabled(self, enabled: bool) -> None:
+            """Let the operator press Stop, or refuse."""
+            self._stop_btn.setEnabled(bool(enabled))
+
+        def _set_fetch_enabled(self, enabled: bool) -> None:
+            """Let the operator press Fetch YTD, or refuse."""
+            self._fetch_ytd_btn.setEnabled(bool(enabled))
+
+        def _full_evaluation(self) -> bool:
+            """Whether the Full evaluation switch is on."""
+            return bool(self._full_eval_chk.isChecked())
+
+        SYMBOL_COLUMN = 0
+        TARGET_COLUMN = 1
+        TRADES_COLUMN = 2
+
+        def _set_fleet_row_count(self, count: int) -> None:
+            """Declare ``count`` fleet rows, dropping every row past it."""
+            self._fleet_table.setRowCount(int(count))
+
+        def _set_fleet_row(self, at: int, cells: list) -> None:
+            """Fill fleet row ``at`` with ``cells``, left to right."""
+            for column, cell in enumerate(cells):
+                self._fleet_table.setItem(at, column, QTableWidgetItem(str(cell)))
+
+        def _fleet_row_count(self) -> int:
+            """How many fleet rows the panel is showing."""
+            return int(self._fleet_table.rowCount())
+
+        def _fleet_row_symbol(self, at: int) -> str:
+            """The symbol on fleet row ``at``, or the empty string."""
+            item = self._fleet_table.item(at, self.SYMBOL_COLUMN)
+            return "" if item is None else str(item.text())
+
+        def _fleet_row_trades(self, at: int) -> str:
+            """The trade count shown on fleet row ``at``, or the empty string."""
+            item = self._fleet_table.item(at, self.TRADES_COLUMN)
+            return "" if item is None else str(item.text())
+
+        def _set_fleet_row_trades(self, at: int, count: str) -> None:
+            """Show ``count`` in the trades column of fleet row ``at``."""
+            self._fleet_table.setItem(
+                at, self.TRADES_COLUMN, QTableWidgetItem(str(count))
+            )
 
         def set_async_loop_getter(self, getter) -> None:
             """Wire the app's asyncio loop so Start Replay can schedule
@@ -322,7 +383,7 @@ if _HAS_QT:
             ``fetch_all_history_chunked``, the same call the History tab's
             Refresh makes."""
             self._bot_manager = bot_manager
-            self._fetch_ytd_btn.setEnabled(bot_manager is not None)
+            self._set_fetch_enabled(bot_manager is not None)
 
         def set_connectors_getter(self, getter) -> None:
             """Accept and drop a connectors getter.
@@ -358,12 +419,12 @@ if _HAS_QT:
                 len(by_symbol),
             )
             if n > 0:
-                self._status_lbl.setText(
+                self._set_status(
                     f"YTD front-loaded from History: {n:,} trades "
                     f"across {len(by_symbol)} symbol(s)."
                 )
             else:
-                self._status_lbl.setText(
+                self._set_status(
                     "History refresh emitted 0 trades " "(nothing to front-load)."
                 )
 
@@ -382,7 +443,7 @@ if _HAS_QT:
                 summary = summarize_loaded_configs(self._configs)
             except Exception as exc:  # noqa: BLE001 - loader surface
                 logger.exception("FleetReplayPanel load failed: %s", exc)
-                self._status_lbl.setText(f"Load failed: {type(exc).__name__}: {exc}")
+                self._set_status(f"Load failed: {type(exc).__name__}: {exc}")
                 return
             self._populate_fleet_table()
             # Load builds the controller and calls `_build_sim`, so every row
@@ -395,7 +456,7 @@ if _HAS_QT:
                 self._status_error(
                     f"Fleet spawn failed: {type(_spawn_exc).__name__}: " f"{_spawn_exc}"
                 )
-            self._status_lbl.setText(
+            self._set_status(
                 f"Loaded {summary['bot_count']} bot(s) across "
                 f"{summary['symbol_count']} symbol(s) — "
                 f"${summary['total_target_usd']:,.0f} total target"
@@ -405,7 +466,7 @@ if _HAS_QT:
                     else " — NO bots spawned (no tablets?)."
                 )
             )
-            self._start_btn.setEnabled(len(self._configs) > 0)
+            self._set_start_enabled(len(self._configs) > 0)
             try:
                 self.fleetLoaded.emit(list(self._configs))
             except Exception:  # noqa: S110 - signal best-effort
@@ -722,17 +783,15 @@ if _HAS_QT:
             return cls
 
         def _populate_fleet_table(self) -> None:
-            self._fleet_table.setRowCount(len(self._configs))
             # Gate rows are built by `GateStatusPanel`; `_gate_cells` is the
             # fallback when no panel is attached.
             self._gate_cells = {}
+            self._set_fleet_row_count(len(self._configs))
             _syms = []
             for r, cfg in enumerate(self._configs):
                 sym = str(cfg.get("symbol", "") or "")
                 target = float(cfg.get("target_balance", 0.0) or 0.0)
-                self._fleet_table.setItem(r, 0, QTableWidgetItem(sym))
-                self._fleet_table.setItem(r, 1, QTableWidgetItem(f"${target:,.2f}"))
-                self._fleet_table.setItem(r, 2, QTableWidgetItem("0"))
+                self._set_fleet_row(r, [sym, f"${target:,.2f}", "0"])
                 if sym:
                     _syms.append(sym)
             panel = getattr(self, "_gate_panel", None)
@@ -757,7 +816,7 @@ if _HAS_QT:
             text = str(msg or "").strip()
             if not text:
                 text = "Unspecified failure (no reason was recorded)."
-            self._status_lbl.setText(text)
+            self._set_status(text)
             logger.warning("[FleetReplay] %s", text)
 
         def _run_in_flight(self) -> bool:
@@ -847,15 +906,13 @@ if _HAS_QT:
             self._controller = None
             self._gate_cells = {}
             self._configs = []
-            self._fleet_table.setRowCount(0)
-            self._start_btn.setEnabled(False)
-            self._stop_btn.setEnabled(False)
+            self._set_fleet_row_count(0)
+            self._set_start_enabled(False)
+            self._set_stop_enabled(False)
             if not _stop_failed:
                 # Do not overwrite the failure reason with "cleared".
-                self._status_lbl.setText("Fleet cleared — press Load live fleet.")
-            self._progress_lbl.setText(
-                "Replay idle — load a fleet + press Start Replay."
-            )
+                self._set_status("Fleet cleared — press Load live fleet.")
+            self._set_progress("Replay idle — load a fleet + press Start Replay.")
 
         def _on_fetch_ytd_clicked(self) -> None:
             """Call the same function the History tab calls.
@@ -866,20 +923,20 @@ if _HAS_QT:
             History tab returns N trades, Fleet Replay returns the same N.
             """
             if self._async_loop_getter is None:
-                self._status_lbl.setText("Cannot fetch: async loop not wired.")
+                self._set_status("Cannot fetch: async loop not wired.")
                 return
             loop = self._async_loop_getter()
             if loop is None:
-                self._status_lbl.setText("Cannot fetch: async loop unavailable.")
+                self._set_status("Cannot fetch: async loop unavailable.")
                 return
             if self._bot_manager is None:
-                self._status_lbl.setText(
+                self._set_status(
                     "Cannot fetch: bot_manager not wired "
                     "(same requirement History Tab has)."
                 )
                 return
-            self._fetch_ytd_btn.setEnabled(False)
-            self._status_lbl.setText(
+            self._set_fetch_enabled(False)
+            self._set_status(
                 "Fetching YTD trades via history_helpers "
                 "(same call History Tab uses)…"
             )
@@ -949,8 +1006,8 @@ if _HAS_QT:
             try:
                 future = asyncio.run_coroutine_threadsafe(_do_fetch(), loop)
             except Exception as _sched_exc:  # noqa: BLE001
-                self._status_lbl.setText(f"Fetch schedule failed: {_sched_exc}")
-                self._fetch_ytd_btn.setEnabled(True)
+                self._set_status(f"Fetch schedule failed: {_sched_exc}")
+                self._set_fetch_enabled(True)
                 return
 
             # Marshal from the asyncio thread back onto the Qt thread.
@@ -962,7 +1019,7 @@ if _HAS_QT:
         def _on_fetch_ytd_done(self) -> None:
             trades = self._ytd_trades
             if not trades:
-                self._status_lbl.setText(
+                self._set_status(
                     "Fetch YTD returned no trades. "
                     "(Same behaviour as History Tab under identical "
                     "conditions.) Check console log for details."
@@ -973,11 +1030,11 @@ if _HAS_QT:
                     s = str(t.get("symbol", ""))
                     if s:
                         by_symbol[s] = by_symbol.get(s, 0) + 1
-                self._status_lbl.setText(
+                self._set_status(
                     f"YTD trades fetched: {len(trades):,} across "
                     f"{len(by_symbol)} symbol(s)."
                 )
-            self._fetch_ytd_btn.setEnabled(True)
+            self._set_fetch_enabled(True)
 
         def _live_trade_timestamps(self) -> list[float]:
             """Historical trade times for anchoring and soft-start.
@@ -1087,13 +1144,11 @@ if _HAS_QT:
             # own status lines arrive.
             self._note_parity_state()
             if self._async_loop_getter is None:
-                self._status_lbl.setText(
-                    "Cannot start: async loop not wired by MainWindow."
-                )
+                self._set_status("Cannot start: async loop not wired by MainWindow.")
                 return
             loop = self._async_loop_getter()
             if loop is None:
-                self._status_lbl.setText("Cannot start: async loop unavailable.")
+                self._set_status("Cannot start: async loop unavailable.")
                 return
             from src.simulator.fleet.fleet_replay_controller import (
                 FleetReplayController,
@@ -1249,7 +1304,7 @@ if _HAS_QT:
                 except Exception as _av_exc:  # noqa: BLE001
                     logger.debug("availability notice emit failed: %s", _av_exc)
             if not candles:
-                self._status_lbl.setText(
+                self._set_status(
                     "Cannot start: no Stone Tablets available for "
                     "any loaded bot. Run Fetch YTD first."
                 )
@@ -1296,7 +1351,7 @@ if _HAS_QT:
                     "against, so this is a strategy run, not parity)."
                 )
 
-            _full_eval = bool(self._full_eval_chk.isChecked())
+            _full_eval = self._full_evaluation()
             self._controller.progress.anchored = not _full_eval
             # Built in both modes: it drives marker colour, not skipping.
             # Without it every marker in a full run paints red.
@@ -1440,11 +1495,11 @@ if _HAS_QT:
             try:
                 asyncio.run_coroutine_threadsafe(self._controller.start(), loop)
             except Exception as _sched_exc:  # noqa: BLE001
-                self._status_lbl.setText(f"Schedule failed: {_sched_exc}")
+                self._set_status(f"Schedule failed: {_sched_exc}")
                 return
-            self._start_btn.setEnabled(False)
-            self._stop_btn.setEnabled(True)
-            self._progress_lbl.setText("Replay starting…")
+            self._set_start_enabled(False)
+            self._set_stop_enabled(True)
+            self._set_progress("Replay starting…")
             self.replayStarted.emit()
             if self._progress_timer is None:
                 self._progress_timer = QTimer(self)
@@ -1828,7 +1883,7 @@ if _HAS_QT:
                         f"request ({type(exc).__name__}: {exc}). It may "
                         f"still be running."
                     )
-            self._stop_btn.setEnabled(False)
+            self._set_stop_enabled(False)
 
         def _note_parity_state(self) -> None:
             """Say so when the run cannot be compared to live.
@@ -1838,12 +1893,12 @@ if _HAS_QT:
             parity run on screen.
             """
             if self._ytd_trades:
-                self._status_lbl.setText(
+                self._set_status(
                     f"Parity active: {len(self._ytd_trades)} live YTD "
                     f"trade(s) loaded for comparison."
                 )
             else:
-                self._status_lbl.setText(
+                self._set_status(
                     "Parity check SKIPPED — no live YTD trades loaded. "
                     "This run is synthetic and is NOT comparable to "
                     "live. Press Fetch YTD first if you want parity."
@@ -1890,20 +1945,16 @@ if _HAS_QT:
                 )[:3]
                 exc_str = "  |  ".join(f"{key} ×{count}" for key, count in top)
                 base += f"\n{exc_str}"
-            self._progress_lbl.setText(base)
+            self._set_progress(base)
             counts = getattr(p, "per_symbol_trade_count", {}) or {}
             try:
-                from PySide6.QtWidgets import QTableWidgetItem
-
-                for r in range(self._fleet_table.rowCount()):
-                    sym_item = self._fleet_table.item(r, 0)
-                    if sym_item is None:
+                for r in range(self._fleet_row_count()):
+                    sym = self._fleet_row_symbol(r)
+                    if not sym:
                         continue
-                    sym = sym_item.text()
                     n = int(counts.get(sym, 0))
-                    cur_item = self._fleet_table.item(r, 2)
-                    if cur_item is None or cur_item.text() != str(n):
-                        self._fleet_table.setItem(r, 2, QTableWidgetItem(str(n)))
+                    if self._fleet_row_trades(r) != str(n):
+                        self._set_fleet_row_trades(r, str(n))
             except Exception as _tc_exc:  # noqa: BLE001 - GUI paint best-effort
                 logger.debug("Sim Trades column refresh failed: %s", _tc_exc)
             if p.finished:
@@ -1913,8 +1964,8 @@ if _HAS_QT:
                 self._drain_visual_snapshot()
                 if self._drain_timer:
                     self._drain_timer.stop()
-                self._start_btn.setEnabled(True)
-                self._stop_btn.setEnabled(False)
+                self._set_start_enabled(True)
+                self._set_stop_enabled(False)
                 # The sim-against-live measurement the harness exists for.
                 self._run_parity_comparison()
                 self.replayStopped.emit()

@@ -262,6 +262,33 @@ The gate pane draws one labelled row per bot and nineteen lights on each, and a
 gate reading written from Python changes what those lights show. An empty pane
 still says "No fleet loaded."
 
+The Fleet Replay page is the last of the four. `FleetReplayReactPanel` inherits
+the Qt panel, so Load live fleet, Fetch YTD, Reset, Start Replay, Stop and both
+timers are the same Python. Every widget write the panel used to make moved
+behind a named accessor, and the React panel answers those by writing into its
+view model.
+
+`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._fleet_replay_class`
+
+```python
+from ..variant_surface import FLEET_REPLAY, surface_class
+
+return surface_class(FLEET_REPLAY)
+```
+
+A press on the page names its own action. The panel maps that name to the
+method the Qt button was wired to, looked up on the panel itself, so the two
+sides run one piece of code.
+
+`src/gui/react_fleet_replay_panel.py` — `FleetReplayReactPanel.run_action`
+
+```python
+step = surface.ACTIONS.get(str(request.get(ACTION_KEY) or ""))
+named = self.STEP_RUNNERS.get(step)
+if named is not None:
+    getattr(self, named)()
+```
+
 Everything else on this tab is still drawn by Qt.
 
 Mode is the picker beside it. Three modes, each with its own line saying what
@@ -3067,7 +3094,7 @@ tab row.
 | `src/gui/risk_tab.py` | `risk_tab.js` | yes | yes | yes | no | yes | no |
 | `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | no | yes | no |
 | `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no |
-| `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | no |
+| `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes |
 | `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | yes | yes |
 | `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes |
 | `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes |
@@ -3105,7 +3132,7 @@ Bridge                   67
 Manifest                 55
 Registers in Electron    14
 Ships in the build       55
-RENDERS                  23
+RENDERS                  24
 ```
 
 Four columns are all but complete. The fifth is at one.

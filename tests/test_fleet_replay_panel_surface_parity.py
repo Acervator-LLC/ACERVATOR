@@ -48,7 +48,7 @@ CONNECT_NEIGHBOUR = REPO_ROOT / "src" / "gui" / "bot_visualizer.py"
 PIXEL_SIZE = (900, 700)
 
 SHIPPED_CLASS_TOTAL = 1
-SHIPPED_METHOD_TOTAL = 33
+SHIPPED_METHOD_TOTAL = 46
 SHIPPED_FUNCTION_TOTAL = 4
 SHIPPED_SIGNAL_TOTAL = 3
 SHIPPED_CONNECT_TOTAL = 7
@@ -1978,6 +1978,19 @@ def test_the_counterpart_reader_reports_a_missing_counterpart():
 
 METHOD_COUNTERPARTS = {
     "__init__": "FleetReplayPanelModel",
+    "_build_ui": None,
+    "_set_status": None,
+    "_set_progress": None,
+    "_set_start_enabled": None,
+    "_set_stop_enabled": None,
+    "_set_fetch_enabled": None,
+    "_full_evaluation": None,
+    "_set_fleet_row_count": None,
+    "_set_fleet_row": None,
+    "_fleet_row_count": None,
+    "_fleet_row_symbol": None,
+    "_fleet_row_trades": None,
+    "_set_fleet_row_trades": None,
     "set_async_loop_getter": None,
     "set_visual_widgets": None,
     "set_log_callbacks": None,

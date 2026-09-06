@@ -148,7 +148,7 @@ class SimulatorTab(QWidget):
 
         self._stack = QStackedWidget()
         if FleetReplayPanel is not None:
-            self.fleet_replay = FleetReplayPanel()
+            self.fleet_replay = self._fleet_replay_class()()
 
             from PySide6.QtWidgets import QComboBox as _ABCB
 
@@ -459,6 +459,22 @@ class SimulatorTab(QWidget):
             from .sim_stat_strip import SimStatStrip
 
             return SimStatStrip(self)
+
+    def _fleet_replay_class(self) -> type:
+        """The Fleet Replay panel class the build variant asks for.
+
+        ``variant_surface`` holds the Qt panel and the React panel under
+        ``FLEET_REPLAY``; both answer ``set_log_callbacks`` and ``fleetLoaded``.
+        """
+        try:
+            from ..variant_surface import FLEET_REPLAY, surface_class
+
+            return surface_class(FLEET_REPLAY)
+        except Exception as exc:  # noqa: BLE001 - GUI import guard
+            logger.warning("fleet panel unavailable, using the Qt panel: %s", exc)
+            from .fleet.fleet_replay_panel import FleetReplayPanel as _QtFleetPanel
+
+            return _QtFleetPanel
 
     def _price_chart_class(self) -> type:
         """The price and VWAP chart class the build variant asks for.
