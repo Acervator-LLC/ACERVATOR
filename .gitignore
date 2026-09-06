@@ -113,3 +113,7 @@ artifacts/
 
 # Files taken out of the tree and held for one release before deletion.
 quarantine/
+
+# Electron installs its packages here. The lockfile beside them pins the
+# versions, so the tree carries the pin and not the 235 MB program.
+desktop/node_modules/

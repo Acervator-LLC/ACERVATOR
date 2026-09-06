@@ -1805,6 +1805,90 @@ data_usage=(
 voter set, so a count taken from it cannot drift again. Issue #417 carries
 this.
 
+#### Two mechanisms with no control on this tab
+
+Two more mechanisms sit inside the engine and the wizard offers no switch for
+either. Neither appears anywhere else in this manual, and their state differs:
+one runs, one is declared and dormant.
+
+**Fair Value Gap.** Three candles that leave a gap between the first and the
+third mark a price band the market tends to come back to. The indicator scans
+the last 24 candles for those bands, reports whether price sits inside one or
+is approaching one, counts how many are open, and gives the bounds of the
+nearest. It is not one of the twelve voters. It adjusts the confidence of a
+side that already has a case: a fold gains ten points near a bullish band, a
+scrum gains eight inside a bearish one.
+
+`src/trading/indicators/fvg.py` — the four constants that set its reach
+
+```python
+FVG_LOOKBACK = 24  # candles to scan for 3-candle gap patterns
+
+FVG_PROXIMITY_PCT = 0.005  # "approaching from above": within 0.5% of FVG top
+
+FVG_BULL_BOOST = 0.10  # fold confidence boost when in/near bullish FVG
+
+FVG_BEAR_BOOST = 0.08  # scrum confidence boost when inside bearish FVG
+```
+
+The engine imports the indicator and its four constants together, so the
+adjustment travels with the reading rather than being applied somewhere else.
+
+`src/trading/ta_engine.py` — what it takes from that module
+
+```python
+from .indicators.fvg import (
+    FVG_BEAR_BOOST,
+    FVG_BULL_BOOST,
+    FVG_LOOKBACK,
+    FVG_PROXIMITY_PCT,
+    FVGIndicator,
+)
+```
+
+**Boost Fold.** The intent is a pair: sell a slice of holdings when the mean
+reversion reading goes extreme, then buy that slice back when price returns to
+its moving average, and let the difference raise the target. The Market
+Inspector states the pair at the head of its own module.
+
+`src/trading/mr_inspector.py` — the pair, in the module's own words
+
+```
+# │ When all 3 gates pass → Boost Sell (sell 2.5% of holdings) │
+# │ When price returns to SMA → Boost Fold (buy back cheaper)  │
+# │ Profit from boost fold increments target (compound growth)  │
+```
+
+Where it runs is the stock accumulation bot, which carries the queued amount,
+the reference price, the moving average and the two counters, and works all of
+them. The crypto Scrumming Bot declares the same four fields, sets them to zero
+and never reads them again: across the whole trading package the only lines
+naming them are those four assignments. A crypto bot therefore takes no boost
+fold, whatever the Market Inspector reads.
+
+`src/trading/scrumming_bot.py` — the four fields, written once and never read
+
+```python
+        self._boost_fold_q: float = 0.0
+        self._boost_fold_ref: float = 0.0
+        self._boost_fold_sma: float = 0.0
+
+        self._boost_folds: int = 0
+```
+
+*Proposed, not present, in `src/trading/scrumming_bot.py`:* the crypto side
+needs the read half of the pair, taking the queued amount back at the moving
+average the way the stock bot does, guarded so a bot with an empty queue takes
+no action.
+
+```python
+if self._boost_fold_q > 0 and self._boost_fold_sma > 0:
+    if price <= self._boost_fold_sma and price < self._boost_fold_ref:
+        buy_usd = self._boost_fold_q
+        self._boost_folds += 1
+        self._boost_fold_q = 0
+```
+
 ### Add Crypto Exchange Button (to be changed - Add Exchange)
 
 While the initial set up of Acervator requires at least one valid exchange API, additional exchanges can be added and have their own bot swarms. The current upper operational limit of Acervator is unknown. Multi-exchange testing has yet to be attempted as of 8/25/26 with API compatibility work pending. This button also currently opens the Settings Panel but on the incorrect ‘User’ Tab when it should be ‘Exchanges’.
