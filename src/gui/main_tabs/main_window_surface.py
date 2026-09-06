@@ -1788,6 +1788,8 @@ def build_view_model(params: Any = None) -> dict:
         failed_tabs=given.get("failed_tabs"),
     )
     model.build()
+    if given.get("console_pause") is not None:
+        model.toggle_console_pause(bool(given["console_pause"]))
     if fleet is not None:
         model.refresh()
     return model.as_dict()

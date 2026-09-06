@@ -1452,3 +1452,31 @@ def view_model(params: dict) -> dict:
         return build_view_model(model)
     per_bot = build_per_bot_model(SymbolOnlyBot(symbol), model.inspector_source)
     return build_view_model(model, per_bot_view(per_bot))
+
+
+def live_view_model(params: dict, live: Any) -> dict:
+    """Build the Market Inspector view model from the running fleet.
+
+    ``live.bot_manager.list_bots`` names the bots ``update_active_symbols``
+    reads the active markets from. ``view_model`` answers while no manager
+    is bound, and a request naming its own ``bot_statuses`` keeps them.
+    """
+    manager = getattr(live, "bot_manager", None)
+    asked = dict(params or {})
+    if manager is not None and hasattr(manager, "list_bots"):
+        if asked.get("bot_statuses") is None:
+            asked["bot_statuses"] = list(manager.list_bots())
+    return view_model(asked)
+
+
+def bind_live(live: Any) -> Any:
+    """Return a ``market_inspector.state`` handler reading ``live``.
+
+    ``src.core.desktop_bridge.build_registry`` calls this when the running
+    program serves the bridge, and the handler defers to ``live_view_model``.
+    """
+
+    def handler(params: dict) -> dict:
+        return live_view_model(params or {}, live)
+
+    return handler
