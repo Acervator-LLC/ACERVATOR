@@ -3265,6 +3265,20 @@ Ships in the build       36
 RENDERS                  40
 ```
 
+Re-measured on 6 September 2026 off the 40 rows above, after unit 12 was
+confirmed:
+
+```
+units                    40
+React module             37
+Uses React               36
+Bridge                   38
+Manifest                 37
+Registers in Electron    11
+Ships in the build       35
+RENDERS                  40
+```
+
 The table lists only screens the live application builds. Thirty-six rows were
 removed on 6 September 2026: the Simulator and Proof of Accumulation screens,
 Audio Suite, Alerts, Analytics, the TestNet and Competition screens, the shelved

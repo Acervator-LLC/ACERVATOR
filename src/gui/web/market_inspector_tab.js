@@ -17,6 +17,7 @@
   var ERROR_TYPE = "error_type";
   var ERROR_TYPES = "error_types";
   var FALLBACK = "fallback";
+  var LAYOUT = "layout";
   var LOGGER = "logger";
   var MESSAGE = "message";
   var ORDER = "order";
@@ -43,6 +44,7 @@
     ERROR_TYPE,
     ERROR_TYPES,
     FALLBACK,
+    LAYOUT,
     LOGGER,
     MESSAGE,
     ORDER,
@@ -98,6 +100,34 @@
     TEXT_FORMAT,
     WORD_WRAP
   ];
+  var MARGIN_PX = "margin_px";
+  var VIEW_SPACING_PX = "view_spacing_px";
+  var FALLBACK_SPACING_PX = "fallback_spacing_px";
+  var GROUP_MARGIN_PX = "group_margin_px";
+  var GROUP_SPACING_PX = "group_spacing_px";
+
+  var LAYOUT_FIELDS = [
+    FALLBACK_SPACING_PX,
+    GROUP_MARGIN_PX,
+    GROUP_SPACING_PX,
+    MARGIN_PX,
+    VIEW_SPACING_PX
+  ];
+
+  // The fields one per-bot view row and one group carry.
+  var PARTS = "parts";
+  var ROWS = "rows";
+  var GROUPS = "groups";
+  var TITLE = "title";
+  var TEXT_FIELD = "text";
+  var BOLD = "bold";
+  var BREAKS = "breaks";
+  var FONT_SIZE_PX = "font_size_px";
+  var MONO = "mono";
+  var STRETCH_FIELD = "stretch";
+  var SPACING_PX = "spacing_px";
+  var MONOSPACE = "monospace";
+
   var LOGGER_FIELDS = [NAME, WARNING_FORMAT];
   var TEXTS_FIELDS = [NO_MESSAGE, NO_STYLE];
   var DEFAULTS_FIELDS = [ERROR_TYPE, NO_VIEW, NO_WORD_WRAP];
@@ -105,6 +135,7 @@
   var BAG_FIELDS = {};
   BAG_FIELDS[DELEGATE] = DELEGATE_FIELDS;
   BAG_FIELDS[FALLBACK] = FALLBACK_FIELDS;
+  BAG_FIELDS[LAYOUT] = LAYOUT_FIELDS;
   BAG_FIELDS[LOGGER] = LOGGER_FIELDS;
   BAG_FIELDS[TEXTS] = TEXTS_FIELDS;
   BAG_FIELDS[DEFAULTS] = DEFAULTS_FIELDS;
@@ -140,6 +171,7 @@
   var DIV_TAG = "div";
   var SPAN_TAG = "span";
   var STRONG_TAG = "strong";
+  var NO_LENGTH = "0";
 
   // Only these token groups carry a value a CSS length may borrow.
   var LENGTH_GROUPS = ["spacing", "radii", "target_sizes", "table_columns", "focus"];
@@ -149,6 +181,11 @@
 
   var TAB_PART = "tab";
   var VIEW_PART = "view";
+  var GROUP_PART = "group";
+  var GROUP_TITLE_PART = "group-title";
+  var ROW_PART = "row";
+  var BOLD_PART = "bold";
+  var WORDS_PART = "words";
   var FALLBACK_PART = "fallback";
   var MESSAGE_PART = "message";
   var HEADLINE_PART = "headline";
@@ -314,11 +351,97 @@
     return global.React.createElement.apply(null, arguments);
   }
 
-  // The analyzer's per-bot view mounts here; this file draws none of it.
-  function ViewSlot() {
-    var props = { style: { flex: AUTO } };
-    props[PART_ATTR] = VIEW_PART;
-    return element(DIV_TAG, props);
+  function layoutOf(model) {
+    return objectField(model, LAYOUT);
+  }
+
+  // The skin one per-bot row wears, from the same fields `row_style` reads.
+  function rowStyle(one) {
+    var style = { whiteSpace: wrapMode(one[WORD_WRAP]), flex: FLEX_NONE };
+    if (one[COLOR]) {
+      style.color = colour(one[COLOR]);
+    }
+    if (one[FONT_SIZE_PX]) {
+      style.fontSize = length(one[FONT_SIZE_PX]);
+    }
+    if (one[MONO] === true) {
+      style.fontFamily = MONOSPACE;
+    }
+    if (one[PADDING_PX]) {
+      style.padding = length(one[PADDING_PX]);
+    }
+    return style;
+  }
+
+  // Each part after its own leading breaks, bold parts in their own element.
+  function rowChildren(one) {
+    var kids = [];
+    listField(one, PARTS).forEach(function (piece, at) {
+      var gap = breakText(piece[BREAKS]);
+      if (gap) {
+        kids.push(gap);
+      }
+      var pieceProps = { key: String(at) };
+      pieceProps[PART_ATTR] = piece[BOLD] === true ? BOLD_PART : WORDS_PART;
+      kids.push(
+        element(
+          piece[BOLD] === true ? STRONG_TAG : SPAN_TAG,
+          pieceProps,
+          text(piece[TEXT_FIELD])
+        )
+      );
+    });
+    return kids;
+  }
+
+  function Row(props) {
+    var one = isPlainObject(props.row) ? props.row : {};
+    var rowProps = { style: rowStyle(one) };
+    rowProps[PART_ATTR] = ROW_PART;
+    return element(DIV_TAG, rowProps, rowChildren(one));
+  }
+
+  // `bot_live_settings.css` owns the box every tab of this window draws a
+  // group in; only the gap the view already carries is taken off here.
+  function Group(props) {
+    var group = isPlainObject(props.group) ? props.group : {};
+    var groupProps = { style: { marginBottom: NO_LENGTH, flex: FLEX_NONE } };
+    groupProps[PART_ATTR] = GROUP_PART;
+    var titleProps = {};
+    titleProps[PART_ATTR] = GROUP_TITLE_PART;
+    return element(
+      DIV_TAG,
+      groupProps,
+      element(DIV_TAG, titleProps, text(group[TITLE])),
+      listField(group, ROWS).map(function (one, at) {
+        return element(Row, { key: String(at), row: one });
+      })
+    );
+  }
+
+  // The analyzer's per-bot view: its own rows, then one box per group.
+  function ViewSlot(props) {
+    var view = isPlainObject(props.view) ? props.view : {};
+    var slotProps = {
+      style: {
+        display: FLEX,
+        flexDirection: COLUMN,
+        flex: AUTO,
+        padding: length(view[MARGIN_PX]),
+        gap: length(view[SPACING_PX])
+      }
+    };
+    slotProps[PART_ATTR] = VIEW_PART;
+    var kids = listField(view, ROWS).map(function (one, at) {
+      return element(Row, { key: ROW_PART + String(at), row: one });
+    });
+    listField(view, GROUPS).forEach(function (group, at) {
+      kids.push(element(Group, { key: GROUP_PART + String(at), group: group }));
+    });
+    if (view[STRETCH_FIELD] === true) {
+      kids.push(element(Spacer, { key: SPACER_PART }));
+    }
+    return element(DIV_TAG, slotProps, kids);
   }
 
   // The failure line, drawn as text so a tag in it reaches the screen whole.
@@ -361,8 +484,15 @@
 
   function Fallback(props) {
     var model = props.model;
+    var layout = layoutOf(model);
     var fallbackProps = {
-      style: { display: FLEX, flexDirection: COLUMN, flex: AUTO }
+      style: {
+        display: FLEX,
+        flexDirection: COLUMN,
+        flex: AUTO,
+        padding: length(layout[MARGIN_PX]),
+        gap: length(layout[FALLBACK_SPACING_PX])
+      }
     };
     fallbackProps[PART_ATTR] = FALLBACK_PART;
     return element(
@@ -383,7 +513,7 @@
     tabProps[PART_ATTR] = TAB_PART;
     tabProps[LABEL_ATTR] = label(model[ACCESSIBLE_NAME]);
     if (model[DELEGATED] === true) {
-      return element(DIV_TAG, tabProps, element(ViewSlot, null));
+      return element(DIV_TAG, tabProps, element(ViewSlot, { view: model[VIEW] }));
     }
     return element(DIV_TAG, tabProps, element(Fallback, { model: model }));
   }
@@ -723,6 +853,10 @@
     Message: Message,
     Spacer: Spacer,
     ViewSlot: ViewSlot,
+    Row: Row,
+    Group: Group,
+    layoutOf: layoutOf,
+    rowStyle: rowStyle,
     payload: payload,
     declaredNames: declaredNames,
     nestedNames: nestedNames,

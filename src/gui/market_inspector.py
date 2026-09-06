@@ -598,118 +598,45 @@ if _HAS_QT:
             self._fill_pair_rows(list(inspector.last_pairs))
             self._render_empty_notes()
 
+    def _per_bot_label(one: dict) -> QLabel:
+        """One row of the per-bot view as the label the tab shows."""
+        from .main_tabs import market_inspector_tab_surface as mi_surface
+
+        label = QLabel(mi_surface.row_html(one))
+        sheet = mi_surface.row_style(one)
+        if sheet:
+            label.setStyleSheet(sheet)
+        if one.get("word_wrap"):
+            label.setWordWrap(True)
+        return label
+
     def build_per_bot_view(bot) -> QWidget:
         """Build the Bot Details per-bot Market Inspector tab widget.
 
-        Reads the shared analyzer's most recent scan and renders:
-          - The bot's asset card (if the scan reached it)
-          - Top-5 higher-scoring markets in the universe
-          - Opposing pairs featuring the bot's asset
+        Draws the rows and groups ``market_inspector_tab_surface.per_bot_view``
+        reads off the shared analyzer, which is the same description
+        ``market_inspector_tab.js`` draws in the React window.
         """
+        from .main_tabs import market_inspector_tab_surface as mi_surface
+
+        view = mi_surface.per_bot_view(bot)
         w = QWidget()
         layout = QVBoxLayout(w)
-        layout.setSpacing(8)
-
-        # Get shared analyzer
-        try:
-            from ..trading.market_inspector import get_shared_inspector
-
-            inspector = get_shared_inspector()
-        except Exception:  # noqa: BLE001 - analyzer import guard
-            layout.addWidget(QLabel("Market Inspector analyzer unavailable."))
+        margin = int(view["margin_px"])
+        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(int(view["spacing_px"]))
+        for one in view["rows"]:
+            layout.addWidget(_per_bot_label(one))
+        for group in view["groups"]:
+            box = QGroupBox(group["title"])
+            box.setStyleSheet(mi_surface.group_style())
+            inner = QVBoxLayout(box)
+            box_margin = mi_surface.GROUP_MARGIN_PX
+            inner.setContentsMargins(box_margin, box_margin, box_margin, box_margin)
+            inner.setSpacing(mi_surface.GROUP_SPACING_PX)
+            for one in group["rows"]:
+                inner.addWidget(_per_bot_label(one))
+            layout.addWidget(box)
+        if view["stretch"]:
             layout.addStretch()
-            return w
-
-        # Determine this bot's base asset
-        asset = ""
-        try:
-            sym = getattr(bot.config, "symbol", "")
-            asset = sym.split("/")[0].upper() if "/" in sym else sym.upper()
-        except Exception:  # noqa: BLE001 - symbol parse best-effort
-            asset = ""
-
-        signals = inspector.last_signals
-        if not signals:
-            msg = QLabel(
-                "<b>No Market Inspector scan yet.</b><br><br>"
-                "Open the Market Inspector top-level tab and press "
-                "Refresh to populate. The scan runs across the top-50 "
-                "CoinGecko markets on daily and weekly candles; results "
-                "are shared between the top-level tab and this per-bot "
-                "view."
-            )
-            msg.setStyleSheet("color: #aaa; padding: 12px;")
-            msg.setWordWrap(True)
-            layout.addWidget(msg)
-            layout.addStretch()
-            return w
-
-        # This bot's asset card
-        own_signal = inspector.get_signal(asset)
-        card = QGroupBox(f"This Bot's Asset — {asset or '?'}")
-        cv = QVBoxLayout(card)
-        if own_signal is None:
-            cv.addWidget(
-                QLabel(
-                    f"No signal for {asset or 'this asset'} in the current "
-                    f"scan. The universe covers CoinGecko top-50; markets "
-                    f"outside that set are not tracked."
-                )
-            )
-        else:
-            sig_lbl = QLabel(
-                f"Signal: <b>{own_signal.signal}</b>  |  "
-                f"Score: {own_signal.score:.2f}  |  "
-                f"Direction: {own_signal.direction or '—'}"
-            )
-            sig_lbl.setStyleSheet(
-                f"color: {_signal_color(own_signal.signal)}; " "font-size: 13px;"
-            )
-            cv.addWidget(sig_lbl)
-            for tf_key in ("1d", "1w"):
-                a = own_signal.per_tf.get(tf_key)
-                cv.addWidget(QLabel(f"{tf_key}: {_fmt_tf_state(a)}"))
-        layout.addWidget(card)
-
-        # Higher-scoring markets
-        higher = [
-            s
-            for s in signals
-            if s.score > (own_signal.score if own_signal else 0.0) and s.symbol != asset
-        ][:5]
-        if higher:
-            hg = QGroupBox("Higher-Scoring Markets (top-5)")
-            hv = QVBoxLayout(hg)
-            for s in higher:
-                row = QLabel(
-                    f"{s.symbol}  ·  {s.signal}  ·  score {s.score:.2f}"
-                    + ("  ·  ACTIVE" if s.is_active else "")
-                )
-                row.setStyleSheet(
-                    f"color: {_signal_color(s.signal)}; " "font-family: monospace;"
-                )
-                hv.addWidget(row)
-            layout.addWidget(hg)
-
-        # Opposing pairs featuring this asset
-        pairs = inspector.last_pairs
-        rel_pairs = [
-            p
-            for p in pairs
-            if p.long_side.symbol == asset or p.short_side.symbol == asset
-        ]
-        if rel_pairs:
-            pg = QGroupBox("Opposing Pairs Featuring This Asset")
-            pv = QVBoxLayout(pg)
-            for p in rel_pairs:
-                pv.addWidget(
-                    QLabel(
-                        f"{p.long_side.symbol} (long) ⇄ "
-                        f"{p.short_side.symbol} (short)  ·  "
-                        f"corr {p.correlation_30d:+.3f}"
-                    )
-                )
-            layout.addWidget(pg)
-
-        layout.addStretch()
         return w
