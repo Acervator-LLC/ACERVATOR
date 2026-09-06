@@ -2083,16 +2083,18 @@ PANE_MODEL = ChartModel()
 def view_model(params: dict) -> dict:
     """Bridge handler for ``native_chart.state``.
 
-    Reads ``reset``, ``symbol``, ``candles``, ``positions``, ``markers``,
-    ``steps``, ``width`` and ``height`` from the request parameters. The
-    chart's state persists between calls because the widget does; ``reset``
-    is what a fresh paint sends.
+    Reads ``reset``, ``symbol``, ``timeframe``, ``candles``, ``positions``,
+    ``markers``, ``steps``, ``width`` and ``height`` from the request
+    parameters. The chart's state persists between calls because the widget
+    does; ``reset`` is what a fresh paint sends.
     """
     global PANE_MODEL
     if params.get("reset", False):
         PANE_MODEL = ChartModel(params.get("symbol", ""))
     elif params.get("symbol") is not None:
         PANE_MODEL.symbol = params["symbol"]
+    if params.get("timeframe") is not None:
+        PANE_MODEL.set_timeframe(params["timeframe"])
     candles = params.get("candles")
     if candles is not None:
         PANE_MODEL.set_candles(

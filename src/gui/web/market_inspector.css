@@ -1,0 +1,103 @@
+/* React Market Inspector chrome. The module writes every layout value on
+ * the element's own `style` attribute from the Python payload, so nothing
+ * here sets a width, a gap or a flex value. Colour, border and type only,
+ * selected by the `data-part` names the module stamps.
+ */
+html,
+body {
+  height: 100%;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.4 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+[data-part="split"] > * {
+  min-width: 0;
+}
+
+[data-part="left-pane"] {
+  overflow: auto;
+}
+
+[data-part="refresh-button"] {
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 3px 12px;
+  font: inherit;
+}
+
+[data-part="refresh-button"]:disabled {
+  color: var(--grid);
+  border-color: var(--grid);
+}
+
+[data-part="active-switch"] {
+  gap: 5px;
+  white-space: nowrap;
+}
+
+[data-part="switch-box"] {
+  accent-color: var(--accent);
+}
+
+[data-part="table-group"] {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 6px 8px;
+}
+
+[data-part="group-legend"],
+[data-part="card-legend"] {
+  color: var(--accent);
+  padding: 0 4px;
+}
+
+[data-part="grid"] {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+[data-part="head-cell"] {
+  text-align: left;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+[data-part="grid-cell"] {
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--grid);
+  white-space: nowrap;
+}
+
+[data-part="grid-row"]:nth-child(even) {
+  background: var(--grid);
+}
+
+[data-part="grid-body"] {
+  overflow: auto;
+}
+
+[data-part="topology-slot"] {
+  border-left: 1px solid var(--border);
+  overflow: auto;
+}
+
+[data-part="per-bot-card"] {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 6px 8px;
+}

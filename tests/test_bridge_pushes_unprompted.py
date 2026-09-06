@@ -34,6 +34,7 @@ from src.core.desktop_bridge import (  # noqa: E402
     serve_and_push,
 )
 from src.exchange import history_surface  # noqa: E402
+from src.gui.main_tabs import trade_charts_tab_surface  # noqa: E402
 
 PAUSE_SECONDS = 0.75
 
@@ -553,10 +554,9 @@ def test_a_second_publish_waits_for_the_first_one_to_offer_its_frame() -> None:
 
 
 def test_build_registry_with_no_argument_keeps_todays_table() -> None:
-    """Only the History handler changes when a ``LiveSystem`` is passed.
-
-    A failure means the push work moved, added or dropped a method the 74
-    surfaces and the frontend reach the backend by.
+    """``build_registry`` rebinds only ``history_surface`` and
+    ``trade_charts_tab_surface`` when a ``LiveSystem`` is passed, and names
+    the same methods either way.
     """
     plain = build_registry()
     lived = build_registry(LiveSystem())
@@ -567,6 +567,9 @@ def test_build_registry_with_no_argument_keeps_todays_table() -> None:
     )
 
     assert set(plain) == set(lived)
-    assert rebound == [history_surface.METHOD], rebound
+    assert rebound == sorted(
+        [history_surface.METHOD, trade_charts_tab_surface.METHOD]
+    ), rebound
     assert plain[history_surface.METHOD] is history_surface.view_model
+    assert plain[trade_charts_tab_surface.METHOD] is trade_charts_tab_surface.view_model
     assert plain["bridge.ping"]({}) == {"protocol": PROTOCOL_VERSION}

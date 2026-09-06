@@ -1,9 +1,10 @@
 """The shell draws more than one converted panel, each addressed by name.
 
 ``desktop/renderer/panel_host.js`` takes the panel roster from the
-generated manifest, draws each registered panel into its own host element
-under ``#panels``, and writes the reason onto the page for a panel that
-did not draw. ``PANEL_SURFACES`` names every module that registers; the
+generated manifest, draws each registered screen into its own host element
+under ``#panels`` and each chrome panel under ``#chrome``, and writes the
+reason onto the page for a panel that did not draw.
+``PANEL_SURFACES`` names every module that registers; the
 Console tab and the header strip are each compared against the Qt widget
 they stand for, built from the shipped mixin and read at run time.
 """
@@ -63,6 +64,19 @@ PANEL_SURFACES = {
 }
 
 REGISTERING_PANELS = sorted(PANEL_SURFACES)
+
+#: The panels that register as chrome. Chrome draws above the tab bar and
+#: stays there for every tab, so the bar gives it no tab of its own.
+CHROME_PANELS = [HEADER_PANEL]
+
+SCREEN_PANELS = sorted(set(PANEL_SURFACES) - set(CHROME_PANELS))
+
+HISTORY_PANEL = "history_tab"
+
+#: The History table's mount. ``history_panel.js`` addresses it by this id,
+#: and the page declares it a part of the History screen.
+ROOT_ID = "root"
+PART_ATTRIBUTE = "data-panel-part"
 
 #: The opening request each panel hands its own loader. A panel absent here
 #: declares none and ``acervatorPanelHost.requestOf`` asks it with ``{}``.
@@ -806,13 +820,109 @@ def wait_for_children(browser: Browser, name: str) -> int:
     )
 
 
-def test_the_tab_bar_holds_one_tab_for_every_registered_panel(browser: Browser):
-    """``tab_names`` equals ``acervatorPanelHost.wanted()``. The tab set is
-    ``REGISTERING_PANELS``, the modules that registered."""
+def build_chrome(browser: Browser) -> list:
+    """Answer a bridge, run ``acervatorBuildChrome``, and report its panels."""
+    give_tokens(browser)
+    bind(browser, "PANEL_MODELS", panel_models())
+    browser.js(FAKE_BRIDGE)
+    browser.js("acervatorBuildChrome();")
+    return browser.parsed("acervatorPanelHost.chrome()")
+
+
+def counter_labels(browser: Browser, panel: str) -> list:
+    """Every ``COUNTER_LABEL`` text the named host has drawn."""
+    parts = browser.parsed("window.readParts(window.hostOf(" + json.dumps(panel) + "))")
+    return at_path(parts, COUNTER_LABEL)
+
+
+def root_hidden(browser: Browser) -> bool:
+    """Whether ``ROOT_ID`` is hidden."""
+    return browser.parsed("document.getElementById(" + json.dumps(ROOT_ID) + ").hidden")
+
+
+def test_the_tab_bar_holds_one_tab_for_every_registered_screen(browser: Browser):
+    """``tab_names`` equals ``acervatorPanelHost.screens()``. ``SCREEN_PANELS``
+    is every registering module outside ``CHROME_PANELS``."""
     drawn = build_tabs(browser)
-    assert drawn == browser.parsed("acervatorPanelHost.wanted()")
+    assert drawn == browser.parsed("acervatorPanelHost.screens()")
     assert tab_names(browser) == drawn
-    assert sorted(drawn) == REGISTERING_PANELS, f"the bar drew {drawn}"
+    assert sorted(drawn) == SCREEN_PANELS, f"the bar drew {drawn}"
+    assert sorted(browser.parsed("acervatorPanelHost.chrome()")) == CHROME_PANELS
+
+
+def test_the_header_strip_registers_as_chrome_and_takes_no_tab(browser: Browser):
+    """``acervatorPanelHost.kindOf`` answers chrome for ``HEADER_PANEL``.
+    ``HEADER_PANEL`` stays in ``wanted`` and reaches no ``tab_names`` entry."""
+    assert (
+        browser.js("acervatorPanelHost.kindOf(" + json.dumps(HEADER_PANEL) + ")")
+        == "chrome"
+    )
+    drawn = build_tabs(browser)
+    assert HEADER_PANEL in browser.parsed("acervatorPanelHost.wanted()")
+    assert HEADER_PANEL not in drawn, f"the bar drew {drawn}"
+    assert HEADER_PANEL not in tab_names(browser)
+
+
+def test_a_panel_that_declares_no_kind_is_a_screen_and_takes_a_tab(
+    browser: Browser,
+):
+    """The control for ``test_the_header_strip_registers_as_chrome_and_takes_no_tab``.
+    ``SPARE_PANEL`` registers with no kind, so ``kindOf`` answers screen and
+    ``build_tabs`` draws its tab."""
+    browser.js(
+        "acervatorPanelHost.register({ render: function (target) {"
+        "  target.textContent = 'drawn'; } }, " + json.dumps(SPARE_PANEL) + ");"
+    )
+    assert (
+        browser.js("acervatorPanelHost.kindOf(" + json.dumps(SPARE_PANEL) + ")")
+        == "screen"
+    )
+    drawn = build_tabs(browser)
+    assert SPARE_PANEL in drawn
+    assert SPARE_PANEL not in browser.parsed("acervatorPanelHost.chrome()")
+
+
+def test_a_panel_that_declares_an_unknown_kind_is_named_on_the_page(
+    browser: Browser,
+):
+    """``acervatorPanelHost.faults`` names ``SPARE_PANEL`` and the kind it
+    declared, and ``kindOf`` answers screen so the panel still reaches a tab."""
+    browser.js(
+        "acervatorPanelHost.register({ kind: 'banana',"
+        "  render: function (target) { target.textContent = 'drawn'; } }, "
+        + json.dumps(SPARE_PANEL)
+        + ");"
+    )
+    assert browser.parsed("acervatorPanelHost.faults()") == [
+        {"panel": SPARE_PANEL, "reason": "declared an unknown kind: banana"}
+    ]
+    assert (
+        browser.js("acervatorPanelHost.kindOf(" + json.dumps(SPARE_PANEL) + ")")
+        == "screen"
+    )
+
+
+def test_the_chrome_panel_draws_above_the_bar_and_stays_for_every_tab(
+    browser: Browser,
+):
+    """``acervatorBuildChrome`` draws ``HEADER_PANEL`` inside ``#chrome``.
+    Its ``counter_labels`` are still on screen after three ``select`` calls."""
+    assert build_chrome(browser) == CHROME_PANELS
+    assert wait_for_children(browser, HEADER_PANEL) > 0
+    labels = [card["label"] for card in header_payload()["counters"]]
+    assert counter_labels(browser, HEADER_PANEL) == labels
+    assert browser.parsed(
+        "document.getElementById('chrome').contains("
+        "window.hostOf(" + json.dumps(HEADER_PANEL) + "))"
+    )
+    drawn = build_tabs(browser)
+    for name in drawn[:3]:
+        browser.js("acervatorTabBar.select(" + json.dumps(name) + ");")
+        assert (
+            browser.parsed("window.hostOf(" + json.dumps(HEADER_PANEL) + ").hidden")
+            is False
+        ), f"the strip was hidden under {name}"
+        assert counter_labels(browser, HEADER_PANEL) == labels
 
 
 def test_the_tab_bar_gives_no_tab_to_a_module_that_registered_no_panel(
@@ -850,6 +960,66 @@ def test_selecting_a_tab_leaves_exactly_one_panel_showing(browser: Browser):
     browser.js("acervatorTabBar.select(" + json.dumps(other) + ");")
     assert browser.parsed("acervatorTabBar.visible()") == [other]
     assert browser.js("acervatorTabBar.selected()") == other
+
+
+def test_a_mount_declared_part_of_a_screen_shows_only_under_that_screen(
+    browser: Browser,
+):
+    """``ROOT_ID`` carries ``PART_ATTRIBUTE`` naming ``HISTORY_PANEL``, so the
+    History table is hidden under ``CONSOLE_PANEL`` and shown under History."""
+    build_tabs(browser)
+    assert (
+        browser.js(
+            "document.getElementById("
+            + json.dumps(ROOT_ID)
+            + ").getAttribute("
+            + json.dumps(PART_ATTRIBUTE)
+            + ")"
+        )
+        == HISTORY_PANEL
+    )
+    browser.js("acervatorTabBar.select(" + json.dumps(CONSOLE_PANEL) + ");")
+    assert root_hidden(browser) is True
+    assert browser.parsed("acervatorTabBar.visible()") == [CONSOLE_PANEL]
+    browser.js("acervatorTabBar.select(" + json.dumps(HISTORY_PANEL) + ");")
+    assert root_hidden(browser) is False
+    assert browser.parsed("acervatorTabBar.visible()") == [HISTORY_PANEL]
+
+
+def test_a_new_host_is_placed_in_front_of_its_own_declared_part(
+    browser: Browser,
+):
+    """``hostFor`` puts the ``HISTORY_PANEL`` host before ``ROOT_ID``, so the
+    History filters draw above the table that ``ROOT_ID`` holds."""
+    build_tabs(browser)
+    browser.js("acervatorTabBar.select(" + json.dumps(HISTORY_PANEL) + ");")
+    assert browser.parsed(
+        "Boolean(window.hostOf("
+        + json.dumps(HISTORY_PANEL)
+        + ").compareDocumentPosition(document.getElementById("
+        + json.dumps(ROOT_ID)
+        + ")) & Node.DOCUMENT_POSITION_FOLLOWING)"
+    ), "the History table is drawn above its own filter row"
+
+
+def test_a_mount_declaring_no_screen_stays_on_screen_under_every_tab(
+    browser: Browser,
+):
+    """The control for
+    ``test_a_mount_declared_part_of_a_screen_shows_only_under_that_screen``.
+    Strip ``PART_ATTRIBUTE`` off ``ROOT_ID`` and the History table is on
+    screen under ``CONSOLE_PANEL`` while ``visible`` still names one panel."""
+    browser.js(
+        "document.getElementById("
+        + json.dumps(ROOT_ID)
+        + ").removeAttribute("
+        + json.dumps(PART_ATTRIBUTE)
+        + ");"
+    )
+    build_tabs(browser)
+    browser.js("acervatorTabBar.select(" + json.dumps(CONSOLE_PANEL) + ");")
+    assert root_hidden(browser) is False
+    assert browser.parsed("acervatorTabBar.visible()") == [CONSOLE_PANEL]
 
 
 def test_clicking_a_tab_button_shows_that_panel(browser: Browser):
