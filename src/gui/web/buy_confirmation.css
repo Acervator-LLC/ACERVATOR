@@ -1,0 +1,54 @@
+/* React buy confirmation chrome: the page ground, the separator line and the
+ * three answer buttons `buy_confirmation.js` draws. The banner colour, the
+ * detail padding and each button's background arrive on the element from the
+ * Python payload, so no rule here may set one.
+ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.4 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  overflow: auto;
+}
+
+.acervator-buy-confirmation[data-part="buy-confirmation"] {
+  min-height: 100vh;
+}
+
+.acervator-buy-confirmation[data-part="separator"] {
+  border: 0;
+  border-top: 1px solid var(--border);
+  width: 100%;
+}
+
+.acervator-buy-confirmation[data-part="details"] {
+  font-variant-numeric: tabular-nums;
+}
+
+.acervator-buy-confirmation[data-part="detail-label"] {
+  font-weight: bold;
+}
+
+button.acervator-buy-confirmation {
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font: inherit;
+}
+
+button.acervator-buy-confirmation:disabled {
+  cursor: default;
+}
+
+button.acervator-buy-confirmation:focus {
+  outline: 1px solid var(--accent);
+}

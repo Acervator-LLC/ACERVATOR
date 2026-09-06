@@ -14,6 +14,7 @@ from src._variant import QT, resolve_variant
 
 BOT_LIVE_SETTINGS = "Bot live settings"
 BOT_SWARM = "Bot Swarm"
+BUY_CONFIRMATION = "Buy confirmation dialog"
 CONSOLE = "Console"
 DASHBOARD_STAT_CARD = "Dashboard stat card"
 HISTORY = "History"
@@ -258,6 +259,20 @@ def _react_start_all_progress() -> type:
     return StartAllProgressReactDialog
 
 
+def _qt_buy_confirmation() -> type:
+    """Import and return the Qt buy confirmation dialog."""
+    from .buy_confirmation_dialog import BuyConfirmationDialog
+
+    return BuyConfirmationDialog
+
+
+def _react_buy_confirmation() -> type:
+    """Import and return the React buy confirmation dialog."""
+    from .react_buy_confirmation import BuyConfirmationReactDialog
+
+    return BuyConfirmationReactDialog
+
+
 def _qt_sim_stat_strip() -> type:
     """Import and return the Qt Simulator stat strip."""
     from .simulator_tab.sim_stat_strip import SimStatStrip
@@ -287,3 +302,4 @@ register(BOT_LIVE_SETTINGS, _qt_bot_live_settings, _react_bot_live_settings)
 register(SPENDABLE_PROFITS, _qt_spendable_profits, _react_spendable_profits)
 register(DASHBOARD_STAT_CARD, _qt_dashboard_stat_card, _react_dashboard_stat_card)
 register(START_ALL_PROGRESS, _qt_start_all_progress, _react_start_all_progress)
+register(BUY_CONFIRMATION, _qt_buy_confirmation, _react_buy_confirmation)

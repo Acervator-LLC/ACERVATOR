@@ -1,25 +1,11 @@
-"""
-buy_confirmation_dialog.py — MEM-228 (Session 24, 2026-04-22)
+"""The modal that confirms a gated buy order.
 
-Modal confirmation dialog for buy orders that meet operator-defined
-risk criteria. Two trigger paths:
-    1. Initial entry (bot thinks it holds zero)
-    2. Any buy where (holdings × price + buy_cost) > target_balance × 1.01
-
-Design contract:
-- Bot's _execute_buy calls await request_buy_confirmation(...)
-- That returns "yes" | "no" | "skip"  (or "timeout")
-- Dialog runs on GUI main thread via Qt Signal (MEM-221 pattern)
-- Bot thread awaits an asyncio.Future resolved by the button click
-- 60s timeout: if operator doesn't answer, refuse the buy (bot retries next tick)
-
-Organic target-balance growth from fold surplus is NOT gated — fold_rebuy
-path skips the confirmation entirely. Hedge replenish is gated only if
-its projected total would exceed target (structurally should not, but
-belt-and-suspenders).
-
-This module is pure UI plumbing. The gate decision (what paths prompt,
-what the target ceiling is) lives in scrumming_bot.py._execute_buy.
+``_BuyConfirmationBroker.request_confirmation`` files a request from a bot's
+async context and waits for ``yes``, ``no``, ``skip`` or ``timeout``.
+``_on_request_received`` raises the class ``variant_surface`` names for
+``BUY_CONFIRMATION`` and resolves the waiting future with its answer.
+``BuyConfirmationDialog`` reads every word, colour, size and figure it paints
+from ``buy_confirmation_surface``.
 """
 
 from __future__ import annotations
@@ -27,6 +13,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Optional
+
+from .main_tabs import buy_confirmation_surface as surface
 
 try:
     from PySide6.QtCore import Qt, QObject, Signal, Slot
@@ -44,11 +32,9 @@ try:
 except ImportError:  # pragma: no cover
     _QT_AVAILABLE = False
 
-logger = logging.getLogger("acervator.buy_confirmation")
+logger = logging.getLogger(surface.LOGGER_NAME)
 
 
-# Global broker: bot threads emit through this; GUI subscribes on init.
-# Singleton-ish: one per process. Created lazily.
 _broker: Optional["_BuyConfirmationBroker"] = None
 
 
@@ -57,43 +43,58 @@ def get_broker() -> "_BuyConfirmationBroker":
     global _broker
     if _broker is None:
         if not _QT_AVAILABLE:
-            raise RuntimeError(
-                "PySide6 not available; buy confirmation dialog "
-                "cannot be used in this environment."
-            )
+            raise RuntimeError(surface.NO_QT_ERROR)
         _broker = _BuyConfirmationBroker()
     return _broker
+
+
+def dialog_class() -> type:
+    """The confirmation dialog class the running build variant draws."""
+    from .variant_surface import BUY_CONFIRMATION, surface_class
+
+    return surface_class(BUY_CONFIRMATION)
+
+
+class _HeadlessBroker:
+    """The broker a process with no Qt gets, which refuses every buy."""
+
+    async def request_confirmation(self, **_request) -> str:
+        """Log the refusal and answer ``surface.HEADLESS_ANSWER``."""
+        return surface.headless_answer()
+
+
+class _HeadlessDialog:
+    """The dialog name a process with no Qt imports, which builds no window."""
+
+
+_HEADLESS_NAMES: dict[str, type] = {
+    "_BuyConfirmationBroker": _HeadlessBroker,
+    "BuyConfirmationDialog": _HeadlessDialog,
+}
+
+
+def __getattr__(name: str) -> type:
+    """Answer the stand-in for a name only the Qt block defines."""
+    stand_in = _HEADLESS_NAMES.get(name)
+    if stand_in is None:
+        raise AttributeError(name)
+    return stand_in
 
 
 if _QT_AVAILABLE:
 
     class _BuyConfirmationBroker(QObject):
-        """
-        Bridge between bot async tasks and the GUI main thread.
+        """Carries one buy confirmation between a bot task and the GUI thread.
 
-        Bot thread calls request_confirmation(...) from within an async
-        context. That method:
-          1. creates an asyncio.Future on the bot's event loop
-          2. emits a Qt Signal carrying the request payload
-          3. awaits the Future
-          4. returns the resolved value ("yes"/"no"/"skip"/"timeout")
-
-        GUI main thread receives the signal (Qt.AutoConnection queues
-        it onto the main thread because the broker was constructed
-        there), shows the modal, and resolves the Future via
-        run_coroutine_threadsafe.
+        ``request_confirmation`` emits ``_request_signal`` and awaits the
+        future ``_on_request_received`` resolves on the bot's own loop.
         """
 
-        # Carries: (request_id, payload_dict) — payload has everything
-        # the dialog needs to render plus the bot's event loop reference
-        # so we can resolve the future back on that loop.
         _request_signal = Signal(str, object)
 
         def __init__(self, parent=None):
             QObject.__init__(self, parent)
             self._pending: dict[str, dict] = {}
-            # Connect to our own slot with AutoConnection so cross-thread
-            # emissions queue to the main thread.
             self._request_signal.connect(self._on_request_received, Qt.AutoConnection)
 
         async def request_confirmation(
@@ -107,22 +108,19 @@ if _QT_AVAILABLE:
             amount_asset: float,
             holdings_before: float,
             target_balance: float,
-            timeout_sec: float = 60.0,
+            timeout_sec: float = surface.TIMEOUT_SEC,
         ) -> str:
-            """
-            Called from bot's async context. Blocks (awaits) until the
-            operator answers or timeout expires. Returns one of:
-              - "yes"     → proceed with buy
-              - "no"      → refuse this buy
-              - "skip"    → refuse this tick's cycle
-              - "timeout" → no answer in `timeout_sec`; refuse to be safe
+            """Await the operator's answer to one buy, or refuse on timeout.
+
+            Returns ``yes`` to proceed, ``no`` to refuse this buy, ``skip``
+            to refuse the tick, and ``timeout`` when nobody answered.
             """
             loop = asyncio.get_running_loop()
             fut: asyncio.Future = loop.create_future()
 
-            request_id = f"{bot_id}_{int(asyncio.get_running_loop().time()*1000)}"
+            key = surface.request_id(bot_id, surface.millis_of(loop.time()))
             payload = {
-                "request_id": request_id,
+                "request_id": key,
                 "bot_id": bot_id,
                 "symbol": symbol,
                 "reason": reason,
@@ -134,27 +132,21 @@ if _QT_AVAILABLE:
                 "loop": loop,
                 "future": fut,
             }
-            self._pending[request_id] = payload
-            # Emit signal — will queue to GUI thread if different
-            self._request_signal.emit(request_id, payload)
+            self._pending[key] = payload
+            self._request_signal.emit(key, payload)
 
             try:
                 result = await asyncio.wait_for(fut, timeout=timeout_sec)
                 return result
             except asyncio.TimeoutError:
-                # Clean up if dialog hasn't resolved
-                self._pending.pop(request_id, None)
-                logger.warning(
-                    "Buy confirmation timed out after %ss for bot %s",
-                    timeout_sec,
-                    bot_id,
-                )
-                return "timeout"
+                self._pending.pop(key, None)
+                logger.warning(surface.TIMEOUT_LOG, timeout_sec, bot_id)
+                return surface.ANSWER_TIMEOUT
 
         @Slot(str, object)
         def _on_request_received(self, request_id: str, payload: dict):
-            """Runs on the GUI main thread. Show the modal."""
-            dlg = BuyConfirmationDialog(
+            """Raise the modal on the GUI thread and resolve the bot's future."""
+            dlg = dialog_class()(
                 symbol=payload["symbol"],
                 reason=payload["reason"],
                 cost_usd=payload["cost_usd"],
@@ -163,18 +155,16 @@ if _QT_AVAILABLE:
                 holdings_before=payload["holdings_before"],
                 target_balance=payload["target_balance"],
             )
-            # Bring to front aggressively — this is a safety-critical prompt
-            dlg.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+            dlg.setWindowFlag(Qt.WindowStaysOnTopHint, surface.STAYS_ON_TOP)
             dlg.raise_()
             dlg.activateWindow()
 
             result = dlg.exec()
             if result == QDialog.Accepted:
-                answer = dlg.result_value  # "yes" | "no" | "skip"
+                answer = dlg.result_value
             else:
-                answer = "no"  # close-button counts as No
+                answer = surface.CLOSED_ANSWER
 
-            # Resolve the future on the bot's event loop
             loop = payload["loop"]
             fut = payload["future"]
             if not fut.done():
@@ -182,7 +172,11 @@ if _QT_AVAILABLE:
             self._pending.pop(request_id, None)
 
     class BuyConfirmationDialog(QDialog):
-        """The modal itself. Shows buy details + three action buttons."""
+        """The modal itself: a banner, seven detail rows and three answers.
+
+        ``result_value`` opens at ``surface.DEFAULT_ANSWER`` and ``_answer``
+        replaces it with the answer of the button that was pressed.
+        """
 
         def __init__(
             self,
@@ -197,80 +191,68 @@ if _QT_AVAILABLE:
             parent=None,
         ):
             super().__init__(parent)
-            self.setAccessibleName("Buy Confirmation Dialog")
-            self.result_value = "no"  # default if closed
-            self.setWindowTitle("Confirm Buy Order")
-            self.setModal(True)
-            self.setMinimumWidth(420)
+            self._symbol = symbol
+            self._reason = reason
+            self._cost_usd = cost_usd
+            self._price = price
+            self._amount_asset = amount_asset
+            self._holdings_before = holdings_before
+            self._target_balance = target_balance
+            self._setup_ui()
+
+        def _setup_ui(self) -> None:
+            """Build the banner, the separator, the detail block and the buttons."""
+            self.setAccessibleName(surface.ACCESSIBLE_NAME)
+            self.result_value = surface.DEFAULT_ANSWER
+            self.setWindowTitle(surface.WINDOW_TITLE)
+            self.setModal(surface.MODAL)
+            self.setMinimumWidth(surface.MINIMUM_WIDTH_PX)
 
             layout = QVBoxLayout(self)
 
-            # Reason banner — the alert line the operator reads first
-            reason_lbl = QLabel(reason)
+            reason_lbl = QLabel(self._reason)
             rf = QFont()
-            rf.setBold(True)
-            rf.setPointSize(12)
+            rf.setBold(surface.REASON_BOLD)
+            rf.setPointSize(surface.REASON_POINT_SIZE)
             reason_lbl.setFont(rf)
-            reason_lbl.setStyleSheet("color: #ffaa00; padding: 8px;")
-            reason_lbl.setWordWrap(True)
+            reason_lbl.setStyleSheet(surface.REASON_STYLE)
+            reason_lbl.setWordWrap(surface.REASON_WORD_WRAP)
             layout.addWidget(reason_lbl)
 
             sep = QFrame()
             sep.setFrameShape(QFrame.HLine)
             layout.addWidget(sep)
 
-            # Transaction details
             details = QLabel(
-                f"<b>Symbol:</b>   {symbol}<br>"
-                f"<b>Cost:</b>     ${cost_usd:.4f} USD<br>"
-                f"<b>Price:</b>    ${price:.8f}<br>"
-                f"<b>Amount:</b>   {amount_asset:.6f} "
-                f"{symbol.split('/')[0]}<br>"
-                f"<b>Current holdings:</b> {holdings_before:.6f} "
-                f"(~${holdings_before * price:.4f})<br>"
-                f"<b>Target balance:</b>   ${target_balance:.2f}<br>"
-                f"<b>After this buy:</b>   "
-                f"${(holdings_before * price) + cost_usd:.4f}"
+                surface.details_text(
+                    self._symbol,
+                    self._cost_usd,
+                    self._price,
+                    self._amount_asset,
+                    self._holdings_before,
+                    self._target_balance,
+                )
             )
             details.setTextFormat(Qt.RichText)
-            details.setStyleSheet("padding: 8px;")
+            details.setStyleSheet(surface.DETAILS_STYLE)
             layout.addWidget(details)
 
-            # Buttons
             btn_row = QHBoxLayout()
-            btn_yes = QPushButton("Yes — place the buy")
-            btn_no = QPushButton("No — refuse this buy")
-            btn_skip = QPushButton("Skip this cycle")
-            btn_yes.setStyleSheet(
-                "padding: 8px 16px; background-color: #225522; "
-                "color: white; font-weight: bold;"
-            )
-            btn_no.setStyleSheet(
-                "padding: 8px 16px; background-color: #552222; "
-                "color: white; font-weight: bold;"
-            )
-            btn_skip.setStyleSheet("padding: 8px 16px;")
-            btn_yes.clicked.connect(lambda: self._answer("yes"))
-            btn_no.clicked.connect(lambda: self._answer("no"))
-            btn_skip.clicked.connect(lambda: self._answer("skip"))
+            btn_yes = QPushButton(surface.YES_TEXT)
+            btn_no = QPushButton(surface.NO_TEXT)
+            btn_skip = QPushButton(surface.SKIP_TEXT)
+            btn_yes.setStyleSheet(surface.YES_STYLE)
+            btn_no.setStyleSheet(surface.NO_STYLE)
+            btn_skip.setStyleSheet(surface.SKIP_STYLE)
+            btn_yes.clicked.connect(lambda: self._answer(surface.ANSWER_YES))
+            btn_no.clicked.connect(lambda: self._answer(surface.ANSWER_NO))
+            btn_skip.clicked.connect(lambda: self._answer(surface.ANSWER_SKIP))
             btn_row.addWidget(btn_yes)
             btn_row.addWidget(btn_no)
             btn_row.addWidget(btn_skip)
             layout.addLayout(btn_row)
 
         def _answer(self, value: str):
+            """Keep ``value`` as the answer and accept the dialog."""
             self.result_value = value
             self.accept()
-
-else:
-    # Headless / no-Qt environments: stub so imports don't break.
-    class _BuyConfirmationBroker:  # type: ignore[no-redef]
-        async def request_confirmation(self, **kwargs) -> str:
-            logger.warning(
-                "Buy confirmation requested in headless environment; "
-                "returning 'no' (safe default)."
-            )
-            return "no"
-
-    class BuyConfirmationDialog:  # type: ignore[no-redef]
-        pass
