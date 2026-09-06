@@ -3210,15 +3210,20 @@ RENDERS                  28
 
 Four columns are all but complete. The fifth is at one.
 
-Re-measured on 6 September 2026, after the Settings dialog went over:
+Re-measured on 6 September 2026, counted off the 76 rows above:
 
 ```
-RENDERS                  28
+React module             55
+Uses React               53
+Bridge                   67
+Manifest                 55
+Registers in Electron    15
+Ships in the build       55
+RENDERS                  29
 ```
 
-The other six column counts are unchanged. The Settings row already carried a
-React module, a bridge method and a manifest entry; what it gained is the
-screen.
+Only the last column moved. The Settings row already carried a React module, a
+bridge method and a manifest entry; what it gained is the screen.
 
 The three unmarked rows at the foot of the table are the tabs the manual
 already carries as unbuilt: the Paper Trader, Proof of Accumulation and System
