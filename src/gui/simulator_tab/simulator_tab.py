@@ -40,8 +40,6 @@ try:
     from .nuclear_mode_panel import NuclearModePanel
 except Exception:  # noqa: BLE001 - GUI-import guard
     NuclearModePanel = None
-from .sim_stat_strip import SimStatStrip
-
 # Fleet Replay: live bot configs against a fake exchange driven by
 # YTD candles.
 try:
@@ -87,7 +85,7 @@ class SimulatorTab(QWidget):
         outer.setContentsMargins(2, 2, 2, 2)
         outer.setSpacing(2)
 
-        self.stat_strip = SimStatStrip(self)
+        self.stat_strip = self._build_stat_strip()
         outer.addWidget(self.stat_strip)
         # Declares every Simulator feed, so one that never fires is reported.
         try:
@@ -447,6 +445,22 @@ class SimulatorTab(QWidget):
 
         main_splitter.setSizes([500, 350])
         outer.addWidget(main_splitter)
+
+    def _build_stat_strip(self) -> QWidget:
+        """Build the header stat strip the build variant asks for.
+
+        ``variant_surface`` holds the Qt strip and the React strip under
+        ``SIM_STAT_STRIP``; both answer ``set`` and ``clear``.
+        """
+        try:
+            from ..variant_surface import SIM_STAT_STRIP, surface_class
+
+            return surface_class(SIM_STAT_STRIP)(self)
+        except Exception as exc:  # noqa: BLE001 - GUI import guard
+            logger.warning("stat strip unavailable, using the Qt strip: %s", exc)
+            from .sim_stat_strip import SimStatStrip
+
+            return SimStatStrip(self)
 
     def mount_bot_status_table(self) -> bool:
         """Put the Trading Tab's bot table in the Simulator.

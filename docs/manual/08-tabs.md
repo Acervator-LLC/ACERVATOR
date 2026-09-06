@@ -181,6 +181,26 @@ The strip along the top replaces the window's own while this tab is active. It
 names the same ten readings against sim balances, and every one draws an em
 dash in the figure, because no fleet is loaded.
 
+React draws that strip. The tab asks `variant_surface` which of the two strips
+to build, and both answer the same `set` and `clear` calls, so the fleet panel
+and Nuclear Mode write to either without knowing which they hold.
+
+`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._build_stat_strip`
+
+```python
+from ..variant_surface import SIM_STAT_STRIP, surface_class
+
+return surface_class(SIM_STAT_STRIP)(self)
+```
+
+`SimStatStripWebStrip` holds `SimStatStripModel` where the Qt strip held ten
+label pairs, and draws it with `sim_stat_strip.js` in one `QWebEngineView`. A
+field name the strip does not carry is still ignored, and an empty value still
+falls back to the em dash. Setting `ACERVATOR_VARIANT` to `qt` builds the Qt
+strip instead, unchanged.
+
+Everything else on this tab is still drawn by Qt.
+
 Mode is the picker beside it. Three modes, each with its own line saying what
 it collects.
 
@@ -2893,7 +2913,7 @@ tab row.
 | `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | no |
 | `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | no |
 | `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | no |
-| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | no |
+| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes |
 | `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes |
 | `src/gui/start_all_progress_dialog.py` | no | - | no | no | no | no |
 | `src/gui/stock_main_window.py` | no | - | yes | no | no | no |
@@ -2927,7 +2947,7 @@ Uses React                53
 Bridge                    67
 Manifest                  54
 Registers in Electron      8
-RENDERS                   10
+RENDERS                   11
 ```
 
 Four columns are all but complete. The fifth is at one.
