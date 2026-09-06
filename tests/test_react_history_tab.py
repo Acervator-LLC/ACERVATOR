@@ -146,6 +146,7 @@ def test_the_rows_go_to_the_one_renderer_that_draws_rows(js: JsRuntime) -> None:
         "summary": False,
         "filters": False,
         "pager": False,
+        "headers": True,
     }, "the panel would draw a second summary, filter bar and pager"
     assert handed["page"] == model["page"], "the rows were altered on the way"
     assert handed["page"]["rows"], "no rows were handed over at all"

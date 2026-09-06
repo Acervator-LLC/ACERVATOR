@@ -15,6 +15,9 @@
   // Qt's QToolTip wakes at the same figure.
   var TOOLTIP_DELAY_MS = 700;
 
+  // The bridge method the pager re-asks for a neighbouring page.
+  var VIEW_MODEL_METHOD = "history.view_model";
+
   // The one shape the bridge may deliver. A payload missing any of these
   // renders the error banner instead of a half-drawn table.
   var REQUIRED_KEYS = [
@@ -29,14 +32,20 @@
   // Which chrome strips the page draws. The Qt tab that hosts the table
   // owns its own filter bar, summary line and pager, and turns these off
   // so the operator is not shown two of each.
-  var CHROME_DEFAULT = { summary: true, filters: true, pager: true };
+  var CHROME_DEFAULT = {
+    summary: true,
+    filters: true,
+    pager: true,
+    headers: true
+  };
 
   function chromeOf(state) {
     var given = (state && state.chrome) || {};
     return {
       summary: given.summary !== false,
       filters: given.filters !== false,
-      pager: given.pager !== false
+      pager: given.pager !== false,
+      headers: given.headers !== false
     };
   }
 
@@ -357,27 +366,29 @@
   }
 
   function Table(props) {
-    var head = h(
-      "thead",
-      null,
-      h(
-        "tr",
-        null,
-        props.columns.map(function (col) {
-          return h(
-            "th",
-            {
-              key: col.key,
-              "data-col-key": col.key,
-              "data-col-index": String(col.index),
-              "data-cell-tooltip": col.header_tooltip || "",
-              title: col.header_tooltip || ""
-            },
-            col.header
-          );
-        })
-      )
-    );
+    var head = props.headers === false
+      ? null
+      : h(
+          "thead",
+          null,
+          h(
+            "tr",
+            null,
+            props.columns.map(function (col) {
+              return h(
+                "th",
+                {
+                  key: col.key,
+                  "data-col-key": col.key,
+                  "data-col-index": String(col.index),
+                  "data-cell-tooltip": col.header_tooltip || "",
+                  title: col.header_tooltip || ""
+                },
+                col.header
+              );
+            })
+          )
+        );
     var body = h(
       "tbody",
       { id: "panel-rows" },
@@ -386,6 +397,22 @@
       })
     );
     return h("table", { id: "panel-table", className: "history" }, head, body);
+  }
+
+  // A host that draws this pager reaches the backend itself; a host that
+  // hides it behind its own control bar never calls this.
+  function turnTo(page) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      return null;
+    }
+    return global.acervator
+      .call(VIEW_MODEL_METHOD, { page: page })
+      .then(function (next) {
+        if (next !== null && typeof next === "object") {
+          global.acervatorSetState(next);
+        }
+        return next;
+      });
   }
 
   function Pager(props) {
@@ -397,7 +424,10 @@
         {
           id: "pager-prev",
           disabled: !props.prevEnabled,
-          title: "Read-only mirror. The Qt control bar turns the page."
+          title: "Show the previous page of trades.",
+          onClick: function () {
+            turnTo(props.page - 1);
+          }
         },
         "Prev"
       ),
@@ -407,7 +437,10 @@
         {
           id: "pager-next",
           disabled: !props.nextEnabled,
-          title: "Read-only mirror. The Qt control bar turns the page."
+          title: "Show the next page of trades.",
+          onClick: function () {
+            turnTo(props.page + 1);
+          }
         },
         "Next"
       ),
@@ -458,7 +491,12 @@
       );
     }
     parts.push(
-      h(Table, { key: "table", columns: state.columns, rows: page.rows })
+      h(Table, {
+        key: "table",
+        columns: state.columns,
+        rows: page.rows,
+        headers: chrome.headers
+      })
     );
     if (chrome.pager) {
       parts.push(
@@ -484,7 +522,8 @@
         "data-chrome": [
           chrome.summary ? "summary" : "",
           chrome.filters ? "filters" : "",
-          chrome.pager ? "pager" : ""
+          chrome.pager ? "pager" : "",
+          chrome.headers ? "headers" : ""
         ]
           .filter(Boolean)
           .join(",")
@@ -523,6 +562,7 @@
     return renderTooltip(document.createElement("div"), text);
   };
   global.acervatorChromeDefault = CHROME_DEFAULT;
+  global.acervatorHistoryPanelTurnTo = turnTo;
 
   // Render once with nothing, so a bridge that never fires shows the
   // banner rather than a blank page that agrees with every claim.
