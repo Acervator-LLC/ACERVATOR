@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger("acervator.gui")
 
 
 class BotSwarmTabMixin:
-    """The fleet visualiser."""
+    """The fleet visualiser.
+
+    ``variant_surface`` decides whether that tab is the Qt one or the
+    React one.
+    """
 
     # Supplied by MainWindow at runtime; annotation only, so no attribute
     # is created here.
@@ -14,7 +21,14 @@ class BotSwarmTabMixin:
 
     def _build_bot_swarm_tab(self) -> None:
         """Build the Bot Swarm tab and add it to the main tab widget."""
-        from ..bot_visualizer import BotVisualizationTab
+        from ..variant_surface import BOT_SWARM, surface_class
 
-        self._bot_viz = BotVisualizationTab()
+        try:
+            built = surface_class(BOT_SWARM)()
+        except Exception as exc:
+            logger.warning("React Bot Swarm tab unavailable: %s", exc)
+            from ..bot_visualizer import BotVisualizationTab
+
+            built = BotVisualizationTab()
+        self._bot_viz = built
         self._main_tabs.addTab(self._bot_viz, "Bot Swarm")

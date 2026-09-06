@@ -1,0 +1,58 @@
+/* React Console tab chrome: the page ground, the control bar and the two
+ * scrolling panes `console_tab.js` draws. Each pane's background, colour
+ * and font arrive on its own `style` attribute from the Python payload,
+ * so no rule here may set a `color` on a pane or a block.
+ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.4 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+.acervator-console-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.acervator-console-tab [data-part="control-bar"] {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.acervator-console-tab [data-part="splitter"],
+.acervator-console-tab [data-part="signal-box"] {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.acervator-console-pane {
+  min-height: 0;
+}
+
+.acervator-console-block {
+  white-space: inherit;
+}
+
+button.acervator-console-bar {
+  cursor: pointer;
+  font: inherit;
+}
+
+button.acervator-console-bar:focus {
+  outline: 1px solid var(--accent);
+}

@@ -1,4 +1,13 @@
-"""GUIArchetype — PySide6 GUI code-quality archetype.
+"""GUIArchetype — screen-quality archetype for PySide6 and React screens.
+
+JavaScript:
+  A `.js` target is graded by `js_screen`, published as the `gui-js`
+  tool. It resolves the `element(...)` calls a renderer module makes and
+  reports an unlabelled control (GUIJS001), an inert control (GUIJS002),
+  a colour literal the design tokens already serve (GUIJS003) and
+  absolute positioning (GUIJS004). ruff and bandit read Python only and
+  do not run on a `.js` target; a module `js_screen.tokenize` cannot
+  finish leaves `scanned` False.
 
 Design (in one paragraph):
   The archetype does two things: (1) STATIC AST analysis of PySide6
@@ -37,6 +46,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from dev_harness.harness import js_screen
+from dev_harness.harness.coding_archetype import detect_language
 from dev_harness.harness.report import (
     REPO_ROOT,
     ArchetypeReport,
@@ -46,7 +57,17 @@ from dev_harness.harness.report import (
     scan_rule_modules,
 )
 
-__all__ = ["ArchetypeReport", "Finding", "GUIArchetype", "main"]
+__all__ = [
+    "HANDLED_LANGUAGES",
+    "ArchetypeReport",
+    "Finding",
+    "GUIArchetype",
+    "main",
+]
+
+# The languages this archetype carries a screen analyzer for. `ruff` and
+# `bandit` read Python only, so a JavaScript target runs `gui-js` alone.
+HANDLED_LANGUAGES: frozenset[str] = frozenset({"python", "javascript"})
 
 
 _QT_WIDGET_BASES: set[str] = {
@@ -667,12 +688,15 @@ _BANDIT_SEVERITY_OVERRIDES: dict[str, str] = {
 
 
 class GUIArchetype:
-    """PySide6 GUI-quality archetype. Combines a bespoke AST analyzer
-    for GUI-specific concerns with ruff + bandit for general quality."""
+    """Screen-quality archetype for both surfaces the application draws.
+
+    A `.py` target runs the `gui-static` AST analyzer with ruff and
+    bandit; a `.js` target runs `js_screen` as `gui-js`.
+    """
 
     name = "gui_quality"
-    version = "1.2"
-    tools = ("gui-static", "ruff", "bandit")
+    version = "1.3"
+    tools = ("gui-static", "ruff", "bandit", "gui-js")
     calibration_name = "gui"
 
     def load_calibration(self) -> str:
@@ -688,6 +712,15 @@ class GUIArchetype:
             report.errors.append(f"target not found: {target}")
             report.falsification = self._build_falsification(report)
             return report
+
+        if target.is_file():
+            report.language = detect_language(target)
+            if report.language == "javascript":
+                return self._review_javascript(target, report)
+            if report.language not in HANDLED_LANGUAGES:
+                report.unhandled = True
+                report.falsification = self._unhandled_falsification(report)
+                return report
 
         # `scanned` stays False on the early return, so an empty report
         # cannot answer passed=True.
@@ -732,6 +765,77 @@ class GUIArchetype:
 
         report.falsification = self._build_falsification(report)
         return report
+
+    def _review_javascript(
+        self, target: Path, report: ArchetypeReport
+    ) -> ArchetypeReport:
+        """Grade one JavaScript renderer module with `js_screen`.
+
+        `ruff` and `bandit` read Python only and are not run here; a
+        source `js_screen.tokenize` cannot finish leaves `scanned` False.
+        """
+        try:
+            source = target.read_text(encoding="utf-8", errors="replace")
+            for rf in js_screen.scan(target, source):
+                report.findings.append(
+                    Finding(
+                        tool=rf.tool,
+                        severity=rf.severity,
+                        file=rf.file,
+                        line=rf.line,
+                        rule_id=rf.rule_id,
+                        message=rf.message,
+                    )
+                )
+            report.scanned = True
+            report.tool_availability["gui-js"] = "ok"
+        except js_screen.JsParseError as e:
+            report.tool_availability["gui-js"] = "error"
+            report.errors.append(f"gui-js: {target.name} did not tokenize: {e}")
+        except OSError as e:
+            report.tool_availability["gui-js"] = "error"
+            report.errors.append(f"gui-js: {type(e).__name__}: {e}")
+
+        scan_rule_modules(
+            report,
+            target,
+            (
+                ("scaffolding", "dev_harness.harness.rules.scaffolding"),
+                ("hallucination", "dev_harness.harness.rules.hallucination"),
+            ),
+            (".js",),
+        )
+        report.falsification = self._javascript_falsification(report)
+        return report
+
+    @staticmethod
+    def _javascript_falsification(report: ArchetypeReport) -> str:
+        """State what would prove a `gui-js` report wrong."""
+        return (
+            f"This JavaScript report is wrong if: (a) {report.target!r} builds a "
+            "control through a path js_screen.element_calls does not resolve -- a "
+            "tag or props argument that is not a string literal, a module-level "
+            "string constant, or an object variable with a literal initialiser in "
+            "the same function -- in which case NO rule graded that control; "
+            "(b) a control this names as unlabelled or inert is reached by a "
+            "delegated listener registered outside the module, which js_screen "
+            "does not follow; (c) ruff, bandit, mypy and the other Python "
+            "analyzers would have found a defect here, none of which read "
+            "JavaScript and none of which ran; (d) any of the "
+            f"{len(report.findings)} listed findings is a false positive when a "
+            "human reads the module."
+        )
+
+    @staticmethod
+    def _unhandled_falsification(report: ArchetypeReport) -> str:
+        """State what would prove an `unhandled` GUI verdict wrong."""
+        return (
+            f"This report is wrong if {report.target!r} is not "
+            f"{report.language}, or if this archetype in fact carries an "
+            f"analyzer that reads {report.language}. NO ANALYZER RAN, so "
+            f"this report says nothing about the file's quality and is not "
+            f"a pass; it records that the file type has no checker here."
+        )
 
     def _build_falsification(self, report: ArchetypeReport) -> str:
         """State the concrete conditions under which this GUI report is wrong."""
@@ -919,8 +1023,9 @@ class GUIArchetype:
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: python -m tools.harness.gui_archetype <path>")
-        print("       reviews PySide6 GUI code with static analyzer + ruff + bandit")
+        print("usage: python -m dev_harness.harness.gui_archetype <path>")
+        print("       .py  reviews PySide6 GUI code with gui-static + ruff + bandit")
+        print("       .js  reviews a React renderer module with gui-js")
         return 2
     target = Path(argv[0])
     report = GUIArchetype().review(target)
