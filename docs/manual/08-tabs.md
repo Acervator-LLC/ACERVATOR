@@ -669,6 +669,55 @@ tw = fm.horizontalAdvance(label) + 8
 badge = QRectF(label_pt.x() - tw / 2, label_pt.y() - 9, tw, 18)
 ```
 
+React draws this tab. The choice is made in one place, under the screen name
+`BOT_SWARM`. A build stamped for Qt gets the old widget. Every other build gets
+the web one, which holds the tab's page in a single view and answers the calls
+the main window already made.
+
+`src/gui/main_tabs/bot_swarm_tab.py` — `BotSwarmTabMixin._build_bot_swarm_tab`
+
+```python
+    def _build_bot_swarm_tab(self) -> None:
+        """Build the Bot Swarm tab and add it to the main tab widget."""
+        from ..variant_surface import BOT_SWARM, surface_class
+
+        try:
+            built = surface_class(BOT_SWARM)()
+```
+
+Every header control reports back to Python. The privacy dot, the Privacy Mode
+button, the Exchange, Theme and View pickers and the Wires slider each send one
+action. The screen then redraws from the answer.
+
+`src/gui/react_bot_swarm_tab.py` — `BotSwarmReactTab.take`
+
+```python
+        def take(self, params: dict) -> dict:
+            """Apply one action to the model, push the payload and return it."""
+            answer = surface.apply_action(self._state, params)
+            self._last_model = answer
+            if self._page_ready:
+                self._run(push_script(answer))
+            return answer
+```
+
+A drag between two bots opens the rate box. A drag between two bots already
+wired opens the disconnect confirmation. A drag released on empty space offers
+the source bot's outgoing wires. One method decides which of the three it is,
+so both screens ask the same question in the same words.
+
+`src/gui/main_tabs/bot_visualizer_surface.py` — `BotVisualizerModel.finish_drag`
+
+```python
+    def finish_drag(self, source_id: str, target_id: str) -> Optional[dict]:
+        """Set ``panel`` to what a wire drag from ``source_id`` asks for next.
+
+        ``WireBoard.finish_drag`` decides the outcome; this turns it into
+        the rate box, the disconnect confirmation or the wire picker the
+        screen shows.
+        """
+```
+
 Detail: [08-tabs/bot-swarm.md](08-tabs/bot-swarm.md).
 
 ## Asset Charts
@@ -2816,7 +2865,7 @@ tab row.
 | `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | no |
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | no |
 | `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | no | no |
-| `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | no | no |
+| `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes |
 | `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | no |
 | `src/gui/buy_confirmation_dialog.py` | no | - | no | no | no | no |
 | `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | no |
@@ -2868,10 +2917,10 @@ tab row.
 | `src/gui/testnet_tab.py` | `testnet_tab.js` | yes | yes | yes | no | no |
 | `src/gui/tradingview_chart.py` | `tradingview_chart.js` | yes | yes | yes | no | no |
 | `src/gui/usb_auth_widget.py` | `usb_auth_widget.js` | yes | yes | yes | no | no |
-| `src/gui/visualizer/bot_node.py` | `bot_node.js` | yes | yes | yes | no | no |
-| `src/gui/visualizer/quick_routing.py` | `quick_routing.js` | yes | yes | yes | no | no |
-| `src/gui/visualizer/themes.py` | no | - | yes | no | no | no |
-| `src/gui/visualizer/wire_canvas.py` | `wire_canvas.js` | yes | yes | yes | no | no |
+| `src/gui/visualizer/bot_node.py` | `bot_node.js` | yes | yes | yes | yes | yes |
+| `src/gui/visualizer/quick_routing.py` | `quick_routing.js` | yes | yes | yes | yes | yes |
+| `src/gui/visualizer/themes.py` | `visualizer_themes.js` | - | yes | yes | yes | yes |
+| `src/gui/visualizer/wire_canvas.py` | `wire_canvas.js` | yes | yes | yes | yes | yes |
 | `src/gui/widgets/__init__.py` | no | - | yes | no | no | no |
 | `src/gui/widgets/api_tester_tab.py` | `api_tester_tab.js` | yes | yes | yes | no | no |
 | `src/gui/widgets/bot_selection.py` | `bot_selection.js` | yes | yes | yes | no | no |
@@ -2892,9 +2941,9 @@ Totals across the 76 rows above, measured on 5 September 2026:
 ```
 React module              53
 Bridge                    67
-Manifest                  54
-Registers in Electron      8
-RENDERS                    8
+Manifest                  55
+Registers in Electron     13
+RENDERS                   13
 ```
 
 Four columns are all but complete. The fifth is at one.

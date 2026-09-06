@@ -1632,13 +1632,47 @@ DRIVEN_INTO_THE_SNAPSHOT = (
 
 
 def test_every_value_in_the_snapshot_is_backed_by_a_declared_one():
-    """A value in the answer is backed by nothing the surface declares."""
+    """A value in the answer is backed by nothing the surface declares.
+
+    ``locust_cards`` is read by ``test_each_locust_card_is_the_node_answer``.
+    """
     declared: set = set()
     for value in surface_constants().values():
         declared |= leaves(value)
     declared |= {repr(one) for one in DRIVEN_INTO_THE_SNAPSHOT}
-    unbacked = sorted(values_of(snapshot()) - declared)
+    whole = snapshot()
+    assert whole.pop("locust_cards"), "the snapshot carried no locust card"
+    unbacked = sorted(values_of(whole) - declared)
     assert unbacked == [], unbacked
+
+
+def test_each_locust_card_is_the_node_answer():
+    """``locust_cards`` holds what ``bot_node_surface`` answers for each bot."""
+    from src.gui.main_tabs import bot_node_surface
+
+    model = surface.BotVisualizerModel()
+    model.update_bots(fleet_statuses(STORED_FLEET))
+    cards = surface.locust_cards(model)
+    assert set(cards) == set(model.grid.bot_data), sorted(cards)
+    hide = bot_node_surface.masking(())
+    for bot_id, data in model.grid.bot_data.items():
+        answered = bot_node_surface.build_view_model(
+            bot_node_surface.BotNodeModel(
+                theme_key=model.grid.theme_key, bot_data=data
+            ),
+            mask=hide,
+        )
+        assert cards[bot_id] == answered, bot_id
+
+
+def test_a_masked_locust_card_hides_the_bot_identifier():
+    """A masked model asks ``bot_node_surface`` to hide the same field."""
+    model = surface.BotVisualizerModel()
+    model.update_bots(fleet_statuses(STORED_FLEET))
+    plain = surface.locust_cards(model)
+    model.toggle_identifier_mask(True)
+    masked = surface.locust_cards(model)
+    assert plain != masked, "the mask changed no locust card"
 
 
 def test_the_completeness_check_can_report_a_missing_value():
@@ -2383,6 +2417,102 @@ def test_the_bridge_handler_carries_state_between_calls():
     assert fresh["bot_ids"] == [], fresh["bot_ids"]
 
 
+#: One request per named action, each shaped to move the answer.
+ACTION_ARGUMENTS = {
+    "register_sim": {"action": "register_sim", "run_id": "s1", "label": "S", "cfg": {}},
+    "update_sim": {"action": "update_sim", "run_id": "s1", "pnl": 3.0, "trades": 2},
+    "stop_sim": {"action": "stop_sim", "run_id": "s1", "pnl": 1.0, "trades": 1},
+    "register_paper": {
+        "action": "register_paper",
+        "run_id": "p1",
+        "label": "P",
+        "cfg": {},
+    },
+    "update_paper": {"action": "update_paper", "run_id": "p1", "pnl": 4.0, "trades": 3},
+    "stop_paper": {"action": "stop_paper", "run_id": "p1", "pnl": 2.0, "trades": 1},
+    "register_live": {
+        "action": "register_live",
+        "run_id": "BTC-USD-0001",
+        "label": "L",
+        "cfg": {},
+    },
+    "update_live": {
+        "action": "update_live",
+        "run_id": "BTC-USD-0001",
+        "pnl": 5.0,
+        "trades": 4,
+    },
+    "stop_live": {
+        "action": "stop_live",
+        "run_id": "BTC-USD-0001",
+        "pnl": 6.0,
+        "trades": 5,
+    },
+    "update_bots": {"action": "update_bots", "bot_statuses": []},
+    "wire_created": {
+        "action": "wire_created",
+        "event": {
+            "source_id": "BTC-USD-0001",
+            "target_id": "ETH-USD-0002",
+            "pct": 25.0,
+        },
+    },
+    "wire_removed": {
+        "action": "wire_removed",
+        "event": {"source_id": "BTC-USD-0001", "target_id": "ETH-USD-0002"},
+    },
+    "remove_wire": {
+        "action": "remove_wire",
+        "source_id": "BTC-USD-0001",
+        "target_id": "ETH-USD-0002",
+    },
+    "animate": {"action": "animate", "dt": 0.5},
+    "set_view_mode": {"action": "set_view_mode", "mode": "grid"},
+    "set_opacity": {"action": "set_opacity", "pct": 40},
+    "set_exchange": {"action": "set_exchange", "exchange": "coinbase"},
+    "set_theme": {"action": "set_theme", "theme_key": "matrix"},
+    "set_masked": {"action": "set_masked", "masked": True},
+    "toggle_privacy_mode": {"action": "toggle_privacy_mode"},
+    "wire_sheet": {
+        "action": "wire_sheet",
+        "boxes": {"BTC-USD-0001": [0, 0, 112, 98], "ETH-USD-0002": [122, 0, 112, 98]},
+    },
+    "finish_drag": {
+        "action": "finish_drag",
+        "source_id": "BTC-USD-0001",
+        "target_id": "ETH-USD-0002",
+    },
+    "answer_panel": {"action": "answer_panel", "choice": "cancel"},
+    "hydrate": {"action": "hydrate", "state": STORED_FLEET},
+}
+
+
+#: What each action needs already done before it can move anything.
+ACTION_PRECONDITION = {
+    "update_sim": ("register_sim",),
+    "stop_sim": ("register_sim",),
+    "update_paper": ("register_paper",),
+    "stop_paper": ("register_paper",),
+    "update_live": ("register_live",),
+    "stop_live": ("register_live",),
+    "wire_removed": ("wire_created",),
+    "wire_sheet": ("wire_created",),
+    "remove_wire": ("wire_created",),
+    "animate": ("wire_created",),
+}
+
+
+def _prepared(action: str):
+    """A fleet-loaded model with whatever ``action`` needs already applied."""
+    model = surface.BotVisualizerModel()
+    model.update_bots(fleet_statuses(STORED_FLEET))
+    for earlier in ACTION_PRECONDITION.get(action, ()):
+        surface.apply_action(model, ACTION_ARGUMENTS[earlier])
+    if action == "answer_panel":
+        model.finish_drag("BTC-USD-0001", "ETH-USD-0002")
+    return model
+
+
 def test_every_named_action_moves_the_answer():
     """An action the bridge names does nothing when it is asked for."""
     surface.view_model({"reset": True})
@@ -2392,20 +2522,14 @@ def test_every_named_action_moves_the_answer():
     )
     assert digest(surface.view_model({})) != before
     for action in surface.ACTIONS:
-        assert action in surface.LAYER_OF_ACTION or action in (
-            "update_bots",
-            "wire_created",
-            "wire_removed",
-            "remove_wire",
-            "animate",
-            "set_view_mode",
-            "set_opacity",
-            "set_exchange",
-            "set_theme",
-            "set_masked",
-            "toggle_privacy_mode",
-            "hydrate",
-        ), action
+        model = _prepared(action)
+        rested = digest(surface.build_payload(model))
+        moved = digest(surface.apply_action(model, ACTION_ARGUMENTS[action]))
+        assert moved != rested, action
+    model = _prepared("")
+    rested = digest(surface.build_payload(model))
+    unnamed = digest(surface.apply_action(model, {"action": "no such action"}))
+    assert unnamed == rested, "an action the surface does not name moved the answer"
     surface.view_model({"reset": True})
 
 

@@ -228,8 +228,11 @@ def test_a_screen_answering_one_class_both_ways_is_reported() -> None:
 
 
 def test_the_seam_holds_the_history_tab_and_the_history_table() -> None:
-    """Both History choices are made in one place."""
-    assert set(variant_surface.screens()) == {HISTORY, variant_surface.HISTORY_TABLE}
+    """Both History choices are made in one place, and each switches."""
+    held = set(variant_surface.screens())
+    for screen in (HISTORY, variant_surface.HISTORY_TABLE):
+        assert screen in held, f"{screen} is not on the seam: {sorted(held)}"
+        assert surface_class(screen, REACT) is not surface_class(screen, QT)
 
 
 def test_an_unset_variant_still_answers_the_default() -> None:
