@@ -1172,11 +1172,10 @@ belongs to the people it was built for.
 
 ## The rest of the manual
 
-Twenty-five pages sit under [`docs/manual/`](docs/manual/README.md). Together
-they are larger than a README GitHub will render: the front page is cut at
-512,000 bytes and these pages come to 545,647. The parts above are therefore
-printed here, and the parts below are one click away. Every row is one section,
-with its own link.
+The manual lives under [`docs/manual/`](docs/manual/README.md). Together its
+pages are larger than a README GitHub will render, and the front page is cut at
+512,000 bytes. The parts above are therefore printed here, and the parts below
+are one click away. Every row is one section, with its own link.
 
 The rendered book is [`docs/Acervator-Product-Manual.pdf`](docs/Acervator-Product-Manual.pdf),
 built from the same pages.
