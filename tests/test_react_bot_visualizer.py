@@ -935,8 +935,8 @@ def test_the_module_names_the_absent_theme_name_source(js: JsRuntime):
 
 def test_the_theme_name_source_check_is_quiet_once_a_namer_is_present(js: JsRuntime):
     js.run(
-        "window.acervatorVisualizerThemes = { nameOf: function (key) "
-        "{ return key.toUpperCase(); } };"
+        "window.acervatorVisualizerThemes = { themeDisplayName: "
+        "function (key) { return key.toUpperCase(); } };"
     )
     report = js.push(state_payload(FULL_STATE))
     kinds = [f["fault"] for f in report["faults"]]

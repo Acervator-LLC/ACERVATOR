@@ -1364,6 +1364,43 @@ CONFIRM_HEAD_FORMAT = "Disconnect {count} Smart Wire"
 CONFIRM_PLURAL = "s"
 CONFIRM_TAIL = "\n\nThis stops profit routing between these bots and cannot be undone."
 CONFIRM_DEFAULT_BUTTON = "No"
+CONFIRM_YES_BUTTON = "Yes"
+
+PANEL_CONFIG = "config"
+PANEL_CONFIRM = "confirm"
+PANEL_PICKER = "picker"
+PANEL_OK = "ok"
+PANEL_YES = "yes"
+PANEL_CANCEL = "cancel"
+PANEL_OK_BUTTON = "OK"
+
+#: How many numbers one measured locust box carries: left, top, width, height.
+BOX_VALUES = 4
+
+#: The style the wire sheet is laid over its page with.
+OVERLAY_STYLE = {
+    "position": "absolute",
+    "left": "0",
+    "top": "0",
+    "right": "0",
+    "bottom": "0",
+}
+
+#: Every word a page needs to tell one panel from another, and to answer it.
+PANEL_WORDS = {
+    "config": PANEL_CONFIG,
+    "confirm": PANEL_CONFIRM,
+    "picker": PANEL_PICKER,
+    "ok": PANEL_OK,
+    "yes": PANEL_YES,
+    "cancel": PANEL_CANCEL,
+    "ok_button": PANEL_OK_BUTTON,
+    "yes_button": CONFIRM_YES_BUTTON,
+}
+
+# The drag has no on-screen position off a widget; the release decides alone.
+DRAG_START_POS = (0.0, 0.0)
+
 CONFIRM_UNSHOWABLE_LOG = (
     "wire-removal confirmation could not be shown (%s); refusing the removal"
 )
@@ -1789,6 +1826,9 @@ ACTIONS = {
     "set_theme": "Change the theme every locust is drawn in",
     "set_masked": "Turn the identifier mask on or off",
     "toggle_privacy_mode": "Turn every mask on, or every mask off",
+    "wire_sheet": "Redraw the wires over the locust boxes the page measured",
+    "finish_drag": "End a wire drag and open what the release asks for",
+    "answer_panel": "Take the answer to the rate box, the confirmation or the picker",
     "hydrate": "Paint the wires a stored fleet load holds",
 }
 
@@ -1826,6 +1866,8 @@ class BotVisualizerModel:
         self.tab_index = SWARM_TAB_INDEX
         self.log_lines: list[list] = []
         self.rows_sent: list[list] = []
+        self.panel: Optional[dict] = None
+        self.sheet: dict = {}
 
     def layer(self, kind: str) -> SwarmLayer:
         """One of the three layers, by name."""
@@ -1884,6 +1926,89 @@ class BotVisualizerModel:
         self.masked = (not self.masked) if masked is None else bool(masked)
         self.any_masked = self.any_masked or self.masked
 
+    def finish_drag(self, source_id: str, target_id: str) -> Optional[dict]:
+        """Set ``panel`` to what a wire drag from ``source_id`` asks for next.
+
+        ``WireBoard.finish_drag`` decides the outcome; this turns it into
+        the rate box, the disconnect confirmation or the wire picker the
+        screen shows.
+        """
+        self.panel = None
+        self.board.start_drag(source_id, DRAG_START_POS)
+        outcome = self.board.finish_drag(target_id)
+        action = outcome["action"]
+        pairs = [tuple(pair) for pair in outcome["pairs"]]
+        if action == "configure":
+            self.panel = self._config_panel(pairs[0][0], pairs[0][1])
+        elif action == "confirm_disconnect":
+            pcts = [self.board.pct_of(source, target) for source, target in pairs]
+            self.panel = self._confirm_panel(pairs, pcts, outcome["why"])
+        elif action == "pick":
+            self.panel = {
+                "kind": PANEL_PICKER,
+                "source_id": source_id,
+                "title": PICKER_OUTGOING_HEADER,
+                "entries": picker_entries(
+                    self.board.outgoing(source_id), self.board.incoming(source_id)
+                ),
+                "cancel": MENU_CANCEL,
+                "style_sheet": MENU_STYLE_SHEET,
+            }
+        return self.panel
+
+    def _config_panel(self, source_id: str, target_id: str) -> dict:
+        """The rate box shown before a new wire between two bots is made."""
+        return {
+            "kind": PANEL_CONFIG,
+            "source_id": source_id,
+            "target_id": target_id,
+            "title": WIRE_CONFIG_TITLE,
+            "prompt": wire_config_prompt(source_id, target_id),
+            "row_label": WIRE_CONFIG_ROW_LABEL,
+            "suffix": WIRE_PCT_SUFFIX,
+            "min": WIRE_PCT_MIN,
+            "max": WIRE_PCT_MAX,
+            "value": WIRE_PCT_START,
+            "width_px": WIRE_CONFIG_WIDTH_PX,
+            "ok": PANEL_OK_BUTTON,
+            "cancel": MENU_CANCEL,
+        }
+
+    def _confirm_panel(self, pairs: list, pcts: list, why: str) -> dict:
+        """The disconnect confirmation shown over ``pairs``."""
+        return {
+            "kind": PANEL_CONFIRM,
+            "title": CONFIRM_TITLE,
+            "body": confirm_body(pairs, pcts, why),
+            "pairs": [[source, target] for source, target in pairs],
+            "default": CONFIRM_DEFAULT_BUTTON,
+            "yes": CONFIRM_YES_BUTTON,
+            "no": CONFIRM_DEFAULT_BUTTON,
+        }
+
+    def answer_panel(self, choice: str, pct: Any = None, entry: Any = None) -> None:
+        """Take the operator's answer to ``panel`` and clear it.
+
+        ``ok`` makes the wire the rate box was set for, ``yes`` cuts every
+        pair the confirmation named, and an ``entry`` from the picker cuts
+        the one wire it names.
+        """
+        panel = self.panel
+        self.panel = None
+        if not isinstance(panel, dict) or choice == PANEL_CANCEL:
+            return
+        kind = panel.get("kind")
+        if kind == PANEL_CONFIG and choice == PANEL_OK:
+            share = WIRE_PCT_START if pct is None else pct
+            self.board.add(panel["source_id"], panel["target_id"], share)
+        elif kind == PANEL_CONFIRM and choice == PANEL_YES:
+            for source, target in panel.get("pairs") or []:
+                self.board.remove(source, target)
+        elif kind == PANEL_PICKER and isinstance(entry, (list, tuple)):
+            chosen = list(entry)
+            if len(chosen) == 3:
+                self.board.remove(chosen[1], chosen[2])
+
     def toggle_privacy_mode(self) -> None:
         """Turn every mask on, or every mask off, and rewrite the button."""
         turning_on = not self.any_masked
@@ -1913,6 +2038,52 @@ class BotVisualizerModel:
 
 
 PANE_MODEL = BotVisualizerModel()
+
+
+def wire_sheet(model: BotVisualizerModel, boxes: Any) -> dict:
+    """The wire sheet drawn over the locust boxes the page measured.
+
+    ``boxes`` maps a bot id to its left, top, width and height; the
+    centre of each is what ``wire_canvas_surface`` paints between.
+    """
+    from . import wire_canvas_surface
+
+    centers = {
+        str(bot_id): list(wire_center((box[0], box[1]), (box[2], box[3])))
+        for bot_id, box in (boxes or {}).items()
+        if isinstance(box, (list, tuple)) and len(box) == BOX_VALUES
+    }
+    state = wire_canvas_surface.CanvasTabState(
+        wires=[dict(one) for one in model.board.wires],
+        bot_centers=centers,
+        theme_key=model.grid.theme_key,
+        wire_opacity_pct=model.opacity_pct,
+    )
+    return wire_canvas_surface.build_view_model(
+        wire_canvas_surface.WireCanvasModel(state)
+    )
+
+
+def locust_cards(model: BotVisualizerModel) -> dict:
+    """One locust card payload per bot in the grid, keyed by bot id.
+
+    ``bot_node_surface`` builds each card, so the grid draws the same
+    locust the Qt ``BotNodeWidget`` paints.
+    """
+    from . import bot_node_surface
+
+    hide = bot_node_surface.masking(
+        (bot_node_surface.MASK_FIELD_ID,) if model.masked else ()
+    )
+    return {
+        bot_id: bot_node_surface.build_view_model(
+            bot_node_surface.BotNodeModel(
+                theme_key=model.grid.theme_key, bot_data=data
+            ),
+            mask=hide,
+        )
+        for bot_id, data in model.grid.bot_data.items()
+    }
 
 
 def build_payload(model: BotVisualizerModel) -> dict:
@@ -2201,6 +2372,16 @@ def build_payload(model: BotVisualizerModel) -> dict:
         "rows_sent": [[dict(one) for one in sent] for sent in model.rows_sent],
         "wires": [dict(one) for one in model.board.wires],
         "wire_count": len(model.board.wires),
+        "locust_cards": locust_cards(model),
+        "wire_sheet": dict(model.sheet),
+        "overlay_style": dict(OVERLAY_STYLE),
+        "bot_symbols": {
+            bot_id: str((data or {}).get("symbol", ""))
+            for bot_id, data in model.grid.bot_data.items()
+        },
+        "panel": dict(model.panel) if model.panel else {},
+        "panel_words": dict(PANEL_WORDS),
+        "drag_start_pos": list(DRAG_START_POS),
         "dragging": model.board.dragging,
         "drag_start_id": model.board.drag_start_id,
         "emitted": [list(one) for one in model.board.emitted],
@@ -2236,17 +2417,13 @@ LAYER_OF_ACTION = {
 }
 
 
-def view_model(params: dict) -> dict:
-    """Bridge handler for ``bot_visualizer.state``.
+def apply_action(model: BotVisualizerModel, params: dict) -> dict:
+    """Apply one ``action`` from ``params`` to ``model`` and return its payload.
 
-    Reads ``reset`` and one ``action``. The rows, the wires and the
-    fleet persist between calls because the screen's own state does;
-    ``reset`` is what a fresh paint sends.
+    ``view_model`` and the Qt-hosted React tab both dispatch through here,
+    so a screen served over the bridge and a screen drawn in the window
+    take the same action by the same code.
     """
-    global PANE_MODEL
-    if params.get("reset", False):
-        PANE_MODEL = BotVisualizerModel()
-    model = PANE_MODEL
     action = params.get("action", "")
     kind = LAYER_OF_ACTION.get(action)
     if kind is not None:
@@ -2291,6 +2468,31 @@ def view_model(params: dict) -> dict:
         model.toggle_identifier_mask(params.get("masked"))
     elif action == "toggle_privacy_mode":
         model.toggle_privacy_mode()
+    elif action == "wire_sheet":
+        model.sheet = wire_sheet(model, params.get("boxes"))
+    elif action == "finish_drag":
+        model.finish_drag(
+            str(params.get("source_id", "")), str(params.get("target_id", ""))
+        )
+    elif action == "answer_panel":
+        model.answer_panel(
+            str(params.get("choice", PANEL_CANCEL)),
+            pct=params.get("pct"),
+            entry=params.get("entry"),
+        )
     elif action == "hydrate":
         model.hydrate(params.get("state") or {})
     return build_payload(model)
+
+
+def view_model(params: dict) -> dict:
+    """Bridge handler for ``bot_visualizer.state``.
+
+    Reads ``reset`` and one ``action``. The rows, the wires and the
+    fleet persist between calls because the screen's own state does;
+    ``reset`` is what a fresh paint sends.
+    """
+    global PANE_MODEL
+    if params.get("reset", False):
+        PANE_MODEL = BotVisualizerModel()
+    return apply_action(PANE_MODEL, params)
