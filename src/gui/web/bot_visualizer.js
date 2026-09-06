@@ -881,7 +881,7 @@
     var drawnFor = hooks().useRef(null);
     var stamp = JSON.stringify([wires, opacity, model[THEME_KEY]]);
     hooks().useEffect(function () {
-      if (drawnFor.current === stamp) {
+      if (drawnFor.current === stamp || !wires.length) {
         return;
       }
       var page = mount.current === null ? null : mount.current.parentElement;
@@ -899,7 +899,12 @@
     overlayProps.style.pointerEvents = NONE;
     overlayProps[PART_ATTR] = WIRE_OVERLAY_PART;
     overlayProps[COUNT_ATTR] = String(wires.length);
-    if (!api || typeof api.Sheet !== FUNCTION_KIND || !owns(sheet, STYLE_SHEET)) {
+    if (
+      !wires.length ||
+      !api ||
+      typeof api.Sheet !== FUNCTION_KIND ||
+      !owns(sheet, STYLE_SHEET)
+    ) {
       return element(DIV_TAG, overlayProps, null);
     }
     return element(DIV_TAG, overlayProps, element(api.Sheet, { model: sheet }));
