@@ -3212,7 +3212,7 @@ rather than typed.
 
 | Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `splash_screen.py` | no | - | yes | no | no | - | no | shelved |
+| `splash_screen.py` | no | - | no | no | no | - | no | shelved |
 | `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | no | yes | yes | shelved |
 | `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no | shelved |
