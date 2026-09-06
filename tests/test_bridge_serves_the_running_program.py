@@ -347,13 +347,32 @@ def test_the_publisher_fills_the_section_on_the_thread_that_emits() -> None:
     assert threading.get_ident() == emitter
 
 
-def _torn_reads(holder: Any) -> list:
-    """Read ``holder`` while another thread republishes, and return the mismatches.
+def _is_torn(held: dict) -> bool:
+    """Answer whether a section's trade count disagrees with ``last_fetched_ts``.
 
-    Every published section pairs ``last_fetched_ts`` with that many trades, so
-    a read whose two fields disagree came from a half-written section.
+    Every section published below pairs ``last_fetched_ts`` with that many
+    trades, so a disagreement can only come from a half-written section.
     """
-    holder.publish("history", trades=[], last_fetched_ts=0.0)
+    return len(held["trades"]) != int(held["last_fetched_ts"])
+
+
+def _publish_count(holder: Any, count: int) -> None:
+    """Publish ``count`` trades against a matching ``last_fetched_ts``."""
+    holder.publish(
+        "history",
+        trades=[_trade("CHIP/USD")] * count,
+        last_fetched_ts=float(count),
+    )
+
+
+def test_a_reader_never_sees_a_half_written_section() -> None:
+    """No ``LiveSystem.section`` read tears while another thread republishes.
+
+    A failure means the thread running ``serve`` read one refresh's trades
+    against another refresh's ``last_fetched_ts``.
+    """
+    live = LiveSystem()
+    _publish_count(live, 0)
     stop = threading.Event()
     torn: list = []
 
@@ -361,59 +380,46 @@ def _torn_reads(holder: Any) -> list:
         count = 0
         while not stop.is_set():
             count = (count + 1) % 5
-            holder.publish(
-                "history",
-                trades=[_trade("CHIP/USD")] * count,
-                last_fetched_ts=float(count),
-            )
+            _publish_count(live, count)
 
     thread = threading.Thread(target=writer, daemon=True)
     thread.start()
     try:
         for _ in range(20000):
-            held = holder.section("history")
-            if len(held["trades"]) != int(held["last_fetched_ts"]):
-                torn.append(held["last_fetched_ts"])
+            held = live.section("history")
+            if _is_torn(held):
+                torn.append(held)
     finally:
         stop.set()
         thread.join(timeout=5.0)
-    return torn
+
+    assert torn == [], torn[:3]
 
 
-def test_a_reader_never_sees_a_half_written_section() -> None:
-    """Every ``LiveSystem.section`` read pairs the trades with their fetch time.
+def test_control_is_torn_reports_a_section_written_one_field_at_a_time() -> None:
+    """``_is_torn`` reports the read taken between two field writes.
 
-    A failure means the thread running ``serve`` could read one refresh's
-    trades against another refresh's ``last_fetched_ts``.
-    """
-    torn = _torn_reads(LiveSystem())
-
-    assert torn == [], torn[:5]
-
-
-def test_control_a_field_at_a_time_writer_is_caught_by_that_same_reader() -> None:
-    """The control for ``LiveSystem``: a torn writer fills ``torn``.
-
-    A failure means the reader loop above could not report a mismatch and its
-    empty ``torn`` proves nothing about ``publish``.
+    A failure means the loop above could report nothing and its empty
+    ``torn`` says nothing about ``LiveSystem.publish``.
     """
 
     class TornHolder:
+        """A holder writing each field on its own, read between the two."""
+
         def __init__(self) -> None:
-            self._held = {"trades": [], "last_fetched_ts": 0.0}
+            self.held = {"trades": [], "last_fetched_ts": 0.0}
+            self.seen: list = []
 
-        def publish(self, name: str, **values: Any) -> None:
-            del name
-            for key, value in values.items():
-                self._held[key] = value
+        def publish_one_field_at_a_time(self, count: int) -> None:
+            self.held["trades"] = [_trade("CHIP/USD")] * count
+            self.seen.append(dict(self.held))
+            self.held["last_fetched_ts"] = float(count)
+            self.seen.append(dict(self.held))
 
-        def section(self, name: str) -> dict:
-            del name
-            return dict(self._held)
+    holder = TornHolder()
+    holder.publish_one_field_at_a_time(3)
 
-    torn = _torn_reads(TornHolder())
-
-    assert torn, "the reader loop never caught a field-at-a-time write"
+    assert [_is_torn(one) for one in holder.seen] == [True, False], holder.seen
 
 
 def test_the_main_window_still_paints_after_the_bridge_wiring() -> None:
