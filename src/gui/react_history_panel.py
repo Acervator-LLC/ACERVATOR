@@ -38,6 +38,16 @@ ASSET_NAMES: tuple[str, ...] = (
 
 STYLE_ASSET = "history_panel.css"
 
+#: The four modules a panel's ``styleOf`` is parsed by. Order is load order,
+#: taken from ``desktop/renderer/index.html``. A page that leaves them out
+#: paints no colour a Qt style sheet in its payload asked for.
+STYLE_SOURCE_ASSETS: tuple[str, ...] = (
+    "design_tokens.js",
+    "theme_engine.js",
+    "shared_widgets.js",
+    "header_strip.js",
+)
+
 #: ``HistoryTab`` draws its own summary line, filter bar and pager.
 TABLE_ONLY_CHROME = {"summary": False, "filters": False, "pager": False}
 

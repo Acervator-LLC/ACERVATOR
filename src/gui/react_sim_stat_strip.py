@@ -13,7 +13,7 @@ import logging
 from typing import Any, Callable
 
 from .main_tabs import sim_stat_strip_surface as surface
-from .react_history_panel import page_html
+from .react_history_panel import STYLE_SOURCE_ASSETS, page_html
 
 try:
     from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -36,11 +36,12 @@ STRIP_HEIGHT_PX = 44
 
 STRIP_STYLE_ASSETS: tuple[str, ...] = ("sim_stat_strip.css",)
 
-#: The three scripts the page carries. Order is load order.
+#: The scripts the page carries. Order is load order, and the style source
+#: comes before ``sim_stat_strip.js``, which parses its sheets with it.
 STRIP_SCRIPT_ASSETS: tuple[str, ...] = (
-    "vendor/react.production.min.js",
-    "vendor/react-dom.production.min.js",
-    "sim_stat_strip.js",
+    ("vendor/react.production.min.js", "vendor/react-dom.production.min.js")
+    + STYLE_SOURCE_ASSETS
+    + ("sim_stat_strip.js",)
 )
 
 STRIP_BODY = f'<div id="{STRIP_ROOT_ID}"></div>'

@@ -185,7 +185,7 @@ class SimulatorTab(QWidget):
         self.nuclear_mode = None
         if NuclearModePanel is not None:
             try:
-                self.nuclear_mode = NuclearModePanel(
+                self.nuclear_mode = self._nuclear_panel_class()(
                     activity_log_cb=self.log_activity,
                     perf_log_cb=self.log_performance,
                     async_loop_getter=lambda: self._async_loop,
@@ -461,6 +461,22 @@ class SimulatorTab(QWidget):
             from .sim_stat_strip import SimStatStrip
 
             return SimStatStrip(self)
+
+    def _nuclear_panel_class(self) -> type:
+        """The Nuclear Mode panel class the build variant asks for.
+
+        ``variant_surface`` holds the Qt panel and the React panel under
+        ``NUCLEAR_MODE``; both take the same three callbacks.
+        """
+        try:
+            from ..variant_surface import NUCLEAR_MODE, surface_class
+
+            return surface_class(NUCLEAR_MODE)
+        except Exception as exc:  # noqa: BLE001 - GUI import guard
+            logger.warning("nuclear panel unavailable, using the Qt panel: %s", exc)
+            from .nuclear_mode_panel import NuclearModePanel as _QtNuclearPanel
+
+            return _QtNuclearPanel
 
     def mount_bot_status_table(self) -> bool:
         """Put the Trading Tab's bot table in the Simulator.

@@ -124,6 +124,12 @@ class NuclearModePanel(QWidget):
         self._sim_voting_readout = None
         self._sim_stat_strip = None
 
+        self._build_ui()
+
+        self._rescan_cache()
+
+    def _build_ui(self) -> None:
+        """Build the header, the fleet card, the run settings and the status grid."""
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 8, 8, 8)
         outer.setSpacing(8)
@@ -328,7 +334,63 @@ class NuclearModePanel(QWidget):
         self._refresh_timer.setInterval(500)
         self._refresh_timer.timeout.connect(self._refresh_status)
 
-        self._rescan_cache()
+    def _set_fleet_detail(self, text: str) -> None:
+        """Show ``text`` on the fleet readout row."""
+        self._fleet_detail.setText(text)
+
+    def _set_empty_notice(self, text: str, visible: bool) -> None:
+        """Show ``text`` as the empty-fleet notice, or hide the notice."""
+        self._empty_label.setText(text)
+        self._empty_label.setVisible(bool(visible))
+
+    def _set_start_enabled(self, enabled: bool) -> None:
+        """Let the operator press Start, or refuse."""
+        self._start_btn.setEnabled(bool(enabled))
+
+    def _set_stop_enabled(self, enabled: bool) -> None:
+        """Let the operator press Stop, or refuse."""
+        self._stop_btn.setEnabled(bool(enabled))
+
+    def _set_reload_enabled(self, enabled: bool) -> None:
+        """Let the operator press Reload fleet, or refuse."""
+        self._refresh_btn.setEnabled(bool(enabled))
+
+    def _set_run_controls_enabled(self, enabled: bool) -> None:
+        """Let the operator change the four run settings, or refuse."""
+        live = bool(enabled)
+        self._cycle_candles_spin.setEnabled(live)
+        self._max_cycles_spin.setEnabled(live)
+        self._load_osc_check.setEnabled(live)
+        self._noise_check.setEnabled(live)
+
+    def _cycle_candles(self) -> int:
+        """Candles per cycle, as the cycle-length control reads."""
+        return int(self._cycle_candles_spin.value())
+
+    def _max_cycles(self) -> int:
+        """Cycles to stop after, as the max-cycles control reads."""
+        return int(self._max_cycles_spin.value())
+
+    def _noise_enabled(self) -> bool:
+        """Whether the market-structure tick box is ticked."""
+        return bool(self._noise_check.isChecked())
+
+    def _load_oscillation(self) -> bool:
+        """Whether the system-load tick box is ticked."""
+        return bool(self._load_osc_check.isChecked())
+
+    def _set_status_text(self, key: str, text: str) -> None:
+        """Show ``text`` on the live-status row ``key`` names."""
+        label = self._status_labels.get(key)
+        if label is not None:
+            label.setText(text)
+
+    def _set_timer_running(self, running: bool) -> None:
+        """Run the 500 ms status tick, or stop it."""
+        if running:
+            self._refresh_timer.start()
+            return
+        self._refresh_timer.stop()
 
     def _rescan_cache(self) -> None:
         """Preview the FLEET this soak will load.
@@ -347,41 +409,41 @@ class NuclearModePanel(QWidget):
         `prepare()` does the real load at Start and reports its own
         reasons for refusing.
         """
-        self._empty_label.hide()
+        self._set_empty_notice("", False)
         try:
             from src.simulator.fleet import bot_state_loader as _loader
 
             cfgs = _loader.load_bot_configs_from_state()
             wires = _loader.load_smart_wires_from_state()
         except Exception as exc:  # noqa: BLE001 - preview is best-effort
-            self._fleet_detail.setText(
+            self._set_fleet_detail(
                 f"Could not read bot_state — {type(exc).__name__}: {exc}"
             )
-            self._start_btn.setEnabled(False)
+            self._set_start_enabled(False)
             return
 
         if not cfgs:
-            self._fleet_detail.setText("—")
-            self._start_btn.setEnabled(False)
-            self._empty_label.setText(
+            self._set_fleet_detail("—")
+            self._set_start_enabled(False)
+            self._set_empty_notice(
                 "bot_state has no scrumming bots, so there is no fleet to "
                 "stress.\n\n"
                 "Nuclear Mode loops the LIVE fleet's own Stone Tablets "
                 "under varying\nmarket structure and system load. It does "
                 "not synthesise bots, and it\nnever writes to bot_state or "
-                "to the tablet archive."
+                "to the tablet archive.",
+                True,
             )
-            self._empty_label.show()
             return
 
         symbols = sorted(
             {str(c.get("symbol", "") or "") for c in cfgs if c.get("symbol")}
         )
-        self._fleet_detail.setText(
+        self._set_fleet_detail(
             f"{len(cfgs)} bot(s) · {len(symbols)} symbol(s) · "
             f"{len(wires)} Smart Wire(s) from bot_state"
         )
-        self._start_btn.setEnabled(True)
+        self._set_start_enabled(True)
 
     def _on_start_clicked(self) -> None:
         """Start a fleet soak.
@@ -415,12 +477,12 @@ class NuclearModePanel(QWidget):
             return
         try:
             self._controller = NuclearFleetController(
-                cycle_candles=int(self._cycle_candles_spin.value()),
+                cycle_candles=self._cycle_candles(),
                 activity_cb=self._activity_log_cb,
                 perf_cb=self._perf_log_cb,
-                max_cycles=(int(self._max_cycles_spin.value()) or None),
-                load_oscillation=self._load_osc_check.isChecked(),
-                noise_enabled=self._noise_check.isChecked(),
+                max_cycles=(self._max_cycles() or None),
+                load_oscillation=self._load_oscillation(),
+                noise_enabled=self._noise_enabled(),
             )
         except Exception as exc:  # noqa: BLE001 - construction guard
             self._activity_log_cb(
@@ -477,30 +539,23 @@ class NuclearModePanel(QWidget):
             self._controller = None
             return
 
-        self._start_btn.setEnabled(False)
-        self._stop_btn.setEnabled(True)
-        self._refresh_btn.setEnabled(False)
-        self._cycle_candles_spin.setEnabled(False)
-        self._max_cycles_spin.setEnabled(False)
-        self._load_osc_check.setEnabled(False)
-        self._noise_check.setEnabled(False)
-        self._refresh_timer.start()
+        self._set_start_enabled(False)
+        self._set_stop_enabled(True)
+        self._set_reload_enabled(False)
+        self._set_run_controls_enabled(False)
+        self._set_timer_running(True)
 
     def _on_stop_clicked(self) -> None:
         if self._controller is not None:
             self._controller.stop()
-        self._stop_btn.setEnabled(False)
-        self._start_btn.setEnabled(True)
-        self._refresh_btn.setEnabled(True)
-        # Must mirror the disable list in _on_start_clicked exactly.
-        self._cycle_candles_spin.setEnabled(True)
-        self._max_cycles_spin.setEnabled(True)
-        self._load_osc_check.setEnabled(True)
-        self._noise_check.setEnabled(True)
+        self._set_stop_enabled(False)
+        self._set_start_enabled(True)
+        self._set_reload_enabled(True)
+        self._set_run_controls_enabled(True)
         # Stop is cooperative, so this shows the state when Stop was
         # asked, not after the cycle drains.
         self._refresh_status()
-        self._refresh_timer.stop()
+        self._set_timer_running(False)
 
     def set_swarm_getter(self, getter) -> None:
         """The Simulator Swarm this mode drives.
@@ -716,18 +771,13 @@ class NuclearModePanel(QWidget):
             logger.debug("nuclear: visual feed failed: %s", exc)
 
         for _label, key in _STATUS_FIELDS:
-            lbl = self._status_labels.get(key)
-            if lbl is None:
-                continue
             try:
-                lbl.setText(self._fmt_status(key, snap.get(key)))
+                self._set_status_text(key, self._fmt_status(key, snap.get(key)))
             except Exception as exc:  # noqa: BLE001 - one bad field only
                 logger.debug("nuclear: status field %s: %s", key, exc)
 
-        last = self._status_labels.get("last_exception")
-        if last is not None:
-            txt = str(snap.get("last_error", "") or "")
-            last.setText(txt if txt else "-")
+        txt = str(snap.get("last_error", "") or "")
+        self._set_status_text("last_exception", txt if txt else "-")
 
     @staticmethod
     def _fmt_status(key: str, val) -> str:
