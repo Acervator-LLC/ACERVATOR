@@ -12,12 +12,17 @@
 //
 // Every other converted panel is drawn by `panel_host.js` into `#panels`,
 // one host element each, and only when the bridge is there to answer.
+//
+// `tab_bar.js` puts one tab in `#tabs` for each of those panels and shows
+// the selected one on its own. `acervatorMountPanels` still draws them all
+// at once for a caller that wants the whole set.
 
 "use strict";
 
 (function (global) {
   var METHOD = "history.view_model";
   var PANELS_ID = "panels";
+  var TABS_ID = "tabs";
 
   function hasBridge() {
     return Boolean(global.acervator) && typeof global.acervator.call === "function";
@@ -75,12 +80,24 @@
     );
   }
 
+  function buildTabs() {
+    if (!global.acervatorTabBar) {
+      showError("the tab bar is not present");
+      return [];
+    }
+    return global.acervatorTabBar.build(
+      document.getElementById(TABS_ID),
+      document.getElementById(PANELS_ID)
+    );
+  }
+
   global.acervatorReload = load;
   global.acervatorReloadTokens = loadTokens;
   global.acervatorMountPanels = mountPanels;
+  global.acervatorBuildTabs = buildTabs;
   loadTokens();
   load();
   if (hasBridge()) {
-    mountPanels();
+    buildTabs();
   }
 })(window);

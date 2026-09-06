@@ -238,6 +238,30 @@
     held = { list: null, tab: null, selectedBotId: null };
   }
 
+  // The shell draws this tab by its module name; the host reads that name
+  // off the script tag running now, so it is written down nowhere. The list
+  // module owns the fleet request, so its loader and its fault are used here.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: function (target, model) {
+        return renderShell(target, model, undefined);
+      },
+      load: function (params) {
+        var loader = global[LIST_LOADER];
+        if (typeof loader !== FUNCTION_KIND) {
+          return Promise.resolve(null);
+        }
+        return loader(isPlainObject(params) ? params.list : undefined);
+      },
+      loadError: function () {
+        var found = global[LIST_API];
+        return found && typeof found.loadError === FUNCTION_KIND
+          ? found.loadError()
+          : null;
+      }
+    });
+  }
+
   global.acervatorSetBotSwarmTab = setShell;
   global.acervatorBotSwarmTab = {
     SwarmTab: SwarmTab,

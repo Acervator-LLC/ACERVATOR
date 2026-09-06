@@ -223,7 +223,8 @@ def io_watched(module, drive=""):
     """Import ``module`` and run ``drive`` with file and socket calls trapped.
 
     ``touched`` names every trap that fired, so an empty list is a run
-    that reached no file, socket, address or browser.
+    that reached no file, socket, address or browser. ``refuse`` records a
+    ``webbrowser`` call without starting a browser.
     """
     probe = (
         "import builtins, importlib, json, pathlib, socket, ssl\n"
@@ -234,13 +235,20 @@ def io_watched(module, drive=""):
         "        touched.append(name)\n"
         "        return real(*a, **k)\n"
         "    return fire\n"
+        "def refuse(name):\n"
+        "    def fire(*a, **k):\n"
+        "        touched.append(name)\n"
+        "        return False\n"
+        "    return fire\n"
         "builtins.open = trap('open', builtins.open)\n"
         "socket.socket = trap('socket', socket.socket)\n"
         "socket.create_connection = trap('create_connection',"
         " socket.create_connection)\n"
         "ssl.create_default_context = trap('ssl', ssl.create_default_context)\n"
         "urllib.request.urlopen = trap('urlopen', urllib.request.urlopen)\n"
-        "webbrowser.open = trap('webbrowser', webbrowser.open)\n"
+        "webbrowser.open = refuse('webbrowser')\n"
+        "webbrowser.open_new = refuse('webbrowser')\n"
+        "webbrowser.open_new_tab = refuse('webbrowser')\n"
         "pathlib.Path.read_text = trap('read_text', pathlib.Path.read_text)\n"
         "pathlib.Path.write_text = trap('write_text', pathlib.Path.write_text)\n"
         "pathlib.Path.read_bytes = trap('read_bytes', pathlib.Path.read_bytes)\n"
