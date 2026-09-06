@@ -229,6 +229,43 @@ instead of going blank.
 self._label.setText("(no crypto news feeds reachable)")
 ```
 
+**Functional.** In the React build the strip is drawn by
+`crypto_news_ticker.js` into the header space the exchange screen keeps between
+the Privacy Mode button and + New Bot. The exchange screen names that space
+only when the strip is there; where the strip would not build, the header takes
+plain space instead and the two buttons keep their positions.
+
+`src/gui/main_tabs/exchange_tab_surface.py` — `react_news_ticker`
+
+```python
+def react_news_ticker() -> str:
+    """The module that draws the news strip, as ``build_news_ticker`` reads it.
+
+    ``ExchangeTabModel`` calls this as its ``news_ticker_factory``, so
+    ``news_ticker`` is set and the header keeps the strip's space.
+    """
+    return NEWS_TICKER_MODULE
+```
+
+**Functional.** Hovering the headline pauses the step timer and moving away
+starts it again. Clicking the headline opens that story. Each of the three
+sends one request and redraws the strip from the answer, so the strip on screen
+matches what the backend holds.
+
+`src/gui/main_tabs/crypto_news_ticker_surface.py` —
+`CryptoNewsTickerModel.handle_event`
+
+```python
+if event_type == EVENT_ENTER:
+    self.paused = True
+    self.calls.append([HOVER_PAUSED])
+    return False
+if event_type == EVENT_LEAVE:
+    self.paused = False
+    self.calls.append([HOVER_RELEASED])
+    return False
+```
+
 #### The bot tables
 
 **Functional.** The Scrumming Bots table carries ten columns. Nine are named
@@ -351,8 +388,8 @@ def extractor_statuses(statuses: Any) -> list:
     ]
 ```
 
-**Functional.** The exchange screen mounts both tables in one step, each into
-its own space and each asked for its own view model.
+**Functional.** The exchange screen mounts its three children in one step, each
+into its own space and each asked for its own view model.
 
 `src/gui/web/exchange_tab.js` — `mountChildren`
 
@@ -360,7 +397,8 @@ its own space and each asked for its own view model.
 function mountChildren(target, model) {
   return Promise.all([
     mountScrumTable(target, model),
-    mountExtractorTable(target, model)
+    mountExtractorTable(target, model),
+    mountNewsTicker(target, model)
   ]).then(function (drawn) {
     return drawn.filter(function (name) {
       return name !== null;

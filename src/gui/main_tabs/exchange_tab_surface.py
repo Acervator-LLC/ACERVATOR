@@ -71,6 +71,7 @@ PRIVACY_FOCUSABLE = False
 
 NEWS_TICKER_STRETCH = 1
 NEWS_TICKER_FAILED_LOG = "news ticker failed to initialise: %s"
+NEWS_TICKER_MODULE = "crypto_news_ticker"
 
 ADD_BOT_LABEL = "+ New Bot"
 ADD_BOT_ACCENT = True
@@ -785,6 +786,26 @@ PANE_MODEL: Optional[ExchangeTabModel] = None
 PANE_MODELS: Dict[str, ExchangeTabModel] = {}
 
 
+def react_news_ticker() -> str:
+    """The module that draws the news strip, as ``build_news_ticker`` reads it.
+
+    ``ExchangeTabModel`` calls this as its ``news_ticker_factory``, so
+    ``news_ticker`` is set and the header keeps the strip's space.
+    """
+    return NEWS_TICKER_MODULE
+
+
+def screen(exchange_id: str, exchange_name: str) -> ExchangeTabModel:
+    """One ``ExchangeTabModel`` wired to ``react_news_ticker``.
+
+    ``pane_model``, ``pane_model_for`` and ``view_model`` all build through
+    here, so every screen the bridge serves carries the news strip.
+    """
+    return ExchangeTabModel(
+        exchange_id, exchange_name, news_ticker_factory=react_news_ticker
+    )
+
+
 def pane_model() -> ExchangeTabModel:
     """The one screen the bridge keeps between calls.
 
@@ -794,7 +815,7 @@ def pane_model() -> ExchangeTabModel:
     """
     global PANE_MODEL
     if PANE_MODEL is None:
-        PANE_MODEL = ExchangeTabModel(DEFAULT_EXCHANGE_ID, DEFAULT_EXCHANGE_NAME)
+        PANE_MODEL = screen(DEFAULT_EXCHANGE_ID, DEFAULT_EXCHANGE_NAME)
     return PANE_MODEL
 
 
@@ -806,7 +827,7 @@ def pane_model_for(exchange_id: str, exchange_name: str) -> ExchangeTabModel:
     """
     held = PANE_MODELS.get(exchange_id)
     if held is None:
-        held = ExchangeTabModel(exchange_id, exchange_name)
+        held = screen(exchange_id, exchange_name)
         PANE_MODELS[exchange_id] = held
     return held
 
@@ -858,6 +879,7 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "privacy_focus_policy": PRIVACY_FOCUS_POLICY,
         "privacy_focusable": PRIVACY_FOCUSABLE,
         "news_ticker_stretch": NEWS_TICKER_STRETCH,
+        "news_ticker_module": NEWS_TICKER_MODULE,
         "news_ticker_failed_log": NEWS_TICKER_FAILED_LOG,
         "news_ticker_built": model.news_ticker is not None,
         "news_ticker_started": model.news_ticker_started,
@@ -979,7 +1001,7 @@ def view_model(params: dict) -> dict:
     """Bridge handler reading each request field a ``*_PARAM`` constant names."""
     global PANE_MODEL
     if params.get(RESET_PARAM, False):
-        PANE_MODEL = ExchangeTabModel(
+        PANE_MODEL = screen(
             params.get(EXCHANGE_ID_PARAM, DEFAULT_EXCHANGE_ID),
             params.get(EXCHANGE_NAME_PARAM, DEFAULT_EXCHANGE_NAME),
         )
