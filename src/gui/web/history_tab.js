@@ -395,6 +395,20 @@
     return root;
   }
 
+  // The shell draws this tab by its module name; the host reads that name
+  // off the script tag running now, so it is written down nowhere.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: function (target) {
+        return renderTab(target, {});
+      },
+      load: loadTab,
+      loadError: function () {
+        return loadFault;
+      }
+    });
+  }
+
   global.acervatorHistoryTab = {
     method: METHOD,
     panelChrome: PANEL_CHROME,

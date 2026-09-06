@@ -3,6 +3,10 @@
 // Owns two things: the window, and the Python backend the window talks
 // to. The backend is a child process reached over its own stdin and
 // stdout, so the frontend opens no socket and listens on no port.
+//
+// That child is the trading program itself, started as `main.py --bridge`,
+// so a panel reads the bots, exchange sessions and state of a running
+// system rather than an empty one.
 
 "use strict";
 
@@ -11,7 +15,8 @@ const { spawn } = require("child_process");
 const path = require("path");
 
 const REPO_ROOT = path.join(__dirname, "..");
-const BRIDGE_MODULE = "src.core.desktop_bridge";
+const BRIDGE_SCRIPT = "main.py";
+const BRIDGE_FLAG = "--bridge";
 const CALL_CHANNEL = "acervator:call";
 
 function pythonExecutable() {
@@ -30,7 +35,7 @@ class Bridge {
   }
 
   start() {
-    this.child = spawn(pythonExecutable(), ["-m", BRIDGE_MODULE], {
+    this.child = spawn(pythonExecutable(), [BRIDGE_SCRIPT, BRIDGE_FLAG], {
       cwd: REPO_ROOT,
       stdio: ["pipe", "pipe", "pipe"]
     });

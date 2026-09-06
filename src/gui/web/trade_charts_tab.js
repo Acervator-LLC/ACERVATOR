@@ -1181,6 +1181,16 @@
     lastTarget = null;
   }
 
+  // The shell draws this tab by its module name; the host reads that name
+  // off the script tag running now, so it is written down nowhere.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderTab,
+      load: loadCharts,
+      loadError: loadError
+    });
+  }
+
   global.acervatorSetCharts = setCharts;
   global.acervatorLoadCharts = loadCharts;
   global.acervatorCharts = {
