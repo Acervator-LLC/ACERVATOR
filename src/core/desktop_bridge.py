@@ -8,6 +8,11 @@ on one line, and one response is one JSON object on one line:
     -> {"id": 1, "method": "history.view_model", "params": {...}}
     <- {"id": 1, "ok": true, "result": {...}}
     <- {"id": 1, "ok": false, "error": {"type": "...", "message": "..."}}
+    <- {"push": "history", "values": {...}}
+
+A frame carrying ``push`` answers no request. ``LiveSystem.publish``
+offers one to an attached ``PushChannel``, which writes it from its own
+thread through the ``FrameWriter`` the responses also use.
 
 There is no socket and no port. The channel is the pipe the parent
 already owns, so the backend is reachable only by the process that
@@ -25,7 +30,8 @@ import logging
 import math
 import sys
 import threading
-from typing import Any, BinaryIO, Callable, Dict
+from collections import deque
+from typing import Any, BinaryIO, Callable, Deque, Dict, Union
 
 logger = logging.getLogger("acervator.core.desktop_bridge")
 
@@ -34,6 +40,10 @@ Handler = Callable[[dict], Any]
 PROTOCOL_VERSION = 1
 
 BRIDGE_THREAD_NAME = "acervator-bridge"
+
+PUSH_THREAD_NAME = "acervator-bridge-push"
+
+PUSH_BACKLOG = 64
 
 
 class UnknownMethod(LookupError):
@@ -52,16 +62,121 @@ class LiveSystem:
         self.bot_manager = bot_manager
         self._lock = threading.Lock()
         self._sections: Dict[str, dict] = {}
+        self._push: Any = None
+
+    def attach_push(self, push: Any) -> None:
+        """Offer every later ``publish`` to ``push``; ``None`` offers none."""
+        self._push = push
 
     def publish(self, name: str, **values: Any) -> None:
-        """Replace the section ``name`` with ``values`` as one whole dict."""
+        """Replace the section ``name`` with ``values`` as one whole dict.
+
+        An attached ``PushChannel`` is offered the same values and takes them
+        without writing, so the calling thread is never held by the pipe.
+        """
         with self._lock:
             self._sections[name] = dict(values)
+        push = self._push
+        if push is not None:
+            push.offer(name, values)
 
     def section(self, name: str) -> dict:
         """Return a copy of the section ``name``, empty when none was published."""
         with self._lock:
             return dict(self._sections.get(name) or {})
+
+
+def push_frame(section: str, values: dict) -> dict:
+    """Return one unprompted frame naming ``section`` under the key ``push``.
+
+    A response carries ``id`` and ``ok``; this carries neither, and the reader
+    selects a push on the key it finds.
+    """
+    return {"push": section, "values": dict(values)}
+
+
+class FrameWriter:
+    """One pipe, written one whole frame at a time under ``_lock``.
+
+    ``serve`` and ``PushChannel`` hold the same instance, so a push frame
+    cannot land inside a response frame. ``write`` flushes before it returns.
+    """
+
+    def __init__(self, writer: BinaryIO) -> None:
+        """Wrap ``writer`` behind a lock of this instance's own."""
+        self._writer = writer
+        self._lock = threading.Lock()
+
+    def write(self, data: bytes) -> int:
+        """Write ``data`` and flush it, holding ``_lock`` across both."""
+        with self._lock:
+            written = self._writer.write(data)
+            self._writer.flush()
+        return written or 0
+
+    def flush(self) -> None:
+        """Return without writing, as ``write`` has already flushed."""
+
+
+FrameSink = Union[BinaryIO, FrameWriter]
+
+
+class PushChannel:
+    """Writes push frames from its own thread, never from the emitter's.
+
+    ``offer`` appends to a deque bounded by ``backlog`` and returns; the
+    thread named ``PUSH_THREAD_NAME`` encodes each frame and writes it
+    through the shared ``FrameWriter``. Once the bound is reached the oldest
+    frame is dropped, so a stalled pipe cannot grow the backlog.
+    """
+
+    def __init__(self, writer: FrameWriter, backlog: int = PUSH_BACKLOG) -> None:
+        """Start the drain thread writing through ``writer``."""
+        self._writer = writer
+        self._frames: Deque[dict] = deque(maxlen=backlog)
+        self._pending = threading.Event()
+        self._stopping = False
+        self._thread = threading.Thread(
+            target=self._drain, name=PUSH_THREAD_NAME, daemon=True
+        )
+        self._thread.start()
+
+    @property
+    def backlog(self) -> int:
+        """How many offered frames the drain thread has not yet written."""
+        return len(self._frames)
+
+    def offer(self, section: str, values: dict) -> None:
+        """Take one frame for ``section`` and return before it is written."""
+        self._frames.append(push_frame(section, values))
+        self._pending.set()
+
+    def close(self) -> None:
+        """Write the held frames, then end the drain thread."""
+        self._stopping = True
+        self._pending.set()
+        self._thread.join(timeout=5.0)
+
+    def _drain(self) -> None:
+        """Write every held frame each time ``offer`` sets ``_pending``."""
+        while True:
+            self._pending.wait()
+            self._pending.clear()
+            self._write_held()
+            if self._stopping:
+                return
+
+    def _write_held(self) -> None:
+        """Write each held frame through ``_writer``; a refused frame is logged."""
+        while True:
+            try:
+                frame = self._frames.popleft()
+            except IndexError:
+                return
+            try:
+                self._writer.write(encode_frame(frame))
+            except Exception as exc:
+                logger.warning("bridge push %r failed: %s", frame.get("push"), exc)
 
 
 def build_registry(live: Any = None) -> Dict[str, Handler]:
@@ -240,7 +355,7 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
 
 
 def serve_on_thread(
-    reader: BinaryIO, writer: BinaryIO, registry: Dict[str, Handler]
+    reader: BinaryIO, writer: FrameSink, registry: Dict[str, Handler]
 ) -> threading.Thread:
     """Run ``serve`` on a started daemon thread named ``BRIDGE_THREAD_NAME``.
 
@@ -255,6 +370,23 @@ def serve_on_thread(
     )
     thread.start()
     return thread
+
+
+def serve_and_push(
+    reader: BinaryIO,
+    writer: BinaryIO,
+    registry: Dict[str, Handler],
+    live: LiveSystem,
+) -> threading.Thread:
+    """Answer requests and push ``live`` publishes down the one ``writer``.
+
+    Wraps ``writer`` in a single ``FrameWriter`` so responses and pushes take
+    the same lock, attaches a ``PushChannel`` to ``live``, and returns the
+    thread ``serve_on_thread`` started.
+    """
+    channel = FrameWriter(writer)
+    live.attach_push(PushChannel(channel))
+    return serve_on_thread(reader, channel, registry)
 
 
 def dispatch(method: str, params: dict, registry: Dict[str, Handler]) -> Any:
@@ -337,7 +469,7 @@ def encode_frame(response: dict) -> bytes:
     return text.encode("utf-8") + b"\n"
 
 
-def serve(reader: BinaryIO, writer: BinaryIO, registry: Dict[str, Handler]) -> int:
+def serve(reader: BinaryIO, writer: FrameSink, registry: Dict[str, Handler]) -> int:
     """Answer requests from ``reader`` on ``writer`` until the pipe closes.
 
     Returns the number of requests answered. Blank lines are skipped so
