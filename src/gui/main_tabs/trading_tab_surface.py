@@ -110,6 +110,9 @@ PLACEHOLDER_CARD_LAYOUT = {"margins_px": [9, 9, 9, 9], "spacing_px": 12}
 
 ALIAS_LAYER = "crypto"
 
+EXCHANGES_PARAM = "exchanges"
+EXCHANGE_PARAM = "exchange"
+
 CHART_PRESENT = False
 
 ACTIVITY_PANE_LAYOUT = {
@@ -235,13 +238,52 @@ def placeholder_add_style(accent: Any) -> str:
     )
 
 
-def layer_card(key: Any) -> dict:
+def exchange_display_name(entry: Any) -> str:
+    """The tab caption one entry of ``list_exchanges`` carries.
+
+    Falls back to the capitalised ``exchange_id`` when the entry names no
+    ``display_name``.
+    """
+    holder = entry if isinstance(entry, dict) else {}
+    exchange_id = str(holder.get("exchange_id") or "")
+    named = str(holder.get("display_name") or "")
+    return named or exchange_id.capitalize()
+
+
+def is_equity_exchange(exchange_id: Any) -> bool:
+    """True when ``exchange_id`` belongs to the stock layer."""
+    return str(exchange_id).lower() in EQUITY_EXCHANGE_IDS
+
+
+def layer_exchanges(entries: Any) -> dict:
+    """Each layer's exchanges as ``exchange_id`` to caption, in the order given.
+
+    An entry naming no ``exchange_id`` is left out, the way
+    ``_sync_exchange_tabs`` skips it.
+    """
+    split: dict = {name: {} for name in LAYER_ORDER}
+    for entry in entries or []:
+        holder = entry if isinstance(entry, dict) else {}
+        exchange_id = str(holder.get("exchange_id") or "")
+        if not exchange_id:
+            continue
+        layer = "stock" if is_equity_exchange(exchange_id) else "crypto"
+        split[layer][exchange_id] = exchange_display_name(holder)
+    return split
+
+
+def layer_card(key: Any, exchanges: Any = None, current: Any = None) -> dict:
     """One trading layer: its page, tab widget, add button and empty state.
 
     A key other than ``stock`` reads as crypto, which is the layer the
     stack shows when the tab is built.
     """
     name = "stock" if str(key) == "stock" else "crypto"
+    tabs = dict(exchanges or {})
+    order = list(tabs)
+    on_show = str(current or "")
+    if on_show not in tabs:
+        on_show = order[0] if order else ""
     label = LAYER_LABEL[name]
     accent = LAYER_ACCENT[name]
     return {
@@ -283,7 +325,9 @@ def layer_card(key: Any) -> dict:
                 "align": "center",
             },
         },
-        "exchange_tabs": {},
+        "exchange_tabs": tabs,
+        "current_exchange": on_show,
+        "placeholder_shown": not order,
     }
 
 
@@ -587,16 +631,19 @@ def build_view_model(
     api_buffer: Optional[ApiPauseBuffer] = None,
     api_pane: Optional[ApiLogPane] = None,
     watchdog: Optional[WatchdogState] = None,
+    exchanges: Any = None,
+    current_exchange: Any = None,
 ) -> dict:
     """Return the whole tab state as one serialisable dict.
 
-    ``layer`` names the stack page on show; the aliases the tab keeps
-    always point at crypto, because that is the page it is built on.
+    ``layer`` names the stack page on show; ``exchanges`` is the list
+    ``list_exchanges`` returns and ``layer_exchanges`` routes to a layer.
     """
     key = "stock" if str(layer) == "stock" else "crypto"
     buffer = ApiPauseBuffer() if api_buffer is None else api_buffer
     pane = ApiLogPane() if api_pane is None else api_pane
     counters = WatchdogState() if watchdog is None else watchdog
+    routed = layer_exchanges(exchanges)
     return {
         "tab_title": TAB_TITLE,
         "container": dict(CONTAINER),
@@ -609,7 +656,9 @@ def build_view_model(
             "pages": list(LAYER_ORDER),
             "current_index": LAYER_ORDER.index(key),
         },
-        "layers": [layer_card(name) for name in LAYER_ORDER],
+        "layers": [
+            layer_card(name, routed[name], current_exchange) for name in LAYER_ORDER
+        ],
         "alias_layer": ALIAS_LAYER,
         "chart_present": CHART_PRESENT,
         "activity_pane": {
@@ -643,10 +692,10 @@ WATCHDOG_STATE = WatchdogState()
 def view_model(params: dict) -> dict:
     """Bridge handler for ``trading.tab``.
 
-    Reads ``layer``, ``activity_paused``, ``api_paused`` and ``api_lines``
-    from the request parameters. The buffer, the pane and the watchdog
-    counters persist between calls because the Qt objects they stand for
-    do.
+    Reads ``layer``, ``activity_paused``, ``api_paused``, ``api_lines``,
+    ``EXCHANGES_PARAM`` and ``EXCHANGE_PARAM`` from the request
+    parameters. The buffer, the pane and the watchdog counters persist
+    between calls because the Qt objects they stand for do.
     """
     for line in params.get("api_lines") or []:
         if API_PAUSE_BUFFER.paused:
@@ -662,4 +711,33 @@ def view_model(params: dict) -> dict:
         api_buffer=API_PAUSE_BUFFER,
         api_pane=API_LOG_PANE,
         watchdog=WATCHDOG_STATE,
+        exchanges=params.get(EXCHANGES_PARAM),
+        current_exchange=params.get(EXCHANGE_PARAM),
     )
+
+
+def live_view_model(params: dict, live: Any) -> dict:
+    """Build the tab from the exchanges the running program is configured for.
+
+    ``live.settings_manager.list_exchanges`` fills ``EXCHANGES_PARAM`` when
+    the request names none.
+    """
+    settings = getattr(live, "settings_manager", None)
+    listed: Any = getattr(settings, "list_exchanges", None)
+    asked = dict(params or {})
+    if asked.get(EXCHANGES_PARAM) is None and callable(listed):
+        found: Any = listed()
+        asked[EXCHANGES_PARAM] = [dict(one) for one in found]
+    return view_model(asked)
+
+
+def bind_live(live: Any) -> Any:
+    """Return a ``trading.tab`` handler reading ``live``.
+
+    ``build_registry`` calls this when the running program serves the bridge.
+    """
+
+    def handler(params: dict) -> dict:
+        return live_view_model(params or {}, live)
+
+    return handler

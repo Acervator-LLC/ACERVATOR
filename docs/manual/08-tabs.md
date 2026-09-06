@@ -3055,7 +3055,7 @@ tab row.
 | `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | no | no |
 | `src/gui/widgets/capital_registry_panel.py` | no | - | no | no | no | no |
 | `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | no | no |
-| `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | no |
+| `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes |
 | `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | no |
 | `src/gui/widgets/notification_spool.py` | `notification_spool.js` | yes | yes | yes | no | no |
 | `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | no | no |
@@ -3072,7 +3072,7 @@ Uses React               53
 Bridge                   67
 Manifest                 55
 Registers in Electron    14
-RENDERS                  21
+RENDERS                  22
 ```
 
 Four columns are all but complete. The fifth is at one.

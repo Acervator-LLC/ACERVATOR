@@ -238,6 +238,25 @@ def accent_of(sheet: str) -> str:
     return "#" + "".join(f"{int(one.strip()):02x}" for one in fields[:3])
 
 
+def layer_tabs_trace(host, index) -> dict:
+    """One layer's exchange tabs, the tab on show and the empty-state tab."""
+    page = host._trading_stack.widget(index)
+    tab_widget = page.layout().itemAt(0).widget()
+    tabs_map = host._crypto_exchange_tabs if index == 0 else host._stock_exchange_tabs
+    held = getattr(host, "_crypto_placeholder" if index == 0 else "_stock_placeholder")
+    on_show = tab_widget.currentWidget()
+    return {
+        "exchange_tabs": {
+            eid: tab_widget.tabText(tab_widget.indexOf(tab))
+            for eid, tab in tabs_map.items()
+        },
+        "current_exchange": next(
+            (eid for eid, tab in tabs_map.items() if tab is on_show), ""
+        ),
+        "placeholder_shown": held is not None and tab_widget.indexOf(held) >= 0,
+    }
+
+
 def layer_trace(host, index) -> dict:
     """One built layer page, read back as plain data."""
     page = host._trading_stack.widget(index)
@@ -251,7 +270,6 @@ def layer_trace(host, index) -> dict:
     title = card_layout.itemAt(0).widget()
     add = card_layout.itemAt(1).widget()
     hint = card_layout.itemAt(2).widget()
-    tabs_map = host._crypto_exchange_tabs if index == 0 else host._stock_exchange_tabs
     return {
         "key": corner.text().split()[-2].lower(),
         "label": corner.text().split()[-2],
@@ -300,7 +318,7 @@ def layer_trace(host, index) -> dict:
                 "align": align_name(hint.alignment()),
             },
         },
-        "exchange_tabs": dict(tabs_map),
+        **layer_tabs_trace(host, index),
     }
 
 
@@ -540,6 +558,66 @@ def test_the_two_pause_buttons_are_not_the_same_control(booted):
     assert activity["style_sheet"] != api["style_sheet"]
     assert "checked" in activity["style_sheet"]
     assert "checked" not in api["style_sheet"]
+
+
+def test_the_layer_trace_reads_an_exchange_tab_the_layer_holds(booted):
+    """The trace reports an empty layer whatever the tab widget holds."""
+    host, _tabs = booted
+    from PySide6.QtWidgets import QWidget
+
+    pane = QWidget()
+    widget = host._crypto_tab_widget
+    widget.removeTab(widget.indexOf(host._crypto_placeholder))
+    host._crypto_placeholder = None
+    widget.addTab(pane, "Coinbase")
+    host._crypto_exchange_tabs["coinbase"] = pane
+    try:
+        read = layer_tabs_trace(host, 0)
+    finally:
+        host._crypto_exchange_tabs.pop("coinbase")
+        widget.removeTab(widget.indexOf(pane))
+        pane.deleteLater()
+    assert read["exchange_tabs"] == {"coinbase": "Coinbase"}, read
+    assert read["current_exchange"] == "coinbase", read
+    assert read["placeholder_shown"] is False, read
+
+
+def test_a_layer_card_carries_the_exchanges_it_is_given():
+    """The surface reports an empty layer whatever exchanges it is given."""
+    card = surface.layer_card("crypto", {"coinbase": "Coinbase"})
+    assert card["exchange_tabs"] == {"coinbase": "Coinbase"}, card
+    assert card["current_exchange"] == "coinbase", card
+    assert card["placeholder_shown"] is False, card
+    empty = surface.layer_card("crypto")
+    assert empty["exchange_tabs"] == {}, empty
+    assert empty["current_exchange"] == "", empty
+    assert empty["placeholder_shown"] is True, empty
+
+
+def test_the_stock_layer_takes_the_equity_exchanges():
+    """An equity exchange lands on the crypto layer the operator watches."""
+    routed = surface.layer_exchanges(
+        [
+            {"exchange_id": "coinbase", "display_name": "Coinbase"},
+            {"exchange_id": "alpaca", "display_name": "Alpaca"},
+            {"exchange_id": "", "display_name": "Nameless"},
+        ]
+    )
+    assert routed["crypto"] == {"coinbase": "Coinbase"}, routed
+    assert routed["stock"] == {"alpaca": "Alpaca"}, routed
+
+
+def test_an_exchange_with_no_display_name_is_captioned_from_its_id():
+    """A blank caption reaches the tab bar."""
+    assert surface.exchange_display_name({"exchange_id": "kraken"}) == "Kraken"
+    assert (
+        surface.exchange_display_name({"exchange_id": "kraken", "display_name": ""})
+        == "Kraken"
+    )
+    assert (
+        surface.exchange_display_name({"exchange_id": "kraken", "display_name": "KR"})
+        == "KR"
+    )
 
 
 def test_the_aliases_point_at_the_crypto_layer(booted):

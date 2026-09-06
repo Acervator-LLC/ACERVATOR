@@ -1934,6 +1934,38 @@ The dialog in `src/gui/settings_dialog.py` has no such method yet. The proposal
 adds one rather than changing the call shape, so the wing argument already
 passed here keeps working exactly as it does.
 
+**The exchange row in the Electron shell.** The shell draws one tab button per
+configured exchange, and the screen under the button is drawn by
+`exchange_tab.js`. A layer shows its empty card only while it holds no
+exchange, which is what the Qt tab row does once it drops the Get Started tab.
+
+`src/gui/main_tabs/trading_tab_surface.py` — `layer_exchanges`
+
+```python
+for entry in entries or []:
+    holder = entry if isinstance(entry, dict) else {}
+    exchange_id = str(holder.get("exchange_id") or "")
+    if not exchange_id:
+        continue
+    layer = "stock" if is_equity_exchange(exchange_id) else "crypto"
+    split[layer][exchange_id] = exchange_display_name(holder)
+```
+
+**One caption for one exchange.** The caption on a tab comes from a single
+helper, so the start-up path and the settings path cannot label the same
+exchange two different ways. An exchange saved with no name is captioned from
+its own id, and an entry with no id gets no tab at all.
+
+`src/gui/main_tabs/trading_tab_surface.py` — `exchange_display_name`
+
+```python
+def exchange_display_name(entry: Any) -> str:
+    holder = entry if isinstance(entry, dict) else {}
+    exchange_id = str(holder.get("exchange_id") or "")
+    named = str(holder.get("display_name") or "")
+    return named or exchange_id.capitalize()
+```
+
 ### Indicator Voting Panel
 
 ![The Indicator Voting Panel, at the right of the Trading tab.](p27-i1.png)
