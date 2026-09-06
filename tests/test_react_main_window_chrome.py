@@ -8,6 +8,8 @@ button the browser drew and reads the tab off ``currentIndex``.
 
 from __future__ import annotations
 
+import importlib
+import inspect
 import json
 import os
 import sys
@@ -298,6 +300,23 @@ def test_the_theme_menu_action_writes_to_the_status_log(react_window) -> None:
     settle(READY_STEP_MS)
     written = window._status_log.toPlainText()
     assert THEME_LOG_HEAD in written, written[-400:]
+
+
+@pytest.mark.parametrize("variant", [REACT, QT])
+def test_the_launcher_module_imports_under_both_builds(monkeypatch, variant) -> None:
+    """``main`` imports with ``ENV_VAR`` set either way and still offers ``main``."""
+    monkeypatch.setenv(ENV_VAR, variant)
+    launcher = importlib.import_module("main")
+    assert callable(launcher.main), type(launcher.main).__name__
+
+
+def test_the_launcher_builds_the_window_this_file_builds(react_window) -> None:
+    """``main`` names ``MainWindow`` and the two arguments ``Window`` passes it."""
+    from src.gui.main_window import MainWindow
+
+    assert isinstance(react_window.window, MainWindow)
+    taken = set(inspect.signature(MainWindow.__init__).parameters)
+    assert {"bot_manager", "settings_manager"} <= taken, sorted(taken)
 
 
 def test_every_menu_the_surface_declares_is_on_the_react_window(
