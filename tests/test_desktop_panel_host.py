@@ -24,6 +24,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.gui.main_tabs import bot_swarm_list_surface as swarm_list_surface
+from src.gui.main_tabs import bot_visualizer_surface
 from src.gui.main_tabs import console_tab_surface as console_surface
 from src.gui.main_tabs import design_system_surface as dss
 from src.gui.main_tabs import header_strip_surface as header_surface
@@ -53,6 +54,7 @@ PANEL_SURFACES = {
     CONSOLE_PANEL: console_surface,
     HEADER_PANEL: header_surface,
     "bot_swarm_tab": swarm_list_surface,
+    "bot_visualizer": bot_visualizer_surface,
     "history_tab": history_chrome_surface,
     "market_inspector_tab": inspector_surface,
     "paper_trader_tab": paper_surface,
@@ -1199,3 +1201,256 @@ def test_the_asset_charts_panel_holds_no_chart_when_the_answer_names_no_bot(
     assert mount(browser, CHARTS_PANEL, model) is True
     assert at_path(spare_parts(browser), CHART_HEADER) == []
     assert browser.js("window.SPARE.textContent") == ""
+
+
+# -- a panel follows a published section -------------------------------
+
+
+FOLLOWED_SECTION = "history"
+UNFOLLOWED_SECTION = "trading"
+
+#: The values a first and a second push carry, kept different so a host
+#: holding the older one cannot pass for a host holding the newer.
+FIRST_VALUES = {"trades": [{"id": "first-frame"}], "last_fetched_ts": 11.0}
+SECOND_VALUES = {"trades": [{"id": "second-frame"}], "last_fetched_ts": 22.0}
+
+#: Registers ``SPARE_PANEL`` with a render that counts its draws and a
+#: loader that keeps the request it was given.
+COUNTING_LOADER = (
+    "window.DRAWS = 0;"
+    "window.ASKED_SPARE = null;"
+    "acervatorPanelHost.register({"
+    "  render: function (target) {"
+    "    window.DRAWS += 1;"
+    "    target.textContent = 'drawn ' + window.DRAWS; },"
+    "  load: function (params) {"
+    "    window.ASKED_SPARE = params;"
+    "    return Promise.resolve({}); }"
+)
+
+#: Hands ``joinPushes`` a source that keeps the handler as ``window.FEED``
+#: and drops it again when the returned function is called.
+RECORDING_SOURCE = (
+    "window.FEED = null;"
+    "window.OFF = acervatorPanelHost.joinPushes(function (handler) {"
+    "  window.FEED = handler;"
+    "  return function () { window.FEED = null; }; });"
+)
+
+
+def register_spare(browser: Browser, tail: str) -> None:
+    """Register ``SPARE_PANEL`` from ``COUNTING_LOADER`` closed by ``tail``."""
+    browser.js(COUNTING_LOADER + tail + "}, " + json.dumps(SPARE_PANEL) + ");")
+
+
+def section_of(browser: Browser, panel: str) -> Any:
+    """The section ``acervatorPanelHost.sectionOf`` names for ``panel``."""
+    return browser.parsed("acervatorPanelHost.sectionOf(" + json.dumps(panel) + ")")
+
+
+def following(browser: Browser, section: str) -> list:
+    """The panel names ``acervatorPanelHost.following`` gives for ``section``."""
+    return browser.parsed("acervatorPanelHost.following(" + json.dumps(section) + ")")
+
+
+def deliver(browser: Browser, section: str, values: dict) -> list:
+    """Push ``values`` for ``section`` and return the panel names redrawn."""
+    browser.js(
+        "(function () {"
+        "  window.DELIVERED = null;"
+        "  acervatorPanelHost.deliver("
+        + json.dumps(section)
+        + ", "
+        + json.dumps(values)
+        + ").then(function (names) { window.DELIVERED = names; });"
+        "  return true; })()"
+    )
+    for _ in range(DRAW_ROUNDS):
+        if browser.js("window.DELIVERED !== null"):
+            break
+        browser.settle(DRAW_STEP_MS)
+    return browser.parsed("window.DELIVERED")
+
+
+def draw_spare(browser: Browser) -> None:
+    """Open ``SPARE_PANEL`` into a spare host and wait for its first draw."""
+    browser.js("window.spareHost();")
+    browser.js(
+        "acervatorPanelHost.open(" + json.dumps(SPARE_PANEL) + ", window.SPARE);"
+    )
+    for _ in range(DRAW_ROUNDS):
+        if browser.js("window.DRAWS > 0"):
+            return
+        browser.settle(DRAW_STEP_MS)
+    raise AssertionError(
+        "the spare panel never drew: "
+        + str(browser.parsed("acervatorPanelHost.faults()"))
+    )
+
+
+def test_a_panel_that_declares_a_section_follows_it(browser: Browser):
+    """``register`` reads ``section`` off the registration, so
+    ``acervatorPanelHost.following`` names that panel for that section."""
+    register_spare(browser, ", section: " + json.dumps(FOLLOWED_SECTION) + " ")
+    assert section_of(browser, SPARE_PANEL) == FOLLOWED_SECTION
+    assert SPARE_PANEL in following(browser, FOLLOWED_SECTION), following(
+        browser, FOLLOWED_SECTION
+    )
+
+
+def test_a_panel_that_declares_no_section_follows_nothing(browser: Browser):
+    """The control for the check above. A host that followed every panel
+    would name ``SPARE_PANEL`` here too."""
+    register_spare(browser, " ")
+    assert section_of(browser, SPARE_PANEL) is None
+    assert SPARE_PANEL not in following(browser, FOLLOWED_SECTION)
+
+
+def test_the_shipped_page_has_the_history_panel_following_the_history_section(
+    browser: Browser,
+):
+    """``boot.js`` calls ``follow`` for ``HISTORY_PANEL`` as the page loads, and
+    ``acervatorPanelHost.following`` names it and nothing else."""
+    assert section_of(browser, HISTORY_PANEL) == FOLLOWED_SECTION
+    assert following(browser, FOLLOWED_SECTION) == [HISTORY_PANEL]
+
+
+def test_a_push_redraws_the_panel_that_follows_that_section(browser: Browser):
+    """``acervatorPanelHost.deliver`` reopens a drawn follower, so
+    ``window.DRAWS`` climbs with nothing asking."""
+    register_spare(browser, ", section: " + json.dumps(FOLLOWED_SECTION) + " ")
+    draw_spare(browser)
+    before = browser.js("window.DRAWS")
+    redrawn = deliver(browser, FOLLOWED_SECTION, FIRST_VALUES)
+    assert SPARE_PANEL in redrawn, redrawn
+    assert browser.js("window.DRAWS") > before, browser.js("window.SPARE.textContent")
+
+
+def test_a_push_leaves_a_panel_that_follows_another_section_undrawn(
+    browser: Browser,
+):
+    """``deliver`` reaches only ``following``. The check above is the positive
+    control, where the same panel redraws on its own section."""
+    register_spare(browser, ", section: " + json.dumps(UNFOLLOWED_SECTION) + " ")
+    draw_spare(browser)
+    before = browser.js("window.DRAWS")
+    text = browser.js("window.SPARE.textContent")
+    redrawn = deliver(browser, FOLLOWED_SECTION, FIRST_VALUES)
+    assert SPARE_PANEL not in redrawn, redrawn
+    assert browser.js("window.DRAWS") == before
+    assert browser.js("window.SPARE.textContent") == text
+
+
+def test_a_history_push_leaves_the_console_panel_exactly_as_it_was(
+    browser: Browser,
+):
+    """The Console panel declares no section, so ``deliver`` for the History
+    section leaves the markup ``mount`` drew untouched."""
+    give_tokens(browser)
+    assert mount(browser, CONSOLE_PANEL, console_payload(RECORDS)) is True
+    before = browser.js("window.SPARE.innerHTML")
+    assert before, "the Console panel drew nothing to compare"
+    assert CONSOLE_PANEL not in deliver(browser, FOLLOWED_SECTION, FIRST_VALUES)
+    assert browser.js("window.SPARE.innerHTML") == before
+
+
+def test_a_push_for_a_panel_never_drawn_redraws_nothing_and_keeps_one_frame(
+    browser: Browser,
+):
+    """A follower with no host draws nothing and records no fault, and
+    ``acervatorPanelHost.latest`` keeps the newer frame over the older."""
+    register_spare(browser, ", section: " + json.dumps(FOLLOWED_SECTION) + " ")
+    assert SPARE_PANEL not in deliver(browser, FOLLOWED_SECTION, FIRST_VALUES)
+    assert SPARE_PANEL not in deliver(browser, FOLLOWED_SECTION, SECOND_VALUES)
+    assert browser.js("window.DRAWS") == 0
+    assert browser.parsed("acervatorPanelHost.faults()") == []
+    assert (
+        browser.parsed(
+            "acervatorPanelHost.latest(" + json.dumps(FOLLOWED_SECTION) + ")"
+        )
+        == SECOND_VALUES
+    )
+
+
+def test_the_newest_frame_reaches_the_panels_opening_request(browser: Browser):
+    """``requestFor`` writes the kept frame over the panel's own request, so a
+    panel opened after a push opens on the published values."""
+    register_spare(
+        browser,
+        ", section: "
+        + json.dumps(FOLLOWED_SECTION)
+        + ", request: function () { return "
+        + json.dumps(SPARE_REQUEST)
+        + "; } ",
+    )
+    deliver(browser, FOLLOWED_SECTION, SECOND_VALUES)
+    draw_spare(browser)
+    asked = browser.parsed("window.ASKED_SPARE")
+    expected = dict(SPARE_REQUEST)
+    expected.update(SECOND_VALUES)
+    assert asked == expected, asked
+
+
+def test_a_panel_with_no_kept_frame_still_opens_on_its_own_request(
+    browser: Browser,
+):
+    """The control for the check above. With no push delivered ``requestFor``
+    hands the loader exactly what ``request`` returned."""
+    register_spare(
+        browser,
+        ", section: "
+        + json.dumps(FOLLOWED_SECTION)
+        + ", request: function () { return "
+        + json.dumps(SPARE_REQUEST)
+        + "; } ",
+    )
+    draw_spare(browser)
+    assert browser.parsed("window.ASKED_SPARE") == SPARE_REQUEST
+
+
+def test_a_redraw_leaves_a_hidden_panel_hidden(browser: Browser):
+    """One screen is on show at a time. ``deliver`` redraws a hidden host and
+    never clears its ``hidden`` flag."""
+    register_spare(browser, ", section: " + json.dumps(FOLLOWED_SECTION) + " ")
+    draw_spare(browser)
+    browser.js("window.SPARE.hidden = true;")
+    before = browser.js("window.DRAWS")
+    assert SPARE_PANEL in deliver(browser, FOLLOWED_SECTION, FIRST_VALUES)
+    assert browser.js("window.DRAWS") > before
+    assert browser.js("window.SPARE.hidden") is True
+
+
+def test_joining_a_push_source_delivers_through_it(browser: Browser):
+    """``joinPushes`` hands ``deliver`` to the source, so a frame the source
+    feeds reaches ``acervatorPanelHost.latest``."""
+    browser.js(RECORDING_SOURCE)
+    assert browser.js("typeof window.FEED") == "function"
+    browser.js(
+        "window.FEED("
+        + json.dumps(FOLLOWED_SECTION)
+        + ", "
+        + json.dumps(FIRST_VALUES)
+        + ");"
+    )
+    assert (
+        browser.parsed(
+            "acervatorPanelHost.latest(" + json.dumps(FOLLOWED_SECTION) + ")"
+        )
+        == FIRST_VALUES
+    )
+
+
+def test_joining_a_push_source_hands_back_the_way_to_stop(browser: Browser):
+    """``joinPushes`` returns what the source returns, which is the call that
+    takes the join off again."""
+    browser.js(RECORDING_SOURCE)
+    assert browser.js("typeof window.OFF") == "function"
+    browser.js("window.OFF();")
+    assert browser.parsed("window.FEED") is None
+
+
+def test_a_push_source_that_is_not_a_function_joins_nothing(browser: Browser):
+    """``joinPushes`` answers null and records no fault when the shell reaches
+    it with no bridge to feed it."""
+    assert browser.parsed("acervatorPanelHost.joinPushes(7)") is None
+    assert browser.parsed("acervatorPanelHost.faults()") == []

@@ -10,6 +10,11 @@
 // A registration carries a `kind`. `screen` panels are the ones the tab bar
 // draws a tab for; `chrome` panels stay on screen whichever tab is selected.
 // A registration that names no kind is a screen.
+//
+// A registration may also name a `section`. `joinPushes` joins the backend's
+// unprompted frames to `deliver`, which keeps the newest values of a section
+// one deep and redraws every panel following it. A panel that names no
+// section is never redrawn by a push.
 
 "use strict";
 
@@ -25,6 +30,13 @@
   var panels = {};
   var kinds = {};
   var recorded = [];
+  var follows = {};
+  var held = {};
+  var hosts = {};
+
+  function isPlainObject(value) {
+    return Object.prototype.toString.call(value) === "[object Object]";
+  }
 
   function fileName(url) {
     var path = String(url).split("?")[0].split("#")[0];
@@ -127,6 +139,45 @@
     return given;
   }
 
+  // Declares that `name` follows `section`. `redraw` is for a surface the
+  // shell draws itself; a panel without one is reopened where it was drawn.
+  function follow(name, section, redraw) {
+    if (!name || typeof section !== "string" || section === "") {
+      return null;
+    }
+    follows[name] = {
+      section: section,
+      redraw: typeof redraw === "function" ? redraw : null
+    };
+    return section;
+  }
+
+  function sectionOf(name) {
+    return Object.prototype.hasOwnProperty.call(follows, name)
+      ? follows[name].section
+      : null;
+  }
+
+  function following(section) {
+    var found = [];
+    for (var name in follows) {
+      if (
+        Object.prototype.hasOwnProperty.call(follows, name) &&
+        follows[name].section === section
+      ) {
+        found.push(name);
+      }
+    }
+    found.sort();
+    return found;
+  }
+
+  function latest(section) {
+    return Object.prototype.hasOwnProperty.call(held, section)
+      ? held[section]
+      : null;
+  }
+
   // Called by a panel module from its own script tag. `called` is for a
   // caller with no script tag of its own, which is how a test registers.
   function register(spec, called) {
@@ -142,6 +193,7 @@
     panels[name] = spec;
     dropFault(name);
     kinds[name] = declaredKind(name, spec);
+    follow(name, spec.section);
     return name;
   }
 
@@ -180,6 +232,7 @@
       record(name, "no host element to draw into");
       return false;
     }
+    hosts[name] = target;
     var reason = reasonFor(name);
     if (reason === null) {
       try {
@@ -205,9 +258,30 @@
       return {};
     }
     var asked = spec.request();
-    return Object.prototype.toString.call(asked) === "[object Object]"
-      ? asked
-      : {};
+    return isPlainObject(asked) ? asked : {};
+  }
+
+  // The panel's own request with the newest values of the section it
+  // follows written over it, so a panel opened after a push opens current.
+  function requestFor(name) {
+    var asked = requestOf(panels[name]);
+    var values = latest(sectionOf(name));
+    if (values === null) {
+      return asked;
+    }
+    var merged = {};
+    var key;
+    for (key in asked) {
+      if (Object.prototype.hasOwnProperty.call(asked, key)) {
+        merged[key] = asked[key];
+      }
+    }
+    for (key in values) {
+      if (Object.prototype.hasOwnProperty.call(values, key)) {
+        merged[key] = values[key];
+      }
+    }
+    return merged;
   }
 
   // Asks the panel's own loader for its view model, then draws it. Both
@@ -224,7 +298,7 @@
     if (typeof spec.load !== "function") {
       return Promise.resolve(mount(name, target, null));
     }
-    return spec.load(requestOf(spec)).then(
+    return spec.load(requestFor(name)).then(
       function (model) {
         var refused =
           typeof spec.loadError === "function" ? spec.loadError() : null;
@@ -243,6 +317,54 @@
         return false;
       }
     );
+  }
+
+  // A panel drawn into a host still on the page is drawn again there. One
+  // never drawn returns null and takes the values in its opening request.
+  function redraw(name, values) {
+    var own = follows[name].redraw;
+    if (own !== null) {
+      return Promise.resolve(own(values));
+    }
+    var target = hosts[name];
+    if (!target || !doc.contains(target)) {
+      return null;
+    }
+    return open(name, target);
+  }
+
+  // Keeps `values` as the one newest frame for `section` and redraws every
+  // panel following it. Resolves with the names redrawn, which is empty
+  // when no panel follows the section.
+  function deliver(section, values) {
+    if (typeof section !== "string" || section === "") {
+      return Promise.resolve([]);
+    }
+    held[section] = isPlainObject(values) ? values : {};
+    var asked = following(section);
+    var names = [];
+    var running = [];
+    for (var index = 0; index < asked.length; index++) {
+      var drawing = redraw(asked[index], held[section]);
+      if (drawing !== null) {
+        names.push(asked[index]);
+        running.push(drawing);
+      }
+    }
+    return Promise.all(running).then(function () {
+      return names;
+    });
+  }
+
+  // Joins a push source — the preload's `onPush` — to `deliver`, and
+  // returns the function that takes the join off again.
+  function joinPushes(source) {
+    if (typeof source !== "function") {
+      return null;
+    }
+    return source(function (section, values) {
+      deliver(section, values);
+    });
   }
 
   // An element carrying `data-panel-part` is a mount another module
@@ -334,6 +456,9 @@
     panels = {};
     kinds = {};
     recorded = [];
+    follows = {};
+    held = {};
+    hosts = {};
     stamp();
   }
 
@@ -353,6 +478,13 @@
     reasonFor: reasonFor,
     hostFor: hostFor,
     requestOf: requestOf,
+    requestFor: requestFor,
+    follow: follow,
+    sectionOf: sectionOf,
+    following: following,
+    latest: latest,
+    deliver: deliver,
+    joinPushes: joinPushes,
     mount: mount,
     open: open,
     mountAll: mountAll,

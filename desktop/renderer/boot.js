@@ -19,6 +19,11 @@
 //
 // A panel that registers as chrome takes no tab. It is drawn once into
 // `#chrome`, above the bar, and stays there whichever tab is selected.
+//
+// `joinPushes` joins the backend's unprompted frames to the panel
+// host. `history_panel.js` is drawn by `load` rather than by a panel
+// module, so `followHistory` hands `load` in as the History redraw and a
+// `history` push reloads the rows with nothing asking.
 
 "use strict";
 
@@ -27,6 +32,8 @@
   var PANELS_ID = "panels";
   var TABS_ID = "tabs";
   var CHROME_ID = "chrome";
+  var HISTORY_PANEL = "history_tab";
+  var HISTORY_SECTION = "history";
 
   function hasBridge() {
     return Boolean(global.acervator) && typeof global.acervator.call === "function";
@@ -114,15 +121,42 @@
     );
   }
 
+  // `load` is History's redraw, so the rows follow the published section
+  // whether or not the History tab is the one selected.
+  function followHistory() {
+    if (!global.acervatorPanelHost) {
+      return null;
+    }
+    return global.acervatorPanelHost.follow(
+      HISTORY_PANEL,
+      HISTORY_SECTION,
+      load
+    );
+  }
+
+  function joinPushes() {
+    if (!global.acervatorPanelHost || !hasBridge()) {
+      return null;
+    }
+    if (typeof global.acervator.onPush !== "function") {
+      return null;
+    }
+    return global.acervatorPanelHost.joinPushes(global.acervator.onPush);
+  }
+
   global.acervatorReload = load;
   global.acervatorReloadTokens = loadTokens;
   global.acervatorMountPanels = mountPanels;
   global.acervatorBuildChrome = buildChrome;
   global.acervatorBuildTabs = buildTabs;
+  global.acervatorFollowHistory = followHistory;
+  global.acervatorJoinPushes = joinPushes;
   loadTokens();
+  followHistory();
   load();
   if (hasBridge()) {
     buildChrome();
     buildTabs();
+    joinPushes();
   }
 })(window);

@@ -3,7 +3,7 @@
 
 ``register`` records a screen's two loaders. ``surface_class`` returns the
 class the running variant selects and ``draws_react`` answers which side
-that is. ``HISTORY`` is the only screen with both loaders today.
+that is. ``HISTORY`` and ``BOT_SWARM`` each carry both.
 """
 
 from __future__ import annotations
@@ -12,9 +12,11 @@ from typing import Callable, Dict, Tuple
 
 from src._variant import QT, resolve_variant
 
+BOT_SWARM = "Bot Swarm"
 HISTORY = "History"
 HISTORY_TABLE = "History table"
 MARKET_INSPECTOR = "Market Inspector"
+NUCLEAR_MODE = "Nuclear Mode"
 SIM_STAT_STRIP = "Sim stat strip"
 
 Loader = Callable[[], type]
@@ -79,6 +81,20 @@ def _react_history_table() -> type:
     return HistoryWebTable
 
 
+def _qt_bot_swarm() -> type:
+    """Import and return the Qt Bot Swarm tab."""
+    from .bot_visualizer import BotVisualizationTab
+
+    return BotVisualizationTab
+
+
+def _react_bot_swarm() -> type:
+    """Import and return the React Bot Swarm tab."""
+    from .react_bot_swarm_tab import BotSwarmReactTab
+
+    return BotSwarmReactTab
+
+
 def _qt_market_inspector() -> type:
     """Import and return the Qt Market Inspector tab."""
     from .market_inspector import MarketInspectorTab
@@ -91,6 +107,20 @@ def _react_market_inspector() -> type:
     from .react_market_inspector_tab import MarketInspectorReactTab
 
     return MarketInspectorReactTab
+
+
+def _qt_nuclear_mode() -> type:
+    """Import and return the Qt Nuclear Mode panel."""
+    from .simulator_tab.nuclear_mode_panel import NuclearModePanel
+
+    return NuclearModePanel
+
+
+def _react_nuclear_mode() -> type:
+    """Import and return the React Nuclear Mode panel."""
+    from .react_nuclear_mode_panel import NuclearModeReactPanel
+
+    return NuclearModeReactPanel
 
 
 def _qt_sim_stat_strip() -> type:
@@ -109,5 +139,7 @@ def _react_sim_stat_strip() -> type:
 
 register(HISTORY, _qt_history, _react_history)
 register(HISTORY_TABLE, _qt_history_table, _react_history_table)
+register(BOT_SWARM, _qt_bot_swarm, _react_bot_swarm)
 register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)
+register(NUCLEAR_MODE, _qt_nuclear_mode, _react_nuclear_mode)
 register(SIM_STAT_STRIP, _qt_sim_stat_strip, _react_sim_stat_strip)

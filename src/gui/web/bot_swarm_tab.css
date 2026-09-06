@@ -1,0 +1,88 @@
+/* React Bot Swarm tab chrome: the page ground, the header row inputs and
+ * the scrolling swarm panes `bot_visualizer.js` draws inside them. Every
+ * colour a row or a cell paints arrives on its own `style` attribute from
+ * the Python payload, so no rule here may set a `color` on a cell.
+ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.4 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+.acervator-swarm-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 4px;
+  gap: 4px;
+}
+
+.acervator-swarm-tab [data-part="tab-bar"] {
+  display: flex;
+  gap: 2px;
+}
+
+.acervator-swarm-tab [data-part="swarm-pane"],
+.acervator-swarm-tab [data-part="layer-pane"] {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.acervator-swarm-tab [data-part="header-row"] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: none;
+}
+
+.acervator-swarm-tab [data-part="view-stack"],
+.acervator-swarm-tab [data-part="list-page"],
+.acervator-swarm-tab [data-part="grid-page"] {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.acervator-swarm-tab [data-part="grid-page"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+}
+
+.acervator-swarm-row {
+  display: flex;
+  align-items: center;
+}
+
+.acervator-swarm-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acervator-swarm-input {
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font: inherit;
+}
+
+.acervator-swarm-input:focus {
+  outline: 1px solid var(--accent);
+}

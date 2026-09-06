@@ -45,6 +45,8 @@
     "opacity_tooltip", "outer_margins", "outer_spacing", "outflow_stat_key",
     "paper_bench_id_format", "paper_bench_pairs", "paper_bench_sources",
     "paper_mode", "paper_registered_signal", "paper_row_order", "paper_rows",
+    "bot_symbols", "drag_start_pos", "locust_cards", "overlay_style",
+    "panel", "panel_words",
     "paper_summary", "paper_summary_active_format",
     "paper_summary_active_start", "paper_summary_capital_format",
     "paper_summary_capital_start", "paper_summary_pnl",
@@ -85,7 +87,8 @@
     "wire_config_title", "wire_config_width_px", "wire_connected_log_format",
     "wire_count", "wire_created_topic", "wire_disconnected_log_format",
     "wire_keys", "wire_menu_style_sheet", "wire_pct_max", "wire_pct_min",
-    "wire_pct_start", "wire_pct_suffix", "wire_removed_topic", "wires",
+    "wire_pct_start", "wire_pct_suffix", "wire_removed_topic", "wire_sheet",
+    "wires",
     "wires_caption"
   ];
 
@@ -348,6 +351,53 @@
   var SET_OPACITY = "set_opacity";
   var SET_MASKED = "set_masked";
   var TOGGLE_PRIVACY_MODE = "toggle_privacy_mode";
+  var FINISH_DRAG = "finish_drag";
+  var ANSWER_PANEL = "answer_panel";
+
+  var LOCUST_CARDS = "locust_cards";
+  var BOT_SYMBOLS = "bot_symbols";
+  var WIDGET_SYMBOLS_PARAM = "widget_symbols";
+  var MASKED_PARAM = "masked";
+  var ANY_MASKED = "any_masked";
+  var WIRE_CANVAS_API = "acervatorWireCanvas";
+  var WIRE_SHEET = "wire_sheet";
+  var OVERLAY_STYLE = "overlay_style";
+  var BOXES_PARAM = "boxes";
+  var QUICK_ROUTING_API = "acervatorQuickRouting";
+  var QUICK_ROUTING_METHOD = "quick_routing.state";
+  var TAB_PARAM = "tab";
+  var STEPS_PARAM = "steps";
+  var REBUILD_STEP = "rebuild";
+  var WIRE_OVERLAY_PART = "wire-overlay";
+  var RELATIVE = "relative";
+  var PANEL = "panel";
+  var PANEL_WORDS = "panel_words";
+  var PANEL_PART = "panel";
+  var PANEL_TITLE_PART = "panel-title";
+  var PANEL_BODY_PART = "panel-body";
+  var PANEL_INPUT_PART = "panel-input";
+  var PANEL_BUTTON_PART = "panel-button";
+  var PANEL_ENTRY_PART = "panel-entry";
+  var TITLE = "title";
+  var PROMPT = "prompt";
+  var ROW_LABEL = "row_label";
+  var SUFFIX = "suffix";
+  var BODY = "body";
+  var ENTRIES = "entries";
+  var MIN = "min";
+  var MAX = "max";
+  var VALUE = "value";
+  var OK = "ok";
+  var YES = "yes";
+  var NO = "no";
+  var CANCEL = "cancel";
+  var CONFIG_WORD = "config";
+  var CONFIRM_WORD = "confirm";
+  var PICKER_WORD = "picker";
+  var NUMBER_TYPE = "number";
+  var DIALOG_ROLE = "dialog";
+  var KIND_ATTR = "data-kind";
+  var FUNCTION_KIND = "function";
 
   var ZERO = Number(EMPTY);
   var STEP = Number(true);
@@ -358,6 +408,7 @@
   var asked = null;
   var dispatched = [];
   var roots = [];
+  var dragFrom = EMPTY;
 
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -496,16 +547,16 @@
   // themeLabel asks acervatorVisualizerThemes for the word a theme shows.
   function themeLabel(key) {
     var api = global.acervatorVisualizerThemes;
-    if (!api || typeof api.nameOf !== "function") {
+    if (!api || typeof api.themeDisplayName !== "function") {
       return text(key);
     }
-    var found = api.nameOf(key);
+    var found = api.themeDisplayName(key);
     return found === undefined || found === null ? text(key) : String(found);
   }
 
   function hasThemeSource() {
     var api = global.acervatorVisualizerThemes;
-    return Boolean(api && typeof api.nameOf === "function");
+    return Boolean(api && typeof api.themeDisplayName === "function");
   }
 
   // The first hex word of one value, empty when the value carries none.
@@ -791,6 +842,316 @@
     });
   }
 
+  // Each locust's box in its page's own coordinates, keyed by bot id.
+  function boxesIn(page) {
+    var found = {};
+    if (page === null) {
+      return found;
+    }
+    var box = page.getBoundingClientRect();
+    Array.prototype.forEach.call(
+      page.querySelectorAll('[data-part="' + LOCUST_PART + '"]'),
+      function (node) {
+        var one = node.getBoundingClientRect();
+        found[node.getAttribute(KEY_ATTR)] = [
+          one.left - box.left,
+          one.top - box.top,
+          one.width,
+          one.height
+        ];
+      }
+    );
+    return found;
+  }
+
+  function askSurface(method, params) {
+    if (!global.acervator || typeof global.acervator.call !== FUNCTION_KIND) {
+      return Promise.resolve(null);
+    }
+    return global.acervator.call(method, params);
+  }
+
+  // WireOverlay measures the locust boxes, then draws the sheet the surface holds.
+  function WireOverlay(props) {
+    var model = props.model;
+    var mount = hooks().useRef(null);
+    var wires = listField(model, WIRES);
+    var opacity = model[OPACITY_PCT];
+    var sheet = objectField(model, WIRE_SHEET);
+    var drawnFor = hooks().useRef(null);
+    var stamp = JSON.stringify([wires, opacity, model[THEME_KEY]]);
+    hooks().useEffect(function () {
+      if (drawnFor.current === stamp) {
+        return;
+      }
+      var page = mount.current === null ? null : mount.current.parentElement;
+      var boxes = boxesIn(page);
+      if (!Object.keys(boxes).length) {
+        return;
+      }
+      drawnFor.current = stamp;
+      var asked = {};
+      asked[BOXES_PARAM] = boxes;
+      dispatch(WIRE_SHEET, asked);
+    });
+    var api = global[WIRE_CANVAS_API];
+    var overlayProps = { ref: mount, style: copyOf(objectField(model, OVERLAY_STYLE)) };
+    overlayProps.style.pointerEvents = NONE;
+    overlayProps[PART_ATTR] = WIRE_OVERLAY_PART;
+    overlayProps[COUNT_ATTR] = String(wires.length);
+    if (!api || typeof api.Sheet !== FUNCTION_KIND || !owns(sheet, STYLE_SHEET)) {
+      return element(DIV_TAG, overlayProps, null);
+    }
+    return element(DIV_TAG, overlayProps, element(api.Sheet, { model: sheet }));
+  }
+
+  // QuickRouting draws the matrix module over the fleet the tab holds.
+  function QuickRouting(props) {
+    var model = props.model;
+    var state = hooks().useState(null);
+    var held = state.shift();
+    var setHeld = state.shift();
+    var ids = listField(model, BOT_IDS);
+    hooks().useEffect(
+      function () {
+        var asked = {};
+        asked[TAB_PARAM] = {};
+        asked[TAB_PARAM][WIDGET_SYMBOLS_PARAM] = objectField(model, BOT_SYMBOLS);
+        asked[TAB_PARAM][MASKED_PARAM] = model[ANY_MASKED] === true;
+        asked[STEPS_PARAM] = [[REBUILD_STEP, ids]];
+        var live = true;
+        askSurface(QUICK_ROUTING_METHOD, asked).then(function (answer) {
+          if (live) {
+            setHeld(answer);
+          }
+        });
+        return function () {
+          live = false;
+        };
+      },
+      [JSON.stringify(ids), JSON.stringify(objectField(model, BOT_SYMBOLS))]
+    );
+    var api = global[QUICK_ROUTING_API];
+    if (!api || typeof api.Matrix !== FUNCTION_KIND || !isPlainObject(held)) {
+      return null;
+    }
+    return element(api.Matrix, { model: held });
+  }
+
+  // The bot a pointer landed on, read off the nearest ancestor naming one.
+  function botKeyAt(node) {
+    var at = node;
+    while (at) {
+      if (typeof at.getAttribute === FUNCTION_KIND) {
+        var part = at.getAttribute(PART_ATTR);
+        if (part === LIST_ROW_PART || part === LOCUST_PART) {
+          return at.getAttribute(KEY_ATTR) || EMPTY;
+        }
+      }
+      at = at.parentElement;
+    }
+    return EMPTY;
+  }
+
+  function dragProps(props) {
+    props.onPointerDown = function (event) {
+      dragFrom = botKeyAt(event.target);
+    };
+    props.onPointerUp = function (event) {
+      var start = dragFrom;
+      dragFrom = EMPTY;
+      if (start) {
+        dispatch(FINISH_DRAG, {
+          source_id: start,
+          target_id: botKeyAt(event.target)
+        });
+      }
+    };
+    return props;
+  }
+
+  function PanelButton(props) {
+    var buttonProps = {
+      className: INPUT_CLASS,
+      style: { flex: FLEX_NONE },
+      type: BUTTON_TYPE,
+      onClick: props.onPress
+    };
+    buttonProps[PART_ATTR] = PANEL_BUTTON_PART;
+    buttonProps[SLOT_ATTR] = props.slot;
+    return element(BUTTON_TAG, buttonProps, text(props.text));
+  }
+
+  function ConfigPanel(props) {
+    var panel = props.panel;
+    var words = props.words;
+    var state = hooks().useState(String(panel[VALUE]));
+    var value = state.shift();
+    var setValue = state.shift();
+    var inputProps = {
+      className: INPUT_CLASS,
+      type: NUMBER_TYPE,
+      min: text(panel[MIN]),
+      max: text(panel[MAX]),
+      value: value,
+      onChange: function (event) {
+        setValue(event.target.value);
+      }
+    };
+    inputProps[PART_ATTR] = PANEL_INPUT_PART;
+    var promptProps = {};
+    promptProps[PART_ATTR] = PANEL_BODY_PART;
+    return element(
+      DIV_TAG,
+      { style: { display: FLEX, flexDirection: COLUMN } },
+      element(DIV_TAG, promptProps, text(panel[PROMPT])),
+      element(
+        DIV_TAG,
+        { style: { display: FLEX, flexDirection: ROW, alignItems: CENTER } },
+        element(SPAN_TAG, { key: ROW_LABEL }, text(panel[ROW_LABEL])),
+        element(INPUT_TAG, inputProps),
+        element(SPAN_TAG, { key: SUFFIX }, text(panel[SUFFIX]))
+      ),
+      element(
+        DIV_TAG,
+        { style: { display: FLEX, flexDirection: ROW } },
+        element(PanelButton, {
+          key: OK,
+          slot: words[OK],
+          text: text(panel[OK]),
+          onPress: function () {
+            dispatch(ANSWER_PANEL, { choice: words[OK], pct: Number(value) });
+          }
+        }),
+        element(PanelButton, {
+          key: CANCEL,
+          slot: words[CANCEL],
+          text: text(panel[CANCEL]),
+          onPress: function () {
+            dispatch(ANSWER_PANEL, { choice: words[CANCEL] });
+          }
+        })
+      )
+    );
+  }
+
+  function ConfirmPanel(props) {
+    var panel = props.panel;
+    var words = props.words;
+    var bodyProps = { style: { whiteSpace: PRE_WRAP } };
+    bodyProps[PART_ATTR] = PANEL_BODY_PART;
+    return element(
+      DIV_TAG,
+      { style: { display: FLEX, flexDirection: COLUMN } },
+      element(DIV_TAG, bodyProps, text(panel[BODY])),
+      element(
+        DIV_TAG,
+        { style: { display: FLEX, flexDirection: ROW } },
+        element(PanelButton, {
+          key: YES,
+          slot: words[YES],
+          text: text(panel[YES]),
+          onPress: function () {
+            dispatch(ANSWER_PANEL, { choice: words[YES] });
+          }
+        }),
+        element(PanelButton, {
+          key: CANCEL,
+          slot: words[CANCEL],
+          text: text(panel[NO]),
+          onPress: function () {
+            dispatch(ANSWER_PANEL, { choice: words[CANCEL] });
+          }
+        })
+      )
+    );
+  }
+
+  // A picker line with no data is a heading or a separator and does nothing.
+  function PickerPanel(props) {
+    var panel = props.panel;
+    var words = props.words;
+    var drawn = (Array.isArray(panel[ENTRIES]) ? panel[ENTRIES] : []).map(
+      function (entry, at) {
+        var one = Array.isArray(entry) ? entry.slice() : [];
+        var caption = one.shift();
+        var data = one.shift();
+        var entryProps = {
+          key: String(at),
+          className: INPUT_CLASS,
+          type: BUTTON_TYPE,
+          disabled: !Array.isArray(data),
+          onClick: function () {
+            dispatch(ANSWER_PANEL, { choice: words[PICKER_WORD], entry: data });
+          }
+        };
+        entryProps[PART_ATTR] = PANEL_ENTRY_PART;
+        entryProps[INDEX_ATTR] = String(at);
+        return element(BUTTON_TAG, entryProps, text(caption));
+      }
+    );
+    drawn.push(
+      element(PanelButton, {
+        key: CANCEL,
+        slot: words[CANCEL],
+        text: text(panel[CANCEL]),
+        onPress: function () {
+          dispatch(ANSWER_PANEL, { choice: words[CANCEL] });
+        }
+      })
+    );
+    return element(
+      DIV_TAG,
+      { style: { display: FLEX, flexDirection: COLUMN } },
+      drawn
+    );
+  }
+
+  var PANEL_BODIES = {};
+  PANEL_BODIES[CONFIG_WORD] = ConfigPanel;
+  PANEL_BODIES[CONFIRM_WORD] = ConfirmPanel;
+  PANEL_BODIES[PICKER_WORD] = PickerPanel;
+
+  // The surface names each panel kind, so its own word chooses the body.
+  function bodyFor(words, kind) {
+    var found;
+    Object.keys(PANEL_BODIES).forEach(function (name) {
+      if (words[name] === kind) {
+        found = PANEL_BODIES[name];
+      }
+    });
+    return found;
+  }
+
+  // Panel draws nothing until a drag release asks the surface for one.
+  function Panel(props) {
+    var panel = props.model[PANEL];
+    var words = objectField(props.model, PANEL_WORDS);
+    if (!isPlainObject(panel)) {
+      return null;
+    }
+    var Body = bodyFor(words, panel[KIND]);
+    if (Body === undefined) {
+      return null;
+    }
+    var panelProps = {
+      className: TAB_CLASS,
+      style: { display: FLEX, flexDirection: COLUMN, flex: FLEX_NONE },
+      role: DIALOG_ROLE
+    };
+    panelProps[PART_ATTR] = PANEL_PART;
+    panelProps[KIND_ATTR] = text(panel[KIND]);
+    panelProps[ARIA_LABEL] = label(panel[TITLE]);
+    var titleProps = {};
+    titleProps[PART_ATTR] = PANEL_TITLE_PART;
+    return element(
+      DIV_TAG,
+      panelProps,
+      element(DIV_TAG, titleProps, text(panel[TITLE])),
+      element(Body, { panel: panel, words: words })
+    );
+  }
+
   function HeaderRow(props) {
     var model = props.model;
     var style = boxStyle(model, NESTED_MARGINS, HEADER_SPACING, ROW);
@@ -899,7 +1260,16 @@
     cellProps[ROW_ATTR] = String(props.row);
     cellProps[COLUMN_ATTR] = String(props.column);
     cellProps[INDEX_ATTR] = String(props.at);
-    return element(DIV_TAG, cellProps, null);
+    return element(DIV_TAG, cellProps, botCard(props.card));
+  }
+
+  // The locust the node module paints, or nothing while it has not loaded.
+  function botCard(card) {
+    var api = global.acervatorBotNode;
+    if (!api || typeof api.Card !== FUNCTION_KIND || !isPlainObject(card)) {
+      return null;
+    }
+    return element(api.Card, { model: card });
   }
 
   function GridPage(props) {
@@ -920,6 +1290,7 @@
     };
     pageProps[PART_ATTR] = GRID_PAGE_PART;
     pageProps[CURRENT_ATTR] = text(props.current);
+    dragProps(pageProps);
     pageProps[DECLARED_ATTR] = String(listField(model, BOT_IDS).length);
     pageProps[HELD_ATTR] = String(cells.length);
 
@@ -931,6 +1302,7 @@
       return element(Locust, {
         key: String(botId),
         botId: text(botId),
+        card: objectField(model, LOCUST_CARDS)[botId],
         row: Number(row) + STEP,
         column: Number(column) + STEP,
         at: at
@@ -951,6 +1323,8 @@
     canvasProps[SLOT_ATTR] = WIRE_CANVAS_PART;
     canvasProps[COUNT_ATTR] = String(listField(model, WIRES).length);
     drawn.push(element(DIV_TAG, canvasProps, null));
+    drawn.push(element(WireOverlay, { key: WIRE_OVERLAY_PART, model: model }));
+    pageProps.style.position = RELATIVE;
     return element(DIV_TAG, pageProps, drawn);
   }
 
@@ -974,6 +1348,7 @@
     mountProps[SLOT_ATTR] = LIST_MOUNT_PART;
     mountProps[DECLARED_ATTR] = String(listField(model, BOT_IDS).length);
     mountProps[HELD_ATTR] = String(Array.isArray(rows) ? rows.length : ZERO);
+    dragProps(mountProps);
 
     var drawn = (Array.isArray(rows) ? rows : []).map(function (one, at) {
       var rowProps = {
@@ -1290,6 +1665,7 @@
     var routingProps = { key: QUICK_ROUTING_PART, style: { flex: STEP } };
     routingProps[PART_ATTR] = QUICK_ROUTING_PART;
     routingProps[SLOT_ATTR] = QUICK_ROUTING_PART;
+    var routingBody = element(QuickRouting, { model: model });
 
     return element(
       DIV_TAG,
@@ -1299,7 +1675,7 @@
         DIV_TAG,
         innerProps,
         element(ViewStack, { key: VIEW_STACK_PART, model: model }),
-        element(DIV_TAG, routingProps, null)
+        element(DIV_TAG, routingProps, routingBody)
       ),
       element(LiveRows, { key: LIVE_ROWS_PART, model: model })
     );
@@ -1405,7 +1781,8 @@
           lines: objectField(model, PAPER_SUMMARY),
           current: current === model[PAPER_TAB_INDEX]
         })
-      )
+      ),
+      element(Panel, { key: PANEL_PART, model: model })
     );
   }
 
@@ -1818,12 +2195,30 @@
     dispatched = [];
   }
 
+  // The shell draws this tab by its module name; the host reads that name
+  // off the script tag running now, so it is written down nowhere.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderTab,
+      load: loadBotSwarm,
+      loadError: loadError
+    });
+  }
+
   global.acervatorSetBotSwarm = setBotSwarm;
   global.acervatorLoadBotSwarm = loadBotSwarm;
   global.acervatorBotSwarm = {
     method: METHOD,
     Tab: Tab,
     TabButton: TabButton,
+    Panel: Panel,
+    WireOverlay: WireOverlay,
+    QuickRouting: QuickRouting,
+    boxesIn: boxesIn,
+    ConfigPanel: ConfigPanel,
+    ConfirmPanel: ConfirmPanel,
+    PickerPanel: PickerPanel,
+    botKeyAt: botKeyAt,
     SwarmPane: SwarmPane,
     HeaderRow: HeaderRow,
     PrivacyDot: PrivacyDot,
