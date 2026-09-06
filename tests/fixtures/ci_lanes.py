@@ -27,6 +27,7 @@ SLOW_FILES = frozenset(
         "test_build_product_manual_rendering.py",
         "test_design_system_chart_tokens.py",
         "test_extract_product_manual_keeps_additions.py",
+        "test_the_conversion_check_over_every_qt_module.py",
     }
 )
 

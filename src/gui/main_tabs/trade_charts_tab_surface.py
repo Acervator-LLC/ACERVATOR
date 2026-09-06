@@ -449,6 +449,18 @@ class PanelSink:
         self.chart_timeframe = timeframe
         self.calls.append(["chart.set_timeframe", timeframe])
 
+    def set_timeframe(self, timeframe: Any) -> bool:
+        """Move the combo to ``timeframe`` and report whether it moved.
+
+        A value outside ``PANEL_TIMEFRAME_OPTIONS`` leaves ``timeframe``
+        where it was, which is what a non-editable combo does.
+        """
+        moved = timeframe in PANEL_TIMEFRAME_OPTIONS
+        if moved:
+            self.timeframe = timeframe
+        self.calls.append(["chart.combo_set", timeframe, moved])
+        return moved
+
     def set_minimum_height(self, pixels: Any) -> None:
         """Ask for a floor on this panel's height."""
         self.minimum_height_px = pixels
@@ -860,6 +872,18 @@ class TradeChartsTabModel:
         except Exception as exc:
             self.calls.append([UPDATE_FLOORS_FAILED, bot_id, type(exc).__name__])
 
+    def move_timeframe_combo(self, bot_id: Any, timeframe: Any) -> bool:
+        """Move one panel's combo and chart to ``timeframe``, as Qt's own does.
+
+        Qt runs this inside ``ChartPanel`` before the tab hears the signal;
+        the frontend draws that combo, so this is the half it must run.
+        """
+        panel = (self.panels.get(bot_id) or {}).get(PANEL_KEY)
+        if panel is None or not panel.set_timeframe(timeframe):
+            return False
+        panel.set_chart_timeframe(timeframe)
+        return True
+
     def on_timeframe_changed(self, bot_id: Any, timeframe: Any) -> None:
         """Re-arm one panel's fetch after the operator moved its timeframe combo.
 
@@ -1091,6 +1115,7 @@ def build_view_model(
     if statuses is not None:
         model.update_charts(statuses, exchange_connectors=connectors)
     if timeframe_change is not None:
+        model.move_timeframe_combo(timeframe_change[0], timeframe_change[1])
         model.on_timeframe_changed(timeframe_change[0], timeframe_change[1])
     if fetch_now:
         asyncio.run(model.fetch_chart_data(connectors))
@@ -1279,3 +1304,36 @@ def view_model(params: dict) -> dict:
         params.get("trades"),
         params.get("synthetic"),
     )
+
+
+def live_view_model(params: dict, live: Any) -> dict:
+    """Build the Asset Charts view model from the running fleet.
+
+    ``live.bot_manager.list_bots`` names the bots ``update_charts`` builds a
+    panel for, and that same manager answers ``get_bot`` for the overlays.
+    ``view_model`` answers while no manager is bound.
+    """
+    global PANE_MODEL
+    manager = getattr(live, "bot_manager", None)
+    if manager is None or not hasattr(manager, "list_bots"):
+        return view_model(params)
+    asked = dict(params or {})
+    if asked.pop("reset", False):
+        PANE_MODEL = TradeChartsTabModel()
+    if asked.get("statuses") is None:
+        asked["statuses"] = list(manager.list_bots())
+    PANE_MODEL.manager = manager
+    return view_model(asked)
+
+
+def bind_live(live: Any) -> Any:
+    """Return a ``trade_charts_tab.state`` handler reading ``live``.
+
+    ``src.core.desktop_bridge.build_registry`` calls this when the running
+    program serves the bridge, and the handler defers to ``live_view_model``.
+    """
+
+    def handler(params: dict) -> dict:
+        return live_view_model(params or {}, live)
+
+    return handler

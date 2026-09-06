@@ -9,7 +9,10 @@ logger = logging.getLogger("acervator.gui")
 
 
 class MarketInspectorTabMixin:
-    """Builds ``MarketInspectorTab`` and wires its proposal and adopt handlers."""
+    """Builds the Market Inspector tab and wires its proposal and adopt handlers.
+
+    ``variant_surface`` decides whether that tab is the Qt one or the React one.
+    """
 
     # MainWindow supplies these at runtime; the annotations create no attribute.
     _adopt_topology_proposal: Callable[..., Any]
@@ -20,9 +23,9 @@ class MarketInspectorTabMixin:
 
     def _build_market_inspector_tab(self) -> None:
         """Build the Market Inspector tab and add it to the main tab widget."""
-        from ..market_inspector import MarketInspectorTab
+        from ..variant_surface import MARKET_INSPECTOR, surface_class
 
-        self._market_inspector = MarketInspectorTab()
+        self._market_inspector = surface_class(MARKET_INSPECTOR)()
         try:
             self._market_inspector.set_dismiss_store(self._settings)
         except Exception as _ds_exc:  # noqa: BLE001 - persistence is optional

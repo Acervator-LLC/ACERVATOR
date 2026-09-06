@@ -181,6 +181,26 @@ The strip along the top replaces the window's own while this tab is active. It
 names the same ten readings against sim balances, and every one draws an em
 dash in the figure, because no fleet is loaded.
 
+React draws that strip. The tab asks `variant_surface` which of the two strips
+to build, and both answer the same `set` and `clear` calls, so the fleet panel
+and Nuclear Mode write to either without knowing which they hold.
+
+`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._build_stat_strip`
+
+```python
+from ..variant_surface import SIM_STAT_STRIP, surface_class
+
+return surface_class(SIM_STAT_STRIP)(self)
+```
+
+`SimStatStripWebStrip` holds `SimStatStripModel` where the Qt strip held ten
+label pairs, and draws it with `sim_stat_strip.js` in one `QWebEngineView`. A
+field name the strip does not carry is still ignored, and an empty value still
+falls back to the em dash. Setting `ACERVATOR_VARIANT` to `qt` builds the Qt
+strip instead, unchanged.
+
+Everything else on this tab is still drawn by Qt.
+
 Mode is the picker beside it. Three modes, each with its own line saying what
 it collects.
 
@@ -471,6 +491,38 @@ every time. Issue #424 carries it.
 The footer names the auto-refresh period and the adopt route. The status bar
 under it carries the API load pill, drawn green below half load, amber above
 it, and red past the monitor's safety percentage, then the `AI:` state label.
+
+React draws this screen. Both halves are one web page inside a single view,
+and the build decides which class the tab builder makes.
+`src/gui/main_tabs/market_inspector_tab.py` — `_build_market_inspector_tab`
+
+```python
+from ..variant_surface import MARKET_INSPECTOR, surface_class
+
+self._market_inspector = surface_class(MARKET_INSPECTOR)()
+```
+
+`MarketInspectorReactTab` subclasses the Qt tab, so the scan cycle, the
+filtering and the analyzer writes are the same code on both sides. Five
+accessors are what the two sides answer differently: `_set_status`,
+`_set_refresh_enabled`, `_shown_signals`, `_fill_signal_rows` and
+`_fill_pair_rows`. The Qt tab writes them into its widgets and the React tab
+writes them into the page.
+
+`src/gui/react_market_inspector_tab.py` — `MarketInspectorReactTab._build_ui`
+
+```python
+self._web = QWebEngineView(self)
+self._web_page = MarketInspectorPage(self)
+self._web.setPage(self._web_page)
+self._web.loadFinished.connect(self._on_load_finished)
+self._web.setHtml(tab_html())
+```
+
+Refresh and the Include active markets checkbox report their press back to
+Python, and the right pane reports Refresh proposals, Preview, Dismiss, Cancel
+and Adopt the same way. Setting `ACERVATOR_VARIANT` to `qt` builds the Qt
+widgets instead, unchanged.
 
 Detail: [08-tabs/market-inspector.md](08-tabs/market-inspector.md).
 
@@ -2872,7 +2924,7 @@ tab row.
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | no |
 | `src/gui/history_qt_table.py` | no | - | no | no | no | no |
 | `src/gui/history_tab.py` | `history_tab.js` | yes | yes | yes | yes | yes |
-| `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | no | no |
+| `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | no | yes |
 | `src/gui/init_wizard.py` | `init_wizard.js` | yes | yes | yes | no | no |
 | `src/gui/instance_consent_dialog.py` | `instance_consent_dialog.js` | yes | no | yes | no | no |
 | `src/gui/journal_tab.py` | `journal_tab.js` | yes | yes | yes | no | no |
@@ -2898,9 +2950,9 @@ tab row.
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes |
 | `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | no |
 | `src/gui/main_window.py` | no | - | yes | no | no | no |
-| `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | no | no |
-| `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | no | no |
-| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | no | no |
+| `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | no | yes |
+| `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | no | yes |
+| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | no | yes |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | no |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | no |
 | `src/gui/react_history_tab.py` | no | - | no | no | no | no |
@@ -2910,7 +2962,7 @@ tab row.
 | `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | no |
 | `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | no |
 | `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | no |
-| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | no |
+| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes |
 | `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes |
 | `src/gui/start_all_progress_dialog.py` | no | - | no | no | no | no |
 | `src/gui/stock_main_window.py` | no | - | yes | no | no | no |
@@ -2933,17 +2985,18 @@ tab row.
 | `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | no | no |
 | `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | no |
 | `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | no | no |
-| `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | no | no |
+| `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | no | yes |
 | `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes |
 
 Totals across the 76 rows above, measured on 5 September 2026:
 
 ```
-React module              53
-Bridge                    67
-Manifest                  55
-Registers in Electron     13
-RENDERS                   13
+React module             55
+Uses React               53
+Bridge                   67
+Manifest                 55
+Registers in Electron    13
+RENDERS                  19
 ```
 
 Four columns are all but complete. The fifth is at one.

@@ -15,6 +15,8 @@ from src._variant import QT, resolve_variant
 BOT_SWARM = "Bot Swarm"
 HISTORY = "History"
 HISTORY_TABLE = "History table"
+MARKET_INSPECTOR = "Market Inspector"
+SIM_STAT_STRIP = "Sim stat strip"
 
 Loader = Callable[[], type]
 
@@ -92,6 +94,36 @@ def _react_bot_swarm() -> type:
     return BotSwarmReactTab
 
 
+def _qt_market_inspector() -> type:
+    """Import and return the Qt Market Inspector tab."""
+    from .market_inspector import MarketInspectorTab
+
+    return MarketInspectorTab
+
+
+def _react_market_inspector() -> type:
+    """Import and return the React Market Inspector tab."""
+    from .react_market_inspector_tab import MarketInspectorReactTab
+
+    return MarketInspectorReactTab
+
+
+def _qt_sim_stat_strip() -> type:
+    """Import and return the Qt Simulator stat strip."""
+    from .simulator_tab.sim_stat_strip import SimStatStrip
+
+    return SimStatStrip
+
+
+def _react_sim_stat_strip() -> type:
+    """Import and return the React Simulator stat strip."""
+    from .react_sim_stat_strip import SimStatStripWebStrip
+
+    return SimStatStripWebStrip
+
+
 register(HISTORY, _qt_history, _react_history)
 register(HISTORY_TABLE, _qt_history_table, _react_history_table)
 register(BOT_SWARM, _qt_bot_swarm, _react_bot_swarm)
+register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)
+register(SIM_STAT_STRIP, _qt_sim_stat_strip, _react_sim_stat_strip)

@@ -18,6 +18,7 @@ const REPO_ROOT = path.join(__dirname, "..");
 const BRIDGE_SCRIPT = "main.py";
 const BRIDGE_FLAG = "--bridge";
 const CALL_CHANNEL = "acervator:call";
+const PUSH_CHANNEL = "acervator:push";
 
 function pythonExecutable() {
   return process.env.ACERVATOR_PYTHON || (process.platform === "win32" ? "python" : "python3");
@@ -25,11 +26,13 @@ function pythonExecutable() {
 
 // The Python backend, and the requests waiting on it. `pending` maps a
 // request id to the promise callbacks for that id, which is what lets
-// several surfaces share one pipe.
+// several surfaces share one pipe. `pushHandlers` holds the callbacks for
+// the frames that answer no request.
 class Bridge {
   constructor() {
     this.child = null;
     this.pending = new Map();
+    this.pushHandlers = new Set();
     this.nextId = 1;
     this.buffer = "";
   }
@@ -62,12 +65,18 @@ class Bridge {
     }
   }
 
+  // A push carries `push` and no `id`, so it matches no waiter and would
+  // otherwise be dropped here.
   onFrame(line) {
     let frame;
     try {
       frame = JSON.parse(line);
     } catch (err) {
       process.stderr.write("[bridge] unparseable frame: " + line + "\n");
+      return;
+    }
+    if (typeof frame.push === "string") {
+      this.deliverPush(frame.push, frame.values || {});
       return;
     }
     const waiter = this.pending.get(frame.id);
@@ -80,6 +89,22 @@ class Bridge {
     } else {
       const error = frame.error || {};
       waiter.reject(new Error((error.type || "Error") + ": " + (error.message || "")));
+    }
+  }
+
+  // Returns the function that takes the handler off again.
+  onPush(handler) {
+    this.pushHandlers.add(handler);
+    return () => this.pushHandlers.delete(handler);
+  }
+
+  deliverPush(section, values) {
+    for (const handler of this.pushHandlers) {
+      try {
+        handler(section, values);
+      } catch (err) {
+        process.stderr.write("[bridge] push handler for " + section + ": " + err.message + "\n");
+      }
     }
   }
 
@@ -117,6 +142,14 @@ class Bridge {
 
 const bridge = new Bridge();
 
+function broadcastPush(section, values) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send(PUSH_CHANNEL, section, values);
+    }
+  }
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
@@ -136,6 +169,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   bridge.start();
+  bridge.onPush(broadcastPush);
   ipcMain.handle(CALL_CHANNEL, (_event, method, params) => bridge.call(method, params));
   createWindow();
   app.on("activate", () => {
@@ -152,4 +186,10 @@ app.on("window-all-closed", () => {
   }
 });
 
-module.exports = { Bridge: Bridge, pythonExecutable: pythonExecutable };
+module.exports = {
+  Bridge: Bridge,
+  pythonExecutable: pythonExecutable,
+  broadcastPush: broadcastPush,
+  CALL_CHANNEL: CALL_CHANNEL,
+  PUSH_CHANNEL: PUSH_CHANNEL
+};

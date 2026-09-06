@@ -203,7 +203,13 @@
   var API_BLOCK_PART = "api-block";
   var API_PLACEHOLDER_PART = "api-placeholder";
 
+  var STATUS_LOG_MODULE = "status_log";
+  var INDICATOR_MODULE = "indicator_panel";
+  var LOAD_LOG = "acervatorLoadLog";
+  var LOAD_INDICATOR = "acervatorLoadIndicatorPanel";
+
   var PART_ATTR = "data-part";
+  var CHILD_ATTR = "data-child-module";
   var SLOT_ATTR = "data-slot";
   var KEY_ATTR = "data-key";
   var ACTION_ATTR = "data-action";
@@ -1523,7 +1529,9 @@
     if (!isPlainObject(payload)) {
       payload = held === null ? null : held.model;
     }
-    return draw(target, element(Tab, { model: payload }));
+    var drawn = draw(target, element(Tab, { model: payload }));
+    mountChildren(target);
+    return drawn;
   }
 
   // `status_log.js` draws its own lines into the slot this tab keeps.
@@ -1535,7 +1543,43 @@
     if (!api || typeof api.renderLog !== "function" || slot === null) {
       return null;
     }
+    slot.setAttribute(CHILD_ATTR, STATUS_LOG_MODULE);
     return api.renderLog(slot);
+  }
+
+  // `indicator_panel.js` draws its own votes into the slot this tab keeps.
+  function renderIndicatorPanel(target) {
+    var api = global.acervatorIndicatorPanel;
+    var slot = target.querySelector(
+      SELECT_OPEN + PART_ATTR + SELECT_IS + INDICATOR_PART + SELECT_CLOSE
+    );
+    if (!api || typeof api.renderPanel !== "function" || slot === null) {
+      return null;
+    }
+    slot.setAttribute(CHILD_ATTR, INDICATOR_MODULE);
+    return api.renderPanel(slot);
+  }
+
+  // Qt builds the voting panel and the activity log inside this tab, so each
+  // one is asked for its own view model and drawn into the slot kept for it.
+  function mountChildren(target) {
+    var children = [
+      { module: STATUS_LOG_MODULE, loader: LOAD_LOG, draw: renderActivityLog },
+      { module: INDICATOR_MODULE, loader: LOAD_INDICATOR, draw: renderIndicatorPanel }
+    ];
+    var asked = children.map(function (child) {
+      var loader = global[child.loader];
+      var wait =
+        typeof loader === "function" ? loader({}) : Promise.resolve(null);
+      return Promise.resolve(wait).then(function () {
+        return child.draw(target) === null ? null : child.module;
+      });
+    });
+    return Promise.all(asked).then(function (drawn) {
+      return drawn.filter(function (name) {
+        return name !== null;
+      });
+    });
   }
 
   function forget() {
@@ -1603,6 +1647,8 @@
     isLoaded: isLoaded,
     renderTab: renderTab,
     renderActivityLog: renderActivityLog,
+    renderIndicatorPanel: renderIndicatorPanel,
+    mountChildren: mountChildren,
     forget: forget
   };
 })(window);

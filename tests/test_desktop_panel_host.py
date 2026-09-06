@@ -1,9 +1,10 @@
 """The shell draws more than one converted panel, each addressed by name.
 
 ``desktop/renderer/panel_host.js`` takes the panel roster from the
-generated manifest, draws each registered panel into its own host element
-under ``#panels``, and writes the reason onto the page for a panel that
-did not draw. ``PANEL_SURFACES`` names every module that registers; the
+generated manifest, draws each registered screen into its own host element
+under ``#panels`` and each chrome panel under ``#chrome``, and writes the
+reason onto the page for a panel that did not draw.
+``PANEL_SURFACES`` names every module that registers; the
 Console tab and the header strip are each compared against the Qt widget
 they stand for, built from the shipped mixin and read at run time.
 """
@@ -63,6 +64,43 @@ PANEL_SURFACES = {
 }
 
 REGISTERING_PANELS = sorted(PANEL_SURFACES)
+
+#: The panels that register as chrome. Chrome draws above the tab bar and
+#: stays there for every tab, so the bar gives it no tab of its own.
+CHROME_PANELS = [HEADER_PANEL]
+
+SCREEN_PANELS = sorted(set(PANEL_SURFACES) - set(CHROME_PANELS))
+
+HISTORY_PANEL = "history_tab"
+
+#: The History table's mount. ``history_panel.js`` addresses it by this id,
+#: and the page declares it a part of the History screen.
+ROOT_ID = "root"
+PART_ATTRIBUTE = "data-panel-part"
+
+#: The opening request each panel hands its own loader. A panel absent here
+#: declares none and ``acervatorPanelHost.requestOf`` asks it with ``{}``.
+PANEL_REQUESTS = {
+    "market_inspector_tab": {"reset": True, "build": True},
+    "trade_charts_tab": {"reset": True},
+}
+
+INSPECTOR_PANEL = "market_inspector_tab"
+CHARTS_PANEL = "trade_charts_tab"
+
+#: The Market Inspector request with ``build`` taken out, which is what the
+#: shell asked before a panel supplied its own.
+INSPECTOR_REQUEST_WITHOUT_BUILD = {"reset": True}
+
+CHART_STATUSES = [
+    {"bot_id": "chart-bot", "symbol": "BTC/USD", "mode": "scrum", "state": "running"}
+]
+
+SPARE_REQUEST = {"symbol": "BTC/USD"}
+
+INSPECTOR_HEADLINE = "tab/fallback/message/headline"
+INSPECTOR_DETAIL = "tab/fallback/message/detail"
+CHART_HEADER = "tab/scroll/content/chart-panel/panel-header"
 
 JS_TIMEOUT_MS = 30_000
 READY_ROUNDS = 100
@@ -311,6 +349,29 @@ FAKE_BRIDGE = (
     "} };"
 )
 
+#: The same bridge, keeping every method and params pair it was called with.
+RECORDING_BRIDGE = (
+    "window.ASKED = [];"
+    "window.acervator = { call: function (method, params) {"
+    "  window.ASKED.push({ method: method, params: params });"
+    "  var answers = window.PANEL_MODELS || {};"
+    "  if (!Object.prototype.hasOwnProperty.call(answers, method)) {"
+    "    return Promise.reject(new Error('the backend has no ' + method));"
+    "  }"
+    "  return Promise.resolve(JSON.parse(JSON.stringify(answers[method])));"
+    "} };"
+)
+
+#: Registers ``SPARE_PANEL`` with a loader that keeps the request it was given.
+SPARE_LOADER = (
+    "window.ASKED_SPARE = null;"
+    "acervatorPanelHost.register({"
+    "  render: function (target) { target.textContent = 'drawn'; },"
+    "  load: function (params) {"
+    "    window.ASKED_SPARE = params;"
+    "    return Promise.resolve({}); }"
+)
+
 
 class Browser:
     """Drives the real renderer page in the Chromium PySide6 ships."""
@@ -484,14 +545,20 @@ def test_the_registered_panels_are_the_modules_that_asked_for_a_host(
 
 
 def panel_models() -> dict:
-    """One view model per registering panel, keyed by its bridge method."""
+    """One view model per registering panel, keyed by its bridge method.
+
+    Each surface answers the request ``PANEL_REQUESTS`` gives its panel, so a
+    panel that changes what it asks for changes what the shell draws here.
+    """
     answers = {
         console_surface.METHOD: console_payload(RECORDS),
         header_surface.METHOD: header_payload(),
     }
     for name, source in PANEL_SURFACES.items():
         if name not in (CONSOLE_PANEL, HEADER_PANEL):
-            answers[source.METHOD] = source.view_model({})
+            answers[source.METHOD] = source.view_model(
+                dict(PANEL_REQUESTS.get(name, {}))
+            )
     return answers
 
 
@@ -753,13 +820,109 @@ def wait_for_children(browser: Browser, name: str) -> int:
     )
 
 
-def test_the_tab_bar_holds_one_tab_for_every_registered_panel(browser: Browser):
-    """``tab_names`` equals ``acervatorPanelHost.wanted()``. The tab set is
-    ``REGISTERING_PANELS``, the modules that registered."""
+def build_chrome(browser: Browser) -> list:
+    """Answer a bridge, run ``acervatorBuildChrome``, and report its panels."""
+    give_tokens(browser)
+    bind(browser, "PANEL_MODELS", panel_models())
+    browser.js(FAKE_BRIDGE)
+    browser.js("acervatorBuildChrome();")
+    return browser.parsed("acervatorPanelHost.chrome()")
+
+
+def counter_labels(browser: Browser, panel: str) -> list:
+    """Every ``COUNTER_LABEL`` text the named host has drawn."""
+    parts = browser.parsed("window.readParts(window.hostOf(" + json.dumps(panel) + "))")
+    return at_path(parts, COUNTER_LABEL)
+
+
+def root_hidden(browser: Browser) -> bool:
+    """Whether ``ROOT_ID`` is hidden."""
+    return browser.parsed("document.getElementById(" + json.dumps(ROOT_ID) + ").hidden")
+
+
+def test_the_tab_bar_holds_one_tab_for_every_registered_screen(browser: Browser):
+    """``tab_names`` equals ``acervatorPanelHost.screens()``. ``SCREEN_PANELS``
+    is every registering module outside ``CHROME_PANELS``."""
     drawn = build_tabs(browser)
-    assert drawn == browser.parsed("acervatorPanelHost.wanted()")
+    assert drawn == browser.parsed("acervatorPanelHost.screens()")
     assert tab_names(browser) == drawn
-    assert sorted(drawn) == REGISTERING_PANELS, f"the bar drew {drawn}"
+    assert sorted(drawn) == SCREEN_PANELS, f"the bar drew {drawn}"
+    assert sorted(browser.parsed("acervatorPanelHost.chrome()")) == CHROME_PANELS
+
+
+def test_the_header_strip_registers_as_chrome_and_takes_no_tab(browser: Browser):
+    """``acervatorPanelHost.kindOf`` answers chrome for ``HEADER_PANEL``.
+    ``HEADER_PANEL`` stays in ``wanted`` and reaches no ``tab_names`` entry."""
+    assert (
+        browser.js("acervatorPanelHost.kindOf(" + json.dumps(HEADER_PANEL) + ")")
+        == "chrome"
+    )
+    drawn = build_tabs(browser)
+    assert HEADER_PANEL in browser.parsed("acervatorPanelHost.wanted()")
+    assert HEADER_PANEL not in drawn, f"the bar drew {drawn}"
+    assert HEADER_PANEL not in tab_names(browser)
+
+
+def test_a_panel_that_declares_no_kind_is_a_screen_and_takes_a_tab(
+    browser: Browser,
+):
+    """The control for ``test_the_header_strip_registers_as_chrome_and_takes_no_tab``.
+    ``SPARE_PANEL`` registers with no kind, so ``kindOf`` answers screen and
+    ``build_tabs`` draws its tab."""
+    browser.js(
+        "acervatorPanelHost.register({ render: function (target) {"
+        "  target.textContent = 'drawn'; } }, " + json.dumps(SPARE_PANEL) + ");"
+    )
+    assert (
+        browser.js("acervatorPanelHost.kindOf(" + json.dumps(SPARE_PANEL) + ")")
+        == "screen"
+    )
+    drawn = build_tabs(browser)
+    assert SPARE_PANEL in drawn
+    assert SPARE_PANEL not in browser.parsed("acervatorPanelHost.chrome()")
+
+
+def test_a_panel_that_declares_an_unknown_kind_is_named_on_the_page(
+    browser: Browser,
+):
+    """``acervatorPanelHost.faults`` names ``SPARE_PANEL`` and the kind it
+    declared, and ``kindOf`` answers screen so the panel still reaches a tab."""
+    browser.js(
+        "acervatorPanelHost.register({ kind: 'banana',"
+        "  render: function (target) { target.textContent = 'drawn'; } }, "
+        + json.dumps(SPARE_PANEL)
+        + ");"
+    )
+    assert browser.parsed("acervatorPanelHost.faults()") == [
+        {"panel": SPARE_PANEL, "reason": "declared an unknown kind: banana"}
+    ]
+    assert (
+        browser.js("acervatorPanelHost.kindOf(" + json.dumps(SPARE_PANEL) + ")")
+        == "screen"
+    )
+
+
+def test_the_chrome_panel_draws_above_the_bar_and_stays_for_every_tab(
+    browser: Browser,
+):
+    """``acervatorBuildChrome`` draws ``HEADER_PANEL`` inside ``#chrome``.
+    Its ``counter_labels`` are still on screen after three ``select`` calls."""
+    assert build_chrome(browser) == CHROME_PANELS
+    assert wait_for_children(browser, HEADER_PANEL) > 0
+    labels = [card["label"] for card in header_payload()["counters"]]
+    assert counter_labels(browser, HEADER_PANEL) == labels
+    assert browser.parsed(
+        "document.getElementById('chrome').contains("
+        "window.hostOf(" + json.dumps(HEADER_PANEL) + "))"
+    )
+    drawn = build_tabs(browser)
+    for name in drawn[:3]:
+        browser.js("acervatorTabBar.select(" + json.dumps(name) + ");")
+        assert (
+            browser.parsed("window.hostOf(" + json.dumps(HEADER_PANEL) + ").hidden")
+            is False
+        ), f"the strip was hidden under {name}"
+        assert counter_labels(browser, HEADER_PANEL) == labels
 
 
 def test_the_tab_bar_gives_no_tab_to_a_module_that_registered_no_panel(
@@ -799,6 +962,66 @@ def test_selecting_a_tab_leaves_exactly_one_panel_showing(browser: Browser):
     assert browser.js("acervatorTabBar.selected()") == other
 
 
+def test_a_mount_declared_part_of_a_screen_shows_only_under_that_screen(
+    browser: Browser,
+):
+    """``ROOT_ID`` carries ``PART_ATTRIBUTE`` naming ``HISTORY_PANEL``, so the
+    History table is hidden under ``CONSOLE_PANEL`` and shown under History."""
+    build_tabs(browser)
+    assert (
+        browser.js(
+            "document.getElementById("
+            + json.dumps(ROOT_ID)
+            + ").getAttribute("
+            + json.dumps(PART_ATTRIBUTE)
+            + ")"
+        )
+        == HISTORY_PANEL
+    )
+    browser.js("acervatorTabBar.select(" + json.dumps(CONSOLE_PANEL) + ");")
+    assert root_hidden(browser) is True
+    assert browser.parsed("acervatorTabBar.visible()") == [CONSOLE_PANEL]
+    browser.js("acervatorTabBar.select(" + json.dumps(HISTORY_PANEL) + ");")
+    assert root_hidden(browser) is False
+    assert browser.parsed("acervatorTabBar.visible()") == [HISTORY_PANEL]
+
+
+def test_a_new_host_is_placed_in_front_of_its_own_declared_part(
+    browser: Browser,
+):
+    """``hostFor`` puts the ``HISTORY_PANEL`` host before ``ROOT_ID``, so the
+    History filters draw above the table that ``ROOT_ID`` holds."""
+    build_tabs(browser)
+    browser.js("acervatorTabBar.select(" + json.dumps(HISTORY_PANEL) + ");")
+    assert browser.parsed(
+        "Boolean(window.hostOf("
+        + json.dumps(HISTORY_PANEL)
+        + ").compareDocumentPosition(document.getElementById("
+        + json.dumps(ROOT_ID)
+        + ")) & Node.DOCUMENT_POSITION_FOLLOWING)"
+    ), "the History table is drawn above its own filter row"
+
+
+def test_a_mount_declaring_no_screen_stays_on_screen_under_every_tab(
+    browser: Browser,
+):
+    """The control for
+    ``test_a_mount_declared_part_of_a_screen_shows_only_under_that_screen``.
+    Strip ``PART_ATTRIBUTE`` off ``ROOT_ID`` and the History table is on
+    screen under ``CONSOLE_PANEL`` while ``visible`` still names one panel."""
+    browser.js(
+        "document.getElementById("
+        + json.dumps(ROOT_ID)
+        + ").removeAttribute("
+        + json.dumps(PART_ATTRIBUTE)
+        + ");"
+    )
+    build_tabs(browser)
+    browser.js("acervatorTabBar.select(" + json.dumps(CONSOLE_PANEL) + ");")
+    assert root_hidden(browser) is False
+    assert browser.parsed("acervatorTabBar.visible()") == [CONSOLE_PANEL]
+
+
 def test_clicking_a_tab_button_shows_that_panel(browser: Browser):
     """A click on the ``data-tab`` button drives ``acervatorTabBar.visible``
     and sets ``data-selected`` on that button."""
@@ -833,3 +1056,146 @@ def test_a_tab_label_drops_the_module_suffix_and_capitalises_each_word(
     )
     assert browser.js("acervatorTabBar.label('header_strip')") == "Header Strip"
     assert browser.js("acervatorTabBar.label('trading_tab')") == "Trading"
+
+
+# -- the request each panel opens with ----------------------------------
+
+
+def open_spare(browser: Browser, registration: str) -> Any:
+    """Register ``SPARE_PANEL`` from ``registration`` and open it once.
+
+    Returns the request ``window.ASKED_SPARE`` held after the loader ran.
+    """
+    browser.js(registration)
+    browser.js("window.spareHost();")
+    browser.js(
+        "acervatorPanelHost.open(" + json.dumps(SPARE_PANEL) + ", window.SPARE);"
+    )
+    for _ in range(DRAW_ROUNDS):
+        if browser.js("window.ASKED_SPARE !== null"):
+            break
+        browser.settle(DRAW_STEP_MS)
+    return browser.parsed("window.ASKED_SPARE")
+
+
+def test_a_panel_that_declares_no_request_is_asked_with_an_empty_one(
+    browser: Browser,
+):
+    """``acervatorPanelHost.requestOf`` answers ``{}`` for a spec carrying no
+    ``request``, and the loader is called with that."""
+    asked = open_spare(browser, SPARE_LOADER + "}, " + json.dumps(SPARE_PANEL) + ");")
+    assert asked == {}, f"the host asked the panel with {asked}"
+
+
+def test_a_panel_that_declares_a_request_is_asked_with_it(browser: Browser):
+    """The control for the check above. A host that always sent ``{}`` would
+    pass it and lose every value ``SPARE_REQUEST`` names."""
+    asked = open_spare(
+        browser,
+        SPARE_LOADER
+        + ", request: function () { return "
+        + json.dumps(SPARE_REQUEST)
+        + "; } }, "
+        + json.dumps(SPARE_PANEL)
+        + ");",
+    )
+    assert asked == SPARE_REQUEST, f"the host asked the panel with {asked}"
+
+
+def test_a_panel_whose_request_is_not_an_object_is_asked_with_an_empty_one(
+    browser: Browser,
+):
+    """``requestOf`` refuses a value the bridge cannot carry as params, so the
+    loader still receives an object."""
+    asked = open_spare(
+        browser,
+        SPARE_LOADER
+        + ", request: function () { return 7; } }, "
+        + json.dumps(SPARE_PANEL)
+        + ");",
+    )
+    assert asked == {}, f"the host asked the panel with {asked}"
+
+
+def test_every_mounted_panel_asks_its_backend_method_with_its_own_request(
+    browser: Browser,
+):
+    """The shell asks no panel a question of its own. ``window.ASKED`` holds
+    the request each panel handed its loader, and it is ``PANEL_REQUESTS``."""
+    give_tokens(browser)
+    bind(browser, "PANEL_MODELS", panel_models())
+    browser.js(RECORDING_BRIDGE)
+    browser.js("acervatorMountPanels();")
+    wanted = browser.parsed("acervatorPanelHost.wanted()")
+    wait_for_hosts(browser, wanted)
+    asked = {one["method"]: one["params"] for one in browser.parsed("window.ASKED")}
+    for name in wanted:
+        method = PANEL_SURFACES[name].METHOD
+        assert method in asked, f"{name} asked the backend nothing; asked {asked}"
+        assert asked[method] == PANEL_REQUESTS.get(
+            name, {}
+        ), f"{name} asked {method} with {asked[method]}"
+
+
+# -- the two panels that drew nothing -----------------------------------
+
+
+def test_the_market_inspector_panel_draws_the_line_its_own_request_returns(
+    browser: Browser,
+):
+    """The Market Inspector host held no text while the shell sent ``{}``. For
+    ``PANEL_REQUESTS`` it draws ``FALLBACK_HEADLINE_TEXT`` and the detail."""
+    give_tokens(browser)
+    model = inspector_surface.view_model(dict(PANEL_REQUESTS[INSPECTOR_PANEL]))
+    assert model["order"] == ["QLabel", "stretch"], f"the surface answered {model}"
+    assert mount(browser, INSPECTOR_PANEL, model) is True
+    parts = spare_parts(browser)
+    assert at_path(parts, INSPECTOR_HEADLINE) == [
+        inspector_surface.FALLBACK_HEADLINE_TEXT
+    ], f"the panel drew {parts}"
+    assert at_path(parts, INSPECTOR_DETAIL) == [model["detail"]]
+    assert browser.js("window.SPARE.textContent") != ""
+
+
+def test_the_market_inspector_panel_draws_nothing_without_build_in_the_request(
+    browser: Browser,
+):
+    """The control for the check above, and the state the shell was in. Drop
+    ``build`` and the surface answers an empty ``order`` the panel cannot draw."""
+    give_tokens(browser)
+    model = inspector_surface.view_model(dict(INSPECTOR_REQUEST_WITHOUT_BUILD))
+    assert model["order"] == [], f"the surface answered {model}"
+    assert mount(browser, INSPECTOR_PANEL, model) is True
+    parts = spare_parts(browser)
+    assert at_path(parts, INSPECTOR_HEADLINE) == [], f"the panel drew {parts}"
+    assert browser.js("window.SPARE.textContent") == ""
+
+
+def test_the_asset_charts_panel_draws_one_chart_for_each_bot_in_the_answer(
+    browser: Browser,
+):
+    """The Asset Charts panel draws whatever ``statuses`` names. Given
+    ``CHART_STATUSES`` it holds that bot's panel header."""
+    give_tokens(browser)
+    request = dict(PANEL_REQUESTS[CHARTS_PANEL])
+    request["statuses"] = CHART_STATUSES
+    model = charts_surface.view_model(request)
+    assert model["panel_count"] == 1, f"the surface answered {model['panel_count']}"
+    assert mount(browser, CHARTS_PANEL, model) is True
+    parts = spare_parts(browser)
+    assert at_path(parts, CHART_HEADER) == [
+        CHART_STATUSES[0]["symbol"]
+    ], f"the panel drew {parts}"
+
+
+def test_the_asset_charts_panel_holds_no_chart_when_the_answer_names_no_bot(
+    browser: Browser,
+):
+    """The control for the check above, and the state the running shell is in.
+    ``PANEL_REQUESTS`` carries no ``statuses`` and the panel draws no header."""
+    give_tokens(browser)
+    model = charts_surface.view_model(dict(PANEL_REQUESTS[CHARTS_PANEL]))
+    assert model["panel_count"] == 0, f"the surface answered {model['panel_count']}"
+    assert mount(browser, CHARTS_PANEL, model) is True
+    assert at_path(spare_parts(browser), CHART_HEADER) == []
+    assert browser.js("window.SPARE.textContent") == ""

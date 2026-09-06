@@ -6,15 +6,24 @@
 // writes, so the shell holds no list of its own. A module joins the roster by
 // calling `register` from its own script tag; `document.currentScript` names
 // the file, so the module spells out no name either.
+//
+// A registration carries a `kind`. `screen` panels are the ones the tab bar
+// draws a tab for; `chrome` panels stay on screen whichever tab is selected.
+// A registration that names no kind is a screen.
 
 "use strict";
 
 (function (global, doc) {
   var HOST_ATTRIBUTE = "data-panel";
+  var PART_ATTRIBUTE = "data-panel-part";
   var FAULT_ATTRIBUTE = "data-panel-error";
+  var SCREEN_KIND = "screen";
+  var CHROME_KIND = "chrome";
+  var KINDS = [SCREEN_KIND, CHROME_KIND];
   var SUFFIX = ".js";
   var UNNAMED = "(unnamed)";
   var panels = {};
+  var kinds = {};
   var recorded = [];
 
   function fileName(url) {
@@ -106,6 +115,18 @@
     return tag && tag.src ? baseName(fileName(tag.src)) : null;
   }
 
+  function declaredKind(name, spec) {
+    var given = spec.kind;
+    if (given === undefined || given === null) {
+      return SCREEN_KIND;
+    }
+    if (KINDS.indexOf(given) < 0) {
+      record(name, "declared an unknown kind: " + String(given));
+      return SCREEN_KIND;
+    }
+    return given;
+  }
+
   // Called by a panel module from its own script tag. `called` is for a
   // caller with no script tag of its own, which is how a test registers.
   function register(spec, called) {
@@ -120,7 +141,14 @@
     }
     panels[name] = spec;
     dropFault(name);
+    kinds[name] = declaredKind(name, spec);
     return name;
+  }
+
+  function kindOf(name) {
+    return Object.prototype.hasOwnProperty.call(kinds, name)
+      ? kinds[name]
+      : SCREEN_KIND;
   }
 
   function reasonFor(name) {
@@ -170,6 +198,18 @@
     return true;
   }
 
+  // The request the panel's own loader is called with. A panel that
+  // declares no `request` is asked with an empty one.
+  function requestOf(spec) {
+    if (!spec || typeof spec.request !== "function") {
+      return {};
+    }
+    var asked = spec.request();
+    return Object.prototype.toString.call(asked) === "[object Object]"
+      ? asked
+      : {};
+  }
+
   // Asks the panel's own loader for its view model, then draws it. Both
   // outcomes of the promise are handled here: a refusal is named on the
   // host element rather than dropped.
@@ -184,7 +224,7 @@
     if (typeof spec.load !== "function") {
       return Promise.resolve(mount(name, target, null));
     }
-    return spec.load({}).then(
+    return spec.load(requestOf(spec)).then(
       function (model) {
         var refused =
           typeof spec.loadError === "function" ? spec.loadError() : null;
@@ -205,6 +245,13 @@
     );
   }
 
+  // An element carrying `data-panel-part` is a mount another module
+  // addresses by id and that belongs to one panel.
+  function partFor(container, name) {
+    return container.querySelector("[" + PART_ATTRIBUTE + '="' + name + '"]');
+  }
+
+  // The panel's part is moved to sit directly behind its host.
   function hostFor(container, name) {
     var found = container.querySelector(
       "[" + HOST_ATTRIBUTE + '="' + name + '"]'
@@ -213,6 +260,10 @@
       found = doc.createElement("div");
       found.setAttribute(HOST_ATTRIBUTE, name);
       container.appendChild(found);
+    }
+    var part = partFor(container, name);
+    if (part !== null && part.previousElementSibling !== found) {
+      container.insertBefore(part, found.nextSibling);
     }
     return found;
   }
@@ -226,6 +277,25 @@
       }
     }
     return found;
+  }
+
+  function ofKind(kind) {
+    var asked = wanted();
+    var found = [];
+    for (var index = 0; index < asked.length; index++) {
+      if (kindOf(asked[index]) === kind) {
+        found.push(asked[index]);
+      }
+    }
+    return found;
+  }
+
+  function screens() {
+    return ofKind(SCREEN_KIND);
+  }
+
+  function chrome() {
+    return ofKind(CHROME_KIND);
   }
 
   function reportStrays() {
@@ -262,19 +332,27 @@
 
   function forget() {
     panels = {};
+    kinds = {};
     recorded = [];
     stamp();
   }
 
   global.acervatorPanelHost = {
     hostAttribute: HOST_ATTRIBUTE,
+    partAttribute: PART_ATTRIBUTE,
     faultAttribute: FAULT_ATTRIBUTE,
+    screenKind: SCREEN_KIND,
+    chromeKind: CHROME_KIND,
     register: register,
     registered: registered,
     names: names,
     wanted: wanted,
+    kindOf: kindOf,
+    screens: screens,
+    chrome: chrome,
     reasonFor: reasonFor,
     hostFor: hostFor,
+    requestOf: requestOf,
     mount: mount,
     open: open,
     mountAll: mountAll,

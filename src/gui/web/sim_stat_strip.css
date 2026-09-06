@@ -1,0 +1,35 @@
+/* React Sim Stat Strip chrome. Every colour, margin and font size arrives on
+ * the element from the Python payload, so nothing here sets one. The strip
+ * fills its view and does not scroll.
+ */
+html,
+body {
+  height: 100%;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.4 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+[data-part="strip"] {
+  height: 100%;
+  align-items: center;
+}
+
+[data-part="cell"] {
+  align-items: center;
+  white-space: nowrap;
+}
+
+[data-part="value"] {
+  white-space: nowrap;
+}

@@ -124,6 +124,22 @@ if _HAS_QT:
 
         def __init__(self, parent=None):
             super().__init__(parent)
+            self._active_symbols: set = set()
+            self._show_active = False  # Default: hide markets already traded
+            self._last_meta: dict = {}
+            self._pending_refresh = False
+            self._scan_state = SCAN_NOT_ASKED
+            # Wired by MainWindow's MarketInspectorTabMixin via set_exchange_source().
+            self._connectors_getter = None
+            self._scheduler = None
+            self._build_ui()
+
+        def _build_ui(self) -> None:
+            """Build the splitter, the filter row and the two tables.
+
+            ``MarketInspectorReactTab`` replaces this with one web view and
+            keeps every method below it.
+            """
             # Splitter panes: left is the HTF/Opposing content, right the proposals.
             outer = QVBoxLayout(self)
             outer.setContentsMargins(0, 0, 0, 0)
@@ -135,15 +151,6 @@ if _HAS_QT:
             layout = QVBoxLayout(left_pane)
             layout.setContentsMargins(6, 6, 6, 6)
             layout.setSpacing(6)
-
-            self._active_symbols: set = set()
-            self._show_active = False  # Default: hide markets already traded
-            self._last_meta: dict = {}
-            self._pending_refresh = False
-            self._scan_state = SCAN_NOT_ASKED
-            # Wired by MainWindow's MarketInspectorTabMixin via set_exchange_source().
-            self._connectors_getter = None
-            self._scheduler = None
 
             # --- Filter row ---
             top_row = QHBoxLayout()
@@ -240,6 +247,60 @@ if _HAS_QT:
             self._outer_splitter.setStretchFactor(1, 1)
             self._outer_splitter.setSizes([800, 800])
             self._render_empty_notes()
+
+        # ── the widgets the logic below writes through ───────────────
+        def _set_status(self, text: str) -> None:
+            """Show ``text`` on the status line."""
+            self._status_lbl.setText(text)
+
+        def _set_refresh_enabled(self, enabled: bool) -> None:
+            """Let the operator press Refresh, or refuse while a scan runs."""
+            self._refresh_btn.setEnabled(bool(enabled))
+
+        def _fill_signal_rows(self, signals: list) -> None:
+            """Draw one HTF Signals row per entry of ``signals``."""
+            self._signals_tbl.setRowCount(len(signals))
+            self._render_empty_notes()
+            for row, s in enumerate(signals):
+                self._signals_tbl.setItem(row, 0, QTableWidgetItem(s.symbol))
+                sig_item = QTableWidgetItem(s.signal)
+                sig_item.setForeground(QColor(_signal_color(s.signal)))
+                self._signals_tbl.setItem(row, 1, sig_item)
+                self._signals_tbl.setItem(row, 2, QTableWidgetItem(f"{s.score:.2f}"))
+                self._signals_tbl.setItem(
+                    row, 3, QTableWidgetItem(_fmt_tf_state(s.per_tf.get("1d")))
+                )
+                self._signals_tbl.setItem(
+                    row, 4, QTableWidgetItem(_fmt_tf_state(s.per_tf.get("1w")))
+                )
+                active_item = QTableWidgetItem("yes" if s.is_active else "—")
+                if s.is_active:
+                    active_item.setForeground(QColor("#00ccff"))
+                self._signals_tbl.setItem(row, 5, active_item)
+
+        def _fill_pair_rows(self, pairs: list) -> None:
+            """Draw one Opposing Pairs row per entry of ``pairs``."""
+            self._pairs_tbl.setRowCount(len(pairs))
+            self._render_empty_notes()
+            for row, p in enumerate(pairs):
+                self._pairs_tbl.setItem(
+                    row,
+                    0,
+                    QTableWidgetItem(f"{p.long_side.symbol} ({p.long_side.signal})"),
+                )
+                self._pairs_tbl.setItem(
+                    row,
+                    1,
+                    QTableWidgetItem(f"{p.short_side.symbol} ({p.short_side.signal})"),
+                )
+                corr_item = QTableWidgetItem(f"{p.correlation_30d:+.3f}")
+                corr_item.setForeground(QColor("#ffcc66"))
+                self._pairs_tbl.setItem(row, 2, corr_item)
+                self._pairs_tbl.setItem(
+                    row,
+                    3,
+                    QTableWidgetItem(f"{p.long_side.score + p.short_side.score:.2f}"),
+                )
 
         # ── external API ─────────────────────────────────────────────
         def scan_state(self) -> str:
@@ -344,22 +405,22 @@ if _HAS_QT:
             if self._pending_refresh:
                 return
             if not (self._connectors_getter and self._scheduler):
-                self._status_lbl.setText(
+                self._set_status(
                     "Exchange source not wired — restart the app "
                     "after connecting an exchange."
                 )
                 return
             connectors = self._connectors_getter() or {}
             if not connectors:
-                self._status_lbl.setText(
+                self._set_status(
                     "No exchange connectors — connect an exchange "
                     "on the Trading tab first."
                 )
                 return
             self._pending_refresh = True
             self._scan_state = SCAN_RUNNING
-            self._refresh_btn.setEnabled(False)
-            self._status_lbl.setText("Fetching…")
+            self._set_refresh_enabled(False)
+            self._set_status("Fetching…")
             self._render_empty_notes()
             logger.info(
                 "market inspector scan started: forced=%s connectors=%d "
@@ -379,8 +440,8 @@ if _HAS_QT:
             except Exception as exc:  # noqa: BLE001 - scheduler failure
                 self._pending_refresh = False
                 self._scan_state = SCAN_FINISHED
-                self._refresh_btn.setEnabled(True)
-                self._status_lbl.setText(f"Scheduler error: {exc}")
+                self._set_refresh_enabled(True)
+                self._set_status(f"Scheduler error: {exc}")
                 self._finish_scan_record(0.0, error=f"scheduler: {exc}")
                 self._render_empty_notes()
 
@@ -409,7 +470,7 @@ if _HAS_QT:
                 }
                 self._pending_refresh = False
                 self._scan_state = SCAN_FINISHED
-                self._refresh_btn.setEnabled(True)
+                self._set_refresh_enabled(True)
                 self._finish_scan_record(_time.monotonic() - started_at, error=str(exc))
                 self._render_signals()
                 return
@@ -425,21 +486,21 @@ if _HAS_QT:
                 )
             except Exception as exc:  # noqa: BLE001 - analyzer surface
                 logger.exception("market inspector scan failed: %s", exc)
-                self._status_lbl.setText(f"Analyzer error: {exc}")
+                self._set_status(f"Analyzer error: {exc}")
                 self._pending_refresh = False
                 self._scan_state = SCAN_FINISHED
-                self._refresh_btn.setEnabled(True)
+                self._set_refresh_enabled(True)
                 self._finish_scan_record(_time.monotonic() - started_at, error=str(exc))
                 self._render_signals()
                 return
             self._pending_refresh = False
             self._scan_state = SCAN_FINISHED
-            self._refresh_btn.setEnabled(True)
+            self._set_refresh_enabled(True)
             self._finish_scan_record(_time.monotonic() - started_at)
             self._render_signals()
 
         def _on_progress(self, msg: str) -> None:
-            self._status_lbl.setText(msg)
+            self._set_status(msg)
 
         def _finish_scan_record(self, duration_s: float, error: str = "") -> None:
             """Log and publish what the scan just covered and how long it took.
@@ -516,66 +577,25 @@ if _HAS_QT:
                 return f"Network partial: {err or 'no OHLC'}"
             return "No data yet — press Refresh."
 
+        def _shown_signals(self, signals: list) -> list:
+            """The scored signals the table shows under the active filter."""
+            if not self._show_active:
+                signals = [s for s in signals if not s.is_active]
+            # Sort by score desc; only show scored rows (skip NONE).
+            return [s for s in signals if s.score > 0.0]
+
         def _render_signals(self) -> None:
             try:
                 from ..trading.market_inspector import get_shared_inspector
 
                 inspector = get_shared_inspector()
             except Exception:  # noqa: BLE001 - analyzer import guard
-                self._status_lbl.setText("Analyzer unavailable.")
+                self._set_status("Analyzer unavailable.")
                 return
 
-            self._status_lbl.setText(self._status_line())
-
-            # Signals table
-            signals = inspector.last_signals
-            if not self._show_active:
-                signals = [s for s in signals if not s.is_active]
-            # Sort by score desc; only show scored rows (skip NONE).
-            signals = [s for s in signals if s.score > 0.0]
-            self._signals_tbl.setRowCount(len(signals))
-            self._render_empty_notes()
-            for row, s in enumerate(signals):
-                self._signals_tbl.setItem(row, 0, QTableWidgetItem(s.symbol))
-                sig_item = QTableWidgetItem(s.signal)
-                sig_item.setForeground(QColor(_signal_color(s.signal)))
-                self._signals_tbl.setItem(row, 1, sig_item)
-                self._signals_tbl.setItem(row, 2, QTableWidgetItem(f"{s.score:.2f}"))
-                self._signals_tbl.setItem(
-                    row, 3, QTableWidgetItem(_fmt_tf_state(s.per_tf.get("1d")))
-                )
-                self._signals_tbl.setItem(
-                    row, 4, QTableWidgetItem(_fmt_tf_state(s.per_tf.get("1w")))
-                )
-                active_item = QTableWidgetItem("yes" if s.is_active else "—")
-                if s.is_active:
-                    active_item.setForeground(QColor("#00ccff"))
-                self._signals_tbl.setItem(row, 5, active_item)
-
-            # Opposing pairs table
-            pairs = inspector.last_pairs
-            self._pairs_tbl.setRowCount(len(pairs))
-            self._render_empty_notes()
-            for row, p in enumerate(pairs):
-                self._pairs_tbl.setItem(
-                    row,
-                    0,
-                    QTableWidgetItem(f"{p.long_side.symbol} ({p.long_side.signal})"),
-                )
-                self._pairs_tbl.setItem(
-                    row,
-                    1,
-                    QTableWidgetItem(f"{p.short_side.symbol} ({p.short_side.signal})"),
-                )
-                corr_item = QTableWidgetItem(f"{p.correlation_30d:+.3f}")
-                corr_item.setForeground(QColor("#ffcc66"))
-                self._pairs_tbl.setItem(row, 2, corr_item)
-                self._pairs_tbl.setItem(
-                    row,
-                    3,
-                    QTableWidgetItem(f"{p.long_side.score + p.short_side.score:.2f}"),
-                )
-
+            self._set_status(self._status_line())
+            self._fill_signal_rows(self._shown_signals(inspector.last_signals))
+            self._fill_pair_rows(list(inspector.last_pairs))
             self._render_empty_notes()
 
     def build_per_bot_view(bot) -> QWidget:

@@ -190,6 +190,7 @@
   var panelFaults = [];
   var loadFault = null;
   var asked = null;
+  var roots = [];
 
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -969,10 +970,28 @@
     return held !== null;
   }
 
+  // One root per host node, so drawing the panel again reuses the first.
+  function rootFor(target) {
+    var found;
+    roots.forEach(function (pair) {
+      if (pair.node === target) {
+        found = pair.root;
+      }
+    });
+    if (found === undefined) {
+      found = global.ReactDOM.createRoot(target);
+      roots.push({ node: target, root: found });
+    }
+    return found;
+  }
+
+  // `flushSync` makes the document current before `draw` returns.
   function draw(target, node) {
-    var root = global.ReactDOM.createRoot(target);
-    root.render(node);
-    return root;
+    var root = rootFor(target);
+    global.ReactDOM.flushSync(function () {
+      root.render(node);
+    });
+    return target;
   }
 
   function renderPanel(target, model) {
