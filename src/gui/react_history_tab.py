@@ -165,6 +165,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._symbols: list[str] = []
             self._status: Optional[str] = hrc.STATUS_TEXT["idle"]
             self._page_ready = False
+            self._painted = False
             self._last_model: dict = {}
             self._table = self
 
@@ -304,7 +305,13 @@ if _HAS_QT and _HAS_WEBENGINE:
                 status=self._status,
                 gate_index=self._page_gate_index,
                 voting_index=self._page_voting_index,
+                painted=self._painted,
             )
+
+        def _render_page(self) -> None:
+            """Draw a page, and record that one has now been drawn."""
+            self._painted = True
+            super()._render_page()
 
         def _paint_chrome(self, total: int, max_page: int) -> None:
             """Drop the status line so the summary the model carries shows.

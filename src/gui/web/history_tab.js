@@ -21,6 +21,7 @@
   var LOADED = "loaded";
   var PAGE = "page";
   var PAGER = "pager";
+  var PAINTED = "painted";
   var PROGRESS = "progress";
   var SUMMARY = "summary";
   var TITLE = "title";
@@ -37,6 +38,7 @@
     LOADED,
     PAGE,
     PAGER,
+    PAINTED,
     PROGRESS,
     SUMMARY,
     TITLE,
@@ -330,6 +332,17 @@
 
   // -- the table, drawn by the one renderer that draws tables ------------
 
+  // The Qt table carries no column header until the tab draws a page, so
+  // the panel's header row is turned off until `painted`.
+  function panelChromeFor(state) {
+    return {
+      summary: PANEL_CHROME.summary,
+      filters: PANEL_CHROME.filters,
+      pager: PANEL_CHROME.pager,
+      headers: isPlainObject(state) && state[PAINTED] !== false
+    };
+  }
+
   function pushRows(state) {
     if (typeof global.acervatorSetState !== "function") {
       loadFault = NO_PANEL;
@@ -342,7 +355,7 @@
       filters: objectField(objectField(state, FILTERS), "values"),
       filter_options: {},
       loaded: state[LOADED],
-      chrome: PANEL_CHROME
+      chrome: panelChromeFor(state)
     });
     return true;
   }
@@ -419,6 +432,9 @@
     } else if (key === "next") {
       next.page = pager[PAGE] + 1;
     } else if (key === "reset") {
+      // Reset clears what onFilter and onBound held, or the next Apply
+      // sends the filter Reset just cleared.
+      held.filters = {};
       next.filters = {};
       next.page = 0;
     } else {
@@ -500,6 +516,7 @@
   global.acervatorHistoryTab = {
     method: METHOD,
     panelChrome: PANEL_CHROME,
+    panelChromeFor: panelChromeFor,
     Tab: Tab,
     FilterBar: FilterBar,
     Summary: Summary,

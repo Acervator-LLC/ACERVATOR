@@ -10,6 +10,8 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
+from src.exchange import history_read_contract as hrc
+
 from . import design_system as ds
 
 try:
@@ -187,7 +189,7 @@ if _HAS_QT:
             self._prev_btn.clicked.connect(self._prev_page)
             foot.addWidget(self._prev_btn)
 
-            self._page_label = QLabel("Page —")
+            self._page_label = QLabel(hrc.PAGE_LABEL_IDLE)
             self._page_label.setMinimumWidth(120)
             self._page_label.setAlignment(Qt.AlignCenter)
             foot.addWidget(self._page_label)
@@ -295,12 +297,7 @@ if _HAS_QT:
 
         def _paint_chrome(self, total: int, max_page: int) -> None:
             """Write the page counter, the two pager buttons and the summary."""
-            if total == 0:
-                self._page_label.setText("No matches")
-            else:
-                self._page_label.setText(
-                    f"Page {self._page + 1} / {max_page + 1} " f"({total} trades)"
-                )
+            self._page_label.setText(hrc.page_label(self._page, total))
             self._prev_btn.setEnabled(self._page > 0)
             self._next_btn.setEnabled(self._page < max_page)
 
@@ -576,8 +573,6 @@ if _HAS_QT:
 
         def _current_filters(self):
             """The five filter values from the two date edits and three combos."""
-            from src.exchange import history_read_contract as hrc
-
             try:
                 from_ts = self._from_dt.dateTime().toSecsSinceEpoch()
                 to_ts = self._to_dt.dateTime().toSecsSinceEpoch()
