@@ -307,6 +307,68 @@ guarded_place_order called by       src/trading/scrumming/execution.py
 tests/test_u6_venue_amount_gate.py      five checks
 ```
 
+## The simulation battery
+
+The venue record above is live money. Beside it sits a second body of evidence
+that is not live at all: a battery of simulated runs, measured on an earlier
+release, which is where the platform's headline win rate comes from. It is set
+down here as the record of that run, with what this repository can and cannot
+show about it stated beside it.
+
+The battery covered 738 simulations, spanning 27 portfolio configurations,
+capital from $400 up to $100K, six two-year historical periods — including the
+2020 COVID crash, the 2021 ATH bubble and the 2022 brutal bear — and the
+venue's fee tiers from VIP-0 through VIP-3. Parameters were identical
+throughout, with no optimization per asset.
+
+| Measurement | Result |
+| ----------- | ------ |
+| Win rate | 715 of 738, 96.9% |
+| Total advantage against buying and holding | +$78.0B |
+| Canonical 39-sim battery | 39 of 39, 100% |
+| Historical 2020 to 2022, 39 sims | 39 of 39, 100%, +$3.16M total advantage |
+| Capital scaling, 156 sims | 156 of 156, 100%, superlinear at $100K |
+| Bear regime stability, 9 sims | $4,262 to $4,427 total, 4% CV |
+| Profitable fee ceiling | up to 0.50% roundtrip |
+
+The 23 runs that are not wins are concentrated in extreme single-asset bear
+conditions, with 2022-class drawdowns of 64% to 94%, at the smallest capital
+levels. Losses in those cases are marginal: $10 to $157 on $400 deployments.
+The record makes no claim to win in a catastrophic single-asset collapse.
+
+Six competing strategies were run over the same canonical 39 cases.
+
+| Strategy compared against | Battery wins |
+| ------------------------- | -----------: |
+| Passive hold | 39 of 39, 100% |
+| DCA weekly | 39 of 39, 100% |
+| DCA daily | 39 of 39, 100% |
+| Grid trading | 39 of 39, 100% |
+| SMA 50/200 cross | 37 of 39, 94.9% |
+| RSI mean-reversion | 35 of 39, 89.7% |
+
+**This repository holds nothing behind those numbers.** No file in the tree
+carries the per-run rows, and no commit on any branch ever added one. The
+figures above are a record, not a measurement anything here reproduces.
+
+**The Simulator tab did not produce them and could not.** It is not built, and
+issue #117 carries its rebuild. Nothing a reader can run in this product today
+re-derives the table above.
+
+The queries, and the control that proves they can find a file:
+
+```
+git ls-files                                            no battery file in the tree
+git log --all --diff-filter=ADR --name-only             no commit ever added one
+
+git log --all --diff-filter=ADR --name-only -- generate_essay_ja.py
+                                                        one commit, so the walk works
+```
+
+The third query is the control. The same walk over every branch does find a file
+that once existed and is gone, so the empty answer above is a fact about the
+battery and not about the query.
+
 ## Where a figure and a run carry less than they read
 
 Two current-state findings bear on how a reader should take the numbers above.
