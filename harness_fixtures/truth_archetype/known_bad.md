@@ -21,3 +21,10 @@ point is `scrum_fold_teleport_handler`.
 Issue #9998 tracks the remaining work, and #195 is open against it.
 
 `dev_harness/harness/report.py` holds 99999 lines.
+
+## Scope
+
+The Simulator is finished, and the Paper Trader is wired to it.
+
+`TruthArchetype` MUST also report T007 here. The one cited number that exists
+in this repository is 195, and that item names neither subject.

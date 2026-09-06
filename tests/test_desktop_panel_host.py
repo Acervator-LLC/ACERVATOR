@@ -22,12 +22,18 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.gui.main_tabs import bot_swarm_list_surface as swarm_list_surface
 from src.gui.main_tabs import console_tab_surface as console_surface
 from src.gui.main_tabs import design_system_surface as dss
 from src.gui.main_tabs import header_strip_surface as header_surface
+from src.gui.main_tabs import history_tab_surface as history_chrome_surface
+from src.gui.main_tabs import market_inspector_tab_surface as inspector_surface
 from src.gui.main_tabs import paper_trader_tab_surface as paper_surface
 from src.gui.main_tabs import proof_of_accumulation_tab_surface as poa_surface
+from src.gui.main_tabs import simulator_tab_surface as sim_surface
 from src.gui.main_tabs import system_status_tab_surface as status_surface
+from src.gui.main_tabs import trade_charts_tab_surface as charts_surface
+from src.gui.main_tabs import trading_tab_surface as trading_surface
 from tools import sync_renderer_modules as renderer_modules
 
 RENDERER = REPO_ROOT / "desktop" / "renderer"
@@ -45,9 +51,15 @@ ABSENT_PANEL = "no_such_panel"
 PANEL_SURFACES = {
     CONSOLE_PANEL: console_surface,
     HEADER_PANEL: header_surface,
+    "bot_swarm_tab": swarm_list_surface,
+    "history_tab": history_chrome_surface,
+    "market_inspector_tab": inspector_surface,
     "paper_trader_tab": paper_surface,
     "proof_of_accumulation_tab": poa_surface,
+    "simulator_tab": sim_surface,
     "system_status_tab": status_surface,
+    "trade_charts_tab": charts_surface,
+    "trading_tab": trading_surface,
 }
 
 REGISTERING_PANELS = sorted(PANEL_SURFACES)
@@ -697,3 +709,127 @@ def test_the_header_counter_check_names_a_counter_the_two_sides_do_not_share(
         if texts[at] not in painted[card["key"]]
     ]
     assert differing == [0], f"the check named {differing}"
+
+
+# -- the tab bar --------------------------------------------------------
+
+
+def tab_names(browser: Browser) -> list:
+    """Every tab the bar drew, in document order."""
+    return browser.parsed(
+        "(function () {"
+        "  var found = [];"
+        "  var bar = document.getElementById('tabs');"
+        "  Array.prototype.slice.call("
+        "    bar.querySelectorAll('[data-tab]')).forEach(function (el) {"
+        "    found.push(el.getAttribute('data-tab')); });"
+        "  return found; })()"
+    )
+
+
+def build_tabs(browser: Browser) -> list:
+    """Answer a bridge, build the bar, and report the tabs it drew."""
+    give_tokens(browser)
+    bind(browser, "PANEL_MODELS", panel_models())
+    browser.js(FAKE_BRIDGE)
+    return browser.parsed("acervatorBuildTabs()")
+
+
+def wait_for_children(browser: Browser, name: str) -> int:
+    """Poll until the named host holds markup, then report how much."""
+    for _ in range(DRAW_ROUNDS):
+        held = browser.js(
+            "(function () { var el = window.hostOf("
+            + json.dumps(name)
+            + "); return el === null ? 0 : el.children.length; })()"
+        )
+        if held:
+            return held
+        browser.settle(DRAW_STEP_MS)
+    raise AssertionError(
+        name
+        + " never drew; faults: "
+        + str(browser.parsed("acervatorPanelHost.faults()"))
+    )
+
+
+def test_the_tab_bar_holds_one_tab_for_every_registered_panel(browser: Browser):
+    """``tab_names`` equals ``acervatorPanelHost.wanted()``. The tab set is
+    ``REGISTERING_PANELS``, the modules that registered."""
+    drawn = build_tabs(browser)
+    assert drawn == browser.parsed("acervatorPanelHost.wanted()")
+    assert tab_names(browser) == drawn
+    assert sorted(drawn) == REGISTERING_PANELS, f"the bar drew {drawn}"
+
+
+def test_the_tab_bar_gives_no_tab_to_a_module_that_registered_no_panel(
+    browser: Browser,
+):
+    """``SPARE_PANEL`` is in ``manifest_panels`` and in no ``tab_names``
+    entry until something registers it."""
+    build_tabs(browser)
+    assert SPARE_PANEL in manifest_panels()
+    assert SPARE_PANEL not in tab_names(browser)
+
+
+def test_a_module_that_registers_a_panel_gains_a_tab(browser: Browser):
+    """The control for the check above. ``SPARE_PANEL`` gains a tab once it
+    registers with ``acervatorPanelHost``."""
+    browser.js(
+        "acervatorPanelHost.register({ render: function (target) {"
+        "  target.textContent = "
+        + json.dumps(THROWN)
+        + "; } }, "
+        + json.dumps(SPARE_PANEL)
+        + ");"
+    )
+    drawn = build_tabs(browser)
+    assert SPARE_PANEL in drawn
+    assert SPARE_PANEL in tab_names(browser)
+
+
+def test_selecting_a_tab_leaves_exactly_one_panel_showing(browser: Browser):
+    """The whole claim of the bar: one panel on screen, and it is the one
+    whose tab is selected."""
+    drawn = build_tabs(browser)
+    assert browser.parsed("acervatorTabBar.visible()") == [drawn[0]]
+    other = drawn[-1]
+    browser.js("acervatorTabBar.select(" + json.dumps(other) + ");")
+    assert browser.parsed("acervatorTabBar.visible()") == [other]
+    assert browser.js("acervatorTabBar.selected()") == other
+
+
+def test_clicking_a_tab_button_shows_that_panel(browser: Browser):
+    """A click on the ``data-tab`` button drives ``acervatorTabBar.visible``
+    and sets ``data-selected`` on that button."""
+    drawn = build_tabs(browser)
+    other = drawn[-1]
+    picker = "document.querySelector('[data-tab=' + " + json.dumps(json.dumps(other))
+    browser.js(picker + " + ']').click();")
+    assert browser.parsed("acervatorTabBar.visible()") == [other]
+    assert browser.js(picker + " + ']').getAttribute('data-selected')") == "true"
+
+
+def test_the_selected_tab_draws_its_own_panel_and_records_no_fault(browser: Browser):
+    """A tab that shows an empty rectangle is not a screen. The selected
+    panel holds drawn markup and ``acervatorPanelHost.faults`` stays empty."""
+    build_tabs(browser)
+    browser.js("acervatorTabBar.select(" + json.dumps(CONSOLE_PANEL) + ");")
+    assert wait_for_children(browser, CONSOLE_PANEL) > 0
+    lines = browser.parsed(
+        "window.readParts(window.hostOf(" + json.dumps(CONSOLE_PANEL) + "))"
+    )
+    assert at_path(lines, LOG_BLOCK) == console_payload(RECORDS)["log_pane"]["blocks"]
+    assert browser.parsed("acervatorPanelHost.faults()") == []
+
+
+def test_a_tab_label_drops_the_module_suffix_and_capitalises_each_word(
+    browser: Browser,
+):
+    """``acervatorTabBar.label`` derives the tab text from the module name,
+    so a module that lands carries its own label."""
+    assert browser.js("acervatorTabBar.label('proof_of_accumulation_tab')") == (
+        "Proof Of Accumulation"
+    )
+    assert browser.js("acervatorTabBar.label('header_strip')") == "Header Strip"
+    assert browser.js("acervatorTabBar.label('trading_tab')") == "Trading"

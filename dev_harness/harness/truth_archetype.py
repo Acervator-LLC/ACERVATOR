@@ -1,7 +1,8 @@
 """TruthArchetype — resolves the checkable claims in a text against the tree.
 
-`review` reads one Markdown or text target and reports `T001` through `T006`
-for a citation, a count, a runtime claim or a proxy claim the tree contradicts.
+`review` reads one Markdown or text target and reports `T001` through `T007`
+for a citation, a count, a runtime claim, a proxy claim or a subject outside
+the item, where the tree contradicts what the text says.
 `T000` records a claim this archetype identified and could not decide, so an
 undecided claim is never silent.
 """
@@ -197,6 +198,161 @@ _RED_EVIDENCE = re.compile(
     re.IGNORECASE,
 )
 
+# The manual's page names and its multi-word headings are the product's own
+# subject names, and `_run_scope` decides each occurrence against the item.
+_MANUAL_PARTS = ("docs", "manual")
+
+_MANUAL_HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*#*$")
+
+_TITLE_PHRASE = re.compile(
+    r"[A-Z][a-z]+(?:\s+(?:of|and|for|to|in)\s+[A-Z][a-z]+|\s+[A-Z][a-z]+)*"
+)
+
+_CONNECTOR = frozenset({"of", "and", "for", "to", "in"})
+
+# A determiner, a pronoun, a counter and a month open a sentence far more often
+# than they name a subject.
+_LEAD_WORD = frozenset(
+    {
+        "A",
+        "All",
+        "An",
+        "And",
+        "Both",
+        "But",
+        "Each",
+        "Eight",
+        "Every",
+        "Five",
+        "For",
+        "Four",
+        "From",
+        "Here",
+        "His",
+        "How",
+        "I",
+        "If",
+        "In",
+        "It",
+        "Its",
+        "Nine",
+        "No",
+        "None",
+        "Not",
+        "Nothing",
+        "Now",
+        "On",
+        "One",
+        "Only",
+        "Or",
+        "Our",
+        "Seven",
+        "She",
+        "Six",
+        "So",
+        "Some",
+        "Ten",
+        "That",
+        "The",
+        "Their",
+        "Then",
+        "There",
+        "These",
+        "They",
+        "This",
+        "Those",
+        "Three",
+        "To",
+        "Today",
+        "Two",
+        "We",
+        "What",
+        "When",
+        "Where",
+        "Which",
+        "Who",
+        "Why",
+        "With",
+        "Without",
+        "You",
+        "Your",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    }
+)
+
+_QUOTED_SPAN = re.compile('"[^"]*"|“[^”]*”')
+_LINK_SPAN = re.compile(r"\[[^\]]*\]\([^)]*\)")
+_EMPHASIS_MARK = re.compile(r"[*_]{1,3}")
+
+# `in place of` reads as `instead of`, and is the one `_COMPLETION_WORD` match
+# that claims no completion.
+_NOT_COMPLETION = re.compile(r"\bin place of\b", re.IGNORECASE)
+
+# Without a completion word the sentence must predicate a state of the subject:
+# naming a neighbour in a list is not a claim about it.
+_SUBJECT_PREDICATE = re.compile(
+    r"^(?:\s+(?!that\b|which\b|who\b|whose\b|where\b|when\b)[a-z][a-z-]*){0,3}"
+    r"\s+(?P<verb>is|are|was|were|has|have|holds"
+    r"|carries|renders|draws|shows|reports|works|runs|exists|sits|lives"
+    r"|answers|reads|writes|fires|emits|remains|stays|became|becomes)\b"
+    r"\s*(?P<complement>[A-Za-z']+)?"
+)
+
+_COPULA = frozenset({"is", "are", "was", "were", "remains", "stays"})
+
+# `is the shortest path` identifies the subject; `is wired` states about it.
+_IDENTITY_LEAD = frozenset(
+    {
+        "a",
+        "an",
+        "another",
+        "the",
+        "one",
+        "its",
+        "his",
+        "her",
+        "their",
+        "our",
+        "my",
+        "your",
+        "this",
+        "that",
+        "these",
+        "those",
+        "what",
+        "where",
+        "why",
+        "how",
+        "which",
+    }
+)
+
+# `a Simulator` names one of a class; `the Simulator` names the product's own.
+_INDEFINITE = re.compile(r"\b(?:a|an)\s+$", re.IGNORECASE)
+
+# A completion word binds to the subject sharing its clause, never across one.
+_CLAUSE_BREAK = re.compile(r";|—|--")
+
+# A sentence putting the subject outside the item is the rule working.
+_OUT_OF_SCOPE = re.compile(
+    r"\bnot part of\b|\bout of scope\b|\bnot in scope\b|\bnot this item\b"
+    r"|\bbelongs to\b|\bowned by\b|\bfolds? into\b|\bnot the item\b"
+    r"|\banother item\b|\bdifferent item\b|\bnot built\b|\bunbuilt\b"
+    r"|\bnever built\b|\bnot converted\b|\bno such screen\b|\bcannot open\b",
+    re.IGNORECASE,
+)
+
 _PY_RESERVED = frozenset(dir(builtins))
 
 _GH_LIST_LIMIT = 1000
@@ -352,10 +508,132 @@ def build_tree_index(root: Path) -> _TreeIndex:
     return index
 
 
+def _strip_lead(phrase: str) -> str:
+    """Return `phrase` without the `_LEAD_WORD` entries that open it."""
+    words = phrase.split()
+    while words and words[0] in _LEAD_WORD:
+        words.pop(0)
+    return " ".join(words)
+
+
+def _is_titled(phrase: str) -> bool:
+    """True when every word of `phrase` outside `_CONNECTOR` is capitalised."""
+    return all(
+        word[:1].isupper() for word in phrase.split() if word.lower() not in _CONNECTOR
+    )
+
+
+def _predicates_state(tail: str) -> bool:
+    """True when `tail` states something of the subject rather than naming it."""
+    match = _SUBJECT_PREDICATE.match(tail)
+    if match is None:
+        return False
+    complement = (match.group("complement") or "").lower()
+    if not complement:
+        return False
+    if match.group("verb") not in _COPULA:
+        return True
+    return complement not in _IDENTITY_LEAD
+
+
+def _clause_at(text: str, position: int) -> str:
+    """Return the `_CLAUSE_BREAK` clause of `text` that holds `position`."""
+    start = 0
+    for match in _CLAUSE_BREAK.finditer(text):
+        if match.start() > position:
+            return text[start : match.start()]
+        start = match.end()
+    return text[start:]
+
+
+def _plain_sentence(text: str) -> str:
+    """Return `text` without its `_LINK_SPAN`, `_QUOTED_SPAN` and emphasis marks."""
+    body = _LINK_SPAN.sub(" ", text)
+    body = _QUOTED_SPAN.sub(" ", body)
+    return _EMPHASIS_MARK.sub("", body)
+
+
+def _claims_completion(text: str) -> bool:
+    """True on a `_COMPLETION_WORD` outside a `_NOT_COMPLETION` span.
+
+    A `_CLAIM_SOFTENER` anywhere in `text` leaves the claim conditional.
+    """
+    if not _COMPLETION_WORD.search(text) or _CLAIM_SOFTENER.search(text):
+        return False
+    return bool(_COMPLETION_WORD.search(_NOT_COMPLETION.sub(" ", text)))
+
+
+def manual_subject_names(manual: Path) -> set[str]:
+    """Return the manual's page names and its multi-word heading phrases.
+
+    These are the subject names `_run_scope` looks for in a document.
+    """
+    names: set[str] = set()
+    stems: set[str] = set()
+    headings: list[str] = []
+    if not manual.is_dir():
+        return names
+    for path in sorted(manual.rglob("*.md")):
+        stem = re.sub(r"^\d+[-_]", "", path.stem)
+        if not any(ch.isdigit() for ch in stem):
+            words = [w for w in re.split(r"[-_]+", stem) if w]
+            if words:
+                stems.add(" ".join(w.capitalize() for w in words))
+        try:
+            source = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for raw in source.split("\n"):
+            heading = _MANUAL_HEADING.match(raw)
+            if heading is None:
+                continue
+            plain = _INLINE_CODE_RE.sub(" ", heading.group(1))
+            headings.append(plain)
+            for run in _TITLE_PHRASE.finditer(plain):
+                phrase = _strip_lead(run.group(0))
+                if " " in phrase:
+                    names.add(phrase)
+    blob = "\n".join(headings)
+    names.update(stem for stem in stems if phrase_present(stem, blob))
+    return {name for name in names if len(name) > 2}
+
+
+def subject_pattern(names: set[str]) -> re.Pattern[str] | None:
+    """Return one alternation over `names`, longest first, or None when empty."""
+    if not names:
+        return None
+    ordered = sorted(names, key=lambda name: (-len(name), name))
+    body = "|".join(re.escape(name).replace(r"\ ", r"\s+") for name in ordered)
+    return re.compile(rf"\b(?:{body})\b", re.IGNORECASE)
+
+
+def code_text(text: str) -> str:
+    """Return the content of `text`'s fenced blocks and inline code spans."""
+    parts: list[str] = []
+    in_fence = False
+    for raw in text.split("\n"):
+        if _FENCE_RE.match(raw):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            parts.append(raw)
+            continue
+        parts.extend(span.group(1) for span in _INLINE_CODE_RE.finditer(raw))
+    return "\n".join(parts)
+
+
+def phrase_present(phrase: str, text: str) -> bool:
+    """True when `text` carries `phrase`, whatever joins its words."""
+    joined = r"[^A-Za-z0-9]+".join(re.escape(word) for word in phrase.split())
+    return bool(
+        re.search(rf"(?<![A-Za-z0-9]){joined}(?![A-Za-z0-9])", text, re.IGNORECASE)
+    )
+
+
 class TruthArchetype:
     """Resolves a text's claims against the tree, and names the undecidable.
 
-    `review` runs the six analyzers named in `tools` over one Markdown or text
+    `review` runs the seven analyzers named in `tools` over one Markdown or text
     target.
     """
 
@@ -368,13 +646,21 @@ class TruthArchetype:
         "counts",
         "runtime_claims",
         "proxy_claims",
+        "scope",
     )
 
-    def __init__(self, root: Path | None = None) -> None:
-        """Bind the tree `root` every claim is resolved against."""
+    def __init__(self, root: Path | None = None, item: int | None = None) -> None:
+        """Bind the tree `root` every claim is resolved against.
+
+        `item` is the issue number `_run_scope` grounds a subject against, and
+        None leaves that number to be read from the document's own citation.
+        """
         self.root = Path(root or REPO_ROOT).resolve()
         self._index: _TreeIndex | None = None
         self._top_level: set[str] | None = None
+        self._item = item
+        self._subjects: re.Pattern[str] | None = None
+        self._subjects_built = False
 
     def index(self) -> _TreeIndex:
         """Return the tree index, building it on first use."""
@@ -419,6 +705,7 @@ class TruthArchetype:
             ("counts", self._run_counts),
             ("runtime_claims", self._run_runtime_claims),
             ("proxy_claims", self._run_proxy_claims),
+            ("scope", self._run_scope),
         ):
             try:
                 findings, status = runner(files)
@@ -921,6 +1208,175 @@ class TruthArchetype:
                 )
         return findings, "ok"
 
+    def subjects(self) -> re.Pattern[str] | None:
+        """Return the manual's subject alternation, building it on first use."""
+        if not self._subjects_built:
+            manual = self.root.joinpath(*_MANUAL_PARTS)
+            self._subjects = subject_pattern(manual_subject_names(manual))
+            self._subjects_built = True
+        return self._subjects
+
+    def _falsification_of_scope(self) -> str:
+        return (
+            "(i) T007 read the wrong item, or a subject name the manual does "
+            "not carry. It looks only for a name the manual gives a page or a "
+            "multi-word heading, and it decides that name against the item "
+            "text alone. A quotation, a link label, a table, a fence and a "
+            "sentence placing the subject outside the item are all skipped, "
+            "and so is a state claim about a subject the same document anchors "
+            "to code, so a subject raised only in those ways is invisible to "
+            "it. A completion claim is reported whether or not the document "
+            "anchors the subject."
+        )
+
+    def _gh_issue_body(self, number: int) -> tuple[str, str]:
+        """Return one issue's title and body, or an explanation for neither."""
+        binary = shutil.which("gh")
+        if binary is None:
+            return "", "gh is not on PATH"
+        proc = subprocess.run(  # noqa: S603
+            [
+                binary,
+                "issue",
+                "view",
+                str(number),
+                "--json",
+                "number,title,body",
+            ],
+            cwd=str(self.root),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=90,
+            check=False,
+        )
+        if proc.returncode != 0:
+            detail = (proc.stderr or "").strip().replace("\n", " ")[:200]
+            return "", f"gh issue view {number} exited {proc.returncode}: {detail}"
+        try:
+            row = json.loads(proc.stdout or "{}")
+        except json.JSONDecodeError as exc:
+            return "", f"gh issue view {number} output did not parse: {exc}"
+        return f"{row.get('title') or ''}\n{row.get('body') or ''}", ""
+
+    def _resolve_item(self, files: list[Path]) -> tuple[int | None, str, str]:
+        """Return the item number, its text, and the reason there is neither.
+
+        An explicit `item` wins; otherwise the one issue number the document
+        cites that the repository listing carries is used, and no other.
+        """
+        if self._item is not None:
+            text, reason = self._gh_issue_body(self._item)
+            return (None, "", reason) if reason else (self._item, text, "")
+        cited = sorted({number for _, _, number, _ in self._cited_issues(files)})
+        if not cited:
+            return None, "", "no item was given and the text cites no issue number"
+        states, why, _ = self._issue_states()
+        if not states:
+            return None, "", f"the cited number(s) could not be checked: {why}"
+        live = [number for number in cited if number in states]
+        if len(live) != 1:
+            return (
+                None,
+                "",
+                (
+                    f"{len(live)} of the {len(cited)} cited number(s) exist here "
+                    f"({live}), so no single item can be chosen"
+                ),
+            )
+        text, reason = self._gh_issue_body(live[0])
+        return (None, "", reason) if reason else (live[0], text, "")
+
+    def _subject_hits(
+        self, path: Path, pattern: re.Pattern[str], item_text: str
+    ) -> dict[str, list[tuple[int, str, bool, bool, str]]]:
+        """Return every subject occurrence the item text does not carry.
+
+        A state claim about a subject this document anchors to code is left
+        out; a completion claim is kept whatever the document anchors.
+        """
+        source = self._read(path)
+        code = code_text(source)
+        hits: dict[str, list[tuple[int, str, bool, bool, str]]] = {}
+        for sentence in _prose_sentences(source):
+            plain = _plain_sentence(sentence.text)
+            excluded = bool(_OUT_OF_SCOPE.search(plain))
+            softened = bool(_CLAIM_SOFTENER.search(plain))
+            for match in pattern.finditer(plain):
+                display = " ".join(match.group(0).split())
+                if not _is_titled(display) or display.lower() in item_text:
+                    continue
+                if _INDEFINITE.search(plain[: match.start()]):
+                    continue
+                claims = _claims_completion(_clause_at(plain, match.start()))
+                if not claims and (
+                    softened
+                    or not _predicates_state(plain[match.end() :])
+                    or phrase_present(display, code)
+                ):
+                    continue
+                row = (sentence.line, sentence.text, excluded, claims, display)
+                hits.setdefault(display.lower(), []).append(row)
+        return hits
+
+    def _run_scope(self, files: list[Path]) -> tuple[list[Finding], str]:
+        number, item_text, reason = self._resolve_item(files)
+        if number is None:
+            return [
+                self._undecided(
+                    files[0],
+                    1,
+                    "T007",
+                    f"the scope rule did not run: {reason}. No subject was "
+                    f"decided here, and that silence is not a pass.",
+                )
+            ], f"unavailable: {reason}"
+        pattern = self.subjects()
+        if pattern is None:
+            manual = "/".join(_MANUAL_PARTS)
+            return [
+                self._undecided(
+                    files[0],
+                    1,
+                    "T007",
+                    f"the scope rule did not run: {manual} carries no page to "
+                    f"read a subject name from.",
+                )
+            ], f"unavailable: no manual under {manual}"
+
+        haystack = item_text.lower()
+        findings: list[Finding] = []
+        for path in files:
+            for rows in self._subject_hits(path, pattern, haystack).values():
+                live = [row for row in rows if not row[2]]
+                if not live:
+                    continue
+                claimed = next((row for row in live if row[3]), None)
+                line, text, _, _, display = claimed or live[0]
+                findings.append(
+                    Finding(
+                        tool="truth",
+                        severity="high" if claimed else "medium",
+                        file=str(path),
+                        line=line,
+                        rule_id="T007",
+                        message=(
+                            f"{display!r} is a subject item {number} does not "
+                            f"name. "
+                            + (
+                                "The sentence claims completion about it, so "
+                                "this is high."
+                                if claimed
+                                else "No completion is claimed about it, so "
+                                "this is medium."
+                            )
+                            + f" Sentence: {text[:160]!r}"
+                        ),
+                    )
+                )
+        return findings, "ok"
+
     def _unhandled_falsification(self, report: ArchetypeReport) -> str:
         return (
             f"This report is wrong if a claim-resolving analyzer for "
@@ -961,7 +1417,8 @@ class TruthArchetype:
             "It decides co-occurrence, never intent, and a bare negative such as "
             "'no tokens are missing' is beyond it;",
             f"(h) any of the {undecided} T000 record(s) is in fact decidable by "
-            "an instrument this archetype could carry.",
+            "an instrument this archetype could carry;",
+            self._falsification_of_scope(),
         ]
         if index is not None:
             parts.append(
@@ -980,9 +1437,21 @@ def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] in ("-h", "--help"):
         print("usage: python -m dev_harness.harness.truth_archetype <path>")
+        print("       [--item <issue number>]")
         print("       resolves the claims in a markdown/text file against the tree")
         return 2
-    report = TruthArchetype().review(Path(argv[0]))
+    item: int | None = None
+    if "--item" in argv:
+        position = argv.index("--item")
+        if position + 1 >= len(argv) or not argv[position + 1].isdigit():
+            print("--item needs an issue number", file=sys.stderr)
+            return 2
+        item = int(argv[position + 1])
+        argv = argv[:position] + argv[position + 2 :]
+    if not argv:
+        print("no path given", file=sys.stderr)
+        return 2
+    report = TruthArchetype(item=item).review(Path(argv[0]))
     print(json.dumps(report.to_dict(), indent=2))
     return cli_exit(report)
 
