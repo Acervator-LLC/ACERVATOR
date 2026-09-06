@@ -1634,7 +1634,7 @@ DRIVEN_INTO_THE_SNAPSHOT = (
 def test_every_value_in_the_snapshot_is_backed_by_a_declared_one():
     """A value in the answer is backed by nothing the surface declares.
 
-    ``locust_cards`` is read by ``test_each_locust_card_is_the_node_answer``.
+    ``locust_cards`` and ``swarm_list`` are read by their own checks below.
     """
     declared: set = set()
     for value in surface_constants().values():
@@ -1642,8 +1642,35 @@ def test_every_value_in_the_snapshot_is_backed_by_a_declared_one():
     declared |= {repr(one) for one in DRIVEN_INTO_THE_SNAPSHOT}
     whole = snapshot()
     assert whole.pop("locust_cards"), "the snapshot carried no locust card"
+    assert whole.pop("swarm_list"), "the snapshot carried no swarm list"
     unbacked = sorted(values_of(whole) - declared)
     assert unbacked == [], unbacked
+
+
+def test_the_swarm_list_is_the_list_surface_answer():
+    """``swarm_list`` holds what ``bot_swarm_list_surface`` answers for the rows."""
+    from src.gui.main_tabs import bot_swarm_list_surface
+
+    model = surface.BotVisualizerModel()
+    model.update_bots(fleet_statuses(STORED_FLEET))
+    answered = surface.swarm_list(model)
+
+    held = bot_swarm_list_surface.BotSwarmListModel()
+    held.bot_list.set_bots([dict(one) for one in model.rows_sent[-1]])
+    held.lane_canvas.set_wires([dict(one) for one in model.board.wires])
+    held.lane_canvas.set_opacity_pct(model.opacity_pct)
+    held.lane_canvas.paint()
+    assert answered == bot_swarm_list_surface.build_payload(held)
+    assert answered["bot_ids"] == [
+        row["bot_id"] for row in model.rows_sent[-1]
+    ], answered["bot_ids"]
+
+
+def test_the_swarm_list_check_names_a_fleet_the_list_never_saw():
+    """The control: a model with no fleet answers a list holding no row."""
+    empty = surface.swarm_list(surface.BotVisualizerModel())
+    assert empty["bot_ids"] == []
+    assert empty["row_count"] == 0
 
 
 def test_each_locust_card_is_the_node_answer():

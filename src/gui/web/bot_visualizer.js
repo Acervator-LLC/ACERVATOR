@@ -76,7 +76,7 @@
     "start_phase", "state_write_failed_error", "status_done", "status_idle",
     "status_live", "status_running", "status_stopped", "stop_button_text",
     "summary_label_style_sheet", "summary_margins", "summary_spacing",
-    "swarm_accents", "swarm_list_style_sheet", "swarm_tab_index",
+    "swarm_accents", "swarm_list", "swarm_list_style_sheet", "swarm_tab_index",
     "swarm_tints", "tab_kind", "tab_style_sheet", "tab_titles",
     "theme_caption", "theme_key", "theme_keys", "theme_start_index",
     "threads", "timer_delays_ms", "timers", "trades_placeholder_text",
@@ -237,7 +237,7 @@
   var CLOSE = ")";
   var PX = "px";
   var VAR_OPEN = "var(--";
-  var VAR_SPLIT = ", ";
+  var VAR_SPLIT = COMMA + GAP;
   var VAR_CLOSE = ")";
   var CALC_OPEN = "calc(";
   // The unit factor that turns a unitless token into a CSS length.
@@ -365,6 +365,10 @@
   var BOXES_PARAM = "boxes";
   var QUICK_ROUTING_API = "acervatorQuickRouting";
   var QUICK_ROUTING_METHOD = "quick_routing.state";
+  var SWARM_LIST_API = "acervatorSwarmList";
+  var SWARM_LIST = "swarm_list";
+  var SWARM_LIST_ROW_PART = "row";
+  var BOT_ID_ATTR = "data-bot-id";
   var TAB_PARAM = "tab";
   var STEPS_PARAM = "steps";
   var REBUILD_STEP = "rebuild";
@@ -952,6 +956,9 @@
         if (part === LIST_ROW_PART || part === LOCUST_PART) {
           return at.getAttribute(KEY_ATTR) || EMPTY;
         }
+        if (part === SWARM_LIST_ROW_PART) {
+          return at.getAttribute(BOT_ID_ATTR) || EMPTY;
+        }
       }
       at = at.parentElement;
     }
@@ -1004,6 +1011,7 @@
       }
     };
     inputProps[PART_ATTR] = PANEL_INPUT_PART;
+    inputProps[ARIA_LABEL] = label(panel[ROW_LABEL]);
     var promptProps = {};
     promptProps[PART_ATTR] = PANEL_BODY_PART;
     return element(
@@ -1333,6 +1341,16 @@
     return element(DIV_TAG, pageProps, drawn);
   }
 
+  // The list module paints the table and the lane wires over the tab's rows.
+  function swarmList(model) {
+    var api = global[SWARM_LIST_API];
+    var payload = objectField(model, SWARM_LIST);
+    if (!api || typeof api.SwarmList !== FUNCTION_KIND) {
+      return null;
+    }
+    return element(api.SwarmList, { model: payload });
+  }
+
   // ListPage draws the dense rows the tab sends, one per bot.
   function ListPage(props) {
     var model = props.model;
@@ -1355,7 +1373,7 @@
     mountProps[HELD_ATTR] = String(Array.isArray(rows) ? rows.length : ZERO);
     dragProps(mountProps);
 
-    var drawn = (Array.isArray(rows) ? rows : []).map(function (one, at) {
+    var placed = (Array.isArray(rows) ? rows : []).map(function (one, at) {
       var rowProps = {
         key: String(at),
         className: ROW_CLASS,
@@ -1384,10 +1402,11 @@
     var laneProps = { key: LANE_CANVAS_PART, style: { display: NONE } };
     laneProps[PART_ATTR] = LANE_CANVAS_PART;
     laneProps[SLOT_ATTR] = WIRE_CANVAS_PART;
+    var built = swarmList(model);
     return element(
       DIV_TAG,
       pageProps,
-      element(DIV_TAG, mountProps, drawn),
+      element(DIV_TAG, mountProps, built === null ? placed : built),
       element(DIV_TAG, laneProps, null)
     );
   }
@@ -2232,6 +2251,7 @@
     OpacitySlider: OpacitySlider,
     ViewStack: ViewStack,
     ListPage: ListPage,
+    swarmList: swarmList,
     GridPage: GridPage,
     Locust: Locust,
     LayerPane: LayerPane,

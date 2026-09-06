@@ -2086,6 +2086,23 @@ def locust_cards(model: BotVisualizerModel) -> dict:
     }
 
 
+def swarm_list(model: BotVisualizerModel) -> dict:
+    """The dense list payload, from the rows ``update_bots`` last sent.
+
+    ``bot_swarm_list_surface`` builds it, so the list draws the table and
+    the lane wires the Qt ``BotListView`` and ``LaneWireCanvas`` paint.
+    """
+    from . import bot_swarm_list_surface
+
+    held = bot_swarm_list_surface.BotSwarmListModel()
+    rows = model.rows_sent[-1] if model.rows_sent else []
+    held.bot_list.set_bots([dict(one) for one in rows])
+    held.lane_canvas.set_wires([dict(one) for one in model.board.wires])
+    held.lane_canvas.set_opacity_pct(model.opacity_pct)
+    held.lane_canvas.paint()
+    return bot_swarm_list_surface.build_payload(held)
+
+
 def build_payload(model: BotVisualizerModel) -> dict:
     """Everything one Bot Swarm screen carries, as the frontend reads it."""
     exchanges = model.exchanges()
@@ -2373,6 +2390,7 @@ def build_payload(model: BotVisualizerModel) -> dict:
         "wires": [dict(one) for one in model.board.wires],
         "wire_count": len(model.board.wires),
         "locust_cards": locust_cards(model),
+        "swarm_list": swarm_list(model),
         "wire_sheet": dict(model.sheet),
         "overlay_style": dict(OVERLAY_STYLE),
         "bot_symbols": {
