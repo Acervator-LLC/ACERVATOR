@@ -3097,6 +3097,7 @@ the conversion, in the order the work happens.
 | Manifest | The renderer module is named in the shell's module list |
 | Ships in the build | The built React application carries the module inside it |
 | RENDERS | What the operator sees when he opens that screen |
+| Scope | Whether the row is work this item must do |
 
 The last column is the item. A row is finished only when it reads `yes`. Every
 other column can be marked while the operator sees no change, and that is the
@@ -3107,94 +3108,112 @@ bridge or the manifest. `yes` means React draws where Qt used to. `shell` means
 the module draws in the Electron shell and nowhere else. A dash means the Qt
 widget is still the screen.
 
-The Tab column names the tab builder whose closure reaches the module. Header
-strip and window chrome are the parts of the Main Window that sit outside the
-tab row.
+The Scope column names the module that builds a screen the item has still to
+convert. Header strip and window chrome are the parts of the Main Window that
+sit outside the tab row.
 
-The table carries eight columns and no tab column. The screen a module draws is
+The table carries nine columns and no tab column. The screen a module draws is
 named in that screen's own section above. Header strip and window chrome are
 the parts of the Main Window that sit outside the tab row.
 
+The Scope column takes five values.
+
+| Value | What it means |
+| ----- | ------------- |
+| in scope | The running window builds this screen, and the cell names what builds it |
+| React side | The file exists because of this conversion, so a React module for it would be a module for a module |
+| not a screen | The module defines no view |
+| builds the shell | The module fills the tab bar rather than sitting in it |
+| shelved | Nothing the window builds reaches it |
+
+The walk that answers the column starts at the main window. It follows an
+imported name only where the module calls that name, subclasses it or reads an
+attribute of it, so a re-export block reaches nothing. A row is in scope when
+some module on that walk builds one of the classes the row defines.
+
+`tools/conversion_scope.py` writes the column, so the answers are re-measured
+rather than typed.
+
 ### The conversion table
 
-| Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `splash_screen.py` | no | - | yes | no | no | - | no |
-| `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | no | yes | no |
-| `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no |
-| `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no |
-| `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | no |
-| `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | yes | yes | yes |
-| `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes |
-| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | no |
-| `src/gui/buy_confirmation_dialog.py` | no | - | no | no | no | - | no |
-| `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no |
-| `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/history_qt_table.py` | no | - | no | no | no | - | no |
-| `src/gui/history_tab.py` | `history_tab.js` | yes | yes | yes | yes | yes | yes |
-| `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/init_wizard.py` | `init_wizard.js` | yes | yes | yes | no | yes | no |
-| `src/gui/instance_consent_dialog.py` | `instance_consent_dialog.js` | yes | no | yes | no | yes | no |
-| `src/gui/journal_tab.py` | `journal_tab.js` | yes | yes | yes | no | yes | no |
-| `src/gui/launcher.py` | `launcher.js` | yes | yes | yes | no | yes | no |
-| `src/gui/live_bot_window.py` | no | - | yes | no | no | - | no |
-| `src/gui/live_settings/bot_swarm_tab.py` | `bot_swarm_tab.js` | yes | yes | yes | yes | yes | yes |
-| `src/gui/live_settings/fold_chrome.py` | `fold_chrome.js` | yes | yes | yes | no | yes | no |
-| `src/gui/live_settings/fold_tokens.py` | `fold_tokens.js` | yes | yes | yes | no | yes | no |
-| `src/gui/live_settings/fold_tranches_tab.py` | `fold_tranches_tab.js` | yes | yes | yes | no | yes | no |
-| `src/gui/live_settings/market_inspector_tab.py` | `market_inspector_tab.js` | yes | yes | yes | yes | yes | yes |
-| `src/gui/live_settings/phantom_bots_tab.py` | `phantom_bots_tab.js` | yes | yes | yes | no | yes | no |
-| `src/gui/live_settings/positions_held_tab.py` | no | - | no | no | no | - | no |
-| `src/gui/live_settings/settings_tab.py` | no | - | yes | no | no | - | no |
-| `src/gui/live_settings/stack_tranches_tab.py` | `stack_tranches_tab.js` | yes | yes | yes | no | yes | no |
-| `src/gui/live_settings/status_tab.py` | no | - | yes | no | no | - | no |
-| `src/gui/main_tabs/audio_suite_surface.py` | no | - | yes | no | no | - | no |
-| `src/gui/main_tabs/buy_confirmation_surface.py` | no | - | yes | no | no | - | no |
-| `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | yes | - | yes |
-| `src/gui/main_tabs/console_tab.py` | `console_tab.js` | yes | yes | yes | yes | yes | yes |
-| `src/gui/main_tabs/empty_tabs.py` | no | - | no | no | no | - | no |
-| `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes |
-| `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no |
-| `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | yes |
-| `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | - | no |
-| `src/gui/main_window.py` | no | - | yes | no | no | - | no |
-| `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no |
-| `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no |
-| `src/gui/react_history_tab.py` | no | - | no | no | no | - | no |
-| `src/gui/risk_tab.py` | `risk_tab.js` | yes | yes | yes | no | yes | no |
-| `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no |
-| `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes |
-| `src/gui/start_all_progress_dialog.py` | no | - | no | no | no | - | no |
-| `src/gui/stock_main_window.py` | no | - | yes | no | no | - | no |
-| `src/gui/testnet_tab.py` | `testnet_tab.js` | yes | yes | yes | no | yes | no |
-| `src/gui/tradingview_chart.py` | `tradingview_chart.js` | yes | yes | yes | no | yes | no |
-| `src/gui/usb_auth_widget.py` | `usb_auth_widget.js` | yes | yes | yes | no | yes | no |
-| `src/gui/visualizer/bot_node.py` | `bot_node.js` | yes | yes | yes | yes | yes | yes |
-| `src/gui/visualizer/quick_routing.py` | `quick_routing.js` | yes | yes | yes | yes | yes | yes |
-| `src/gui/visualizer/themes.py` | `visualizer_themes.js` | - | yes | yes | yes | yes | yes |
-| `src/gui/visualizer/wire_canvas.py` | `wire_canvas.js` | yes | yes | yes | yes | yes | yes |
-| `src/gui/widgets/__init__.py` | no | - | yes | no | no | - | no |
-| `src/gui/widgets/api_tester_tab.py` | `api_tester_tab.js` | yes | yes | yes | no | yes | no |
-| `src/gui/widgets/bot_selection.py` | `bot_selection.js` | yes | yes | yes | no | yes | no |
-| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/widgets/capital_registry_panel.py` | no | - | no | no | no | - | no |
-| `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | no | yes | no |
-| `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/widgets/notification_spool.py` | `notification_spool.js` | yes | yes | yes | no | yes | no |
-| `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | no | yes | no |
-| `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | yes | no |
-| `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | no | yes | no |
-| `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | no | yes | yes |
-| `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | yes |
+| Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `splash_screen.py` | no | - | yes | no | no | - | no | shelved |
+| `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | no | in scope, built by main_window.py, simulator_tab.py |
+| `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | yes | in scope, built by bot_status_table.py, extractor_bot_table.py, main_window.py |
+| `src/gui/buy_confirmation_dialog.py` | no | - | no | no | no | - | no | in scope, built by main_window.py |
+| `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/history_qt_table.py` | no | - | no | no | no | - | no | React side |
+| `src/gui/history_tab.py` | `history_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/init_wizard.py` | `init_wizard.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/instance_consent_dialog.py` | `instance_consent_dialog.js` | yes | no | yes | no | yes | no | shelved |
+| `src/gui/journal_tab.py` | `journal_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/launcher.py` | `launcher.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/live_bot_window.py` | no | - | yes | no | no | - | no | shelved |
+| `src/gui/live_settings/bot_swarm_tab.py` | `bot_swarm_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/live_settings/fold_chrome.py` | `fold_chrome.js` | yes | yes | yes | no | yes | no | in scope, built by fold_tranches_tab.py |
+| `src/gui/live_settings/fold_tokens.py` | `fold_tokens.js` | yes | yes | yes | no | yes | no | not a screen |
+| `src/gui/live_settings/fold_tranches_tab.py` | `fold_tranches_tab.js` | yes | yes | yes | no | yes | no | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/market_inspector_tab.py` | `market_inspector_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/live_settings/phantom_bots_tab.py` | `phantom_bots_tab.js` | yes | yes | yes | no | yes | no | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/positions_held_tab.py` | no | - | no | no | no | - | no | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/settings_tab.py` | no | - | yes | no | no | - | no | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/stack_tranches_tab.py` | `stack_tranches_tab.js` | yes | yes | yes | no | yes | no | in scope, built by bot_live_settings.py |
+| `src/gui/live_settings/status_tab.py` | no | - | yes | no | no | - | no | in scope, built by bot_live_settings.py |
+| `src/gui/main_tabs/audio_suite_surface.py` | no | - | yes | no | no | - | no | React side |
+| `src/gui/main_tabs/buy_confirmation_surface.py` | no | - | yes | no | no | - | no | React side |
+| `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | yes | - | yes | in scope |
+| `src/gui/main_tabs/console_tab.py` | `console_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/main_tabs/empty_tabs.py` | no | - | no | no | no | - | no | builds the shell |
+| `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
+| `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | - | no | React side |
+| `src/gui/main_window.py` | no | - | yes | no | no | - | no | builds the shell |
+| `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
+| `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
+| `src/gui/react_history_tab.py` | no | - | no | no | no | - | no | React side |
+| `src/gui/risk_tab.py` | `risk_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no | shelved |
+| `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/start_all_progress_dialog.py` | no | - | no | no | no | - | no | in scope, built by main_window.py |
+| `src/gui/stock_main_window.py` | no | - | yes | no | no | - | no | shelved |
+| `src/gui/testnet_tab.py` | `testnet_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/tradingview_chart.py` | `tradingview_chart.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/usb_auth_widget.py` | `usb_auth_widget.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/visualizer/bot_node.py` | `bot_node.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/visualizer/quick_routing.py` | `quick_routing.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/visualizer/themes.py` | `visualizer_themes.js` | - | yes | yes | yes | yes | yes | in scope |
+| `src/gui/visualizer/wire_canvas.py` | `wire_canvas.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/widgets/__init__.py` | no | - | yes | no | no | - | no | not a screen |
+| `src/gui/widgets/api_tester_tab.py` | `api_tester_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/widgets/bot_selection.py` | `bot_selection.js` | yes | yes | yes | no | yes | no | not a screen |
+| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/capital_registry_panel.py` | no | - | no | no | no | - | no | shelved |
+| `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | no | yes | no | in scope, built by header_strip.py |
+| `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/notification_spool.py` | `notification_spool.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | no | yes | no | in scope, built by dashboard_stat_card.py, spendable_profits.py |
+| `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | no | yes | no | in scope, built by header_strip.py |
+| `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 
 Totals across the 76 rows above, measured on 5 September 2026:
 
@@ -3205,10 +3224,12 @@ Bridge                   67
 Manifest                 55
 Registers in Electron    15
 Ships in the build       55
-RENDERS                  28
+RENDERS                  30
+RENDERS, in scope        30 of 43
+out of scope             33
 ```
 
-Four columns are all but complete. The fifth is at one.
+Four columns are all but complete. RENDERS, the column that is the item, is not.
 
 Re-measured on 6 September 2026, counted off the 76 rows above:
 
@@ -3225,10 +3246,28 @@ RENDERS                  29
 Only the last column moved. The Settings row already carried a React module, a
 bridge method and a manifest entry; what it gained is the screen.
 
-The three unmarked rows at the foot of the table are the tabs the manual
-already carries as unbuilt: the Paper Trader, Proof of Accumulation and System
-Status. They have no Qt module to replace and no React module to replace it
-with, so every column is empty and an empty row is the honest state.
+Re-measured later on 6 September 2026, counted off the same 76 rows:
+
+```
+React module             55
+Uses React               53
+Bridge                   67
+Manifest                 55
+Registers in Electron    15
+Ships in the build       55
+RENDERS                  30
+RENDERS, in scope        30 of 43
+out of scope             33
+```
+
+The Create Auto Trader wizard is the row that moved. `bot_wizard.js` draws it
+into a space the React exchange screen keeps once + New Bot is pressed, so the
+wizard is a screen and no longer a module with nowhere to draw.
+
+The Paper Trader, Proof of Accumulation and System Status tabs have no Qt
+module to replace and no React module to replace it with, so the table carries
+no row for them. `empty_tabs.py` draws all three as skeletons, and its own row
+reads `builds the shell`.
 
 In development.
 

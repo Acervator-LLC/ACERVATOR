@@ -21,6 +21,10 @@ BUNDLE_WEB = pathlib.PurePosixPath("_internal/src/gui/web")
 TABLE_HEAD = "| Qt file | React module |"
 BUILD_COLUMN = "Ships in the build"
 LAST_COLUMN = "RENDERS"
+SCOPE_COLUMN = "Scope"
+IN_SCOPE_PREFIX = "in scope"
+SCOPE_TOTAL = "RENDERS, in scope"
+OUT_OF_SCOPE_TOTAL = "out of scope"
 TOTALS_FENCE = "```"
 
 YES = "yes"
@@ -117,18 +121,38 @@ def widen(lines: list[str], carried: set[str]) -> list[str]:
     return out
 
 
+def scope_totals(heads: list[str], rows: list[list[str]]) -> list[str]:
+    """The rendering-against-in-scope line and the out-of-scope count.
+
+    Answers an empty list for a table carrying no ``SCOPE_COLUMN``.
+    """
+    if SCOPE_COLUMN not in heads:
+        return []
+    scope = heads.index(SCOPE_COLUMN)
+    last = heads.index(LAST_COLUMN) if LAST_COLUMN in heads else scope
+    inside = [row for row in rows if row[scope].startswith(IN_SCOPE_PREFIX)]
+    drawn = sum(1 for row in inside if row[last] == YES)
+    return [
+        SCOPE_TOTAL.ljust(TOTAL_WIDTH) + str(drawn) + " of " + str(len(inside)),
+        OUT_OF_SCOPE_TOTAL.ljust(TOTAL_WIDTH) + str(len(rows) - len(inside)),
+    ]
+
+
 def totals_block(lines: list[str]) -> list[str]:
-    """One ``name count`` line per column of the table, the Qt file column apart."""
+    """One ``name count`` line per column of the table, the Qt file column apart.
+
+    ``scope_totals`` summarises ``SCOPE_COLUMN``, which carries no mark to count.
+    """
     start, end = table_span(lines)
     heads = split_cells(lines[start])
     rows = [split_cells(line) for line in lines[start + 2 : end + 1]]
     block = []
     for index, head in enumerate(heads):
-        if index == 0:
+        if index == 0 or head == SCOPE_COLUMN:
             continue
         marked = sum(1 for row in rows if row[index] not in (NO, NONE_MARK))
         block.append(head.ljust(TOTAL_WIDTH) + str(marked))
-    return block
+    return block + scope_totals(heads, rows)
 
 
 def retotal(lines: list[str]) -> list[str]:

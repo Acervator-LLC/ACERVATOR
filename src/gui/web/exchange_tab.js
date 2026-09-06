@@ -28,6 +28,10 @@
   var NEWS_TICKER_MODULE_FIELD = "news_ticker_module";
   var NEWS_TICKER_STRETCH = "news_ticker_stretch";
   var NEW_BOT_PARAM = "new_bot_param";
+  var BOT_WIZARD_OPEN = "bot_wizard_open";
+  var BOT_WIZARD_MODULE_FIELD = "bot_wizard_module";
+  var BOT_WIZARD_STRETCH = "bot_wizard_stretch";
+  var CLOSE_BOT_WIZARD_PARAM = "close_bot_wizard_param";
   var PINS = "pins";
   var PIN_COMMAND_ROUTED = "pin_command_routed";
   var PIN_EVERY_BOT_DRAWN = "pin_every_bot_drawn";
@@ -69,6 +73,7 @@
 
   var PRIVACY_CLICKED = "privacy_clicked";
   var ADD_BOT_CLICKED = "add_bot_clicked";
+  var BOT_WIZARD_CLOSED = "bot_wizard_closed";
   var PULL_RATE_TIMEOUT = "pull_rate_timeout";
   var SCRUM_SELECTION_CHANGED = "scrum_selection_changed";
   var EXTRACTOR_SELECTION_CHANGED = "extractor_selection_changed";
@@ -112,6 +117,10 @@
     "mode_scrumming",
     "new_bot_asks",
     NEW_BOT_PARAM,
+    BOT_WIZARD_OPEN,
+    BOT_WIZARD_MODULE_FIELD,
+    BOT_WIZARD_STRETCH,
+    CLOSE_BOT_WIZARD_PARAM,
     NEWS_TICKER_BUILT,
     "news_ticker_failed_log",
     "news_ticker_started",
@@ -312,9 +321,12 @@
   var EXTRACTOR_TABLE_PART = "extractor-table";
   var COMMAND_BAR_PART = "command-bar";
   var COMMAND_BUTTON_PART = "command-button";
+  // bot_wizard.js finds its own space by this part name.
+  var BOT_WIZARD_PART = "bot-wizard-page";
 
-  // crypto_news_ticker and extractor_bot_table each fill one space here.
-  var EMPTY_SPACES = [NEWS_TICKER_PART, EXTRACTOR_TABLE_PART];
+  // crypto_news_ticker, extractor_bot_table and bot_wizard each fill one
+  // space here.
+  var EMPTY_SPACES = [NEWS_TICKER_PART, EXTRACTOR_TABLE_PART, BOT_WIZARD_PART];
 
   var BOT_TABLE_MODULE = "bot_status_table";
   var BOT_TABLE_API = "acervatorBotTable";
@@ -324,6 +336,8 @@
   var LOAD_EXTRACTOR_TABLE = "acervatorLoadExtractorTable";
   var TICKER_API = "acervatorTicker";
   var LOAD_TICKER = "acervatorLoadTicker";
+  var WIZARD_API = "acervatorBotWizard";
+  var LOAD_WIZARD = "acervatorLoadBotWizard";
   var CHILD_ATTR = "data-child-module";
 
   var PART_ATTR = "data-part";
@@ -601,6 +615,14 @@
     return dispatch(actionNamed(model, ADD_BOT_CLICKED), request(model, NEW_BOT_PARAM, true));
   }
 
+  function closeBotWizard() {
+    var model = heldModel();
+    return dispatch(
+      actionNamed(model, BOT_WIZARD_CLOSED),
+      request(model, CLOSE_BOT_WIZARD_PARAM, true)
+    );
+  }
+
   function sendCommand(key) {
     var model = heldModel();
     return dispatch(actionNamed(model, COMMAND_CLICKED), request(model, COMMAND_PARAM, key));
@@ -679,6 +701,16 @@
     buttonProps[ACTION_ATTR] = text(actionNamed(model, ADD_BOT_CLICKED));
     buttonProps[ACCENT_ATTR] = text(model[ADD_BOT_ACCENT]);
     return element(BUTTON_TAG, buttonProps, text(model[ADD_BOT_LABEL]));
+  }
+
+  // The space bot_wizard fills after "+ New Bot"; this screen draws none of it.
+  function BotWizardSpace(props) {
+    var spaceProps = {
+      style: { flex: text(props.model[BOT_WIZARD_STRETCH]), overflow: AUTO }
+    };
+    spaceProps[PART_ATTR] = BOT_WIZARD_PART;
+    spaceProps[SLOT_ATTR] = BOT_WIZARD_PART;
+    return element(DIV_TAG, spaceProps, null);
   }
 
   function Header(props) {
@@ -844,7 +876,10 @@
         model: model,
         visible: model[EXTRACTOR_SECTION_VISIBLE]
       }),
-      element(CommandBar, { key: COMMAND_BAR_PART, model: model })
+      element(CommandBar, { key: COMMAND_BAR_PART, model: model }),
+      model[BOT_WIZARD_OPEN] === true
+        ? element(BotWizardSpace, { key: BOT_WIZARD_PART, model: model })
+        : null
     );
   }
 
@@ -1403,6 +1438,31 @@
     });
   }
 
+  // `bot_wizard.js` draws the Create Auto Trader pages into the space this
+  // screen keeps once "+ New Bot" has been pressed, and closing it here
+  // drops that space through the backend rather than in the page alone.
+  function renderBotWizard(target, moduleName) {
+    var api = global[WIZARD_API];
+    var space = spaceNamed(target, BOT_WIZARD_PART);
+    if (!api || typeof api.fill !== "function" || space === null) {
+      return null;
+    }
+    space.setAttribute(CHILD_ATTR, moduleName);
+    return api.fill(space, null, { onClosed: closeBotWizard });
+  }
+
+  function mountBotWizard(target, model) {
+    if (model[BOT_WIZARD_OPEN] !== true) {
+      return Promise.resolve(null);
+    }
+    var named = text(model[BOT_WIZARD_MODULE_FIELD]);
+    var loader = global[LOAD_WIZARD];
+    var wait = typeof loader === "function" ? loader({}) : Promise.resolve(null);
+    return Promise.resolve(wait).then(function () {
+      return renderBotWizard(target, named) === null ? null : named;
+    });
+  }
+
   function mountExtractorTable(target, model) {
     var loader = global[LOAD_EXTRACTOR_TABLE];
     var wait =
@@ -1422,7 +1482,8 @@
     return Promise.all([
       mountScrumTable(target, model),
       mountExtractorTable(target, model),
-      mountNewsTicker(target, model)
+      mountNewsTicker(target, model),
+      mountBotWizard(target, model)
     ]).then(function (drawn) {
       return drawn.filter(function (name) {
         return name !== null;
@@ -1494,6 +1555,10 @@
     mountScrumTable: mountScrumTable,
     mountExtractorTable: mountExtractorTable,
     mountNewsTicker: mountNewsTicker,
+    renderBotWizard: renderBotWizard,
+    mountBotWizard: mountBotWizard,
+    closeBotWizard: closeBotWizard,
+    botWizardPart: BOT_WIZARD_PART,
     mountChildren: mountChildren,
     askFor: askFor,
     exchangeOf: exchangeOf,

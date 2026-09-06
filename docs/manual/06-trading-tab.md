@@ -562,6 +562,58 @@ def nextId(self):
         return PAGE_ASSET
 ```
 
+**Functional.** In the React build the wizard is drawn by `bot_wizard.js` into
+a space the exchange screen keeps for it. The screen keeps that space only
+after + New Bot is pressed. The press asks the surface, and the surface answers
+with the name of the module that draws the wizard.
+
+`src/gui/main_tabs/exchange_tab_surface.py` — `react_bot_wizard`
+
+```python
+def react_bot_wizard(exchange_id: str) -> str:
+    """The module that draws the Create Auto Trader wizard for ``exchange_id``.
+
+    ``ExchangeTabModel`` calls this as its ``on_new_bot``, so
+    ``on_new_bot_clicked`` puts the module name in ``bot_wizard``.
+    """
+    return BOT_WIZARD_MODULE
+```
+
+**Functional.** Cancel closes the wizard. Finish closes it from the last page
+and refuses from any other. Either close drops the module the screen holds, so
+the space goes with the wizard and the exchange screen underneath it is whole
+again.
+
+`src/gui/main_tabs/exchange_tab_surface.py` — `ExchangeTabModel.close_bot_wizard`
+
+```python
+def close_bot_wizard(self) -> None:
+    """Drop the wizard, so the screen keeps no space for it."""
+    if self.bot_wizard is None:
+        return
+    self.bot_wizard = None
+    self.calls.append([BOT_WIZARD_CLOSED, self.exchange_id])
+```
+
+**Functional.** Every control on the page sends the steps taken so far, not the
+one just pressed. The surface lays out fresh pages on each call and keeps
+nothing between them, so the page holds the walk and sends the whole of it. The
+answer replaces the payload the page holds and the wizard draws again.
+
+`src/gui/web/bot_wizard.js` — `press`
+
+```javascript
+function press(name, step) {
+  lastPress = { name: name, step: step };
+  dispatched.push(lastPress);
+  remember(step);
+  lastAnswer = hasBridge()
+    ? global.acervator.call(METHOD, copyOf(heldSteps)).then(take)
+    : Promise.resolve(null);
+  return lastPress;
+}
+```
+
 ![The wizard's asset page: exchange, base currency and target asset.](p17-i0.png)
 
 After Scrumming / Accumulation is selected, next we are presented with Exchange, Base Currency, and Target Asset options.

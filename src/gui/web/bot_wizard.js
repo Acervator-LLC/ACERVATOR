@@ -50,6 +50,8 @@
   var TIMERS_STARTED = "timers_started";
   var VALUES = "values";
   var WALK = "walk";
+  var OUTCOME = "outcome";
+  var OPEN_OUTCOME = "open_outcome";
   var WINDOW = "window";
 
   // Every top-level name the bot_wizard.state payload carries.
@@ -392,6 +394,8 @@
   var roots = [];
   var lastPress = null;
   var dispatched = [];
+  var lastAnswer = null;
+  var heldSteps = {};
 
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -1363,6 +1367,7 @@
     boxBody[PART_ATTR] = ALT_CHECK_PART;
     boxBody[NAME_ATTR] = props.name;
     boxBody[INDEX_ATTR] = String(props.at);
+    boxBody[ARIA_LABEL] = label(props.label);
     boxBody.onChange = function (event) {
       if (props.onAlt) {
         props.onAlt(props.at, event.target.checked === true);
@@ -1718,15 +1723,81 @@
     return Boolean(global.acervator) && typeof global.acervator.call === "function";
   }
 
+  // The surface lays out fresh pages on every call and keeps nothing, so a
+  // press sends every step taken so far, not the one just made.
+  function remember(step) {
+    var name;
+    for (name in step) {
+      if (Object.prototype.hasOwnProperty.call(step, name)) {
+        heldSteps[name] = merge(heldSteps[name], step[name]);
+      }
+    }
+    return heldSteps;
+  }
+
+  function merge(kept, value) {
+    if (Array.isArray(kept) && Array.isArray(value)) {
+      return kept.concat(value);
+    }
+    if (isPlainObject(kept) && isPlainObject(value)) {
+      var found = copyOf(kept);
+      var name;
+      for (name in value) {
+        if (Object.prototype.hasOwnProperty.call(value, name)) {
+          found[name] = value[name];
+        }
+      }
+      return found;
+    }
+    return value;
+  }
+
+  // setWizard clears the press history, which is the host's record of what
+  // it asked for, so it is put back after the answer replaces the payload.
+  function take(found) {
+    if (!isPlainObject(found)) {
+      return found;
+    }
+    var history = dispatched.slice();
+    var last = lastPress;
+    setWizard(found);
+    dispatched = history;
+    lastPress = last;
+    redraw();
+    return found;
+  }
+
   function press(name, step) {
     lastPress = { name: name, step: step };
     dispatched.push(lastPress);
-    if (hasBridge()) {
-      var params = {};
-      params[STEPS] = [step];
-      global.acervator.call(METHOD, params);
-    }
+    remember(step);
+    lastAnswer = hasBridge()
+      ? global.acervator.call(METHOD, copyOf(heldSteps)).then(take)
+      : Promise.resolve(null);
     return lastPress;
+  }
+
+  function answer() {
+    return lastAnswer;
+  }
+
+  function steps() {
+    return copyOf(heldSteps);
+  }
+
+  function isOpen() {
+    var walk = bag(WALK);
+    return text(walk[OUTCOME]) === text(walk[OPEN_OUTCOME]);
+  }
+
+  // Tells the host, once the surface has answered, that the walk ended.
+  function closesWith(then) {
+    if (typeof then !== "function") {
+      return null;
+    }
+    return Promise.resolve(lastAnswer).then(function () {
+      return isOpen() ? null : then();
+    });
   }
 
   function pressNumber(name, value, then) {
@@ -2044,9 +2115,26 @@
     });
     if (found === undefined) {
       found = global.ReactDOM.createRoot(target);
-      roots.push({ node: target, root: found });
+      roots.push({ node: target, root: found, handlers: null });
     }
     return found;
+  }
+
+  function keepHandlers(target, handlers) {
+    roots.forEach(function (pair) {
+      if (pair.node === target) {
+        pair.handlers = handlers;
+      }
+    });
+    return handlers;
+  }
+
+  // Every host this module has drawn into, drawn again from the held payload.
+  function redraw() {
+    roots.forEach(function (pair) {
+      renderWizard(pair.node, null, pair.handlers);
+    });
+    return roots.length;
   }
 
   // flushSync makes the document current before draw returns.
@@ -2100,10 +2188,12 @@
         pressButton(CLEAR_ALL_STEP, wired.onClearAll);
       },
       onWalk: function (name) {
-        pressWalk(name, wired.onWalk);
+        var moved = pressWalk(name, wired.onWalk);
+        closesWith(wired.onClosed);
+        return moved;
       }
     };
-    return draw(
+    var shown = draw(
       target,
       element(Wizard, {
         current: here,
@@ -2122,6 +2212,8 @@
         onWalk: bound.onWalk
       })
     );
+    keepHandlers(target, wired);
+    return shown;
   }
 
   // The named empty space the main window left, or root itself.
@@ -2152,6 +2244,8 @@
     asked = null;
     lastPress = null;
     dispatched = [];
+    lastAnswer = null;
+    heldSteps = {};
   }
 
   global.acervatorSetBotWizard = setWizard;
@@ -2229,6 +2323,10 @@
     exchangeIndex: exchangeIndex,
     pressed: pressed,
     sent: sent,
+    steps: steps,
+    answer: answer,
+    isOpen: isOpen,
+    redraw: redraw,
     styleOf: styleOf,
     declarations: declarations,
     stateRules: stateRules,
