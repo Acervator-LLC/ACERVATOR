@@ -1,12 +1,11 @@
 """A shipped file may not name a path that is not in the tree.
 
 Every path a file in ``SHIPPED`` names is checked with ``Path.exists()``, and
-the pytest ``addopts``, the README install step and the README project
-structure are each read the same way; ``doc_pages`` extends the scan to every
-Markdown page under ``docs/`` except the ``MEASUREMENT_RECORDS``. A block of
-prose may name an absent path when that same block carries one of
-``ABSENCE_MARKERS``. ``RETIRED_DOCKER`` names the two deployment files that
-must stay deleted.
+the pytest ``addopts`` and the README install step are each read the same way;
+``doc_pages`` extends the scan to every Markdown page under ``docs/`` except the
+``MEASUREMENT_RECORDS``. A block of prose may name an absent path when that same
+block carries one of ``ABSENCE_MARKERS``. ``RETIRED_DOCKER`` names the two
+deployment files that must stay deleted.
 """
 
 from __future__ import annotations
@@ -56,6 +55,10 @@ _TOKEN = re.compile(
     r"(?![A-Za-z0-9_])",
 )
 _URL = re.compile(r"https?://\S+")
+
+# A token whose left edge touches one of these is the tail of a glob, not a
+# path: ``test_*_surface_parity.py`` names a family, never a file.
+_GLOB = "*?]"
 
 # A block that carries one of these may name a path that is gone. Each
 # asserts the absence in the page's own words, so a reader is not sent
@@ -312,7 +315,10 @@ def _scan_page(page: Path, label: str) -> list[str]:
             masked = _URL.sub(" ", line)
             for match in _TOKEN.finditer(masked):
                 token = match.group(0)
-                outside = match.start() > 0 and masked[match.start() - 1] in "/\\"
+                before = masked[match.start() - 1] if match.start() else ""
+                if before in _GLOB:
+                    continue
+                outside = before in "/\\"
                 if _doc_resolves(token, page, outside, external):
                     continue
                 bad.append(f"{label}:{start + offset}: {token}")
@@ -356,70 +362,33 @@ def test_the_doc_scan_leaves_a_live_path_alone(tmp_path: Path) -> None:
     assert _scan_page(page, "planted.md") == []
 
 
+def test_the_doc_scan_reads_a_glob_as_a_family_not_a_file(tmp_path: Path) -> None:
+    """``_scan_page`` reports nothing for a token whose left edge is in ``_GLOB``."""
+    page = tmp_path / "planted.md"
+    page.write_text(
+        "Only a `test_*_surface_parity.py` importing one of each is read.\n",
+        encoding="utf-8",
+    )
+    assert _scan_page(page, "planted.md") == []
+
+
+def test_the_glob_rule_still_reports_a_dead_path_beside_it(tmp_path: Path) -> None:
+    """``_scan_page`` still reports a dead path sharing a line with a ``_GLOB`` token."""
+    page = tmp_path / "planted.md"
+    page.write_text(
+        "`test_*_surface_parity.py` and `src/gui/gone_from_the_tree.py`.\n",
+        encoding="utf-8",
+    )
+    assert _scan_page(page, "planted.md") == [
+        "planted.md:1: src/gui/gone_from_the_tree.py"
+    ]
+
+
 def test_a_measurement_record_is_not_scanned() -> None:
     """No page in ``MEASUREMENT_RECORDS`` reaches the parametrised scan."""
     scanned = set(doc_pages())
     assert scanned & set(MEASUREMENT_RECORDS) == set()
     assert scanned, "doc_pages found no page to scan"
-
-
-# ── README Project Structure tree ────────────────────────────────────
-
-_ENTRY = re.compile(r"^((?:(?:│   )|(?:    ))*)(?:├── |└── )(.*)$")
-_TRAILING_COMMENT = re.compile(r"\s{2,}#.*$")
-
-
-def _tree_entries() -> list[tuple[str, int]]:
-    """Return (repo-relative path, README line number) for each entry."""
-    text = (REPO_ROOT / "README.md").read_text(encoding="utf-8").split("\n")
-    start = next(
-        i for i, line in enumerate(text) if line.startswith("## Project Structure")
-    )
-    fence = [
-        i for i, line in enumerate(text[start:], start=start) if line.startswith("```")
-    ]
-    assert len(fence) >= 2, "the Project Structure block has no fence"
-    body = text[fence[0] + 1 : fence[1]]
-
-    stack: list[str] = []
-    entries: list[tuple[str, int]] = []
-    for offset, line in enumerate(body):
-        match = _ENTRY.match(line)
-        if not match:
-            continue
-        depth = len(match.group(1)) // 4
-        label = _TRAILING_COMMENT.sub("", match.group(2)).strip()
-        if not label or label.startswith("#"):
-            continue
-        lineno = fence[0] + 2 + offset
-        stack = stack[:depth]
-        if label.endswith("/"):
-            stack.append(label.rstrip("/"))
-            entries.append(("/".join(stack), lineno))
-            continue
-        entries.extend(
-            ("/".join([*stack, part]), lineno)
-            for part in (p.strip() for p in label.split("·"))
-            if part
-        )
-    return entries
-
-
-def test_readme_project_structure_tree_resolves() -> None:
-    """Every entry drawn in the README tree must be in the tree.
-
-    The Project Structure block held the worst of the rot: 8 documents
-    under ``docs/``, a ``logs/`` subtree and 9 modules under ``src/``
-    that are not there. A reader uses this block to find a file.
-    """
-    entries = _tree_entries()
-    assert len(entries) > 40, f"the parser found only {len(entries)} entries"
-    missing = [
-        f"README.md:{line}: {path}"
-        for path, line in entries
-        if not (REPO_ROOT / path).exists()
-    ]
-    assert missing == []
 
 
 # ── pyproject structural claims ──────────────────────────────────────

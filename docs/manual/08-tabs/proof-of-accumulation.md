@@ -1,9 +1,21 @@
 # Proof of Accumulation
 
-Reference. The screen is not built. The window builds neither the Competition
-tab nor the Local Testnet tab, and issue #147 carries the initial build-out.
+Reference. **Not built.** The window builds neither the Competition tab nor the
+Local Testnet tab, and issue #147 carries the initial build-out.
 `src/competition/` is the Proof of Accumulation package, and its engine runs
-today with no screen in front of it. The rest of this file is that engine.
+today with no screen in front of it. The rest of this file describes that
+engine and the contract design behind it, as a design, not as a shipped
+feature.
+
+The design is an on-chain competition layer where bots compete publicly and the
+winners are awarded ACRV tokens on Base, which is Coinbase's L2. It evolved
+from a bot identity and an append-only trade log into Elo ratings, tournament
+brackets and an in-platform chain. Every Acervator bot has a cryptographic
+identity. During a competition each trade is signed and appended to a Merkle
+tree, and at the end the bot submits only the Merkle root — a 32-byte hash that
+commits to the whole trade history without revealing one trade of it. The
+strategy stays private, the proof is public, and the winner takes ACRV and an
+NFT trophy.
 
 ## Identity
 
@@ -124,15 +136,54 @@ Awards are idempotent: settling the same result twice writes one record.
 Balances are replayed from the log, and no operation edits a balance.
 
 Five tiers are awarded on rank within the field, and the rarest three carry a
-lifetime cap on how many can ever exist.
+lifetime cap on how many can ever exist. Each tier is named for a stage of the
+Corpus Hermeticum alchemical path, and pays a fixed number of tokens.
 
-| Tier | Rank | Ever minted, at most |
-| ---- | ---- | -------------------: |
-| Harvest | top 50% | no cap |
-| Gold Fold | top 10% | no cap |
-| Bear Slayer | top 25% in a verified bear market | 10,000 |
-| Grand Accumulator | top 1% across three consecutive seasons | 1,000 |
-| Ekthelius | perfect score across every metric | 21 |
+| Tier | Stage | Rank | ACRV paid | Ever minted, at most |
+| ---- | ----- | ---- | --------: | -------------------: |
+| Harvest | NIGREDO | top 50% | 10 | no cap |
+| Gold Fold | ALBEDO | top 10% | 50 | no cap |
+| Bear Slayer | CITRINITAS | top 25% in a verified bear market | 100 | 10,000 |
+| Grand Accumulator | RUBEDO | top 1% across three consecutive seasons | 500 | 1,000 |
+| Ekthelius | UNIO MYSTICA | perfect score across every metric | 10,000 | 21 |
+
+## The token contract
+
+The ledger above is the platform's own record. On the chain the token is an
+ERC-20 called Acervator Token. Three of its properties are fixed when the
+contract is deployed and cannot be changed afterwards: the supply cap, the one
+address allowed to mint, and the absence of any way to burn.
+
+`contracts/ACRV.sol` — the header, and the guard on minting
+
+```solidity
+//   • MAX_SUPPLY  = 10,000,000 ACRV (10_000_000 * 10^18 wei)
+//   • Tokens can never be burned — supply monotonically increases
+//   • The registry address is set once at construction and cannot change
+
+    modifier onlyRegistry() {
+        require(msg.sender == registry, "ACRV: caller is not the registry");
+```
+
+| Property | Value |
+| -------- | ----- |
+| Standard | ERC-20, named Acervator Token |
+| Chain | Base, chain id 8453 |
+| Hard cap | 10,000,000 ACRV, held on the chain |
+| Minting | the CompetitionRegistry contract only |
+| Burning | never |
+
+The contracts are not deployed. Two npm packages supply the libraries they
+build on, and the deploy script takes the network and the signing key. Its own
+instructions name the Base test network first.
+
+`contracts/deploy.py` — how it is called
+
+```bash
+npm install @openzeppelin/contracts @chainlink/contracts
+export ACERVATOR_PRIVATE_KEY=0x...
+python deploy.py --network sepolia
+```
 
 `src/competition/season_schedule.py` — the last tier
 
@@ -180,7 +231,33 @@ def generate_trophy(tier: str, data: TrophyData) -> str:
 ```
 
 Inside `harvest_svg`, a text path letters the epigraph's own instruction around
-the trophy ring, in its usual form: SOLVE ET COAGULA.
+the trophy ring, in its usual form: SOLVE ET COAGULA. Each drawing also letters
+its own alchemical stage across the face.
+
+`src/competition/trophy_generator.py` — the stage each tier is lettered with
+
+```python
+        "Harvest": "NIGREDO",
+        "Gold Fold": "ALBEDO",
+        "Bear Slayer": "CITRINITAS",
+        "Grand Accumulator": "RUBEDO",
+```
+
+### Where a trophy's artwork is kept
+
+The artwork and the metadata are held on the chain itself. The token's own
+metadata call returns the JSON inline, and the picture inside that JSON is the
+tier's drawing, also inline. Nothing points at IPFS, the file-sharing network
+most NFT projects park their pictures on, and nothing points at any other host,
+so a trophy lasts as long as the chain does.
+
+`contracts/AcervatorTrophy.sol` — the metadata call
+
+```solidity
+            '","image":"data:image/svg+xml;base64,', svgB64,
+
+            "data:application/json;base64,",
+```
 
 ## The chain
 
@@ -193,6 +270,21 @@ wallet, no ETH and no network. Four classes make it up.
 | `LocalACRV` | The ERC-20 balances and the mint history |
 | `LocalRegistry` | Competitions, submissions and adjudications |
 | `LocalTestnet` | The three above, plus a mock oracle and transaction receipts |
+
+One call runs a whole competition on that chain and returns the result table.
+It registers the entrants, trades them, takes their submissions, adjudicates,
+awards the tokens and mints the trophy, with nothing written outside a
+temporary directory.
+
+`src/competition/local_testnet.py` — a demo run
+
+```python
+from src.competition.local_testnet import LocalTestnet
+
+testnet = LocalTestnet()
+result = testnet.run_demo_competition(n_bots=3, season=1)
+print(result["results_table"])
+```
 
 The real targets sit ready for the day it deploys.
 
@@ -209,7 +301,8 @@ The contract addresses and ABIs sit beside them.
 
 Both tab modules exist and the window builds neither. Their surfaces stay
 registered in the bridge, so the view models answer with no Qt tab in front of
-them.
+them. The Testnet tab is where a competition would be run and its blocks read
+in a block explorer; today the demo run above is the only way to reach either.
 
 `src/gui/main_tabs/retired_tabs.py` — `RetiredTabsMixin._install_retired_tab_sentinels`
 

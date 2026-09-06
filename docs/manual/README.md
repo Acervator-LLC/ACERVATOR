@@ -4,9 +4,9 @@ Reference. The product manual, extracted from its PDF into markdown. The
 transcription is verbatim in every part file: no wording was changed, shortened
 or removed, and only whitespace was normalised.
 
-Six part files hold that transcription alone.
-[07-indicators.md](07-indicators.md) and [08-tabs.md](08-tabs.md) transcribe
-the PDF and add sections of their own.
+Five part files hold that transcription alone.
+[06-trading-tab.md](06-trading-tab.md), [07-indicators.md](07-indicators.md)
+and [08-tabs.md](08-tabs.md) transcribe the PDF and add sections of their own.
 The PDF carries no body text for the parts the files below belong to, so they
 transcribe nothing:
 [09-updates-and-versioning.md](09-updates-and-versioning.md),
@@ -69,7 +69,9 @@ those nine figures under a heading of its own, and
 [07-indicators.md](07-indicators.md) adds the twelve published formulae, the
 departures the code takes from them, and the gate logic chain.
 [08-tabs.md](08-tabs.md) adds a description of the running code under each
-heading. Both keep every transcribed sentence unaltered.
+heading. [06-trading-tab.md](06-trading-tab.md) adds the two engine mechanisms
+the Trading Tab offers no control for. All three keep every transcribed
+sentence unaltered.
 [07-indicators.md](07-indicators.md) holds them in the PDF's order.
 [08-tabs.md](08-tabs.md) orders its sections by the tab list in
 [04-manual-parts.md](04-manual-parts.md): Main Window opens the part, and the
