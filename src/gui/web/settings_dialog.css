@@ -1,0 +1,235 @@
+/* React Settings dialog chrome: the page ground, the tab bar, the eleven tab
+ * pages, the form rows and the footer `settings_dialog.js` draws. The banner,
+ * the font preview and the AI status line each arrive with their own `style`
+ * attribute from the Python payload, so no rule here may set a `color` on a
+ * part carrying `data-styled`.
+ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.5 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+.acervator-settings-dialog[data-part="settings-dialog"] {
+  height: 100vh;
+  padding: 10px;
+  gap: 8px;
+}
+
+.acervator-settings-dialog[data-part="window-title"] {
+  flex: none;
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--accent);
+  padding-bottom: 4px;
+}
+
+.acervator-settings-dialog[data-part="tab-bar"] {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+button.acervator-settings-dialog[data-part="tab-button"] {
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  padding: 5px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.acervator-settings-dialog[data-part="tab-button"][data-current="true"] {
+  background: var(--bg);
+  color: var(--accent);
+  font-weight: bold;
+}
+
+button.acervator-settings-dialog[data-part="tab-button"]:focus {
+  outline: 1px solid var(--accent);
+}
+
+.acervator-settings-dialog[data-part="tab-pages"] {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.acervator-settings-dialog[data-part="tab-page"] {
+  gap: 8px;
+  padding: 8px 2px;
+}
+
+.acervator-settings-dialog[data-part="block"] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.acervator-settings-dialog[data-part="form-row"] {
+  align-items: center;
+  gap: 8px;
+}
+
+.acervator-settings-dialog[data-part="row-label"] {
+  flex: 0 0 190px;
+  text-align: right;
+}
+
+.acervator-settings-dialog[data-part="group"] {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  gap: 6px;
+}
+
+.acervator-settings-dialog[data-part="group-title"] {
+  font-weight: bold;
+  color: var(--accent);
+}
+
+.acervator-settings-dialog[data-part="group-body"] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.acervator-settings-dialog[data-part="control"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 6px;
+  font: inherit;
+}
+
+input.acervator-settings-dialog[data-part="control"][type="checkbox"],
+input.acervator-settings-dialog[data-part="control"][type="radio"] {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
+input.acervator-settings-dialog[data-part="control"][type="range"] {
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+textarea.acervator-settings-dialog[data-part="control"] {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.acervator-settings-dialog[data-part="control"]:focus {
+  outline: 1px solid var(--accent);
+}
+
+.acervator-settings-dialog[data-part="control"]:disabled {
+  opacity: 0.5;
+}
+
+.acervator-settings-dialog[data-part="list-box"] {
+  list-style: none;
+  min-height: 90px;
+  max-height: 160px;
+  overflow-y: auto;
+  background: var(--btn-bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.acervator-settings-dialog[data-part="list-item"] {
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.acervator-settings-dialog[data-part="list-item"]:hover {
+  background: var(--grid);
+}
+
+.acervator-settings-dialog[data-part="ta-rows"],
+.acervator-settings-dialog[data-part="tf-row"],
+.acervator-settings-dialog[data-part="sound-row"] {
+  gap: 6px;
+}
+
+.acervator-settings-dialog[data-part="ta-row"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.acervator-settings-dialog[data-part="ta-label"] {
+  flex: 0 0 150px;
+}
+
+.acervator-settings-dialog[data-part="ta-value"] {
+  flex: 0 0 44px;
+  text-align: right;
+}
+
+.acervator-settings-dialog[data-part="footer"] {
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.acervator-settings-dialog[data-part="stretch"] {
+  flex-grow: 1;
+}
+
+button.acervator-settings-dialog[data-part="button"],
+button.acervator-settings-dialog[data-part="sound-button"] {
+  background: var(--btn-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.acervator-settings-dialog[data-part="button"]:focus,
+button.acervator-settings-dialog[data-part="sound-button"]:focus {
+  outline: 1px solid var(--accent);
+}
+
+button.acervator-settings-dialog[data-part="button"]:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.acervator-settings-dialog[data-part="banner"] {
+  flex: none;
+}
+
+.acervator-settings-dialog[data-part="named-text"],
+.acervator-settings-dialog[data-part="label"] {
+  flex: 1 1 auto;
+}
+
+.acervator-settings-dialog[hidden] {
+  display: none;
+}

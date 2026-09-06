@@ -1456,6 +1456,10 @@
     if (kind === CHECK_KIND || kind === RADIO_KIND) {
       one.defaultChecked = seeded === true;
       one[TICKED_ATTR] = text(seeded);
+      // A shared name is what makes one group box hold one ticked radio.
+      if (kind === RADIO_KIND) {
+        one.name = text(spec[GROUP_KEY]);
+      }
       return element(INPUT_TAG, one);
     }
     one.defaultValue = text(seeded);

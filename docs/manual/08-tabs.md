@@ -1480,6 +1480,46 @@ nothing holds it in place.
 
 ## Settings
 
+The File menu opens this dialog, and which one it opens depends on the build.
+The React build draws every page below inside one embedded browser. The Qt
+build draws the widget tree the pages describe. One line in the running window
+picks the side.
+
+`src/gui/main_window.py` — `_open_settings`
+
+```python
+from .variant_surface import SETTINGS_DIALOG, surface_class
+
+_cls = surface_class(SETTINGS_DIALOG)
+dlg = _cls(self._settings, self._status_log, self, wing=_wing)
+```
+
+The React side is a subclass, not a rewrite. It replaces only the method that
+builds the widgets, so the loading and the saving below are the same code on
+both sides. Each named control gets a small holder that answers the same calls
+the widget answered, and the page reads and writes those holders.
+
+`src/gui/react_settings_dialog.py` — `SettingsDialogReact._setup_ui`
+
+```python
+self._model = surface.SettingsDialogModel(wing=self._wing)
+self._model.build()
+self._build_holders()
+self._web = QWebEngineView(self)
+self._web.setPage(SettingsDialogPage(self))
+self._web.setHtml(dialog_html(self._theme_name()))
+```
+
+An edit on the page arrives as one line the host reads, and the holder takes it
+the way the control takes a stored value. A radio inside a group box clears the
+others, which is what `QGroupBox` does for the widget side.
+
+`src/gui/react_settings_dialog.py` — `SettingsDialogReact.apply_edit`
+
+```python
+self._holders[name].admit(asked.get("value"))
+```
+
 ### Settings > User Tab
 
 This needs to be built out to accept and contain individual end user credentials. This will also be where a license is entered or a keyfile is imported depending on how we design the authentication piece.
@@ -3125,7 +3165,7 @@ the parts of the Main Window that sit outside the tab row.
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no |
 | `src/gui/react_history_tab.py` | no | - | no | no | no | - | no |
 | `src/gui/risk_tab.py` | `risk_tab.js` | yes | yes | yes | no | yes | no |
-| `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | no | yes | no |
+| `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | no | yes | yes |
 | `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no |
 | `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes |
 | `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | yes | yes |
@@ -3169,6 +3209,16 @@ RENDERS                  27
 ```
 
 Four columns are all but complete. The fifth is at one.
+
+Re-measured on 6 September 2026, after the Settings dialog went over:
+
+```
+RENDERS                  28
+```
+
+The other six column counts are unchanged. The Settings row already carried a
+React module, a bridge method and a manifest entry; what it gained is the
+screen.
 
 The three unmarked rows at the foot of the table are the tabs the manual
 already carries as unbuilt: the Paper Trader, Proof of Accumulation and System

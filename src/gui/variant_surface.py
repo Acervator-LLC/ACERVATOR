@@ -3,7 +3,7 @@
 
 ``register`` records a screen's two loaders. ``surface_class`` returns the
 class the running variant selects and ``draws_react`` answers which side
-that is. ``HISTORY``, ``BOT_SWARM`` and ``CONSOLE`` each carry both.
+that is. ``screens`` names every screen that carries both.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ MARKET_INSPECTOR = "Market Inspector"
 FLEET_REPLAY = "Fleet replay panel"
 GATE_STATUS_PANEL = "Gate status panel"
 NUCLEAR_MODE = "Nuclear Mode"
+SETTINGS_DIALOG = "Settings dialog"
 SIM_PRICE_CHART = "Sim price chart"
 SIM_STAT_STRIP = "Sim stat strip"
 
@@ -183,6 +184,20 @@ def _react_sim_price_chart() -> type:
     return SimPriceVwapChartReact
 
 
+def _qt_settings_dialog() -> type:
+    """Import and return the Qt Settings dialog."""
+    from .settings_dialog import SettingsDialog
+
+    return SettingsDialog
+
+
+def _react_settings_dialog() -> type:
+    """Import and return the React Settings dialog."""
+    from .react_settings_dialog import SettingsDialogReact
+
+    return SettingsDialogReact
+
+
 def _qt_sim_stat_strip() -> type:
     """Import and return the Qt Simulator stat strip."""
     from .simulator_tab.sim_stat_strip import SimStatStrip
@@ -207,3 +222,4 @@ register(SIM_PRICE_CHART, _qt_sim_price_chart, _react_sim_price_chart)
 register(GATE_STATUS_PANEL, _qt_gate_status_panel, _react_gate_status_panel)
 register(FLEET_REPLAY, _qt_fleet_replay, _react_fleet_replay)
 register(SIM_STAT_STRIP, _qt_sim_stat_strip, _react_sim_stat_strip)
+register(SETTINGS_DIALOG, _qt_settings_dialog, _react_settings_dialog)

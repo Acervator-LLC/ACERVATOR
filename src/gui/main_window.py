@@ -2851,9 +2851,10 @@ if _HAS_QT:
         def _open_settings(self) -> None:
             _wing = getattr(self, "_trading_mode", "crypto") or "crypto"
             self._status_log.log(f"Opening settings ({_wing} wing)...")
-            from .settings_dialog import SettingsDialog
+            from .variant_surface import SETTINGS_DIALOG, surface_class
 
-            dlg = SettingsDialog(self._settings, self._status_log, self, wing=_wing)
+            _cls = surface_class(SETTINGS_DIALOG)
+            dlg = _cls(self._settings, self._status_log, self, wing=_wing)
             dlg.settings_changed.connect(self._on_settings_changed)
             dlg.exec()
 
@@ -3025,9 +3026,10 @@ if _HAS_QT:
             self._status_log.log(
                 f"Opening settings to add exchange " f"({_wing} wing)..."
             )
-            from .settings_dialog import SettingsDialog
+            from .variant_surface import SETTINGS_DIALOG, surface_class
 
-            dlg = SettingsDialog(self._settings, self._status_log, self, wing=_wing)
+            _cls = surface_class(SETTINGS_DIALOG)
+            dlg = _cls(self._settings, self._status_log, self, wing=_wing)
             dlg.exec()
             self._sync_exchange_tabs()
 
