@@ -3193,7 +3193,7 @@ rather than typed.
 | `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | no | yes | no | in scope, built by main_window.py |
+| `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | no | yes | yes | in scope, built by main_window.py |
 | `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/history_qt_table.py` | no | - | no | no | no | - | no | React side |
@@ -3358,6 +3358,24 @@ the wrong one and now names the module that draws it. The last is the buy
 confirmation dialog, which gained a module, a bridge method and a build entry and
 still reads `no` under RENDERS.
 
+Counted again on 6 September 2026, after the buy confirmation dialog went over:
+
+```
+React module             58
+Uses React               56
+Bridge                   69
+Manifest                 58
+Registers in Electron    15
+Ships in the build       58
+RENDERS                  43
+RENDERS, in scope        43 of 43
+out of scope             33
+```
+
+One row moved. It is the buy confirmation dialog, and it was the last in-scope
+row reading `no`. The count comes from `tools/conversion_table.py`, which reads
+the cells of the table above.
+
 ### The header strip
 
 The strip and the five counters above the tab row are no longer built by name.
@@ -3447,6 +3465,50 @@ the running window has no path to the screen.
 Measured by walking every call in `src` and `main.py`: zero call sites, and no
 import of that name under another. The module, the bridge method and the build
 entry are all present, so the screen is one caller away.
+
+Re-measured on 6 September 2026, by the same walk over 354 modules: still zero
+call sites. That count decides what the operator can reach, and it did not move.
+The row's RENDERS cell moved for a different measurement — the class the broker
+raises.
+
+The dialog the broker raises is now `BuyConfirmationReactDialog`. The broker
+asks the variant seam for that class, so the React build opens the page and
+`ACERVATOR_VARIANT=qt` opens the same Qt widgets as before.
+
+```python
+def dialog_class() -> type:
+    """The confirmation dialog class the running build variant draws."""
+    from .variant_surface import BUY_CONFIRMATION, surface_class
+
+    return surface_class(BUY_CONFIRMATION)
+```
+
+Every figure the page shows is written in Python. `details_text` in
+`buy_confirmation_surface` writes the seven detail rows. The Qt label is set
+from it, and the browser draws the same seven lines sliced into their values.
+No arithmetic runs in the page.
+
+```python
+def after_buy_usd(holdings_before: float, price: float, cost_usd: float) -> float:
+    """Dollar value the position reaches once this buy fills."""
+    return holdings_usd(holdings_before, price) + cost_usd
+```
+
+A press on the page names a button. Python turns that name into an answer and
+accepts the dialog through the same `_answer` the Qt buttons call. The page
+places no order and decides nothing.
+
+```python
+        def run_action(self, name: str) -> bool:
+            answer = surface.BUTTON_ANSWERS.get(name)
+            if answer is None:
+                return False
+            self._answer(answer)
+            return True
+```
+
+A window closed without a press is still `no`. A request nobody answers inside
+sixty seconds is refused too.
 
 ### The gap
 

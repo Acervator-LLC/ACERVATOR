@@ -21,7 +21,11 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
+from src._variant import ENV_VAR as VARIANT_ENV
+from src._variant import QT as QT_VARIANT
+from src._variant import REACT as REACT_VARIANT
 from src.gui import buy_confirmation_dialog as qt_dialog
+from src.gui import variant_surface
 from src.gui.main_tabs import buy_confirmation_surface as surface
 from tests.fixtures.qt_wiring_counts import qt_free
 from tests.fixtures.surface_pictures import (
@@ -1056,6 +1060,7 @@ METHOD_MAP = {
     "_BuyConfirmationBroker.request_confirmation": "BuyConfirmationModel.request",
     "_BuyConfirmationBroker._on_request_received": "BuyConfirmationModel.show_request",
     "BuyConfirmationDialog.__init__": "BuyConfirmationModel.build",
+    "BuyConfirmationDialog._setup_ui": "BuyConfirmationModel.build",
     "BuyConfirmationDialog._answer": "BuyConfirmationModel.answer",
 }
 
@@ -1101,7 +1106,7 @@ def qt_method_names():
 def test_every_dialog_method_has_a_counterpart():
     """A method exists on one side and nowhere on the other."""
     assert qt_method_names() == set(METHOD_MAP)
-    assert len(METHOD_MAP) == 6
+    assert len(METHOD_MAP) == 7
     for target in METHOD_MAP.values():
         assert callable(resolve(target)), target
     surface_methods = {
@@ -1201,8 +1206,13 @@ def broker_host(answer=None, future=None):
 
 
 def run_show_request_old(payload_spec, exec_result, press, future_done, monkeypatch):
-    """Drive ``_on_request_received`` on a duck-typed broker."""
+    """Drive ``_on_request_received`` on a duck-typed broker.
+
+    The variant is pinned to ``QT`` so the seam names ``BuyConfirmationDialog``,
+    which is the class this trace is compared against.
+    """
     app()
+    monkeypatch.setenv(VARIANT_ENV, QT_VARIANT)
     CALLS.clear()
     trace_widgets(monkeypatch)
     patch = trace_dialog_methods(exec_result, press)
@@ -1271,6 +1281,19 @@ def test_the_broker_raises_the_modal_the_same_way(name, monkeypatch):
     assert new_resolved == old_resolved
     assert new_pending == old_pending == []
     assert digest(new_calls) == digest(old_calls)
+
+
+def test_the_broker_raises_the_class_the_seam_names(monkeypatch):
+    """The Qt build gets the Qt dialog and the React build gets its subclass."""
+    monkeypatch.setenv(VARIANT_ENV, QT_VARIANT)
+    assert qt_dialog.dialog_class() is qt_dialog.BuyConfirmationDialog
+    monkeypatch.setenv(VARIANT_ENV, REACT_VARIANT)
+    drawn = qt_dialog.dialog_class()
+    assert drawn is not qt_dialog.BuyConfirmationDialog
+    assert issubclass(drawn, qt_dialog.BuyConfirmationDialog)
+    assert drawn is variant_surface.surface_class(
+        variant_surface.BUY_CONFIRMATION, REACT_VARIANT
+    )
 
 
 def test_a_closed_window_counts_as_no(monkeypatch):
