@@ -2826,7 +2826,7 @@ if _HAS_QT:
             self._status_log.log(f"Executing {command} on all bots...", "info")
             try:
                 if command == "start_all":
-                    from .start_all_progress_dialog import StartAllProgressDialog
+                    from .variant_surface import START_ALL_PROGRESS, surface_class
 
                     eligible = [
                         b
@@ -2838,7 +2838,8 @@ if _HAS_QT:
                             "start_all: no bots eligible (none idle/stopped).", "info"
                         )
                         return
-                    dlg = StartAllProgressDialog(self._bot_manager, parent=self)
+                    _cls = surface_class(START_ALL_PROGRESS)
+                    dlg = _cls(self._bot_manager, parent=self)
                     dlg.show()
                     self._schedule_async(self._bot_manager.start_all())
                 elif command == "pause_all":

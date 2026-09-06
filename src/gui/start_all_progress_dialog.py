@@ -25,8 +25,24 @@ class StartAllProgressDialog(QtWidgets.QDialog):
 
     def __init__(self, bot_manager, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent)
-        self.setAccessibleName(surface.ACCESSIBLE_NAME)
         self._bot_manager = bot_manager
+        self._setup_ui()
+
+        try:
+            from src.core.event_bus import get_event_bus
+
+            self._bus = get_event_bus()
+            self._unsub = self._bus.subscribe(surface.TOPIC, self._on_progress_event)
+        except Exception as _sub_exc:
+            logger.exception(surface.SUBSCRIBE_FAILED_LOG, _sub_exc)
+            self._bus = None
+            self._unsub = None
+
+        self._progress_signal.connect(self._handle_progress_main_thread)
+
+    def _setup_ui(self) -> None:
+        """Build the headline, the subline, the bot list and the two buttons."""
+        self.setAccessibleName(surface.ACCESSIBLE_NAME)
         self.setWindowTitle(surface.WINDOW_TITLE)
         self.setModal(surface.MODAL)  # operator can keep using the rest of the GUI
         self.setMinimumWidth(surface.MINIMUM_WIDTH_PX)
@@ -66,18 +82,6 @@ class StartAllProgressDialog(QtWidgets.QDialog):
         button_row.addWidget(self._close_btn)
 
         layout.addLayout(button_row)
-
-        try:
-            from src.core.event_bus import get_event_bus
-
-            self._bus = get_event_bus()
-            self._unsub = self._bus.subscribe(surface.TOPIC, self._on_progress_event)
-        except Exception as _sub_exc:
-            logger.exception(surface.SUBSCRIBE_FAILED_LOG, _sub_exc)
-            self._bus = None
-            self._unsub = None
-
-        self._progress_signal.connect(self._handle_progress_main_thread)
 
     # Signal carries (phase, total, started, bot_id)
     _progress_signal = QtCore.Signal(str, int, int, str)

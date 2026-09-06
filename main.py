@@ -1132,9 +1132,9 @@ def main() -> int:
                 f"Auto-restart firing for {len(eligible)} bot(s) "
                 f"(verify-then-next staggered, GUI-thread)..."
             )
-            from src.gui.start_all_progress_dialog import StartAllProgressDialog
+            from src.gui.variant_surface import START_ALL_PROGRESS, surface_class
 
-            dlg = StartAllProgressDialog(bot_manager, parent=crypto_window)
+            dlg = surface_class(START_ALL_PROGRESS)(bot_manager, parent=crypto_window)
             dlg.show()
             dlg.raise_()
             dlg.activateWindow()
