@@ -165,6 +165,26 @@ class CountingRegistry(dict):
         return counted
 
 
+class PausingPush:
+    """A push whose first ``offer`` waits for ``release`` before returning."""
+
+    def __init__(self) -> None:
+        """Start with ``entered`` and ``release`` clear and no offers."""
+        self.offers: List[tuple] = []
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self._seen_first = False
+
+    def offer(self, section: str, values: dict) -> None:
+        """Record the offer, and hold the first caller inside this call."""
+        self.offers.append((section, dict(values)))
+        if self._seen_first:
+            return
+        self._seen_first = True
+        self.entered.set()
+        self.release.wait(30.0)
+
+
 class RefusingExchange:
     """A venue that answers nothing. Any attribute read raises."""
 
@@ -504,6 +524,32 @@ def test_control_attaching_a_push_starts_exactly_one_thread() -> None:
         channel.close()
 
     assert _push_threads() - before == set()
+
+
+def test_a_second_publish_waits_for_the_first_one_to_offer_its_frame() -> None:
+    """``publish`` offers under the same lock that replaces the section.
+
+    A failure means two emitting threads can interleave, and the older frame
+    can reach the pipe after the newer one.
+    """
+    push = PausingPush()
+    live = LiveSystem()
+    live.attach_push(push)
+    first = threading.Thread(target=live.publish, args=("history",), kwargs={"n": 0})
+    second = threading.Thread(target=live.publish, args=("history",), kwargs={"n": 1})
+    first.start()
+    try:
+        assert push.entered.wait(JOIN_SECONDS), "the first publish never offered"
+        second.start()
+        second.join(timeout=0.5)
+
+        assert second.is_alive(), "the second publish overtook the first"
+    finally:
+        push.release.set()
+        first.join(timeout=JOIN_SECONDS)
+        second.join(timeout=JOIN_SECONDS)
+
+    assert [values["n"] for _section, values in push.offers] == [0, 1], push.offers
 
 
 def test_build_registry_with_no_argument_keeps_todays_table() -> None:

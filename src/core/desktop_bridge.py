@@ -71,14 +71,14 @@ class LiveSystem:
     def publish(self, name: str, **values: Any) -> None:
         """Replace the section ``name`` with ``values`` as one whole dict.
 
-        An attached ``PushChannel`` is offered the same values and takes them
-        without writing, so the calling thread is never held by the pipe.
+        An attached ``PushChannel`` is offered the same values under ``_lock``,
+        so two publishing threads cannot put the older frame on the pipe last.
+        ``offer`` takes the frame without writing it.
         """
         with self._lock:
             self._sections[name] = dict(values)
-        push = self._push
-        if push is not None:
-            push.offer(name, values)
+            if self._push is not None:
+                self._push.offer(name, values)
 
     def section(self, name: str) -> dict:
         """Return a copy of the section ``name``, empty when none was published."""
