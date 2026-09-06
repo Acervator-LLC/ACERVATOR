@@ -24,6 +24,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.gui.main_tabs import bot_swarm_list_surface as swarm_list_surface
+from src.gui.main_tabs import bot_visualizer_surface
 from src.gui.main_tabs import console_tab_surface as console_surface
 from src.gui.main_tabs import design_system_surface as dss
 from src.gui.main_tabs import header_strip_surface as header_surface
@@ -53,6 +54,7 @@ PANEL_SURFACES = {
     CONSOLE_PANEL: console_surface,
     HEADER_PANEL: header_surface,
     "bot_swarm_tab": swarm_list_surface,
+    "bot_visualizer": bot_visualizer_surface,
     "history_tab": history_chrome_surface,
     "market_inspector_tab": inspector_surface,
     "paper_trader_tab": paper_surface,
