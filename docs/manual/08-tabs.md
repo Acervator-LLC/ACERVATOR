@@ -551,6 +551,28 @@ def left_module_rows(
 ) -> list:
 ```
 
+The screen draws six zones, three down each side. The left side draws ATA-SMP,
+Opposing Trades and Multi-Exchange Arbitrage. The right side draws ATA-SMP Ready
+to Send, Bot Swarm Topologies and Phantom Bot HTF Signals. Measured on
+6 September 2026 at a tab size of 1400 by 860 pixels, the six boxes are equal and
+sit at the same three positions down each pane: 278 pixels tall on the Qt side
+and 278.66 on the React side. The record is
+`tests/debug_reports/2026-09-06_stageC_cointegration.md`.
+
+`src/gui/main_tabs/market_inspector_surface.py` — `right_zone_rows`
+
+```python
+def right_zone_rows(run: Any, bucket: Any = None) -> list:
+    """The three right-side zones as key, title and status, in screen order."""
+```
+
+Two of the six are reserved and say what they wait for. Ready to Send reads
+`Phase source not wired. Nothing to approve.` while no phase run is wired.
+Phantom Bot HTF Signals reads `Phantom Bot source not wired.`, and its rows
+follow the Phantom Bot design.
+
+In development.
+
 ATA-SPM reads a phase run. Nothing wires one yet, so its line reads
 `Phase source not wired.` A wired source that has run names its phase beside
 the count the Ready to Send bucket holds.
@@ -606,6 +628,40 @@ alike.
 
 ```python
 MESSAGE_FORMAT = "{label}: {reading}. Votes {direction} at {confidence}% confidence."
+```
+
+Two of the twelve indicator messages named a direction their indicator cannot
+give. Both are corrected. ADX measures how committed a move is and says nothing
+about which way it points, which is why its published formula takes an absolute
+difference. The message now names the two directional lines the vote is decided
+by, and names the ADX figure as strength. The Kaufman Efficiency Ratio had the
+same defect. The ratio is a size between zero and one, and the direction comes
+from a separate quantity the same indicator computes, so its message now names
+the close against the window open beside the ratio. No formula, threshold or
+coefficient changed, and the other ten voters publish a reading that already
+carries its direction. Measured 7 September 2026 and recorded in
+`tests/debug_reports/2026-09-07_ata_phases_7_and_8.md`.
+
+`src/trading/ata_spm.py` — the readings the two corrected messages name
+
+```python
+"adx": (
+    "ADX",
+    ("di_plus", "di_minus", "adx"),
+    "+DI {di_plus:.2f} against -DI {di_minus:.2f}, trend strength ADX {adx:.2f}",
+),
+"kaufman_er": (
+    "Kaufman Efficiency Ratio",
+    ("er", "price_up"),
+    "efficiency ratio {er:.4f}, close {price_up} the window open",
+),
+```
+
+The two sentences read like this off the running voters.
+
+```
+ADX: +DI 50.11 against -DI 19.20, trend strength ADX 96.04. Votes bullish at 100% confidence.
+Kaufman Efficiency Ratio: efficiency ratio 0.2857, close above the window open. Votes neutral at 0% confidence.
 ```
 
 Clicking a scanned sector opens the three phase readbacks under each other.
@@ -716,6 +772,21 @@ SETTING_ROWS = (
 )
 ```
 
+The page carries four settings today. The confirmation share phase seven reads
+joined the three above it. Every one of the four is a setting a phase reads, and
+a credential for each of the seven push targets sits above them.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the four rows the page draws
+
+```python
+SETTING_ROWS = (
+    (SETTING_MAX_POSTS, "Max posts per hour"),
+    (SETTING_MAX_INDICATORS, "Max supporting indicators"),
+    (SETTING_CONFIRMATION_SHARE, "Confirmation share %"),
+    (SETTING_MESSAGE_FORMAT, "Standardised message text"),
+)
+```
+
 A credential is typed into two fields and pressed into the vault with Save
 credentials. The page reports only whether a credential is held; no token is
 drawn back, and none reaches the payload the screen is built from.
@@ -780,6 +851,29 @@ header takes 144 of them.
 
 The rules each platform publishes are recorded in
 [the push target rules](../audits/2026-09-06_ata_platform_rules.md).
+
+The two platforms left out were each measured, and the reasons differ.
+TradingView publishes no posting interface at all. Its own support page states
+that it has no API giving access to data, and that its REST API is meant for
+brokers. YouTube publishes an interface, and that interface takes video. The
+upload endpoint accepts two media types and nothing else, and none of the
+twenty-one resources its Data API reference lists publishes a still image or a
+text post. A post carries a still chart, so it has no route in. Both readings
+are cited on [the push target rules](../audits/2026-09-06_ata_platform_rules.md)
+page.
+
+```
+video/*, application/octet-stream
+```
+
+Three of the seven targets fetch the image rather than receive it. Instagram,
+Threads and TikTok each take an address on a public server. A desktop
+application holds no such host, and nothing may be added to the render path to
+give it one, so phase five records those three as unreachable until the
+operator supplies an address. Measured 7 September 2026 and recorded in
+`tests/debug_reports/2026-09-07_remaining_targets.md`.
+
+In development.
 
 Phase four now holds every post under the ceiling its own target publishes. X
 publishes 280 characters, Threads 500, Instagram 2,200, LinkedIn 3,000, TikTok
@@ -1008,6 +1102,20 @@ def _find_opposing_pairs(self, signals: list, closes_by_symbol: dict) -> list:
     shorts = [s for s in signals if s.direction == "short" and s.score >= 0.3]
 ```
 
+The HTF Signals table is no longer drawn on the left side. Its zone is Phantom
+Bot HTF Signals, on the right, and nothing places the table there while the
+Phantom Bot source is unwired. The widgets are still built and every scan still
+fills them, so the scan states, the empty notes and the per-bot page read what
+they read before. Measured 6 September 2026 and recorded in
+`tests/debug_reports/2026-09-06_stageC_cointegration.md`.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the line that zone carries
+while it waits
+
+```python
+PHANTOM_HTF_UNWIRED_TEXT = "Phantom Bot source not wired."
+```
+
 The correlation raises a candidate. It no longer decides one. Every pair the
 screen shows has also passed a test for a long-run equilibrium, because two
 markets can move opposite each other for a year without any relationship
@@ -1172,6 +1280,33 @@ Dismiss inside its own entry, where a waiting post carries Approve and Decline.
 "hint": total > 0 and not open_now,
 ```
 
+One implementation draws all six zones, and the proposals pane draws through
+the same one. The Qt build gives every zone a `ProposalStepper`, and the React
+build and the Electron shell give every zone a `ZoneStepper`. The pane holds no
+arrows and no expansion of its own, so a second copy of the pattern cannot drift
+from the first.
+
+`src/gui/web/market_inspector_topologies.js` — the pane takes the screen's
+stepper
+
+```javascript
+function stepperOf() {
+  var screen = global.acervatorMarketInspector;
+  return screen === undefined ? undefined : screen.ZoneStepper;
+}
+```
+
+Both zones now draw the same entry box, and nothing in an open entry falls
+outside it. Measured 7 September 2026 across the Qt build, the React build and
+the Electron shell: 102 dimensions compared, 100 exact, and the two that differ
+are one pixel apart. Every host prints the same p-value on both lines of both
+cards. The record is `tests/debug_reports/2026-09-07_two_defects.md`.
+
+```
+opposing_trades entry [16, 436, 735, 177] scrolled 0
+topologies      entry [789, 436, 735, 177] scrolled 0
+```
+
 The count of proposals held and dismissed stays on its own line beside the
 Refresh button, so a dismissed proposal is still counted after it leaves the
 list.
@@ -1211,6 +1346,22 @@ Refresh and the Include active markets checkbox report their press back to
 Python, and the right pane reports Refresh proposals, Preview, Dismiss, Cancel
 and Adopt the same way. Setting `ACERVATOR_VARIANT` to `qt` builds the Qt
 widgets instead, unchanged.
+
+The same analyzer serves a second screen. The Live Bot Settings window carries
+its own Market Inspector tab, and that tab draws one card for the bot the window
+is open on. Both builds now draw the card from one description of it, where the
+React side drew a Python error message before. The words, the colour, the
+padding and the layout numbers come from that description, so the waiting screen
+cannot drift either. Measured 6 September 2026 and recorded in
+`tests/debug_reports/2026-09-06_unit12_market_inspector_tab.md`.
+
+`src/gui/main_tabs/market_inspector_tab_surface.py` — `per_bot_view`
+
+```python
+def per_bot_view(bot: Any) -> dict:
+    """The per-bot Market Inspector screen as values, read off the shared
+    analyzer's most recent scan.
+```
 
 Detail: [08-tabs/market-inspector.md](08-tabs/market-inspector.md).
 
