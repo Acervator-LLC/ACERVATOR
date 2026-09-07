@@ -296,6 +296,43 @@ SCRUMMING_COLUMNS = ColumnSpec(
     ),
 ```
 
+**Functional.** Column 2 is Current Position Value. It shows what the bot's
+holdings are worth at the exchange's own price. It is blank whenever no fresh
+exchange price exists, and a blank cell names the missing thing in its tooltip:
+no position held, no exchange price for the pair yet, no exchange price this
+tick, or a price older than twenty seconds. The cell never falls back to a
+last-known figure, to a stand-in, or to a value read out of the bot's own
+ledger. The state colour now sits on the Bot ID cell, which is green while
+running, amber while paused, grey while idle or stopped, red on error, orange
+in cooldown and cyan while starting. That cell's tooltip names the mode and the
+state.
+
+`src/gui/main_tabs/table_cells_surface.py` — the one multiplication both priced
+cells read, so the Position Value cell and the Ammo cell can never disagree
+
+```python
+def priced_position(holdings: float, price: float, quote_rate: float) -> float:
+    """The position value at one price: ``holdings`` times ``price`` times
+    ``quote_rate``."""
+    return holdings * price * quote_rate
+```
+
+**Functional.** The price both cells read comes from the shared exchange price
+cache, and it carries its own age. An age of None means the cache held nothing
+and the bot's own last reading was used instead, which is why the Position
+Value cell goes blank on that path.
+
+`src/gui/main_tabs/table_cells_surface.py` — the four blank paths and the one
+priced path
+
+```python
+POSITION_PATH_PRICED = "priced"
+POSITION_PATH_NO_HOLDINGS = "no_holdings"
+POSITION_PATH_NO_PRICE = "no_price"
+POSITION_PATH_OFF_EXCHANGE = "off_exchange"
+POSITION_PATH_AGED = "aged"
+```
+
 **Design intention.** The Ammo cell measures against the live target, not the
 frozen number typed into the wizard, so the reading follows the grown balance
 the engine re-zeroes to.
