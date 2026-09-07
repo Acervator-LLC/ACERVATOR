@@ -323,6 +323,10 @@ SIM_MODES = (
 The table under it is the same class the Trading tab uses, with the same ten
 columns and a privacy dot on each header.
 
+Column 2 is now Current Position Value, priced from the exchange, and the state
+colour it used to carry sits on the Bot ID cell. The Trading tab page describes
+both — see [The bot tables](06-trading-tab.md).
+
 `src/gui/widgets/bot_status_table.py` — `BotStatusTable.SCRUMMING_COLUMNS`
 
 ```python

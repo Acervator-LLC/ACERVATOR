@@ -13,6 +13,7 @@ from .. import design_system as ds
 from ..table_cells import (
     _ammo_price_pool,
     _compose_ammo_cell,
+    _compose_position_value_cell,
     _compose_table_target_denom_cell,
     _fresh_display_price,
 )
@@ -38,7 +39,7 @@ if _HAS_QT:
         labels=(
             "Bot ID",
             "Symbol",
-            "Mode",
+            "Current Position Value",
             "Trades",
             "Target",
             "Target BTC",
@@ -48,12 +49,18 @@ if _HAS_QT:
             "",
         ),
         tooltips={
-            0: "Unique identifier for this bot instance",
-            1: "Trading pair (Target Asset / Base Currency)",
-            2: (
-                "Trading mode + current state.\n"
+            0: (
+                "Unique identifier for this bot instance, coloured by current state.\n"
                 "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
                 "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING"
+            ),
+            1: "Trading pair (Target Asset / Base Currency)",
+            2: (
+                "Current Position Value — what this bot's holdings are worth now,\n"
+                "priced from the exchange (holdings × exchange price × quote rate).\n"
+                "Blank whenever no fresh exchange price exists: the cell never shows\n"
+                "a last-known figure, a computed stand-in or a ledger value.\n"
+                "Hover a blank cell to read which of those is missing."
             ),
             3: "Total number of executed buy and sell trades",
             4: "Target Balance — the operator-set balance this bot trades\n"
@@ -105,7 +112,7 @@ if _HAS_QT:
         PRIVACY_FIELD_BY_COL = {
             0: "bot_table.bot_id",
             1: "bot_table.symbol",
-            2: "bot_table.mode",
+            2: "bot_table.ammo",  # position value reuses the ammo mask
             3: "bot_table.trades",
             4: "bot_table.target",
             5: "bot_table.target",  # target_btc reuses target mask
@@ -219,6 +226,12 @@ if _HAS_QT:
                 )
                 # quote_to_usd is 1.0 for USD-quoted pairs.
                 qrate = float(status.get("quote_to_usd", 1.0) or 1.0)
+                _position = _compose_position_value_cell(
+                    holdings,
+                    cur_price,
+                    qrate,
+                    price_age_s=_price_age,
+                )
                 _ammo = _compose_ammo_cell(
                     stats_pv,
                     holdings,
@@ -249,7 +262,7 @@ if _HAS_QT:
                 items = [
                     mask_or(bid, "bot_table.bot_id"),
                     mask_or(status.get("symbol", ""), "bot_table.symbol"),
-                    mask_or(mode, "bot_table.mode"),
+                    mask_or(_position["text"], "bot_table.ammo"),
                     mask_or(str(stats.get("total_trades", 0)), "bot_table.trades"),
                     mask_or(target_text, "bot_table.target"),
                     mask_or(target_btc_text, "bot_table.target"),
@@ -301,13 +314,15 @@ if _HAS_QT:
                                 type(_chart_url_exc).__name__,
                                 _chart_url_exc,
                             )
-                    if col == 2:
+                    if col == 0:
                         color = self.STATE_COLORS.get(state, QColor(ds.TEXT_HIGH))
                         item.setForeground(color)
                         # Tooltip on the cell shows the actual state text
                         item.setToolTip(
                             f"Mode: {mode}\nState: {state.upper() if state else 'UNKNOWN'}"
                         )
+                    if col == 2:
+                        item.setToolTip(_position["tip"])
                     if col == 5:
                         item.setForeground(QColor(target_btc_color))
                     if col == 6:

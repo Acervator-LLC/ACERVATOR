@@ -1,10 +1,16 @@
 """bot_status_table_surface.py -- the scrumming-bot dashboard table.
 
 Describes the table the operator's running bots are listed in. Ten
-columns per bot: the bot's id, its pair, its mode, how many trades it
-has done, the target balance in dollars and restated in BTC and in ETH,
-the Ammo figure that says how far the position sits from that target, a
-Manual Fire button and a Detail button.
+columns per bot: the bot's id, its pair, what its holdings are worth at
+the exchange's own price, how many trades it has done, the target
+balance in dollars and restated in BTC and in ETH, the Ammo figure that
+says how far the position sits from that target, a Manual Fire button
+and a Detail button.
+
+The Bot ID cell carries the state colour and names the mode and the
+state in its tooltip. The Current Position Value cell is blank whenever
+no fresh exchange price exists, and its tooltip names what is missing;
+it never falls back to a last-known figure or to a ledger value.
 
 Every maskable column header carries a dot the operator clicks to hide
 or show that column. The Fire button changes its colour, its border and
@@ -24,7 +30,13 @@ from typing import Any, Dict, Optional
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
 from ...exchange.exchange_chart_urls import chart_url
 from .. import design_system as ds
-from .table_cells_surface import NO_TARGET_TEXT, TableCellsModel, magnitude
+from .table_cells_surface import (
+    NO_TARGET_TEXT,
+    POSITION_BLANK_TEXT,
+    POSITION_PATHS,
+    TableCellsModel,
+    magnitude,
+)
 
 logger = logging.getLogger("acervator.gui")
 
@@ -36,7 +48,7 @@ SKIP_LOGGER_NAME = __name__
 COLUMN_LABELS = (
     "Bot ID",
     "Symbol",
-    "Mode",
+    "Current Position Value",
     "Trades",
     "Target",
     "Target BTC",
@@ -49,12 +61,18 @@ COLUMN_LABELS = (
 COLUMN_COUNT = len(COLUMN_LABELS)
 
 COLUMN_TOOLTIPS = {
-    0: "Unique identifier for this bot instance",
-    1: "Trading pair (Target Asset / Base Currency)",
-    2: (
-        "Trading mode + current state.\n"
+    0: (
+        "Unique identifier for this bot instance, coloured by current state.\n"
         "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
         "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING"
+    ),
+    1: "Trading pair (Target Asset / Base Currency)",
+    2: (
+        "Current Position Value — what this bot's holdings are worth now,\n"
+        "priced from the exchange (holdings × exchange price × quote rate).\n"
+        "Blank whenever no fresh exchange price exists: the cell never shows\n"
+        "a last-known figure, a computed stand-in or a ledger value.\n"
+        "Hover a blank cell to read which of those is missing."
     ),
     3: "Total number of executed buy and sell trades",
     4: "Target Balance — the operator-set balance this bot trades\n"
@@ -102,7 +120,7 @@ DEFAULT_STATE_COLOR = ds.TEXT_HIGH
 PRIVACY_FIELD_BY_COL = {
     0: "bot_table.bot_id",
     1: "bot_table.symbol",
-    2: "bot_table.mode",
+    2: "bot_table.ammo",  # position value reuses the ammo mask
     3: "bot_table.trades",
     4: "bot_table.target",
     5: "bot_table.target",
@@ -114,8 +132,9 @@ PRIVACY_FIELD_BY_COL = {
 FIRE_COLUMN = 8
 DETAIL_COLUMN = 9
 BUTTON_COLUMNS = (FIRE_COLUMN, DETAIL_COLUMN)
+BOT_ID_COLUMN = 0
 SYMBOL_COLUMN = 1
-MODE_COLUMN = 2
+POSITION_VALUE_COLUMN = 2
 TARGET_BTC_COLUMN = 5
 TARGET_ETH_COLUMN = 6
 AMMO_COLUMN = 7
@@ -420,12 +439,12 @@ def target_text(target_val: float) -> str:
 
 
 def state_color(state: Any) -> str:
-    """The colour the Mode cell is drawn in for one bot state."""
+    """The colour the Bot ID cell is drawn in for one bot state."""
     return STATE_COLORS.get(state, DEFAULT_STATE_COLOR)
 
 
 def mode_tooltip(mode: Any, state: Any) -> str:
-    """The Mode cell tooltip, which names the mode and the state in full."""
+    """The Bot ID cell tooltip, which names the mode and the state in full."""
     shown = state.upper() if state else UNKNOWN_STATE_TEXT
     return MODE_TIP_FORMAT.format(mode=mode, state=shown)
 
@@ -609,7 +628,14 @@ class BotStatusTableModel:
         refuses part way leaves exactly the cells the table would keep.
         """
         target_val = self._target_value(status)
-        ammo = self._ammo_cell(status, stats, target_val)
+        price, price_age_s, quote_rate = self._price_reading(status, stats)
+        holdings = float(status.get("current_holdings", NO_HOLDINGS))
+        position = self.cells.position_value_cell(
+            holdings, price, quote_rate, price_age_s
+        )
+        ammo = self._ammo_cell(
+            stats, target_val, holdings, price, quote_rate, price_age_s
+        )
         symbol = status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT
         base_asset = base_asset_of(symbol)
         exchange_id = status.get("exchange", EMPTY_TEXT) or EMPTY_TEXT
@@ -622,7 +648,7 @@ class BotStatusTableModel:
         texts = [
             mask_or(bot_id, PRIVACY_FIELD_BY_COL[0]),
             mask_or(status.get("symbol", EMPTY_TEXT), PRIVACY_FIELD_BY_COL[1]),
-            mask_or(mode, PRIVACY_FIELD_BY_COL[2]),
+            mask_or(position["text"], PRIVACY_FIELD_BY_COL[2]),
             mask_or(str(stats.get("total_trades", NO_TRADES)), PRIVACY_FIELD_BY_COL[3]),
             mask_or(target_text(target_val), PRIVACY_FIELD_BY_COL[4]),
             mask_or(btc_text, PRIVACY_FIELD_BY_COL[5]),
@@ -635,10 +661,12 @@ class BotStatusTableModel:
             AMMO_COLUMN: ammo["color"],
         }
         for column, text in enumerate(texts):
-            if column == SYMBOL_COLUMN:
-                found = self._symbol_cell(text, status, exchange_id)
-            elif column == MODE_COLUMN:
+            if column == BOT_ID_COLUMN:
                 found = cell(text, state_color(state), mode_tooltip(mode, state))
+            elif column == SYMBOL_COLUMN:
+                found = self._symbol_cell(text, status, exchange_id)
+            elif column == POSITION_VALUE_COLUMN:
+                found = cell(text, position["color"], position["tip"])
             elif column == AMMO_COLUMN:
                 found = cell(text, colors[column], ammo["tip"])
             elif column in colors:
@@ -661,10 +689,12 @@ class BotStatusTableModel:
         self.calls.append([ROW_TARGET, found])
         return found
 
-    def _ammo_cell(self, status, stats, target_val) -> dict:
-        """The Ammo cell, computed from a fresh price wherever one exists."""
-        stats_pv = float(stats.get("position_value", NO_TARGET_VALUE))
-        holdings = float(status.get("current_holdings", NO_HOLDINGS))
+    def _price_reading(self, status, stats) -> tuple:
+        """One price for this row, its age in seconds, and the quote rate.
+
+        Read once per row, so the Position Value cell and the Ammo cell
+        are priced from the same lookup rather than from two of them.
+        """
         price, price_age_s = self.cells.fresh_price(
             self.cells.price_pool(),
             str(status.get("exchange", EMPTY_TEXT) or EMPTY_TEXT),
@@ -674,6 +704,13 @@ class BotStatusTableModel:
         quote_rate = float(
             status.get("quote_to_usd", DEFAULT_QUOTE_TO_USD) or DEFAULT_QUOTE_TO_USD
         )
+        return price, price_age_s, quote_rate
+
+    def _ammo_cell(
+        self, stats, target_val, holdings, price, quote_rate, price_age_s
+    ) -> dict:
+        """The Ammo cell, computed from a fresh price wherever one exists."""
+        stats_pv = float(stats.get("position_value", NO_TARGET_VALUE))
         return self.cells.ammo_cell(
             stats_pv, holdings, price, quote_rate, target_val, price_age_s=price_age_s
         )
@@ -1027,8 +1064,11 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         "fire_column": FIRE_COLUMN,
         "detail_column": DETAIL_COLUMN,
         "button_columns": list(BUTTON_COLUMNS),
+        "bot_id_column": BOT_ID_COLUMN,
         "symbol_column": SYMBOL_COLUMN,
-        "mode_column": MODE_COLUMN,
+        "position_value_column": POSITION_VALUE_COLUMN,
+        "position_blank_text": POSITION_BLANK_TEXT,
+        "position_paths": list(POSITION_PATHS),
         "target_btc_column": TARGET_BTC_COLUMN,
         "target_eth_column": TARGET_ETH_COLUMN,
         "ammo_column": AMMO_COLUMN,

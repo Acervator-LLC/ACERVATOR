@@ -1614,10 +1614,10 @@ HELD_TYPES = {
         "row:0/cell:" + str(bsts.AMMO_COLUMN),
         "text",
     ),
-    "a mode colour that is a number": (
-        ["rows", 0, "cells", bsts.MODE_COLUMN, "color"],
+    "a bot id colour that is a number": (
+        ["rows", 0, "cells", bsts.BOT_ID_COLUMN, "color"],
         7,
-        "row:0/cell:" + str(bsts.MODE_COLUMN),
+        "row:0/cell:" + str(bsts.BOT_ID_COLUMN),
         "color",
     ),
     "a fire label that is a number": (

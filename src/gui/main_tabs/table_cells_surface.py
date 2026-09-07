@@ -1,17 +1,21 @@
-"""table_cells_surface.py -- the bot-table Ammo and Target-denom cells.
+"""table_cells_surface.py -- the bot-table priced, Ammo and Target-denom cells.
 
-Describes the two cells the dashboard paints for every bot row. The
-Ammo cell says how far the position sits from its target and which way
-the engine will move it. The Target-denom cell restates the same target
-in BTC and in ETH and says how far that pair has drifted from the same
-asset priced in dollars.
+Describes the three cells the dashboard paints for every bot row. The
+Current Position Value cell says what the holdings are worth at the
+exchange's own price. The Ammo cell says how far that position sits
+from its target and which way the engine will move it. The
+Target-denom cell restates the same target in BTC and in ETH and says
+how far that pair has drifted from the same asset priced in dollars.
 
-Four things leave this surface. ``price_pool`` finds the shared price
-cache. ``fresh_price`` picks the price the cell is drawn from and says
-how old it is. ``ammo_cell`` composes the Ammo cell on each of its
-three paths. ``target_denom_cell`` composes one Target-denom cell on
-each of its seven paths. Every path returns a text and a colour, and
-the Ammo paths return a tooltip as well.
+Six things leave this surface. ``price_pool`` finds the shared price
+cache. ``fresh_price`` picks the price the cells are drawn from and
+says how old it is. ``priced_position`` is the one multiplication both
+priced cells read. ``position_value_cell`` composes the Current
+Position Value cell on each of its five paths, four of which are
+blank. ``ammo_cell`` composes the Ammo cell on each of its three
+paths. ``target_denom_cell`` composes one Target-denom cell on each of
+its seven paths. Every path returns a text and a colour, and the Ammo
+and Position Value paths return a tooltip as well.
 
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``table_cells.state`` method, which is how the Electron renderer
@@ -114,6 +118,48 @@ AMMO_PATH_EMPTY = "empty"
 AMMO_PATH_PENDING = "pending"
 AMMO_PATH_SIGNAL = "signal"
 AMMO_PATHS = (AMMO_PATH_EMPTY, AMMO_PATH_PENDING, AMMO_PATH_SIGNAL)
+
+POSITION_BLANK_TEXT = ""
+NO_CELL_COLOR = ""
+NO_POSITION_VALUE: Optional[float] = None
+
+NO_HOLDINGS_POSITION_TIP = (
+    "No position. This bot holds nothing, so the exchange prices nothing for it."
+)
+NO_PRICE_POSITION_TIP = (
+    "No exchange price for this pair yet. The cell stays blank until one arrives."
+)
+OFF_EXCHANGE_POSITION_TIP = (
+    "No exchange price this tick. Blank rather than the bot's own last "
+    "reading, which is not a current value."
+)
+AGED_POSITION_TIP_FORMAT = (
+    "Exchange price is {price_age_s:,.0f}s old, past the {stale_after_s:,.0f}s "
+    "limit. Blank rather than a figure priced off it."
+)
+PRICED_POSITION_TIP_FORMAT = (
+    "Current position value from the exchange: {holdings:.6f} units at "
+    "${price:,.4f}, priced {price_age_s:,.0f}s ago."
+)
+
+POSITION_PATH_PRICED = "priced"
+POSITION_PATH_NO_HOLDINGS = "holdings_absent"
+POSITION_PATH_NO_PRICE = "price_absent"
+POSITION_PATH_OFF_EXCHANGE = "off_exchange"
+POSITION_PATH_AGED = "aged"
+POSITION_PATHS = (
+    POSITION_PATH_PRICED,
+    POSITION_PATH_NO_HOLDINGS,
+    POSITION_PATH_NO_PRICE,
+    POSITION_PATH_OFF_EXCHANGE,
+    POSITION_PATH_AGED,
+)
+
+POSITION_BLANK_TIPS = {
+    POSITION_PATH_NO_HOLDINGS: NO_HOLDINGS_POSITION_TIP,
+    POSITION_PATH_NO_PRICE: NO_PRICE_POSITION_TIP,
+    POSITION_PATH_OFF_EXCHANGE: OFF_EXCHANGE_POSITION_TIP,
+}
 
 AMMO_PATH_FIELDS = {
     AMMO_PATH_EMPTY: AMMO_EARLY_FIELDS,
@@ -219,6 +265,10 @@ PRICE_HIT = "price.hit"
 PRICE_MISS = "price.miss"
 PRICE_FAILED = "price.failed"
 PRICE_RETURN = "price.return"
+POSITION_START = "position.start"
+POSITION_BLANK = "position.blank"
+POSITION_PRICED = "position.priced"
+POSITION_RETURN = "position.return"
 AMMO_START = "ammo.start"
 AMMO_FRESH = "ammo.fresh"
 AMMO_CACHED = "ammo.cached"
@@ -247,6 +297,12 @@ ModelCall = list[object]
 def magnitude(value: float) -> str:
     """One dollar figure without its sign, as both cells write it."""
     return MAGNITUDE_FORMAT.format(magnitude=abs(value))
+
+
+def priced_position(holdings: float, price: float, quote_rate: float) -> float:
+    """The position value at one price: ``holdings`` times ``price`` times
+    ``quote_rate``."""
+    return holdings * price * quote_rate
 
 
 def ammo_text(delta: float, target_val: float) -> str:
@@ -357,6 +413,74 @@ class TableCellsModel:
         self.calls.append([PRICE_RETURN, price, age is not None])
         return price, age
 
+    def position_value_cell(
+        self,
+        holdings: float,
+        cur_price: float,
+        qrate: float,
+        price_age_s: Optional[float] = MISSING_PRICE_AGE_S,
+    ) -> dict:
+        """The Current Position Value cell, filled only from a fresh exchange price.
+
+        ``price_age_s`` is None whenever ``fresh_price`` fell back to the
+        bot's own reading, and every path but ``POSITION_PATH_PRICED``
+        returns ``POSITION_BLANK_TEXT`` with the reason in its tooltip.
+        """
+        self.calls.append([POSITION_START, holdings, cur_price, qrate, price_age_s])
+        if holdings <= 0:
+            return self._blank_position(POSITION_PATH_NO_HOLDINGS)
+        if cur_price <= 0:
+            return self._blank_position(POSITION_PATH_NO_PRICE)
+        if price_age_s is None:
+            return self._blank_position(POSITION_PATH_OFF_EXCHANGE)
+        if price_age_s > PRICE_STALE_AFTER_S:
+            return self._finish_position(
+                POSITION_PATH_AGED,
+                {
+                    "text": POSITION_BLANK_TEXT,
+                    "color": NO_CELL_COLOR,
+                    "tip": AGED_POSITION_TIP_FORMAT.format(
+                        price_age_s=price_age_s, stale_after_s=PRICE_STALE_AFTER_S
+                    ),
+                    "position_val": NO_POSITION_VALUE,
+                    "priced": False,
+                },
+            )
+        position_val = priced_position(holdings, cur_price, qrate)
+        self.calls.append([POSITION_PRICED, position_val, price_age_s])
+        return self._finish_position(
+            POSITION_PATH_PRICED,
+            {
+                "text": magnitude(position_val),
+                "color": NO_CELL_COLOR,
+                "tip": PRICED_POSITION_TIP_FORMAT.format(
+                    holdings=holdings, price=cur_price, price_age_s=price_age_s
+                ),
+                "position_val": position_val,
+                "priced": True,
+            },
+        )
+
+    def _blank_position(self, path: str) -> dict:
+        """One unpriced Position Value cell, its tooltip naming what is absent."""
+        self.calls.append([POSITION_BLANK, path])
+        return self._finish_position(
+            path,
+            {
+                "text": POSITION_BLANK_TEXT,
+                "color": NO_CELL_COLOR,
+                "tip": POSITION_BLANK_TIPS[path],
+                "position_val": NO_POSITION_VALUE,
+                "priced": False,
+            },
+        )
+
+    def _finish_position(self, path: str, cell: dict) -> dict:
+        """Stamp ``path`` onto one Position Value cell and record it."""
+        cell["path"] = path
+        self.calls.append([POSITION_RETURN, path, cell["text"], cell["priced"]])
+        return cell
+
     def ammo_cell(
         self,
         stats_pv: float,
@@ -374,7 +498,7 @@ class TableCellsModel:
         """
         self.calls.append([AMMO_START, stats_pv, holdings, cur_price, qrate])
         fresh_ok = holdings > 0 and cur_price > 0
-        fresh_pv = holdings * cur_price * qrate if fresh_ok else 0.0
+        fresh_pv = priced_position(holdings, cur_price, qrate) if fresh_ok else 0.0
         if fresh_ok:
             position_val, stale = fresh_pv, False
             self.calls.append([AMMO_FRESH, position_val])
