@@ -30,6 +30,13 @@ body {
 
 [data-part="refresh-button"],
 [data-part="scan-now"],
+[data-part="settings-button"],
+[data-part="save-credentials"],
+[data-part="post-selected"],
+[data-part="post-all"],
+[data-part="full-auto"],
+[data-part="approve-button"],
+[data-part="decline-button"],
 [data-part="preview-button"],
 [data-part="dismiss-button"],
 [data-part="cancel-button"],
@@ -61,7 +68,10 @@ body {
 /* The ATA-SPM sector field and its class box. The padding, the border width
  * and the widths come from the payload; this is colour and type only. */
 [data-part="sector-field"],
-[data-part="class-box"] {
+[data-part="class-box"],
+[data-part="credential-key"],
+[data-part="credential-signature"],
+[data-part="setting-field"] {
   background: var(--bg);
   color: var(--text);
   border-color: var(--border);
@@ -69,8 +79,23 @@ body {
   font: inherit;
 }
 
-[data-part="sector-field"]::placeholder {
+[data-part="sector-field"]::placeholder,
+[data-part="credential-key"]::placeholder,
+[data-part="credential-signature"]::placeholder {
   color: var(--grid);
+}
+
+/* The band strip: the box, the fill up to the marker and the marker are
+ * coloured from the payload, so this sets only the corner. */
+[data-part="post-thumbnail"],
+[data-part="post-preview"] {
+  border-radius: 2px;
+}
+
+[data-part="credential-state"],
+[data-part="settings-label"] {
+  color: var(--grid);
+  white-space: nowrap;
 }
 
 [data-part="table-group"] {

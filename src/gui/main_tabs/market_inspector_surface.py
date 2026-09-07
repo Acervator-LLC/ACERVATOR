@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from ...trading import ata_spm
+from ...trading import ata_spm, ata_spm_push
 
 logger = logging.getLogger("acervator.market_inspector_gui")
 
@@ -178,6 +178,104 @@ READY_TO_SEND_UNWIRED_TEXT = "Phase source not wired. Nothing to approve."
 READY_TO_SEND_NO_RUN_TEXT = "No run yet. Nothing to approve."
 READY_TO_SEND_HOLDS_FORMAT = "{count} post(s) waiting. Approve or decline each."
 
+# ── phases four, five and six: the bucket, its buttons and the settings ──
+
+APPROVE_LABEL = "Approve"
+DECLINE_LABEL = "Decline"
+POST_SELECTED_LABEL = "Post Selected"
+POST_ALL_LABEL = "Post All"
+FULL_AUTO_LABEL = "Send Bucket Full Auto"
+SETTINGS_LABEL = "Settings"
+SAVE_CREDENTIALS_LABEL = "Save credentials"
+
+APPROVE_PART = "approve-button"
+DECLINE_PART = "decline-button"
+POST_SELECTED_PART = "post-selected"
+POST_ALL_PART = "post-all"
+FULL_AUTO_PART = "full-auto"
+SETTINGS_PART = "settings-button"
+SAVE_CREDENTIALS_PART = "save-credentials"
+SETTING_FIELD_PART = "setting-field"
+
+#: Every press ``MarketInspectorScreenModel.push_action`` answers, which is
+#: how the Electron host knows which key to send as one.
+PUSH_PARTS = (
+    APPROVE_PART,
+    DECLINE_PART,
+    POST_SELECTED_PART,
+    POST_ALL_PART,
+    FULL_AUTO_PART,
+    SETTINGS_PART,
+)
+
+#: The wording each empty credential field shows, in the order
+#: ``ata_spm_push.CREDENTIAL_FIELD_KEYS`` names them.
+CREDENTIAL_PLACEHOLDERS = ("API key", "API signature")
+
+#: The two fields one push target's credential is typed into, each as its
+#: part name and the wording the empty field shows.
+CREDENTIAL_FIELDS = tuple(
+    zip(ata_spm_push.CREDENTIAL_FIELD_KEYS, CREDENTIAL_PLACEHOLDERS)
+)
+
+APPROVE_TOOLTIP = "Approve this post so Post All and Full Auto release it."
+DECLINE_TOOLTIP = "Decline this post. No button sends a declined post."
+POST_SELECTED_TOOLTIP = "Send the post on screen, at no more than the configured rate."
+POST_ALL_TOOLTIP = "Send every approved post, at no more than the configured rate."
+FULL_AUTO_TOOLTIP = "Release approved posts without a click, at the configured rate."
+SETTINGS_TOOLTIP = "Show the ATA-SPM settings page, or the scan page."
+SAVE_CREDENTIALS_TOOLTIP = "Encrypt every credential typed above into the vault."
+CREDENTIAL_FIELD_WIDTH_PX = 96
+SETTING_FIELD_WIDTH_PX = 180
+SETTINGS_ROW_SPACING_PX = 6
+SETTINGS_LABEL_WIDTH_PX = 150
+
+#: Every ATA-SPM setting a phase reads, with the wording its row carries.
+SETTING_MAX_POSTS = "max_posts_per_hour"
+SETTING_MAX_INDICATORS = "max_supporting_indicators"
+SETTING_MESSAGE_FORMAT = "message_format"
+SETTING_ROWS = (
+    (SETTING_MAX_POSTS, "Max posts per hour"),
+    (SETTING_MAX_INDICATORS, "Max supporting indicators"),
+    (SETTING_MESSAGE_FORMAT, "Standardised message text"),
+)
+COUNT_SETTINGS = (SETTING_MAX_POSTS, SETTING_MAX_INDICATORS)
+
+#: The band strip one bucket post draws, at its two sizes.
+THUMBNAIL_WIDTH_PX = 120
+THUMBNAIL_HEIGHT_PX = 30
+PREVIEW_WIDTH_PX = 320
+PREVIEW_HEIGHT_PX = 48
+STRIP_BORDER_PX = 1
+STRIP_MARKER_PX = 5
+THUMBNAIL_PART = "post-thumbnail"
+PREVIEW_PART = "post-preview"
+STRIP_LEAD_PART = "strip-lead"
+STRIP_MARKER_PART = "strip-marker"
+STRIP_FILL_STYLE_FORMAT = "background-color: {color};"
+STRIP_BOX_STYLE_FORMAT = "border: {border}px solid {color};"
+STRIP_TEXT_FORMAT = (
+    "lower {lower:g} · middle {middle:g} · upper {upper:g} "
+    "· last close {close:g} · band position {band:.4f}"
+)
+STRIP_TEXT_PART = "strip-text"
+STRIP_LOW_PCT = 0.0
+STRIP_HIGH_PCT = 100.0
+PERCENT_PER_RATIO = 100.0
+
+BUCKET_HEADLINE_FORMAT = "{symbol} {label} · {vote}"
+BUCKET_DETAIL_NAME_FORMAT = "{target} {symbol} line {at}"
+BUCKET_METHOD_FORMAT = (
+    "{phase} · {target} · {bars} candles, last close {close:g} "
+    "· band position {band:.4f}"
+)
+
+PUSH_ACTION_SET = "push.action"
+CREDENTIAL_STORED = "credential.stored"
+CREDENTIAL_REFUSED = "credential.refused"
+SETTING_WRITTEN = "setting.written"
+SETTINGS_PAGE_TOGGLED = "settings.toggled"
+
 #: The Bot Swarm Topologies zone carries the proposal pane, not a status line.
 NO_TEXT_LINE = ""
 
@@ -279,6 +377,16 @@ COLOR_CORRELATION = "#ffcc66"
 COLOR_METHOD = "#00cccc"
 NO_COLOR = ""
 NO_CELL = None
+
+#: The strip marker colour each bucket vote draws in, and the fill behind it.
+VOTE_COLORS = {
+    ata_spm_push.VOTE_BULL: COLOR_ENTRY_LONG_HIGH,
+    ata_spm_push.VOTE_BEAR: COLOR_ENTRY_SHORT_HIGH,
+}
+VOTE_FILL_COLORS = {
+    ata_spm_push.VOTE_BULL: COLOR_ENTRY_LONG,
+    ata_spm_push.VOTE_BEAR: COLOR_ENTRY_SHORT,
+}
 
 TAG_UPPER = "▲"
 TAG_LOWER = "▼"
@@ -451,6 +559,9 @@ ACTIONS = {
     "adopt_requested": "set_adopt_handler",
     "zone_stepped": "step_zone",
     "zone_toggled": "toggle_zone",
+    "push_pressed": "push_action",
+    "credential_saved": "store_credential",
+    "setting_written": "set_setting",
 }
 
 SCREEN_BUILT = "screen.built"
@@ -533,6 +644,11 @@ CALL_NAMES = (
     SCAN_NOW_UNNAMED,
     ZONE_STEPPED,
     ZONE_TOGGLED,
+    PUSH_ACTION_SET,
+    CREDENTIAL_STORED,
+    CREDENTIAL_REFUSED,
+    SETTING_WRITTEN,
+    SETTINGS_PAGE_TOGGLED,
 )
 
 
@@ -847,6 +963,209 @@ def sector_row(sector: Any) -> list:
     return [sector.name, sector.asset_class, sector.boxes()]
 
 
+def strip_marker_pct(band_position: Any) -> float:
+    """Where one close sits across the band strip, in percent of its width.
+
+    The value is the ``bb_position`` the Bollinger voter published, held to
+    the strip at ``STRIP_LOW_PCT`` and ``STRIP_HIGH_PCT``.
+    """
+    across = float(band_position) * PERCENT_PER_RATIO
+    return max(STRIP_LOW_PCT, min(STRIP_HIGH_PCT, across))
+
+
+def vote_color(vote: Any) -> str:
+    """The colour one bull or bear vote draws its strip marker in."""
+    return VOTE_COLORS.get(str(vote), COLOR_OTHER)
+
+
+def vote_fill_color(vote: Any) -> str:
+    """The colour one bull or bear vote fills its strip up to the marker in."""
+    return VOTE_FILL_COLORS.get(str(vote), COLOR_OTHER)
+
+
+def strip_left_px(across_pct: Any, width_px: Any, own_px: Any) -> int:
+    """The left edge one strip child sits at, held inside ``width_px``."""
+    wide = int(width_px)
+    own = int(own_px)
+    left = int(round(wide * float(across_pct) / PERCENT_PER_RATIO))
+    return max(0, min(wide - own, left))
+
+
+def post_strip(post: Any, wide: Any = False) -> dict:
+    """The band strip one bucket post draws, as its thumbnail or its preview.
+
+    ``wide`` picks ``PREVIEW_WIDTH_PX`` over ``THUMBNAIL_WIDTH_PX``, and
+    ``strip_left_px`` puts the midline and the marker inside it.
+    """
+    width_px = PREVIEW_WIDTH_PX if wide else THUMBNAIL_WIDTH_PX
+    marker_pct = strip_marker_pct(post.band_position)
+    return {
+        "part": PREVIEW_PART if wide else THUMBNAIL_PART,
+        "width_px": width_px,
+        "height_px": PREVIEW_HEIGHT_PX if wide else THUMBNAIL_HEIGHT_PX,
+        "border_px": STRIP_BORDER_PX,
+        "marker_px": STRIP_MARKER_PX,
+        "marker_pct": marker_pct,
+        "lead_px": strip_left_px(marker_pct, width_px, STRIP_MARKER_PX),
+        "marker_color": vote_color(post.vote),
+        "lead_color": vote_fill_color(post.vote),
+        "line_color": COLOR_OTHER,
+        "lead_part": STRIP_LEAD_PART,
+        "marker_part": STRIP_MARKER_PART,
+        "marker_style": STRIP_FILL_STYLE_FORMAT.format(color=vote_color(post.vote)),
+        "lead_style": STRIP_FILL_STYLE_FORMAT.format(color=vote_fill_color(post.vote)),
+        "box_style": STRIP_BOX_STYLE_FORMAT.format(
+            border=STRIP_BORDER_PX, color=COLOR_OTHER
+        ),
+        "symbol": post.symbol,
+        "vote": post.vote,
+        "label": ata_spm.timeframe_label(post.timeframe),
+        "text": STRIP_TEXT_FORMAT.format(
+            lower=post.band_lower,
+            middle=post.band_middle,
+            upper=post.band_upper,
+            close=post.last_close,
+            band=post.band_position,
+        ),
+    }
+
+
+def action_row(part: Any, label: Any, tooltip: Any, enabled: Any = True) -> list:
+    """One button a zone draws: its part name, its wording and its state."""
+    return [part, label, tooltip, bool(enabled)]
+
+
+def bucket_actions() -> list:
+    """Approve and Decline, the two buttons under one post's preview."""
+    return [
+        action_row(APPROVE_PART, APPROVE_LABEL, APPROVE_TOOLTIP),
+        action_row(DECLINE_PART, DECLINE_LABEL, DECLINE_TOOLTIP),
+    ]
+
+
+def bucket_detail_rows(held: Any) -> list:
+    """The expanded lines one bucket post leaves: the body that would be sent.
+
+    Line zero is ``ata_spm_push.FIXED_HEADER``, which every artefact of the
+    post composes.
+    """
+    post = held.post
+    return [
+        [
+            BUCKET_DETAIL_NAME_FORMAT.format(
+                target=post.target, symbol=post.symbol, at=at
+            ),
+            line,
+        ]
+        for at, line in enumerate(post.body.splitlines())
+    ]
+
+
+def bucket_method_text(post: Any) -> str:
+    """The line one bucket entry carries about the chart phase three pulled."""
+    return BUCKET_METHOD_FORMAT.format(
+        phase=ata_spm_push.PHASE_BUCKET_NAME,
+        target=post.target,
+        bars=post.bars,
+        close=post.last_close,
+        band=post.band_position,
+    )
+
+
+def bucket_entry(held: Any) -> dict:
+    """One waiting post as the entry the Ready to Send zone steps through."""
+    post = held.post
+    return zone_entry(
+        BUCKET_HEADLINE_FORMAT.format(
+            symbol=post.symbol,
+            label=ata_spm.timeframe_label(post.timeframe),
+            vote=post.vote,
+        ),
+        held.meta,
+        detail=bucket_detail_rows(held),
+        method_text=bucket_method_text(post),
+        thumbnail=post_strip(post),
+        preview=post_strip(post, True),
+        actions=bucket_actions(),
+    )
+
+
+def bucket_entries(bucket: Any) -> list:
+    """One entry per post the Ready to Send bucket holds."""
+    return [bucket_entry(one) for one in bucket.posts]
+
+
+def bucket_zone_text(bucket: Any, run: Any) -> str:
+    """The Ready to Send zone's line: its own bucket, or what it waits for."""
+    if bucket is not None and bucket.posts:
+        return bucket.summary()
+    return ready_to_send_text(run)
+
+
+def credential_rows(settings: Any) -> list:
+    """One row per push target: its name, whether a credential is held, the wording.
+
+    ``AtaSpmSettings.credential_rows`` publishes no token, and this adds none.
+    """
+    return [list(one) for one in settings.credential_rows()]
+
+
+def setting_rows(settings: Any) -> list:
+    """One row per ATA-SPM setting a phase reads: its key, wording and value."""
+    return [
+        [key, label, str(getattr(settings, key, ""))] for key, label in SETTING_ROWS
+    ]
+
+
+def settings_page(board: Any) -> dict:
+    """Every value the ATA-SPM settings page is drawn from, and its state."""
+    return {
+        "open": bool(board.settings_open),
+        "settings_label": SETTINGS_LABEL,
+        "settings_tooltip": SETTINGS_TOOLTIP,
+        "settings_part": SETTINGS_PART,
+        "save_label": SAVE_CREDENTIALS_LABEL,
+        "save_tooltip": SAVE_CREDENTIALS_TOOLTIP,
+        "save_part": SAVE_CREDENTIALS_PART,
+        "setting_part": SETTING_FIELD_PART,
+        "credential_fields": [list(one) for one in CREDENTIAL_FIELDS],
+        "credential_rows": credential_rows(board.settings),
+        "setting_rows": setting_rows(board.settings),
+        "credential_width_px": CREDENTIAL_FIELD_WIDTH_PX,
+        "setting_width_px": SETTING_FIELD_WIDTH_PX,
+        "field_padding_px": list(FIELD_PADDING_PX),
+        "field_border_px": FIELD_BORDER_PX,
+        "label_width_px": SETTINGS_LABEL_WIDTH_PX,
+        "row_spacing_px": SETTINGS_ROW_SPACING_PX,
+    }
+
+
+def bucket_skin(board: Any) -> dict:
+    """Every value the Ready to Send buttons and the settings page are drawn from."""
+    bucket = board.bucket
+    return {
+        "post_selected_label": POST_SELECTED_LABEL,
+        "post_selected_tooltip": POST_SELECTED_TOOLTIP,
+        "post_selected_part": POST_SELECTED_PART,
+        "post_all_label": POST_ALL_LABEL,
+        "post_all_tooltip": POST_ALL_TOOLTIP,
+        "post_all_part": POST_ALL_PART,
+        "full_auto_label": FULL_AUTO_LABEL,
+        "full_auto_tooltip": FULL_AUTO_TOOLTIP,
+        "full_auto_part": FULL_AUTO_PART,
+        "full_auto_on": bool(bucket.full_auto),
+        "full_auto_text": bucket.full_auto_text(),
+        "push_parts": list(PUSH_PARTS),
+        "row_spacing_px": ATA_ROW_SPACING_PX,
+        "summary": bucket.summary(),
+        "counts": bucket.counts(),
+        "records": bucket.record_lines(),
+        "targets": list(ata_spm_push.TARGET_NAMES),
+        "states": list(ata_spm_push.STATE_WORDS),
+        "settings": settings_page(board),
+    }
+
+
 def opposing_trades_text(scan_state: Any, count: Any) -> str:
     """The Opposing Trades region's line for one scan state and pair count.
 
@@ -896,10 +1215,14 @@ def ready_to_send_text(run: Any) -> str:
     return READY_TO_SEND_HOLDS_FORMAT.format(count=count)
 
 
-def right_zone_rows(run: Any) -> list:
+def right_zone_rows(run: Any, bucket: Any = None) -> list:
     """The three right-side zones as key, title and status, in screen order."""
     return [
-        [READY_TO_SEND_ZONE, READY_TO_SEND_GROUP_TITLE, ready_to_send_text(run)],
+        [
+            READY_TO_SEND_ZONE,
+            READY_TO_SEND_GROUP_TITLE,
+            bucket_zone_text(bucket, run),
+        ],
         [TOPOLOGIES_ZONE, TOPOLOGIES_GROUP_TITLE, NO_TEXT_LINE],
         [PHANTOM_HTF_ZONE, PHANTOM_HTF_GROUP_TITLE, PHANTOM_HTF_UNWIRED_TEXT],
     ]
@@ -992,11 +1315,15 @@ def zone_entry(
     method: Any = None,
     detail: Any = None,
     method_text: Any = None,
+    thumbnail: Any = None,
+    preview: Any = None,
+    actions: Any = None,
 ) -> dict:
     """One entry a zone steps through: its headline, its counts and its test.
 
     ``detail`` and ``method_text`` name the expanded lines and the method
-    line outright; an entry leaving them None takes both from ``method``.
+    line outright, and ``thumbnail``, ``preview`` and ``actions`` are the
+    strip, the larger view and the buttons a Ready to Send post carries.
     """
     return {
         "headline": headline,
@@ -1004,6 +1331,9 @@ def zone_entry(
         "method": method,
         "detail": detail,
         "method_text": method_text,
+        "thumbnail": thumbnail,
+        "preview": preview,
+        "actions": actions,
     }
 
 
@@ -1037,6 +1367,9 @@ def zone_view(
         "method": written if total else "",
         "expanded": open_now,
         "detail": lines if open_now else [],
+        "thumbnail": entry.get("thumbnail") if total else None,
+        "preview": entry.get("preview") if open_now else None,
+        "actions": (entry.get("actions") or []) if open_now else [],
     }
 
 
@@ -1328,6 +1661,7 @@ class MarketInspectorScreenModel:
         self.ata_asset_source: Any = None
         self.ata_candle_source: Any = None
         self.board = ata_spm.SectorBoard()
+        self.push = ata_spm_push.PushBoard()
         self.refresh_enabled = True
         self.status_label_text = STATUS_INITIAL_TEXT
         self.signal_rows: list = []
@@ -1444,8 +1778,15 @@ class MarketInspectorScreenModel:
             return []
 
     def ata_report(self) -> Any:
-        """The ATA-SPM zone's own run report, empty until a scan has run."""
-        return self.board.report()
+        """The ATA-SPM zone's own run report, empty until a scan has run.
+
+        The Ready to Send count comes off ``push.bucket``, which is what
+        phase four filled.
+        """
+        held = self.board.report()
+        if held:
+            held[ATA_SPM_READY_KEY] = len(self.push.bucket.posts)
+        return held
 
     def sector_at(self) -> Any:
         """The sector the ATA-SPM zone is showing, or None while it holds none."""
@@ -1482,16 +1823,90 @@ class MarketInspectorScreenModel:
         added = self.board.scan_now(
             self.ata_asset_source or sector_assets,
             self.ata_candle_source or self.scanned_candles,
+            self.push.settings.message_format,
         )
         if added != ata_spm.NO_NEW_SECTOR:
             self.zone_at[ATA_SPM_MODULE] = added
         if self.board.run is None:
             self.calls.append([SCAN_NOW_UNNAMED])
             return None
+        self.push.load_run(self.board.run)
+        self.zone_at[READY_TO_SEND_ZONE] = 0
         self.calls.append(
             [SCAN_NOW_RUN, len(self.board.sectors), len(self.board.run.calls)]
         )
         return self.board.run
+
+    def bucket_at(self) -> int:
+        """The zone index the Ready to Send stepper is showing."""
+        return self.zone_at.get(READY_TO_SEND_ZONE, 0)
+
+    def push_action(self, key: Any) -> Any:
+        """Run one Ready to Send or settings press and answer what it did.
+
+        ``key`` is the part name the button reported, and an unknown one
+        answers None.
+        """
+        handled = {
+            APPROVE_PART: lambda: self.push.bucket.approve(self.bucket_at()),
+            DECLINE_PART: lambda: self.push.bucket.decline(self.bucket_at()),
+            POST_SELECTED_PART: lambda: self.push.post_selected(self.bucket_at()),
+            POST_ALL_PART: self.push.post_all,
+            FULL_AUTO_PART: self._press_full_auto,
+            SETTINGS_PART: self._press_settings,
+        }.get(str(key))
+        if handled is None:
+            return None
+        answered = handled()
+        self.calls.append([PUSH_ACTION_SET, str(key)])
+        return answered
+
+    def _press_full_auto(self) -> list:
+        """Turn Send Bucket Full Auto on or off, and release while it is on."""
+        self.push.bucket.toggle_full_auto()
+        return self.push.release()
+
+    def _press_settings(self) -> bool:
+        """Show the ATA-SPM settings page, or the scan page, and answer which."""
+        open_now = self.push.toggle_settings()
+        self.calls.append([SETTINGS_PAGE_TOGGLED, open_now])
+        return open_now
+
+    def set_credential_text(self, target: Any, field: Any, typed: Any) -> None:
+        """Hold what one credential field carries until Save reads it."""
+        self.push.settings.set_credential_text(target, field, typed)
+
+    def save_credentials(self) -> list:
+        """Encrypt every typed credential into the vault and answer what landed."""
+        stored = self.push.settings.save_credentials()
+        for name in ata_spm_push.TARGET_NAMES:
+            self.calls.append(
+                [
+                    CREDENTIAL_STORED if name in stored else CREDENTIAL_REFUSED,
+                    str(name),
+                ]
+            )
+        return stored
+
+    def set_setting(self, key: Any, value: Any) -> Any:
+        """Write one ATA-SPM setting and answer what the settings page now holds.
+
+        A key in ``COUNT_SETTINGS`` takes a whole number, and text that is
+        not one leaves the setting alone.
+        """
+        name = str(key)
+        if name not in dict(SETTING_ROWS):
+            return None
+        if name in COUNT_SETTINGS:
+            try:
+                setattr(self.push.settings, name, int(str(value).strip() or 0))
+            except ValueError:
+                return getattr(self.push.settings, name)
+        else:
+            setattr(self.push.settings, name, str(value))
+        held = getattr(self.push.settings, name)
+        self.calls.append([SETTING_WRITTEN, name, held])
+        return held
 
     def ata_entries(self) -> list:
         """The ATA-SPM zone's entries: one per sector the last run scanned."""
@@ -1536,19 +1951,21 @@ class MarketInspectorScreenModel:
 
     def right_zones(self) -> list:
         """The three right-side zones, in the order the screen draws them."""
-        return right_zone_rows(self.ata_run())
+        return right_zone_rows(self.ata_run(), self.push.bucket)
 
     def zone_entries(self, key: Any) -> list:
         """The entries one zone steps through.
 
-        ATA-SPM steps the sectors the last Scan Now covered and Opposing
-        Trades steps the pairs the scan kept. The other three zones this
-        screen owns wait on a source and show their waiting sentence.
+        ATA-SPM steps the sectors the last Scan Now covered, Opposing Trades
+        the pairs the scan kept, and Ready to Send the posts phase four
+        formatted.
         """
         if key == ATA_SPM_MODULE:
             return self.ata_entries()
         if key == OPPOSING_TRADES_MODULE:
             return [pair_entry(one) for one in self.pairs]
+        if key == READY_TO_SEND_ZONE:
+            return bucket_entries(self.push.bucket)
         return []
 
     def step_zone(self, key: Any, by: Any) -> int:
@@ -2087,6 +2504,7 @@ def build_view_model(
         "zones": [dict(one) for one in model.zone_views()],
         "stepper": stepper_skin(),
         "ata_spm": ata_spm_skin(model),
+        "bucket": bucket_skin(model.push),
         "right_zone_keys": list(RIGHT_ZONE_KEYS),
         "right_zone_titles": list(RIGHT_ZONE_TITLES),
         "left_module_keys": list(LEFT_MODULE_KEYS),
@@ -2336,6 +2754,16 @@ def view_model(params: dict) -> dict:
         model.toggle_timeframe(params["toggle_timeframe"])
     if params.get("scan_now", False):
         model.scan_now()
+    if params.get("push_action"):
+        model.push_action(params["push_action"])
+    if params.get("credential_text"):
+        typed = list(params["credential_text"])
+        model.set_credential_text(typed[0], typed[1], typed[2])
+    if params.get("save_credentials", False):
+        model.save_credentials()
+    if params.get("set_setting"):
+        asked = list(params["set_setting"])
+        model.set_setting(asked[0], asked[1])
     if params.get("step_zone"):
         model.step_zone(params["step_zone"], params.get("step", 1))
     if params.get("toggle_zone"):

@@ -795,6 +795,63 @@
   var TIMEFRAME_BOX_PART = "timeframe-box";
   var SCAN_NOW_PART = "scan-now";
 
+  // Phases four, five and six: the bucket row, the settings page and the
+  // band strip one waiting post draws.
+  var BUCKET = "bucket";
+  var BUCKET_ROW_PART = "bucket-row";
+  var BUCKET_STRETCH_PART = "bucket-stretch";
+  var SETTINGS_PAGE_PART = "settings-page";
+  var SETTINGS_ROW_PART = "settings-row";
+  var SETTINGS_LABEL_PART = "settings-label";
+  var CREDENTIAL_STATE_PART = "credential-state";
+  var STRIP_TEXT_PART = "strip-text";
+
+  var ZONE_THUMBNAIL = "thumbnail";
+  var ZONE_PREVIEW = "preview";
+  var ZONE_ACTIONS = "actions";
+
+  var STRIP_PART = "part";
+  var STRIP_WIDTH_PX = "width_px";
+  var STRIP_HEIGHT_PX = "height_px";
+  var STRIP_LEAD_PX = "lead_px";
+  var STRIP_MARKER_PX = "marker_px";
+  var STRIP_LEAD_PART = "lead_part";
+  var STRIP_MARKER_PART = "marker_part";
+  var STRIP_LEAD_STYLE = "lead_style";
+  var STRIP_MARKER_STYLE = "marker_style";
+  var STRIP_BOX_STYLE = "box_style";
+  var STRIP_TEXT = "text";
+
+  var POST_SELECTED_LABEL = "post_selected_label";
+  var POST_SELECTED_TOOLTIP = "post_selected_tooltip";
+  var POST_SELECTED_PART = "post_selected_part";
+  var POST_ALL_LABEL = "post_all_label";
+  var POST_ALL_TOOLTIP = "post_all_tooltip";
+  var POST_ALL_PART = "post_all_part";
+  var FULL_AUTO_LABEL = "full_auto_label";
+  var FULL_AUTO_TOOLTIP = "full_auto_tooltip";
+  var FULL_AUTO_PART = "full_auto_part";
+  var FULL_AUTO_ON = "full_auto_on";
+  var BUCKET_SPACING_PX = "row_spacing_px";
+  var BUCKET_SETTINGS = "settings";
+
+  var SETTINGS_OPEN = "open";
+  var SETTINGS_LABEL = "settings_label";
+  var SETTINGS_TOOLTIP = "settings_tooltip";
+  var SETTINGS_PART = "settings_part";
+  var SAVE_LABEL = "save_label";
+  var SAVE_TOOLTIP = "save_tooltip";
+  var SAVE_PART = "save_part";
+  var SETTING_PART = "setting_part";
+  var CREDENTIAL_FIELDS = "credential_fields";
+  var CREDENTIAL_ROWS = "credential_rows";
+  var SETTING_ROWS = "setting_rows";
+  var CREDENTIAL_WIDTH_PX = "credential_width_px";
+  var SETTING_WIDTH_PX = "setting_width_px";
+  var SETTINGS_LABEL_WIDTH_PX = "label_width_px";
+  var SETTINGS_SPACING_PX = "row_spacing_px";
+  var PASSWORD_TYPE = "password";
+
   var SECTOR_TEXT_FIELD = "sector_text";
   var SECTOR_CLASS_FIELD = "sector_class";
   var TOGGLE_TIMEFRAME_FIELD = "toggle_timeframe";
@@ -803,6 +860,11 @@
   var STEP_ZONE_FIELD = "step_zone";
   var STEP_FIELD = "step";
   var TOGGLE_ZONE_FIELD = "toggle_zone";
+  var PUSH_ACTION_FIELD = "push_action";
+  var SAVE_CREDENTIALS_FIELD = "save_credentials";
+  var CREDENTIAL_TEXT_FIELD = "credential_text";
+  var SET_SETTING_FIELD = "set_setting";
+  var PUSH_PARTS = "push_parts";
   var POINTER = "pointer";
   var INHERITED = "inherit";
   var PRE_SPACE = "pre";
@@ -1427,6 +1489,61 @@
     );
   }
 
+  // BandStrip is where one waiting post's close sits between its bands. The
+  // lead fills up to the marker, which is the Qt _BandStrip row.
+  function BandStrip(props) {
+    var strip = props.strip;
+    var frame = styleOf(strip[STRIP_BOX_STYLE]);
+    frame.boxSizing = BORDER_BOX;
+    frame.display = FLEX;
+    frame.flexDirection = ROW_WAY;
+    frame.flex = FLEX_NONE;
+    frame.width = length(strip[STRIP_WIDTH_PX]);
+    frame.height = length(strip[STRIP_HEIGHT_PX]);
+    var frameProps = { style: frame };
+    frameProps[PART_ATTR] = text(strip[STRIP_PART]);
+    frameProps[NAME_ATTR] = text(strip[STRIP_PART]);
+    var lead = styleOf(strip[STRIP_LEAD_STYLE]);
+    lead.flex = FLEX_NONE;
+    lead.width = length(strip[STRIP_LEAD_PX]);
+    var leadProps = { style: lead };
+    leadProps[PART_ATTR] = text(strip[STRIP_LEAD_PART]);
+    var marker = styleOf(strip[STRIP_MARKER_STYLE]);
+    marker.flex = FLEX_NONE;
+    marker.width = length(strip[STRIP_MARKER_PX]);
+    var markerProps = { style: marker };
+    markerProps[PART_ATTR] = text(strip[STRIP_MARKER_PART]);
+    return element(
+      DIV_TAG,
+      frameProps,
+      element(DIV_TAG, leadProps, null),
+      element(DIV_TAG, markerProps, null)
+    );
+  }
+
+  // EntryAction is one button under the preview: Approve or Decline.
+  function EntryAction(props) {
+    var row = asList(props.row);
+    var style = marginStyle(listField(props.model, BUTTON_PADDING_PX));
+    style.flex = FLEX_NONE;
+    style.fontWeight = text(props.model[BUTTON_FONT_WEIGHT]);
+    var buttonProps = {
+      type: BUTTON_TYPE,
+      style: style,
+      title: label(row[TWO]),
+      disabled: row[THREE] !== true,
+      onClick: function (event) {
+        // The entry toggles on its own click, and this button sits inside it.
+        event.stopPropagation();
+        act(text(row[ZERO]), true);
+      }
+    };
+    buttonProps[PART_ATTR] = text(row[ZERO]);
+    buttonProps[NAME_ATTR] = text(row[ZERO]);
+    buttonProps[ARIA_LABEL] = label(row[ONE]);
+    return element(BUTTON_TAG, buttonProps, text(row[ONE]));
+  }
+
   // DetailLine is one line of the expansion.
   function DetailLine(props) {
     var lineProps = { style: asLabel(styleOf(props.skin[DETAIL_STYLE]), true) };
@@ -1496,6 +1613,17 @@
     methodProps[PART_ATTR] = ENTRY_METHOD_PART;
     var hintProps = { style: asLabel(styleOf(skin[HINT_STYLE]), true) };
     hintProps[PART_ATTR] = ENTRY_HINT_PART;
+    var thumbnail = objectField(view, ZONE_THUMBNAIL);
+    var preview = objectField(view, ZONE_PREVIEW);
+    var actionRowStyle = { display: FLEX, flexDirection: ROW_WAY, flex: FLEX_NONE };
+    actionRowStyle.gap = length(skin[ENTRY_SPACING_PX]);
+    var actionRowProps = { style: actionRowStyle };
+    actionRowProps[PART_ATTR] = ZONE_ACTIONS;
+    var stripTextProps = {
+      style: asLabel(styleOf(skin[DETAIL_STYLE]), true)
+    };
+    stripTextProps[PART_ATTR] = STRIP_TEXT_PART;
+    stripTextProps[NAME_ATTR] = STRIP_TEXT_PART;
     return element(
       DIV_TAG,
       outerProps,
@@ -1529,6 +1657,9 @@
           element(
             DIV_TAG,
             headProps,
+            owns(thumbnail, STRIP_PART)
+              ? element(BandStrip, { key: ZONE_THUMBNAIL, strip: thumbnail })
+              : null,
             element(DIV_TAG, headlineProps, text(view[ZONE_HEADLINE])),
             text(view[ZONE_BADGE])
               ? element(SPAN_TAG, badgeProps, text(view[ZONE_BADGE]))
@@ -1539,6 +1670,29 @@
             : null,
           text(view[ZONE_METHOD])
             ? element(DIV_TAG, methodProps, text(view[ZONE_METHOD]))
+            : null,
+          owns(preview, STRIP_PART)
+            ? element(BandStrip, { key: ZONE_PREVIEW, strip: preview })
+            : null,
+          owns(preview, STRIP_PART)
+            ? element(DIV_TAG, stripTextProps, text(preview[STRIP_TEXT]))
+            : null,
+          listField(view, ZONE_ACTIONS).length > ZERO
+            ? element(
+                DIV_TAG,
+                actionRowProps,
+                listField(view, ZONE_ACTIONS).map(function (row, at) {
+                  return element(EntryAction, {
+                    key: ZONE_ACTIONS + PATH_SPLIT + String(at),
+                    model: props.model,
+                    row: row
+                  });
+                }),
+                element(Spacer, {
+                  key: BUCKET_STRETCH_PART,
+                  part: BUCKET_STRETCH_PART
+                })
+              )
             : null,
           listField(view, ZONE_DETAIL).map(function (row, at) {
             return element(DetailLine, {
@@ -1675,6 +1829,231 @@
     return element(BUTTON_TAG, buttonProps, text(skin[SCAN_LABEL]));
   }
 
+  // PushButton is one of the buttons phases five and six are pressed with.
+  function PushButton(props) {
+    var style = marginStyle(listField(props.model, BUTTON_PADDING_PX));
+    style.flex = FLEX_NONE;
+    style.fontWeight = text(props.model[BUTTON_FONT_WEIGHT]);
+    var buttonProps = {
+      type: BUTTON_TYPE,
+      style: style,
+      title: label(props.tooltip),
+      onClick: function () {
+        act(text(props.part), true);
+      }
+    };
+    buttonProps[PART_ATTR] = text(props.part);
+    buttonProps[NAME_ATTR] = text(props.part);
+    buttonProps[ARIA_LABEL] = label(props.label);
+    if (props.on === true) {
+      buttonProps[STATE_ATTR] = text(props.part);
+    }
+    return element(BUTTON_TAG, buttonProps, text(props.label));
+  }
+
+  // BucketRow is Post Selected and Post All, with Send Bucket Full Auto on
+  // the right of the Ready to Send zone.
+  function BucketRow(props) {
+    var model = props.model;
+    var skin = objectField(model, BUCKET);
+    var style = {
+      display: FLEX,
+      flexDirection: ROW_WAY,
+      flex: FLEX_NONE,
+      alignItems: CENTER
+    };
+    style.gap = length(skin[BUCKET_SPACING_PX]);
+    var rowProps = { style: style };
+    rowProps[PART_ATTR] = BUCKET_ROW_PART;
+    return element(
+      DIV_TAG,
+      rowProps,
+      element(PushButton, {
+        key: POST_SELECTED_PART,
+        model: model,
+        part: skin[POST_SELECTED_PART],
+        label: skin[POST_SELECTED_LABEL],
+        tooltip: skin[POST_SELECTED_TOOLTIP]
+      }),
+      element(PushButton, {
+        key: POST_ALL_PART,
+        model: model,
+        part: skin[POST_ALL_PART],
+        label: skin[POST_ALL_LABEL],
+        tooltip: skin[POST_ALL_TOOLTIP]
+      }),
+      element(Spacer, { key: BUCKET_STRETCH_PART, part: BUCKET_STRETCH_PART }),
+      element(PushButton, {
+        key: FULL_AUTO_PART,
+        model: model,
+        part: skin[FULL_AUTO_PART],
+        label: skin[FULL_AUTO_LABEL],
+        tooltip: skin[FULL_AUTO_TOOLTIP],
+        on: skin[FULL_AUTO_ON] === true
+      })
+    );
+  }
+
+  // settingsRowStyle is one line of the settings page: a label of fixed
+  // width, then the fields that line carries.
+  function settingsRowStyle(page) {
+    var style = {
+      display: FLEX,
+      flexDirection: ROW_WAY,
+      flex: FLEX_NONE,
+      alignItems: CENTER
+    };
+    style.gap = length(page[SETTINGS_SPACING_PX]);
+    return style;
+  }
+
+  function settingsLabel(page, name) {
+    var style = asLabel({}, false);
+    style.flex = FLEX_NONE;
+    style.width = length(page[SETTINGS_LABEL_WIDTH_PX]);
+    var labelProps = { style: style };
+    labelProps[PART_ATTR] = SETTINGS_LABEL_PART;
+    labelProps[NAME_ATTR] = text(name);
+    return element(DIV_TAG, labelProps, text(name));
+  }
+
+  // CredentialRow is one push target's two write-only fields and whether the
+  // vault holds a credential for it. No token is ever drawn back.
+  function CredentialRow(props) {
+    var page = props.page;
+    var row = asList(props.row);
+    var style = fieldStyle(page, CREDENTIAL_WIDTH_PX);
+    var stateProps = { style: asLabel({}, false) };
+    stateProps[PART_ATTR] = CREDENTIAL_STATE_PART;
+    stateProps[NAME_ATTR] = text(row[ZERO]);
+    var rowProps = { style: settingsRowStyle(page) };
+    rowProps[PART_ATTR] = SETTINGS_ROW_PART;
+    rowProps[NAME_ATTR] = text(row[ZERO]);
+    return element(
+      DIV_TAG,
+      rowProps,
+      settingsLabel(page, row[ZERO]),
+      listField(page, CREDENTIAL_FIELDS).map(function (field) {
+        var pair = asList(field);
+        var fieldProps = {
+          type: PASSWORD_TYPE,
+          style: style,
+          placeholder: label(pair[ONE]),
+          onInput: function (event) {
+            act(text(pair[ZERO]), [
+              text(row[ZERO]),
+              text(pair[ZERO]),
+              event.target.value
+            ]);
+          }
+        };
+        fieldProps[PART_ATTR] = text(pair[ZERO]);
+        fieldProps[NAME_ATTR] = text(pair[ZERO]) + GAP + text(row[ZERO]);
+        fieldProps[ARIA_LABEL] = label(pair[ONE]);
+        return element(INPUT_TAG, fieldProps);
+      }),
+      element(DIV_TAG, stateProps, text(row[TWO]))
+    );
+  }
+
+  // SettingRow is one ATA-SPM setting a phase reads.
+  function SettingRow(props) {
+    var page = props.page;
+    var row = asList(props.row);
+    var style = fieldStyle(page, SETTING_WIDTH_PX);
+    var fieldProps = {
+      type: TEXT_TYPE,
+      style: style,
+      value: text(row[TWO]),
+      onChange: function (event) {
+        act(text(page[SETTING_PART]), [text(row[ZERO]), event.target.value]);
+      }
+    };
+    fieldProps[PART_ATTR] = text(page[SETTING_PART]);
+    fieldProps[NAME_ATTR] = text(row[ZERO]);
+    fieldProps[ARIA_LABEL] = label(row[ONE]);
+    var rowProps = { style: settingsRowStyle(page) };
+    rowProps[PART_ATTR] = SETTINGS_ROW_PART;
+    rowProps[NAME_ATTR] = text(row[ZERO]);
+    return element(
+      DIV_TAG,
+      rowProps,
+      settingsLabel(page, row[ONE]),
+      element(INPUT_TAG, fieldProps)
+    );
+  }
+
+  // clearCredentialFields empties every credential field once Save has run.
+  function clearCredentialFields(page) {
+    listField(page, CREDENTIAL_FIELDS).forEach(function (field) {
+      var part = text(asList(field)[ZERO]);
+      var found = document.querySelectorAll("[" + PART_ATTR + "=\"" + part + "\"]");
+      Array.prototype.forEach.call(found, function (node) {
+        node.value = EMPTY;
+      });
+    });
+  }
+
+  // SaveCredentialsButton asks Python to encrypt what the fields reported.
+  function SaveCredentialsButton(props) {
+    var page = props.page;
+    var style = marginStyle(listField(props.model, BUTTON_PADDING_PX));
+    style.flex = FLEX_NONE;
+    style.fontWeight = text(props.model[BUTTON_FONT_WEIGHT]);
+    var buttonProps = {
+      type: BUTTON_TYPE,
+      style: style,
+      title: label(page[SAVE_TOOLTIP]),
+      onClick: function () {
+        act(text(page[SAVE_PART]), true);
+        clearCredentialFields(page);
+      }
+    };
+    buttonProps[PART_ATTR] = text(page[SAVE_PART]);
+    buttonProps[NAME_ATTR] = text(page[SAVE_PART]);
+    buttonProps[ARIA_LABEL] = label(page[SAVE_LABEL]);
+    return element(BUTTON_TAG, buttonProps, text(page[SAVE_LABEL]));
+  }
+
+  // SettingsPage is what the ATA-SPM zone shows in place of its stepper.
+  function SettingsPage(props) {
+    var model = props.model;
+    var page = objectField(objectField(model, BUCKET), BUCKET_SETTINGS);
+    var style = {
+      display: FLEX,
+      flexDirection: COLUMN_WAY,
+      flex: ONE,
+      minHeight: ZERO,
+      overflow: AUTO
+    };
+    style.gap = length(page[SETTINGS_SPACING_PX]);
+    var pageProps = { style: style };
+    pageProps[PART_ATTR] = SETTINGS_PAGE_PART;
+    return element(
+      DIV_TAG,
+      pageProps,
+      listField(page, CREDENTIAL_ROWS).map(function (row, at) {
+        return element(CredentialRow, {
+          key: CREDENTIAL_ROWS + PATH_SPLIT + String(at),
+          page: page,
+          row: row
+        });
+      }),
+      element(SaveCredentialsButton, {
+        key: SAVE_PART,
+        model: model,
+        page: page
+      }),
+      listField(page, SETTING_ROWS).map(function (row, at) {
+        return element(SettingRow, {
+          key: SETTING_ROWS + PATH_SPLIT + String(at),
+          page: page,
+          row: row
+        });
+      })
+    );
+  }
+
   // AtaRow is the one line the ATA-SPM zone carries above its stepper.
   function AtaRow(props) {
     var model = props.model;
@@ -1705,8 +2084,21 @@
         model: model,
         skin: skin
       }),
-      element(Spacer, { key: ATA_ROW_PART, part: ATA_ROW_PART })
+      element(Spacer, { key: ATA_ROW_PART, part: ATA_ROW_PART }),
+      element(PushButton, {
+        key: SETTINGS_PART,
+        model: model,
+        part: settingsOf(model)[SETTINGS_PART],
+        label: settingsOf(model)[SETTINGS_LABEL],
+        tooltip: settingsOf(model)[SETTINGS_TOOLTIP],
+        on: settingsOf(model)[SETTINGS_OPEN] === true
+      })
     );
+  }
+
+  // The ATA-SPM settings page the bucket publishes.
+  function settingsOf(model) {
+    return objectField(objectField(model, BUCKET), BUCKET_SETTINGS);
   }
 
   function ModuleGroup(props) {
@@ -1723,12 +2115,15 @@
       groupProps,
       element(LEGEND_TAG, legendProps, text(entry[ONE])),
       asList(props.children),
-      element(ZoneStepper, {
-        key: STEPPER_PART,
-        skin: objectField(model, STEPPER),
-        view: zoneFor(model, entry[ZERO]),
-        act: act
-      })
+      props.hidesStepper === true
+        ? null
+        : element(ZoneStepper, {
+            key: STEPPER_PART,
+            skin: objectField(model, STEPPER),
+            model: model,
+            view: zoneFor(model, entry[ZERO]),
+            act: act
+          })
     );
   }
 
@@ -1736,21 +2131,28 @@
   // ATA-SPM zone carries the sector row and Opposing Trades the scan row.
   function moduleGroups(model) {
     var keys = listField(model, LEFT_MODULE_KEYS);
+    var open = settingsOf(model)[SETTINGS_OPEN] === true;
     return listField(model, LEFT_MODULES).map(function (entry, at) {
       return element(ModuleGroup, {
         key: MODULE_GROUP_PART + PATH_SPLIT + String(at),
         model: model,
         entry: entry,
         shares: true,
+        hidesStepper: entry[ZERO] === keys[ZERO] && open,
         children: zoneContent(model, entry[ZERO], keys)
       });
     });
   }
 
-  // The row one left zone carries above its stepper, or none.
+  // The row one left zone carries above its stepper, or none. The ATA-SPM
+  // zone shows its settings page in place of the stepper while it is open.
   function zoneContent(model, key, keys) {
     if (key === keys[ZERO]) {
-      return [element(AtaRow, { key: ATA_ROW_PART, model: model })];
+      var rows = [element(AtaRow, { key: ATA_ROW_PART, model: model })];
+      if (settingsOf(model)[SETTINGS_OPEN] === true) {
+        rows.push(element(SettingsPage, { key: SETTINGS_PAGE_PART, model: model }));
+      }
+      return rows;
     }
     if (key === keys[ONE]) {
       return scanContent(model);
@@ -1800,12 +2202,16 @@
     return element(
       DIV_TAG,
       paneProps,
-      listField(model, RIGHT_ZONES).map(function (entry) {
+      listField(model, RIGHT_ZONES).map(function (entry, at) {
         return element(RightZone, {
           key: MODULE_GROUP_PART + PATH_SPLIT + text(entry[ZERO]),
           model: model,
           entry: entry,
-          fills: text(entry[TWO]) === EMPTY
+          fills: text(entry[TWO]) === EMPTY,
+          children:
+            at === ZERO
+              ? [element(BucketRow, { key: BUCKET_ROW_PART, model: model })]
+              : []
         });
       })
     );
@@ -1845,9 +2251,11 @@
       FIELDSET_TAG,
       groupProps,
       element(LEGEND_TAG, legendProps, text(entry[ONE])),
+      asList(props.children),
       element(ZoneStepper, {
         key: STEPPER_PART,
         skin: objectField(model, STEPPER),
+        model: model,
         view: zoneFor(model, entry[ZERO]),
         act: act
       })
@@ -2771,6 +3179,26 @@
 
   // A Qt host replaces this. The shell replaces nothing, so the default
   // takes the press to the bridge itself and redraws from the answer.
+  // The parts the screen model answers as one push press, and the settings
+  // page beside them, both read off the payload the screen holds.
+  function bucketHeld() {
+    return objectField(held === null ? {} : held.model, BUCKET);
+  }
+
+  function settingsHeld() {
+    return objectField(bucketHeld(), BUCKET_SETTINGS);
+  }
+
+  function pushParts() {
+    return listField(bucketHeld(), PUSH_PARTS).map(text);
+  }
+
+  function credentialParts() {
+    return listField(settingsHeld(), CREDENTIAL_FIELDS).map(function (field) {
+      return text(asList(field)[ZERO]);
+    });
+  }
+
   global.acervatorMarketInspectorAction = function (key, value) {
     if (!global.acervator || typeof global.acervator.call !== FUNCTION_KIND) {
       return null;
@@ -2789,6 +3217,14 @@
       asked[TOGGLE_TIMEFRAME_FIELD] = value;
     } else if (key === SCAN_NOW_PART) {
       asked[SCAN_NOW_FIELD] = true;
+    } else if (pushParts().indexOf(key) >= ZERO) {
+      asked[PUSH_ACTION_FIELD] = key;
+    } else if (key === settingsHeld()[SAVE_PART]) {
+      asked[SAVE_CREDENTIALS_FIELD] = true;
+    } else if (credentialParts().indexOf(key) >= ZERO) {
+      asked[CREDENTIAL_TEXT_FIELD] = value;
+    } else if (key === settingsHeld()[SETTING_PART]) {
+      asked[SET_SETTING_FIELD] = value;
     } else {
       return null;
     }

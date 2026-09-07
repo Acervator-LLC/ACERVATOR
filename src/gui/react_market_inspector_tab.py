@@ -61,6 +61,32 @@ CLASS_BOX_KEY = "class-box"
 TIMEFRAME_BOX_KEY = "timeframe-box"
 SCAN_NOW_KEY = "scan-now"
 
+#: The parts phases five and six are pressed with, each handled by
+#: ``MarketInspectorScreenModel.push_action``.
+PUSH_KEYS = (
+    surface.APPROVE_PART,
+    surface.DECLINE_PART,
+    surface.POST_SELECTED_PART,
+    surface.POST_ALL_PART,
+    surface.FULL_AUTO_PART,
+    surface.SETTINGS_PART,
+)
+
+SAVE_CREDENTIALS_KEY = surface.SAVE_CREDENTIALS_PART
+SETTING_FIELD_KEY = surface.SETTING_FIELD_PART
+
+#: The parts one push target's credential is typed into.
+CREDENTIAL_KEYS = tuple(one for one, _placeholder in surface.CREDENTIAL_FIELDS)
+
+#: The three positions one credential field press carries.
+CREDENTIAL_TARGET_AT = 0
+CREDENTIAL_FIELD_AT = 1
+CREDENTIAL_TYPED_AT = 2
+
+#: The two positions one setting press carries: its name and its value.
+SETTING_NAME_AT = 0
+SETTING_VALUE_AT = 1
+
 #: The step one arrow press takes through a zone entry list.
 STEP_BACK = -1
 STEP_NEXT = 1
@@ -295,6 +321,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             # One board, two names: the inherited tab and the screen model
             # both read the sectors the ATA-SPM zone holds.
             self._ata_board = self._screen.board
+            self._push_board = self._screen.push
             self._topologies_pane = TopologiesPaneHost()
             self._page_ready = False
             self._last_model: dict = {}
@@ -387,6 +414,40 @@ if _HAS_QT and _HAS_WEBENGINE:
             elif key == SCAN_NOW_KEY:
                 self._screen.scan_now()
                 self.push()
+            elif key in PUSH_KEYS:
+                self._screen.push_action(key)
+                self.push()
+            elif key == SAVE_CREDENTIALS_KEY:
+                self._screen.save_credentials()
+                self.push()
+            elif key in CREDENTIAL_KEYS:
+                self._take_credential_text(request.get("value"))
+            elif key == SETTING_FIELD_KEY:
+                self._write_setting(request.get("value"))
+
+        def _take_credential_text(self, sent: Any) -> None:
+            """Hold what one credential field carries, then redraw.
+
+            ``sent`` is the target, the field and the typed value, and none
+            of it reaches the payload the page is drawn from.
+            """
+            held = list(sent or [])
+            if len(held) <= CREDENTIAL_TYPED_AT:
+                return
+            self._screen.set_credential_text(
+                held[CREDENTIAL_TARGET_AT],
+                held[CREDENTIAL_FIELD_AT],
+                held[CREDENTIAL_TYPED_AT],
+            )
+            self.push()
+
+        def _write_setting(self, sent: Any) -> None:
+            """Write one ATA-SPM setting the page sent, then redraw."""
+            held = list(sent or [])
+            if len(held) <= SETTING_VALUE_AT:
+                return
+            self._screen.set_setting(held[SETTING_NAME_AT], held[SETTING_VALUE_AT])
+            self.push()
 
         def _step_zone(self, key: Any, by: int) -> None:
             """Move one zone to its previous or next entry and redraw."""

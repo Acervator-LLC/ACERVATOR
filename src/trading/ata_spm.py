@@ -122,10 +122,6 @@ BAND_LINE_FORMAT = "lower {lower:g} · middle {middle:g} · upper {upper:g}"
 
 PHASE_RUN_FORMAT = "{phase}: {sectors} sector(s), {calls} call(s), {pulls} chart(s)"
 
-#: The Ready to Send bucket is phase 6 and is not built, so a run releases
-#: nothing into it.
-READY_TO_SEND_COUNT = 0
-
 CANDLE_READ_FAILED_LOG = "ATA-SPM candle read failed on %s %s: %s"
 ASSET_READ_FAILED_LOG = "ATA-SPM asset read failed on %s: %s"
 VOTE_FAILED_LOG = "ATA-SPM vote failed on %s %s: %s"
@@ -298,8 +294,12 @@ class AtaSpmRun:
         )
 
     def report(self) -> dict:
-        """The run as the ATA-SPM zone's status line reads it."""
-        return {"phase": self.phase, "ready_to_send": READY_TO_SEND_COUNT}
+        """The run as the ATA-SPM zone's status line reads it.
+
+        The Ready to Send count belongs to the bucket, and the host holding
+        one writes it in beside ``phase``.
+        """
+        return {"phase": self.phase}
 
 
 def band_signal(summary: Any) -> Optional[Signal]:
@@ -444,11 +444,13 @@ def confirming_signals(vote: AssetVote) -> list:
     ]
 
 
-def indicator_message(signal: Any) -> IndicatorMessage:
+def indicator_message(
+    signal: Any, message_format: Optional[str] = None
+) -> IndicatorMessage:
     """One confirming voter as its standardised sentence.
 
-    The wording comes from ``READINGS`` and the number from the voter's own
-    ``Signal.details``, so one condition always reads the same way.
+    ``message_format`` is the wording the ATA-SPM settings page sets, and
+    ``MESSAGE_FORMAT`` is what an unset page leaves.
     """
     name = str(getattr(signal, "indicator", ""))
     label, key, reading_format = READINGS.get(name, (name, "", ""))
@@ -459,10 +461,11 @@ def indicator_message(signal: Any) -> IndicatorMessage:
         if reading_format and value is not None
         else NO_READING_TEXT
     )
+    written = message_format or MESSAGE_FORMAT
     return IndicatorMessage(
         indicator=name,
         label=label,
-        message=MESSAGE_FORMAT.format(
+        message=written.format(
             label=label,
             reading=reading,
             direction=direction_name(signal.direction),
@@ -471,10 +474,14 @@ def indicator_message(signal: Any) -> IndicatorMessage:
     )
 
 
-def pull(vote: AssetVote, candle_source: Optional[Callable] = None) -> ChartPull:
+def pull(
+    vote: AssetVote,
+    candle_source: Optional[Callable] = None,
+    message_format: Optional[str] = None,
+) -> ChartPull:
     """Phase three: the chart the call was made on, with its messages.
 
-    The band values come from the ``BAND_INDICATOR`` vote, so no price is
+    The band values come from the ``BAND_INDICATOR`` vote, and no price is
     recomputed here.
     """
     candles = _candles_for(candle_source, vote.symbol, vote.timeframe)
@@ -503,7 +510,9 @@ def pull(vote: AssetVote, candle_source: Optional[Callable] = None) -> ChartPull
         band_upper=float(details.get(BAND_UPPER_KEY, NO_BAND_VALUE)),
         band_middle=float(details.get(BAND_MIDDLE_KEY, NO_BAND_VALUE)),
         band_lower=float(details.get(BAND_LOWER_KEY, NO_BAND_VALUE)),
-        messages=[indicator_message(one) for one in confirming_signals(vote)],
+        messages=[
+            indicator_message(one, message_format) for one in confirming_signals(vote)
+        ],
     )
 
 
@@ -512,6 +521,7 @@ def run(
     asset_source: Optional[Callable] = None,
     candle_source: Optional[Callable] = None,
     engine: Optional[VotingEngine] = None,
+    message_format: Optional[str] = None,
 ) -> AtaSpmRun:
     """The three phases in order, answered as one ``AtaSpmRun``."""
     scans = evaluate(sectors, asset_source, candle_source, engine)
@@ -519,7 +529,7 @@ def run(
     return AtaSpmRun(
         scans=scans,
         calls=calls,
-        pulls=[pull(one, candle_source) for one in calls],
+        pulls=[pull(one, candle_source, message_format) for one in calls],
     )
 
 
@@ -597,6 +607,7 @@ class SectorBoard:
         self,
         asset_source: Optional[Callable] = None,
         candle_source: Optional[Callable] = None,
+        message_format: Optional[str] = None,
     ) -> int:
         """Add the typed sector if it is new, run the phases, answer its index.
 
@@ -615,7 +626,12 @@ class SectorBoard:
             )
             added = len(self.sectors) - 1
         if self.sectors:
-            self.run = run(self.sectors, asset_source, candle_source)
+            self.run = run(
+                self.sectors,
+                asset_source,
+                candle_source,
+                message_format=message_format,
+            )
         return added
 
     def report(self) -> dict:

@@ -633,6 +633,109 @@ if str(asset_class) != ata_spm.CLASS_CRYPTO:
 Phases four to eight are not built. The Ready to Send bucket holds nothing, and
 the zone's own line reports zero for it.
 
+Phases four, five and six now run. Phase four writes the post, phase five sends
+it, and phase six is the bucket the operator approves from. Phases seven and
+eight are still not built.
+
+Phase four writes one post per push target. Four targets ship, and adding a
+fifth is adding a row beside them.
+
+`src/trading/ata_spm_push.py` — the push targets
+
+```python
+PUSH_TARGETS = (
+    PushTarget(
+        TARGET_TRADINGVIEW,
+        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+    ),
+    PushTarget(TARGET_X, (SECTION_CALL, SECTION_INDICATORS)),
+    PushTarget(TARGET_INSTAGRAM, (SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS)),
+    PushTarget(TARGET_LINKEDIN, (SECTION_CALL, SECTION_CHART, SECTION_INDICATORS)),
+)
+```
+
+Each target carries the same evidence in its own order. The sections are the
+call, the chart, the bands and the indicator messages, all of them from phase
+three.
+
+Every artefact of a post opens with the fixed header. The post body, the image
+caption and the thread root are each composed with it, so no post can leave
+without it.
+
+`src/trading/ata_spm_push.py` — the header on every artefact
+
+```python
+@property
+def body(self) -> str:
+    """The post body: ``FIXED_HEADER`` over this target's own sections."""
+    return POST_LINE_SEPARATOR.join((FIXED_HEADER,) + tuple(self.lines))
+```
+
+Phase five sends a post and writes down what happened to it. A target with no
+credential, a target with nothing wired to send through, a refusal from the
+target, and a post held back by the rate all leave a record. Nothing is skipped
+in silence.
+
+`src/trading/ata_spm_push.py` — one delivery record
+
+```python
+@dataclass
+class DeliveryRecord:
+    """What phase five did with one post: where it went, or why it did not."""
+
+    target: str
+    symbol: str
+    timeframe: str
+    sent: bool = False
+    destination: str = NO_DESTINATION_TEXT
+    detail: str = ""
+```
+
+The Ready to Send zone holds every post phase four wrote, one on screen at a
+time. Beside the thumbnail sit the ticker and whether the vote is bull or bear.
+Clicking the entry opens the larger chart view, with Approve and Decline under
+it and the post that would be sent below them.
+
+Post Selected sends the post on screen. Post All sends every approved post.
+Send Bucket Full Auto, in the upper right, releases approved posts without a
+click. All three obey the rate the settings page sets, and none of them sends a
+post that was declined.
+
+`src/trading/ata_spm_push.py` — a declined post is never sent
+
+```python
+if held.state == STATE_DECLINED:
+    return self._hold_declined([held])
+```
+
+Settings, beside Scan Now, shows the ATA-SPM settings page in place of the
+scanned sectors. It carries a credential for each push target, the ceiling on
+posts per hour, the wording each indicator message uses, and how many indicators
+one post draws.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the settings a phase reads
+
+```python
+SETTING_ROWS = (
+    (SETTING_MAX_POSTS, "Max posts per hour"),
+    (SETTING_MAX_INDICATORS, "Max supporting indicators"),
+    (SETTING_MESSAGE_FORMAT, "Standardised message text"),
+)
+```
+
+A credential is typed into two fields and pressed into the vault with Save
+credentials. The page reports only whether a credential is held; no token is
+drawn back, and none reaches the payload the screen is built from.
+
+The ceiling starts unset, and an unset ceiling releases nothing. Nothing leaves
+the machine until the operator sets a number and a credential is held.
+
+`src/trading/ata_spm_push.py` — the ceiling that starts closed
+
+```python
+NO_CEILING_SET = 0
+```
+
 Opposing Trades counts the pairs the scan found, and names the share a bullish
 bot feeds to the bot on the opposite market condition. Its wording follows the
 scan: unasked, running, finished and empty, or finished with pairs.
