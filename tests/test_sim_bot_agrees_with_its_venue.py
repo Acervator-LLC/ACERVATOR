@@ -367,7 +367,7 @@ class TestTheOneAssetFleetSaysWhatItDid:
         held = [
             m
             for m in ctl.bot_log
-            if "AT TARGET (MEM-258)" in m or (m.startswith("READ:") and "holding" in m)
+            if "AT TARGET" in m or (m.startswith("READ:") and "holding" in m)
         ]
         assert held, (
             "the one-asset fleet fired nothing and said nothing about "
@@ -379,8 +379,8 @@ class TestTheOneAssetFleetSaysWhatItDid:
         first_held = held[0]
         wanted = (
             ("position=$", "target=$", "dust band")
-            if "AT TARGET (MEM-258)" in first_held
-            else ("Δ=$", "<", "holding")
+            if "AT TARGET" in first_held
+            else ("delta $", "interval", "holding")
         )
         for token in wanted:
             assert token in first_held, (

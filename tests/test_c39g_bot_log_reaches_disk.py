@@ -3,7 +3,7 @@
 THE DEFECT
 ScrummingBot emits its entire diagnostic vocabulary over the `bot.log`
 bus topic — [COMPOUND SKIPPED], TARGET GROWN, TARGET-GROW HELD,
-FOLD_DIAG_SURPLUS_CHECK, [WIRE FIRE]. The source says outright that
+FOLD DIAG surplus, [WIRE FIRE]. The source says outright that
 these exist to be searched, e.g.
 
     "Grep for '[COMPOUND SKIPPED]' in the log to spot fold events that
@@ -80,7 +80,7 @@ class TestBotLogReachesDisk:
             "[COMPOUND SKIPPED] (auto): profit_folding_active=False",
             "TARGET GROWN (auto): surplus $12.3456, applied $1.0000",
             "TARGET-GROW HELD (auto): surplus accrues to standing pool",
-            "FOLD_DIAG_SURPLUS_CHECK: buy_fill=$0.00001234",
+            "FOLD DIAG surplus: bought at $0.00001234",
             "[WIRE FIRE] scrum-route: $4.2000",
         ],
     )

@@ -65,6 +65,7 @@ from .scrumming import (
     WireRoutingMixin,
 )
 from .scrumming.execution import MemorisedTrade, SettledSellFee
+from .scrumming.snapshots import yes_no as _yes_no
 from .scrumming.fold_tranches import (
     _STRONG_TREND_CANDLES,
     _STRONG_TREND_MIN_BULL_CANDLES,
@@ -2679,11 +2680,11 @@ class ScrummingBot(
                     "bot.log",
                     bot_id=self.bot_id,
                     message=(
-                        f"AT TARGET (MEM-258): position=${current_value:.2f} "
-                        f"within dust band (±${_dust_band_usd:.4f}) of "
-                        f"target=${self._target_balance:.2f}. Tick exits "
-                        f"early. No TA, no signals, no buys or sells "
-                        f"evaluated until price moves position off target."
+                        f"AT TARGET: position=${current_value:.2f} sits "
+                        f"within the dust band (±${_dust_band_usd:.4f}) of "
+                        f"target=${self._target_balance:.2f}. The tick "
+                        f"exits early. No TA, no signals and no trades "
+                        f"until price moves the position off target."
                     ),
                 )
             try:
@@ -2889,8 +2890,9 @@ class ScrummingBot(
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
-                message=f"READ: ${ticker.last:.8f} | "
-                f"Δ=${delta:+.4f} ({delta_pct:.1f}% < {self.config.scrumming_interval_pct}%) | "
+                message=f"READ: ${ticker.last:.8f} | delta ${delta:+.4f} "
+                f"({delta_pct:.1f}% of target, under the "
+                f"{self.config.scrumming_interval_pct}% interval) | "
                 f"TA={ta_dir} ({ta_conf}) | holding",
             )
             self._last_price = ticker.last
@@ -2899,9 +2901,10 @@ class ScrummingBot(
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
-            message=f"Delta: ${delta:+.4f} ({delta_pct:.1f}%) — "
-            f"holdings=${current_value:.4f} vs target=${self._target_balance:.2f}"
-            f"{' [BELOW INTERVAL — checking queues]' if below_interval else ''}",
+            message=f"DELTA: ${delta:+.4f} ({delta_pct:.1f}% of target) | "
+            f"holdings ${current_value:.4f} vs target "
+            f"${self._target_balance:.4f}"
+            f"{' | under the interval, checking the queues' if below_interval else ''}",
         )
 
         if not summary:
@@ -3116,25 +3119,26 @@ class ScrummingBot(
         bb_near = ""
         if bb_result:
             if bb_result.near_upper:
-                bb_near = " NEAR UPPER"
+                bb_near = ", near the upper band"
             elif bb_result.near_lower:
-                bb_near = " NEAR LOWER"
+                bb_near = ", near the lower band"
 
         # Both favours skew the floor, so the confidence prints alone.
         _skew_note = ""
         if position_boost or bb_confidence_boost:
-            _skew_note = f", floor skew {position_boost:+.2f} pos" + (
-                "" if not bb_confidence_boost else " %+.2f BB" % bb_confidence_boost
+            _skew_note = f", floor skew {position_boost:+.2f} position" + (
+                "" if not bb_confidence_boost else f" {bb_confidence_boost:+.2f} BB"
             )
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
-            message=f"TA Vote: {summary.consensus_direction.name} "
-            f"(conf={summary.consensus_confidence:.2f}"
-            f"{_skew_note}, "
-            f"B:{summary.bullish_count}/N:{summary.neutral_count}/"
-            f"S:{summary.bearish_count})"
-            f" | BB pos={bb_pos:.2f}{bb_near}",
+            message=f"TA VOTE: {summary.consensus_direction.name} at "
+            f"confidence {summary.consensus_confidence:.2f}"
+            f"{_skew_note} | "
+            f"{summary.bullish_count} bullish, "
+            f"{summary.neutral_count} neutral, "
+            f"{summary.bearish_count} bearish | "
+            f"BB position {bb_pos:.1%}{bb_near}",
         )
 
         self._bus.emit(
@@ -3262,20 +3266,18 @@ class ScrummingBot(
                     bot_id=self.bot_id,
                     message=(
                         f"BB PRIORITY SKEW "
-                        f"({'SCRUM' if _bb_priority_scrum_skew else 'FOLD'} "
-                        f"side): bb_pos={bb_pos:.3f}, hysteresis OK, "
-                        f"|Δ|=${abs(delta):.2f}≥interval. confidence "
-                        f"{eff_confidence:.2f} UNCHANGED; floor "
-                        f"{_TA_CONFIDENCE_FLOOR:.2f} → "
-                        f"{_eff_conf_floor:.4f} "
-                        f"(÷{1.0 + _ta_conf_skew:.2f} = 1 + BB-priority "
-                        f"{_BB_PRIORITY_SKEW:+.2f} + position "
-                        f"{position_boost:+.2f} + BB-confidence "
-                        f"{bb_confidence_boost:+.2f}). Arm alone would be "
-                        f"{_BB_PRIORITY_CONFIDENCE_FLOOR:.4f}. TA direction "
-                        f"NOT flipped — actively-contradicting TA still "
-                        f"gates trade, and a confidence under the relaxed "
-                        f"floor still refuses it."
+                        f"[{'SCRUM' if _bb_priority_scrum_skew else 'FOLD'}] "
+                        f"at BB position {bb_pos:.1%}, delta "
+                        f"${abs(delta):.2f} at or over the interval. "
+                        f"Confidence stays {eff_confidence:.2f}. The floor "
+                        f"drops from {_TA_CONFIDENCE_FLOOR:.2f} to "
+                        f"{_eff_conf_floor:.4f}, divided by "
+                        f"{1.0 + _ta_conf_skew:.2f}: BB priority "
+                        f"{_BB_PRIORITY_SKEW:+.2f}, position "
+                        f"{position_boost:+.2f}, BB confidence "
+                        f"{bb_confidence_boost:+.2f}. The direction is "
+                        f"untouched, so a contradicting TA still refuses "
+                        f"the trade."
                     ),
                 )
             except Exception as _sup:
@@ -3374,27 +3376,40 @@ class ScrummingBot(
                 _blocked = []
                 if below_interval:
                     _blocked.append(
-                        f"below_interval(Δ={delta_pct:.1f}% < "
-                        f"{self.config.scrumming_interval_pct}%)"
+                        f"the {delta_pct:.1f}% move is under the "
+                        f"{self.config.scrumming_interval_pct}% interval"
                     )
                 if not is_bullish:
-                    _blocked.append(f"not_bullish(dir={eff_direction.name})")
+                    # is_bullish is a conjunction; name the half that failed.
+                    if eff_direction not in (
+                        SignalDirection.BULLISH,
+                        SignalDirection.NEUTRAL,
+                    ):
+                        _blocked.append(
+                            f"TA={eff_direction.name} is not BULLISH or NEUTRAL"
+                        )
+                    else:
+                        _blocked.append(
+                            f"TA={eff_direction.name} but confidence "
+                            f"{eff_confidence:.4f} < {_eff_conf_floor:.4f} floor"
+                        )
                 if trend_hold:
-                    _blocked.append("trend_hold")
+                    _blocked.append("trend hold is active")
                 if not scrum_ok:
                     _blocked.append(
-                        f"scrum_ok_false(bb_pos={bb_pos:.2f},"
-                        f"phantom={self._phantom_locked})"
+                        f"the BB gate refused at position {bb_pos:.1%}, "
+                        f"phantom lock {_yes_no(self._phantom_locked)}"
                     )
                 if not target_fires:
-                    _blocked.append("target_fires_false(detect/fire)")
+                    _blocked.append("the ramp has not reached FIRE")
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
-                    message=f"HOLD w/ Δ=+{delta_pct:.1f}% "
-                    f"(${current_value:.2f} vs target ${self._target_balance:.2f}): "
-                    f"blocked by [{', '.join(_blocked) or 'unknown'}]. "
-                    f"Tick #{self._hold_tick_counter}.",
+                    message=f"HOLD SCRUM SUMMARY (tick "
+                    f"{self._hold_tick_counter}): delta +{delta_pct:.1f}%, "
+                    f"${current_value:.2f} against target "
+                    f"${self._target_balance:.2f}. Blocked by "
+                    f"{'; '.join(_blocked) or 'a gate the summary does not name'}.",
                 )
 
         if _ripe_scrum:
@@ -3402,38 +3417,36 @@ class ScrummingBot(
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
-                    message=f"MEM-196 RIPE-HARVEST OVERRIDE ta_bullish: "
-                    f"raw is_bullish=False (dir={eff_direction.name}, "
-                    f"conf={eff_confidence:.2f}, floor "
-                    f"{_eff_conf_floor:.2f}) — "
-                    f"RipeHarvestScrumOverride will force-pass.",
+                    message=f"RIPE HARVEST OVERRIDE: the TA gate refused "
+                    f"the scrum (TA={eff_direction.name}, confidence "
+                    f"{eff_confidence:.4f}, floor {_eff_conf_floor:.4f}). "
+                    f"The ripe-harvest override passes it.",
                 )
             if not target_fires:
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
-                    message="MEM-196 RIPE-HARVEST OVERRIDE target_fires: "
-                    "raw target_fires=False (detect/fire SM) — "
-                    "RipeHarvestScrumOverride will force-pass.",
+                    message="RIPE HARVEST OVERRIDE: the FIRE gate refused "
+                    "the scrum, the ramp having not reached FIRE. "
+                    "The ripe-harvest override passes it.",
                 )
             if trend_hold:
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
-                    message=f"MEM-196 RIPE-HARVEST OVERRIDE trend_hold: "
-                    f"raw trend_hold=True ({trend_strength:.0%}) — "
-                    f"RipeHarvestScrumOverride will force-pass.",
+                    message=f"RIPE HARVEST OVERRIDE: the trend-hold gate "
+                    f"refused the scrum at {trend_strength:.0%} bullish. "
+                    f"The ripe-harvest override passes it.",
                 )
         if _deep_fold:
             if not is_bearish:
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
-                    message=f"MEM-196 DEEP-FOLD OVERRIDE ta_bearish: "
-                    f"raw is_bearish=False (dir={eff_direction.name}, "
-                    f"conf={eff_confidence:.2f}, floor "
-                    f"{_eff_conf_floor:.2f}) — "
-                    f"DeepFoldOverride will force-pass.",
+                    message=f"DEEP FOLD OVERRIDE: the TA gate refused the "
+                    f"fold (TA={eff_direction.name}, confidence "
+                    f"{eff_confidence:.4f}, floor {_eff_conf_floor:.4f}). "
+                    f"The deep-fold override passes it.",
                 )
 
         _bb_above_upper_dt = bb_pos >= _bb_upper_dt
@@ -3476,7 +3489,7 @@ class ScrummingBot(
         if not _eff_is_bullish and not _ripe_scrum:
             _scrum_blockers.append(
                 f"TA-conf-below-floor(dir={eff_direction.name},"
-                f"conf={eff_confidence:.2f}<{_eff_conf_floor:.2f})"
+                f"conf={eff_confidence:.4f}<{_eff_conf_floor:.4f})"
                 if eff_direction in (SignalDirection.BULLISH, SignalDirection.NEUTRAL)
                 else f"TA-not-bullish(dir={eff_direction.name})"
             )
@@ -3665,17 +3678,26 @@ class ScrummingBot(
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
-                message=f"HOLD SCRUM: delta +${abs(delta):.4f} but TREND-HOLD active "
-                f"({trend_strength:.0%} bullish) — riding the trend",
+                message=f"HOLD SCRUM: delta +${abs(delta):.4f} — trend hold "
+                f"is active at {trend_strength:.0%} bullish",
             )
 
         elif delta > 0 and not below_interval and not is_bullish:
+            # is_bullish is a conjunction, so exactly one half failed here.
+            if eff_direction not in (
+                SignalDirection.BULLISH,
+                SignalDirection.NEUTRAL,
+            ):
+                _scrum_why = f"TA={eff_direction.name} is not BULLISH or NEUTRAL"
+            else:
+                _scrum_why = (
+                    f"TA={eff_direction.name} but confidence "
+                    f"{eff_confidence:.4f} < {_eff_conf_floor:.4f} floor"
+                )
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
-                message=f"HOLD SCRUM: delta +${abs(delta):.4f} but TA={eff_direction.name} "
-                f"conf={eff_confidence:.2f} (floor {_eff_conf_floor:.2f}) "
-                f"— waiting for BULLISH",
+                message=f"HOLD SCRUM: delta +${abs(delta):.4f} — {_scrum_why}",
             )
 
         elif (
@@ -3824,7 +3846,7 @@ class ScrummingBot(
         if not _eff_is_bearish and not _deep_fold:
             _fold_blockers.append(
                 f"TA-conf-below-floor(dir={eff_direction.name},"
-                f"conf={eff_confidence:.2f}<{_eff_conf_floor:.2f})"
+                f"conf={eff_confidence:.4f}<{_eff_conf_floor:.4f})"
                 if eff_direction in (SignalDirection.BEARISH, SignalDirection.NEUTRAL)
                 else f"TA-not-bearish(dir={eff_direction.name})"
             )
@@ -4001,7 +4023,7 @@ class ScrummingBot(
             elif eff_confidence < _eff_conf_floor:
                 _why = (
                     f"TA={eff_direction.name} but confidence "
-                    f"{eff_confidence:.2f} < {_eff_conf_floor:.2f} "
+                    f"{eff_confidence:.4f} < {_eff_conf_floor:.4f} "
                     f"floor"
                 )
             else:
