@@ -39,7 +39,7 @@ PRICED = {
     "stochastic_rsi": (),
     "supertrend": ("st_line", "curr_atr"),
     "volume": (),
-    "zscore": ("sma", "std"),
+    "zscore": ("sma", "std", "resistance_price", "support_price"),
 }
 
 #: Slack from rendering one shape at four bases in binary floats.

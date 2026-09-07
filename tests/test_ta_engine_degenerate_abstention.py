@@ -730,7 +730,7 @@ EXPECTED_HEALTHY_HASHES = {
     "supertrend": "a95500ab1cb03b56",
     "volume": "fe01e09f3ce04b03",
     "vortex": "89d6bbd412a328ea",
-    "zscore": "f13d4d992ca85e24",
+    "zscore": "854c3493369b0bbf",
 }
 
 

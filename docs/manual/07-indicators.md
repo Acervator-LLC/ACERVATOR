@@ -266,6 +266,23 @@ strong_low = z < -2.0
 mild_low = z < -1.5
 ```
 
+The cell now prints a smoothed z, and the vote compares it against levels the
+market itself set. The indicator remembers where the z-score last turned
+around, averages those turning points, and uses each average as the level that
+decides a vote. Until it has remembered a turn, the fixed level of two
+deviations decides, exactly as before. Each average is also projected back into
+a price, which is the upper and lower zone the hover text carries.
+
+`src/trading/indicators/zscore.py` — the level that decides, and its price
+
+```python
+target_z_high = self.reversal_threshold if peak_z is None else peak_z
+target_z_low = -self.reversal_threshold if trough_z is None else trough_z
+
+resistance_price = sma + target_z_high * std
+support_price = sma + target_z_low * std
+```
+
 KER -
 
 Kaufman Efficiency Ratio. It measures how much of the distance the price
@@ -961,6 +978,47 @@ z = (candles[-1].close - sma) / std
 ```python
 z_prev = (candles[-2].close - s2) / std2
 ```
+
+**Published method.** The source the operator named publishes two formulae. The
+first is the classic score above. The second turns a score back into a price,
+so a level the market has reversed at can be drawn as a zone that widens and
+narrows with the deviation.
+
+```
+Projected Price = Mean + (Target Z * Standard Deviation)
+```
+
+The same page names the noise reduction: the raw score is smoothed by a volume
+weighted average before anything reads it. Turning points are then found in
+that smoothed series, kept only when they reach a minimum score, and the last
+few of each side are averaged into the two levels the vote uses.
+
+Both bars now read one window through one expression, so the two spellings that
+disagreed cannot come back. A window whose prices never moved returns nothing
+at all, which is how the reading abstains rather than shifting.
+
+`src/trading/indicators/zscore.py` — one window, one expression, every reader
+
+```python
+def _window_zscore(closes: list, close: float) -> Optional[tuple]:
+    if _window_has_no_range(closes):
+        return None
+    count = len(closes)
+    mean = sum(closes) / count
+    deviation = (sum((c - mean) ** 2 for c in closes) / count) ** 0.5
+    return mean, deviation, (close - mean) / deviation
+```
+
+**What the page does not publish.** It names four settings and gives a default
+value for none of them. Three take a number this file already used or the page
+itself quotes, and one is chosen here and marked as such.
+
+| Setting | Value | Where the value comes from |
+| --- | --- | --- |
+| Z-Score Length | 50 | the period this file already used |
+| Reversal Threshold | 2.0 | the strong level this file already used, and the level the page quotes as the classic one |
+| Pivot bars | 1 | a turn against the bar each side; the page gives noise reduction to the smoothing instead |
+| Lookback Depth | 5 | chosen here, because the page publishes no value and this file had none |
 
 ### Kaufman Efficiency Ratio
 
