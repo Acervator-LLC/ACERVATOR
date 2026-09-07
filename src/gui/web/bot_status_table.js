@@ -11,6 +11,7 @@
   var ACTIONS = "actions";
   var ALIGNMENT = "alignment";
   var ALIGNMENT_VALUE = "alignment_value";
+  var BOT_ID_COLUMN = "bot_id_column";
   var BOT_IDS = "bot_ids";
   var BUTTON_HEIGHT = "button_height";
   var CALLS = "calls";
@@ -44,7 +45,7 @@
   var GLOW_OFFSET = "glow_offset";
   var HAS_SELECTION = "has_selection";
   var HEADERS = "headers";
-  var MODE_COLUMN = "mode_column";
+  var POSITION_VALUE_COLUMN = "position_value_column";
   var PRIVACY_FIELD_BY_COL = "privacy_field_by_col";
   var ROW_COUNT = "row_count";
   var ROWS = "rows";
@@ -64,6 +65,7 @@
     "ammo_column",
     "blockers_separator",
     "blockers_tip_format",
+    BOT_ID_COLUMN,
     BOT_IDS,
     "browser_new_window",
     "bus_topics",
@@ -128,7 +130,6 @@
     "logger_name",
     "masked_glyph",
     "method",
-    MODE_COLUMN,
     "mode_scrumming",
     "mode_tip_format",
     "no_blockers_text",
@@ -142,6 +143,9 @@
     "no_trades",
     "opened_urls",
     "percent_scale",
+    "position_blank_text",
+    "position_paths",
+    POSITION_VALUE_COLUMN,
     PRIVACY_FIELD_BY_COL,
     "quote_btc",
     "quote_eth",
@@ -785,7 +789,7 @@
       checkTypeAgainst(at, found, TEXT, model[EMPTY_TEXT]);
       checkTypeAgainst(at, found, ALIGNMENT, model[ALIGNMENT]);
       checkTypeAgainst(at, found, ALIGNMENT_VALUE, model[ALIGNMENT_VALUE]);
-      if (column === model[MODE_COLUMN]) {
+      if (column === model[BOT_ID_COLUMN]) {
         checkTypeAgainst(at, found, COLOR, model[DEFAULT_STATE_COLOR]);
       }
     });

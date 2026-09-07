@@ -1,5 +1,5 @@
-"""Pure text-and-colour formatters for the bot-table Ammo and Target-denom
-cells.
+"""Pure text-and-colour formatters for the bot-table Current Position Value,
+Ammo and Target-denom cells.
 
 No Qt: the caller applies the returned hex with ``QColor``. Module scope
 so the bot tables and their pin tests read one definition.
@@ -77,6 +77,88 @@ def _fresh_display_price(pool, exchange_id: str, symbol: str, fallback_price: fl
     return fallback_price, None
 
 
+def _priced_position(holdings: float, price: float, quote_rate: float) -> float:
+    """The position value at one price: ``holdings`` times ``price`` times
+    ``quote_rate``."""
+    return holdings * price * quote_rate
+
+
+def _compose_position_value_cell(
+    holdings: float,
+    cur_price: float,
+    qrate: float,
+    price_age_s: float | None = None,
+) -> dict:
+    """Compute the Current Position Value cell from an exchange price only.
+
+    ``price_age_s`` is None whenever ``_fresh_display_price`` fell back to
+    the bot's own reading, and every path but ``priced`` returns an empty
+    text with the reason in ``tip``. Qt-free: returns
+    ``{text, color, tip, position_val, priced, path}``.
+    """
+    if holdings <= 0:
+        return {
+            "text": "",
+            "color": "",
+            "tip": (
+                "No position. This bot holds nothing, so the exchange "
+                "prices nothing for it."
+            ),
+            "position_val": None,
+            "priced": False,
+            "path": "holdings_absent",
+        }
+    if cur_price <= 0:
+        return {
+            "text": "",
+            "color": "",
+            "tip": (
+                "No exchange price for this pair yet. The cell stays blank "
+                "until one arrives."
+            ),
+            "position_val": None,
+            "priced": False,
+            "path": "price_absent",
+        }
+    if price_age_s is None:
+        return {
+            "text": "",
+            "color": "",
+            "tip": (
+                "No exchange price this tick. Blank rather than the bot's "
+                "own last reading, which is not a current value."
+            ),
+            "position_val": None,
+            "priced": False,
+            "path": "off_exchange",
+        }
+    if price_age_s > _PRICE_STALE_AFTER_S:
+        return {
+            "text": "",
+            "color": "",
+            "tip": (
+                f"Exchange price is {price_age_s:,.0f}s old, past the "
+                f"{_PRICE_STALE_AFTER_S:,.0f}s limit. Blank rather than a "
+                f"figure priced off it."
+            ),
+            "position_val": None,
+            "priced": False,
+            "path": "aged",
+        }
+    position_val = _priced_position(holdings, cur_price, qrate)
+    return {
+        "text": f"${abs(position_val):,.4f}",
+        "color": "",
+        "tip": (
+            f"Current position value from the exchange: {holdings:.6f} units "
+            f"at ${cur_price:,.4f}, priced {price_age_s:,.0f}s ago."
+        ),
+        "position_val": position_val,
+        "priced": True,
+        "path": "priced",
+    }
+
+
 def _compose_ammo_cell(
     stats_pv: float,
     holdings: float,
@@ -97,7 +179,7 @@ def _compose_ammo_cell(
         return f"${abs(v):,.4f}"
 
     fresh_ok = holdings > 0 and cur_price > 0
-    fresh_pv = holdings * cur_price * qrate if fresh_ok else 0.0
+    fresh_pv = _priced_position(holdings, cur_price, qrate) if fresh_ok else 0.0
     # Freshness-SELECTED, not max(): recompute whenever the inputs are
     # present, else fall back to the last known value and mark it.
     if fresh_ok:

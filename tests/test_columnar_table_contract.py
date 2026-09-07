@@ -30,7 +30,7 @@ SIZE = (900, 220)
 SCRUMMING_HEADERS = (
     "● Bot ID",
     "● Symbol",
-    "● Mode",
+    "● Current Position Value",
     "● Trades",
     "● Target",
     "● Target BTC",
@@ -205,7 +205,9 @@ def test_bot_status_header_tooltips_carry_the_privacy_suffix():
 
     table = BotStatusTable()
     assert table.horizontalHeaderItem(0).toolTip() == (
-        "Unique identifier for this bot instance\n\n"
+        "Unique identifier for this bot instance, coloured by current state.\n"
+        "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
+        "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING\n\n"
         "Privacy: REVEALED (field bot_table.bot_id).\n"
         "Click this header to toggle."
     )

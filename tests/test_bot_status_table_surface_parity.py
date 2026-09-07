@@ -878,13 +878,13 @@ def test_a_symbol_press_opens_the_chart_on_both_sides():
     try:
         table = old_table(["happy"])
         table._on_cell_clicked(0, surface.SYMBOL_COLUMN)
-        table._on_cell_clicked(0, surface.MODE_COLUMN)
+        table._on_cell_clicked(0, surface.POSITION_VALUE_COLUMN)
         table._on_cell_clicked(9, surface.SYMBOL_COLUMN)
     finally:
         webbrowser.open = real
     model = new_model(["happy"])
     assert model.on_cell_clicked(0, surface.SYMBOL_COLUMN) == opened[0][0]
-    assert model.on_cell_clicked(0, surface.MODE_COLUMN) == ""
+    assert model.on_cell_clicked(0, surface.POSITION_VALUE_COLUMN) == ""
     assert model.on_cell_clicked(9, surface.SYMBOL_COLUMN) == ""
     assert len(opened) == 1, opened
     assert opened[0][1] == surface.BROWSER_NEW_WINDOW
@@ -1990,7 +1990,7 @@ def compared_payloads():
     pressed.on_detail("beta")
     pressed.on_fire("beta")
     pressed.on_cell_clicked(0, surface.SYMBOL_COLUMN)
-    pressed.on_cell_clicked(0, surface.MODE_COLUMN)
+    pressed.on_cell_clicked(0, surface.POSITION_VALUE_COLUMN)
     payloads.append(surface.build_view_model(pressed))
     payloads.append(surface.build_view_model(surface.build_model(CASES["happy"])))
     payloads.append(surface.build_view_model(surface.build_model()))
@@ -2120,8 +2120,11 @@ PAYLOAD_KEY_SOURCES = {
     "fire_column": ("FIRE_COLUMN",),
     "detail_column": ("DETAIL_COLUMN",),
     "button_columns": ("BUTTON_COLUMNS",),
+    "bot_id_column": ("BOT_ID_COLUMN",),
     "symbol_column": ("SYMBOL_COLUMN",),
-    "mode_column": ("MODE_COLUMN",),
+    "position_value_column": ("POSITION_VALUE_COLUMN",),
+    "position_blank_text": ("POSITION_BLANK_TEXT",),
+    "position_paths": ("POSITION_PATHS",),
     "target_btc_column": ("TARGET_BTC_COLUMN",),
     "target_eth_column": ("TARGET_ETH_COLUMN",),
     "ammo_column": ("AMMO_COLUMN",),
