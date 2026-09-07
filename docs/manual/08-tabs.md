@@ -4070,7 +4070,7 @@ rather than typed.
 | 5 | `src/gui/buy_confirmation_dialog.py` | buy_confirmation.js | yes | yes | yes | no | yes | yes |
 | 6 | `src/gui/crypto_news_ticker.py` | crypto_news_ticker.js | yes | yes | yes | no | yes | yes |
 | 7 | `src/gui/history_tab.py` | history_tab.js | yes | yes | yes | yes | yes | yes |
-| 8 | `src/gui/indicator_panel.py` | indicator_panel.js | yes | yes | yes | no | yes | yes |
+| 8 | `src/gui/indicator_panel.py` | indicator_panel.js | yes | yes | yes | yes | yes | yes |
 | 9 | `src/gui/live_settings/bot_swarm_tab.py` | bot_swarm_tab.js | yes | yes | yes | yes | yes | yes |
 | 10 | `src/gui/live_settings/fold_chrome.py` | fold_chrome.js | yes | yes | yes | no | yes | yes |
 | 11 | `src/gui/live_settings/fold_tranches_tab.py` | fold_tranches_tab.js | yes | yes | yes | no | yes | yes |
@@ -4088,33 +4088,57 @@ rather than typed.
 | 23 | `src/gui/main_window.py` | main_window.js | yes | yes | yes | no | no | yes |
 | 24 | `src/gui/market_inspector.py` | market_inspector.js | yes | yes | yes | yes | yes | yes |
 | 25 | `src/gui/market_inspector_topologies.py` | market_inspector_topologies.js | yes | yes | yes | yes | yes | yes |
-| 26 | `src/gui/native_chart.py` | native_chart.js | yes | yes | yes | no | yes | yes |
+| 26 | `src/gui/native_chart.py` | native_chart.js | yes | yes | yes | yes | yes | yes |
 | 27 | `src/gui/settings_dialog.py` | settings_dialog.js | yes | yes | yes | no | yes | yes |
 | 28 | `src/gui/start_all_progress_dialog.py` | start_all_progress.js | yes | yes | yes | no | yes | yes |
 | 29 | `src/gui/visualizer/bot_node.py` | bot_node.js | yes | yes | yes | no | yes | yes |
 | 30 | `src/gui/visualizer/quick_routing.py` | quick_routing.js | yes | yes | yes | no | yes | yes |
 | 31 | `src/gui/visualizer/themes.py` | visualizer_themes.js | - | yes | yes | no | yes | yes |
 | 32 | `src/gui/visualizer/wire_canvas.py` | wire_canvas.js | yes | yes | yes | no | yes | yes |
-| 33 | `src/gui/widgets/bot_status_table.py` | bot_status_table.js | yes | yes | yes | no | yes | yes |
-| 34 | `src/gui/widgets/dashboard_stat_card.py` | dashboard_stat_card.js | yes | yes | yes | no | yes | yes |
-| 35 | `src/gui/widgets/exchange_tab.py` | exchange_tab.js | yes | yes | yes | no | yes | yes |
-| 36 | `src/gui/widgets/extractor_bot_table.py` | extractor_bot_table.js | yes | yes | yes | no | yes | yes |
-| 37 | `src/gui/widgets/privacy_dot.py` | privacy_dot.js | yes | yes | yes | no | yes | yes |
-| 38 | `src/gui/widgets/spendable_profits.py` | spendable_profits.js | yes | yes | yes | no | yes | yes |
-| 39 | `src/gui/widgets/status_log.py` | status_log.js | yes | yes | yes | no | yes | yes |
+| 33 | `src/gui/widgets/bot_status_table.py` | bot_status_table.js | yes | yes | yes | yes | yes | yes |
+| 34 | `src/gui/widgets/dashboard_stat_card.py` | dashboard_stat_card.js | yes | yes | yes | yes | yes | yes |
+| 35 | `src/gui/widgets/exchange_tab.py` | exchange_tab.js | yes | yes | yes | yes | yes | yes |
+| 36 | `src/gui/widgets/extractor_bot_table.py` | extractor_bot_table.js | yes | yes | yes | yes | yes | yes |
+| 37 | `src/gui/widgets/privacy_dot.py` | privacy_dot.js | yes | yes | yes | yes | yes | yes |
+| 38 | `src/gui/widgets/spendable_profits.py` | spendable_profits.js | yes | yes | yes | yes | yes | yes |
+| 39 | `src/gui/widgets/status_log.py` | status_log.js | yes | yes | yes | yes | yes | yes |
 | 40 | `src/gui/widgets/trade_charts_tab.py` | trade_charts_tab.js | yes | yes | yes | yes | yes | yes |
 
 Totals across the 40 units above, measured on 7 September 2026:
 
 ```
 units                    40
-React module             38
+React module             37
+Uses React               36
 Bridge                   38
 Manifest                 37
 Registers in Electron    12
 Ships in the build       35
 RENDERS                  40
 ```
+
+Re-measured on 7 September 2026 off the 40 rows above, after the nine widgets
+the Trading tab and the header strip build were confirmed in the Electron
+shell:
+
+```
+units                    40
+React module             37
+Uses React               36
+Bridge                   38
+Manifest                 37
+Registers in Electron    21
+Ships in the build       35
+RENDERS                  40
+```
+
+A widget a parent panel draws needs no shell panel of its own. Its content
+reaches the shell through that parent: `trading_tab.js` mounts
+`indicator_panel.js`, `status_log.js` and `exchange_tab.js`; `exchange_tab.js`
+mounts `bot_status_table.js` and `extractor_bot_table.js`;
+`trade_charts_tab.js` mounts `native_chart.js`; and `header_strip.js` mounts
+`spendable_profits.js` and `dashboard_stat_card.js`, which draw
+`privacy_dot.js` for their own dots.
 
 Re-measured on 6 September 2026 off the 40 rows above, after unit 12 was
 confirmed:

@@ -32,13 +32,11 @@ import time
 from pathlib import Path
 
 from ..core.io_utils import atomic_write_json
+from .main_tabs import indicator_panel_surface as ivp
 
 # ivp.bot_selector is the only IVP field in the privacy mask registry;
 # TA columns carry no privacy wiring.
-from ..core.privacy_mask_registry import (
-    get_privacy_mask_registry,
-    mask_or,
-)
+from ..core.privacy_mask_registry import get_privacy_mask_registry
 
 logger = logging.getLogger("acervator.gui")
 
@@ -58,6 +56,49 @@ _TA_SNAPSHOT_KEEP = 400
 _SAFE_ID_CHARS = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
 )
+
+
+#: The three collated columns that close the first mini-panel.
+_AGGREGATE_TITLES = ["Net", "Comp", "Conf"]
+
+#: Columns in each mini-panel: TF, six indicators and _AGGREGATE_TITLES.
+_PANEL_COLUMN_COUNT = 1 + 6 + len(_AGGREGATE_TITLES)
+
+#: Columns the row partition rules: TF and the six indicators.
+_RULED_COLUMNS = ivp.RULED_COLUMNS
+
+#: The ground both mini-panels and the pillars behind them are painted on.
+PANEL_GROUND_RGB = ivp.PANEL_GROUND_RGB
+
+#: The strip the bar graph keeps under its plot area for labels.
+BARS_MARGIN_BOTTOM_PX = ivp.BARS_MARGIN_BOTTOM_PX
+
+#: The gap the bar graph keeps above its plot area.
+BARS_MARGIN_TOP_PX = ivp.BARS_MARGIN_TOP_PX
+
+#: The share of its column a pillar leaves as padding on each side.
+PILLAR_PAD_FRACTION = 0.12
+
+#: The alpha of the halo drawn behind a pillar body.
+PILLAR_GLOW_ALPHA = 30
+
+#: A pillar fills its column, so its bar record carries this and no reading.
+_PILLAR_FILL = 1.0
+
+
+def _sign_direction(value) -> str:
+    """The vote direction one signed score reads as; ``None`` reads NEUTRAL."""
+    if value is None:
+        return "NEUTRAL"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "NEUTRAL"
+    if number > 0.0:
+        return "BULLISH"
+    if number < 0.0:
+        return "BEARISH"
+    return "NEUTRAL"
 
 
 def _default_ta_state_dir() -> Path:
@@ -379,6 +420,7 @@ class _DemoWalk:
 
 try:
     from PySide6.QtWidgets import (
+        QStyledItemDelegate,
         QWidget,
         QVBoxLayout,
         QHBoxLayout,
@@ -574,8 +616,6 @@ if _HAS_QT:
             w, h = self.width(), self.height()
             # QRectF imported at module level
 
-            p.fillRect(0, 0, w, h, QColor(10, 10, 18))
-
             bars = self._anim_bars if self._anim_bars else self._bars
             if not bars:
                 p.setPen(QPen(QColor(60, 60, 80)))
@@ -585,8 +625,8 @@ if _HAS_QT:
                 return
 
             n = len(bars)
-            margin_top = 8
-            margin_bottom = 22
+            margin_top = BARS_MARGIN_TOP_PX
+            margin_bottom = BARS_MARGIN_BOTTOM_PX
             max_h = h - margin_top - margin_bottom
             margin_left = 10
             margin_right = 10
@@ -602,6 +642,11 @@ if _HAS_QT:
             p.setPen(QPen(QColor(25, 25, 40), 1, Qt.DotLine))
             grid_font = QFont("Consolas", 7)
             p.setFont(grid_font)
+            # The increments measure the indicator bars, so they stop at the
+            # last of them and leave the collated columns clear.
+            if use_cols and n < len(self._col_positions):
+                last = self._col_positions[n]
+                right_edge = last[0] + last[1]
             for pct in [0.25, 0.50, 0.75, 1.00]:
                 gy = h - margin_bottom - pct * max_h
                 p.drawLine(int(margin_left), int(gy), int(right_edge), int(gy))
@@ -680,11 +725,100 @@ if _HAS_QT:
                         QRectF(x, y + bar_h * 0.3, bar_w, 20), Qt.AlignCenter, arrow
                     )
 
-            p.setPen(QPen(QColor(40, 40, 60), 1))
+            # The baseline measures the indicator bars, so it ends where they
+            # do and leaves the collated columns clear.
+            p.setPen(QPen(QColor(*ivp.BARS_BASELINE_RGB), 1))
             p.drawLine(
                 int(margin_left), h - margin_bottom, int(right_edge), h - margin_bottom
             )
 
+            p.end()
+
+    class RuledCellDelegate(QStyledItemDelegate):
+        """Rules the row boundary under an indicator cell and nowhere else.
+
+        Qt's own grid runs the whole table width, so it is off and this draws
+        the partition for columns before ``_RULED_COLUMNS`` instead.
+        """
+
+        def paint(self, painter, option, index):
+            """Draw the cell, then its row boundary while it is a ruled one."""
+            super().paint(painter, option, index)
+            if index.column() >= _RULED_COLUMNS:
+                return
+            rect = option.rect
+            painter.save()
+            painter.setPen(QPen(QColor(*ivp.BARS_BASELINE_RGB), 1))
+            painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
+            if index.row() == 0:
+                painter.drawLine(rect.left(), rect.top(), rect.right(), rect.top())
+            painter.restore()
+
+    class CollatedPillarsWidget(QWidget):
+        """Paints one pillar per collated column behind both mini-panels.
+
+        ``set_pillars`` takes ``(x, width, name, direction)`` per pillar in
+        this widget's own coordinates. Each pillar fills the widget from the
+        base label strip to the top, so one column runs past both tables and
+        both bar graphs.
+        """
+
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self._pillars: list[tuple] = []
+            self._top = 0
+            self._base = 0
+            self.setAccessibleName("Collated Indicator Pillars")
+            self.setToolTip(
+                "Net, Comp and Conf run the height of the panel because "
+                "they are derived from the twelve voters above them."
+            )
+
+        def set_pillars(self, pillars: list) -> None:
+            """Hold ``(x, width, name, direction)`` per pillar and repaint."""
+            self._pillars = list(pillars)
+            self.update()
+
+        def set_span(self, top: int, base: int) -> None:
+            """Hold the ceiling and the floor the pillars run between."""
+            self._top = int(top)
+            self._base = int(base)
+            self.update()
+
+        def span(self) -> tuple:
+            """The ceiling and the floor the pillars run between."""
+            return (self._top, self._base)
+
+        def paintEvent(self, event):
+            p = QPainter(self)
+            p.setRenderHint(QPainter.Antialiasing)
+            w, h = self.width(), self.height()
+            p.fillRect(0, 0, w, h, QColor(*PANEL_GROUND_RGB))
+            top = self._top
+            base = self._base
+            for x, width, name, direction in self._pillars:
+                r, g, b = ConfidenceBarsWidget.BAR_COLORS.get(
+                    direction, ConfidenceBarsWidget.BAR_COLORS["NEUTRAL"]
+                )
+                pad = max(2, width * PILLAR_PAD_FRACTION)
+                body = QRectF(x + pad, top, max(2, width - pad * 2), base - top)
+                p.setPen(Qt.NoPen)
+                p.setBrush(QColor(r, g, b, PILLAR_GLOW_ALPHA))
+                p.drawRoundedRect(body.adjusted(-3, 0, 3, 0), 6, 6)
+                grad = QLinearGradient(body.x(), top, body.x(), base)
+                grad.setColorAt(0, QColor(r, g, b, 220))
+                grad.setColorAt(0.6, QColor(r, g, b, 160))
+                grad.setColorAt(1, QColor(r, g, b, 60))
+                p.setBrush(grad)
+                p.setPen(QPen(QColor(r, g, b, 180), 1))
+                p.drawRoundedRect(body, 3, 3)
+                p.setPen(QPen(QColor(160, 160, 190)))
+                p.setFont(QFont("Consolas", 8, QFont.Bold))
+                p.drawText(
+                    QRectF(x, base, width, BARS_MARGIN_BOTTOM_PX),
+                    Qt.AlignCenter,
+                    name,
+                )
             p.end()
 
     class IndicatorVotingPanel(QWidget):
@@ -702,6 +836,11 @@ if _HAS_QT:
             self._data: dict = {}
             self._last_demo_error: str = ""
             self._selected_bot_id: str = ""
+            # The pair the panel last drew, and the vote tallies behind
+            # the Net, Comp and Conf columns.
+            self._symbol: str = ""
+            self._vote_totals: tuple = (0, 0, 0)
+            self._pillar_directions: list = ["NEUTRAL"] * len(_AGGREGATE_TITLES)
             self._last_bot_ids: list[str] = []
             self._bot_timeframes: dict[str, str] = {}  # bot_id → ta_timeframe
             # TA snapshot directory; None until set_ta_state_dir()
@@ -735,6 +874,8 @@ if _HAS_QT:
 
             from PySide6.QtWidgets import QComboBox
 
+            header.addStretch()
+
             header.addWidget(QLabel("Bot:"))
             self._bot_selector = QComboBox()
             self._bot_selector.setMinimumWidth(180)
@@ -745,16 +886,6 @@ if _HAS_QT:
                 "ivp.bot_selector", on_toggle=self._apply_privacy_mask
             )
             header.addWidget(self._privacy_dot)
-
-            header.addStretch()
-
-            self._symbol_label = QLabel("")
-            # Raw symbol text cached so a mask toggle can re-render it.
-            self._symbol_label_raw: str = ""
-            header.addWidget(self._symbol_label)
-
-            self._summary_label = QLabel("")
-            header.addWidget(self._summary_label)
             layout.addLayout(header)
 
             # Amber staleness banner, shown only for a stored reading.
@@ -775,33 +906,6 @@ if _HAS_QT:
             self._staleness_label.hide()
             layout.addWidget(self._staleness_label)
 
-            # --- Timeframe Lock selector ---
-            from PySide6.QtWidgets import QComboBox
-
-            lock_row = QHBoxLayout()
-            lock_row.setContentsMargins(4, 0, 4, 0)
-            lock_row.addWidget(QLabel("TF Lock:"))
-            self._tf_lock_combo = QComboBox()
-            self._tf_lock_combo.addItem("None (no lock)", "")
-            for tf in ["5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"]:
-                self._tf_lock_combo.addItem(f"Lock below {tf}", tf)
-            self._tf_lock_combo.setCurrentIndex(4)
-            self._tf_lock_combo.setToolTip(
-                "Higher-timeframe lock prevents trades that contradict\n"
-                "the signal from this timeframe and above.\n"
-                "Feeds directly into active Scrumming Bots.\n"
-                "E.g. '1h' locks out lower-TF trades that oppose the 1h signal."
-            )
-            self._tf_lock_combo.setMaximumWidth(180)
-            self._tf_lock_combo.currentIndexChanged.connect(self._on_tf_lock_changed)
-            lock_row.addWidget(self._tf_lock_combo)
-
-            lock_row.addStretch()
-            self._lock_status = QLabel("")
-            self._lock_status.setStyleSheet("color: #ffaa00; font-size: 10px;")
-            lock_row.addWidget(self._lock_status)
-            layout.addLayout(lock_row)
-
             self._rate_strip = QLabel("BTC —   ETH —   (currency rates pending)")
             self._rate_strip.setStyleSheet(
                 "color: #66ccff; font-family: Consolas; "
@@ -817,7 +921,7 @@ if _HAS_QT:
             )
             self._rate_strip.setAccessibleName("Currency Rate Strip")
             layout.addWidget(self._rate_strip)
-            # Sim mode: hide bot selector and TF lock (single sim bot)
+            # Sim mode: hide the bot selector (a single sim bot)
             if getattr(self, "_sim_mode", False):
                 self._bot_selector.hide()
                 (
@@ -825,8 +929,6 @@ if _HAS_QT:
                     if self._bot_selector.parent()
                     else None
                 )
-                self._tf_lock_combo.hide()
-                self._lock_status.hide()
 
             self._HEADER_TOOLTIPS = {
                 "TF": (
@@ -944,15 +1046,18 @@ if _HAS_QT:
                 ),
             }
             row_a_container, self._table_a, self._conf_bars_a = (
-                self._make_indicator_row(_ROW_A_INDICATOR_COLS, include_aggregates=True)
+                self._make_indicator_row(_ROW_A_INDICATOR_COLS)
             )
             row_b_container, self._table_b, self._conf_bars_b = (
-                self._make_indicator_row(
-                    _ROW_B_INDICATOR_COLS, include_aggregates=False
-                )
+                self._make_indicator_row(_ROW_B_INDICATOR_COLS)
             )
-            layout.addWidget(row_a_container, stretch=1)
-            layout.addWidget(row_b_container, stretch=1)
+            self._body = CollatedPillarsWidget()
+            body_layout = QVBoxLayout(self._body)
+            body_layout.setContentsMargins(0, 0, 0, 0)
+            body_layout.setSpacing(2)
+            body_layout.addWidget(row_a_container, stretch=1)
+            body_layout.addWidget(row_b_container, stretch=1)
+            layout.addWidget(self._body, stretch=1)
             self._table = self._table_a
             self._conf_bars = self._conf_bars_a
 
@@ -963,22 +1068,9 @@ if _HAS_QT:
             self._locks_label.setMaximumHeight(20)
             layout.addWidget(self._locks_label)
 
-        @property
-        def lock_timeframe(self) -> str:
-            """Currently selected timeframe lock."""
-            return self._tf_lock_combo.currentData() or ""
-
-        def _make_indicator_row(
-            self,
-            indicator_subset: list,
-            include_aggregates: bool,
-        ) -> tuple:
-            """Build one mini-panel: a compact QTableWidget (TF + N
-            indicator columns, optional Net/Comp/Conf) stacked above
-            its own ConfidenceBarsWidget.
-
-            Returns ``(container_widget, table, bars)``.
-            """
+        def _make_indicator_row(self, indicator_subset: list) -> tuple:
+            """One mini-panel: a QTableWidget of _PANEL_COLUMN_COUNT columns
+            over its own ConfidenceBarsWidget, returned with both."""
             from PySide6.QtWidgets import QSizePolicy
 
             container = QWidget()
@@ -997,10 +1089,22 @@ if _HAS_QT:
             table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            # The pillars are painted by the parent, so the table lets them
+            # through and only its cell tints and text sit on top.
+            table.setFrameShape(QTableWidget.NoFrame)
+            table.setShowGrid(False)
+            table.setItemDelegate(RuledCellDelegate(table))
+            table.viewport().setAutoFillBackground(False)
+            table.setStyleSheet(
+                "QTableWidget { background: transparent; } "
+                "QTableView { background: transparent; } "
+                "QHeaderView::section { background: transparent; border: none; }"
+            )
 
             col_names = ["TF"] + [short for _, short, _ in indicator_subset]
-            if include_aggregates:
-                col_names += ["Net", "Comp", "Conf"]
+            # Both rows carry one grid, so column i of one sits under column
+            # i of the other; the aggregate slots stay empty on the second.
+            col_names += [""] * (_PANEL_COLUMN_COUNT - len(col_names))
             table.setColumnCount(len(col_names))
             table.setHorizontalHeaderLabels(col_names)
             for _idx, _name in enumerate(col_names):
@@ -1173,10 +1277,6 @@ if _HAS_QT:
                     self._bot_selector.setItemText(i, "****")
                 else:
                     self._bot_selector.setItemText(i, str(raw))
-            # Symbol label
-            self._symbol_label.setText(
-                mask_or(self._symbol_label_raw, "ivp.bot_selector")
-            )
 
         def refresh_privacy_dot(self) -> None:
             """Global Privacy Mode hook for MainWindow."""
@@ -1185,21 +1285,6 @@ if _HAS_QT:
             except Exception as _dot_exc:  # noqa: BLE001 - dot best-effort
                 logger.debug("privacy dot refresh raised: %s", _dot_exc)
             self._apply_privacy_mask()
-
-        def _on_tf_lock_changed(self):
-            tf = self.lock_timeframe
-            if tf:
-                self._lock_status.setText(
-                    f"Active: trades below {tf} locked to {tf} direction"
-                )
-                from ..core.event_bus import get_event_bus
-
-                get_event_bus().emit("indicator.tf_lock_changed", timeframe=tf)
-            else:
-                self._lock_status.setText("")
-                from ..core.event_bus import get_event_bus
-
-                get_event_bus().emit("indicator.tf_lock_changed", timeframe="")
 
         def _on_bot_selected(self):
             self._selected_bot_id = self._bot_selector.currentData() or ""
@@ -1263,8 +1348,8 @@ if _HAS_QT:
             fabricated contents is not.
             """
             try:
-                self.update_data({}, getattr(self, "_symbol_label_raw", ""))
-                self._summary_label.setText(f"No TA data — {reason}")
+                self.update_data({}, getattr(self, "_symbol", ""))
+                self._no_data_message = reason
             except Exception as exc:  # noqa: BLE001
                 logger.error(
                     "INDICATOR PANEL: could not render the no-data state "
@@ -1398,7 +1483,6 @@ if _HAS_QT:
                     return
                 self._showing_stored = False
                 self.update_data({}, symbol_text)
-                self._summary_label.setText(f"No TA data — {message}")
                 self._staleness_label.setText("")
                 self._staleness_label.hide()
                 logger.info(
@@ -1654,11 +1738,7 @@ if _HAS_QT:
             self._showing_stored = False
             self._staleness_label.setText("")
             self._staleness_label.hide()
-            # Cache the raw symbol text, then pass it through mask_or.
-            self._symbol_label_raw = str(symbol)
-            self._symbol_label.setText(
-                mask_or(self._symbol_label_raw, "ivp.bot_selector")
-            )
+            self._symbol = str(symbol)
 
             timeframes = sorted(
                 multi_tf_summary.keys(),
@@ -1748,9 +1828,7 @@ if _HAS_QT:
 
                 all_locks.extend(tf_data.get("locks", []))
 
-            self._summary_label.setText(
-                f"▲ {total_bull}  ▼ {total_bear}  ─ {total_neutral}"
-            )
+            self._vote_totals = (total_bull, total_bear, total_neutral)
 
             if all_locks:
                 lock_texts = []
@@ -1771,6 +1849,7 @@ if _HAS_QT:
                 try:
                     self._conf_bars_a.set_bars([])
                     self._conf_bars_b.set_bars([])
+                    self._body.set_pillars([])
                 except Exception as _cb_exc:  # noqa: BLE001
                     logger.debug(
                         "INDICATOR PANEL: bar reset on empty render " "failed: %s",
@@ -1798,6 +1877,9 @@ if _HAS_QT:
 
                 self._conf_bars_a.set_bars(_bars_for(_ROW_A_INDICATOR_COLS))
                 self._conf_bars_b.set_bars(_bars_for(_ROW_B_INDICATOR_COLS))
+                self._pillar_directions = [
+                    one["direction"] for one in self._collated_bars(tf_data)
+                ]
                 # Deferred one event-loop tick so the tables finish
                 # laying out columns before bars align to them.
                 QTimer.singleShot(0, self._sync_bar_columns)
@@ -1854,6 +1936,22 @@ if _HAS_QT:
             cell.setToolTip("\n".join(tip_lines))
             table.setItem(row, col, cell)
 
+        def _collated_bars(self, tf_data) -> list:
+            """_AGGREGATE_TITLES pillars, each taking its own metric's sign.
+
+            The table cell above carries the value; the pillar carries only
+            the direction, and one pillar spans both mini-panels.
+            """
+            ways = [
+                _sign_direction(tf_data.get("net_score", 0)),
+                _sign_direction(tf_data.get("composite_net")),
+                tf_data.get("direction", "NEUTRAL"),
+            ]
+            return [
+                {"name": title, "direction": way}
+                for title, way in zip(_AGGREGATE_TITLES, ways)
+            ]
+
         def _populate_net_cell(self, table, row, col, tf_data) -> None:
             net = tf_data.get("net_score", 0)
             item = QTableWidgetItem(f"{net:+.2f}")
@@ -1895,9 +1993,50 @@ if _HAS_QT:
 
         def _sync_bar_columns(self):
             """Sync both mini-panels' bar widgets to their own table's
-            column positions."""
+            column positions, and the pillars to the same grid."""
             self._sync_bars_for(self._table_a, self._conf_bars_a)
             self._sync_bars_for(self._table_b, self._conf_bars_b)
+            self._sync_pillars()
+
+        def _pillar_span(self) -> tuple:
+            """The row-A plot ceiling and the row-B plot floor, in body space.
+
+            A pillar tops out where an indicator bar at full confidence tops
+            out, and stands on the floor the lower graph measures from.
+            """
+            from PySide6.QtCore import QPoint
+
+            ceiling = self._conf_bars_a.mapTo(self._body, QPoint(0, BARS_MARGIN_TOP_PX))
+            floor = self._conf_bars_b.mapTo(
+                self._body,
+                QPoint(0, self._conf_bars_b.height() - BARS_MARGIN_BOTTOM_PX),
+            )
+            return (ceiling.y(), floor.y())
+
+        def _sync_pillars(self) -> None:
+            """Place one pillar under each aggregate column of the grid."""
+            try:
+                from PySide6.QtCore import QPoint
+
+                header = self._table_a.horizontalHeader()
+                first = self._table_a.columnCount() - len(_AGGREGATE_TITLES)
+                placed = []
+                for at, title in enumerate(_AGGREGATE_TITLES):
+                    column = first + at
+                    origin = header.mapToGlobal(
+                        QPoint(header.sectionPosition(column), 0)
+                    )
+                    local = self._body.mapFromGlobal(origin)
+                    way = (
+                        self._pillar_directions[at]
+                        if at < len(self._pillar_directions)
+                        else "NEUTRAL"
+                    )
+                    placed.append((local.x(), header.sectionSize(column), title, way))
+                self._body.set_pillars(placed)
+                self._body.set_span(*self._pillar_span())
+            except Exception as _pillar_exc:  # noqa: BLE001 - placement is best-effort
+                logger.debug("pillar placement raised: %s", _pillar_exc)
 
         def _sync_bars_for(self, table, bars) -> None:
             """Map ``table``'s header column positions into the local

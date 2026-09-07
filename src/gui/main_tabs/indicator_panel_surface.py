@@ -1,28 +1,21 @@
 """indicator_panel_surface.py -- the Indicator Voting Panel as plain data.
 
-Describes the panel the Trading tab and the Simulator tab both mount:
-the header with its bot selector and privacy dot, the amber staleness
-banner, the timeframe-lock row, the currency rate strip, the two
-mini-panels that each stack a compact table over an animated
-confidence-bar graph, and the active-locks line.
+``IndicatorTableModel`` turns one ``multi_tf_summary`` into the rows and
+cells a table draws, cell text and cell colours included.
+``ConfidenceBarsModel`` holds the bar targets and steps the animation one
+frame per call, so a caller drives frames rather than waiting on a clock.
+``IndicatorPanelModel`` holds the header, the selector and the empty-state
+text, and ``build_payload`` renders it.
 
-Three things leave this surface. ``IndicatorTableModel`` turns one
-``multi_tf_summary`` into the rows and cells a table draws, cell text
-and cell colours included. ``ConfidenceBarsModel`` holds the bar
-targets and steps the animation one frame at a time, so a caller
-drives frames rather than waiting on a clock. ``IndicatorPanelModel``
-holds the chrome, the selector and the empty-state text.
+``src.core.desktop_bridge`` registers ``view_model`` under ``METHOD``, which
+is how the Electron renderer reaches this module.
+``market_inspector_surface`` imports it as ``ivp``. Every value below is
+written out here rather than read from ``src.gui.indicator_panel``. Nothing
+here imports Qt.
 
-``src.core.desktop_bridge`` registers ``view_model`` as the handler for
-the ``indicator_panel.state`` method, which is how the Electron
-renderer reaches it. Every value below is written out here rather than
-read from ``src.gui.indicator_panel``, so a value changed on one side
-alone is reported by the parity test. Nothing here imports Qt.
-
-Cell text follows the panel's published formatting exactly: ADX, Z-Score
-and the Kaufman Efficiency Ratio render a raw value, every other
-indicator renders a percentage. No indicator arithmetic happens here;
-the voting engine has already produced direction and confidence.
+``RAW_VALUE_INDICATORS`` render a raw value; every other indicator renders a
+percentage. No indicator arithmetic happens here -- the voting engine has
+already produced direction and confidence.
 """
 
 from __future__ import annotations
@@ -61,7 +54,6 @@ CONTAINER = {
     "children": [
         "header",
         "staleness",
-        "lock_row",
         "rate_strip",
         "row_a",
         "row_b",
@@ -74,8 +66,6 @@ HEADER = {
     "bot_label_text": "Bot:",
     "selector_minimum_width_px": 180,
 }
-
-LOCK_ROW_MARGINS_PX = [4, 0, 4, 0]
 
 TITLE_HEADING_PROPERTY = "heading"
 LOCKS_MUTED_PROPERTY = "muted"
@@ -103,6 +93,23 @@ ROW_B_INDICATOR_COLS = INDICATOR_COLS[6:]
 
 TF_COLUMN_TITLE = "TF"
 AGGREGATE_TITLES = ["Net", "Comp", "Conf"]
+EMPTY_TITLE = ""
+
+#: The ground both mini-panels and the pillars behind them are painted on.
+PANEL_GROUND_RGB = (10, 10, 18)
+
+
+#: The share of its column a pillar leaves as padding on each side.
+PILLAR_PAD_FRACTION = 0.12
+
+#: The alpha of the halo drawn behind a pillar body.
+PILLAR_GLOW_ALPHA = 30
+
+#: Columns in each mini-panel: TF, six indicators and AGGREGATE_TITLES.
+PANEL_COLUMN_COUNT = 1 + len(ROW_A_INDICATOR_COLS) + len(AGGREGATE_TITLES)
+
+#: Columns the row partition rules: TF and the six indicators.
+RULED_COLUMNS = PANEL_COLUMN_COUNT - len(AGGREGATE_TITLES)
 
 GROUP_COLORS = {
     "T": "#00AAFF",
@@ -136,8 +143,6 @@ CONF_FORMAT = "{bar} {value:.0%}"
 CONF_BAR_FILLED = "█"
 CONF_BAR_EMPTY = "░"
 CONF_BAR_CELLS = 10
-
-SUMMARY_FORMAT = "▲ {bullish}  ▼ {bearish}  ─ {neutral}"
 
 # -- cell colours ------------------------------------------------------
 
@@ -243,29 +248,8 @@ PANEL_SIZE_POLICY = ["Expanding", "Expanding"]
 TIMEFRAME_ORDER = ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"]
 UNKNOWN_TIMEFRAME_RANK = 99
 
-# -- the timeframe lock ------------------------------------------------
-
-TF_LOCK_LABEL_TEXT = "TF Lock:"
-TF_LOCK_NONE_TEXT = "None (no lock)"
-TF_LOCK_NONE_VALUE = ""
-TF_LOCK_OPTION_FORMAT = "Lock below {timeframe}"
-TF_LOCK_TIMEFRAMES = ["5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"]
-TF_LOCK_DEFAULT_INDEX = 4
-TF_LOCK_MAXIMUM_WIDTH_PX = 180
-TF_LOCK_ACTIVE_FORMAT = (
-    "Active: trades below {timeframe} locked to {timeframe} direction"
-)
-TF_LOCK_IDLE_TEXT = ""
-TF_LOCK_TOPIC = "indicator.tf_lock_changed"
 BOT_SELECTED_TOPIC = "indicator.bot_selected"
-BUS_TOPICS = [TF_LOCK_TOPIC, BOT_SELECTED_TOPIC]
-
-TF_LOCK_TOOLTIP = (
-    "Higher-timeframe lock prevents trades that contradict\n"
-    "the signal from this timeframe and above.\n"
-    "Feeds directly into active Scrumming Bots.\n"
-    "E.g. '1h' locks out lower-TF trades that oppose the 1h signal."
-)
+BUS_TOPICS = [BOT_SELECTED_TOPIC]
 
 # -- the bot selector --------------------------------------------------
 
@@ -551,26 +535,6 @@ def locks_text(locks: list) -> str:
     return LOCKS_ACTIVE_PREFIX + LOCKS_JOIN.join(lines)
 
 
-def tf_lock_options() -> list:
-    """The lock dropdown's entries: no lock, then one per timeframe."""
-    options = [{"text": TF_LOCK_NONE_TEXT, "value": TF_LOCK_NONE_VALUE}]
-    for timeframe in TF_LOCK_TIMEFRAMES:
-        options.append(
-            {
-                "text": TF_LOCK_OPTION_FORMAT.format(timeframe=timeframe),
-                "value": timeframe,
-            }
-        )
-    return options
-
-
-def tf_lock_status(timeframe: str) -> str:
-    """The line beside the lock dropdown, empty when nothing is locked."""
-    if not timeframe:
-        return TF_LOCK_IDLE_TEXT
-    return TF_LOCK_ACTIVE_FORMAT.format(timeframe=timeframe)
-
-
 def privacy_style_sheet(*, masked: bool) -> str:
     """The dot's Qt style sheet: blue when revealed, dark blue when masked."""
     color = PRIVACY_MASKED_COLOR if masked else PRIVACY_REVEALED_COLOR
@@ -613,8 +577,6 @@ RATE_STRIP_STYLE_SHEET = (
     f"{RATE_STRIP_BACKGROUND_ALPHA}); "
     "border-radius: 2px;"
 )
-
-TF_LOCK_STATUS_STYLE_SHEET = f"color: {WARNING_TEXT_COLOR}; font-size: 10px;"
 
 HEADER_TOOLTIPS = {
     "TF": (
@@ -727,12 +689,14 @@ HEADER_TOOLTIPS = {
 }
 
 
-def column_titles(subset: list, *, include_aggregates: bool) -> list:
-    """One mini-panel's column titles: TF, its indicators, its aggregates."""
+def column_titles(subset: list) -> list:
+    """TF and ``subset``, padded to PANEL_COLUMN_COUNT.
+
+    AGGREGATE_TITLES name the pillars at their bases and nowhere else, so a
+    header cell over a collated column carries EMPTY_TITLE.
+    """
     titles = [TF_COLUMN_TITLE] + [short for _, short, _ in subset]
-    if include_aggregates:
-        titles = titles + list(AGGREGATE_TITLES)
-    return titles
+    return titles + [EMPTY_TITLE] * (PANEL_COLUMN_COUNT - len(titles))
 
 
 class IndicatorTableModel:
@@ -746,9 +710,7 @@ class IndicatorTableModel:
     def __init__(self, subset: list, *, include_aggregates: bool) -> None:
         self.subset = list(subset)
         self.include_aggregates = bool(include_aggregates)
-        self.titles = column_titles(
-            self.subset, include_aggregates=self.include_aggregates
-        )
+        self.titles = column_titles(self.subset)
         self.rows: list = []
 
     def column_count(self) -> int:
@@ -793,6 +755,8 @@ class IndicatorTableModel:
             cells.extend(self._indicator_cells(signals_by_indicator(tf_data)))
             if self.include_aggregates:
                 cells.extend(self._aggregate_cells(tf_data))
+            while len(cells) < PANEL_COLUMN_COUNT:
+                cells.append({"kind": "pad", "text": EMPTY_TITLE})
             self.rows.append({"timeframe": str(timeframe), "cells": cells})
         return self.rows
 
@@ -909,6 +873,7 @@ class ConfidenceBarsModel:
                 "min_width_px": BARS_MIN_WIDTH_PX,
                 "min_height_px": BARS_MIN_HEIGHT_PX,
                 "column_pad_fraction": BARS_COLUMN_PAD_FRACTION,
+                "column_body_fraction": column_body_fraction(),
                 "column_min_pad_px": BARS_COLUMN_MIN_PAD_PX,
                 "grid_fractions": list(BARS_GRID_FRACTIONS),
                 "shine_limit_px": BARS_SHINE_LIMIT_PX,
@@ -1016,20 +981,6 @@ def rate_strip_text(snapshot: Optional[dict]) -> str:
     return RATE_STRIP_JOIN.join(parts) + tail
 
 
-def summary_text(multi_tf_summary: dict) -> str:
-    """The vote tally beside the title, summed over every timeframe."""
-    summary = multi_tf_summary if isinstance(multi_tf_summary, dict) else {}
-    bullish = 0
-    bearish = 0
-    neutral = 0
-    for tf_data in summary.values():
-        entry = tf_data if isinstance(tf_data, dict) else {}
-        bullish += int(_number(entry.get("bullish")))
-        bearish += int(_number(entry.get("bearish")))
-        neutral += int(_number(entry.get("neutral")))
-    return SUMMARY_FORMAT.format(bullish=bullish, bearish=bearish, neutral=neutral)
-
-
 def collected_locks(multi_tf_summary: dict) -> list:
     """Every active lock the summary carries, in timeframe order."""
     summary = multi_tf_summary if isinstance(multi_tf_summary, dict) else {}
@@ -1038,6 +989,43 @@ def collected_locks(multi_tf_summary: dict) -> list:
         tf_data = summary.get(timeframe)
         found.extend((tf_data or {}).get("locks") or [])
     return found
+
+
+def sign_direction(value: Any) -> str:
+    """The vote direction one signed score reads as; ``None`` reads NEUTRAL."""
+    if value is None:
+        return DEFAULT_DIRECTION
+    number = _number(value)
+    if number > 0.0:
+        return "BULLISH"
+    if number < 0.0:
+        return "BEARISH"
+    return DEFAULT_DIRECTION
+
+
+def column_body_fraction() -> float:
+    """The share of one column a bar body takes, BARS_COLUMN_PAD_FRACTION aside."""
+    return 1.0 - 2.0 * BARS_COLUMN_PAD_FRACTION
+
+
+def collated_pillars(tf_data: dict) -> list:
+    """One pillar per AGGREGATE_TITLES entry, each taking its own sign.
+
+    A pillar carries a name, a direction and the grid column it stands in.
+    The table cell above carries the value; the pillar runs the height of
+    the panel, past both mini-panels.
+    """
+    entry = tf_data if isinstance(tf_data, dict) else {}
+    directions = [
+        sign_direction(entry.get("net_score")),
+        sign_direction(entry.get("composite_net")),
+        str(entry.get("direction", DEFAULT_DIRECTION)),
+    ]
+    first = PANEL_COLUMN_COUNT - len(AGGREGATE_TITLES)
+    return [
+        {"name": title, "direction": way, "column": first + at}
+        for at, (title, way) in enumerate(zip(AGGREGATE_TITLES, directions))
+    ]
 
 
 def bars_for(subset: list, tf_data: dict) -> list:
@@ -1075,17 +1063,15 @@ class IndicatorPanelModel:
         )
         self.bars_a = ConfidenceBarsModel()
         self.bars_b = ConfidenceBarsModel()
+        self.pillars: list = []
         self.summary: dict = {}
         self.symbol = EMPTY_TEXT
-        self.summary_line = EMPTY_TEXT
         self.locks_line = LOCKS_IDLE_TEXT
         self.selector = [
             {"text": SELECTOR_PLACEHOLDER_TEXT, "value": SELECTOR_PLACEHOLDER_VALUE}
         ]
         self.selected_bot_id = EMPTY_TEXT
         self.bot_timeframes: dict = {}
-        self.lock_timeframe = TF_LOCK_TIMEFRAMES[TF_LOCK_DEFAULT_INDEX - 1]
-        self.lock_index = TF_LOCK_DEFAULT_INDEX
         self.masked = False
         self.showing_stored = False
         self.staleness_line = EMPTY_TEXT
@@ -1101,23 +1087,23 @@ class IndicatorPanelModel:
         self.staleness_line = EMPTY_TEXT
         self.table_a.set_summary(self.summary)
         self.table_b.set_summary(self.summary)
-        self.summary_line = summary_text(self.summary)
         self.locks_line = locks_text(collected_locks(self.summary))
         timeframes = ordered_timeframes(self.summary)
         if not timeframes:
             self.bars_a.set_bars([])
             self.bars_b.set_bars([])
+            self.pillars = []
             return
         first = self.summary.get(timeframes[0]) or {}
         self.bars_a.set_bars(bars_for(ROW_A_INDICATOR_COLS, first))
         self.bars_b.set_bars(bars_for(ROW_B_INDICATOR_COLS, first))
+        self.pillars = collated_pillars(first)
 
     def show_no_data(self, message: str, cause: str = EMPTY_TEXT) -> None:
         """Empty the tables and say the one reason there is nothing to draw."""
         self.no_data_cause = str(cause or EMPTY_TEXT)
         self.no_data_message = str(message or EMPTY_TEXT)
         self.set_summary({}, self.symbol)
-        self.summary_line = NO_DATA_FORMAT.format(message=self.no_data_message)
 
     def show_stored(self, stored: dict, when: str, age: str, message: str) -> None:
         """Draw a persisted reading under the amber banner naming its age."""
@@ -1149,17 +1135,6 @@ class IndicatorPanelModel:
         self.selected_bot_id = str(bot_id or EMPTY_TEXT)
         return self.selected_bot_id
 
-    def set_lock(self, timeframe: str) -> str:
-        """Choose the higher-timeframe lock, or clear it with an empty name."""
-        self.lock_timeframe = str(timeframe or EMPTY_TEXT)
-        options = tf_lock_options()
-        self.lock_index = 0
-        for at, option in enumerate(options):
-            if option["value"] == self.lock_timeframe:
-                self.lock_index = at
-                break
-        return self.lock_timeframe
-
     def set_masked(self, *, masked: bool) -> bool:
         self.masked = bool(masked)
         return self.masked
@@ -1179,9 +1154,6 @@ class IndicatorPanelModel:
             drawn.append(entry)
         return drawn
 
-    def symbol_payload(self) -> str:
-        return PRIVACY_MASK_TEXT if self.masked else self.symbol
-
 
 def build_payload(model: IndicatorPanelModel) -> dict:
     """The whole ``indicator_panel.state`` answer for one model."""
@@ -1200,8 +1172,6 @@ def build_payload(model: IndicatorPanelModel) -> dict:
         "size_policy": list(PANEL_SIZE_POLICY),
         "sim_mode": model.sim_mode,
         "bus_topics": list(BUS_TOPICS),
-        "symbol_text": model.symbol_payload(),
-        "summary_text": model.summary_line,
         "selector": model.selector_payload(),
         "selector_placeholder": {
             "text": SELECTOR_PLACEHOLDER_TEXT,
@@ -1237,19 +1207,6 @@ def build_payload(model: IndicatorPanelModel) -> dict:
             "accessible_name": STALENESS_ACCESSIBLE_NAME,
             "tooltip": STALENESS_TOOLTIP,
         },
-        "tf_lock": {
-            "label_text": TF_LOCK_LABEL_TEXT,
-            "margins_px": list(LOCK_ROW_MARGINS_PX),
-            "options": tf_lock_options(),
-            "value": model.lock_timeframe,
-            "index": model.lock_index,
-            "default_index": TF_LOCK_DEFAULT_INDEX,
-            "maximum_width_px": TF_LOCK_MAXIMUM_WIDTH_PX,
-            "tooltip": TF_LOCK_TOOLTIP,
-            "status_text": tf_lock_status(model.lock_timeframe),
-            "status_style_sheet": TF_LOCK_STATUS_STYLE_SHEET,
-            "status_color": WARNING_TEXT_COLOR,
-        },
         "rate_strip": {
             "text": model.rate_line,
             "pending_text": RATE_STRIP_PENDING_TEXT,
@@ -1262,6 +1219,24 @@ def build_payload(model: IndicatorPanelModel) -> dict:
             "tooltip": RATE_STRIP_TOOLTIP,
         },
         "tables": [model.table_a.payload(), model.table_b.payload()],
+        "pillars": {
+            "columns": [dict(one) for one in model.pillars],
+            "column_count": PANEL_COLUMN_COUNT,
+            "ground_rgb": list(PANEL_GROUND_RGB),
+            "label_strip_px": BARS_MARGIN_BOTTOM_PX,
+            "ceiling_px": BARS_MARGIN_TOP_PX,
+            "ruled_columns": RULED_COLUMNS,
+            "rule_rgb": list(BARS_BASELINE_RGB),
+            "pad_fraction": PILLAR_PAD_FRACTION,
+            "glow_alpha": PILLAR_GLOW_ALPHA,
+            "label_rgb": list(BARS_LABEL_RGB),
+            "colors": {name: list(rgb) for name, rgb in BAR_COLORS.items()},
+            "gradient_alphas": list(BARS_GRADIENT_ALPHAS),
+            "gradient_stops": list(BARS_GRADIENT_STOPS),
+            "outline_alpha": BARS_OUTLINE_ALPHA,
+            "body_radius_px": BARS_BODY_RADIUS_PX,
+            "glow_radius_px": BARS_GLOW_RADIUS_PX,
+        },
         "bars": [model.bars_a.payload(), model.bars_b.payload()],
         "locks": {
             "text": model.locks_line,
@@ -1310,7 +1285,6 @@ ACTIONS = (
     "show_stored",
     "set_bots",
     "select_bot",
-    "set_lock",
     "set_masked",
     "set_rates",
     "step_bars",
@@ -1336,8 +1310,6 @@ def _apply(model: IndicatorPanelModel, action: str, params: dict) -> None:
         model.set_bots(params.get("bots") or [])
     elif action == "select_bot":
         model.select_bot(params.get("bot_id", EMPTY_TEXT))
-    elif action == "set_lock":
-        model.set_lock(params.get("timeframe", EMPTY_TEXT))
     elif action == "set_masked":
         model.set_masked(masked=bool(params.get("masked", False)))
     elif action == "set_rates":

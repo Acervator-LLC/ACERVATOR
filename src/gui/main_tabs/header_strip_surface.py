@@ -279,6 +279,9 @@ DOT_MASKED_GLYPH = "○"
 
 DEFAULT_MODE = "crypto"
 
+#: The request field ``view_model`` reads the wing from.
+MODE_PARAM = "mode"
+
 MODE_BUTTON = {
     "minimum_width_px": 110,
     "horizontal_policy": "Preferred",
@@ -468,10 +471,21 @@ def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
     }
 
 
+def next_mode(mode: Any) -> str:
+    """The wing the button moves to, so a frontend spells no mode name."""
+    return DEFAULT_MODE if str(mode) == "stock" else "stock"
+
+
 def mode_card(mode: Any) -> dict:
     """The mode button's text, checked state and skin for one wing."""
     key = "stock" if str(mode) == "stock" else DEFAULT_MODE
-    return {"mode": key, **MODE_BUTTON, **MODE_CARDS[key]}
+    return {
+        "mode": key,
+        "next_mode": next_mode(key),
+        "mode_param": MODE_PARAM,
+        **MODE_BUTTON,
+        **MODE_CARDS[key],
+    }
 
 
 def strip_visible(tab_name: Any) -> bool:
@@ -541,7 +555,7 @@ def view_model(params: dict) -> dict:
     return build_view_model(
         stats=params.get("stats") or {},
         exchange_count=int(params.get("exchange_count") or 0),
-        mode=params.get("mode", DEFAULT_MODE),
+        mode=params.get(MODE_PARAM, DEFAULT_MODE),
         tab_name=params.get("tab_name"),
         profits=params.get("profits"),
     )
