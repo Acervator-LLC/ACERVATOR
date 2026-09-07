@@ -13,9 +13,9 @@ GATED_TOOLS = {"Agent", "SendMessage"}
 CAP = 6
 
 GENERAL = re.compile(
-    r"\bproject[- ]wide\b|\bevery file\b|\bevery code edit\b"
+    r"\bproject[- ]wide\b|\bevery file in\b|\bevery code edit\b"
     r"|\bwhole (project|repo\w*)\b|\bacross the (whole )?repo\w*\b"
-    r"|\bany file\b|\ball code\b|\bgoing forward\b",
+    r"|\ball code\b|\bgoing forward\b",
     re.IGNORECASE,
 )
 

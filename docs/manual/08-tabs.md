@@ -3985,7 +3985,7 @@ rather than typed.
 | 22 | `src/gui/main_tabs/trading_tab.py` | trading_tab.js | yes | yes | yes | yes | yes | yes |
 | 23 | `src/gui/main_window.py` | main_window.js | yes | yes | yes | no | no | yes |
 | 24 | `src/gui/market_inspector.py` | market_inspector.js | yes | yes | yes | yes | yes | yes |
-| 25 | `src/gui/market_inspector_topologies.py` | market_inspector_topologies.js | yes | yes | yes | no | yes | yes |
+| 25 | `src/gui/market_inspector_topologies.py` | market_inspector_topologies.js | yes | yes | yes | yes | yes | yes |
 | 26 | `src/gui/native_chart.py` | native_chart.js | yes | yes | yes | no | yes | yes |
 | 27 | `src/gui/settings_dialog.py` | settings_dialog.js | yes | yes | yes | no | yes | yes |
 | 28 | `src/gui/start_all_progress_dialog.py` | start_all_progress.js | yes | yes | yes | no | yes | yes |
@@ -4002,15 +4002,15 @@ rather than typed.
 | 39 | `src/gui/widgets/status_log.py` | status_log.js | yes | yes | yes | no | yes | yes |
 | 40 | `src/gui/widgets/trade_charts_tab.py` | trade_charts_tab.js | yes | yes | yes | yes | yes | yes |
 
-Totals across the 40 units above, measured on 6 September 2026:
+Totals across the 40 units above, measured on 7 September 2026:
 
 ```
 units                    40
-React module             36
-Bridge                   40
-Manifest                 36
-Registers in Electron    11
-Ships in the build       36
+React module             38
+Bridge                   38
+Manifest                 37
+Registers in Electron    12
+Ships in the build       35
 RENDERS                  40
 ```
 
