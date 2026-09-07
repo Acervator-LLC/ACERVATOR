@@ -284,6 +284,19 @@ thumbnail_drawn_pixels [3154, 2242, 951, 374]
 preview_drawn_pixels   [41194, 35217, 2376, 1184]
 ```
 
+Stepping the zone through every post in the bucket, each of the six draws its
+own chart with the ticker and the vote beside it. The same six read the same way
+in all three hosts:
+
+```
+1 of 6  ETH 1d   bull  44 marks
+2 of 6  ETH 1d   bull  44 marks
+3 of 6  ETH 1d   bull  44 marks
+4 of 6  BTC 1wk  bull  44 marks
+5 of 6  BTC 1wk  bull  44 marks
+6 of 6  BTC 1wk  bull  44 marks
+```
+
 ### The ticker and the vote beside it
 
 Read off all three hosts, on the same post:
