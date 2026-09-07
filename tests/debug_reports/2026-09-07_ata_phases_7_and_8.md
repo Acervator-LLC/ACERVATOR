@@ -199,8 +199,8 @@ Every read of the React page came back as None, including `1 + 1`:
 ```
 page_ready False
 loadFinished ok=True
-  probe '1 + 1' -> None
-  probe 'JSON.stringify({a: 1})' -> None
+  eval '1 + 1' -> None
+  eval 'JSON.stringify({a: 1})' -> None
 ```
 
 The driver waited by calling `processEvents` in a loop. That call returns at
@@ -210,10 +210,10 @@ loop with a timer. The same reads afterwards:
 
 ```
 page_ready True
-  probe '1 + 1' -> 2.0
-  probe 'JSON.stringify({a: 1})' -> '{"a":1}'
-  probe 'typeof window.acervatorMarketInspector' -> 'object'
-  probe 'document.querySelectorAll(...zone-stepper...).length' -> 6.0
+  eval '1 + 1' -> 2.0
+  eval 'JSON.stringify({a: 1})' -> '{"a":1}'
+  eval 'typeof window.acervatorMarketInspector' -> 'object'
+  eval 'document.querySelectorAll(...zone-stepper...).length' -> 6.0
 ```
 
 ### 6 A tape that carried no reversal at all

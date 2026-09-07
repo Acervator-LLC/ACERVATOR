@@ -40,3 +40,25 @@ Each hook in `dev_harness/hooks/` runs at the event below.
 These files sit in the directory and no event runs them.
 
 - `block_missing_skills.py`
+- `block_deflection.py` — copied to `~/.claude/hooks/`, controls two-sided (a
+  deflection exits 2, the same words behind `>` exit 0).
+- `block_banned_words.py` — copied to `~/.claude/hooks/`, controls two-sided
+  over 9 cases, 0 wrong. Refuses the vocabulary the operator banned on
+  2026-09-07 in a reply and in an `Agent` or `SendMessage` brief.
+  `block_coined_instrument.py` refuses only such a thing being made, so the
+  words still reached him inside ordinary prose.
+
+Both need an entry under `Stop`, and the auto-mode classifier refuses the edit
+to `settings.json` that adds one. Until it is added, neither fires.
+
+```json
+{
+  "hooks": [
+    {
+      "type": "command",
+      "command": "python <home>/.claude/hooks/block_deflection.py",
+      "timeout": 15
+    }
+  ]
+}
+```

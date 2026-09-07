@@ -31,19 +31,20 @@ Both variants ran with a throwaway home, so nothing read or wrote
 `F366F42F0E49B4B3468F301B4F2F701669CC13005CFE1EBAC7A56988EC376423` before the
 work and the same after it.
 
-**React, in the Electron shell.** `tests/fixtures/conversion_rows.electron_report`
-starts `desktop/main.js` under the installed Electron binary through
-`tests/fixtures/electron_shell_probe.js`, redirects the backend child to a
-throwaway home, opens every panel the manifest names and reports what each one
-drew.
+**React, in the Electron shell.** The run started `desktop/main.js` under the
+installed Electron binary, redirected the backend child to a throwaway home,
+opened every panel the manifest names and read what each one drew.
 
-```
-python -X dev -X faulthandler
-# from tests/: fixtures.conversion_rows.electron_report()
-```
+It answered `available: True`, 74 panel names, 13 registered panels, no module
+that failed to load, and one spawned child: `python main.py --bridge`.
 
-The run answered `available: True`, 74 panel names, 13 registered panels, no
-module that failed to load, and one spawned child: `python main.py --bridge`.
+## CITED AS ABSENT
+
+The two files this section named, both under `tests/fixtures/`, were removed
+when the operator deleted every non-canon test. `git ls-files tests/fixtures/`
+returns nothing and the directory is empty, so the run above is a record of
+what happened and not a recipe that can be followed today. An Electron run now
+goes through the debugger, the same as every other.
 
 **Qt.** `src.gui.main_window.MainWindow` was constructed under
 `ACERVATOR_VARIANT=qt` with `QT_QPA_PLATFORM=offscreen`, `HOME` and
