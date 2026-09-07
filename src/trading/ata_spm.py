@@ -127,7 +127,11 @@ READINGS: dict[str, tuple[str, tuple, str]] = {
         ("dist_pct",),
         "{value:+.3f}% from the Supertrend line",
     ),
-    "zscore": ("Z-Score", ("z",), "z-score {value:+.3f}"),
+    "zscore": (
+        "Z-Score",
+        ("z", "support_price", "resistance_price"),
+        "z-score {z:+.3f}, predictive zone {support_price:g} to {resistance_price:g}",
+    ),
     "kaufman_er": (
         "Kaufman Efficiency Ratio",
         ("er", "price_up"),

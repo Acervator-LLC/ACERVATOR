@@ -1,9 +1,11 @@
-"""Z-Score of price against its own N-period mean.
+"""Z-Score Predictive Zones of price against its own N-period mean.
 
 ``ZScoreIndicator.compute`` returns the Signal.
 """
 
 from __future__ import annotations
+
+from typing import Optional
 
 from .types import (
     SignalDirection,
@@ -14,63 +16,149 @@ from .helpers import (
 )
 
 
+def _window_zscore(closes: list, close: float) -> Optional[tuple]:
+    """Mean, deviation and ``(close - mean) / deviation`` over ``closes``.
+
+    ``None`` when ``closes`` has no range, so no caller divides by it.
+    """
+    if _window_has_no_range(closes):
+        return None
+    count = len(closes)
+    mean = sum(closes) / count
+    deviation = (sum((c - mean) ** 2 for c in closes) / count) ** 0.5
+    return mean, deviation, (close - mean) / deviation
+
+
+def _vwma(values: list, volumes: list, period: int) -> Optional[float]:
+    """Mean of the last ``period`` ``values``, each weighted by its volume.
+
+    ``None`` when those bars carry no volume to weight by.
+    """
+    weighted = 0.0
+    volume = 0.0
+    for value, size in zip(values[-period:], volumes[-period:]):
+        weighted += value * size
+        volume += size
+    if volume <= 0.0:
+        return None
+    return weighted / volume
+
+
+def _reversal_levels(series: list, bars: int, threshold: float, depth: int) -> tuple:
+    """Mean of the last ``depth`` peaks and troughs in ``series``.
+
+    A peak is above the ``bars`` readings each side and at or past
+    ``threshold``; a trough is below them and at or past ``-threshold``.
+    """
+    peaks: list = []
+    troughs: list = []
+    for i in range(bars, len(series) - bars):
+        value = series[i]
+        neighbours = series[i - bars : i] + series[i + 1 : i + 1 + bars]
+        if value >= threshold and all(value > other for other in neighbours):
+            peaks.append(value)
+        elif value <= -threshold and all(value < other for other in neighbours):
+            troughs.append(value)
+    held_peaks = peaks[-depth:]
+    held_troughs = troughs[-depth:]
+    return (
+        sum(held_peaks) / len(held_peaks) if held_peaks else None,
+        sum(held_troughs) / len(held_troughs) if held_troughs else None,
+        len(held_peaks),
+        len(held_troughs),
+    )
+
+
 # 10. Z-Score — Absolute statistical price deviation from mean
 class ZScoreIndicator:
-    """Z-Score of the close against its own ``period`` mean.
+    """Z-Score Predictive Zones of the close against its own ``period`` mean.
 
-    ``compute`` reads ``z = (close - sma) / std`` over the trailing
-    ``period`` closes and ``z_prev`` over the window ending one bar earlier,
-    then sets ``direction`` from ``strong_high`` and ``strong_low`` at 2.0
-    and ``mild_high`` and ``mild_low`` at 1.5.
+    ``compute`` smooths ``z`` with ``_vwma``, averages the last
+    ``lookback_depth`` reversals past ``reversal_threshold`` into
+    ``target_z_high`` and ``target_z_low``, and projects each back to
+    ``resistance_price`` and ``support_price``.
     """
 
-    def __init__(self, period: int = 50, weight: float = 1.0):
+    def __init__(
+        self,
+        period: int = 50,
+        weight: float = 1.0,
+        smoothing_period: int = 3,
+        lookback_depth: int = 5,
+        reversal_threshold: float = 2.0,
+        pivot_bars: int = 1,
+    ):
         self.period = period
         self.weight = weight
+        self.smoothing_period = smoothing_period
+        self.lookback_depth = lookback_depth
+        self.reversal_threshold = reversal_threshold
+        self.pivot_bars = pivot_bars
+
+    def _abstain(self, timeframe: str) -> Signal:
+        """The Signal ``compute`` returns with no z it can divide for."""
+        return Signal(
+            "zscore",
+            timeframe,
+            SignalDirection.NEUTRAL,
+            0.0,
+            self.weight,
+            abstained=True,
+        )
 
     def compute(self, candles: list, timeframe: str = "1h") -> Signal:
         if len(candles) < self.period + 1:
-            return Signal(
-                "zscore",
-                timeframe,
-                SignalDirection.NEUTRAL,
-                0.0,
-                self.weight,
-                abstained=True,
-            )
+            return self._abstain(timeframe)
 
-        closes = [c.close for c in candles[-self.period :]]
-        sma = sum(closes) / self.period
-        variance = sum((c - sma) ** 2 for c in closes) / self.period
-        std = variance**0.5
+        closes = [c.close for c in candles]
+        end = len(candles)
 
-        # `_window_has_no_range` reads the closes the venue sent, so it is
-        # exact at every price scale; `std` is derived and rounds to ULPs on
-        # a halted window rather than to 0.0.
-        if _window_has_no_range(closes):
-            return Signal(
-                "zscore",
-                timeframe,
-                SignalDirection.NEUTRAL,
-                0.0,
-                self.weight,
-                abstained=True,
-            )
+        # `_window_zscore` reads the closes the venue sent, so a halted
+        # window answers None instead of rounding `deviation` to ULPs.
+        z_series: list = []
+        z_volumes: list = []
+        last_window = None
+        for i in range(self.period - 1, end):
+            found = _window_zscore(closes[i - self.period + 1 : i + 1], closes[i])
+            if found is None:
+                continue
+            z_series.append(found[2])
+            z_volumes.append(candles[i].volume)
+            if i == end - 1:
+                last_window = found
 
-        z = (candles[-1].close - sma) / std
+        if last_window is None:
+            return self._abstain(timeframe)
 
-        # A previous window with no range leaves `z_prev` at `z`, which holds
-        # `z_reverting` False.
-        z_prev = z
-        if len(candles) >= self.period + 2:
-            c_prev = [c.close for c in candles[-self.period - 1 : -1]]
-            if not _window_has_no_range(c_prev):
-                s2 = sum(c_prev) / self.period
-                v2 = sum((c - s2) ** 2 for c in c_prev) / self.period
-                std2 = v2**0.5
-                z_prev = (candles[-2].close - s2) / std2
+        sma, std, z_raw = last_window
 
-        z_reverting = (z > 0 and z < z_prev) or (z < 0 and z > z_prev)
+        smoothed = _vwma(z_series, z_volumes, self.smoothing_period)
+        z = z_raw if smoothed is None else smoothed
+
+        # A previous window with no range leaves `z_prev` at `z_raw`, which
+        # holds `z_reverting` False.
+        z_prev = z_raw
+        if end >= self.period + 2:
+            earlier = _window_zscore(closes[-self.period - 1 : -1], closes[-2])
+            if earlier is not None:
+                z_prev = earlier[2]
+
+        z_reverting = (z_raw > 0 and z_raw < z_prev) or (z_raw < 0 and z_raw > z_prev)
+
+        peak_z, trough_z, peaks_held, troughs_held = _reversal_levels(
+            z_series,
+            self.pivot_bars,
+            self.reversal_threshold,
+            self.lookback_depth,
+        )
+        target_z_high = self.reversal_threshold if peak_z is None else peak_z
+        target_z_low = -self.reversal_threshold if trough_z is None else trough_z
+
+        resistance_price = sma + target_z_high * std
+        support_price = sma + target_z_low * std
+
+        in_resistance = z > target_z_high
+        in_support = z < target_z_low
 
         # Extreme signals
         extreme_high = z > 3.0
@@ -80,12 +168,12 @@ class ZScoreIndicator:
         strong_low = z < -2.0
         mild_low = z < -1.5
 
-        if strong_high:
+        if in_resistance:
             direction = SignalDirection.BEARISH
-            confidence = max(0.0, min(1.0, (z - 2.0) / 2.0 + 0.5))
-        elif strong_low:
+            confidence = max(0.0, min(1.0, (z - target_z_high) / 2.0 + 0.5))
+        elif in_support:
             direction = SignalDirection.BULLISH
-            confidence = max(0.0, min(1.0, (-z - 2.0) / 2.0 + 0.5))
+            confidence = max(0.0, min(1.0, (target_z_low - z) / 2.0 + 0.5))
         elif mild_high:
             direction = SignalDirection.BEARISH
             confidence = 0.25
@@ -114,5 +202,14 @@ class ZScoreIndicator:
                 "strong_low": strong_low,
                 "mild_low": mild_low,
                 "z_reverting": z_reverting,
+                "z_raw": round(z_raw, 3),
+                "target_z_high": round(target_z_high, 3),
+                "target_z_low": round(target_z_low, 3),
+                "resistance_price": resistance_price,
+                "support_price": support_price,
+                "peaks_held": peaks_held,
+                "troughs_held": troughs_held,
+                "in_resistance": in_resistance,
+                "in_support": in_support,
             },
         )
