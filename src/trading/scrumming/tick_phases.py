@@ -9,6 +9,7 @@ from typing import Any, Callable, Optional
 
 from ..target_bands import at_target_dust_band
 from ..ta_engine import VotingEngine, candles_from_raw, detect_bb_proximity
+from .snapshots import yes_no as _yes_no
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -1070,21 +1071,24 @@ class TickPhaseMixin:
                 bullseye_lower_wick = _last_low <= bb_result.lower * (1.0 + _wick_tol)
 
         if bullseye_upper or bullseye_upper_wick:
+            _ramp = self._scrum_target_mode.upper()
+            _fire_gate = "passes" if _ramp == "FIRE" else "holds"
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
                 message=f"BULLSEYE UPPER ({'wick' if bullseye_upper_wick else 'close'}): "
                 f"price ${ticker.last:.8f} at BB upper ${bb_result.upper:.8f}. "
-                f"FIRE ramp in {self._scrum_target_mode.upper()}; "
-                f"scrum fires only when ramp reaches FIRE.",
+                f"Ramp at {_ramp}, so the FIRE gate {_fire_gate}.",
             )
         if bullseye_lower or bullseye_lower_wick:
+            _queued = len(self._fold_tranches or [])
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
                 message=f"BULLSEYE LOWER ({'wick' if bullseye_lower_wick else 'close'}): "
                 f"price ${ticker.last:.8f} at BB lower ${bb_result.lower:.8f}. "
-                f"Fold decision governed by MEM-171 tranche gates.",
+                f"{_queued} tranche(s) queued; a fold needs one whose "
+                f"reference price the market has fallen past.",
             )
 
     async def _tick_execute_scrum(
@@ -1370,27 +1374,35 @@ class TickPhaseMixin:
                 _gate_armed_now = len(_fold_blockers) == 0
 
                 if _per_tranche_eligible > 0 and not _gate_armed_now:
-                    _blocker_key = "|".join(sorted(_fold_blockers))
+                    # The blocker names, not their rendered numbers: a
+                    # confidence moving one decimal is not a new blocker.
+                    _blocker_key = "|".join(
+                        sorted(one.split("(")[0] for one in _fold_blockers)
+                    )
                     if _blocker_key != self._fold_diag_last_blocker_set:
                         self._bus.emit(
                             "bot.log",
                             bot_id=self.bot_id,
                             message=(
-                                f"FOLD_DIAG_BLOCKED: "
-                                f"{_per_tranche_eligible}/"
-                                f"{len(self._fold_tranches)} tranches "
-                                f"strict-eligible at ${ticker.last:.8f}, "
-                                f"but FOLD gate refused. "
-                                f"Blockers: [{', '.join(_fold_blockers)}]. "
-                                f"State: bb_pos={bb_pos:.3f}, "
-                                f"is_bearish={is_bearish}, "
-                                f"fold_ok_midline={fold_ok_midline}, "
-                                f"bb_below_lower_dt={_bb_below_lower_dt}, "
-                                f"cycle_cap_consumed=${self._fold_cycle_cap_consumed:.4f}, "
-                                f"last_grow_side={self._target_grow_last_side}, "
-                                f"target_balance=${self._target_balance:.4f}, "
-                                f"anchor=${self._anchor_target_balance:.4f}, "
-                                f"profit_folding_active={self.config.profit_folding_active}."
+                                f"FOLD DIAG blocked: "
+                                f"{_per_tranche_eligible} of "
+                                f"{len(self._fold_tranches)} tranche(s) "
+                                f"eligible at ${ticker.last:.8f}, and the "
+                                f"fold gate refused. "
+                                f"Blocked by {', '.join(_fold_blockers)}. "
+                                f"BB position {bb_pos:.1%}, TA bearish "
+                                f"{_yes_no(is_bearish)}, midline gate "
+                                f"{_yes_no(fold_ok_midline)}, below the "
+                                f"lower detect line "
+                                f"{_yes_no(_bb_below_lower_dt)}. "
+                                f"Cycle cap used "
+                                f"${self._fold_cycle_cap_consumed:.4f}. "
+                                f"Target ${self._target_balance:.4f} from "
+                                f"anchor ${self._anchor_target_balance:.4f}, "
+                                f"last grown on the "
+                                f"{self._target_grow_last_side} side. "
+                                f"Profit folding "
+                                f"{_yes_no(self.config.profit_folding_active)}."
                             ),
                         )
                         self._fold_diag_last_blocker_set = _blocker_key
@@ -1400,19 +1412,24 @@ class TickPhaseMixin:
                         "bot.log",
                         bot_id=self.bot_id,
                         message=(
-                            f"FOLD_DIAG_SNAPSHOT (tick "
+                            f"FOLD DIAG state (tick "
                             f"{self._fold_diag_tick}): "
-                            f"{len(self._fold_tranches)} tranches queued, "
-                            f"{_per_tranche_eligible} strict-eligible, "
-                            f"{_patent_only_eligible} patent-only-eligible. "
-                            f"Price=${ticker.last:.8f}, bb_pos={bb_pos:.3f}, "
-                            f"is_bearish={is_bearish}, "
-                            f"cycle_cap_consumed=${self._fold_cycle_cap_consumed:.4f}, "
-                            f"last_grow_side={self._target_grow_last_side}, "
-                            f"target_balance=${self._target_balance:.4f}, "
-                            f"anchor=${self._anchor_target_balance:.4f}, "
-                            f"closed_lifetime={self._tranches_closed_lifetime}, "
-                            f"created_lifetime={self._tranches_created_lifetime}."
+                            f"{len(self._fold_tranches)} tranche(s) queued, "
+                            f"{_per_tranche_eligible} eligible, "
+                            f"{_patent_only_eligible} eligible on the "
+                            f"patent gate alone. "
+                            f"Price ${ticker.last:.8f}, BB position "
+                            f"{bb_pos:.1%}, TA bearish "
+                            f"{_yes_no(is_bearish)}. "
+                            f"Cycle cap used "
+                            f"${self._fold_cycle_cap_consumed:.4f}. "
+                            f"Target ${self._target_balance:.4f} from "
+                            f"anchor ${self._anchor_target_balance:.4f}, "
+                            f"last grown on the "
+                            f"{self._target_grow_last_side} side. "
+                            f"{self._tranches_created_lifetime} created and "
+                            f"{self._tranches_closed_lifetime} closed for "
+                            f"the life of this bot."
                         ),
                     )
 
@@ -1426,25 +1443,25 @@ class TickPhaseMixin:
                         "bot.log",
                         bot_id=self.bot_id,
                         message=(
-                            f"FOLD_DIAG_NO_STRICT_ELIGIBLE: "
-                            f"{len(self._fold_tranches)} tranches queued "
-                            f"but 0 strict-eligible at "
+                            f"FOLD DIAG waiting: "
+                            f"{len(self._fold_tranches)} tranche(s) queued "
+                            f"and none eligible at "
                             f"${ticker.last:.8f}. "
-                            f"Lowest tranche ref=${_min_ref:.8f}; with "
-                            f"the {_otd_diag:.2f}% OTD gate the fold "
-                            f"activates at or below "
-                            f"${_activation:.8f} "
-                            f"(price must fall a further "
-                            f"{max(0.0, (ticker.last / _activation - 1.0) * 100.0):.2f}%)."
+                            f"Lowest tranche reference ${_min_ref:.8f}. "
+                            f"The {_otd_diag:.2f}% opposing-trade-distance "
+                            f"gate opens the fold at or below "
+                            f"${_activation:.8f}, a further "
+                            f"{max(0.0, (ticker.last / _activation - 1.0) * 100.0):.2f}% "
+                            f"fall."
                             if _activation > 0
-                            else f"FOLD_DIAG_NO_STRICT_ELIGIBLE: "
-                            f"{len(self._fold_tranches)} tranches queued "
-                            f"but 0 strict-eligible at ${ticker.last:.8f}; "
-                            f"lowest tranche ref=${_min_ref:.8f}."
+                            else f"FOLD DIAG waiting: "
+                            f"{len(self._fold_tranches)} tranche(s) queued "
+                            f"and none eligible at ${ticker.last:.8f}. "
+                            f"Lowest tranche reference ${_min_ref:.8f}."
                         ),
                     )
         except Exception as _diag_exc:
-            logger.debug("FOLD_DIAG emission failed: %s", _diag_exc)
+            logger.debug("FOLD DIAG emission failed: %s", _diag_exc)
 
     async def _tick_execute_fold(
         self,
@@ -1477,12 +1494,14 @@ class TickPhaseMixin:
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
-                    f"FOLD_DIAG_GATE_PASSED: TA-validated fold-back "
-                    f"firing at ${ticker.last:.8f}. "
+                    f"FOLD DIAG passed: the fold gate cleared at "
+                    f"${ticker.last:.8f}. "
                     f"{len(_eligible)} of {len(self._fold_tranches)} "
-                    f"tranches strict-eligible. "
-                    f"cycle_cap_consumed=${self._fold_cycle_cap_consumed:.4f}, "
-                    f"profit_folding_active={self.config.profit_folding_active}."
+                    f"tranche(s) eligible. "
+                    f"Cycle cap used "
+                    f"${self._fold_cycle_cap_consumed:.4f}. "
+                    f"Profit folding "
+                    f"{_yes_no(self.config.profit_folding_active)}."
                 ),
             )
         except Exception as _sup:
@@ -1703,7 +1722,7 @@ class TickPhaseMixin:
 
             _new_surplus_usd = max(0.0, accum_profit * float(self._quote_to_usd or 1.0))
 
-            # These three feed only the FOLD_DIAG_SURPLUS_CHECK emit;
+            # These three feed only the FOLD DIAG surplus emit;
             # _apply_fold_target_growth reads the cap itself.
             _cap_pct_growth = float(getattr(self.config, "max_target_growth_pct", 1.0))
             _cycle_cap_growth = self.cycle_growth_cap_usd
@@ -1717,19 +1736,20 @@ class TickPhaseMixin:
                     "bot.log",
                     bot_id=self.bot_id,
                     message=(
-                        f"FOLD_DIAG_SURPLUS_CHECK: "
-                        f"buy_fill=${buy_fill:.8f}, "
-                        f"holdings={self._current_holdings:.6f}, "
-                        f"accum_profit=${float(accum_profit):.6f}, "
-                        f"target=${self._target_balance:.4f}, "
-                        f"new_surplus=${_new_surplus_usd:+.4f}, "
-                        f"standing_surplus_in=${self._standing_surplus_usd:.4f}, "
-                        f"cycle_budget=${_cycle_cap_growth:.4f} "
-                        f"({_cap_pct_growth}% of cycle-open target "
-                        f"${_cycle_open_target_d:.4f}, "
-                        f"anchor ${self._anchor_target_balance:.4f}), "
-                        f"profit_folding_active="
-                        f"{self.config.profit_folding_active}."
+                        f"FOLD DIAG surplus: bought at "
+                        f"${buy_fill:.8f}, holdings "
+                        f"{self._current_holdings:.6f}. "
+                        f"Accumulated profit "
+                        f"${float(accum_profit):.6f} against target "
+                        f"${self._target_balance:.4f} gives new surplus "
+                        f"${_new_surplus_usd:+.4f} on standing surplus "
+                        f"${self._standing_surplus_usd:.4f}. "
+                        f"Cycle budget ${_cycle_cap_growth:.4f}, "
+                        f"{_cap_pct_growth}% of the cycle-open target "
+                        f"${_cycle_open_target_d:.4f} at anchor "
+                        f"${self._anchor_target_balance:.4f}. "
+                        f"Profit folding "
+                        f"{_yes_no(self.config.profit_folding_active)}."
                     ),
                 )
             except Exception as _sup:
@@ -1877,17 +1897,18 @@ class TickPhaseMixin:
                 t.get("initial_buy_price", t["ref"]) for t in self._fold_tranches
             )
             _binding = (
-                "initial_buy_price floor"
+                "the price it was first bought at"
                 if ticker.last > _min_ibp
-                else "scrum ref gate"
+                else "the price its scrum sold at"
             )
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
-                message=f"HOLD FOLD: BEARISH but {len(self._fold_tranches)} "
-                f"tranche(s) all gated — price ${ticker.last:.8f} "
-                f"above the binding gate ({_binding}; "
-                f"min_ref=${_min_ref:.8f}, min_ibp=${_min_ibp:.8f})",
+                message=f"HOLD FOLD: TA is bearish and all "
+                f"{len(self._fold_tranches)} tranche(s) are gated. "
+                f"Price ${ticker.last:.8f} is above {_binding}. "
+                f"Lowest sell reference ${_min_ref:.8f}, lowest buy "
+                f"price ${_min_ibp:.8f}.",
             )
         return False
 

@@ -2029,6 +2029,64 @@ bots_active = self._bot_manager and any(
 if bots_active and age > 600:
 ```
 
+**What the lines say.** Every tick message follows one shape: the event in
+capitals, the side in square brackets where the message has one, then a short
+sentence and the numbers behind it. A message names the gate that refused and
+the reading that made it refuse. It never names a direction or a strength the
+data behind it cannot give.
+
+The gate snapshot is the longest of them. It writes the twelve-voter panel as a
+count and three groups, strongest confidence first, with an indicator's own raw
+reading in brackets where it publishes one. A neutral vote carries no
+confidence, so only its name prints.
+
+```
+RISK GATE [SCRUM] blocked by hysteresis_scrum. Price $0.00000317.
+Panel 6 bullish, 3 bearish, 3 neutral.
+bullish vortex 1.00, kaufman_er 0.70 (er 1.0), macd 0.60, adx 0.36 (adx 25.52),
+volume 0.35, supertrend 0.26.
+bearish bollinger_bands 0.82, stochastic_rsi 0.50, slingshot 0.35.
+neutral ichimoku, rsi, zscore (z 0.143).
+```
+
+A hold line names the half of the gate that failed. Two conditions must both
+hold before the TA gate lets a scrum through: the direction has to be bullish
+or neutral, and the confidence has to clear the floor. The line says which one
+refused, so a bullish reading held back by its confidence is never reported as
+a wait for a bullish reading.
+
+`src/trading/scrumming_bot.py` — the scrum hold reason
+
+```python
+if eff_direction not in (
+    SignalDirection.BULLISH,
+    SignalDirection.NEUTRAL,
+):
+    _scrum_why = f"TA={eff_direction.name} is not BULLISH or NEUTRAL"
+else:
+    _scrum_why = (
+        f"TA={eff_direction.name} but confidence "
+        f"{eff_confidence:.4f} < {_eff_conf_floor:.4f} floor"
+    )
+```
+
+**Design intention.** A confidence and the floor it is measured against print
+at four decimals wherever a message compares them. At two decimals they
+collided, and the pane showed a comparison of a number against itself, which is
+not a statement anybody can act on.
+
+Both snapshot lines read one renderer, so the blocked half and the fired half
+of a decision cannot drift into two shapes.
+
+`src/trading/scrumming/snapshots.py` — the one panel renderer
+
+```python
+def _panel_line(summary: Optional[VotingSummary]) -> str:
+    panel = _build_panel_snapshot(summary)
+    if not panel:
+        return PANEL_ABSENT_TEXT
+```
+
 #### API Interaction Log
 
 This spool displays API handshake information and data transfer speeds for these messages.

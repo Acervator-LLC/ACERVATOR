@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -31,11 +31,26 @@ _RISK_GATE_NAMES: frozenset = frozenset(
     }
 )
 
+NEUTRAL = "NEUTRAL"
+UNKNOWN_DIRECTION = "UNKNOWN"
+_PANEL_GROUPS: tuple[str, ...] = ("BULLISH", "BEARISH", NEUTRAL)
+_DETAIL_KEYS: tuple[str, ...] = ("adx", "z", "er")
+
+PANEL_ABSENT_TEXT = "Panel not computed on this tick."
+NONE_TEXT = "none"
+YES_TEXT = "yes"
+NO_TEXT = "no"
+
+
+def yes_no(flag: Any) -> str:
+    """Render one flag as ``yes`` or ``no`` for a bot.log message."""
+    return YES_TEXT if flag else NO_TEXT
+
 
 def _build_panel_snapshot(summary: Optional[VotingSummary]) -> dict:
-    """Capture a compact ``{indicator: {dir, conf, weight, detail}}`` dict
-    from ``VotingSummary.signals``. NEUTRAL voters are kept (informative for
-    forensics). Returns ``{}`` when ``summary`` is None (pre-TA tick).
+    """Capture ``{indicator: {dir, conf, weight, detail, detail_key}}`` from
+    ``VotingSummary.signals``, NEUTRAL voters included. Returns ``{}`` when
+    ``summary`` is None.
     """
     if summary is None:
         return {}
@@ -48,11 +63,13 @@ def _build_panel_snapshot(summary: Optional[VotingSummary]) -> dict:
                 else str(sig.direction)
             )
         except Exception:
-            dir_name = "UNKNOWN"
+            dir_name = UNKNOWN_DIRECTION
         # Headline detail cell (ADX raw, ZSc signed, KER raw).
+        detail_key = ""
         detail_value = None
-        for key in ("adx", "z", "er"):
+        for key in _DETAIL_KEYS:
             if key in (sig.details or {}):
+                detail_key = key
                 detail_value = sig.details[key]
                 break
         snap[sig.indicator] = {
@@ -60,8 +77,34 @@ def _build_panel_snapshot(summary: Optional[VotingSummary]) -> dict:
             "conf": round(float(sig.confidence), 3),
             "weight": round(float(sig.weight), 3),
             "detail": detail_value,
+            "detail_key": detail_key,
         }
     return snap
+
+
+def _panel_line(summary: Optional[VotingSummary]) -> str:
+    """Render ``_build_panel_snapshot`` as a count and one group per
+    direction, strongest ``conf`` first. A NEUTRAL vote holds zero
+    ``conf``, so only its indicator name prints.
+    """
+    panel = _build_panel_snapshot(summary)
+    if not panel:
+        return PANEL_ABSENT_TEXT
+    grouped: dict[str, list[tuple[float, str]]] = {name: [] for name in _PANEL_GROUPS}
+    for indicator, cell in panel.items():
+        direction = str(cell.get("dir", "") or UNKNOWN_DIRECTION)
+        confidence = float(cell.get("conf", 0.0) or 0.0)
+        text = indicator if direction == NEUTRAL else f"{indicator} {confidence:.2f}"
+        if cell.get("detail") is not None:
+            text = f"{text} ({cell['detail_key']} {cell['detail']})"
+        grouped.setdefault(direction, []).append((confidence, text))
+    counts = ", ".join(f"{len(grouped[name])} {name.lower()}" for name in _PANEL_GROUPS)
+    rows = [f"Panel {counts}."]
+    for direction, voters in grouped.items():
+        voters.sort(key=lambda one: (-one[0], one[1]))
+        named = ", ".join(text for _, text in voters) or NONE_TEXT
+        rows.append(f"{direction.lower()} {named}.")
+    return " ".join(rows)
 
 
 class SnapshotEmitterMixin(_Host):
@@ -99,9 +142,8 @@ class SnapshotEmitterMixin(_Host):
         summary,
         ticker_last: float,
     ) -> None:
-        """Write a RISK GATE SNAPSHOT line to bot.log when a risk gate
-        blocked this side's chain, capturing the full voter panel at the
-        moment of the block.
+        """Write a RISK GATE line to bot.log when a risk gate blocked this
+        side's chain, naming the blockers and the voter panel behind them.
 
         Risk gates (CircuitBreaker, SmartCeiling, Hysteresis) consume
         position/risk flags, not voter output, so their block message alone
@@ -116,15 +158,13 @@ class SnapshotEmitterMixin(_Host):
         if not risk_blockers:
             return
         try:
-            snapshot = _build_panel_snapshot(summary)
-            # Stable ordering for grep + diff; JSON-shaped dict stays
-            # machine-parseable and human-skimmable.
+            # Stable ordering for grep + diff.
             risk_blockers_sorted = sorted(risk_blockers)
             msg = (
-                f"RISK GATE SNAPSHOT [{side.upper()}] "
-                f"risk_blockers={risk_blockers_sorted} "
-                f"ticker_last={ticker_last:.6g} "
-                f"panel={snapshot}"
+                f"RISK GATE [{side.upper()}] blocked by "
+                f"{', '.join(risk_blockers_sorted)}. "
+                f"Price ${ticker_last:.8f}. "
+                f"{_panel_line(summary)}"
             )
             self._bus.emit(
                 "bot.log",
@@ -156,24 +196,23 @@ class SnapshotEmitterMixin(_Host):
         ticker_last: float,
         decision_extra: Optional[dict] = None,
     ) -> None:
-        """Write a TRADE FIRED SNAPSHOT line to bot.log when a SCRUM or
-        FOLD decision actually fires — the fired-side companion to
+        """Write a TRADE FIRED line to bot.log when a SCRUM or FOLD
+        decision fires, the fired-side companion to
         ``_emit_risk_gate_snapshot``'s blocked-side line. ``decision_extra``
-        is optional side-specific context surfaced under an ``extra`` key.
+        is optional side-specific context printed after the price.
         """
         try:
-            snapshot = _build_panel_snapshot(summary)
             extra_str = ""
             if decision_extra:
                 # Sort keys for deterministic output.
                 extra_kv = ", ".join(
-                    f"{k}={v!r}" for k, v in sorted(decision_extra.items())
+                    f"{k} {v}" for k, v in sorted(decision_extra.items())
                 )
-                extra_str = f" extra={{{extra_kv}}}"
+                extra_str = f"{extra_kv}. "
             msg = (
-                f"TRADE FIRED SNAPSHOT [{side.upper()}] "
-                f"ticker_last={ticker_last:.6g} "
-                f"panel={snapshot}{extra_str}"
+                f"TRADE FIRED [{side.upper()}] at ${ticker_last:.8f}. "
+                f"{extra_str}"
+                f"{_panel_line(summary)}"
             )
             self._bus.emit(
                 "bot.log",
