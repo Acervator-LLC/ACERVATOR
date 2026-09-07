@@ -14,6 +14,14 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from . import ata_gate_scan
+from .ata_gate_scan import (
+    BAND_LOWER_KEY,
+    BAND_MIDDLE_KEY,
+    BAND_POSITION_KEY,
+    BAND_UPPER_KEY,
+)
+from .indicators.bb_proximity import detect_bb_proximity
 from .indicators.bollinger import BollingerBands
 from .indicators.types import (
     PERCENT_PER_RATIO_UNIT,
@@ -21,6 +29,7 @@ from .indicators.types import (
     SignalDirection,
     VotingSummary,
 )
+from .otd_math import minimum_opposing_trade_distance_pct
 from .ta_engine import VotingEngine
 
 logger = logging.getLogger("acervator.ata_spm")
@@ -78,10 +87,10 @@ DIRECTION_NAMES = {
 
 #: The voter that reads where the close sits between Bollinger's bands.
 BAND_INDICATOR = "bollinger_bands"
-BAND_POSITION_KEY = "bb_position"
-BAND_UPPER_KEY = "upper"
-BAND_MIDDLE_KEY = "middle"
-BAND_LOWER_KEY = "lower"
+
+#: The Heikin Ashi body percent under which ``detect_bb_proximity`` calls a
+#: window tight, the same threshold ``ScrummingBot.tick`` passes.
+CONSOLIDATION_THRESHOLD = 3.0
 
 MIDLINE_POSITION = 0.5
 NO_BAND_VALUE = 0.0
@@ -256,6 +265,35 @@ class AssetVote:
     band_position: float = MIDLINE_POSITION
     band_direction: SignalDirection = SignalDirection.NEUTRAL
     signals: list = field(default_factory=list)
+    bullish_count: int = 0
+    bearish_count: int = 0
+    neutral_count: int = 0
+    summary: Optional[VotingSummary] = None
+
+    def panel_row(self) -> dict:
+        """This vote as one Indicator Voting Panel row for its timeframe.
+
+        The keys are the ones ``IndicatorVotingPanel.update_data`` reads
+        off each timeframe.
+        """
+        return {
+            "bullish": self.bullish_count,
+            "bearish": self.bearish_count,
+            "neutral": self.neutral_count,
+            "net_score": self.net_score,
+            "confidence": self.confidence,
+            "direction": direction_name(self.direction).upper(),
+            "signals": [
+                {
+                    "indicator": one.indicator,
+                    "direction": one.direction.name,
+                    "confidence": round(one.confidence, 3),
+                    "details": dict(getattr(one, "details", None) or {}),
+                }
+                for one in self.signals
+            ],
+            "locks": [],
+        }
 
     @property
     def is_reversal(self) -> bool:
@@ -401,6 +439,11 @@ class ChartPull:
     closes: tuple = ()
     agreement: Optional[TimeframeAgreement] = None
     messages: list = field(default_factory=list)
+    landing_strip_side: str = ""
+    landing_strip_candles: int = NO_BARS
+    otd_pct: float = NO_BAND_VALUE
+    gates: Optional[ata_gate_scan.GateScan] = None
+    panel: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -470,6 +513,10 @@ def build_vote(symbol: Any, timeframe: Any, summary: VotingSummary) -> AssetVote
             band.direction if band is not None else SignalDirection.NEUTRAL
         ),
         signals=list(summary.signals),
+        bullish_count=int(summary.bullish_count),
+        bearish_count=int(summary.bearish_count),
+        neutral_count=int(summary.neutral_count),
+        summary=summary,
     )
 
 
@@ -685,20 +732,58 @@ def indicator_message(
     )
 
 
+def panel_rows_for(scans: Any, symbol: Any) -> dict:
+    """Every timeframe one asset voted on, as Indicator Voting Panel rows.
+
+    The panel ATA-SMP carries reads only these rows, which come off the
+    markets ATA-SMP scanned.
+    """
+    found: dict = {}
+    for scan in list(scans or []):
+        for one in scan.votes:
+            if one.symbol == str(symbol):
+                found[one.timeframe] = one.panel_row()
+    for timeframe, row in found.items():
+        row["composite_net"] = ata_gate_scan.composite_net(
+            found, timeframe, row["net_score"]
+        )
+    return found
+
+
+def proximity_of(candles: Any, settings: Any) -> Any:
+    """The ``detect_bb_proximity`` reading, which carries the landing strip.
+
+    ``bb_tolerance_pct`` and ``bb_landing_strip_candles`` come off
+    ``settings``, the same two ``ScrummingBot.tick`` passes.
+    """
+    held = list(candles or [])
+    if len(held) < ata_gate_scan.MIN_CANDLES_FOR_TA:
+        return None
+    return detect_bb_proximity(
+        held,
+        tolerance_pct=settings.bb_tolerance_pct,
+        consolidation_threshold=CONSOLIDATION_THRESHOLD,
+        min_pattern_candles=settings.bb_landing_strip_candles,
+    )
+
+
 def pull(
     vote: AssetVote,
     candle_source: Optional[Callable] = None,
     message_format: Optional[str] = None,
     agreement: Optional[TimeframeAgreement] = None,
+    rows: Optional[dict] = None,
 ) -> ChartPull:
     """Phase three: the chart the call was made on, with its messages.
 
-    The band values come from the ``BAND_INDICATOR`` vote, and ``agreement``
-    is the phase eight verdict over the timeframes the asset voted on.
+    ``rows`` are the panel rows every timeframe of this asset voted, and
+    ``ata_gate_scan.scan_gates`` reads the trade gates over the same chart.
     """
     candles = candles_for(candle_source, vote.symbol, vote.timeframe)
     band = band_signal(vote)
     details = getattr(band, "details", None) or {}
+    settings = ata_gate_scan.scan_settings(vote.symbol)
+    proximity = proximity_of(candles, settings)
     return ChartPull(
         symbol=vote.symbol,
         timeframe=vote.timeframe,
@@ -727,6 +812,23 @@ def pull(
         messages=[
             indicator_message(one, message_format) for one in confirming_signals(vote)
         ],
+        landing_strip_side=str(getattr(proximity, "landing_strip_side", "") or ""),
+        landing_strip_candles=int(
+            getattr(proximity, "landing_strip_candles", NO_BARS) or NO_BARS
+        ),
+        otd_pct=minimum_opposing_trade_distance_pct(
+            settings.scrumming_interval_pct, settings.trading_fee_pct
+        ),
+        gates=ata_gate_scan.scan_gates(
+            vote.symbol,
+            vote.timeframe,
+            candles,
+            vote.summary,
+            proximity,
+            rows,
+            settings,
+        ),
+        panel=dict(rows or {}),
     )
 
 
@@ -749,7 +851,13 @@ def run(
         scans=scans,
         calls=calls,
         pulls=[
-            pull(one, candle_source, message_format, agreement_for(scans, one))
+            pull(
+                one,
+                candle_source,
+                message_format,
+                agreement_for(scans, one),
+                panel_rows_for(scans, one.symbol),
+            )
             for one in calls
         ],
     )
@@ -825,36 +933,57 @@ class SectorBoard:
             for one in timeframes_for(self.asset_class)
         ]
 
-    def scan_now(
+    def compute(
         self,
         asset_source: Optional[Callable] = None,
         candle_source: Optional[Callable] = None,
         message_format: Optional[str] = None,
-    ) -> int:
-        """Add the typed sector if it is new, run the phases, answer its index.
+    ) -> tuple:
+        """The sectors this press holds, the index it added and the ``run``.
 
-        Answers ``NO_NEW_SECTOR`` when the field named nothing new, so a
-        host holding a zone index keeps the entry already on screen.
+        Nothing on the board is written; a worker thread calls this and
+        the drawing thread hands the answer to ``take``.
         """
+        sectors = list(self.sectors)
         added = NO_NEW_SECTOR
         named = self.text
-        if named and not any(one.name == named for one in self.sectors):
-            self.sectors.append(
+        if named and not any(one.name == named for one in sectors):
+            sectors.append(
                 Sector(
                     name=named,
                     asset_class=self.asset_class,
                     timeframes=timeframes_for(self.asset_class),
                 )
             )
-            added = len(self.sectors) - 1
-        if self.sectors:
-            self.run = run(
-                self.sectors,
-                asset_source,
-                candle_source,
-                message_format=message_format,
-            )
-        return added
+            added = len(sectors) - 1
+        found = (
+            run(sectors, asset_source, candle_source, message_format=message_format)
+            if sectors
+            else None
+        )
+        return (sectors, added, found)
+
+    def take(self, sectors: Any, added: Any, found: Any) -> int:
+        """Write what ``compute`` answered onto the board, and answer ``added``."""
+        self.sectors = list(sectors)
+        if found is not None:
+            self.run = found
+        return int(added)
+
+    def scan_now(
+        self,
+        asset_source: Optional[Callable] = None,
+        candle_source: Optional[Callable] = None,
+        message_format: Optional[str] = None,
+    ) -> int:
+        """``compute`` and ``take`` on one thread, answering the sector index.
+
+        ``NO_NEW_SECTOR`` answers that the field named nothing new.
+        """
+        sectors, added, found = self.compute(
+            asset_source, candle_source, message_format
+        )
+        return self.take(sectors, added, found)
 
     def report(self) -> dict:
         """The run report the ATA-SPM zone's line reads, empty before a scan."""

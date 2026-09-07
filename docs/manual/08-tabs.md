@@ -1070,6 +1070,108 @@ Phase 8 Timeframes BCH 5m: Timeframes: 5m bearish · 1hr bearish · 1d bearish �
 1wk bearish. Every timeframe agrees.
 ```
 
+Expanding a scanned sector draws the Indicator Voting Panel for every asset the
+scan called. It is the same panel the Trading tab carries, over the same twelve
+voters, and it receives only the markets ATA-SMP scanned. No live bot's market
+reaches it. Each timeframe the asset voted on is one row, and the Comp column
+weighs the higher timeframes by rank and confidence.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the panel one asset carries
+
+```python
+def voting_panel(pull: Any) -> Optional[dict]:
+    """The Indicator Voting Panel one scanned asset carries, as its rows.
+
+    The rows are the timeframes ATA-SMP read for this asset alone, and
+    every cell is drawn from ``indicator_panel_surface``.
+    """
+```
+
+The trade gates run under that panel, on the same chart. The scan fills the same
+context a live bot fills and hands it to the same two chains, so the result says
+which gates latched and which refused, in the engine's own words. Sixteen of the
+twenty-two decide on price alone.
+
+`src/trading/ata_gate_scan.py` — both chains over one scanned market
+
+```python
+def scan_gates(
+    symbol: Any,
+    timeframe: Any,
+    candles: Any,
+    summary: Any,
+    band: Any,
+    rows: Any = None,
+    settings: Any = None,
+) -> GateScan:
+```
+
+Six gates cannot decide without a holding, and none of them is guessed at. Four
+are named and marked as not run, with the reason beside them. The two
+opposing-trade-distance gates publish the price a reversal would have to reach
+from an entry at the scanned price. They publish no verdict: at the moment of the
+scan that entry price is the scanned price, and both sides refuse.
+
+`src/trading/ata_gate_scan.py` — the six a scan stands down
+
+```python
+NOT_APPLICABLE_GATES = (
+    "delta_positive",
+    "interval",
+    "tranches_queued",
+    "smart_ceiling",
+)
+HYPOTHETICAL_GATES = ("hysteresis_scrum", "hysteresis_fold")
+```
+
+A scan reads direction at a stricter confidence floor than a bot holding the same
+market. The bot lowers its floor by three favours. Two are readings of price and
+the scan takes both; the third arms only on a holding, which a scan has none of.
+Nothing compensates for that.
+
+`src/trading/ata_gate_scan.py` — the floor a scan judges at
+
+```python
+def confidence_floor(summary: Any, band: Any, candles: Any) -> float:
+    """The TA confidence floor a scan judges ``summary`` direction at.
+
+    ``voter_favour``, ``swing_favour`` and ``landing_strip_favour`` are
+    two of the three favours ``_skewed_confidence_floor`` divides by.
+    """
+```
+
+Scan Now no longer runs on the thread that draws the window. The press starts a
+worker, the phases and the gate pass run there, and the answer is written back on
+the drawing thread. While a scan runs the window keeps drawing and every bot
+keeps ticking.
+
+`src/gui/market_inspector.py` — where the phases run
+
+```python
+self._scan_thread = threading.Thread(
+    target=self._compute_scan,
+    args=(message_format,),
+    name=ATA_SCAN_THREAD_NAME,
+    daemon=True,
+)
+```
+
+One expanded sector reads its panel and its gate result like this.
+
+```
+BCH 5m   ▲ 16  ▼ 20  ─ 12
+TF   BB     VTX    MACD   SRsi   Ichi   Vol     Net     Comp    Conf
+5m   ▼ 32%  ▲ 98%  ▲ 60%  ▼ 50%  ▼ 65%  ▲ 45%   -0.15   -0.15   ░░░░░░░░░░ 1%
+Gate chain BCH 5m: 16 of 22 gate(s) ran · 9 latched · 7 blocked · 6 did not run
+Gate chain distance: opposing trade distance 1.60% · landing strip none
+Gate chain scrum delta_positive: did not run a scan holds nothing, and no
+surplus exists to test
+```
+
+Measured 7 September 2026 across the Qt build, the React build and the Electron
+shell: 39 readings compared and all 39 the same. The record is
+`tests/debug_reports/2026-09-07_ata_ivp_gate_chain.md`.
+
 Opposing Trades counts the pairs the scan found, and names the share a bullish
 bot feeds to the bot on the opposite market condition. Its wording follows the
 scan: unasked, running, finished and empty, or finished with pairs.

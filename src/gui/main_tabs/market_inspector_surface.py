@@ -29,6 +29,7 @@ import logging
 from typing import Any, Optional
 
 from ...trading import ata_spm, ata_spm_push
+from . import indicator_panel_surface as ivp
 
 logger = logging.getLogger("acervator.market_inspector_gui")
 
@@ -297,6 +298,43 @@ STRIP_TEXT_FORMAT = (
 STRIP_TEXT_PART = "strip-text"
 CHART_LOW_FLOOR = 0.0
 CHART_FLAT_SPAN = 1.0
+
+#: The Indicator Voting Panel ATA-SMP carries, drawn inside an open entry.
+PANEL_PART = "ata-voting-panel"
+PANEL_CELL_PART = "ata-voting-cell"
+PANEL_TABLE_ROW_PART = "ata-voting-row"
+PANEL_GROUP_PART = "ata-voting-group"
+PANEL_LINE_PART = "ata-voting-line"
+PANEL_TF_WIDTH_PX = 44
+PANEL_CELL_WIDTH_PX = 58
+PANEL_NET_WIDTH_PX = 52
+PANEL_CONF_WIDTH_PX = 96
+PANEL_ROW_HEIGHT_PX = 18
+PANEL_TABLE_GAP_PX = 6
+PANEL_PLAIN_COLOR = "#cccccc"
+PANEL_BOX_STYLE = "border: 1px solid #333;"
+#: The tint's alpha is a percentage, which Qt and CSS read alike; a byte
+#: alpha reads as a different colour on one of the two.
+PANEL_CELL_STYLE_FORMAT = (
+    "color: {color}; background-color: rgba({red}, {green}, {blue}, {alpha:.1f}%); "
+    "font-size: 11px;"
+)
+PANEL_HEADER_STYLE_FORMAT = "color: {color}; font-size: 11px; font-weight: bold;"
+PANEL_TITLE_FORMAT = "{symbol} {label}   {summary}"
+PANEL_TOOLTIP_FORMAT = "The Indicator Voting Panel ATA-SMP read for {symbol}."
+
+#: The gate chain result the same open entry draws beside the panel.
+GATE_NAME = "Gate chain"
+GATE_DISTANCE_TAG = "distance"
+GATE_ROW_TAG_FORMAT = "{side} {name}"
+GATE_ROW_FORMAT = "{state} {detail}"
+GATE_COUNT_FORMAT = (
+    "{ran} of {total} gate(s) ran · {latched} latched · {blocked} blocked "
+    "· {stood_down} did not run"
+)
+GATE_DISTANCE_FORMAT = "opposing trade distance {pct:.2f}% · landing strip {strip}"
+NO_GATE_TEXT = "No gate ran. The chart carried too few candles."
+NO_STRIP_TEXT = "none"
 
 #: The ticker and the bull or bear word the bucket draws beside its thumbnail.
 VOTE_PART = "post-vote"
@@ -1063,6 +1101,9 @@ def sector_entry(scan: Any, pulls: Any, follow_ups: Any = ()) -> dict:
             + phase_seven_rows(follow_ups)
             + phase_eight_rows(scan, held)
         ),
+        panels=[
+            drawn for drawn in (voting_panel(one) for one in held) if drawn is not None
+        ],
         method_text=(
             ata_spm.CALL_LINE_FORMAT.format(
                 symbol=strongest.symbol,
@@ -1230,6 +1271,201 @@ def post_vote(post: Any) -> list:
         str(post.vote),
         VOTE_STYLE_FORMAT.format(color=vote_color(post.vote)),
     ]
+
+
+def panel_cell(width: Any, text: Any, style: Any, tooltip: Any = "") -> list:
+    """One Indicator Voting Panel cell: its width, its text and its style."""
+    return [PANEL_CELL_PART, int(width), str(text), str(style), str(tooltip)]
+
+
+def panel_row(cells: Any, height_px: Any = None) -> list:
+    """One panel row: how tall it is, and the cells across it."""
+    return [
+        int(PANEL_ROW_HEIGHT_PX if height_px is None else height_px),
+        list(cells),
+    ]
+
+
+def panel_column_widths(subset: Any, aggregates: Any) -> list:
+    """One table's column widths, the TF column first."""
+    widths = [PANEL_TF_WIDTH_PX] + [PANEL_CELL_WIDTH_PX] * len(list(subset))
+    if aggregates:
+        widths += [PANEL_NET_WIDTH_PX, PANEL_NET_WIDTH_PX, PANEL_CONF_WIDTH_PX]
+    return widths
+
+
+def panel_cell_style(colors: Any) -> str:
+    """One indicator cell's style, from ``indicator_cell_colors``."""
+    red, green, blue = list(colors["fill_rgb"])
+    return PANEL_CELL_STYLE_FORMAT.format(
+        color=colors["text_color"],
+        red=red,
+        green=green,
+        blue=blue,
+        alpha=colors["fill_alpha"] / ivp.ALPHA_SCALE * ivp.PERCENT_SCALE,
+    )
+
+
+def panel_header_row(subset: Any, aggregates: Any) -> list:
+    """One table's header row: the TF column, its voters and its aggregates."""
+    widths = panel_column_widths(subset, aggregates)
+    titles = ivp.column_titles(list(subset), include_aggregates=bool(aggregates))
+    groups = [""] + [one[2] for one in subset] + [""] * (len(widths) - len(subset) - 1)
+    return panel_row(
+        [
+            panel_cell(
+                widths[at],
+                title,
+                PANEL_HEADER_STYLE_FORMAT.format(
+                    color=ivp.GROUP_COLORS.get(groups[at], PANEL_PLAIN_COLOR)
+                ),
+            )
+            for at, title in enumerate(titles)
+        ]
+    )
+
+
+def panel_aggregate_cells(row: Any, widths: Any, first: Any) -> list:
+    """The Net, Comp and Conf cells one table row closes with."""
+    cells: list = []
+    for at, built in enumerate((ivp.net_cell, ivp.comp_cell, ivp.conf_cell)):
+        written = built(row)
+        cells.append(
+            panel_cell(
+                widths[first + at],
+                written["text"],
+                PANEL_HEADER_STYLE_FORMAT.format(
+                    color=written["text_color"] or PANEL_PLAIN_COLOR
+                ),
+            )
+        )
+    return cells
+
+
+def panel_timeframe_row(row: Any, timeframe: Any, subset: Any, aggregates: Any) -> list:
+    """One timeframe's row across one table, the TF name first."""
+    widths = panel_column_widths(subset, aggregates)
+    signals = ivp.signals_by_indicator(row)
+    cells = [
+        panel_cell(
+            widths[0],
+            str(timeframe),
+            PANEL_HEADER_STYLE_FORMAT.format(color=PANEL_PLAIN_COLOR),
+        )
+    ]
+    for at, (key, _label, _group) in enumerate(subset):
+        signal = signals.get(key)
+        cells.append(
+            panel_cell(
+                widths[at + 1],
+                ivp.indicator_cell_text(key, signal),
+                panel_cell_style(ivp.indicator_cell_colors(signal)),
+                ivp.indicator_cell_tooltip(key, signal),
+            )
+        )
+    if aggregates:
+        cells.extend(panel_aggregate_cells(row, widths, len(list(subset)) + 1))
+    return panel_row(cells)
+
+
+def panel_table(rows: Any, subset: Any, aggregates: Any) -> list:
+    """One table: its header row, then one row per timeframe scanned."""
+    built = [panel_header_row(subset, aggregates)]
+    built.extend(
+        panel_timeframe_row(rows[timeframe], timeframe, subset, aggregates)
+        for timeframe in ivp.ordered_timeframes(rows)
+    )
+    return built
+
+
+def voting_panel(pull: Any) -> Optional[dict]:
+    """The Indicator Voting Panel one scanned asset carries, as its rows.
+
+    The rows are the timeframes ATA-SMP read for this asset alone, and
+    every cell is drawn from ``indicator_panel_surface``.
+    """
+    rows = dict(getattr(pull, "panel", None) or {})
+    if not rows:
+        return None
+    width = sum(panel_column_widths(ivp.ROW_A_INDICATOR_COLS, True))
+    title = panel_row(
+        [
+            panel_cell(
+                width,
+                PANEL_TITLE_FORMAT.format(
+                    symbol=pull.symbol,
+                    label=ata_spm.timeframe_label(pull.timeframe),
+                    summary=ivp.summary_text(rows),
+                ),
+                PANEL_HEADER_STYLE_FORMAT.format(color=PANEL_PLAIN_COLOR),
+            )
+        ]
+    )
+    gap = panel_row([], PANEL_TABLE_GAP_PX)
+    built = (
+        [title]
+        + panel_table(rows, ivp.ROW_A_INDICATOR_COLS, True)
+        + [gap]
+        + panel_table(rows, ivp.ROW_B_INDICATOR_COLS, False)
+    )
+    return {
+        "part": PANEL_PART,
+        "width_px": width,
+        "height_px": sum(one[0] for one in built),
+        "cell_part": PANEL_CELL_PART,
+        "row_part": PANEL_TABLE_ROW_PART,
+        "group_part": PANEL_GROUP_PART,
+        "line_part": PANEL_LINE_PART,
+        "box_style": PANEL_BOX_STYLE,
+        "line_style": DETAIL_STYLE,
+        "rows": built,
+        "lines": gate_rows(pull),
+        "symbol": pull.symbol,
+        "tooltip": PANEL_TOOLTIP_FORMAT.format(symbol=pull.symbol),
+    }
+
+
+def gate_rows(pull: Any) -> list:
+    """The expanded lines the gate chain leaves for one scanned asset.
+
+    Every gate of both chains is named, and a gate that did not run says
+    which state ``ata_gate_scan`` stood it down in.
+    """
+    scan = getattr(pull, "gates", None)
+    tag = CALL_TAG_FORMAT.format(
+        symbol=pull.symbol, label=ata_spm.timeframe_label(pull.timeframe)
+    )
+    if scan is None or not scan.readings:
+        return [phase_row(GATE_NAME, tag, NO_GATE_TEXT)]
+    rows = [
+        phase_row(
+            GATE_NAME,
+            tag,
+            GATE_COUNT_FORMAT.format(
+                ran=scan.ran,
+                total=len(scan.readings),
+                latched=len(scan.latched),
+                blocked=len(scan.blocked),
+                stood_down=len(scan.not_run),
+            ),
+        ),
+        phase_row(
+            GATE_NAME,
+            GATE_DISTANCE_TAG,
+            GATE_DISTANCE_FORMAT.format(
+                pct=pull.otd_pct, strip=pull.landing_strip_side or NO_STRIP_TEXT
+            ),
+        ),
+    ]
+    rows.extend(
+        phase_row(
+            GATE_NAME,
+            GATE_ROW_TAG_FORMAT.format(side=one.side, name=one.name),
+            GATE_ROW_FORMAT.format(state=one.state, detail=one.detail).strip(),
+        )
+        for one in scan.readings
+    )
+    return rows
 
 
 def action_row(
@@ -1544,13 +1780,14 @@ def zone_entry(
     actions: Any = None,
     vote: Any = None,
     headline_width_px: Any = None,
+    panels: Any = None,
 ) -> dict:
     """One entry a zone steps through: its headline, its counts and its test.
 
     ``detail`` and ``method_text`` name the expanded lines and the method
-    line outright, and ``thumbnail``, ``preview``, ``actions`` and ``vote``
-    are the chart, the larger chart, the buttons and the bull or bear word
-    a Ready to Send post carries.
+    line outright, ``thumbnail``, ``preview``, ``actions`` and ``vote``
+    are what a Ready to Send post carries, and ``panels`` are the
+    ``voting_panel`` grids an open ATA-SMP entry draws.
     """
     return {
         "headline": headline,
@@ -1563,6 +1800,7 @@ def zone_entry(
         "actions": actions,
         "vote": vote,
         "headline_width_px": headline_width_px,
+        "panels": panels,
     }
 
 
@@ -1604,6 +1842,7 @@ def zone_view(
         "actions": (entry.get("actions") or []) if open_now else [],
         "vote": entry.get("vote") if total else None,
         "headline_width_px": entry.get("headline_width_px") if total else None,
+        "panels": (entry.get("panels") or []) if open_now else [],
     }
 
 

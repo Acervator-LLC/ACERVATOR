@@ -13,6 +13,7 @@ covered.
 from __future__ import annotations
 
 import logging
+import threading
 
 from ..trading import ata_spm, ata_spm_push
 from .main_tabs.market_inspector_surface import (
@@ -185,6 +186,10 @@ ATA_SPM_MODULE = "ata_spm"
 OPPOSING_TRADES_MODULE = "opposing_trades"
 ARBITRAGE_MODULE = "arbitrage"
 
+#: Scan Now runs the phases here; the window-drawing thread only draws.
+ATA_SCAN_THREAD_NAME = "ata-smp-scan"
+ATA_SCAN_THREAD_LOG = "ATA-SPM scan on thread %s: %s"
+
 ATA_SPM_GROUP_TITLE = "ATA-SPM"
 OPPOSING_TRADES_GROUP_TITLE = "Opposing Trades"
 ARBITRAGE_GROUP_TITLE = "Multi-Exchange Arbitrage"
@@ -324,6 +329,51 @@ if _HAS_QT:
                 )
             painter.end()
 
+    class _VotingPanel(QFrame):
+        """The Indicator Voting Panel one scanned asset carries.
+
+        ``show_panel`` places one ``QLabel`` per ``voting_panel`` cell, at
+        the box that description names.
+        """
+
+        def __init__(self, parent=None) -> None:
+            """Hold the labels ``show_panel`` replaces on each redraw."""
+            super().__init__(parent)
+            self.cells: list = []
+
+        def show_panel(self, panel: dict) -> None:
+            """Draw one ``voting_panel`` payload at the size it declares."""
+            while self.cells:
+                gone = self.cells.pop()
+                gone.setParent(None)
+                gone.deleteLater()
+            shape = self.layout()
+            if shape is None:
+                shape = QVBoxLayout(self)
+                shape.setContentsMargins(0, 0, 0, 0)
+                shape.setSpacing(0)
+            while shape.count():
+                shape.takeAt(0)
+            self.setFixedSize(int(panel["width_px"]), int(panel["height_px"]))
+            self.setStyleSheet(str(panel["box_style"]))
+            self.setAccessibleName(str(panel["part"]))
+            self.setToolTip(str(panel.get("tooltip", "")))
+            for height_px, cells in panel["rows"]:
+                row = QHBoxLayout()
+                row.setContentsMargins(0, 0, 0, 0)
+                row.setSpacing(0)
+                for part, width_px, text, style, tip in cells:
+                    drawn = QLabel(str(text), self)
+                    drawn.setFixedSize(int(width_px), int(height_px))
+                    drawn.setStyleSheet(str(style))
+                    drawn.setAccessibleName(str(part))
+                    drawn.setToolTip(str(tip))
+                    drawn.setAlignment(Qt.AlignCenter)
+                    row.addWidget(drawn)
+                    self.cells.append(drawn)
+                row.addStretch()
+                shape.addLayout(row)
+
     class ProposalStepper(QWidget):
         """One zone's entries shown one at a time, with arrows and a expansion.
 
@@ -409,6 +459,11 @@ if _HAS_QT:
             self.action_row.setSpacing(ENTRY_SPACING_PX)
             self.action_row.addStretch()
             body.addLayout(self.action_row)
+            self.panels: list = []
+            self.panel_box = QVBoxLayout()
+            self.panel_box.setContentsMargins(0, 0, 0, 0)
+            self.panel_box.setSpacing(ENTRY_SPACING_PX)
+            body.addLayout(self.panel_box)
             self.detail_labels: list = []
             self.detail_box = QVBoxLayout()
             self.detail_box.setContentsMargins(0, 0, 0, 0)
@@ -460,6 +515,7 @@ if _HAS_QT:
             self.method_label.setVisible(bool(view.get("method")))
             self.hint_label.setVisible(bool(view.get("hint")))
             self._show_strips(view)
+            self._show_panels(view.get("panels") or [])
             self._show_actions(view.get("actions") or [])
             while self.detail_labels:
                 gone = self.detail_labels.pop()
@@ -493,6 +549,30 @@ if _HAS_QT:
             self.preview_label.setText(str(shown.get("text", "")))
             self.preview_label.setVisible(bool(shown))
 
+        def _show_panels(self, rows: list) -> None:
+            """Draw one ``_VotingPanel`` and its gate lines per ``voting_panel``.
+
+            The lines sit under the panel of the asset they name, which is
+            what puts the gate chain result beside its own voting grid.
+            """
+            while self.panels:
+                gone = self.panels.pop()
+                self.panel_box.removeWidget(gone)
+                gone.setParent(None)
+                gone.deleteLater()
+            for panel in rows:
+                drawn = _VotingPanel()
+                drawn.show_panel(panel)
+                self.panel_box.addWidget(drawn)
+                self.panels.append(drawn)
+                for _name, line in panel.get("lines") or []:
+                    written = QLabel(line)
+                    written.setStyleSheet(str(panel["line_style"]))
+                    written.setAccessibleName(str(panel["line_part"]))
+                    written.setWordWrap(True)
+                    self.panel_box.addWidget(written)
+                    self.panels.append(written)
+
         def _show_actions(self, rows: list) -> None:
             """Draw one button per action row, replacing the buttons drawn before.
 
@@ -521,13 +601,19 @@ if _HAS_QT:
 
         Fleet-wide HTF signal view over the top-N CoinGecko universe.
         Owns the fetch worker and writes results to the shared analyzer.
+        ``scanFinished`` carries one ATA-SMP scan back from its worker
+        thread, which is why no phase runs on the window-drawing thread.
         """
+
+        scanFinished = Signal(object)  # noqa: N815 - Qt signal name
 
         def __init__(self, parent=None):
             super().__init__(parent)
             self._active_symbols: set = set()
             self._show_active = False  # Default: hide markets already traded
             self._last_meta: dict = {}
+            self._scan_thread = None
+            self.scanFinished.connect(self._take_scan)
             self._pending_refresh = False
             self._scan_state = SCAN_NOT_ASKED
             # Wired by MainWindow's MarketInspectorTabMixin via set_exchange_source().
@@ -983,16 +1069,48 @@ if _HAS_QT:
             self._render_ata_row()
 
         def _on_scan_now(self) -> None:
-            """Press Scan Now: run phases one to four and redraw the zones.
+            """Press Scan Now: run the phases on a worker thread.
+
+            The window-drawing thread starts the thread and returns; the
+            answer reaches ``_take_scan`` through ``scanFinished``.
+            """
+            if self._scan_thread is not None and self._scan_thread.is_alive():
+                logger.debug("ATA-SMP scan already running; press ignored")
+                return
+            message_format = self._push_board.settings.message_format
+            self._scan_thread = threading.Thread(
+                target=self._compute_scan,
+                args=(message_format,),
+                name=ATA_SCAN_THREAD_NAME,
+                daemon=True,
+            )
+            self._scan_thread.start()
+
+        def _compute_scan(self, message_format) -> None:
+            """Run the ATA-SMP phases and report the answer to the GUI thread.
+
+            ``SectorBoard.compute`` writes nothing, and ``scanFinished``
+            carries what it answered across the thread boundary.
+            """
+            logger.info(ATA_SCAN_THREAD_LOG, threading.current_thread().name, "compute")
+            try:
+                answered = self._ata_board.compute(
+                    sector_assets, self._scanned_candles, message_format
+                )
+            except Exception as exc:  # noqa: BLE001 - the scan runs off-thread
+                logger.exception("ATA-SPM scan failed: %s", exc)
+                return
+            self.scanFinished.emit(answered)
+
+        def _take_scan(self, answered) -> None:
+            """Write the worker's answer onto the board and redraw the zones.
 
             Phase four fills ``_push_board``'s bucket from the run, and the
             Ready to Send zone steps what it holds.
             """
-            added = self._ata_board.scan_now(
-                sector_assets,
-                self._scanned_candles,
-                self._push_board.settings.message_format,
-            )
+            logger.info(ATA_SCAN_THREAD_LOG, threading.current_thread().name, "draw")
+            sectors, added, found = answered
+            self._ata_board.take(sectors, added, found)
             if added != ata_spm.NO_NEW_SECTOR:
                 self._zone_at[ATA_SPM_MODULE] = added
             if self._ata_board.run is not None:

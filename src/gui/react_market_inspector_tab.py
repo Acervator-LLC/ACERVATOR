@@ -315,6 +315,9 @@ if _HAS_QT and _HAS_WEBENGINE:
             # both read the sectors the ATA-SPM zone holds.
             self._ata_board = self._screen.board
             self._push_board = self._screen.push
+            # One dict, two names: the inherited Scan Now moves the same
+            # zone index the page reads.
+            self._zone_at = self._screen.zone_at
             self._topologies_pane = TopologiesPaneHost()
             self._page_ready = False
             self._last_model: dict = {}
@@ -405,8 +408,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self._screen.toggle_timeframe(request.get("value"))
                 self.push()
             elif key == SCAN_NOW_KEY:
-                self._screen.scan_now()
-                self.push()
+                self._on_scan_now()
             elif key in PUSH_KEYS:
                 self._screen.push_action(key)
                 self.push()
@@ -494,6 +496,14 @@ if _HAS_QT and _HAS_WEBENGINE:
 
             ``build_model`` builds their lines, so the push is what the
             page needs; the Qt tab writes its own labels instead.
+            """
+            self.push()
+
+        def _render_ata_row(self) -> None:
+            """Redraw the sector field, the class box and the four check boxes.
+
+            ``ata_spm_skin`` carries them into the page, where the Qt tab
+            writes its own widgets instead.
             """
             self.push()
 

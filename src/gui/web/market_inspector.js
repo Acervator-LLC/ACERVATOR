@@ -827,6 +827,15 @@
   var VOTE_PART = "post-vote";
   var THUMBNAIL_PART = "post-thumbnail";
 
+  var ZONE_PANELS = "panels";
+  var PANEL_ROWS = "rows";
+  var PANEL_ROW_PART = "row_part";
+  var PANEL_GROUP_PART = "group_part";
+  var PANEL_LINE_PART = "line_part";
+  var PANEL_LINES = "lines";
+  var PANEL_LINE_STYLE = "line_style";
+  var CHART_SYMBOL = "symbol";
+
   var CHART_PART = "part";
   var CHART_WIDTH_PX = "width_px";
   var CHART_HEIGHT_PX = "height_px";
@@ -1585,6 +1594,94 @@
     return element(BUTTON_TAG, buttonProps, text(row[ONE]));
   }
 
+  // PanelCell is one cell of the Indicator Voting Panel ATA-SMP carries.
+  // The Qt _VotingPanel gives its own QLabel the same width and height.
+  function PanelCell(props) {
+    var cell = asList(props.cell);
+    var style = asLabel(styleOf(cell[THREE]), false);
+    style.flex = FLEX_NONE;
+    style.boxSizing = BORDER_BOX;
+    style.width = length(cell[ONE]);
+    style.height = length(props.heightPx);
+    style.textAlign = CENTER;
+    var cellProps = { style: style, title: label(cell[FOUR]) };
+    cellProps[PART_ATTR] = text(cell[ZERO]);
+    return element(DIV_TAG, cellProps, text(cell[TWO]));
+  }
+
+  // PanelRow is one row of that panel: a header row, or one timeframe.
+  function PanelRow(props) {
+    var row = asList(props.row);
+    var style = { display: FLEX, flexDirection: ROW_WAY, flex: FLEX_NONE };
+    style.height = length(row[ZERO]);
+    var rowProps = { style: style };
+    rowProps[PART_ATTR] = text(props.part);
+    return element(
+      DIV_TAG,
+      rowProps,
+      asList(row[ONE]).map(function (cell, at) {
+        return element(PanelCell, {
+          key: String(at),
+          cell: cell,
+          heightPx: row[ZERO]
+        });
+      })
+    );
+  }
+
+  // PanelLine is one gate chain line under the panel of its own asset.
+  function PanelLine(props) {
+    var lineProps = { style: asLabel(styleOf(props.style), true) };
+    lineProps[PART_ATTR] = text(props.part);
+    lineProps[NAME_ATTR] = text(asList(props.row)[ZERO]);
+    return element(DIV_TAG, lineProps, text(asList(props.row)[ONE]));
+  }
+
+  // VotingPanel is the Indicator Voting Panel one scanned asset carries,
+  // with that asset's gate chain result under it. It draws only the
+  // markets ATA-SMP read; no live bot feeds it.
+  function VotingPanel(props) {
+    var panel = props.panel;
+    var frame = styleOf(panel[STRIP_BOX_STYLE]);
+    frame.display = FLEX;
+    frame.flexDirection = COLUMN_WAY;
+    frame.boxSizing = BORDER_BOX;
+    frame.flex = FLEX_NONE;
+    frame.width = length(panel[CHART_WIDTH_PX]);
+    frame.height = length(panel[CHART_HEIGHT_PX]);
+    var frameProps = { style: frame, title: label(panel[CHART_TOOLTIP]) };
+    frameProps[PART_ATTR] = text(panel[CHART_PART]);
+    frameProps[NAME_ATTR] = text(panel[CHART_PART]);
+    var groupProps = {
+      style: { display: FLEX, flexDirection: COLUMN_WAY, flex: FLEX_NONE }
+    };
+    groupProps[PART_ATTR] = text(panel[PANEL_GROUP_PART]);
+    groupProps[NAME_ATTR] = text(panel[CHART_SYMBOL]);
+    return element(
+      DIV_TAG,
+      groupProps,
+      element(
+        DIV_TAG,
+        frameProps,
+        listField(panel, PANEL_ROWS).map(function (row, at) {
+          return element(PanelRow, {
+            key: PANEL_ROWS + PATH_SPLIT + String(at),
+            row: row,
+            part: panel[PANEL_ROW_PART]
+          });
+        })
+      ),
+      listField(panel, PANEL_LINES).map(function (row, at) {
+        return element(PanelLine, {
+          key: PANEL_LINES + PATH_SPLIT + String(at),
+          row: row,
+          part: panel[PANEL_LINE_PART],
+          style: panel[PANEL_LINE_STYLE]
+        });
+      })
+    );
+  }
+
   // DetailLine is one line of the expansion.
   function DetailLine(props) {
     var lineProps = { style: asLabel(styleOf(props.skin[DETAIL_STYLE]), true) };
@@ -1747,6 +1844,12 @@
                 })
               )
             : null,
+          listField(view, ZONE_PANELS).map(function (panel, at) {
+            return element(VotingPanel, {
+              key: ZONE_PANELS + PATH_SPLIT + String(at),
+              panel: panel
+            });
+          }),
           listField(view, ZONE_DETAIL).map(function (row, at) {
             return element(DetailLine, {
               key: DETAIL_PART + PATH_SPLIT + String(at),
