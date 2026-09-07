@@ -736,6 +736,58 @@ the machine until the operator sets a number and a credential is held.
 NO_CEILING_SET = 0
 ```
 
+The thumbnail draws the chart the post carries. Every close pulled in phase
+three is drawn as a column, the three Bollinger band prices are drawn across it
+as rules, and the last close is marked in the colour of the vote. Pressing the
+thumbnail opens the larger chart, which is the same drawing at preview size.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the rectangles one chart draws
+
+```python
+def chart_marks(post: Any, width_px: Any, height_px: Any, columns: Any) -> list:
+    """Every rectangle one post's chart draws, each as part, box and colour.
+
+    The close columns are drawn first, the band rules over them, and the
+    last close last, so nothing the vote turns on is painted over.
+    """
+```
+
+A push target is a platform that publishes an interface for posting. TradingView
+publishes none, so it is not a target. Three ship today, and the rest are a later
+build.
+
+`src/trading/ata_spm_push.py` — the targets that ship
+
+```python
+PUSH_TARGETS = (
+    PushTarget(TARGET_X, (SECTION_CALL, SECTION_INDICATORS)),
+    PushTarget(TARGET_INSTAGRAM, (SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS)),
+    PushTarget(TARGET_LINKEDIN, (SECTION_CALL, SECTION_CHART, SECTION_INDICATORS)),
+)
+```
+
+Every control on this screen is drawn at a size the screen publishes, rather than
+at the size its own text happens to take. The sector field takes whatever width
+the row has left over, so each control to the right of it sits where the pane
+edge puts it, in both builds.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the sizes both builds draw from
+
+```python
+PUSH_BUTTON_HEIGHT_PX = 36
+FIELD_HEIGHT_PX = 37
+TIMEFRAME_BOX_WIDTH_PX = 64
+```
+
+The button that reruns the topology detectors reads Refresh. The zone title above
+it already says what is refreshed.
+
+`src/gui/main_tabs/market_inspector_topologies_surface.py` — the button wording
+
+```python
+REFRESH_TEXT = "Refresh"
+```
+
 Opposing Trades counts the pairs the scan found, and names the share a bullish
 bot feeds to the bot on the opposite market condition. Its wording follows the
 scan: unasked, running, finished and empty, or finished with pairs.

@@ -477,12 +477,15 @@
   // timeframe boxes and Scan Now, published under one bag.
   var SECTOR_PLACEHOLDER = "sector_placeholder";
   var SECTOR_TOOLTIP = "sector_tooltip";
-  var SECTOR_WIDTH_PX = "sector_width_px";
+  var SECTOR_MIN_WIDTH_PX = "sector_min_width_px";
   var SCAN_LABEL = "scan_label";
   var SCAN_TOOLTIP = "scan_tooltip";
   var CLASS_TOOLTIP = "class_tooltip";
   var CLASS_WIDTH_PX = "class_width_px";
   var BOX_TOOLTIP_FORMAT = "box_tooltip_format";
+  var BOX_ROW_PART = "box_row_part";
+  var BOX_WIDTH_PX = "box_width_px";
+  var BOX_HEIGHT_PX = "box_height_px";
   var ROW_SPACING_PX = "row_spacing_px";
   var SECTOR_TEXT = "sector_text";
   var SECTOR_CLASS = "sector_class";
@@ -496,7 +499,10 @@
   var ATA_SPM_FIELDS = [
     ASSET_CLASSES,
     BOXES,
+    BOX_HEIGHT_PX,
+    BOX_ROW_PART,
     BOX_TOOLTIP_FORMAT,
+    BOX_WIDTH_PX,
     CHECK_INDICATOR_PX,
     CHECK_LABEL_SPACING_PX,
     CLASS_TOOLTIP,
@@ -507,10 +513,10 @@
     SCAN_LABEL,
     SCAN_TOOLTIP,
     SECTOR_CLASS,
+    SECTOR_MIN_WIDTH_PX,
     SECTOR_PLACEHOLDER,
     SECTOR_TEXT,
-    SECTOR_TOOLTIP,
-    SECTOR_WIDTH_PX
+    SECTOR_TOOLTIP
   ];
 
   var BAG_FIELDS = {};
@@ -678,6 +684,8 @@
   var ONE = Number(true);
   var TWO = ONE + ONE;
   var THREE = TWO + ONE;
+  var FOUR = THREE + ONE;
+  var FIVE = FOUR + ONE;
 
   var DIV_TAG = "div";
   var SPAN_TAG = "span";
@@ -697,6 +705,7 @@
   var SELECT_TAG = "select";
   var OPTION_TAG = "option";
   var BORDER_BOX = "border-box";
+  var SHRINK_ONLY = "0 1 auto";
   var NO_MARGIN = "0";
 
   var BUTTON_TYPE = "button";
@@ -809,18 +818,25 @@
   var ZONE_THUMBNAIL = "thumbnail";
   var ZONE_PREVIEW = "preview";
   var ZONE_ACTIONS = "actions";
+  var ZONE_VOTE = "vote";
+  var ZONE_HEADLINE_WIDTH_PX = "headline_width_px";
+  var VOTE_PART = "post-vote";
+  var THUMBNAIL_PART = "post-thumbnail";
 
-  var STRIP_PART = "part";
-  var STRIP_WIDTH_PX = "width_px";
-  var STRIP_HEIGHT_PX = "height_px";
-  var STRIP_LEAD_PX = "lead_px";
-  var STRIP_MARKER_PX = "marker_px";
-  var STRIP_LEAD_PART = "lead_part";
-  var STRIP_MARKER_PART = "marker_part";
-  var STRIP_LEAD_STYLE = "lead_style";
-  var STRIP_MARKER_STYLE = "marker_style";
+  var CHART_PART = "part";
+  var CHART_WIDTH_PX = "width_px";
+  var CHART_HEIGHT_PX = "height_px";
+  var CHART_MARKS = "marks";
+  var CHART_TOOLTIP = "tooltip";
   var STRIP_BOX_STYLE = "box_style";
   var STRIP_TEXT = "text";
+  var BUTTON_HEIGHT_PX = "button_height_px";
+  var FIELD_HEIGHT_PX = "field_height_px";
+  var POST_SELECTED_WIDTH_PX = "post_selected_width_px";
+  var POST_ALL_WIDTH_PX = "post_all_width_px";
+  var FULL_AUTO_WIDTH_PX = "full_auto_width_px";
+  var SETTINGS_WIDTH_PX = "settings_width_px";
+  var SCAN_WIDTH_PX = "scan_width_px";
 
   var POST_SELECTED_LABEL = "post_selected_label";
   var POST_SELECTED_TOOLTIP = "post_selected_tooltip";
@@ -1489,44 +1505,64 @@
     );
   }
 
-  // BandStrip is where one waiting post's close sits between its bands. The
-  // lead fills up to the marker, which is the Qt _BandStrip row.
-  function BandStrip(props) {
-    var strip = props.strip;
-    var frame = styleOf(strip[STRIP_BOX_STYLE]);
+  // ChartMark is one rectangle of a post's chart: a close column, a band
+  // rule or the last close. The Qt _PostChart fills the same box.
+  function ChartMark(props) {
+    var mark = asList(props.mark);
+    var style = {
+      position: ABSOLUTE,
+      left: length(mark[ONE]),
+      top: length(mark[TWO]),
+      width: length(mark[THREE]),
+      height: length(mark[FOUR]),
+      backgroundColor: text(mark[FIVE])
+    };
+    var markProps = { style: style };
+    markProps[PART_ATTR] = text(mark[ZERO]);
+    return element(DIV_TAG, markProps, null);
+  }
+
+  // PostChart is the chart one waiting post carries: its closes, its
+  // Bollinger bands and its last close, at thumbnail or at preview size.
+  function PostChart(props) {
+    var chart = props.chart;
+    var frame = styleOf(chart[STRIP_BOX_STYLE]);
     frame.boxSizing = BORDER_BOX;
-    frame.display = FLEX;
-    frame.flexDirection = ROW_WAY;
+    frame.position = RELATIVE;
+    frame.overflow = CLIPPED;
     frame.flex = FLEX_NONE;
-    frame.width = length(strip[STRIP_WIDTH_PX]);
-    frame.height = length(strip[STRIP_HEIGHT_PX]);
-    var frameProps = { style: frame };
-    frameProps[PART_ATTR] = text(strip[STRIP_PART]);
-    frameProps[NAME_ATTR] = text(strip[STRIP_PART]);
-    var lead = styleOf(strip[STRIP_LEAD_STYLE]);
-    lead.flex = FLEX_NONE;
-    lead.width = length(strip[STRIP_LEAD_PX]);
-    var leadProps = { style: lead };
-    leadProps[PART_ATTR] = text(strip[STRIP_LEAD_PART]);
-    var marker = styleOf(strip[STRIP_MARKER_STYLE]);
-    marker.flex = FLEX_NONE;
-    marker.width = length(strip[STRIP_MARKER_PX]);
-    var markerProps = { style: marker };
-    markerProps[PART_ATTR] = text(strip[STRIP_MARKER_PART]);
+    frame.width = length(chart[CHART_WIDTH_PX]);
+    frame.height = length(chart[CHART_HEIGHT_PX]);
+    frame.cursor = POINTER;
+    var frameProps = { style: frame, title: label(chart[CHART_TOOLTIP]) };
+    frameProps[PART_ATTR] = text(chart[CHART_PART]);
+    frameProps[NAME_ATTR] = text(chart[CHART_PART]);
+    frameProps.onClick = function (event) {
+      // The entry toggles on its own click, and this chart sits inside it.
+      event.stopPropagation();
+      act(THUMBNAIL_PART, true);
+    };
     return element(
       DIV_TAG,
       frameProps,
-      element(DIV_TAG, leadProps, null),
-      element(DIV_TAG, markerProps, null)
+      listField(chart, CHART_MARKS).map(function (mark, at) {
+        return element(ChartMark, {
+          key: CHART_MARKS + PATH_SPLIT + String(at),
+          mark: mark
+        });
+      })
     );
   }
 
-  // EntryAction is one button under the preview: Approve or Decline.
+  // EntryAction is one button under the larger chart: Approve or Decline.
   function EntryAction(props) {
     var row = asList(props.row);
     var style = marginStyle(listField(props.model, BUTTON_PADDING_PX));
     style.flex = FLEX_NONE;
     style.fontWeight = text(props.model[BUTTON_FONT_WEIGHT]);
+    style.boxSizing = BORDER_BOX;
+    style.width = length(row[FOUR]);
+    style.height = length(objectField(props.model, BUCKET)[BUTTON_HEIGHT_PX]);
     var buttonProps = {
       type: BUTTON_TYPE,
       style: style,
@@ -1598,8 +1634,10 @@
     var headProps = { style: headStyle };
     headProps[PART_ATTR] = ENTRY_HEAD_PART;
     var headlineStyle = asLabel(styleOf(skin[HEADLINE_STYLE]), true);
-    headlineStyle.flex = ONE;
+    headlineStyle.flex = SHRINK_ONLY;
     headlineStyle.minWidth = ZERO;
+    headlineStyle.boxSizing = BORDER_BOX;
+    headlineStyle.width = length(view[ZONE_HEADLINE_WIDTH_PX]);
     var headlineProps = { style: headlineStyle };
     headlineProps[PART_ATTR] = HEADLINE_PART;
     headlineProps[NAME_ATTR] = text(view[ZONE_KEY]);
@@ -1607,6 +1645,11 @@
     badgeStyle.whiteSpace = PRE_SPACE;
     var badgeProps = { style: badgeStyle };
     badgeProps[PART_ATTR] = ENTRY_BADGE_PART;
+    var vote = asList(view[ZONE_VOTE]);
+    var voteStyle = asLabel(styleOf(vote[ONE]), false);
+    var voteProps = { style: voteStyle };
+    voteProps[PART_ATTR] = VOTE_PART;
+    voteProps[NAME_ATTR] = text(view[ZONE_KEY]);
     var metaProps = { style: asLabel(styleOf(skin[META_STYLE]), true) };
     metaProps[PART_ATTR] = ENTRY_META_PART;
     var methodProps = { style: asLabel(styleOf(skin[METHOD_STYLE]), true) };
@@ -1657,13 +1700,17 @@
           element(
             DIV_TAG,
             headProps,
-            owns(thumbnail, STRIP_PART)
-              ? element(BandStrip, { key: ZONE_THUMBNAIL, strip: thumbnail })
+            owns(thumbnail, CHART_PART)
+              ? element(PostChart, { key: ZONE_THUMBNAIL, chart: thumbnail })
               : null,
             element(DIV_TAG, headlineProps, text(view[ZONE_HEADLINE])),
+            vote.length > ZERO
+              ? element(SPAN_TAG, voteProps, text(vote[ZERO]))
+              : null,
             text(view[ZONE_BADGE])
               ? element(SPAN_TAG, badgeProps, text(view[ZONE_BADGE]))
-              : null
+              : null,
+            element(Spacer, { key: ENTRY_HEAD_PART, part: ENTRY_HEAD_PART })
           ),
           text(view[ZONE_META])
             ? element(DIV_TAG, metaProps, text(view[ZONE_META]))
@@ -1671,10 +1718,10 @@
           text(view[ZONE_METHOD])
             ? element(DIV_TAG, methodProps, text(view[ZONE_METHOD]))
             : null,
-          owns(preview, STRIP_PART)
-            ? element(BandStrip, { key: ZONE_PREVIEW, strip: preview })
+          owns(preview, CHART_PART)
+            ? element(PostChart, { key: ZONE_PREVIEW, chart: preview })
             : null,
-          owns(preview, STRIP_PART)
+          owns(preview, CHART_PART)
             ? element(DIV_TAG, stripTextProps, text(preview[STRIP_TEXT]))
             : null,
           listField(view, ZONE_ACTIONS).length > ZERO
@@ -1714,7 +1761,9 @@
   function fieldStyle(skin, widthField) {
     var style = marginStyle(asList(skin[FIELD_PADDING_PX]));
     style.flex = FLEX_NONE;
+    style.boxSizing = BORDER_BOX;
     style.width = length(skin[widthField]);
+    style.height = length(skin[FIELD_HEIGHT_PX]);
     style.borderWidth = length(skin[FIELD_BORDER_PX]);
     style.borderStyle = SOLID;
     style.font = INHERITED;
@@ -1724,7 +1773,12 @@
   // SectorField is where the operator names a sector to scan.
   function SectorField(props) {
     var skin = props.skin;
-    var style = fieldStyle(skin, SECTOR_WIDTH_PX);
+    var style = fieldStyle(skin, SECTOR_MIN_WIDTH_PX);
+    // The field takes the row's slack, so every control right of it sits
+    // where the pane edge puts it rather than where the labels end.
+    style.flex = ONE;
+    style.width = undefined;
+    style.minWidth = length(skin[SECTOR_MIN_WIDTH_PX]);
     var fieldProps = {
       type: TEXT_TYPE,
       style: style,
@@ -1773,6 +1827,10 @@
     var row = asList(props.row);
     var wrapStyle = { display: FLEX, alignItems: CENTER, flex: FLEX_NONE };
     wrapStyle.gap = length(skin[CHECK_LABEL_SPACING_PX]);
+    wrapStyle.boxSizing = BORDER_BOX;
+    wrapStyle.width = length(skin[BOX_WIDTH_PX]);
+    wrapStyle.height = length(skin[BOX_HEIGHT_PX]);
+    wrapStyle.overflow = CLIPPED;
     var wrapProps = {
       style: wrapStyle,
       title: label(skin[BOX_TOOLTIP_FORMAT]).replace(
@@ -1780,6 +1838,8 @@
         text(row[ONE])
       )
     };
+    wrapProps[PART_ATTR] = text(skin[BOX_ROW_PART]);
+    wrapProps[NAME_ATTR] = text(row[ZERO]);
     // PM_IndicatorWidth on the themed QCheckBox, drawn as one box.
     var indicator = {
       boxSizing: BORDER_BOX,
@@ -1816,6 +1876,9 @@
     var buttonStyle = marginStyle(listField(model, BUTTON_PADDING_PX));
     buttonStyle.flex = FLEX_NONE;
     buttonStyle.fontWeight = text(model[BUTTON_FONT_WEIGHT]);
+    buttonStyle.boxSizing = BORDER_BOX;
+    buttonStyle.width = length(skin[SCAN_WIDTH_PX]);
+    buttonStyle.height = length(skin[BUTTON_HEIGHT_PX]);
     var buttonProps = {
       type: BUTTON_TYPE,
       style: buttonStyle,
@@ -1834,6 +1897,9 @@
     var style = marginStyle(listField(props.model, BUTTON_PADDING_PX));
     style.flex = FLEX_NONE;
     style.fontWeight = text(props.model[BUTTON_FONT_WEIGHT]);
+    style.boxSizing = BORDER_BOX;
+    style.width = length(props.width);
+    style.height = length(props.height);
     var buttonProps = {
       type: BUTTON_TYPE,
       style: style,
@@ -1873,14 +1939,18 @@
         model: model,
         part: skin[POST_SELECTED_PART],
         label: skin[POST_SELECTED_LABEL],
-        tooltip: skin[POST_SELECTED_TOOLTIP]
+        tooltip: skin[POST_SELECTED_TOOLTIP],
+        width: skin[POST_SELECTED_WIDTH_PX],
+        height: skin[BUTTON_HEIGHT_PX]
       }),
       element(PushButton, {
         key: POST_ALL_PART,
         model: model,
         part: skin[POST_ALL_PART],
         label: skin[POST_ALL_LABEL],
-        tooltip: skin[POST_ALL_TOOLTIP]
+        tooltip: skin[POST_ALL_TOOLTIP],
+        width: skin[POST_ALL_WIDTH_PX],
+        height: skin[BUTTON_HEIGHT_PX]
       }),
       element(Spacer, { key: BUCKET_STRETCH_PART, part: BUCKET_STRETCH_PART }),
       element(PushButton, {
@@ -1889,6 +1959,8 @@
         part: skin[FULL_AUTO_PART],
         label: skin[FULL_AUTO_LABEL],
         tooltip: skin[FULL_AUTO_TOOLTIP],
+        width: skin[FULL_AUTO_WIDTH_PX],
+        height: skin[BUTTON_HEIGHT_PX],
         on: skin[FULL_AUTO_ON] === true
       })
     );
@@ -2000,6 +2072,8 @@
     var style = marginStyle(listField(props.model, BUTTON_PADDING_PX));
     style.flex = FLEX_NONE;
     style.fontWeight = text(props.model[BUTTON_FONT_WEIGHT]);
+    style.boxSizing = BORDER_BOX;
+    style.height = length(page[BUTTON_HEIGHT_PX]);
     var buttonProps = {
       type: BUTTON_TYPE,
       style: style,
@@ -2084,13 +2158,14 @@
         model: model,
         skin: skin
       }),
-      element(Spacer, { key: ATA_ROW_PART, part: ATA_ROW_PART }),
       element(PushButton, {
         key: SETTINGS_PART,
         model: model,
         part: settingsOf(model)[SETTINGS_PART],
         label: settingsOf(model)[SETTINGS_LABEL],
         tooltip: settingsOf(model)[SETTINGS_TOOLTIP],
+        width: settingsOf(model)[SETTINGS_WIDTH_PX],
+        height: settingsOf(model)[BUTTON_HEIGHT_PX],
         on: settingsOf(model)[SETTINGS_OPEN] === true
       })
     );

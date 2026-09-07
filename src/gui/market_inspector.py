@@ -48,6 +48,14 @@ from .main_tabs.market_inspector_surface import (
     SETTINGS_LABEL_WIDTH_PX,
     SETTINGS_ROW_SPACING_PX,
     SETTINGS_TOOLTIP,
+    SETTINGS_WIDTH_PX,
+    FIELD_HEIGHT_PX,
+    FULL_AUTO_WIDTH_PX,
+    POST_ALL_WIDTH_PX,
+    POST_SELECTED_WIDTH_PX,
+    PUSH_BUTTON_HEIGHT_PX,
+    THUMBNAIL_PART,
+    VOTE_PART,
     STRIP_TEXT_PART,
     bucket_entries as _bucket_entries,
 )
@@ -60,10 +68,14 @@ from .main_tabs.market_inspector_surface import (
     CLASS_BOX_WIDTH_PX,
     SCAN_NOW_LABEL,
     SCAN_NOW_TOOLTIP,
+    SCAN_NOW_WIDTH_PX,
     SECTOR_FIELD_PLACEHOLDER,
     SECTOR_FIELD_TOOLTIP,
-    SECTOR_FIELD_WIDTH_PX,
+    SECTOR_FIELD_MIN_WIDTH_PX,
+    TIMEFRAME_BOX_HEIGHT_PX,
     TIMEFRAME_BOX_TOOLTIP_FORMAT,
+    TIMEFRAME_BOX_WIDTH_PX,
+    TIMEFRAME_ROW_PART,
     inspector_candles,
     sector_assets,
 )
@@ -115,7 +127,7 @@ try:
         QScrollArea,
     )
     from PySide6.QtCore import Qt, Signal
-    from PySide6.QtGui import QColor
+    from PySide6.QtGui import QColor, QPainter
 
     _HAS_QT = True
 except ImportError:
@@ -275,31 +287,42 @@ if _HAS_QT:
             if tall != self.minimumHeight():
                 self.setMinimumHeight(tall)
 
-    class _BandStrip(QFrame):
-        """One bucket post's band strip, with the close marker across it."""
+    class _PostChart(QFrame):
+        """One bucket post's chart: its closes, its bands and its last close.
+
+        ``show_chart`` places one child per ``post_chart`` mark, so the Qt
+        widget and the page draw the same rectangles at the same boxes.
+        """
+
+        clicked = Signal()
 
         def __init__(self, parent=None) -> None:
             super().__init__(parent)
-            row = QHBoxLayout(self)
-            row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(0)
-            self.lead = QWidget()
-            row.addWidget(self.lead)
-            self.marker = QWidget()
-            row.addWidget(self.marker)
-            row.addStretch()
+            self.marks: list = []
 
-        def show_strip(self, strip: dict) -> None:
-            """Draw one ``post_strip`` payload at the size it declares."""
-            self.setFixedSize(int(strip["width_px"]), int(strip["height_px"]))
-            self.setStyleSheet(str(strip["box_style"]))
-            self.setAccessibleName(str(strip["part"]))
-            self.lead.setFixedWidth(int(strip["lead_px"]))
-            self.lead.setStyleSheet(str(strip["lead_style"]))
-            self.lead.setAccessibleName(str(strip["lead_part"]))
-            self.marker.setFixedWidth(int(strip["marker_px"]))
-            self.marker.setStyleSheet(str(strip["marker_style"]))
-            self.marker.setAccessibleName(str(strip["marker_part"]))
+        def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt event name
+            """Report the press so the zone opens its larger chart view."""
+            super().mousePressEvent(event)
+            self.clicked.emit()
+
+        def show_chart(self, chart: dict) -> None:
+            """Draw one ``post_chart`` payload at the size it declares."""
+            self.setFixedSize(int(chart["width_px"]), int(chart["height_px"]))
+            self.setStyleSheet(str(chart["box_style"]))
+            self.setAccessibleName(str(chart["part"]))
+            self.setToolTip(str(chart.get("tooltip", "")))
+            self.marks = [list(one) for one in chart["marks"]]
+            self.update()
+
+        def paintEvent(self, event) -> None:  # noqa: N802 - Qt event name
+            """Fill every mark, which is what the page's chart children are."""
+            super().paintEvent(event)
+            painter = QPainter(self)
+            for _part, left, top, width, height, color in self.marks:
+                painter.fillRect(
+                    int(left), int(top), int(width), int(height), QColor(color)
+                )
+            painter.end()
 
     class ProposalStepper(QWidget):
         """One zone's entries shown one at a time, with arrows and a expansion.
@@ -349,14 +372,21 @@ if _HAS_QT:
             body.setSpacing(ENTRY_SPACING_PX)
             head = QHBoxLayout()
             head.setSpacing(ENTRY_SPACING_PX)
-            self.thumbnail = _BandStrip()
+            self.thumbnail = _PostChart()
+            self.thumbnail.clicked.connect(
+                lambda: self.actionPressed.emit(THUMBNAIL_PART)
+            )
             head.addWidget(self.thumbnail)
             self.headline_label = QLabel("")
             self.headline_label.setStyleSheet(ENTRY_HEADLINE_STYLE)
             self.headline_label.setWordWrap(True)
-            head.addWidget(self.headline_label, 1)
+            head.addWidget(self.headline_label)
+            self.vote_label = QLabel("")
+            self.vote_label.setAccessibleName(VOTE_PART)
+            head.addWidget(self.vote_label)
             self.badge_label = QLabel("")
             head.addWidget(self.badge_label)
+            head.addStretch()
             body.addLayout(head)
             self.meta_label = QLabel("")
             self.meta_label.setStyleSheet(ENTRY_META_STYLE)
@@ -366,7 +396,7 @@ if _HAS_QT:
             self.method_label.setStyleSheet(ENTRY_METHOD_STYLE)
             self.method_label.setWordWrap(True)
             body.addWidget(self.method_label)
-            self.preview = _BandStrip()
+            self.preview = _PostChart()
             body.addWidget(self.preview)
             self.preview_label = QLabel("")
             self.preview_label.setStyleSheet(DETAIL_STYLE)
@@ -411,6 +441,16 @@ if _HAS_QT:
             self.back_button.setEnabled(total > 1)
             self.next_button.setEnabled(total > 1)
             self.headline_label.setText(str(view.get("headline", "")))
+            wide = view.get("headline_width_px")
+            if wide:
+                self.headline_label.setFixedWidth(int(wide))
+            else:
+                self.headline_label.setMinimumWidth(0)
+                self.headline_label.setMaximumWidth(self.entry.width())
+            vote = list(view.get("vote") or [])
+            self.vote_label.setText(str(vote[0]) if vote else "")
+            self.vote_label.setStyleSheet(str(vote[1]) if vote else "")
+            self.vote_label.setVisible(bool(vote))
             self.badge_label.setText(str(view.get("badge", "")))
             self.badge_label.setStyleSheet(str(view.get("badge_style", "")))
             self.badge_label.setVisible(bool(view.get("badge")))
@@ -442,13 +482,13 @@ if _HAS_QT:
             self.entry.hold_height()
 
         def _show_strips(self, view: dict) -> None:
-            """Draw the thumbnail and, while the entry is open, the preview."""
+            """Draw the thumbnail and, while the entry is open, the larger chart."""
             pairs = ((self.thumbnail, "thumbnail"), (self.preview, "preview"))
             for widget, key in pairs:
-                strip = view.get(key)
-                widget.setVisible(bool(strip))
-                if strip:
-                    widget.show_strip(strip)
+                chart = view.get(key)
+                widget.setVisible(bool(chart))
+                if chart:
+                    widget.show_chart(chart)
             shown = view.get("preview") or {}
             self.preview_label.setText(str(shown.get("text", "")))
             self.preview_label.setVisible(bool(shown))
@@ -464,11 +504,12 @@ if _HAS_QT:
                 self.action_row.removeWidget(gone)
                 gone.setParent(None)
                 gone.deleteLater()
-            for part, label, tooltip, enabled in rows:
+            for part, label, tooltip, enabled, width_px in rows:
                 button = QPushButton(str(label))
                 button.setToolTip(str(tooltip))
                 button.setEnabled(bool(enabled))
                 button.setAccessibleName(str(part))
+                button.setFixedSize(int(width_px), PUSH_BUTTON_HEIGHT_PX)
                 button.clicked.connect(
                     lambda _checked=False, name=part: self.actionPressed.emit(name)
                 )
@@ -712,13 +753,15 @@ if _HAS_QT:
             self._sector_edit = QLineEdit()
             self._sector_edit.setPlaceholderText(SECTOR_FIELD_PLACEHOLDER)
             self._sector_edit.setToolTip(SECTOR_FIELD_TOOLTIP)
-            self._sector_edit.setFixedWidth(SECTOR_FIELD_WIDTH_PX)
+            self._sector_edit.setMinimumWidth(SECTOR_FIELD_MIN_WIDTH_PX)
+            self._sector_edit.setFixedHeight(FIELD_HEIGHT_PX)
+            self._sector_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             self._sector_edit.textChanged.connect(self._ata_board.set_text)
             row.addWidget(self._sector_edit)
 
             self._class_box = QComboBox()
             self._class_box.setToolTip(CLASS_BOX_TOOLTIP)
-            self._class_box.setFixedWidth(CLASS_BOX_WIDTH_PX)
+            self._class_box.setFixedSize(CLASS_BOX_WIDTH_PX, FIELD_HEIGHT_PX)
             self._class_box.addItems(list(ata_spm.ASSET_CLASSES))
             self._class_box.currentTextChanged.connect(self._on_class_changed)
             row.addWidget(self._class_box)
@@ -727,6 +770,8 @@ if _HAS_QT:
             for key, label, ticked in self._ata_board.boxes(0):
                 check = QCheckBox(label)
                 check.setChecked(ticked)
+                check.setFixedSize(TIMEFRAME_BOX_WIDTH_PX, TIMEFRAME_BOX_HEIGHT_PX)
+                check.setAccessibleName(TIMEFRAME_ROW_PART)
                 check.setToolTip(TIMEFRAME_BOX_TOOLTIP_FORMAT.format(label=label))
                 check.clicked.connect(
                     lambda _checked, name=key: self._on_timeframe_toggled(name)
@@ -736,11 +781,12 @@ if _HAS_QT:
 
             self._scan_now_btn = QPushButton(SCAN_NOW_LABEL)
             self._scan_now_btn.setToolTip(SCAN_NOW_TOOLTIP)
+            self._scan_now_btn.setFixedSize(SCAN_NOW_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
             self._scan_now_btn.clicked.connect(self._on_scan_now)
             row.addWidget(self._scan_now_btn)
-            row.addStretch()
             self._settings_btn = QPushButton(SETTINGS_LABEL)
             self._settings_btn.setToolTip(SETTINGS_TOOLTIP)
+            self._settings_btn.setFixedSize(SETTINGS_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
             self._settings_btn.clicked.connect(self._on_settings_pressed)
             row.addWidget(self._settings_btn)
             return row
@@ -769,7 +815,7 @@ if _HAS_QT:
                     field = QLineEdit()
                     field.setEchoMode(QLineEdit.Password)
                     field.setPlaceholderText(placeholder)
-                    field.setFixedWidth(CREDENTIAL_FIELD_WIDTH_PX)
+                    field.setFixedSize(CREDENTIAL_FIELD_WIDTH_PX, FIELD_HEIGHT_PX)
                     field.setAccessibleName(f"{part} {name}")
                     field.textChanged.connect(
                         lambda typed, target=name, key=part: (
@@ -788,6 +834,7 @@ if _HAS_QT:
                 self._credential_labels[name] = held
             self._save_credentials_btn = QPushButton(SAVE_CREDENTIALS_LABEL)
             self._save_credentials_btn.setToolTip(SAVE_CREDENTIALS_TOOLTIP)
+            self._save_credentials_btn.setFixedHeight(PUSH_BUTTON_HEIGHT_PX)
             self._save_credentials_btn.clicked.connect(self._on_save_credentials)
             column.addWidget(self._save_credentials_btn)
 
@@ -799,7 +846,7 @@ if _HAS_QT:
                 title.setFixedWidth(SETTINGS_LABEL_WIDTH_PX)
                 row.addWidget(title)
                 field = QLineEdit()
-                field.setFixedWidth(SETTING_FIELD_WIDTH_PX)
+                field.setFixedSize(SETTING_FIELD_WIDTH_PX, FIELD_HEIGHT_PX)
                 field.setAccessibleName(key)
                 field.textChanged.connect(
                     lambda text, name=key: self._on_setting_changed(name, text)
@@ -872,12 +919,16 @@ if _HAS_QT:
             row.setSpacing(ATA_ROW_SPACING_PX)
             self._post_selected_btn = QPushButton(POST_SELECTED_LABEL)
             self._post_selected_btn.setToolTip(POST_SELECTED_TOOLTIP)
+            self._post_selected_btn.setFixedSize(
+                POST_SELECTED_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX
+            )
             self._post_selected_btn.clicked.connect(
                 lambda: self._on_push_action(POST_SELECTED_PART)
             )
             row.addWidget(self._post_selected_btn)
             self._post_all_btn = QPushButton(POST_ALL_LABEL)
             self._post_all_btn.setToolTip(POST_ALL_TOOLTIP)
+            self._post_all_btn.setFixedSize(POST_ALL_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
             self._post_all_btn.clicked.connect(
                 lambda: self._on_push_action(POST_ALL_PART)
             )
@@ -885,6 +936,7 @@ if _HAS_QT:
             row.addStretch()
             self._full_auto_btn = QPushButton(FULL_AUTO_LABEL)
             self._full_auto_btn.setToolTip(FULL_AUTO_TOOLTIP)
+            self._full_auto_btn.setFixedSize(FULL_AUTO_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
             self._full_auto_btn.setCheckable(True)
             self._full_auto_btn.clicked.connect(
                 lambda: self._on_push_action(FULL_AUTO_PART)
@@ -911,6 +963,8 @@ if _HAS_QT:
             elif key == FULL_AUTO_PART:
                 board.bucket.toggle_full_auto()
                 board.release()
+            elif key == THUMBNAIL_PART:
+                self._zone_open[READY_TO_SEND_ZONE] = True
             self._full_auto_btn.setChecked(board.bucket.full_auto)
             self._render_left_modules()
 

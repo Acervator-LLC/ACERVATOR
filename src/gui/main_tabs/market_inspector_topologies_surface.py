@@ -167,7 +167,7 @@ DISMISS_STYLE = "color: #b66;"
 
 PANE_MARGINS = (6, 6, 6, 6)
 PANE_SPACING = 6
-REFRESH_TEXT = "Refresh proposals"
+REFRESH_TEXT = "Refresh"
 REFRESH_TOOLTIP = "Rerun topology detectors on current market state."
 STATUS_UNWIRED = "No proposal source wired yet."
 STATUS_READY = "Ready — press Refresh."

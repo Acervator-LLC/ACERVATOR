@@ -265,6 +265,7 @@ class ChartPull:
     band_upper: float = NO_BAND_VALUE
     band_middle: float = NO_BAND_VALUE
     band_lower: float = NO_BAND_VALUE
+    closes: tuple = ()
     messages: list = field(default_factory=list)
 
 
@@ -510,6 +511,7 @@ def pull(
         band_upper=float(details.get(BAND_UPPER_KEY, NO_BAND_VALUE)),
         band_middle=float(details.get(BAND_MIDDLE_KEY, NO_BAND_VALUE)),
         band_lower=float(details.get(BAND_LOWER_KEY, NO_BAND_VALUE)),
+        closes=tuple(float(getattr(one, "close", NO_BAND_VALUE)) for one in candles),
         messages=[
             indicator_message(one, message_format) for one in confirming_signals(vote)
         ],

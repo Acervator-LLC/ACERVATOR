@@ -135,15 +135,23 @@ SECTOR_FIELD_TOOLTIP = (
     "Name a market sector to scan. Every asset the sector holds is "
     "charted and run through the twelve voters."
 )
-SECTOR_FIELD_WIDTH_PX = 130
+#: The sector field takes the row's slack, so no other control's position
+#: follows from the width its own text happens to take.
+SECTOR_FIELD_MIN_WIDTH_PX = 72
 SCAN_NOW_LABEL = "Scan Now"
 SCAN_NOW_TOOLTIP = (
     "Scan this sector now on the timeframes ticked beside it, without "
     "waiting for a rotation."
 )
 CLASS_BOX_TOOLTIP = "The asset class this sector holds. It sets the four timeframes."
-CLASS_BOX_WIDTH_PX = 110
+CLASS_BOX_WIDTH_PX = 92
 TIMEFRAME_BOX_TOOLTIP_FORMAT = "Scan this sector on {label}."
+TIMEFRAME_BOX_WIDTH_PX = 64
+TIMEFRAME_BOX_HEIGHT_PX = 22
+
+#: The indicator and its label together, which is one Qt ``QCheckBox`` and
+#: one page label element.
+TIMEFRAME_ROW_PART = "timeframe-row"
 ATA_ROW_SPACING_PX = 6
 
 #: The expanded ATA-SPM entry's line names, one per phase readback.
@@ -196,6 +204,7 @@ FULL_AUTO_PART = "full-auto"
 SETTINGS_PART = "settings-button"
 SAVE_CREDENTIALS_PART = "save-credentials"
 SETTING_FIELD_PART = "setting-field"
+THUMBNAIL_PART = "post-thumbnail"
 
 #: Every press ``MarketInspectorScreenModel.push_action`` answers, which is
 #: how the Electron host knows which key to send as one.
@@ -206,7 +215,20 @@ PUSH_PARTS = (
     POST_ALL_PART,
     FULL_AUTO_PART,
     SETTINGS_PART,
+    THUMBNAIL_PART,
 )
+
+#: Sized here rather than by their own text, so the Qt widget and the page
+#: report one box.
+PUSH_BUTTON_HEIGHT_PX = 36
+FIELD_HEIGHT_PX = 37
+APPROVE_WIDTH_PX = 100
+DECLINE_WIDTH_PX = 92
+POST_SELECTED_WIDTH_PX = 128
+POST_ALL_WIDTH_PX = 92
+FULL_AUTO_WIDTH_PX = 184
+SETTINGS_WIDTH_PX = 96
+SCAN_NOW_WIDTH_PX = 108
 
 #: The wording each empty credential field shows, in the order
 #: ``ata_spm_push.CREDENTIAL_FIELD_KEYS`` names them.
@@ -241,29 +263,40 @@ SETTING_ROWS = (
 )
 COUNT_SETTINGS = (SETTING_MAX_POSTS, SETTING_MAX_INDICATORS)
 
-#: The band strip one bucket post draws, at its two sizes.
+#: The chart one bucket post carries, at its thumbnail and its larger size.
 THUMBNAIL_WIDTH_PX = 120
-THUMBNAIL_HEIGHT_PX = 30
+THUMBNAIL_HEIGHT_PX = 36
 PREVIEW_WIDTH_PX = 320
-PREVIEW_HEIGHT_PX = 48
-STRIP_BORDER_PX = 1
-STRIP_MARKER_PX = 5
-THUMBNAIL_PART = "post-thumbnail"
+PREVIEW_HEIGHT_PX = 160
+THUMBNAIL_COLUMNS = 40
+PREVIEW_COLUMNS = 80
+CHART_BORDER_PX = 1
+CHART_PAD_PX = 2
+CHART_LINE_PX = 1
+CHART_CLOSE_PX = 4
 PREVIEW_PART = "post-preview"
-STRIP_LEAD_PART = "strip-lead"
-STRIP_MARKER_PART = "strip-marker"
-STRIP_FILL_STYLE_FORMAT = "background-color: {color};"
-STRIP_BOX_STYLE_FORMAT = "border: {border}px solid {color};"
+CHART_COLUMN_PART = "chart-column"
+CHART_BAND_PART = "chart-band"
+CHART_CLOSE_PART = "chart-close"
+CHART_BOX_STYLE_FORMAT = "border: {border}px solid {color};"
+CHART_TOOLTIP_FORMAT = "{symbol} {label} · {vote} · press for the larger chart."
 STRIP_TEXT_FORMAT = (
     "lower {lower:g} · middle {middle:g} · upper {upper:g} "
     "· last close {close:g} · band position {band:.4f}"
 )
 STRIP_TEXT_PART = "strip-text"
-STRIP_LOW_PCT = 0.0
-STRIP_HIGH_PCT = 100.0
-PERCENT_PER_RATIO = 100.0
+CHART_LOW_FLOOR = 0.0
+CHART_FLAT_SPAN = 1.0
 
-BUCKET_HEADLINE_FORMAT = "{symbol} {label} · {vote}"
+#: The ticker and the bull or bear word the bucket draws beside its thumbnail.
+VOTE_PART = "post-vote"
+VOTE_STYLE_FORMAT = "color: {color}; font-weight: bold; font-size: 13px;"
+
+#: The ticker line is sized here, not by the width its own text takes, so
+#: the vote word beside it sits in one place in every host.
+BUCKET_HEADLINE_WIDTH_PX = 96
+
+BUCKET_HEADLINE_FORMAT = "{symbol} {label}"
 BUCKET_DETAIL_NAME_FORMAT = "{target} {symbol} line {at}"
 BUCKET_METHOD_FORMAT = (
     "{phase} · {target} · {bars} candles, last close {close:g} "
@@ -963,63 +996,140 @@ def sector_row(sector: Any) -> list:
     return [sector.name, sector.asset_class, sector.boxes()]
 
 
-def strip_marker_pct(band_position: Any) -> float:
-    """Where one close sits across the band strip, in percent of its width.
-
-    The value is the ``bb_position`` the Bollinger voter published, held to
-    the strip at ``STRIP_LOW_PCT`` and ``STRIP_HIGH_PCT``.
-    """
-    across = float(band_position) * PERCENT_PER_RATIO
-    return max(STRIP_LOW_PCT, min(STRIP_HIGH_PCT, across))
-
-
 def vote_color(vote: Any) -> str:
-    """The colour one bull or bear vote draws its strip marker in."""
+    """The colour one bull or bear vote draws its ticker and last close in."""
     return VOTE_COLORS.get(str(vote), COLOR_OTHER)
 
 
 def vote_fill_color(vote: Any) -> str:
-    """The colour one bull or bear vote fills its strip up to the marker in."""
+    """The colour one bull or bear vote fills its chart columns in."""
     return VOTE_FILL_COLORS.get(str(vote), COLOR_OTHER)
 
 
-def strip_left_px(across_pct: Any, width_px: Any, own_px: Any) -> int:
-    """The left edge one strip child sits at, held inside ``width_px``."""
-    wide = int(width_px)
-    own = int(own_px)
-    left = int(round(wide * float(across_pct) / PERCENT_PER_RATIO))
-    return max(0, min(wide - own, left))
+def chart_closes(closes: Any, columns: Any) -> list:
+    """``columns`` closes sampled evenly, the last close always kept."""
+    held = [float(one) for one in closes or ()]
+    wanted = int(columns)
+    if not held or wanted <= 0:
+        return []
+    if wanted == 1 or len(held) <= wanted:
+        return held[-1:] if wanted == 1 else held
+    last = len(held) - 1
+    return [held[round(one * last / (wanted - 1))] for one in range(wanted)]
 
 
-def post_strip(post: Any, wide: Any = False) -> dict:
-    """The band strip one bucket post draws, as its thumbnail or its preview.
+def chart_range(prices: Any) -> tuple:
+    """The lowest and highest price one chart draws between, never equal."""
+    held = [float(one) for one in prices]
+    if not held:
+        return (CHART_LOW_FLOOR, CHART_LOW_FLOOR + CHART_FLAT_SPAN)
+    low = min(held)
+    high = max(held)
+    if high <= low:
+        return (low, low + CHART_FLAT_SPAN)
+    return (low, high)
+
+
+def chart_row_px(price: Any, low: Any, high: Any, height_px: Any) -> int:
+    """The row one price sits on inside ``height_px``, the highest on top."""
+    tall = max(1, int(height_px))
+    span = float(high) - float(low)
+    across = (float(price) - float(low)) / span if span else 0.0
+    return max(0, min(tall - 1, round((1.0 - across) * (tall - 1))))
+
+
+def chart_band_prices(post: Any) -> list:
+    """The Bollinger band prices this post's chart draws a rule for."""
+    return [
+        float(one)
+        for one in (post.band_lower, post.band_middle, post.band_upper)
+        if float(one) != ata_spm.NO_BAND_VALUE
+    ]
+
+
+def chart_marks(post: Any, width_px: Any, height_px: Any, columns: Any) -> list:
+    """Every rectangle one post's chart draws, each as part, box and colour.
+
+    The close columns are drawn first, the band rules over them, and the
+    last close last, so nothing the vote turns on is painted over.
+    """
+    wide = max(1, int(width_px) - 2 * CHART_PAD_PX)
+    tall = max(1, int(height_px) - 2 * CHART_PAD_PX)
+    drawn = chart_closes(post.closes, columns)
+    bands = chart_band_prices(post)
+    low, high = chart_range(drawn + bands)
+    step = wide / len(drawn) if drawn else wide
+    fill = vote_fill_color(post.vote)
+    marks = []
+    for column, price in enumerate(drawn):
+        row = chart_row_px(price, low, high, tall)
+        marks.append(
+            [
+                CHART_COLUMN_PART,
+                CHART_PAD_PX + round(column * step),
+                CHART_PAD_PX + row,
+                max(1, round(step)),
+                max(CHART_LINE_PX, tall - row),
+                fill,
+            ]
+        )
+    for price in bands:
+        marks.append(
+            [
+                CHART_BAND_PART,
+                CHART_PAD_PX,
+                CHART_PAD_PX + chart_row_px(price, low, high, tall),
+                wide,
+                CHART_LINE_PX,
+                COLOR_OTHER,
+            ]
+        )
+    if drawn:
+        marks.append(
+            [
+                CHART_CLOSE_PART,
+                CHART_PAD_PX + max(0, wide - CHART_CLOSE_PX),
+                CHART_PAD_PX
+                + max(
+                    0, chart_row_px(drawn[-1], low, high, tall) - CHART_CLOSE_PX // 2
+                ),
+                CHART_CLOSE_PX,
+                CHART_CLOSE_PX,
+                vote_color(post.vote),
+            ]
+        )
+    return marks
+
+
+def post_chart(post: Any, wide: Any = False) -> dict:
+    """The chart one bucket post carries, as its thumbnail or its larger view.
 
     ``wide`` picks ``PREVIEW_WIDTH_PX`` over ``THUMBNAIL_WIDTH_PX``, and
-    ``strip_left_px`` puts the midline and the marker inside it.
+    ``chart_marks`` answers every rectangle both hosts place inside it.
     """
     width_px = PREVIEW_WIDTH_PX if wide else THUMBNAIL_WIDTH_PX
-    marker_pct = strip_marker_pct(post.band_position)
+    height_px = PREVIEW_HEIGHT_PX if wide else THUMBNAIL_HEIGHT_PX
+    columns = PREVIEW_COLUMNS if wide else THUMBNAIL_COLUMNS
     return {
         "part": PREVIEW_PART if wide else THUMBNAIL_PART,
         "width_px": width_px,
-        "height_px": PREVIEW_HEIGHT_PX if wide else THUMBNAIL_HEIGHT_PX,
-        "border_px": STRIP_BORDER_PX,
-        "marker_px": STRIP_MARKER_PX,
-        "marker_pct": marker_pct,
-        "lead_px": strip_left_px(marker_pct, width_px, STRIP_MARKER_PX),
-        "marker_color": vote_color(post.vote),
-        "lead_color": vote_fill_color(post.vote),
-        "line_color": COLOR_OTHER,
-        "lead_part": STRIP_LEAD_PART,
-        "marker_part": STRIP_MARKER_PART,
-        "marker_style": STRIP_FILL_STYLE_FORMAT.format(color=vote_color(post.vote)),
-        "lead_style": STRIP_FILL_STYLE_FORMAT.format(color=vote_fill_color(post.vote)),
-        "box_style": STRIP_BOX_STYLE_FORMAT.format(
-            border=STRIP_BORDER_PX, color=COLOR_OTHER
+        "height_px": height_px,
+        "border_px": CHART_BORDER_PX,
+        "column_part": CHART_COLUMN_PART,
+        "band_part": CHART_BAND_PART,
+        "close_part": CHART_CLOSE_PART,
+        "marks": chart_marks(post, width_px, height_px, columns),
+        "box_style": CHART_BOX_STYLE_FORMAT.format(
+            border=CHART_BORDER_PX, color=COLOR_OTHER
         ),
         "symbol": post.symbol,
         "vote": post.vote,
         "label": ata_spm.timeframe_label(post.timeframe),
+        "tooltip": CHART_TOOLTIP_FORMAT.format(
+            symbol=post.symbol,
+            label=ata_spm.timeframe_label(post.timeframe),
+            vote=post.vote,
+        ),
         "text": STRIP_TEXT_FORMAT.format(
             lower=post.band_lower,
             middle=post.band_middle,
@@ -1030,16 +1140,26 @@ def post_strip(post: Any, wide: Any = False) -> dict:
     }
 
 
-def action_row(part: Any, label: Any, tooltip: Any, enabled: Any = True) -> list:
-    """One button a zone draws: its part name, its wording and its state."""
-    return [part, label, tooltip, bool(enabled)]
+def post_vote(post: Any) -> list:
+    """Whether the vote is bull or bear, as the word and the style beside the ticker."""
+    return [
+        str(post.vote),
+        VOTE_STYLE_FORMAT.format(color=vote_color(post.vote)),
+    ]
+
+
+def action_row(
+    part: Any, label: Any, tooltip: Any, width_px: Any, enabled: Any = True
+) -> list:
+    """One button a zone draws: its part name, its wording, its width and its state."""
+    return [part, label, tooltip, bool(enabled), int(width_px)]
 
 
 def bucket_actions() -> list:
-    """Approve and Decline, the two buttons under one post's preview."""
+    """Approve and Decline, the two buttons under one post's larger chart."""
     return [
-        action_row(APPROVE_PART, APPROVE_LABEL, APPROVE_TOOLTIP),
-        action_row(DECLINE_PART, DECLINE_LABEL, DECLINE_TOOLTIP),
+        action_row(APPROVE_PART, APPROVE_LABEL, APPROVE_TOOLTIP, APPROVE_WIDTH_PX),
+        action_row(DECLINE_PART, DECLINE_LABEL, DECLINE_TOOLTIP, DECLINE_WIDTH_PX),
     ]
 
 
@@ -1079,14 +1199,15 @@ def bucket_entry(held: Any) -> dict:
         BUCKET_HEADLINE_FORMAT.format(
             symbol=post.symbol,
             label=ata_spm.timeframe_label(post.timeframe),
-            vote=post.vote,
         ),
         held.meta,
         detail=bucket_detail_rows(held),
         method_text=bucket_method_text(post),
-        thumbnail=post_strip(post),
-        preview=post_strip(post, True),
+        thumbnail=post_chart(post),
+        preview=post_chart(post, True),
         actions=bucket_actions(),
+        vote=post_vote(post),
+        headline_width_px=BUCKET_HEADLINE_WIDTH_PX,
     )
 
 
@@ -1135,6 +1256,9 @@ def settings_page(board: Any) -> dict:
         "setting_width_px": SETTING_FIELD_WIDTH_PX,
         "field_padding_px": list(FIELD_PADDING_PX),
         "field_border_px": FIELD_BORDER_PX,
+        "field_height_px": FIELD_HEIGHT_PX,
+        "button_height_px": PUSH_BUTTON_HEIGHT_PX,
+        "settings_width_px": SETTINGS_WIDTH_PX,
         "label_width_px": SETTINGS_LABEL_WIDTH_PX,
         "row_spacing_px": SETTINGS_ROW_SPACING_PX,
     }
@@ -1153,6 +1277,10 @@ def bucket_skin(board: Any) -> dict:
         "full_auto_label": FULL_AUTO_LABEL,
         "full_auto_tooltip": FULL_AUTO_TOOLTIP,
         "full_auto_part": FULL_AUTO_PART,
+        "button_height_px": PUSH_BUTTON_HEIGHT_PX,
+        "post_selected_width_px": POST_SELECTED_WIDTH_PX,
+        "post_all_width_px": POST_ALL_WIDTH_PX,
+        "full_auto_width_px": FULL_AUTO_WIDTH_PX,
         "full_auto_on": bool(bucket.full_auto),
         "full_auto_text": bucket.full_auto_text(),
         "push_parts": list(PUSH_PARTS),
@@ -1318,12 +1446,15 @@ def zone_entry(
     thumbnail: Any = None,
     preview: Any = None,
     actions: Any = None,
+    vote: Any = None,
+    headline_width_px: Any = None,
 ) -> dict:
     """One entry a zone steps through: its headline, its counts and its test.
 
     ``detail`` and ``method_text`` name the expanded lines and the method
-    line outright, and ``thumbnail``, ``preview`` and ``actions`` are the
-    strip, the larger view and the buttons a Ready to Send post carries.
+    line outright, and ``thumbnail``, ``preview``, ``actions`` and ``vote``
+    are the chart, the larger chart, the buttons and the bull or bear word
+    a Ready to Send post carries.
     """
     return {
         "headline": headline,
@@ -1334,6 +1465,8 @@ def zone_entry(
         "thumbnail": thumbnail,
         "preview": preview,
         "actions": actions,
+        "vote": vote,
+        "headline_width_px": headline_width_px,
     }
 
 
@@ -1370,6 +1503,8 @@ def zone_view(
         "thumbnail": entry.get("thumbnail") if total else None,
         "preview": entry.get("preview") if open_now else None,
         "actions": (entry.get("actions") or []) if open_now else [],
+        "vote": entry.get("vote") if total else None,
+        "headline_width_px": entry.get("headline_width_px") if total else None,
     }
 
 
@@ -1436,12 +1571,18 @@ def ata_spm_skin(model: Any) -> dict:
     return {
         "sector_placeholder": SECTOR_FIELD_PLACEHOLDER,
         "sector_tooltip": SECTOR_FIELD_TOOLTIP,
-        "sector_width_px": SECTOR_FIELD_WIDTH_PX,
+        "sector_min_width_px": SECTOR_FIELD_MIN_WIDTH_PX,
         "scan_label": SCAN_NOW_LABEL,
         "scan_tooltip": SCAN_NOW_TOOLTIP,
+        "scan_width_px": SCAN_NOW_WIDTH_PX,
+        "button_height_px": PUSH_BUTTON_HEIGHT_PX,
+        "field_height_px": FIELD_HEIGHT_PX,
         "class_tooltip": CLASS_BOX_TOOLTIP,
         "class_width_px": CLASS_BOX_WIDTH_PX,
         "box_tooltip_format": TIMEFRAME_BOX_TOOLTIP_FORMAT,
+        "box_width_px": TIMEFRAME_BOX_WIDTH_PX,
+        "box_height_px": TIMEFRAME_BOX_HEIGHT_PX,
+        "box_row_part": TIMEFRAME_ROW_PART,
         "row_spacing_px": ATA_ROW_SPACING_PX,
         "field_padding_px": list(FIELD_PADDING_PX),
         "field_border_px": FIELD_BORDER_PX,
@@ -1854,12 +1995,19 @@ class MarketInspectorScreenModel:
             POST_ALL_PART: self.push.post_all,
             FULL_AUTO_PART: self._press_full_auto,
             SETTINGS_PART: self._press_settings,
+            THUMBNAIL_PART: self._press_thumbnail,
         }.get(str(key))
         if handled is None:
             return None
         answered = handled()
         self.calls.append([PUSH_ACTION_SET, str(key)])
         return answered
+
+    def _press_thumbnail(self) -> bool:
+        """Open the Ready to Send expansion, so the larger chart is on screen."""
+        self.zone_open[READY_TO_SEND_ZONE] = True
+        self.calls.append([ZONE_TOGGLED, READY_TO_SEND_ZONE, True])
+        return True
 
     def _press_full_auto(self) -> list:
         """Turn Send Bucket Full Auto on or off, and release while it is on."""

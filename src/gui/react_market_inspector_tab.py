@@ -63,14 +63,7 @@ SCAN_NOW_KEY = "scan-now"
 
 #: The parts phases five and six are pressed with, each handled by
 #: ``MarketInspectorScreenModel.push_action``.
-PUSH_KEYS = (
-    surface.APPROVE_PART,
-    surface.DECLINE_PART,
-    surface.POST_SELECTED_PART,
-    surface.POST_ALL_PART,
-    surface.FULL_AUTO_PART,
-    surface.SETTINGS_PART,
-)
+PUSH_KEYS = surface.PUSH_PARTS
 
 SAVE_CREDENTIALS_KEY = surface.SAVE_CREDENTIALS_PART
 SETTING_FIELD_KEY = surface.SETTING_FIELD_PART

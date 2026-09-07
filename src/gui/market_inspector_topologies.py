@@ -29,7 +29,11 @@ import time
 from typing import Any, Callable, Optional
 
 from .main_tabs.market_inspector_surface import step_to
-from .main_tabs.market_inspector_topologies_surface import pane_view
+from .main_tabs.market_inspector_topologies_surface import (
+    REFRESH_TEXT,
+    REFRESH_TOOLTIP,
+    pane_view,
+)
 
 logger = logging.getLogger("acervator.topology_proposals_gui")
 
@@ -269,10 +273,8 @@ if _HAS_QT:
             layout.setSpacing(6)
 
             top_row = QHBoxLayout()
-            self._refresh_btn = QPushButton("Refresh proposals")
-            self._refresh_btn.setToolTip(
-                "Rerun topology detectors on current market state."
-            )
+            self._refresh_btn = QPushButton(REFRESH_TEXT)
+            self._refresh_btn.setToolTip(REFRESH_TOOLTIP)
             self._refresh_btn.clicked.connect(self.refresh)
             top_row.addWidget(self._refresh_btn)
             top_row.addStretch()

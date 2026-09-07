@@ -25,7 +25,6 @@ FIXED_HEADER = (
     "platform."
 )
 
-TARGET_TRADINGVIEW = "TradingView"
 TARGET_X = "X"
 TARGET_INSTAGRAM = "Instagram"
 TARGET_LINKEDIN = "LinkedIn"
@@ -71,13 +70,9 @@ class PushTarget:
     sections: tuple = ()
 
 
-#: Adding a target is adding a row here. ``format_post``, ``distribute`` and
-#: ``ReadyToSend`` read the row and change for none of them.
+#: A target is added by naming a row here; ``format_post``, ``distribute``
+#: and ``ReadyToSend`` read the row rather than the name.
 PUSH_TARGETS = (
-    PushTarget(
-        TARGET_TRADINGVIEW,
-        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
-    ),
     PushTarget(TARGET_X, (SECTION_CALL, SECTION_INDICATORS)),
     PushTarget(TARGET_INSTAGRAM, (SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS)),
     PushTarget(TARGET_LINKEDIN, (SECTION_CALL, SECTION_CHART, SECTION_INDICATORS)),
@@ -203,6 +198,7 @@ class FormattedPost:
     band_upper: float = ata_spm.NO_BAND_VALUE
     bars: int = ata_spm.NO_BARS
     last_close: float = ata_spm.NO_BAND_VALUE
+    closes: tuple = ()
     lines: tuple = ()
 
     @property
@@ -263,6 +259,7 @@ def format_post(
         band_upper=pull.band_upper,
         bars=pull.bars,
         last_close=pull.last_close,
+        closes=tuple(pull.closes),
         lines=tuple(lines),
     )
 

@@ -159,3 +159,20 @@ body {
   border-radius: 3px;
   padding: 6px 8px;
 }
+
+/* QScrollBar:vertical in theme_engine is 10px wide with a 5px radius. */
+[data-part="settings-page"]::-webkit-scrollbar,
+[data-part="zone-entry"]::-webkit-scrollbar,
+[data-part="grid-body"]::-webkit-scrollbar,
+[data-part="topology-slot"]::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+[data-part="settings-page"]::-webkit-scrollbar-thumb,
+[data-part="zone-entry"]::-webkit-scrollbar-thumb,
+[data-part="grid-body"]::-webkit-scrollbar-thumb,
+[data-part="topology-slot"]::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
