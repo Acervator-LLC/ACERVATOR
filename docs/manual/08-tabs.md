@@ -788,6 +788,102 @@ it already says what is refreshed.
 REFRESH_TEXT = "Refresh"
 ```
 
+Phase seven says what happened to a call. Every reversal call a scan makes is
+watched. The next Scan Now reads that chart again and answers one of three
+things about it.
+
+`src/trading/ata_spm_push.py` — the three answers phase seven gives
+
+```python
+OUTCOME_CONFIRMED = "confirmed"
+OUTCOME_FAILED = "failed"
+OUTCOME_OPEN = "open"
+```
+
+A call is confirmed when the market has moved the way it was called, far
+enough. Far enough is a share of the run from the call's own close to the
+Bollinger midline, and the midline is read again on each later candle, so the
+target moves with the market.
+
+`src/trading/ata_spm_push.py` — the close a confirmation needs
+
+```python
+def confirmation_target(call_close: Any, midline: Any, share_pct: Any) -> float:
+    """The close a confirmation needs: ``share_pct`` of the run to the midline."""
+    share_ratio = float(share_pct) / ata_spm.PERCENT_PER_RATIO_UNIT
+    return float(call_close) + expected_move(call_close, midline) * share_ratio
+```
+
+A call fails when the trend it called against carries on instead of turning,
+for two candles in a row. One candle against a call is not a continuation, so
+two is the floor. That floor is what a failed reversal means, not a preference,
+so no setting changes it.
+
+`src/trading/ata_spm_push.py` — the floor a failure needs
+
+```python
+CONTINUATION_CANDLE_FLOOR = 2
+```
+
+The share is the one number the operator sets, and the settings page carries it
+beside the others. It starts unset, and while it is unset nothing can confirm.
+A failure is still reported, because the floor is not a setting.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the share on the settings page
+
+```python
+SETTING_CONFIRMATION_SHARE = "confirmation_share_pct"
+```
+
+A confirmed call and a failed call each write their own post, one per push
+target. The post names the original, so a reader sees the call and its outcome
+together, and it waits in Ready to Send for Approve or Decline like any other.
+
+`src/trading/ata_spm_push.py` — the line a follow-up opens with
+
+```python
+FOLLOW_UP_HEAD_FORMAT = "Follow-up on {headline}: {state}."
+```
+
+Phase eight is the several timeframes one asset is scanned on. Each one casts
+its own vote, and the post says whether they agree or one of them contradicts
+the call. A neutral timeframe contradicts nothing.
+
+`src/trading/ata_spm.py` — the line phase eight writes into every post
+
+```python
+AGREEMENT_AGREED_TEXT = "Every timeframe agrees."
+AGREEMENT_CONTRADICTED_FORMAT = "Contradicted on {labels}."
+```
+
+How many timeframes fit is measured on the machine the scan runs on, never
+fixed in the code. One round is one asset on one timeframe, read to vote. The
+rounds for one asset have to finish inside the shortest candle that asset is
+scanned on, so a slow machine scans fewer timeframes and says which it deferred.
+
+`src/trading/ata_spm.py` — the count a measured round supports
+
+```python
+def timeframes_supported(round_seconds: Any, asset_class: Any) -> int:
+    """How many timeframes one asset is scanned on, from a measured round.
+
+    Never under ``MIN_TIMEFRAMES_PER_ASSET`` and never over the count
+    ``timeframes_for`` lists; ``NO_ROUND_MEASURED`` answers that count.
+    """
+```
+
+The expanded sector reads both phases back. One line names the count the
+measured round supports, and one line per call names every timeframe, its vote
+and the verdict.
+
+```
+Phase 7 Follow-Up BCH 5m: BCH 5m · bear · confirmed · close 578 reached
+581.98, 60% of the run to midline 579.3, after 1 candle(s)
+Phase 8 Timeframes payments: 4 of 4 timeframe(s) at 0.0017s per round
+Phase 8 Timeframes BCH 5m: Timeframes: 5m bearish · 1hr bearish · 1d bearish ·
+1wk bearish. Every timeframe agrees.
+```
+
 Opposing Trades counts the pairs the scan found, and names the share a bullish
 bot feeds to the bot on the opposite market condition. Its wording follows the
 scan: unasked, running, finished and empty, or finished with pairs.

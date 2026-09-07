@@ -158,7 +158,11 @@ ATA_ROW_SPACING_PX = 6
 PHASE_ONE_NAME = "Phase 1 Evaluate"
 PHASE_TWO_NAME = "Phase 2 Identify"
 PHASE_THREE_NAME = "Phase 3 Pull"
+PHASE_SEVEN_NAME = "Phase 7 Follow-Up"
+PHASE_EIGHT_NAME = "Phase 8 Timeframes"
 PHASE_NOTE_NAME = "Waiting on"
+NO_FOLLOW_UP_TEXT = "No call is being followed up yet."
+DEFERRED_TAG = "deferred"
 PHASE_ROW_NAME_FORMAT = "{phase} {tag}"
 CALL_TAG_FORMAT = "{symbol} {label}"
 BAND_TAG_FORMAT = "{symbol} bands"
@@ -255,13 +259,19 @@ SETTINGS_LABEL_WIDTH_PX = 150
 #: Every ATA-SPM setting a phase reads, with the wording its row carries.
 SETTING_MAX_POSTS = "max_posts_per_hour"
 SETTING_MAX_INDICATORS = "max_supporting_indicators"
+SETTING_CONFIRMATION_SHARE = "confirmation_share_pct"
 SETTING_MESSAGE_FORMAT = "message_format"
 SETTING_ROWS = (
     (SETTING_MAX_POSTS, "Max posts per hour"),
     (SETTING_MAX_INDICATORS, "Max supporting indicators"),
+    (SETTING_CONFIRMATION_SHARE, "Confirmation share %"),
     (SETTING_MESSAGE_FORMAT, "Standardised message text"),
 )
-COUNT_SETTINGS = (SETTING_MAX_POSTS, SETTING_MAX_INDICATORS)
+COUNT_SETTINGS = (
+    SETTING_MAX_POSTS,
+    SETTING_MAX_INDICATORS,
+    SETTING_CONFIRMATION_SHARE,
+)
 
 #: The chart one bucket post carries, at its thumbnail and its larger size.
 THUMBNAIL_WIDTH_PX = 120
@@ -298,6 +308,7 @@ BUCKET_HEADLINE_WIDTH_PX = 96
 
 BUCKET_HEADLINE_FORMAT = "{symbol} {label}"
 BUCKET_DETAIL_NAME_FORMAT = "{target} {symbol} line {at}"
+BUCKET_FOLLOW_UP_FORMAT = "{phase} · {target} · follow-up on {follows}"
 BUCKET_METHOD_FORMAT = (
     "{phase} · {target} · {bars} candles, last close {close:g} "
     "· band position {band:.4f}"
@@ -962,11 +973,78 @@ def phase_three_rows(pulls: Any) -> list:
     return rows
 
 
-def sector_entry(scan: Any, pulls: Any) -> dict:
+def phase_seven_rows(outcomes: Any) -> list:
+    """The expanded lines phase seven leaves: one per call it followed up.
+
+    Each line carries the original call, the outcome and its evidence.
+    """
+    held = list(outcomes or [])
+    if not held:
+        return [detail_row(PHASE_SEVEN_NAME, NO_FOLLOW_UP_TEXT)]
+    return [
+        phase_row(
+            PHASE_SEVEN_NAME,
+            CALL_TAG_FORMAT.format(
+                symbol=one.call.symbol,
+                label=ata_spm.timeframe_label(one.call.timeframe),
+            ),
+            one.line,
+        )
+        for one in held
+    ]
+
+
+def phase_eight_rows(scan: Any, pulls: Any) -> list:
+    """The expanded lines phase eight leaves: the count measured, then each vote.
+
+    The first line names the timeframes scanned against the round the
+    machine measured, and each later line is one call's agreement.
+    """
+    available = len(ata_spm.timeframes_for(scan.asset_class))
+    rows = [
+        phase_row(
+            PHASE_EIGHT_NAME,
+            scan.sector,
+            ata_spm.TIMEFRAME_COUNT_FORMAT.format(
+                scanned=len(scan.timeframes),
+                available=available,
+                seconds=scan.round_seconds,
+            ),
+        )
+    ]
+    if scan.deferred:
+        rows.append(
+            phase_row(
+                PHASE_EIGHT_NAME,
+                DEFERRED_TAG,
+                ata_spm.TIMEFRAME_DEFERRED_FORMAT.format(
+                    scanned=len(scan.timeframes),
+                    available=available,
+                    labels=ata_spm.AGREEMENT_LABEL_SEPARATOR.join(
+                        ata_spm.timeframe_label(one) for one in scan.deferred
+                    ),
+                ),
+            )
+        )
+    rows.extend(
+        phase_row(
+            PHASE_EIGHT_NAME,
+            CALL_TAG_FORMAT.format(
+                symbol=one.symbol, label=ata_spm.timeframe_label(one.timeframe)
+            ),
+            one.agreement.text,
+        )
+        for one in pulls
+        if one.agreement is not None
+    )
+    return rows
+
+
+def sector_entry(scan: Any, pulls: Any, follow_ups: Any = ()) -> dict:
     """One scanned sector as the entry the ATA-SPM zone steps through.
 
-    The expansion carries all three phase readbacks in order, so the entry
-    says how and why every call under it exists.
+    The expansion carries every phase readback in order, so the entry says
+    how and why each call under it exists and what happened to it.
     """
     calls = scan.calls
     held = [one for one in pulls if any(one.symbol == call.symbol for call in calls)]
@@ -978,7 +1056,13 @@ def sector_entry(scan: Any, pulls: Any) -> dict:
         ata_spm.SECTOR_META_FORMAT.format(
             assets=len(scan.assets), votes=len(scan.votes), calls=len(calls)
         ),
-        detail=phase_one_rows(scan) + phase_two_rows(calls) + phase_three_rows(held),
+        detail=(
+            phase_one_rows(scan)
+            + phase_two_rows(calls)
+            + phase_three_rows(held)
+            + phase_seven_rows(follow_ups)
+            + phase_eight_rows(scan, held)
+        ),
         method_text=(
             ata_spm.CALL_LINE_FORMAT.format(
                 symbol=strongest.symbol,
@@ -1182,7 +1266,17 @@ def bucket_detail_rows(held: Any) -> list:
 
 
 def bucket_method_text(post: Any) -> str:
-    """The line one bucket entry carries about the chart phase three pulled."""
+    """The line one bucket entry carries about the chart behind it.
+
+    A post carrying ``follows`` came from phase seven, so its line names
+    the original post rather than the pull.
+    """
+    if post.follows:
+        return BUCKET_FOLLOW_UP_FORMAT.format(
+            phase=ata_spm_push.PHASE_FOLLOW_UP_NAME,
+            target=post.target,
+            follows=post.follows,
+        )
     return BUCKET_METHOD_FORMAT.format(
         phase=ata_spm_push.PHASE_BUCKET_NAME,
         target=post.target,
@@ -1288,6 +1382,8 @@ def bucket_skin(board: Any) -> dict:
         "summary": bucket.summary(),
         "counts": bucket.counts(),
         "records": bucket.record_lines(),
+        "follow_ups": board.follow_up.lines(),
+        "watching": len(board.follow_up.calls),
         "targets": list(ata_spm_push.TARGET_NAMES),
         "states": list(ata_spm_push.STATE_WORDS),
         "settings": settings_page(board),
@@ -1972,6 +2068,9 @@ class MarketInspectorScreenModel:
             self.calls.append([SCAN_NOW_UNNAMED])
             return None
         self.push.load_run(self.board.run)
+        self.push.after_scan(
+            self.board.run, self.ata_candle_source or self.scanned_candles
+        )
         self.zone_at[READY_TO_SEND_ZONE] = 0
         self.calls.append(
             [SCAN_NOW_RUN, len(self.board.sectors), len(self.board.run.calls)]
@@ -2057,8 +2156,14 @@ class MarketInspectorScreenModel:
         return held
 
     def ata_entries(self) -> list:
-        """The ATA-SPM zone's entries: one per sector the last run scanned."""
-        return self.board.entries(sector_entry)
+        """The ATA-SPM zone's entries: one per sector the last run scanned.
+
+        Each entry carries the phase seven outcomes the last check answered.
+        """
+        outcomes = self.push.follow_up.outcomes
+        return self.board.entries(
+            lambda scan, pulls: sector_entry(scan, pulls, outcomes)
+        )
 
     def ata_row(self) -> dict:
         """Every value the sector field, the class box and the boxes are drawn from."""

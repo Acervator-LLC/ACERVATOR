@@ -1,18 +1,20 @@
-"""ata_spm.py -- the ATA-SPM run, phases one to three.
+"""ata_spm.py -- the ATA-SPM run, phases one to three and eight.
 
 ``evaluate`` scans each ``Sector`` on its ticked timeframes and answers a
 ``SectorScan`` per sector. ``identify`` keeps the ``AssetVote`` rows
 carrying a reversal, and ``pull`` loads that chart with the
-``IndicatorMessage`` rows confirming it. ``VotingEngine`` produces every
-direction and confidence, so this module computes no indicator maths.
+``IndicatorMessage`` rows confirming it. ``agreement_for`` is phase eight:
+every timeframe one call's asset voted on, and whether those votes agree.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from .indicators.bollinger import BollingerBands
 from .indicators.types import (
     PERCENT_PER_RATIO_UNIT,
     Signal,
@@ -40,6 +42,20 @@ ASSET_CLASSES = (
 
 CRYPTO_TIMEFRAMES = ("5m", "1h", "1d", "1w")
 SLOWER_TIMEFRAMES = ("1h", "1d", "1w", "1M")
+
+SECONDS_PER_MINUTE = 60
+MINUTES_PER_HOUR = 60
+
+#: The seconds one candle of the shortest timeframe each class scans covers.
+#: An asset's rounds finish inside it or the chart already moved on.
+SHORTEST_TIMEFRAME_SECONDS = {
+    CRYPTO_TIMEFRAMES[0]: 5 * SECONDS_PER_MINUTE,
+    SLOWER_TIMEFRAMES[0]: MINUTES_PER_HOUR * SECONDS_PER_MINUTE,
+}
+
+MIN_TIMEFRAMES_PER_ASSET = 1
+NO_ROUND_MEASURED = 0.0
+NO_CANDLES = 0
 
 #: The check-box wording for each timeframe key the engine reads.
 TIMEFRAME_LABELS = {
@@ -77,30 +93,42 @@ NO_TIMESTAMP = 0.0
 MESSAGE_FORMAT = "{label}: {reading}. Votes {direction} at {confidence}% confidence."
 NO_READING_TEXT = "no reading published"
 
-#: Each voter's screen name, the ``Signal.details`` key carrying its own
-#: reading, and the wording that reading is printed in.
-READINGS: dict[str, tuple[str, str, str]] = {
+#: Each voter's screen name, the ``Signal.details`` keys carrying the reading
+#: its own direction is decided by, and the wording they are printed in.
+#: ``value`` binds the first key, so a one-key row reads by that name.
+READINGS: dict[str, tuple[str, tuple, str]] = {
     "bollinger_bands": (
         "Bollinger Bands",
-        BAND_POSITION_KEY,
+        (BAND_POSITION_KEY,),
         "band position {value:.4f}",
     ),
-    "vortex": ("Vortex", "separation", "VI+ less VI- at {value:+.4f}"),
-    "macd": ("MACD", "histogram", "histogram {value:+.6f}"),
-    "stochastic_rsi": ("Stochastic RSI", "k", "%K at {value:.2f}"),
-    "ichimoku": ("Ichimoku Cloud", "price_vs_cloud", "price {value} the cloud"),
-    "volume": ("Volume", "mfi", "Money Flow Index {value:.1f}"),
-    "slingshot": ("Slingshot", "momentum", "momentum {value:+.6f}"),
-    "adx": ("ADX", "adx", "ADX {value:.2f}"),
+    "vortex": ("Vortex", ("separation",), "VI+ less VI- at {value:+.4f}"),
+    "macd": ("MACD", ("histogram",), "histogram {value:+.6f}"),
+    "stochastic_rsi": ("Stochastic RSI", ("k",), "%K at {value:.2f}"),
+    "ichimoku": ("Ichimoku Cloud", ("price_vs_cloud",), "price {value} the cloud"),
+    "volume": ("Volume", ("mfi",), "Money Flow Index {value:.1f}"),
+    "slingshot": ("Slingshot", ("momentum",), "momentum {value:+.6f}"),
+    "adx": (
+        "ADX",
+        ("di_plus", "di_minus", "adx"),
+        "+DI {di_plus:.2f} against -DI {di_minus:.2f}, trend strength ADX {adx:.2f}",
+    ),
     "supertrend": (
         "Supertrend",
-        "dist_pct",
+        ("dist_pct",),
         "{value:+.3f}% from the Supertrend line",
     ),
-    "zscore": ("Z-Score", "z", "z-score {value:+.3f}"),
-    "kaufman_er": ("Kaufman Efficiency Ratio", "er", "efficiency ratio {value:.4f}"),
-    "rsi": ("RSI", "rsi", "RSI {value:.2f}"),
+    "zscore": ("Z-Score", ("z",), "z-score {value:+.3f}"),
+    "kaufman_er": (
+        "Kaufman Efficiency Ratio",
+        ("er", "price_up"),
+        "efficiency ratio {er:.4f}, close {price_up} the window open",
+    ),
+    "rsi": ("RSI", ("rsi",), "RSI {value:.2f}"),
 }
+
+#: The two words one boolean reading prints as, the true word first.
+READING_WORDS = {"price_up": ("above", "below")}
 
 PHASE_EVALUATE = "Phase 1 Evaluate"
 PHASE_IDENTIFY = "Phase 2 Identify"
@@ -122,6 +150,25 @@ BAND_LINE_FORMAT = "lower {lower:g} · middle {middle:g} · upper {upper:g}"
 
 PHASE_RUN_FORMAT = "{phase}: {sectors} sector(s), {calls} call(s), {pulls} chart(s)"
 
+AGREEMENT_ROW_FORMAT = "{label} {direction}"
+AGREEMENT_ROW_SEPARATOR = " · "
+AGREEMENT_LABEL_SEPARATOR = ", "
+AGREEMENT_AGREED_TEXT = "Every timeframe agrees."
+AGREEMENT_SINGLE_TEXT = "Only one timeframe voted."
+AGREEMENT_CONTRADICTED_FORMAT = "Contradicted on {labels}."
+AGREEMENT_LINE_FORMAT = "Timeframes: {rows}. {verdict}"
+
+TIMEFRAME_COUNT_FORMAT = (
+    "{scanned} of {available} timeframe(s) at {seconds:.4f}s per round"
+)
+TIMEFRAME_DEFERRED_FORMAT = "{scanned} of {available} scanned, deferred {labels}"
+
+#: The direction a vote contradicts, which is the one the call did not name.
+OPPOSITE_DIRECTION = {
+    SignalDirection.BULLISH: SignalDirection.BEARISH,
+    SignalDirection.BEARISH: SignalDirection.BULLISH,
+}
+
 CANDLE_READ_FAILED_LOG = "ATA-SPM candle read failed on %s %s: %s"
 ASSET_READ_FAILED_LOG = "ATA-SPM asset read failed on %s: %s"
 VOTE_FAILED_LOG = "ATA-SPM vote failed on %s %s: %s"
@@ -141,6 +188,28 @@ def timeframes_for(asset_class: Any) -> tuple:
 def timeframe_label(timeframe: Any) -> str:
     """The check-box wording ``TIMEFRAME_LABELS`` gives one timeframe key."""
     return TIMEFRAME_LABELS.get(str(timeframe), str(timeframe))
+
+
+def scan_budget_s(asset_class: Any) -> int:
+    """The seconds one asset's rounds have to finish inside.
+
+    ``SHORTEST_TIMEFRAME_SECONDS`` reads the first timeframe of the class.
+    """
+    return SHORTEST_TIMEFRAME_SECONDS[timeframes_for(asset_class)[0]]
+
+
+def timeframes_supported(round_seconds: Any, asset_class: Any) -> int:
+    """How many timeframes one asset is scanned on, from a measured round.
+
+    Never under ``MIN_TIMEFRAMES_PER_ASSET`` and never over the count
+    ``timeframes_for`` lists; ``NO_ROUND_MEASURED`` answers that count.
+    """
+    available = len(timeframes_for(asset_class))
+    cost = float(round_seconds or NO_ROUND_MEASURED)
+    if cost <= NO_ROUND_MEASURED:
+        return available
+    fits = int(scan_budget_s(asset_class) // cost)
+    return max(MIN_TIMEFRAMES_PER_ASSET, min(available, fits))
 
 
 def direction_name(direction: Any) -> str:
@@ -219,6 +288,63 @@ class TimeframeScan:
 
 
 @dataclass
+class RoundCost:
+    """What one scan round costs: one asset, one timeframe, read to vote."""
+
+    rounds: int = 0
+    seconds: float = 0.0
+
+    def take(self, seconds: Any) -> None:
+        """Take one more round of ``seconds`` into the running total."""
+        self.rounds += 1
+        self.seconds += float(seconds)
+
+    @property
+    def per_round_s(self) -> float:
+        """The seconds one round cost, ``NO_ROUND_MEASURED`` before any ran."""
+        if self.rounds <= 0:
+            return NO_ROUND_MEASURED
+        return self.seconds / self.rounds
+
+
+@dataclass
+class TimeframeAgreement:
+    """Phase eight: every timeframe one asset voted on, and their verdict."""
+
+    symbol: str
+    direction: SignalDirection = SignalDirection.NEUTRAL
+    rows: tuple = ()
+    against: tuple = ()
+
+    @property
+    def agreed(self) -> bool:
+        """True while more than one timeframe voted and none named the opposite."""
+        return len(self.rows) > 1 and not self.against
+
+    @property
+    def verdict(self) -> str:
+        """Whether the timeframes agree, one contradicts, or only one voted."""
+        if self.against:
+            return AGREEMENT_CONTRADICTED_FORMAT.format(
+                labels=AGREEMENT_LABEL_SEPARATOR.join(self.against)
+            )
+        if len(self.rows) > 1:
+            return AGREEMENT_AGREED_TEXT
+        return AGREEMENT_SINGLE_TEXT
+
+    @property
+    def text(self) -> str:
+        """The one line a post and the ATA-SPM zone both read this from."""
+        return AGREEMENT_LINE_FORMAT.format(
+            rows=AGREEMENT_ROW_SEPARATOR.join(
+                AGREEMENT_ROW_FORMAT.format(label=label, direction=word)
+                for label, word in self.rows
+            ),
+            verdict=self.verdict,
+        )
+
+
+@dataclass
 class SectorScan:
     """What one sector returned across every timeframe ticked on it."""
 
@@ -227,6 +353,13 @@ class SectorScan:
     assets: list = field(default_factory=list)
     timeframes: list = field(default_factory=list)
     note: str = ""
+    round_seconds: float = NO_ROUND_MEASURED
+    deferred: tuple = ()
+
+    @property
+    def supported(self) -> int:
+        """How many timeframes the measured round supports for this class."""
+        return timeframes_supported(self.round_seconds, self.asset_class)
 
     @property
     def votes(self) -> list:
@@ -266,6 +399,7 @@ class ChartPull:
     band_middle: float = NO_BAND_VALUE
     band_lower: float = NO_BAND_VALUE
     closes: tuple = ()
+    agreement: Optional[TimeframeAgreement] = None
     messages: list = field(default_factory=list)
 
 
@@ -339,7 +473,7 @@ def build_vote(symbol: Any, timeframe: Any, summary: VotingSummary) -> AssetVote
     )
 
 
-def _candles_for(candle_source: Any, symbol: str, timeframe: str) -> list:
+def candles_for(candle_source: Any, symbol: str, timeframe: str) -> list:
     """The candles one source holds for one symbol on one timeframe.
 
     A source that raises answers no candles, so the timeframe reads unread.
@@ -372,13 +506,16 @@ def evaluate(
     asset_source: Optional[Callable] = None,
     candle_source: Optional[Callable] = None,
     engine: Optional[VotingEngine] = None,
+    clock: Optional[Callable] = None,
 ) -> list:
     """Phase one: scan every ``Sector`` on the timeframes ticked on it.
 
-    Answers one ``SectorScan`` per sector, carrying the assets scanned and
-    what each ticked timeframe returned.
+    Phase eight caps each sector at ``timeframes_supported`` of the ticked
+    timeframes, measured from the ``RoundCost`` the rounds so far took.
     """
     voter = engine if engine is not None else VotingEngine()
+    ticker = clock if clock is not None else time.perf_counter
+    cost = RoundCost()
     scans: list = []
     for sector in list(sectors or []):
         assets = _assets_for(asset_source, sector)
@@ -392,10 +529,16 @@ def evaluate(
             scan.note = NO_ASSET_TEXT.format(asset_class=sector.asset_class)
         elif not ticked:
             scan.note = NO_TIMEFRAME_TEXT
-        for timeframe in ticked:
+        for at, timeframe in enumerate(ticked):
+            if len(scan.timeframes) >= timeframes_supported(
+                cost.per_round_s, sector.asset_class
+            ):
+                scan.deferred = tuple(ticked[at:])
+                break
             scan.timeframes.append(
-                _scan_timeframe(voter, assets, timeframe, candle_source)
+                _scan_timeframe(voter, assets, timeframe, candle_source, cost, ticker)
             )
+        scan.round_seconds = cost.per_round_s
         scans.append(scan)
     return scans
 
@@ -405,21 +548,72 @@ def _scan_timeframe(
     assets: list,
     timeframe: str,
     candle_source: Any,
+    cost: RoundCost,
+    clock: Callable,
 ) -> TimeframeScan:
-    """One timeframe of one sector: a vote per asset the source can read."""
+    """One timeframe of one sector: a vote per asset the source can read.
+
+    Every asset read is one round, and ``cost`` takes the seconds it took.
+    """
     found = TimeframeScan(timeframe=timeframe)
     for symbol in assets:
-        candles = _candles_for(candle_source, symbol, timeframe)
+        started = clock()
+        candles = candles_for(candle_source, symbol, timeframe)
         if not candles:
             found.unread.append(symbol)
+            cost.take(clock() - started)
             continue
         try:
             summary = voter.compute_all(candles, timeframe)
         except Exception as exc:  # noqa: BLE001 - one asset never stops a scan
             logger.debug(VOTE_FAILED_LOG, symbol, timeframe, exc)
             found.unread.append(symbol)
+            cost.take(clock() - started)
             continue
         found.votes.append(build_vote(symbol, timeframe, summary))
+        cost.take(clock() - started)
+    return found
+
+
+def agreement_for(scans: Any, vote: AssetVote) -> TimeframeAgreement:
+    """Phase eight: every timeframe one call's asset voted on, and their verdict.
+
+    A vote naming ``OPPOSITE_DIRECTION`` of the call contradicts it, and a
+    ``SignalDirection.NEUTRAL`` vote is neither.
+    """
+    rows: list = []
+    against: list = []
+    opposite = OPPOSITE_DIRECTION.get(vote.direction)
+    for scan in list(scans or []):
+        for one in scan.timeframes:
+            for held in one.votes:
+                if held.symbol != vote.symbol:
+                    continue
+                label = timeframe_label(held.timeframe)
+                rows.append((label, held.direction_text))
+                if opposite is not None and held.direction == opposite:
+                    against.append(label)
+    return TimeframeAgreement(
+        symbol=vote.symbol,
+        direction=vote.direction,
+        rows=tuple(rows),
+        against=tuple(against),
+    )
+
+
+def midline_after(candles: Any, at: Any) -> list:
+    """The Bollinger middle band at every candle after index ``at``.
+
+    ``BollingerBands`` computes its published band on each window, so the
+    target phase seven measures against moves with the market.
+    """
+    band = BollingerBands()
+    held = list(candles or [])
+    found: list = []
+    for index in range(int(at) + 1, len(held)):
+        signal = band.compute(held[: index + 1])
+        details = getattr(signal, "details", None) or {}
+        found.append(float(details.get(BAND_MIDDLE_KEY, NO_BAND_VALUE)))
     return found
 
 
@@ -445,6 +639,22 @@ def confirming_signals(vote: AssetVote) -> list:
     ]
 
 
+def reading_values(details: Any, keys: Any) -> Optional[dict]:
+    """Every reading in ``keys`` one voter published, or None while one is missing.
+
+    A key ``READING_WORDS`` names prints as one of its two words, so a
+    boolean reading reads as the fact it carries.
+    """
+    found: dict = {}
+    for key in keys:
+        held = details.get(key)
+        if held is None:
+            return None
+        words = READING_WORDS.get(key)
+        found[key] = held if words is None else words[0 if held else 1]
+    return found
+
+
 def indicator_message(
     signal: Any, message_format: Optional[str] = None
 ) -> IndicatorMessage:
@@ -454,12 +664,12 @@ def indicator_message(
     ``MESSAGE_FORMAT`` is what an unset page leaves.
     """
     name = str(getattr(signal, "indicator", ""))
-    label, key, reading_format = READINGS.get(name, (name, "", ""))
+    label, keys, reading_format = READINGS.get(name, (name, (), ""))
     details = getattr(signal, "details", None) or {}
-    value = details.get(key) if key else None
+    values = reading_values(details, keys)
     reading = (
-        reading_format.format(value=value)
-        if reading_format and value is not None
+        reading_format.format(value=values[keys[0]], **values)
+        if reading_format and values
         else NO_READING_TEXT
     )
     written = message_format or MESSAGE_FORMAT
@@ -479,13 +689,14 @@ def pull(
     vote: AssetVote,
     candle_source: Optional[Callable] = None,
     message_format: Optional[str] = None,
+    agreement: Optional[TimeframeAgreement] = None,
 ) -> ChartPull:
     """Phase three: the chart the call was made on, with its messages.
 
-    The band values come from the ``BAND_INDICATOR`` vote, and no price is
-    recomputed here.
+    The band values come from the ``BAND_INDICATOR`` vote, and ``agreement``
+    is the phase eight verdict over the timeframes the asset voted on.
     """
-    candles = _candles_for(candle_source, vote.symbol, vote.timeframe)
+    candles = candles_for(candle_source, vote.symbol, vote.timeframe)
     band = band_signal(vote)
     details = getattr(band, "details", None) or {}
     return ChartPull(
@@ -512,6 +723,7 @@ def pull(
         band_middle=float(details.get(BAND_MIDDLE_KEY, NO_BAND_VALUE)),
         band_lower=float(details.get(BAND_LOWER_KEY, NO_BAND_VALUE)),
         closes=tuple(float(getattr(one, "close", NO_BAND_VALUE)) for one in candles),
+        agreement=agreement,
         messages=[
             indicator_message(one, message_format) for one in confirming_signals(vote)
         ],
@@ -524,14 +736,22 @@ def run(
     candle_source: Optional[Callable] = None,
     engine: Optional[VotingEngine] = None,
     message_format: Optional[str] = None,
+    clock: Optional[Callable] = None,
 ) -> AtaSpmRun:
-    """The three phases in order, answered as one ``AtaSpmRun``."""
-    scans = evaluate(sectors, asset_source, candle_source, engine)
+    """Phases one, two, three and eight in order, as one ``AtaSpmRun``.
+
+    Each ``pull`` carries the ``agreement_for`` its own asset, which is what
+    the post says about the timeframes.
+    """
+    scans = evaluate(sectors, asset_source, candle_source, engine, clock)
     calls = identify(scans)
     return AtaSpmRun(
         scans=scans,
         calls=calls,
-        pulls=[pull(one, candle_source, message_format) for one in calls],
+        pulls=[
+            pull(one, candle_source, message_format, agreement_for(scans, one))
+            for one in calls
+        ],
     )
 
 

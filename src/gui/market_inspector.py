@@ -997,6 +997,7 @@ if _HAS_QT:
                 self._zone_at[ATA_SPM_MODULE] = added
             if self._ata_board.run is not None:
                 self._push_board.load_run(self._ata_board.run)
+                self._push_board.after_scan(self._ata_board.run, self._scanned_candles)
                 self._zone_at[READY_TO_SEND_ZONE] = 0
             self._render_ata_row()
             self._render_left_modules()
@@ -1083,7 +1084,10 @@ if _HAS_QT:
             phase four formatted.
             """
             if key == ATA_SPM_MODULE:
-                return self._ata_board.entries(_sector_entry)
+                outcomes = self._push_board.follow_up.outcomes
+                return self._ata_board.entries(
+                    lambda scan, pulls: _sector_entry(scan, pulls, outcomes)
+                )
             if key == OPPOSING_TRADES_MODULE:
                 return [pair_entry(one) for one in self._pairs]
             if key == READY_TO_SEND_ZONE:
