@@ -575,9 +575,13 @@ already present.
 
 ```
 source lines produced   817
-wall clock              4720 s
-seconds per source line 5.8
+wall clock              3894 s
+seconds per source line 4.77
 ```
+
+The wall clock is measured from the first file this unit wrote to the commit.
+Reading the issue, its comments, the three reports before this one and the two
+manual pages came before that and is not in the figure.
 
 Phases one to three measured 2.51 and phases four to six 2.9, both counting test
 lines in the denominator; the bucket thumbnail unit measured 8.0 on source only,
