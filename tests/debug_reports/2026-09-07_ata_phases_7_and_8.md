@@ -16,14 +16,31 @@ docs/audits/2026-09-07_units/ata_phase7_followup_react.png
 
 **Nothing was sent to a real platform.** No network call was made, no credential
 was stored, no exchange order was placed and no test was run. The running
-platform was never started, stopped or queried. Every run set `HOME` and
-`USERPROFILE` to a throwaway directory. `~/.acervator/settings.json` before and
-after:
+platform was never started, stopped or queried. `~/.acervator/settings.json`
+before and after every run in this unit:
 
 ```
 sha256_before f366f42f0e49b4b3468f301b4f2f701669cc13005cfe1ebac7a56988ec376423
 sha256_after  f366f42f0e49b4b3468f301b4f2f701669cc13005cfe1ebac7a56988ec376423
 ```
+
+The engine run and both build runs set `HOME` and `USERPROFILE` to a throwaway
+directory. **The Electron shell did not, and that is worth stating plainly.**
+Pointing the shell's own profile at a throwaway directory crashes it, so the
+shell inherited the real one, and `src/core/log_paths.py` reads `Path.home()`
+and no environment variable of its own. What that leaves is answered by running
+the bridge on its own under a throwaway home and listing what it wrote there:
+
+```
+answered 16273 bytes
+files the bridge wrote there: 0
+```
+
+The bridge answers the whole Market Inspector payload and writes no file, so
+nothing from the shell reached the runtime tree. Files under `~/.acervator` and
+`~/.acervator_logs` change every few seconds while the platform trades, so their
+timestamps say nothing either way; the byte-identical settings file and the
+empty bridge home are what was measured.
 
 ## Edits
 
