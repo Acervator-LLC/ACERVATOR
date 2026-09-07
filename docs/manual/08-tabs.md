@@ -668,6 +668,37 @@ ADX: +DI 50.11 against -DI 19.20, trend strength ADX 96.04. Votes bullish at 100
 Kaufman Efficiency Ratio: efficiency ratio 0.2857, close above the window open. Votes neutral at 0% confidence.
 ```
 
+The Z-Score message named the score alone, so a post read the same whatever the
+market cost. The upgraded indicator publishes the two prices its predictive
+zones project to, and the message now names both. A reader sees the score and
+the price band it was measured against, at the scale that market trades at. The
+message states those two prices and nothing further. It does not say the price
+is inside or outside the zone, because the vote is decided on the smoothed
+score rather than on the close.
+
+`src/trading/ata_spm.py` — the reading the Z-Score message names
+
+```python
+"zscore": (
+    "Z-Score",
+    ("z", "support_price", "resistance_price"),
+    "z-score {z:+.3f}, predictive zone {support_price:g} to {resistance_price:g}",
+),
+```
+
+One sentence read off the running voters at two price scales. The score is the
+same and the band is the market's own.
+
+```
+Z-Score: z-score -2.697, predictive zone 2.87885e-06 to 3.31141e-06. Votes bullish at 25% confidence.
+Z-Score: z-score -2.697, predictive zone 3803.8 to 4375.34. Votes bullish at 25% confidence.
+```
+
+Both prices are published on every reading, including before any reversal has
+been remembered, so the wording never falls back to the no-reading text.
+Measured 7 September 2026 and recorded in
+`tests/debug_reports/2026-09-07_ata_zscore_message.md`.
+
 Clicking a scanned sector opens the three phase readbacks under each other.
 
 ```
