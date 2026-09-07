@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QColor
 
+from ...trading import smart_wire
+
 from .. import design_system as ds
 
 logger = logging.getLogger("acervator.gui")
@@ -174,17 +176,11 @@ class BotSwarmTabMixin:
             except Exception:  # R28-OK: defensive math probe
                 mature_total = mature_avail = mature_alloc = 0.0
 
-            _mature_ratio_pct = 70
-            try:
-                from ...trading.smart_wire import BotLedger
-
-                _mature_ratio_pct = int(round(BotLedger.MATURE_RATIO * 100))
-            except (
-                Exception
-            ) as _mr_exc:  # noqa: BLE001 - label defaults to 70 if import fails
-                logger.debug("MATURE_RATIO lookup failed, using 70%%: %s", _mr_exc)
+            # Read off the module, so the label cannot state a threshold
+            # `mature_profit_usd` does not apply.
+            _growth_pct = int(round(smart_wire.MATURE_GROWTH_PCT))
             pf.addRow(
-                f"Mature profit total ({_mature_ratio_pct}% of P&L):",
+                f"Mature profit total (position grown past {_growth_pct}%):",
                 QLabel(f"${mature_total:,.4f}"),
             )
             pf.addRow(

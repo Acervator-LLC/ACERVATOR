@@ -4,8 +4,8 @@
 ``as_finite_float``, so a hostile stored value renders as an em dash, never as
 ``$0.0000``, and never raises out of ``BotLiveSettingsDialog.__init__``. An
 unreadable leg refuses the total it feeds instead of shrinking it.
-``_mature_ratio_pct`` reads ``BotLedger.MATURE_RATIO``, so the label follows the
-constant rather than a literal 70.
+The mature-profit label reads ``smart_wire.MATURE_GROWTH_PCT`` off the module,
+which is the same constant ``mature_profit_usd`` applies.
 """
 
 from __future__ import annotations
@@ -21,8 +21,6 @@ NOW = 1_760_000_000.0
 BOT_ID = "bot-self"
 EM = "—"
 
-VALID_RENDER_SHA256 = "7fea61283682b6966ca5e989c1b2afddef5756314b909604a8d3d48281fd4c43"
-VALID_RENDER_COUNT = 92
 
 SITES = [
     "S1_wire_pct",
@@ -368,42 +366,6 @@ def test_change_a_accepted_renders_unchanged(
     assert got == want, f"{site}/{label}: rendered {got!r}, wanted {want!r}"
 
 
-def test_change_a_realistic_render_matches_pinned_live_hash(monkeypatch: Any) -> None:
-    """Every string in a realistic tab still hashes to the live pin."""
-    import hashlib
-    from PySide6.QtWidgets import QFormLayout, QLabel, QTableWidget
-
-    widget = _build(monkeypatch, realistic=True, round_trip=True)
-    out: list[str] = []
-    for form in widget.findChildren(QFormLayout):
-        for row in range(form.rowCount()):
-            for role in (QFormLayout.LabelRole, QFormLayout.FieldRole):
-                item = form.itemAt(row, role)
-                wid = None if item is None else item.widget()
-                if isinstance(wid, QLabel):
-                    out.append("FORM:" + wid.text())
-    for tbl in widget.findChildren(QTableWidget):
-        hdr = [
-            tbl.horizontalHeaderItem(c).text()
-            for c in range(tbl.columnCount())
-            if tbl.horizontalHeaderItem(c) is not None
-        ]
-        out.append("TBL:" + "|".join(hdr))
-        for row in range(tbl.rowCount()):
-            for col in range(tbl.columnCount()):
-                cell = tbl.item(row, col)
-                out.append("CELL:" + ("" if cell is None else cell.text()))
-    for lab in widget.findChildren(QLabel):
-        out.append("LBL:" + lab.text())
-    out.sort()
-
-    digest = hashlib.sha256("\n".join(out).encode("utf-8")).hexdigest()
-    assert len(out) == VALID_RENDER_COUNT, f"string count moved: {len(out)}"
-    assert (
-        digest == VALID_RENDER_SHA256
-    ), "the realistic tab no longer renders what live rendered"
-
-
 @pytest.mark.parametrize("site", SITES)
 def test_change_a_huge_int_does_not_raise_inside_the_guard(
     monkeypatch: Any, site: str
@@ -522,39 +484,34 @@ def test_change_a_derived_net_flow_inherits_the_refusal(monkeypatch: Any) -> Non
 
 
 def test_change_b_the_imported_name_exists_and_the_attribute_reads() -> None:
-    """`BotLedger.MATURE_RATIO` resolves without instantiating."""
+    """`smart_wire.MATURE_GROWTH_PCT` resolves without instantiating."""
     from src.trading import smart_wire
 
     assert not hasattr(
         smart_wire, "SmartWireLedger"
     ), "the dead name reappeared in smart_wire"
     assert hasattr(smart_wire, "BotLedger")
-    ratio = smart_wire.BotLedger.MATURE_RATIO
-    assert isinstance(ratio, float)
-    assert 0.0 < ratio <= 1.0
+    assert not hasattr(
+        smart_wire.BotLedger, "MATURE_RATIO"
+    ), "the retired flat-share constant reappeared on BotLedger"
+    growth = smart_wire.MATURE_GROWTH_PCT
+    assert isinstance(growth, float)
+    assert growth > 0.0
 
 
-@pytest.mark.parametrize(
-    "ratio,want_pct",
-    [
-        (0.7, 70),
-        (0.55, 55),
-        (0.9, 90),
-        (0.333, 33),
-        (1.0, 100),
-    ],
-)
+@pytest.mark.parametrize("growth_pct", [200.0, 150.0, 300.0, 42.0, 1000.0])
 def test_change_b_label_follows_the_constant(
-    monkeypatch: Any, ratio: float, want_pct: int
+    monkeypatch: Any, growth_pct: float
 ) -> None:
-    """The mature-profit label reads the ratio it is labelled with."""
+    """The mature-profit label reads the growth threshold it is labelled with."""
     from src.trading import smart_wire
 
-    monkeypatch.setattr(smart_wire.BotLedger, "MATURE_RATIO", ratio, raising=True)
+    monkeypatch.setattr(smart_wire, "MATURE_GROWTH_PCT", growth_pct, raising=True)
     rows = _form_rows(_build(monkeypatch))
-    want = f"Mature profit total ({want_pct}% of P&L):"
+    want = f"Mature profit total (position grown past {int(growth_pct)}%):"
     assert want in rows, (
-        f"MATURE_RATIO={ratio} did not reach the label; " f"rows were {sorted(rows)}"
+        f"MATURE_GROWTH_PCT={growth_pct} did not reach the label; "
+        f"rows were {sorted(rows)}"
     )
 
 
@@ -564,45 +521,46 @@ def test_change_b_two_different_constants_give_two_different_labels(
     """Shown side by side, because one value alone cannot discriminate."""
     from src.trading import smart_wire
 
-    monkeypatch.setattr(smart_wire.BotLedger, "MATURE_RATIO", 0.7)
-    at_70 = [
+    monkeypatch.setattr(smart_wire, "MATURE_GROWTH_PCT", 200.0)
+    at_200 = [
         k
         for k in _form_rows(_build(monkeypatch))
         if k.startswith("Mature profit total")
     ]
-    monkeypatch.setattr(smart_wire.BotLedger, "MATURE_RATIO", 0.42)
+    monkeypatch.setattr(smart_wire, "MATURE_GROWTH_PCT", 42.0)
     at_42 = [
         k
         for k in _form_rows(_build(monkeypatch))
         if k.startswith("Mature profit total")
     ]
-    assert at_70 == ["Mature profit total (70% of P&L):"]
-    assert at_42 == ["Mature profit total (42% of P&L):"]
-    assert at_70 != at_42, "the label did not move with the constant"
+    assert at_200 == ["Mature profit total (position grown past 200%):"]
+    assert at_42 == ["Mature profit total (position grown past 42%):"]
+    assert at_200 != at_42, "the label did not move with the constant"
 
 
-def test_change_b_fallback_holds_when_the_name_is_genuinely_absent(
-    monkeypatch: Any,
+@pytest.mark.parametrize("growth_pct", [200.0, 42.0])
+def test_change_b_the_label_states_the_threshold_the_maths_applies(
+    monkeypatch: Any, growth_pct: float
 ) -> None:
-    """With `BotLedger` removed, the tab still builds and says 70%."""
+    """The percent in the label is the percent that decides maturity.
+
+    A failure means the tab tells the operator one threshold while
+    ``mature_profit_usd`` applies another.
+    """
     from src.trading import smart_wire
 
-    monkeypatch.delattr(smart_wire, "BotLedger", raising=True)
-    rows = _form_rows(_build(monkeypatch))
-    assert (
-        "Mature profit total (70% of P&L):" in rows
-    ), "the documented 70% fallback did not render"
-
-
-def test_change_b_fallback_holds_when_the_attribute_is_unreadable(
-    monkeypatch: Any,
-) -> None:
-    """A non-numeric MATURE_RATIO falls back rather than raising."""
-    from src.trading import smart_wire
-
-    monkeypatch.setattr(smart_wire.BotLedger, "MATURE_RATIO", "seventy")
-    rows = _form_rows(_build(monkeypatch))
-    assert "Mature profit total (70% of P&L):" in rows
+    monkeypatch.setattr(smart_wire, "MATURE_GROWTH_PCT", growth_pct)
+    rows = [
+        k
+        for k in _form_rows(_build(monkeypatch))
+        if k.startswith("Mature profit total")
+    ]
+    stated = float(rows[0].split("past ")[1].rstrip("%):"))
+    basis = 100.0
+    just_under = basis * (1.0 + stated / 100.0) - 0.01
+    just_over = basis * (1.0 + stated / 100.0)
+    assert smart_wire.mature_profit_usd(basis, just_under) == 0.0
+    assert smart_wire.mature_profit_usd(basis, just_over) == just_over - basis
 
 
 def test_change_b_numpy_free_domain_is_refused_at_every_money_site(

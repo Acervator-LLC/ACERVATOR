@@ -138,6 +138,31 @@ hidden number rather than an empty column.
 the two. Issue #428 carries a second disagreement on this strip, between what
 the counter tooltips promise and what the cards draw.
 
+Both columns now carry an exchange figure. The window hands the strip the same
+payload the React strip receives, built by one function, so the two hosts cannot
+show different numbers.
+
+`src/gui/main_window.py` — `_refresh_dashboard`
+
+```python
+self._spendable_widget.update_profits(
+    header_strip_surface.profits_payload(agg, exchanges)
+)
+```
+
+REALISED is the venue's matched profit and loss across the fleet. MATURE is the
+profit held in positions worth more than three times what they cost. Where the
+venue has answered for no bot, both stay empty, and the mask now leaves an empty
+column empty instead of drawing four asterisks over it.
+
+`src/gui/main_tabs/header_strip_surface.py` — `exchange_amount`
+
+```python
+answered = int(data.get(EXCHANGE_FRESHNESS_KEY, 0) or 0)
+if answered <= 0:
+    return None
+```
+
 Detail: [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md).
 
 ## Simulator Tab (Hot Mess; Complete Rebuild In Progress)
@@ -1143,6 +1168,10 @@ FETCH_POLL_INTERVAL_S = 0.4
 The header strip is visible here, which marks the screen as a live-trading tab.
 REALISED and MATURE draw the same em dash the Trading tab draws. A row whose
 gate log holds no entry inside the join window reads `no record`.
+
+Both columns draw an exchange figure here too, because one strip serves every
+tab that shows it. Where the venue has answered for no bot they stay empty, and
+Privacy Mode leaves an empty column empty.
 
 Detail: [08-tabs/history.md](08-tabs/history.md).
 

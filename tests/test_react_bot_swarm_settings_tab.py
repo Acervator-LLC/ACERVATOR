@@ -1865,7 +1865,7 @@ def test_the_tab_draws_more_labelled_rows_than_the_label_bag_names(js: JsRuntime
     unnamed = [row[0] for row in drawn if row[0] not in set(payload["labels"].values())]
     assert unnamed == [
         payload["formats"]["mature_total_row"].format(
-            pct=payload["provenance_group"]["mature_ratio_pct"]
+            pct=payload["provenance_group"]["mature_growth_pct"]
         )
     ], unnamed
     for label, value in drawn:

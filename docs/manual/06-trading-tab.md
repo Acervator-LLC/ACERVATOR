@@ -129,6 +129,56 @@ carries this.
 [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md) covers the strip in
 full.
 
+**Both columns are now fed, and both are fed from the exchange.** The window no
+longer writes the payload itself. It calls the same builder the React strip
+calls, so one function decides what the five columns hold and neither host can
+drift from the other.
+
+`src/gui/main_window.py` — `_refresh_dashboard`
+
+```python
+self._spendable_widget.update_profits(
+    header_strip_surface.profits_payload(agg, exchanges)
+)
+```
+
+Realised profit is the exchange's own figure, matched buy against sell. Mature
+profit is the profit on positions that have grown past two hundred per cent over
+what they cost. Neither is computed from the platform's internal running totals,
+because the venue is the authority on money.
+
+`src/gui/main_tabs/header_strip_surface.py` — `profits_payload`
+
+```python
+"total_realised": exchange_amount(data, "total_realized_exchange"),
+"mature": exchange_amount(data, "total_mature_exchange"),
+```
+
+Where the exchange has answered for no bot, both columns stay empty and say so.
+The aggregate counts the bots the venue has answered for, and at zero the two
+columns are handed nothing rather than a computed zero, so an empty column is
+never a figure the platform made up.
+
+`src/gui/main_tabs/header_strip_surface.py` — `exchange_amount`
+
+```python
+answered = int(data.get(EXCHANGE_FRESHNESS_KEY, 0) or 0)
+if answered <= 0:
+    return None
+```
+
+An empty column stays empty under Privacy Mode. The mask replaces a number with
+four asterisks and leaves the empty marker alone, so the operator can always
+tell a hidden figure from a missing one.
+
+`src/core/privacy_mask_registry.py` — `mask_or`
+
+```python
+text = str(value)
+if field_id not in ALL_FIELD_IDS or text == ABSENT_TEXT:
+    return text
+```
+
 #### The tab row
 
 **Functional.** The row of main tabs takes its order from one list. Each label

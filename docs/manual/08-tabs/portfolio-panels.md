@@ -66,6 +66,30 @@ call site that fills the strip, so both draw the marker on every tick. The
 Trading tab section carries the proposal for the first of them:
 [06-trading-tab.md](../06-trading-tab.md).
 
+Both now carry a figure, and the figure comes from the exchange. Realised is the
+venue's own matched profit and loss across the fleet. Mature is the profit held
+in positions worth more than three times what they cost, which is the growth
+threshold the platform applies everywhere it decides maturity.
+
+`src/gui/main_tabs/header_strip_surface.py` — `profits_payload`
+
+```python
+"total_realised": exchange_amount(data, "total_realized_exchange"),
+"mature": exchange_amount(data, "total_mature_exchange"),
+```
+
+Absence is still a reading. When the venue has answered for no bot, both columns
+take nothing and draw the marker, and the mask leaves that marker alone. A hidden
+figure shows four asterisks; an empty column stays empty under Privacy Mode.
+
+`src/core/privacy_mask_registry.py` — `mask_or`
+
+```python
+text = str(value)
+if field_id not in ALL_FIELD_IDS or text == ABSENT_TEXT:
+    return text
+```
+
 ## Right: the five counter cards
 
 Five cards close the row, and each one counts a single thing.

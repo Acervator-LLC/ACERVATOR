@@ -10,6 +10,7 @@ import logging
 import math
 from typing import Any, Optional
 
+from ..smart_wire import mature_profit_usd
 from .config import DOLLAR_PEGGED_CURRENCIES, BotState
 
 logger = logging.getLogger("acervator.bot")
@@ -296,6 +297,8 @@ class FleetAggregationMixin:
         bots_with_fresh_exchange_data = 0
         wallet_cash_usd = 0.0  # max across bots (shared wallet)
         crypto_position_value_usd = 0.0  # sum of per-bot position values
+        total_mature_exchange = 0.0
+        mature_positions = 0
 
         for bot in self._bots.values():
             total_pnl += bot.stats.realised_pnl
@@ -340,6 +343,16 @@ class FleetAggregationMixin:
                     _pv_exc,
                 )
             crypto_position_value_usd += _bot_pos_val
+            # The cost basis is exchange-pulled, so a bot the venue has not
+            # answered for contributes no maturity reading either way.
+            if _fresh_ts > 0:
+                _basis = float(
+                    getattr(bot.stats, "cost_basis_total_exchange", 0.0) or 0.0
+                )
+                _mature = mature_profit_usd(_basis, _bot_pos_val)
+                if _mature > 0:
+                    total_mature_exchange += _mature
+                    mature_positions += 1
             if bot.state == BotState.RUNNING:
                 running += 1
             if bot.state == BotState.ERROR:
@@ -353,6 +366,10 @@ class FleetAggregationMixin:
             "total_realized_exchange": round(total_realized_exchange, 4),
             "total_unrealized_exchange": round(total_unrealized_exchange, 4),
             "total_fees_exchange": round(total_fees_exchange, 4),
+            # `SpendableProfitsWidget` renders this as mature; it is absent,
+            # not zero, while bots_with_fresh_exchange_data is 0.
+            "total_mature_exchange": round(total_mature_exchange, 4),
+            "mature_positions": mature_positions,
             "bots_with_fresh_exchange_data": bots_with_fresh_exchange_data,
             # `SpendableProfitsWidget` renders these two as spendable and locked.
             "wallet_cash_usd": round(wallet_cash_usd, 4),

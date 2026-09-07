@@ -21,6 +21,13 @@ from .io_utils import atomic_write_json
 
 logger = logging.getLogger("acervator.privacy_mask")
 
+ABSENT_TEXT = "—"
+"""The marker a screen draws for a value it was not given.
+
+``mask_or`` returns it unchanged, so a masked field that holds nothing
+stays distinguishable from a masked field that holds money.
+"""
+
 KPI_FIELD_IDS = (
     "kpi.spendable",
     "kpi.realised",
@@ -246,15 +253,17 @@ def _reset_singleton_for_tests() -> None:
 def mask_or(value, field_id: str, mask: str = "****") -> str:
     """Return ``mask`` when ``field_id`` is masked, else ``str(value)``.
 
-    A ``field_id`` outside ``ALL_FIELD_IDS`` never masks, which covers every
-    ``TA_FIELD_IDS_EXCLUDED`` entry.
+    A ``field_id`` outside ``ALL_FIELD_IDS`` and the ``ABSENT_TEXT`` value
+    never mask, which covers every ``TA_FIELD_IDS_EXCLUDED`` entry and every
+    field holding no reading.
     """
-    if field_id not in ALL_FIELD_IDS:
-        return str(value)
+    text = str(value)
+    if field_id not in ALL_FIELD_IDS or text == ABSENT_TEXT:
+        return text
     try:
         reg = get_privacy_mask_registry()
         if reg.is_masked(field_id):
             return mask
     except Exception as exc:
         logger.warning("PrivacyMaskRegistry: mask lookup failed: %s", exc)
-    return str(value)
+    return text

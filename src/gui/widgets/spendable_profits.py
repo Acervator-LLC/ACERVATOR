@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from ...core.privacy_mask_registry import mask_or
+from ...core.privacy_mask_registry import ABSENT_TEXT as _ABSENT_TEXT, mask_or
 
 from .. import design_system as ds
 
@@ -87,7 +87,7 @@ if _HAS_QT:
                 "sharing one wallet."
             )
             spend_col.addWidget(self._spend_label)
-            self._amount = QLabel("—")
+            self._amount = QLabel(_ABSENT_TEXT)
             self._amount.setStyleSheet(self._VALUE_STYLE_MUTED)
             spend_col.addWidget(self._amount)
             # The dot sits at index 2, keeping label at 0 and value at 1.
@@ -126,7 +126,7 @@ if _HAS_QT:
                 lbl = QLabel(label_text)
                 lbl.setStyleSheet(self._LABEL_STYLE)
                 col.addWidget(lbl)
-                val = QLabel("—")
+                val = QLabel(_ABSENT_TEXT)
                 val.setStyleSheet(self._VALUE_STYLE_DEFAULT)
                 self._stats[key] = val
                 col.addWidget(val)
@@ -153,14 +153,14 @@ if _HAS_QT:
             """Render one amount as money text, or as the empty marker."""
             amount = SpendableProfitsWidget._amount_of(value)
             if amount is None:
-                return "—"
+                return _ABSENT_TEXT
             return f"${amount:,.2f}"
 
         @staticmethod
         def _count_text(value) -> str:
             """Render a whole exchange count, or the empty marker."""
             if type(value) is not int:
-                return "—"
+                return _ABSENT_TEXT
             return str(value)
 
         def update_profits(self, data: dict) -> None:

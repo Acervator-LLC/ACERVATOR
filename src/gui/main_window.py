@@ -59,6 +59,7 @@ try:
     from .main_tabs.charts_tab import ChartsTabMixin
     from .main_tabs.console_tab import ConsoleTabMixin
     from .main_tabs.empty_tabs import EmptyTabsMixin
+    from .main_tabs import header_strip_surface
     from .main_tabs.header_strip import HeaderStripMixin
     from .main_tabs.history_tab import HistoryTabMixin
     from .main_tabs.market_inspector_tab import MarketInspectorTabMixin
@@ -1064,28 +1065,11 @@ if _HAS_QT:
                 self._stat_errors.set_value(str(agg.get("total_errors_lifetime", 0)))
 
                 exchanges = len(self._exchange_tabs)
-                _wallet_cash = float(agg.get("wallet_cash_usd", 0.0) or 0.0)
-                _crypto_value = float(agg.get("crypto_position_value_usd", 0.0) or 0.0)
-                if _wallet_cash > 0 or _crypto_value > 0:
-                    self._spendable_widget.update_profits(
-                        {
-                            "spendable": _wallet_cash,
-                            "total_realised": None,
-                            "locked": _crypto_value,
-                            "mature": None,
-                            "exchange_count": exchanges,
-                        }
-                    )
-                else:
-                    self._spendable_widget.update_profits(
-                        {
-                            "spendable": None,
-                            "total_realised": None,
-                            "locked": None,
-                            "mature": None,
-                            "exchange_count": exchanges,
-                        }
-                    )
+                # One builder for both hosts: the React strip reads the same
+                # `profits_payload` over the bridge.
+                self._spendable_widget.update_profits(
+                    header_strip_surface.profits_payload(agg, exchanges)
+                )
 
                 all_statuses = []
                 for eid, tab in self._exchange_tabs.items():

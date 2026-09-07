@@ -5,7 +5,11 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
-from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
+from ...core.privacy_mask_registry import (
+    ABSENT_TEXT as _ABSENT_TEXT,
+    get_privacy_mask_registry,
+    mask_or,
+)
 
 from . import privacy_dot_surface
 
@@ -13,7 +17,7 @@ from .. import design_system as ds
 
 METHOD = "spendable_profits.state"
 
-EMPTY_TEXT = "—"
+EMPTY_TEXT = _ABSENT_TEXT
 MONEY_PREFIX = "$"
 MONEY_FORMAT = ",.2f"
 
