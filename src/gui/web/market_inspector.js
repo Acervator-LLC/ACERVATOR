@@ -776,6 +776,7 @@
   var ZONE_META = "meta";
   var ZONE_METHOD = "method";
   var ZONE_DETAIL = "detail";
+  var ZONE_HINT = "hint";
   var ZONE_BADGE = "badge";
   var ZONE_BADGE_STYLE = "badge_style";
 
@@ -797,6 +798,9 @@
   var DETAIL_STYLE = "detail_style";
   var ENTRY_NAME = "entry_accessible_name";
   var STEPPER_NAME = "stepper_accessible_name";
+  var PUSH_PADDING_PX = "push_padding_px";
+  var PUSH_FONT_WEIGHT = "push_font_weight";
+  var PUSH_BUTTON_HEIGHT_PX = "push_button_height_px";
 
   var ATA_ROW_PART = "ata-row";
   var SECTOR_FIELD_PART = "sector-field";
@@ -1557,12 +1561,13 @@
   // EntryAction is one button under the larger chart: Approve or Decline.
   function EntryAction(props) {
     var row = asList(props.row);
-    var style = marginStyle(listField(props.model, BUTTON_PADDING_PX));
+    var skin = props.skin;
+    var style = marginStyle(asList(skin[PUSH_PADDING_PX]));
     style.flex = FLEX_NONE;
-    style.fontWeight = text(props.model[BUTTON_FONT_WEIGHT]);
+    style.fontWeight = text(skin[PUSH_FONT_WEIGHT]);
     style.boxSizing = BORDER_BOX;
     style.width = length(row[FOUR]);
-    style.height = length(objectField(props.model, BUCKET)[BUTTON_HEIGHT_PX]);
+    style.height = length(skin[PUSH_BUTTON_HEIGHT_PX]);
     var buttonProps = {
       type: BUTTON_TYPE,
       style: style,
@@ -1571,7 +1576,7 @@
       onClick: function (event) {
         // The entry toggles on its own click, and this button sits inside it.
         event.stopPropagation();
-        act(text(row[ZERO]), true);
+        props.act(text(row[ZERO]), true);
       }
     };
     buttonProps[PART_ATTR] = text(row[ZERO]);
@@ -1731,7 +1736,8 @@
                 listField(view, ZONE_ACTIONS).map(function (row, at) {
                   return element(EntryAction, {
                     key: ZONE_ACTIONS + PATH_SPLIT + String(at),
-                    model: props.model,
+                    skin: skin,
+                    act: press,
                     row: row
                   });
                 }),
@@ -1748,7 +1754,7 @@
               row: row
             });
           }),
-          total > ZERO
+          view[ZONE_HINT] === true
             ? element(DIV_TAG, hintProps, text(skin[HINT_TEXT]))
             : null
         )

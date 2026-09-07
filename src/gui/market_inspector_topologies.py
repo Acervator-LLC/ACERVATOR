@@ -30,8 +30,16 @@ from typing import Any, Callable, Optional
 
 from .main_tabs.market_inspector_surface import step_to
 from .main_tabs.market_inspector_topologies_surface import (
+    DISMISS_PART,
+    FOOTER_STYLE,
+    FOOTER_TEXT,
+    PANE_MARGINS,
+    PANE_SPACING,
+    PREVIEW_PART,
     REFRESH_TEXT,
     REFRESH_TOOLTIP,
+    STATUS_STYLE,
+    STATUS_UNWIRED,
     pane_view,
 )
 
@@ -269,17 +277,20 @@ if _HAS_QT:
             self._expanded = False
 
             layout = QVBoxLayout(self)
-            layout.setContentsMargins(6, 6, 6, 6)
-            layout.setSpacing(6)
+            layout.setContentsMargins(*PANE_MARGINS)
+            layout.setSpacing(PANE_SPACING)
 
             top_row = QHBoxLayout()
             self._refresh_btn = QPushButton(REFRESH_TEXT)
             self._refresh_btn.setToolTip(REFRESH_TOOLTIP)
             self._refresh_btn.clicked.connect(self.refresh)
             top_row.addWidget(self._refresh_btn)
+            self._footer_lbl = QLabel(FOOTER_TEXT)
+            self._footer_lbl.setStyleSheet(FOOTER_STYLE)
+            top_row.addWidget(self._footer_lbl)
             top_row.addStretch()
-            self._status_lbl = QLabel("No proposal source wired yet.")
-            self._status_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
+            self._status_lbl = QLabel(STATUS_UNWIRED)
+            self._status_lbl.setStyleSheet(STATUS_STYLE)
             top_row.addWidget(self._status_lbl)
             layout.addLayout(top_row)
 
@@ -290,29 +301,8 @@ if _HAS_QT:
             self._stepper = ProposalStepper()
             self._stepper.stepped.connect(self._on_step)
             self._stepper.entryClicked.connect(self._on_entry_clicked)
+            self._stepper.actionPressed.connect(self._on_action)
             layout.addWidget(self._stepper, 1)
-
-            actions = QHBoxLayout()
-            actions.addStretch()
-            self._preview_btn = QPushButton("Preview")
-            self._preview_btn.setToolTip(
-                "Open the Preview modal for this proposal — shows "
-                "the bots + wires that would be created."
-            )
-            self._preview_btn.clicked.connect(self._preview_shown)
-            actions.addWidget(self._preview_btn)
-            self._dismiss_btn = QPushButton("Dismiss")
-            self._dismiss_btn.setToolTip("Suppress this proposal for 24 hours.")
-            self._dismiss_btn.setStyleSheet("color: #b66;")
-            self._dismiss_btn.clicked.connect(self._dismiss_shown)
-            actions.addWidget(self._dismiss_btn)
-            layout.addLayout(actions)
-
-            footer = QLabel(
-                "Auto-refresh: every 10 min  ·  Adopt: live " "(Bot Wizard handoff)"
-            )
-            footer.setStyleSheet("color: #666; font-size: 10px;")
-            layout.addWidget(footer)
 
             self._timer = QTimer(self)
             self._timer.setInterval(AUTO_REFRESH_MS)
@@ -476,21 +466,17 @@ if _HAS_QT:
             self._expanded = not self._expanded
             self._render()
 
-        def _preview_shown(self) -> None:
-            """Open the preview screen for the proposal on screen."""
-            self._on_preview(self._shown_id())
-
-        def _dismiss_shown(self) -> None:
-            """Ask before suppressing the proposal on screen."""
-            self._on_dismiss(self._shown_id())
+        def _on_action(self, part: str) -> None:
+            """Run the button the expansion carries: Preview or Dismiss."""
+            if part == PREVIEW_PART:
+                self._on_preview(self._shown_id())
+            elif part == DISMISS_PART:
+                self._on_dismiss(self._shown_id())
 
         def _render(self) -> None:
-            held = len(self._proposals)
             self._stepper.show_view(
                 pane_view(self._proposals, self._shown(), self._expanded)
             )
-            self._preview_btn.setEnabled(held > 0)
-            self._dismiss_btn.setEnabled(held > 0)
 
         def _find_proposal(self, proposal_id: str) -> Optional[dict[str, Any]]:
             for p in self._proposals:

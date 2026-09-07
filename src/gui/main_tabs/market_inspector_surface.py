@@ -1573,7 +1573,9 @@ def zone_view(
 
     A zone with no entries keeps its waiting sentence as the headline and
     still reports a position, so an empty zone reads as a state rather
-    than as nothing drawn.
+    than as nothing drawn. An open entry drops the method line and the
+    hint, which the four expanded lines already say, so every zone's open
+    entry takes the same height whatever buttons it carries.
     """
     held = list(entries or [])
     total = len(held)
@@ -1593,7 +1595,8 @@ def zone_view(
         "position": position_text(shown, total),
         "headline": entry.get("headline", "") if total else empty_text,
         "meta": entry.get("meta", "") if total else "",
-        "method": written if total else "",
+        "method": "" if open_now else (written if total else ""),
+        "hint": total > 0 and not open_now,
         "expanded": open_now,
         "detail": lines if open_now else [],
         "thumbnail": entry.get("thumbnail") if total else None,
@@ -1615,6 +1618,7 @@ def stepper_skin() -> dict:
         "button_style": STEP_BUTTON_STYLE,
         "push_padding_px": list(BUTTON_PADDING_PX),
         "push_font_weight": BUTTON_FONT_WEIGHT,
+        "push_button_height_px": PUSH_BUTTON_HEIGHT_PX,
         "position_format": POSITION_FORMAT,
         "position_empty_text": POSITION_EMPTY_TEXT,
         "position_style": POSITION_STYLE,

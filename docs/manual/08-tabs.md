@@ -1148,6 +1148,30 @@ Result: p=0.0000 · trace 57.5>15.5
 Why it is here: p 0.0000 is at or below the 0.05 required.
 ```
 
+The p-value in those two lines is one number, read from the test both times. It
+is held once on the verdict, and the statistic line is written from it rather
+than stored beside it, so the two lines cannot state different numbers.
+
+`src/trading/pair_selection.py` — the statistic line reads the held p-value
+
+```python
+@property
+def statistic_text(self) -> str:
+    """The statistic line, formatted from the numbers the test returned."""
+```
+
+An open entry drops its summary line and its click hint. Both repeat what the
+four lines below them say, and dropping them leaves every open entry the same
+height, whether or not it carries buttons. A proposal carries Preview and
+Dismiss inside its own entry, where a waiting post carries Approve and Decline.
+
+`src/gui/main_tabs/market_inspector_surface.py` — what an open entry drops
+
+```python
+"method": "" if open_now else (written if total else ""),
+"hint": total > 0 and not open_now,
+```
+
 The count of proposals held and dismissed stays on its own line beside the
 Refresh button, so a dismissed proposal is still counted after it leaves the
 list.

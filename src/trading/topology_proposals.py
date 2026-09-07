@@ -43,8 +43,6 @@ SECTOR_WIRE_PCT: float = 15.0
 # The Pearson t test decides sector membership; no magnitude floor is applied.
 SECTOR_MIN_CORR: float = 0.0
 
-CLUSTER_STATISTIC_FORMAT = "r={correlation:+.3f} over {pairs} pairs · p≤{p_value:.4f}"
-
 DISTANCE_DEEP_PCT: float = 10.0
 DISTANCE_WIRE_PCT: float = 30.0
 
@@ -235,11 +233,7 @@ def _cluster_correlation(
         observations=observations,
         statistic=mean_correlation,
         p_value=weakest_p,
-        statistic_text=CLUSTER_STATISTIC_FORMAT.format(
-            correlation=mean_correlation,
-            pairs=len(coefficients),
-            p_value=weakest_p,
-        ),
+        pair_count=len(coefficients),
     )
 
 

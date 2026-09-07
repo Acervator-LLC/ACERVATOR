@@ -845,10 +845,12 @@
       style: { display: FLEX, flexDirection: ROW_WAY, flex: FLEX_NONE }
     };
     rowProps[PART_ATTR] = TOP_ROW_PART;
+    rowProps.style.gap = length(objectField(model, PANE)[SPACING]);
     return element(
       DIV_TAG,
       rowProps,
       element(RefreshButton, { key: REFRESH_PART, model: model }),
+      element(Footer, { key: FOOTER_PART, model: model }),
       element(Spacer, { key: TOP_STRETCH_PART, part: TOP_STRETCH_PART }),
       element(StatusLine, { key: STATUS_PART, model: model })
     );
@@ -880,182 +882,6 @@
     });
     style.fontWeight = text(skin[PUSH_FONT_WEIGHT]);
     return asButton(style);
-  }
-
-  function CardButtons(props) {
-    var card = objectField(props.model, CARD);
-    var rowProps = {
-      style: { display: FLEX, flexDirection: ROW_WAY, gap: length(card[SPACING]) }
-    };
-    rowProps[PART_ATTR] = CARD_BUTTONS_PART;
-    var previewProps = {
-      key: PREVIEW_BUTTON_PART,
-      type: BUTTON_TYPE,
-      style: pushStyle(props.model),
-      title: label(card[PREVIEW_TOOLTIP])
-    };
-    previewProps[PART_ATTR] = PREVIEW_BUTTON_PART;
-    previewProps[NAME_ATTR] = text(props.name);
-    previewProps.onClick = function () {
-      act(PREVIEW_BUTTON_PART, props.name);
-    };
-    var dismissStyle = pushStyle(props.model, card[DISMISS_STYLE]);
-    var dismissProps = {
-      key: DISMISS_BUTTON_PART,
-      type: BUTTON_TYPE,
-      style: dismissStyle,
-      title: label(card[DISMISS_TOOLTIP])
-    };
-    dismissProps[PART_ATTR] = DISMISS_BUTTON_PART;
-    dismissProps[NAME_ATTR] = text(props.name);
-    dismissProps.onClick = function () {
-      act(DISMISS_BUTTON_PART, props.name);
-    };
-    return element(
-      DIV_TAG,
-      rowProps,
-      element(Spacer, { key: CARD_STRETCH_PART, part: CARD_STRETCH_PART }),
-      element(BUTTON_TAG, previewProps, text(card[PREVIEW_TEXT])),
-      element(BUTTON_TAG, dismissProps, text(card[DISMISS_TEXT]))
-    );
-  }
-
-  // The frame carries the Qt sheet and the body carries the layout margins.
-  function ProposalCard(props) {
-    var model = props.model;
-    var card = objectField(model, CARD);
-    var entry = props.entry;
-    var frame = styleOf(card[STYLE]);
-    frame.flex = FLEX_NONE;
-    var cardProps = { style: frame };
-    cardProps[PART_ATTR] = CARD_PART;
-    cardProps[AT_ATTR] = String(props.at);
-    cardProps[NAME_ATTR] = text(props.name);
-    cardProps[ARIA_LABEL] = label(card[ACCESSIBLE_NAME]);
-    var bodyProps = {
-      style: boxStyle(asList(card[MARGINS]), card[SPACING], COLUMN_WAY)
-    };
-    bodyProps[PART_ATTR] = CARD_BODY_PART;
-    var topProps = {
-      style: { display: FLEX, flexDirection: ROW_WAY, gap: length(card[SPACING]) }
-    };
-    topProps[PART_ATTR] = CARD_TOP_PART;
-    var badgeProps = { key: CARD_BADGE_PART, style: asBadge(styleOf(entry[BADGE_STYLE])) };
-    badgeProps[PART_ATTR] = CARD_BADGE_PART;
-    var metaProps = { style: asLabel(styleOf(card[META_STYLE]), false) };
-    metaProps[PART_ATTR] = CARD_META_PART;
-    var methodProps = { style: asLabel(styleOf(card[METHOD_STYLE]), true) };
-    methodProps[PART_ATTR] = CARD_METHOD_PART;
-    // The Qt title carries the row's stretch, so the badge sits at the edge.
-    var titleStyle = asLabel({}, card[TITLE_WORD_WRAP] === true);
-    titleStyle.flex = ONE;
-    titleStyle.minWidth = ZERO;
-    return element(
-      DIV_TAG,
-      cardProps,
-      element(
-        DIV_TAG,
-        bodyProps,
-        element(
-          DIV_TAG,
-          topProps,
-          element(MarkedLabel, {
-            key: CARD_TITLE_PART,
-            part: CARD_TITLE_PART,
-            tag: STRONG_TAG,
-            pieces: listField(objectField(model, MARKS), CARD_TITLES)[props.at],
-            name: props.name,
-            style: titleStyle,
-            bodyStyle: { fontWeight: text(objectField(model, MARKS)[STRONG_WEIGHT]) }
-          }),
-          element(SPAN_TAG, badgeProps, text(entry[BADGE]))
-        ),
-        element(DIV_TAG, metaProps, text(entry[META])),
-        element(DIV_TAG, methodProps, text(entry[METHOD_FIELD])),
-        element(CardButtons, {
-          key: CARD_BUTTONS_PART,
-          model: model,
-          name: props.name
-        })
-      )
-    );
-  }
-
-  // screenChild draws the one element the screen names at this position.
-  function screenChild(model, name, at, cardsDrawn) {
-    var pane = objectField(model, PANE);
-    if (name === pane[LABEL_CLASS]) {
-      return element(EmptyLabel, { key: String(at), model: model });
-    }
-    if (name === pane[STRETCH_NAME]) {
-      return element(Spacer, { key: String(at), part: SCROLL_STRETCH_PART });
-    }
-    if (name === objectField(model, CARD)[CLASS_NAME]) {
-      var entry = listField(model, CARDS)[cardsDrawn];
-      return element(ProposalCard, {
-        key: String(at),
-        model: model,
-        entry: isPlainObject(entry) ? entry : {},
-        name: listField(model, PROPOSALS)[cardsDrawn],
-        at: cardsDrawn
-      });
-    }
-    return null;
-  }
-
-  function Scroll(props) {
-    var model = props.model;
-    var pane = objectField(model, PANE);
-    var apart = sheetMargin(objectField(model, CARD)[STYLE]) * TWO;
-    var frame = pane[SCROLL_FRAME];
-    var style = boxStyle(
-      asList(pane[SCROLL_MARGINS]).map(function (side) {
-        return side + frame;
-      }),
-      Math.max(ZERO, pane[SCROLL_SPACING] - apart),
-      COLUMN_WAY
-    );
-    style.flex = ONE;
-    style.overflow = pane[SCROLL_WIDGET_RESIZABLE] === true ? SCROLLED : CLIPPED;
-    var scrollProps = { style: style };
-    scrollProps[PART_ATTR] = SCROLL_PART;
-    var cardsDrawn = ZERO;
-    var drawn = listField(model, SCREEN).map(function (name, at) {
-      var child = screenChild(model, name, at, cardsDrawn);
-      if (name === objectField(model, CARD)[CLASS_NAME]) {
-        cardsDrawn += ONE;
-      }
-      return child;
-    });
-    return element(DIV_TAG, scrollProps, drawn);
-  }
-
-  function ListGroup(props) {
-    var model = props.model;
-    var style = marginStyle(asList(objectField(model, PANE)[GROUP_MARGINS]));
-    style.display = FLEX;
-    style.flexDirection = COLUMN_WAY;
-    style.flex = ONE;
-    style.minHeight = ZERO;
-    var groupProps = { style: style };
-    groupProps[PART_ATTR] = LIST_GROUP_PART;
-    var legendProps = { style: asLabel({}, false) };
-    legendProps[PART_ATTR] = LIST_LEGEND_PART;
-    return element(
-      FIELDSET_TAG,
-      groupProps,
-      element(
-        LEGEND_TAG,
-        legendProps,
-        text(objectField(model, PANE)[LIST_GROUP_TITLE])
-      ),
-      element(Scroll, { key: SCROLL_PART, model: model })
-    );
-  }
-
-  // The id of the proposal on screen, which the two buttons act on.
-  function shownName(model) {
-    return listField(model, PROPOSALS)[Number(model[AT]) || ZERO];
   }
 
   // The Market Inspector screen publishes the stepper every zone draws
@@ -1091,13 +917,7 @@
             skin: objectField(model, STEPPER),
             view: objectField(model, ZONE),
             act: act
-          }),
-      element(CardButtons, {
-        key: CARD_BUTTONS_PART,
-        model: model,
-        name: shownName(model)
-      }),
-      element(Footer, { key: FOOTER_PART, model: model })
+          })
     );
   }
 
@@ -2335,10 +2155,6 @@
     TopRow: TopRow,
     RefreshButton: RefreshButton,
     StatusLine: StatusLine,
-    ListGroup: ListGroup,
-    Scroll: Scroll,
-    ProposalCard: ProposalCard,
-    CardButtons: CardButtons,
     EmptyLabel: EmptyLabel,
     Footer: Footer,
     MarkedLabel: MarkedLabel,

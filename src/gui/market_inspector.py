@@ -458,7 +458,7 @@ if _HAS_QT:
             self.meta_label.setVisible(bool(view.get("meta")))
             self.method_label.setText(str(view.get("method", "")))
             self.method_label.setVisible(bool(view.get("method")))
-            self.hint_label.setVisible(total > 0)
+            self.hint_label.setVisible(bool(view.get("hint")))
             self._show_strips(view)
             self._show_actions(view.get("actions") or [])
             while self.detail_labels:

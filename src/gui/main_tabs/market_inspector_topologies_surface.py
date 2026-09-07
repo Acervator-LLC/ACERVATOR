@@ -30,6 +30,7 @@ from typing import Any, Callable, Optional
 from .market_inspector_surface import (
     METHOD_LINE_FORMAT,
     TOPOLOGIES_ZONE,
+    action_row,
     method_detail_rows,
     method_line,
     position_text,
@@ -164,8 +165,14 @@ PREVIEW_TOOLTIP = (
 DISMISS_TEXT = "Dismiss"
 DISMISS_TOOLTIP = "Suppress this proposal for 24 hours."
 DISMISS_STYLE = "color: #b66;"
+PREVIEW_PART = "preview-button"
+DISMISS_PART = "dismiss-button"
+PREVIEW_WIDTH_PX = 100
+DISMISS_WIDTH_PX = 92
 
-PANE_MARGINS = (6, 6, 6, 6)
+# The zone group box already insets the pane, so the pane adds no margin of
+# its own; the Opposing Trades zone holds its stepper the same way.
+PANE_MARGINS = (0, 0, 0, 0)
 PANE_SPACING = 6
 REFRESH_TEXT = "Refresh"
 REFRESH_TOOLTIP = "Rerun topology detectors on current market state."
@@ -386,6 +393,14 @@ def card_badge_style(color_hex: Any) -> str:
     return CARD_BADGE_STYLE_FORMAT.format(color_hex=color_hex)
 
 
+def proposal_actions() -> list:
+    """Preview and Dismiss, the two buttons one proposal's expansion carries."""
+    return [
+        action_row(PREVIEW_PART, PREVIEW_TEXT, PREVIEW_TOOLTIP, PREVIEW_WIDTH_PX),
+        action_row(DISMISS_PART, DISMISS_TEXT, DISMISS_TOOLTIP, DISMISS_WIDTH_PX),
+    ]
+
+
 def proposal_entry(proposal: Any) -> dict:
     """One topology proposal as the entry its zone steps through."""
     held = proposal if isinstance(proposal, dict) else {}
@@ -400,6 +415,7 @@ def proposal_entry(proposal: Any) -> dict:
             new_bots=new_bots,
         ),
         held.get("method"),
+        actions=proposal_actions(),
     )
     entry["badge"] = CARD_BADGE_FORMAT.format(score=whole(score))
     entry["badge_style"] = card_badge_style(score_color(score))

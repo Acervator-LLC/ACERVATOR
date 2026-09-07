@@ -60,6 +60,7 @@ GATE_REFUSED_FORMAT = "Refused: {detail}"
 
 COINTEGRATION_STATISTIC_FORMAT = "p={p_value:.4f} · trace {trace:.1f}>{critical:.1f}"
 CORRELATION_STATISTIC_FORMAT = "r={correlation:+.3f} · p={p_value:.4f}"
+CLUSTER_STATISTIC_FORMAT = "r={correlation:+.3f} over {pairs} pairs · p≤{p_value:.4f}"
 BAND_DISTANCE_STATISTIC_FORMAT = "{scrum:+.1f}% / {fold:+.1f}% vs {deep:.1f}%"
 
 
@@ -72,8 +73,13 @@ class MethodResult:
     observations: int = 0
     statistic: float = 0.0
     p_value: float = 1.0
-    statistic_text: str = ""
     detail: str = ""
+    trace: float = 0.0
+    critical: float = 0.0
+    pair_count: int = 0
+    scrum_distance_pct: float = 0.0
+    fold_distance_pct: float = 0.0
+    deep_pct: float = 0.0
 
     @property
     def label(self) -> str:
@@ -91,6 +97,37 @@ class MethodResult:
         if self.method == METHOD_BAND_DISTANCE:
             return LIVE_STATE_WINDOW_TEXT
         return f"{self.observations}d"
+
+    @property
+    def statistic_text(self) -> str:
+        """The statistic line, formatted from the numbers the test returned.
+
+        Reads the same ``p_value`` ``gate_text`` reads, so the two lines of
+        one expansion can never state different numbers for one statistic.
+        """
+        if self.detail:
+            return ""
+        if self.method == METHOD_COINTEGRATION:
+            return COINTEGRATION_STATISTIC_FORMAT.format(
+                p_value=self.p_value, trace=self.trace, critical=self.critical
+            )
+        if self.method == METHOD_BAND_DISTANCE:
+            return BAND_DISTANCE_STATISTIC_FORMAT.format(
+                scrum=self.scrum_distance_pct,
+                fold=self.fold_distance_pct,
+                deep=self.deep_pct,
+            )
+        if self.method != METHOD_CORRELATION:
+            return ""
+        if self.pair_count:
+            return CLUSTER_STATISTIC_FORMAT.format(
+                correlation=self.statistic,
+                pairs=self.pair_count,
+                p_value=self.p_value,
+            )
+        return CORRELATION_STATISTIC_FORMAT.format(
+            correlation=self.statistic, p_value=self.p_value
+        )
 
     @property
     def gate_text(self) -> str:
@@ -227,9 +264,8 @@ def cointegration_test(
         observations=len(left),
         statistic=p_value,
         p_value=p_value,
-        statistic_text=COINTEGRATION_STATISTIC_FORMAT.format(
-            p_value=p_value, trace=trace, critical=critical
-        ),
+        trace=trace,
+        critical=critical,
     )
 
 
@@ -278,9 +314,6 @@ def correlation_test(
         observations=len(left),
         statistic=correlation,
         p_value=p_value,
-        statistic_text=CORRELATION_STATISTIC_FORMAT.format(
-            correlation=correlation, p_value=p_value
-        ),
     )
 
 
@@ -294,9 +327,9 @@ def band_distance_result(
         passed=passed,
         statistic=abs(scrum_distance_pct) + abs(fold_distance_pct),
         p_value=0.0,
-        statistic_text=BAND_DISTANCE_STATISTIC_FORMAT.format(
-            scrum=scrum_distance_pct, fold=fold_distance_pct, deep=deep_pct
-        ),
+        scrum_distance_pct=scrum_distance_pct,
+        fold_distance_pct=fold_distance_pct,
+        deep_pct=deep_pct,
     )
 
 
