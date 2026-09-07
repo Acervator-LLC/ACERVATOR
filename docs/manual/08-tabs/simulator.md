@@ -259,6 +259,181 @@ not do.
             )
 ```
 
+## Portfolio Battery history
+
+The thirty-five portfolios from the historical archive are now named in code,
+and their sixty-three symbols are what the new mode runs over. Each one carries
+its symbols, an equal weight for every symbol, and the archive it was read out
+of.
+
+`src/simulator/portfolios.py` — one portfolio
+
+```python
+    "CRYPTO_BLUE": Portfolio(
+        name="CRYPTO_BLUE",
+        symbols=("BTC", "ETH", "BNB"),
+        description="Large-cap crypto — institutional grade",
+    ),
+```
+
+Their price history is real, and it is kept apart from the live fleet's. The
+tablets a replay reads sit under one root; the battery's sit under a second one,
+and a battery build never opens the first.
+
+`src/trading/stone_tablets/ra_paths.py` — the second root
+
+```python
+_RA_ROOT: Path = Path.home() / ".acervator_ra_tablets"
+```
+
+Two sources fill it and neither needs a key. Crypto arrives through the adapter
+the fleet already uses, driven by the venue's own public candle endpoint.
+Everything else arrives through a second adapter beside it.
+
+`src/trading/stone_tablets/ra_fetcher.py` — the non-crypto adapter
+
+```python
+class YahooChartAdapter(ExchangeAdapter):
+    exchange_id = "yahoo"
+    chunk_limit = RA_CHUNK_DAYS
+    BASE_URL: str = "https://query1.finance.yahoo.com/v8/finance/chart"
+    SOURCE: str = "yahoo_chart_v8_ONE_DAY_SPLIT_ADJUSTED"
+```
+
+Every tablet records where its numbers came from and when they were fetched, and
+the builder refuses to write one without both. A price with no source is what
+made the archive's own figures worthless.
+
+`src/trading/stone_tablets/ra_fetcher.py` — the refusal
+
+```python
+        resolved = source or str(getattr(adapter, "SOURCE", ""))
+        if not resolved:
+            raise ValueError(
+                f"{type(adapter).__name__} carries no SOURCE; pass source= naming "
+                f"the endpoint the candles come from. {adapter.exchange_id!r} is "
+                f"an exchange id, not provenance."
+            )
+```
+
+Where a source has nothing, nothing is written in its place. The missing days
+are recorded as missing, in their own file beside the tablets.
+
+`src/trading/stone_tablets/ra_fetcher.py` — what a missing period records
+
+```python
+@dataclass
+class TabletGap:
+    """One requested period a source returned no rows for."""
+
+    asset: str
+    exchange_id: str
+    timeframe: str
+    year: int
+    since_ms: int
+    until_ms: int
+    reason: str
+    checked_at: str
+```
+
+Nothing runs the bot logic over these tablets yet, and no screen shows them.
+That is the next unit.
+
+In development.
+
+## Portfolio Battery coverage
+
+Every symbol in every portfolio has real daily prices on disk. No portfolio
+names a period of its own, so all six archive periods apply to all thirty-five
+of them, and the span asked for is 2020 to 2026.
+
+`src/trading/stone_tablets/ra_import.py` — the years asked for
+
+```python
+def _archive_years() -> tuple[int, ...]:
+    """Return every calendar year ``PERIODS`` touches, ascending."""
+    years: set[int] = set()
+    for start, end in PERIODS.values():
+        years.update(range(int(start[:4]), int(end[:4]) + 1))
+    return tuple(sorted(years))
+```
+
+A symbol reaches one source or the other by what it is. A coin the crypto venue
+never listed falls to the second source instead of being left empty, and every
+tablet records which one served it.
+
+`src/trading/stone_tablets/ra_import.py` — the routing
+
+```python
+def route_for(symbol: str) -> SymbolRoute:
+    """Return ``symbol``'s route, crypto to Coinbase and everything else to Yahoo."""
+    upper = symbol.upper()
+    if is_crypto(upper):
+        return SymbolRoute(upper, COINBASE_SOURCE, YAHOO_CRYPTO_SOURCE)
+    return SymbolRoute(upper, YAHOO_SOURCE)
+```
+
+The import reads its own result back off disk and says what it holds. A count
+on its own would not be an answer, so the statement carries every source with
+its fetch times and every period no source served.
+
+`python -m src.trading.stone_tablets.ra_import coverage` — the headline
+
+```
+SYMBOLS
+  asked for ......... 63
+  returned data ..... 60
+  tablets ........... 411
+  candles ........... 105336
+
+SOURCES
+  coinbase_exchange_candles_ONE_DAY: 71 tablets
+  yahoo_chart_v8_ONE_DAY_SPLIT_ADJUSTED: 340 tablets
+```
+
+A share year is not a calendar year. The market shuts at weekends and on public
+holidays, and those days are recorded as missing rather than filled, so a share
+year holds about 250 days where a coin year holds every one.
+
+`python -m src.trading.stone_tablets.ra_import coverage` — a share and a coin
+
+```
+  SPY
+    2022    251 rows  2022-01-03..2022-12-30
+    2023    250 rows  2023-01-03..2023-12-29
+  BTC
+    2022    365 rows  2022-01-01..2022-12-31
+    2023    365 rows  2023-01-01..2023-12-31
+```
+
+A ticker that no longer reaches the company the archive meant is recorded as a
+finding, not as a failure. Three of the sixty-three return nothing at all, and
+what the endpoint answered is written down in place of a price.
+
+`~/.acervator_ra_tablets/GAPS.json` — a ticker that no longer trades
+
+```
+  CCIV   2021 yahoo  [2021-01-01..2021-12-31] HTTPError: HTTP Error 404: Not Found
+  EXPR   2021 yahoo  [2021-01-01..2021-12-31] HTTPError: HTTP Error 404: Not Found
+  IPOF   2021 yahoo  [2021-01-01..2021-12-31] HTTPError: HTTP Error 404: Not Found
+```
+
+Three more symbols are short at one end. `BBBY` reaches a company first traded
+in July 2026 rather than the one the archive ran, and `MATIC` stops on
+14 October 2025 because the coin was renamed.
+
+`python -m src.trading.stone_tablets.ra_import coverage` — a symbol cut short
+
+```
+  MATIC  missing: 2026
+    2024    366 rows  2024-01-01..2024-12-31
+    2025    287 rows  2025-01-01..2025-10-14
+```
+
+Nothing runs the bot logic over these prices yet, and no screen shows them.
+
+In development.
+
 ## The validation criterion
 
 The Simulator is validated when the gates latch identically on the same data.

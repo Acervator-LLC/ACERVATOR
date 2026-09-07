@@ -2319,6 +2319,36 @@ voter's direction, confidence, weight and detail at that moment. The fire
 record adds the list of overrides that engaged, so a reader can tell an
 override-driven fire from a consensus-driven one without opening anything else.
 
+The two code blocks above and the prefixes in the table are the shape these
+lines had before the tick-message rewrite. The current prefixes are
+`RISK GATE [SIDE]` and `TRADE FIRED [SIDE]`, and both write the same panel
+through one renderer.
+
+| Method | Line prefix | Written when |
+| ------ | ----------- | ------------ |
+| `_emit_risk_gate_snapshot` | `RISK GATE [SIDE] ` | a risk gate blocks a trade |
+| `_emit_trade_fire_snapshot` | `TRADE FIRED [SIDE] ` | a scrum or a fold actually fires |
+
+The panel prints as a count and three direction groups rather than as a
+dictionary. A voter's weight is a configuration value that never moves between
+ticks, and a neutral voter's confidence is fixed at zero in the indicator code,
+so neither reaches the line. Direction, confidence and an indicator's own raw
+detail all remain.
+
+`src/trading/scrumming/snapshots.py` — the grouped panel
+
+```python
+counts = ", ".join(f"{len(grouped[name])} {name.lower()}" for name in _PANEL_GROUPS)
+rows = [f"Panel {counts}."]
+for direction, voters in grouped.items():
+    voters.sort(key=lambda one: (-one[0], one[1]))
+```
+
+The measurement behind the change is in
+[tests/debug_reports/2026-09-07_activity_log_format.md](../../tests/debug_reports/2026-09-07_activity_log_format.md):
+the dictionary form measured 1,005 to 1,017 characters across 1,143 recorded
+snapshots, and the grouped form of the same panel measures 322.
+
 Three further emitters sit in the same mixin: a trade notification carrying its
 own text prefix, a voting-panel snapshot at fire time, and a gate decision at
 fire time. The last two emit events rather than text lines, and the Console

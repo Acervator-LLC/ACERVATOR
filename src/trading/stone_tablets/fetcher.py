@@ -90,6 +90,11 @@ class ExchangeAdapter:
         """``chunk_limit`` steps of ``STEP_5M_MS``, in milliseconds."""
         return self.chunk_limit * STEP_5M_MS
 
+    @staticmethod
+    def is_retryable(exc: BaseException) -> bool:
+        """True when a failed ``fetch_chunk`` is worth another attempt."""
+        return retry_any(exc)
+
 
 class CoinbaseAdapter(ExchangeAdapter):
     """Coinbase Advanced Trade adapter.
@@ -173,7 +178,7 @@ class CoinbaseAdapter(ExchangeAdapter):
                 _fetch_once,
                 attempts=self.retry_max,
                 delay_for=exponential_delay(self.retry_base_s),
-                is_retryable=retry_any,
+                is_retryable=self.is_retryable,
                 on_failure=_note_fetch_failure,
             )
         except Exception as exc:
