@@ -49,6 +49,7 @@ from . import paper_trader_tab_surface
 from . import proof_of_accumulation_tab_surface
 from . import simulator_tab_surface
 from . import system_status_tab_surface
+from . import theme_engine_surface
 from . import trade_charts_tab_surface
 from . import trading_tab_surface
 
@@ -128,65 +129,91 @@ MENU_TITLES = (
 
 TABS_MOVABLE = True
 
-TRADING_TAB = "Trading"
-MARKET_INSPECTOR_TAB = "Market Inspector"
-BOT_SWARM_TAB = "Bot Swarm"
-ASSET_CHARTS_TAB = "Asset Charts"
+LIVE_TAB = "Live"
+INSPECTOR_TAB = "Inspector"
+SWARM_TAB = "Swarm"
+CHARTS_TAB = "Charts"
 HISTORY_TAB = "History"
-SIMULATOR_TAB = "Simulator"
+SIM_TAB = "Sim"
 CONSOLE_TAB = "Console"
 
 # Each unbuilt tab is labelled by its own surface, so the bar and the empty
 # state it draws cannot carry two spellings of one name.
-PAPER_TRADER_TAB = paper_trader_tab_surface.HEADING
-SYSTEM_STATUS_TAB = system_status_tab_surface.HEADING
-PROOF_OF_ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
+PAPER_TAB = paper_trader_tab_surface.HEADING
+STATUS_TAB = system_status_tab_surface.HEADING
+ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 
 CANONICAL_TAB_ORDER = (
-    TRADING_TAB,
-    MARKET_INSPECTOR_TAB,
-    BOT_SWARM_TAB,
-    ASSET_CHARTS_TAB,
+    SIM_TAB,
+    PAPER_TAB,
+    LIVE_TAB,
+    CHARTS_TAB,
+    INSPECTOR_TAB,
+    SWARM_TAB,
+    ACCUMULATION_TAB,
     HISTORY_TAB,
-    SIMULATOR_TAB,
+    STATUS_TAB,
     CONSOLE_TAB,
-    PAPER_TRADER_TAB,
-    SYSTEM_STATUS_TAB,
-    PROOF_OF_ACCUMULATION_TAB,
 )
+
+# The ground each tab is painted on. `TAB_GROUND_COLOURS` resolves a ground
+# against one theme's tokens.
+BLACK_GROUND = "black"
+WHITE_GROUND = "white"
+GOLD_GROUND = "gold"
+
+TAB_GROUNDS = {
+    SIM_TAB: BLACK_GROUND,
+    PAPER_TAB: WHITE_GROUND,
+    LIVE_TAB: GOLD_GROUND,
+    CHARTS_TAB: GOLD_GROUND,
+    INSPECTOR_TAB: GOLD_GROUND,
+    SWARM_TAB: GOLD_GROUND,
+    ACCUMULATION_TAB: GOLD_GROUND,
+    HISTORY_TAB: GOLD_GROUND,
+    STATUS_TAB: GOLD_GROUND,
+    CONSOLE_TAB: GOLD_GROUND,
+}
+
+# The two theme-token names each ground paints from.
+TAB_GROUND_TOKENS = {
+    BLACK_GROUND: ("tab_black_bg", "tab_black_text"),
+    WHITE_GROUND: ("tab_white_bg", "tab_white_text"),
+    GOLD_GROUND: ("tab_gold_bg", "tab_gold_text"),
+}
 
 # The bridge method that serves each tab. A frontend with no tab book of its
 # own joins its panels to this window's tabs on the method each one calls.
 TAB_METHODS = {
-    TRADING_TAB: trading_tab_surface.METHOD,
-    MARKET_INSPECTOR_TAB: market_inspector_surface.METHOD,
-    BOT_SWARM_TAB: bot_visualizer_surface.METHOD,
-    ASSET_CHARTS_TAB: trade_charts_tab_surface.METHOD,
+    LIVE_TAB: trading_tab_surface.METHOD,
+    INSPECTOR_TAB: market_inspector_surface.METHOD,
+    SWARM_TAB: bot_visualizer_surface.METHOD,
+    CHARTS_TAB: trade_charts_tab_surface.METHOD,
     HISTORY_TAB: history_tab_surface.METHOD,
-    SIMULATOR_TAB: simulator_tab_surface.METHOD,
+    SIM_TAB: simulator_tab_surface.METHOD,
     CONSOLE_TAB: console_tab_surface.METHOD,
-    PAPER_TRADER_TAB: paper_trader_tab_surface.METHOD,
-    SYSTEM_STATUS_TAB: system_status_tab_surface.METHOD,
-    PROOF_OF_ACCUMULATION_TAB: proof_of_accumulation_tab_surface.METHOD,
+    PAPER_TAB: paper_trader_tab_surface.METHOD,
+    STATUS_TAB: system_status_tab_surface.METHOD,
+    ACCUMULATION_TAB: proof_of_accumulation_tab_surface.METHOD,
 }
 
 # The order `_setup_ui` runs the builders in, which is not the order the bar ends in.
 BUILT_TAB_ORDER = (
-    TRADING_TAB,
-    ASSET_CHARTS_TAB,
-    BOT_SWARM_TAB,
-    MARKET_INSPECTOR_TAB,
-    SIMULATOR_TAB,
+    LIVE_TAB,
+    CHARTS_TAB,
+    SWARM_TAB,
+    INSPECTOR_TAB,
+    SIM_TAB,
     HISTORY_TAB,
     CONSOLE_TAB,
-    PAPER_TRADER_TAB,
-    SYSTEM_STATUS_TAB,
-    PROOF_OF_ACCUMULATION_TAB,
+    PAPER_TAB,
+    STATUS_TAB,
+    ACCUMULATION_TAB,
 )
 
 SIMULATOR_BUILD_INDEX = 1
 
-ISOLATED_TABS = (SIMULATOR_TAB, PAPER_TRADER_TAB)
+ISOLATED_TABS = (SIM_TAB, PAPER_TAB)
 
 HISTORY_STALE_AFTER_S = 300
 
@@ -656,11 +683,28 @@ def constructed_tabs(failed: Any = None) -> list:
     for name in BUILT_TAB_ORDER:
         if name in skipped:
             continue
-        if name == SIMULATOR_TAB:
+        if name == SIM_TAB:
             order.insert(SIMULATOR_BUILD_INDEX, name)
         else:
             order.append(name)
     return order
+
+
+def tab_colours(theme: Any = None) -> dict:
+    """Each tab's ground and text colour, resolved against one theme's tokens.
+
+    A theme the table does not hold resolves against `DEFAULT_THEME`.
+    """
+    themes = theme_engine_surface.THEMES
+    tokens = themes.get(theme) or themes[DEFAULT_THEME]
+    painted = {}
+    for tab, ground in TAB_GROUNDS.items():
+        ground_token, text_token = TAB_GROUND_TOKENS[ground]
+        painted[tab] = {
+            "ground": tokens[ground_token],
+            "text": tokens[text_token],
+        }
+    return painted
 
 
 def reordered_tabs(labels: Any, desired: Any) -> list:
@@ -1292,8 +1336,10 @@ class MainWindowModel:
         self.window_title = ""
         self.minimum_size = (MINIMUM_WIDTH_PX, MINIMUM_HEIGHT_PX)
         self.menus: list = []
+        self.theme = DEFAULT_THEME
         self.tab_labels: list = []
         self.tab_methods = dict(TAB_METHODS)
+        self.tab_colours = tab_colours(self.theme)
         self.tabs_movable = TABS_MOVABLE
         self.current_tab = ""
         self.header_strip_shown = True
@@ -1343,6 +1389,9 @@ class MainWindowModel:
         built = constructed_tabs(self.failed_tabs)
         self.tab_labels = reordered_tabs(built, CANONICAL_TAB_ORDER)
         self._record("tabs", list(self.tab_labels))
+        if self.settings is not None:
+            self.theme = self.settings.get("theme", DEFAULT_THEME)
+        self.tab_colours = tab_colours(self.theme)
         self.timers = [
             {"name": "dashboard", "interval_ms": DASHBOARD_TICK_MS, "started": True},
             {"name": "pulse", "interval_ms": PULSE_TICK_MS, "started": True},
@@ -1496,6 +1545,8 @@ class MainWindowModel:
         """A Theme menu item."""
         if name not in self.themes.names():
             raise ValueError(f"Unknown theme: {name}. Available: {self.themes.names()}")
+        self.theme = name
+        self.tab_colours = tab_colours(name)
         self.log(THEME_SWITCHED_LOG_FORMAT.format(name=name), "info")
         self._record("theme", name)
         return self
@@ -1726,6 +1777,10 @@ class MainWindowModel:
             "menus": self.menus,
             "tab_labels": list(self.tab_labels),
             "tab_methods": dict(self.tab_methods),
+            "tab_colours": {
+                tab: dict(pair) for tab, pair in self.tab_colours.items()
+            },
+            "theme": self.theme,
             "tabs_movable": self.tabs_movable,
             "current_tab": self.current_tab,
             "header_strip_shown": self.header_strip_shown,

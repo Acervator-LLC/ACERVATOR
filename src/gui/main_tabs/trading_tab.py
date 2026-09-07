@@ -1,4 +1,4 @@
-"""Trading tab of the main window."""
+"""Live tab of the main window."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from .. import design_system as ds
 from ..color_alpha import rgba
 from ..widgets.status_log import StatusLog
+from .main_window_surface import LIVE_TAB
 from .notify_stub import _NotifyStub
 
 logger = logging.getLogger("acervator.gui")
@@ -435,4 +436,4 @@ class TradingTabMixin:
         self._api_logger = get_api_log()
         self._api_logger.add_listener(self._on_api_event)
 
-        self._main_tabs.addTab(trading_tab, "Trading")
+        self._main_tabs.addTab(trading_tab, LIVE_TAB)

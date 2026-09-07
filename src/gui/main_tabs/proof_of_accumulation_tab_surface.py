@@ -11,7 +11,7 @@ from __future__ import annotations
 
 METHOD = "proof_of_accumulation_tab.state"
 
-HEADING = "Proof of Accumulation"
+HEADING = "Accumulation"
 ISSUE = 147
 BUILT = False
 STATE_TEXT = "This tab is not built."
