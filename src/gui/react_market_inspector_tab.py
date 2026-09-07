@@ -56,6 +56,10 @@ ADOPT_KEY = "adopt-button"
 STEP_BACK_KEY = "step-back"
 STEP_NEXT_KEY = "step-next"
 ENTRY_KEY = "zone-entry"
+SECTOR_FIELD_KEY = "sector-field"
+CLASS_BOX_KEY = "class-box"
+TIMEFRAME_BOX_KEY = "timeframe-box"
+SCAN_NOW_KEY = "scan-now"
 
 #: The step one arrow press takes through a zone entry list.
 STEP_BACK = -1
@@ -288,6 +292,9 @@ if _HAS_QT and _HAS_WEBENGINE:
         def _build_ui(self) -> None:
             """Build the one web view the whole tab is drawn in."""
             self._screen = surface.MarketInspectorScreenModel()
+            # One board, two names: the inherited tab and the screen model
+            # both read the sectors the ATA-SPM zone holds.
+            self._ata_board = self._screen.board
             self._topologies_pane = TopologiesPaneHost()
             self._page_ready = False
             self._last_model: dict = {}
@@ -367,6 +374,18 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self._step_zone(request.get("value"), STEP_NEXT)
             elif key == ENTRY_KEY:
                 self._screen.toggle_zone(request.get("value"))
+                self.push()
+            elif key == SECTOR_FIELD_KEY:
+                self._screen.set_sector_text(request.get("value"))
+                self.push()
+            elif key == CLASS_BOX_KEY:
+                self._screen.set_sector_class(request.get("value"))
+                self.push()
+            elif key == TIMEFRAME_BOX_KEY:
+                self._screen.toggle_timeframe(request.get("value"))
+                self.push()
+            elif key == SCAN_NOW_KEY:
+                self._screen.scan_now()
                 self.push()
 
         def _step_zone(self, key: Any, by: int) -> None:

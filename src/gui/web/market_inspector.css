@@ -29,6 +29,7 @@ body {
 }
 
 [data-part="refresh-button"],
+[data-part="scan-now"],
 [data-part="preview-button"],
 [data-part="dismiss-button"],
 [data-part="cancel-button"],
@@ -52,8 +53,24 @@ body {
   white-space: nowrap;
 }
 
-[data-part="switch-box"] {
+[data-part="switch-box"],
+[data-part="timeframe-box"] {
   accent-color: var(--accent);
+}
+
+/* The ATA-SPM sector field and its class box. The padding, the border width
+ * and the widths come from the payload; this is colour and type only. */
+[data-part="sector-field"],
+[data-part="class-box"] {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--border);
+  border-radius: 2px;
+  font: inherit;
+}
+
+[data-part="sector-field"]::placeholder {
+  color: var(--grid);
 }
 
 [data-part="table-group"] {

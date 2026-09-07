@@ -117,6 +117,7 @@ class MarketInspector:
         self._last_pairs: list[OpposingPair] = []
         self._last_tested: list[tuple] = []
         self._last_closes: dict = {}
+        self._last_candles: dict = {}
         self._last_scan_ts: float = 0.0
 
     @property
@@ -136,6 +137,15 @@ class MarketInspector:
     def last_closes(self) -> dict:
         """The daily closes the last scan tested, keyed by base symbol."""
         return dict(self._last_closes)
+
+    @property
+    def last_candles(self) -> dict:
+        """The candles the last scan read, keyed by base symbol then timeframe.
+
+        ``ata_spm.evaluate`` charts each sector asset off these, so a Scan
+        Now costs no second fetch.
+        """
+        return {symbol: dict(held) for symbol, held in self._last_candles.items()}
 
     @property
     def last_scan_ts(self) -> float:
@@ -370,6 +380,10 @@ class MarketInspector:
         self._last_signals = signals
         self._last_tested = []
         self._last_closes = dict(closes_by_symbol or {})
+        self._last_candles = {
+            symbol: dict(held)
+            for symbol, held in (candles_by_symbol_by_tf or {}).items()
+        }
         self._last_pairs = self._find_opposing_pairs(signals, closes_by_symbol)
         self._last_scan_ts = _time.time()
 

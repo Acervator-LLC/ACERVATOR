@@ -555,6 +555,84 @@ ATA-SPM reads a phase run. Nothing wires one yet, so its line reads
 `Phase source not wired.` A wired source that has run names its phase beside
 the count the Ready to Send bucket holds.
 
+The ATA-SPM zone now carries the scan itself. A field names a sector, a box
+beside it names the asset class, four check boxes name the timeframes that
+sector is scanned on, and Scan Now runs it without waiting for a rotation.
+Crypto is scanned on 5m, 1hr, 1d and 1wk. Every other asset class is scanned on
+1hr, 1d, 1wk and 1mnth.
+
+`src/trading/ata_spm.py` — the four timeframes each asset class carries
+
+```python
+CRYPTO_TIMEFRAMES = ("5m", "1h", "1d", "1w")
+SLOWER_TIMEFRAMES = ("1h", "1d", "1w", "1M")
+```
+
+Scan Now runs the first three phases in order, and each one leaves something to
+read. Phase one scans the sector and says what every ticked timeframe returned.
+Phase two keeps the charts carrying a reversal vote. Phase three loads each of
+those charts with the indicators that confirm it.
+
+`src/trading/ata_spm.py` — the run, phases one to three
+
+```python
+def run(
+    sectors: Any,
+    asset_source: Optional[Callable] = None,
+    candle_source: Optional[Callable] = None,
+    engine: Optional[VotingEngine] = None,
+) -> AtaSpmRun:
+```
+
+The vote comes from the twelve voters and from nothing else. A chart carries a
+reversal when the Bollinger Bands voter and the panel's own consensus name the
+same direction: the price sits at a band, and the panel reads the way the band
+does. A panel with no consensus is not a reversal.
+
+`src/trading/ata_spm.py` — the reversal test
+
+```python
+if self.direction == SignalDirection.NEUTRAL:
+    return False
+return self.band_direction == self.direction
+```
+
+Every confirming indicator is explained in one sentence, and the sentence has
+the same shape every time: the indicator's name, the reading it published, its
+direction and its confidence. Two posts about the same signal therefore read
+alike.
+
+`src/trading/ata_spm.py` — the standardised message
+
+```python
+MESSAGE_FORMAT = "{label}: {reading}. Votes {direction} at {confidence}% confidence."
+```
+
+Clicking a scanned sector opens the three phase readbacks under each other.
+
+```
+Phase 1 Evaluate 1d: 2 vote(s), 0 without candles
+Phase 2 Identify BTC 1wk: bullish reversal · net +0.9473 · confidence 8% · band position 0.3381
+Phase 3 Pull BTC 1wk: 200 candles, last close 217.224
+Bollinger Bands: band position 0.3381. Votes bullish at 20% confidence.
+Vortex: VI+ less VI- at +0.2000. Votes bullish at 40% confidence.
+```
+
+A timeframe whose assets hold no candles says so on its own line rather than
+reporting nothing. The assets a sector holds come from the shipped sector map,
+which covers crypto; every other asset class answers that no source is wired
+for it yet.
+
+`src/gui/main_tabs/market_inspector_surface.py` — where a sector's assets come from
+
+```python
+if str(asset_class) != ata_spm.CLASS_CRYPTO:
+    return []
+```
+
+Phases four to eight are not built. The Ready to Send bucket holds nothing, and
+the zone's own line reports zero for it.
+
 Opposing Trades counts the pairs the scan found, and names the share a bullish
 bot feeds to the bot on the opposite market condition. Its wording follows the
 scan: unasked, running, finished and empty, or finished with pairs.

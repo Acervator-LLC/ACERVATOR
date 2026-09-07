@@ -7,6 +7,7 @@
 
   var ACCESSIBLE_NAME = "accessible_name";
   var ACTIONS = "actions";
+  var ATA_SPM = "ata_spm";
   var ACTIVE_SYMBOLS = "active_symbols";
   var ADOPT_SIGNAL_NAME = "adopt_signal_name";
   var AGE = "age";
@@ -99,6 +100,7 @@
     ACTIVE_SYMBOLS,
     ADOPT_SIGNAL_NAME,
     AGE,
+    ATA_SPM,
     BUS_TOPICS,
     BUTTON_FONT_WEIGHT,
     BUTTON_PADDING_PX,
@@ -471,8 +473,49 @@
 
   var ACTION_FIELDS = [ADOPT_REQUESTED, REFRESH_CLICKED, SHOW_ACTIVE_TOGGLED];
 
+  // The ATA-SPM control row: the sector field, its class, its four
+  // timeframe boxes and Scan Now, published under one bag.
+  var SECTOR_PLACEHOLDER = "sector_placeholder";
+  var SECTOR_TOOLTIP = "sector_tooltip";
+  var SECTOR_WIDTH_PX = "sector_width_px";
+  var SCAN_LABEL = "scan_label";
+  var SCAN_TOOLTIP = "scan_tooltip";
+  var CLASS_TOOLTIP = "class_tooltip";
+  var CLASS_WIDTH_PX = "class_width_px";
+  var BOX_TOOLTIP_FORMAT = "box_tooltip_format";
+  var ROW_SPACING_PX = "row_spacing_px";
+  var SECTOR_TEXT = "sector_text";
+  var SECTOR_CLASS = "sector_class";
+  var ASSET_CLASSES = "asset_classes";
+  var BOXES = "boxes";
+  var FIELD_PADDING_PX = "field_padding_px";
+  var FIELD_BORDER_PX = "field_border_px";
+  var CHECK_INDICATOR_PX = "check_indicator_px";
+  var CHECK_LABEL_SPACING_PX = "check_label_spacing_px";
+
+  var ATA_SPM_FIELDS = [
+    ASSET_CLASSES,
+    BOXES,
+    BOX_TOOLTIP_FORMAT,
+    CHECK_INDICATOR_PX,
+    CHECK_LABEL_SPACING_PX,
+    CLASS_TOOLTIP,
+    CLASS_WIDTH_PX,
+    FIELD_BORDER_PX,
+    FIELD_PADDING_PX,
+    ROW_SPACING_PX,
+    SCAN_LABEL,
+    SCAN_TOOLTIP,
+    SECTOR_CLASS,
+    SECTOR_PLACEHOLDER,
+    SECTOR_TEXT,
+    SECTOR_TOOLTIP,
+    SECTOR_WIDTH_PX
+  ];
+
   var BAG_FIELDS = {};
   BAG_FIELDS[ACTIONS] = ACTION_FIELDS;
+  BAG_FIELDS[ATA_SPM] = ATA_SPM_FIELDS;
   BAG_FIELDS[AGE] = AGE_FIELDS;
   BAG_FIELDS[CELLS] = CELL_FIELDS;
   BAG_FIELDS[COLORS] = COLOR_FIELDS;
@@ -526,6 +569,7 @@
   var WANTED_BAGS = [
     ACTIONS,
     AGE,
+    ATA_SPM,
     CELLS,
     COLORS,
     ELEMENTS,
@@ -650,8 +694,17 @@
   var TH_TAG = "th";
   var TD_TAG = "td";
 
+  var SELECT_TAG = "select";
+  var OPTION_TAG = "option";
+  var BORDER_BOX = "border-box";
+  var NO_MARGIN = "0";
+
   var BUTTON_TYPE = "button";
   var CHECKBOX_TYPE = "checkbox";
+  var TEXT_TYPE = "text";
+
+  // The token the surface's box tooltip format leaves for the box wording.
+  var LABEL_TOKEN = "{label}";
 
   var SCREEN_PART = "screen";
   var SPLIT_PART = "split";
@@ -735,6 +788,17 @@
   var DETAIL_STYLE = "detail_style";
   var ENTRY_NAME = "entry_accessible_name";
   var STEPPER_NAME = "stepper_accessible_name";
+
+  var ATA_ROW_PART = "ata-row";
+  var SECTOR_FIELD_PART = "sector-field";
+  var CLASS_BOX_PART = "class-box";
+  var TIMEFRAME_BOX_PART = "timeframe-box";
+  var SCAN_NOW_PART = "scan-now";
+
+  var SECTOR_TEXT_FIELD = "sector_text";
+  var SECTOR_CLASS_FIELD = "sector_class";
+  var TOGGLE_TIMEFRAME_FIELD = "toggle_timeframe";
+  var SCAN_NOW_FIELD = "scan_now";
 
   var STEP_ZONE_FIELD = "step_zone";
   var STEP_FIELD = "step";
@@ -1491,6 +1555,160 @@
     );
   }
 
+  // fieldStyle is the themed QLineEdit and QComboBox box: the theme's own
+  // padding and its 1 px border, over a fixed width.
+  function fieldStyle(skin, widthField) {
+    var style = marginStyle(asList(skin[FIELD_PADDING_PX]));
+    style.flex = FLEX_NONE;
+    style.width = length(skin[widthField]);
+    style.borderWidth = length(skin[FIELD_BORDER_PX]);
+    style.borderStyle = SOLID;
+    style.font = INHERITED;
+    return style;
+  }
+
+  // SectorField is where the operator names a sector to scan.
+  function SectorField(props) {
+    var skin = props.skin;
+    var style = fieldStyle(skin, SECTOR_WIDTH_PX);
+    var fieldProps = {
+      type: TEXT_TYPE,
+      style: style,
+      value: text(skin[SECTOR_TEXT]),
+      placeholder: label(skin[SECTOR_PLACEHOLDER]),
+      title: label(skin[SECTOR_TOOLTIP]),
+      onChange: function (event) {
+        act(SECTOR_FIELD_PART, event.target.value);
+      }
+    };
+    fieldProps[PART_ATTR] = SECTOR_FIELD_PART;
+    fieldProps[ARIA_LABEL] = label(skin[SECTOR_PLACEHOLDER]);
+    return element(INPUT_TAG, fieldProps);
+  }
+
+  // ClassBox picks the asset class, which is what sets the four timeframes.
+  function ClassBox(props) {
+    var skin = props.skin;
+    var style = fieldStyle(skin, CLASS_WIDTH_PX);
+    var boxProps = {
+      style: style,
+      value: text(skin[SECTOR_CLASS]),
+      title: label(skin[CLASS_TOOLTIP]),
+      onChange: function (event) {
+        act(CLASS_BOX_PART, event.target.value);
+      }
+    };
+    boxProps[PART_ATTR] = CLASS_BOX_PART;
+    boxProps[ARIA_LABEL] = label(skin[CLASS_TOOLTIP]);
+    return element(
+      SELECT_TAG,
+      boxProps,
+      asList(skin[ASSET_CLASSES]).map(function (name) {
+        return element(
+          OPTION_TAG,
+          { key: text(name), value: text(name) },
+          text(name)
+        );
+      })
+    );
+  }
+
+  // TimeframeBox is one of the four boxes the sector on screen scans on.
+  function TimeframeBox(props) {
+    var skin = props.skin;
+    var row = asList(props.row);
+    var wrapStyle = { display: FLEX, alignItems: CENTER, flex: FLEX_NONE };
+    wrapStyle.gap = length(skin[CHECK_LABEL_SPACING_PX]);
+    var wrapProps = {
+      style: wrapStyle,
+      title: label(skin[BOX_TOOLTIP_FORMAT]).replace(
+        LABEL_TOKEN,
+        text(row[ONE])
+      )
+    };
+    // PM_IndicatorWidth on the themed QCheckBox, drawn as one box.
+    var indicator = {
+      boxSizing: BORDER_BOX,
+      width: length(skin[CHECK_INDICATOR_PX]),
+      height: length(skin[CHECK_INDICATOR_PX]),
+      flex: FLEX_NONE,
+      margin: NO_MARGIN
+    };
+    var boxProps = {
+      type: CHECKBOX_TYPE,
+      style: indicator,
+      checked: row[TWO] === true,
+      onChange: function () {
+        act(TIMEFRAME_BOX_PART, row[ZERO]);
+      }
+    };
+    boxProps[PART_ATTR] = TIMEFRAME_BOX_PART;
+    boxProps[NAME_ATTR] = text(row[ZERO]);
+    boxProps[ARIA_LABEL] = text(row[ONE]);
+    var wordProps = { style: asLabel({}, false) };
+    wordProps[PART_ATTR] = TIMEFRAME_BOX_PART + PATH_SPLIT + text(row[ZERO]);
+    return element(
+      LABEL_TAG,
+      wrapProps,
+      element(INPUT_TAG, boxProps),
+      element(SPAN_TAG, wordProps, text(row[ONE]))
+    );
+  }
+
+  // ScanNowButton runs phases one to three on the sector named beside it.
+  function ScanNowButton(props) {
+    var model = props.model;
+    var skin = props.skin;
+    var buttonStyle = marginStyle(listField(model, BUTTON_PADDING_PX));
+    buttonStyle.flex = FLEX_NONE;
+    buttonStyle.fontWeight = text(model[BUTTON_FONT_WEIGHT]);
+    var buttonProps = {
+      type: BUTTON_TYPE,
+      style: buttonStyle,
+      title: label(skin[SCAN_TOOLTIP]),
+      onClick: function () {
+        act(SCAN_NOW_PART, true);
+      }
+    };
+    buttonProps[PART_ATTR] = SCAN_NOW_PART;
+    buttonProps[ARIA_LABEL] = label(skin[SCAN_LABEL]);
+    return element(BUTTON_TAG, buttonProps, text(skin[SCAN_LABEL]));
+  }
+
+  // AtaRow is the one line the ATA-SPM zone carries above its stepper.
+  function AtaRow(props) {
+    var model = props.model;
+    var skin = objectField(model, ATA_SPM);
+    var style = {
+      display: FLEX,
+      flexDirection: ROW_WAY,
+      flex: FLEX_NONE,
+      alignItems: CENTER
+    };
+    style.gap = length(skin[ROW_SPACING_PX]);
+    var rowProps = { style: style };
+    rowProps[PART_ATTR] = ATA_ROW_PART;
+    return element(
+      DIV_TAG,
+      rowProps,
+      element(SectorField, { key: SECTOR_FIELD_PART, skin: skin }),
+      element(ClassBox, { key: CLASS_BOX_PART, skin: skin }),
+      asList(skin[BOXES]).map(function (row, at) {
+        return element(TimeframeBox, {
+          key: TIMEFRAME_BOX_PART + PATH_SPLIT + String(at),
+          skin: skin,
+          row: row
+        });
+      }),
+      element(ScanNowButton, {
+        key: SCAN_NOW_PART,
+        model: model,
+        skin: skin
+      }),
+      element(Spacer, { key: ATA_ROW_PART, part: ATA_ROW_PART })
+    );
+  }
+
   function ModuleGroup(props) {
     var model = props.model;
     var entry = asList(props.entry);
@@ -1515,20 +1733,29 @@
   }
 
   // The three left-side zones, in the order the surface publishes them. The
-  // Opposing Trades zone carries the scan controls and the two tables.
+  // ATA-SPM zone carries the sector row and Opposing Trades the scan row.
   function moduleGroups(model) {
+    var keys = listField(model, LEFT_MODULE_KEYS);
     return listField(model, LEFT_MODULES).map(function (entry, at) {
       return element(ModuleGroup, {
         key: MODULE_GROUP_PART + PATH_SPLIT + String(at),
         model: model,
         entry: entry,
         shares: true,
-        children:
-          entry[ZERO] === listField(model, LEFT_MODULE_KEYS)[ONE]
-            ? scanContent(model)
-            : []
+        children: zoneContent(model, entry[ZERO], keys)
       });
     });
+  }
+
+  // The row one left zone carries above its stepper, or none.
+  function zoneContent(model, key, keys) {
+    if (key === keys[ZERO]) {
+      return [element(AtaRow, { key: ATA_ROW_PART, model: model })];
+    }
+    if (key === keys[ONE]) {
+      return scanContent(model);
+    }
+    return [];
   }
 
   // The Refresh row the Opposing Trades zone holds above its stepper.
@@ -2554,6 +2781,14 @@
       asked[STEP_FIELD] = key === STEP_BACK_PART ? -ONE : ONE;
     } else if (key === ENTRY_PART) {
       asked[TOGGLE_ZONE_FIELD] = value;
+    } else if (key === SECTOR_FIELD_PART) {
+      asked[SECTOR_TEXT_FIELD] = value;
+    } else if (key === CLASS_BOX_PART) {
+      asked[SECTOR_CLASS_FIELD] = value;
+    } else if (key === TIMEFRAME_BOX_PART) {
+      asked[TOGGLE_TIMEFRAME_FIELD] = value;
+    } else if (key === SCAN_NOW_PART) {
+      asked[SCAN_NOW_FIELD] = true;
     } else {
       return null;
     }
@@ -2588,6 +2823,11 @@
     StatusLine: StatusLine,
     TableGroup: TableGroup,
     ModuleGroup: ModuleGroup,
+    AtaRow: AtaRow,
+    SectorField: SectorField,
+    ClassBox: ClassBox,
+    TimeframeBox: TimeframeBox,
+    ScanNowButton: ScanNowButton,
     ZoneStepper: ZoneStepper,
     StepButton: StepButton,
     DetailLine: DetailLine,

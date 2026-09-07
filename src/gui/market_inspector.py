@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 
+from ..trading import ata_spm
 from .main_tabs.market_inspector_surface import (
     COLOR_CORRELATION,
     COLOR_METHOD,
@@ -23,6 +24,21 @@ from .main_tabs.market_inspector_surface import (
     TOPOLOGIES_ZONE,
 )
 from .main_tabs.market_inspector_surface import right_zone_rows as _right_zone_rows
+from .main_tabs.market_inspector_surface import left_module_rows as _left_module_rows
+from .main_tabs.market_inspector_surface import sector_entry as _sector_entry
+from .main_tabs.market_inspector_surface import (
+    ATA_ROW_SPACING_PX,
+    CLASS_BOX_TOOLTIP,
+    CLASS_BOX_WIDTH_PX,
+    SCAN_NOW_LABEL,
+    SCAN_NOW_TOOLTIP,
+    SECTOR_FIELD_PLACEHOLDER,
+    SECTOR_FIELD_TOOLTIP,
+    SECTOR_FIELD_WIDTH_PX,
+    TIMEFRAME_BOX_TOOLTIP_FORMAT,
+    inspector_candles,
+    sector_assets,
+)
 from .main_tabs.market_inspector_surface import (
     DETAIL_STYLE,
     ENTRY_HEADLINE_STYLE,
@@ -59,6 +75,8 @@ try:
         QPushButton,
         QCheckBox,
         QGroupBox,
+        QComboBox,
+        QLineEdit,
         QTableWidget,
         QTableWidgetItem,
         QHeaderView,
@@ -152,69 +170,6 @@ def _empty_table_text(scan_state: str, noun: str) -> str:
     if scan_state == SCAN_FINISHED:
         return f"Scan finished. No {noun} found."
     return f"No scan yet. Press Refresh to look for {noun}."
-
-
-def _ata_spm_text(run) -> str:
-    """The ATA-SPM region's line for what the phase source reports.
-
-    ``None`` says no source is wired, an empty report says no run has
-    been made, and a report carrying a phase names it beside the count
-    the Ready to Send bucket holds.
-    """
-    if run is None:
-        return ATA_SPM_UNWIRED_TEXT
-    phase = str(run.get(ATA_SPM_PHASE_KEY) or "")
-    if not phase:
-        return ATA_SPM_NO_RUN_TEXT
-    count = int(run.get(ATA_SPM_READY_KEY) or 0)
-    return f"{phase}. Ready to Send holds {count}."
-
-
-def _opposing_trades_text(scan_state: str, count: int) -> str:
-    """The Opposing Trades region's line for one scan state and pair count.
-
-    An unasked, a running and a finished scan each get their own
-    wording, and a finished scan holding pairs names the profit share
-    the bullish side feeds to the opposite one.
-    """
-    found = int(count or 0)
-    if scan_state != SCAN_FINISHED or not found:
-        return _empty_table_text(scan_state, OPPOSING_TRADES_NOUN)
-    return (
-        f"{found} {OPPOSING_TRADES_NOUN}. "
-        f"{OPPOSING_TRADES_PROFIT_SHARE_PCT}% of profit goes to the opposite side."
-    )
-
-
-def _arbitrage_text(connectors) -> str:
-    """The Multi-Exchange Arbitrage region's line for the venues in reach.
-
-    ``None`` says no exchange source is wired, which no caller can
-    confuse with a wired source carrying no connector. One venue names
-    itself and says a second is needed to compare.
-    """
-    if connectors is None:
-        return "Exchange source not wired."
-    names = sorted(str(one) for one in connectors)
-    if not names:
-        return "No exchange connected."
-    joined = ", ".join(names)
-    if len(names) == 1:
-        return f"1 venue connected: {joined}. A second venue is needed to compare."
-    return f"{len(names)} venues connected: {joined}."
-
-
-def _left_module_rows(run, scan_state: str, pair_count: int, connectors) -> list:
-    """The three left-side regions as key, title and status, in screen order."""
-    return [
-        [ATA_SPM_MODULE, ATA_SPM_GROUP_TITLE, _ata_spm_text(run)],
-        [
-            OPPOSING_TRADES_MODULE,
-            OPPOSING_TRADES_GROUP_TITLE,
-            _opposing_trades_text(scan_state, pair_count),
-        ],
-        [ARBITRAGE_MODULE, ARBITRAGE_GROUP_TITLE, _arbitrage_text(connectors)],
-    ]
 
 
 def _emit_scan(topic: str, **fields) -> None:
@@ -378,6 +333,7 @@ if _HAS_QT:
             self._connectors_getter = None
             self._scheduler = None
             self._ata_run_source = None
+            self._ata_board = ata_spm.SectorBoard()
             self._build_ui()
 
         def _build_ui(self) -> None:
@@ -410,12 +366,14 @@ if _HAS_QT:
             self._left_zone_groups: list = []
             self._right_zone_groups: list = []
             for key, title, status in _left_module_rows(
-                None, self._scan_state, 0, None
+                None, self._scan_state, 0, None, 0
             ):
                 group = QGroupBox(title)
                 box = QVBoxLayout(group)
                 stepper = self._build_stepper(key)
                 stepper.headline_label.setText(status)
+                if key == ATA_SPM_MODULE:
+                    box.addLayout(self._build_ata_row())
                 box.addWidget(stepper)
                 # Ignored height lets the three zones share the pane equally
                 # whatever their content asks for.
@@ -574,6 +532,93 @@ if _HAS_QT:
                 for group in groups:
                     group.setFixedHeight(share)
 
+        # ── the ATA-SPM control row ──────────────────────────────────
+        def _build_ata_row(self) -> "QHBoxLayout":
+            """The sector field, its class, its four boxes and Scan Now.
+
+            The four boxes belong to the sector on screen, which is what
+            ``_ata_board.boxes`` answers.
+            """
+            row = QHBoxLayout()
+            row.setSpacing(ATA_ROW_SPACING_PX)
+            self._sector_edit = QLineEdit()
+            self._sector_edit.setPlaceholderText(SECTOR_FIELD_PLACEHOLDER)
+            self._sector_edit.setToolTip(SECTOR_FIELD_TOOLTIP)
+            self._sector_edit.setFixedWidth(SECTOR_FIELD_WIDTH_PX)
+            self._sector_edit.textChanged.connect(self._ata_board.set_text)
+            row.addWidget(self._sector_edit)
+
+            self._class_box = QComboBox()
+            self._class_box.setToolTip(CLASS_BOX_TOOLTIP)
+            self._class_box.setFixedWidth(CLASS_BOX_WIDTH_PX)
+            self._class_box.addItems(list(ata_spm.ASSET_CLASSES))
+            self._class_box.currentTextChanged.connect(self._on_class_changed)
+            row.addWidget(self._class_box)
+
+            self._tf_boxes: list = []
+            for key, label, ticked in self._ata_board.boxes(0):
+                check = QCheckBox(label)
+                check.setChecked(ticked)
+                check.setToolTip(TIMEFRAME_BOX_TOOLTIP_FORMAT.format(label=label))
+                check.clicked.connect(
+                    lambda _checked, name=key: self._on_timeframe_toggled(name)
+                )
+                row.addWidget(check)
+                self._tf_boxes.append(check)
+
+            self._scan_now_btn = QPushButton(SCAN_NOW_LABEL)
+            self._scan_now_btn.setToolTip(SCAN_NOW_TOOLTIP)
+            self._scan_now_btn.clicked.connect(self._on_scan_now)
+            row.addWidget(self._scan_now_btn)
+            row.addStretch()
+            return row
+
+        def _ata_at(self) -> int:
+            """The zone index the ATA-SPM stepper is showing."""
+            return self._zone_at.get(ATA_SPM_MODULE, 0)
+
+        def _on_class_changed(self, name: str) -> None:
+            """Take the asset class chosen and redraw the four boxes."""
+            self._ata_board.set_class(self._ata_at(), name)
+            self._render_ata_row()
+
+        def _on_timeframe_toggled(self, key: str) -> None:
+            """Tick or untick one box on the sector shown, and redraw it."""
+            self._ata_board.toggle_timeframe(self._ata_at(), key)
+            self._render_ata_row()
+
+        def _on_scan_now(self) -> None:
+            """Press Scan Now: run phases one to three and redraw the zone."""
+            added = self._ata_board.scan_now(sector_assets, self._scanned_candles)
+            if added != ata_spm.NO_NEW_SECTOR:
+                self._zone_at[ATA_SPM_MODULE] = added
+            self._render_ata_row()
+            self._render_left_modules()
+
+        def _scanned_candles(self, symbol, timeframe) -> list:
+            """The candles the last universe scan kept for one symbol and timeframe."""
+            try:
+                from ..trading.market_inspector import get_shared_inspector
+
+                return inspector_candles(get_shared_inspector(), symbol, timeframe)
+            except Exception as exc:  # noqa: BLE001 - the analyzer is process-wide
+                logger.debug(
+                    "scanned candle read failed on %s %s: %s", symbol, timeframe, exc
+                )
+                return []
+
+        def _render_ata_row(self) -> None:
+            """Write the class box and the four check boxes from the board."""
+            rows = self._ata_board.boxes(self._ata_at())
+            self._class_box.blockSignals(True)
+            self._class_box.setCurrentText(self._ata_board.asset_class)
+            self._class_box.blockSignals(False)
+            for check, (_key, label, ticked) in zip(self._tf_boxes, rows):
+                check.setText(label)
+                check.blockSignals(True)
+                check.setChecked(ticked)
+                check.blockSignals(False)
+
         # ── the three left-side modules ──────────────────────────────
         def set_ata_run_source(self, getter) -> None:
             """Take the callable the ATA-SPM region reads its run report from.
@@ -616,9 +661,12 @@ if _HAS_QT:
         def _zone_entries(self, key: str) -> list:
             """The entries one zone steps through.
 
-            Opposing Trades steps the pairs the scan kept. The other zones
-            wait on a source, so they hold none and show what they wait for.
+            ATA-SPM steps the sectors the last Scan Now covered and Opposing
+            Trades steps the pairs the scan kept. The other zones wait on a
+            source, so they hold none and show what they wait for.
             """
+            if key == ATA_SPM_MODULE:
+                return self._ata_board.entries(_sector_entry)
             if key == OPPOSING_TRADES_MODULE:
                 return [pair_entry(one) for one in self._pairs]
             return []
@@ -626,10 +674,11 @@ if _HAS_QT:
         def _zone_views(self) -> list:
             """All six zones as the stepper draws them, left three then right three."""
             rows = _left_module_rows(
-                self._ata_run(),
+                self._ata_board.report(),
                 self._scan_state,
                 self._pairs_tbl.rowCount(),
                 self._connectors_now(),
+                len(self._ata_board.sectors),
             ) + _right_zone_rows(self._ata_run())
             return [
                 zone_view(
@@ -644,9 +693,15 @@ if _HAS_QT:
             ]
 
         def _on_zone_step(self, key: str, by: int) -> None:
-            """Move one zone to its previous or next entry and redraw it."""
+            """Move one zone to its previous or next entry and redraw it.
+
+            Stepping ATA-SPM also redraws its row, whose four boxes belong
+            to the sector now on screen.
+            """
             total = len(self._zone_entries(key))
             self._zone_at[key] = _step_to(self._zone_at.get(key, 0), total, by)
+            if key == ATA_SPM_MODULE:
+                self._render_ata_row()
             self._render_left_modules()
 
         def _on_zone_click(self, key: str) -> None:

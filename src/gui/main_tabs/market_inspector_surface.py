@@ -28,6 +28,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from ...trading import ata_spm
+
 logger = logging.getLogger("acervator.market_inspector_gui")
 
 METHOD = "market_inspector.state"
@@ -127,6 +129,34 @@ ATA_SPM_RUN_FORMAT = "{phase}. Ready to Send holds {count}."
 ATA_SPM_PHASE_KEY = "phase"
 ATA_SPM_READY_KEY = "ready_to_send"
 
+ATA_SPM_NO_SECTOR_TEXT = "No sector added. Name one and press Scan Now."
+SECTOR_FIELD_PLACEHOLDER = "Sector"
+SECTOR_FIELD_TOOLTIP = (
+    "Name a market sector to scan. Every asset the sector holds is "
+    "charted and run through the twelve voters."
+)
+SECTOR_FIELD_WIDTH_PX = 130
+SCAN_NOW_LABEL = "Scan Now"
+SCAN_NOW_TOOLTIP = (
+    "Scan this sector now on the timeframes ticked beside it, without "
+    "waiting for a rotation."
+)
+CLASS_BOX_TOOLTIP = "The asset class this sector holds. It sets the four timeframes."
+CLASS_BOX_WIDTH_PX = 110
+TIMEFRAME_BOX_TOOLTIP_FORMAT = "Scan this sector on {label}."
+ATA_ROW_SPACING_PX = 6
+
+#: The expanded ATA-SPM entry's line names, one per phase readback.
+PHASE_ONE_NAME = "Phase 1 Evaluate"
+PHASE_TWO_NAME = "Phase 2 Identify"
+PHASE_THREE_NAME = "Phase 3 Pull"
+PHASE_NOTE_NAME = "Waiting on"
+PHASE_ROW_NAME_FORMAT = "{phase} {tag}"
+CALL_TAG_FORMAT = "{symbol} {label}"
+BAND_TAG_FORMAT = "{symbol} bands"
+MESSAGE_ROW_NAME_FORMAT = "{symbol} {label}"
+NO_CALL_TEXT = "No chart carried a reversal vote."
+
 #: The share a bullish bot feeds to the bot on the opposite market condition.
 OPPOSING_TRADES_PROFIT_SHARE_PCT = 50
 OPPOSING_TRADES_NOUN = "opposing trades"
@@ -183,6 +213,16 @@ MODULE_TITLE_PADDING_PX = (12, 4, 12, 4)
 # The themed QPushButton, measured off the running Refresh button.
 BUTTON_PADDING_PX = (20, 8, 20, 8)
 BUTTON_FONT_WEIGHT = "bold"
+
+#: The padding and border the theme gives ``QLineEdit`` and ``QComboBox``,
+#: as left, top, right and bottom.
+FIELD_PADDING_PX = (12, 8, 12, 8)
+FIELD_BORDER_PX = 1
+
+#: The indicator box and the gap to its text, read off a themed ``QCheckBox``
+#: as ``PM_IndicatorWidth`` 22 and ``PM_CheckBoxLabelSpacing`` 8.
+CHECK_INDICATOR_PX = 22
+CHECK_LABEL_SPACING_PX = 8
 
 LEFT_MODULE_KEYS = (ATA_SPM_MODULE, OPPOSING_TRADES_MODULE, ARBITRAGE_MODULE)
 LEFT_MODULE_TITLES = (
@@ -295,6 +335,8 @@ SCAN_FAILED_LOG = "market inspector scan failed: %s"
 PROPOSALS_FAILED_LOG = "topology proposal read failed: %s"
 TOPOLOGIES_MISSING_LOG = "topologies pane unavailable: %s"
 ATA_RUN_FAILED_LOG = "ATA-SPM run read failed: %s"
+SECTOR_MAP_FAILED_LOG = "sector map read failed: %s"
+CANDLE_READ_FAILED_LOG = "scanned candle read failed on %s %s: %s"
 CONNECTORS_READ_FAILED_LOG = "exchange connector read failed: %s"
 
 SCAN_NOT_ASKED = "not_asked"
@@ -440,6 +482,14 @@ PROPOSALS_READ = "proposals.read"
 PROPOSALS_UNREADABLE = "proposals.unreadable"
 EXCHANGE_SOURCE_SET = "exchange.set"
 ATA_SOURCE_SET = "ata_run.set"
+ATA_SOURCES_SET = "ata_sources.set"
+SECTOR_TEXT_SET = "sector.text"
+SECTOR_CLASS_SET = "sector.class"
+SECTOR_CLASS_REFUSED = "sector.class_refused"
+TIMEFRAME_TOGGLED = "sector.timeframe"
+TIMEFRAME_UNREACHABLE = "sector.timeframe_unreachable"
+SCAN_NOW_RUN = "scan_now.run"
+SCAN_NOW_UNNAMED = "scan_now.unnamed"
 ZONE_STEPPED = "zone.stepped"
 ZONE_TOGGLED = "zone.toggled"
 
@@ -473,6 +523,14 @@ CALL_NAMES = (
     PROPOSALS_UNREADABLE,
     EXCHANGE_SOURCE_SET,
     ATA_SOURCE_SET,
+    ATA_SOURCES_SET,
+    SECTOR_TEXT_SET,
+    SECTOR_CLASS_SET,
+    SECTOR_CLASS_REFUSED,
+    TIMEFRAME_TOGGLED,
+    TIMEFRAME_UNREACHABLE,
+    SCAN_NOW_RUN,
+    SCAN_NOW_UNNAMED,
     ZONE_STEPPED,
     ZONE_TOGGLED,
 )
@@ -658,6 +716,137 @@ def ata_spm_text(run: Any) -> str:
     )
 
 
+def ata_spm_zone_text(run: Any, sector_count: Any) -> str:
+    """The ATA-SPM zone's line for the run it holds and the sectors added.
+
+    A zone holding no sector names what it waits for rather than reporting
+    a run nobody asked for.
+    """
+    if not int(sector_count or 0):
+        return ATA_SPM_NO_SECTOR_TEXT
+    return ata_spm_text(run)
+
+
+def phase_row(phase: Any, tag: Any, value: Any) -> list:
+    """One expanded line, named for the phase and the thing it reports on.
+
+    The name carries ``tag`` so two rows of one phase never share a name.
+    """
+    return detail_row(PHASE_ROW_NAME_FORMAT.format(phase=phase, tag=tag), value)
+
+
+def phase_one_rows(scan: Any) -> list:
+    """The expanded lines phase one leaves: one per timeframe scanned."""
+    if scan.note:
+        return [detail_row(PHASE_NOTE_NAME, scan.note)]
+    if not scan.timeframes:
+        return [detail_row(PHASE_NOTE_NAME, ata_spm.NO_TIMEFRAME_TEXT)]
+    return [
+        phase_row(
+            PHASE_ONE_NAME,
+            ata_spm.timeframe_label(one.timeframe),
+            ata_spm.TIMEFRAME_VOTE_FORMAT.format(
+                votes=len(one.votes), unread=len(one.unread)
+            ),
+        )
+        for one in scan.timeframes
+    ]
+
+
+def phase_two_rows(calls: Any) -> list:
+    """The expanded lines phase two leaves: one per reversal call."""
+    if not calls:
+        return [detail_row(PHASE_TWO_NAME, NO_CALL_TEXT)]
+    return [
+        phase_row(
+            PHASE_TWO_NAME,
+            CALL_TAG_FORMAT.format(
+                symbol=one.symbol, label=ata_spm.timeframe_label(one.timeframe)
+            ),
+            ata_spm.CALL_META_FORMAT.format(
+                direction=one.direction_text,
+                net=one.net_score,
+                confidence=ata_spm.confidence_pct(one.confidence),
+                band=one.band_position,
+            ),
+        )
+        for one in calls
+    ]
+
+
+def phase_three_rows(pulls: Any) -> list:
+    """The expanded lines phase three leaves: the chart, its bands and each message.
+
+    An ``ata_spm.IndicatorMessage`` is the whole line, so ``phase_row``
+    writes nothing in front of it.
+    """
+    rows: list = []
+    for one in pulls:
+        tag = CALL_TAG_FORMAT.format(
+            symbol=one.symbol, label=ata_spm.timeframe_label(one.timeframe)
+        )
+        rows.append(
+            phase_row(
+                PHASE_THREE_NAME,
+                tag,
+                ata_spm.CHART_LINE_FORMAT.format(bars=one.bars, close=one.last_close),
+            )
+        )
+        rows.append(
+            phase_row(
+                PHASE_THREE_NAME,
+                BAND_TAG_FORMAT.format(symbol=one.symbol),
+                ata_spm.BAND_LINE_FORMAT.format(
+                    lower=one.band_lower,
+                    middle=one.band_middle,
+                    upper=one.band_upper,
+                ),
+            )
+        )
+        rows.extend(
+            [
+                MESSAGE_ROW_NAME_FORMAT.format(symbol=one.symbol, label=msg.label),
+                msg.message,
+            ]
+            for msg in one.messages
+        )
+    return rows
+
+
+def sector_entry(scan: Any, pulls: Any) -> dict:
+    """One scanned sector as the entry the ATA-SPM zone steps through.
+
+    The expansion carries all three phase readbacks in order, so the entry
+    says how and why every call under it exists.
+    """
+    calls = scan.calls
+    held = [one for one in pulls if any(one.symbol == call.symbol for call in calls)]
+    strongest = calls[0] if calls else None
+    return zone_entry(
+        ata_spm.SECTOR_LINE_FORMAT.format(
+            sector=scan.sector, asset_class=scan.asset_class
+        ),
+        ata_spm.SECTOR_META_FORMAT.format(
+            assets=len(scan.assets), votes=len(scan.votes), calls=len(calls)
+        ),
+        detail=phase_one_rows(scan) + phase_two_rows(calls) + phase_three_rows(held),
+        method_text=(
+            ata_spm.CALL_LINE_FORMAT.format(
+                symbol=strongest.symbol,
+                label=ata_spm.timeframe_label(strongest.timeframe),
+                direction=strongest.direction_text,
+            )
+            if strongest is not None
+            else scan.note or NO_CALL_TEXT
+        ),
+    )
+
+
+def sector_row(sector: Any) -> list:
+    """One sector as the control row reads it: name, class and its check boxes."""
+    return [sector.name, sector.asset_class, sector.boxes()]
+
+
 def opposing_trades_text(scan_state: Any, count: Any) -> str:
     """The Opposing Trades region's line for one scan state and pair count.
 
@@ -717,11 +906,15 @@ def right_zone_rows(run: Any) -> list:
 
 
 def left_module_rows(
-    run: Any, scan_state: Any, pair_count: Any, connectors: Any
+    run: Any,
+    scan_state: Any,
+    pair_count: Any,
+    connectors: Any,
+    sector_count: Any = 0,
 ) -> list:
     """The three left-side regions as key, title and status, in screen order."""
     return [
-        [ATA_SPM_MODULE, ATA_SPM_GROUP_TITLE, ata_spm_text(run)],
+        [ATA_SPM_MODULE, ATA_SPM_GROUP_TITLE, ata_spm_zone_text(run, sector_count)],
         [
             OPPOSING_TRADES_MODULE,
             OPPOSING_TRADES_GROUP_TITLE,
@@ -793,9 +986,25 @@ def method_detail_rows(method: Any) -> list:
     ]
 
 
-def zone_entry(headline: Any, meta: Any = "", method: Any = None) -> dict:
-    """One entry a zone steps through: its headline, its counts and its test."""
-    return {"headline": headline, "meta": meta, "method": method}
+def zone_entry(
+    headline: Any,
+    meta: Any = "",
+    method: Any = None,
+    detail: Any = None,
+    method_text: Any = None,
+) -> dict:
+    """One entry a zone steps through: its headline, its counts and its test.
+
+    ``detail`` and ``method_text`` name the expanded lines and the method
+    line outright; an entry leaving them None takes both from ``method``.
+    """
+    return {
+        "headline": headline,
+        "meta": meta,
+        "method": method,
+        "detail": detail,
+        "method_text": method_text,
+    }
 
 
 def zone_view(
@@ -812,7 +1021,11 @@ def zone_view(
     shown = 0 if total == 0 else max(0, min(int(at), total - 1))
     entry = held[shown] if total else {}
     method = entry.get("method")
+    own_detail = entry.get("detail")
+    own_method_text = entry.get("method_text")
     open_now = bool(expanded) and total > 0
+    lines = own_detail if own_detail is not None else method_detail_rows(method)
+    written = own_method_text if own_method_text is not None else method_line(method)
     return {
         "key": key,
         "title": title,
@@ -821,9 +1034,9 @@ def zone_view(
         "position": position_text(shown, total),
         "headline": entry.get("headline", "") if total else empty_text,
         "meta": entry.get("meta", "") if total else "",
-        "method": method_line(method) if total else "",
+        "method": written if total else "",
         "expanded": open_now,
-        "detail": method_detail_rows(method) if open_now else [],
+        "detail": lines if open_now else [],
     }
 
 
@@ -856,6 +1069,60 @@ def stepper_skin() -> dict:
         "detail_format": DETAIL_FORMAT,
         "method_line_format": METHOD_LINE_FORMAT,
         "method_line_none_text": METHOD_LINE_NONE_TEXT,
+    }
+
+
+def sector_assets(sector: Any, asset_class: Any) -> list:
+    """The assets one named sector holds, read from the shipped sector map.
+
+    Only ``ata_spm.CLASS_CRYPTO`` has a map in the tree, so every other
+    class answers none and the zone names the source it waits for.
+    """
+    if str(asset_class) != ata_spm.CLASS_CRYPTO:
+        return []
+    from ...trading.topology_proposals import load_sector_map
+
+    tag = str(sector).strip().lower()
+    try:
+        held = load_sector_map()
+    except Exception as exc:  # noqa: BLE001 - the map is operator-editable
+        logger.debug(SECTOR_MAP_FAILED_LOG, exc)
+        return []
+    return sorted(one for one, name in held.items() if str(name).lower() == tag)
+
+
+def inspector_candles(inspector: Any, symbol: Any, timeframe: Any) -> list:
+    """The candles the last universe scan kept for one symbol on one timeframe."""
+    held = getattr(inspector, "last_candles", None) or {}
+    return list((held.get(str(symbol)) or {}).get(str(timeframe)) or [])
+
+
+def ata_spm_skin(model: Any) -> dict:
+    """Every value the ATA-SPM control row is drawn from, and its state."""
+    row = model.ata_row()
+    return {
+        "sector_placeholder": SECTOR_FIELD_PLACEHOLDER,
+        "sector_tooltip": SECTOR_FIELD_TOOLTIP,
+        "sector_width_px": SECTOR_FIELD_WIDTH_PX,
+        "scan_label": SCAN_NOW_LABEL,
+        "scan_tooltip": SCAN_NOW_TOOLTIP,
+        "class_tooltip": CLASS_BOX_TOOLTIP,
+        "class_width_px": CLASS_BOX_WIDTH_PX,
+        "box_tooltip_format": TIMEFRAME_BOX_TOOLTIP_FORMAT,
+        "row_spacing_px": ATA_ROW_SPACING_PX,
+        "field_padding_px": list(FIELD_PADDING_PX),
+        "field_border_px": FIELD_BORDER_PX,
+        "check_indicator_px": CHECK_INDICATOR_PX,
+        "check_label_spacing_px": CHECK_LABEL_SPACING_PX,
+        "sector_text": row["sector_text"],
+        "sector_class": row["sector_class"],
+        "asset_classes": row["asset_classes"],
+        "boxes": [list(one) for one in row["boxes"]],
+        "sectors": [sector_row(one) for one in model.board.sectors],
+        "timeframe_labels": dict(ata_spm.TIMEFRAME_LABELS),
+        "crypto_timeframes": list(ata_spm.CRYPTO_TIMEFRAMES),
+        "slower_timeframes": list(ata_spm.SLOWER_TIMEFRAMES),
+        "no_sector_text": ATA_SPM_NO_SECTOR_TEXT,
     }
 
 
@@ -1058,6 +1325,9 @@ class MarketInspectorScreenModel:
         self.connectors_getter: Any = None
         self.scheduler: Any = None
         self.ata_run_source: Any = None
+        self.ata_asset_source: Any = None
+        self.ata_candle_source: Any = None
+        self.board = ata_spm.SectorBoard()
         self.refresh_enabled = True
         self.status_label_text = STATUS_INITIAL_TEXT
         self.signal_rows: list = []
@@ -1155,6 +1425,90 @@ class MarketInspectorScreenModel:
             logger.debug(ATA_RUN_FAILED_LOG, exc)
             return None
 
+    def set_ata_sources(self, asset_source: Any, candle_source: Any) -> None:
+        """Wire the assets a sector holds and the candles each one charts on."""
+        self.ata_asset_source = asset_source
+        self.ata_candle_source = candle_source
+        self.calls.append([ATA_SOURCES_SET])
+
+    def scanned_candles(self, symbol: Any, timeframe: Any) -> list:
+        """The candles the last universe scan kept for one symbol and timeframe.
+
+        An analyzer this screen cannot reach answers none, so the timeframe
+        reads unread rather than raising into Scan Now.
+        """
+        try:
+            return inspector_candles(self.inspector(), symbol, timeframe)
+        except Exception as exc:  # noqa: BLE001 - the analyzer is process-wide
+            logger.debug(CANDLE_READ_FAILED_LOG, symbol, timeframe, exc)
+            return []
+
+    def ata_report(self) -> Any:
+        """The ATA-SPM zone's own run report, empty until a scan has run."""
+        return self.board.report()
+
+    def sector_at(self) -> Any:
+        """The sector the ATA-SPM zone is showing, or None while it holds none."""
+        return self.board.sector_at(self.zone_at.get(ATA_SPM_MODULE, 0))
+
+    def set_sector_text(self, text: Any) -> None:
+        """Take what the operator typed into the sector field."""
+        self.board.set_text(text)
+        self.calls.append([SECTOR_TEXT_SET, self.board.text])
+
+    def set_sector_class(self, name: Any) -> None:
+        """Take the asset class the sector field is naming."""
+        at = self.zone_at.get(ATA_SPM_MODULE, 0)
+        if not self.board.set_class(at, name):
+            self.calls.append([SECTOR_CLASS_REFUSED, str(name or "")])
+            return
+        self.calls.append([SECTOR_CLASS_SET, self.board.asset_class])
+
+    def toggle_timeframe(self, key: Any) -> None:
+        """Tick or untick one timeframe box on the sector shown."""
+        at = self.zone_at.get(ATA_SPM_MODULE, 0)
+        if self.board.sector_at(at) is None:
+            self.calls.append([TIMEFRAME_UNREACHABLE, str(key)])
+            return
+        ticked = self.board.toggle_timeframe(at, key)
+        self.calls.append([TIMEFRAME_TOGGLED, str(key), ticked])
+
+    def scan_now(self) -> Any:
+        """Press Scan Now: add the typed sector if it is new, then run.
+
+        Answers the ``ata_spm.AtaSpmRun`` the three phases produced, or
+        None while the board names no sector.
+        """
+        added = self.board.scan_now(
+            self.ata_asset_source or sector_assets,
+            self.ata_candle_source or self.scanned_candles,
+        )
+        if added != ata_spm.NO_NEW_SECTOR:
+            self.zone_at[ATA_SPM_MODULE] = added
+        if self.board.run is None:
+            self.calls.append([SCAN_NOW_UNNAMED])
+            return None
+        self.calls.append(
+            [SCAN_NOW_RUN, len(self.board.sectors), len(self.board.run.calls)]
+        )
+        return self.board.run
+
+    def ata_entries(self) -> list:
+        """The ATA-SPM zone's entries: one per sector the last run scanned."""
+        return self.board.entries(sector_entry)
+
+    def ata_row(self) -> dict:
+        """Every value the sector field, the class box and the boxes are drawn from."""
+        at = self.zone_at.get(ATA_SPM_MODULE, 0)
+        sector = self.board.sector_at(at)
+        return {
+            "sector_text": self.board.text,
+            "sector_class": self.board.asset_class,
+            "asset_classes": list(ata_spm.ASSET_CLASSES),
+            "boxes": self.board.boxes(at),
+            "shown": sector_row(sector) if sector is not None else [],
+        }
+
     def connectors_now(self) -> Any:
         """The exchange connectors in reach, or None while none is wired.
 
@@ -1173,10 +1527,11 @@ class MarketInspectorScreenModel:
     def left_modules(self) -> list:
         """The three left-side regions, each with the state it can read."""
         return left_module_rows(
-            self.ata_run(),
+            self.ata_report(),
             self.scan_phase,
             len(self.pair_rows),
             self.connectors_now(),
+            len(self.board.sectors),
         )
 
     def right_zones(self) -> list:
@@ -1186,10 +1541,12 @@ class MarketInspectorScreenModel:
     def zone_entries(self, key: Any) -> list:
         """The entries one zone steps through.
 
-        Opposing Trades steps the pairs the scan kept. The other four
-        zones this screen owns wait on a source, so they hold none and
-        show their waiting sentence instead.
+        ATA-SPM steps the sectors the last Scan Now covered and Opposing
+        Trades steps the pairs the scan kept. The other three zones this
+        screen owns wait on a source and show their waiting sentence.
         """
+        if key == ATA_SPM_MODULE:
+            return self.ata_entries()
         if key == OPPOSING_TRADES_MODULE:
             return [pair_entry(one) for one in self.pairs]
         return []
@@ -1729,6 +2086,7 @@ def build_view_model(
         "right_zones": [list(one) for one in model.right_zones()],
         "zones": [dict(one) for one in model.zone_views()],
         "stepper": stepper_skin(),
+        "ata_spm": ata_spm_skin(model),
         "right_zone_keys": list(RIGHT_ZONE_KEYS),
         "right_zone_titles": list(RIGHT_ZONE_TITLES),
         "left_module_keys": list(LEFT_MODULE_KEYS),
@@ -1950,7 +2308,9 @@ def view_model(params: dict) -> dict:
     """Bridge handler for ``market_inspector.state``.
 
     Reads ``reset``, ``proposals``, ``meta``, ``show_active``,
-    ``bot_statuses``, ``render``, ``refresh``, ``force`` and
+    ``bot_statuses``, ``sector_text``, ``sector_class``,
+    ``toggle_timeframe``, ``scan_now``, ``step_zone``, ``toggle_zone``,
+    ``render``, ``refresh``, ``force`` and
     ``bot_symbol`` from the request parameters. The screen keeps its rows
     between calls because the shipped screen does; ``reset`` is what a
     fresh paint sends. ``bot_symbol`` is what the per-bot view is built
@@ -1968,6 +2328,14 @@ def view_model(params: dict) -> dict:
         model.press_show_active(params["show_active"])
     if params.get("bot_statuses") is not None:
         model.update_active_symbols(params["bot_statuses"])
+    if params.get("sector_text") is not None:
+        model.set_sector_text(params["sector_text"])
+    if params.get("sector_class") is not None:
+        model.set_sector_class(params["sector_class"])
+    if params.get("toggle_timeframe"):
+        model.toggle_timeframe(params["toggle_timeframe"])
+    if params.get("scan_now", False):
+        model.scan_now()
     if params.get("step_zone"):
         model.step_zone(params["step_zone"], params.get("step", 1))
     if params.get("toggle_zone"):
