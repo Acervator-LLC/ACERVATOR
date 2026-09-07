@@ -198,6 +198,14 @@ containing `"Mode"`. Both are stale. No manual sentence was deleted or reworded:
 `git diff --numstat` reports 37 added and 0 removed on `06-trading-tab.md`, and
 4 added and 0 removed on `08-tabs.md`.
 
+`"bot_table.mode"` in `src/core/privacy_mask_registry.py` is now read by
+nothing. Column 2 masks under `"bot_table.ammo"`, the same mask the Ammo cell
+carries, because both cells draw one quantity and masking one and not the other
+would defeat the mask. The registry entry stays: `ALL_FIELD_IDS` holds 19 ids
+and `docs/manual/06-trading-tab.md` says Privacy Mode toggles eighteen masks, so
+removing one would land on the operator's number by accident. The mismatch is
+older than this change, which added no id.
+
 `table_cells.state` publishes nothing about the new cell, and the `CELLS`
 registry that drives `table_cells.js` is untouched. Both name what that module
 draws itself, which is the Ammo cell and the two Target-denom cells. Column 2 is
