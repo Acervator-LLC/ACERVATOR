@@ -39,6 +39,8 @@ try:
         QTableWidgetItem,
         QHeaderView,
         QSplitter,
+        QSizePolicy,
+        QLayout,
     )
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor
@@ -250,6 +252,8 @@ if _HAS_QT:
             # --- The three left-side zones ---
             self._module_labels: dict = {}
             self._module_boxes: dict = {}
+            self._left_zone_groups: list = []
+            self._right_zone_groups: list = []
             for key, title, status in _left_module_rows(
                 None, self._scan_state, 0, None
             ):
@@ -259,7 +263,13 @@ if _HAS_QT:
                 line.setStyleSheet(MODULE_STATUS_STYLE)
                 line.setWordWrap(True)
                 box.addWidget(line)
-                layout.addWidget(group)
+                box.addStretch()
+                # Ignored height lets the three zones share the pane equally
+                # whatever their content asks for.
+                group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Ignored)
+                box.setSizeConstraint(QLayout.SetNoConstraint)
+                layout.addWidget(group, 1)
+                self._left_zone_groups.append(group)
                 self._module_labels[key] = line
                 self._module_boxes[key] = box
             zone = self._module_boxes[OPPOSING_TRADES_MODULE]
@@ -315,7 +325,6 @@ if _HAS_QT:
             self._signals_empty_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
             self._signals_empty_lbl.setWordWrap(True)
             sg.addWidget(self._signals_empty_lbl)
-            zone.addWidget(self._signals_group)
 
             # --- Opposing Pairs table ---
             self._pairs_group = QGroupBox(PAIRS_GROUP_TITLE)
@@ -329,6 +338,10 @@ if _HAS_QT:
             self._pairs_tbl.setEditTriggers(QTableWidget.NoEditTriggers)
             self._pairs_tbl.setAlternatingRowColors(True)
             self._pairs_tbl.setMaximumHeight(180)
+            # The zone takes an equal third; the table shrinks into it and
+            # scrolls rather than forcing the zone taller.
+            self._pairs_tbl.setMinimumHeight(0)
+            self._pairs_group.setMinimumHeight(0)
             pg.addWidget(self._pairs_tbl)
             self._pairs_empty_lbl = QLabel(
                 _empty_table_text(self._scan_state, PAIRS_NOUN)
@@ -337,8 +350,7 @@ if _HAS_QT:
             self._pairs_empty_lbl.setWordWrap(True)
             pg.addWidget(self._pairs_empty_lbl)
             zone.addWidget(self._pairs_group)
-
-            layout.addStretch()
+            zone.addStretch()
 
             # v3.23.68 — right pane hosts the topology-proposal cards.
             try:
@@ -357,6 +369,9 @@ if _HAS_QT:
             for key, title, status in _right_zone_rows(None):
                 group = QGroupBox(title)
                 box = QVBoxLayout(group)
+                group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Ignored)
+                box.setSizeConstraint(QLayout.SetNoConstraint)
+                self._right_zone_groups.append(group)
                 if key == TOPOLOGIES_ZONE:
                     box.addWidget(self._topologies_pane)
                     right_layout.addWidget(group, 1)
@@ -365,7 +380,8 @@ if _HAS_QT:
                 line.setStyleSheet(MODULE_STATUS_STYLE)
                 line.setWordWrap(True)
                 box.addWidget(line)
-                right_layout.addWidget(group)
+                box.addStretch()
+                right_layout.addWidget(group, 1)
                 self._zone_labels[key] = line
 
             self._outer_splitter.addWidget(left_pane)
@@ -376,6 +392,38 @@ if _HAS_QT:
             self._outer_splitter.setStretchFactor(1, 1)
             self._outer_splitter.setSizes([800, 800])
             self._render_empty_notes()
+            self._size_zones()
+
+        def resizeEvent(self, event) -> None:  # noqa: N802 - Qt event name
+            """Hold the six zones to an equal share of their pane."""
+            super().resizeEvent(event)
+            self._size_zones()
+
+        def _size_zones(self) -> None:
+            """Give each zone one third of its pane, less margins and spacing.
+
+            The Qt layout hands out only the space above each child's size
+            hint, so an equal share is set rather than asked for.
+            """
+            # The React tab inherits this event and builds no Qt zones.
+            left = getattr(self, "_left_zone_groups", [])
+            right = getattr(self, "_right_zone_groups", [])
+            for groups in (left, right):
+                if not groups:
+                    continue
+                pane = groups[0].parentWidget()
+                if pane is None:
+                    continue
+                pane_layout = pane.layout()
+                margins = pane_layout.contentsMargins()
+                spacing = pane_layout.spacing() * (len(groups) - 1)
+                # The splitter is horizontal, so each pane is as tall as it is,
+                # which is settled before the pane's own height is.
+                tall = max(pane.height(), self._outer_splitter.height())
+                usable = tall - margins.top() - margins.bottom() - spacing
+                share = max(0, usable // len(groups))
+                for group in groups:
+                    group.setFixedHeight(share)
 
         # ── the three left-side modules ──────────────────────────────
         def set_ata_run_source(self, getter) -> None:

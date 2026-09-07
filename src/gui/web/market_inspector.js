@@ -607,6 +607,10 @@
 
   var FLEX = "flex";
   var FLEX_NONE = "none";
+  // Three equally sized rectangles down each side, as the Qt stretch gives.
+  var EQUAL_SHARE = "1 1 0";
+  // A table takes what its zone leaves and scrolls, as the Qt table does.
+  var SHRINK_SHARE = "1 1 auto";
   var AUTO = "auto";
   var ROW_WAY = "row";
   var COLUMN_WAY = "column";
@@ -1191,7 +1195,10 @@
   // TableGroup is the Qt group box holding one table under its title.
   function TableGroup(props) {
     var model = props.model;
-    var groupProps = { style: groupFrame(model) };
+    var style = groupFrame(model);
+    style.flex = SHRINK_SHARE;
+    style.minHeight = ZERO;
+    var groupProps = { style: style };
     groupProps[PART_ATTR] = TABLE_GROUP_PART;
     groupProps[TABLE_ATTR] = props.table;
     groupProps[ARIA_LABEL] = label(model[props.titleField]);
@@ -1202,8 +1209,9 @@
         height: length(tableHeight(model, props.heightField)),
         maxHeight: length(model[props.heightField]),
         overflow: AUTO,
-        flex: FLEX_NONE,
-        minWidth: ZERO
+        flex: SHRINK_SHARE,
+        minWidth: ZERO,
+        minHeight: ZERO
       },
       tabIndex: ZERO
     };
@@ -1236,14 +1244,18 @@
   // ModuleGroup is one left-side region: its Qt group box and its status line.
   // groupFrame is the themed QGroupBox: a 1 px frame and a title drawn in the
   // group own margin, so the title takes no row.
-  function groupFrame(model) {
+  function groupFrame(model, shares) {
     var style = boxStyle(
       listField(model, MODULE_MARGINS_PX),
       model[GROUP_SPACING_PX],
       COLUMN_WAY
     );
-    style.flex = FLEX_NONE;
+    style.flex = shares === true ? EQUAL_SHARE : FLEX_NONE;
     style.minWidth = ZERO;
+    if (shares === true) {
+      style.minHeight = ZERO;
+      style.overflow = AUTO;
+    }
     style.position = RELATIVE;
     style.borderWidth = length(model[MODULE_FRAME_PX]);
     style.borderStyle = SOLID;
@@ -1262,7 +1274,7 @@
   function ModuleGroup(props) {
     var model = props.model;
     var entry = asList(props.entry);
-    var groupProps = { style: groupFrame(model) };
+    var groupProps = { style: groupFrame(model, props.shares === true) };
     groupProps[PART_ATTR] = MODULE_GROUP_PART;
     groupProps[NAME_ATTR] = text(entry[ZERO]);
     groupProps[ARIA_LABEL] = label(entry[ONE]);
@@ -1288,6 +1300,7 @@
         key: MODULE_GROUP_PART + PATH_SPLIT + String(at),
         model: model,
         entry: entry,
+        shares: true,
         children:
           entry[ZERO] === listField(model, LEFT_MODULE_KEYS)[ONE]
             ? scanContent(model)
@@ -1296,20 +1309,10 @@
     });
   }
 
-  // The Refresh row and the two tables the Opposing Trades zone holds.
+  // The Refresh row and the pairs table the Opposing Trades zone holds.
   function scanContent(model) {
     return [
       element(FilterRow, { key: FILTER_ROW_PART, model: model }),
-      element(TableGroup, {
-        key: SIGNALS_TABLE,
-        model: model,
-        table: SIGNALS_TABLE,
-        titleField: SIGNALS_GROUP_TITLE,
-        heightField: SIGNALS_MAX_HEIGHT_PX,
-        columnsField: SIGNAL_COLUMNS,
-        rowsField: SIGNAL_ROWS,
-        noteField: EMPTY_SIGNALS
-      }),
       element(TableGroup, {
         key: PAIRS_TABLE,
         model: model,
@@ -1339,8 +1342,7 @@
     return element(
       DIV_TAG,
       paneProps,
-      moduleGroups(model),
-      element(Spacer, { key: LEFT_STRETCH_PART, part: LEFT_STRETCH_PART })
+      moduleGroups(model)
     );
   }
 
@@ -1361,13 +1363,12 @@
     return element(
       DIV_TAG,
       paneProps,
-      listField(model, RIGHT_ZONES).map(function (entry, at) {
-        var last = at === listField(model, RIGHT_ZONES).length - ONE;
+      listField(model, RIGHT_ZONES).map(function (entry) {
         return element(RightZone, {
           key: MODULE_GROUP_PART + PATH_SPLIT + text(entry[ZERO]),
           model: model,
           entry: entry,
-          fills: last
+          fills: text(entry[TWO]) === EMPTY
         });
       })
     );
@@ -1378,12 +1379,7 @@
   function RightZone(props) {
     var model = props.model;
     var entry = asList(props.entry);
-    var style = groupFrame(model);
-    if (props.fills === true) {
-      style.flex = AUTO;
-      style.minHeight = ZERO;
-    }
-    var groupProps = { style: style };
+    var groupProps = { style: groupFrame(model, true) };
     groupProps[PART_ATTR] = MODULE_GROUP_PART;
     groupProps[NAME_ATTR] = text(entry[ZERO]);
     groupProps[ARIA_LABEL] = label(entry[ONE]);

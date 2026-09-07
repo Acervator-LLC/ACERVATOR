@@ -98,9 +98,13 @@ OPPOSING_TRADES_FOUND_FORMAT = (
 
 READY_TO_SEND_ZONE = "ready_to_send"
 TOPOLOGIES_ZONE = "topologies"
+PHANTOM_HTF_ZONE = "phantom_htf"
 
 READY_TO_SEND_GROUP_TITLE = "ATA-SPM Ready to Send"
 TOPOLOGIES_GROUP_TITLE = "Bot Swarm Topologies"
+PHANTOM_HTF_GROUP_TITLE = "Phantom Bot HTF Signals"
+
+PHANTOM_HTF_UNWIRED_TEXT = "Phantom Bot source not wired."
 
 READY_TO_SEND_UNWIRED_TEXT = "Phase source not wired. Nothing to approve."
 READY_TO_SEND_NO_RUN_TEXT = "No run yet. Nothing to approve."
@@ -109,8 +113,12 @@ READY_TO_SEND_HOLDS_FORMAT = "{count} post(s) waiting. Approve or decline each."
 #: The Bot Swarm Topologies zone carries the proposal pane, not a status line.
 NO_TEXT_LINE = ""
 
-RIGHT_ZONE_KEYS = (READY_TO_SEND_ZONE, TOPOLOGIES_ZONE)
-RIGHT_ZONE_TITLES = (READY_TO_SEND_GROUP_TITLE, TOPOLOGIES_GROUP_TITLE)
+RIGHT_ZONE_KEYS = (READY_TO_SEND_ZONE, TOPOLOGIES_ZONE, PHANTOM_HTF_ZONE)
+RIGHT_ZONE_TITLES = (
+    READY_TO_SEND_GROUP_TITLE,
+    TOPOLOGIES_GROUP_TITLE,
+    PHANTOM_HTF_GROUP_TITLE,
+)
 
 ARBITRAGE_UNWIRED_TEXT = "Exchange source not wired."
 ARBITRAGE_NO_VENUE_TEXT = "No exchange connected."
@@ -656,10 +664,11 @@ def ready_to_send_text(run: Any) -> str:
 
 
 def right_zone_rows(run: Any) -> list:
-    """The two right-side zones as key, title and status, in screen order."""
+    """The three right-side zones as key, title and status, in screen order."""
     return [
         [READY_TO_SEND_ZONE, READY_TO_SEND_GROUP_TITLE, ready_to_send_text(run)],
         [TOPOLOGIES_ZONE, TOPOLOGIES_GROUP_TITLE, NO_TEXT_LINE],
+        [PHANTOM_HTF_ZONE, PHANTOM_HTF_GROUP_TITLE, PHANTOM_HTF_UNWIRED_TEXT],
     ]
 
 
@@ -969,7 +978,7 @@ class MarketInspectorScreenModel:
         )
 
     def right_zones(self) -> list:
-        """The two right-side zones, Ready to Send above the topologies."""
+        """The three right-side zones, in the order the screen draws them."""
         return right_zone_rows(self.ata_run())
 
     def fetch_universe(self) -> Any:

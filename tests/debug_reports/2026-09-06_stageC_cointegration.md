@@ -3,9 +3,11 @@
 Stage C of issue #407. Every proposal on the Market Inspector now names the
 method that produced it, the window it ran on and the statistic that passed. A
 proposal with no method behind it is not built. The screen also carries the
-six-zone layout the operator set on 2026-09-06: ATA-SPM, Opposing Trades and
-Multi-Exchange Arbitrage down the left, ATA-SPM Ready to Send above Bot Swarm
-Topologies on the right.
+layout the operator set on 2026-09-06: two sides, six zones, three equally
+sized rectangles down each side. ATA-SPM, Opposing Trades and Multi-Exchange
+Arbitrage on the left; ATA-SPM Ready to Send, Bot Swarm Topologies and Phantom
+Bot HTF Signals on the right. The cointegration results are drawn inside
+Opposing Trades.
 
 Renders:
 
@@ -56,15 +58,15 @@ assembled.
 four to seven: Long side, Short side, Method, Window, Statistic, Correlation,
 Score. `PAIRS_GROUP_TITLE` names the method instead of Pearson. `fill_pair_row`
 writes the three new cells. `PairState` gains `method`. `right_zone_rows` and
-`ready_to_send_text` publish the two right-side zones, and the screen model
+`ready_to_send_text` publish the three right-side zones, and the screen model
 answers `right_zones`. `BUTTON_PADDING_PX` and `BUTTON_FONT_WEIGHT` publish the
 themed push button, measured off the running widget.
 
 `src/gui/market_inspector.py` — the Qt side of the same. The pairs table takes
-its columns and its title from the surface rather than a second copy. The
-three left zones now hold the Refresh row and both tables inside Opposing
-Trades. The right pane is a column of two zones, and the topology pane sits
-inside the lower one.
+its columns and its title from the surface rather than a second copy. Opposing
+Trades holds the Refresh row and the pairs table. The right pane is a column of
+three zones and the topology pane sits inside the middle one. `resizeEvent`
+calls `_size_zones`, which gives every zone one third of its pane.
 
 `src/gui/main_tabs/market_inspector_topologies_surface.py` — `method_text`
 builds the card's method line and `CARD_METHOD_FORMAT` sets its shape. The card
@@ -74,11 +76,12 @@ payload carries `method`.
 its counts.
 
 `src/gui/web/market_inspector.js` — `groupFrame` and `groupTitleStyle` are one
-set of themed group-box metrics both group kinds now use. `scanContent` puts
-the Refresh row and the two tables inside the Opposing Trades zone.
-`TopologySlot` draws the two right zones and `RightZone` draws each, the lower
-one carrying the slot the proposals pane is moved into. `RefreshButton` takes
-the theme's padding and weight.
+set of themed group-box metrics both group kinds now use, and a zone that
+shares its pane takes `EQUAL_SHARE`. `scanContent` puts the Refresh row and the
+pairs table inside the Opposing Trades zone. `TopologySlot` draws the three
+right zones and `RightZone` draws each, the one carrying no status line holding
+the slot the proposals pane is moved into. `RefreshButton` takes the theme's
+padding and weight.
 
 `src/gui/web/market_inspector_topologies.js` — the card draws its method line
 from the payload, and `checkMarkup` refuses one carrying markup.
@@ -222,6 +225,43 @@ it predates this unit. The passage this unit had added to that page was
 reverted, which takes the file out of this unit's subject list. The
 `_find_opposing_pairs` excerpt on that page now shows only the correlation
 step, which still runs; it does not show the cointegration gate that follows.
+
+### 7 The React tab inherited a resize event for zones it does not build
+
+`_size_zones` reads the Qt zone groups, and `MarketInspectorReactTab`
+subclasses the Qt tab and builds none. The React tab refused to show:
+
+```
+File "src/gui/market_inspector.py", line 400, in resizeEvent
+    self._size_zones()
+File "src/gui/market_inspector.py", line 408, in _size_zones
+    for groups in (self._left_zone_groups, self._right_zone_groups):
+AttributeError: Error calling Python override of QWidget::resizeEvent():
+'MarketInspectorReactTab' object has no attribute '_left_zone_groups'
+```
+
+Corrected by reading both lists with a default, so the inherited event finds
+nothing to size. The React tab then built and drew, and the run below exits 0.
+
+### 8 The Qt layout hands out only the space above each size hint
+
+Equal stretch on the three left zones gave 237, 363 and 236 px, because
+`QBoxLayout` gives each child its size hint first and shares only the surplus.
+The Opposing Trades zone's hint is its content:
+
+```
+key               minSizeHint  minimumHeight  sizeHint  vPolicy   layoutMin
+ata_spm                    75              0        90  Ignored          33
+opposing_trades           269              0       363  Ignored         227
+arbitrage                  75              0        90  Ignored          33
+```
+
+`QSizePolicy.Ignored` and `QLayout.SetNoConstraint` both left the split
+unchanged, measured. Corrected by setting the share rather than asking for it:
+`_size_zones` reads the splitter height, subtracts the pane's margins and
+spacing, and gives each zone one third. The height comes from the splitter
+because a pane's own height is not settled when the tab's resize event fires;
+reading the pane first produced six zones of 152 px inside an 860 px pane.
 
 ### The debugger, and what it printed
 
@@ -418,34 +458,37 @@ Read off the Qt widgets and off the page's own elements, both sized 1400 by
 zones are given in page coordinates so the two sides are in one frame.
 
 ```
-MATCH   tab size                          qt=[1400, 860]  react=[1400, 860]
-MATCH   split size                        qt=[1400, 860]  react=[1400, 860]
-MATCH   left pane box                     qt=[0, 0, 697, 860]  react=[0, 0, 696.5, 860]
-MATCH   right pane box                    qt=[704, 0, 696, 860]  react=[703.5, 0, 696.5, 860]
-MATCH   zone 1 ATA-SPM                    qt=[6, 6, 685, 75]  react=[6, 6, 684.5, 75]
-DIFFER  zone 2 Opposing Trades            qt=[6, 87, 685, 642]  react=[6, 87, 684.5, 640]
-DIFFER  zone 3 Multi-Exchange Arbitrage   qt=[6, 735, 685, 75]  react=[6, 733, 684.5, 75]
-MATCH   zone 4 Ready to Send              qt=[710, 6, 684, 75]  react=[709.5, 6, 684.5, 75]
-MATCH   zone 5 Bot Swarm Topologies       qt=[710, 87, 684, 767]  react=[709.5, 87, 684.5, 767]
-DIFFER  refresh button box                qt=[10, 71, 88, 36]  react=[9.8, 71.2, 83.96, 34.4]
-MATCH   signals group inside its zone     qt=[10, 113, 665, 273]  react=[9.8, 111.6, 664.9, 273]
-MATCH   pairs group inside its zone       qt=[10, 392, 665, 240]  react=[9.8, 390.6, 664.9, 239.6]
-MATCH   signals table inside its group    qt=[10, 50, 645, 192]  react=[9.8, 49.8, 645.3, 192]
-MATCH   pairs table inside its group      qt=[10, 50, 645, 180]  react=[9.8, 49.8, 645.3, 180]
-MATCH   pairs column count                qt=[7]  react=[7]
+MATCH   tab size                        qt=[1400, 860]  react=[1400, 860]
+MATCH   split size                      qt=[1400, 860]  react=[1400, 860]
+MATCH   left pane box                   qt=[0, 0, 697, 860]  react=[0, 0, 696.5, 860]
+MATCH   right pane box                  qt=[704, 0, 696, 860]  react=[703.5, 0, 696.5, 860]
+MATCH   zone 1 ATA-SPM                  qt=[6, 6, 685, 278]  react=[6, 6, 684.5, 278.66]
+MATCH   zone 2 Opposing Trades          qt=[6, 290, 685, 278]  react=[6, 290.66, 684.5, 278.66]
+MATCH   zone 3 Multi-Exchange Arbitrage qt=[6, 574, 685, 278]  react=[6, 575.33, 684.5, 278.66]
+MATCH   zone 4 ATA-SPM Ready to Send    qt=[710, 6, 684, 278]  react=[709.5, 6, 684.5, 278.66]
+MATCH   zone 5 Bot Swarm Topologies     qt=[710, 290, 684, 278]  react=[709.5, 290.66, 684.5, 278.66]
+MATCH   zone 6 Phantom Bot HTF Signals  qt=[710, 574, 684, 278]  react=[709.5, 575.33, 684.5, 278.66]
+DIFFER  refresh button box              qt=[10, 71, 88, 36]  react=[9.8, 71.2, 83.96, 34.4]
+DIFFER  pairs group inside its zone     qt=[10, 113, 665, 155]  react=[9.8, 111.6, 664.9, 157.26]
+DIFFER  pairs table inside its group    qt=[10, 50, 645, 95]  react=[9.8, 49.8, 645.3, 97.66]
+MATCH   pairs column count              qt=[7]  react=[7]
 
-rows 15 rows matched 12
-numbers 53 numbers matched 49
+rows 14 rows matched 11
+numbers 49 numbers matched 45
 ```
+
+All six zones match, and they are equal: 278 px on the Qt side and 278.66 on
+the React side, at the same three positions down each pane.
 
 The four numbers that differ are one cause. The Refresh button's padding and
 border now match on both sides — 20 px each side, 8 px top and bottom, a 1 px
 border the browser holds to the device grid as 0.8 px at a pixel ratio of 1.25.
 What is left is the bold text box: 18 px tall in Qt against 16.8 px in the page,
 and 46 px wide against 41.96 px. That is 1.6 px of button height and 4.04 px of
-button width, and the button carries the Opposing Trades zone's remaining 2 px
-of height, which carries the Multi-Exchange Arbitrage zone's 2 px of position.
-Line height following from font metrics is a font difference.
+button width. The button sits above the pairs group inside the same zone, so
+those 1.6 px become 1.4 px of the group's position and 2.26 px of its height,
+and the table inside it follows by 2.66 px. Line height following from font
+metrics is a font difference.
 
 ### Text, driven and read back
 
@@ -465,13 +508,21 @@ text rows 6 matched 6
 The six zone titles read the same on both sides:
 
 ```
-ATA-SPM   Opposing Trades   Multi-Exchange Arbitrage
-ATA-SPM Ready to Send   Bot Swarm Topologies
+ATA-SPM                    ATA-SPM Ready to Send
+Opposing Trades            Bot Swarm Topologies
+Multi-Exchange Arbitrage   Phantom Bot HTF Signals
 ```
 
-The Ready to Send zone is reserved and states what it waits for. Nothing wires
-a phase source, so it reads `Phase source not wired. Nothing to approve.` The
-bucket itself is phase 6 and is not built here.
+Two zones are reserved and state what they wait for. Nothing wires a phase
+source, so Ready to Send reads `Phase source not wired. Nothing to approve.`
+and Phantom Bot HTF Signals reads `Phantom Bot source not wired.` The bucket is
+phase 6 and the Phantom Bot rows follow the Phantom Bot design; neither is
+built here.
+
+The HTF Signals table left the left side with that zone. Its widgets are still
+built and still filled by every scan, so `scan_state`, the empty notes and the
+per-bot view read exactly what they read before; nothing places them on the
+screen while the Phantom Bot source is unwired.
 
 The Opposing Pairs row, identical on both sides:
 
@@ -493,32 +544,42 @@ backend redirected to the bridge under a throwaway home:
 
 ```
 zones  ["ATA-SPM","Opposing Trades","Multi-Exchange Arbitrage",
-        "ATA-SPM Ready to Send","Bot Swarm Topologies"]
+        "ATA-SPM Ready to Send","Bot Swarm Topologies",
+        "Phantom Bot HTF Signals"]
 lines  ["Phase source not wired.",
         "No scan yet. Press Refresh to look for opposing trades.",
         "Exchange source not wired.",
-        "Phase source not wired. Nothing to approve."]
-heads  ["Asset","Signal","Score","Daily","Weekly","Active",
-        "Long side","Short side","Method","Window","Statistic",
+        "Phase source not wired. Nothing to approve.",
+        "Phantom Bot source not wired."]
+heads  ["Long side","Short side","Method","Window","Statistic",
         "Correlation","Score (Long+Short)"]
 pairs row  ["SOL (ENTRY_LONG_HIGH)","JUP (ENTRY_SHORT_HIGH)","Cointegration",
             "365d","p=0.0000 · trace 57.5>15.5","-0.843","1.50"]
+zone boxes  six of [677.7, 59.6], at y 122.4, 188 and 253.6 on each side
 ```
 
-**What the shell does not draw.** The Bot Swarm Topologies zone draws its frame
-and its title, and no cards. `market_inspector_topologies.js` calls
-`acervatorPanelHost.register` nowhere, so the shell never asks for
-`market_inspector_topologies.state` and nothing drives the pane. The shell
-reports three panels drawn: `header_strip`, `console_tab` and
-`market_inspector`. This is a missing conversion rather than a missing method —
-the same is true before this unit — and it is the only place the topology
-proposals cannot be read back.
+**Two things the shell does not draw, and neither is a method gap.**
+
+The Bot Swarm Topologies zone draws its frame and its title and no cards.
+`market_inspector_topologies.js` calls `acervatorPanelHost.register` nowhere,
+so the shell never asks for `market_inspector_topologies.state` and nothing
+drives the pane. The shell reports three panels drawn: `header_strip`,
+`console_tab` and `market_inspector`.
+
+The six zones are equal in the shell, at 59.6 px each, where the Qt and React
+tabs give them 278. `#panels` in `desktop/renderer/index.html` carries no
+height, so a zone asking for a third of its pane gets a third of a container
+sized by its own content. Before this unit the panel was tall because the
+tables inside it carried fixed heights; equal zones made the container's
+missing height visible. `#panels` is shared by every converted panel, so its
+height is not this unit's to set on one screen's evidence.
 
 ### The manual
 
 The Market Inspector page gains the method, the window, the significance, the
-seven columns and the score rules. The new layout is not written there. Nothing
-was removed:
+seven columns and the score rules. The layout is not written there: the
+operator updates the manual after running the application and accepting the
+design. Nothing was removed:
 
 ```
 git diff purge-non-canon-tests -- docs/ | grep "^-" | grep -v "^---" | grep -v "^-|"
@@ -592,18 +653,19 @@ platform was never started, stopped or queried.
 ### Size against time
 
 ```
-source lines produced   900
-wall clock              4408 s
-seconds per source line 4.90
+source lines produced   961
+wall clock              5178 s
+seconds per source line 5.39
 ```
 
 Stage B measured 5.62.
 
 ### What the operator sees differently
 
-The Market Inspector draws six zones: ATA-SPM, Opposing Trades and
-Multi-Exchange Arbitrage down the left, ATA-SPM Ready to Send above Bot Swarm
-Topologies on the right. Every opposing pair in the Opposing Trades zone now
+The Market Inspector draws six equally sized zones, three a side: ATA-SPM,
+Opposing Trades and Multi-Exchange Arbitrage on the left; ATA-SPM Ready to
+Send, Bot Swarm Topologies and Phantom Bot HTF Signals on the right. Every
+opposing pair in the Opposing Trades zone now
 names the test that let it through, the year of daily closes it ran on, and the
 number that passed. Two pairs that used to sit at the top of that list —
 BTC against DOGE and ETH against PEPE — are gone, because a correlation of
