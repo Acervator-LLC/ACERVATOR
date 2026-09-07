@@ -1,15 +1,17 @@
 """ata_spm_push.py -- the ATA-SPM run, phases four to seven.
 
 ``format_post`` writes one ``FormattedPost`` per ``PushTarget`` from the
-``ata_spm.ChartPull`` phase three produced. ``distribute`` hands those to a
-host-supplied sender and answers one ``DeliveryRecord`` each, sent or
-failed. ``ReadyToSend`` is the bucket the operator approves from, and
-``FollowUpWatch`` is phase seven: what happened to each call.
+``ata_spm.ChartPull`` phase three produced, and ``fit_to_target`` holds each
+body under the ``body_limit`` that target publishes. ``distribute`` hands
+those to a host-supplied sender and answers one ``DeliveryRecord`` each.
+``ReadyToSend`` is the bucket the operator approves from, and
+``FollowUpWatch`` is phase seven.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
@@ -41,9 +43,52 @@ SECTION_INDICATORS = "indicators"
 ARTEFACT_BODY = "body"
 ARTEFACT_CAPTION = "caption"
 ARTEFACT_THREAD_ROOT = "thread_root"
+ARTEFACT_TITLE = "title"
 
-#: The three artefacts of one post, each composed with ``FIXED_HEADER``.
+#: The three artefacts every post carries, each composed with ``FIXED_HEADER``.
 ARTEFACT_KEYS = (ARTEFACT_BODY, ARTEFACT_CAPTION, ARTEFACT_THREAD_ROOT)
+
+#: The unit each push target counts its text in, from the audit page.
+COUNT_CHARACTERS = "characters"
+COUNT_WEIGHTED = "weighted"
+COUNT_UTF16_RUNES = "utf16-runes"
+COUNT_UTF8_EMOJI = "utf8-emoji"
+
+#: A target whose platform publishes no text ceiling. No number is guessed.
+NO_LIMIT_PUBLISHED = 0
+
+#: A target carrying no title field beside its body.
+NO_TITLE_FIELD = 0
+
+NO_DROPPED = 0
+
+#: X wraps every URL with t.co and counts 23 whatever the real length.
+X_URL_COST = 23
+
+ASCII_WEIGHT = 1
+
+#: Weight 1 covers Latin, punctuation and common symbols; weight 2 the rest.
+NON_ASCII_WEIGHT = 2
+
+URL_PREFIXES = ("http://", "https://")
+
+UTF16_ENCODING = "utf-16-le"
+UTF8_ENCODING = "utf-8"
+BYTES_PER_RUNE = 2
+
+WHITESPACE_RUN = re.compile(r"(\s+)")
+
+#: The order ``fit_to_target`` drops a line in. ``KEEP_LINE`` never drops.
+KEEP_LINE = None
+DROP_FIRST = 0
+DROP_LAST = 1
+
+ABBREVIATED_FORMAT = "Abbreviated: {dropped} evidence line(s) omitted."
+OVER_LIMIT_TEXT = "{target} publishes {limit}; this post measures {measured}."
+TITLE_TOO_SMALL_FORMAT = (
+    "{target} title holds {limit} and the header with the headline "
+    "measures {measured}, so no artefact maps to it."
+)
 
 VOTE_BULL = "bull"
 VOTE_BEAR = "bear"
@@ -108,30 +153,60 @@ CALL_SECTION_FORMAT = "{symbol} on {label}: {direction} reversal called."
 
 @dataclass(frozen=True)
 class PushTarget:
-    """One push target, and the evidence sections its body carries in order."""
+    """One push target, its evidence sections in order, and its text ceilings.
+
+    ``body_limit``, ``title_limit`` and ``count_unit`` are the numbers the
+    platform publishes, and ``NO_LIMIT_PUBLISHED`` marks one that publishes none.
+    """
 
     name: str
     sections: tuple = ()
+    body_limit: int = NO_LIMIT_PUBLISHED
+    title_limit: int = NO_TITLE_FIELD
+    count_unit: str = COUNT_CHARACTERS
 
 
 #: A target is added by naming a row here; ``format_post``, ``distribute``
 #: and ``ReadyToSend`` read the row rather than the name.
 PUSH_TARGETS = (
-    PushTarget(TARGET_X, (SECTION_CALL, SECTION_INDICATORS)),
-    PushTarget(TARGET_INSTAGRAM, (SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS)),
-    PushTarget(TARGET_LINKEDIN, (SECTION_CALL, SECTION_CHART, SECTION_INDICATORS)),
+    PushTarget(
+        TARGET_X,
+        (SECTION_CALL, SECTION_INDICATORS),
+        body_limit=280,
+        count_unit=COUNT_WEIGHTED,
+    ),
+    PushTarget(
+        TARGET_INSTAGRAM,
+        (SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS),
+        body_limit=2200,
+    ),
+    PushTarget(
+        TARGET_LINKEDIN,
+        (SECTION_CALL, SECTION_CHART, SECTION_INDICATORS),
+        body_limit=3000,
+    ),
     PushTarget(
         TARGET_TIKTOK,
         (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+        body_limit=4000,
+        title_limit=90,
+        count_unit=COUNT_UTF16_RUNES,
     ),
     PushTarget(
         TARGET_FACEBOOK,
         (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
     ),
-    PushTarget(TARGET_THREADS, (SECTION_CALL, SECTION_INDICATORS)),
+    PushTarget(
+        TARGET_THREADS,
+        (SECTION_CALL, SECTION_INDICATORS),
+        body_limit=500,
+        count_unit=COUNT_UTF8_EMOJI,
+    ),
     PushTarget(
         TARGET_REDDIT,
         (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+        body_limit=40000,
+        title_limit=300,
     ),
 )
 
@@ -187,6 +262,124 @@ VAULT_STORE_FAILED_LOG = "ATA-SPM credential store failed on %s: %s"
 def vote_word(direction_text: Any) -> str:
     """One direction word as the bull or bear the bucket line prints."""
     return VOTE_WORDS.get(str(direction_text), VOTE_NEITHER)
+
+
+def weighted_length(text: str) -> int:
+    """X's count of ``text``: each URL costs ``X_URL_COST``, each character its weight."""
+    total = 0
+    for token in WHITESPACE_RUN.split(text):
+        if token.startswith(URL_PREFIXES):
+            total += X_URL_COST
+            continue
+        total += sum(
+            ASCII_WEIGHT if one.isascii() else NON_ASCII_WEIGHT for one in token
+        )
+    return total
+
+
+def measure_text(text: Any, count_unit: Any = COUNT_CHARACTERS) -> int:
+    """How many units the target counting in ``count_unit`` reads in ``text``.
+
+    A character outside ASCII takes the heavier count in every unit, which
+    can over-count and never under-count.
+    """
+    written = str(text)
+    if count_unit == COUNT_WEIGHTED:
+        return weighted_length(written)
+    if count_unit == COUNT_UTF16_RUNES:
+        return len(written.encode(UTF16_ENCODING)) // BYTES_PER_RUNE
+    if count_unit == COUNT_UTF8_EMOJI:
+        return sum(
+            ASCII_WEIGHT if one.isascii() else len(one.encode(UTF8_ENCODING))
+            for one in written
+        )
+    return len(written)
+
+
+def compose(lines: Any) -> str:
+    """``FIXED_HEADER`` over ``lines``, the text every artefact carries."""
+    return POST_LINE_SEPARATOR.join((FIXED_HEADER,) + tuple(lines))
+
+
+def fit_to_target(ranked: Any, target: Any) -> tuple:
+    """The lines ``target.body_limit`` holds, and how many were dropped.
+
+    A line drops whole and the longest evidence drops first, so no price,
+    band value or statistic is ever cut mid-digit.
+    """
+    rows = list(ranked)
+    lines = [line for _rank, line in rows]
+    limit = int(getattr(target, "body_limit", NO_LIMIT_PUBLISHED) or NO_LIMIT_PUBLISHED)
+    unit = getattr(target, "count_unit", COUNT_CHARACTERS)
+    if limit <= NO_LIMIT_PUBLISHED:
+        return tuple(lines), NO_DROPPED
+    if measure_text(compose(lines), unit) <= limit:
+        return tuple(lines), NO_DROPPED
+    order = sorted(
+        (at for at, (rank, _line) in enumerate(rows) if rank is not None),
+        key=lambda at: rows[at][0],
+    )
+    gone: set = set()
+    kept = list(lines)
+    for at in order:
+        gone.add(at)
+        kept = [line for pos, line in enumerate(lines) if pos not in gone]
+        kept.append(ABBREVIATED_FORMAT.format(dropped=len(gone)))
+        if measure_text(compose(kept), unit) <= limit:
+            break
+    return tuple(kept), len(gone)
+
+
+def title_notes(target: Any, headline: str) -> tuple:
+    """What one target's title field could not carry, as the note phase five records.
+
+    A ``title_limit`` too small for ``FIXED_HEADER`` with ``headline`` answers
+    one ``TITLE_TOO_SMALL_FORMAT`` note.
+    """
+    limit = int(getattr(target, "title_limit", NO_TITLE_FIELD) or NO_TITLE_FIELD)
+    if limit <= NO_TITLE_FIELD:
+        return ()
+    unit = getattr(target, "count_unit", COUNT_CHARACTERS)
+    measured = measure_text(compose((headline,)), unit)
+    if measured <= limit:
+        return ()
+    return (
+        TITLE_TOO_SMALL_FORMAT.format(
+            target=getattr(target, "name", ""), limit=limit, measured=measured
+        ),
+    )
+
+
+def ranked_lines(written: Any) -> list:
+    """Each ``(group, line)`` pair with the sort key ``fit_to_target`` drops it by.
+
+    A ``KEEP_LINE`` group never drops, and inside ``DROP_FIRST`` and
+    ``DROP_LAST`` the longest line drops first.
+    """
+    ranked: list = []
+    for group, line in written:
+        if group is KEEP_LINE:
+            ranked.append((KEEP_LINE, line))
+            continue
+        ranked.append(((group, -len(line)), line))
+    return ranked
+
+
+def post_groups(written: Any) -> list:
+    """Each ``(section, line)`` pair of a phase four post as a ``ranked_lines`` group.
+
+    The first ``SECTION_CALL`` line takes ``KEEP_LINE`` and ``SECTION_INDICATORS``
+    takes ``DROP_FIRST``.
+    """
+    grouped: list = []
+    call_kept = False
+    for name, line in written:
+        if name == SECTION_CALL and not call_kept:
+            call_kept = True
+            grouped.append((KEEP_LINE, line))
+            continue
+        grouped.append((DROP_FIRST if name == SECTION_INDICATORS else DROP_LAST, line))
+    return grouped
 
 
 def _call_lines(vote: Any, pull: Any, cap: Any) -> list:
@@ -266,6 +459,11 @@ class FormattedPost:
     closes: tuple = ()
     lines: tuple = ()
     follows: str = ""
+    body_limit: int = NO_LIMIT_PUBLISHED
+    title_limit: int = NO_TITLE_FIELD
+    count_unit: str = COUNT_CHARACTERS
+    dropped: int = NO_DROPPED
+    notes: tuple = ()
 
     @property
     def headline(self) -> str:
@@ -279,22 +477,51 @@ class FormattedPost:
     @property
     def body(self) -> str:
         """The post body: ``FIXED_HEADER`` over this target's own sections."""
-        return POST_LINE_SEPARATOR.join((FIXED_HEADER,) + tuple(self.lines))
+        return compose(self.lines)
 
     @property
     def caption(self) -> str:
         """The image caption: ``FIXED_HEADER`` over the headline."""
-        return POST_LINE_SEPARATOR.join((FIXED_HEADER, self.headline))
+        return compose((self.headline,))
 
     @property
     def thread_root(self) -> str:
         """The thread root: ``FIXED_HEADER`` over the headline."""
-        return POST_LINE_SEPARATOR.join((FIXED_HEADER, self.headline))
+        return compose((self.headline,))
+
+    @property
+    def title(self) -> str:
+        """This target's own title field, empty where ``title_limit`` cannot hold it."""
+        if self.title_limit <= NO_TITLE_FIELD:
+            return ""
+        written = compose((self.headline,))
+        if measure_text(written, self.count_unit) > self.title_limit:
+            return ""
+        return written
+
+    @property
+    def measured(self) -> int:
+        """The body's length in the unit ``count_unit`` names."""
+        return measure_text(self.body, self.count_unit)
+
+    @property
+    def over_limit(self) -> bool:
+        """Whether the body measures more than ``body_limit`` publishes."""
+        if self.body_limit <= NO_LIMIT_PUBLISHED:
+            return False
+        return self.measured > self.body_limit
 
     def artefacts(self) -> dict:
-        """Every artefact of this post, keyed by ``ARTEFACT_KEYS``."""
-        written = (self.body, self.caption, self.thread_root)
-        return dict(zip(ARTEFACT_KEYS, written))
+        """Every artefact of this post, keyed by ``ARTEFACT_KEYS`` and ``ARTEFACT_TITLE``.
+
+        A target whose ``title_limit`` cannot hold the header carries no
+        ``ARTEFACT_TITLE`` key, and every key present composes ``FIXED_HEADER``.
+        """
+        written = dict(zip(ARTEFACT_KEYS, (self.body, self.caption, self.thread_root)))
+        title = self.title
+        if title:
+            written[ARTEFACT_TITLE] = title
+        return written
 
 
 def format_post(
@@ -306,14 +533,18 @@ def format_post(
     """Phase four: one reversal call written for one push target.
 
     The sections come from ``target.sections`` and their wording from the
-    evidence ``ata_spm.pull`` answered.
+    evidence ``ata_spm.pull`` answered, and ``fit_to_target`` holds the body
+    under the ceiling this target publishes.
     """
-    lines: list = []
+    written: list = []
     for name in target.sections:
         writer = SECTION_WRITERS.get(name)
         if writer is None:
             continue
-        lines.extend(writer(vote, pull, max_supporting_indicators))
+        written.extend(
+            (name, one) for one in writer(vote, pull, max_supporting_indicators)
+        )
+    lines, dropped = fit_to_target(ranked_lines(post_groups(written)), target)
     return FormattedPost(
         target=target.name,
         symbol=vote.symbol,
@@ -326,7 +557,19 @@ def format_post(
         bars=pull.bars,
         last_close=pull.last_close,
         closes=tuple(pull.closes),
-        lines=tuple(lines),
+        lines=lines,
+        body_limit=int(getattr(target, "body_limit", NO_LIMIT_PUBLISHED)),
+        title_limit=int(getattr(target, "title_limit", NO_TITLE_FIELD)),
+        count_unit=str(getattr(target, "count_unit", COUNT_CHARACTERS)),
+        dropped=dropped,
+        notes=title_notes(
+            target,
+            POST_HEADLINE_FORMAT.format(
+                symbol=vote.symbol,
+                label=ata_spm.timeframe_label(vote.timeframe),
+                vote=vote_word(vote.direction_text),
+            ),
+        ),
     )
 
 
@@ -337,28 +580,43 @@ def format_follow_up(outcome: FollowUpOutcome, target: PushTarget) -> FormattedP
     outcome together, and ``SECTION_CHART`` adds the candles read since.
     """
     call = outcome.call
-    lines = [
-        FOLLOW_UP_HEAD_FORMAT.format(headline=call.headline, state=outcome.state),
-        FOLLOW_UP_CALL_FORMAT.format(
-            symbol=call.symbol,
-            label=ata_spm.timeframe_label(call.timeframe),
-            direction=call.direction,
-            state=outcome.state,
+    written = [
+        (
+            KEEP_LINE,
+            FOLLOW_UP_HEAD_FORMAT.format(headline=call.headline, state=outcome.state),
         ),
-        FOLLOW_UP_EVIDENCE_FORMAT.format(detail=outcome.detail),
+        (
+            DROP_LAST,
+            FOLLOW_UP_CALL_FORMAT.format(
+                symbol=call.symbol,
+                label=ata_spm.timeframe_label(call.timeframe),
+                direction=call.direction,
+                state=outcome.state,
+            ),
+        ),
+        (DROP_LAST, FOLLOW_UP_EVIDENCE_FORMAT.format(detail=outcome.detail)),
     ]
     if SECTION_CHART in target.sections:
-        lines.append(
-            CHART_SECTION_FORMAT.format(bars=len(outcome.closes), close=outcome.close)
-        )
-    if SECTION_BANDS in target.sections:
-        lines.append(
-            BANDS_SECTION_FORMAT.format(
-                lower=call.band_lower,
-                middle=call.band_middle,
-                upper=call.band_upper,
+        written.append(
+            (
+                DROP_FIRST,
+                CHART_SECTION_FORMAT.format(
+                    bars=len(outcome.closes), close=outcome.close
+                ),
             )
         )
+    if SECTION_BANDS in target.sections:
+        written.append(
+            (
+                DROP_FIRST,
+                BANDS_SECTION_FORMAT.format(
+                    lower=call.band_lower,
+                    middle=call.band_middle,
+                    upper=call.band_upper,
+                ),
+            )
+        )
+    lines, dropped = fit_to_target(ranked_lines(written), target)
     return FormattedPost(
         target=target.name,
         symbol=call.symbol,
@@ -371,8 +629,13 @@ def format_follow_up(outcome: FollowUpOutcome, target: PushTarget) -> FormattedP
         bars=len(outcome.closes),
         last_close=outcome.close,
         closes=outcome.closes,
-        lines=tuple(lines),
+        lines=lines,
         follows=call.headline,
+        body_limit=int(getattr(target, "body_limit", NO_LIMIT_PUBLISHED)),
+        title_limit=int(getattr(target, "title_limit", NO_TITLE_FIELD)),
+        count_unit=str(getattr(target, "count_unit", COUNT_CHARACTERS)),
+        dropped=dropped,
+        notes=title_notes(target, call.headline),
     )
 
 
@@ -764,12 +1027,17 @@ def deliver_one(
 ) -> DeliveryRecord:
     """Phase five for one post: send it, or record why it did not go.
 
-    Every refusal answers a ``DeliveryRecord`` naming the target, and no
-    target is skipped silently.
+    Every refusal answers a ``DeliveryRecord`` naming the target, and a post
+    whose ``over_limit`` is true never reaches ``sender``.
     """
     record = DeliveryRecord(
         target=post.target, symbol=post.symbol, timeframe=post.timeframe
     )
+    if post.over_limit:
+        record.detail = OVER_LIMIT_TEXT.format(
+            target=post.target, limit=post.body_limit, measured=post.measured
+        )
+        return record
     if not settings.holds(post.target):
         record.detail = NO_CREDENTIAL_TEXT.format(target=post.target)
         return record

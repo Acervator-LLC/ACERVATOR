@@ -781,6 +781,83 @@ header takes 144 of them.
 The rules each platform publishes are recorded in
 [the push target rules](../audits/2026-09-06_ata_platform_rules.md).
 
+Phase four now holds every post under the ceiling its own target publishes. X
+publishes 280 characters, Threads 500, Instagram 2,200, LinkedIn 3,000, TikTok
+4,000, and Reddit 40,000 in the body with 300 in the title. Facebook publishes
+no ceiling, so no number is set for it and none is guessed.
+
+`src/trading/ata_spm_push.py` — the ceiling on one target row
+
+```python
+PushTarget(
+    TARGET_X,
+    (SECTION_CALL, SECTION_INDICATORS),
+    body_limit=280,
+    count_unit=COUNT_WEIGHTED,
+),
+```
+
+Each platform counts text its own way. X counts a weighted character and charges
+23 for any link, whatever the link's real length. TikTok counts in UTF-16 runes,
+and Threads counts an emoji as its bytes. A post is measured in the count its
+own target publishes.
+
+`src/trading/ata_spm_push.py` — the length one target reads in a post
+
+```python
+@property
+def measured(self) -> int:
+    """The body's length in the unit ``count_unit`` names."""
+    return measure_text(self.body, self.count_unit)
+```
+
+A post that does not fit drops whole lines and never cuts one. The fixed header
+is never dropped. The line naming the ticker, the timeframe and the direction is
+never dropped. The indicator explanations go first, the longest of them first,
+and the chart and band lines after those. A price or a band value is therefore
+never cut mid-digit.
+
+The post says when it has been shortened. A drop adds a last line counting what
+was left out, so a reader sees an abbreviated post rather than a shorter one.
+
+`src/trading/ata_spm_push.py` — what a shortened post says
+
+```python
+ABBREVIATED_FORMAT = "Abbreviated: {dropped} evidence line(s) omitted."
+```
+
+Measured on 7 September 2026: one bullish call on BTC-USD 1wk with two
+confirming voters wrote a 306-character body for X, against the 280 X publishes.
+The same call now writes 275. It keeps the header, the call line and the shorter
+of the two indicator explanations, and it says one line was left out.
+
+TikTok's title field holds 90 characters and the fixed header is 144, so the
+header cannot go in it. A TikTok post carries no title at all, and the post
+records why. Reddit's title holds 300, so a Reddit title carries the header and
+the headline.
+
+`src/trading/ata_spm_push.py` — a title field too small for the header
+
+```python
+TITLE_TOO_SMALL_FORMAT = (
+    "{target} title holds {limit} and the header with the headline "
+    "measures {measured}, so no artefact maps to it."
+)
+```
+
+Phase five refuses a post still over its ceiling. The refusal is written into the
+delivery record like every other, and the post never reaches the sender.
+
+`src/trading/ata_spm_push.py` — a post over the ceiling never leaves
+
+```python
+if post.over_limit:
+    record.detail = OVER_LIMIT_TEXT.format(
+        target=post.target, limit=post.body_limit, measured=post.measured
+    )
+    return record
+```
+
 Every control on this screen is drawn at a size the screen publishes, rather than
 at the size its own text happens to take. The sector field takes whatever width
 the row has left over, so each control to the right of it sits where the pane
