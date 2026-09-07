@@ -477,8 +477,8 @@ by nothing.
 
 ```
 source lines produced       459
-wall clock                  3706 s
-seconds per source line      8.1
+wall clock                  3670 s
+seconds per source line      8.0
 ```
 
 Phases one to three measured 2.51 and phases four to six 2.9, both counting test
