@@ -593,8 +593,8 @@ platform was never started, stopped or queried.
 
 ```
 source lines produced   900
-wall clock              4235 s
-seconds per source line 4.71
+wall clock              4408 s
+seconds per source line 4.90
 ```
 
 Stage B measured 5.62.
