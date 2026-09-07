@@ -1,4 +1,4 @@
-"""system_status_tab_surface.py -- the System Status tab's empty state as data.
+"""system_status_tab_surface.py -- the Status tab's empty state as data.
 
 ``view_model`` answers ``HEADING``, ``STATE_TEXT`` and ``ISSUE_TEXT``: the tab's
 name, the sentence saying the tab is not built, and the issue that carries the
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 METHOD = "system_status_tab.state"
 
-HEADING = "System Status"
+HEADING = "Status"
 ISSUE = 34
 BUILT = False
 STATE_TEXT = "This tab is not built."

@@ -40,16 +40,16 @@ from src.gui.main_tabs.simulator_tab import SimulatorTabMixin  # noqa: E402
 
 #: The order the operator reads left to right across the tab bar.
 OPERATOR_TAB_ORDER = [
-    "Trading",
-    "Market Inspector",
-    "Bot Swarm",
-    "Asset Charts",
+    "Sim",
+    "Paper",
+    "Live",
+    "Charts",
+    "Inspector",
+    "Swarm",
+    "Accumulation",
     "History",
-    "Simulator",
+    "Status",
     "Console",
-    "Paper Trader",
-    "System Status",
-    "Proof of Accumulation",
 ]
 
 #: A truthy ``_testnet_bridge`` makes ``install_on`` refuse before it builds a chain.
@@ -62,8 +62,8 @@ class SimulatorStub(QLabel):
     """Stands in for ``SimulatorTab``, recording every getter the mixin wires."""
 
     def __init__(self) -> None:
-        super().__init__(surface.SIMULATOR_TAB)
-        self.setAccessibleName(surface.SIMULATOR_TAB)
+        super().__init__(surface.SIM_TAB)
+        self.setAccessibleName(surface.SIM_TAB)
         self.wired: list = []
 
     def set_connectors_getter(self, getter) -> None:
@@ -149,19 +149,19 @@ class ShellWindow(EmptyTabsMixin):
         self._main_tabs.addTab(QLabel(name), name)
 
     def _build_trading_tab(self) -> None:
-        self._append(surface.TRADING_TAB)
+        self._append(surface.LIVE_TAB)
 
     def _build_charts_tab(self) -> None:
-        self._append(surface.ASSET_CHARTS_TAB)
+        self._append(surface.CHARTS_TAB)
 
     def _build_bot_swarm_tab(self) -> None:
-        self._append(surface.BOT_SWARM_TAB)
+        self._append(surface.SWARM_TAB)
 
     def _build_market_inspector_tab(self) -> None:
-        self._append(surface.MARKET_INSPECTOR_TAB)
+        self._append(surface.INSPECTOR_TAB)
 
     def _build_simulator_tab(self) -> None:
-        name = surface.SIMULATOR_TAB
+        name = surface.SIM_TAB
         self.built.append(name)
         if name in self._failed:
             return
@@ -184,14 +184,14 @@ class ShellWindow(EmptyTabsMixin):
         MethodType(EmptyTabsMixin.__dict__[method], self)()
 
     def _build_paper_trader_tab(self) -> None:
-        self._empty(surface.PAPER_TRADER_TAB, "_build_paper_trader_tab")
+        self._empty(surface.PAPER_TAB, "_build_paper_trader_tab")
 
     def _build_system_status_tab(self) -> None:
-        self._empty(surface.SYSTEM_STATUS_TAB, "_build_system_status_tab")
+        self._empty(surface.STATUS_TAB, "_build_system_status_tab")
 
     def _build_proof_of_accumulation_tab(self) -> None:
         self._empty(
-            surface.PROOF_OF_ACCUMULATION_TAB, "_build_proof_of_accumulation_tab"
+            surface.ACCUMULATION_TAB, "_build_proof_of_accumulation_tab"
         )
 
     def _reorder_main_tabs(self, desired: list) -> None:
@@ -267,17 +267,17 @@ def test_setup_ui_had_a_book_the_reorder_still_had_to_move(shell) -> None:
 def test_setup_ui_runs_every_tab_builder(shell) -> None:
     """Each ``_build_*`` and ``_install_retired_tab_sentinels`` runs once."""
     assert shell.built == [
-        surface.TRADING_TAB,
-        surface.ASSET_CHARTS_TAB,
-        surface.BOT_SWARM_TAB,
-        surface.MARKET_INSPECTOR_TAB,
-        surface.SIMULATOR_TAB,
+        surface.LIVE_TAB,
+        surface.CHARTS_TAB,
+        surface.SWARM_TAB,
+        surface.INSPECTOR_TAB,
+        surface.SIM_TAB,
         RETIRED_SENTINELS,
         surface.HISTORY_TAB,
         surface.CONSOLE_TAB,
-        surface.PAPER_TRADER_TAB,
-        surface.SYSTEM_STATUS_TAB,
-        surface.PROOF_OF_ACCUMULATION_TAB,
+        surface.PAPER_TAB,
+        surface.STATUS_TAB,
+        surface.ACCUMULATION_TAB,
     ], shell.built
 
 
@@ -301,11 +301,11 @@ def test_the_surface_models_the_bar_the_builders_leave(shell) -> None:
 
 def test_the_surface_moves_the_simulator_when_the_first_tab_is_missing(qapp) -> None:
     """With Trading gone the Simulator still lands second, after Asset Charts."""
-    built, host = setup_ui_run((surface.TRADING_TAB,))
-    assert surface.constructed_tabs((surface.TRADING_TAB,)) == (
+    built, host = setup_ui_run((surface.LIVE_TAB,))
+    assert surface.constructed_tabs((surface.LIVE_TAB,)) == (
         built.order_before_reorder
     ), (
-        f"the surface models {surface.constructed_tabs((surface.TRADING_TAB,))} "
+        f"the surface models {surface.constructed_tabs((surface.LIVE_TAB,))} "
         f"and the builders left {built.order_before_reorder}"
     )
     host.deleteLater()
@@ -330,19 +330,18 @@ def test_the_view_model_ends_with_the_bar_the_window_ends_with(qapp, failed) -> 
 
 
 def test_a_model_that_only_filters_the_builder_order_is_reported(qapp) -> None:
-    """The control: dropping the Simulator's insert differs from the window."""
+    """The control: a model skipping the reorder differs from the window."""
     differing = []
     for failed in FAILURE_SUBSETS:
         built, host = setup_ui_run(failed)
-        filtered = surface.reordered_tabs(
-            [name for name in surface.BUILT_TAB_ORDER if name not in set(failed)],
-            surface.CANONICAL_TAB_ORDER,
-        )
+        filtered = [
+            name for name in surface.BUILT_TAB_ORDER if name not in set(failed)
+        ]
         if filtered != labels_of(built._main_tabs):
             differing.append(list(failed))
         host.deleteLater()
     assert differing, (
-        "a surface that appends the Simulator rather than inserting it must "
+        "a model that filters the builder order and never reorders it must "
         f"differ from the window on some subset of {len(FAILURE_SUBSETS)}, or "
         "the comparison above reports nothing"
     )

@@ -7,10 +7,11 @@
 // its module name with a trailing `_tab` dropped and each word capitalised.
 //
 // `apply` takes the tab book the running application reports and narrows the
-// bar to it: the order and every label come from the application, and each tab
-// is filled by the registered screen calling the bridge method the application
-// serves that tab from. A screen calling none of those methods draws under no
-// tab; `unclaimed` names an application tab no registered screen draws.
+// bar to it: the order, every label and every tab's ground and text colour come
+// from the application, and each tab is filled by the registered screen calling
+// the bridge method the application serves that tab from. A screen calling none
+// of those methods draws under no tab; `unclaimed` names an application tab no
+// registered screen draws.
 //
 // The buttons are drawn by `acervatorMainWindow.renderTabBar`, the one React
 // bar both the shell and the Qt window use, so the two cannot drift.
@@ -32,6 +33,7 @@
   var onMove = null;
   var ordered = null;
   var labels = {};
+  var colours = {};
   var missing = [];
 
   function host() {
@@ -71,13 +73,14 @@
 
   // The application's own tab book decides the order and every label. A tab
   // no registered screen draws is left off the bar and named by `unclaimed`.
-  function apply(appTabs, appMethods) {
+  function apply(appTabs, appMethods, appColours) {
     var listed = Object.prototype.toString.call(appTabs) === "[object Array]";
     if (host() === null || !listed || !appMethods) {
       return names();
     }
     ordered = [];
     labels = {};
+    colours = {};
     missing = [];
     for (var index = 0; index < appTabs.length; index++) {
       var drawer = drawnBy(appMethods[appTabs[index]]);
@@ -87,6 +90,9 @@
       }
       ordered.push(drawer);
       labels[drawer] = appTabs[index];
+      if (appColours && appColours[appTabs[index]]) {
+        colours[drawer] = appColours[appTabs[index]];
+      }
     }
     if (bar !== null && container !== null) {
       if (ordered.indexOf(current) < 0) {
@@ -98,6 +104,16 @@
       }
     }
     return names();
+  }
+
+  // A ground and a text colour per screen name, for a host that registers its
+  // screens under the application's own tab labels.
+  function paint(given) {
+    colours = given || {};
+    if (bar !== null) {
+      draw();
+    }
+    return colours;
   }
 
   function unclaimed() {
@@ -159,6 +175,7 @@
     drawn.renderTabBar(bar, {
       names: found,
       labels: labels,
+      colours: colours,
       selected: current,
       onSelect: select,
       onMove: onMove
@@ -215,6 +232,7 @@
     onMove = null;
     ordered = null;
     labels = {};
+    colours = {};
     missing = [];
   }
 
@@ -225,6 +243,7 @@
     label: label,
     build: build,
     apply: apply,
+    paint: paint,
     unclaimed: unclaimed,
     select: select,
     selected: selected,

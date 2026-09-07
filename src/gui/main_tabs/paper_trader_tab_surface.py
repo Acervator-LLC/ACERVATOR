@@ -1,4 +1,4 @@
-"""paper_trader_tab_surface.py -- the Paper Trader tab's empty state as data.
+"""paper_trader_tab_surface.py -- the Paper tab's empty state as data.
 
 ``view_model`` answers ``HEADING``, ``STATE_TEXT`` and ``ISSUE_TEXT``: the tab's
 name, the sentence saying the tab is not built, and the issue that carries the
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 METHOD = "paper_trader_tab.state"
 
-HEADING = "Paper Trader"
+HEADING = "Paper"
 ISSUE = 19
 BUILT = False
 STATE_TEXT = "This tab is not built."

@@ -902,11 +902,11 @@ def test_the_menu_comparison_reports_a_missing_item():
 
 #: What the shipped builders leave: six append and the Simulator inserts at 1.
 SHIPPED_CONSTRUCTION_ORDER = [
-    "Trading",
-    "Simulator",
-    "Asset Charts",
-    "Bot Swarm",
-    "Market Inspector",
+    "Live",
+    "Sim",
+    "Charts",
+    "Swarm",
+    "Inspector",
     "History",
     "Console",
 ]
@@ -920,12 +920,12 @@ TAB_ORDER_CASES = {
     "already_canonical": list(surface.CANONICAL_TAB_ORDER),
     "reversed": list(reversed(surface.CANONICAL_TAB_ORDER)),
     "no_tabs": [],
-    "one_tab": ["Trading"],
+    "one_tab": ["Live"],
     "a_tab_the_order_does_not_name": list(surface.BUILT_TAB_ORDER) + ["Paper Trader"],
     "a_tab_that_failed_to_build": [
         name for name in surface.BUILT_TAB_ORDER if name != "History"
     ],
-    "two_tabs_share_a_name": ["Trading", "Trading", "Console"],
+    "two_tabs_share_a_name": ["Live", "Live", "Console"],
     "unicode_tab": [UNICODE_TEXT] + list(surface.BUILT_TAB_ORDER),
 }
 
@@ -956,9 +956,9 @@ def test_the_tab_order_comparison_reports_a_swap():
 
 
 HEADER_STRIP_CASES = [
-    "Trading",
-    "Simulator",
-    "Paper Trader",
+    "Live",
+    "Sim",
+    "Paper",
     "Console",
     "",
     UNICODE_TEXT,
@@ -994,8 +994,8 @@ def test_the_two_sides_hide_the_header_strip_on_one_set_of_tabs(tab_name):
 
 def test_the_header_strip_check_reports_both_answers():
     """The strip check reads one answer whatever the tab is called."""
-    assert surface.header_strip_visible("Trading") is True
-    assert surface.header_strip_visible("Simulator") is False
+    assert surface.header_strip_visible("Live") is True
+    assert surface.header_strip_visible("Sim") is False
 
 
 # The status line

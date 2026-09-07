@@ -42,8 +42,8 @@ METHOD_NAME = "theme_engine.state"
 PIXEL_SIZE = (880, 620)
 
 THEME_TOTAL = 5
-FIELD_TOTAL = 34
-DEFAULT_TOTAL = 32
+FIELD_TOTAL = 40
+DEFAULT_TOTAL = 38
 REQUIRED_TOTAL = 2
 
 # Every theme name, in the order the shipped registry builds them.
@@ -91,12 +91,18 @@ EXPECTED_FIELD_NAMES = (
     "radius_sm",
     "radius_md",
     "radius_lg",
+    "tab_black_bg",
+    "tab_black_text",
+    "tab_white_bg",
+    "tab_white_text",
+    "tab_gold_bg",
+    "tab_gold_text",
 )
 
 FONT_UI_DEFAULT = "'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif"
 FONT_MONO_DEFAULT = "'JetBrains Mono', 'Fira Code', 'Consolas', monospace"
 
-# The 32 values a theme takes when it names none of its own, typed out
+# The 38 values a theme takes when it names none of its own, typed out
 # here rather than read from either module.
 EXPECTED_DEFAULTS = {
     "bg_primary": "#0a0a0f",
@@ -131,6 +137,12 @@ EXPECTED_DEFAULTS = {
     "radius_sm": "4px",
     "radius_md": "8px",
     "radius_lg": "12px",
+    "tab_black_bg": "#0a0a0f",
+    "tab_black_text": "#ff5577",
+    "tab_white_bg": "#f5f5fa",
+    "tab_white_text": "#0a0a0f",
+    "tab_gold_bg": "#fcee0a",
+    "tab_gold_text": "#8c0018",
 }
 
 # Typed out here, not read from either module, so an edit made to both
@@ -168,6 +180,12 @@ EXPECTED = {
         glow_color="rgba(102,0,204,34)",
         scrollbar_bg="#e0e0ea",
         scrollbar_handle="#bbbbcc",
+        tab_black_bg="#1a1a2e",
+        tab_black_text="#ff6b8a",
+        tab_white_bg="#ffffff",
+        tab_white_text="#1a1a2e",
+        tab_gold_bg="#f0cf1f",
+        tab_gold_text="#99001f",
     ),
     "classic_terminal": dict(
         EXPECTED_DEFAULTS,
@@ -197,6 +215,12 @@ EXPECTED = {
         scrollbar_bg="#0a0a0a",
         scrollbar_handle="#003300",
         font_family=FONT_MONO_DEFAULT,
+        tab_black_bg="#0a0a0a",
+        tab_black_text="#ff3333",
+        tab_white_bg="#e8e8e8",
+        tab_white_text="#0a0a0a",
+        tab_gold_bg="#ffff00",
+        tab_gold_text="#990000",
     ),
     "minimal_modern": dict(
         EXPECTED_DEFAULTS,
@@ -226,6 +250,12 @@ EXPECTED = {
         scrollbar_bg="#f0f0f0",
         scrollbar_handle="#cccccc",
         font_family="'SF Pro Display', 'Inter', 'Segoe UI', sans-serif",
+        tab_black_bg="#1a1a1a",
+        tab_black_text="#ff6b6b",
+        tab_white_bg="#ffffff",
+        tab_white_text="#1a1a1a",
+        tab_gold_bg="#eab308",
+        tab_gold_text="#7f1d1d",
     ),
     "glass_metal": dict(
         EXPECTED_DEFAULTS,
@@ -255,6 +285,12 @@ EXPECTED = {
         scrollbar_bg="#1c1c24",
         scrollbar_handle="#3a3a50",
         font_family="'Exo 2', 'Rajdhani', 'Segoe UI', sans-serif",
+        tab_black_bg="#1c1c24",
+        tab_black_text="#ff6688",
+        tab_white_bg="#e8e8f0",
+        tab_white_text="#1c1c24",
+        tab_gold_bg="#e8b34a",
+        tab_gold_text="#6b1020",
     ),
 }
 
@@ -269,11 +305,11 @@ EXPECTED_DISPLAY_NAMES = {
 # The length of the style sheet each theme produces, typed out here.
 # A template that lost a rule on one side alone changes these.
 EXPECTED_STYLE_SHEET_LENGTHS = {
-    "cyberpunk_dark": 7376,
-    "neon_light": 7372,
-    "classic_terminal": 7384,
-    "minimal_modern": 7379,
-    "glass_metal": 7372,
+    "cyberpunk_dark": 7670,
+    "neon_light": 7666,
+    "classic_terminal": 7678,
+    "minimal_modern": 7673,
+    "glass_metal": 7666,
 }
 
 # Values `QSS_TEMPLATE` never carries, so no render can report them.
@@ -290,11 +326,17 @@ NEVER_IN_THE_STYLE_SHEET = (
 )
 
 # Values a grabbed image cannot reach: one is inside a comment, two sit
-# behind a pointer state.
+# behind a pointer state, and six reach only the main window's tab bar.
 UNREACHED_BY_A_STILL_PICTURE = {
     "display_name": "comment",
     "bg_hover": "state",
     "accent_secondary": "state",
+    "tab_black_bg": "tab bar",
+    "tab_black_text": "tab bar",
+    "tab_white_bg": "tab bar",
+    "tab_white_text": "tab bar",
+    "tab_gold_bg": "tab bar",
+    "tab_gold_text": "tab bar",
 }
 
 PAINTED_FIELDS = tuple(
@@ -791,7 +833,7 @@ def test_both_sides_use_the_same_fields_the_same_number_of_times():
     used = [field for field, count in new.items() if count]
     unused = [field for field, count in new.items() if not count]
     assert sorted(unused) == sorted(NEVER_IN_THE_STYLE_SHEET), unused
-    assert len(used) == 25
+    assert len(used) == 31
     assert len(unused) == 9
     assert used + unused != []
 

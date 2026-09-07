@@ -15,6 +15,9 @@ from typing import Optional
 
 from .color_alpha import rgba
 
+#: The object name the main window's tab bar carries, so the sheet reaches it.
+MAIN_TAB_BAR_OBJECT_NAME = "mainWindowTabBar"
+
 
 # Theme token set
 @dataclass
@@ -74,6 +77,14 @@ class ThemeTokens:
     radius_md: str = "8px"
     radius_lg: str = "12px"
 
+    # Main-window tab grounds. Each pair meets WCAG 2.2 AA at 4.5:1.
+    tab_black_bg: str = "#0a0a0f"
+    tab_black_text: str = "#ff5577"
+    tab_white_bg: str = "#f5f5fa"
+    tab_white_text: str = "#0a0a0f"
+    tab_gold_bg: str = "#fcee0a"
+    tab_gold_text: str = "#8c0018"
+
 
 # Pre-built themes
 CYBERPUNK_DARK = ThemeTokens(
@@ -108,6 +119,12 @@ NEON_LIGHT = ThemeTokens(
     glow_color=rgba("#6600cc", 34),
     scrollbar_bg="#e0e0ea",
     scrollbar_handle="#bbbbcc",
+    tab_black_bg="#1a1a2e",
+    tab_black_text="#ff6b8a",
+    tab_white_bg="#ffffff",
+    tab_white_text="#1a1a2e",
+    tab_gold_bg="#f0cf1f",
+    tab_gold_text="#99001f",
 )
 
 CLASSIC_TERMINAL = ThemeTokens(
@@ -137,6 +154,12 @@ CLASSIC_TERMINAL = ThemeTokens(
     scrollbar_bg="#0a0a0a",
     scrollbar_handle="#003300",
     font_family="'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+    tab_black_bg="#0a0a0a",
+    tab_black_text="#ff3333",
+    tab_white_bg="#e8e8e8",
+    tab_white_text="#0a0a0a",
+    tab_gold_bg="#ffff00",
+    tab_gold_text="#990000",
 )
 
 MINIMAL_MODERN = ThemeTokens(
@@ -166,6 +189,12 @@ MINIMAL_MODERN = ThemeTokens(
     scrollbar_bg="#f0f0f0",
     scrollbar_handle="#cccccc",
     font_family="'SF Pro Display', 'Inter', 'Segoe UI', sans-serif",
+    tab_black_bg="#1a1a1a",
+    tab_black_text="#ff6b6b",
+    tab_white_bg="#ffffff",
+    tab_white_text="#1a1a1a",
+    tab_gold_bg="#eab308",
+    tab_gold_text="#7f1d1d",
 )
 
 GLASS_METAL = ThemeTokens(
@@ -195,6 +224,12 @@ GLASS_METAL = ThemeTokens(
     scrollbar_bg="#1c1c24",
     scrollbar_handle="#3a3a50",
     font_family="'Exo 2', 'Rajdhani', 'Segoe UI', sans-serif",
+    tab_black_bg="#1c1c24",
+    tab_black_text="#ff6688",
+    tab_white_bg="#e8e8f0",
+    tab_white_text="#1c1c24",
+    tab_gold_bg="#e8b34a",
+    tab_gold_text="#6b1020",
 )
 
 
@@ -265,6 +300,16 @@ QTabBar::tab:selected {{
 QTabBar::tab:hover {{
     background-color: {t.bg_hover};
     color: {t.text_primary};
+}}
+
+/* --- Main-window tab grounds --- */
+QTabBar#{MAIN_TAB_BAR_OBJECT_NAME} {{
+    qproperty-tab_black_bg: {t.tab_black_bg};
+    qproperty-tab_black_text: {t.tab_black_text};
+    qproperty-tab_white_bg: {t.tab_white_bg};
+    qproperty-tab_white_text: {t.tab_white_text};
+    qproperty-tab_gold_bg: {t.tab_gold_bg};
+    qproperty-tab_gold_text: {t.tab_gold_text};
 }}
 
 /* --- Cards / Frames --- */

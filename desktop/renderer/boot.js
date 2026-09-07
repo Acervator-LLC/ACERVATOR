@@ -34,6 +34,7 @@
   var WINDOW_METHOD = "main_window.state";
   var TAB_LABELS = "tab_labels";
   var TAB_METHODS = "tab_methods";
+  var TAB_COLOURS = "tab_colours";
   var PANELS_ID = "panels";
   var TABS_ID = "tabs";
   var CHROME_ID = "chrome";
@@ -168,7 +169,8 @@
         var held = model || {};
         var drawn = global.acervatorTabBar.apply(
           held[TAB_LABELS],
-          held[TAB_METHODS]
+          held[TAB_METHODS],
+          held[TAB_COLOURS]
         );
         var absent = global.acervatorTabBar.unclaimed();
         if (absent.length) {

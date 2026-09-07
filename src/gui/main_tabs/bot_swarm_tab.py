@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from .main_window_surface import SWARM_TAB
+
 logger = logging.getLogger("acervator.gui")
 
 
@@ -31,4 +33,4 @@ class BotSwarmTabMixin:
 
             built = BotVisualizationTab()
         self._bot_viz = built
-        self._main_tabs.addTab(self._bot_viz, "Bot Swarm")
+        self._main_tabs.addTab(self._bot_viz, SWARM_TAB)

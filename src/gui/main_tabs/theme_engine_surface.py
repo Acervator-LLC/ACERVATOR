@@ -1,13 +1,14 @@
 """theme_engine_surface.py -- the five visual themes and the style sheet each one makes.
 
 Describes the theme table the whole window draws from. Five themes
-carry 34 named values each: two names, 23 colours, two font stacks,
-four text sizes and three corner roundings. A theme that does not
-name a value takes the default written in ``DEFAULT_TOKENS``.
+carry 40 named values each: two names, 29 colours, two font stacks,
+four text sizes and three corner roundings. Six of the colours are the
+main-window tab grounds and the text each ground carries. A theme that
+does not name a value takes the default written in ``DEFAULT_TOKENS``.
 
 ``generate_qss`` turns one theme into the style-sheet text the window
 applies. The template is written out here in full, so the two sides
-build the same 7376 characters from their own copies of the values.
+build the same 7670 characters from their own copies of the values.
 
 ``ThemeManagerModel`` holds the selected theme. ``list_themes``
 returns the name and display name of each. ``get_theme`` returns one
@@ -67,6 +68,12 @@ DEFAULT_TOKENS: dict[str, str] = {
     "radius_sm": "4px",
     "radius_md": "8px",
     "radius_lg": "12px",
+    "tab_black_bg": "#0a0a0f",
+    "tab_black_text": "#ff5577",
+    "tab_white_bg": "#f5f5fa",
+    "tab_white_text": "#0a0a0f",
+    "tab_gold_bg": "#fcee0a",
+    "tab_gold_text": "#8c0018",
 }
 
 FIELD_NAMES = REQUIRED_FIELD_NAMES + tuple(DEFAULT_TOKENS)
@@ -112,6 +119,12 @@ NEON_LIGHT: dict[str, str] = build_theme(
     glow_color="rgba(102,0,204,34)",
     scrollbar_bg="#e0e0ea",
     scrollbar_handle="#bbbbcc",
+    tab_black_bg="#1a1a2e",
+    tab_black_text="#ff6b8a",
+    tab_white_bg="#ffffff",
+    tab_white_text="#1a1a2e",
+    tab_gold_bg="#f0cf1f",
+    tab_gold_text="#99001f",
 )
 
 CLASSIC_TERMINAL: dict[str, str] = build_theme(
@@ -141,6 +154,12 @@ CLASSIC_TERMINAL: dict[str, str] = build_theme(
     scrollbar_bg="#0a0a0a",
     scrollbar_handle="#003300",
     font_family="'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+    tab_black_bg="#0a0a0a",
+    tab_black_text="#ff3333",
+    tab_white_bg="#e8e8e8",
+    tab_white_text="#0a0a0a",
+    tab_gold_bg="#ffff00",
+    tab_gold_text="#990000",
 )
 
 MINIMAL_MODERN: dict[str, str] = build_theme(
@@ -170,6 +189,12 @@ MINIMAL_MODERN: dict[str, str] = build_theme(
     scrollbar_bg="#f0f0f0",
     scrollbar_handle="#cccccc",
     font_family="'SF Pro Display', 'Inter', 'Segoe UI', sans-serif",
+    tab_black_bg="#1a1a1a",
+    tab_black_text="#ff6b6b",
+    tab_white_bg="#ffffff",
+    tab_white_text="#1a1a1a",
+    tab_gold_bg="#eab308",
+    tab_gold_text="#7f1d1d",
 )
 
 GLASS_METAL: dict[str, str] = build_theme(
@@ -199,6 +224,12 @@ GLASS_METAL: dict[str, str] = build_theme(
     scrollbar_bg="#1c1c24",
     scrollbar_handle="#3a3a50",
     font_family="'Exo 2', 'Rajdhani', 'Segoe UI', sans-serif",
+    tab_black_bg="#1c1c24",
+    tab_black_text="#ff6688",
+    tab_white_bg="#e8e8f0",
+    tab_white_text="#1c1c24",
+    tab_gold_bg="#e8b34a",
+    tab_gold_text="#6b1020",
 )
 
 THEMES: dict[str, dict[str, str]] = {
@@ -274,6 +305,16 @@ QTabBar::tab:selected {{
 QTabBar::tab:hover {{
     background-color: {bg_hover};
     color: {text_primary};
+}}
+
+/* --- Main-window tab grounds --- */
+QTabBar#mainWindowTabBar {{
+    qproperty-tab_black_bg: {tab_black_bg};
+    qproperty-tab_black_text: {tab_black_text};
+    qproperty-tab_white_bg: {tab_white_bg};
+    qproperty-tab_white_text: {tab_white_text};
+    qproperty-tab_gold_bg: {tab_gold_bg};
+    qproperty-tab_gold_text: {tab_gold_text};
 }}
 
 /* --- Cards / Frames --- */

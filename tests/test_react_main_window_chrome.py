@@ -43,7 +43,7 @@ WINDOW_SIZE_PX = (1400, 900)
 THEME_LOG_HEAD = "Theme switched to"
 
 #: The three tabs the presses walk through, and none of them is the first.
-PRESSED_TABS = ("History", "Console", "Trading")
+PRESSED_TABS = ("History", "Console", "Live")
 
 #: Reads back the text of every button the bar drew, left to right.
 DRAWN_LABELS_JS = chrome.LABELS_JS
@@ -198,8 +198,11 @@ def test_the_react_window_builds_the_react_tab_book(react_window) -> None:
 
 
 def test_the_qt_window_builds_the_qt_tab_book(qt_window) -> None:
-    """The control: ``_main_tabs`` is ``QTabWidget`` under the Qt build."""
-    assert type(qt_window.book) is QTabWidget, type(qt_window.book).__name__
+    """The control: ``_main_tabs`` is the Qt tab book under the Qt build."""
+    assert type(qt_window.book).__name__ == "MainTabBookQt", type(
+        qt_window.book
+    ).__name__
+    assert isinstance(qt_window.book, QTabWidget), type(qt_window.book).__name__
 
 
 def test_the_react_window_hides_the_qt_tab_bar(react_window) -> None:
