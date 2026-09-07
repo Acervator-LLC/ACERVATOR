@@ -259,6 +259,88 @@ not do.
             )
 ```
 
+## Portfolio Battery history
+
+The thirty-five portfolios from the historical archive are now named in code,
+and their sixty-three symbols are what the new mode runs over. Each one carries
+its symbols, an equal weight for every symbol, and the archive it was read out
+of.
+
+`src/simulator/portfolios.py` — one portfolio
+
+```python
+    "CRYPTO_BLUE": Portfolio(
+        name="CRYPTO_BLUE",
+        symbols=("BTC", "ETH", "BNB"),
+        description="Large-cap crypto — institutional grade",
+    ),
+```
+
+Their price history is real, and it is kept apart from the live fleet's. The
+tablets a replay reads sit under one root; the battery's sit under a second one,
+and a battery build never opens the first.
+
+`src/trading/stone_tablets/ra_paths.py` — the second root
+
+```python
+_RA_ROOT: Path = Path.home() / ".acervator_ra_tablets"
+```
+
+Two sources fill it and neither needs a key. Crypto arrives through the adapter
+the fleet already uses, driven by the venue's own public candle endpoint.
+Everything else arrives through a second adapter beside it.
+
+`src/trading/stone_tablets/ra_fetcher.py` — the non-crypto adapter
+
+```python
+class YahooChartAdapter(ExchangeAdapter):
+    exchange_id = "yahoo"
+    chunk_limit = RA_CHUNK_DAYS
+    BASE_URL: str = "https://query1.finance.yahoo.com/v8/finance/chart"
+    SOURCE: str = "yahoo_chart_v8_ONE_DAY_SPLIT_ADJUSTED"
+```
+
+Every tablet records where its numbers came from and when they were fetched, and
+the builder refuses to write one without both. A price with no source is what
+made the archive's own figures worthless.
+
+`src/trading/stone_tablets/ra_fetcher.py` — the refusal
+
+```python
+        resolved = source or str(getattr(adapter, "SOURCE", ""))
+        if not resolved:
+            raise ValueError(
+                f"{type(adapter).__name__} carries no SOURCE; pass source= naming "
+                f"the endpoint the candles come from. {adapter.exchange_id!r} is "
+                f"an exchange id, not provenance."
+            )
+```
+
+Where a source has nothing, nothing is written in its place. The missing days
+are recorded as missing, in their own file beside the tablets.
+
+`src/trading/stone_tablets/ra_fetcher.py` — what a missing period records
+
+```python
+@dataclass
+class TabletGap:
+    """One requested period a source returned no rows for."""
+
+    asset: str
+    exchange_id: str
+    timeframe: str
+    year: int
+    since_ms: int
+    until_ms: int
+    reason: str
+    checked_at: str
+```
+
+Nothing runs the bot logic over these tablets yet, and no screen shows them.
+That is the next unit.
+
+In development.
+
 ## The validation criterion
 
 The Simulator is validated when the gates latch identically on the same data.

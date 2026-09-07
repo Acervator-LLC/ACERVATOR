@@ -1,9 +1,10 @@
 """Suite-wide isolation from the operator's runtime tree.
 
 ``TEST_HOME_ENV`` and the overrides in ``_redirect_writable_roots`` point every
-writer at a throwaway directory, so no test writes into ``~/.acervator`` or
-``~/.acervator_logs``. ``_snapshot`` reads both ``_live_roots`` before and after the
-run and fails on a change the suite can be held to. ``_destroy_qt_widgets`` and
+writer at a throwaway directory, so no test writes into ``~/.acervator``,
+``~/.acervator_logs`` or ``~/.acervator_ra_tablets``. ``_snapshot`` reads every
+``_live_roots`` entry before and after the run and fails on a change the suite
+can be held to. ``_destroy_qt_widgets`` and
 ``_assert_no_widget_leak`` stop a Qt widget outliving the file that built it.
 """
 
@@ -61,9 +62,13 @@ os.environ.setdefault("ACERVATOR_SIM_STATE_ROOT", str(_SIM_STATE_TMP))
 
 
 def _live_roots() -> tuple[Path, ...]:
-    """Return ``~/.acervator`` and ``~/.acervator_logs``, the roots the guard watches."""
+    """Return the three runtime roots the guard watches, all under ``Path.home()``."""
     home = Path.home()
-    return (home / ".acervator", home / ".acervator_logs")
+    return (
+        home / ".acervator",
+        home / ".acervator_logs",
+        home / ".acervator_ra_tablets",
+    )
 
 
 def _stone_tablet_root() -> Path:
@@ -562,7 +567,8 @@ def _assert_no_live_tree_writes(_redirect_sim_log_root):
     assert not problems, (
         "the test suite mutated the operator's runtime tree.\n\n"
         + "\n\n".join(problems)
-        + "\n\nTests must never write to ~/.acervator or ~/.acervator_logs. "
+        + "\n\nTests must never write to ~/.acervator, ~/.acervator_logs or "
+        "~/.acervator_ra_tablets. "
         "Redirect the writer at its root-resolution point (see "
         "SIM_LOG_ROOT_ENV / ACERVATOR_TELEMETRY_ROOT for the pattern)."
     )
