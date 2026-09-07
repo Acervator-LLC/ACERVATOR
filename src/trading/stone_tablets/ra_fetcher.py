@@ -16,12 +16,14 @@ import urllib.parse
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
+from urllib.error import HTTPError, URLError
 
 from src.core.io_utils import atomic_write_json
+from src.core.retry import exponential_delay, retry_async
 from src.core.safe_url import SafeRequest, safe_urlopen
 
-from .fetcher import ExchangeAdapter, FetchAttempt
+from .fetcher import CoinbaseAdapter, ExchangeAdapter, FetchAttempt
 from .ra_paths import RA_GAPS_PATH, RA_STONE_TABLETS_DIR, get_ra_root
 from .storage import (
     Tablet,
@@ -45,6 +47,29 @@ RA_CHUNK_DAYS: int = 300
 """Coinbase Exchange returns at most 300 candles per request."""
 
 USER_AGENT: str = "acervator-stone-tablets/1.0"
+
+RETRYABLE_HTTP_CODES: frozenset[int] = frozenset({408, 429, 500, 502, 503, 504})
+"""Rate limit and server-side codes worth a second attempt; 400 and 404 are not."""
+
+
+def is_transient_http(exc: BaseException) -> bool:
+    """True when ``exc`` is a rate limit, a server error or a transport failure."""
+    if isinstance(exc, HTTPError):
+        return exc.code in RETRYABLE_HTTP_CODES
+    return isinstance(exc, (URLError, TimeoutError, json.JSONDecodeError))
+
+
+class RaCoinbaseAdapter(CoinbaseAdapter):
+    """``CoinbaseAdapter`` driven by ``CoinbasePublicCandles``, which raises ``HTTPError``.
+
+    ``is_retryable`` narrows the base adapter's retry-everything rule to
+    ``is_transient_http``.
+    """
+
+    @staticmethod
+    def is_retryable(exc: BaseException) -> bool:
+        """True for a rate limit, a server error or a transport failure."""
+        return is_transient_http(exc)
 
 
 def _get_json(url: str, params: dict[str, Any], timeout_s: float) -> Any:
@@ -134,8 +159,8 @@ class CoinbasePublicCandles:
 class YahooChartAdapter(ExchangeAdapter):
     """Daily non-crypto candles from the Yahoo Finance chart endpoint.
 
-    ``fetch_chunk`` refuses a series whose reported currency is not ``quote``,
-    and ``_rows_from_series`` drops every day the endpoint reports as null.
+    ``ticker_suffix`` reaches a ticker the endpoint spells with a suffix, and
+    ``fetch_chunk`` retries a transient failure ``retry_max`` times.
     """
 
     exchange_id = "yahoo"
@@ -147,9 +172,14 @@ class YahooChartAdapter(ExchangeAdapter):
     BASE_URL: str = "https://query1.finance.yahoo.com/v8/finance/chart"
     SOURCE: str = "yahoo_chart_v8_ONE_DAY_SPLIT_ADJUSTED"
 
-    def __init__(self, timeout_s: float = 20.0) -> None:
+    def __init__(self, timeout_s: float = 20.0, ticker_suffix: str = "") -> None:
         super().__init__(connector=None)
         self._timeout_s = timeout_s
+        self._ticker_suffix = ticker_suffix
+
+    def ticker_for(self, asset: str) -> str:
+        """Return the endpoint's ticker for ``asset``, with ``ticker_suffix``."""
+        return f"{asset.upper()}{self._ticker_suffix}"
 
     async def fetch_chunk(
         self,
@@ -166,10 +196,12 @@ class YahooChartAdapter(ExchangeAdapter):
                 until_ms=until_ms,
                 error=f"{self.exchange_id} serves {RA_TIMEFRAME} only, not {timeframe}",
             )
-        try:
-            payload = await asyncio.to_thread(
+        ticker = self.ticker_for(asset)
+
+        async def _fetch_once() -> Any:
+            return await asyncio.to_thread(
                 _get_json,
-                f"{self.BASE_URL}/{asset.upper()}",
+                f"{self.BASE_URL}/{ticker}",
                 {
                     "period1": since_ms // 1000,
                     "period2": (until_ms + DAY_MS) // 1000,
@@ -177,6 +209,9 @@ class YahooChartAdapter(ExchangeAdapter):
                 },
                 self._timeout_s,
             )
+
+        try:
+            payload = await self._with_retry(_fetch_once, ticker)
         except Exception as exc:
             return FetchAttempt(
                 since_ms=since_ms,
@@ -184,6 +219,33 @@ class YahooChartAdapter(ExchangeAdapter):
                 error=f"{type(exc).__name__}: {exc}",
             )
         return self._read_payload(payload, quote, since_ms, until_ms)
+
+    async def _with_retry(
+        self,
+        op: Callable[[], Awaitable[Any]],
+        ticker: str,
+    ) -> Any:
+        """Await ``op`` up to ``retry_max`` times, backing off on a transient error."""
+
+        def _note(
+            exc: BaseException, attempt: int, will_retry: bool, delay: float
+        ) -> None:
+            logger.warning(
+                "yahoo chart %s attempt %d/%d failed: %s %s",
+                ticker,
+                attempt + 1,
+                self.retry_max,
+                exc,
+                f"— sleeping {delay:.1f}s" if will_retry else "— no attempts left",
+            )
+
+        return await retry_async(
+            op,
+            attempts=self.retry_max,
+            delay_for=exponential_delay(self.retry_base_s),
+            is_retryable=is_transient_http,
+            on_failure=_note,
+        )
 
     def _read_payload(
         self,
@@ -519,11 +581,14 @@ __all__ = [
     "RA_CHUNK_DAYS",
     "RA_STONE_TABLETS_DIR",
     "RA_TIMEFRAME",
+    "RETRYABLE_HTTP_CODES",
     "CoinbasePublicCandles",
+    "RaCoinbaseAdapter",
     "RaTabletBuilder",
     "TabletGap",
     "YahooChartAdapter",
     "YearBuild",
+    "is_transient_http",
     "read_gaps",
     "write_gaps",
     "year_bounds_ms",
