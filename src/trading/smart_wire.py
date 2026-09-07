@@ -18,6 +18,30 @@ from typing import Optional
 
 logger = logging.getLogger("acervator.smart_wire")
 
+MATURE_GROWTH_PCT: float = 200.0
+"""A position is mature once its value exceeds its cost basis by this percent."""
+
+
+def mature_profit_usd(cost_basis_usd: float, current_value_usd: float) -> float:
+    """Return the profit on one position whose growth passes MATURE_GROWTH_PCT.
+
+    A position under the threshold contributes 0.0, so the total selects
+    which positions qualify instead of taking a share of every profit.
+    BotLedger.mature_profit_total reads it against a bot's seed capital and
+    get_aggregate_stats reads it against the exchange cost basis of the
+    holdings.
+    """
+    try:
+        basis = float(cost_basis_usd or 0.0)
+        value = float(current_value_usd or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(basis) or not math.isfinite(value) or basis <= 0.0:
+        return 0.0
+    if value < basis * (1.0 + MATURE_GROWTH_PCT / 100.0):
+        return 0.0
+    return value - basis
+
 
 def compute_safe_outflow_pct(
     scrum_profit_usd: float,
@@ -100,9 +124,6 @@ class BotLedger:
     starting_balance: float = 0.0
     mature_profit_allocated: float = 0.0
 
-    # Two bot-swarm tabs read MATURE_RATIO and print 70 when the import fails.
-    MATURE_RATIO: float = 0.7
-
     @property
     def predominant_source(self) -> Optional[str]:
         """Return the largest non-SEED key in provenance, or None."""
@@ -113,13 +134,15 @@ class BotLedger:
 
     @property
     def mature_profit_total(self) -> float:
-        """Return total_profit times MATURE_RATIO.
+        """Return total_profit once this bot's capital passes MATURE_GROWTH_PCT.
 
-        The result is 0.0 when total_profit is not positive.
+        starting_balance is the cost basis and starting_balance plus
+        total_profit is the current value, so the result is 0.0 until the
+        capital has grown past the threshold.
         """
-        if self.total_profit <= 0:
-            return 0.0
-        return self.total_profit * self.MATURE_RATIO
+        return mature_profit_usd(
+            self.starting_balance, self.starting_balance + self.total_profit
+        )
 
     @property
     def mature_profit_available(self) -> float:

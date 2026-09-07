@@ -5,7 +5,11 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
-from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
+from ...core.privacy_mask_registry import (
+    ABSENT_TEXT as _ABSENT_TEXT,
+    get_privacy_mask_registry,
+    mask_or,
+)
 
 from .. import design_system as ds
 from ..color_alpha import css_colours
@@ -13,7 +17,7 @@ from . import main_window_surface
 
 METHOD = "header.strip"
 
-EMPTY_TEXT = "—"
+EMPTY_TEXT = _ABSENT_TEXT
 MONEY_PREFIX = "$"
 MONEY_FORMAT = ",.2f"
 PNL_FORMAT = "+,.4f"
@@ -256,7 +260,17 @@ HIDDEN_CARD = {
     "format": PNL_FORMAT,
 }
 
-PROFITS_SOURCE_KEYS = ("wallet_cash_usd", "crypto_position_value_usd")
+PROFITS_SOURCE_KEYS = (
+    "wallet_cash_usd",
+    "crypto_position_value_usd",
+    "total_realized_exchange",
+    "total_mature_exchange",
+    "bots_with_fresh_exchange_data",
+)
+
+#: `get_aggregate_stats` counts the bots the venue has answered for. At zero
+#: neither exchange figure is a reading, so both columns stay absent.
+EXCHANGE_FRESHNESS_KEY = "bots_with_fresh_exchange_data"
 
 STATS_KEYS = (
     tuple(card["source_key"] for card in COUNTER_CARDS)
@@ -456,6 +470,23 @@ def hidden_card_text(stats: Optional[dict]) -> str:
     return pnl_text(float(data.get("total_realised_pnl", 0.0) or 0.0))
 
 
+def exchange_amount(stats: Optional[dict], key: str) -> Any:
+    """One exchange-sourced figure from ``stats``, or ``None`` when
+    ``EXCHANGE_FRESHNESS_KEY`` counts no answered bot.
+
+    ``profits_payload`` reads it for ``total_realized_exchange`` and
+    ``total_mature_exchange``.
+    """
+    data = stats if isinstance(stats, dict) else {}
+    try:
+        answered = int(data.get(EXCHANGE_FRESHNESS_KEY, 0) or 0)
+    except (TypeError, ValueError):
+        return None
+    if answered <= 0:
+        return None
+    return money_amount(float(data.get(key, 0.0) or 0.0))
+
+
 def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
     """The payload the spendable panel receives for one snapshot."""
     data = stats if isinstance(stats, dict) else {}
@@ -464,9 +495,9 @@ def profits_payload(stats: Optional[dict], exchange_count: int = 0) -> dict:
     known = wallet_cash > 0 or position_value > 0
     return {
         "spendable": wallet_cash if known else None,
-        "total_realised": None,
+        "total_realised": exchange_amount(data, "total_realized_exchange"),
         "locked": position_value if known else None,
-        "mature": None,
+        "mature": exchange_amount(data, "total_mature_exchange"),
         "exchange_count": int(exchange_count),
     }
 
