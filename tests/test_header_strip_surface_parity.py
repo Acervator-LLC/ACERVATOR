@@ -23,7 +23,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STRIP_SOURCE = REPO_ROOT / "src" / "gui" / "main_tabs" / "header_strip.py"
-WINDOW_SOURCE = REPO_ROOT / "src" / "gui" / "main_window.py"
 
 FIELD_IDS = tuple(column["field_id"] for column in surface.KPI_COLUMNS) + tuple(
     card["field_id"] for card in surface.COUNTER_CARDS
@@ -542,101 +541,99 @@ def test_the_click_actions_reach_the_host(built):
     assert built.mode_toggles == 1
 
 
-def refresh_statements() -> list:
-    """The statements of ``_refresh_dashboard`` that fill the strip."""
-    tree = ast.parse(WINDOW_SOURCE.read_text(encoding="utf-8"))
-    body = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "_refresh_dashboard":
-            for statement in ast.walk(node):
-                if isinstance(statement, (ast.Assign, ast.Expr, ast.If)):
-                    body.append(statement)
-    start = min(
-        index
-        for index, statement in enumerate(body)
-        if "total_scrummed_usd" in ast.unparse(statement)
-    )
-    end = min(
-        index
-        for index, statement in enumerate(body)
-        if "update_profits" in ast.unparse(statement)
-    )
-    return body[start : end + 1]
+class WatchedStats(dict):
+    """An aggregate that records which key ``_refresh_dashboard`` reads."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.read: set = set()
+
+    def get(self, key, default=None):
+        self.read.add(key)
+        return super().get(key, default)
+
+    def __getitem__(self, key):
+        self.read.add(key)
+        return super().__getitem__(key)
 
 
-def window_stats_keys() -> set:
-    """Every aggregate key the strip's own statements read."""
-    keys = set()
-    for statement in refresh_statements():
-        for node in ast.walk(statement):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "get"
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "agg"
-            ):
-                keys.add(node.args[0].value)
-            if (
-                isinstance(node, ast.Subscript)
-                and isinstance(node.value, ast.Name)
-                and node.value.id == "agg"
-            ):
-                keys.add(node.slice.value)
-    return keys
+REFRESH_STATS = {
+    "total_scrummed_usd": 1234.5,
+    "total_folded_usd": 987.25,
+    "total_realised_pnl": -12.3456,
+    "total_trades": 41,
+    "running": 7,
+    "total_errors_lifetime": 3,
+    "wallet_cash_usd": 500.0,
+    "crypto_position_value_usd": 900.0,
+    "total_realized_exchange": -20.5,
+    "total_mature_exchange": 44.75,
+    "bots_with_fresh_exchange_data": 6,
+}
 
 
-def window_card_formats() -> dict:
-    """The format each ``_stat_*`` card is set with, keyed by card name."""
-    formats = {}
-    for statement in refresh_statements():
-        for node in ast.walk(statement):
-            if not (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "set_value"
-            ):
-                continue
-            name = dotted(node.func.value).rsplit("._stat_", 1)[-1]
-            argument = node.args[0]
-            if isinstance(argument, ast.JoinedStr):
-                literal = "".join(
-                    part.value
-                    for part in argument.values
-                    if isinstance(part, ast.Constant)
-                )
-                spec = "".join(
-                    piece.value
-                    for part in argument.values
-                    if isinstance(part, ast.FormattedValue)
-                    for piece in part.format_spec.values
-                )
-                formats[name] = (literal, spec)
-            else:
-                formats[name] = (dotted(argument.func), surface.COUNT_FORMAT)
-    return formats
+def run_refresh(qapp, stats):
+    """Drive the window's own ``_refresh_dashboard`` over one aggregate."""
+    from src.gui.main_window import MainWindow
+    from src.gui.widgets.spendable_profits import SpendableProfitsWidget
+
+    class _Card:
+        def __init__(self) -> None:
+            self.text = None
+
+        def set_value(self, value):
+            self.text = value
+
+    class _Fleet:
+        def __init__(self, agg) -> None:
+            self.agg = agg
+
+        def get_aggregate_stats(self):
+            return self.agg
+
+    class _Host:
+        pass
+
+    host = _Host()
+    host._bot_manager = _Fleet(stats)
+    host._spendable_widget = SpendableProfitsWidget()
+    host._exchange_tabs = {"a": None, "b": None}
+    cards = {}
+    for name in ("scrummed", "folded", "pnl", "trades", "bots", "errors"):
+        cards[name] = _Card()
+        setattr(host, "_stat_" + name, cards[name])
+    MainWindow._refresh_dashboard(host)
+    drawn = {"spendable": host._spendable_widget._amount.text()}
+    for key, label in host._spendable_widget._stats.items():
+        drawn[key] = label.text()
+    host._spendable_widget.deleteLater()
+    return cards, drawn
 
 
-def test_the_card_formats_match_the_window():
-    """The strip's numbers carry a different format than the window sets."""
-    formats = window_card_formats()
-    assert formats == {
-        "scrummed": (surface.MONEY_PREFIX, surface.MONEY_FORMAT),
-        "folded": (surface.MONEY_PREFIX, surface.MONEY_FORMAT),
-        "pnl": (surface.MONEY_PREFIX, surface.PNL_FORMAT),
-        "trades": ("str", surface.COUNT_FORMAT),
-        "bots": ("str", surface.COUNT_FORMAT),
-        "errors": ("str", surface.COUNT_FORMAT),
-    }
-    declared = {card["key"]: card["format"] for card in surface.COUNTER_CARDS}
-    declared[surface.HIDDEN_CARD["key"]] = surface.HIDDEN_CARD["format"]
-    assert {name: spec for name, (_, spec) in formats.items()} == declared
+def test_the_card_formats_match_the_window(qapp, revealed):
+    """The window's cards render text the surface does not render."""
+    cards, _ = run_refresh(qapp, dict(REFRESH_STATS))
+    rendered = {name: card.text for name, card in cards.items()}
+    expected = surface.counter_cells(REFRESH_STATS)
+    expected["pnl"] = surface.hidden_card_text(REFRESH_STATS)
+    assert rendered == expected
 
 
-def test_the_stats_keys_match_the_window():
-    """The surface reads an aggregate key the window's strip does not."""
-    assert window_stats_keys() == set(surface.STATS_KEYS)
-    assert len(surface.STATS_KEYS) == 8
+def test_the_stats_keys_match_the_window(qapp, revealed):
+    """The window reads an aggregate key the surface does not declare.
+
+    ``WatchedStats`` records every key ``_refresh_dashboard`` asks the
+    aggregate for, so the comparison reads the run and not the source.
+    """
+    watched = WatchedStats(REFRESH_STATS)
+    run_refresh(qapp, watched)
+    assert watched.read == set(surface.STATS_KEYS)
+    assert len(surface.STATS_KEYS) == len(set(surface.STATS_KEYS))
+
+    blinded = WatchedStats(REFRESH_STATS)
+    del blinded["total_mature_exchange"]
+    _, drawn = run_refresh(qapp, blinded)
+    assert drawn["mature"] == "$0.00", "a dropped key changed no drawn column"
 
 
 def test_the_isolated_tabs_match_the_window():
@@ -910,18 +907,52 @@ def test_the_hidden_card_renders_the_same_text(qapp, revealed, name):
 def test_the_profits_payload_matches_the_window(qapp, name):
     """The payload the panel receives differs from the window's."""
     stats = dict(STATS_SCRIPTS[name])
-    for wallet, position, count in ((0.0, 0.0, 0), (5.0, 0.0, 1), (0.0, 9.0, 2)):
-        stats["wallet_cash_usd"] = wallet
-        stats["crypto_position_value_usd"] = position
-        known = wallet > 0 or position > 0
-        expected = {
-            "spendable": wallet if known else None,
-            "total_realised": None,
-            "locked": position if known else None,
-            "mature": None,
-            "exchange_count": count,
-        }
-        assert surface.profits_payload(stats, count) == expected
+    stats["total_realized_exchange"] = -12.5
+    stats["total_mature_exchange"] = 33.25
+    for answered in (0, 4):
+        stats["bots_with_fresh_exchange_data"] = answered
+        for wallet, position, count in ((0.0, 0.0, 0), (5.0, 0.0, 1), (0.0, 9.0, 2)):
+            stats["wallet_cash_usd"] = wallet
+            stats["crypto_position_value_usd"] = position
+            known = wallet > 0 or position > 0
+            expected = {
+                "spendable": wallet if known else None,
+                "total_realised": -12.5 if answered else None,
+                "locked": position if known else None,
+                "mature": 33.25 if answered else None,
+                "exchange_count": count,
+            }
+            assert surface.profits_payload(stats, count) == expected
+
+
+def test_an_unanswered_venue_leaves_both_exchange_columns_absent(qapp, revealed):
+    """A masked EMPTY_TEXT cell stays EMPTY_TEXT while a masked figure does not.
+
+    A failure means kpi_cells renders an absent column the way it renders
+    locked.
+    """
+    from src.core.privacy_mask_registry import get_privacy_mask_registry
+
+    stats = {
+        "wallet_cash_usd": 5.0,
+        "crypto_position_value_usd": 9.0,
+        "total_realized_exchange": -12.5,
+        "total_mature_exchange": 33.25,
+        "bots_with_fresh_exchange_data": 0,
+    }
+    plain = surface.kpi_cells(surface.profits_payload(stats, 2))
+    assert plain["total_realised"]["text"] == surface.EMPTY_TEXT
+    assert plain["mature"]["text"] == surface.EMPTY_TEXT
+    assert plain["locked"]["text"] == "$9.00"
+
+    get_privacy_mask_registry().set_all(True)
+    try:
+        masked = surface.kpi_cells(surface.profits_payload(stats, 2))
+    finally:
+        get_privacy_mask_registry().set_all(False)
+    assert masked["total_realised"]["text"] == surface.EMPTY_TEXT
+    assert masked["mature"]["text"] == surface.EMPTY_TEXT
+    assert masked["locked"]["text"] == "****", "a held figure stopped masking"
 
 
 MASK_SCRIPTS = {

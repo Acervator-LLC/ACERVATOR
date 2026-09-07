@@ -28,6 +28,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from ...trading import smart_wire
+
 from .. import design_system as ds
 
 METHOD = "bot_swarm_tab.state"
@@ -83,8 +85,7 @@ LEDGER_MATURE_TOTAL_FIELD = "mature_profit_total"
 LEDGER_MATURE_AVAILABLE_FIELD = "mature_profit_available"
 
 SEED_SOURCE = "SEED"
-MATURE_RATIO_FALLBACK_PCT = 70
-MATURE_RATIO_ZERO = 0.0
+MATURE_ZERO = 0.0
 
 STRONG_OPEN_TAG = "<b>"
 STRONG_CLOSE_TAG = "</b>"
@@ -150,7 +151,7 @@ SIGNED_MONEY_FORMAT = "${value:+,.4f}"
 PROVENANCE_MONEY_FORMAT = "{source}: ${value:,.2f}"
 PROVENANCE_REFUSED_FORMAT = "{source}: {value}"
 PROVENANCE_JOIN = ", "
-MATURE_TOTAL_ROW_FORMAT = "Mature profit total ({pct}% of P&L):"
+MATURE_TOTAL_ROW_FORMAT = "Mature profit total (position grown past {pct}%):"
 PCT_FORMAT = "{value:.2f}%"
 ASSET_SUFFIX_FORMAT = " ({asset})"
 
@@ -251,19 +252,13 @@ def as_finite_float(value) -> Optional[float]:
     return admitted(value)
 
 
-def mature_ratio_pct() -> int:
-    """The mature-profit share as a whole percent, for the row label.
+def mature_growth_pct() -> int:
+    """The maturity growth threshold as a whole percent, for the row label.
 
-    Reads the runtime constant off the ledger class so the label follows
-    it. Falls back to 70 when the import fails, which is what the tab
-    prints and is the only sign the operator gets that it failed.
+    Reads smart_wire.MATURE_GROWTH_PCT off the module, so the label cannot
+    state a threshold mature_profit_usd does not apply.
     """
-    try:
-        from ...trading.smart_wire import BotLedger
-
-        return int(round(BotLedger.MATURE_RATIO * 100))
-    except Exception:
-        return MATURE_RATIO_FALLBACK_PCT
+    return int(round(smart_wire.MATURE_GROWTH_PCT))
 
 
 def provenance_entries(provenance: dict) -> list:
@@ -338,8 +333,8 @@ class LedgerRecord:
         starting_balance: Any = 0.0,
         provenance: Any = None,
         mature_profit_allocated: Any = 0.0,
-        mature_profit_total: Any = MATURE_RATIO_ZERO,
-        mature_profit_available: Any = MATURE_RATIO_ZERO,
+        mature_profit_total: Any = MATURE_ZERO,
+        mature_profit_available: Any = MATURE_ZERO,
         predominant_source: Any = None,
         predominant_raises: Any = None,
     ):
@@ -453,7 +448,7 @@ class TabState:
         self.provenance_styles: list = []
         self.provenance_wraps: list = []
         self.provenance_breakdown: list = []
-        self.mature_ratio_pct = MATURE_RATIO_FALLBACK_PCT
+        self.mature_growth_pct = mature_growth_pct()
         self.mature_refused = False
         self.predominant_refused = False
         self.outbound_shown = False
@@ -666,11 +661,11 @@ class BotSwarmTabModel:
             )
         except Exception:
             self.state.mature_refused = True
-            mature_total = mature_available = mature_allocated = MATURE_RATIO_ZERO
+            mature_total = mature_available = mature_allocated = MATURE_ZERO
 
-        self.state.mature_ratio_pct = mature_ratio_pct()
+        self.state.mature_growth_pct = mature_growth_pct()
         self._add_provenance(
-            MATURE_TOTAL_ROW_FORMAT.format(pct=self.state.mature_ratio_pct),
+            MATURE_TOTAL_ROW_FORMAT.format(pct=self.state.mature_growth_pct),
             MONEY_FORMAT.format(value=mature_total),
         )
         self._add_provenance(
@@ -929,8 +924,7 @@ def payload_thresholds() -> dict:
         "age_hour_s": AGE_SECONDS_HOUR,
         "age_day_s": AGE_SECONDS_DAY,
         "transactions_limit": TRANSACTIONS_SHOWN_LIMIT,
-        "mature_ratio_fallback_pct": MATURE_RATIO_FALLBACK_PCT,
-        "mature_zero": MATURE_RATIO_ZERO,
+        "mature_zero": MATURE_ZERO,
     }
 
 
@@ -1060,7 +1054,7 @@ def build_view_model(model: BotSwarmTabModel) -> dict:
             "word_wraps": list(model.state.provenance_wraps),
             "word_wrap_when_shown": PROVENANCE_WORD_WRAP,
             "breakdown": [list(one) for one in model.state.provenance_breakdown],
-            "mature_ratio_pct": model.state.mature_ratio_pct,
+            "mature_growth_pct": model.state.mature_growth_pct,
             "mature_refused": model.state.mature_refused,
             "predominant_refused": model.state.predominant_refused,
         },

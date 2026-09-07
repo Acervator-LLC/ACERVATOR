@@ -134,6 +134,47 @@ how much of it has aged enough to move on.
 | `mature_profit_total` | Wire profit past its maturity age |
 | `mature_profit_available` | How much of that is free to move now |
 
+Maturity is a growth threshold, not an age and not a share. A bot's capital is
+mature once it is worth more than three times what it started with, and the
+mature figure is then the whole profit above that starting capital. Below the
+threshold the figure is zero, so a bot cannot fund a child on a small gain.
+
+`src/trading/smart_wire.py` — `mature_profit_usd`
+
+```python
+MATURE_GROWTH_PCT: float = 200.0
+
+if value < basis * (1.0 + MATURE_GROWTH_PCT / 100.0):
+    return 0.0
+return value - basis
+```
+
+One function decides maturity everywhere. The per-bot ledger reads it against
+the seed capital, and the header strip reads it against the exchange cost basis
+of each bot's holdings, so the spawn gate and the screen cannot disagree about
+what mature means.
+
+`src/trading/smart_wire.py` — `BotLedger.mature_profit_total`
+
+```python
+return mature_profit_usd(
+    self.starting_balance, self.starting_balance + self.total_profit
+)
+```
+
+The tab's own row label carries the threshold and reads the same constant the
+maths reads, so the words on screen and the rule applied to the money move
+together.
+
+`src/gui/main_tabs/bot_swarm_tab_surface.py` — the row label
+
+```python
+MATURE_TOTAL_ROW_FORMAT = "Mature profit total (position grown past {pct}%):"
+
+def mature_growth_pct() -> int:
+    return int(round(smart_wire.MATURE_GROWTH_PCT))
+```
+
 One function bounds what a bot may send away. It reads the target balance, the
 band edges, the ammunition the next fold needs and the cash on hand, and returns
 the exportable share as a percentage. A bot never exports the capital it is
