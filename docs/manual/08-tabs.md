@@ -681,6 +681,56 @@ def persist_dismissed(self) -> None:
 The key it writes is not one the settings schema declares, so the write fails
 every time. Issue #424 carries it.
 
+Every zone on this screen shows one entry at a time. A left arrow and a right
+arrow sit above the entry, and a line beside them says which entry is on
+screen and how many the zone holds. The arrows wrap, so the right arrow on the
+last entry goes back to the first. A zone holding nothing reads zero of zero
+and keeps the sentence that says what it waits for.
+
+`src/gui/main_tabs/market_inspector_surface.py` — `position_text`
+
+```python
+def position_text(at: Any, total: Any) -> str:
+    """Which entry is on screen, out of how many the zone holds."""
+    count = int(total)
+    if count <= 0:
+        return POSITION_EMPTY_TEXT
+    return POSITION_FORMAT.format(at=int(at) + 1, total=count)
+```
+
+Clicking the entry opens it. The expansion carries four lines: the test that
+produced the entry, the window that test ran on, what it returned, and why
+that answer let the entry through. The last line is written by the module that
+owns the threshold, so the screen never states a level of its own.
+
+`src/trading/pair_selection.py` — `MethodResult.gate_text`
+
+```python
+@property
+def gate_text(self) -> str:
+    """Why the verdict is what it is, in the terms the test uses."""
+    if not self.passed:
+        return GATE_REFUSED_FORMAT.format(detail=self.detail)
+    if self.method == METHOD_BAND_DISTANCE:
+        return GATE_LIVE_STATE_TEXT
+    return GATE_P_VALUE_FORMAT.format(
+        p_value=self.p_value, significance=SIGNIFICANCE
+    )
+```
+
+One cointegration pair reads its four lines like this:
+
+```
+Test: Cointegration — Engle-Granger + Johansen
+Window: 365 daily closes
+Result: p=0.0000 · trace 57.5>15.5
+Why it is here: p 0.0000 is at or below the 0.05 required.
+```
+
+The count of proposals held and dismissed stays on its own line beside the
+Refresh button, so a dismissed proposal is still counted after it leaves the
+list.
+
 The footer names the auto-refresh period and the adopt route. The status bar
 under it carries the API load pill, drawn green below half load, amber above
 it, and red past the monitor's safety percentage, then the `AI:` state label.

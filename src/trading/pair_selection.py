@@ -54,6 +54,10 @@ SHORT_SERIES_DETAIL = "series shorter than {minimum} bars"
 FLAT_SERIES_DETAIL = "series holds one repeated price"
 TEST_FAILED_DETAIL = "{name}: {message}"
 
+GATE_P_VALUE_FORMAT = "p {p_value:.4f} is at or below the {significance} required."
+GATE_LIVE_STATE_TEXT = "Read from the live bot balances, so no p-value applies."
+GATE_REFUSED_FORMAT = "Refused: {detail}"
+
 COINTEGRATION_STATISTIC_FORMAT = "p={p_value:.4f} · trace {trace:.1f}>{critical:.1f}"
 CORRELATION_STATISTIC_FORMAT = "r={correlation:+.3f} · p={p_value:.4f}"
 BAND_DISTANCE_STATISTIC_FORMAT = "{scrum:+.1f}% / {fold:+.1f}% vs {deep:.1f}%"
@@ -88,6 +92,17 @@ class MethodResult:
             return LIVE_STATE_WINDOW_TEXT
         return f"{self.observations}d"
 
+    @property
+    def gate_text(self) -> str:
+        """Why the verdict is what it is, in the terms the test uses."""
+        if not self.passed:
+            return GATE_REFUSED_FORMAT.format(detail=self.detail)
+        if self.method == METHOD_BAND_DISTANCE:
+            return GATE_LIVE_STATE_TEXT
+        return GATE_P_VALUE_FORMAT.format(
+            p_value=self.p_value, significance=SIGNIFICANCE
+        )
+
     def as_dict(self) -> dict[str, Any]:
         """The verdict as the proposal dicts and the page payload carry it."""
         return {
@@ -101,6 +116,7 @@ class MethodResult:
             "statistic_text": self.statistic_text,
             "passed": self.passed,
             "detail": self.detail,
+            "gate": self.gate_text,
         }
 
 

@@ -690,6 +690,59 @@
   var MARK_STRONG_PART = "mark-strong";
   var MARK_TAIL_PART = "mark-tail";
 
+  var STEPPER_PART = "zone-stepper";
+  var STEP_ROW_PART = "step-row";
+  var STEP_BACK_PART = "step-back";
+  var STEP_NEXT_PART = "step-next";
+  var POSITION_PART = "zone-position";
+  var ENTRY_PART = "zone-entry";
+  var ENTRY_BODY_PART = "entry-body";
+  var ENTRY_HEAD_PART = "entry-head";
+  var HEADLINE_PART = "entry-headline";
+  var ENTRY_BADGE_PART = "entry-badge";
+  var ENTRY_META_PART = "entry-meta";
+  var ENTRY_METHOD_PART = "entry-method";
+  var ENTRY_HINT_PART = "entry-hint";
+  var DETAIL_PART = "entry-detail";
+
+  var ZONES = "zones";
+  var STEPPER = "stepper";
+  var ZONE_KEY = "key";
+  var ZONE_TOTAL = "total";
+  var ZONE_POSITION = "position";
+  var ZONE_HEADLINE = "headline";
+  var ZONE_META = "meta";
+  var ZONE_METHOD = "method";
+  var ZONE_DETAIL = "detail";
+  var ZONE_BADGE = "badge";
+  var ZONE_BADGE_STYLE = "badge_style";
+
+  var BACK_TEXT = "back_text";
+  var NEXT_TEXT = "next_text";
+  var BACK_TOOLTIP = "back_tooltip";
+  var NEXT_TOOLTIP = "next_tooltip";
+  var BUTTON_WIDTH_PX = "button_width_px";
+  var BUTTON_STYLE = "button_style";
+  var POSITION_STYLE = "position_style";
+  var ENTRY_STYLE = "entry_style";
+  var ENTRY_MARGINS_PX = "entry_margins_px";
+  var ENTRY_SPACING_PX = "entry_spacing_px";
+  var HEADLINE_STYLE = "headline_style";
+  var META_STYLE = "meta_style";
+  var METHOD_STYLE = "method_style";
+  var HINT_TEXT = "hint_text";
+  var HINT_STYLE = "hint_style";
+  var DETAIL_STYLE = "detail_style";
+  var ENTRY_NAME = "entry_accessible_name";
+  var STEPPER_NAME = "stepper_accessible_name";
+
+  var STEP_ZONE_FIELD = "step_zone";
+  var STEP_FIELD = "step";
+  var TOGGLE_ZONE_FIELD = "toggle_zone";
+  var POINTER = "pointer";
+  var INHERITED = "inherit";
+  var PRE_SPACE = "pre";
+
   var SIGNALS_TABLE = "signals";
   var PAIRS_TABLE = "pairs";
 
@@ -1271,6 +1324,173 @@
     return titleStyle;
   }
 
+  // The published zone view one key names, or an empty one.
+  function zoneFor(model, key) {
+    var found = {};
+    listField(model, ZONES).forEach(function (one) {
+      if (isPlainObject(one) && one[ZONE_KEY] === key) {
+        found = one;
+      }
+    });
+    return found;
+  }
+
+  // StepButton is one arrow. `by` is -1 back and +1 next.
+  function StepButton(props) {
+    var skin = props.skin;
+    var style = styleOf(skin[BUTTON_STYLE]);
+    style.font = INHERITED;
+    style.flex = FLEX_NONE;
+    style.width = length(skin[BUTTON_WIDTH_PX]);
+    var buttonProps = {
+      type: BUTTON_TYPE,
+      style: style,
+      disabled: props.total < TWO,
+      title: label(skin[props.by < ZERO ? BACK_TOOLTIP : NEXT_TOOLTIP])
+    };
+    buttonProps[PART_ATTR] = props.by < ZERO ? STEP_BACK_PART : STEP_NEXT_PART;
+    buttonProps[NAME_ATTR] = text(props.zone);
+    buttonProps[ARIA_LABEL] = label(
+      skin[props.by < ZERO ? BACK_TOOLTIP : NEXT_TOOLTIP]
+    );
+    buttonProps.onClick = function () {
+      props.act(props.by < ZERO ? STEP_BACK_PART : STEP_NEXT_PART, props.zone);
+    };
+    return element(
+      BUTTON_TAG,
+      buttonProps,
+      text(skin[props.by < ZERO ? BACK_TEXT : NEXT_TEXT])
+    );
+  }
+
+  // DetailLine is one line of the expansion.
+  function DetailLine(props) {
+    var lineProps = { style: asLabel(styleOf(props.skin[DETAIL_STYLE]), true) };
+    lineProps[PART_ATTR] = DETAIL_PART;
+    lineProps[NAME_ATTR] = text(asList(props.row)[ZERO]);
+    return element(DIV_TAG, lineProps, text(asList(props.row)[ONE]));
+  }
+
+  // ZoneStepper draws one zone's entry: the arrows, the position, the entry
+  // itself and, while it is open, the lines saying how and why it is there.
+  // Every zone on this screen and the proposals pane draw through it.
+  function ZoneStepper(props) {
+    var skin = props.skin;
+    var view = isPlainObject(props.view) ? props.view : {};
+    var total = Number(view[ZONE_TOTAL]) || ZERO;
+    var press = typeof props.act === FUNCTION_KIND ? props.act : function () {};
+    var outer = { display: FLEX, flexDirection: COLUMN_WAY, flex: ONE, minHeight: ZERO };
+    outer.gap = length(skin[ENTRY_SPACING_PX]);
+    var outerProps = { style: outer };
+    outerProps[PART_ATTR] = STEPPER_PART;
+    outerProps[NAME_ATTR] = text(view[ZONE_KEY]);
+    outerProps[ARIA_LABEL] = label(skin[STEPPER_NAME]);
+    var rowStyle = { display: FLEX, flexDirection: ROW_WAY, flex: FLEX_NONE };
+    rowStyle.gap = length(skin[ENTRY_SPACING_PX]);
+    var rowProps = { style: rowStyle };
+    rowProps[PART_ATTR] = STEP_ROW_PART;
+    var positionProps = { style: asLabel(styleOf(skin[POSITION_STYLE]), false) };
+    positionProps[PART_ATTR] = POSITION_PART;
+    positionProps[NAME_ATTR] = text(view[ZONE_KEY]);
+    var frame = styleOf(skin[ENTRY_STYLE]);
+    frame.flex = ONE;
+    frame.minHeight = ZERO;
+    frame.overflow = AUTO;
+    frame.cursor = POINTER;
+    var entryProps = { style: frame };
+    entryProps[PART_ATTR] = ENTRY_PART;
+    entryProps[NAME_ATTR] = text(view[ZONE_KEY]);
+    entryProps[ARIA_LABEL] = label(skin[ENTRY_NAME]);
+    entryProps.onClick = function () {
+      press(ENTRY_PART, view[ZONE_KEY]);
+    };
+    var bodyProps = {
+      style: boxStyle(
+        asList(skin[ENTRY_MARGINS_PX]),
+        skin[ENTRY_SPACING_PX],
+        COLUMN_WAY
+      )
+    };
+    bodyProps[PART_ATTR] = ENTRY_BODY_PART;
+    var headStyle = { display: FLEX, flexDirection: ROW_WAY };
+    headStyle.gap = length(skin[ENTRY_SPACING_PX]);
+    var headProps = { style: headStyle };
+    headProps[PART_ATTR] = ENTRY_HEAD_PART;
+    var headlineStyle = asLabel(styleOf(skin[HEADLINE_STYLE]), true);
+    headlineStyle.flex = ONE;
+    headlineStyle.minWidth = ZERO;
+    var headlineProps = { style: headlineStyle };
+    headlineProps[PART_ATTR] = HEADLINE_PART;
+    headlineProps[NAME_ATTR] = text(view[ZONE_KEY]);
+    var badgeStyle = styleOf(view[ZONE_BADGE_STYLE]);
+    badgeStyle.whiteSpace = PRE_SPACE;
+    var badgeProps = { style: badgeStyle };
+    badgeProps[PART_ATTR] = ENTRY_BADGE_PART;
+    var metaProps = { style: asLabel(styleOf(skin[META_STYLE]), true) };
+    metaProps[PART_ATTR] = ENTRY_META_PART;
+    var methodProps = { style: asLabel(styleOf(skin[METHOD_STYLE]), true) };
+    methodProps[PART_ATTR] = ENTRY_METHOD_PART;
+    var hintProps = { style: asLabel(styleOf(skin[HINT_STYLE]), true) };
+    hintProps[PART_ATTR] = ENTRY_HINT_PART;
+    return element(
+      DIV_TAG,
+      outerProps,
+      element(
+        DIV_TAG,
+        rowProps,
+        element(StepButton, {
+          key: STEP_BACK_PART,
+          skin: skin,
+          by: -ONE,
+          total: total,
+          zone: view[ZONE_KEY],
+          act: press
+        }),
+        element(StepButton, {
+          key: STEP_NEXT_PART,
+          skin: skin,
+          by: ONE,
+          total: total,
+          zone: view[ZONE_KEY],
+          act: press
+        }),
+        element(DIV_TAG, positionProps, text(view[ZONE_POSITION]))
+      ),
+      element(
+        DIV_TAG,
+        entryProps,
+        element(
+          DIV_TAG,
+          bodyProps,
+          element(
+            DIV_TAG,
+            headProps,
+            element(DIV_TAG, headlineProps, text(view[ZONE_HEADLINE])),
+            text(view[ZONE_BADGE])
+              ? element(SPAN_TAG, badgeProps, text(view[ZONE_BADGE]))
+              : null
+          ),
+          text(view[ZONE_META])
+            ? element(DIV_TAG, metaProps, text(view[ZONE_META]))
+            : null,
+          text(view[ZONE_METHOD])
+            ? element(DIV_TAG, methodProps, text(view[ZONE_METHOD]))
+            : null,
+          listField(view, ZONE_DETAIL).map(function (row, at) {
+            return element(DetailLine, {
+              key: DETAIL_PART + PATH_SPLIT + String(at),
+              skin: skin,
+              row: row
+            });
+          }),
+          total > ZERO
+            ? element(DIV_TAG, hintProps, text(skin[HINT_TEXT]))
+            : null
+        )
+      )
+    );
+  }
+
   function ModuleGroup(props) {
     var model = props.model;
     var entry = asList(props.entry);
@@ -1280,15 +1500,17 @@
     groupProps[ARIA_LABEL] = label(entry[ONE]);
     var legendProps = { style: asLabel(groupTitleStyle(model), false) };
     legendProps[PART_ATTR] = MODULE_LEGEND_PART;
-    var lineProps = { style: asLabel(styleOf(model[STATUS_STYLE]), true) };
-    lineProps[PART_ATTR] = MODULE_STATUS_PART;
-    lineProps[NAME_ATTR] = text(entry[ZERO]);
     return element(
       FIELDSET_TAG,
       groupProps,
       element(LEGEND_TAG, legendProps, text(entry[ONE])),
-      element(SPAN_TAG, lineProps, text(entry[TWO])),
-      asList(props.children)
+      asList(props.children),
+      element(ZoneStepper, {
+        key: STEPPER_PART,
+        skin: objectField(model, STEPPER),
+        view: zoneFor(model, entry[ZERO]),
+        act: act
+      })
     );
   }
 
@@ -1309,21 +1531,9 @@
     });
   }
 
-  // The Refresh row and the pairs table the Opposing Trades zone holds.
+  // The Refresh row the Opposing Trades zone holds above its stepper.
   function scanContent(model) {
-    return [
-      element(FilterRow, { key: FILTER_ROW_PART, model: model }),
-      element(TableGroup, {
-        key: PAIRS_TABLE,
-        model: model,
-        table: PAIRS_TABLE,
-        titleField: PAIRS_GROUP_TITLE,
-        heightField: PAIRS_MAX_HEIGHT_PX,
-        columnsField: PAIR_COLUMNS,
-        rowsField: PAIR_ROWS,
-        noteField: EMPTY_PAIRS
-      })
-    ];
+    return [element(FilterRow, { key: FILTER_ROW_PART, model: model })];
   }
 
   function LeftPane(props) {
@@ -1386,7 +1596,15 @@
     var legendProps = { style: asLabel(groupTitleStyle(model), false) };
     legendProps[PART_ATTR] = MODULE_LEGEND_PART;
     if (props.fills === true) {
-      var slotProps = { style: { flex: AUTO, minHeight: ZERO, overflow: CLIPPED } };
+      var slotProps = {
+        style: {
+          flex: AUTO,
+          minHeight: ZERO,
+          overflow: CLIPPED,
+          display: FLEX,
+          flexDirection: COLUMN_WAY
+        }
+      };
       slotProps[PART_ATTR] = TOPOLOGY_PART;
       slotProps[SLOT_ATTR] = TOPOLOGY_SLOT;
       return element(
@@ -1396,14 +1614,16 @@
         element(DIV_TAG, slotProps, null)
       );
     }
-    var lineProps = { style: asLabel(styleOf(model[STATUS_STYLE]), true) };
-    lineProps[PART_ATTR] = MODULE_STATUS_PART;
-    lineProps[NAME_ATTR] = text(entry[ZERO]);
     return element(
       FIELDSET_TAG,
       groupProps,
       element(LEGEND_TAG, legendProps, text(entry[ONE])),
-      element(SPAN_TAG, lineProps, text(entry[TWO]))
+      element(ZoneStepper, {
+        key: STEPPER_PART,
+        skin: objectField(model, STEPPER),
+        view: zoneFor(model, entry[ZERO]),
+        act: act
+      })
     );
   }
 
@@ -2322,9 +2542,24 @@
     hostTarget = null;
   }
 
-  // A Qt host replaces this; the default keeps a press from raising.
-  global.acervatorMarketInspectorAction = function () {
-    return null;
+  // A Qt host replaces this. The shell replaces nothing, so the default
+  // takes the press to the bridge itself and redraws from the answer.
+  global.acervatorMarketInspectorAction = function (key, value) {
+    if (!global.acervator || typeof global.acervator.call !== FUNCTION_KIND) {
+      return null;
+    }
+    var asked = {};
+    if (key === STEP_BACK_PART || key === STEP_NEXT_PART) {
+      asked[STEP_ZONE_FIELD] = value;
+      asked[STEP_FIELD] = key === STEP_BACK_PART ? -ONE : ONE;
+    } else if (key === ENTRY_PART) {
+      asked[TOGGLE_ZONE_FIELD] = value;
+    } else {
+      return null;
+    }
+    return global.acervator.call(METHOD, asked).then(function (model) {
+      return setTab(model);
+    });
   };
 
   // The shell draws this screen by its module name; the host reads that name
@@ -2353,6 +2588,10 @@
     StatusLine: StatusLine,
     TableGroup: TableGroup,
     ModuleGroup: ModuleGroup,
+    ZoneStepper: ZoneStepper,
+    StepButton: StepButton,
+    DetailLine: DetailLine,
+    zoneFor: zoneFor,
     moduleOrder: moduleOrder,
     Grid: Grid,
     BodyRow: BodyRow,

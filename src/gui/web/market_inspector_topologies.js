@@ -28,6 +28,24 @@
   var SCORE = "score";
   var SCREEN = "screen";
   var SIGNALS = "signals";
+  var STEPPER = "stepper";
+  var STEPPER_PART = "zone-stepper";
+  var PANE_MOUNT_PART = "topologies-pane";
+  var PANE_MOUNT_SELECTOR = "[data-part=\"topologies-pane\"]";
+  var SLOT_SELECTOR = "[data-part=\"topology-slot\"]";
+  var ZONE = "zone";
+  var FUNCTION_KIND = "function";
+  var STEP_FIELD = "step";
+  var EXPAND_FIELD = "expand";
+  var REFRESH_FIELD = "refresh";
+  var PREVIEW_FIELD = "preview";
+  var DISMISS_FIELD = "dismiss";
+  var STEP_BACK_PART = "step-back";
+  var STEP_NEXT_PART = "step-next";
+  var ENTRY_PART = "zone-entry";
+  var PUSH_PADDING_PX = "push_padding_px";
+  var PUSH_FONT_WEIGHT = "push_font_weight";
+  var AT = "at";
   var STATUS_TEXT = "status_text";
   var TIMER_DELAYS_MS = "timer_delays_ms";
   var TIMER_INTERVAL_MS = "timer_interval_ms";
@@ -192,7 +210,7 @@
   var BADGE = "badge";
   var BADGE_STYLE = "badge_style";
   var META = "meta";
-  var METHOD = "method";
+  var METHOD_FIELD = "method";
 
   var ADOPT_ENABLED = "adopt_enabled";
   var BOT_COLORS = "bot_colors";
@@ -801,7 +819,7 @@
     var pane = objectField(props.model, PANE);
     var buttonProps = {
       type: BUTTON_TYPE,
-      style: asButton({}),
+      style: pushStyle(props.model),
       title: label(pane[REFRESH_TOOLTIP])
     };
     buttonProps[PART_ATTR] = REFRESH_PART;
@@ -852,6 +870,18 @@
     return element(DIV_TAG, emptyProps, text(pane[EMPTY_TEXT]));
   }
 
+  // The theme gives QPushButton 8px 20px of padding and a bold face.
+  function pushStyle(model, sheet) {
+    var skin = objectField(model, STEPPER);
+    var style = marginStyle(asList(skin[PUSH_PADDING_PX]));
+    var kept = sheet === undefined ? {} : styleOf(sheet);
+    Object.keys(kept).forEach(function (name) {
+      style[name] = kept[name];
+    });
+    style.fontWeight = text(skin[PUSH_FONT_WEIGHT]);
+    return asButton(style);
+  }
+
   function CardButtons(props) {
     var card = objectField(props.model, CARD);
     var rowProps = {
@@ -861,7 +891,7 @@
     var previewProps = {
       key: PREVIEW_BUTTON_PART,
       type: BUTTON_TYPE,
-      style: asButton({}),
+      style: pushStyle(props.model),
       title: label(card[PREVIEW_TOOLTIP])
     };
     previewProps[PART_ATTR] = PREVIEW_BUTTON_PART;
@@ -869,7 +899,7 @@
     previewProps.onClick = function () {
       act(PREVIEW_BUTTON_PART, props.name);
     };
-    var dismissStyle = asButton(styleOf(card[DISMISS_STYLE]));
+    var dismissStyle = pushStyle(props.model, card[DISMISS_STYLE]);
     var dismissProps = {
       key: DISMISS_BUTTON_PART,
       type: BUTTON_TYPE,
@@ -941,7 +971,7 @@
           element(SPAN_TAG, badgeProps, text(entry[BADGE]))
         ),
         element(DIV_TAG, metaProps, text(entry[META])),
-        element(DIV_TAG, methodProps, text(entry[METHOD])),
+        element(DIV_TAG, methodProps, text(entry[METHOD_FIELD])),
         element(CardButtons, {
           key: CARD_BUTTONS_PART,
           model: model,
@@ -1023,6 +1053,18 @@
     );
   }
 
+  // The id of the proposal on screen, which the two buttons act on.
+  function shownName(model) {
+    return listField(model, PROPOSALS)[Number(model[AT]) || ZERO];
+  }
+
+  // The Market Inspector screen publishes the stepper every zone draws
+  // through, so the pane holds no arrows or expansion of its own.
+  function stepperOf() {
+    var screen = global.acervatorMarketInspector;
+    return screen === undefined ? undefined : screen.ZoneStepper;
+  }
+
   function Pane(props) {
     var model = props.model;
     if (!isPlainObject(model)) {
@@ -1031,15 +1073,30 @@
     var pane = objectField(model, PANE);
     var style = boxStyle(asList(pane[MARGINS]), pane[SPACING], COLUMN_WAY);
     style.height = FULL;
+    style.flex = ONE;
+    style.minHeight = ZERO;
     style.overflow = CLIPPED;
     var paneProps = { style: style };
     paneProps[PART_ATTR] = PANE_PART;
     paneProps[SLOT_ATTR] = TOPOLOGY_SLOT;
+    var stepper = stepperOf();
     return element(
       DIV_TAG,
       paneProps,
       element(TopRow, { key: TOP_ROW_PART, model: model }),
-      element(ListGroup, { key: LIST_GROUP_PART, model: model }),
+      stepper === undefined
+        ? null
+        : element(stepper, {
+            key: STEPPER_PART,
+            skin: objectField(model, STEPPER),
+            view: objectField(model, ZONE),
+            act: act
+          }),
+      element(CardButtons, {
+        key: CARD_BUTTONS_PART,
+        model: model,
+        name: shownName(model)
+      }),
       element(Footer, { key: FOOTER_PART, model: model })
     );
   }
@@ -1604,7 +1661,7 @@
         tags[STRONG_CLOSE]
       );
       checkMarkup(spot, META, one[META]);
-      checkMarkup(spot, METHOD, one[METHOD]);
+      checkMarkup(spot, METHOD_FIELD, one[METHOD_FIELD]);
       checkMarkup(spot, BADGE, one[BADGE]);
     });
     listField(model, PREVIEWS).forEach(function (entry, at) {
@@ -2150,12 +2207,55 @@
     return global.acervatorTopologiesAction(key, name);
   }
 
+  // The element the pane draws into: the Market Inspector's own slot once the
+  // screen has drawn one, and the host the caller gave until then. The shell
+  // mounts this panel beside the screen, so without this the pane draws into
+  // a host the tab bar hides whichever tab is selected.
+  function paneHost(target) {
+    var slot = global.document.querySelector(SLOT_SELECTOR);
+    if (slot === null) {
+      return target;
+    }
+    var found = slot.querySelector(PANE_MOUNT_SELECTOR);
+    if (found === null) {
+      found = global.document.createElement(DIV_TAG);
+      found.setAttribute(PART_ATTR, PANE_MOUNT_PART);
+      found.style.height = FULL;
+      found.style.display = FLEX;
+      found.style.flexDirection = COLUMN_WAY;
+      found.style.minHeight = ZERO;
+      slot.appendChild(found);
+    }
+    return found;
+  }
+
+  // seat moves the pane into the slot once the screen has drawn one, and
+  // empties whatever it was drawn into before.
+  function seat() {
+    if (hostTarget === null) {
+      return null;
+    }
+    var wanted = paneHost(hostTarget);
+    if (wanted !== hostTarget) {
+      draw(hostTarget, null);
+      hostTarget = wanted;
+      renderPane(hostTarget, null);
+    }
+    return hostTarget;
+  }
+
   function renderTab(target, model) {
-    hostTarget = target;
+    var mount = paneHost(target);
+    if (mount === target && target !== null && target !== undefined) {
+      // Names this element as the pane's mount, so a host that moves it into
+      // the slot itself is found again instead of a second mount being made.
+      target.setAttribute(PART_ATTR, PANE_MOUNT_PART);
+    }
+    hostTarget = mount;
     if (isPlainObject(model)) {
       setPane(model);
     }
-    return renderPane(target, null);
+    return renderPane(hostTarget, null);
   }
 
   function setTab(model) {
@@ -2186,10 +2286,43 @@
     hostTarget = null;
   }
 
-  // A Qt host replaces this; the default keeps a press from raising.
-  global.acervatorTopologiesAction = function () {
-    return null;
+  // A Qt host replaces this. The shell replaces nothing, so the default
+  // takes the press to the bridge itself and redraws from the answer.
+  global.acervatorTopologiesAction = function (key, name) {
+    if (!global.acervator || typeof global.acervator.call !== FUNCTION_KIND) {
+      return null;
+    }
+    var asked = {};
+    if (key === STEP_BACK_PART) {
+      asked[STEP_FIELD] = -ONE;
+    } else if (key === STEP_NEXT_PART) {
+      asked[STEP_FIELD] = ONE;
+    } else if (key === ENTRY_PART) {
+      asked[EXPAND_FIELD] = true;
+    } else if (key === REFRESH_PART) {
+      asked[REFRESH_FIELD] = true;
+    } else if (key === PREVIEW_BUTTON_PART) {
+      asked[PREVIEW_FIELD] = name;
+    } else if (key === DISMISS_BUTTON_PART) {
+      asked[DISMISS_FIELD] = name;
+    } else {
+      return null;
+    }
+    return global.acervator.call(METHOD, asked).then(function (model) {
+      return setTab(model);
+    });
   };
+
+  // The shell draws this pane by its module name and asks the bridge for its
+  // state; it names no bridge method the application serves a tab from, so
+  // the tab bar gives it no tab of its own.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderTab,
+      load: loadPane,
+      loadError: loadError
+    });
+  }
 
   global.acervatorSetTopologies = setPane;
   global.acervatorLoadTopologies = loadPane;
@@ -2197,6 +2330,7 @@
     method: method,
     renderTab: renderTab,
     setTab: setTab,
+    seat: seat,
     Pane: Pane,
     TopRow: TopRow,
     RefreshButton: RefreshButton,

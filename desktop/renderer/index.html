@@ -9,6 +9,28 @@
     <title>Acervator</title>
     <link rel="stylesheet" href="../../src/gui/web/history_panel.css" />
     <link rel="stylesheet" href="tab_bar.css" />
+    <style>
+      /* The page is a column: chrome and tabs take what they need and the
+         panel area takes the rest, so a screen sized in per-cent of its
+         container resolves against the window instead of its own content. */
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+      }
+      #panels {
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+      /* Each panel is drawn into its own host under #panels; a screen sized
+         in per-cent needs that host to carry the height too. */
+      #panels > [data-panel] {
+        height: 100%;
+      }
+    </style>
   </head>
   <body>
     <div id="bridge-error" hidden></div>

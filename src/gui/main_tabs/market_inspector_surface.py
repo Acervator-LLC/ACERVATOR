@@ -75,6 +75,44 @@ PAIR_COLUMNS = (
 NO_METHOD_TEXT = "—"
 PAIRS_MAX_HEIGHT_PX = 180
 
+STEP_BACK_TEXT = "◀"
+STEP_NEXT_TEXT = "▶"
+STEP_BACK_TOOLTIP = "Show the previous entry in this zone."
+STEP_NEXT_TOOLTIP = "Show the next entry in this zone."
+STEP_BUTTON_WIDTH_PX = 26
+# The themed QPushButton pads 20 px each side, which leaves no room for a glyph.
+STEP_BUTTON_STYLE = "padding: 2px;"
+POSITION_FORMAT = "{at} of {total}"
+POSITION_EMPTY_TEXT = "0 of 0"
+POSITION_STYLE = "color: #aaa; font-size: 11px;"
+
+ENTRY_CLASS = "_ZoneEntry"
+ENTRY_STYLE = "_ZoneEntry { border: 1px solid #333; border-radius: 6px; padding: 4px; }"
+ENTRY_MARGINS_PX = (8, 6, 8, 6)
+ENTRY_SPACING_PX = 4
+ENTRY_HEADLINE_STYLE = "font-weight: bold;"
+ENTRY_META_STYLE = "color: #888; font-size: 11px;"
+ENTRY_METHOD_STYLE = "color: #00cccc; font-size: 11px;"
+ENTRY_ACCESSIBLE_NAME = "Zone entry"
+STEPPER_ACCESSIBLE_NAME = "Zone stepper"
+ENTRY_HINT_TEXT = "Click the entry for how and why it is here."
+ENTRY_HINT_STYLE = "color: #666; font-size: 10px;"
+
+DETAIL_STYLE = "color: #ccc; font-size: 11px;"
+DETAIL_FORMAT = "{name}: {value}"
+DETAIL_TEST_NAME = "Test"
+DETAIL_WINDOW_NAME = "Window"
+DETAIL_RESULT_NAME = "Result"
+DETAIL_REASON_NAME = "Why it is here"
+DETAIL_TEST_FORMAT = "{label} — {test}"
+DETAIL_WINDOW_BARS_FORMAT = "{observations} daily closes"
+DETAIL_WINDOW_LIVE_TEXT = "the live bot state"
+LIVE_WINDOW_KEY = "live"
+NO_DETAIL_TEXT = "This entry records no test."
+
+METHOD_LINE_FORMAT = "{label}  •  {window}  •  {statistic}"
+METHOD_LINE_NONE_TEXT = "no method"
+
 ATA_SPM_MODULE = "ata_spm"
 OPPOSING_TRADES_MODULE = "opposing_trades"
 ARBITRAGE_MODULE = "arbitrage"
@@ -369,6 +407,8 @@ ACTIONS = {
     "refresh_clicked": "start_fetch",
     "show_active_toggled": "on_toggle_show_active",
     "adopt_requested": "set_adopt_handler",
+    "zone_stepped": "step_zone",
+    "zone_toggled": "toggle_zone",
 }
 
 SCREEN_BUILT = "screen.built"
@@ -400,6 +440,8 @@ PROPOSALS_READ = "proposals.read"
 PROPOSALS_UNREADABLE = "proposals.unreadable"
 EXCHANGE_SOURCE_SET = "exchange.set"
 ATA_SOURCE_SET = "ata_run.set"
+ZONE_STEPPED = "zone.stepped"
+ZONE_TOGGLED = "zone.toggled"
 
 CALL_NAMES = (
     SCREEN_BUILT,
@@ -431,6 +473,8 @@ CALL_NAMES = (
     PROPOSALS_UNREADABLE,
     EXCHANGE_SOURCE_SET,
     ATA_SOURCE_SET,
+    ZONE_STEPPED,
+    ZONE_TOGGLED,
 )
 
 
@@ -687,6 +731,160 @@ def left_module_rows(
     ]
 
 
+def step_to(at: Any, total: Any, by: Any) -> int:
+    """The entry index one arrow press moves to, wrapping at both ends."""
+    count = int(total)
+    if count <= 0:
+        return 0
+    return (int(at) + int(by)) % count
+
+
+def position_text(at: Any, total: Any) -> str:
+    """Which entry is on screen, out of how many the zone holds."""
+    count = int(total)
+    if count <= 0:
+        return POSITION_EMPTY_TEXT
+    return POSITION_FORMAT.format(at=int(at) + 1, total=count)
+
+
+def method_line(method: Any) -> str:
+    """One test as a single line: its name, its window and its statistic."""
+    if not isinstance(method, dict) or not method.get("label"):
+        return METHOD_LINE_NONE_TEXT
+    return METHOD_LINE_FORMAT.format(
+        label=method.get("label", ""),
+        window=method.get("window", ""),
+        statistic=method.get("statistic_text", ""),
+    )
+
+
+def detail_row(name: Any, value: Any) -> list:
+    """One expanded line as its name and the text beside it."""
+    return [name, DETAIL_FORMAT.format(name=name, value=value)]
+
+
+def method_window_text(method: Any) -> str:
+    """The window one test ran on, said in full rather than in bars."""
+    window = str(method.get("window", ""))
+    if window == LIVE_WINDOW_KEY:
+        return DETAIL_WINDOW_LIVE_TEXT
+    return DETAIL_WINDOW_BARS_FORMAT.format(observations=method.get("observations", 0))
+
+
+def method_detail_rows(method: Any) -> list:
+    """The expanded entry's lines: the test, the window, the result and why.
+
+    Reads the verdict ``MethodResult.as_dict`` publishes, so the gate
+    sentence is the one ``pair_selection`` writes rather than a second
+    copy of the threshold.
+    """
+    if not isinstance(method, dict) or not method.get("label"):
+        return [detail_row(DETAIL_REASON_NAME, NO_DETAIL_TEXT)]
+    return [
+        detail_row(
+            DETAIL_TEST_NAME,
+            DETAIL_TEST_FORMAT.format(
+                label=method.get("label", ""), test=method.get("test", "")
+            ),
+        ),
+        detail_row(DETAIL_WINDOW_NAME, method_window_text(method)),
+        detail_row(DETAIL_RESULT_NAME, method.get("statistic_text", "")),
+        detail_row(DETAIL_REASON_NAME, method.get("gate", NO_DETAIL_TEXT)),
+    ]
+
+
+def zone_entry(headline: Any, meta: Any = "", method: Any = None) -> dict:
+    """One entry a zone steps through: its headline, its counts and its test."""
+    return {"headline": headline, "meta": meta, "method": method}
+
+
+def zone_view(
+    key: Any, title: Any, entries: Any, at: Any, expanded: Any, empty_text: Any
+) -> dict:
+    """One zone as all three hosts draw it.
+
+    A zone with no entries keeps its waiting sentence as the headline and
+    still reports a position, so an empty zone reads as a state rather
+    than as nothing drawn.
+    """
+    held = list(entries or [])
+    total = len(held)
+    shown = 0 if total == 0 else max(0, min(int(at), total - 1))
+    entry = held[shown] if total else {}
+    method = entry.get("method")
+    open_now = bool(expanded) and total > 0
+    return {
+        "key": key,
+        "title": title,
+        "total": total,
+        "at": shown,
+        "position": position_text(shown, total),
+        "headline": entry.get("headline", "") if total else empty_text,
+        "meta": entry.get("meta", "") if total else "",
+        "method": method_line(method) if total else "",
+        "expanded": open_now,
+        "detail": method_detail_rows(method) if open_now else [],
+    }
+
+
+def stepper_skin() -> dict:
+    """Every value the arrows, the position line and the entry are drawn from."""
+    return {
+        "back_text": STEP_BACK_TEXT,
+        "next_text": STEP_NEXT_TEXT,
+        "back_tooltip": STEP_BACK_TOOLTIP,
+        "next_tooltip": STEP_NEXT_TOOLTIP,
+        "button_width_px": STEP_BUTTON_WIDTH_PX,
+        "button_style": STEP_BUTTON_STYLE,
+        "push_padding_px": list(BUTTON_PADDING_PX),
+        "push_font_weight": BUTTON_FONT_WEIGHT,
+        "position_format": POSITION_FORMAT,
+        "position_empty_text": POSITION_EMPTY_TEXT,
+        "position_style": POSITION_STYLE,
+        "entry_class": ENTRY_CLASS,
+        "entry_accessible_name": ENTRY_ACCESSIBLE_NAME,
+        "stepper_accessible_name": STEPPER_ACCESSIBLE_NAME,
+        "entry_style": ENTRY_STYLE,
+        "entry_margins_px": list(ENTRY_MARGINS_PX),
+        "entry_spacing_px": ENTRY_SPACING_PX,
+        "headline_style": ENTRY_HEADLINE_STYLE,
+        "meta_style": ENTRY_META_STYLE,
+        "method_style": ENTRY_METHOD_STYLE,
+        "hint_text": ENTRY_HINT_TEXT,
+        "hint_style": ENTRY_HINT_STYLE,
+        "detail_style": DETAIL_STYLE,
+        "detail_format": DETAIL_FORMAT,
+        "method_line_format": METHOD_LINE_FORMAT,
+        "method_line_none_text": METHOD_LINE_NONE_TEXT,
+    }
+
+
+PAIR_HEADLINE_FORMAT = "{long}  ▸  {short}"
+PAIR_META_FORMAT = "score {score}  •  correlation {correlation}"
+
+
+def pair_entry(pair: Any) -> dict:
+    """One opposing pair as the entry its zone steps through."""
+    method = getattr(pair, "method", None)
+    return zone_entry(
+        PAIR_HEADLINE_FORMAT.format(
+            long=PAIR_SIDE_FORMAT.format(
+                symbol=pair.long_side.symbol, signal=pair.long_side.signal
+            ),
+            short=PAIR_SIDE_FORMAT.format(
+                symbol=pair.short_side.symbol, signal=pair.short_side.signal
+            ),
+        ),
+        PAIR_META_FORMAT.format(
+            score=PAIR_SCORE_FORMAT.format(
+                score=pair.long_side.score + pair.short_side.score
+            ),
+            correlation=CORRELATION_FORMAT.format(correlation=pair.correlation_30d),
+        ),
+        method.as_dict() if hasattr(method, "as_dict") else method,
+    )
+
+
 def shown_signals(signals: Any, show_active: bool) -> list:
     """The signals the table draws: scored, and active ones only on request."""
     found = list(signals)
@@ -864,6 +1062,9 @@ class MarketInspectorScreenModel:
         self.status_label_text = STATUS_INITIAL_TEXT
         self.signal_rows: list = []
         self.pair_rows: list = []
+        self.pairs: list = []
+        self.zone_at: dict = {}
+        self.zone_open: dict = {}
         self.scheduled: list = []
         self.emitted: list = []
         self.calls: list = []
@@ -900,6 +1101,7 @@ class MarketInspectorScreenModel:
     def fill_pair_rows(self, pairs: Any) -> None:
         """Draw one Opposing Pairs row per entry of ``pairs``."""
         rows = list(pairs)
+        self.pairs = rows
         set_row_count(self.pair_rows, len(rows), len(PAIR_COLUMNS))
         for index, found in enumerate(rows):
             fill_pair_row(self.pair_rows[index], found)
@@ -980,6 +1182,47 @@ class MarketInspectorScreenModel:
     def right_zones(self) -> list:
         """The three right-side zones, in the order the screen draws them."""
         return right_zone_rows(self.ata_run())
+
+    def zone_entries(self, key: Any) -> list:
+        """The entries one zone steps through.
+
+        Opposing Trades steps the pairs the scan kept. The other four
+        zones this screen owns wait on a source, so they hold none and
+        show their waiting sentence instead.
+        """
+        if key == OPPOSING_TRADES_MODULE:
+            return [pair_entry(one) for one in self.pairs]
+        return []
+
+    def step_zone(self, key: Any, by: Any) -> int:
+        """Move one zone to its previous or next entry and answer where it is."""
+        total = len(self.zone_entries(key))
+        moved = step_to(self.zone_at.get(key, 0), total, by)
+        self.zone_at[key] = moved
+        self.calls.append([ZONE_STEPPED, key, moved])
+        return moved
+
+    def toggle_zone(self, key: Any) -> bool:
+        """Open or close one zone's expansion and answer whether it is open."""
+        open_now = not self.zone_open.get(key, False)
+        self.zone_open[key] = open_now
+        self.calls.append([ZONE_TOGGLED, key, open_now])
+        return open_now
+
+    def zone_views(self) -> list:
+        """All six zones as the stepper draws them, left three then right three."""
+        rows = self.left_modules() + self.right_zones()
+        return [
+            zone_view(
+                key,
+                title,
+                self.zone_entries(key),
+                self.zone_at.get(key, 0),
+                self.zone_open.get(key, False),
+                status,
+            )
+            for key, title, status in rows
+        ]
 
     def fetch_universe(self) -> Any:
         """The fetch the Refresh button runs, injected or the shipped one."""
@@ -1484,6 +1727,8 @@ def build_view_model(
         "pair_rows": [[list(cell) for cell in row] for row in model.pair_rows],
         "left_modules": [list(one) for one in model.left_modules()],
         "right_zones": [list(one) for one in model.right_zones()],
+        "zones": [dict(one) for one in model.zone_views()],
+        "stepper": stepper_skin(),
         "right_zone_keys": list(RIGHT_ZONE_KEYS),
         "right_zone_titles": list(RIGHT_ZONE_TITLES),
         "left_module_keys": list(LEFT_MODULE_KEYS),
@@ -1723,6 +1968,10 @@ def view_model(params: dict) -> dict:
         model.press_show_active(params["show_active"])
     if params.get("bot_statuses") is not None:
         model.update_active_symbols(params["bot_statuses"])
+    if params.get("step_zone"):
+        model.step_zone(params["step_zone"], params.get("step", 1))
+    if params.get("toggle_zone"):
+        model.toggle_zone(params["toggle_zone"])
     if params.get("render", False):
         model.render_signals()
     if params.get("refresh", False):

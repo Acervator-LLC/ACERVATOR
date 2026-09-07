@@ -53,6 +53,13 @@ PREVIEW_KEY = "preview-button"
 DISMISS_KEY = "dismiss-button"
 CANCEL_KEY = "cancel-button"
 ADOPT_KEY = "adopt-button"
+STEP_BACK_KEY = "step-back"
+STEP_NEXT_KEY = "step-next"
+ENTRY_KEY = "zone-entry"
+
+#: The step one arrow press takes through a zone entry list.
+STEP_BACK = -1
+STEP_NEXT = 1
 
 ACCESSIBLE_NAME = "React Market Inspector Tab"
 
@@ -217,6 +224,15 @@ class TopologiesPaneHost:
         if key == REFRESH_KEY:
             self.model.refresh()
             return
+        if key == STEP_BACK_KEY:
+            self.model.step(STEP_BACK)
+            return
+        if key == STEP_NEXT_KEY:
+            self.model.step(STEP_NEXT)
+            return
+        if key == ENTRY_KEY:
+            self.model.toggle()
+            return
         if key == PREVIEW_KEY:
             if self.model.on_preview(name) is not None:
                 self.preview_at = len(self.model.previews) - 1
@@ -345,6 +361,18 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self._start_fetch(force=True)
             elif key == SHOW_ACTIVE_KEY:
                 self._on_toggle_show_active(bool(request.get("value")))
+            elif key == STEP_BACK_KEY:
+                self._step_zone(request.get("value"), STEP_BACK)
+            elif key == STEP_NEXT_KEY:
+                self._step_zone(request.get("value"), STEP_NEXT)
+            elif key == ENTRY_KEY:
+                self._screen.toggle_zone(request.get("value"))
+                self.push()
+
+        def _step_zone(self, key: Any, by: int) -> None:
+            """Move one zone to its previous or next entry and redraw."""
+            self._screen.step_zone(key, by)
+            self.push()
 
         def run_topology_action(self, payload: str) -> None:
             """Run one right-pane press the page reported."""
@@ -380,10 +408,7 @@ if _HAS_QT and _HAS_WEBENGINE:
 
         def _fill_pair_rows(self, pairs: list) -> None:
             """Draw one Opposing Pairs row per entry of ``pairs``."""
-            rows = self._screen.pair_rows
-            surface.set_row_count(rows, len(pairs), len(surface.PAIR_COLUMNS))
-            for index, found in enumerate(pairs):
-                surface.fill_pair_row(rows[index], found)
+            self._screen.fill_pair_rows(pairs)
             self.push()
 
         def _render_empty_notes(self) -> None:

@@ -23,6 +23,30 @@ from .main_tabs.market_inspector_surface import (
     TOPOLOGIES_ZONE,
 )
 from .main_tabs.market_inspector_surface import right_zone_rows as _right_zone_rows
+from .main_tabs.market_inspector_surface import (
+    DETAIL_STYLE,
+    ENTRY_HEADLINE_STYLE,
+    ENTRY_HINT_STYLE,
+    ENTRY_ACCESSIBLE_NAME,
+    ENTRY_HINT_TEXT,
+    ENTRY_MARGINS_PX,
+    ENTRY_META_STYLE,
+    ENTRY_METHOD_STYLE,
+    ENTRY_SPACING_PX,
+    ENTRY_STYLE,
+    POSITION_EMPTY_TEXT,
+    POSITION_STYLE,
+    STEP_BACK_TEXT,
+    STEP_BACK_TOOLTIP,
+    STEP_BUTTON_STYLE,
+    STEP_BUTTON_WIDTH_PX,
+    STEPPER_ACCESSIBLE_NAME,
+    STEP_NEXT_TEXT,
+    STEP_NEXT_TOOLTIP,
+    pair_entry,
+    step_to as _step_to,
+    zone_view,
+)
 
 logger = logging.getLogger("acervator.market_inspector_gui")
 
@@ -41,8 +65,10 @@ try:
         QSplitter,
         QSizePolicy,
         QLayout,
+        QFrame,
+        QScrollArea,
     )
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import Qt, Signal
     from PySide6.QtGui import QColor
 
     _HAS_QT = True
@@ -113,8 +139,6 @@ ATA_SPM_READY_KEY = "ready_to_send"
 # The share a bullish bot feeds to the bot on the opposite market condition.
 OPPOSING_TRADES_PROFIT_SHARE_PCT = 50
 OPPOSING_TRADES_NOUN = "opposing trades"
-
-MODULE_STATUS_STYLE = "color: #aaa; font-size: 11px;"
 
 
 def _empty_table_text(scan_state: str, noun: str) -> str:
@@ -209,6 +233,133 @@ def _emit_scan(topic: str, **fields) -> None:
 
 if _HAS_QT:
 
+    class _ZoneEntry(QFrame):
+        """The clickable card one zone shows, expanded on a press."""
+
+        clicked = Signal()
+
+        def __init__(self, parent=None) -> None:
+            super().__init__(parent)
+            self.setAccessibleName(ENTRY_ACCESSIBLE_NAME)
+
+        def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt event name
+            """Report the press so the zone opens or closes its expansion."""
+            super().mousePressEvent(event)
+            self.clicked.emit()
+
+    class ProposalStepper(QWidget):
+        """One zone's entries shown one at a time, with arrows and a expansion.
+
+        ``stepped`` carries -1 or +1 and ``entryClicked`` carries nothing.
+        The owner moves its own index and calls ``show_view`` again, so
+        every zone in the tab and the proposals pane share this widget.
+        """
+
+        stepped = Signal(int)
+        entryClicked = Signal()
+
+        def __init__(self, parent=None) -> None:
+            super().__init__(parent)
+            self.setAccessibleName(STEPPER_ACCESSIBLE_NAME)
+            self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+            root = QVBoxLayout(self)
+            root.setContentsMargins(0, 0, 0, 0)
+            root.setSpacing(ENTRY_SPACING_PX)
+
+            row = QHBoxLayout()
+            row.setSpacing(ENTRY_SPACING_PX)
+            self.back_button = QPushButton(STEP_BACK_TEXT)
+            self.back_button.setToolTip(STEP_BACK_TOOLTIP)
+            self.back_button.setFixedWidth(STEP_BUTTON_WIDTH_PX)
+            self.back_button.setStyleSheet(STEP_BUTTON_STYLE)
+            self.back_button.clicked.connect(lambda: self.stepped.emit(-1))
+            row.addWidget(self.back_button)
+            self.next_button = QPushButton(STEP_NEXT_TEXT)
+            self.next_button.setToolTip(STEP_NEXT_TOOLTIP)
+            self.next_button.setFixedWidth(STEP_BUTTON_WIDTH_PX)
+            self.next_button.setStyleSheet(STEP_BUTTON_STYLE)
+            self.next_button.clicked.connect(lambda: self.stepped.emit(1))
+            row.addWidget(self.next_button)
+            self.position_label = QLabel(POSITION_EMPTY_TEXT)
+            self.position_label.setStyleSheet(POSITION_STYLE)
+            row.addWidget(self.position_label)
+            row.addStretch()
+            root.addLayout(row)
+
+            self.entry = _ZoneEntry()
+            self.entry.setStyleSheet(ENTRY_STYLE)
+            self.entry.clicked.connect(self.entryClicked.emit)
+            body = QVBoxLayout(self.entry)
+            body.setContentsMargins(*ENTRY_MARGINS_PX)
+            body.setSpacing(ENTRY_SPACING_PX)
+            head = QHBoxLayout()
+            head.setSpacing(ENTRY_SPACING_PX)
+            self.headline_label = QLabel("")
+            self.headline_label.setStyleSheet(ENTRY_HEADLINE_STYLE)
+            self.headline_label.setWordWrap(True)
+            head.addWidget(self.headline_label, 1)
+            self.badge_label = QLabel("")
+            head.addWidget(self.badge_label)
+            body.addLayout(head)
+            self.meta_label = QLabel("")
+            self.meta_label.setStyleSheet(ENTRY_META_STYLE)
+            self.meta_label.setWordWrap(True)
+            body.addWidget(self.meta_label)
+            self.method_label = QLabel("")
+            self.method_label.setStyleSheet(ENTRY_METHOD_STYLE)
+            self.method_label.setWordWrap(True)
+            body.addWidget(self.method_label)
+            self.detail_labels: list = []
+            self.detail_box = QVBoxLayout()
+            self.detail_box.setContentsMargins(0, 0, 0, 0)
+            self.detail_box.setSpacing(ENTRY_SPACING_PX)
+            body.addLayout(self.detail_box)
+            self.hint_label = QLabel(ENTRY_HINT_TEXT)
+            self.hint_label.setStyleSheet(ENTRY_HINT_STYLE)
+            self.hint_label.setWordWrap(True)
+            body.addWidget(self.hint_label)
+            # The zone is a fixed third of its pane, so an expansion taller
+            # than that scrolls inside the zone instead of being clipped.
+            self.entry_scroll = QScrollArea()
+            self.entry_scroll.setWidgetResizable(True)
+            self.entry_scroll.setFrameShape(QFrame.NoFrame)
+            self.entry_scroll.setWidget(self.entry)
+            root.addWidget(self.entry_scroll, 1)
+
+        def show_view(self, view: dict) -> None:
+            """Write one zone view into the arrows, the position and the entry."""
+            total = int(view.get("total", 0))
+            self.position_label.setText(str(view.get("position", "")))
+            self.back_button.setEnabled(total > 1)
+            self.next_button.setEnabled(total > 1)
+            self.headline_label.setText(str(view.get("headline", "")))
+            self.badge_label.setText(str(view.get("badge", "")))
+            self.badge_label.setStyleSheet(str(view.get("badge_style", "")))
+            self.badge_label.setVisible(bool(view.get("badge")))
+            self.meta_label.setText(str(view.get("meta", "")))
+            self.meta_label.setVisible(bool(view.get("meta")))
+            self.method_label.setText(str(view.get("method", "")))
+            self.method_label.setVisible(bool(view.get("method")))
+            self.hint_label.setVisible(total > 0)
+            while self.detail_labels:
+                gone = self.detail_labels.pop()
+                self.detail_box.removeWidget(gone)
+                # setParent takes it off screen now; deleteLater waits for the
+                # event loop and leaves the old line drawn over the new one.
+                gone.setParent(None)
+                gone.deleteLater()
+            for _name, line in view.get("detail", []):
+                drawn = QLabel(line)
+                drawn.setStyleSheet(DETAIL_STYLE)
+                drawn.setWordWrap(True)
+                self.detail_box.addWidget(drawn)
+                self.detail_labels.append(drawn)
+            # The scroll area shrinks its widget to the viewport unless the
+            # widget asks for the height its own content needs, and sizeHint
+            # is stale until the layout it just changed is activated.
+            self.entry.layout().activate()
+            self.entry.setMinimumHeight(self.entry.sizeHint().height())
+
     class MarketInspectorTab(QWidget):
         """Full-application Market Inspector tab.
 
@@ -252,6 +403,10 @@ if _HAS_QT:
             # --- The three left-side zones ---
             self._module_labels: dict = {}
             self._module_boxes: dict = {}
+            self._zone_steppers: dict = {}
+            self._zone_at: dict = {}
+            self._zone_open: dict = {}
+            self._pairs: list = []
             self._left_zone_groups: list = []
             self._right_zone_groups: list = []
             for key, title, status in _left_module_rows(
@@ -259,18 +414,16 @@ if _HAS_QT:
             ):
                 group = QGroupBox(title)
                 box = QVBoxLayout(group)
-                line = QLabel(status)
-                line.setStyleSheet(MODULE_STATUS_STYLE)
-                line.setWordWrap(True)
-                box.addWidget(line)
-                box.addStretch()
+                stepper = self._build_stepper(key)
+                stepper.headline_label.setText(status)
+                box.addWidget(stepper)
                 # Ignored height lets the three zones share the pane equally
                 # whatever their content asks for.
                 group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Ignored)
                 box.setSizeConstraint(QLayout.SetNoConstraint)
                 layout.addWidget(group, 1)
                 self._left_zone_groups.append(group)
-                self._module_labels[key] = line
+                self._module_labels[key] = stepper.headline_label
                 self._module_boxes[key] = box
             zone = self._module_boxes[OPPOSING_TRADES_MODULE]
 
@@ -302,7 +455,7 @@ if _HAS_QT:
             self._status_lbl = QLabel("No data yet — press Refresh.")
             self._status_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
             top_row.addWidget(self._status_lbl)
-            zone.addLayout(top_row)
+            zone.insertLayout(0, top_row)
 
             # --- HTF Signals table ---
             self._signals_group = QGroupBox("HTF Signals")
@@ -349,8 +502,6 @@ if _HAS_QT:
             self._pairs_empty_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
             self._pairs_empty_lbl.setWordWrap(True)
             pg.addWidget(self._pairs_empty_lbl)
-            zone.addWidget(self._pairs_group)
-            zone.addStretch()
 
             # v3.23.68 — right pane hosts the topology-proposal cards.
             try:
@@ -376,13 +527,11 @@ if _HAS_QT:
                     box.addWidget(self._topologies_pane)
                     right_layout.addWidget(group, 1)
                     continue
-                line = QLabel(status)
-                line.setStyleSheet(MODULE_STATUS_STYLE)
-                line.setWordWrap(True)
-                box.addWidget(line)
-                box.addStretch()
+                stepper = self._build_stepper(key)
+                stepper.headline_label.setText(status)
+                box.addWidget(stepper)
                 right_layout.addWidget(group, 1)
-                self._zone_labels[key] = line
+                self._zone_labels[key] = stepper.headline_label
 
             self._outer_splitter.addWidget(left_pane)
             self._outer_splitter.addWidget(right_pane)
@@ -456,22 +605,61 @@ if _HAS_QT:
                 logger.debug("exchange connector read failed: %s", exc)
                 return None
 
-        def _render_left_modules(self) -> None:
-            """Write each left-side module's line from the state it can read."""
+        def _build_stepper(self, key: str) -> "ProposalStepper":
+            """One zone's stepper, wired to move and to open its expansion."""
+            stepper = ProposalStepper()
+            stepper.stepped.connect(lambda by, name=key: self._on_zone_step(name, by))
+            stepper.entryClicked.connect(lambda name=key: self._on_zone_click(name))
+            self._zone_steppers[key] = stepper
+            return stepper
+
+        def _zone_entries(self, key: str) -> list:
+            """The entries one zone steps through.
+
+            Opposing Trades steps the pairs the scan kept. The other zones
+            wait on a source, so they hold none and show what they wait for.
+            """
+            if key == OPPOSING_TRADES_MODULE:
+                return [pair_entry(one) for one in self._pairs]
+            return []
+
+        def _zone_views(self) -> list:
+            """All six zones as the stepper draws them, left three then right three."""
             rows = _left_module_rows(
                 self._ata_run(),
                 self._scan_state,
                 self._pairs_tbl.rowCount(),
                 self._connectors_now(),
-            )
-            for key, _title, status in rows:
-                line = self._module_labels.get(key)
-                if line is not None:
-                    line.setText(status)
-            for key, _title, status in _right_zone_rows(self._ata_run()):
-                line = self._zone_labels.get(key)
-                if line is not None:
-                    line.setText(status)
+            ) + _right_zone_rows(self._ata_run())
+            return [
+                zone_view(
+                    key,
+                    title,
+                    self._zone_entries(key),
+                    self._zone_at.get(key, 0),
+                    self._zone_open.get(key, False),
+                    status,
+                )
+                for key, title, status in rows
+            ]
+
+        def _on_zone_step(self, key: str, by: int) -> None:
+            """Move one zone to its previous or next entry and redraw it."""
+            total = len(self._zone_entries(key))
+            self._zone_at[key] = _step_to(self._zone_at.get(key, 0), total, by)
+            self._render_left_modules()
+
+        def _on_zone_click(self, key: str) -> None:
+            """Open or close one zone's expansion and redraw it."""
+            self._zone_open[key] = not self._zone_open.get(key, False)
+            self._render_left_modules()
+
+        def _render_left_modules(self) -> None:
+            """Write every zone's position, entry and expansion from its state."""
+            for view in self._zone_views():
+                stepper = self._zone_steppers.get(view["key"])
+                if stepper is not None:
+                    stepper.show_view(view)
 
         # ── the widgets the logic below writes through ───────────────
         def _set_status(self, text: str) -> None:
@@ -505,6 +693,7 @@ if _HAS_QT:
 
         def _fill_pair_rows(self, pairs: list) -> None:
             """Draw one Opposing Pairs row per entry of ``pairs``."""
+            self._pairs = list(pairs)
             self._pairs_tbl.setRowCount(len(pairs))
             self._render_empty_notes()
             for row, p in enumerate(pairs):
