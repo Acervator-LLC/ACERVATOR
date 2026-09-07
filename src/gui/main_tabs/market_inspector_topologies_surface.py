@@ -143,6 +143,9 @@ CARD_META_FORMAT = (
     "score {score}  •  {assets} assets  •  " "{wires} wires  •  {new_bots} new bot(s)"
 )
 CARD_META_STYLE = "color: #888; font-size: 11px;"
+CARD_METHOD_FORMAT = "{label}  •  {window}  •  {statistic}"
+CARD_METHOD_STYLE = "color: #00cccc; font-size: 11px;"
+NO_METHOD_TEXT = "no method"
 PREVIEW_TEXT = "Preview"
 PREVIEW_TOOLTIP = (
     "Open the Preview modal for this proposal — shows "
@@ -366,6 +369,17 @@ def card_badge_style(color_hex: Any) -> str:
     return CARD_BADGE_STYLE_FORMAT.format(color_hex=color_hex)
 
 
+def method_text(method: Any) -> str:
+    """The card's method line: the test, the window and the statistic."""
+    if not isinstance(method, dict) or not method.get("label"):
+        return NO_METHOD_TEXT
+    return CARD_METHOD_FORMAT.format(
+        label=method.get("label", ""),
+        window=method.get("window", ""),
+        statistic=method.get("statistic_text", ""),
+    )
+
+
 def bot_status(existing_bot_id: Any, target_usd: Any) -> str:
     """The Status cell of one bot row."""
     if existing_bot_id:
@@ -580,6 +594,7 @@ class ProposalCardModel:
         self.badge_text = NO_TEXT
         self.badge_style = NO_TEXT
         self.meta_text = NO_TEXT
+        self.method_text = NO_TEXT
         self.previewed: list = []
         self.dismissed: list = []
 
@@ -604,6 +619,7 @@ class ProposalCardModel:
             wires=len(raw.get("wires", [])),
             new_bots=new_bots,
         )
+        self.method_text = method_text(raw.get("method"))
 
     def preview(self) -> Any:
         """What the Preview button hands to the pane."""
@@ -946,7 +962,9 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "badge_format": CARD_BADGE_FORMAT,
             "badge_style_format": CARD_BADGE_STYLE_FORMAT,
             "meta_format": CARD_META_FORMAT,
+            "method_format": CARD_METHOD_FORMAT,
             "meta_style": CARD_META_STYLE,
+            "method_style": CARD_METHOD_STYLE,
             "preview_text": PREVIEW_TEXT,
             "preview_tooltip": PREVIEW_TOOLTIP,
             "dismiss_text": DISMISS_TEXT,
@@ -1015,6 +1033,7 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
                 "badge": card.badge_text,
                 "badge_style": card.badge_style,
                 "meta": card.meta_text,
+                "method": card.method_text,
             }
             for card in model.cards
         ],

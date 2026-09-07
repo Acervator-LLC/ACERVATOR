@@ -2,10 +2,10 @@
 
 It fans out to ``detect_momentum_funnel``, ``detect_mean_reversion_pair``,
 ``detect_sector_cluster`` and ``detect_distance_to_band``, dedupes the
-union by asset overlap and caps it at ``PROPOSAL_CAP``. Every detector is
-a pure function of a caller-supplied ``context`` dict and returns plain
-dicts from ``make_proposal``. ``load_sector_map`` and
-``load_target_defaults`` read ``SECTOR_MAP_PATH`` and
+union by asset overlap and caps it at ``PROPOSAL_CAP``. Every detector runs a
+test from ``pair_selection`` over ``closes_by_asset`` and hands ``make_proposal``
+the ``MethodResult``, so a proposal no test passed is never returned.
+``load_sector_map`` and ``load_target_defaults`` read ``SECTOR_MAP_PATH`` and
 ``TARGET_DEFAULTS_PATH``.
 """
 
@@ -13,10 +13,19 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import time
 from pathlib import Path
 from typing import Any, Optional
+
+from .pair_selection import (
+    METHOD_CORRELATION,
+    MethodResult,
+    band_distance_result,
+    cointegration_test,
+    correlation_test,
+    score_from_correlation,
+    score_from_p_value,
+)
 
 logger = logging.getLogger("acervator.topology_proposals")
 
@@ -31,10 +40,10 @@ MEAN_REVERSION_WIRE_PCT: float = 25.0
 SECTOR_MIN_CLUSTER_SIZE: int = 4
 SECTOR_MAX_CLUSTER_SIZE: int = 6
 SECTOR_WIRE_PCT: float = 15.0
-# SECTOR_SIZE_WEIGHT and SECTOR_LIQUIDITY_WEIGHT sum to 1.0, holding the
-# sector score on 0..100.
-SECTOR_SIZE_WEIGHT: float = 0.7
-SECTOR_LIQUIDITY_WEIGHT: float = 0.3
+# The Pearson t test decides sector membership; no magnitude floor is applied.
+SECTOR_MIN_CORR: float = 0.0
+
+CLUSTER_STATISTIC_FORMAT = "r={correlation:+.3f} over {pairs} pairs · p≤{p_value:.4f}"
 
 DISTANCE_DEEP_PCT: float = 10.0
 DISTANCE_WIRE_PCT: float = 30.0
@@ -126,13 +135,15 @@ def make_proposal(
     wires: list[dict[str, Any]],
     title: str,
     score: float,
+    method: MethodResult,
     adopt_notes: Optional[list[str]] = None,
     now: Optional[float] = None,
 ) -> dict[str, Any]:
     """Build the proposal dict every detector returns.
 
-    ``id`` joins ``archetype`` to the sorted ``assets``, and ``score`` is
-    clamped to 0..100.
+    ``id`` joins ``archetype`` to the sorted ``assets``, ``score`` is clamped
+    to 0..100, and ``method`` carries the test, the window and the statistic
+    the card prints.
     """
     _now = time.time() if now is None else now
     canonical_assets = sorted({(a or "").upper() for a in assets if a})
@@ -147,6 +158,7 @@ def make_proposal(
         "bots": list(bots),
         "wires": list(wires),
         "adopt_notes": list(adopt_notes or []),
+        "method": method.as_dict(),
     }
 
 
@@ -185,34 +197,55 @@ def _make_wire(
     }
 
 
-def _pearson(xs: list[float], ys: list[float]) -> float:
-    """Return the sample correlation of ``xs`` and ``ys``.
+def _cluster_correlation(
+    members: list[str],
+    closes_by_asset: dict[str, Any],
+    min_corr: float,
+) -> Optional[MethodResult]:
+    """The correlation verdict over every pair inside ``members``.
 
-    Returns 0.0 when ``n`` is under two or ``denom`` is zero.
+    ``statistic`` is the mean coefficient and ``p_value`` the weakest pair's,
+    and a pair the Pearson t test refuses or that sits under ``min_corr``
+    answers ``None``.
     """
-    n = min(len(xs), len(ys))
-    if n < 2:
-        return 0.0
-    mean_x = sum(xs[:n]) / n
-    mean_y = sum(ys[:n]) / n
-    num = 0.0
-    var_x = 0.0
-    var_y = 0.0
-    for i in range(n):
-        dx = xs[i] - mean_x
-        dy = ys[i] - mean_y
-        num += dx * dy
-        var_x += dx * dx
-        var_y += dy * dy
-    denom = math.sqrt(var_x * var_y)
-    if denom <= 0:
-        return 0.0
-    return num / denom
+    coefficients: list[float] = []
+    weakest_p = 0.0
+    observations = 0
+    ordered = sorted(members)
+    for index, left in enumerate(ordered):
+        for right in ordered[index + 1 :]:
+            tested = correlation_test(
+                closes_by_asset.get(left), closes_by_asset.get(right)
+            )
+            if not tested.passed or abs(tested.statistic) < min_corr:
+                return None
+            coefficients.append(tested.statistic)
+            weakest_p = max(weakest_p, tested.p_value)
+            observations = (
+                tested.observations
+                if observations == 0
+                else min(observations, tested.observations)
+            )
+    if not coefficients:
+        return None
+    mean_correlation = sum(coefficients) / len(coefficients)
+    return MethodResult(
+        method=METHOD_CORRELATION,
+        passed=True,
+        observations=observations,
+        statistic=mean_correlation,
+        p_value=weakest_p,
+        statistic_text=CLUSTER_STATISTIC_FORMAT.format(
+            correlation=mean_correlation,
+            pairs=len(coefficients),
+            p_value=weakest_p,
+        ),
+    )
 
 
 def detect_momentum_funnel(
     tickers_by_asset: dict[str, dict[str, Any]],
-    correlations: dict[tuple[str, str], float],
+    closes_by_asset: dict[str, Any],
     min_corr: float = MOMENTUM_MIN_CORR,
     min_cluster: int = MOMENTUM_MIN_CLUSTER_SIZE,
     target_defaults: Optional[dict[str, float]] = None,
@@ -221,9 +254,9 @@ def detect_momentum_funnel(
 ) -> list[dict[str, Any]]:
     """Emit one proposal per correlated cluster of USD-quoted assets.
 
-    ``tickers_by_asset`` carries ``quote``, ``symbol``, ``baseVolume``
-    and ``existing_bot_id`` per asset; ``correlations`` is keyed by
-    sorted asset pairs and a pair it omits counts as 0.0.
+    ``tickers_by_asset`` carries ``quote``, ``symbol``, ``baseVolume`` and
+    ``existing_bot_id`` per asset, and every pair inside a cluster has to
+    clear ``correlation_test`` and ``min_corr`` on ``closes_by_asset``.
     """
     usd_quote_assets = [
         a.upper()
@@ -242,8 +275,10 @@ def detect_momentum_funnel(
         for peer in usd_quote_assets:
             if peer == seed:
                 continue
-            key = tuple(sorted((seed, peer)))
-            if correlations.get(key, 0.0) >= min_corr:
+            tested = correlation_test(
+                closes_by_asset.get(seed), closes_by_asset.get(peer)
+            )
+            if tested.passed and tested.statistic >= min_corr:
                 cluster.add(peer)
         if len(cluster) >= min_cluster:
             fs = frozenset(cluster)
@@ -253,6 +288,9 @@ def detect_momentum_funnel(
 
     out: list[dict[str, Any]] = []
     for cluster in clusters:
+        method = _cluster_correlation(sorted(cluster), closes_by_asset, min_corr)
+        if method is None:
+            continue
         ranked = sorted(
             cluster,
             key=lambda a: float(tickers_by_asset.get(a, {}).get("baseVolume", 0.0)),
@@ -282,17 +320,7 @@ def detect_momentum_funnel(
             )
             for lag in laggers
         ]
-        avg_corr = 0.0
-        pairs = 0
-        for a in cluster:
-            for b in cluster:
-                if a >= b:
-                    continue
-                avg_corr += correlations.get(tuple(sorted((a, b))), 0.0)
-                pairs += 1
-        if pairs > 0:
-            avg_corr /= pairs
-        score = max(0.0, min(100.0, 100.0 * avg_corr))
+        score = score_from_correlation(method.statistic)
         title = f"Momentum funnel: {leader} → " f"{', '.join(laggers)}"
         out.append(
             make_proposal(
@@ -302,6 +330,7 @@ def detect_momentum_funnel(
                 wires=wires,
                 title=title,
                 score=score,
+                method=method,
                 adopt_notes=[
                     f"{len(assets_list)} bots; leader {leader} wires "
                     f"{MOMENTUM_WIRE_PCT}% to each of {len(laggers)} lagger(s)."
@@ -315,6 +344,7 @@ def detect_momentum_funnel(
 def detect_mean_reversion_pair(
     opposing_pairs: list[dict[str, Any]],
     tickers_by_asset: dict[str, dict[str, Any]],
+    closes_by_asset: Optional[dict[str, Any]] = None,
     max_corr: float = MEAN_REVERSION_MAX_CORR,
     min_volume_usd: float = MEAN_REVERSION_MIN_VOLUME_USD,
     target_defaults: Optional[dict[str, float]] = None,
@@ -323,10 +353,11 @@ def detect_mean_reversion_pair(
 ) -> list[dict[str, Any]]:
     """Emit one proposal per qualifying row of ``opposing_pairs``.
 
-    A row carries ``long_asset``, ``short_asset`` and ``corr``, and both
-    sides need ``baseVolume`` times ``last`` at or above
-    ``min_volume_usd``.
+    A row carries ``long_asset``, ``short_asset``, ``corr`` and the
+    ``cointegration_test`` verdict the Market Inspector already ran, and both
+    sides need ``baseVolume`` times ``last`` at or above ``min_volume_usd``.
     """
+    closes = closes_by_asset or {}
     out: list[dict[str, Any]] = []
     seen_pairs: set[frozenset[str]] = set()
     for row in opposing_pairs or []:
@@ -336,6 +367,11 @@ def detect_mean_reversion_pair(
         if not a or not b or a == b:
             continue
         if corr > max_corr:
+            continue
+        method = row.get("method")
+        if not isinstance(method, MethodResult):
+            method = cointegration_test(closes.get(a), closes.get(b))
+        if not method.passed:
             continue
         pair_key = frozenset({a, b})
         if pair_key in seen_pairs:
@@ -387,7 +423,7 @@ def detect_mean_reversion_pair(
                 f"{b} scrum funds {a} fold (anti-corr {corr:.2f})",
             ),
         ]
-        score = max(0.0, min(100.0, 100.0 * abs(corr)))
+        score = score_from_p_value(method.p_value)
         out.append(
             make_proposal(
                 archetype="mean_reversion_pair",
@@ -396,6 +432,7 @@ def detect_mean_reversion_pair(
                 wires=wires,
                 title=f"Mean-rev pair: {a} ↔ {b}",
                 score=score,
+                method=method,
                 adopt_notes=[
                     f"Bidirectional {MEAN_REVERSION_WIRE_PCT}% wires; both sides "
                     f"liquid (≥ ${min_volume_usd:,.0f} 24h)."
@@ -409,20 +446,23 @@ def detect_mean_reversion_pair(
 def detect_sector_cluster(
     tickers_by_asset: dict[str, dict[str, Any]],
     sector_map: dict[str, str],
+    closes_by_asset: Optional[dict[str, Any]] = None,
     min_cluster: int = SECTOR_MIN_CLUSTER_SIZE,
     max_cluster: int = SECTOR_MAX_CLUSTER_SIZE,
+    min_corr: float = SECTOR_MIN_CORR,
     target_defaults: Optional[dict[str, float]] = None,
     target_fallback: Optional[float] = None,
     now: Optional[float] = None,
 ) -> list[dict[str, Any]]:
-    """Emit one proposal per sector ``sector_map`` fills.
+    """Emit one proposal per sector ``sector_map`` fills and the t test keeps.
 
-    A sector needs ``min_cluster`` members, keeps its ``max_cluster``
-    most liquid, and an asset ``sector_map`` omits reaches no proposal
-    here.
+    A sector needs ``min_cluster`` members whose pairwise ``correlation_test``
+    passes, keeps its ``max_cluster`` most liquid, and the sector tag alone
+    proposes nothing.
     """
     if not sector_map:
         return []
+    closes = closes_by_asset or {}
     by_sector: dict[str, list[str]] = {}
     for asset, meta in tickers_by_asset.items():
         upper = asset.upper()
@@ -433,8 +473,8 @@ def detect_sector_cluster(
             continue
         by_sector.setdefault(sector, []).append(upper)
 
-    # prepared holds every qualifying sector; _max_volume spans them all.
-    prepared: list[tuple[str, list[str], float]] = []
+    # prepared holds every sector large enough to test, most liquid first.
+    prepared: list[tuple[str, list[str]]] = []
     for sector in sorted(by_sector):
         members = by_sector[sector]
         if len(members) < min_cluster:
@@ -446,16 +486,13 @@ def detect_sector_cluster(
                 a,
             ),
         )[:max_cluster]
-        sector_volume = sum(
-            float(tickers_by_asset.get(a, {}).get("baseVolume", 0.0) or 0.0)
-            for a in ranked
-        )
-        prepared.append((sector, ranked, sector_volume))
-
-    _max_volume = max((v for _s, _r, v in prepared), default=0.0)
+        prepared.append((sector, ranked))
 
     out: list[dict[str, Any]] = []
-    for sector, ranked, sector_volume in prepared:
+    for sector, ranked in prepared:
+        method = _cluster_correlation(ranked, closes, min_corr)
+        if method is None:
+            continue
         hub = ranked[0]
         spokes = ranked[1:]
         bots = [
@@ -479,19 +516,7 @@ def detect_sector_cluster(
             )
             for sp in spokes
         ]
-        _size_ratio = len(ranked) / float(max_cluster)
-        _liq_ratio = (sector_volume / _max_volume) if _max_volume > 0 else 0.0
-        score = max(
-            0.0,
-            min(
-                100.0,
-                100.0
-                * (
-                    SECTOR_SIZE_WEIGHT * _size_ratio
-                    + SECTOR_LIQUIDITY_WEIGHT * _liq_ratio
-                ),
-            ),
-        )
+        score = score_from_correlation(method.statistic)
         out.append(
             make_proposal(
                 archetype="sector_cluster",
@@ -500,6 +525,7 @@ def detect_sector_cluster(
                 wires=wires,
                 title=(f"Sector cluster ({sector}): {hub} → " f"{', '.join(spokes)}"),
                 score=score,
+                method=method,
                 adopt_notes=[
                     f"Sector '{sector}': hub {hub} wires "
                     f"{SECTOR_WIRE_PCT}% to each of {len(spokes)} spoke(s)."
@@ -531,10 +557,13 @@ def detect_distance_to_band(
             continue
         if tgt <= 0:
             continue
-        dist_pct = 100.0 * (pos - tgt) / tgt
-        if dist_pct >= deep_pct:
+        # Both sides carry USD: dist_pct is this test divided through by tgt.
+        distance_usd = pos - tgt
+        deep_usd = tgt * deep_pct / 100.0
+        dist_pct = 100.0 * distance_usd / tgt
+        if distance_usd >= deep_usd:
             deep_scrum.append({**b, "_dist_pct": dist_pct})
-        elif dist_pct <= -deep_pct:
+        elif distance_usd <= -deep_usd:
             deep_fold.append({**b, "_dist_pct": dist_pct})
 
     out: list[dict[str, Any]] = []
@@ -577,9 +606,10 @@ def detect_distance_to_band(
                     ),
                 )
             ]
-            score = max(
-                0.0, min(100.0, abs(s_bot["_dist_pct"]) + abs(f_bot["_dist_pct"]))
+            method = band_distance_result(
+                s_bot["_dist_pct"], f_bot["_dist_pct"], deep_pct
             )
+            score = max(0.0, min(100.0, method.statistic))
             out.append(
                 make_proposal(
                     archetype="distance_to_band",
@@ -588,6 +618,7 @@ def detect_distance_to_band(
                     wires=wires,
                     title=(f"Distance handoff: {s_asset} " f"deep-scrum → deep-fold"),
                     score=score,
+                    method=method,
                     adopt_notes=[
                         f"Intra-{s_asset} handoff: {DISTANCE_WIRE_PCT}% wire."
                     ],
@@ -608,7 +639,7 @@ def detect_all_topologies(
     absent.
 
         tickers_by_asset:   dict[str, dict]
-        correlations:       dict[tuple[str, str], float]
+        closes_by_asset:    dict[str, list[float]]
         opposing_pairs:     list[dict]
         sector_map:         dict[str, str]
         bots_snapshot:      list[dict]
@@ -620,7 +651,7 @@ def detect_all_topologies(
         return []
 
     tickers = context.get("tickers_by_asset") or {}
-    correlations = context.get("correlations") or {}
+    closes_by_asset = context.get("closes_by_asset") or {}
     opposing = context.get("opposing_pairs") or []
     sector_map = context.get("sector_map")
     if sector_map is None:
@@ -640,7 +671,7 @@ def detect_all_topologies(
     proposals.extend(
         detect_momentum_funnel(
             tickers,
-            correlations,
+            closes_by_asset,
             target_defaults=target_defaults,
             target_fallback=target_fallback,
             now=now,
@@ -650,6 +681,7 @@ def detect_all_topologies(
         detect_mean_reversion_pair(
             opposing,
             tickers,
+            closes_by_asset,
             target_defaults=target_defaults,
             target_fallback=target_fallback,
             now=now,
@@ -659,6 +691,7 @@ def detect_all_topologies(
         detect_sector_cluster(
             tickers,
             sector_map,
+            closes_by_asset,
             target_defaults=target_defaults,
             target_fallback=target_fallback,
             now=now,
@@ -715,6 +748,7 @@ __all__ = [
     "SECTOR_MIN_CLUSTER_SIZE",
     "SECTOR_MAX_CLUSTER_SIZE",
     "SECTOR_WIRE_PCT",
+    "SECTOR_MIN_CORR",
     "DISTANCE_DEEP_PCT",
     "DISTANCE_WIRE_PCT",
     "DEFAULT_TARGET_USD_FALLBACK",

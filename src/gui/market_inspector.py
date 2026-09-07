@@ -14,6 +14,16 @@ from __future__ import annotations
 
 import logging
 
+from .main_tabs.market_inspector_surface import (
+    COLOR_CORRELATION,
+    COLOR_METHOD,
+    NO_METHOD_TEXT,
+    PAIR_COLUMNS,
+    PAIRS_GROUP_TITLE,
+    TOPOLOGIES_ZONE,
+)
+from .main_tabs.market_inspector_surface import right_zone_rows as _right_zone_rows
+
 logger = logging.getLogger("acervator.market_inspector_gui")
 
 try:
@@ -237,8 +247,9 @@ if _HAS_QT:
             layout.setContentsMargins(6, 6, 6, 6)
             layout.setSpacing(6)
 
-            # --- The three left-side modules ---
+            # --- The three left-side zones ---
             self._module_labels: dict = {}
+            self._module_boxes: dict = {}
             for key, title, status in _left_module_rows(
                 None, self._scan_state, 0, None
             ):
@@ -250,6 +261,8 @@ if _HAS_QT:
                 box.addWidget(line)
                 layout.addWidget(group)
                 self._module_labels[key] = line
+                self._module_boxes[key] = box
+            zone = self._module_boxes[OPPOSING_TRADES_MODULE]
 
             # --- Filter row ---
             top_row = QHBoxLayout()
@@ -279,7 +292,7 @@ if _HAS_QT:
             self._status_lbl = QLabel("No data yet — press Refresh.")
             self._status_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
             top_row.addWidget(self._status_lbl)
-            layout.addLayout(top_row)
+            zone.addLayout(top_row)
 
             # --- HTF Signals table ---
             self._signals_group = QGroupBox("HTF Signals")
@@ -302,16 +315,14 @@ if _HAS_QT:
             self._signals_empty_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
             self._signals_empty_lbl.setWordWrap(True)
             sg.addWidget(self._signals_empty_lbl)
-            layout.addWidget(self._signals_group)
+            zone.addWidget(self._signals_group)
 
             # --- Opposing Pairs table ---
-            self._pairs_group = QGroupBox("Opposing Pairs (30-day Pearson)")
+            self._pairs_group = QGroupBox(PAIRS_GROUP_TITLE)
             pg = QVBoxLayout(self._pairs_group)
             self._pairs_tbl = QTableWidget()
-            self._pairs_tbl.setColumnCount(4)
-            self._pairs_tbl.setHorizontalHeaderLabels(
-                ["Long side", "Short side", "Correlation", "Score (Long+Short)"]
-            )
+            self._pairs_tbl.setColumnCount(len(PAIR_COLUMNS))
+            self._pairs_tbl.setHorizontalHeaderLabels(list(PAIR_COLUMNS))
             self._pairs_tbl.horizontalHeader().setSectionResizeMode(
                 QHeaderView.ResizeToContents
             )
@@ -325,7 +336,7 @@ if _HAS_QT:
             self._pairs_empty_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
             self._pairs_empty_lbl.setWordWrap(True)
             pg.addWidget(self._pairs_empty_lbl)
-            layout.addWidget(self._pairs_group)
+            zone.addWidget(self._pairs_group)
 
             layout.addStretch()
 
@@ -338,8 +349,27 @@ if _HAS_QT:
                 logger.debug("topologies pane unavailable: %s", _tp_exc)
                 self._topologies_pane = QWidget()
 
+            right_pane = QWidget()
+            right_layout = QVBoxLayout(right_pane)
+            right_layout.setContentsMargins(6, 6, 6, 6)
+            right_layout.setSpacing(6)
+            self._zone_labels: dict = {}
+            for key, title, status in _right_zone_rows(None):
+                group = QGroupBox(title)
+                box = QVBoxLayout(group)
+                if key == TOPOLOGIES_ZONE:
+                    box.addWidget(self._topologies_pane)
+                    right_layout.addWidget(group, 1)
+                    continue
+                line = QLabel(status)
+                line.setStyleSheet(MODULE_STATUS_STYLE)
+                line.setWordWrap(True)
+                box.addWidget(line)
+                right_layout.addWidget(group)
+                self._zone_labels[key] = line
+
             self._outer_splitter.addWidget(left_pane)
-            self._outer_splitter.addWidget(self._topologies_pane)
+            self._outer_splitter.addWidget(right_pane)
             # (dismiss-store wiring: see set_dismiss_store below — the
             # owner supplies it, this tab never resolves settings itself)
             self._outer_splitter.setStretchFactor(0, 1)
@@ -390,6 +420,10 @@ if _HAS_QT:
                 line = self._module_labels.get(key)
                 if line is not None:
                     line.setText(status)
+            for key, _title, status in _right_zone_rows(self._ata_run()):
+                line = self._zone_labels.get(key)
+                if line is not None:
+                    line.setText(status)
 
         # ── the widgets the logic below writes through ───────────────
         def _set_status(self, text: str) -> None:
@@ -426,6 +460,7 @@ if _HAS_QT:
             self._pairs_tbl.setRowCount(len(pairs))
             self._render_empty_notes()
             for row, p in enumerate(pairs):
+                method = getattr(p, "method", None)
                 self._pairs_tbl.setItem(
                     row,
                     0,
@@ -436,12 +471,29 @@ if _HAS_QT:
                     1,
                     QTableWidgetItem(f"{p.short_side.symbol} ({p.short_side.signal})"),
                 )
-                corr_item = QTableWidgetItem(f"{p.correlation_30d:+.3f}")
-                corr_item.setForeground(QColor("#ffcc66"))
-                self._pairs_tbl.setItem(row, 2, corr_item)
+                method_item = QTableWidgetItem(
+                    method.label if method else NO_METHOD_TEXT
+                )
+                method_item.setForeground(QColor(COLOR_METHOD))
+                self._pairs_tbl.setItem(row, 2, method_item)
                 self._pairs_tbl.setItem(
                     row,
                     3,
+                    QTableWidgetItem(method.window_text if method else NO_METHOD_TEXT),
+                )
+                self._pairs_tbl.setItem(
+                    row,
+                    4,
+                    QTableWidgetItem(
+                        method.statistic_text if method else NO_METHOD_TEXT
+                    ),
+                )
+                corr_item = QTableWidgetItem(f"{p.correlation_30d:+.3f}")
+                corr_item.setForeground(QColor(COLOR_CORRELATION))
+                self._pairs_tbl.setItem(row, 5, corr_item)
+                self._pairs_tbl.setItem(
+                    row,
+                    6,
                     QTableWidgetItem(f"{p.long_side.score + p.short_side.score:.2f}"),
                 )
 

@@ -28,6 +28,11 @@ import logging
 import time
 from typing import Any, Callable, Optional
 
+from .main_tabs.market_inspector_topologies_surface import (
+    CARD_METHOD_STYLE,
+    method_text,
+)
+
 logger = logging.getLogger("acervator.topology_proposals_gui")
 
 try:
@@ -297,6 +302,11 @@ if _HAS_QT:
             )
             meta_lbl.setStyleSheet("color: #888; font-size: 11px;")
             root.addWidget(meta_lbl)
+
+            method_lbl = QLabel(method_text(proposal.get("method")))
+            method_lbl.setStyleSheet(CARD_METHOD_STYLE)
+            method_lbl.setWordWrap(True)
+            root.addWidget(method_lbl)
 
             btns = QHBoxLayout()
             btns.addStretch()

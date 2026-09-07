@@ -28,6 +28,9 @@
   var LEFT_MODULE_KEYS = "left_module_keys";
   var LEFT_MODULE_TITLES = "left_module_titles";
   var LEFT_MODULES = "left_modules";
+  var RIGHT_ZONES = "right_zones";
+  var RIGHT_ZONE_KEYS = "right_zone_keys";
+  var RIGHT_ZONE_TITLES = "right_zone_titles";
   var LEFT_SPACING_PX = "left_spacing_px";
   var LOGGER_NAME = "logger_name";
   var LOGS = "logs";
@@ -36,6 +39,8 @@
   var MODULE_FRAME_PX = "module_frame_px";
   var MODULE_MARGINS_PX = "module_margins_px";
   var MODULE_TITLE_PADDING_PX = "module_title_padding_px";
+  var BUTTON_PADDING_PX = "button_padding_px";
+  var BUTTON_FONT_WEIGHT = "button_font_weight";
   var NO_CELL = "no_cell";
   var OUTER_MARGINS_PX = "outer_margins_px";
   var OUTER_SPACING_PX = "outer_spacing_px";
@@ -95,6 +100,8 @@
     ADOPT_SIGNAL_NAME,
     AGE,
     BUS_TOPICS,
+    BUTTON_FONT_WEIGHT,
+    BUTTON_PADDING_PX,
     CALL_NAMES,
     CALLS,
     CELLS,
@@ -113,6 +120,9 @@
     LEFT_MODULE_TITLES,
     LEFT_MODULES,
     LEFT_SPACING_PX,
+    RIGHT_ZONES,
+    RIGHT_ZONE_KEYS,
+    RIGHT_ZONE_TITLES,
     LOGGER_NAME,
     LOGS,
     MARKS,
@@ -485,6 +495,7 @@
   var WANTED_LISTS = [
     ACTIVE_SYMBOLS,
     BUS_TOPICS,
+    BUTTON_PADDING_PX,
     CALL_NAMES,
     CALLS,
     EMITTED,
@@ -494,6 +505,9 @@
     LEFT_MODULE_TITLES,
     LEFT_MODULES,
     MODULE_MARGINS_PX,
+    RIGHT_ZONES,
+    RIGHT_ZONE_KEYS,
+    RIGHT_ZONE_TITLES,
     MODULE_TITLE_PADDING_PX,
     OUTER_MARGINS_PX,
     PAIR_COLUMNS,
@@ -661,6 +675,7 @@
   var GRID_CELL_PART = "grid-cell";
   var LEFT_STRETCH_PART = "left-stretch";
   var TOPOLOGY_PART = "topology-slot";
+  var RIGHT_PANE_PART = "right-pane";
   var PER_BOT_PART = "per-bot";
   var PER_BOT_LABEL_PART = "per-bot-label";
   var PER_BOT_CARD_PART = "per-bot-card";
@@ -958,9 +973,13 @@
 
   function RefreshButton(props) {
     var model = props.model;
+    // The theme gives QPushButton 8px 20px of padding and a bold face.
+    var buttonStyle = marginStyle(listField(model, BUTTON_PADDING_PX));
+    buttonStyle.flex = FLEX_NONE;
+    buttonStyle.fontWeight = text(model[BUTTON_FONT_WEIGHT]);
     var buttonProps = {
       type: BUTTON_TYPE,
-      style: { flex: FLEX_NONE },
+      style: buttonStyle,
       title: label(model[REFRESH_TOOLTIP]),
       disabled: model[REFRESH_ENABLED] !== true,
       onClick: function () {
@@ -1172,24 +1191,19 @@
   // TableGroup is the Qt group box holding one table under its title.
   function TableGroup(props) {
     var model = props.model;
-    var style = boxStyle(
-      listField(model, GROUP_MARGINS_PX),
-      model[GROUP_SPACING_PX],
-      COLUMN_WAY
-    );
-    style.flex = FLEX_NONE;
-    var groupProps = { style: style };
+    var groupProps = { style: groupFrame(model) };
     groupProps[PART_ATTR] = TABLE_GROUP_PART;
     groupProps[TABLE_ATTR] = props.table;
     groupProps[ARIA_LABEL] = label(model[props.titleField]);
-    var legendProps = { style: asLabel({}, false) };
+    var legendProps = { style: asLabel(groupTitleStyle(model), false) };
     legendProps[PART_ATTR] = GROUP_LEGEND_PART;
     var bodyProps = {
       style: {
         height: length(tableHeight(model, props.heightField)),
         maxHeight: length(model[props.heightField]),
         overflow: AUTO,
-        flex: FLEX_NONE
+        flex: FLEX_NONE,
+        minWidth: ZERO
       },
       tabIndex: ZERO
     };
@@ -1220,29 +1234,39 @@
   }
 
   // ModuleGroup is one left-side region: its Qt group box and its status line.
-  function ModuleGroup(props) {
-    var model = props.model;
-    var entry = asList(props.entry);
+  // groupFrame is the themed QGroupBox: a 1 px frame and a title drawn in the
+  // group own margin, so the title takes no row.
+  function groupFrame(model) {
     var style = boxStyle(
       listField(model, MODULE_MARGINS_PX),
       model[GROUP_SPACING_PX],
       COLUMN_WAY
     );
-    var frame = Number(model[MODULE_FRAME_PX]);
     style.flex = FLEX_NONE;
+    style.minWidth = ZERO;
     style.position = RELATIVE;
     style.borderWidth = length(model[MODULE_FRAME_PX]);
     style.borderStyle = SOLID;
-    var groupProps = { style: style };
-    groupProps[PART_ATTR] = MODULE_GROUP_PART;
-    groupProps[NAME_ATTR] = text(entry[ZERO]);
-    groupProps[ARIA_LABEL] = label(entry[ONE]);
-    // The Qt title is drawn in the group's own margin, so it takes no row.
+    return style;
+  }
+
+  function groupTitleStyle(model) {
+    var frame = Number(model[MODULE_FRAME_PX]);
     var titleStyle = marginStyle(listField(model, MODULE_TITLE_PADDING_PX));
     titleStyle.position = ABSOLUTE;
     titleStyle.left = length(isFinite(frame) ? -frame : NO_OFFSET);
     titleStyle.top = length(isFinite(frame) ? -frame : NO_OFFSET);
-    var legendProps = { style: asLabel(titleStyle, false) };
+    return titleStyle;
+  }
+
+  function ModuleGroup(props) {
+    var model = props.model;
+    var entry = asList(props.entry);
+    var groupProps = { style: groupFrame(model) };
+    groupProps[PART_ATTR] = MODULE_GROUP_PART;
+    groupProps[NAME_ATTR] = text(entry[ZERO]);
+    groupProps[ARIA_LABEL] = label(entry[ONE]);
+    var legendProps = { style: asLabel(groupTitleStyle(model), false) };
     legendProps[PART_ATTR] = MODULE_LEGEND_PART;
     var lineProps = { style: asLabel(styleOf(model[STATUS_STYLE]), true) };
     lineProps[PART_ATTR] = MODULE_STATUS_PART;
@@ -1251,38 +1275,30 @@
       FIELDSET_TAG,
       groupProps,
       element(LEGEND_TAG, legendProps, text(entry[ONE])),
-      element(SPAN_TAG, lineProps, text(entry[TWO]))
+      element(SPAN_TAG, lineProps, text(entry[TWO])),
+      asList(props.children)
     );
   }
 
-  // The three left-side regions, in the order the surface publishes them.
+  // The three left-side zones, in the order the surface publishes them. The
+  // Opposing Trades zone carries the scan controls and the two tables.
   function moduleGroups(model) {
     return listField(model, LEFT_MODULES).map(function (entry, at) {
       return element(ModuleGroup, {
         key: MODULE_GROUP_PART + PATH_SPLIT + String(at),
         model: model,
-        entry: entry
+        entry: entry,
+        children:
+          entry[ZERO] === listField(model, LEFT_MODULE_KEYS)[ONE]
+            ? scanContent(model)
+            : []
       });
     });
   }
 
-  function LeftPane(props) {
-    var model = props.model;
-    var sizes = listField(model, SPLITTER_SIZES_PX);
-    var style = boxStyle(
-      listField(model, LEFT_MARGINS_PX),
-      model[LEFT_SPACING_PX],
-      COLUMN_WAY
-    );
-    style.flexGrow = listField(model, SPLITTER_STRETCH)[ZERO];
-    style.flexBasis = length(sizes[ZERO]);
-    style.overflow = AUTO;
-    var paneProps = { style: style };
-    paneProps[PART_ATTR] = LEFT_PANE_PART;
-    return element(
-      DIV_TAG,
-      paneProps,
-      moduleGroups(model),
+  // The Refresh row and the two tables the Opposing Trades zone holds.
+  function scanContent(model) {
+    return [
       element(FilterRow, { key: FILTER_ROW_PART, model: model }),
       element(TableGroup, {
         key: SIGNALS_TABLE,
@@ -1303,24 +1319,96 @@
         columnsField: PAIR_COLUMNS,
         rowsField: PAIR_ROWS,
         noteField: EMPTY_PAIRS
-      }),
+      })
+    ];
+  }
+
+  function LeftPane(props) {
+    var model = props.model;
+    var sizes = listField(model, SPLITTER_SIZES_PX);
+    var style = boxStyle(
+      listField(model, LEFT_MARGINS_PX),
+      model[LEFT_SPACING_PX],
+      COLUMN_WAY
+    );
+    style.flexGrow = listField(model, SPLITTER_STRETCH)[ZERO];
+    style.flexBasis = length(sizes[ZERO]);
+    style.overflow = AUTO;
+    var paneProps = { style: style };
+    paneProps[PART_ATTR] = LEFT_PANE_PART;
+    return element(
+      DIV_TAG,
+      paneProps,
+      moduleGroups(model),
       element(Spacer, { key: LEFT_STRETCH_PART, part: LEFT_STRETCH_PART })
     );
   }
 
-  // TopologySlot is the right pane; the proposals unit fills it.
+  // The right pane: the Ready to Send zone above the Bot Swarm Topologies
+  // zone, which is the slot the proposals unit fills.
   function TopologySlot(props) {
     var model = props.model;
-    var slotProps = {
-      style: {
-        flexGrow: listField(model, SPLITTER_STRETCH)[ONE],
-        flexBasis: length(listField(model, SPLITTER_SIZES_PX)[ONE]),
-        overflow: CLIPPED
-      }
-    };
-    slotProps[PART_ATTR] = TOPOLOGY_PART;
-    slotProps[SLOT_ATTR] = TOPOLOGY_SLOT;
-    return element(DIV_TAG, slotProps, null);
+    var paneStyle = boxStyle(
+      listField(model, LEFT_MARGINS_PX),
+      model[LEFT_SPACING_PX],
+      COLUMN_WAY
+    );
+    paneStyle.flexGrow = listField(model, SPLITTER_STRETCH)[ONE];
+    paneStyle.flexBasis = length(listField(model, SPLITTER_SIZES_PX)[ONE]);
+    paneStyle.overflow = CLIPPED;
+    var paneProps = { style: paneStyle };
+    paneProps[PART_ATTR] = RIGHT_PANE_PART;
+    return element(
+      DIV_TAG,
+      paneProps,
+      listField(model, RIGHT_ZONES).map(function (entry, at) {
+        var last = at === listField(model, RIGHT_ZONES).length - ONE;
+        return element(RightZone, {
+          key: MODULE_GROUP_PART + PATH_SPLIT + text(entry[ZERO]),
+          model: model,
+          entry: entry,
+          fills: last
+        });
+      })
+    );
+  }
+
+  // RightZone is one themed group on the right side. The last one carries the
+  // slot the proposals unit is moved into.
+  function RightZone(props) {
+    var model = props.model;
+    var entry = asList(props.entry);
+    var style = groupFrame(model);
+    if (props.fills === true) {
+      style.flex = AUTO;
+      style.minHeight = ZERO;
+    }
+    var groupProps = { style: style };
+    groupProps[PART_ATTR] = MODULE_GROUP_PART;
+    groupProps[NAME_ATTR] = text(entry[ZERO]);
+    groupProps[ARIA_LABEL] = label(entry[ONE]);
+    var legendProps = { style: asLabel(groupTitleStyle(model), false) };
+    legendProps[PART_ATTR] = MODULE_LEGEND_PART;
+    if (props.fills === true) {
+      var slotProps = { style: { flex: AUTO, minHeight: ZERO, overflow: CLIPPED } };
+      slotProps[PART_ATTR] = TOPOLOGY_PART;
+      slotProps[SLOT_ATTR] = TOPOLOGY_SLOT;
+      return element(
+        FIELDSET_TAG,
+        groupProps,
+        element(LEGEND_TAG, legendProps, text(entry[ONE])),
+        element(DIV_TAG, slotProps, null)
+      );
+    }
+    var lineProps = { style: asLabel(styleOf(model[STATUS_STYLE]), true) };
+    lineProps[PART_ATTR] = MODULE_STATUS_PART;
+    lineProps[NAME_ATTR] = text(entry[ZERO]);
+    return element(
+      FIELDSET_TAG,
+      groupProps,
+      element(LEGEND_TAG, legendProps, text(entry[ONE])),
+      element(SPAN_TAG, lineProps, text(entry[TWO]))
+    );
   }
 
   function Split(props) {

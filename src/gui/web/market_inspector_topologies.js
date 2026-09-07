@@ -145,6 +145,8 @@
   var FRAME_SHAPE = "frame_shape";
   var META_FORMAT = "meta_format";
   var META_STYLE = "meta_style";
+  var METHOD_FORMAT = "method_format";
+  var METHOD_STYLE = "method_style";
   var PREVIEW_TEXT = "preview_text";
   var PREVIEW_TOOLTIP = "preview_tooltip";
   var SIZE_POLICY = "size_policy";
@@ -190,6 +192,7 @@
   var BADGE = "badge";
   var BADGE_STYLE = "badge_style";
   var META = "meta";
+  var METHOD = "method";
 
   var ADOPT_ENABLED = "adopt_enabled";
   var BOT_COLORS = "bot_colors";
@@ -275,6 +278,8 @@
     MARGINS,
     META_FORMAT,
     META_STYLE,
+    METHOD_FORMAT,
+    METHOD_STYLE,
     PREVIEW_TEXT,
     PREVIEW_TOOLTIP,
     SIZE_POLICY,
@@ -465,6 +470,7 @@
   var CARD_TITLE_PART = "card-title";
   var CARD_BADGE_PART = "card-badge";
   var CARD_META_PART = "card-meta";
+  var CARD_METHOD_PART = "card-method";
   var CARD_BUTTONS_PART = "card-buttons";
   var CARD_STRETCH_PART = "card-stretch";
   var PREVIEW_BUTTON_PART = "preview-button";
@@ -908,6 +914,8 @@
     badgeProps[PART_ATTR] = CARD_BADGE_PART;
     var metaProps = { style: asLabel(styleOf(card[META_STYLE]), false) };
     metaProps[PART_ATTR] = CARD_META_PART;
+    var methodProps = { style: asLabel(styleOf(card[METHOD_STYLE]), true) };
+    methodProps[PART_ATTR] = CARD_METHOD_PART;
     // The Qt title carries the row's stretch, so the badge sits at the edge.
     var titleStyle = asLabel({}, card[TITLE_WORD_WRAP] === true);
     titleStyle.flex = ONE;
@@ -933,6 +941,7 @@
           element(SPAN_TAG, badgeProps, text(entry[BADGE]))
         ),
         element(DIV_TAG, metaProps, text(entry[META])),
+        element(DIV_TAG, methodProps, text(entry[METHOD])),
         element(CardButtons, {
           key: CARD_BUTTONS_PART,
           model: model,
@@ -1517,7 +1526,7 @@
 
   var SHEET_FIELDS = {};
   SHEET_FIELDS[PANE] = [EMPTY_STYLE, FOOTER_STYLE, STATUS_STYLE];
-  SHEET_FIELDS[CARD] = [DISMISS_STYLE, META_STYLE, STYLE];
+  SHEET_FIELDS[CARD] = [DISMISS_STYLE, META_STYLE, METHOD_STYLE, STYLE];
   SHEET_FIELDS[DIALOG] = [HEADER_TITLE_STYLE, NOTE_STYLE, SUMMARY_STYLE];
 
   function checkSheets(model) {
@@ -1595,6 +1604,7 @@
         tags[STRONG_CLOSE]
       );
       checkMarkup(spot, META, one[META]);
+      checkMarkup(spot, METHOD, one[METHOD]);
       checkMarkup(spot, BADGE, one[BADGE]);
     });
     listField(model, PREVIEWS).forEach(function (entry, at) {

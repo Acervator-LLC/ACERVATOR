@@ -62,8 +62,17 @@ SIGNALS_GROUP_TITLE = "HTF Signals"
 SIGNAL_COLUMNS = ("Asset", "Signal", "Score", "Daily", "Weekly", "Active")
 SIGNALS_MAX_HEIGHT_PX = 360
 
-PAIRS_GROUP_TITLE = "Opposing Pairs (30-day Pearson)"
-PAIR_COLUMNS = ("Long side", "Short side", "Correlation", "Score (Long+Short)")
+PAIRS_GROUP_TITLE = "Opposing Pairs (cointegration, Engle-Granger + Johansen, p<=0.05)"
+PAIR_COLUMNS = (
+    "Long side",
+    "Short side",
+    "Method",
+    "Window",
+    "Statistic",
+    "Correlation",
+    "Score (Long+Short)",
+)
+NO_METHOD_TEXT = "—"
 PAIRS_MAX_HEIGHT_PX = 180
 
 ATA_SPM_MODULE = "ata_spm"
@@ -87,6 +96,22 @@ OPPOSING_TRADES_FOUND_FORMAT = (
     "{count} {noun}. {share}% of profit goes to the opposite side."
 )
 
+READY_TO_SEND_ZONE = "ready_to_send"
+TOPOLOGIES_ZONE = "topologies"
+
+READY_TO_SEND_GROUP_TITLE = "ATA-SPM Ready to Send"
+TOPOLOGIES_GROUP_TITLE = "Bot Swarm Topologies"
+
+READY_TO_SEND_UNWIRED_TEXT = "Phase source not wired. Nothing to approve."
+READY_TO_SEND_NO_RUN_TEXT = "No run yet. Nothing to approve."
+READY_TO_SEND_HOLDS_FORMAT = "{count} post(s) waiting. Approve or decline each."
+
+#: The Bot Swarm Topologies zone carries the proposal pane, not a status line.
+NO_TEXT_LINE = ""
+
+RIGHT_ZONE_KEYS = (READY_TO_SEND_ZONE, TOPOLOGIES_ZONE)
+RIGHT_ZONE_TITLES = (READY_TO_SEND_GROUP_TITLE, TOPOLOGIES_GROUP_TITLE)
+
 ARBITRAGE_UNWIRED_TEXT = "Exchange source not wired."
 ARBITRAGE_NO_VENUE_TEXT = "No exchange connected."
 ARBITRAGE_ONE_VENUE_FORMAT = (
@@ -108,6 +133,10 @@ MODULE_MARGINS_PX = (9, 49, 9, 9)
 #: The padding the theme gives ``QGroupBox::title``, as left, top, right and
 #: bottom. The title is drawn in the group's own margin, so it takes no row.
 MODULE_TITLE_PADDING_PX = (12, 4, 12, 4)
+
+# The themed QPushButton, measured off the running Refresh button.
+BUTTON_PADDING_PX = (20, 8, 20, 8)
+BUTTON_FONT_WEIGHT = "bold"
 
 LEFT_MODULE_KEYS = (ATA_SPM_MODULE, OPPOSING_TRADES_MODULE, ARBITRAGE_MODULE)
 LEFT_MODULE_TITLES = (
@@ -161,6 +190,7 @@ COLOR_WATCHLIST = "#ffcc00"
 COLOR_OTHER = "#888"
 COLOR_ACTIVE = "#00ccff"
 COLOR_CORRELATION = "#ffcc66"
+COLOR_METHOD = "#00cccc"
 NO_COLOR = ""
 NO_CELL = None
 
@@ -519,7 +549,8 @@ def fill_signal_row(cells: list, found: Any) -> None:
 
 
 def fill_pair_row(cells: list, pair: Any) -> None:
-    """Write the four Opposing Pairs cells of one row, left to right."""
+    """Write the seven Opposing Pairs cells of one row, left to right."""
+    method = getattr(pair, "method", None)
     cells[0] = [
         PAIR_SIDE_FORMAT.format(
             symbol=pair.long_side.symbol, signal=pair.long_side.signal
@@ -532,11 +563,14 @@ def fill_pair_row(cells: list, pair: Any) -> None:
         ),
         NO_COLOR,
     ]
-    cells[2] = [
+    cells[2] = [method.label if method else NO_METHOD_TEXT, COLOR_METHOD]
+    cells[3] = [method.window_text if method else NO_METHOD_TEXT, NO_COLOR]
+    cells[4] = [method.statistic_text if method else NO_METHOD_TEXT, NO_COLOR]
+    cells[5] = [
         CORRELATION_FORMAT.format(correlation=pair.correlation_30d),
         COLOR_CORRELATION,
     ]
-    cells[3] = [
+    cells[6] = [
         PAIR_SCORE_FORMAT.format(score=pair.long_side.score + pair.short_side.score),
         NO_COLOR,
     ]
@@ -607,6 +641,28 @@ def arbitrage_text(connectors: Any) -> str:
     return ARBITRAGE_VENUES_FORMAT.format(count=len(names), names=joined)
 
 
+def ready_to_send_text(run: Any) -> str:
+    """The Ready to Send zone's line for what the phase source reports.
+
+    None says no phase source is wired, which no caller can confuse
+    with a wired source whose bucket is empty.
+    """
+    if run is None:
+        return READY_TO_SEND_UNWIRED_TEXT
+    count = run.get(ATA_SPM_READY_KEY)
+    if count is None:
+        return READY_TO_SEND_NO_RUN_TEXT
+    return READY_TO_SEND_HOLDS_FORMAT.format(count=count)
+
+
+def right_zone_rows(run: Any) -> list:
+    """The two right-side zones as key, title and status, in screen order."""
+    return [
+        [READY_TO_SEND_ZONE, READY_TO_SEND_GROUP_TITLE, ready_to_send_text(run)],
+        [TOPOLOGIES_ZONE, TOPOLOGIES_GROUP_TITLE, NO_TEXT_LINE],
+    ]
+
+
 def left_module_rows(
     run: Any, scan_state: Any, pair_count: Any, connectors: Any
 ) -> list:
@@ -669,12 +725,23 @@ class SignalState:
 
 
 class PairState:
-    """One opposing pair, as both screens read it."""
+    """One opposing pair, as both screens read it.
 
-    def __init__(self, long_side: Any, short_side: Any, correlation_30d: float) -> None:
+    method is the cointegration_test verdict that let the pair
+    through, and the table prints its label, window and statistic.
+    """
+
+    def __init__(
+        self,
+        long_side: Any,
+        short_side: Any,
+        correlation_30d: float,
+        method: Any = None,
+    ) -> None:
         self.long_side = long_side
         self.short_side = short_side
         self.correlation_30d = correlation_30d
+        self.method = method
 
 
 class InspectorSource:
@@ -900,6 +967,10 @@ class MarketInspectorScreenModel:
             len(self.pair_rows),
             self.connectors_now(),
         )
+
+    def right_zones(self) -> list:
+        """The two right-side zones, Ready to Send above the topologies."""
+        return right_zone_rows(self.ata_run())
 
     def fetch_universe(self) -> Any:
         """The fetch the Refresh button runs, injected or the shipped one."""
@@ -1403,11 +1474,16 @@ def build_view_model(
         "pairs_max_height_px": PAIRS_MAX_HEIGHT_PX,
         "pair_rows": [[list(cell) for cell in row] for row in model.pair_rows],
         "left_modules": [list(one) for one in model.left_modules()],
+        "right_zones": [list(one) for one in model.right_zones()],
+        "right_zone_keys": list(RIGHT_ZONE_KEYS),
+        "right_zone_titles": list(RIGHT_ZONE_TITLES),
         "left_module_keys": list(LEFT_MODULE_KEYS),
         "left_module_titles": list(LEFT_MODULE_TITLES),
         "module_frame_px": MODULE_FRAME_PX,
         "module_margins_px": list(MODULE_MARGINS_PX),
         "module_title_padding_px": list(MODULE_TITLE_PADDING_PX),
+        "button_padding_px": list(BUTTON_PADDING_PX),
+        "button_font_weight": BUTTON_FONT_WEIGHT,
         "table_viewport_px": TABLE_VIEWPORT_PX,
         "table_resize_mode": TABLE_RESIZE_MODE,
         "table_edit_triggers": TABLE_EDIT_TRIGGERS,
@@ -1444,6 +1520,7 @@ def build_view_model(
             "other": COLOR_OTHER,
             "active": COLOR_ACTIVE,
             "correlation": COLOR_CORRELATION,
+            "method": COLOR_METHOD,
             "none": NO_COLOR,
         },
         "signal_names": {
