@@ -637,21 +637,14 @@ Phases four, five and six now run. Phase four writes the post, phase five sends
 it, and phase six is the bucket the operator approves from. Phases seven and
 eight are still not built.
 
-Phase four writes one post per push target. Four targets ship, and adding a
-fifth is adding a row beside them.
+Phase four writes one post per push target. Seven targets ship, and adding an
+eighth is adding a row beside them. The list of names every screen reads is
+derived from those rows, so a new row reaches the Settings page on its own.
 
-`src/trading/ata_spm_push.py` — the push targets
+`src/trading/ata_spm_push.py` — the names every screen reads
 
 ```python
-PUSH_TARGETS = (
-    PushTarget(
-        TARGET_TRADINGVIEW,
-        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
-    ),
-    PushTarget(TARGET_X, (SECTION_CALL, SECTION_INDICATORS)),
-    PushTarget(TARGET_INSTAGRAM, (SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS)),
-    PushTarget(TARGET_LINKEDIN, (SECTION_CALL, SECTION_CHART, SECTION_INDICATORS)),
-)
+TARGET_NAMES = tuple(one.name for one in PUSH_TARGETS)
 ```
 
 Each target carries the same evidence in its own order. The sections are the
@@ -752,9 +745,10 @@ def chart_marks(post: Any, width_px: Any, height_px: Any, columns: Any) -> list:
     """
 ```
 
-A push target is a platform that publishes an interface for posting. TradingView
-publishes none, so it is not a target. Three ship today, and the rest are a later
-build.
+A push target is a platform that publishes an interface for posting, and one
+that takes what a post carries. TradingView publishes no interface. YouTube
+publishes one that accepts video only, and a post carries a still chart.
+Neither is a target. Seven ship today.
 
 `src/trading/ata_spm_push.py` — the targets that ship
 
@@ -763,8 +757,29 @@ PUSH_TARGETS = (
     PushTarget(TARGET_X, (SECTION_CALL, SECTION_INDICATORS)),
     PushTarget(TARGET_INSTAGRAM, (SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS)),
     PushTarget(TARGET_LINKEDIN, (SECTION_CALL, SECTION_CHART, SECTION_INDICATORS)),
+    PushTarget(
+        TARGET_TIKTOK,
+        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+    ),
+    PushTarget(
+        TARGET_FACEBOOK,
+        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+    ),
+    PushTarget(TARGET_THREADS, (SECTION_CALL, SECTION_INDICATORS)),
+    PushTarget(
+        TARGET_REDDIT,
+        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
+    ),
 )
 ```
+
+Each target's row names its own sections, so each carries its own format over
+the same phase three evidence. Threads carries the call and the indicator
+messages only, because Threads publishes 500 characters of text and the fixed
+header takes 144 of them.
+
+The rules each platform publishes are recorded in
+[the push target rules](../audits/2026-09-06_ata_platform_rules.md).
 
 Every control on this screen is drawn at a size the screen publishes, rather than
 at the size its own text happens to take. The sector field takes whatever width
