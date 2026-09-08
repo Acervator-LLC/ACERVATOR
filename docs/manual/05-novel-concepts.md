@@ -838,7 +838,7 @@ TOTAL_SUPPLY_CAP = 10_000_000  # Hard cap — immutable
 Nothing in the running platform starts a competition. Every module that would
 request one sits outside the running application, and the retired-tab sentinels
 assign nothing to the competition and testnet tabs. The canonical tab order now
-lists a Proof of Accumulation tab, and that tab is a skeleton: it draws its
+lists an Accumulation tab, and that tab is empty: it draws its
 name, one sentence saying it is not built, and issue #147, which covers the
 build-out.
 
@@ -903,30 +903,34 @@ indicator implementations depart from their published formulae (issue #414).
 
 Acervator has many unique characteristics and many of these are rooted in attempting to protect an investor from themselves. As such, I have designed a means of self-contained strategy testing that is meant to educate and validate before any attempt at using the platform against actual personal funds is ever attempted. Some may be confident or skilled enough to skip these protective steps. That is an individual user choice. I did not follow this workflow while developing it but I know exactly how my strategy works and when it is not. Given this, the intended workflow for a new user of Acervator should be Simulator > Paper Trader > Live. The system is configured so that the relevant operational elements, such as the Market Inspector, can inject Simulator and Paper equivalents into the appropriate Bot Swarm layers or bot fleet under the respective tab.
 
-**Functional.** Three of the four stages exist. The Market Inspector tab and the
-Simulator tab are both built and inserted, and the Simulator is handed the
-Inspector's proposals at build time, so a proposal reaches the back test. Live
-is the Trading tab, and it is first in the canonical order.
+**Functional.** All four stages exist. The Inspector, Sim, Paper and Live tabs
+are all built and inserted. The Inspector no longer hands its proposals to the
+Sim tab: the rebuild removed that hook, and Sim and Paper each load a fleet from
+the stored bot record instead. Live is the tab the part list calls Trading, and
+it is third in the canonical order.
 
 `src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
 
 ```python
 CANONICAL_TAB_ORDER = (
-    TRADING_TAB,
-    MARKET_INSPECTOR_TAB,
-    BOT_SWARM_TAB,
-    ASSET_CHARTS_TAB,
+    SIM_TAB,
+    PAPER_TAB,
+    LIVE_TAB,
+    CHARTS_TAB,
+    INSPECTOR_TAB,
+    SWARM_TAB,
+    ACCUMULATION_TAB,
     HISTORY_TAB,
-    SIMULATOR_TAB,
+    STATUS_TAB,
     CONSOLE_TAB,
 )
 ```
 
-**The Paper stage is not built.** No file named for it exists in the tree, and
-none was ever committed on any branch. A history query across every commit
-returns no such path, while the same query returns two entries for the bot
-brain. The only tracked path matching the word is a manual page. The code states
-the same in its own defaults.
+**The Paper stage is built.** Issue #19 added `src/paper/`, the Qt tab and the
+React panel. Before that no file named for it existed in the tree and none had
+ever been committed on any branch, which is what the query below measured. One
+default still records the older state: the shelved stock window imports a module
+name that does not exist, so it adds no tab of its own.
 
 `src/gui/main_tabs/stock_main_window_surface.py` — the declared default
 
@@ -937,14 +941,14 @@ paper_trader_error: Any = "No module named 'src.gui.paper_trader_tab'",
 
 **Design intention.** Paper is the stage that proves a strategy against the real
 market in real time before real money reaches it, and its defining property is
-that it runs at the market's own pace. What it should share with Live and what
-it must fork is settled: one trading logic, three data sources. What it should
-not do is import the live stateful shells. That is a build, not a repair, and it
-is gated behind the Simulator rebuild.
+that it runs at the market's own pace. What it shares with Live and what
+it forks is settled: one trading logic, three data sources. What it does
+not do is import the live stateful shells. That was a build, and issue #19
+landed it after the Simulator rebuild.
 
-Issue #19 covers the build-out. Two surfaces that tell the operator a Paper
-Trader is present are issues #422 and #426. Issue #117 tracks the Simulator
-rebuild that gates it.
+Issue #19 covers the build-out. Two surfaces that told the operator a Paper
+Trader was present were issues #422 and #426, and both folded into #19. Issue
+#117 tracks the Simulator rebuild that gated it.
 
-Today the workflow runs Market Inspector, then Simulator, then Live. The Paper
-stage is an intention.
+Today the workflow runs Market Inspector, then Simulator, then Paper, then Live.
+Every stage has a screen.

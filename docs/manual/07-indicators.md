@@ -268,10 +268,12 @@ ZSc - Z Score - https://www.tradingview.com/script/KSMvIkvh-Z-Score-Predictive-Z
 
 Our current indicator is the basic or classic Z Score indicator but this will be upgraded. But, as before, we are after more data to confirm reversals.
 
-The cell prints the raw signed z-value to one decimal, not a percentage. Past
-two deviations either way the vote is strong and contrarian: high votes
-bearish, low votes bullish. Between 1.5 and 2 it votes the same way at a fixed
-0.25 confidence, and inside 1.5 it casts no vote.
+The cell prints a signed z-value to one decimal, not a percentage, and issue
+#316 made that value the smoothed one. Past the level the indicator remembers
+the vote is strong and contrarian: high votes bearish, low votes bullish. Until
+a turn is remembered that level is two deviations either way. Between 1.5 and 2
+it votes the same way at a fixed 0.25 confidence, and inside 1.5 it casts no
+vote.
 [Z-Score](#z-score) carries the formula.
 
 `src/trading/indicators/zscore.py` — the thresholds
@@ -980,9 +982,9 @@ variance = sum((c - sma) ** 2 for c in closes) / self.period
 std = variance**0.5
 ```
 
-**Design intention.** The operator calls this the classic Z-Score, says an
-upgrade is coming, and uses it to confirm a reversal. The longer window is why
-it earns a column of its own beside the Bollinger Bands.
+**Design intention.** The operator calls this the classic Z-Score, asked for the
+upgrade issue #316 landed, and uses it to confirm a reversal. The longer window
+is why it earns a column of its own beside the Bollinger Bands.
 
 One formula, written once, for both bars. The current bar and the previous bar
 each divide by their own deviation bare, and a guard above each refuses a

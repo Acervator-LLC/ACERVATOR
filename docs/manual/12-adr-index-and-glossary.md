@@ -145,20 +145,20 @@ def _score_outcome(...): ...
 - **Gate-latch criterion** — the Simulator's own criterion. It passes when the
   gates latch identically on the same candles as live, not when profit or trade
   count matches. See [08-tabs/simulator.md](08-tabs/simulator.md).
-- **Stone Tablet** — a stored candle history a Simulator run replays.
-  `src/simulator/fleet/fleet_replay_controller.py` drives the replay and
-  `src/simulator/fleet/sim_exchange.py` serves the candles.
+- **Stone Tablet** — a stored candle history a Simulator run reads.
+  `src/simulator/tablet_source.py` serves the candles, and
+  `src/simulator/back_test.py` walks them through the live gate chain.
 - **Paper Trader** — the step between Simulator and Live, defined by running the
-  same logic against a real-time feed and a fake budget. In development. The
-  surface that mentions it defaults to `paper_trader_available: bool = False` in
-  `src/gui/main_tabs/stock_main_window_surface.py`. See
+  same logic against a real-time feed and a fake budget. Built under issue #19,
+  in `src/paper/`. The shelved stock window still defaults to
+  `paper_trader_available: bool = False`. See
   [08-tabs/paper-trader.md](08-tabs/paper-trader.md).
 - **Proof of Accumulation** — the competition package, `src/competition/`. It
   holds the bot identity, the Merkle log, the challenge protocol, the token
   ledger and the local chain. Its two screens are shelved by the operator's own
   direction. See
   [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md).
-The Simulator rebuild removed the files above; they are not in the tree.
+The Simulator rebuild removed the fleet-replay files this glossary once named.
 
 ### The development harness
 

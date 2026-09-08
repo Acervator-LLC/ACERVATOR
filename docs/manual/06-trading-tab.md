@@ -189,17 +189,20 @@ name keeps the position it was added at.
 
 ```python
 CANONICAL_TAB_ORDER = (
-    TRADING_TAB,
-    MARKET_INSPECTOR_TAB,
-    BOT_SWARM_TAB,
-    ASSET_CHARTS_TAB,
+    SIM_TAB,
+    PAPER_TAB,
+    LIVE_TAB,
+    CHARTS_TAB,
+    INSPECTOR_TAB,
+    SWARM_TAB,
+    ACCUMULATION_TAB,
     HISTORY_TAB,
-    SIMULATOR_TAB,
+    STATUS_TAB,
     CONSOLE_TAB,
 )
 ```
 
-Each of those seven names is a constant holding the label the tab bar shows,
+Each of those ten names is a constant holding the label the tab bar shows,
 and the main window applies the order once, after the last builder has run.
 
 `src/gui/main_window.py` — where the order is applied
@@ -208,8 +211,8 @@ and the main window applies the order once, after the last builder has run.
 self._reorder_main_tabs(list(CANONICAL_TAB_ORDER))
 ```
 
-**Design intention.** The order should read as the working order. Trade first,
-then the screens that inspect the trade, then the screens that replay it. One
+**Design intention.** The order should read as the promotion order. Practise
+first, then paper, then real money, then the screens that inspect the trade. One
 list decides it, so the order cannot drift as tabs are added.
 
 `src/gui/main_window.py` — the move loop

@@ -5,11 +5,12 @@ comes first, and under that is what the code does today. Longer descriptions
 live one file per screen in [08-tabs/](08-tabs/README.md).
 
 One list names the ten tabs the window builds, and every screen below that the
-window does not build says as much in its own entry. The last three are
-skeletons: each draws its name, one sentence saying it is not built, and the
-issue that carries the build-out.
+window does not build says as much in its own entry. Two are skeletons now:
+Status and Accumulation each draw a name, one sentence saying the tab is not
+built, and the issue that carries the build-out. Sim and Paper were skeletons
+until issues #117 and #19 built them, and both are full screens today.
 
-`src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
+`src/gui/main_tabs/main_window_surface.py` — the order before issue #450
 
 ```python
 CANONICAL_TAB_ORDER = (
@@ -27,10 +28,12 @@ CANONICAL_TAB_ORDER = (
 ```
 
 Each of those names is a constant holding the label the tab bar shows. The
-three skeletons take their label from their own surface, so the bar and the
-screen cannot carry two spellings of one name.
+skeletons take their label from their own surface, so the bar and the
+screen cannot carry two spellings of one name. Issue #450 renamed every one of
+those constants and reordered the tuple, and the section under this one holds
+what the file carries today.
 
-`src/gui/main_tabs/main_window_surface.py` — the labels
+`src/gui/main_tabs/main_window_surface.py` — the labels before issue #450
 
 ```python
 TRADING_TAB = "Trading"
@@ -164,13 +167,14 @@ its own.
 "theme": self.theme,
 ```
 
-The Trading tab has its own section, [06-trading-tab.md](06-trading-tab.md),
-and the Indicator Voting Panel has [07-indicators.md](07-indicators.md).
+The Live tab, which the manual's part list calls the Trading Tab, has its own
+section, [06-trading-tab.md](06-trading-tab.md), and the Indicator Voting Panel
+has [07-indicators.md](07-indicators.md).
 
 A strategy reaches real money through four steps: Market Inspector, Simulator,
-Paper Trader, Live. Each step is a gate.
+Paper Trader, Live. Each step is a gate, and all four screens are built.
 [08-tabs/promotion-pipeline.md](08-tabs/promotion-pipeline.md) draws the chain
-and marks where it breaks.
+and marks where a step still hands nothing to the next.
 
 The sections below run in the order
 [04-manual-parts.md](04-manual-parts.md) lists the tabs.
@@ -210,8 +214,8 @@ self._stat_folded.set_value(f"${_fld:,.2f}")
 ```
 
 Each field carries a privacy dot that masks the value through the registry the
-Bot Swarm tab shares. The strip hides itself while the Simulator is active, and
-the Simulator draws its own copy of the same ten fields against sim balances.
+Swarm tab shares. The strip hides itself while the Sim tab or the Paper tab is
+active, and the Paper tab draws four figures of its own in place of it.
 The absent live strip is itself the signal that the screen is not live trading.
 
 ![The header strip and the tab row, with Privacy Mode off.](p29-i0.png)
@@ -285,11 +289,12 @@ Detail: [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md).
 
 ## Simulator Tab (Hot Mess; Complete Rebuild In Progress)
 
-The Simulator is removed. The tab is named Sim, it opens first on the bar on a
-black ground, and it draws the same empty panel the Paper, Status and
-Accumulation tabs draw. No fleet loads, no replay runs, no practice venue
-exists, and Nuclear Mode is gone. The rest of this section describes the screen
-that was removed and is kept as the record of what the rebuild replaces.
+The old Simulator was removed and the rebuild replaced it. The tab is named Sim,
+it opens first on the bar on a black ground, and it draws a clone of the Live
+tab reading Stone Tablets. It carries three modes — Validation, Back Test and
+Portfolio Battery — and Nuclear Mode is cancelled. The rest of this section
+describes the screen that was removed and is kept as the record of what the
+rebuild replaces.
 
 ```python
 def _build_simulator_tab(self) -> None:
@@ -331,9 +336,10 @@ class GateLightsCell(QWidget):
     """One linear labelled row of trading gates.
 ```
 
-Nuclear Mode loops the same fleet over the tablet window with per-cycle market
-noise and a load pulse, writing over no tablet. It stands as a soak test,
-judged on coverage and survival, and it compares nothing to live.
+Nuclear Mode looped the same fleet over the tablet window with per-cycle market
+noise and a load pulse, writing over no tablet. It stood as a soak test,
+judged on coverage and survival, and it compared nothing to live. The operator
+cancelled it, its code is deleted, and the Sim tab has three modes, not four.
 
 ![The Simulator tab, with no fleet loaded.](p33-i0.png)
 
@@ -360,8 +366,8 @@ field name the strip does not carry is still ignored, and an empty value still
 falls back to the em dash. Setting `ACERVATOR_VARIANT` to `qt` builds the Qt
 strip instead, unchanged.
 
-React draws the Nuclear Mode page too. The tab asks the same seam for the
-panel class that it asks for the strip.
+React drew the Nuclear Mode page too, before the rebuild deleted both. The tab
+asked the same seam for the panel class that it asked for the strip.
 
 `src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._nuclear_panel_class`
 The Simulator rebuild removed this file; it is not in the tree.
@@ -597,11 +603,12 @@ Real-time, API-fed trades against a fake budget. This is designed as the second 
 The tab is now called Paper. It sits second on the bar, on a white ground
 with black text, and it is the only white tab.
 
-The screen is not built. The tab row now carries a Paper Trader skeleton, which
-draws its name, one sentence saying it is not built, and the issue that owns
-it. Issue #19 carries the build-out.
+The screen was empty until issue #19 built it. The tab row carried a Paper
+Trader placeholder, which drew its name, one sentence saying it was not built,
+and the issue that owned it. The section under this one holds what the tab is
+now.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the whole empty state
+`src/gui/main_tabs/paper_trader_tab_surface.py` — the empty state it carried
 
 ```python
 HEADING = "Paper Trader"
@@ -625,10 +632,11 @@ budget is twice the dollar target.
 target_balance: float = 200.0  # Balance the bot trades relative to
 ```
 
-Two live surfaces still offer the step. The Bot Swarm tab's Paper Swarm
+Two live surfaces once offered the step. The Swarm tab's Paper Swarm
 sub-tab is chrome: its Start button flips a flag and relabels itself, and no
-bot is constructed. The wing toggle makes the same offer on both wings. Issues
-#422 and #426 carry the two captions.
+bot is constructed. Its caption is now an empty string, so it promises nothing.
+The wing toggle no longer names a Paper Trader in the Qt window, while the
+React mirror still does. Issues #422 and #426 folded into issue #19.
 
 ### The tab as it stands now
 
@@ -747,7 +755,7 @@ the rest of this section is that engine.
 `src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — the whole empty state
 
 ```python
-HEADING = "Proof of Accumulation"
+HEADING = "Accumulation"
 ISSUE = 147
 BUILT = False
 STATE_TEXT = "This tab is not built."
@@ -1470,8 +1478,9 @@ FETCH_POLL_INTERVAL_S = 0.4
 ```
 
 The header strip is visible here, which marks the screen as a live-trading tab.
-REALISED and MATURE draw the same em dash the Trading tab draws. A row whose
-gate log holds no entry inside the join window reads `no record`.
+REALISED and MATURE draw the exchange figures the Live tab draws, which issue
+#418 fed. A row whose gate log holds no entry inside the join window reads
+`no record`.
 
 Both columns draw an exchange figure here too, because one strip serves every
 tab that shows it. Where the venue has answered for no bot they stay empty, and
@@ -1794,7 +1803,7 @@ shows the first of them.
 `src/gui/main_tabs/system_status_tab_surface.py` — the whole empty state
 
 ```python
-HEADING = "System Status"
+HEADING = "Status"
 ISSUE = 34
 BUILT = False
 STATE_TEXT = "This tab is not built."
@@ -3512,8 +3521,8 @@ and in the same order. It holds no list of its own. `main_window.state` reports
 registered panel that calls that label's bridge method.
 
 ```
-Trading  Market Inspector  Bot Swarm  Asset Charts  History
-Simulator  Console  Paper Trader  System Status  Proof of Accumulation
+Sim  Paper  Live  Charts  Inspector
+Swarm  Accumulation  History  Status  Console
 ```
 
 A module that draws a screen inside a dialog registers no bridge method and
@@ -3735,10 +3744,11 @@ tabs are built from, and the delegate that draws the fold-tranche row borders.
 `fold_tokens.py` keeps its dash. Its colours are on the drawn rows, and the
 file names no screen of its own.
 
-The Paper Trader, Proof of Accumulation and System Status tabs have no Qt
-module to replace and no React module to replace it with, so the table carries
-no row for them. `empty_tabs.py` draws all three as skeletons, and its own row
-reads `builds the shell`.
+When that count was taken the Paper Trader, Proof of Accumulation and System
+Status tabs had no Qt module to replace and no React module to replace it with,
+so the table carried no row for them. `empty_tabs.py` drew all three empty, and
+its own row read `builds the shell`. Issue #19 has since built the Paper tab,
+which now has a Qt module and a React module of its own.
 
 In development.
 
@@ -3921,10 +3931,11 @@ offered before it is on it now.
 
 ### The three tabs with nothing behind them yet
 
-Paper Trader, System Status and Proof of Accumulation are named on the tab bar
-and are not built. Each one draws a heading, a sentence saying the tab is not
-built, and the issue that carries the build-out. Every word of it comes from
-that tab's own Python surface, so the page invents nothing.
+Paper Trader, System Status and Proof of Accumulation were named on the tab bar
+and were not built when that count was taken. Each one drew a heading, a
+sentence saying the tab is not built, and the issue that carries the build-out.
+Every word of it came from that tab's own Python surface, so the page invented
+nothing. Two of the three are still empty; issue #19 built the Paper tab.
 
 ```python
     return {

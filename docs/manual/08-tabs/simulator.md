@@ -1,8 +1,8 @@
 # Simulator Tab
 
 Reference. The second step of [the promotion pipeline](promotion-pipeline.md):
-the live fleet, replayed against stored history. The screen is under rebuild as
-issue #117.
+the live fleet, replayed against stored history. Issue #117 rebuilt the screen,
+and it carries three modes: Validation, Back Test and Portfolio Battery.
 
 ## The clone the tab draws now
 
@@ -1221,15 +1221,14 @@ SPANS = (FULL_SPAN,) + tuple(PERIODS)
 
 ## Nuclear Mode
 
-`NuclearModePanel` in `src/gui/simulator_tab/nuclear_mode_panel.py` drives the
-controller. The controller loops the same state-file fleet over the tablet
-window until stopped, recording each cycle so a late failure traces back to the
-cycle that produced it. Start needs the window's async loop; without it the
-panel says so and no soak begins.
-The Simulator rebuild removed this file; it is not in the tree.
+`NuclearModePanel` drove the controller. The controller looped the same
+state-file fleet over the tablet window until stopped, recording each cycle so a
+late failure traced back to the cycle that produced it. Start needed the
+window's async loop; without it the panel said so and no soak began.
+The operator cancelled Nuclear Mode and the rebuild deleted its code, so none of
+the files this section names is in the tree.
 
-`src/simulator/nuclear_fleet_controller.py` — `NuclearFleetController`
-The Simulator rebuild removed this file; it is not in the tree.
+`NuclearFleetController`, in the Simulator package the rebuild deleted
 
 ```python
 class NuclearFleetController:
@@ -1240,10 +1239,9 @@ class NuclearFleetController:
     """
 ```
 
-The market structure varies per loop, and nothing on disk is touched.
+The market structure varied per loop, and nothing on disk was touched.
 
-`src/simulator/nuclear_candle_source.py` — `noised_series`
-The Simulator rebuild removed this file; it is not in the tree.
+`noised_series`, in the candle source the rebuild deleted
 
 ```python
 def noised_series(
@@ -1257,8 +1255,9 @@ def noised_series(
     """
 ```
 
-A second oscillator supplies the load pulse, and it is capped while its cooling
-regime holds, because the pulse shares a machine with the live trading engine.
+A second oscillator supplied the load pulse, and it was capped while its cooling
+regime held, because the pulse shared a machine with the live trading engine.
+That module is still in the tree and nothing constructs it.
 
 `src/core/system_load_oscillator.py` — `SystemLoadOscillator`
 
@@ -1272,9 +1271,10 @@ class SystemLoadOscillator:
     """
 ```
 
-`set_swarm_hooks` connects the controller to three methods on the Bot Swarm tab,
-which is how a nuclear run draws its rows in the sim layer of that swarm.
-`set_topologies` replays a Market Inspector proposal shape across the sim bots.
+`set_swarm_hooks` connected the controller to three methods on the Swarm tab,
+which is how a nuclear run drew its rows in the sim layer of that swarm.
+`set_topologies` replayed a Market Inspector proposal shape across the sim bots.
+Neither name is in the tree now.
 
 | Hook | Fires when |
 | ---- | ---------- |
@@ -1282,13 +1282,12 @@ which is how a nuclear run draws its rows in the sim layer of that swarm.
 | `update_sim_run` | A cycle reports |
 | `stop_sim_run` | The run ends |
 
-The panel's own visuals stay empty for a whole run. It feeds the shared price
+The panel's own visuals stayed empty for a whole run. It fed the shared price
 chart and the shared voting readout from four fields — the symbol, the last
 price, the last volume and the voting summary — and the controller's snapshot
-carries none of them.
+carried none of them.
 
-`src/simulator/nuclear_fleet_controller.py` — `NuclearFleetController.snapshot`
-The Simulator rebuild removed this file; it is not in the tree.
+`NuclearFleetController.snapshot`, in the controller the rebuild deleted
 
 ```python
     def snapshot(self) -> dict:
@@ -1314,12 +1313,11 @@ The Simulator rebuild removed this file; it is not in the tree.
         }
 ```
 
-Nuclear is not a validator. It runs after trade-logic alignment is earned, its
-noised tape is deliberately not history, and its criteria are coverage and
-survival.
+Nuclear was not a validator. It was to run after trade-logic alignment was
+earned, its noised tape was deliberately not history, and its criteria were
+coverage and survival. The operator cancelled it before that point was reached.
 
-`src/gui/simulator_tab/nuclear_mode_panel.py` — what the panel is for
-The Simulator rebuild removed this file; it is not in the tree.
+`NuclearModePanel`, in the panel the rebuild deleted — what it was for
 
 ```python
 NOT A VALIDATOR. Nuclear runs AFTER trade-logic alignment is proven on
@@ -1328,21 +1326,22 @@ nothing here compares its output to YTD or live. Its criteria are
 coverage and survival.
 ```
 
-`NuclearController` in `src/simulator/nuclear_controller.py` is the earlier
+`NuclearController` was the earlier
 single-tape prototype: one scout bot walking one tape. Nothing under the source
-tree constructs it, and it stays because both controllers share the noise
+tree constructed it, and it stayed because both controllers shared the noise
 source.
-The Simulator rebuild removed this file; it is not in the tree.
 
-`src/gui/simulator_tab/nuclear_mode_panel.py` — why the prototype stays
-The Simulator rebuild removed this file; it is not in the tree.
+`NuclearModePanel`, in the panel the rebuild deleted — why the prototype stayed
 
 ```python
 `nuclear_controller.py` and `nuclear_candle_source.py` are deliberately
 NOT deleted: the latter owns `noised_series`, which v2 depends on for
 exactly the market-structure noise above.
 ```
-The Simulator rebuild removed the files above; they are not in the tree.
+
+That comment recorded the state before the cancellation. Every file named in
+this section was deleted with the rest of the old Simulator, and no Nuclear Mode
+runs.
 
 ## Bridge
 
