@@ -353,9 +353,10 @@ Six competing strategies were run over the same canonical 39 cases.
 carries the per-run rows, and no commit on any branch ever added one. The
 figures above are a record, not a measurement anything here reproduces.
 
-**The Simulator tab did not produce them and could not.** It is not built, and
-issue #117 carries its rebuild. Nothing a reader can run in this product today
-re-derives the table above.
+**The Simulator tab did not produce them and could not.** It was not built when
+the table was recorded, and issue #117 has since rebuilt it. Its Portfolio
+Battery walks the RA-StoneTablets rather than the runs above, so nothing a
+reader can run in this product re-derives the table.
 
 The queries, and the control that proves they can find a file:
 

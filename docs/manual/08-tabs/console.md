@@ -181,7 +181,7 @@ self._signal_drain_ticks = getattr(self, "_signal_drain_ticks", 0) + 1
 
 ## Where the lower pane goes
 
-The signal pane belongs to the System Status tab once that screen exists. See
+The signal pane belongs to the Status tab once that screen exists. See
 [system-status.md](system-status.md).
 
 ## Bridge

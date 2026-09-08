@@ -1,7 +1,7 @@
 # Proof of Accumulation
 
 Reference. **Not built.** The window builds neither the Competition tab nor the
-Local Testnet tab. The tab row carries a Proof of Accumulation skeleton in
+Local Testnet tab. The tab row carries an empty tab labelled Accumulation in
 their place, and issue #147 carries the build-out. `src/competition/` is the
 Proof of Accumulation package, and its engine runs today with no screen in
 front of it. The rest of this file describes that engine and the contract
@@ -26,7 +26,7 @@ and no trophy.
 `src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — the whole empty state
 
 ```python
-HEADING = "Proof of Accumulation"
+HEADING = "Accumulation"
 ISSUE = 147
 BUILT = False
 STATE_TEXT = "This tab is not built."
