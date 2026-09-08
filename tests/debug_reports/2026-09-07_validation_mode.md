@@ -14,6 +14,31 @@ before  2b1946b9560593d7e437805a62e9770a5aed28af0827251bb84c0125862abc7e
 after   2b1946b9560593d7e437805a62e9770a5aed28af0827251bb84c0125862abc7e
 ```
 
+**It then changed while this unit was being written up, and the running platform
+is the writer.** The file holds one key, `privacy_mask`, which the live window
+writes when Privacy Mode is pressed.
+
+The proof is a rerun. The whole driver was run again against the new value: it
+builds both tabs, runs Validation on both, and leaves the file byte-identical
+and its modification time untouched.
+
+```
+before this rerun   f366f42f0e49b4b3468f301b4f2f701669cc13005cfe1ebac7a56988ec376423
+after this rerun    f366f42f0e49b4b3468f301b4f2f701669cc13005cfe1ebac7a56988ec376423
+modification time   unchanged at 20:26:00.967185 across the whole rerun
+```
+
+The live process was writing its own tree throughout, and no interpreter of this
+unit's was alive.
+
+```
+~/.acervator/bot_state.json            20:28:23
+~/.acervator/recovery/last_snapshot.json  20:28:48
+~/.acervator_logs/heartbeat.txt        20:29:08
+~/.acervator_logs/console/system.log   20:29:08
+python processes owned by this unit    none
+```
+
 The live Stone Tablets, the gate log and `bot_state.json` were read where they
 are and never written. The trade files were written into a throwaway directory
 through `ACERVATOR_YTD_TRADES_ROOT`, so no run touched the runtime tree. No
