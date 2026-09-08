@@ -26,14 +26,54 @@ The manual is a design document as well as a description. It says what each
 part of the platform is meant to be, and some of those parts are not built yet.
 Read it that way.
 
-Built and running on live capital: the Trading tab, the Market Inspector, the
-Bot Swarm, the Asset Charts, the History tab and the Console.
+Built and running on live capital: the Live tab, the Market Inspector, the
+Bot Swarm, the Asset Charts, the History tab and the Console. The Trading tab
+is the Live tab renamed.
 
-**Not built: the Simulator, the Paper Trader, System Status and Proof of Accumulation.** The
-manual describes each of the four at length as a design. This product ships no
-backtesting engine, no paper-trading engine and no competition screen. Each one
+**Built since: the Simulator and the Paper Trader. Not built: System Status and
+Proof of Accumulation.** The
+manual describes each of the four at length as a design. This product ships a
+backtesting engine, a paper-trading engine and no competition screen. Each one
 is named again, with its issue, under
-[the map](#three-subsystems-that-are-not-built).
+[the map](#four-subsystems-and-the-two-not-built).
+
+The window carries ten tabs. Every label is one word, and the order below is
+what the bar ends with.
+
+`src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
+
+```python
+CANONICAL_TAB_ORDER = (
+    SIM_TAB,
+    PAPER_TAB,
+    LIVE_TAB,
+    CHARTS_TAB,
+    INSPECTOR_TAB,
+    SWARM_TAB,
+    ACCUMULATION_TAB,
+    HISTORY_TAB,
+    STATUS_TAB,
+    CONSOLE_TAB,
+)
+```
+
+The Simulator was rebuilt and runs three modes: Validation, Back Test and
+Portfolio Battery. Nuclear Mode is cancelled and its code is deleted. The Paper
+Trader runs in real time against the venue's public market feed with a fake
+balance held in memory. Both reach their data downstream only: each source
+object answers a fixed set of read names and raises `SendRefused` for every
+other name, so neither can express an order.
+
+`src/simulator/tablet_source.py` — the Simulator's one data path
+
+```python
+class SendRefused(AttributeError):
+```
+
+Stone Tablets are the data layer under both. The live tablets sit under
+`~/.acervator/stone_tablets` and carry the assets the operator trades.
+RA-StoneTablets sit under `~/.acervator_ra_tablets` and carry the daily prices
+for the 35 portfolios the Portfolio Battery runs.
 
 ```
 Price rises → SCRUM (sell excess above target → fold queue fills)
@@ -521,27 +561,21 @@ if self._corr_min <= corr <= self._corr_max:
 
 **Design intention.** The findings are meant to leave the screen. A separate
 module turns those signals into swarm proposals with the bots and the wires
-already written, and one push target exists today: the Simulator asks the
-Inspector for its current proposals at build time.
+already written, and one push target was built for the Simulator: it asked the
+Inspector for its current proposals at build time. The Simulator rebuild
+removed that wiring, so no push target exists today. The Inspector still
+publishes the proposals and no tab reads them.
 
-`src/gui/main_tabs/simulator_tab.py` — `_build_simulator_tab`
-The Simulator rebuild removed this file; it is not in the tree.
+`src/gui/main_tabs/market_inspector_surface.py` — `current_topology_proposals`
 
 ```python
-if hasattr(self._simulator, "set_topology_getter"):
-    self._simulator.set_topology_getter(
-        lambda: (
-            self._market_inspector.current_topology_proposals()
-            if hasattr(
-                getattr(self, "_market_inspector", None),
-                "current_topology_proposals",
-            )
-            else []
-        )
-    )
+def current_topology_proposals(self) -> list:
+    """The proposals on display, for a simulator to read."""
+    pane = self.topologies_pane
+    getter = getattr(pane, "current_proposals", None)
 ```
 
-No Paper Trader exists to push to; entry 17 gives the measurement. Issue #23
+A Paper Trader exists to push to; entry 17 gives the measurement. Issue #23
 tracks the tab's build-out and the topology and oppositional pushes, and
 issue #290 a live connector defect on Refresh.
 
@@ -774,8 +808,8 @@ tranches do not match the scrum that spawned them (issue #367), the list is not
 visible and lifetime counters reset (issue #133), and the Units column prints a
 quantity that does not exist (issue #201). One more sits behind them. The
 capital reservation registry answers before a sale is placed, and of the five
-bot construction sites only the two Simulator controllers hand the bot a
-registry (issue #427).
+bot construction sites none hands the bot a registry. The two Simulator
+controllers that did are deleted with Nuclear Mode (issue #427).
 
 ### 12 - Technical Analysis Indicator Confidence Tiers
 
@@ -1070,11 +1104,18 @@ def weighted_score(self) -> float:
 
 **Goodness of fit is not built.** The phrase names the work of comparing the
 Simulator against the live platform, and the criterion for that comparison is
-gates latching identically on the same data. The measure has no settled
+gates latching identically on the same data. Validation Mode now measures that
+criterion: it reruns the shipped chains on the candle each recorded trade sits
+on and counts the nineteen gate lights that agree. The measure itself has no
+settled
 definition yet and nothing here to attach it to, so nothing is proposed. Issue
 #117 carries it.
 
-In development.
+`src/simulator/validation.py` — the agreement count
+
+```python
+    """How many of the nineteen lights read the same on both sides."""
+```
 
 Two standing defects touch the panel. The API Interaction Log still tells the
 operator that seven indicators read the candles (issue #417), and eight
@@ -1084,30 +1125,39 @@ indicator implementations depart from their published formulae (issue #414).
 
 Acervator has many unique characteristics and many of these are rooted in attempting to protect an investor from themselves. As such, I have designed a means of self-contained strategy testing that is meant to educate and validate before any attempt at using the platform against actual personal funds is ever attempted. Some may be confident or skilled enough to skip these protective steps. That is an individual user choice. I did not follow this workflow while developing it but I know exactly how my strategy works and when it is not. Given this, the intended workflow for a new user of Acervator should be Simulator > Paper Trader > Live. The system is configured so that the relevant operational elements, such as the Market Inspector, can inject Simulator and Paper equivalents into the appropriate Bot Swarm layers or bot fleet under the respective tab.
 
-**Functional.** Three of the four stages exist. The Market Inspector tab and the
-Simulator tab are both built and inserted, and the Simulator is handed the
-Inspector's proposals at build time, so a proposal reaches the back test. Live
-is the Trading tab, and it is first in the canonical order.
+**Functional.** Three of the four stages existed and all four exist now. The
+Market Inspector tab, the
+Simulator tab and the Paper Trader tab are built and inserted. The Simulator is
+no longer handed the
+Inspector's proposals at build time, so no proposal reaches the back test. Live
+is the Trading tab renamed, and it is third in the canonical order, behind Sim
+and Paper.
 
-`src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
+The Simulator runs three modes. Validation snaps each recorded YTD trade onto
+the Stone Tablet candle whose period holds it, reruns the shipped scrum and
+fold chains there, and reports how many of the nineteen gate lights read the
+same as the recorded ones. Back Test walks a bot over a Stone Tablet tape
+through those same chains, keeping units, cash and tranches. Portfolio Battery
+walks every symbol of the 35 portfolios over its RA-StoneTablet and reports
+each run against buy and hold.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the three modes
 
 ```python
-CANONICAL_TAB_ORDER = (
-    TRADING_TAB,
-    MARKET_INSPECTOR_TAB,
-    BOT_SWARM_TAB,
-    ASSET_CHARTS_TAB,
-    HISTORY_TAB,
-    SIMULATOR_TAB,
-    CONSOLE_TAB,
-)
+MODE_VALIDATION = "validation"
+MODE_BACK_TEST = "back_test"
+MODE_PORTFOLIO_BATTERY = "portfolio_battery"
+MODES = (MODE_VALIDATION, MODE_BACK_TEST, MODE_PORTFOLIO_BATTERY)
 ```
 
-**The Paper stage is not built.** No file named for it exists in the tree, and
-none was ever committed on any branch. A history query across every commit
-returns no such path, while the same query returns two entries for the bot
-brain. The only tracked path matching the word is a manual page. The code states
-the same in its own defaults.
+Nuclear Mode is cancelled. Its controller, its panel and its practice venue are
+deleted, and no module under `src/` builds one.
+
+**The Paper stage is built.** A file named for it exists in the tree:
+`src/gui/main_tabs/paper_trader_tab.py` inserts the tab, and `src/paper/` holds
+the engine behind it — the fake balance, the live feed, the fleet read out of
+`bot_state.json`, and the shipped gate chains walked at the wall clock. The
+stock window keeps the older default and the crypto window does not read it.
 
 `src/gui/main_tabs/stock_main_window_surface.py` — the declared default
 
@@ -1121,14 +1171,21 @@ market in real time before real money reaches it, and its defining property is
 that it runs at the market's own pace. What it should share with Live and what
 it must fork is settled: one trading logic, three data sources. What it should
 not do is import the live stateful shells. That is a build, not a repair, and it
-is gated behind the Simulator rebuild.
+shipped after the Simulator rebuild.
+
+`src/paper/fleet_source.py` — the forked record
+
+```python
+class PaperBot:
+```
 
 Issue #19 covers the build-out. Two surfaces that tell the operator a Paper
 Trader is present are issues #422 and #426. Issue #117 tracks the Simulator
 rebuild that gates it.
 
-Today the workflow runs Market Inspector, then Simulator, then Live. The Paper
-stage is an intention.
+Today the workflow runs Simulator, then Paper Trader, then Live. The Paper
+stage is no longer an intention. The Market Inspector reaches none of the
+three, so a proposal is still carried across by hand.
 
 ---
 
@@ -1181,7 +1238,10 @@ pages are larger than a README GitHub will render, and the front page is cut at
 are one click away. Every row is one section, with its own link.
 
 The rendered book is [`docs/Acervator-Product-Manual.pdf`](docs/Acervator-Product-Manual.pdf),
-built from the same pages.
+built from the same pages. `tools/build_product_manual.py` reads the manual's
+own table in [`docs/manual/README.md`](docs/manual/README.md) and renders the
+27 pages that table names. The book runs to 346 printed pages, and it refuses
+any page under `docs/manual/` the table does not name.
 
 ### Part 3 — System Architecture and Features Catalogue
 
@@ -1353,25 +1413,28 @@ built from the same pages.
 
 **[The Development Chronicle](docs/manual/14-development-chronicle.md)**
 
-- [April and May: 127 sessions, and not one diff](docs/manual/14-development-chronicle.md#april-and-may-127-sessions-and-not-one-diff)
-- [June: the record thins out and then stops](docs/manual/14-development-chronicle.md#june-the-record-thins-out-and-then-stops)
-- [4 to 25 August: the changelog nobody noticed had gone](docs/manual/14-development-chronicle.md#4-to-25-august-the-changelog-nobody-noticed-had-gone)
-- [18 August: the upload](docs/manual/14-development-chronicle.md#18-august-the-upload)
-- [19 to 22 August: reading it for the first time](docs/manual/14-development-chronicle.md#19-to-22-august-reading-it-for-the-first-time)
-- [23 to 25 August: gates that could not say no](docs/manual/14-development-chronicle.md#23-to-25-august-gates-that-could-not-say-no)
-- [24 August: nine months of green over a dead Simulator](docs/manual/14-development-chronicle.md#24-august-nine-months-of-green-over-a-dead-simulator)
-- [25 August: joining two histories, and a scrub that swung too hard](docs/manual/14-development-chronicle.md#25-august-joining-two-histories-and-a-scrub-that-swung-too-hard)
-- [26 to 27 August: the demolition](docs/manual/14-development-chronicle.md#26-to-27-august-the-demolition)
-- [27 to 28 August: the version number that went backwards](docs/manual/14-development-chronicle.md#27-to-28-august-the-version-number-that-went-backwards)
-- [29 August onward: converting the interface by measurement](docs/manual/14-development-chronicle.md#29-august-onward-converting-the-interface-by-measurement)
-- [1 to 5 September: reading every comment in the tree](docs/manual/14-development-chronicle.md#1-to-5-september-reading-every-comment-in-the-tree)
-- [The suppression markers, and why one green says nothing about another](docs/manual/14-development-chronicle.md#the-suppression-markers-and-why-one-green-says-nothing-about-another)
-- [4 September: pointing the instruments at themselves](docs/manual/14-development-chronicle.md#4-september-pointing-the-instruments-at-themselves)
-- [Two defects worth the whole audit](docs/manual/14-development-chronicle.md#two-defects-worth-the-whole-audit)
-- [Where the work stands, 5 September 2026](docs/manual/14-development-chronicle.md#where-the-work-stands-5-september-2026)
-- [Two repairs this repository cannot show you](docs/manual/14-development-chronicle.md#two-repairs-this-repository-cannot-show-you)
-- [What the record cannot show](docs/manual/14-development-chronicle.md#what-the-record-cannot-show)
-- [A note on the two archived records](docs/manual/14-development-chronicle.md#a-note-on-the-two-archived-records)
+The page carries its own title and nothing under it. The author removed its 571
+lines on 6 September 2026, in commit `c324126`. Its nineteen sections were:
+
+- April and May: 127 sessions, and not one diff
+- June: the record thins out and then stops
+- 4 to 25 August: the changelog nobody noticed had gone
+- 18 August: the upload
+- 19 to 22 August: reading it for the first time
+- 23 to 25 August: gates that could not say no
+- 24 August: nine months of green over a dead Simulator
+- 25 August: joining two histories, and a scrub that swung too hard
+- 26 to 27 August: the demolition
+- 27 to 28 August: the version number that went backwards
+- 29 August onward: converting the interface by measurement
+- 1 to 5 September: reading every comment in the tree
+- The suppression markers, and why one green says nothing about another
+- 4 September: pointing the instruments at themselves
+- Two defects worth the whole audit
+- Where the work stands, 5 September 2026
+- Two repairs this repository cannot show you
+- What the record cannot show
+- A note on the two archived records
 
 ### The figure inventory
 
@@ -1384,20 +1447,42 @@ built from the same pages.
 - [The second figure set — Part 9's VWAP charts](docs/manual/FIGURES.md#the-second-figure-set--part-9s-vwap-charts)
 - [What produces each set](docs/manual/FIGURES.md#what-produces-each-set)
 
-### Three subsystems that are not built
+### Four subsystems, and the two not built
 
-The manual carries a design page for each of these. None of the three is built,
-so none of them is mapped above.
+The manual carries a design page for each of these. Three were listed here as
+unbuilt. Two of the four are built, and the page each of the two has is mapped
+above.
 
 **Simulator.** His own heading for it reads *Simulator Tab (Hot Mess; Complete
-Rebuild In Progress)*. It is not built.
+Rebuild In Progress)*. The heading predates the rebuild. It is built.
 
-In development. Issue [#117](https://github.com/Acervator-LLC/ACERVATOR/issues/117).
+`src/gui/main_tabs/simulator_tab_surface.py` — the tab's own record
+
+```python
+HEADING = "Sim"
+ISSUE = 117
+BUILT = True
+```
+
+Issue [#117](https://github.com/Acervator-LLC/ACERVATOR/issues/117).
 
 **Paper Trader.** His own heading for it reads *Paper Trader Tab (To Be
-Built)*. Scaffolding at best.
+Built)*. The heading predates the build. It is built.
 
-In development. Issue [#19](https://github.com/Acervator-LLC/ACERVATOR/issues/19).
+`src/gui/main_tabs/paper_trader_tab_surface.py` — the tab's own record
+
+```python
+HEADING = "Paper"
+ISSUE = 19
+BUILT = True
+```
+
+Issue [#19](https://github.com/Acervator-LLC/ACERVATOR/issues/19).
+
+**System Status.** Scaffolding at best. Its tab draws an empty state naming the
+issue that carries its build-out.
+
+In development. Issue [#34](https://github.com/Acervator-LLC/ACERVATOR/issues/34).
 
 **Proof of Accumulation.** Scaffolding at best. Neither of its two screens is
 built.
@@ -1439,9 +1524,9 @@ pip install -e ".[build]"     # PyInstaller host
 pip install -e ".[dev]"       # ruff, mypy, bandit, vulture, pytest, stubs
 ```
 
-One of the twelve is psutil. Nuclear Mode reads processor load through it, and
-without it there is no load probe at all — the run caps its own load multiplier
-rather than reading the load as zero.
+One of the twelve is psutil. `main.py` installs it at startup when it is
+absent. Nuclear Mode read processor load through it, and Nuclear Mode is
+deleted, so no module under `src/` imports psutil today.
 
 Every build and deployment script asks one tool for the list rather than
 carrying a copy of it, so a package added to `pyproject.toml` reaches the
