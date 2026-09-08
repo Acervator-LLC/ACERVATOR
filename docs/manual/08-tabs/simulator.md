@@ -1370,4 +1370,312 @@ def build_registry() -> Dict[str, Handler]:
     """
 ```
 
+## 2026-09-08 08:17 - #117 - what the closed issues landed
+
+The old Simulator was removed and the rebuild replaced it. The tab is named Sim,
+it opens first on the bar on a black ground, and it draws a clone of the Live
+tab reading Stone Tablets. It carries three modes — Validation, Back Test and
+Portfolio Battery — and Nuclear Mode is cancelled. The rest of this section
+describes the screen that was removed and is kept as the record of what the
+rebuild replaces.
+
+```python
+def _build_simulator_tab(self) -> None:
+    """Insert the Sim tab at ``SIMULATOR_BUILD_INDEX``."""
+    self._add_empty_tab(simulator, index=SIMULATOR_BUILD_INDEX)
+```
+
+The tab stacks two panels. Fleet Replay loads every bot from the operator's own
+state file, builds one real bot per config, and plays Stone Tablet candles
+through them against a fake exchange. The sim uses the bot class body
+unchanged, which is the parity guarantee: it runs live's code against a fake
+exchange rather than a second implementation.
+
+The tab is now called Sim. It sits first on the bar, on a black ground
+with red text.
+
+`src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_spawn_sim_fleet`
+The Simulator rebuild removed this file; it is not in the tree.
+
+```python
+def _spawn_sim_fleet(self) -> int:
+    """Construct a real sim bot for every loaded config.
+
+    Returns the number spawned. Reads the Stone Tablet registry
+    through the same call Start Replay uses, rather than adding a
+    second candle path.
+```
+
+The criterion is the gates latching identically on the same data. Not profit
+and loss, and not the trade count. The sim's gate cell reads the same
+vocabulary the History table reads, which stops the two surfaces drifting
+apart.
+
+`src/gui/simulator_tab/fleet/sim_visuals.py` — `GateLightsCell`
+The Simulator rebuild removed this file; it is not in the tree.
+
+```python
+class GateLightsCell(QWidget):
+    """One linear labelled row of trading gates.
+```
+
+Nuclear Mode looped the same fleet over the tablet window with per-cycle market
+noise and a load pulse, writing over no tablet. It stood as a soak test,
+judged on coverage and survival, and it compared nothing to live. The operator
+cancelled it, its code is deleted, and the Sim tab has three modes, not four.
+
+![The Simulator tab, with no fleet loaded.](p33-i0.png)
+
+The strip along the top replaces the window's own while this tab is active. It
+names the same ten readings against sim balances, and every one draws an em
+dash in the figure, because no fleet is loaded.
+
+React draws that strip. The tab asks `variant_surface` which of the two strips
+to build, and both answer the same `set` and `clear` calls, so the fleet panel
+and Nuclear Mode write to either without knowing which they hold.
+
+`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._build_stat_strip`
+The Simulator rebuild removed this file; it is not in the tree.
+
+```python
+from ..variant_surface import SIM_STAT_STRIP, surface_class
+
+return surface_class(SIM_STAT_STRIP)(self)
+```
+
+`SimStatStripWebStrip` holds `SimStatStripModel` where the Qt strip held ten
+label pairs, and draws it with `sim_stat_strip.js` in one `QWebEngineView`. A
+field name the strip does not carry is still ignored, and an empty value still
+falls back to the em dash. Setting `ACERVATOR_VARIANT` to `qt` builds the Qt
+strip instead, unchanged.
+
+React drew the Nuclear Mode page too, before the rebuild deleted both. The tab
+asked the same seam for the panel class that it asked for the strip.
+
+`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._nuclear_panel_class`
+The Simulator rebuild removed this file; it is not in the tree.
+
+```python
+from ..variant_surface import NUCLEAR_MODE, surface_class
+
+return surface_class(NUCLEAR_MODE)
+```
+
+`NuclearModeReactPanel` inherits the Qt panel, so the fleet preview, Start,
+Stop and the half-second status tick are one piece of Python on both sides.
+Every widget write moved behind a named accessor. The Qt panel answers those
+with labels, spin boxes and tick boxes; the React panel answers them by
+writing into its view model and redrawing the page.
+
+`src/gui/react_nuclear_mode_panel.py` — `NuclearModeReactPanel._set_status_text`
+The Simulator rebuild removed this file; it is not in the tree.
+
+```python
+def _set_status_text(self, key: str, text: str) -> None:
+    """Show ``text`` on the live-status row ``key`` names."""
+    if key in self._panel.status_text:
+        self._panel.status_text[key] = text
+        self.push()
+```
+
+The page draws the header card, the fleet readout, the four run settings, the
+Start and Stop buttons and the seventeen live-status rows. A press on the page
+runs the inherited Python and comes back as a redraw. Setting the variant to
+`qt` builds the Qt panel instead, unchanged.
+
+The two drawn panels follow the same route. `SimPriceVwapChartReact` inherits
+the price and VWAP chart, so the ticks, the thinning and the trade markers stay
+one piece of Python, and `GateStatusPanelReact` inherits the gate pane.
+
+`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._price_chart_class`
+The Simulator rebuild removed this file; it is not in the tree.
+
+```python
+from ..variant_surface import SIM_PRICE_CHART, surface_class
+
+return surface_class(SIM_PRICE_CHART)
+```
+
+Neither panel is redrawn in JavaScript. Python builds the whole draw program —
+every line, box, dot and label, with its colour and its position — and
+`sim_visuals.js` runs that program on one canvas. The picture is decided on the
+Python side, so the two builds cannot draw different charts from the same ticks.
+
+`src/gui/main_tabs/sim_visuals_surface.py` — `chart_program`
+The Simulator rebuild removed this file; it is not in the tree.
+
+```python
+if not model.symbols:
+    return []
+if model.focus:
+    return focused_program(model, width_px, height_px)
+return band_program(model, width_px)
+```
+
+The gate pane draws one labelled row per bot and nineteen lights on each, and a
+gate reading written from Python changes what those lights show. An empty pane
+still says "No fleet loaded."
+
+The Fleet Replay page is the last of the four. `FleetReplayReactPanel` inherits
+the Qt panel, so Load live fleet, Fetch YTD, Reset, Start Replay, Stop and both
+timers are the same Python. Every widget write the panel used to make moved
+behind a named accessor, and the React panel answers those by writing into its
+view model.
+
+`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._fleet_replay_class`
+The Simulator rebuild removed this file; it is not in the tree.
+
+```python
+from ..variant_surface import FLEET_REPLAY, surface_class
+
+return surface_class(FLEET_REPLAY)
+```
+
+A press on the page names its own action. The panel maps that name to the
+method the Qt button was wired to, looked up on the panel itself, so the two
+sides run one piece of code.
+
+`src/gui/react_fleet_replay_panel.py` — `FleetReplayReactPanel.run_action`
+The Simulator rebuild removed this file; it is not in the tree.
+
+```python
+step = surface.ACTIONS.get(str(request.get(ACTION_KEY) or ""))
+named = self.STEP_RUNNERS.get(step)
+if named is not None:
+    getattr(self, named)()
+```
+
+Everything else on this tab is still drawn by Qt.
+
+Mode is the picker beside it. Three modes, each with its own line saying what
+it collects.
+
+`src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab.SIM_MODES`
+The Simulator rebuild removed this file; it is not in the tree.
+
+```python
+SIM_MODES = (
+    (
+        "Validation",
+        "validation",
+        "Stone Tablets paired with YTD data. Verifies trade-gate "
+        "parity at documented events.",
+    ),
+    (
+        "Looping Back Test",
+        "looping",
+        "Loops the tablets with market-restructuring noise at a fixed "
+        "rate. Strategy development and calibration.",
+    ),
+    (
+        "Nuclear",
+        "nuclear",
+        "Load oscillation, swarm injection and high-traffic smart "
+        "wire. Measures performance, stability and reliability — not "
+        "trade validity.",
+    ),
+)
+```
+
+The table under it is the same class the Trading tab uses, with the same ten
+columns and a privacy dot on each header.
+
+Column 2 is now Current Position Value, priced from the exchange, and the state
+colour it used to carry sits on the Bot ID cell. The Trading tab page describes
+both — see [The bot tables](06-trading-tab.md).
+
+`src/gui/widgets/bot_status_table.py` — `BotStatusTable.SCRUMMING_COLUMNS`
+
+```python
+SCRUMMING_COLUMNS = ColumnSpec(
+    labels=(
+        "Bot ID",
+        "Symbol",
+        "Mode",
+        "Trades",
+        "Target",
+        "Target BTC",
+        "Target ETH",
+        "Ammo",
+        "Fire",
+        "",
+    ),
+```
+
+Fleet Replay fills the left column. Load live fleet builds the bots, Fetch YTD
+pulls the year of live trades the run is compared against, and Reset clears
+both. Full evaluation widens the run. The line beside the buttons counts the
+trades and symbols the History tab front-loaded. Loaded fleet carries three
+columns: Symbol, Target USD and Sim Trades, and the last of those increments
+during a run. The progress label reads `Replay idle` until Start Replay runs,
+and Stop drains the current tick and exits.
+
+The panel says so out loud when a run cannot be compared to live, rather than
+letting a synthetic run look like a parity run.
+
+`src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_note_parity_state`
+The Simulator rebuild removed this file; it is not in the tree.
+
+```python
+def _note_parity_state(self) -> None:
+    """Say so when the run cannot be compared to live.
+```
+
+The right column stacks two panels, each with its own Expand button. The first
+charts historical price against position VWAP for the bot its picker names,
+drawn from that bot's Stone Tablet candles. The second is the same Indicator
+Voting Panel the Trading tab carries: a bot picker, the vote count badge, the
+TF Lock, the currency rate line, then the first six voters — BB, VTX, MACD,
+SRsi, Ichi and Vol — with Net, Comp and Conf, and the confidence bars under
+them. The remaining six, Sling, ADX, STrd, ZSc, KER and RSI, sit below the area
+the figure shows.
+
+Simulator Log and Gate Status close the tab. Gate Status draws the same
+nineteen lights the History table draws, and `No fleet loaded.` stands in its
+place until a fleet loads.
+
+### What is on the tab now
+
+The rebuild's first tab is on the bar. It is a clone of the Trading tab reading
+Stone Tablets: the bot list with the live table's own ten columns, the Indicator
+Voting Panel, and a second layer holding the VWAP window over the tablet
+playback window, with one button between them. The crypto news ticker and the
+data pool line are not copied, and the rows they held stay empty for Import Live
+Fleet and Generate From YTD.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the candle window
+
+```python
+#: The candle window live reads. ``ScrummingBot`` asks ``get_ohlcv`` for 100,
+#: and the Simulator reads the same count off the tablet.
+WINDOW_CANDLES = 100
+```
+
+The Simulator receives and asks; it never sends. Its one data path reads tablet
+files, holds no venue, and refuses by name anything that is not a read.
+
+### The buttons that start a Validation run
+
+Those two rows now carry the buttons that start a run. Validation snaps each YTD
+trade to the historical candle its timestamp falls in, reruns the gates on that
+candle, and puts the gate row it latched beside the gate row the log recorded.
+It passes when the gates latch identically, and it is never judged on profit or
+on a trade count.
+
+```
+Import Live Fleet    38 bots from the bot_state load, matched by bot id
+Generate From YTD    39 new bots, one per traded pair, matched by pair
+```
+
+A run always reports what it could not verify. The tablets end on 1 August 2026
+and the trade export runs to 7 September, so about five weeks of trades have no
+candle to snap to. The pane names that period and counts the entries on both
+sides of it.
+
+```
+3942 of 4904 YTD entries snapped to a candle; 962 could not be.
+uncovered span 2026-08-01T18:52:58Z to 2026-09-07T21:46:48Z
+```
+
+
 Back to [the subsystem index](README.md).

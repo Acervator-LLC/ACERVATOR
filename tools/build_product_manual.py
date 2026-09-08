@@ -119,6 +119,14 @@ TOC_TITLE_SPARE = 2
 TOC_SPARE = 1
 CARRIED_CHARS = 60
 
+# One section per tab. A tab's own name is its heading; a trailing parenthesis
+# and a trailing "Tab" are decoration and do not make a second tab.
+SUBSYSTEM_DIR = "08-tabs"
+TAB_TAIL = re.compile(r"\s*\([^()]*\)\s*$")
+TAB_WORD = re.compile(r"\s+Tab$", re.IGNORECASE)
+# An update header: the date, the time, then the issues it addressed.
+UPDATE_HEADING = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+-\s+\S")
+
 DIRECTIONS = {
     "TD": "top to bottom",
     "TB": "top to bottom",
@@ -1130,10 +1138,12 @@ def _code_flowables(block: Block, styles: dict[str, ParagraphStyle]) -> list[obj
         "code_block", parent=styles["mono"], fontSize=points, leading=points * 1.35
     )
     per_char = stringWidth("0", font_name("mono"), points) or 1.0
-    limit = int(room / per_char)
-    widest = max(len(line) for line in lines)
+    limit_chars = int(room / per_char)
+    widest_chars = max(len(line) for line in lines)
     listing = Preformatted(
-        "\n".join(lines), style, maxLineLength=None if widest <= limit else limit
+        "\n".join(lines),
+        style,
+        maxLineLength=None if widest_chars <= limit_chars else limit_chars,
     )
     tall = style.leading * len(lines) + space("pad_s") * 2 > FRAME_HEIGHT - space(
         "pad_l"
@@ -1436,6 +1446,80 @@ def written_toc_misses(pdf_path: Path) -> tuple[int, list[str]]:
     return len(rows), [
         miss for label, page in rows if (miss := toc_row_miss(pages, label, page))
     ]
+
+
+def tab_key(label: str) -> str:
+    """Return ``label`` reduced to the tab it names, with any tail parenthesis gone."""
+    core = TAB_TAIL.sub("", _normalise(plain(label)))
+    return TAB_WORD.sub("", core).strip().casefold()
+
+
+def tab_names(docs_dir: Path) -> set[str]:
+    """Return one ``tab_key`` per per-tab page under ``docs_dir``, the index apart."""
+    pages = docs_dir / SUBSYSTEM_DIR
+    if not pages.is_dir():
+        return set()
+    return {
+        tab_key(first_heading(path.read_text(encoding="utf-8")))
+        for path in sorted(pages.glob("*.md"))
+        if path.name != MANIFEST_FILE
+    }
+
+
+def repeated_tab_rows(pdf_path: Path, docs_dir: Path) -> tuple[int, list[str]]:
+    """Return how many contents rows ``pdf_path`` prints and which name one tab twice.
+
+    A row counts only when ``tab_key`` puts it in ``tab_names``, so a subheading
+    shared across the per-tab pages is not a repeat of the tab above it.
+    """
+    rows = read_toc_rows(_pdf_page_texts(pdf_path))
+    wanted = tab_names(docs_dir)
+    seen: dict[str, list[tuple[str, int]]] = {}
+    for label, page in rows:
+        key = tab_key(label)
+        if key in wanted:
+            seen.setdefault(key, []).append((label, page))
+    return len(rows), [
+        f"{key!r} is named by {len(found)} contents sections: "
+        + ", ".join(f"{label!r} on page {page}" for label, page in found)
+        for key, found in sorted(seen.items())
+        if len(found) > 1
+    ]
+
+
+def update_entries(text: str) -> list[tuple[int, str, str]]:
+    """Return one ``(line, stamp, heading)`` per dated update heading in ``text``.
+
+    ``story.entries`` reads the dates, the same reader ``DOC007`` runs, so one
+    parser serves the chronicle and the tab pages; ``UPDATE_HEADING`` keeps only
+    the headings carrying a time as well, which is what an update header adds.
+    """
+    from dev_harness.harness.rules.story import entries
+
+    out: list[tuple[int, str, str]] = []
+    for entry in entries(text):
+        stamp = UPDATE_HEADING.match(entry.heading)
+        if stamp:
+            out.append(
+                (entry.line, f"{entry.day.isoformat()} {stamp.group(2)}", entry.heading)
+            )
+    return out
+
+
+def backward_update_rows(path: Path) -> list[str]:
+    """Return why a dated update heading of ``path`` precedes the heading above it."""
+    out: list[str] = []
+    previous: tuple[int, str, str] | None = None
+    for row in update_entries(path.read_text(encoding="utf-8")):
+        if previous is not None and row[1] < previous[1]:
+            out.append(
+                f"line {row[0]}: the update stamped {row[1]} follows the one "
+                f"stamped {previous[1]} at line {previous[0]}. Updates under a "
+                f"tab run forward."
+            )
+        if previous is None or row[1] >= previous[1]:
+            previous = row
+    return out
 
 
 def verify_toc_pages(pdf_path: Path, entries: Iterable[TocEntry]) -> tuple[bool, str]:
