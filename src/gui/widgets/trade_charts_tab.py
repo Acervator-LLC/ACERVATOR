@@ -1,4 +1,4 @@
-"""Asset Charts tab: one candlestick panel, stepped between traded symbols."""
+"""Asset Charts tab: one candlestick panel, stepped between two market lists."""
 
 from __future__ import annotations
 
@@ -28,6 +28,21 @@ TICKER_TOOLTIP = "The asset on screen. Pick another from the list."
 POSITION_FORMAT = "{at} of {total}"
 EMPTY_TICKER_TEXT = "No asset"
 EMPTY_POSITION_TEXT = "0 of 0"
+
+LIST_LIVE = "live"
+LIST_ATA = "ata_smp"
+LIST_LIVE_TEXT = "Live"
+LIST_ATA_TEXT = "ATA-SMP"
+LIST_TEXTS = {LIST_LIVE: LIST_LIVE_TEXT, LIST_ATA: LIST_ATA_TEXT}
+LIST_TOGGLE_TOOLTIP = (
+    "The list the arrows walk: the traded markets, or the markets "
+    "ATA-SMP has called."
+)
+ATA_EMPTY_TICKER_TEXT = "No called market"
+ATA_EMPTY_HINT = "A market joins this list when it reaches Ready to Send."
+LIST_TOGGLE_WIDTH_PX = 92
+LIST_TOGGLE_HEIGHT_PX = 26
+ATA_EXCHANGE_ID = ""
 
 ARROW_WIDTH_PX = 34
 ARROW_HEIGHT_PX = 26
@@ -67,6 +82,13 @@ TICKER_STYLE = (
     f"QComboBox:hover {{ border: 1px solid {ds.PRIMARY}; }}"
 )
 POSITION_STYLE = f"color: {ds.TEXT_LOW}; font-size: 10px;"
+LIST_TOGGLE_STYLE = (
+    f"QPushButton {{ background: {ds.SURFACE_CONTROL}; color: {ds.PRIMARY}; "
+    f"border: 1px solid {ds.GLOW_PRIMARY_EDGE}; border-radius: 4px; "
+    "font-weight: bold; font-size: 11px; }"
+    f"QPushButton:hover {{ background: {ds.GLOW_PRIMARY_FAINT}; "
+    f"border: 1px solid {ds.PRIMARY}; }}"
+)
 
 try:
     from PySide6.QtWidgets import (
@@ -88,8 +110,9 @@ if _HAS_QT:
     class TradeChartsTab(QWidget):
         """One chart at a time, chosen with the arrows or the ticker list.
 
-        ``update_charts`` rebuilds the asset list from the bot statuses and
-        ``fetch_chart_data`` refetches only the asset on screen.
+        ``update_charts`` rebuilds both lists and ``toggle_list`` chooses
+        which one the arrows walk; ``fetch_chart_data`` refetches only the
+        asset on screen.
         """
 
         def __init__(self, parent=None):
@@ -101,8 +124,24 @@ if _HAS_QT:
 
             self._entries: list[dict] = []
             self._shown = 0
+            self._ata_entries: list[dict] = []
+            self._ata_shown = 0
+            self._ata_source = None
+            self._list_mode = LIST_LIVE
             self._followed = ""
             self._trade_log: list[dict] = []
+
+            list_row = QHBoxLayout()
+            list_row.setSpacing(SELECTOR_SPACING_PX)
+            self._list_btn = QPushButton(LIST_TEXTS[self._list_mode])
+            self._list_btn.setAccessibleName("Chart list")
+            self._list_btn.setToolTip(LIST_TOGGLE_TOOLTIP)
+            self._list_btn.setFixedSize(LIST_TOGGLE_WIDTH_PX, LIST_TOGGLE_HEIGHT_PX)
+            self._list_btn.setStyleSheet(LIST_TOGGLE_STYLE)
+            self._list_btn.clicked.connect(self.toggle_list)
+            list_row.addWidget(self._list_btn)
+            list_row.addStretch()
+            layout.addLayout(list_row)
 
             selector = QHBoxLayout()
             selector.setSpacing(SELECTOR_SPACING_PX)
@@ -163,53 +202,102 @@ if _HAS_QT:
             return self._entries
 
         @property
+        def ata_entries(self) -> list:
+            """One record per market ATA-SMP has called, in call order."""
+            return self._ata_entries
+
+        @property
+        def list_mode(self) -> str:
+            """Which of the two lists the arrows walk."""
+            return self._list_mode
+
+        @property
         def shown(self) -> int:
-            """The index into ``entries`` the panel is drawing."""
-            return self._shown
+            """The index into the list on screen the panel is drawing."""
+            return self._ata_shown if self._showing_ata() else self._shown
+
+        def _showing_ata(self) -> bool:
+            """Whether ``list_mode`` is ``LIST_ATA``."""
+            return self._list_mode == LIST_ATA
+
+        def _list_entries(self) -> list:
+            """The records of the list the arrows walk."""
+            return self._ata_entries if self._showing_ata() else self._entries
+
+        def _set_list_shown(self, at: int) -> None:
+            """Move the shown index of the list the arrows walk."""
+            if self._showing_ata():
+                self._ata_shown = at
+                return
+            self._shown = at
+
+        def _empty_ticker_text(self) -> str:
+            """The one item the ticker offers while the list on screen is empty."""
+            return ATA_EMPTY_TICKER_TEXT if self._showing_ata() else EMPTY_TICKER_TEXT
+
+        def set_ata_source(self, source) -> None:
+            """Take the callable answering the markets ATA-SMP has called.
+
+            ``PushBoard.watched_markets`` is what the running window binds here.
+            """
+            self._ata_source = source
+
+        def toggle_list(self) -> str:
+            """Move the arrows to the other list and answer the mode on screen."""
+            self._list_mode = LIST_ATA if self._list_mode == LIST_LIVE else LIST_LIVE
+            self._list_btn.setText(LIST_TEXTS[self._list_mode])
+            self._refresh_selector()
+            self._follow_current()
+            self._label_current()
+            return self._list_mode
 
         def current_entry(self) -> dict:
             """The record the panel follows, or an empty one when none exists."""
-            if not self._entries:
+            entries = self._list_entries()
+            if not entries or self.shown >= len(entries):
                 return {}
-            return self._entries[self._shown]
+            return entries[self.shown]
 
         def step(self, by: int) -> int:
             """Move the shown asset by ``by`` and answer the new index.
 
             The list wraps, so the arrows never dead-end.
             """
-            if not self._entries:
+            entries = self._list_entries()
+            if not entries:
                 return 0
-            self._shown = (self._shown + int(by)) % len(self._entries)
+            self._set_list_shown((self.shown + int(by)) % len(entries))
             self._refresh_selector()
             self._follow_current()
-            return self._shown
+            return self.shown
 
         def _on_ticker_picked(self, index: int) -> None:
             """Draw the asset the ticker list now names."""
-            if index < 0 or index >= len(self._entries) or index == self._shown:
+            if index < 0 or index >= len(self._list_entries()) or index == self.shown:
                 return
-            self._shown = index
+            self._set_list_shown(index)
             self._position_label.setText(self._position_text())
             self._follow_current()
 
         def _position_text(self) -> str:
             """Which asset this is and how many there are."""
-            if not self._entries:
+            entries = self._list_entries()
+            if not entries:
                 return EMPTY_POSITION_TEXT
-            return POSITION_FORMAT.format(at=self._shown + 1, total=len(self._entries))
+            return POSITION_FORMAT.format(at=self.shown + 1, total=len(entries))
 
         def _refresh_selector(self) -> None:
             """Refill the ticker list and re-enable the arrows."""
-            labels = [one["symbol"] for one in self._entries] or [EMPTY_TICKER_TEXT]
+            entries = self._list_entries()
+            labels = [one["symbol"] for one in entries] or [self._empty_ticker_text()]
             blocked = self._ticker_combo.blockSignals(True)
             self._ticker_combo.clear()
             self._ticker_combo.addItems(labels)
-            if self._entries:
-                self._ticker_combo.setCurrentIndex(self._shown)
+            if entries:
+                self._ticker_combo.setCurrentIndex(self.shown)
             self._ticker_combo.blockSignals(blocked)
-            self._ticker_combo.setEnabled(bool(self._entries))
-            stepping = len(self._entries) > 1
+            self._ticker_combo.setEnabled(bool(entries))
+            stepping = len(entries) > 1
             self._prev_btn.setEnabled(stepping)
             self._next_btn.setEnabled(stepping)
             self._position_label.setText(self._position_text())
@@ -247,7 +335,11 @@ if _HAS_QT:
             """
             del exchange_connectors
             held = {one["bot_id"]: one for one in self._entries}
-            shown_id = self.current_entry().get("bot_id", "")
+            shown_id = (
+                self._entries[self._shown]["bot_id"]
+                if self._shown < len(self._entries)
+                else ""
+            )
 
             rebuilt: list[dict] = []
             for status in bot_statuses or []:
@@ -278,6 +370,7 @@ if _HAS_QT:
             )
             if self._shown >= len(rebuilt):
                 self._shown = 0
+            self._rebuild_ata()
             self._refresh_selector()
             self._follow_current()
             self._label_current()
@@ -319,6 +412,51 @@ if _HAS_QT:
                         "shown_symbol": self.current_entry().get("symbol", ""),
                     },
                 )
+
+        def _rebuild_ata(self) -> None:
+            """Rebuild the ATA-SMP list from the watched-market source.
+
+            No source, or a source that raises, leaves the list empty; no
+            entry is written that the source did not answer.
+            """
+            held_symbol = (
+                self._ata_entries[self._ata_shown]["symbol"]
+                if self._ata_shown < len(self._ata_entries)
+                else ""
+            )
+            if self._ata_source is None:
+                self._ata_entries = []
+                self._ata_shown = 0
+                return
+            try:
+                watched = list(self._ata_source())
+            except Exception as exc:  # noqa: BLE001 - the board is another tab's
+                logger.debug("ATA-SMP chart list read failed: %s", exc)
+                return
+
+            known = {one["symbol"]: one for one in self._ata_entries}
+            rebuilt: list[dict] = []
+            for market in watched:
+                symbol = str(getattr(market, "symbol", ""))
+                if not symbol or WILDCARD in symbol:
+                    continue
+                entry = known.get(
+                    symbol,
+                    {
+                        "bot_id": symbol,
+                        "symbol": symbol,
+                        "exchange_id": ATA_EXCHANGE_ID,
+                        "last_fetch": 0,
+                    },
+                )
+                entry["vote"] = str(getattr(market, "vote", ""))
+                entry["timeframes"] = list(getattr(market, "timeframes", ()))
+                rebuilt.append(entry)
+
+            self._ata_entries = rebuilt
+            self._ata_shown = next(
+                (i for i, one in enumerate(rebuilt) if one["symbol"] == held_symbol), 0
+            )
 
         def _label_current(self) -> None:
             """Write the shown asset's price and state into the chart header."""
@@ -520,11 +658,12 @@ if _HAS_QT:
             self._emit_freshness(now)
 
         def _emit_freshness(self, now: float) -> None:
-            """Report how many assets have gone past three throttle windows."""
+            """Report how many assets on both lists have gone past three windows."""
             stale = 0
             never = 0
             oldest = 0.0
-            for entry in self._entries:
+            watched = self._entries + self._ata_entries
+            for entry in watched:
                 last = float(entry.get("last_fetch", 0) or 0)
                 if last <= 0:
                     never += 1
@@ -543,12 +682,14 @@ if _HAS_QT:
                     expected=0,
                     every=30.0,
                     context={
-                        "assets": len(self._entries),
+                        "assets": len(watched),
+                        "live_assets": len(self._entries),
+                        "ata_assets": len(self._ata_entries),
                         "never_fetched": never,
                         "oldest_age_s": round(oldest, AGE_DECIMALS),
                         "stale_after_s": STALE_AFTER_S,
                         "throttle_s": FETCH_THROTTLE_S,
-                        "shown": self._shown,
+                        "shown": self.shown,
                     },
                 )
 
@@ -568,11 +709,13 @@ if _HAS_QT:
         ) -> None:
             """Draw one Nuclear Mode scenario's candles without a fetch.
 
-            The bot joins the asset list if it is new, and the panel switches
+            The bot joins the Live list if it is new, and the panel switches
             to it.
             """
             from ..native_chart import Candle as NativeCandle
 
+            self._list_mode = LIST_LIVE
+            self._list_btn.setText(LIST_TEXTS[self._list_mode])
             known = next(
                 (i for i, one in enumerate(self._entries) if one["bot_id"] == bot_id),
                 None,

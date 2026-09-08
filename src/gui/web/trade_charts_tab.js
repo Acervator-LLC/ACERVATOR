@@ -18,6 +18,16 @@
   var STEPPING_ENABLED = "stepping_enabled";
   var STEP_PARAM = "step_by";
   var PICK_PARAM = "pick_at";
+  var TOGGLE_PARAM = "toggle_list";
+
+  var LIST_TEXT = "list_text";
+  var LIST_MODE = "list_mode";
+  var TOGGLE_TOOLTIP = "toggle_tooltip";
+  var TOGGLE_WIDTH = "toggle_width_px";
+  var TOGGLE_HEIGHT = "toggle_height_px";
+  var SHOWING_ATA = "showing_ata";
+  var ATA_EMPTY_HINT = "ata_empty_hint";
+  var LISTS = "lists";
 
 
   var ACCESSIBLE_NAME = "accessible_name";
@@ -30,6 +40,7 @@
   var PANEL = "panel";
   var SHOWN_ID = "shown_id";
   var SHOWN_SYMBOL = "shown_symbol";
+  var FOLLOWED = "followed";
   var DROPPED = "dropped";
   var TRADE_LOG = "trade_log";
   var LOGS = "logs";
@@ -74,8 +85,10 @@
     FETCH,
     FILTERS,
     FLOOR_FORMAT_SWITCH,
+    FOLLOWED,
     FORMATS,
     KEYS,
+    LISTS,
     LOGS,
     NUCLEAR_DEFAULTS,
     OUTCOMES,
@@ -100,8 +113,8 @@
   var SPACING = "spacing_px";
   var LAYOUT_SLOTS = "layout_slots";
 
-  // The selector row, the chart panel and the toggle row.
-  var LAYOUT_SLOT_COUNT = 3;
+  // The list-toggle row, the selector row, the chart panel and the toggle row.
+  var LAYOUT_SLOT_COUNT = 4;
 
   var SYMBOL = "symbol";
   var EXCHANGE_ID = "exchange_id";
@@ -198,6 +211,9 @@
   var TAB_PART = "tab";
   var CONTENT_PART = "content";
   var SELECTOR_PART = "asset-selector";
+  var LIST_ROW_PART = "chart-list-row";
+  var LIST_TOGGLE_PART = "chart-list-toggle";
+  var LIST_HINT_PART = "chart-list-hint";
   var PREV_PART = "asset-prev";
   var NEXT_PART = "asset-next";
   var TICKER_PART = "asset-ticker";
@@ -235,6 +251,8 @@
   var DELETED_ATTR = "data-deleted";
   var CONNECTED_ATTR = "data-timeframe-connected";
   var CHART_TF_ATTR = "data-chart-timeframe";
+  var LIST_ATTR = "data-list-mode";
+  var LISTED_ATTR = "data-listed";
   var SLOTS_ATTR = "data-layout-slots";
   var MOUNTED_ATTR = "data-mounted";
   var DECLARED_ATTR = "data-declared-panels";
@@ -575,6 +593,45 @@
     return element(DIV_TAG, mountProps, element(DIV_TAG, errorProps, errorText));
   }
 
+  // The Live / ATA-SMP toggle, above the arrows and the ticker list.
+  function ListToggle(props) {
+    var selector = props.selector;
+    var rowProps = {
+      style: {
+        display: FLEX,
+        flexDirection: ROW,
+        alignItems: CENTER,
+        flex: FLEX_NONE,
+        gap: spacing(selector[SPACING])
+      }
+    };
+    rowProps[PART_ATTR] = LIST_ROW_PART;
+    rowProps[LIST_ATTR] = text(selector[LIST_MODE]);
+
+    var toggleProps = {
+      style: {
+        width: height(selector[TOGGLE_WIDTH]),
+        height: height(selector[TOGGLE_HEIGHT]),
+        flex: FLEX_NONE
+      },
+      title: text(selector[TOGGLE_TOOLTIP]),
+      onClick: function () {
+        assetChosen(TOGGLE_PARAM, true);
+      }
+    };
+    toggleProps[PART_ATTR] = LIST_TOGGLE_PART;
+    toggleProps[ARIA_LABEL] = label(selector[TOGGLE_TOOLTIP]);
+    toggleProps.key = LIST_TOGGLE_PART;
+
+    var drawn = [element(BUTTON_TAG, toggleProps, text(selector[LIST_TEXT]))];
+    if (selector[SHOWING_ATA] === true && !props.listed) {
+      var hintProps = { key: LIST_HINT_PART, style: { flex: FLEX_NONE } };
+      hintProps[PART_ATTR] = LIST_HINT_PART;
+      drawn.push(element(DIV_TAG, hintProps, text(selector[ATA_EMPTY_HINT])));
+    }
+    return element(DIV_TAG, rowProps, drawn);
+  }
+
   // The arrows, the ticker list and the readout that says which of how many.
   function Selector(props) {
     var selector = props.selector;
@@ -686,22 +743,30 @@
     );
   }
 
-  // The selector row over the one chart panel Qt draws.
+  // The toggle row and the selector row over the one chart panel Qt draws.
   function Content(props) {
     var model = props.model;
     var content = objectField(model, CONTENT);
     var known = knownOrder(model);
     var shownId = text(model[SHOWN_ID]);
+    var selectorBag = objectField(model, SELECTOR);
     var contentProps = { style: boxStyle(content, COLUMN) };
     contentProps[PART_ATTR] = CONTENT_PART;
     contentProps[SLOTS_ATTR] = text(content[LAYOUT_SLOTS]);
     contentProps[MOUNTED_ATTR] = String(known.length ? ONE : ZERO);
     contentProps[DECLARED_ATTR] = text(model[ASSET_COUNT]);
+    contentProps[LIST_ATTR] = text(selectorBag[LIST_MODE]);
+    contentProps[LISTED_ATTR] = text(listField(model, ASSET_ORDER).length);
 
     var drawn = [
+      element(ListToggle, {
+        key: LIST_ROW_PART,
+        selector: selectorBag,
+        listed: listField(model, ASSET_ORDER).length
+      }),
       element(Selector, {
         key: SELECTOR_PART,
-        selector: objectField(model, SELECTOR)
+        selector: selectorBag
       })
     ];
     if (known.length) {
@@ -913,14 +978,16 @@
     );
   }
 
+  // The surface and this module must name the same number of tab rows.
   function checkSlots(model) {
     var content = objectField(model, CONTENT);
-    if (!owns(content, LAYOUT_SLOTS) || !owns(content, STRETCH_SLOTS)) {
+    if (!owns(content, LAYOUT_SLOTS)) {
       return;
     }
-    var mounted = mountedOrder(model).length;
-    if (content[LAYOUT_SLOTS] !== mounted + content[STRETCH_SLOTS]) {
-      chartFaults.push(fault(CONTENT, LAYOUT_SLOTS, DISAGREES_FAULT, mounted));
+    if (content[LAYOUT_SLOTS] !== LAYOUT_SLOT_COUNT) {
+      chartFaults.push(
+        fault(CONTENT, LAYOUT_SLOTS, DISAGREES_FAULT, LAYOUT_SLOT_COUNT)
+      );
     }
   }
 
@@ -1093,6 +1160,14 @@
 
   function selector() {
     return bag(SELECTOR);
+  }
+
+  function lists() {
+    return bag(LISTS);
+  }
+
+  function listMode() {
+    return held === null ? undefined : objectField(held.model, SELECTOR)[LIST_MODE];
   }
 
   function container() {
@@ -1331,6 +1406,8 @@
     method: METHOD,
     Tab: Tab,
     Content: Content,
+    ListToggle: ListToggle,
+    Selector: Selector,
     Panel: Panel,
     PanelHeader: PanelHeader,
     PanelSource: PanelSource,
@@ -1339,6 +1416,8 @@
     field: field,
     declaredNames: declaredNames,
     selector: selector,
+    lists: lists,
+    listMode: listMode,
     shownPanel: shownPanel,
     container: container,
     content: content,

@@ -208,4 +208,119 @@ Three methods serve this screen.
 | `trade_charts_tab.state` | `trade_charts_tab.js` |
 | `tradingview.chart` | `tradingview_chart.js` |
 
+## 2026-09-08 13:30 - #407 - a Live / ATA-SMP toggle over the arrows
+
+The tab now walks two lists of markets. Live is the markets the bots are
+trading. ATA-SMP is the markets the TA engine has called and queued. One
+selector serves both: the arrows, the ticker menu and the readout all follow
+whichever list the toggle names.
+
+The toggle is a button on its own row, above the blue arrows and the ticker
+menu. It reads the list on screen, so the button says Live while the Live list
+is up and ATA-SMP while the called markets are up.
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` — the two lists and their words
+
+```python
+LIST_LIVE = "live"
+LIST_ATA = "ata_smp"
+LIST_MODES = (LIST_LIVE, LIST_ATA)
+LIST_LIVE_TEXT = "Live"
+LIST_ATA_TEXT = "ATA-SMP"
+```
+
+Pressing the toggle swaps the list, points the chart at that list's own
+selected market, and writes its header. Each list remembers where it was, so
+coming back to Live returns to the asset that was on screen.
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` — pressing the toggle
+
+```python
+def toggle_list(self) -> str:
+    """Move the arrows to the other list and answer the mode on screen."""
+    self.list_mode = LIST_ATA if self.list_mode == LIST_LIVE else LIST_LIVE
+    self.calls.append([SELECT_LIST_TOGGLED, self.list_mode, len(self.list_order())])
+    self._follow_shown()
+    self._label_shown()
+    self._feed_shown()
+    return self.list_mode
+```
+
+A market joins the ATA-SMP list when it reaches the Ready to Send bucket. It
+does not have to be posted. A call that is queued and then declined is still
+tracked, because the trigger is the bucket rather than the delivery.
+
+The tab holds no register of its own. It reads the markets through a callable
+the Market Inspector hands it, so the list the operator walks and the calls
+phase seven is watching are one set of markets read twice.
+
+`src/gui/main_tabs/market_inspector_tab.py` — where the two are joined
+
+```python
+def _wire_ata_chart_list(self, inspector: Any) -> None:
+    """Point the Charts tab's ATA-SMP list at ``inspector``'s ``PushBoard``.
+
+    The Charts tab is built first, so it reads the board through a
+    callable instead of holding a second copy of the markets.
+    """
+```
+
+No entry is ever invented. With nothing bound, or with an empty bucket, the
+ticker offers one line reading No called market, the readout says 0 of 0, the
+arrows go grey, and a note beside the toggle says what the list is waiting for.
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` — the empty state's own words
+
+```python
+ATA_EMPTY_TICKER_TEXT = "No called market"
+ATA_EMPTY_HINT = "A market joins this list when it reaches Ready to Send."
+```
+
+An ATA-SMP market has no bot behind it, so the chart draws its candles without
+the trade markers, the target lines, the tranche floors and the fire glow that a
+traded asset carries. Nuclear Mode returns the tab to the Live list before it
+draws, because a Nuclear scenario belongs to a bot.
+
+**Figures.** This page carries no figure. The screen changed on this date and no
+capture of the toggle row exists yet, so the paragraphs above are the only
+record of it.
+
+## 2026-09-08 13:30 - #407 - the arrows now reach the renderer
+
+The React half of this tab drew the arrows and the ticker menu, and pressing
+either one changed nothing. The buttons called the bridge with the step it
+wanted, and the handler read every other request field and dropped that one, so
+the answer that came back was the state the tab was already in.
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` — the three the handler now reads
+
+```python
+        params.get("step_by"),
+        params.get("pick_at"),
+        params.get("toggle_list", False),
+```
+
+The same tab also refused to draw at all under the renderer. One of its own
+checks read a name the file never declared, which stopped the whole payload
+before a single row was placed. The check now compares the number of rows the
+Python side declares against the number the renderer draws, which is the
+disagreement it was written to catch.
+
+`src/gui/web/trade_charts_tab.js` — the check, repaired
+
+```javascript
+  // The surface and this module must name the same number of tab rows.
+  function checkSlots(model) {
+    var content = objectField(model, CONTENT);
+    if (!owns(content, LAYOUT_SLOTS)) {
+      return;
+    }
+    if (content[LAYOUT_SLOTS] !== LAYOUT_SLOT_COUNT) {
+      chartFaults.push(
+        fault(CONTENT, LAYOUT_SLOTS, DISAGREES_FAULT, LAYOUT_SLOT_COUNT)
+      );
+    }
+  }
+```
+
 Back to [the subsystem index](README.md).

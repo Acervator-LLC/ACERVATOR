@@ -40,4 +40,17 @@ class MarketInspectorTabMixin:
             lambda: self._build_topology_proposals()
         )
         self._market_inspector.set_adopt_handler(self._adopt_topology_proposal)
+        self._wire_ata_chart_list(self._market_inspector)
         self._main_tabs.addTab(self._market_inspector, INSPECTOR_TAB)
+
+    def _wire_ata_chart_list(self, inspector: Any) -> None:
+        """Point the Charts tab's ATA-SMP list at ``inspector``'s ``PushBoard``.
+
+        The Charts tab is built first, so it reads the board through a
+        callable instead of holding a second copy of the markets.
+        """
+        charts = getattr(self, "_charts_tab", None)
+        if charts is None or not hasattr(charts, "set_ata_source"):
+            logger.debug("Charts tab offers no set_ata_source; ATA-SMP list is empty")
+            return
+        charts.set_ata_source(inspector.watched_markets)
