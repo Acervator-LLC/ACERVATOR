@@ -44,10 +44,12 @@ Each hook in `dev_harness/hooks/` runs at the event below.
 These files sit in the directory and no event runs them.
 
 - `block_delegated_canon.py` — copied to `~/.claude/hooks/`, controls two-sided
-  over 7 payloads, 0 wrong. Refuses a `Workflow` script whose `agent(...)` call
-  carries a canon run in its arguments. A script that authors, one that runs the
-  canon itself through `bash(...)`, and one that only quotes a canon command all
-  exit 0.
+  over 11 payloads, 0 wrong. Refuses a `Workflow` script whose `agent(...)` call
+  carries a canon run in its arguments, including a name built by `+` or by a
+  template slot. A script that authors, one that runs the canon itself through
+  `bash(...)`, one that only quotes a canon command, and one that names an
+  archetype without instructing a run all exit 0. Over the 195 workflow scripts
+  on disk, 132 carry a canon run inside an agent call and 63 do not.
 - `block_deflection.py` — copied to `~/.claude/hooks/`, controls two-sided (a
   deflection exits 2, the same words behind `>` exit 0).
 - `block_banned_words.py` — copied to `~/.claude/hooks/`, controls two-sided

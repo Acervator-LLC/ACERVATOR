@@ -1,8 +1,9 @@
 """delegated_canon.py — a canon run handed to a spawned agent.
 
-`SPAWN_TOKENS` holds the callee words that dispatch an agent, and `CANON_RUN`
-matches a canon tool named as a program to run. `scan` reports DC001 for such a
-dispatch and DC002 for a `PROCESS_SPAWNERS` call whose argv carries both.
+`SPAWN_TOKENS` holds the callee words that dispatch an agent, `CANON_COMMAND`
+matches a canon tool named as a program, and `CANON_NAME` needs an unnegated
+`RUN_VERB` beside it. `scan` reports DC001 for such a dispatch and DC002 for a
+`PROCESS_SPAWNERS` call whose argv carries both.
 """
 
 from __future__ import annotations
@@ -19,8 +20,9 @@ FALSIFICATION = (
     "dev_harness/touchset.py, which submits run_archetype to a thread pool; "
     "(b) it fires on a file that only imports or names an archetype; (c) it "
     "stays quiet on a call whose callee carries an agent token and whose "
-    "arguments carry a canon command string; (d) callee_tokens splits MAGENTA "
-    "or User-Agent into a token equal to agent. Known gap: CANON_RUN reads "
+    "arguments carry a canon command string, including one built by "
+    "concatenation or by a format slot; (d) callee_tokens splits MAGENTA or "
+    "User-Agent into a token equal to agent. Known gap: canon_hits reads "
     "string literals, so a prompt assembled in a variable and passed by name "
     "is not visible here."
 )
@@ -59,38 +61,49 @@ PROCESS_SPAWNERS = frozenset(
 SPAWNER_ROOTS = frozenset({"subprocess", "os", "asyncio"})
 
 _TOOLS = (
-    "pdb",
-    "debugpy",
-    "black",
-    "flake8",
-    "ruff",
-    "mypy",
-    "pyright",
-    "bandit",
-    "vulture",
-    "semgrep",
-    "vale",
-    "proselint",
+    "pdb|debugpy|black|flake8|ruff|mypy|pyright|bandit|vulture|semgrep"
+    "|vale|proselint"
 )
 
-_TOOL_ALT = "|".join(_TOOLS)
+_RUN = r"(?:run|runs|running|re-?run|re-?runs|invoke|execute|drive)"
 
-#: A canon tool named as a program to run, never as a bare word.
-CANON_RUN = re.compile(
+_ARTICLE = r"(?:the\s+|an?\s+|each\s+|every\s+|both\s+|its\s+|their\s+)*"
+
+#: A canon tool named as a program to run. A match needs no other word.
+CANON_COMMAND = re.compile(
     r"dev_harness\.harness\.\w*archetype"
     r"|\bcheck_release_readiness\b"
     r"|\btools[./]local_ci\b"
-    r"|-m\s+(?:[\w.]+\.)?(?:" + _TOOL_ALT + r")\b"
-    r"|\b(?:coding|ta|gui|docs|truth|watchdog)[ _-]archetypes?\b"
-    r"|\b(?:run|runs|running|invoke|execute|drive)\s+"
-    r"(?:the\s+|an?\s+|each\s+|every\s+|its\s+|their\s+)*"
-    r"(?:" + _TOOL_ALT + r"|debugger|archetypes?|canon|release gate)\b",
+    r"|-m\s+(?:[\w.]+\.)?(?:" + _TOOLS + r")\b"
+    r"|\b" + _RUN + r"\s+" + _ARTICLE + r"(?:" + _TOOLS + r"|debugger"
+    r"|archetypes?|release\s+gate)\b",
     re.IGNORECASE,
 )
+
+#: A canon tool named by word. A match fires only beside an unnegated RUN_VERB.
+CANON_NAME = re.compile(
+    r"\b(?:coding|ta|gui|docs|truth|watchdog)[ _-]archetypes?\b",
+    re.IGNORECASE,
+)
+
+RUN_VERB = re.compile(r"\b" + _RUN + r"\b", re.IGNORECASE)
+
+#: A refusal standing in front of a run verb, which then instructs nothing.
+NEGATED = re.compile(
+    r"\b(?:do\s+not|does\s+not|don'?t|never|no\s+need\s+to|without|avoid)\s+"
+    r"(?:\w+\s+){0,2}$",
+    re.IGNORECASE,
+)
+
+#: The window a negation must sit in to disarm the run verb after it.
+NEGATION_LOOKBACK = 25
 
 _CAMEL = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+")
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
+
+#: A format slot splicing a value into a name, dropped before a name is read.
+PLACEHOLDER = re.compile(r"\$\{[^{}]*\}|\{[A-Za-z0-9_]*\}|%[sdrfi]")
 
 
 def callee_tokens(name: str) -> set[str]:
@@ -114,26 +127,60 @@ def dotted_name(node: ast.AST) -> str:
     return ""
 
 
+def folded(node: ast.AST) -> str:
+    """Return the constant string leaves of `node`, concatenated in source order.
+
+    An `ast.Add` chain folds to one text, so `"a." + kind + "_b"` reads as `a._b`.
+    """
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return folded(node.left) + folded(node.right)
+    if isinstance(node, ast.JoinedStr):
+        return "".join(folded(part) for part in node.values)
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return ""
+
+
 def call_strings(call: ast.Call) -> list[str]:
-    """Return every string literal inside `call`, f-string parts concatenated."""
+    """Return every string literal inside `call`, plus each folded `Add` chain."""
     out: list[str] = []
     for node in ast.walk(call):
-        if isinstance(node, ast.JoinedStr):
-            joined = "".join(
-                part.value
-                for part in node.values
-                if isinstance(part, ast.Constant) and isinstance(part.value, str)
-            )
-            if joined:
-                out.append(joined)
+        if isinstance(node, (ast.JoinedStr, ast.BinOp)):
+            text = folded(node)
+            if text:
+                out.append(text)
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             out.append(node.value)
     return out
 
 
+def instructs_a_run(text: str) -> bool:
+    """True when `text` carries a `RUN_VERB` that no `NEGATED` phrase disarms."""
+    for match in RUN_VERB.finditer(text):
+        before = text[max(0, match.start() - NEGATION_LOOKBACK) : match.start()]
+        if not NEGATED.search(before):
+            return True
+    return False
+
+
+def canon_hit(text: str) -> str:
+    """Return the canon `text` names, empty when it names none.
+
+    A `CANON_NAME` counts only when `instructs_a_run` also holds for `text`.
+    """
+    for reading in (text, PLACEHOLDER.sub("", text)):
+        command = CANON_COMMAND.search(reading)
+        if command:
+            return command.group(0)
+        named = CANON_NAME.search(reading)
+        if named and instructs_a_run(reading):
+            return named.group(0)
+    return ""
+
+
 def canon_hits(texts: list[str]) -> list[str]:
-    """Return the `CANON_RUN` match of each text of `texts` naming a canon run."""
-    return [m.group(0) for text in texts for m in [CANON_RUN.search(text)] if m]
+    """Return the canon each text of `texts` names, the empty ones dropped."""
+    return [hit for hit in (canon_hit(text) for text in texts) if hit]
 
 
 def is_agent_dispatch(name: str) -> bool:
