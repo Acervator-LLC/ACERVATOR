@@ -18,10 +18,10 @@ literally the same code in both modes: normalisation, `_parse_order`,
 fee reading, `AssetInfo` construction, retries, rate limiting.
 
 The strongest evidence that the seam is in the right place is
-`test_the_ccxt_limit_quirk_reproduces_itself`: live's `get_ohlcv` passes
-`limit` into ccxt's `since` slot, so live silently receives 300 candles
-instead of the 100 it asked for. Nothing in the backend implements that.
-It falls out of declaring ccxt's real signature.
+`test_the_requested_limit_is_the_row_count_returned`: live's `get_ohlcv`
+passes `limit` into ccxt's `limit` slot, and the backend returns that
+many rows. Nothing in the backend implements that. It falls out of
+declaring ccxt's real signature.
 """
 
 from __future__ import annotations
@@ -86,21 +86,16 @@ class TestLiveIsUntouched:
 
 class TestTheConnectorRunsUnmodifiedOverTablets:
     @pytest.mark.asyncio
-    async def test_the_ccxt_limit_quirk_reproduces_itself(self):
-        """THE LOAD-BEARING TEST.
-
-        `CCXTConnector.get_ohlcv` calls `fetch_ohlcv(symbol, timeframe,
-        limit)` positionally against ccxt's real signature
-        `(symbol, timeframe, since, limit)`, so the limit lands in
-        `since` and the exchange returns its default page. Live asks for
-        100 and gets 300.
-
-        The backend contains no rule producing that. It declares the
-        real signature and the behaviour follows.
-        """
+    async def test_the_requested_limit_is_the_row_count_returned(self):
+        """A failure means `get_ohlcv` no longer passes `limit` in ccxt's
+        limit slot, so callers get a page size they did not ask for."""
         conn, _ = _wired()
-        rows = await conn.get_ohlcv("BTC/USD", "5m", limit=100)
-        assert len(rows) == DEFAULT_PAGE_SIZE == 300
+        for limit in (100, 250, DEFAULT_PAGE_SIZE):
+            rows = await conn.get_ohlcv("BTC/USD", "5m", limit=limit)
+            assert len(rows) == limit, (
+                f"asked {limit}, received {len(rows)}; the connector is not "
+                f"passing limit in ccxt's limit slot"
+            )
 
     def test_a_caller_that_names_limit_still_gets_it(self):
         """NEGATIVE CONTROL. If the backend simply ignored `limit`, the
