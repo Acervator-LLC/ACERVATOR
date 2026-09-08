@@ -1,15 +1,16 @@
 # Paper Trader Tab
 
 Reference. The third step of [the promotion pipeline](promotion-pipeline.md).
-The screen is not built. The tab row carries a skeleton, and issue #19 carries
-the build-out.
+Issue #19 built the screen. The tab row carried an empty tab until that build
+landed, and [The screen as it stands now](#the-screen-as-it-stands-now)
+describes what draws there today.
 
-## The skeleton
+## The empty tab it replaced
 
-The tab exists and draws three lines: its name, one sentence saying it is not
-built, and the issue that owns it. It reads no bot, no price and no trade.
+The tab drew three lines: its name, one sentence saying it was not
+built, and the issue that owned it. It read no bot, no price and no trade.
 
-`src/gui/main_tabs/paper_trader_tab_surface.py` — the whole empty state
+`src/gui/main_tabs/paper_trader_tab_surface.py` — the empty state it carried
 
 ```python
 HEADING = "Paper Trader"
@@ -45,14 +46,16 @@ the exercise ending on the first dip.
 target_balance: float = 200.0  # Balance the bot trades relative to
 ```
 
-Paper sits behind two gates. The Simulator must first reproduce the gate
-latches, and Nuclear Mode must survive its loops. Neither is earned yet.
+Paper sat behind the Simulator, which had to reproduce the gate latches first.
+Nuclear Mode was to be a second gate; the operator cancelled it, so one gate
+remains and issue #19 built the tab after the Simulator rebuild landed.
 
-## Where the platform still offers it
+## Where the platform once offered it
 
-Two live surfaces name the step. The first is the Bot Swarm tab's third
+Two live surfaces named the step. The first is the Swarm tab's third
 sub-tab, labelled Paper Swarm. Its Start button flips a flag and relabels
 itself. No bot is constructed, no feed is attached and no order is recorded.
+Its caption is an empty string now, so the sub-tab promises nothing.
 
 `src/gui/bot_visualizer.py` — the Start handler inside `_create_paper_bot_row`
 
@@ -64,16 +67,16 @@ def _toggle():
 ```
 
 The second is the wing toggle on the header strip. Pressing it swaps the whole
-wing and writes a line naming that wing's own Paper Trader. Neither wing has
-one.
+wing. The Qt window no longer names a Paper Trader in the line it writes, and
+the React mirror still does, so the two hosts print different text.
 
-`src/gui/main_window.py` — `_toggle_trading_mode`, the line it writes
+`src/gui/main_tabs/main_window_surface.py` — the line the React mirror writes
 
 ```python
-"→ STOCK WING: equity exchanges + equity Paper Trader. "
+"→ STOCK WING: equity exchanges + equity Paper Trader. (Crypto wing paused.)"
 ```
 
-Issue #422 carries the first caption and issue #426 the second.
+Issues #422 and #426 both folded into issue #19, which built the tab.
 
 ## The screen as it stands now
 

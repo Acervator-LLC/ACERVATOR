@@ -11,11 +11,13 @@ area holding one panel per active bot.
 
 ```python
 def _build_charts_tab(self) -> None:
-    """Build the Asset Charts tab and add it to the main tab widget."""
-    # --- Tab 2: Charts ---
+    """Build the Charts tab and add it to the main tab widget."""
     self._charts_tab = TradeChartsTab()
-    self._main_tabs.addTab(self._charts_tab, "Asset Charts")
+    self._main_tabs.addTab(self._charts_tab, CHARTS_TAB)
 ```
+
+Issue #450 renamed the tab from Asset Charts to Charts, and `CHARTS_TAB` holds
+that one word.
 
 One method rebuilds that panel set from the current roster.
 
