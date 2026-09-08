@@ -89,8 +89,8 @@ class KaufmanERIndicator:
             confidence=confidence,
             weight=self.weight,
             details={
-                "er": round(er, 4),
-                "er_prev": round(er_prev, 4),
+                "er": er,
+                "er_prev": er_prev,
                 "er_rising": er_rising,
                 "er_falling": er_falling,
                 "ideal_ranging": ideal_ranging,
