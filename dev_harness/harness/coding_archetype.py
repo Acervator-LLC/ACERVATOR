@@ -435,6 +435,7 @@ class CodingArchetype:
                 # archetypes skip both.
                 ("slop", "dev_harness.harness.rules.slop"),
                 ("numeric_guard", "dev_harness.harness.rules.numeric_guard"),
+                ("delegated_canon", "dev_harness.harness.rules.delegated_canon"),
             ),
             (".py",),
         )

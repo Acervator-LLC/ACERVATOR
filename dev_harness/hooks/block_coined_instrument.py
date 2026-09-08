@@ -2,7 +2,7 @@
 
 `COINED` names the words used for something written here and dressed as
 standard, and `OFFICIAL` names the tools that are actually imported. `main`
-returns 2 when `COINED` appears as a thing being made.
+returns 2 when `COINED` appears as a thing being made, outside `speakable`.
 """
 
 import json
@@ -10,6 +10,9 @@ import re
 import sys
 
 GATED_TOOLS = {"Agent", "SendMessage", "Write", "NotebookEdit"}
+
+FENCE = re.compile(r"```.*?```", re.DOTALL)
+QUOTED = re.compile(r"^\s*>.*$", re.MULTILINE)
 
 COINED = re.compile(
     r"\b(?:probes?|pins?|pinning|collectors?|checkers?|verifiers?"
@@ -32,6 +35,11 @@ OFFICIAL = re.compile(
 )
 
 
+def speakable(text):
+    """Returns the proposing text of `text`, fenced and quoted parts dropped."""
+    return QUOTED.sub(" ", FENCE.sub(" ", text))
+
+
 def text_of(payload):
     """Returns the text a tool call carries, across the tool shapes."""
     data = payload.get("tool_input") or {}
@@ -44,7 +52,7 @@ def coined_makings(text):
     """Returns the coined words that appear within reach of a making verb."""
     found = []
     for match in COINED.finditer(text):
-        window = text[max(0, match.start() - 120):match.end() + 120]
+        window = text[max(0, match.start() - 120) : match.end() + 120]
         if MAKING.search(window):
             found.append(match.group(0).lower())
     return found
@@ -58,7 +66,7 @@ def main():
         return 0
     if payload.get("tool_name") not in GATED_TOOLS:
         return 0
-    text = text_of(payload)
+    text = speakable(text_of(payload))
     if not text.strip():
         return 0
     found = coined_makings(text)
