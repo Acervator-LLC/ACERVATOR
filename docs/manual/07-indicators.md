@@ -1244,6 +1244,134 @@ The same run read the other eleven voters back over one tape at 88 bars of each
 price scale, and every reading is identical, which is what a repair to one
 indicator has to look like.
 
+
+## 2026-09-08 15:54 - #414 - when ADX first has something to say
+
+Wilder's ADX needs two runs of bars before it exists. The first is fourteen
+bars of true range and directional movement, which seed the smoothing. The
+second is fourteen DX values, which the ADX is the average of. Twenty-eight
+bars, and not one more. The [ADX and DMI entry](#adx-and-dmi) above states the
+formula and the code computes it.
+
+```
++DI    = 100 * Wilder(+DM, 14) / Wilder(TR, 14)
+-DI    = 100 * Wilder(-DM, 14) / Wilder(TR, 14)
+DX     = 100 * |+DI - -DI| / (+DI + -DI)
+ADX    = Wilder(DX, 14)          first value at bar 28
+```
+
+The indicator refused to vote until thirty bars had arrived. The extra two came
+from the first upload and never had a reason. On those two bars the market had
+moved, the ADX existed, and the panel counted eleven voters instead of twelve.
+
+`src/trading/indicators/adx.py` — when the indicator speaks
+
+```python
+n = len(candles)
+# period bars seed the smoothed TR, and period DX values seed the ADX.
+if n < self.period * 2:
+```
+
+The bar the ADX first exists on has no earlier ADX to compare against. The
+module read a zero from the padding the smoothing writes ahead of its first
+real value, so the rising flag on that bar was decided against a number that
+was never a reading. The readings now start where the padding ends.
+
+`src/trading/indicators/adx.py` — the previous reading
+
+```python
+adx_values = s_dx[self.period - 1 :]
+adx = adx_values[-1] if adx_values else 0.0
+p_adx = adx_values[-2] if len(adx_values) >= 2 else adx
+```
+
+The indicator also gave every reader its ADX cut to two decimal places, and the
+directional lines with it. The ADX Trend Suppression gate is one of those
+readers and compares the number against 30.0. The indicator now publishes what
+it computed.
+
+`src/trading/indicators/adx.py` — what the reading carries
+
+```python
+details={
+    "adx": adx,
+    "di_plus": di_plus,
+    "di_minus": di_minus,
+```
+
+Eight parts of the platform read those three numbers. Three build the same gate
+input: the live bot's tick, the Simulator's back test and the ATA gate scan.
+Five display it and each cuts it themselves, so the panel cell still prints a
+whole number and the ATA-SMP sentence still prints two decimals.
+
+| reader | what it shows |
+| --- | --- |
+| `scrumming_bot.py` gate input | the full reading, `23.968874676972366` |
+| `back_test.py` gate input | the full reading |
+| `ata_gate_scan.py` gate input | the full reading |
+| `ata_spm.py` sentence | `trend strength ADX 23.97`, unchanged |
+| `indicator_panel.py` cell | `24`, unchanged |
+| `indicator_panel_surface.py` cell | `24`, unchanged |
+| `indicator_panel_surface.py` hover | `23.969`, was `23.970` |
+| `snapshots.py` bot log line | `(adx 23.9689)`, was `(adx 23.97)` |
+
+The bot log printed whatever the indicator published, so it now cuts a decimal
+reading to four places of its own.
+
+`src/trading/scrumming/snapshots.py` — the bot log cell
+
+```python
+reading = cell.get("detail")
+if reading is not None:
+    shown = f"{reading:.4f}" if isinstance(reading, float) else reading
+```
+
+Measured over 71 recorded Coinbase tapes, run at a price of three millionths of
+a dollar and again at a four-figure price. The run drove 42,140 readings
+through the real voting engine and the real scrum chain, from a window of
+twenty-six bars upward.
+
+```
+abstentions   before 280 per price scale    after 140 per price scale
+readings that moved
+    the two recovered bars           280
+    the published decimal places  41,580
+scrum verdict changed
+    the two recovered bars           136
+    the published decimal places       0
+```
+
+Every abstention that remains is a window under twenty-eight bars, where
+Wilder's ADX does not exist. Every one that ended is a window of twenty-eight
+or twenty-nine bars, where it did.
+
+```
+ADA 2021, window 27 bars, both price scales
+    before   abstained     13 DX values, one short of the fourteen
+    after    abstained     the same reason
+
+ADA 2021, window 28 bars, both price scales
+    before   abstained     the guard asked for 30 bars
+    after    ADX 21.847870255087297  bullish at 0.3121
+
+ADA 2023, window 28 bars, both price scales
+    before   gate reads 0.0                 scrum allowed
+    after    gate reads 74.20924187088121   scrum blocked
+```
+
+The last row is what the repair changes about a live reading. A bot that has
+just started, or one whose exchange returned a short window, spent two bars
+firing scrums into a trend the ADX could already measure. The panel felt it
+too: on the ADA 2021 bar the twelfth voter arriving moved the net score from
+0.7437 to 1.0558 and the consensus confidence from 0.1352 to 0.1624, and across
+the sweep the consensus direction itself changed on 58 readings.
+
+The reading carries no price scale. Every number above is the same at three
+millionths of a dollar and at a four-figure price, to the last few bits.
+
+The same run read the other eleven voters back over one tape at 88 bars of each
+price scale, and every reading is identical.
+
 ## Trading gate logic chain
 
 The epigraph on the [title page](01-title.md) reads *dissolvendus

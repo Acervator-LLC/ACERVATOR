@@ -95,8 +95,10 @@ def _panel_line(summary: Optional[VotingSummary]) -> str:
         direction = str(cell.get("dir", "") or UNKNOWN_DIRECTION)
         confidence = float(cell.get("conf", 0.0) or 0.0)
         text = indicator if direction == NEUTRAL else f"{indicator} {confidence:.2f}"
-        if cell.get("detail") is not None:
-            text = f"{text} ({cell['detail_key']} {cell['detail']})"
+        reading = cell.get("detail")
+        if reading is not None:
+            shown = f"{reading:.4f}" if isinstance(reading, float) else reading
+            text = f"{text} ({cell['detail_key']} {shown})"
         grouped.setdefault(direction, []).append((confidence, text))
     counts = ", ".join(f"{len(grouped[name])} {name.lower()}" for name in _PANEL_GROUPS)
     rows = [f"Panel {counts}."]

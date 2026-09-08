@@ -46,7 +46,8 @@ class ADXIndicator:
 
     def compute(self, candles: list, timeframe: str = "1h") -> Signal:
         n = len(candles)
-        if n < self.period * 2 + 2:
+        # period bars seed the smoothed TR, and period DX values seed the ADX.
+        if n < self.period * 2:
             return Signal(
                 "adx",
                 timeframe,
@@ -75,6 +76,8 @@ class ADXIndicator:
         s_dmm = self._wilder_smooth(dm_minus, self.period)
         s_tr = self._wilder_smooth(tr_list, self.period)
 
+        # s_tr[-1] reaches 0.0 only on a halted window, where DI is 0/0 and
+        # adx abstains.
         if not s_tr or s_tr[-1] <= 0.0:
             return Signal(
                 "adx",
@@ -109,8 +112,11 @@ class ADXIndicator:
         # first real value.
         _dx_valid = dx_series[self.period - 1 :]
         s_dx = self._wilder_smooth(_dx_valid, self.period)
-        adx = s_dx[-1] if s_dx else 0.0
-        p_adx = s_dx[-2] if len(s_dx) >= 2 else adx
+        # s_dx carries the same zero pad, so the ADX readings start at the
+        # same offset.
+        adx_values = s_dx[self.period - 1 :]
+        adx = adx_values[-1] if adx_values else 0.0
+        p_adx = adx_values[-2] if len(adx_values) >= 2 else adx
 
         ranging = adx < 20
         developing = 20 <= adx < 35
@@ -146,9 +152,9 @@ class ADXIndicator:
             confidence=confidence,
             weight=self.weight,
             details={
-                "adx": round(adx, 2),
-                "di_plus": round(di_plus, 2),
-                "di_minus": round(di_minus, 2),
+                "adx": adx,
+                "di_plus": di_plus,
+                "di_minus": di_minus,
                 "ranging": ranging,
                 "developing": developing,
                 "strong_trend": strong_trend,
