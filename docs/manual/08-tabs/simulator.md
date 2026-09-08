@@ -1072,6 +1072,153 @@ entry: ZZZTEST coinbase 5m 701 candles read back: 701
 live root unchanged: True 407
 ```
 
+## Portfolio Battery Mode
+
+The third mode runs the thirty-five archive portfolios over their own price
+history. Every symbol streams its daily bars through the same gate chain a live
+bot ticks, at three timeframes, and each result is set against what holding that
+symbol untraded would have paid over the same span.
+
+`src/simulator/portfolio_battery.py` — the three timeframes
+
+```python
+#: The timeframes a daily tablet builds, spelled as ``HTF_TIMEFRAMES`` spells
+#: them.
+TIMEFRAMES = ("1d", "1w", "1M")
+```
+
+### The baseline comes off the same walk
+
+Buy and hold is not a figure carried over from the archive. It is the capital
+the symbol opened with, carried from the opening price to the closing price of
+the same walk, so the two sides cannot read different prices.
+
+`src/simulator/portfolio_battery.py` — the baseline
+
+```python
+    @property
+    def baseline_usd(self) -> float:
+        """``capital_usd`` carried from ``start_price`` to ``end_price``,
+        untraded."""
+        if self.start_price <= 0.0:
+            return 0.0
+        return self.capital_usd * self.end_price / self.start_price
+```
+
+### One gate chain, fed a different source
+
+The battery defines no gate of its own. It hands its bars to the Back Test
+walker, which builds the shipped scrum and fold chains and reads their answer.
+
+`src/simulator/portfolio_battery.py` — the walk
+
+```python
+    bot = battery_bot(asset, exchange_id, timeframe, capital_usd)
+    result = walk(bot, candles_from_raw(bars), walk_step(len(bars), ticks))
+```
+
+### A weekly and a monthly bar are folded, never invented
+
+The tablets hold one bar a day. A coarser bar is the calendar bucket its days
+fall in: the first open, the highest high, the lowest low, the last close and
+the summed volume. A trailing bucket is kept as it stands rather than padded out.
+
+`src/simulator/portfolio_battery.py` — one folded bar
+
+```python
+def fold_bucket(rows: Sequence[Sequence[float]]) -> list[float]:
+    """One bar from ``rows``: first open, highest high, lowest low, last close,
+    summed volume."""
+    return [
+        float(rows[0][0]),
+        float(rows[0][1]),
+        max(float(one[2]) for one in rows),
+        min(float(one[3]) for one in rows),
+        float(rows[-1][4]),
+        sum(float(one[5]) for one in rows),
+    ]
+```
+
+### Three symbols hold no tablet
+
+CCIV, IPOF and EXPR stopped trading and no source served them. A portfolio
+holding one runs on the symbols that exist and reports the share of its capital
+that reached no tape. That share is a column on every row, beside the count of
+symbols that ran.
+
+`src/simulator/portfolio_battery.py` — the missing share
+
+```python
+    @property
+    def missing_weight(self) -> float:
+        """``missing_usd`` as a share of every symbol's ``capital_usd``."""
+        whole = sum(one.capital_usd for one in self.runs)
+        return self.missing_usd / whole if whole > 0.0 else 0.0
+```
+
+### The two ways into a battery
+
+The two rows the removed strips left carry one portfolio and all of them. A
+portfolio selector and a span selector sit under the mode selector, and the span
+list is the archive's six periods followed by the whole tape.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the two ways in
+
+```python
+BATTERY_ROWS: tuple[dict[str, Any], ...] = (
+    {
+        "name": NEWS_TICKER_ROW,
+        "height_px": 24,
+        "action": RUN_PORTFOLIO_ACTION,
+        "text": RUN_PORTFOLIO_TEXT,
+        "button_name": button_name(RUN_PORTFOLIO_ACTION),
+    },
+    {
+        "name": DATA_POOL_ROW,
+        "height_px": 18,
+        "action": RUN_EVERY_PORTFOLIO_ACTION,
+        "text": RUN_EVERY_PORTFOLIO_TEXT,
+        "button_name": button_name(RUN_EVERY_PORTFOLIO_ACTION),
+    },
+)
+```
+
+### What one battery measured
+
+SPAC_BUST over the archive's Apr24-Apr25 period, driven through the Qt tab.
+Three of its five symbols have a tablet. The accumulation logic ended ahead of
+buy and hold at the daily bar and at the weekly bar. The monthly bar holds
+twelve bars, under the thirty the Bollinger window and the voting engine need,
+so it reports no run rather than a result.
+
+```
+SPAC_BUST  1d  3 of 5  756 bars  669 ticks  35 trades
+           buy and hold $390.75   accumulation $415.60   +24.85 (+6.36%)
+SPAC_BUST  1w  3 of 5  159 bars   72 ticks   6 trades
+           buy and hold $458.26   accumulation $478.74   +20.48 (+4.47%)
+SPAC_BUST  1M  0 of 5    0 bars    0 ticks   0 trades   missing weight 100%
+
+missing: IPOF (no_tablet), CCIV (no_tablet)
+7 recorded gaps fall inside the span
+```
+
+Every portfolio over the whole tape reads 189 symbol runs in 26 seconds. Twelve
+of the thirty-five ended ahead of their own buy and hold at one timeframe or
+more.
+
+### It is not a Monte Carlo
+
+A Monte Carlo samples many paths and reports the spread of what they pay. This
+mode reads one recorded path per symbol, so it reports one outcome per timeframe
+and no distribution. Nothing on the screen carries a percentile.
+
+`src/simulator/portfolio_battery.py` — the spans, one recorded path each
+
+```python
+#: Every span a run may be asked for: the archive's six, and the whole tape.
+SPANS = (FULL_SPAN,) + tuple(PERIODS)
+```
+
 ## Nuclear Mode
 
 `NuclearModePanel` in `src/gui/simulator_tab/nuclear_mode_panel.py` drives the
