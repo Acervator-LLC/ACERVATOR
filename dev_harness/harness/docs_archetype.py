@@ -105,7 +105,7 @@ class DocsArchetype:
 
     name = "documentation_quality"
     version = "1.3"
-    tools = ("proselint", "vale", "structure", "contents", "story")
+    tools = ("proselint", "vale", "structure", "contents", "story", "updates")
     calibration_name = "docs"
 
     def load_calibration(self) -> str:
@@ -143,6 +143,7 @@ class DocsArchetype:
                 ("vale", partial(self._run_vale, files)),
                 ("structure", partial(self._run_structure, files)),
                 ("story", partial(self._run_story, files)),
+                ("updates", partial(self._run_updates, files)),
             ]
         if pdfs:
             runners.append(("contents", partial(self._run_contents, pdfs)))
@@ -230,14 +231,19 @@ class DocsArchetype:
         return [p for p in sorted(target.rglob("*.pdf")) if not self._is_excluded(p)]
 
     def _run_contents(self, pdfs: list[Path]) -> tuple[list[Finding], str]:
-        """Report every contents row of each PDF that names a page without its title.
+        """Report every contents row of each PDF that misses its page or repeats a tab.
 
         `written_toc_misses` reads the rows off the contents page and runs
-        `toc_row_miss`, the check `build_product_manual` runs on its own build.
+        `toc_row_miss`; `repeated_tab_rows` reads the same rows and reports a tab
+        named by two sections. Both are `build_product_manual`'s own checks.
         """
         if str(REPO_ROOT) not in sys.path:
             sys.path.insert(0, str(REPO_ROOT))
-        from tools.build_product_manual import written_toc_misses
+        from tools.build_product_manual import (
+            DEFAULT_DOCS_DIR,
+            repeated_tab_rows,
+            written_toc_misses,
+        )
 
         findings: list[Finding] = []
         unread: list[str] = []
@@ -246,19 +252,50 @@ class DocsArchetype:
             if not rows:
                 unread.append(pdf.name)
                 continue
+            _, repeats = repeated_tab_rows(pdf, DEFAULT_DOCS_DIR)
             findings.extend(
                 Finding(
                     tool="contents",
                     severity="high",
                     file=str(pdf),
                     line=0,
-                    rule_id="DOC006",
+                    rule_id=rule_id,
                     message=message,
                 )
-                for message in misses
+                for rule_id, group in (("DOC006", misses), ("DOC011", repeats))
+                for message in group
             )
         if unread:
             return findings, f"unread: no contents rows in {', '.join(unread)}"
+        return findings, "ok"
+
+    def _run_updates(self, files: list[Path]) -> tuple[list[Finding], str]:
+        """Report every per-tab page whose dated update headings run backwards.
+
+        `backward_update_rows` reads the dates through `story.entries`, the reader
+        `DOC007` runs, so one parser serves the chronicle and the per-tab pages.
+        """
+        if str(REPO_ROOT) not in sys.path:
+            sys.path.insert(0, str(REPO_ROOT))
+        from tools.build_product_manual import backward_update_rows, update_entries
+
+        pages = [
+            f
+            for f in files
+            if update_entries(f.read_text(encoding="utf-8", errors="replace"))
+        ]
+        findings = [
+            Finding(
+                tool="updates",
+                severity="high",
+                file=str(page),
+                line=row,
+                rule_id="DOC012",
+                message=message,
+            )
+            for page in pages
+            for row, message in [(0, m) for m in backward_update_rows(page)]
+        ]
         return findings, "ok"
 
     @staticmethod

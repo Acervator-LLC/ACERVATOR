@@ -336,4 +336,74 @@ self._testnet_tab = None
 
 Issue #147 carries the initial build-out.
 
+## 2026-09-08 08:17 - #147 - what the closed issues landed
+
+The manual names this screen Proof of Accumulation (Anonymized Trading
+Tournaments Via Blockchain) and issue #147 carries its build-out.
+
+This is currently proposed as a concept but will likely require the building of a supporting blockchain team for proper / full implementation. This system is designed to enable users of Acervator to compete against each anonymously via our own Proof of Accumulation blockchain. The idea is to convert trades executed into videogame metrics such as damage to a coliseum style monster or a fellow trader in a 1v1 face off. This further positions the platform as a surgical tool that can be finely tuned and customized to produce intense competition scenarios between entire groups of traders. This, of course, opens the door for actual tokenized Trading Guilds who may require their members to have a certain number of PoA tokens under their belt to join. There will be much more to follow on this as I do intend to scaffold it out for internal testing.
+
+The tab is now called Accumulation. It sits seventh on the bar, on the
+gold ground with red text.
+
+The screen is not built. The window builds neither the Competition tab nor the
+Local Testnet tab. The tab row now carries a Proof of Accumulation skeleton,
+which draws its name, one sentence saying it is not built, and the issue that
+owns it. Issue #147 carries the build-out. The engine behind it runs today, and
+the rest of this section is that engine.
+
+`src/gui/main_tabs/proof_of_accumulation_tab_surface.py` — the whole empty state
+
+```python
+HEADING = "Accumulation"
+ISSUE = 147
+BUILT = False
+STATE_TEXT = "This tab is not built."
+ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
+```
+
+`src/competition/` is the Proof of Accumulation package. Each bot signs every
+trade with an Ed25519 key and signs no strategy parameter, so authorship is
+provable while the method stays private.
+
+`src/competition/bot_identity.py` — `BotIdentity`
+
+```python
+class BotIdentity:
+    """
+    Manages a bot's Ed25519 keypair.  The private key never leaves this object
+    unencrypted.  The public key is the bot's network-visible identity.
+```
+
+The signed trades commit to a Merkle root a third party can verify one trade
+against without receiving the log. The competition itself runs four phases.
+
+`src/competition/competition_engine.py` — the module's own summary
+
+```python
+  1. REGISTRATION  — bots register with capital commitment + config hash
+  2. ACTIVE        — bots trade; each trade appended to their Merkle log
+  3. SUBMISSION    — trading closes; bots submit Merkle root + performance claim
+  4. ADJUDICATION  — arbiter verifies submissions, ranks bots, awards tokens
+```
+
+The token ledger is append-only and idempotent, with five rarity tiers by rank.
+Its hard cap is ten million ACRV, and each season awards less than the one
+before it.
+
+`src/competition/season_schedule.py` — the supply constants
+
+```python
+TOTAL_SUPPLY_CAP = 10_000_000  # Hard cap — immutable
+GENESIS_SEASON = 1
+INITIAL_REWARD = 500_000  # season 1 pool, in ACRV tokens
+DECAY_FACTOR = 0.85
+MIN_SEASON_REWARD = 100
+```
+
+`TournamentEngine` in `src/trading/poa_tournament.py` builds the duel, the
+melee and the gauntlet. A local testnet module beside it simulates the whole
+Base environment in memory, with no wallet and no network.
+
+
 Back to [the subsystem index](README.md).

@@ -349,4 +349,146 @@ that file yet.
 
 In development.
 
+## 2026-09-08 08:17 - #19 - what the closed issues landed
+
+Real-time, API-fed trades against a fake budget. This is designed as the second tier of strategy validation within the platform.
+
+The tab is now called Paper. It sits second on the bar, on a white ground
+with black text, and it is the only white tab.
+
+The screen was empty until issue #19 built it. The tab row carried a Paper
+Trader placeholder, which drew its name, one sentence saying it was not built,
+and the issue that owned it. The section under this one holds what the tab is
+now.
+
+`src/gui/main_tabs/paper_trader_tab_surface.py` — the empty state it carried
+
+```python
+HEADING = "Paper Trader"
+ISSUE = 19
+BUILT = False
+STATE_TEXT = "This tab is not built."
+ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
+```
+
+The Qt tab and the `src/gui/web/paper_trader_tab.js` panel both draw that one
+view model, so neither can drift from the other.
+
+Live, Paper and the Simulator differ in one thing only, where the data comes
+from. The trading logic stays one body of pure code all three call, and only
+the stateful shells fork. Real time is Paper's defining property, and its
+budget is twice the dollar target.
+
+`src/trading/container/config.py` — `BotConfig`, the field that budget doubles
+
+```python
+target_balance: float = 200.0  # Balance the bot trades relative to
+```
+
+Two live surfaces once offered the step. The Swarm tab's Paper Swarm
+sub-tab is chrome: its Start button flips a flag and relabels itself, and no
+bot is constructed. Its caption is now an empty string, so it promises nothing.
+The wing toggle no longer names a Paper Trader in the Qt window, while the
+React mirror still does. Issues #422 and #426 folded into issue #19.
+
+### The tab as it stands now
+
+The screen is built. It is the Trading tab's panes over the live exchange feed:
+the Privacy Mode row, the market selector, the two button rows, the bot list,
+the Indicator Voting Panel, the Live Feed pane, the Fake Balance table and the
+Paper Run table. The Qt window and the React page draw one view model.
+
+`src/gui/main_tabs/paper_trader_tab_surface.py` — what the tab answers
+
+```python
+METHOD = "paper_trader_tab.state"
+
+HEADING = "Paper"
+ISSUE = 19
+BUILT = True
+```
+
+The data path is the venue's public market feed, and it goes one way. The reader
+names the six things it answers, and every other name raises. An order, a
+cancellation or a venue write cannot be written through it.
+
+`src/paper/live_feed_source.py` — the read set and the refusal
+
+```python
+READ_NAMES = (
+    "venue",
+    "product_id",
+    "granularity",
+    "candles",
+    "ticker",
+    "asked_at",
+)
+
+
+class SendRefused(AttributeError):
+    """Raised when a name outside ``READ_NAMES`` is asked of ``LiveFeedSource``."""
+```
+
+Live candles enter the same gate chain a live bot runs. Nothing on the paper
+side defines a gate of its own.
+
+`src/paper/paper_run.py` — the tick
+
+```python
+context = tape_context(bot, balance, window, reading, summary)
+armed = latch(context)
+```
+
+The money is fake and lives in memory alone. A run writes no file, and no figure
+it produces reaches the stored bot record or the header strip.
+
+`src/paper/fake_balance.py` — the budget
+
+```python
+BUDGET_MULTIPLE = 2.0
+```
+
+The two strips the Trading tab carries are not copied, and neither is their
+supporting code. Their rows carry Import Live Fleet and the Start or Stop press.
+
+The fake balance is a fleet figure. Five paper bots with a $200 target open
+Paper Spendable at $1000 and Paper Locked at $1000, each holding the full fleet
+sum. Adding or removing a bot moves both openings on the next press of Start.
+
+`src/paper/fake_balance.py` — the fleet total both openings take
+
+```python
+def fleet_target_usd(bots: Sequence[Any]) -> float:
+    """The sum of every bot's ``target_usd``, the figure both openings take."""
+```
+
+Two more figures are tracked beside them. Paper Realized Profits moves when a
+fold buy closes the tranche a scrum sell opened, and Paper Mature Profits is the
+profit on positions past 200 percent growth, which is the figure the live wing
+already reads. No paper figure is written into the stored bot record or the
+header strip.
+
+`src/paper/fake_balance.py` — the strip's four figures
+
+```python
+FIGURE_LABELS = (
+    ("spendable_usd", SPENDABLE_LABEL),
+    ("locked_usd", LOCKED_LABEL),
+    ("realized_profit_usd", REALIZED_LABEL),
+    ("mature_profit_usd", MATURE_LABEL),
+)
+```
+
+Every paper action is recorded in one file of its own. Each line carries the
+gate decision and, when one filled, the pretend trade in the shape a Coinbase
+year-to-date row takes. The file sits beside the live folders and never inside
+one.
+
+`src/paper/paper_paths.py` — where the log lives
+
+```python
+PAPER_ROOT: Path = Path.home() / ".acervator_paper"
+```
+
+
 Back to [the subsystem index](README.md).

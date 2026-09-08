@@ -120,8 +120,9 @@ handler instead keeps the verbosity local to this pane.
 `src/gui/main_tabs/console_tab.py` — `ConsoleTabMixin._build_console_tab`
 
 ```python
-# The tab sets its own handler's level and leaves every logger level alone.
-qt_handler.setLevel(logging.DEBUG)
+# Two disjoint attach points: `logging_engine` clears `acervator.propagate`.
+for name in surface.HANDLER_LOGGERS:
+    logging.getLogger(name).addHandler(tab.log_handler)
 ```
 
 Each tab class sets that level on its own handler, from `HANDLER_LEVEL` in the
@@ -201,5 +202,247 @@ neither is written twice.
 | `ConsolePane` | The same capped block buffer, at the same two-thousand-block limit |
 | `SignalLedger` | The same seven counters |
 | `format_record` | The same formatter the tab attaches to its handler |
+
+## 2026-09-07 15:58 - no issue recorded - ten single-word tabs, each on its own ground
+
+This tab is focused on displaying Python activity and errors. The lower half, which is displaying the Emitter Network activity, will be migrated to the System Status Tab (under the Watchdog) which is to be built in the near future.
+
+The tab keeps the name Console. It sits last on the bar, on the gold
+ground with red text.
+
+The tab builds both panes into a vertical splitter. The upper one is a raw log
+tail: a handler formats each record and a relay paints it on the GUI thread,
+which lets a log call from any thread reach the pane safely.
+
+`src/gui/qt_console_tab.py` — `ConsoleQtTab.__init__`
+
+```python
+self.log_pane = QPlainTextEdit()
+self.log_pane.setReadOnly(True)
+self.log_pane.setFont(
+    QFont(surface.PANE_FONT_FAMILY, surface.PANE_FONT_POINT_SIZE)
+)
+```
+
+The tab sets its own handler to debug and changes no logger's level; an earlier
+build raised the root logger and never restored it.
+
+`src/gui/qt_console_tab.py` — `ConsoleQtTab.__init__`
+
+```python
+# The tab sets its own handler's level and leaves every logger level alone.
+self.log_handler.setLevel(surface.HANDLER_LEVEL)
+```
+
+Pause holds lines in a bounded buffer and announces anything it had to drop.
+
+`src/gui/main_tabs/console_log_handler.py` — `_QtLogHandler.set_paused`
+
+```python
+self._paused = bool(paused)
+if not self._paused and self._buffer:
+    for msg, r, g, b in self._buffer:
+        self._append_signal.emit(msg, r, g, b)
+    self._buffer.clear()
+```
+
+The lower pane is the Emitter Network. It reads the sink twice a second and
+renders the newest 200 records with their expected and actual values, keeping
+seven counters, which lets a quiet sink and a stopped timer read differently.
+
+`src/gui/main_window.py` — `_drain_signals`
+
+```python
+sink = get_sink()
+if sink is None:
+    return
+new = sink.since(getattr(self, "_signal_seq", 0))
+```
+
+![The Console tab: the log tail above, the Emitter Network below.](p34-i0.png)
+
+Pause and Clear sit above the upper pane. Pause holds lines in the bounded
+buffer and announces anything it had to drop when it resumes. Clear empties the
+pane.
+
+Each line in the upper pane carries the time, the level, the logger name and
+the message, coloured by level. Three logger names appear in the figure.
+
+React draws this tab. The choice is made in one place, under the screen name
+`CONSOLE`. A build stamped for Qt gets the pane set above. Every other build
+gets the web one, which holds the whole tab in a single view.
+
+`src/gui/main_tabs/console_tab.py` — `ConsoleTabMixin._build_console_tab`
+
+```python
+        from ..variant_surface import CONSOLE, surface_class
+
+        tab = surface_class(CONSOLE)()
+        self._console_tab = tab
+        self._console = tab.log_pane
+        self._signal_view = tab.signal_view
+        self._console_pause_btn = tab.pause_button
+        self._console_pause_indicator = tab.pause_indicator
+```
+
+Both tabs name the same six parts, so the pause, the drain and the health timer
+call one set of methods whichever side is built. The pause buffer, the level
+colours and the drop notice stay in the one handler both sides attach.
+
+`src/gui/main_tabs/console_log_handler.py` — `_QtLogHandler.__init__`
+
+```python
+    def __init__(self, text_edit, painter: Callable[[str, int, int, int], None] = None):
+        """Paint into ``text_edit``, or into ``painter`` when one is given."""
+```
+
+A line reaches the page as markup the surface writes, with the message escaped,
+so a log message holding a tag is shown rather than read as one.
+
+`src/gui/main_tabs/console_tab_surface.py` — `line_html`
+
+```python
+def line_html(text: Any, red: int, green: int, blue: int) -> str:
+    """One console line as the markup a pane paints it with.
+
+    The text is escaped, so a message holding a tag is shown rather than
+    read as markup.
+    """
+```
+
+| Logger | Writes |
+| ------ | ------ |
+| `acervator.scrumming` | The bot warnings |
+| `acervator.api` | The venue calls |
+| `acervator.gui` | The panel feed |
+
+Five levels each carry a colour, and the figure shows three of them: warning,
+info and debug, with debug the most muted of the three. A sixth colour follows
+the text of the message rather than its level, and it marks the indicator panel
+feed.
+
+`src/gui/main_tabs/console_log_handler.py` — the level colours
+
+```python
+COLORS = {
+    "DEBUG": QColor(ds.TEXT_MUTED),
+    "INFO": QColor(ds.TEXT_INACTIVE),
+    "WARNING": QColor(ds.WARNING),
+    "ERROR": QColor(ds.ERROR),
+    "CRITICAL": QColor(ds.MAIN_LOG_CRITICAL),
+}
+```
+
+Two of those lines are worth reading against the code. The repeated warning
+naming a capital-reservation over-commit comes from
+`src/trading/capital_reservation.py`, where a claim whose total would pass the
+holdings is refused and the existing claims, the request and the holdings are
+named. The `FETCH_OHLCV` line names a seven-indicator engine and lists seven
+indicators; the voting engine builds twelve and the Indicator Voting Panel
+shows twelve, so the count in the log line and the count in the engine
+disagree.
+
+The lower pane opens with the header `SIGNALS — name · expected · actual`. Each
+record draws a pass marker, a fail marker or a neutral one, then the signal
+name, the site that emitted it, the actual value and the expected one. A
+satisfied expectation is recorded the same as a violated one, which keeps a
+call site that never ran distinct from one that always passed.
+
+`src/gui/main_window.py` — `_drain_signals`, the three markers
+
+```python
+if r.ok is True:
+    mark, colour = "OK  ", ds.SUCCESS
+elif r.ok is False:
+    mark, colour = "FAIL", ds.ERROR
+else:
+    mark, colour = "--  ", ds.STATUS_NEUTRAL
+```
+
+The site is the file and the line of the frame that made the call, read off the
+stack at the moment of emission. It moves whenever the code moves. The numbers
+in the figure are the numbers those call sites held on the day of the capture,
+not the numbers they hold now.
+
+`src/core/signal_contract.py` — `_caller_site`
+
+```python
+def _caller_site(depth: int = 2) -> str:
+    """Return `file:line` of the calling frame at the given stack `depth`."""
+    try:
+        f = sys._getframe(depth)
+        return f"{Path(f.f_code.co_filename).name}:{f.f_lineno}"
+```
+
+
+### The two snapshot emitters
+
+Two symmetric records go to the bot log, and the Console tab is where an
+operator reads them. A blocked trade and a fired trade write the same shape, so
+the log holds both halves of the decision and not only the half that acted.
+
+`src/trading/scrumming/snapshots.py` — `SnapshotEmitterMixin._emit_risk_gate_snapshot`
+
+```python
+f"RISK GATE SNAPSHOT [{side.upper()}] "
+f"risk_blockers={risk_blockers_sorted} "
+f"ticker_last={ticker_last:.6g} "
+f"panel={snapshot}"
+```
+
+The fired-side companion carries the same prefix shape.
+
+`src/trading/scrumming/snapshots.py` — `SnapshotEmitterMixin._emit_trade_fire_snapshot`
+
+```python
+f"TRADE FIRED SNAPSHOT [{side.upper()}] "
+f"ticker_last={ticker_last:.6g} "
+f"panel={snapshot}{extra_str}"
+```
+
+| Method | Line prefix | Written when |
+| ------ | ----------- | ------------ |
+| `_emit_risk_gate_snapshot` | `RISK GATE SNAPSHOT [SIDE] ` | a risk gate blocks a trade |
+| `_emit_trade_fire_snapshot` | `TRADE FIRED SNAPSHOT [SIDE] ` | a scrum or a fold actually fires |
+
+Both lines carry the last ticker price and a panel dictionary holding every
+voter's direction, confidence, weight and detail at that moment. The fire
+record adds the list of overrides that engaged, so a reader can tell an
+override-driven fire from a consensus-driven one without opening anything else.
+
+The two code blocks above and the prefixes in the table are the shape these
+lines had before the tick-message rewrite. The current prefixes are
+`RISK GATE [SIDE]` and `TRADE FIRED [SIDE]`, and both write the same panel
+through one renderer.
+
+| Method | Line prefix | Written when |
+| ------ | ----------- | ------------ |
+| `_emit_risk_gate_snapshot` | `RISK GATE [SIDE] ` | a risk gate blocks a trade |
+| `_emit_trade_fire_snapshot` | `TRADE FIRED [SIDE] ` | a scrum or a fold actually fires |
+
+The panel prints as a count and three direction groups rather than as a
+dictionary. A voter's weight is a configuration value that never moves between
+ticks, and a neutral voter's confidence is fixed at zero in the indicator code,
+so neither reaches the line. Direction, confidence and an indicator's own raw
+detail all remain.
+
+`src/trading/scrumming/snapshots.py` — the grouped panel
+
+```python
+counts = ", ".join(f"{len(grouped[name])} {name.lower()}" for name in _PANEL_GROUPS)
+rows = [f"Panel {counts}."]
+for direction, voters in grouped.items():
+    voters.sort(key=lambda one: (-one[0], one[1]))
+```
+
+The measurement behind the change is in
+[tests/debug_reports/2026-09-07_activity_log_format.md](../../tests/debug_reports/2026-09-07_activity_log_format.md):
+the dictionary form measured 1,005 to 1,017 characters across 1,143 recorded
+snapshots, and the grouped form of the same panel measures 322.
+
+Three further emitters sit in the same mixin: a trade notification carrying its
+own text prefix, a voting-panel snapshot at fire time, and a gate decision at
+fire time. The last two emit events rather than text lines, and the Console
+tab's signal pane reads them.
 
 Back to [the subsystem index](README.md).
