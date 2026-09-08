@@ -1487,7 +1487,6 @@ if _HAS_QT:
                         p.drawLine(prev_pt, QPointF(x, y))
                     prev_pt = QPointF(x, y)
 
-
         def _draw_bullseye(self, ctx) -> None:
             """Paint the four BB Bullseye envelopes on the upper and lower bands."""
             p = ctx.p
@@ -1575,9 +1574,7 @@ if _HAS_QT:
                         bw = (up - lo) / mid
                         sl_bb[k] = (full_closes[k], up, lo, mid, bw)
 
-                    fires = (
-                        []
-                    )  # [(idx, kind, bullish)]; kind in {"squeeze","snapback"}
+                    fires = []  # [(idx, kind, bullish)]; kind in {"squeeze","snapback"}
                     for k in range(BB_PERIOD + SQ_LB, n_full):
                         window = sl_bb[k - SQ_LB : k]
                         window = [b for b in window if b is not None]
@@ -1589,9 +1586,7 @@ if _HAS_QT:
                         if curr is None or prev is None:
                             continue
                         recent4 = [b for b in sl_bb[k - 3 : k + 1] if b is not None]
-                        n_squeezed = sum(
-                            1 for b in recent4 if b[4] < avg_bw * SQ_THR
-                        )
+                        n_squeezed = sum(1 for b in recent4 if b[4] < avg_bw * SQ_THR)
                         was_squeezed = n_squeezed >= 2
                         expanding = curr[4] > prev[4] * 1.02
                         if was_squeezed and expanding:
@@ -1643,7 +1638,6 @@ if _HAS_QT:
                             # Circle — mean-reversion snapback
                             p.drawEllipse(QPointF(x, anchor_y), 5.5, 5.5)
 
-
         def _draw_macd(self, ctx, top: float, bot: float) -> None:
             """Paint the MACD histogram, its line and its signal in one sub-pane."""
             p, w = ctx.p, ctx.w
@@ -1676,9 +1670,7 @@ if _HAS_QT:
                 y1 = bot - ((hist - v_lo) / span) * (bot - top)
                 rising = hist >= 0
                 p.setBrush(QBrush(self.HIST_UP if rising else self.HIST_DOWN))
-                p.setPen(
-                    QPen(self.HIST_UP_EDGE if rising else self.HIST_DOWN_EDGE, 1)
-                )
+                p.setPen(QPen(self.HIST_UP_EDGE if rising else self.HIST_DOWN_EDGE, 1))
                 p.drawRect(QRectF(x, min(y0, y1), ctx.bw, abs(y1 - y0) or 1))
             last_macd = ctx.paint_oscillator(
                 top,
@@ -1803,7 +1795,9 @@ if _HAS_QT:
                     Qt.DashDotLine,
                 )
                 p.setPen(pen)
-                p.drawLine(left_px, int(price_y_px), w - right_margin_px, int(price_y_px))
+                p.drawLine(
+                    left_px, int(price_y_px), w - right_margin_px, int(price_y_px)
+                )
 
                 icon_x = left_px + 2
                 icon_y = int(price_y_px)

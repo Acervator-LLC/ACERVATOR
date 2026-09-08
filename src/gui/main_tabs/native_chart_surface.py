@@ -371,9 +371,7 @@ INDICATOR_OCCLUDES = {
     "slingshot": True,
     "bbullseye": True,
 }
-INDICATOR_DEFAULTS = {
-    key: not occludes for key, occludes in INDICATOR_OCCLUDES.items()
-}
+INDICATOR_DEFAULTS = {key: not occludes for key, occludes in INDICATOR_OCCLUDES.items()}
 
 ALPHA_BYTE_TOP = 255
 CSS_ALPHA_PLACES = 4

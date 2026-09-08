@@ -197,9 +197,7 @@ if _HAS_QT:
             """Which asset this is and how many there are."""
             if not self._entries:
                 return EMPTY_POSITION_TEXT
-            return POSITION_FORMAT.format(
-                at=self._shown + 1, total=len(self._entries)
-            )
+            return POSITION_FORMAT.format(at=self._shown + 1, total=len(self._entries))
 
         def _refresh_selector(self) -> None:
             """Refill the ticker list and re-enable the arrows."""
@@ -370,7 +368,9 @@ if _HAS_QT:
                     getattr(bot, "_target_balance", anchor_usd) or anchor_usd
                 )
                 cap_usd = float(getattr(bot, "cycle_growth_cap_usd", 0.0) or 0.0)
-                consumed_usd = float(getattr(bot, "_fold_cycle_cap_consumed", 0.0) or 0.0)
+                consumed_usd = float(
+                    getattr(bot, "_fold_cycle_cap_consumed", 0.0) or 0.0
+                )
                 cycle_open_usd = max(0.0, target_usd - consumed_usd)
                 holdings = float(getattr(bot, "_current_holdings", 0) or 0)
                 quote_rate = float(getattr(bot, "_quote_to_usd", 1.0) or 1.0)
