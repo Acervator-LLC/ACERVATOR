@@ -2,7 +2,8 @@
 
 ``TEST_HOME_ENV`` and the overrides in ``_redirect_writable_roots`` point every
 writer at a throwaway directory, so no test writes into ``~/.acervator``,
-``~/.acervator_logs``, ``~/.acervator_ra_tablets`` or ``~/.acervator_paper``.
+``~/.acervator_logs``, ``~/.acervator_ra_tablets``, ``~/.acervator_paper`` or
+``~/.acervator_ata_posts``.
 ``_snapshot`` reads every
 ``_live_roots`` entry before and after the run and fails on a change the suite
 can be held to. ``_destroy_qt_widgets`` and
@@ -83,8 +84,9 @@ os.environ.setdefault("ACERVATOR_SIM_STATE_ROOT", str(_SIM_STATE_TMP))
 
 
 def _live_roots() -> tuple[Path, ...]:
-    """Return the four runtime roots the guard watches, all under ``Path.home()``."""
+    """Return the five runtime roots the guard watches, all under ``Path.home()``."""
     from src.paper.paper_paths import PAPER_ROOT
+    from src.trading.ata_post_paths import ATA_POST_ROOT
 
     home = Path.home()
     return (
@@ -92,6 +94,7 @@ def _live_roots() -> tuple[Path, ...]:
         home / ".acervator_logs",
         home / ".acervator_ra_tablets",
         PAPER_ROOT,
+        ATA_POST_ROOT,
     )
 
 
@@ -387,12 +390,14 @@ def _redirect_writable_roots():
     from src.core.feature_telemetry import TELEMETRY_ROOT_ENV
     from src.core.privacy_mask_registry import SETTINGS_ROOT_ENV
     from src.paper.paper_paths import PAPER_ROOT_ENV
+    from src.trading.ata_post_paths import ATA_POST_ROOT_ENV
     from src.trading.capital_reservation import RESERVATION_ROOT_ENV
 
     tmp_root = Path(tempfile.mkdtemp(prefix="acervator-test-roots-"))
     (tmp_root / "acervator").mkdir(parents=True, exist_ok=True)
     (tmp_root / "acervator_logs").mkdir(parents=True, exist_ok=True)
     (tmp_root / "acervator_paper").mkdir(parents=True, exist_ok=True)
+    (tmp_root / "acervator_ata_posts").mkdir(parents=True, exist_ok=True)
 
     # `_telemetry_root` returns the override as-is and appends no leaf to it.
     # The crash-log key is a literal: importing main writes a BOOT line.
@@ -404,6 +409,8 @@ def _redirect_writable_roots():
         RESERVATION_ROOT_ENV: str(tmp_root / "acervator"),
         # `paper_trader_log_path` appends paper_trader.log beneath this root.
         PAPER_ROOT_ENV: str(tmp_root / "acervator_paper"),
+        # `post_image_path` writes one PNG per ATA-SPM call beneath this root.
+        ATA_POST_ROOT_ENV: str(tmp_root / "acervator_ata_posts"),
     }
     prior = {k: os.environ.get(k) for k in overrides}
     os.environ.update(overrides)
@@ -580,7 +587,7 @@ def _assert_no_live_tree_writes(_redirect_writable_roots):
         "the test suite mutated the operator's runtime tree.\n\n"
         + "\n\n".join(problems)
         + "\n\nTests must never write to ~/.acervator, ~/.acervator_logs, "
-        "~/.acervator_ra_tablets or ~/.acervator_paper. "
+        "~/.acervator_ra_tablets, ~/.acervator_paper or ~/.acervator_ata_posts. "
         "Redirect the writer at its root-resolution point (see "
         "ACERVATOR_TELEMETRY_ROOT for the pattern)."
     )

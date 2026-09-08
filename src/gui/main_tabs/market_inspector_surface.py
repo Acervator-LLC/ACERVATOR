@@ -2304,6 +2304,7 @@ class MarketInspectorScreenModel:
             self.ata_asset_source or sector_assets,
             self.ata_candle_source or self.scanned_candles,
             self.push.settings.message_format,
+            self.push.settings.max_supporting_indicators,
         )
         if added != ata_spm.NO_NEW_SECTOR:
             self.zone_at[ATA_SPM_MODULE] = added

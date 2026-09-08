@@ -942,4 +942,120 @@ def watched_markets(self) -> list:
 **Figures.** This page carries no figure. The zones it describes are unchanged
 by this entry, and the second reader it adds draws on another screen.
 
+## 2026-09-08 15:20 - #407 - phase three draws the chart the post carries
+
+Phase three used to answer a data record: the ticker, the timeframe, the bar
+count, the band values and a list of confirming sentences. There was no
+picture, so the post's caption captioned nothing. It now draws that chart and
+writes it as a PNG, and the pull carries the file.
+
+`src/trading/ata_spm.py` — the picture the pull now holds
+
+```python
+@dataclass
+class ChartPull:
+    """The chart one reversal call was made on, and its confirming messages.
+
+    ``image`` is that chart rendered to a PNG, which the post's caption
+    captions.
+    """
+```
+
+The picture is drawn by the Charts tab's own renderer. No second drawing
+engine was written for posts, because two engines drift apart and only one of
+them is the screen the operator watches. What changed in the renderer is that
+its drawing state and its paint routine moved out of the window into a plain
+object, `ChartPainter`. The Charts tab's chart is that object with a window
+around it, and a post image is that object with a picture file around it.
+
+`src/gui/native_chart.py` — one paint routine, two places to send it
+
+```python
+        def paint_to(self, p: QPainter, w: int, h: int) -> None:
+            """Draw the whole chart onto ``p`` over a ``w`` by ``h`` area.
+
+            The painter's device is the caller's: a widget from ``paintEvent``
+            and a ``QImage`` from ``render_chart_png``.
+            """
+```
+
+The split was forced by where a scan runs. Pressing Scan Now hands the work to
+a background worker so the screen keeps drawing, and the drawing toolkit will
+not build a window on a background worker. Driven, it does not raise an error
+that could be caught; it kills the program. A picture file has no such rule,
+so the post image is drawn straight onto the file and no window is made.
+
+`src/gui/market_inspector.py` — the worker the scan runs on
+
+```python
+            self._scan_thread = threading.Thread(
+                target=self._compute_scan,
+                args=(settings.message_format, settings.max_supporting_indicators),
+                name=ATA_SCAN_THREAD_NAME,
+                daemon=True,
+            )
+```
+
+The indicators on the picture are the ones that voted for the call, not the
+ones the Charts tab happens to have switched on. Each overlay in the chart's
+registry now names the voter it draws, so the picture is chosen by the vote.
+
+`src/gui/native_chart.py` — the overlay names its voter
+
+```python
+    ChartOverlay(
+        key="bb",
+        label="BB",
+        colour_field="chart_band",
+        pane=PRICE_PANE,
+        occludes=False,
+        draw="_draw_bollinger",
+        tooltip="Bollinger Bands (20, 2σ) with cloud fill",
+        voter="bollinger_bands",
+    ),
+```
+
+**Max supporting indicators** on the settings page decides how many of them are
+drawn. It was already the cap on how many confirming sentences a post carries,
+and it is now the same cap on the chart. No second setting was added. Set to
+one, the picture carries the Bollinger bands alone; left unset, it carries
+every confirming voter the renderer has an overlay for.
+
+A confirming voter with no overlay cannot be drawn, and the picture says so in
+its header line rather than passing over it. Z-Score and RSI are the two that
+vote and have no overlay today.
+
+`src/gui/native_chart.py` — what reached the picture and what did not
+
+```python
+@dataclass
+class ChartImage:
+    """One rendered chart on disk, and what the renderer could not draw.
+
+    ``drawn`` and ``undrawn`` name voters: ``undrawn`` holds the ones no
+    overlay draws and the ones ``max_overlays`` cut.
+    """
+```
+
+The files are kept outside the repository, in `~/.acervator_ata_posts`, beside
+the other runtime folders and inside none of them. One file is written per
+asset, per timeframe, per last bar. Nothing removes them yet.
+
+`src/trading/ata_post_paths.py` — the one place the folder is named
+
+```python
+ATA_POST_ROOT: Path = Path.home() / ".acervator_ata_posts"
+```
+
+Nothing sends the picture. The sender is handed the whole post, so the file
+travels with the text, and no sender reaches a platform. The Ready to Send
+zone draws the text and does not show the picture.
+
+**Figures.** This page carries no figure, and this entry adds none: a rendered
+chart is produced output and is not kept in the repository. The picture drawn
+by the run behind this entry measured 1200 by 372 pixels and carried 7126
+distinct colours, against 17 for the same chart drawn with no candles. Its
+readings are in
+[the debug report](../../../tests/debug_reports/2026-09-08_ata_post_image.md).
+
 Back to [the subsystem index](README.md).
