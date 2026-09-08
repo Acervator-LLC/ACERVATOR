@@ -25,6 +25,7 @@
   var SKIN = "skin";
   var TABLET = "tablet";
   var TABLETS = "tablets";
+  var VALIDATION = "validation";
   var VWAP = "vwap";
 
   var DECLARED_FIELDS = [
@@ -45,6 +46,7 @@
     SKIN,
     TABLET,
     TABLETS,
+    VALIDATION,
     VWAP
   ];
 
@@ -58,6 +60,17 @@
   var TABLET_ACTION = "choose_tablet";
   var PRIVACY_ACTION = "toggle_privacy";
   var ACTION_PREFIX = "acervator-act:";
+
+  var VALIDATION_COLUMNS = [
+    "Bot ID",
+    "Symbol",
+    "Trade",
+    "Candle",
+    "Gate row",
+    "Lights agreed",
+    "Latches"
+  ];
+  var LIGHT_COLUMNS = ["Bank", "Gate", "Recorded", "Rerun", "Driven by"];
 
   // The names the Qt widget gives the same parts, so one reader addresses both.
   var NAMES = {
@@ -78,7 +91,13 @@
     vwapView: "sim-vwap-view",
     playbackView: "sim-playback-view",
     replayTitle: "sim-replay-title",
-    replayLog: "sim-replay-log"
+    replayLog: "sim-replay-log",
+    fleetButtons: ["sim-import-live-fleet", "sim-generate-from-ytd"],
+    validationTitle: "sim-validation-title",
+    validationPrompt: "sim-validation-prompt",
+    validationLines: "sim-validation-lines",
+    validationTable: "sim-validation-table",
+    validationLights: "sim-validation-lights"
   };
 
   var VIEW_BOX = "0 0 1000 1000";
@@ -164,18 +183,145 @@
   }
 
   // The crypto news ticker and the data pool line are not copied; their rows
-  // keep their height and hold nothing.
+  // carry Import Live Fleet and Generate From YTD instead.
   function ReservedRows(props) {
     var names = [NAMES.newsRow, NAMES.poolRow];
     return props.rows.map(function (row, index) {
-      return element("div", {
-        key: names[index],
-        "aria-label": names[index],
-        "data-part": names[index],
-        "data-row-name": text(row.name),
-        style: { height: String(row.height_px) + "px" }
-      });
+      return element(
+        "div",
+        {
+          key: names[index],
+          "aria-label": names[index],
+          "data-part": names[index],
+          "data-row-name": text(row.name),
+          style: { height: String(row.height_px) + "px" }
+        },
+        element(
+          "button",
+          Object.assign(
+            {
+              "aria-label": NAMES.fleetButtons[index],
+              "data-part": NAMES.fleetButtons[index]
+            },
+            pressable(row.action)
+          ),
+          text(row.text)
+        )
+      );
     });
+  }
+
+  function CellTable(props) {
+    return element(
+      "table",
+      {
+        "aria-label": props.name,
+        "data-part": props.name,
+        "data-column-count": String(props.titles.length),
+        "data-row-count": String(props.rows.length)
+      },
+      element(
+        "thead",
+        null,
+        element(
+          "tr",
+          null,
+          props.titles.map(function (title, index) {
+            return element("th", { key: "t" + index }, text(title));
+          })
+        )
+      ),
+      element(
+        "tbody",
+        null,
+        props.rows.map(function (row, rowIndex) {
+          return element(
+            "tr",
+            { key: "r" + rowIndex, "data-agrees": text(row.agrees) },
+            row.cells.map(function (cell, cellIndex) {
+              return element("td", { key: "c" + cellIndex }, text(cell));
+            })
+          );
+        })
+      )
+    );
+  }
+
+  function validationRows(rows) {
+    return rows.map(function (row) {
+      return {
+        cells: [
+          row.bot_id,
+          row.symbol,
+          row.trade_at,
+          row.candle_at,
+          row.gate_at,
+          row.agreed + " of " + row.light_count,
+          row.latches_identically ? "yes" : "no"
+        ]
+      };
+    });
+  }
+
+  function lightRows(lights) {
+    return lights.map(function (light) {
+      return {
+        agrees: light.agrees,
+        cells: [
+          light.bank,
+          light.label,
+          light.recorded,
+          light.rerun,
+          light.driven_by
+        ]
+      };
+    });
+  }
+
+  function ValidationPane(props) {
+    var found = props.validation;
+    var lights = found.rows.length > 0 ? found.rows[0].lights : [];
+    return element(
+      "div",
+      { className: "sim-validation-pane" },
+      element(
+        "div",
+        {
+          "aria-label": NAMES.validationTitle,
+          "data-part": NAMES.validationTitle,
+          "data-ran": String(found.ran)
+        },
+        text(found.title)
+      ),
+      found.prompt_text
+        ? element(
+            "div",
+            {
+              "aria-label": NAMES.validationPrompt,
+              "data-part": NAMES.validationPrompt
+            },
+            text(found.prompt_text)
+          )
+        : null,
+      element(
+        "pre",
+        {
+          "aria-label": NAMES.validationLines,
+          "data-part": NAMES.validationLines
+        },
+        found.lines.join("\n")
+      ),
+      element(CellTable, {
+        name: NAMES.validationTable,
+        titles: VALIDATION_COLUMNS,
+        rows: validationRows(found.rows)
+      }),
+      element(CellTable, {
+        name: NAMES.validationLights,
+        titles: LIGHT_COLUMNS,
+        rows: lightRows(lights)
+      })
+    );
   }
 
   function FleetTable(props) {
@@ -199,7 +345,7 @@
     var body = (fleet.rows || []).map(function (row, index) {
       return element(
         "tr",
-        { key: "row" + index },
+        { key: "row" + index, "data-origin": text(row.origin) },
         (row.cells || []).map(function (cell, cellIndex) {
           return element("td", { key: "cell" + cellIndex }, text(cell));
         })
@@ -489,7 +635,12 @@
               element(PlaybackView, { playback: model[PLAYBACK] })
             )
       ),
-      element(ReplayLog, { log: model[REPLAY_LOG] })
+      element(
+        "div",
+        { className: "sim-bottom-pane" },
+        element(ReplayLog, { log: model[REPLAY_LOG] }),
+        element(ValidationPane, { validation: model[VALIDATION] })
+      )
     );
   }
 
