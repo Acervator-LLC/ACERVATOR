@@ -1,7 +1,7 @@
 """theme_engine_surface.py -- the five visual themes and the style sheet each one makes.
 
 Describes the theme table the whole window draws from. Five themes
-carry 40 named values each: two names, 29 colours, two font stacks,
+carry 61 named values each: two names, 50 colours, two font stacks,
 four text sizes and three corner roundings. Six of the colours are the
 main-window tab grounds and the text each ground carries. A theme that
 does not name a value takes the default written in ``DEFAULT_TOKENS``.
@@ -74,13 +74,34 @@ DEFAULT_TOKENS: dict[str, str] = {
     "tab_white_text": "#0a0a0f",
     "tab_gold_bg": "#fcee0a",
     "tab_gold_text": "#8c0018",
+    "chart_bg_top": "#08080e",
+    "chart_bg_bottom": "#0c0c16",
+    "chart_grid": "#1c1c30",
+    "chart_axis_text": "#b4b4d2",
+    "chart_up": "#00e5a0",
+    "chart_up_edge": "#5cffd0",
+    "chart_down": "#ff2d6f",
+    "chart_down_edge": "#ff86a8",
+    "chart_crosshair": "#3c3c64",
+    "chart_last_price": "#ffc800",
+    "chart_band": "#50a0f0",
+    "chart_band_mid": "#ffc850",
+    "chart_bull": "#00ff88",
+    "chart_bear": "#ff5577",
+    "chart_zone_scrum": "#ff0080",
+    "chart_zone_fold": "#fcee0a",
+    "chart_event_mark": "#ff00aa",
+    "chart_gap": "#5e5e80",
+    "chart_trend_fast": "#ff8c00",
+    "chart_trend_slow": "#4fc3ff",
+    "chart_oscillator": "#ff9060",
 }
 
 FIELD_NAMES = REQUIRED_FIELD_NAMES + tuple(DEFAULT_TOKENS)
 
 
 def build_theme(name: str, display_name: str, **named: str) -> dict[str, str]:
-    """One theme's 34 values: its two names, then a default for each it does not name.
+    """One theme's 61 values: its two names, then a default for each it does not name.
 
     Field order follows the dataclass the surface replaces, so the two
     sides hand the frontend their values in one order.
@@ -125,6 +146,27 @@ NEON_LIGHT: dict[str, str] = build_theme(
     tab_white_text="#1a1a2e",
     tab_gold_bg="#f0cf1f",
     tab_gold_text="#99001f",
+    chart_bg_top="#ffffff",
+    chart_bg_bottom="#f0f0f8",
+    chart_grid="#d8d8e8",
+    chart_axis_text="#3a3a5a",
+    chart_up="#00883f",
+    chart_up_edge="#00662f",
+    chart_down="#cc0033",
+    chart_down_edge="#990026",
+    chart_crosshair="#9a9ab8",
+    chart_last_price="#b36b00",
+    chart_band="#6600cc",
+    chart_band_mid="#8a5c00",
+    chart_bull="#00803a",
+    chart_bear="#cc0033",
+    chart_zone_scrum="#cc0066",
+    chart_zone_fold="#8a6e00",
+    chart_event_mark="#6600cc",
+    chart_gap="#6f6f88",
+    chart_trend_fast="#b35a00",
+    chart_trend_slow="#0055aa",
+    chart_oscillator="#b34700",
 )
 
 CLASSIC_TERMINAL: dict[str, str] = build_theme(
@@ -160,6 +202,27 @@ CLASSIC_TERMINAL: dict[str, str] = build_theme(
     tab_white_text="#0a0a0a",
     tab_gold_bg="#ffff00",
     tab_gold_text="#990000",
+    chart_bg_top="#050505",
+    chart_bg_bottom="#0a0a0a",
+    chart_grid="#003300",
+    chart_axis_text="#00cc00",
+    chart_up="#00ff44",
+    chart_up_edge="#66ff99",
+    chart_down="#ff0000",
+    chart_down_edge="#ff6666",
+    chart_crosshair="#006600",
+    chart_last_price="#ffff00",
+    chart_band="#00ffff",
+    chart_band_mid="#00aa00",
+    chart_bull="#00ff44",
+    chart_bear="#ff0000",
+    chart_zone_scrum="#ff3333",
+    chart_zone_fold="#ffff00",
+    chart_event_mark="#00ffff",
+    chart_gap="#008800",
+    chart_trend_fast="#ffaa00",
+    chart_trend_slow="#00ffff",
+    chart_oscillator="#00ff88",
 )
 
 MINIMAL_MODERN: dict[str, str] = build_theme(
@@ -195,6 +258,27 @@ MINIMAL_MODERN: dict[str, str] = build_theme(
     tab_white_text="#1a1a1a",
     tab_gold_bg="#eab308",
     tab_gold_text="#7f1d1d",
+    chart_bg_top="#ffffff",
+    chart_bg_bottom="#fafafa",
+    chart_grid="#e4e4e4",
+    chart_axis_text="#444444",
+    chart_up="#059669",
+    chart_up_edge="#047857",
+    chart_down="#dc2626",
+    chart_down_edge="#b91c1c",
+    chart_crosshair="#9ca3af",
+    chart_last_price="#d97706",
+    chart_band="#2563eb",
+    chart_band_mid="#d97706",
+    chart_bull="#059669",
+    chart_bear="#dc2626",
+    chart_zone_scrum="#be123c",
+    chart_zone_fold="#a16207",
+    chart_event_mark="#7c3aed",
+    chart_gap="#8a8a8a",
+    chart_trend_fast="#c2410c",
+    chart_trend_slow="#1d4ed8",
+    chart_oscillator="#b45309",
 )
 
 GLASS_METAL: dict[str, str] = build_theme(
@@ -230,6 +314,27 @@ GLASS_METAL: dict[str, str] = build_theme(
     tab_white_text="#1c1c24",
     tab_gold_bg="#e8b34a",
     tab_gold_text="#6b1020",
+    chart_bg_top="#181820",
+    chart_bg_bottom="#20202c",
+    chart_grid="#32324a",
+    chart_axis_text="#a8a8c0",
+    chart_up="#3fd6a0",
+    chart_up_edge="#88ffcc",
+    chart_down="#ff5f88",
+    chart_down_edge="#ffa0b8",
+    chart_crosshair="#4a4a62",
+    chart_last_price="#ffcc66",
+    chart_band="#88ccff",
+    chart_band_mid="#ffcc66",
+    chart_bull="#88ffaa",
+    chart_bear="#ff6688",
+    chart_zone_scrum="#ff4d7d",
+    chart_zone_fold="#e8b34a",
+    chart_event_mark="#cc88ff",
+    chart_gap="#8f8fb0",
+    chart_trend_fast="#ffb066",
+    chart_trend_slow="#88ccff",
+    chart_oscillator="#ffa07a",
 )
 
 THEMES: dict[str, dict[str, str]] = {
