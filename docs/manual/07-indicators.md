@@ -1182,6 +1182,68 @@ neither has a replacement chosen yet.
 
 In development.
 
+## 2026-09-08 15:12 - #414 - the ratio the gate reads
+
+The published Efficiency Ratio is Kaufman's, unchanged here: the distance
+between the first and last close of the window, divided by the distance the
+price travelled to cover it. The [Kaufman entry](#kaufman-efficiency-ratio)
+above states it and the code computes it.
+
+```
+ER = |C_t - C_(t-10)| / sum(|C_i - C_(i-1)|, 10)
+```
+
+The indicator gave three other parts of the platform that ratio rounded to four
+decimal places. One of them is the Efficiency Ratio Regime gate, which refuses
+a scrum at 0.05 and below and at 0.70 and above, so the gate compared a
+shortened number against its two thresholds. The indicator now publishes the
+ratio it computed.
+
+`src/trading/indicators/kaufman_er.py` — what the reading carries
+
+```python
+details={
+    "er": er,
+    "er_prev": er_prev,
+```
+
+Three parts of the platform read that number and each builds the same gate
+input from it: the live bot's tick, the Simulator's back test, and the ATA gate
+scan. Nothing on any screen changes, because the panel cell, the hover text and
+the ATA-SMP sentence each cut the number to two, three and four decimals of
+their own.
+
+`src/trading/scrumming_bot.py` — the gate input, one of the three
+
+```python
+efficiency_ratio=_extract_signal_detail(summary, "kaufman_er", "er", 0.0),
+```
+
+Measured over 71 recorded Coinbase tapes, run at a price of three millionths
+of a dollar and again at a four-figure price. The run drove 37,380 readings
+through the real voting engine and the real scrum chain. The gate changed its
+mind on five of them, in both directions: three where the rounding had pulled a
+ratio just above 0.05 down onto the threshold, and two where it had pulled a
+ratio near zero onto the sentinel that tells the gate no reading arrived.
+
+```
+DOGE 2025, bar 264, both price scales
+    before   gate reads 0.05                  scrum blocked
+    after    gate reads 0.05001050640890935   scrum allowed
+
+DOGE 2025, bar 263, both price scales
+    before   gate reads 0.2257                scrum allowed
+    after    gate reads 0.2256565656565654    scrum allowed
+
+ETH 2025, bar 233, both price scales
+    before   gate reads 0.0                   scrum allowed
+    after    gate reads 2.983774235682565e-05 scrum blocked
+```
+
+The same run read the other eleven voters back over one tape at 88 bars of each
+price scale, and every reading is identical, which is what a repair to one
+indicator has to look like.
+
 ## Trading gate logic chain
 
 The epigraph on the [title page](01-title.md) reads *dissolvendus
