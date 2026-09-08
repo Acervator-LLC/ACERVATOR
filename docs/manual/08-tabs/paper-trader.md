@@ -75,6 +75,151 @@ one.
 
 Issue #422 carries the first caption and issue #426 the second.
 
+## The screen as it stands now
+
+The tab is built. It sits second on the bar and carries the Trading tab's panes
+over the live exchange feed. `src/gui/paper_trader_tab.py` draws them in Qt and
+`src/gui/web/paper_trader_tab.js` draws them in React, from one view model.
+
+`src/gui/main_tabs/paper_trader_tab_surface.py` — the fields both hosts read
+
+```python
+DECLARED_FIELDS = (
+    "accessible_name",
+    "balance",
+    "built",
+    "feed",
+    "fleet",
+    "heading",
+    "indicators",
+    "issue",
+    "method",
+    "panes",
+    "privacy_button",
+    "reserved_rows",
+    "run",
+    "skin",
+    "symbol",
+    "symbols",
+)
+```
+
+The left pane holds the Privacy Mode button, the market selector, the two button
+rows and the bot list. The bot list uses the Trading tab's own columns. The right
+pane holds the Indicator Voting Panel, computed from the live window. An empty
+selector draws the empty state and invents no reading.
+
+`src/gui/main_tabs/paper_trader_tab_surface.py` — the empty state
+
+```python
+def indicator_payload(
+    candles: Sequence[Any], timeframe: str, symbol: str, refusal: str
+) -> dict:
+    model = ivp.IndicatorPanelModel()
+    if refusal:
+        model.show_no_data(refusal)
+        return ivp.build_payload(model)
+    summary = multi_tf_summary(candles, timeframe, symbol)
+    if not summary:
+        model.show_no_data(NO_SYMBOL_TEXT)
+        return ivp.build_payload(model)
+    model.set_summary(summary, symbol)
+    return ivp.build_payload(model)
+```
+
+## The two presses
+
+Import Live Fleet reads the stored bot record and lists what it finds. Start
+Paper Run opens the run and begins ticking. The same button then reads Stop
+Paper Run and ends it, leaving the balances and the trades on screen.
+
+`src/gui/main_tabs/paper_trader_tab_surface.py` — the second row's two faces
+
+```python
+{
+    "name": DATA_POOL_ROW,
+    "height_px": 18,
+    "action": STOP_RUN_ACTION if running else START_RUN_ACTION,
+    "text": STOP_RUN_TEXT if running else START_RUN_TEXT,
+    "button_name": button_name(
+        STOP_RUN_ACTION if running else START_RUN_ACTION
+    ),
+}
+```
+
+## Downstream only
+
+The feed reader answers six names and refuses every other one, so a send has no
+spelling. It calls the venue's public market endpoints, which carry no key and
+no signature.
+
+`src/paper/live_feed_source.py` — the refusal
+
+```python
+def __getattr__(self, name: str):
+    """Refuse every name outside ``READ_NAMES``."""
+    raise SendRefused(
+        f"LiveFeedSource answers {READ_NAMES} and cannot {name!r}. "
+        "The Paper Trader receives and asks; it sends nothing."
+    )
+```
+
+## One gate chain
+
+A tick builds the same `GateContext` a live bot builds and evaluates the shipped
+scrum and fold chains on it. The paper side adds no gate and changes none.
+
+`src/paper/paper_run.py` — what a tick evaluates
+
+```python
+window = list(candles[-WINDOW_CANDLES:])
+reading = bb_reading(window, bot)
+summary = VotingEngine().compute_all(window, bot.ta_timeframe, symbol=bot.symbol)
+context = tape_context(bot, balance, window, reading, summary)
+armed = latch(context)
+```
+
+## The fake balance
+
+Each bot opens a budget of twice its dollar target: units worth the target, and
+the rest in cash to fund a fold. The balances live in memory and are dropped when
+the tab goes away.
+
+`src/paper/fake_balance.py` — the opening
+
+```python
+def opening_balance(target_usd: float, price: float) -> FakeBalance:
+    whole = budget_usd(target_usd)
+    held_usd = min(whole / BUDGET_MULTIPLE, whole)
+    units = held_usd / float(price) if float(price) > 0.0 else 0.0
+    return FakeBalance(
+        units=units,
+        cash_usd=whole - units * float(price),
+        tranches=0,
+        budget_usd=whole,
+    )
+```
+
+## Real time
+
+A run ticks on the wall clock and asks the feed for one bot per fire, so a fleet
+of many bots never blocks the window on a single pass. One bar is shared across
+the open bots.
+
+`src/gui/paper_trader_tab.py` — the round robin
+
+```python
+def advance_once(self) -> list:
+    """Tick the next open bot against its newest live window."""
+    if self._run is None or not self._run.running or not self._run.bots:
+        return []
+    chosen = self._run.bots[self._cursor % len(self._run.bots)].bot_id
+    self._cursor += 1
+    made = surface.advance_run(self._run, self._feed, chosen)
+    self.refresh()
+    return made
+```
+
 ## Paper Trade History
 
 The manual's part list names a second History tab reading a paper trade log. No

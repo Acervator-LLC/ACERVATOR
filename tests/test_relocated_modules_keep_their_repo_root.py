@@ -53,9 +53,7 @@ def _src_files() -> list[Path]:
     ]
 
 
-# Pre-existing on the unmodified tree and guarded by try/except at the call
-# site. No commit ever added `src/gui/paper_trader_tab.py`.
-KNOWN_UNRESOLVABLE = {"src/gui/stock_main_window.py -> src.gui.paper_trader_tab"}
+KNOWN_UNRESOLVABLE: set[str] = set()
 
 
 def test_every_import_under_src_resolves() -> None:

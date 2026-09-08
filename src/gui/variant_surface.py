@@ -23,6 +23,7 @@ HISTORY = "History"
 HISTORY_TABLE = "History table"
 MAIN_TAB_BOOK = "Main tab book"
 MARKET_INSPECTOR = "Market Inspector"
+PAPER_TRADER = "Paper"
 SETTINGS_DIALOG = "Settings dialog"
 SIMULATOR = "Sim"
 SPENDABLE_PROFITS = "Spendable profits"
@@ -258,6 +259,20 @@ def _react_simulator() -> type:
     return SimulatorTabReact
 
 
+def _qt_paper_trader() -> type:
+    """Import and return the Qt Paper tab."""
+    from .paper_trader_tab import PaperTraderTabQt
+
+    return PaperTraderTabQt
+
+
+def _react_paper_trader() -> type:
+    """Import and return the React Paper tab."""
+    from .react_paper_trader_tab import PaperTraderTabReact
+
+    return PaperTraderTabReact
+
+
 def _qt_buy_confirmation() -> type:
     """Import and return the Qt buy confirmation dialog."""
     from .buy_confirmation_dialog import BuyConfirmationDialog
@@ -287,3 +302,4 @@ register(DASHBOARD_STAT_CARD, _qt_dashboard_stat_card, _react_dashboard_stat_car
 register(START_ALL_PROGRESS, _qt_start_all_progress, _react_start_all_progress)
 register(BUY_CONFIRMATION, _qt_buy_confirmation, _react_buy_confirmation)
 register(SIMULATOR, _qt_simulator, _react_simulator)
+register(PAPER_TRADER, _qt_paper_trader, _react_paper_trader)

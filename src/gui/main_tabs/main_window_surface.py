@@ -213,6 +213,8 @@ BUILT_TAB_ORDER = (
 
 SIMULATOR_BUILD_INDEX = 1
 
+PAPER_BUILD_INDEX = 2
+
 ISOLATED_TABS = (SIM_TAB, PAPER_TAB)
 
 HISTORY_STALE_AFTER_S = 300
@@ -675,16 +677,17 @@ def wing_title(mode: Any) -> str:
 def constructed_tabs(failed: Any = None) -> list:
     """The tab bar the builders leave, with every name in `failed` skipped.
 
-    Each builder in `BUILT_TAB_ORDER` appends; the Simulator's inserts at
-    `SIMULATOR_BUILD_INDEX`.
+    Each builder in `BUILT_TAB_ORDER` appends; `SIM_TAB` inserts at
+    `SIMULATOR_BUILD_INDEX` and `PAPER_TAB` at `PAPER_BUILD_INDEX`.
     """
     skipped = set(failed or ())
+    inserted = {SIM_TAB: SIMULATOR_BUILD_INDEX, PAPER_TAB: PAPER_BUILD_INDEX}
     order: list = []
     for name in BUILT_TAB_ORDER:
         if name in skipped:
             continue
-        if name == SIM_TAB:
-            order.insert(SIMULATOR_BUILD_INDEX, name)
+        if name in inserted:
+            order.insert(inserted[name], name)
         else:
             order.append(name)
     return order
