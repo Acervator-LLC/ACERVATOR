@@ -109,6 +109,15 @@ DIAGRAM_WORD = re.compile(r"\b" + DIAGRAM_INFO + r"\b", re.IGNORECASE)
 RAW_TABLE_ROW = re.compile(r"^[ \t]*\|", re.MULTILINE)
 RAW_PIPE_RUN = re.compile(r" \| [^|\n]* \| ")
 
+TOC_TITLE = "Contents"
+TOC_DOT_RUN = re.compile(r"^\.{3,}$")
+TOC_PAGE_NUMBER = re.compile(r"^\d+$")
+# The contents heading and the page number stand beside the rows of the first
+# contents page; every later one carries the page number alone.
+TOC_TITLE_SPARE = 2
+TOC_SPARE = 1
+CARRIED_CHARS = 60
+
 DIRECTIONS = {
     "TD": "top to bottom",
     "TB": "top to bottom",
@@ -957,7 +966,7 @@ def _cover_flowables(manual: Manual, styles: dict[str, ParagraphStyle]) -> list[
 def _toc_flowables(
     entries: Sequence[TocEntry], styles: dict[str, ParagraphStyle]
 ) -> list[object]:
-    out: list[object] = [Paragraph("Contents", styles["contents"])]
+    out: list[object] = [Paragraph(TOC_TITLE, styles["contents"])]
     out.extend(
         TocRow(
             entry,
@@ -1349,15 +1358,91 @@ def _pdf_page_prose(pdf_path: Path) -> list[tuple[str, str]]:
     return pages
 
 
+def toc_row_miss(pages: Sequence[str], text: str, page: int) -> str:
+    """Return why ``page`` of ``pages`` does not carry ``text``, empty when it does.
+
+    ``fit`` cuts an over-wide contents label and marks the cut with ``ELLIPSIS``,
+    so only the kept prefix is looked for.
+    """
+    if not 1 <= page <= len(pages):
+        return f"{text!r} names page {page} of {len(pages)}"
+    carried = _normalise(pages[page - 1])
+    wanted = _normalise(text).removesuffix(ELLIPSIS).strip()
+    if wanted and wanted not in carried:
+        return (
+            f"{text!r} is not on page {page}, "
+            f"which carries {carried[:CARRIED_CHARS]!r}"
+        )
+    return ""
+
+
+def _toc_page_rows(text: str) -> tuple[list[tuple[str, int]], int]:
+    """Return one ``(label, page)`` per ``TocRow`` on a page, and its other lines.
+
+    ``TocRow`` draws a label, a right-aligned page number and a dot leader, which
+    ``_pdf_page_texts`` returns as three consecutive lines.
+    """
+    rows: list[tuple[str, int]] = []
+    label = ""
+    spare = 0
+    for raw in text.split("\n"):
+        line = raw.strip()
+        if not line or TOC_DOT_RUN.match(line):
+            continue
+        if TOC_PAGE_NUMBER.match(line):
+            if not label:
+                spare += 1
+                continue
+            rows.append((label, int(line)))
+            label = ""
+            continue
+        spare += 1 if label else 0
+        label = line
+    return rows, spare + (1 if label else 0)
+
+
+def read_toc_rows(pages: Sequence[str]) -> list[tuple[str, int]]:
+    """Return every contents row a written manual prints, in printed order.
+
+    The run opens on the page whose text carries ``TOC_TITLE`` on a line of its
+    own and closes at the first page that is not made of contents rows.
+    """
+    start = next(
+        (index for index, text in enumerate(pages) if TOC_TITLE in text.split("\n")),
+        -1,
+    )
+    if start < 0:
+        return []
+    rows: list[tuple[str, int]] = []
+    for index in range(start, len(pages)):
+        found, spare = _toc_page_rows(pages[index])
+        if not found or spare > (TOC_TITLE_SPARE if index == start else TOC_SPARE):
+            break
+        rows.extend(found)
+    return rows
+
+
+def written_toc_misses(pdf_path: Path) -> tuple[int, list[str]]:
+    """Return how many contents rows a written PDF prints and which of them miss.
+
+    ``read_toc_rows`` takes the rows off the page and ``toc_row_miss`` judges
+    each, the check ``verify_toc_pages`` also runs.
+    """
+    pages = _pdf_page_texts(pdf_path)
+    rows = read_toc_rows(pages)
+    return len(rows), [
+        miss for label, page in rows if (miss := toc_row_miss(pages, label, page))
+    ]
+
+
 def verify_toc_pages(pdf_path: Path, entries: Iterable[TocEntry]) -> tuple[bool, str]:
     """Return whether each entry's ``text`` is on the page its contents row names."""
     pages = _pdf_page_texts(pdf_path)
     checked = 0
     for entry in entries:
-        if not 1 <= entry.page <= len(pages):
-            return False, f"{entry.text!r} names page {entry.page} of {len(pages)}"
-        if _normalise(entry.text) not in _normalise(pages[entry.page - 1]):
-            return False, f"{entry.text!r} is not on page {entry.page}"
+        miss = toc_row_miss(pages, entry.text, entry.page)
+        if miss:
+            return False, miss
         checked += 1
     return True, f"{checked} contents rows land on the page they name"
 
