@@ -3,8 +3,10 @@
 ``tick`` builds a ``GateContext`` through ``tape_context`` and evaluates it with
 ``latch``, which runs ``build_scrumming_scrum_chain`` and
 ``build_scrumming_fold_chain`` unchanged. ``apply_scrum`` and ``apply_fold``
-move a ``FakeBalance`` and record a ``PaperTrade`` stamped with the wall clock.
-``PaperRun`` holds the fleet, its balances and its trades in memory alone.
+move a ``FakeBalance`` and record a ``PaperTrade`` stamped with the wall clock,
+and a fold closing a tranche carries the ``realized_usd`` that reaches
+``PaperRun.ledger``. ``advance`` appends one ``paper_log`` row per tick, the
+only file a paper run writes.
 """
 
 from __future__ import annotations
@@ -23,7 +25,8 @@ from ..simulator.back_test import (
     tape_context,
 )
 from ..simulator.validation import bb_reading, latch
-from .fake_balance import FakeBalance, opening_balance
+from . import paper_log
+from .fake_balance import FakeBalance, PaperLedger, opening_balance, opening_ledger
 from .fleet_source import PaperBot
 
 logger = logging.getLogger("acervator.paper.run")
@@ -56,6 +59,7 @@ class PaperTrade:
     units: float
     usd: float
     fee_usd: float
+    realized_usd: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -71,6 +75,10 @@ class PaperTick:
     fold_armed: bool
     filled: Optional[PaperTrade] = None
     refusal: str = ""
+    scrum_blockers: tuple[str, ...] = ()
+    fold_blockers: tuple[str, ...] = ()
+    scrum_fixture: dict = field(default_factory=dict)
+    fold_fixture: dict = field(default_factory=dict)
 
 
 def apply_scrum(
@@ -89,9 +97,10 @@ def apply_scrum(
         return None
     notional = units * float(price)
     fee = fee_usd(notional, bot.trading_fee_pct)
+    balance.sell_basis(units)
     balance.units -= units
     balance.cash_usd += notional - fee
-    balance.tranches += 1
+    balance.open_tranche(notional - fee)
     return PaperTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -112,7 +121,7 @@ def apply_fold(
     candle_ts_ms: int,
     delta: float,
 ) -> Optional[PaperTrade]:
-    """Buy ``delta`` back at ``price`` and spend one tranche.
+    """Buy ``delta`` back at ``price``, spend one tranche and realize its close.
 
     The spend is capped at ``balance.cash_usd``, so one scrum's proceeds fund
     one fold.
@@ -124,9 +133,10 @@ def apply_fold(
     units = (spend - fee) / float(price)
     if units <= 0.0:
         return None
+    realized = balance.close_tranche(spend)
     balance.units += units
     balance.cash_usd -= spend
-    balance.tranches -= 1
+    balance.cost_basis_usd += spend
     return PaperTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -137,6 +147,7 @@ def apply_fold(
         units=units,
         usd=spend,
         fee_usd=fee,
+        realized_usd=realized,
     )
 
 
@@ -199,21 +210,27 @@ def tick(
         scrum_armed=bool(armed["scrum_armed"]),
         fold_armed=bool(armed["fold_armed"]),
         filled=filled,
+        scrum_blockers=tuple(str(one) for one in armed["scrum_blockers"]),
+        fold_blockers=tuple(str(one) for one in armed["fold_blockers"]),
+        scrum_fixture=paper_log.scrum_fixture(context),
+        fold_fixture=paper_log.fold_fixture(context),
     )
 
 
 @dataclass
 class PaperRun:
-    """The fleet, its fake balances and what the live feed has produced.
+    """The fleet, its fake balances, its ledger and what the live feed produced.
 
-    Every field lives in memory; nothing here writes ``bot_state.json`` or any
-    other file.
+    Every field lives in memory and the only file a run writes is the paper log
+    under ``src.paper.paper_paths.PAPER_ROOT``.
     """
 
     bots: tuple[PaperBot, ...] = ()
     state: str = IDLE
     started_at_ms: int = 0
+    ledger: PaperLedger = field(default_factory=PaperLedger)
     balances: dict[str, FakeBalance] = field(default_factory=dict)
+    last_price: dict[str, float] = field(default_factory=dict)
     trades: list[PaperTrade] = field(default_factory=list)
     ticks: list[PaperTick] = field(default_factory=list)
     refusals: dict[str, str] = field(default_factory=dict)
@@ -222,6 +239,10 @@ class PaperRun:
     def running(self) -> bool:
         """True while ``state`` reads ``STARTED``."""
         return self.state == STARTED
+
+    def figures(self) -> dict:
+        """``ledger.figures`` over ``balances`` at ``last_price``."""
+        return self.ledger.figures(self.balances, self.last_price)
 
     @property
     def summary(self) -> dict:
@@ -257,10 +278,32 @@ def candles_for(feed: Any, bot: PaperBot) -> list[Any]:
 def start(bots: Sequence[PaperBot]) -> PaperRun:
     """Mark a run started over ``bots``, asking the feed for nothing yet.
 
-    Each bot's ``FakeBalance`` opens on its first ``advance``, so one press
-    costs no feed ask.
+    ``opening_ledger`` sets Paper Spendable and Paper Locked to the fleet's
+    dollar target, and each bot's ``FakeBalance`` opens on its first ``advance``.
     """
-    return PaperRun(bots=tuple(bots), state=STARTED, started_at_ms=wall_clock_ms())
+    return PaperRun(
+        bots=tuple(bots),
+        state=STARTED,
+        started_at_ms=wall_clock_ms(),
+        ledger=opening_ledger(bots),
+    )
+
+
+def record(run: PaperRun, bot: PaperBot, seen: PaperTick) -> None:
+    """File ``seen`` on ``run`` and append its row to the paper log."""
+    run.ticks.append(seen)
+    if seen.price > 0.0:
+        run.last_price[bot.bot_id] = seen.price
+    if seen.filled is not None:
+        run.trades.append(seen.filled)
+        run.ledger.record_close(seen.filled.realized_usd)
+    if seen.refusal:
+        run.refusals[bot.bot_id] = seen.refusal
+    else:
+        run.refusals.pop(bot.bot_id, None)
+    paper_log.append_row(
+        paper_log.paper_row(seen, bot.exchange_id, run.figures())
+    )
 
 
 def advance(run: PaperRun, feed: Any, bot_id: str = "") -> list[PaperTick]:
@@ -281,18 +324,12 @@ def advance(run: PaperRun, feed: Any, bot_id: str = "") -> list[PaperTick]:
             run.balances[bot.bot_id] = balance
         seen = tick(bot, balance or FakeBalance(), candles)
         made.append(seen)
-        run.ticks.append(seen)
-        if seen.filled is not None:
-            run.trades.append(seen.filled)
-        if seen.refusal:
-            run.refusals[bot.bot_id] = seen.refusal
-        else:
-            run.refusals.pop(bot.bot_id, None)
+        record(run, bot, seen)
     return made
 
 
 def stop(run: PaperRun) -> PaperRun:
-    """Mark ``run`` stopped; its balances and trades stay readable."""
+    """Mark ``run`` stopped; its balances, ledger and trades stay readable."""
     run.state = STOPPED
     return run
 
@@ -313,6 +350,7 @@ __all__ = [
     "apply_scrum",
     "candles_for",
     "open_balance",
+    "record",
     "refusal_for",
     "start",
     "stop",
