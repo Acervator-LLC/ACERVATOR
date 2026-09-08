@@ -63,6 +63,11 @@ A paragraph of beta prose.
 More beta prose to fill the page.
 """
 
+GAMMA = """# Gamma Subsystem
+
+A paragraph of gamma prose that the renderer lays out on the page.
+"""
+
 README = """# Fixture Manual
 
 ## Contents
@@ -73,6 +78,12 @@ README = """# Fixture Manual
 | [02-alpha.md](02-alpha.md) | 1 | 2 | Alpha |
 | [04-manual-parts.md](04-manual-parts.md) | 1 | 3 | The part list |
 | [05-beta.md](05-beta.md) | 2 | 4 | Beta |
+
+## Part 2 subsystem detail
+
+| File | Covers |
+| ---- | ------ |
+| [05-beta/gamma.md](05-beta/gamma.md) | Gamma |
 """
 
 FIXTURE_FILES = {
@@ -81,6 +92,7 @@ FIXTURE_FILES = {
     "02-alpha.md": ALPHA,
     "04-manual-parts.md": PART_LIST,
     "05-beta.md": BETA,
+    "05-beta/gamma.md": GAMMA,
 }
 
 
@@ -88,7 +100,9 @@ def _fixture_docs(root: Path) -> Path:
     docs = root / "manual"
     docs.mkdir(parents=True, exist_ok=True)
     for name, text in FIXTURE_FILES.items():
-        (docs / name).write_text(text, encoding="utf-8", newline="\n")
+        path = docs / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="\n")
     return docs
 
 
@@ -133,7 +147,7 @@ def test_a_listed_section_missing_from_the_pdf_is_rejected(manual_tree):
 
     ok, detail = verify_sections_present(output, (manual.cover, *manual.rows))
     assert not ok, "a section left out of the PDF was reported present"
-    assert "05-beta.md" in detail, detail
+    assert manual.rows[-1].path.name in detail, detail
 
 
 def test_a_repeated_part_number_is_rejected():
@@ -224,6 +238,46 @@ def test_a_part_file_the_readme_omits_is_refused(manual_tree):
     (docs / "06-gamma.md").write_text("# Gamma\n", encoding="utf-8", newline="\n")
     with pytest.raises(ValueError, match="06-gamma.md"):
         read_manifest(docs / "README.md", docs)
+
+
+def test_a_page_in_a_subdirectory_takes_the_part_its_heading_names(manual_tree):
+    docs, _figures, _output = manual_tree
+    rows = read_manifest(docs / "README.md", docs)
+
+    carried = {row.path.relative_to(docs).as_posix(): row.part for row in rows}
+    assert carried.get("05-beta/gamma.md") == 2, f"the manifest carried {carried}"
+
+
+def test_a_page_under_a_part_heading_renders_after_that_part_s_own_files(manual_tree):
+    docs, _figures, _output = manual_tree
+    rows = read_manifest(docs / "README.md", docs)
+
+    order = [row.path.relative_to(docs).as_posix() for row in rows]
+    assert order[-2:] == ["05-beta.md", "05-beta/gamma.md"], f"the order was {order}"
+
+
+def test_a_page_in_a_subdirectory_the_readme_omits_is_refused(manual_tree):
+    docs, _figures, _output = manual_tree
+    assert read_manifest(docs / "README.md", docs), "the intact manifest read empty"
+
+    (docs / "05-beta" / "delta.md").write_text(
+        "# Delta\n", encoding="utf-8", newline="\n"
+    )
+    with pytest.raises(ValueError, match="05-beta/delta.md"):
+        read_manifest(docs / "README.md", docs)
+
+
+def test_every_markdown_file_under_the_manual_is_carried_or_listed(manual_tree):
+    docs, _figures, _output = manual_tree
+    rows = read_manifest(docs / "README.md", docs)
+
+    carried = {row.path for row in rows}
+    unaccounted = sorted(
+        item.name
+        for item in docs.rglob("*.md")
+        if item not in carried and item.name != "README.md"
+    )
+    assert not unaccounted, f"neither carried nor the manifest: {unaccounted}"
 
 
 def test_an_absent_figure_stops_the_build_by_name(manual_tree):

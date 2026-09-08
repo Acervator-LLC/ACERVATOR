@@ -79,7 +79,7 @@ PART_LINE = re.compile(r"^(\d+)\s+(\S.*)$")
 HEADING_LINE = re.compile(r"^(#{1,6})\s+(.*)$")
 IMAGE_LINE = re.compile(r"^!\[(?P<alt>[^\]]*)\]\((?P<src>[^)]+)\)$")
 LINK_CELL = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
-PART_FILE_NAME = re.compile(r"^\d{2}-.+\.md$")
+SECTION_PART = re.compile(r"\bPart (\d+)\b")
 SEPARATOR_CELL = re.compile(r"^:?-{2,}:?$")
 HEADING_STYLES = {1: "section", 2: "sub", 3: "sub2", 4: "sub2", 5: "sub2", 6: "sub2"}
 
@@ -241,11 +241,21 @@ class PartList:
 
 
 @dataclass(frozen=True)
+class TableRow:
+    """One pipe-table row of ``README.md``, its table, and the part its heading names."""
+
+    table: int
+    part: int | None
+    cells: list[str]
+
+
+@dataclass(frozen=True)
 class ManifestRow:
-    """One ``README.md`` contents row: a part file and the part it belongs to."""
+    """One ``README.md`` contents row: a part file, its part, and its table."""
 
     path: Path
     part: int
+    table: int = 0
 
 
 @dataclass(frozen=True)
@@ -532,39 +542,86 @@ def parse_mermaid(text: str) -> Diagram:
     )
 
 
-def read_manifest(readme: Path, docs_dir: Path) -> list[ManifestRow]:
-    """Return the part rows of ``readme``'s contents table, in the order it lists them.
+def sectioned_rows(text: str) -> list[TableRow]:
+    """Return each table row outside a fence, numbered by its table.
 
-    A listed file that is absent, an unlisted ``NN-*.md``, and a part number that
-    goes backwards each raise.
+    ``TableRow.part`` carries the part the row's nearest heading names, and a
+    heading naming no part clears it.
     """
-    rows: list[ManifestRow] = []
-    listed: set[str] = set()
-    for cells in _table_rows(readme.read_text(encoding="utf-8")):
-        link = LINK_CELL.match(cells[0])
-        if not link or len(cells) < MANIFEST_CELLS:
+    out: list[TableRow] = []
+    section: int | None = None
+    table = 0
+    for kind, _info, body in split_fences(text):
+        if kind != "prose":
             continue
-        name = link.group(1)
-        listed.add(name)
-        path = docs_dir / name
-        if not path.is_file():
-            message = f"{readme.name} lists {name}, absent from {docs_dir}"
-            raise FileNotFoundError(message)
-        if cells[1].isdigit():
-            rows.append(ManifestRow(path=path, part=int(cells[1])))
+        for line in body.split("\n"):
+            heading = HEADING_LINE.match(line.strip())
+            if heading:
+                named = SECTION_PART.search(heading.group(2))
+                section = int(named.group(1)) if named else None
+            cells = _table_rows(line)
+            if not cells:
+                table += 1
+                continue
+            out.extend(TableRow(table=table, part=section, cells=row) for row in cells)
+    return out
+
+
+def _listed_files(readme: Path, docs_dir: Path) -> set[str]:
+    """Return the ``docs_dir``-relative names ``readme``'s table rows link."""
+    return {
+        link.group(1)
+        for row in sectioned_rows(readme.read_text(encoding="utf-8"))
+        for link in [LINK_CELL.match(row.cells[0])]
+        if link
+    }
+
+
+def _refuse_unlisted(readme: Path, docs_dir: Path) -> None:
+    """Raise when a markdown file under ``docs_dir`` no ``readme`` row links exists."""
+    listed = _listed_files(readme, docs_dir)
     unlisted = sorted(
-        item.name
-        for item in docs_dir.glob("*.md")
-        if PART_FILE_NAME.match(item.name) and item.name not in listed
+        item.relative_to(docs_dir).as_posix()
+        for item in docs_dir.rglob("*.md")
+        if item != readme and item.relative_to(docs_dir).as_posix() not in listed
     )
     if unlisted:
         message = f"{readme.name} omits {', '.join(unlisted)}"
         raise ValueError(message)
-    numbers = [row.part for row in rows]
-    if numbers != sorted(numbers):
-        message = f"{readme.name} lists parts out of order: {numbers}"
-        raise ValueError(message)
-    return rows
+
+
+def _refuse_backwards_parts(readme: Path, rows: Iterable[ManifestRow]) -> None:
+    """Raise when the part numbers of one table of ``readme`` go backwards."""
+    tables: dict[int, list[int]] = {}
+    for row in rows:
+        tables.setdefault(row.table, []).append(row.part)
+    for numbers in tables.values():
+        if numbers != sorted(numbers):
+            message = f"{readme.name} lists parts out of order: {numbers}"
+            raise ValueError(message)
+
+
+def read_manifest(readme: Path, docs_dir: Path) -> list[ManifestRow]:
+    """Return the part rows of ``readme``'s tables, ordered by the part each names.
+
+    A row takes the part its second cell names, else the part its heading names,
+    and a row left with neither is listed and not rendered.
+    """
+    rows: list[ManifestRow] = []
+    for row in sectioned_rows(readme.read_text(encoding="utf-8")):
+        link = LINK_CELL.match(row.cells[0])
+        if not link or len(row.cells) < MANIFEST_CELLS:
+            continue
+        path = docs_dir / link.group(1)
+        if not path.is_file():
+            message = f"{readme.name} lists {link.group(1)}, absent from {docs_dir}"
+            raise FileNotFoundError(message)
+        part = int(row.cells[1]) if row.cells[1].isdigit() else row.part
+        if part is not None:
+            rows.append(ManifestRow(path=path, part=part, table=row.table))
+    _refuse_unlisted(readme, docs_dir)
+    _refuse_backwards_parts(readme, rows)
+    return sorted(rows, key=lambda row: row.part)
 
 
 def load_manual(docs_dir: Path, figures_dir: Path) -> Manual:
