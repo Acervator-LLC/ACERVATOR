@@ -53,6 +53,12 @@ class SimBot:
     bb_midline_gate: bool = True
     bb_tolerance_pct: float = 1.0
     bb_landing_strip_candles: int = 2
+    scrum_detect_pct: float = 75.0
+    scrum_require_ta_bullish: bool = True
+    scrum_hold_in_uptrend: bool = True
+    scrum_defer_to_htf: bool = True
+    fold_require_ta_bearish: bool = True
+    fold_defer_to_htf: bool = True
 
     @property
     def asset(self) -> str:
@@ -92,6 +98,12 @@ def _sim_bot_from_record(bot_id: str, record: dict) -> Optional[SimBot]:
         bb_landing_strip_candles=int(
             _number(config.get("bb_landing_strip_candles"), 2)
         ),
+        scrum_detect_pct=_number(config.get("scrum_detect_pct"), 75.0),
+        scrum_require_ta_bullish=bool(config.get("scrum_require_ta_bullish", True)),
+        scrum_hold_in_uptrend=bool(config.get("scrum_hold_in_uptrend", True)),
+        scrum_defer_to_htf=bool(config.get("scrum_defer_to_htf", True)),
+        fold_require_ta_bearish=bool(config.get("fold_require_ta_bearish", True)),
+        fold_defer_to_htf=bool(config.get("fold_defer_to_htf", True)),
     )
 
 
