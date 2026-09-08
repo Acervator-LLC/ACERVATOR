@@ -176,6 +176,7 @@ fresh clone has 38 figures it can rebuild and 39 it cannot.
 ```
 git log --all --diff-filter=ADR --name-only            1,612 distinct paths
     tests/test_vwap_band_scales_to_price.py            the only one carrying vwap
+                                                       deleted; not in the tree
 
 git log --all -S<name> -- "*.py"
     draw_combined             0 commits
