@@ -126,6 +126,21 @@ class MACD:
                 abstained=True,
             )
 
+        # Each scale is a fraction of the last close, so every quotient below
+        # divides a price by a price.
+        crossover_scale = abs(closes[-1]) * 0.001
+        momentum_scale = abs(closes[-1]) * 0.002
+        if crossover_scale == 0.0 or momentum_scale == 0.0:
+            # No scale to divide by, so macd publishes no confidence here.
+            return Signal(
+                "macd",
+                timeframe,
+                SignalDirection.NEUTRAL,
+                0.0,
+                self.weight,
+                abstained=True,
+            )
+
         direction = SignalDirection.NEUTRAL
         confidence = 0.0
         crossover = False
@@ -136,21 +151,21 @@ class MACD:
             crossover = True
             confidence = max(
                 0.0,
-                min(1.0, abs(curr_hist) / (abs(closes[-1]) * 0.001) * 0.3 + 0.5),
+                min(1.0, abs(curr_hist) / crossover_scale * 0.3 + 0.5),
             )
         elif prev_macd >= prev_signal and curr_macd < curr_signal:
             direction = SignalDirection.BEARISH
             crossover = True
             confidence = max(
                 0.0,
-                min(1.0, abs(curr_hist) / (abs(closes[-1]) * 0.001) * 0.3 + 0.5),
+                min(1.0, abs(curr_hist) / crossover_scale * 0.3 + 0.5),
             )
         elif curr_hist > 0 and curr_hist > prev_hist:
             direction = SignalDirection.BULLISH
-            confidence = max(0.0, min(0.6, abs(curr_hist) / (abs(closes[-1]) * 0.002)))
+            confidence = max(0.0, min(0.6, abs(curr_hist) / momentum_scale))
         elif curr_hist < 0 and curr_hist < prev_hist:
             direction = SignalDirection.BEARISH
-            confidence = max(0.0, min(0.6, abs(curr_hist) / (abs(closes[-1]) * 0.002)))
+            confidence = max(0.0, min(0.6, abs(curr_hist) / momentum_scale))
         elif curr_hist > 0:
             direction = SignalDirection.BULLISH
             confidence = 0.15
@@ -193,9 +208,9 @@ class MACD:
             confidence=confidence,
             weight=self.weight,
             details={
-                "macd_line": round(curr_macd, 6),
-                "signal_line": round(curr_signal, 6),
-                "histogram": round(curr_hist, 6),
+                "macd_line": curr_macd,
+                "signal_line": curr_signal,
+                "histogram": curr_hist,
                 "crossover": crossover,
                 "divergence": divergence,
             },

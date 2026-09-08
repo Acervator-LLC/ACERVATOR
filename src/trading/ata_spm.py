@@ -117,7 +117,8 @@ READINGS: dict[str, tuple[str, tuple, str]] = {
         "band position {value:.4f}",
     ),
     "vortex": ("Vortex", ("separation",), "VI+ less VI- at {value:+.4f}"),
-    "macd": ("MACD", ("histogram",), "histogram {value:+.6f}"),
+    # The histogram is a price, so it prints significant figures, not decimals.
+    "macd": ("MACD", ("histogram",), "histogram {value:+.8g}"),
     "stochastic_rsi": ("Stochastic RSI", ("k",), "%K at {value:.2f}"),
     "ichimoku": ("Ichimoku Cloud", ("price_vs_cloud",), "price {value} the cloud"),
     "volume": ("Volume", ("mfi",), "Money Flow Index {value:.1f}"),
