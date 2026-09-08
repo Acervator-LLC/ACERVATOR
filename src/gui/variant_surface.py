@@ -24,6 +24,7 @@ HISTORY_TABLE = "History table"
 MAIN_TAB_BOOK = "Main tab book"
 MARKET_INSPECTOR = "Market Inspector"
 SETTINGS_DIALOG = "Settings dialog"
+SIMULATOR = "Sim"
 SPENDABLE_PROFITS = "Spendable profits"
 START_ALL_PROGRESS = "Start All progress dialog"
 
@@ -243,6 +244,20 @@ def _react_start_all_progress() -> type:
     return StartAllProgressReactDialog
 
 
+def _qt_simulator() -> type:
+    """Import and return the Qt Sim tab."""
+    from .simulator_tab import SimulatorTabQt
+
+    return SimulatorTabQt
+
+
+def _react_simulator() -> type:
+    """Import and return the React Sim tab."""
+    from .react_simulator_tab import SimulatorTabReact
+
+    return SimulatorTabReact
+
+
 def _qt_buy_confirmation() -> type:
     """Import and return the Qt buy confirmation dialog."""
     from .buy_confirmation_dialog import BuyConfirmationDialog
@@ -271,3 +286,4 @@ register(SPENDABLE_PROFITS, _qt_spendable_profits, _react_spendable_profits)
 register(DASHBOARD_STAT_CARD, _qt_dashboard_stat_card, _react_dashboard_stat_card)
 register(START_ALL_PROGRESS, _qt_start_all_progress, _react_start_all_progress)
 register(BUY_CONFIRMATION, _qt_buy_confirmation, _react_buy_confirmation)
+register(SIMULATOR, _qt_simulator, _react_simulator)

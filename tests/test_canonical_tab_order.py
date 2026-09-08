@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (  # noqa: E402
 import src.gui.main_window as mw  # noqa: E402
 from src.gui.main_tabs import main_window_surface as surface  # noqa: E402
 from src.gui.main_tabs.empty_tabs import EmptyTabsMixin  # noqa: E402
+from src.gui.main_tabs.simulator_tab import SimulatorTabMixin  # noqa: E402
 
 #: The order the operator reads left to right across the tab bar.
 OPERATOR_TAB_ORDER = [
@@ -93,10 +94,10 @@ def tabs_in_construction_order(_qapp) -> QTabWidget:
     return book
 
 
-class ShellWindow(EmptyTabsMixin):
+class ShellWindow(EmptyTabsMixin, SimulatorTabMixin):
     """Stands in for ``MainWindow`` while the shipped ``_setup_ui`` runs.
 
-    Each ``_build_*`` adds one ``QLabel``, except the four ``EmptyTabsMixin``
+    Each ``_build_*`` adds one ``QLabel``, except the shipped empty-tab and Sim
     builders, which run shipped code; ``reorder_argument`` records what
     ``_setup_ui`` hands ``_reorder_main_tabs``, and a name in ``failed`` never
     reaches the tab bar.
@@ -138,7 +139,7 @@ class ShellWindow(EmptyTabsMixin):
         self._append(surface.INSPECTOR_TAB)
 
     def _build_simulator_tab(self) -> None:
-        self._empty(surface.SIM_TAB, "_build_simulator_tab")
+        self._run_builder(surface.SIM_TAB, SimulatorTabMixin, "_build_simulator_tab")
 
     def _install_retired_tab_sentinels(self) -> None:
         self.built.append(RETIRED_SENTINELS)
@@ -149,12 +150,16 @@ class ShellWindow(EmptyTabsMixin):
     def _build_console_tab(self) -> None:
         self._append(surface.CONSOLE_TAB)
 
-    def _empty(self, name: str, method: str) -> None:
-        """Run one shipped ``EmptyTabsMixin`` builder unless ``name`` failed."""
+    def _run_builder(self, name: str, owner: type, method: str) -> None:
+        """Run one shipped builder off ``owner`` unless ``name`` failed."""
         self.built.append(name)
         if name in self._failed:
             return
-        MethodType(EmptyTabsMixin.__dict__[method], self)()
+        MethodType(owner.__dict__[method], self)()
+
+    def _empty(self, name: str, method: str) -> None:
+        """Run one shipped ``EmptyTabsMixin`` builder unless ``name`` failed."""
+        self._run_builder(name, EmptyTabsMixin, method)
 
     def _build_paper_trader_tab(self) -> None:
         self._empty(surface.PAPER_TAB, "_build_paper_trader_tab")
