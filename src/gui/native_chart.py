@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from src.gui.theme_engine import CYBERPUNK_DARK
@@ -45,6 +46,8 @@ try:
         QColor,
         QFont,
         QFontMetrics,
+        QGuiApplication,
+        QImage,
         QLinearGradient,
         QPolygonF,
     )
@@ -105,6 +108,8 @@ class ChartOverlay:
     The pane fixes what ``draw`` is handed: ``PRICE_PANE`` takes one
     ``PaintContext``, ``SUB_PANE`` takes one and its top and bottom, and
     ``VOLUME_PANE`` takes the painter, both edges and the strip's top.
+    ``voter`` is the ``ta_engine`` indicator whose reading this overlay draws,
+    empty where the overlay draws no voter.
     """
 
     key: str
@@ -114,6 +119,7 @@ class ChartOverlay:
     occludes: bool
     draw: str
     tooltip: str
+    voter: str = ""
 
     @property
     def starts_on(self) -> bool:
@@ -132,6 +138,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         occludes=False,
         draw="_draw_bollinger",
         tooltip="Bollinger Bands (20, 2σ) with cloud fill",
+        voter="bollinger_bands",
     ),
     ChartOverlay(
         key="vortex",
@@ -141,6 +148,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         occludes=False,
         draw="_draw_vortex",
         tooltip="Vortex Indicator (VI+ / VI-, period 14, sub-pane)",
+        voter="vortex",
     ),
     ChartOverlay(
         key="macd",
@@ -150,6 +158,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         occludes=False,
         draw="_draw_macd",
         tooltip="MACD line and signal, 12/26/9, sub-pane",
+        voter="macd",
     ),
     ChartOverlay(
         key="stochrsi",
@@ -159,6 +168,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         occludes=False,
         draw="_draw_stochrsi",
         tooltip="Stochastic RSI (14/14), 0..1 oscillator, sub-pane",
+        voter="stochastic_rsi",
     ),
     ChartOverlay(
         key="ichimoku",
@@ -168,6 +178,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         occludes=False,
         draw="_draw_ichimoku",
         tooltip="Ichimoku Cloud: Tenkan, Kijun, Span A, Span B, shift +26",
+        voter="ichimoku",
     ),
     ChartOverlay(
         key="volume",
@@ -177,6 +188,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
         occludes=False,
         draw="_draw_volume",
         tooltip="Volume bars (bottom strip)",
+        voter="volume",
     ),
     ChartOverlay(
         key="slingshot",
@@ -190,6 +202,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
             "circle at a snapback. Opaque marks sit over the bands, so it "
             "starts off."
         ),
+        voter="slingshot",
     ),
     ChartOverlay(
         key="bbullseye",
@@ -209,12 +222,55 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
 OVERLAY_KEYS: tuple[str, ...] = tuple(one.key for one in CHART_OVERLAYS)
 
 
+#: The width in pixels ``render_chart_png`` draws a post image at.
+POST_IMAGE_WIDTH_PX = 1200
+
+#: ``max_overlays`` at or under this draws every overlay the voters name.
+NO_OVERLAY_CAP = 0
+
+NO_QT_NOTE = "PySide6 is not installed; no image drawn."
+NO_APPLICATION_NOTE = "No Qt application running; no image drawn."
+NO_CANDLES_NOTE = "No candles read for {symbol} on {timeframe}."
+NOT_DRAWN_NOTE = "not drawn: {voters}"
+IMAGE_NOT_WRITTEN_NOTE = "Qt refused to write {path}."
+
+
+@dataclass
+class ChartImage:
+    """One rendered chart on disk, and what the renderer could not draw.
+
+    ``drawn`` and ``undrawn`` name voters: ``undrawn`` holds the ones no
+    overlay draws and the ones ``max_overlays`` cut.
+    """
+
+    path: str = ""
+    width_px: int = 0
+    height_px: int = 0
+    bars: int = 0
+    drawn: tuple = ()
+    undrawn: tuple = ()
+    note: str = ""
+
+
+def overlays_for_voters(voters, max_overlays: int = NO_OVERLAY_CAP) -> tuple:
+    """The overlay keys drawing ``voters``, and the voters no overlay draws.
+
+    Registry order decides which survive ``max_overlays``, and a cap at or
+    under ``NO_OVERLAY_CAP`` keeps every match.
+    """
+    named = [str(one) for one in voters or []]
+    matched = [one.key for one in CHART_OVERLAYS if one.voter and one.voter in named]
+    drawn = matched[:max_overlays] if max_overlays > NO_OVERLAY_CAP else matched
+    by_key = {one.key: one.voter for one in CHART_OVERLAYS}
+    reached = {by_key[key] for key in drawn}
+    return tuple(drawn), tuple(one for one in named if one not in reached)
+
+
 def overlays_on(chart, pane: str) -> tuple[ChartOverlay, ...]:
-    """Every overlay of ``pane`` whose ``_show_<key>`` on ``chart`` is set."""
+    """Every overlay of ``pane`` switched on in ``chart._overlay_shown``."""
+    shown = getattr(chart, "_overlay_shown", {})
     return tuple(
-        one
-        for one in CHART_OVERLAYS
-        if one.pane == pane and getattr(chart, f"_show_{one.key}", False)
+        one for one in CHART_OVERLAYS if one.pane == pane and shown.get(one.key, False)
     )
 
 
@@ -264,14 +320,81 @@ if _HAS_QT:
         sub_axis_label: object = None
         paint_oscillator: object = None
 
-    class CandlestickChart(QWidget):
-        """QPainter candlestick chart — sharp outlines, position markers.
+    class ChartPainter:
+        """The chart's drawing state and ``paint_to``, with no window behind it.
 
-        Every colour below resolves from a ``ThemeTokens`` field through
-        ``PALETTE_ROLES``, and ``set_theme`` re-resolves them for another theme.
+        ``paint_to`` takes any ``QPainter`` and a size, so ``CandlestickChart``
+        paints onto a widget and ``render_chart_png`` onto a ``QImage``. Every
+        colour resolves from a ``ThemeTokens`` field through ``PALETTE_ROLES``.
         """
 
-        timeframe_changed = Signal(str)
+        # Every colour a paint method reads. ``resolve_palette`` and
+        # ``set_theme`` fill them from ``PALETTE_ROLES``.
+        BG_TOP: QColor
+        BG_BOT: QColor
+        GRID_MAJOR: QColor
+        GRID_MINOR: QColor
+        TEXT_DIM: QColor
+        TEXT_LIGHT: QColor
+        ACCENT: QColor
+        UP_FILL: QColor
+        UP_BORDER: QColor
+        DOWN_FILL: QColor
+        DOWN_BORDER: QColor
+        UP_WICK: QColor
+        DOWN_WICK: QColor
+        VOL_UP: QColor
+        VOL_DOWN: QColor
+        VOL_UP_BORDER: QColor
+        VOL_DOWN_BORDER: QColor
+        CROSSHAIR_COLOR: QColor
+        PRICE_LINE_COLOR: QColor
+        BUY_POS_COLOR: QColor
+        SELL_POS_COLOR: QColor
+        INVISIBLE_ICON: QColor
+        VISIBLE_ICON: QColor
+        BAND_LINE: QColor
+        BAND_FILL: QColor
+        BAND_MID: QColor
+        CLOUD_BULL: QColor
+        CLOUD_BEAR: QColor
+        SPAN_A_LINE: QColor
+        SPAN_B_LINE: QColor
+        TENKAN_LINE: QColor
+        KIJUN_LINE: QColor
+        CHIKOU_LINE: QColor
+        ZONE_SCRUM_TOUCH: QColor
+        ZONE_SCRUM_WICK: QColor
+        ZONE_FOLD_TOUCH: QColor
+        ZONE_FOLD_WICK: QColor
+        EVENT_BULL: QColor
+        EVENT_BEAR: QColor
+        SUB_PANE_WASH: QColor
+        MACD_LINE: QColor
+        MACD_SIGNAL: QColor
+        HIST_UP: QColor
+        HIST_UP_EDGE: QColor
+        HIST_DOWN: QColor
+        HIST_DOWN_EDGE: QColor
+        VORTEX_PLUS: QColor
+        VORTEX_MINUS: QColor
+        OSC_LINE: QColor
+        GAP_MARK: QColor
+        MARKER_SCRUM: QColor
+        MARKER_FOLD: QColor
+        MARKER_DIST: QColor
+        MARKER_BUY: QColor
+        MARKER_SELL: QColor
+        FLOOR_LINE: QColor
+        TB_ANCHOR: QColor
+        TB_CEILING: QColor
+        GLOW_SCRUM: QColor
+        GLOW_FOLD: QColor
+        BADGE_SURFACE: QColor
+        BADGE_EDGE: QColor
+        MARKER_EDGE: QColor
+        GRIP: QColor
+        ERROR_TEXT: QColor
 
         #: Each painted colour, as the theme field it reads and its alpha byte.
         PALETTE_ROLES: dict[str, tuple[str, int]] = {
@@ -350,17 +473,20 @@ if _HAS_QT:
             The instance values shadow the class ones, so the chart repaints in
             the theme without any other object holding a colour.
             """
+            self._theme_tokens = tokens
             for role, (field, alpha) in self.PALETTE_ROLES.items():
                 setattr(self, role, _role_colour(tokens, field, alpha))
-            self.update()
+            self._repaint()
 
         def overlay_colour(self, overlay: ChartOverlay) -> QColor:
             """The colour one overlay's label and check box carry."""
             return _role_colour(self._theme_tokens, overlay.colour_field, 255)
 
-        def __init__(self, symbol: str = "", parent=None):
-            super().__init__(parent)
-            self.setAccessibleName("Candlestick Chart")
+        def _repaint(self) -> None:
+            """Ask the host to redraw. A painter with no window has none."""
+            return None
+
+        def __init__(self, symbol: str = ""):
             self._theme_tokens = DEFAULT_THEME_TOKENS
             self._symbol = symbol
             self._candles: list[Candle] = []
@@ -373,8 +499,9 @@ if _HAS_QT:
             self._status_text = "Waiting for data..."
             self._source_label = ""
             self._error_text = ""
-            for overlay in CHART_OVERLAYS:
-                setattr(self, f"_show_{overlay.key}", overlay.starts_on)
+            self._overlay_shown: dict[str, bool] = {
+                one.key: one.starts_on for one in CHART_OVERLAYS
+            }
             self._bb_data: list[tuple] = []  # [(upper, middle, lower), ...]
             self._vortex_data: list[tuple] = []  # [(vi_plus, vi_minus), ...]
             self._macd_data: list[tuple] = []  # [(macd, signal, hist), ...]
@@ -395,23 +522,13 @@ if _HAS_QT:
                 "fold_blockers": [],
             }
 
-            self.setMinimumHeight(200)
-            self.setMouseTracking(True)
-
-            # _height_override holds a dragged height; auto-expand never goes under it.
+            # The grip band the paint routine draws along the bottom edge.
             self._resize_grip_h = 8
-            self._height_override: Optional[int] = None
-            self._resize_active = False
-            self._resize_start_y: Optional[int] = None
-            self._resize_start_height: Optional[int] = None
 
             # None on either bound fits all candles; _y_zoom_pct scales price padding.
             self._visible_start: Optional[int] = None
             self._visible_count: Optional[int] = None
             self._y_zoom_pct: float = 1.0
-            self._drag_active = False
-            self._drag_start_x: Optional[int] = None
-            self._drag_start_visible_start: Optional[int] = None
 
         @property
         def symbol(self) -> str:
@@ -420,7 +537,7 @@ if _HAS_QT:
         @symbol.setter
         def symbol(self, value: str):
             self._symbol = value
-            self.update()
+            self._repaint()
 
         def set_candles(self, candles: list[Candle]) -> None:
             self._candles = candles
@@ -428,15 +545,15 @@ if _HAS_QT:
             if candles:
                 self._status_text = f"{len(candles)} candles"
                 self._compute_indicators()
-            self.update()
+            self._repaint()
 
         def set_source_label(self, source: str) -> None:
             self._source_label = source
-            self.update()
+            self._repaint()
 
         def set_error(self, msg: str) -> None:
             self._error_text = msg
-            self.update()
+            self._repaint()
 
         def _compute_indicators(self):
             """Fill ``_bb_data``, ``_vortex_data``, ``_macd_data``,
@@ -462,7 +579,7 @@ if _HAS_QT:
 
         def add_marker(self, marker: TradeMarker) -> None:
             self._markers.append(marker)
-            self.update()
+            self._repaint()
 
         def set_trade_history_markers(self, trades: list[dict]) -> None:
             """Replace ``_markers`` with one ``TradeMarker`` per trade dict.
@@ -487,7 +604,7 @@ if _HAS_QT:
                     self._markers.append(m)
                 except (TypeError, ValueError, KeyError):
                     continue
-            self.update()
+            self._repaint()
 
         def set_tranche_floors(self, floors: list[tuple]) -> None:
             """Set ``_tranche_floors`` from (price, label) tuples.
@@ -496,15 +613,15 @@ if _HAS_QT:
             which that lot does not fold.
             """
             self._tranche_floors = list(floors)
-            self.update()
+            self._repaint()
 
         def set_positions(self, positions: list[PositionMarker]) -> None:
             self._positions = positions
-            self.update()
+            self._repaint()
 
         def set_grid_lines(self, lines: list[GridLine]) -> None:
             self._grid_lines = lines
-            self.update()
+            self._repaint()
 
         def set_target_balance_lines(
             self, anchor_price: Optional[float], ceiling_price: Optional[float]
@@ -518,7 +635,7 @@ if _HAS_QT:
             """
             self._tb_anchor_price = anchor_price
             self._tb_ceiling_price = ceiling_price
-            self.update()
+            self._repaint()
 
         def set_fire_armed_state(
             self,
@@ -538,7 +655,13 @@ if _HAS_QT:
                 "scrum_blockers": list(scrum_blockers or []),
                 "fold_blockers": list(fold_blockers or []),
             }
-            self.update()
+            self._repaint()
+
+        def show_only(self, keys) -> None:
+            """Switch on the overlays ``keys`` names and switch every other off."""
+            wanted = set(str(one) for one in keys or [])
+            self._overlay_shown = {one.key: one.key in wanted for one in CHART_OVERLAYS}
+            self._repaint()
 
         def set_timeframe(self, tf: str) -> None:
             self._current_tf = tf
@@ -546,11 +669,11 @@ if _HAS_QT:
         def _natural_height_for_panes(self) -> int:
             """Return the pixel height the toggled-on panes need.
 
-            The price pane takes 220, ``_show_volume`` adds 28, and each entry
+            The price pane takes 220, the volume strip adds 28, and each entry
             of ``_sub_overlays_with_data`` adds 60, over a 64px header.
             """
             base = 28 + 18 + 220 + 18  # header + OHLC + price + time
-            if self._show_volume:
+            if self._overlay_shown["volume"]:
                 base += 28
             base += len(self._sub_overlays_with_data()) * 60
             return base
@@ -567,129 +690,6 @@ if _HAS_QT:
                 if getattr(self, f"_{one.key}_data", None)
             )
 
-        def _apply_height_for_panes(self) -> None:
-            """Raise the minimum height to ``_natural_height_for_panes``.
-
-            ``_height_override`` from a grip drag wins when it is
-            taller, and the parent widget is raised to the same height
-            plus 36.
-            """
-            target = self._natural_height_for_panes()
-            if self._height_override is not None:
-                target = max(target, self._height_override)
-            if target != self.minimumHeight():
-                self.setMinimumHeight(target)
-                self.updateGeometry()
-                _parent = self.parent()
-                if _parent is not None:
-                    try:
-                        _parent.setMinimumHeight(target + 36)
-                        _parent.updateGeometry()
-                    except Exception as exc:
-                        logger.debug("chart parent height not raised: %s", exc)
-
-        def mouseMoveEvent(self, event):
-            self._mouse_x = int(event.position().x())
-            self._mouse_y = int(event.position().y())
-            in_grip = event.position().y() >= self.height() - self._resize_grip_h
-            if self._resize_active or in_grip:
-                self.setCursor(Qt.SizeVerCursor)
-            else:
-                self.setCursor(Qt.ArrowCursor)
-            if self._resize_active and self._resize_start_y is not None:
-                delta = self._mouse_y - self._resize_start_y
-                new_h = max(200, (self._resize_start_height or 200) + delta)
-                self._height_override = new_h
-                self.setMinimumHeight(new_h)
-                # The parent grows too, plus 36px for the toolbar above the chart.
-                _parent = self.parent()
-                if _parent is not None:
-                    try:
-                        _parent.setMinimumHeight(new_h + 36)
-                        _parent.updateGeometry()
-                    except Exception as exc:
-                        logger.debug("chart parent height not dragged: %s", exc)
-                self.updateGeometry()
-                self.update()
-                return
-            if self._drag_active and self._drag_start_x is not None:
-                w = self.width()
-                ML, MR = 8, 78
-                chart_w = max(1, w - ML - MR)
-                count = self._effective_visible_count()
-                if count > 0:
-                    pixels_per_candle = chart_w / count
-                    delta_pixels = self._drag_start_x - self._mouse_x
-                    delta_candles = int(delta_pixels / max(pixels_per_candle, 0.001))
-                    new_start = (self._drag_start_visible_start or 0) + delta_candles
-                    n = len(self._candles)
-                    new_start = max(0, min(n - count, new_start))
-                    self._visible_start = new_start
-            self.update()
-
-        def mousePressEvent(self, event):
-            if event.button() == Qt.LeftButton:
-                # The bottom 8px grip takes precedence over pan.
-                if event.position().y() >= self.height() - self._resize_grip_h:
-                    self._resize_active = True
-                    self._resize_start_y = int(event.position().y())
-                    self._resize_start_height = self.height()
-                    return
-                self._drag_active = True
-                self._drag_start_x = int(event.position().x())
-                self._drag_start_visible_start = (
-                    self._visible_start if self._visible_start is not None else 0
-                )
-
-        def mouseReleaseEvent(self, event):
-            if event.button() == Qt.LeftButton:
-                self._drag_active = False
-                self._drag_start_x = None
-                self._resize_active = False
-                self._resize_start_y = None
-                self._resize_start_height = None
-
-        def mouseDoubleClickEvent(self, event):
-            self._visible_start = None
-            self._visible_count = None
-            self._y_zoom_pct = 1.0
-            self.update()
-
-        def wheelEvent(self, event):
-            """Zoom on the wheel.
-
-            A plain wheel moves ``_visible_count`` around the cursor;
-            Ctrl and the wheel move ``_y_zoom_pct``.
-            """
-            n = len(self._candles)
-            if n == 0:
-                return
-            delta = event.angleDelta().y()
-            zoom_factor = 0.85 if delta > 0 else 1.18
-
-            modifiers = event.modifiers()
-            if modifiers & Qt.ControlModifier:
-                new_y = self._y_zoom_pct * zoom_factor
-                self._y_zoom_pct = max(0.05, min(4.0, new_y))
-                self.update()
-                return
-
-            cur_count = self._effective_visible_count()
-            cur_start = self._effective_visible_start()
-            new_count = max(8, min(n, int(cur_count * zoom_factor)))
-            if new_count == cur_count:
-                return
-            mx = int(event.position().x())
-            ML, MR = 8, 78
-            chart_w = max(1, self.width() - ML - MR)
-            cursor_frac = max(0.0, min(1.0, (mx - ML) / chart_w))
-            anchor_idx = cur_start + cursor_frac * cur_count
-            new_start = int(anchor_idx - cursor_frac * new_count)
-            new_start = max(0, min(n - new_count, new_start))
-            self._visible_start = new_start
-            self._visible_count = new_count
-            self.update()
-
         def _effective_visible_start(self) -> int:
             """Resolve _visible_start to an int, defaulting to 0 (fit-all)."""
             if self._visible_start is None:
@@ -704,11 +704,6 @@ if _HAS_QT:
                 return n
             return max(8, min(n, self._visible_count))
 
-        def leaveEvent(self, event):
-            self._mouse_x = None
-            self._mouse_y = None
-            self.update()
-
         def _fmt_price(self, price: float) -> str:
             if price < 0.0001:
                 return f"{price:.8f}"
@@ -721,11 +716,14 @@ if _HAS_QT:
             else:
                 return f"{price:,.2f}"
 
-        def paintEvent(self, event):
-            p = QPainter(self)
+        def paint_to(self, p: QPainter, w: int, h: int) -> None:
+            """Draw the whole chart onto ``p`` over a ``w`` by ``h`` area.
+
+            The painter's device is the caller's: a widget from ``paintEvent``
+            and a ``QImage`` from ``render_chart_png``.
+            """
             p.setRenderHint(QPainter.Antialiasing)
             p.setRenderHint(QPainter.TextAntialiasing)
-            w, h = self.width(), self.height()
 
             bg_grad = QLinearGradient(0, 0, 0, h)
             bg_grad.setColorAt(0, self.BG_TOP)
@@ -744,7 +742,6 @@ if _HAS_QT:
                 msg = self._error_text or self._status_text
                 p.drawText(QRectF(0, 0, w, h), Qt.AlignCenter, msg)
                 self._draw_header(p, w, font_hdr, font_sm)
-                p.end()
                 return
 
             ML = 8
@@ -754,7 +751,7 @@ if _HAS_QT:
             MB = 18  # time axis at bottom
 
             sub_overlays = self._sub_overlays_with_data()
-            show_volume = self._show_volume
+            show_volume = self._overlay_shown["volume"]
 
             VOL_H = 28 if show_volume else 0
             SUB_H = 60  # height of each oscillator sub-pane
@@ -763,7 +760,6 @@ if _HAS_QT:
             chart_w = w - ML - MR
             n_total = len(self._candles)
             if n_total == 0 or chart_w <= 0:
-                p.end()
                 return
 
             v_start = self._effective_visible_start()
@@ -1354,8 +1350,6 @@ if _HAS_QT:
                     int(cx + off - 4), int(grip_y), int(cx + off + 4), int(grip_y)
                 )
 
-            p.end()
-
         def _draw_bollinger(self, ctx) -> None:
             """Paint the Bollinger cloud and its upper, middle and lower lines."""
             p = ctx.p
@@ -1364,7 +1358,7 @@ if _HAS_QT:
             p2y = ctx.p2y
             _draw_line_series = ctx.draw_line_series
             bb_visible = self._bb_data[ctx.v_start : ctx.v_end]
-            if self._show_bb and bb_visible:
+            if self._overlay_shown["bb"] and bb_visible:
                 # The cloud polygon paints before the span lines.
                 pts_upper = []
                 pts_lower = []
@@ -1397,7 +1391,7 @@ if _HAS_QT:
             i2x = ctx.i2x
             p2y = ctx.p2y
             _draw_line_series = ctx.draw_line_series
-            if self._show_ichimoku and self._ichimoku_data:
+            if self._overlay_shown["ichimoku"] and self._ichimoku_data:
                 SHIFT = 26
                 full_ichi = self._ichimoku_data
                 n_full = len(self._candles)
@@ -1494,7 +1488,7 @@ if _HAS_QT:
             i2x = ctx.i2x
             p2y = ctx.p2y
             bb_visible = self._bb_data[ctx.v_start : ctx.v_end]
-            if self._show_bbullseye and bb_visible:
+            if self._overlay_shown["bbullseye"] and bb_visible:
                 TOUCH_TOL = 0.005  # 0.5%
                 WICK_TOL = 0.002  # 0.2%
 
@@ -1551,7 +1545,7 @@ if _HAS_QT:
             visible_candles = ctx.visible_candles
             i2x = ctx.i2x
             p2y = ctx.p2y
-            if self._show_slingshot:
+            if self._overlay_shown["slingshot"]:
                 # Full history: the leftmost visible candle needs a run-up.
                 full_closes = [c.close for c in self._candles]
                 n_full = len(full_closes)
@@ -1883,6 +1877,171 @@ if _HAS_QT:
                 p.setPen(QPen(self.ERROR_TEXT))
                 p.drawText(8, 18 + 14, self._error_text)
 
+    class CandlestickChart(ChartPainter, QWidget):
+        """The Charts tab's chart: ``ChartPainter`` in a window that takes a mouse.
+
+        ``paintEvent`` hands ``paint_to`` a widget painter, so the pixels come
+        from the same routine ``render_chart_png`` draws a post image with.
+        """
+
+        timeframe_changed = Signal(str)
+
+        def __init__(self, symbol: str = "", parent=None):
+            QWidget.__init__(self, parent)
+            ChartPainter.__init__(self, symbol)
+            self.setAccessibleName("Candlestick Chart")
+            self.setMinimumHeight(200)
+            self.setMouseTracking(True)
+
+            # _height_override holds a dragged height; auto-expand never goes under it.
+            self._height_override: Optional[int] = None
+            self._resize_active = False
+            self._resize_start_y: Optional[int] = None
+            self._resize_start_height: Optional[int] = None
+            self._drag_active = False
+            self._drag_start_x: Optional[int] = None
+            self._drag_start_visible_start: Optional[int] = None
+
+        def _repaint(self) -> None:
+            """Schedule the widget's own repaint."""
+            self.update()
+
+        def _apply_height_for_panes(self) -> None:
+            """Raise the minimum height to ``_natural_height_for_panes``.
+
+            ``_height_override`` from a grip drag wins when it is
+            taller, and the parent widget is raised to the same height
+            plus 36.
+            """
+            target = self._natural_height_for_panes()
+            if self._height_override is not None:
+                target = max(target, self._height_override)
+            if target != self.minimumHeight():
+                self.setMinimumHeight(target)
+                self.updateGeometry()
+                _parent = self.parent()
+                if _parent is not None:
+                    try:
+                        _parent.setMinimumHeight(target + 36)
+                        _parent.updateGeometry()
+                    except Exception as exc:
+                        logger.debug("chart parent height not raised: %s", exc)
+
+        def mouseMoveEvent(self, event):
+            self._mouse_x = int(event.position().x())
+            self._mouse_y = int(event.position().y())
+            grip_top_px = self.height() - self._resize_grip_h
+            in_grip = self._mouse_y >= grip_top_px
+            if self._resize_active or in_grip:
+                self.setCursor(Qt.SizeVerCursor)
+            else:
+                self.setCursor(Qt.ArrowCursor)
+            if self._resize_active and self._resize_start_y is not None:
+                delta = self._mouse_y - self._resize_start_y
+                new_h = max(200, (self._resize_start_height or 200) + delta)
+                self._height_override = new_h
+                self.setMinimumHeight(new_h)
+                # The parent grows too, plus 36px for the toolbar above the chart.
+                _parent = self.parent()
+                if _parent is not None:
+                    try:
+                        _parent.setMinimumHeight(new_h + 36)
+                        _parent.updateGeometry()
+                    except Exception as exc:
+                        logger.debug("chart parent height not dragged: %s", exc)
+                self.updateGeometry()
+                self._repaint()
+                return
+            if self._drag_active and self._drag_start_x is not None:
+                w = self.width()
+                ML, MR = 8, 78
+                chart_w = max(1, w - ML - MR)
+                count = self._effective_visible_count()
+                if count > 0:
+                    pixels_per_candle = chart_w / count
+                    delta_pixels = self._drag_start_x - self._mouse_x
+                    delta_candles = int(delta_pixels / max(pixels_per_candle, 0.001))
+                    new_start = (self._drag_start_visible_start or 0) + delta_candles
+                    n = len(self._candles)
+                    new_start = max(0, min(n - count, new_start))
+                    self._visible_start = new_start
+            self._repaint()
+
+        def mousePressEvent(self, event):
+            if event.button() == Qt.LeftButton:
+                # The bottom 8px grip takes precedence over pan.
+                press_y_px = int(event.position().y())
+                grip_top_px = self.height() - self._resize_grip_h
+                if press_y_px >= grip_top_px:
+                    self._resize_active = True
+                    self._resize_start_y = press_y_px
+                    self._resize_start_height = self.height()
+                    return
+                self._drag_active = True
+                self._drag_start_x = int(event.position().x())
+                self._drag_start_visible_start = (
+                    self._visible_start if self._visible_start is not None else 0
+                )
+
+        def mouseReleaseEvent(self, event):
+            if event.button() == Qt.LeftButton:
+                self._drag_active = False
+                self._drag_start_x = None
+                self._resize_active = False
+                self._resize_start_y = None
+                self._resize_start_height = None
+
+        def mouseDoubleClickEvent(self, event):
+            self._visible_start = None
+            self._visible_count = None
+            self._y_zoom_pct = 1.0
+            self._repaint()
+
+        def wheelEvent(self, event):
+            """Zoom on the wheel.
+
+            A plain wheel moves ``_visible_count`` around the cursor;
+            Ctrl and the wheel move ``_y_zoom_pct``.
+            """
+            n = len(self._candles)
+            if n == 0:
+                return
+            delta = event.angleDelta().y()
+            zoom_factor = 0.85 if delta > 0 else 1.18
+
+            modifiers = event.modifiers()
+            if modifiers & Qt.ControlModifier:
+                new_y = self._y_zoom_pct * zoom_factor
+                self._y_zoom_pct = max(0.05, min(4.0, new_y))
+                self._repaint()
+                return
+
+            cur_count = self._effective_visible_count()
+            cur_start = self._effective_visible_start()
+            new_count = max(8, min(n, int(cur_count * zoom_factor)))
+            if new_count == cur_count:
+                return
+            mx = int(event.position().x())
+            ML, MR = 8, 78
+            chart_w = max(1, self.width() - ML - MR)
+            cursor_frac = max(0.0, min(1.0, (mx - ML) / chart_w))
+            anchor_idx = cur_start + cursor_frac * cur_count
+            new_start = int(anchor_idx - cursor_frac * new_count)
+            new_start = max(0, min(n - new_count, new_start))
+            self._visible_start = new_start
+            self._visible_count = new_count
+            self._repaint()
+
+        def leaveEvent(self, event):
+            self._mouse_x = None
+            self._mouse_y = None
+            self._repaint()
+
+        def paintEvent(self, event):
+            p = QPainter(self)
+            self.paint_to(p, self.width(), self.height())
+            p.end()
+
     class ChartPanel(QWidget):
         """One CandlestickChart with a timeframe picker above and toggles below.
 
@@ -1980,12 +2139,12 @@ if _HAS_QT:
             self._chart.timeframe_changed.emit(tf)
 
         def _toggle_indicator(self, name: str, on: bool):
-            """Set ``_show_<name>`` on the chart and repaint it.
+            """Switch one overlay key on the chart and repaint it.
 
             ``_apply_height_for_panes`` then raises the chart's minimum
             height for a newly visible sub-pane.
             """
-            setattr(self._chart, f"_show_{name}", on)
+            self._chart._overlay_shown[name] = on
             try:
                 self._chart._apply_height_for_panes()
             except Exception as exc:
@@ -1997,12 +2156,80 @@ if _HAS_QT:
             self._chart.set_source_label(source)
 
     def resolve_palette(tokens=DEFAULT_THEME_TOKENS) -> None:
-        """Write every ``PALETTE_ROLES`` colour onto ``CandlestickChart``.
+        """Write every ``PALETTE_ROLES`` colour onto ``ChartPainter``.
 
         Called once at import so a chart built before any theme is applied
         still paints, and again by ``set_theme`` for one instance.
+        ``CandlestickChart`` inherits what is written here.
         """
-        for role, (field, alpha) in CandlestickChart.PALETTE_ROLES.items():
-            setattr(CandlestickChart, role, _role_colour(tokens, field, alpha))
+        for role, (field, alpha) in ChartPainter.PALETTE_ROLES.items():
+            setattr(ChartPainter, role, _role_colour(tokens, field, alpha))
 
     resolve_palette()
+
+    def render_chart_png(
+        candles,
+        symbol: str,
+        timeframe: str,
+        path,
+        voters=(),
+        max_overlays: int = NO_OVERLAY_CAP,
+        tokens=None,
+        width_px: int = POST_IMAGE_WIDTH_PX,
+    ) -> ChartImage:
+        """Draw ``candles`` through ``ChartPainter`` and write a PNG at ``path``.
+
+        No window is shown: ``paint_to`` draws onto a ``QImage``, which Qt
+        allows off the GUI thread. ``voters`` are the confirming indicators and
+        ``max_overlays`` is the cap the ATA-SPM settings page sets. The height
+        follows the panes the surviving overlays need.
+        """
+        if QGuiApplication.instance() is None:
+            return ChartImage(note=NO_APPLICATION_NOTE)
+        held = list(candles or [])
+        drawn, undrawn = overlays_for_voters(voters, int(max_overlays))
+        painter = ChartPainter(str(symbol))
+        painter.set_theme(tokens if tokens is not None else DEFAULT_THEME_TOKENS)
+        painter.set_timeframe(str(timeframe))
+        painter.show_only(drawn)
+        painter.set_candles(held)
+        if not held:
+            painter.set_error(
+                NO_CANDLES_NOTE.format(symbol=symbol, timeframe=timeframe)
+            )
+        if undrawn:
+            painter.set_source_label(NOT_DRAWN_NOTE.format(voters=", ".join(undrawn)))
+        height_px = painter._natural_height_for_panes()
+        image = QImage(int(width_px), int(height_px), QImage.Format_ARGB32)
+        image.fill(painter.BG_TOP)
+        image_painter = QPainter(image)
+        painter.paint_to(image_painter, int(width_px), int(height_px))
+        image_painter.end()
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not image.save(str(target)):
+            return ChartImage(note=IMAGE_NOT_WRITTEN_NOTE.format(path=target.name))
+        return ChartImage(
+            path=str(target),
+            width_px=image.width(),
+            height_px=image.height(),
+            bars=len(held),
+            drawn=drawn,
+            undrawn=undrawn,
+        )
+
+else:
+
+    def render_chart_png(
+        candles,
+        symbol: str,
+        timeframe: str,
+        path,
+        voters=(),
+        max_overlays: int = NO_OVERLAY_CAP,
+        tokens=None,
+        width_px: int = POST_IMAGE_WIDTH_PX,
+    ) -> ChartImage:
+        """Answer that no image was drawn, because PySide6 is not installed."""
+        del candles, symbol, timeframe, path, voters, max_overlays, tokens, width_px
+        return ChartImage(note=NO_QT_NOTE)

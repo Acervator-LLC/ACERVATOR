@@ -3,7 +3,8 @@
 ``evaluate`` scans each ``Sector`` on its ticked timeframes and answers a
 ``SectorScan`` per sector. ``identify`` keeps the ``AssetVote`` rows
 carrying a reversal, and ``pull`` loads that chart with the
-``IndicatorMessage`` rows confirming it. ``agreement_for`` is phase eight:
+``IndicatorMessage`` rows confirming it, and renders that chart to a PNG under
+``ata_post_paths`` so a post carries a picture. ``agreement_for`` is phase eight:
 every timeframe one call's asset voted on, and whether those votes agree.
 """
 
@@ -14,7 +15,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-from . import ata_gate_scan
+from ..gui.native_chart import Candle, ChartImage, render_chart_png
+from . import ata_gate_scan, ata_post_paths
 from .ata_gate_scan import (
     BAND_LOWER_KEY,
     BAND_MIDDLE_KEY,
@@ -96,6 +98,9 @@ MIDLINE_POSITION = 0.5
 NO_BAND_VALUE = 0.0
 NO_BARS = 0
 NO_TIMESTAMP = 0.0
+
+#: A cap of zero draws every confirming indicator, in a post and on its chart.
+NO_INDICATOR_CAP = 0
 
 #: One standardised message per confirming voter. The same condition reads
 #: the same way in every run.
@@ -183,6 +188,7 @@ OPPOSITE_DIRECTION = {
 }
 
 CANDLE_READ_FAILED_LOG = "ATA-SPM candle read failed on %s %s: %s"
+CANDLE_SHAPE_LOG = "ATA-SPM candle row is not OHLCV: %s"
 ASSET_READ_FAILED_LOG = "ATA-SPM asset read failed on %s: %s"
 VOTE_FAILED_LOG = "ATA-SPM vote failed on %s %s: %s"
 
@@ -428,7 +434,11 @@ class IndicatorMessage:
 
 @dataclass
 class ChartPull:
-    """The chart one reversal call was made on, and its confirming messages."""
+    """The chart one reversal call was made on, and its confirming messages.
+
+    ``image`` is that chart rendered to a PNG, which the post's caption
+    captions.
+    """
 
     symbol: str
     timeframe: str
@@ -448,6 +458,7 @@ class ChartPull:
     otd_pct: float = NO_BAND_VALUE
     gates: Optional[ata_gate_scan.GateScan] = None
     panel: dict = field(default_factory=dict)
+    image: ChartImage = field(default_factory=ChartImage)
 
 
 @dataclass
@@ -771,17 +782,64 @@ def proximity_of(candles: Any, settings: Any) -> Any:
     )
 
 
+def chart_candles(candles: Any) -> list:
+    """The pulled candles as ``native_chart.Candle`` rows, value for value.
+
+    Only the timestamp field is renamed, and a source missing any OHLCV field
+    answers no rows.
+    """
+    try:
+        return [
+            Candle(
+                time=int(one.timestamp),
+                open=float(one.open),
+                high=float(one.high),
+                low=float(one.low),
+                close=float(one.close),
+                volume=float(one.volume),
+            )
+            for one in candles or []
+        ]
+    except (AttributeError, TypeError, ValueError) as exc:
+        logger.debug(CANDLE_SHAPE_LOG, exc)
+        return []
+
+
+def render_pull_image(
+    vote: AssetVote,
+    candles: Any,
+    max_supporting_indicators: Any = NO_INDICATOR_CAP,
+) -> ChartImage:
+    """The call's own chart drawn to a PNG under ``ata_post_paths``.
+
+    The overlays are the voters ``confirming_signals`` answered, capped by
+    ``max_supporting_indicators``.
+    """
+    held = chart_candles(candles)
+    stamp = int(held[-1].time) if held else NO_TIMESTAMP
+    return render_chart_png(
+        held,
+        vote.symbol,
+        timeframe_label(vote.timeframe),
+        ata_post_paths.post_image_path(vote.symbol, vote.timeframe, stamp),
+        voters=[one.indicator for one in confirming_signals(vote)],
+        max_overlays=int(max_supporting_indicators or NO_INDICATOR_CAP),
+    )
+
+
 def pull(
     vote: AssetVote,
     candle_source: Optional[Callable] = None,
     message_format: Optional[str] = None,
     agreement: Optional[TimeframeAgreement] = None,
     rows: Optional[dict] = None,
+    max_supporting_indicators: Any = NO_INDICATOR_CAP,
 ) -> ChartPull:
     """Phase three: the chart the call was made on, with its messages.
 
-    ``rows`` are the panel rows every timeframe of this asset voted, and
-    ``ata_gate_scan.scan_gates`` reads the trade gates over the same chart.
+    ``rows`` are the panel rows every timeframe of this asset voted,
+    ``ata_gate_scan.scan_gates`` reads the trade gates over the same chart, and
+    ``render_pull_image`` draws that chart to the PNG the post carries.
     """
     candles = candles_for(candle_source, vote.symbol, vote.timeframe)
     band = band_signal(vote)
@@ -833,6 +891,7 @@ def pull(
             settings,
         ),
         panel=dict(rows or {}),
+        image=render_pull_image(vote, candles, max_supporting_indicators),
     )
 
 
@@ -843,11 +902,12 @@ def run(
     engine: Optional[VotingEngine] = None,
     message_format: Optional[str] = None,
     clock: Optional[Callable] = None,
+    max_supporting_indicators: Any = NO_INDICATOR_CAP,
 ) -> AtaSpmRun:
     """Phases one, two, three and eight in order, as one ``AtaSpmRun``.
 
-    Each ``pull`` carries the ``agreement_for`` its own asset, which is what
-    the post says about the timeframes.
+    Each ``pull`` carries the ``agreement_for`` its own asset, and
+    ``max_supporting_indicators`` caps the overlays its image draws.
     """
     scans = evaluate(sectors, asset_source, candle_source, engine, clock)
     calls = identify(scans)
@@ -861,6 +921,7 @@ def run(
                 message_format,
                 agreement_for(scans, one),
                 panel_rows_for(scans, one.symbol),
+                max_supporting_indicators,
             )
             for one in calls
         ],
@@ -942,6 +1003,7 @@ class SectorBoard:
         asset_source: Optional[Callable] = None,
         candle_source: Optional[Callable] = None,
         message_format: Optional[str] = None,
+        max_supporting_indicators: Any = NO_INDICATOR_CAP,
     ) -> tuple:
         """The sectors this press holds, the index it added and the ``run``.
 
@@ -961,7 +1023,13 @@ class SectorBoard:
             )
             added = len(sectors) - 1
         found = (
-            run(sectors, asset_source, candle_source, message_format=message_format)
+            run(
+                sectors,
+                asset_source,
+                candle_source,
+                message_format=message_format,
+                max_supporting_indicators=max_supporting_indicators,
+            )
             if sectors
             else None
         )
@@ -979,13 +1047,14 @@ class SectorBoard:
         asset_source: Optional[Callable] = None,
         candle_source: Optional[Callable] = None,
         message_format: Optional[str] = None,
+        max_supporting_indicators: Any = NO_INDICATOR_CAP,
     ) -> int:
         """``compute`` and ``take`` on one thread, answering the sector index.
 
         ``NO_NEW_SECTOR`` answers that the field named nothing new.
         """
         sectors, added, found = self.compute(
-            asset_source, candle_source, message_format
+            asset_source, candle_source, message_format, max_supporting_indicators
         )
         return self.take(sectors, added, found)
 

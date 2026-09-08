@@ -1077,16 +1077,16 @@ if _HAS_QT:
             if self._scan_thread is not None and self._scan_thread.is_alive():
                 logger.debug("ATA-SMP scan already running; press ignored")
                 return
-            message_format = self._push_board.settings.message_format
+            settings = self._push_board.settings
             self._scan_thread = threading.Thread(
                 target=self._compute_scan,
-                args=(message_format,),
+                args=(settings.message_format, settings.max_supporting_indicators),
                 name=ATA_SCAN_THREAD_NAME,
                 daemon=True,
             )
             self._scan_thread.start()
 
-        def _compute_scan(self, message_format) -> None:
+        def _compute_scan(self, message_format, max_supporting_indicators) -> None:
             """Run the ATA-SMP phases and report the answer to the GUI thread.
 
             ``SectorBoard.compute`` writes nothing, and ``scanFinished``
@@ -1095,7 +1095,10 @@ if _HAS_QT:
             logger.info(ATA_SCAN_THREAD_LOG, threading.current_thread().name, "compute")
             try:
                 answered = self._ata_board.compute(
-                    sector_assets, self._scanned_candles, message_format
+                    sector_assets,
+                    self._scanned_candles,
+                    message_format,
+                    max_supporting_indicators,
                 )
             except Exception as exc:  # noqa: BLE001 - the scan runs off-thread
                 logger.exception("ATA-SPM scan failed: %s", exc)

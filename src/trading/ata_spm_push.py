@@ -45,6 +45,9 @@ ARTEFACT_CAPTION = "caption"
 ARTEFACT_THREAD_ROOT = "thread_root"
 ARTEFACT_TITLE = "title"
 
+#: The PNG ``ata_spm.render_pull_image`` drew, which ``caption`` captions.
+ARTEFACT_IMAGE = "image"
+
 #: The three artefacts every post carries, each composed with ``FIXED_HEADER``.
 ARTEFACT_KEYS = (ARTEFACT_BODY, ARTEFACT_CAPTION, ARTEFACT_THREAD_ROOT)
 
@@ -223,7 +226,7 @@ STATE_WORDS = (STATE_WAITING, STATE_APPROVED, STATE_DECLINED)
 NO_CEILING_SET = 0
 
 #: A cap of zero draws every confirming indicator phase three explained.
-NO_INDICATOR_CAP = 0
+NO_INDICATOR_CAP = ata_spm.NO_INDICATOR_CAP
 
 SECONDS_PER_HOUR = 3600
 
@@ -457,6 +460,7 @@ class FormattedPost:
     bars: int = ata_spm.NO_BARS
     last_close: float = ata_spm.NO_BAND_VALUE
     closes: tuple = ()
+    image_path: str = ""
     lines: tuple = ()
     follows: str = ""
     body_limit: int = NO_LIMIT_PUBLISHED
@@ -481,7 +485,7 @@ class FormattedPost:
 
     @property
     def caption(self) -> str:
-        """The image caption: ``FIXED_HEADER`` over the headline."""
+        """The caption for ``image_path``: ``FIXED_HEADER`` over the headline."""
         return compose((self.headline,))
 
     @property
@@ -514,13 +518,15 @@ class FormattedPost:
     def artefacts(self) -> dict:
         """Every artefact of this post, keyed by ``ARTEFACT_KEYS`` and ``ARTEFACT_TITLE``.
 
-        A target whose ``title_limit`` cannot hold the header carries no
-        ``ARTEFACT_TITLE`` key, and every key present composes ``FIXED_HEADER``.
+        A post whose phase-three render wrote no file carries no
+        ``ARTEFACT_IMAGE`` key, and every text key composes ``FIXED_HEADER``.
         """
         written = dict(zip(ARTEFACT_KEYS, (self.body, self.caption, self.thread_root)))
         title = self.title
         if title:
             written[ARTEFACT_TITLE] = title
+        if self.image_path:
+            written[ARTEFACT_IMAGE] = self.image_path
         return written
 
 
@@ -557,6 +563,7 @@ def format_post(
         bars=pull.bars,
         last_close=pull.last_close,
         closes=tuple(pull.closes),
+        image_path=str(getattr(getattr(pull, "image", None), "path", "") or ""),
         lines=lines,
         body_limit=int(getattr(target, "body_limit", NO_LIMIT_PUBLISHED)),
         title_limit=int(getattr(target, "title_limit", NO_TITLE_FIELD)),
