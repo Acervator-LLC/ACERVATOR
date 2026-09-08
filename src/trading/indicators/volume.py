@@ -7,6 +7,8 @@ series and ``_detect_divergence`` compares one of them against ``closes``.
 
 from __future__ import annotations
 
+import math
+
 from .types import (
     PERCENT_PER_RATIO_UNIT,
     VOLUME_SPIKE_PCT,
@@ -42,13 +44,12 @@ class VolumeAnalysis:
 
     @staticmethod
     def _mfi(candles: list, period: int = 14) -> float:
-        """Money Flow Index over ``period`` candles.
+        """Quong and Soudack's Money Flow Index over ``period`` candles.
 
-        ``_mfi`` returns 50.0 when ``candles`` is shorter than
-        ``period`` + 1.
+        ``_mfi`` returns ``math.nan`` where neither money flow was credited.
         """
         if len(candles) < period + 1:
-            return 50.0
+            return math.nan
         pos_mf = neg_mf = 0.0
         for i in range(len(candles) - period, len(candles)):
             tp = (candles[i].high + candles[i].low + candles[i].close) / 3.0
@@ -60,11 +61,11 @@ class VolumeAnalysis:
                 pos_mf += mf
             elif tp < ptp:
                 neg_mf += mf
-        if pos_mf <= 0.0 and neg_mf <= 0.0:
-            return 50.0
-        if neg_mf <= 0.0:
-            return 100.0
-        return 100.0 - 100.0 / (1.0 + pos_mf / neg_mf)
+        # `pos_mf` and `neg_mf` sum non-negative terms, exact at every scale.
+        total_mf = pos_mf + neg_mf
+        if total_mf <= 0.0:
+            return math.nan
+        return 100.0 * (pos_mf / total_mf)
 
     @staticmethod
     def _cmf(candles: list, period: int = 20) -> float:
@@ -160,6 +161,16 @@ class VolumeAnalysis:
         obv_div = self._detect_divergence(closes, obv, self.div_lookback)
 
         mfi = self._mfi(candles, self.mfi_period)
+        if math.isnan(mfi):
+            # `_mfi` has no money ratio; `mfi_ob` and `mfi_os` read False on nan.
+            return Signal(
+                "volume",
+                timeframe,
+                SignalDirection.NEUTRAL,
+                0.0,
+                self.weight,
+                abstained=True,
+            )
         mfi_ob = mfi > 80
         mfi_os = mfi < 20
         mfi_prev = (
@@ -281,7 +292,7 @@ class VolumeAnalysis:
             details={
                 "obv_rising": obv_rising,
                 "obv_divergence": obv_div,
-                "mfi": round(mfi, 1),
+                "mfi": mfi,
                 "mfi_overbought": mfi_ob,
                 "mfi_oversold": mfi_os,
                 "mfi_divergence": mfi_div,

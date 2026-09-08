@@ -1507,6 +1507,125 @@ No gate changes its mind. Neither chain reads these numbers; both read the
 panel's consensus, and the consensus, the vote, its strength, the abstention
 flag and the other eleven voters are identical on all 3,750 readings.
 
+## 2026-09-08 16:52 - #414 - the money flow a halted market never traded
+
+Quong and Soudack's index is published in two forms, and this repair needs both
+of them.
+
+```
+TP_t = (H_t + L_t + C_t) / 3
+MF_t = TP_t * V_t
+
+positive money flow = sum of MF over the 14 bars where TP rose
+negative money flow = sum of MF over the 14 bars where TP fell
+
+MFI = 100 - 100 / (1 + positive / negative)
+MFI = 100 * positive / (positive + negative)
+```
+
+The two lines give the same number. The second is defined on one input more
+than the first. Where every falling bar in the window traded nothing, the
+negative flow is zero: the first line divides by that zero, and the second
+answers 100. One hundred is the right answer there, because every dollar that
+moved was buying.
+
+One input is left over, and neither published line answers it. A window that
+credited neither bucket gives nothing over nothing. The index does not exist on
+that bar.
+
+**Functional.** The module answered 50 on that bar. Fifty is the middle of the
+scale and it is a number, published to the voting panel, to the ATA-SMP post
+and to the emitter recorder, about a market the indicator had measured nothing
+on. Driven through the voting engine on a constructed seventy-minute halt at
+three millionths of a dollar, the Volume column voted NEUTRAL and still counted
+in the panel's denominator. On a window whose last fourteen bars traded nothing
+at all, it voted BULLISH at 0.37 strength.
+
+The index now reports that it has no reading, and the column abstains on that
+bar. Abstaining is what this module already does when the window's average
+volume is zero, and what Supertrend, ADX, the Efficiency Ratio and the MACD each
+do at their own missing denominator.
+
+`src/trading/indicators/volume.py` — `VolumeAnalysis._mfi`
+
+```python
+total_mf = pos_mf + neg_mf
+if total_mf <= 0.0:
+    return math.nan
+return 100.0 * (pos_mf / total_mf)
+```
+
+`src/trading/indicators/volume.py` — `VolumeAnalysis.compute`
+
+```python
+mfi = self._mfi(candles, self.mfi_period)
+if math.isnan(mfi):
+    # `_mfi` has no money ratio; `mfi_ob` and `mfi_os` read False on nan.
+    return Signal(
+        "volume",
+        timeframe,
+        SignalDirection.NEUTRAL,
+        0.0,
+        self.weight,
+        abstained=True,
+    )
+```
+
+The item cites a money flow below 1e-09 read as zero, on two tests that answered
+100 on it. Commit `b27c6cdb` removed both tests on 2026-09-04. Driven through
+the voting engine on a window at three millionths of a dollar whose falling bars
+carry a volume of 1e-05, the tree that still holds those tests answers 100.0 and
+this tree answers 99.999001008.
+
+A money flow can also reach zero by running out of double precision, and that is
+the one route by which an absent reading could still print as the top of the
+scale. Measured: at a price of three millionths of a dollar the product of price
+and volume is exactly zero for any volume at or below 7.9688e-319. The smallest
+volume in the 411 recorded tablets is 100. No order size the venue can express
+comes within three hundred orders of magnitude of that threshold, and where the
+falling side does underflow, the ratio puts the index at 100 to every digit a
+double carries, which is the correct answer rather than an absent one.
+
+The window with no money flow is not in the recorded data either. All 411
+tablets hold daily bars; across 99,582 fourteen-bar windows not one credited
+neither bucket, the typical price repeated on 127 of 104,925 bars, and the
+longest run of repeats is five. The fleet computes on five-minute bars, which
+the tablets do not contain, so the recorded data says nothing about whether a
+seventy-minute flat window occurs live.
+
+The reading was also published cut to one decimal place. The vote itself always
+tested the computed number, so no gate ever read the short one, but the panel's
+hover cell prints three decimals and was handed a number carrying one. It now
+carries what the module computed.
+
+`src/trading/indicators/volume.py` — the reading
+
+```python
+"mfi": mfi,
+```
+
+Six parts of the platform read this indicator.
+
+| reader | at three millionths of a dollar |
+| --- | --- |
+| `ta_invariants.py` bound | bounds the computed number; no bound applies on an abstention |
+| `ta_engine.py` recorder | records the computed number, and an empty reading on an abstention |
+| `ata_spm.py` sentence | `Money Flow Index 56.5`, unchanged on all 3,750 readings |
+| `indicator_panel.py` hover | `mfi: 56.450`, was `mfi: 56.500` |
+| `indicator_panel_surface.py` hover | `mfi: 56.450`, was `mfi: 56.500` |
+| the panel's consensus | loses one voter from its denominator on an abstention |
+
+Neither gate chain is in that list. Both read the panel's consensus rather than
+any voter's numbers.
+
+No gate changes its mind. Over 71 recorded tapes at two price scales, 3,750
+readings and 15,000 gate verdicts, the vote, its strength, the abstention flag,
+the panel's consensus and the other eleven voters are identical, and both chains
+fire the same way on every one. Swapping the published form of the ratio moved
+the index on 1,907 of the 3,750 by at most 2.2e-14, which is the last bits of
+double arithmetic and vanishes at one decimal place. Publishing it uncut moved
+the hover cell on 3,710 of 3,750 and the ATA-SMP sentence on none of them.
+
 ## Trading gate logic chain
 
 The epigraph on the [title page](01-title.md) reads *dissolvendus
