@@ -80,6 +80,31 @@ sides rather than two.
 WINDOW_CANDLES = 100
 ```
 
+The live engine now receives that hundred, and the newest row in it is the bar
+that just closed. The connector sends the count in the exchange library's count
+slot. Until this change it sent the count in the start-time slot and left the
+count slot empty, so the venue answered with a page of its own and the library
+kept the oldest 300 rows of it. Every indicator then read a window ending 50
+five-minute bars behind the price the gate compared it against. That is four
+hours and ten minutes.
+
+`src/exchange/ccxt_connector.py` — four arguments, each in its own slot
+
+```python
+data = await self._call_sync(
+    self._ex.fetch_ohlcv,
+    symbol,
+    timeframe,
+    None if since is None else int(since),
+    int(limit),
+)
+```
+
+The library's own slice was driven over 1,215 recorded five-minute pages. The
+window ended 50 bars early on every page before the change and on none after it.
+On 162 rows of the recorded gate log, the band latch differs between the stale
+window and the current one on 88.
+
 ### The VWAP window
 
 VWAP is the published cumulative figure: typical price times volume, running,

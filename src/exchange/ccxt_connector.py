@@ -35,7 +35,7 @@ CONNECT_BACKOFF_STEP_S: float = 2.0
 MEM_220_CALL_TIMEOUT_SEC: float = 25.0
 
 
-# Candles a live fetch_ohlcv returns: the venue page size, not the requested limit.
+# ccxt caps a coinbase fetch_ohlcv page at this many candles.
 EFFECTIVE_OHLCV_PAGE_SIZE = 300
 
 
@@ -921,24 +921,19 @@ class CCXTConnector(ExchangeInterface):
         limit: int = 100,
         since: Optional[int] = None,
     ) -> list[list[float]]:
-        """Fetch OHLCV candles; ``since`` is epoch milliseconds.
-
-        KNOWN DEFECT: with ``since`` unset, ``limit`` is passed in ccxt's
-        ``since`` slot, so the venue returns its own page size
-        (``EFFECTIVE_OHLCV_PAGE_SIZE``) and the requested limit is ignored.
-        Changing it moves live indicator values, so it is left as it is.
-        """
+        """Fetch ``limit`` OHLCV candles ending at the newest bar, or starting
+        at ``since`` epoch milliseconds."""
         self._ensure_connected()
         await self._rate_limit()
         _log = get_api_log()
         start = time.monotonic()
-        if since is None:
-            # Live callers land here, with the positional quirk documented above.
-            data = await self._call_sync(self._ex.fetch_ohlcv, symbol, timeframe, limit)
-        else:
-            data = await self._call_sync(
-                self._ex.fetch_ohlcv, symbol, timeframe, int(since), int(limit)
-            )
+        data = await self._call_sync(
+            self._ex.fetch_ohlcv,
+            symbol,
+            timeframe,
+            None if since is None else int(since),
+            int(limit),
+        )
         elapsed = (time.monotonic() - start) * 1000
         _log.record(
             exchange=self._exchange_id,
