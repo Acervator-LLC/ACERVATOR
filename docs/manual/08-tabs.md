@@ -565,6 +565,29 @@ WINDOW_CANDLES = 100
 The Simulator receives and asks; it never sends. Its one data path reads tablet
 files, holds no venue, and refuses by name anything that is not a read.
 
+### Validation Mode
+
+Those two rows now carry the buttons that start a run. Validation snaps each YTD
+trade to the historical candle its timestamp falls in, reruns the gates on that
+candle, and puts the gate row it latched beside the gate row the log recorded.
+It passes when the gates latch identically, and it is never judged on profit or
+on a trade count.
+
+```
+Import Live Fleet    38 bots from the bot_state load, matched by bot id
+Generate From YTD    39 new bots, one per traded pair, matched by pair
+```
+
+A run always reports what it could not verify. The tablets end on 1 August 2026
+and the trade export runs to 7 September, so about five weeks of trades have no
+candle to snap to. The pane names that period and counts the entries on both
+sides of it.
+
+```
+3942 of 4904 YTD entries snapped to a candle; 962 could not be.
+uncovered span 2026-08-01T18:52:58Z to 2026-09-07T21:46:48Z
+```
+
 Detail: [08-tabs/simulator.md](08-tabs/simulator.md).
 
 ## Paper Trader Tab (To Be Built)

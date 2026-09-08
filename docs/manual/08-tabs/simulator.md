@@ -734,6 +734,7 @@ No module measures that. Nothing in the tree reads a sim gate latch and a live
 gate latch and compares the two.
 
 In development.
+Validation Mode measures it now; the section at the end of this page states how.
 
 What the screen does show is each bot's arm state while the tape runs. On every
 refresh tick the panel reads each bot's last gate state and paints a
@@ -834,6 +835,105 @@ it is a placeholder.
             VotingEngine over it, labelled with the real bot's symbol
             so the panel stays stable across refreshes.
             """
+```
+
+## Validation Mode
+
+Validation takes each YTD trade, finds the historical candle its timestamp falls
+in, and reruns the gates on that candle. It then puts the gate row it latched
+beside the gate row the log recorded, one light at a time, over the nineteen
+lights the shared vocabulary names. A run passes when every light reads the
+same. It is never judged on profit and never on a trade count.
+
+`src/simulator/validation.py` — the criterion
+
+```python
+    @property
+    def latches_identically(self) -> bool:
+        """True while every light and both armed flags read the same."""
+        return (
+            not self.disagreed
+            and self.recorded_scrum_armed == self.rerun_scrum_armed
+            and self.recorded_fold_armed == self.rerun_fold_armed
+        )
+```
+
+### The two ways in
+
+Import Live Fleet clones the live running fleet from the bot_state load and
+keeps each bot's own id, so a recorded gate row belongs to a bot by that id.
+Generate From YTD scans the trade files and creates one new bot per pair that
+was traded. Those bots are new, they carry new ids, and they never wrote a gate
+row, so a recorded row belongs to one of them by exchange, symbol and the time
+window instead.
+
+```
+Import Live Fleet    38 bots, matched on bot id and time window
+Generate From YTD    39 bots, matched on exchange, symbol and time window
+```
+
+The two counts differ, and that is a fact about the two sources rather than a
+fault. A pair traded earlier in the year can have no live bot now, and a live
+bot can have traded nothing yet. Neither path invents a bot to close the gap.
+
+When more than one exchange is active the tab asks which one to use before it
+runs anything. One chooser serves both buttons.
+
+`src/simulator/fleet_source.py` — the chooser
+
+```python
+def exchange_choice(exchanges: list[str], chosen: str = "") -> dict:
+    """Whether the operator must pick an exchange, and which one is in force.
+
+    ``prompt`` is True while more than one exchange is active and ``chosen``
+    names none of them.
+    """
+```
+
+### It reports what it could not verify
+
+The tablets end on 1 August 2026 and the trade export runs to 7 September, so
+about five weeks of trades have no candle to snap to. Validation names that
+period and counts the entries on both sides of it. A count of verified trades
+with no denominator is exactly what this replaces.
+
+```
+3942 of 4904 YTD entries snapped to a candle; 962 could not be.
+after_last_candle: 905
+inside_gap: 57
+uncovered span 2026-08-01T18:52:58Z to 2026-09-07T21:46:48Z; the newest
+candle is 2026-08-01T18:35:00Z
+```
+
+### Which half of the rerun moves
+
+A candle supplies the price and the Bollinger reading. It cannot supply the
+bot's own state, so the delta, the tranche counts, the circuit breaker and every
+flag come from the row the log recorded. Each light says which half drove it, so
+a disagreement can be read back to its cause.
+
+```
+S/BB   F/BB   F/MID     the tablet candle
+S/LS   F/LS             the landing-strip override
+every other light       the recorded row
+```
+
+### What the first full run measured
+
+Every recorded reading the run checked was reproduced from the tablet exactly,
+but from a window sitting four hours behind the trade's own candle. The tablet
+prices are right: measured over one asset, 9,869 of 10,038 recorded prices sit
+inside the tablet candle covering their own moment. The tape is therefore sound,
+and the live reading it is compared against was taken from older candles than
+the ones that moment held.
+
+```
+38 bots, matched to a recorded gate row on bot id and time window.
+62 of 227 reruns latched every gate identically.
+3572 of 4313 gate lights agreed.
+60 of 60 recorded readings were reproduced exactly from the tablet.
+45 of them came from a window 50 candles (250 minutes) behind the trade's
+own candle.
 ```
 
 ## Nuclear Mode

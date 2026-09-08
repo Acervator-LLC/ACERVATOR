@@ -16,6 +16,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
+from ...simulator import validation
 from ...simulator.tablet_source import TabletSource, tablet_key
 from .. import design_system as ds
 from . import indicator_panel_surface as ivp
@@ -40,11 +41,39 @@ PRIVACY_ON_TEXT = "Privacy Mode: ON"
 PRIVACY_OFF_TEXT = "Privacy Mode: OFF"
 PRIVACY_BUTTON_TEXT = PRIVACY_OFF_TEXT
 
-#: The rows the two strips held on the Trading tab, and the height each keeps.
+IMPORT_LIVE_FLEET_ACTION = "import_live_fleet"
+GENERATE_FROM_YTD_ACTION = "generate_from_ytd"
+IMPORT_LIVE_FLEET_TEXT = "Import Live Fleet"
+GENERATE_FROM_YTD_TEXT = "Generate From YTD"
+
+#: The rows the two strips held on the Trading tab, now the two fleet buttons.
 RESERVED_ROWS: tuple[dict[str, Any], ...] = (
-    {"name": "news_ticker_row", "height_px": 24},
-    {"name": "data_pool_row", "height_px": 18},
+    {
+        "name": "news_ticker_row",
+        "height_px": 24,
+        "action": IMPORT_LIVE_FLEET_ACTION,
+        "text": IMPORT_LIVE_FLEET_TEXT,
+    },
+    {
+        "name": "data_pool_row",
+        "height_px": 18,
+        "action": GENERATE_FROM_YTD_ACTION,
+        "text": GENERATE_FROM_YTD_TEXT,
+    },
 )
+
+VALIDATION_TITLE = "Validation"
+VALIDATION_IDLE_TEXT = (
+    "No validation run yet. Import Live Fleet or Generate From YTD."
+)
+EXCHANGE_PROMPT_FORMAT = "More than one exchange is active. Choose one: {options}"
+
+#: How many compared rows the Validation table lists.
+VALIDATION_ROW_LIMIT = 200
+
+#: How many trades one press reruns. A whole-fleet pass reads the gate log
+#: once.
+VALIDATION_RERUN_LIMIT = 400
 
 FLEET_LABEL_TEXT = "Scrumming Bots"
 FLEET_EMPTY_TEXT = "No simulated fleet. Import Live Fleet builds one."
@@ -106,6 +135,7 @@ DECLARED_FIELDS = (
     "skin",
     "tablet",
     "tablets",
+    "validation",
     "vwap",
 )
 
@@ -245,15 +275,47 @@ def privacy_button(masked: bool) -> dict:
     }
 
 
-def fleet_model() -> dict:
-    """The bot list: the Trading tab's columns, and no imported fleet."""
+def usd_text(amount: Optional[float]) -> str:
+    """``amount`` as ``$0.00``, empty when no target is known."""
+    return "" if amount is None else f"${float(amount):,.2f}"
+
+
+def fleet_row(bot, counts: dict) -> dict:
+    """One simulated bot as the bot list draws it, under ``COLUMN_LABELS``.
+
+    Position value, Ammo, Fire and the detail cell stay empty: the Simulator
+    holds no venue position and presses nothing.
+    """
+    return {
+        "bot_id": bot.bot_id,
+        "symbol": bot.symbol,
+        "origin": bot.origin,
+        "cells": [
+            bot.bot_id,
+            bot.symbol,
+            "",
+            str(counts.get("snapped", 0)),
+            usd_text(bot.target_usd),
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
+    }
+
+
+def fleet_model(bots: Sequence[Any] = (), by_bot: Optional[dict] = None) -> dict:
+    """The bot list: the Trading tab's columns over ``bots``."""
+    counted = by_bot or {}
+    rows = [fleet_row(one, counted.get(one.bot_id, {})) for one in bots]
     return {
         "label": FLEET_LABEL_TEXT,
         "columns": list(COLUMN_LABELS),
         "column_count": len(COLUMN_LABELS),
         "fixed_widths": {str(key): int(value) for key, value in FIXED_WIDTHS.items()},
-        "rows": [],
-        "row_count": 0,
+        "rows": rows,
+        "row_count": len(rows),
         "empty_text": FLEET_EMPTY_TEXT,
     }
 
@@ -376,6 +438,149 @@ def replay_lines(entry, candles: Sequence[Sequence[float]], refusal: str) -> lis
     return read
 
 
+def label_row(seen) -> dict:
+    """One compared trade as the Validation table lists it."""
+    return {
+        "bot_id": seen.bot_id,
+        "symbol": seen.symbol,
+        "trade_at": validation.iso_stamp(seen.trade_ts_ms),
+        "candle_at": validation.iso_stamp(seen.candle_ts_ms),
+        "gate_at": validation.iso_stamp(seen.gate_ts_ms),
+        "agreed": seen.agreed,
+        "light_count": len(seen.labels),
+        "latches_identically": seen.latches_identically,
+        "lights": [
+            {
+                "bank": one.bank,
+                "label": one.label,
+                "recorded": one.recorded,
+                "rerun": one.rerun,
+                "driven_by": one.driven_by,
+                "agrees": one.agrees,
+            }
+            for one in seen.labels
+        ],
+    }
+
+
+def empty_validation() -> dict:
+    """The Validation pane before any run, naming the two ways in."""
+    return {
+        "title": VALIDATION_TITLE,
+        "ran": False,
+        "origin": "",
+        "match_key": "",
+        "bot_count": 0,
+        "exchange": {"options": [], "chosen": "", "prompt": False, "count": 0},
+        "prompt_text": "",
+        "lines": [VALIDATION_IDLE_TEXT],
+        "summary": validation.summarise([]),
+        "coverage": {
+            "total": 0,
+            "snapped": 0,
+            "unsnapped": 0,
+            "by_reason": {},
+            "uncovered_since": "",
+            "uncovered_until": "",
+            "newest_candle": "",
+        },
+        "rows": [],
+        "row_count": 0,
+        "buttons": [dict(one) for one in RESERVED_ROWS],
+    }
+
+
+def validation_payload(outcome, origin: str, choice: dict) -> dict:
+    """One ``ValidationRun`` as the Validation pane draws it."""
+    cover = outcome.coverage
+    listed = list(outcome.comparisons)[:VALIDATION_ROW_LIMIT]
+    return {
+        "title": VALIDATION_TITLE,
+        "ran": True,
+        "origin": origin,
+        "match_key": outcome.match_key,
+        "bot_count": len(outcome.bots),
+        "exchange": dict(choice),
+        "prompt_text": (
+            EXCHANGE_PROMPT_FORMAT.format(options=", ".join(choice["options"]))
+            if choice["prompt"]
+            else ""
+        ),
+        "lines": list(outcome.lines),
+        "summary": outcome.summary,
+        "coverage": {
+            "total": cover.total,
+            "snapped": cover.snapped,
+            "unsnapped": cover.unsnapped,
+            "by_reason": dict(cover.by_reason),
+            "uncovered_since": validation.iso_stamp(cover.uncovered_since_ms),
+            "uncovered_until": validation.iso_stamp(cover.uncovered_until_ms),
+            "newest_candle": validation.iso_stamp(cover.tablet_last_ts_ms),
+        },
+        "rows": [label_row(one) for one in listed],
+        "row_count": len(outcome.comparisons),
+        "buttons": [dict(one) for one in RESERVED_ROWS],
+    }
+
+
+def build_fleet(origin: str, exchange_id: str = "") -> tuple:
+    """The fleet one button asks for, and the exchange choice it resolved.
+
+    ``IMPORT_LIVE_FLEET_ACTION`` reads ``bot_state.json``;
+    ``GENERATE_FROM_YTD_ACTION`` reads the YTD trade files.
+    """
+    from ...simulator.fleet_source import (
+        FleetSource,
+        exchange_choice,
+        live_fleet,
+        ytd_fleet,
+    )
+    from ...simulator.ytd_trade_source import YtdTradeSource
+
+    if origin == GENERATE_FROM_YTD_ACTION:
+        ytd = YtdTradeSource()
+        choice = exchange_choice(
+            sorted({one.exchange_id for one in ytd.entries()}), exchange_id
+        )
+        return ytd_fleet(ytd, choice["chosen"]), choice
+    fleet = FleetSource()
+    choice = exchange_choice(fleet.exchanges(), exchange_id)
+    return live_fleet(fleet, choice["chosen"]), choice
+
+
+def run_validation(origin: str, exchange_id: str = "") -> dict:
+    """Build the fleet ``origin`` names and validate it against the record.
+
+    An exchange choice still awaiting the operator returns the prompt and
+    runs nothing.
+    """
+    from ...simulator.gate_log_source import GateLogSource
+    from ...simulator.ytd_trade_source import YtdTradeSource
+    from ...trading.stone_tablets.storage import STONE_TABLETS_DIR
+
+    bots, choice = build_fleet(origin, exchange_id)
+    if choice["prompt"]:
+        idle = empty_validation()
+        idle["origin"] = origin
+        idle["exchange"] = dict(choice)
+        idle["prompt_text"] = EXCHANGE_PROMPT_FORMAT.format(
+            options=", ".join(choice["options"])
+        )
+        idle["lines"] = [idle["prompt_text"]]
+        return idle
+    outcome = validation.run(
+        bots,
+        TabletSource(STONE_TABLETS_DIR),
+        YtdTradeSource(),
+        GateLogSource(),
+        exchange_id=choice["chosen"],
+        limit=VALIDATION_RERUN_LIMIT,
+    )
+    payload = validation_payload(outcome, origin, choice)
+    payload["fleet"] = fleet_model(bots, outcome.by_bot)
+    return payload
+
+
 def chosen_entry(source: TabletSource, key: str):
     """The entry ``key`` names, or ``source.newest`` when it names none."""
     if key:
@@ -386,10 +591,18 @@ def chosen_entry(source: TabletSource, key: str):
 
 
 def build_view_model(
-    source: TabletSource, key: str = "", layer: str = LAYER_INDICATORS
+    source: TabletSource,
+    key: str = "",
+    layer: str = LAYER_INDICATORS,
+    validation_payload_held: Optional[dict] = None,
 ) -> dict:
-    """The whole Sim tab as one dict, read from ``source``."""
+    """The whole Sim tab as one dict, read from ``source``.
+
+    ``validation_payload_held`` carries the last Validation run;
+    ``empty_validation`` stands in before the first press.
+    """
     chosen_layer = layer if layer in LAYERS else LAYER_INDICATORS
+    held = validation_payload_held or empty_validation()
     entries = source.entries()
     entry = chosen_entry(source, key)
     candles = window_of(source.candles(entry)) if entry is not None else []
@@ -404,7 +617,7 @@ def build_view_model(
     return {
         "accessible_name": HEADING,
         "built": BUILT,
-        "fleet": fleet_model(),
+        "fleet": held.get("fleet") or fleet_model(),
         "heading": HEADING,
         "indicators": indicator_payload(
             candles,
@@ -436,6 +649,9 @@ def build_view_model(
         "skin": dict(SKIN),
         "tablet": None if entry is None else tablet_row(entry),
         "tablets": [tablet_row(one) for one in entries],
+        "validation": {
+            name: value for name, value in held.items() if name != "fleet"
+        },
         "vwap": vwap_payload(drawable),
     }
 
