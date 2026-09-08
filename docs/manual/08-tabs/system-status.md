@@ -163,4 +163,125 @@ reaches into it. Surviving the application dying is the whole point of it.
 The [Console](console.md) tab's lower pane is the Emitter Network readout. It
 renders the same sink records, capped at the newest 200 per drain.
 
+## 2026-09-08 08:17 - #34 - what the closed issues landed
+
+The manual marks this screen System Status Tab (To Be Built) and it is a
+skeleton today.
+
+This tab consists of two distinct but closely related parts. The Emitter Network is an embedded system of data activity detectors intended to allow for detailed subsystem performance monitoring. The Watchdog is the raw signal capture for the Emitter Network’s output.
+
+The tab is now called Status. It sits ninth on the bar, on the gold
+ground with red text.
+
+The screen is not built. The tab row now carries a System Status skeleton, which
+draws its name, one sentence saying it is not built, and the issue that owns it.
+Issue #34 carries the build-out. Both halves run today, and the Console tab
+shows the first of them.
+
+`src/gui/main_tabs/system_status_tab_surface.py` — the whole empty state
+
+```python
+HEADING = "Status"
+ISSUE = 34
+BUILT = False
+STATE_TEXT = "This tab is not built."
+ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
+```
+
+The Emitter Network is one plain function and one sink. A call site says what
+it expected and what it actually saw, and a satisfied expectation is recorded
+the same as a violated one, which keeps a call site that never ran distinct
+from one that always passed.
+
+`src/core/signal_contract.py` — `emit`
+
+```python
+def emit(
+    name: str,
+    actual: Any,
+    expected: Any = None,
+    ok: Optional[bool] = None,
+    context: Optional[dict] = None,
+    every: float = 0.0,
+    instance: Optional[str] = None,
+    module: Optional[str] = None,
+    duration: Optional[float] = None,
+) -> Optional[Signal]:
+```
+
+A second module declares every emitter. A contract names a topic's required
+fields and its vocabulary, and the observer reports a topic that never fired, a
+missing field or a value outside that vocabulary.
+
+`src/core/emit_contracts.py` — the gate-decision contract
+
+```python
+EmitContract(
+    topic="bot.gate_decision",
+    required=("symbol",),
+    optional=(
+        "scrum_armed",
+        "fold_armed",
+        "scrum_blockers",
+        "fold_blockers",
+        "scrum_fixture",
+        "fold_fixture",
+    ),
+    description="Gate evaluation snapshot at fire time.",
+),
+```
+
+The Watchdog is `acervator_watchdog.py` at the repository root. It launches the
+application as a child process, tees both output streams to its own log, polls
+the heartbeat file, and writes a post-mortem after the child dies.
+
+`acervator_watchdog.py` — the stall threshold and the poll
+
+```python
+DEFAULT_STALL_SECONDS = 60  # must match or exceed Acervator's longest sync call (CCXT: ~15s typical, 30s timeout)
+HEARTBEAT_POLL_INTERVAL = 2.0
+```
+
+
+### Post-mortem bundle rotation
+
+The Watchdog writes a post-mortem bundle every time the application dies. Each
+bundle copies the runner's console log, the crash log, the fault-handler log
+and a thread dump, which runs to hundreds of megabytes. Per-run log rotation
+capped the size of one run's logs and capped nothing about the number of
+bundles, so weeks of restarts grew without limit until the log directory took
+the host down.
+
+`acervator_watchdog.py` — `prune_postmortem_bundles`
+
+```python
+def prune_postmortem_bundles(
+    keep_latest: int = POSTMORTEM_KEEP_LATEST,
+    max_age_days: int = POSTMORTEM_MAX_AGE_DAYS,
+    log_dir: Path | None = None,
+) -> tuple[int, int]:
+```
+
+It keeps the most recent bundles, drops anything past a maximum age whatever
+its position, and runs at two sites: once at Watchdog startup, which clears
+what earlier runs left behind, and once after each post-mortem is written,
+which holds the ceiling during a long session.
+
+`acervator_watchdog.py` — the three constants
+
+```python
+POSTMORTEM_KEEP_LATEST: int = 20  # most-recent N bundles preserved
+POSTMORTEM_MAX_AGE_DAYS: int = 30  # anything older is dropped
+POSTMORTEM_SIZE_WARN_BYTES: int = 5 * 1024 * 1024 * 1024  # 5 GB warning threshold
+```
+
+The third is a warning threshold read by `report_log_dir_footprint` and it
+deletes nothing, so two constants govern the rotation and one reports on it.
+The only other inputs are the log directory itself, derived from the home
+directory, and the literal bundle-name prefix inside the function. Neither is a
+rotation constant.
+
+No test in this repository references any of the three names. The cap runs and
+nothing holds it in place.
+
 Back to [the subsystem index](README.md).

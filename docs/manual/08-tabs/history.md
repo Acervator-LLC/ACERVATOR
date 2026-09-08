@@ -317,4 +317,186 @@ Three methods serve this screen.
 Three renderer files draw it: `history_tab.js` for the chrome, then
 `history_panel.js` and its stylesheet for the table.
 
+## 2026-09-08 08:17 - no issue recorded - what the closed issues landed
+
+The History Tab is able to pull trade history from all active exchanges via their respective APIs. It also pairs each imported trade with its in-platform trading logic and applies our trade grading system.
+
+The tab keeps the name History. It sits eighth on the bar, on the gold
+ground with red text.
+
+The tab fetches from every active venue and draws the rows with React. Every
+cell value comes from one read contract; the table renders those fields and
+derives none, which stops a second History growing behind the renderer.
+
+`src/exchange/history_read_contract.py` — `build_page`
+
+```python
+def build_page(
+    filtered: list[dict],
+    page: int = 0,
+    bot_manager: Any = None,
+    gate_index: Optional[dict] = None,
+    voting_index: Optional[dict] = None,
+) -> HistoryPage:
+```
+
+The grade comes from the trade grader and the gate lights come from the same
+vocabulary the Simulator's gate cell reads. A refresh also hands the Simulator
+its year of live trades, so the tab's signal front-loads the parity run.
+
+![The History tab: filters, graded rows and the gate lights.](p32-i0.png)
+
+The Filters group carries From and To date pickers, then Exchange, Symbol and
+Side, each filled from the rows in hand. Apply narrows the set, Reset restores
+it, and Refresh goes back to the venues. The line under the group counts the
+retained rows against the loaded rows, both sides with their dollar totals, and
+the age of the last fetch.
+
+Thirteen columns carry a row, newest first, and nothing re-sorts. BUY draws
+green and SELL red.
+
+`src/exchange/history_read_contract.py` — `COLUMNS`, the first ten
+
+```python
+COLUMNS: tuple[HistoryColumn, ...] = (
+    HistoryColumn(0, "timestamp", "Timestamp (UTC)"),
+    HistoryColumn(1, "exchange", "Exchange"),
+    HistoryColumn(2, "symbol", "Symbol"),
+    HistoryColumn(3, "bot", "Bot"),
+    HistoryColumn(4, "side", "Side"),
+    HistoryColumn(5, "amount", "Amount"),
+    HistoryColumn(6, "price", "Price"),
+    HistoryColumn(7, "cost", "Cost USD"),
+    HistoryColumn(8, "fee", "Fee"),
+    HistoryColumn(9, "trade_id", "Trade ID"),
+```
+
+Grade, Gates and Voting close the set.
+
+The Gates cell opens with the blocker text, then the lights. Nineteen of them:
+the ten scrum gates TGT, INT, BB, FIRE, TA, LS, TRND, HTF, CB and OTD, then the
+nine fold gates BB, MID, TA, LS, TRNQ, CEIL, HTF, CB and OTD. Each light draws
+under its own label, and each bank ends with an `S` or an `F` marker. Five
+states, five colours.
+
+`src/trading/gate_vocabulary.py` — `LIGHT_COLORS`
+
+```python
+LIGHT_COLORS: dict[str, str] = {
+    "override": "#22d3ee",
+    "not_evaluated": "#333340",
+    "blocked": "#ff3366",
+    "passed": "#00cc55",
+    "not_the_blocker": "#c8901e",
+}
+```
+
+Green passed, red the gate that blocked, amber not armed for another reason,
+grey not evaluated at this candle, and cyan a landing-strip override. The
+blocker text and the light banks overlap in the figure; both occupy the one
+cell.
+
+Prev, the page counter and Next page the result at the foot, and Export CSV
+writes the current selection out. The tab builds the summary line and the page
+counter itself, and the read contract already declares both, so two
+implementations of the same two strings stand in the tree. Issue #425 carries
+it.
+
+History Tab (React):
+
+![](p32-i1.png)
+
+The same tab, captured while the asynchronous fetch runs. Five fixed status
+strings cover the states before any row exists, and the one on screen is the
+fetching entry.
+
+`src/exchange/history_read_contract.py` — `STATUS_TEXT`
+
+```python
+STATUS_TEXT = {
+    "idle": "No history loaded yet — click Refresh.",
+    "no_bot_manager": "Bot manager unavailable — cannot fetch history.",
+    "no_async_loop": "Async loop not ready — try again after platform starts.",
+    "fetching": "Fetching trade history from exchanges…",
+    "timeout": "Fetch timeout (60s). Exchange may be rate-limited; try again.",
+}
+```
+
+Two constants bound the fetch, in the same module: the poll runs on a 400 ms
+timer, so an observed latency is the true latency plus up to one interval, and
+the fetch is abandoned after sixty seconds.
+
+`src/exchange/history_read_contract.py` — the fetch bounds
+
+```python
+FETCH_POLL_INTERVAL_S = 0.4
+```
+
+The header strip is visible here, which marks the screen as a live-trading tab.
+REALISED and MATURE draw the exchange figures the Live tab draws, which issue
+#418 fed. A row whose gate log holds no entry inside the join window reads
+`no record`.
+
+Both columns draw an exchange figure here too, because one strip serves every
+tab that shows it. Where the venue has answered for no bot they stay empty, and
+Privacy Mode leaves an empty column empty.
+
+
+### Trade grading
+
+The grader scores a trade that has already happened. It never feeds a trading
+decision, it never tunes a parameter, and no gate consults it. The same inputs
+always give the same grade.
+
+Four axes are scored. An axis with no input is skipped: it neither credits nor
+penalises, and the overall number is the unweighted mean of the rest.
+
+`src/trading/trade_grader.py` — `grade_trade`
+
+```python
+exec_score, exec_bps = _score_execution(record, ctx)
+timing_score, mfe, mae = _score_timing(record, ctx)
+strategic_score, sb_delta = _score_strategic(record, ctx)
+outcome_score, realized = _score_outcome(record, ctx)
+```
+
+| Axis | What it reads | What a 1.0 means |
+| ---- | ------------- | ---------------- |
+| Execution | fill price against the reference price at decision time | no slippage |
+| Timing | the favourable excursion against the adverse one over the following candles | the trade went far more right than wrong before it closed |
+| Strategic | the asset's discipline ratio before the trade against after it | the trade moved the ratio the operator's way |
+| Outcome | realised profit per unit | a clear gain |
+
+The regime tag reaches the grade and the rationale string and gets no score of
+its own. Grading the same record with a regime tag and without one returns the
+same number, which is the control that proves it.
+
+The scale is 0.0 to 1.0, not 0 to 100, and the mean becomes a letter at fixed
+boundaries.
+
+`src/trading/trade_grader.py` — `_letter_from_numeric`
+
+```python
+    if num >= 0.93:
+        return "A+"
+    elif num >= 0.85:
+        return "A"
+    elif num >= 0.70:
+        return "B"
+    elif num >= 0.55:
+        return "C"
+    elif num >= 0.40:
+        return "D"
+    else:
+        return "F"
+```
+
+Driving the mapper across each boundary and just under it flips the letter
+exactly where the code says, in both directions.
+
+**One trap worth knowing.** A trade with no gradeable input at all scores 0.5
+and therefore reads as a **D**, not as ungraded. A fully specified trade scores
+1.0 and reads A+. A column of Ds may mean the trades were poor, or it may mean
+the surrounding price context never arrived.
+
 Back to [the subsystem index](README.md).

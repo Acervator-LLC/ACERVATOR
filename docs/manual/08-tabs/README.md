@@ -4,10 +4,35 @@ Reference. One file per subsystem tab, written from the source. Each file
 names the module that implements the screen, the symbols inside it, the
 bridge method that serves its renderer, and the screen's current state.
 
-The parent section is [08-tabs.md](../08-tabs.md), which carries the
-manual's own text for each of these screens. The rows below run in the
+The parent part is [08-tabs.md](../08-tabs.md), which points here for every
+screen but Main Window, Market Inspector and Asset Charts, and carries the
+manual's own text for those three. The rows below run in the
 order the tab list in [04-manual-parts.md](../04-manual-parts.md) sets,
 which is the order [08-tabs.md](../08-tabs.md) runs its sections in.
+
+## How an update is written down
+
+Each tab has one section, and that section is its file below. An update to a
+tab takes a dated subsection under that one heading and never a second section
+named for the tab.
+
+```
+    ## 2026-09-08 14:20 - #407, #442 - the six zones and their arrows
+       date       time    issues addressed   what the update did
+```
+
+The date leads so the subsections sort, and they run forward down the page.
+An update with no issue behind it writes `no issue recorded` in that field
+rather than a number nothing supports. `.claude/rules/documentation.md` bans
+an issue number in documentation, and the operator's directive of 2026-09-08
+amends it for this header alone; version names stay banned everywhere.
+
+`dev_harness/harness/docs_archetype.py` refuses both halves
+
+```python
+rule_id="DOC011"   # two contents sections naming one tab
+rule_id="DOC012"   # a dated update that runs backwards
+```
 
 ## Contents
 

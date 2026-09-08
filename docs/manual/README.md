@@ -32,7 +32,7 @@ meaning; the Part column below is what places a file in the manual.
 | [05-novel-concepts.md](05-novel-concepts.md) | 2 | 10 to 14 | Novel concepts and patent candidate catalogue, entries 1 to 17 |
 | [06-trading-tab.md](06-trading-tab.md) | 3 | 14 to 27 | System architecture, then the Trading Tab walkthrough |
 | [07-indicators.md](07-indicators.md) | 3 | 27 to 29 | Indicator Voting Panel and the twelve indicators |
-| [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Main Window, Simulator, Paper Trader, Proof of Accumulation, Market Inspector, Bot Swarm, Asset Charts, History, Console, System Status, and the eleven Settings pages |
+| [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Main Window, Market Inspector and Asset Charts, and the pointers to every other screen's own section under [08-tabs/](08-tabs/README.md) |
 | [13-live-evidence.md](13-live-evidence.md) | 4 | — | The readers of the year-to-date venue record, the connectors, and what the exchange tests reach |
 | [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
 | [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
@@ -74,9 +74,11 @@ the Trading Tab offers no control for. All three keep every transcribed
 sentence unaltered.
 [07-indicators.md](07-indicators.md) holds them in the PDF's order.
 [08-tabs.md](08-tabs.md) orders its sections by the tab list in
-[04-manual-parts.md](04-manual-parts.md): Main Window opens the part, and the
-eleven Settings pages sit under one Settings heading. The subsystem files below
-hold the longer form of the tab descriptions and none of them transcribe the
+[04-manual-parts.md](04-manual-parts.md), and Main Window opens the part. Each
+tab has one section and the subsystem files below are its home, so the eleven
+Settings pages sit under one Settings heading there. A tab's later updates are
+dated subsections under that one heading, in the shape
+[08-tabs/README.md](08-tabs/README.md) sets. None of those files transcribe the
 PDF.
 
 ## Part 3 subsystem detail
