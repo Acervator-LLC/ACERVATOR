@@ -52,6 +52,8 @@ TAB_BODY = f'<div id="{TAB_ROOT_ID}"></div>'
 FLIP_ACTION = "flip_layer"
 TABLET_ACTION = "choose_tablet"
 PRIVACY_ACTION = "toggle_privacy"
+IMPORT_LIVE_FLEET_ACTION = surface.IMPORT_LIVE_FLEET_ACTION
+GENERATE_FROM_YTD_ACTION = surface.GENERATE_FROM_YTD_ACTION
 
 #: The bridge this host answers. The Electron shell binds ``window.acervator``
 #: in its own preload, so this source is never a file under ``src/gui/web``.
@@ -130,6 +132,7 @@ if _HAS_WEBENGINE:
             self._layer = surface.LAYER_INDICATORS
             self._tablet_key = ""
             self._model: dict = {}
+            self._validation: Optional[dict] = None
             self._page_ready = False
             self._theme = theme
             self._web: Optional[QWebEngineView] = None
@@ -201,8 +204,27 @@ if _HAS_WEBENGINE:
             self.refresh()
             return masked
 
+        def import_live_fleet(self) -> dict:
+            """Clone the live fleet from bot_state and validate it."""
+            return self.run_validation(IMPORT_LIVE_FLEET_ACTION)
+
+        def generate_from_ytd(self) -> dict:
+            """Build a fleet from the YTD trade files and validate it."""
+            return self.run_validation(GENERATE_FROM_YTD_ACTION)
+
+        def run_validation(self, origin: str, exchange_id: str = "") -> dict:
+            """Run ``origin``'s fleet against the record and redraw the page."""
+            self._validation = surface.run_validation(origin, exchange_id)
+            self.refresh()
+            return dict(self._validation)
+
+        def validation(self) -> dict:
+            """The Validation payload the page was last drawn from."""
+            return dict(self._model.get("validation") or {})
+
         def run_action(self, payload: str) -> None:
-            """Run the flip, the privacy toggle or the tablet choice reported."""
+            """Run the press the page reported: flip, privacy, tablet or
+            fleet."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -215,13 +237,15 @@ if _HAS_WEBENGINE:
                 self.toggle_privacy()
             elif key == TABLET_ACTION:
                 self.choose_tablet(str(asked.get("value") or ""))
+            elif key in (IMPORT_LIVE_FLEET_ACTION, GENERATE_FROM_YTD_ACTION):
+                self.run_validation(key)
 
         # -- drawing ----------------------------------------------------
 
         def refresh(self) -> dict:
             """Re-read the tablet and push the new model to the page."""
             self._model = surface.build_view_model(
-                self._source, self._tablet_key, self._layer
+                self._source, self._tablet_key, self._layer, self._validation
             )
             if self._page_ready and self._web is not None:
                 self._web.page().runJavaScript(push_script(self._model))

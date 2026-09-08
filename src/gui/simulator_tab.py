@@ -57,6 +57,23 @@ VWAP_VIEW_NAME = "sim-vwap-view"
 PLAYBACK_VIEW_NAME = "sim-playback-view"
 REPLAY_LOG_NAME = "sim-replay-log"
 REPLAY_TITLE_NAME = "sim-replay-title"
+FLEET_BUTTON_NAMES = ("sim-import-live-fleet", "sim-generate-from-ytd")
+VALIDATION_TITLE_NAME = "sim-validation-title"
+VALIDATION_LINES_NAME = "sim-validation-lines"
+VALIDATION_PROMPT_NAME = "sim-validation-prompt"
+VALIDATION_TABLE_NAME = "sim-validation-table"
+VALIDATION_LIGHTS_NAME = "sim-validation-lights"
+
+VALIDATION_COLUMNS = (
+    "Bot ID",
+    "Symbol",
+    "Trade",
+    "Candle",
+    "Gate row",
+    "Lights agreed",
+    "Latches",
+)
+LIGHT_COLUMNS = ("Bank", "Gate", "Recorded", "Rerun", "Driven by")
 
 CHART_MIN_HEIGHT_PX = 120
 LINE_WIDTH_PX = 2
@@ -190,6 +207,7 @@ class SimulatorTabQt(QWidget):
         self._layer = surface.LAYER_INDICATORS
         self._tablet_key = ""
         self._model: dict = {}
+        self._validation: Optional[dict] = None
         self._build()
         self.refresh()
 
@@ -226,8 +244,15 @@ class SimulatorTabQt(QWidget):
         self._top_splitter.addWidget(self._build_layer_pane())
         self._top_splitter.setSizes(surface.TOP_SPLITTER_SIZES)
 
+        self._bottom_splitter = QSplitter(Qt.Horizontal)
+        self._bottom_splitter.setHandleWidth(surface.HANDLE_WIDTH_PX)
+        self._bottom_splitter.setChildrenCollapsible(False)
+        self._bottom_splitter.addWidget(self._build_replay_pane())
+        self._bottom_splitter.addWidget(self._build_validation_pane())
+        self._bottom_splitter.setSizes(surface.LAYER_SPLITTER_SIZES)
+
         self._main_splitter.addWidget(self._top_splitter)
-        self._main_splitter.addWidget(self._build_replay_pane())
+        self._main_splitter.addWidget(self._bottom_splitter)
         self._main_splitter.setSizes(surface.MAIN_SPLITTER_SIZES)
         outer.addWidget(self._main_splitter)
 
@@ -248,16 +273,31 @@ class SimulatorTabQt(QWidget):
         column.addLayout(header)
 
         # The crypto news ticker and the data pool line are not copied; their
-        # rows stay empty for Import Live Fleet and Generate From YTD.
+        # rows carry Import Live Fleet and Generate From YTD instead.
         self._reserved_rows = []
+        self._fleet_buttons = []
         row_names = (NEWS_ROW_NAME, POOL_ROW_NAME)
-        for spec, name in zip(surface.RESERVED_ROWS, row_names, strict=True):
+        presses = (self.import_live_fleet, self.generate_from_ytd)
+        for spec, name, button_name, press in zip(
+            surface.RESERVED_ROWS, row_names, FLEET_BUTTON_NAMES, presses, strict=True
+        ):
             row = QWidget()
             row.setObjectName(name)
             row.setAccessibleName(name)
             row.setFixedHeight(int(spec["height_px"]))
+            inner = QHBoxLayout(row)
+            inner.setContentsMargins(0, 0, 0, 0)
+            inner.setSpacing(surface.SPACING_PX)
+            button = QPushButton(str(spec["text"]))
+            button.setObjectName(button_name)
+            button.setAccessibleName(button_name)
+            button.setFocusPolicy(Qt.NoFocus)
+            button.clicked.connect(press)
+            inner.addWidget(button)
+            inner.addStretch(1)
             column.addWidget(row)
             self._reserved_rows.append(row)
+            self._fleet_buttons.append(button)
 
         self._fleet_label = QLabel(surface.FLEET_LABEL_TEXT)
         self._fleet_label.setObjectName(FLEET_LABEL_NAME)
@@ -375,7 +415,66 @@ class SimulatorTabQt(QWidget):
         column.addWidget(self._replay_log, 1)
         return pane
 
+    def _build_validation_pane(self) -> QWidget:
+        pane = QWidget()
+        column = QVBoxLayout(pane)
+        column.setContentsMargins(*surface.MARGINS_PX)
+        column.setSpacing(surface.SPACING_PX)
+
+        self._validation_title = QLabel(surface.VALIDATION_TITLE)
+        self._validation_title.setObjectName(VALIDATION_TITLE_NAME)
+        self._validation_title.setAccessibleName(VALIDATION_TITLE_NAME)
+        self._validation_title.setStyleSheet(HEADING_STYLE)
+        column.addWidget(self._validation_title)
+
+        self._validation_prompt = QLabel("")
+        self._validation_prompt.setObjectName(VALIDATION_PROMPT_NAME)
+        self._validation_prompt.setAccessibleName(VALIDATION_PROMPT_NAME)
+        self._validation_prompt.setStyleSheet(EMPTY_STYLE)
+        column.addWidget(self._validation_prompt)
+
+        self._validation_lines = QPlainTextEdit()
+        self._validation_lines.setObjectName(VALIDATION_LINES_NAME)
+        self._validation_lines.setAccessibleName(VALIDATION_LINES_NAME)
+        self._validation_lines.setReadOnly(True)
+        self._validation_lines.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self._validation_lines.setMaximumBlockCount(REPLAY_MAX_BLOCKS)
+        column.addWidget(self._validation_lines)
+
+        self._validation_table = QTableWidget()
+        self._validation_table.setObjectName(VALIDATION_TABLE_NAME)
+        self._validation_table.setAccessibleName(VALIDATION_TABLE_NAME)
+        self._validation_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._validation_table.verticalHeader().setVisible(False)
+        column.addWidget(self._validation_table, 1)
+
+        self._validation_lights = QTableWidget()
+        self._validation_lights.setObjectName(VALIDATION_LIGHTS_NAME)
+        self._validation_lights.setAccessibleName(VALIDATION_LIGHTS_NAME)
+        self._validation_lights.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._validation_lights.verticalHeader().setVisible(False)
+        column.addWidget(self._validation_lights, 1)
+        return pane
+
     # -- what the operator presses --------------------------------------
+
+    def import_live_fleet(self) -> dict:
+        """Clone the live fleet from bot_state and validate it."""
+        return self.run_validation(surface.IMPORT_LIVE_FLEET_ACTION)
+
+    def generate_from_ytd(self) -> dict:
+        """Build a fleet from the YTD trade files and validate it."""
+        return self.run_validation(surface.GENERATE_FROM_YTD_ACTION)
+
+    def run_validation(self, origin: str, exchange_id: str = "") -> dict:
+        """Run ``origin``'s fleet against the record and redraw the pane."""
+        self._validation = surface.run_validation(origin, exchange_id)
+        self.refresh()
+        return dict(self._validation)
+
+    def validation(self) -> dict:
+        """The Validation payload the pane was last drawn from."""
+        return dict(self._model.get("validation") or {})
 
     def toggle_privacy(self) -> bool:
         """Flip every registered privacy field and redraw the button."""
@@ -404,7 +503,7 @@ class SimulatorTabQt(QWidget):
     def refresh(self) -> dict:
         """Re-read the tablet and draw every pane from the new model."""
         self._model = surface.build_view_model(
-            self._source, self._tablet_key, self._layer
+            self._source, self._tablet_key, self._layer, self._validation
         )
         self._draw(self._model)
         return self._model
@@ -419,6 +518,7 @@ class SimulatorTabQt(QWidget):
         self._vwap_view.set_payload(model["vwap"])
         self._playback_view.set_payload(model["playback"])
         self._replay_log.setPlainText("\n".join(model["replay_log"]["lines"]))
+        self._draw_validation(model["validation"])
 
     def _draw_fleet(self, fleet: dict) -> None:
         table = self._fleet_table
@@ -430,8 +530,56 @@ class SimulatorTabQt(QWidget):
             index = int(index_text)
             header.setSectionResizeMode(index, QHeaderView.Fixed)
             table.setColumnWidth(index, int(width))
+        for row_index, row in enumerate(fleet["rows"]):
+            for cell_index, cell in enumerate(row["cells"]):
+                table.setItem(row_index, cell_index, QTableWidgetItem(str(cell)))
         self._fleet_empty.setText(fleet["empty_text"])
         self._fleet_empty.setVisible(fleet["row_count"] == 0)
+
+    def _draw_validation(self, payload: dict) -> None:
+        self._validation_title.setText(payload["title"])
+        self._validation_prompt.setText(payload["prompt_text"])
+        self._validation_prompt.setVisible(bool(payload["prompt_text"]))
+        self._validation_lines.setPlainText("\n".join(payload["lines"]))
+        rows = list(payload["rows"])
+        table = self._validation_table
+        table.setColumnCount(len(VALIDATION_COLUMNS))
+        table.setHorizontalHeaderLabels(list(VALIDATION_COLUMNS))
+        table.setRowCount(len(rows))
+        for index, row in enumerate(rows):
+            cells = (
+                row["bot_id"],
+                row["symbol"],
+                row["trade_at"],
+                row["candle_at"],
+                row["gate_at"],
+                f"{row['agreed']} of {row['light_count']}",
+                "yes" if row["latches_identically"] else "no",
+            )
+            for cell_index, cell in enumerate(cells):
+                table.setItem(index, cell_index, QTableWidgetItem(str(cell)))
+        self._draw_lights(rows[0]["lights"] if rows else [])
+
+    def _draw_lights(self, lights: list) -> None:
+        table = self._validation_lights
+        table.setColumnCount(len(LIGHT_COLUMNS))
+        table.setHorizontalHeaderLabels(list(LIGHT_COLUMNS))
+        table.setRowCount(len(lights))
+        for index, light in enumerate(lights):
+            cells = (
+                light["bank"],
+                light["label"],
+                light["recorded"],
+                light["rerun"],
+                light["driven_by"],
+            )
+            colour = _colour(
+                ds.SUCCESS if light["agrees"] else ds.ERROR
+            )
+            for cell_index, cell in enumerate(cells):
+                item = QTableWidgetItem(str(cell))
+                item.setForeground(colour)
+                table.setItem(index, cell_index, item)
 
     def _draw_selector(self, model: dict) -> None:
         selector = self._tablet_selector
