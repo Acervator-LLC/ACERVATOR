@@ -68,7 +68,6 @@ try:
     from .main_tabs.history_tab import HistoryTabMixin
     from .main_tabs.market_inspector_tab import MarketInspectorTabMixin
     from .main_tabs.retired_tabs import RetiredTabsMixin
-    from .main_tabs.simulator_tab import SimulatorTabMixin
     from .main_tabs.trading_tab import TradingTabMixin
     from .widgets.api_tester_tab import APITesterTab
     from .widgets.bot_selection import _reanchor_bot_selection, _select_row_for_bot
@@ -159,7 +158,6 @@ if _HAS_QT:
         HistoryTabMixin,
         MarketInspectorTabMixin,
         RetiredTabsMixin,
-        SimulatorTabMixin,
         TradingTabMixin,
         QMainWindow,
     ):
@@ -241,17 +239,8 @@ if _HAS_QT:
             self._report_stored_credentials_on_startup()
 
         def set_async_loop(self, loop) -> None:
-            """Store the asyncio loop and pass it to the Simulator tab when present."""
+            """Store the asyncio loop `main.py` runs every coroutine on."""
             self._async_loop = loop
-            try:
-                if getattr(self, "_simulator", None) is not None and hasattr(
-                    self._simulator, "set_async_loop"
-                ):
-                    self._simulator.set_async_loop(loop)
-            except Exception as _exc:
-                logger.warning(
-                    "set_async_loop: SimulatorTab propagation failed: %s", _exc
-                )
 
         def _setup_menu(self) -> None:
             menu_bar = self.menuBar()

@@ -130,6 +130,7 @@ which is the rule
 `tests/test_ta_engine_degenerate_abstention.py` already holds every
 division in this package to. The behaviour is unchanged; the reason for
 it is now stated instead of being a side effect of a fallback constant.
+That test file was deleted; it is not in the tree.
 
 ## 5. Does anything downstream need a constant denominator?
 
@@ -410,6 +411,7 @@ vulture cannot see a dataclass field's readers in another file. No
 suppression was added anywhere; the one `# noqa` in the new test file is
 `E402`, the sys-path-before-import pattern
 `test_indicator_numeric_identity.py` already uses.
+That test file was deleted; it is not in the tree.
 
 **Emitter registry.** `emitter_registry_check` before
 and after: exit 0, 76 pins, 76 registry rows, no `E` lines, no `W1`

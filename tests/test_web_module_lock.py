@@ -12,8 +12,6 @@ MODULES = [
     "tests.test_react_dashboard_stat_card",
     "tests.test_react_exchange_tab",
     "tests.test_react_quick_routing",
-    "tests.test_react_sim_stat_strip",
-    "tests.test_react_simulator_tab",
 ]
 
 

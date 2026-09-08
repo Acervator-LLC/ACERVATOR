@@ -1,8 +1,4 @@
-"""Each React page in ``PAGES`` loads the modules ``acervatorHeader`` lives in.
-
-``draw_and_read_title_colour`` reads the colour a page paints with that source
-and without it.
-"""
+"""Each React page in ``PAGES`` loads the modules ``acervatorHeader`` lives in."""
 
 from __future__ import annotations
 
@@ -70,9 +66,7 @@ def load(html: str):
 
 
 PAGES = [
-    ("sim_stat_strip", "src.gui.react_sim_stat_strip", "strip_html"),
     ("market_inspector", "src.gui.react_market_inspector_tab", "tab_html"),
-    ("nuclear_mode_panel", "src.gui.react_nuclear_mode_panel", "panel_html"),
 ]
 
 
@@ -97,48 +91,3 @@ def test_the_page_carries_the_style_source(name, module, maker):
     print(name, "styleOf=", found)
     view.deleteLater()
     assert found == "function", f"{name} loaded no style source: styleOf is {found!r}"
-
-
-def draw_and_read_title_colour(html: str) -> str:
-    """Draw the Nuclear page from ``html`` and read the title's painted colour."""
-    import src.gui.react_nuclear_mode_panel as panel_module
-    from src.gui.main_tabs import nuclear_mode_panel_surface as surface
-
-    view = load(html)
-    for _ in range(READY_ROUNDS):
-        if js(view, "typeof window.acervatorNuclearDraw") == "function":
-            break
-        settle(READY_STEP_MS)
-    model = surface.envelope(surface.PanelModel(surface.PanelWorld()).build())
-    js(view, panel_module.draw_script(model))
-    settle(200)
-    found = js(
-        view,
-        "(function(){var n=document.querySelector('[data-part=\"title\"]');"
-        "return n===null?'no-title':getComputedStyle(n).color;})()",
-    )
-    view.deleteLater()
-    return str(found)
-
-
-def test_the_style_source_is_what_paints_the_nuclear_title_gold():
-    import src.gui.react_nuclear_mode_panel as panel_module
-    from src.gui.react_history_panel import page_html
-
-    with_source = draw_and_read_title_colour(panel_module.panel_html())
-    blind = page_html(
-        panel_module.PANEL_STYLE_ASSETS,
-        (
-            "vendor/react.production.min.js",
-            "vendor/react-dom.production.min.js",
-            "nuclear_mode_panel.js",
-        ),
-        panel_module.PANEL_BODY,
-        "cyberpunk_dark",
-        (panel_module.HOST_SCRIPT,),
-    )
-    without_source = draw_and_read_title_colour(blind)
-    print("TITLE COLOUR with style source:", with_source)
-    print("TITLE COLOUR without style source:", without_source)
-    assert with_source == "rgb(255, 204, 68)", with_source
-    assert without_source != with_source, without_source

@@ -23,13 +23,8 @@ HISTORY = "History"
 HISTORY_TABLE = "History table"
 MAIN_TAB_BOOK = "Main tab book"
 MARKET_INSPECTOR = "Market Inspector"
-FLEET_REPLAY = "Fleet replay panel"
-GATE_STATUS_PANEL = "Gate status panel"
-NUCLEAR_MODE = "Nuclear Mode"
 SETTINGS_DIALOG = "Settings dialog"
-SIM_PRICE_CHART = "Sim price chart"
 SPENDABLE_PROFITS = "Spendable profits"
-SIM_STAT_STRIP = "Sim stat strip"
 START_ALL_PROGRESS = "Start All progress dialog"
 
 Loader = Callable[[], type]
@@ -178,62 +173,6 @@ def _react_market_inspector() -> type:
     return MarketInspectorReactTab
 
 
-def _qt_nuclear_mode() -> type:
-    """Import and return the Qt Nuclear Mode panel."""
-    from .simulator_tab.nuclear_mode_panel import NuclearModePanel
-
-    return NuclearModePanel
-
-
-def _react_nuclear_mode() -> type:
-    """Import and return the React Nuclear Mode panel."""
-    from .react_nuclear_mode_panel import NuclearModeReactPanel
-
-    return NuclearModeReactPanel
-
-
-def _qt_fleet_replay() -> type:
-    """Import and return the Qt Fleet Replay panel."""
-    from .simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
-
-    return FleetReplayPanel
-
-
-def _react_fleet_replay() -> type:
-    """Import and return the React Fleet Replay panel."""
-    from .react_fleet_replay_panel import FleetReplayReactPanel
-
-    return FleetReplayReactPanel
-
-
-def _qt_gate_status_panel() -> type:
-    """Import and return the Qt gate status panel."""
-    from .simulator_tab.fleet.sim_visuals import GateStatusPanel
-
-    return GateStatusPanel
-
-
-def _react_gate_status_panel() -> type:
-    """Import and return the React gate status panel."""
-    from .react_sim_visuals import GateStatusPanelReact
-
-    return GateStatusPanelReact
-
-
-def _qt_sim_price_chart() -> type:
-    """Import and return the Qt Simulator price and VWAP chart."""
-    from .simulator_tab.fleet.sim_visuals import SimPriceVwapChart
-
-    return SimPriceVwapChart
-
-
-def _react_sim_price_chart() -> type:
-    """Import and return the React Simulator price and VWAP chart."""
-    from .react_sim_visuals import SimPriceVwapChartReact
-
-    return SimPriceVwapChartReact
-
-
 def _qt_bot_live_settings() -> type:
     """Import and return the Qt Live Bot Settings window."""
     from .bot_live_settings import BotLiveSettingsDialog
@@ -318,20 +257,6 @@ def _react_buy_confirmation() -> type:
     return BuyConfirmationReactDialog
 
 
-def _qt_sim_stat_strip() -> type:
-    """Import and return the Qt Simulator stat strip."""
-    from .simulator_tab.sim_stat_strip import SimStatStrip
-
-    return SimStatStrip
-
-
-def _react_sim_stat_strip() -> type:
-    """Import and return the React Simulator stat strip."""
-    from .react_sim_stat_strip import SimStatStripWebStrip
-
-    return SimStatStripWebStrip
-
-
 register(ALERTS, _qt_alerts, _react_alerts)
 register(HISTORY, _qt_history, _react_history)
 register(HISTORY_TABLE, _qt_history_table, _react_history_table)
@@ -340,11 +265,6 @@ register(EMPTY_TAB, _qt_empty_tab, _react_empty_tab)
 register(BOT_SWARM, _qt_bot_swarm, _react_bot_swarm)
 register(CONSOLE, _qt_console, _react_console)
 register(MARKET_INSPECTOR, _qt_market_inspector, _react_market_inspector)
-register(NUCLEAR_MODE, _qt_nuclear_mode, _react_nuclear_mode)
-register(SIM_PRICE_CHART, _qt_sim_price_chart, _react_sim_price_chart)
-register(GATE_STATUS_PANEL, _qt_gate_status_panel, _react_gate_status_panel)
-register(FLEET_REPLAY, _qt_fleet_replay, _react_fleet_replay)
-register(SIM_STAT_STRIP, _qt_sim_stat_strip, _react_sim_stat_strip)
 register(SETTINGS_DIALOG, _qt_settings_dialog, _react_settings_dialog)
 register(BOT_LIVE_SETTINGS, _qt_bot_live_settings, _react_bot_live_settings)
 register(SPENDABLE_PROFITS, _qt_spendable_profits, _react_spendable_profits)

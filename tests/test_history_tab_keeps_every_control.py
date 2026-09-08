@@ -561,22 +561,75 @@ def test_refresh_button(
         tab.deleteLater()
 
 
+class _TabBook:
+    """Answers ``tabText`` with one label, standing in for the main tab book."""
+
+    def __init__(self, label: str) -> None:
+        self._label = label
+
+    def tabText(self, index: int) -> str:
+        """The label at ``index``, which is the same label for every index."""
+        del index
+        return self._label
+
+
+class _HistoryStub:
+    """Records every ``refresh`` the handler calls, with a settable staleness."""
+
+    def __init__(self, last_fetched_ts: float, fetch_in_flight: bool = False) -> None:
+        self._last_fetched_ts = last_fetched_ts
+        self._fetch_in_flight = fetch_in_flight
+        self.refreshed = 0
+
+    def refresh(self) -> None:
+        """Count one call."""
+        self.refreshed += 1
+
+
+def _tab_changed(label: str, hist: Optional[_HistoryStub]):
+    """Run the shipped ``_on_main_tab_changed`` for ``label`` against ``hist``."""
+    from types import MethodType
+
+    from src.gui.main_window import MainWindow
+
+    class _Holder:
+        pass
+
+    holder = _Holder()
+    holder._main_tabs = _TabBook(label)
+    holder._header_strip_container = None
+    holder._history_tab = hist
+    MethodType(MainWindow.__dict__["_on_main_tab_changed"], holder)(0)
+    return hist
+
+
 def test_refreshes_on_tab_open() -> None:
-    """HISTORY/filters/refreshes-on-tab-open — the activation hook.
+    """HISTORY/filters/refreshes-on-tab-open — opening History refreshes it.
 
-    ``_on_main_tab_changed`` is the wiring; it is read here rather than
-    driven, because driving it needs a whole MainWindow.
+    The shipped ``_on_main_tab_changed`` runs against a ``_HistoryStub`` whose
+    ``_last_fetched_ts`` is old enough to be stale.
     """
-    wiring = (REPO / "src" / "gui" / "main_window.py").read_text(encoding="utf-8")
-    handler = wiring[wiring.index("def _on_main_tab_changed") :]
-    handler = handler[: handler.index("def _drain_signals")]
-    assert 'if tab_name == "History":' in handler
-    assert 'hist = getattr(self, "_history_tab", None)' in handler
-    assert "hist.refresh()" in handler
-    assert 'getattr(hist, "_last_fetched_ts", 0.0)' in handler
-    from src.gui.history_tab import HistoryTab
+    hist = _tab_changed("History", _HistoryStub(last_fetched_ts=0.0))
+    assert hist.refreshed == 1, f"History opened and refreshed {hist.refreshed} times"
 
-    assert callable(HistoryTab.refresh)
+
+def test_a_fresh_history_is_not_refreshed_on_tab_open() -> None:
+    """A reading under five minutes old leaves ``refresh`` uncalled."""
+    hist = _tab_changed("History", _HistoryStub(last_fetched_ts=time.time()))
+    assert hist.refreshed == 0, f"a fresh History refreshed {hist.refreshed} times"
+
+
+def test_a_fetch_already_running_is_not_refreshed_again() -> None:
+    """``_fetch_in_flight`` blocks a second ``refresh`` on the same open."""
+    stub = _HistoryStub(last_fetched_ts=0.0, fetch_in_flight=True)
+    hist = _tab_changed("History", stub)
+    assert hist.refreshed == 0, f"an in-flight History refreshed {hist.refreshed} times"
+
+
+def test_another_tab_does_not_refresh_history() -> None:
+    """Opening Console leaves the stale ``_HistoryStub`` untouched."""
+    hist = _tab_changed("Console", _HistoryStub(last_fetched_ts=0.0))
+    assert hist.refreshed == 0, f"Console refreshed History {hist.refreshed} times"
 
 
 def test_date_range(qapp: QApplication) -> None:
@@ -912,47 +965,6 @@ def test_export_csv(
         assert len(written) - 1 == len(rows), "the file holds one page, not the set"
         assert written[1:] == hrc.csv_rows(rows, tab._bot_manager)
         assert [line[-1] for line in written[1:]] == [r["id"] for r in rows]
-    finally:
-        tab.deleteLater()
-
-
-def test_hands_over_ytd(
-    qapp: QApplication, async_loop, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """HISTORY/feeds-the-simulator/hands-over-ytd — the Simulator's slot.
-
-    Connected to the same signal ``main_window`` connects, and driven by
-    the same fetch, so this is the wire the Simulator front-load rides.
-    """
-    import src.exchange.history_helpers as helpers
-    from src.gui.simulator_tab.fleet.fleet_replay_panel import FleetReplayPanel
-
-    assert hasattr(FleetReplayPanel, "on_history_refreshed")
-    wiring = (REPO / "src" / "gui" / "main_tabs" / "history_tab.py").read_text(
-        encoding="utf-8"
-    )
-    assert "self._history_tab.history_refreshed.connect(" in wiring
-    assert "fleet_panel.on_history_refreshed" in wiring
-
-    rows = _mixed_rows()
-
-    async def _fake(bot_manager: Any, since_ts: float, *a: Any, **kw: Any) -> list:
-        del bot_manager, since_ts, a, kw
-        return rows
-
-    monkeypatch.setattr(helpers, "fetch_all_history_chunked", _fake)
-    tab = _tab(qapp, async_loop)
-    try:
-        received: list = []
-        tab.history_refreshed.connect(received.append)
-        tab._from_dt.setDateTime(QDateTime.fromSecsSinceEpoch(int(BASE_TS - 86_400)))
-        tab.refresh()
-        assert _pump(qapp, lambda: bool(received)), "the Simulator feed never fired"
-        assert len(received) == 1
-        assert [r["id"] for r in received[0]] == [r["id"] for r in rows]
-        # The list handed over is a copy: the Simulator cannot edit the
-        # tab's rows out from under the table.
-        assert received[0] is not tab._all_trades
     finally:
         tab.deleteLater()
 

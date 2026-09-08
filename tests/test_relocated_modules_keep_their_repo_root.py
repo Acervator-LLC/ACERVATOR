@@ -1,8 +1,8 @@
 """``__file__``-relative path maths and function-local imports across ``src``.
 
-``_default_cache_dir`` and ``_load_raintsimbat`` walk up from ``__file__`` by a
-count of parents, so a module that moves directory answers with a path one level
-off and raises nothing. ``test_every_import_under_src_resolves`` resolves every
+A module that walks up from ``__file__`` by a count of parents answers with a
+path one level off when it moves directory, and raises nothing.
+``test_every_import_under_src_resolves`` resolves every
 import ``_imports_of`` finds, function-local ones included, which collection
 never reaches. ``test_the_walker_reads_a_deferred_import`` is its control.
 """
@@ -14,30 +14,9 @@ import importlib.util
 import sys
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-
-
-def test_nuclear_candle_source_still_finds_the_repo_root() -> None:
-    """The cache dir hangs off the repo root, not off its parent."""
-    from src.simulator import nuclear_candle_source as ncs
-
-    assert ncs._default_cache_dir() == (
-        REPO_ROOT / "sadp" / "RAIntSimBat" / "data" / "cache"
-    )
-
-
-def test_populate_nuclear_cache_still_finds_the_repo_root() -> None:
-    """0% covered by the rest of the suite. Its refusal names the path."""
-    from src.simulator import populate_nuclear_cache as pnc
-
-    with pytest.raises(RuntimeError) as excinfo:
-        pnc._load_raintsimbat()
-    wanted = (REPO_ROOT / "sadp" / "RAIntSimBat" / "RAIntSimBat.py").as_posix()
-    assert wanted in str(excinfo.value).replace("\\", "/")
 
 
 def _imports_of(path: Path) -> list[tuple[str, int]]:

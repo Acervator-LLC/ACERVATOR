@@ -1,9 +1,4 @@
-"""The Indicator Voting Panel fits the space the Simulator gives it.
-
-Operator task 2026-08-08 (screenshot area 3): "Resize the indicator
-voting panel so that it actually fits inside of its assigned space like
-it does under the trading tab. This will make it smaller so will have to
-adjust text sizes as needed."
+"""The Indicator Voting Panel fits the space the Trading tab gives it.
 
 WHAT WAS ACTUALLY WRONG -- and it is not a shortage of space.
 
@@ -42,8 +37,7 @@ if str(REPO_ROOT) not in sys.path:
 def _destroy_widgets():
     """Delete every top-level widget after each test.
 
-    These tests build whole SimulatorTab / FleetReplayPanel trees. Qt
-    keeps a parentless widget alive for the life of the process, so
+    Qt keeps a parentless widget alive for the life of the process, so
     without this they accumulate across the suite until the run dies
     with a segfault (exit 139, and once 127) partway through -- no
     failure summary, just truncated output. The crash point moved
@@ -73,21 +67,20 @@ def _qapp():
     return QApplication.instance() or QApplication([])
 
 
-def _sim_tab(w=1920, h=1080):
+def _panel(w=1920, h=1080):
     app = _qapp()
-    from src.gui.simulator_tab.simulator_tab import SimulatorTab
+    from src.gui.indicator_panel import IndicatorVotingPanel
 
-    tab = SimulatorTab()
-    tab.resize(w, h)
-    tab.show()
+    panel = IndicatorVotingPanel()
+    panel.resize(w, h)
+    panel.show()
     app.processEvents()
-    return tab
+    return panel
 
 
 class TestTheInstrument:
     def test_the_report_covers_both_tables(self):
-        tab = _sim_tab()
-        rep = tab._sim_voting_readout.header_fit_report()
+        rep = _panel().header_fit_report()
         assert set(rep) == {"cols10", "cols7"}
         for v in rep.values():
             assert v["allocated"] > 0
@@ -99,8 +92,7 @@ class TestTheInstrument:
         green result from it means nothing."""
         from PySide6.QtWidgets import QTableWidget
 
-        tab = _sim_tab()
-        panel = tab._sim_voting_readout
+        panel = _panel()
         for t in panel.findChildren(QTableWidget):
             t.resize(90, t.height())
         _qapp().processEvents()
@@ -111,36 +103,31 @@ class TestTheInstrument:
 class TestNoColumnIsTruncated:
     def test_every_header_fits_at_operator_resolution(self):
         """1920x1080 is the resolution in the operator's screenshot."""
-        tab = _sim_tab(1920, 1080)
-        rep = tab._sim_voting_readout.header_fit_report()
+        rep = _panel(1920, 1080).header_fit_report()
         bad = {k: v["truncated"] for k, v in rep.items() if v["truncated"]}
         assert not bad, f"columns truncated: {bad}"
 
     def test_comp_net_specifically_fits(self):
         """The worst offender: 108px of label in a 61px column."""
-        tab = _sim_tab(1920, 1080)
-        rep = tab._sim_voting_readout.header_fit_report()
+        rep = _panel(1920, 1080).header_fit_report()
         assert "Comp Net" not in rep["cols10"]["truncated"]
 
     def test_it_still_fits_when_the_window_is_smaller(self):
         """A fix that only works at one size is not a fix."""
-        tab = _sim_tab(1600, 900)
-        rep = tab._sim_voting_readout.header_fit_report()
+        rep = _panel(1600, 900).header_fit_report()
         bad = {k: v["truncated"] for k, v in rep.items() if v["truncated"]}
         assert not bad, f"truncated at 1600x900: {bad}"
 
 
 class TestThePanelFitsItsPane:
     def test_the_panel_is_not_wider_than_its_allocation(self):
-        tab = _sim_tab(1920, 1080)
-        r = tab._sim_voting_readout
+        r = _panel(1920, 1080)
         assert r.minimumSizeHint().width() <= r.width(), (
             f"panel demands {r.minimumSizeHint().width()}px, " f"has {r.width()}px"
         )
 
     def test_the_panel_is_not_taller_than_its_allocation(self):
-        tab = _sim_tab(1920, 1080)
-        r = tab._sim_voting_readout
+        r = _panel(1920, 1080)
         assert r.minimumSizeHint().height() <= r.height(), (
             f"panel demands {r.minimumSizeHint().height()}px, " f"has {r.height()}px"
         )
@@ -148,15 +135,7 @@ class TestThePanelFitsItsPane:
 
 class TestTheTradingTabIsUnaffected:
     def test_the_trading_tab_panel_also_fits(self):
-        """The operator asked for the sim to match the Trading Tab, so
-        the Trading Tab's own panel must not regress to achieve it."""
-        _qapp()
-        from src.gui.indicator_panel import IndicatorVotingPanel
-
-        p = IndicatorVotingPanel()
-        p.resize(900, 460)
-        p.show()
-        _qapp().processEvents()
-        rep = p.header_fit_report()
+        """The Trading Tab's own panel must not regress."""
+        rep = _panel(900, 460).header_fit_report()
         bad = {k: v["truncated"] for k, v in rep.items() if v["truncated"]}
         assert not bad, f"trading-tab panel truncated: {bad}"

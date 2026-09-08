@@ -2,7 +2,7 @@
 
 ``live_trades`` are the ``fetch_all_history_chunked`` dicts in unix seconds.
 ``sim_trades`` are either ``TabletBackend.fetch_my_trades`` dicts or
-``FleetSimExchange`` ``Trade`` objects, and ``_read_fill`` normalises both.
+``src.exchange.base.Trade`` objects, and ``_read_fill`` normalises both.
 ``tolerance_s`` is how far a sim fill may drift and still match, and
 ``ParityReport`` carries ``matched``, ``live_only``, ``sim_only`` and the
 per-symbol counts.
@@ -18,8 +18,8 @@ logger = logging.getLogger("acervator.stone_tablets.parity_harness")
 
 DEFAULT_TOLERANCE_S: float = 300.0  # one 5m candle
 
-# `TabletBackend` dicts stamp `timestamp` in milliseconds; `FleetSimExchange`
-# `Trade` objects stamp seconds. Every comparison here is in seconds.
+# `TabletBackend` dicts stamp `timestamp` in milliseconds; `Trade` objects
+# stamp seconds. Every comparison here is in seconds.
 MS_PER_S: float = 1000.0
 
 SIM_DICT_TIMESTAMP_UNIT: str = "ms"

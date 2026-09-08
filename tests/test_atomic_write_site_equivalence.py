@@ -24,7 +24,6 @@ from src.core import io_utils as IO
 from src.core import privacy_mask_registry as PMR
 from src.core import state_manager as SM
 from src.gui import indicator_panel as IP
-from src.simulator.fleet import simulator_bot_state as SBS
 from src.trading import capital_reservation as CR
 from src.trading.stone_tablets import storage as ST
 
@@ -38,7 +37,7 @@ def _old_open_w_utf8(tmp: Path, payload, **dump_kwargs) -> bytes:
 
 def _old_write_text_utf8(tmp: Path, payload, **dump_kwargs) -> bytes:
     """privacy_mask_registry, feature_telemetry, instance_guard,
-    simulator_bot_state, bot_visualizer, shared_testnet."""
+    bot_visualizer, shared_testnet."""
     tmp.write_text(json.dumps(payload, **dump_kwargs), encoding="utf-8")
     return tmp.read_bytes()
 
@@ -201,20 +200,6 @@ def test_instance_guard_claim_bytes(tmp_path, monkeypatch):
     assert path == written == tmp_path / IG.CLAIM_FILENAME
     assert _dump_kwargs(kwargs) == {"indent": 2}
     old = _old_write_text_utf8(tmp_path / "old.bytes", payload, indent=2)
-    assert _crlf_to_lf(old) == path.read_bytes()
-
-
-def test_simulator_bot_state_bytes(tmp_path, monkeypatch):
-    """Red: simulator_bot_state.json changed shape. default=repr, not
-    str: a sim state carrying a non-serialisable value must render the
-    same way it did."""
-    rec = _install(monkeypatch, SBS, "atomic_write_json")
-    state = {"bot_count": 2, "bots": {"sim-a": _bot_record("sim-a")}, "obj": object()}
-    SBS.save_sim_state(state, tmp_path / "simulator_bot_state.json")
-
-    path, payload, kwargs = rec.only
-    assert _dump_kwargs(kwargs) == {"indent": 2, "default": repr}
-    old = _old_write_text_utf8(tmp_path / "old.bytes", payload, indent=2, default=repr)
     assert _crlf_to_lf(old) == path.read_bytes()
 
 
@@ -409,10 +394,6 @@ def _drive_indicator_panel(tmp_path, monkeypatch):
     )
 
 
-def _drive_simulator_bot_state(tmp_path, monkeypatch):
-    SBS.save_sim_state({"bot_count": 0, "bots": {}}, tmp_path / "sim_state.json")
-
-
 def _drive_capital_reservation(tmp_path, monkeypatch):
     CR.CapitalReservationRegistry(state_path=tmp_path / "reservation.json")._save()
 
@@ -449,7 +430,6 @@ SITE_DRIVERS = [
     pytest.param(_drive_feature_telemetry, id="feature_telemetry"),
     pytest.param(_drive_instance_guard, id="instance_guard"),
     pytest.param(_drive_indicator_panel, id="indicator_panel"),
-    pytest.param(_drive_simulator_bot_state, id="simulator_bot_state"),
     pytest.param(_drive_capital_reservation, id="capital_reservation"),
     pytest.param(_drive_stone_tablets, id="stone_tablets"),
     pytest.param(_drive_shared_testnet, id="shared_testnet"),
