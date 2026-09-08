@@ -83,6 +83,7 @@ SECTION_PART = re.compile(r"\bPart (\d+)\b")
 SEPARATOR_CELL = re.compile(r"^:?-{2,}:?$")
 HEADING_STYLES = {1: "section", 2: "sub", 3: "sub2", 4: "sub2", 5: "sub2", 6: "sub2"}
 
+FRONT_MATTER = re.compile(r"\A﻿?---[ \t]*\r?\n.*?\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 FENCE_LINE = re.compile(r"^(?P<mark>`{3,}|~{3,})[ \t]*(?P<info>[^\s`~]*)[ \t]*$")
 CODE_SPAN = re.compile(r"`([^`\n]+)`")
 LINK_SPAN = re.compile(r"\[([^\]\n]+)\]\([^)\s]+\)")
@@ -392,10 +393,12 @@ def parse_markdown(text: str) -> list[Block]:
     """Return the blocks of ``text``, joining the lines of a paragraph with a space.
 
     A pipe table becomes one ``table`` block, a fence a ``code`` block, and a
-    mermaid fence a ``diagram`` block whose text stays exactly as written.
+    mermaid fence a ``diagram`` block whose text stays exactly as written. A
+    leading front-matter block carries the mode a page declares to a reviewer
+    and yields no block, so it never reaches the page.
     """
     blocks: list[Block] = []
-    for kind, info, body in split_fences(text):
+    for kind, info, body in split_fences(FRONT_MATTER.sub("", text, count=1)):
         if kind != "fence":
             blocks.extend(_prose_blocks(body))
         elif info.lower() == DIAGRAM_INFO:

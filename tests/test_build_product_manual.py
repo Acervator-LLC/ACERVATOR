@@ -14,8 +14,10 @@ from tools.build_product_manual import (
     Part,
     build,
     build_styles,
+    first_heading,
     load_manual,
     paginate,
+    parse_markdown,
     parse_part_list,
     planned_entries,
     read_manifest,
@@ -294,6 +296,16 @@ def test_every_markdown_file_under_the_manual_is_carried_or_listed(manual_tree):
         if item not in carried and item.name != "README.md"
     )
     assert not unaccounted, f"neither carried nor the manifest: {unaccounted}"
+
+
+def test_a_page_declaring_a_review_mode_prints_no_front_matter():
+    """A failure means `mode: story` reaches the reader as body text."""
+    page = "---\nmode: story\n---\n\n# The Development Chronicle\n\nA sentence.\n"
+    blocks = parse_markdown(page)
+    printed = [block.text for block in blocks]
+    assert not any("mode: story" in text for text in printed), printed
+    assert printed == ["The Development Chronicle", "A sentence."], printed
+    assert first_heading(page) == "The Development Chronicle"
 
 
 def test_an_absent_figure_stops_the_build_by_name(manual_tree):
