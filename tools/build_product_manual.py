@@ -1500,7 +1500,9 @@ def update_entries(text: str) -> list[tuple[int, str, str]]:
     for entry in entries(text):
         stamp = UPDATE_HEADING.match(entry.heading)
         if stamp:
-            out.append((entry.line, f"{entry.day.isoformat()} {stamp.group(2)}", entry.heading))
+            out.append(
+                (entry.line, f"{entry.day.isoformat()} {stamp.group(2)}", entry.heading)
+            )
     return out
 
 
