@@ -10,6 +10,7 @@
 
   var ACCESSIBLE_NAME = "accessible_name";
   var BACK_TEST = "back_test";
+  var BATTERY = "battery";
   var BUILT = "built";
   var FLEET = "fleet";
   var HEADING = "heading";
@@ -34,6 +35,7 @@
   var DECLARED_FIELDS = [
     ACCESSIBLE_NAME,
     BACK_TEST,
+    BATTERY,
     BUILT,
     FLEET,
     HEADING,
@@ -65,9 +67,12 @@
   var FLIP_ACTION = "flip_layer";
   var TABLET_ACTION = "choose_tablet";
   var MODE_ACTION = "choose_mode";
+  var PORTFOLIO_ACTION = "choose_portfolio";
+  var SPAN_ACTION = "choose_span";
   var PRIVACY_ACTION = "toggle_privacy";
   var ACTION_PREFIX = "acervator-act:";
   var BACK_TEST_MODE = "back_test";
+  var BATTERY_MODE = "portfolio_battery";
 
   var VALIDATION_COLUMNS = [
     "Bot ID",
@@ -109,7 +114,15 @@
     validationLights: "sim-validation-lights",
     backTestTitle: "sim-back-test-title",
     backTestLines: "sim-back-test-lines",
-    backTestTable: "sim-back-test-table"
+    backTestTable: "sim-back-test-table",
+    batteryRow: "sim-battery-row",
+    portfolioLabel: "sim-portfolio-label",
+    portfolioSelector: "sim-portfolio-selector",
+    spanLabel: "sim-span-label",
+    spanSelector: "sim-span-selector",
+    batteryTitle: "sim-battery-title",
+    batteryLines: "sim-battery-lines",
+    batteryTable: "sim-battery-table"
   };
 
   var VIEW_BOX = "0 0 1000 1000";
@@ -245,6 +258,110 @@
     );
   }
 
+  // Both selectors send the same shape the mode selector sends.
+  function NameSelector(props) {
+    return element(
+      "select",
+      {
+        "aria-label": props.name,
+        "data-part": props.name,
+        "data-chosen": text(props.chosen),
+        value: String(props.chosen),
+        onChange: function (event) {
+          postAction(props.action, event.target.value);
+        }
+      },
+      props.options.map(function (row) {
+        return element("option", { key: row, value: row }, text(row));
+      })
+    );
+  }
+
+  function BatteryRow(props) {
+    var battery = props.battery;
+    return element(
+      "div",
+      {
+        className: "sim-battery-row",
+        "aria-label": NAMES.batteryRow,
+        "data-part": NAMES.batteryRow,
+        hidden: !props.shown
+      },
+      element(
+        "span",
+        { "aria-label": NAMES.portfolioLabel, "data-part": NAMES.portfolioLabel },
+        text(props.panes.portfolio_label_text)
+      ),
+      element(NameSelector, {
+        name: NAMES.portfolioSelector,
+        action: PORTFOLIO_ACTION,
+        chosen: battery.portfolio,
+        options: battery.portfolios.map(function (row) {
+          return row.name;
+        })
+      }),
+      element(
+        "span",
+        { "aria-label": NAMES.spanLabel, "data-part": NAMES.spanLabel },
+        text(props.panes.span_label_text)
+      ),
+      element(NameSelector, {
+        name: NAMES.spanSelector,
+        action: SPAN_ACTION,
+        chosen: battery.span,
+        options: battery.spans
+      })
+    );
+  }
+
+  function batteryRows(rows) {
+    return rows.map(function (row) {
+      return {
+        verdict: row.verdict,
+        cells: [
+          row.portfolio,
+          row.timeframe,
+          row.span_text,
+          row.symbols_text,
+          row.bars,
+          row.ticks,
+          row.trades,
+          row.baseline_text,
+          row.accumulation_text,
+          row.improvement_text,
+          row.missing_text
+        ]
+      };
+    });
+  }
+
+  function BatteryPane(props) {
+    var found = props.battery;
+    return element(
+      "div",
+      { className: "sim-battery-pane" },
+      element(
+        "div",
+        {
+          "aria-label": NAMES.batteryTitle,
+          "data-part": NAMES.batteryTitle,
+          "data-ran": String(found.ran)
+        },
+        text(found.title)
+      ),
+      element(
+        "pre",
+        { "aria-label": NAMES.batteryLines, "data-part": NAMES.batteryLines },
+        found.lines.join("\n")
+      ),
+      element(CellTable, {
+        name: NAMES.batteryTable,
+        titles: found.columns,
+        rows: batteryRows(found.rows)
+      })
+    );
+  }
+
   function backTestRows(rows) {
     return rows.map(function (row) {
       return {
@@ -316,7 +433,11 @@
         props.rows.map(function (row, rowIndex) {
           return element(
             "tr",
-            { key: "r" + rowIndex, "data-agrees": text(row.agrees) },
+            {
+              key: "r" + rowIndex,
+              "data-agrees": text(row.agrees),
+              "data-verdict": text(row.verdict)
+            },
             row.cells.map(function (cell, cellIndex) {
               return element("td", { key: "c" + cellIndex }, text(cell));
             })
@@ -685,6 +806,11 @@
           ),
           element(ModeSelector, { modes: model[MODES], chosen: model[MODE] })
         ),
+        element(BatteryRow, {
+          battery: model[BATTERY],
+          panes: panes,
+          shown: panes.battery_row_shown
+        }),
         element(ReservedRows, { rows: model[RESERVED_ROWS] }),
         element(FleetTable, { fleet: model[FLEET] })
       ),
@@ -733,13 +859,22 @@
           { className: "sim-result-stack", "data-showing": text(model[MODE]) },
           element(
             "div",
-            { key: "validation", hidden: model[MODE] === BACK_TEST_MODE },
+            {
+              key: "validation",
+              hidden:
+                model[MODE] === BACK_TEST_MODE || model[MODE] === BATTERY_MODE
+            },
             element(ValidationPane, { validation: model[VALIDATION] })
           ),
           element(
             "div",
             { key: "back-test", hidden: model[MODE] !== BACK_TEST_MODE },
             element(BackTestPane, { backTest: model[BACK_TEST] })
+          ),
+          element(
+            "div",
+            { key: "battery", hidden: model[MODE] !== BATTERY_MODE },
+            element(BatteryPane, { battery: model[BATTERY] })
           )
         )
       )
@@ -857,6 +992,7 @@
     SimulatorTab: SimulatorTab,
     names: NAMES,
     BackTestPane: BackTestPane,
+    BatteryPane: BatteryPane,
     declaredFields: function () {
       return DECLARED_FIELDS.slice();
     },

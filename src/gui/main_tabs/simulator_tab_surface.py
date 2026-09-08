@@ -5,8 +5,8 @@ Trading-tab clone: the Privacy Mode row, the bot list under
 ``bot_status_table_surface.COLUMN_LABELS``, the panel
 ``indicator_panel_surface`` describes, and the second layer holding the VWAP
 window over the tablet playback window. ``reserved_rows`` names what the crypto
-news ticker and data-pool rows carry in each of ``MODES``, and ``run_validation``
-and ``run_back_test`` fill the pane each mode draws.
+news ticker and data-pool rows carry in each of ``MODES``, and ``run_validation``,
+``run_back_test`` and ``run_battery`` fill the pane each mode draws.
 ``src.core.desktop_bridge`` registers ``view_model`` under ``METHOD``, and
 nothing here imports Qt.
 """
@@ -17,8 +17,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
-from ...simulator import validation
+from ...simulator import portfolio_battery, validation
+from ...simulator.portfolios import PORTFOLIOS
 from ...simulator.tablet_source import TabletSource, tablet_key
+from ...trading.stone_tablets.ra_paths import RA_STONE_TABLETS_DIR
 from ...trading.stone_tablets.storage import STONE_TABLETS_DIR
 from .. import design_system as ds
 from . import indicator_panel_surface as ivp
@@ -33,8 +35,11 @@ ISSUE = 117
 BUILT = True
 
 #: The Stone Tablets Validation and Back Test read: the operator's own traded
-#: assets. Portfolio Battery reads ``RA_STONE_TABLETS_DIR`` instead.
+#: assets.
 TABLET_ROOT = STONE_TABLETS_DIR
+
+#: The RA-StoneTablets Portfolio Battery reads: the 35 portfolios' own history.
+BATTERY_TABLET_ROOT = RA_STONE_TABLETS_DIR
 
 #: The candle window live reads. ``ScrummingBot`` asks ``get_ohlcv`` for 100,
 #: and the Simulator reads the same count off the tablet.
@@ -50,20 +55,29 @@ PRIVACY_BUTTON_TEXT = PRIVACY_OFF_TEXT
 IMPORT_LIVE_FLEET_ACTION = "import_live_fleet"
 GENERATE_FROM_YTD_ACTION = "generate_from_ytd"
 CREATE_NEW_BOTS_ACTION = "create_new_bots"
+RUN_PORTFOLIO_ACTION = "run_portfolio"
+RUN_EVERY_PORTFOLIO_ACTION = "run_every_portfolio"
 IMPORT_LIVE_FLEET_TEXT = "Import Live Fleet"
 GENERATE_FROM_YTD_TEXT = "Generate From YTD"
 CREATE_NEW_BOTS_TEXT = "Create New Bots"
+RUN_PORTFOLIO_TEXT = "Run Portfolio"
+RUN_EVERY_PORTFOLIO_TEXT = "Run Every Portfolio"
+
+CHOOSE_PORTFOLIO_ACTION = "choose_portfolio"
+CHOOSE_SPAN_ACTION = "choose_span"
 
 NEWS_TICKER_ROW = "news_ticker_row"
 DATA_POOL_ROW = "data_pool_row"
 
 MODE_VALIDATION = "validation"
 MODE_BACK_TEST = "back_test"
-MODES = (MODE_VALIDATION, MODE_BACK_TEST)
+MODE_PORTFOLIO_BATTERY = "portfolio_battery"
+MODES = (MODE_VALIDATION, MODE_BACK_TEST, MODE_PORTFOLIO_BATTERY)
 MODE_LABEL_TEXT = "Mode:"
 MODE_TEXT = {
     MODE_VALIDATION: "Validation",
     MODE_BACK_TEST: "Back Test",
+    MODE_PORTFOLIO_BATTERY: "Portfolio Battery",
 }
 
 
@@ -108,9 +122,29 @@ BACK_TEST_ROWS: tuple[dict[str, Any], ...] = (
     },
 )
 
+#: The same two rows in Portfolio Battery, where the ways in are one portfolio
+#: and all of them.
+BATTERY_ROWS: tuple[dict[str, Any], ...] = (
+    {
+        "name": NEWS_TICKER_ROW,
+        "height_px": 24,
+        "action": RUN_PORTFOLIO_ACTION,
+        "text": RUN_PORTFOLIO_TEXT,
+        "button_name": button_name(RUN_PORTFOLIO_ACTION),
+    },
+    {
+        "name": DATA_POOL_ROW,
+        "height_px": 18,
+        "action": RUN_EVERY_PORTFOLIO_ACTION,
+        "text": RUN_EVERY_PORTFOLIO_TEXT,
+        "button_name": button_name(RUN_EVERY_PORTFOLIO_ACTION),
+    },
+)
+
 ROWS_FOR_MODE = {
     MODE_VALIDATION: RESERVED_ROWS,
     MODE_BACK_TEST: BACK_TEST_ROWS,
+    MODE_PORTFOLIO_BATTERY: BATTERY_ROWS,
 }
 
 
@@ -152,6 +186,46 @@ BACK_TEST_ROW_LIMIT = 200
 #: How many gate-chain evaluations one press spends per bot. Measured at 1.7 ms
 #: each, so a 38-bot press reads the whole 2026 tape in about 13 seconds.
 BACK_TEST_TICKS_PER_BOT = 200
+
+BATTERY_TITLE = "Portfolio Battery"
+BATTERY_IDLE_TEXT = "No battery run yet. Run Portfolio or Run Every Portfolio."
+
+#: The columns both hosts give the Portfolio Battery table, one row per
+#: portfolio and timeframe.
+BATTERY_COLUMNS = (
+    "Portfolio",
+    "Timeframe",
+    "Span",
+    "Symbols",
+    "Bars",
+    "Ticks",
+    "Trades",
+    "Buy and hold",
+    "Accumulation",
+    "Improvement",
+    "Missing weight",
+)
+
+#: How many portfolio-and-timeframe rows the Portfolio Battery table lists.
+BATTERY_ROW_LIMIT = 200
+
+#: How many gate-chain evaluations one press spends per symbol. Measured at
+#: 26 seconds for all 35 portfolios over the whole RA tape.
+BATTERY_TICKS_PER_SYMBOL = portfolio_battery.TICKS_PER_SYMBOL
+
+PORTFOLIO_LABEL_TEXT = "Portfolio:"
+SPAN_LABEL_TEXT = "Span:"
+
+#: The ``verdict`` both hosts colour a beaten baseline with.
+BETTER_VERDICT = portfolio_battery.BETTER
+
+#: The spans and timeframes both hosts list, from ``portfolio_battery``.
+BATTERY_SPANS = portfolio_battery.SPANS
+BATTERY_TIMEFRAMES = portfolio_battery.TIMEFRAMES
+DEFAULT_SPAN = portfolio_battery.FULL_SPAN
+
+#: The portfolio a run opens on when the operator has chosen none.
+DEFAULT_PORTFOLIO = sorted(PORTFOLIOS)[0]
 
 NO_NEW_BOT_TEXT = "Choose a Stone Tablet, then press Create New Bots."
 
@@ -200,6 +274,7 @@ SKIN = {
 DECLARED_FIELDS = (
     "accessible_name",
     "back_test",
+    "battery",
     "built",
     "fleet",
     "heading",
@@ -674,6 +749,160 @@ def back_test_payload(outcome, origin: str, choice: dict) -> dict:
     }
 
 
+def pct_text(share: float) -> str:
+    """``share`` of one as ``0.0%``."""
+    return f"{float(share) * 100.0:.1f}%"
+
+
+def battery_row(portfolio: str, read: dict) -> dict:
+    """One portfolio at one timeframe as the Portfolio Battery table lists
+    it."""
+    return {
+        "portfolio": portfolio,
+        "timeframe": read["timeframe"],
+        "first_at": read["first_at"],
+        "last_at": read["last_at"],
+        "span_text": (
+            f"{read['first_at']} to {read['last_at']}" if read["first_at"] else ""
+        ),
+        "symbols": read["symbols"],
+        "symbols_run": read["symbols_run"],
+        "symbols_text": f"{read['symbols_run']} of {read['symbols']}",
+        "bars": read["bars"],
+        "ticks": read["ticks"],
+        "scrum_latched": read["scrum_latched"],
+        "fold_latched": read["fold_latched"],
+        "trades": read["trades"],
+        "baseline_usd": read["baseline_usd"],
+        "baseline_text": usd_text(read["baseline_usd"]),
+        "accumulation_usd": read["accumulation_usd"],
+        "accumulation_text": usd_text(read["accumulation_usd"]),
+        "improvement_usd": read["improvement_usd"],
+        "improvement_pct": read["improvement_pct"],
+        "improvement_text": (
+            f"{read['improvement_usd']:+,.2f} ({read['improvement_pct']:+.2f}%)"
+        ),
+        "verdict": read["verdict"],
+        "missing_weight": read["missing_weight"],
+        "missing_text": pct_text(read["missing_weight"]),
+        "missing_symbols": list(read["missing_symbols"]),
+    }
+
+
+def battery_rows(outcome) -> list[dict]:
+    """Every portfolio-and-timeframe row of one ``BatteryRun``."""
+    out: list[dict] = []
+    for result in outcome.portfolios:
+        read = result.summary
+        for row in read["timeframes"]:
+            out.append(battery_row(read["portfolio"], row))
+    return out
+
+
+def battery_fleet(result) -> dict:
+    """The bot list for one ``PortfolioResult``, one bot per symbol it ran."""
+    if not result.timeframes:
+        return fleet_model()
+    first = result.timeframes[0]
+    bots = [
+        portfolio_battery.battery_bot(
+            one.asset, one.exchange_id, one.timeframe, one.capital_usd
+        )
+        for one in first.runs
+    ]
+    counts = {
+        bot.bot_id: {
+            "trades": run.trade_count,
+            "position_usd": run.accumulation_usd,
+        }
+        for bot, run in zip(bots, first.runs, strict=True)
+    }
+    return fleet_model(bots, counts)
+
+
+def portfolio_rows() -> list[dict]:
+    """Every portfolio the selector lists, by name."""
+    return [
+        {
+            "name": name,
+            "symbols": list(PORTFOLIOS[name].symbols),
+            "symbol_count": len(PORTFOLIOS[name].symbols),
+            "description": PORTFOLIOS[name].description,
+        }
+        for name in sorted(PORTFOLIOS)
+    ]
+
+
+def empty_battery(portfolio: str = "", span: str = "") -> dict:
+    """The Portfolio Battery pane before any run, naming the two ways in."""
+    return {
+        "title": BATTERY_TITLE,
+        "columns": list(BATTERY_COLUMNS),
+        "ran": False,
+        "origin": "",
+        "portfolio": str(portfolio or DEFAULT_PORTFOLIO),
+        "portfolios": portfolio_rows(),
+        "span": str(span or DEFAULT_SPAN),
+        "spans": list(BATTERY_SPANS),
+        "timeframes": list(BATTERY_TIMEFRAMES),
+        "lines": [BATTERY_IDLE_TEXT],
+        "summary": {},
+        "gaps": [],
+        "missing_assets": [],
+        "rows": [],
+        "row_count": 0,
+        "buttons": [dict(one) for one in BATTERY_ROWS],
+    }
+
+
+def battery_payload(outcome, origin: str, portfolio: str) -> dict:
+    """One ``BatteryRun`` as the Portfolio Battery pane draws it."""
+    rows = battery_rows(outcome)
+    return {
+        "title": BATTERY_TITLE,
+        "columns": list(BATTERY_COLUMNS),
+        "ran": True,
+        "origin": origin,
+        "portfolio": str(portfolio),
+        "portfolios": portfolio_rows(),
+        "span": outcome.span,
+        "spans": list(BATTERY_SPANS),
+        "timeframes": list(outcome.timeframes),
+        "lines": list(outcome.lines),
+        "summary": outcome.summary,
+        "gaps": [dict(one) for one in outcome.gaps],
+        "missing_assets": list(outcome.missing_assets),
+        "rows": rows[:BATTERY_ROW_LIMIT],
+        "row_count": len(rows),
+        "buttons": [dict(one) for one in BATTERY_ROWS],
+    }
+
+
+def run_battery(
+    origin: str, portfolio: str = "", span: str = ""
+) -> dict:
+    """Walk one portfolio, or every portfolio, over the RA-StoneTablets.
+
+    ``RUN_PORTFOLIO_ACTION`` runs the chosen portfolio and
+    ``RUN_EVERY_PORTFOLIO_ACTION`` runs all of them.
+    """
+    chosen = str(portfolio or DEFAULT_PORTFOLIO)
+    window = str(span or DEFAULT_SPAN)
+    names = () if origin == RUN_EVERY_PORTFOLIO_ACTION else (chosen,)
+    outcome = portfolio_battery.run_battery(
+        TabletSource(BATTERY_TABLET_ROOT),
+        names=names,
+        span=window,
+        ticks=BATTERY_TICKS_PER_SYMBOL,
+    )
+    payload = battery_payload(outcome, origin, chosen)
+    for result in outcome.portfolios:
+        if result.name == chosen:
+            payload["fleet"] = battery_fleet(result)
+            break
+    return payload
+
+
 def new_bot_specs(entry) -> list[dict]:
     """One new-bot spec for ``entry``'s asset, on the Bot Wizard's own
     defaults."""
@@ -839,18 +1068,23 @@ def build_view_model(
     validation_payload_held: Optional[dict] = None,
     mode: str = MODE_VALIDATION,
     back_test_payload_held: Optional[dict] = None,
+    battery_payload_held: Optional[dict] = None,
 ) -> dict:
     """The whole Sim tab as one dict, read from ``source``.
 
-    ``validation_payload_held`` and ``back_test_payload_held`` carry the last
-    run of each mode, and ``empty_validation`` and ``empty_back_test`` stand in
-    before the first press.
+    ``validation_payload_held``, ``back_test_payload_held`` and
+    ``battery_payload_held`` carry the last run of each mode, and the matching
+    ``empty_`` payload stands in before the first press.
     """
     chosen_layer = layer if layer in LAYERS else LAYER_INDICATORS
     chosen_mode = mode if mode in MODES else MODE_VALIDATION
     held = validation_payload_held or empty_validation()
     tested = back_test_payload_held or empty_back_test()
-    shown = tested if chosen_mode == MODE_BACK_TEST else held
+    charged = battery_payload_held or empty_battery()
+    shown = {
+        MODE_BACK_TEST: tested,
+        MODE_PORTFOLIO_BATTERY: charged,
+    }.get(chosen_mode, held)
     entries = source.entries()
     entry = chosen_entry(source, key)
     candles = window_of(source.candles(entry)) if entry is not None else []
@@ -865,6 +1099,7 @@ def build_view_model(
     return {
         "accessible_name": HEADING,
         "back_test": {name: value for name, value in tested.items() if name != "fleet"},
+        "battery": {name: value for name, value in charged.items() if name != "fleet"},
         "built": BUILT,
         "fleet": shown.get("fleet") or fleet_model(),
         "heading": HEADING,
@@ -893,6 +1128,9 @@ def build_view_model(
             "flip_button_text": FLIP_BUTTON_TEXT[chosen_layer],
             "tablet_label_text": TABLET_LABEL_TEXT,
             "mode_label_text": MODE_LABEL_TEXT,
+            "portfolio_label_text": PORTFOLIO_LABEL_TEXT,
+            "span_label_text": SPAN_LABEL_TEXT,
+            "battery_row_shown": chosen_mode == MODE_PORTFOLIO_BATTERY,
         },
         "playback": playback_payload(drawable),
         "privacy_button": privacy_button(privacy_masked()),
