@@ -52,10 +52,14 @@ TAB_BODY = f'<div id="{TAB_ROOT_ID}"></div>'
 FLIP_ACTION = "flip_layer"
 TABLET_ACTION = "choose_tablet"
 MODE_ACTION = "choose_mode"
+PORTFOLIO_ACTION = surface.CHOOSE_PORTFOLIO_ACTION
+SPAN_ACTION = surface.CHOOSE_SPAN_ACTION
 PRIVACY_ACTION = "toggle_privacy"
 IMPORT_LIVE_FLEET_ACTION = surface.IMPORT_LIVE_FLEET_ACTION
 GENERATE_FROM_YTD_ACTION = surface.GENERATE_FROM_YTD_ACTION
 CREATE_NEW_BOTS_ACTION = surface.CREATE_NEW_BOTS_ACTION
+RUN_PORTFOLIO_ACTION = surface.RUN_PORTFOLIO_ACTION
+RUN_EVERY_PORTFOLIO_ACTION = surface.RUN_EVERY_PORTFOLIO_ACTION
 
 #: The bridge this host answers. The Electron shell binds ``window.acervator``
 #: in its own preload, so this source is never a file under ``src/gui/web``.
@@ -139,6 +143,9 @@ if _HAS_WEBENGINE:
             self._model: dict = {}
             self._validation: Optional[dict] = None
             self._back_test: Optional[dict] = None
+            self._battery: Optional[dict] = None
+            self._portfolio = surface.DEFAULT_PORTFOLIO
+            self._span = surface.DEFAULT_SPAN
             self._page_ready = False
             self._theme = theme
             self._web: Optional[QWebEngineView] = None
@@ -217,7 +224,7 @@ if _HAS_WEBENGINE:
             return self._mode
 
         def mode(self) -> str:
-            """The mode the page is showing, ``validation`` or ``back_test``."""
+            """The mode the page is showing, one of ``surface.MODES``."""
             return self._mode
 
         def import_live_fleet(self) -> dict:
@@ -259,6 +266,38 @@ if _HAS_WEBENGINE:
             """The Back Test payload the page was last drawn from."""
             return dict(self._model.get("back_test") or {})
 
+        def battery(self) -> dict:
+            """The Portfolio Battery payload the page was last drawn from."""
+            return dict(self._model.get("battery") or {})
+
+        def choose_portfolio(self, name: str) -> str:
+            """Draw the portfolio ``name`` names on the next battery press."""
+            self._portfolio = str(name or surface.DEFAULT_PORTFOLIO)
+            self.refresh()
+            return self._portfolio
+
+        def choose_span(self, span: str) -> str:
+            """Read the span ``span`` names on the next battery press."""
+            self._span = str(span or surface.DEFAULT_SPAN)
+            self.refresh()
+            return self._span
+
+        def run_portfolio(self) -> dict:
+            """Walk the chosen portfolio over the RA-StoneTablets."""
+            return self.run_battery(RUN_PORTFOLIO_ACTION)
+
+        def run_every_portfolio(self) -> dict:
+            """Walk every portfolio over the RA-StoneTablets."""
+            return self.run_battery(RUN_EVERY_PORTFOLIO_ACTION)
+
+        def run_battery(self, origin: str) -> dict:
+            """Run ``origin`` over the chosen span and redraw the page."""
+            self._battery = surface.run_battery(
+                origin, self._portfolio, self._span
+            )
+            self.refresh()
+            return dict(self._battery)
+
         def run_action(self, payload: str) -> None:
             """Run the press the page reported: flip, privacy, tablet, mode or
             fleet."""
@@ -276,6 +315,12 @@ if _HAS_WEBENGINE:
                 self.choose_tablet(str(asked.get("value") or ""))
             elif key == MODE_ACTION:
                 self.choose_mode(str(asked.get("value") or ""))
+            elif key == PORTFOLIO_ACTION:
+                self.choose_portfolio(str(asked.get("value") or ""))
+            elif key == SPAN_ACTION:
+                self.choose_span(str(asked.get("value") or ""))
+            elif key in (RUN_PORTFOLIO_ACTION, RUN_EVERY_PORTFOLIO_ACTION):
+                self.run_battery(key)
             elif key == CREATE_NEW_BOTS_ACTION:
                 self.run_back_test(key)
             elif key == IMPORT_LIVE_FLEET_ACTION:
@@ -297,6 +342,7 @@ if _HAS_WEBENGINE:
                 self._validation,
                 self._mode,
                 self._back_test,
+                self._battery,
             )
             if self._page_ready and self._web is not None:
                 self._web.page().runJavaScript(push_script(self._model))

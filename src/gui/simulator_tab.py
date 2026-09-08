@@ -62,6 +62,14 @@ MODE_SELECTOR_NAME = "sim-mode-selector"
 BACK_TEST_TITLE_NAME = "sim-back-test-title"
 BACK_TEST_LINES_NAME = "sim-back-test-lines"
 BACK_TEST_TABLE_NAME = "sim-back-test-table"
+BATTERY_ROW_NAME = "sim-battery-row"
+PORTFOLIO_LABEL_NAME = "sim-portfolio-label"
+PORTFOLIO_SELECTOR_NAME = "sim-portfolio-selector"
+SPAN_LABEL_NAME = "sim-span-label"
+SPAN_SELECTOR_NAME = "sim-span-selector"
+BATTERY_TITLE_NAME = "sim-battery-title"
+BATTERY_LINES_NAME = "sim-battery-lines"
+BATTERY_TABLE_NAME = "sim-battery-table"
 VALIDATION_TITLE_NAME = "sim-validation-title"
 VALIDATION_LINES_NAME = "sim-validation-lines"
 VALIDATION_PROMPT_NAME = "sim-validation-prompt"
@@ -216,6 +224,9 @@ class SimulatorTabQt(QWidget):
         self._model: dict = {}
         self._validation: Optional[dict] = None
         self._back_test: Optional[dict] = None
+        self._battery: Optional[dict] = None
+        self._portfolio = surface.DEFAULT_PORTFOLIO
+        self._span = surface.DEFAULT_SPAN
         self._build()
         self.refresh()
 
@@ -258,6 +269,7 @@ class SimulatorTabQt(QWidget):
         self._result_stack = QStackedWidget()
         self._result_stack.addWidget(self._build_validation_pane())
         self._result_stack.addWidget(self._build_back_test_pane())
+        self._result_stack.addWidget(self._build_battery_pane())
 
         self._bottom_splitter.addWidget(self._build_replay_pane())
         self._bottom_splitter.addWidget(self._result_stack)
@@ -298,6 +310,7 @@ class SimulatorTabQt(QWidget):
         self._mode_selector.currentIndexChanged.connect(self._on_mode_chosen)
         mode_row.addWidget(self._mode_selector, 1)
         column.addLayout(mode_row)
+        column.addWidget(self._build_battery_row())
 
         # The crypto news ticker and the data pool line are not copied; their
         # rows carry the two ways into whichever mode is showing.
@@ -345,6 +358,44 @@ class SimulatorTabQt(QWidget):
         self._fleet_empty.setStyleSheet(EMPTY_STYLE)
         column.addWidget(self._fleet_empty)
         return pane
+
+    def _build_battery_row(self) -> QWidget:
+        row = QWidget()
+        row.setObjectName(BATTERY_ROW_NAME)
+        row.setAccessibleName(BATTERY_ROW_NAME)
+        inner = QHBoxLayout(row)
+        inner.setContentsMargins(0, 0, 0, 0)
+        inner.setSpacing(surface.SPACING_PX)
+
+        self._portfolio_label = QLabel(surface.PORTFOLIO_LABEL_TEXT)
+        self._portfolio_label.setObjectName(PORTFOLIO_LABEL_NAME)
+        self._portfolio_label.setAccessibleName(PORTFOLIO_LABEL_NAME)
+        self._portfolio_label.setStyleSheet(BODY_STYLE)
+        inner.addWidget(self._portfolio_label)
+
+        self._portfolio_selector = QComboBox()
+        self._portfolio_selector.setObjectName(PORTFOLIO_SELECTOR_NAME)
+        self._portfolio_selector.setAccessibleName(PORTFOLIO_SELECTOR_NAME)
+        for entry in surface.portfolio_rows():
+            self._portfolio_selector.addItem(entry["name"], entry["name"])
+        self._portfolio_selector.currentIndexChanged.connect(self._on_portfolio_chosen)
+        inner.addWidget(self._portfolio_selector, 1)
+
+        self._span_label = QLabel(surface.SPAN_LABEL_TEXT)
+        self._span_label.setObjectName(SPAN_LABEL_NAME)
+        self._span_label.setAccessibleName(SPAN_LABEL_NAME)
+        self._span_label.setStyleSheet(BODY_STYLE)
+        inner.addWidget(self._span_label)
+
+        self._span_selector = QComboBox()
+        self._span_selector.setObjectName(SPAN_SELECTOR_NAME)
+        self._span_selector.setAccessibleName(SPAN_SELECTOR_NAME)
+        for name in surface.BATTERY_SPANS:
+            self._span_selector.addItem(name, name)
+        self._span_selector.currentIndexChanged.connect(self._on_span_chosen)
+        inner.addWidget(self._span_selector, 1)
+        self._battery_row = row
+        return row
 
     def _build_layer_pane(self) -> QWidget:
         pane = QWidget()
@@ -511,23 +562,58 @@ class SimulatorTabQt(QWidget):
         column.addWidget(self._back_test_table, 1)
         return pane
 
+    def _build_battery_pane(self) -> QWidget:
+        pane = QWidget()
+        column = QVBoxLayout(pane)
+        column.setContentsMargins(*surface.MARGINS_PX)
+        column.setSpacing(surface.SPACING_PX)
+
+        self._battery_title = QLabel(surface.BATTERY_TITLE)
+        self._battery_title.setObjectName(BATTERY_TITLE_NAME)
+        self._battery_title.setAccessibleName(BATTERY_TITLE_NAME)
+        self._battery_title.setStyleSheet(HEADING_STYLE)
+        column.addWidget(self._battery_title)
+
+        self._battery_lines = QPlainTextEdit()
+        self._battery_lines.setObjectName(BATTERY_LINES_NAME)
+        self._battery_lines.setAccessibleName(BATTERY_LINES_NAME)
+        self._battery_lines.setReadOnly(True)
+        self._battery_lines.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self._battery_lines.setMaximumBlockCount(REPLAY_MAX_BLOCKS)
+        column.addWidget(self._battery_lines)
+
+        self._battery_table = QTableWidget()
+        self._battery_table.setObjectName(BATTERY_TABLE_NAME)
+        self._battery_table.setAccessibleName(BATTERY_TABLE_NAME)
+        self._battery_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._battery_table.verticalHeader().setVisible(False)
+        column.addWidget(self._battery_table, 1)
+        return pane
+
     # -- what the operator presses --------------------------------------
 
     def first_way_in(self) -> dict:
         """Clone the live fleet from bot_state and run the showing mode on
         it."""
+        if self._mode == surface.MODE_PORTFOLIO_BATTERY:
+            return self.run_mode(surface.RUN_PORTFOLIO_ACTION)
         return self.run_mode(surface.IMPORT_LIVE_FLEET_ACTION)
 
     def second_way_in(self) -> dict:
-        """Run the showing mode's second way in: YTD, or new bots."""
+        """Run the showing mode's second way in: YTD, new bots, or every
+        portfolio."""
         if self._mode == surface.MODE_BACK_TEST:
             return self.run_mode(surface.CREATE_NEW_BOTS_ACTION)
+        if self._mode == surface.MODE_PORTFOLIO_BATTERY:
+            return self.run_mode(surface.RUN_EVERY_PORTFOLIO_ACTION)
         return self.run_mode(surface.GENERATE_FROM_YTD_ACTION)
 
     def run_mode(self, origin: str, exchange_id: str = "") -> dict:
         """Run ``origin``'s fleet in the showing mode and redraw its pane."""
         if self._mode == surface.MODE_BACK_TEST:
             return self.run_back_test(origin, exchange_id)
+        if self._mode == surface.MODE_PORTFOLIO_BATTERY:
+            return self.run_battery(origin)
         return self.run_validation(origin, exchange_id)
 
     def import_live_fleet(self) -> dict:
@@ -556,6 +642,46 @@ class SimulatorTabQt(QWidget):
         self.refresh()
         return dict(self._back_test)
 
+    def run_portfolio(self) -> dict:
+        """Walk the chosen portfolio over the RA-StoneTablets."""
+        return self.run_battery(surface.RUN_PORTFOLIO_ACTION)
+
+    def run_every_portfolio(self) -> dict:
+        """Walk every portfolio over the RA-StoneTablets."""
+        return self.run_battery(surface.RUN_EVERY_PORTFOLIO_ACTION)
+
+    def run_battery(self, origin: str) -> dict:
+        """Run ``origin`` over the chosen span and redraw the battery pane."""
+        self._battery = surface.run_battery(origin, self._portfolio, self._span)
+        self.refresh()
+        return dict(self._battery)
+
+    def choose_portfolio(self, name: str) -> str:
+        """Draw the portfolio ``name`` names on the next battery press."""
+        self._portfolio = str(name or surface.DEFAULT_PORTFOLIO)
+        self.refresh()
+        return self._portfolio
+
+    def choose_span(self, span: str) -> str:
+        """Read the span ``span`` names on the next battery press."""
+        self._span = str(span or surface.DEFAULT_SPAN)
+        self.refresh()
+        return self._span
+
+    def battery(self) -> dict:
+        """The Portfolio Battery payload the pane was last drawn from."""
+        return dict(self._model.get("battery") or {})
+
+    def _on_portfolio_chosen(self, index: int) -> None:
+        chosen = str(self._portfolio_selector.itemData(index) or "")
+        if chosen and chosen != self._portfolio:
+            self.choose_portfolio(chosen)
+
+    def _on_span_chosen(self, index: int) -> None:
+        chosen = str(self._span_selector.itemData(index) or "")
+        if chosen and chosen != self._span:
+            self.choose_span(chosen)
+
     def _chosen_entry(self):
         """The tablet entry the selector is showing, or None."""
         return surface.chosen_entry(self._source, self._tablet_key)
@@ -569,7 +695,7 @@ class SimulatorTabQt(QWidget):
         return dict(self._model.get("back_test") or {})
 
     def mode(self) -> str:
-        """The mode the panes are showing, ``validation`` or ``back_test``."""
+        """The mode the panes are showing, one of ``surface.MODES``."""
         return self._mode
 
     def choose_mode(self, mode: str) -> str:
@@ -616,6 +742,7 @@ class SimulatorTabQt(QWidget):
             self._validation,
             self._mode,
             self._back_test,
+            self._battery,
         )
         self._draw(self._model)
         return self._model
@@ -636,6 +763,7 @@ class SimulatorTabQt(QWidget):
         self._replay_log.setPlainText("\n".join(model["replay_log"]["lines"]))
         self._draw_validation(model["validation"])
         self._draw_back_test(model["back_test"])
+        self._draw_battery(model["battery"], model["panes"])
 
     def _draw_mode_selector(self, mode: str) -> None:
         selector = self._mode_selector
@@ -674,6 +802,52 @@ class SimulatorTabQt(QWidget):
             )
             for cell_index, cell in enumerate(cells):
                 table.setItem(index, cell_index, QTableWidgetItem(str(cell)))
+
+    def _draw_battery(self, payload: dict, panes: dict) -> None:
+        self._battery_title.setText(payload["title"])
+        self._battery_lines.setPlainText("\n".join(payload["lines"]))
+        self._portfolio_label.setText(panes["portfolio_label_text"])
+        self._span_label.setText(panes["span_label_text"])
+        self._battery_row.setVisible(bool(panes["battery_row_shown"]))
+        self._draw_battery_selectors(payload)
+        rows = list(payload["rows"])
+        titles = list(payload["columns"])
+        table = self._battery_table
+        table.setColumnCount(len(titles))
+        table.setHorizontalHeaderLabels(titles)
+        table.setRowCount(len(rows))
+        for index, row in enumerate(rows):
+            cells = (
+                row["portfolio"],
+                row["timeframe"],
+                row["span_text"],
+                row["symbols_text"],
+                row["bars"],
+                row["ticks"],
+                row["trades"],
+                row["baseline_text"],
+                row["accumulation_text"],
+                row["improvement_text"],
+                row["missing_text"],
+            )
+            colour = _colour(
+                ds.SUCCESS if row["verdict"] == surface.BETTER_VERDICT else ds.TEXT_MED
+            )
+            for cell_index, cell in enumerate(cells):
+                item = QTableWidgetItem(str(cell))
+                item.setForeground(colour)
+                table.setItem(index, cell_index, item)
+
+    def _draw_battery_selectors(self, payload: dict) -> None:
+        for selector, chosen in (
+            (self._portfolio_selector, payload["portfolio"]),
+            (self._span_selector, payload["span"]),
+        ):
+            selector.blockSignals(True)
+            found = selector.findData(chosen)
+            if found >= 0:
+                selector.setCurrentIndex(found)
+            selector.blockSignals(False)
 
     def _draw_fleet(self, fleet: dict) -> None:
         table = self._fleet_table
