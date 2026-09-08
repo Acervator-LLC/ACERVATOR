@@ -121,11 +121,13 @@ def get_pnl_dir() -> Path:
 
 
 def get_exchange_history_dir() -> Path:
-    """``exchange_history/`` bucket — YTD CSV auto-download landing zone.
+    """``exchange_history/`` bucket — the YTD trade files.
 
-    Reserved for the Step 6 24-hour-refresh CSV downloader queued in
-    v3.23.2+. The ``history-tab-ytd-trades.log`` will be populated from
-    here once the V1-V6 verify-loop closes.
+    ``src.exchange.ytd_trade_store`` writes one JSON file per exchange,
+    symbol and year here, beside its MANIFEST.json and GAPS.json, and
+    ``src.exchange.ytd_csv_import`` fills them from a transactions CSV
+    export. ``ytd_trade_store.get_ytd_root`` resolves this path and
+    accepts the ``ACERVATOR_YTD_TRADES_ROOT`` override.
     """
     p = _LOG_ROOT / "exchange_history"
     p.mkdir(parents=True, exist_ok=True)
