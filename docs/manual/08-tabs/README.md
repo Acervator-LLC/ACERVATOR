@@ -29,7 +29,7 @@ which is the order [08-tabs.md](../08-tabs.md) runs its sections in.
 ## The live tab set
 
 One list names the ten tabs the window builds, and each one is moved into that
-position after the builders run. The last two are empty.
+position after the builders run. Two of them are empty: Accumulation and Status.
 
 `src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
 
