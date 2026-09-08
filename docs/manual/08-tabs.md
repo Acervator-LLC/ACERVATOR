@@ -1360,6 +1360,62 @@ toolbar that names a colour the chart does not paint.
 The legend at the right names the two position markers, Invisible and On Book,
 and the feed label closes the row.
 
+### One chart, chosen with the arrows
+
+The tab now draws one chart at a time. A left arrow, a centre ticker list and a
+right arrow choose which traded asset it shows, and a readout beside them says
+which of how many is on screen. The list wraps, so neither arrow dead-ends, and
+the ticker readout is itself a drop-down. With no bots running the readout says
+zero of zero and both arrows are switched off.
+
+`src/gui/widgets/trade_charts_tab.py` — the readout beside the arrows
+
+```python
+POSITION_FORMAT = "{at} of {total}"
+EMPTY_TICKER_TEXT = "No asset"
+EMPTY_POSITION_TEXT = "0 of 0"
+```
+
+### The toggles, and the two that start off
+
+Every indicator the chart can draw now starts switched on, and a check box for
+each sits along the bottom of the panel. Two start off, because each paints a
+filled shape over the price where the Bollinger bands and the Ichimoku cloud
+are drawn. Slingshot paints solid marks at a squeeze release and a snapback.
+BB Bullseye paints four shaded envelopes directly on the bands themselves.
+
+`src/gui/native_chart.py` — one entry per drawn indicator
+
+```python
+class ChartOverlay:
+    key: str
+    label: str
+    colour_field: str
+    pane: str
+    occludes: bool
+    draw: str
+    tooltip: str
+```
+
+### The renderer is built to grow
+
+`CHART_OVERLAYS` declares each indicator once, and the paint routine walks that
+list rather than naming any of them. Another overlay is one entry in the list
+and one draw method; no existing overlay is touched to add it.
+
+The renderer holds no colour of its own. Every painted value resolves through
+`PALETTE_ROLES`, which names the theme field and the transparency each role
+reads, so a theme sets the look and the renderer does not.
+
+`src/gui/theme_engine.py` — the chart tokens each theme carries
+
+```python
+chart_bg_top: str = "#08080e"
+chart_up: str = "#00e5a0"
+chart_down: str = "#ff2d6f"
+chart_zone_fold: str = "#fcee0a"
+```
+
 Detail: [08-tabs/asset-charts.md](08-tabs/asset-charts.md).
 
 ## History Tab

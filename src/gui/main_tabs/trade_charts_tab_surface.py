@@ -1,17 +1,16 @@
 """trade_charts_tab_surface.py -- the Asset Charts tab, without Qt.
 
-Describes the second main tab: a scrolling column holding one chart panel
-per running bot. The tab draws nothing itself. It decides which bots get a
-panel, what each panel is labelled, which overlay lines each panel carries,
-when each panel is refetched, and which panels are dropped. The candles,
-the axes, the tick steps and the colours belong to
-``src/gui/native_chart.py`` and are not described here.
+Describes the second main tab: one chart panel, and a selector that chooses
+which traded asset it draws. The tab draws nothing itself. It decides which
+bots reach the asset list, what the chart is labelled, which overlay lines it
+carries, and when it is refetched. The candles, the axes, the tick steps and
+the colours belong to ``src/gui/native_chart.py`` and are not described here.
 
-``TradeChartsTabModel`` holds the tab's state. ``update_charts`` creates,
-follows, feeds and drops panels for one pass of bot statuses.
-``on_timeframe_changed`` re-arms one panel's fetch. ``fetch_chart_data``
-runs one fetch pass over every panel. ``log_trade`` records a trade for
-chart markup. ``push_synthetic_candles`` injects a Nuclear Mode scenario.
+``TradeChartsTabModel`` holds the tab's state. ``update_charts`` rebuilds the
+asset list for one pass of bot statuses. ``step`` and ``pick`` change the
+asset on screen. ``on_timeframe_changed`` re-arms its fetch.
+``fetch_chart_data`` refetches it. ``log_trade`` records a trade for chart
+markup. ``push_synthetic_candles`` injects a Nuclear Mode scenario.
 
 ``PanelSink`` is a plain stand-in for ``ChartPanel`` and its chart: it
 records every call the tab makes and the arguments it makes them with.
@@ -44,12 +43,8 @@ ACCESSIBLE_NAME = "Trade Charts Tab"
 
 OUTER_MARGINS_PX = (8, 8, 8, 8)
 OUTER_SPACING_PX = 8
-SCROLL_RESIZABLE = True
-SCROLL_HORIZONTAL_POLICY = "ScrollBarAlwaysOff"
-SCROLL_HORIZONTAL_POLICY_VALUE = 1
 CONTENT_SPACING_PX = 12
 CONTENT_MARGINS_PX = (4, 4, 4, 4)
-CONTENT_STRETCH_ADDED = True
 
 EXTRACTOR_MODE = "extractor"
 WILDCARD = "*"
@@ -624,13 +619,50 @@ class FetchSource:
         return answer[0], answer[1]
 
 
-class TradeChartsTabModel:
-    """The Asset Charts tab: which bots get a panel, and what each one shows.
+PREV_TEXT = "◀"
+NEXT_TEXT = "▶"
+PREV_TOOLTIP = "Show the previous asset."
+NEXT_TOOLTIP = "Show the next asset."
+TICKER_TOOLTIP = "The asset on screen. Pick another from the list."
+POSITION_FORMAT = "{at} of {total}"
+EMPTY_TICKER_TEXT = "No asset"
+EMPTY_POSITION_TEXT = "0 of 0"
 
-    ``update_charts`` runs one pass of bot statuses. ``fetch_chart_data``
-    runs one fetch pass. ``on_timeframe_changed`` re-arms one panel.
-    Every step is appended to ``calls`` in the order the shipped tab
-    makes it, and every emitted signal to ``signals``.
+ARROW_WIDTH_PX = 34
+ARROW_HEIGHT_PX = 26
+TICKER_MIN_WIDTH_PX = 220
+SELECTOR_SPACING_PX = 8
+
+#: The selector row, the chart and the toggle row.
+LAYOUT_SLOTS = 3
+ONE_PANEL = 1
+NO_PANEL = 0
+FIRST_ASSET = 0
+ONE_ASSET = 1
+
+SELECT_STEP = "select.step"
+SELECT_STEPPED = "select.stepped"
+SELECT_NONE = "select.none"
+SELECT_PICK = "select.pick"
+SELECT_PICKED = "select.picked"
+SELECT_REFUSED = "select.refused"
+SELECT_UNCHANGED = "select.unchanged"
+SELECT_FOLLOWED = "select.followed"
+SELECT_ALREADY = "select.already"
+UPDATE_ASSET_ADDED = "update.asset_added"
+UPDATE_ASSET_KEPT = "update.asset_kept"
+UPDATE_ASSET_DROPPED = "update.asset_dropped"
+UPDATE_SELECTOR = "update.selector"
+FETCH_NO_ASSET = "fetch.no_asset"
+NUCLEAR_ASSET_ADDED = "nuclear.asset_added"
+NUCLEAR_ASSET_KEPT = "nuclear.asset_kept"
+
+
+class TradeChartsTabModel:
+    """The Asset Charts tab: which asset the one chart draws, and what it shows.
+
+    ``update_charts`` runs one pass of bot statuses, ``step`` and ``pick``
+    change the asset on screen, and ``fetch_chart_data`` refetches it.
     """
 
     def __init__(
@@ -645,8 +677,14 @@ class TradeChartsTabModel:
         self.clock = clock
         self.ticks = list(ticks or [])
         self.accessible_name = ACCESSIBLE_NAME
-        self.panels: dict = {}
+        self.panel = PanelSink("")
+        self.panel.set_chart_timeframe(PANEL_TIMEFRAME)
+        self.panel.set_minimum_height(PANEL_MINIMUM_HEIGHT_PX)
+        self.panel.connect_timeframe()
+        self.assets: dict = {}
         self.order: list = []
+        self.shown = FIRST_ASSET
+        self.followed = ""
         self.dropped: list = []
         self.trade_log: list = []
         self.logs: list = []
@@ -654,7 +692,7 @@ class TradeChartsTabModel:
         self.calls: list[ModelCall] = []
 
     def _now(self) -> float:
-        """The wall clock the fetch stamps panels with, or the one supplied."""
+        """The wall clock the fetch stamps the shown asset with."""
         return time.time() if self.clock is None else float(self.clock)
 
     def _tick(self) -> float:
@@ -667,12 +705,86 @@ class TradeChartsTabModel:
         self.signals.append(record)
 
     def _mounted_count(self) -> int:
-        """How many panels are really in the column."""
-        return sum(1 for bot_id in self.order if bot_id in self.panels)
+        """How many charts are in the column, which is one whenever it exists."""
+        return ONE_PANEL if self.panel is not None else NO_PANEL
 
     def _layout_slots(self) -> int:
-        """How many slots the column holds: the panels plus the trailing stretch."""
-        return self._mounted_count() + STRETCH_SLOTS
+        """The selector row, the chart and the toggle row."""
+        return LAYOUT_SLOTS
+
+    def shown_id(self) -> str:
+        """The bot id of the asset on screen, or an empty string for none."""
+        if not self.order or self.shown >= len(self.order):
+            return DEFAULT_BOT_ID
+        return self.order[self.shown]
+
+    def current(self) -> dict:
+        """The record of the asset on screen, or an empty one for none."""
+        return self.assets.get(self.shown_id(), {})
+
+    def ticker_items(self) -> list:
+        """Every label the ticker list offers, in the order it offers them."""
+        if not self.order:
+            return [EMPTY_TICKER_TEXT]
+        return [self.assets[bot_id][SYMBOL_KEY] for bot_id in self.order]
+
+    def position_text(self) -> str:
+        """Which asset is on screen and how many there are."""
+        if not self.order:
+            return EMPTY_POSITION_TEXT
+        return POSITION_FORMAT.format(at=self.shown + 1, total=len(self.order))
+
+    def stepping_enabled(self) -> bool:
+        """Whether the arrows can move anywhere."""
+        return len(self.order) > ONE_ASSET
+
+    def step(self, by: Any) -> int:
+        """Move the shown asset by ``by``, wrapping, and answer the new index."""
+        self.calls.append([SELECT_STEP, by])
+        if not self.order:
+            self.calls.append([SELECT_NONE])
+            return FIRST_ASSET
+        self.shown = (self.shown + int(by)) % len(self.order)
+        self.calls.append([SELECT_STEPPED, self.shown, self.shown_id()])
+        self._follow_shown()
+        return self.shown
+
+    def pick(self, index: Any) -> int:
+        """Draw the asset at ``index`` in the ticker list."""
+        self.calls.append([SELECT_PICK, index])
+        chosen = int(index)
+        if chosen < FIRST_ASSET or chosen >= len(self.order):
+            self.calls.append([SELECT_REFUSED, chosen])
+            return self.shown
+        if chosen == self.shown:
+            self.calls.append([SELECT_UNCHANGED, chosen])
+            return self.shown
+        self.shown = chosen
+        self.calls.append([SELECT_PICKED, self.shown, self.shown_id()])
+        self._follow_shown()
+        return self.shown
+
+    def _follow_shown(self) -> None:
+        """Point the one chart at the shown asset and clear the last one's tape.
+
+        ``followed`` is the plain symbol; the panel's label carries the price
+        and the state, so it cannot answer this.
+        """
+        record = self.current()
+        symbol = record.get(SYMBOL_KEY, DEFAULT_SYMBOL)
+        if self.followed == symbol:
+            self.calls.append([SELECT_ALREADY, symbol])
+            return
+        self.followed = symbol
+        self.panel.set_symbol_property(symbol)
+        self.panel.set_candles([])
+        self.panel.set_markers([])
+        self.panel.set_source(EMPTY_SOURCE)
+        if symbol:
+            self.panel.set_error(awaiting_text(symbol))
+        if record:
+            record[LAST_FETCH_KEY] = NEVER_FETCHED
+        self.calls.append([SELECT_FOLLOWED, symbol])
 
     def update_charts(
         self,
@@ -680,13 +792,12 @@ class TradeChartsTabModel:
         manager: Any = None,
         exchange_connectors: Optional[dict] = None,
     ) -> None:
-        """Create, follow, feed and drop panels for one pass of bot statuses.
+        """Rebuild the asset list for one pass of bot statuses.
 
-        Extractor bots are filtered out before the loop: their symbol is
-        a wildcard the exchange refuses. A panel whose bot changed pair
-        follows it, and everything anchored to the old pair is cleared
-        with it. A bot that sent no status this pass loses its panel.
+        An Extractor bot is filtered out first, and a bot that sent no status
+        this pass leaves the list while the shown asset stays with its own bot.
         """
+        del exchange_connectors
         if manager is not None:
             self.manager = manager
         self.calls.append([UPDATE_START, len(bot_statuses)])
@@ -698,7 +809,8 @@ class TradeChartsTabModel:
         if len(kept_statuses) != len(bot_statuses):
             self.calls.append([UPDATE_FILTERED, len(bot_statuses) - len(kept_statuses)])
 
-        seen: set = set()
+        held_id = self.shown_id()
+        seen: list = []
         for status in kept_statuses:
             bot_id = status.get(BOT_ID_KEY, DEFAULT_BOT_ID)
             symbol = status.get(SYMBOL_KEY, DEFAULT_SYMBOL)
@@ -708,90 +820,69 @@ class TradeChartsTabModel:
             if WILDCARD in symbol:
                 self.calls.append([UPDATE_SKIPPED_WILDCARD, bot_id, symbol])
                 continue
-            seen.add(bot_id)
+            seen.append(bot_id)
 
-            if bot_id not in self.panels:
-                panel = PanelSink(symbol)
-                panel.set_chart_timeframe(PANEL_TIMEFRAME)
-                panel.set_minimum_height(PANEL_MINIMUM_HEIGHT_PX)
-                self.order.append(bot_id)
-                self.panels[bot_id] = {
-                    PANEL_KEY: panel,
+            if bot_id not in self.assets:
+                self.assets[bot_id] = {
                     SYMBOL_KEY: symbol,
                     EXCHANGE_ID_KEY: status.get(EXCHANGE_KEY, DEFAULT_EXCHANGE_ID),
                     LAST_FETCH_KEY: NEVER_FETCHED,
                 }
-                panel.connect_timeframe()
-                self.calls.append([UPDATE_PANEL_CREATED, bot_id, symbol])
+                self.calls.append([UPDATE_ASSET_ADDED, bot_id, symbol])
             else:
-                self.calls.append([UPDATE_PANEL_KEPT, bot_id, symbol])
+                self.calls.append([UPDATE_ASSET_KEPT, bot_id, symbol])
 
-            info = self.panels[bot_id]
-            stats = status.get(STATS_KEY, {})
-            price = stats.get(PRICE_KEY, DEFAULT_PRICE)
-            state = status.get(STATE_KEY, DEFAULT_STATE)
-            panel = info[PANEL_KEY]
-
-            if info[SYMBOL_KEY] != symbol:
+            record = self.assets[bot_id]
+            if record[SYMBOL_KEY] != symbol:
                 self.logs.append(
                     [
                         FOLLOW_LOG_FORMAT,
                         bot_id[:BOT_ID_LOG_LENGTH],
-                        info[SYMBOL_KEY],
+                        record[SYMBOL_KEY],
                         symbol,
                     ]
                 )
                 self.calls.append(
-                    [UPDATE_SYMBOL_FOLLOWED, bot_id, info[SYMBOL_KEY], symbol]
+                    [UPDATE_SYMBOL_FOLLOWED, bot_id, record[SYMBOL_KEY], symbol]
                 )
-                info[SYMBOL_KEY] = symbol
-                info[LAST_FETCH_KEY] = NEVER_FETCHED
-                panel.set_symbol_property(symbol)
-                panel.set_candles([])
-                panel.set_markers([])
-                panel.set_source(EMPTY_SOURCE)
-                panel.set_error(awaiting_text(symbol))
+                record[SYMBOL_KEY] = symbol
+                record[LAST_FETCH_KEY] = NEVER_FETCHED
+            record[EXCHANGE_ID_KEY] = status.get(EXCHANGE_KEY, DEFAULT_EXCHANGE_ID)
+            stats = status.get(STATS_KEY, {})
+            record[PRICE_KEY] = stats.get(PRICE_KEY, DEFAULT_PRICE)
+            record[STATE_KEY] = status.get(STATE_KEY, DEFAULT_STATE)
 
-            if price > 0:
-                panel.set_label(price_label(symbol, price, state))
-                self.calls.append([UPDATE_LABEL_SET, bot_id, panel.label])
-            else:
-                self.calls.append([UPDATE_LABEL_SKIPPED, bot_id])
-
-            if self.manager:
-                bot = self.manager.get_bot(bot_id)
-                if bot:
-                    self._feed_overlays(bot_id, symbol, bot, panel)
-                else:
-                    self.calls.append([UPDATE_NO_BOT, bot_id])
-            else:
-                self.calls.append([UPDATE_NO_MANAGER, bot_id])
-
-            panel.repaint_chart()
-            self.calls.append([UPDATE_CHART_REPAINTED, bot_id])
-
-        for bot_id in list(self.panels):
+        for bot_id in list(self.assets):
             if bot_id not in seen:
-                info = self.panels.pop(bot_id)
-                self.order.remove(bot_id)
-                info[PANEL_KEY].drop()
+                self.assets.pop(bot_id)
                 self.dropped.append(bot_id)
-                self.calls.append([UPDATE_PANEL_DROPPED, bot_id])
+                self.calls.append([UPDATE_ASSET_DROPPED, bot_id])
 
-        mounted = self._mounted_count()
+        self.order = seen
+        self.shown = next(
+            (at for at, one in enumerate(self.order) if one == held_id), FIRST_ASSET
+        )
+        self.calls.append([UPDATE_SELECTOR, len(self.order), self.shown])
+        self._follow_shown()
+        self._label_shown()
+        self._feed_shown()
+        self.panel.repaint_chart()
+        self.calls.append([UPDATE_CHART_REPAINTED, self.shown_id()])
+
         drift = 0
         for status in kept_statuses:
-            held = self.panels.get(status.get(BOT_ID_KEY, DEFAULT_BOT_ID))
-            if held is not None and held.get(SYMBOL_KEY) != status.get(
+            record = self.assets.get(status.get(BOT_ID_KEY, DEFAULT_BOT_ID))
+            if record is not None and record.get(SYMBOL_KEY) != status.get(
                 SYMBOL_KEY, DEFAULT_SYMBOL
             ):
                 drift += 1
 
+        mounted = self._mounted_count()
         self._emit(
             SignalRecord(
                 MOUNTED_SIGNAL,
                 actual=mounted,
-                expected=len(self.panels),
+                expected=ONE_PANEL,
                 every=SIGNAL_EVERY_S,
                 context={
                     "layout_items": self._layout_slots(),
@@ -800,7 +891,7 @@ class TradeChartsTabModel:
                 },
             )
         )
-        self.calls.append([UPDATE_EMIT_MOUNTED, mounted, len(self.panels)])
+        self.calls.append([UPDATE_EMIT_MOUNTED, mounted, ONE_PANEL])
         self._emit(
             SignalRecord(
                 SYMBOLS_SIGNAL,
@@ -808,17 +899,48 @@ class TradeChartsTabModel:
                 expected=NO_DRIFT,
                 every=SIGNAL_EVERY_S,
                 context={
-                    "panels": len(self.panels),
+                    "assets": len(self.assets),
                     "statuses": len(kept_statuses),
-                    "mounted": mounted,
+                    "shown_symbol": self.current().get(SYMBOL_KEY, DEFAULT_SYMBOL),
                 },
             )
         )
         self.calls.append([UPDATE_EMIT_SYMBOLS, drift])
         return None
 
+    def _label_shown(self) -> None:
+        """Write the shown asset's price and state into the chart header."""
+        record = self.current()
+        bot_id = self.shown_id()
+        price = record.get(PRICE_KEY, DEFAULT_PRICE)
+        if price > 0:
+            self.panel.set_label(
+                price_label(
+                    record.get(SYMBOL_KEY, DEFAULT_SYMBOL),
+                    price,
+                    record.get(STATE_KEY, DEFAULT_STATE),
+                )
+            )
+            self.calls.append([UPDATE_LABEL_SET, bot_id, self.panel.label])
+        else:
+            self.calls.append([UPDATE_LABEL_SKIPPED, bot_id])
+
+    def _feed_shown(self) -> None:
+        """Put the shown bot's markers, lines, glow and floors on the chart."""
+        bot_id = self.shown_id()
+        if not self.manager:
+            self.calls.append([UPDATE_NO_MANAGER, bot_id])
+            return
+        bot = self.manager.get_bot(bot_id) if bot_id else None
+        if not bot:
+            self.calls.append([UPDATE_NO_BOT, bot_id])
+            return
+        self._feed_overlays(
+            bot_id, self.current().get(SYMBOL_KEY, DEFAULT_SYMBOL), bot, self.panel
+        )
+
     def _feed_overlays(self, bot_id: Any, symbol: Any, bot: Any, panel: Any) -> None:
-        """Put this bot's markers, overlay lines, glow and floors on its panel.
+        """Put this bot's markers, overlay lines, glow and floors on the chart.
 
         Each of the four is guarded on its own, so one that refuses
         leaves the other three drawn.
@@ -872,33 +994,28 @@ class TradeChartsTabModel:
         except Exception as exc:
             self.calls.append([UPDATE_FLOORS_FAILED, bot_id, type(exc).__name__])
 
-    def move_timeframe_combo(self, bot_id: Any, timeframe: Any) -> bool:
-        """Move one panel's combo and chart to ``timeframe``, as Qt's own does.
+    def move_timeframe_combo(self, timeframe: Any) -> bool:
+        """Move the chart's combo to ``timeframe``, as Qt's own does.
 
-        Qt runs this inside ``ChartPanel`` before the tab hears the signal;
-        the frontend draws that combo, so this is the half it must run.
+        Qt runs this inside ``ChartPanel`` before the tab hears the signal,
+        and the frontend draws that combo.
         """
-        panel = (self.panels.get(bot_id) or {}).get(PANEL_KEY)
-        if panel is None or not panel.set_timeframe(timeframe):
+        if not self.panel.set_timeframe(timeframe):
             return False
-        panel.set_chart_timeframe(timeframe)
+        self.panel.set_chart_timeframe(timeframe)
         return True
 
-    def on_timeframe_changed(self, bot_id: Any, timeframe: Any) -> None:
-        """Re-arm one panel's fetch after the operator moved its timeframe combo.
-
-        A signal from a panel this tab has already dropped re-arms
-        nothing, and the emitted record says so rather than staying quiet.
-        """
+    def on_timeframe_changed(self, timeframe: Any) -> None:
+        """Re-arm the shown asset's fetch after the operator moved the combo."""
+        bot_id = self.shown_id()
         self.calls.append([TF_START, bot_id, timeframe])
-        if bot_id in self.panels:
-            self.panels[bot_id][LAST_FETCH_KEY] = NEVER_FETCHED
-        info = self.panels.get(bot_id) or {}
-        panel = info.get(PANEL_KEY)
+        record = self.current()
+        if record:
+            record[LAST_FETCH_KEY] = NEVER_FETCHED
         rearmed = bool(
-            panel is not None
-            and info.get(LAST_FETCH_KEY, MISSING_LAST_FETCH) == NEVER_FETCHED
-            and panel.timeframe == timeframe
+            record
+            and record.get(LAST_FETCH_KEY, MISSING_LAST_FETCH) == NEVER_FETCHED
+            and self.panel.timeframe == timeframe
         )
         if rearmed:
             self.calls.append([TF_REARMED, bot_id, timeframe])
@@ -911,9 +1028,9 @@ class TradeChartsTabModel:
                 expected=REARM_EXPECTED,
                 context={
                     "requested_tf": timeframe,
-                    "panel_tf": ("" if panel is None else panel.timeframe),
-                    "known_bot": panel is not None,
-                    "panels": len(self.panels),
+                    "panel_tf": self.panel.timeframe,
+                    "known_bot": bool(record),
+                    "assets": len(self.assets),
                 },
             )
         )
@@ -923,91 +1040,95 @@ class TradeChartsTabModel:
     async def fetch_chart_data(
         self, exchange_connectors: Optional[dict] = None
     ) -> None:
-        """Run one fetch pass over every panel, and report which went stale.
+        """Fetch the shown asset, at most once every throttle window.
 
-        A panel refetched inside the throttle window is left alone. A
-        wildcard symbol is declined and its last-fetch stamp is left
-        where it was, which is the one path that can starve a panel for
-        the life of the process.
+        Neither error path clears the candles, so the emitted record reads
+        the count back off the chart with the source beside it.
         """
         now = self._now()
-        self.calls.append([FETCH_START, len(self.panels)])
+        self.calls.append([FETCH_START, len(self.assets)])
+        record = self.current()
+        bot_id = self.shown_id()
 
-        for bot_id in list(self.panels):
-            info = self.panels[bot_id]
-            if now - info.get(LAST_FETCH_KEY, NEVER_FETCHED) < FETCH_THROTTLE_S:
-                self.calls.append([FETCH_THROTTLED, bot_id])
-                continue
+        if not record:
+            self.calls.append([FETCH_NO_ASSET])
+            self._emit_freshness(now, exchange_connectors)
+            return None
+        if now - record.get(LAST_FETCH_KEY, NEVER_FETCHED) < FETCH_THROTTLE_S:
+            self.calls.append([FETCH_THROTTLED, bot_id])
+            self._emit_freshness(now, exchange_connectors)
+            return None
 
-            symbol = info[SYMBOL_KEY]
-            if WILDCARD in symbol:
-                self.calls.append([FETCH_WILDCARD_SKIPPED, bot_id, symbol])
-                continue
+        symbol = record[SYMBOL_KEY]
+        if WILDCARD in symbol:
+            self.calls.append([FETCH_WILDCARD_SKIPPED, bot_id, symbol])
+            self._emit_freshness(now, exchange_connectors)
+            return None
 
-            panel = info[PANEL_KEY]
-            timeframe = panel.timeframe
-            exchange = None
-            if exchange_connectors:
-                exchange = exchange_connectors.get(
-                    info.get(EXCHANGE_ID_KEY, DEFAULT_EXCHANGE_ID)
-                )
-
-            started = self._tick()
-            elapsed: Optional[float] = None
-            outcome = OUTCOME_RAISED
-            returned = 0
-            source = EMPTY_SOURCE
-            try:
-                rows, answered = await self.fetcher.fetch(
-                    symbol, timeframe, exchange=exchange, limit=FETCH_LIMIT
-                )
-                elapsed = self._tick() - started
-                returned = len(rows or [])
-                source = str(answered)
-
-                if rows:
-                    panel.set_candles([list(one) for one in rows])
-                    panel.set_source(answered)
-                    outcome = OUTCOME_CANDLES
-                    self.calls.append([FETCH_CANDLES, bot_id, returned, source])
-                else:
-                    panel.set_error(answered)
-                    outcome = OUTCOME_EMPTY
-                    self.calls.append([FETCH_EMPTY, bot_id, source])
-
-                info[LAST_FETCH_KEY] = now
-            except Exception as exc:
-                if elapsed is None:
-                    elapsed = self._tick() - started
-                panel.set_error(str(exc)[:ERROR_TEXT_LIMIT])
-                source = type(exc).__name__
-                info[LAST_FETCH_KEY] = now
-                self.calls.append([FETCH_RAISED, bot_id, source])
-
-            shown = len(panel.candles)
-            self._emit(
-                SignalRecord(
-                    REFRESHED_SIGNAL,
-                    actual=shown,
-                    expected=returned,
-                    duration=elapsed,
-                    context={
-                        "outcome": outcome,
-                        "source": source,
-                        "symbol": symbol,
-                        "timeframe": timeframe,
-                        "exchange_id": info.get(EXCHANGE_ID_KEY, DEFAULT_EXCHANGE_ID),
-                        "throttle_s": FETCH_THROTTLE_S,
-                    },
-                )
+        timeframe = self.panel.timeframe
+        exchange = None
+        if exchange_connectors:
+            exchange = exchange_connectors.get(
+                record.get(EXCHANGE_ID_KEY, DEFAULT_EXCHANGE_ID)
             )
-            self.calls.append([FETCH_EMIT_REFRESHED, bot_id, shown, returned, outcome])
 
+        started = self._tick()
+        elapsed: Optional[float] = None
+        outcome = OUTCOME_RAISED
+        returned = 0
+        source = EMPTY_SOURCE
+        try:
+            rows, answered = await self.fetcher.fetch(
+                symbol, timeframe, exchange=exchange, limit=FETCH_LIMIT
+            )
+            elapsed = self._tick() - started
+            returned = len(rows or [])
+            source = str(answered)
+            if rows:
+                self.panel.set_candles([list(one) for one in rows])
+                self.panel.set_source(answered)
+                outcome = OUTCOME_CANDLES
+                self.calls.append([FETCH_CANDLES, bot_id, returned, source])
+            else:
+                self.panel.set_error(answered)
+                outcome = OUTCOME_EMPTY
+                self.calls.append([FETCH_EMPTY, bot_id, source])
+        except Exception as exc:
+            if elapsed is None:
+                elapsed = self._tick() - started
+            self.panel.set_error(str(exc)[:ERROR_TEXT_LIMIT])
+            source = type(exc).__name__
+            self.calls.append([FETCH_RAISED, bot_id, source])
+        record[LAST_FETCH_KEY] = now
+
+        shown = len(self.panel.candles)
+        self._emit(
+            SignalRecord(
+                REFRESHED_SIGNAL,
+                actual=shown,
+                expected=returned,
+                duration=elapsed,
+                context={
+                    "outcome": outcome,
+                    "source": source,
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "exchange_id": record.get(EXCHANGE_ID_KEY, DEFAULT_EXCHANGE_ID),
+                    "throttle_s": FETCH_THROTTLE_S,
+                },
+            )
+        )
+        self.calls.append([FETCH_EMIT_REFRESHED, bot_id, shown, returned, outcome])
+        self._emit_freshness(now, exchange_connectors)
+        return None
+
+    def _emit_freshness(self, now: float, exchange_connectors: Any) -> None:
+        """Report how many assets have gone past three throttle windows."""
         stale = 0
         never = 0
         oldest = 0.0
-        for info in self.panels.values():
-            last = float(info.get(LAST_FETCH_KEY, NEVER_FETCHED) or 0)
+        for record in self.assets.values():
+            last = float(record.get(LAST_FETCH_KEY, NEVER_FETCHED) or 0)
             if last <= 0:
                 never += 1
                 stale += 1
@@ -1016,7 +1137,6 @@ class TradeChartsTabModel:
             oldest = max(oldest, age)
             if age > STALE_AFTER_S:
                 stale += 1
-
         self._emit(
             SignalRecord(
                 FRESH_SIGNAL,
@@ -1024,7 +1144,7 @@ class TradeChartsTabModel:
                 expected=NO_STALE,
                 every=SIGNAL_EVERY_S,
                 context={
-                    "panels": len(self.panels),
+                    "assets": len(self.assets),
                     "never_fetched": never,
                     "oldest_age_s": round(oldest, AGE_DECIMALS),
                     "stale_after_s": STALE_AFTER_S,
@@ -1034,7 +1154,6 @@ class TradeChartsTabModel:
             )
         )
         self.calls.append([FETCH_EMIT_FRESH, stale, never])
-        return None
 
     def log_trade(self, trade: dict, stamp: Any = None) -> None:
         """Record one trade for chart markup, stamped with the time it arrived."""
@@ -1056,39 +1175,37 @@ class TradeChartsTabModel:
         scenario: Any = "",
         last_price: Any = NO_LAST_PRICE,
     ) -> None:
-        """Put one Nuclear Mode scenario's candles straight on a panel.
+        """Draw one Nuclear Mode scenario's candles on the chart, with no fetch.
 
-        No fetch and no network: the candles are made for the scenario.
-        A bot with no panel gets one, sized for a Nuclear panel and
-        marked as synthetic.
+        The bot joins the asset list if it is new, and the chart switches to it.
         """
-        if bot_id not in self.panels:
-            panel = PanelSink(symbol)
-            panel.set_chart_timeframe(NUCLEAR_TIMEFRAME)
-            panel.set_minimum_height(NUCLEAR_MINIMUM_HEIGHT_PX)
-            panel.set_maximum_height(NUCLEAR_MAXIMUM_HEIGHT_PX)
-            self.order.append(bot_id)
-            self.panels[bot_id] = {
-                PANEL_KEY: panel,
+        if bot_id not in self.assets:
+            self.assets[bot_id] = {
                 SYMBOL_KEY: symbol,
                 EXCHANGE_ID_KEY: NUCLEAR_EXCHANGE_ID,
                 LAST_FETCH_KEY: NEVER_FETCHED,
                 SYNTHETIC_KEY: True,
             }
-            self.calls.append([NUCLEAR_PANEL_CREATED, bot_id, symbol])
+            self.order.append(bot_id)
+            self.calls.append([NUCLEAR_ASSET_ADDED, bot_id, symbol])
         else:
-            self.calls.append([NUCLEAR_PANEL_KEPT, bot_id, symbol])
+            self.calls.append([NUCLEAR_ASSET_KEPT, bot_id, symbol])
 
-        info = self.panels[bot_id]
-        panel = info[PANEL_KEY]
+        self.assets[bot_id][SYMBOL_KEY] = symbol
+        if bot_id not in self.order:
+            self.order.append(bot_id)
+        self.shown = self.order.index(bot_id)
+        self._follow_shown()
+        self.panel.set_chart_timeframe(NUCLEAR_TIMEFRAME)
+
         rows = [candle_row(one) for one in candles]
-        panel.set_candles(rows)
+        self.panel.set_candles(rows)
         label_price = last_price or (
             rows[-1][CANDLE_CLOSE_INDEX] if rows else NO_LAST_PRICE
         )
-        panel.set_label(nuclear_label(symbol, label_price, scenario))
-        panel.repaint_panel()
-        self.calls.append([NUCLEAR_CANDLES_SET, bot_id, len(rows), panel.label])
+        self.panel.set_label(nuclear_label(symbol, label_price, scenario))
+        self.panel.repaint_panel()
+        self.calls.append([NUCLEAR_CANDLES_SET, bot_id, len(rows), self.panel.label])
         return None
 
 
@@ -1096,17 +1213,17 @@ def build_view_model(
     model: TradeChartsTabModel,
     statuses: Optional[list] = None,
     connectors: Optional[dict] = None,
-    timeframe_change: Optional[list] = None,
+    timeframe_change: Optional[str] = None,
     fetch_now: bool = False,
     trades: Optional[list] = None,
     synthetic: Optional[list] = None,
+    step_by: Optional[int] = None,
+    pick_at: Optional[int] = None,
 ) -> dict:
     """Return every value the Asset Charts tab holds as one dict.
 
-    Each argument runs one of the tab's five entry points, in the order
-    the running window calls them: trades are recorded, statuses drive a
-    pass, a timeframe change re-arms a panel, a fetch pass runs, and a
-    Nuclear scenario is injected.
+    Each argument runs one of the tab's entry points, in the order the running
+    window calls them.
     """
     import asyncio
 
@@ -1114,9 +1231,13 @@ def build_view_model(
         model.log_trade(trade[0], trade[1] if len(trade) > 1 else None)
     if statuses is not None:
         model.update_charts(statuses, exchange_connectors=connectors)
+    if step_by is not None:
+        model.step(step_by)
+    if pick_at is not None:
+        model.pick(pick_at)
     if timeframe_change is not None:
-        model.move_timeframe_combo(timeframe_change[0], timeframe_change[1])
-        model.on_timeframe_changed(timeframe_change[0], timeframe_change[1])
+        model.move_timeframe_combo(timeframe_change)
+        model.on_timeframe_changed(timeframe_change)
     if fetch_now:
         asyncio.run(model.fetch_chart_data(connectors))
     for one in synthetic or []:
@@ -1128,29 +1249,42 @@ def build_view_model(
             "margins_px": list(OUTER_MARGINS_PX),
             "spacing_px": OUTER_SPACING_PX,
         },
-        "scroll": {
-            "widget_resizable": SCROLL_RESIZABLE,
-            "horizontal_policy": SCROLL_HORIZONTAL_POLICY,
-            "horizontal_policy_value": SCROLL_HORIZONTAL_POLICY_VALUE,
-        },
         "content": {
             "margins_px": list(CONTENT_MARGINS_PX),
             "spacing_px": CONTENT_SPACING_PX,
-            "stretch_added": CONTENT_STRETCH_ADDED,
-            "stretch_slots": STRETCH_SLOTS,
             "layout_slots": model._layout_slots(),
         },
-        "panel_order": list(model.order),
-        "panel_count": len(model.panels),
-        "panels": {
+        "selector": {
+            "prev_text": PREV_TEXT,
+            "next_text": NEXT_TEXT,
+            "prev_tooltip": PREV_TOOLTIP,
+            "next_tooltip": NEXT_TOOLTIP,
+            "ticker_tooltip": TICKER_TOOLTIP,
+            "arrow_width_px": ARROW_WIDTH_PX,
+            "arrow_height_px": ARROW_HEIGHT_PX,
+            "ticker_min_width_px": TICKER_MIN_WIDTH_PX,
+            "spacing_px": SELECTOR_SPACING_PX,
+            "items": model.ticker_items(),
+            "shown": model.shown,
+            "position_text": model.position_text(),
+            "stepping_enabled": model.stepping_enabled(),
+            "position_format": POSITION_FORMAT,
+            "empty_ticker_text": EMPTY_TICKER_TEXT,
+            "empty_position_text": EMPTY_POSITION_TEXT,
+        },
+        "asset_order": list(model.order),
+        "asset_count": len(model.assets),
+        "shown_id": model.shown_id(),
+        "shown_symbol": model.current().get(SYMBOL_KEY, DEFAULT_SYMBOL),
+        "panel": model.panel.as_values(),
+        "assets": {
             bot_id: {
                 "symbol": info[SYMBOL_KEY],
                 "exchange_id": info[EXCHANGE_ID_KEY],
                 "last_fetch": info[LAST_FETCH_KEY],
                 "synthetic": info.get(SYNTHETIC_KEY, False),
-                "panel": info[PANEL_KEY].as_values(),
             }
-            for bot_id, info in model.panels.items()
+            for bot_id, info in model.assets.items()
         },
         "dropped": list(model.dropped),
         "trade_log": [dict(one) for one in model.trade_log],

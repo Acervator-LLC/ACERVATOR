@@ -85,6 +85,29 @@ class ThemeTokens:
     tab_gold_bg: str = "#fcee0a"
     tab_gold_text: str = "#8c0018"
 
+    # Candlestick chart. One role per token; the renderer holds no colour.
+    chart_bg_top: str = "#08080e"
+    chart_bg_bottom: str = "#0c0c16"
+    chart_grid: str = "#1c1c30"
+    chart_axis_text: str = "#b4b4d2"
+    chart_up: str = "#00e5a0"
+    chart_up_edge: str = "#5cffd0"
+    chart_down: str = "#ff2d6f"
+    chart_down_edge: str = "#ff86a8"
+    chart_crosshair: str = "#3c3c64"
+    chart_last_price: str = "#ffc800"
+    chart_band: str = "#50a0f0"
+    chart_band_mid: str = "#ffc850"
+    chart_bull: str = "#00ff88"
+    chart_bear: str = "#ff5577"
+    chart_zone_scrum: str = "#ff0080"
+    chart_zone_fold: str = "#fcee0a"
+    chart_event_mark: str = "#ff00aa"
+    chart_gap: str = "#5e5e80"
+    chart_trend_fast: str = "#ff8c00"
+    chart_trend_slow: str = "#4fc3ff"
+    chart_oscillator: str = "#ff9060"
+
 
 # Pre-built themes
 CYBERPUNK_DARK = ThemeTokens(
@@ -125,6 +148,27 @@ NEON_LIGHT = ThemeTokens(
     tab_white_text="#1a1a2e",
     tab_gold_bg="#f0cf1f",
     tab_gold_text="#99001f",
+    chart_bg_top="#ffffff",
+    chart_bg_bottom="#f0f0f8",
+    chart_grid="#d8d8e8",
+    chart_axis_text="#3a3a5a",
+    chart_up="#00883f",
+    chart_up_edge="#00662f",
+    chart_down="#cc0033",
+    chart_down_edge="#990026",
+    chart_crosshair="#9a9ab8",
+    chart_last_price="#b36b00",
+    chart_band="#6600cc",
+    chart_band_mid="#8a5c00",
+    chart_bull="#00803a",
+    chart_bear="#cc0033",
+    chart_zone_scrum="#cc0066",
+    chart_zone_fold="#8a6e00",
+    chart_event_mark="#6600cc",
+    chart_gap="#6f6f88",
+    chart_trend_fast="#b35a00",
+    chart_trend_slow="#0055aa",
+    chart_oscillator="#b34700",
 )
 
 CLASSIC_TERMINAL = ThemeTokens(
@@ -160,6 +204,27 @@ CLASSIC_TERMINAL = ThemeTokens(
     tab_white_text="#0a0a0a",
     tab_gold_bg="#ffff00",
     tab_gold_text="#990000",
+    chart_bg_top="#050505",
+    chart_bg_bottom="#0a0a0a",
+    chart_grid="#003300",
+    chart_axis_text="#00cc00",
+    chart_up="#00ff44",
+    chart_up_edge="#66ff99",
+    chart_down="#ff0000",
+    chart_down_edge="#ff6666",
+    chart_crosshair="#006600",
+    chart_last_price="#ffff00",
+    chart_band="#00ffff",
+    chart_band_mid="#00aa00",
+    chart_bull="#00ff44",
+    chart_bear="#ff0000",
+    chart_zone_scrum="#ff3333",
+    chart_zone_fold="#ffff00",
+    chart_event_mark="#00ffff",
+    chart_gap="#008800",
+    chart_trend_fast="#ffaa00",
+    chart_trend_slow="#00ffff",
+    chart_oscillator="#00ff88",
 )
 
 MINIMAL_MODERN = ThemeTokens(
@@ -195,6 +260,27 @@ MINIMAL_MODERN = ThemeTokens(
     tab_white_text="#1a1a1a",
     tab_gold_bg="#eab308",
     tab_gold_text="#7f1d1d",
+    chart_bg_top="#ffffff",
+    chart_bg_bottom="#fafafa",
+    chart_grid="#e4e4e4",
+    chart_axis_text="#444444",
+    chart_up="#059669",
+    chart_up_edge="#047857",
+    chart_down="#dc2626",
+    chart_down_edge="#b91c1c",
+    chart_crosshair="#9ca3af",
+    chart_last_price="#d97706",
+    chart_band="#2563eb",
+    chart_band_mid="#d97706",
+    chart_bull="#059669",
+    chart_bear="#dc2626",
+    chart_zone_scrum="#be123c",
+    chart_zone_fold="#a16207",
+    chart_event_mark="#7c3aed",
+    chart_gap="#8a8a8a",
+    chart_trend_fast="#c2410c",
+    chart_trend_slow="#1d4ed8",
+    chart_oscillator="#b45309",
 )
 
 GLASS_METAL = ThemeTokens(
@@ -230,6 +316,27 @@ GLASS_METAL = ThemeTokens(
     tab_white_text="#1c1c24",
     tab_gold_bg="#e8b34a",
     tab_gold_text="#6b1020",
+    chart_bg_top="#181820",
+    chart_bg_bottom="#20202c",
+    chart_grid="#32324a",
+    chart_axis_text="#a8a8c0",
+    chart_up="#3fd6a0",
+    chart_up_edge="#88ffcc",
+    chart_down="#ff5f88",
+    chart_down_edge="#ffa0b8",
+    chart_crosshair="#4a4a62",
+    chart_last_price="#ffcc66",
+    chart_band="#88ccff",
+    chart_band_mid="#ffcc66",
+    chart_bull="#88ffaa",
+    chart_bear="#ff6688",
+    chart_zone_scrum="#ff4d7d",
+    chart_zone_fold="#e8b34a",
+    chart_event_mark="#cc88ff",
+    chart_gap="#8f8fb0",
+    chart_trend_fast="#ffb066",
+    chart_trend_slow="#88ccff",
+    chart_oscillator="#ffa07a",
 )
 
 
