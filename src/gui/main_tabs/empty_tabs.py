@@ -94,17 +94,21 @@ class EmptyTabsMixin:
     # Annotation only; MainWindow supplies this and no attribute is created here.
     _main_tabs: Any
 
-    def _add_empty_tab(self, surface: Any) -> QWidget:
+    def _add_empty_tab(self, surface: Any, index: int | None = None) -> QWidget:
         """Draw one surface's empty state and add it to ``_main_tabs``.
 
-        ``_empty_tabs`` keeps each panel under its surface's bridge method.
+        ``index`` inserts at that slot; None appends. ``_empty_tabs`` keeps each
+        panel under its surface's bridge method.
         """
         if not hasattr(self, "_empty_tabs"):
             self._empty_tabs: dict = {}
         model = surface.view_model({})
         panel = _empty_tab_class()(model)
         self._empty_tabs[surface.METHOD] = panel
-        self._main_tabs.addTab(panel, model["heading"])
+        if index is None:
+            self._main_tabs.addTab(panel, model["heading"])
+        else:
+            self._main_tabs.insertTab(index, panel, model["heading"])
         return panel
 
     def _build_paper_trader_tab(self) -> None:

@@ -285,6 +285,18 @@ Detail: [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md).
 
 ## Simulator Tab (Hot Mess; Complete Rebuild In Progress)
 
+The Simulator is removed. The tab is named Sim, it opens first on the bar on a
+black ground, and it draws the same empty panel the Paper, Status and
+Accumulation tabs draw. No fleet loads, no replay runs, no practice venue
+exists, and Nuclear Mode is gone. The rest of this section describes the screen
+that was removed and is kept as the record of what the rebuild replaces.
+
+```python
+def _build_simulator_tab(self) -> None:
+    """Insert the Sim tab at ``SIMULATOR_BUILD_INDEX``."""
+    self._add_empty_tab(simulator, index=SIMULATOR_BUILD_INDEX)
+```
+
 The tab stacks two panels. Fleet Replay loads every bot from the operator's own
 state file, builds one real bot per config, and plays Stone Tablet candles
 through them against a fake exchange. The sim uses the bot class body
@@ -295,6 +307,7 @@ The tab is now called Sim. It sits first on the bar, on a black ground
 with red text.
 
 `src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_spawn_sim_fleet`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 def _spawn_sim_fleet(self) -> int:
@@ -311,6 +324,7 @@ vocabulary the History table reads, which stops the two surfaces drifting
 apart.
 
 `src/gui/simulator_tab/fleet/sim_visuals.py` — `GateLightsCell`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 class GateLightsCell(QWidget):
@@ -332,6 +346,7 @@ to build, and both answer the same `set` and `clear` calls, so the fleet panel
 and Nuclear Mode write to either without knowing which they hold.
 
 `src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._build_stat_strip`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 from ..variant_surface import SIM_STAT_STRIP, surface_class
@@ -349,6 +364,7 @@ React draws the Nuclear Mode page too. The tab asks the same seam for the
 panel class that it asks for the strip.
 
 `src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._nuclear_panel_class`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 from ..variant_surface import NUCLEAR_MODE, surface_class
@@ -363,6 +379,7 @@ with labels, spin boxes and tick boxes; the React panel answers them by
 writing into its view model and redrawing the page.
 
 `src/gui/react_nuclear_mode_panel.py` — `NuclearModeReactPanel._set_status_text`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 def _set_status_text(self, key: str, text: str) -> None:
@@ -382,6 +399,7 @@ the price and VWAP chart, so the ticks, the thinning and the trade markers stay
 one piece of Python, and `GateStatusPanelReact` inherits the gate pane.
 
 `src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._price_chart_class`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 from ..variant_surface import SIM_PRICE_CHART, surface_class
@@ -395,6 +413,7 @@ every line, box, dot and label, with its colour and its position — and
 Python side, so the two builds cannot draw different charts from the same ticks.
 
 `src/gui/main_tabs/sim_visuals_surface.py` — `chart_program`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 if not model.symbols:
@@ -415,6 +434,7 @@ behind a named accessor, and the React panel answers those by writing into its
 view model.
 
 `src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._fleet_replay_class`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 from ..variant_surface import FLEET_REPLAY, surface_class
@@ -427,6 +447,7 @@ method the Qt button was wired to, looked up on the panel itself, so the two
 sides run one piece of code.
 
 `src/gui/react_fleet_replay_panel.py` — `FleetReplayReactPanel.run_action`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 step = surface.ACTIONS.get(str(request.get(ACTION_KEY) or ""))
@@ -441,6 +462,7 @@ Mode is the picker beside it. Three modes, each with its own line saying what
 it collects.
 
 `src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab.SIM_MODES`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 SIM_MODES = (
@@ -503,6 +525,7 @@ The panel says so out loud when a run cannot be compared to live, rather than
 letting a synthetic run look like a parity run.
 
 `src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_note_parity_state`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 def _note_parity_state(self) -> None:
@@ -521,6 +544,26 @@ the figure shows.
 Simulator Log and Gate Status close the tab. Gate Status draws the same
 nineteen lights the History table draws, and `No fleet loaded.` stands in its
 place until a fleet loads.
+
+### What is on the tab now
+
+The rebuild's first tab is on the bar. It is a clone of the Trading tab reading
+Stone Tablets: the bot list with the live table's own ten columns, the Indicator
+Voting Panel, and a second layer holding the VWAP window over the tablet
+playback window, with one button between them. The crypto news ticker and the
+data pool line are not copied, and the rows they held stay empty for Import Live
+Fleet and Generate From YTD.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the candle window
+
+```python
+#: The candle window live reads. ``ScrummingBot`` asks ``get_ohlcv`` for 100,
+#: and the Simulator reads the same count off the tablet.
+WINDOW_CANDLES = 100
+```
+
+The Simulator receives and asks; it never sends. Its one data path reads tablet
+files, holds no venue, and refuses by name anything that is not a read.
 
 Detail: [08-tabs/simulator.md](08-tabs/simulator.md).
 
@@ -696,689 +739,6 @@ the status line reads `No data yet — press Refresh.` until a scan lands, which
 is the state the figure captures. Leaving the checkbox clear hides the markets
 a bot already holds.
 
-Three modules run down the left side above that row, in this order: ATA-SPM,
-Opposing Trades and Multi-Exchange Arbitrage. Each is a group box carrying one
-line, and the line is the state that module can read rather than a fixed
-caption. A module with no source names the source it waits for, so a module
-that found nothing never reads the same as a module nobody wired.
-
-`src/gui/main_tabs/market_inspector_surface.py` — `left_module_rows`
-
-```python
-def left_module_rows(
-    run: Any, scan_state: Any, pair_count: Any, connectors: Any
-) -> list:
-```
-
-The screen draws six zones, three down each side. The left side draws ATA-SMP,
-Opposing Trades and Multi-Exchange Arbitrage. The right side draws ATA-SMP Ready
-to Send, Bot Swarm Topologies and Phantom Bot HTF Signals. Measured on
-6 September 2026 at a tab size of 1400 by 860 pixels, the six boxes are equal and
-sit at the same three positions down each pane: 278 pixels tall on the Qt side
-and 278.66 on the React side. The record is
-`tests/debug_reports/2026-09-06_stageC_cointegration.md`.
-
-`src/gui/main_tabs/market_inspector_surface.py` — `right_zone_rows`
-
-```python
-def right_zone_rows(run: Any, bucket: Any = None) -> list:
-    """The three right-side zones as key, title and status, in screen order."""
-```
-
-Two of the six are reserved and say what they wait for. Ready to Send reads
-`Phase source not wired. Nothing to approve.` while no phase run is wired.
-Phantom Bot HTF Signals reads `Phantom Bot source not wired.`, and its rows
-follow the Phantom Bot design.
-
-In development.
-
-ATA-SPM reads a phase run. Nothing wires one yet, so its line reads
-`Phase source not wired.` A wired source that has run names its phase beside
-the count the Ready to Send bucket holds.
-
-The ATA-SPM zone now carries the scan itself. A field names a sector, a box
-beside it names the asset class, four check boxes name the timeframes that
-sector is scanned on, and Scan Now runs it without waiting for a rotation.
-Crypto is scanned on 5m, 1hr, 1d and 1wk. Every other asset class is scanned on
-1hr, 1d, 1wk and 1mnth.
-
-`src/trading/ata_spm.py` — the four timeframes each asset class carries
-
-```python
-CRYPTO_TIMEFRAMES = ("5m", "1h", "1d", "1w")
-SLOWER_TIMEFRAMES = ("1h", "1d", "1w", "1M")
-```
-
-Scan Now runs the first three phases in order, and each one leaves something to
-read. Phase one scans the sector and says what every ticked timeframe returned.
-Phase two keeps the charts carrying a reversal vote. Phase three loads each of
-those charts with the indicators that confirm it.
-
-`src/trading/ata_spm.py` — the run, phases one to three
-
-```python
-def run(
-    sectors: Any,
-    asset_source: Optional[Callable] = None,
-    candle_source: Optional[Callable] = None,
-    engine: Optional[VotingEngine] = None,
-) -> AtaSpmRun:
-```
-
-The vote comes from the twelve voters and from nothing else. A chart carries a
-reversal when the Bollinger Bands voter and the panel's own consensus name the
-same direction: the price sits at a band, and the panel reads the way the band
-does. A panel with no consensus is not a reversal.
-
-`src/trading/ata_spm.py` — the reversal test
-
-```python
-if self.direction == SignalDirection.NEUTRAL:
-    return False
-return self.band_direction == self.direction
-```
-
-Every confirming indicator is explained in one sentence, and the sentence has
-the same shape every time: the indicator's name, the reading it published, its
-direction and its confidence. Two posts about the same signal therefore read
-alike.
-
-`src/trading/ata_spm.py` — the standardised message
-
-```python
-MESSAGE_FORMAT = "{label}: {reading}. Votes {direction} at {confidence}% confidence."
-```
-
-Two of the twelve indicator messages named a direction their indicator cannot
-give. Both are corrected. ADX measures how committed a move is and says nothing
-about which way it points, which is why its published formula takes an absolute
-difference. The message now names the two directional lines the vote is decided
-by, and names the ADX figure as strength. The Kaufman Efficiency Ratio had the
-same defect. The ratio is a size between zero and one, and the direction comes
-from a separate quantity the same indicator computes, so its message now names
-the close against the window open beside the ratio. No formula, threshold or
-coefficient changed, and the other ten voters publish a reading that already
-carries its direction. Measured 7 September 2026 and recorded in
-`tests/debug_reports/2026-09-07_ata_phases_7_and_8.md`.
-
-`src/trading/ata_spm.py` — the readings the two corrected messages name
-
-```python
-"adx": (
-    "ADX",
-    ("di_plus", "di_minus", "adx"),
-    "+DI {di_plus:.2f} against -DI {di_minus:.2f}, trend strength ADX {adx:.2f}",
-),
-"kaufman_er": (
-    "Kaufman Efficiency Ratio",
-    ("er", "price_up"),
-    "efficiency ratio {er:.4f}, close {price_up} the window open",
-),
-```
-
-The two sentences read like this off the running voters.
-
-```
-ADX: +DI 50.11 against -DI 19.20, trend strength ADX 96.04. Votes bullish at 100% confidence.
-Kaufman Efficiency Ratio: efficiency ratio 0.2857, close above the window open. Votes neutral at 0% confidence.
-```
-
-The Z-Score message named the score alone, so a post read the same whatever the
-market cost. The upgraded indicator publishes the two prices its predictive
-zones project to, and the message now names both. A reader sees the score and
-the price band it was measured against, at the scale that market trades at. The
-message states those two prices and nothing further. It does not say the price
-is inside or outside the zone, because the vote is decided on the smoothed
-score rather than on the close.
-
-`src/trading/ata_spm.py` — the reading the Z-Score message names
-
-```python
-"zscore": (
-    "Z-Score",
-    ("z", "support_price", "resistance_price"),
-    "z-score {z:+.3f}, predictive zone {support_price:g} to {resistance_price:g}",
-),
-```
-
-One sentence read off the running voters at two price scales. The score is the
-same and the band is the market's own.
-
-```
-Z-Score: z-score -2.697, predictive zone 2.87885e-06 to 3.31141e-06. Votes bullish at 25% confidence.
-Z-Score: z-score -2.697, predictive zone 3803.8 to 4375.34. Votes bullish at 25% confidence.
-```
-
-Both prices are published on every reading, including before any reversal has
-been remembered, so the wording never falls back to the no-reading text.
-Measured 7 September 2026 and recorded in
-`tests/debug_reports/2026-09-07_ata_zscore_message.md`.
-
-Clicking a scanned sector opens the three phase readbacks under each other.
-
-```
-Phase 1 Evaluate 1d: 2 vote(s), 0 without candles
-Phase 2 Identify BTC 1wk: bullish reversal · net +0.9473 · confidence 8% · band position 0.3381
-Phase 3 Pull BTC 1wk: 200 candles, last close 217.224
-Bollinger Bands: band position 0.3381. Votes bullish at 20% confidence.
-Vortex: VI+ less VI- at +0.2000. Votes bullish at 40% confidence.
-```
-
-A timeframe whose assets hold no candles says so on its own line rather than
-reporting nothing. The assets a sector holds come from the shipped sector map,
-which covers crypto; every other asset class answers that no source is wired
-for it yet.
-
-`src/gui/main_tabs/market_inspector_surface.py` — where a sector's assets come from
-
-```python
-if str(asset_class) != ata_spm.CLASS_CRYPTO:
-    return []
-```
-
-Phases four to eight are not built. The Ready to Send bucket holds nothing, and
-the zone's own line reports zero for it.
-
-Phases four, five and six now run. Phase four writes the post, phase five sends
-it, and phase six is the bucket the operator approves from. Phases seven and
-eight are still not built.
-
-Phase four writes one post per push target. Seven targets ship, and adding an
-eighth is adding a row beside them. The list of names every screen reads is
-derived from those rows, so a new row reaches the Settings page on its own.
-
-`src/trading/ata_spm_push.py` — the names every screen reads
-
-```python
-TARGET_NAMES = tuple(one.name for one in PUSH_TARGETS)
-```
-
-Each target carries the same evidence in its own order. The sections are the
-call, the chart, the bands and the indicator messages, all of them from phase
-three.
-
-Every artefact of a post opens with the fixed header. The post body, the image
-caption and the thread root are each composed with it, so no post can leave
-without it.
-
-`src/trading/ata_spm_push.py` — the header on every artefact
-
-```python
-@property
-def body(self) -> str:
-    """The post body: ``FIXED_HEADER`` over this target's own sections."""
-    return POST_LINE_SEPARATOR.join((FIXED_HEADER,) + tuple(self.lines))
-```
-
-Phase five sends a post and writes down what happened to it. A target with no
-credential, a target with nothing wired to send through, a refusal from the
-target, and a post held back by the rate all leave a record. Nothing is skipped
-in silence.
-
-`src/trading/ata_spm_push.py` — one delivery record
-
-```python
-@dataclass
-class DeliveryRecord:
-    """What phase five did with one post: where it went, or why it did not."""
-
-    target: str
-    symbol: str
-    timeframe: str
-    sent: bool = False
-    destination: str = NO_DESTINATION_TEXT
-    detail: str = ""
-```
-
-The Ready to Send zone holds every post phase four wrote, one on screen at a
-time. Beside the thumbnail sit the ticker and whether the vote is bull or bear.
-Clicking the entry opens the larger chart view, with Approve and Decline under
-it and the post that would be sent below them.
-
-Post Selected sends the post on screen. Post All sends every approved post.
-Send Bucket Full Auto, in the upper right, releases approved posts without a
-click. All three obey the rate the settings page sets, and none of them sends a
-post that was declined.
-
-`src/trading/ata_spm_push.py` — a declined post is never sent
-
-```python
-if held.state == STATE_DECLINED:
-    return self._hold_declined([held])
-```
-
-Settings, beside Scan Now, shows the ATA-SPM settings page in place of the
-scanned sectors. It carries a credential for each push target, the ceiling on
-posts per hour, the wording each indicator message uses, and how many indicators
-one post draws.
-
-`src/gui/main_tabs/market_inspector_surface.py` — the settings a phase reads
-
-```python
-SETTING_ROWS = (
-    (SETTING_MAX_POSTS, "Max posts per hour"),
-    (SETTING_MAX_INDICATORS, "Max supporting indicators"),
-    (SETTING_MESSAGE_FORMAT, "Standardised message text"),
-)
-```
-
-The page carries four settings today. The confirmation share phase seven reads
-joined the three above it. Every one of the four is a setting a phase reads, and
-a credential for each of the seven push targets sits above them.
-
-`src/gui/main_tabs/market_inspector_surface.py` — the four rows the page draws
-
-```python
-SETTING_ROWS = (
-    (SETTING_MAX_POSTS, "Max posts per hour"),
-    (SETTING_MAX_INDICATORS, "Max supporting indicators"),
-    (SETTING_CONFIRMATION_SHARE, "Confirmation share %"),
-    (SETTING_MESSAGE_FORMAT, "Standardised message text"),
-)
-```
-
-A credential is typed into two fields and pressed into the vault with Save
-credentials. The page reports only whether a credential is held; no token is
-drawn back, and none reaches the payload the screen is built from.
-
-The ceiling starts unset, and an unset ceiling releases nothing. Nothing leaves
-the machine until the operator sets a number and a credential is held.
-
-`src/trading/ata_spm_push.py` — the ceiling that starts closed
-
-```python
-NO_CEILING_SET = 0
-```
-
-The thumbnail draws the chart the post carries. Every close pulled in phase
-three is drawn as a column, the three Bollinger band prices are drawn across it
-as rules, and the last close is marked in the colour of the vote. Pressing the
-thumbnail opens the larger chart, which is the same drawing at preview size.
-
-`src/gui/main_tabs/market_inspector_surface.py` — the rectangles one chart draws
-
-```python
-def chart_marks(post: Any, width_px: Any, height_px: Any, columns: Any) -> list:
-    """Every rectangle one post's chart draws, each as part, box and colour.
-
-    The close columns are drawn first, the band rules over them, and the
-    last close last, so nothing the vote turns on is painted over.
-    """
-```
-
-A push target is a platform that publishes an interface for posting, and one
-that takes what a post carries. TradingView publishes no interface. YouTube
-publishes one that accepts video only, and a post carries a still chart.
-Neither is a target. Seven ship today.
-
-`src/trading/ata_spm_push.py` — the targets that ship
-
-```python
-PUSH_TARGETS = (
-    PushTarget(TARGET_X, (SECTION_CALL, SECTION_INDICATORS)),
-    PushTarget(TARGET_INSTAGRAM, (SECTION_CALL, SECTION_BANDS, SECTION_INDICATORS)),
-    PushTarget(TARGET_LINKEDIN, (SECTION_CALL, SECTION_CHART, SECTION_INDICATORS)),
-    PushTarget(
-        TARGET_TIKTOK,
-        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
-    ),
-    PushTarget(
-        TARGET_FACEBOOK,
-        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
-    ),
-    PushTarget(TARGET_THREADS, (SECTION_CALL, SECTION_INDICATORS)),
-    PushTarget(
-        TARGET_REDDIT,
-        (SECTION_CALL, SECTION_CHART, SECTION_BANDS, SECTION_INDICATORS),
-    ),
-)
-```
-
-Each target's row names its own sections, so each carries its own format over
-the same phase three evidence. Threads carries the call and the indicator
-messages only, because Threads publishes 500 characters of text and the fixed
-header takes 144 of them.
-
-The rules each platform publishes are recorded in
-[the push target rules](../audits/2026-09-06_ata_platform_rules.md).
-
-The two platforms left out were each measured, and the reasons differ.
-TradingView publishes no posting interface at all. Its own support page states
-that it has no API giving access to data, and that its REST API is meant for
-brokers. YouTube publishes an interface, and that interface takes video. The
-upload endpoint accepts two media types and nothing else, and none of the
-twenty-one resources its Data API reference lists publishes a still image or a
-text post. A post carries a still chart, so it has no route in. Both readings
-are cited on [the push target rules](../audits/2026-09-06_ata_platform_rules.md)
-page.
-
-```
-video/*, application/octet-stream
-```
-
-Three of the seven targets fetch the image rather than receive it. Instagram,
-Threads and TikTok each take an address on a public server. A desktop
-application holds no such host, and nothing may be added to the render path to
-give it one, so phase five records those three as unreachable until the
-operator supplies an address. Measured 7 September 2026 and recorded in
-`tests/debug_reports/2026-09-07_remaining_targets.md`.
-
-In development.
-
-Phase four now holds every post under the ceiling its own target publishes. X
-publishes 280 characters, Threads 500, Instagram 2,200, LinkedIn 3,000, TikTok
-4,000, and Reddit 40,000 in the body with 300 in the title. Facebook publishes
-no ceiling, so no number is set for it and none is guessed.
-
-`src/trading/ata_spm_push.py` — the ceiling on one target row
-
-```python
-PushTarget(
-    TARGET_X,
-    (SECTION_CALL, SECTION_INDICATORS),
-    body_limit=280,
-    count_unit=COUNT_WEIGHTED,
-),
-```
-
-Each platform counts text its own way. X counts a weighted character and charges
-23 for any link, whatever the link's real length. TikTok counts in UTF-16 runes,
-and Threads counts an emoji as its bytes. A post is measured in the count its
-own target publishes.
-
-`src/trading/ata_spm_push.py` — the length one target reads in a post
-
-```python
-@property
-def measured(self) -> int:
-    """The body's length in the unit ``count_unit`` names."""
-    return measure_text(self.body, self.count_unit)
-```
-
-A post that does not fit drops whole lines and never cuts one. The fixed header
-is never dropped. The line naming the ticker, the timeframe and the direction is
-never dropped. The indicator explanations go first, the longest of them first,
-and the chart and band lines after those. A price or a band value is therefore
-never cut mid-digit.
-
-The post says when it has been shortened. A drop adds a last line counting what
-was left out, so a reader sees an abbreviated post rather than a shorter one.
-
-`src/trading/ata_spm_push.py` — what a shortened post says
-
-```python
-ABBREVIATED_FORMAT = "Abbreviated: {dropped} evidence line(s) omitted."
-```
-
-Measured on 7 September 2026: one bullish call on BTC-USD 1wk with two
-confirming voters wrote a 306-character body for X, against the 280 X publishes.
-The same call now writes 275. It keeps the header, the call line and the shorter
-of the two indicator explanations, and it says one line was left out.
-
-TikTok's title field holds 90 characters and the fixed header is 144, so the
-header cannot go in it. A TikTok post carries no title at all, and the post
-records why. Reddit's title holds 300, so a Reddit title carries the header and
-the headline.
-
-`src/trading/ata_spm_push.py` — a title field too small for the header
-
-```python
-TITLE_TOO_SMALL_FORMAT = (
-    "{target} title holds {limit} and the header with the headline "
-    "measures {measured}, so no artefact maps to it."
-)
-```
-
-Phase five refuses a post still over its ceiling. The refusal is written into the
-delivery record like every other, and the post never reaches the sender.
-
-`src/trading/ata_spm_push.py` — a post over the ceiling never leaves
-
-```python
-if post.over_limit:
-    record.detail = OVER_LIMIT_TEXT.format(
-        target=post.target, limit=post.body_limit, measured=post.measured
-    )
-    return record
-```
-
-Every control on this screen is drawn at a size the screen publishes, rather than
-at the size its own text happens to take. The sector field takes whatever width
-the row has left over, so each control to the right of it sits where the pane
-edge puts it, in both builds.
-
-`src/gui/main_tabs/market_inspector_surface.py` — the sizes both builds draw from
-
-```python
-PUSH_BUTTON_HEIGHT_PX = 36
-FIELD_HEIGHT_PX = 37
-TIMEFRAME_BOX_WIDTH_PX = 64
-```
-
-The button that reruns the topology detectors reads Refresh. The zone title above
-it already says what is refreshed.
-
-`src/gui/main_tabs/market_inspector_topologies_surface.py` — the button wording
-
-```python
-REFRESH_TEXT = "Refresh"
-```
-
-Phase seven says what happened to a call. Every reversal call a scan makes is
-watched. The next Scan Now reads that chart again and answers one of three
-things about it.
-
-`src/trading/ata_spm_push.py` — the three answers phase seven gives
-
-```python
-OUTCOME_CONFIRMED = "confirmed"
-OUTCOME_FAILED = "failed"
-OUTCOME_OPEN = "open"
-```
-
-A call is confirmed when the market has moved the way it was called, far
-enough. Far enough is a share of the run from the call's own close to the
-Bollinger midline, and the midline is read again on each later candle, so the
-target moves with the market.
-
-`src/trading/ata_spm_push.py` — the close a confirmation needs
-
-```python
-def confirmation_target(call_close: Any, midline: Any, share_pct: Any) -> float:
-    """The close a confirmation needs: ``share_pct`` of the run to the midline."""
-    share_ratio = float(share_pct) / ata_spm.PERCENT_PER_RATIO_UNIT
-    return float(call_close) + expected_move(call_close, midline) * share_ratio
-```
-
-A call fails when the trend it called against carries on instead of turning,
-for two candles in a row. One candle against a call is not a continuation, so
-two is the floor. That floor is what a failed reversal means, not a preference,
-so no setting changes it.
-
-`src/trading/ata_spm_push.py` — the floor a failure needs
-
-```python
-CONTINUATION_CANDLE_FLOOR = 2
-```
-
-The share is the one number the operator sets, and the settings page carries it
-beside the others. It starts unset, and while it is unset nothing can confirm.
-A failure is still reported, because the floor is not a setting.
-
-`src/gui/main_tabs/market_inspector_surface.py` — the share on the settings page
-
-```python
-SETTING_CONFIRMATION_SHARE = "confirmation_share_pct"
-```
-
-A confirmed call and a failed call each write their own post, one per push
-target. The post names the original, so a reader sees the call and its outcome
-together, and it waits in Ready to Send for Approve or Decline like any other.
-
-`src/trading/ata_spm_push.py` — the line a follow-up opens with
-
-```python
-FOLLOW_UP_HEAD_FORMAT = "Follow-up on {headline}: {state}."
-```
-
-Phase eight is the several timeframes one asset is scanned on. Each one casts
-its own vote, and the post says whether they agree or one of them contradicts
-the call. A neutral timeframe contradicts nothing.
-
-`src/trading/ata_spm.py` — the line phase eight writes into every post
-
-```python
-AGREEMENT_AGREED_TEXT = "Every timeframe agrees."
-AGREEMENT_CONTRADICTED_FORMAT = "Contradicted on {labels}."
-```
-
-How many timeframes fit is measured on the machine the scan runs on, never
-fixed in the code. One round is one asset on one timeframe, read to vote. The
-rounds for one asset have to finish inside the shortest candle that asset is
-scanned on, so a slow machine scans fewer timeframes and says which it deferred.
-
-`src/trading/ata_spm.py` — the count a measured round supports
-
-```python
-def timeframes_supported(round_seconds: Any, asset_class: Any) -> int:
-    """How many timeframes one asset is scanned on, from a measured round.
-
-    Never under ``MIN_TIMEFRAMES_PER_ASSET`` and never over the count
-    ``timeframes_for`` lists; ``NO_ROUND_MEASURED`` answers that count.
-    """
-```
-
-The expanded sector reads both phases back. One line names the count the
-measured round supports, and one line per call names every timeframe, its vote
-and the verdict.
-
-```
-Phase 7 Follow-Up BCH 5m: BCH 5m · bear · confirmed · close 578 reached
-581.98, 60% of the run to midline 579.3, after 1 candle(s)
-Phase 8 Timeframes payments: 4 of 4 timeframe(s) at 0.0017s per round
-Phase 8 Timeframes BCH 5m: Timeframes: 5m bearish · 1hr bearish · 1d bearish ·
-1wk bearish. Every timeframe agrees.
-```
-
-Expanding a scanned sector draws the Indicator Voting Panel for every asset the
-scan called. It is the same panel the Trading tab carries, over the same twelve
-voters, and it receives only the markets ATA-SMP scanned. No live bot's market
-reaches it. Each timeframe the asset voted on is one row, and the Comp column
-weighs the higher timeframes by rank and confidence.
-
-`src/gui/main_tabs/market_inspector_surface.py` — the panel one asset carries
-
-```python
-def voting_panel(pull: Any) -> Optional[dict]:
-    """The Indicator Voting Panel one scanned asset carries, as its rows.
-
-    The rows are the timeframes ATA-SMP read for this asset alone, and
-    every cell is drawn from ``indicator_panel_surface``.
-    """
-```
-
-The trade gates run under that panel, on the same chart. The scan fills the same
-context a live bot fills and hands it to the same two chains, so the result says
-which gates latched and which refused, in the engine's own words. Sixteen of the
-twenty-two decide on price alone.
-
-`src/trading/ata_gate_scan.py` — both chains over one scanned market
-
-```python
-def scan_gates(
-    symbol: Any,
-    timeframe: Any,
-    candles: Any,
-    summary: Any,
-    band: Any,
-    rows: Any = None,
-    settings: Any = None,
-) -> GateScan:
-```
-
-Six gates cannot decide without a holding, and none of them is guessed at. Four
-are named and marked as not run, with the reason beside them. The two
-opposing-trade-distance gates publish the price a reversal would have to reach
-from an entry at the scanned price. They publish no verdict: at the moment of the
-scan that entry price is the scanned price, and both sides refuse.
-
-`src/trading/ata_gate_scan.py` — the six a scan stands down
-
-```python
-NOT_APPLICABLE_GATES = (
-    "delta_positive",
-    "interval",
-    "tranches_queued",
-    "smart_ceiling",
-)
-HYPOTHETICAL_GATES = ("hysteresis_scrum", "hysteresis_fold")
-```
-
-A scan reads direction at a stricter confidence floor than a bot holding the same
-market. The bot lowers its floor by three favours. Two are readings of price and
-the scan takes both; the third arms only on a holding, which a scan has none of.
-Nothing compensates for that.
-
-`src/trading/ata_gate_scan.py` — the floor a scan judges at
-
-```python
-def confidence_floor(summary: Any, band: Any, candles: Any) -> float:
-    """The TA confidence floor a scan judges ``summary`` direction at.
-
-    ``voter_favour``, ``swing_favour`` and ``landing_strip_favour`` are
-    two of the three favours ``_skewed_confidence_floor`` divides by.
-    """
-```
-
-Scan Now no longer runs on the thread that draws the window. The press starts a
-worker, the phases and the gate pass run there, and the answer is written back on
-the drawing thread. While a scan runs the window keeps drawing and every bot
-keeps ticking.
-
-`src/gui/market_inspector.py` — where the phases run
-
-```python
-self._scan_thread = threading.Thread(
-    target=self._compute_scan,
-    args=(message_format,),
-    name=ATA_SCAN_THREAD_NAME,
-    daemon=True,
-)
-```
-
-One expanded sector reads its panel and its gate result like this.
-
-```
-BCH 5m   ▲ 16  ▼ 20  ─ 12
-TF   BB     VTX    MACD   SRsi   Ichi   Vol     Net     Comp    Conf
-5m   ▼ 32%  ▲ 98%  ▲ 60%  ▼ 50%  ▼ 65%  ▲ 45%   -0.15   -0.15   ░░░░░░░░░░ 1%
-Gate chain BCH 5m: 16 of 22 gate(s) ran · 9 latched · 7 blocked · 6 did not run
-Gate chain distance: opposing trade distance 1.60% · landing strip none
-Gate chain scrum delta_positive: did not run a scan holds nothing, and no
-surplus exists to test
-```
-
-Measured 7 September 2026 across the Qt build, the React build and the Electron
-shell: 39 readings compared and all 39 the same. The record is
-`tests/debug_reports/2026-09-07_ata_ivp_gate_chain.md`.
-
-Opposing Trades counts the pairs the scan found, and names the share a bullish
-bot feeds to the bot on the opposite market condition. Its wording follows the
-scan: unasked, running, finished and empty, or finished with pairs.
-
-`src/gui/main_tabs/market_inspector_surface.py` — `OPPOSING_TRADES_FOUND_FORMAT`
-
-```python
-OPPOSING_TRADES_FOUND_FORMAT = (
-    "{count} {noun}. {share}% of profit goes to the opposite side."
-)
-```
-
-Multi-Exchange Arbitrage reads the exchange connectors the tab already holds
-and names them. One venue says a second is needed before anything can be
-compared. The module compares no price, and `src/trading/arbitrage.py` still
-has no importer.
-
 HTF Signals carries six columns: Asset, Signal, Score, Daily, Weekly and
 Active. Opposing Pairs carries four: Long side, Short side, Correlation and
 Score. The pairing enumerates every long against every short and keeps the ones
@@ -1393,88 +753,6 @@ def _find_opposing_pairs(self, signals: list, closes_by_symbol: dict) -> list:
     longs = [s for s in signals if s.direction == "long" and s.score >= 0.3]
     shorts = [s for s in signals if s.direction == "short" and s.score >= 0.3]
 ```
-
-The HTF Signals table is no longer drawn on the left side. Its zone is Phantom
-Bot HTF Signals, on the right, and nothing places the table there while the
-Phantom Bot source is unwired. The widgets are still built and every scan still
-fills them, so the scan states, the empty notes and the per-bot page read what
-they read before. Measured 6 September 2026 and recorded in
-`tests/debug_reports/2026-09-06_stageC_cointegration.md`.
-
-`src/gui/main_tabs/market_inspector_surface.py` — the line that zone carries
-while it waits
-
-```python
-PHANTOM_HTF_UNWIRED_TEXT = "Phantom Bot source not wired."
-```
-
-The correlation raises a candidate. It no longer decides one. Every pair the
-screen shows has also passed a test for a long-run equilibrium, because two
-markets can move opposite each other for a year without any relationship
-holding between them. The published test is cointegration, and the screen runs
-both of its standard forms.
-
-`src/trading/pair_selection.py` — `cointegration_test`
-
-```python
-def cointegration_test(
-    closes_a, closes_b,
-    window_bars=WINDOW_BARS,
-    significance=SIGNIFICANCE,
-    min_observations=MIN_OBSERVATIONS,
-) -> MethodResult:
-```
-
-The two forms are the Engle-Granger two-step and the Johansen trace test, both
-taken from statsmodels rather than written here. A pair passes only when both
-reject the null of no cointegration: Engle-Granger at a significance of 0.05,
-and Johansen above its ninety-five per cent critical value for rank zero.
-Requiring both was measured on two hundred pairs a side. It halves the rate at
-which unrelated markets slip through, and it loses no true relationship.
-
-The window is three hundred and sixty-five daily closes, which is the year of
-daily bars the fetcher already pulls. Length matters more than any other choice
-here: over the same two hundred pairs, the test found every true relationship at
-a year, ninety-seven per cent at half a year, and under two thirds at ninety
-days. A pair with fewer than one hundred and twenty closes is not tested and is
-not shown, because below that a refusal says more about the window than about
-the markets.
-
-`src/trading/pair_selection.py` — what a pair has to clear
-
-```python
-WINDOW_BARS = 365
-MIN_OBSERVATIONS = 120
-SIGNIFICANCE = 0.05
-```
-
-Opposing Pairs carries seven columns: Long side, Short side, Method, Window,
-Statistic, Correlation and Score. Method names the test, Window names the number
-of daily closes it ran on, and Statistic carries the p-value beside the Johansen
-trace and its critical value. Correlation stays as a reported number and decides
-nothing.
-
-Every topology card names its method the same way, on its own line under the
-counts. A card from a sector or a cluster carries the Pearson coefficient and its
-p-value over the pairs inside it; a mean-reversion card carries the cointegration
-p-value; a distance handoff carries the two band distances and the threshold they
-cleared. A proposal whose test did not run, or did not pass, is not built.
-
-`src/trading/topology_proposals.py` — the membership test each cluster clears
-
-```python
-def _cluster_correlation(
-    members: list[str],
-    closes_by_asset: dict[str, Any],
-    min_corr: float,
-) -> Optional[MethodResult]:
-```
-
-A score is never invented. A cointegration-gated card scores one hundred times
-one minus the p-value the test returned, so a gated card sits between ninety-five
-and one hundred by construction. A correlation-gated card scores one hundred
-times the size of the coefficient. A distance handoff scores the two distances
-added together.
 
 Refresh proposals runs the detectors, and the line beside it counts the
 proposals held and the cards dismissed. Each card names its archetype and the
@@ -1501,107 +779,6 @@ def persist_dismissed(self) -> None:
 
 The key it writes is not one the settings schema declares, so the write fails
 every time. Issue #424 carries it.
-
-Every zone on this screen shows one entry at a time. A left arrow and a right
-arrow sit above the entry, and a line beside them says which entry is on
-screen and how many the zone holds. The arrows wrap, so the right arrow on the
-last entry goes back to the first. A zone holding nothing reads zero of zero
-and keeps the sentence that says what it waits for.
-
-`src/gui/main_tabs/market_inspector_surface.py` — `position_text`
-
-```python
-def position_text(at: Any, total: Any) -> str:
-    """Which entry is on screen, out of how many the zone holds."""
-    count = int(total)
-    if count <= 0:
-        return POSITION_EMPTY_TEXT
-    return POSITION_FORMAT.format(at=int(at) + 1, total=count)
-```
-
-Clicking the entry opens it. The expansion carries four lines: the test that
-produced the entry, the window that test ran on, what it returned, and why
-that answer let the entry through. The last line is written by the module that
-owns the threshold, so the screen never states a level of its own.
-
-`src/trading/pair_selection.py` — `MethodResult.gate_text`
-
-```python
-@property
-def gate_text(self) -> str:
-    """Why the verdict is what it is, in the terms the test uses."""
-    if not self.passed:
-        return GATE_REFUSED_FORMAT.format(detail=self.detail)
-    if self.method == METHOD_BAND_DISTANCE:
-        return GATE_LIVE_STATE_TEXT
-    return GATE_P_VALUE_FORMAT.format(
-        p_value=self.p_value, significance=SIGNIFICANCE
-    )
-```
-
-One cointegration pair reads its four lines like this:
-
-```
-Test: Cointegration — Engle-Granger + Johansen
-Window: 365 daily closes
-Result: p=0.0000 · trace 57.5>15.5
-Why it is here: p 0.0000 is at or below the 0.05 required.
-```
-
-The p-value in those two lines is one number, read from the test both times. It
-is held once on the verdict, and the statistic line is written from it rather
-than stored beside it, so the two lines cannot state different numbers.
-
-`src/trading/pair_selection.py` — the statistic line reads the held p-value
-
-```python
-@property
-def statistic_text(self) -> str:
-    """The statistic line, formatted from the numbers the test returned."""
-```
-
-An open entry drops its summary line and its click hint. Both repeat what the
-four lines below them say, and dropping them leaves every open entry the same
-height, whether or not it carries buttons. A proposal carries Preview and
-Dismiss inside its own entry, where a waiting post carries Approve and Decline.
-
-`src/gui/main_tabs/market_inspector_surface.py` — what an open entry drops
-
-```python
-"method": "" if open_now else (written if total else ""),
-"hint": total > 0 and not open_now,
-```
-
-One implementation draws all six zones, and the proposals pane draws through
-the same one. The Qt build gives every zone a `ProposalStepper`, and the React
-build and the Electron shell give every zone a `ZoneStepper`. The pane holds no
-arrows and no expansion of its own, so a second copy of the pattern cannot drift
-from the first.
-
-`src/gui/web/market_inspector_topologies.js` — the pane takes the screen's
-stepper
-
-```javascript
-function stepperOf() {
-  var screen = global.acervatorMarketInspector;
-  return screen === undefined ? undefined : screen.ZoneStepper;
-}
-```
-
-Both zones now draw the same entry box, and nothing in an open entry falls
-outside it. Measured 7 September 2026 across the Qt build, the React build and
-the Electron shell: 102 dimensions compared, 100 exact, and the two that differ
-are one pixel apart. Every host prints the same p-value on both lines of both
-cards. The record is `tests/debug_reports/2026-09-07_two_defects.md`.
-
-```
-opposing_trades entry [16, 436, 735, 177] scrolled 0
-topologies      entry [789, 436, 735, 177] scrolled 0
-```
-
-The count of proposals held and dismissed stays on its own line beside the
-Refresh button, so a dismissed proposal is still counted after it leaves the
-list.
 
 The footer names the auto-refresh period and the adopt route. The status bar
 under it carries the API load pill, drawn green below half load, amber above
@@ -1638,22 +815,6 @@ Refresh and the Include active markets checkbox report their press back to
 Python, and the right pane reports Refresh proposals, Preview, Dismiss, Cancel
 and Adopt the same way. Setting `ACERVATOR_VARIANT` to `qt` builds the Qt
 widgets instead, unchanged.
-
-The same analyzer serves a second screen. The Live Bot Settings window carries
-its own Market Inspector tab, and that tab draws one card for the bot the window
-is open on. Both builds now draw the card from one description of it, where the
-React side drew a Python error message before. The words, the colour, the
-padding and the layout numbers come from that description, so the waiting screen
-cannot drift either. Measured 6 September 2026 and recorded in
-`tests/debug_reports/2026-09-06_unit12_market_inspector_tab.md`.
-
-`src/gui/main_tabs/market_inspector_tab_surface.py` — `per_bot_view`
-
-```python
-def per_bot_view(bot: Any) -> dict:
-    """The per-bot Market Inspector screen as values, read off the shared
-    analyzer's most recent scan.
-```
 
 Detail: [08-tabs/market-inspector.md](08-tabs/market-inspector.md).
 
@@ -4300,106 +3461,103 @@ rather than typed.
 
 ### The conversion table
 
-| Unit | Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS |
+| Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `src/gui/bot_live_settings.py` | bot_live_settings.js | yes | yes | yes | yes | yes | yes |
-| 2 | `src/gui/bot_swarm_list.py` | bot_swarm_list.js | yes | yes | yes | no | yes | yes |
-| 3 | `src/gui/bot_visualizer.py` | bot_visualizer.js | yes | yes | yes | yes | yes | yes |
-| 4 | `src/gui/bot_wizard.py` | bot_wizard.js | yes | yes | yes | no | yes | yes |
-| 5 | `src/gui/buy_confirmation_dialog.py` | buy_confirmation.js | yes | yes | yes | no | yes | yes |
-| 6 | `src/gui/crypto_news_ticker.py` | crypto_news_ticker.js | yes | yes | yes | no | yes | yes |
-| 7 | `src/gui/history_tab.py` | history_tab.js | yes | yes | yes | yes | yes | yes |
-| 8 | `src/gui/indicator_panel.py` | indicator_panel.js | yes | yes | yes | yes | yes | yes |
-| 9 | `src/gui/live_settings/bot_swarm_tab.py` | bot_swarm_tab.js | yes | yes | yes | yes | yes | yes |
-| 10 | `src/gui/live_settings/fold_chrome.py` | fold_chrome.js | yes | yes | yes | no | yes | yes |
-| 11 | `src/gui/live_settings/fold_tranches_tab.py` | fold_tranches_tab.js | yes | yes | yes | no | yes | yes |
-| 12 | `src/gui/live_settings/market_inspector_tab.py` | market_inspector_tab.js | yes | yes | yes | yes | yes | yes |
-| 13 | `src/gui/live_settings/phantom_bots_tab.py` | phantom_bots_tab.js | yes | yes | yes | no | yes | yes |
-| 14 | `src/gui/live_settings/positions_held_tab.py` | no | - | no | no | no | - | yes |
-| 15 | `src/gui/live_settings/settings_tab.py` | live_settings_tab.js | yes | yes | yes | no | yes | yes |
-| 16 | `src/gui/live_settings/stack_tranches_tab.py` | stack_tranches_tab.js | yes | yes | yes | no | yes | yes |
-| 17 | `src/gui/live_settings/status_tab.py` | no | - | yes | no | no | - | yes |
-| 18 | `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | no | - | yes |
-| 19 | `src/gui/main_tabs/console_tab.py` | console_tab.js | yes | yes | yes | yes | yes | yes |
-| 20 | `src/gui/main_tabs/empty_tabs.py` | paper_trader_tab.js`, `system_status_tab.js`, `proof_of_accumulation_tab.js | yes | yes | yes | yes | no | yes |
-| 21 | `src/gui/main_tabs/header_strip.py` | header_strip.js | yes | yes | yes | yes | yes | yes |
-| 22 | `src/gui/main_tabs/trading_tab.py` | trading_tab.js | yes | yes | yes | yes | yes | yes |
-| 23 | `src/gui/main_window.py` | main_window.js | yes | yes | yes | no | no | yes |
-| 24 | `src/gui/market_inspector.py` | market_inspector.js | yes | yes | yes | yes | yes | yes |
-| 25 | `src/gui/market_inspector_topologies.py` | market_inspector_topologies.js | yes | yes | yes | yes | yes | yes |
-| 26 | `src/gui/native_chart.py` | native_chart.js | yes | yes | yes | yes | yes | yes |
-| 27 | `src/gui/settings_dialog.py` | settings_dialog.js | yes | yes | yes | no | yes | yes |
-| 28 | `src/gui/start_all_progress_dialog.py` | start_all_progress.js | yes | yes | yes | no | yes | yes |
-| 29 | `src/gui/visualizer/bot_node.py` | bot_node.js | yes | yes | yes | no | yes | yes |
-| 30 | `src/gui/visualizer/quick_routing.py` | quick_routing.js | yes | yes | yes | no | yes | yes |
-| 31 | `src/gui/visualizer/themes.py` | visualizer_themes.js | - | yes | yes | no | yes | yes |
-| 32 | `src/gui/visualizer/wire_canvas.py` | wire_canvas.js | yes | yes | yes | no | yes | yes |
-| 33 | `src/gui/widgets/bot_status_table.py` | bot_status_table.js | yes | yes | yes | yes | yes | yes |
-| 34 | `src/gui/widgets/dashboard_stat_card.py` | dashboard_stat_card.js | yes | yes | yes | yes | yes | yes |
-| 35 | `src/gui/widgets/exchange_tab.py` | exchange_tab.js | yes | yes | yes | yes | yes | yes |
-| 36 | `src/gui/widgets/extractor_bot_table.py` | extractor_bot_table.js | yes | yes | yes | yes | yes | yes |
-| 37 | `src/gui/widgets/privacy_dot.py` | privacy_dot.js | yes | yes | yes | yes | yes | yes |
-| 38 | `src/gui/widgets/spendable_profits.py` | spendable_profits.js | yes | yes | yes | yes | yes | yes |
-| 39 | `src/gui/widgets/status_log.py` | status_log.js | yes | yes | yes | yes | yes | yes |
-| 40 | `src/gui/widgets/trade_charts_tab.py` | trade_charts_tab.js | yes | yes | yes | yes | yes | yes |
+| `splash_screen.py` | no | - | yes | no | no | - | no | shelved |
+| `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | no | yes | yes | shelved |
+| `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/history_qt_table.py` | no | - | no | no | no | - | no | React side |
+| `src/gui/history_tab.py` | `history_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/init_wizard.py` | `init_wizard.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/instance_consent_dialog.py` | `instance_consent_dialog.js` | yes | no | yes | no | yes | no | shelved |
+| `src/gui/journal_tab.py` | `journal_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/launcher.py` | `launcher.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/live_bot_window.py` | no | - | yes | no | no | - | no | shelved |
+| `src/gui/live_settings/bot_swarm_tab.py` | `bot_swarm_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/live_settings/fold_chrome.py` | `fold_chrome.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/live_settings/fold_tokens.py` | `fold_tokens.js` | yes | yes | yes | no | yes | no | not a screen |
+| `src/gui/live_settings/fold_tranches_tab.py` | `fold_tranches_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/live_settings/market_inspector_tab.py` | `market_inspector_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/live_settings/phantom_bots_tab.py` | `phantom_bots_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/live_settings/positions_held_tab.py` | no | - | no | no | no | - | yes | in scope |
+| `src/gui/live_settings/settings_tab.py` | `live_settings_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/live_settings/stack_tranches_tab.py` | `stack_tranches_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/live_settings/status_tab.py` | no | - | yes | no | no | - | yes | in scope |
+| `src/gui/main_tabs/audio_suite_surface.py` | no | - | yes | no | no | - | no | React side |
+| `src/gui/main_tabs/buy_confirmation_surface.py` | no | - | yes | no | no | - | no | React side |
+| `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | yes | - | yes | in scope |
+| `src/gui/main_tabs/console_tab.py` | `console_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/main_tabs/empty_tabs.py` | `paper_trader_tab.js`, `system_status_tab.js`, `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | yes | in scope |
+| `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
+| `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | - | no | React side |
+| `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | no | yes | in scope |
+| `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
+| `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
+| `src/gui/react_history_tab.py` | no | - | no | no | no | - | no | React side |
+| `src/gui/react_simulator_tab.py` | no | - | no | no | no | - | no | React side |
+| `src/gui/risk_tab.py` | `risk_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no | shelved |
+| `src/gui/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/start_all_progress_dialog.py` | `start_all_progress.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/stock_main_window.py` | no | - | yes | no | no | - | no | shelved |
+| `src/gui/testnet_tab.py` | `testnet_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/tradingview_chart.py` | `tradingview_chart.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/usb_auth_widget.py` | `usb_auth_widget.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/visualizer/bot_node.py` | `bot_node.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/visualizer/quick_routing.py` | `quick_routing.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/visualizer/themes.py` | `visualizer_themes.js` | - | yes | yes | yes | yes | yes | in scope |
+| `src/gui/visualizer/wire_canvas.py` | `wire_canvas.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/widgets/__init__.py` | no | - | yes | no | no | - | no | not a screen |
+| `src/gui/widgets/api_tester_tab.py` | `api_tester_tab.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/widgets/bot_selection.py` | `bot_selection.js` | yes | yes | yes | no | yes | no | not a screen |
+| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/capital_registry_panel.py` | no | - | no | no | no | - | no | shelved |
+| `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/notification_spool.py` | `notification_spool.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | yes | no | shelved |
+| `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+The Simulator rebuild removed the files above; they are not in the tree.
 
-Totals across the 40 units above, measured on 7 September 2026:
+Totals across the 76 rows above, measured on 5 September 2026:
 
 ```
-units                    40
-React module             37
-Uses React               36
-Bridge                   38
-Manifest                 37
-Registers in Electron    12
-Ships in the build       35
-RENDERS                  40
+React module             55
+Uses React               53
+Bridge                   67
+Manifest                 55
+Registers in Electron    15
+Ships in the build       55
+RENDERS                  30
+RENDERS, in scope        30 of 43
+out of scope             33
 ```
 
-Re-measured on 7 September 2026 off the 40 rows above, after the nine widgets
-the Trading tab and the header strip build were confirmed in the Electron
-shell:
-
-```
-units                    40
-React module             37
-Uses React               36
-Bridge                   38
-Manifest                 37
-Registers in Electron    21
-Ships in the build       35
-RENDERS                  40
-```
-
-A widget a parent panel draws needs no shell panel of its own. Its content
-reaches the shell through that parent: `trading_tab.js` mounts
-`indicator_panel.js`, `status_log.js` and `exchange_tab.js`; `exchange_tab.js`
-mounts `bot_status_table.js` and `extractor_bot_table.js`;
-`trade_charts_tab.js` mounts `native_chart.js`; and `header_strip.js` mounts
-`spendable_profits.js` and `dashboard_stat_card.js`, which draw
-`privacy_dot.js` for their own dots.
-
-Re-measured on 6 September 2026 off the 40 rows above, after unit 12 was
-confirmed:
-
-```
-units                    40
-React module             37
-Uses React               36
-Bridge                   38
-Manifest                 37
-Registers in Electron    11
-Ships in the build       35
-RENDERS                  40
-```
-
-The table lists only screens the live application builds. Thirty-six rows were
-removed on 6 September 2026: the Simulator and Proof of Accumulation screens,
-Audio Suite, Alerts, Analytics, the TestNet and Competition screens, the shelved
-windows and dialogs, the files that hold no widget, and the React hosts this
-conversion itself created.
-
-Registers in Electron is the column that is the item, and it stands at 10 of 40.
+Four columns are all but complete. RENDERS, the column that is the item, is not.
 
 Re-measured on 6 September 2026, counted off the 76 rows above:
 
@@ -4571,40 +3729,6 @@ now holds the row under the name `ALERTS`, so the React build makes
 draws the whole screen in one web view from `src/gui/web/alerts_tab.js`, and
 `AlertsTab.refresh`, `AlertsTab._save_config`, `AlertsTab._test_telegram` and
 `AlertsTab._acknowledge_all` are the same methods on both sides.
-
-Counted again on 6 September 2026, after every row marked as registering a
-panel was run in the shell and read:
-
-```
-React module             60
-Uses React               58
-Bridge                   70
-Manifest                 60
-Registers in Electron    11
-Ships in the build       58
-RENDERS                  46
-RENDERS, in scope        45 of 45
-out of scope             31
-```
-
-Only one column moved, and it moved because the shell was asked rather than the
-table. `desktop/renderer/panel_host.js` names a panel by the file that calls
-`register` from its own script tag, and the running shell answers with thirteen
-registered panels out of the seventy-four names the manifest carries. Six rows
-read `yes` for a module that registers nothing: `bot_swarm_list.py`,
-`console_log_handler.py`, `bot_node.py`, `quick_routing.py`, `themes.py` and
-`wire_canvas.py`. Five of the six draw inside a panel that does register —
-`bot_swarm_tab.js` calls `acervatorLoadBotSwarmList`, and `bot_visualizer.js`
-reads the bot node, wire canvas, quick routing and visualiser theme objects off
-the window. The sixth, `console_log.js`, is read by nothing: `console_tab.js`
-draws the log pane from its own `console.tab` model.
-
-One row moved the other way. `market_inspector.js` calls `register`, and
-`market_inspector` is one of the thirteen the shell reports, so that row reads
-`yes`.
-
-The runs behind these numbers, one report per row, are in
-[the shell row debug reports](../audits/2026-09-06_shell_sixteen_debug/README.md).
 
 ### The window's own tab bar
 

@@ -320,6 +320,7 @@ it".
   a reading of exactly 0.0, one that no addition reaches the measurement.
 - `tests/test_indicator_numeric_identity.py` — untouched, 40 pass. No
   indicator was changed, so no digest moved.
+That test file was deleted; it is not in the tree.
 
 ## 10. Verification run
 

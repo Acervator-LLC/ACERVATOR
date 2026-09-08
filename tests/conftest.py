@@ -50,8 +50,6 @@ from tests.fixtures.qt_platform import choose_qt_platform
 # The first QApplication fixes the platform for the whole process.
 choose_qt_platform()
 
-from src.trading.sim_run_log import SIM_LOG_ROOT_ENV  # noqa: E402
-
 # Set at import: `main._get_crash_log_path` caches its directory on the first call.
 _CRASH_LOG_TMP = Path(tempfile.mkdtemp(prefix="acervator-test-crash-"))
 os.environ.setdefault("ACERVATOR_CRASH_LOG_ROOT", str(_CRASH_LOG_TMP))
@@ -353,24 +351,8 @@ def _silent_capture_guard(request: pytest.FixtureRequest) -> Iterator[None]:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _redirect_sim_log_root():
-    """Point the sim run log at a throwaway directory for the whole
-    session, before any test constructs a SimRunLog."""
-    tmp = tempfile.mkdtemp(prefix="acervator-test-sim-")
-    prior = os.environ.get(SIM_LOG_ROOT_ENV)
-    os.environ[SIM_LOG_ROOT_ENV] = tmp
-    try:
-        yield Path(tmp)
-    finally:
-        if prior is None:
-            os.environ.pop(SIM_LOG_ROOT_ENV, None)
-        else:
-            os.environ[SIM_LOG_ROOT_ENV] = prior
-
-
-@pytest.fixture(scope="session", autouse=True)
 def _redirect_writable_roots():
-    """Redirect every live-tree writer ``_redirect_sim_log_root`` does not cover.
+    """Redirect every live-tree writer to a throwaway root.
 
     Sets ``TELEMETRY_ROOT_ENV``, ``SETTINGS_ROOT_ENV``, ``RESERVATION_ROOT_ENV``
     and the crash-log root at one throwaway directory for the whole session, and
@@ -501,7 +483,7 @@ def _excused_by_the_live_app(path: str, roots: tuple[Path, ...]) -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _assert_no_live_tree_writes(_redirect_sim_log_root):
+def _assert_no_live_tree_writes(_redirect_writable_roots):
     """Fail if the suite mutated the operator's runtime tree.
 
     ``_snapshot`` brackets the session and ``_classify`` splits the diff into
@@ -570,7 +552,7 @@ def _assert_no_live_tree_writes(_redirect_sim_log_root):
         + "\n\nTests must never write to ~/.acervator, ~/.acervator_logs or "
         "~/.acervator_ra_tablets. "
         "Redirect the writer at its root-resolution point (see "
-        "SIM_LOG_ROOT_ENV / ACERVATOR_TELEMETRY_ROOT for the pattern)."
+        "ACERVATOR_TELEMETRY_ROOT for the pattern)."
     )
 
 

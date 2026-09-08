@@ -30,22 +30,6 @@ class HistoryTabMixin:
             self._main_tabs.addTab(self._history_tab, HISTORY_TAB)
             # MainWindow and ApiTesterTab read _trade_history_tab under this name.
             self._trade_history_tab = self._history_tab
-
-            try:
-                sim_tab = getattr(self, "_simulator", None)
-                fleet_panel = getattr(sim_tab, "fleet_replay", None)
-                if (
-                    fleet_panel is not None
-                    and hasattr(self._history_tab, "history_refreshed")
-                    and self._history_tab.history_refreshed is not None
-                    and hasattr(fleet_panel, "on_history_refreshed")
-                ):
-                    self._history_tab.history_refreshed.connect(
-                        fleet_panel.on_history_refreshed
-                    )
-                    logger.info("H4 bridge wired: History → Simulator " "front-load")
-            except Exception as _br_exc:  # noqa: BLE001
-                logger.debug("H4 bridge wire failed: %s", _br_exc)
         except Exception as exc:
             logger.warning("History tab unavailable: %s", exc)
             self._history_tab = None

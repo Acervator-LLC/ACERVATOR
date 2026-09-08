@@ -158,6 +158,7 @@ def _score_outcome(...): ...
   ledger and the local chain. Its two screens are shelved by the operator's own
   direction. See
   [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md).
+The Simulator rebuild removed the files above; they are not in the tree.
 
 ### The development harness
 

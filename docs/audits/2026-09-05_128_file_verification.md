@@ -216,6 +216,7 @@ screen.
 | `src/gui/widgets/status_log.py` | `status_log.js` | createElement | yes | yes | no - Qt draws it |
 | `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | createElement | yes | yes | no - Qt draws it |
 | **totals of 71** | **65** | **63** | **70** | **65** | **1** |
+The Simulator rebuild removed the files above; they are not in the tree.
 
 ### The column 5 count
 

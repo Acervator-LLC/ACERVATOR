@@ -134,6 +134,7 @@ src/core/log_paths.py                       the commit that added it
 The live file behind the second row is `src/gui/simulator_tab/simulator_tab.py`.
 Version one's R-numbers were never live and must not be cited as though they
 were.
+The Simulator rebuild removed this file; it is not in the tree.
 
 What did ship was a set of references to it, and one test module holds the line
 against their return. Two front-door documents and the build config may not name

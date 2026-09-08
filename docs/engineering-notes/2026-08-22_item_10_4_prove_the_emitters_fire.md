@@ -49,6 +49,7 @@ Nuclear Mode is in the run for one reason. `swarm.11.001` has exactly
 one caller, `nuclear_mode_panel.py:636`, on the Nuclear start path. A
 run that stopped at Fleet Replay would have reported that pin silent
 for the wrong reason.
+The Simulator rebuild removed this file; it is not in the tree.
 
 ## The instruments, and the control on each
 
@@ -73,6 +74,7 @@ outside-the-register detector reported it as one name with no row. The
 plant was then removed and the file verified byte-identical:
 `2213f740c4c41148a1b29855357c79630bd03eff98d1268d5a6fad86091aafc8`
 before and after.
+The Simulator rebuild removed the files above; they are not in the tree.
 
 The plant also shifted every later line in that file by three. The site
 check reported all eight later pins in that file at exactly +3 lines.
@@ -252,6 +254,7 @@ but one string literal, at `nuclear_mode_panel.py:636`, inside
 `getattr(swarm, "register_sim_run", None)`. That sibling fired in this
 run. The two methods are next to each other in one class, and only one
 of them carries a caller.
+The Simulator rebuild removed this file; it is not in the tree.
 
 Coverage agrees with the walk. `register_sim_run` ran; the body of
 `register_paper_run` never did, in a run that constructed
@@ -322,6 +325,7 @@ repeats a number by hand.
 | `10-002` | `ytd.10.002.postcondition.fleet_symbol_coverage` | `src/gui/main_tabs/fleet_replay_panel_surface.py:397`, `src/gui/simulator_tab/fleet/fleet_replay_panel.py:934` | `FleetReplayPanel._on_fetch_ytd_clicked._do_fetch` | 1 | 1 | False=1 |
 | `10-003` | `ytd.10.003.gauge.per_symbol_counts` | `src/gui/main_tabs/fleet_replay_panel_surface.py:398`, `src/gui/simulator_tab/fleet/fleet_replay_panel.py:941` | `FleetReplayPanel._on_fetch_ytd_clicked._do_fetch` | 1 | 0 | None=1 |
 | `11-001` | `swarm.11.001.postcondition.sim_run_registered` | `src/gui/bot_visualizer.py:1039`, `src/gui/main_tabs/bot_visualizer_surface.py:502` | `BotVisualizationTab.register_sim_run` | 1 | 1 | True=1 |
+The Simulator rebuild removed the files above; they are not in the tree.
 
 ### C. Fired, OUT of spec
 
