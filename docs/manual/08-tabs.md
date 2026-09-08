@@ -545,6 +545,26 @@ Simulator Log and Gate Status close the tab. Gate Status draws the same
 nineteen lights the History table draws, and `No fleet loaded.` stands in its
 place until a fleet loads.
 
+### What is on the tab now
+
+The rebuild's first tab is on the bar. It is a clone of the Trading tab reading
+Stone Tablets: the bot list with the live table's own ten columns, the Indicator
+Voting Panel, and a second layer holding the VWAP window over the tablet
+playback window, with one button between them. The crypto news ticker and the
+data pool line are not copied, and the rows they held stay empty for Import Live
+Fleet and Generate From YTD.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the candle window
+
+```python
+#: The candle window live reads. ``ScrummingBot`` asks ``get_ohlcv`` for 100,
+#: and the Simulator reads the same count off the tablet.
+WINDOW_CANDLES = 100
+```
+
+The Simulator receives and asks; it never sends. Its one data path reads tablet
+files, holds no venue, and refuses by name anything that is not a read.
+
 Detail: [08-tabs/simulator.md](08-tabs/simulator.md).
 
 ## Paper Trader Tab (To Be Built)
@@ -3488,9 +3508,11 @@ rather than typed.
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/react_history_tab.py` | no | - | no | no | no | - | no | React side |
+| `src/gui/react_simulator_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/risk_tab.py` | `risk_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no | shelved |
+| `src/gui/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes | in scope |

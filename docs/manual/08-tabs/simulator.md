@@ -4,6 +4,132 @@ Reference. The second step of [the promotion pipeline](promotion-pipeline.md):
 the live fleet, replayed against stored history. The screen is under rebuild as
 issue #117.
 
+## The clone the tab draws now
+
+The Sim tab is a clone of the Trading tab, and its data source is the Stone
+Tablets on disk. It carries the bot list, the Indicator Voting Panel, and a
+second layer holding the VWAP window over the tablet playback window. One
+button flips the panel area between those two layers.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the two layers and the button
+
+```python
+LAYER_INDICATORS = "indicators"
+LAYER_PLAYBACK = "playback"
+LAYERS = (LAYER_INDICATORS, LAYER_PLAYBACK)
+
+FLIP_BUTTON_TEXT = {
+    LAYER_INDICATORS: "Show Playback",
+    LAYER_PLAYBACK: "Show Indicators",
+}
+```
+
+One model is built from the tablet, and both builds draw it.
+
+```mermaid
+flowchart LR
+    files[RA-StoneTablet files] --> source[TabletSource]
+    source --> model[simulator_tab_surface]
+    model --> qt[SimulatorTabQt]
+    model --> react[simulator_tab.js]
+```
+
+### It receives and asks. It never sends.
+
+The Simulator's whole data path is one class that reads tablet files. It holds
+no venue and defines no write. It answers five names and refuses every other
+name itself, so a send cannot be expressed through it.
+
+`src/simulator/tablet_source.py` — the refusal
+
+```python
+    def __getattr__(self, name: str):
+        """Refuse every name outside ``READ_NAMES``."""
+        raise SendRefused(
+            f"TabletSource answers {READ_NAMES} and cannot {name!r}. "
+            "The Simulator receives and asks; it sends nothing."
+        )
+```
+
+Asked for nine venue calls — an order, a market buy, a cancellation, an edit, a
+withdrawal, a leverage change, a transfer, a tablet write and a save — it
+refused all nine and answered every read.
+
+### The columns are the Trading tab's own
+
+The bot list draws the ten columns the live table draws, and the same two fixed
+widths, because the surface imports them rather than restating them. A column
+added to the live table appears here with no second edit.
+
+```python
+from .bot_status_table_surface import COLUMN_LABELS, FIXED_WIDTHS
+```
+
+No simulated fleet exists yet, so the list holds no rows and says why. Import
+Live Fleet and Generate From YTD are what fill it, and both are later units.
+
+### One candle window, on both sides
+
+The live engine asks the venue for one hundred candles. The Simulator reads the
+last hundred rows off the tablet, so the indicator window is one number on both
+sides rather than two.
+
+```python
+#: The candle window live reads. ``ScrummingBot`` asks ``get_ohlcv`` for 100,
+#: and the Simulator reads the same count off the tablet.
+WINDOW_CANDLES = 100
+```
+
+### The VWAP window
+
+VWAP is the published cumulative figure: typical price times volume, running,
+divided by running volume, where typical price is the average of the high, the
+low and the close. A point with no volume behind it yet carries nothing rather
+than a number.
+
+```python
+def vwap_series(candles: Sequence[Sequence[float]]) -> list[Optional[float]]:
+    """Cumulative ``sum(typical_price * volume) / sum(volume)`` per row.
+
+    A row whose cumulative volume is still zero carries None.
+    """
+```
+
+### The two strips that are not copied
+
+The crypto news ticker and the data pool line are not on this tab, and their
+code is not carried into it. A live news feed and a live cache-health line
+describe nothing a tablet reader does. The rows they held keep their height and
+hold nothing, and that space is where Import Live Fleet and Generate From YTD
+go.
+
+```python
+#: The rows the two strips held on the Trading tab, and the height each keeps.
+RESERVED_ROWS: tuple[dict[str, Any], ...] = (
+    {"name": "news_ticker_row", "height_px": 24},
+    {"name": "data_pool_row", "height_px": 18},
+)
+```
+
+### With no tablet on disk
+
+The tab draws an empty state and names what is missing. The panel reads
+`No TA data — No Stone Tablet on disk.`, the selector holds nothing, and both
+windows hold zero points. Nothing is invented in place of the missing tape.
+
+### What one run measured
+
+Both builds were opened and read off the drawn window and the drawn page. The
+figures below come from that run.
+
+```
+tablet          XRP_1d_2026_coinbase, 250 candles, 2026-01-01 to 2026-09-07
+window          100 candles
+tablets listed  411
+votes           5 bullish, 2 bearish, 5 neutral
+Qt to React     32 of 32 values matched, with a tablet and again with none
+```
+
 ## What the tab holds today
 
 The Simulator is removed. The tab is named Sim, it opens first on the bar, and

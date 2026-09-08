@@ -1,7 +1,8 @@
-// The Sim tab's empty state, as the Python surface serves it.
+// The Sim tab: the Trading tab's panes, drawn from the Python surface.
 //
-// Every word on screen comes from the payload. The module carries the
-// bridge method name and nothing else a reader would see.
+// Every value on screen comes from the payload simulator_tab_surface builds.
+// The two chart windows scale the surface's unit-square points, so this side
+// and the Qt side place the same points.
 (function (global) {
   "use strict";
 
@@ -9,42 +10,81 @@
 
   var ACCESSIBLE_NAME = "accessible_name";
   var BUILT = "built";
+  var FLEET = "fleet";
   var HEADING = "heading";
+  var INDICATORS = "indicators";
   var ISSUE = "issue";
-  var ISSUE_TEXT = "issue_text";
+  var LAYER = "layer";
+  var LAYERS = "layers";
   var METHOD_FIELD = "method";
-  var STATE_TEXT = "state_text";
+  var PANES = "panes";
+  var PLAYBACK = "playback";
+  var PRIVACY_BUTTON = "privacy_button";
+  var REPLAY_LOG = "replay_log";
+  var RESERVED_ROWS = "reserved_rows";
+  var SKIN = "skin";
+  var TABLET = "tablet";
+  var TABLETS = "tablets";
+  var VWAP = "vwap";
 
   var DECLARED_FIELDS = [
     ACCESSIBLE_NAME,
     BUILT,
+    FLEET,
     HEADING,
+    INDICATORS,
     ISSUE,
-    ISSUE_TEXT,
+    LAYER,
+    LAYERS,
     METHOD_FIELD,
-    STATE_TEXT
+    PANES,
+    PLAYBACK,
+    PRIVACY_BUTTON,
+    REPLAY_LOG,
+    RESERVED_ROWS,
+    SKIN,
+    TABLET,
+    TABLETS,
+    VWAP
   ];
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
   var NOT_AN_OBJECT_FAULT = "not-an-object";
-  // Raised when the payload claims a built tab this module cannot draw.
-  var CLAIMS_BUILT_FAULT = "claims-built";
 
   var NO_BRIDGE = "the preload bridge is not present";
 
-  var TAB_CLASS = "acervator-empty-tab";
-  var HEADING_CLASS = "acervator-empty-tab-heading";
-  var STATE_CLASS = "acervator-empty-tab-state";
-  var ISSUE_CLASS = "acervator-empty-tab-issue";
+  var FLIP_ACTION = "flip_layer";
+  var TABLET_ACTION = "choose_tablet";
+  var PRIVACY_ACTION = "toggle_privacy";
+  var ACTION_PREFIX = "acervator-act:";
 
-  var PART_ATTR = "data-part";
-  var BUILT_ATTR = "data-built";
-  var ISSUE_ATTR = "data-issue";
+  // The names the Qt widget gives the same parts, so one reader addresses both.
+  var NAMES = {
+    tab: "Sim",
+    privacyButton: "sim-privacy-button",
+    newsRow: "sim-news-ticker-row",
+    poolRow: "sim-data-pool-row",
+    fleetLabel: "sim-fleet-label",
+    fleetTable: "sim-fleet-table",
+    fleetEmpty: "sim-fleet-empty",
+    tabletLabel: "sim-tablet-label",
+    tabletSelector: "sim-tablet-selector",
+    flipButton: "sim-flip-button",
+    indicatorPane: "sim-indicator-pane",
+    indicatorTitle: "sim-indicator-title",
+    indicatorSummary: "sim-indicator-summary",
+    indicatorTables: ["sim-indicator-table-a", "sim-indicator-table-b"],
+    vwapView: "sim-vwap-view",
+    playbackView: "sim-playback-view",
+    replayTitle: "sim-replay-title",
+    replayLog: "sim-replay-log"
+  };
 
-  var HEADING_PART = "heading";
-  var STATE_PART = "state";
-  var ISSUE_PART = "issue";
+  var VIEW_BOX = "0 0 1000 1000";
+  var LINE_WIDTH = 6;
+  var WICK_WIDTH = 3;
+  var UNIT = 1000;
 
   var held = null;
   var tabFaults = [];
@@ -68,7 +108,6 @@
     return { field: field, fault: kind, detail: detail };
   }
 
-  // Returns undefined for an absent value so no attribute is written.
   function text(value) {
     return value === null || value === undefined ? undefined : String(value);
   }
@@ -77,29 +116,380 @@
     return global.React.createElement.apply(null, arguments);
   }
 
-  function part(className, name) {
-    var props = { className: className };
-    props[PART_ATTR] = name;
+  function skinStyle(skin) {
+    var style = {};
+    Object.keys(skin || {}).forEach(function (name) {
+      style[name] = skin[name];
+    });
+    return style;
+  }
+
+  function postAction(action, value) {
+    global.console.log(
+      ACTION_PREFIX + JSON.stringify({ key: action, value: value })
+    );
+  }
+
+  function pressable(action, value) {
+    var props = {
+      "data-action": action,
+      onClick: function () {
+        postAction(action, value);
+      }
+    };
+    if (value !== undefined) {
+      props["data-value"] = value;
+    }
     return props;
   }
 
-  function EmptyTab(props) {
+  function PrivacyRow(props) {
+    return element(
+      "div",
+      { className: "sim-strip-row" },
+      element(
+        "button",
+        Object.assign(
+          {
+            "aria-label": NAMES.privacyButton,
+            "data-part": NAMES.privacyButton,
+            "data-masked": String(props.button.masked),
+            key: "privacy"
+          },
+          pressable(PRIVACY_ACTION)
+        ),
+        text(props.button.text)
+      )
+    );
+  }
+
+  // The crypto news ticker and the data pool line are not copied; their rows
+  // keep their height and hold nothing.
+  function ReservedRows(props) {
+    var names = [NAMES.newsRow, NAMES.poolRow];
+    return props.rows.map(function (row, index) {
+      return element("div", {
+        key: names[index],
+        "aria-label": names[index],
+        "data-part": names[index],
+        "data-row-name": text(row.name),
+        style: { height: String(row.height_px) + "px" }
+      });
+    });
+  }
+
+  function FleetTable(props) {
+    var fleet = props.fleet;
+    var head = element(
+      "tr",
+      null,
+      fleet.columns.map(function (label, index) {
+        var width = fleet.fixed_widths[String(index)];
+        return element(
+          "th",
+          {
+            key: "col" + index,
+            "data-column": String(index),
+            "data-fixed-width": width === undefined ? undefined : String(width)
+          },
+          text(label)
+        );
+      })
+    );
+    var body = (fleet.rows || []).map(function (row, index) {
+      return element(
+        "tr",
+        { key: "row" + index },
+        (row.cells || []).map(function (cell, cellIndex) {
+          return element("td", { key: "cell" + cellIndex }, text(cell));
+        })
+      );
+    });
+    return element(
+      "div",
+      null,
+      element(
+        "div",
+        { "aria-label": NAMES.fleetLabel, "data-part": NAMES.fleetLabel },
+        text(fleet.label)
+      ),
+      element(
+        "table",
+        {
+          "aria-label": NAMES.fleetTable,
+          "data-part": NAMES.fleetTable,
+          "data-column-count": String(fleet.column_count),
+          "data-row-count": String(fleet.row_count)
+        },
+        element("thead", null, head),
+        element("tbody", null, body)
+      ),
+      fleet.row_count === 0
+        ? element(
+            "div",
+            { "aria-label": NAMES.fleetEmpty, "data-part": NAMES.fleetEmpty },
+            text(fleet.empty_text)
+          )
+        : null
+    );
+  }
+
+  function TabletSelector(props) {
+    return element(
+      "select",
+      {
+        "aria-label": NAMES.tabletSelector,
+        "data-part": NAMES.tabletSelector,
+        "data-chosen": props.chosen === null ? undefined : text(props.chosen.key),
+        value: props.chosen === null ? "" : String(props.chosen.key),
+        onChange: function (event) {
+          postAction(TABLET_ACTION, event.target.value);
+        }
+      },
+      props.tablets.map(function (row) {
+        return element(
+          "option",
+          { key: row.key, value: row.key },
+          text(row.asset + " " + row.year + " " + row.exchange_id)
+        );
+      })
+    );
+  }
+
+  function IndicatorTable(props) {
+    var spec = props.spec;
+    return element(
+      "table",
+      {
+        "aria-label": props.name,
+        "data-part": props.name,
+        "data-column-count": String(spec.titles.length),
+        "data-row-count": String(spec.rows.length)
+      },
+      element(
+        "thead",
+        null,
+        element(
+          "tr",
+          null,
+          spec.titles.map(function (title, index) {
+            return element("th", { key: "t" + index }, text(title));
+          })
+        )
+      ),
+      element(
+        "tbody",
+        null,
+        spec.rows.map(function (row, rowIndex) {
+          return element(
+            "tr",
+            { key: "r" + rowIndex },
+            row.cells.map(function (cell, cellIndex) {
+              return element(
+                "td",
+                {
+                  key: "c" + cellIndex,
+                  title: text(cell.tooltip),
+                  style: { color: cell.text_color }
+                },
+                text(cell.text)
+              );
+            })
+          );
+        })
+      )
+    );
+  }
+
+  function IndicatorPane(props) {
+    var panel = props.panel;
+    return element(
+      "div",
+      { "aria-label": NAMES.indicatorPane, "data-part": NAMES.indicatorPane },
+      element(
+        "div",
+        { "aria-label": NAMES.indicatorTitle, "data-part": NAMES.indicatorTitle },
+        text(panel.title_text)
+      ),
+      element(
+        "div",
+        {
+          "aria-label": NAMES.indicatorSummary,
+          "data-part": NAMES.indicatorSummary
+        },
+        text(panel.summary_text)
+      ),
+      panel.tables.map(function (spec, index) {
+        return element(IndicatorTable, {
+          key: NAMES.indicatorTables[index],
+          name: NAMES.indicatorTables[index],
+          spec: spec
+        });
+      })
+    );
+  }
+
+  function pathOf(points) {
+    var parts = [];
+    var pen = "M";
+    points.forEach(function (point) {
+      if (point === null) {
+        pen = "M";
+        return;
+      }
+      parts.push(pen + (point[0] * UNIT).toFixed(3) + " " + (point[1] * UNIT).toFixed(3));
+      pen = "L";
+    });
+    return parts.join(" ");
+  }
+
+  function VwapView(props) {
+    var window_ = props.vwap;
+    return element(
+      "svg",
+      {
+        "aria-label": NAMES.vwapView,
+        "data-part": NAMES.vwapView,
+        "data-point-count": String(window_.point_count),
+        viewBox: VIEW_BOX,
+        preserveAspectRatio: "none"
+      },
+      element("path", {
+        "data-line": "close",
+        d: pathOf(window_.close_points),
+        fill: "none",
+        stroke: "var(--sim-close-line)",
+        strokeWidth: LINE_WIDTH
+      }),
+      element("path", {
+        "data-line": "vwap",
+        d: pathOf(window_.vwap_points),
+        fill: "none",
+        stroke: "var(--sim-vwap-line)",
+        strokeWidth: LINE_WIDTH
+      })
+    );
+  }
+
+  function PlaybackView(props) {
+    var window_ = props.playback;
+    var shapes = window_.candles;
+    var bodyWidth = shapes.length > 0 ? (UNIT / shapes.length) * 0.7 : 1;
+    return element(
+      "svg",
+      {
+        "aria-label": NAMES.playbackView,
+        "data-part": NAMES.playbackView,
+        "data-candle-count": String(window_.candle_count),
+        viewBox: VIEW_BOX,
+        preserveAspectRatio: "none"
+      },
+      shapes.map(function (shape, index) {
+        var colour = shape.up ? "var(--sim-candle-up)" : "var(--sim-candle-down)";
+        var x = shape.x * UNIT;
+        var top = shape.body_top * UNIT;
+        var bottom = shape.body_bottom * UNIT;
+        return element(
+          "g",
+          { key: "candle" + index, "data-up": String(shape.up) },
+          element("line", {
+            x1: x,
+            x2: x,
+            y1: shape.wick_top * UNIT,
+            y2: shape.wick_bottom * UNIT,
+            stroke: colour,
+            strokeWidth: WICK_WIDTH
+          }),
+          element("rect", {
+            x: x - bodyWidth / 2,
+            y: top,
+            width: bodyWidth,
+            height: Math.max(bottom - top, 1),
+            fill: colour
+          })
+        );
+      })
+    );
+  }
+
+  function ReplayLog(props) {
+    return element(
+      "div",
+      null,
+      element(
+        "div",
+        { "aria-label": NAMES.replayTitle, "data-part": NAMES.replayTitle },
+        text(props.log.title)
+      ),
+      element(
+        "pre",
+        { "aria-label": NAMES.replayLog, "data-part": NAMES.replayLog },
+        props.log.lines.join("\n")
+      )
+    );
+  }
+
+  function SimulatorTab(props) {
     if (!isPlainObject(props.model)) {
       return null;
     }
     var model = props.model;
-    var tabProps = {
-      className: TAB_CLASS,
-      "aria-label": text(model[ACCESSIBLE_NAME])
-    };
-    tabProps[BUILT_ATTR] = text(model[BUILT]);
-    tabProps[ISSUE_ATTR] = text(model[ISSUE]);
+    var panes = model[PANES];
+    var showing = model[LAYER];
     return element(
       "section",
-      tabProps,
-      element("h1", part(HEADING_CLASS, HEADING_PART), text(model[HEADING])),
-      element("p", part(STATE_CLASS, STATE_PART), text(model[STATE_TEXT])),
-      element("p", part(ISSUE_CLASS, ISSUE_PART), text(model[ISSUE_TEXT]))
+      {
+        className: "acervator-simulator-tab",
+        "aria-label": text(model[ACCESSIBLE_NAME]),
+        "data-built": text(model[BUILT]),
+        "data-issue": text(model[ISSUE]),
+        "data-layer": text(showing),
+        style: skinStyle(model[SKIN])
+      },
+      element(
+        "div",
+        { className: "sim-fleet-pane" },
+        element(PrivacyRow, { button: model[PRIVACY_BUTTON] }),
+        element(ReservedRows, { rows: model[RESERVED_ROWS] }),
+        element(FleetTable, { fleet: model[FLEET] })
+      ),
+      element(
+        "div",
+        { className: "sim-layer-pane" },
+        element(
+          "div",
+          { className: "sim-layer-controls" },
+          element(
+            "span",
+            { "aria-label": NAMES.tabletLabel, "data-part": NAMES.tabletLabel },
+            text(panes.tablet_label_text)
+          ),
+          element(TabletSelector, {
+            tablets: model[TABLETS],
+            chosen: model[TABLET] === undefined ? null : model[TABLET]
+          }),
+          element(
+            "button",
+            Object.assign(
+              {
+                "aria-label": NAMES.flipButton,
+                "data-part": NAMES.flipButton
+              },
+              pressable(FLIP_ACTION)
+            ),
+            text(panes.flip_button_text)
+          )
+        ),
+        showing === "indicators"
+          ? element(IndicatorPane, { panel: model[INDICATORS] })
+          : element(
+              "div",
+              { className: "sim-chart-layer" },
+              element(VwapView, { vwap: model[VWAP] }),
+              element(PlaybackView, { playback: model[PLAYBACK] })
+            )
+      ),
+      element(ReplayLog, { log: model[REPLAY_LOG] })
     );
   }
 
@@ -109,13 +499,10 @@
         tabFaults.push(fault(field, MISSING_FAULT, null));
         return;
       }
-      if (model[field] === null) {
+      if (model[field] === null && field !== TABLET) {
         tabFaults.push(fault(field, NULL_FAULT, null));
       }
     });
-    if (model[BUILT] === true) {
-      tabFaults.push(fault(BUILT, CLAIMS_BUILT_FAULT, kindOf(model[BUILT])));
-    }
   }
 
   function heldFieldCount(model) {
@@ -187,7 +574,7 @@
     var payload = isPlainObject(model) ? model : held;
     var root = rootFor(target);
     global.ReactDOM.flushSync(function () {
-      root.render(element(EmptyTab, { model: payload }));
+      root.render(element(SimulatorTab, { model: payload }));
     });
     return target;
   }
@@ -199,8 +586,6 @@
     asked = null;
   }
 
-  // The shell draws this tab by its module name; the host reads that name
-  // off the script tag running now, so it is written down nowhere.
   if (global.acervatorPanelHost) {
     global.acervatorPanelHost.register({
       method: METHOD,
@@ -216,7 +601,8 @@
   global.acervatorLoadSimulatorTab = loadSimulatorTab;
   global.acervatorSimulatorTab = {
     method: METHOD,
-    EmptyTab: EmptyTab,
+    SimulatorTab: SimulatorTab,
+    names: NAMES,
     declaredFields: function () {
       return DECLARED_FIELDS.slice();
     },

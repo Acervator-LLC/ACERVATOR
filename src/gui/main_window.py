@@ -68,6 +68,7 @@ try:
     from .main_tabs.history_tab import HistoryTabMixin
     from .main_tabs.market_inspector_tab import MarketInspectorTabMixin
     from .main_tabs.retired_tabs import RetiredTabsMixin
+    from .main_tabs.simulator_tab import SimulatorTabMixin
     from .main_tabs.trading_tab import TradingTabMixin
     from .widgets.api_tester_tab import APITesterTab
     from .widgets.bot_selection import _reanchor_bot_selection, _select_row_for_bot
@@ -158,6 +159,7 @@ if _HAS_QT:
         HistoryTabMixin,
         MarketInspectorTabMixin,
         RetiredTabsMixin,
+        SimulatorTabMixin,
         TradingTabMixin,
         QMainWindow,
     ):
