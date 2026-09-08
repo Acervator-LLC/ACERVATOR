@@ -1,10 +1,11 @@
-"""Asset Charts tab of the main window."""
+"""Charts tab of the main window."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from ..widgets.trade_charts_tab import TradeChartsTab
+from .main_window_surface import CHARTS_TAB
 
 
 class ChartsTabMixin:
@@ -15,6 +16,6 @@ class ChartsTabMixin:
     _main_tabs: Any
 
     def _build_charts_tab(self) -> None:
-        """Build the Asset Charts tab and add it to the main tab widget."""
+        """Build the Charts tab and add it to the main tab widget."""
         self._charts_tab = TradeChartsTab()
-        self._main_tabs.addTab(self._charts_tab, "Asset Charts")
+        self._main_tabs.addTab(self._charts_tab, CHARTS_TAB)

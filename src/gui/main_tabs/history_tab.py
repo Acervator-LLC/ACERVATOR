@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from .main_window_surface import HISTORY_TAB
+
 logger = logging.getLogger("acervator.gui")
 
 
@@ -25,7 +27,7 @@ class HistoryTabMixin:
 
             self._history_tab = surface_class(HISTORY)()
             self._history_tab.set_bot_manager(self._bot_manager)
-            self._main_tabs.addTab(self._history_tab, "History")
+            self._main_tabs.addTab(self._history_tab, HISTORY_TAB)
             # MainWindow and ApiTesterTab read _trade_history_tab under this name.
             self._trade_history_tab = self._history_tab
 

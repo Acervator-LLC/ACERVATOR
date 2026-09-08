@@ -15,7 +15,11 @@ from typing import Optional
 from ..core.event_bus import get_event_bus
 from .. import __version__
 from . import design_system as ds
-from .main_tabs.main_window_surface import CANONICAL_TAB_ORDER, ISOLATED_TABS
+from .main_tabs.main_window_surface import (
+    CANONICAL_TAB_ORDER,
+    HISTORY_TAB,
+    ISOLATED_TABS,
+)
 from .main_tabs.trading_tab_surface import exchange_display_name
 
 
@@ -327,7 +331,7 @@ if _HAS_QT:
             if container is not None:
                 container.setVisible(tab_name not in isolated_tabs)
 
-            if tab_name == "History":
+            if tab_name == HISTORY_TAB:
                 hist = getattr(self, "_history_tab", None)
                 if hist is not None:
                     try:
@@ -3532,6 +3536,9 @@ if _HAS_QT:
                 app = QApplication.instance()
             if app:
                 tm.apply_theme(name, app)
+                book = getattr(self, "_main_tabs", None)
+                if hasattr(book, "set_theme"):
+                    book.set_theme(name)
                 self._status_log.log(f"Theme switched to {name}.", "info")
 
         def _show_about(self) -> None:

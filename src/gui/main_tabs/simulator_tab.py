@@ -1,8 +1,10 @@
-"""``SimulatorTabMixin`` builds the Simulator tab of the main window."""
+"""``SimulatorTabMixin`` builds the Sim tab of the main window."""
 
 from __future__ import annotations
 
 from typing import Any
+
+from .main_window_surface import SIM_TAB, SIMULATOR_BUILD_INDEX
 
 
 class SimulatorTabMixin:
@@ -18,8 +20,8 @@ class SimulatorTabMixin:
         from ..simulator_tab import SimulatorTab
 
         self._simulator = SimulatorTab()
-        # _reorder_main_tabs runs after every builder, so index 1 is not the final slot.
-        self._main_tabs.insertTab(1, self._simulator, "Simulator")
+        # _reorder_main_tabs runs after every builder, so this is not the final slot.
+        self._main_tabs.insertTab(SIMULATOR_BUILD_INDEX, self._simulator, SIM_TAB)
         if hasattr(self._simulator, "set_connectors_getter"):
             self._simulator.set_connectors_getter(
                 lambda: getattr(self, "_exchange_connectors", {})

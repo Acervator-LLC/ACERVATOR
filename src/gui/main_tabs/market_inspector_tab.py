@@ -1,15 +1,17 @@
-"""``MarketInspectorTabMixin``, the Market Inspector tab builder."""
+"""``MarketInspectorTabMixin``, the Inspector tab builder."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any, Callable
 
+from .main_window_surface import INSPECTOR_TAB
+
 logger = logging.getLogger("acervator.gui")
 
 
 class MarketInspectorTabMixin:
-    """Builds the Market Inspector tab and wires its proposal and adopt handlers.
+    """Builds the Inspector tab and wires its proposal and adopt handlers.
 
     ``variant_surface`` decides whether that tab is the Qt one or the React one.
     """
@@ -22,7 +24,7 @@ class MarketInspectorTabMixin:
     _settings: Any
 
     def _build_market_inspector_tab(self) -> None:
-        """Build the Market Inspector tab and add it to the main tab widget."""
+        """Build the Inspector tab and add it to the main tab widget."""
         from ..variant_surface import MARKET_INSPECTOR, surface_class
 
         self._market_inspector = surface_class(MARKET_INSPECTOR)()
@@ -38,4 +40,4 @@ class MarketInspectorTabMixin:
             lambda: self._build_topology_proposals()
         )
         self._market_inspector.set_adopt_handler(self._adopt_topology_proposal)
-        self._main_tabs.addTab(self._market_inspector, "Market Inspector")
+        self._main_tabs.addTab(self._market_inspector, INSPECTOR_TAB)

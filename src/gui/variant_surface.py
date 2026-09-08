@@ -152,9 +152,9 @@ def _react_empty_tab() -> type:
 
 def _qt_main_tab_book() -> type:
     """Import and return the Qt main tab book."""
-    from PySide6.QtWidgets import QTabWidget
+    from .main_tabs.main_tab_bar import MainTabBookQt
 
-    return QTabWidget
+    return MainTabBookQt
 
 
 def _react_main_tab_book() -> type:

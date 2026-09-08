@@ -46,6 +46,124 @@ SYSTEM_STATUS_TAB = system_status_tab_surface.HEADING
 PROOF_OF_ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 ```
 
+### The order, the names and the colours today
+
+The bar now opens on Sim and every tab carries a single word. The order below is
+what the window ends with, and it is decided in the one place named above.
+
+`src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
+
+```python
+CANONICAL_TAB_ORDER = (
+    SIM_TAB,
+    PAPER_TAB,
+    LIVE_TAB,
+    CHARTS_TAB,
+    INSPECTOR_TAB,
+    SWARM_TAB,
+    ACCUMULATION_TAB,
+    HISTORY_TAB,
+    STATUS_TAB,
+    CONSOLE_TAB,
+)
+```
+
+Eight of the ten labels are new words for screens that already existed. History
+and Console were already one word and did not change. Each constant was renamed
+to match the word it now holds.
+
+`src/gui/main_tabs/main_window_surface.py` — the labels
+
+```python
+LIVE_TAB = "Live"
+INSPECTOR_TAB = "Inspector"
+SWARM_TAB = "Swarm"
+CHARTS_TAB = "Charts"
+HISTORY_TAB = "History"
+SIM_TAB = "Sim"
+CONSOLE_TAB = "Console"
+
+PAPER_TAB = paper_trader_tab_surface.HEADING
+STATUS_TAB = system_status_tab_surface.HEADING
+ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
+```
+
+The eight renames, in the order the bar reads them:
+
+| was | is now |
+| --- | ------ |
+| Simulator | Sim |
+| Paper Trader | Paper |
+| Trading | Live |
+| Asset Charts | Charts |
+| Market Inspector | Inspector |
+| Bot Swarm | Swarm |
+| Proof of Accumulation | Accumulation |
+| System Status | Status |
+
+Sim, Paper and Live carry the promotion pipeline, and three different grounds
+separate them at a glance. The other seven tabs share the gold ground.
+
+`src/gui/main_tabs/main_window_surface.py` — `TAB_GROUNDS`
+
+```python
+TAB_GROUNDS = {
+    SIM_TAB: BLACK_GROUND,
+    PAPER_TAB: WHITE_GROUND,
+    LIVE_TAB: GOLD_GROUND,
+    CHARTS_TAB: GOLD_GROUND,
+    INSPECTOR_TAB: GOLD_GROUND,
+    SWARM_TAB: GOLD_GROUND,
+    ACCUMULATION_TAB: GOLD_GROUND,
+    HISTORY_TAB: GOLD_GROUND,
+    STATUS_TAB: GOLD_GROUND,
+    CONSOLE_TAB: GOLD_GROUND,
+}
+```
+
+No tab holds a colour of its own. A ground names two theme tokens, and every
+theme fills those tokens with its own values, so gold is the yellow that suits
+each theme rather than one hex value everywhere.
+
+`src/gui/theme_engine.py` — the six tab tokens each theme carries
+
+```
+theme             tab_gold_bg tab_gold_text tab_black_bg tab_black_text tab_white_bg tab_white_text
+cyberpunk_dark    #fcee0a     #8c0018       #0a0a0f      #ff5577        #f5f5fa      #0a0a0f
+neon_light        #f0cf1f     #99001f       #1a1a2e      #ff6b8a        #ffffff      #1a1a2e
+classic_terminal  #ffff00     #990000       #0a0a0a      #ff3333        #e8e8e8      #0a0a0a
+minimal_modern    #eab308     #7f1d1d       #1a1a1a      #ff6b6b        #ffffff      #1a1a1a
+glass_metal       #e8b34a     #6b1020       #1c1c24      #ff6688        #e8e8f0      #1c1c24
+```
+
+Every pair above clears WCAG 2.2 AA at 4.5 to 1. The narrowest margin is red on
+gold under Minimal Modern, at 5.22 to 1.
+
+The Qt bar paints those colours itself, because a Qt style sheet cannot colour
+one tab by its position. The theme's own style sheet sets the six colours on the
+bar, so switching theme repaints it.
+
+`src/gui/main_tabs/main_tab_bar.py` — `MainWindowTabBar.paintEvent`
+
+```python
+painter.fillRect(self.tabRect(index), ground)
+painter.setPen(text)
+painter.drawText(self.tabRect(index), int(Qt.AlignCenter), self.tabText(index))
+```
+
+The React bar draws the same ten buttons with the same two colours each. The
+window publishes the colours beside the labels, so the page holds no palette of
+its own.
+
+`src/gui/main_tabs/main_window_surface.py` — what the frontend reads
+
+```python
+"tab_labels": list(self.tab_labels),
+"tab_methods": dict(self.tab_methods),
+"tab_colours": {tab: dict(pair) for tab, pair in self.tab_colours.items()},
+"theme": self.theme,
+```
+
 The Trading tab has its own section, [06-trading-tab.md](06-trading-tab.md),
 and the Indicator Voting Panel has [07-indicators.md](07-indicators.md).
 
@@ -172,6 +290,9 @@ state file, builds one real bot per config, and plays Stone Tablet candles
 through them against a fake exchange. The sim uses the bot class body
 unchanged, which is the parity guarantee: it runs live's code against a fake
 exchange rather than a second implementation.
+
+The tab is now called Sim. It sits first on the bar, on a black ground
+with red text.
 
 `src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_spawn_sim_fleet`
 
@@ -407,6 +528,9 @@ Detail: [08-tabs/simulator.md](08-tabs/simulator.md).
 
 Real-time, API-fed trades against a fake budget. This is designed as the second tier of strategy validation within the platform.
 
+The tab is now called Paper. It sits second on the bar, on a white ground
+with black text, and it is the only white tab.
+
 The screen is not built. The tab row now carries a Paper Trader skeleton, which
 draws its name, one sentence saying it is not built, and the issue that owns
 it. Issue #19 carries the build-out.
@@ -445,6 +569,9 @@ Detail: [08-tabs/paper-trader.md](08-tabs/paper-trader.md).
 ## Proof of Accumulation (Anonymized Trading Tournaments Via Blockchain)
 
 This is currently proposed as a concept but will likely require the building of a supporting blockchain team for proper / full implementation. This system is designed to enable users of Acervator to compete against each anonymously via our own Proof of Accumulation blockchain. The idea is to convert trades executed into videogame metrics such as damage to a coliseum style monster or a fellow trader in a 1v1 face off. This further positions the platform as a surgical tool that can be finely tuned and customized to produce intense competition scenarios between entire groups of traders. This, of course, opens the door for actual tokenized Trading Guilds who may require their members to have a certain number of PoA tokens under their belt to join. There will be much more to follow on this as I do intend to scaffold it out for internal testing.
+
+The tab is now called Accumulation. It sits seventh on the bar, on the
+gold ground with red text.
 
 The screen is not built. The window builds neither the Competition tab nor the
 Local Testnet tab. The tab row now carries a Proof of Accumulation skeleton,
@@ -510,6 +637,9 @@ Detail: [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md).
 ## Market Inspector Tab
 
 The concept with the Market Inspector Tab is evaluate markets from a higher point of view and provide strategy proposals in three forms: Oppositional Trading Pairs (Trading Pairs w/ Opposing Trends), Bot Swarm Topologies (Bot Swarm Network Proposals), and Exchange Comparison Arbitrage.
+
+The tab is now called Inspector. It sits fifth on the bar, on the gold
+ground with red text.
 
 The tab splits in two. The left half holds the HTF Signals table and the
 Opposing Pairs table, both scored by one analyzer. One method drives the whole
@@ -1531,6 +1661,9 @@ Detail: [08-tabs/market-inspector.md](08-tabs/market-inspector.md).
 
 The Bot Swarm is a proprietary capital reinforcement network system that allows profit to be dynamically and strategically routed between positions with the primary intention of this being to accelerate accumulation curves. Smart Wires are dragged between active bots or the quick connection matrix can be used to route multiple streams to different destinations. Each wire can carry a different percentage amount of profit. Profit sent over Smart Wires are registered at the destination as Wire Credits and these are then distributed into standing Fold Tranches which allow them to have a Surplus that will be spent to increase the Target Balance up to the Maximum Growth Per Cycle. Yes, that is probably a mouth full but hopefully the settings and names are, for the most part, self-explanatory.
 
+The tab is now called Swarm. It sits sixth on the bar, on the gold ground
+with red text.
+
 Each bot draws as one locust card, and the tab switches between the list and
 the grid. Wires drag between nodes on the grid.
 
@@ -1853,6 +1986,9 @@ the bot draws the reason in that space rather than nothing.
 
 Under the Asset Charts Tab, you will find our active bot (position) chart display. This will be upgraded to display only one chart at a time and will be able to display all indicators found in the Indicator Voting Panel.
 
+The tab is now called Charts. It sits fourth on the bar, straight after
+Live, on the gold ground with red text.
+
 The tab scrolls one panel per active bot, each painted with QPainter and no
 browser, carrying trade markers, position markers, grid lines, the standing
 tranche floors and the target balance line.
@@ -1938,6 +2074,9 @@ Detail: [08-tabs/asset-charts.md](08-tabs/asset-charts.md).
 ## History Tab
 
 The History Tab is able to pull trade history from all active exchanges via their respective APIs. It also pairs each imported trade with its in-platform trading logic and applies our trade grading system.
+
+The tab keeps the name History. It sits eighth on the bar, on the gold
+ground with red text.
 
 The tab fetches from every active venue and draws the rows with React. Every
 cell value comes from one read contract; the table renders those fields and
@@ -2117,6 +2256,9 @@ the surrounding price context never arrived.
 ## Console
 
 This tab is focused on displaying Python activity and errors. The lower half, which is displaying the Emitter Network activity, will be migrated to the System Status Tab (under the Watchdog) which is to be built in the near future.
+
+The tab keeps the name Console. It sits last on the bar, on the gold
+ground with red text.
 
 The tab builds both panes into a vertical splitter. The upper one is a raw log
 tail: a handler formats each record and a relay paints it on the GUI thread,
@@ -2357,6 +2499,9 @@ tab's signal pane reads them.
 ## System Status Tab (To Be Built)
 
 This tab consists of two distinct but closely related parts. The Emitter Network is an embedded system of data activity detectors intended to allow for detailed subsystem performance monitoring. The Watchdog is the raw signal capture for the Emitter Network’s output.
+
+The tab is now called Status. It sits ninth on the bar, on the gold
+ground with red text.
 
 The screen is not built. The tab row now carries a System Status skeleton, which
 draws its name, one sentence saying it is not built, and the issue that owns it.
