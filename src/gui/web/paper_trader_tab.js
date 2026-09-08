@@ -15,6 +15,7 @@
   var HEADING = "heading";
   var INDICATORS = "indicators";
   var ISSUE = "issue";
+  var LEDGER = "ledger";
   var METHOD_FIELD = "method";
   var PANES = "panes";
   var PRIVACY_BUTTON = "privacy_button";
@@ -33,6 +34,7 @@
     HEADING,
     INDICATORS,
     ISSUE,
+    LEDGER,
     METHOD_FIELD,
     PANES,
     PRIVACY_BUTTON,
@@ -73,6 +75,9 @@
     balanceTitle: "paper-balance-title",
     balanceTable: "paper-balance-table",
     balanceEmpty: "paper-balance-empty",
+    ledgerTitle: "paper-ledger-title",
+    ledgerFigures: "paper-ledger-figures",
+    ledgerOpening: "paper-ledger-opening",
     runTitle: "paper-run-title",
     runState: "paper-run-state",
     runLines: "paper-run-lines",
@@ -344,6 +349,36 @@
     );
   }
 
+  function LedgerStrip(props) {
+    var ledger = props.ledger;
+    return element(
+      "div",
+      { className: "paper-ledger-strip" },
+      element(
+        "div",
+        { "aria-label": NAMES.ledgerTitle, "data-part": NAMES.ledgerTitle },
+        text(ledger.title)
+      ),
+      element(
+        "div",
+        {
+          "aria-label": NAMES.ledgerFigures,
+          "data-part": NAMES.ledgerFigures,
+          "data-spendable": text(ledger.figures.spendable_usd),
+          "data-locked": text(ledger.figures.locked_usd),
+          "data-realized": text(ledger.figures.realized_profit_usd),
+          "data-mature": text(ledger.figures.mature_profit_usd)
+        },
+        ledger.opened ? text(ledger.text) : text(ledger.empty_text)
+      ),
+      element(
+        "div",
+        { "aria-label": NAMES.ledgerOpening, "data-part": NAMES.ledgerOpening },
+        text(ledger.opening_text)
+      )
+    );
+  }
+
   function FeedPane(props) {
     var feed = props.feed;
     var balance = props.balance;
@@ -367,6 +402,7 @@
         { "aria-label": NAMES.feedLines, "data-part": NAMES.feedLines },
         feed.lines.join("\n")
       ),
+      element(LedgerStrip, { ledger: props.ledger }),
       element(
         "div",
         {
@@ -474,7 +510,11 @@
       element(
         "div",
         { className: "paper-bottom" },
-        element(FeedPane, { feed: model[FEED], balance: model[BALANCE] }),
+        element(FeedPane, {
+          feed: model[FEED],
+          balance: model[BALANCE],
+          ledger: model[LEDGER]
+        }),
         element(RunPane, { run: model[RUN] })
       )
     );

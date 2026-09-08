@@ -55,6 +55,9 @@ FEED_LINES_NAME = "paper-feed-lines"
 BALANCE_TITLE_NAME = "paper-balance-title"
 BALANCE_TABLE_NAME = "paper-balance-table"
 BALANCE_EMPTY_NAME = "paper-balance-empty"
+LEDGER_TITLE_NAME = "paper-ledger-title"
+LEDGER_FIGURES_NAME = "paper-ledger-figures"
+LEDGER_OPENING_NAME = "paper-ledger-opening"
 RUN_TITLE_NAME = "paper-run-title"
 RUN_STATE_NAME = "paper-run-state"
 RUN_LINES_NAME = "paper-run-lines"
@@ -65,6 +68,7 @@ RUN_MAX_BLOCKS = 2000
 
 HEADING_STYLE = f"color: {ds.PRIMARY}; font-weight: bold;"
 BODY_STYLE = f"color: {ds.TEXT_MED}; font-size: {ds.TYPE_CAPTION}px;"
+VALUE_STYLE = f"color: {ds.TEXT_HIGH}; font-size: {ds.TYPE_BODY}px;"
 EMPTY_STYLE = f"color: {ds.TEXT_EMPTY_STATE}; font-size: {ds.TYPE_BODY}px;"
 PANEL_STYLE = f"QWidget {{ background: {ds.SURFACE_0}; }}"
 
@@ -278,6 +282,24 @@ class PaperTraderTabQt(QWidget):
         self._feed_lines.setMaximumBlockCount(FEED_MAX_BLOCKS)
         column.addWidget(self._feed_lines)
 
+        self._ledger_title = QLabel(surface.LEDGER_TITLE)
+        self._ledger_title.setObjectName(LEDGER_TITLE_NAME)
+        self._ledger_title.setAccessibleName(LEDGER_TITLE_NAME)
+        self._ledger_title.setStyleSheet(HEADING_STYLE)
+        column.addWidget(self._ledger_title)
+
+        self._ledger_figures = QLabel("")
+        self._ledger_figures.setObjectName(LEDGER_FIGURES_NAME)
+        self._ledger_figures.setAccessibleName(LEDGER_FIGURES_NAME)
+        self._ledger_figures.setStyleSheet(VALUE_STYLE)
+        column.addWidget(self._ledger_figures)
+
+        self._ledger_opening = QLabel("")
+        self._ledger_opening.setObjectName(LEDGER_OPENING_NAME)
+        self._ledger_opening.setAccessibleName(LEDGER_OPENING_NAME)
+        self._ledger_opening.setStyleSheet(BODY_STYLE)
+        column.addWidget(self._ledger_opening)
+
         self._balance_title = QLabel(surface.BALANCE_TITLE)
         self._balance_title.setObjectName(BALANCE_TITLE_NAME)
         self._balance_title.setAccessibleName(BALANCE_TITLE_NAME)
@@ -410,6 +432,7 @@ class PaperTraderTabQt(QWidget):
         self._draw_fleet(model["fleet"])
         self._draw_indicators(model["indicators"])
         self._draw_feed(model["feed"])
+        self._draw_ledger(model["ledger"])
         self._draw_balance(model["balance"])
         self._draw_run(model["run"])
 
@@ -475,6 +498,13 @@ class PaperTraderTabQt(QWidget):
     def _draw_feed(self, payload: dict) -> None:
         self._feed_title.setText(payload["title"])
         self._feed_lines.setPlainText("\n".join(payload["lines"]))
+
+    def _draw_ledger(self, payload: dict) -> None:
+        self._ledger_title.setText(payload["title"])
+        self._ledger_figures.setText(
+            payload["text"] if payload["opened"] else payload["empty_text"]
+        )
+        self._ledger_opening.setText(payload["opening_text"])
 
     def _draw_balance(self, payload: dict) -> None:
         self._balance_title.setText(payload["title"])

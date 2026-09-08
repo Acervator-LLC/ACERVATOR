@@ -690,6 +690,45 @@ BUDGET_MULTIPLE = 2.0
 The two strips the Trading tab carries are not copied, and neither is their
 supporting code. Their rows carry Import Live Fleet and the Start or Stop press.
 
+The fake balance is a fleet figure. Five paper bots with a $200 target open
+Paper Spendable at $1000 and Paper Locked at $1000, each holding the full fleet
+sum. Adding or removing a bot moves both openings on the next press of Start.
+
+`src/paper/fake_balance.py` — the fleet total both openings take
+
+```python
+def fleet_target_usd(bots: Sequence[Any]) -> float:
+    """The sum of every bot's ``target_usd``, the figure both openings take."""
+```
+
+Two more figures are tracked beside them. Paper Realized Profits moves when a
+fold buy closes the tranche a scrum sell opened, and Paper Mature Profits is the
+profit on positions past 200 percent growth, which is the figure the live wing
+already reads. No paper figure is written into the stored bot record or the
+header strip.
+
+`src/paper/fake_balance.py` — the strip's four figures
+
+```python
+FIGURE_LABELS = (
+    ("spendable_usd", SPENDABLE_LABEL),
+    ("locked_usd", LOCKED_LABEL),
+    ("realized_profit_usd", REALIZED_LABEL),
+    ("mature_profit_usd", MATURE_LABEL),
+)
+```
+
+Every paper action is recorded in one file of its own. Each line carries the
+gate decision and, when one filled, the pretend trade in the shape a Coinbase
+year-to-date row takes. The file sits beside the live folders and never inside
+one.
+
+`src/paper/paper_paths.py` — where the log lives
+
+```python
+PAPER_ROOT: Path = Path.home() / ".acervator_paper"
+```
+
 Detail: [08-tabs/paper-trader.md](08-tabs/paper-trader.md).
 
 ## Proof of Accumulation (Anonymized Trading Tournaments Via Blockchain)

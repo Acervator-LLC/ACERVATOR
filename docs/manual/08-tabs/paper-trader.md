@@ -200,6 +200,120 @@ def opening_balance(target_usd: float, price: float) -> FakeBalance:
     )
 ```
 
+## The fleet ledger
+
+The fake balance is one figure for the whole fleet, not one figure per bot. Five
+paper bots with a $200 target open Paper Spendable at $1000 and Paper Locked at
+$1000. Each variable holds the full fleet sum, which is twice the fleet's dollar
+target in total.
+
+`src/paper/fake_balance.py` — the opening
+
+```python
+def opening_ledger(bots: Sequence[Any]) -> PaperLedger:
+    total = fleet_target_usd(bots)
+    return PaperLedger(
+        fleet_target_usd=total,
+        opening_spendable_usd=total,
+        opening_locked_usd=total,
+    )
+```
+
+The fleet changes when a bot is added or removed. Every press of Start Paper Run
+rebuilds the ledger from the fleet it is handed, so both opening figures move on
+the next press and never inside a run. Six $200 bots open $1200 in each figure
+and four open $800.
+
+Four figures are tracked. Paper Spendable is the cash the fleet holds. Paper
+Locked is what its units are worth at the last price the feed answered. Paper
+Realized Profits moves when a fold buy closes the tranche a scrum sell opened.
+Paper Mature Profits is the profit on positions past 200 percent growth, the
+figure the live wing already reads.
+
+`src/trading/smart_wire.py` — the maturity rule both wings call
+
+```python
+MATURE_GROWTH_PCT: float = 200.0
+"""A position is mature once its value exceeds its cost basis by this percent."""
+```
+
+The four figures are held apart from the live ones. They live in memory on the
+run, they are never written into the stored bot record, and no paper figure
+reaches the header strip's real-money columns.
+
+`src/paper/fake_balance.py` — the four labels the strip prints
+
+```python
+FIGURE_LABELS = (
+    ("spendable_usd", SPENDABLE_LABEL),
+    ("locked_usd", LOCKED_LABEL),
+    ("realized_profit_usd", REALIZED_LABEL),
+    ("mature_profit_usd", MATURE_LABEL),
+)
+```
+
+The Qt window and the React page print one line from one view model, so the two
+hosts cannot report different money.
+
+`src/gui/main_tabs/paper_trader_tab_surface.py` — the one line
+
+```python
+"text": LEDGER_SEPARATOR.join(f"{one['label']} {one['text']}" for one in cells),
+```
+
+## The Paper Trader log
+
+Every paper action is written to one file. Each line carries two halves: the
+gate decision that produced the action and, when one filled, the pretend trade
+in the shape a Coinbase year-to-date row takes. Validation reads both of those
+shapes already, so a paper run is checked by the reader that checks the live
+wing.
+
+`src/paper/paper_log.py` — the row
+
+```python
+return {
+    "timestamp": iso_stamp(tick.wall_ms),
+    "category": CATEGORY,
+    "exchange": str(exchange_id),
+    "bot_id": str(tick.bot_id),
+    "data": gate_half(tick),
+    "trade": trade_half(tick.filled) if tick.filled is not None else None,
+    "ledger": dict(figures or {}),
+}
+```
+
+The log has a home of its own. It is a sibling of the live folders and never
+sits inside one, so nothing a paper run writes can land in a live tree.
+
+`src/paper/paper_paths.py` — the root
+
+```python
+PAPER_ROOT: Path = Path.home() / ".acervator_paper"
+```
+
+Gate names come from one place. The row records the blocker phrases the chain
+produced and the labels those phrases map to, and it spells no gate name of its
+own.
+
+`src/trading/gate_vocabulary.py` — the mapping the log calls
+
+```python
+def gate_for_blocker(blocker: str) -> str:
+    """Map one blocker string to its gate label, or "" if unknown."""
+```
+
+A trade is never invented. A line carries a trade half only because the gate
+chain latched and the fill was applied to a fake balance.
+
+`src/paper/paper_run.py` — the only writer
+
+```python
+paper_log.append_row(
+    paper_log.paper_row(seen, bot.exchange_id, run.figures())
+)
+```
+
 ## Real time
 
 A run ticks on the wall clock and asks the feed for one bot per fire, so a fleet
@@ -225,6 +339,10 @@ def advance_once(self) -> list:
 The manual's part list names a second History tab reading a paper trade log. No
 such module exists. `HistoryTab` in `src/gui/history_tab.py` reads live venue
 history alone.
+
+The ledger such a tab would read now exists. Every paper action lands in the
+file [the Paper Trader log](#the-paper-trader-log) names, and no screen reads
+that file yet.
 
 In development.
 

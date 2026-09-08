@@ -3,7 +3,8 @@
 ``build_view_model`` reads one live window through ``LiveFeedSource`` and answers
 the Trading-tab clone: the Privacy Mode row, the bot list under
 ``bot_status_table_surface.COLUMN_LABELS``, the panel ``indicator_panel_surface``
-describes, the fake balance and the paper run. ``reserved_rows`` names what the
+describes, the fake balance, the ``ledger_payload`` strip and the paper run.
+``reserved_rows`` names what the
 crypto news ticker and data-pool rows carry, and ``start_run``, ``advance_run``
 and ``stop_run`` fill the run pane. ``src.core.desktop_bridge`` registers
 ``view_model`` under ``METHOD``, and nothing here imports Qt.
@@ -115,6 +116,14 @@ BALANCE_COLUMNS = (
     "Total",
 )
 
+LEDGER_TITLE = "Paper Ledger"
+LEDGER_EMPTY_TEXT = "No paper ledger yet. Press Start Paper Run."
+LEDGER_SEPARATOR = "  |  "
+LEDGER_OPENING_FORMAT = (
+    "{bots} paper bots, {target} fleet target. "
+    "Opens {spendable} spendable and {locked} locked."
+)
+
 RUN_TITLE = "Paper Run"
 RUN_IDLE_TEXT = "No paper run yet. Import Live Fleet, then Start Paper Run."
 RUN_COLUMNS = (
@@ -170,6 +179,7 @@ DECLARED_FIELDS = (
     "heading",
     "indicators",
     "issue",
+    "ledger",
     "method",
     "panes",
     "privacy_button",
@@ -443,6 +453,39 @@ def balance_payload(run, prices: dict) -> dict:
     }
 
 
+def ledger_payload(run) -> dict:
+    """The Paper Ledger strip: the four figures both hosts print as one line.
+
+    An unopened run answers a ``PaperLedger`` of zeros rather than an absence.
+    """
+    figures = (
+        run.figures() if run is not None else fake_balance.PaperLedger().figures()
+    )
+    cells = [
+        {
+            "key": key,
+            "label": label,
+            "value_usd": float(figures[key]),
+            "text": usd_text(figures[key]),
+        }
+        for key, label in fake_balance.FIGURE_LABELS
+    ]
+    return {
+        "title": LEDGER_TITLE,
+        "figures": figures,
+        "cells": cells,
+        "text": LEDGER_SEPARATOR.join(f"{one['label']} {one['text']}" for one in cells),
+        "opening_text": LEDGER_OPENING_FORMAT.format(
+            bots=len(run.bots) if run is not None else 0,
+            target=usd_text(figures["fleet_target_usd"]),
+            spendable=usd_text(figures["opening_spendable_usd"]),
+            locked=usd_text(figures["opening_locked_usd"]),
+        ),
+        "empty_text": LEDGER_EMPTY_TEXT,
+        "opened": run is not None,
+    }
+
+
 def trade_row(trade) -> dict:
     """One paper trade as the Paper Run table lists it."""
     return {
@@ -541,14 +584,8 @@ def stop_run(run):
 
 
 def last_prices(run) -> dict:
-    """The newest price each bot ticked at, by ``bot_id``."""
-    out: dict[str, float] = {}
-    if run is None:
-        return out
-    for seen in run.ticks:
-        if seen.price > 0.0:
-            out[seen.bot_id] = seen.price
-    return out
+    """``run.last_price``, the newest price each bot ticked at, by ``bot_id``."""
+    return dict(run.last_price) if run is not None else {}
 
 
 def trades_by_bot(run) -> dict:
@@ -593,6 +630,7 @@ def build_view_model(
             refusal,
         ),
         "issue": ISSUE,
+        "ledger": ledger_payload(run),
         "method": METHOD,
         "panes": {
             "margins_px": list(MARGINS_PX),
