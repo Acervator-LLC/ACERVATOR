@@ -33,17 +33,19 @@ the balances come from. The trading logic stays one body of pure code that all
 three call. Only the stateful shells fork, which keeps a simulated run from
 touching a live object.
 
-The Simulator's fleet is the worked example. It builds real bots against a fake
-exchange rather than a second bot class, and that fake exchange is a subclass
+The Simulator's fleet was the worked example. It built real bots against a fake
+exchange rather than a second bot class, and that fake exchange was a subclass
 of the same interface the live connector implements.
 
-`src/simulator/fleet/sim_exchange.py` — `FleetSimExchange`
-The Simulator rebuild removed this file; it is not in the tree.
+`FleetSimExchange`, in the Simulator fleet package the rebuild deleted
 
 ```python
 class FleetSimExchange(ExchangeInterface):
     """Real-symbol candle-driven fake exchange for Fleet Replay.
 ```
+
+The rebuild replaced it. The Sim tab now reads Stone Tablet files through
+`TabletSource`, which holds no venue and defines no write.
 
 ## The dashed edge
 
@@ -61,12 +63,12 @@ def _topology_wire_collisions(
     """Return one dict per proposal wire whose bot pair is already wired."""
 ```
 
-The read-only edge into the Simulator is a different hook, and it says so in
-its own words. It lets the sim replay a proposal's shape across sim bots and
-creates nothing.
+The read-only edge into the Simulator was a different hook, and it said so in
+its own words. It let the sim replay a proposal's shape across sim bots and
+created nothing. The rebuild removed that hook, so no proposal reaches the Sim
+tab today.
 
-`src/gui/simulator_tab/simulator_tab.py` — `set_topology_getter`
-The Simulator rebuild removed this file; it is not in the tree.
+`set_topology_getter`, in the Simulator tab the rebuild deleted
 
 ```python
     READ ONLY. This is not the adopt path — adopting a proposal
@@ -77,8 +79,9 @@ The Simulator rebuild removed this file; it is not in the tree.
 
 ## Where the chain breaks today
 
-The Paper Trader step has no module, and issue #19 carries its build-out. The
-Simulator hands nothing forward, and Live receives from the Market Inspector's
-adopt path instead. See [paper-trader.md](paper-trader.md).
+The Paper Trader step has a module now, and issue #19 built it. No step hands
+its result to the next one: the Simulator hands nothing forward, Paper loads its
+own fleet from the stored bot record, and Live receives from the Market
+Inspector's adopt path instead. See [paper-trader.md](paper-trader.md).
 
 Back to [the subsystem index](README.md).

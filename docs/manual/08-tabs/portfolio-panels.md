@@ -184,18 +184,19 @@ itself. The absent strip is the signal: no live numbers are on this screen.
 `src/gui/main_window.py` — `_on_main_tab_changed`
 
 ```python
-isolated_tabs = {"Simulator", "Paper Trader"}
+isolated_tabs = set(ISOLATED_TABS)
 container = getattr(self, "_header_strip_container", None)
 if container is not None:
     container.setVisible(tab_name not in isolated_tabs)
 ```
 
-The surface module carries the same pair as a constant.
+The window surface carries the same pair as a constant, and issue #450 renamed
+both labels.
 
-`src/gui/main_tabs/header_strip_surface.py` — `ISOLATED_TABS`
+`src/gui/main_tabs/main_window_surface.py` — `ISOLATED_TABS`
 
 ```python
-ISOLATED_TABS = ("Simulator", "Paper Trader")
+ISOLATED_TABS = (SIM_TAB, PAPER_TAB)
 ```
 
 The Simulator draws its own strip in place of this one. `SimStatStrip` in

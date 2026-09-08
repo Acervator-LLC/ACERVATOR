@@ -45,6 +45,10 @@ EXCUSED: dict[str, str] = {
     "harness_fixtures/gui_archetype/tests/"
     "known_bad_real_defect_test.py": "coding-archetype calibration fixture carrying deliberate "
     "defects; collecting it would turn the suite red on purpose",
+    # Product code whose name matches pytest's `*_test.py` pattern.
+    "src/simulator/back_test.py": "Back Test Mode of the Simulator, imported by "
+    "simulator_tab_surface.back_test_fleet; it declares no test function and "
+    "must stay under src/",
 }
 
 # ``python_functions`` and ``python_classes`` defaults. pytest matches a

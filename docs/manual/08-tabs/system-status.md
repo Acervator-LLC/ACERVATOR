@@ -1,8 +1,8 @@
 # System Status Tab
 
-Reference. The screen is not built. The tab row carries a skeleton, and issue
-#34 carries the build-out. Both halves the operator's text describes run today,
-and this file is those two halves.
+Reference. The screen is not built. The tab row carries an empty tab labelled
+Status, and issue #34 carries the build-out. Both halves the operator's text
+describes run today, and this file is those two halves.
 
 ## The skeleton
 
@@ -13,7 +13,7 @@ post-mortem.
 `src/gui/main_tabs/system_status_tab_surface.py` — the whole empty state
 
 ```python
-HEADING = "System Status"
+HEADING = "Status"
 ISSUE = 34
 BUILT = False
 STATE_TEXT = "This tab is not built."
@@ -114,8 +114,8 @@ it. A key-name mismatch is invisible to the producer and to the consumer; only
 a declared contract makes it visible.
 
 The observer already has a formatter that turns its counts into operator-facing
-lines. One module calls it, the Nuclear fleet controller writing a run report,
-and no screen reads it.
+lines. Its one caller was the Nuclear fleet controller writing a run report; the
+Simulator rebuild deleted that file, so nothing calls it and no screen reads it.
 
 `src/core/emit_contracts.py` — `format_observer_lines`, what it returns
 

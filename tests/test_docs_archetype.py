@@ -170,3 +170,52 @@ class TestStructureAnalyzer:
         )
         hits = [f for f in report.findings if f.rule_id == "DOC005"]
         assert hits == []
+
+
+class TestContentsRows:
+    """DOC006 reads the contents rows a PDF prints and checks the page each names."""
+
+    def test_known_good_pdf_exists(self):
+        assert (FIX / "known_good.pdf").is_file()
+
+    def test_known_bad_pdf_exists(self):
+        assert (FIX / "known_bad.pdf").is_file()
+
+    def test_known_good_pdf_passes(self):
+        report = DocsArchetype().review(FIX / "known_good.pdf")
+        assert report.passed is True, report.why_not_green()
+        assert report.tool_availability["contents"] == "ok"
+
+    def test_known_bad_pdf_fails(self):
+        report = DocsArchetype().review(FIX / "known_bad.pdf")
+        assert report.passed is False, "shifted page numbers were accepted"
+
+    def test_every_shifted_row_is_reported(self):
+        report = DocsArchetype().review(FIX / "known_bad.pdf")
+        hits = [f for f in report.findings if f.rule_id == "DOC006"]
+        assert len(hits) == 3, [f.message for f in hits]
+        assert all(f.severity == "high" for f in hits), [f.severity for f in hits]
+
+    def test_a_finding_names_the_row_its_page_and_what_that_page_carries(self):
+        report = DocsArchetype().review(FIX / "known_bad.pdf")
+        first = next(f for f in report.findings if "Alpha Section" in f.message)
+        assert "page 3" in first.message, first.message
+        assert "Beta Section" in first.message, first.message
+
+    def test_a_row_naming_a_page_the_pdf_does_not_have_is_reported(self):
+        report = DocsArchetype().review(FIX / "known_bad.pdf")
+        hits = [f for f in report.findings if "names page 5 of 4" in f.message]
+        assert hits, [f.message for f in report.findings]
+
+    def test_a_pdf_with_no_contents_rows_is_unread_not_clean(self, tmp_path):
+        from reportlab.pdfgen.canvas import Canvas
+
+        empty = tmp_path / "no_contents.pdf"
+        canvas = Canvas(str(empty))
+        canvas.drawString(72, 700, "This document prints no contents rows.")
+        canvas.save()
+
+        report = DocsArchetype().review(empty)
+        status = report.tool_availability["contents"]
+        assert status.startswith("unread"), status
+        assert report.passed is False, "a PDF with nothing to read reported clean"

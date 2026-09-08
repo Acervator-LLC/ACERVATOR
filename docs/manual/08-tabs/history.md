@@ -300,7 +300,8 @@ history_refreshed = Signal(list)
 ## Paper History
 
 The manual's part list names a Paper History Tab beside this one. No such
-module exists, and it waits on the Paper Trader step under issue #19. See
+module exists. Issue #19 built the Paper tab and its log, so the ledger such a
+tab would read is on disk now, and no screen reads it. See
 [paper-trader.md](paper-trader.md).
 
 ## Bridge
