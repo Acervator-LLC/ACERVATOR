@@ -1706,12 +1706,7 @@ SIM_DESCRIPTION_TEXT = (
     "Run multiple simultaneous simulators. Each bot runs independently "
     "on its own asset/timeframe. Results aggregate in the summary row."
 )
-PAPER_DESCRIPTION_TEXT = (
-    "Run multiple live paper trading bots simultaneously. Each bot trades "
-    "a different asset with virtual capital against real market data. "
-    "Source: CoinGecko (crypto) or Yahoo Finance (equities). No geographic "
-    "restrictions."
-)
+PAPER_DESCRIPTION_TEXT = ""
 
 SIM_ADD_TEXT = "+ Add Sim Bot"
 SIM_RUN_ALL_TEXT = "▶ Run All"
