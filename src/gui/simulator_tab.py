@@ -2,9 +2,9 @@
 """The Sim tab in Qt: the Trading tab's panes, fed by Stone Tablets.
 
 ``SimulatorTabQt`` lays out the clone ``simulator_tab_surface`` describes and
-draws every value from that model: the Privacy Mode row, the two reserved rows,
-the bot list, the Indicator Voting Panel, and the layer holding ``VwapView``
-over ``PlaybackView``. ``LineView`` and ``PlaybackView`` scale the surface's
+draws every value from that model: the Privacy Mode row, the mode selector, the
+two reserved rows, the bot list, the Indicator Voting Panel, and the layer
+holding ``VwapView`` over ``PlaybackView``. ``LineView`` and ``PlaybackView`` scale the surface's
 unit-square points to their own pixels and paint nothing they were not given.
 ``refresh`` re-reads the tablet through ``TabletSource``, the one data path,
 which answers no send.
@@ -57,7 +57,11 @@ VWAP_VIEW_NAME = "sim-vwap-view"
 PLAYBACK_VIEW_NAME = "sim-playback-view"
 REPLAY_LOG_NAME = "sim-replay-log"
 REPLAY_TITLE_NAME = "sim-replay-title"
-FLEET_BUTTON_NAMES = ("sim-import-live-fleet", "sim-generate-from-ytd")
+MODE_LABEL_NAME = "sim-mode-label"
+MODE_SELECTOR_NAME = "sim-mode-selector"
+BACK_TEST_TITLE_NAME = "sim-back-test-title"
+BACK_TEST_LINES_NAME = "sim-back-test-lines"
+BACK_TEST_TABLE_NAME = "sim-back-test-table"
 VALIDATION_TITLE_NAME = "sim-validation-title"
 VALIDATION_LINES_NAME = "sim-validation-lines"
 VALIDATION_PROMPT_NAME = "sim-validation-prompt"
@@ -203,11 +207,15 @@ class SimulatorTabQt(QWidget):
         self.setObjectName(ACCESSIBLE_NAME)
         self.setAccessibleName(ACCESSIBLE_NAME)
         self.setStyleSheet(PANEL_STYLE)
-        self._source = source if source is not None else TabletSource()
+        self._source = (
+            source if source is not None else TabletSource(surface.TABLET_ROOT)
+        )
         self._layer = surface.LAYER_INDICATORS
+        self._mode = surface.MODE_VALIDATION
         self._tablet_key = ""
         self._model: dict = {}
         self._validation: Optional[dict] = None
+        self._back_test: Optional[dict] = None
         self._build()
         self.refresh()
 
@@ -247,8 +255,12 @@ class SimulatorTabQt(QWidget):
         self._bottom_splitter = QSplitter(Qt.Horizontal)
         self._bottom_splitter.setHandleWidth(surface.HANDLE_WIDTH_PX)
         self._bottom_splitter.setChildrenCollapsible(False)
+        self._result_stack = QStackedWidget()
+        self._result_stack.addWidget(self._build_validation_pane())
+        self._result_stack.addWidget(self._build_back_test_pane())
+
         self._bottom_splitter.addWidget(self._build_replay_pane())
-        self._bottom_splitter.addWidget(self._build_validation_pane())
+        self._bottom_splitter.addWidget(self._result_stack)
         self._bottom_splitter.setSizes(surface.LAYER_SPLITTER_SIZES)
 
         self._main_splitter.addWidget(self._top_splitter)
@@ -272,14 +284,29 @@ class SimulatorTabQt(QWidget):
         header.addStretch(1)
         column.addLayout(header)
 
+        mode_row = QHBoxLayout()
+        self._mode_label = QLabel(surface.MODE_LABEL_TEXT)
+        self._mode_label.setObjectName(MODE_LABEL_NAME)
+        self._mode_label.setAccessibleName(MODE_LABEL_NAME)
+        self._mode_label.setStyleSheet(BODY_STYLE)
+        mode_row.addWidget(self._mode_label)
+        self._mode_selector = QComboBox()
+        self._mode_selector.setObjectName(MODE_SELECTOR_NAME)
+        self._mode_selector.setAccessibleName(MODE_SELECTOR_NAME)
+        for name in surface.MODES:
+            self._mode_selector.addItem(surface.MODE_TEXT[name], name)
+        self._mode_selector.currentIndexChanged.connect(self._on_mode_chosen)
+        mode_row.addWidget(self._mode_selector, 1)
+        column.addLayout(mode_row)
+
         # The crypto news ticker and the data pool line are not copied; their
-        # rows carry Import Live Fleet and Generate From YTD instead.
+        # rows carry the two ways into whichever mode is showing.
         self._reserved_rows = []
         self._fleet_buttons = []
         row_names = (NEWS_ROW_NAME, POOL_ROW_NAME)
-        presses = (self.import_live_fleet, self.generate_from_ytd)
-        for spec, name, button_name, press in zip(
-            surface.RESERVED_ROWS, row_names, FLEET_BUTTON_NAMES, presses, strict=True
+        presses = (self.first_way_in, self.second_way_in)
+        for spec, name, press in zip(
+            surface.RESERVED_ROWS, row_names, presses, strict=True
         ):
             row = QWidget()
             row.setObjectName(name)
@@ -289,8 +316,8 @@ class SimulatorTabQt(QWidget):
             inner.setContentsMargins(0, 0, 0, 0)
             inner.setSpacing(surface.SPACING_PX)
             button = QPushButton(str(spec["text"]))
-            button.setObjectName(button_name)
-            button.setAccessibleName(button_name)
+            button.setObjectName(str(spec["button_name"]))
+            button.setAccessibleName(str(spec["button_name"]))
             button.setFocusPolicy(Qt.NoFocus)
             button.clicked.connect(press)
             inner.addWidget(button)
@@ -456,7 +483,52 @@ class SimulatorTabQt(QWidget):
         column.addWidget(self._validation_lights, 1)
         return pane
 
+    def _build_back_test_pane(self) -> QWidget:
+        pane = QWidget()
+        column = QVBoxLayout(pane)
+        column.setContentsMargins(*surface.MARGINS_PX)
+        column.setSpacing(surface.SPACING_PX)
+
+        self._back_test_title = QLabel(surface.BACK_TEST_TITLE)
+        self._back_test_title.setObjectName(BACK_TEST_TITLE_NAME)
+        self._back_test_title.setAccessibleName(BACK_TEST_TITLE_NAME)
+        self._back_test_title.setStyleSheet(HEADING_STYLE)
+        column.addWidget(self._back_test_title)
+
+        self._back_test_lines = QPlainTextEdit()
+        self._back_test_lines.setObjectName(BACK_TEST_LINES_NAME)
+        self._back_test_lines.setAccessibleName(BACK_TEST_LINES_NAME)
+        self._back_test_lines.setReadOnly(True)
+        self._back_test_lines.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self._back_test_lines.setMaximumBlockCount(REPLAY_MAX_BLOCKS)
+        column.addWidget(self._back_test_lines)
+
+        self._back_test_table = QTableWidget()
+        self._back_test_table.setObjectName(BACK_TEST_TABLE_NAME)
+        self._back_test_table.setAccessibleName(BACK_TEST_TABLE_NAME)
+        self._back_test_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._back_test_table.verticalHeader().setVisible(False)
+        column.addWidget(self._back_test_table, 1)
+        return pane
+
     # -- what the operator presses --------------------------------------
+
+    def first_way_in(self) -> dict:
+        """Clone the live fleet from bot_state and run the showing mode on
+        it."""
+        return self.run_mode(surface.IMPORT_LIVE_FLEET_ACTION)
+
+    def second_way_in(self) -> dict:
+        """Run the showing mode's second way in: YTD, or new bots."""
+        if self._mode == surface.MODE_BACK_TEST:
+            return self.run_mode(surface.CREATE_NEW_BOTS_ACTION)
+        return self.run_mode(surface.GENERATE_FROM_YTD_ACTION)
+
+    def run_mode(self, origin: str, exchange_id: str = "") -> dict:
+        """Run ``origin``'s fleet in the showing mode and redraw its pane."""
+        if self._mode == surface.MODE_BACK_TEST:
+            return self.run_back_test(origin, exchange_id)
+        return self.run_validation(origin, exchange_id)
 
     def import_live_fleet(self) -> dict:
         """Clone the live fleet from bot_state and validate it."""
@@ -466,15 +538,50 @@ class SimulatorTabQt(QWidget):
         """Build a fleet from the YTD trade files and validate it."""
         return self.run_validation(surface.GENERATE_FROM_YTD_ACTION)
 
+    def create_new_bots(self) -> dict:
+        """Make one simulated bot on the chosen tablet and back test it."""
+        return self.run_back_test(surface.CREATE_NEW_BOTS_ACTION)
+
     def run_validation(self, origin: str, exchange_id: str = "") -> dict:
         """Run ``origin``'s fleet against the record and redraw the pane."""
         self._validation = surface.run_validation(origin, exchange_id)
         self.refresh()
         return dict(self._validation)
 
+    def run_back_test(self, origin: str, exchange_id: str = "") -> dict:
+        """Walk ``origin``'s fleet over the Stone Tablets and redraw the pane."""
+        self._back_test = surface.run_back_test(
+            origin, exchange_id, surface.new_bot_specs(self._chosen_entry())
+        )
+        self.refresh()
+        return dict(self._back_test)
+
+    def _chosen_entry(self):
+        """The tablet entry the selector is showing, or None."""
+        return surface.chosen_entry(self._source, self._tablet_key)
+
     def validation(self) -> dict:
         """The Validation payload the pane was last drawn from."""
         return dict(self._model.get("validation") or {})
+
+    def back_test(self) -> dict:
+        """The Back Test payload the pane was last drawn from."""
+        return dict(self._model.get("back_test") or {})
+
+    def mode(self) -> str:
+        """The mode the panes are showing, ``validation`` or ``back_test``."""
+        return self._mode
+
+    def choose_mode(self, mode: str) -> str:
+        """Show ``mode``'s buttons and result pane."""
+        self._mode = mode if mode in surface.MODES else surface.MODE_VALIDATION
+        self.refresh()
+        return self._mode
+
+    def _on_mode_chosen(self, index: int) -> None:
+        chosen = str(self._mode_selector.itemData(index) or "")
+        if chosen and chosen != self._mode:
+            self.choose_mode(chosen)
 
     def toggle_privacy(self) -> bool:
         """Flip every registered privacy field and redraw the button."""
@@ -503,7 +610,12 @@ class SimulatorTabQt(QWidget):
     def refresh(self) -> dict:
         """Re-read the tablet and draw every pane from the new model."""
         self._model = surface.build_view_model(
-            self._source, self._tablet_key, self._layer, self._validation
+            self._source,
+            self._tablet_key,
+            self._layer,
+            self._validation,
+            self._mode,
+            self._back_test,
         )
         self._draw(self._model)
         return self._model
@@ -511,7 +623,11 @@ class SimulatorTabQt(QWidget):
     def _draw(self, model: dict) -> None:
         self._privacy_button.setText(model["privacy_button"]["text"])
         self._flip_button.setText(model["panes"]["flip_button_text"])
+        self._mode_label.setText(model["panes"]["mode_label_text"])
         self._stack.setCurrentIndex(model["layers"].index(model["layer"]))
+        self._result_stack.setCurrentIndex(surface.MODES.index(model["mode"]))
+        self._draw_mode_selector(model["mode"])
+        self._draw_reserved_rows(model["reserved_rows"])
         self._draw_fleet(model["fleet"])
         self._draw_selector(model)
         self._draw_indicators(model["indicators"])
@@ -519,6 +635,45 @@ class SimulatorTabQt(QWidget):
         self._playback_view.set_payload(model["playback"])
         self._replay_log.setPlainText("\n".join(model["replay_log"]["lines"]))
         self._draw_validation(model["validation"])
+        self._draw_back_test(model["back_test"])
+
+    def _draw_mode_selector(self, mode: str) -> None:
+        selector = self._mode_selector
+        selector.blockSignals(True)
+        found = selector.findData(mode)
+        if found >= 0:
+            selector.setCurrentIndex(found)
+        selector.blockSignals(False)
+
+    def _draw_reserved_rows(self, rows: list) -> None:
+        for button, spec in zip(self._fleet_buttons, rows, strict=True):
+            button.setText(str(spec["text"]))
+            button.setObjectName(str(spec["button_name"]))
+            button.setAccessibleName(str(spec["button_name"]))
+
+    def _draw_back_test(self, payload: dict) -> None:
+        self._back_test_title.setText(payload["title"])
+        self._back_test_lines.setPlainText("\n".join(payload["lines"]))
+        rows = list(payload["rows"])
+        titles = list(payload["columns"])
+        table = self._back_test_table
+        table.setColumnCount(len(titles))
+        table.setHorizontalHeaderLabels(titles)
+        table.setRowCount(len(rows))
+        for index, row in enumerate(rows):
+            cells = (
+                row["bot_id"],
+                row["symbol"],
+                row["tablet_key"],
+                row["candles_read"],
+                row["ticks"],
+                f"{row['scrum_latched']} / {row['fold_latched']}",
+                f"{row['scrum_trades']} / {row['fold_trades']}",
+                row["units_text"],
+                row["cash_text"],
+            )
+            for cell_index, cell in enumerate(cells):
+                table.setItem(index, cell_index, QTableWidgetItem(str(cell)))
 
     def _draw_fleet(self, fleet: dict) -> None:
         table = self._fleet_table
@@ -573,9 +728,7 @@ class SimulatorTabQt(QWidget):
                 light["rerun"],
                 light["driven_by"],
             )
-            colour = _colour(
-                ds.SUCCESS if light["agrees"] else ds.ERROR
-            )
+            colour = _colour(ds.SUCCESS if light["agrees"] else ds.ERROR)
             for cell_index, cell in enumerate(cells):
                 item = QTableWidgetItem(str(cell))
                 item.setForeground(colour)
@@ -600,9 +753,7 @@ class SimulatorTabQt(QWidget):
     def _draw_indicators(self, panel: dict) -> None:
         self._indicator_title.setText(panel["title_text"])
         self._indicator_summary.setText(panel["summary_text"])
-        for table, spec in zip(
-            self._indicator_tables, panel["tables"], strict=True
-        ):
+        for table, spec in zip(self._indicator_tables, panel["tables"], strict=True):
             self._fill_indicator_table(table, spec)
 
     def _fill_indicator_table(self, table: QTableWidget, spec: dict) -> None:

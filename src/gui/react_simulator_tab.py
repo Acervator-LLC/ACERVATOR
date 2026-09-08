@@ -51,9 +51,11 @@ TAB_BODY = f'<div id="{TAB_ROOT_ID}"></div>'
 
 FLIP_ACTION = "flip_layer"
 TABLET_ACTION = "choose_tablet"
+MODE_ACTION = "choose_mode"
 PRIVACY_ACTION = "toggle_privacy"
 IMPORT_LIVE_FLEET_ACTION = surface.IMPORT_LIVE_FLEET_ACTION
 GENERATE_FROM_YTD_ACTION = surface.GENERATE_FROM_YTD_ACTION
+CREATE_NEW_BOTS_ACTION = surface.CREATE_NEW_BOTS_ACTION
 
 #: The bridge this host answers. The Electron shell binds ``window.acervator``
 #: in its own preload, so this source is never a file under ``src/gui/web``.
@@ -128,11 +130,15 @@ if _HAS_WEBENGINE:
             """Load the page; the first successful load draws the model."""
             super().__init__(parent)
             self.setAccessibleName(ACCESSIBLE_NAME)
-            self._source = source if source is not None else TabletSource()
+            self._source = (
+                source if source is not None else TabletSource(surface.TABLET_ROOT)
+            )
             self._layer = surface.LAYER_INDICATORS
+            self._mode = surface.MODE_VALIDATION
             self._tablet_key = ""
             self._model: dict = {}
             self._validation: Optional[dict] = None
+            self._back_test: Optional[dict] = None
             self._page_ready = False
             self._theme = theme
             self._web: Optional[QWebEngineView] = None
@@ -204,6 +210,16 @@ if _HAS_WEBENGINE:
             self.refresh()
             return masked
 
+        def choose_mode(self, mode: str) -> str:
+            """Show ``mode``'s buttons and result pane."""
+            self._mode = mode if mode in surface.MODES else surface.MODE_VALIDATION
+            self.refresh()
+            return self._mode
+
+        def mode(self) -> str:
+            """The mode the page is showing, ``validation`` or ``back_test``."""
+            return self._mode
+
         def import_live_fleet(self) -> dict:
             """Clone the live fleet from bot_state and validate it."""
             return self.run_validation(IMPORT_LIVE_FLEET_ACTION)
@@ -212,18 +228,39 @@ if _HAS_WEBENGINE:
             """Build a fleet from the YTD trade files and validate it."""
             return self.run_validation(GENERATE_FROM_YTD_ACTION)
 
+        def create_new_bots(self) -> dict:
+            """Make one simulated bot on the chosen tablet and back test it."""
+            return self.run_back_test(CREATE_NEW_BOTS_ACTION)
+
         def run_validation(self, origin: str, exchange_id: str = "") -> dict:
             """Run ``origin``'s fleet against the record and redraw the page."""
             self._validation = surface.run_validation(origin, exchange_id)
             self.refresh()
             return dict(self._validation)
 
+        def run_back_test(self, origin: str, exchange_id: str = "") -> dict:
+            """Walk ``origin``'s fleet over the Stone Tablets and redraw the
+            page."""
+            self._back_test = surface.run_back_test(
+                origin,
+                exchange_id,
+                surface.new_bot_specs(
+                    surface.chosen_entry(self._source, self._tablet_key)
+                ),
+            )
+            self.refresh()
+            return dict(self._back_test)
+
         def validation(self) -> dict:
             """The Validation payload the page was last drawn from."""
             return dict(self._model.get("validation") or {})
 
+        def back_test(self) -> dict:
+            """The Back Test payload the page was last drawn from."""
+            return dict(self._model.get("back_test") or {})
+
         def run_action(self, payload: str) -> None:
-            """Run the press the page reported: flip, privacy, tablet or
+            """Run the press the page reported: flip, privacy, tablet, mode or
             fleet."""
             try:
                 asked = json.loads(payload)
@@ -237,7 +274,16 @@ if _HAS_WEBENGINE:
                 self.toggle_privacy()
             elif key == TABLET_ACTION:
                 self.choose_tablet(str(asked.get("value") or ""))
-            elif key in (IMPORT_LIVE_FLEET_ACTION, GENERATE_FROM_YTD_ACTION):
+            elif key == MODE_ACTION:
+                self.choose_mode(str(asked.get("value") or ""))
+            elif key == CREATE_NEW_BOTS_ACTION:
+                self.run_back_test(key)
+            elif key == IMPORT_LIVE_FLEET_ACTION:
+                if self._mode == surface.MODE_BACK_TEST:
+                    self.run_back_test(key)
+                else:
+                    self.run_validation(key)
+            elif key == GENERATE_FROM_YTD_ACTION:
                 self.run_validation(key)
 
         # -- drawing ----------------------------------------------------
@@ -245,7 +291,12 @@ if _HAS_WEBENGINE:
         def refresh(self) -> dict:
             """Re-read the tablet and push the new model to the page."""
             self._model = surface.build_view_model(
-                self._source, self._tablet_key, self._layer, self._validation
+                self._source,
+                self._tablet_key,
+                self._layer,
+                self._validation,
+                self._mode,
+                self._back_test,
             )
             if self._page_ready and self._web is not None:
                 self._web.page().runJavaScript(push_script(self._model))

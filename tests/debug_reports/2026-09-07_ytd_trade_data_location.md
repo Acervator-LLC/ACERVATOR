@@ -265,7 +265,7 @@ root, entries, entry_for, symbols, trades, gaps   all answer
 
 `SendRefused` is the same class the tablet reader raises, imported rather than
 restated. A call for information is not a send, so nothing here forbids the
-Simulator fetching its own trade data in a later unit.
+Simulator fetching its own trade data.
 
 ## The operator's own export
 
