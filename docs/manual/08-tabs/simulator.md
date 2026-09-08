@@ -961,6 +961,117 @@ the ones that moment held.
 own candle.
 ```
 
+## Back Test Mode
+
+Back Test runs the bot logic over a recorded tape. It walks each bot along its
+own Stone Tablet, feeds every window into the gates that run live, and records
+where a scrum and a fold latch. A latch that clears every gate then trades: the
+scrum sells the excess above the dollar target and the fold buys it back with
+the cash that scrum put aside.
+
+`src/simulator/back_test.py` — the one gate chain, shared with Validation
+
+```python
+from .validation import (
+    BB_MIDLINE,
+    MIN_RERUN_CANDLES,
+    RERUN_WINDOW_CANDLES,
+    bb_reading,
+    candle_interval_ms,
+    iso_stamp,
+    latch,
+    tablet_for,
+)
+```
+
+The mode selector sits above the two button rows, and the result pane below the
+Replay Log changes with it.
+
+```
+Mode: Validation    Import Live Fleet   Generate From YTD
+Mode: Back Test     Import Live Fleet   Create New Bots
+```
+
+### The two ways into a back test
+
+Import Live Fleet clones the live running fleet from the bot_state load, the
+same reader Validation uses. Create New Bots makes one simulated bot on the
+Stone Tablet the selector is showing, taking its target balance and its
+scrumming interval from the Bot Wizard's own defaults.
+
+`src/gui/main_tabs/simulator_tab_surface.py` — the new bot the selector defines
+
+```python
+def new_bot_specs(entry) -> list[dict]:
+    """One new-bot spec for ``entry``'s asset, on the Bot Wizard's own
+    defaults."""
+```
+
+### One clock
+
+Every bot ticks on one cadence. The step is sized once from the longest tape in
+the run, so a short tablet and a long one are read on the same clock rather than
+each on its own.
+
+```python
+def shared_step(entries: Sequence[Any], ticks_per_bot: int, max_candles: int) -> int:
+    """One step in candles, sized off the longest tape so every bot ticks
+    together.
+
+    A ``ticks_per_bot`` of zero, or no entry, answers one.
+    """
+```
+
+### What one back test measured
+
+The imported fleet, read on 8 September 2026 from the live Stone Tablets.
+
+```
+38 of 38 bots ran over 1610472 tablet candles.
+2026-01-01T00:00:00Z to 2026-08-01T18:35:00Z, 5272 gate-chain evaluations.
+58 scrum latches and 55 fold latches.
+58 scrum sells and 55 fold buys filled, $38.02 in fees.
+```
+
+Each row names the bot, its tablet, how much tape it read, how often the gates
+latched, how many trades filled, the coin it gained or gave up and the cash it
+now holds. Units alone do not answer whether a cycle accumulated, because a bot
+that sold into a rise holds fewer coins and more cash.
+
+```
+Bot ID | Symbol | Tablet | Candles | Ticks | Scrum / Fold latched |
+Scrum / Fold filled | Units gained | Cash held
+```
+
+### A missing tablet is named, not fetched silently
+
+A bot whose asset has no tablet is listed with no tape and counted in the run's
+own lines. Filling one is a call for information and goes through the same gap
+filler the tablet build uses, into whichever tablet root the caller names.
+
+`src/simulator/back_test.py` — the fetch, and the answer with no connector
+
+```python
+async def download_missing(
+    pairs: Sequence[tuple[str, str]],
+    connector: Any,
+    since_ms: int,
+    until_ms: Optional[int] = None,
+    quote_currency: str = "USD",
+    registry: Any = None,
+) -> list[Any]:
+```
+
+Driven into a throwaway root with a recorded tape, it wrote one tablet of 701
+candles and a manifest, and the live tablet root kept its 407 files.
+
+```
+connector calls: 3
+report: ZZZTEST coinbase chunks_ok 3 errors 0 candles 701
+entry: ZZZTEST coinbase 5m 701 candles read back: 701
+live root unchanged: True 407
+```
+
 ## Nuclear Mode
 
 `NuclearModePanel` in `src/gui/simulator_tab/nuclear_mode_panel.py` drives the

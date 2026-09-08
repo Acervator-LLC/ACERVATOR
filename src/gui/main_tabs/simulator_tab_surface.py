@@ -4,8 +4,9 @@
 Trading-tab clone: the Privacy Mode row, the bot list under
 ``bot_status_table_surface.COLUMN_LABELS``, the panel
 ``indicator_panel_surface`` describes, and the second layer holding the VWAP
-window over the tablet playback window. ``RESERVED_ROWS`` names the two rows
-the crypto news ticker and the data-pool line held, which stay empty.
+window over the tablet playback window. ``reserved_rows`` names what the crypto
+news ticker and data-pool rows carry in each of ``MODES``, and ``run_validation``
+and ``run_back_test`` fill the pane each mode draws.
 ``src.core.desktop_bridge`` registers ``view_model`` under ``METHOD``, and
 nothing here imports Qt.
 """
@@ -18,6 +19,7 @@ from typing import Any, Optional, Sequence
 
 from ...simulator import validation
 from ...simulator.tablet_source import TabletSource, tablet_key
+from ...trading.stone_tablets.storage import STONE_TABLETS_DIR
 from .. import design_system as ds
 from . import indicator_panel_surface as ivp
 from .bot_status_table_surface import COLUMN_LABELS, FIXED_WIDTHS
@@ -29,6 +31,10 @@ METHOD = "simulator_tab.state"
 HEADING = "Sim"
 ISSUE = 117
 BUILT = True
+
+#: The Stone Tablets Validation and Back Test read: the operator's own traded
+#: assets. Portfolio Battery reads ``RA_STONE_TABLETS_DIR`` instead.
+TABLET_ROOT = STONE_TABLETS_DIR
 
 #: The candle window live reads. ``ScrummingBot`` asks ``get_ohlcv`` for 100,
 #: and the Simulator reads the same count off the tablet.
@@ -43,29 +49,78 @@ PRIVACY_BUTTON_TEXT = PRIVACY_OFF_TEXT
 
 IMPORT_LIVE_FLEET_ACTION = "import_live_fleet"
 GENERATE_FROM_YTD_ACTION = "generate_from_ytd"
+CREATE_NEW_BOTS_ACTION = "create_new_bots"
 IMPORT_LIVE_FLEET_TEXT = "Import Live Fleet"
 GENERATE_FROM_YTD_TEXT = "Generate From YTD"
+CREATE_NEW_BOTS_TEXT = "Create New Bots"
+
+NEWS_TICKER_ROW = "news_ticker_row"
+DATA_POOL_ROW = "data_pool_row"
+
+MODE_VALIDATION = "validation"
+MODE_BACK_TEST = "back_test"
+MODES = (MODE_VALIDATION, MODE_BACK_TEST)
+MODE_LABEL_TEXT = "Mode:"
+MODE_TEXT = {
+    MODE_VALIDATION: "Validation",
+    MODE_BACK_TEST: "Back Test",
+}
+
+
+def button_name(action: str) -> str:
+    """The accessible name both hosts give the button that sends ``action``."""
+    return "sim-" + str(action).replace("_", "-")
+
 
 #: The rows the two strips held on the Trading tab, now the two fleet buttons.
 RESERVED_ROWS: tuple[dict[str, Any], ...] = (
     {
-        "name": "news_ticker_row",
+        "name": NEWS_TICKER_ROW,
         "height_px": 24,
         "action": IMPORT_LIVE_FLEET_ACTION,
         "text": IMPORT_LIVE_FLEET_TEXT,
+        "button_name": button_name(IMPORT_LIVE_FLEET_ACTION),
     },
     {
-        "name": "data_pool_row",
+        "name": DATA_POOL_ROW,
         "height_px": 18,
         "action": GENERATE_FROM_YTD_ACTION,
         "text": GENERATE_FROM_YTD_TEXT,
+        "button_name": button_name(GENERATE_FROM_YTD_ACTION),
     },
 )
 
-VALIDATION_TITLE = "Validation"
-VALIDATION_IDLE_TEXT = (
-    "No validation run yet. Import Live Fleet or Generate From YTD."
+#: The same two rows in Back Test, where the second way in makes new bots.
+BACK_TEST_ROWS: tuple[dict[str, Any], ...] = (
+    {
+        "name": NEWS_TICKER_ROW,
+        "height_px": 24,
+        "action": IMPORT_LIVE_FLEET_ACTION,
+        "text": IMPORT_LIVE_FLEET_TEXT,
+        "button_name": button_name(IMPORT_LIVE_FLEET_ACTION),
+    },
+    {
+        "name": DATA_POOL_ROW,
+        "height_px": 18,
+        "action": CREATE_NEW_BOTS_ACTION,
+        "text": CREATE_NEW_BOTS_TEXT,
+        "button_name": button_name(CREATE_NEW_BOTS_ACTION),
+    },
 )
+
+ROWS_FOR_MODE = {
+    MODE_VALIDATION: RESERVED_ROWS,
+    MODE_BACK_TEST: BACK_TEST_ROWS,
+}
+
+
+def reserved_rows(mode: str) -> tuple[dict[str, Any], ...]:
+    """The two button rows ``mode`` puts where the two strips were."""
+    return ROWS_FOR_MODE.get(mode, RESERVED_ROWS)
+
+
+VALIDATION_TITLE = "Validation"
+VALIDATION_IDLE_TEXT = "No validation run yet. Import Live Fleet or Generate From YTD."
 EXCHANGE_PROMPT_FORMAT = "More than one exchange is active. Choose one: {options}"
 
 #: How many compared rows the Validation table lists.
@@ -74,6 +129,31 @@ VALIDATION_ROW_LIMIT = 200
 #: How many trades one press reruns. A whole-fleet pass reads the gate log
 #: once.
 VALIDATION_RERUN_LIMIT = 400
+
+BACK_TEST_TITLE = "Back Test"
+BACK_TEST_IDLE_TEXT = "No back test yet. Import Live Fleet or Create New Bots."
+
+#: The columns both hosts give the Back Test table, read off the model.
+BACK_TEST_COLUMNS = (
+    "Bot ID",
+    "Symbol",
+    "Tablet",
+    "Candles",
+    "Ticks",
+    "Scrum / Fold latched",
+    "Scrum / Fold filled",
+    "Units gained",
+    "Cash held",
+)
+
+#: How many compared bots the Back Test table lists.
+BACK_TEST_ROW_LIMIT = 200
+
+#: How many gate-chain evaluations one press spends per bot. Measured at 1.7 ms
+#: each, so a 38-bot press reads the whole 2026 tape in about 13 seconds.
+BACK_TEST_TICKS_PER_BOT = 200
+
+NO_NEW_BOT_TEXT = "Choose a Stone Tablet, then press Create New Bots."
 
 FLEET_LABEL_TEXT = "Scrumming Bots"
 FLEET_EMPTY_TEXT = "No simulated fleet. Import Live Fleet builds one."
@@ -119,6 +199,7 @@ SKIN = {
 
 DECLARED_FIELDS = (
     "accessible_name",
+    "back_test",
     "built",
     "fleet",
     "heading",
@@ -127,6 +208,8 @@ DECLARED_FIELDS = (
     "layer",
     "layers",
     "method",
+    "mode",
+    "modes",
     "panes",
     "playback",
     "privacy_button",
@@ -260,9 +343,7 @@ def toggle_privacy() -> bool:
 
     registry = get_privacy_mask_registry()
     state = registry.to_dict()
-    any_revealed = any(
-        not state.get(one, False) for one in registry.known_field_ids()
-    )
+    any_revealed = any(not state.get(one, False) for one in registry.known_field_ids())
     registry.set_all(any_revealed)
     return any_revealed
 
@@ -283,8 +364,8 @@ def usd_text(amount: Optional[float]) -> str:
 def fleet_row(bot, counts: dict) -> dict:
     """One simulated bot as the bot list draws it, under ``COLUMN_LABELS``.
 
-    Position value, Ammo, Fire and the detail cell stay empty: the Simulator
-    holds no venue position and presses nothing.
+    ``counts`` carries ``trades`` and the ``position_usd`` a ``BackTestRun``
+    ended holding; the Ammo, Fire and detail cells stay empty.
     """
     return {
         "bot_id": bot.bot_id,
@@ -293,8 +374,8 @@ def fleet_row(bot, counts: dict) -> dict:
         "cells": [
             bot.bot_id,
             bot.symbol,
-            "",
-            str(counts.get("snapped", 0)),
+            usd_text(counts.get("position_usd")),
+            str(counts.get("trades", 0)),
             usd_text(bot.target_usd),
             "",
             "",
@@ -523,6 +604,162 @@ def validation_payload(outcome, origin: str, choice: dict) -> dict:
     }
 
 
+def back_test_row(result) -> dict:
+    """One bot's whole Back Test pass as the table lists it."""
+    return {
+        "bot_id": result.bot_id,
+        "symbol": result.symbol,
+        "tablet_key": result.tablet_key,
+        "outcome": result.outcome,
+        "candles_read": result.candles_read,
+        "ticks": result.ticks,
+        "scrum_latched": result.scrum_latched,
+        "fold_latched": result.fold_latched,
+        "scrum_trades": result.scrum_trades,
+        "fold_trades": result.fold_trades,
+        "start_units": result.start_units,
+        "end_units": result.end_units,
+        "units_gained": result.units_gained,
+        "units_text": f"{result.units_gained:+.8f}",
+        "cash_usd": result.cash_usd,
+        "cash_text": usd_text(result.cash_usd),
+        "fees_usd": result.fees_usd,
+        "first_at": validation.iso_stamp(result.first_ts_ms),
+        "last_at": validation.iso_stamp(result.last_ts_ms),
+    }
+
+
+def empty_back_test() -> dict:
+    """The Back Test pane before any run, naming the two ways in."""
+    return {
+        "title": BACK_TEST_TITLE,
+        "columns": list(BACK_TEST_COLUMNS),
+        "ran": False,
+        "origin": "",
+        "bot_count": 0,
+        "exchange": {"options": [], "chosen": "", "prompt": False, "count": 0},
+        "prompt_text": "",
+        "lines": [BACK_TEST_IDLE_TEXT],
+        "summary": {},
+        "missing": [],
+        "rows": [],
+        "row_count": 0,
+        "buttons": [dict(one) for one in BACK_TEST_ROWS],
+    }
+
+
+def back_test_payload(outcome, origin: str, choice: dict) -> dict:
+    """One ``BackTestRun`` as the Back Test pane draws it."""
+    listed = list(outcome.results)[:BACK_TEST_ROW_LIMIT]
+    return {
+        "title": BACK_TEST_TITLE,
+        "columns": list(BACK_TEST_COLUMNS),
+        "ran": True,
+        "origin": origin,
+        "bot_count": len(outcome.bots),
+        "exchange": dict(choice),
+        "prompt_text": (
+            EXCHANGE_PROMPT_FORMAT.format(options=", ".join(choice["options"]))
+            if choice["prompt"]
+            else ""
+        ),
+        "lines": list(outcome.lines),
+        "summary": outcome.summary,
+        "missing": [
+            {"asset": asset, "exchange_id": venue} for asset, venue in outcome.missing
+        ],
+        "rows": [back_test_row(one) for one in listed],
+        "row_count": len(outcome.results),
+        "buttons": [dict(one) for one in BACK_TEST_ROWS],
+    }
+
+
+def new_bot_specs(entry) -> list[dict]:
+    """One new-bot spec for ``entry``'s asset, on the Bot Wizard's own
+    defaults."""
+    from .bot_wizard_surface import NUMBER_FIELDS
+
+    if entry is None:
+        return []
+    return [
+        {
+            "symbol": f"{entry.asset}/USD",
+            "exchange_id": entry.exchange_id,
+            "target_usd": float(NUMBER_FIELDS["target_balance"]["value"]),
+            "ta_timeframe": entry.timeframe,
+            "scrumming_interval_pct": float(
+                NUMBER_FIELDS["scrumming_interval"]["value"]
+            ),
+        }
+    ]
+
+
+def back_test_fleet(origin: str, exchange_id: str, specs: Sequence[dict]) -> tuple:
+    """The fleet a Back Test button asks for, and the exchange choice it
+    resolved.
+
+    ``IMPORT_LIVE_FLEET_ACTION`` reads ``bot_state.json`` and
+    ``CREATE_NEW_BOTS_ACTION`` builds one ``SimBot`` per spec.
+    """
+    from ...simulator.back_test import new_bots
+    from ...simulator.fleet_source import FleetSource, exchange_choice, live_fleet
+
+    if origin == CREATE_NEW_BOTS_ACTION:
+        made = new_bots(list(specs))
+        choice = exchange_choice(
+            sorted({one.exchange_id for one in made if one.exchange_id}), exchange_id
+        )
+        return made, choice
+    fleet = FleetSource()
+    choice = exchange_choice(fleet.exchanges(), exchange_id)
+    return live_fleet(fleet, choice["chosen"]), choice
+
+
+def run_back_test(
+    origin: str, exchange_id: str = "", specs: Sequence[dict] = ()
+) -> dict:
+    """Walk ``origin``'s fleet over the live Stone Tablets and draw the result.
+
+    An exchange choice still awaiting the operator returns the prompt and runs
+    nothing.
+    """
+    from ...simulator import back_test
+
+    bots, choice = back_test_fleet(origin, exchange_id, specs)
+    if choice["prompt"]:
+        idle = empty_back_test()
+        idle["origin"] = origin
+        idle["exchange"] = dict(choice)
+        idle["prompt_text"] = EXCHANGE_PROMPT_FORMAT.format(
+            options=", ".join(choice["options"])
+        )
+        idle["lines"] = [idle["prompt_text"]]
+        return idle
+    if not bots:
+        idle = empty_back_test()
+        idle["origin"] = origin
+        idle["lines"] = [NO_NEW_BOT_TEXT]
+        return idle
+    outcome = back_test.run(
+        bots,
+        TabletSource(TABLET_ROOT),
+        exchange_id=choice["chosen"],
+        ticks_per_bot=BACK_TEST_TICKS_PER_BOT,
+    )
+    payload = back_test_payload(outcome, origin, choice)
+    payload["fleet"] = fleet_model(
+        bots,
+        {
+            one.bot_id: {
+                "trades": one.scrum_trades + one.fold_trades,
+                "position_usd": one.end_units * one.end_price,
+            }
+            for one in outcome.results
+        },
+    )
+    return payload
+
+
 def build_fleet(origin: str, exchange_id: str = "") -> tuple:
     """The fleet one button asks for, and the exchange choice it resolved.
 
@@ -556,7 +793,6 @@ def run_validation(origin: str, exchange_id: str = "") -> dict:
     """
     from ...simulator.gate_log_source import GateLogSource
     from ...simulator.ytd_trade_source import YtdTradeSource
-    from ...trading.stone_tablets.storage import STONE_TABLETS_DIR
 
     bots, choice = build_fleet(origin, exchange_id)
     if choice["prompt"]:
@@ -570,14 +806,20 @@ def run_validation(origin: str, exchange_id: str = "") -> dict:
         return idle
     outcome = validation.run(
         bots,
-        TabletSource(STONE_TABLETS_DIR),
+        TabletSource(TABLET_ROOT),
         YtdTradeSource(),
         GateLogSource(),
         exchange_id=choice["chosen"],
         limit=VALIDATION_RERUN_LIMIT,
     )
     payload = validation_payload(outcome, origin, choice)
-    payload["fleet"] = fleet_model(bots, outcome.by_bot)
+    payload["fleet"] = fleet_model(
+        bots,
+        {
+            bot_id: {"trades": counts.get("snapped", 0)}
+            for bot_id, counts in outcome.by_bot.items()
+        },
+    )
     return payload
 
 
@@ -595,14 +837,20 @@ def build_view_model(
     key: str = "",
     layer: str = LAYER_INDICATORS,
     validation_payload_held: Optional[dict] = None,
+    mode: str = MODE_VALIDATION,
+    back_test_payload_held: Optional[dict] = None,
 ) -> dict:
     """The whole Sim tab as one dict, read from ``source``.
 
-    ``validation_payload_held`` carries the last Validation run;
-    ``empty_validation`` stands in before the first press.
+    ``validation_payload_held`` and ``back_test_payload_held`` carry the last
+    run of each mode, and ``empty_validation`` and ``empty_back_test`` stand in
+    before the first press.
     """
     chosen_layer = layer if layer in LAYERS else LAYER_INDICATORS
+    chosen_mode = mode if mode in MODES else MODE_VALIDATION
     held = validation_payload_held or empty_validation()
+    tested = back_test_payload_held or empty_back_test()
+    shown = tested if chosen_mode == MODE_BACK_TEST else held
     entries = source.entries()
     entry = chosen_entry(source, key)
     candles = window_of(source.candles(entry)) if entry is not None else []
@@ -616,8 +864,9 @@ def build_view_model(
     drawable: list[list[float]] = [] if refusal else candles
     return {
         "accessible_name": HEADING,
+        "back_test": {name: value for name, value in tested.items() if name != "fleet"},
         "built": BUILT,
-        "fleet": held.get("fleet") or fleet_model(),
+        "fleet": shown.get("fleet") or fleet_model(),
         "heading": HEADING,
         "indicators": indicator_payload(
             candles,
@@ -629,6 +878,11 @@ def build_view_model(
         "layer": chosen_layer,
         "layers": list(LAYERS),
         "method": METHOD,
+        "mode": chosen_mode,
+        "modes": [
+            {"name": name, "text": MODE_TEXT[name], "chosen": name == chosen_mode}
+            for name in MODES
+        ],
         "panes": {
             "margins_px": list(MARGINS_PX),
             "spacing_px": SPACING_PX,
@@ -638,6 +892,7 @@ def build_view_model(
             "layer_splitter_sizes": list(LAYER_SPLITTER_SIZES),
             "flip_button_text": FLIP_BUTTON_TEXT[chosen_layer],
             "tablet_label_text": TABLET_LABEL_TEXT,
+            "mode_label_text": MODE_LABEL_TEXT,
         },
         "playback": playback_payload(drawable),
         "privacy_button": privacy_button(privacy_masked()),
@@ -645,13 +900,11 @@ def build_view_model(
             "title": REPLAY_LOG_TITLE,
             "lines": replay_lines(entry, candles, refusal),
         },
-        "reserved_rows": [dict(row) for row in RESERVED_ROWS],
+        "reserved_rows": [dict(row) for row in reserved_rows(chosen_mode)],
         "skin": dict(SKIN),
         "tablet": None if entry is None else tablet_row(entry),
         "tablets": [tablet_row(one) for one in entries],
-        "validation": {
-            name: value for name, value in held.items() if name != "fleet"
-        },
+        "validation": {name: value for name, value in held.items() if name != "fleet"},
         "vwap": vwap_payload(drawable),
     }
 
@@ -659,11 +912,13 @@ def build_view_model(
 def view_model(params: dict) -> dict:
     """Bridge handler for ``simulator_tab.state``.
 
-    Reads ``tablet`` and ``layer``; an unknown tablet falls back to the newest.
+    Reads ``tablet``, ``layer`` and ``mode``; an unknown tablet falls back to
+    the newest.
     """
     asked = params if isinstance(params, dict) else {}
     return build_view_model(
-        TabletSource(),
+        TabletSource(TABLET_ROOT),
         str(asked.get("tablet") or ""),
         str(asked.get("layer") or LAYER_INDICATORS),
+        mode=str(asked.get("mode") or MODE_VALIDATION),
     )

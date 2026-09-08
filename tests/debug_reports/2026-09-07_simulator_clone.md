@@ -251,8 +251,8 @@ splitters            3                4
 | --- | --- |
 | The crypto news ticker is not on the tab and its code is not carried over | The operator marked it. A live news feed describes nothing a tablet reader does |
 | The data pool line is not on the tab and its code is not carried over | The operator marked it. A live cache-health line describes nothing a tablet reader does |
-| Both rows keep their height and hold nothing | Import Live Fleet and Generate From YTD take that space in a later unit |
-| No New Bot button | Creating bots is Back Test's, and that is a later unit |
+| Both rows keep their height and carry a button | Import Live Fleet and Generate From YTD in Validation, Import Live Fleet and Create New Bots in Back Test |
+| The New Bot button is Back Test's | Create New Bots builds one simulated bot on the tablet the selector shows |
 | No Fire cell and no Detail cell in the bot list | Both act on a live bot, and the Simulator sends nothing. The columns stay, so the widths match |
 | One log pane, not two | The Trading tab's two panes are fed by the live activity spool and the live API log. The Simulator imports neither |
 | Three splitters, not four | The fourth is the second log pane |

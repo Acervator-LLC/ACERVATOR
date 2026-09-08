@@ -9,6 +9,7 @@
   var METHOD = "simulator_tab.state";
 
   var ACCESSIBLE_NAME = "accessible_name";
+  var BACK_TEST = "back_test";
   var BUILT = "built";
   var FLEET = "fleet";
   var HEADING = "heading";
@@ -17,6 +18,8 @@
   var LAYER = "layer";
   var LAYERS = "layers";
   var METHOD_FIELD = "method";
+  var MODE = "mode";
+  var MODES = "modes";
   var PANES = "panes";
   var PLAYBACK = "playback";
   var PRIVACY_BUTTON = "privacy_button";
@@ -30,6 +33,7 @@
 
   var DECLARED_FIELDS = [
     ACCESSIBLE_NAME,
+    BACK_TEST,
     BUILT,
     FLEET,
     HEADING,
@@ -38,6 +42,8 @@
     LAYER,
     LAYERS,
     METHOD_FIELD,
+    MODE,
+    MODES,
     PANES,
     PLAYBACK,
     PRIVACY_BUTTON,
@@ -58,8 +64,10 @@
 
   var FLIP_ACTION = "flip_layer";
   var TABLET_ACTION = "choose_tablet";
+  var MODE_ACTION = "choose_mode";
   var PRIVACY_ACTION = "toggle_privacy";
   var ACTION_PREFIX = "acervator-act:";
+  var BACK_TEST_MODE = "back_test";
 
   var VALIDATION_COLUMNS = [
     "Bot ID",
@@ -92,12 +100,16 @@
     playbackView: "sim-playback-view",
     replayTitle: "sim-replay-title",
     replayLog: "sim-replay-log",
-    fleetButtons: ["sim-import-live-fleet", "sim-generate-from-ytd"],
+    modeLabel: "sim-mode-label",
+    modeSelector: "sim-mode-selector",
     validationTitle: "sim-validation-title",
     validationPrompt: "sim-validation-prompt",
     validationLines: "sim-validation-lines",
     validationTable: "sim-validation-table",
-    validationLights: "sim-validation-lights"
+    validationLights: "sim-validation-lights",
+    backTestTitle: "sim-back-test-title",
+    backTestLines: "sim-back-test-lines",
+    backTestTable: "sim-back-test-table"
   };
 
   var VIEW_BOX = "0 0 1000 1000";
@@ -183,7 +195,7 @@
   }
 
   // The crypto news ticker and the data pool line are not copied; their rows
-  // carry Import Live Fleet and Generate From YTD instead.
+  // carry the two ways into whichever mode is showing.
   function ReservedRows(props) {
     var names = [NAMES.newsRow, NAMES.poolRow];
     return props.rows.map(function (row, index) {
@@ -200,8 +212,8 @@
           "button",
           Object.assign(
             {
-              "aria-label": NAMES.fleetButtons[index],
-              "data-part": NAMES.fleetButtons[index]
+              "aria-label": row.button_name,
+              "data-part": row.button_name
             },
             pressable(row.action)
           ),
@@ -209,6 +221,73 @@
         )
       );
     });
+  }
+
+  function ModeSelector(props) {
+    return element(
+      "select",
+      {
+        "aria-label": NAMES.modeSelector,
+        "data-part": NAMES.modeSelector,
+        "data-chosen": text(props.chosen),
+        value: String(props.chosen),
+        onChange: function (event) {
+          postAction(MODE_ACTION, event.target.value);
+        }
+      },
+      props.modes.map(function (row) {
+        return element(
+          "option",
+          { key: row.name, value: row.name },
+          text(row.text)
+        );
+      })
+    );
+  }
+
+  function backTestRows(rows) {
+    return rows.map(function (row) {
+      return {
+        cells: [
+          row.bot_id,
+          row.symbol,
+          row.tablet_key,
+          row.candles_read,
+          row.ticks,
+          row.scrum_latched + " / " + row.fold_latched,
+          row.scrum_trades + " / " + row.fold_trades,
+          row.units_text,
+          row.cash_text
+        ]
+      };
+    });
+  }
+
+  function BackTestPane(props) {
+    var found = props.backTest;
+    return element(
+      "div",
+      { className: "sim-back-test-pane" },
+      element(
+        "div",
+        {
+          "aria-label": NAMES.backTestTitle,
+          "data-part": NAMES.backTestTitle,
+          "data-ran": String(found.ran)
+        },
+        text(found.title)
+      ),
+      element(
+        "pre",
+        { "aria-label": NAMES.backTestLines, "data-part": NAMES.backTestLines },
+        found.lines.join("\n")
+      ),
+      element(CellTable, {
+        name: NAMES.backTestTable,
+        titles: found.columns,
+        rows: backTestRows(found.rows)
+      })
+    );
   }
 
   function CellTable(props) {
@@ -596,6 +675,16 @@
         "div",
         { className: "sim-fleet-pane" },
         element(PrivacyRow, { button: model[PRIVACY_BUTTON] }),
+        element(
+          "div",
+          { className: "sim-mode-row" },
+          element(
+            "span",
+            { "aria-label": NAMES.modeLabel, "data-part": NAMES.modeLabel },
+            text(panes.mode_label_text)
+          ),
+          element(ModeSelector, { modes: model[MODES], chosen: model[MODE] })
+        ),
         element(ReservedRows, { rows: model[RESERVED_ROWS] }),
         element(FleetTable, { fleet: model[FLEET] })
       ),
@@ -639,7 +728,20 @@
         "div",
         { className: "sim-bottom-pane" },
         element(ReplayLog, { log: model[REPLAY_LOG] }),
-        element(ValidationPane, { validation: model[VALIDATION] })
+        element(
+          "div",
+          { className: "sim-result-stack", "data-showing": text(model[MODE]) },
+          element(
+            "div",
+            { key: "validation", hidden: model[MODE] === BACK_TEST_MODE },
+            element(ValidationPane, { validation: model[VALIDATION] })
+          ),
+          element(
+            "div",
+            { key: "back-test", hidden: model[MODE] !== BACK_TEST_MODE },
+            element(BackTestPane, { backTest: model[BACK_TEST] })
+          )
+        )
       )
     );
   }
@@ -754,6 +856,7 @@
     method: METHOD,
     SimulatorTab: SimulatorTab,
     names: NAMES,
+    BackTestPane: BackTestPane,
     declaredFields: function () {
       return DECLARED_FIELDS.slice();
     },
