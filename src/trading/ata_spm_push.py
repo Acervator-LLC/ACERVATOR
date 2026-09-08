@@ -649,7 +649,7 @@ class FollowUpWatch:
     def __init__(self) -> None:
         self.calls: list = []
         self.outcomes: list = []
-        self.settled: set = set()
+        self.settled: dict = {}
 
     def watch_run(self, run: Any) -> int:
         """Watch every reversal call one run made, and answer how many are held.
@@ -658,7 +658,7 @@ class FollowUpWatch:
         again, which ``FollowUpCall.key`` decides.
         """
         pulls = {(one.symbol, one.timeframe): one for one in getattr(run, "pulls", [])}
-        held = {one.key for one in self.calls} | self.settled
+        held = {one.key for one in self.calls} | set(self.settled)
         for vote in getattr(run, "calls", []):
             pull = pulls.get((vote.symbol, vote.timeframe))
             if pull is None or pull.bars <= ata_spm.NO_CANDLES:
@@ -699,7 +699,7 @@ class FollowUpWatch:
             outcome = follow_up_outcome(call, candles, share_pct)
             found.append(outcome)
             if outcome.settled:
-                self.settled.add(call.key)
+                self.settled[call.key] = call
             else:
                 still.append(call)
         self.calls = still
@@ -1075,6 +1075,15 @@ def distribute(
     return [deliver_one(one, sender, held, counter, now) for one in list(posts or [])]
 
 
+@dataclass(frozen=True)
+class WatchedMarket:
+    """One market on the ATA-SMP chart list, and the call that queued it."""
+
+    symbol: str
+    vote: str = VOTE_NEITHER
+    timeframes: tuple = ()
+
+
 @dataclass
 class BucketPost:
     """One formatted post waiting in Ready to Send, and its approval state."""
@@ -1310,6 +1319,43 @@ class PushBoard:
     def release(self) -> list:
         """Release the bucket while Send Bucket Full Auto is on."""
         return self.bucket.release(self.sender, self.settings, self.clock)
+
+    def watched_rows(self) -> list:
+        """Every call under watch as symbol, timeframe and vote, oldest first.
+
+        The settled calls are sorted by ``FollowUpCall.key`` so the order does
+        not follow the dictionary.
+        """
+        rows = [
+            [one.symbol, one.timeframe, one.vote]
+            for one in sorted(self.follow_up.settled.values(), key=lambda c: c.key)
+        ]
+        rows.extend(
+            [one.symbol, one.timeframe, one.vote] for one in self.follow_up.calls
+        )
+        rows.extend(
+            [one.post.symbol, one.post.timeframe, one.post.vote]
+            for one in self.bucket.posts
+        )
+        return rows
+
+    def watched_markets(self) -> list:
+        """One ``WatchedMarket`` per market that reached Ready to Send.
+
+        The bucket is the trigger and ``follow_up`` keeps a market listed
+        after ``load_run`` replaces the bucket, so the Charts tab and phase
+        seven read one set. The newest call's vote wins.
+        """
+        held: dict = {}
+        for symbol, timeframe, vote in self.watched_rows():
+            found = held.get(symbol)
+            timeframes = () if found is None else found.timeframes
+            if timeframe not in timeframes:
+                timeframes = timeframes + (timeframe,)
+            held[symbol] = WatchedMarket(
+                symbol=symbol, vote=vote, timeframes=timeframes
+            )
+        return list(held.values())
 
     def phase_report(self) -> dict:
         """What phases four, five and six each produced, for the zone lines."""

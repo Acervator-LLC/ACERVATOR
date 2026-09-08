@@ -1212,6 +1212,13 @@ if _HAS_QT:
                 return _bucket_entries(self._push_board.bucket)
             return []
 
+        def watched_markets(self) -> list:
+            """The markets ATA-SMP has called, for the Charts tab's second list.
+
+            ``PushBoard.watched_markets`` is the one set phase seven also reads.
+            """
+            return self._push_board.watched_markets()
+
         def _ata_report(self) -> dict:
             """The ATA-SPM run report, with the count its own bucket holds."""
             held = self._ata_board.report()

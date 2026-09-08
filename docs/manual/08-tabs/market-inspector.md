@@ -878,4 +878,68 @@ this screen would land.
 
 In development.
 
+## 2026-09-08 13:30 - #407 - the called markets the Charts tab keeps watching
+
+Reaching Ready to Send now does a second thing. Beside waiting for approval, the
+market joins a list the Charts tab keeps, so the operator can watch a called
+market long after the post about it has gone or been declined.
+
+The board answers one row per market, never one per post. A market called on two
+timeframes is still one market being watched, and the row carries the timeframes
+it was called on and the vote of the most recent call.
+
+`src/trading/ata_spm_push.py` — the row the Charts tab reads
+
+```python
+@dataclass(frozen=True)
+class WatchedMarket:
+    """One market on the ATA-SMP chart list, and the call that queued it."""
+
+    symbol: str
+    vote: str = VOTE_NEITHER
+    timeframes: tuple = ()
+```
+
+Three places hold a called market and the board reads all three, oldest first:
+the calls phase seven has already settled, the calls it is still watching, and
+the posts sitting in the bucket now. That is why filling the bucket from a new
+scan does not drop an older market from the chart list.
+
+`src/trading/ata_spm_push.py` — one set, read by phase seven and by the Charts tab
+
+```python
+    def watched_markets(self) -> list:
+        """One ``WatchedMarket`` per market that reached Ready to Send.
+
+        The bucket is the trigger and ``follow_up`` keeps a market listed
+        after ``load_run`` replaces the bucket, so the Charts tab and phase
+        seven read one set. The newest call's vote wins.
+        """
+```
+
+Phase seven used to remember only the key of a call it had settled, which was
+enough to stop watching it twice and not enough to name it later. It now keeps
+the call itself, so a settled market can still be listed with its ticker, its
+timeframe and its vote. The settled calls are read in key order, so the list
+comes back in the same order every time.
+
+The screen hands that reader to the Charts tab when it is built. Nothing is
+copied across, so the two screens cannot disagree about which markets are
+called. What the Charts tab does with the list is on
+[the Charts tab page](asset-charts.md).
+
+`src/gui/market_inspector.py` — what this screen offers the Charts tab
+
+```python
+def watched_markets(self) -> list:
+    """The markets ATA-SMP has called, for the Charts tab's second list.
+
+    ``PushBoard.watched_markets`` is the one set phase seven also reads.
+    """
+    return self._push_board.watched_markets()
+```
+
+**Figures.** This page carries no figure. The zones it describes are unchanged
+by this entry, and the second reader it adds draws on another screen.
+
 Back to [the subsystem index](README.md).

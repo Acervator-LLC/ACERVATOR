@@ -68,6 +68,9 @@ PANEL_KEY = "panel"
 LAST_FETCH_KEY = "last_fetch"
 EXCHANGE_ID_KEY = "exchange_id"
 SYNTHETIC_KEY = "synthetic"
+VOTE_KEY = "vote"
+TIMEFRAMES_KEY = "timeframes"
+DEFAULT_VOTE = ""
 
 PANEL_TIMEFRAME = "1h"
 PANEL_MINIMUM_HEIGHT_PX = 300
@@ -628,18 +631,41 @@ POSITION_FORMAT = "{at} of {total}"
 EMPTY_TICKER_TEXT = "No asset"
 EMPTY_POSITION_TEXT = "0 of 0"
 
+LIST_LIVE = "live"
+LIST_ATA = "ata_smp"
+LIST_MODES = (LIST_LIVE, LIST_ATA)
+LIST_LIVE_TEXT = "Live"
+LIST_ATA_TEXT = "ATA-SMP"
+LIST_TEXTS = {LIST_LIVE: LIST_LIVE_TEXT, LIST_ATA: LIST_ATA_TEXT}
+LIST_TOGGLE_TOOLTIP = (
+    "The list the arrows walk: the traded markets, or the markets "
+    "ATA-SMP has called."
+)
+ATA_EMPTY_TICKER_TEXT = "No called market"
+ATA_EMPTY_HINT = "A market joins this list when it reaches Ready to Send."
+LIST_TOGGLE_WIDTH_PX = 92
+LIST_TOGGLE_HEIGHT_PX = 26
+ATA_EXCHANGE_ID = ""
+NO_TIMEFRAMES: tuple = ()
+
 ARROW_WIDTH_PX = 34
 ARROW_HEIGHT_PX = 26
 TICKER_MIN_WIDTH_PX = 220
 SELECTOR_SPACING_PX = 8
 
-#: The selector row, the chart and the toggle row.
-LAYOUT_SLOTS = 3
+#: The list-toggle row, the selector row, the chart and the toggle row.
+LAYOUT_SLOTS = 4
 ONE_PANEL = 1
 NO_PANEL = 0
 FIRST_ASSET = 0
 ONE_ASSET = 1
 
+SELECT_LIST_TOGGLED = "select.list_toggled"
+UPDATE_ATA_ADDED = "update.ata_added"
+UPDATE_ATA_KEPT = "update.ata_kept"
+UPDATE_ATA_DROPPED = "update.ata_dropped"
+UPDATE_ATA_NO_SOURCE = "update.ata_no_source"
+UPDATE_ATA_REFUSED = "update.ata_refused"
 SELECT_STEP = "select.step"
 SELECT_STEPPED = "select.stepped"
 SELECT_NONE = "select.none"
@@ -657,12 +683,39 @@ FETCH_NO_ASSET = "fetch.no_asset"
 NUCLEAR_ASSET_ADDED = "nuclear.asset_added"
 NUCLEAR_ASSET_KEPT = "nuclear.asset_kept"
 
+#: The selector's own call names, beside the ones ``CALL_NAMES`` already holds.
+SELECTOR_CALL_NAMES = (
+    SELECT_STEP,
+    SELECT_STEPPED,
+    SELECT_NONE,
+    SELECT_PICK,
+    SELECT_PICKED,
+    SELECT_REFUSED,
+    SELECT_UNCHANGED,
+    SELECT_FOLLOWED,
+    SELECT_ALREADY,
+    SELECT_LIST_TOGGLED,
+    UPDATE_ASSET_ADDED,
+    UPDATE_ASSET_KEPT,
+    UPDATE_ASSET_DROPPED,
+    UPDATE_ATA_ADDED,
+    UPDATE_ATA_KEPT,
+    UPDATE_ATA_DROPPED,
+    UPDATE_ATA_NO_SOURCE,
+    UPDATE_ATA_REFUSED,
+    UPDATE_SELECTOR,
+    FETCH_NO_ASSET,
+    NUCLEAR_ASSET_ADDED,
+    NUCLEAR_ASSET_KEPT,
+)
+
 
 class TradeChartsTabModel:
     """The Asset Charts tab: which asset the one chart draws, and what it shows.
 
-    ``update_charts`` runs one pass of bot statuses, ``step`` and ``pick``
-    change the asset on screen, and ``fetch_chart_data`` refetches it.
+    ``update_charts`` runs one pass of bot statuses, ``step``, ``pick`` and
+    ``toggle_list`` change the asset on screen, and ``fetch_chart_data``
+    refetches it.
     """
 
     def __init__(
@@ -684,12 +737,64 @@ class TradeChartsTabModel:
         self.assets: dict = {}
         self.order: list = []
         self.shown = FIRST_ASSET
+        self.ata_source: Any = None
+        self.ata_assets: dict = {}
+        self.ata_order: list = []
+        self.ata_shown = FIRST_ASSET
+        self.list_mode = LIST_LIVE
         self.followed = ""
         self.dropped: list = []
         self.trade_log: list = []
         self.logs: list = []
         self.signals: list = []
         self.calls: list[ModelCall] = []
+
+    def set_ata_source(self, source: Any) -> None:
+        """Take the callable answering the markets ATA-SMP has called.
+
+        ``PushBoard.watched_markets`` is what the running window binds here.
+        """
+        self.ata_source = source
+
+    def showing_ata(self) -> bool:
+        """Whether ``list_mode`` is ``LIST_ATA``."""
+        return self.list_mode == LIST_ATA
+
+    def list_text(self) -> str:
+        """The list on screen, as the toggle button reads."""
+        return LIST_TEXTS[self.list_mode]
+
+    def list_order(self) -> list:
+        """The ids of the list the arrows walk."""
+        return self.ata_order if self.showing_ata() else self.order
+
+    def list_records(self) -> dict:
+        """The records of the list the arrows walk, keyed by id."""
+        return self.ata_assets if self.showing_ata() else self.assets
+
+    def list_shown(self) -> int:
+        """The index into ``list_order`` the chart draws."""
+        return self.ata_shown if self.showing_ata() else self.shown
+
+    def set_list_shown(self, at: int) -> None:
+        """Move the shown index of the list the arrows walk."""
+        if self.showing_ata():
+            self.ata_shown = at
+            return
+        self.shown = at
+
+    def empty_ticker_text(self) -> str:
+        """The one item the ticker offers while the list on screen is empty."""
+        return ATA_EMPTY_TICKER_TEXT if self.showing_ata() else EMPTY_TICKER_TEXT
+
+    def toggle_list(self) -> str:
+        """Move the arrows to the other list and answer the mode on screen."""
+        self.list_mode = LIST_ATA if self.list_mode == LIST_LIVE else LIST_LIVE
+        self.calls.append([SELECT_LIST_TOGGLED, self.list_mode, len(self.list_order())])
+        self._follow_shown()
+        self._label_shown()
+        self._feed_shown()
+        return self.list_mode
 
     def _now(self) -> float:
         """The wall clock the fetch stamps the shown asset with."""
@@ -713,56 +818,62 @@ class TradeChartsTabModel:
         return LAYOUT_SLOTS
 
     def shown_id(self) -> str:
-        """The bot id of the asset on screen, or an empty string for none."""
-        if not self.order or self.shown >= len(self.order):
+        """The id of the asset on screen, or an empty string for none."""
+        order = self.list_order()
+        at = self.list_shown()
+        if not order or at >= len(order):
             return DEFAULT_BOT_ID
-        return self.order[self.shown]
+        return order[at]
 
     def current(self) -> dict:
         """The record of the asset on screen, or an empty one for none."""
-        return self.assets.get(self.shown_id(), {})
+        return self.list_records().get(self.shown_id(), {})
 
     def ticker_items(self) -> list:
         """Every label the ticker list offers, in the order it offers them."""
-        if not self.order:
-            return [EMPTY_TICKER_TEXT]
-        return [self.assets[bot_id][SYMBOL_KEY] for bot_id in self.order]
+        order = self.list_order()
+        if not order:
+            return [self.empty_ticker_text()]
+        records = self.list_records()
+        return [records[bot_id][SYMBOL_KEY] for bot_id in order]
 
     def position_text(self) -> str:
         """Which asset is on screen and how many there are."""
-        if not self.order:
+        order = self.list_order()
+        if not order:
             return EMPTY_POSITION_TEXT
-        return POSITION_FORMAT.format(at=self.shown + 1, total=len(self.order))
+        return POSITION_FORMAT.format(at=self.list_shown() + 1, total=len(order))
 
     def stepping_enabled(self) -> bool:
         """Whether the arrows can move anywhere."""
-        return len(self.order) > ONE_ASSET
+        return len(self.list_order()) > ONE_ASSET
 
     def step(self, by: Any) -> int:
         """Move the shown asset by ``by``, wrapping, and answer the new index."""
         self.calls.append([SELECT_STEP, by])
-        if not self.order:
+        order = self.list_order()
+        if not order:
             self.calls.append([SELECT_NONE])
             return FIRST_ASSET
-        self.shown = (self.shown + int(by)) % len(self.order)
-        self.calls.append([SELECT_STEPPED, self.shown, self.shown_id()])
+        self.set_list_shown((self.list_shown() + int(by)) % len(order))
+        self.calls.append([SELECT_STEPPED, self.list_shown(), self.shown_id()])
         self._follow_shown()
-        return self.shown
+        return self.list_shown()
 
     def pick(self, index: Any) -> int:
         """Draw the asset at ``index`` in the ticker list."""
         self.calls.append([SELECT_PICK, index])
         chosen = int(index)
-        if chosen < FIRST_ASSET or chosen >= len(self.order):
+        if chosen < FIRST_ASSET or chosen >= len(self.list_order()):
             self.calls.append([SELECT_REFUSED, chosen])
-            return self.shown
-        if chosen == self.shown:
+            return self.list_shown()
+        if chosen == self.list_shown():
             self.calls.append([SELECT_UNCHANGED, chosen])
-            return self.shown
-        self.shown = chosen
-        self.calls.append([SELECT_PICKED, self.shown, self.shown_id()])
+            return self.list_shown()
+        self.set_list_shown(chosen)
+        self.calls.append([SELECT_PICKED, self.list_shown(), self.shown_id()])
         self._follow_shown()
-        return self.shown
+        return self.list_shown()
 
     def _follow_shown(self) -> None:
         """Point the one chart at the shown asset and clear the last one's tape.
@@ -809,7 +920,9 @@ class TradeChartsTabModel:
         if len(kept_statuses) != len(bot_statuses):
             self.calls.append([UPDATE_FILTERED, len(bot_statuses) - len(kept_statuses)])
 
-        held_id = self.shown_id()
+        held_id = (
+            self.order[self.shown] if self.shown < len(self.order) else DEFAULT_BOT_ID
+        )
         seen: list = []
         for status in kept_statuses:
             bot_id = status.get(BOT_ID_KEY, DEFAULT_BOT_ID)
@@ -862,7 +975,8 @@ class TradeChartsTabModel:
         self.shown = next(
             (at for at, one in enumerate(self.order) if one == held_id), FIRST_ASSET
         )
-        self.calls.append([UPDATE_SELECTOR, len(self.order), self.shown])
+        self._rebuild_ata()
+        self.calls.append([UPDATE_SELECTOR, len(self.list_order()), self.list_shown()])
         self._follow_shown()
         self._label_shown()
         self._feed_shown()
@@ -907,6 +1021,61 @@ class TradeChartsTabModel:
         )
         self.calls.append([UPDATE_EMIT_SYMBOLS, drift])
         return None
+
+    def _rebuild_ata(self) -> None:
+        """Rebuild the ATA-SMP list from ``ata_source``, keyed by symbol.
+
+        No source, or a source that raises, leaves the list empty; no entry
+        is written that the source did not answer.
+        """
+        held_symbol = (
+            self.ata_order[self.ata_shown]
+            if self.ata_shown < len(self.ata_order)
+            else DEFAULT_SYMBOL
+        )
+        if self.ata_source is None:
+            if self.ata_order:
+                self.ata_order = []
+                self.ata_assets = {}
+            self.calls.append([UPDATE_ATA_NO_SOURCE])
+            self.ata_shown = FIRST_ASSET
+            return
+        try:
+            watched = list(self.ata_source())
+        except Exception as exc:
+            self.calls.append([UPDATE_ATA_REFUSED, type(exc).__name__])
+            return
+
+        seen: list = []
+        for market in watched:
+            symbol = str(getattr(market, SYMBOL_KEY, DEFAULT_SYMBOL))
+            if not symbol or WILDCARD in symbol:
+                continue
+            timeframes = list(getattr(market, TIMEFRAMES_KEY, NO_TIMEFRAMES))
+            vote = str(getattr(market, VOTE_KEY, DEFAULT_VOTE))
+            if symbol in self.ata_assets:
+                self.calls.append([UPDATE_ATA_KEPT, symbol, vote])
+            else:
+                self.ata_assets[symbol] = {
+                    SYMBOL_KEY: symbol,
+                    EXCHANGE_ID_KEY: ATA_EXCHANGE_ID,
+                    LAST_FETCH_KEY: NEVER_FETCHED,
+                }
+                self.calls.append([UPDATE_ATA_ADDED, symbol, vote])
+            record = self.ata_assets[symbol]
+            record[VOTE_KEY] = vote
+            record[TIMEFRAMES_KEY] = timeframes
+            seen.append(symbol)
+
+        for symbol in list(self.ata_assets):
+            if symbol not in seen:
+                self.ata_assets.pop(symbol)
+                self.calls.append([UPDATE_ATA_DROPPED, symbol])
+
+        self.ata_order = seen
+        self.ata_shown = next(
+            (at for at, one in enumerate(seen) if one == held_symbol), FIRST_ASSET
+        )
 
     def _label_shown(self) -> None:
         """Write the shown asset's price and state into the chart header."""
@@ -1123,11 +1292,12 @@ class TradeChartsTabModel:
         return None
 
     def _emit_freshness(self, now: float, exchange_connectors: Any) -> None:
-        """Report how many assets have gone past three throttle windows."""
+        """Report how many assets on both lists have gone past three windows."""
         stale = 0
         never = 0
         oldest = 0.0
-        for record in self.assets.values():
+        watched = list(self.assets.values()) + list(self.ata_assets.values())
+        for record in watched:
             last = float(record.get(LAST_FETCH_KEY, NEVER_FETCHED) or 0)
             if last <= 0:
                 never += 1
@@ -1144,7 +1314,9 @@ class TradeChartsTabModel:
                 expected=NO_STALE,
                 every=SIGNAL_EVERY_S,
                 context={
-                    "assets": len(self.assets),
+                    "assets": len(watched),
+                    "live_assets": len(self.assets),
+                    "ata_assets": len(self.ata_assets),
                     "never_fetched": never,
                     "oldest_age_s": round(oldest, AGE_DECIMALS),
                     "stale_after_s": STALE_AFTER_S,
@@ -1177,8 +1349,9 @@ class TradeChartsTabModel:
     ) -> None:
         """Draw one Nuclear Mode scenario's candles on the chart, with no fetch.
 
-        The bot joins the asset list if it is new, and the chart switches to it.
+        The bot joins the Live list if it is new, and the chart switches to it.
         """
+        self.list_mode = LIST_LIVE
         if bot_id not in self.assets:
             self.assets[bot_id] = {
                 SYMBOL_KEY: symbol,
@@ -1209,6 +1382,64 @@ class TradeChartsTabModel:
         return None
 
 
+def selector_values(model: TradeChartsTabModel) -> dict:
+    """The toggle row and the selector row: every value either host draws."""
+    return {
+        "prev_text": PREV_TEXT,
+        "next_text": NEXT_TEXT,
+        "prev_tooltip": PREV_TOOLTIP,
+        "next_tooltip": NEXT_TOOLTIP,
+        "ticker_tooltip": TICKER_TOOLTIP,
+        "arrow_width_px": ARROW_WIDTH_PX,
+        "arrow_height_px": ARROW_HEIGHT_PX,
+        "ticker_min_width_px": TICKER_MIN_WIDTH_PX,
+        "spacing_px": SELECTOR_SPACING_PX,
+        "items": model.ticker_items(),
+        "shown": model.list_shown(),
+        "position_text": model.position_text(),
+        "stepping_enabled": model.stepping_enabled(),
+        "position_format": POSITION_FORMAT,
+        "empty_ticker_text": model.empty_ticker_text(),
+        "empty_position_text": EMPTY_POSITION_TEXT,
+        "list_mode": model.list_mode,
+        "list_text": model.list_text(),
+        "list_modes": list(LIST_MODES),
+        "list_texts": dict(LIST_TEXTS),
+        "showing_ata": model.showing_ata(),
+        "toggle_tooltip": LIST_TOGGLE_TOOLTIP,
+        "toggle_width_px": LIST_TOGGLE_WIDTH_PX,
+        "toggle_height_px": LIST_TOGGLE_HEIGHT_PX,
+        "live_empty_ticker_text": EMPTY_TICKER_TEXT,
+        "ata_empty_ticker_text": ATA_EMPTY_TICKER_TEXT,
+        "ata_empty_hint": ATA_EMPTY_HINT,
+    }
+
+
+def list_values(model: TradeChartsTabModel) -> dict:
+    """Both lists the one selector walks, whichever is on screen."""
+    return {
+        LIST_LIVE: {
+            "order": list(model.order),
+            "count": len(model.assets),
+            "shown": model.shown,
+        },
+        LIST_ATA: {
+            "order": list(model.ata_order),
+            "count": len(model.ata_assets),
+            "shown": model.ata_shown,
+            "source_bound": model.ata_source is not None,
+            "markets": [
+                {
+                    "symbol": info[SYMBOL_KEY],
+                    "vote": info.get(VOTE_KEY, DEFAULT_VOTE),
+                    "timeframes": list(info.get(TIMEFRAMES_KEY, NO_TIMEFRAMES)),
+                }
+                for info in model.ata_assets.values()
+            ],
+        },
+    }
+
+
 def build_view_model(
     model: TradeChartsTabModel,
     statuses: Optional[list] = None,
@@ -1219,6 +1450,7 @@ def build_view_model(
     synthetic: Optional[list] = None,
     step_by: Optional[int] = None,
     pick_at: Optional[int] = None,
+    toggle_list: bool = False,
 ) -> dict:
     """Return every value the Asset Charts tab holds as one dict.
 
@@ -1231,6 +1463,8 @@ def build_view_model(
         model.log_trade(trade[0], trade[1] if len(trade) > 1 else None)
     if statuses is not None:
         model.update_charts(statuses, exchange_connectors=connectors)
+    if toggle_list:
+        model.toggle_list()
     if step_by is not None:
         model.step(step_by)
     if pick_at is not None:
@@ -1254,28 +1488,12 @@ def build_view_model(
             "spacing_px": CONTENT_SPACING_PX,
             "layout_slots": model._layout_slots(),
         },
-        "selector": {
-            "prev_text": PREV_TEXT,
-            "next_text": NEXT_TEXT,
-            "prev_tooltip": PREV_TOOLTIP,
-            "next_tooltip": NEXT_TOOLTIP,
-            "ticker_tooltip": TICKER_TOOLTIP,
-            "arrow_width_px": ARROW_WIDTH_PX,
-            "arrow_height_px": ARROW_HEIGHT_PX,
-            "ticker_min_width_px": TICKER_MIN_WIDTH_PX,
-            "spacing_px": SELECTOR_SPACING_PX,
-            "items": model.ticker_items(),
-            "shown": model.shown,
-            "position_text": model.position_text(),
-            "stepping_enabled": model.stepping_enabled(),
-            "position_format": POSITION_FORMAT,
-            "empty_ticker_text": EMPTY_TICKER_TEXT,
-            "empty_position_text": EMPTY_POSITION_TEXT,
-        },
-        "asset_order": list(model.order),
-        "asset_count": len(model.assets),
+        "selector": selector_values(model),
+        "asset_order": list(model.list_order()),
+        "asset_count": len(model.list_records()),
         "shown_id": model.shown_id(),
         "shown_symbol": model.current().get(SYMBOL_KEY, DEFAULT_SYMBOL),
+        "followed": model.followed,
         "panel": model.panel.as_values(),
         "assets": {
             bot_id: {
@@ -1284,8 +1502,9 @@ def build_view_model(
                 "last_fetch": info[LAST_FETCH_KEY],
                 "synthetic": info.get(SYNTHETIC_KEY, False),
             }
-            for bot_id, info in model.assets.items()
+            for bot_id, info in model.list_records().items()
         },
+        "lists": list_values(model),
         "dropped": list(model.dropped),
         "trade_log": [dict(one) for one in model.trade_log],
         "logs": [list(one) for one in model.logs],
@@ -1405,18 +1624,34 @@ def build_view_model(
 PANE_MODEL = TradeChartsTabModel()
 
 
+def ata_markets_source() -> list:
+    """The markets ATA-SMP has called, off the Market Inspector's ``PushBoard``.
+
+    Answers an empty list while no Market Inspector screen has been built, so
+    asking never builds one.
+    """
+    from . import market_inspector_surface
+
+    board = getattr(market_inspector_surface.PANE_MODEL, "push", None)
+    if board is None:
+        return []
+    return board.watched_markets()
+
+
 def view_model(params: dict) -> dict:
     """Bridge handler for ``trade_charts_tab.state``.
 
-    Reads ``reset``, ``bots``, ``answers``, ``now``, ``ticks``,
-    ``statuses``, ``connectors``, ``timeframe_change``, ``fetch``,
-    ``trades`` and ``synthetic`` from the request parameters. The tab's
-    panels persist between calls because the tab does; ``reset`` is what
-    a fresh paint sends.
+    Reads ``reset``, ``bots``, ``answers``, ``now``, ``ticks``, ``statuses``,
+    ``connectors``, ``timeframe_change``, ``fetch``, ``trades``,
+    ``synthetic``, ``step_by``, ``pick_at`` and ``toggle_list`` from the
+    request parameters. The tab's panels persist between calls because the
+    tab does; ``reset`` is what a fresh paint sends.
     """
     global PANE_MODEL
     if params.get("reset", False):
         PANE_MODEL = TradeChartsTabModel()
+    if PANE_MODEL.ata_source is None:
+        PANE_MODEL.set_ata_source(ata_markets_source)
     bots = params.get("bots")
     if bots is not None:
         PANE_MODEL.manager = ManagerSource(
@@ -1437,6 +1672,9 @@ def view_model(params: dict) -> dict:
         params.get("fetch", False),
         params.get("trades"),
         params.get("synthetic"),
+        params.get("step_by"),
+        params.get("pick_at"),
+        params.get("toggle_list", False),
     )
 
 
