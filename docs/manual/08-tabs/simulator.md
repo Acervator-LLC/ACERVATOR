@@ -117,6 +117,134 @@ The tab draws an empty state and names what is missing. The panel reads
 `No TA data — No Stone Tablet on disk.`, the selector holds nothing, and both
 windows hold zero points. Nothing is invented in place of the missing tape.
 
+### The YTD trade files
+
+The Simulator's second data source is the operator's own trade record, kept on
+disk under the exchange history bucket. One file holds one exchange, one symbol
+and one year. Each file names its exchange inside itself, not only in its
+filename, so a file that is moved or renamed still says where its trades came
+from.
+
+`src/exchange/ytd_trade_store.py` — what one row holds
+
+```python
+@dataclass
+class YtdTrade:
+    """One fill: ``id``, ``ts_ms``, ``side``, ``amount``, ``price``, ``cost``
+    and ``fee``."""
+
+    id: str
+    ts_ms: int
+    side: str
+    amount: float
+    price: float
+    cost: float
+    fee: float
+    fee_currency: str
+```
+
+Beside the rows, each file carries a schema version, the time of the import, and
+one entry per export that contributed rows. That entry names the export file and
+its digest, so a file that grew over two imports records both. A MANIFEST beside
+the files indexes every one of them with its row count and its date span.
+
+`src/exchange/ytd_trade_store.py` — the provenance on each file
+
+```python
+@dataclass
+class ImportSource:
+    """One import that contributed rows: ``file``, ``sha256`` and ``rows_added``."""
+
+    file: str
+    sha256: str
+    imported_at: str
+    rows_added: int
+```
+
+### The columns the import requires
+
+The record arrives as a transactions CSV exported from the exchange. The import
+reads nine columns and refuses a file missing any one of them, naming which.
+Notes, sender address and recipient address are never carried in.
+
+`src/exchange/ytd_csv_import.py` — the required columns
+
+```python
+REQUIRED_COLUMNS: tuple[str, ...] = (
+    COL_ID,
+    COL_TIMESTAMP,
+    COL_TYPE,
+    COL_ASSET,
+    COL_QUANTITY,
+    COL_PRICE_CURRENCY,
+    COL_PRICE,
+    COL_SUBTOTAL,
+    COL_FEES,
+)
+```
+
+The transaction type decides the side. Buys and sells are kept; reward income,
+deposits and withdrawals are counted and dropped, because they are not trades
+and must never reach a validation run as though they were. The asset and the
+price currency together give the pair. The quantity is negative on a sell in the
+export, so its sign is checked against the type and then the magnitude is
+stored.
+
+A second import of an overlapping export adds only the rows whose id is new. A
+file that gains nothing is not rewritten at all.
+
+### A period with no rows is a gap
+
+Where the export carries no trade for a symbol in a period the export covers,
+that period is written to a gap record. Nothing is invented to fill it.
+
+`src/exchange/ytd_trade_store.py` — the gap record
+
+```python
+@dataclass
+class TradeGap:
+    """One period between ``since_ms`` and ``until_ms`` that no row covers."""
+
+    exchange_id: str
+    symbol: str
+    year: int
+    since_ms: int
+    until_ms: int
+    reason: str
+    checked_at: str
+```
+
+### Reading the trade files
+
+The Simulator reads these files through one class, on the same rule as the
+tablet reader. It answers six names and refuses every other name itself.
+
+`src/simulator/ytd_trade_source.py` — the refusal
+
+```python
+    def __getattr__(self, name: str):
+        """Refuse every name outside ``READ_NAMES``."""
+        raise SendRefused(
+            f"YtdTradeSource answers {READ_NAMES} and cannot {name!r}. "
+            "The Simulator receives and asks; it sends nothing."
+        )
+```
+
+### What the import run measured
+
+The operator's own export was read into a throwaway directory. The figures below
+come from that run.
+
+```
+export read     5,798 rows, 13 columns
+kept            5,766 trades - 3,229 buys, 2,537 sells
+dropped         32 - reward income 16, deposits 15, withdrawals 1
+written         39 files, one per symbol, all of them 2026
+range           2026-04-12 to 2026-09-07
+gaps recorded   76
+second import   0 rows added, 39 files byte-identical
+```
+
 ### What one run measured
 
 Both builds were opened and read off the drawn window and the drawn page. The

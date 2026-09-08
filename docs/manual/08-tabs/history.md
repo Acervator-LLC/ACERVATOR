@@ -40,6 +40,41 @@ if is_stale and not in_flight:
     hist.refresh()
 ```
 
+## Where the trade record is kept
+
+Refresh reads the venue live and keeps nothing. The year of trades the Simulator
+needs is kept separately, on disk, under the exchange history bucket. One file
+holds one exchange, one symbol and one year, and every file names its exchange
+inside itself.
+
+`src/core/log_paths.py` — the bucket
+
+```python
+def get_exchange_history_dir() -> Path:
+    """``exchange_history/`` bucket — the YTD trade files.
+```
+
+The files are filled from a transactions CSV exported from the exchange. The
+import keeps buys and sells, counts and drops everything that is not a trade,
+and refuses a file that is missing a column it needs. Re-importing an
+overlapping export adds only the rows whose id is new.
+
+`src/exchange/ytd_csv_import.py` — the import
+
+```python
+def import_ytd_csv(
+    csv_path: Path,
+    exchange_id: str,
+    root: Optional[Path] = None,
+) -> ImportResult:
+    """Read ``csv_path`` and write ``exchange_id``'s trade files under
+    ``get_ytd_root(root)``."""
+```
+
+Where the export covers a period and carries no trade for a symbol in it, that
+period is written to a gap record rather than filled. See
+[the Simulator tab](simulator.md) for the file format and the reader.
+
 ## Filtering, paging, export
 
 Eight methods carry the controls under the table.
