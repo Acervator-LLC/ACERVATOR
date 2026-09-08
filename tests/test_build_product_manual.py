@@ -25,6 +25,7 @@ from tools.build_product_manual import (
     verify_part_numbers,
     verify_sections_present,
     verify_toc_pages,
+    written_toc_misses,
 )
 
 COVER = """# Fixture Cover
@@ -134,6 +135,21 @@ def test_a_contents_row_naming_the_wrong_page_is_rejected(manual_tree):
     ok, detail = verify_toc_pages(output, [moved])
     assert not ok, f"a row moved off its heading was accepted: {detail}"
     assert first.text in detail, detail
+
+
+def test_the_printed_contents_rows_read_back_as_the_rows_that_were_planned(
+    manual_tree,
+):
+    docs, figures, output = manual_tree
+    result = build(docs, figures, output)
+
+    rows, misses = written_toc_misses(output)
+
+    assert rows == len(result.entries), (
+        f"{rows} rows read off the contents page against "
+        f"{len(result.entries)} rendered"
+    )
+    assert misses == [], misses
 
 
 def test_a_listed_section_missing_from_the_pdf_is_rejected(manual_tree):

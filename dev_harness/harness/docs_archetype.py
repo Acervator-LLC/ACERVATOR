@@ -31,6 +31,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Optional
 
@@ -102,8 +104,8 @@ class DocsArchetype:
     Diataxis-mode signal and H1 heading."""
 
     name = "documentation_quality"
-    version = "1.1"  # v1.1: added falsification field + calibration hook
-    tools = ("proselint", "vale", "structure")
+    version = "1.2"
+    tools = ("proselint", "vale", "structure", "contents")
     calibration_name = "docs"
 
     def load_calibration(self) -> str:
@@ -124,8 +126,9 @@ class DocsArchetype:
             return report
 
         files = self._enumerate(target)
-        if not files:
-            report.errors.append(f"no markdown/text files at: {target}")
+        pdfs = self._enumerate_pdfs(target)
+        if not files and not pdfs:
+            report.errors.append(f"no markdown/text/pdf files at: {target}")
             report.falsification = self._build_falsification(report)
             return report
 
@@ -133,13 +136,18 @@ class DocsArchetype:
         # cannot answer passed=True.
         report.scanned = True
 
-        for tool_name, runner in [
-            ("proselint", self._run_proselint),
-            ("vale", self._run_vale),
-            ("structure", self._run_structure),
-        ]:
+        runners: list[tuple[str, Callable[[], tuple[list[Finding], str]]]] = []
+        if files:
+            runners += [
+                ("proselint", partial(self._run_proselint, files)),
+                ("vale", partial(self._run_vale, files)),
+                ("structure", partial(self._run_structure, files)),
+            ]
+        if pdfs:
+            runners.append(("contents", partial(self._run_contents, pdfs)))
+        for tool_name, runner in runners:
             try:
-                findings, status = runner(files)
+                findings, status = runner()
                 report.findings.extend(findings)
                 report.tool_availability[tool_name] = status
             except FileNotFoundError:
@@ -152,16 +160,17 @@ class DocsArchetype:
                 report.tool_availability[tool_name] = "error"
                 report.errors.append(f"{tool_name}: {type(e).__name__}: {e}")
 
-        scan_rule_modules(
-            report,
-            target,
-            (
-                ("scaffolding", "dev_harness.harness.rules.scaffolding"),
-                ("hallucination", "dev_harness.harness.rules.hallucination"),
-            ),
-            (".md", ".txt"),
-            files=files,
-        )
+        if files:
+            scan_rule_modules(
+                report,
+                target,
+                (
+                    ("scaffolding", "dev_harness.harness.rules.scaffolding"),
+                    ("hallucination", "dev_harness.harness.rules.hallucination"),
+                ),
+                (".md", ".txt"),
+                files=files,
+            )
 
         report.falsification = self._build_falsification(report)
         return report
@@ -209,9 +218,47 @@ class DocsArchetype:
 
     def _enumerate(self, target: Path) -> list[Path]:
         if target.is_file():
-            return [target]
+            return [target] if target.suffix.lower() != ".pdf" else []
         files = sorted(list(target.rglob("*.md")) + list(target.rglob("*.txt")))
         return [p for p in files if not self._is_excluded(p)]
+
+    def _enumerate_pdfs(self, target: Path) -> list[Path]:
+        """Return the PDFs `_run_contents` reads under `target`."""
+        if target.is_file():
+            return [target] if target.suffix.lower() == ".pdf" else []
+        return [p for p in sorted(target.rglob("*.pdf")) if not self._is_excluded(p)]
+
+    def _run_contents(self, pdfs: list[Path]) -> tuple[list[Finding], str]:
+        """Report every contents row of each PDF that names a page without its title.
+
+        `written_toc_misses` reads the rows off the contents page and runs
+        `toc_row_miss`, the check `build_product_manual` runs on its own build.
+        """
+        if str(REPO_ROOT) not in sys.path:
+            sys.path.insert(0, str(REPO_ROOT))
+        from tools.build_product_manual import written_toc_misses
+
+        findings: list[Finding] = []
+        unread: list[str] = []
+        for pdf in pdfs:
+            rows, misses = written_toc_misses(pdf)
+            if not rows:
+                unread.append(pdf.name)
+                continue
+            findings.extend(
+                Finding(
+                    tool="contents",
+                    severity="high",
+                    file=str(pdf),
+                    line=0,
+                    rule_id="DOC006",
+                    message=message,
+                )
+                for message in misses
+            )
+        if unread:
+            return findings, f"unread: no contents rows in {', '.join(unread)}"
+        return findings, "ok"
 
     @staticmethod
     def _module_absent(proc: subprocess.CompletedProcess, tool: str) -> bool:
