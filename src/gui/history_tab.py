@@ -173,7 +173,7 @@ if _HAS_QT:
 
             outer.addWidget(filt)
 
-            self._summary = QLabel("No history loaded yet — click Refresh.")
+            self._summary = QLabel(hrc.STATUS_TEXT["idle"])
             self._summary.setStyleSheet(f"color: {ds.TEXT_INACTIVE}; padding: 2px 6px;")
             outer.addWidget(self._summary)
 
@@ -359,19 +359,17 @@ if _HAS_QT:
             if self._fetch_in_flight:
                 return
             if self._bot_manager is None:
-                self._set_status("Bot manager unavailable — cannot fetch history.")
+                self._set_status(hrc.STATUS_TEXT["no_bot_manager"])
                 return
             since_ts = self._since_ts()
 
             loop = getattr(self._bot_manager, "_async_loop", None)
             if loop is None:
-                self._set_status(
-                    "Async loop not ready — try again after platform starts."
-                )
+                self._set_status(hrc.STATUS_TEXT["no_async_loop"])
                 return
 
             self._set_fetching(True)
-            self._set_status("Fetching trade history from exchanges…")
+            self._set_status(hrc.STATUS_TEXT["fetching"])
 
             try:
                 from src.exchange.history_helpers import fetch_all_history_chunked
@@ -448,10 +446,7 @@ if _HAS_QT:
                     if time.monotonic() - start_ts > 60.0:
                         poll_timer.stop()
                         self._set_fetching(False)
-                        self._set_status(
-                            "Fetch timeout (60s). Exchange may be rate-"
-                            "limited; try again."
-                        )
+                        self._set_status(hrc.STATUS_TEXT["timeout"])
                 except Exception as exc:
                     poll_timer.stop()
                     self._set_fetching(False)

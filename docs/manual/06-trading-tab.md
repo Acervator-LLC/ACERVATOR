@@ -2400,3 +2400,23 @@ else:
 
 The same file carries the gate logic chain that turns those twelve votes into a
 trade decision.
+
+### The Indicator Voting Panel, restyled
+
+The panel beside the exchange stack carries seven columns on each row, aligned
+under each other: TF and six indicators above, TF and six more below. The three
+collated columns — Net, Comp and Conf — close the first row and stand as one
+pillar each behind both rows.
+
+`src/gui/indicator_panel.py` — the two rows share one grid
+
+```python
+col_names = ["TF"] + [short for _, short, _ in indicator_subset]
+col_names += [""] * (_PANEL_COLUMN_COUNT - len(col_names))
+```
+
+The TF Lock row is gone, and so are the pair symbol and the vote tally that
+stood in the upper right. The bot selector and its privacy dot moved there.
+[07-indicators.md](07-indicators.md) carries the panel's own entry.
+
+![The Trading tab in the Electron shell](../audits/2026-09-07_units/trading_tab_electron.png)

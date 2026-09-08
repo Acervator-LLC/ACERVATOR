@@ -7,6 +7,7 @@
 
   var ACCESSIBLE_NAME = "accessible_name";
   var ACTIONS = "actions";
+  var ATA_SPM = "ata_spm";
   var ACTIVE_SYMBOLS = "active_symbols";
   var ADOPT_SIGNAL_NAME = "adopt_signal_name";
   var AGE = "age";
@@ -25,11 +26,22 @@
   var GROUP_SPACING_PX = "group_spacing_px";
   var LAST_META = "last_meta";
   var LEFT_MARGINS_PX = "left_margins_px";
+  var LEFT_MODULE_KEYS = "left_module_keys";
+  var LEFT_MODULE_TITLES = "left_module_titles";
+  var LEFT_MODULES = "left_modules";
+  var RIGHT_ZONES = "right_zones";
+  var RIGHT_ZONE_KEYS = "right_zone_keys";
+  var RIGHT_ZONE_TITLES = "right_zone_titles";
   var LEFT_SPACING_PX = "left_spacing_px";
   var LOGGER_NAME = "logger_name";
   var LOGS = "logs";
   var MARKS = "marks";
   var METHOD_FIELD = "method";
+  var MODULE_FRAME_PX = "module_frame_px";
+  var MODULE_MARGINS_PX = "module_margins_px";
+  var MODULE_TITLE_PADDING_PX = "module_title_padding_px";
+  var BUTTON_PADDING_PX = "button_padding_px";
+  var BUTTON_FONT_WEIGHT = "button_font_weight";
   var NO_CELL = "no_cell";
   var OUTER_MARGINS_PX = "outer_margins_px";
   var OUTER_SPACING_PX = "outer_spacing_px";
@@ -62,6 +74,7 @@
   var SOURCES = "sources";
   var SPLITTER_ORIENTATION = "splitter_orientation";
   var SPLITTER_PANES = "splitter_panes";
+  var SPLITTER_HANDLE_PX = "splitter_handle_px";
   var SPLITTER_SIZES_PX = "splitter_sizes_px";
   var SPLITTER_STRETCH = "splitter_stretch";
   var STATUS_FORMATS = "status_formats";
@@ -73,6 +86,7 @@
   var TABLE_ALTERNATING_ROWS = "table_alternating_rows";
   var TABLE_EDIT_TRIGGERS = "table_edit_triggers";
   var TABLE_RESIZE_MODE = "table_resize_mode";
+  var TABLE_VIEWPORT_PX = "table_viewport_px";
   var TIMEFRAME = "timeframe";
   var TIMER_DELAYS_MS = "timer_delays_ms";
   var TIMERS = "timers";
@@ -86,7 +100,10 @@
     ACTIVE_SYMBOLS,
     ADOPT_SIGNAL_NAME,
     AGE,
+    ATA_SPM,
     BUS_TOPICS,
+    BUTTON_FONT_WEIGHT,
+    BUTTON_PADDING_PX,
     CALL_NAMES,
     CALLS,
     CELLS,
@@ -101,11 +118,20 @@
     GROUP_SPACING_PX,
     LAST_META,
     LEFT_MARGINS_PX,
+    LEFT_MODULE_KEYS,
+    LEFT_MODULE_TITLES,
+    LEFT_MODULES,
     LEFT_SPACING_PX,
+    RIGHT_ZONES,
+    RIGHT_ZONE_KEYS,
+    RIGHT_ZONE_TITLES,
     LOGGER_NAME,
     LOGS,
     MARKS,
     METHOD_FIELD,
+    MODULE_FRAME_PX,
+    MODULE_MARGINS_PX,
+    MODULE_TITLE_PADDING_PX,
     NO_CELL,
     OUTER_MARGINS_PX,
     OUTER_SPACING_PX,
@@ -136,6 +162,7 @@
     SIGNALS_MAX_HEIGHT_PX,
     SKIN,
     SOURCES,
+    SPLITTER_HANDLE_PX,
     SPLITTER_ORIENTATION,
     SPLITTER_PANES,
     SPLITTER_SIZES_PX,
@@ -149,6 +176,7 @@
     TABLE_ALTERNATING_ROWS,
     TABLE_EDIT_TRIGGERS,
     TABLE_RESIZE_MODE,
+    TABLE_VIEWPORT_PX,
     TIMEFRAME,
     TIMER_DELAYS_MS,
     TIMERS,
@@ -445,8 +473,55 @@
 
   var ACTION_FIELDS = [ADOPT_REQUESTED, REFRESH_CLICKED, SHOW_ACTIVE_TOGGLED];
 
+  // The ATA-SPM control row: the sector field, its class, its four
+  // timeframe boxes and Scan Now, published under one bag.
+  var SECTOR_PLACEHOLDER = "sector_placeholder";
+  var SECTOR_TOOLTIP = "sector_tooltip";
+  var SECTOR_MIN_WIDTH_PX = "sector_min_width_px";
+  var SCAN_LABEL = "scan_label";
+  var SCAN_TOOLTIP = "scan_tooltip";
+  var CLASS_TOOLTIP = "class_tooltip";
+  var CLASS_WIDTH_PX = "class_width_px";
+  var BOX_TOOLTIP_FORMAT = "box_tooltip_format";
+  var BOX_ROW_PART = "box_row_part";
+  var BOX_WIDTH_PX = "box_width_px";
+  var BOX_HEIGHT_PX = "box_height_px";
+  var ROW_SPACING_PX = "row_spacing_px";
+  var SECTOR_TEXT = "sector_text";
+  var SECTOR_CLASS = "sector_class";
+  var ASSET_CLASSES = "asset_classes";
+  var BOXES = "boxes";
+  var FIELD_PADDING_PX = "field_padding_px";
+  var FIELD_BORDER_PX = "field_border_px";
+  var CHECK_INDICATOR_PX = "check_indicator_px";
+  var CHECK_LABEL_SPACING_PX = "check_label_spacing_px";
+
+  var ATA_SPM_FIELDS = [
+    ASSET_CLASSES,
+    BOXES,
+    BOX_HEIGHT_PX,
+    BOX_ROW_PART,
+    BOX_TOOLTIP_FORMAT,
+    BOX_WIDTH_PX,
+    CHECK_INDICATOR_PX,
+    CHECK_LABEL_SPACING_PX,
+    CLASS_TOOLTIP,
+    CLASS_WIDTH_PX,
+    FIELD_BORDER_PX,
+    FIELD_PADDING_PX,
+    ROW_SPACING_PX,
+    SCAN_LABEL,
+    SCAN_TOOLTIP,
+    SECTOR_CLASS,
+    SECTOR_MIN_WIDTH_PX,
+    SECTOR_PLACEHOLDER,
+    SECTOR_TEXT,
+    SECTOR_TOOLTIP
+  ];
+
   var BAG_FIELDS = {};
   BAG_FIELDS[ACTIONS] = ACTION_FIELDS;
+  BAG_FIELDS[ATA_SPM] = ATA_SPM_FIELDS;
   BAG_FIELDS[AGE] = AGE_FIELDS;
   BAG_FIELDS[CELLS] = CELL_FIELDS;
   BAG_FIELDS[COLORS] = COLOR_FIELDS;
@@ -469,11 +544,20 @@
   var WANTED_LISTS = [
     ACTIVE_SYMBOLS,
     BUS_TOPICS,
+    BUTTON_PADDING_PX,
     CALL_NAMES,
     CALLS,
     EMITTED,
     GROUP_MARGINS_PX,
     LEFT_MARGINS_PX,
+    LEFT_MODULE_KEYS,
+    LEFT_MODULE_TITLES,
+    LEFT_MODULES,
+    MODULE_MARGINS_PX,
+    RIGHT_ZONES,
+    RIGHT_ZONE_KEYS,
+    RIGHT_ZONE_TITLES,
+    MODULE_TITLE_PADDING_PX,
     OUTER_MARGINS_PX,
     PAIR_COLUMNS,
     PAIR_ROWS,
@@ -491,6 +575,7 @@
   var WANTED_BAGS = [
     ACTIONS,
     AGE,
+    ATA_SPM,
     CELLS,
     COLORS,
     ELEMENTS,
@@ -572,12 +657,17 @@
 
   var FLEX = "flex";
   var FLEX_NONE = "none";
+  // Three equally sized rectangles down each side, as the Qt stretch gives.
+  var EQUAL_SHARE = "1 1 0";
+  // A table takes what its zone leaves and scrolls, as the Qt table does.
+  var SHRINK_SHARE = "1 1 auto";
   var AUTO = "auto";
   var ROW_WAY = "row";
   var COLUMN_WAY = "column";
   var CENTER = "center";
   var FULL = "100%";
   var MIN_CONTENT = "min-content";
+  var MAX_CONTENT = "max-content";
   var COLLAPSE = "collapse";
   var CLIPPED = "hidden";
   var ELLIPSIS = "ellipsis";
@@ -585,11 +675,17 @@
   var NO_SELECT = "none";
   var PRE = "pre";
   var PRE_WRAP = "pre-wrap";
+  var RELATIVE = "relative";
+  var ABSOLUTE = "absolute";
+  var SOLID = "solid";
+  var NO_OFFSET = 0;
 
   var ZERO = Number(EMPTY);
   var ONE = Number(true);
   var TWO = ONE + ONE;
   var THREE = TWO + ONE;
+  var FOUR = THREE + ONE;
+  var FIVE = FOUR + ONE;
 
   var DIV_TAG = "div";
   var SPAN_TAG = "span";
@@ -606,8 +702,18 @@
   var TH_TAG = "th";
   var TD_TAG = "td";
 
+  var SELECT_TAG = "select";
+  var OPTION_TAG = "option";
+  var BORDER_BOX = "border-box";
+  var SHRINK_ONLY = "0 1 auto";
+  var NO_MARGIN = "0";
+
   var BUTTON_TYPE = "button";
   var CHECKBOX_TYPE = "checkbox";
+  var TEXT_TYPE = "text";
+
+  // The token the surface's box tooltip format leaves for the box wording.
+  var LABEL_TOKEN = "{label}";
 
   var SCREEN_PART = "screen";
   var SPLIT_PART = "split";
@@ -619,6 +725,9 @@
   var SWITCH_TEXT_PART = "switch-text";
   var FILTER_STRETCH_PART = "filter-stretch";
   var STATUS_PART = "status-line";
+  var MODULE_GROUP_PART = "module-group";
+  var MODULE_LEGEND_PART = "module-legend";
+  var MODULE_STATUS_PART = "module-status";
   var TABLE_GROUP_PART = "table-group";
   var GROUP_LEGEND_PART = "group-legend";
   var GROUP_BODY_PART = "group-body";
@@ -632,6 +741,7 @@
   var GRID_CELL_PART = "grid-cell";
   var LEFT_STRETCH_PART = "left-stretch";
   var TOPOLOGY_PART = "topology-slot";
+  var RIGHT_PANE_PART = "right-pane";
   var PER_BOT_PART = "per-bot";
   var PER_BOT_LABEL_PART = "per-bot-label";
   var PER_BOT_CARD_PART = "per-bot-card";
@@ -641,6 +751,152 @@
   var MARK_LEAD_PART = "mark-lead";
   var MARK_STRONG_PART = "mark-strong";
   var MARK_TAIL_PART = "mark-tail";
+
+  var STEPPER_PART = "zone-stepper";
+  var STEP_ROW_PART = "step-row";
+  var STEP_BACK_PART = "step-back";
+  var STEP_NEXT_PART = "step-next";
+  var POSITION_PART = "zone-position";
+  var ENTRY_PART = "zone-entry";
+  var ENTRY_BODY_PART = "entry-body";
+  var ENTRY_HEAD_PART = "entry-head";
+  var HEADLINE_PART = "entry-headline";
+  var ENTRY_BADGE_PART = "entry-badge";
+  var ENTRY_META_PART = "entry-meta";
+  var ENTRY_METHOD_PART = "entry-method";
+  var ENTRY_HINT_PART = "entry-hint";
+  var DETAIL_PART = "entry-detail";
+
+  var ZONES = "zones";
+  var STEPPER = "stepper";
+  var ZONE_KEY = "key";
+  var ZONE_TOTAL = "total";
+  var ZONE_POSITION = "position";
+  var ZONE_HEADLINE = "headline";
+  var ZONE_META = "meta";
+  var ZONE_METHOD = "method";
+  var ZONE_DETAIL = "detail";
+  var ZONE_HINT = "hint";
+  var ZONE_BADGE = "badge";
+  var ZONE_BADGE_STYLE = "badge_style";
+
+  var BACK_TEXT = "back_text";
+  var NEXT_TEXT = "next_text";
+  var BACK_TOOLTIP = "back_tooltip";
+  var NEXT_TOOLTIP = "next_tooltip";
+  var BUTTON_WIDTH_PX = "button_width_px";
+  var BUTTON_STYLE = "button_style";
+  var POSITION_STYLE = "position_style";
+  var ENTRY_STYLE = "entry_style";
+  var ENTRY_MARGINS_PX = "entry_margins_px";
+  var ENTRY_SPACING_PX = "entry_spacing_px";
+  var HEADLINE_STYLE = "headline_style";
+  var META_STYLE = "meta_style";
+  var METHOD_STYLE = "method_style";
+  var HINT_TEXT = "hint_text";
+  var HINT_STYLE = "hint_style";
+  var DETAIL_STYLE = "detail_style";
+  var ENTRY_NAME = "entry_accessible_name";
+  var STEPPER_NAME = "stepper_accessible_name";
+  var PUSH_PADDING_PX = "push_padding_px";
+  var PUSH_FONT_WEIGHT = "push_font_weight";
+  var PUSH_BUTTON_HEIGHT_PX = "push_button_height_px";
+
+  var ATA_ROW_PART = "ata-row";
+  var SECTOR_FIELD_PART = "sector-field";
+  var CLASS_BOX_PART = "class-box";
+  var TIMEFRAME_BOX_PART = "timeframe-box";
+  var SCAN_NOW_PART = "scan-now";
+
+  // Phases four, five and six: the bucket row, the settings page and the
+  // band strip one waiting post draws.
+  var BUCKET = "bucket";
+  var BUCKET_ROW_PART = "bucket-row";
+  var BUCKET_STRETCH_PART = "bucket-stretch";
+  var SETTINGS_PAGE_PART = "settings-page";
+  var SETTINGS_ROW_PART = "settings-row";
+  var SETTINGS_LABEL_PART = "settings-label";
+  var CREDENTIAL_STATE_PART = "credential-state";
+  var STRIP_TEXT_PART = "strip-text";
+
+  var ZONE_THUMBNAIL = "thumbnail";
+  var ZONE_PREVIEW = "preview";
+  var ZONE_ACTIONS = "actions";
+  var ZONE_VOTE = "vote";
+  var ZONE_HEADLINE_WIDTH_PX = "headline_width_px";
+  var VOTE_PART = "post-vote";
+  var THUMBNAIL_PART = "post-thumbnail";
+
+  var ZONE_PANELS = "panels";
+  var PANEL_ROWS = "rows";
+  var PANEL_ROW_PART = "row_part";
+  var PANEL_GROUP_PART = "group_part";
+  var PANEL_LINE_PART = "line_part";
+  var PANEL_LINES = "lines";
+  var PANEL_LINE_STYLE = "line_style";
+  var CHART_SYMBOL = "symbol";
+
+  var CHART_PART = "part";
+  var CHART_WIDTH_PX = "width_px";
+  var CHART_HEIGHT_PX = "height_px";
+  var CHART_MARKS = "marks";
+  var CHART_TOOLTIP = "tooltip";
+  var STRIP_BOX_STYLE = "box_style";
+  var STRIP_TEXT = "text";
+  var BUTTON_HEIGHT_PX = "button_height_px";
+  var FIELD_HEIGHT_PX = "field_height_px";
+  var POST_SELECTED_WIDTH_PX = "post_selected_width_px";
+  var POST_ALL_WIDTH_PX = "post_all_width_px";
+  var FULL_AUTO_WIDTH_PX = "full_auto_width_px";
+  var SETTINGS_WIDTH_PX = "settings_width_px";
+  var SCAN_WIDTH_PX = "scan_width_px";
+
+  var POST_SELECTED_LABEL = "post_selected_label";
+  var POST_SELECTED_TOOLTIP = "post_selected_tooltip";
+  var POST_SELECTED_PART = "post_selected_part";
+  var POST_ALL_LABEL = "post_all_label";
+  var POST_ALL_TOOLTIP = "post_all_tooltip";
+  var POST_ALL_PART = "post_all_part";
+  var FULL_AUTO_LABEL = "full_auto_label";
+  var FULL_AUTO_TOOLTIP = "full_auto_tooltip";
+  var FULL_AUTO_PART = "full_auto_part";
+  var FULL_AUTO_ON = "full_auto_on";
+  var BUCKET_SPACING_PX = "row_spacing_px";
+  var BUCKET_SETTINGS = "settings";
+
+  var SETTINGS_OPEN = "open";
+  var SETTINGS_LABEL = "settings_label";
+  var SETTINGS_TOOLTIP = "settings_tooltip";
+  var SETTINGS_PART = "settings_part";
+  var SAVE_LABEL = "save_label";
+  var SAVE_TOOLTIP = "save_tooltip";
+  var SAVE_PART = "save_part";
+  var SETTING_PART = "setting_part";
+  var CREDENTIAL_FIELDS = "credential_fields";
+  var CREDENTIAL_ROWS = "credential_rows";
+  var SETTING_ROWS = "setting_rows";
+  var CREDENTIAL_WIDTH_PX = "credential_width_px";
+  var SETTING_WIDTH_PX = "setting_width_px";
+  var SETTINGS_LABEL_WIDTH_PX = "label_width_px";
+  var SETTINGS_SPACING_PX = "row_spacing_px";
+  var PASSWORD_TYPE = "password";
+
+  var SECTOR_TEXT_FIELD = "sector_text";
+  var SECTOR_CLASS_FIELD = "sector_class";
+  var TOGGLE_TIMEFRAME_FIELD = "toggle_timeframe";
+  var SCAN_NOW_FIELD = "scan_now";
+
+  var STEP_ZONE_FIELD = "step_zone";
+  var STEP_FIELD = "step";
+  var TOGGLE_ZONE_FIELD = "toggle_zone";
+  var PUSH_ACTION_FIELD = "push_action";
+  var SAVE_CREDENTIALS_FIELD = "save_credentials";
+  var CREDENTIAL_TEXT_FIELD = "credential_text";
+  var SET_SETTING_FIELD = "set_setting";
+  var PUSH_PARTS = "push_parts";
+  var POINTER = "pointer";
+  var INHERITED = "inherit";
+  var PRE_SPACE = "pre";
 
   var SIGNALS_TABLE = "signals";
   var PAIRS_TABLE = "pairs";
@@ -657,6 +913,8 @@
   var ALTERNATING_ATTR = "data-alternating";
   var ROWS_ATTR = "data-rows";
   var SLOT_ATTR = "data-slot";
+  var SLOT_SELECTOR = "[data-slot=\"market-inspector-topologies\"]";
+  var FUNCTION_KIND = "function";
   var ARIA_LABEL = "aria-label";
 
   var held = null;
@@ -927,9 +1185,13 @@
 
   function RefreshButton(props) {
     var model = props.model;
+    // The theme gives QPushButton 8px 20px of padding and a bold face.
+    var buttonStyle = marginStyle(listField(model, BUTTON_PADDING_PX));
+    buttonStyle.flex = FLEX_NONE;
+    buttonStyle.fontWeight = text(model[BUTTON_FONT_WEIGHT]);
     var buttonProps = {
       type: BUTTON_TYPE,
-      style: { flex: FLEX_NONE },
+      style: buttonStyle,
       title: label(model[REFRESH_TOOLTIP]),
       disabled: model[REFRESH_ENABLED] !== true,
       onClick: function () {
@@ -1057,7 +1319,11 @@
     var rows = listField(model, props.rowsField);
     var mode = model[TABLE_RESIZE_MODE];
     var gridProps = {
-      style: { width: FULL, borderCollapse: COLLAPSE, tableLayout: AUTO }
+      style: {
+        width: mode === TO_CONTENTS_MODE ? MAX_CONTENT : FULL,
+        borderCollapse: COLLAPSE,
+        tableLayout: AUTO
+      }
     };
     gridProps[PART_ATTR] = GRID_PART;
     gridProps[TABLE_ATTR] = props.table;
@@ -1123,26 +1389,37 @@
     );
   }
 
+  // tableHeight answers what the Qt table draws: its own viewport height,
+  // cut short by the group's maximum. An empty table keeps that height.
+  function tableHeight(model, heightField) {
+    var viewport = Number(model[TABLE_VIEWPORT_PX]);
+    var most = Number(model[heightField]);
+    if (!isFinite(viewport)) {
+      return most;
+    }
+    return isFinite(most) && most < viewport ? most : viewport;
+  }
+
   // TableGroup is the Qt group box holding one table under its title.
   function TableGroup(props) {
     var model = props.model;
-    var style = boxStyle(
-      listField(model, GROUP_MARGINS_PX),
-      model[GROUP_SPACING_PX],
-      COLUMN_WAY
-    );
-    style.flex = FLEX_NONE;
+    var style = groupFrame(model);
+    style.flex = SHRINK_SHARE;
+    style.minHeight = ZERO;
     var groupProps = { style: style };
     groupProps[PART_ATTR] = TABLE_GROUP_PART;
     groupProps[TABLE_ATTR] = props.table;
     groupProps[ARIA_LABEL] = label(model[props.titleField]);
-    var legendProps = { style: asLabel({}, false) };
+    var legendProps = { style: asLabel(groupTitleStyle(model), false) };
     legendProps[PART_ATTR] = GROUP_LEGEND_PART;
     var bodyProps = {
       style: {
+        height: length(tableHeight(model, props.heightField)),
         maxHeight: length(model[props.heightField]),
         overflow: AUTO,
-        flex: FLEX_NONE
+        flex: SHRINK_SHARE,
+        minWidth: ZERO,
+        minHeight: ZERO
       },
       tabIndex: ZERO
     };
@@ -1172,6 +1449,906 @@
     );
   }
 
+  // ModuleGroup is one left-side region: its Qt group box and its status line.
+  // groupFrame is the themed QGroupBox: a 1 px frame and a title drawn in the
+  // group own margin, so the title takes no row.
+  function groupFrame(model, shares) {
+    var style = boxStyle(
+      listField(model, MODULE_MARGINS_PX),
+      model[GROUP_SPACING_PX],
+      COLUMN_WAY
+    );
+    style.flex = shares === true ? EQUAL_SHARE : FLEX_NONE;
+    style.minWidth = ZERO;
+    if (shares === true) {
+      style.minHeight = ZERO;
+      style.overflow = AUTO;
+    }
+    style.position = RELATIVE;
+    style.borderWidth = length(model[MODULE_FRAME_PX]);
+    style.borderStyle = SOLID;
+    return style;
+  }
+
+  function groupTitleStyle(model) {
+    var frame = Number(model[MODULE_FRAME_PX]);
+    var titleStyle = marginStyle(listField(model, MODULE_TITLE_PADDING_PX));
+    titleStyle.position = ABSOLUTE;
+    titleStyle.left = length(isFinite(frame) ? -frame : NO_OFFSET);
+    titleStyle.top = length(isFinite(frame) ? -frame : NO_OFFSET);
+    return titleStyle;
+  }
+
+  // The published zone view one key names, or an empty one.
+  function zoneFor(model, key) {
+    var found = {};
+    listField(model, ZONES).forEach(function (one) {
+      if (isPlainObject(one) && one[ZONE_KEY] === key) {
+        found = one;
+      }
+    });
+    return found;
+  }
+
+  // StepButton is one arrow. `by` is -1 back and +1 next.
+  function StepButton(props) {
+    var skin = props.skin;
+    var style = styleOf(skin[BUTTON_STYLE]);
+    style.font = INHERITED;
+    style.flex = FLEX_NONE;
+    style.width = length(skin[BUTTON_WIDTH_PX]);
+    var buttonProps = {
+      type: BUTTON_TYPE,
+      style: style,
+      disabled: props.total < TWO,
+      title: label(skin[props.by < ZERO ? BACK_TOOLTIP : NEXT_TOOLTIP])
+    };
+    buttonProps[PART_ATTR] = props.by < ZERO ? STEP_BACK_PART : STEP_NEXT_PART;
+    buttonProps[NAME_ATTR] = text(props.zone);
+    buttonProps[ARIA_LABEL] = label(
+      skin[props.by < ZERO ? BACK_TOOLTIP : NEXT_TOOLTIP]
+    );
+    buttonProps.onClick = function () {
+      props.act(props.by < ZERO ? STEP_BACK_PART : STEP_NEXT_PART, props.zone);
+    };
+    return element(
+      BUTTON_TAG,
+      buttonProps,
+      text(skin[props.by < ZERO ? BACK_TEXT : NEXT_TEXT])
+    );
+  }
+
+  // ChartMark is one rectangle of a post's chart: a close column, a band
+  // rule or the last close. The Qt _PostChart fills the same box.
+  function ChartMark(props) {
+    var mark = asList(props.mark);
+    var style = {
+      position: ABSOLUTE,
+      left: length(mark[ONE]),
+      top: length(mark[TWO]),
+      width: length(mark[THREE]),
+      height: length(mark[FOUR]),
+      backgroundColor: text(mark[FIVE])
+    };
+    var markProps = { style: style };
+    markProps[PART_ATTR] = text(mark[ZERO]);
+    return element(DIV_TAG, markProps, null);
+  }
+
+  // PostChart is the chart one waiting post carries: its closes, its
+  // Bollinger bands and its last close, at thumbnail or at preview size.
+  function PostChart(props) {
+    var chart = props.chart;
+    var frame = styleOf(chart[STRIP_BOX_STYLE]);
+    frame.boxSizing = BORDER_BOX;
+    frame.position = RELATIVE;
+    frame.overflow = CLIPPED;
+    frame.flex = FLEX_NONE;
+    frame.width = length(chart[CHART_WIDTH_PX]);
+    frame.height = length(chart[CHART_HEIGHT_PX]);
+    frame.cursor = POINTER;
+    var frameProps = { style: frame, title: label(chart[CHART_TOOLTIP]) };
+    frameProps[PART_ATTR] = text(chart[CHART_PART]);
+    frameProps[NAME_ATTR] = text(chart[CHART_PART]);
+    frameProps.onClick = function (event) {
+      // The entry toggles on its own click, and this chart sits inside it.
+      event.stopPropagation();
+      act(THUMBNAIL_PART, true);
+    };
+    return element(
+      DIV_TAG,
+      frameProps,
+      listField(chart, CHART_MARKS).map(function (mark, at) {
+        return element(ChartMark, {
+          key: CHART_MARKS + PATH_SPLIT + String(at),
+          mark: mark
+        });
+      })
+    );
+  }
+
+  // EntryAction is one button under the larger chart: Approve or Decline.
+  function EntryAction(props) {
+    var row = asList(props.row);
+    var skin = props.skin;
+    var style = marginStyle(asList(skin[PUSH_PADDING_PX]));
+    style.flex = FLEX_NONE;
+    style.fontWeight = text(skin[PUSH_FONT_WEIGHT]);
+    style.boxSizing = BORDER_BOX;
+    style.width = length(row[FOUR]);
+    style.height = length(skin[PUSH_BUTTON_HEIGHT_PX]);
+    var buttonProps = {
+      type: BUTTON_TYPE,
+      style: style,
+      title: label(row[TWO]),
+      disabled: row[THREE] !== true,
+      onClick: function (event) {
+        // The entry toggles on its own click, and this button sits inside it.
+        event.stopPropagation();
+        props.act(text(row[ZERO]), true);
+      }
+    };
+    buttonProps[PART_ATTR] = text(row[ZERO]);
+    buttonProps[NAME_ATTR] = text(row[ZERO]);
+    buttonProps[ARIA_LABEL] = label(row[ONE]);
+    return element(BUTTON_TAG, buttonProps, text(row[ONE]));
+  }
+
+  // PanelCell is one cell of the Indicator Voting Panel ATA-SMP carries.
+  // The Qt _VotingPanel gives its own QLabel the same width and height.
+  function PanelCell(props) {
+    var cell = asList(props.cell);
+    var style = asLabel(styleOf(cell[THREE]), false);
+    style.flex = FLEX_NONE;
+    style.boxSizing = BORDER_BOX;
+    style.width = length(cell[ONE]);
+    style.height = length(props.heightPx);
+    style.textAlign = CENTER;
+    var cellProps = { style: style, title: label(cell[FOUR]) };
+    cellProps[PART_ATTR] = text(cell[ZERO]);
+    return element(DIV_TAG, cellProps, text(cell[TWO]));
+  }
+
+  // PanelRow is one row of that panel: a header row, or one timeframe.
+  function PanelRow(props) {
+    var row = asList(props.row);
+    var style = { display: FLEX, flexDirection: ROW_WAY, flex: FLEX_NONE };
+    style.height = length(row[ZERO]);
+    var rowProps = { style: style };
+    rowProps[PART_ATTR] = text(props.part);
+    return element(
+      DIV_TAG,
+      rowProps,
+      asList(row[ONE]).map(function (cell, at) {
+        return element(PanelCell, {
+          key: String(at),
+          cell: cell,
+          heightPx: row[ZERO]
+        });
+      })
+    );
+  }
+
+  // PanelLine is one gate chain line under the panel of its own asset.
+  function PanelLine(props) {
+    var lineProps = { style: asLabel(styleOf(props.style), true) };
+    lineProps[PART_ATTR] = text(props.part);
+    lineProps[NAME_ATTR] = text(asList(props.row)[ZERO]);
+    return element(DIV_TAG, lineProps, text(asList(props.row)[ONE]));
+  }
+
+  // VotingPanel is the Indicator Voting Panel one scanned asset carries,
+  // with that asset's gate chain result under it. It draws only the
+  // markets ATA-SMP read; no live bot feeds it.
+  function VotingPanel(props) {
+    var panel = props.panel;
+    var frame = styleOf(panel[STRIP_BOX_STYLE]);
+    frame.display = FLEX;
+    frame.flexDirection = COLUMN_WAY;
+    frame.boxSizing = BORDER_BOX;
+    frame.flex = FLEX_NONE;
+    frame.width = length(panel[CHART_WIDTH_PX]);
+    frame.height = length(panel[CHART_HEIGHT_PX]);
+    var frameProps = { style: frame, title: label(panel[CHART_TOOLTIP]) };
+    frameProps[PART_ATTR] = text(panel[CHART_PART]);
+    frameProps[NAME_ATTR] = text(panel[CHART_PART]);
+    var groupProps = {
+      style: { display: FLEX, flexDirection: COLUMN_WAY, flex: FLEX_NONE }
+    };
+    groupProps[PART_ATTR] = text(panel[PANEL_GROUP_PART]);
+    groupProps[NAME_ATTR] = text(panel[CHART_SYMBOL]);
+    return element(
+      DIV_TAG,
+      groupProps,
+      element(
+        DIV_TAG,
+        frameProps,
+        listField(panel, PANEL_ROWS).map(function (row, at) {
+          return element(PanelRow, {
+            key: PANEL_ROWS + PATH_SPLIT + String(at),
+            row: row,
+            part: panel[PANEL_ROW_PART]
+          });
+        })
+      ),
+      listField(panel, PANEL_LINES).map(function (row, at) {
+        return element(PanelLine, {
+          key: PANEL_LINES + PATH_SPLIT + String(at),
+          row: row,
+          part: panel[PANEL_LINE_PART],
+          style: panel[PANEL_LINE_STYLE]
+        });
+      })
+    );
+  }
+
+  // DetailLine is one line of the expansion.
+  function DetailLine(props) {
+    var lineProps = { style: asLabel(styleOf(props.skin[DETAIL_STYLE]), true) };
+    lineProps[PART_ATTR] = DETAIL_PART;
+    lineProps[NAME_ATTR] = text(asList(props.row)[ZERO]);
+    return element(DIV_TAG, lineProps, text(asList(props.row)[ONE]));
+  }
+
+  // ZoneStepper draws one zone's entry: the arrows, the position, the entry
+  // itself and, while it is open, the lines saying how and why it is there.
+  // Every zone on this screen and the proposals pane draw through it.
+  function ZoneStepper(props) {
+    var skin = props.skin;
+    var view = isPlainObject(props.view) ? props.view : {};
+    var total = Number(view[ZONE_TOTAL]) || ZERO;
+    var press = typeof props.act === FUNCTION_KIND ? props.act : function () {};
+    var outer = { display: FLEX, flexDirection: COLUMN_WAY, flex: ONE, minHeight: ZERO };
+    outer.gap = length(skin[ENTRY_SPACING_PX]);
+    var outerProps = { style: outer };
+    outerProps[PART_ATTR] = STEPPER_PART;
+    outerProps[NAME_ATTR] = text(view[ZONE_KEY]);
+    outerProps[ARIA_LABEL] = label(skin[STEPPER_NAME]);
+    var rowStyle = { display: FLEX, flexDirection: ROW_WAY, flex: FLEX_NONE };
+    rowStyle.gap = length(skin[ENTRY_SPACING_PX]);
+    var rowProps = { style: rowStyle };
+    rowProps[PART_ATTR] = STEP_ROW_PART;
+    var positionProps = { style: asLabel(styleOf(skin[POSITION_STYLE]), false) };
+    positionProps[PART_ATTR] = POSITION_PART;
+    positionProps[NAME_ATTR] = text(view[ZONE_KEY]);
+    var frame = styleOf(skin[ENTRY_STYLE]);
+    frame.flex = ONE;
+    frame.minHeight = ZERO;
+    frame.overflow = AUTO;
+    frame.cursor = POINTER;
+    var entryProps = { style: frame };
+    entryProps[PART_ATTR] = ENTRY_PART;
+    entryProps[NAME_ATTR] = text(view[ZONE_KEY]);
+    entryProps[ARIA_LABEL] = label(skin[ENTRY_NAME]);
+    entryProps.onClick = function () {
+      press(ENTRY_PART, view[ZONE_KEY]);
+    };
+    var bodyProps = {
+      style: boxStyle(
+        asList(skin[ENTRY_MARGINS_PX]),
+        skin[ENTRY_SPACING_PX],
+        COLUMN_WAY
+      )
+    };
+    bodyProps[PART_ATTR] = ENTRY_BODY_PART;
+    var headStyle = { display: FLEX, flexDirection: ROW_WAY };
+    headStyle.gap = length(skin[ENTRY_SPACING_PX]);
+    var headProps = { style: headStyle };
+    headProps[PART_ATTR] = ENTRY_HEAD_PART;
+    var headlineStyle = asLabel(styleOf(skin[HEADLINE_STYLE]), true);
+    headlineStyle.flex = SHRINK_ONLY;
+    headlineStyle.minWidth = ZERO;
+    headlineStyle.boxSizing = BORDER_BOX;
+    headlineStyle.width = length(view[ZONE_HEADLINE_WIDTH_PX]);
+    var headlineProps = { style: headlineStyle };
+    headlineProps[PART_ATTR] = HEADLINE_PART;
+    headlineProps[NAME_ATTR] = text(view[ZONE_KEY]);
+    var badgeStyle = styleOf(view[ZONE_BADGE_STYLE]);
+    badgeStyle.whiteSpace = PRE_SPACE;
+    var badgeProps = { style: badgeStyle };
+    badgeProps[PART_ATTR] = ENTRY_BADGE_PART;
+    var vote = asList(view[ZONE_VOTE]);
+    var voteStyle = asLabel(styleOf(vote[ONE]), false);
+    var voteProps = { style: voteStyle };
+    voteProps[PART_ATTR] = VOTE_PART;
+    voteProps[NAME_ATTR] = text(view[ZONE_KEY]);
+    var metaProps = { style: asLabel(styleOf(skin[META_STYLE]), true) };
+    metaProps[PART_ATTR] = ENTRY_META_PART;
+    var methodProps = { style: asLabel(styleOf(skin[METHOD_STYLE]), true) };
+    methodProps[PART_ATTR] = ENTRY_METHOD_PART;
+    var hintProps = { style: asLabel(styleOf(skin[HINT_STYLE]), true) };
+    hintProps[PART_ATTR] = ENTRY_HINT_PART;
+    var thumbnail = objectField(view, ZONE_THUMBNAIL);
+    var preview = objectField(view, ZONE_PREVIEW);
+    var actionRowStyle = { display: FLEX, flexDirection: ROW_WAY, flex: FLEX_NONE };
+    actionRowStyle.gap = length(skin[ENTRY_SPACING_PX]);
+    var actionRowProps = { style: actionRowStyle };
+    actionRowProps[PART_ATTR] = ZONE_ACTIONS;
+    var stripTextProps = {
+      style: asLabel(styleOf(skin[DETAIL_STYLE]), true)
+    };
+    stripTextProps[PART_ATTR] = STRIP_TEXT_PART;
+    stripTextProps[NAME_ATTR] = STRIP_TEXT_PART;
+    return element(
+      DIV_TAG,
+      outerProps,
+      element(
+        DIV_TAG,
+        rowProps,
+        element(StepButton, {
+          key: STEP_BACK_PART,
+          skin: skin,
+          by: -ONE,
+          total: total,
+          zone: view[ZONE_KEY],
+          act: press
+        }),
+        element(StepButton, {
+          key: STEP_NEXT_PART,
+          skin: skin,
+          by: ONE,
+          total: total,
+          zone: view[ZONE_KEY],
+          act: press
+        }),
+        element(DIV_TAG, positionProps, text(view[ZONE_POSITION]))
+      ),
+      element(
+        DIV_TAG,
+        entryProps,
+        element(
+          DIV_TAG,
+          bodyProps,
+          element(
+            DIV_TAG,
+            headProps,
+            owns(thumbnail, CHART_PART)
+              ? element(PostChart, { key: ZONE_THUMBNAIL, chart: thumbnail })
+              : null,
+            element(DIV_TAG, headlineProps, text(view[ZONE_HEADLINE])),
+            vote.length > ZERO
+              ? element(SPAN_TAG, voteProps, text(vote[ZERO]))
+              : null,
+            text(view[ZONE_BADGE])
+              ? element(SPAN_TAG, badgeProps, text(view[ZONE_BADGE]))
+              : null,
+            element(Spacer, { key: ENTRY_HEAD_PART, part: ENTRY_HEAD_PART })
+          ),
+          text(view[ZONE_META])
+            ? element(DIV_TAG, metaProps, text(view[ZONE_META]))
+            : null,
+          text(view[ZONE_METHOD])
+            ? element(DIV_TAG, methodProps, text(view[ZONE_METHOD]))
+            : null,
+          owns(preview, CHART_PART)
+            ? element(PostChart, { key: ZONE_PREVIEW, chart: preview })
+            : null,
+          owns(preview, CHART_PART)
+            ? element(DIV_TAG, stripTextProps, text(preview[STRIP_TEXT]))
+            : null,
+          listField(view, ZONE_ACTIONS).length > ZERO
+            ? element(
+                DIV_TAG,
+                actionRowProps,
+                listField(view, ZONE_ACTIONS).map(function (row, at) {
+                  return element(EntryAction, {
+                    key: ZONE_ACTIONS + PATH_SPLIT + String(at),
+                    skin: skin,
+                    act: press,
+                    row: row
+                  });
+                }),
+                element(Spacer, {
+                  key: BUCKET_STRETCH_PART,
+                  part: BUCKET_STRETCH_PART
+                })
+              )
+            : null,
+          listField(view, ZONE_PANELS).map(function (panel, at) {
+            return element(VotingPanel, {
+              key: ZONE_PANELS + PATH_SPLIT + String(at),
+              panel: panel
+            });
+          }),
+          listField(view, ZONE_DETAIL).map(function (row, at) {
+            return element(DetailLine, {
+              key: DETAIL_PART + PATH_SPLIT + String(at),
+              skin: skin,
+              row: row
+            });
+          }),
+          view[ZONE_HINT] === true
+            ? element(DIV_TAG, hintProps, text(skin[HINT_TEXT]))
+            : null
+        )
+      )
+    );
+  }
+
+  // fieldStyle is the themed QLineEdit and QComboBox box: the theme's own
+  // padding and its 1 px border, over a fixed width.
+  function fieldStyle(skin, widthField) {
+    var style = marginStyle(asList(skin[FIELD_PADDING_PX]));
+    style.flex = FLEX_NONE;
+    style.boxSizing = BORDER_BOX;
+    style.width = length(skin[widthField]);
+    style.height = length(skin[FIELD_HEIGHT_PX]);
+    style.borderWidth = length(skin[FIELD_BORDER_PX]);
+    style.borderStyle = SOLID;
+    style.font = INHERITED;
+    return style;
+  }
+
+  // SectorField is where the operator names a sector to scan.
+  function SectorField(props) {
+    var skin = props.skin;
+    var style = fieldStyle(skin, SECTOR_MIN_WIDTH_PX);
+    // The field takes the row's slack, so every control right of it sits
+    // where the pane edge puts it rather than where the labels end.
+    style.flex = ONE;
+    style.width = undefined;
+    style.minWidth = length(skin[SECTOR_MIN_WIDTH_PX]);
+    var fieldProps = {
+      type: TEXT_TYPE,
+      style: style,
+      value: text(skin[SECTOR_TEXT]),
+      placeholder: label(skin[SECTOR_PLACEHOLDER]),
+      title: label(skin[SECTOR_TOOLTIP]),
+      onChange: function (event) {
+        act(SECTOR_FIELD_PART, event.target.value);
+      }
+    };
+    fieldProps[PART_ATTR] = SECTOR_FIELD_PART;
+    fieldProps[ARIA_LABEL] = label(skin[SECTOR_PLACEHOLDER]);
+    return element(INPUT_TAG, fieldProps);
+  }
+
+  // ClassBox picks the asset class, which is what sets the four timeframes.
+  function ClassBox(props) {
+    var skin = props.skin;
+    var style = fieldStyle(skin, CLASS_WIDTH_PX);
+    var boxProps = {
+      style: style,
+      value: text(skin[SECTOR_CLASS]),
+      title: label(skin[CLASS_TOOLTIP]),
+      onChange: function (event) {
+        act(CLASS_BOX_PART, event.target.value);
+      }
+    };
+    boxProps[PART_ATTR] = CLASS_BOX_PART;
+    boxProps[ARIA_LABEL] = label(skin[CLASS_TOOLTIP]);
+    return element(
+      SELECT_TAG,
+      boxProps,
+      asList(skin[ASSET_CLASSES]).map(function (name) {
+        return element(
+          OPTION_TAG,
+          { key: text(name), value: text(name) },
+          text(name)
+        );
+      })
+    );
+  }
+
+  // TimeframeBox is one of the four boxes the sector on screen scans on.
+  function TimeframeBox(props) {
+    var skin = props.skin;
+    var row = asList(props.row);
+    var wrapStyle = { display: FLEX, alignItems: CENTER, flex: FLEX_NONE };
+    wrapStyle.gap = length(skin[CHECK_LABEL_SPACING_PX]);
+    wrapStyle.boxSizing = BORDER_BOX;
+    wrapStyle.width = length(skin[BOX_WIDTH_PX]);
+    wrapStyle.height = length(skin[BOX_HEIGHT_PX]);
+    wrapStyle.overflow = CLIPPED;
+    var wrapProps = {
+      style: wrapStyle,
+      title: label(skin[BOX_TOOLTIP_FORMAT]).replace(
+        LABEL_TOKEN,
+        text(row[ONE])
+      )
+    };
+    wrapProps[PART_ATTR] = text(skin[BOX_ROW_PART]);
+    wrapProps[NAME_ATTR] = text(row[ZERO]);
+    // PM_IndicatorWidth on the themed QCheckBox, drawn as one box.
+    var indicator = {
+      boxSizing: BORDER_BOX,
+      width: length(skin[CHECK_INDICATOR_PX]),
+      height: length(skin[CHECK_INDICATOR_PX]),
+      flex: FLEX_NONE,
+      margin: NO_MARGIN
+    };
+    var boxProps = {
+      type: CHECKBOX_TYPE,
+      style: indicator,
+      checked: row[TWO] === true,
+      onChange: function () {
+        act(TIMEFRAME_BOX_PART, row[ZERO]);
+      }
+    };
+    boxProps[PART_ATTR] = TIMEFRAME_BOX_PART;
+    boxProps[NAME_ATTR] = text(row[ZERO]);
+    boxProps[ARIA_LABEL] = text(row[ONE]);
+    var wordProps = { style: asLabel({}, false) };
+    wordProps[PART_ATTR] = TIMEFRAME_BOX_PART + PATH_SPLIT + text(row[ZERO]);
+    return element(
+      LABEL_TAG,
+      wrapProps,
+      element(INPUT_TAG, boxProps),
+      element(SPAN_TAG, wordProps, text(row[ONE]))
+    );
+  }
+
+  // ScanNowButton runs phases one to three on the sector named beside it.
+  function ScanNowButton(props) {
+    var model = props.model;
+    var skin = props.skin;
+    var buttonStyle = marginStyle(listField(model, BUTTON_PADDING_PX));
+    buttonStyle.flex = FLEX_NONE;
+    buttonStyle.fontWeight = text(model[BUTTON_FONT_WEIGHT]);
+    buttonStyle.boxSizing = BORDER_BOX;
+    buttonStyle.width = length(skin[SCAN_WIDTH_PX]);
+    buttonStyle.height = length(skin[BUTTON_HEIGHT_PX]);
+    var buttonProps = {
+      type: BUTTON_TYPE,
+      style: buttonStyle,
+      title: label(skin[SCAN_TOOLTIP]),
+      onClick: function () {
+        act(SCAN_NOW_PART, true);
+      }
+    };
+    buttonProps[PART_ATTR] = SCAN_NOW_PART;
+    buttonProps[ARIA_LABEL] = label(skin[SCAN_LABEL]);
+    return element(BUTTON_TAG, buttonProps, text(skin[SCAN_LABEL]));
+  }
+
+  // PushButton is one of the buttons phases five and six are pressed with.
+  function PushButton(props) {
+    var style = marginStyle(listField(props.model, BUTTON_PADDING_PX));
+    style.flex = FLEX_NONE;
+    style.fontWeight = text(props.model[BUTTON_FONT_WEIGHT]);
+    style.boxSizing = BORDER_BOX;
+    style.width = length(props.width);
+    style.height = length(props.height);
+    var buttonProps = {
+      type: BUTTON_TYPE,
+      style: style,
+      title: label(props.tooltip),
+      onClick: function () {
+        act(text(props.part), true);
+      }
+    };
+    buttonProps[PART_ATTR] = text(props.part);
+    buttonProps[NAME_ATTR] = text(props.part);
+    buttonProps[ARIA_LABEL] = label(props.label);
+    if (props.on === true) {
+      buttonProps[STATE_ATTR] = text(props.part);
+    }
+    return element(BUTTON_TAG, buttonProps, text(props.label));
+  }
+
+  // BucketRow is Post Selected and Post All, with Send Bucket Full Auto on
+  // the right of the Ready to Send zone.
+  function BucketRow(props) {
+    var model = props.model;
+    var skin = objectField(model, BUCKET);
+    var style = {
+      display: FLEX,
+      flexDirection: ROW_WAY,
+      flex: FLEX_NONE,
+      alignItems: CENTER
+    };
+    style.gap = length(skin[BUCKET_SPACING_PX]);
+    var rowProps = { style: style };
+    rowProps[PART_ATTR] = BUCKET_ROW_PART;
+    return element(
+      DIV_TAG,
+      rowProps,
+      element(PushButton, {
+        key: POST_SELECTED_PART,
+        model: model,
+        part: skin[POST_SELECTED_PART],
+        label: skin[POST_SELECTED_LABEL],
+        tooltip: skin[POST_SELECTED_TOOLTIP],
+        width: skin[POST_SELECTED_WIDTH_PX],
+        height: skin[BUTTON_HEIGHT_PX]
+      }),
+      element(PushButton, {
+        key: POST_ALL_PART,
+        model: model,
+        part: skin[POST_ALL_PART],
+        label: skin[POST_ALL_LABEL],
+        tooltip: skin[POST_ALL_TOOLTIP],
+        width: skin[POST_ALL_WIDTH_PX],
+        height: skin[BUTTON_HEIGHT_PX]
+      }),
+      element(Spacer, { key: BUCKET_STRETCH_PART, part: BUCKET_STRETCH_PART }),
+      element(PushButton, {
+        key: FULL_AUTO_PART,
+        model: model,
+        part: skin[FULL_AUTO_PART],
+        label: skin[FULL_AUTO_LABEL],
+        tooltip: skin[FULL_AUTO_TOOLTIP],
+        width: skin[FULL_AUTO_WIDTH_PX],
+        height: skin[BUTTON_HEIGHT_PX],
+        on: skin[FULL_AUTO_ON] === true
+      })
+    );
+  }
+
+  // settingsRowStyle is one line of the settings page: a label of fixed
+  // width, then the fields that line carries.
+  function settingsRowStyle(page) {
+    var style = {
+      display: FLEX,
+      flexDirection: ROW_WAY,
+      flex: FLEX_NONE,
+      alignItems: CENTER
+    };
+    style.gap = length(page[SETTINGS_SPACING_PX]);
+    return style;
+  }
+
+  function settingsLabel(page, name) {
+    var style = asLabel({}, false);
+    style.flex = FLEX_NONE;
+    style.width = length(page[SETTINGS_LABEL_WIDTH_PX]);
+    var labelProps = { style: style };
+    labelProps[PART_ATTR] = SETTINGS_LABEL_PART;
+    labelProps[NAME_ATTR] = text(name);
+    return element(DIV_TAG, labelProps, text(name));
+  }
+
+  // CredentialRow is one push target's two write-only fields and whether the
+  // vault holds a credential for it. No token is ever drawn back.
+  function CredentialRow(props) {
+    var page = props.page;
+    var row = asList(props.row);
+    var style = fieldStyle(page, CREDENTIAL_WIDTH_PX);
+    var stateProps = { style: asLabel({}, false) };
+    stateProps[PART_ATTR] = CREDENTIAL_STATE_PART;
+    stateProps[NAME_ATTR] = text(row[ZERO]);
+    var rowProps = { style: settingsRowStyle(page) };
+    rowProps[PART_ATTR] = SETTINGS_ROW_PART;
+    rowProps[NAME_ATTR] = text(row[ZERO]);
+    return element(
+      DIV_TAG,
+      rowProps,
+      settingsLabel(page, row[ZERO]),
+      listField(page, CREDENTIAL_FIELDS).map(function (field) {
+        var pair = asList(field);
+        var fieldProps = {
+          type: PASSWORD_TYPE,
+          style: style,
+          placeholder: label(pair[ONE]),
+          onInput: function (event) {
+            act(text(pair[ZERO]), [
+              text(row[ZERO]),
+              text(pair[ZERO]),
+              event.target.value
+            ]);
+          }
+        };
+        fieldProps[PART_ATTR] = text(pair[ZERO]);
+        fieldProps[NAME_ATTR] = text(pair[ZERO]) + GAP + text(row[ZERO]);
+        fieldProps[ARIA_LABEL] = label(pair[ONE]);
+        return element(INPUT_TAG, fieldProps);
+      }),
+      element(DIV_TAG, stateProps, text(row[TWO]))
+    );
+  }
+
+  // SettingRow is one ATA-SPM setting a phase reads.
+  function SettingRow(props) {
+    var page = props.page;
+    var row = asList(props.row);
+    var style = fieldStyle(page, SETTING_WIDTH_PX);
+    var fieldProps = {
+      type: TEXT_TYPE,
+      style: style,
+      value: text(row[TWO]),
+      onChange: function (event) {
+        act(text(page[SETTING_PART]), [text(row[ZERO]), event.target.value]);
+      }
+    };
+    fieldProps[PART_ATTR] = text(page[SETTING_PART]);
+    fieldProps[NAME_ATTR] = text(row[ZERO]);
+    fieldProps[ARIA_LABEL] = label(row[ONE]);
+    var rowProps = { style: settingsRowStyle(page) };
+    rowProps[PART_ATTR] = SETTINGS_ROW_PART;
+    rowProps[NAME_ATTR] = text(row[ZERO]);
+    return element(
+      DIV_TAG,
+      rowProps,
+      settingsLabel(page, row[ONE]),
+      element(INPUT_TAG, fieldProps)
+    );
+  }
+
+  // clearCredentialFields empties every credential field once Save has run.
+  function clearCredentialFields(page) {
+    listField(page, CREDENTIAL_FIELDS).forEach(function (field) {
+      var part = text(asList(field)[ZERO]);
+      var found = document.querySelectorAll("[" + PART_ATTR + "=\"" + part + "\"]");
+      Array.prototype.forEach.call(found, function (node) {
+        node.value = EMPTY;
+      });
+    });
+  }
+
+  // SaveCredentialsButton asks Python to encrypt what the fields reported.
+  function SaveCredentialsButton(props) {
+    var page = props.page;
+    var style = marginStyle(listField(props.model, BUTTON_PADDING_PX));
+    style.flex = FLEX_NONE;
+    style.fontWeight = text(props.model[BUTTON_FONT_WEIGHT]);
+    style.boxSizing = BORDER_BOX;
+    style.height = length(page[BUTTON_HEIGHT_PX]);
+    var buttonProps = {
+      type: BUTTON_TYPE,
+      style: style,
+      title: label(page[SAVE_TOOLTIP]),
+      onClick: function () {
+        act(text(page[SAVE_PART]), true);
+        clearCredentialFields(page);
+      }
+    };
+    buttonProps[PART_ATTR] = text(page[SAVE_PART]);
+    buttonProps[NAME_ATTR] = text(page[SAVE_PART]);
+    buttonProps[ARIA_LABEL] = label(page[SAVE_LABEL]);
+    return element(BUTTON_TAG, buttonProps, text(page[SAVE_LABEL]));
+  }
+
+  // SettingsPage is what the ATA-SPM zone shows in place of its stepper.
+  function SettingsPage(props) {
+    var model = props.model;
+    var page = objectField(objectField(model, BUCKET), BUCKET_SETTINGS);
+    var style = {
+      display: FLEX,
+      flexDirection: COLUMN_WAY,
+      flex: ONE,
+      minHeight: ZERO,
+      overflow: AUTO
+    };
+    style.gap = length(page[SETTINGS_SPACING_PX]);
+    var pageProps = { style: style };
+    pageProps[PART_ATTR] = SETTINGS_PAGE_PART;
+    return element(
+      DIV_TAG,
+      pageProps,
+      listField(page, CREDENTIAL_ROWS).map(function (row, at) {
+        return element(CredentialRow, {
+          key: CREDENTIAL_ROWS + PATH_SPLIT + String(at),
+          page: page,
+          row: row
+        });
+      }),
+      element(SaveCredentialsButton, {
+        key: SAVE_PART,
+        model: model,
+        page: page
+      }),
+      listField(page, SETTING_ROWS).map(function (row, at) {
+        return element(SettingRow, {
+          key: SETTING_ROWS + PATH_SPLIT + String(at),
+          page: page,
+          row: row
+        });
+      })
+    );
+  }
+
+  // AtaRow is the one line the ATA-SPM zone carries above its stepper.
+  function AtaRow(props) {
+    var model = props.model;
+    var skin = objectField(model, ATA_SPM);
+    var style = {
+      display: FLEX,
+      flexDirection: ROW_WAY,
+      flex: FLEX_NONE,
+      alignItems: CENTER
+    };
+    style.gap = length(skin[ROW_SPACING_PX]);
+    var rowProps = { style: style };
+    rowProps[PART_ATTR] = ATA_ROW_PART;
+    return element(
+      DIV_TAG,
+      rowProps,
+      element(SectorField, { key: SECTOR_FIELD_PART, skin: skin }),
+      element(ClassBox, { key: CLASS_BOX_PART, skin: skin }),
+      asList(skin[BOXES]).map(function (row, at) {
+        return element(TimeframeBox, {
+          key: TIMEFRAME_BOX_PART + PATH_SPLIT + String(at),
+          skin: skin,
+          row: row
+        });
+      }),
+      element(ScanNowButton, {
+        key: SCAN_NOW_PART,
+        model: model,
+        skin: skin
+      }),
+      element(PushButton, {
+        key: SETTINGS_PART,
+        model: model,
+        part: settingsOf(model)[SETTINGS_PART],
+        label: settingsOf(model)[SETTINGS_LABEL],
+        tooltip: settingsOf(model)[SETTINGS_TOOLTIP],
+        width: settingsOf(model)[SETTINGS_WIDTH_PX],
+        height: settingsOf(model)[BUTTON_HEIGHT_PX],
+        on: settingsOf(model)[SETTINGS_OPEN] === true
+      })
+    );
+  }
+
+  // The ATA-SPM settings page the bucket publishes.
+  function settingsOf(model) {
+    return objectField(objectField(model, BUCKET), BUCKET_SETTINGS);
+  }
+
+  function ModuleGroup(props) {
+    var model = props.model;
+    var entry = asList(props.entry);
+    var groupProps = { style: groupFrame(model, props.shares === true) };
+    groupProps[PART_ATTR] = MODULE_GROUP_PART;
+    groupProps[NAME_ATTR] = text(entry[ZERO]);
+    groupProps[ARIA_LABEL] = label(entry[ONE]);
+    var legendProps = { style: asLabel(groupTitleStyle(model), false) };
+    legendProps[PART_ATTR] = MODULE_LEGEND_PART;
+    return element(
+      FIELDSET_TAG,
+      groupProps,
+      element(LEGEND_TAG, legendProps, text(entry[ONE])),
+      asList(props.children),
+      props.hidesStepper === true
+        ? null
+        : element(ZoneStepper, {
+            key: STEPPER_PART,
+            skin: objectField(model, STEPPER),
+            model: model,
+            view: zoneFor(model, entry[ZERO]),
+            act: act
+          })
+    );
+  }
+
+  // The three left-side zones, in the order the surface publishes them. The
+  // ATA-SPM zone carries the sector row and Opposing Trades the scan row.
+  function moduleGroups(model) {
+    var keys = listField(model, LEFT_MODULE_KEYS);
+    var open = settingsOf(model)[SETTINGS_OPEN] === true;
+    return listField(model, LEFT_MODULES).map(function (entry, at) {
+      return element(ModuleGroup, {
+        key: MODULE_GROUP_PART + PATH_SPLIT + String(at),
+        model: model,
+        entry: entry,
+        shares: true,
+        hidesStepper: entry[ZERO] === keys[ZERO] && open,
+        children: zoneContent(model, entry[ZERO], keys)
+      });
+    });
+  }
+
+  // The row one left zone carries above its stepper, or none. The ATA-SPM
+  // zone shows its settings page in place of the stepper while it is open.
+  function zoneContent(model, key, keys) {
+    if (key === keys[ZERO]) {
+      var rows = [element(AtaRow, { key: ATA_ROW_PART, model: model })];
+      if (settingsOf(model)[SETTINGS_OPEN] === true) {
+        rows.push(element(SettingsPage, { key: SETTINGS_PAGE_PART, model: model }));
+      }
+      return rows;
+    }
+    if (key === keys[ONE]) {
+      return scanContent(model);
+    }
+    return [];
+  }
+
+  // The Refresh row the Opposing Trades zone holds above its stepper.
+  function scanContent(model) {
+    return [element(FilterRow, { key: FILTER_ROW_PART, model: model })];
+  }
+
   function LeftPane(props) {
     var model = props.model;
     var sizes = listField(model, SPLITTER_SIZES_PX);
@@ -1188,44 +2365,85 @@
     return element(
       DIV_TAG,
       paneProps,
-      element(FilterRow, { key: FILTER_ROW_PART, model: model }),
-      element(TableGroup, {
-        key: SIGNALS_TABLE,
-        model: model,
-        table: SIGNALS_TABLE,
-        titleField: SIGNALS_GROUP_TITLE,
-        heightField: SIGNALS_MAX_HEIGHT_PX,
-        columnsField: SIGNAL_COLUMNS,
-        rowsField: SIGNAL_ROWS,
-        noteField: EMPTY_SIGNALS
-      }),
-      element(TableGroup, {
-        key: PAIRS_TABLE,
-        model: model,
-        table: PAIRS_TABLE,
-        titleField: PAIRS_GROUP_TITLE,
-        heightField: PAIRS_MAX_HEIGHT_PX,
-        columnsField: PAIR_COLUMNS,
-        rowsField: PAIR_ROWS,
-        noteField: EMPTY_PAIRS
-      }),
-      element(Spacer, { key: LEFT_STRETCH_PART, part: LEFT_STRETCH_PART })
+      moduleGroups(model)
     );
   }
 
-  // TopologySlot is the right pane; the proposals unit fills it.
+  // The right pane: the Ready to Send zone above the Bot Swarm Topologies
+  // zone, which is the slot the proposals unit fills.
   function TopologySlot(props) {
     var model = props.model;
-    var slotProps = {
-      style: {
-        flexGrow: listField(model, SPLITTER_STRETCH)[ONE],
-        flexBasis: length(listField(model, SPLITTER_SIZES_PX)[ONE]),
-        overflow: CLIPPED
-      }
-    };
-    slotProps[PART_ATTR] = TOPOLOGY_PART;
-    slotProps[SLOT_ATTR] = TOPOLOGY_SLOT;
-    return element(DIV_TAG, slotProps, null);
+    var paneStyle = boxStyle(
+      listField(model, LEFT_MARGINS_PX),
+      model[LEFT_SPACING_PX],
+      COLUMN_WAY
+    );
+    paneStyle.flexGrow = listField(model, SPLITTER_STRETCH)[ONE];
+    paneStyle.flexBasis = length(listField(model, SPLITTER_SIZES_PX)[ONE]);
+    paneStyle.overflow = CLIPPED;
+    var paneProps = { style: paneStyle };
+    paneProps[PART_ATTR] = RIGHT_PANE_PART;
+    return element(
+      DIV_TAG,
+      paneProps,
+      listField(model, RIGHT_ZONES).map(function (entry, at) {
+        return element(RightZone, {
+          key: MODULE_GROUP_PART + PATH_SPLIT + text(entry[ZERO]),
+          model: model,
+          entry: entry,
+          fills: text(entry[TWO]) === EMPTY,
+          children:
+            at === ZERO
+              ? [element(BucketRow, { key: BUCKET_ROW_PART, model: model })]
+              : []
+        });
+      })
+    );
+  }
+
+  // RightZone is one themed group on the right side. The last one carries the
+  // slot the proposals unit is moved into.
+  function RightZone(props) {
+    var model = props.model;
+    var entry = asList(props.entry);
+    var groupProps = { style: groupFrame(model, true) };
+    groupProps[PART_ATTR] = MODULE_GROUP_PART;
+    groupProps[NAME_ATTR] = text(entry[ZERO]);
+    groupProps[ARIA_LABEL] = label(entry[ONE]);
+    var legendProps = { style: asLabel(groupTitleStyle(model), false) };
+    legendProps[PART_ATTR] = MODULE_LEGEND_PART;
+    if (props.fills === true) {
+      var slotProps = {
+        style: {
+          flex: AUTO,
+          minHeight: ZERO,
+          overflow: CLIPPED,
+          display: FLEX,
+          flexDirection: COLUMN_WAY
+        }
+      };
+      slotProps[PART_ATTR] = TOPOLOGY_PART;
+      slotProps[SLOT_ATTR] = TOPOLOGY_SLOT;
+      return element(
+        FIELDSET_TAG,
+        groupProps,
+        element(LEGEND_TAG, legendProps, text(entry[ONE])),
+        element(DIV_TAG, slotProps, null)
+      );
+    }
+    return element(
+      FIELDSET_TAG,
+      groupProps,
+      element(LEGEND_TAG, legendProps, text(entry[ONE])),
+      asList(props.children),
+      element(ZoneStepper, {
+        key: STEPPER_PART,
+        skin: objectField(model, STEPPER),
+        model: model,
+        view: zoneFor(model, entry[ZERO]),
+        act: act
+      })
+    );
   }
 
   function Split(props) {
@@ -1235,6 +2453,7 @@
       style: {
         display: FLEX,
         flexDirection: across ? ROW_WAY : COLUMN_WAY,
+        gap: length(model[SPLITTER_HANDLE_PX]),
         flex: AUTO,
         overflow: CLIPPED
       }
@@ -1577,6 +2796,31 @@
     });
   }
 
+  // Each left-side region carries a key, a title and a status line.
+  function checkModules(model) {
+    var words = model[STATUS_INITIAL_TEXT];
+    var keys = listField(model, LEFT_MODULE_KEYS);
+    var entries = listField(model, LEFT_MODULES);
+    if (entries.length !== keys.length) {
+      note(null, LEFT_MODULES, COLUMN_COUNT_FAULT, entries.length);
+    }
+    entries.forEach(function (entry, at) {
+      var spot = LEFT_MODULES + PATH_SPLIT + String(at);
+      if (!Array.isArray(entry) || entry.length !== THREE) {
+        note(spot, LEFT_MODULES, NOT_A_LIST_FAULT, kindOf(entry));
+        return;
+      }
+      if (at < keys.length && entry[ZERO] !== keys[at]) {
+        note(spot, LEFT_MODULES, DUPLICATE_NAME_FAULT, entry[ZERO]);
+      }
+      entry.forEach(function (one, column) {
+        var here = spot + PATH_SPLIT + String(column);
+        checkTypeAgainst(here, LEFT_MODULES, one, words);
+        checkMarkup(here, LEFT_MODULES, one);
+      });
+    });
+  }
+
   // paints answers whether one declaration survives into a CSS style.
   function paints(one) {
     var alone = String(one.property) + COLON + GAP + String(one.value);
@@ -1785,6 +3029,7 @@
     checkTypes(model);
     checkTable(model, SIGNAL_COLUMNS, SIGNAL_ROWS);
     checkTable(model, PAIR_COLUMNS, PAIR_ROWS);
+    checkModules(model);
     checkOrder(model);
     checkSheets(model);
     checkColours(model);
@@ -1865,6 +3110,13 @@
       : listField(held.model, rowsField).map(function (row) {
           return rowName(row);
         });
+  }
+
+  // The key each left-side region carries, in the order it is drawn.
+  function moduleOrder() {
+    return list(LEFT_MODULES).map(function (entry) {
+      return text(asList(entry)[ZERO]);
+    });
   }
 
   function signalOrder() {
@@ -2043,8 +3295,37 @@
     return held === null ? null : held.model;
   }
 
+  // fillSlot draws the proposals pane into the right-hand slot when no host
+  // has claimed it. A Qt host moves its own pane node in and declares
+  // acervatorMountTopologies, so the slot is left alone there.
+  function fillSlot(target) {
+    if (typeof global.acervatorMountTopologies === FUNCTION_KIND) {
+      return null;
+    }
+    var pane = global.acervatorTopologies;
+    if (!pane || typeof pane.renderTab !== FUNCTION_KIND) {
+      return null;
+    }
+    if (!target || typeof target.querySelector !== FUNCTION_KIND) {
+      return null;
+    }
+    var slot = target.querySelector(SLOT_SELECTOR);
+    if (slot === null || slot.children.length > ZERO) {
+      return null;
+    }
+    pane.renderTab(slot, null);
+    if (typeof global.acervatorLoadTopologies === FUNCTION_KIND) {
+      global.acervatorLoadTopologies().then(function () {
+        pane.renderTab(slot, null);
+      });
+    }
+    return slot;
+  }
+
   function renderScreen(target, model) {
-    return draw(target, element(Screen, { model: payloadOr(model) }));
+    var drawn = draw(target, element(Screen, { model: payloadOr(model) }));
+    fillSlot(target);
+    return drawn;
   }
 
   // act hands one control press to whatever host is holding the screen.
@@ -2080,9 +3361,60 @@
     hostTarget = null;
   }
 
-  // A Qt host replaces this; the default keeps a press from raising.
-  global.acervatorMarketInspectorAction = function () {
-    return null;
+  // A Qt host replaces this. The shell replaces nothing, so the default
+  // takes the press to the bridge itself and redraws from the answer.
+  // The parts the screen model answers as one push press, and the settings
+  // page beside them, both read off the payload the screen holds.
+  function bucketHeld() {
+    return objectField(held === null ? {} : held.model, BUCKET);
+  }
+
+  function settingsHeld() {
+    return objectField(bucketHeld(), BUCKET_SETTINGS);
+  }
+
+  function pushParts() {
+    return listField(bucketHeld(), PUSH_PARTS).map(text);
+  }
+
+  function credentialParts() {
+    return listField(settingsHeld(), CREDENTIAL_FIELDS).map(function (field) {
+      return text(asList(field)[ZERO]);
+    });
+  }
+
+  global.acervatorMarketInspectorAction = function (key, value) {
+    if (!global.acervator || typeof global.acervator.call !== FUNCTION_KIND) {
+      return null;
+    }
+    var asked = {};
+    if (key === STEP_BACK_PART || key === STEP_NEXT_PART) {
+      asked[STEP_ZONE_FIELD] = value;
+      asked[STEP_FIELD] = key === STEP_BACK_PART ? -ONE : ONE;
+    } else if (key === ENTRY_PART) {
+      asked[TOGGLE_ZONE_FIELD] = value;
+    } else if (key === SECTOR_FIELD_PART) {
+      asked[SECTOR_TEXT_FIELD] = value;
+    } else if (key === CLASS_BOX_PART) {
+      asked[SECTOR_CLASS_FIELD] = value;
+    } else if (key === TIMEFRAME_BOX_PART) {
+      asked[TOGGLE_TIMEFRAME_FIELD] = value;
+    } else if (key === SCAN_NOW_PART) {
+      asked[SCAN_NOW_FIELD] = true;
+    } else if (pushParts().indexOf(key) >= ZERO) {
+      asked[PUSH_ACTION_FIELD] = key;
+    } else if (key === settingsHeld()[SAVE_PART]) {
+      asked[SAVE_CREDENTIALS_FIELD] = true;
+    } else if (credentialParts().indexOf(key) >= ZERO) {
+      asked[CREDENTIAL_TEXT_FIELD] = value;
+    } else if (key === settingsHeld()[SETTING_PART]) {
+      asked[SET_SETTING_FIELD] = value;
+    } else {
+      return null;
+    }
+    return global.acervator.call(METHOD, asked).then(function (model) {
+      return setTab(model);
+    });
   };
 
   // The shell draws this screen by its module name; the host reads that name
@@ -2110,6 +3442,17 @@
     ActiveSwitch: ActiveSwitch,
     StatusLine: StatusLine,
     TableGroup: TableGroup,
+    ModuleGroup: ModuleGroup,
+    AtaRow: AtaRow,
+    SectorField: SectorField,
+    ClassBox: ClassBox,
+    TimeframeBox: TimeframeBox,
+    ScanNowButton: ScanNowButton,
+    ZoneStepper: ZoneStepper,
+    StepButton: StepButton,
+    DetailLine: DetailLine,
+    zoneFor: zoneFor,
+    moduleOrder: moduleOrder,
     Grid: Grid,
     BodyRow: BodyRow,
     BodyCell: BodyCell,

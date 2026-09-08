@@ -24,6 +24,8 @@
   var FRAME_INTERVAL_MS = "frame_interval_ms";
   var GEOMETRY = "geometry";
   var GLOW_ALPHA = "glow_alpha";
+  var GRID_RGB = "grid_rgb";
+  var GRID_FRACTIONS = "grid_fractions";
   var ARROW_MIN_FRACTION = "arrow_min_fraction";
   var SHINE_MIN_FRACTION = "shine_min_fraction";
   var PERCENT_SCALE = "percent_scale";
@@ -37,12 +39,11 @@
   var MARGINS_PX = "margins_px";
   var MASKED = "masked";
   var MAXIMUM_HEIGHT_PX = "maximum_height_px";
-  var MAXIMUM_WIDTH_PX = "maximum_width_px";
   var MINIMUM_HEIGHT_PX = "minimum_height_px";
   var NAME = "name";
-  var OPTIONS = "options";
   var OUTLINE_ALPHA = "outline_alpha";
   var PAINT = "paint";
+  var PILLARS = "pillars";
   var PRIVACY = "privacy";
   var RATE_STRIP = "rate_strip";
   var ROWS = "rows";
@@ -56,15 +57,11 @@
   var SPACING_PX = "spacing_px";
   var STATE = "state";
   var STALENESS = "staleness";
-  var STATUS_TEXT = "status_text";
-  var SUMMARY_TEXT = "summary_text";
   var SYMBOLS = "symbols";
-  var SYMBOL_TEXT = "symbol_text";
   var TABLES = "tables";
   var TARGETS = "targets";
   var TEXT = "text";
   var TEXT_COLOR = "text_color";
-  var TF_LOCK = "tf_lock";
   var TIMEFRAME = "timeframe";
   var TITLES = "titles";
   var TITLE_TEXT = "title_text";
@@ -94,6 +91,7 @@
     "method",
     "no_data",
     PERCENT_SCALE,
+    PILLARS,
     PRIVACY,
     RATE_STRIP,
     "raw_value_indicators",
@@ -106,10 +104,7 @@
     "sim_mode",
     "size_policy",
     STALENESS,
-    SUMMARY_TEXT,
-    SYMBOL_TEXT,
     TABLES,
-    TF_LOCK,
     "timeframe_order",
     "title_heading_property",
     TITLE_TEXT
@@ -138,11 +133,7 @@
   var TITLE_PART = "indicator-title";
   var SELECTOR_PART = "indicator-bot-selector";
   var DOT_PART = "indicator-privacy-dot";
-  var SYMBOL_PART = "indicator-symbol";
-  var SUMMARY_PART = "indicator-summary";
   var STALENESS_PART = "indicator-staleness";
-  var LOCK_ROW_PART = "indicator-lock-row";
-  var LOCK_STATUS_PART = "indicator-lock-status";
   var RATE_PART = "indicator-rate-strip";
   var MINI_PART = "indicator-mini-panel";
   var TABLE_PART = "indicator-table";
@@ -154,6 +145,12 @@
   var BAR_ARROW_PART = "indicator-bar-arrow";
   var BAR_SHINE_PART = "indicator-bar-shine";
   var BARS_EMPTY_PART = "indicator-bars-empty";
+  var TF_CELL_PART = "indicator-bars-tf-cell";
+  var BAR_AREA_PART = "indicator-bar-area";
+  var BODY_PART = "indicator-body";
+  var PILLAR_PART = "indicator-pillar";
+  var PILLAR_LABEL_PART = "indicator-pillar-label";
+  var PAD_CELL_PART = "indicator-bars-pad-cell";
   var LOCKS_PART = "indicator-locks";
 
   var PX = "px";
@@ -174,6 +171,24 @@
   var RELATIVE = "relative";
   var BOLD = "bold";
   var ZERO = "0";
+  var FLEX_NONE = "none";
+  var BORDER_BOX = "border-box";
+  var GRADIENT_TO_RIGHT = "linear-gradient(to right, ";
+  var REPEAT_X = "repeat-x";
+  // A dotted rule: two pixels marked, two clear.
+  var GRID_DASH_SIZE = "4px 1px";
+  var GRID = "grid";
+  var FRACTION = "1fr";
+  var REPEAT_OPEN = "repeat(";
+  var REPEAT_CLOSE = ", 1fr)";
+  var FULL_SPAN = "1 / -1";
+  var SPAN_SPLIT = " / ";
+  // Rows one mini-panel takes: its table, then its graph's three.
+  var MINI_ROW_STEP = 5;
+  // A pillar runs the row-A plot row to the row-B plot row.
+  var PILLAR_ROWS = "3 / 9";
+  // The label strip under the row-B plot row.
+  var PILLAR_LABEL_ROW = "9";
 
   var NOT_AN_OBJECT_FAULT = "payload is not an object";
   var MISSING_FIELD_FAULT = "declared field is absent";
@@ -392,6 +407,7 @@
     return element(SELECT_TAG, selectProps, drawn);
   }
 
+  // Title, then a spacer, then BotSelector and PrivacyDot in the right corner.
   function HeaderRow(props) {
     var model = props.model;
     var head = objectField(model, HEADER);
@@ -399,13 +415,10 @@
     style.alignItems = CENTER;
     var headProps = { style: style };
     headProps[PART_ATTR] = HEADER_PART;
-    var symbolProps = {};
-    symbolProps[PART_ATTR] = SYMBOL_PART;
-    var summaryProps = {};
-    summaryProps[PART_ATTR] = SUMMARY_PART;
     var spacer = element(DIV_TAG, { key: PANEL_PART, style: { flex: FULL } }, null);
     return element(DIV_TAG, headProps, [
       element(Title, { key: TITLE_PART, model: model }),
+      spacer,
       element(SPAN_TAG, { key: HEADER_PART }, text(head.bot_label_text)),
       element(BotSelector, {
         key: SELECTOR_PART,
@@ -416,10 +429,7 @@
         key: DOT_PART,
         model: model,
         onToggle: props.onToggle
-      }),
-      spacer,
-      element(SPAN_TAG, symbolProps, text(model[SYMBOL_TEXT])),
-      element(SPAN_TAG, summaryProps, text(model[SUMMARY_TEXT]))
+      })
     ]);
   }
 
@@ -440,37 +450,6 @@
     return element(DIV_TAG, bandProps, text(band[TEXT]));
   }
 
-  function LockRow(props) {
-    var model = props.model;
-    var lock = objectField(model, TF_LOCK);
-    var style = boxStyle(lock[MARGINS_PX], undefined, ROW);
-    style.alignItems = CENTER;
-    var rowProps = { style: style };
-    rowProps[PART_ATTR] = LOCK_ROW_PART;
-    var drawn = listField(lock, OPTIONS).map(function (one, at) {
-      return element(
-        OPTION_TAG,
-        { key: String(at), value: text(one[VALUE]) },
-        text(one[TEXT])
-      );
-    });
-    var selectProps = {
-      value: text(lock[VALUE]),
-      onChange: props.onLock,
-      style: { maxWidth: length(lock[MAXIMUM_WIDTH_PX]) }
-    };
-    selectProps[PART_ATTR] = LOCK_ROW_PART;
-    selectProps[TITLE_ATTR] = label(lock[TOOLTIP]);
-    var statusProps = { style: { color: text(lock.status_color) } };
-    statusProps[PART_ATTR] = LOCK_STATUS_PART;
-    return element(DIV_TAG, rowProps, [
-      element(SPAN_TAG, { key: LOCK_ROW_PART }, text(lock.label_text)),
-      element(SELECT_TAG, selectProps, drawn),
-      element(DIV_TAG, { key: PANEL_PART, style: { flex: FULL } }, null),
-      element(SPAN_TAG, statusProps, text(lock[STATUS_TEXT]))
-    ]);
-  }
-
   function RateStrip(props) {
     var model = props.model;
     var strip = objectField(model, RATE_STRIP);
@@ -487,8 +466,22 @@
     return element(DIV_TAG, stripProps, text(strip[TEXT]));
   }
 
+  // A ruled column carries the row partition Qt paints; the three collated
+  // columns carry none, so a pillar runs past them unbroken.
+  function ruleStyle(model, pillars, at) {
+    var style = {};
+    if (number(at, ALPHA_FLOOR) < number(pillars.ruled_columns, ALPHA_FLOOR)) {
+      style.boxSizing = BORDER_BOX;
+      style.borderBottomStyle = SOLID;
+      style.borderBottomWidth = length(FULL);
+      style.borderBottomColor = opaque(model, pillars.rule_rgb);
+    }
+    return style;
+  }
+
   function HeadCell(props) {
-    var cellProps = { style: { textAlign: CENTER } };
+    var cellProps = { style: ruleStyle(props.model, props.pillars, props.at) };
+    cellProps.style.textAlign = CENTER;
     cellProps[PART_ATTR] = HEAD_CELL_PART;
     cellProps[TITLE_ATTR] = label(props.tooltip);
     cellProps[ARIA_LABEL] = label(props.title);
@@ -498,7 +491,8 @@
   function BodyCell(props) {
     var model = props.model;
     var cell = props.cell;
-    var style = { textAlign: CENTER };
+    var style = ruleStyle(model, props.pillars, props.at);
+    style.textAlign = CENTER;
     if (owns(cell, TEXT_COLOR) && cell[TEXT_COLOR] !== null) {
       style.color = text(cell[TEXT_COLOR]);
     }
@@ -529,6 +523,9 @@
         titles.map(function (title, at) {
           return element(HeadCell, {
             key: String(at),
+            at: at,
+            model: model,
+            pillars: objectField(model, PILLARS),
             title: title,
             tooltip: tooltips[at]
           });
@@ -545,14 +542,17 @@
           listField(line, CELLS).map(function (cell, column) {
             return element(BodyCell, {
               key: String(column),
+              at: column,
               model: model,
+              pillars: objectField(model, PILLARS),
               cell: cell
             });
           })
         );
       })
     );
-    var tableProps = { style: { width: whole(model) } };
+    // tableLayout fixed gives every column one width, as BarsPane divides its row.
+    var tableProps = { style: { width: whole(model), tableLayout: "fixed" } };
     tableProps[PART_ATTR] = TABLE_PART;
     tableProps[STATE_ATTR] = text(table[KIND]);
     return element(TABLE_TAG, tableProps, [head, body]);
@@ -583,6 +583,10 @@
     );
     var style = {
       height: percent(model, filled),
+      // The body takes the share of its column the surface publishes; the
+      // rest of the column is the pad Qt leaves each side.
+      width: percent(model, number(shape.column_body_fraction, FULL)),
+      alignSelf: CENTER,
       minHeight: length(shape.min_height_px),
       minWidth: length(shape.min_width_px),
       borderRadius: length(shape[BODY_RADIUS_PX]),
@@ -673,28 +677,73 @@
     return element(DIV_TAG, labelProps, text(props.bar[NAME]));
   }
 
+  // The height Qt paints a bar inside, above the label strip.
+  // The height Qt paints a bar inside, above the label strip. The baseline
+  // measures the indicator bars, so only their areas carry it.
+  function barArea(part, model, paint, ruled, shape) {
+    var areaProps = {
+      key: part,
+      style: {
+        display: FLEX,
+        flexDirection: COLUMN,
+        justifyContent: "flex-end",
+        flex: FULL,
+        minHeight: ZERO
+      }
+    };
+    if (ruled) {
+      var mark = opaque(model, paint[GRID_RGB]);
+      var lines = listField(shape, GRID_FRACTIONS);
+      if (lines.length) {
+        areaProps.style.backgroundImage = lines
+          .map(function () {
+            return GRADIENT_TO_RIGHT + mark + COMMA_SPACE + mark + CLOSE;
+          })
+          .join(COMMA_SPACE);
+        areaProps.style.backgroundRepeat = lines
+          .map(function () {
+            return REPEAT_X;
+          })
+          .join(COMMA_SPACE);
+        areaProps.style.backgroundSize = lines
+          .map(function () {
+            return GRID_DASH_SIZE;
+          })
+          .join(COMMA_SPACE);
+        areaProps.style.backgroundPosition = lines
+          .map(function (one) {
+            return ZERO + SPACE + percent(model, FULL - number(one, ALPHA_FLOOR));
+          })
+          .join(COMMA_SPACE);
+      }
+    }
+    if (ruled) {
+      // Qt draws its baseline inside the plot rectangle, so the border does
+      // not push the bar up.
+      areaProps.style.boxSizing = BORDER_BOX;
+      areaProps.style.borderBottomStyle = SOLID;
+      areaProps.style.borderBottomWidth = length(FULL);
+      areaProps.style.borderBottomColor = opaque(model, paint[BASELINE_RGB]);
+    }
+    areaProps[PART_ATTR] = part;
+    return areaProps;
+  }
+
   function BarsPane(props) {
     var model = props.model;
     var bars = props.bars;
     var paint = objectField(bars, PAINT);
     var shape = objectField(bars, GEOMETRY);
     var drawn = listField(bars, BARS);
+    // No side padding and no gap, so a cell lines up with a HeadCell. The
+    // bottom margin is the label strip each cell reserves, not pane padding.
     var style = boxStyle(
-      [
-        shape.margin_left_px,
-        shape.margin_top_px,
-        shape.margin_right_px,
-        shape.margin_bottom_px
-      ],
-      shape.gap_px,
+      [ALPHA_FLOOR, shape.margin_top_px, ALPHA_FLOOR, ALPHA_FLOOR],
+      ALPHA_FLOOR,
       ROW
     );
-    style.backgroundColor = opaque(model, paint[BACKGROUND_RGB]);
     style.minHeight = length(bars[MINIMUM_HEIGHT_PX]);
-    style.alignItems = "flex-end";
-    style.borderBottomStyle = "solid";
-    style.borderBottomWidth = length(FULL);
-    style.borderBottomColor = opaque(model, paint[BASELINE_RGB]);
+    style.alignItems = "stretch";
     style.overflow = HIDDEN;
     style.flex = FULL;
     var paneProps = { style: style };
@@ -709,37 +758,217 @@
         element(BarsEmpty, { key: BARS_EMPTY_PART, model: model, bars: bars })
       );
     }
-    return element(
-      DIV_TAG,
-      paneProps,
-      drawn.map(function (one, at) {
-        return element(
+    // minWidth zero lets a cell shrink to its share; without it the label
+    // text holds the cell at its own width and the row overflows.
+    var cells = [
+      element(
+        DIV_TAG,
+        {
+          key: TF_CELL_PART,
+          style: {
+            display: FLEX,
+            flexDirection: COLUMN,
+            flex: FULL,
+            minWidth: ZERO
+          }
+        },
+        [
+          element(DIV_TAG, barArea(TF_CELL_PART, model, paint, true, shape), null),
+          element(
+            DIV_TAG,
+            {
+              key: BAR_LABEL_PART,
+              style: { height: length(shape.margin_bottom_px), flex: FLEX_NONE }
+            },
+            null
+          )
+        ]
+      )
+    ];
+    drawn.forEach(function (one, at) {
+      cells.push(
+        element(
           DIV_TAG,
           {
             key: String(at),
-            style: { display: FLEX, flexDirection: COLUMN, flex: FULL }
+            style: {
+              display: FLEX,
+              flexDirection: COLUMN,
+              flex: FULL,
+              minWidth: ZERO,
+              overflow: HIDDEN
+            }
           },
           [
-            element(Bar, { key: BAR_PART, model: model, bars: bars, bar: one }),
-            element(BarLabel, { key: BAR_LABEL_PART, model: model, bars: bars, bar: one })
+            element(
+              DIV_TAG,
+              barArea(BAR_AREA_PART, model, paint, true, shape),
+              element(Bar, { key: BAR_PART, model: model, bars: bars, bar: one })
+            ),
+            element(
+              DIV_TAG,
+              {
+                key: BAR_LABEL_PART,
+                style: {
+                  height: length(shape.margin_bottom_px),
+                  flex: FLEX_NONE
+                }
+              },
+              element(BarLabel, { model: model, bars: bars, bar: one })
+            )
           ]
-        );
-      })
-    );
+        )
+      );
+    });
+    while (cells.length < number(props.columns, cells.length)) {
+      cells.push(
+        element(
+          DIV_TAG,
+          {
+            key: PAD_CELL_PART + String(cells.length),
+            style: { flex: FULL, minWidth: ZERO }
+          },
+          null
+        )
+      );
+    }
+    return element(DIV_TAG, paneProps, cells);
   }
 
+
+  // One pillar per collated column, behind both mini-panels. The body is a
+  // grid, so a pillar takes its own column and the row above the label strip.
+  function Pillar(props) {
+    var model = props.model;
+    var spec = props.spec;
+    var pillars = props.pillars;
+    var channels = objectField(pillars, COLORS)[text(spec[DIRECTION])];
+    var alphas = listField(pillars, GRADIENT_ALPHAS);
+    var stops = listField(pillars, GRADIENT_STOPS);
+    var pad = percent(model, number(pillars.pad_fraction, ALPHA_FLOOR));
+    var cell = String(number(spec.column, ALPHA_FLOOR) + FULL);
+    var faces = stops.map(function (stop, at) {
+      return rgba(model, channels, alphas[at]) + SPACE + percent(model, stop);
+    });
+    var bodyProps = {
+      style: {
+        gridColumn: cell,
+        gridRow: PILLAR_ROWS,
+        marginLeft: pad,
+        marginRight: pad,
+        borderRadius: length(pillars.body_radius_px),
+        backgroundImage: GRADIENT_OPEN + faces.join(COMMA_SPACE) + CLOSE,
+        boxShadow:
+          ZERO + SPACE + ZERO + SPACE + length(pillars.glow_radius_px) + SPACE +
+          rgba(model, channels, pillars.glow_alpha),
+        borderStyle: SOLID,
+        borderWidth: length(FULL),
+        borderColor: rgba(model, channels, pillars[OUTLINE_ALPHA])
+      }
+    };
+    bodyProps[PART_ATTR] = PILLAR_PART;
+    bodyProps[STATE_ATTR] = text(spec[DIRECTION]);
+    bodyProps[ARIA_LABEL] = label(text(spec[NAME]));
+    var labelProps = {
+      style: {
+        gridColumn: cell,
+        gridRow: PILLAR_LABEL_ROW,
+        color: opaque(model, pillars[LABEL_RGB]),
+        textAlign: CENTER,
+        fontWeight: BOLD
+      }
+    };
+    labelProps[PART_ATTR] = PILLAR_LABEL_PART;
+    bodyProps.key = text(spec[NAME]) + PILLAR_PART;
+    labelProps.key = text(spec[NAME]) + PILLAR_LABEL_PART;
+    return [
+      element(DIV_TAG, bodyProps, null),
+      element(DIV_TAG, labelProps, text(spec[NAME]))
+    ];
+  }
+
+  // One mini-panel as its two parts, so PanelBody places each on the grid.
   function MiniPanel(props) {
-    var style = { display: FLEX, flexDirection: COLUMN, flex: FULL, overflow: HIDDEN };
-    var paneProps = { style: style };
-    paneProps[PART_ATTR] = MINI_PART;
-    return element(DIV_TAG, paneProps, [
-      element(MiniTable, {
+    return {
+      table: element(MiniTable, {
         key: TABLE_PART,
         model: props.model,
         table: props.table
       }),
-      element(BarsPane, { key: BARS_PART, model: props.model, bars: props.bars })
-    ]);
+      bars: element(BarsPane, {
+        key: BARS_PART,
+        model: props.model,
+        bars: props.bars,
+        columns: listField(props.table, TITLES).length
+      })
+    };
+  }
+
+  // The two mini-panels over the pillars, on one ground. Nine rows hold the
+  // two tables and the two graphs, so a pillar spans the row-A plot ceiling
+  // to the row-B plot floor and its label sits in the strip under that floor.
+  function gridSlot(key, rows) {
+    var slotProps = {
+      key: key,
+      style: {
+        gridColumn: FULL_SPAN,
+        gridRow: rows,
+        display: FLEX,
+        flexDirection: COLUMN,
+        minHeight: ZERO,
+        minWidth: ZERO,
+        overflow: HIDDEN
+      }
+    };
+    return slotProps;
+  }
+
+  function PanelBody(props) {
+    var model = props.model;
+    var pillars = objectField(model, PILLARS);
+    var count = number(pillars.column_count, FULL);
+    var ceiling = length(pillars.ceiling_px);
+    var strip = length(pillars.label_strip_px);
+    var gap = length(objectField(model, CONTAINER)[SPACING_PX]);
+    var bodyProps = {
+      style: {
+        display: GRID,
+        gridTemplateColumns: REPEAT_OPEN + String(count) + REPEAT_CLOSE,
+        gridTemplateRows: [
+          AUTO, ceiling, FRACTION, strip, gap, AUTO, ceiling, FRACTION, strip
+        ].join(SPACE),
+        flex: FULL,
+        minHeight: ZERO,
+        minWidth: ZERO,
+        backgroundColor: opaque(model, pillars.ground_rgb)
+      }
+    };
+    bodyProps[PART_ATTR] = BODY_PART;
+    var drawn = [];
+    listField(pillars, "columns").forEach(function (spec) {
+      drawn = drawn.concat(Pillar({ model: model, pillars: pillars, spec: spec }));
+    });
+    props.minis.forEach(function (mini, at) {
+      var first = at * MINI_ROW_STEP;
+      drawn.push(
+        element(
+          DIV_TAG,
+          gridSlot(TABLE_PART + String(at), String(first + FULL)),
+          mini.table
+        )
+      );
+      drawn.push(
+        element(
+          DIV_TAG,
+          gridSlot(
+            BARS_PART + String(at),
+            String(first + 2) + SPAN_SPLIT + String(first + 5)
+          ),
+          mini.bars
+        )
+      );
+    });
+    return element(DIV_TAG, bodyProps, drawn);
   }
 
   function LocksLine(props) {
@@ -770,12 +999,7 @@
     var tables = listField(model, TABLES);
     var bars = listField(model, BARS);
     var minis = tables.map(function (table, at) {
-      return element(MiniPanel, {
-        key: String(at),
-        model: model,
-        table: table,
-        bars: bars[at]
-      });
+      return MiniPanel({ model: model, table: table, bars: bars[at] });
     });
     var drawn = [
       element(HeaderRow, {
@@ -786,11 +1010,8 @@
       }),
       element(StalenessBanner, { key: STALENESS_PART, model: model })
     ];
-    if (model.sim_mode !== true) {
-      drawn.push(element(LockRow, { key: LOCK_ROW_PART, model: model, onLock: props.onLock }));
-    }
     drawn.push(element(RateStrip, { key: RATE_PART, model: model }));
-    drawn = drawn.concat(minis);
+    drawn.push(element(PanelBody, { key: BODY_PART, model: model, minis: minis }));
     drawn.push(element(LocksLine, { key: LOCKS_PART, model: model }));
     return element(DIV_TAG, panelProps, drawn);
   }
@@ -1018,7 +1239,6 @@
     BotSelector: BotSelector,
     PrivacyDot: PrivacyDot,
     StalenessBanner: StalenessBanner,
-    LockRow: LockRow,
     RateStrip: RateStrip,
     MiniPanel: MiniPanel,
     MiniTable: MiniTable,

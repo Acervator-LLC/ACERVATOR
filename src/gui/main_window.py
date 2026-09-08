@@ -1917,8 +1917,10 @@ if _HAS_QT:
                 logger.debug("topology: bot snapshot unavailable: %s", _bot_exc)
 
             opposing: list[dict] = []
+            closes_by_asset: dict[str, list] = {}
             try:
                 inspector = get_shared_inspector()
+                closes_by_asset = dict(getattr(inspector, "last_closes", {}) or {})
                 for op in getattr(inspector, "_last_pairs", []) or []:
                     l_sym = op.long_side.symbol
                     s_sym = op.short_side.symbol
@@ -1933,17 +1935,15 @@ if _HAS_QT:
                             "long_asset": l_asset,
                             "short_asset": s_asset,
                             "corr": float(op.correlation_30d),
+                            "method": op.method,
                         }
                     )
             except Exception as _op_exc:  # noqa: BLE001
                 logger.debug("topology: opposing-pairs unavailable: %s", _op_exc)
 
-            # Left empty: no correlation source is assembled here.
-            correlations: dict[tuple[str, str], float] = {}
-
             ctx = {
                 "tickers_by_asset": tickers,
-                "correlations": correlations,
+                "closes_by_asset": closes_by_asset,
                 "opposing_pairs": opposing,
                 "bots_snapshot": bots_snapshot,
             }

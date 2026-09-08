@@ -28,6 +28,24 @@
   var SCORE = "score";
   var SCREEN = "screen";
   var SIGNALS = "signals";
+  var STEPPER = "stepper";
+  var STEPPER_PART = "zone-stepper";
+  var PANE_MOUNT_PART = "topologies-pane";
+  var PANE_MOUNT_SELECTOR = "[data-part=\"topologies-pane\"]";
+  var SLOT_SELECTOR = "[data-part=\"topology-slot\"]";
+  var ZONE = "zone";
+  var FUNCTION_KIND = "function";
+  var STEP_FIELD = "step";
+  var EXPAND_FIELD = "expand";
+  var REFRESH_FIELD = "refresh";
+  var PREVIEW_FIELD = "preview";
+  var DISMISS_FIELD = "dismiss";
+  var STEP_BACK_PART = "step-back";
+  var STEP_NEXT_PART = "step-next";
+  var ENTRY_PART = "zone-entry";
+  var PUSH_PADDING_PX = "push_padding_px";
+  var PUSH_FONT_WEIGHT = "push_font_weight";
+  var AT = "at";
   var STATUS_TEXT = "status_text";
   var TIMER_DELAYS_MS = "timer_delays_ms";
   var TIMER_INTERVAL_MS = "timer_interval_ms";
@@ -115,6 +133,7 @@
   var CANCEL_IS_DEFAULT = "cancel_is_default";
   var CANCEL_TEXT = "cancel_text";
   var COLUMN_TOTAL = "column_total";
+  var GROUP_MARGINS = "group_margins";
   var HEADER_TITLE_FORMAT = "header_title_format";
   var HEADER_TITLE_STYLE = "header_title_style";
   var MIN_HEIGHT = "min_height";
@@ -144,6 +163,8 @@
   var FRAME_SHAPE = "frame_shape";
   var META_FORMAT = "meta_format";
   var META_STYLE = "meta_style";
+  var METHOD_FORMAT = "method_format";
+  var METHOD_STYLE = "method_style";
   var PREVIEW_TEXT = "preview_text";
   var PREVIEW_TOOLTIP = "preview_tooltip";
   var SIZE_POLICY = "size_policy";
@@ -160,6 +181,7 @@
   var LIST_GROUP_TITLE = "list_group_title";
   var REFRESH_TEXT = "refresh_text";
   var REFRESH_TOOLTIP = "refresh_tooltip";
+  var SCROLL_FRAME = "scroll_frame";
   var SCROLL_MARGINS = "scroll_margins";
   var SCROLL_SPACING = "scroll_spacing";
   var SCROLL_WIDGET_RESIZABLE = "scroll_widget_resizable";
@@ -188,6 +210,7 @@
   var BADGE = "badge";
   var BADGE_STYLE = "badge_style";
   var META = "meta";
+  var METHOD_FIELD = "method";
 
   var ADOPT_ENABLED = "adopt_enabled";
   var BOT_COLORS = "bot_colors";
@@ -238,6 +261,7 @@
     CANCEL_IS_DEFAULT,
     CANCEL_TEXT,
     COLUMN_TOTAL,
+    GROUP_MARGINS,
     HEADER_TITLE_FORMAT,
     HEADER_TITLE_STYLE,
     MARGINS,
@@ -272,6 +296,8 @@
     MARGINS,
     META_FORMAT,
     META_STYLE,
+    METHOD_FORMAT,
+    METHOD_STYLE,
     PREVIEW_TEXT,
     PREVIEW_TOOLTIP,
     SIZE_POLICY,
@@ -286,11 +312,13 @@
     EMPTY_WORD_WRAP,
     FOOTER_STYLE,
     FOOTER_TEXT,
+    GROUP_MARGINS,
     LABEL_CLASS,
     LIST_GROUP_TITLE,
     MARGINS,
     REFRESH_TEXT,
     REFRESH_TOOLTIP,
+    SCROLL_FRAME,
     SCROLL_MARGINS,
     SCROLL_SPACING,
     SCROLL_WIDGET_RESIZABLE,
@@ -391,6 +419,8 @@
   // Qt reads an eight-digit hex alpha first, CSS reads it last.
   var HEX_ARGB = "AARRGGBB";
 
+  var MARGINS_PROPERTY = "margin";
+
   var PADDING_SIDES = [
     "paddingLeft",
     "paddingTop",
@@ -409,11 +439,17 @@
   var COLUMN_WAY = "column";
   var FULL = "100%";
   var COLLAPSE = "collapse";
+  var MAX_CONTENT = "max-content";
+  var MIN_CONTENT = "min-content";
+  var FIT_CONTENT = "fit-content";
+  // The Qt word a header reads when each column takes its own content width.
+  var TO_CONTENTS_MODE = "ResizeToContents";
   var CLIPPED = "hidden";
   var SCROLLED = "auto";
   var NO_SELECT = "none";
   var PRE = "pre";
   var PRE_WRAP = "pre-wrap";
+  var INHERITED = "inherit";
   var LEFT_WAY = "left";
 
   var ZERO = Number(EMPTY);
@@ -452,6 +488,7 @@
   var CARD_TITLE_PART = "card-title";
   var CARD_BADGE_PART = "card-badge";
   var CARD_META_PART = "card-meta";
+  var CARD_METHOD_PART = "card-method";
   var CARD_BUTTONS_PART = "card-buttons";
   var CARD_STRETCH_PART = "card-stretch";
   var PREVIEW_BUTTON_PART = "preview-button";
@@ -640,6 +677,17 @@
     return api === undefined ? {} : api.styleOf(keptSheet(sheet));
   }
 
+  // Qt draws a sheet margin inside the widget rect; CSS draws it outside.
+  function sheetMargin(sheet) {
+    var found = ZERO;
+    declarations(sheet).forEach(function (one) {
+      if (one.property === MARGINS_PROPERTY) {
+        found = parseFloat(one.value) || ZERO;
+      }
+    });
+    return found;
+  }
+
   // variableFor asks acervatorWidgets, which owns the one-carrier token rule.
   function variableFor(value) {
     var api = global.acervatorWidgets;
@@ -727,6 +775,19 @@
     return style;
   }
 
+  // A badge keeps the spaces its format pads the score with; HTML drops them.
+  function asBadge(style) {
+    style.whiteSpace = PRE;
+    return style;
+  }
+
+  // Qt draws every push button in the application font.
+  function asButton(style) {
+    style.font = INHERITED;
+    style.flex = FLEX_NONE;
+    return style;
+  }
+
   function Spacer(props) {
     var spacerProps = { style: { flex: AUTO } };
     spacerProps[PART_ATTR] = props.part;
@@ -758,7 +819,7 @@
     var pane = objectField(props.model, PANE);
     var buttonProps = {
       type: BUTTON_TYPE,
-      style: { flex: FLEX_NONE },
+      style: pushStyle(props.model),
       title: label(pane[REFRESH_TOOLTIP])
     };
     buttonProps[PART_ATTR] = REFRESH_PART;
@@ -784,10 +845,12 @@
       style: { display: FLEX, flexDirection: ROW_WAY, flex: FLEX_NONE }
     };
     rowProps[PART_ATTR] = TOP_ROW_PART;
+    rowProps.style.gap = length(objectField(model, PANE)[SPACING]);
     return element(
       DIV_TAG,
       rowProps,
       element(RefreshButton, { key: REFRESH_PART, model: model }),
+      element(Footer, { key: FOOTER_PART, model: model }),
       element(Spacer, { key: TOP_STRETCH_PART, part: TOP_STRETCH_PART }),
       element(StatusLine, { key: STATUS_PART, model: model })
     );
@@ -809,158 +872,23 @@
     return element(DIV_TAG, emptyProps, text(pane[EMPTY_TEXT]));
   }
 
-  function CardButtons(props) {
-    var card = objectField(props.model, CARD);
-    var rowProps = { style: { display: FLEX, flexDirection: ROW_WAY } };
-    rowProps[PART_ATTR] = CARD_BUTTONS_PART;
-    var previewProps = {
-      key: PREVIEW_BUTTON_PART,
-      type: BUTTON_TYPE,
-      style: { flex: FLEX_NONE },
-      title: label(card[PREVIEW_TOOLTIP])
-    };
-    previewProps[PART_ATTR] = PREVIEW_BUTTON_PART;
-    previewProps[NAME_ATTR] = text(props.name);
-    previewProps.onClick = function () {
-      act(PREVIEW_BUTTON_PART, props.name);
-    };
-    var dismissStyle = styleOf(card[DISMISS_STYLE]);
-    dismissStyle.flex = FLEX_NONE;
-    var dismissProps = {
-      key: DISMISS_BUTTON_PART,
-      type: BUTTON_TYPE,
-      style: dismissStyle,
-      title: label(card[DISMISS_TOOLTIP])
-    };
-    dismissProps[PART_ATTR] = DISMISS_BUTTON_PART;
-    dismissProps[NAME_ATTR] = text(props.name);
-    dismissProps.onClick = function () {
-      act(DISMISS_BUTTON_PART, props.name);
-    };
-    return element(
-      DIV_TAG,
-      rowProps,
-      element(Spacer, { key: CARD_STRETCH_PART, part: CARD_STRETCH_PART }),
-      element(BUTTON_TAG, previewProps, text(card[PREVIEW_TEXT])),
-      element(BUTTON_TAG, dismissProps, text(card[DISMISS_TEXT]))
-    );
-  }
-
-  // The frame carries the Qt sheet and the body carries the layout margins.
-  function ProposalCard(props) {
-    var model = props.model;
-    var card = objectField(model, CARD);
-    var entry = props.entry;
-    var frame = styleOf(card[STYLE]);
-    frame.flex = FLEX_NONE;
-    var cardProps = { style: frame };
-    cardProps[PART_ATTR] = CARD_PART;
-    cardProps[AT_ATTR] = String(props.at);
-    cardProps[NAME_ATTR] = text(props.name);
-    cardProps[ARIA_LABEL] = label(card[ACCESSIBLE_NAME]);
-    var bodyProps = {
-      style: boxStyle(asList(card[MARGINS]), card[SPACING], COLUMN_WAY)
-    };
-    bodyProps[PART_ATTR] = CARD_BODY_PART;
-    var topProps = { style: { display: FLEX, flexDirection: ROW_WAY } };
-    topProps[PART_ATTR] = CARD_TOP_PART;
-    var badgeProps = { key: CARD_BADGE_PART, style: styleOf(entry[BADGE_STYLE]) };
-    badgeProps[PART_ATTR] = CARD_BADGE_PART;
-    var metaProps = { style: asLabel(styleOf(card[META_STYLE]), false) };
-    metaProps[PART_ATTR] = CARD_META_PART;
-    return element(
-      DIV_TAG,
-      cardProps,
-      element(
-        DIV_TAG,
-        bodyProps,
-        element(
-          DIV_TAG,
-          topProps,
-          element(MarkedLabel, {
-            key: CARD_TITLE_PART,
-            part: CARD_TITLE_PART,
-            tag: STRONG_TAG,
-            pieces: listField(objectField(model, MARKS), CARD_TITLES)[props.at],
-            name: props.name,
-            style: asLabel({}, card[TITLE_WORD_WRAP] === true),
-            bodyStyle: { fontWeight: text(objectField(model, MARKS)[STRONG_WEIGHT]) }
-          }),
-          element(SPAN_TAG, badgeProps, text(entry[BADGE]))
-        ),
-        element(DIV_TAG, metaProps, text(entry[META])),
-        element(CardButtons, {
-          key: CARD_BUTTONS_PART,
-          model: model,
-          name: props.name
-        })
-      )
-    );
-  }
-
-  // screenChild draws the one element the screen names at this position.
-  function screenChild(model, name, at, cardsDrawn) {
-    var pane = objectField(model, PANE);
-    if (name === pane[LABEL_CLASS]) {
-      return element(EmptyLabel, { key: String(at), model: model });
-    }
-    if (name === pane[STRETCH_NAME]) {
-      return element(Spacer, { key: String(at), part: SCROLL_STRETCH_PART });
-    }
-    if (name === objectField(model, CARD)[CLASS_NAME]) {
-      var entry = listField(model, CARDS)[cardsDrawn];
-      return element(ProposalCard, {
-        key: String(at),
-        model: model,
-        entry: isPlainObject(entry) ? entry : {},
-        name: listField(model, PROPOSALS)[cardsDrawn],
-        at: cardsDrawn
-      });
-    }
-    return null;
-  }
-
-  function Scroll(props) {
-    var model = props.model;
-    var pane = objectField(model, PANE);
-    var style = boxStyle(
-      asList(pane[SCROLL_MARGINS]),
-      pane[SCROLL_SPACING],
-      COLUMN_WAY
-    );
-    style.flex = ONE;
-    style.overflow = pane[SCROLL_WIDGET_RESIZABLE] === true ? SCROLLED : CLIPPED;
-    var scrollProps = { style: style };
-    scrollProps[PART_ATTR] = SCROLL_PART;
-    var cardsDrawn = ZERO;
-    var drawn = listField(model, SCREEN).map(function (name, at) {
-      var child = screenChild(model, name, at, cardsDrawn);
-      if (name === objectField(model, CARD)[CLASS_NAME]) {
-        cardsDrawn += ONE;
-      }
-      return child;
+  // The theme gives QPushButton 8px 20px of padding and a bold face.
+  function pushStyle(model, sheet) {
+    var skin = objectField(model, STEPPER);
+    var style = marginStyle(asList(skin[PUSH_PADDING_PX]));
+    var kept = sheet === undefined ? {} : styleOf(sheet);
+    Object.keys(kept).forEach(function (name) {
+      style[name] = kept[name];
     });
-    return element(DIV_TAG, scrollProps, drawn);
+    style.fontWeight = text(skin[PUSH_FONT_WEIGHT]);
+    return asButton(style);
   }
 
-  function ListGroup(props) {
-    var model = props.model;
-    var groupProps = {
-      style: { display: FLEX, flexDirection: COLUMN_WAY, flex: ONE, minHeight: ZERO }
-    };
-    groupProps[PART_ATTR] = LIST_GROUP_PART;
-    var legendProps = { style: asLabel({}, false) };
-    legendProps[PART_ATTR] = LIST_LEGEND_PART;
-    return element(
-      FIELDSET_TAG,
-      groupProps,
-      element(
-        LEGEND_TAG,
-        legendProps,
-        text(objectField(model, PANE)[LIST_GROUP_TITLE])
-      ),
-      element(Scroll, { key: SCROLL_PART, model: model })
-    );
+  // The Market Inspector screen publishes the stepper every zone draws
+  // through, so the pane holds no arrows or expansion of its own.
+  function stepperOf() {
+    var screen = global.acervatorMarketInspector;
+    return screen === undefined ? undefined : screen.ZoneStepper;
   }
 
   function Pane(props) {
@@ -971,21 +899,36 @@
     var pane = objectField(model, PANE);
     var style = boxStyle(asList(pane[MARGINS]), pane[SPACING], COLUMN_WAY);
     style.height = FULL;
+    style.flex = ONE;
+    style.minHeight = ZERO;
     style.overflow = CLIPPED;
     var paneProps = { style: style };
     paneProps[PART_ATTR] = PANE_PART;
     paneProps[SLOT_ATTR] = TOPOLOGY_SLOT;
+    var stepper = stepperOf();
     return element(
       DIV_TAG,
       paneProps,
       element(TopRow, { key: TOP_ROW_PART, model: model }),
-      element(ListGroup, { key: LIST_GROUP_PART, model: model }),
-      element(Footer, { key: FOOTER_PART, model: model })
+      stepper === undefined
+        ? null
+        : element(stepper, {
+            key: STEPPER_PART,
+            skin: objectField(model, STEPPER),
+            view: objectField(model, ZONE),
+            act: act
+          })
     );
   }
 
+  // Qt sizes each column to its content and stretches the last one.
+  function contentWide(mode, last) {
+    return mode === TO_CONTENTS_MODE && !last ? MIN_CONTENT : undefined;
+  }
+
   function HeadCell(props) {
-    var cellProps = { style: { textAlign: LEFT_WAY } };
+    var style = { textAlign: LEFT_WAY, width: contentWide(props.mode, props.last) };
+    var cellProps = { style: style };
     cellProps[PART_ATTR] = HEAD_CELL_PART;
     cellProps[TABLE_ATTR] = props.table;
     cellProps[COLUMN_ATTR] = text(props.name);
@@ -993,7 +936,10 @@
   }
 
   function BodyCell(props) {
-    var style = { color: colour(props.paint) };
+    var style = {
+      color: colour(props.paint),
+      width: contentWide(props.mode, props.last)
+    };
     var cellProps = { style: style };
     cellProps[PART_ATTR] = GRID_CELL_PART;
     cellProps[COLUMN_ATTR] = text(props.column);
@@ -1016,7 +962,9 @@
           key: String(at),
           column: column,
           body: cells[at],
-          paint: paints[at]
+          paint: paints[at],
+          mode: props.mode,
+          last: at === props.columns.length - ONE
         });
       })
     );
@@ -1046,7 +994,13 @@
           TR_TAG,
           headRowProps,
           columns.map(function (name, at) {
-            return element(HeadCell, { key: String(at), name: name, table: props.table });
+            return element(HeadCell, {
+              key: String(at),
+              name: name,
+              table: props.table,
+              mode: props.mode,
+              last: at === columns.length - ONE
+            });
           })
         )
       ),
@@ -1061,6 +1015,7 @@
             paints: asList(props.paints)[at],
             columns: columns,
             name: rowNameOf(row, props.keyColumns),
+            mode: props.mode,
             at: at
           });
         })
@@ -1071,10 +1026,12 @@
   function TableGroup(props) {
     var model = props.model;
     var dialog = objectField(model, DIALOG);
-    var groupProps = {
-      style: { display: FLEX, flexDirection: COLUMN_WAY, flex: ONE, minWidth: ZERO },
-      title: label(dialog[props.tipField])
-    };
+    var style = marginStyle(asList(dialog[GROUP_MARGINS]));
+    style.display = FLEX;
+    style.flexDirection = COLUMN_WAY;
+    style.flex = ONE;
+    style.minWidth = ZERO;
+    var groupProps = { style: style, title: label(dialog[props.tipField]) };
     groupProps[PART_ATTR] = TABLE_GROUP_PART;
     groupProps[TABLE_ATTR] = props.table;
     var legendProps = { style: asLabel({}, false) };
@@ -1090,6 +1047,7 @@
         rows: asList(props.rows),
         paints: props.paints,
         keyColumns: props.keyColumns,
+        mode: dialog[RESIZE_MODE],
         alternating: dialog[ALTERNATING_ROW_COLORS]
       })
     );
@@ -1101,7 +1059,10 @@
     var dialog = objectField(model, DIALOG);
     var headerProps = { style: { display: FLEX, flexDirection: ROW_WAY } };
     headerProps[PART_ATTR] = PREVIEW_HEADER_PART;
-    var badgeProps = { key: PREVIEW_BADGE_PART, style: styleOf(entry[BADGE_STYLE]) };
+    var badgeProps = {
+      key: PREVIEW_BADGE_PART,
+      style: asBadge(styleOf(entry[BADGE_STYLE]))
+    };
     badgeProps[PART_ATTR] = PREVIEW_BADGE_PART;
     return element(
       DIV_TAG,
@@ -1123,12 +1084,14 @@
   function PreviewButtons(props) {
     var dialog = objectField(props.model, DIALOG);
     var entry = props.entry;
-    var rowProps = { style: { display: FLEX, flexDirection: ROW_WAY } };
+    var rowProps = {
+      style: { display: FLEX, flexDirection: ROW_WAY, gap: length(dialog[SPACING]) }
+    };
     rowProps[PART_ATTR] = BUTTON_ROW_PART;
     var cancelProps = {
       key: CANCEL_PART,
       type: BUTTON_TYPE,
-      style: { flex: FLEX_NONE },
+      style: asButton({}),
       autoFocus: dialog[CANCEL_IS_DEFAULT] === true
     };
     cancelProps[PART_ATTR] = CANCEL_PART;
@@ -1138,7 +1101,7 @@
     var adoptProps = {
       key: ADOPT_PART,
       type: BUTTON_TYPE,
-      style: { flex: FLEX_NONE },
+      style: asButton({}),
       disabled: entry[ADOPT_ENABLED] !== true,
       title: label(entry[ADOPT_TOOLTIP])
     };
@@ -1175,12 +1138,16 @@
     var style = boxStyle(asList(dialog[MARGINS]), dialog[SPACING], COLUMN_WAY);
     style.minWidth = length(dialog[MIN_WIDTH]);
     style.minHeight = length(dialog[MIN_HEIGHT]);
+    // The Qt screen takes its minimum size, not the width of whatever holds it.
+    style.width = FIT_CONTENT;
+    style.height = FIT_CONTENT;
     var previewProps = { style: style };
     previewProps[PART_ATTR] = PREVIEW_PART;
     previewProps[ARIA_LABEL] = label(entry[WINDOW_TITLE]);
-    var bodyProps = {
-      style: boxStyle([], dialog[BODY_SPACING], ROW_WAY)
-    };
+    var bodyStyle = boxStyle([], dialog[BODY_SPACING], ROW_WAY);
+    bodyStyle.flex = ONE;
+    bodyStyle.minHeight = ZERO;
+    var bodyProps = { style: bodyStyle };
     bodyProps[PART_ATTR] = PREVIEW_BODY_PART;
     return element(
       DIV_TAG,
@@ -1436,7 +1403,7 @@
 
   var SHEET_FIELDS = {};
   SHEET_FIELDS[PANE] = [EMPTY_STYLE, FOOTER_STYLE, STATUS_STYLE];
-  SHEET_FIELDS[CARD] = [DISMISS_STYLE, META_STYLE, STYLE];
+  SHEET_FIELDS[CARD] = [DISMISS_STYLE, META_STYLE, METHOD_STYLE, STYLE];
   SHEET_FIELDS[DIALOG] = [HEADER_TITLE_STYLE, NOTE_STYLE, SUMMARY_STYLE];
 
   function checkSheets(model) {
@@ -1514,6 +1481,7 @@
         tags[STRONG_CLOSE]
       );
       checkMarkup(spot, META, one[META]);
+      checkMarkup(spot, METHOD_FIELD, one[METHOD_FIELD]);
       checkMarkup(spot, BADGE, one[BADGE]);
     });
     listField(model, PREVIEWS).forEach(function (entry, at) {
@@ -2059,12 +2027,55 @@
     return global.acervatorTopologiesAction(key, name);
   }
 
+  // The element the pane draws into: the Market Inspector's own slot once the
+  // screen has drawn one, and the host the caller gave until then. The shell
+  // mounts this panel beside the screen, so without this the pane draws into
+  // a host the tab bar hides whichever tab is selected.
+  function paneHost(target) {
+    var slot = global.document.querySelector(SLOT_SELECTOR);
+    if (slot === null) {
+      return target;
+    }
+    var found = slot.querySelector(PANE_MOUNT_SELECTOR);
+    if (found === null) {
+      found = global.document.createElement(DIV_TAG);
+      found.setAttribute(PART_ATTR, PANE_MOUNT_PART);
+      found.style.height = FULL;
+      found.style.display = FLEX;
+      found.style.flexDirection = COLUMN_WAY;
+      found.style.minHeight = ZERO;
+      slot.appendChild(found);
+    }
+    return found;
+  }
+
+  // seat moves the pane into the slot once the screen has drawn one, and
+  // empties whatever it was drawn into before.
+  function seat() {
+    if (hostTarget === null) {
+      return null;
+    }
+    var wanted = paneHost(hostTarget);
+    if (wanted !== hostTarget) {
+      draw(hostTarget, null);
+      hostTarget = wanted;
+      renderPane(hostTarget, null);
+    }
+    return hostTarget;
+  }
+
   function renderTab(target, model) {
-    hostTarget = target;
+    var mount = paneHost(target);
+    if (mount === target && target !== null && target !== undefined) {
+      // Names this element as the pane's mount, so a host that moves it into
+      // the slot itself is found again instead of a second mount being made.
+      target.setAttribute(PART_ATTR, PANE_MOUNT_PART);
+    }
+    hostTarget = mount;
     if (isPlainObject(model)) {
       setPane(model);
     }
-    return renderPane(target, null);
+    return renderPane(hostTarget, null);
   }
 
   function setTab(model) {
@@ -2095,10 +2106,43 @@
     hostTarget = null;
   }
 
-  // A Qt host replaces this; the default keeps a press from raising.
-  global.acervatorTopologiesAction = function () {
-    return null;
+  // A Qt host replaces this. The shell replaces nothing, so the default
+  // takes the press to the bridge itself and redraws from the answer.
+  global.acervatorTopologiesAction = function (key, name) {
+    if (!global.acervator || typeof global.acervator.call !== FUNCTION_KIND) {
+      return null;
+    }
+    var asked = {};
+    if (key === STEP_BACK_PART) {
+      asked[STEP_FIELD] = -ONE;
+    } else if (key === STEP_NEXT_PART) {
+      asked[STEP_FIELD] = ONE;
+    } else if (key === ENTRY_PART) {
+      asked[EXPAND_FIELD] = true;
+    } else if (key === REFRESH_PART) {
+      asked[REFRESH_FIELD] = true;
+    } else if (key === PREVIEW_BUTTON_PART) {
+      asked[PREVIEW_FIELD] = name;
+    } else if (key === DISMISS_BUTTON_PART) {
+      asked[DISMISS_FIELD] = name;
+    } else {
+      return null;
+    }
+    return global.acervator.call(METHOD, asked).then(function (model) {
+      return setTab(model);
+    });
   };
+
+  // The shell draws this pane by its module name and asks the bridge for its
+  // state; it names no bridge method the application serves a tab from, so
+  // the tab bar gives it no tab of its own.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderTab,
+      load: loadPane,
+      loadError: loadError
+    });
+  }
 
   global.acervatorSetTopologies = setPane;
   global.acervatorLoadTopologies = loadPane;
@@ -2106,14 +2150,11 @@
     method: method,
     renderTab: renderTab,
     setTab: setTab,
+    seat: seat,
     Pane: Pane,
     TopRow: TopRow,
     RefreshButton: RefreshButton,
     StatusLine: StatusLine,
-    ListGroup: ListGroup,
-    Scroll: Scroll,
-    ProposalCard: ProposalCard,
-    CardButtons: CardButtons,
     EmptyLabel: EmptyLabel,
     Footer: Footer,
     MarkedLabel: MarkedLabel,

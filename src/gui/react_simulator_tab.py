@@ -292,9 +292,7 @@ if _HAS_WEBENGINE:
 
         def run_battery(self, origin: str) -> dict:
             """Run ``origin`` over the chosen span and redraw the page."""
-            self._battery = surface.run_battery(
-                origin, self._portfolio, self._span
-            )
+            self._battery = surface.run_battery(origin, self._portfolio, self._span)
             self.refresh()
             return dict(self._battery)
 

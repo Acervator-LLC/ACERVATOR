@@ -13,6 +13,97 @@ covered.
 from __future__ import annotations
 
 import logging
+import threading
+
+from ..trading import ata_spm, ata_spm_push
+from .main_tabs.market_inspector_surface import (
+    COLOR_CORRELATION,
+    COLOR_METHOD,
+    NO_METHOD_TEXT,
+    PAIR_COLUMNS,
+    PAIRS_GROUP_TITLE,
+    READY_TO_SEND_ZONE,
+    TOPOLOGIES_ZONE,
+)
+from .main_tabs.market_inspector_surface import (
+    APPROVE_PART,
+    ATA_SPM_READY_KEY,
+    COUNT_SETTINGS,
+    CREDENTIAL_FIELDS,
+    CREDENTIAL_FIELD_WIDTH_PX,
+    DECLINE_PART,
+    FULL_AUTO_LABEL,
+    FULL_AUTO_PART,
+    FULL_AUTO_TOOLTIP,
+    POST_ALL_LABEL,
+    POST_ALL_PART,
+    POST_ALL_TOOLTIP,
+    POST_SELECTED_LABEL,
+    POST_SELECTED_PART,
+    POST_SELECTED_TOOLTIP,
+    SAVE_CREDENTIALS_LABEL,
+    SAVE_CREDENTIALS_TOOLTIP,
+    SETTING_FIELD_WIDTH_PX,
+    SETTING_ROWS,
+    SETTINGS_LABEL,
+    SETTINGS_LABEL_WIDTH_PX,
+    SETTINGS_ROW_SPACING_PX,
+    SETTINGS_TOOLTIP,
+    SETTINGS_WIDTH_PX,
+    FIELD_HEIGHT_PX,
+    FULL_AUTO_WIDTH_PX,
+    POST_ALL_WIDTH_PX,
+    POST_SELECTED_WIDTH_PX,
+    PUSH_BUTTON_HEIGHT_PX,
+    THUMBNAIL_PART,
+    VOTE_PART,
+    STRIP_TEXT_PART,
+    bucket_entries as _bucket_entries,
+)
+from .main_tabs.market_inspector_surface import right_zone_rows as _right_zone_rows
+from .main_tabs.market_inspector_surface import left_module_rows as _left_module_rows
+from .main_tabs.market_inspector_surface import sector_entry as _sector_entry
+from .main_tabs.market_inspector_surface import (
+    ATA_ROW_SPACING_PX,
+    CLASS_BOX_TOOLTIP,
+    CLASS_BOX_WIDTH_PX,
+    SCAN_NOW_LABEL,
+    SCAN_NOW_TOOLTIP,
+    SCAN_NOW_WIDTH_PX,
+    SECTOR_FIELD_PLACEHOLDER,
+    SECTOR_FIELD_TOOLTIP,
+    SECTOR_FIELD_MIN_WIDTH_PX,
+    TIMEFRAME_BOX_HEIGHT_PX,
+    TIMEFRAME_BOX_TOOLTIP_FORMAT,
+    TIMEFRAME_BOX_WIDTH_PX,
+    TIMEFRAME_ROW_PART,
+    inspector_candles,
+    sector_assets,
+)
+from .main_tabs.market_inspector_surface import (
+    DETAIL_STYLE,
+    ENTRY_HEADLINE_STYLE,
+    ENTRY_HINT_STYLE,
+    ENTRY_ACCESSIBLE_NAME,
+    ENTRY_HINT_TEXT,
+    ENTRY_MARGINS_PX,
+    ENTRY_META_STYLE,
+    ENTRY_METHOD_STYLE,
+    ENTRY_SPACING_PX,
+    ENTRY_STYLE,
+    POSITION_EMPTY_TEXT,
+    POSITION_STYLE,
+    STEP_BACK_TEXT,
+    STEP_BACK_TOOLTIP,
+    STEP_BUTTON_STYLE,
+    STEP_BUTTON_WIDTH_PX,
+    STEPPER_ACCESSIBLE_NAME,
+    STEP_NEXT_TEXT,
+    STEP_NEXT_TOOLTIP,
+    pair_entry,
+    step_to as _step_to,
+    zone_view,
+)
 
 logger = logging.getLogger("acervator.market_inspector_gui")
 
@@ -25,13 +116,19 @@ try:
         QPushButton,
         QCheckBox,
         QGroupBox,
+        QComboBox,
+        QLineEdit,
         QTableWidget,
         QTableWidgetItem,
         QHeaderView,
         QSplitter,
+        QSizePolicy,
+        QLayout,
+        QFrame,
+        QScrollArea,
     )
-    from PySide6.QtCore import Qt
-    from PySide6.QtGui import QColor
+    from PySide6.QtCore import Qt, Signal
+    from PySide6.QtGui import QColor, QPainter
 
     _HAS_QT = True
 except ImportError:
@@ -85,6 +182,22 @@ SCAN_FINISHED_TOPIC = "market_inspector.scan_finished"
 SIGNALS_NOUN = "markets"
 PAIRS_NOUN = "opposing pairs"
 
+ATA_SPM_MODULE = "ata_spm"
+OPPOSING_TRADES_MODULE = "opposing_trades"
+ARBITRAGE_MODULE = "arbitrage"
+
+#: Scan Now runs the phases here; the window-drawing thread only draws.
+ATA_SCAN_THREAD_NAME = "ata-smp-scan"
+ATA_SCAN_THREAD_LOG = "ATA-SPM scan on thread %s: %s"
+
+ATA_SPM_GROUP_TITLE = "ATA-SPM"
+OPPOSING_TRADES_GROUP_TITLE = "Opposing Trades"
+ARBITRAGE_GROUP_TITLE = "Multi-Exchange Arbitrage"
+
+# The share a bullish bot feeds to the bot on the opposite market condition.
+OPPOSING_TRADES_PROFIT_SHARE_PCT = 50
+OPPOSING_TRADES_NOUN = "opposing trades"
+
 
 def _empty_table_text(scan_state: str, noun: str) -> str:
     """The sentence an empty table carries for one scan state.
@@ -115,28 +228,407 @@ def _emit_scan(topic: str, **fields) -> None:
 
 if _HAS_QT:
 
+    def row_height(item, width: int) -> int:
+        """The height one layout row needs at ``width``, wrapping included."""
+        if item is None:
+            return 0
+        widget = item.widget()
+        if widget is not None:
+            if widget.isHidden():
+                return 0
+            if widget.hasHeightForWidth():
+                return widget.heightForWidth(width)
+            return item.sizeHint().height()
+        nested = item.layout()
+        if nested is None:
+            return item.sizeHint().height()
+        return layout_height(nested, width)
+
+    def layout_height(shape, width: int) -> int:
+        """The height one layout needs at ``width``, over its own rows.
+
+        A row of a ``QHBoxLayout`` is as tall as its tallest child, and a
+        column is the sum of its rows and the spacing between them.
+        """
+        margins = shape.contentsMargins()
+        inner = max(1, width - margins.left() - margins.right())
+        rows = [shape.itemAt(at) for at in range(shape.count())]
+        heights = [row_height(one, inner) for one in rows]
+        if isinstance(shape, QHBoxLayout):
+            tall = max(heights) if heights else 0
+        else:
+            tall = sum(heights) + shape.spacing() * max(0, len(rows) - 1)
+        return tall + margins.top() + margins.bottom()
+
+    class _ZoneEntry(QFrame):
+        """The clickable card one zone shows, expanded on a press."""
+
+        clicked = Signal()
+
+        def __init__(self, parent=None) -> None:
+            super().__init__(parent)
+            self.setAccessibleName(ENTRY_ACCESSIBLE_NAME)
+
+        def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt event name
+            """Report the press so the zone opens or closes its expansion."""
+            super().mousePressEvent(event)
+            self.clicked.emit()
+
+        def resizeEvent(self, event) -> None:  # noqa: N802 - Qt event name
+            """Ask for the height this width needs, so the zone scrolls to it."""
+            super().resizeEvent(event)
+            self.hold_height()
+
+        def hold_height(self) -> None:
+            """Set the minimum height every row of this frame needs at its width.
+
+            A wrapping label answers ``heightForWidth``; its own size hint
+            follows the height it was already given and stays squeezed.
+            """
+            shape = self.layout()
+            if shape is None:
+                return
+            tall = layout_height(shape, self.width())
+            if tall != self.minimumHeight():
+                self.setMinimumHeight(tall)
+
+    class _PostChart(QFrame):
+        """One bucket post's chart: its closes, its bands and its last close.
+
+        ``show_chart`` places one child per ``post_chart`` mark, so the Qt
+        widget and the page draw the same rectangles at the same boxes.
+        """
+
+        clicked = Signal()
+
+        def __init__(self, parent=None) -> None:
+            super().__init__(parent)
+            self.marks: list = []
+
+        def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt event name
+            """Report the press so the zone opens its larger chart view."""
+            super().mousePressEvent(event)
+            self.clicked.emit()
+
+        def show_chart(self, chart: dict) -> None:
+            """Draw one ``post_chart`` payload at the size it declares."""
+            self.setFixedSize(int(chart["width_px"]), int(chart["height_px"]))
+            self.setStyleSheet(str(chart["box_style"]))
+            self.setAccessibleName(str(chart["part"]))
+            self.setToolTip(str(chart.get("tooltip", "")))
+            self.marks = [list(one) for one in chart["marks"]]
+            self.update()
+
+        def paintEvent(self, event) -> None:  # noqa: N802 - Qt event name
+            """Fill every mark, which is what the page's chart children are."""
+            super().paintEvent(event)
+            painter = QPainter(self)
+            for _part, left, top, width, height, color in self.marks:
+                painter.fillRect(
+                    int(left), int(top), int(width), int(height), QColor(color)
+                )
+            painter.end()
+
+    class _VotingPanel(QFrame):
+        """The Indicator Voting Panel one scanned asset carries.
+
+        ``show_panel`` places one ``QLabel`` per ``voting_panel`` cell, at
+        the box that description names.
+        """
+
+        def __init__(self, parent=None) -> None:
+            """Hold the labels ``show_panel`` replaces on each redraw."""
+            super().__init__(parent)
+            self.cells: list = []
+
+        def show_panel(self, panel: dict) -> None:
+            """Draw one ``voting_panel`` payload at the size it declares."""
+            while self.cells:
+                gone = self.cells.pop()
+                gone.setParent(None)
+                gone.deleteLater()
+            shape = self.layout()
+            if shape is None:
+                shape = QVBoxLayout(self)
+                shape.setContentsMargins(0, 0, 0, 0)
+                shape.setSpacing(0)
+            while shape.count():
+                shape.takeAt(0)
+            self.setFixedSize(int(panel["width_px"]), int(panel["height_px"]))
+            self.setStyleSheet(str(panel["box_style"]))
+            self.setAccessibleName(str(panel["part"]))
+            self.setToolTip(str(panel.get("tooltip", "")))
+            for height_px, cells in panel["rows"]:
+                row = QHBoxLayout()
+                row.setContentsMargins(0, 0, 0, 0)
+                row.setSpacing(0)
+                for part, width_px, text, style, tip in cells:
+                    drawn = QLabel(str(text), self)
+                    drawn.setFixedSize(int(width_px), int(height_px))
+                    drawn.setStyleSheet(str(style))
+                    drawn.setAccessibleName(str(part))
+                    drawn.setToolTip(str(tip))
+                    drawn.setAlignment(Qt.AlignCenter)
+                    row.addWidget(drawn)
+                    self.cells.append(drawn)
+                row.addStretch()
+                shape.addLayout(row)
+
+    class ProposalStepper(QWidget):
+        """One zone's entries shown one at a time, with arrows and a expansion.
+
+        ``stepped`` carries -1 or +1 and ``entryClicked`` carries nothing.
+        The owner moves its own index and calls ``show_view`` again, so
+        every zone in the tab and the proposals pane share this widget.
+        """
+
+        stepped = Signal(int)
+        entryClicked = Signal()
+        actionPressed = Signal(str)
+
+        def __init__(self, parent=None) -> None:
+            super().__init__(parent)
+            self.setAccessibleName(STEPPER_ACCESSIBLE_NAME)
+            self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+            root = QVBoxLayout(self)
+            root.setContentsMargins(0, 0, 0, 0)
+            root.setSpacing(ENTRY_SPACING_PX)
+
+            row = QHBoxLayout()
+            row.setSpacing(ENTRY_SPACING_PX)
+            self.back_button = QPushButton(STEP_BACK_TEXT)
+            self.back_button.setToolTip(STEP_BACK_TOOLTIP)
+            self.back_button.setFixedWidth(STEP_BUTTON_WIDTH_PX)
+            self.back_button.setStyleSheet(STEP_BUTTON_STYLE)
+            self.back_button.clicked.connect(lambda: self.stepped.emit(-1))
+            row.addWidget(self.back_button)
+            self.next_button = QPushButton(STEP_NEXT_TEXT)
+            self.next_button.setToolTip(STEP_NEXT_TOOLTIP)
+            self.next_button.setFixedWidth(STEP_BUTTON_WIDTH_PX)
+            self.next_button.setStyleSheet(STEP_BUTTON_STYLE)
+            self.next_button.clicked.connect(lambda: self.stepped.emit(1))
+            row.addWidget(self.next_button)
+            self.position_label = QLabel(POSITION_EMPTY_TEXT)
+            self.position_label.setStyleSheet(POSITION_STYLE)
+            row.addWidget(self.position_label)
+            row.addStretch()
+            root.addLayout(row)
+
+            self.entry = _ZoneEntry()
+            self.entry.setStyleSheet(ENTRY_STYLE)
+            self.entry.clicked.connect(self.entryClicked.emit)
+            body = QVBoxLayout(self.entry)
+            body.setContentsMargins(*ENTRY_MARGINS_PX)
+            body.setSpacing(ENTRY_SPACING_PX)
+            head = QHBoxLayout()
+            head.setSpacing(ENTRY_SPACING_PX)
+            self.thumbnail = _PostChart()
+            self.thumbnail.clicked.connect(
+                lambda: self.actionPressed.emit(THUMBNAIL_PART)
+            )
+            head.addWidget(self.thumbnail)
+            self.headline_label = QLabel("")
+            self.headline_label.setStyleSheet(ENTRY_HEADLINE_STYLE)
+            self.headline_label.setWordWrap(True)
+            head.addWidget(self.headline_label)
+            self.vote_label = QLabel("")
+            self.vote_label.setAccessibleName(VOTE_PART)
+            head.addWidget(self.vote_label)
+            self.badge_label = QLabel("")
+            head.addWidget(self.badge_label)
+            head.addStretch()
+            body.addLayout(head)
+            self.meta_label = QLabel("")
+            self.meta_label.setStyleSheet(ENTRY_META_STYLE)
+            self.meta_label.setWordWrap(True)
+            body.addWidget(self.meta_label)
+            self.method_label = QLabel("")
+            self.method_label.setStyleSheet(ENTRY_METHOD_STYLE)
+            self.method_label.setWordWrap(True)
+            body.addWidget(self.method_label)
+            self.preview = _PostChart()
+            body.addWidget(self.preview)
+            self.preview_label = QLabel("")
+            self.preview_label.setStyleSheet(DETAIL_STYLE)
+            self.preview_label.setWordWrap(True)
+            self.preview_label.setAccessibleName(STRIP_TEXT_PART)
+            body.addWidget(self.preview_label)
+            self.action_buttons: list = []
+            self.action_row = QHBoxLayout()
+            self.action_row.setContentsMargins(0, 0, 0, 0)
+            self.action_row.setSpacing(ENTRY_SPACING_PX)
+            self.action_row.addStretch()
+            body.addLayout(self.action_row)
+            self.panels: list = []
+            self.panel_box = QVBoxLayout()
+            self.panel_box.setContentsMargins(0, 0, 0, 0)
+            self.panel_box.setSpacing(ENTRY_SPACING_PX)
+            body.addLayout(self.panel_box)
+            self.detail_labels: list = []
+            self.detail_box = QVBoxLayout()
+            self.detail_box.setContentsMargins(0, 0, 0, 0)
+            self.detail_box.setSpacing(ENTRY_SPACING_PX)
+            body.addLayout(self.detail_box)
+            self.hint_label = QLabel(ENTRY_HINT_TEXT)
+            self.hint_label.setStyleSheet(ENTRY_HINT_STYLE)
+            self.hint_label.setWordWrap(True)
+            body.addWidget(self.hint_label)
+            # Slack goes here, so a short entry keeps its lines together
+            # rather than spreading them down the zone.
+            body.addStretch()
+            # The zone is a fixed third of its pane, so an expansion taller
+            # than that scrolls inside the zone instead of being clipped.
+            self.entry_scroll = QScrollArea()
+            self.entry_scroll.setWidgetResizable(True)
+            self.entry_scroll.setFrameShape(QFrame.NoFrame)
+            self.entry_scroll.setWidget(self.entry)
+            # The entry asks for the height its lines need; an Ignored policy
+            # keeps that off the zone, whose rows above would be squeezed.
+            self.entry_scroll.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Ignored)
+            self.entry_scroll.setMinimumHeight(0)
+            root.addWidget(self.entry_scroll, 1)
+
+        def show_view(self, view: dict) -> None:
+            """Write one zone view into the arrows, the position and the entry."""
+            total = int(view.get("total", 0))
+            self.entry.setMinimumHeight(0)
+            self.position_label.setText(str(view.get("position", "")))
+            self.back_button.setEnabled(total > 1)
+            self.next_button.setEnabled(total > 1)
+            self.headline_label.setText(str(view.get("headline", "")))
+            wide = view.get("headline_width_px")
+            if wide:
+                self.headline_label.setFixedWidth(int(wide))
+            else:
+                self.headline_label.setMinimumWidth(0)
+                self.headline_label.setMaximumWidth(self.entry.width())
+            vote = list(view.get("vote") or [])
+            self.vote_label.setText(str(vote[0]) if vote else "")
+            self.vote_label.setStyleSheet(str(vote[1]) if vote else "")
+            self.vote_label.setVisible(bool(vote))
+            self.badge_label.setText(str(view.get("badge", "")))
+            self.badge_label.setStyleSheet(str(view.get("badge_style", "")))
+            self.badge_label.setVisible(bool(view.get("badge")))
+            self.meta_label.setText(str(view.get("meta", "")))
+            self.meta_label.setVisible(bool(view.get("meta")))
+            self.method_label.setText(str(view.get("method", "")))
+            self.method_label.setVisible(bool(view.get("method")))
+            self.hint_label.setVisible(bool(view.get("hint")))
+            self._show_strips(view)
+            self._show_panels(view.get("panels") or [])
+            self._show_actions(view.get("actions") or [])
+            while self.detail_labels:
+                gone = self.detail_labels.pop()
+                self.detail_box.removeWidget(gone)
+                # setParent takes it off screen now; deleteLater waits for the
+                # event loop and leaves the old line drawn over the new one.
+                gone.setParent(None)
+                gone.deleteLater()
+            for _name, line in view.get("detail", []):
+                drawn = QLabel(line)
+                drawn.setStyleSheet(DETAIL_STYLE)
+                drawn.setWordWrap(True)
+                self.detail_box.addWidget(drawn)
+                self.detail_labels.append(drawn)
+            # The scroll area shrinks its widget to the viewport unless the
+            # widget asks for the height its own content needs.
+            shape = self.entry.layout()
+            shape.invalidate()
+            shape.activate()
+            self.entry.hold_height()
+
+        def _show_strips(self, view: dict) -> None:
+            """Draw the thumbnail and, while the entry is open, the larger chart."""
+            pairs = ((self.thumbnail, "thumbnail"), (self.preview, "preview"))
+            for widget, key in pairs:
+                chart = view.get(key)
+                widget.setVisible(bool(chart))
+                if chart:
+                    widget.show_chart(chart)
+            shown = view.get("preview") or {}
+            self.preview_label.setText(str(shown.get("text", "")))
+            self.preview_label.setVisible(bool(shown))
+
+        def _show_panels(self, rows: list) -> None:
+            """Draw one ``_VotingPanel`` and its gate lines per ``voting_panel``.
+
+            The lines sit under the panel of the asset they name, which is
+            what puts the gate chain result beside its own voting grid.
+            """
+            while self.panels:
+                gone = self.panels.pop()
+                self.panel_box.removeWidget(gone)
+                gone.setParent(None)
+                gone.deleteLater()
+            for panel in rows:
+                drawn = _VotingPanel()
+                drawn.show_panel(panel)
+                self.panel_box.addWidget(drawn)
+                self.panels.append(drawn)
+                for _name, line in panel.get("lines") or []:
+                    written = QLabel(line)
+                    written.setStyleSheet(str(panel["line_style"]))
+                    written.setAccessibleName(str(panel["line_part"]))
+                    written.setWordWrap(True)
+                    self.panel_box.addWidget(written)
+                    self.panels.append(written)
+
+        def _show_actions(self, rows: list) -> None:
+            """Draw one button per action row, replacing the buttons drawn before.
+
+            The buttons sit before the stretch ``action_row`` ends with, so
+            each takes its own width.
+            """
+            while self.action_buttons:
+                gone = self.action_buttons.pop()
+                self.action_row.removeWidget(gone)
+                gone.setParent(None)
+                gone.deleteLater()
+            for part, label, tooltip, enabled, width_px in rows:
+                button = QPushButton(str(label))
+                button.setToolTip(str(tooltip))
+                button.setEnabled(bool(enabled))
+                button.setAccessibleName(str(part))
+                button.setFixedSize(int(width_px), PUSH_BUTTON_HEIGHT_PX)
+                button.clicked.connect(
+                    lambda _checked=False, name=part: self.actionPressed.emit(name)
+                )
+                self.action_row.insertWidget(len(self.action_buttons), button)
+                self.action_buttons.append(button)
+
     class MarketInspectorTab(QWidget):
         """Full-application Market Inspector tab.
 
         Fleet-wide HTF signal view over the top-N CoinGecko universe.
         Owns the fetch worker and writes results to the shared analyzer.
+        ``scanFinished`` carries one ATA-SMP scan back from its worker
+        thread, which is why no phase runs on the window-drawing thread.
         """
+
+        scanFinished = Signal(object)  # noqa: N815 - Qt signal name
 
         def __init__(self, parent=None):
             super().__init__(parent)
             self._active_symbols: set = set()
             self._show_active = False  # Default: hide markets already traded
             self._last_meta: dict = {}
+            self._scan_thread = None
+            self.scanFinished.connect(self._take_scan)
             self._pending_refresh = False
             self._scan_state = SCAN_NOT_ASKED
             # Wired by MainWindow's MarketInspectorTabMixin via set_exchange_source().
             self._connectors_getter = None
             self._scheduler = None
+            self._ata_run_source = None
+            self._ata_board = ata_spm.SectorBoard()
+            self._push_board = ata_spm_push.PushBoard()
             self._build_ui()
 
         def _build_ui(self) -> None:
-            """Build the splitter, the filter row and the two tables.
+            """Build the splitter, the three modules, the filter row and the tables.
 
+            The modules are ATA-SPM, Opposing Trades and Multi-Exchange
+            Arbitrage, in that order above the filter row.
             ``MarketInspectorReactTab`` replaces this with one web view and
             keeps every method below it.
             """
@@ -151,6 +643,36 @@ if _HAS_QT:
             layout = QVBoxLayout(left_pane)
             layout.setContentsMargins(6, 6, 6, 6)
             layout.setSpacing(6)
+
+            # --- The three left-side zones ---
+            self._module_labels: dict = {}
+            self._module_boxes: dict = {}
+            self._zone_steppers: dict = {}
+            self._zone_at: dict = {}
+            self._zone_open: dict = {}
+            self._pairs: list = []
+            self._left_zone_groups: list = []
+            self._right_zone_groups: list = []
+            for key, title, status in _left_module_rows(
+                None, self._scan_state, 0, None, 0
+            ):
+                group = QGroupBox(title)
+                box = QVBoxLayout(group)
+                stepper = self._build_stepper(key)
+                stepper.headline_label.setText(status)
+                if key == ATA_SPM_MODULE:
+                    box.addLayout(self._build_ata_row())
+                    box.addWidget(self._build_settings_page())
+                box.addWidget(stepper)
+                # Ignored height lets the three zones share the pane equally
+                # whatever their content asks for.
+                group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Ignored)
+                box.setSizeConstraint(QLayout.SetNoConstraint)
+                layout.addWidget(group, 1)
+                self._left_zone_groups.append(group)
+                self._module_labels[key] = stepper.headline_label
+                self._module_boxes[key] = box
+            zone = self._module_boxes[OPPOSING_TRADES_MODULE]
 
             # --- Filter row ---
             top_row = QHBoxLayout()
@@ -180,7 +702,7 @@ if _HAS_QT:
             self._status_lbl = QLabel("No data yet — press Refresh.")
             self._status_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
             top_row.addWidget(self._status_lbl)
-            layout.addLayout(top_row)
+            zone.insertLayout(0, top_row)
 
             # --- HTF Signals table ---
             self._signals_group = QGroupBox("HTF Signals")
@@ -203,22 +725,23 @@ if _HAS_QT:
             self._signals_empty_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
             self._signals_empty_lbl.setWordWrap(True)
             sg.addWidget(self._signals_empty_lbl)
-            layout.addWidget(self._signals_group)
 
             # --- Opposing Pairs table ---
-            self._pairs_group = QGroupBox("Opposing Pairs (30-day Pearson)")
+            self._pairs_group = QGroupBox(PAIRS_GROUP_TITLE)
             pg = QVBoxLayout(self._pairs_group)
             self._pairs_tbl = QTableWidget()
-            self._pairs_tbl.setColumnCount(4)
-            self._pairs_tbl.setHorizontalHeaderLabels(
-                ["Long side", "Short side", "Correlation", "Score (Long+Short)"]
-            )
+            self._pairs_tbl.setColumnCount(len(PAIR_COLUMNS))
+            self._pairs_tbl.setHorizontalHeaderLabels(list(PAIR_COLUMNS))
             self._pairs_tbl.horizontalHeader().setSectionResizeMode(
                 QHeaderView.ResizeToContents
             )
             self._pairs_tbl.setEditTriggers(QTableWidget.NoEditTriggers)
             self._pairs_tbl.setAlternatingRowColors(True)
             self._pairs_tbl.setMaximumHeight(180)
+            # The zone takes an equal third; the table shrinks into it and
+            # scrolls rather than forcing the zone taller.
+            self._pairs_tbl.setMinimumHeight(0)
+            self._pairs_group.setMinimumHeight(0)
             pg.addWidget(self._pairs_tbl)
             self._pairs_empty_lbl = QLabel(
                 _empty_table_text(self._scan_state, PAIRS_NOUN)
@@ -226,9 +749,6 @@ if _HAS_QT:
             self._pairs_empty_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
             self._pairs_empty_lbl.setWordWrap(True)
             pg.addWidget(self._pairs_empty_lbl)
-            layout.addWidget(self._pairs_group)
-
-            layout.addStretch()
 
             # v3.23.68 — right pane hosts the topology-proposal cards.
             try:
@@ -239,14 +759,510 @@ if _HAS_QT:
                 logger.debug("topologies pane unavailable: %s", _tp_exc)
                 self._topologies_pane = QWidget()
 
+            right_pane = QWidget()
+            right_layout = QVBoxLayout(right_pane)
+            right_layout.setContentsMargins(6, 6, 6, 6)
+            right_layout.setSpacing(6)
+            self._zone_labels: dict = {}
+            for key, title, status in _right_zone_rows(None):
+                group = QGroupBox(title)
+                box = QVBoxLayout(group)
+                group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Ignored)
+                box.setSizeConstraint(QLayout.SetNoConstraint)
+                self._right_zone_groups.append(group)
+                if key == TOPOLOGIES_ZONE:
+                    box.addWidget(self._topologies_pane)
+                    right_layout.addWidget(group, 1)
+                    continue
+                stepper = self._build_stepper(key)
+                stepper.headline_label.setText(status)
+                if key == READY_TO_SEND_ZONE:
+                    box.addLayout(self._build_bucket_row())
+                box.addWidget(stepper)
+                right_layout.addWidget(group, 1)
+                self._zone_labels[key] = stepper.headline_label
+
+            # Ignored width keeps the two halves at the sizes set below;
+            # otherwise a wider control row inside one takes from the other.
+            for pane in (left_pane, right_pane):
+                pane.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             self._outer_splitter.addWidget(left_pane)
-            self._outer_splitter.addWidget(self._topologies_pane)
+            self._outer_splitter.addWidget(right_pane)
             # (dismiss-store wiring: see set_dismiss_store below — the
             # owner supplies it, this tab never resolves settings itself)
             self._outer_splitter.setStretchFactor(0, 1)
             self._outer_splitter.setStretchFactor(1, 1)
             self._outer_splitter.setSizes([800, 800])
             self._render_empty_notes()
+            self._size_zones()
+
+        def resizeEvent(self, event) -> None:  # noqa: N802 - Qt event name
+            """Hold the six zones to an equal share of their pane."""
+            super().resizeEvent(event)
+            self._size_zones()
+
+        def _size_zones(self) -> None:
+            """Give each zone one third of its pane, less margins and spacing.
+
+            The Qt layout hands out only the space above each child's size
+            hint, so an equal share is set rather than asked for.
+            """
+            # The React tab inherits this event and builds no Qt zones.
+            left = getattr(self, "_left_zone_groups", [])
+            right = getattr(self, "_right_zone_groups", [])
+            for groups in (left, right):
+                if not groups:
+                    continue
+                pane = groups[0].parentWidget()
+                if pane is None:
+                    continue
+                pane_layout = pane.layout()
+                margins = pane_layout.contentsMargins()
+                spacing = pane_layout.spacing() * (len(groups) - 1)
+                # The splitter is horizontal, so each pane is as tall as it is,
+                # which is settled before the pane's own height is.
+                tall = max(pane.height(), self._outer_splitter.height())
+                usable = tall - margins.top() - margins.bottom() - spacing
+                share = max(0, usable // len(groups))
+                for group in groups:
+                    group.setFixedHeight(share)
+
+        # ── the ATA-SPM control row ──────────────────────────────────
+        def _build_ata_row(self) -> "QHBoxLayout":
+            """The sector field, its class, its four boxes and Scan Now.
+
+            The four boxes belong to the sector on screen, which is what
+            ``_ata_board.boxes`` answers.
+            """
+            row = QHBoxLayout()
+            row.setSpacing(ATA_ROW_SPACING_PX)
+            self._sector_edit = QLineEdit()
+            self._sector_edit.setPlaceholderText(SECTOR_FIELD_PLACEHOLDER)
+            self._sector_edit.setToolTip(SECTOR_FIELD_TOOLTIP)
+            self._sector_edit.setMinimumWidth(SECTOR_FIELD_MIN_WIDTH_PX)
+            self._sector_edit.setFixedHeight(FIELD_HEIGHT_PX)
+            self._sector_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self._sector_edit.textChanged.connect(self._ata_board.set_text)
+            row.addWidget(self._sector_edit)
+
+            self._class_box = QComboBox()
+            self._class_box.setToolTip(CLASS_BOX_TOOLTIP)
+            self._class_box.setFixedSize(CLASS_BOX_WIDTH_PX, FIELD_HEIGHT_PX)
+            self._class_box.addItems(list(ata_spm.ASSET_CLASSES))
+            self._class_box.currentTextChanged.connect(self._on_class_changed)
+            row.addWidget(self._class_box)
+
+            self._tf_boxes: list = []
+            for key, label, ticked in self._ata_board.boxes(0):
+                check = QCheckBox(label)
+                check.setChecked(ticked)
+                check.setFixedSize(TIMEFRAME_BOX_WIDTH_PX, TIMEFRAME_BOX_HEIGHT_PX)
+                check.setAccessibleName(TIMEFRAME_ROW_PART)
+                check.setToolTip(TIMEFRAME_BOX_TOOLTIP_FORMAT.format(label=label))
+                check.clicked.connect(
+                    lambda _checked, name=key: self._on_timeframe_toggled(name)
+                )
+                row.addWidget(check)
+                self._tf_boxes.append(check)
+
+            self._scan_now_btn = QPushButton(SCAN_NOW_LABEL)
+            self._scan_now_btn.setToolTip(SCAN_NOW_TOOLTIP)
+            self._scan_now_btn.setFixedSize(SCAN_NOW_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+            self._scan_now_btn.clicked.connect(self._on_scan_now)
+            row.addWidget(self._scan_now_btn)
+            self._settings_btn = QPushButton(SETTINGS_LABEL)
+            self._settings_btn.setToolTip(SETTINGS_TOOLTIP)
+            self._settings_btn.setFixedSize(SETTINGS_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+            self._settings_btn.clicked.connect(self._on_settings_pressed)
+            row.addWidget(self._settings_btn)
+            return row
+
+        # ── the ATA-SPM settings page ────────────────────────────────
+        def _build_settings_page(self) -> "QWidget":
+            """The credential rows, the three settings and Save credentials.
+
+            No field's text reaches ``_push_board``; Save credentials reads
+            them and hands each one to the vault.
+            """
+            page = QWidget()
+            column = QVBoxLayout(page)
+            column.setContentsMargins(0, 0, 0, 0)
+            column.setSpacing(SETTINGS_ROW_SPACING_PX)
+            self._credential_edits: dict = {}
+            self._credential_labels: dict = {}
+            for name in ata_spm_push.TARGET_NAMES:
+                row = QHBoxLayout()
+                row.setSpacing(SETTINGS_ROW_SPACING_PX)
+                title = QLabel(name)
+                title.setFixedWidth(SETTINGS_LABEL_WIDTH_PX)
+                row.addWidget(title)
+                fields = []
+                for part, placeholder in CREDENTIAL_FIELDS:
+                    field = QLineEdit()
+                    field.setEchoMode(QLineEdit.Password)
+                    field.setPlaceholderText(placeholder)
+                    field.setFixedSize(CREDENTIAL_FIELD_WIDTH_PX, FIELD_HEIGHT_PX)
+                    field.setAccessibleName(f"{part} {name}")
+                    field.textChanged.connect(
+                        lambda typed, target=name, key=part: (
+                            self._push_board.settings.set_credential_text(
+                                target, key, typed
+                            )
+                        )
+                    )
+                    row.addWidget(field)
+                    fields.append(field)
+                held = QLabel("")
+                row.addWidget(held)
+                row.addStretch()
+                column.addLayout(row)
+                self._credential_edits[name] = fields
+                self._credential_labels[name] = held
+            self._save_credentials_btn = QPushButton(SAVE_CREDENTIALS_LABEL)
+            self._save_credentials_btn.setToolTip(SAVE_CREDENTIALS_TOOLTIP)
+            self._save_credentials_btn.setFixedHeight(PUSH_BUTTON_HEIGHT_PX)
+            self._save_credentials_btn.clicked.connect(self._on_save_credentials)
+            column.addWidget(self._save_credentials_btn)
+
+            self._setting_edits: dict = {}
+            for key, label in SETTING_ROWS:
+                row = QHBoxLayout()
+                row.setSpacing(SETTINGS_ROW_SPACING_PX)
+                title = QLabel(label)
+                title.setFixedWidth(SETTINGS_LABEL_WIDTH_PX)
+                row.addWidget(title)
+                field = QLineEdit()
+                field.setFixedSize(SETTING_FIELD_WIDTH_PX, FIELD_HEIGHT_PX)
+                field.setAccessibleName(key)
+                field.textChanged.connect(
+                    lambda text, name=key: self._on_setting_changed(name, text)
+                )
+                row.addWidget(field)
+                row.addStretch()
+                column.addLayout(row)
+                self._setting_edits[key] = field
+            column.addStretch()
+            self._settings_page = QScrollArea()
+            self._settings_page.setWidgetResizable(True)
+            self._settings_page.setFrameShape(QFrame.NoFrame)
+            self._settings_page.setWidget(page)
+            # The page asks for the height its rows need; an Ignored policy
+            # keeps that off the zone, whose control row would be squeezed.
+            self._settings_page.setSizePolicy(
+                QSizePolicy.Preferred, QSizePolicy.Ignored
+            )
+            self._settings_page.setVisible(False)
+            return self._settings_page
+
+        def _on_settings_pressed(self) -> None:
+            """Show the ATA-SPM settings page, or the scan page, and redraw."""
+            self._push_board.toggle_settings()
+            self._render_ata_row()
+            self._render_left_modules()
+
+        def _on_save_credentials(self) -> None:
+            """Hand every credential typed on the page to the vault and clear it."""
+            stored = self._push_board.settings.save_credentials()
+            for name in stored:
+                for one in self._credential_edits.get(name, []):
+                    one.clear()
+            self._render_settings_page()
+
+        def _on_setting_changed(self, key: str, text: str) -> None:
+            """Write one ATA-SPM setting from the field the operator typed in."""
+            settings = self._push_board.settings
+            if key in COUNT_SETTINGS:
+                try:
+                    setattr(settings, key, int(str(text).strip() or 0))
+                except ValueError:
+                    return
+            else:
+                setattr(settings, key, str(text))
+            self._render_left_modules()
+
+        def _render_settings_page(self) -> None:
+            """Write each target's held state and each setting's value from the board."""
+            settings = self._push_board.settings
+            for name, held, state in settings.credential_rows():
+                label = self._credential_labels.get(name)
+                if label is not None:
+                    label.setText(state)
+                    del held
+            for key, _label in SETTING_ROWS:
+                field = self._setting_edits.get(key)
+                if field is None:
+                    continue
+                written = str(getattr(settings, key, ""))
+                if field.text() != written:
+                    field.blockSignals(True)
+                    field.setText(written)
+                    field.blockSignals(False)
+
+        # ── the Ready to Send control row ────────────────────────────
+        def _build_bucket_row(self) -> "QHBoxLayout":
+            """Post Selected, Post All, and Send Bucket Full Auto on its right."""
+            row = QHBoxLayout()
+            row.setSpacing(ATA_ROW_SPACING_PX)
+            self._post_selected_btn = QPushButton(POST_SELECTED_LABEL)
+            self._post_selected_btn.setToolTip(POST_SELECTED_TOOLTIP)
+            self._post_selected_btn.setFixedSize(
+                POST_SELECTED_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX
+            )
+            self._post_selected_btn.clicked.connect(
+                lambda: self._on_push_action(POST_SELECTED_PART)
+            )
+            row.addWidget(self._post_selected_btn)
+            self._post_all_btn = QPushButton(POST_ALL_LABEL)
+            self._post_all_btn.setToolTip(POST_ALL_TOOLTIP)
+            self._post_all_btn.setFixedSize(POST_ALL_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+            self._post_all_btn.clicked.connect(
+                lambda: self._on_push_action(POST_ALL_PART)
+            )
+            row.addWidget(self._post_all_btn)
+            row.addStretch()
+            self._full_auto_btn = QPushButton(FULL_AUTO_LABEL)
+            self._full_auto_btn.setToolTip(FULL_AUTO_TOOLTIP)
+            self._full_auto_btn.setFixedSize(FULL_AUTO_WIDTH_PX, PUSH_BUTTON_HEIGHT_PX)
+            self._full_auto_btn.setCheckable(True)
+            self._full_auto_btn.clicked.connect(
+                lambda: self._on_push_action(FULL_AUTO_PART)
+            )
+            row.addWidget(self._full_auto_btn)
+            return row
+
+        def _bucket_at(self) -> int:
+            """The zone index the Ready to Send stepper is showing."""
+            return self._zone_at.get(READY_TO_SEND_ZONE, 0)
+
+        def _on_push_action(self, key: str) -> None:
+            """Run one Ready to Send press against the bucket, then redraw."""
+            board = self._push_board
+            at = self._bucket_at()
+            if key == APPROVE_PART:
+                board.bucket.approve(at)
+            elif key == DECLINE_PART:
+                board.bucket.decline(at)
+            elif key == POST_SELECTED_PART:
+                board.post_selected(at)
+            elif key == POST_ALL_PART:
+                board.post_all()
+            elif key == FULL_AUTO_PART:
+                board.bucket.toggle_full_auto()
+                board.release()
+            elif key == THUMBNAIL_PART:
+                self._zone_open[READY_TO_SEND_ZONE] = True
+            self._full_auto_btn.setChecked(board.bucket.full_auto)
+            self._render_left_modules()
+
+        def _ata_at(self) -> int:
+            """The zone index the ATA-SPM stepper is showing."""
+            return self._zone_at.get(ATA_SPM_MODULE, 0)
+
+        def _on_class_changed(self, name: str) -> None:
+            """Take the asset class chosen and redraw the four boxes."""
+            self._ata_board.set_class(self._ata_at(), name)
+            self._render_ata_row()
+
+        def _on_timeframe_toggled(self, key: str) -> None:
+            """Tick or untick one box on the sector shown, and redraw it."""
+            self._ata_board.toggle_timeframe(self._ata_at(), key)
+            self._render_ata_row()
+
+        def _on_scan_now(self) -> None:
+            """Press Scan Now: run the phases on a worker thread.
+
+            The window-drawing thread starts the thread and returns; the
+            answer reaches ``_take_scan`` through ``scanFinished``.
+            """
+            if self._scan_thread is not None and self._scan_thread.is_alive():
+                logger.debug("ATA-SMP scan already running; press ignored")
+                return
+            message_format = self._push_board.settings.message_format
+            self._scan_thread = threading.Thread(
+                target=self._compute_scan,
+                args=(message_format,),
+                name=ATA_SCAN_THREAD_NAME,
+                daemon=True,
+            )
+            self._scan_thread.start()
+
+        def _compute_scan(self, message_format) -> None:
+            """Run the ATA-SMP phases and report the answer to the GUI thread.
+
+            ``SectorBoard.compute`` writes nothing, and ``scanFinished``
+            carries what it answered across the thread boundary.
+            """
+            logger.info(ATA_SCAN_THREAD_LOG, threading.current_thread().name, "compute")
+            try:
+                answered = self._ata_board.compute(
+                    sector_assets, self._scanned_candles, message_format
+                )
+            except Exception as exc:  # noqa: BLE001 - the scan runs off-thread
+                logger.exception("ATA-SPM scan failed: %s", exc)
+                return
+            self.scanFinished.emit(answered)
+
+        def _take_scan(self, answered) -> None:
+            """Write the worker's answer onto the board and redraw the zones.
+
+            Phase four fills ``_push_board``'s bucket from the run, and the
+            Ready to Send zone steps what it holds.
+            """
+            logger.info(ATA_SCAN_THREAD_LOG, threading.current_thread().name, "draw")
+            sectors, added, found = answered
+            self._ata_board.take(sectors, added, found)
+            if added != ata_spm.NO_NEW_SECTOR:
+                self._zone_at[ATA_SPM_MODULE] = added
+            if self._ata_board.run is not None:
+                self._push_board.load_run(self._ata_board.run)
+                self._push_board.after_scan(self._ata_board.run, self._scanned_candles)
+                self._zone_at[READY_TO_SEND_ZONE] = 0
+            self._render_ata_row()
+            self._render_left_modules()
+
+        def _scanned_candles(self, symbol, timeframe) -> list:
+            """The candles the last universe scan kept for one symbol and timeframe."""
+            try:
+                from ..trading.market_inspector import get_shared_inspector
+
+                return inspector_candles(get_shared_inspector(), symbol, timeframe)
+            except Exception as exc:  # noqa: BLE001 - the analyzer is process-wide
+                logger.debug(
+                    "scanned candle read failed on %s %s: %s", symbol, timeframe, exc
+                )
+                return []
+
+        def _render_ata_row(self) -> None:
+            """Write the class box, the four check boxes and the settings page.
+
+            The settings page and the ATA-SPM stepper swap, which is what
+            ``PushBoard.settings_open`` says.
+            """
+            rows = self._ata_board.boxes(self._ata_at())
+            self._class_box.blockSignals(True)
+            self._class_box.setCurrentText(self._ata_board.asset_class)
+            self._class_box.blockSignals(False)
+            for check, (_key, label, ticked) in zip(self._tf_boxes, rows):
+                check.setText(label)
+                check.blockSignals(True)
+                check.setChecked(ticked)
+                check.blockSignals(False)
+            open_now = self._push_board.settings_open
+            self._settings_page.setVisible(open_now)
+            stepper = self._zone_steppers.get(ATA_SPM_MODULE)
+            if stepper is not None:
+                stepper.setVisible(not open_now)
+            self._render_settings_page()
+
+        # ── the three left-side modules ──────────────────────────────
+        def set_ata_run_source(self, getter) -> None:
+            """Take the callable the ATA-SPM region reads its run report from.
+
+            ``getter`` is a zero-arg callable answering the phase and the
+            Ready to Send count. Until one is wired the region says so.
+            """
+            self._ata_run_source = getter
+            self._render_left_modules()
+
+        def _ata_run(self):
+            """The ATA-SPM run report, or None while no source answers."""
+            getter = self._ata_run_source
+            if getter is None:
+                return None
+            try:
+                return dict(getter() or {})
+            except Exception as exc:  # noqa: BLE001 - optional producer
+                logger.debug("ATA-SPM run read failed: %s", exc)
+                return None
+
+        def _connectors_now(self):
+            """The exchange connectors in reach, or None while none is wired."""
+            if not (self._connectors_getter and self._scheduler):
+                return None
+            try:
+                return dict(self._connectors_getter() or {})
+            except Exception as exc:  # noqa: BLE001 - optional producer
+                logger.debug("exchange connector read failed: %s", exc)
+                return None
+
+        def _build_stepper(self, key: str) -> "ProposalStepper":
+            """One zone's stepper, wired to move and to open its expansion."""
+            stepper = ProposalStepper()
+            stepper.stepped.connect(lambda by, name=key: self._on_zone_step(name, by))
+            stepper.entryClicked.connect(lambda name=key: self._on_zone_click(name))
+            stepper.actionPressed.connect(self._on_push_action)
+            self._zone_steppers[key] = stepper
+            return stepper
+
+        def _zone_entries(self, key: str) -> list:
+            """The entries one zone steps through.
+
+            ATA-SPM steps the sectors the last Scan Now covered, Opposing
+            Trades the pairs the scan kept, and Ready to Send the posts
+            phase four formatted.
+            """
+            if key == ATA_SPM_MODULE:
+                outcomes = self._push_board.follow_up.outcomes
+                return self._ata_board.entries(
+                    lambda scan, pulls: _sector_entry(scan, pulls, outcomes)
+                )
+            if key == OPPOSING_TRADES_MODULE:
+                return [pair_entry(one) for one in self._pairs]
+            if key == READY_TO_SEND_ZONE:
+                return _bucket_entries(self._push_board.bucket)
+            return []
+
+        def _ata_report(self) -> dict:
+            """The ATA-SPM run report, with the count its own bucket holds."""
+            held = self._ata_board.report()
+            if held:
+                held[ATA_SPM_READY_KEY] = len(self._push_board.bucket.posts)
+            return held
+
+        def _zone_views(self) -> list:
+            """All six zones as the stepper draws them, left three then right three."""
+            rows = _left_module_rows(
+                self._ata_report(),
+                self._scan_state,
+                self._pairs_tbl.rowCount(),
+                self._connectors_now(),
+                len(self._ata_board.sectors),
+            ) + _right_zone_rows(self._ata_run(), self._push_board.bucket)
+            return [
+                zone_view(
+                    key,
+                    title,
+                    self._zone_entries(key),
+                    self._zone_at.get(key, 0),
+                    self._zone_open.get(key, False),
+                    status,
+                )
+                for key, title, status in rows
+            ]
+
+        def _on_zone_step(self, key: str, by: int) -> None:
+            """Move one zone to its previous or next entry and redraw it.
+
+            Stepping ATA-SPM also redraws its row, whose four boxes belong
+            to the sector now on screen.
+            """
+            total = len(self._zone_entries(key))
+            self._zone_at[key] = _step_to(self._zone_at.get(key, 0), total, by)
+            if key == ATA_SPM_MODULE:
+                self._render_ata_row()
+            self._render_left_modules()
+
+        def _on_zone_click(self, key: str) -> None:
+            """Open or close one zone's expansion and redraw it."""
+            self._zone_open[key] = not self._zone_open.get(key, False)
+            self._render_left_modules()
+
+        def _render_left_modules(self) -> None:
+            """Write every zone's position, entry and expansion from its state."""
+            for view in self._zone_views():
+                stepper = self._zone_steppers.get(view["key"])
+                if stepper is not None:
+                    stepper.show_view(view)
 
         # ── the widgets the logic below writes through ───────────────
         def _set_status(self, text: str) -> None:
@@ -280,9 +1296,11 @@ if _HAS_QT:
 
         def _fill_pair_rows(self, pairs: list) -> None:
             """Draw one Opposing Pairs row per entry of ``pairs``."""
+            self._pairs = list(pairs)
             self._pairs_tbl.setRowCount(len(pairs))
             self._render_empty_notes()
             for row, p in enumerate(pairs):
+                method = getattr(p, "method", None)
                 self._pairs_tbl.setItem(
                     row,
                     0,
@@ -293,12 +1311,29 @@ if _HAS_QT:
                     1,
                     QTableWidgetItem(f"{p.short_side.symbol} ({p.short_side.signal})"),
                 )
-                corr_item = QTableWidgetItem(f"{p.correlation_30d:+.3f}")
-                corr_item.setForeground(QColor("#ffcc66"))
-                self._pairs_tbl.setItem(row, 2, corr_item)
+                method_item = QTableWidgetItem(
+                    method.label if method else NO_METHOD_TEXT
+                )
+                method_item.setForeground(QColor(COLOR_METHOD))
+                self._pairs_tbl.setItem(row, 2, method_item)
                 self._pairs_tbl.setItem(
                     row,
                     3,
+                    QTableWidgetItem(method.window_text if method else NO_METHOD_TEXT),
+                )
+                self._pairs_tbl.setItem(
+                    row,
+                    4,
+                    QTableWidgetItem(
+                        method.statistic_text if method else NO_METHOD_TEXT
+                    ),
+                )
+                corr_item = QTableWidgetItem(f"{p.correlation_30d:+.3f}")
+                corr_item.setForeground(QColor(COLOR_CORRELATION))
+                self._pairs_tbl.setItem(row, 5, corr_item)
+                self._pairs_tbl.setItem(
+                    row,
+                    6,
                     QTableWidgetItem(f"{p.long_side.score + p.short_side.score:.2f}"),
                 )
 
@@ -361,32 +1396,27 @@ if _HAS_QT:
                 return
             adopt_signal.connect(handler)
 
-        def current_topology_proposals(self) -> list:
-            """Proposals currently on display, for a SIMULATOR to stress.
+        def current_topology_proposals(self) -> "list | None":
+            """The proposals on display, for a simulator to read and wire.
 
-            v3.24.79 — the read half of the topology seam. Nuclear Mode
-            pulls these at Start and wires them across sim bots, which
-            is the topology injection the mode exists to exercise.
-            (The operator's "strategy injection" wording; in Market
-            Inspector a strategy IS a topology — same thing, and the
-            precise term is topology.)
+            ``None`` says the right pane never built or refused the read,
+            and a list says the pane answered. An empty list therefore
+            means the pane holds no proposals, which no caller can
+            confuse with a pane that is not there.
 
-            Distinct from `set_adopt_handler` above in the way that
-            matters: adoption creates real bots and wires on the live
-            fleet, while this only lets a simulator read the shape.
-            Returns [] if the pane never constructed, so a build without
-            the topology UI loses injections rather than the ability to
-            run a soak.
+            Distinct from ``set_adopt_handler``: adopting creates real
+            bots and wires on the live fleet, while this only lets a
+            simulator read the shape.
             """
             pane = getattr(self, "_topologies_pane", None)
             getter = getattr(pane, "current_proposals", None)
             if getter is None:
-                return []
+                return None
             try:
                 return list(getter() or [])
             except Exception as exc:  # noqa: BLE001 - optional producer
                 logger.debug("topology proposal read failed: %s", exc)
-                return []
+                return None
 
         def set_exchange_source(self, connectors_getter, scheduler) -> None:
             """Wire the exchange-based data path.
@@ -399,6 +1429,7 @@ if _HAS_QT:
             """
             self._connectors_getter = connectors_getter
             self._scheduler = scheduler
+            self._render_left_modules()
 
         # ── fetch cycle ──────────────────────────────────────────────
         def _start_fetch(self, force: bool = False) -> None:
@@ -422,6 +1453,7 @@ if _HAS_QT:
             self._set_refresh_enabled(False)
             self._set_status("Fetching…")
             self._render_empty_notes()
+            self._render_left_modules()
             logger.info(
                 "market inspector scan started: forced=%s connectors=%d "
                 "active_symbols=%d",
@@ -444,6 +1476,7 @@ if _HAS_QT:
                 self._set_status(f"Scheduler error: {exc}")
                 self._finish_scan_record(0.0, error=f"scheduler: {exc}")
                 self._render_empty_notes()
+                self._render_left_modules()
 
         async def _fetch_and_analyze(
             self, connectors: dict, force: bool = False
@@ -597,119 +1630,47 @@ if _HAS_QT:
             self._fill_signal_rows(self._shown_signals(inspector.last_signals))
             self._fill_pair_rows(list(inspector.last_pairs))
             self._render_empty_notes()
+            self._render_left_modules()
+
+    def _per_bot_label(one: dict) -> QLabel:
+        """One row of the per-bot view as the label the tab shows."""
+        from .main_tabs import market_inspector_tab_surface as mi_surface
+
+        label = QLabel(mi_surface.row_html(one))
+        sheet = mi_surface.row_style(one)
+        if sheet:
+            label.setStyleSheet(sheet)
+        if one.get("word_wrap"):
+            label.setWordWrap(True)
+        return label
 
     def build_per_bot_view(bot) -> QWidget:
         """Build the Bot Details per-bot Market Inspector tab widget.
 
-        Reads the shared analyzer's most recent scan and renders:
-          - The bot's asset card (if the scan reached it)
-          - Top-5 higher-scoring markets in the universe
-          - Opposing pairs featuring the bot's asset
+        Draws the rows and groups ``market_inspector_tab_surface.per_bot_view``
+        reads off the shared analyzer, which is the same description
+        ``market_inspector_tab.js`` draws in the React window.
         """
+        from .main_tabs import market_inspector_tab_surface as mi_surface
+
+        view = mi_surface.per_bot_view(bot)
         w = QWidget()
         layout = QVBoxLayout(w)
-        layout.setSpacing(8)
-
-        # Get shared analyzer
-        try:
-            from ..trading.market_inspector import get_shared_inspector
-
-            inspector = get_shared_inspector()
-        except Exception:  # noqa: BLE001 - analyzer import guard
-            layout.addWidget(QLabel("Market Inspector analyzer unavailable."))
+        margin = int(view["margin_px"])
+        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(int(view["spacing_px"]))
+        for one in view["rows"]:
+            layout.addWidget(_per_bot_label(one))
+        for group in view["groups"]:
+            box = QGroupBox(group["title"])
+            box.setStyleSheet(mi_surface.group_style())
+            inner = QVBoxLayout(box)
+            box_margin = mi_surface.GROUP_MARGIN_PX
+            inner.setContentsMargins(box_margin, box_margin, box_margin, box_margin)
+            inner.setSpacing(mi_surface.GROUP_SPACING_PX)
+            for one in group["rows"]:
+                inner.addWidget(_per_bot_label(one))
+            layout.addWidget(box)
+        if view["stretch"]:
             layout.addStretch()
-            return w
-
-        # Determine this bot's base asset
-        asset = ""
-        try:
-            sym = getattr(bot.config, "symbol", "")
-            asset = sym.split("/")[0].upper() if "/" in sym else sym.upper()
-        except Exception:  # noqa: BLE001 - symbol parse best-effort
-            asset = ""
-
-        signals = inspector.last_signals
-        if not signals:
-            msg = QLabel(
-                "<b>No Market Inspector scan yet.</b><br><br>"
-                "Open the Market Inspector top-level tab and press "
-                "Refresh to populate. The scan runs across the top-50 "
-                "CoinGecko markets on daily and weekly candles; results "
-                "are shared between the top-level tab and this per-bot "
-                "view."
-            )
-            msg.setStyleSheet("color: #aaa; padding: 12px;")
-            msg.setWordWrap(True)
-            layout.addWidget(msg)
-            layout.addStretch()
-            return w
-
-        # This bot's asset card
-        own_signal = inspector.get_signal(asset)
-        card = QGroupBox(f"This Bot's Asset — {asset or '?'}")
-        cv = QVBoxLayout(card)
-        if own_signal is None:
-            cv.addWidget(
-                QLabel(
-                    f"No signal for {asset or 'this asset'} in the current "
-                    f"scan. The universe covers CoinGecko top-50; markets "
-                    f"outside that set are not tracked."
-                )
-            )
-        else:
-            sig_lbl = QLabel(
-                f"Signal: <b>{own_signal.signal}</b>  |  "
-                f"Score: {own_signal.score:.2f}  |  "
-                f"Direction: {own_signal.direction or '—'}"
-            )
-            sig_lbl.setStyleSheet(
-                f"color: {_signal_color(own_signal.signal)}; " "font-size: 13px;"
-            )
-            cv.addWidget(sig_lbl)
-            for tf_key in ("1d", "1w"):
-                a = own_signal.per_tf.get(tf_key)
-                cv.addWidget(QLabel(f"{tf_key}: {_fmt_tf_state(a)}"))
-        layout.addWidget(card)
-
-        # Higher-scoring markets
-        higher = [
-            s
-            for s in signals
-            if s.score > (own_signal.score if own_signal else 0.0) and s.symbol != asset
-        ][:5]
-        if higher:
-            hg = QGroupBox("Higher-Scoring Markets (top-5)")
-            hv = QVBoxLayout(hg)
-            for s in higher:
-                row = QLabel(
-                    f"{s.symbol}  ·  {s.signal}  ·  score {s.score:.2f}"
-                    + ("  ·  ACTIVE" if s.is_active else "")
-                )
-                row.setStyleSheet(
-                    f"color: {_signal_color(s.signal)}; " "font-family: monospace;"
-                )
-                hv.addWidget(row)
-            layout.addWidget(hg)
-
-        # Opposing pairs featuring this asset
-        pairs = inspector.last_pairs
-        rel_pairs = [
-            p
-            for p in pairs
-            if p.long_side.symbol == asset or p.short_side.symbol == asset
-        ]
-        if rel_pairs:
-            pg = QGroupBox("Opposing Pairs Featuring This Asset")
-            pv = QVBoxLayout(pg)
-            for p in rel_pairs:
-                pv.addWidget(
-                    QLabel(
-                        f"{p.long_side.symbol} (long) ⇄ "
-                        f"{p.short_side.symbol} (short)  ·  "
-                        f"corr {p.correlation_30d:+.3f}"
-                    )
-                )
-            layout.addWidget(pg)
-
-        layout.addStretch()
         return w

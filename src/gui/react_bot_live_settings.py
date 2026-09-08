@@ -106,6 +106,8 @@ WINDOW_STYLE_ASSETS: tuple[str, ...] = ("bot_live_settings.css",)
 WINDOW_SCRIPT_ASSETS: tuple[str, ...] = (
     "vendor/react.production.min.js",
     "vendor/react-dom.production.min.js",
+    # Owns the Qt style-sheet parser every part of this window skins from.
+    "header_strip.js",
     "fold_tokens.js",
     "fold_chrome.js",
     "live_status_tab.js",
@@ -123,6 +125,10 @@ WINDOW_BODY = f'<div id="{WINDOW_ROOT_ID}"></div>'
 
 #: The count of tab pages the window drew, read back off the page.
 PAGE_COUNT_JS = "document.querySelectorAll('[data-part$=\"-page\"]').length"
+
+#: The payload keys ``bot_live_settings.js`` draws the pending-change line from.
+CHANGE_LABEL_KEY = "change_label"
+CHANGE_STYLE_KEY = "change_style"
 
 #: The key a payload carries when its tab could not be built from the bot.
 FAULT_KEY = "tab_fault"
@@ -518,7 +524,10 @@ def _build() -> dict:
             window = surface.build_view_model(self._model)
             window["current_tab"] = self._tabs.currentIndex()
             window["tabs"] = list(self._tabs._names)
-            window["change_text"] = self._change_lbl.text()
+            window[CHANGE_LABEL_KEY] = self._change_lbl.text()
+            sheet = self._change_lbl.styleSheet()
+            if sheet:
+                window[CHANGE_STYLE_KEY] = sheet
             window["apply_enabled"] = self._apply_btn.isEnabled()
             now_ts = time.time()
             tabs: dict = {}

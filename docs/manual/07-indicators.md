@@ -4,6 +4,25 @@ This panel shows the readings for each of the 12 as well the collated indices an
 
 TF Lock - To be re-evaluated.
 
+The control is removed. `indicator_panel.py` builds no `_tf_lock_combo`, and
+`indicator_panel_surface.py` publishes no `tf_lock` block, so nothing puts a
+timeframe on `indicator.tf_lock_changed` any more. `main_window.py` still
+subscribes to that topic; with no publisher, `_lock_timeframe` keeps whatever
+the coordinator sets for itself.
+
+`src/gui/indicator_panel.py` — the header, after the removal
+
+```python
+header.addStretch()
+header.addWidget(QLabel("Bot:"))
+self._bot_selector = QComboBox()
+```
+
+The bot selector and its privacy dot close the header on the right. The pair
+symbol and the vote tally that stood there are gone: `_symbol_label` and
+`_summary_label` are not built, and the payload carries no `symbol_text` or
+`summary_text`.
+
 A drop-down of eleven entries: None, then Lock below each of ten timeframes from
 5m to 1w. It opens on the fifth entry, Lock below 1h. Choosing one writes a
 status line beside the box and puts the timeframe on the event bus.
@@ -1225,6 +1244,31 @@ is rounded to four decimals and Conf is capped at 1.0.
 ```python
 net = bull_score - bear_score
 ```
+
+**On the panel.** Net, Comp and Conf are drawn as one pillar each, standing in
+the last three columns of the shared grid. A pillar runs from the row-B plot
+floor to the row-A plot ceiling, so it passes both tables and both bar graphs
+and tops out on the line a voter at full confidence reaches. `collated_pillars`
+in `indicator_panel_surface.py` names each pillar and takes its direction from
+its own metric's sign, so Net follows `net_score`, Comp follows
+`composite_net` and Conf follows the summary's direction.
+
+`src/gui/main_tabs/indicator_panel_surface.py` — `collated_pillars`
+
+```python
+first = PANEL_COLUMN_COUNT - len(AGGREGATE_TITLES)
+return [
+    {"name": title, "direction": way, "column": first + at}
+    for at, (title, way) in enumerate(zip(AGGREGATE_TITLES, directions))
+]
+```
+
+A pillar carries no height reading. The value stays in the table cell above it,
+and `AGGREGATE_TITLES` names the pillar once, at its base. `RULED_COLUMNS`
+keeps the row partition, the plot baseline and the dotted increments on TF and
+the twelve, so none of them crosses a pillar.
+
+![The restyled panel](../audits/2026-09-07_units/indicator_panel_restyled_react.png)
 
 `src/trading/ta_engine.py` — and the divisor beneath it
 

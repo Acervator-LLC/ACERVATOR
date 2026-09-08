@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import design_system as ds
+from ..main_tabs import market_inspector_tab_surface as mi_surface
 
 logger = logging.getLogger("acervator.gui")
 
@@ -34,15 +35,19 @@ class MarketInspectorTabMixin:
 
             return build_per_bot_view(self._bot)
         except Exception as exc:  # noqa: BLE001 - GUI import guard
-            logger.warning("Market Inspector per-bot view unavailable: %s", exc)
+            logger.warning(mi_surface.WARNING_FORMAT, exc)
             w = QWidget()
             lay = QVBoxLayout(w)
-            msg = QLabel(
-                "<b>Market Inspector unavailable.</b><br><br>"
-                f"{type(exc).__name__}: {exc}"
+            margin = mi_surface.LAYOUT_MARGIN_PX
+            lay.setContentsMargins(margin, margin, margin, margin)
+            lay.setSpacing(mi_surface.FALLBACK_SPACING_PX)
+            msg = QLabel(mi_surface.fallback_text(type(exc).__name__, exc))
+            msg.setStyleSheet(
+                mi_surface.fallback_style(
+                    ds.FOLD_RATIO_AMBER, mi_surface.FALLBACK_PADDING_PX
+                )
             )
-            msg.setStyleSheet(f"color: {ds.FOLD_RATIO_AMBER}; padding: 12px;")
-            msg.setWordWrap(True)
+            msg.setWordWrap(mi_surface.FALLBACK_WORD_WRAP)
             lay.addWidget(msg)
             lay.addStretch()
             return w

@@ -27,6 +27,19 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
+from .market_inspector_surface import (
+    METHOD_LINE_FORMAT,
+    TOPOLOGIES_ZONE,
+    action_row,
+    method_detail_rows,
+    method_line,
+    position_text,
+    step_to,
+    stepper_skin,
+    zone_entry,
+    zone_view,
+)
+
 METHOD = "market_inspector_topologies.state"
 
 LOGGER_NAME = "acervator.topology_proposals_gui"
@@ -98,6 +111,9 @@ TREE_ROOT_IS_DECORATED = False
 TREE_ALTERNATING_ROW_COLORS = True
 TREE_RESIZE_MODE = "ResizeToContents"
 
+# QGroupBox layout contentsMargins, the inset Bots, Wires and the card list share.
+GROUP_MARGINS_PX = (9, 9, 9, 9)
+
 SUMMARY_FORMAT = (
     EMPHASIS_OPEN
     + "New bots to create: {new_bots}  ·  target capital: ${budget}"
@@ -140,6 +156,7 @@ CARD_META_FORMAT = (
     "score {score}  •  {assets} assets  •  " "{wires} wires  •  {new_bots} new bot(s)"
 )
 CARD_META_STYLE = "color: #888; font-size: 11px;"
+CARD_METHOD_STYLE = "color: #00cccc; font-size: 11px;"
 PREVIEW_TEXT = "Preview"
 PREVIEW_TOOLTIP = (
     "Open the Preview modal for this proposal — shows "
@@ -148,10 +165,16 @@ PREVIEW_TOOLTIP = (
 DISMISS_TEXT = "Dismiss"
 DISMISS_TOOLTIP = "Suppress this proposal for 24 hours."
 DISMISS_STYLE = "color: #b66;"
+PREVIEW_PART = "preview-button"
+DISMISS_PART = "dismiss-button"
+PREVIEW_WIDTH_PX = 100
+DISMISS_WIDTH_PX = 92
 
-PANE_MARGINS = (6, 6, 6, 6)
+# The zone group box already insets the pane, so the pane adds no margin of
+# its own; the Opposing Trades zone holds its stepper the same way.
+PANE_MARGINS = (0, 0, 0, 0)
 PANE_SPACING = 6
-REFRESH_TEXT = "Refresh proposals"
+REFRESH_TEXT = "Refresh"
 REFRESH_TOOLTIP = "Rerun topology detectors on current market state."
 STATUS_UNWIRED = "No proposal source wired yet."
 STATUS_READY = "Ready — press Refresh."
@@ -162,6 +185,8 @@ LIST_GROUP_TITLE = "Topology Proposals"
 SCROLL_WIDGET_RESIZABLE = True
 SCROLL_MARGINS = (0, 0, 0, 0)
 SCROLL_SPACING = 4
+# QScrollArea.frameWidth, the inset between the scroll area and its card list.
+SCROLL_FRAME_PX = 2
 FOOTER_TEXT = "Auto-refresh: every 10 min  ·  Adopt: live (Bot Wizard handoff)"
 FOOTER_STYLE = "color: #666; font-size: 10px;"
 EMPTY_TEXT = "No proposals right now.  Try Refresh, or wait for market state to shift."
@@ -205,6 +230,9 @@ ACTIONS = {
     "auto_refresh_timer.timeout": "refresh",
     "card.preview_button.clicked": "card.preview",
     "card.dismiss_button.clicked": "card.dismiss",
+    "card.back_button.clicked": "step",
+    "card.next_button.clicked": "step",
+    "card.cardClicked": "toggle",
     "card.previewClicked": "on_preview",
     "card.dismissClicked": "on_dismiss",
     "preview.cancel_button.clicked": "preview.reject",
@@ -243,6 +271,8 @@ STORE_LOADED = "store.loaded"
 PREVIEW_MISSING = "preview.missing"
 PREVIEW_OPENED = "preview.opened"
 PREVIEW_ADOPTED = "preview.adopted"
+STEP_TAKEN = "step.taken"
+EXPAND_TOGGLED = "expand.toggled"
 CONFIRM_ASKED = "confirm.asked"
 CONFIRM_REFUSED = "confirm.refused"
 
@@ -272,6 +302,8 @@ CALL_NAMES = (
     PREVIEW_ADOPTED,
     CONFIRM_ASKED,
     CONFIRM_REFUSED,
+    STEP_TAKEN,
+    EXPAND_TOGGLED,
 )
 
 ERROR_TYPES = {
@@ -359,6 +391,47 @@ def badge_style(color_hex: Any) -> str:
 def card_badge_style(color_hex: Any) -> str:
     """The skin the card badge wears."""
     return CARD_BADGE_STYLE_FORMAT.format(color_hex=color_hex)
+
+
+def proposal_actions() -> list:
+    """Preview and Dismiss, the two buttons one proposal's expansion carries."""
+    return [
+        action_row(PREVIEW_PART, PREVIEW_TEXT, PREVIEW_TOOLTIP, PREVIEW_WIDTH_PX),
+        action_row(DISMISS_PART, DISMISS_TEXT, DISMISS_TOOLTIP, DISMISS_WIDTH_PX),
+    ]
+
+
+def proposal_entry(proposal: Any) -> dict:
+    """One topology proposal as the entry its zone steps through."""
+    held = proposal if isinstance(proposal, dict) else {}
+    score = float(held.get("score", 0.0))
+    new_bots = sum(1 for bot in held.get("bots", []) if not bot.get("existing_bot_id"))
+    entry = zone_entry(
+        CARD_TITLE_MARK + str(held.get("title", NO_TEXT)),
+        CARD_META_FORMAT.format(
+            score=whole(score),
+            assets=len(held.get("assets", [])),
+            wires=len(held.get("wires", [])),
+            new_bots=new_bots,
+        ),
+        held.get("method"),
+        actions=proposal_actions(),
+    )
+    entry["badge"] = CARD_BADGE_FORMAT.format(score=whole(score))
+    entry["badge_style"] = card_badge_style(score_color(score))
+    return entry
+
+
+def pane_view(proposals: Any, at: Any, expanded: Any) -> dict:
+    """The proposals pane as the one zone view all three hosts draw."""
+    entries = [proposal_entry(one) for one in (proposals or [])]
+    view = zone_view(
+        TOPOLOGIES_ZONE, LIST_GROUP_TITLE, entries, at, expanded, EMPTY_TEXT
+    )
+    shown = entries[view["at"]] if entries else {}
+    view["badge"] = shown.get("badge", NO_TEXT)
+    view["badge_style"] = shown.get("badge_style", NO_TEXT)
+    return view
 
 
 def bot_status(existing_bot_id: Any, target_usd: Any) -> str:
@@ -568,13 +641,16 @@ class ProposalCardModel:
     buttons. ``preview`` and ``dismiss`` are what those buttons do.
     """
 
-    def __init__(self, proposal: Any = None) -> None:
+    def __init__(self, proposal: Any = None, expanded: bool = False) -> None:
         self.proposal = dict(proposal or {})
         self.raw = proposal
+        self.expanded = bool(expanded)
         self.title_text = NO_TEXT
         self.badge_text = NO_TEXT
         self.badge_style = NO_TEXT
         self.meta_text = NO_TEXT
+        self.method_text = NO_TEXT
+        self.detail_rows: list = []
         self.previewed: list = []
         self.dismissed: list = []
 
@@ -598,6 +674,10 @@ class ProposalCardModel:
             assets=len(raw.get("assets", [])),
             wires=len(raw.get("wires", [])),
             new_bots=new_bots,
+        )
+        self.method_text = method_line(raw.get("method"))
+        self.detail_rows = (
+            method_detail_rows(raw.get("method")) if self.expanded else []
         )
 
     def preview(self) -> Any:
@@ -623,6 +703,8 @@ class TopologiesPaneModel:
 
     def __init__(self, now: float = START_OF_TIME) -> None:
         self.now = now
+        self.shown_at = 0
+        self.expanded = False
         self.proposal_source: Optional[Callable[[], Any]] = None
         self.dismiss_store: Optional[Any] = None
         self.dismissed: dict = {}
@@ -784,14 +866,38 @@ class TopologiesPaneModel:
             self.scroll_body.append(STRETCH)
             self.calls.append([RENDER_STRETCH])
             return
-        for proposal in self.proposals:
-            card = ProposalCardModel(proposal)
-            card.build()
-            self.cards.append(card)
-            self.scroll_body.append(CARD_CLASS)
-            self.calls.append([RENDER_CARD, len(self.cards)])
+        card = ProposalCardModel(self.proposals[self.shown()], self.expanded)
+        card.build()
+        self.cards.append(card)
+        self.scroll_body.append(CARD_CLASS)
+        self.calls.append([RENDER_CARD, len(self.cards)])
         self.scroll_body.append(STRETCH)
         self.calls.append([RENDER_STRETCH])
+
+    def shown(self) -> int:
+        """Which proposal is on screen, held inside the list the pane holds."""
+        total = len(self.proposals)
+        if total == 0:
+            return 0
+        return max(0, min(int(self.shown_at), total - 1))
+
+    def position(self) -> str:
+        """The line naming which proposal this is, out of how many."""
+        return position_text(self.shown(), len(self.proposals))
+
+    def step(self, by: Any) -> int:
+        """Move to the previous or next proposal and answer where the pane is."""
+        self.shown_at = step_to(self.shown(), len(self.proposals), by)
+        self.calls.append([STEP_TAKEN, self.shown_at])
+        self.render()
+        return self.shown_at
+
+    def toggle(self) -> bool:
+        """Open or close the expansion and answer whether it is open."""
+        self.expanded = not self.expanded
+        self.calls.append([EXPAND_TOGGLED, self.expanded])
+        self.render()
+        return self.expanded
 
     def find_proposal(self, proposal_id: Any) -> Optional[dict]:
         """The held proposal one id names, or nothing."""
@@ -913,6 +1019,7 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "wires_tooltip": WIRES_TOOLTIP,
             "wire_pct_format": WIRE_PCT_FORMAT,
             "column_total": TREE_COLUMN_TOTAL,
+            "group_margins": list(GROUP_MARGINS_PX),
             "root_is_decorated": TREE_ROOT_IS_DECORATED,
             "alternating_row_colors": TREE_ALTERNATING_ROW_COLORS,
             "resize_mode": TREE_RESIZE_MODE,
@@ -940,7 +1047,9 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "badge_format": CARD_BADGE_FORMAT,
             "badge_style_format": CARD_BADGE_STYLE_FORMAT,
             "meta_format": CARD_META_FORMAT,
+            "method_format": METHOD_LINE_FORMAT,
             "meta_style": CARD_META_STYLE,
+            "method_style": CARD_METHOD_STYLE,
             "preview_text": PREVIEW_TEXT,
             "preview_tooltip": PREVIEW_TOOLTIP,
             "dismiss_text": DISMISS_TEXT,
@@ -958,8 +1067,10 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "status_count_format": STATUS_COUNT_FORMAT,
             "status_error_format": STATUS_ERROR_FORMAT,
             "status_style": STATUS_STYLE,
+            "group_margins": list(GROUP_MARGINS_PX),
             "list_group_title": LIST_GROUP_TITLE,
             "scroll_widget_resizable": SCROLL_WIDGET_RESIZABLE,
+            "scroll_frame": SCROLL_FRAME_PX,
             "scroll_margins": list(SCROLL_MARGINS),
             "scroll_spacing": SCROLL_SPACING,
             "footer_text": FOOTER_TEXT,
@@ -997,6 +1108,11 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
             "start_of_time": START_OF_TIME,
         },
         "now": model.now,
+        "stepper": stepper_skin(),
+        "zone": pane_view(model.proposals, model.shown(), model.expanded),
+        "position": model.position(),
+        "at": model.shown(),
+        "expanded": model.expanded,
         "status_text": model.status_text,
         "proposals": [proposal.get("id") for proposal in model.proposals],
         "screen": list(model.scroll_body),
@@ -1007,6 +1123,9 @@ def build_view_model(model: TopologiesPaneModel) -> dict:
                 "badge": card.badge_text,
                 "badge_style": card.badge_style,
                 "meta": card.meta_text,
+                "method": card.method_text,
+                "detail": [list(row) for row in card.detail_rows],
+                "expanded": card.expanded,
             }
             for card in model.cards
         ],
@@ -1077,6 +1196,10 @@ def view_model(params: dict) -> dict:
         model.set_proposal_source(ProposalSource(proposals=params["proposals"]))
     if params.get("refresh", False):
         model.refresh()
+    if params.get("step"):
+        model.step(params["step"])
+    if params.get("expand", False):
+        model.toggle()
     if params.get("preview"):
         model.on_preview(params["preview"])
     if params.get("adopt", False) and model.previews:

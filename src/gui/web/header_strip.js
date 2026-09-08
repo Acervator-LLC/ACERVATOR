@@ -76,6 +76,8 @@
   var CHECKED = "checked";
   var WINDOW_TITLE = "window_title";
   var MODE = "mode";
+  var NEXT_MODE = "next_mode";
+  var MODE_PARAM_FIELD = "mode_param";
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
@@ -158,7 +160,21 @@
   var HIDDEN_CARD_PART = "hidden-card";
   var MODE_BUTTON_PART = "mode-button";
 
+  var SPENDABLE_MODULE = "spendable_profits";
+  var STAT_CARD_MODULE = "dashboard_stat_card";
+  var SPENDABLE_API = "acervatorProfits";
+  var STAT_CARD_API = "acervatorStatCard";
+  var LOAD_SPENDABLE = "acervatorLoadProfits";
+
+  // The request one card is built from, on the stat card surface's own terms.
+  var CARD_LABEL_PARAM = "label";
+  var CARD_VALUE_PARAM = "value";
+  var CARD_FIELD_ID_PARAM = "field_id";
+  var CARD_CLICKABLE_PARAM = "clickable";
+
   var PART_ATTR = "data-part";
+  var CHILD_ATTR = "data-child-module";
+  var COLUMNS_ATTR = "data-columns";
   var SLOT_ATTR = "data-slot";
   var KEY_ATTR = "data-key";
   var FIELD_ID_ATTR = "data-field-id";
@@ -175,6 +191,10 @@
   var DECLARED_SLOTS_ATTR = "data-declared-slots";
   var HELD_SLOTS_ATTR = "data-held-slots";
   var ARIA_PRESSED = "aria-pressed";
+
+  var SELECT_OPEN = "[";
+  var SELECT_IS = "=\"";
+  var SELECT_CLOSE = "\"]";
 
   var ERRORS_ACTION = "errors.clicked";
   var MODE_ACTION = "mode_button.clicked";
@@ -433,52 +453,7 @@
     return element("span", dotProps, text(dot[TEXT]));
   }
 
-  function KpiColumn(props) {
-    var column = props.column;
-    var layout = props.layout;
-    var columnStyle = boxStyle(layout, COLUMN, COLUMN_MARGINS, COLUMN_SPACING);
-    var columnProps = { className: KPI_CLASS, style: columnStyle };
-    columnProps[PART_ATTR] = KPI_COLUMN_PART;
-    columnProps[KEY_ATTR] = text(column[KEY]);
-    columnProps[FIELD_ID_ATTR] = text(column[FIELD_ID]);
-    columnProps[FORMAT_ATTR] = text(column[FORMAT]);
-
-    var captionProps = {
-      className: KPI_CLASS,
-      style: styleOf(column[LABEL_STYLE]),
-      title: label(column[LABEL_TOOLTIP])
-    };
-    captionProps[PART_ATTR] = KPI_LABEL_PART;
-
-    var amountProps = {
-      className: KPI_CLASS,
-      style: styleOf(column[STYLE_SHEET]),
-      title: label(column[TOOLTIP])
-    };
-    amountProps[PART_ATTR] = KPI_VALUE_PART;
-
-    var dotProps = { style: withAlign({}, layout, DOT_ALIGN) };
-    dotProps[PART_ATTR] = DOT_AT + text(column[KEY]);
-
-    return element(
-      "div",
-      columnProps,
-      element("div", captionProps, text(column[LABEL])),
-      element("div", amountProps, text(column[TEXT])),
-      element("div", dotProps, element(PrivacyDot, { dot: column[DOT] }))
-    );
-  }
-
-  function separatorNode(model, at) {
-    var separator = objectField(model, SEPARATOR);
-    var layout = objectField(model, LAYOUT);
-    var style = styleOf(separator[STYLE_SHEET]);
-    withAlign(style, layout, SEPARATOR_ALIGN);
-    var props = { key: SEPARATOR_PART + String(at), className: SEPARATOR_CLASS, style: style };
-    props[PART_ATTR] = SEPARATOR_PART;
-    return element("span", props, text(separator[TEXT]));
-  }
-
+  // The space renderSpendable draws spendable_profits.js into.
   function SpendablePanel(props) {
     var model = isPlainObject(props.spendable) ? props.spendable : {};
     var layout = objectField(model, LAYOUT);
@@ -497,46 +472,11 @@
     panelProps[PART_ATTR] = SPENDABLE;
     panelProps[SLOT_ATTR] = SPENDABLE;
     panelProps[FRAME_SHAPE_ATTR] = text(layout[FRAME_SHAPE]);
-
-    var drawn = [];
-    listField(model, COLUMNS).forEach(function (column, at) {
-      if (drawn.length) {
-        drawn.push(separatorNode(model, at));
-      }
-      drawn.push(
-        element(KpiColumn, {
-          key: text(column[KEY]) || String(at),
-          column: isPlainObject(column) ? column : {},
-          layout: layout
-        })
-      );
-    });
-    return element("div", panelProps, drawn);
+    panelProps[COLUMNS_ATTR] = String(listField(model, COLUMNS).length);
+    return element("div", panelProps, null);
   }
 
-  // The caption row Qt centres between two flexible spacers.
-  function labelRow(model, card) {
-    var row = objectField(model, CARD_LABEL_ROW);
-    var rowProps = { style: boxStyle(row, ROW, MARGINS, SPACING) };
-    rowProps[PART_ATTR] = LABEL_ROW_PART;
-    var drawn = listField(row, ORDER).map(function (name, at) {
-      if (name !== LABEL) {
-        var spacerProps = { key: String(at), style: { flex: FLEX_AUTO } };
-        spacerProps[PART_ATTR] = STRETCH_PART;
-        return element("div", spacerProps, null);
-      }
-      var captionProps = {
-        key: String(at),
-        className: CARD_CLASS,
-        style: styleOf(model[CARD_LABEL_STYLE])
-      };
-      captionProps[PART_ATTR] = COUNTER_LABEL_PART;
-      captionProps[LABEL_PROPERTY_ATTR] = text(model[CARD_LABEL_PROPERTY]);
-      return element("div", captionProps, text(card[LABEL]));
-    });
-    return element("div", rowProps, drawn);
-  }
-
+  // The space mountCounters draws one dashboard_stat_card.js card into.
   function CounterCard(props) {
     var model = props.model;
     var card = props.card;
@@ -556,27 +496,12 @@
     cardProps[SOURCE_KEY_ATTR] = text(card[SOURCE_KEY]);
     cardProps[CLICKABLE_ATTR] = text(card[CLICKABLE]);
     cardProps[FRAME_SHAPE_ATTR] = text(layout[FRAME_SHAPE]);
+    cardProps[LABEL_PROPERTY_ATTR] = text(model[CARD_LABEL_PROPERTY]);
+    cardProps[VALUE_PROPERTY_ATTR] = text(model[CARD_VALUE_PROPERTY]);
     if (card[CLICKABLE] === true) {
       cardProps[ACTION_ATTR] = text(objectField(model, ACTIONS)[ERRORS_ACTION]);
     }
-
-    var amountProps = {
-      className: CARD_CLASS,
-      style: withAlign(styleOf(model[CARD_VALUE_STYLE]), layout, VALUE_ALIGN)
-    };
-    amountProps[PART_ATTR] = COUNTER_VALUE_PART;
-    amountProps[VALUE_PROPERTY_ATTR] = text(model[CARD_VALUE_PROPERTY]);
-
-    var dotProps = { style: withAlign({}, layout, DOT_ALIGN) };
-    dotProps[PART_ATTR] = DOT_AT + text(card[KEY]);
-
-    return element(
-      "div",
-      cardProps,
-      labelRow(model, card),
-      element("div", amountProps, text(card[TEXT])),
-      element("div", dotProps, element(PrivacyDot, { dot: card[DOT] }))
-    );
+    return element("div", cardProps, null);
   }
 
   function HiddenCard(props) {
@@ -606,6 +531,25 @@
     );
   }
 
+  // Asks METHOD for the wing NEXT_MODE names, then redraws.
+  function modePressed(button) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      return Promise.resolve(null);
+    }
+    var field = text(button[MODE_PARAM_FIELD]);
+    var wing = text(button[NEXT_MODE]);
+    if (field === undefined || wing === undefined) {
+      return Promise.resolve(null);
+    }
+    var asked = {};
+    asked[field] = wing;
+    return global.acervator.call(METHOD, asked).then(function (model) {
+      setHeader(model);
+      redraw();
+      return model;
+    });
+  }
+
   function ModeButton(props) {
     var model = isPlainObject(props.button) ? props.button : {};
     var style = styleOf(model[STYLE_SHEET]);
@@ -617,7 +561,10 @@
       className: MODE_CLASS,
       style: style,
       title: label(model[TOOLTIP]),
-      type: "button"
+      type: "button",
+      onClick: function () {
+        return modePressed(model);
+      }
     };
     buttonProps[PART_ATTR] = MODE_BUTTON_PART;
     buttonProps[SLOT_ATTR] = MODE_BUTTON;
@@ -1053,12 +1000,104 @@
     return target;
   }
 
+  function spaceNamed(target, part, key) {
+    if (!target || typeof target.querySelector !== "function") {
+      return null;
+    }
+    var selector = SELECT_OPEN + PART_ATTR + SELECT_IS + part + SELECT_CLOSE;
+    if (key !== undefined) {
+      selector += SELECT_OPEN + KEY_ATTR + SELECT_IS + key + SELECT_CLOSE;
+    }
+    return target.querySelector(selector);
+  }
+
+  // Draws spendable_profits.js into the SPENDABLE space.
+  function renderSpendable(target) {
+    var api = global[SPENDABLE_API];
+    var space = spaceNamed(target, SPENDABLE);
+    if (!api || typeof api.renderStrip !== "function" || space === null) {
+      return null;
+    }
+    space.setAttribute(CHILD_ATTR, SPENDABLE_MODULE);
+    return api.renderStrip(space);
+  }
+
+  function mountSpendable(target) {
+    var loader = global[LOAD_SPENDABLE];
+    var wait = typeof loader === "function" ? loader({}) : Promise.resolve(null);
+    return Promise.resolve(wait).then(function () {
+      return renderSpendable(target) === null ? null : SPENDABLE_MODULE;
+    });
+  }
+
+  // One counter as the label, value, field_id and clickable a card is built from.
+  function cardRequest(card) {
+    var asked = {};
+    asked[CARD_LABEL_PARAM] = text(card[LABEL]);
+    asked[CARD_VALUE_PARAM] = text(card[TEXT]);
+    if (text(card[FIELD_ID]) !== undefined) {
+      asked[CARD_FIELD_ID_PARAM] = text(card[FIELD_ID]);
+    }
+    asked[CARD_CLICKABLE_PARAM] = card[CLICKABLE] === true;
+    return asked;
+  }
+
+  // Draws one dashboard_stat_card.js card into each COUNTERS space.
+  function mountCounters(target, model) {
+    var api = global[STAT_CARD_API];
+    var reachable =
+      Boolean(global.acervator) && typeof global.acervator.call === "function";
+    if (!api || typeof api.renderCard !== "function" || !reachable) {
+      return Promise.resolve([]);
+    }
+    var drawn = [];
+    var chain = Promise.resolve();
+    listField(model, COUNTERS).forEach(function (card) {
+      var space = spaceNamed(target, COUNTER_PART, text(card[KEY]));
+      if (space === null) {
+        return;
+      }
+      chain = chain
+        .then(function () {
+          return global.acervator.call(api.method, cardRequest(card));
+        })
+        .then(function (built) {
+          space.setAttribute(CHILD_ATTR, STAT_CARD_MODULE);
+          api.renderCard(space, built);
+          drawn.push(text(card[KEY]));
+        });
+    });
+    return chain.then(function () {
+      return drawn;
+    });
+  }
+
+  // mountSpendable and mountCounters, run together.
+  function mountChildren(target, model) {
+    return Promise.all([
+      mountSpendable(target),
+      mountCounters(target, model)
+    ]).then(function (drawn) {
+      return drawn;
+    });
+  }
+
   function renderStrip(target, model) {
     var payload = model;
     if (!isPlainObject(payload)) {
       payload = held === null ? null : held.model;
     }
-    return draw(target, element(Strip, { model: payload }));
+    var shown = draw(target, element(Strip, { model: payload }));
+    mountChildren(target, payload);
+    return shown;
+  }
+
+  // Every host this module has drawn into, re-drawn from the held model.
+  function redraw() {
+    roots.forEach(function (pair) {
+      renderStrip(pair.node, held === null ? null : held.model);
+    });
+    return roots.length;
   }
 
   function forget() {
@@ -1118,6 +1157,13 @@
     loadError: loadError,
     isLoaded: isLoaded,
     renderStrip: renderStrip,
+    renderSpendable: renderSpendable,
+    mountSpendable: mountSpendable,
+    mountCounters: mountCounters,
+    mountChildren: mountChildren,
+    cardRequest: cardRequest,
+    modePressed: modePressed,
+    redraw: redraw,
     forget: forget
   };
 })(window);

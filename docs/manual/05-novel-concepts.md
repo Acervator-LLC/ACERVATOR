@@ -354,7 +354,7 @@ if hasattr(self._simulator, "set_topology_getter"):
                 getattr(self, "_market_inspector", None),
                 "current_topology_proposals",
             )
-            else []
+            else None
         )
     )
 ```

@@ -501,9 +501,7 @@ def compare_row(
             label=str(left["label"]),
             recorded=str(left["state"]),
             rerun=str(right["state"]),
-            driven_by=LABEL_DRIVER.get(
-                (str(left["bank"]), str(left["label"])), RECORD
-            ),
+            driven_by=LABEL_DRIVER.get((str(left["bank"]), str(left["label"])), RECORD),
         )
         for left, right in zip(recorded_lights, rerun_lights, strict=True)
     )

@@ -3,23 +3,19 @@
 Scans a universe of crypto markets on daily / weekly / monthly candles.
 Emits per-market entry-opportunity signals based on a 3-layer HTF gate
 (BB position at extreme + z-score overextension + Landing Strip
-tightening), aggregated across the three timeframes. Also identifies
-opposing pairs — long-signal + short-signal markets that are
-negatively correlated over a rolling 30-day return window.
+tightening), aggregated across the three timeframes. ``_find_opposing_pairs``
+takes every long-signal market against every short-signal market whose
+30-day return correlation sits in the configured negative window, then keeps
+only the candidates ``pair_selection.cointegration_test`` passes.
 
 Runtime contract:
     scan_universe(candles_by_symbol_by_tf, active_symbols,
                   closes_by_symbol)
 
-The result is stored on ``self._last_signals`` and ``self._last_pairs``
-and read back by GUI surfaces.
+The result is stored on ``self._last_signals``, ``self._last_pairs`` and
+``self._last_closes``, and read back by GUI surfaces.
 
 Reuses ta_engine.detect_landing_strip_v2 for HTF tightening.
-Pure-Python BB + z-score math (no numpy).
-
-sadp: R28 SSS + R70 RCN
-v3.23.37 — Initial implementation (see design proposal
-docs/engineering-notes/2026-07-27_market_inspector_audit_and_design_proposal.md).
 """
 
 from __future__ import annotations
@@ -30,16 +26,14 @@ import time as _time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from .pair_selection import MethodResult, cointegration_test
+
 logger = logging.getLogger("acervator.market_inspector")
 
 try:
-    from .ta_engine import Candle, detect_landing_strip_v2
-
-    _HAS_TA = True
+    from .ta_engine import detect_landing_strip_v2
 except ImportError:
-    Candle = None  # type: ignore
     detect_landing_strip_v2 = None  # type: ignore
-    _HAS_TA = False
 
 
 HTF_TIMEFRAMES = ("1d", "1w", "1M")
@@ -85,12 +79,17 @@ class MarketSignal:
 
 @dataclass
 class OpposingPair:
-    """A long-signal market paired with a short-signal market that
-    moves negatively-correlated with it over a rolling window."""
+    """A long-signal market and a short-signal market that share an equilibrium.
+
+    ``correlation_30d`` is the 30-day Pearson coefficient that raised the
+    candidate; ``method`` is the ``cointegration_test`` verdict that let it
+    through, and the tables print both.
+    """
 
     long_side: MarketSignal
     short_side: MarketSignal
     correlation_30d: float
+    method: Optional[MethodResult] = None
 
 
 class MarketInspector:
@@ -116,6 +115,9 @@ class MarketInspector:
         self._bb_lower = bb_lower_extreme
         self._last_signals: list[MarketSignal] = []
         self._last_pairs: list[OpposingPair] = []
+        self._last_tested: list[tuple] = []
+        self._last_closes: dict = {}
+        self._last_candles: dict = {}
         self._last_scan_ts: float = 0.0
 
     @property
@@ -127,13 +129,32 @@ class MarketInspector:
         return list(self._last_pairs)
 
     @property
+    def last_tested(self) -> list:
+        """Every candidate ``cointegration_test`` ran on during the last scan."""
+        return list(self._last_tested)
+
+    @property
+    def last_closes(self) -> dict:
+        """The daily closes the last scan tested, keyed by base symbol."""
+        return dict(self._last_closes)
+
+    @property
+    def last_candles(self) -> dict:
+        """The candles the last scan read, keyed by base symbol then timeframe.
+
+        ``ata_spm.evaluate`` charts each sector asset off these, so a Scan
+        Now costs no second fetch.
+        """
+        return {symbol: dict(held) for symbol, held in self._last_candles.items()}
+
+    @property
     def last_scan_ts(self) -> float:
         return self._last_scan_ts
 
     def _analyze_tf(self, tf: str, candles: list) -> Optional[TimeframeAnalysis]:
         """BB + z + tightening on one asset's candles for one TF.
         Returns None on insufficient data."""
-        if not _HAS_TA or not candles or len(candles) < 20:
+        if detect_landing_strip_v2 is None or not candles or len(candles) < 20:
             return None
         closes = [float(c.close) for c in candles[-20:]]
         if len(closes) < 20:
@@ -147,7 +168,8 @@ class MarketInspector:
         z = (price - sma) / std
         upper = sma + 2 * std
         lower = sma - 2 * std
-        bb_pos = (price - lower) / max(upper - lower, 1e-12)
+        band_span = max(upper - lower, 1e-12)
+        bb_pos = (price - lower) / band_span
         tight_flag = False
         tight_len = 0
         tight_ratio = 0.0
@@ -161,8 +183,14 @@ class MarketInspector:
                 tight_ratio = float(getattr(tr, "tightening_ratio", 0.0) or 0.0)
         except Exception as _tight_exc:  # noqa: BLE001 - tightening probe best-effort
             logger.debug("tightening probe failed on %s: %s", tf, _tight_exc)
-        at_upper = z > self._z_threshold and bb_pos > self._bb_upper
-        at_lower = z < -self._z_threshold and bb_pos < self._bb_lower
+        # Both sides carry price units: z and bb_pos are the same tests divided
+        # through by std and band_span.
+        gap = price - sma
+        offset = price - lower
+        at_upper = gap > self._z_threshold * std and offset > self._bb_upper * band_span
+        at_lower = (
+            gap < -self._z_threshold * std and offset < self._bb_lower * band_span
+        )
         return TimeframeAnalysis(
             tf=tf,
             bb_position=bb_pos,
@@ -274,8 +302,12 @@ class MarketInspector:
         return out
 
     def _find_opposing_pairs(self, signals: list, closes_by_symbol: dict) -> list:
-        """Enumerate long × short candidates; keep pairs whose 30-day
-        return correlation sits in the configured negative window."""
+        """Enumerate long × short candidates; keep the cointegrated ones.
+
+        The 30-day return correlation raises a candidate and no longer decides
+        it: ``cointegration_test`` runs on the full close series and a pair it
+        refuses never reaches the table.
+        """
         longs = [s for s in signals if s.direction == "long" and s.score >= 0.3]
         shorts = [s for s in signals if s.direction == "short" and s.score >= 0.3]
         pairs = []
@@ -295,13 +327,21 @@ class MarketInspector:
                     continue
                 corr = self._pearson(r_l[-m:], r_s[-m:])
                 if self._corr_min <= corr <= self._corr_max:
-                    pairs.append(
-                        OpposingPair(long_side=lo, short_side=sh, correlation_30d=corr)
-                    )
-        # Rank: more negative correlation first, then higher combined score.
+                    tested = cointegration_test(closes_l, closes_s)
+                    self._last_tested.append((lo.symbol, sh.symbol, corr, tested))
+                    if tested.passed:
+                        pairs.append(
+                            OpposingPair(
+                                long_side=lo,
+                                short_side=sh,
+                                correlation_30d=corr,
+                                method=tested,
+                            )
+                        )
+        # Rank: the strongest equilibrium first, then higher combined score.
         pairs.sort(
             key=lambda p: (
-                p.correlation_30d,
+                p.method.p_value if p.method else 1.0,
                 -(p.long_side.score + p.short_side.score),
             )
         )
@@ -338,6 +378,12 @@ class MarketInspector:
                 signals.append(sig)
         signals.sort(key=lambda s: -s.score)
         self._last_signals = signals
+        self._last_tested = []
+        self._last_closes = dict(closes_by_symbol or {})
+        self._last_candles = {
+            symbol: dict(held)
+            for symbol, held in (candles_by_symbol_by_tf or {}).items()
+        }
         self._last_pairs = self._find_opposing_pairs(signals, closes_by_symbol)
         self._last_scan_ts = _time.time()
 

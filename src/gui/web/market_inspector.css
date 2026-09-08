@@ -28,7 +28,19 @@ body {
   overflow: auto;
 }
 
-[data-part="refresh-button"] {
+[data-part="refresh-button"],
+[data-part="scan-now"],
+[data-part="settings-button"],
+[data-part="save-credentials"],
+[data-part="post-selected"],
+[data-part="post-all"],
+[data-part="full-auto"],
+[data-part="approve-button"],
+[data-part="decline-button"],
+[data-part="preview-button"],
+[data-part="dismiss-button"],
+[data-part="cancel-button"],
+[data-part="adopt-button"] {
   background: var(--btn-bg);
   color: var(--text);
   border: 1px solid var(--border);
@@ -37,7 +49,8 @@ body {
   font: inherit;
 }
 
-[data-part="refresh-button"]:disabled {
+[data-part="refresh-button"]:disabled,
+[data-part="adopt-button"]:disabled {
   color: var(--grid);
   border-color: var(--grid);
 }
@@ -47,8 +60,42 @@ body {
   white-space: nowrap;
 }
 
-[data-part="switch-box"] {
+[data-part="switch-box"],
+[data-part="timeframe-box"] {
   accent-color: var(--accent);
+}
+
+/* The ATA-SPM sector field and its class box. The padding, the border width
+ * and the widths come from the payload; this is colour and type only. */
+[data-part="sector-field"],
+[data-part="class-box"],
+[data-part="credential-key"],
+[data-part="credential-signature"],
+[data-part="setting-field"] {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--border);
+  border-radius: 2px;
+  font: inherit;
+}
+
+[data-part="sector-field"]::placeholder,
+[data-part="credential-key"]::placeholder,
+[data-part="credential-signature"]::placeholder {
+  color: var(--grid);
+}
+
+/* The band strip: the box, the fill up to the marker and the marker are
+ * coloured from the payload, so this sets only the corner. */
+[data-part="post-thumbnail"],
+[data-part="post-preview"] {
+  border-radius: 2px;
+}
+
+[data-part="credential-state"],
+[data-part="settings-label"] {
+  color: var(--grid);
+  white-space: nowrap;
 }
 
 [data-part="table-group"] {
@@ -61,6 +108,16 @@ body {
 [data-part="card-legend"] {
   color: var(--accent);
   padding: 0 4px;
+}
+
+/* The width and the padding come from the payload; this is colour only. */
+[data-part="module-group"] {
+  border-color: var(--border);
+  border-radius: 3px;
+}
+
+[data-part="module-legend"] {
+  color: var(--accent);
 }
 
 [data-part="grid"] {
@@ -91,8 +148,9 @@ body {
   overflow: auto;
 }
 
+/* Painted, not bordered: a border-left costs the pane 1px of width. */
 [data-part="topology-slot"] {
-  border-left: 1px solid var(--border);
+  box-shadow: inset 1px 0 0 var(--border);
   overflow: auto;
 }
 
@@ -100,4 +158,21 @@ body {
   border: 1px solid var(--border);
   border-radius: 3px;
   padding: 6px 8px;
+}
+
+/* QScrollBar:vertical in theme_engine is 10px wide with a 5px radius. */
+[data-part="settings-page"]::-webkit-scrollbar,
+[data-part="zone-entry"]::-webkit-scrollbar,
+[data-part="grid-body"]::-webkit-scrollbar,
+[data-part="topology-slot"]::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+[data-part="settings-page"]::-webkit-scrollbar-thumb,
+[data-part="zone-entry"]::-webkit-scrollbar-thumb,
+[data-part="grid-body"]::-webkit-scrollbar-thumb,
+[data-part="topology-slot"]::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
 }

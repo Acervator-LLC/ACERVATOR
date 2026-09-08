@@ -46,7 +46,29 @@ if _TEST_HOME:
     os.environ["USERPROFILE"] = _TEST_HOME
     os.environ["HOME"] = _TEST_HOME
 
-from tests.fixtures.qt_platform import choose_qt_platform
+QT_PLATFORM_ENV = "QT_QPA_PLATFORM"
+
+DEFAULT_QT_PLATFORM = "offscreen"
+
+
+def resolve_qt_platform(requested: str | None) -> str:
+    """Return `requested` when it names a platform, else `DEFAULT_QT_PLATFORM`.
+
+    A CI job or an explicit local choice wins over `DEFAULT_QT_PLATFORM`.
+    """
+    named = (requested or "").strip()
+    return named or DEFAULT_QT_PLATFORM
+
+
+def choose_qt_platform() -> str:
+    """Assign the resolved platform to `QT_PLATFORM_ENV` and return it.
+
+    Assignment, not `setdefault`: a later module-level `setdefault` cannot change it.
+    """
+    chosen = resolve_qt_platform(os.environ.get(QT_PLATFORM_ENV))
+    os.environ[QT_PLATFORM_ENV] = chosen
+    return chosen
+
 
 # The first QApplication fixes the platform for the whole process.
 choose_qt_platform()
@@ -839,9 +861,33 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
         session.config.get_terminal_writer().line("\n" + "\n\n".join(died))
 
 
-def pytest_collection_modifyitems(items):
-    from tests.fixtures.ci_lanes import lane_marks
+SLOW_FILES = frozenset(
+    {
+        "test_pin_observability.py",
+        "test_fleet_replay_controller.py",
+        "test_build_product_manual.py",
+        "test_build_product_manual_rendering.py",
+        "test_design_system_chart_tokens.py",
+        "test_extract_product_manual_keeps_additions.py",
+        "test_the_conversion_check_over_every_qt_module.py",
+    }
+)
 
+
+def lane_marks(filename: str) -> frozenset[str]:
+    """The CI lane marks a test file carries, keyed on its name alone.
+
+    A name in `SLOW_FILES` marks `slow`; a name holding `archetype` marks `archetype`.
+    """
+    marks = set()
+    if filename in SLOW_FILES:
+        marks.add("slow")
+    if "archetype" in filename:
+        marks.add("archetype")
+    return frozenset(marks)
+
+
+def pytest_collection_modifyitems(items):
     for item in items:
         for mark in lane_marks(Path(str(item.fspath)).name):
             item.add_marker(getattr(pytest.mark, mark))

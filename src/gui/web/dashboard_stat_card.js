@@ -152,7 +152,11 @@
   var DOT_SLOT_PART = "dot-slot";
   var DOT_PART = "privacy-dot";
 
+  var PRIVACY_DOT_MODULE = "privacy_dot";
+  var PRIVACY_DOT_API = "acervatorDot";
+
   var PART_ATTR = "data-part";
+  var CHILD_ATTR = "data-child-module";
   var ROLE_ATTR = "data-role";
   var KIND_ATTR = "data-kind";
   var FRAME_SHAPE_ATTR = "data-frame-shape";
@@ -387,13 +391,27 @@
     return element("div", amountProps, text(amount[TEXT]));
   }
 
+  // acervatorDot.Dot when privacy_dot.js is loaded, else the local PrivacyDot.
+  function dotSpan() {
+    var own = global[PRIVACY_DOT_API];
+    return own && own.Dot ? own.Dot : PrivacyDot;
+  }
+
   function dotNode(model, item, at) {
     var layout = objectField(model, LAYOUT);
     var word = isPlainObject(item) && owns(item, ALIGN) ? item[ALIGN] : layout[DOT_ALIGN];
     var slotProps = { key: String(at), style: withAlign({}, word) };
     slotProps[PART_ATTR] = DOT_SLOT_PART;
     slotProps[ROLE_ATTR] = DOT;
-    return element("div", slotProps, element(PrivacyDot, { dot: model[DOT] }));
+    var span = dotSpan();
+    if (span !== PrivacyDot) {
+      slotProps[CHILD_ATTR] = PRIVACY_DOT_MODULE;
+    }
+    return element(
+      "div",
+      slotProps,
+      element(span, { dot: model[DOT], model: model[DOT] })
+    );
   }
 
   // isDrawn tests the role of one item without building a React element.

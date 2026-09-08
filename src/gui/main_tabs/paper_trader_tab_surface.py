@@ -458,9 +458,7 @@ def ledger_payload(run) -> dict:
 
     An unopened run answers a ``PaperLedger`` of zeros rather than an absence.
     """
-    figures = (
-        run.figures() if run is not None else fake_balance.PaperLedger().figures()
-    )
+    figures = run.figures() if run is not None else fake_balance.PaperLedger().figures()
     cells = [
         {
             "key": key,

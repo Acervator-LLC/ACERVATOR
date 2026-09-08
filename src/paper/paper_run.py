@@ -168,9 +168,7 @@ def open_balance(bot: PaperBot, candles: Sequence[Any]) -> FakeBalance:
     return opening_balance(bot.target_usd, price)
 
 
-def tick(
-    bot: PaperBot, balance: FakeBalance, candles: Sequence[Any]
-) -> PaperTick:
+def tick(bot: PaperBot, balance: FakeBalance, candles: Sequence[Any]) -> PaperTick:
     """Evaluate the shipped chains on the newest bar and fill what latched.
 
     A window shorter than ``MIN_CANDLES`` arms nothing and carries the refusal.
@@ -301,9 +299,7 @@ def record(run: PaperRun, bot: PaperBot, seen: PaperTick) -> None:
         run.refusals[bot.bot_id] = seen.refusal
     else:
         run.refusals.pop(bot.bot_id, None)
-    paper_log.append_row(
-        paper_log.paper_row(seen, bot.exchange_id, run.figures())
-    )
+    paper_log.append_row(paper_log.paper_row(seen, bot.exchange_id, run.figures()))
 
 
 def advance(run: PaperRun, feed: Any, bot_id: str = "") -> list[PaperTick]:

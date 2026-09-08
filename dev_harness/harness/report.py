@@ -400,6 +400,12 @@ def cli_exit(report: ArchetypeReport) -> int:
     """
     if report.passed:
         return 0
+    if not report.scanned:
+        sys.stderr.write(
+            f"[archetype] NOTHING RAN: {len(report.tool_availability)} "
+            f"analyzers reported on {report.target}. Exit 1 here is an "
+            f"absent or unreadable target, not a rule finding.\n"
+        )
     for reason in report.why_not_green():
         sys.stderr.write(f"[archetype] not green: {reason}\n")
     return 1

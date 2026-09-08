@@ -53,6 +53,36 @@ PREVIEW_KEY = "preview-button"
 DISMISS_KEY = "dismiss-button"
 CANCEL_KEY = "cancel-button"
 ADOPT_KEY = "adopt-button"
+STEP_BACK_KEY = "step-back"
+STEP_NEXT_KEY = "step-next"
+ENTRY_KEY = "zone-entry"
+SECTOR_FIELD_KEY = "sector-field"
+CLASS_BOX_KEY = "class-box"
+TIMEFRAME_BOX_KEY = "timeframe-box"
+SCAN_NOW_KEY = "scan-now"
+
+#: The parts phases five and six are pressed with, each handled by
+#: ``MarketInspectorScreenModel.push_action``.
+PUSH_KEYS = surface.PUSH_PARTS
+
+SAVE_CREDENTIALS_KEY = surface.SAVE_CREDENTIALS_PART
+SETTING_FIELD_KEY = surface.SETTING_FIELD_PART
+
+#: The parts one push target's credential is typed into.
+CREDENTIAL_KEYS = tuple(one for one, _placeholder in surface.CREDENTIAL_FIELDS)
+
+#: The three positions one credential field press carries.
+CREDENTIAL_TARGET_AT = 0
+CREDENTIAL_FIELD_AT = 1
+CREDENTIAL_TYPED_AT = 2
+
+#: The two positions one setting press carries: its name and its value.
+SETTING_NAME_AT = 0
+SETTING_VALUE_AT = 1
+
+#: The step one arrow press takes through a zone entry list.
+STEP_BACK = -1
+STEP_NEXT = 1
 
 ACCESSIBLE_NAME = "React Market Inspector Tab"
 
@@ -67,9 +97,17 @@ TAB_SCRIPT_ASSETS: tuple[str, ...] = (
     + ("market_inspector.js", "market_inspector_topologies.js")
 )
 
+#: The screen root fills the view, so the screen's own full height resolves
+#: against it and the tab draws as tall as the Qt tab does.
+SCREEN_ROOT_STYLE = "height:100%"
+
+#: The pane root fills the slot it is moved into, so the pane's own full
+#: height resolves against it instead of against its cards.
+TOPOLOGY_ROOT_STYLE = "height:100%"
+
 TAB_BODY = (
-    f'<div id="{SCREEN_ROOT_ID}"></div>\n'
-    f'<div id="{TOPOLOGY_ROOT_ID}"></div>\n'
+    f'<div id="{SCREEN_ROOT_ID}" style="{SCREEN_ROOT_STYLE}"></div>\n'
+    f'<div id="{TOPOLOGY_ROOT_ID}" style="{TOPOLOGY_ROOT_STYLE}"></div>\n'
     f'<div id="{PREVIEW_ROOT_ID}" hidden></div>'
 )
 
@@ -133,6 +171,12 @@ def screen_push_script(model: dict) -> str:
     )
 
 
+#: The index that empties the preview. Clearing the element instead leaves
+#: React holding a tree that no longer matches it, and the next preview draws
+#: nothing.
+NO_PREVIEW_AT = -1
+
+
 def topology_push_script(model: dict, preview_at: Optional[int]) -> str:
     """The JS that hands ``model`` to the pane and draws one preview.
 
@@ -146,7 +190,12 @@ def topology_push_script(model: dict, preview_at: Optional[int]) -> str:
         + ");"
     )
     if preview_at is None:
-        return head + "p.hidden=true;p.replaceChildren();"
+        return (
+            head
+            + "window.acervatorTopologies.renderPreview(p,"
+            + json.dumps(NO_PREVIEW_AT)
+            + ",null);p.hidden=true;"
+        )
     return (
         head
         + "p.hidden=false;window.acervatorTopologies.renderPreview(p,"
@@ -197,6 +246,15 @@ class TopologiesPaneHost:
         """Run one button press the page reported against the pane."""
         if key == REFRESH_KEY:
             self.model.refresh()
+            return
+        if key == STEP_BACK_KEY:
+            self.model.step(STEP_BACK)
+            return
+        if key == STEP_NEXT_KEY:
+            self.model.step(STEP_NEXT)
+            return
+        if key == ENTRY_KEY:
+            self.model.toggle()
             return
         if key == PREVIEW_KEY:
             if self.model.on_preview(name) is not None:
@@ -253,6 +311,13 @@ if _HAS_QT and _HAS_WEBENGINE:
         def _build_ui(self) -> None:
             """Build the one web view the whole tab is drawn in."""
             self._screen = surface.MarketInspectorScreenModel()
+            # One board, two names: the inherited tab and the screen model
+            # both read the sectors the ATA-SPM zone holds.
+            self._ata_board = self._screen.board
+            self._push_board = self._screen.push
+            # One dict, two names: the inherited Scan Now moves the same
+            # zone index the page reads.
+            self._zone_at = self._screen.zone_at
             self._topologies_pane = TopologiesPaneHost()
             self._page_ready = False
             self._last_model: dict = {}
@@ -290,6 +355,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             screen.pending_refresh = self._pending_refresh
             screen.connectors_getter = self._connectors_getter
             screen.scheduler = self._scheduler
+            screen.ata_run_source = self._ata_run_source
             return surface.build_view_model(screen)
 
         def push(self) -> None:
@@ -325,6 +391,63 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self._start_fetch(force=True)
             elif key == SHOW_ACTIVE_KEY:
                 self._on_toggle_show_active(bool(request.get("value")))
+            elif key == STEP_BACK_KEY:
+                self._step_zone(request.get("value"), STEP_BACK)
+            elif key == STEP_NEXT_KEY:
+                self._step_zone(request.get("value"), STEP_NEXT)
+            elif key == ENTRY_KEY:
+                self._screen.toggle_zone(request.get("value"))
+                self.push()
+            elif key == SECTOR_FIELD_KEY:
+                self._screen.set_sector_text(request.get("value"))
+                self.push()
+            elif key == CLASS_BOX_KEY:
+                self._screen.set_sector_class(request.get("value"))
+                self.push()
+            elif key == TIMEFRAME_BOX_KEY:
+                self._screen.toggle_timeframe(request.get("value"))
+                self.push()
+            elif key == SCAN_NOW_KEY:
+                self._on_scan_now()
+            elif key in PUSH_KEYS:
+                self._screen.push_action(key)
+                self.push()
+            elif key == SAVE_CREDENTIALS_KEY:
+                self._screen.save_credentials()
+                self.push()
+            elif key in CREDENTIAL_KEYS:
+                self._take_credential_text(request.get("value"))
+            elif key == SETTING_FIELD_KEY:
+                self._write_setting(request.get("value"))
+
+        def _take_credential_text(self, sent: Any) -> None:
+            """Hold what one credential field carries, then redraw.
+
+            ``sent`` is the target, the field and the typed value, and none
+            of it reaches the payload the page is drawn from.
+            """
+            held = list(sent or [])
+            if len(held) <= CREDENTIAL_TYPED_AT:
+                return
+            self._screen.set_credential_text(
+                held[CREDENTIAL_TARGET_AT],
+                held[CREDENTIAL_FIELD_AT],
+                held[CREDENTIAL_TYPED_AT],
+            )
+            self.push()
+
+        def _write_setting(self, sent: Any) -> None:
+            """Write one ATA-SPM setting the page sent, then redraw."""
+            held = list(sent or [])
+            if len(held) <= SETTING_VALUE_AT:
+                return
+            self._screen.set_setting(held[SETTING_NAME_AT], held[SETTING_VALUE_AT])
+            self.push()
+
+        def _step_zone(self, key: Any, by: int) -> None:
+            """Move one zone to its previous or next entry and redraw."""
+            self._screen.step_zone(key, by)
+            self.push()
 
         def run_topology_action(self, payload: str) -> None:
             """Run one right-pane press the page reported."""
@@ -360,15 +483,28 @@ if _HAS_QT and _HAS_WEBENGINE:
 
         def _fill_pair_rows(self, pairs: list) -> None:
             """Draw one Opposing Pairs row per entry of ``pairs``."""
-            rows = self._screen.pair_rows
-            surface.set_row_count(rows, len(pairs), len(surface.PAIR_COLUMNS))
-            for index, found in enumerate(pairs):
-                surface.fill_pair_row(rows[index], found)
+            self._screen.fill_pair_rows(pairs)
             self.push()
 
         def _render_empty_notes(self) -> None:
             """Carry the scan state the two empty sentences are built from."""
             self._screen.scan_phase = self._scan_state
+            self.push()
+
+        def _render_left_modules(self) -> None:
+            """Redraw the three left-side modules from the state they read.
+
+            ``build_model`` builds their lines, so the push is what the
+            page needs; the Qt tab writes its own labels instead.
+            """
+            self.push()
+
+        def _render_ata_row(self) -> None:
+            """Redraw the sector field, the class box and the four check boxes.
+
+            ``ata_spm_skin`` carries them into the page, where the Qt tab
+            writes its own widgets instead.
+            """
             self.push()
 
         # -- internals ------------------------------------------------------

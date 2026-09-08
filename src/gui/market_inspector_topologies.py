@@ -28,6 +28,21 @@ import logging
 import time
 from typing import Any, Callable, Optional
 
+from .main_tabs.market_inspector_surface import step_to
+from .main_tabs.market_inspector_topologies_surface import (
+    DISMISS_PART,
+    FOOTER_STYLE,
+    FOOTER_TEXT,
+    PANE_MARGINS,
+    PANE_SPACING,
+    PREVIEW_PART,
+    REFRESH_TEXT,
+    REFRESH_TOOLTIP,
+    STATUS_STYLE,
+    STATUS_UNWIRED,
+    pane_view,
+)
+
 logger = logging.getLogger("acervator.topology_proposals_gui")
 
 try:
@@ -38,10 +53,7 @@ try:
         QLabel,
         QPushButton,
         QGroupBox,
-        QScrollArea,
-        QFrame,
         QDialog,
-        QSizePolicy,
         QTreeWidget,
         QTreeWidgetItem,
         QHeaderView,
@@ -243,81 +255,6 @@ if _HAS_QT:
             self.adoptClicked.emit(self._proposal)
             self.accept()
 
-    class _ProposalCard(QFrame):
-        """One card in the right-pane list.
-
-        Emits ``previewClicked`` / ``dismissClicked`` with the
-        proposal id when the operator taps a button.
-        """
-
-        previewClicked = Signal(str)
-        dismissClicked = Signal(str)
-
-        def __init__(
-            self,
-            proposal: dict[str, Any],
-            parent: Optional[QWidget] = None,
-        ) -> None:
-            super().__init__(parent)
-            self._proposal = dict(proposal or {})
-            self.setFrameShape(QFrame.StyledPanel)
-            self.setFrameShadow(QFrame.Raised)
-            self.setStyleSheet(
-                "_ProposalCard { border: 1px solid #333; "
-                "border-radius: 6px; margin: 2px; padding: 4px; }"
-            )
-            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-
-            root = QVBoxLayout(self)
-            root.setContentsMargins(8, 6, 8, 6)
-            root.setSpacing(4)
-
-            top = QHBoxLayout()
-            title = QLabel(f"<b>▸ {proposal.get('title', '')}</b>")
-            title.setWordWrap(True)
-            top.addWidget(title, 1)
-            score = float(proposal.get("score", 0.0))
-            badge = QLabel(f" {score:.0f} ")
-            badge.setStyleSheet(
-                f"background-color: {_score_color(score)}; color: black; "
-                "padding: 1px 6px; border-radius: 6px; "
-                "font-weight: bold; font-size: 11px;"
-            )
-            top.addWidget(badge)
-            root.addLayout(top)
-
-            n_assets = len(proposal.get("assets", []))
-            n_wires = len(proposal.get("wires", []))
-            n_new = sum(
-                1 for b in proposal.get("bots", []) if not b.get("existing_bot_id")
-            )
-            meta_lbl = QLabel(
-                f"score {score:.0f}  •  {n_assets} assets  •  "
-                f"{n_wires} wires  •  {n_new} new bot(s)"
-            )
-            meta_lbl.setStyleSheet("color: #888; font-size: 11px;")
-            root.addWidget(meta_lbl)
-
-            btns = QHBoxLayout()
-            btns.addStretch()
-            preview_btn = QPushButton("Preview")
-            preview_btn.setToolTip(
-                "Open the Preview modal for this proposal — shows "
-                "the bots + wires that would be created."
-            )
-            preview_btn.clicked.connect(
-                lambda: self.previewClicked.emit(self._proposal["id"])
-            )
-            btns.addWidget(preview_btn)
-            dismiss_btn = QPushButton("Dismiss")
-            dismiss_btn.setToolTip("Suppress this proposal for 24 hours.")
-            dismiss_btn.setStyleSheet("color: #b66;")
-            dismiss_btn.clicked.connect(
-                lambda: self.dismissClicked.emit(self._proposal["id"])
-            )
-            btns.addWidget(dismiss_btn)
-            root.addLayout(btns)
-
     class MarketInspectorTopologies(QWidget):
         """Right-pane widget: proposal list + refresh + dismiss cache.
 
@@ -336,42 +273,36 @@ if _HAS_QT:
             # Injected by ``set_dismiss_store``; unset keeps dismissals in memory.
             self._dismiss_store: Optional[Any] = None
             self._proposals: list[dict[str, Any]] = []
+            self._at = 0
+            self._expanded = False
 
             layout = QVBoxLayout(self)
-            layout.setContentsMargins(6, 6, 6, 6)
-            layout.setSpacing(6)
+            layout.setContentsMargins(*PANE_MARGINS)
+            layout.setSpacing(PANE_SPACING)
 
             top_row = QHBoxLayout()
-            self._refresh_btn = QPushButton("Refresh proposals")
-            self._refresh_btn.setToolTip(
-                "Rerun topology detectors on current market state."
-            )
+            self._refresh_btn = QPushButton(REFRESH_TEXT)
+            self._refresh_btn.setToolTip(REFRESH_TOOLTIP)
             self._refresh_btn.clicked.connect(self.refresh)
             top_row.addWidget(self._refresh_btn)
+            self._footer_lbl = QLabel(FOOTER_TEXT)
+            self._footer_lbl.setStyleSheet(FOOTER_STYLE)
+            top_row.addWidget(self._footer_lbl)
             top_row.addStretch()
-            self._status_lbl = QLabel("No proposal source wired yet.")
-            self._status_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
+            self._status_lbl = QLabel(STATUS_UNWIRED)
+            self._status_lbl.setStyleSheet(STATUS_STYLE)
             top_row.addWidget(self._status_lbl)
             layout.addLayout(top_row)
 
-            self._list_group = QGroupBox("Topology Proposals")
-            lg = QVBoxLayout(self._list_group)
-            self._scroll = QScrollArea()
-            self._scroll.setWidgetResizable(True)
-            self._scroll_body = QWidget()
-            self._scroll_layout = QVBoxLayout(self._scroll_body)
-            self._scroll_layout.setContentsMargins(0, 0, 0, 0)
-            self._scroll_layout.setSpacing(4)
-            self._scroll_layout.addStretch()
-            self._scroll.setWidget(self._scroll_body)
-            lg.addWidget(self._scroll)
-            layout.addWidget(self._list_group, 1)
+            from .market_inspector import ProposalStepper
 
-            footer = QLabel(
-                "Auto-refresh: every 10 min  ·  Adopt: live " "(Bot Wizard handoff)"
-            )
-            footer.setStyleSheet("color: #666; font-size: 10px;")
-            layout.addWidget(footer)
+            # The zone the pane sits in already carries the title, so the pane
+            # holds the stepper directly rather than inside a second group box.
+            self._stepper = ProposalStepper()
+            self._stepper.stepped.connect(self._on_step)
+            self._stepper.entryClicked.connect(self._on_entry_clicked)
+            self._stepper.actionPressed.connect(self._on_action)
+            layout.addWidget(self._stepper, 1)
 
             self._timer = QTimer(self)
             self._timer.setInterval(AUTO_REFRESH_MS)
@@ -513,31 +444,39 @@ if _HAS_QT:
                 )
 
         # ── rendering ────────────────────────────────────────────────
-        def _clear_cards(self) -> None:
-            while self._scroll_layout.count() > 0:
-                child = self._scroll_layout.takeAt(0)
-                w = child.widget() if child else None
-                if w is not None:
-                    w.deleteLater()
+        def _shown(self) -> int:
+            """Which proposal is on screen, held inside the list the pane holds."""
+            if not self._proposals:
+                return 0
+            return max(0, min(self._at, len(self._proposals) - 1))
+
+        def _shown_id(self) -> str:
+            """The id of the proposal on screen, or an empty string."""
+            if not self._proposals:
+                return ""
+            return str(self._proposals[self._shown()].get("id", ""))
+
+        def _on_step(self, by: int) -> None:
+            """Move to the previous or next proposal and redraw."""
+            self._at = step_to(self._shown(), len(self._proposals), by)
+            self._render()
+
+        def _on_entry_clicked(self) -> None:
+            """Open or close the expansion and redraw."""
+            self._expanded = not self._expanded
+            self._render()
+
+        def _on_action(self, part: str) -> None:
+            """Run the button the expansion carries: Preview or Dismiss."""
+            if part == PREVIEW_PART:
+                self._on_preview(self._shown_id())
+            elif part == DISMISS_PART:
+                self._on_dismiss(self._shown_id())
 
         def _render(self) -> None:
-            self._clear_cards()
-            if not self._proposals:
-                empty = QLabel(
-                    "No proposals right now.  Try Refresh, or wait for "
-                    "market state to shift."
-                )
-                empty.setWordWrap(True)
-                empty.setStyleSheet("color: #888; padding: 10px;")
-                self._scroll_layout.addWidget(empty)
-                self._scroll_layout.addStretch()
-                return
-            for p in self._proposals:
-                card = _ProposalCard(p)
-                card.previewClicked.connect(self._on_preview)
-                card.dismissClicked.connect(self._on_dismiss)
-                self._scroll_layout.addWidget(card)
-            self._scroll_layout.addStretch()
+            self._stepper.show_view(
+                pane_view(self._proposals, self._shown(), self._expanded)
+            )
 
         def _find_proposal(self, proposal_id: str) -> Optional[dict[str, Any]]:
             for p in self._proposals:

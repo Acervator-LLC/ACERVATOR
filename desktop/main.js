@@ -24,6 +24,14 @@ function pythonExecutable() {
   return process.env.ACERVATOR_PYTHON || (process.platform === "win32" ? "python" : "python3");
 }
 
+// ACERVATOR_BRIDGE_ARGV names the backend to spawn, one argument a space, so
+// the shell can be pointed at `-m src.core.desktop_bridge` and reach the
+// surfaces without the trading window. Unset, it starts the trading program.
+function bridgeArguments() {
+  const asked = String(process.env.ACERVATOR_BRIDGE_ARGV || "").trim();
+  return asked ? asked.split(/\s+/) : [BRIDGE_SCRIPT, BRIDGE_FLAG];
+}
+
 // The Python backend, and the requests waiting on it. `pending` maps a
 // request id to the promise callbacks for that id, which is what lets
 // several surfaces share one pipe. `pushHandlers` holds the callbacks for
@@ -38,7 +46,7 @@ class Bridge {
   }
 
   start() {
-    this.child = spawn(pythonExecutable(), [BRIDGE_SCRIPT, BRIDGE_FLAG], {
+    this.child = spawn(pythonExecutable(), bridgeArguments(), {
       cwd: REPO_ROOT,
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -151,10 +159,13 @@ function broadcastPush(section, values) {
 }
 
 function createWindow() {
+  // No background colour is named here. design_tokens.js serves every colour
+  // from the Python surface, so the window stays hidden until the page has
+  // painted its own ground and there is nothing for the shell to guess.
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
-    backgroundColor: "#0a0a0f",
+    show: false,
     title: "Acervator",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -163,6 +174,7 @@ function createWindow() {
       sandbox: false
     }
   });
+  win.once("ready-to-show", () => win.show());
   win.loadFile(path.join(__dirname, "renderer", "index.html"));
   return win;
 }
@@ -189,6 +201,7 @@ app.on("window-all-closed", () => {
 module.exports = {
   Bridge: Bridge,
   pythonExecutable: pythonExecutable,
+  bridgeArguments: bridgeArguments,
   broadcastPush: broadcastPush,
   CALL_CHANNEL: CALL_CHANNEL,
   PUSH_CHANNEL: PUSH_CHANNEL

@@ -878,9 +878,7 @@ def battery_payload(outcome, origin: str, portfolio: str) -> dict:
     }
 
 
-def run_battery(
-    origin: str, portfolio: str = "", span: str = ""
-) -> dict:
+def run_battery(origin: str, portfolio: str = "", span: str = "") -> dict:
     """Walk one portfolio, or every portfolio, over the RA-StoneTablets.
 
     ``RUN_PORTFOLIO_ACTION`` runs the chosen portfolio and

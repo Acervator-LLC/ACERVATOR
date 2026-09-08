@@ -268,7 +268,9 @@ def coverage(
             continue
         tablets += 1
         source_tablets[entry.source] = source_tablets.get(entry.source, 0) + 1
-        first, last = source_span.get(entry.source, (entry.fetched_at, entry.fetched_at))
+        first, last = source_span.get(
+            entry.source, (entry.fetched_at, entry.fetched_at)
+        )
         source_span[entry.source] = (
             min(first, entry.fetched_at),
             max(last, entry.fetched_at),
@@ -277,9 +279,7 @@ def coverage(
     gaps = tuple(
         g for g in read_gaps(root) if g.asset in wanted and g.year in set(years)
     )
-    served = {
-        (e.asset, e.year, e.exchange_id) for e in entries if e.candle_count > 0
-    }
+    served = {(e.asset, e.year, e.exchange_id) for e in entries if e.candle_count > 0}
     superseded = tuple(
         g
         for g in gaps
