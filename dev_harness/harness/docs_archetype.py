@@ -102,8 +102,8 @@ class DocsArchetype:
     Diataxis-mode signal and H1 heading."""
 
     name = "documentation_quality"
-    version = "1.1"  # v1.1: added falsification field + calibration hook
-    tools = ("proselint", "vale", "structure")
+    version = "1.2"
+    tools = ("proselint", "vale", "structure", "story")
     calibration_name = "docs"
 
     def load_calibration(self) -> str:
@@ -137,6 +137,7 @@ class DocsArchetype:
             ("proselint", self._run_proselint),
             ("vale", self._run_vale),
             ("structure", self._run_structure),
+            ("story", self._run_story),
         ]:
             try:
                 findings, status = runner(files)
@@ -424,6 +425,38 @@ class DocsArchetype:
                         message="Document is empty or whitespace-only.",
                     )
                 )
+        return findings, "ok"
+
+    def _run_story(self, files: list[Path]) -> tuple[list[Finding], str]:
+        """Run the Storyteller subtype over the declared story documents in files.
+
+        A file `story.is_story` accepts but `story.unread_reasons` names is
+        reported unread, never ok.
+        """
+        from dev_harness.harness.rules import story
+
+        findings: list[Finding] = []
+        unread: list[str] = []
+        for f in files:
+            text = f.read_text(encoding="utf-8", errors="replace")
+            if not story.is_story(text):
+                continue
+            reasons = story.unread_reasons(text)
+            if reasons:
+                unread.append(f"{f.name} ({'; '.join(reasons)})")
+            findings.extend(
+                Finding(
+                    tool=rf.tool,
+                    severity=rf.severity,
+                    file=rf.file,
+                    line=rf.line,
+                    rule_id=rf.rule_id,
+                    message=rf.message,
+                )
+                for rf in story.scan(f, text)
+            )
+        if unread:
+            return findings, f"unread: {', '.join(unread)}"
         return findings, "ok"
 
 
