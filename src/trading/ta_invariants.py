@@ -143,16 +143,13 @@ INDICATORS: dict[str, tuple[Invariant, ...]] = {
         _nonneg("avg_bw"),
         _excl("squeeze_bull", "squeeze_bear"),
     ),
-    # 2e-6 is the stored 6-dp precision doubled; the three fields round apart.
+    # MACD._lines subtracts these same two doubles, so the test is exact.
     "macd": (
         Invariant(
             ("macd_line", "signal_line", "histogram"),
             "histogram == macd_line - signal_line",
-            lambda d: abs(
-                float(d["histogram"])
-                - (float(d["macd_line"]) - float(d["signal_line"]))
-            )
-            <= 2e-6,
+            lambda d: float(d["histogram"])
+            == float(d["macd_line"]) - float(d["signal_line"]),
         ),
     ),
 }

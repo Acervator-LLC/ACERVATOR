@@ -1372,6 +1372,141 @@ millionths of a dollar and at a four-figure price, to the last few bits.
 The same run read the other eleven voters back over one tape at 88 bars of each
 price scale, and every reading is identical.
 
+## 2026-09-08 16:22 - #414 - the MACD reading at a millionth of a dollar
+
+Appel's three numbers are unchanged and the [MACD entry](#macd) above states
+them. This repair touches what the indicator hands its readers, not how the
+lines are built.
+
+```
+MACD Line = EMA(close, 12) - EMA(close, 26)
+Signal    = EMA(MACD Line, 9)
+Histogram = MACD Line - Signal
+```
+
+All three are prices. The indicator published them cut to six decimal places,
+which is a fixed step of one millionth of a dollar. A market worth three
+millionths of a dollar has a whole MACD smaller than that step, so every reader
+was handed a zero. The same market shape at a four-figure price published real
+numbers. One threshold serves the whole fleet, so one shape has to read the
+same on both.
+
+`src/trading/indicators/macd.py` — what the reading carries
+
+```python
+details={
+    "macd_line": curr_macd,
+    "signal_line": curr_signal,
+    "histogram": curr_hist,
+```
+
+Measured over 71 recorded Coinbase tapes, run at a price of three millionths of
+a dollar and again at a four-figure price. The run drove 3,750 readings through
+the real voting engine and both real gate chains, from a window of thirty-six
+bars upward.
+
+```
+readings publishing three zeros
+    three millionths   before 1,834 of 1,875   after 0 of 1,875
+    four figures       before     0 of 1,875   after 0 of 1,875
+the MACD line over the histogram, the two scales agreeing
+    before        0 of 1,875 pairs
+    after     1,875 of 1,875 pairs
+readings that moved             3,750 of 3,750
+scrum and fold verdicts changed     0 of 3,750
+```
+
+One bar, at both prices, before and after:
+
+```
+ADA 2021, bar 234, a bullish crossover
+    before   three millionths   histogram  0.0
+             four figures       histogram  1.651648
+    after    three millionths   histogram  4.149197409777354e-09
+             four figures       histogram  1.6516482592467057
+the MACD line over the histogram
+    before   three millionths   no value, the division is by zero
+             four figures       -20.5541919344
+    after    three millionths   -20.5541889248
+             four figures       -20.5541889248
+```
+
+The confidence never carried a price scale and does not change here. It divides
+the histogram by a share of the last close, a price over a price, and the two
+shares now have names of their own.
+
+`src/trading/indicators/macd.py` — the two shares the confidence divides by
+
+```python
+crossover_scale = abs(closes[-1]) * 0.001
+momentum_scale = abs(closes[-1]) * 0.002
+```
+
+A close of zero leaves nothing to divide by. The indicator used to raise on such
+a bar and take the whole voting run down with it, so the other eleven voters
+never answered either. It now says it has no reading, which is what every other
+voter does when its own denominator is empty.
+
+`src/trading/indicators/macd.py` — the abstention that replaces the crash
+
+```python
+if crossover_scale == 0.0 or momentum_scale == 0.0:
+    # No scale to divide by, so macd publishes no confidence here.
+    return Signal(
+        "macd",
+        timeframe,
+        SignalDirection.NEUTRAL,
+        0.0,
+        self.weight,
+        abstained=True,
+    )
+```
+
+The bound that checks the reading against itself allowed a slack of two
+millionths. At three millionths of a dollar that slack is wider than any real
+MACD, so the bound passed a histogram with the wrong sign and a histogram of
+zero. It is exact now, and it holds on all 3,750 readings.
+
+`src/trading/ta_invariants.py` — the bound on the reading
+
+```python
+lambda d: float(d["histogram"])
+== float(d["macd_line"]) - float(d["signal_line"]),
+```
+
+Nine parts of the platform read this indicator. Two read the vote and its
+strength rather than the numbers, and one builds its own series for the chart.
+
+| reader | at three millionths of a dollar |
+| --- | --- |
+| `ta_invariants.py` bound | refuses a wrong histogram, where it passed one |
+| `ta_engine.py` recorder | records the reading, where it recorded three zeros |
+| `ata_spm.py` sentence | `histogram +4.1491974e-09`, was `histogram +0.000000` |
+| `scrumming_v3_sim.py` flags | flip on 1,006 of 1,875 readings, 0 of 1,875 at four figures |
+| `indicator_panel.py` hover | `macd_line: -0.000`, unchanged |
+| `indicator_panel_surface.py` hover | `macd_line: -0.000`, unchanged |
+| `scrumming_bot.py` position boost | reads the vote, unchanged |
+| `ata_gate_scan.py` favour | reads the vote, unchanged |
+| `native_chart.py` chart series | builds its own series, unchanged |
+
+The ATA-SMP sentence printed six decimals of a price, so on a micro-priced
+market it printed nothing but zeros. It now prints eight significant figures,
+which reads the same at every price.
+
+`src/trading/ata_spm.py` — the sentence one voter writes
+
+```python
+"macd": ("MACD", ("histogram",), "histogram {value:+.8g}"),
+```
+
+The two hover cells still show three zeros, because the panel cuts every voter's
+numbers to three decimal places of its own. That format is shared by all twelve
+and is not this repair.
+
+No gate changes its mind. Neither chain reads these numbers; both read the
+panel's consensus, and the consensus, the vote, its strength, the abstention
+flag and the other eleven voters are identical on all 3,750 readings.
+
 ## Trading gate logic chain
 
 The epigraph on the [title page](01-title.md) reads *dissolvendus
