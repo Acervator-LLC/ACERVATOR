@@ -163,7 +163,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
     ChartOverlay(
         key="ichimoku",
         label="Ichi",
-        colour_field="chart_trend_fast",
+        colour_field="chart_trend_slow",
         pane=PRICE_PANE,
         occludes=False,
         draw="_draw_ichimoku",
@@ -172,7 +172,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
     ChartOverlay(
         key="volume",
         label="Vol",
-        colour_field="chart_up",
+        colour_field="chart_axis_text",
         pane=VOLUME_PANE,
         occludes=False,
         draw="_draw_volume",
@@ -194,7 +194,7 @@ CHART_OVERLAYS: tuple[ChartOverlay, ...] = (
     ChartOverlay(
         key="bbullseye",
         label="BBull",
-        colour_field="chart_zone_scrum",
+        colour_field="chart_zone_fold",
         pane=PRICE_PANE,
         occludes=True,
         draw="_draw_bullseye",

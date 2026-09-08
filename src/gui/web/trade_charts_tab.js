@@ -4,13 +4,32 @@
 
   var METHOD = "trade_charts_tab.state";
 
+  var PREV_TEXT = "prev_text";
+  var NEXT_TEXT = "next_text";
+  var PREV_TOOLTIP = "prev_tooltip";
+  var NEXT_TOOLTIP = "next_tooltip";
+  var TICKER_TOOLTIP = "ticker_tooltip";
+  var ARROW_WIDTH = "arrow_width_px";
+  var ARROW_HEIGHT = "arrow_height_px";
+  var TICKER_MIN_WIDTH = "ticker_min_width_px";
+  var SELECTOR_ITEMS = "items";
+  var SELECTOR_SHOWN = "shown";
+  var POSITION_TEXT = "position_text";
+  var STEPPING_ENABLED = "stepping_enabled";
+  var STEP_PARAM = "step_by";
+  var PICK_PARAM = "pick_at";
+
+
   var ACCESSIBLE_NAME = "accessible_name";
   var CONTAINER = "container";
-  var SCROLL = "scroll";
   var CONTENT = "content";
-  var PANEL_ORDER = "panel_order";
-  var PANEL_COUNT = "panel_count";
-  var PANELS = "panels";
+  var ASSET_ORDER = "asset_order";
+  var ASSET_COUNT = "asset_count";
+  var ASSETS = "assets";
+  var SELECTOR = "selector";
+  var PANEL = "panel";
+  var SHOWN_ID = "shown_id";
+  var SHOWN_SYMBOL = "shown_symbol";
   var DROPPED = "dropped";
   var TRADE_LOG = "trade_log";
   var LOGS = "logs";
@@ -60,11 +79,14 @@
     LOGS,
     NUCLEAR_DEFAULTS,
     OUTCOMES,
-    PANELS,
-    PANEL_COUNT,
+    ASSETS,
+    ASSET_COUNT,
+    ASSET_ORDER,
+    PANEL,
     PANEL_DEFAULTS,
-    PANEL_ORDER,
-    SCROLL,
+    SELECTOR,
+    SHOWN_ID,
+    SHOWN_SYMBOL,
     SIGNALS,
     SIGNAL_NAMES,
     SIGNAL_SETTINGS,
@@ -76,18 +98,15 @@
 
   var MARGINS = "margins_px";
   var SPACING = "spacing_px";
-  var WIDGET_RESIZABLE = "widget_resizable";
-  var HORIZONTAL_POLICY = "horizontal_policy";
-  var HORIZONTAL_POLICY_VALUE = "horizontal_policy_value";
-  var STRETCH_ADDED = "stretch_added";
-  var STRETCH_SLOTS = "stretch_slots";
   var LAYOUT_SLOTS = "layout_slots";
+
+  // The selector row, the chart panel and the toggle row.
+  var LAYOUT_SLOT_COUNT = 3;
 
   var SYMBOL = "symbol";
   var EXCHANGE_ID = "exchange_id";
   var LAST_FETCH = "last_fetch";
   var SYNTHETIC = "synthetic";
-  var PANEL = "panel";
 
   var BUILT_WITH = "built_with";
   var LABEL = "label";
@@ -130,7 +149,7 @@
 
   var NO_BRIDGE = "the preload bridge is not present";
 
-  var PANEL_AT = "panel:";
+  var PANEL_AT = "asset:";
   var PATH_SPLIT = ".";
   var EMPTY = "";
   var GAP = " ";
@@ -168,19 +187,21 @@
   var CENTER = "center";
   var DIV_TAG = "div";
   var SPAN_TAG = "span";
+  var BUTTON_TAG = "button";
   var SELECT_TAG = "select";
   var OPTION_TAG = "option";
-
-  // The one scrollbar policy the surface publishes, as CSS spells it.
-  var OVERFLOW_BY_POLICY = { ScrollBarAlwaysOff: HIDDEN };
 
   var TAB_CLASS = "acervator-charts-tab";
   var PANEL_CLASS = "acervator-charts-panel";
   var CHART_CLASS = "acervator-charts-mount";
 
   var TAB_PART = "tab";
-  var SCROLL_PART = "scroll";
   var CONTENT_PART = "content";
+  var SELECTOR_PART = "asset-selector";
+  var PREV_PART = "asset-prev";
+  var NEXT_PART = "asset-next";
+  var TICKER_PART = "asset-ticker";
+  var POSITION_PART = "asset-position";
   var PANEL_PART = "chart-panel";
   var HEADER_PART = "panel-header";
   var TOOLBAR_PART = "panel-toolbar";
@@ -188,7 +209,6 @@
   var SOURCE_PART = "panel-source";
   var CHART_PART = "chart-mount";
   var ERROR_PART = "panel-error";
-  var STRETCH_PART = "stretch";
   var EMPTY_PART = "empty-column";
 
   // `native_chart.js` draws the candles into the host this tab keeps.
@@ -197,7 +217,6 @@
   var PART_ATTR = "data-part";
   var SLOT_ATTR = "data-slot";
   var BOT_ATTR = "data-bot";
-  var INDEX_ATTR = "data-index";
   var SYMBOL_ATTR = "data-symbol";
   var CHILD_ATTR = "data-child-module";
 
@@ -216,12 +235,9 @@
   var DELETED_ATTR = "data-deleted";
   var CONNECTED_ATTR = "data-timeframe-connected";
   var CHART_TF_ATTR = "data-chart-timeframe";
-  var RESIZABLE_ATTR = "data-resizable";
-  var POLICY_ATTR = "data-horizontal-policy";
   var SLOTS_ATTR = "data-layout-slots";
   var MOUNTED_ATTR = "data-mounted";
   var DECLARED_ATTR = "data-declared-panels";
-  var STRETCH_ATTR = "data-stretch-added";
   var ACTION_ATTR = "data-action";
   var ARIA_LABEL = "aria-label";
 
@@ -419,22 +435,44 @@
     return style;
   }
 
-  function panelsOf(model) {
-    return objectField(model, PANELS);
+  function assetsOf(model) {
+    return objectField(model, ASSETS);
   }
 
-  // The bots the column really mounts, which is the order minus the unknown.
-  function mountedOrder(model) {
-    var panels = panelsOf(model);
+  // The bots the ticker list really offers, which is the order minus the unknown.
+  function knownOrder(model) {
+    var assets = assetsOf(model);
     var seen = {};
-    return listField(model, PANEL_ORDER).filter(function (botId) {
+    return listField(model, ASSET_ORDER).filter(function (botId) {
       var name = String(botId);
-      if (!isPlainObject(panels[name]) || owns(seen, name)) {
+      if (!isPlainObject(assets[name]) || owns(seen, name)) {
         return false;
       }
       seen[name] = true;
       return true;
     });
+  }
+
+  // Moving the arrows or the ticker list asks the surface for the new asset.
+  function assetChosen(param, value) {
+    if (!global.acervator || typeof global.acervator.call !== "function") {
+      loadFault = NO_BRIDGE;
+      return Promise.resolve(null);
+    }
+    var params = {};
+    params[param] = value;
+    return global.acervator
+      .call(METHOD, params)
+      .then(function (model) {
+        loadFault = null;
+        setCharts(model);
+        redraw();
+        return model;
+      })
+      .catch(function (err) {
+        loadFault = err.message;
+        return null;
+      });
   }
 
   function timeframeOptionList(model) {
@@ -448,7 +486,7 @@
       return Promise.resolve(null);
     }
     var params = {};
-    params[TIMEFRAME_CHANGE_PARAM] = [botId, chosen];
+    params[TIMEFRAME_CHANGE_PARAM] = chosen;
     return global.acervator
       .call(METHOD, params)
       .then(function (model) {
@@ -537,16 +575,85 @@
     return element(DIV_TAG, mountProps, element(DIV_TAG, errorProps, errorText));
   }
 
+  // The arrows, the ticker list and the readout that says which of how many.
+  function Selector(props) {
+    var selector = props.selector;
+    var rowProps = {
+      style: {
+        display: FLEX,
+        flexDirection: ROW,
+        alignItems: CENTER,
+        flex: FLEX_NONE,
+        gap: spacing(selector[SPACING])
+      }
+    };
+    rowProps[PART_ATTR] = SELECTOR_PART;
+
+    var stepping = selector[STEPPING_ENABLED] === true;
+    var arrowStyle = {
+      width: height(selector[ARROW_WIDTH]),
+      height: height(selector[ARROW_HEIGHT]),
+      flex: FLEX_NONE
+    };
+
+    var prevProps = {
+      style: arrowStyle,
+      disabled: !stepping,
+      title: text(selector[PREV_TOOLTIP]),
+      onClick: function () {
+        assetChosen(STEP_PARAM, -1);
+      }
+    };
+    prevProps[PART_ATTR] = PREV_PART;
+    prevProps[ARIA_LABEL] = label(selector[PREV_TOOLTIP]);
+
+    var nextProps = {
+      style: arrowStyle,
+      disabled: !stepping,
+      title: text(selector[NEXT_TOOLTIP]),
+      onClick: function () {
+        assetChosen(STEP_PARAM, 1);
+      }
+    };
+    nextProps[PART_ATTR] = NEXT_PART;
+    nextProps[ARIA_LABEL] = label(selector[NEXT_TOOLTIP]);
+
+    var items = listField(selector, SELECTOR_ITEMS);
+    var tickerProps = {
+      style: { minWidth: height(selector[TICKER_MIN_WIDTH]), flex: FLEX_NONE },
+      value: text(items[selector[SELECTOR_SHOWN]]),
+      title: text(selector[TICKER_TOOLTIP]),
+      onChange: function (event) {
+        assetChosen(PICK_PARAM, event.target.selectedIndex);
+      }
+    };
+    tickerProps[PART_ATTR] = TICKER_PART;
+    tickerProps[ARIA_LABEL] = label(selector[TICKER_TOOLTIP]);
+    var drawn = items.map(function (one) {
+      return element(OPTION_TAG, { key: String(one), value: text(one) }, text(one));
+    });
+
+    var positionProps = { style: { flex: FLEX_NONE, userSelect: SELECT_NONE } };
+    positionProps[PART_ATTR] = POSITION_PART;
+
+    return element(
+      DIV_TAG,
+      rowProps,
+      element(BUTTON_TAG, prevProps, text(selector[PREV_TEXT])),
+      element(SELECT_TAG, tickerProps, drawn),
+      element(BUTTON_TAG, nextProps, text(selector[NEXT_TEXT])),
+      element(DIV_TAG, positionProps, text(selector[POSITION_TEXT]))
+    );
+  }
+
   function Panel(props) {
     var info = props.info;
-    var panel = objectField(info, PANEL);
-    var style = { display: FLEX, flexDirection: COLUMN, flex: FLEX_NONE };
+    var panel = props.panel;
+    var style = { display: FLEX, flexDirection: COLUMN, flex: AUTO };
     style.minHeight = height(panel[MINIMUM_HEIGHT]);
-    style.maxHeight = height(panel[MAXIMUM_HEIGHT]);
     var panelProps = { className: PANEL_CLASS, style: style };
     panelProps[PART_ATTR] = PANEL_PART;
     panelProps[BOT_ATTR] = text(props.botId);
-    panelProps[INDEX_ATTR] = String(props.at);
     panelProps[SYMBOL_ATTR] = text(info[SYMBOL]);
     panelProps[EXCHANGE_ATTR] = text(info[EXCHANGE_ID]);
     panelProps[FETCHED_ATTR] = text(info[LAST_FETCH]);
@@ -579,38 +686,37 @@
     );
   }
 
-  // The column Qt scrolls: one panel per bot, then the trailing stretch.
+  // The selector row over the one chart panel Qt draws.
   function Content(props) {
     var model = props.model;
     var content = objectField(model, CONTENT);
-    var mounted = mountedOrder(model);
-    var panels = panelsOf(model);
-    var options = timeframeOptionList(model);
-    var action = objectField(model, ACTIONS)[TIMEFRAME_ACTION];
+    var known = knownOrder(model);
+    var shownId = text(model[SHOWN_ID]);
     var contentProps = { style: boxStyle(content, COLUMN) };
     contentProps[PART_ATTR] = CONTENT_PART;
     contentProps[SLOTS_ATTR] = text(content[LAYOUT_SLOTS]);
-    contentProps[MOUNTED_ATTR] = String(mounted.length);
-    contentProps[DECLARED_ATTR] = text(model[PANEL_COUNT]);
-    contentProps[STRETCH_ATTR] = text(content[STRETCH_ADDED]);
+    contentProps[MOUNTED_ATTR] = String(known.length ? ONE : ZERO);
+    contentProps[DECLARED_ATTR] = text(model[ASSET_COUNT]);
 
-    var drawn = mounted.map(function (botId, at) {
-      return element(Panel, {
-        key: String(botId),
-        botId: String(botId),
-        at: at,
-        info: objectField(panels, String(botId)),
-        options: options,
-        action: action
-      });
-    });
-    if (content[STRETCH_ADDED] === true) {
-      var stretchProps = { key: STRETCH_PART, style: { flex: AUTO } };
-      stretchProps[PART_ATTR] = STRETCH_PART;
-      drawn.push(element(DIV_TAG, stretchProps, null));
-    }
-    if (!mounted.length) {
-      var emptyProps = { key: EMPTY_PART, style: { flex: FLEX_NONE } };
+    var drawn = [
+      element(Selector, {
+        key: SELECTOR_PART,
+        selector: objectField(model, SELECTOR)
+      })
+    ];
+    if (known.length) {
+      drawn.push(
+        element(Panel, {
+          key: shownId,
+          botId: shownId,
+          info: objectField(assetsOf(model), shownId),
+          panel: objectField(model, PANEL),
+          options: timeframeOptionList(model),
+          action: objectField(model, ACTIONS)[TIMEFRAME_ACTION]
+        })
+      );
+    } else {
+      var emptyProps = { key: EMPTY_PART, style: { flex: AUTO } };
       emptyProps[PART_ATTR] = EMPTY_PART;
       drawn.push(element(DIV_TAG, emptyProps, null));
     }
@@ -623,7 +729,6 @@
       return null;
     }
     var model = props.model;
-    var scroll = objectField(model, SCROLL);
     var tabProps = {
       id: props.id,
       className: TAB_CLASS,
@@ -634,26 +739,7 @@
     tabProps[PART_ATTR] = TAB_PART;
     tabProps[ARIA_LABEL] = label(model[ACCESSIBLE_NAME]);
 
-    var scrollStyle = { flex: AUTO };
-    var policy = scroll[HORIZONTAL_POLICY];
-    scrollStyle.overflowX = owns(OVERFLOW_BY_POLICY, policy)
-      ? OVERFLOW_BY_POLICY[policy]
-      : AUTO;
-    scrollStyle.overflowY = AUTO;
-    if (scroll[WIDGET_RESIZABLE] === true) {
-      scrollStyle.display = FLEX;
-      scrollStyle.flexDirection = COLUMN;
-    }
-    var scrollProps = { style: scrollStyle, tabIndex: ZERO };
-    scrollProps[PART_ATTR] = SCROLL_PART;
-    scrollProps[RESIZABLE_ATTR] = text(scroll[WIDGET_RESIZABLE]);
-    scrollProps[POLICY_ATTR] = text(scroll[HORIZONTAL_POLICY]);
-
-    return element(
-      DIV_TAG,
-      tabProps,
-      element(DIV_TAG, scrollProps, element(Content, { model: model }))
-    );
+    return element(DIV_TAG, tabProps, element(Content, { model: model }));
   }
 
   function checkFields(model) {
@@ -689,7 +775,7 @@
     });
   }
 
-  var INFO_FIELDS = [SYMBOL, EXCHANGE_ID, LAST_FETCH, PANEL];
+  var INFO_FIELDS = [SYMBOL, EXCHANGE_ID, LAST_FETCH];
 
   var PANEL_FIELDS = [
     BUILT_WITH,
@@ -769,49 +855,43 @@
   }
 
   function checkPanels(model) {
-    var panels = panelsOf(model);
-    var order = listField(model, PANEL_ORDER);
+    var assets = assetsOf(model);
+    var order = listField(model, ASSET_ORDER);
     var options = timeframeOptionList(model);
     var defaults = objectField(model, PANEL_DEFAULTS);
-    var names = Object.keys(panels);
+    var names = Object.keys(assets);
     var bags = names.map(function (name) {
-      return objectField(panels, name);
+      return objectField(assets, name);
     });
     var first = peerOf(bags, INFO_FIELDS);
-    var firstPanel = peerOf(
-      bags.map(function (bag) {
-        return objectField(bag, PANEL);
-      }),
-      PANEL_FIELDS
-    );
     var seen = {};
 
     order.forEach(function (botId) {
       var name = String(botId);
       if (owns(seen, name)) {
-        chartFaults.push(fault(PANEL_AT + name, PANEL_ORDER, REPEATED_FAULT, name));
+        chartFaults.push(fault(PANEL_AT + name, ASSET_ORDER, REPEATED_FAULT, name));
         return;
       }
       seen[name] = true;
-      if (!isPlainObject(panels[name])) {
-        chartFaults.push(fault(PANEL_AT + name, PANEL_ORDER, UNMOUNTED_FAULT, null));
+      if (!isPlainObject(assets[name])) {
+        chartFaults.push(fault(PANEL_AT + name, ASSET_ORDER, UNMOUNTED_FAULT, null));
       }
     });
     names.forEach(function (name) {
       var where = PANEL_AT + name;
       if (!owns(seen, name)) {
-        chartFaults.push(fault(where, PANELS, UNORDERED_FAULT, null));
+        chartFaults.push(fault(where, ASSETS, UNORDERED_FAULT, null));
       }
-      var info = objectField(panels, name);
-      checkAgainstPeer(where, info, first, INFO_FIELDS);
-      var panel = objectField(info, PANEL);
-      checkPanelTypes(where, panel, firstPanel, defaults);
-      checkPanelCounts(where, panel);
-      checkTimeframe(where, panel, options);
+      checkAgainstPeer(where, objectField(assets, name), first, INFO_FIELDS);
     });
-    if (owns(model, PANEL_COUNT) && names.length !== model[PANEL_COUNT]) {
-      chartFaults.push(fault(null, PANEL_COUNT, DISAGREES_FAULT, names.length));
+    if (owns(model, ASSET_COUNT) && names.length !== model[ASSET_COUNT]) {
+      chartFaults.push(fault(null, ASSET_COUNT, DISAGREES_FAULT, names.length));
     }
+
+    var panel = objectField(model, PANEL);
+    checkPanelTypes(PANEL, panel, peerOf([panel], PANEL_FIELDS), defaults);
+    checkPanelCounts(PANEL, panel);
+    checkTimeframe(PANEL, panel, options);
   }
 
   var LAYOUT_FIELDS = [MARGINS, SPACING];
@@ -880,19 +960,19 @@
 
   function report() {
     var model = held.model;
-    var panels = panelsOf(model);
+    var assets = assetsOf(model);
     return {
       declared: {
         fields: DECLARED_FIELDS.length,
-        panels: model[PANEL_COUNT],
+        panels: model[ASSET_COUNT],
         slots: objectField(model, CONTENT)[LAYOUT_SLOTS],
-        candles: declaredCandles(panels)
+        candles: declaredCandles(assets)
       },
       held: {
         fields: heldFieldCount(),
-        panels: Object.keys(panels).length,
-        slots: mountedOrder(model).length + objectField(model, CONTENT)[STRETCH_SLOTS],
-        candles: heldCandles(panels)
+        panels: Object.keys(assets).length,
+        slots: LAYOUT_SLOT_COUNT,
+        candles: heldCandles(assets)
       },
       faults: chartFaults.slice()
     };
@@ -987,17 +1067,12 @@
     return DECLARED_FIELDS.slice();
   }
 
-  // The Qt policy names this module recognises, which are names and not values.
-  function policyNames() {
-    return Object.keys(OVERFLOW_BY_POLICY);
-  }
-
   function panelIds() {
-    return held === null ? [] : Object.keys(panelsOf(held.model));
+    return held === null ? [] : Object.keys(assetsOf(held.model));
   }
 
   function panelOrder() {
-    return list(PANEL_ORDER);
+    return list(ASSET_ORDER);
   }
 
   function mountedIds() {
@@ -1008,16 +1083,20 @@
     if (held === null) {
       return undefined;
     }
-    var panels = panelsOf(held.model);
-    return owns(panels, name) ? copyOf(objectField(panels, name)) : undefined;
+    var assets = assetsOf(held.model);
+    return owns(assets, name) ? copyOf(objectField(assets, name)) : undefined;
+  }
+
+  function shownPanel() {
+    return held === null ? {} : copyOf(objectField(held.model, PANEL));
+  }
+
+  function selector() {
+    return bag(SELECTOR);
   }
 
   function container() {
     return bag(CONTAINER);
-  }
-
-  function scroll() {
-    return bag(SCROLL);
   }
 
   function content() {
@@ -1259,9 +1338,9 @@
     ChartMount: ChartMount,
     field: field,
     declaredNames: declaredNames,
-    policyNames: policyNames,
+    selector: selector,
+    shownPanel: shownPanel,
     container: container,
-    scroll: scroll,
     content: content,
     panelIds: panelIds,
     panelOrder: panelOrder,

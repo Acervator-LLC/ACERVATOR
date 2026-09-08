@@ -101,6 +101,7 @@ if _HAS_QT:
 
             self._entries: list[dict] = []
             self._shown = 0
+            self._followed = ""
             self._trade_log: list[dict] = []
 
             selector = QHBoxLayout()
@@ -216,12 +217,17 @@ if _HAS_QT:
             self._position_label.setText(self._position_text())
 
         def _follow_current(self) -> None:
-            """Point the panel at the shown asset and clear the last one's tape."""
+            """Point the panel at the shown asset and clear the last one's tape.
+
+            ``_followed`` is the plain symbol; the chart's own label carries the
+            price and the state, so it cannot answer this.
+            """
             entry = self.current_entry()
             symbol = entry.get("symbol", "")
             chart = self._panel.chart
-            if chart.symbol == symbol:
+            if self._followed == symbol:
                 return
+            self._followed = symbol
             chart.symbol = symbol
             chart.set_candles([])
             chart.set_trade_history_markers([])
