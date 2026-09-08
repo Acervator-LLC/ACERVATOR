@@ -4,6 +4,28 @@ Reference. The second step of [the promotion pipeline](promotion-pipeline.md):
 the live fleet, replayed against stored history. The screen is under rebuild as
 issue #117.
 
+## What the tab holds today
+
+The Simulator is removed. The tab is named Sim, it opens first on the bar, and
+it draws an empty panel with a heading and two sentences. Nothing behind it
+runs: no fleet, no replay, no practice venue and no Nuclear Mode. Every section
+below this one describes the screen that was removed, and is kept as the record
+of what the rebuild replaces.
+
+The panel is the one the Paper, Status and Accumulation tabs already draw. Its
+words come from a view model, so the Qt build and the React build say the same
+thing.
+
+```python
+METHOD = "simulator_tab.state"
+
+HEADING = "Sim"
+ISSUE = 117
+BUILT = False
+STATE_TEXT = "This tab is not built."
+ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
+```
+
 ## What builds it
 
 The window constructs the tab and inserts it beside Trading. Three of the four
@@ -12,6 +34,7 @@ Inspector proposals resolve when they are asked for rather than when the tab is
 built. The bot manager is handed over directly.
 
 `src/gui/main_tabs/simulator_tab.py` — `SimulatorTabMixin._build_simulator_tab`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
         self._simulator = SimulatorTab()
@@ -30,6 +53,7 @@ front, and the tab draws its own strip of the same ten fields against sim
 balances.
 
 `src/gui/simulator_tab/sim_stat_strip.py` — `SimStatStrip.FIELDS`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
     FIELDS = (
@@ -50,6 +74,7 @@ The Mode picker names three modes and drives two panels. Nuclear raises its own
 page. Validation and Looping Back Test both raise Fleet Replay.
 
 `src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._on_sim_mode_changed`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
         key = self.sim_mode()
@@ -64,6 +89,7 @@ a panel that carries a matching setter, and Fleet Replay carries none, so the
 two fleet modes run the same replay and the choice changes the hint line alone.
 
 `src/gui/simulator_tab/simulator_tab.py` — the mode hand-off
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
         panel = getattr(self, "fleet_replay", None)
@@ -76,6 +102,7 @@ two fleet modes run the same replay and the choice changes the hint line alone.
 
 `FleetReplayPanel` in `src/gui/simulator_tab/fleet/fleet_replay_panel.py` is the
 panel. Four steps run it.
+The Simulator rebuild removed this file; it is not in the tree.
 
 **Load.** The panel builds one real bot for every saved config whose symbol has
 a Stone Tablet, and names the symbols it had to skip. The class body is live's
@@ -84,6 +111,7 @@ implementation; the single sim-only branch gives each bot a private event bus,
 which is why a sim fill never reaches the live sound engine or the live logs.
 
 `src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_spawn_sim_fleet`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
         def _spawn_sim_fleet(self) -> int:
@@ -105,6 +133,7 @@ topology, and `summarize_loaded_configs` reports what loaded. The fleet is never
 fabricated; it is whatever that file holds.
 
 `src/simulator/fleet/bot_state_loader.py` — `load_bot_configs_from_state`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 def load_bot_configs_from_state(
@@ -118,6 +147,7 @@ calls, so the two return the same trades. A replay still runs without it, and
 the panel then says on screen that the run is synthetic.
 
 `src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_on_fetch_ytd_clicked`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
         def _on_fetch_ytd_clicked(self) -> None:
@@ -132,6 +162,7 @@ the panel then says on screen that the run is synthetic.
 
 **Run.** `FleetReplayController` in
 `src/simulator/fleet/fleet_replay_controller.py` drives it.
+The Simulator rebuild removed this file; it is not in the tree.
 
 | Piece | What it does |
 | ----- | ------------ |
@@ -143,6 +174,7 @@ One assertion runs once, at the point where the bot set is final and before any
 of them can trade.
 
 `src/simulator/fleet/fleet_replay_controller.py` — `_assert_capital_isolation`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
     def _assert_capital_isolation(self) -> None:
@@ -162,6 +194,7 @@ the ccxt surface beneath a real connector, holds the seeded balances, sweeps
 resting orders, and owns the one clock every symbol advances on.
 
 `src/simulator/fleet/fleet_replay_controller.py` — the tape the bots are handed
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
         # TabletBackend implements the ccxt surface beneath a real CCXTConnector.
@@ -184,6 +217,7 @@ inside that exchange, and the candle series a replay builds is thrown away once
 its symbol names have been read.
 
 `src/simulator/fleet/sim_exchange.py` — `FleetSimExchange`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 """Candle-driven fake exchange for Fleet Replay, over real symbols.
@@ -192,6 +226,7 @@ Serves per-symbol ``CandleSeries`` through the ``ExchangeInterface`` API,
 so a bot trades BTC/USD or ETH/USD against stored candles instead of a
 venue. ``NuclearSimExchange`` (``src/simulator/nuclear_sim_exchange.py``)
 is the other simulated venue and serves synthetic TAPEA/TAPEB symbols.
+The Simulator rebuild removed this file; it is not in the tree.
 
 Reachability: nothing under ``src/`` constructs ``FleetSimExchange``.
 ``FleetReplayController`` imports only ``make_symbol_series_map`` from
@@ -204,6 +239,7 @@ the panel's progress timer, and a finished run is written under the log root in
 the live schema.
 
 `src/trading/sim_run_log.py` — `SimRunLog`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 """Persist a Fleet Replay run under ~/.acervator_logs/sim/ in the live schema."""
@@ -214,6 +250,7 @@ Simulator, and the fleet panel's three-column table is still built and still
 filled. Collapsing the two is the first of the seven pieces of issue #117.
 
 `src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `FleetReplayPanel.COLUMNS`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
         # Three columns. The gate row lives in GateStatusPanel, not here.
@@ -449,6 +486,7 @@ refresh tick the panel reads each bot's last gate state and paints a
 double-stacked row of lights, ten scrum then nine fold.
 
 `src/gui/simulator_tab/fleet/sim_visuals.py` — `GateLightsCell`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
     class GateLightsCell(QWidget):
@@ -474,6 +512,7 @@ Qt-free. Two renderers read it: the Simulator's ``GateLightsCell``
 gate cell (``src/exchange/history_read_contract.py``). One vocabulary,
 so a gate added on one surface cannot be missing from the other.
 ```
+The Simulator rebuild removed this file; it is not in the tree.
 
 After a run the panel matches each live trade to the nearest sim fill on the
 same symbol and side, and prints the result into the Performance log. That is a
@@ -496,6 +535,7 @@ comparable to nothing, and the panel says so rather than looking like a parity
 run.
 
 `src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_note_parity_state`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
         def _note_parity_state(self) -> None:
@@ -512,6 +552,7 @@ The last two halt immediately whatever their count. The guard is defined and
 covered by tests, and no module under `src/` calls it.
 
 `src/trading/sim_validation_guard.py` — `ValidationIssueType`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 class ValidationIssueType:
@@ -548,8 +589,10 @@ controller. The controller loops the same state-file fleet over the tablet
 window until stopped, recording each cycle so a late failure traces back to the
 cycle that produced it. Start needs the window's async loop; without it the
 panel says so and no soak begins.
+The Simulator rebuild removed this file; it is not in the tree.
 
 `src/simulator/nuclear_fleet_controller.py` — `NuclearFleetController`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 class NuclearFleetController:
@@ -563,6 +606,7 @@ class NuclearFleetController:
 The market structure varies per loop, and nothing on disk is touched.
 
 `src/simulator/nuclear_candle_source.py` — `noised_series`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 def noised_series(
@@ -607,6 +651,7 @@ price, the last volume and the voting summary — and the controller's snapshot
 carries none of them.
 
 `src/simulator/nuclear_fleet_controller.py` — `NuclearFleetController.snapshot`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
     def snapshot(self) -> dict:
@@ -637,6 +682,7 @@ noised tape is deliberately not history, and its criteria are coverage and
 survival.
 
 `src/gui/simulator_tab/nuclear_mode_panel.py` — what the panel is for
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 NOT A VALIDATOR. Nuclear runs AFTER trade-logic alignment is proven on
@@ -649,14 +695,17 @@ coverage and survival.
 single-tape prototype: one scout bot walking one tape. Nothing under the source
 tree constructs it, and it stays because both controllers share the noise
 source.
+The Simulator rebuild removed this file; it is not in the tree.
 
 `src/gui/simulator_tab/nuclear_mode_panel.py` — why the prototype stays
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 `nuclear_controller.py` and `nuclear_candle_source.py` are deliberately
 NOT deleted: the latter owns `noised_series`, which v2 depends on for
 exactly the market-structure noise above.
 ```
+The Simulator rebuild removed the files above; they are not in the tree.
 
 ## Bridge
 

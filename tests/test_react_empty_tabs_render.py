@@ -1,4 +1,4 @@
-"""The three unbuilt tabs draw in React under the React build.
+"""The four unbuilt tabs draw in React under the React build.
 
 ``Panel`` builds one empty tab through the shipped ``_add_empty_tab`` under one
 variant and shows it. Under ``REACT`` the panel is ``EmptyTabReactPanel`` and

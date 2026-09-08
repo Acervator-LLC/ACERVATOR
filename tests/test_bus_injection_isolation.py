@@ -125,35 +125,3 @@ class TestTheDefaultIsUnchangedForLive:
             mgr.detach_bus()
 
 
-class TestTheNuclearControllerInjects:
-    def test_it_passes_the_bus_at_construction(self):
-        """Structural: rebinding `._bus` after the fact is the defect,
-        so the fix must be visible as an argument at the call site."""
-        import ast
-
-        nc = REPO_ROOT / "src" / "simulator" / "nuclear_controller.py"
-        tree = ast.parse(nc.read_text(encoding="utf-8"))
-        calls = [
-            n
-            for n in ast.walk(tree)
-            if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "BotManager"
-        ]
-        assert calls, "BotManager is no longer constructed here"
-        for c in calls:
-            kw = {k.arg for k in c.keywords if k.arg}
-            assert "bus" in kw, (
-                f"BotManager at line {c.lineno} is constructed without an "
-                f"injected bus; rebinding ._bus afterwards is too late"
-            )
-
-    def test_teardown_detaches(self):
-        import ast
-
-        nc = REPO_ROOT / "src" / "simulator" / "nuclear_controller.py"
-        tree = ast.parse(nc.read_text(encoding="utf-8"))
-        calls = [
-            n
-            for n in ast.walk(tree)
-            if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "detach_bus"
-        ]
-        assert calls, "nuclear teardown never retracts the subscriptions"

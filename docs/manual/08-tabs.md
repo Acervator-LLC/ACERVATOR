@@ -285,6 +285,18 @@ Detail: [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md).
 
 ## Simulator Tab (Hot Mess; Complete Rebuild In Progress)
 
+The Simulator is removed. The tab is named Sim, it opens first on the bar on a
+black ground, and it draws the same empty panel the Paper, Status and
+Accumulation tabs draw. No fleet loads, no replay runs, no practice venue
+exists, and Nuclear Mode is gone. The rest of this section describes the screen
+that was removed and is kept as the record of what the rebuild replaces.
+
+```python
+def _build_simulator_tab(self) -> None:
+    """Insert the Sim tab at ``SIMULATOR_BUILD_INDEX``."""
+    self._add_empty_tab(simulator, index=SIMULATOR_BUILD_INDEX)
+```
+
 The tab stacks two panels. Fleet Replay loads every bot from the operator's own
 state file, builds one real bot per config, and plays Stone Tablet candles
 through them against a fake exchange. The sim uses the bot class body
@@ -295,6 +307,7 @@ The tab is now called Sim. It sits first on the bar, on a black ground
 with red text.
 
 `src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_spawn_sim_fleet`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 def _spawn_sim_fleet(self) -> int:
@@ -311,6 +324,7 @@ vocabulary the History table reads, which stops the two surfaces drifting
 apart.
 
 `src/gui/simulator_tab/fleet/sim_visuals.py` — `GateLightsCell`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 class GateLightsCell(QWidget):
@@ -332,6 +346,7 @@ to build, and both answer the same `set` and `clear` calls, so the fleet panel
 and Nuclear Mode write to either without knowing which they hold.
 
 `src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._build_stat_strip`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 from ..variant_surface import SIM_STAT_STRIP, surface_class
@@ -349,6 +364,7 @@ React draws the Nuclear Mode page too. The tab asks the same seam for the
 panel class that it asks for the strip.
 
 `src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._nuclear_panel_class`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 from ..variant_surface import NUCLEAR_MODE, surface_class
@@ -363,6 +379,7 @@ with labels, spin boxes and tick boxes; the React panel answers them by
 writing into its view model and redrawing the page.
 
 `src/gui/react_nuclear_mode_panel.py` — `NuclearModeReactPanel._set_status_text`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 def _set_status_text(self, key: str, text: str) -> None:
@@ -382,6 +399,7 @@ the price and VWAP chart, so the ticks, the thinning and the trade markers stay
 one piece of Python, and `GateStatusPanelReact` inherits the gate pane.
 
 `src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._price_chart_class`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 from ..variant_surface import SIM_PRICE_CHART, surface_class
@@ -395,6 +413,7 @@ every line, box, dot and label, with its colour and its position — and
 Python side, so the two builds cannot draw different charts from the same ticks.
 
 `src/gui/main_tabs/sim_visuals_surface.py` — `chart_program`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 if not model.symbols:
@@ -415,6 +434,7 @@ behind a named accessor, and the React panel answers those by writing into its
 view model.
 
 `src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab._fleet_replay_class`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 from ..variant_surface import FLEET_REPLAY, surface_class
@@ -427,6 +447,7 @@ method the Qt button was wired to, looked up on the panel itself, so the two
 sides run one piece of code.
 
 `src/gui/react_fleet_replay_panel.py` — `FleetReplayReactPanel.run_action`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 step = surface.ACTIONS.get(str(request.get(ACTION_KEY) or ""))
@@ -441,6 +462,7 @@ Mode is the picker beside it. Three modes, each with its own line saying what
 it collects.
 
 `src/gui/simulator_tab/simulator_tab.py` — `SimulatorTab.SIM_MODES`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 SIM_MODES = (
@@ -503,6 +525,7 @@ The panel says so out loud when a run cannot be compared to live, rather than
 letting a synthetic run look like a parity run.
 
 `src/gui/simulator_tab/fleet/fleet_replay_panel.py` — `_note_parity_state`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 def _note_parity_state(self) -> None:
@@ -3496,6 +3519,7 @@ rather than typed.
 | `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+The Simulator rebuild removed the files above; they are not in the tree.
 
 Totals across the 76 rows above, measured on 5 September 2026:
 

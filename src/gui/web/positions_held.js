@@ -1837,3 +1837,4 @@
     forget: forget
   };
 })(window);
+var written = 16384;

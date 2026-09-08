@@ -208,32 +208,6 @@ class TestBootSmoke:
                 continue
             raise AssertionError(f"a set_bot_viz call survives at line {node.lineno}")
 
-    def test_the_simulator_tab_never_grew_the_missing_method(self):
-        """Constructed live, not read from source.
-
-        If SimulatorTab ever gains `set_bot_viz`, the C11 deletion
-        should be revisited deliberately rather than left as a hole with
-        a method sitting unused on the other side of it.
-        """
-        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-        from PySide6.QtWidgets import QApplication
-        from src.gui.main_window import MainWindow
-
-        app = QApplication.instance() or QApplication([])
-        w = MainWindow(bot_manager=None, settings_manager=None)
-        try:
-            sim = getattr(w, "_simulator", None)
-            if sim is None:
-                pytest.skip("simulator tab not constructed in this build")
-            assert not hasattr(sim, "set_bot_viz"), (
-                "SimulatorTab grew set_bot_viz after C11 deleted its "
-                "only caller; revisit the disposition"
-            )
-        finally:
-            w.close()
-            w.deleteLater()
-            app.processEvents()
-
     def test_window_title_carries_the_real_version(self):
         """End-to-end check on C43's version wiring: the title is built
         from `__version__`, so a regression to a hardcoded literal shows

@@ -33,10 +33,8 @@ from PySide6.QtWidgets import (  # noqa: E402
 )
 
 import src.gui.main_window as mw  # noqa: E402
-import src.gui.simulator_tab as simulator_package  # noqa: E402
 from src.gui.main_tabs import main_window_surface as surface  # noqa: E402
 from src.gui.main_tabs.empty_tabs import EmptyTabsMixin  # noqa: E402
-from src.gui.main_tabs.simulator_tab import SimulatorTabMixin  # noqa: E402
 
 #: The order the operator reads left to right across the tab bar.
 OPERATOR_TAB_ORDER = [
@@ -56,27 +54,6 @@ OPERATOR_TAB_ORDER = [
 BRIDGE_ALREADY_INSTALLED = object()
 
 RETIRED_SENTINELS = "<retired sentinels>"
-
-
-class SimulatorStub(QLabel):
-    """Stands in for ``SimulatorTab``, recording every getter the mixin wires."""
-
-    def __init__(self) -> None:
-        super().__init__(surface.SIM_TAB)
-        self.setAccessibleName(surface.SIM_TAB)
-        self.wired: list = []
-
-    def set_connectors_getter(self, getter) -> None:
-        self.wired.append(("connectors", getter))
-
-    def set_bot_manager(self, manager) -> None:
-        self.wired.append(("bot_manager", manager))
-
-    def set_swarm_getter(self, getter) -> None:
-        self.wired.append(("swarm", getter))
-
-    def set_topology_getter(self, getter) -> None:
-        self.wired.append(("topology", getter))
 
 
 #: Every subset of the seven tabs that could fail to build, smallest first.
@@ -119,10 +96,10 @@ def tabs_in_construction_order(_qapp) -> QTabWidget:
 class ShellWindow(EmptyTabsMixin):
     """Stands in for ``MainWindow`` while the shipped ``_setup_ui`` runs.
 
-    Each ``_build_*`` adds one ``QLabel``, except ``_build_simulator_tab`` over
-    a ``SimulatorStub`` and the three ``EmptyTabsMixin`` builders, which run
-    shipped code; ``reorder_argument`` records what ``_setup_ui`` hands
-    ``_reorder_main_tabs``, and a name in ``failed`` never reaches the tab bar.
+    Each ``_build_*`` adds one ``QLabel``, except the four ``EmptyTabsMixin``
+    builders, which run shipped code; ``reorder_argument`` records what
+    ``_setup_ui`` hands ``_reorder_main_tabs``, and a name in ``failed`` never
+    reaches the tab bar.
     """
 
     def __init__(self, layout: QVBoxLayout, failed: tuple = ()) -> None:
@@ -161,11 +138,7 @@ class ShellWindow(EmptyTabsMixin):
         self._append(surface.INSPECTOR_TAB)
 
     def _build_simulator_tab(self) -> None:
-        name = surface.SIM_TAB
-        self.built.append(name)
-        if name in self._failed:
-            return
-        MethodType(SimulatorTabMixin.__dict__["_build_simulator_tab"], self)()
+        self._empty(surface.SIM_TAB, "_build_simulator_tab")
 
     def _install_retired_tab_sentinels(self) -> None:
         self.built.append(RETIRED_SENTINELS)
@@ -207,12 +180,7 @@ def setup_ui_run(failed: tuple = ()) -> tuple:
     """Run the shipped ``_setup_ui`` with `failed` skipped; answer with the shell."""
     host = QWidget()
     built = ShellWindow(QVBoxLayout(host), failed)
-    real_simulator = simulator_package.SimulatorTab
-    simulator_package.SimulatorTab = SimulatorStub
-    try:
-        MethodType(mw.MainWindow.__dict__["_setup_ui"], built)()
-    finally:
-        simulator_package.SimulatorTab = real_simulator
+    MethodType(mw.MainWindow.__dict__["_setup_ui"], built)()
     assert built._testnet_bridge is None, (
         "install_on must refuse while a bridge is set, so no chain file is "
         f"reached; _setup_ui left {built._testnet_bridge!r}"
@@ -279,16 +247,6 @@ def test_setup_ui_runs_every_tab_builder(shell) -> None:
         surface.STATUS_TAB,
         surface.ACCUMULATION_TAB,
     ], shell.built
-
-
-def test_the_shipped_builder_wires_every_simulator_getter(shell) -> None:
-    """``_build_simulator_tab`` hands the Simulator tab its four getters."""
-    assert [name for name, _ in shell._simulator.wired] == [
-        "connectors",
-        "bot_manager",
-        "swarm",
-        "topology",
-    ], shell._simulator.wired
 
 
 def test_the_surface_models_the_bar_the_builders_leave(shell) -> None:

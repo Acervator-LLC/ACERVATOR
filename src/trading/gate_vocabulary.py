@@ -1,9 +1,7 @@
 """gate_vocabulary.py -- the bot's gate labels, blocker map and light states.
 
-Qt-free. Two renderers read it: the Simulator's ``GateLightsCell``
-(``src/gui/simulator_tab/fleet/sim_visuals.py``) and the History table's
-gate cell (``src/exchange/history_read_contract.py``). One vocabulary,
-so a gate added on one surface cannot be missing from the other.
+Qt-free. The History table's gate cell
+(``src/exchange/history_read_contract.py``) reads it.
 
 The labels and the blocker prefixes are the ones ScrummingBot writes into
 ``_last_gate_state.{scrum,fold}_blockers``.

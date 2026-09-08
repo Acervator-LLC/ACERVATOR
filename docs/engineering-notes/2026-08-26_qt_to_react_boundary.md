@@ -175,6 +175,7 @@ The one-per-class overcount is my regex reading the worked example in the matrix
 (the file exists; those four test names do not):
 `test_a_marked_candle_is_never_decimated_away`, `test_clear_gates_still_clears_the_blockers`,
 `test_ls_led_is_cleared`, `test_the_panel_appends_before_it_marks`.
+The Simulator rebuild removed this file; it is not in the tree.
 
 **Control on the citation checker:** a deliberately fabricated node ID
 (`tests/test_reconcile_lot_book.py::test_this_does_not_exist_control`) was reported broken.
@@ -366,6 +367,7 @@ symbols).
 | 1 | 3 | `src/gui/bot_swarm_list.py` | Lane cells |
 | 1 | 1 | `src/gui/usb_auth_widget.py` | Key indicator |
 | 1 | 0 | `src/gui/launcher.py` | Background |
+The Simulator rebuild removed this file; it is not in the tree.
 
 ### 2.4 Styling
 
@@ -547,6 +549,7 @@ under `src/simulator/`, and four of the other five under `src/exchange/` and `sr
 | 169 | `src/simulator/fleet/candle_series.py` | Candle cursor |
 | 110 | `src/simulator/fleet/master_clock.py` | Clock |
 | 84 | two `__init__.py` | Re-exports |
+The Simulator rebuild removed the files above; they are not in the tree.
 
 Their imports are stdlib plus `src.trading.*`, `src.exchange.*`, `src.core.*`. **Zero Qt.
 Zero third-party.**
@@ -565,6 +568,7 @@ Zero third-party.**
 package for engine code, not for widgets. **That was a packaging error, not a Qt coupling.**
 Its two function-local, deferred imports now name `src.simulator.nuclear_candle_source` and
 `src.simulator.fleet.fleet_replay_controller`, so the edge is closed.
+The Simulator rebuild removed this file; it is not in the tree.
 
 **281 references across 127 files in `tests/`, `tools/` and `dev_harness/` depended on these
 modules.** The move was a rename plus an import sweep. It changed no behaviour.
@@ -597,6 +601,7 @@ front:**
 | 2 | `src/gui/history_tab.py` |
 | 2 | `src/gui/init_wizard.py` |
 | 1 | `src/gui/indicator_panel.py` |
+The Simulator rebuild removed this file; it is not in the tree.
 
 ---
 
@@ -681,6 +686,7 @@ top-level plus 15 nested = 43-field** dict.
    `_pending_snapshot` under a lock, so an undrained frame is replaced, never queued. The
    payload at `_collect_visual_snapshot` (`:1988`) has **3 keys**; each `per_symbol` entry has
    **14 keys**; `stat_fields` has **10**.
+The Simulator rebuild removed this file; it is not in the tree.
 
 Latest-wins is exactly WebSocket semantics. This one ports cleanly.
 
@@ -719,6 +725,7 @@ enumerable — a TypeScript union can be generated from the AST.**
 **GUI subscribers: 16 sites in 5 files** — `main_window.py:197-205` (6),
 `live_bot_window.py:282-285` (4), `bot_visualizer.py:1329-1330` (2),
 `nuclear_controller.py:321-323` (3), `start_all_progress_dialog.py:97` (1).
+The Simulator rebuild removed this file; it is not in the tree.
 
 Against **37 `Signal(...)` declarations and 297 `.connect(` sites** in `src/gui/**`. The
 ratio is **297 Qt to 27 bus**. Most GUI wiring is Qt-native and does not survive.
@@ -838,6 +845,7 @@ P1.7 / MEM-178").
 | Topology bots / wires | `market_inspector_topologies.py:139` / `:175` | 4 / 4 | proposal dicts |
 | Error dialog, two tables | `main_window.py:2012` / `:2031` | 4 / 5 | `deque(maxlen=200)` |
 | `bot_live_settings.py`, eight tables | `:2436, :4298, :5869, :5926, :5982, :6070, :7796, :7874` | 9, 11, 3, 3, 4, 5, 7, 4 | bot, tranches, wires, phantom, coordinator |
+The Simulator rebuild removed this file; it is not in the tree.
 
 **Full rebuild per tick.** `setRowCount(len(...))` then every cell rewritten
 (`main_window.py:2269`, `:2936`). At 2 s that is a complete teardown 30 times a minute.
@@ -887,6 +895,7 @@ Plus a **write** channel carrying the 74 privileged operations from section 3.3.
 | **The screen recorder** | 755 lines, `widget.grab()` frame capture | Dropped. The tree no longer carries it. |
 | **The USB auth widget** | `src/gui/usb_auth_widget.py` — 627 lines | Rewritten. An Electron main process has filesystem access; a renderer does not. |
 | **The instance consent dialog** | `src/gui/instance_consent_dialog.py` — 286 lines | Rewritten. **The guard behind it (`src/core/instance_guard.py`, 924 lines) is Qt-free and survives untouched.** |
+The Simulator rebuild removed this file; it is not in the tree.
 
 ### 5.1 The one thing that already translates
 
@@ -916,6 +925,7 @@ so rendered is a panel that Electron will later host unchanged.
 281 references in `tests/`, `tools/` and `dev_harness/` re-pointed. It was a `git mv` plus an
 import sweep. It changed no behaviour, it closed the `topology_stress.py` reverse edge, and it
 made those lines visible to coverage. The Simulator engine now sits under `src/simulator/`.
+The Simulator rebuild removed this file; it is not in the tree.
 
 **Step 1 — give the engine its own clock.** `main.py:401` (50 ms pump), `main.py:959` (60 s
 save), `main.py:1078-1092` (start-all sequencer), `main.py:1107` (auto-restart). Four sites.
@@ -1111,6 +1121,7 @@ wrong.**
 `test_sim_spawn_drift.py`, `test_topology_stress.py` and
 their neighbours. **Those survive the migration untouched.** They imported `src.gui` only
 because of the packaging error, and step 0 has closed it.
+The Simulator rebuild removed the files above; they are not in the tree.
 
 ### 8.3 Per-test classification — the tight number
 
@@ -1131,6 +1142,7 @@ collected count, so `@pytest.mark.parametrize` expansion is carried.
 | `tests/test_widget_leak_guard.py` | 11 | **9** | nearly all |
 | `tests/test_reconcile_lot_book.py` | 29 | **0** | none |
 | `tests/test_ta_engine_degenerate_abstention.py` | 32 | **0** | none |
+That test file was deleted; it is not in the tree.
 
 **Second negative control, at scale.** Across the 225 files that do **not** import PySide6,
 the classifier flags **31 of 5,671 tests — a 0.55% false-positive rate.** All 31 were

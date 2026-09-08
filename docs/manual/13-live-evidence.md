@@ -96,6 +96,7 @@ per feature, and flags by name any feature that was never called.
 
 ```python
 TELEMETRY_PARITY = "sim.parity.compare_trades"      # src/gui/main_tabs/fleet_replay_panel_surface.py
+The Simulator rebuild removed this file; it is not in the tree.
 
 class FeatureCounter: ...       # src/core/feature_telemetry.py
 class FeatureTelemetry: ...
@@ -118,6 +119,7 @@ class ExchangeInterface(ABC):       # src/exchange/base.py
 | `CCXTConnector` | `src/exchange/ccxt_connector.py` | any venue id in `SUPPORTED_EXCHANGES`, through ccxt; or a backend passed to `attach_backend` |
 | `FleetSimExchange` | `src/simulator/fleet/sim_exchange.py` | stored `CandleSeries` rows over real symbols; no venue |
 | `NuclearSimExchange` | `src/simulator/nuclear_sim_exchange.py` | synthetic `TAPEA`/`TAPEB` tapes; no venue |
+The Simulator rebuild removed the files above; they are not in the tree.
 
 One connector method names the fifteen ccxt members a backend must serve, marks
 the connector connected and drops the rate-limit interval to zero. The Stone
@@ -403,6 +405,7 @@ ScrummingBot.__init__(..., capital_registry=None)   src/trading/scrumming_bot.py
 
 passes one      src/simulator/fleet/fleet_replay_controller.py
                 src/simulator/nuclear_controller.py
+The Simulator rebuild removed the files above; they are not in the tree.
 
 passes none     src/gui/main_window.py
                 src/gui/live_bot_window.py

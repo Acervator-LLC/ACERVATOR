@@ -15,13 +15,10 @@ from qt_pixel import ensure_app, pixel_at, render_widget
 from src.gui import design_system as ds
 from src.gui.color_alpha import rgba
 from src.gui.main_tabs import bot_live_settings_surface as bls
-from src.gui.main_tabs import fleet_replay_panel_surface as frp
-from src.gui.main_tabs import nuclear_mode_panel_surface as nmp
 from src.gui.main_tabs import settings_dialog_surface as sds
 from src.gui.main_tabs import trading_tab_surface as tts
 
 GROUND = "#404040"
-FLEET_TEAL = "#00cccc"
 CARD_EDGE_ALPHA = 68
 BANNER_EDGE_ALPHA = sds.BANNER_EDGE_ALPHA
 MARGIN_PX = 10
@@ -133,16 +130,6 @@ def trading_card(layer: str) -> str:
     return tts.placeholder_card_style(tts.LAYER_ACCENT[layer])
 
 
-def nuclear_header() -> str:
-    return (
-        "QFrame{background:"
-        + nmp.HEADER_CARD_BG
-        + ";border:1px solid "
-        + nmp.HEADER_CARD_BORDER
-        + ";border-radius:6px;}"
-    )
-
-
 def glow_fill(name: str) -> str:
     return f"QFrame {{ background: {getattr(ds, name)}; border: none; }}"
 
@@ -153,8 +140,6 @@ SITES = (
     ("badge paused", lambda: bls.state_style("paused"), ds.WARNING, 34, LABEL, "m"),
     ("badge error", lambda: bls.state_style("error"), ds.ERROR, 34, LABEL, "m"),
     ("nav button", lambda: bls.NAV_BUTTON_STYLE, ds.PRIMARY, 85, BUTTON, "e"),
-    ("fleet header", lambda: frp.HEADER_STYLE, FLEET_TEAL, 68, FRAME, "e"),
-    ("nuclear header", nuclear_header, nmp.GOLD, 68, FRAME, "e"),
     (
         "stock banner",
         lambda: f"QLabel {{ {sds.STOCK_BANNER_STYLE} }}",
@@ -255,27 +240,6 @@ def test_the_nav_buttons_edge_carries_the_primary_tint():
     assert drawn != bare, (drawn, bare)
 
 
-def test_the_fleet_replay_header_carries_a_teal_edge():
-    """`#00cccc44` is alpha zero in Qt, so this header had no edge."""
-    drawn, wanted, bare = edge_agrees(frp.HEADER_STYLE, FLEET_TEAL, CARD_EDGE_ALPHA)
-    assert near(drawn, wanted), (drawn, wanted, bare)
-    assert drawn != bare, (drawn, bare)
-
-
-def test_the_nuclear_mode_header_carries_a_gold_edge_and_not_a_red_one():
-    """`#ffcc4444` painted an opaque dull red `#cc4444`."""
-    sheet = (
-        "QFrame{background:"
-        + nmp.HEADER_CARD_BG
-        + ";border:1px solid "
-        + nmp.HEADER_CARD_BORDER
-        + ";border-radius:6px;}"
-    )
-    drawn, wanted, bare = edge_agrees(sheet, nmp.GOLD, CARD_EDGE_ALPHA)
-    assert near(drawn, wanted), (drawn, wanted, bare)
-    assert not near(drawn, "#cc4444"), drawn
-
-
 def test_the_stock_banner_edge_is_blue_and_not_lime():
     """`#6699ff55` painted a lime green, measured `#416b2b` on a dark ground."""
     drawn, wanted, bare = edge_agrees(
@@ -331,8 +295,6 @@ def alpha_bearing_values() -> dict:
         "design_system.GLOW_PRIMARY_FAINT": ds.GLOW_PRIMARY_FAINT,
         "design_system.SCRIM": ds.SCRIM,
         "bot_live_settings.NAV_BUTTON_STYLE": bls.NAV_BUTTON_STYLE,
-        "fleet_replay.HEADER_STYLE": frp.HEADER_STYLE,
-        "nuclear_mode.HEADER_CARD_BORDER": nmp.HEADER_CARD_BORDER,
         "settings_dialog.STOCK_BANNER_STYLE": sds.STOCK_BANNER_STYLE,
     }
     for state in BADGE_STATES + ("nonesuch",):

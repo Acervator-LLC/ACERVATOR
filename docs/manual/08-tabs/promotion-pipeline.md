@@ -38,6 +38,7 @@ exchange rather than a second bot class, and that fake exchange is a subclass
 of the same interface the live connector implements.
 
 `src/simulator/fleet/sim_exchange.py` — `FleetSimExchange`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 class FleetSimExchange(ExchangeInterface):
@@ -65,6 +66,7 @@ its own words. It lets the sim replay a proposal's shape across sim bots and
 creates nothing.
 
 `src/gui/simulator_tab/simulator_tab.py` — `set_topology_getter`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
     READ ONLY. This is not the adopt path — adopting a proposal

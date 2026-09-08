@@ -1,4 +1,4 @@
-"""``EmptyTabsMixin`` builds the three tabs whose screens are not written yet.
+"""``EmptyTabsMixin`` builds the four tabs whose screens are not written yet.
 
 One builder per tab hands ``_add_empty_tab`` a surface, and
 ``_empty_tab_class`` answers with ``EmptyTabQtPanel`` or the React panel for
@@ -17,9 +17,11 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 from .. import design_system as ds
 from . import paper_trader_tab_surface as paper_trader
 from . import proof_of_accumulation_tab_surface as proof_of_accumulation
+from . import simulator_tab_surface as simulator
 from . import system_status_tab_surface as system_status
+from .main_window_surface import SIMULATOR_BUILD_INDEX
 
-EMPTY_TAB_SURFACES = (paper_trader, system_status, proof_of_accumulation)
+EMPTY_TAB_SURFACES = (paper_trader, system_status, proof_of_accumulation, simulator)
 
 HEADING_NAME = "empty-tab-heading"
 STATE_NAME = "empty-tab-state"
@@ -94,18 +96,26 @@ class EmptyTabsMixin:
     # Annotation only; MainWindow supplies this and no attribute is created here.
     _main_tabs: Any
 
-    def _add_empty_tab(self, surface: Any) -> QWidget:
+    def _add_empty_tab(self, surface: Any, index: int | None = None) -> QWidget:
         """Draw one surface's empty state and add it to ``_main_tabs``.
 
-        ``_empty_tabs`` keeps each panel under its surface's bridge method.
+        ``index`` inserts at that slot; None appends. ``_empty_tabs`` keeps each
+        panel under its surface's bridge method.
         """
         if not hasattr(self, "_empty_tabs"):
             self._empty_tabs: dict = {}
         model = surface.view_model({})
         panel = _empty_tab_class()(model)
         self._empty_tabs[surface.METHOD] = panel
-        self._main_tabs.addTab(panel, model["heading"])
+        if index is None:
+            self._main_tabs.addTab(panel, model["heading"])
+        else:
+            self._main_tabs.insertTab(index, panel, model["heading"])
         return panel
+
+    def _build_simulator_tab(self) -> None:
+        """Insert the Sim tab at ``SIMULATOR_BUILD_INDEX``."""
+        self._add_empty_tab(simulator, index=SIMULATOR_BUILD_INDEX)
 
     def _build_paper_trader_tab(self) -> None:
         """Add the Paper Trader tab to ``_main_tabs``."""

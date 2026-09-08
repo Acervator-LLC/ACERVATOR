@@ -525,6 +525,7 @@ already written, and one push target exists today: the Simulator asks the
 Inspector for its current proposals at build time.
 
 `src/gui/main_tabs/simulator_tab.py` — `_build_simulator_tab`
+The Simulator rebuild removed this file; it is not in the tree.
 
 ```python
 if hasattr(self._simulator, "set_topology_getter"):
