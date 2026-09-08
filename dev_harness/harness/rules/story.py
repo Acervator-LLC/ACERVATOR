@@ -60,6 +60,7 @@ _REPO_PATH = re.compile(
     r"\b(?:src|tests|tools|docs|docs-archive|dev_harness|desktop|deploy|"
     r"harness_fixtures|\.github)/[A-Za-z0-9_\-./]+"
 )
+_MAP_THIN = re.compile(r"\b(?:inferred|low)\b", re.I)
 _THINNESS = re.compile(
     r"confidence[ \t]*:[ \t]*low"
     r"|no artefact|no artifact|the record is thin|not recorded|unrecorded",
@@ -205,12 +206,18 @@ def unexplained_terms(text: str) -> list[tuple[int, str]]:
     )
 
 
-def map_low_confidence_dates(map_text: str) -> set[str]:
-    """Return the ISO dates map_text marks low on the same line."""
-    out: set[str] = set()
+def map_thin_dates(map_text: str) -> dict[str, str]:
+    """Return each ISO date map_text does not back with an artefact, and its word.
+
+    DEVELOPMENT_MAP writes `inferred` against a date no artefact states; `low`
+    is accepted for a map that grades confidence instead.
+    """
+    out: dict[str, str] = {}
     for line in map_text.split("\n"):
-        if re.search(r"\blow\b", line, re.I):
-            out.update(_ISO_DATE.findall(line))
+        marker = _MAP_THIN.search(line)
+        if marker:
+            for day in _ISO_DATE.findall(line):
+                out[day] = marker.group(0).lower()
     return out
 
 
@@ -350,9 +357,9 @@ def honest_findings(path: Path, text: str, map_text: str = "") -> list[Finding]:
     """Return a DOC010 finding per dated entry of text with no artefact behind it.
 
     An Entry escapes by naming a commit, an issue number or a repo path, or by
-    declaring the record thin; map_text adds the dates it marks low.
+    declaring the record thin; map_text adds the dates no artefact backs.
     """
-    thin_dates = map_low_confidence_dates(map_text)
+    thin_dates = map_thin_dates(map_text)
     out: list[Finding] = []
     for entry in entries(text):
         declared_thin = bool(_THINNESS.search(entry.body))
@@ -387,7 +394,8 @@ def honest_findings(path: Path, text: str, map_text: str = "") -> list[Finding]:
                     message=(
                         f"Entry {entry.heading!r} is told plainly, and "
                         f"{DEVELOPMENT_MAP.name} marks {entry.day.isoformat()} "
-                        f"low confidence. Say the record is thin."
+                        f"{thin_dates[entry.day.isoformat()]}. "
+                        f"Say the record is thin."
                     ),
                 )
             )

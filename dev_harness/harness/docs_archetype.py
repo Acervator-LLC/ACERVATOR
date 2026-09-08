@@ -510,7 +510,7 @@ class DocsArchetype:
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: python -m tools.harness.docs_archetype <path>")
+        print("usage: python -m dev_harness.harness.docs_archetype <path>")
         print(
             "       reviews Markdown/text docs with proselint (+ vale if installed) + structure check"
         )
