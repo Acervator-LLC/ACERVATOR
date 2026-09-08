@@ -104,8 +104,8 @@ class DocsArchetype:
     Diataxis-mode signal and H1 heading."""
 
     name = "documentation_quality"
-    version = "1.2"
-    tools = ("proselint", "vale", "structure", "contents")
+    version = "1.3"
+    tools = ("proselint", "vale", "structure", "contents", "story")
     calibration_name = "docs"
 
     def load_calibration(self) -> str:
@@ -142,6 +142,7 @@ class DocsArchetype:
                 ("proselint", partial(self._run_proselint, files)),
                 ("vale", partial(self._run_vale, files)),
                 ("structure", partial(self._run_structure, files)),
+                ("story", partial(self._run_story, files)),
             ]
         if pdfs:
             runners.append(("contents", partial(self._run_contents, pdfs)))
@@ -473,11 +474,43 @@ class DocsArchetype:
                 )
         return findings, "ok"
 
+    def _run_story(self, files: list[Path]) -> tuple[list[Finding], str]:
+        """Run the Storyteller subtype over the declared story documents in files.
+
+        A file `story.is_story` accepts but `story.unread_reasons` names is
+        reported unread, never ok.
+        """
+        from dev_harness.harness.rules import story
+
+        findings: list[Finding] = []
+        unread: list[str] = []
+        for f in files:
+            text = f.read_text(encoding="utf-8", errors="replace")
+            if not story.is_story(text):
+                continue
+            reasons = story.unread_reasons(text)
+            if reasons:
+                unread.append(f"{f.name} ({'; '.join(reasons)})")
+            findings.extend(
+                Finding(
+                    tool=rf.tool,
+                    severity=rf.severity,
+                    file=rf.file,
+                    line=rf.line,
+                    rule_id=rf.rule_id,
+                    message=rf.message,
+                )
+                for rf in story.scan(f, text)
+            )
+        if unread:
+            return findings, f"unread: {', '.join(unread)}"
+        return findings, "ok"
+
 
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: python -m tools.harness.docs_archetype <path>")
+        print("usage: python -m dev_harness.harness.docs_archetype <path>")
         print(
             "       reviews Markdown/text docs with proselint (+ vale if installed) + structure check"
         )
