@@ -84,12 +84,12 @@ def paper_bot_from_record(bot_id: str, record: dict) -> Optional[PaperBot]:
         target_usd=_number(config.get("target_balance"), 0.0),
         ta_timeframe=str(config.get("ta_timeframe") or DEFAULT_TIMEFRAME),
         scrumming_interval_pct=_number(config.get("scrumming_interval_pct"), 0.0),
-        trading_fee_pct=_number(
-            config.get("trading_fee_pct"), DEFAULT_TRADING_FEE_PCT
-        ),
+        trading_fee_pct=_number(config.get("trading_fee_pct"), DEFAULT_TRADING_FEE_PCT),
         bb_midline_gate=bool(config.get("bb_midline_gate", True)),
         bb_tolerance_pct=_number(config.get("bb_tolerance_pct"), 1.0),
-        bb_landing_strip_candles=int(_number(config.get("bb_landing_strip_candles"), 2)),
+        bb_landing_strip_candles=int(
+            _number(config.get("bb_landing_strip_candles"), 2)
+        ),
         scrum_detect_pct=_number(config.get("scrum_detect_pct"), 75.0),
         scrum_require_ta_bullish=bool(config.get("scrum_require_ta_bullish", True)),
         scrum_hold_in_uptrend=bool(config.get("scrum_hold_in_uptrend", True)),

@@ -181,7 +181,9 @@ class KeyringManager:
         except ImportError:
             self._backend_reason = "python-keyring package not installed"
         except Exception as exc:
-            self._backend_reason = f"keyring backend check failed: {type(exc).__name__}: {exc}"
+            self._backend_reason = (
+                f"keyring backend check failed: {type(exc).__name__}: {exc}"
+            )
 
     @property
     def has_secure_backend(self) -> bool:

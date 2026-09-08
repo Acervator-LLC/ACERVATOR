@@ -142,9 +142,7 @@ def gate_half(tick: Any) -> dict:
     }
 
 
-def paper_row(
-    tick: Any, exchange_id: str = "", figures: Optional[dict] = None
-) -> dict:
+def paper_row(tick: Any, exchange_id: str = "", figures: Optional[dict] = None) -> dict:
     """One paper action as a row: the gate half, the trade half and ``figures``.
 
     ``trade`` is None on a tick that filled nothing.

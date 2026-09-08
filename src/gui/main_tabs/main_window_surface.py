@@ -1780,9 +1780,7 @@ class MainWindowModel:
             "menus": self.menus,
             "tab_labels": list(self.tab_labels),
             "tab_methods": dict(self.tab_methods),
-            "tab_colours": {
-                tab: dict(pair) for tab, pair in self.tab_colours.items()
-            },
+            "tab_colours": {tab: dict(pair) for tab, pair in self.tab_colours.items()},
             "theme": self.theme,
             "tabs_movable": self.tabs_movable,
             "current_tab": self.current_tab,
