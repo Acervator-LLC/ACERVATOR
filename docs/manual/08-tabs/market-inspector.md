@@ -1058,4 +1058,111 @@ distinct colours, against 17 for the same chart drawn with no candles. Its
 readings are in
 [the debug report](../../../tests/debug_reports/2026-09-08_ata_post_image.md).
 
+## 2026-09-08 15:30 - #407 - the post picture folder has a ceiling
+
+Every scan wrote a picture and nothing ever took one away. One picture measured
+121044 bytes. A scan across sectors on four timeframes, repeated as bars close,
+reaches gigabytes on the machine the operator trades from, and nobody would
+notice until the disk did.
+
+The folder now keeps the newest picture of each market and removes the older
+ones. A market is one asset on one timeframe, so gold on the hourly chart and
+gold on the daily chart are two markets and each keeps its own newest picture.
+
+The number is not a preference. It is what the posting side can actually reach.
+Phase four looks up one chart per market and keeps the last one, and the Ready
+to Send list is rebuilt from scratch on every scan. Nothing in the application
+can name an older picture, so nothing loses one.
+
+`src/trading/ata_post_paths.py` — how many stay, and why that number
+
+```python
+#: ``ata_spm_push.format_run`` keys its pulls by symbol and timeframe, last
+#: write winning, so one image per market is every image a post can name.
+POST_IMAGES_KEPT_PER_MARKET = 1
+```
+
+The follow-up post was the thing to check before setting any ceiling, because a
+ceiling that throws away a picture a follow-up still needs is worse than no
+ceiling. It does not need one. Phase seven reads the chart again from the market
+data, never from the folder, and the post it writes is text: the original
+headline, the outcome, and the evidence behind it. Driven over three called
+markets, phase seven settled all three and composed twenty-one follow-up posts
+across the push targets. None of them carried a picture.
+
+`src/trading/ata_spm_push.py` — phase seven asks the market, not the folder
+
+```python
+    def check(self, candle_source: Any, share_pct: Any) -> list:
+        """Read each watched call's chart again and answer what happened to it.
+
+        A settled call stops being watched and an open one stays, so no call
+        is posted on twice.
+        """
+```
+
+The clearing happens on the same press that draws a picture. Scan Now runs the
+three phases, phase three writes the file, and the folder is trimmed
+immediately afterwards, so it is never larger than one scan's worth of pictures
+plus the newest of every market scanned before.
+
+`src/trading/ata_spm.py` — the picture is written, then the folder is trimmed
+
+```python
+    path = ata_post_paths.post_image_path(vote.symbol, vote.timeframe, stamp)
+    image = render_chart_png(
+        held,
+        vote.symbol,
+        timeframe_label(vote.timeframe),
+        path,
+        voters=[one.indicator for one in confirming_signals(vote)],
+        max_overlays=int(max_supporting_indicators or NO_INDICATOR_CAP),
+    )
+    ata_post_paths.prune_post_images(path)
+    return image
+```
+
+**It says what it took.** Deleting the operator's files quietly is not
+acceptable, so every trim writes one line naming how many pictures went, how
+many bytes came back, how many stayed, and how many the machine would not let
+go of.
+
+`src/trading/ata_post_paths.py` — the line every trim writes
+
+```python
+PRUNE_LOG = (
+    "ATA post store: removed %d image(s), reclaimed %d byte(s), kept %d, refused %d"
+)
+```
+
+**It cannot reach anything else.** It reads one folder, the one its own file
+names, and it goes no deeper. A file whose name a post picture could not have
+produced is not touched: three such files sat in the folder through a whole
+driven run and all three were still there at the end. The state folder, the log
+folder, the recorded market data and the paper ledger were counted before the
+run and after it and did not move, and the settings file hashed the same both
+times.
+
+**A picture being written is never taken.** The protection is the operating
+system's own refusal, not a check that could be wrong. Driven with a picture
+held open, the deletion was refused, the file survived, and the trim reported it
+as refused. The same file went on the next press, once the handle had closed.
+
+Driven over three markets with nine older pictures planted, the folder went from
+twelve files to six, and the three pictures the run had just drawn were the
+three that stayed. A second press on unchanged bars removed nothing.
+
+```
+                        files      bytes
+before the first scan      12        174
+after the first scan        6     478068
+after a later scan          6     441483
+after an unchanged scan     6     441483
+```
+
+**Figures.** This page carries no figure and this entry adds none. The folder is
+outside the repository and a rendered chart is produced output, so neither is
+kept here. The readings behind every number above are in
+[the debug report](../../../tests/debug_reports/2026-09-08_ata_post_pruning.md).
+
 Back to [the subsystem index](README.md).

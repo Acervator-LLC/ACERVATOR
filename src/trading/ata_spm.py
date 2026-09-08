@@ -812,19 +812,23 @@ def render_pull_image(
 ) -> ChartImage:
     """The call's own chart drawn to a PNG under ``ata_post_paths``.
 
-    The overlays are the voters ``confirming_signals`` answered, capped by
-    ``max_supporting_indicators``.
+    The overlays are the voters ``confirming_signals`` answered capped by
+    ``max_supporting_indicators``, and ``prune_post_images`` bounds the store
+    once the PNG is written.
     """
     held = chart_candles(candles)
     stamp = int(held[-1].time) if held else NO_TIMESTAMP
-    return render_chart_png(
+    path = ata_post_paths.post_image_path(vote.symbol, vote.timeframe, stamp)
+    image = render_chart_png(
         held,
         vote.symbol,
         timeframe_label(vote.timeframe),
-        ata_post_paths.post_image_path(vote.symbol, vote.timeframe, stamp),
+        path,
         voters=[one.indicator for one in confirming_signals(vote)],
         max_overlays=int(max_supporting_indicators or NO_INDICATOR_CAP),
     )
+    ata_post_paths.prune_post_images(path)
+    return image
 
 
 def pull(
