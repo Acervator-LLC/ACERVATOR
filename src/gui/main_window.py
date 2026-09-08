@@ -67,6 +67,7 @@ try:
     from .main_tabs.header_strip import HeaderStripMixin
     from .main_tabs.history_tab import HistoryTabMixin
     from .main_tabs.market_inspector_tab import MarketInspectorTabMixin
+    from .main_tabs.paper_trader_tab import PaperTraderTabMixin
     from .main_tabs.retired_tabs import RetiredTabsMixin
     from .main_tabs.simulator_tab import SimulatorTabMixin
     from .main_tabs.trading_tab import TradingTabMixin
@@ -158,6 +159,7 @@ if _HAS_QT:
         HeaderStripMixin,
         HistoryTabMixin,
         MarketInspectorTabMixin,
+        PaperTraderTabMixin,
         RetiredTabsMixin,
         SimulatorTabMixin,
         TradingTabMixin,
@@ -2904,16 +2906,12 @@ if _HAS_QT:
                 self._mode_btn.setText("Stock Mode")
                 self._mode_btn.setChecked(True)
                 self._trading_stack.setCurrentIndex(1)
-                if getattr(self, "_paper_trader_stack", None) is not None:
-                    self._paper_trader_stack.setCurrentIndex(1)
-                    self._paper_trader = self._paper_trader_equity
                 self._tab_widget = self._stock_tab_widget
                 self._exchange_tabs = self._stock_exchange_tabs
                 self._empty_placeholder = self._stock_placeholder
                 self.setWindowTitle("Acervator — STOCK WING")
                 self._status_log.log(
-                    "→ STOCK WING: equity exchanges + equity Paper Trader. "
-                    "(Crypto wing paused.)",
+                    "→ STOCK WING: equity exchanges. (Crypto wing paused.)",
                     "info",
                 )
             else:
@@ -2921,16 +2919,12 @@ if _HAS_QT:
                 self._mode_btn.setText("Crypto Mode")
                 self._mode_btn.setChecked(False)
                 self._trading_stack.setCurrentIndex(0)
-                if getattr(self, "_paper_trader_stack", None) is not None:
-                    self._paper_trader_stack.setCurrentIndex(0)
-                    self._paper_trader = self._paper_trader_crypto
                 self._tab_widget = self._crypto_tab_widget
                 self._exchange_tabs = self._crypto_exchange_tabs
                 self._empty_placeholder = self._crypto_placeholder
                 self.setWindowTitle("Acervator — CRYPTO WING")
                 self._status_log.log(
-                    "→ CRYPTO WING: crypto exchanges + crypto Paper Trader. "
-                    "(Stock wing paused.)",
+                    "→ CRYPTO WING: crypto exchanges. (Stock wing paused.)",
                     "info",
                 )
             self._update_mode_btn_style()

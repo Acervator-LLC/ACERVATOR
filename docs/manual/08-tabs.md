@@ -630,6 +630,66 @@ sub-tab is chrome: its Start button flips a flag and relabels itself, and no
 bot is constructed. The wing toggle makes the same offer on both wings. Issues
 #422 and #426 carry the two captions.
 
+### The tab as it stands now
+
+The screen is built. It is the Trading tab's panes over the live exchange feed:
+the Privacy Mode row, the market selector, the two button rows, the bot list,
+the Indicator Voting Panel, the Live Feed pane, the Fake Balance table and the
+Paper Run table. The Qt window and the React page draw one view model.
+
+`src/gui/main_tabs/paper_trader_tab_surface.py` — what the tab answers
+
+```python
+METHOD = "paper_trader_tab.state"
+
+HEADING = "Paper"
+ISSUE = 19
+BUILT = True
+```
+
+The data path is the venue's public market feed, and it goes one way. The reader
+names the six things it answers, and every other name raises. An order, a
+cancellation or a venue write cannot be written through it.
+
+`src/paper/live_feed_source.py` — the read set and the refusal
+
+```python
+READ_NAMES = (
+    "venue",
+    "product_id",
+    "granularity",
+    "candles",
+    "ticker",
+    "asked_at",
+)
+
+
+class SendRefused(AttributeError):
+    """Raised when a name outside ``READ_NAMES`` is asked of ``LiveFeedSource``."""
+```
+
+Live candles enter the same gate chain a live bot runs. Nothing on the paper
+side defines a gate of its own.
+
+`src/paper/paper_run.py` — the tick
+
+```python
+context = tape_context(bot, balance, window, reading, summary)
+armed = latch(context)
+```
+
+The money is fake and lives in memory alone. A run writes no file, and no figure
+it produces reaches the stored bot record or the header strip.
+
+`src/paper/fake_balance.py` — the budget
+
+```python
+BUDGET_MULTIPLE = 2.0
+```
+
+The two strips the Trading tab carries are not copied, and neither is their
+supporting code. Their rows carry Import Live Fleet and the Start or Stop press.
+
 Detail: [08-tabs/paper-trader.md](08-tabs/paper-trader.md).
 
 ## Proof of Accumulation (Anonymized Trading Tournaments Via Blockchain)
@@ -3487,7 +3547,7 @@ rather than typed.
 | Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `splash_screen.py` | no | - | yes | no | no | - | no | shelved |
-| `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | no | yes | yes | shelved |
+| `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | yes | in scope |
@@ -3519,7 +3579,7 @@ rather than typed.
 | `src/gui/main_tabs/buy_confirmation_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | yes | - | yes | in scope |
 | `src/gui/main_tabs/console_tab.py` | `console_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/main_tabs/empty_tabs.py` | `paper_trader_tab.js`, `system_status_tab.js`, `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | yes | in scope |
+| `src/gui/main_tabs/empty_tabs.py` | `system_status_tab.js`, `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
@@ -3528,19 +3588,21 @@ rather than typed.
 | `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/paper_trader_tab.py` | `paper_trader_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/react_history_tab.py` | no | - | no | no | no | - | no | React side |
+| `src/gui/react_paper_trader_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_simulator_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/risk_tab.py` | `risk_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no | shelved |
 | `src/gui/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes | shelved |
+| `src/gui/simulator_tab/fleet/sim_visuals.py` | `sim_visuals.js` | yes | yes | yes | no | yes | yes | shelved |
+| `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes | shelved |
+| `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes | shelved |
+| `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | shelved |
 | `src/gui/start_all_progress_dialog.py` | `start_all_progress.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/stock_main_window.py` | no | - | yes | no | no | - | no | shelved |
 | `src/gui/testnet_tab.py` | `testnet_tab.js` | yes | yes | yes | no | yes | no | shelved |
@@ -3569,15 +3631,15 @@ The Simulator rebuild removed the files above; they are not in the tree.
 Totals across the 76 rows above, measured on 5 September 2026:
 
 ```
-React module             55
-Uses React               53
-Bridge                   67
-Manifest                 55
-Registers in Electron    15
-Ships in the build       55
-RENDERS                  30
-RENDERS, in scope        30 of 43
-out of scope             33
+React module             62
+Uses React               60
+Bridge                   72
+Manifest                 62
+Registers in Electron    18
+Ships in the build       59
+RENDERS                  48
+RENDERS, in scope        43 of 43
+out of scope             37
 ```
 
 Four columns are all but complete. RENDERS, the column that is the item, is not.

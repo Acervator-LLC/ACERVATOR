@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (  # noqa: E402
 import src.gui.main_window as mw  # noqa: E402
 from src.gui.main_tabs import main_window_surface as surface  # noqa: E402
 from src.gui.main_tabs.empty_tabs import EmptyTabsMixin  # noqa: E402
+from src.gui.main_tabs.paper_trader_tab import PaperTraderTabMixin  # noqa: E402
 from src.gui.main_tabs.simulator_tab import SimulatorTabMixin  # noqa: E402
 
 #: The order the operator reads left to right across the tab bar.
@@ -97,8 +98,8 @@ def tabs_in_construction_order(_qapp) -> QTabWidget:
 class ShellWindow(EmptyTabsMixin, SimulatorTabMixin):
     """Stands in for ``MainWindow`` while the shipped ``_setup_ui`` runs.
 
-    Each ``_build_*`` adds one ``QLabel``, except the shipped empty-tab and Sim
-    builders, which run shipped code; ``reorder_argument`` records what
+    Each ``_build_*`` adds one ``QLabel``, except the shipped empty-tab, Sim
+    and Paper builders, which run shipped code; ``reorder_argument`` records what
     ``_setup_ui`` hands ``_reorder_main_tabs``, and a name in ``failed`` never
     reaches the tab bar.
     """
@@ -162,7 +163,9 @@ class ShellWindow(EmptyTabsMixin, SimulatorTabMixin):
         self._run_builder(name, EmptyTabsMixin, method)
 
     def _build_paper_trader_tab(self) -> None:
-        self._empty(surface.PAPER_TAB, "_build_paper_trader_tab")
+        self._run_builder(
+            surface.PAPER_TAB, PaperTraderTabMixin, "_build_paper_trader_tab"
+        )
 
     def _build_system_status_tab(self) -> None:
         self._empty(surface.STATUS_TAB, "_build_system_status_tab")

@@ -1,4 +1,4 @@
-"""Drives the three empty-tab skeletons against their Python surfaces.
+"""Drives the two empty-tab skeletons against their Python surfaces.
 
 Each ``Skeleton`` pairs a renderer module with a surface, a bridge method and a
 manifest entry, and ``payload_of`` drives that surface for real. ``JsRuntime``
@@ -29,7 +29,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from src._variant import ENV_VAR, QT
 from src.core import desktop_bridge
 from src.gui.main_tabs import empty_tabs
-from src.gui.main_tabs import paper_trader_tab_surface
 from src.gui.main_tabs import proof_of_accumulation_tab_surface
 from src.gui.main_tabs import system_status_tab_surface
 from src.gui.main_tabs.empty_tabs import EmptyTabsMixin
@@ -68,12 +67,6 @@ class Skeleton:
 
 
 SKELETONS = (
-    Skeleton(
-        name="paper_trader_tab",
-        surface=paper_trader_tab_surface,
-        setter="acervatorSetPaperTraderTab",
-        published="acervatorPaperTraderTab",
-    ),
     Skeleton(
         name="proof_of_accumulation_tab",
         surface=proof_of_accumulation_tab_surface,
@@ -165,8 +158,8 @@ def test_the_surface_publishes_no_value_a_bot_could_have_moved(one: Skeleton):
     assert numbers == {"issue": one.surface.ISSUE}, numbers
 
 
-def test_the_three_skeletons_name_three_different_issues():
-    """The control for the issue checks: three surfaces copied from one
+def test_the_skeletons_name_different_issues():
+    """The control for the issue checks: two surfaces copied from one
     another would answer the same number and pass every check above."""
     issues = [one.surface.ISSUE for one in SKELETONS]
     assert len(set(issues)) == len(issues), issues
@@ -488,7 +481,7 @@ def test_the_page_reader_reports_a_heading_it_was_given(browser: Browser):
 
 
 def qt_tabs(qapp) -> Any:
-    """A ``QTabWidget`` the three shipped builders have added their tabs to."""
+    """A ``QTabWidget`` the two shipped builders have added their tabs to."""
     from PySide6.QtWidgets import QTabWidget
 
     assert qapp is not None
@@ -498,7 +491,6 @@ def qt_tabs(qapp) -> Any:
             self._main_tabs = QTabWidget()
 
     host = Host()
-    host._build_paper_trader_tab()
     host._build_system_status_tab()
     host._build_proof_of_accumulation_tab()
     return host

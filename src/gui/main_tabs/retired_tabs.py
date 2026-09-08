@@ -12,18 +12,11 @@ class RetiredTabsMixin:
     """Supplies ``_install_retired_tab_sentinels`` to the main window."""
 
     def _install_retired_tab_sentinels(self) -> None:
-        """Assign None to ``_paper_trader``, ``_competition_tab`` and the rest.
+        """Assign None to ``_competition_tab``, ``_testnet_tab`` and the rest.
 
         ``main_window`` tests ``_analytics_tab``, ``_risk_tab``,
         ``_journal_tab`` and ``_alerts_tab`` before refreshing them.
         """
-        # `EmptyTabsMixin` builds the Paper Trader tab; `_paper_trader` is the
-        # retired widget and never leaves None.
-        self._paper_trader = None
-        self._paper_trader_stack = None
-        self._paper_trader_crypto = None
-        self._paper_trader_equity = None
-
         # Nothing outside this method reads the `_multi_scale_` names,
         # `_competition_tab`, `_testnet_tab` or `_audio_suite`.
         self._multi_scale_stack = None
