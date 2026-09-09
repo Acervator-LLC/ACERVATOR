@@ -394,6 +394,76 @@ none, because `dashboard_stat_card_surface.FRAME_STYLE` is empty and the
 `StyledPanel` shape reaches the page as an attribute no rule reads. That is
 the same row.
 
+### 2026-09-09 08:42 - #128 - the counter cards and the bot table are components
+
+The five counter cards and the Scrumming bot table are drawn inside a panel
+that has already registered, and neither registers in its own right. The strip
+leaves five spaces and builds a request for each one, carrying that counter's
+caption, amount, privacy field and whether it is pressable. The bot table is
+drawn once for the exchange the Trading tab is showing, from a payload the
+module keeps under that exchange's own name.
+
+`src/gui/web/header_strip.js` — one request per counter
+
+```javascript
+  function cardRequest(card) {
+    var asked = {};
+    asked[CARD_LABEL_PARAM] = text(card[LABEL]);
+    asked[CARD_VALUE_PARAM] = text(card[TEXT]);
+    if (text(card[FIELD_ID]) !== undefined) {
+      asked[CARD_FIELD_ID_PARAM] = text(card[FIELD_ID]);
+    }
+    asked[CARD_CLICKABLE_PARAM] = card[CLICKABLE] === true;
+    return asked;
+  }
+```
+
+The panel host keeps one host element per panel name and asks each panel with
+one request of its own. Registering either module was driven in the running
+shell to see what it would give: the card drew an empty caption and the default
+amount, and the table drew its ten headers over no rows, each into a host of its
+own under the panel area, while the strip's five counters kept their figures.
+Both cells now read `-`, the mark this table already uses for a column that does
+not apply to a row, and the mark the privacy dot took for the same reason.
+
+Each counter card now draws the one pixel edge, the rounded corner and the
+padding that Qt paints around it. Qt takes all three from the theme rule for a
+framed panel; the shell selects no theme, so the page had nothing to read and
+drew a plain box. The card's own skin carries them, built from the design
+tokens rather than from a colour written into the page.
+
+`src/gui/main_tabs/dashboard_stat_card_surface.py` — the card's skin
+
+```python
+FRAME_STYLE = (
+    "border-style: solid; "
+    f"border-width: {FRAME_LINE_WIDTH_PX}px; "
+    f"border-color: {ds.OUTLINE}; "
+    f"border-radius: {ds.RADIUS_SM}px; "
+    f"padding: {ds.SPACE_CARD_PAD}px;"
+)
+```
+
+The five counter dots now carry the pointing hand as well. The card cut its dot
+down to five fields and left out the cursor the dot publishes; it keeps all
+eight now, which is what the spendable columns already do.
+
+Both builds were read on one fleet snapshot with every field revealed. Nothing
+was written into the page: the shell fetched the aggregate and the bot list over
+the bridge, and breaking each source in turn emptied the figures it feeds and
+left the other side drawing. Every label, amount, colour, glyph, tooltip, column
+header, row order and cell text agrees between the two.
+
+Two differences remain, and both belong to other rows. Qt fills each card with
+the theme's card ground, which no design token carries. And the counter space is
+141 pixels wide on all five while the card inside takes its content width, which
+is how the strip has placed its counters since before this change.
+
+| Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | - | yes | yes | in scope |
+| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | - | yes | yes | in scope |
+
 ## Market Inspector Tab
 
 The concept with the Market Inspector Tab is evaluate markets from a higher point of view and provide strategy proposals in three forms: Oppositional Trading Pairs (Trading Pairs w/ Opposing Trends), Bot Swarm Topologies (Bot Swarm Network Proposals), and Exchange Comparison Arbitrage.
@@ -1188,9 +1258,9 @@ rather than typed.
 | `src/gui/widgets/__init__.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/widgets/api_tester_tab.py` | `api_tester_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/widgets/bot_selection.py` | `bot_selection.js` | yes | yes | yes | no | yes | no | not a screen |
-| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/widgets/capital_registry_panel.py` | no | - | no | no | no | - | no | shelved |
-| `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/notification_spool.py` | `notification_spool.js` | yes | yes | yes | no | yes | no | shelved |

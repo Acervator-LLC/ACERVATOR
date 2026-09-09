@@ -32,7 +32,17 @@ DEFAULT_VALUE = "---"
 EMPTY_TEXT = ""
 
 FRAME_SHAPE = "StyledPanel"
-FRAME_STYLE = ""
+FRAME_LINE_WIDTH_PX = 1
+
+# The theme paints these on QFrame[frameShape="6"]; the page reads no theme
+# sheet, so the card carries them.
+FRAME_STYLE = (
+    "border-style: solid; "
+    f"border-width: {FRAME_LINE_WIDTH_PX}px; "
+    f"border-color: {ds.OUTLINE}; "
+    f"border-radius: {ds.RADIUS_SM}px; "
+    f"padding: {ds.SPACE_CARD_PAD}px;"
+)
 
 OUTER_MARGINS_PX = (8, 4, 8, 4)
 OUTER_SPACING_PX = 2
@@ -74,7 +84,17 @@ DOT_REVEALED_STATE = "REVEALED. Click to mask."
 DOT_MASKED_STATE = "MASKED. Click to reveal."
 
 #: The ``dot_view`` fields the card's own dot carries, beside ``align``.
-_DOT_FIELDS = ("field_id", "masked", "text", "tooltip", "style_sheet")
+#: ``cursor_shape`` is the pointing hand the Qt ``PrivacyDot`` sets on itself.
+_DOT_FIELDS = (
+    "field_id",
+    "masked",
+    "text",
+    "tooltip",
+    "style_sheet",
+    "flat",
+    "focus_policy",
+    "cursor_shape",
+)
 
 ACTIONS: dict = {}
 TIMERS: dict = {}
