@@ -1,4 +1,4 @@
-"""``EmptyTabsMixin`` builds the two tabs whose screens are not written yet.
+"""``EmptyTabsMixin`` builds the tabs whose screens are not written yet.
 
 One builder per tab hands ``_add_empty_tab`` a surface, and
 ``_empty_tab_class`` answers with ``EmptyTabQtPanel`` or the React panel for
@@ -16,9 +16,8 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from .. import design_system as ds
 from . import proof_of_accumulation_tab_surface as proof_of_accumulation
-from . import system_status_tab_surface as system_status
 
-EMPTY_TAB_SURFACES = (system_status, proof_of_accumulation)
+EMPTY_TAB_SURFACES = (proof_of_accumulation,)
 
 HEADING_NAME = "empty-tab-heading"
 STATE_NAME = "empty-tab-state"
@@ -109,10 +108,6 @@ class EmptyTabsMixin:
         else:
             self._main_tabs.insertTab(index, panel, model["heading"])
         return panel
-
-    def _build_system_status_tab(self) -> None:
-        """Add the System Status tab to ``_main_tabs``."""
-        self._add_empty_tab(system_status)
 
     def _build_proof_of_accumulation_tab(self) -> None:
         """Add the Proof of Accumulation tab to ``_main_tabs``."""
