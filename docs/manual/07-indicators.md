@@ -1750,6 +1750,178 @@ published 1.0835, so the cell printed `1.083` where the number is `1.084`. The
 ATA-SMP sentence prints four decimals and matched the cut copy exactly, so it
 reads the same on all 3,750.
 
+## 2026-09-08 19:05 - #414 - the RSI label and the RSI vote read one number
+
+Wilder publishes one quantity. It is the share of the last fourteen bars of
+movement that ran upward, on a nought to a hundred scale. The same number
+decides the label a reader sees and the vote the panel casts: above seventy is
+overbought and below thirty is oversold.
+
+```
+gain_t  = max(C_t - C_(t-1), 0)
+loss_t  = max(C_(t-1) - C_t, 0)
+AvgGain = Wilder(gain, 14)
+AvgLoss = Wilder(loss, 14)
+RS      = AvgGain / AvgLoss
+RSI     = 100 - 100 / (1 + RS)
+```
+
+**Functional.** The indicator held two copies of that quantity. It cut one to
+two decimal places and published it, and it kept the whole one for the
+overbought and oversold labels. The vote read the cut copy. A reading of 70.003
+cuts to seventy exactly, and seventy is not above seventy, so the label said
+overbought while the vote said neutral, and the two left the indicator together.
+
+`src/trading/indicators/rsi.py` — the cut, removed
+
+```python
+return {
+    "rsi": round(rsi, 2),
+    "overbought": rsi > 70,
+    "oversold": rsi < 30,
+```
+
+One number now leaves the indicator, and the label, the vote, the strength and
+the published reading all read it. The block marked *Proposed, not present* in
+the [RSI](#rsi) section above is the code in this tree. The rounding has gone
+back to the two places that display a number: the confirming sentence prints two
+decimals and the panel's hover cell prints three.
+
+`src/trading/indicators/rsi.py` — the reading
+
+```python
+return {
+    "rsi": rsi,
+    "rs_indeterminate": rs_indeterminate,
+    "overbought": rsi > 70,
+    "oversold": rsi < 30,
+```
+
+The gap the two copies can disagree in is five thousandths of a point wide,
+just above seventy and again just below thirty. Seventy-one recorded Coinbase
+tapes were run through the voting engine at three millionths of a dollar and
+again at 1234.0, 3,750 readings in all, and not one landed inside it. The
+closest reading to seventy was 70.06, which was already voting bearish.
+
+```
+3,750 readings, 71 tapes, two price scales
+    readings inside 70.000 to 70.005                0
+    readings inside 29.995 to 30.000                0
+    closest reading to seventy                  70.06
+    closest reading to thirty                   29.97
+    the index ran from                  12.6 to 89.45
+```
+
+One bar puts a market inside it. Take any recorded run of forty bars or more and
+ask what final close lands the index on 70.003. Every one of the 2,901 runs
+admits such a close, because the index rises with the last price. Most of those
+bars are large, because most windows sit a long way from seventy: the middle one
+needs a move of nearly twenty-six per cent. Seventy-two of the runs need a bar
+of one per cent or less, and the smallest was half a basis point after 271 real
+days of LINK.
+
+```
+2,901 recorded runs, the final bar each one needs
+    smallest                                   +0.0049%
+    middle                                       25.70%
+    largest                                     334.53%
+    runs needing one per cent or less                72
+    runs needing five per cent or less              272
+```
+
+The smallest is the one to read. Half a basis point is an ordinary tick on a
+market that has already run up to the seventy line.
+
+```
+LINK 2023, 271 recorded bars, then one bar of +0.0049%
+    reading published, before                   70.00
+    reading published, after                   70.003
+    label, before and after                overbought
+    vote, before                              NEUTRAL
+    vote, after                               BEARISH
+    identical at both price scales
+```
+
+**Design intention.** A number that decides something is the number that gets
+published, and a display rounds it at the moment it is shown. Two copies of one
+reading is the shape that lets a label and a vote say different things about the
+same bar while both look correct on their own.
+
+Nothing about the vote moved on the recorded tapes. The reading published now
+differs from the cut copy on all 3,750, by at most five thousandths of a point;
+the direction is the same on every one; the strength moves on 180 of them, by at
+most one ten-thousandth. The panel's consensus moves on 24 readings and the
+other eleven voters do not move at all.
+
+```
+3,750 readings, both price scales
+    reading published differs from computed     3,750
+    vote direction moved                            0
+    vote strength moved                           180
+    overbought or oversold moved                    0
+    panel consensus moved                          24
+    the other eleven voters                         0
+```
+
+No gate changes its mind. Over 30,000 verdicts — both chains, four states of the
+two direction switches — 1,322 fire before the repair and the same 1,322 fire
+after it. The repair only bites inside a window five thousandths wide, the
+recorded tapes never enter it, and the largest strength move anywhere else is
+one ten-thousandth against a confidence floor near a quarter.
+
+Inside the window the gate does change its mind. Every one of the 2,901 runs was
+walked in with its own final bar and put through both chains at both price
+scales: 5,802 readings, and on every one of them the label said overbought while
+the vote said neutral. After the repair not one of them disagrees. Of the 46,416
+verdicts, 60 fire before the repair and six of those stop firing, all on the buy
+side and all the same way.
+
+```
+5,802 constructed readings, 46,416 gate verdicts
+    label disagreeing with the vote, before     5,802
+    label disagreeing with the vote, after          0
+    vote moved from neutral to bearish          5,802
+    verdicts that fire before                      60
+    scrum fires -> scrum refused                    6
+    scrum refused -> scrum fires                    0
+    fold verdicts changed                           0
+    windows                                         3
+        DOT 2023, consensus 0.2002 -> 0.1728, floor 0.1786
+        ETH 2022, consensus 0.2087 -> 0.1813, floor 0.1923
+        MATIC 2022, consensus 0.2286 -> 0.1910, floor 0.1923
+```
+
+All six need the scrum's own bullish requirement switched on. The mechanism is
+the panel: a bearish vote at 0.4001 in place of a neutral one at nought pulls
+the bullish consensus below the confidence floor, and the sell of the surplus is
+refused on a bar the RSI calls overbought.
+
+Ten places read this indicator. Four read the vote and six read the published
+number.
+
+| reader | what its reading becomes |
+| --- | --- |
+| the panel's consensus | the vote and its strength, decided by the number the labels use; direction unchanged on all 3,750 |
+| `ta_engine.py` recorder | records the computed number in place of the cut copy |
+| the trading gate chain | reads the consensus the vote feeds; no verdict moved |
+| `indicator_panel.py` cell | the arrow and the strength percentage; unchanged on all 3,750 |
+| `indicator_panel.py` hover text | prints three decimals; moved on 3,356 of 3,750 |
+| `indicator_panel_surface.py` hover text | moved on the same 3,356 |
+| `ata_spm.py` sentence | prints two decimals; unchanged on all 3,750 |
+| `ta_invariants.py` bound | holds the reading between nought and a hundred; unchanged |
+| `phantom_balance.py` record | stores what the indicator published |
+| `snapshots.py` bot.log line | its headline readings are ADX, Z-Score and Kaufman, so it prints the RSI name and strength only |
+
+The bot's own position boost and the back test both ask a signal for a number,
+and both ask only for ADX, Kaufman and Z-Score. Neither has ever asked this
+indicator for one.
+
+The reading was also published cut to two decimal places, and the panel's hover
+cell prints three. On 3,356 of the 3,750 readings the third decimal the cell
+printed was a nought that the indicator had not computed. The confirming
+sentence prints two decimals, which is exactly what the cut copy carried, so it
+reads the same on every one.
+
 ## Trading gate logic chain
 
 The epigraph on the [title page](01-title.md) reads *dissolvendus
