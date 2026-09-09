@@ -205,7 +205,7 @@ contract CompetitionRegistry is Ownable, ReentrancyGuard {
     function activateCompetition(string calldata compId) external onlyOwner {
         Competition storage c = competitions[compId];
         require(c.status == CompStatus.REGISTRATION, "Registry: not in registration");
-        require(c.participants.length >= 2,          "Registry: need ≥ 2 participants");
+        require(c.participants.length >= 2,          unicode"Registry: need ≥ 2 participants");
         c.status = CompStatus.ACTIVE;
     }
 

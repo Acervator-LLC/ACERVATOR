@@ -162,7 +162,7 @@ contract AcervatorTrophy is ERC721, Ownable {
             marketRegime:  marketRegime,
             merkleRoot:    merkleRoot,
             botWallet:     recipient,
-            mintedAt:      block.timestamp,
+            mintedAt:      block.timestamp
         });
 
         emit TrophyMinted(tokenId, recipient, tier, season,
@@ -202,7 +202,7 @@ contract AcervatorTrophy is ERC721, Ownable {
 
         string memory json = string.concat(
             '{"name":"',
-            m.tierEmoji, ' Acervator Trophy — ', m.tier,
+            m.tierEmoji, unicode' Acervator Trophy — ', m.tier,
             ' #', tokenId.toString(),
             '","description":"',
             'A Proof-of-Accumulation trophy awarded to the bot ranked #',

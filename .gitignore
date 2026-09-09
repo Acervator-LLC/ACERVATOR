@@ -121,3 +121,8 @@ desktop/node_modules/
 # eslint, stylelint and html-validate install here. package-lock.json
 # beside them pins every version.
 /node_modules/
+
+# forge build writes compiled contract artifacts here. foundry.toml names both
+# paths; the contracts in contracts/ are the tracked source.
+/out/
+/cache/
