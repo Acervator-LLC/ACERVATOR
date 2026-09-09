@@ -135,7 +135,6 @@
   var DOT_PART = "indicator-privacy-dot";
   var STALENESS_PART = "indicator-staleness";
   var RATE_PART = "indicator-rate-strip";
-  var MINI_PART = "indicator-mini-panel";
   var TABLE_PART = "indicator-table";
   var HEAD_CELL_PART = "indicator-head-cell";
   var BODY_CELL_PART = "indicator-body-cell";

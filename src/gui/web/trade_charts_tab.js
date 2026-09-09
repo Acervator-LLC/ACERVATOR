@@ -280,8 +280,6 @@
   var ACTION_ATTR = "data-action";
   var ARIA_LABEL = "aria-label";
 
-  var CHANGE_EVENT = "change";
-
   var ZERO = Number(EMPTY);
   var ONE = Number(true);
 
@@ -787,6 +785,7 @@
     var panel = props.panel;
     var style = { display: FLEX, flexDirection: COLUMN, flex: AUTO };
     style.minHeight = height(panel[MINIMUM_HEIGHT]);
+    style.maxHeight = height(panel[MAXIMUM_HEIGHT]);
     var panelProps = { className: PANEL_CLASS, style: style };
     panelProps[PART_ATTR] = PANEL_PART;
     panelProps[BOT_ATTR] = text(props.botId);
@@ -1226,7 +1225,7 @@
   }
 
   function mountedIds() {
-    return held === null ? [] : mountedOrder(held.model);
+    return held === null ? [] : knownOrder(held.model);
   }
 
   function panel(name) {
