@@ -1619,4 +1619,79 @@ control behind the zero above are in
 [the debug report](../../../tests/debug_reports/2026-09-09_metals_and_fx_volume.md).
 
 
+## 2026-09-09 05:10 - #407 - one post per ticker per hour, and the three-candle follow-up
+
+Two rules hold a repost back, and they are separate. The first is the hour cap.
+A ticker reaches one push target once an hour, whatever composed the post. The
+Ready to Send bucket keeps one guard, so a second call on the same ticker is
+refused exactly like a repeat of the first.
+
+`src/trading/ata_spm_push.py` - the hour the guard measures
+
+```python
+def allows(self, now: float, symbol: Any, target: Any) -> bool:
+    """Whether an hour has passed since ``symbol`` last reached ``target``."""
+    gap = self.since(now, symbol, target)
+    return gap is NO_SEND_RECORDED or gap >= SECONDS_PER_HOUR
+```
+
+Every send route reaches it. Post Selected, Post All and Send Bucket Full Auto
+run through phase five, and a post the cap holds records the reason beside the
+target it did not reach.
+
+`src/trading/ata_spm_push.py` - what a held post reports
+
+```python
+REPOST_HELD_FORMAT = (
+    "{symbol} reached {target} {minutes:.0f} minute(s) ago; "
+    "one post per ticker per hour."
+)
+```
+
+The second rule is the follow-up, and only a settled call writes one. Price
+moving the favourable way as far as the confirmation target confirms the call.
+The trend carrying on for three candles in a row fails it. The two outcomes are
+not the same shape, because a continuation is evidence against a reversal call.
+
+`src/trading/ata_spm_push.py` - the candles a failure needs
+
+```python
+CONTINUATION_CANDLE_FLOOR = 3
+```
+
+The count is in the call's own timeframe. Three candles on a daily call is three
+days, and on an hourly call three hours. No wall clock is read, so a daily call
+cannot fail on the afternoon it was made. The earlier number was two, and it is
+stale.
+
+A call short of three candles is not ready. The follow-up then says how far the
+trend has run against the call instead of claiming a result, and no candle is
+invented to reach the floor.
+
+`src/trading/ata_spm_push.py` - the wording a call under the floor carries
+
+```python
+FOLLOW_UP_NOT_READY_FORMAT = (
+    "the trend has held for {run} of the {floor} candles a failure needs, "
+    "last close {close:g}, target {target:g} not reached"
+)
+```
+
+The minimum percent is the confirmation share the settings page already carries,
+listed in the settings table above. No second percentage was added, and no
+threshold deciding whether something publishes is written into the code.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the setting phase seven reads
+
+```python
+SETTING_CONFIRMATION_SHARE = "confirmation_share_pct"
+```
+
+**Figures.** This page carries no figure and this entry adds none. Every figure
+the page already carries is kept; there are none, and the seven earlier entries
+that say so are unchanged. The refusals measured on the send path, the two-candle
+and three-candle cases and the debugger stack are in
+[the debug report](../../../tests/debug_reports/2026-09-09_repost_protection.md).
+
+
 Back to [the subsystem index](README.md).
