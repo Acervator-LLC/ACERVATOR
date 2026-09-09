@@ -1,13 +1,16 @@
 {
-  "name": "acervator-web-analyzers",
+  "name": "acervator-analyzers",
   "private": true,
   "version": "0.0.0",
-  "description": "ESLint, Stylelint and html-validate, invoked by the review archetypes.",
+  "description": "ESLint, Stylelint, html-validate and solhint, plus the Solidity libraries contracts/ imports. Resolved by forge through the libs path in foundry.toml.",
   "devDependencies": {
+    "@chainlink/contracts": "1.5.0",
     "@eslint/js": "10.0.1",
+    "@openzeppelin/contracts": "5.6.1",
     "eslint": "10.10.0",
     "globals": "17.12.0",
     "html-validate": "11.15.0",
+    "solhint": "6.2.4",
     "stylelint": "17.15.0",
     "stylelint-config-recommended": "18.0.0"
   }
