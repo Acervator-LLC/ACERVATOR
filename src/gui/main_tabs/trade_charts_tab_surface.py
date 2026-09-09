@@ -414,14 +414,14 @@ class PanelSink:
     """One chart panel, as the calls the tab makes on it.
 
     Holds what the shipped ``ChartPanel`` and its ``CandlestickChart``
-    hold after those calls: the header text, the candles, the error line,
-    the source attribution, the markers, the floor lines, the two overlay
-    prices and the glow. ``timeframe`` is the combo reading the fetch
-    uses, which ``set_chart_timeframe`` does not move.
+    hold after those calls: the symbol, the header text, the candles, the
+    error line, the source attribution, the markers, the floor lines, the
+    two overlay prices and the glow. ``timeframe`` is the combo reading the
+    fetch uses, which ``set_chart_timeframe`` does not move.
     """
 
     def __init__(self, symbol: Any) -> None:
-        self.built_with = symbol
+        self.symbol = symbol
         self.label = symbol
         self.timeframe = COMBO_TIMEFRAME
         self.chart_timeframe = ""
@@ -476,6 +476,7 @@ class PanelSink:
 
     def set_symbol_property(self, symbol: Any) -> None:
         """Rename the chart through its public setter, which repaints."""
+        self.symbol = symbol
         self.label = symbol
         self.chart_repaints += 1
         self.calls.append(["chart.symbol", symbol])
@@ -548,7 +549,7 @@ class PanelSink:
     def as_values(self) -> dict:
         """Everything this panel holds, as the plain values a reader compares."""
         return {
-            "built_with": self.built_with,
+            "symbol": self.symbol,
             "label": self.label,
             "timeframe": self.timeframe,
             "chart_timeframe": self.chart_timeframe,

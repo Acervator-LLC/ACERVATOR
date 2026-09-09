@@ -1411,6 +1411,24 @@ class Candle:
         self.volume = volume
 
 
+def candle_of(given: dict | Sequence) -> "Candle":
+    """One ``Candle`` from a row of six numbers or a mapping of named prices.
+
+    The Asset Charts tab holds its candles as rows in ``Candle`` field order,
+    which is what it sends over ``native_chart.state``.
+    """
+    if isinstance(given, dict):
+        return Candle(
+            given["time"],
+            given["open"],
+            given["high"],
+            given["low"],
+            given["close"],
+            given.get("volume", 0.0),
+        )
+    return Candle(*given)
+
+
 class TradeMarker:
     """One past trade the chart pins to a candle."""
 
@@ -2086,10 +2104,10 @@ PANE_MODEL = ChartModel()
 def view_model(params: dict) -> dict:
     """Bridge handler for ``native_chart.state``.
 
-    Reads ``reset``, ``symbol``, ``timeframe``, ``candles``, ``positions``,
-    ``markers``, ``steps``, ``width`` and ``height`` from the request
-    parameters. The chart's state persists between calls because the widget
-    does; ``reset`` is what a fresh paint sends.
+    Reads ``reset``, ``symbol``, ``timeframe``, ``source``, ``candles``,
+    ``positions``, ``markers``, ``steps``, ``width`` and ``height`` from the
+    request parameters. The chart's state persists between calls because the
+    widget does; ``reset`` is what a fresh paint sends.
     """
     global PANE_MODEL
     if params.get("reset", False):
@@ -2098,21 +2116,11 @@ def view_model(params: dict) -> dict:
         PANE_MODEL.symbol = params["symbol"]
     if params.get("timeframe") is not None:
         PANE_MODEL.set_timeframe(params["timeframe"])
+    if params.get("source") is not None:
+        PANE_MODEL.set_source_label(params["source"])
     candles = params.get("candles")
     if candles is not None:
-        PANE_MODEL.set_candles(
-            [
-                Candle(
-                    one["time"],
-                    one["open"],
-                    one["high"],
-                    one["low"],
-                    one["close"],
-                    one.get("volume", 0.0),
-                )
-                for one in candles
-            ]
-        )
+        PANE_MODEL.set_candles([candle_of(one) for one in candles])
     positions = params.get("positions")
     if positions is not None:
         PANE_MODEL.set_positions(

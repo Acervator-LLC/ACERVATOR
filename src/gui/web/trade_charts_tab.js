@@ -121,7 +121,6 @@
   var LAST_FETCH = "last_fetch";
   var SYNTHETIC = "synthetic";
 
-  var BUILT_WITH = "built_with";
   var LABEL = "label";
   var TIMEFRAME = "timeframe";
   var CHART_TIMEFRAME = "chart_timeframe";
@@ -574,7 +573,7 @@
     mountProps[PART_ATTR] = CHART_PART;
     mountProps[SLOT_ATTR] = CHART_SLOT;
     mountProps[BOT_ATTR] = text(props.botId);
-    mountProps[SYMBOL_ATTR] = text(panel[BUILT_WITH]);
+    mountProps[SYMBOL_ATTR] = text(panel[SYMBOL]);
     mountProps[CHART_TF_ATTR] = text(panel[CHART_TIMEFRAME]);
     mountProps[CANDLES_ATTR] = text(panel[CANDLE_COUNT]);
     mountProps[MARKERS_ATTR] = text(listField(panel, MARKERS).length);
@@ -843,7 +842,7 @@
   var INFO_FIELDS = [SYMBOL, EXCHANGE_ID, LAST_FETCH];
 
   var PANEL_FIELDS = [
-    BUILT_WITH,
+    SYMBOL,
     LABEL,
     TIMEFRAME,
     CHART_TIMEFRAME,
@@ -1328,16 +1327,20 @@
   }
 
   // Qt builds one ChartPanel inside each panel, so every chart slot asks
-  // native_chart.js for the chart of the symbol its panel was built with.
-  // The surface holds one chart at a time, so the slots are drawn in turn.
-  function renderChartMounts(target) {
+  // native_chart.js for the chart of the symbol its panel follows, with the
+  // candles that panel holds. The panel host draws it, so a chart that does
+  // not register is named on the slot rather than drawn.
+  function renderChartMounts(target, payload) {
+    var host = global.acervatorPanelHost;
     var api = global.acervatorChart;
     var mounts = chartMounts(target);
     var reachable =
       Boolean(global.acervator) && typeof global.acervator.call === "function";
-    if (!api || typeof api.renderChart !== "function" || !reachable) {
+    if (!api || !host || !reachable) {
       return Promise.resolve([]);
     }
+    var panel = objectField(isPlainObject(payload) ? payload : {}, PANEL);
+    var candles = listField(panel, CANDLES);
     var drawn = [];
     var chain = Promise.resolve();
     Array.prototype.forEach.call(mounts, function (mount) {
@@ -1347,12 +1350,16 @@
           return global.acervator.call(api.method, {
             reset: true,
             symbol: symbol,
-            timeframe: mount.getAttribute(CHART_TF_ATTR)
+            timeframe: mount.getAttribute(CHART_TF_ATTR),
+            source: text(panel[SOURCE]),
+            candles: candles,
+            width: mount.clientWidth,
+            height: mount.clientHeight
           });
         })
         .then(function (model) {
           mount.setAttribute(CHILD_ATTR, CHART_SLOT);
-          api.renderChart(mount, model);
+          host.mount(CHART_SLOT, mount, model);
           drawn.push(symbol);
         });
     });
@@ -1368,7 +1375,7 @@
     }
     lastTarget = target;
     var shown = draw(target, element(Tab, { model: payload }));
-    renderChartMounts(target);
+    renderChartMounts(target, payload);
     return shown;
   }
 

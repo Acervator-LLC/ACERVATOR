@@ -602,6 +602,49 @@ candles the tab itself holds, and the symbol it sends is empty. Both values
 belong to the Charts tab file, not to the chart, so the row below keeps `no`
 under Registers in Electron until they are carried across.
 
+### 2026-09-09 01:20 - #128 - the Charts tab hands the chart its data
+
+The chart in the shell draws the price now. The tab passes it the asset it is
+following, the feed name, the candles it is holding and the size of the space
+the chart has, and the shell's panel host does the drawing rather than the tab
+reaching past it.
+
+`src/gui/web/trade_charts_tab.js` — what the chart slot asks for
+
+```javascript
+          return global.acervator.call(api.method, {
+            reset: true,
+            symbol: symbol,
+            timeframe: mount.getAttribute(CHART_TF_ATTR),
+            source: text(panel[SOURCE]),
+            candles: candles,
+            width: mount.clientWidth,
+            height: mount.clientHeight
+          });
+```
+
+The panel carries the asset it follows. It was built once with a blank name and
+renamed only its header line, so the name the chart was asked for was always
+blank.
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` — the panel's own asset
+
+```python
+    def set_symbol_property(self, symbol: Any) -> None:
+        """Rename the chart through its public setter, which repaints."""
+        self.symbol = symbol
+        self.label = symbol
+```
+
+Both builds now draw the same header, the same 180 candles, the same last price
+of 78,623.00, the same three axis prices and the same time axis. The two
+pictures still differ on the indicator lines. The Bollinger bands, the Ichimoku
+cloud and the Vortex, MACD and Stochastic RSI panes draw in the Qt build and in
+neither place in the shell, because nothing hands the chart those five readings
+yet. The eight indicator switches under the Qt chart are absent in the shell for
+the same reason. The row below keeps `no` under Registers in Electron until the
+readings arrive.
+
 `src/gui/theme_engine.py` — the chart tokens each theme carries
 
 ```python
