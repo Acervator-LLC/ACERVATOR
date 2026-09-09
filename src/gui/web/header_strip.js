@@ -162,7 +162,6 @@
 
   var SPENDABLE_MODULE = "spendable_profits";
   var STAT_CARD_MODULE = "dashboard_stat_card";
-  var SPENDABLE_API = "acervatorProfits";
   var STAT_CARD_API = "acervatorStatCard";
   var LOAD_SPENDABLE = "acervatorLoadProfits";
 
@@ -426,6 +425,16 @@
     return listField(layout, CHILD_STRETCH).slice().shift();
   }
 
+  // A QHBoxLayout stretch divides the whole row, so the flex basis is zero
+  // and min-content still holds each slot off its own floor.
+  function withStretch(style, stretch) {
+    if (stretch !== undefined) {
+      style.flexGrow = stretch;
+      style.flexBasis = 0;
+    }
+    return style;
+  }
+
   function cursorOf(card) {
     var name = card[CURSOR];
     return owns(CURSOR_BY_NAME, name) ? CURSOR_BY_NAME[name] : undefined;
@@ -465,9 +474,7 @@
     if (owns(layout, COLUMN_SPACING_PX)) {
       style.gap = length(layout[COLUMN_SPACING_PX]);
     }
-    if (props.stretch !== undefined) {
-      style.flexGrow = props.stretch;
-    }
+    withStretch(style, props.stretch);
     var panelProps = { className: SPENDABLE_CLASS, style: style };
     panelProps[PART_ATTR] = SPENDABLE;
     panelProps[SLOT_ATTR] = SPENDABLE;
@@ -484,9 +491,7 @@
     var style = boxStyle(layout, COLUMN, MARGINS, SPACING);
     withAlign(style, layout, LABEL_ALIGN);
     style.cursor = cursorOf(card);
-    if (props.stretch !== undefined) {
-      style.flexGrow = props.stretch;
-    }
+    withStretch(style, props.stretch);
     var cardProps = { className: CARD_CLASS, style: style, title: label(card[TOOLTIP]) };
     cardProps[PART_ATTR] = COUNTER_PART;
     cardProps[SLOT_ATTR] = text(card[KEY]);
@@ -554,9 +559,7 @@
     var model = isPlainObject(props.button) ? props.button : {};
     var style = styleOf(model[STYLE_SHEET]);
     style.minWidth = length(model[MINIMUM_WIDTH]);
-    if (props.stretch !== undefined) {
-      style.flexGrow = props.stretch;
-    }
+    withStretch(style, props.stretch);
     var buttonProps = {
       className: MODE_CLASS,
       style: style,
@@ -1011,22 +1014,24 @@
     return target.querySelector(selector);
   }
 
-  // Draws spendable_profits.js into the SPENDABLE space.
-  function renderSpendable(target) {
-    var api = global[SPENDABLE_API];
+  // Draws spendable_profits.js into the SPENDABLE space. The panel host does
+  // the drawing, so a module that registers no panel is named on the space
+  // rather than leaving it blank.
+  function renderSpendable(target, model) {
+    var host = global.acervatorPanelHost;
     var space = spaceNamed(target, SPENDABLE);
-    if (!api || typeof api.renderStrip !== "function" || space === null) {
+    if (!host || space === null) {
       return null;
     }
     space.setAttribute(CHILD_ATTR, SPENDABLE_MODULE);
-    return api.renderStrip(space);
+    return host.mount(SPENDABLE_MODULE, space, model) ? space : null;
   }
 
   function mountSpendable(target) {
     var loader = global[LOAD_SPENDABLE];
     var wait = typeof loader === "function" ? loader({}) : Promise.resolve(null);
-    return Promise.resolve(wait).then(function () {
-      return renderSpendable(target) === null ? null : SPENDABLE_MODULE;
+    return Promise.resolve(wait).then(function (model) {
+      return renderSpendable(target, model) === null ? null : SPENDABLE_MODULE;
     });
   }
 

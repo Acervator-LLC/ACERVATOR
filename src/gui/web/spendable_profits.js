@@ -1114,6 +1114,17 @@
     asked = null;
   }
 
+  // header_strip.js draws this strip by its module name; the host reads that
+  // name off the script tag running now. It names no bridge method, so the
+  // tab bar draws no tab for it.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderStrip,
+      load: loadProfits,
+      loadError: loadError
+    });
+  }
+
   global.acervatorSetProfits = setProfits;
   global.acervatorLoadProfits = loadProfits;
   global.acervatorProfits = {
