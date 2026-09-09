@@ -2,9 +2,31 @@
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING
 
+from ..main_tabs.wire_canvas_surface import (
+    ARROW_BACK_PERCENT,
+    ARROW_PERCENT,
+    BADGE_CORNER_PX,
+    BADGE_FILL,
+    CORE_WIDTH_PX,
+    FONT_FAMILY,
+    FONT_SIZE_PT,
+    GLOW_ALPHA,
+    GLOW_WIDTH_PX,
+    MID_GLOW_ALPHA,
+    MID_GLOW_WIDTH_PX,
+    PULSE_ALPHA,
+    PULSE_GRADIENT_RADIUS_PX,
+    PULSE_RADIUS_PX,
+    arrow_points,
+    catenary_curve,
+    label_text,
+    place_badge,
+    point_at,
+    pulse_percent,
+    slack_for_offset,
+)
 from .themes import THEMES
 
 if TYPE_CHECKING:
@@ -87,17 +109,39 @@ if _HAS_QT:
             p.setOpacity(_opacity / 100.0)
             t = THEMES.get(self._viz._theme_key, THEMES["quantum"])
 
-            # --- Draw existing wires ---
+            # Every wire is measured first so place_badge keeps the badges apart.
+            p.setFont(QFont(FONT_FAMILY, FONT_SIZE_PT, QFont.Bold))
+            metrics = p.fontMetrics()
+            hanging: list[tuple] = []
+            badges: list[list] = []
             for wire in self._viz._wires:
                 src = self._viz._get_bot_center(wire["source_id"])
                 tgt = self._viz._get_bot_center(wire["target_id"])
                 if not src or not tgt:
                     continue
-                phase = wire.get("phase", 0)
                 pct = wire.get("pct", 50)
                 offset = self._viz._get_wire_offset(wire)
+                curve = catenary_curve(
+                    (src.x(), src.y()), (tgt.x(), tgt.y()), slack_for_offset(offset)
+                )
+                badge = place_badge(
+                    curve["points"],
+                    curve["flattest"],
+                    metrics.horizontalAdvance(label_text(pct)),
+                    badges,
+                )
+                badges.append(badge)
+                hanging.append((wire, curve, badge))
+
+            for wire, curve, badge in hanging:
                 self._draw_glow_wire(
-                    p, src, tgt, t["accent"], t["accent2"], phase, pct, offset
+                    p,
+                    curve["points"],
+                    badge,
+                    t["accent"],
+                    t["accent2"],
+                    wire.get("phase", 0),
+                    wire.get("pct", 50),
                 )
 
             # --- Draw dragging wire ---
@@ -132,91 +176,61 @@ if _HAS_QT:
         def _draw_glow_wire(
             self,
             p: QPainter,
-            src: QPointF,
-            tgt: QPointF,
+            points: list,
+            badge: list,
             color1: QColor,
             color2: QColor,
             phase: float,
             pct: int,
-            offset: float = 0,
         ):
-            """Draw a glowing animated wire with bezier curve offset."""
-            # Compute control point for bezier curve
-            mid_x = (src.x() + tgt.x()) / 2
-            mid_y = (src.y() + tgt.y()) / 2 + offset
+            """Draw one hanging wire, its travelling dot, arrow and badge.
 
-            # Build bezier path
+            ``points`` is the catenary_curve sample list and ``badge`` the
+            rectangle place_badge found room for.
+            """
             path = QPainterPath()
-            path.moveTo(src)
-            path.quadTo(QPointF(mid_x, mid_y), tgt)
+            path.moveTo(QPointF(points[0][0], points[0][1]))
+            for one in points[1:]:
+                path.lineTo(QPointF(one[0], one[1]))
 
-            # Outer glow (wide, transparent)
             glow = QColor(color1)
-            glow.setAlpha(25)
-            p.setPen(QPen(glow, 8))
+            glow.setAlpha(GLOW_ALPHA)
+            p.setPen(QPen(glow, GLOW_WIDTH_PX))
             p.setBrush(Qt.NoBrush)
             p.drawPath(path)
 
-            # Mid glow
             glow2 = QColor(color1)
-            glow2.setAlpha(50)
-            p.setPen(QPen(glow2, 4))
+            glow2.setAlpha(MID_GLOW_ALPHA)
+            p.setPen(QPen(glow2, MID_GLOW_WIDTH_PX))
             p.drawPath(path)
 
-            # Core wire
-            p.setPen(QPen(color1, 2))
+            p.setPen(QPen(color1, CORE_WIDTH_PX))
             p.drawPath(path)
 
-            # Traveling pulse along bezier curve
-            t_pos = math.sin(phase) * 0.5 + 0.5  # 0..1 oscillation
-            pulse_pt = path.pointAtPercent(t_pos)
-
+            pulse_xy = point_at(points, pulse_percent(phase))
+            pulse_pt = QPointF(pulse_xy[0], pulse_xy[1])
             pulse_color = QColor(color2)
-            pulse_color.setAlpha(200)
-            glow_r = QRadialGradient(pulse_pt.x(), pulse_pt.y(), 12)
+            pulse_color.setAlpha(PULSE_ALPHA)
+            glow_r = QRadialGradient(
+                pulse_pt.x(), pulse_pt.y(), PULSE_GRADIENT_RADIUS_PX
+            )
             glow_r.setColorAt(0, pulse_color)
             glow_r.setColorAt(1, QColor(0, 0, 0, 0))
             p.setBrush(QBrush(glow_r))
             p.setPen(Qt.NoPen)
-            p.drawEllipse(pulse_pt, 8, 8)
+            p.drawEllipse(pulse_pt, PULSE_RADIUS_PX, PULSE_RADIUS_PX)
 
-            # Direction arrow at 70% along the path
-            arrow_pt = path.pointAtPercent(0.7)
-            arrow_prev = path.pointAtPercent(0.65)
-            dx = arrow_pt.x() - arrow_prev.x()
-            dy = arrow_pt.y() - arrow_prev.y()
-            length = math.sqrt(dx * dx + dy * dy) or 1
-            dx /= length
-            dy /= length
-            # Arrow head
-            arrow_size = 6
+            corners = arrow_points(
+                point_at(points, ARROW_PERCENT),
+                point_at(points, ARROW_BACK_PERCENT),
+            )
             p.setPen(QPen(color1, 2))
             p.setBrush(QBrush(color1))
-            arrow = QPolygonF(
-                [
-                    arrow_pt,
-                    QPointF(
-                        arrow_pt.x() - arrow_size * dx + arrow_size * 0.5 * dy,
-                        arrow_pt.y() - arrow_size * dy - arrow_size * 0.5 * dx,
-                    ),
-                    QPointF(
-                        arrow_pt.x() - arrow_size * dx - arrow_size * 0.5 * dy,
-                        arrow_pt.y() - arrow_size * dy + arrow_size * 0.5 * dx,
-                    ),
-                ]
-            )
-            p.drawPolygon(arrow)
+            p.drawPolygon(QPolygonF([QPointF(one[0], one[1]) for one in corners]))
 
-            # Percentage label at curve midpoint
-            label_pt = path.pointAtPercent(0.5)
-            label = f"{pct}%"
-            font = QFont("Consolas", 8, QFont.Bold)
-            p.setFont(font)
-            fm = p.fontMetrics()
-            tw = fm.horizontalAdvance(label) + 8
-            badge = QRectF(label_pt.x() - tw / 2, label_pt.y() - 9, tw, 18)
-            p.setBrush(QBrush(QColor(0, 0, 0, 160)))
+            box = QRectF(badge[0], badge[1], badge[2], badge[3])
+            p.setBrush(QBrush(QColor(*BADGE_FILL)))
             p.setPen(Qt.NoPen)
-            p.drawRoundedRect(badge, 4, 4)
+            p.drawRoundedRect(box, BADGE_CORNER_PX, BADGE_CORNER_PX)
             p.setPen(QPen(color1))
-            p.drawText(badge, Qt.AlignCenter, label)
+            p.drawText(box, Qt.AlignCenter, label_text(pct))

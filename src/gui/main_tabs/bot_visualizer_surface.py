@@ -25,6 +25,8 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from ..visualizer import growth_stage
+
 METHOD = "bot_visualizer.state"
 
 LOGGER_NAME = "acervator.gui.bot_visualizer"
@@ -804,7 +806,8 @@ def _idle_button_text(kind: str) -> str:
 
 # The locust grid and the empty fleet
 
-GRID_COLS = 6
+# 8 columns fits an 88px locust plus GRID_SPACING in the left pane.
+GRID_COLS = 8
 GRID_SPACING = 10
 GRID_MARGINS = (6, 6, 6, 6)
 EMPTY_TEXT = "No active bots. Start bots to see visualizations."
@@ -813,15 +816,9 @@ EMPTY_ALIGNMENT = "AlignCenter"
 GRID_ALIGNMENT = "AlignLeft|AlignTop"
 
 DEFAULT_THEME_KEY = "quantum"
+APP_THEME_FALLBACK = growth_stage.DEFAULT_THEME_NAME
 THEME_KEYS = ("nebula", "matrix", "quantum", "ocean")
 THEME_START_INDEX = 2
-
-VIEW_LIST = "list"
-VIEW_GRID = "grid"
-VIEW_MODES = (VIEW_LIST, VIEW_GRID)
-VIEW_LIST_INDEX = 0
-VIEW_GRID_INDEX = 1
-DEFAULT_VIEW_MODE = VIEW_LIST
 
 OPACITY_MIN_PCT = 0
 OPACITY_MAX_PCT = 100
@@ -839,19 +836,9 @@ def empty_label_row(count: int, cols: int = GRID_COLS) -> int:
     return (count // cols) + 1
 
 
-def view_index(mode: str) -> int:
-    """Which stacked page one view name shows."""
-    return VIEW_GRID_INDEX if mode == VIEW_GRID else VIEW_LIST_INDEX
-
-
-def canvas_visible(mode: str) -> bool:
-    """Whether the wire sheet is shown in one view."""
-    return mode == VIEW_GRID
-
-
-def canvas_shown_on_tab(tab_index: int, mode: str) -> bool:
-    """Whether the wire sheet is shown for one tab and one view."""
-    return tab_index == SWARM_TAB_INDEX and mode == VIEW_GRID
+def canvas_shown_on_tab(tab_index: int) -> bool:
+    """Whether the wire sheet is shown for one sub-tab."""
+    return tab_index == SWARM_TAB_INDEX
 
 
 class FleetGrid:
@@ -939,61 +926,6 @@ def visible_bots(exchanges_by_bot: dict, selected: str) -> dict:
     if not selected:
         return {one: True for one in exchanges_by_bot}
     return {one: eid == selected for one, eid in exchanges_by_bot.items()}
-
-
-# The list view rows
-
-LIST_ROW_KEYS = ("bot_id", "symbol", "inflow_usd", "outflow_usd", "outflow_pct")
-INFLOW_STAT_KEY = "ytd_folded_usd"
-OUTFLOW_STAT_KEY = "ytd_scrummed_usd"
-MISSING_AMOUNT = 0.0
-
-
-def flow_amount(data: dict, key: str) -> float:
-    """One year-to-date total, from the stats or from the status itself.
-
-    A stats value of nothing falls through to the status, and a status
-    value of nothing reads as zero. A stored `True` is a number here and
-    reads as one dollar.
-    """
-    stats = data.get("stats", {}) or {}
-    return float(
-        stats.get(key, MISSING_AMOUNT)
-        or data.get(key, MISSING_AMOUNT)
-        or MISSING_AMOUNT
-    )
-
-
-def outflow_pct_by_bot(wires: list) -> dict:
-    """How much of its profit each bot exports, added over its wires."""
-    found: dict[str, float] = {}
-    for wire in wires:
-        source = str(wire.get("source_id", "") or "")
-        if not source:
-            continue
-        found[source] = found.get(source, MISSING_AMOUNT) + float(
-            wire.get("pct", 0) or 0
-        )
-    return found
-
-
-def list_rows(bot_data: dict, wires: list, masked: bool = False) -> list:
-    """The dense list, one row per bot, with the symbol already masked."""
-    exported = outflow_pct_by_bot(wires)
-    rows = []
-    for bot_id, data in bot_data.items():
-        held = data if isinstance(data, dict) else {}
-        symbol = str(held.get("symbol", "") or "")
-        rows.append(
-            {
-                "bot_id": bot_id,
-                "symbol": mask_or(symbol, masked),
-                "inflow_usd": flow_amount(held, INFLOW_STAT_KEY),
-                "outflow_usd": flow_amount(held, OUTFLOW_STAT_KEY),
-                "outflow_pct": exported.get(bot_id, MISSING_AMOUNT),
-            }
-        )
-    return rows
 
 
 def mask_or(value: Any, masked: bool) -> str:
@@ -1684,16 +1616,10 @@ DOT_CURSOR = "PointingHandCursor"
 
 EXCHANGE_CAPTION = "Exchange:"
 THEME_CAPTION = "Theme:"
-VIEW_CAPTION = "View:"
 WIRES_CAPTION = "Wires:"
-VIEW_LABELS = ("List", "Grid")
 
 EXCHANGE_TOOLTIP = (
     "Filter Bot Swarm visualizer + Quick Routing scope by exchange. Default: All."
-)
-VIEW_TOOLTIP = (
-    "List: dense row-per-bot table with vertical-lane wires "
-    "(the default).\nGrid: locust-avatar swarm view (legacy fallback)."
 )
 OPACITY_TOOLTIP = (
     "Wire opacity 0–100 %. Lower for more contrast on underlying "
@@ -1742,7 +1668,8 @@ SCROLL_STYLE_SHEET = (
     f"background:{VIZ_SWARM_SURFACE_COLOR};}}"
 )
 
-SWARM_LIST_STYLE_SHEET = f"background:{VIZ_SWARM_SURFACE_COLOR};"
+# The ground under the Simulator and Paper layer rows.
+LAYER_LIST_STYLE_SHEET = f"background:{VIZ_SWARM_SURFACE_COLOR};"
 
 
 def summary_box_style_sheet(color: str) -> str:
@@ -1815,10 +1742,10 @@ ACTIONS = {
     "wire_removed": "Take one wire.removed message",
     "remove_wire": "Cut one wire",
     "animate": "Move every wire's glow on by one frame",
-    "set_view_mode": "Switch between the list and the grid",
     "set_opacity": "Set how solid the wires are drawn",
     "set_exchange": "Filter the swarm by exchange",
     "set_theme": "Change the theme every locust is drawn in",
+    "set_app_theme": "Read the growth-stage colours from one app theme",
     "set_masked": "Turn the identifier mask on or off",
     "toggle_privacy_mode": "Turn every mask on, or every mask off",
     "wire_sheet": "Redraw the wires over the locust boxes the page measured",
@@ -1849,8 +1776,8 @@ class BotVisualizerModel:
         self.bench_paper_running = 0
         self.bench_paper_total = 0
         self.bench_paper_capital: Any = DEFAULT_CAPITAL
-        self.view_mode = DEFAULT_VIEW_MODE
         self.opacity_pct = OPACITY_START_PCT
+        self.app_theme_name = APP_THEME_FALLBACK
         self.exchange = ALL_EXCHANGES_VALUE
         self.masked = False
         self.any_masked = False
@@ -1860,7 +1787,6 @@ class BotVisualizerModel:
         }
         self.tab_index = SWARM_TAB_INDEX
         self.log_lines: list[list] = []
-        self.rows_sent: list[list] = []
         self.panel: Optional[dict] = None
         self.sheet: dict = {}
 
@@ -1869,17 +1795,9 @@ class BotVisualizerModel:
         return {LIVE_KIND: self.live, SIM_KIND: self.sim, PAPER_KIND: self.paper}[kind]
 
     def update_bots(self, bot_statuses: list) -> None:
-        """Take one fleet load, then cut the wires of every bot that left.
-
-        The dense list is handed a fresh row set here and nowhere else,
-        so a mask turned on between two loads reaches the list only at
-        the next one.
-        """
+        """Take one fleet load, then cut the wires of every bot that left."""
         for bot_id in self.grid.update_bots(bot_statuses):
             self.board.drop_bot(bot_id)
-        self.rows_sent.append(
-            list_rows(self.grid.bot_data, self.board.wires, self.masked)
-        )
         self.set_exchange(self.exchange)
 
     def set_exchange(self, exchange: str) -> None:
@@ -2073,29 +1991,14 @@ def locust_cards(model: BotVisualizerModel) -> dict:
     return {
         bot_id: bot_node_surface.build_view_model(
             bot_node_surface.BotNodeModel(
-                theme_key=model.grid.theme_key, bot_data=data
+                theme_key=model.grid.theme_key,
+                bot_data=data,
+                app_theme_name=model.app_theme_name,
             ),
             mask=hide,
         )
         for bot_id, data in model.grid.bot_data.items()
     }
-
-
-def swarm_list(model: BotVisualizerModel) -> dict:
-    """The dense list payload, from the rows ``update_bots`` last sent.
-
-    ``bot_swarm_list_surface`` builds it, so the list draws the table and
-    the lane wires the Qt ``BotListView`` and ``LaneWireCanvas`` paint.
-    """
-    from . import bot_swarm_list_surface
-
-    held = bot_swarm_list_surface.BotSwarmListModel()
-    rows = model.rows_sent[-1] if model.rows_sent else []
-    held.bot_list.set_bots([dict(one) for one in rows])
-    held.lane_canvas.set_wires([dict(one) for one in model.board.wires])
-    held.lane_canvas.set_opacity_pct(model.opacity_pct)
-    held.lane_canvas.paint()
-    return bot_swarm_list_surface.build_payload(held)
 
 
 def build_payload(model: BotVisualizerModel) -> dict:
@@ -2227,18 +2130,10 @@ def build_payload(model: BotVisualizerModel) -> dict:
         "default_theme_key": DEFAULT_THEME_KEY,
         "theme_keys": list(THEME_KEYS),
         "theme_start_index": THEME_START_INDEX,
-        "view_modes": list(VIEW_MODES),
-        "view_list_index": VIEW_LIST_INDEX,
-        "view_grid_index": VIEW_GRID_INDEX,
-        "default_view_mode": DEFAULT_VIEW_MODE,
         "opacity_min_pct": OPACITY_MIN_PCT,
         "opacity_max_pct": OPACITY_MAX_PCT,
         "opacity_start_pct": OPACITY_START_PCT,
         "opacity_slider_width_px": OPACITY_SLIDER_WIDTH_PX,
-        "list_row_keys": list(LIST_ROW_KEYS),
-        "inflow_stat_key": INFLOW_STAT_KEY,
-        "outflow_stat_key": OUTFLOW_STAT_KEY,
-        "missing_amount": MISSING_AMOUNT,
         "all_exchanges_label": ALL_EXCHANGES_LABEL,
         "all_exchanges_value": ALL_EXCHANGES_VALUE,
         "revealed_glyph": REVEALED_GLYPH,
@@ -2335,15 +2230,12 @@ def build_payload(model: BotVisualizerModel) -> dict:
         "dot_cursor": DOT_CURSOR,
         "exchange_caption": EXCHANGE_CAPTION,
         "theme_caption": THEME_CAPTION,
-        "view_caption": VIEW_CAPTION,
         "wires_caption": WIRES_CAPTION,
-        "view_labels": list(VIEW_LABELS),
         "exchange_tooltip": EXCHANGE_TOOLTIP,
-        "view_tooltip": VIEW_TOOLTIP,
         "opacity_tooltip": OPACITY_TOOLTIP,
         "description_style_sheet": DESCRIPTION_STYLE_SHEET,
         "scroll_style_sheet": SCROLL_STYLE_SHEET,
-        "swarm_list_style_sheet": SWARM_LIST_STYLE_SHEET,
+        "layer_list_style_sheet": LAYER_LIST_STYLE_SHEET,
         "summary_label_style_sheet": SUMMARY_LABEL_STYLE_SHEET,
         "layer_chrome": {
             one: {
@@ -2361,15 +2253,13 @@ def build_payload(model: BotVisualizerModel) -> dict:
         "threads": list(THREADS),
         "timers": dict(TIMERS),
         "timer_delays_ms": list(TIMER_DELAYS_MS),
-        "view_mode": model.view_mode,
-        "view_index": view_index(model.view_mode),
-        "canvas_visible": canvas_visible(model.view_mode),
-        "canvas_shown": canvas_shown_on_tab(model.tab_index, model.view_mode),
+        "canvas_shown": canvas_shown_on_tab(model.tab_index),
         "opacity_pct": model.opacity_pct,
         "exchange": model.exchange,
         "masked": model.masked,
         "any_masked": model.any_masked,
         "theme_key": model.grid.theme_key,
+        "app_theme_name": model.app_theme_name,
         "privacy_glyph": privacy_glyph(model.masked),
         "privacy_mode_text": model.privacy_mode_shown["text"],
         "privacy_mode_style_sheet": model.privacy_mode_shown["style_sheet"],
@@ -2381,11 +2271,9 @@ def build_payload(model: BotVisualizerModel) -> dict:
         "exchange_items": exchange_items(exchanges),
         "ids_in_scope": ids_in_scope(exchanges, model.exchange),
         "visible_bots": visible_bots(exchanges, model.exchange),
-        "rows_sent": [[dict(one) for one in sent] for sent in model.rows_sent],
         "wires": [dict(one) for one in model.board.wires],
         "wire_count": len(model.board.wires),
         "locust_cards": locust_cards(model),
-        "swarm_list": swarm_list(model),
         "wire_sheet": dict(model.sheet),
         "overlay_style": dict(OVERLAY_STYLE),
         "bot_symbols": {
@@ -2469,14 +2357,14 @@ def apply_action(model: BotVisualizerModel, params: dict) -> dict:
         model.board.remove(params.get("source_id", ""), params.get("target_id", ""))
     elif action == "animate":
         model.board.advance(float(params.get("dt", 0.0)))
-    elif action == "set_view_mode":
-        model.view_mode = str(params.get("mode", DEFAULT_VIEW_MODE))
     elif action == "set_opacity":
         model.opacity_pct = int(params.get("pct", OPACITY_START_PCT))
     elif action == "set_exchange":
         model.set_exchange(str(params.get("exchange", ALL_EXCHANGES_VALUE)))
     elif action == "set_theme":
         model.grid.set_theme(str(params.get("theme_key", DEFAULT_THEME_KEY)))
+    elif action == "set_app_theme":
+        model.app_theme_name = str(params.get("name") or APP_THEME_FALLBACK)
     elif action == "set_masked":
         model.toggle_identifier_mask(params.get("masked"))
     elif action == "toggle_privacy_mode":

@@ -48,6 +48,7 @@
   var PAINT_BRANCHES = "paint_branches";
   var CALLS = "calls";
   var CARD = "card";
+  var GROWTH = "growth";
 
   var DECLARED_FIELDS = [
     ABDOMEN,
@@ -67,6 +68,7 @@
     FONT,
     FORMATS,
     GLOW,
+    GROWTH,
     HEAD,
     LABELS,
     LEGS,

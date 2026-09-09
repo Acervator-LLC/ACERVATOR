@@ -33,11 +33,30 @@ import math
 from typing import Any, Callable, Optional
 
 from ...core.fmt import fmt_pnl, fmt_price
+from ..visualizer.growth_stage import (
+    BODY_SCALE_RATIO,
+    CROWN_SPINE_COUNT,
+    DEFAULT_THEME_NAME,
+    MATURE_FLOOR_PCT,
+    STAGE_FLOOR_PCT,
+    STAGE_INITIALS,
+    STAGE_LABELS,
+    STAGE_NAMES,
+    STAGE_SOURCE,
+    TERGITE_COUNT,
+    WING_SPREAD_RATIO,
+    growth_pct_from_stats,
+    growth_text,
+    id_text_color,
+    stage_colors,
+    stage_for,
+    stage_table,
+)
 
 METHOD = "bot_node.state"
 
-MIN_WIDTH_PX = 112
-MIN_HEIGHT_PX = 98
+MIN_WIDTH_PX = 88
+MIN_HEIGHT_PX = 78
 
 RENDER_HINT = "Antialiasing"
 RENDER_HINT_VALUE = 1
@@ -205,6 +224,8 @@ PULSE_FLOOR = 0
 ANTENNA_DRIVE_START = 1.0
 ANTENNA_DECAY_PER_S = 1.0
 ANTENNA_DRIVE_FLOOR = 0.0
+# A still card redraws every 4th frame of the 33 ms timer, which is 7.5 Hz.
+REPAINT_INTERVAL_S = 0.125
 
 PARTICLE_COUNT = 5
 PARTICLE_VELOCITY_MIN = -30
@@ -263,7 +284,6 @@ ABDOMEN_PEN_WIDTH_PX = 1
 
 SEGMENT_COLOR = (0, 0, 0, 120)
 SEGMENT_PEN_WIDTH_PX = 1
-SEGMENT_COUNT = 3
 SEGMENT_TOP_U = 2
 SEGMENT_STEP_U = 4
 SEGMENT_TAPER_U = 5.5
@@ -323,6 +343,27 @@ CIRCUIT_DOT_X_U = (-4, 4)
 CIRCUIT_DOT_Y_U = -7
 CIRCUIT_DOT_RADIUS_PX = 1.2
 
+CROWN_SPINE_LENGTH_U = 3.0
+CROWN_SPINE_SPREAD_U = 2.4
+CROWN_SPINE_BASE_U = 12
+CROWN_PEN_WIDTH_PX = 1
+CROWN_CENTRE_SHARE = 0.5
+CROWN_SPAN = 2
+
+ABDOMEN_STAGE_BASE_ALPHA = 150
+ABDOMEN_STAGE_BASE_SWING = 105
+ABDOMEN_STAGE_TIP_ALPHA = 90
+ABDOMEN_STAGE_TIP_SWING = 90
+THORAX_STAGE_CENTRE_ALPHA = 150
+THORAX_STAGE_EDGE_ALPHA = 60
+
+STAGE_BADGE_FONT_SIZE_PT = 6
+STAGE_BADGE_INSET_PX = 2
+STAGE_BADGE_WIDTH_PX = 10
+STAGE_BADGE_HEIGHT_PX = 9
+GROWTH_RECT_BOTTOM_PX = 31
+GROWTH_RECT_HEIGHT_PX = 9
+
 FONT_FAMILY = "Consolas"
 SYMBOL_FONT_SIZE_PT = 7
 PNL_FONT_SIZE_PT = 7
@@ -342,7 +383,6 @@ PNL_RECT_HEIGHT_PX = 11
 BOT_ID_RECT_BOTTOM_PX = 10
 BOT_ID_RECT_HEIGHT_PX = 9
 RECT_LEFT_PX = 0
-BOT_ID_COLOR = (110, 110, 140, OPAQUE_ALPHA)
 
 MASK_FIELD_ID = "bot_swarm.identifiers"
 BOT_ID_LABEL_CHARS = 8
@@ -364,6 +404,8 @@ TOOLTIP_FORMAT = (
     "Price: {price}\n"
     "Volume: {volume}\n"
     "P/L: {pnl}\n"
+    "Stage: {stage}\n"
+    "Realised growth: {growth}\n"
     "Bot: {bot_id}"
 )
 
@@ -427,6 +469,11 @@ UPDATE_CARD = "card.update"
 SET_TOOLTIP = "card.set_tooltip"
 ROUTE_NAMES = (UPDATE_CARD, SET_TOOLTIP)
 
+HEX_DIGITS = 2
+HEX_CHANNELS = (1, 3, 5)
+
+STAGE_BRANCHES = {name: "stage." + name for name in STAGE_NAMES}
+
 PAINT_NOTHING = "paint.nothing"
 PAINT_WHOLE = "paint.whole"
 WING_RUNNING = "wing.running"
@@ -435,6 +482,11 @@ WING_HALF = "wing.half"
 WING_PULSED = "wing.pulsed"
 PULSE_RING = "pulse.ring"
 PARTICLE_DRAWN = "particle.drawn"
+CROWN_DRAWN = "crown.drawn"
+GROWTH_SHOWN = "growth.shown"
+GROWTH_ABSENT = "growth.absent"
+REPAINT_DRAWN = "repaint.drawn"
+REPAINT_HELD = "repaint.held"
 PNL_POSITIVE = "pnl.positive"
 PNL_NEGATIVE = "pnl.negative"
 STATE_KNOWN = "state.known"
@@ -453,6 +505,11 @@ PAINT_BRANCHES = (
     WING_PULSED,
     PULSE_RING,
     PARTICLE_DRAWN,
+    CROWN_DRAWN,
+    GROWTH_SHOWN,
+    GROWTH_ABSENT,
+    REPAINT_DRAWN,
+    REPAINT_HELD,
     PNL_POSITIVE,
     PNL_NEGATIVE,
     STATE_KNOWN,
@@ -462,7 +519,7 @@ PAINT_BRANCHES = (
     VOLUME_PLAIN,
     PRICE_SHOWN,
     PRICE_HIDDEN,
-)
+) + tuple(STAGE_BRANCHES[name] for name in STAGE_NAMES)
 
 THEME_STEP = "theme"
 DATA_STEP = "data"
@@ -494,6 +551,14 @@ def plain_text(value: Any, field_id: str, mask: str = "****") -> str:
 def as_point(value: Any) -> list:
     """One position as the pair of decimals the drawing library stores."""
     return [float(value[0]), float(value[1])]
+
+
+def hex_color(value: Any) -> list:
+    """One `#rrggbb` theme token as the four numbers a drawing call takes."""
+    digits = str(value).lstrip("#")
+    return [
+        int(digits[at : at + HEX_DIGITS], 16) for at in (0, HEX_DIGITS, 2 * HEX_DIGITS)
+    ] + [OPAQUE_ALPHA]
 
 
 def as_color(value: Any) -> list:
@@ -648,18 +713,18 @@ class PathBuilder:
         if not self.elements:
             return self
         self.needs_move = True
-        first = self.elements[self.start_index]
-        last = self.elements[-1]
-        if first[1] == last[1] and first[2] == last[2]:
+        opening = self.elements[self.start_index]
+        ending = self.elements[-1]
+        if opening[1] == ending[1] and opening[2] == ending[2]:
             return self
         if (
-            abs(first[1] - last[1]) < CLOSE_SNAP_LIMIT
-            and abs(first[2] - last[2]) < CLOSE_SNAP_LIMIT
+            abs(opening[1] - ending[1]) < CLOSE_SNAP_LIMIT
+            and abs(opening[2] - ending[2]) < CLOSE_SNAP_LIMIT
         ):
-            last[1] = first[1]
-            last[2] = first[2]
+            ending[1] = opening[1]
+            ending[2] = opening[2]
             return self
-        self.elements.append([LINE_TO_ELEMENT, first[1], first[2]])
+        self.elements.append([LINE_TO_ELEMENT, opening[1], opening[2]])
         return self
 
     def parts(self) -> list:
@@ -786,7 +851,9 @@ def volume_text(volume: Any) -> tuple:
     return VOLUME_PLAIN_FORMAT.format(value=volume), VOLUME_PLAIN
 
 
-def body_parts(cx: Any, cy: Any, scale: Any, wing_open: Any) -> dict:
+def body_parts(
+    cx: Any, cy: Any, scale: Any, wing_open: Any, wing_ratio: Any = 1.0
+) -> dict:
     """The five shapes the insect body is drawn from.
 
     Every measurement below is in units of `scale`, which is the card's
@@ -824,8 +891,8 @@ def body_parts(cx: Any, cy: Any, scale: Any, wing_open: Any) -> dict:
     abdomen.close()
     parts["abdomen"] = abdomen.parts()
 
-    spread = WING_SPREAD_U * u + wing_open * WING_SPREAD_OPEN_U * u
-    lift = wing_open * WING_LIFT_U * u
+    spread = (WING_SPREAD_U * u + wing_open * WING_SPREAD_OPEN_U * u) * wing_ratio
+    lift = wing_open * WING_LIFT_U * u * wing_ratio
 
     wing_l = PathBuilder()
     wing_l.move_to(cx - 4 * u, cy - 10 * u)
@@ -914,6 +981,7 @@ class BotNodeModel:
         trade_pulses: Any = None,
         particles: Any = None,
         antenna_drive: Any = ANTENNA_DRIVE_FLOOR,
+        app_theme_name: Any = DEFAULT_THEME_NAME,
     ) -> None:
         self.width_px = width_px
         self.height_px = height_px
@@ -927,6 +995,8 @@ class BotNodeModel:
             for one in (particles or [])
         ]
         self.antenna_drive = antenna_drive
+        self.app_theme_name = str(app_theme_name or DEFAULT_THEME_NAME)
+        self.since_repaint = 0.0
         self.tooltip: Optional[str] = None
         self.calls: list = []
         self.draw_calls: list = []
@@ -970,8 +1040,12 @@ class BotNodeModel:
             self.antenna_drive = ANTENNA_DRIVE_START
         self.bot_data = data
 
-    def animate(self, dt: Any) -> None:
-        """Move the card on by `dt` seconds and redraw it."""
+    def animate(self, dt: Any) -> bool:
+        """Move the card on by `dt` seconds; return whether it redrew.
+
+        A card holding a trade ring or a speck redraws on every call, and an
+        otherwise still card redraws every REPAINT_INTERVAL_S.
+        """
         self.phase += dt * PHASE_RATE_PER_S
         self.trade_pulses = [
             one - dt * PULSE_DECAY_PER_S
@@ -986,7 +1060,13 @@ class BotNodeModel:
         self.antenna_drive = max(
             ANTENNA_DRIVE_FLOOR, self.antenna_drive - dt * ANTENNA_DECAY_PER_S
         )
+        self.since_repaint += dt
+        busy = bool(self.trade_pulses or self.particles)
+        if not busy and self.since_repaint < REPAINT_INTERVAL_S:
+            return False
+        self.since_repaint = 0.0
         self.calls.append([UPDATE_CARD])
+        return True
 
     def paint(self, mask: Optional[Callable] = None) -> list:
         """Build the drawing programme and return it.
@@ -1034,7 +1114,14 @@ class BotNodeModel:
             pnl_color = colors["error"]
             self.paint_branches.append(PNL_NEGATIVE)
 
-        scale = min(width, height) / SCALE_DIVISOR
+        growth_pct = growth_pct_from_stats(stats)
+        stage = stage_for(growth_pct)
+        body_hex, trim_hex = stage_colors(stage, self.app_theme_name)
+        body_color = hex_color(body_hex)
+        trim_color = hex_color(trim_hex)
+        self.paint_branches.append(STAGE_BRANCHES[stage])
+
+        scale = min(width, height) / SCALE_DIVISOR * BODY_SCALE_RATIO[stage]
         wing_open, wing_branches = wing_openness(state, self.phase, self.trade_pulses)
         self.paint_branches.extend(wing_branches)
 
@@ -1062,7 +1149,7 @@ class BotNodeModel:
             )
             self.paint_branches.append(PARTICLE_DRAWN)
 
-        parts = body_parts(cx, cy, scale, wing_open)
+        parts = body_parts(cx, cy, scale, wing_open, WING_SPREAD_RATIO[stage])
 
         calls.append(no_pen())
         calls.append(
@@ -1115,25 +1202,31 @@ class BotNodeModel:
                     [
                         GRADIENT_CENTRE_STOP,
                         with_alpha(
-                            pnl_color,
-                            int(ABDOMEN_BASE_ALPHA + ABDOMEN_BASE_SWING * magnitude),
+                            body_color,
+                            int(
+                                ABDOMEN_STAGE_BASE_ALPHA
+                                + ABDOMEN_STAGE_BASE_SWING * magnitude
+                            ),
                         ),
                     ],
                     [
                         GRADIENT_EDGE_STOP,
                         with_alpha(
-                            pnl_color,
-                            int(ABDOMEN_TIP_ALPHA + ABDOMEN_TIP_SWING * magnitude),
+                            trim_color,
+                            int(
+                                ABDOMEN_STAGE_TIP_ALPHA
+                                + ABDOMEN_STAGE_TIP_SWING * magnitude
+                            ),
                         ),
                     ],
                 ],
             ]
         )
-        calls.append(solid_pen(pnl_color, ABDOMEN_PEN_WIDTH_PX))
+        calls.append(solid_pen(trim_color, ABDOMEN_PEN_WIDTH_PX))
         calls.append([DRAW_PATH, parts["abdomen"]])
 
         calls.append(solid_pen(SEGMENT_COLOR, SEGMENT_PEN_WIDTH_PX))
-        for index in range(1, SEGMENT_COUNT + 1):
+        for index in range(1, TERGITE_COUNT[stage]):
             y_seg = cy + (SEGMENT_TOP_U + index * SEGMENT_STEP_U) * scale
             taper = SEGMENT_TAPER_U - index * SEGMENT_TAPER_STEP_U
             calls.append(
@@ -1143,6 +1236,33 @@ class BotNodeModel:
                     as_point((cx + taper * scale, y_seg)),
                 ]
             )
+
+        spines = CROWN_SPINE_COUNT[stage]
+        if spines:
+            calls.append(solid_pen(trim_color, CROWN_PEN_WIDTH_PX))
+            for index in range(spines):
+                share = index / (spines - 1) if spines > 1 else CROWN_CENTRE_SHARE
+                spine_x = (
+                    cx
+                    + (share - CROWN_CENTRE_SHARE)
+                    * CROWN_SPAN
+                    * CROWN_SPINE_SPREAD_U
+                    * scale
+                )
+                calls.append(
+                    [
+                        DRAW_LINE,
+                        as_point((spine_x, cy - CROWN_SPINE_BASE_U * scale)),
+                        as_point(
+                            (
+                                spine_x,
+                                cy
+                                - (CROWN_SPINE_BASE_U + CROWN_SPINE_LENGTH_U) * scale,
+                            )
+                        ),
+                    ]
+                )
+                self.paint_branches.append(CROWN_DRAWN)
 
         calls.append(
             [
@@ -1303,8 +1423,43 @@ class BotNodeModel:
             ]
         )
 
+        written_growth = growth_text(growth_pct)
+        self.paint_branches.append(
+            GROWTH_ABSENT if growth_pct is None else GROWTH_SHOWN
+        )
+        calls.append(
+            [SET_FONT, FONT_FAMILY, STAGE_BADGE_FONT_SIZE_PT, FONT_WEIGHT_BOLD]
+        )
+        calls.append([SET_PEN_COLOR, trim_color])
+        calls.append(
+            [
+                DRAW_TEXT,
+                [
+                    float(width - STAGE_BADGE_INSET_PX - STAGE_BADGE_WIDTH_PX),
+                    float(STAGE_BADGE_INSET_PX),
+                    float(STAGE_BADGE_WIDTH_PX),
+                    float(STAGE_BADGE_HEIGHT_PX),
+                ],
+                ALIGN_CENTER,
+                STAGE_INITIALS[stage],
+            ]
+        )
+        calls.append(
+            [
+                DRAW_TEXT,
+                [
+                    float(RECT_LEFT_PX),
+                    float(height - GROWTH_RECT_BOTTOM_PX),
+                    float(width),
+                    float(GROWTH_RECT_HEIGHT_PX),
+                ],
+                ALIGN_CENTER,
+                written_growth,
+            ]
+        )
+
         calls.append([SET_FONT, FONT_FAMILY, BOT_ID_FONT_SIZE_PT, FONT_WEIGHT_NORMAL])
-        calls.append([SET_PEN_COLOR, as_color(BOT_ID_COLOR)])
+        calls.append([SET_PEN_COLOR, hex_color(id_text_color(self.app_theme_name))])
         bot_id_short = data.get(BOT_ID_KEY, NO_BOT_ID)[:BOT_ID_LABEL_CHARS]
         calls.append(
             [
@@ -1336,6 +1491,8 @@ class BotNodeModel:
             price=price_text,
             volume=written,
             pnl=fmt_pnl(pnl),
+            stage=STAGE_LABELS[stage],
+            growth=written_growth,
             bot_id=hide(
                 str(data.get(BOT_ID_KEY, NO_BOT_ID))[:BOT_ID_TOOLTIP_CHARS],
                 MASK_FIELD_ID,
@@ -1360,6 +1517,8 @@ class BotNodeModel:
             "trade_pulses": list(self.trade_pulses),
             "particles": [one.state() for one in self.particles],
             "antenna_drive": self.antenna_drive,
+            "app_theme_name": self.app_theme_name,
+            "since_repaint": self.since_repaint,
             "tooltip": self.tooltip,
         }
 
@@ -1426,6 +1585,26 @@ def build_view_model(
                 name: list(value) for name, value in LEG_FALLBACK_COLORS.items()
             },
         },
+        "growth": {
+            "source": STAGE_SOURCE,
+            "stages": list(STAGE_NAMES),
+            "labels": dict(STAGE_LABELS),
+            "initials": dict(STAGE_INITIALS),
+            "floor_pct": dict(STAGE_FLOOR_PCT),
+            "mature_floor_pct": MATURE_FLOOR_PCT,
+            "body_scale_ratio": dict(BODY_SCALE_RATIO),
+            "crown_spine_count": dict(CROWN_SPINE_COUNT),
+            "app_theme_name": model.app_theme_name,
+            "colors": stage_table(model.app_theme_name),
+            "absent_text": growth_text(None),
+            "badge_font_size_pt": STAGE_BADGE_FONT_SIZE_PT,
+            "badge_inset_px": STAGE_BADGE_INSET_PX,
+            "badge_width_px": STAGE_BADGE_WIDTH_PX,
+            "badge_height_px": STAGE_BADGE_HEIGHT_PX,
+            "rect_bottom_px": GROWTH_RECT_BOTTOM_PX,
+            "rect_height_px": GROWTH_RECT_HEIGHT_PX,
+            "repaint_interval_s": REPAINT_INTERVAL_S,
+        },
         "data_keys": {
             "stats": STATS_KEY,
             "state": STATE_KEY,
@@ -1482,6 +1661,7 @@ def build_view_model(
             "pen_width_px": WING_PEN_WIDTH_PX,
             "pen_style": WING_PEN_STYLE,
             "spread_u": WING_SPREAD_U,
+            "spread_ratio": {name: WING_SPREAD_RATIO[name] for name in STAGE_NAMES},
             "spread_open_u": WING_SPREAD_OPEN_U,
             "lift_u": WING_LIFT_U,
             "tip_ratio": WING_TIP_RATIO,
@@ -1514,7 +1694,7 @@ def build_view_model(
         "segments": {
             "color": list(SEGMENT_COLOR),
             "pen_width_px": SEGMENT_PEN_WIDTH_PX,
-            "count": SEGMENT_COUNT,
+            "tergite_count": {name: TERGITE_COUNT[name] for name in STAGE_NAMES},
             "top_u": SEGMENT_TOP_U,
             "step_u": SEGMENT_STEP_U,
             "taper_u": SEGMENT_TAPER_U,
@@ -1597,7 +1777,7 @@ def build_view_model(
             "pnl_height_px": PNL_RECT_HEIGHT_PX,
             "bot_id_bottom_px": BOT_ID_RECT_BOTTOM_PX,
             "bot_id_height_px": BOT_ID_RECT_HEIGHT_PX,
-            "bot_id_color": list(BOT_ID_COLOR),
+            "bot_id_color": hex_color(id_text_color(model.app_theme_name)),
         },
         "privacy": {
             "field_id": MASK_FIELD_ID,
