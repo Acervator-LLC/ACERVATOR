@@ -1512,4 +1512,111 @@ not kept in the repository. The readings, the venue measurements and the six
 program errors are in
 [the debug report](../../../tests/debug_reports/2026-09-09_non_crypto_timeframes.md).
 
+## 2026-09-09 04:40 - #407 - metals scans a listed instrument, and a voter says when it abstains
+
+A metals sector now returns votes. It used to return one line saying no venue
+lists anything, and that line is still there beside the votes.
+
+**The four spot pairs stay in the map, and they stay unlisted.** Gold spot is a
+dealer market with no public listing, so no free venue carries it. All four
+spellings answered HTTP 404 again on 2026-09-09. What the map lacked was the
+instrument a venue does carry for each of those four metals.
+
+`src/trading/ata_asset_maps.py` — the listed instrument for each metal
+
+```python
+METALS_PHYSICAL: tuple[AssetListing, ...] = tuple(
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    for one in ("GLD", "SLV", "PPLT", "PALL")
+)
+```
+
+**The map carries the funds and not the futures.** Both answer a full year of
+daily bars. A futures chart longer than a few months joins two or more contracts
+together, and every join is a price step nobody traded. This platform sells
+against a dollar target, so an invented step moves every level behind it. A fund
+holds the metal, prices in dollars, and has no expiry and no roll.
+
+The futures also carry gaps in their own volume. Measured on 2026-09-09, over
+275 daily bars each:
+
+```
+GC=F      4 bars with no volume        GLD    0 bars with no volume
+SI=F      7 bars with no volume        SLV    0 bars with no volume
+PL=F    132 bars with no volume        PPLT   0 bars with no volume
+PA=F    129 bars with no volume        PALL   0 bars with no volume
+```
+
+**The sentence above saying metals scans nothing describes the code before this
+change.** It is kept as written. The rows below are what a metals sector reports
+now, from a run driven through Scan Now on 2026-09-09.
+
+```
+assets scanned : GLD  SLV  PPLT  PALL
+unlisted       : XAU/USD  XAG/USD  XPT/USD  XPD/USD
+
+1hr    4 votes    78 bars each    2026-08-24 to 2026-09-08
+1d     4 votes   250 bars each    2025-09-10 to 2026-09-08
+1wk    4 votes   201 bars each    2022-11-14 to 2026-09-08
+1mnth  4 votes   198 bars each    2010-05-01 to 2026-09-08
+
+Phase 3 Pull: 1 sector(s), 2 call(s), 2 chart(s)
+```
+
+**Every FX pair the map names sends volume 0, and one voter now says so.** The
+venue sent no volume on any of 2,676 daily bars across ten pairs. Two of the
+twelve voters read volume. The volume voter already abstains on such a series,
+and a run on a market that does send volume proves it still votes.
+
+`src/trading/indicators/zscore.py` — which of the two values the reading holds
+
+```python
+smoothed = _vwma(z_series, z_volumes, self.smoothing_period)
+z_volume_weighted = smoothed is not None
+z = z_raw if smoothed is None else smoothed
+```
+
+**No currency-future volume is served as a pair's volume.** The seven CME
+contracts do carry real volume on the same endpoint, and a contract's volume is
+not the pair's. Spot currency trading has no single published volume anywhere.
+An abstention states what is true; a stand-in number would not.
+
+**The daily open is kept in every formula that reads it.** Three read it: the
+volume voter, Heikin Ashi and the landing strip. The open on a currency bar sits
+well away from the previous close, and a fund's open sits further away still, as
+a share of its own day's range.
+
+```
+FX spot mean       gap to previous close = 0.587 of the bar range
+metal fund mean    gap to previous close = 0.700 of the bar range
+
+rows where the open falls outside its own bar    FX   10 of 1,981
+rows where the close falls outside its own bar   FX   79 of 1,981
+                                                 fund  0 of 1,096
+```
+
+A fund opens at an auction, so its open is a traded price beyond doubt, and it
+gaps more than a currency open does. A gap of this size is what any daily bar
+does when the market stops trading between bars. Each of the three formulae is
+the published one, and none of them changed.
+
+**Nothing the gate chain decides moved.** Both chains ran over eleven markets
+before and after, at 21 gate readings each.
+
+```
+gate verdicts compared    231
+gate verdicts changed       0
+
+metals gate readings before    0, the sector scanned no asset
+metals gate readings now      84
+```
+
+**Figures.** This page carries no figure and this entry adds none. Every figure
+the page already carries is kept; there are none, and the five earlier entries
+that say so are unchanged. The charts the run rendered are produced output and
+are not kept in the repository. The venue measurements, the two voters and the
+control behind the zero above are in
+[the debug report](../../../tests/debug_reports/2026-09-09_metals_and_fx_volume.md).
+
+
 Back to [the subsystem index](README.md).

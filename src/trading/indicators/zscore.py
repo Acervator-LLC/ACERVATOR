@@ -132,7 +132,10 @@ class ZScoreIndicator:
 
         sma, std, z_raw = last_window
 
+        # A venue sending no volume leaves `_vwma` None, so `z` is `z_raw`
+        # and `z_volume_weighted` publishes which of the two `z` holds.
         smoothed = _vwma(z_series, z_volumes, self.smoothing_period)
+        z_volume_weighted = smoothed is not None
         z = z_raw if smoothed is None else smoothed
 
         # A previous window with no range leaves `z_prev` at `z_raw`, which
@@ -203,6 +206,7 @@ class ZScoreIndicator:
                 "mild_low": mild_low,
                 "z_reverting": z_reverting,
                 "z_raw": z_raw,
+                "z_volume_weighted": z_volume_weighted,
                 "target_z_high": target_z_high,
                 "target_z_low": target_z_low,
                 "resistance_price": resistance_price,
