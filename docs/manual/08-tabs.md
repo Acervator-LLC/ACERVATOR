@@ -734,7 +734,7 @@ rather than typed.
 | `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/bot_swarm_list.py` | removed | - | - | - | - | - | - | deleted |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | no | yes | yes | in scope |
@@ -1389,19 +1389,20 @@ class LaneWireCanvas(QWidget):
 class BotSwarmLaneAllocator:
 ```
 
-Two files that carried the List View payload stayed. `bot_swarm_list_surface.py`
-and `bot_swarm_list.js` are the fleet picker the bot settings shell mounts, and
-its bridge method and manifest line answer that shell, not the Swarm tab.
+List View is removed whole. The surface `bot_swarm_list_surface.py` and the
+module `bot_swarm_list.js` are deleted. The bridge method, the manifest line
+and the renderer page's script tag that reached them are gone.
 
-`src/gui/web/bot_swarm_tab.js` — the shell that still reads the list module
+`src/gui/web/bot_swarm_tab.js` — the shell that still names the list globals
 
 ```javascript
   var LIST_API = "acervatorSwarmList";
   var LIST_LOADER = "acervatorLoadBotSwarmList";
 ```
 
-The Swarm tab stopped loading that module. Its script list is one entry shorter
-and the page carries no list mount.
+Nothing defines those two globals now. The bot settings shell reads them in
+four places and guards every read, so the list region draws nothing and
+raises nothing.
 
 `src/gui/react_bot_swarm_tab.py` — `TAB_SCRIPT_ASSETS`, the tail
 
