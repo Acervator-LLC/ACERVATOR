@@ -1233,7 +1233,7 @@ rather than typed.
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | - | yes | shell | in scope |
 | `src/gui/history_qt_table.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/history_tab.py` | `history_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | yes | yes | shell | in scope |
 | `src/gui/init_wizard.py` | `init_wizard.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/instance_consent_dialog.py` | `instance_consent_dialog.js` | yes | no | yes | no | yes | no | shelved |
 | `src/gui/journal_tab.py` | `journal_tab.js` | yes | yes | yes | no | yes | no | shelved |
@@ -1245,23 +1245,23 @@ rather than typed.
 | `src/gui/live_settings/fold_tranches_tab.py` | `fold_tranches_tab.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/live_settings/market_inspector_tab.py` | `market_inspector_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/live_settings/phantom_bots_tab.py` | `phantom_bots_tab.js` | yes | yes | yes | - | yes | yes | in scope |
-| `src/gui/live_settings/positions_held_tab.py` | no | - | no | no | no | - | yes | in scope |
+| `src/gui/live_settings/positions_held_tab.py` | no | - | no | no | no | - | - | in scope |
 | `src/gui/live_settings/settings_tab.py` | `live_settings_tab.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/live_settings/stack_tranches_tab.py` | `stack_tranches_tab.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/live_settings/status_tab.py` | no | - | yes | no | no | - | yes | in scope |
 | `src/gui/main_tabs/audio_suite_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/buy_confirmation_surface.py` | no | - | yes | no | no | - | no | React side |
-| `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | yes | - | yes | in scope |
+| `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | yes | - | - | in scope |
 | `src/gui/main_tabs/console_tab.py` | `console_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/empty_tabs.py` | `system_status_tab.js`, `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
-| `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | - | in scope |
 | `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | no | yes | in scope |
 | `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | shell | in scope |
 | `src/gui/paper_trader_tab.py` | `paper_trader_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
@@ -1289,17 +1289,17 @@ rather than typed.
 | `src/gui/widgets/__init__.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/widgets/api_tester_tab.py` | `api_tester_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/widgets/bot_selection.py` | `bot_selection.js` | yes | yes | yes | no | yes | no | not a screen |
-| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | - | yes | yes | in scope |
+| `src/gui/widgets/bot_status_table.py` | `bot_status_table.js` | yes | yes | yes | - | yes | - | in scope |
 | `src/gui/widgets/capital_registry_panel.py` | no | - | no | no | no | - | no | shelved |
 | `src/gui/widgets/dashboard_stat_card.py` | `dashboard_stat_card.js` | yes | yes | yes | - | yes | yes | in scope |
-| `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes | - | in scope |
+| `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | - | in scope |
 | `src/gui/widgets/notification_spool.py` | `notification_spool.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | yes | yes | shell | in scope |
+| `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | shell | in scope |
 The Simulator rebuild removed the files above; they are not in the tree.
 
 Totals across the 76 rows above, measured on 5 September 2026:
@@ -2253,3 +2253,55 @@ strip is drawn by its parent rather than held by name.
 The Qt tables are drawn by the theme, not by the tab, so the page draws no grid
 lines, no alternating row bands and no header underline. Those live in the Qt
 style sheet for every table in the application and reach no payload.
+
+### 2026-09-09 13:08 - #128 - the RENDERS column reads what the running build draws
+
+The running program answers this column, not the table. The table marks 42 rows
+in scope. The reading covered 38 of them. 26 agree with the cell they carried.
+12 do not, and every one of the 12 claims more than the operator gets. No row
+claims less. Four rows carry no reading, and each keeps the cell it carried.
+
+```
+rows marked in scope       42
+measured                   38
+  agree                    26
+  disagree                 12
+could not measure           4    bot_wizard, header_strip,
+                                 market_inspector_topologies, visualizer/themes
+```
+
+Ten cells change here. Six drop to a dash and four drop to `shell`.
+
+| Qt file | before | after | what the running build draws |
+| --- | --- | --- | --- |
+| `src/gui/main_tabs/trading_tab.py` | yes | - | `_build_trading_tab` gives the Live tab a page with no web view |
+| `src/gui/widgets/exchange_tab.py` | yes | - | `ExchangeTab` is that page |
+| `src/gui/widgets/bot_status_table.py` | yes | - | `BotStatusTable` sits inside that page |
+| `src/gui/widgets/extractor_bot_table.py` | yes | - | `ExtractorBotTable` sits inside that page |
+| `src/gui/live_settings/positions_held_tab.py` | yes | - | `BotLiveSettingsReactDialog` carries seven tab labels and none of them is Positions Held |
+| `src/gui/main_tabs/console_log_handler.py` | yes | - | the window installs `_QtLogHandler` on the root logger |
+| `src/gui/widgets/trade_charts_tab.py` | yes | shell | `TradeChartsTab` is the Charts tab, and `trade_charts_tab.js` draws in the Electron shell alone |
+| `src/gui/native_chart.py` | yes | shell | `ChartPanel` and `CandlestickChart` draw inside that tab, and `native_chart.js` draws in the shell alone |
+| `src/gui/indicator_panel.py` | yes | shell | `IndicatorVotingPanel` is the voting panel, and `indicator_panel.js` draws in the shell alone |
+| `src/gui/widgets/status_log.py` | yes | shell | `StatusLog` is the log pane, and `status_log.js` draws in the shell alone |
+
+Two of the twelve keep the cell they carry. The news strip cell already reads
+`shell`. The Main Window cell keeps `yes`, because none of the three values
+fits what that window draws.
+
+The Main Window is a React tab book inside a Qt frame, with a Qt menu bar and a
+Qt status bar, and `MainWindow` in `src/gui/main_window.py` builds all three.
+
+```
+MainWindow._setup_ui           builds the tab book from the variant seam
+MainWindow._setup_menu         builds the Qt menu bar
+MainWindow._setup_status_bar   builds the Qt status bar
+```
+
+The 42 in-scope cells now read:
+
+```
+yes      30
+shell     5
+-         7
+```
