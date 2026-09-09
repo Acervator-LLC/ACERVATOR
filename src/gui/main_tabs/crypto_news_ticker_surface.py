@@ -31,7 +31,9 @@ renderer reaches it. Nothing here imports Qt.
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass
+from functools import partial
 from typing import Callable, Optional
 
 from defusedxml import DefusedXmlException
@@ -809,6 +811,12 @@ class CryptoNewsTickerModel:
 
 PANE_MODEL: Optional[CryptoNewsTickerModel] = None
 
+PANE_FETCHER: Optional[Callable[[], list]] = None
+
+FETCH_THREAD_NAME = "acervator-news-fetch"
+
+FETCH_THREAD: Optional[threading.Thread] = None
+
 
 def build_model(headlines=None, clock=None) -> CryptoNewsTickerModel:
     """One strip already holding `headlines`, for a fresh paint."""
@@ -818,12 +826,48 @@ def build_model(headlines=None, clock=None) -> CryptoNewsTickerModel:
     return model
 
 
+def use_fetch(request_factory, opener, clock: Callable[[], float]) -> None:
+    """Hold the transport ``pane_model`` builds its strip's fetch from.
+
+    An existing ``PANE_MODEL`` takes ``PANE_FETCHER`` too, so a second
+    ``use_fetch`` keeps the headlines that strip holds.
+    """
+    global PANE_FETCHER
+    PANE_FETCHER = partial(fetch_all, request_factory, opener, clock=clock)
+    if PANE_MODEL is not None:
+        PANE_MODEL.fetcher = PANE_FETCHER
+
+
 def pane_model() -> CryptoNewsTickerModel:
     """The strip this process is showing, built on the first request."""
     global PANE_MODEL
     if PANE_MODEL is None:
-        PANE_MODEL = CryptoNewsTickerModel()
+        PANE_MODEL = CryptoNewsTickerModel(fetcher=PANE_FETCHER)
     return PANE_MODEL
+
+
+def fetch_running() -> bool:
+    """Whether ``FETCH_THREAD`` is still running ``run_worker``.
+
+    A ``FETCH_THREAD`` that returned or raised reports False here.
+    """
+    return FETCH_THREAD is not None and FETCH_THREAD.is_alive()
+
+
+def start_fetch(model: CryptoNewsTickerModel) -> Optional[threading.Thread]:
+    """Run ``model.run_worker`` away from the request that asked for it.
+
+    Answers None while ``fetch_running``, so many requests carrying ``start``
+    leave one ``FETCH_THREAD`` alive.
+    """
+    global FETCH_THREAD
+    if model.worker is None or fetch_running():
+        return None
+    FETCH_THREAD = threading.Thread(
+        target=model.run_worker, name=FETCH_THREAD_NAME, daemon=True
+    )
+    FETCH_THREAD.start()
+    return FETCH_THREAD
 
 
 def source_view(source: NewsSource) -> dict:
@@ -968,7 +1012,7 @@ def view_model(params: dict) -> dict:
     """
     global PANE_MODEL
     if params.get("reset", False):
-        PANE_MODEL = CryptoNewsTickerModel()
+        PANE_MODEL = CryptoNewsTickerModel(fetcher=PANE_FETCHER)
     model = pane_model()
     if params.get("now") is not None:
         moment = float(params["now"])
@@ -978,6 +1022,7 @@ def view_model(params: dict) -> dict:
         model.on_headlines([headline_from(row) for row in headlines])
     if params.get("start", False):
         model.start()
+        start_fetch(model)
     if params.get("hover") is not None:
         model.handle_event(EVENT_ENTER if params["hover"] else EVENT_LEAVE)
     for _step in range(int(params.get("advance", 0))):

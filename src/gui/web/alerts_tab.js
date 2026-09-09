@@ -459,8 +459,12 @@
 
   // -- a group box ---------------------------------------------------------
 
+  // A QGroupBox colour paints its title; the widgets inside keep their own.
   function Group(props) {
-    var style = merged(styleOf(props.sheet), {
+    var sheet = styleOf(props.sheet);
+    var painted = sheet[COLOR];
+    delete sheet[COLOR];
+    var style = merged(sheet, {
       display: FLEX,
       flexDirection: COLUMN,
       flexGrow: props.stretch,
@@ -469,7 +473,7 @@
     });
     var groupProps = { style: style };
     groupProps[PART_ATTR] = GROUP_PART;
-    var titleProps = { style: { flex: NONE } };
+    var titleProps = { style: { flex: NONE, color: painted } };
     titleProps[PART_ATTR] = GROUP_TITLE_PART;
     return element(
       DIV_TAG,

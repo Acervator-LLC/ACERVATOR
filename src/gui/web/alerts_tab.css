@@ -1,0 +1,22 @@
+/* React Notifications and Alerts chrome: the page ground and the words every
+ * part inherits, which Qt takes from its QWidget rule. Every group box, table
+ * cell, label and button colour arrives on the element from the Python
+ * payload, so no rule here may set one.
+ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.4 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}

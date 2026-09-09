@@ -30,6 +30,7 @@ import logging
 import math
 import sys
 import threading
+import time
 from collections import deque
 from typing import Any, BinaryIO, Callable, Deque, Dict, Union
 
@@ -187,6 +188,7 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
     A ``live`` ``LiveSystem`` rebinds the surfaces that read it; with
     ``live`` omitted every handler reads only its own params.
     """
+    from src.core.safe_url import SafeRequest, safe_urlopen
     from src.exchange import history_surface
     from src.gui.main_tabs import (
         alerts_tab_surface,
@@ -361,6 +363,7 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         registry[spendable_profits_surface.METHOD] = (
             spendable_profits_surface.bind_live(live)
         )
+    crypto_news_ticker_surface.use_fetch(SafeRequest, safe_urlopen, time.monotonic)
     return registry
 
 

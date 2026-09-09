@@ -26,6 +26,7 @@
   var KIND = "kind";
   var NEWS_TICKER_BUILT = "news_ticker_built";
   var NEWS_TICKER_MODULE_FIELD = "news_ticker_module";
+  var NEWS_TICKER_STARTED = "news_ticker_started";
   var NEWS_TICKER_STRETCH = "news_ticker_stretch";
   var NEW_BOT_PARAM = "new_bot_param";
   var BOT_WIZARD_OPEN = "bot_wizard_open";
@@ -123,7 +124,7 @@
     CLOSE_BOT_WIZARD_PARAM,
     NEWS_TICKER_BUILT,
     "news_ticker_failed_log",
-    "news_ticker_started",
+    NEWS_TICKER_STARTED,
     NEWS_TICKER_STRETCH,
     NEWS_TICKER_MODULE_FIELD,
     "no_bot_id",
@@ -1429,10 +1430,20 @@
     return api.mount(target);
   }
 
+  // ExchangeTab starts the strip as it builds it, so the request carries
+  // the start whenever news_ticker_started counts one.
+  function tickerRequest(model) {
+    var started = model[NEWS_TICKER_STARTED];
+    return typeof started === "number" && started > ZERO ? { start: true } : {};
+  }
+
   function mountNewsTicker(target, model) {
     var named = text(paramNamed(model, NEWS_TICKER_MODULE_FIELD));
     var loader = global[LOAD_TICKER];
-    var wait = typeof loader === "function" ? loader({}) : Promise.resolve(null);
+    var wait =
+      typeof loader === "function"
+        ? loader(tickerRequest(model))
+        : Promise.resolve(null);
     return Promise.resolve(wait).then(function () {
       return renderNewsTicker(target, named) === null ? null : named;
     });
