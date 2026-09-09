@@ -43,6 +43,30 @@ RA_TIMEFRAME: str = "1d"
 
 DAY_MS: int = 86_400_000
 
+HOUR_MS: int = 3_600_000
+
+#: The chart endpoint's own interval spelling for each ATA-SPM timeframe key.
+YAHOO_INTERVALS: dict[str, str] = {
+    "1h": "1h",
+    RA_TIMEFRAME: "1d",
+    "1w": "1wk",
+    "1M": "1mo",
+}
+
+#: No measured limit on how far back one interval reaches.
+UNCAPPED_REACH_DAYS: int = 0
+
+#: Days each ``YAHOO_INTERVALS`` key reaches; 1h answered 729 and refused 730.
+YAHOO_REACH_DAYS: dict[str, int] = {
+    "1h": 729,
+    RA_TIMEFRAME: UNCAPPED_REACH_DAYS,
+    "1w": UNCAPPED_REACH_DAYS,
+    "1M": UNCAPPED_REACH_DAYS,
+}
+
+#: Milliseconds one bar covers, for the keys whose bar is a fixed length.
+YAHOO_STEP_MS: dict[str, int] = {"1h": HOUR_MS, RA_TIMEFRAME: DAY_MS}
+
 RA_CHUNK_DAYS: int = 300
 """Coinbase Exchange returns at most 300 candles per request."""
 
@@ -80,9 +104,26 @@ def _get_json(url: str, params: dict[str, Any], timeout_s: float) -> Any:
         return json.loads(response.read().decode("utf-8"))
 
 
+def _floor_to_step_ms(ts_ms: int, step_ms: int) -> int:
+    """Return ``ts_ms`` moved back to the start of its own ``step_ms`` period."""
+    return ts_ms - (ts_ms % step_ms)
+
+
 def _floor_to_day_ms(ts_ms: int) -> int:
     """Return ``ts_ms`` moved back to the UTC midnight of its own day."""
-    return ts_ms - (ts_ms % DAY_MS)
+    return _floor_to_step_ms(ts_ms, DAY_MS)
+
+
+def _last_per_stamp(rows: list[list[float]]) -> list[list[float]]:
+    """One row per timestamp, keeping the last, oldest first.
+
+    A running period the endpoint sends twice floors onto one ``YAHOO_STEP_MS``
+    step, so ``_rows_from_series`` would otherwise carry both.
+    """
+    held: dict[float, list[float]] = {}
+    for row in rows:
+        held[row[0]] = row
+    return [held[ts] for ts in sorted(held)]
 
 
 def year_bounds_ms(year: int) -> tuple[int, int]:
@@ -157,10 +198,11 @@ class CoinbasePublicCandles:
 
 
 class YahooChartAdapter(ExchangeAdapter):
-    """Daily non-crypto candles from the Yahoo Finance chart endpoint.
+    """Non-crypto candles from the Yahoo Finance chart endpoint.
 
-    ``ticker_suffix`` reaches a ticker the endpoint spells with a suffix, and
-    ``fetch_chunk`` retries a transient failure ``retry_max`` times.
+    ``fetch_chunk`` serves every ``YAHOO_INTERVALS`` key, clamps ``since_ms``
+    to ``YAHOO_REACH_DAYS``, and retries a transient failure ``retry_max``
+    times; ``ticker_suffix`` reaches a ticker the endpoint spells with one.
     """
 
     exchange_id = "yahoo"
@@ -181,6 +223,18 @@ class YahooChartAdapter(ExchangeAdapter):
         """Return the endpoint's ticker for ``asset``, with ``ticker_suffix``."""
         return f"{asset.upper()}{self._ticker_suffix}"
 
+    @staticmethod
+    def reach_start_ms(timeframe: str, since_ms: int, end_ms: int) -> int:
+        """The oldest millisecond ``timeframe`` reaches, never before ``since_ms``.
+
+        A key whose ``YAHOO_REACH_DAYS`` row is ``UNCAPPED_REACH_DAYS`` keeps
+        ``since_ms``, so only the hourly window is moved forward.
+        """
+        reach = YAHOO_REACH_DAYS.get(timeframe, UNCAPPED_REACH_DAYS)
+        if reach == UNCAPPED_REACH_DAYS:
+            return int(since_ms)
+        return max(int(since_ms), int(end_ms) - reach * DAY_MS)
+
     async def fetch_chunk(
         self,
         asset: str,
@@ -189,23 +243,29 @@ class YahooChartAdapter(ExchangeAdapter):
         until_ms: int,
         timeframe: str = RA_TIMEFRAME,
     ) -> FetchAttempt:
-        """Fetch one daily range for ``asset`` and return a ``FetchAttempt``."""
-        if timeframe != RA_TIMEFRAME:
+        """Fetch one range of ``timeframe`` candles and return a ``FetchAttempt``."""
+        interval = YAHOO_INTERVALS.get(str(timeframe))
+        if interval is None:
             return FetchAttempt(
                 since_ms=since_ms,
                 until_ms=until_ms,
-                error=f"{self.exchange_id} serves {RA_TIMEFRAME} only, not {timeframe}",
+                error=(
+                    f"{self.exchange_id} serves {sorted(YAHOO_INTERVALS)}, "
+                    f"not {timeframe}"
+                ),
             )
         ticker = self.ticker_for(asset)
+        end_ms = int(until_ms) + DAY_MS
+        start_ms = self.reach_start_ms(str(timeframe), int(since_ms), end_ms)
 
         async def _fetch_once() -> Any:
             return await asyncio.to_thread(
                 _get_json,
                 f"{self.BASE_URL}/{ticker}",
                 {
-                    "period1": since_ms // 1000,
-                    "period2": (until_ms + DAY_MS) // 1000,
-                    "interval": RA_TIMEFRAME,
+                    "period1": start_ms // 1000,
+                    "period2": end_ms // 1000,
+                    "interval": interval,
                 },
                 self._timeout_s,
             )
@@ -218,7 +278,7 @@ class YahooChartAdapter(ExchangeAdapter):
                 until_ms=until_ms,
                 error=f"{type(exc).__name__}: {exc}",
             )
-        return self._read_payload(payload, quote, since_ms, until_ms)
+        return self._read_payload(payload, quote, start_ms, until_ms, str(timeframe))
 
     async def _with_retry(
         self,
@@ -253,6 +313,7 @@ class YahooChartAdapter(ExchangeAdapter):
         quote: str,
         since_ms: int,
         until_ms: int,
+        timeframe: str = RA_TIMEFRAME,
     ) -> FetchAttempt:
         """Turn one chart response into a ``FetchAttempt``."""
         chart = (payload or {}).get("chart") or {}
@@ -274,7 +335,9 @@ class YahooChartAdapter(ExchangeAdapter):
             )
         stamps = result.get("timestamp") or []
         quotes = (result.get("indicators") or {}).get("quote") or [{}]
-        candles = self._rows_from_series(stamps, quotes[0], since_ms, until_ms)
+        candles = self._rows_from_series(
+            stamps, quotes[0], since_ms, until_ms, timeframe
+        )
         return FetchAttempt(since_ms=since_ms, until_ms=until_ms, candles=candles)
 
     @staticmethod
@@ -283,8 +346,14 @@ class YahooChartAdapter(ExchangeAdapter):
         series: dict,
         since_ms: int,
         until_ms: int,
+        timeframe: str = RA_TIMEFRAME,
     ) -> list[list[float]]:
-        """Return the rows inside the window, dropping every day with a null."""
+        """Return the rows inside the window, dropping every bar with a null.
+
+        A ``YAHOO_STEP_MS`` key floors its stamps to that step; ``1w`` and
+        ``1M`` carry no fixed step and keep the stamp the endpoint sent.
+        """
+        step_ms = YAHOO_STEP_MS.get(timeframe)
         opens = series.get("open") or []
         highs = series.get("high") or []
         lows = series.get("low") or []
@@ -300,13 +369,14 @@ class YahooChartAdapter(ExchangeAdapter):
             )
             if stamp is None or any(v is None for v in values):
                 continue
-            ts_ms = _floor_to_day_ms(int(stamp) * 1000)
+            raw_ms = int(stamp) * 1000
+            ts_ms = _floor_to_step_ms(raw_ms, step_ms) if step_ms else raw_ms
             if ts_ms < since_ms or ts_ms > until_ms:
                 continue
             volume = volumes[i] if i < len(volumes) and volumes[i] is not None else 0.0
             rows.append([ts_ms, *(float(v) for v in values), float(volume)])
         rows.sort(key=lambda r: r[0])
-        return rows
+        return _last_per_stamp(rows) if step_ms else rows
 
 
 @dataclass
@@ -578,10 +648,15 @@ class RaTabletBuilder:
 
 __all__ = [
     "DAY_MS",
+    "HOUR_MS",
     "RA_CHUNK_DAYS",
     "RA_STONE_TABLETS_DIR",
     "RA_TIMEFRAME",
     "RETRYABLE_HTTP_CODES",
+    "UNCAPPED_REACH_DAYS",
+    "YAHOO_INTERVALS",
+    "YAHOO_REACH_DAYS",
+    "YAHOO_STEP_MS",
     "CoinbasePublicCandles",
     "RaCoinbaseAdapter",
     "RaTabletBuilder",

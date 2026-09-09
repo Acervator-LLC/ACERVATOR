@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from ..exchange.market_inspector_fetcher import DAILY_BARS
+from ..exchange.market_inspector_fetcher import DAILY_BARS, WEEKLY_BARS
 from .ata_spm import (
     CLASS_CRYPTO,
     CLASS_DERIVATIVES,
@@ -22,7 +23,12 @@ from .ata_spm import (
     CLASS_STOCKS,
 )
 from .indicators.types import CandleDomainError, candles_from_raw
-from .stone_tablets.ra_fetcher import RA_TIMEFRAME, DAY_MS, YahooChartAdapter
+from .stone_tablets.ra_fetcher import (
+    RA_TIMEFRAME,
+    DAY_MS,
+    YAHOO_INTERVALS,
+    YahooChartAdapter,
+)
 
 logger = logging.getLogger("acervator.ata_asset_maps")
 
@@ -40,16 +46,34 @@ VENUE_EXCHANGE = "exchange"
 NO_VENUE = ""
 
 #: The timeframes each venue answers. ``YahooChartAdapter.fetch_chunk`` refuses
-#: every key outside ``RA_TIMEFRAME``, and ``_fetch_one_symbol`` keys its
+#: every key outside ``YAHOO_INTERVALS``, and ``_fetch_one_symbol`` keys its
 #: candles by the daily and weekly pair.
 VENUE_TIMEFRAMES: dict[str, tuple[str, ...]] = {
-    VENUE_YAHOO: (RA_TIMEFRAME,),
+    VENUE_YAHOO: tuple(YAHOO_INTERVALS),
     VENUE_EXCHANGE: (RA_TIMEFRAME, "1w"),
 }
 
 #: The daily depth ``fetch_htf_universe`` reads for crypto, so both classes
 #: vote over one window length.
 VENUE_WINDOW_DAYS: int = DAILY_BARS
+
+#: Days one bar of each ``VENUE_TIMEFRAMES`` key covers.
+TIMEFRAME_BAR_DAYS: dict[str, float] = {
+    "1h": 1.0 / 24.0,
+    RA_TIMEFRAME: 1.0,
+    "1w": 7.0,
+    "1M": 30.0,
+}
+
+#: Bars each key is asked for, the two depths ``_fetch_one_symbol`` already reads.
+TIMEFRAME_BARS_ASKED: dict[str, int] = {
+    "1h": DAILY_BARS,
+    RA_TIMEFRAME: DAILY_BARS,
+    "1w": WEEKLY_BARS,
+    "1M": WEEKLY_BARS,
+}
+
+MIN_WINDOW_DAYS: int = 1
 
 SECTOR_MAJOR = "major"
 SECTOR_MINOR = "minor"
@@ -195,11 +219,24 @@ def _adapter_for(venue: str) -> Optional[YahooChartAdapter]:
     return None
 
 
-def venue_candles(symbol: Any, timeframe: Any, days: int = VENUE_WINDOW_DAYS) -> list:
+def venue_window_days(timeframe: Any) -> int:
+    """The days one timeframe is asked over, from its bar target and bar length.
+
+    ``TIMEFRAME_BARS_ASKED`` bars of ``TIMEFRAME_BAR_DAYS`` each, never under
+    ``MIN_WINDOW_DAYS``; a key neither map names reads ``VENUE_WINDOW_DAYS``.
+    """
+    key = str(timeframe)
+    if key not in TIMEFRAME_BARS_ASKED or key not in TIMEFRAME_BAR_DAYS:
+        return VENUE_WINDOW_DAYS
+    asked = TIMEFRAME_BARS_ASKED[key] * TIMEFRAME_BAR_DAYS[key]
+    return max(MIN_WINDOW_DAYS, math.ceil(asked))
+
+
+def venue_candles(symbol: Any, timeframe: Any, days: int = 0) -> list:
     """The candles the venue listing ``symbol`` answers over the last ``days``.
 
-    A symbol no map names, a row carrying ``NO_VENUE``, and a timeframe the
-    venue does not serve all answer no candles.
+    A ``days`` of zero reads ``venue_window_days``; a symbol no map names, a
+    row carrying ``NO_VENUE`` and an unserved timeframe answer no candles.
     """
     found = listing_of(symbol)
     if found is None or not found.listed or not found.serves(timeframe):
@@ -207,12 +244,13 @@ def venue_candles(symbol: Any, timeframe: Any, days: int = VENUE_WINDOW_DAYS) ->
     adapter = _adapter_for(found.venue)
     if adapter is None:
         return []
+    window = int(days) or venue_window_days(timeframe)
     now_ms = int(time.time() * 1000)
     attempt = asyncio.run(
         adapter.fetch_chunk(
             found.ticker,
             found.quote,
-            now_ms - int(days) * DAY_MS,
+            now_ms - window * DAY_MS,
             now_ms,
             timeframe=str(timeframe),
         )
@@ -252,11 +290,14 @@ __all__ = [
     "MAPS",
     "MAP_SOURCES",
     "METALS_SPOT",
+    "MIN_WINDOW_DAYS",
     "NO_VENUE",
     "SECTOR_EXOTIC",
     "SECTOR_MAJOR",
     "SECTOR_MINOR",
     "SECTOR_SPOT",
+    "TIMEFRAME_BARS_ASKED",
+    "TIMEFRAME_BAR_DAYS",
     "VENUE_EXCHANGE",
     "VENUE_TIMEFRAMES",
     "VENUE_WINDOW_DAYS",
@@ -266,4 +307,5 @@ __all__ = [
     "listings_for",
     "sectors_for",
     "venue_candles",
+    "venue_window_days",
 ]

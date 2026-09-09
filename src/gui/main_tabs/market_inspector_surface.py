@@ -952,7 +952,10 @@ def phase_one_rows(scan: Any) -> list:
                 PHASE_ONE_NAME,
                 ata_spm.timeframe_label(one.timeframe),
                 ata_spm.TIMEFRAME_VOTE_FORMAT.format(
-                    votes=len(one.votes), unread=len(one.unread)
+                    votes=len(one.votes),
+                    unread=len(one.unread),
+                    short=len(getattr(one, "short", ()) or ()),
+                    floor=ata_spm.MIN_CANDLES_TO_VOTE,
                 ),
             )
             for one in scan.timeframes
