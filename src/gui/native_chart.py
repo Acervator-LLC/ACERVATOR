@@ -2046,6 +2046,18 @@ if _HAS_QT:
             """Schedule the widget's own repaint."""
             self.update()
 
+        def set_candles(self, candles: list[Candle]) -> None:
+            """Take the candles, then give the sub-panes they filled their height.
+
+            The first candles decide which sub-panes hold a series, so the
+            height the chart needs is only known once they have arrived.
+            """
+            super().set_candles(candles)
+            try:
+                self._apply_height_for_panes()
+            except Exception as exc:
+                logger.debug("chart height not re-applied on candles: %s", exc)
+
         def _apply_height_for_panes(self) -> None:
             """Raise the minimum height to ``_natural_height_for_panes``.
 

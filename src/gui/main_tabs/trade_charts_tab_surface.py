@@ -35,6 +35,12 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
+from .native_chart_surface import INDICATOR_DEFAULTS as PANEL_INDICATOR_DEFAULTS
+from .native_chart_surface import INDICATOR_TOGGLES as PANEL_INDICATOR_TOGGLES
+from .native_chart_surface import INDICATOR_ROW_SPACING_PX as PANEL_TOGGLE_GAP_PX
+from .native_chart_surface import LEGEND_INVISIBLE_TEXT as PANEL_LEGEND_INVISIBLE
+from .native_chart_surface import LEGEND_SPACING_PX as PANEL_LEGEND_GAP_PX
+from .native_chart_surface import LEGEND_ON_BOOK_TEXT as PANEL_LEGEND_ON_BOOK
 from .native_chart_surface import TIMEFRAMES as PANEL_TIMEFRAME_OPTIONS
 
 METHOD = "trade_charts_tab.state"
@@ -414,14 +420,14 @@ class PanelSink:
     """One chart panel, as the calls the tab makes on it.
 
     Holds what the shipped ``ChartPanel`` and its ``CandlestickChart``
-    hold after those calls: the header text, the candles, the error line,
-    the source attribution, the markers, the floor lines, the two overlay
-    prices and the glow. ``timeframe`` is the combo reading the fetch
-    uses, which ``set_chart_timeframe`` does not move.
+    hold after those calls: the symbol, the header text, the candles, the
+    error line, the source attribution, the markers, the floor lines, the
+    two overlay prices and the glow. ``timeframe`` is the combo reading the
+    fetch uses, which ``set_chart_timeframe`` does not move.
     """
 
     def __init__(self, symbol: Any) -> None:
-        self.built_with = symbol
+        self.symbol = symbol
         self.label = symbol
         self.timeframe = COMBO_TIMEFRAME
         self.chart_timeframe = ""
@@ -476,6 +482,7 @@ class PanelSink:
 
     def set_symbol_property(self, symbol: Any) -> None:
         """Rename the chart through its public setter, which repaints."""
+        self.symbol = symbol
         self.label = symbol
         self.chart_repaints += 1
         self.calls.append(["chart.symbol", symbol])
@@ -548,7 +555,7 @@ class PanelSink:
     def as_values(self) -> dict:
         """Everything this panel holds, as the plain values a reader compares."""
         return {
-            "built_with": self.built_with,
+            "symbol": self.symbol,
             "label": self.label,
             "timeframe": self.timeframe,
             "chart_timeframe": self.chart_timeframe,
@@ -1517,6 +1524,20 @@ def build_view_model(
             "timeframe_options": list(PANEL_TIMEFRAME_OPTIONS),
             "minimum_height_px": PANEL_MINIMUM_HEIGHT_PX,
             "maximum_height_px": PANEL_MAXIMUM_HEIGHT_PX,
+        },
+        "panel_chrome": {
+            "toggles": [
+                {
+                    "key": key,
+                    "label": label,
+                    "color": colour,
+                    "checked": PANEL_INDICATOR_DEFAULTS[key],
+                }
+                for key, label, colour in PANEL_INDICATOR_TOGGLES
+            ],
+            "legend": [PANEL_LEGEND_INVISIBLE, PANEL_LEGEND_ON_BOOK],
+            "toggle_gap_px": PANEL_TOGGLE_GAP_PX,
+            "legend_gap_px": PANEL_LEGEND_GAP_PX,
         },
         "nuclear_defaults": {
             "timeframe": NUCLEAR_TIMEFRAME,

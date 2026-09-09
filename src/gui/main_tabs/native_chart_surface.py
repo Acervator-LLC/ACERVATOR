@@ -247,7 +247,8 @@ VOLUME_STRIP_PX = 28
 SUB_PANE_PX = 60
 PRICE_PANE_PAINT_FLOOR_PX = 120
 PRICE_PANE_LAYOUT_FLOOR_PX = 220
-SUB_PANE_ORDER = ("macd", "vortex", "stochrsi")
+#: The sub-panes in the order CHART_OVERLAYS offers them.
+SUB_PANE_ORDER = ("vortex", "macd", "stochrsi")
 
 MINIMUM_HEIGHT_PX = 200
 RESIZE_GRIP_PX = 8
@@ -1411,6 +1412,24 @@ class Candle:
         self.volume = volume
 
 
+def candle_of(given: dict | Sequence) -> "Candle":
+    """One ``Candle`` from a row of six numbers or a mapping of named prices.
+
+    The Asset Charts tab holds its candles as rows in ``Candle`` field order,
+    which is what it sends over ``native_chart.state``.
+    """
+    if isinstance(given, dict):
+        return Candle(
+            given["time"],
+            given["open"],
+            given["high"],
+            given["low"],
+            given["close"],
+            given.get("volume", 0.0),
+        )
+    return Candle(*given)
+
+
 class TradeMarker:
     """One past trade the chart pins to a candle."""
 
@@ -1499,12 +1518,48 @@ class ChartModel:
         self.steps.append([len(self.steps), name])
 
     def set_candles(self, candles: Sequence[CandleLike]) -> None:
-        """Replace the series and refresh the status line."""
+        """Replace the series, refresh the status line and read the indicators."""
         self._record("set_candles")
         self.candles = list(candles)
         self.error_text = ""
         if self.candles:
             self.status_text = HEADER_COUNT_FORMAT.format(count=len(self.candles))
+            self.read_indicator_series()
+
+    def read_indicator_series(self) -> None:
+        """Take the five overlay series from the indicators that publish them.
+
+        Each value is what ``src.trading.indicators`` returned for the held
+        candles; nothing here recomputes one.
+        """
+        from src.trading.ta_engine import (
+            BollingerBands,
+            IchimokuCloud,
+            MACD,
+            StochasticRSI,
+            VortexIndicator,
+        )
+
+        candles = self.candles
+        vortex_plus, vortex_minus = VortexIndicator(VORTEX_PERIOD).lines(candles)
+        macd_line, macd_signal, macd_histogram = MACD(*MACD_PERIODS).lines(candles)
+        self.set_indicator_series(
+            bb=BollingerBands(BOLLINGER_PERIOD, BOLLINGER_STD).bands(candles),
+            vortex=[
+                None if (plus is None or minus is None) else (plus, minus)
+                for plus, minus in zip(vortex_plus, vortex_minus)
+            ],
+            macd=[
+                (
+                    None
+                    if (line is None or signal is None or bar is None)
+                    else (line, signal, bar)
+                )
+                for line, signal, bar in zip(macd_line, macd_signal, macd_histogram)
+            ],
+            stochrsi=StochasticRSI().lines(candles),
+            ichimoku=IchimokuCloud(*ICHIMOKU_PERIODS).lines(candles),
+        )
 
     def set_indicator_series(
         self,
@@ -1793,6 +1848,415 @@ def time_rows(ticks: Sequence[dict], panes: dict, geometry: dict) -> list:
     return rows
 
 
+def price_runs(
+    values: Sequence, panes: dict, axis: dict, geometry: dict
+) -> list[list[list[float]]]:
+    """Pixel runs for one price-pane series, a ``None`` value ending a run."""
+    runs: list[list[list[float]]] = []
+    points: list[list[float]] = []
+    half = geometry["column_px"] / 2
+    for index, value in enumerate(values):
+        if value is None:
+            if points:
+                runs.append(points)
+            points = []
+            continue
+        points.append(
+            [
+                index_to_x(index, LEFT_MARGIN_PX, geometry["column_px"]) + half,
+                price_to_y(
+                    value,
+                    panes["price_top_px"],
+                    panes["price_height_px"],
+                    axis["low"],
+                    axis["span"],
+                ),
+            ]
+        )
+    if points:
+        runs.append(points)
+    return runs
+
+
+def oscillator_runs(
+    values: Sequence,
+    top_px: float,
+    bottom_px: float,
+    low: float,
+    high: float,
+    geometry: dict,
+) -> list[list[list[float]]]:
+    """Pixel runs for one sub-pane series, a ``None`` value ending a run."""
+    runs: list[list[list[float]]] = []
+    points: list[list[float]] = []
+    half = geometry["column_px"] / 2
+    for index, value in enumerate(values):
+        if value is None:
+            if points:
+                runs.append(points)
+            points = []
+            continue
+        points.append(
+            [
+                index_to_x(index, LEFT_MARGIN_PX, geometry["column_px"]) + half,
+                oscillator_y(value, top_px, bottom_px, low, high),
+            ]
+        )
+    if points:
+        runs.append(points)
+    return runs
+
+
+def stroke_row(
+    values: Sequence,
+    color: Color,
+    width_px: float,
+    panes: dict,
+    axis: dict,
+    geometry: dict,
+) -> dict:
+    """One price-pane series as its runs, its colour and its stroke width."""
+    return {
+        "runs": price_runs(values, panes, axis, geometry),
+        "color_css": css_color(color),
+        "width_px": width_px,
+    }
+
+
+def band_fill_points(
+    uppers: Sequence, lowers: Sequence, panes: dict, axis: dict, geometry: dict
+) -> list[list[float]]:
+    """The closed polygon between an upper and a lower series."""
+    top = [point for run in price_runs(uppers, panes, axis, geometry) for point in run]
+    bottom = [
+        point for run in price_runs(lowers, panes, axis, geometry) for point in run
+    ]
+    if not top or not bottom:
+        return []
+    return top + list(reversed(bottom))
+
+
+def bollinger_rows(model: ChartModel, panes: dict, axis: dict, geometry: dict) -> dict:
+    """The Bollinger cloud and its upper, middle and lower strokes."""
+    window = model.bb_data[model.visible_start_now() : visible_end(model)]
+    uppers = [one[0] if one else None for one in window]
+    middles = [one[1] if one else None for one in window]
+    lowers = [one[2] if one else None for one in window]
+    return {
+        "cloud": band_fill_points(uppers, lowers, panes, axis, geometry),
+        "cloud_css": css_color(BB_CLOUD_FILL),
+        "strokes": [
+            stroke_row(uppers, BB_UPPER_COLOR, BB_LINE_WIDTH_PX, panes, axis, geometry),
+            stroke_row(
+                middles, BB_MIDDLE_COLOR, BB_MIDDLE_WIDTH_PX, panes, axis, geometry
+            ),
+            stroke_row(lowers, BB_LOWER_COLOR, BB_LINE_WIDTH_PX, panes, axis, geometry),
+        ],
+    }
+
+
+def kumo_rows(
+    segments: Sequence[dict],
+    span_a: Sequence,
+    span_b: Sequence,
+    panes: dict,
+    axis: dict,
+    geometry: dict,
+) -> list[dict]:
+    """One closed polygon per run of equal cloud polarity."""
+    rows = []
+    half = geometry["column_px"] / 2
+    for segment in segments:
+        tops = []
+        bottoms = []
+        for index in segment["indexes"]:
+            first, second = span_a[index], span_b[index]
+            x = index_to_x(index, LEFT_MARGIN_PX, geometry["column_px"]) + half
+            tops.append(
+                [
+                    x,
+                    price_to_y(
+                        max(first, second),
+                        panes["price_top_px"],
+                        panes["price_height_px"],
+                        axis["low"],
+                        axis["span"],
+                    ),
+                ]
+            )
+            bottoms.append(
+                [
+                    x,
+                    price_to_y(
+                        min(first, second),
+                        panes["price_top_px"],
+                        panes["price_height_px"],
+                        axis["low"],
+                        axis["span"],
+                    ),
+                ]
+            )
+        if not tops:
+            continue
+        rows.append(
+            {
+                "points": tops + list(reversed(bottoms)),
+                "bullish": segment["bullish"],
+                "fill_css": css_color(
+                    KUMO_BULL_FILL if segment["bullish"] else KUMO_BEAR_FILL
+                ),
+            }
+        )
+    return rows
+
+
+def chikou_values(model: ChartModel) -> list:
+    """The close ``ICHIMOKU_SHIFT`` candles ahead of each visible candle."""
+    start = model.visible_start_now()
+    end = visible_end(model)
+    held = []
+    for index in range(start, end):
+        ahead = index + ICHIMOKU_SHIFT
+        held.append(model.candles[ahead].close if ahead < len(model.candles) else None)
+    return held
+
+
+def ichimoku_rows(model: ChartModel, panes: dict, axis: dict, geometry: dict) -> dict:
+    """The kumo and the Tenkan, Kijun, both spans and Chikou strokes."""
+    start = model.visible_start_now()
+    end = visible_end(model)
+    shifted = ichimoku_shifted(model.ichimoku_data, len(model.candles))
+    span_a = shifted["span_a"][start:end]
+    span_b = shifted["span_b"][start:end]
+    window = model.ichimoku_data[start:end]
+    tenkan = [one[0] if one else None for one in window]
+    kijun = [one[1] if one else None for one in window]
+    return {
+        "kumo": kumo_rows(
+            kumo_segments(span_a, span_b), span_a, span_b, panes, axis, geometry
+        ),
+        "strokes": [
+            stroke_row(tenkan, TENKAN_COLOR, BB_LINE_WIDTH_PX, panes, axis, geometry),
+            stroke_row(kijun, KIJUN_COLOR, BB_LINE_WIDTH_PX, panes, axis, geometry),
+            stroke_row(
+                span_a, SPAN_A_COLOR, OSCILLATOR_SIGNAL_WIDTH_PX, panes, axis, geometry
+            ),
+            stroke_row(
+                span_b, SPAN_B_COLOR, OSCILLATOR_SIGNAL_WIDTH_PX, panes, axis, geometry
+            ),
+            stroke_row(
+                chikou_values(model),
+                CHIKOU_COLOR,
+                OSCILLATOR_SIGNAL_WIDTH_PX,
+                panes,
+                axis,
+                geometry,
+            ),
+        ],
+    }
+
+
+def visible_end(model: ChartModel) -> int:
+    """One past the last visible candle, clamped to the series length."""
+    start = model.visible_start_now()
+    return min(len(model.candles), start + model.visible_count_now())
+
+
+def reference_rows(
+    values: Sequence[float], top_px: float, bottom_px: float, low: float, high: float
+) -> list[dict]:
+    """One dashed reference line per value inside a sub-pane."""
+    return [
+        {
+            "value": one,
+            "y_px": oscillator_y(one, top_px, bottom_px, low, high),
+            "color_css": css_color(GRID_MINOR),
+        }
+        for one in values
+    ]
+
+
+def macd_pane_row(
+    model: ChartModel, bounds: list, panes: dict, geometry: dict
+) -> dict | None:
+    """The MACD sub-pane: its histogram bars, its line and its signal."""
+    window = model.macd_data[model.visible_start_now() : visible_end(model)]
+    scale = macd_scale(window)
+    if scale is None:
+        return None
+    top_px, bottom_px = bounds[1], bounds[2]
+    low, high = scale["low"], scale["high"]
+    zero_y = oscillator_y(0.0, top_px, bottom_px, low, high)
+    bars = []
+    for index, one in enumerate(window):
+        if one is None or one[2] is None:
+            continue
+        rising = one[2] >= 0
+        bar_y = oscillator_y(one[2], top_px, bottom_px, low, high)
+        bars.append(
+            {
+                "x_px": index_to_x(index, LEFT_MARGIN_PX, geometry["column_px"])
+                + geometry["gap_px"] / 2,
+                "y_px": min(zero_y, bar_y),
+                "width_px": geometry["body_px"],
+                "height_px": abs(bar_y - zero_y) or 1.0,
+                "fill_css": css_color(
+                    MACD_HIST_UP_FILL if rising else MACD_HIST_DOWN_FILL
+                ),
+                "border_css": css_color(
+                    MACD_HIST_UP_BORDER if rising else MACD_HIST_DOWN_BORDER
+                ),
+            }
+        )
+    lines = [one[0] if one else None for one in window]
+    signals = [one[1] if one else None for one in window]
+    return {
+        "key": "macd",
+        "title": MACD_TITLE,
+        "top_px": top_px,
+        "bottom_px": bottom_px,
+        "low": low,
+        "high": high,
+        "references": reference_rows(
+            [0.0] if low < 0 < high else [], top_px, bottom_px, low, high
+        ),
+        "bars": bars,
+        "strokes": [
+            {
+                "runs": oscillator_runs(lines, top_px, bottom_px, low, high, geometry),
+                "color_css": css_color(MACD_LINE_COLOR),
+                "width_px": OSCILLATOR_ACCENT_WIDTH_PX,
+            },
+            {
+                "runs": oscillator_runs(
+                    signals, top_px, bottom_px, low, high, geometry
+                ),
+                "color_css": css_color(MACD_SIGNAL_COLOR),
+                "width_px": OSCILLATOR_SIGNAL_WIDTH_PX,
+            },
+        ],
+        "badge": sub_badge(lines, top_px, bottom_px, low, high, MACD_LINE_COLOR),
+    }
+
+
+def vortex_pane_row(
+    model: ChartModel, bounds: list, panes: dict, geometry: dict
+) -> dict | None:
+    """The Vortex sub-pane: VI+ and VI- against the 1.0 reference."""
+    window = model.vortex_data[model.visible_start_now() : visible_end(model)]
+    if not window:
+        return None
+    top_px, bottom_px = bounds[1], bounds[2]
+    low, high = VORTEX_SCALE_MIN, VORTEX_SCALE_MAX
+    plus = [one[0] if one else None for one in window]
+    minus = [one[1] if one else None for one in window]
+    return {
+        "key": "vortex",
+        "title": VORTEX_TITLE,
+        "top_px": top_px,
+        "bottom_px": bottom_px,
+        "low": low,
+        "high": high,
+        "references": reference_rows([VORTEX_REFERENCE], top_px, bottom_px, low, high),
+        "bars": [],
+        "strokes": [
+            {
+                "runs": oscillator_runs(plus, top_px, bottom_px, low, high, geometry),
+                "color_css": css_color(VORTEX_PLUS_COLOR),
+                "width_px": OSCILLATOR_ACCENT_WIDTH_PX,
+            },
+            {
+                "runs": oscillator_runs(minus, top_px, bottom_px, low, high, geometry),
+                "color_css": css_color(VORTEX_MINUS_COLOR),
+                "width_px": OSCILLATOR_ACCENT_WIDTH_PX,
+            },
+        ],
+        "badge": sub_badge(plus, top_px, bottom_px, low, high, VORTEX_PLUS_COLOR),
+    }
+
+
+def stochrsi_pane_row(
+    model: ChartModel, bounds: list, panes: dict, geometry: dict
+) -> dict | None:
+    """The Stochastic RSI sub-pane against its 0.2 and 0.8 references."""
+    window = model.stochrsi_data[model.visible_start_now() : visible_end(model)]
+    if not window:
+        return None
+    top_px, bottom_px = bounds[1], bounds[2]
+    low, high = STOCHRSI_SCALE_MIN, STOCHRSI_SCALE_MAX
+    return {
+        "key": "stochrsi",
+        "title": STOCHRSI_TITLE,
+        "top_px": top_px,
+        "bottom_px": bottom_px,
+        "low": low,
+        "high": high,
+        "references": reference_rows(
+            list(STOCHRSI_REFERENCES), top_px, bottom_px, low, high
+        ),
+        "bars": [],
+        "strokes": [
+            {
+                "runs": oscillator_runs(window, top_px, bottom_px, low, high, geometry),
+                "color_css": css_color(STOCHRSI_COLOR),
+                "width_px": OSCILLATOR_ACCENT_WIDTH_PX,
+            }
+        ],
+        "badge": sub_badge(window, top_px, bottom_px, low, high, STOCHRSI_COLOR),
+    }
+
+
+def sub_badge(
+    values: Sequence,
+    top_px: float,
+    bottom_px: float,
+    low: float,
+    high: float,
+    color: Color,
+) -> dict | None:
+    """The last value of a sub-pane series, boxed on its own row."""
+    last = next((one for one in reversed(list(values)) if one is not None), None)
+    if last is None:
+        return None
+    return {
+        "value": last,
+        "label": fmt_sub_axis(last),
+        "y_px": oscillator_y(last, top_px, bottom_px, low, high),
+        "color_css": css_color(color),
+        "fill_css": css_color(SUB_BADGE_FILL),
+    }
+
+
+SUB_PANE_BUILDERS = {
+    "macd": macd_pane_row,
+    "vortex": vortex_pane_row,
+    "stochrsi": stochrsi_pane_row,
+}
+
+
+def sub_pane_rows(model: ChartModel, panes: dict, geometry: dict) -> list:
+    """One row per active sub-pane, in the order ``layout`` placed them."""
+    rows = []
+    for bounds in panes["sub_panes"]:
+        builder = SUB_PANE_BUILDERS.get(bounds[0])
+        if builder is None:
+            continue
+        row = builder(model, bounds, panes, geometry)
+        if row is not None:
+            rows.append(row)
+    return rows
+
+
+def overlay_rows(model: ChartModel, panes: dict, axis: dict, geometry: dict) -> dict:
+    """The price-pane overlays that are switched on and hold a series."""
+    rows: dict = {"bb": None, "ichimoku": None}
+    if model.flags.get("show_bb") and model.bb_data:
+        rows["bb"] = bollinger_rows(model, panes, axis, geometry)
+    if model.flags.get("show_ichimoku") and model.ichimoku_data:
+        rows["ichimoku"] = ichimoku_rows(model, panes, axis, geometry)
+    return rows
+
+
 def price_line_row(
     kind: str,
     price: float,
@@ -2012,6 +2476,8 @@ def build_view_model(model: ChartModel, width: int = 0, height: int = 0) -> dict
         "ohlc_row": None,
         "ohlc_row_css": None,
         "price_lines": None,
+        "overlays": None,
+        "sub_pane_rows": None,
     }
     if not model.candles:
         payload["empty"] = empty_view(model)
@@ -2077,6 +2543,8 @@ def build_view_model(model: ChartModel, width: int = 0, height: int = 0) -> dict
     time_axis = time_ticks(window)
     time_axis["ticks"] = time_rows(time_axis["ticks"], panes, geometry)
     payload["time_axis"] = time_axis
+    payload["overlays"] = overlay_rows(model, panes, axis, geometry)
+    payload["sub_pane_rows"] = sub_pane_rows(model, panes, geometry)
     return payload
 
 
@@ -2086,10 +2554,10 @@ PANE_MODEL = ChartModel()
 def view_model(params: dict) -> dict:
     """Bridge handler for ``native_chart.state``.
 
-    Reads ``reset``, ``symbol``, ``timeframe``, ``candles``, ``positions``,
-    ``markers``, ``steps``, ``width`` and ``height`` from the request
-    parameters. The chart's state persists between calls because the widget
-    does; ``reset`` is what a fresh paint sends.
+    Reads ``reset``, ``symbol``, ``timeframe``, ``source``, ``candles``,
+    ``positions``, ``markers``, ``steps``, ``width`` and ``height`` from the
+    request parameters. The chart's state persists between calls because the
+    widget does; ``reset`` is what a fresh paint sends.
     """
     global PANE_MODEL
     if params.get("reset", False):
@@ -2098,21 +2566,11 @@ def view_model(params: dict) -> dict:
         PANE_MODEL.symbol = params["symbol"]
     if params.get("timeframe") is not None:
         PANE_MODEL.set_timeframe(params["timeframe"])
+    if params.get("source") is not None:
+        PANE_MODEL.set_source_label(params["source"])
     candles = params.get("candles")
     if candles is not None:
-        PANE_MODEL.set_candles(
-            [
-                Candle(
-                    one["time"],
-                    one["open"],
-                    one["high"],
-                    one["low"],
-                    one["close"],
-                    one.get("volume", 0.0),
-                )
-                for one in candles
-            ]
-        )
+        PANE_MODEL.set_candles([candle_of(one) for one in candles])
     positions = params.get("positions")
     if positions is not None:
         PANE_MODEL.set_positions(

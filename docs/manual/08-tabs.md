@@ -573,6 +573,113 @@ The renderer holds no colour of its own. Every painted value resolves through
 `PALETTE_ROLES`, which names the theme field and the transparency each role
 reads, so a theme sets the look and the renderer does not.
 
+### 2026-09-08 23:40 - #128 - the chart registers a panel in the shell
+
+The chart now joins the Electron shell's roster of panels. Before this change
+the shell listed fifteen panels and said of this one that it registered nothing
+to draw. It now lists sixteen and says nothing.
+
+`src/gui/web/native_chart.js` — the chart joins the roster
+
+```javascript
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderChart,
+      load: loadChart,
+      loadError: loadError
+    });
+  }
+```
+
+The chart takes no tab of its own. It names no bridge method the application
+serves a tab from, so the tab bar passes over it and the chart draws where it
+belongs, inside the Charts tab. The ten tabs the application reports are the
+same ten before and after.
+
+The chart in the shell still draws its waiting line rather than a price. The
+Charts tab asks it for a symbol and a timeframe and sends none of the 180
+candles the tab itself holds, and the symbol it sends is empty. Both values
+belong to the Charts tab file, not to the chart, so the row below keeps `no`
+under Registers in Electron until they are carried across.
+
+### 2026-09-09 01:20 - #128 - the Charts tab hands the chart its data
+
+The chart in the shell draws the price now. The tab passes it the asset it is
+following, the feed name, the candles it is holding and the size of the space
+the chart has, and the shell's panel host does the drawing rather than the tab
+reaching past it.
+
+`src/gui/web/trade_charts_tab.js` — what the chart slot asks for
+
+```javascript
+          return global.acervator.call(api.method, {
+            reset: true,
+            symbol: symbol,
+            timeframe: mount.getAttribute(CHART_TF_ATTR),
+            source: text(panel[SOURCE]),
+            candles: candles,
+            width: mount.clientWidth,
+            height: mount.clientHeight
+          });
+```
+
+The panel carries the asset it follows. It was built once with a blank name and
+renamed only its header line, so the name the chart was asked for was always
+blank.
+
+`src/gui/main_tabs/trade_charts_tab_surface.py` — the panel's own asset
+
+```python
+    def set_symbol_property(self, symbol: Any) -> None:
+        """Rename the chart through its public setter, which repaints."""
+        self.symbol = symbol
+        self.label = symbol
+```
+
+Both builds now draw the same header, the same 180 candles, the same last price
+of 78,623.00, the same three axis prices and the same time axis. The two
+pictures still differ on the indicator lines. The Bollinger bands, the Ichimoku
+cloud and the Vortex, MACD and Stochastic RSI panes draw in the Qt build and in
+neither place in the shell, because nothing hands the chart those five readings
+yet. The eight indicator switches under the Qt chart are absent in the shell for
+the same reason. The row below keeps `no` under Registers in Electron until the
+readings arrive.
+
+### 2026-09-09 03:05 - #128 - the indicators draw in both builds
+
+The chart in the shell draws every indicator the Qt chart draws. The five
+readings now reach it: the Bollinger bands with their cloud, the Ichimoku cloud
+with its four lines and the lagging line, and the Vortex, MACD and Stochastic
+RSI panes under the price. The eight switches sit under the chart with Slingshot
+and BB Bullseye off, and the two position markers sit on the toolbar beside the
+feed name.
+
+Each reading is the one the indicator itself published. The chart asks the five
+indicator classes for their values and paints what they answer.
+
+`src/gui/main_tabs/native_chart_surface.py` — the chart takes its readings
+
+```python
+        self.set_indicator_series(
+            bb=BollingerBands(BOLLINGER_PERIOD, BOLLINGER_STD).bands(candles),
+```
+
+Both builds were driven from the same 38 running bots and the same 180 daily
+BTC/USD candles. Both draw the same header, the same candles, the same last
+price of 78,623.00, the same four axis prices, the same time axis, and the same
+three panes reading Vortex 0.8761, MACD -245.82 and Stoch RSI 0.2318. The row
+below now reads `yes` under Registers in Electron.
+
+Two figures moved to make that true. The Qt chart asked for 492 pixels and was
+given 250 until an indicator switch was pressed, so its MACD pane, its Stochastic
+RSI pane and its time axis were cut off; it now takes its full height as soon as
+the candles arrive. The panes were also listed as MACD, Vortex, Stochastic RSI in
+one place and Vortex, MACD, Stochastic RSI in the other; the switch order decides,
+so both now read Vortex, MACD, Stochastic RSI.
+
+The volume bars are empty in both pictures. The public feed serves no volume with
+its daily candles, so that one row of the comparison rests on two empty strips.
+
 `src/gui/theme_engine.py` — the chart tokens each theme carries
 
 ```python
@@ -770,7 +877,7 @@ rather than typed.
 | `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | no | yes | in scope |
 | `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/paper_trader_tab.py` | `paper_trader_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |

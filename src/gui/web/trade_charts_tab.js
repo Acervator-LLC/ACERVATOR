@@ -47,6 +47,14 @@
   var SIGNALS = "signals";
   var SIGNAL_NAMES = "signal_names";
   var THROTTLED_SIGNALS = "throttled_signals";
+  var PANEL_CHROME = "panel_chrome";
+  var TOGGLES = "toggles";
+  var LEGEND = "legend";
+  var TOGGLE_KEY = "key";
+  var CHECKED = "checked";
+  var COLOR = "color";
+  var TOGGLE_GAP = "toggle_gap_px";
+  var LEGEND_GAP = "legend_gap_px";
   var PANEL_DEFAULTS = "panel_defaults";
   var NUCLEAR_DEFAULTS = "nuclear_defaults";
   var FETCH = "fetch";
@@ -96,6 +104,7 @@
     ASSET_COUNT,
     ASSET_ORDER,
     PANEL,
+    PANEL_CHROME,
     PANEL_DEFAULTS,
     SELECTOR,
     SHOWN_ID,
@@ -121,7 +130,6 @@
   var LAST_FETCH = "last_fetch";
   var SYNTHETIC = "synthetic";
 
-  var BUILT_WITH = "built_with";
   var LABEL = "label";
   var TIMEFRAME = "timeframe";
   var CHART_TIMEFRAME = "chart_timeframe";
@@ -135,6 +143,7 @@
   var TB_CEILING = "tb_ceiling";
   var ARMED = "armed";
   var MINIMUM_HEIGHT = "minimum_height_px";
+  var NATURAL_HEIGHT = "natural_height_px";
   var MAXIMUM_HEIGHT = "maximum_height_px";
   var CHART_REPAINTS = "chart_repaints";
   var PANEL_REPAINTS = "panel_repaints";
@@ -162,7 +171,12 @@
 
   var NO_BRIDGE = "the preload bridge is not present";
 
+  var NUMBER_KIND = "number";
+
   var PANEL_AT = "asset:";
+  var LEGEND_AT = "legend:";
+  var TOOLBAR_GAP_KEY = "toolbar-gap";
+  var TOGGLE_BOX_SUFFIX = ":box";
   var PATH_SPLIT = ".";
   var EMPTY = "";
   var GAP = " ";
@@ -203,6 +217,9 @@
   var BUTTON_TAG = "button";
   var SELECT_TAG = "select";
   var OPTION_TAG = "option";
+  var LABEL_TAG = "label";
+  var INPUT_TAG = "input";
+  var CHECKBOX_TYPE = "checkbox";
 
   var TAB_CLASS = "acervator-charts-tab";
   var PANEL_CLASS = "acervator-charts-panel";
@@ -223,6 +240,9 @@
   var TOOLBAR_PART = "panel-toolbar";
   var TIMEFRAME_PART = "timeframe";
   var SOURCE_PART = "panel-source";
+  var LEGEND_PART = "panel-legend";
+  var TOGGLE_ROW_PART = "panel-toggle-row";
+  var TOGGLE_PART = "panel-toggle";
   var CHART_PART = "chart-mount";
   var ERROR_PART = "panel-error";
   var EMPTY_PART = "empty-column";
@@ -234,6 +254,7 @@
   var SLOT_ATTR = "data-slot";
   var BOT_ATTR = "data-bot";
   var SYMBOL_ATTR = "data-symbol";
+  var TOGGLE_ATTR = "data-toggle";
   var CHILD_ATTR = "data-child-module";
 
   var SELECT_OPEN = "[";
@@ -567,6 +588,64 @@
     return element(SPAN_TAG, sourceProps, text(props.panel[SOURCE]));
   }
 
+  // The two position markers the chart pins to the price axis.
+  function PanelLegend(props) {
+    var chrome = props.chrome;
+    var legendProps = {
+      style: {
+        display: FLEX,
+        gap: height(chrome[LEGEND_GAP]),
+        flex: FLEX_NONE
+      }
+    };
+    legendProps[PART_ATTR] = LEGEND_PART;
+    legendProps[BOT_ATTR] = text(props.botId);
+    return element(
+      DIV_TAG,
+      legendProps,
+      listField(chrome, LEGEND).map(function (one, at) {
+        return element(SPAN_TAG, { key: LEGEND_AT + String(at) }, text(one));
+      })
+    );
+  }
+
+  // One check box per overlay the chart can draw, in the order it offers them.
+  function PanelToggle(one) {
+    var boxProps = {
+      key: one[TOGGLE_KEY],
+      style: { color: text(one[COLOR]), display: FLEX, alignItems: CENTER }
+    };
+    boxProps[PART_ATTR] = TOGGLE_PART;
+    boxProps[TOGGLE_ATTR] = text(one[TOGGLE_KEY]);
+    return element(
+      LABEL_TAG,
+      boxProps,
+      element(INPUT_TAG, {
+        key: one[TOGGLE_KEY] + TOGGLE_BOX_SUFFIX,
+        type: CHECKBOX_TYPE,
+        "aria-label": text(one[LABEL]),
+        checked: Boolean(one[CHECKED]),
+        readOnly: true
+      }),
+      text(one[LABEL])
+    );
+  }
+
+  function PanelToggles(props) {
+    var chrome = props.chrome;
+    var rowProps = {
+      style: {
+        display: FLEX,
+        gap: height(chrome[TOGGLE_GAP]),
+        flex: FLEX_NONE,
+        alignItems: CENTER
+      }
+    };
+    rowProps[PART_ATTR] = TOGGLE_ROW_PART;
+    rowProps[BOT_ATTR] = text(props.botId);
+    return element(DIV_TAG, rowProps, listField(chrome, TOGGLES).map(PanelToggle));
+  }
+
   // The host native_chart.js paints into, carrying the panel values the tab fed it.
   function ChartMount(props) {
     var panel = props.panel;
@@ -574,7 +653,7 @@
     mountProps[PART_ATTR] = CHART_PART;
     mountProps[SLOT_ATTR] = CHART_SLOT;
     mountProps[BOT_ATTR] = text(props.botId);
-    mountProps[SYMBOL_ATTR] = text(panel[BUILT_WITH]);
+    mountProps[SYMBOL_ATTR] = text(panel[SYMBOL]);
     mountProps[CHART_TF_ATTR] = text(panel[CHART_TIMEFRAME]);
     mountProps[CANDLES_ATTR] = text(panel[CANDLE_COUNT]);
     mountProps[MARKERS_ATTR] = text(listField(panel, MARKERS).length);
@@ -737,9 +816,12 @@
           options: props.options,
           action: props.action
         }),
+        element(DIV_TAG, { key: TOOLBAR_GAP_KEY, style: { flex: AUTO } }),
+        element(PanelLegend, { botId: props.botId, chrome: props.chrome }),
         element(PanelSource, { botId: props.botId, panel: panel })
       ),
-      element(ChartMount, { botId: props.botId, panel: panel })
+      element(ChartMount, { botId: props.botId, panel: panel }),
+      element(PanelToggles, { botId: props.botId, chrome: props.chrome })
     );
   }
 
@@ -776,6 +858,7 @@
           botId: shownId,
           info: objectField(assetsOf(model), shownId),
           panel: objectField(model, PANEL),
+          chrome: objectField(model, PANEL_CHROME),
           options: timeframeOptionList(model),
           action: objectField(model, ACTIONS)[TIMEFRAME_ACTION]
         })
@@ -843,7 +926,7 @@
   var INFO_FIELDS = [SYMBOL, EXCHANGE_ID, LAST_FETCH];
 
   var PANEL_FIELDS = [
-    BUILT_WITH,
+    SYMBOL,
     LABEL,
     TIMEFRAME,
     CHART_TIMEFRAME,
@@ -1328,31 +1411,52 @@
   }
 
   // Qt builds one ChartPanel inside each panel, so every chart slot asks
-  // native_chart.js for the chart of the symbol its panel was built with.
-  // The surface holds one chart at a time, so the slots are drawn in turn.
-  function renderChartMounts(target) {
+  // native_chart.js for the chart of the symbol its panel follows, with the
+  // candles that panel holds. The panel host draws it, so a chart that does
+  // not register is named on the slot rather than drawn.
+  function renderChartMounts(target, payload) {
+    var host = global.acervatorPanelHost;
     var api = global.acervatorChart;
     var mounts = chartMounts(target);
     var reachable =
       Boolean(global.acervator) && typeof global.acervator.call === "function";
-    if (!api || typeof api.renderChart !== "function" || !reachable) {
+    if (!api || !host || !reachable) {
       return Promise.resolve([]);
     }
+    var panel = objectField(isPlainObject(payload) ? payload : {}, PANEL);
+    var candles = listField(panel, CANDLES);
     var drawn = [];
     var chain = Promise.resolve();
     Array.prototype.forEach.call(mounts, function (mount) {
       var symbol = mount.getAttribute(SYMBOL_ATTR);
+
+      function ask() {
+        return global.acervator.call(api.method, {
+          reset: true,
+          symbol: symbol,
+          timeframe: mount.getAttribute(CHART_TF_ATTR),
+          source: text(panel[SOURCE]),
+          candles: candles,
+          width: mount.clientWidth,
+          height: mount.clientHeight
+        });
+      }
+
+      // The sub-panes the candles fill decide the height the chart needs,
+      // so the first answer sizes the slot and the second draws into it.
       chain = chain
-        .then(function () {
-          return global.acervator.call(api.method, {
-            reset: true,
-            symbol: symbol,
-            timeframe: mount.getAttribute(CHART_TF_ATTR)
-          });
+        .then(ask)
+        .then(function (model) {
+          var wanted = model ? model[NATURAL_HEIGHT] : null;
+          if (typeof wanted !== NUMBER_KIND || wanted <= mount.clientHeight) {
+            return model;
+          }
+          mount.style.minHeight = height(wanted);
+          return ask();
         })
         .then(function (model) {
           mount.setAttribute(CHILD_ATTR, CHART_SLOT);
-          api.renderChart(mount, model);
+          host.mount(CHART_SLOT, mount, model);
           drawn.push(symbol);
         });
     });
@@ -1368,7 +1472,7 @@
     }
     lastTarget = target;
     var shown = draw(target, element(Tab, { model: payload }));
-    renderChartMounts(target);
+    renderChartMounts(target, payload);
     return shown;
   }
 

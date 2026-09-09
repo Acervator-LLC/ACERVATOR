@@ -23,6 +23,7 @@
   var NATURAL_HEIGHT = "natural_height_px";
   var OHLC_ROW = "ohlc_row";
   var OHLC_ROW_CSS = "ohlc_row_css";
+  var OVERLAYS = "overlays";
   var PANES = "panes";
   var PARENT_HEIGHT_PAD = "parent_height_pad_px";
   var POSITIONS = "positions";
@@ -35,6 +36,7 @@
   var SOURCE_LABEL = "source_label";
   var STATUS_TEXT = "status_text";
   var STEPS = "steps";
+  var SUB_PANE_ROWS = "sub_pane_rows";
   var SUB_PANES = "sub_panes";
   var SYMBOL = "symbol";
   var TARGET_BALANCE = "target_balance";
@@ -69,6 +71,7 @@
     NATURAL_HEIGHT,
     OHLC_ROW,
     OHLC_ROW_CSS,
+    OVERLAYS,
     PANES,
     PARENT_HEIGHT_PAD,
     POSITIONS,
@@ -81,6 +84,7 @@
     SOURCE_LABEL,
     STATUS_TEXT,
     STEPS,
+    SUB_PANE_ROWS,
     SUB_PANES,
     SYMBOL,
     TARGET_BALANCE,
@@ -102,9 +106,11 @@
     EMPTY_VIEW,
     OHLC_ROW,
     OHLC_ROW_CSS,
+    OVERLAYS,
     PANES,
     PRICE_AXIS,
     PRICE_LINES,
+    SUB_PANE_ROWS,
     TIME_AXIS
   ];
 
@@ -235,10 +241,52 @@
 
   var NO_BRIDGE = "the preload bridge is not present";
 
+  var BB_KEY = "bb";
+  var ICHIMOKU_KEY = "ichimoku";
+  var STROKES = "strokes";
+  var RUNS = "runs";
+  var CLOUD = "cloud";
+  var CLOUD_CSS = "cloud_css";
+  var KUMO = "kumo";
+  var POINTS = "points";
+  var FILL_CSS = "fill_css";
+  var BORDER_CSS = "border_css";
+  var REFERENCES = "references";
+  var BARS = "bars";
+  var BADGE = "badge";
+  var TITLE = "title";
+  var TOP_PX = "top_px";
+  var PANE_KEY = "key";
+  var HEIGHT_FIELD = "height_px";
+  var SUB_LABEL_INSET = "sub_label_inset_px";
+  var SUB_LABEL_BASELINE = "sub_label_baseline_px";
+  var SUB_BADGE_INSET = "sub_badge_inset_px";
+  var SUB_BADGE_LIFT = "sub_badge_lift_px";
+  var SUB_BADGE_HEIGHT = "sub_badge_height_px";
+  var SUB_BADGE_PAD = "sub_badge_pad_px";
+
+  var SVG_TAG = "svg";
+  var GROUP_TAG = "g";
+  var POLYLINE_TAG = "polyline";
+  var POLYGON_TAG = "polygon";
+  var STROKE = "stroke";
+  var ROUND_JOIN = "round";
+  var BLOCK = "block";
+  var SHIFT_OPEN = "translate(";
+  var SHIFT_CLOSE = ")";
+
+  // Two points are the fewest a polyline can join.
+  var STROKE_POINT_FLOOR = 2;
+
   var BODY_AT = "body:";
   var TICK_AT = "tick:";
   var LINE_AT = "line:";
   var CELL_AT = "cell:";
+  var STROKE_AT = "stroke:";
+  var REFERENCE_AT = ":reference:";
+  var BAR_AT = ":bar:";
+  var TITLE_SUFFIX = ":title";
+  var BADGE_SUFFIX = ":badge";
   var PATH_SPLIT = ".";
   var EMPTY = "";
   var GAP = " ";
@@ -309,6 +357,10 @@
   var PRICE_BADGE_PART = "price-badge";
   var PRICE_ROW_PART = "price-row";
   var GRIP_DASH_PART = "grip-dash";
+  var SUB_REFERENCE_PART = "sub-reference";
+  var SUB_BAR_PART = "sub-bar";
+  var SUB_TITLE_PART = "sub-title";
+  var SUB_BADGE_PART = "sub-badge";
   var MOUNT_PART = "overlay-mount";
 
   // The mount holds every sloped stroke and every round shape: the
@@ -1021,9 +1073,186 @@
     });
   }
 
+  function pointsOf(pairs) {
+    return pairs
+      .map(function (one) {
+        return String(one[0]) + COMMA + String(one[1]);
+      })
+      .join(GAP);
+  }
+
+  // One polyline per run. A run ends where the series holds no value, so a
+  // gap breaks the stroke rather than drawing straight across it.
+  function Stroke(stroke, at) {
+    var where = STROKE_AT + String(at);
+    return listField(stroke, RUNS).map(function (run, index) {
+      if (run.length < STROKE_POINT_FLOOR) {
+        return null;
+      }
+      return element(POLYLINE_TAG, {
+        key: where + PATH_SPLIT + String(index),
+        points: pointsOf(run),
+        fill: NONE,
+        stroke: paint(where, STROKE, stroke[COLOR_CSS]),
+        strokeWidth: stroke[WIDTH_FIELD],
+        strokeLinejoin: ROUND_JOIN
+      });
+    });
+  }
+
+  function Strokes(props) {
+    return listField(props.bag, STROKES).map(Stroke);
+  }
+
+  function Shape(points, colour, key) {
+    if (!Array.isArray(points) || points.length < STROKE_POINT_FLOOR) {
+      return null;
+    }
+    return element(POLYGON_TAG, {
+      key: key,
+      points: pointsOf(points),
+      fill: paint(key, FILL, colour),
+      stroke: NONE
+    });
+  }
+
+  function Kumo(props) {
+    return listField(props.bag, KUMO).map(function (segment, at) {
+      return Shape(
+        segment[POINTS],
+        segment[FILL_CSS],
+        KUMO + PATH_SPLIT + String(at)
+      );
+    });
+  }
+
+  // The kumo and the band cloud paint under every stroke, as Qt paints them.
+  function Overlays(props) {
+    var overlays = objectField(props.model, OVERLAYS);
+    var bands = objectField(overlays, BB_KEY);
+    var cloud = objectField(overlays, ICHIMOKU_KEY);
+    return [
+      Kumo({ bag: cloud }),
+      Shape(bands[CLOUD], bands[CLOUD_CSS], CLOUD),
+      Strokes({ bag: cloud }),
+      Strokes({ bag: bands }),
+      listField(props.model, SUB_PANE_ROWS).map(function (pane) {
+        return element(GROUP_TAG, { key: pane[PANE_KEY] }, Strokes({ bag: pane }));
+      })
+    ];
+  }
+
+  function SubPaneReferences(props) {
+    var model = props.model;
+    var panes = objectField(model, PANES);
+    return listField(model, SUB_PANE_ROWS).map(function (pane) {
+      return listField(pane, REFERENCES).map(function (row, at) {
+        var where = pane[PANE_KEY] + REFERENCE_AT + String(at);
+        return element(
+          DIV_TAG,
+          dressed(SUB_REFERENCE_PART, {
+            key: where,
+            style: {
+              position: ABSOLUTE,
+              left: px(panes[LEFT_MARGIN]),
+              top: px(row[Y_PX]),
+              width: px(panes[CHART_WIDTH]),
+              borderTopStyle: text(metric(model, GRID_LINE_STYLE)),
+              borderTopWidth: length(GRID_LINE_WIDTH, metric(model, GRID_LINE_WIDTH)),
+              borderTopColor: paint(where, BORDER, row[COLOR_CSS])
+            }
+          })
+        );
+      });
+    });
+  }
+
+  function SubPaneBars(props) {
+    var model = props.model;
+    return listField(model, SUB_PANE_ROWS).map(function (pane) {
+      return listField(pane, BARS).map(function (bar, at) {
+        var where = pane[PANE_KEY] + BAR_AT + String(at);
+        return element(
+          DIV_TAG,
+          dressed(SUB_BAR_PART, {
+            key: where,
+            "data-index": String(at),
+            style: {
+              position: ABSOLUTE,
+              left: px(bar[X_PX]),
+              top: px(bar[Y_PX]),
+              width: px(bar[WIDTH_FIELD]),
+              height: px(bar[HEIGHT_FIELD]),
+              backgroundColor: paint(where, FILL, bar[FILL_CSS]),
+              borderStyle: text(metric(model, SOLID_LINE_STYLE)),
+              borderWidth: length(
+                CANDLE_BORDER_WIDTH,
+                metric(model, CANDLE_BORDER_WIDTH)
+              ),
+              borderColor: paint(where, BORDER, bar[BORDER_CSS]),
+              boxSizing: BORDER_BOX
+            }
+          })
+        );
+      });
+    });
+  }
+
+  function SubPaneLabels(props) {
+    var model = props.model;
+    var panes = objectField(model, PANES);
+    return listField(model, SUB_PANE_ROWS).map(function (pane) {
+      var badge = objectField(pane, BADGE);
+      return [
+        element(
+          DIV_TAG,
+          dressed(SUB_TITLE_PART, {
+            key: pane[PANE_KEY] + TITLE_SUFFIX,
+            style: {
+              position: ABSOLUTE,
+              left: px(panes[LEFT_MARGIN] + metric(model, SUB_LABEL_INSET)),
+              top: px(pane[TOP_PX]),
+              lineHeight: px(metric(model, SUB_LABEL_BASELINE)),
+              color: skinColour(model, TEXT_DIM),
+              whiteSpace: PRE
+            }
+          }),
+          text(pane[TITLE])
+        ),
+        isPlainObject(pane[BADGE])
+          ? element(
+              DIV_TAG,
+              dressed(SUB_BADGE_PART, {
+                key: pane[PANE_KEY] + BADGE_SUFFIX,
+                style: {
+                  position: ABSOLUTE,
+                  left: px(panes[CHART_RIGHT] + metric(model, SUB_BADGE_INSET)),
+                  top: px(badge[Y_PX] - metric(model, SUB_BADGE_LIFT)),
+                  height: px(metric(model, SUB_BADGE_HEIGHT)),
+                  paddingLeft: px(metric(model, SUB_BADGE_PAD)),
+                  paddingRight: px(metric(model, SUB_BADGE_PAD)),
+                  color: paint(pane[PANE_KEY], FILL, badge[COLOR_CSS]),
+                  backgroundColor: paint(pane[PANE_KEY], BORDER, badge[FILL_CSS]),
+                  whiteSpace: PRE
+                }
+              }),
+              text(badge[LABEL])
+            )
+          : null
+      ];
+    });
+  }
+
+  // Every sloped stroke and every filled shape, in the one mount the pane
+  // reserves. Coordinates arrive in pane pixels, so the group shifts them
+  // back by the mount's own origin.
   function Mount(props) {
     var model = props.model;
     var panes = objectField(model, PANES);
+    var left = panes[LEFT_MARGIN];
+    var top = panes[PRICE_TOP];
+    var width = panes[CHART_WIDTH];
+    var height = panes[TIME_AXIS_TOP] - panes[PRICE_TOP];
     return element(
       DIV_TAG,
       dressed(MOUNT_PART, {
@@ -1031,13 +1260,22 @@
         "aria-label": MOUNT_LABEL,
         style: {
           position: ABSOLUTE,
-          left: px(panes[LEFT_MARGIN]),
-          top: px(panes[PRICE_TOP]),
-          width: px(panes[CHART_WIDTH]),
-          height: px(panes[TIME_AXIS_TOP] - panes[PRICE_TOP]),
+          left: px(left),
+          top: px(top),
+          width: px(width),
+          height: px(height),
           pointerEvents: NONE
         }
-      })
+      }),
+      element(
+        SVG_TAG,
+        { width: width, height: height, style: { display: BLOCK } },
+        element(
+          GROUP_TAG,
+          { transform: SHIFT_OPEN + String(-left) + COMMA + String(-top) + SHIFT_CLOSE },
+          Overlays({ model: model })
+        )
+      )
     );
   }
 
@@ -1058,11 +1296,14 @@
       GridLines({ model: model }),
       GridLabels({ model: model }),
       TimeLines({ model: model }),
+      SubPaneReferences({ model: model }),
+      SubPaneBars({ model: model }),
       Candles({ model: model }),
       VolumeBars({ model: model }),
       VolumeChrome({ model: model }),
       PriceLines({ model: model }),
       TimeLabels({ model: model }),
+      SubPaneLabels({ model: model }),
       GripDashes({ model: model }),
       Mount({ model: model })
     );
@@ -1412,6 +1653,16 @@
     chartFaults = [];
     loadFault = null;
     asked = null;
+  }
+
+  // The chart belongs to the Charts tab, so it names no bridge method and
+  // takes no tab of its own.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderChart,
+      load: loadChart,
+      loadError: loadError
+    });
   }
 
   global.acervatorSetChart = setChart;
