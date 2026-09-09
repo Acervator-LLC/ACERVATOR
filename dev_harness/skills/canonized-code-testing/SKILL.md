@@ -42,6 +42,11 @@ the Electron shell, which was the item.
 `proselint`. Each is maintained by someone other than this project, documented
 publicly, and answerable to its own release notes.
 
+The web analyzers carry the same standing: `eslint` for JavaScript, `stylelint`
+for CSS, `html-validate` for HTML. `npm install` at the repo root installs all
+three, and `eslint.config.mjs`, `.stylelintrc.json` and `.htmlvalidate.json`
+configure them.
+
 **A coined label is not a tool.** "the canon tool", "the canonical check", "the
 parity harness", "the collector" — every one of those names something written
 here and dressed as standard. If you cannot name the package and the command,
@@ -51,6 +56,9 @@ it is not canon and it does not run.
 ✅  python -m pdb -c continue main.py
 ✅  python -m debugpy --listen 5678 main.py
 ✅  python -m ruff check src/gui/history_tab.py
+✅  node node_modules/eslint/bin/eslint.js --format json <path>.js
+✅  node node_modules/stylelint/bin/stylelint.mjs --formatter json <path>.css
+✅  node node_modules/html-validate/bin/html-validate.mjs --formatter json <path>.html
 ❌  "run the canon tool"
 ❌  "the canonical check over every row"
 ```
@@ -68,6 +76,7 @@ and no other path.
 | all code | Coding Archetype | `python -m dev_harness.harness.coding_archetype <path>` |
 | any arithmetic | TA Quant | `python -m dev_harness.harness.ta_archetype <path>` |
 | PySide6 and JavaScript screens | GUI Archetype | `python -m dev_harness.harness.gui_archetype <path>` |
+| CSS and HTML | GUI Archetype | `python -m dev_harness.harness.gui_archetype <path>` |
 | markdown | Docs Archetype | `python -m dev_harness.harness.docs_archetype <path>` |
 | a report or a claim | Truth Archetype | `python -m dev_harness.harness.truth_archetype <path>` |
 | the emitters | Watchdog Archetype | `python -m dev_harness.harness.watchdog_archetype <path>` |
