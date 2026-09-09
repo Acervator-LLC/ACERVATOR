@@ -178,6 +178,9 @@
   // A dotted rule: two pixels marked, two clear.
   var GRID_DASH_SIZE = "4px 1px";
   var GRID = "grid";
+  var TABLE_BOX = "table";
+  var BLOCK = "block";
+  var FIXED = "fixed";
   var FRACTION = "1fr";
   var REPEAT_OPEN = "repeat(";
   var REPEAT_CLOSE = ", 1fr)";
@@ -509,6 +512,21 @@
     return element(BODY_CELL_TAG, cellProps, text(cell[TEXT]));
   }
 
+  // The rows the body shows, over which it is cut off rather than scrolled.
+  function slackHeight(table) {
+    return (
+      number(table.slack_rows, ALPHA_FLOOR) *
+        number(table.row_height_px, ALPHA_FLOOR) +
+      number(table.slack_px, ALPHA_FLOOR)
+    );
+  }
+
+  // A row laid out as its own fixed table keeps one column width once the
+  // body is a block, which is what lets the body take a height at all.
+  function rowBox(model) {
+    return { display: TABLE_BOX, width: whole(model), tableLayout: FIXED };
+  }
+
   function MiniTable(props) {
     var model = props.model;
     var table = props.table;
@@ -516,7 +534,7 @@
     var tooltips = listField(table, TOOLTIPS);
     var head = element(
       HEAD_TAG,
-      { key: HEAD_CELL_PART },
+      { key: HEAD_CELL_PART, style: rowBox(model) },
       element(
         ROW_TAG,
         null,
@@ -532,13 +550,20 @@
         })
       )
     );
+    var bodyStyle = {
+      display: BLOCK,
+      maxHeight: length(slackHeight(table)),
+      overflow: HIDDEN
+    };
+    var rowStyle = rowBox(model);
+    rowStyle.height = length(table.row_height_px);
     var body = element(
       BODY_TAG,
-      { key: BODY_CELL_PART },
+      { key: BODY_CELL_PART, style: bodyStyle },
       listField(table, ROWS).map(function (line, at) {
         return element(
           ROW_TAG,
-          { key: String(at), style: { height: length(table.row_height_px) } },
+          { key: String(at), style: rowStyle },
           listField(line, CELLS).map(function (cell, column) {
             return element(BodyCell, {
               key: String(column),
@@ -552,7 +577,7 @@
       })
     );
     // tableLayout fixed gives every column one width, as BarsPane divides its row.
-    var tableProps = { style: { width: whole(model), tableLayout: "fixed" } };
+    var tableProps = { style: { width: whole(model), tableLayout: FIXED } };
     tableProps[PART_ATTR] = TABLE_PART;
     tableProps[STATE_ATTR] = text(table[KIND]);
     return element(TABLE_TAG, tableProps, [head, body]);
@@ -1228,6 +1253,16 @@
     panelFaults = [];
     loadFault = null;
     asked = null;
+  }
+
+  // The voting panel belongs to the Trading tab, so it names no bridge
+  // method and the tab bar gives it no tab of its own.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderPanel,
+      load: loadPanel,
+      loadError: loadError
+    });
   }
 
   global.acervatorSetIndicatorPanel = setPanel;
