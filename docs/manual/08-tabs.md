@@ -573,6 +573,35 @@ The renderer holds no colour of its own. Every painted value resolves through
 `PALETTE_ROLES`, which names the theme field and the transparency each role
 reads, so a theme sets the look and the renderer does not.
 
+### 2026-09-08 23:40 - #128 - the chart registers a panel in the shell
+
+The chart now joins the Electron shell's roster of panels. Before this change
+the shell listed fifteen panels and said of this one that it registered nothing
+to draw. It now lists sixteen and says nothing.
+
+`src/gui/web/native_chart.js` — the chart joins the roster
+
+```javascript
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderChart,
+      load: loadChart,
+      loadError: loadError
+    });
+  }
+```
+
+The chart takes no tab of its own. It names no bridge method the application
+serves a tab from, so the tab bar passes over it and the chart draws where it
+belongs, inside the Charts tab. The ten tabs the application reports are the
+same ten before and after.
+
+The chart in the shell still draws its waiting line rather than a price. The
+Charts tab asks it for a symbol and a timeframe and sends none of the 180
+candles the tab itself holds, and the symbol it sends is empty. Both values
+belong to the Charts tab file, not to the chart, so the row below keeps `no`
+under Registers in Electron until they are carried across.
+
 `src/gui/theme_engine.py` — the chart tokens each theme carries
 
 ```python

@@ -1414,6 +1414,16 @@
     asked = null;
   }
 
+  // The chart belongs to the Charts tab, so it names no bridge method and
+  // takes no tab of its own.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderChart,
+      load: loadChart,
+      loadError: loadError
+    });
+  }
+
   global.acervatorSetChart = setChart;
   global.acervatorLoadChart = loadChart;
   global.acervatorChart = {
