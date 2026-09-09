@@ -761,6 +761,348 @@ available and never will be.
 
 ---
 
+## 7. The Certified Transaction Socket
+
+**HIS.** The 2026-09-09 directive, in his words:
+
+> PoA - Acervator Bot Certified Transaction Socket - Bots in Acervator will have
+> to certify their transactions against the PoA blockchain in order to
+> participate in PoA events. Certifying trades in this manner will earn
+> participants Influence proportionate to exchange fees and Influence is
+> subsequently spent to enter PoA events. We do not want to allow non-Acervator
+> whales to infiltrate our events and tournaments without using the platform so
+> that their participation benefits many and not just themselves.
+
+Platform use therefore earns entry. A whale who does not trade on Acervator
+cannot enter, because nothing else distils the quantity entry costs.
+
+### Quintessence, the settled name
+
+**HIS.** He asked for a name more consistent with the hermetic vocabulary than
+Influence, which he called an old name for the same idea. The name is
+**Quintessence**, shortened to **Quint** where a row has no space for the full
+word. A bot **distils** Quintessence from a certified fill, and a participant
+**spends** it to enter an event.
+
+The quintessence is the fifth essence, drawn out of base matter by repeated
+labour. Nobody can counterfeit it; it can only be distilled. That is what this
+quantity measures — the refined residue of real trading, which a participant
+either did or did not do.
+
+**MEASURED.** Three other hermetic names were unavailable. This tree already uses
+each one.
+
+```
+unavailable, and why
+
+Azoth          historically another name for mercury, and Mercury is already
+               the Healer role while Quicksilver Draught is already a class
+colour stages  NIGREDO, ALBEDO, CITRINITAS, RUBEDO and UNIO MYSTICA letter the
+               five trophy tiers in src/competition/trophy_generator.py
+tria prima     Salt, Sulphur and Mercury are the three role names in section 1
+```
+
+Quintessence stands apart from the four elements, the three principles and the
+seven metals, which is exactly why the name is free.
+
+### The three value types, and how they meet
+
+**HIS** for all three rules. Read together they fix three separate quantities,
+and a design that merges any two of them loses a property he asked for.
+
+```
+PoA tokens     yield only from tournaments and other player-based PoA actions;
+               that is the whole supply
+fees           affordable, never a gate, and each one injects or locks value
+Quintessence   distilled by certifying trades, spent to enter events
+```
+
+```mermaid
+flowchart LR
+    FEE["exchange fee<br/>paid to the venue"]
+    Q["QUINTESSENCE<br/>distilled, never bought"]
+    EV["a PoA event"]
+    TOK["PoA TOKENS<br/>the whole supply"]
+    POT["an event pot"]
+    EXT["external currency<br/>the charter fee"]
+    FEE -->|certify a fill| Q
+    Q -->|spend to enter| EV
+    EV -->|place in the field| TOK
+    TOK -->|stake by guild rank| LOCKED["locked in the network"]
+    EXT -->|inject| POT
+    TOK -->|optional stake| POT
+    POT -->|share on rank| TOK
+```
+
+Quintessence is the only one of the three that enters through work rather than
+through money. That single property carries the whole anti-whale intent.
+
+### What changes in the four fees
+
+**MINE.** Entry now costs Quintessence, and a fee therefore cannot also be the
+price of entry. Two things I wrote above change, and one line joins the refusal
+list. Nothing else in section 6 moves.
+
+```
+CHANGED — the Group stake becomes optional
+
+was    "from each member of a group of six or fewer, into that group's pot",
+       which reads as compulsory
+now    any member may stake into the group's pot; none of them has to
+ground his own directive — a fee is not a condition of entry, and entry
+       already costs Quintessence, so a compulsory stake would be a second
+       condition on the same door
+```
+
+```
+CHANGED — how to read the free-path block above
+
+was    "What a participant who pays nothing reaches", and
+       "every class — all seven, with no charge of any kind"
+now    money still buys nothing on that list, and every row of it stands.
+       Entry is no longer costless, though: it costs Quintessence, and a
+       participant distils that by trading on the platform
+```
+
+```
+ADDED — one more refusal
+
+no Quintessence for sale, in any currency, to anybody
+```
+
+The four fees keep their inject-or-lock marks. None of them buys a door. The raid
+path in section 6 stays earned, and Quintessence makes it more so: a participant
+now has to trade before entering anything at all.
+
+### Which existing symbol carries which part of certification
+
+**MEASURED.** Most of certification already exists. The table names the symbol
+for each part, read out of the four modules his directive names.
+
+| Part of certification | Symbol | File |
+| --------------------- | ------ | ---- |
+| Who signs | `BotIdentity`, and `bot_id` as the hex public key | `src/competition/bot_identity.py` |
+| Signing one trade | `BotIdentity.sign_trade` | `src/competition/bot_identity.py` |
+| Verifying one trade with no private key | `BotIdentity.verify_trade`, a static method | `src/competition/bot_identity.py` |
+| The exact bytes signed | `TradeRecord.canonical_bytes` | `src/competition/bot_identity.py` |
+| The leaf hash | `TradeRecord.record_hash` | `src/competition/bot_identity.py` |
+| The append-only certified log | `MerkleTradeLog.append` | `src/competition/merkle_log.py` |
+| The commitment | `MerkleTradeLog.root` | `src/competition/merkle_log.py` |
+| Proof of one trade without the log | `MerkleTradeLog.proof_for` and `verify_proof` | `src/competition/merkle_log.py` |
+| A public summary revealing no trade | `MerkleTradeLog.submission_summary` | `src/competition/merkle_log.py` |
+| Posting the commitment to the chain | `LocalRegistry.submit_result` | `src/competition/local_testnet.py` |
+| The chain, its blocks and its events | `LocalChain.send_tx`, `LocalChain.emit`, `LocalChain.mine` | `src/competition/local_testnet.py` |
+| One shared chain for the process | `SharedTestnetBridge.install_on` | `src/gui/shared_testnet.py` |
+| The only write path into that chain | `SharedTestnetBridge.request_competition` | `src/gui/shared_testnet.py` |
+| Standing between two participants | `RatingRegistry.record_result` and `elo_update` | `src/competition/challenge_protocol.py` |
+| A signed request carrying a stake | `ChallengeMessage` and `create_challenge` | `src/competition/challenge_protocol.py` |
+
+`MerkleTradeLog.append` is already the refusal certification needs. It rejects a
+record from another competition, a record from another bot, and a bad signature.
+
+`src/competition/merkle_log.py` — the three refusals
+
+```python
+        if record.competition != self.competition_id:
+            raise ValueError(
+        if record.bot_pubkey != self.bot_id:
+            raise ValueError(
+        if not skip_sig_verify and not BotIdentity.verify_trade(record):
+            raise ValueError(f"Invalid signature on trade seq={record.trade_seq}")
+```
+
+The bridge runs on every launch. `MainWindow._setup_ui` calls it with no condition
+around it, before any tab gets built.
+
+`src/gui/main_window.py` — the install call, at line 275
+
+```python
+                SharedTestnetBridge.install_on(self)
+```
+
+### What certification has no home for
+
+**MEASURED.** Seven parts have no symbol. Each one needs writing, and the
+document names them rather than implying the package covers them.
+
+```
+no home yet
+
+a per-fill certify call   CompetitionEngine.record_trade needs an ACTIVE
+                         competition; certification has to run on every trade,
+                         inside an event and outside one
+a Quintessence balance   no field and no ledger anywhere
+a spend path             entry costs Quintessence and nothing debits anything;
+                         TokenLedger mints and has no debit method at all
+a monotonic fee total    measured below; no existing field holds one
+a buy-side venue fee     _record_venue_fee clears on a buy, so a fold records
+                         no venue fee
+a bus subscriber         CompetitionEngine.record_trade has two callers and both
+                         sit inside local_testnet.run_demo_competition
+a one-trade request       CompetitionRequest carries a symbol, a season, a bot
+                         count and a round id, and nothing for a single fill
+```
+
+### The rate, from fees paid to Quintessence distilled
+
+**MEASURED.** Three fee figures exist and they are three different things. Only
+one of them suits a quantity a participant earns.
+
+```
+the three figures
+
+BotConfig.trading_fee_pct      a RATE. Default 0.6, its comment naming the
+                               Coinbase max tier. Read by
+                               minimum_opposing_trade_distance_pct in
+                               src/trading/otd_math.py
+
+BotStats.fees_paid_exchange    an AMOUNT, re-derived on every health refresh
+                               from get_my_trades(symbol, limit=500), so it
+                               FALLS as older fills leave that window.
+                               Written in src/trading/scrumming/reconciliation.py
+
+SettledSellFee.fee_amount      the venue's OWN fee for one settled sell, built
+                               by _record_venue_fee from order.fee, and its
+                               docstring says the value is never derived from
+                               the configured rate
+```
+
+The contrast with the YTD figures is the point. Those ratchet on purpose, and the
+fee figure does not.
+
+`src/trading/scrumming/reconciliation.py` — the deliberate ratchet
+
+```python
+        self.stats.ytd_scrummed_usd = max(_prev_scrum, _ytd_scrum_usd)
+        self.stats.ytd_folded_usd = max(_prev_fold, _ytd_fold_usd)
+```
+
+**Nothing in the running platform holds a monotonic lifetime fee total**, and
+`trade.filled` carries no fee field at all — its payload is the type, the side,
+the amount, the price, the dollars, the profit and the operator flag. A
+Quintessence total read from the windowed field would fall when old fills aged
+out, which no earned quantity may do.
+
+```
+PROPOSED — the conversion
+
+distil per fill, at certification, never from a stored total
+on a SELL   SettledSellFee.fee_amount, the number the venue itself reported
+on a BUY    nothing is recorded today; either extend _record_venue_fee to
+            buys, or a fold distils nothing and the rate favours the scrum
+the total   the socket keeps its own monotonic figure, because no field in
+            the platform is monotonic
+the scale   one rate constant, his to set, because the number decides what an
+            event costs in hours of trading
+```
+
+The venue's own number is the honest source. A rate built on the configured
+percentage would measure what the bot assumed rather than what the participant
+paid, and the fee dataclass says so in its own docstring.
+
+### What stops a wash trade
+
+**MEASURED.** Nothing detects one. A case-insensitive search of every Python file
+under `src/` for wash trading, self-dealing, manipulation, spoofing and layering
+returns a single hit, and that hit describes how a sound gets built.
+
+```
+$ grep -rniE "\bwash[ _]?trad|self[ _]?trad|manipulat|spoof|layering" src/ --include=*.py
+src/core/sound_engine.py:146: ... layering a noise tink, a detuned ring ...
+
+control, same grep shape:
+$ grep -rniE "\bhysteresis\b" src/ --include=*.py | wc -l
+34
+```
+
+One mechanism raises the cost without being written for this. The opposing-trade
+distance requires real price movement between a trade and its reverse, and the
+required distance already includes the fee.
+
+`src/trading/gate_chain.py` — `HysteresisGate`, the required distance
+
+```python
+        eff_pct = ctx.scrumming_interval_pct + ctx.trading_fee_pct
+```
+
+A same-price instant reverse therefore cannot fire on the autonomous path. Two
+things limit that protection, and both are measured.
+
+The manual path evaluates no chain. `_execute_manual_rebalance` moves holdings
+back to the target with one market order, and its own docstring says the labels
+and the operator flag come from a map of caller intents.
+
+Four of the labels it emits are absent from the declared vocabulary.
+
+```
+$ python -c "from src.core.emit_contracts import TRADE_TYPES; ..."
+emitted but NOT declared: ['MANUAL_FOLD', 'MANUAL_SCRUM', 'WIRE_STACK_FOLD', 'WIRE_STACK_SCRUM']
+```
+
+**The structural finding, and this is the part that matters.** Quintessence in
+proportion to fees paid means that trading purely to distil costs exactly the fee
+it distils from. That fee goes to the venue, never to the network. A participant
+can therefore turn money into Quintessence at the venue's fee rate, with no market
+in Quintessence anywhere.
+
+That weakens the anti-whale property rather than breaking it. The whale has to run
+an Acervator bot, trade real volume, pay real fees, and carry real market exposure
+across the opposing-trade distance on the autonomous path. The cost is not small
+and the path exists. Capping the rate, or capping Quintessence per period, would
+close it — and a cap changes what an event costs, which makes it his number and
+not mine.
+
+### The two residuals a new surface makes live
+
+**MEASURED.** Issue #147 already records two pieces of code that are harmless only
+while nothing constructs them. A certification socket constructs both.
+
+The mint path reads and writes a balance with no lock, and the module imports no
+threading at all. A certification worker on its own thread would share that
+dictionary with the Qt main thread.
+
+`src/competition/local_testnet.py` — the unlocked read-modify-write, at line 224
+
+```python
+        self._balances[recipient] = self._balances.get(recipient, 0) + amount_wei
+```
+
+The shelved tab builds a private chain when no bridge reaches it. A socket that
+reuses that constructor would certify into a chain nothing else can read.
+
+`src/gui/testnet_tab.py` — the fallback, at line 142
+
+```python
+            self._testnet = shared_testnet or LocalTestnet()
+```
+
+Both belong to whoever builds the socket. The first needs a lock, or the mutation
+needs to stay on one thread. The second needs the bridge to be required rather
+than optional.
+
+### The socket in one picture
+
+**MINE** for the arrangement, **MEASURED** for every symbol in it.
+
+```mermaid
+flowchart LR
+    FILL["trade.filled<br/>type, side, amount, price, usd"]
+    SIGN["BotIdentity.sign_trade<br/>Ed25519 over canonical_bytes"]
+    LOG["MerkleTradeLog.append<br/>refuses a bad signature"]
+    ROOT["MerkleTradeLog.root<br/>the commitment"]
+    BRIDGE["SharedTestnetBridge<br/>one chain per process"]
+    POST["LocalRegistry.submit_result<br/>the commitment on chain"]
+    QUINT["Quintessence<br/>NO HOME YET"]
+    FILL --> SIGN
+    SIGN --> LOG
+    LOG --> ROOT
+    ROOT --> BRIDGE
+    BRIDGE --> POST
+    LOG -.->|"the venue's fee for this fill"| QUINT
+```
+
+---
+
 ## The six choices
 
 Six questions are his. Each carries one recommendation and the cost of the
@@ -834,6 +1176,31 @@ twice for one act.
 
 **Recommended: no in-network exchange into tokens.** This constraint alone keeps
 his no-pay-wall rule true.
+
+---
+
+## The seventh choice, and it decides the mechanism
+
+One question carries the whole Certified Transaction Socket. His loot is
+explicitly tradable and his PoA tokens are explicitly stakeable. He has said
+neither about Quintessence.
+
+### Choice 7 — can Quintessence move between participants
+
+| Option | What it gives | What it costs |
+| ------ | ------------- | ------------- |
+| **Bound to the participant who distilled it** | The anti-whale rule holds. A whale who will not trade on Acervator cannot enter at any price | No gifting, no guild treasury of Quintessence, and a dormant participant's balance helps nobody |
+| Transferable between participants | A guild can carry a new member, and a quiet season still fills an event | A whale buys entry from anyone willing to sell, and the directive fails on the day the first trade clears |
+| Transferable only inside one guild | A guild can carry its own members | A whale forms a guild, buys its members' balances, and the leak reopens one step further out |
+
+**Recommended: bound to the participant who distilled it, and not transferable at
+all.** His own sentence sets the bar — participation must benefit many and not
+just themselves — and a quantity that can change hands is a quantity a whale can
+buy. The third option only moves the leak; it does not close it.
+
+This is the highest-value open question in the PoA economics, because every other
+part of the socket works the same way whichever answer he gives, and this answer
+alone decides whether the mechanism does its job.
 
 ---
 
