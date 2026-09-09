@@ -117,7 +117,7 @@ OUTCOME_OPEN = "open"
 
 #: A reversal call fails when the trend it called against carries on for
 #: this many candles in a row. The floor is the definition, not a setting.
-CONTINUATION_CANDLE_FLOOR = 2
+CONTINUATION_CANDLE_FLOOR = 3
 
 #: A confirmation share of zero confirms nothing. The operator sets one on
 #: the settings page before any call can confirm.
@@ -143,6 +143,10 @@ FOLLOW_UP_FAILED_FORMAT = (
 FOLLOW_UP_OPEN_FORMAT = (
     "{candles} candle(s) since the call, last close {close:g}, "
     "target {target:g} not reached"
+)
+FOLLOW_UP_NOT_READY_FORMAT = (
+    "the trend has held for {run} of the {floor} candles a failure needs, "
+    "last close {close:g}, target {target:g} not reached"
 )
 FOLLOW_UP_NO_SHARE_FORMAT = (
     "{candles} candle(s) since the call, last close {close:g}. "
@@ -233,11 +237,19 @@ NO_CEILING_SET = 0
 NO_INDICATOR_CAP = ata_spm.NO_INDICATOR_CAP
 
 SECONDS_PER_HOUR = 3600
+SECONDS_PER_MINUTE = 60
+
+#: ``RepostGuard.since`` answers this while a symbol has never reached a target.
+NO_SEND_RECORDED = None
 
 NO_CREDENTIAL_TEXT = "No credential held for {target}."
 NO_SENDER_TEXT = "No sender wired for {target}."
 NO_CEILING_TEXT = "Max posts per hour is unset. Nothing leaves."
 RATE_HELD_TEXT = "{sent} post(s) sent this hour, ceiling {ceiling}."
+REPOST_HELD_FORMAT = (
+    "{symbol} reached {target} {minutes:.0f} minute(s) ago; "
+    "one post per ticker per hour."
+)
 DECLINED_TEXT = "Declined. Not sent."
 SEND_FAILED_TEXT = "{target} refused the post: {error}"
 NO_DESTINATION_TEXT = ""
@@ -844,6 +856,13 @@ def follow_up_detail(outcome: FollowUpOutcome, share_pct: Any) -> str:
         return FOLLOW_UP_NO_SHARE_FORMAT.format(
             candles=outcome.candles, close=outcome.close
         )
+    if outcome.against_run > NO_CONTINUATION:
+        return FOLLOW_UP_NOT_READY_FORMAT.format(
+            run=outcome.against_run,
+            floor=CONTINUATION_CANDLE_FLOOR,
+            close=outcome.close,
+            target=outcome.target,
+        )
     return FOLLOW_UP_OPEN_FORMAT.format(
         candles=outcome.candles, close=outcome.close, target=outcome.target
     )
@@ -946,6 +965,42 @@ class SendRate:
         return RATE_HELD_TEXT.format(sent=self.sent_within_hour(now), ceiling=limit)
 
 
+class RepostGuard:
+    """One ticker, one post per push target per hour, whatever composed it.
+
+    ``ReadyToSend`` keeps one of these, so the hour holds across the whole
+    bucket and a second call on a symbol is refused like a repost of the first.
+    """
+
+    def __init__(self) -> None:
+        self.sent_at: dict = {}
+
+    def since(self, now: float, symbol: Any, target: Any) -> Optional[float]:
+        """Seconds since ``symbol`` last reached ``target``, or None for never."""
+        held = self.sent_at.get((str(symbol), str(target)))
+        if held is None:
+            return NO_SEND_RECORDED
+        return float(now) - float(held)
+
+    def allows(self, now: float, symbol: Any, target: Any) -> bool:
+        """Whether an hour has passed since ``symbol`` last reached ``target``."""
+        gap = self.since(now, symbol, target)
+        return gap is NO_SEND_RECORDED or gap >= SECONDS_PER_HOUR
+
+    def record(self, now: float, symbol: Any, target: Any) -> None:
+        """Take one send of ``symbol`` to ``target`` at ``now``."""
+        self.sent_at[(str(symbol), str(target))] = float(now)
+
+    def held_text(self, now: float, symbol: Any, target: Any) -> str:
+        """Why ``allows`` refused: how long ago ``symbol`` reached ``target``."""
+        gap = self.since(now, symbol, target)
+        return REPOST_HELD_FORMAT.format(
+            symbol=symbol,
+            target=target,
+            minutes=(gap or 0.0) / SECONDS_PER_MINUTE,
+        )
+
+
 class AtaSpmSettings:
     """The ATA-SPM settings page, carrying only what a phase reads.
 
@@ -1040,12 +1095,14 @@ def deliver_one(
     sender: Optional[Callable],
     settings: AtaSpmSettings,
     rate: SendRate,
+    repost: RepostGuard,
     now: float,
 ) -> DeliveryRecord:
     """Phase five for one post: send it, or record why it did not go.
 
     Every refusal answers a ``DeliveryRecord`` naming the target, and a post
-    whose ``over_limit`` is true never reaches ``sender``.
+    whose ``over_limit`` is true, or whose ticker ``repost`` still holds,
+    never reaches ``sender``.
     """
     record = DeliveryRecord(
         target=post.target, symbol=post.symbol, timeframe=post.timeframe
@@ -1064,6 +1121,9 @@ def deliver_one(
     if not rate.allows(now, settings.max_posts_per_hour):
         record.detail = rate.held_text(now, settings.max_posts_per_hour)
         return record
+    if not repost.allows(now, post.symbol, post.target):
+        record.detail = repost.held_text(now, post.symbol, post.target)
+        return record
     try:
         record.destination = str(sender(post))
     except Exception as exc:  # noqa: BLE001 - the sender is host-supplied
@@ -1072,6 +1132,7 @@ def deliver_one(
         return record
     record.sent = True
     rate.record(now)
+    repost.record(now, post.symbol, post.target)
     return record
 
 
@@ -1081,6 +1142,7 @@ def distribute(
     settings: Optional[AtaSpmSettings] = None,
     rate: Optional[SendRate] = None,
     clock: Optional[Callable] = None,
+    repost: Optional[RepostGuard] = None,
 ) -> list:
     """Phase five: send every post given, and answer one record for each.
 
@@ -1088,8 +1150,11 @@ def distribute(
     """
     held = settings if settings is not None else AtaSpmSettings()
     counter = rate if rate is not None else SendRate()
+    guard = repost if repost is not None else RepostGuard()
     now = float(clock() if clock is not None else 0.0)
-    return [deliver_one(one, sender, held, counter, now) for one in list(posts or [])]
+    return [
+        deliver_one(one, sender, held, counter, guard, now) for one in list(posts or [])
+    ]
 
 
 @dataclass(frozen=True)
@@ -1125,6 +1190,7 @@ class ReadyToSend:
         self.posts: list[BucketPost] = []
         self.full_auto = False
         self.rate = SendRate()
+        self.repost = RepostGuard()
         self.records: list = []
 
     def load_run(
@@ -1274,7 +1340,12 @@ class ReadyToSend:
         clock: Optional[Callable],
     ) -> list:
         records = distribute(
-            [one.post for one in held], sender, settings, self.rate, clock
+            [one.post for one in held],
+            sender,
+            settings,
+            self.rate,
+            clock,
+            self.repost,
         )
         self.records.extend(records)
         return records
