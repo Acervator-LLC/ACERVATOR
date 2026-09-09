@@ -13,7 +13,7 @@ from ...core.privacy_mask_registry import (
 
 from .. import design_system as ds
 from ..color_alpha import css_colours
-from . import main_window_surface
+from . import main_window_surface, privacy_dot_surface
 
 METHOD = "header.strip"
 
@@ -296,6 +296,12 @@ DEFAULT_MODE = "crypto"
 #: The request field ``view_model`` reads the wing from.
 MODE_PARAM = "mode"
 
+#: The request field carrying ``BotManager.get_aggregate_stats``.
+STATS_PARAM = "stats"
+
+#: The request field carrying how many exchanges the program is configured for.
+EXCHANGE_COUNT_PARAM = "exchange_count"
+
 MODE_BUTTON = {
     "minimum_width_px": 110,
     "horizontal_policy": "Preferred",
@@ -382,7 +388,11 @@ def is_masked(field_id: Any) -> bool:
 
 
 def privacy_dot(field_id: str, masked: Optional[bool] = None) -> dict:
-    """The glyph, tooltip and skin one value's privacy dot carries."""
+    """The glyph, tooltip, skin and press behaviour one privacy dot carries.
+
+    ``flat``, ``focus_policy`` and ``cursor_shape`` come from
+    ``privacy_dot_surface``, which is where the Qt ``PrivacyDot`` reads them.
+    """
     hidden = is_masked(field_id) if masked is None else bool(masked)
     glyph = DOT_MASKED_GLYPH if hidden else DOT_REVEALED_GLYPH
     state = "MASKED. Click to reveal." if hidden else "REVEALED. Click to mask."
@@ -392,6 +402,9 @@ def privacy_dot(field_id: str, masked: Optional[bool] = None) -> dict:
         "text": glyph,
         "tooltip": f"{field_id}: {state}",
         "style_sheet": DOT_STYLE,
+        "flat": privacy_dot_surface.FLAT,
+        "focus_policy": privacy_dot_surface.FOCUS_POLICY,
+        "cursor_shape": privacy_dot_surface.CURSOR_SHAPE,
     }
 
 
@@ -585,8 +598,61 @@ def view_model(params: dict) -> dict:
     """Bridge handler for ``header.strip``."""
     return build_view_model(
         stats=params.get("stats") or {},
-        exchange_count=int(params.get("exchange_count") or 0),
+        exchange_count=int(params.get(EXCHANGE_COUNT_PARAM) or 0),
         mode=params.get(MODE_PARAM, DEFAULT_MODE),
         tab_name=params.get("tab_name"),
         profits=params.get("profits"),
     )
+
+
+def fleet_aggregate(live: Any) -> Optional[dict]:
+    """``BotManager.get_aggregate_stats`` from ``live``, or None with no fleet."""
+    manager = getattr(live, "bot_manager", None)
+    reader = getattr(manager, "get_aggregate_stats", None)
+    if not callable(reader):
+        return None
+    found = reader()
+    return found if isinstance(found, dict) else None
+
+
+def configured_exchange_count(live: Any) -> Optional[int]:
+    """How many exchanges ``live.settings_manager`` lists, or None with none.
+
+    The Qt window counts its own exchange sub-tabs, one per listed exchange.
+    """
+    settings = getattr(live, "settings_manager", None)
+    listed = getattr(settings, "list_exchanges", None)
+    if not callable(listed):
+        return None
+    return len(list(listed() or []))
+
+
+def live_view_model(params: dict, live: Any) -> dict:
+    """Answer ``header.strip`` with the fleet the running program holds.
+
+    ``fleet_aggregate`` fills ``STATS_PARAM`` and ``configured_exchange_count``
+    fills ``EXCHANGE_COUNT_PARAM`` when the request names neither, so the shell
+    draws the same figures the Qt strip draws. Neither figure is derived here.
+    """
+    asked = dict(params or {})
+    if asked.get(STATS_PARAM) is None:
+        aggregate = fleet_aggregate(live)
+        if aggregate is not None:
+            asked[STATS_PARAM] = aggregate
+    if asked.get(EXCHANGE_COUNT_PARAM) is None:
+        counted = configured_exchange_count(live)
+        if counted is not None:
+            asked[EXCHANGE_COUNT_PARAM] = counted
+    return view_model(asked)
+
+
+def bind_live(live: Any) -> Any:
+    """Return a ``header.strip`` handler reading ``live``.
+
+    ``build_registry`` calls this when the running program serves the bridge.
+    """
+
+    def handler(params: dict) -> dict:
+        return live_view_model(params or {}, live)
+
+    return handler

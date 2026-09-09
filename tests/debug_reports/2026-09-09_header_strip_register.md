@@ -3,8 +3,10 @@
 Issue #128, the rows for `src/gui/widgets/spendable_profits.py` and
 `src/gui/widgets/privacy_dot.py` in the conversion table in
 [08-tabs.md](../../docs/manual/08-tabs.md). Files changed:
-`src/gui/web/spendable_profits.js`, `src/gui/web/header_strip.js` and the two
-table rows. No test file was written.
+`src/gui/web/spendable_profits.js`, `src/gui/web/header_strip.js`,
+`src/gui/main_tabs/header_strip_surface.py`,
+`src/gui/main_tabs/spendable_profits_surface.py`,
+`src/core/desktop_bridge.py` and the two table rows. No test file was written.
 
 The Electron shell ran from `desktop/main.js` under the installed Electron
 binary with a throwaway home, and the renderer was read over the Chrome
@@ -29,8 +31,21 @@ Both sides ran on one fleet snapshot and one privacy state: wallet cash
 4821.37, position value 17394.06, exchange realised 1263.48, exchange mature
 402.19, 38 bots answering the venue, scrummed 92184.55, folded 88760.12,
 realised profit and loss 3424.43, 1476 trades, 38 running, 7 lifetime errors,
-two exchange sub-tabs, and `kpi.locked` and `counter.folded` masked with the
+two configured exchanges, and `kpi.locked` and `counter.folded` masked with the
 other seventeen fields revealed.
+
+**Nothing is written into the page.** The snapshot is held by the bot manager
+the bridge is bound to, and the shell fetches every figure over the bridge. The
+first version of this report took its picture match on values pushed into the
+renderer by hand; section 4 is why that proved nothing, and every reading below
+is from a fetched draw.
+
+The manager is `main_window_surface.FleetSource`, the class the main-window
+model already uses to stand for the manager, carrying that one aggregate.
+`BotManager.restore_bots_from_state` against the operator's own saved fleet
+would be the stronger arm and this run cannot take it: the state file is the
+live tree of a process trading real money, so it is neither copied nor read
+here. What is proved is the path, not whose bots travel it.
 
 ---
 
@@ -165,18 +180,22 @@ data-child-module in the strip             spendable_profits, then dashboard_sta
 
 ### 2.1 the registration is the draw path
 
-The registration was taken out of `spendable_profits.js` and the same payload
-driven again.
+The registration was taken out of `spendable_profits.js` and the shell opened
+again, with nothing pushed in.
 
 | | registered | registration removed |
 | --- | --- | --- |
 | panels registered | 19 | 18 |
-| `host.mount` answered | true | false |
-| markup in the space | 7,542 characters | 86 |
+| markup in the space | 8,087 characters | 86 |
 | the space reads | `SPENDABLE $4,821.37 …` | `Panel spendable_profits did not draw: spendable_profits.js registered no panel to draw` |
 | column values | five | none |
 | `faults()` | empty | one, naming the panel |
 | page fault attribute | absent | `spendable_profits` |
+| the five counter cards | drawn, with their figures | drawn, with their figures |
+
+The counters keep their values in both arms, which is the positive control on
+the instrument: the run still reached the bridge and still drew a strip, so the
+empty box is the registration and not a dead page.
 
 ```
 <scratchpad>/u128/react_header_strip_128_control_registration.png
@@ -186,16 +205,18 @@ Before this change the same failure drew a blank box and recorded nothing.
 
 ### 2.2 the dot is a component
 
-`window.acervatorDot` was removed at runtime and the same payload driven again.
+`window.acervatorDot` was removed at runtime and the panel reopened through the
+host, which refetches over the bridge with nothing pushed in.
 
 | | privacy_dot.js loaded | removed |
 | --- | --- | --- |
 | `typeof acervatorDot` | object | undefined |
 | pressable wrappers in the columns | 5 | 0 |
 | hover style blocks | 5 | 0 |
+| dot cursor | pointer on all five | none, the wrapper is gone |
 | glyph spans | 5 | 5 |
 | glyph text | ● ● ○ ● ● | ● ● ○ ● ● |
-| elements marked `data-child-module="privacy_dot"` | 5 | 0 |
+| column values | five, fetched | the same five, fetched |
 | panels registered | 19 | 19 |
 
 The glyph stays because `header_strip.js` declares it and
@@ -254,9 +275,160 @@ qt      five cards 153 each, spendable panel 502 of a 1444 row  (34.8 per cent)
 
 ---
 
+## 4 — The strip drew nothing the shell had fetched
+
+### 4.1 the error
+
+The strip registered, drew, and reported an empty fleet on every figure. The
+run that produced the first picture match had pushed the values into the
+renderer itself, so the match measured a page being handed values by hand.
+
+```
+column values   —  —  —  —  —
+counters        Scrummed $0.00  Folded ****  Trades 0  Bots 0  Errors 0
+P/L             $+0.0000
+```
+
+### 4.2 reproduction
+
+The shell was opened and read with nothing pushed in.
+
+```
+electron.exe <tree>/desktop --user-data-dir=<scratchpad> --remote-debugging-port=9351
+ACERVATOR_BRIDGE_ARGV=<scratchpad>/u128/live_bridge.py
+PYTHONWARNINGS=error
+window.acervatorPanelHost.registered()  and the strip read out of the document
+```
+
+### 4.3 the cause
+
+`panel_host.requestOf` asks a panel that declares no `request` with `{}`, and
+`build_registry` served `header.strip` and `spendable_profits.state` from the
+unbound `view_model`. Both then answered for a fleet nobody had named.
+
+```python
+        header_strip_surface.METHOD: header_strip_surface.view_model,
+        ...
+        spendable_profits_surface.METHOD: spendable_profits_surface.view_model,
+```
+
+Every surface that already draws live figures answers this the same way, with a
+`bind_live` the registry installs when the running program serves the bridge.
+Neither header-strip surface had one.
+
+### 4.4 the correction
+
+`header_strip_surface` reads the aggregate off the bot manager the bridge is
+bound to, and the exchange count off the settings manager. Neither is derived.
+
+```python
+def fleet_aggregate(live: Any) -> Optional[dict]:
+    """``BotManager.get_aggregate_stats`` from ``live``, or None with no fleet."""
+    manager = getattr(live, "bot_manager", None)
+    reader = getattr(manager, "get_aggregate_stats", None)
+    if not callable(reader):
+        return None
+    found = reader()
+    return found if isinstance(found, dict) else None
+```
+
+`spendable_profits_surface` takes the same aggregate through
+`header_strip_surface.profits_payload`, which is the one builder
+`MainWindow._refresh_dashboard` already calls, so no second arithmetic exists
+on either host. `build_registry` installs both handlers beside the six that
+were already bound.
+
+### 4.5 the rerun
+
+With nothing pushed in:
+
+```
+SPENDABLE $4,821.37   REALISED $1,263.48   LOCKED ****   MATURE $402.19   EXCH 2
+Scrummed $92,184.55   Folded ****   Trades 1476   Bots 38   Errors 7
+P/L $+3,424.4300      Crypto Mode
+registered 19, reasonFor('spendable_profits') null, faults []
+```
+
+`EXCH 2` is the length of the settings manager's exchange list, which is the
+list the Qt window builds one sub-tab from.
+
+### 4.6 the control on the source
+
+The manager's `get_aggregate_stats` was made to answer `None`, and the shell
+opened again with nothing pushed in.
+
+| | the aggregate reads | the aggregate broken |
+| --- | --- | --- |
+| SPENDABLE | `$4,821.37` | `—` |
+| REALISED | `$1,263.48` | `—` |
+| LOCKED, masked | `****` | `—` |
+| MATURE | `$402.19` | `—` |
+| EXCH | `2` | `—` |
+| Scrummed | `$92,184.55` | `$0.00` |
+| Trades | `1476` | `0` |
+| Bots | `38` | `0` |
+| Errors | `7` | `0` |
+| P/L | `$+3,424.4300` | `$+0.0000` |
+| the panel itself | drawn, no fault | drawn, no fault |
+
+```
+<scratchpad>/u128/react_header_strip_128_control_aggregate.png
+```
+
+The panel keeps drawing and every value falls away, so the figures come from
+the aggregate and from nowhere else.
+
+---
+
+## 5 — Every privacy dot drew with the ordinary pointer
+
+### 5.1 the error
+
+```
+qt      PrivacyDot.cursor()  PointingHandCursor, on all five column dots
+react   [data-part="dot"]    cursor: auto
+```
+
+### 5.2 reproduction
+
+The two strips were driven on one payload and the cursor read from
+`QWidget.cursor().shape()` and from `getComputedStyle`.
+
+### 5.3 the cause
+
+`privacy_dot_surface.dot_view` publishes `flat`, `focus_policy` and
+`cursor_shape`, and three surfaces cut a dot down to five fields that leave all
+three out.
+
+```python
+_DOT_FIELDS = ("field_id", "masked", "text", "tooltip", "style_sheet")
+```
+
+`privacy_dot.js` reads `cursor_shape` and had nothing to read.
+
+### 5.4 the correction
+
+The two surfaces that build a dot for this strip keep the three fields:
+`spendable_profits_surface._DOT_FIELDS` carries them, and
+`header_strip_surface.privacy_dot` reads them from `privacy_dot_surface` rather
+than spelling them again. `dashboard_stat_card_surface` is the third and is
+`src/gui/widgets/dashboard_stat_card.py`, its own row, and is left alone.
+
+### 5.5 the rerun
+
+```
+react column dots   pointer, pointer, pointer, pointer, pointer
+react column dots   role="button" on all five
+qt column dots      PointingHandCursor on all five
+react counter dots  default on four, pointer on the pressable Errors card
+```
+
+---
+
 ## The two pictures
 
-Both were driven with the fleet snapshot and privacy state named above.
+Both were read on the fleet snapshot and privacy state named above, with
+nothing pushed into the page.
 
 | # | item | Qt picture | React picture |
 | --- | --- | --- | --- |
@@ -273,6 +445,7 @@ Both were driven with the fleet snapshot and privacy state named above.
 | 11 | column dot colour | `#00ffee`, 14px | `rgb(0, 255, 238)`, 14px |
 | 12 | column dot position | under its own value, centred | the same |
 | 13 | column dot tooltips | `kpi.spendable: REVEALED. Click to mask.` and its four siblings | the same five |
+| 13a | column dot cursor | `PointingHandCursor` on all five | `pointer` on all five |
 | 14 | column widths | 74, 74, 43, 60, 29 | 73, 73, 43, 60, 29 |
 | 15 | counter labels | Scrummed, Folded, Trades, Bots, Errors, `#7a7d99`, 10px | the same five, `rgb(122, 125, 153)` |
 | 16 | counter values | `$92,184.55`, `****`, `1476`, `38`, `7`, `#00ffcc`, 14px bold | the same five, `rgb(0, 255, 204)` |
@@ -287,39 +460,33 @@ Both were driven with the fleet snapshot and privacy state named above.
 | 25 | mode button pressed state | not checked | `aria-pressed="false"` |
 | 26 | P/L card | present, hidden, `$+3,424.4300` | present, `hidden`, `$+3,424.4300` |
 | 27 | counter card edge | a one pixel panel edge | none |
+| 28 | counter dot cursor | `PointingHandCursor` on all five | `default` on four, `pointer` on Errors |
 
-Twenty-six of twenty-seven match. No item matched because both sides were
-empty: every figure, label, glyph and tooltip carried a value on both sides.
+Twenty-seven of twenty-nine match. Every figure on the React side was fetched
+over the bridge with nothing pushed into the page. No item matched because both
+sides were empty: every figure, label, glyph and tooltip carried a value on
+both sides.
 
 Item 26 is a card neither picture shows. It is in both documents, hidden on
 both, carrying the same text on both, so it is a match on the element and not
 on anything drawn.
 
-Item 27 is the one difference. `dashboard_stat_card_surface.FRAME_STYLE` is the
-empty string and the `StyledPanel` frame shape reaches the page as an attribute
-no rule reads, so Qt's style engine paints an edge the page does not. That is
-`src/gui/widgets/dashboard_stat_card.py`, a row of its own.
+Items 27 and 28 are the two differences and both are the counter card.
+`dashboard_stat_card_surface.FRAME_STYLE` is the empty string and the
+`StyledPanel` frame shape reaches the page as an attribute no rule reads, so
+Qt's style engine paints an edge the page does not; and the same file's
+`_DOT_FIELDS` cuts `cursor_shape` away, so its dot takes no pointing hand. That
+is `src/gui/widgets/dashboard_stat_card.py`, a row of its own, and neither is
+changed here.
 
 Item 14 differs by one pixel on the two widest labels, which is Chromium and Qt
 rounding the same text metric.
 
-## What the strip still cannot draw
+## What is still owed
 
-The shell asks `header.strip` with an empty request, so the fleet the strip
-reports is an empty one: every counter zero and every column an em dash. The
-figures above reached the page because the run pushed the payload in. Neither
-`header_strip.js` nor `spendable_profits.js` can supply a fleet, and neither
-should compute one — what is missing is the aggregate in the shell's own
-request.
-
-Each privacy dot on the page draws with the default cursor where Qt gives it a
-pointing hand. `dot_view` publishes `cursor_shape`, and the three surfaces that
-build a dot for a strip column, a counter card and the strip itself each cut it
-away.
-
-```python
-_DOT_FIELDS = ("field_id", "masked", "text", "tooltip", "style_sheet")
-```
+`BotManager.restore_bots_from_state` over the operator's own saved fleet is the
+arm this run could not take, because that file belongs to a process trading
+real money. The bound path is proved; the bots on it are not the operator's.
 
 ## Where this page carries the dated block
 

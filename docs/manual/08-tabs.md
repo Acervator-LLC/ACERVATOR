@@ -1645,8 +1645,9 @@ a column that does not apply to a row.
   }
 ```
 
-Both builds were driven with one fleet snapshot and one privacy state, with
-LOCKED and Folded masked and every other field revealed. Every value, label,
+Both builds were read on one fleet snapshot and one privacy state, with LOCKED
+and Folded masked and every other field revealed. Nothing was written into the
+page: the shell fetched every figure over the bridge. Every value, label,
 glyph, colour and tooltip on the strip agrees between them.
 
 The strip's slots now share the row the way the Qt layout shares it. A Qt
@@ -1660,13 +1661,39 @@ takes 34.6 per cent of the row against Qt's 34.8.
 | `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | - | yes | yes | in scope |
 
-Two things the strip still does not carry. The shell asks `header.strip` with
-an empty request, so the fleet figures it draws are whatever an empty snapshot
-gives: zero counters and an empty column set. Nothing in either module can
-supply a fleet; the request needs one. And Qt draws a one pixel panel edge
-around each counter card where the page draws none, because
-`dashboard_stat_card_surface.FRAME_STYLE` is empty and the `StyledPanel` shape
-reaches the page as an attribute no rule reads. That card is its own row.
+The strip fetches its own figures. The shell asks for the strip with an empty
+request, so both surfaces now read the fleet the bridge is bound to, the way
+the History, Charts, Trading and Inspector surfaces already read theirs. The
+aggregate is `BotManager.get_aggregate_stats`, the same call the Qt window's
+own tick makes, and the exchange count is the length of
+`SettingsManager.list_exchanges`, which is the list the window builds one
+sub-tab from. Neither figure is derived in the surface or in the page.
+
+`src/gui/main_tabs/header_strip_surface.py` — the request fills itself
+
+```python
+def live_view_model(params: dict, live: Any) -> dict:
+    asked = dict(params or {})
+    if asked.get(STATS_PARAM) is None:
+        aggregate = fleet_aggregate(live)
+        if aggregate is not None:
+            asked[STATS_PARAM] = aggregate
+```
+
+The spendable columns take the same aggregate through
+`header_strip_surface.profits_payload`, the one builder the Qt tick already
+calls, so the two hosts read one snapshot and cannot disagree.
+
+Each privacy dot in the strip's columns now carries the pointing hand the Qt
+dot sets on itself. `privacy_dot_surface.dot_view` publishes `cursor_shape`,
+and the two surfaces that build a dot for this strip now keep it.
+`dashboard_stat_card_surface` still cuts it away, so the five counter dots
+draw with the ordinary pointer; that card is its own row.
+
+Qt draws a one pixel panel edge around each counter card where the page draws
+none, because `dashboard_stat_card_surface.FRAME_STYLE` is empty and the
+`StyledPanel` shape reaches the page as an attribute no rule reads. That is
+the same row.
 
 ## 2026-09-09 22:12 - #128 - the Swarm tab loses List View
 

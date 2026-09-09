@@ -357,6 +357,10 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         registry[extractor_bot_table_surface.METHOD] = (
             extractor_bot_table_surface.bind_live(live)
         )
+        registry[header_strip_surface.METHOD] = header_strip_surface.bind_live(live)
+        registry[spendable_profits_surface.METHOD] = (
+            spendable_profits_surface.bind_live(live)
+        )
     return registry
 
 
