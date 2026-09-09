@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 QT_PACKAGE = "PySide6"
 SURFACE_SUFFIX = "_surface"
-CONTROLS = ("bot_swarm_list", "theme_engine", "design_tokens")
+CONTROLS = ("bot_visualizer", "theme_engine", "design_tokens")
 
 PAIRED = "paired"
 UNPAIRED = "unpaired"

@@ -51,8 +51,6 @@ body {
   flex: none;
 }
 
-.acervator-swarm-tab [data-part="view-stack"],
-.acervator-swarm-tab [data-part="list-page"],
 .acervator-swarm-tab [data-part="grid-page"] {
   flex: 1 1 auto;
   min-height: 0;
@@ -85,30 +83,6 @@ body {
 
 .acervator-swarm-input:focus {
   outline: 1px solid var(--accent);
-}
-
-/* The list table and the lane sheet `bot_swarm_list.js` draws inside the
- * `bot-swarm-list` mount. Every cell colour arrives on its own `style`
- * attribute from the Python payload, so no rule here sets a `color` on one.
- */
-table.acervator-swarm-list {
-  border-spacing: 0;
-  table-layout: fixed;
-  font: inherit;
-}
-
-.acervator-swarm-list[data-part="header"] {
-  background: var(--btn-bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  font-weight: 600;
-  height: 24px;
-}
-
-.acervator-swarm-list[data-part="cell"] {
-  border: 1px solid var(--grid);
-  padding: 0 4px;
-  overflow: hidden;
 }
 
 .acervator-swarm-sheet {

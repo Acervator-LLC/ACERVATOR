@@ -49,7 +49,6 @@ TAB_SCRIPT_ASSETS: tuple[str, ...] = (
     "bot_node.js",
     "wire_canvas.js",
     "quick_routing.js",
-    "bot_swarm_list.js",
     "bot_visualizer.js",
 )
 
@@ -270,6 +269,10 @@ if _HAS_WEBENGINE:
         def update_bots(self, bot_statuses: list) -> None:
             """Redraw the fleet from one status list."""
             self.take({"action": "update_bots", "bot_statuses": bot_statuses})
+
+        def set_app_theme(self, theme_name: str) -> None:
+            """Read every locust's growth-stage colours from theme_name."""
+            self.take({"action": "set_app_theme", "name": theme_name})
 
         def register_sim_run(self, sim_id: str, label: str, cfg: dict) -> None:
             """Add one Simulator Swarm row."""

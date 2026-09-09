@@ -12,13 +12,13 @@
     "bidirectional_offset_px", "bot_ids", "bot_log_topic", "bots_key",
     "broken_dot_style_sheet", "broken_privacy_button_style_sheet",
     "bus_emitted", "bus_topics", "button_kind", "canvas_shown",
-    "canvas_visible", "capital_max", "capital_min", "capital_prefix",
+    "capital_max", "capital_min", "capital_prefix",
     "capital_start", "capital_text_format", "colors", "column_widths",
     "confirm_default_button", "confirm_head_format", "confirm_line_format",
     "confirm_pct_format", "confirm_plural", "confirm_tail", "confirm_title",
     "confirm_unshowable_log", "context_cfg_keys", "curve_scale",
     "default_candle_total", "default_capital", "default_pnl",
-    "default_theme_key", "default_view_mode", "description_style_sheet",
+    "default_theme_key", "description_style_sheet",
     "description_word_wrap", "dest_key", "dot_cursor", "dot_text",
     "drag_onto_wired_why", "drag_start_id", "drag_to_empty_why", "dragging",
     "emitted", "empty_alignment", "empty_style_sheet", "empty_text",
@@ -76,13 +76,11 @@
     "start_phase", "state_write_failed_error", "status_done", "status_idle",
     "status_live", "status_running", "status_stopped", "stop_button_text",
     "summary_label_style_sheet", "summary_margins", "summary_spacing",
-    "swarm_accents", "swarm_list", "swarm_list_style_sheet", "swarm_tab_index",
+    "layer_list_style_sheet", "swarm_accents", "swarm_tab_index",
     "swarm_tints", "tab_kind", "tab_style_sheet", "tab_titles",
     "theme_caption", "theme_key", "theme_keys", "theme_start_index",
     "threads", "timer_delays_ms", "timers", "trades_placeholder_text",
-    "trades_text_format", "view_caption", "view_grid_index", "view_index",
-    "view_labels", "view_list_index", "view_mode", "view_modes",
-    "view_tooltip", "visible_bots", "viz_margins", "viz_spacing",
+    "trades_text_format", "visible_bots", "viz_margins", "viz_spacing",
     "warning_level", "wire_config_prompt_format", "wire_config_row_label",
     "wire_config_title", "wire_config_width_px", "wire_connected_log_format",
     "wire_count", "wire_created_topic", "wire_disconnected_log_format",
@@ -121,14 +119,6 @@
   var SWARM_TAB_INDEX = "swarm_tab_index";
   var SIM_TAB_INDEX = "sim_tab_index";
   var PAPER_TAB_INDEX = "paper_tab_index";
-  var VIEW_INDEX = "view_index";
-  var VIEW_MODE = "view_mode";
-  var VIEW_MODES = "view_modes";
-  var VIEW_LABELS = "view_labels";
-  var VIEW_CAPTION = "view_caption";
-  var VIEW_TOOLTIP = "view_tooltip";
-  var VIEW_LIST_INDEX = "view_list_index";
-  var VIEW_GRID_INDEX = "view_grid_index";
   var EXCHANGE = "exchange";
   var EXCHANGE_ITEMS = "exchange_items";
   var EXCHANGE_CAPTION = "exchange_caption";
@@ -153,11 +143,9 @@
   var DESCRIPTION_WORD_WRAP = "description_word_wrap";
   var DESCRIPTION_STYLE_SHEET = "description_style_sheet";
   var SCROLL_STYLE_SHEET = "scroll_style_sheet";
-  var SWARM_LIST_STYLE_SHEET = "swarm_list_style_sheet";
+  var LAYER_LIST_STYLE_SHEET = "layer_list_style_sheet";
   var SUMMARY_LABEL_STYLE_SHEET = "summary_label_style_sheet";
   var LAYER_CHROME = "layer_chrome";
-  var LIST_ROW_KEYS = "list_row_keys";
-  var ROWS_SENT = "rows_sent";
   var COLUMN_WIDTHS = "column_widths";
   var ROW_HANDLE_KEYS = "row_handle_keys";
   var ROW_MARGINS = "row_margins";
@@ -219,7 +207,6 @@
 
   var ROW_AT = "row:";
   var LAYER_AT = "layer:";
-  var LIST_AT = "list:";
 
   var NO_BRIDGE = "the preload bridge is not present";
 
@@ -295,20 +282,13 @@
   var CAPTION_PART = "caption";
   var EXCHANGE_SELECT_PART = "exchange-select";
   var THEME_SELECT_PART = "theme-select";
-  var VIEW_SELECT_PART = "view-select";
   var OPACITY_SLIDER_PART = "opacity-slider";
   var STRETCH_PART = "stretch";
   var INNER_ROW_PART = "inner-row";
-  var VIEW_STACK_PART = "view-stack";
-  var LIST_PAGE_PART = "list-page";
   var GRID_PAGE_PART = "grid-page";
-  var LIST_MOUNT_PART = "bot-swarm-list";
-  var LIST_ROW_PART = "list-row";
-  var LIST_CELL_PART = "list-cell";
   var LOCUST_PART = "locust";
   var EMPTY_PART = "empty";
   var WIRE_CANVAS_PART = "wire-canvas";
-  var LANE_CANVAS_PART = "lane-canvas";
   var QUICK_ROUTING_PART = "quick-routing";
   var LIVE_ROWS_PART = "live-rows";
   var LAYER_HEADER_PART = "layer-header";
@@ -345,7 +325,6 @@
   var SELECTED_STATE = "selected";
   var TAB_SELECTOR = "QTabBar";
 
-  var SET_VIEW_MODE = "set_view_mode";
   var SET_EXCHANGE = "set_exchange";
   var SET_THEME = "set_theme";
   var SET_OPACITY = "set_opacity";
@@ -365,9 +344,6 @@
   var BOXES_PARAM = "boxes";
   var QUICK_ROUTING_API = "acervatorQuickRouting";
   var QUICK_ROUTING_METHOD = "quick_routing.state";
-  var SWARM_LIST_API = "acervatorSwarmList";
-  var SWARM_LIST = "swarm_list";
-  var SWARM_LIST_ROW_PART = "row";
   var BOT_ID_ATTR = "data-bot-id";
   var TAB_PARAM = "tab";
   var STEPS_PARAM = "steps";
@@ -839,13 +815,6 @@
     });
   }
 
-  function viewItems(model) {
-    var names = listField(model, VIEW_LABELS);
-    return listField(model, VIEW_MODES).map(function (mode, at) {
-      return { label: text(at < names.length ? names[at] : mode), value: text(mode) };
-    });
-  }
-
   // Each locust's box in its page's own coordinates, keyed by bot id.
   function boxesIn(page) {
     var found = {};
@@ -953,11 +922,8 @@
     while (at) {
       if (typeof at.getAttribute === FUNCTION_KIND) {
         var part = at.getAttribute(PART_ATTR);
-        if (part === LIST_ROW_PART || part === LOCUST_PART) {
+        if (part === LOCUST_PART) {
           return at.getAttribute(KEY_ATTR) || EMPTY;
-        }
-        if (part === SWARM_LIST_ROW_PART) {
-          return at.getAttribute(BOT_ID_ATTR) || EMPTY;
         }
       }
       at = at.parentElement;
@@ -1239,23 +1205,6 @@
         }
       }),
       element(Caption, {
-        key: VIEW_CAPTION,
-        slot: VIEW_CAPTION,
-        text: model[VIEW_CAPTION]
-      }),
-      element(Picker, {
-        key: VIEW_SELECT_PART,
-        part: VIEW_SELECT_PART,
-        slot: VIEW_MODE,
-        items: viewItems(model),
-        value: text(model[VIEW_MODE]),
-        tooltip: model[VIEW_TOOLTIP],
-        action: actionName(model, SET_VIEW_MODE),
-        onPick: function (event) {
-          dispatch(SET_VIEW_MODE, { mode: event.target.value });
-        }
-      }),
-      element(Caption, {
         key: WIRES_CAPTION,
         slot: WIRES_CAPTION,
         text: model[WIRES_CAPTION]
@@ -1296,13 +1245,9 @@
     style.justifyContent = START;
     style.alignContent = START;
     style.flex = AUTO;
-    var pageProps = {
-      className: TAB_CLASS,
-      style: style,
-      hidden: props.current !== true
-    };
+    var pageProps = { className: TAB_CLASS, style: style };
     pageProps[PART_ATTR] = GRID_PAGE_PART;
-    pageProps[CURRENT_ATTR] = text(props.current);
+    pageProps[CURRENT_ATTR] = text(true);
     dragProps(pageProps);
     pageProps[DECLARED_ATTR] = String(listField(model, BOT_IDS).length);
     pageProps[HELD_ATTR] = String(cells.length);
@@ -1339,100 +1284,6 @@
     drawn.push(element(WireOverlay, { key: WIRE_OVERLAY_PART, model: model }));
     pageProps.style.position = RELATIVE;
     return element(DIV_TAG, pageProps, drawn);
-  }
-
-  // The list module paints the table and the lane wires over the tab's rows.
-  function swarmList(model) {
-    var api = global[SWARM_LIST_API];
-    var payload = objectField(model, SWARM_LIST);
-    if (!api || typeof api.SwarmList !== FUNCTION_KIND) {
-      return null;
-    }
-    return element(api.SwarmList, { model: payload });
-  }
-
-  // ListPage draws the dense rows the tab sends, one per bot.
-  function ListPage(props) {
-    var model = props.model;
-    var sent = listField(model, ROWS_SENT);
-    var rows = sent.length ? sent[sent.length - STEP] : [];
-    var keys = listField(model, LIST_ROW_KEYS);
-    var style = { display: FLEX, flexDirection: COLUMN, flex: AUTO, overflow: AUTO };
-    var pageProps = {
-      className: TAB_CLASS,
-      style: style,
-      hidden: props.current !== true
-    };
-    pageProps[PART_ATTR] = LIST_PAGE_PART;
-    pageProps[CURRENT_ATTR] = text(props.current);
-
-    var mountProps = { style: { display: FLEX, flexDirection: COLUMN } };
-    mountProps[PART_ATTR] = LIST_MOUNT_PART;
-    mountProps[SLOT_ATTR] = LIST_MOUNT_PART;
-    mountProps[DECLARED_ATTR] = String(listField(model, BOT_IDS).length);
-    mountProps[HELD_ATTR] = String(Array.isArray(rows) ? rows.length : ZERO);
-    dragProps(mountProps);
-
-    var placed = (Array.isArray(rows) ? rows : []).map(function (one, at) {
-      var rowProps = {
-        key: String(at),
-        className: ROW_CLASS,
-        style: { display: FLEX, flexDirection: ROW }
-      };
-      rowProps[PART_ATTR] = LIST_ROW_PART;
-      rowProps[INDEX_ATTR] = String(at);
-      rowProps[KEY_ATTR] = text(isPlainObject(one) ? one[keys[ZERO]] : undefined);
-      var cells = keys.map(function (name) {
-        var cellStyle = {
-          userSelect: NONE,
-          whiteSpace: NOWRAP,
-          overflow: HIDDEN
-        };
-        var cellProps = { key: name, className: CELL_CLASS, style: cellStyle };
-        cellProps[PART_ATTR] = LIST_CELL_PART;
-        cellProps[COLUMN_ATTR] = name;
-        cellProps[KEY_ATTR] = rowProps[KEY_ATTR];
-        cellProps[INDEX_ATTR] = String(at);
-        var written = isPlainObject(one) ? one[name] : undefined;
-        return element(SPAN_TAG, cellProps, text(written));
-      });
-      return element(DIV_TAG, rowProps, cells);
-    });
-
-    var laneProps = { key: LANE_CANVAS_PART, style: { display: NONE } };
-    laneProps[PART_ATTR] = LANE_CANVAS_PART;
-    laneProps[SLOT_ATTR] = WIRE_CANVAS_PART;
-    var built = swarmList(model);
-    return element(
-      DIV_TAG,
-      pageProps,
-      element(DIV_TAG, mountProps, built === null ? placed : built),
-      element(DIV_TAG, laneProps, null)
-    );
-  }
-
-  function ViewStack(props) {
-    var model = props.model;
-    var at = model[VIEW_INDEX];
-    var style = { display: FLEX, flexDirection: COLUMN, flex: FLEX_NONE };
-    style.overflow = HIDDEN;
-    var stackProps = { className: TAB_CLASS, style: style };
-    stackProps[PART_ATTR] = VIEW_STACK_PART;
-    stackProps[INDEX_ATTR] = text(at);
-    return element(
-      DIV_TAG,
-      stackProps,
-      element(ListPage, {
-        key: LIST_PAGE_PART,
-        model: model,
-        current: at === model[VIEW_LIST_INDEX]
-      }),
-      element(GridPage, {
-        key: GRID_PAGE_PART,
-        model: model,
-        current: at === model[VIEW_GRID_INDEX]
-      })
-    );
   }
 
   function SwarmCell(props) {
@@ -1605,7 +1456,7 @@
     scrollProps[PART_ATTR] = LAYER_SCROLL_PART;
     scrollProps[LAYER_ATTR] = props.layer;
 
-    var listStyle = styleOf(model[SWARM_LIST_STYLE_SHEET]);
+    var listStyle = styleOf(model[LAYER_LIST_STYLE_SHEET]);
     merged(listStyle, boxStyle(model, LAYER_LIST_MARGINS, LAYER_LIST_SPACING, COLUMN));
     var listProps = { className: TAB_CLASS, style: listStyle };
     listProps[PART_ATTR] = LAYER_LIST_PART;
@@ -1698,7 +1549,7 @@
       element(
         DIV_TAG,
         innerProps,
-        element(ViewStack, { key: VIEW_STACK_PART, model: model }),
+        element(GridPage, { key: GRID_PAGE_PART, model: model }),
         element(DIV_TAG, routingProps, routingBody)
       ),
       element(LiveRows, { key: LIVE_ROWS_PART, model: model })
@@ -1831,7 +1682,7 @@
       { where: null, sheet: model[PRIVACY_MODE_STYLE_SHEET] },
       { where: null, sheet: model[DESCRIPTION_STYLE_SHEET] },
       { where: null, sheet: model[SCROLL_STYLE_SHEET] },
-      { where: null, sheet: model[SWARM_LIST_STYLE_SHEET] },
+      { where: null, sheet: model[LAYER_LIST_STYLE_SHEET] },
       { where: null, sheet: model[SUMMARY_LABEL_STYLE_SHEET] }
     ];
     var chrome = objectField(model, LAYER_CHROME);
@@ -1962,21 +1813,6 @@
     }
   }
 
-  // The dense list is a row per bot; a shortfall means one load raised.
-  function checkList(model) {
-    var sent = listField(model, ROWS_SENT);
-    if (!sent.length) {
-      return;
-    }
-    var rows = sent[sent.length - STEP];
-    var ids = listField(model, BOT_IDS);
-    if (Array.isArray(rows) && rows.length !== ids.length) {
-      swarmFaults.push(
-        fault(LIST_AT + ROWS_SENT, ROWS_SENT, DISAGREES_FAULT, ids.length)
-      );
-    }
-  }
-
   function checkSources() {
     if (!hasSheetSource()) {
       swarmFaults.push(fault(null, STYLE_SHEET, NO_SHEET_SOURCE_FAULT, null));
@@ -2050,7 +1886,6 @@
     checkRowOrder(model);
     checkCells(model);
     checkGrid(model);
-    checkList(model);
     checkSources();
     return report();
   }
@@ -2116,11 +1951,6 @@
       return slot.key === layer;
     });
     return named.length ? bag(named[ZERO].rows) : {};
-  }
-
-  function listRows() {
-    var sent = list(ROWS_SENT);
-    return sent.length ? sent[sent.length - STEP] : [];
   }
 
   function summaryOf(layer) {
@@ -2250,9 +2080,6 @@
     HoverButton: HoverButton,
     Picker: Picker,
     OpacitySlider: OpacitySlider,
-    ViewStack: ViewStack,
-    ListPage: ListPage,
-    swarmList: swarmList,
     GridPage: GridPage,
     Locust: Locust,
     LayerPane: LayerPane,
@@ -2266,7 +2093,6 @@
     layerNames: layerNames,
     rowOrder: rowOrder,
     rowsOf: rowsOf,
-    listRows: listRows,
     summaryOf: summaryOf,
     columnNames: function (layer, runId) {
       var found = rowsOf(layer);

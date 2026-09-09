@@ -20,15 +20,9 @@ logger = logging.getLogger("acervator.gui.bot_visualizer")
 try:
     from ..core.privacy_mask_registry import (
         get_privacy_mask_registry as _get_privacy_mask_registry,
-        mask_or as _mask_or,
     )
-except Exception:  # a missing registry leaves _mask_or returning the raw value
+except Exception:  # a missing registry leaves the dot reading unmasked
     _get_privacy_mask_registry = None  # type: ignore[assignment]
-
-    def _mask_or(value, field_id: str, mask: str = "****") -> str:
-        # Signature matches mask_or: callers pass mask= by keyword.
-        del field_id, mask
-        return str(value)
 
 
 try:
@@ -76,9 +70,11 @@ if _HAS_QT:
             self._dragging_wire = False
             self._wire_start_id: str = ""
             self._wire_mouse_pos: Optional[QPointF] = None
-            # _wire_opacity_pct is 0-100, the alpha multiplier in both canvases.
-            self._view_mode: str = "list"
+            # _wire_opacity_pct is 0-100, the alpha multiplier on the wire sheet.
             self._wire_opacity_pct: int = 100
+            from .visualizer.growth_stage import DEFAULT_THEME_NAME
+
+            self._app_theme_name: str = DEFAULT_THEME_NAME
 
             # The startup restore and a wire drag both emit wire.created.
             try:
@@ -163,19 +159,6 @@ if _HAS_QT:
             self._theme_combo.currentIndexChanged.connect(self._on_theme_changed)
             header.addWidget(self._theme_combo)
 
-            header.addWidget(QLabel("View:"))
-            self._view_combo = QComboBox()
-            self._view_combo.addItem("List", "list")
-            self._view_combo.addItem("Grid", "grid")
-            self._view_combo.setCurrentIndex(0)  # default: List
-            self._view_combo.setToolTip(
-                "List: dense row-per-bot table with vertical-lane "
-                "wires (the default).\n"
-                "Grid: locust-avatar swarm view (legacy fallback)."
-            )
-            self._view_combo.currentIndexChanged.connect(self._on_view_mode_changed)
-            header.addWidget(self._view_combo)
-
             header.addWidget(QLabel("Wires:"))
             from PySide6.QtWidgets import QSlider
 
@@ -203,8 +186,8 @@ if _HAS_QT:
             self._grid_layout.setSpacing(10)
             self._grid_layout.setContentsMargins(6, 6, 6, 6)
             self._grid_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-            # 6 columns fits a 112px locust plus 10px spacing in the left pane.
-            self._grid_cols = 6
+            # 8 columns fits an 88px locust plus 10px spacing in the left pane.
+            self._grid_cols = 8
             self._empty_label = QLabel(
                 "No active bots. Start bots to see visualizations."
             )
@@ -214,46 +197,12 @@ if _HAS_QT:
             self._empty_label.setAlignment(Qt.AlignCenter)
             self._grid_layout.addWidget(self._empty_label, 0, 0, 1, self._grid_cols)
 
-            from .bot_swarm_list import BotListView, LaneWireCanvas
-            from PySide6.QtWidgets import QStackedWidget
-
-            self._bot_list = BotListView()
-            # The overlay sits on the list viewport, in row and lane coordinates.
-            self._lane_canvas = LaneWireCanvas(
-                self._bot_list, parent=self._bot_list.viewport()
-            )
-            self._lane_canvas.setGeometry(
-                0,
-                0,
-                self._bot_list.viewport().width(),
-                self._bot_list.viewport().height(),
-            )
-            # Wire coordinates move with the scroll position.
-            _orig_resize = self._bot_list.viewport().resizeEvent
-
-            def _list_viewport_resized(ev):
-                self._lane_canvas.setGeometry(
-                    0, 0, ev.size().width(), ev.size().height()
-                )
-                self._lane_canvas.raise_()
-                _orig_resize(ev)
-
-            self._bot_list.viewport().resizeEvent = _list_viewport_resized
-            self._bot_list.verticalScrollBar().valueChanged.connect(
-                lambda *_: self._lane_canvas.update()
-            )
-
-            self._view_stack = QStackedWidget()
-            self._view_stack.addWidget(self._bot_list)  # index 0
-            self._view_stack.addWidget(self._grid_widget)  # index 1
-            self._view_stack.setCurrentIndex(0)
-
             self._quick_routing_matrix = QuickRoutingMatrix(self)
 
             inner_hbox = QHBoxLayout()
-            # No gap: _quick_routing_matrix takes every pixel the stack leaves.
+            # No gap: _quick_routing_matrix takes every pixel the grid leaves.
             inner_hbox.setSpacing(0)
-            inner_hbox.addWidget(self._view_stack)
+            inner_hbox.addWidget(self._grid_widget)
             inner_hbox.addWidget(self._quick_routing_matrix, stretch=1)
             viz_lay.addLayout(inner_hbox, stretch=1)
 
@@ -506,9 +455,8 @@ if _HAS_QT:
             self._wire_canvas.hide()  # starts hidden; shown only on viz tab
 
             def _on_tab_changed(idx):
-                # Grid mode only: the opaque overlay would swallow List-mode clicks.
-                _is_grid = str(getattr(self, "_view_mode", "list")) == "grid"
-                if idx == 0 and _is_grid:
+                # The overlay carries grid coordinates and belongs to that tab.
+                if idx == 0:
                     self._wire_canvas.show()
                     self._wire_canvas.raise_()
                     self._reposition_wire_canvas()
@@ -1266,6 +1214,12 @@ if _HAS_QT:
             for widget in self._bot_widgets.values():
                 widget.set_theme(self._theme_key)
 
+        def set_app_theme(self, theme_name: str) -> None:
+            """Read every locust's growth-stage colours from theme_name."""
+            self._app_theme_name = str(theme_name or "")
+            for widget in self._bot_widgets.values():
+                widget.set_app_theme(self._app_theme_name)
+
         def _refresh_bot_swarm_privacy_dot(self) -> None:
             """Draw the identifier privacy dot in the theme accent colour.
 
@@ -1503,79 +1457,10 @@ if _HAS_QT:
             if hasattr(self, "_wire_canvas") and self._wire_canvas:
                 self._wire_canvas.update()
 
-        def _on_view_mode_changed(self, *_a) -> None:
-            try:
-                mode = str(self._view_combo.currentData() or "list")
-            except Exception:  # noqa: BLE001
-                mode = "list"
-            self._view_mode = mode
-            _idx = 0 if mode == "list" else 1
-            self._view_stack.setCurrentIndex(_idx)
-            # _wire_canvas carries grid coordinates and hides in List mode.
-            if hasattr(self, "_wire_canvas") and self._wire_canvas:
-                self._wire_canvas.setVisible(mode == "grid")
-                # The stacked page just became visible; its rectangle exists now.
-                if mode == "grid":
-                    self._reposition_wire_canvas()
-                    self._wire_canvas.raise_()
-            # The lane canvas is a child of the list viewport and needs no move.
-            if hasattr(self, "_lane_canvas") and self._lane_canvas:
-                self._lane_canvas.update()
-
         def _on_wire_opacity_changed(self, value: int) -> None:
             self._wire_opacity_pct = int(value)
             if hasattr(self, "_wire_canvas") and self._wire_canvas:
                 self._wire_canvas.update()
-            if hasattr(self, "_lane_canvas") and self._lane_canvas:
-                self._lane_canvas.set_opacity_pct(self._wire_opacity_pct)
-
-        def _refresh_bot_list_rows(self) -> None:
-            """Rebuild the ``_bot_list`` rows from ``_bot_widgets``.
-
-            Inflow and Outflow read $0.00 until the exchange sync fills
-            the year-to-date sums.
-            """
-            if not hasattr(self, "_bot_list"):
-                return
-            # The % Out column sums a bot's outbound rates and reddens over 100.
-            _outflow_pct_by_bot: dict[str, float] = {}
-            for _wire in self._wires:
-                _sid = str(_wire.get("source_id", "") or "")
-                if not _sid:
-                    continue
-                _outflow_pct_by_bot[_sid] = _outflow_pct_by_bot.get(_sid, 0.0) + float(
-                    _wire.get("pct", 0) or 0
-                )
-            rows: list[dict] = []
-            for bid in self._bot_widgets:
-                _w = self._bot_widgets[bid]
-                _data = getattr(_w, "_bot_data", {}) or {}
-                _sym = str(_data.get("symbol", "") or "")
-                # Year-to-date sums, filled in by the exchange sync.
-                _stats = _data.get("stats", {}) or {}
-                _in = float(
-                    _stats.get("ytd_folded_usd", 0.0)
-                    or _data.get("ytd_folded_usd", 0.0)
-                    or 0.0
-                )
-                _out = float(
-                    _stats.get("ytd_scrummed_usd", 0.0)
-                    or _data.get("ytd_scrummed_usd", 0.0)
-                    or 0.0
-                )
-                rows.append(
-                    {
-                        # Masked here: set_bots renders whatever it is handed.
-                        "bot_id": bid,
-                        "symbol": _mask_or(_sym, "bot_swarm.identifiers"),
-                        "inflow_usd": _in,
-                        "outflow_usd": _out,
-                        "outflow_pct": _outflow_pct_by_bot.get(bid, 0.0),
-                    }
-                )
-            self._bot_list.set_bots(rows)
-            # The lane canvas needs the wires again to align its segments.
-            self._lane_canvas.set_wires(self._wires)
 
         # Routing lives in each source bot's scrumming_state.smart_wire_routes.
         def _load_bot_state_dict(self) -> dict:
@@ -1777,9 +1662,6 @@ if _HAS_QT:
                 if self._wire_canvas.isVisible():
                     self._wire_canvas.raise_()
                 self._wire_canvas.update()
-                if hasattr(self, "_lane_canvas") and self._lane_canvas:
-                    self._lane_canvas.raise_()
-                    self._lane_canvas.update()
 
         def _get_bot_center(self, bot_id: str) -> Optional[QPointF]:
             """Return a ``BotNodeWidget`` centre in ``_wire_canvas`` coordinates."""
@@ -2072,7 +1954,13 @@ if _HAS_QT:
             )
 
         def _wire_at_pos(self, pos: QPointF, threshold: float = 12.0) -> dict | None:
-            """Return the ``_wires`` entry nearest a position, within threshold."""
+            """Return the ``_wires`` entry nearest a position, within threshold.
+
+            Measures against the same catenary_curve the wire canvas paints, so
+            a right-click lands on the wire the operator can see.
+            """
+            from .main_tabs.wire_canvas_surface import catenary_curve, slack_for_offset
+
             best_wire = None
             best_dist = threshold
 
@@ -2082,14 +1970,12 @@ if _HAS_QT:
                 if not src or not tgt:
                     continue
 
-                offset = self._get_wire_offset(wire)
-
-                mid_y_shift = offset
-                for t in [0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0]:
-                    px = src.x() + (tgt.x() - src.x()) * t
-                    py = src.y() + (tgt.y() - src.y()) * t
-                    curve_offset = mid_y_shift * 4 * t * (1 - t)
-                    py += curve_offset
+                curve = catenary_curve(
+                    (src.x(), src.y()),
+                    (tgt.x(), tgt.y()),
+                    slack_for_offset(self._get_wire_offset(wire)),
+                )
+                for px, py in curve["points"]:
                     dist = math.sqrt((pos.x() - px) ** 2 + (pos.y() - py) ** 2)
                     if dist < best_dist:
                         best_dist = dist
@@ -2169,7 +2055,7 @@ if _HAS_QT:
         def update_bots(self, bot_statuses: list[dict]):
             """Rebuild ``_bot_widgets`` and ``_live_bot_rows`` from status data.
 
-            The same status dict feeds the locust grid and the row list.
+            One status dict per bot feeds the locust grid.
             """
             current_ids = set()
 
@@ -2184,6 +2070,7 @@ if _HAS_QT:
                     self._empty_label.setVisible(False)
                     node = BotNodeWidget()
                     node.set_theme(self._theme_key)
+                    node.set_app_theme(self._app_theme_name)
                     self._bot_widgets[bid] = node
                     idx = len(self._bot_widgets) - 1
                     row = idx // self._grid_cols
@@ -2202,11 +2089,6 @@ if _HAS_QT:
                         for w in self._wires
                         if w["source_id"] != bid and w["target_id"] != bid
                     ]
-
-            try:
-                self._refresh_bot_list_rows()
-            except Exception as _rl_exc:  # noqa: BLE001 - list mirror best-effort
-                logger.debug("list-view row refresh raised: %s", _rl_exc)
 
             # Re-laid out after a removal: the grid would otherwise hold a hole.
             if self._bot_widgets:

@@ -5,12 +5,37 @@ from __future__ import annotations
 import math
 import secrets
 
+from .growth_stage import (
+    BODY_SCALE_RATIO,
+    CROWN_SPINE_COUNT,
+    DEFAULT_THEME_NAME,
+    STAGE_INITIALS,
+    STAGE_LABELS,
+    TERGITE_COUNT,
+    WING_SPREAD_RATIO,
+    growth_pct_from_stats,
+    growth_text,
+    id_text_color,
+    stage_colors,
+    stage_for,
+)
 from .particle import Particle
 from .privacy import _mask_or
 from .themes import THEMES
 
 # _RNG draws the start phase and the Particle spawn values, nothing else.
 _RNG = secrets.SystemRandom()
+
+CARD_WIDTH_PX = 88
+CARD_HEIGHT_PX = 78
+# animate repaints every 4th frame of the tab's 33 ms timer, which is 7.5 Hz.
+REPAINT_INTERVAL_S = 0.125
+CROWN_SPINE_LENGTH_U = 3.0
+CROWN_SPINE_SPREAD_U = 2.4
+STAGE_BADGE_FONT_PT = 6
+STAGE_BADGE_INSET_PX = 2
+STAGE_BADGE_WIDTH_PX = 10
+STAGE_BADGE_HEIGHT_PX = 9
 
 try:
     from PySide6.QtWidgets import QWidget
@@ -36,13 +61,14 @@ if _HAS_QT:
     class BotNodeWidget(QWidget):
         """Paint one bot as a locust, fed by set_bot_data and animate.
 
-        paintEvent draws the wings, abdomen, thorax and head, then the
-        symbol, the P/L and the bot_id as text.
+        paintEvent reads stage_for, draws the wings, abdomen, thorax and head
+        in that stage's colours, then the symbol, the P/L, the growth_text
+        figure and the bot_id as text.
         """
 
         def __init__(self, parent=None):
             super().__init__(parent)
-            self.setMinimumSize(112, 98)
+            self.setMinimumSize(CARD_WIDTH_PX, CARD_HEIGHT_PX)
             self._theme = THEMES["quantum"]
             self._phase = _RNG.uniform(0, math.pi * 2)
             self._trade_pulses: list[float] = []
@@ -50,9 +76,17 @@ if _HAS_QT:
             self._bot_data: dict = {}
             # set_bot_data raises this to 1.0 when a nonzero price changes.
             self._antenna_drive: float = 0.0
+            self._since_repaint: float = 0.0
+            # The app theme the stage body and trim colours are read from.
+            self._app_theme_name: str = DEFAULT_THEME_NAME
 
         def set_theme(self, theme_key: str):
             self._theme = THEMES.get(theme_key, THEMES["quantum"])
+            self.update()
+
+        def set_app_theme(self, theme_name: str) -> None:
+            """Read the stage colours from theme_name and redraw the card."""
+            self._app_theme_name = str(theme_name or DEFAULT_THEME_NAME)
             self.update()
 
         def set_bot_data(self, data: dict):
@@ -79,7 +113,12 @@ if _HAS_QT:
                 self._antenna_drive = 1.0
             self._bot_data = data
 
-        def animate(self, dt: float):
+        def animate(self, dt: float) -> bool:
+            """Move the card on by dt seconds; return whether it repainted.
+
+            A card holding a trade pulse or a particle repaints on every call,
+            and an otherwise idle card repaints every REPAINT_INTERVAL_S.
+            """
             self._phase += dt * 1.5
             self._trade_pulses = [
                 p - dt * 0.8 for p in self._trade_pulses if p - dt * 0.8 > 0
@@ -89,15 +128,27 @@ if _HAS_QT:
             self._particles = [p for p in self._particles if p.life > 0]
             # _antenna_drive falls from 1.0 to 0.0 in one second.
             self._antenna_drive = max(0.0, self._antenna_drive - dt * 1.0)
+            self._since_repaint += dt
+            busy = bool(self._trade_pulses or self._particles)
+            if not busy and self._since_repaint < REPAINT_INTERVAL_S:
+                return False
+            self._since_repaint = 0.0
             self.update()
+            return True
 
         def _locust_body_path(
-            self, cx: float, cy: float, scale: float, wing_open: float
+            self,
+            cx: float,
+            cy: float,
+            scale: float,
+            wing_open: float,
+            wing_ratio: float = 1.0,
         ) -> dict:
             """Return the locust body as QPainterPath parts keyed head,
             thorax, abdomen, wing_l and wing_r.
 
-            wing_open runs 0.0 folded to 1.0 spread; scale sets the unit u.
+            wing_open runs 0.0 folded to 1.0 spread, wing_ratio shortens the
+            wing to the stage's share of full spread, and scale sets the unit u.
             """
             u = scale
 
@@ -132,8 +183,8 @@ if _HAS_QT:
             abdomen.closeSubpath()
             parts["abdomen"] = abdomen
 
-            wing_spread = 4.5 * u + wing_open * 6 * u
-            wing_lift = wing_open * 2 * u
+            wing_spread = (4.5 * u + wing_open * 6 * u) * wing_ratio
+            wing_lift = wing_open * 2 * u * wing_ratio
             wing_l = QPainterPath()
             wing_l.moveTo(cx - 4 * u, cy - 10 * u)
             wing_l.quadTo(
@@ -201,7 +252,13 @@ if _HAS_QT:
             }.get(state, t["text"])
             pnl_color = t["success"] if pnl >= 0 else t["error"]
 
-            scale = min(w, h) / 52.0
+            growth_pct = growth_pct_from_stats(stats)
+            stage = stage_for(growth_pct)
+            body_hex, trim_hex = stage_colors(stage, self._app_theme_name)
+            body_color = QColor(body_hex)
+            trim_color = QColor(trim_hex)
+
+            scale = min(w, h) / 52.0 * BODY_SCALE_RATIO[stage]
 
             wing_open = 0.35
             if state == "running":
@@ -230,7 +287,9 @@ if _HAS_QT:
                 p.setBrush(QBrush(pc))
                 p.drawEllipse(QPointF(pt.x, pt.y), pt.size, pt.size)
 
-            parts = self._locust_body_path(cx, cy, scale, wing_open)
+            parts = self._locust_body_path(
+                cx, cy, scale, wing_open, WING_SPREAD_RATIO[stage]
+            )
 
             # state_color glow, painted before every body part.
             glow = QRadialGradient(cx, cy, 18 * scale)
@@ -257,25 +316,25 @@ if _HAS_QT:
             p.drawPath(parts["wing_r"])
 
             abdomen_grad = QLinearGradient(cx, cy + 2 * scale, cx, cy + 18 * scale)
-            base_ab = QColor(pnl_color)
+            base_ab = QColor(body_color)
             # mag reaches its 1.0 ceiling at a pnl near $10,000.
             mag = min(1.0, math.log10(max(abs(pnl), 0.1) + 1.0) / 4.0)
-            base_ab.setAlpha(int(90 + 120 * mag))
-            tip = QColor(pnl_color)
-            tip.setAlpha(int(40 + 60 * mag))
+            base_ab.setAlpha(int(150 + 105 * mag))
+            tip = QColor(trim_color)
+            tip.setAlpha(int(90 + 90 * mag))
             abdomen_grad.setColorAt(0, base_ab)
             abdomen_grad.setColorAt(1, tip)
             p.setBrush(QBrush(abdomen_grad))
-            ab_pen = QPen(pnl_color)
+            ab_pen = QPen(trim_color)
             ab_pen.setWidth(1)
             p.setPen(ab_pen)
             p.drawPath(parts["abdomen"])
 
-            # Three dividers split the abdomen into four segments.
+            # One divider fewer than the stage's tergite count.
             seg_pen = QPen(QColor(0, 0, 0, 120))
             seg_pen.setWidth(1)
             p.setPen(seg_pen)
-            for i in range(1, 4):
+            for i in range(1, TERGITE_COUNT[stage]):
                 y_seg = cy + (2 + i * 4) * scale
                 taper = 5.5 - i * 0.8
                 p.drawLine(
@@ -283,11 +342,25 @@ if _HAS_QT:
                     QPointF(cx + taper * scale, y_seg),
                 )
 
+            # Crown spines stand on the thorax and belong to the mature stage.
+            if CROWN_SPINE_COUNT[stage]:
+                crown_pen = QPen(trim_color)
+                crown_pen.setWidth(1)
+                p.setPen(crown_pen)
+                spines = CROWN_SPINE_COUNT[stage]
+                for index in range(spines):
+                    share = (index / (spines - 1)) if spines > 1 else 0.5
+                    spine_x = cx + (share - 0.5) * 2 * CROWN_SPINE_SPREAD_U * scale
+                    p.drawLine(
+                        QPointF(spine_x, cy - 12 * scale),
+                        QPointF(spine_x, cy - (12 + CROWN_SPINE_LENGTH_U) * scale),
+                    )
+
             thorax_grad = QRadialGradient(cx, cy - 5 * scale, 10 * scale)
-            tc1 = QColor(state_color)
-            tc1.setAlpha(90)
+            tc1 = QColor(body_color)
+            tc1.setAlpha(150)
             tc2 = QColor(state_color)
-            tc2.setAlpha(30)
+            tc2.setAlpha(60)
             thorax_grad.setColorAt(0, tc1)
             thorax_grad.setColorAt(1, tc2)
             p.setBrush(QBrush(thorax_grad))
@@ -422,10 +495,30 @@ if _HAS_QT:
             p.setPen(pnl_color)
             p.drawText(QRectF(0, h - 22, w, 11), Qt.AlignCenter, _fpnl(pnl))
 
+            # The growth figure that placed this card in its stage.
+            font.setPointSize(STAGE_BADGE_FONT_PT)
+            p.setFont(font)
+            p.setPen(trim_color)
+            p.drawText(
+                QRectF(
+                    w - STAGE_BADGE_INSET_PX - STAGE_BADGE_WIDTH_PX,
+                    STAGE_BADGE_INSET_PX,
+                    STAGE_BADGE_WIDTH_PX,
+                    STAGE_BADGE_HEIGHT_PX,
+                ),
+                Qt.AlignCenter,
+                STAGE_INITIALS[stage],
+            )
+            p.drawText(
+                QRectF(0, h - 31, w, 9),
+                Qt.AlignCenter,
+                growth_text(growth_pct),
+            )
+
             font.setPointSize(5)
             font.setBold(False)
             p.setFont(font)
-            p.setPen(QColor(110, 110, 140))
+            p.setPen(QColor(id_text_color(self._app_theme_name)))
             bot_id_short = data.get("bot_id", "")[:8]
             p.drawText(
                 QRectF(0, h - 10, w, 9),
@@ -449,6 +542,8 @@ if _HAS_QT:
                 f"Price: {_fp(price) if price > 0 else '—'}\n"
                 f"Volume: {vol_str}\n"
                 f"P/L: {_fpnl(pnl)}\n"
+                f"Stage: {STAGE_LABELS[stage]}\n"
+                f"Realised growth: {growth_text(growth_pct)}\n"
                 f"Bot: {_mask_or(str(data.get('bot_id', ''))[:12], 'bot_swarm.identifiers', mask='********')}"
             )
 

@@ -46,7 +46,7 @@ class BotNodeWidget(QWidget):
 
 In the React build the card is drawn by `bot_node.js` from the payload
 `bot_node_surface` publishes. The tab page carries that module beside the wire
-canvas, the quick routing matrix, the list and the theme palettes.
+canvas, the quick routing matrix and the theme palettes.
 
 `src/gui/react_bot_swarm_tab.py` — `TAB_SCRIPT_ASSETS`
 
@@ -61,14 +61,13 @@ TAB_SCRIPT_ASSETS: tuple[str, ...] = (
     "bot_node.js",
     "wire_canvas.js",
     "quick_routing.js",
-    "bot_swarm_list.js",
     "bot_visualizer.js",
 )
 ```
 
-One handler switches between the list and the grid. The wire overlay covers the
-grid alone, because the grid is the only view whose coordinates a wire can be
-drawn against.
+The grid of locust cards is the whole screen. The wire overlay covers it,
+because the grid is the only surface whose coordinates a wire can be drawn
+against.
 
 ## Drawing a wire
 
@@ -296,28 +295,6 @@ def restore_bots_from_state(self, state: dict) -> list[str]:
 `restore_smart_wires_from_state` in the same mixin rebuilds the topology.
 `delete_bot` is the only path that removes a record.
 
-## The list view
-
-The table carries four named columns and eight wire lanes.
-
-`src/gui/bot_swarm_list.py` — `COLUMN_HEADERS`
-
-```python
-COLUMN_HEADERS = ["Ticker", "Inflow", "Outflow", "% Out"] + [
-    f"L{i + 1}" for i in range(LANE_COUNT)
-]
-```
-
-Two wires share a lane only when their row spans do not overlap, and the
-allocator takes the first free lane in order.
-
-`src/gui/bot_swarm_list.py` — `BotSwarmLaneAllocator.assign`
-
-```python
-def assign(self, wires: list[tuple[str, int, int]]) -> dict[str, Optional[int]]:
-    """Place every ``(wire_id, row_a, row_b)`` triple in ``wires``.
-```
-
 ## Capital claims
 
 One reservation per bot stands against a wallet. A total above the wallet
@@ -341,14 +318,13 @@ in the table at the foot of this file. The Qt panel beside it,
 
 ## Bridge
 
-Eight methods serve this screen, and the renderer modules carry the matching
+Seven methods serve this screen, and the renderer modules carry the matching
 names.
 
 | Bridge method | Serves |
 | ------------- | ------ |
 | `bot_visualizer.state` | The whole tab |
 | `bot_swarm_tab.state` | The three sub-tabs and the header row |
-| `bot_swarm_list.state` | The list view and its lanes |
 | `bot_node.state` | One locust card |
 | `wire_canvas.state` | The wire overlay on the grid |
 | `quick_routing.state` | The quick routing matrix |
@@ -362,8 +338,7 @@ The Bot Swarm is a proprietary capital reinforcement network system that allows 
 The tab is now called Swarm. It sits sixth on the bar, on the gold ground
 with red text.
 
-Each bot draws as one locust card, and the tab switches between the list and
-the grid. Wires drag between nodes on the grid.
+Each bot draws as one locust card on the grid, and wires drag between nodes.
 
 `src/gui/visualizer/bot_node.py` — `BotNodeWidget`
 
@@ -437,31 +412,11 @@ def restore_bots_from_state(self, state: dict) -> list[str]:
     """Recreate every persisted bot in IDLE state; return the ids restored.
 ```
 
-(List View)
-
-![](p30-i0.png)
-
 Three sub-tabs open the screen: Bot Swarm, Simulator Swarm and Paper Swarm. The
 header row holds the drag hint, an identifier privacy dot that masks the bot
-hashes and the symbol labels together, the Privacy Mode button, and four
+hashes and the symbol labels together, the Privacy Mode button, and three
 controls. Exchange filters both the swarm and the quick routing scope. Theme
-lists the four palettes. View chooses List or Grid. The Wires slider sets wire
-opacity from 0 to 100 %.
-
-The table carries four named columns and eight wire lanes.
-
-`src/gui/bot_swarm_list.py` — `COLUMN_HEADERS`
-
-```python
-COLUMN_HEADERS = ["Ticker", "Inflow", "Outflow", "% Out"] + [
-    f"L{i + 1}" for i in range(LANE_COUNT)
-]
-```
-
-Inflow draws green and Outflow red. % Out sums a bot's outbound wire
-percentages, and a bot with no outbound wire reads 0 %. Two wires share a lane
-only when their row spans do not overlap, and the dot at each end of a lane
-marks the source row and the target row.
+lists the four palettes. The Wires slider sets wire opacity from 0 to 100 %.
 
 The quick routing matrix fills the right half in three zones: the source list,
 the Rate field between them, and the destination list. Every checked source
@@ -494,11 +449,11 @@ Disconnect or Disconnect All runs.
 
 ![](p30-i1.png)
 
-The view switch swaps the table for the node canvas. Each card carries the
-symbol above, the realised profit below it, and the first eight characters of
-the bot id at the foot. The profit colour is the theme's success colour at zero
-and above and the error colour below, and the abdomen gradient takes that same
-colour with its alpha scaled by the size of the figure.
+Each card carries the symbol above, the realised profit below it, and the
+first eight characters of the bot id at the foot. The profit colour is the
+theme's success colour at zero and above and the error colour below, and the
+abdomen gradient takes that same colour with its alpha scaled by the size of
+the figure.
 
 Privacy Mode is off in the figure, so the symbol and the id both draw plain.
 One field id covers all three readings on a card, the symbol, the short bot id
@@ -532,11 +487,10 @@ around each card, which draw in the second accent at low alpha.
     "error": QColor(255, 50, 80),
 ```
 
-The wires cover the grid alone, because the grid is the only view whose
+The wires cover the grid, because the grid is the only surface whose
 coordinates a wire can be drawn against. Each wire carries its own percentage,
 drawn beside it. Drag between two nodes to create a wire, and right-click a
-wire to remove it. The quick routing matrix on the right is the same widget the
-List view shows.
+wire to remove it.
 
 A wire's percentage sits in a rounded dark badge at the midpoint of the curve,
 so a wire crossing a card still reads. The Wires slider at the top right sets
@@ -570,7 +524,7 @@ the main window already made.
 ```
 
 Every header control reports back to Python. The privacy dot, the Privacy Mode
-button, the Exchange, Theme and View pickers and the Wires slider each send one
+button, the Exchange and Theme pickers and the Wires slider each send one
 action. The screen then redraws from the answer.
 
 `src/gui/react_bot_swarm_tab.py` — `BotSwarmReactTab.take`
@@ -601,36 +555,6 @@ so both screens ask the same question in the same words.
         screen shows.
         """
 ```
-
-The List view draws the same twelve-column table in the React tab. The tab
-surface builds the list payload once, from the rows the last fleet load sent
-and the wires the board holds, and hands it to the list module inside the page.
-
-`src/gui/main_tabs/bot_visualizer_surface.py` — `swarm_list`
-
-```python
-def swarm_list(model: BotVisualizerModel) -> dict:
-    """The dense list payload, from the rows ``update_bots`` last sent.
-
-    ``bot_swarm_list_surface`` builds it, so the list draws the table and
-    the lane wires the Qt ``BotListView`` and ``LaneWireCanvas`` paint.
-    """
-```
-
-The list module draws the table and the see-through lane sheet over it in one
-box, so a wire runs down a lane column between the two rows it joins.
-
-`src/gui/web/bot_swarm_list.js` — `SwarmList`
-
-```javascript
-    return element(
-      DIV_TAG,
-      swarmProps,
-      element(ListTable, { key: LIST_PART, model: model }),
-      element(LaneSheet, { key: SHEET_PART, model: model })
-    );
-```
-
 
 ### The window a bot row opens
 
@@ -678,5 +602,265 @@ the bot draws the reason in that space rather than nothing.
     "live_settings_tab_surface",
 ),
 ```
+
+## 2026-09-09 22:12 - #128 - one view, growth stages, and wires that hang
+
+List View is gone. The header row now holds the drag hint, the identifier
+privacy dot, the Privacy Mode button, Exchange, Theme and the Wires slider. The
+View picker between Theme and Wires is removed, and the grid of locust cards is
+the whole left pane.
+
+`src/gui/bot_visualizer.py` — the grid goes straight into the row
+
+```python
+            inner_hbox = QHBoxLayout()
+            # No gap: _quick_routing_matrix takes every pixel the grid leaves.
+            inner_hbox.setSpacing(0)
+            inner_hbox.addWidget(self._grid_widget)
+            inner_hbox.addWidget(self._quick_routing_matrix, stretch=1)
+```
+
+### The card is smaller and the grid is wider
+
+A card asks for 88 by 78 pixels, down from 112 by 98. That is 6,864 pixels of
+area against 10,976, a drop of 37 per cent, and the grid fits eight columns
+where it fitted six. The three text rows are measured in points rather than in
+card units, so they survive the smaller card unchanged; the insect body scales
+by the same ratio as the card.
+
+`src/gui/visualizer/bot_node.py` — the card size
+
+```python
+CARD_WIDTH_PX = 88
+CARD_HEIGHT_PX = 78
+```
+
+### Four growth stages, keyed on realised profit
+
+Each card sits in one of four stages. The stage comes from the bot's realised
+profit measured against its cost basis, both pulled from the exchange, and the
+200 per cent floor is the same number the Smart Wire maturity test reads.
+
+| Stage | Realised growth | Dominant colour | Decoration |
+| ----- | --------------- | --------------- | ---------- |
+| Hopper | 0 to 99 % | grey and black | wing buds, two tergites |
+| Fledgling | 100 to 199 % | red and white | three tergites |
+| Immature adult | 200 to 299 % | silver | full grown, four tergites |
+| Mature adult | 300 % and over | gold | three crown spines |
+
+The stage names are the published ones. They come from the FAO Desert Locust
+Guidelines, part one, Biology and behaviour, by Symmons and Cressman, which names
+the hopper, the fledgling, the immature adult and the mature adult in that order.
+The module records that source beside the names.
+
+`src/gui/visualizer/growth_stage.py` — the source and the floors
+
+```python
+STAGE_SOURCE = (
+    "FAO Desert Locust Guidelines 1. Biology and behaviour, Symmons and Cressman"
+)
+
+HOPPER_FLOOR_PCT = 0.0
+FLEDGLING_FLOOR_PCT = 100.0
+IMMATURE_FLOOR_PCT = MATURE_GROWTH_PCT
+MATURE_FLOOR_PCT = 300.0
+```
+
+One function turns the two exchange figures into the percentage. It returns
+nothing at all when the basis is absent or not above zero, which is how a bot the
+venue has not answered for is kept out of a stage it has not earned.
+
+`src/gui/visualizer/growth_stage.py` — `realised_growth_pct`
+
+```python
+    if not math.isfinite(basis) or not math.isfinite(profit) or basis <= 0.0:
+        return None
+    return profit / basis * PCT_SCALE
+```
+
+A second function reads the stats dict the fleet load carries and refuses a bot
+whose exchange reading is stale. A card with no reading draws as a Hopper and
+prints an em dash where the percentage goes, never a zero.
+
+`src/gui/visualizer/growth_stage.py` — `growth_pct_from_stats`
+
+```python
+    if fresh <= 0.0:
+        return None
+    return realised_growth_pct(stats.get(BASIS_KEY), stats.get(REALISED_KEY))
+```
+
+The two figures reach the screen through the bot status snapshot, which now
+carries them beside the year-to-date sums.
+
+`src/trading/bot_container.py` — `get_status`, the three added stats
+
+```python
+                "realized_pnl_exchange": round(
+                    float(getattr(self.stats, "realized_pnl_exchange", 0.0) or 0.0), 4
+                ),
+                "cost_basis_total_exchange": round(
+                    float(getattr(self.stats, "cost_basis_total_exchange", 0.0) or 0.0),
+                    4,
+                ),
+                "exchange_data_fresh_ts": float(
+                    getattr(self.stats, "exchange_data_fresh_ts", 0.0) or 0.0
+                ),
+```
+
+### Every stage colour is a theme token
+
+No card holds a colour of its own. Each theme carries a body tone and a trim tone
+for each stage, and the trim is also the colour the growth figure is printed in.
+The bot id line reads its colour from the same place.
+
+`src/gui/theme_engine.py` — the stage tokens on `ThemeTokens`
+
+```python
+    locust_hopper_body: str = "#4a4a52"
+    locust_hopper_trim: str = "#9a9aa6"
+    locust_fledgling_body: str = "#c4303f"
+    locust_fledgling_trim: str = "#f2f2f7"
+    locust_immature_body: str = "#9ea4ad"
+    locust_immature_trim: str = "#e2e6ec"
+    locust_mature_body: str = "#b8912c"
+    locust_mature_trim: str = "#f0c64a"
+    locust_id_text: str = "#8c8ca8"
+```
+
+Every text colour on a card was measured against every canvas ground. One
+hundred and sixty readings were taken, five app themes by four canvas palettes by
+eight text roles, and all one hundred and sixty clear the WCAG AA floor of
+4.5 to 1. On the Quantum Circuit ground the symbol reads 13.35 to 1, the positive
+P/L 14.30 to 1, the negative P/L 5.32 to 1 and the bot id 5.87 to 1. The four
+growth figures read 6.89, 17.18, 15.31 and 11.76 to 1.
+
+`src/design_system.py` — the measure used
+
+```python
+def validate_contrast(fg: str, bg: str, large_text: bool = False) -> tuple[bool, float]:
+```
+
+### What the card says without a hover
+
+Four readings, in the order they are drawn. The symbol names the market. The P/L
+is the realised figure in dollars. The growth figure beneath it is the percentage
+that placed the card in its stage. The short bot id at the foot separates two
+bots on one market. A one-letter stage badge sits in the top right corner.
+
+`src/gui/visualizer/bot_node.py` — the growth figure and the badge
+
+```python
+            p.drawText(
+                QRectF(0, h - 31, w, 9),
+                Qt.AlignCenter,
+                growth_text(growth_pct),
+            )
+```
+
+The tooltip carries the stage in words and the same percentage, so the colour on
+the card is never the only place the stage is stated.
+
+### The animation repaints eight times less often
+
+Every coroutine in this application runs on the window's own thread, so a card
+that repaints on every frame of the 33 millisecond timer spends that thread. A
+still card now repaints every fourth frame. Measured over 300 frames, both builds
+repaint a still card 75 times, which is 7.58 times a second. A card holding a
+trade ring or a speck still repaints on every frame until they fade. Across a
+fleet of 38 cards that is 288 repaints a second where it was 1,152.
+
+`src/gui/visualizer/bot_node.py` — `animate`
+
+```python
+            self._since_repaint += dt
+            busy = bool(self._trade_pulses or self._particles)
+            if not busy and self._since_repaint < REPAINT_INTERVAL_S:
+                return False
+            self._since_repaint = 0.0
+            self.update()
+            return True
+```
+
+### A wire hangs as a catenary
+
+A wire is no longer a curve bent through a midpoint. It is the curve a cable
+makes when it hangs between two points, which has a published equation. The wire
+carries 18 per cent more cable than the straight distance between the two bots,
+and the two wires of a bidirectional pair hang at different depths.
+
+`src/gui/main_tabs/wire_canvas_surface.py` — `catenary_parameter`
+
+```python
+    wanted_ratio = math.sqrt(length * length - drop * drop) / span
+    ceiling_ratio = math.sinh(CATENARY_U_MAX) / CATENARY_U_MAX
+    if wanted_ratio >= ceiling_ratio:
+        return None
+```
+
+Driven on a 200 pixel span, the sampled curve measures 1.17972 times its chord
+against the 1.18 asked for, sags 55.03 pixels, and lands exactly on both bots. A
+wire between two bots in the same column has no span, and falls back to the
+straight line between them.
+
+`src/gui/main_tabs/wire_canvas_surface.py` — `catenary_curve`, the sample loop
+
+```python
+    for at in range(count):
+        x_at = x_from + span * at / (count - 1)
+        points.append([x_at, lift - a * math.cosh((x_at - vertex_x) / a)])
+```
+
+### No two flow-rate labels overlap
+
+The percentage badge goes where the curve is flattest, which is the lowest point
+of the hanging wire. Where that place is already taken, the badge walks outward
+along the curve and then downward in 20 pixel steps until it is clear.
+
+`src/gui/main_tabs/wire_canvas_surface.py` — `place_badge`
+
+```python
+    for at in badge_order(points, flattest):
+        box = badge_rect(points[at], advance_px)
+        if not any(rects_overlap(box, one) for one in placed):
+            return box
+```
+
+Measured on a grid of 38 bots carrying 152 wires, with the real 33 pixel width of
+a printed rate label: 114 pairs of badges sit on each other at the flattest
+point, and none does after the walk. Both numbers come from the same run, so the
+zero is a result rather than an empty instrument.
+
+One painter each side reads one set of geometry. The Qt sheet imports the curve
+and the placement from the same module the React payload is built from, so the
+two cannot drift.
+
+`src/gui/visualizer/wire_canvas.py` — what the Qt sheet imports
+
+```python
+from ..main_tabs.wire_canvas_surface import (
+    arrow_points,
+    catenary_curve,
+    label_text,
+    place_badge,
+    point_at,
+    pulse_percent,
+    slack_for_offset,
+)
+```
+
+Right-clicking a wire measures against the same curve, so the wire the pointer
+finds is the wire on the screen.
+
+### Qt against React
+
+Twenty-two measured values were read off the Qt tab and out of the React payload
+and compared: the card size, the grid columns and spacing, the repaint interval,
+the theme count, the opacity slider, the absence of a View control, the tooltip,
+the four stage names, labels, initials and floors, the tergite counts, the crown
+spines, the wing spreads, the body scales, the stage colour table, the bot id
+colour and the absent-growth text. Twenty-two of twenty-two matched. The
+comparison reported one real difference on its first run, a grid of eight columns
+on the Qt side against six on the React side, which is what it exists to catch.
 
 Back to [the subsystem index](README.md).

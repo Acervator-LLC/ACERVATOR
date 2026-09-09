@@ -734,7 +734,7 @@ rather than typed.
 | `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/bot_swarm_list.py` | `bot_swarm_list.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/bot_swarm_list.py` | removed | - | - | - | - | - | - | deleted |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | no | yes | yes | in scope |
@@ -1359,3 +1359,70 @@ expected side.
 
 Detail on each live screen sits one file down, in
 [08-tabs/README.md](08-tabs/README.md).
+
+## 2026-09-09 22:12 - #128 - the Swarm tab loses List View
+
+The Swarm tab no longer offers a choice of view. The grid of locust cards is the
+whole screen, and the View picker that used to sit between Theme and Wires is
+gone from both builds. The table below carries the row for every file the change
+touched; the rows in the table above are the state before it.
+
+| Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `src/gui/bot_swarm_list.py` | removed | - | - | - | - | - | - | deleted |
+| `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/visualizer/bot_node.py` | `bot_node.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/visualizer/wire_canvas.py` | `wire_canvas.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/visualizer/growth_stage.py` | shared, no module of its own | - | - | - | - | yes | yes | in scope |
+| `src/gui/react_bot_swarm_tab.py` | host for `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/theme_engine.py` | `design_tokens.js` | - | yes | yes | yes | yes | yes | in scope |
+
+The Qt widget file went. `BotListView` and `LaneWireCanvas` had one caller, the
+Swarm tab, and nothing else built either of them. The live bot settings window
+draws its own wire table from `QTableWidget`, so it lost nothing.
+
+`src/gui/bot_swarm_list.py` — what was deleted
+
+```python
+class BotListView(QTableWidget):
+class LaneWireCanvas(QWidget):
+class BotSwarmLaneAllocator:
+```
+
+List View is removed whole. The surface `bot_swarm_list_surface.py` and the
+module `bot_swarm_list.js` are deleted. The bridge method, the manifest line
+and the renderer page's script tag that reached them are gone.
+
+`src/gui/web/bot_swarm_tab.js` — the shell that still names the list globals
+
+```javascript
+  var LIST_API = "acervatorSwarmList";
+  var LIST_LOADER = "acervatorLoadBotSwarmList";
+```
+
+Nothing defines those two globals now. The bot settings shell reads them in
+four places and guards every read, so the list region draws nothing and
+raises nothing.
+
+`src/gui/react_bot_swarm_tab.py` — `TAB_SCRIPT_ASSETS`, the tail
+
+```python
+    "quick_routing.js",
+    "bot_visualizer.js",
+)
+```
+
+One control in `tools/conversion_state.py` named the deleted file. A control
+pointed at a file that no longer exists reports `born React` rather than
+`paired`, which reads as a pass and proves nothing, so it now names a Qt file
+that is still paired.
+
+`tools/conversion_state.py` — `CONTROLS`
+
+```python
+CONTROLS = ("bot_visualizer", "theme_engine", "design_tokens")
+```
+
+Both builds were opened with the change in place. Qt draws eight main tabs and
+React draws ten, the same counts as before, and the Swarm tab in each carries no
+View picker, no row list and no lane sheet.

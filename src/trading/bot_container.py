@@ -542,6 +542,18 @@ class BotContainer:
                     getattr(self.stats, "ytd_scrummed_usd", 0.0), 4
                 ),
                 "ytd_folded_usd": round(getattr(self.stats, "ytd_folded_usd", 0.0), 4),
+                # Exchange-pulled. The Swarm locust reads these three to place
+                # a bot in a growth stage; a zero fresh_ts means no reading.
+                "realized_pnl_exchange": round(
+                    float(getattr(self.stats, "realized_pnl_exchange", 0.0) or 0.0), 4
+                ),
+                "cost_basis_total_exchange": round(
+                    float(getattr(self.stats, "cost_basis_total_exchange", 0.0) or 0.0),
+                    4,
+                ),
+                "exchange_data_fresh_ts": float(
+                    getattr(self.stats, "exchange_data_fresh_ts", 0.0) or 0.0
+                ),
             },
             # A single bot's portfolio contribution is its position
             # value.

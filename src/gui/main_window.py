@@ -3524,6 +3524,9 @@ if _HAS_QT:
                 book = getattr(self, "_main_tabs", None)
                 if hasattr(book, "set_theme"):
                     book.set_theme(name)
+                swarm = getattr(self, "_bot_viz", None)
+                if hasattr(swarm, "set_app_theme"):
+                    swarm.set_app_theme(name)
                 self._status_log.log(f"Theme switched to {name}.", "info")
 
         def _show_about(self) -> None:

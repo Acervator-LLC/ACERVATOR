@@ -1,7 +1,7 @@
 """wire_canvas_surface.py -- the Smart Wire overlay.
 
 Describes the see-through sheet that lies over the bot visualizer and
-draws the wires between bots. Each wire is a curved line with a glow, a
+draws the wires between bots. Each wire is a hanging catenary with a glow, a
 travelling dot, a direction arrow and a small badge showing its share
 percentage. A wire being dragged is drawn as a dashed line whose colour
 says what a release would do.
@@ -16,11 +16,10 @@ The sheet asks the visualizer tab where the bots are and which wire is
 under the mouse. That tab is supplied by the caller, so this module
 holds the drawing and the routing and nothing else.
 
-Two quantities belong to the drawing engine, not to this screen: the
-point at a percentage along a curve, and the width of a printed label.
-Both are taken as callables so the caller supplies its own engine.
-``quadratic_point`` and ``no_advance`` are the values used when the
-caller supplies neither.
+One quantity belongs to the drawing engine, not to this screen: the width of
+a printed label. It is taken as a callable, and ``no_advance`` is the value
+used when the caller supplies none. ``catenary_curve`` works out the wire
+itself, and ``place_badge`` keeps two percentage badges apart.
 
 ``src.core.desktop_bridge`` registers ``view_model`` as the handler for
 the ``wire_canvas.state`` method, which is how the Electron renderer
@@ -88,11 +87,21 @@ THEME_COLORS = {
 }
 THEME_KEYS = ("nebula", "matrix", "quantum", "ocean")
 
-CONTROL_POINT_DIVISOR = 2
-CUBIC_DIVISOR = 3
-CUBIC_CONTROL_WEIGHT = 2
+# A wire hangs with 18 % more cable than the straight distance between its bots.
+CATENARY_SLACK_RATIO = 0.18
+CATENARY_SAMPLES = 24
+CATENARY_SOLVE_STEPS = 60
+# u is span / 2a. sinh(u) / u runs from 1 upward, and sinh(300) still divides.
+CATENARY_U_MIN = 1e-9
+CATENARY_U_MAX = 300.0
+# wire_offset turns into slack: the lower slot of a pair hangs deeper.
+CATENARY_OFFSET_SLACK = 0.004
+CATENARY_MIN_SLACK = 0.04
+HALF = 2.0
+HALF_INDEX = 2
 
 MOVE_TO_ELEMENT = "MoveToElement"
+LINE_TO_ELEMENT = "LineToElement"
 CURVE_TO_ELEMENT = "CurveToElement"
 CURVE_TO_DATA_ELEMENT = "CurveToDataElement"
 
@@ -118,7 +127,6 @@ ARROW_SIDE_RATIO = 0.5
 ARROW_WIDTH_PX = 2
 ZERO_LENGTH_FALLBACK = 1
 
-LABEL_PERCENT = 0.5
 LABEL_FORMAT = "{pct}%"
 LABEL_WIDTH_PX = 1
 BADGE_PADDING_PX = 8
@@ -128,6 +136,10 @@ BADGE_HALF_DIVISOR = 2
 BADGE_CORNER_PX = 4
 BADGE_FILL = (0, 0, 0, 160)
 NO_ADVANCE_PX = 0
+# Two badges keep this much clear air between them.
+BADGE_GAP_PX = 2
+BADGE_PUSH_PX = 20
+BADGE_PUSH_TRIES = 60
 
 FONT_FAMILY = "Consolas"
 FONT_SIZE_PT = 8
@@ -298,63 +310,146 @@ def with_alpha(color: Any, alpha: int) -> list:
     return [red, green, blue, alpha]
 
 
-def control_point(src: Any, tgt: Any, offset: Any) -> list:
-    """The point that bends the wire, midway between the two bots.
+def slack_for_offset(offset: Any) -> float:
+    """The cable slack one wire hangs with, from its pair offset."""
+    try:
+        shift = float(offset or 0.0)
+    except (TypeError, ValueError):
+        shift = 0.0
+    return max(CATENARY_MIN_SLACK, CATENARY_SLACK_RATIO + shift * CATENARY_OFFSET_SLACK)
 
-    `offset` pushes it down the screen, which is how two wires between
-    the same pair of bots are told apart.
+
+def catenary_parameter(span_px: Any, drop_px: Any, length_px: Any) -> Optional[float]:
+    """Return the catenary parameter a for one span, drop and cable length.
+
+    With ``u = span / 2a`` the curve satisfies ``sinh(u) / u = sqrt(length^2 -
+    drop^2) / span``; both sides are ratios, solved by halving the interval
+    CATENARY_SOLVE_STEPS times, and the answer is None when no curve exists.
     """
-    return [
-        (src[0] + tgt[0]) / CONTROL_POINT_DIVISOR,
-        (src[1] + tgt[1]) / CONTROL_POINT_DIVISOR + offset,
-    ]
+    span = abs(float(span_px))
+    drop = float(drop_px)
+    length = float(length_px)
+    if span <= 0.0 or not math.isfinite(length):
+        return None
+    if length <= math.hypot(span, drop):
+        return None
+    wanted_ratio = math.sqrt(length * length - drop * drop) / span
+    ceiling_ratio = math.sinh(CATENARY_U_MAX) / CATENARY_U_MAX
+    if wanted_ratio >= ceiling_ratio:
+        return None
+    low = CATENARY_U_MIN
+    high = CATENARY_U_MAX
+    for _step in range(CATENARY_SOLVE_STEPS):
+        middle = (low + high) / HALF
+        held_ratio = math.sinh(middle) / middle
+        if held_ratio > wanted_ratio:
+            high = middle
+        else:
+            low = middle
+    return span / (HALF * (low + high) / HALF)
 
 
-def path_elements(src: Any, control: Any, tgt: Any) -> list:
-    """The curve as the drawing library stores it.
+def catenary_curve(
+    src: Any,
+    tgt: Any,
+    slack_ratio: Any = CATENARY_SLACK_RATIO,
+    samples: Any = CATENARY_SAMPLES,
+) -> dict:
+    """Return the hanging wire between two bots, sampled into points.
 
-    A curve bending through one point is kept as a curve through two,
-    each of them one third of the way toward the bending point. A curve
-    whose three points are all the same is dropped, and so is one
-    reaching a point the library refuses, leaving the start point
-    alone. A start point the library refuses leaves nothing at all.
+    ``points`` runs from src to tgt and ``flattest`` indexes the point where
+    the curve is least steep, which is the lowest point of the hanging wire.
     """
-    if not is_finite_point(src):
+    x_from, y_from = float(src[0]), float(src[1])
+    x_to, y_to = float(tgt[0]), float(tgt[1])
+    count = max(2, int(samples))
+    span = x_to - x_from
+    drop = y_to - y_from
+    length = math.hypot(span, drop) * (1.0 + max(0.0, float(slack_ratio)))
+    a = catenary_parameter(span, drop, length)
+    if a is None:
+        straight = [
+            [
+                x_from + span * at / (count - 1),
+                y_from + drop * at / (count - 1),
+            ]
+            for at in range(count)
+        ]
+        return {"points": straight, "flattest": count // HALF_INDEX}
+    flipped = span < 0.0
+    if flipped:
+        x_from, y_from, x_to, y_to = x_to, y_to, x_from, y_from
+        span, drop = -span, -drop
+    vertex_x = x_from + span / HALF + a * math.atanh(drop / length)
+    lift = y_from + a * math.cosh((x_from - vertex_x) / a)
+    points = []
+    for at in range(count):
+        x_at = x_from + span * at / (count - 1)
+        points.append([x_at, lift - a * math.cosh((x_at - vertex_x) / a)])
+    if flipped:
+        points.reverse()
+    low = min(max(vertex_x, x_from), x_to)
+    flattest = int(round((low - x_from) / span * (count - 1)))
+    if flipped:
+        flattest = count - 1 - flattest
+    return {"points": points, "flattest": max(0, min(count - 1, flattest))}
+
+
+def catenary_elements(points: Any) -> list:
+    """The sampled hanging wire as the drawing library stores it.
+
+    A first point the library refuses leaves nothing at all, and every later
+    point it refuses is dropped.
+    """
+    placed = [one for one in points if is_finite_point(one)]
+    if not placed or not is_finite_point(points[0] if points else None):
         return []
-    start = [MOVE_TO_ELEMENT] + as_point(src)
-    if not is_finite_point(control) or not is_finite_point(tgt):
-        return [start]
-    if tuple(src) == tuple(control) and tuple(src) == tuple(tgt):
-        return [start]
-    return [
-        start,
-        [
-            CURVE_TO_ELEMENT,
-            (src[0] + CUBIC_CONTROL_WEIGHT * control[0]) / CUBIC_DIVISOR,
-            (src[1] + CUBIC_CONTROL_WEIGHT * control[1]) / CUBIC_DIVISOR,
-        ],
-        [
-            CURVE_TO_DATA_ELEMENT,
-            (tgt[0] + CUBIC_CONTROL_WEIGHT * control[0]) / CUBIC_DIVISOR,
-            (tgt[1] + CUBIC_CONTROL_WEIGHT * control[1]) / CUBIC_DIVISOR,
-        ],
-        [CURVE_TO_DATA_ELEMENT] + as_point(tgt),
-    ]
+    elements = [[MOVE_TO_ELEMENT] + as_point(placed[0])]
+    for one in placed[1:]:
+        elements.append([LINE_TO_ELEMENT] + as_point(one))
+    return elements
 
 
-def quadratic_point(src: Any, control: Any, tgt: Any, percent: Any) -> list:
-    """The point at `percent` along the curve, as this module works it out.
+def rects_overlap(first: Any, second: Any, gap: Any = BADGE_GAP_PX) -> bool:
+    """True when two badge rectangles sit within `gap` pixels of each other."""
+    left, top, width, height = (float(one) for one in first)
+    other_left, other_top, other_width, other_height = (float(one) for one in second)
+    return (
+        left - gap < other_left + other_width
+        and other_left - gap < left + width
+        and top - gap < other_top + other_height
+        and other_top - gap < top + height
+    )
 
-    Used when the caller supplies no drawing engine of its own. The
-    drawing library the shipped sheet uses answers the same point to
-    about one part in a million million.
+
+def badge_order(points: Any, flattest: Any) -> list:
+    """Every place a badge may sit, the flattest first and then outward."""
+    count = len(points)
+    start = max(0, min(count - 1, int(flattest)))
+    order = [start]
+    for step in range(1, count):
+        for at in (start - step, start + step):
+            if 0 <= at < count:
+                order.append(at)
+    return order
+
+
+def place_badge(points: Any, flattest: Any, advance_px: Any, placed: Any) -> list:
+    """Return one wire's badge rectangle, clear of every rectangle in `placed`.
+
+    Walks the curve outward from its flattest point, then pushes the badge down
+    in BADGE_PUSH_PX steps up to BADGE_PUSH_TRIES times.
     """
-    rest = 1.0 - percent
-    return [
-        (src[axis] * rest + control[axis] * percent) * rest
-        + (control[axis] * rest + tgt[axis] * percent) * percent
-        for axis in (0, 1)
-    ]
+    for at in badge_order(points, flattest):
+        box = badge_rect(points[at], advance_px)
+        if not any(rects_overlap(box, one) for one in placed):
+            return box
+    box = badge_rect(points[max(0, min(len(points) - 1, int(flattest)))], advance_px)
+    for step in range(1, BADGE_PUSH_TRIES + 1):
+        pushed = [box[0], box[1] + step * BADGE_PUSH_PX, box[2], box[3]]
+        if not any(rects_overlap(pushed, one) for one in placed):
+            return pushed
+    return box
 
 
 def no_advance(label: Any) -> int:
@@ -438,28 +533,32 @@ PAINT_BRANCHES = (
 )
 
 
+def point_at(points: Any, percent: Any) -> list:
+    """The sampled point at `percent` along the wire, from 0 to 1."""
+    count = len(points)
+    if not count:
+        return list(ORIGIN_POINT)
+    share = max(0.0, min(1.0, float(percent)))
+    return as_point(points[int(round(share * (count - 1)))])
+
+
 def wire_calls(
-    src: Any,
-    tgt: Any,
+    points: Any,
+    badge: Any,
     color1: Any,
     color2: Any,
     phase: Any,
     pct: Any,
-    offset: Any,
-    sample: Callable = quadratic_point,
-    advance: Callable = no_advance,
     into: Optional[list] = None,
 ) -> list:
     """Every drawing operation one wire makes, in the order it makes them.
 
     A wide faint line, a narrower brighter one and the wire itself, then
-    the travelling dot, the direction arrow and the percentage badge.
-    Each is added to `into` as it is worked out, so a value the wire
-    refuses part way leaves the earlier operations standing.
+    the travelling dot, the direction arrow and the percentage badge that
+    ``place_badge`` already found room for.
     """
     calls = [] if into is None else into
-    control = control_point(src, tgt, offset)
-    elements = path_elements(src, control, tgt)
+    elements = catenary_elements(points)
     calls.append(solid_pen(with_alpha(color1, GLOW_ALPHA), GLOW_WIDTH_PX))
     calls.append([SET_BRUSH, NO_BRUSH])
     calls.append([DRAW_PATH, elements])
@@ -468,7 +567,7 @@ def wire_calls(
     calls.append(solid_pen(color1, CORE_WIDTH_PX))
     calls.append([DRAW_PATH, elements])
 
-    pulse_pt = sample(src, control, tgt, pulse_percent(phase))
+    pulse_pt = point_at(points, pulse_percent(phase))
     calls.append(
         [
             SET_GRADIENT_BRUSH,
@@ -483,21 +582,19 @@ def wire_calls(
     calls.append(no_pen())
     calls.append([DRAW_ELLIPSE, as_point(pulse_pt), PULSE_RADIUS_PX, PULSE_RADIUS_PX])
 
-    arrow_pt = sample(src, control, tgt, ARROW_PERCENT)
-    arrow_prev = sample(src, control, tgt, ARROW_BACK_PERCENT)
+    arrow_pt = point_at(points, ARROW_PERCENT)
+    arrow_prev = point_at(points, ARROW_BACK_PERCENT)
     calls.append(solid_pen(color1, ARROW_WIDTH_PX))
     calls.append([SET_BRUSH, list(color1)])
     calls.append([DRAW_POLYGON, arrow_points(arrow_pt, arrow_prev)])
 
-    label_pt = sample(src, control, tgt, LABEL_PERCENT)
     label = label_text(pct)
     calls.append([SET_FONT, FONT_FAMILY, FONT_SIZE_PT, FONT_WEIGHT])
-    badge = badge_rect(label_pt, advance(label))
     calls.append([SET_BRUSH, list(BADGE_FILL)])
     calls.append(no_pen())
-    calls.append([DRAW_ROUNDED_RECT, badge, BADGE_CORNER_PX, BADGE_CORNER_PX])
+    calls.append([DRAW_ROUNDED_RECT, list(badge), BADGE_CORNER_PX, BADGE_CORNER_PX])
     calls.append(solid_pen(color1, LABEL_WIDTH_PX))
-    calls.append([DRAW_TEXT, badge, ALIGN_CENTER, label])
+    calls.append([DRAW_TEXT, list(badge), ALIGN_CENTER, label])
     return calls
 
 
@@ -519,6 +616,7 @@ class WireCanvasModel:
         self.calls: list = []
         self.draw_calls: list = []
         self.paint_branches: list = []
+        self.badges: list = []
 
     def set_cursor(self, shape: str) -> None:
         """Change the mouse pointer over the sheet."""
@@ -581,18 +679,16 @@ class WireCanvasModel:
             else:
                 raise ValueError(EVENT_REFUSAL.format(kind=kind))
 
-    def paint(
-        self, sample: Callable = quadratic_point, advance: Callable = no_advance
-    ) -> list:
+    def paint(self, advance: Callable = no_advance) -> list:
         """Build the drawing programme and return it.
 
-        Nothing is drawn while there is no wire and no drag. Each step is
-        appended as it is worked out, so a value the sheet refuses part
-        way leaves the earlier steps standing, as the shipped sheet
-        leaves them on the screen.
+        Nothing is drawn while there is no wire and no drag. Every hanging wire
+        is measured first so ``place_badge`` keeps the percentage badges apart,
+        then each wire's operations are appended in order.
         """
         self.draw_calls = []
         self.paint_branches = []
+        self.badges = []
         tab = self.tab
         if not tab.wires and not tab.dragging_wire:
             self.paint_branches.append(PAINT_NOTHING)
@@ -603,26 +699,32 @@ class WireCanvasModel:
         self.draw_calls.append([SET_OPACITY, opacity_fraction(declared)])
         colors = theme(tab.theme_key)
 
+        hanging = []
         for wire in tab.wires:
             src = tab.bot_center(wire["source_id"])
             tgt = tab.bot_center(wire["target_id"])
             if not is_point(src) or not is_point(tgt):
                 self.paint_branches.append(WIRE_SKIPPED)
                 continue
-            phase = wire.get("phase", DEFAULT_PHASE)
-            pct = wire.get("pct", DEFAULT_PCT)
-            offset = tab.wire_offset(wire)
             self.paint_branches.append(WIRE_DRAWN)
+            curve = catenary_curve(src, tgt, slack_for_offset(tab.wire_offset(wire)))
+            badge = place_badge(
+                curve["points"],
+                curve["flattest"],
+                advance(label_text(wire.get("pct", DEFAULT_PCT))),
+                self.badges,
+            )
+            self.badges.append(badge)
+            hanging.append((wire, curve, badge))
+
+        for wire, curve, badge in hanging:
             wire_calls(
-                src,
-                tgt,
+                curve["points"],
+                badge,
                 colors["accent"],
                 colors["accent2"],
-                phase,
-                pct,
-                offset,
-                sample,
-                advance,
+                wire.get("phase", DEFAULT_PHASE),
+                wire.get("pct", DEFAULT_PCT),
                 self.draw_calls,
             )
 
@@ -796,20 +898,17 @@ def measured_advance(advances: Any) -> Callable:
 def build_view_model(
     model: WireCanvasModel,
     events: Any = None,
-    sample: Optional[Callable] = None,
     advance: Optional[Callable] = None,
 ) -> dict:
     """Return every value the wire sheet holds as one dict.
 
-    `events` runs a list of mouse events before the values are read, as
-    the operator does when dragging a wire. `sample` answers the point at
-    a percentage along a curve and `advance` the printed width of a
-    label; both belong to the drawing engine, so a caller with its own
-    engine supplies them.
+    `events` runs a list of mouse events before the values are read, as the
+    operator does when dragging a wire, and `advance` measures the printed
+    width of a label for the caller's own drawing engine.
     """
     if events:
         model.apply(events)
-    drawing_calls = model.paint(sample or quadratic_point, advance or no_advance)
+    drawing_calls = model.paint(advance or no_advance)
     tab = model.tab
     return {
         "accessible_name": model.accessible_name,
@@ -840,14 +939,12 @@ def build_view_model(
             },
         },
         "curve": {
-            "control_divisor": CONTROL_POINT_DIVISOR,
-            "cubic_divisor": CUBIC_DIVISOR,
-            "cubic_control_weight": CUBIC_CONTROL_WEIGHT,
-            "element_names": [
-                MOVE_TO_ELEMENT,
-                CURVE_TO_ELEMENT,
-                CURVE_TO_DATA_ELEMENT,
-            ],
+            "slack_ratio": CATENARY_SLACK_RATIO,
+            "min_slack": CATENARY_MIN_SLACK,
+            "offset_slack": CATENARY_OFFSET_SLACK,
+            "samples": CATENARY_SAMPLES,
+            "solve_steps": CATENARY_SOLVE_STEPS,
+            "element_names": [MOVE_TO_ELEMENT, LINE_TO_ELEMENT],
         },
         "glow": {
             "alpha": GLOW_ALPHA,
@@ -875,7 +972,6 @@ def build_view_model(
             "zero_length_fallback": ZERO_LENGTH_FALLBACK,
         },
         "badge": {
-            "label_percent": LABEL_PERCENT,
             "label_width_px": LABEL_WIDTH_PX,
             "padding_px": BADGE_PADDING_PX,
             "height_px": BADGE_HEIGHT_PX,
@@ -884,6 +980,10 @@ def build_view_model(
             "corner_px": BADGE_CORNER_PX,
             "fill": list(BADGE_FILL),
             "no_advance_px": NO_ADVANCE_PX,
+            "gap_px": BADGE_GAP_PX,
+            "push_px": BADGE_PUSH_PX,
+            "push_tries": BADGE_PUSH_TRIES,
+            "placed": [list(one) for one in model.badges],
         },
         "font": {
             "family": FONT_FAMILY,
