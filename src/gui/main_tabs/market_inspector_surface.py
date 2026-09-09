@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from ...trading import ata_spm, ata_spm_push
+from ...trading import ata_asset_maps, ata_spm, ata_spm_push
 from . import indicator_panel_surface as ivp
 
 logger = logging.getLogger("acervator.market_inspector_gui")
@@ -164,6 +164,8 @@ PHASE_EIGHT_NAME = "Phase 8 Timeframes"
 PHASE_NOTE_NAME = "Waiting on"
 NO_FOLLOW_UP_TEXT = "No call is being followed up yet."
 DEFERRED_TAG = "deferred"
+UNLISTED_TAG = "unlisted"
+UNSERVED_TAG = "unserved"
 PHASE_ROW_NAME_FORMAT = "{phase} {tag}"
 CALL_TAG_FORMAT = "{symbol} {label}"
 BAND_TAG_FORMAT = "{symbol} bands"
@@ -321,6 +323,7 @@ PANEL_CELL_STYLE_FORMAT = (
 )
 PANEL_HEADER_STYLE_FORMAT = "color: {color}; font-size: 11px; font-weight: bold;"
 PANEL_TITLE_FORMAT = "{symbol} {label}   {summary}"
+PANEL_SUMMARY_FORMAT = "▲ {bullish}  ▼ {bearish}  ─ {neutral}"
 PANEL_TOOLTIP_FORMAT = "The Indicator Voting Panel ATA-SMP read for {symbol}."
 
 #: The gate chain result the same open entry draws beside the panel.
@@ -934,21 +937,51 @@ def phase_row(phase: Any, tag: Any, value: Any) -> list:
 
 
 def phase_one_rows(scan: Any) -> list:
-    """The expanded lines phase one leaves: one per timeframe scanned."""
+    """The expanded lines phase one leaves: one per timeframe scanned.
+
+    ``scan.unlisted`` and ``scan.unserved`` each take a line of their own, so a
+    venue gap never reads as a timeframe that voted nothing.
+    """
     if scan.note:
-        return [detail_row(PHASE_NOTE_NAME, scan.note)]
-    if not scan.timeframes:
-        return [detail_row(PHASE_NOTE_NAME, ata_spm.NO_TIMEFRAME_TEXT)]
-    return [
-        phase_row(
-            PHASE_ONE_NAME,
-            ata_spm.timeframe_label(one.timeframe),
-            ata_spm.TIMEFRAME_VOTE_FORMAT.format(
-                votes=len(one.votes), unread=len(one.unread)
-            ),
+        rows = [detail_row(PHASE_NOTE_NAME, scan.note)]
+    elif not scan.timeframes:
+        rows = [detail_row(PHASE_NOTE_NAME, ata_spm.NO_TIMEFRAME_TEXT)]
+    else:
+        rows = [
+            phase_row(
+                PHASE_ONE_NAME,
+                ata_spm.timeframe_label(one.timeframe),
+                ata_spm.TIMEFRAME_VOTE_FORMAT.format(
+                    votes=len(one.votes), unread=len(one.unread)
+                ),
+            )
+            for one in scan.timeframes
+        ]
+    unlisted = tuple(getattr(scan, "unlisted", ()) or ())
+    if unlisted and not scan.note:
+        rows.append(
+            phase_row(
+                PHASE_ONE_NAME,
+                UNLISTED_TAG,
+                ata_spm.UNLISTED_TEXT.format(
+                    symbols=ata_spm.SYMBOL_SEPARATOR.join(unlisted)
+                ),
+            )
         )
-        for one in scan.timeframes
-    ]
+    unserved = tuple(getattr(scan, "unserved", ()) or ())
+    if unserved:
+        rows.append(
+            phase_row(
+                PHASE_ONE_NAME,
+                UNSERVED_TAG,
+                ata_spm.UNSERVED_TEXT.format(
+                    labels=ata_spm.AGREEMENT_LABEL_SEPARATOR.join(
+                        ata_spm.timeframe_label(one) for one in unserved
+                    )
+                ),
+            )
+        )
+    return rows
 
 
 def phase_two_rows(calls: Any) -> list:
@@ -1309,7 +1342,9 @@ def panel_cell_style(colors: Any) -> str:
 def panel_header_row(subset: Any, aggregates: Any) -> list:
     """One table's header row: the TF column, its voters and its aggregates."""
     widths = panel_column_widths(subset, aggregates)
-    titles = ivp.column_titles(list(subset), include_aggregates=bool(aggregates))
+    titles = ivp.column_titles(list(subset))[: 1 + len(list(subset))]
+    if aggregates:
+        titles = titles + list(ivp.AGGREGATE_TITLES)
     groups = [""] + [one[2] for one in subset] + [""] * (len(widths) - len(subset) - 1)
     return panel_row(
         [
@@ -1378,6 +1413,23 @@ def panel_table(rows: Any, subset: Any, aggregates: Any) -> list:
     return built
 
 
+def panel_tally(row: Any, key: Any) -> int:
+    """One vote count off a panel row, or zero while the row carries none."""
+    try:
+        return int(float((row or {}).get(str(key)) or 0))
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
+def panel_summary_text(rows: Any) -> str:
+    """The vote tally beside a voting panel title, summed over its timeframes."""
+    return PANEL_SUMMARY_FORMAT.format(
+        bullish=sum(panel_tally(one, "bullish") for one in (rows or {}).values()),
+        bearish=sum(panel_tally(one, "bearish") for one in (rows or {}).values()),
+        neutral=sum(panel_tally(one, "neutral") for one in (rows or {}).values()),
+    )
+
+
 def voting_panel(pull: Any) -> Optional[dict]:
     """The Indicator Voting Panel one scanned asset carries, as its rows.
 
@@ -1395,7 +1447,7 @@ def voting_panel(pull: Any) -> Optional[dict]:
                 PANEL_TITLE_FORMAT.format(
                     symbol=pull.symbol,
                     label=ata_spm.timeframe_label(pull.timeframe),
-                    summary=ivp.summary_text(rows),
+                    summary=panel_summary_text(rows),
                 ),
                 PANEL_HEADER_STYLE_FORMAT.format(color=PANEL_PLAIN_COLOR),
             )
@@ -1880,13 +1932,13 @@ def stepper_skin() -> dict:
 
 
 def sector_assets(sector: Any, asset_class: Any) -> list:
-    """The assets one named sector holds, read from the shipped sector map.
+    """The ``ata_asset_maps.AssetListing`` rows one named sector holds.
 
-    Only ``ata_spm.CLASS_CRYPTO`` has a map in the tree, so every other
-    class answers none and the zone names the source it waits for.
+    ``ata_spm.CLASS_CRYPTO`` reads the shipped sector map and charts off the
+    Market Inspector universe scan; every other class reads ``MAPS``.
     """
     if str(asset_class) != ata_spm.CLASS_CRYPTO:
-        return []
+        return list(ata_asset_maps.listings_for(sector, asset_class))
     from ...trading.topology_proposals import load_sector_map
 
     tag = str(sector).strip().lower()
@@ -1895,13 +1947,29 @@ def sector_assets(sector: Any, asset_class: Any) -> list:
     except Exception as exc:  # noqa: BLE001 - the map is operator-editable
         logger.debug(SECTOR_MAP_FAILED_LOG, exc)
         return []
-    return sorted(one for one, name in held.items() if str(name).lower() == tag)
+    return [
+        ata_asset_maps.exchange_listing(one)
+        for one in sorted(
+            name for name, tag_of in held.items() if str(tag_of).lower() == tag
+        )
+    ]
 
 
 def inspector_candles(inspector: Any, symbol: Any, timeframe: Any) -> list:
     """The candles the last universe scan kept for one symbol on one timeframe."""
     held = getattr(inspector, "last_candles", None) or {}
     return list((held.get(str(symbol)) or {}).get(str(timeframe)) or [])
+
+
+def sector_candles(inspector: Any, symbol: Any, timeframe: Any) -> list:
+    """The candles for one scanned symbol, from the source its map names.
+
+    A symbol ``ata_asset_maps.listing_of`` names is read through that
+    listing's venue; every other symbol comes off the universe scan.
+    """
+    if ata_asset_maps.listing_of(symbol) is not None:
+        return ata_asset_maps.venue_candles(symbol, timeframe)
+    return inspector_candles(inspector, symbol, timeframe)
 
 
 def ata_spm_skin(model: Any) -> dict:
@@ -2246,14 +2314,14 @@ class MarketInspectorScreenModel:
         self.calls.append([ATA_SOURCES_SET])
 
     def scanned_candles(self, symbol: Any, timeframe: Any) -> list:
-        """The candles the last universe scan kept for one symbol and timeframe.
+        """The candles for one scanned symbol, from the source its map names.
 
-        An analyzer this screen cannot reach answers none, so the timeframe
-        reads unread rather than raising into Scan Now.
+        A source this screen cannot reach answers none, so the timeframe
+        reads unread and Scan Now takes no exception.
         """
         try:
-            return inspector_candles(self.inspector(), symbol, timeframe)
-        except Exception as exc:  # noqa: BLE001 - the analyzer is process-wide
+            return sector_candles(self.inspector(), symbol, timeframe)
+        except Exception as exc:  # noqa: BLE001 - the source is off-process
             logger.debug(CANDLE_READ_FAILED_LOG, symbol, timeframe, exc)
             return []
 

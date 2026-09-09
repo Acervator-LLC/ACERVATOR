@@ -159,6 +159,9 @@ SECTOR_META_FORMAT = "{assets} asset(s) · {votes} vote(s) · {calls} reversal c
 TIMEFRAME_VOTE_FORMAT = "{votes} vote(s), {unread} without candles"
 NO_TIMEFRAME_TEXT = "No timeframe ticked."
 NO_ASSET_TEXT = "No asset source wired for {asset_class}."
+UNLISTED_TEXT = "No configured venue lists {symbols}."
+UNSERVED_TEXT = "No venue serves {labels}."
+SYMBOL_SEPARATOR = ", "
 CALL_LINE_FORMAT = "{symbol} on {label}: {direction} reversal"
 CALL_META_FORMAT = (
     "{direction} reversal · net {net:+.4f} · confidence {confidence}% "
@@ -404,6 +407,8 @@ class SectorScan:
     note: str = ""
     round_seconds: float = NO_ROUND_MEASURED
     deferred: tuple = ()
+    unlisted: tuple = ()
+    unserved: tuple = ()
 
     @property
     def supported(self) -> int:
@@ -550,18 +555,36 @@ def candles_for(candle_source: Any, symbol: str, timeframe: str) -> list:
         return []
 
 
-def _assets_for(asset_source: Any, sector: Sector) -> list:
-    """The assets one source holds for one sector.
+def _listings_for(asset_source: Any, sector: Sector) -> list:
+    """The asset rows one source holds for one sector.
 
     A source that raises answers none, so the sector reads its unwired note.
     """
     if asset_source is None:
         return []
     try:
-        return [str(one) for one in asset_source(sector.name, sector.asset_class) or []]
+        return list(asset_source(sector.name, sector.asset_class) or [])
     except Exception as exc:  # noqa: BLE001 - the source is host-supplied
         logger.debug(ASSET_READ_FAILED_LOG, sector.name, exc)
         return []
+
+
+def symbol_of(listing: Any) -> str:
+    """The symbol one asset row names, whether it is a row or a bare name."""
+    return str(getattr(listing, "symbol", listing))
+
+
+def is_listed(listing: Any) -> bool:
+    """True while a row names a venue; a bare name states none and reads listed."""
+    return bool(getattr(listing, "listed", True))
+
+
+def serves(listing: Any, timeframe: Any) -> bool:
+    """True while a row's venue answers ``timeframe``, or the row states none."""
+    asked = getattr(listing, "serves", None)
+    if asked is None:
+        return True
+    return bool(asked(timeframe))
 
 
 def evaluate(
@@ -581,22 +604,33 @@ def evaluate(
     cost = RoundCost()
     scans: list = []
     for sector in list(sectors or []):
-        assets = _assets_for(asset_source, sector)
+        rows = _listings_for(asset_source, sector)
+        listed = [one for one in rows if is_listed(one)]
+        assets = [symbol_of(one) for one in listed]
         ticked = sector.ticked()
+        served = [one for one in ticked if any(serves(row, one) for row in listed)]
         scan = SectorScan(
             sector=sector.name,
             asset_class=sector.asset_class,
             assets=assets,
+            unlisted=tuple(symbol_of(one) for one in rows if not is_listed(one)),
+            unserved=(
+                tuple(one for one in ticked if one not in served) if listed else ()
+            ),
         )
-        if not assets:
+        if not rows:
             scan.note = NO_ASSET_TEXT.format(asset_class=sector.asset_class)
+        elif not listed:
+            scan.note = UNLISTED_TEXT.format(
+                symbols=SYMBOL_SEPARATOR.join(scan.unlisted)
+            )
         elif not ticked:
             scan.note = NO_TIMEFRAME_TEXT
-        for at, timeframe in enumerate(ticked):
+        for at, timeframe in enumerate(served):
             if len(scan.timeframes) >= timeframes_supported(
                 cost.per_round_s, sector.asset_class
             ):
-                scan.deferred = tuple(ticked[at:])
+                scan.deferred = tuple(served[at:])
                 break
             scan.timeframes.append(
                 _scan_timeframe(voter, assets, timeframe, candle_source, cost, ticker)

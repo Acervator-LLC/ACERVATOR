@@ -77,8 +77,8 @@ from .main_tabs.market_inspector_surface import (
     TIMEFRAME_BOX_TOOLTIP_FORMAT,
     TIMEFRAME_BOX_WIDTH_PX,
     TIMEFRAME_ROW_PART,
-    inspector_candles,
     sector_assets,
+    sector_candles,
 )
 from .main_tabs.market_inspector_surface import (
     DETAIL_STYLE,
@@ -1124,12 +1124,12 @@ if _HAS_QT:
             self._render_left_modules()
 
         def _scanned_candles(self, symbol, timeframe) -> list:
-            """The candles the last universe scan kept for one symbol and timeframe."""
+            """The candles for one scanned symbol, from the source its map names."""
             try:
                 from ..trading.market_inspector import get_shared_inspector
 
-                return inspector_candles(get_shared_inspector(), symbol, timeframe)
-            except Exception as exc:  # noqa: BLE001 - the analyzer is process-wide
+                return sector_candles(get_shared_inspector(), symbol, timeframe)
+            except Exception as exc:  # noqa: BLE001 - the source is off-process
                 logger.debug(
                     "scanned candle read failed on %s %s: %s", symbol, timeframe, exc
                 )
