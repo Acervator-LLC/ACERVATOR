@@ -37,8 +37,10 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
+from dev_harness.harness import web_analyzers
 from dev_harness.harness.report import (
     REPO_ROOT,
     ArchetypeReport,
@@ -63,7 +65,7 @@ UNKNOWN_LANGUAGE = "unknown"
 
 # The languages this archetype carries analyzers for. Adding a name here
 # is a claim that the runners below can read that language.
-HANDLED_LANGUAGES: frozenset[str] = frozenset({"python"})
+HANDLED_LANGUAGES: frozenset[str] = frozenset({"python", "javascript"})
 
 # A mapped suffix decides the language, and no content check overturns it.
 _LANGUAGE_BY_SUFFIX: dict[str, str] = {
@@ -130,6 +132,21 @@ _INTERPRETER_VERSION_RE = re.compile(r"[\d.]+$")
 # A minified bundle is one very long line; the shebang, if any, is in
 # the first few bytes.
 _SHEBANG_READ_LIMIT = 256
+
+# slop, numeric_guard and delegated_canon each parse Python, so a
+# JavaScript target gets only the two rule modules that read any text.
+_PY_RULE_MODULES: tuple[tuple[str, str], ...] = (
+    ("scaffolding", "dev_harness.harness.rules.scaffolding"),
+    ("hallucination", "dev_harness.harness.rules.hallucination"),
+    ("slop", "dev_harness.harness.rules.slop"),
+    ("numeric_guard", "dev_harness.harness.rules.numeric_guard"),
+    ("delegated_canon", "dev_harness.harness.rules.delegated_canon"),
+)
+
+_JS_RULE_MODULES: tuple[tuple[str, str], ...] = (
+    ("scaffolding", "dev_harness.harness.rules.scaffolding"),
+    ("hallucination", "dev_harness.harness.rules.hallucination"),
+)
 
 
 def _shebang_language(path: Path) -> str:
@@ -367,12 +384,20 @@ def _possibly_unbound_severity(message: str, file_path: str) -> str:
 
 
 class CodingArchetype:
-    """Coding-quality archetype v2 — subprocess-invokes six tools:
-    ruff, mypy, pyright, bandit, vulture, semgrep."""
+    """Coding-quality archetype v2 — subprocess-invokes ruff, mypy,
+    pyright, bandit, vulture and semgrep on Python, eslint on JavaScript."""
 
     name = "coding_quality"
     version = "2.1"  # v2.1: added falsification field + calibration hook
-    tools = ("ruff", "mypy", "pyright", "bandit", "vulture", "semgrep")
+    tools = (
+        "ruff",
+        "mypy",
+        "pyright",
+        "bandit",
+        "vulture",
+        "semgrep",
+        "eslint",
+    )
     calibration_name = "coding"
 
     def load_calibration(self) -> str:
@@ -390,8 +415,8 @@ class CodingArchetype:
             report.falsification = self._build_falsification(report)
             return report
 
-        # A directory has no single language, and every analyzer below
-        # self-filters to `.py`.
+        # A directory has no single language, and every Python analyzer
+        # below self-filters to `.py`.
         if target.is_file():
             report.language = detect_language(target)
             if report.language not in HANDLED_LANGUAGES:
@@ -403,14 +428,7 @@ class CodingArchetype:
         # cannot answer passed=True.
         report.scanned = True
 
-        for tool_name, runner in [
-            ("ruff", self._run_ruff),
-            ("mypy", self._run_mypy),
-            ("pyright", self._run_pyright),
-            ("bandit", self._run_bandit),
-            ("vulture", self._run_vulture),
-            ("semgrep", self._run_semgrep),
-        ]:
+        for tool_name, runner in self._runners(report.language):
             try:
                 findings, status = runner(target)
                 report.findings.extend(findings)
@@ -425,20 +443,10 @@ class CodingArchetype:
                 report.tool_availability[tool_name] = "error"
                 report.errors.append(f"{tool_name}: {type(e).__name__}: {e}")
 
-        scan_rule_modules(
-            report,
-            target,
-            (
-                ("scaffolding", "dev_harness.harness.rules.scaffolding"),
-                ("hallucination", "dev_harness.harness.rules.hallucination"),
-                # slop and numeric_guard are coding-only; the gui and docs
-                # archetypes skip both.
-                ("slop", "dev_harness.harness.rules.slop"),
-                ("numeric_guard", "dev_harness.harness.rules.numeric_guard"),
-                ("delegated_canon", "dev_harness.harness.rules.delegated_canon"),
-            ),
-            (".py",),
-        )
+        if report.language == "javascript":
+            scan_rule_modules(report, target, _JS_RULE_MODULES, (".js",))
+        else:
+            scan_rule_modules(report, target, _PY_RULE_MODULES, (".py",))
 
         report.falsification = self._build_falsification(report)
         return report
@@ -486,7 +494,29 @@ class CodingArchetype:
         )
         return " ".join(parts)
 
+    def _runners(self, language: str) -> list[tuple[str, Callable]]:
+        """The (tool_name, runner) pairs that read `language`.
+
+        A directory target carries no language and gets the Python set,
+        whose analyzers each self-filter to `.py`.
+        """
+        if language == "javascript":
+            return [("eslint", self._run_eslint)]
+        return [
+            ("ruff", self._run_ruff),
+            ("mypy", self._run_mypy),
+            ("pyright", self._run_pyright),
+            ("bandit", self._run_bandit),
+            ("vulture", self._run_vulture),
+            ("semgrep", self._run_semgrep),
+        ]
+
     # ---- tool runners ----
+
+    @staticmethod
+    def _run_eslint(target: Path) -> tuple[list[Finding], str]:
+        """Grade one JavaScript file with eslint."""
+        return web_analyzers.run_eslint(target)
 
     @staticmethod
     def _resolve_executable(tool: str) -> str:
@@ -845,9 +875,8 @@ def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv or argv[0] in ("-h", "--help"):
         print("usage: python -m tools.harness.coding_archetype <path>")
-        print(
-            "       reviews path with ruff + mypy + pyright + bandit + vulture + semgrep;"
-        )
+        print("       .py: ruff + mypy + pyright + bandit + vulture + semgrep;")
+        print("       .js: eslint;")
         print("       prints JSON report; exit 0 if passed, 1 if failed")
         return 2
     target = Path(argv[0])

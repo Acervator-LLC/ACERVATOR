@@ -1,0 +1,17 @@
+/* Calibration body for stylelint. Three defects: a hex colour of five
+   digits, a misspelled property, and one selector written twice. */
+
+.acervator-known-bad {
+  background-color: #12345;
+  colour: #e6edf3;
+  display: flex;
+  padding: 12px;
+}
+
+.acervator-known-bad__value {
+  font-size: 14px;
+}
+
+.acervator-known-bad__value {
+  color: #3fb950;
+}

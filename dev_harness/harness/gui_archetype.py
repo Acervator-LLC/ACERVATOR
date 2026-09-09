@@ -7,7 +7,15 @@ JavaScript:
   a colour literal the design tokens already serve (GUIJS003) and
   absolute positioning (GUIJS004). ruff and bandit read Python only and
   do not run on a `.js` target; a module `js_screen.tokenize` cannot
-  finish leaves `scanned` False.
+  finish leaves `scanned` False. `eslint` runs beside `js_screen` on the
+  same target, configured by `eslint.config.mjs` at the repo root.
+
+CSS and HTML:
+  A `.css` target is graded by `stylelint` and a `.html` target by
+  `html-validate`, each configured by its own file at the repo root --
+  `.stylelintrc.json` and `.htmlvalidate.json`. Both are npm packages
+  installed under `node_modules/`; an absent package reports `missing`
+  and leaves `scanned` False.
 
 Design (in one paragraph):
   The archetype does two things: (1) STATIC AST analysis of PySide6
@@ -44,9 +52,10 @@ import ast
 import json
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
-from dev_harness.harness import js_screen
+from dev_harness.harness import js_screen, web_analyzers
 from dev_harness.harness.coding_archetype import detect_language
 from dev_harness.harness.report import (
     REPO_ROOT,
@@ -66,8 +75,16 @@ __all__ = [
 ]
 
 # The languages this archetype carries a screen analyzer for. `ruff` and
-# `bandit` read Python only, so a JavaScript target runs `gui-js` alone.
-HANDLED_LANGUAGES: frozenset[str] = frozenset({"python", "javascript"})
+# `bandit` read Python only, so a JavaScript target runs `gui-js` and
+# `eslint`, a style sheet `stylelint`, and a page `html-validate`.
+HANDLED_LANGUAGES: frozenset[str] = frozenset({"python", "javascript", "css", "html"})
+
+# scaffolding and hallucination read any text; every other rule module
+# parses Python.
+_TEXT_RULE_MODULES: tuple[tuple[str, str], ...] = (
+    ("scaffolding", "dev_harness.harness.rules.scaffolding"),
+    ("hallucination", "dev_harness.harness.rules.hallucination"),
+)
 
 
 _QT_WIDGET_BASES: set[str] = {
@@ -696,7 +713,15 @@ class GUIArchetype:
 
     name = "gui_quality"
     version = "1.3"
-    tools = ("gui-static", "ruff", "bandit", "gui-js")
+    tools = (
+        "gui-static",
+        "ruff",
+        "bandit",
+        "gui-js",
+        "eslint",
+        "stylelint",
+        "html-validate",
+    )
     calibration_name = "gui"
 
     def load_calibration(self) -> str:
@@ -717,6 +742,10 @@ class GUIArchetype:
             report.language = detect_language(target)
             if report.language == "javascript":
                 return self._review_javascript(target, report)
+            if report.language == "css":
+                return self._review_css(target, report)
+            if report.language == "html":
+                return self._review_html(target, report)
             if report.language not in HANDLED_LANGUAGES:
                 report.unhandled = True
                 report.falsification = self._unhandled_falsification(report)
@@ -796,17 +825,75 @@ class GUIArchetype:
             report.tool_availability["gui-js"] = "error"
             report.errors.append(f"gui-js: {type(e).__name__}: {e}")
 
-        scan_rule_modules(
-            report,
-            target,
-            (
-                ("scaffolding", "dev_harness.harness.rules.scaffolding"),
-                ("hallucination", "dev_harness.harness.rules.hallucination"),
-            ),
-            (".js",),
-        )
+        self._run_web_tool(report, "eslint", web_analyzers.run_eslint, target)
+
+        scan_rule_modules(report, target, _TEXT_RULE_MODULES, (".js",))
         report.falsification = self._javascript_falsification(report)
         return report
+
+    def _review_css(self, target: Path, report: ArchetypeReport) -> ArchetypeReport:
+        """Grade one style sheet with stylelint.
+
+        `gui-static`, `ruff` and `bandit` read Python only and do not run.
+        """
+        self._run_web_tool(report, "stylelint", web_analyzers.run_stylelint, target)
+        scan_rule_modules(report, target, _TEXT_RULE_MODULES, (".css",))
+        report.falsification = self._web_falsification(report, "stylelint")
+        return report
+
+    def _review_html(self, target: Path, report: ArchetypeReport) -> ArchetypeReport:
+        """Grade one page with html-validate.
+
+        `gui-static`, `ruff` and `bandit` read Python only and do not run.
+        """
+        self._run_web_tool(
+            report, "html-validate", web_analyzers.run_html_validate, target
+        )
+        scan_rule_modules(report, target, _TEXT_RULE_MODULES, (".html", ".htm"))
+        report.falsification = self._web_falsification(report, "html-validate")
+        return report
+
+    @staticmethod
+    def _run_web_tool(
+        report: ArchetypeReport,
+        tool_name: str,
+        runner: Callable[[Path], tuple[list[Finding], str]],
+        target: Path,
+    ) -> None:
+        """Record one web analyzer's findings and status on `report`.
+
+        `scanned` is set only when `runner` returned, so an absent
+        analyzer leaves an empty report that cannot answer passed=True.
+        """
+        try:
+            findings, status = runner(target)
+            report.findings.extend(findings)
+            report.tool_availability[tool_name] = status
+            report.scanned = True
+        except FileNotFoundError as e:
+            report.tool_availability[tool_name] = "missing"
+            report.errors.append(f"{tool_name}: not installed: {e}")
+        except subprocess.TimeoutExpired:
+            report.tool_availability[tool_name] = "error"
+            report.errors.append(f"{tool_name}: timed out")
+        except Exception as e:
+            report.tool_availability[tool_name] = "error"
+            report.errors.append(f"{tool_name}: {type(e).__name__}: {e}")
+
+    @staticmethod
+    def _web_falsification(report: ArchetypeReport, tool: str) -> str:
+        """State what would prove a `stylelint` or `html-validate` report wrong."""
+        return (
+            f"This report is wrong if: (a) {tool} read a configuration other "
+            f"than the one at the repo root, so a different rule set graded "
+            f"{report.target!r}; (b) the defect in this file is expressed in a "
+            f"language {tool} does not read -- the JavaScript a page loads, or "
+            f"the markup a style sheet targets -- none of which was examined "
+            f"here; (c) a selector or element this file declares is dead "
+            f"because nothing references it, which no rule here measures; "
+            f"(d) any of the {len(report.findings)} listed findings is not a "
+            f"real defect when a human reads the file."
+        )
 
     @staticmethod
     def _javascript_falsification(report: ArchetypeReport) -> str:
@@ -819,7 +906,9 @@ class GUIArchetype:
             "the same function -- in which case NO rule graded that control; "
             "(b) a control this names as unlabelled or inert is reached by a "
             "delegated listener registered outside the module, which js_screen "
-            "does not follow; (c) ruff, bandit, mypy and the other Python "
+            "does not follow; (b2) eslint read eslint.config.mjs at the repo "
+            "root, so a rule that config does not enable found nothing here; "
+            "(c) ruff, bandit, mypy and the other Python "
             "analyzers would have found a defect here, none of which read "
             "JavaScript and none of which ran; (d) any of the "
             f"{len(report.findings)} listed findings is a false positive when a "

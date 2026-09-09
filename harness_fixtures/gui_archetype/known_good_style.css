@@ -1,0 +1,25 @@
+/* Calibration body for stylelint. Every declaration here is valid CSS,
+   so the archetype must report passed=True on this file. */
+
+.acervator-known-good {
+  background-color: #101418;
+  color: #e6edf3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.acervator-known-good__value {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.acervator-known-good__value--rising {
+  color: #3fb950;
+}
+
+.acervator-known-good__value--falling {
+  color: #f85149;
+}

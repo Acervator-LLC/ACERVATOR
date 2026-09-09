@@ -117,3 +117,7 @@ quarantine/
 # Electron installs its packages here. The lockfile beside them pins the
 # versions, so the tree carries the pin and not the 235 MB program.
 desktop/node_modules/
+
+# eslint, stylelint and html-validate install here. package-lock.json
+# beside them pins every version.
+/node_modules/
