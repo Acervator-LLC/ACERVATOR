@@ -17,6 +17,9 @@ from .. import design_system as ds
 
 METHOD = "spendable_profits.state"
 
+#: The request field carrying ``header_strip_surface.profits_payload``.
+PROFITS_PARAM = "profits"
+
 EMPTY_TEXT = _ABSENT_TEXT
 MONEY_PREFIX = "$"
 MONEY_FORMAT = ",.2f"
@@ -83,8 +86,18 @@ DOT_MASKED_GLYPH = "○"
 DOT_REVEALED_STATE = "REVEALED. Click to mask."
 DOT_MASKED_STATE = "MASKED. Click to reveal."
 
-#: The ``dot_view`` fields one column's dot carries.
-_DOT_FIELDS = ("field_id", "masked", "text", "tooltip", "style_sheet")
+#: The ``dot_view`` fields one column's dot carries. ``cursor_shape`` is the
+#: pointing hand the Qt ``PrivacyDot`` sets on itself.
+_DOT_FIELDS = (
+    "field_id",
+    "masked",
+    "text",
+    "tooltip",
+    "style_sheet",
+    "flat",
+    "focus_policy",
+    "cursor_shape",
+)
 
 REALISED_DEFAULT = None
 EXCHANGE_COUNT_DEFAULT = None
@@ -374,9 +387,41 @@ def view_model(params: dict) -> dict:
     """Bridge handler for ``spendable_profits.state``."""
     asked = params or {}
     state = SpendableProfitsModel()
-    profits = asked.get("profits")
+    profits = asked.get(PROFITS_PARAM)
     if profits is not None:
         state.update_profits(profits)
     if asked.get("refresh_dots"):
         state.refresh_privacy_dots()
     return build_view_model(state)
+
+
+def live_view_model(params: dict, live: Any) -> dict:
+    """Answer ``spendable_profits.state`` from the fleet ``live`` holds.
+
+    The payload comes from ``header_strip_surface.profits_payload``, the one
+    builder the Qt window's own tick calls, so both hosts read one aggregate
+    and neither host derives a figure of its own.
+    """
+    from . import header_strip_surface
+
+    asked = dict(params or {})
+    if asked.get(PROFITS_PARAM) is None:
+        aggregate = header_strip_surface.fleet_aggregate(live)
+        if aggregate is not None:
+            asked[PROFITS_PARAM] = header_strip_surface.profits_payload(
+                aggregate,
+                header_strip_surface.configured_exchange_count(live) or 0,
+            )
+    return view_model(asked)
+
+
+def bind_live(live: Any) -> Any:
+    """Return a ``spendable_profits.state`` handler reading ``live``.
+
+    ``build_registry`` calls this when the running program serves the bridge.
+    """
+
+    def handler(params: dict) -> dict:
+        return live_view_model(params or {}, live)
+
+    return handler

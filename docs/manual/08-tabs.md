@@ -1043,9 +1043,9 @@ rather than typed.
 | `src/gui/widgets/exchange_tab.py` | `exchange_tab.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/extractor_bot_table.py` | `extractor_bot_table.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/notification_spool.py` | `notification_spool.js` | yes | yes | yes | no | yes | no | shelved |
-| `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | yes | no | shelved |
-| `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 The Simulator rebuild removed the files above; they are not in the tree.
@@ -1598,6 +1598,102 @@ expected side.
 
 Detail on each live screen sits one file down, in
 [08-tabs/README.md](08-tabs/README.md).
+
+## 2026-09-09 07:23 - #128 - the header strip's spendable panel is a panel, its dot is not
+
+The header strip is one registered panel that draws two other modules inside
+itself. The shell mounts `header_strip` as chrome, above the tab bar and on
+show for every tab. Inside it, the spendable panel and the five counter cards
+each fill a space the strip leaves for them, and each of those spaces is a
+mount of its own.
+
+`src/gui/web/header_strip.js` — the spendable space, as the strip draws it
+
+```javascript
+  function renderSpendable(target, model) {
+    var host = global.acervatorPanelHost;
+    var space = spaceNamed(target, SPENDABLE);
+    if (!host || space === null) {
+      return null;
+    }
+    space.setAttribute(CHILD_ATTR, SPENDABLE_MODULE);
+    return host.mount(SPENDABLE_MODULE, space, model) ? space : null;
+  }
+```
+
+`spendable_profits.js` now registers, so the shell knows it by name and the
+strip draws it the way the Live tab draws its Activity Log and the Charts tab
+draws its chart. The registration names no bridge method, so the tab bar gives
+it no tab. Nineteen panels register where eighteen did before.
+
+The privacy dot is a different kind of thing. It has no space and no host: two
+other modules render it as an element inside their own trees, so the panel host
+never draws it and a registration would name a panel with nowhere to go. Its
+Registers in Electron cell now reads `-`, the mark this table already uses for
+a column that does not apply to a row.
+
+`src/gui/web/spendable_profits.js` — where the dot comes from
+
+```javascript
+  function dotSpan() {
+    var own = global.acervatorDot;
+    if (own && own.Dot) {
+      return own.Dot;
+    }
+    var api = global.acervatorHeader;
+    return api && api.PrivacyDot ? api.PrivacyDot : null;
+  }
+```
+
+Both builds were read on one fleet snapshot and one privacy state, with LOCKED
+and Folded masked and every other field revealed. Nothing was written into the
+page: the shell fetched every figure over the bridge. Every value, label,
+glyph, colour and tooltip on the strip agrees between them.
+
+The strip's slots now share the row the way the Qt layout shares it. A Qt
+stretch divides the whole width; a CSS `flex-grow` divides only what is left
+over, so the counters drew at five different widths. With a zero flex basis the
+five cards measure 148 pixels each against Qt's 153, and the spendable panel
+takes 34.6 per cent of the row against Qt's 34.8.
+
+| Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | - | yes | yes | in scope |
+
+The strip fetches its own figures. The shell asks for the strip with an empty
+request, so both surfaces now read the fleet the bridge is bound to, the way
+the History, Charts, Trading and Inspector surfaces already read theirs. The
+aggregate is `BotManager.get_aggregate_stats`, the same call the Qt window's
+own tick makes, and the exchange count is the length of
+`SettingsManager.list_exchanges`, which is the list the window builds one
+sub-tab from. Neither figure is derived in the surface or in the page.
+
+`src/gui/main_tabs/header_strip_surface.py` — the request fills itself
+
+```python
+def live_view_model(params: dict, live: Any) -> dict:
+    asked = dict(params or {})
+    if asked.get(STATS_PARAM) is None:
+        aggregate = fleet_aggregate(live)
+        if aggregate is not None:
+            asked[STATS_PARAM] = aggregate
+```
+
+The spendable columns take the same aggregate through
+`header_strip_surface.profits_payload`, the one builder the Qt tick already
+calls, so the two hosts read one snapshot and cannot disagree.
+
+Each privacy dot in the strip's columns now carries the pointing hand the Qt
+dot sets on itself. `privacy_dot_surface.dot_view` publishes `cursor_shape`,
+and the two surfaces that build a dot for this strip now keep it.
+`dashboard_stat_card_surface` still cuts it away, so the five counter dots
+draw with the ordinary pointer; that card is its own row.
+
+Qt draws a one pixel panel edge around each counter card where the page draws
+none, because `dashboard_stat_card_surface.FRAME_STYLE` is empty and the
+`StyledPanel` shape reaches the page as an attribute no rule reads. That is
+the same row.
 
 ## 2026-09-09 22:12 - #128 - the Swarm tab loses List View
 
