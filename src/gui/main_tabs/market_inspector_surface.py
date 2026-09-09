@@ -1117,11 +1117,13 @@ def phase_eight_rows(scan: Any, pulls: Any) -> list:
 def sector_entry(scan: Any, pulls: Any, follow_ups: Any = ()) -> dict:
     """One scanned sector as the entry the ATA-SPM zone steps through.
 
-    The expansion carries every phase readback in order, so the entry says
-    how and why each call under it exists and what happened to it.
+    The expansion carries every phase readback in order, and ``held`` narrows
+    ``pulls`` to this sector's assets; ``run`` already dropped every market the
+    gate chains refused.
     """
     calls = scan.calls
-    held = [one for one in pulls if any(one.symbol == call.symbol for call in calls)]
+    assets = set(scan.assets)
+    held = [one for one in pulls if one.symbol in assets]
     strongest = calls[0] if calls else None
     return zone_entry(
         ata_spm.SECTOR_LINE_FORMAT.format(

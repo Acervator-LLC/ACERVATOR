@@ -4,7 +4,7 @@
 ``VotingSummary``. ``scan_gates`` hands that context to the chains
 ``build_scrumming_scrum_chain`` and ``build_scrumming_fold_chain`` build.
 It answers a ``GateScan`` of ``GateReading`` rows, each naming one gate's
-state.
+state, and ``GateScan.would_fire`` reads those rows as one verdict.
 """
 
 from __future__ import annotations
@@ -39,6 +39,11 @@ STATE_NOT_RUN = "did not run"
 STATE_HYPOTHETICAL = "hypothetical"
 
 SIDE_SCRUM = "scrum"
+SIDE_FOLD = "fold"
+
+#: The two chains a scan reads, in the order a verdict tries them.
+SIDES = (SIDE_SCRUM, SIDE_FOLD)
+NO_SIDE = ""
 
 #: The four gates a scan stands down; no hypothetical stands in for a
 #: holding without inventing one.
@@ -187,6 +192,32 @@ class GateScan:
     def ran(self) -> int:
         """How many ``GateReading`` rows decided."""
         return sum(1 for one in self.readings if one.ran)
+
+    def side_readings(self, side: Any) -> list:
+        """One chain's ``GateReading`` rows, in chain order."""
+        return [one for one in self.readings if one.side == str(side)]
+
+    def side_fires(self, side: Any) -> bool:
+        """True while one chain ran at least one gate and every one latched.
+
+        The states are the ones ``ChainResult`` answered, so no gate is
+        re-tested here.
+        """
+        decided = [one for one in self.side_readings(side) if one.ran]
+        return bool(decided) and all(one.state == STATE_LATCHED for one in decided)
+
+    @property
+    def firing_side(self) -> str:
+        """The chain this market would fire, or ``NO_SIDE`` for neither."""
+        for side in SIDES:
+            if self.side_fires(side):
+                return side
+        return NO_SIDE
+
+    @property
+    def would_fire(self) -> bool:
+        """True while either chain would fire, which is what a post needs."""
+        return self.firing_side != NO_SIDE
 
 
 def scan_settings(symbol: Any) -> BotConfig:
