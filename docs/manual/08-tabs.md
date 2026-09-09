@@ -2353,3 +2353,69 @@ drawn                17 subsystem panels, 11 tab groups, 78 emitter rows
 ```
 
 The detail is in [08-tabs/system-status.md](08-tabs/system-status.md).
+
+### 2026-09-09 15:12 - #435 - Start All waits 3.5 seconds and retries a bot once
+
+The Start All dialog used to promise a pause of about 2.5 seconds with a
+two-second minimum. The engine waited 0.6. The pause is now 3.5 seconds, it is
+written down once, and the dialog quotes that figure rather than a number of its
+own.
+
+```python
+#: Seconds `BotManager.start_all` waits between bots, and the figure the Start
+#: All dialog quotes. 0.6 drew HTTP 429 on three of 38 starts.
+START_ALL_GAP_SECONDS: float = 3.5
+```
+
+The boot of 8 September 2026 is in the operator's own log. Thirty-eight bots
+were brought up one at a time and three of them came back with the same refusal
+from Coinbase: too many requests, on the call that lists the accounts. Those
+three did not trade until they were started again eight minutes later. A wider
+pause is exactly what the dialog always said the gap was for.
+
+```
+2026-09-08 11:10:43,649 BOT_CONNECT_FAILED | RateLimitExceeded: coinbase GET
+https://api.coinbase.com/api/v3/brokerage/accounts?limit=250
+429 Too Many Requests | DIAGNOSIS: Rate limited.
+```
+
+A bot that does not report itself running inside ten seconds is now stopped and
+started one more time, and then the sequence moves on whatever happened. The
+stop is what makes the second attempt real, because a bot still in its starting
+state refuses a plain second start and the retry would do nothing.
+
+```python
+            if not verified and not getattr(self, "_start_all_cancel", False):
+                logger.warning(
+                    "Bot %s did not reach RUNNING in %.1fs; retrying once",
+                    bot.bot_id,
+                    verify_timeout_seconds,
+                )
+                await asyncio.sleep(min_gap_seconds)
+                await bot.stop()
+                await bot.start()
+                verified = await self._await_running(bot, verify_timeout_seconds)
+```
+
+The platform now writes a line for each of those events, so a boot that loses a
+bot says so in the log instead of leaving a silent hole. A bot that comes up on
+the retry gets one warning; a bot that fails both attempts gets two.
+
+```
+Bot LATEBOT starting on LATEBOT/USD
+Bot LATEBOT did not reach RUNNING in 10.0s; retrying once
+Bot LATEBOT starting on LATEBOT/USD
+Bot DEADBOT did not reach RUNNING in 10.0s; retrying once
+Bot DEADBOT is not RUNNING after 10.0s; start_all moved on
+```
+
+The cost is real and it is worth knowing before the next launch. Thirty-eight
+bots mean thirty-seven waits. The 8 September pass took 3 minutes 33 seconds for
+its 35 bots at a mean of 5.3 seconds each, so the same fleet at the new pause
+reaches about 5 minutes, and three retries add about 40 seconds on top.
+
+```
+gaps alone, 37 waits       0.6 s -> 22.2 s        3.5 s -> 129.5 s
+measured pass, per bot     mean 5.318 s           mean 8.218 s
+38 bots, three retried     3 min 17 s             about 5 min 45 s
+```

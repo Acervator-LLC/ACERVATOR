@@ -399,6 +399,10 @@ _FLOAT_SAFE_INT: int = 2**1023
 #: Saturation cap for `despawn_threshold_days`, 10,000 years in whole days.
 DESPAWN_MAX_DAYS: int = 3_650_000
 
+#: Seconds `BotManager.start_all` waits between bots, and the figure the Start
+#: All dialog quotes. 0.6 drew HTTP 429 on three of 38 starts.
+START_ALL_GAP_SECONDS: float = 3.5
+
 
 def as_finite_float(value) -> Optional[float]:
     """Return `value` as a float when its exact type is int or float and it is

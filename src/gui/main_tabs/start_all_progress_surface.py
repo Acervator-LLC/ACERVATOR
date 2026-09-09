@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Iterable, Optional
 
+from ...trading.container.config import START_ALL_GAP_SECONDS
 from .. import design_system as ds
 
 LOGGER_NAME = "acervator.gui.start_all"
@@ -87,11 +88,12 @@ HEADLINE_POINT_SIZE = 12
 HEADLINE_BOLD = True
 
 SUBLINE_TEXT = (
-    "Bots are started one at a time with a ~2.5-second pause "
-    "between each (verify-then-next + a 2s minimum gap so the "
-    "per-exchange CCXT call queue has time to drain). Click "
-    "Cancel to abort the remaining bots — bots already started "
-    "will keep running."
+    f"Bots are started one at a time with a {START_ALL_GAP_SECONDS}-second "
+    "gap between each, so the per-exchange CCXT call queue has time to "
+    "drain. A bot that does not come up is stopped and started once more "
+    "before the next bot; if it fails again it is listed as timed out and "
+    "the rest carry on. Click Cancel to abort the remaining bots — bots "
+    "already started will keep running."
 )
 SUBLINE_WORD_WRAP = True
 

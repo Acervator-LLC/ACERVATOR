@@ -32,6 +32,7 @@ from .container.config import (
     DESPAWN_PREVIEW_WINDOWS,
     DOLLAR_PEGGED_CURRENCIES,
     STACK_MODE_DEFAULT,
+    START_ALL_GAP_SECONDS,
     BotConfig,
     BotMode,
     BotState,
@@ -54,6 +55,7 @@ __all__ = [
     "DESPAWN_PREVIEW_WINDOWS",
     "DOLLAR_PEGGED_CURRENCIES",
     "STACK_MODE_DEFAULT",
+    "START_ALL_GAP_SECONDS",
     "BotConfig",
     "BotContainer",
     "BotManager",
@@ -1227,15 +1229,30 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
             return None
         return rate
 
+    async def _await_running(self, bot, timeout_seconds: float) -> bool:
+        """Poll ``bot.state`` every 0.25 s and return True on RUNNING,
+        False on ``timeout_seconds`` or on a ``cancel_start_all``."""
+        poll_interval = 0.25
+        elapsed = 0.0
+        while elapsed < timeout_seconds:
+            if getattr(self, "_start_all_cancel", False):
+                return False
+            if bot.state == BotState.RUNNING:
+                return True
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+        return False
+
     async def start_all(
         self,
         verify_timeout_seconds: float = 10.0,
-        min_gap_seconds: float = 0.6,
+        min_gap_seconds: float = START_ALL_GAP_SECONDS,
         eligible_filter: Optional[Callable[["BotContainer"], bool]] = None,
     ) -> None:
         """Start each eligible bot in turn, waiting up to
         ``verify_timeout_seconds`` for RUNNING and ``min_gap_seconds``
-        between bots, and emitting ``bot_manager.start_all_progress``."""
+        between bots, retrying a bot that does not reach RUNNING exactly
+        once, and emitting ``bot_manager.start_all_progress``."""
         eligible = [
             b
             for b in self._bots.values()
@@ -1269,17 +1286,19 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
                 bot_id=bot.bot_id,
             )
             await bot.start()
-            verified = False
-            poll_interval = 0.25
-            elapsed = 0.0
-            while elapsed < verify_timeout_seconds:
-                if getattr(self, "_start_all_cancel", False):
-                    break
-                if bot.state == BotState.RUNNING:
-                    verified = True
-                    break
-                await asyncio.sleep(poll_interval)
-                elapsed += poll_interval
+            verified = await self._await_running(bot, verify_timeout_seconds)
+            if not verified and not getattr(self, "_start_all_cancel", False):
+                logger.warning(
+                    "Bot %s did not reach RUNNING in %.1fs; retrying once",
+                    bot.bot_id,
+                    verify_timeout_seconds,
+                )
+                # stop() first: start() on a STARTING bot returns without
+                # replacing the task, so a bare second start does nothing.
+                await asyncio.sleep(min_gap_seconds)
+                await bot.stop()
+                await bot.start()
+                verified = await self._await_running(bot, verify_timeout_seconds)
             if verified:
                 self._bus.emit(
                     "bot_manager.start_all_progress",
@@ -1290,6 +1309,11 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
                 )
             else:
                 # A timed-out bot may still come up; move to the next one.
+                logger.warning(
+                    "Bot %s is not RUNNING after %.1fs; start_all moved on",
+                    bot.bot_id,
+                    verify_timeout_seconds,
+                )
                 self._bus.emit(
                     "bot_manager.start_all_progress",
                     phase="bot_timeout",
