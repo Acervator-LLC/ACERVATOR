@@ -3,9 +3,8 @@
 ``MarketInspectorTab`` owns the fetch cycle and writes each scan into the
 analyzer ``get_shared_inspector`` returns, which ``build_per_bot_view``
 reads back for the Bot Details page. ``scan_state`` reports whether a
-scan has been asked for, is running, or has finished, and
-``_empty_table_text`` turns that state into the sentence an empty table
-carries. ``_emit_scan`` publishes ``SCAN_STARTED_TOPIC`` and
+scan has been asked for, is running, or has finished, and each zone note
+names that state. ``_emit_scan`` publishes ``SCAN_STARTED_TOPIC`` and
 ``SCAN_FINISHED_TOPIC`` so a run leaves a record of what the scan
 covered.
 """
@@ -17,11 +16,6 @@ import threading
 
 from ..trading import ata_spm, ata_spm_push
 from .main_tabs.market_inspector_surface import (
-    COLOR_CORRELATION,
-    COLOR_METHOD,
-    NO_METHOD_TEXT,
-    PAIR_COLUMNS,
-    PAIRS_GROUP_TITLE,
     READY_TO_SEND_ZONE,
     TOPOLOGIES_ZONE,
 )
@@ -118,9 +112,6 @@ try:
         QGroupBox,
         QComboBox,
         QLineEdit,
-        QTableWidget,
-        QTableWidgetItem,
-        QHeaderView,
         QSplitter,
         QSizePolicy,
         QLayout,
@@ -148,39 +139,12 @@ def _fmt_age(seconds: float) -> str:
     return f"{int(s / 86400)} days"
 
 
-def _signal_color(signal: str) -> str:
-    """Colour cue for a MarketInspector signal string."""
-    if signal.startswith("ENTRY_LONG_HIGH"):
-        return "#00ff88"
-    if signal.startswith("ENTRY_LONG"):
-        return "#66cc99"
-    if signal.startswith("ENTRY_SHORT_HIGH"):
-        return "#ff3366"
-    if signal.startswith("ENTRY_SHORT"):
-        return "#ff9966"
-    if signal == "WATCHLIST":
-        return "#ffcc00"
-    return "#888"
-
-
-def _fmt_tf_state(a) -> str:
-    """One-line rendering of a TimeframeAnalysis for the table cell."""
-    if a is None:
-        return "—"
-    tag = "▲" if a.at_upper_extreme else "▼" if a.at_lower_extreme else "·"
-    tight = " T" if a.tightening else ""
-    return f"{tag} bb={a.bb_position:.2f} z={a.z_score:+.2f}{tight}"
-
-
 SCAN_NOT_ASKED = "not_asked"
 SCAN_RUNNING = "running"
 SCAN_FINISHED = "finished"
 
 SCAN_STARTED_TOPIC = "market_inspector.scan_started"
 SCAN_FINISHED_TOPIC = "market_inspector.scan_finished"
-
-SIGNALS_NOUN = "markets"
-PAIRS_NOUN = "opposing pairs"
 
 ATA_SPM_MODULE = "ata_spm"
 OPPOSING_TRADES_MODULE = "opposing_trades"
@@ -197,19 +161,6 @@ ARBITRAGE_GROUP_TITLE = "Multi-Exchange Arbitrage"
 # The share a bullish bot feeds to the bot on the opposite market condition.
 OPPOSING_TRADES_PROFIT_SHARE_PCT = 50
 OPPOSING_TRADES_NOUN = "opposing trades"
-
-
-def _empty_table_text(scan_state: str, noun: str) -> str:
-    """The sentence an empty table carries for one scan state.
-
-    ``SCAN_NOT_ASKED``, ``SCAN_RUNNING`` and ``SCAN_FINISHED`` each get
-    their own wording, so the three never read alike.
-    """
-    if scan_state == SCAN_RUNNING:
-        return f"Scanning for {noun}…"
-    if scan_state == SCAN_FINISHED:
-        return f"Scan finished. No {noun} found."
-    return f"No scan yet. Press Refresh to look for {noun}."
 
 
 def _emit_scan(topic: str, **fields) -> None:
@@ -704,52 +655,6 @@ if _HAS_QT:
             top_row.addWidget(self._status_lbl)
             zone.insertLayout(0, top_row)
 
-            # --- HTF Signals table ---
-            self._signals_group = QGroupBox("HTF Signals")
-            sg = QVBoxLayout(self._signals_group)
-            self._signals_tbl = QTableWidget()
-            self._signals_tbl.setColumnCount(6)
-            self._signals_tbl.setHorizontalHeaderLabels(
-                ["Asset", "Signal", "Score", "Daily", "Weekly", "Active"]
-            )
-            self._signals_tbl.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeToContents
-            )
-            self._signals_tbl.setEditTriggers(QTableWidget.NoEditTriggers)
-            self._signals_tbl.setAlternatingRowColors(True)
-            self._signals_tbl.setMaximumHeight(360)
-            sg.addWidget(self._signals_tbl)
-            self._signals_empty_lbl = QLabel(
-                _empty_table_text(self._scan_state, SIGNALS_NOUN)
-            )
-            self._signals_empty_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
-            self._signals_empty_lbl.setWordWrap(True)
-            sg.addWidget(self._signals_empty_lbl)
-
-            # --- Opposing Pairs table ---
-            self._pairs_group = QGroupBox(PAIRS_GROUP_TITLE)
-            pg = QVBoxLayout(self._pairs_group)
-            self._pairs_tbl = QTableWidget()
-            self._pairs_tbl.setColumnCount(len(PAIR_COLUMNS))
-            self._pairs_tbl.setHorizontalHeaderLabels(list(PAIR_COLUMNS))
-            self._pairs_tbl.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeToContents
-            )
-            self._pairs_tbl.setEditTriggers(QTableWidget.NoEditTriggers)
-            self._pairs_tbl.setAlternatingRowColors(True)
-            self._pairs_tbl.setMaximumHeight(180)
-            # The zone takes an equal third; the table shrinks into it and
-            # scrolls rather than forcing the zone taller.
-            self._pairs_tbl.setMinimumHeight(0)
-            self._pairs_group.setMinimumHeight(0)
-            pg.addWidget(self._pairs_tbl)
-            self._pairs_empty_lbl = QLabel(
-                _empty_table_text(self._scan_state, PAIRS_NOUN)
-            )
-            self._pairs_empty_lbl.setStyleSheet("color: #aaa; font-size: 11px;")
-            self._pairs_empty_lbl.setWordWrap(True)
-            pg.addWidget(self._pairs_empty_lbl)
-
             # v3.23.68 — right pane hosts the topology-proposal cards.
             try:
                 from .market_inspector_topologies import MarketInspectorTopologies
@@ -1234,7 +1139,7 @@ if _HAS_QT:
             rows = _left_module_rows(
                 self._ata_report(),
                 self._scan_state,
-                self._pairs_tbl.rowCount(),
+                len(self._pairs),
                 self._connectors_now(),
                 len(self._ata_board.sectors),
             ) + _right_zone_rows(self._ata_run(), self._push_board.bucket)
@@ -1284,68 +1189,14 @@ if _HAS_QT:
             self._refresh_btn.setEnabled(bool(enabled))
 
         def _fill_signal_rows(self, signals: list) -> None:
-            """Draw one HTF Signals row per entry of ``signals``."""
-            self._signals_tbl.setRowCount(len(signals))
+            """Take the scored signals; no widget on this tab draws one."""
+            del signals
             self._render_empty_notes()
-            for row, s in enumerate(signals):
-                self._signals_tbl.setItem(row, 0, QTableWidgetItem(s.symbol))
-                sig_item = QTableWidgetItem(s.signal)
-                sig_item.setForeground(QColor(_signal_color(s.signal)))
-                self._signals_tbl.setItem(row, 1, sig_item)
-                self._signals_tbl.setItem(row, 2, QTableWidgetItem(f"{s.score:.2f}"))
-                self._signals_tbl.setItem(
-                    row, 3, QTableWidgetItem(_fmt_tf_state(s.per_tf.get("1d")))
-                )
-                self._signals_tbl.setItem(
-                    row, 4, QTableWidgetItem(_fmt_tf_state(s.per_tf.get("1w")))
-                )
-                active_item = QTableWidgetItem("yes" if s.is_active else "—")
-                if s.is_active:
-                    active_item.setForeground(QColor("#00ccff"))
-                self._signals_tbl.setItem(row, 5, active_item)
 
         def _fill_pair_rows(self, pairs: list) -> None:
-            """Draw one Opposing Pairs row per entry of ``pairs``."""
+            """Hold the opposing pairs the Opposing Trades stepper draws."""
             self._pairs = list(pairs)
-            self._pairs_tbl.setRowCount(len(pairs))
             self._render_empty_notes()
-            for row, p in enumerate(pairs):
-                method = getattr(p, "method", None)
-                self._pairs_tbl.setItem(
-                    row,
-                    0,
-                    QTableWidgetItem(f"{p.long_side.symbol} ({p.long_side.signal})"),
-                )
-                self._pairs_tbl.setItem(
-                    row,
-                    1,
-                    QTableWidgetItem(f"{p.short_side.symbol} ({p.short_side.signal})"),
-                )
-                method_item = QTableWidgetItem(
-                    method.label if method else NO_METHOD_TEXT
-                )
-                method_item.setForeground(QColor(COLOR_METHOD))
-                self._pairs_tbl.setItem(row, 2, method_item)
-                self._pairs_tbl.setItem(
-                    row,
-                    3,
-                    QTableWidgetItem(method.window_text if method else NO_METHOD_TEXT),
-                )
-                self._pairs_tbl.setItem(
-                    row,
-                    4,
-                    QTableWidgetItem(
-                        method.statistic_text if method else NO_METHOD_TEXT
-                    ),
-                )
-                corr_item = QTableWidgetItem(f"{p.correlation_30d:+.3f}")
-                corr_item.setForeground(QColor(COLOR_CORRELATION))
-                self._pairs_tbl.setItem(row, 5, corr_item)
-                self._pairs_tbl.setItem(
-                    row,
-                    6,
-                    QTableWidgetItem(f"{p.long_side.score + p.short_side.score:.2f}"),
-                )
 
         # ── external API ─────────────────────────────────────────────
         def scan_state(self) -> str:
@@ -1585,17 +1436,8 @@ if _HAS_QT:
             )
 
         def _render_empty_notes(self) -> None:
-            """Show each table's placeholder only while that table is empty.
-
-            The sentence names the scan state, so an empty table says
-            whether a scan was never asked for, is running, or finished.
-            """
-            for table, label, noun in (
-                (self._signals_tbl, self._signals_empty_lbl, SIGNALS_NOUN),
-                (self._pairs_tbl, self._pairs_empty_lbl, PAIRS_NOUN),
-            ):
-                label.setText(_empty_table_text(self._scan_state, noun))
-                label.setVisible(table.rowCount() == 0)
+            """Redraw the six zones, whose notes name the scan state."""
+            self._render_left_modules()
 
         # ── rendering ────────────────────────────────────────────────
         def _on_toggle_show_active(self, checked: bool) -> None:

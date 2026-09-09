@@ -605,6 +605,37 @@ widgets instead, unchanged.
 
 Detail: [08-tabs/market-inspector.md](08-tabs/market-inspector.md).
 
+### 2026-09-09 09:42 - #128 - the HTF Signals and Opposing Pairs tables come out
+
+Neither screen drew the two tables. The Qt tab built both group boxes and put
+neither into a layout, so no table ever reached the window. In the running
+shell, the React screen drew no table part at all, while its payload carried
+six signal columns and seven pair columns.
+
+`src/gui/market_inspector.py` — `_fill_pair_rows`
+
+```python
+def _fill_pair_rows(self, pairs: list) -> None:
+    """Hold the opposing pairs the Opposing Trades stepper draws."""
+    self._pairs = list(pairs)
+    self._render_empty_notes()
+```
+
+The screen holds neither table by design. The six-zone layout moved HTF Signals
+into the reserved Phantom Bot zone, and it hands each opposing pair to the
+Opposing Trades stepper, one entry at a time. Both sides now drop the renderer,
+the column sets and the two empty sentences, and the tab keeps only the rows the
+zones read.
+
+Nothing on the screen moved. The Qt picture and the React picture each match
+byte for byte before and after the change, and the drawn markup of the panel
+matches at 21,194 characters.
+
+The earlier comparison that closed these two rows read its table items out of
+the payload. `signalRow` and `pairRow` handed back cells from the model, which
+agreed on both sides whatever the page drew. This change drops both. The run is
+in [2026-09-09_market_inspector_tables.md](../../tests/debug_reports/2026-09-09_market_inspector_tables.md).
+
 ### 2026-09-09 23:05 - #128 - the Electron shell draws the Inspector tab and its proposals pane
 
 The Inspector tab draws in the Electron shell. The shell asks the application
