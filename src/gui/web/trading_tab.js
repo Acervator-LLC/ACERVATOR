@@ -1662,30 +1662,33 @@
     return drawn;
   }
 
-  // `status_log.js` draws its own lines into the slot this tab keeps.
-  function renderActivityLog(target) {
-    var api = global.acervatorLog;
+  // `status_log.js` draws its own lines into the slot this tab keeps. The
+  // panel host does the drawing, so a module that registers no panel is
+  // named on the slot rather than leaving it blank.
+  function renderActivityLog(target, model) {
+    var host = global.acervatorPanelHost;
     var slot = target.querySelector(
       SELECT_OPEN + PART_ATTR + SELECT_IS + STATUS_LOG_PART + SELECT_CLOSE
     );
-    if (!api || typeof api.renderLog !== "function" || slot === null) {
+    if (!host || slot === null) {
       return null;
     }
     slot.setAttribute(CHILD_ATTR, STATUS_LOG_MODULE);
-    return api.renderLog(slot);
+    return host.mount(STATUS_LOG_MODULE, slot, model) ? slot : null;
   }
 
-  // `indicator_panel.js` draws its own votes into the slot this tab keeps.
-  function renderIndicatorPanel(target) {
-    var api = global.acervatorIndicatorPanel;
+  // `indicator_panel.js` draws its own votes into the slot this tab keeps,
+  // through the panel host on the same terms as the Activity Log.
+  function renderIndicatorPanel(target, model) {
+    var host = global.acervatorPanelHost;
     var slot = target.querySelector(
       SELECT_OPEN + PART_ATTR + SELECT_IS + INDICATOR_PART + SELECT_CLOSE
     );
-    if (!api || typeof api.renderPanel !== "function" || slot === null) {
+    if (!host || slot === null) {
       return null;
     }
     slot.setAttribute(CHILD_ATTR, INDICATOR_MODULE);
-    return api.renderPanel(slot);
+    return host.mount(INDICATOR_MODULE, slot, model) ? slot : null;
   }
 
   // The layers whose tab widget has an exchange page on show.
@@ -1760,8 +1763,8 @@
       var loader = global[child.loader];
       var wait =
         typeof loader === "function" ? loader({}) : Promise.resolve(null);
-      return Promise.resolve(wait).then(function () {
-        return child.draw(target) === null ? null : child.module;
+      return Promise.resolve(wait).then(function (model) {
+        return child.draw(target, model) === null ? null : child.module;
       });
     });
     asked.push(
