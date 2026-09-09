@@ -40,8 +40,8 @@ VX_FLOOR = VX_FLOOR_PCT / PERCENT_PER_RATIO_UNIT
 class VortexIndicator:
     """VI+ against VI-, voting on trend direction.
 
-    ``compute`` votes on a VI crossover, on expanding separation, or on
-    ``VX_CEILING`` / ``VX_FLOOR``; ``lines`` returns both series for a
+    ``compute`` votes on a VI crossover or on expanding separation, and
+    ``VX_CEILING`` caps confidence; ``lines`` returns both series for a
     chart to draw.
     """
 
@@ -109,8 +109,8 @@ class VortexIndicator:
     def compute(self, candles: list[Candle], timeframe: str = "1h") -> Signal:
         """One Vortex vote over ``candles`` at ``timeframe``.
 
-        ``compute`` abstains when ``window_sums`` has no closed window, and
-        ``vim_at_ceiling`` overwrites ``direction`` with BULLISH.
+        ``direction`` follows VI+ against VI-, and ``compute`` abstains when
+        ``window_sums`` has no closed window.
         """
         if len(candles) < self.period + 1:
             return Signal(
@@ -203,11 +203,6 @@ class VortexIndicator:
 
         if vip_at_ceiling:
             confidence = max(0.0, min(confidence, 0.45))
-        if vim_at_ceiling:
-            # Exhausted bearish momentum reads as a coming reversal, and
-            # ``direction`` is overwritten to say so.
-            confidence = min(1.0, max(confidence, 0.60))
-            direction = SignalDirection.BULLISH
 
         return Signal(
             indicator="vortex",
@@ -216,10 +211,10 @@ class VortexIndicator:
             confidence=confidence,
             weight=self.weight,
             details={
-                "vi_plus": round(vi_plus, 4),
-                "vi_minus": round(vi_minus, 4),
-                "separation": round(separation, 4),
-                "sep_acceleration": round(sep_acceleration, 4),
+                "vi_plus": vi_plus,
+                "vi_minus": vi_minus,
+                "separation": separation,
+                "sep_acceleration": sep_acceleration,
                 "crossover": crossover,
                 "bull_accel": bull_accel,
                 "bear_accel": bear_accel,
