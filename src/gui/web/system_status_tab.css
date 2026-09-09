@@ -1,0 +1,187 @@
+/* The Status tab's emitter network read-out. Every colour and size is a design
+   token: `src/gui/react_system_status_tab.py` writes them for the desktop
+   window's page and `design_tokens.js` writes them for the Electron shell, so
+   this sheet holds no value of its own. Selected by the `data-part` names the
+   renderer module stamps. */
+
+html,
+body {
+  height: 100%;
+}
+
+.acervator-status-tab {
+  box-sizing: border-box;
+  min-height: 100%;
+  margin: 0;
+  padding: calc(var(--SPACE_L) * 1px);
+  background: var(--SURFACE_0);
+  color: var(--TEXT_HIGH);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: calc(var(--TYPE_BODY) * 1px);
+}
+
+.acervator-status-tab [data-part="heading"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H2) * 1px);
+  font-weight: bold;
+}
+
+.acervator-status-tab [data-part="subsystems-heading"],
+.acervator-status-tab [data-part="tabs-heading"] {
+  margin: calc(var(--SPACE_L) * 1px) 0 calc(var(--SPACE_S) * 1px) 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H4) * 1px);
+  font-weight: bold;
+}
+
+.acervator-status-tab [data-part="feed"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--SPACE_M) * 1px);
+  margin: calc(var(--SPACE_S) * 1px) 0 0 0;
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-status-tab [data-part="legend"] {
+  margin: calc(var(--SPACE_S) * 1px) 0 0 0;
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-status-tab [data-part="totals"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--SPACE_M) * 1px);
+  margin-top: calc(var(--SPACE_S) * 1px);
+  padding: calc(var(--SPACE_S) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_2);
+}
+
+.acervator-status-tab [data-part="count-label"] {
+  margin-right: calc(var(--SPACE_S) * 1px);
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-status-tab [data-part="count-value"] {
+  color: var(--TEXT_HIGH);
+  font-variant-numeric: tabular-nums;
+}
+
+.acervator-status-tab [data-part="subsystems"],
+.acervator-status-tab [data-part="tabs"] {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--SPACE_S) * 1px);
+}
+
+.acervator-status-tab [data-part="subsystem"],
+.acervator-status-tab [data-part="tab-group"] {
+  padding: calc(var(--SPACE_S) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  background: var(--SURFACE_1);
+}
+
+.acervator-status-tab [data-part="subsystem-header"],
+.acervator-status-tab [data-part="tab-group-header"] {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--SPACE_M) * 1px);
+}
+
+.acervator-status-tab [data-part="subsystem-name"],
+.acervator-status-tab [data-part="tab-group-name"] {
+  margin: 0;
+  color: var(--TEXT_MAX);
+  font-size: calc(var(--TYPE_H4) * 1px);
+  font-weight: bold;
+}
+
+.acervator-status-tab [data-part="subsystem-tab"],
+.acervator-status-tab [data-part="tab-group-subsystems"] {
+  color: var(--TEXT_MED);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-status-tab [data-part="subsystem-light"],
+.acervator-status-tab [data-part="tab-group-light"] {
+  padding: 0 calc(var(--SPACE_S) * 1px);
+  border: 1px solid var(--OUTLINE);
+  border-radius: calc(var(--RADIUS_XS) * 1px);
+  color: var(--TEXT_LOW);
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-status-tab [data-part="subsystem-light"][data-health="green"],
+.acervator-status-tab [data-part="tab-group-light"][data-health="green"] {
+  border-color: var(--SUCCESS);
+  color: var(--SUCCESS);
+}
+
+.acervator-status-tab [data-part="subsystem-light"][data-health="yellow"],
+.acervator-status-tab [data-part="tab-group-light"][data-health="yellow"] {
+  border-color: var(--WARNING);
+  color: var(--WARNING);
+}
+
+.acervator-status-tab [data-part="subsystem-counts"],
+.acervator-status-tab [data-part="tab-group-counts"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--SPACE_M) * 1px);
+  margin-top: calc(var(--SPACE_S) * 1px);
+}
+
+.acervator-status-tab [data-part="emitters"] {
+  width: 100%;
+  margin-top: calc(var(--SPACE_S) * 1px);
+  border-collapse: collapse;
+  font-size: calc(var(--TYPE_SMALL) * 1px);
+}
+
+.acervator-status-tab [data-part="emitter-column"] {
+  padding: 2px calc(var(--SPACE_S) * 1px);
+  border-bottom: 1px solid var(--OUTLINE);
+  color: var(--TEXT_LOW);
+  text-align: left;
+  font-weight: normal;
+}
+
+.acervator-status-tab [data-part="emitter-name"],
+.acervator-status-tab [data-part="emitter-cadence"],
+.acervator-status-tab [data-part="emitter-emitted"],
+.acervator-status-tab [data-part="emitter-failed"],
+.acervator-status-tab [data-part="emitter-latest"] {
+  padding: 2px calc(var(--SPACE_S) * 1px);
+  color: var(--TEXT_MED);
+  vertical-align: top;
+}
+
+.acervator-status-tab [data-part="emitter-name"] {
+  color: var(--TEXT_HIGH);
+  white-space: nowrap;
+}
+
+.acervator-status-tab [data-part="emitter-emitted"],
+.acervator-status-tab [data-part="emitter-failed"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Fired and Failed, the third and fourth columns, carry right-aligned counts. */
+.acervator-status-tab [data-part="emitter-column"]:nth-child(3),
+.acervator-status-tab [data-part="emitter-column"]:nth-child(4) {
+  text-align: right;
+}
+
+.acervator-status-tab [data-part="emitter-latest"] {
+  max-width: 40ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

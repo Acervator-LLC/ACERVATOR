@@ -384,6 +384,155 @@ def _never_fired_rows(seen_names: set) -> dict:
     return rows
 
 
+SUBSYSTEM_SEPARATOR = "."
+"""The character that ends the subsystem part of an emitter name."""
+
+HEALTH_GREEN = "green"
+"""No retained record of this subsystem failed and every always-on emitter it declares
+fired.
+"""
+
+HEALTH_YELLOW = "yellow"
+"""A retained record of this subsystem failed, or an always-on emitter it declares never
+fired.
+"""
+
+HEALTH_RED = "red"
+"""Never returned, because no emitter declares an expected rhythm and silence cannot be
+told from idleness.
+"""
+
+HEALTH_STATES = (HEALTH_GREEN, HEALTH_YELLOW)
+"""The states `subsystem_health` returns; `HEALTH_RED` is not one of them."""
+
+
+def subsystem_of(name: str) -> str:
+    """Return the subsystem `name` belongs to, the part before its first dot."""
+    return name.split(SUBSYSTEM_SEPARATOR, 1)[0]
+
+
+def declared_subsystems() -> tuple:
+    """Every subsystem `CADENCE_BY_NAME` declares an emitter for, in name order."""
+    return tuple(sorted({subsystem_of(emitter) for emitter in CADENCE_BY_NAME}))
+
+
+def declared_emitter_for(name: str) -> Optional[str]:
+    """Return the declared emitter `name` is, exactly or as a template leaf, else None."""
+    if name in CADENCE_BY_NAME:
+        return name
+    for pattern in CADENCE_BY_NAME:
+        if _template_matches(pattern, name):
+            return pattern
+    return None
+
+
+def _emitted_by_name(sink: "SignalSink") -> dict:
+    """Return `{emitter name: emissions this run}`, counted across the name's sites."""
+    counts: dict = {}
+    for (name, _site), row in sink.timing().items():
+        counts[name] = counts.get(name, 0) + int(row["n"])
+    return counts
+
+
+def _retained_by_name(sink: "SignalSink") -> dict:
+    """Return `{emitter name: {failed, latest}}` over the records still in memory."""
+    out: dict = {}
+    for record in sink.records():
+        row = out.setdefault(record.name, {"failed": 0, "latest": None})
+        if record.ok is False:
+            row["failed"] += 1
+        row["latest"] = render(record.actual)
+    return out
+
+
+def _blank_emitter(name: str, cadence: str) -> dict:
+    """Return one emitter read-out with no activity recorded against it yet."""
+    return {
+        "name": name,
+        "cadence": cadence,
+        "emitted": 0,
+        "failed": 0,
+        "latest": None,
+    }
+
+
+def _emitter_rows(emitted: dict, retained: dict) -> dict:
+    """Return `{(subsystem, emitter): read-out}` for every declared and emitted name."""
+    rows: dict = {
+        (subsystem_of(emitter), emitter): _blank_emitter(emitter, cadence)
+        for emitter, cadence in CADENCE_BY_NAME.items()
+    }
+    for name, count in emitted.items():
+        emitter = declared_emitter_for(name)
+        key = (subsystem_of(name), emitter or name)
+        row = rows.setdefault(key, _blank_emitter(name, CADENCE_UNDECLARED))
+        row["emitted"] += count
+    for name, seen in retained.items():
+        emitter = declared_emitter_for(name)
+        key = (subsystem_of(name), emitter or name)
+        row = rows.setdefault(key, _blank_emitter(name, CADENCE_UNDECLARED))
+        row["failed"] += seen["failed"]
+        row["latest"] = seen["latest"]
+    return rows
+
+
+def _blank_subsystem(subsystem: str) -> dict:
+    """Return one subsystem's read-out with no emitter counted into it yet."""
+    return {
+        "subsystem": subsystem,
+        "health": None,
+        "emitters_declared": 0,
+        "emitters_fired": 0,
+        "emitters_silent": 0,
+        "always_on_declared": 0,
+        "always_on_silent": 0,
+        "toggle_declared": 0,
+        "toggle_silent": 0,
+        "undeclared": 0,
+        "emitted": 0,
+        "failed": 0,
+        "emitters": [],
+    }
+
+
+def _count_emitter(bucket: dict, row: dict) -> None:
+    """Add one emitter read-out to its subsystem's counters."""
+    bucket["emitters"].append(row)
+    bucket["emitted"] += row["emitted"]
+    bucket["failed"] += row["failed"]
+    if row["cadence"] == CADENCE_UNDECLARED:
+        bucket["undeclared"] += 1
+        return
+    bucket["emitters_declared"] += 1
+    silent = row["emitted"] == 0
+    bucket["emitters_silent" if silent else "emitters_fired"] += 1
+    always_on = row["cadence"] == CADENCE_ALWAYS_ON
+    bucket["always_on_declared" if always_on else "toggle_declared"] += 1
+    if silent:
+        bucket["always_on_silent" if always_on else "toggle_silent"] += 1
+
+
+def subsystem_health(sink: Optional["SignalSink"]) -> dict:
+    """Return one health read-out per subsystem, from `CADENCE_BY_NAME` and `sink`.
+
+    `emitted` counts every emission this run; `failed` and `latest` read only
+    the records still in memory. `health` is None for a subsystem that
+    recorded nothing. A None `sink` returns the declared emitters with every
+    count at zero.
+    """
+    emitted = {} if sink is None else _emitted_by_name(sink)
+    retained = {} if sink is None else _retained_by_name(sink)
+    rows: dict = {}
+    for (subsystem, _emitter), row in sorted(_emitter_rows(emitted, retained).items()):
+        _count_emitter(rows.setdefault(subsystem, _blank_subsystem(subsystem)), row)
+    for bucket in rows.values():
+        if bucket["failed"] or bucket["always_on_silent"]:
+            bucket["health"] = HEALTH_YELLOW
+        elif bucket["emitted"]:
+            bucket["health"] = HEALTH_GREEN
+    return rows
+
+
 def _utc_iso(ts: Optional[float] = None) -> str:
     return datetime.fromtimestamp(
         ts if ts is not None else time.time(), tz=timezone.utc
@@ -498,6 +647,7 @@ class Signal:
             "seq": self.seq,
             "module": self.module,
             "name": self.name,
+            "subsystem": subsystem_of(self.name),
             "kind": self.kind,
             "ok": self.ok,
             "expected": self.expected,
@@ -952,7 +1102,7 @@ class SignalSink:
         """
         buckets: dict = {}
         for r in self.records():
-            sub = r.name.split(".", 1)[0]
+            sub = subsystem_of(r.name)
             if subsystem is not None and sub != subsystem:
                 continue
             buckets.setdefault(sub, []).append(r)

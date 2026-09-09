@@ -1253,9 +1253,10 @@ rather than typed.
 | `src/gui/main_tabs/buy_confirmation_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/console_log_handler.py` | no | - | no | no | yes | - | - | in scope |
 | `src/gui/main_tabs/console_tab.py` | `console_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/main_tabs/empty_tabs.py` | `system_status_tab.js`, `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | yes | in scope |
+| `src/gui/main_tabs/empty_tabs.py` | `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
+| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | yes | yes | yes | yes | no | shell | in scope |
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | - | in scope |
 | `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | no | yes | in scope |
@@ -1268,6 +1269,7 @@ rather than typed.
 | `src/gui/react_history_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_paper_trader_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_simulator_tab.py` | no | - | no | no | no | - | no | React side |
+| `src/gui/react_system_status_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/risk_tab.py` | `risk_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no | shelved |
@@ -2305,3 +2307,49 @@ yes      30
 shell     5
 -         7
 ```
+
+### 2026-09-09 14:30 - #34 - the Status tab leaves the empty-tab pair
+
+Status is no longer a skeleton, so it leaves `empty_tabs.py` and takes a row of
+its own. Accumulation stays where it was and still draws its empty state.
+
+`src/gui/main_tabs/system_status_tab.py` — what the window builds for the tab
+
+```python
+    def _build_system_status_tab(self) -> None:
+        """Append the Status tab, and hold None when its page cannot be built."""
+        try:
+            from ..react_system_status_tab import SystemStatusReactPanel
+
+            self._system_status_tab = SystemStatusReactPanel()
+            self._main_tabs.addTab(self._system_status_tab, HEADING)
+        except Exception as exc:  # noqa: BLE001 - a missing tab is not a crash
+            logger.warning("Status tab unavailable: %s", exc)
+            self._system_status_tab = None
+```
+
+Three cells move. The `empty_tabs.py` row drops `system_status_tab.js` and now
+names one module. A new row carries the screen itself, and a second names the
+Qt-side file the conversion added.
+
+| Qt file | React module | RENDERS | Scope |
+| --- | --- | --- | --- |
+| `src/gui/main_tabs/empty_tabs.py` | `proof_of_accumulation_tab.js` | yes | in scope |
+| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | shell | in scope |
+| `src/gui/react_system_status_tab.py` | no | - | React side |
+
+The new cell reads `shell`, and the reason is the seam. `variant_surface.py`
+records a Qt loader and a React loader for every screen that has both, and this
+screen has no entry there, because no Qt widget ever drew it. `yes` states that
+React draws where Qt used to, and nothing here used to. The module was read
+drawing under its own tab in the Electron shell, so `shell` is what was
+measured.
+
+```
+registered           system_status_tab is in acervatorPanelHost.registered()
+tab bar              system_status_tab, ninth of ten
+select               returns system_status_tab
+drawn                17 subsystem panels, 11 tab groups, 78 emitter rows
+```
+
+The detail is in [08-tabs/system-status.md](08-tabs/system-status.md).
