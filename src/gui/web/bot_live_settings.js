@@ -9,6 +9,9 @@
   var APPLY_ENABLED = "apply_enabled";
   var APPLY_LABEL = "apply_label";
   var APPLY_STYLE = "apply_style";
+  var BOT = "bot";
+  var TAB_BOT_PARAM = "tab_bot_param";
+  var FOLD_CHROME_CONTROLS_PARAM = "fold_chrome_controls_param";
   var CHANGES = "changes";
   var CHANGE_APPLIED_FORMAT = "change_applied_format";
   var CHANGE_APPLIED_STYLE = "change_applied_style";
@@ -78,13 +81,14 @@
     "applied_entry_format", "applied_entry_separator", "applied_error_format",
     "applied_join", "applied_log", "applied_refused_format",
     "applied_synced_format", APPLY_ENABLED, "apply_enabled_at_start",
-    APPLY_LABEL, APPLY_STYLE, "bot_id_short_length",
+    APPLY_LABEL, APPLY_STYLE, BOT, "bot_id_short_length",
     "bot_manager_attribute", "bus_topics", "call_names", "calls",
     CHANGE_APPLIED_FORMAT, CHANGE_APPLIED_STYLE, CHANGE_EMPTY_TEXT,
     CHANGE_FIELD_SEPARATOR, CHANGE_LABEL, CHANGE_PENDING_FORMAT,
     CHANGE_PENDING_STYLE, CHANGE_STYLE, CHANGES, CLOSE_LABEL,
     CLOSE_STYLE, "coordinator_attribute", "coordinator_lock_attribute",
-    CURRENT_TAB, FIRST_TAB_INDEX, "fold_sort_key", "fold_sort_queue_order",
+    CURRENT_TAB, FIRST_TAB_INDEX, FOLD_CHROME_CONTROLS_PARAM,
+    "fold_sort_key", "fold_sort_queue_order",
     FORM_FIELD_GROWTH, FORM_HORIZONTAL_SPACING_PX, FORM_MARGINS_PX,
     FORM_ROW_WRAP, FORM_VERTICAL_SPACING_PX, FORMS, "header_color",
     "header_format", HEADER_LABEL, HEADER_STYLE, "header_style_format",
@@ -110,12 +114,14 @@
     "state_stopped", STATE_STYLE, "state_style_format", "state_unknown_bg",
     "state_unknown_fg", "style_sheet", TAB_BOT_SWARM, TAB_FOLD_TRANCHES,
     TAB_MARKET_INSPECTOR, TAB_PHANTOM_BOTS, TAB_PLAN,
-    TAB_POSITIONS_HELD, TAB_SETTINGS, TAB_STACK_TRANCHES, TAB_STATUS,
-    TABS, "timer_delays_ms", "timers", TITLE, "title_format",
+    TAB_BOT_PARAM, TAB_POSITIONS_HELD, TAB_SETTINGS, TAB_STACK_TRANCHES,
+    TAB_STATUS, TABS, "timer_delays_ms", "timers", TITLE, "title_format",
     WRAPPED_TABS
   ];
 
-  var DECLARED_BAGS = [ACTIONS, CHANGES, "runtime_routed", "skin", STATE_COLORS, "timers"];
+  var DECLARED_BAGS = [
+    ACTIONS, BOT, CHANGES, "runtime_routed", "skin", STATE_COLORS, "timers"
+  ];
 
   var DECLARED_LISTS = [
     "applied", "bus_topics", "call_names", "calls", FORM_MARGINS_PX, FORMS,
@@ -190,6 +196,7 @@
   var ROW = "row";
   var COLUMN = "column";
   var FLEX = "flex";
+  var DISPLAY_NONE = "none";
   var FLEX_NONE = "none";
   var HIDDEN = "hidden";
   var AUTO = "auto";
@@ -245,6 +252,30 @@
   // fold_chrome and fold_tokens dress the rows the Fold Tranches unit draws.
   var FOLD_ALSO = "fold_chrome_surface fold_tokens_surface";
 
+  // One row per page this window fills itself: the space it keeps, the
+  // module's loader and the module's own drawing interface.
+  var PAGE_MOUNTS = [
+    [
+      FOLD_TRANCHES_PAGE_PART,
+      "acervatorLoadFoldTranchesTab",
+      "acervatorFoldTranchesTab"
+    ],
+    [
+      STACK_TRANCHES_PAGE_PART,
+      "acervatorLoadStackTranchesTab",
+      "acervatorStackTranchesTab"
+    ],
+    [
+      PHANTOM_BOTS_PAGE_PART,
+      "acervatorLoadPhantomBotsTab",
+      "acervatorPhantomBotsTab"
+    ]
+  ];
+
+  // fold_chrome.js draws the order picker and the filter box inside the Fold
+  // Tranches page and draws nothing until its own view model is loaded.
+  var LOAD_FOLD_CHROME = "acervatorLoadFoldChrome";
+
   var PART_ATTR = "data-part";
   var SLOT_ATTR = "data-slot";
   var KEY_ATTR = "data-key";
@@ -265,6 +296,11 @@
 
   var NAVIGATE_PARAM = "navigate";
   var APPLY_PARAM = "apply";
+  var RESET_PARAM = "reset";
+
+  var SELECT_OPEN = "[";
+  var SELECT_IS = "=";
+  var SELECT_CLOSE = "]";
 
   var HOVER_STATE = "hover";
   var DISABLED_STATE = "disabled";
@@ -878,8 +914,10 @@
   function TabPage(props) {
     var plan = props.plan;
     var wrapped = plan.wrapped === props.model[SCROLL_RESIZABLE];
+    // An inline display beats the browser's own [hidden] rule, so the page
+    // not on show takes display none and one tab is drawn at a time.
     var style = {
-      display: FLEX,
+      display: props.current === true ? FLEX : DISPLAY_NONE,
       flexDirection: COLUMN,
       flex: AUTO,
       minHeight: ZERO,
@@ -1499,6 +1537,77 @@
     return target;
   }
 
+  function spaceNamed(target, part) {
+    if (!target || typeof target.querySelector !== "function") {
+      return null;
+    }
+    return target.querySelector(
+      SELECT_OPEN + PART_ATTR + SELECT_IS + part + SELECT_CLOSE
+    );
+  }
+
+  // The request key a tab surface publishes for one of its parameters.
+  function paramNamed(model, field) {
+    return isPlainObject(model) ? model[field] : undefined;
+  }
+
+  // One tab request, carrying the bot this window built under the name the
+  // window's own surface publishes for it. A window answering no bot sends
+  // none, so the tab builds nothing rather than building a bot of its own.
+  function tabRequest(model) {
+    var params = {};
+    var given = isPlainObject(model) ? model[BOT] : undefined;
+    params[RESET_PARAM] = true;
+    if (isPlainObject(given)) {
+      params[String(paramNamed(model, TAB_BOT_PARAM))] = given;
+    }
+    return params;
+  }
+
+  function mountPage(target, model, row) {
+    var one = row.slice();
+    var space = spaceNamed(target, one.shift());
+    var loader = global[one.shift()];
+    var api = global[one.shift()];
+    if (space === null || !api || typeof api.fill !== "function") {
+      return Promise.resolve(null);
+    }
+    var wait =
+      typeof loader === "function"
+        ? loader(tabRequest(model))
+        : Promise.resolve(null);
+    return Promise.resolve(wait).then(function (found) {
+      return api.fill(space, found) === null ? null : space;
+    });
+  }
+
+  // Asked before the Fold Tranches page draws, so its row-control space finds
+  // fold_chrome loaded and fills instead of staying empty.
+  function loadFoldChrome(model) {
+    var loader = global[LOAD_FOLD_CHROME];
+    if (typeof loader !== "function") {
+      return Promise.resolve(null);
+    }
+    var params = {};
+    params[RESET_PARAM] = true;
+    params[String(paramNamed(model, FOLD_CHROME_CONTROLS_PARAM))] = true;
+    return Promise.resolve(loader(params));
+  }
+
+  function mountPages(target, model) {
+    return loadFoldChrome(model).then(function () {
+      return Promise.all(
+        PAGE_MOUNTS.map(function (row) {
+          return mountPage(target, model, row);
+        })
+      ).then(function (spaces) {
+        return spaces.filter(function (space) {
+          return space !== null;
+        });
+      });
+    });
+  }
+
   function renderWindow(target, model) {
     var drawn = model;
     if (!isPlainObject(drawn)) {
@@ -1507,7 +1616,9 @@
     var mark = String(drawnTabs(isPlainObject(drawn) ? drawn : {})) + String(
       isPlainObject(drawn) ? drawn[TITLE] : EMPTY
     );
-    return draw(target, element(Window, { key: mark, model: drawn }));
+    var host = draw(target, element(Window, { key: mark, model: drawn }));
+    mountPages(target, drawn);
+    return host;
   }
 
   function forget() {
@@ -1590,6 +1701,8 @@
     loadError: loadError,
     isLoaded: isLoaded,
     renderWindow: renderWindow,
+    mountPages: mountPages,
+    tabRequest: tabRequest,
     forget: forget
   };
 })(window);

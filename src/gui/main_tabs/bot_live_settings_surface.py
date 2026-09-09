@@ -141,6 +141,11 @@ ANY_MODE = ""
 INSTALLED_BY_HOST = "host"
 INSTALLED_BY_WINDOW = "window"
 
+# The request names a tab surface reads: the bot for a tab page, and the
+# build flag fold_chrome answers its row controls under.
+TAB_BOT_PARAM = "bot"
+FOLD_CHROME_CONTROLS_PARAM = "controls"
+
 # One row per tab: its name, the mode that gets it, whether the window
 # wraps it in a scroller itself, and which side installs it.
 TAB_PLAN = (
@@ -954,11 +959,30 @@ def pane_model() -> BotLiveSettingsModel:
     return PANE_MODEL
 
 
+def tab_bot(model: BotLiveSettingsModel) -> dict:
+    """The bot a tab of this window is asked for, read off ``model.bot``.
+
+    The tab surfaces build against the bot named in their request, so the
+    window publishes the one it holds rather than each tab opening on its
+    own stand-in.
+    """
+    config = model.bot.config
+    return {
+        "bot_id": model.bot.bot_id,
+        "symbol": config.symbol,
+        "mode": config.mode,
+        "state": model.bot.state,
+    }
+
+
 def build_view_model(model: BotLiveSettingsModel) -> dict:
     """Return every value the window holds as one dict."""
     return {
         "method": METHOD,
         "logger_name": LOGGER_NAME,
+        "bot": tab_bot(model),
+        "tab_bot_param": TAB_BOT_PARAM,
+        "fold_chrome_controls_param": FOLD_CHROME_CONTROLS_PARAM,
         "title": model.title,
         "title_format": WINDOW_TITLE_FORMAT,
         "bot_id_short_length": BOT_ID_SHORT_LENGTH,

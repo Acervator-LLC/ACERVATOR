@@ -1224,7 +1224,7 @@ rather than typed.
 | `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no | shelved |
-| `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_swarm_list.py` | removed | - | - | - | - | - | - | deleted |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | yes | in scope |
@@ -1240,14 +1240,14 @@ rather than typed.
 | `src/gui/launcher.py` | `launcher.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/live_bot_window.py` | no | - | yes | no | no | - | no | shelved |
 | `src/gui/live_settings/bot_swarm_tab.py` | `bot_swarm_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/live_settings/fold_chrome.py` | `fold_chrome.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/live_settings/fold_chrome.py` | `fold_chrome.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/live_settings/fold_tokens.py` | `fold_tokens.js` | yes | yes | yes | no | yes | no | not a screen |
-| `src/gui/live_settings/fold_tranches_tab.py` | `fold_tranches_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/live_settings/fold_tranches_tab.py` | `fold_tranches_tab.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/live_settings/market_inspector_tab.py` | `market_inspector_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/live_settings/phantom_bots_tab.py` | `phantom_bots_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/live_settings/phantom_bots_tab.py` | `phantom_bots_tab.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/live_settings/positions_held_tab.py` | no | - | no | no | no | - | yes | in scope |
 | `src/gui/live_settings/settings_tab.py` | `live_settings_tab.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/live_settings/stack_tranches_tab.py` | `stack_tranches_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/live_settings/stack_tranches_tab.py` | `stack_tranches_tab.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/live_settings/status_tab.py` | no | - | yes | no | no | - | yes | in scope |
 | `src/gui/main_tabs/audio_suite_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_tabs/buy_confirmation_surface.py` | no | - | yes | no | no | - | no | React side |
@@ -1489,6 +1489,136 @@ now holds the row under the name `ALERTS`, so the React build makes
 draws the whole screen in one web view from `src/gui/web/alerts_tab.js`, and
 `AlertsTab.refresh`, `AlertsTab._save_config`, `AlertsTab._test_telegram` and
 `AlertsTab._acknowledge_all` are the same methods on both sides.
+
+### 2026-09-09 10:31 - #128 - the Live Bot Settings window fills its tab pages
+
+The window a bot row opens already registered with the shell's panel host. Its
+cell read `no`, and the running shell named it among nineteen registered
+panels, so the cell was stale.
+
+```
+registered  bot_live_settings bot_swarm_tab bot_visualizer console_tab
+            header_strip history_tab indicator_panel market_inspector
+            market_inspector_tab market_inspector_topologies native_chart
+            paper_trader_tab proof_of_accumulation_tab simulator_tab
+            spendable_profits status_log system_status_tab trade_charts_tab
+            trading_tab
+```
+
+Registering was never the whole of it. The window drew its title, its tab
+strip and its two footer buttons, and every one of its seven tab pages was an
+empty box. Read off the drawn page, the window held 28 elements and each page
+held none.
+
+```
+part                   children  characters
+status-page                   0           0
+settings-page                 0           0
+fold-tranches-page            0           0
+stack-tranches-page           0           0
+bot-swarm-page                0           0
+market-inspector-page         0           0
+phantom-bots-page             0           0
+```
+
+Each tab module already carried a filler that looks for the empty space this
+window leaves. Nothing called it. The window now asks each module's own loader
+for its view model and hands it the page.
+
+```javascript
+    var wait =
+      typeof loader === "function"
+        ? loader(tabRequest(model))
+        : Promise.resolve(null);
+    return Promise.resolve(wait).then(function (found) {
+      return api.fill(space, found) === null ? null : space;
+    });
+```
+
+A tab is asked for the bot the window built, never for one of its own. The
+window's answer now names that bot, and the request carries it under the name
+the window's own surface publishes.
+
+```python
+    config = model.bot.config
+    return {
+        "bot_id": model.bot.bot_id,
+        "symbol": config.symbol,
+        "mode": config.mode,
+        "state": model.bot.state,
+    }
+```
+
+Three pages fill from it. Fold Tranches draws eleven health rows, three Clear
+buttons, an order picker of five choices and a filter box. Stack Tranches draws
+seven summary rows and two Clear buttons. Phantom Bots draws four summary rows,
+twelve timeframe boxes and the candles-to-lock number. Take the bot out of the
+window's answer and every one of those rows goes.
+
+```
+page                  rows  order choices  elements   with the bot removed
+fold-tranches-page      11              5        69    0,  5, 33
+stack-tranches-page      7              0        33    0,  0, 12
+phantom-bots-page        4              0        92    0,  0, 46
+```
+
+The order picker survives the removal because the fold chrome is asked for its
+own controls rather than for a bot, which is what proves the row counter was
+reading the page and not returning zero everywhere.
+
+Every page drew at once before this. A page not on show was marked hidden and
+still carried an inline display, which beats the browser's own rule for a
+hidden element. The page not on show now takes `display: none`, so one tab is
+on screen at a time.
+
+```javascript
+    var style = {
+      display: props.current === true ? FLEX : DISPLAY_NONE,
+```
+
+The window's own stylesheet had never reached the shell page, so its tab
+buttons painted white on grey. The shell now links it. Its rules were written
+for a page holding this window alone, and the shell page holds every panel: 17
+of the 20 tables on that page belong to other panels, as do 5 of the 12 tab
+buttons. Each rule is scoped to the window before the link, and five of six
+other panels render byte-identical to the run before it.
+
+```css
+[data-part="bot-live-settings"] table {
+  border-collapse: collapse;
+  width: 100%;
+}
+```
+
+The Settings page stays empty and its row stays `no`. Its surface builds from
+the bot's own settings values, and it stops on the first one the window cannot
+supply.
+
+```
+AttributeError: 'BotConfigSource' object has no attribute 'visibility'
+```
+
+The window answers a stand-in bot, not a running one. Giving it a running one
+would also point Apply Changes at that bot, which is a change to what a control
+writes and is not this unit's to make.
+
+The exchange screen and the Extractor table are drawn inside the Live tab, not
+by the shell. Both rows stay `no`: the Live tab names an exchange only when the
+shell's backend is the trading program itself, and the backend reachable here
+names none, so neither child is built.
+
+```javascript
+    slot.setAttribute(CHILD_ATTR, EXCHANGE_MODULE);
+    return api.renderTab(slot, shown.model);
+```
+
+The Qt window could not be built beside the React one. It reads a mode and a
+state that carry a `value`, then dozens of settings fields with no fallback, so
+it needs a bot the running program holds.
+
+```
+AttributeError: 'str' object has no attribute 'value'
+```
 
 ### The window's own tab bar
 
