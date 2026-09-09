@@ -1227,7 +1227,7 @@ rather than typed.
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_swarm_list.py` | removed | - | - | - | - | - | - | deleted |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | - | yes | yes | in scope |
+| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | - | yes | - | in scope |
 | `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | yes | in scope |
@@ -2072,4 +2072,50 @@ and carries no words and no on-or-off state for them.
 
 ```python
 WALK_STEPS = (WALK_NEXT, WALK_BACK, WALK_CANCEL, WALK_FINISH)
+```
+
+The RENDERS column asks what the operator sees when he opens the screen, so
+each of the four was asked of the running build rather than of the table. The
+variant seam holds sixteen screens and answers a class per build.
+
+```
+screen                      qt build                  react build
+Settings dialog             SettingsDialog            SettingsDialogReact
+Start All progress dialog   StartAllProgressDialog    StartAllProgressReactDialog
+Buy confirmation dialog     BuyConfirmationDialog     BuyConfirmationReactDialog
+bot wizard                  no entry: both builds open BotCreationWizard
+```
+
+Three of the four keep `yes`, and each was drawn under both builds and
+pictured. The wizard takes the dash. It has no entry on the seam, so + New Bot
+opens the Qt wizard whichever build is running, and its React module draws only
+inside the exchange screen the shell builds when its backend names an exchange.
+
+The buy confirmation keeps `yes` for the class the broker raises, which is the
+React one. Nothing calls the broker's request method, so the operator reaches
+neither build of that screen; the section above records that count and it has
+not moved.
+
+The wizard's walk row is a gap in what the payload carries, and the Python
+surface owns it. Qt's wizard supplies its own five buttons and works out which
+are live from the page it is on. The React module is handed four step names and
+nothing else, so it has no words to draw and no state to grey.
+
+```python
+WALK_STEPS = (WALK_NEXT, WALK_BACK, WALK_CANCEL, WALK_FINISH)
+```
+
+Two things are missing from `bot_wizard_surface`: the words each step draws, and
+whether each step is live on the page now showing. Back is dead on the first
+page and Finish is dead until the last, and both follow from the step order the
+surface already holds.
+
+```
+PROPOSED, in bot_wizard_surface.py
+
+WALK_WORDS = {"back": "< Back", "next": "Next >", "commit": "Commit",
+              "finish": "Finish", "cancel": "Cancel"}
+
+walk_live(page) -> {"back": page is not the first, "next": a page follows,
+                    "finish": no page follows, "cancel": True}
 ```
