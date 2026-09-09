@@ -1392,4 +1392,124 @@ operator's own post folder took nothing from this run. Its readings, the venue
 census and the three program errors are in
 [the debug report](../../../tests/debug_reports/2026-09-08_ata_market_scan.md).
 
+## 2026-09-09 02:10 - #407 - the four timeframes a non-crypto sector scans
+
+A FOREX or metals sector is now scanned on all four timeframes the item names,
+not on the daily one alone. The check boxes are unchanged; what changed is that
+ticking three of them used to produce nothing.
+
+`src/trading/ata_spm.py` — the four boxes each class carries
+
+```python
+CRYPTO_TIMEFRAMES = ("5m", "1h", "1d", "1w")
+SLOWER_TIMEFRAMES = ("1h", "1d", "1w", "1M")
+```
+
+**The limit was a constant in this tree, not a limit of the venue.** The chart
+adapter sent one interval word on every request because a module constant said
+so. The endpoint answers four, and it spells two of them differently from the
+way the engine names them.
+
+`src/trading/stone_tablets/ra_fetcher.py` — the engine's word, and the
+endpoint's
+
+```python
+YAHOO_INTERVALS: dict[str, str] = {
+    "1h": "1h",
+    RA_TIMEFRAME: "1d",
+    "1w": "1wk",
+    "1M": "1mo",
+}
+```
+
+**Each timeframe reaches a different depth of history, and the hourly one is
+shortest.** That is normal for hourly data. Every figure below was read from the
+venue on 2026-09-09, for one currency pair.
+
+```
+1hr     286 rows      2026-08-24 to 2026-09-09        16 days
+1d      248 rows      2025-09-10 to 2026-09-09       364 days
+1wk     197 rows      2022-11-14 to 2026-09-09     1,395 days
+1mnth   197 rows      2010-04-30 to 2026-09-09     5,975 days
+```
+
+**The venue refuses an hourly window longer than 729 days.** 729 answers and 730
+returns an error. The adapter records that reach and moves the start of a longer
+request forward, so an over-long ask returns the candles that exist instead of
+nothing.
+
+`src/trading/stone_tablets/ra_fetcher.py` — the days each interval reaches
+
+```python
+YAHOO_REACH_DAYS: dict[str, int] = {
+    "1h": 729,
+    RA_TIMEFRAME: UNCAPPED_REACH_DAYS,
+    "1w": UNCAPPED_REACH_DAYS,
+    "1M": UNCAPPED_REACH_DAYS,
+}
+```
+
+The other three answered a twenty-five year request in full. No limit was
+measured for them and none is recorded.
+
+**A timeframe holding too few candles is reported, never voted.** The floor is
+thirty candles, the same number the gate scan already requires. Below it the
+sector line says how many assets were too short, and casts no vote for them.
+
+`src/trading/ata_spm.py` — the floor, and the line it is reported on
+
+```python
+MIN_CANDLES_TO_VOTE = ata_gate_scan.MIN_CANDLES_FOR_TA
+
+TIMEFRAME_VOTE_FORMAT = (
+    "{votes} vote(s), {unread} without candles, {short} under {floor} candles"
+)
+```
+
+Driven with a one-day hourly window, which is under the floor, the zone drew
+this and produced no call.
+
+```
+Phase 1 Evaluate 1hr:   0 vote(s), 0 without candles, 7 under 30 candles
+Phase 1 Evaluate 1d:    7 vote(s), 0 without candles, 0 under 30 candles
+Phase 1 Evaluate 1wk:   7 vote(s), 0 without candles, 0 under 30 candles
+Phase 1 Evaluate 1mnth: 7 vote(s), 0 without candles, 0 under 30 candles
+```
+
+The reason the floor exists is measurable. On twenty-five hourly candles, seven
+of the twelve voters abstained for want of history, and the remaining five still
+produced a direction.
+
+**A run on the full window produced a call on the hourly timeframe.** Phase
+eight now has four timeframes to compare, so it can report a disagreement
+between them.
+
+```
+NZD/USD  1hr  bearish  net -1.0447  confidence 10%  286 bars
+Timeframes: 1hr bearish · 1d bearish · 1wk bullish · 1mnth bearish.
+Contradicted on 1wk.
+```
+
+**The sentence above about the adapter serving the daily timeframe alone
+describes the code before this change.** It is kept as written. The four rows in
+this section are what a non-crypto sector reports now.
+
+**Crypto is unchanged and still scans two of its four.** The crypto universe
+scan keeps daily and weekly candles, so the five-minute and hourly boxes still
+report as unserved on a crypto sector. That row of the rotation is separate
+work.
+
+`src/trading/ata_asset_maps.py` — the crypto venue row, untouched
+
+```python
+VENUE_EXCHANGE: (RA_TIMEFRAME, "1w"),
+```
+
+**Figures.** This page carries no figure and this entry adds none. Every figure
+the page already carries is kept; there are none, and the four earlier entries
+that say so are unchanged. The chart the run rendered is produced output and is
+not kept in the repository. The readings, the venue measurements and the six
+program errors are in
+[the debug report](../../../tests/debug_reports/2026-09-09_non_crypto_timeframes.md).
+
 Back to [the subsystem index](README.md).

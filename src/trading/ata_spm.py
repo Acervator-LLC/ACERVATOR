@@ -68,6 +68,9 @@ MIN_TIMEFRAMES_PER_ASSET = 1
 NO_ROUND_MEASURED = 0.0
 NO_CANDLES = 0
 
+#: The candles one timeframe needs before ``_scan_timeframe`` votes on it.
+MIN_CANDLES_TO_VOTE = ata_gate_scan.MIN_CANDLES_FOR_TA
+
 #: The check-box wording for each timeframe key the engine reads.
 TIMEFRAME_LABELS = {
     "5m": "5m",
@@ -156,7 +159,9 @@ PHASE_UNRUN = "No run yet"
 
 SECTOR_LINE_FORMAT = "{sector} ({asset_class})"
 SECTOR_META_FORMAT = "{assets} asset(s) · {votes} vote(s) · {calls} reversal call(s)"
-TIMEFRAME_VOTE_FORMAT = "{votes} vote(s), {unread} without candles"
+TIMEFRAME_VOTE_FORMAT = (
+    "{votes} vote(s), {unread} without candles, {short} under {floor} candles"
+)
 NO_TIMEFRAME_TEXT = "No timeframe ticked."
 NO_ASSET_TEXT = "No asset source wired for {asset_class}."
 UNLISTED_TEXT = "No configured venue lists {symbols}."
@@ -327,11 +332,16 @@ class AssetVote:
 
 @dataclass
 class TimeframeScan:
-    """What one ticked timeframe of one sector returned."""
+    """What one ticked timeframe of one sector returned.
+
+    ``short`` names every asset whose history reached fewer than
+    ``MIN_CANDLES_TO_VOTE`` candles, which is reported and never voted.
+    """
 
     timeframe: str
     votes: list = field(default_factory=list)
     unread: list = field(default_factory=list)
+    short: list = field(default_factory=list)
 
     @property
     def calls(self) -> list:
@@ -650,7 +660,8 @@ def _scan_timeframe(
 ) -> TimeframeScan:
     """One timeframe of one sector: a vote per asset the source can read.
 
-    Every asset read is one round, and ``cost`` takes the seconds it took.
+    A history under ``MIN_CANDLES_TO_VOTE`` joins ``short`` instead of voting,
+    and every asset read is one round ``cost`` takes the seconds of.
     """
     found = TimeframeScan(timeframe=timeframe)
     for symbol in assets:
@@ -658,6 +669,10 @@ def _scan_timeframe(
         candles = candles_for(candle_source, symbol, timeframe)
         if not candles:
             found.unread.append(symbol)
+            cost.take(clock() - started)
+            continue
+        if len(candles) < MIN_CANDLES_TO_VOTE:
+            found.short.append(symbol)
             cost.take(clock() - started)
             continue
         try:
