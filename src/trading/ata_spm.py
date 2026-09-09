@@ -1,11 +1,12 @@
 """ata_spm.py -- the ATA-SPM run, phases one to three and eight.
 
 ``evaluate`` scans each ``Sector`` on its ticked timeframes and answers a
-``SectorScan`` per sector. ``identify`` keeps the ``AssetVote`` rows
-carrying a reversal, and ``pull`` loads that chart with the
-``IndicatorMessage`` rows confirming it, and renders that chart to a PNG under
-``ata_post_paths`` so a post carries a picture. ``agreement_for`` is phase eight:
-every timeframe one call's asset voted on, and whether those votes agree.
+``SectorScan`` per sector. ``identify`` ranks every ``AssetVote`` the run cast,
+and ``pull`` loads that chart with the ``IndicatorMessage`` rows confirming it.
+``pull`` runs the live trade gates over that chart and renders a PNG under
+``ata_post_paths`` only while ``ata_gate_scan.GateScan.would_fire`` answers
+True, so a post carries a picture of a market Acervator would trade. ``agreement_for`` is phase eight: every
+timeframe one call's asset voted on, and whether those votes agree.
 """
 
 from __future__ import annotations
@@ -175,7 +176,10 @@ CALL_META_FORMAT = (
 CHART_LINE_FORMAT = "{bars} candles, last close {close:g}"
 BAND_LINE_FORMAT = "lower {lower:g} · middle {middle:g} · upper {upper:g}"
 
-PHASE_RUN_FORMAT = "{phase}: {sectors} sector(s), {calls} call(s), {pulls} chart(s)"
+PHASE_RUN_FORMAT = (
+    "{phase}: {sectors} sector(s), {calls} call(s), {pulls} chart(s), "
+    "{refused} refused by the gates"
+)
 
 AGREEMENT_ROW_FORMAT = "{label} {direction}"
 AGREEMENT_ROW_SEPARATOR = " · "
@@ -453,7 +457,7 @@ class ChartPull:
     """The chart one reversal call was made on, and its confirming messages.
 
     ``image`` is that chart rendered to a PNG, which the post's caption
-    captions.
+    captions. A call ``gates`` refused carries the default empty ``ChartImage``.
     """
 
     symbol: str
@@ -472,18 +476,24 @@ class ChartPull:
     landing_strip_side: str = ""
     landing_strip_candles: int = NO_BARS
     otd_pct: float = NO_BAND_VALUE
-    gates: Optional[ata_gate_scan.GateScan] = None
+    gates: ata_gate_scan.GateScan = field(default_factory=ata_gate_scan.GateScan)
     panel: dict = field(default_factory=dict)
     image: ChartImage = field(default_factory=ChartImage)
 
 
 @dataclass
 class AtaSpmRun:
-    """One ATA-SPM run: what phases one, two and three each produced."""
+    """One ATA-SPM run: what phases one, two and three each produced.
+
+    ``calls`` holds the votes the live chains would fire and ``pulls`` their
+    charts; ``refused`` holds the ``ata_gate_scan.GateScan`` of every other
+    vote, which drew no chart and reached no bucket.
+    """
 
     scans: list = field(default_factory=list)
     calls: list = field(default_factory=list)
     pulls: list = field(default_factory=list)
+    refused: list = field(default_factory=list)
 
     @property
     def phase(self) -> str:
@@ -500,6 +510,7 @@ class AtaSpmRun:
             sectors=len(self.scans),
             calls=len(self.calls),
             pulls=len(self.pulls),
+            refused=len(self.refused),
         )
 
     def report(self) -> dict:
@@ -730,16 +741,17 @@ def midline_after(candles: Any, at: Any) -> list:
 
 
 def identify(scans: Any) -> list:
-    """Phase two: the votes carrying a reversal, strongest consensus first.
+    """Phase two: every vote one run cast, strongest consensus first.
 
-    A vote is a reversal when its band voter and its consensus name one
-    direction, which ``AssetVote.is_reversal`` decides.
+    ``run`` judges each one on its ``ata_gate_scan.GateScan``, and
+    ``SectorScan.calls`` keeps the ``AssetVote.is_reversal`` rows for the
+    sector readback.
     """
-    calls: list = []
+    votes: list = []
     for scan in list(scans or []):
-        calls.extend(scan.calls)
-    calls.sort(key=lambda one: -abs(one.net_score))
-    return calls
+        votes.extend(scan.votes)
+    votes.sort(key=lambda one: -abs(one.net_score))
+    return votes
 
 
 def confirming_signals(vote: AssetVote) -> list:
@@ -894,18 +906,33 @@ def pull(
 ) -> ChartPull:
     """Phase three: the chart the call was made on, with its messages.
 
-    ``rows`` are the panel rows every timeframe of this asset voted,
-    ``ata_gate_scan.scan_gates`` reads the trade gates over the same chart, and
-    ``render_pull_image`` draws that chart to the PNG the post carries.
+    ``ata_gate_scan.scan_gates`` reads the live trade gates over the chart
+    first, and ``render_pull_image`` draws the PNG the post carries only while
+    that scan answers ``would_fire``. A refused market leaves ``image`` empty
+    and writes no file.
     """
     candles = candles_for(candle_source, vote.symbol, vote.timeframe)
     band = band_signal(vote)
     details = getattr(band, "details", None) or {}
     settings = ata_gate_scan.scan_settings(vote.symbol)
     proximity = proximity_of(candles, settings)
+    gates = ata_gate_scan.scan_gates(
+        vote.symbol,
+        vote.timeframe,
+        candles,
+        vote.summary,
+        proximity,
+        rows,
+        settings,
+    )
     messages = [
         indicator_message(one, message_format) for one in confirming_signals(vote)
     ]
+    image = (
+        render_pull_image(vote, candles, max_supporting_indicators, messages)
+        if gates.would_fire
+        else ChartImage()
+    )
     return ChartPull(
         symbol=vote.symbol,
         timeframe=vote.timeframe,
@@ -939,17 +966,9 @@ def pull(
         otd_pct=minimum_opposing_trade_distance_pct(
             settings.scrumming_interval_pct, settings.trading_fee_pct
         ),
-        gates=ata_gate_scan.scan_gates(
-            vote.symbol,
-            vote.timeframe,
-            candles,
-            vote.summary,
-            proximity,
-            rows,
-            settings,
-        ),
+        gates=gates,
         panel=dict(rows or {}),
-        image=render_pull_image(vote, candles, max_supporting_indicators, messages),
+        image=image,
     )
 
 
@@ -964,26 +983,27 @@ def run(
 ) -> AtaSpmRun:
     """Phases one, two, three and eight in order, as one ``AtaSpmRun``.
 
-    Each ``pull`` carries the ``agreement_for`` its own asset, and
-    ``max_supporting_indicators`` caps the overlays its image draws.
+    ``ata_gate_scan.GateScan.would_fire`` is the one judgement: a vote it
+    answers True for reaches ``calls`` and ``pulls``, and from there the
+    bucket, and every other vote leaves its scan in ``refused``.
     """
     scans = evaluate(sectors, asset_source, candle_source, engine, clock)
-    calls = identify(scans)
-    return AtaSpmRun(
-        scans=scans,
-        calls=calls,
-        pulls=[
-            pull(
-                one,
-                candle_source,
-                message_format,
-                agreement_for(scans, one),
-                panel_rows_for(scans, one.symbol),
-                max_supporting_indicators,
-            )
-            for one in calls
-        ],
-    )
+    found = AtaSpmRun(scans=scans)
+    for vote in identify(scans):
+        held = pull(
+            vote,
+            candle_source,
+            message_format,
+            agreement_for(scans, vote),
+            panel_rows_for(scans, vote.symbol),
+            max_supporting_indicators,
+        )
+        if held.gates.would_fire:
+            found.calls.append(vote)
+            found.pulls.append(held)
+        else:
+            found.refused.append(held.gates)
+    return found
 
 
 #: The index ``SectorBoard.scan_now`` answers when it added no sector.

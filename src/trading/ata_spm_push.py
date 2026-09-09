@@ -671,7 +671,7 @@ def format_follow_up(outcome: FollowUpOutcome, target: PushTarget) -> FormattedP
 class FollowUpWatch:
     """Phase seven: the reversal calls being watched, and their outcomes.
 
-    ``watch_run`` takes every call one run made, and ``check`` reads each
+    ``watch_run`` takes every call one run charted, and ``check`` reads each
     chart again and answers what happened to it.
     """
 
@@ -681,10 +681,10 @@ class FollowUpWatch:
         self.settled: dict = {}
 
     def watch_run(self, run: Any) -> int:
-        """Watch every reversal call one run made, and answer how many are held.
+        """Watch every charted reversal call, and answer how many are held.
 
-        A call already watched, and one already settled, are not taken
-        again, which ``FollowUpCall.key`` decides.
+        A call already watched, one already settled, and one the gates refused
+        a chart are not taken; ``FollowUpCall.key`` decides the first two.
         """
         pulls = {(one.symbol, one.timeframe): one for one in getattr(run, "pulls", [])}
         held = {one.key for one in self.calls} | set(self.settled)
@@ -745,7 +745,9 @@ def format_run(
     targets: Any = PUSH_TARGETS,
     max_supporting_indicators: Any = NO_INDICATOR_CAP,
 ) -> list:
-    """Phase four over one ``ata_spm.AtaSpmRun``: every call, every target."""
+    """Phase four over one ``ata_spm.AtaSpmRun``: every target of every call
+    that carries a chart, which is every call the live gate chains would fire.
+    """
     pulls = {(one.symbol, one.timeframe): one for one in getattr(run, "pulls", [])}
     posts: list = []
     for vote in getattr(run, "calls", []):

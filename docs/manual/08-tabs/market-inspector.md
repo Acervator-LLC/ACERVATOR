@@ -1693,5 +1693,84 @@ that say so are unchanged. The refusals measured on the send path, the two-candl
 and three-candle cases and the debugger stack are in
 [the debug report](../../../tests/debug_reports/2026-09-09_repost_protection.md).
 
+## 2026-09-09 06:40 - #407 - the live gate chain decides what is charted
+
+One judgement decides whether a market is charted and posted, and it is the live
+trade gate chain. If the chain says Acervator would take the trade, the chart is
+drawn and the post joins the Ready to Send bucket. If it does not, no chart is
+drawn and nothing reaches the bucket.
+
+The verdict is read off the chains the running bots build, not off a copy of
+their rules. A chain fires when every gate of it that could run latched.
+
+`src/trading/ata_gate_scan.py` - the one verdict
+
+```python
+    @property
+    def would_fire(self) -> bool:
+        """True while either chain would fire, which is what a post needs."""
+        return self.firing_side != NO_SIDE
+```
+
+The confidence is the chain's own. `confidence_floor` is the floor the live tick
+reads, and no second threshold is written anywhere on the posting path.
+
+The chart is drawn after the verdict, never beside it. A market the chains
+refuse writes no picture at all.
+
+`src/trading/ata_spm.py` - what is drawn and when
+
+```python
+    image = (
+        render_pull_image(vote, candles, max_supporting_indicators, messages)
+        if gates.would_fire
+        else ChartImage()
+    )
+```
+
+A refused market is still on the record. Its gate scan is kept, so a reader sees
+the market was judged, which gates blocked it and why.
+
+`src/trading/ata_spm.py` - where a refusal is kept
+
+```python
+        else:
+            found.refused.append(held.gates)
+```
+
+The ATA-SPM zone's line now ends with how many markets the gates refused,
+beside the sectors, the calls and the charts.
+
+`src/trading/ata_spm.py` - the line the zone reads
+
+```python
+PHASE_RUN_FORMAT = (
+    "{phase}: {sectors} sector(s), {calls} call(s), {pulls} chart(s), "
+    "{refused} refused by the gates"
+)
+```
+
+The reversal vote is still read and still shown. It is the sector readback, in
+the "reversal call(s)" count each sector carries, and it no longer decides what
+publishes.
+
+An open sector entry lists the charts of that sector's own assets. It used to
+list only the charts whose market was also a reversal call, which would have
+left the line counting charts the expansion never showed.
+
+`src/gui/main_tabs/market_inspector_surface.py` - the charts one entry lists
+
+```python
+    assets = set(scan.assets)
+    held = [one for one in pulls if one.symbol in assets]
+```
+
+**Figures.** This page carries no figure and this entry adds none. Every figure
+the page already carries is kept; there are none, and the eight earlier entries
+that say so are unchanged. The markets measured, the gates that latched on the
+one that fired, the gates that blocked the 127 that did not, and the picture
+count before and after the run are in
+[the debug report](../../../tests/debug_reports/2026-09-09_bucket_gate_verdict.md).
+
 
 Back to [the subsystem index](README.md).
