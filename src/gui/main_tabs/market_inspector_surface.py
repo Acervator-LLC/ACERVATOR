@@ -1117,8 +1117,9 @@ def phase_eight_rows(scan: Any, pulls: Any) -> list:
 def sector_entry(scan: Any, pulls: Any, follow_ups: Any = ()) -> dict:
     """One scanned sector as the entry the ATA-SPM zone steps through.
 
-    The expansion carries every phase readback in order, and ``held`` is every
-    chart ``scan.assets`` names, which is the set the gate chains let through.
+    The expansion carries every phase readback in order, and ``held`` narrows
+    ``pulls`` to this sector's assets; ``run`` already dropped every market the
+    gate chains refused.
     """
     calls = scan.calls
     assets = set(scan.assets)
