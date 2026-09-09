@@ -148,8 +148,6 @@
   var TEXT_KEY = "text";
   var ITEMS = "items";
   var RANGE = "range";
-  var VALUE = "value";
-  var CHECKED = "checked";
   var DECIMALS = "decimals";
   var SUFFIX = "suffix";
   var PREFIX = "prefix";
@@ -158,8 +156,6 @@
   var EDITABLE = "editable";
   var MIN_HEIGHT = "min_height";
   var MAX_HEIGHT = "max_height";
-  var TOOLTIP = "tooltip";
-  var SIGNAL = "signal";
   var CURRENT_TEXT = "current_text";
 
   var CONTENT = "content";
@@ -176,9 +172,6 @@
   var CANCEL = "cancel";
   var SAVE = "save";
   var SAVE_STYLE = "save_style";
-  var REMOVE = "remove";
-  var TEST = "test";
-  var ADD = "add";
   var AI_TEST = "ai_test";
   var AI_TEST_STYLE = "ai_test_style";
 
@@ -214,12 +207,9 @@
   var RADIUS = "radius_px";
 
   // Each layout role below names one step this module draws.
-  var COLUMN_ROLE = "column";
-  var FORM_ROLE = "form";
   var ROW_ROLE = "row";
   var SCROLL_ROLE = "scroll";
   var GROUP_ROLE = "group";
-  var CONTROL_ROLE = "control";
   var LABEL_ROLE = "label";
   var TEXT_ROLE = "text";
   var BUTTON_ROLE = "button";
@@ -230,7 +220,6 @@
   var SOUND_ROW_ROLE = "sound_row";
   var ADD_GROUP_ROLE = "add_group";
 
-  var LINE_KIND = "line";
   var TEXT_AREA_KIND = "text_area";
   var COMBO_TEXT_KIND = "combo_text";
   var COMBO_DATA_KIND = "combo_data";
@@ -300,6 +289,9 @@
   var BLOCK_PART = "block";
   var FORM_ROW_PART = "form-row";
   var ROW_LABEL_PART = "row-label";
+  var CHECK_TEXT_PART = "check-text";
+  var VALUE_PREFIX_PART = "value-prefix";
+  var VALUE_SUFFIX_PART = "value-suffix";
   var GROUP_PART = "group";
   var GROUP_TITLE_PART = "group-title";
   var GROUP_BODY_PART = "group-body";
@@ -336,7 +328,6 @@
   var INDEX_ATTR = "data-index";
   var KIND_ATTR = "data-kind";
   var TAB_ATTR = "data-tab";
-  var GROUP_ATTR = "data-group";
   var ROLE_ATTR = "data-role";
   var COUNT_ATTR = "data-count";
   var SHOWN_ATTR = "data-shown";
@@ -373,6 +364,7 @@
 
   var PX = "px";
   var FLEX = "flex";
+  var DISPLAY_NONE = "none";
   var ROW_DIRECTION = "row";
   var COLUMN_DIRECTION = "column";
   var NOWRAP = "nowrap";
@@ -1466,10 +1458,31 @@
     return element(INPUT_TAG, one);
   }
 
+  // Beside `label`, a spec carries `text` for a tick box and `prefix` or
+  // `suffix` for a number, and Qt draws all three.
+  function sideWords(part, name, words) {
+    var one = partProps(part);
+    one.key = part;
+    one[NAME_ATTR] = text(name);
+    one[KEY_ATTR] = text(words);
+    return element(SPAN_TAG, one, text(words));
+  }
+
   function ControlRow(props) {
     var spec = specFor(props.name);
-    var words = isPlainObject(spec) ? spec[LABEL_KEY] : undefined;
-    var drawn = [element(Control, { key: CONTROL_PART, name: props.name })];
+    var held = isPlainObject(spec) ? spec : {};
+    var words = held[LABEL_KEY];
+    var drawn = [];
+    if (label(held[PREFIX]) !== undefined) {
+      drawn.push(sideWords(VALUE_PREFIX_PART, props.name, held[PREFIX]));
+    }
+    drawn.push(element(Control, { key: CONTROL_PART, name: props.name }));
+    if (label(held[SUFFIX]) !== undefined) {
+      drawn.push(sideWords(VALUE_SUFFIX_PART, props.name, held[SUFFIX]));
+    }
+    if (label(held[TEXT_KEY]) !== undefined) {
+      drawn.push(sideWords(CHECK_TEXT_PART, props.name, held[TEXT_KEY]));
+    }
     if (label(words) !== undefined) {
       var labelProps = partProps(ROW_LABEL_PART);
       labelProps[NAME_ATTR] = text(props.name);
@@ -1714,10 +1727,12 @@
     return element(BUTTON_TAG, one, text(props.tab));
   }
 
+  // An inline `display` beats the browser's own rule for `hidden`, so the
+  // page not on show takes `none` rather than relying on that attribute.
   function TabPage(props) {
     var node = layoutOf(props.tab);
     var one = partProps(TAB_PAGE_PART, {
-      display: FLEX,
+      display: props.current === true ? FLEX : DISPLAY_NONE,
       flexDirection: COLUMN_DIRECTION
     });
     one[TAB_ATTR] = text(props.tab);
