@@ -902,6 +902,8 @@
   var PAIRS_TABLE = "pairs";
 
   var TOPOLOGY_SLOT = "market-inspector-topologies";
+  // The panel name market_inspector_topologies.js registers under.
+  var TOPOLOGY_PANEL = "market_inspector_topologies";
 
   var PART_ATTR = "data-part";
   var TABLE_ATTR = "data-table";
@@ -3298,12 +3300,14 @@
   // fillSlot draws the proposals pane into the right-hand slot when no host
   // has claimed it. A Qt host moves its own pane node in and declares
   // acervatorMountTopologies, so the slot is left alone there.
+  // The panel host draws it, so an unregistered TOPOLOGY_PANEL names itself
+  // in the slot instead of drawing.
   function fillSlot(target) {
     if (typeof global.acervatorMountTopologies === FUNCTION_KIND) {
       return null;
     }
-    var pane = global.acervatorTopologies;
-    if (!pane || typeof pane.renderTab !== FUNCTION_KIND) {
+    var host = global.acervatorPanelHost;
+    if (!host || typeof host.mount !== FUNCTION_KIND) {
       return null;
     }
     if (!target || typeof target.querySelector !== FUNCTION_KIND) {
@@ -3313,10 +3317,10 @@
     if (slot === null || slot.children.length > ZERO) {
       return null;
     }
-    pane.renderTab(slot, null);
+    host.mount(TOPOLOGY_PANEL, slot, null);
     if (typeof global.acervatorLoadTopologies === FUNCTION_KIND) {
-      global.acervatorLoadTopologies().then(function () {
-        pane.renderTab(slot, null);
+      global.acervatorLoadTopologies().then(function (model) {
+        host.mount(TOPOLOGY_PANEL, slot, model);
       });
     }
     return slot;

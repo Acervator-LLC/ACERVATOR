@@ -1,6 +1,7 @@
 /* React Market Inspector chrome. The module writes every layout value on
  * the element's own `style` attribute from the Python payload, so nothing
- * here sets a width, a gap or a flex value. Colour, border and type only,
+ * here sets a width, a gap or a flex value, apart from the check-box
+ * indicator, which Qt sizes from its own style sheet. Colour, border and type,
  * selected by the `data-part` names the module stamps.
  */
 html,
@@ -41,7 +42,8 @@ body {
 [data-part="dismiss-button"],
 [data-part="cancel-button"],
 [data-part="adopt-button"] {
-  background: var(--btn-bg);
+  /* SURFACE_2 is the ground the theme gives QPushButton. */
+  background: var(--SURFACE_2, var(--btn-bg));
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 2px;
@@ -60,9 +62,24 @@ body {
   white-space: nowrap;
 }
 
+/* QCheckBox::indicator: an 18px box, a 2px OUTLINE edge, a SURFACE_INPUT
+ * ground, and PRIMARY when it is checked. */
 [data-part="switch-box"],
 [data-part="timeframe-box"] {
+  appearance: none;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--OUTLINE, var(--border));
+  border-radius: 3px;
+  background: var(--SURFACE_INPUT, var(--bg));
   accent-color: var(--accent);
+}
+
+[data-part="switch-box"]:checked,
+[data-part="timeframe-box"]:checked {
+  background: var(--PRIMARY, var(--accent));
+  border-color: var(--PRIMARY, var(--accent));
 }
 
 /* The ATA-SPM sector field and its class box. The padding, the border width

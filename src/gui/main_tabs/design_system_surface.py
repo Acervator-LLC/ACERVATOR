@@ -1,9 +1,9 @@
 """design_system_surface.py -- the colour, type, spacing and motion tokens.
 
 Describes the one table of style values the whole interface draws
-from. One hundred and ninety-five names carry a value each: 145
+from. One hundred and ninety-six names carry a value each: 146
 colours, two font families, 40 whole numbers, three line heights and
-five shadow settings. Six of the 145 colours are second names for a
+five shadow settings. Six of the 146 colours are second names for a
 colour already in the table, and ``ALIAS_TARGETS`` says which name
 each one copies.
 
@@ -108,6 +108,7 @@ TEXT_ON_LIGHT = "#000000"
 # ---- Surfaces beyond the five elevations -------------------------------
 SURFACE_CHART = "#0a0a12"
 SURFACE_CONTROL = "#1a1a2e"
+SURFACE_INPUT = "#0e0e1a"
 SURFACE_CONSOLE = "#05050a"
 SURFACE_CONSOLE_HEADER = "#0a0a14"
 BORDER_DISABLED = "#444444"
@@ -350,6 +351,7 @@ COLOR_NAMES = (
     "TEXT_ON_LIGHT",
     "SURFACE_CHART",
     "SURFACE_CONTROL",
+    "SURFACE_INPUT",
     "SURFACE_CONSOLE",
     "SURFACE_CONSOLE_HEADER",
     "BORDER_DISABLED",
@@ -584,6 +586,7 @@ TOKEN_NAMES = (
     "TEXT_ON_LIGHT",
     "SURFACE_CHART",
     "SURFACE_CONTROL",
+    "SURFACE_INPUT",
     "SURFACE_CONSOLE",
     "SURFACE_CONSOLE_HEADER",
     "BORDER_DISABLED",
