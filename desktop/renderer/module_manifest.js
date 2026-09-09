@@ -24,7 +24,6 @@ window.ACERVATOR_MODULES = [
   "journal_tab.js",
   "trade_charts_tab.js",
   "bot_visualizer.js",
-  "bot_swarm_list.js",
   "quick_routing.js",
   "native_chart.js",
   "bot_node.js",

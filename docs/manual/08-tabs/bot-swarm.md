@@ -46,7 +46,7 @@ class BotNodeWidget(QWidget):
 
 In the React build the card is drawn by `bot_node.js` from the payload
 `bot_node_surface` publishes. The tab page carries that module beside the wire
-canvas, the quick routing matrix, the list and the theme palettes.
+canvas, the quick routing matrix and the theme palettes.
 
 `src/gui/react_bot_swarm_tab.py` — `TAB_SCRIPT_ASSETS`
 
@@ -61,14 +61,13 @@ TAB_SCRIPT_ASSETS: tuple[str, ...] = (
     "bot_node.js",
     "wire_canvas.js",
     "quick_routing.js",
-    "bot_swarm_list.js",
     "bot_visualizer.js",
 )
 ```
 
-One handler switches between the list and the grid. The wire overlay covers the
-grid alone, because the grid is the only view whose coordinates a wire can be
-drawn against.
+The grid of locust cards is the whole screen. The wire overlay covers it,
+because the grid is the only surface whose coordinates a wire can be drawn
+against.
 
 ## Drawing a wire
 
@@ -296,28 +295,6 @@ def restore_bots_from_state(self, state: dict) -> list[str]:
 `restore_smart_wires_from_state` in the same mixin rebuilds the topology.
 `delete_bot` is the only path that removes a record.
 
-## The list view
-
-The table carries four named columns and eight wire lanes.
-
-`src/gui/bot_swarm_list.py` — `COLUMN_HEADERS`
-
-```python
-COLUMN_HEADERS = ["Ticker", "Inflow", "Outflow", "% Out"] + [
-    f"L{i + 1}" for i in range(LANE_COUNT)
-]
-```
-
-Two wires share a lane only when their row spans do not overlap, and the
-allocator takes the first free lane in order.
-
-`src/gui/bot_swarm_list.py` — `BotSwarmLaneAllocator.assign`
-
-```python
-def assign(self, wires: list[tuple[str, int, int]]) -> dict[str, Optional[int]]:
-    """Place every ``(wire_id, row_a, row_b)`` triple in ``wires``.
-```
-
 ## Capital claims
 
 One reservation per bot stands against a wallet. A total above the wallet
@@ -341,14 +318,13 @@ in the table at the foot of this file. The Qt panel beside it,
 
 ## Bridge
 
-Eight methods serve this screen, and the renderer modules carry the matching
+Seven methods serve this screen, and the renderer modules carry the matching
 names.
 
 | Bridge method | Serves |
 | ------------- | ------ |
 | `bot_visualizer.state` | The whole tab |
 | `bot_swarm_tab.state` | The three sub-tabs and the header row |
-| `bot_swarm_list.state` | The list view and its lanes |
 | `bot_node.state` | One locust card |
 | `wire_canvas.state` | The wire overlay on the grid |
 | `quick_routing.state` | The quick routing matrix |
@@ -362,8 +338,7 @@ The Bot Swarm is a proprietary capital reinforcement network system that allows 
 The tab is now called Swarm. It sits sixth on the bar, on the gold ground
 with red text.
 
-Each bot draws as one locust card, and the tab switches between the list and
-the grid. Wires drag between nodes on the grid.
+Each bot draws as one locust card on the grid, and wires drag between nodes.
 
 `src/gui/visualizer/bot_node.py` — `BotNodeWidget`
 
@@ -437,31 +412,11 @@ def restore_bots_from_state(self, state: dict) -> list[str]:
     """Recreate every persisted bot in IDLE state; return the ids restored.
 ```
 
-(List View)
-
-![](p30-i0.png)
-
 Three sub-tabs open the screen: Bot Swarm, Simulator Swarm and Paper Swarm. The
 header row holds the drag hint, an identifier privacy dot that masks the bot
-hashes and the symbol labels together, the Privacy Mode button, and four
+hashes and the symbol labels together, the Privacy Mode button, and three
 controls. Exchange filters both the swarm and the quick routing scope. Theme
-lists the four palettes. View chooses List or Grid. The Wires slider sets wire
-opacity from 0 to 100 %.
-
-The table carries four named columns and eight wire lanes.
-
-`src/gui/bot_swarm_list.py` — `COLUMN_HEADERS`
-
-```python
-COLUMN_HEADERS = ["Ticker", "Inflow", "Outflow", "% Out"] + [
-    f"L{i + 1}" for i in range(LANE_COUNT)
-]
-```
-
-Inflow draws green and Outflow red. % Out sums a bot's outbound wire
-percentages, and a bot with no outbound wire reads 0 %. Two wires share a lane
-only when their row spans do not overlap, and the dot at each end of a lane
-marks the source row and the target row.
+lists the four palettes. The Wires slider sets wire opacity from 0 to 100 %.
 
 The quick routing matrix fills the right half in three zones: the source list,
 the Rate field between them, and the destination list. Every checked source
@@ -494,11 +449,11 @@ Disconnect or Disconnect All runs.
 
 ![](p30-i1.png)
 
-The view switch swaps the table for the node canvas. Each card carries the
-symbol above, the realised profit below it, and the first eight characters of
-the bot id at the foot. The profit colour is the theme's success colour at zero
-and above and the error colour below, and the abdomen gradient takes that same
-colour with its alpha scaled by the size of the figure.
+Each card carries the symbol above, the realised profit below it, and the
+first eight characters of the bot id at the foot. The profit colour is the
+theme's success colour at zero and above and the error colour below, and the
+abdomen gradient takes that same colour with its alpha scaled by the size of
+the figure.
 
 Privacy Mode is off in the figure, so the symbol and the id both draw plain.
 One field id covers all three readings on a card, the symbol, the short bot id
@@ -532,11 +487,10 @@ around each card, which draw in the second accent at low alpha.
     "error": QColor(255, 50, 80),
 ```
 
-The wires cover the grid alone, because the grid is the only view whose
+The wires cover the grid, because the grid is the only surface whose
 coordinates a wire can be drawn against. Each wire carries its own percentage,
 drawn beside it. Drag between two nodes to create a wire, and right-click a
-wire to remove it. The quick routing matrix on the right is the same widget the
-List view shows.
+wire to remove it.
 
 A wire's percentage sits in a rounded dark badge at the midpoint of the curve,
 so a wire crossing a card still reads. The Wires slider at the top right sets
@@ -570,7 +524,7 @@ the main window already made.
 ```
 
 Every header control reports back to Python. The privacy dot, the Privacy Mode
-button, the Exchange, Theme and View pickers and the Wires slider each send one
+button, the Exchange and Theme pickers and the Wires slider each send one
 action. The screen then redraws from the answer.
 
 `src/gui/react_bot_swarm_tab.py` — `BotSwarmReactTab.take`
@@ -601,36 +555,6 @@ so both screens ask the same question in the same words.
         screen shows.
         """
 ```
-
-The List view draws the same twelve-column table in the React tab. The tab
-surface builds the list payload once, from the rows the last fleet load sent
-and the wires the board holds, and hands it to the list module inside the page.
-
-`src/gui/main_tabs/bot_visualizer_surface.py` — `swarm_list`
-
-```python
-def swarm_list(model: BotVisualizerModel) -> dict:
-    """The dense list payload, from the rows ``update_bots`` last sent.
-
-    ``bot_swarm_list_surface`` builds it, so the list draws the table and
-    the lane wires the Qt ``BotListView`` and ``LaneWireCanvas`` paint.
-    """
-```
-
-The list module draws the table and the see-through lane sheet over it in one
-box, so a wire runs down a lane column between the two rows it joins.
-
-`src/gui/web/bot_swarm_list.js` — `SwarmList`
-
-```javascript
-    return element(
-      DIV_TAG,
-      swarmProps,
-      element(ListTable, { key: LIST_PART, model: model }),
-      element(LaneSheet, { key: SHEET_PART, model: model })
-    );
-```
-
 
 ### The window a bot row opens
 
