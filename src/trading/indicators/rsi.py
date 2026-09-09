@@ -1,7 +1,7 @@
 """Relative Strength Index.
 
 ``RSIIndicator.compute`` casts the vote; ``RSIIndicator._compute_metrics``
-carries the divergence flags and the series a chart draws.
+carries the divergence flags and the trailing series.
 """
 
 from __future__ import annotations
@@ -75,13 +75,13 @@ class RSIIndicator:
             r_hi2 = max(rsi_series[-10:])
             bear_div = p_hi2 > p_hi1 and r_hi2 < r_hi1
         return {
-            "rsi": round(rsi, 2),
+            "rsi": rsi,
             "rs_indeterminate": rs_indeterminate,
             "overbought": rsi > 70,
             "oversold": rsi < 30,
             "bull_div": bull_div,
             "bear_div": bear_div,
-            "rsi_series": rsi_series[-20:],  # the chart overlay reads these
+            "rsi_series": rsi_series[-20:],
         }
 
     def compute(self, candles: list, timeframe: str = "1h") -> "Signal":
