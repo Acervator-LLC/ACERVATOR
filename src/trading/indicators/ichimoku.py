@@ -153,7 +153,7 @@ class IchimokuCloud:
 
         above_cloud = price > cloud_top
         below_cloud = price < cloud_bottom
-        not above_cloud and not below_cloud
+        inside_cloud = not above_cloud and not below_cloud
 
         prev_p = candles[-2].close if n >= 2 else price
         prev_above = prev_p > cloud_top
@@ -256,13 +256,13 @@ class IchimokuCloud:
             weight=self.weight,
             details={
                 "price_vs_cloud": (
-                    "above" if above_cloud else "below" if below_cloud else "inside"
+                    "inside" if inside_cloud else "above" if above_cloud else "below"
                 ),
-                "cloud_top": round(cloud_top, 4),
-                "cloud_bottom": round(cloud_bottom, 4),
-                "cloud_thick_pct": round(cloud_thick_pct * 100, 2),
-                "tenkan": round(tenkan, 4),
-                "kijun": round(kijun, 4),
+                "cloud_top": cloud_top,
+                "cloud_bottom": cloud_bottom,
+                "cloud_thick_pct": cloud_thick_pct * 100,
+                "tenkan": tenkan,
+                "kijun": kijun,
                 "fut_cloud_bull": fut_bull,
                 "twist_to_bull": twist_bull,
                 "twist_to_bear": twist_bear,
@@ -283,6 +283,6 @@ class IchimokuCloud:
                 "spb_flat": spb_flat,
                 "san_ko_shu_bull": sks_bull,
                 "san_ko_shu_bear": sks_bear,
-                "score": round(score, 4),
+                "score": score,
             },
         )

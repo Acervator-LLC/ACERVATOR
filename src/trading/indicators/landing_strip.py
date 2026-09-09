@@ -132,7 +132,7 @@ def detect_landing_strip_v2(
             "",
             shrink_count,
             tightening_ratio,
-            round(bb_pos, 4),
+            bb_pos,
             0.0,
             shrink_count,
         )
@@ -145,7 +145,7 @@ def detect_landing_strip_v2(
             "",
             shrink_count,
             tightening_ratio,
-            round(bb_pos, 4),
+            bb_pos,
             0.0,
             shrink_count,
         )
@@ -160,8 +160,8 @@ def detect_landing_strip_v2(
         detected=True,
         side=side,
         length=shrink_count,
-        tightening_ratio=round(tightening_ratio, 3),
-        bb_position=round(bb_pos, 4),
-        confidence_boost=round(confidence_boost, 4),
+        tightening_ratio=tightening_ratio,
+        bb_position=bb_pos,
+        confidence_boost=confidence_boost,
         raw_tightenings=shrink_count,
     )

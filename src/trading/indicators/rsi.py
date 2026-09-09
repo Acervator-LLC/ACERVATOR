@@ -134,7 +134,7 @@ class RSIIndicator:
             indicator="rsi",
             timeframe=timeframe,
             direction=direction,
-            confidence=round(confidence, 4),
+            confidence=confidence,
             weight=self.weight,
             details={
                 "rsi": rsi,

@@ -95,7 +95,7 @@ def detect_macd_taper(histogram: list, lookback: int = 8) -> dict:
         result.update(
             {
                 "taper_type": "wedge",
-                "taper_strength": round(taper_strength, 3),
+                "taper_strength": taper_strength,
                 "bars_tapering": taper_count,
                 "toward_cross": toward_cross,
                 "consolidating": True,
@@ -105,7 +105,7 @@ def detect_macd_taper(histogram: list, lookback: int = 8) -> dict:
         result.update(
             {
                 "taper_type": "bullish",
-                "taper_strength": round(bull_taper / n, 3),
+                "taper_strength": bull_taper / n,
                 "bars_tapering": bull_taper,
                 "toward_cross": toward_cross,
                 "consolidating": True,
@@ -115,7 +115,7 @@ def detect_macd_taper(histogram: list, lookback: int = 8) -> dict:
         result.update(
             {
                 "taper_type": "bearish",
-                "taper_strength": round(bear_taper / n, 3),
+                "taper_strength": bear_taper / n,
                 "bars_tapering": bear_taper,
                 "toward_cross": toward_cross,
                 "consolidating": True,
@@ -128,7 +128,7 @@ def detect_macd_taper(histogram: list, lookback: int = 8) -> dict:
         result.update(
             {
                 "taper_type": t_type,
-                "taper_strength": round(taper_strength, 3),
+                "taper_strength": taper_strength,
                 "bars_tapering": taper_count,
                 "toward_cross": toward_cross,
                 "consolidating": True,
