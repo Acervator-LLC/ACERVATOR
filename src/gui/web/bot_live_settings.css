@@ -20,30 +20,32 @@ body {
   background: var(--bg);
   color: var(--text);
   font: 12px/1.5 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  overflow: hidden;
 }
 
+/* The window is exactly the view, so clipping here leaves the page it is
+ * drawn into free to scroll for whatever else that page holds. */
 [data-part="bot-live-settings"] {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  overflow: hidden;
   padding: 10px;
   gap: 8px;
 }
 
-[data-part="header-row"] {
+[data-part="bot-live-settings"] [data-part="header-row"] {
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-[data-part="header-stretch"],
-[data-part="footer-stretch"] {
+[data-part="bot-live-settings"] [data-part="header-stretch"],
+[data-part="bot-live-settings"] [data-part="footer-stretch"] {
   flex-grow: 1;
 }
 
-[data-part="tab-bar"] {
+[data-part="bot-live-settings"] [data-part="tab-bar"] {
   flex: none;
   display: flex;
   flex-wrap: wrap;
@@ -51,7 +53,7 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-button[data-part="tab-button"] {
+[data-part="bot-live-settings"] button[data-part="tab-button"] {
   background: var(--btn-bg);
   color: var(--text);
   border: 1px solid var(--border);
@@ -62,30 +64,30 @@ button[data-part="tab-button"] {
   cursor: pointer;
 }
 
-button[data-part="tab-button"][data-current="true"] {
+[data-part="bot-live-settings"] button[data-part="tab-button"][data-current="true"] {
   background: var(--bg);
   color: var(--accent);
   font-weight: bold;
 }
 
-[data-part="tab-pages"] {
+[data-part="bot-live-settings"] [data-part="tab-pages"] {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }
 
-[data-part$="-page"] {
+[data-part="bot-live-settings"] [data-part$="-page"] {
   padding: 8px 2px;
 }
 
-[data-part="tab-fault"] {
+[data-part="bot-live-settings"] [data-part="tab-fault"] {
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 4px;
   white-space: pre-wrap;
 }
 
-[data-part="footer-row"] {
+[data-part="bot-live-settings"] [data-part="footer-row"] {
   flex: none;
   display: flex;
   align-items: center;
@@ -94,10 +96,10 @@ button[data-part="tab-button"][data-current="true"] {
   border-top: 1px solid var(--border);
 }
 
-button[data-part="prev-button"],
-button[data-part="next-button"],
-button[data-part="apply-button"],
-button[data-part="close-button"] {
+[data-part="bot-live-settings"] button[data-part="prev-button"],
+[data-part="bot-live-settings"] button[data-part="next-button"],
+[data-part="bot-live-settings"] button[data-part="apply-button"],
+[data-part="bot-live-settings"] button[data-part="close-button"] {
   background: var(--btn-bg);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -106,21 +108,21 @@ button[data-part="close-button"] {
   cursor: pointer;
 }
 
-button[data-part="apply-button"] {
+[data-part="bot-live-settings"] button[data-part="apply-button"] {
   border-color: var(--accent);
   color: var(--accent);
   font-weight: bold;
 }
 
-button[data-part="prev-button"]:focus,
-button[data-part="next-button"]:focus,
-button[data-part="apply-button"]:focus,
-button[data-part="close-button"]:focus,
-button[data-part="tab-button"]:focus {
+[data-part="bot-live-settings"] button[data-part="prev-button"]:focus,
+[data-part="bot-live-settings"] button[data-part="next-button"]:focus,
+[data-part="bot-live-settings"] button[data-part="apply-button"]:focus,
+[data-part="bot-live-settings"] button[data-part="close-button"]:focus,
+[data-part="bot-live-settings"] button[data-part="tab-button"]:focus {
   outline: 1px solid var(--accent);
 }
 
-button:disabled {
+[data-part="bot-live-settings"] button:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -128,19 +130,19 @@ button:disabled {
 /* The eight tab modules draw into their own page space. These reach the
  * shapes every one of them uses: a group, a form row, a control and a table.
  */
-.acervator-status-tab,
-.acervator-live-settings,
-.acervator-fold-tranches,
-.acervator-stack-tranches,
-.acervator-bot-swarm-settings,
-.acervator-market-inspector-tab,
-.acervator-phantom-bots,
-.acervator-positions-held {
+[data-part="bot-live-settings"] .acervator-status-tab,
+[data-part="bot-live-settings"] .acervator-live-settings,
+[data-part="bot-live-settings"] .acervator-fold-tranches,
+[data-part="bot-live-settings"] .acervator-stack-tranches,
+[data-part="bot-live-settings"] .acervator-bot-swarm-settings,
+[data-part="bot-live-settings"] .acervator-market-inspector-tab,
+[data-part="bot-live-settings"] .acervator-phantom-bots,
+[data-part="bot-live-settings"] .acervator-positions-held {
   min-width: 0;
 }
 
-[data-part="group"],
-[data-part="stats-group"] {
+[data-part="bot-live-settings"] [data-part="group"],
+[data-part="bot-live-settings"] [data-part="stats-group"] {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -150,25 +152,25 @@ button:disabled {
   margin-bottom: 8px;
 }
 
-[data-part="group-title"] {
+[data-part="bot-live-settings"] [data-part="group-title"] {
   font-weight: bold;
   color: var(--accent);
 }
 
-[data-part="form-row"],
-[data-part="stat-row"] {
+[data-part="bot-live-settings"] [data-part="form-row"],
+[data-part="bot-live-settings"] [data-part="stat-row"] {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-[data-part="row-label"],
-[data-part="stat-label"] {
+[data-part="bot-live-settings"] [data-part="row-label"],
+[data-part="bot-live-settings"] [data-part="stat-label"] {
   flex: 0 0 210px;
   text-align: right;
 }
 
-[data-part="control"] {
+[data-part="bot-live-settings"] [data-part="control"] {
   flex: 1 1 auto;
   min-width: 0;
   background: var(--btn-bg);
@@ -186,28 +188,28 @@ input[data-part="control"][type="checkbox"] {
   accent-color: var(--accent);
 }
 
-[data-part="control"]:focus {
+[data-part="bot-live-settings"] [data-part="control"]:focus {
   outline: 1px solid var(--accent);
 }
 
-table {
+[data-part="bot-live-settings"] table {
   border-collapse: collapse;
   width: 100%;
 }
 
-th,
-td {
+[data-part="bot-live-settings"] th,
+[data-part="bot-live-settings"] td {
   border-bottom: 1px solid var(--grid);
   padding: 3px 6px;
   text-align: left;
   white-space: nowrap;
 }
 
-th {
+[data-part="bot-live-settings"] th {
   color: var(--accent);
   font-weight: bold;
 }
 
-[hidden] {
+[data-part="bot-live-settings"] [hidden] {
   display: none !important;
 }
