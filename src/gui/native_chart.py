@@ -234,6 +234,29 @@ NO_CANDLES_NOTE = "No candles read for {symbol} on {timeframe}."
 NOT_DRAWN_NOTE = "not drawn: {voters}"
 IMAGE_NOT_WRITTEN_NOTE = "Qt refused to write {path}."
 
+CALL_BULLISH = "bullish"
+CALL_BEARISH = "bearish"
+
+#: The palette role ``_draw_call`` paints one reversal direction in. A
+#: direction outside these two draws no badge and no bar mark.
+CALL_DIRECTION_ROLES = {CALL_BULLISH: "EVENT_BULL", CALL_BEARISH: "EVENT_BEAR"}
+
+CALL_BADGE_FORMAT = "{direction} REVERSAL"
+
+#: The pixel height one ``set_call`` reading takes in the strip under the
+#: time axis, and the padding over and under those rows.
+CALL_ROW_H = 15
+CALL_STRIP_PAD = 8
+
+#: The square each strip row draws its voter's overlay colour in.
+CALL_SWATCH_PX = 8
+
+#: The half-width and height of the triangle marking the call bar's close.
+CALL_MARK_PX = 6
+
+#: No ``set_call`` reading, so ``_call_strip_h`` takes no height.
+NO_CALL_STRIP = 0
+
 
 @dataclass
 class ChartImage:
@@ -499,6 +522,8 @@ if _HAS_QT:
             self._status_text = "Waiting for data..."
             self._source_label = ""
             self._error_text = ""
+            self._call_direction = ""
+            self._call_readings: tuple = ()
             self._overlay_shown: dict[str, bool] = {
                 one.key: one.starts_on for one in CHART_OVERLAYS
             }
@@ -554,6 +579,34 @@ if _HAS_QT:
         def set_error(self, msg: str) -> None:
             self._error_text = msg
             self._repaint()
+
+        def set_call(self, direction: str, readings=()) -> None:
+            """Take one reversal direction and one reading line per voter.
+
+            ``readings`` are ``(voter, text)`` pairs and ``_draw_call`` paints
+            them under the time axis.
+            """
+            self._call_direction = str(direction or "")
+            self._call_readings = tuple(
+                (str(voter), str(text)) for voter, text in readings or ()
+            )
+            self._repaint()
+
+        def _call_strip_h(self) -> int:
+            """The pixel height ``_call_readings`` takes under the time axis."""
+            if not self._call_readings:
+                return NO_CALL_STRIP
+            return CALL_STRIP_PAD * 2 + CALL_ROW_H * len(self._call_readings)
+
+        def _voter_colour(self, voter: str) -> QColor:
+            """The colour of the switched-on overlay drawing ``voter``.
+
+            A voter no ``CHART_OVERLAYS`` entry draws reads ``TEXT_DIM``.
+            """
+            for one in CHART_OVERLAYS:
+                if one.voter == voter and self._overlay_shown.get(one.key, False):
+                    return self.overlay_colour(one)
+            return self.TEXT_DIM
 
         def _compute_indicators(self):
             """Fill ``_bb_data``, ``_vortex_data``, ``_macd_data``,
@@ -669,14 +722,15 @@ if _HAS_QT:
         def _natural_height_for_panes(self) -> int:
             """Return the pixel height the toggled-on panes need.
 
-            The price pane takes 220, the volume strip adds 28, and each entry
-            of ``_sub_overlays_with_data`` adds 60, over a 64px header.
+            The price pane takes 220, the volume strip adds 28, each entry of
+            ``_sub_overlays_with_data`` adds 60 and ``_call_strip_h`` adds the
+            voter rows, over a 64px header.
             """
             base = 28 + 18 + 220 + 18  # header + OHLC + price + time
             if self._overlay_shown["volume"]:
                 base += 28
             base += len(self._sub_overlays_with_data()) * 60
-            return base
+            return base + self._call_strip_h()
 
         def _sub_overlays_with_data(self) -> tuple:
             """Every sub-pane overlay that is switched on and holds values.
@@ -748,7 +802,7 @@ if _HAS_QT:
             MR = 78  # right margin (price axis + badges)
             MT = 28  # header
             OHLC_H = 18  # OHLC info row at top of price pane
-            MB = 18  # time axis at bottom
+            MB = 18 + self._call_strip_h()  # time axis, then the voter strip
 
             sub_overlays = self._sub_overlays_with_data()
             show_volume = self._overlay_shown["volume"]
@@ -1139,6 +1193,8 @@ if _HAS_QT:
                         p.drawLine(ML, int(yf), w - MR, int(yf))
                         p.setPen(self.FLOOR_LINE)
                         p.drawText(QPointF(ML + 4, yf - 2), f"FLOOR {label}")
+
+                self._draw_call(ctx, h)
 
             type_colors = {
                 "SCRUM": self.MARKER_SCRUM,
@@ -1849,6 +1905,90 @@ if _HAS_QT:
                 )
                 p.drawText(w - right_margin_px + 6, icon_y + 3, label)
 
+        def _draw_call(self, ctx, h: int) -> None:
+            """Draw the reversal badge, the call bar mark and the voter strip.
+
+            The bar marked is the last candle, which is the bar the direction
+            ``set_call`` took was voted on.
+            """
+            role = CALL_DIRECTION_ROLES.get(self._call_direction)
+            if role is None:
+                return
+            p = ctx.p
+            colour = getattr(self, role)
+            self._draw_call_badge(p, ctx.w, ctx.font_sm, colour)
+            self._draw_call_bar(ctx, colour)
+            self._draw_call_strip(p, h, ctx.ML, ctx.font_sm)
+
+        def _draw_call_badge(self, p: QPainter, w: int, font_sm: QFont, colour) -> None:
+            """Draw the direction word in the header band, against the right edge."""
+            text = CALL_BADGE_FORMAT.format(direction=self._call_direction.upper())
+            font_badge = QFont(font_sm)
+            font_badge.setBold(True)
+            metrics = QFontMetrics(font_badge)
+            badge = QRectF(
+                w - metrics.horizontalAdvance(text) - 24,
+                4,
+                metrics.horizontalAdvance(text) + 16,
+                18,
+            )
+            p.setBrush(QBrush(self.BADGE_SURFACE))
+            p.setPen(QPen(colour, 1.2))
+            p.drawRoundedRect(badge, 3, 3)
+            p.setFont(font_badge)
+            p.setPen(QPen(colour))
+            p.drawText(badge, Qt.AlignCenter, text)
+
+        def _draw_call_bar(self, ctx, colour) -> None:
+            """Mark the last candle with a rule and a triangle beside its body.
+
+            A bullish call points up under the bar's low and a bearish one
+            points down over its high, so neither covers the price badge.
+            """
+            bar = ctx.visible_candles[-1]
+            x = ctx.i2x(ctx.n - 1) + ctx.cw / 2
+            p = ctx.p
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QPen(colour, 1.0, Qt.DashLine))
+            p.drawLine(int(x), int(ctx.price_top), int(x), int(ctx.price_bot))
+            up = self._call_direction == CALL_BULLISH
+            if up:
+                tip = ctx.p2y(bar.low)
+                base = tip + CALL_MARK_PX
+            else:
+                tip = ctx.p2y(bar.high)
+                base = tip - CALL_MARK_PX
+            p.setBrush(QBrush(colour))
+            p.setPen(QPen(colour, 1.0))
+            p.drawPolygon(
+                QPolygonF(
+                    [
+                        QPointF(x, tip),
+                        QPointF(x - CALL_MARK_PX, base),
+                        QPointF(x + CALL_MARK_PX, base),
+                    ]
+                )
+            )
+
+        def _draw_call_strip(self, p: QPainter, h: int, left: int, font_sm: QFont):
+            """Draw one row per ``_call_readings`` entry under the time axis.
+
+            Each row's square carries the colour of the overlay drawing that
+            voter, which ``_voter_colour`` resolves.
+            """
+            top = h - self._call_strip_h() + CALL_STRIP_PAD
+            p.setFont(font_sm)
+            for index, (voter, text) in enumerate(self._call_readings):
+                y = top + index * CALL_ROW_H
+                colour = self._voter_colour(voter)
+                p.setBrush(QBrush(colour))
+                p.setPen(QPen(colour, 1.0))
+                p.drawRect(QRectF(left, y + 2, CALL_SWATCH_PX, CALL_SWATCH_PX))
+                p.setPen(QPen(self.TEXT_LIGHT))
+                p.drawText(
+                    int(left + CALL_SWATCH_PX + 6), int(y + CALL_SWATCH_PX + 1), text
+                )
+
         def _draw_header(self, p: QPainter, w: int, font_hdr: QFont, font_sm: QFont):
             p.setFont(font_hdr)
             p.setPen(QPen(self.ACCENT))
@@ -2176,13 +2316,16 @@ if _HAS_QT:
         max_overlays: int = NO_OVERLAY_CAP,
         tokens=None,
         width_px: int = POST_IMAGE_WIDTH_PX,
+        direction: str = "",
+        readings=(),
     ) -> ChartImage:
         """Draw ``candles`` through ``ChartPainter`` and write a PNG at ``path``.
 
         No window is shown: ``paint_to`` draws onto a ``QImage``, which Qt
-        allows off the GUI thread. ``voters`` are the confirming indicators and
-        ``max_overlays`` is the cap the ATA-SPM settings page sets. The height
-        follows the panes the surviving overlays need.
+        allows off the GUI thread. ``voters`` are the confirming indicators,
+        ``max_overlays`` is the cap the ATA-SPM settings page sets, and
+        ``set_call`` takes ``direction`` with the ``readings`` those voters
+        published.
         """
         if QGuiApplication.instance() is None:
             return ChartImage(note=NO_APPLICATION_NOTE)
@@ -2193,6 +2336,7 @@ if _HAS_QT:
         painter.set_timeframe(str(timeframe))
         painter.show_only(drawn)
         painter.set_candles(held)
+        painter.set_call(direction, readings)
         if not held:
             painter.set_error(
                 NO_CANDLES_NOTE.format(symbol=symbol, timeframe=timeframe)
@@ -2229,7 +2373,10 @@ else:
         max_overlays: int = NO_OVERLAY_CAP,
         tokens=None,
         width_px: int = POST_IMAGE_WIDTH_PX,
+        direction: str = "",
+        readings=(),
     ) -> ChartImage:
         """Answer that no image was drawn, because PySide6 is not installed."""
         del candles, symbol, timeframe, path, voters, max_overlays, tokens, width_px
+        del direction, readings
         return ChartImage(note=NO_QT_NOTE)
