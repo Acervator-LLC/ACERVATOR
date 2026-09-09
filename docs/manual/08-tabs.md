@@ -875,8 +875,8 @@ rather than typed.
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | no | yes | in scope |
-| `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/paper_trader_tab.py` | `paper_trader_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
@@ -1533,3 +1533,49 @@ CONTROLS = ("bot_visualizer", "theme_engine", "design_tokens")
 Both builds were opened with the change in place. Qt draws eight main tabs and
 React draws ten, the same counts as before, and the Swarm tab in each carries no
 View picker, no row list and no lane sheet.
+
+## 2026-09-09 23:05 - #128 - the Electron shell draws the Inspector tab and its proposals pane
+
+The Inspector tab draws in the Electron shell. The shell asks the application
+which tabs it builds, matches `market_inspector.state` to the module that serves
+it, and gives that module the Inspector tab.
+
+`desktop/renderer/panel_host.js` — `register`
+
+```javascript
+    panels[name] = spec;
+    dropFault(name);
+    kinds[name] = declaredKind(name, spec);
+```
+
+The panel host now draws the proposals pane into the right-hand slot, under the
+name `market_inspector_topologies.js` registers. The slot used to be filled by a
+call straight to the module, so the registration drew nothing and removing it
+changed no pixel.
+
+`src/gui/web/market_inspector.js` — `fillSlot`
+
+```javascript
+    host.mount(TOPOLOGY_PANEL, slot, null);
+```
+
+`desktop/renderer/index.html` links `market_inspector.css`, the stylesheet that
+carries the colour, border and type of every part the two modules stamp. The
+file shipped and nothing loaded it, so every button on the screen drew in the
+browser default. The button rule reads the design token that holds the ground
+the theme gives a Qt push button.
+
+`src/gui/web/market_inspector.css` — the button ground
+
+```css
+  background: var(--SURFACE_2, var(--btn-bg));
+```
+
+One picture item still differs. The Include active markets box is the browser
+checkbox, where Qt draws an 18 pixel box with a `#7a7a9c` border on `#0e0e1a`,
+and no design-system token carries `#0e0e1a`.
+
+Both screens were driven on one payload of 54 markets, 300 daily candles each
+and three ranked proposals. Twenty-six of twenty-seven picture items match, so
+rows 878 and 879 read `yes` under Registers in Electron. The run is in
+[2026-09-09_market_inspector_register.md](../../tests/debug_reports/2026-09-09_market_inspector_register.md).

@@ -41,7 +41,8 @@ body {
 [data-part="dismiss-button"],
 [data-part="cancel-button"],
 [data-part="adopt-button"] {
-  background: var(--btn-bg);
+  /* SURFACE_2 is the ground the theme gives QPushButton. */
+  background: var(--SURFACE_2, var(--btn-bg));
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 2px;
