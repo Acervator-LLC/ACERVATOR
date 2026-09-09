@@ -1103,6 +1103,559 @@ flowchart LR
 
 ---
 
+## 8. The Exchange Participation Layer, and the rotating reward set
+
+**HIS.** The 2026-09-09 directive, in his words:
+
+> Exchange Participation Layer - Random rotates markets that can reward Quint
+> without notifying anyone other than the PoA blockchain where said information
+> is encrypted and can only be unlocked / read with the owning exchange's private
+> key. In absence of EPL, same mechanism will be handled internally and in a
+> decentralized manner using Acervator instances as certifying nodes.
+
+His 2026-09-07 brainstorm already names the fallback's shape: a world defined by
+Acervator instances acting as PoA Nodes. The decentralized path reuses that idea
+rather than adding a second one.
+
+### What the rotation answers, and what it leaves open
+
+**MINE.** The rotation defeats **targeted** farming. A participant cannot pick one
+market and grind it, because the rewarding set is concealed and it moves.
+
+The rotation does not defeat **blanket** farming, where a participant trades every
+market to cover whichever ones reward. Writing that the mechanism closes the hole
+would be false. The defence against blanket farming is a ratio, and the next
+section states it.
+
+### The blanket-farming ratio
+
+**MEASURED.** The platform can enumerate its market universe, so the ratio's
+denominator is a real figure rather than an estimate.
+
+`src/exchange/base.py` — the contract every connector implements
+
+```python
+    @abstractmethod
+    async def get_markets(self) -> list[AssetInfo]:
+        """Return one ``AssetInfo`` per tradeable market."""
+```
+
+`CcxtConnector.get_markets` builds that list from the venue's own market map,
+drops anything the venue marks inactive, and caches the result. The count reaches
+the log on every launch.
+
+`src/exchange/ccxt_connector.py` — the count at connect
+
+```python
+            market_count = len(sync_exchange.markets) if sync_exchange.markets else 0
+            logger.info("Connected to %s (%d markets)", self.display_name, market_count)
+```
+
+`AssetInfo` also carries the two numbers that price a covering pass, per market.
+
+`src/exchange/base.py` — the fields that set the floor cost
+
+```python
+    min_cost: float  # Minimum order cost (in quote)
+    maker_fee: float
+    taker_fee: float
+```
+
+```
+PROPOSED — the ratio, from those fields
+
+N  live markets on the venue         len(sync_exchange.markets), logged at connect
+K  markets rewarding in one window   HIS number, and he has not set it
+
+cost multiplier to cover = N / K
+floor cost of one pass   = sum of min_cost across the N markets, each leg
+                           charged that market's taker_fee
+```
+
+A participant who knew the set would pay for K markets. A participant who does not
+know it pays for N. Covering therefore costs N divided by K times as much per unit
+distilled, and that multiplier is the whole defence.
+
+The shape of the defence follows directly. At K of one and N in the hundreds,
+covering costs hundreds of times more than targeting, and the defence is strong.
+At K equal to half of N, covering costs twice as much, and the defence is thin.
+**K is the only free variable, which makes it the number that decides whether this
+mechanism works.**
+
+Two cautions on the figures. N is a fact about one venue on one day, not a fact
+about this repository, so the document gives the formula and its source rather
+than a fixed count. And the repository's own curated catalogue is a different,
+much smaller set — `crypto_assets.ASSETS` holds forty entries, measured by
+importing it — which must not be read as the market universe.
+
+### Eligibility: two conditions, and both are required
+
+**HIS.** The 2026-09-09 directive, in his words:
+
+> Quint allotment will not occur outside of the top 20 assets by volume on a given
+> exhange or those that have been not been listed for less than six months. We do
+> not want obscure pumps awarding Quint. Rotations happen based on time
+> (expiration) and Total Trade Volume While Active or all Quint is awarded
+> (proportionate to market volume at time of activation).
+
+A market can reward Quintessence only while both hold.
+
+```
+volume   inside the top 20 by volume on that exchange
+age      listed for at least six months
+```
+
+### The reading that awaits his confirmation
+
+**MINE, and it is not buried.** His sentence carries a double negative — "those
+that have been not been listed for less than six months" — and the two readings
+differ in effect.
+
+```
+both required        a new listing inside the top 20 is REFUSED
+either sufficient    a new listing inside the top 20 is ALLOWED
+```
+
+His stated purpose decides it. An obscure pump can climb a top-20 table on the
+strength of the pump itself, so only the first reading refuses one. **This document
+is written throughout on both-required, and one word from him confirms or
+overturns that.** Every rule below rests on it.
+
+### How an activation ends
+
+**HIS.** A market's activation ends on whichever of three arrives first.
+
+```
+expiry      the window's time runs out
+volume      total trade volume while active reaches its threshold
+exhausted   every unit of that market's allotment has been awarded
+```
+
+The thresholds themselves are his to set. Nothing in the design changes if he
+moves them.
+
+### The allotment is a snapshot
+
+**HIS** for the rule, **MINE** for naming the property. The allotment is sized in
+proportion to that market's volume at the moment of activation.
+
+Volume is therefore read once. Pumping a market's volume during the window does not
+enlarge its pool. **That is an anti-manipulation property and it belongs on the
+list of them**, beside the concealment of the rotating set: the first stops a
+participant choosing which market pays, and this one stops a participant enlarging
+what it pays.
+
+### The ratio restated, with the cap in place
+
+**MINE.** The eligibility rules change the ratio stated above, and they change it
+in two opposite directions. An honest answer carries both.
+
+**The haystack shrinks.** The ratio above takes the live market count as its
+denominator, which runs to hundreds on a large venue. Eligibility caps the drawable
+set at twenty per exchange, narrowed further by the six-month rule. Covering twenty
+markets is affordable. **Concealment is therefore the weaker half of the defence
+now, not the stronger half.**
+
+**The prize becomes finite.** Each activation carries its own allotment and ends
+when that allotment is spent, so trading on past the pool's end distils nothing.
+Blanket coverage buys a share of a bounded pool rather than an open tap.
+
+```
+PROPOSED — the defence, as the rules now shape it
+
+before       cover N markets to find K, and the yield was open
+now          cover at most 20 per exchange to find K, and the yield stops
+             at the allotment
+the defence  the cap, and no longer the concealment
+```
+
+Four bounds now apply, where before there was one.
+
+```
+what bounds the yield
+
+eligibility  at most twenty markets per exchange can pay at all
+expiry       the window closes on time whatever anyone trades
+volume       the window also closes when trade volume while active reaches
+             its threshold
+allotment    the pool is finite and fixed at activation, so it cannot grow
+```
+
+The volume end condition earns its own line. A participant trading hard in an
+active market brings that market's own closure nearer, which makes heavy farming
+self-limiting rather than merely expensive.
+
+### Can the platform rank a top 20 by volume
+
+**MEASURED. Yes, and the function already takes the count as a parameter.**
+
+`src/exchange/market_inspector_fetcher.py` — `_pick_universe`, the ranking
+
+```python
+        scored.sort(key=lambda t: -t[0])
+        top = [sym for _v, _b, sym in scored[:top_n]]
+```
+
+Three properties of it matter to an eligibility test, and each one is a
+qualification rather than a blocker.
+
+```
+MEASURED — what _pick_universe ranks, and what it leaves out
+
+the filter     only quotes in DEFAULT_QUOTES count, which is USD, USDC and
+               USDT, and a base in STABLECOIN_DENYLIST is dropped; so its
+               top twenty is a top twenty of a filtered set
+the overflow   a base in active_symbols is appended even when it falls
+               outside top_n, so the returned list can exceed twenty; an
+               eligibility test must take the first twenty, not the whole list
+the units      volume falls back from quoteVolume to baseVolume when the
+               venue gives no quote volume, and those are different units,
+               so a market ranked on base volume is not comparable with one
+               ranked on quote volume
+```
+
+The third is the one to repair before this becomes an eligibility authority. A
+ranking that mixes two units does not order its own members.
+
+### Can the platform answer listing age
+
+**MEASURED. No, not the venue fact — and a field named for it holds something
+else.**
+
+Nothing in the tree records when a venue listed a market. `AssetInfo` carries no
+date, and the connector reads only the active flag, the limits, the precision and
+the two fees out of the venue's market entry, so a venue-supplied creation date
+would be dropped even where one arrives.
+
+```
+$ grep -rniE "listed_at|listing_date|first_listed|launch_date|inception_date" src/ --include=*.py
+  no field; every hit for the word "listed" is unrelated prose
+
+control, same grep shape over a name that is present:
+$ grep -rniE "\bquoteVolume\b" src/exchange/ccxt_connector.py src/exchange/data_pool.py \
+      src/exchange/chart_data.py src/exchange/market_data.py | wc -l
+3
+```
+
+One field is named for listing and measures a data boundary. Its own docstring says
+so, which is the honest half.
+
+`src/trading/stone_tablets/storage.py` — `StoneTablet.listed_at_ms`
+
+```python
+    @property
+    def listed_at_ms(self) -> int:
+        """Timestamp of the earliest row in ``candles``, equal to
+        ``first_ts_ms``.
+
+        Zero when ``candles`` is empty.
+        """
+        return self.first_ts_ms
+```
+
+`src/trading/stone_tablets/registry.py` — the same value on `AvailabilityInfo`
+
+```python
+    listed_at_ms: int  # first candle in tablet (0 if none)
+```
+
+Three members read that one value. `AvailabilityInfo.is_listed_before` compares it
+against a timestamp, `listing_notice` turns it into a line of text, and
+`WindowStatus.LATE_LISTING` names the case where a tablet begins after the window
+asked for.
+
+**Using it for the six-month test is an inference, and this is what the inference
+gets wrong.** The value is when Acervator first held price data for that market,
+not when the venue listed it. A market the platform only began recording last
+month reads as one month old however long the venue has carried it.
+
+```
+PROPOSED — the error has one direction, and that direction is safe
+
+a tablet cannot start before the market existed, so listed_at_ms is always
+at or after the true listing date
+
+therefore   the test can REFUSE an old market whose tablet is young
+and never   ADMIT a market younger than six months
+```
+
+For a rule whose purpose is excluding new listings, a test that only ever errs
+toward refusal is usable. The six-month test can run on this field today, provided
+the design says out loud that it is reading a data boundary and not a venue fact.
+The true fact needs the connector to keep a creation date the venue supplies, and
+that has no home.
+
+### What is still unbounded
+
+**MINE.** Two things the eligibility rules and the end conditions do not bound. The
+first is the more serious.
+
+**How one market's pool divides among the participants who certified in it.** The
+rules fix the pool's size and say nothing about its split. If a pool divides by
+each participant's share of the fees or the volume in that market, then the
+participant with the most volume takes the largest share of every pool. That is the
+outcome the whole directive exists to prevent, and it returns through the split
+rather than through the size. **A rule naming the split is the missing piece, and
+it is his.**
+
+**How many exchanges one participant draws from.** The top-twenty rule is stated
+per exchange, and the platform supports fifteen.
+
+```
+$ python -c "from src.exchange.ccxt_connector import SUPPORTED_EXCHANGES; print(len(SUPPORTED_EXCHANGES))"
+15
+```
+
+Fifteen venues at twenty eligible markets each is up to three hundred eligible
+markets, and a participant connected to all fifteen draws from fifteen separate
+sets of pools per rotation. Nothing in these rules caps that.
+
+### Which existing symbol carries which part of the rotation
+
+**MEASURED.** Four parts of the rotation already have a symbol. Two do not.
+
+| Part of the rotation | Symbol | File |
+| -------------------- | ------ | ---- |
+| The market universe to draw from | `ExchangeInterface.get_markets`, returning `AssetInfo` | `src/exchange/base.py` |
+| The commitment to a concealed set | `merkle_root`, a standalone function over any list of leaf hashes | `src/competition/merkle_log.py` |
+| Proof that one market was in the set, without revealing the set | `merkle_proof` and `verify_proof` | `src/competition/merkle_log.py` |
+| Announcing the window on chain | `LocalChain.emit` and `LocalChain.send_tx` | `src/competition/local_testnet.py` |
+| The window boundary | `LocalRegistry.open_competition` and `close_for_submission` | `src/competition/local_testnet.py` |
+| A node's signing key | `BotIdentity.sign_trade` and `verify_trade`, Ed25519 | `src/competition/bot_identity.py` |
+
+**The commitment primitive already exists, and this is the useful finding.**
+`merkle_root` takes a plain list of leaf hashes, not a trade log, so it commits to
+any set at all. A rotation set hashes into leaves, its root publishes before the
+window, and after the close one inclusion proof shows a single market's membership
+while the rest of the set stays unread.
+
+`src/competition/merkle_log.py` — the three standalone primitives
+
+```python
+def merkle_root(leaves: List[str]) -> str:
+    """Compute Merkle root from a list of leaf hashes."""
+
+def merkle_proof(leaves: List[str], leaf_index: int) -> List[dict]:
+
+def verify_proof(leaf_hash: str, proof: List[dict], root: str) -> bool:
+```
+
+### What the rotation has no home for
+
+**MEASURED.** The block hash cannot serve as a shared random value, and the reason
+is not the one a reader would guess. It is not predictable; it is unverifiable.
+
+`src/competition/local_testnet.py` — how a block hash is built
+
+```python
+def _fake_hash(seed: str = "") -> str:
+    raw = f"{seed}{time.time_ns()}{uuid.uuid4()}"
+    return "0x" + hashlib.sha256(raw.encode()).hexdigest()
+```
+
+Wall-clock nanoseconds and a fresh identifier go into every hash, so no second
+node can reproduce it and no two nodes would agree on it. A beacon needs a value
+every node can check, which this is not.
+
+```
+no home yet
+
+a rotation record        no field, no table, no chain event for a chosen set
+a reward-eligibility test nothing asks whether a market rewards
+a shared random value    the block hash is local and unverifiable, above
+a threshold signature    BotIdentity is Ed25519, which does not split into
+                         key shares; a threshold scheme needs a new primitive
+a node registry          no list of certifying instances exists
+an exchange key          no field holds an exchange public key
+```
+
+### Can the season schedule carry the rotation
+
+**MEASURED. It cannot, and the reason is structural.** `season_schedule.py` holds
+no clock, no window and no stored state. Its two functions take an integer and
+return an integer, and its tier table is frozen.
+
+`src/competition/season_schedule.py` — the whole of its state-free arithmetic
+
+```python
+def season_reward(season: int) -> int:
+    raw = INITIAL_REWARD * (DECAY_FACTOR ** (season - 1))
+    return max(MIN_SEASON_REWARD, int(raw))
+
+
+def cumulative_supply(through_season: int) -> int:
+    total = sum(season_reward(s) for s in range(1, through_season + 1))
+    return min(total, TOTAL_SUPPLY_CAP)
+```
+
+A rotation needs a window with a start, an end, and a record of what was chosen
+for it. None of those three has anywhere to live in that file.
+
+```
+PROPOSED — what the schedule can contribute, and what it cannot
+
+can     the season number as the rotation's outer period, and
+        season_reward as the per-season budget the rotation draws against
+cannot  the window, its boundaries, or the chosen set
+the home LocalRegistry already opens and closes a window, and already stores
+        per-competition state, so the rotation record belongs beside it
+```
+
+### Proposed: a commitment that opens after the window
+
+**MINE.** Encryption to the exchange and a commitment are two different
+properties, and his directive supplies only the first.
+
+```
+PROPOSED — the two properties, kept apart
+
+concealment from participants   encryption to the owning exchange's key
+                                gives this, and his directive says so
+non-repudiation of the choice   a published root before the window gives
+                                this; encryption alone does not
+```
+
+**Encryption to the exchange conceals the rotation from participants and not from
+the exchange.** The exchange holds the key by construction, so it can read its own
+rotation whenever it likes, including before the window opens. A commitment does
+not repair that, because the exchange holds the plaintext either way.
+
+The shape that does repair it takes the choice away from the exchange. If a beacon
+selects the markets, nobody knows the set before the round resolves — not the
+exchange, not a node, not a participant. Encryption then becomes a courtesy rather
+than the security property.
+
+```
+PROPOSED — the sequence
+
+before the window   publish merkle_root of the chosen set on chain
+during the window   the set stays unread; only the root is public
+after the close     publish the set, and serve merkle_proof per market so one
+                    membership check never reveals the rest
+```
+
+What it costs. Two extra chain writes per window, the root and the opening. The
+window cannot settle until the opening lands, so a node that drops out delays
+payment. The plaintext has to be retained between the two writes, which creates a
+place where the secret can leak. And a participant learns nothing during the
+window, which is the point, so nobody can see their standing until it closes.
+
+### Proposed: randomness no single node chooses
+
+**MINE**, on published sources. In the fallback every Acervator instance certifies.
+A selection one instance computes is a selection that instance can bend toward its
+own markets. The requirement is exact: **verifiable by every node, attributable to
+none.**
+
+Three published approaches, and only one meets both halves.
+
+| Approach | Verifiable by all | Attributable to none |
+| -------- | ----------------- | -------------------- |
+| Commit-reveal, as RANDAO does it | yes | **no** — the last participant to reveal sees every other reveal and can withhold to bias the outcome, the documented last-revealer attack |
+| A single-key verifiable random function, as Algorand and Ouroboros use | yes, and the output cannot be biased | **no** — one key holder computes it, which is the node this design must not trust |
+| A threshold signature beacon, as drand and the League of Entropy run | yes, against one group public key | **yes** — the key is split into shares, any t of N produce the value and fewer cannot |
+
+**Recommended: the threshold beacon.** Each node signs the round number with its
+key share, any t shares combine into one value under the group public key, and
+every node checks that value without knowing which nodes signed. The rotation is
+then the set selected by hashing that value against the market list.
+
+One property makes it better than a commit-reveal here. The value for a round
+cannot exist until t nodes have signed, so no party — including the exchange —
+knows the set in advance. That closes the early-knowledge hole named above, and a
+commit-reveal does not.
+
+What it costs. A threshold scheme needs a key primitive the tree does not have:
+`BotIdentity` is Ed25519 and a single key, and splitting into shares needs a
+pairing-friendly curve. It needs a node registry, a distributed key setup, and a
+chosen t. Below t signers the beacon stalls and no rotation opens, so liveness
+becomes a real operational concern rather than a theoretical one.
+
+### Sources for the randomness research
+
+| Source | What it settled |
+| ------ | --------------- |
+| [Public randomness and randomness beacons](https://a16zcrypto.com/posts/article/public-randomness-and-randomness-beacons/) | What a beacon has to provide, and how threshold schemes differ from commit-reveal |
+| [Commit-Reveal² — securing randomness beacons](https://arxiv.org/pdf/2504.03936) | The last-revealer attack on a commit-reveal beacon, and its liveness weakness |
+| [A distributed verifiable random function on threshold signatures](https://eprint.iacr.org/2026/969.pdf) | Threshold signing as the standard for distributed beacons, and drand and the League of Entropy as the running examples |
+
+### Three facts the rotation cannot repair
+
+**MEASURED.** Section 7 records three things about the fee path. A rotation changes
+none of them, and a design that names the rotation as the answer to farming would
+be leaning on a number that falls.
+
+```
+carried forward, still true
+
+no monotonic fee total   nothing in the platform holds a lifetime figure; the
+                         stored one is re-derived from a bounded trade window
+                         and falls as older fills leave it
+buys record no fee       _record_venue_fee clears on a buy, so a fold distils
+                         nothing from a venue-reported number
+the manual path          _execute_manual_rebalance evaluates no gate chain, and
+                         emits four labels TRADE_TYPES does not declare
+```
+
+A rotation decides **which** markets reward. It cannot decide **how much**, because
+the amount reads a figure that moves in the wrong direction.
+
+### A comment that claims more than its value delivers
+
+**MEASURED**, and recorded rather than repaired. This unit writes no product code,
+and changing what this figure means would change a number the status screen already
+shows.
+
+`src/exchange/position_health.py` — the field and its comment
+
+```python
+    fees_paid_total: float  # cumulative fees in quote currency
+```
+
+The value is a running sum over whatever trade list the caller passes in.
+
+`src/exchange/position_health.py` — how the sum is built
+
+```python
+        fees += float(t.fee or 0)
+```
+
+The only caller in the trading path passes a bounded list.
+
+`src/trading/scrumming/reconciliation.py` — the bounded call
+
+```python
+            _trades = await self.exchange.get_my_trades(self.config.symbol, limit=500)
+```
+
+The word cumulative reads as a lifetime total. The value is a sum over one
+five-hundred-fill window of one symbol, recomputed on each refresh. Whoever
+repairs it has to decide what the figure means to every consumer of it, which
+makes the decision his and not this document's.
+
+### The rotation in one picture
+
+**MINE** for the arrangement, **MEASURED** for every symbol in it.
+
+```mermaid
+flowchart LR
+    NODES["Acervator instances<br/>as certifying nodes"]
+    BEACON["threshold beacon<br/>NO PRIMITIVE YET"]
+    UNIV["ExchangeInterface.get_markets<br/>the market universe"]
+    PICK["the rewarding set<br/>K of N markets"]
+    ROOT["merkle_root<br/>published before the window"]
+    WIN["LocalRegistry.open_competition<br/>the window"]
+    OPEN["merkle_proof per market<br/>after the close"]
+    NODES --> BEACON
+    BEACON --> PICK
+    UNIV --> PICK
+    PICK --> ROOT
+    ROOT --> WIN
+    WIN --> OPEN
+```
+
+---
+
 ## The six choices
 
 Six questions are his. Each carries one recommendation and the cost of the
@@ -1201,6 +1754,67 @@ buy. The third option only moves the leak; it does not close it.
 This is the highest-value open question in the PoA economics, because every other
 part of the socket works the same way whichever answer he gives, and this answer
 alone decides whether the mechanism does its job.
+
+---
+
+## The eighth choice, and it sets the strength of the rotation
+
+The rotation's defence against blanket farming is the ratio of live markets to
+rewarding markets. Everything else in section 8 holds whichever number he picks.
+That one number decides how strong the defence gets.
+
+### Choice 8 — how many markets reward in one window
+
+| Option | What it gives | What it costs |
+| ------ | ------------- | ------------- |
+| **A small fixed count, one to three** | Covering costs a multiple in the hundreds, so blanket farming stops being worth doing | A participant trading a handful of markets may distil nothing for several windows, which reads as bad luck rather than as design |
+| A fraction of the universe, say one market in ten | Steadier distilling, and a participant rarely goes a window empty | Covering costs only ten times as much, so a funded participant can absorb it |
+| Half the universe | Almost nobody goes empty | Covering costs twice as much, and the defence is gone |
+
+**Recommended: a small fixed count, with the window short enough that an empty
+window costs little.** A short window turns the small count from a drought into a
+shuffle, and the two settings work together: the count sets the defence, and the
+window length sets how much an unlucky draw hurts.
+
+Both numbers are his, because they decide what an event costs in hours of trading.
+Nothing in the design changes if he moves them.
+
+**Read that table against the eligible set, not the whole venue.** His eligibility
+rules cap the drawable set at twenty markets per exchange, so a fraction of the
+universe means a fraction of twenty, and the multiples in the table shrink with it.
+A small fixed count is still the strong setting; the weak settings are weaker than
+that table suggests.
+
+---
+
+## The ninth choice, and it is now the largest hole
+
+The eligibility rules and the end conditions bound a market's pool. Nothing bounds
+how that pool divides among the participants who certified in it, and the division
+is where a whale can return.
+
+### Choice 9 — how a market's allotment divides among its certifiers
+
+| Option | What it gives | What it costs |
+| ------ | ------------- | ------------- |
+| **An equal share per certifying participant** | Volume buys no advantage at all, which is the directive's own purpose stated as arithmetic | A participant who traded one fill takes the same share as one who traded all day, so the pool attracts minimum-effort entries |
+| Proportionate to each participant's fees in that market | Effort is rewarded in the way the socket already measures it | The participant with the most volume takes the largest share of every pool, which rebuilds the whale advantage inside the split |
+| An equal share, capped by a minimum qualifying volume | Volume buys no advantage above the floor, and a token fill does not qualify | One more threshold for him to set, and a participant just under the floor gets nothing |
+
+**Recommended: an equal share above a minimum qualifying volume.** His sentence
+sets the bar — participation must benefit many and not just themselves — and an
+equal share is the only split that delivers it. The floor removes the
+minimum-effort entry that a flat equal share invites, and it is one number rather
+than a formula.
+
+Two smaller items ride with this one, and both are one word or one number from him:
+
+```
+the reading        both conditions required, or either sufficient — section 8
+                   is written on both-required and needs his confirmation
+the volume floor   the minimum qualifying volume above, if he takes the
+                   recommendation
+```
 
 ---
 
