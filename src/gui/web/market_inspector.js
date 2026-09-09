@@ -896,9 +896,6 @@
   var INHERITED = "inherit";
   var PRE_SPACE = "pre";
 
-  var SIGNALS_TABLE = "signals";
-  var PAIRS_TABLE = "pairs";
-
   var TOPOLOGY_SLOT = "market-inspector-topologies";
   // The panel name market_inspector_topologies.js registers under.
   var TOPOLOGY_PANEL = "market_inspector_topologies";

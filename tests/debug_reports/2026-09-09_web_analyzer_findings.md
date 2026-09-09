@@ -133,11 +133,21 @@ it in one of two groups.
 ### 2.1 the split
 
 ```
-leftovers, deleted                 40
-wiring that never got connected     3
+leftovers, deleted                 41
+wiring that never got connected     2
 ```
 
-Section 2.4 says why two of the three unwired names stay.
+The counts break down per file as:
+
+```
+native_chart.js        7 deleted
+header_strip.js       20 deleted
+indicator_panel.js     1 deleted
+market_inspector.js    5 deleted
+spendable_profits.js   2 deleted
+bot_visualizer.js      5 deleted, 1 connected
+trade_charts_tab.js    1 deleted, 1 connected
+```
 
 ### 2.2 the leftovers
 
@@ -167,6 +177,7 @@ The rest:
 trade_charts_tab.js   CHANGE_EVENT     the module wires React onChange, not a DOM listener
 indicator_panel.js    MINI_PART        a mini panel is two grid slots, not one element
 market_inspector.js   MODULE_STATUS_PART, LEFT_STRETCH_PART   the file draws no such element
+market_inspector.js   SIGNALS_TABLE, PAIRS_TABLE   two table names nothing reads, section 2.4
 market_inspector.js   the caught error in `repeated`, which the handler never reads
 spendable_profits.js  SEPARATOR_GAP, TRAILING_STRETCH   the item list carries both
 bot_visualizer.js     ROW_MARGINS, ROW_SPACING   each row's own frame carries both
@@ -204,17 +215,41 @@ both:
 this tab's payload carries null and `height` answers undefined, which writes no
 style. Nothing on screen moves today.
 
-### 2.4 the two left in place
+### 2.4 the two table names, and the tables that do not draw
 
-`market_inspector.js` declares `SIGNALS_TABLE` and `PAIRS_TABLE`. They carry
-the two table identities for `TableGroup`, which the file builds, exports, and
-never draws. `Grid` and `EmptyNote` sit in the same state. The surface fills
-`signal_rows` and `pair_rows`, and the Qt tab draws a table for each.
+`market_inspector.js` declared `SIGNALS_TABLE` and `PAIRS_TABLE`, holding the
+strings `signals` and `pairs`. A search of the whole tree, excluding the package
+directories, finds each name twice: its own declaration, and this report.
 
-Drawing them would put two tables on a screen that has none today. That changes
-what the screen draws, which this unit may not do. The two names stay, ESLint
-keeps reporting them, and `market_inspector.js` answers `passed=False` on that
-finding alone.
+```
+grep -rn "SIGNALS_TABLE\|PAIRS_TABLE\|signals_table\|pairs_table\|SignalsTable\|PairsTable"
+  src/gui/web/market_inspector.js:899  var SIGNALS_TABLE = "signals";
+  src/gui/web/market_inspector.js:900  var PAIRS_TABLE = "pairs";
+```
+
+Both sat inside the module's function scope and neither reached the object at
+`global.acervatorMarketInspector`, so no string lookup from another module can
+name them. They are leftovers and this unit deletes them.
+
+Deleting them settles nothing about the tables, and the tables are a separate
+fact. `TableGroup` is defined and exported and no file constructs it. The
+module `market_inspector_topologies.js` defines and draws its own `TableGroup`,
+which is a different function. Read in the running shell:
+
+```
+payload   signal_columns 6   pair_columns 7   signal_rows 0   pair_rows 0
+drawn     table-group 0  grid 0  grid-head 0  grid-row 0  grid-cell 0
+          empty-note 0   [data-table] 0
+          module-group 6
+exports   TableGroup present   Grid present
+```
+
+The screen draws six module groups and no table of any kind. The `module-group`
+count is the control: the same query reports the parts that do exist, so a zero
+is a fact about the screen rather than about the query.
+
+Drawing those two tables would change what the screen shows, which this unit
+may not do. The finding stays named here and this unit does not act on it.
 
 ---
 
@@ -346,7 +381,7 @@ The instrument reports a difference when one exists.
 ## 6 — the checks
 
 ```
-npx eslint            2 errors, both named in 2.4
+npx eslint            0
 npx stylelint         0
 npx html-validate     0
 tools.local_ci black  VERDICT: PASSED
