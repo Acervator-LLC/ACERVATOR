@@ -35,6 +35,12 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
+from .native_chart_surface import INDICATOR_DEFAULTS as PANEL_INDICATOR_DEFAULTS
+from .native_chart_surface import INDICATOR_TOGGLES as PANEL_INDICATOR_TOGGLES
+from .native_chart_surface import INDICATOR_ROW_SPACING_PX as PANEL_TOGGLE_GAP_PX
+from .native_chart_surface import LEGEND_INVISIBLE_TEXT as PANEL_LEGEND_INVISIBLE
+from .native_chart_surface import LEGEND_SPACING_PX as PANEL_LEGEND_GAP_PX
+from .native_chart_surface import LEGEND_ON_BOOK_TEXT as PANEL_LEGEND_ON_BOOK
 from .native_chart_surface import TIMEFRAMES as PANEL_TIMEFRAME_OPTIONS
 
 METHOD = "trade_charts_tab.state"
@@ -1518,6 +1524,20 @@ def build_view_model(
             "timeframe_options": list(PANEL_TIMEFRAME_OPTIONS),
             "minimum_height_px": PANEL_MINIMUM_HEIGHT_PX,
             "maximum_height_px": PANEL_MAXIMUM_HEIGHT_PX,
+        },
+        "panel_chrome": {
+            "toggles": [
+                {
+                    "key": key,
+                    "label": label,
+                    "color": colour,
+                    "checked": PANEL_INDICATOR_DEFAULTS[key],
+                }
+                for key, label, colour in PANEL_INDICATOR_TOGGLES
+            ],
+            "legend": [PANEL_LEGEND_INVISIBLE, PANEL_LEGEND_ON_BOOK],
+            "toggle_gap_px": PANEL_TOGGLE_GAP_PX,
+            "legend_gap_px": PANEL_LEGEND_GAP_PX,
         },
         "nuclear_defaults": {
             "timeframe": NUCLEAR_TIMEFRAME,

@@ -219,6 +219,151 @@ chartMountText     Panel native_chart did not draw: native_chart.js registered
 
 ---
 
+## 3 — The chart held no overlay series, so five indicators drew nothing
+
+### 3.1 the error
+
+Every flag read true and every series was empty, so `active_sub_panes` found no
+pane to place.
+
+```
+flags     show_bb true, show_vortex true, show_macd true, show_stochrsi true,
+          show_ichimoku true, show_volume true
+sub_panes []
+bb_data 0  vortex_data 0  macd_data 0  stochrsi_data 0  ichimoku_data 0
+```
+
+### 3.2 reproduction
+
+`native_chart_surface.view_model` was called with the shared payload and the
+answer read back.
+
+```
+python -X dev native_chart.state {reset, symbol, timeframe, candles, width, height}
+```
+
+### 3.3 the cause
+
+`ChartModel.set_indicator_series` had no caller. `CandlestickChart.set_candles`
+fills the Qt side from the five indicator classes on every candle change, and
+the surface's `set_candles` did not. `build_view_model` also published no
+overlay rows, so a filled series would still have reached no renderer.
+
+### 3.4 the correction
+
+The chart takes the five readings the indicators publish, on the same step Qt
+takes them.
+
+```python
+        self.set_indicator_series(
+            bb=BollingerBands(BOLLINGER_PERIOD, BOLLINGER_STD).bands(candles),
+            vortex=[...],
+            macd=[...],
+            stochrsi=StochasticRSI().lines(candles),
+            ichimoku=IchimokuCloud(*ICHIMOKU_PERIODS).lines(candles),
+        )
+```
+
+Nothing here recomputes a band, a span, a signal line or a ratio. The payload
+gained `overlays` for the price pane and `sub_pane_rows` for the three panes
+under it, both as pixel rows beside the ones the chart already published, and
+`native_chart.js` draws them in the mount it already reserved for sloped
+strokes and filled shapes. The tab draws the eight switches and the two
+position markers from `panel_chrome`, which carries `INDICATOR_TOGGLES` and the
+two legend texts.
+
+### 3.5 the rerun
+
+```
+sub_panes ['vortex', 'macd', 'stochrsi']
+bb_data 180  vortex_data 180  macd_data 180  stochrsi_data 180  ichimoku_data 180
+chartMountMarkup 235812
+chartMountText   ... Vortex (14) 0.8761  MACD (12, 26, 9) -245.82
+                     Stoch RSI (14, 14) 0.2318
+```
+
+---
+
+## 4 — The Qt chart was cut off until an indicator switch was pressed
+
+### 4.1 the error
+
+```
+panel height: 421   chart height: 250   natural height for panes: 492
+```
+
+The MACD pane, the Stochastic RSI pane and the time axis fell outside the
+widget.
+
+### 4.2 reproduction
+
+`TradeChartsTab` was built at 1400 by 900, driven with the shared payload, and
+the chart's height read back against `_natural_height_for_panes`.
+
+### 4.3 the cause
+
+`_apply_height_for_panes` was called from `_toggle_indicator` and from nowhere
+else. The candles decide which sub-panes hold a series, so the height the chart
+needs is only known once they arrive, and nothing raised it then.
+
+### 4.4 the correction
+
+```python
+        def set_candles(self, candles: list[Candle]) -> None:
+            super().set_candles(candles)
+            try:
+                self._apply_height_for_panes()
+            except Exception as exc:
+                logger.debug("chart height not re-applied on candles: %s", exc)
+```
+
+### 4.5 the rerun
+
+```
+panel height: 545   chart height: 492   natural height for panes: 492
+```
+
+The React side asks the same question of its own slot: the first answer carries
+`natural_height_px`, which sizes the mount, and the second draws into it. The
+mount measured 492 pixels.
+
+---
+
+## 5 — The two builds listed the sub-panes in different orders
+
+### 5.1 the error
+
+The Qt picture read Vortex, MACD, Stoch RSI down the page. The React picture
+read MACD, Vortex, Stoch RSI.
+
+### 5.2 reproduction
+
+Both pictures, drawn from the shared payload.
+
+### 5.3 the cause
+
+Qt places the sub-panes in `CHART_OVERLAYS` order, which is the order the
+switches are offered: `bb`, `vortex`, `macd`, `stochrsi`. `SUB_PANE_ORDER` in
+the surface read `("macd", "vortex", "stochrsi")`, which agrees with neither Qt
+nor the surface's own `INDICATOR_TOGGLES`.
+
+### 5.4 the correction
+
+```python
+#: The sub-panes in the order CHART_OVERLAYS offers them.
+SUB_PANE_ORDER = ("vortex", "macd", "stochrsi")
+```
+
+### 5.5 the rerun
+
+```
+subTitles ['Vortex (14)', 'MACD (12, 26, 9)', 'Stoch RSI (14, 14)']
+```
+
+Both pictures now read the same three titles in the same order.
+
+---
+
 ## The two pictures
 
 The Qt tab and the React tab were driven with the same payload, the same asset
@@ -235,19 +380,23 @@ the live widget.
 | candle series | 180 candles, index 0 to 179 | 180 candles, index 0 to 179 |
 | high and low in the window | 82,108.00 and 62,525.00 | 82,108.00 and 62,525.00 |
 | last-price line and box | `78,623.00` | `78,623.00` |
-| price axis ticks | `75,000.00` `70,000.00` `65,000.00` | the same |
+| price axis ticks | `80,000.00` `75,000.00` `70,000.00` `65,000.00` | the same four |
 | volume axis label | `Vol 1` | `Vol 1` |
-| time axis | clipped, the widget has 250 of the 492 pixels it asks for | `08-10` to `09-04` |
-| `bb` Bollinger bands | drawn | absent |
-| `ichimoku` cloud | drawn | absent |
-| `vortex` sub-pane | drawn, `Vortex (14)`, `0.8761` | absent |
-| `macd` sub-pane | on, clipped | absent |
-| `stochrsi` sub-pane | on, clipped | absent |
+| time axis | `08-10` to `09-04` | `08-10` to `09-04` |
+| `bb` Bollinger bands and cloud | drawn | drawn |
+| `ichimoku` cloud, four lines and the lagging line | drawn | drawn |
+| `vortex` pane | `Vortex (14)`, badge `0.8761` | the same |
+| `macd` pane | `MACD (12, 26, 9)`, histogram, badge `-245.82` | the same |
+| `stochrsi` pane | `Stoch RSI (14, 14)`, badge `0.2318` | the same |
 | `volume` bars | none, every candle carries volume 0 | none, the same |
-| `slingshot` | off | off |
-| `bbullseye` | off | off |
-| toggle row, eight boxes | drawn | absent |
-| legend `Invisible` / `On Book` | drawn | absent |
+| `slingshot` and `bbullseye` | off | off |
+| toggle row and legend | eight boxes, `Invisible` and `On Book` | the same |
+
+Eighteen of eighteen items match, so row 773 reads `yes` under Registers in
+Electron.
+
+The overlay roll call is `CHART_OVERLAYS` in `src/gui/native_chart.py`, one
+entry per overlay the chart can draw, read off the live widget.
 
 ```
 bb         starts_on=True  shown=True
@@ -260,26 +409,20 @@ slingshot  starts_on=False shown=False
 bbullseye  starts_on=False shown=False
 ```
 
-Eight of the eighteen items differ, so row 773 keeps `no` under Registers in
-Electron.
-
-## What is left
-
-Nothing fills the chart's overlay series. `ChartModel.set_indicator_series` is
-never called, so `native_chart.state` answers with every series empty and
-`active_sub_panes` finds none.
+The React switches were read back off the drawn page and carry the same eight
+states.
 
 ```
-flags     show_bb true, show_vortex true, show_macd true, show_stochrsi true,
-          show_ichimoku true, show_volume true
-sub_panes []
-bb_data 0  vortex_data 0  macd_data 0  stochrsi_data 0  ichimoku_data 0
+bb=true vortex=true macd=true stochrsi=true ichimoku=true volume=true
+slingshot=false bbullseye=false
 ```
 
-`CandlestickChart._compute_indicators` fills the Qt side from the engine
-classes and runs on every `set_candles`. The React side has no caller for the
-same five series. `native_chart.js` also draws no toggle row and no position
-legend, which the Qt panel draws around the chart.
+Two notes on the comparison itself. Every candle carries a volume of 0, because
+the CoinGecko OHLC endpoint serves none, so the volume row of the table rests on
+two empty strips and proves less than the others. And the `80,000.00` axis label
+sits under the last-price badge in the React picture and clear of it in the Qt
+one: both draw it, and `GridLabels` anchors the label by its top where Qt anchors
+by its baseline. That component predates this change and was not touched.
 
 ## One value the chart cannot fall back on
 
