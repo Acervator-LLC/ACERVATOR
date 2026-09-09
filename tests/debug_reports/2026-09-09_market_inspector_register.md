@@ -2,8 +2,9 @@
 
 Issue #128, rows 878 and 879 of the conversion table in
 [08-tabs.md](../../docs/manual/08-tabs.md). Files changed:
-`src/gui/web/market_inspector.js`, `src/gui/web/market_inspector.css` and
-`desktop/renderer/index.html`. No test file was written.
+`src/gui/web/market_inspector.js`, `src/gui/web/market_inspector.css`,
+`desktop/renderer/index.html`, `src/gui/design_system.py` and
+`src/gui/main_tabs/design_system_surface.py`. No test file was written.
 
 The Electron shell ran from `desktop/main.js` under the installed Electron
 binary with a throwaway home, and the renderer was read over the Chrome
@@ -199,6 +200,107 @@ History row and was not changed here.
 
 ---
 
+## 4 — The check boxes drew as the browser's own control
+
+### 4.1 the error
+
+```
+[data-part="switch-box"] appearance=auto background=rgba(0, 0, 0, 0) size=13x13
+```
+
+Qt paints the same control from `QCheckBox::indicator`: an 18 pixel box, a two
+pixel `border_primary` edge, a three pixel radius and a `bg_input` ground.
+
+### 4.2 reproduction
+
+The Electron shell drew the tab and the computed style of the Include active
+markets box was read.
+
+### 4.3 the cause
+
+`market_inspector.css` set `accent-color` and nothing else, which colours a
+checked native box and leaves the unchecked one white. The ground the indicator
+needs, `#0e0e1a`, was in no design-system token: `SURFACE_0` is `#0a0a0f`,
+`SURFACE_CONTROL` is `#1a1a2e` and `VIZ_INPUT_SURFACE` is `#142244`.
+
+### 4.4 the correction
+
+The token was added under the name of the role it fills, beside
+`SURFACE_CONTROL` in the surfaces family, on both sides of the table.
+
+```python
+SURFACE_INPUT = "#0e0e1a"  # Check box, radio and text field ground
+```
+
+`design_system_surface.TOKEN_NAMES` now carries 196 names against 195, and the
+stylesheet names the token rather than the value.
+
+```css
+  border: 2px solid var(--OUTLINE, var(--border));
+  background: var(--SURFACE_INPUT, var(--bg));
+```
+
+### 4.5 the rerun
+
+```
+[data-part="switch-box"] appearance=none background=rgb(14, 14, 26)
+                         border=rgb(122, 122, 156) size=18px x 18px
+```
+
+The picture agrees: the box measures `#0e0e1a` with a `#7a7a9c` edge in the Qt
+PNG and `#0e0e19` with a `#7b7a99` edge in the React PNG, the one-step drift
+every near-grey shows between the two capture paths.
+
+---
+
+## 5 — Three readings came from an Electron the run had already finished with
+
+### 5.1 the error
+
+The check box read `appearance=auto` on three consecutive runs after the
+stylesheet already carried `appearance: none`, and two expressions added in the
+same edit answered nothing at all.
+
+```
+switchStyle = "auto bg=rgba(0, 0, 0, 0)"
+sheets      = null
+switchRule  = null
+```
+
+### 5.2 reproduction
+
+```
+tasklist | grep electron   ->  4 processes, all naming this run's user-data-dir
+```
+
+### 5.3 the cause
+
+`proc.terminate()` ends the process the run started and leaves the GPU,
+network and renderer children alive. Those children keep the debugging port
+open, so the next run attached to a page still holding the previous copy of
+the stylesheet.
+
+### 5.4 the correction
+
+The run kills every `electron.exe` before it launches and again after it
+finishes, and the profile directory is removed between runs.
+
+### 5.5 the rerun
+
+```
+sheets      = history_panel.css, market_inspector.css, tab_bar.css, 13 inline
+switchRule  = [data-part="switch-box"], [data-part="timeframe-box"] {
+              appearance: none; ... }
+switchStyle = part=switch-box appearance=none bg=rgb(14, 14, 26)
+```
+
+Every reading in this report that came from a stale page is replaced above. The
+readings that discriminated — the register lists, the two control runs and the
+three button grounds `#efefef`, `#12121a`, `#1a1a28` — each changed when the
+code changed, so none of them came from a page that could not see the edit.
+
+---
+
 ## The two pictures
 
 Both were driven with the same scan and the same three proposals.
@@ -231,18 +333,12 @@ Both were driven with the same scan and the same three proposals.
 | 24 | zone legend colour | `#00ffcc` | `rgb(0, 255, 204)` |
 | 25 | button ground | `#1a1a28` | `rgb(26, 26, 40)` |
 | 26 | page ground | `#0a0a0f` | `#0a0a0f` |
-| 27 | Include active markets box | 18px box, 2px `#7a7a9c` border, `#0e0e1a` ground | the browser checkbox, white |
+| 27 | Include active markets box | 18px box, `#7a7a9c` edge, `#0e0e1a` ground | 18px box, `#7b7a99` edge, `#0e0e19` ground |
 
-Twenty-six of twenty-seven match. Item 23 matches with nothing in it: this
+Twenty-seven of twenty-seven match. Item 23 matches with nothing in it: this
 market carried one short-side signal at or above the score floor and no long
 side, so `_find_opposing_pairs` returned nothing and both tables are empty. It
 proves the column set and not the rows.
-
-Item 27 differs. `QCheckBox::indicator` takes `bg_input`, `#0e0e1a`, which no
-design-system token carries: `SURFACE_0` is `#0a0a0f` and `VIZ_INPUT_SURFACE`
-is `#142244`. Writing the value into the stylesheet would put a colour literal
-in a file whose every other colour is a token, so the box is recorded here and
-left alone.
 
 ## Two notes on the comparison itself
 
@@ -255,3 +351,23 @@ fill reads wide of its own value: the badge measures `#6cc9cb` in the PNG and
 The Qt tab holds a settings page behind its Settings button: seven venue
 fields, Save credentials, and four numbered settings. Neither picture shows
 it, and it is reached the same way on both sides.
+
+## Where this page carries the dated block
+
+The block belongs under `## Market Inspector Tab`. Placed there it fails
+`docs_archetype`, because `tools/build_product_manual.backward_update_rows`
+walks every dated heading on the page against one running maximum, and the
+Market Inspector section sits above Asset Charts, whose blocks are stamped
+earlier.
+
+```
+line 623: the update stamped 2026-09-08 23:40 follows the one stamped
+          2026-09-09 23:05 at line 442. Updates under a tab run forward.
+line 652: the update stamped 2026-09-09 01:20 follows the one at line 442.
+line 695: the update stamped 2026-09-09 03:05 follows the one at line 442.
+line 1517: the update stamped 2026-09-09 22:12 follows the one at line 442.
+```
+
+The block is at the page's end, where the check is green. Grouping the walk by
+tab section would let it sit under the tab, and that is a change to what the
+rule allows, not a hardening of it.

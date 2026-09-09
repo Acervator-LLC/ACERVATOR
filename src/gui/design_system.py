@@ -89,6 +89,7 @@ TEXT_ON_LIGHT = "#000000"  # Text on a light control
 # Surfaces beyond SURFACE_0..4
 SURFACE_CHART = "#0a0a12"  # Chart, console and group-box ground
 SURFACE_CONTROL = "#1a1a2e"  # Chart gridline and control ground
+SURFACE_INPUT = "#0e0e1a"  # Check box, radio and text field ground
 SURFACE_CONSOLE = "#05050a"  # Console ground
 SURFACE_CONSOLE_HEADER = "#0a0a14"  # Console header ground
 BORDER_DISABLED = "#444444"  # Disabled control border
@@ -341,6 +342,7 @@ __all__ = [
     "TEXT_ON_LIGHT",
     "SURFACE_CHART",
     "SURFACE_CONTROL",
+    "SURFACE_INPUT",
     "SURFACE_CONSOLE",
     "SURFACE_CONSOLE_HEADER",
     "BORDER_DISABLED",

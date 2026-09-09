@@ -1571,11 +1571,20 @@ the theme gives a Qt push button.
   background: var(--SURFACE_2, var(--btn-bg));
 ```
 
-One picture item still differs. The Include active markets box is the browser
-checkbox, where Qt draws an 18 pixel box with a `#7a7a9c` border on `#0e0e1a`,
-and no design-system token carries `#0e0e1a`.
+The check boxes on the tab drew as the browser's own control, white and 13
+pixels, where Qt paints an 18 pixel box with a `#7a7a9c` edge on `#0e0e1a`.
+That ground was in no token, so the table gained one under the name of the role
+it fills, and the stylesheet names the token rather than the value.
+
+`src/gui/main_tabs/design_system_surface.py` — the check-box ground
+
+```python
+SURFACE_INPUT = "#0e0e1a"
+```
 
 Both screens were driven on one payload of 54 markets, 300 daily candles each
-and three ranked proposals. Twenty-six of twenty-seven picture items match, so
-rows 878 and 879 read `yes` under Registers in Electron. The run is in
+and three ranked proposals. Twenty-seven of twenty-seven picture items match,
+so rows 878 and 879 read `yes` under Registers in Electron. The Opposing Pairs
+rows match at nothing on either side, so that item proves the column set and
+not the rows. The run is in
 [2026-09-09_market_inspector_register.md](../../tests/debug_reports/2026-09-09_market_inspector_register.md).
