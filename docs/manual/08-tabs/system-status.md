@@ -284,4 +284,117 @@ rotation constant.
 No test in this repository references any of the three names. The cap runs and
 nothing holds it in place.
 
+### 2026-09-09 14:30 - #34 - the tab draws the emitter network by subsystem and by tab
+
+The screen is built. The Status tab no longer draws the empty state; it draws
+the emitter network, divided two ways.
+
+The top of the screen names the feed: the file the sink writes, how many records
+it has taken this run, how many are still in memory, how many were evicted and
+how many were dropped. Under it, one strip of totals across the whole network.
+With no sink in the process the feed line reads one sentence instead, and every
+count falls to zero.
+
+`src/gui/main_tabs/system_status_tab_surface.py` — the tab a subsystem's
+emitters serve
+
+```python
+TAB_BY_SUBSYSTEM = {
+    "apitest": ENGINE_GROUP,
+    "bot": ENGINE_GROUP,
+    "charts": "Charts",
+    "console": "Console",
+    "exchange": "Live",
+    "extractor": ENGINE_GROUP,
+    "fleet": "Sim",
+    "gui": ENGINE_GROUP,
+    "history": "History",
+    "instance": ENGINE_GROUP,
+    "sim": "Sim",
+    "swarm": "Swarm",
+    "ta": ENGINE_GROUP,
+    "tick": ENGINE_GROUP,
+    "topology": ENGINE_GROUP,
+    "trading": "Live",
+    "ytd": ENGINE_GROUP,
+}
+```
+
+**By subsystem** is one panel per prefix, seventeen of them. Each panel carries
+a light, the tab it serves, six counts, and a table of that subsystem's own
+emitters with the cadence each one declares, how many times it fired, how many
+of its retained records failed, and the last value it reported.
+
+**By tab** is one row per tab on the bar, ten of them, and an eleventh named
+Engine for the emitters that serve no single screen. A row names the subsystems
+it holds and adds their counts together. Paper, Inspector, Accumulation and
+Status hold no subsystem at all, and each says `no emitters` rather than
+drawing a light. That absence is the reading, not a gap.
+
+### Green, Yellow, and why Red cannot show
+
+Two lights, and the screen says so in its own legend.
+
+`src/core/signal_contract.py` — the two states the report returns
+
+```python
+HEALTH_STATES = (HEALTH_GREEN, HEALTH_YELLOW)
+"""The states `subsystem_health` returns; `HEALTH_RED` is not one of them."""
+```
+
+Green means every always-on emitter the subsystem declares has fired and no
+retained record of it failed. Yellow means a record failed, or an always-on
+emitter never fired at all. A subsystem that has recorded nothing carries no
+light and reads `no records this run`, which keeps a quiet subsystem separate
+from a healthy one.
+
+Red waits on issue #14. A hung subsystem sends nothing, so silence is the only
+sign of it, and silence can only be read against a rhythm each emitter is
+expected to keep. No emitter declares one, so nothing returns Red and no light
+on this screen can show it.
+
+### What the log record carries
+
+The persisted row now names the subsystem it belongs to, so the report and the
+log divide the network the same way.
+
+`src/core/signal_contract.py` — `Signal.to_json`
+
+```python
+        payload = {
+            "ts": self.ts,
+            "seq": self.seq,
+            "module": self.module,
+            "name": self.name,
+            "subsystem": subsystem_of(self.name),
+            "kind": self.kind,
+```
+
+`subsystem_of` is the one function that splits a name, and `SignalSink.by_subsystem`
+calls it too, so the row on disk and the panel on screen cannot disagree.
+
+### Measured on this build
+
+The registry declares 78 emitters across 17 subsystems. The issue body's
+figure of 70 is older than the registry.
+
+```
+declared emitters          78
+  always-on                16
+  toggle                   62
+subsystems                 17
+no call site in src/       27    fleet 8, sim 14, ta 2, ytd 3
+```
+
+The twenty-seven with no call site can never fire, so their subsystems read
+silent whatever the platform does. Two of them are always-on, which is why Sim
+cannot reach Green today. Those emitters belong to the Simulator rebuild and
+the emitter network item, not to this screen.
+
+### What is still open
+
+The Console tab keeps its Emitter Network pane; moving it here is not done. The
+Watchdog is not on this screen yet. Both are named in issue #34 and neither is
+built.
+
 Back to [the subsystem index](README.md).
