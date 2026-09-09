@@ -1385,6 +1385,497 @@ the design says out loud that it is reading a data boundary and not a venue fact
 The true fact needs the connector to keep a creation date the venue supplies, and
 that has no home.
 
+### Correction: project age replaces per-exchange listing age
+
+**HIS.** His correction, in his words:
+
+> Can research with CoinGecko. Project age for all blockchains is known. This is
+> an inherent characteristic.
+
+**MINE.** The section above measures per-exchange listing age and reports that the
+platform cannot answer it. **That measurement stands and stays true. The
+requirement changed, so the gap no longer matters.** The sections that follow
+replace it rather than repeat it.
+
+Project age and per-exchange listing age are two different facts, and his purpose
+picks the first.
+
+```
+project age            how long the chain or the token has existed anywhere
+per-exchange listing   how long one venue has carried one market
+```
+
+A token three years old and newly listed on one venue is not an obscure pump. A
+token three weeks old is an obscure pump on every venue at once. His stated
+purpose — no obscure pumps awarding Quintessence — reads on project age, not on
+venue tenure.
+
+**Therefore the six-month test runs against project age.** Per-exchange listing age
+stays unavailable in the tree, and the rule no longer asks for it.
+
+### The endpoint and the field that carry project age
+
+**MEASURED** against CoinGecko's own reference. The coin detail endpoint is
+`/coins/{id}`, and the field it answers with is nullable.
+
+CoinGecko's documented field, its shape, and its example value
+
+```
+genesis_date   an ISO 8601 date string, nullable
+               "2009-01-03" for Bitcoin
+```
+
+The documented example for Bitcoin is 2009-01-03.
+
+The platform already resolves the identifier that lookup needs.
+
+```
+measured in the tree
+
+src/exchange/crypto_assets.py   a coingecko_id per asset, 40 of 40 populated
+src/exchange/market_data.py     calls /coins/markets, batching 50 ids per call
+src/exchange/chart_data.py      calls /coins/{cg_id}/ohlc
+```
+
+**The coin detail endpoint is called nowhere in `src/`.** Seven modules name
+CoinGecko, and the two endpoints in use are the markets list and the OHLC series.
+A project-age lookup is therefore a new call against a live integration, not a new
+integration.
+
+### Whether a per-asset age lookup is affordable
+
+**MEASURED.** CoinGecko's own error-and-rate-limit reference states 100 calls a
+minute on the Demo plan. The platform paces itself well under that.
+
+`src/exchange/market_data.py` — the platform's own pacing, and its own comment
+
+```python
+            time.sleep(2.5)  # Rate limit: ~30 calls/min
+```
+
+The two endpoints do not cost the same. The markets endpoint takes fifty ids in one
+call; the detail endpoint takes one id per call.
+
+```
+the scale the rule asks for
+
+20 markets x 15 supported exchanges   up to 300 eligible markets
+unique projects behind them           fewer, because venues overlap
+at the platform's own 30 a minute     about ten minutes for 300
+at the documented 100 a minute        about three minutes for 300
+```
+
+**One property turns that cost from a bill into a one-off. A genesis date never
+changes.** A project's genesis is fixed on the day its chain starts, so the value
+needs fetching once per project and never again. The figures above describe a
+backfill, not a recurring load.
+
+```
+PROPOSED — where the value is cached
+
+the place   a JSON file beside the Stone Tablets manifest, which is already
+            where the platform keeps venue-derived data on disk, home-relative
+            and outside the repository
+the reason  the five-minute in-memory cache in market_data.py suits a price
+            that moves; a genesis date does not move, so it belongs on disk
+            with no expiry at all
+the refill  only when an asset carries no entry, and never on a timer
+```
+
+`src/trading/stone_tablets/storage.py` — the existing on-disk home
+
+```python
+MANIFEST_PATH: Path = STONE_TABLETS_DIR / "MANIFEST.json"
+```
+
+### The identifier map is the real limit, not the rate limit
+
+**MEASURED, and this matters more than the rate limit.** Three CoinGecko
+identifier maps exist, and each one carries forty entries.
+
+```
+$ python -c "from src.exchange.chart_data import COINGECKO_IDS; ..."
+chart_data.COINGECKO_IDS          40
+market_data._COINGECKO_IDS        40
+crypto_assets coingecko_id        40 of 40 assets
+```
+
+`_load_coingecko_ids` reads the asset catalogue, so the canonical source is
+`crypto_assets.ASSETS`, and the map in `chart_data.py` is a second hand-kept
+literal of the same size.
+
+**Forty resolvable projects against up to three hundred eligible markets.** A
+project-age lookup can answer for forty bases today. Every eligible market outside
+that forty carries no identifier, therefore no genesis date, and lands in the
+unknown-age case below. **The constraint on this rule is the identifier map, not
+the rate limit.**
+
+Two ways widen it, and both are implementation rather than product.
+
+```
+PROPOSED — widening the map
+
+the list endpoint   /coins/list returns every coin CoinGecko carries, each
+                    entry giving id, symbol and name, in one unpaginated
+                    response, which removes the hand-maintenance
+the catalogue       crypto_assets.ASSETS grows, which keeps one source of
+                    truth and keeps the hand-maintenance
+```
+
+A symbol is not unique across projects, so a map built from the list endpoint needs
+a tie-break where two projects share a ticker. That is the one part of this which
+is not free.
+
+### When project age is unknown
+
+**MEASURED.** The genesis field is nullable, so CoinGecko does not populate it for
+every asset it lists. Where the field is empty the six-month test has no input.
+
+Two answers, and both err in the same direction.
+
+```
+refuse      an asset with no known age does not reward Quintessence
+fall back   StoneTablet.listed_at_ms stands in, refusing an old market but
+            never admitting a young one
+```
+
+**Recommended: refuse.** Three reasons, and the third is the decisive one.
+
+Refusal cannot be gamed. A project that withholds its data gains nothing by it,
+where a fallback rewards the withholding with a second route to eligibility.
+
+Refusal matches what the rule is for. The rule exists to exclude, and an asset
+nobody can date is the asset the rule is most suspicious of.
+
+The fallback measures the wrong fact. `StoneTablet.listed_at_ms` returns the
+earliest row in a tablet, so it answers how long Acervator has watched a market,
+never how old the project is. Using it here would put the rule back onto the very
+fact his correction moved it off.
+
+The cost is real and small. A legitimate old project with no genesis date stays
+ineligible until its identifier resolves or the catalogue carries it. With the
+eligible set capped at twenty per exchange, losing one candidate costs little, and
+the candidate returns as soon as the data does.
+
+### Whether a project-age call touches the failing 1h path
+
+**MEASURED. No. The two calls share the host name and nothing else.**
+
+`src/exchange/chart_data.py` — `ChartDataFetcher._fetch_coingecko`, the failing
+request
+
+```python
+        days = COINGECKO_DAYS.get(timeframe, 2)
+        url = f"https://api.coingecko.com/api/v3/coins/{cg_id}/ohlc?vs_currency=usd&days={days}"
+```
+
+`COINGECKO_DAYS["1h"]` is 2, and that request answers HTTP 400, so the Charts tab's
+default timeframe has no public data source. **That is recorded elsewhere, it is his
+to change, and this document changes nothing about it.**
+
+A detail call reads no days parameter, so `COINGECKO_DAYS` cannot reach it. The two
+existing paths share no function either: `_fetch_batch` and
+`ChartDataFetcher._fetch_coingecko` each build their own URL and open their own
+request. A third call would be a third builder against one host, which is worth
+saying out loud, because three independent builders are how a rate limit gets
+passed with nobody counting.
+
+### Sources for the project-age research
+
+| Source | What it settled |
+| ------ | --------------- |
+| [CoinGecko, coin data by id](https://docs.coingecko.com/reference/coins-id) | The endpoint is `/coins/{id}`, the genesis field it answers with is an ISO 8601 date string, and the field is nullable |
+| [CoinGecko, rate limits and common errors](https://docs.coingecko.com/docs/common-errors-rate-limit) | One hundred calls a minute on the Demo plan |
+| [CoinGecko, coins list](https://docs.coingecko.com/reference/coins-list) | Every coin it carries, each entry giving id, symbol and name, in one unpaginated response |
+
+### The capture bounds, and how they retire the pool-split question
+
+**HIS.** His answer to the pool-capture finding, in his words:
+
+> Cannot receive more than one allotment or total x% of Quint pool for a given
+> period of activation on a given market. Receiving Quint for one trade activates a
+> soft or hard ineligibility gate proportionate in number of number candles to the
+> Quint received and this cannot be less than 3 candles. Quint awarded is always
+> controlled or curved based on the Trade Grading system so we can start to tie
+> everything together into one cohesive vision.
+
+Three bounds, and they stack on the four already recorded above.
+
+```
+one allotment   at most one per participant, per activation period, per market
+a share ceiling at most x% of that market's pool; x is his number
+a cooldown      candles proportionate to the award, never fewer than three
+the curve       every award curved by the Trade Grading system
+```
+
+The cooldown throttles itself. The larger the award, the longer the silence that
+follows it.
+
+### Choice 9 is retired, and this is what replaced it
+
+**HIS decision, recorded.** The ninth choice above asks how a market's allotment
+divides among its certifiers, and recommends an equal share above a minimum
+qualifying volume. **He has answered it, and his answer supersedes that
+recommendation.** The split is not an equal share; it is one allotment per
+participant, bounded by a percentage ceiling, followed by a cooldown, with the
+amount curved by trade grade.
+
+His answer is stronger than the recommendation it replaces. An equal share bounds
+what one participant takes from one pool. His bounds also stop the same participant
+returning to that pool, and they make a low-quality trade pay less whoever submits
+it. **Choice 9 is closed. Nothing about the pool split remains open.**
+
+### What the grading system measures, read from the file
+
+**MEASURED.** Four sub-scores, each in the range nought to one or absent, and one
+mean over the ones present.
+
+`src/trading/trade_grader.py` — `grade_trade`, the mean and its fallback
+
+```python
+    sub_scores = [
+        s
+        for s in (exec_score, timing_score, strategic_score, outcome_score)
+        if s is not None
+    ]
+    if sub_scores:
+        overall_num = sum(sub_scores) / len(sub_scores)
+    else:
+        overall_num = 0.5
+    letter = _letter_from_numeric(overall_num)
+```
+
+`TradeGrade.overall_numeric` is that mean, rounded, and it is already a number in
+the range a curve takes as input. Naming it as the curve's input needs no new field.
+
+```
+MEASURED — what each axis needs before it can score
+
+execution   ref_price_at_decision, scored in basis points against the fill
+timing      future_prices, which are prices AFTER the trade
+strategic   rolling_sb_before and rolling_sb_after, both set
+outcome     realized_pnl_per_unit, and a positive price
+```
+
+### What the curve does with an unscored axis, and why it matters
+
+**MEASURED, and this is a hazard rather than a reassurance.** An absent sub-score is
+skipped, not counted as zero. **When no axis can be scored at all,
+`overall_numeric` is 0.5**, and the bands put that value one step below the middle.
+
+`src/trading/trade_grader.py` — the bands, and where 0.5 falls among them
+
+```python
+    if num >= 0.93:
+        return "A+"
+    elif num >= 0.85:
+        return "A"
+    elif num >= 0.70:
+        return "B"
+    elif num >= 0.55:
+        return "C"
+    elif num >= 0.40:
+        return "D"
+```
+
+0.5 sits below the 0.55 boundary and at or above 0.40, so the letter is a D. Running
+the real function on the boundaries confirms it.
+
+```
+$ python -c "from src.trading.trade_grader import _letter_from_numeric as L; ..."
+0.39 -> F    0.40 -> D    0.50 -> D    0.54 -> D    0.55 -> C
+```
+
+```
+the consequence for a naive curve
+
+a trade with no context       scores 0.5
+a linear curve on that value  pays HALF rate for a trade nothing could score
+```
+
+The argument below rests on the number and not on the letter. A curve reads
+`overall_numeric`, so the award a no-context trade collects is half rate whatever
+band the value prints in.
+
+A wash trade is the most likely trade to score on no axis at all. It carries no
+meaningful reference price, no realised profit per unit and no rolling shift, and
+its timing axis needs later trades that a farmer can simply not make.
+
+**The strongest property in this scheme is therefore real, and it is not
+automatic.**
+
+The property: a badly-graded trade earns almost no Quintessence, which makes
+farming unprofitable per trade rather than merely capped in volume. That is worth
+stating as a designed consequence and not as luck.
+
+The condition: it holds only when the curve treats an unscored trade as bad, and
+the grader's own fallback treats it as average. **The rule therefore belongs in the
+curve, not in the grader.**
+
+```
+PROPOSED — the rule that makes the property hold
+
+a minimum scored-axis count   an award requires at least two axes actually
+                              scored, and pays nothing below that
+why not change the grader     0.5 is the right neutral answer for a History
+                              letter, which is what the grader serves today;
+                              changing it would change a letter the operator
+                              already reads
+```
+
+**What would break if the grader returned None instead.** `overall_numeric` is
+typed as a plain number and `_letter_from_numeric` compares it with `>=`, so a None
+would raise at that comparison rather than degrade quietly. Its one caller reads
+`.overall` straight into a History cell, so every trade the grader cannot score
+would carry an error in place of a letter — and those are the early rows of each
+page, where no reference price exists yet. The grader is left alone because it is
+load-bearing for a screen, not because it is untouchable.
+
+### Whether a grade exists when an award is made
+
+**MEASURED. No, and the reason is structural rather than a missing call.**
+
+`grade_trade` has exactly one caller in the tree.
+
+```
+$ grep -rn "grade_trade\|grade_trades\|TradeGrade\b" src/ main.py --include=*.py
+src/exchange/history_read_contract.py:442:            grade_trade,
+src/exchange/history_read_contract.py:483:    return grade_trade(record, context).overall
+
+control, same search over a name in wide use:
+$ grep -rn "ScrummingBot" src/ --include=*.py | wc -l
+122
+```
+
+`grade_row` runs when a History page builds, and it draws its inputs from the other
+rows on that page.
+
+`src/exchange/history_read_contract.py` — where the reference comes from
+
+```python
+    reference = None
+    if len(prior_prices) >= 3:
+        import statistics
+
+        reference = statistics.median(prior_prices[:5])
+```
+
+Two properties follow, and both bind the award design.
+
+**A full grade cannot exist at fill time.** The timing axis reads prices after the
+trade, so a trade's grade is not final until later trades exist. No amount of
+calling the grader earlier fixes that.
+
+**The grade a History page shows is page-relative.** `grade_row` takes
+`page_rows`, so the same trade on a different page can take a different reference
+and a different letter. A Quintessence award must not read that value, because it
+is a display figure rather than a settled one.
+
+```
+PROPOSED — how an award reads a grade
+
+at fill time   score only the axes the fill itself supplies, which is
+               execution against the bot's own decision price
+at settlement  re-grade once the activation window closes, when later trades
+               exist, and settle the award then
+never          read the letter a History page computed
+```
+
+That sequencing also fits his end conditions. An activation already ends on expiry,
+on volume, or on exhaustion, so a settlement point already exists to hang the
+re-grade on.
+
+### Soft against hard, and which applies when
+
+**MINE.** He names both gates and does not define them. The definitions below, and
+the rule choosing between them, fall out of his own bounds.
+
+```
+PROPOSED — the two gates
+
+hard   pays nothing from that market until the gate clears
+soft   pays a reduced amount while the gate runs down
+```
+
+**Recommended: the cause picks the gate.** A participant who has hit a bound has
+taken their whole entitlement, and a participant who has merely just been paid has
+not.
+
+```
+PROPOSED — the mapping
+
+one allotment taken       HARD, until that activation ends
+the x% ceiling reached    HARD, until that activation ends
+an award just received    SOFT, reducing while the candle count runs down
+```
+
+Each row names a bound he already set, so the rule adds no new product decision. A
+hard gate expresses an entitlement that is spent; a soft gate expresses a pace.
+
+### Whose candles the cooldown counts
+
+**MINE.** Three candles on a one-minute chart is three minutes. On a daily chart it
+is three days. The count is meaningless until the timeframe is named.
+
+**Recommended: the timeframe of the bot that made the trade, read from its own
+configuration, and never chosen per trade.**
+
+`src/trading/container/config.py` — the field, and it is a required one
+
+```python
+    ta_timeframe: str = "1h"  # Timeframe for TA indicator calculations
+```
+
+The conversion a candle count needs also exists.
+
+`src/trading/ata_asset_maps.py` — days per bar
+
+```python
+TIMEFRAME_BAR_DAYS: dict[str, float] = {
+    "1h": 1.0 / 24.0,
+    RA_TIMEFRAME: 1.0,
+    "1w": 7.0,
+    "1M": 30.0,
+}
+```
+
+**What a free choice would cost, and it is the whole bound.** If the participant
+picks the timeframe, every participant picks the fastest one, three candles becomes
+three minutes, and the cooldown stops bounding anything. Reading it off the bot's
+own configuration ties the cooldown to how the bot actually trades, and a
+participant who wants a short cooldown has to run a fast bot and accept every other
+consequence of that.
+
+One floor is worth pairing with it: a minimum cooldown in wall-clock time as well as
+in candles, so a one-minute bot cannot clear its gate before the market has moved at
+all. That threshold is his number, like the others.
+
+### The curve's shape
+
+**MINE.** He fixed the curve's input and not its function. Two shapes, and they pay
+different people.
+
+| Shape | What it gives | What it costs |
+| ----- | ------------- | ------------- |
+| Linear in the graded mean | Simple, and every grade earns in proportion | A trade nothing could score sits at 0.5 and collects half rate, which is exactly the farmer's trade |
+| **Convex, weighting the top of the band** | The bottom of the band collapses toward nothing, which is where wash trades and no-context trades sit | A mid-grade trade earns noticeably less than its letter suggests, so the curve has to be visible to the participant |
+
+**Recommended: convex, paired with the minimum scored-axis count above.** Two
+reasons.
+
+The neutral value is the farmer's value. An unscoreable trade grades 0.5, so any
+curve that pays half at 0.5 is paying the farmer half. A convex curve pays that
+point a small fraction instead.
+
+It matches what he already asked for. His brainstorm gives experience bonuses for
+efficacy and accuracy, which are the same two ideas as the outcome and execution
+axes. A curve that rewards the top of the band rewards the same behaviour twice,
+consistently, rather than once in experience and flatly in Quintessence.
+
+The exponent is his number. The shape is the recommendation; how steep it runs
+decides what an event costs in hours of good trading, which puts it with the other
+thresholds on his list.
+
 ### What is still unbounded
 
 **MINE.** Two things the eligibility rules and the end conditions do not bound. The
