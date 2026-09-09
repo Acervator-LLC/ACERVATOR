@@ -145,10 +145,17 @@ FOREX_MINOR: tuple[AssetListing, ...] = tuple(
 FOREX_EXOTIC: tuple[AssetListing, ...] = ()
 
 #: The four spot pairs, quoted per troy ounce. ``VENUE_YAHOO`` answers 404
-#: for every spelling of all four, measured 2026-09-08.
+#: for every spelling of all four, measured 2026-09-09.
 METALS_SPOT: tuple[AssetListing, ...] = tuple(
     AssetListing(symbol=one, quote=USD)
     for one in ("XAU/USD", "XAG/USD", "XPT/USD", "XPD/USD")
+)
+
+#: The listed instrument for each ``METALS_SPOT`` metal: a fund holding the
+#: metal, priced in dollars, with no expiry and no contract roll.
+METALS_PHYSICAL: tuple[AssetListing, ...] = tuple(
+    AssetListing(symbol=one, quote=USD, venue=VENUE_YAHOO, ticker=one)
+    for one in ("GLD", "SLV", "PPLT", "PALL")
 )
 
 MAPS: dict[str, dict[str, tuple[AssetListing, ...]]] = {
@@ -157,7 +164,7 @@ MAPS: dict[str, dict[str, tuple[AssetListing, ...]]] = {
         SECTOR_MINOR: FOREX_MINOR,
         SECTOR_EXOTIC: FOREX_EXOTIC,
     },
-    CLASS_METALS: {SECTOR_SPOT: METALS_SPOT},
+    CLASS_METALS: {SECTOR_SPOT: METALS_SPOT + METALS_PHYSICAL},
 }
 
 #: What each class's map was built from, and when its tickers were measured.
@@ -169,11 +176,18 @@ MAP_SOURCES: dict[str, str] = {
     CLASS_FOREX: (
         "Liquidity tiers: major holds USD, minor crosses two majors, exotic "
         "pairs a major with a smaller economy. 28 tickers measured on the "
-        "yahoo chart endpoint 2026-09-08, 283 daily rows each."
+        "yahoo chart endpoint 2026-09-08, 283 daily rows each. Every daily "
+        "bar carries volume 0, so VolumeAnalysis abstains on every pair: "
+        "0 of 2,676 bars over 10 pairs, measured 2026-09-09."
     ),
     CLASS_METALS: (
         "Spot pairs against the dollar, quoted per troy ounce. No configured "
-        "venue lists any of the four, measured 2026-09-08."
+        "venue lists any of the four, measured 2026-09-09. The listed "
+        "instrument for each metal is the fund holding it, measured the same "
+        "day: GLD SLV PPLT PALL, 274 daily rows each, every bar carrying "
+        "volume. The futures GC=F SI=F PL=F PA=F answer the same window and "
+        "are not carried: a chart of them joins contracts at a price nobody "
+        "traded, and PL=F sends 132 of 275 bars with volume 0."
     ),
     CLASS_STOCKS: (
         "GICS names 11 sectors over 25 industry groups, 74 industries and 163 "
@@ -289,6 +303,7 @@ __all__ = [
     "FOREX_MINOR",
     "MAPS",
     "MAP_SOURCES",
+    "METALS_PHYSICAL",
     "METALS_SPOT",
     "MIN_WINDOW_DAYS",
     "NO_VENUE",
