@@ -1626,6 +1626,130 @@ the index on 1,907 of the 3,750 by at most 2.2e-14, which is the last bits of
 double arithmetic and vanishes at one decimal place. Publishing it uncut moved
 the hover cell on 3,710 of 3,750 and the ATA-SMP sentence on none of them.
 
+## 2026-09-08 17:45 - #414 - the Vortex reports the Vortex
+
+Botes and Siepman published two lines and one reading of them. The lines
+measure upward and downward movement over the same fourteen bars, each divided
+by the true range of those bars. The reading is the crossover: the upward line
+above the downward one is a rising market, and the other way round is a falling
+one. A downward line far above parity is the strongest falling reading the
+indicator has.
+
+```
+VM+_t = |H_t - L_(t-1)|
+VM-_t = |L_t - H_(t-1)|
+VI+   = sum(VM+, 14) / sum(TR, 14)
+VI-   = sum(VM-, 14) / sum(TR, 14)
+```
+
+**Functional.** The two lines above are exactly as published, and this repair
+does not touch them. What came out is the four lines that ran after the vote had
+already been decided. They read the downward line reaching 1.30, called it a
+coming reversal, lifted the strength to at least 0.60 and rewrote the vote to
+bullish.
+
+`src/trading/indicators/vortex.py` — `VortexIndicator.compute`, removed
+
+```python
+if vim_at_ceiling:
+    confidence = min(1.0, max(confidence, 0.60))
+    direction = SignalDirection.BULLISH
+```
+
+Seventy-one recorded Coinbase tapes were run through the voting engine at three
+millionths of a dollar and again at 1234.0, 3,750 readings in all. The downward
+line reached 1.30 on 78 of them, spread over 30 tapes. On every one of those 78
+the published lines said falling and the overwrite published rising. The
+strength was already at or above 0.60 on all 78, so the 0.60 lift changed
+nothing and only the vote moved.
+
+```
+3,750 readings, 71 tapes, two price scales
+    VI- at or above 1.30                          78
+    vote before the repair, all 78            BULLISH
+    vote after the repair, all 78             BEARISH
+    strength changed                                0
+    votes moved the other way                       0
+    VI- range on those rows          1.3014 to 1.4859
+```
+
+**Design intention.** An indicator carries one published set of sums and one
+published reading of them, and nothing else rides on its name. The ceiling that
+remains touches strength only and never the vote: an upward line at or above
+1.30 caps the strength at 0.45. Both ceiling readings and both floor readings
+are still published beside the vote, so the panel can show that a line is
+saturated without the vote claiming the opposite of what the lines say.
+
+`src/trading/indicators/vortex.py` — the ceiling that stayed
+
+```python
+VX_CEILING_PCT = 130.0
+
+if vip_at_ceiling:
+    confidence = max(0.0, min(confidence, 0.45))
+```
+
+Seven parts of the platform read this indicator.
+
+| reader | on a VI- at or above 1.30 |
+| --- | --- |
+| the panel's consensus | one vote moves from rising to falling; moved on 78 |
+| `indicator_panel.py` cell | the arrow turns from up to down |
+| `indicator_panel_surface.py` cell | the arrow turns from up to down |
+| `ata_spm.py` sentence | prints the gap between the lines; unchanged on all 78 |
+| `ta_invariants.py` bound | bounds both lines at or above zero; unchanged |
+| `ta_engine.py` recorder | records the vote it now casts |
+| `scrumming_bot.py` position boost | pays only at the upper band or the middle, and never reached these rows |
+
+`native_chart.py` is not in that list. It draws the two lines from
+`VortexIndicator.lines`, which this repair does not touch.
+
+The position boost is the one reader the overwrite could have reached and never
+did. It pays a bullish Vortex 0.12 at the upper band and takes 0.05 back in the
+middle. A downward line saturating means the price has fallen hard, and on all
+78 rows the band position sat between -0.134 and 0.224, below both zones. The
+boost paid nothing before the repair and nothing after it.
+
+The gate changes its mind on four windows. Over 71 tapes at two price scales,
+3,750 readings and 30,000 gate verdicts, eight verdicts move and every one of
+them moves the same way: a fold that was refused now fires. No scrum verdict
+moves. Both windows sit at or below the lower band, where the price is at the
+bottom and the buy-back belongs.
+
+```
+30,000 gate verdicts, both chains, four flag states
+    fold refused -> fold fires                      8
+    fold fires -> fold refused                      0
+    scrum verdicts changed                          0
+    windows                                         4
+        DOGE 2022, band position 0.1168, VI- 1.3276
+        SOL  2026, band position -0.1158, VI- 1.3014
+    both windows identical at both price scales
+```
+
+Both moves need the fold's own bearish requirement switched on. With that
+switch off the fold does not consult the panel at all and nothing moves.
+
+The reading was also published cut to four decimal places. No vote and no gate
+ever read the cut copy, because every branch inside the indicator tests the
+number it computed. The panel's hover cell prints three decimals and was handed
+a number carrying four, and the cell printed a different third decimal on 726 of
+15,000 readings. It now carries what the indicator computed.
+
+`src/trading/indicators/vortex.py` — the reading
+
+```python
+"vi_plus": vi_plus,
+"vi_minus": vi_minus,
+"separation": separation,
+"sep_acceleration": sep_acceleration,
+```
+
+One example, from ADA 2021: the downward line computed 1.0835408442150014 and
+published 1.0835, so the cell printed `1.083` where the number is `1.084`. The
+ATA-SMP sentence prints four decimals and matched the cut copy exactly, so it
+reads the same on all 3,750.
+
 ## Trading gate logic chain
 
 The epigraph on the [title page](01-title.md) reads *dissolvendus
