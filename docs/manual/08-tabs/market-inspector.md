@@ -1256,4 +1256,140 @@ carried 14,062 distinct colours, and 90.53% of its pixels are not its
 commonest colour. Its readings are in
 [the debug report](../../../tests/debug_reports/2026-09-08_ata_post_link_and_chart.md).
 
+## 2026-09-08 19:10 - #407 - the scan reaches a market outside crypto
+
+Scan Now now reads a real market that Acervator does not trade. The sector
+reader answers a named list of assets for FOREX and for metals, each name paired
+with the venue that lists it, and the prices arrive through the historical
+fetcher's own adapters.
+
+`src/trading/ata_asset_maps.py` — one asset, and where it is carried
+
+```python
+@dataclass(frozen=True)
+class AssetListing:
+    """One asset a sector holds, with the venue and ticker carrying it.
+
+    ``quote`` is the currency the venue prices ``ticker`` in, which
+    ``YahooChartAdapter.fetch_chunk`` checks its answer against.
+    """
+
+    symbol: str
+    quote: str = USD
+    venue: str = NO_VENUE
+    ticker: str = ""
+```
+
+**FOREX is the class built end to end.** Its tiers are liquidity tiers. The
+major tier is the seven pairs that hold the dollar. The minor tier is every
+cross of two of those currencies with no dollar in it, twenty-one pairs. The
+exotic tier is defined and holds no pair, because no pair is named for it.
+
+`src/trading/ata_asset_maps.py` — the two tiers that carry names
+
+```python
+FOREX_MAJOR: tuple[AssetListing, ...] = tuple(
+    _yahoo_fx(one)
+    for one in (
+        "EUR/USD",
+        "USD/JPY",
+        "GBP/USD",
+        "USD/CHF",
+        "AUD/USD",
+        "NZD/USD",
+        "USD/CAD",
+    )
+)
+
+CROSS_ORDER: tuple[str, ...] = ("EUR", "GBP", "AUD", "NZD", "CAD", "CHF", "JPY")
+
+FOREX_MINOR: tuple[AssetListing, ...] = tuple(
+    _yahoo_fx(f"{base}/{quote}")
+    for at, base in enumerate(CROSS_ORDER)
+    for quote in CROSS_ORDER[at + 1 :]
+)
+```
+
+**Every ticker was read before the map was written.** All 28 answered, 283 daily
+rows each. That is the vintage the map records, and it is what a reader checks
+the map against when a name stops answering.
+
+**Metals reports an absence and scans nothing.** The four spot pairs are named
+per troy ounce against the dollar. The one configured non-crypto venue answers
+HTTP 404 for every spelling of all four, so the zone says which names have no
+venue and reads no prices at all.
+
+`src/trading/ata_spm.py` — what the sector says when no venue carries it
+
+```python
+UNLISTED_TEXT = "No configured venue lists {symbols}."
+UNSERVED_TEXT = "No venue serves {labels}."
+```
+
+**A timeframe with no venue is reported the same way, and separately.** The
+adapter serves the daily timeframe alone, so a non-crypto sector reports the
+hourly, weekly and monthly boxes as unserved instead of showing them as
+timeframes that voted nothing. The crypto universe scan keeps daily and weekly
+candles, so its two fast boxes report the same way.
+
+**A scan produced a call.** Twenty-one minor pairs voted on the daily
+timeframe. One carried a reversal, with the price at the lower band and the
+consensus agreeing with the band voter. Phase three pulled that chart, wrote its
+four confirming sentences and rendered the picture, and phase four filled the
+bucket with one post per push target.
+
+```
+NZD/CHF  bullish  net=+0.9582  conf=0.0879  band=0.0454  reversal=True
+252 bars, 4 confirming voters, 7 posts in Ready to Send
+```
+
+**A venue row that is not a candle is dropped and counted.** The FOREX daily
+series carries an open or a close a few basis points outside its own high and
+low on about one row in twenty-four: 75 of 1,806 rows across the seven major
+pairs. Each of those rows is refused on its own, the rest are kept, and nothing
+is clamped or invented.
+
+`src/trading/ata_asset_maps.py` — the conversion, one row at a time
+
+```python
+def _candles_of(ticker: str, rows: Any) -> list:
+    """Every row ``candles_from_raw`` accepts, one row at a time.
+
+    A venue row whose open or close sits outside its own high and low is not
+    a candle, and it is counted into ``VENUE_ROWS_REFUSED_LOG``.
+    """
+```
+
+**Stocks and derivatives still answer nothing, and the map says why.** GICS
+names eleven sectors, and MSCI and S&P license the company membership behind
+them; no list of it sits in this tree. Derivatives has no classification named
+yet. Both entries sit in the map's own source table beside the two that are
+built.
+
+**Two faults on the redraw were repaired in the same change.** A scan that
+produced a call raised on the way to the screen, twice, both from a trading-tab
+restyle that removed a helper and narrowed a signature the ATA-SMP voting panel
+still called. No non-crypto sector could answer an asset before, so no run had
+ever reached those two lines.
+
+`src/gui/main_tabs/market_inspector_surface.py` — the tally, restored beside the
+panel that draws it
+
+```python
+def panel_summary_text(rows: Any) -> str:
+    """The vote tally beside a voting panel title, summed over its timeframes."""
+    return PANEL_SUMMARY_FORMAT.format(
+        bullish=sum(panel_tally(one, "bullish") for one in (rows or {}).values()),
+        bearish=sum(panel_tally(one, "bearish") for one in (rows or {}).values()),
+        neutral=sum(panel_tally(one, "neutral") for one in (rows or {}).values()),
+    )
+```
+
+**Figures.** This page carries no figure and this entry adds none. The chart the
+run rendered is produced output and is not kept in the repository. It measured
+1200 by 420 pixels and 149,167 bytes under a scratch post root, and the
+operator's own post folder took nothing from this run. Its readings, the venue
+census and the three program errors are in
+[the debug report](../../../tests/debug_reports/2026-09-08_ata_market_scan.md).
+
 Back to [the subsystem index](README.md).
