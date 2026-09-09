@@ -298,6 +298,102 @@ if answered <= 0:
 
 Detail: [08-tabs/portfolio-panels.md](08-tabs/portfolio-panels.md).
 
+### 2026-09-09 07:23 - #128 - the header strip's spendable panel is a panel, its dot is not
+
+The header strip is one registered panel that draws two other modules inside
+itself. The shell mounts `header_strip` as chrome, above the tab bar and on
+show for every tab. Inside it, the spendable panel and the five counter cards
+each fill a space the strip leaves for them, and each of those spaces is a
+mount of its own.
+
+`src/gui/web/header_strip.js` — the spendable space, as the strip draws it
+
+```javascript
+  function renderSpendable(target, model) {
+    var host = global.acervatorPanelHost;
+    var space = spaceNamed(target, SPENDABLE);
+    if (!host || space === null) {
+      return null;
+    }
+    space.setAttribute(CHILD_ATTR, SPENDABLE_MODULE);
+    return host.mount(SPENDABLE_MODULE, space, model) ? space : null;
+  }
+```
+
+`spendable_profits.js` now registers, so the shell knows it by name and the
+strip draws it the way the Live tab draws its Activity Log and the Charts tab
+draws its chart. The registration names no bridge method, so the tab bar gives
+it no tab. Nineteen panels register where eighteen did before.
+
+The privacy dot is a different kind of thing. It has no space and no host: two
+other modules render it as an element inside their own trees, so the panel host
+never draws it and a registration would name a panel with nowhere to go. Its
+Registers in Electron cell now reads `-`, the mark this table already uses for
+a column that does not apply to a row.
+
+`src/gui/web/spendable_profits.js` — where the dot comes from
+
+```javascript
+  function dotSpan() {
+    var own = global.acervatorDot;
+    if (own && own.Dot) {
+      return own.Dot;
+    }
+    var api = global.acervatorHeader;
+    return api && api.PrivacyDot ? api.PrivacyDot : null;
+  }
+```
+
+Both builds were read on one fleet snapshot and one privacy state, with LOCKED
+and Folded masked and every other field revealed. Nothing was written into the
+page: the shell fetched every figure over the bridge. Every value, label,
+glyph, colour and tooltip on the strip agrees between them.
+
+The strip's slots now share the row the way the Qt layout shares it. A Qt
+stretch divides the whole width; a CSS `flex-grow` divides only what is left
+over, so the counters drew at five different widths. With a zero flex basis the
+five cards measure 148 pixels each against Qt's 153, and the spendable panel
+takes 34.6 per cent of the row against Qt's 34.8.
+
+| Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | yes | yes | yes | in scope |
+| `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | - | yes | yes | in scope |
+
+The strip fetches its own figures. The shell asks for the strip with an empty
+request, so both surfaces now read the fleet the bridge is bound to, the way
+the History, Charts, Trading and Inspector surfaces already read theirs. The
+aggregate is `BotManager.get_aggregate_stats`, the same call the Qt window's
+own tick makes, and the exchange count is the length of
+`SettingsManager.list_exchanges`, which is the list the window builds one
+sub-tab from. Neither figure is derived in the surface or in the page.
+
+`src/gui/main_tabs/header_strip_surface.py` — the request fills itself
+
+```python
+def live_view_model(params: dict, live: Any) -> dict:
+    asked = dict(params or {})
+    if asked.get(STATS_PARAM) is None:
+        aggregate = fleet_aggregate(live)
+        if aggregate is not None:
+            asked[STATS_PARAM] = aggregate
+```
+
+The spendable columns take the same aggregate through
+`header_strip_surface.profits_payload`, the one builder the Qt tick already
+calls, so the two hosts read one snapshot and cannot disagree.
+
+Each privacy dot in the strip's columns now carries the pointing hand the Qt
+dot sets on itself. `privacy_dot_surface.dot_view` publishes `cursor_shape`,
+and the two surfaces that build a dot for this strip now keep it.
+`dashboard_stat_card_surface` still cuts it away, so the five counter dots
+draw with the ordinary pointer; that card is its own row.
+
+Qt draws a one pixel panel edge around each counter card where the page draws
+none, because `dashboard_stat_card_surface.FRAME_STYLE` is empty and the
+`StyledPanel` shape reaches the page as an attribute no rule reads. That is
+the same row.
+
 ## Market Inspector Tab
 
 The concept with the Market Inspector Tab is evaluate markets from a higher point of view and provide strategy proposals in three forms: Oppositional Trading Pairs (Trading Pairs w/ Opposing Trends), Bot Swarm Topologies (Bot Swarm Network Proposals), and Exchange Comparison Arbitrage.
@@ -1653,166 +1749,3 @@ expected side.
 
 Detail on each live screen sits one file down, in
 [08-tabs/README.md](08-tabs/README.md).
-
-### 2026-09-09 07:23 - #128 - the header strip's spendable panel is a panel, its dot is not
-
-The header strip is one registered panel that draws two other modules inside
-itself. The shell mounts `header_strip` as chrome, above the tab bar and on
-show for every tab. Inside it, the spendable panel and the five counter cards
-each fill a space the strip leaves for them, and each of those spaces is a
-mount of its own.
-
-`src/gui/web/header_strip.js` — the spendable space, as the strip draws it
-
-```javascript
-  function renderSpendable(target, model) {
-    var host = global.acervatorPanelHost;
-    var space = spaceNamed(target, SPENDABLE);
-    if (!host || space === null) {
-      return null;
-    }
-    space.setAttribute(CHILD_ATTR, SPENDABLE_MODULE);
-    return host.mount(SPENDABLE_MODULE, space, model) ? space : null;
-  }
-```
-
-`spendable_profits.js` now registers, so the shell knows it by name and the
-strip draws it the way the Live tab draws its Activity Log and the Charts tab
-draws its chart. The registration names no bridge method, so the tab bar gives
-it no tab. Nineteen panels register where eighteen did before.
-
-The privacy dot is a different kind of thing. It has no space and no host: two
-other modules render it as an element inside their own trees, so the panel host
-never draws it and a registration would name a panel with nowhere to go. Its
-Registers in Electron cell now reads `-`, the mark this table already uses for
-a column that does not apply to a row.
-
-`src/gui/web/spendable_profits.js` — where the dot comes from
-
-```javascript
-  function dotSpan() {
-    var own = global.acervatorDot;
-    if (own && own.Dot) {
-      return own.Dot;
-    }
-    var api = global.acervatorHeader;
-    return api && api.PrivacyDot ? api.PrivacyDot : null;
-  }
-```
-
-Both builds were read on one fleet snapshot and one privacy state, with LOCKED
-and Folded masked and every other field revealed. Nothing was written into the
-page: the shell fetched every figure over the bridge. Every value, label,
-glyph, colour and tooltip on the strip agrees between them.
-
-The strip's slots now share the row the way the Qt layout shares it. A Qt
-stretch divides the whole width; a CSS `flex-grow` divides only what is left
-over, so the counters drew at five different widths. With a zero flex basis the
-five cards measure 148 pixels each against Qt's 153, and the spendable panel
-takes 34.6 per cent of the row against Qt's 34.8.
-
-| Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | - | yes | yes | in scope |
-
-The strip fetches its own figures. The shell asks for the strip with an empty
-request, so both surfaces now read the fleet the bridge is bound to, the way
-the History, Charts, Trading and Inspector surfaces already read theirs. The
-aggregate is `BotManager.get_aggregate_stats`, the same call the Qt window's
-own tick makes, and the exchange count is the length of
-`SettingsManager.list_exchanges`, which is the list the window builds one
-sub-tab from. Neither figure is derived in the surface or in the page.
-
-`src/gui/main_tabs/header_strip_surface.py` — the request fills itself
-
-```python
-def live_view_model(params: dict, live: Any) -> dict:
-    asked = dict(params or {})
-    if asked.get(STATS_PARAM) is None:
-        aggregate = fleet_aggregate(live)
-        if aggregate is not None:
-            asked[STATS_PARAM] = aggregate
-```
-
-The spendable columns take the same aggregate through
-`header_strip_surface.profits_payload`, the one builder the Qt tick already
-calls, so the two hosts read one snapshot and cannot disagree.
-
-Each privacy dot in the strip's columns now carries the pointing hand the Qt
-dot sets on itself. `privacy_dot_surface.dot_view` publishes `cursor_shape`,
-and the two surfaces that build a dot for this strip now keep it.
-`dashboard_stat_card_surface` still cuts it away, so the five counter dots
-draw with the ordinary pointer; that card is its own row.
-
-Qt draws a one pixel panel edge around each counter card where the page draws
-none, because `dashboard_stat_card_surface.FRAME_STYLE` is empty and the
-`StyledPanel` shape reaches the page as an attribute no rule reads. That is
-the same row.
-
-## 2026-09-09 22:12 - #128 - the Swarm tab loses List View
-
-The Swarm tab no longer offers a choice of view. The grid of locust cards is the
-whole screen, and the View picker that used to sit between Theme and Wires is
-gone from both builds. The table below carries the row for every file the change
-touched; the rows in the table above are the state before it.
-
-| Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `src/gui/bot_swarm_list.py` | removed | - | - | - | - | - | - | deleted |
-| `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/visualizer/bot_node.py` | `bot_node.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/visualizer/wire_canvas.py` | `wire_canvas.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/visualizer/growth_stage.py` | shared, no module of its own | - | - | - | - | yes | yes | in scope |
-| `src/gui/react_bot_swarm_tab.py` | host for `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/theme_engine.py` | `design_tokens.js` | - | yes | yes | yes | yes | yes | in scope |
-
-The Qt widget file went. `BotListView` and `LaneWireCanvas` had one caller, the
-Swarm tab, and nothing else built either of them. The live bot settings window
-draws its own wire table from `QTableWidget`, so it lost nothing.
-
-`src/gui/bot_swarm_list.py` — what was deleted
-
-```python
-class BotListView(QTableWidget):
-class LaneWireCanvas(QWidget):
-class BotSwarmLaneAllocator:
-```
-
-List View is removed whole. The surface `bot_swarm_list_surface.py` and the
-module `bot_swarm_list.js` are deleted. The bridge method, the manifest line
-and the renderer page's script tag that reached them are gone.
-
-`src/gui/web/bot_swarm_tab.js` — the shell that still names the list globals
-
-```javascript
-  var LIST_API = "acervatorSwarmList";
-  var LIST_LOADER = "acervatorLoadBotSwarmList";
-```
-
-Nothing defines those two globals now. The bot settings shell reads them in
-four places and guards every read, so the list region draws nothing and
-raises nothing.
-
-`src/gui/react_bot_swarm_tab.py` — `TAB_SCRIPT_ASSETS`, the tail
-
-```python
-    "quick_routing.js",
-    "bot_visualizer.js",
-)
-```
-
-One control in `tools/conversion_state.py` named the deleted file. A control
-pointed at a file that no longer exists reports `born React` rather than
-`paired`, which reads as a pass and proves nothing, so it now names a Qt file
-that is still paired.
-
-`tools/conversion_state.py` — `CONTROLS`
-
-```python
-CONTROLS = ("bot_visualizer", "theme_engine", "design_tokens")
-```
-
-Both builds were opened with the change in place. Qt draws eight main tabs and
-React draws ten, the same counts as before, and the Swarm tab in each carries no
-View picker, no row list and no lane sheet.
