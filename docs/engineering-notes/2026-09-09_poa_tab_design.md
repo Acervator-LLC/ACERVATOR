@@ -1661,7 +1661,30 @@ outcome     realized_pnl_per_unit, and a positive price
 
 **MEASURED, and this is a hazard rather than a reassurance.** An absent sub-score is
 skipped, not counted as zero. **When no axis can be scored at all,
-`overall_numeric` is 0.5**, which `_letter_from_numeric` reports as a C.
+`overall_numeric` is 0.5**, and the bands put that value one step below the middle.
+
+`src/trading/trade_grader.py` — the bands, and where 0.5 falls among them
+
+```python
+    if num >= 0.93:
+        return "A+"
+    elif num >= 0.85:
+        return "A"
+    elif num >= 0.70:
+        return "B"
+    elif num >= 0.55:
+        return "C"
+    elif num >= 0.40:
+        return "D"
+```
+
+0.5 sits below the 0.55 boundary and at or above 0.40, so the letter is a D. Running
+the real function on the boundaries confirms it.
+
+```
+$ python -c "from src.trading.trade_grader import _letter_from_numeric as L; ..."
+0.39 -> F    0.40 -> D    0.50 -> D    0.54 -> D    0.55 -> C
+```
 
 ```
 the consequence for a naive curve
@@ -1669,6 +1692,10 @@ the consequence for a naive curve
 a trade with no context       scores 0.5
 a linear curve on that value  pays HALF rate for a trade nothing could score
 ```
+
+The argument below rests on the number and not on the letter. A curve reads
+`overall_numeric`, so the award a no-context trade collects is half rate whatever
+band the value prints in.
 
 A wash trade is the most likely trade to score on no axis at all. It carries no
 meaningful reference price, no realised profit per unit and no rolling shift, and
@@ -1695,6 +1722,14 @@ why not change the grader     0.5 is the right neutral answer for a History
                               changing it would change a letter the operator
                               already reads
 ```
+
+**What would break if the grader returned None instead.** `overall_numeric` is
+typed as a plain number and `_letter_from_numeric` compares it with `>=`, so a None
+would raise at that comparison rather than degrade quietly. Its one caller reads
+`.overall` straight into a History cell, so every trade the grader cannot score
+would carry an error in place of a letter — and those are the early rows of each
+page, where no reference price exists yet. The grader is left alone because it is
+load-bearing for a screen, not because it is untouchable.
 
 ### Whether a grade exists when an award is made
 
