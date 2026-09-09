@@ -1506,11 +1506,43 @@ def update_entries(text: str) -> list[tuple[int, str, str]]:
     return out
 
 
+def heading_parents(text: str) -> dict[int, int]:
+    """Return each heading line of ``text`` mapped to the line of its parent heading.
+
+    A parent is the nearest heading above at a shallower level, and 0 where none
+    is above; lines inside a ``FENCE_LINE`` block are code, not headings.
+    """
+    parents: dict[int, int] = {}
+    open_levels: list[tuple[int, int]] = []
+    in_fence = False
+    for offset, line in enumerate(text.split("\n")):
+        if FENCE_LINE.match(line):
+            in_fence = not in_fence
+            continue
+        heading = HEADING_LINE.match(line) if not in_fence else None
+        if not heading:
+            continue
+        level = len(heading.group(1))
+        while open_levels and open_levels[-1][0] >= level:
+            open_levels.pop()
+        parents[offset + 1] = open_levels[-1][1] if open_levels else 0
+        open_levels.append((level, offset + 1))
+    return parents
+
+
 def backward_update_rows(path: Path) -> list[str]:
-    """Return why a dated update heading of ``path`` precedes the heading above it."""
+    """Return why a dated update heading of ``path`` precedes another in its section.
+
+    ``heading_parents`` decides the section, so a stamp is compared only with the
+    updates sharing its parent heading, never with the updates of another tab.
+    """
+    text = path.read_text(encoding="utf-8")
+    parents = heading_parents(text)
     out: list[str] = []
-    previous: tuple[int, str, str] | None = None
-    for row in update_entries(path.read_text(encoding="utf-8")):
+    latest: dict[int, tuple[int, str, str]] = {}
+    for row in update_entries(text):
+        section = parents.get(row[0], 0)
+        previous = latest.get(section)
         if previous is not None and row[1] < previous[1]:
             out.append(
                 f"line {row[0]}: the update stamped {row[1]} follows the one "
@@ -1518,7 +1550,7 @@ def backward_update_rows(path: Path) -> list[str]:
                 f"tab run forward."
             )
         if previous is None or row[1] >= previous[1]:
-            previous = row
+            latest[section] = row
     return out
 
 
