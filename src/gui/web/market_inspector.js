@@ -18,7 +18,6 @@
   var COLORS = "colors";
   var ELEMENTS = "elements";
   var EMITTED = "emitted";
-  var EMPTY_TEXTS = "empty_texts";
   var ERROR_META = "error_meta";
   var EXCHANGE_SOURCE_WIRED = "exchange_source_wired";
   var FETCH_TEXTS = "fetch_texts";
@@ -42,13 +41,9 @@
   var MODULE_TITLE_PADDING_PX = "module_title_padding_px";
   var BUTTON_PADDING_PX = "button_padding_px";
   var BUTTON_FONT_WEIGHT = "button_font_weight";
-  var NO_CELL = "no_cell";
   var OUTER_MARGINS_PX = "outer_margins_px";
   var OUTER_SPACING_PX = "outer_spacing_px";
-  var PAIR_COLUMNS = "pair_columns";
-  var PAIR_ROWS = "pair_rows";
   var PAIRS_GROUP_TITLE = "pairs_group_title";
-  var PAIRS_MAX_HEIGHT_PX = "pairs_max_height_px";
   var PENDING_REFRESH = "pending_refresh";
   var PER_BOT = "per_bot";
   var PER_BOT_MARGINS_PX = "per_bot_margins_px";
@@ -58,18 +53,13 @@
   var REFRESH_LABEL = "refresh_label";
   var REFRESH_TOOLTIP = "refresh_tooltip";
   var SCAN = "scan";
-  var SCAN_STATE = "scan_state";
   var SCHEDULED = "scheduled";
   var SHOW_ACTIVE = "show_active";
   var SHOW_ACTIVE_CHECKED = "show_active_checked";
   var SHOW_ACTIVE_DEFAULT = "show_active_default";
   var SHOW_ACTIVE_LABEL = "show_active_label";
   var SHOW_ACTIVE_TOOLTIP = "show_active_tooltip";
-  var SIGNAL_COLUMNS = "signal_columns";
   var SIGNAL_NAMES = "signal_names";
-  var SIGNAL_ROWS = "signal_rows";
-  var SIGNALS_GROUP_TITLE = "signals_group_title";
-  var SIGNALS_MAX_HEIGHT_PX = "signals_max_height_px";
   var SKIN = "skin";
   var SOURCES = "sources";
   var SPLITTER_ORIENTATION = "splitter_orientation";
@@ -83,10 +73,6 @@
   var STATUS_TEXT = "status_text";
   var STYLE_SHEET = "style_sheet";
   var SYMBOLS = "symbols";
-  var TABLE_ALTERNATING_ROWS = "table_alternating_rows";
-  var TABLE_EDIT_TRIGGERS = "table_edit_triggers";
-  var TABLE_RESIZE_MODE = "table_resize_mode";
-  var TABLE_VIEWPORT_PX = "table_viewport_px";
   var TIMEFRAME = "timeframe";
   var TIMER_DELAYS_MS = "timer_delays_ms";
   var TIMERS = "timers";
@@ -110,7 +96,6 @@
     COLORS,
     ELEMENTS,
     EMITTED,
-    EMPTY_TEXTS,
     ERROR_META,
     EXCHANGE_SOURCE_WIRED,
     FETCH_TEXTS,
@@ -132,13 +117,8 @@
     MODULE_FRAME_PX,
     MODULE_MARGINS_PX,
     MODULE_TITLE_PADDING_PX,
-    NO_CELL,
     OUTER_MARGINS_PX,
     OUTER_SPACING_PX,
-    PAIR_COLUMNS,
-    PAIR_ROWS,
-    PAIRS_GROUP_TITLE,
-    PAIRS_MAX_HEIGHT_PX,
     PENDING_REFRESH,
     PER_BOT,
     PER_BOT_MARGINS_PX,
@@ -148,18 +128,13 @@
     REFRESH_LABEL,
     REFRESH_TOOLTIP,
     SCAN,
-    SCAN_STATE,
     SCHEDULED,
     SHOW_ACTIVE,
     SHOW_ACTIVE_CHECKED,
     SHOW_ACTIVE_DEFAULT,
     SHOW_ACTIVE_LABEL,
     SHOW_ACTIVE_TOOLTIP,
-    SIGNAL_COLUMNS,
     SIGNAL_NAMES,
-    SIGNAL_ROWS,
-    SIGNALS_GROUP_TITLE,
-    SIGNALS_MAX_HEIGHT_PX,
     SKIN,
     SOURCES,
     SPLITTER_HANDLE_PX,
@@ -173,10 +148,6 @@
     STATUS_TEXT,
     STYLE_SHEET,
     SYMBOLS,
-    TABLE_ALTERNATING_ROWS,
-    TABLE_EDIT_TRIGGERS,
-    TABLE_RESIZE_MODE,
-    TABLE_VIEWPORT_PX,
     TIMEFRAME,
     TIMER_DELAYS_MS,
     TIMERS,
@@ -332,10 +303,6 @@
   var SYMBOL_COUNT = "symbol_count";
 
   var ERROR_META_FIELDS = [AGE_SECONDS, SOURCE, SYMBOL_COUNT];
-
-  var EMPTY_PAIRS = "pairs";
-  var EMPTY_SIGNALS = "signals";
-  var EMPTY_TEXT_FIELDS = [EMPTY_PAIRS, EMPTY_SIGNALS];
 
   var SCAN_EMPTY_FORMAT = "empty_format";
   var SCAN_ERROR_SUFFIX = "error_suffix";
@@ -526,7 +493,6 @@
   BAG_FIELDS[CELLS] = CELL_FIELDS;
   BAG_FIELDS[COLORS] = COLOR_FIELDS;
   BAG_FIELDS[ELEMENTS] = ELEMENT_FIELDS;
-  BAG_FIELDS[EMPTY_TEXTS] = EMPTY_TEXT_FIELDS;
   BAG_FIELDS[ERROR_META] = ERROR_META_FIELDS;
   BAG_FIELDS[SCAN] = SCAN_FIELDS;
   BAG_FIELDS[FETCH_TEXTS] = FETCH_TEXT_FIELDS;
@@ -559,12 +525,8 @@
     RIGHT_ZONE_TITLES,
     MODULE_TITLE_PADDING_PX,
     OUTER_MARGINS_PX,
-    PAIR_COLUMNS,
-    PAIR_ROWS,
     PER_BOT_MARGINS_PX,
     SCHEDULED,
-    SIGNAL_COLUMNS,
-    SIGNAL_ROWS,
     SPLITTER_SIZES_PX,
     SPLITTER_STRETCH,
     TIMER_DELAYS_MS,
@@ -579,7 +541,6 @@
     CELLS,
     COLORS,
     ELEMENTS,
-    EMPTY_TEXTS,
     ERROR_META,
     FETCH_TEXTS,
     LAST_META,
@@ -605,7 +566,6 @@
   var QT_COLOUR_FAULT = "qt-colour";
   var NOT_CSS_FAULT = "not-css";
   var MARKUP_FAULT = "markup";
-  var CELL_SHAPE_FAULT = "cell-shape";
   var COLUMN_COUNT_FAULT = "column-count";
   var DUPLICATE_NAME_FAULT = "duplicate-name";
   var UNKNOWN_ELEMENT_FAULT = "unknown-element";
@@ -651,27 +611,19 @@
   // Every length here is a layout step, so only spacing means the same thing.
   var LENGTH_GROUPS = ["spacing"];
 
-  // ACROSS_ORIENTATION and TO_CONTENTS_MODE are the Qt words a layout reads.
+  // ACROSS_ORIENTATION is the Qt word the splitter orientation reads.
   var ACROSS_ORIENTATION = "Horizontal";
-  var TO_CONTENTS_MODE = "ResizeToContents";
 
   var FLEX = "flex";
   var FLEX_NONE = "none";
   // Three equally sized rectangles down each side, as the Qt stretch gives.
   var EQUAL_SHARE = "1 1 0";
-  // A table takes what its zone leaves and scrolls, as the Qt table does.
-  var SHRINK_SHARE = "1 1 auto";
   var AUTO = "auto";
   var ROW_WAY = "row";
   var COLUMN_WAY = "column";
   var CENTER = "center";
   var FULL = "100%";
-  var MIN_CONTENT = "min-content";
-  var MAX_CONTENT = "max-content";
-  var COLLAPSE = "collapse";
   var CLIPPED = "hidden";
-  var ELLIPSIS = "ellipsis";
-  var NO_WRAP = "nowrap";
   var NO_SELECT = "none";
   var PRE = "pre";
   var PRE_WRAP = "pre-wrap";
@@ -695,12 +647,6 @@
   var INPUT_TAG = "input";
   var FIELDSET_TAG = "fieldset";
   var LEGEND_TAG = "legend";
-  var TABLE_TAG = "table";
-  var HEAD_TAG = "thead";
-  var BODY_TAG = "tbody";
-  var TR_TAG = "tr";
-  var TH_TAG = "th";
-  var TD_TAG = "td";
 
   var SELECT_TAG = "select";
   var OPTION_TAG = "option";
@@ -727,17 +673,6 @@
   var STATUS_PART = "status-line";
   var MODULE_GROUP_PART = "module-group";
   var MODULE_LEGEND_PART = "module-legend";
-  var TABLE_GROUP_PART = "table-group";
-  var GROUP_LEGEND_PART = "group-legend";
-  var GROUP_BODY_PART = "group-body";
-  var EMPTY_NOTE_PART = "empty-note";
-  var GRID_PART = "grid";
-  var GRID_HEAD_PART = "grid-head";
-  var HEAD_ROW_PART = "head-row";
-  var HEAD_CELL_PART = "head-cell";
-  var GRID_BODY_PART = "grid-body";
-  var GRID_ROW_PART = "grid-row";
-  var GRID_CELL_PART = "grid-cell";
   var TOPOLOGY_PART = "topology-slot";
   var RIGHT_PANE_PART = "right-pane";
   var PER_BOT_PART = "per-bot";
@@ -901,14 +836,10 @@
   var TOPOLOGY_PANEL = "market_inspector_topologies";
 
   var PART_ATTR = "data-part";
-  var TABLE_ATTR = "data-table";
   var STATE_ATTR = "data-scan-state";
   var NAME_ATTR = "data-name";
-  var COLUMN_ATTR = "data-column";
   var AT_ATTR = "data-at";
   var ENTRIES_ATTR = "data-entries";
-  var ALTERNATING_ATTR = "data-alternating";
-  var ROWS_ATTR = "data-rows";
   var SLOT_ATTR = "data-slot";
   var SLOT_SELECTOR = "[data-slot=\"market-inspector-topologies\"]";
   var FUNCTION_KIND = "function";
@@ -1153,27 +1084,6 @@
     return style;
   }
 
-  // A Qt table cell cuts its text on the right rather than wrapping it.
-  function asCell(style) {
-    style.whiteSpace = NO_WRAP;
-    style.overflow = CLIPPED;
-    style.textOverflow = ELLIPSIS;
-    style.userSelect = NO_SELECT;
-    return style;
-  }
-
-  function cellText(cell) {
-    return Array.isArray(cell) ? cell[ZERO] : undefined;
-  }
-
-  function cellColour(cell) {
-    return Array.isArray(cell) ? cell[ONE] : undefined;
-  }
-
-  function rowName(row) {
-    return text(cellText(asList(row)[ZERO]));
-  }
-
   function Spacer(props) {
     var spacerProps = { style: { flex: AUTO } };
     spacerProps[PART_ATTR] = props.part;
@@ -1254,199 +1164,6 @@
     );
   }
 
-  function HeadCell(props) {
-    var style = asCell({});
-    if (props.mode === TO_CONTENTS_MODE) {
-      style.width = MIN_CONTENT;
-    }
-    var cellProps = { style: style };
-    cellProps[PART_ATTR] = HEAD_CELL_PART;
-    cellProps[COLUMN_ATTR] = text(props.name);
-    cellProps[AT_ATTR] = String(props.at);
-    cellProps[TABLE_ATTR] = props.table;
-    return element(TH_TAG, cellProps, text(props.name));
-  }
-
-  function BodyCell(props) {
-    var style = asCell({});
-    if (props.mode === TO_CONTENTS_MODE) {
-      style.width = MIN_CONTENT;
-    }
-    style.color = colour(cellColour(props.cell));
-    var cellProps = { style: style };
-    cellProps[PART_ATTR] = GRID_CELL_PART;
-    cellProps[COLUMN_ATTR] = text(props.column);
-    cellProps[AT_ATTR] = String(props.at);
-    cellProps[TABLE_ATTR] = props.table;
-    cellProps[NAME_ATTR] = props.name;
-    return element(TD_TAG, cellProps, text(cellText(props.cell)));
-  }
-
-  function BodyRow(props) {
-    var model = props.model;
-    var columns = props.columns;
-    var name = rowName(props.row);
-    var rowProps = {};
-    rowProps[PART_ATTR] = GRID_ROW_PART;
-    rowProps[AT_ATTR] = String(props.at);
-    rowProps[NAME_ATTR] = name;
-    rowProps[TABLE_ATTR] = props.table;
-    rowProps[ALTERNATING_ATTR] = String(model[TABLE_ALTERNATING_ROWS] === true);
-    return element(
-      TR_TAG,
-      rowProps,
-      asList(props.row).map(function (cell, at) {
-        return element(BodyCell, {
-          key: String(at),
-          cell: cell,
-          column: columns[at],
-          at: at,
-          name: name,
-          table: props.table,
-          mode: model[TABLE_RESIZE_MODE]
-        });
-      })
-    );
-  }
-
-  // Grid draws one Qt table: its header row, then one row per record.
-  function Grid(props) {
-    var model = props.model;
-    var columns = listField(model, props.columnsField);
-    var rows = listField(model, props.rowsField);
-    var mode = model[TABLE_RESIZE_MODE];
-    var gridProps = {
-      style: {
-        width: mode === TO_CONTENTS_MODE ? MAX_CONTENT : FULL,
-        borderCollapse: COLLAPSE,
-        tableLayout: AUTO
-      }
-    };
-    gridProps[PART_ATTR] = GRID_PART;
-    gridProps[TABLE_ATTR] = props.table;
-    gridProps[ROWS_ATTR] = String(rows.length);
-    var headProps = {};
-    headProps[PART_ATTR] = GRID_HEAD_PART;
-    var headRowProps = {};
-    headRowProps[PART_ATTR] = HEAD_ROW_PART;
-    var bodyProps = {};
-    bodyProps[PART_ATTR] = GRID_BODY_PART;
-    return element(
-      TABLE_TAG,
-      gridProps,
-      element(
-        HEAD_TAG,
-        headProps,
-        element(
-          TR_TAG,
-          headRowProps,
-          columns.map(function (name, at) {
-            return element(HeadCell, {
-              key: String(at),
-              name: name,
-              at: at,
-              table: props.table,
-              mode: mode
-            });
-          })
-        )
-      ),
-      element(
-        BODY_TAG,
-        bodyProps,
-        rows.map(function (row, at) {
-          return element(BodyRow, {
-            key: String(at),
-            model: model,
-            row: row,
-            at: at,
-            columns: columns,
-            table: props.table
-          });
-        })
-      )
-    );
-  }
-
-  // EmptyNote names the scan state under a table that drew no rows, so a
-  // scan nobody asked for reads differently from one that found nothing.
-  function EmptyNote(props) {
-    var model = props.model;
-    if (listField(model, props.rowsField).length) {
-      return null;
-    }
-    var noteProps = { style: asLabel(styleOf(model[STATUS_STYLE]), true) };
-    noteProps[PART_ATTR] = EMPTY_NOTE_PART;
-    noteProps[TABLE_ATTR] = props.table;
-    noteProps[STATE_ATTR] = text(model[SCAN_STATE]);
-    return element(
-      SPAN_TAG,
-      noteProps,
-      text(objectField(model, EMPTY_TEXTS)[props.noteField])
-    );
-  }
-
-  // tableHeight answers what the Qt table draws: its own viewport height,
-  // cut short by the group's maximum. An empty table keeps that height.
-  function tableHeight(model, heightField) {
-    var viewport = Number(model[TABLE_VIEWPORT_PX]);
-    var most = Number(model[heightField]);
-    if (!isFinite(viewport)) {
-      return most;
-    }
-    return isFinite(most) && most < viewport ? most : viewport;
-  }
-
-  // TableGroup is the Qt group box holding one table under its title.
-  function TableGroup(props) {
-    var model = props.model;
-    var style = groupFrame(model);
-    style.flex = SHRINK_SHARE;
-    style.minHeight = ZERO;
-    var groupProps = { style: style };
-    groupProps[PART_ATTR] = TABLE_GROUP_PART;
-    groupProps[TABLE_ATTR] = props.table;
-    groupProps[ARIA_LABEL] = label(model[props.titleField]);
-    var legendProps = { style: asLabel(groupTitleStyle(model), false) };
-    legendProps[PART_ATTR] = GROUP_LEGEND_PART;
-    var bodyProps = {
-      style: {
-        height: length(tableHeight(model, props.heightField)),
-        maxHeight: length(model[props.heightField]),
-        overflow: AUTO,
-        flex: SHRINK_SHARE,
-        minWidth: ZERO,
-        minHeight: ZERO
-      },
-      tabIndex: ZERO
-    };
-    bodyProps[PART_ATTR] = GROUP_BODY_PART;
-    bodyProps[TABLE_ATTR] = props.table;
-    return element(
-      FIELDSET_TAG,
-      groupProps,
-      element(LEGEND_TAG, legendProps, text(model[props.titleField])),
-      element(
-        DIV_TAG,
-        bodyProps,
-        element(Grid, {
-          model: model,
-          table: props.table,
-          columnsField: props.columnsField,
-          rowsField: props.rowsField
-        })
-      ),
-      element(EmptyNote, {
-        key: EMPTY_NOTE_PART,
-        model: model,
-        table: props.table,
-        rowsField: props.rowsField,
-        noteField: props.noteField
-      })
-    );
-  }
-
-  // ModuleGroup is one left-side region: its Qt group box and its status line.
   // groupFrame is the themed QGroupBox: a 1 px frame and a title drawn in the
   // group own margin, so the title takes no row.
   function groupFrame(model, shares) {
@@ -2618,7 +2335,7 @@
     );
   }
 
-  // Screen draws the fleet-wide tab: filter row, both tables, right pane.
+  // Screen draws the fleet-wide tab: the six zones across two panes.
   function Screen(props) {
     if (!isPlainObject(props.model)) {
       return null;
@@ -2643,7 +2360,7 @@
         note(null, field, MISSING_FAULT, null);
         return;
       }
-      if (model[field] === null && field !== NO_CELL) {
+      if (model[field] === null) {
         note(null, field, NULL_FAULT, null);
       }
     });
@@ -2701,16 +2418,12 @@
 
   var WORD_FIELDS = [
     ACCESSIBLE_NAME,
-    PAIRS_GROUP_TITLE,
     REFRESH_LABEL,
     SHOW_ACTIVE_LABEL,
-    SIGNALS_GROUP_TITLE,
     SPLITTER_ORIENTATION,
     STATUS_STYLE,
     STATUS_TEXT,
-    STYLE_SHEET,
-    TABLE_EDIT_TRIGGERS,
-    TABLE_RESIZE_MODE
+    STYLE_SHEET
   ];
 
   var FLAG_FIELDS = [
@@ -2718,17 +2431,14 @@
     PENDING_REFRESH,
     REFRESH_ENABLED,
     SHOW_ACTIVE,
-    SHOW_ACTIVE_CHECKED,
-    TABLE_ALTERNATING_ROWS
+    SHOW_ACTIVE_CHECKED
   ];
 
   var COUNT_FIELDS = [
     GROUP_SPACING_PX,
     LEFT_SPACING_PX,
     OUTER_SPACING_PX,
-    PAIRS_MAX_HEIGHT_PX,
     PER_BOT_SPACING_PX,
-    SIGNALS_MAX_HEIGHT_PX,
     SPLITTER_PANES,
     TOP_ROW_SPACING_PX
   ];
@@ -2758,39 +2468,6 @@
     if (typeof value === STRING_KIND && qtColour(value) !== undefined) {
       note(where, field, QT_COLOUR_FAULT, value);
     }
-  }
-
-  function checkTable(model, columnsField, rowsField) {
-    var columns = listField(model, columnsField);
-    var placeholder = objectField(model, CELLS)[ACTIVE_NO];
-    var paint = objectField(model, COLORS)[NONE_COLOUR];
-    var seen = [];
-    listField(model, rowsField).forEach(function (row, at) {
-      var spot = rowsField + PATH_SPLIT + String(at);
-      if (!Array.isArray(row)) {
-        note(spot, rowsField, NOT_A_LIST_FAULT, kindOf(row));
-        return;
-      }
-      if (row.length !== columns.length) {
-        note(spot, rowsField, COLUMN_COUNT_FAULT, row.length);
-      }
-      var name = rowName(row);
-      if (name !== undefined && seen.indexOf(name) >= ZERO) {
-        note(spot, rowsField, DUPLICATE_NAME_FAULT, name);
-      }
-      seen.push(name);
-      row.forEach(function (cell, column) {
-        var here = spot + PATH_SPLIT + String(column);
-        if (!Array.isArray(cell) || cell.length !== TWO) {
-          note(here, rowsField, CELL_SHAPE_FAULT, kindOf(cell));
-          return;
-        }
-        checkTypeAgainst(here, rowsField, cellText(cell), placeholder);
-        checkTypeAgainst(here, rowsField, cellColour(cell), paint);
-        checkColour(here, rowsField, cellColour(cell));
-        checkMarkup(here, rowsField, cellText(cell));
-      });
-    });
   }
 
   // Each left-side region carries a key, a title and a status line.
@@ -2944,18 +2621,6 @@
     });
   }
 
-  function declaredCells(model, columnsField, rowsField) {
-    return listField(model, columnsField).length * listField(model, rowsField).length;
-  }
-
-  function heldCells(model, rowsField) {
-    var count = ZERO;
-    listField(model, rowsField).forEach(function (row) {
-      count += asList(row).length;
-    });
-    return count;
-  }
-
   // drawnEntries counts the per-bot entries this module draws, at any depth.
   function drawnEntries(model, entries) {
     var names = objectField(model, ELEMENTS);
@@ -2997,15 +2662,11 @@
       declared: {
         fields: DECLARED_FIELDS.length,
         nested: nestedPaths().length,
-        signalCells: declaredCells(model, SIGNAL_COLUMNS, SIGNAL_ROWS),
-        pairCells: declaredCells(model, PAIR_COLUMNS, PAIR_ROWS),
         perBot: allEntries(order)
       },
       held: {
         fields: heldFieldCount(model),
         nested: heldNestedPaths(model).length,
-        signalCells: heldCells(model, SIGNAL_ROWS),
-        pairCells: heldCells(model, PAIR_ROWS),
         perBot: drawnEntries(model, order)
       },
       faults: screenFaults.slice()
@@ -3024,8 +2685,6 @@
     checkBags(model);
     checkShapes(model);
     checkTypes(model);
-    checkTable(model, SIGNAL_COLUMNS, SIGNAL_ROWS);
-    checkTable(model, PAIR_COLUMNS, PAIR_ROWS);
     checkModules(model);
     checkOrder(model);
     checkSheets(model);
@@ -3100,92 +2759,10 @@
     return held === null ? [] : listField(objectField(held.model, PER_BOT_VIEW), ORDER);
   }
 
-  // The name each row of one table carries, in the order it is drawn.
-  function namesOf(rowsField) {
-    return held === null
-      ? []
-      : listField(held.model, rowsField).map(function (row) {
-          return rowName(row);
-        });
-  }
-
   // The key each left-side region carries, in the order it is drawn.
   function moduleOrder() {
     return list(LEFT_MODULES).map(function (entry) {
       return text(asList(entry)[ZERO]);
-    });
-  }
-
-  function signalOrder() {
-    return namesOf(SIGNAL_ROWS);
-  }
-
-  function pairOrder() {
-    return namesOf(PAIR_ROWS);
-  }
-
-  // One row read by the name its first cell carries, column by column.
-  function rowByName(columnsField, rowsField, wanted) {
-    var found;
-    if (held === null) {
-      return found;
-    }
-    var columns = listField(held.model, columnsField);
-    listField(held.model, rowsField).forEach(function (row) {
-      if (rowName(row) !== wanted || found !== undefined) {
-        return;
-      }
-      found = {};
-      columns.forEach(function (name, at) {
-        Object.defineProperty(found, String(name), {
-          value: asList(row)[at],
-          enumerable: true,
-          writable: true,
-          configurable: true
-        });
-      });
-    });
-    return found;
-  }
-
-  function signalRow(name) {
-    return rowByName(SIGNAL_COLUMNS, SIGNAL_ROWS, name);
-  }
-
-  function pairRow(name) {
-    return rowByName(PAIR_COLUMNS, PAIR_ROWS, name);
-  }
-
-  // Every group and label pair this screen draws, group named first.
-  function labelPairs() {
-    var found = [];
-    if (held === null) {
-      return found;
-    }
-    var model = held.model;
-    listField(model, SIGNAL_COLUMNS).forEach(function (name) {
-      found.push([model[SIGNALS_GROUP_TITLE], name]);
-    });
-    listField(model, PAIR_COLUMNS).forEach(function (name) {
-      found.push([model[PAIRS_GROUP_TITLE], name]);
-    });
-    return found;
-  }
-
-  // Each label carried by more than one group, which a label alone hides.
-  function labelCollisions() {
-    var groups = {};
-    labelPairs().forEach(function (pair) {
-      var name = String(pair[ONE]);
-      if (!owns(groups, name)) {
-        groups[name] = [];
-      }
-      if (groups[name].indexOf(String(pair[ZERO])) < ZERO) {
-        groups[name].push(String(pair[ZERO]));
-      }
-    });
-    return Object.keys(groups).filter(function (name) {
-      return groups[name].length > ONE;
     });
   }
 
@@ -3440,7 +3017,6 @@
     RefreshButton: RefreshButton,
     ActiveSwitch: ActiveSwitch,
     StatusLine: StatusLine,
-    TableGroup: TableGroup,
     ModuleGroup: ModuleGroup,
     AtaRow: AtaRow,
     SectorField: SectorField,
@@ -3452,10 +3028,6 @@
     DetailLine: DetailLine,
     zoneFor: zoneFor,
     moduleOrder: moduleOrder,
-    Grid: Grid,
-    BodyRow: BodyRow,
-    BodyCell: BodyCell,
-    HeadCell: HeadCell,
     TopologySlot: TopologySlot,
     PerBotView: PerBotView,
     PerBotCard: PerBotCard,
@@ -3469,12 +3041,6 @@
     bag: bag,
     perBot: perBot,
     perBotOrder: perBotOrder,
-    signalOrder: signalOrder,
-    pairOrder: pairOrder,
-    signalRow: signalRow,
-    pairRow: pairRow,
-    labelPairs: labelPairs,
-    labelCollisions: labelCollisions,
     marksFor: marksFor,
     rebuilt: rebuilt,
     actions: actions,

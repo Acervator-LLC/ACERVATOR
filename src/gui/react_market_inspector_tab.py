@@ -111,9 +111,6 @@ TAB_BODY = (
     f'<div id="{PREVIEW_ROOT_ID}" hidden></div>'
 )
 
-#: The JS expression that counts the table rows the browser drew.
-ROW_COUNT_JS = "document.querySelectorAll('[data-part=\"grid-row\"]').length"
-
 #: The bridge this host answers. The Electron shell binds its own preload,
 #: so this source is never a file under ``src/gui/web``.
 HOST_SCRIPT = """(function (global) {
@@ -306,7 +303,7 @@ if _HAS_QT and _HAS_WEBENGINE:
                 self._owner.run_topology_action(message[len(TOPOLOGY_PREFIX) :])
 
     class MarketInspectorReactTab(MarketInspectorTab):
-        """The Market Inspector with its chrome, tables and pane drawn by React."""
+        """The Market Inspector with its chrome, zones and pane drawn by React."""
 
         def _build_ui(self) -> None:
             """Build the one web view the whole tab is drawn in."""
@@ -366,16 +363,6 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._run(screen_push_script(self._last_model))
             pane = self._topologies_pane
             self._run(topology_push_script(pane.view_model(), pane.preview_at))
-
-        def row_count(self, callback: Callable[[Any], None]) -> bool:
-            """Run ``ROW_COUNT_JS`` and hand the count to ``callback``.
-
-            Returns False and calls nothing while the page is not ready.
-            """
-            if not self._page_ready:
-                return False
-            self._web.page().runJavaScript(ROW_COUNT_JS, callback)
-            return True
 
         # -- what the page reports back -----------------------------------
 
@@ -474,7 +461,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             self.push()
 
         def _fill_signal_rows(self, signals: list) -> None:
-            """Draw one HTF Signals row per entry of ``signals``."""
+            """Hold one HTF Signals row per entry of ``signals``."""
             rows = self._screen.signal_rows
             surface.set_row_count(rows, len(signals), len(surface.SIGNAL_COLUMNS))
             for index, found in enumerate(signals):
@@ -482,7 +469,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             self.push()
 
         def _fill_pair_rows(self, pairs: list) -> None:
-            """Draw one Opposing Pairs row per entry of ``pairs``."""
+            """Hold one Opposing Pairs row per entry of ``pairs``."""
             self._screen.fill_pair_rows(pairs)
             self.push()
 

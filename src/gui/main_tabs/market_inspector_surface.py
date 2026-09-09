@@ -2,8 +2,8 @@
 
 Describes the fleet-wide Market Inspector tab and the per-bot view the
 Live Bot Settings window shows. The screen holds a Refresh button, an
-"Include active markets" switch, a status line, an HTF Signals table of
-six columns, an Opposing Pairs table of four, and a right pane carrying
+"Include active markets" switch, a status line, the scored signal and
+opposing-pair rows each scan holds, and a right pane carrying
 the topology proposals. ``left_module_rows`` describes the three regions
 above them: ATA-SPM, Opposing Trades and Multi-Exchange Arbitrage, each
 carrying the state its own source answers with.
@@ -61,11 +61,8 @@ SHOW_ACTIVE_TOOLTIP = (
 STATUS_INITIAL_TEXT = "No data yet — press Refresh."
 STATUS_STYLE = "color: #aaa; font-size: 11px;"
 
-SIGNALS_GROUP_TITLE = "HTF Signals"
 SIGNAL_COLUMNS = ("Asset", "Signal", "Score", "Daily", "Weekly", "Active")
-SIGNALS_MAX_HEIGHT_PX = 360
 
-PAIRS_GROUP_TITLE = "Opposing Pairs (cointegration, Engle-Granger + Johansen, p<=0.05)"
 PAIR_COLUMNS = (
     "Long side",
     "Short side",
@@ -76,7 +73,6 @@ PAIR_COLUMNS = (
     "Score (Long+Short)",
 )
 NO_METHOD_TEXT = "—"
-PAIRS_MAX_HEIGHT_PX = 180
 
 STEP_BACK_TEXT = "◀"
 STEP_NEXT_TEXT = "▶"
@@ -413,15 +409,6 @@ LEFT_MODULE_TITLES = (
     OPPOSING_TRADES_GROUP_TITLE,
     ARBITRAGE_GROUP_TITLE,
 )
-
-#: The height a ``QTableWidget`` takes when nothing sizes it. Measured 192 px,
-#: and the same whatever the row count, so each table draws this tall until
-#: its own maximum cuts it shorter.
-TABLE_VIEWPORT_PX = 192
-
-TABLE_RESIZE_MODE = "ResizeToContents"
-TABLE_EDIT_TRIGGERS = "NoEditTriggers"
-TABLE_ALTERNATING_ROWS = True
 
 SPLITTER_ORIENTATION = "Horizontal"
 SPLITTER_STRETCH = (1, 1)
@@ -2039,7 +2026,7 @@ def pair_entry(pair: Any) -> dict:
 
 
 def shown_signals(signals: Any, show_active: bool) -> list:
-    """The signals the table draws: scored, and active ones only on request."""
+    """The signals the screen keeps: scored, and active only on request."""
     found = list(signals)
     if not show_active:
         found = [one for one in found if not one.is_active]
@@ -2088,7 +2075,7 @@ class PairState:
     """One opposing pair, as both screens read it.
 
     method is the cointegration_test verdict that let the pair
-    through, and the table prints its label, window and statistic.
+    through, and the Opposing Trades zone prints its label and statistic.
     """
 
     def __init__(
@@ -2179,12 +2166,12 @@ class TopologyPaneModel:
 
 
 class MarketInspectorScreenModel:
-    """The Market Inspector screen: its filter row, its two tables, its pane.
+    """The Market Inspector screen: its filter row, its six zones, its pane.
 
     ``start_fetch`` refuses in the places the shipped screen refuses and
     hands the fetch to the scheduler otherwise. ``fetch_and_analyze``
     writes the fetch report, feeds the analyzer and redraws.
-    ``render_signals`` fills both tables from the analyzer's most recent
+    ``render_signals`` fills both row stores from the analyzer's most recent
     scan. Every step is appended to ``calls`` in the order the shipped
     screen makes it.
     """
@@ -2228,7 +2215,7 @@ class MarketInspectorScreenModel:
         self.build_ui()
 
     def build_ui(self) -> None:
-        """Build the filter row, the status line and the two empty tables."""
+        """Build the filter row, the status line and two empty row stores."""
         self.refresh_enabled = True
         self.show_active_checked = SHOW_ACTIVE_CHECKED
         self.status_label_text = STATUS_INITIAL_TEXT
@@ -2245,18 +2232,18 @@ class MarketInspectorScreenModel:
         self.refresh_enabled = bool(enabled)
 
     def shown_signals(self, signals: Any) -> list:
-        """The scored signals the table shows under the active filter."""
+        """The scored signals this screen keeps under the active filter."""
         return shown_signals(signals, self.show_active)
 
     def fill_signal_rows(self, signals: list) -> None:
-        """Draw one HTF Signals row per entry of ``signals``."""
+        """Hold one HTF Signals row per entry of ``signals``."""
         set_row_count(self.signal_rows, len(signals), len(SIGNAL_COLUMNS))
         for index, found in enumerate(signals):
             fill_signal_row(self.signal_rows[index], found)
         self.calls.append([SIGNALS_DRAWN, len(self.signal_rows)])
 
     def fill_pair_rows(self, pairs: Any) -> None:
-        """Draw one Opposing Pairs row per entry of ``pairs``."""
+        """Hold one Opposing Pairs row per entry of ``pairs``."""
         rows = list(pairs)
         self.pairs = rows
         set_row_count(self.pair_rows, len(rows), len(PAIR_COLUMNS))
@@ -2284,13 +2271,6 @@ class MarketInspectorScreenModel:
         scan nobody started.
         """
         return self.scan_phase
-
-    def empty_notes(self) -> dict:
-        """The sentence each table shows while it holds no rows."""
-        return {
-            "signals": empty_table_text(self.scan_phase, SIGNALS_NOUN),
-            "pairs": empty_table_text(self.scan_phase, PAIRS_NOUN),
-        }
 
     def set_ata_run_source(self, getter: Any) -> None:
         """Take the callable the ATA-SPM region reads its run report from."""
@@ -2577,7 +2557,7 @@ class MarketInspectorScreenModel:
         return fetch_htf_universe
 
     def update_active_symbols(self, bot_statuses: Any) -> None:
-        """Take the base assets the fleet trades and redraw both tables."""
+        """Take the base assets the fleet trades and redraw the screen."""
         self.active_symbols = active_symbols_from(bot_statuses)
         self.calls.append([ACTIVE_SYMBOLS_SET, len(self.active_symbols)])
         self.render_signals()
@@ -2696,7 +2676,7 @@ class MarketInspectorScreenModel:
         return found
 
     async def fetch_and_analyze(self, connectors: dict, force: bool = False) -> None:
-        """Fetch the universe, feed the analyzer and redraw both tables."""
+        """Fetch the universe, feed the analyzer and redraw the screen."""
         try:
             result = await self.fetch_universe()(
                 connectors,
@@ -2817,7 +2797,7 @@ class MarketInspectorScreenModel:
         return status_text(self.last_meta)
 
     def render_signals(self) -> None:
-        """Rewrite the status line and both tables from the last scan."""
+        """Rewrite the status line and both row stores from the last scan."""
         try:
             inspector = self.inspector()
         except Exception:
@@ -3054,21 +3034,12 @@ def build_view_model(
         "refresh_enabled": model.refresh_enabled,
         "show_active_label": SHOW_ACTIVE_LABEL,
         "show_active_checked": model.show_active_checked,
-        "no_cell": NO_CELL,
         "show_active_default": SHOW_ACTIVE_CHECKED,
         "show_active_tooltip": SHOW_ACTIVE_TOOLTIP,
         "show_active": model.show_active,
         "status_text": model.status_label_text,
         "status_initial_text": STATUS_INITIAL_TEXT,
         "status_style": STATUS_STYLE,
-        "signals_group_title": SIGNALS_GROUP_TITLE,
-        "signal_columns": list(SIGNAL_COLUMNS),
-        "signals_max_height_px": SIGNALS_MAX_HEIGHT_PX,
-        "signal_rows": [[list(cell) for cell in row] for row in model.signal_rows],
-        "pairs_group_title": PAIRS_GROUP_TITLE,
-        "pair_columns": list(PAIR_COLUMNS),
-        "pairs_max_height_px": PAIRS_MAX_HEIGHT_PX,
-        "pair_rows": [[list(cell) for cell in row] for row in model.pair_rows],
         "left_modules": [list(one) for one in model.left_modules()],
         "right_zones": [list(one) for one in model.right_zones()],
         "zones": [dict(one) for one in model.zone_views()],
@@ -3084,10 +3055,6 @@ def build_view_model(
         "module_title_padding_px": list(MODULE_TITLE_PADDING_PX),
         "button_padding_px": list(BUTTON_PADDING_PX),
         "button_font_weight": BUTTON_FONT_WEIGHT,
-        "table_viewport_px": TABLE_VIEWPORT_PX,
-        "table_resize_mode": TABLE_RESIZE_MODE,
-        "table_edit_triggers": TABLE_EDIT_TRIGGERS,
-        "table_alternating_rows": TABLE_ALTERNATING_ROWS,
         "splitter_orientation": SPLITTER_ORIENTATION,
         "splitter_stretch": list(SPLITTER_STRETCH),
         "splitter_sizes_px": list(SPLITTER_SIZES_PX),
@@ -3107,8 +3074,6 @@ def build_view_model(
         "active_symbols": sorted(model.active_symbols),
         "last_meta": dict(model.last_meta),
         "pending_refresh": model.pending_refresh,
-        "scan_state": model.scan_state(),
-        "empty_texts": model.empty_notes(),
         "exchange_source_wired": bool(model.connectors_getter and model.scheduler),
         "scheduled": [list(found) for found in model.scheduled],
         "colors": {

@@ -115,12 +115,6 @@ body {
   white-space: nowrap;
 }
 
-[data-part="table-group"] {
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 6px 8px;
-}
-
 [data-part="group-legend"],
 [data-part="card-legend"] {
   color: var(--accent);
@@ -135,34 +129,6 @@ body {
 
 [data-part="module-legend"] {
   color: var(--accent);
-}
-
-[data-part="grid"] {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-[data-part="head-cell"] {
-  text-align: left;
-  padding: 3px 8px;
-  border-bottom: 1px solid var(--border);
-  color: var(--accent);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-[data-part="grid-cell"] {
-  padding: 2px 8px;
-  border-bottom: 1px solid var(--grid);
-  white-space: nowrap;
-}
-
-[data-part="grid-row"]:nth-child(even) {
-  background: var(--grid);
-}
-
-[data-part="grid-body"] {
-  overflow: auto;
 }
 
 /* Painted, not bordered: a border-left costs the pane 1px of width. */
@@ -180,7 +146,6 @@ body {
 /* QScrollBar:vertical in theme_engine is 10px wide with a 5px radius. */
 [data-part="settings-page"]::-webkit-scrollbar,
 [data-part="zone-entry"]::-webkit-scrollbar,
-[data-part="grid-body"]::-webkit-scrollbar,
 [data-part="topology-slot"]::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -188,7 +153,6 @@ body {
 
 [data-part="settings-page"]::-webkit-scrollbar-thumb,
 [data-part="zone-entry"]::-webkit-scrollbar-thumb,
-[data-part="grid-body"]::-webkit-scrollbar-thumb,
 [data-part="topology-slot"]::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 5px;
