@@ -815,6 +815,8 @@ PANE_FETCHER: Optional[Callable[[], list]] = None
 
 FETCH_THREAD_NAME = "acervator-news-fetch"
 
+FETCH_THREAD: Optional[threading.Thread] = None
+
 
 def build_model(headlines=None, clock=None) -> CryptoNewsTickerModel:
     """One strip already holding `headlines`, for a fresh paint."""
@@ -827,12 +829,13 @@ def build_model(headlines=None, clock=None) -> CryptoNewsTickerModel:
 def use_fetch(request_factory, opener, clock: Callable[[], float]) -> None:
     """Hold the transport ``pane_model`` builds its strip's fetch from.
 
-    ``request_factory`` and ``opener`` are handed in by whoever registers
-    ``view_model``, so this module still reaches no network of its own.
+    An existing ``PANE_MODEL`` takes ``PANE_FETCHER`` too, so a second
+    ``use_fetch`` keeps the headlines that strip holds.
     """
-    global PANE_FETCHER, PANE_MODEL
+    global PANE_FETCHER
     PANE_FETCHER = partial(fetch_all, request_factory, opener, clock=clock)
-    PANE_MODEL = None
+    if PANE_MODEL is not None:
+        PANE_MODEL.fetcher = PANE_FETCHER
 
 
 def pane_model() -> CryptoNewsTickerModel:
@@ -843,19 +846,28 @@ def pane_model() -> CryptoNewsTickerModel:
     return PANE_MODEL
 
 
+def fetch_running() -> bool:
+    """Whether ``FETCH_THREAD`` is still running ``run_worker``.
+
+    A ``FETCH_THREAD`` that returned or raised reports False here.
+    """
+    return FETCH_THREAD is not None and FETCH_THREAD.is_alive()
+
+
 def start_fetch(model: CryptoNewsTickerModel) -> Optional[threading.Thread]:
     """Run ``model.run_worker`` away from the request that asked for it.
 
-    The strip keeps ``INITIAL_TEXT`` on the line until the answer lands,
-    which is what the shipped strip shows while its worker runs.
+    Answers None while ``fetch_running``, so many requests carrying ``start``
+    leave one ``FETCH_THREAD`` alive.
     """
-    if model.worker is None:
+    global FETCH_THREAD
+    if model.worker is None or fetch_running():
         return None
-    thread = threading.Thread(
+    FETCH_THREAD = threading.Thread(
         target=model.run_worker, name=FETCH_THREAD_NAME, daemon=True
     )
-    thread.start()
-    return thread
+    FETCH_THREAD.start()
+    return FETCH_THREAD
 
 
 def source_view(source: NewsSource) -> dict:
@@ -1000,7 +1012,7 @@ def view_model(params: dict) -> dict:
     """
     global PANE_MODEL
     if params.get("reset", False):
-        PANE_MODEL = CryptoNewsTickerModel()
+        PANE_MODEL = CryptoNewsTickerModel(fetcher=PANE_FETCHER)
     model = pane_model()
     if params.get("now") is not None:
         moment = float(params["now"])

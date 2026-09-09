@@ -451,3 +451,143 @@ Run on every file this unit changed, with the fixture control taken first.
 known_good.py   passed=True    exit 0
 known_bad.py    passed=False   exit 1
 ```
+
+---
+
+## 7 — `crypto_news_ticker.py`: one fetch thread, not one per mount
+
+### 7.1 the error
+
+No traceback. `tickerRequest` reads `news_ticker_started`, which the exchange
+screen holds between calls, so every mount of that screen sends `start`, not
+only the first. `view_model` then calls `start_fetch`, which refused only when
+the model held no worker, and `force_refresh` leaves the worker in place while
+a fetch runs. Each mount therefore started another thread reaching the network,
+on the machine the operator trades from.
+
+Read off the backend process while a fetch was in flight, five mounts in a row:
+
+```
+mount   1  2  3  4  5
+threads 2  3  4  5  6
+```
+
+### 7.2 reproduction
+
+```
+ACERVATOR_TICKER_SOURCE=slow python count_fetch_threads.py off <json>
+window.acervatorTicker.forget()
+window.acervatorExchangeTab.mountNewsTicker(document, payload())
+window.acervator.call("u128.threads", {})
+```
+
+The backend answers `threading.enumerate()` filtered to `FETCH_THREAD_NAME`.
+The fetch is a stand-in that waits 8 seconds before answering, so all five
+mounts fall inside one fetch and the count is readable.
+
+### 7.3 the cause
+
+`start_fetch` had one refusal and it asked the wrong question.
+
+```python
+    if model.worker is None:
+        return None
+```
+
+### 7.4 the correction
+
+The module holds the thread it started and `fetch_running` asks whether it is
+still going. A thread that has ended reports False whether it returned or
+raised, so a refused fetch cannot leave the strip unable to fetch again.
+
+```python
+def fetch_running() -> bool:
+    return FETCH_THREAD is not None and FETCH_THREAD.is_alive()
+```
+
+```python
+    if model.worker is None or fetch_running():
+        return None
+```
+
+### 7.5 the rerun
+
+The same five mounts, inside one fetch, with the guard in place:
+
+```
+                fetch threads  headlines  fetches started
+at open                     1          0                1
+mount 1                     1          0                1
+mount 2                     1          0                1
+mount 3                     1          0                1
+mount 4                     1          0                1
+mount 5                     1          0                1
+after the wait              0          6
+mount 6                     1          6
+```
+
+### 7.6 the control
+
+Mount 6 is the other side of it. With nothing in flight the guard lets a fetch
+start, the count reads one again, and the strip draws its stories.
+
+```
+mount 6   fetch threads 1   headlines 6   [2/6] The Defiant - SEC Crypto Custody Rewrite ...
+```
+
+The refused-fetch path was driven as well. The strip says so, no thread is
+left, and the next request fetches again.
+
+```
+after a refused fetch    label  (crypto news feeds unavailable)
+                         fetch_running  False
+the next start           headlines  2
+```
+
+---
+
+## 8 — a second registry build kept the strip's stories
+
+### 8.1 the error
+
+No traceback. `build_registry` calls `use_fetch` outside the `live` block, so
+every build ran it, and `use_fetch` set `PANE_MODEL` to None. A strip that had
+already fetched went back to its opening line on the next build.
+
+```
+after one fetch          headlines 2
+after a second registry  headlines 0
+```
+
+### 8.2 reproduction
+
+```
+python probe_rebuild_and_failure.py
+```
+
+### 8.3 the cause
+
+```python
+    PANE_MODEL = None
+```
+
+### 8.4 the correction
+
+`use_fetch` hands the fetch to a strip that already exists and leaves that
+strip alone. `view_model` gives a `reset` strip the fetch as well, which it did
+not before, so a fresh paint can still fetch.
+
+```python
+    if PANE_MODEL is not None:
+        PANE_MODEL.fetcher = PANE_FETCHER
+```
+
+### 8.5 the rerun
+
+```
+after one fetch          headlines 2
+after a second registry  headlines 2
+fetcher still held       True
+```
+
+Put back, the second build reads 0 again, so the change is what keeps them.
