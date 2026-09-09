@@ -744,6 +744,16 @@
     asked = null;
   }
 
+  // The Activity Log belongs to the Trading tab, so it names no bridge
+  // method and the tab bar gives it no tab of its own.
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderLog,
+      load: loadLog,
+      loadError: loadError
+    });
+  }
+
   global.acervatorSetLog = setLog;
   global.acervatorLoadLog = loadLog;
   global.acervatorLog = {

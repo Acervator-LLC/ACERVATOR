@@ -691,6 +691,138 @@ chart_zone_fold: str = "#fcee0a"
 
 Detail: [08-tabs/asset-charts.md](08-tabs/asset-charts.md).
 
+## Live Tab
+
+The Live tab is where the bots trade real money on a real exchange. The
+exchange connections fill the left, the Indicator Voting Panel fills the right,
+and the Activity Log and the API Interaction Log close the foot.
+
+The tab is now called Live. It sits third on the bar, straight after Paper, on
+the gold ground with red text.
+
+### 2026-09-09 06:35 - #128 - the Live tab's two widgets register a panel
+
+The Indicator Voting Panel and the Activity Log now register with the shell's
+panel host, and the Live tab draws both through it. Before the change the shell
+listed sixteen registered panels and named these two as modules that draw
+nothing; it lists eighteen now and names neither.
+
+`src/gui/web/status_log.js` — what each of the two modules adds
+
+```javascript
+  if (global.acervatorPanelHost) {
+    global.acervatorPanelHost.register({
+      render: renderLog,
+      load: loadLog,
+      loadError: loadError
+    });
+  }
+```
+
+Neither registration names a bridge method, so the tab bar gives neither a tab
+of its own. The Live tab keeps a slot for each and hands the slot to the host,
+which is how the Charts tab already draws the price chart.
+
+`src/gui/web/trading_tab.js` — the Live tab's slot for the Activity Log
+
+```javascript
+    slot.setAttribute(CHILD_ATTR, STATUS_LOG_MODULE);
+    return host.mount(STATUS_LOG_MODULE, slot, model) ? slot : null;
+```
+
+The host is the draw path now, not a second name for it. With both
+registrations taken out and the same reading driven in, each slot fell from
+43,264 and 4,532 characters of markup to 82 and 72, and each carried the
+sentence naming the panel that did not draw.
+
+Both builds were driven with one reading: 180 daily BTC/USD candles from
+CoinGecko through the voting engine, at 15m, 1h and 1d, and eight Activity Log
+messages covering a placed, a filled and a sent trade, a wire flow, a wire
+stack, a warning and an error. The Qt tab was built at the size the shell gives
+the React tab, 1386 by 708.
+
+The twelve indicator columns carry the same name, direction and bar in both.
+Each bar fills its share of a 70-pixel plot.
+
+```
+column  direction  confidence  Qt height  React height
+BB      NEUTRAL    0.000       2.00       2.00
+VTX     BEARISH    0.328       22.96      22.69
+MACD    BEARISH    0.150       10.50      10.38
+SRsi    BEARISH    0.200       14.00      13.84
+Ichi    BEARISH    0.210       14.70      14.53
+Vol     NEUTRAL    0.000       2.00       2.00
+Sling   NEUTRAL    0.000       2.00       2.00
+ADX     BEARISH    0.267       18.69      18.48
+STrd    BULLISH    0.261       18.27      18.05
+ZSc     NEUTRAL    0.000       2.00       2.00
+KER     NEUTRAL    0.000       2.00       2.00
+RSI     NEUTRAL    0.000       2.00       2.00
+```
+
+Net, Comp and Conf stand in the last three of the ten columns in both, take the
+same three directions, and run from the ceiling of the top row of bars to the
+floor of the bottom row. Only their bases carry a label, in a strip 22 pixels
+deep under that floor.
+
+No horizontal line crosses the three. Every element in the React panel was read
+for a top border, a bottom border or a background gradient: ninety-three carry
+one, and every box ends at or before 1185.93, where the Net column starts. The
+1 pixel each indicator column carries is that column's own base, which Qt
+paints as a line from the left margin to the x of the Net column. The dotted
+increments sit on those same cells and on no other.
+
+```
+                Qt                       React
+ceiling         171                       267.2
+floor           428                       523.2
+label strip     428 to 450                523.2 to 545.2
+columns         8, 9, 10 of 10            8, 9, 10 of 10
+rules end at    437, the Net column       1185.9, the Net column
+```
+
+The Activity Log draws the same eight lines in the same order with the same
+text. Each line takes the colour of its kind, and a trade line is raised to 14
+pixels and bold.
+
+```
+line                          colour            size  weight
+Bot btc_core started          rgb(0,255,204)    12    normal
+SCRUM PLACED                  rgb(255,170,0)    14    bold
+SCRUM FILLED                  rgb(0,255,136)    14    bold
+WIRE FLOW                     rgb(255,102,221)  12    bold
+WIRE STACK                    rgb(255,204,68)   12    bold
+Coinbase rate limit           rgb(255,170,0)    12    normal
+Reconciliation refused        rgb(255,51,102)   12    normal
+FOLD SENT                     rgb(0,255,204)    14    bold
+```
+
+Each mini-panel table shows its header and two rows in both builds, and both
+cut the 1d row off the bottom. Qt fixes the table to that height and turns both
+scrollbars off; the React table read neither of the two numbers the payload
+publishes for it, stood two rows taller, and pushed the three pillar labels and
+the six lower bar labels below the panel. It reads them now.
+
+`src/gui/web/indicator_panel.js` — the height the table body takes
+
+```javascript
+    var bodyStyle = {
+      display: BLOCK,
+      maxHeight: length(slackHeight(table)),
+      overflow: HIDDEN
+    };
+```
+
+One line is drawn in one picture and not the other. The panel's locks line, `No
+active timeframe locks`, sits inside the Qt panel and two pixels below the
+bottom of the React one, which reaches it by scrolling. The Live tab's own
+splitter is what differs: Qt gives its top section 472 pixels of the 708 the
+tab has, the React tab gives it 411, and the panel cannot draw shorter than 415
+because each bar graph carries a 100-pixel minimum in both.
+
+Detail: [06-trading-tab.md](06-trading-tab.md).
+Detail: [07-indicators.md](07-indicators.md).
+
 ## Converting the Interface to React
 
 Every screen in this application is drawn by Qt. Issue #128 replaces them with
@@ -849,7 +981,7 @@ rather than typed.
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/history_qt_table.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/history_tab.py` | `history_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/init_wizard.py` | `init_wizard.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/instance_consent_dialog.py` | `instance_consent_dialog.js` | yes | no | yes | no | yes | no | shelved |
 | `src/gui/journal_tab.py` | `journal_tab.js` | yes | yes | yes | no | yes | no | shelved |
@@ -914,7 +1046,7 @@ rather than typed.
 | `src/gui/widgets/privacy_dot.py` | `privacy_dot.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/widgets/pulse_manager.py` | `pulse_manager.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/widgets/spendable_profits.py` | `spendable_profits.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/widgets/status_log.py` | `status_log.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/widgets/trade_charts_tab.py` | `trade_charts_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 The Simulator rebuild removed the files above; they are not in the tree.
 
@@ -1533,3 +1665,4 @@ CONTROLS = ("bot_visualizer", "theme_engine", "design_tokens")
 Both builds were opened with the change in place. Qt draws eight main tabs and
 React draws ten, the same counts as before, and the Swarm tab in each carries no
 View picker, no row list and no lane sheet.
+
