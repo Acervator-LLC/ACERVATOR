@@ -2347,3 +2347,51 @@ The roster and map research rests on two.
 | [Mapping in dungeon crawlers](https://www.neogaf.com/threads/mapping-in-dungeon-crawlers.1097187/) | A map on its own screen beats a map the player raises and lowers |
 
 Issue #147 carries the build-out.
+
+---
+
+## Action Budget Curves
+
+This directive arrived after the sections above.
+
+**HIS.** In his words:
+
+> Type of Action Budget Curves will control this. Movement or fetching items
+> from a bag or switching weapons should be lost cost while casting a multi-turn
+> spell will cost significantly more and this is where the socioeconomics become
+> fun at the Guild level where higher ranking members must navigate politics and
+> relationship to convince fellow members to use expensive skills at key
+> points...
+
+Cost follows the type of action. One flat per-action charge does not apply.
+
+```
+HIS — the two ends of the curve
+
+low cost    movement, fetching an item from a bag, switching weapons
+high cost   a multi-turn spell, and the powerful tactics beside it
+```
+
+The cheap actions are the ones a participant takes constantly. The expensive
+ones decide a fight.
+
+**HIS.** The spread between the two ends is the mechanism rather than a side
+effect. A decisive skill costs enough that casting one becomes a group decision.
+A high-ranking guild member who wants that cast at a key moment must persuade the
+member who pays for it. Flattening the curve removes the politics.
+
+### Three things this leaves open
+
+**HIS to answer.** Each one changes what a builder writes.
+
+```
+the curve      the bands between his two ends, and the ratio from the cheapest
+               action to the dearest
+
+who pays       a cast persuaded by one member and paid by another needs the
+               payer named — the actor, the requester, or a guild treasury
+
+guild funds    whether a guild can hold Quintessence at all; guild rank already
+               locks and stakes tokens by his earlier rule, and no guild wallet
+               appears anywhere in this design
+```
