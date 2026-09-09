@@ -148,10 +148,7 @@
   var LAYER_CHROME = "layer_chrome";
   var COLUMN_WIDTHS = "column_widths";
   var ROW_HANDLE_KEYS = "row_handle_keys";
-  var ROW_MARGINS = "row_margins";
-  var ROW_SPACING = "row_spacing";
   var ACTIONS = "actions";
-  var ROW_KINDS = "row_kinds";
 
   var LIVE_ROWS = "live_rows";
   var SIM_ROWS = "sim_rows";
@@ -214,7 +211,6 @@
   var EMPTY = "";
   var GAP = " ";
   var SLASH = "/";
-  var NEWLINE = "\n";
   var SEMICOLON = ";";
   var COLON = ":";
   var COMMA = ",";
@@ -254,6 +250,8 @@
   var START = "flex-start";
   var CENTER = "center";
   var POINTER = "pointer";
+  // dot_cursor carries a Qt cursor name; CSS names the same cursor differently.
+  var CURSOR_BY_NAME = { PointingHandCursor: POINTER };
   var BUTTON_TYPE = "button";
   var RANGE_TYPE = "range";
   var DIV_TAG = "div";
@@ -344,7 +342,6 @@
   var BOXES_PARAM = "boxes";
   var QUICK_ROUTING_API = "acervatorQuickRouting";
   var QUICK_ROUTING_METHOD = "quick_routing.state";
-  var BOT_ID_ATTR = "data-bot-id";
   var TAB_PARAM = "tab";
   var STEPS_PARAM = "steps";
   var REBUILD_STEP = "rebuild";
@@ -709,11 +706,15 @@
     return element(DIV_TAG, spacerProps, null);
   }
 
-  // Qt paints the dot with a pointing cursor and one click flips the mask.
+  function cursorOf(name) {
+    return owns(CURSOR_BY_NAME, name) ? CURSOR_BY_NAME[name] : undefined;
+  }
+
+  // One click on the dot flips the mask; dot_cursor names the cursor Qt paints.
   function PrivacyDot(props) {
     var model = props.model;
     var style = labelStyle(model, model[PRIVACY_DOT_STYLE_SHEET]);
-    style.cursor = POINTER;
+    style.cursor = cursorOf(model[DOT_CURSOR]);
     style.flex = FLEX_NONE;
     var dotProps = {
       className: CELL_CLASS,

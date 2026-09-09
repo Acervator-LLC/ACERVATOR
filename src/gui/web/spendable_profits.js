@@ -77,9 +77,7 @@
   var SPACING = "spacing_px";
   var COLUMN_MARGINS = "column_margins_px";
   var COLUMN_SPACING = "column_spacing_px";
-  var SEPARATOR_GAP = "separator_gap_px";
   var DOT_ALIGN = "dot_align";
-  var TRAILING_STRETCH = "trailing_stretch";
   var ALIGN = "align";
 
   var KIND = "kind";

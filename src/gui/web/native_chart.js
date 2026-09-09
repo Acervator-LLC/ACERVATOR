@@ -368,13 +368,6 @@
   var MOUNT_LABEL = "chart overlay canvas";
 
   var PART_ATTR = "data-part";
-  var SLOT_ATTR = "data-slot";
-  var INDEX_ATTR = "data-index";
-  var KIND_ATTR = "data-kind";
-  var MAJOR_ATTR = "data-major";
-  var UP_ATTR = "data-up";
-  var COUNT_ATTR = "data-candle-count";
-  var LABEL_ATTR = "aria-label";
 
   var held = null;
   var chartFaults = [];

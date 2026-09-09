@@ -727,7 +727,6 @@
   var STATUS_PART = "status-line";
   var MODULE_GROUP_PART = "module-group";
   var MODULE_LEGEND_PART = "module-legend";
-  var MODULE_STATUS_PART = "module-status";
   var TABLE_GROUP_PART = "table-group";
   var GROUP_LEGEND_PART = "group-legend";
   var GROUP_BODY_PART = "group-body";
@@ -739,7 +738,6 @@
   var GRID_BODY_PART = "grid-body";
   var GRID_ROW_PART = "grid-row";
   var GRID_CELL_PART = "grid-cell";
-  var LEFT_STRETCH_PART = "left-stretch";
   var TOPOLOGY_PART = "topology-slot";
   var RIGHT_PANE_PART = "right-pane";
   var PER_BOT_PART = "per-bot";
@@ -898,9 +896,6 @@
   var INHERITED = "inherit";
   var PRE_SPACE = "pre";
 
-  var SIGNALS_TABLE = "signals";
-  var PAIRS_TABLE = "pairs";
-
   var TOPOLOGY_SLOT = "market-inspector-topologies";
   // The panel name market_inspector_topologies.js registers under.
   var TOPOLOGY_PANEL = "market_inspector_topologies";
@@ -994,7 +989,7 @@
   function repeated(body, count) {
     try {
       return String(body).repeat(count);
-    } catch (refused) {
+    } catch {
       return EMPTY;
     }
   }

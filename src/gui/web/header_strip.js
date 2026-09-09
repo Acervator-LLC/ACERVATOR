@@ -44,34 +44,24 @@
   var LABEL = "label";
   var TEXT = "text";
   var TOOLTIP = "tooltip";
-  var DOT = "dot";
   var FIELD_ID = "field_id";
   var MASKED = "masked";
   var STYLE_SHEET = "style_sheet";
   var INITIAL_TEXT = "initial_text";
   var INITIAL_STYLE = "initial_style";
   var LABEL_STYLE = "label_style";
-  var LABEL_TOOLTIP = "label_tooltip";
   var CLICKABLE = "clickable";
   var CURSOR = "cursor";
   var SOURCE_KEY = "source_key";
   var FORMAT = "format";
   var COLUMNS = "columns";
   var LAYOUT = "layout";
-  var SEPARATOR = "separator";
   var MARGINS = "margins_px";
   var SPACING = "spacing_px";
   var CHILD_STRETCH = "child_stretch";
   var COLUMN_SPACING_PX = "column_spacing_px";
-  var COLUMN_MARGINS = "column_margins_px";
-  var COLUMN_SPACING = "column_spacing";
   var FRAME_SHAPE = "frame_shape";
   var LABEL_ALIGN = "label_align";
-  var VALUE_ALIGN = "value_align";
-  var DOT_ALIGN = "dot_align";
-  var SEPARATOR_ALIGN = "separator_align";
-  var ORDER = "order";
-  var STRETCH = "stretch";
   var MINIMUM_WIDTH = "minimum_width_px";
   var CHECKED = "checked";
   var WINDOW_TITLE = "window_title";
@@ -91,7 +81,6 @@
 
   var COLUMN_AT = "column:";
   var COUNTER_AT = "counter:";
-  var DOT_AT = "dot:";
 
   var VAR_OPEN = "var(--";
   var VAR_SPLIT = ", ";
@@ -133,30 +122,20 @@
   var ROW = "row";
   var COLUMN = "column";
   var FLEX = "flex";
-  // The CSS shorthand that grows a spacer without naming a factor.
-  var FLEX_AUTO = "auto";
 
   var STRIP_CLASS = "acervator-header-strip";
   var TOP_ROW_CLASS = "acervator-header-top-row";
   var SPENDABLE_CLASS = "acervator-header-spendable";
-  var KPI_CLASS = "acervator-header-kpi";
   var CARD_CLASS = "acervator-header-card";
   var DOT_CLASS = "acervator-header-dot";
-  var SEPARATOR_CLASS = "acervator-header-separator";
   var MODE_CLASS = "acervator-header-mode";
 
   var STRIP_PART = "strip";
   var TOP_ROW_PART = "top-row";
-  var KPI_COLUMN_PART = "kpi-column";
-  var KPI_LABEL_PART = "kpi-label";
-  var KPI_VALUE_PART = "kpi-value";
   var DOT_PART = "privacy-dot";
-  var SEPARATOR_PART = "separator";
   var COUNTER_PART = "counter";
   var COUNTER_LABEL_PART = "counter-label";
   var COUNTER_VALUE_PART = "counter-value";
-  var LABEL_ROW_PART = "label-row";
-  var STRETCH_PART = "stretch";
   var HIDDEN_CARD_PART = "hidden-card";
   var MODE_BUTTON_PART = "mode-button";
 
