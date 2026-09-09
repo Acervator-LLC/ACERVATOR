@@ -268,15 +268,32 @@ screens.
 | 22 Activity Log text | 8 messages with an `HH:MM:SS` stamp | the same 8 |
 | 23 Activity Log colours | 8 colours by kind, trades at 14 px bold | the same 8 |
 
-The bar heights differ by 0.12 to 0.27 px because the React plot puts its
-1-pixel baseline inside the 70-pixel area and Qt paints its baseline on the
-floor. Both fill `confidence` of the plot: 22.69 divided by 0.328 is 69.2 and
-22.96 divided by 0.328 is 70.0.
+No horizontal line crosses the Net, Comp or Conf columns. Every element inside
+the React panel was read for a top border, a bottom border or a background
+gradient. Ninety-three carry one, and the box of every one of them ends at or
+before 1185.93, where the Net column starts. Two reach into the band and both
+are header controls, the bot selector and the privacy dot, 115 pixels above the
+pillar ceilings; Qt draws the same two with the same borders.
 
-The dotted increments and the baseline run over the timeframe column and the
-six indicator columns and stop there, in both. Qt ends them at `right_edge`,
-the x of the Net column; React draws them on the seven cells of each bar row
-and on none of the three collated columns.
+```
+band                    1185.93 to 1369.19
+elements with a stroke  93
+crossing the band       2, both in the header row
+ruled plot cells        14, rightmost edge 1185.93
+pad cells with a stroke 0
+```
+
+The 1 pixel measured on the React side is the indicator column's own base. Each
+of those fourteen cells, the timeframe cell and the six bar cells of each row,
+carries `border-bottom: 0.8px rgb(40, 40, 60)`, which is `BARS_BASELINE_RGB`.
+Qt paints the same base as a drawn line from the left margin to `right_edge`,
+the x of the Net column. CSS counts that base inside the 70-pixel cell and Qt
+paints it on the floor, so a React bar fills 69.2 pixels where a Qt bar fills
+70, and the twelve bar heights differ by 0.12 to 0.27 pixels.
+
+The dotted increments follow the same edge. They are drawn as background
+gradients on those same fourteen cells and on nothing else, so none of the
+three collated columns carries one.
 
 The Activity Log rows, read off both:
 
