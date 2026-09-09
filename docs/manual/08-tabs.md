@@ -1221,7 +1221,7 @@ rather than typed.
 | Qt file | React module | Uses React | Bridge | Manifest | Registers in Electron | Ships in the build | RENDERS | Scope |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `splash_screen.py` | no | - | yes | no | no | - | no | shelved |
-| `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/alerts_tab.py` | `alerts_tab.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/analytics_tab.py` | `analytics_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/audio_suite.py` | `audio_suite.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | yes | yes | yes | in scope |
@@ -1230,7 +1230,7 @@ rather than typed.
 | `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | - | yes | - | in scope |
 | `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no | shelved |
-| `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | - | yes | shell | in scope |
 | `src/gui/history_qt_table.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/history_tab.py` | `history_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/indicator_panel.py` | `indicator_panel.js` | yes | yes | yes | yes | yes | yes | in scope |
@@ -2119,3 +2119,137 @@ WALK_WORDS = {"back": "< Back", "next": "Next >", "commit": "Commit",
 walk_live(page) -> {"back": page is not the first, "next": a page follows,
                     "finish": no page follows, "cancel": True}
 ```
+
+### 2026-09-09 12:45 - #128 - the alerts tab is opened, the news strip is drawn inside the exchange screen
+
+Two rows read `no` under Registers in Electron: the Notifications and Alerts
+tab and the crypto news strip. Neither is a panel the shell should hold, so
+both now take the dash the table already uses for a module that does not
+register in its own right.
+
+The running shell was asked about each name before anything was changed. Both
+modules load and neither registers a panel.
+
+```
+manifest names        69
+panels registered     19
+alerts_tab            alerts_tab.js registered no panel to draw
+crypto_news_ticker    crypto_news_ticker.js registered no panel to draw
+module load errors    []      faults []
+```
+
+Each was then registered by hand and opened into a host of its own, which is
+the test that decides the cell. Both draw, so neither is an empty shell; what
+decides them is that the shell opens neither, and that a panel host has no way
+to give either one the values it needs.
+
+```
+name                  opened  elements  characters  what it drew
+alerts_tab              true        54         233  both tables empty
+crypto_news_ticker      true         2          21  Fetching crypto news
+strips on the page                                  2, for one exchange space
+```
+
+The alerts tab is raised by a window rather than by a tab. The variant seam
+holds it under the name ALERTS, so the Qt build opens `AlertsTab` and the
+React build opens `AlertsReactTab`, which is one browser view filling the whole
+tab. Opened as a panel instead, it draws every control and no row, because the
+host asks with an empty request and no notification manager reaches it.
+
+The news strip belongs to the exchange screen. That screen keeps a space for
+it and fills that space, once per exchange, the way it fills the two bot
+tables. A registration holds one host per name, so registering the strip put a
+second copy of it on the page.
+
+```javascript
+    space.setAttribute(CHILD_ATTR, moduleName);
+    return api.mount(target);
+```
+
+The two RENDERS cells part company. The variant seam answers a class per build
+for the alerts tab, so that cell keeps `yes`. It holds no entry for the news
+strip, so the exchange header builds the Qt strip whichever build is running,
+and the React module draws in the Electron shell and nowhere else. That cell
+now reads `shell`, the value this table already defines for exactly that.
+
+```
+screen                        qt build            react build
+Notifications and Alerts      AlertsTab           AlertsReactTab
+crypto news strip             no entry: both builds build CryptoNewsTicker
+```
+
+The strip was never fed. The exchange screen asked the backend for the strip's
+state with an empty request, so the strip was built and never started, and the
+line read "Fetching crypto news" for as long as the shell ran. Qt starts the
+strip as it builds it and the screen already reports that it did, so the
+request now carries the start it reports.
+
+```javascript
+  function tickerRequest(model) {
+    var started = model[NEWS_TICKER_STARTED];
+    return typeof started === "number" && started > ZERO ? { start: true } : {};
+  }
+```
+
+The backend had no fetch to run either. The strip's model takes its fetch as an
+argument and the bridge never gave it one, so the worker answered with no
+stories. The bridge now hands in the same transport the Qt strip uses, and runs
+the fetch away from the request that asked for it, so the answer arrives the
+way it arrives in Qt.
+
+```python
+    crypto_news_ticker_surface.use_fetch(SafeRequest, safe_urlopen, time.monotonic)
+```
+
+With that in place the shell fetched 43 stories from the ten feeds and drew
+them, one at a time, in the exchange header. Refusing every feed drops them
+again, which is what proves the line carries what the fetch found.
+
+```
+live      [2/43] The Defiant - SEC Crypto Custody Rewrite Enters White House Review
+broken    (no crypto news feeds reachable)
+no start  Fetching crypto news
+```
+
+Both builds of each screen were then driven on one reading and compared item by
+item. The alerts tab was read on one notification manager filled the way the
+main window fills it: the risk rules over a three-bot fleet, the profit and
+loss milestone, one bot error and one bot start. The news strip was read on one
+answer from the shipped fetch, given to each side through its own receiver.
+
+```
+alerts tab       13 routing rows, 4 history rows      differences 0
+news strip       6 stories, 8 steps, wraps 6 to 1     differences 0
+```
+
+Every alert row matches: its time, its priority word, its title, its message,
+its channels, and the colour of each. The four priorities draw in four colours,
+low grey through critical red, and the rows run newest first on both sides.
+Emptied of notifications, both sides draw no rows and both read `Unread: 0`.
+
+The strip shows the same story at each place, moves one place forward on each
+step, and wraps from the last story to the first on both sides. Its words are
+`#cfe6ff` on both and its pointer is the hand on both.
+
+Two colours were wrong on the page and are now right. The tab's group boxes
+carry a Qt style sheet whose colour paints the group's title alone; the page
+was painting the whole box with it, so the routing table's Event and Priority
+columns and the three field labels drew in the accent where Qt draws them in
+the body colour. The page also carried no stylesheet of its own, so with the
+group colour moved to the title it fell back to the browser's black.
+
+```
+                        before        after         qt
+routing Event column    #00ffcc       #e0e0f0       #e0e0f0
+field labels            #00ffcc       #e0e0f0       #e0e0f0
+```
+
+The two strips take the fetch at different moments. The Qt strip shows a story
+as soon as the fetch answers, because the worker reports to it. The page has no
+such report, so it shows the answer on its next 15 second step. Closing that
+needs a route from the backend to a module the shell holds by name, and the
+strip is drawn by its parent rather than held by name.
+
+The Qt tables are drawn by the theme, not by the tab, so the page draws no grid
+lines, no alternating row bands and no header underline. Those live in the Qt
+style sheet for every table in the application and reach no payload.

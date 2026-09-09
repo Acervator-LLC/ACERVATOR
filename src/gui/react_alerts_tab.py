@@ -38,6 +38,9 @@ TAB_ROOT_ID = "tab-root"
 
 ACCESSIBLE_NAME = "React Notifications and Alerts Tab"
 
+#: The page ground and the words every part inherits.
+TAB_STYLE_ASSETS: tuple[str, ...] = ("alerts_tab.css",)
+
 #: The seven scripts the page carries. Order is load order.
 TAB_SCRIPT_ASSETS: tuple[str, ...] = (
     "vendor/react.production.min.js",
@@ -111,7 +114,9 @@ HOST_SCRIPT = """(function (global) {
 
 def tab_html(theme: str = "cyberpunk_dark") -> str:
     """The whole tab page as one string, with no network fetch."""
-    return page_html((), TAB_SCRIPT_ASSETS, TAB_BODY, theme, (HOST_SCRIPT,))
+    return page_html(
+        TAB_STYLE_ASSETS, TAB_SCRIPT_ASSETS, TAB_BODY, theme, (HOST_SCRIPT,)
+    )
 
 
 def push_script(model: dict) -> str:

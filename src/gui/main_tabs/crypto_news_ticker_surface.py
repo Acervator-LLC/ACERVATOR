@@ -31,7 +31,9 @@ renderer reaches it. Nothing here imports Qt.
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass
+from functools import partial
 from typing import Callable, Optional
 
 from defusedxml import DefusedXmlException
@@ -809,6 +811,10 @@ class CryptoNewsTickerModel:
 
 PANE_MODEL: Optional[CryptoNewsTickerModel] = None
 
+PANE_FETCHER: Optional[Callable[[], list]] = None
+
+FETCH_THREAD_NAME = "acervator-news-fetch"
+
 
 def build_model(headlines=None, clock=None) -> CryptoNewsTickerModel:
     """One strip already holding `headlines`, for a fresh paint."""
@@ -818,12 +824,38 @@ def build_model(headlines=None, clock=None) -> CryptoNewsTickerModel:
     return model
 
 
+def use_fetch(request_factory, opener, clock: Callable[[], float]) -> None:
+    """Hold the transport ``pane_model`` builds its strip's fetch from.
+
+    ``request_factory`` and ``opener`` are handed in by whoever registers
+    ``view_model``, so this module still reaches no network of its own.
+    """
+    global PANE_FETCHER, PANE_MODEL
+    PANE_FETCHER = partial(fetch_all, request_factory, opener, clock=clock)
+    PANE_MODEL = None
+
+
 def pane_model() -> CryptoNewsTickerModel:
     """The strip this process is showing, built on the first request."""
     global PANE_MODEL
     if PANE_MODEL is None:
-        PANE_MODEL = CryptoNewsTickerModel()
+        PANE_MODEL = CryptoNewsTickerModel(fetcher=PANE_FETCHER)
     return PANE_MODEL
+
+
+def start_fetch(model: CryptoNewsTickerModel) -> Optional[threading.Thread]:
+    """Run ``model.run_worker`` away from the request that asked for it.
+
+    The strip keeps ``INITIAL_TEXT`` on the line until the answer lands,
+    which is what the shipped strip shows while its worker runs.
+    """
+    if model.worker is None:
+        return None
+    thread = threading.Thread(
+        target=model.run_worker, name=FETCH_THREAD_NAME, daemon=True
+    )
+    thread.start()
+    return thread
 
 
 def source_view(source: NewsSource) -> dict:
@@ -978,6 +1010,7 @@ def view_model(params: dict) -> dict:
         model.on_headlines([headline_from(row) for row in headlines])
     if params.get("start", False):
         model.start()
+        start_fetch(model)
     if params.get("hover") is not None:
         model.handle_event(EVENT_ENTER if params["hover"] else EVENT_LEAVE)
     for _step in range(int(params.get("advance", 0))):
