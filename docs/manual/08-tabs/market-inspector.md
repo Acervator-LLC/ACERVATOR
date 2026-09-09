@@ -1165,4 +1165,95 @@ outside the repository and a rendered chart is produced output, so neither is
 kept here. The readings behind every number above are in
 [the debug report](../../../tests/debug_reports/2026-09-08_ata_post_pruning.md).
 
+## 2026-09-08 17:24 - #407 - the organization link, and the chart that says why
+
+Two things changed. Every post now carries a link to the Acervator-LLC page on
+GitHub. The chart a post carries now states the call and shows what each voter
+read.
+
+**The link is one string in one place.** One routine writes every piece of post
+text. It puts the fixed header on top, the evidence under it, and the link at
+the bottom. No caller supplies the link and no caller can remove it. The body,
+the caption, the thread root and the title all carry it, on every target.
+
+`src/trading/ata_spm_push.py` — the link, written once
+
+```python
+def compose(lines: Any) -> str:
+    """``FIXED_HEADER`` over ``lines`` over ``ORGANIZATION_URL``.
+
+    ``fit_to_target`` drops ``lines`` to reach a ceiling and reaches neither
+    ``FIXED_HEADER`` nor ``ORGANIZATION_URL``.
+    """
+```
+
+**The link costs characters, and each target has its own ceiling.** X counts a
+web address as 23 characters whatever its real length. The other targets count
+every character in it. Where a post no longer fits, the evidence gives way and
+the link stays. The longest indicator sentence goes first, then the next
+longest, and the post says how many sentences were left out.
+
+The numbers below are one run on a recorded Amazon daily chart. Measured is the
+post body in the unit that target counts in.
+
+| target | ceiling | counted in | before the link | with the link | sentences dropped |
+|---|---|---|---|---|---|
+| X | 280 | weighted characters | 272 | 246 | 7 |
+| Instagram | 2200 | characters | 727 | 760 | 0 |
+| LinkedIn | 3000 | characters | 711 | 744 | 0 |
+| TikTok | 4000 | UTF-16 runes | 765 | 798 | 0 |
+| Facebook | none published | characters | 765 | 798 | 0 |
+| Threads | 500 | UTF-8 emoji units | 470 | 431 | 4 |
+| Reddit | 40000 | characters | 765 | 798 | 0 |
+
+No target is over its ceiling. X keeps the ticker, the direction, and the note
+that the evidence was cut. That is all 280 characters hold once the fixed
+header and the link are on the post.
+
+**The chart now states the call.** The renderer takes the direction the vote
+named and one sentence per confirming voter. It is the same renderer the Charts
+tab draws with, and a chart given no call takes neither.
+
+`src/gui/native_chart.py` — the direction and the readings the picture takes
+
+```python
+        def set_call(self, direction: str, readings=()) -> None:
+            """Take one reversal direction and one reading line per voter.
+
+            ``readings`` are ``(voter, text)`` pairs and ``_draw_call`` paints
+            them under the time axis.
+            """
+```
+
+**Three marks, and each one is earned.** A badge in the top right names the
+direction. A dashed rule and a triangle mark the last bar, which is the bar the
+vote was made on. A strip under the time axis carries one row per confirming
+voter: a square in the colour of the line that drew that voter, and the
+sentence phase three wrote for it. Nothing is drawn that a voter did not read.
+
+A voter with no line on the chart still gets a row, in the dim colour, and the
+header line names it. ADX and Supertrend were the two on this run.
+
+`src/gui/native_chart.py` — where the marks go
+
+```python
+        def _draw_call(self, ctx, h: int) -> None:
+            """Draw the reversal badge, the call bar mark and the voter strip.
+
+            The bar marked is the last candle, which is the bar the direction
+            ``set_call`` took was voted on.
+            """
+```
+
+**The Charts tab is unchanged.** A chart with no call set draws no badge, no
+bar mark and no strip, and keeps the height it had before. The same recorded
+tape drawn both ways measured 344 pixels tall with no call and 390 with one.
+
+**Figures.** This page carries no figure and this entry adds none. A rendered
+chart is produced output and is not kept in the repository. The picture drawn
+by the run behind this entry measured 1200 by 478 pixels and 164,402 bytes,
+carried 14,062 distinct colours, and 90.53% of its pixels are not its
+commonest colour. Its readings are in
+[the debug report](../../../tests/debug_reports/2026-09-08_ata_post_link_and_chart.md).
+
 Back to [the subsystem index](README.md).

@@ -27,6 +27,10 @@ FIXED_HEADER = (
     "platform."
 )
 
+#: Ships under the lines on every artefact ``compose`` writes. ``fit_to_target``
+#: drops evidence lines to reach a ceiling and never this.
+ORGANIZATION_URL = "https://github.com/Acervator-LLC"
+
 TARGET_X = "X"
 TARGET_INSTAGRAM = "Instagram"
 TARGET_LINKEDIN = "LinkedIn"
@@ -300,8 +304,14 @@ def measure_text(text: Any, count_unit: Any = COUNT_CHARACTERS) -> int:
 
 
 def compose(lines: Any) -> str:
-    """``FIXED_HEADER`` over ``lines``, the text every artefact carries."""
-    return POST_LINE_SEPARATOR.join((FIXED_HEADER,) + tuple(lines))
+    """``FIXED_HEADER`` over ``lines`` over ``ORGANIZATION_URL``.
+
+    ``fit_to_target`` drops ``lines`` to reach a ceiling and reaches neither
+    ``FIXED_HEADER`` nor ``ORGANIZATION_URL``.
+    """
+    return POST_LINE_SEPARATOR.join(
+        (FIXED_HEADER,) + tuple(lines) + (ORGANIZATION_URL,)
+    )
 
 
 def fit_to_target(ranked: Any, target: Any) -> tuple:

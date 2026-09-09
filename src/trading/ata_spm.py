@@ -810,12 +810,13 @@ def render_pull_image(
     vote: AssetVote,
     candles: Any,
     max_supporting_indicators: Any = NO_INDICATOR_CAP,
+    messages: Any = (),
 ) -> ChartImage:
     """The call's own chart drawn to a PNG under ``ata_post_paths``.
 
     The overlays are the voters ``confirming_signals`` answered capped by
-    ``max_supporting_indicators``, and ``prune_post_images`` bounds the store
-    once the PNG is written.
+    ``max_supporting_indicators``, ``direction`` and ``messages`` are the
+    markup, and ``prune_post_images`` bounds the store once the PNG is written.
     """
     held = chart_candles(candles)
     stamp = int(held[-1].time) if held else NO_TIMESTAMP
@@ -827,6 +828,8 @@ def render_pull_image(
         path,
         voters=[one.indicator for one in confirming_signals(vote)],
         max_overlays=int(max_supporting_indicators or NO_INDICATOR_CAP),
+        direction=vote.direction_text,
+        readings=[(one.indicator, one.message) for one in messages or ()],
     )
     ata_post_paths.prune_post_images(path)
     return image
@@ -851,6 +854,9 @@ def pull(
     details = getattr(band, "details", None) or {}
     settings = ata_gate_scan.scan_settings(vote.symbol)
     proximity = proximity_of(candles, settings)
+    messages = [
+        indicator_message(one, message_format) for one in confirming_signals(vote)
+    ]
     return ChartPull(
         symbol=vote.symbol,
         timeframe=vote.timeframe,
@@ -876,9 +882,7 @@ def pull(
         band_lower=float(details.get(BAND_LOWER_KEY, NO_BAND_VALUE)),
         closes=tuple(float(getattr(one, "close", NO_BAND_VALUE)) for one in candles),
         agreement=agreement,
-        messages=[
-            indicator_message(one, message_format) for one in confirming_signals(vote)
-        ],
+        messages=messages,
         landing_strip_side=str(getattr(proximity, "landing_strip_side", "") or ""),
         landing_strip_candles=int(
             getattr(proximity, "landing_strip_candles", NO_BARS) or NO_BARS
@@ -896,7 +900,7 @@ def pull(
             settings,
         ),
         panel=dict(rows or {}),
-        image=render_pull_image(vote, candles, max_supporting_indicators),
+        image=render_pull_image(vote, candles, max_supporting_indicators, messages),
     )
 
 
