@@ -1922,6 +1922,191 @@ printed was a nought that the indicator had not computed. The confirming
 sentence prints two decimals, which is exactly what the cut copy carried, so it
 reads the same on every one.
 
+## 2026-09-09 19:37 - #414 - the band a millionth of a dollar wide
+
+Item 6 of the issue names two epsilons, one in the Ichimoku and one in the
+Supertrend. Neither is in this tree. Both came out on 2026-09-04, in the commit
+that dropped the last eight absolute constants from price-scaled denominators.
+
+```
+b27c6cdb  fix(ta): drop the last eight absolute epsilons from scaled denominators
+```
+
+That makes eight items out of eight where the expression the issue quotes had
+already been repaired, and where the defect still standing underneath it was a
+rounded copy of the reading reaching a consumer. This entry closes that pattern
+for the whole folder.
+
+John Bollinger's bands are the worst of the set, because their width is what
+the scrum ramp measures against. The published definition fixes no number of
+decimal places, and a band is an ordinary price in the asset's own units.
+
+```
+Middle Band = SMA(period)
+Upper Band  = Middle + std_dev * sigma(period)
+Lower Band  = Middle - std_dev * sigma(period)
+BandWidth   = (Upper - Lower) / Middle
+```
+
+The indicator published all three cut to six decimal places, a step of one
+millionth of a dollar. BONK trades at three millionths, so the whole channel is
+narrower than the step and the three bands land on one number.
+
+`src/trading/indicators/bollinger.py` — the reading, before and after
+
+```python
+"upper": round(upper, 6),          "upper": upper,
+"middle": round(mid, 6),           "middle": mid,
+"lower": round(lower, 6),          "lower": lower,
+```
+
+Measured over 71 recorded Coinbase tapes, run at a price of three millionths of
+a dollar and again at a four-figure price. Every window from 36 bars in steps
+of 11 drove the real voting engine, and each reading built a gate context
+through the shipped scan. Over 1,875 windows at the small price the distance
+from the midline to the band read exactly zero on 1,014 of them, and on a
+further 20 the lower band reached zero and the scan refused the channel
+outright. At the four-figure price it read zero on none.
+
+```
+1,875 windows at 3.1e-06        1,875 windows at 1234.0
+    half-span exactly 0.0           half-span exactly 0.0
+        before  1,014                   before  0
+        after   0                       after   0
+    band refused outright           smallest half-span
+        before  20                      before  7.76315
+        after   0                       after   7.76315
+```
+
+The consequence is a decision, not a display. The ramp that arms a scrum
+divides the price's travel by that half-span, and a floor of a millionth of a
+millionth stands in when the span is zero. The ramp then walked a different
+path on a cheap asset than on an expensive one holding the same shape.
+
+`src/trading/ata_gate_scan.py` — the step that decides whether a scrum is armed
+
+```python
+span = max(abs(edge - middle), BAND_SPAN_FLOOR)
+travel_frac = abs(price - middle) / span
+```
+
+The two price scales disagreed about that state on 162 of the 1,875 windows.
+They now agree on all of them, which is the property the fleet needs: one
+detect threshold serves every bot, whatever its asset costs.
+
+```
+target_fires compared between the two price scales
+    before   agree 1,713   disagree 162
+    after    agree 1,875   disagree 0
+```
+
+Both gate chains ran on every reading, in all four states of the two direction
+switches. Of 30,000 verdicts, 1,322 fire before the repair and 58 change. All
+58 are on the buy side, all 58 are at the small price scale, and every one sits
+on a window where the ramp state moved. Nothing changed at four figures.
+
+```
+30,000 gate verdicts
+    fire before the repair                 1,322
+    changed                                   58
+        scrum refused -> scrum fires          50
+        scrum fires -> scrum refused           8
+        fold verdicts changed                  0
+    changed at 1234.0                          0
+    changed at 3.1e-06                        58
+    rows carrying them                        27
+        rows where the ramp state moved       27
+```
+
+The same cut sat on every other indicator in the folder. Fifty-three calls
+across thirteen files cut a reading where it was computed rather than where it
+was shown, and all fifty-three are gone. None was kept.
+
+```
+zscore 7   ichimoku 6   bollinger 5   landing_strip 5   fvg 4   macd_taper 4
+slingshot 9   supertrend 3   bb_proximity 3   atr 2   stochastic_rsi 2
+volume 2   rsi 1
+```
+
+No display loses its shape, because every one of them already carries its own
+format. The panel hover cell prints three decimals, the bot log line prints
+four, and each confirming sentence in the ATA-SMP names its own width.
+
+`src/trading/ata_spm.py` — one voter's sentence, formatted where it is shown
+
+```python
+"bollinger_bands": (
+    "Bollinger Bands",
+    (BAND_POSITION_KEY,),
+    "band position {value:.4f}",
+),
+```
+
+Item 6 also names two statements that compute a value and bind it to nothing.
+The Ichimoku one is the third cloud state. The code named the other two and
+then derived the third a second time where the reading is published, so one
+expression now decides it.
+
+```python
+inside_cloud = not above_cloud and not below_cloud
+...
+"price_vs_cloud": (
+    "inside" if inside_cloud else "above" if above_cloud else "below"
+),
+```
+
+The volume one is the money-flow slope. It is published beside the
+balance-volume slope the same indicator already publishes, so the value it
+computes now reaches a reader.
+
+```python
+mfi_rising = mfi > mfi_prev
+```
+
+Across the 3,750 readings, 339,170 non-numeric readings were compared. None
+moved and none was dropped. The cloud state is identical on every window, which
+is what a pure rebinding has to look like, and its inside branch runs on 499 of
+them rather than never. The money-flow slope takes both values.
+
+```
+price_vs_cloud   below 1,579   above 1,112   inside 499   absent 560
+mfi_rising       True 2,025    False 1,725
+```
+
+Twelve places read these numbers, and the table below says what each one's
+reading becomes.
+
+| reader | what its reading becomes |
+| --- | --- |
+| the scan's scrum ramp | a real band width at any price; 58 of 30,000 verdicts move, all on the buy side |
+| the live bot's scrum ramp | unchanged; it reads the proximity result, whose three band prices were never cut |
+| the Z-Score gate | the computed z; it moved on 3,470 readings and crossed the two-deviation line on none |
+| the ADX gate | unchanged; that reading was uncut already |
+| the Efficiency Ratio gate | unchanged; that reading was uncut already |
+| the confidence floor | the landing-strip boost, uncut; no consensus direction moved |
+| the panel's twelve cells | direction and strength unchanged on all 3,750; strength moved on 358 votes |
+| `indicator_panel.py` hover text | the computed number, printed to three decimals as before |
+| `ata_spm.py` sentences | each keeps its own width, so every sentence reads as it did |
+| `snapshots.py` bot log line | prints four decimals of the computed number |
+| `phantom_balance.py` record | stores what the indicator published |
+| `ta_invariants.py` bounds | no breach on any reading, before or after |
+
+Three figures the page already carries need restating against this run. The
+departures section above says two departures remain, the Vortex direction
+overwrite and the RSI rounding. Both are repaired: the Vortex on 2026-09-08 and
+the RSI on the same day, each in its own entry above. The section also lists
+four scale-invariance test files. None is in the tree, which now holds its
+conftest and these debug reports and nothing else, so the property they held is
+held by the runs recorded in each entry instead.
+
+```
+tests/debug_reports/2026-09-09_indicator_rounding.md
+```
+
+What changes for an operator: a bot on a market priced in millionths of a
+dollar now sees a Bollinger channel with a real width instead of a flat line,
+so its scrum arms on the same bars a bot on an expensive market would.
+
 ## Trading gate logic chain
 
 The epigraph on the [title page](01-title.md) reads *dissolvendus

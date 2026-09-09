@@ -44,8 +44,8 @@ class ATRIndicator:
         expanding = sum(recent) / len(recent) > sum(older) / len(older) * 1.10
         contracting = sum(recent) / len(recent) < sum(older) / len(older) * 0.90
         return {
-            "atr": round(atr, 8),
-            "atr_pct": round(atr_pct, 4),
+            "atr": atr,
+            "atr_pct": atr_pct,
             "expanding": expanding,
             "contracting": contracting,
             "extreme_high": atr_pct > 5.0,

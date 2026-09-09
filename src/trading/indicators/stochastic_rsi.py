@@ -231,5 +231,5 @@ class StochasticRSI:
             direction=direction,
             confidence=confidence,
             weight=self.weight,
-            details={"k": round(k, 2), "d": round(d, 2), "crossover": crossover},
+            details={"k": k, "d": d, "crossover": crossover},
         )

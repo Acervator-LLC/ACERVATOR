@@ -178,8 +178,7 @@ class VolumeAnalysis:
             if len(candles) > self.mfi_period + 3
             else mfi
         )
-        # No consumer reads the MFI slope.
-        mfi > mfi_prev
+        mfi_rising = mfi > mfi_prev
 
         mfi_closes = closes[-self.div_lookback :]
         if mfi_os and closes[-1] <= min(mfi_closes) * 1.02:
@@ -293,16 +292,17 @@ class VolumeAnalysis:
                 "obv_rising": obv_rising,
                 "obv_divergence": obv_div,
                 "mfi": mfi,
+                "mfi_rising": mfi_rising,
                 "mfi_overbought": mfi_ob,
                 "mfi_oversold": mfi_os,
                 "mfi_divergence": mfi_div,
-                "cmf": round(cmf, 4),
+                "cmf": cmf,
                 "cmf_bull": cmf_bull,
                 "cmf_bear": cmf_bear,
                 "ad_rising": ad_rising,
                 "ad_price_div_bull": ad_price_div_bull,
                 "ad_price_div_bear": ad_price_div_bear,
-                "vol_ratio": round(vol_ratio, 2),
+                "vol_ratio": vol_ratio,
                 "vol_spike": is_spike,
                 "vol_high": is_high,
                 "vol_low": is_low,

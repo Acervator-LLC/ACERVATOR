@@ -155,9 +155,9 @@ class SupertrendIndicator:
                 "bullish": curr_bull,
                 "flip_bull": flip_bull,
                 "flip_bear": flip_bear,
-                "st_line": round(st_line, 6),
-                "dist_pct": round(dist_pct * 100, 3),
+                "st_line": st_line,
+                "dist_pct": dist_pct * 100,
                 "near_line": near_line,
-                "curr_atr": round(curr_atr, 6),
+                "curr_atr": curr_atr,
             },
         )

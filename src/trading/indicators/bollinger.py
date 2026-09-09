@@ -144,11 +144,11 @@ class BollingerBands:
             confidence=confidence,
             weight=self.weight,
             details={
-                "upper": round(upper, 6),
-                "middle": round(mid, 6),
-                "lower": round(lower, 6),
-                "bb_position": round(bb_pos, 4),
-                "band_width": round(band_width, 6),
+                "upper": upper,
+                "middle": mid,
+                "lower": lower,
+                "bb_position": bb_pos,
+                "band_width": band_width,
                 "squeeze": squeeze,
             },
         )

@@ -79,8 +79,8 @@ class FVGIndicator:
             "fvg_bear_zone": nearest_bear is not None,
             "fvg_bull_count": len(bull_zones),
             "fvg_bear_count": len(bear_zones),
-            "fvg_bull_top": round(nearest_bull[0], 8) if nearest_bull else 0.0,
-            "fvg_bull_bot": round(nearest_bull[1], 8) if nearest_bull else 0.0,
-            "fvg_bear_top": round(nearest_bear[0], 8) if nearest_bear else 0.0,
-            "fvg_bear_bot": round(nearest_bear[1], 8) if nearest_bear else 0.0,
+            "fvg_bull_top": nearest_bull[0] if nearest_bull else 0.0,
+            "fvg_bull_bot": nearest_bull[1] if nearest_bull else 0.0,
+            "fvg_bear_top": nearest_bear[0] if nearest_bear else 0.0,
+            "fvg_bear_bot": nearest_bear[1] if nearest_bear else 0.0,
         }
