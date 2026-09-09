@@ -1,0 +1,15 @@
+/* React Start All progress chrome. `start_all_progress.js` sizes its box from
+ * the dialog's own width and height, so the box padding and the page margin
+ * sit inside that size rather than add to it. Every colour, size and space
+ * arrives on the element from the Python payload, so no rule here sets one.
+ */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}

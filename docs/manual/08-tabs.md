@@ -1227,8 +1227,8 @@ rather than typed.
 | `src/gui/bot_live_settings.py` | `bot_live_settings.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_swarm_list.py` | removed | - | - | - | - | - | - | deleted |
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | no | yes | yes | in scope |
-| `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | - | yes | - | in scope |
+| `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/history_qt_table.py` | no | - | no | no | no | - | no | React side |
@@ -1269,7 +1269,7 @@ rather than typed.
 | `src/gui/react_paper_trader_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_simulator_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/risk_tab.py` | `risk_tab.js` | yes | yes | yes | no | yes | no | shelved |
-| `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no | shelved |
 | `src/gui/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/simulator_tab/fleet/fleet_replay_panel.py` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes | shelved |
@@ -1277,7 +1277,7 @@ rather than typed.
 | `src/gui/simulator_tab/nuclear_mode_panel.py` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes | shelved |
 | `src/gui/simulator_tab/sim_stat_strip.py` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes | shelved |
 | `src/gui/simulator_tab/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | shelved |
-| `src/gui/start_all_progress_dialog.py` | `start_all_progress.js` | yes | yes | yes | no | yes | yes | in scope |
+| `src/gui/start_all_progress_dialog.py` | `start_all_progress.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/stock_main_window.py` | no | - | yes | no | no | - | no | shelved |
 | `src/gui/testnet_tab.py` | `testnet_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/tradingview_chart.py` | `tradingview_chart.js` | yes | yes | yes | no | yes | no | shelved |
@@ -1980,3 +1980,142 @@ expected side.
 
 Detail on each live screen sits one file down, in
 [08-tabs/README.md](08-tabs/README.md).
+
+### 2026-09-09 11:34 - #128 - the four modal dialogs are opened, not mounted
+
+Four rows read `no` under Registers in Electron: the bot wizard, the buy
+confirmation, the Settings dialog and the Start All progress dialog. None of
+the four is a panel the shell should hold, so all four now take the dash the
+table already uses for a module that does not register in its own right.
+
+The running shell was asked about each name before anything was changed. All
+four modules load and none registers a panel.
+
+```
+manifest names        69
+panels registered     19
+bot_wizard            bot_wizard.js registered no panel to draw
+buy_confirmation      buy_confirmation.js registered no panel to draw
+settings_dialog       settings_dialog.js registered no panel to draw
+start_all_progress    start_all_progress.js registered no panel to draw
+```
+
+Each was then registered by hand and opened into a host of its own, which is
+the test that decides the cell. All four draw, so none is an empty shell; what
+decides them is that nothing in the shell opens them and each one's look
+belongs to the page its own host builds.
+
+```
+name                  elements  characters  where it belongs
+bot_wizard                  27         906  a space exchange_tab.js keeps
+buy_confirmation            29         254  a window the broker raises
+settings_dialog            431        2465  a window the menu raises
+start_all_progress          10         390  a window Start All raises
+```
+
+The wizard is the clearest of the four. The exchange screen keeps a space for
+it and fills that space once + New Bot is pressed, so its content reaches the
+shell through the tab above it.
+
+```javascript
+    space.setAttribute(CHILD_ATTR, moduleName);
+    return api.fill(space, null, { onClosed: closeBotWizard });
+```
+
+The Settings dialog drew all eleven tab pages at once. A page not on show was
+marked hidden and still carried an inline display, which beats the browser's
+own rule for a hidden element. Read off the drawn page, 320 parts sat outside
+the window; with the page not on show taking `none`, none do.
+
+```javascript
+      display: props.current === true ? FLEX : DISPLAY_NONE,
+```
+
+Every drop-down on that dialog drew one letter per choice. The dialog turns
+each choice into plain data before it reaches the page, and listing a word
+gives its letters, so ten carriers drew as ten letters. A choice that is one
+word now stays that word.
+
+```
+before   sms_carrier   A  T  V  S  U  C  B  M  G  O
+after    sms_carrier   AT&T  T-Mobile  Verizon  Sprint  US Cellular  Cricket
+```
+
+Thirty-eight tick boxes and eight number boxes drew with nothing beside them.
+The words were already in the payload under `text`, and the units under
+`suffix`, and neither was drawn. Both are drawn now, so the Sound page reads
+the same on both builds.
+
+```
+part            before   after
+row-label           31      31
+check-text           0      38
+value-prefix         0       2
+value-suffix         0       6
+```
+
+The Start All progress page did not fit the window it is drawn in. It is sized
+from the dialog's own width and height and then given padding, and the page
+carried a margin of its own, so the box measured 548 by 388 inside a window of
+520 by 360 and both buttons fell below the edge. A stylesheet of two rules puts
+the padding and the margin inside that size.
+
+```
+before   window 520x360   page 548x388   parts outside the window 10
+after    window 520x360   page 520x360   parts outside the window  0
+```
+
+The wizard's own walk row is not finished. It draws the four step names as
+words, where the Qt wizard draws Back, Next, Commit, Finish and Cancel and
+turns Back and Finish off on the first page. The payload names the four steps
+and carries no words and no on-or-off state for them.
+
+```python
+WALK_STEPS = (WALK_NEXT, WALK_BACK, WALK_CANCEL, WALK_FINISH)
+```
+
+The RENDERS column asks what the operator sees when he opens the screen, so
+each of the four was asked of the running build rather than of the table. The
+variant seam holds sixteen screens and answers a class per build.
+
+```
+screen                      qt build                  react build
+Settings dialog             SettingsDialog            SettingsDialogReact
+Start All progress dialog   StartAllProgressDialog    StartAllProgressReactDialog
+Buy confirmation dialog     BuyConfirmationDialog     BuyConfirmationReactDialog
+bot wizard                  no entry: both builds open BotCreationWizard
+```
+
+Three of the four keep `yes`, and each was drawn under both builds and
+pictured. The wizard takes the dash. It has no entry on the seam, so + New Bot
+opens the Qt wizard whichever build is running, and its React module draws only
+inside the exchange screen the shell builds when its backend names an exchange.
+
+The buy confirmation keeps `yes` for the class the broker raises, which is the
+React one. Nothing calls the broker's request method, so the operator reaches
+neither build of that screen; the section above records that count and it has
+not moved.
+
+The wizard's walk row is a gap in what the payload carries, and the Python
+surface owns it. Qt's wizard supplies its own five buttons and works out which
+are live from the page it is on. The React module is handed four step names and
+nothing else, so it has no words to draw and no state to grey.
+
+```python
+WALK_STEPS = (WALK_NEXT, WALK_BACK, WALK_CANCEL, WALK_FINISH)
+```
+
+Two things are missing from `bot_wizard_surface`: the words each step draws, and
+whether each step is live on the page now showing. Back is dead on the first
+page and Finish is dead until the last, and both follow from the step order the
+surface already holds.
+
+```
+PROPOSED, in bot_wizard_surface.py
+
+WALK_WORDS = {"back": "< Back", "next": "Next >", "commit": "Commit",
+              "finish": "Finish", "cancel": "Cancel"}
+
+walk_live(page) -> {"back": page is not the first, "next": a page follows,
+                    "finish": no page follows, "cancel": True}
+```

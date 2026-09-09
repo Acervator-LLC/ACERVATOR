@@ -38,6 +38,8 @@ DIALOG_ROOT_ID = "start-all-root"
 
 ACCESSIBLE_NAME = "React Start All Progress Dialog"
 
+STYLE_ASSET = "start_all_progress.css"
+
 #: The scripts the page carries. Order is load order, and the style
 #: sources parse the Qt sheets before the dialog is drawn from them.
 DIALOG_SCRIPT_ASSETS: tuple[str, ...] = (
@@ -91,7 +93,9 @@ HOST_SCRIPT = """(function (global) {
 
 def dialog_html(theme: str = "cyberpunk_dark") -> str:
     """The whole dialog page as one string, with no network fetch."""
-    return page_html((), DIALOG_SCRIPT_ASSETS, DIALOG_BODY, theme, (HOST_SCRIPT,))
+    return page_html(
+        (STYLE_ASSET,), DIALOG_SCRIPT_ASSETS, DIALOG_BODY, theme, (HOST_SCRIPT,)
+    )
 
 
 def draw_script(model: dict) -> str:

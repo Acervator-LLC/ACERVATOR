@@ -506,6 +506,15 @@ def combo_items(name: str, wing: str = surface.DEFAULT_WING) -> tuple:
     return tuple(surface.spec_for(name).get("items") or ())
 
 
+def plain_combo_item(one: Any) -> Any:
+    """One drop-down choice as plain data.
+
+    A display-and-key pair becomes a list; a choice that is one word stays
+    that word, because listing a word gives its letters.
+    """
+    return list(one) if isinstance(one, (tuple, list)) else one
+
+
 if _HAS_QT and _HAS_WEBENGINE:
 
     class SettingsDialogPage(QWebEnginePage):
@@ -607,7 +616,12 @@ if _HAS_QT and _HAS_WEBENGINE:
             found = surface.build_view_model(self._model)
             found["control_specs"] = [
                 (
-                    {**spec, "items": [list(one) for one in combo_items(spec["name"])]}
+                    {
+                        **spec,
+                        "items": [
+                            plain_combo_item(one) for one in combo_items(spec["name"])
+                        ],
+                    }
                     if spec["kind"] in (surface.COMBO_TEXT, surface.COMBO_DATA)
                     else spec
                 )
