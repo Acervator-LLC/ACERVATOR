@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..core.io_utils import atomic_write_json
+from .capture_bounds import MIN_SCORED_AXES
 from .skill_ladder import (
     SKILL_NAMES,
     TRANSFER_SKILL_NAME,
@@ -107,6 +108,28 @@ def _as_identifier(value: object, name: str) -> str:
     return value.strip()
 
 
+def _as_scored_axes(value: object) -> int:
+    """Return ``value`` as a whole number of scored axes; every other value raises."""
+    if type(value) is not int or value < 0:
+        raise ActionSpendError(
+            f"scored_axes must be a whole number of axes, got {value!r}"
+        )
+    return value
+
+
+def _as_grade_numeric(value: object) -> Decimal:
+    """Return ``value`` as a Decimal grade between nought and one; others raise."""
+    if type(value) not in (int, float, Decimal) or type(value) is bool:
+        raise ActionSpendError(
+            f"grade_numeric must be int, float or Decimal, "
+            f"not {type(value).__name__}"
+        )
+    numeric = Decimal(str(value))
+    if not numeric.is_finite() or numeric < 0 or numeric > 1:
+        raise ActionSpendError(f"grade_numeric must be 0 to 1, got {value!r}")
+    return numeric
+
+
 def band_cost(band: str) -> Decimal:
     """Return what ``band`` costs in Quintessence."""
     cost = BANDS.get(band)
@@ -189,6 +212,8 @@ class ActionRecord:
     ``spent`` and ``underwritten`` sum what each payer moved, ``last_acted_at`` is
     the epoch second the dormancy clock reads, and ``grade_numeric`` with
     ``scored_axes`` carry the ``TradeGrade`` the payout divides on.
+    ``grade_numeric`` is ``grade_total`` over ``graded_fills``, so a participant
+    certifying several fills is scored on their mean.
     """
 
     event_id: str
@@ -201,6 +226,8 @@ class ActionRecord:
     last_acted_at: float = 0.0
     grade_numeric: Decimal = Decimal(0)
     scored_axes: int = 0
+    grade_total: Decimal = Decimal(0)
+    graded_fills: int = 0
     paid: Decimal = Decimal(0)
     settled_at: float = 0.0
 
@@ -217,6 +244,8 @@ class ActionRecord:
             "last_acted_at": self.last_acted_at,
             "grade_numeric": str(self.grade_numeric),
             "scored_axes": self.scored_axes,
+            "grade_total": str(self.grade_total),
+            "graded_fills": self.graded_fills,
             "paid": str(self.paid),
             "settled_at": self.settled_at,
         }
@@ -235,6 +264,8 @@ class ActionRecord:
             last_acted_at=float(d.get("last_acted_at", 0.0)),
             grade_numeric=Decimal(str(d.get("grade_numeric", "0"))),
             scored_axes=int(d.get("scored_axes", 0)),
+            grade_total=Decimal(str(d.get("grade_total", "0"))),
+            graded_fills=int(d.get("graded_fills", 0)),
             paid=Decimal(str(d.get("paid", "0"))),
             settled_at=float(d.get("settled_at", 0.0)),
         )
@@ -426,32 +457,45 @@ class PoaRecordStore:
     def write_grade(
         self, event_id: str, address: str, grade_numeric: object, scored_axes: object
     ) -> ActionRecord:
-        """Put one graded trade's ``grade_numeric`` and ``scored_axes`` on the record.
+        """Replace the record's score with one graded trade's, and write the store.
 
         ``scored_axes`` of nought leaves ``grade_numeric`` a default, which the
         payout refuses a share on.
         """
-        if type(scored_axes) is not int or scored_axes < 0:
-            raise ActionSpendError(
-                f"scored_axes must be a whole number of axes, got {scored_axes!r}"
-            )
-        if (
-            type(grade_numeric) not in (int, float, Decimal)
-            or type(grade_numeric) is bool
-        ):
-            raise ActionSpendError(
-                f"grade_numeric must be int, float or Decimal, "
-                f"not {type(grade_numeric).__name__}"
-            )
-        numeric = Decimal(str(grade_numeric))
-        if not numeric.is_finite() or numeric < 0 or numeric > 1:
-            raise ActionSpendError(
-                f"grade_numeric must be 0 to 1, got {grade_numeric!r}"
-            )
+        axes = _as_scored_axes(scored_axes)
+        numeric = _as_grade_numeric(grade_numeric)
         record = self.action_record(event_id, address)
         with self._lock:
             record.grade_numeric = numeric
-            record.scored_axes = scored_axes
+            record.scored_axes = axes
+            record.grade_total = numeric
+            record.graded_fills = 1
+            self.save()
+        return record
+
+    def add_graded_fill(
+        self, event_id: str, address: str, grade_numeric: object, scored_axes: object
+    ) -> ActionRecord:
+        """Add one certified fill's grade to the record's mean, and write the store.
+
+        ``grade_numeric`` joins ``grade_total`` and ``grade_numeric`` becomes that
+        total over ``graded_fills``, so every counted fill weighs the same.
+        ``scored_axes`` below ``MIN_SCORED_AXES`` is a default rather than a
+        measurement, so such a fill changes neither the total nor the count.
+        """
+        axes = _as_scored_axes(scored_axes)
+        numeric = _as_grade_numeric(grade_numeric)
+        record = self.action_record(event_id, address)
+        with self._lock:
+            if axes < MIN_SCORED_AXES:
+                self.save()
+                return record
+            record.grade_total += numeric
+            record.graded_fills += 1
+            record.grade_numeric = record.grade_total / record.graded_fills
+            record.scored_axes = (
+                axes if record.scored_axes == 0 else min(record.scored_axes, axes)
+            )
             self.save()
         return record
 

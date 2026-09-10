@@ -4137,10 +4137,175 @@ where that control belongs.
 Nothing writes a performance score during live play. The score is the trade grade,
 read through the RPG conversion, and the writer is reached only from inside the
 redistribution itself. A certified fill now carries both its grade and its count of
-scored axes, so the figures a share needs exist; nothing joins a fill to a
-participant's event record, and that join is what is missing.
+scored axes, so the figures a share needs exist, and `record_certified_fill`
+now puts them on a participant's event record.
 
 No guild exists, so a treasury's spend sizes the pot under the actor's own address
 and no officer is checked.
+
+In development.
+## 2026-09-10 10:53 - #147 - a certified fill reaches a participant's event record
+
+The division had nothing real to divide on. A certified fill held a grade and a
+count of scored axes, and a participant's event record held a spend and a clock.
+Nothing carried the first pair onto the second. The join now does.
+
+```python
+    def record_certified_fill(
+        self, event_id: str, receipt: object, fill: object
+    ) -> ActionRecord:
+        address = certified_participant(receipt, self._testnet)
+        return self._store.add_graded_fill(
+            event_id,
+            address,
+            getattr(fill, "trade_grade", None),
+            getattr(fill, "scored_axes", None),
+        )
+```
+
+### A participant is the address that sent the certification
+
+Certifying a fill sends a transaction to the chain. That transaction's sender is the
+participant's wallet, and the platform already mints their Quintessence there. The
+join reads the sender back off the chain rather than working the address out a
+second way, so one spelling of a wallet exists and a payout lands where the mint
+landed.
+
+```
+bot c8e5c5db  ->  identity 3ecef1619dd9  ->  0x3ecef1619dd90c8d933993228485eb1973971ce9
+bot 5ca99f1f  ->  identity 48cce07b5732  ->  0x48cce07b5732795ff561bd78ade52212f84e1180
+bot a8d95fed  ->  identity ca3e3124a322  ->  0xca3e3124a3226b2052a5310166c55bd40c943ddc
+```
+
+### Many fills become one score, by their mean
+
+One bot trades many times in one event. Every fill counts the same. The record keeps
+the running total of the grades and how many there were, and the score is the first
+over the second. A latest-wins rule would let the last trade decide the whole event,
+and a weighted rule needs a weight nothing supplies.
+
+```
+CHIP/USD  buy   grade F  0.0     total 0.0     fills 1   score 0.0
+CHIP/USD  buy   grade A+ 1.0     total 1.0     fills 2   score 0.5
+CHIP/USD  buy   grade A+ 1.0     total 2.0     fills 3   score 0.666666666666666666666666666
+CHIP/USD  sell  grade F  0.2955  total 2.2955  fills 4   score 0.573875
+```
+
+### The best and the worst grade land halfway between them
+
+One record took the highest and the lowest grade the real grader produced, in that
+order. The score is the mean of the two and nothing else.
+
+```
+KAT/USD    grade A+  1.0   total 1.0   fills 1   score 1.0
+CHIP/USD   grade F   0.0   total 1.0   fills 2   score 0.5
+```
+
+### A fill with no scored axis changes nothing
+
+A grade resting on no scored axis is the grader's own default, not a reading of a
+trade. The join leaves such a fill out of the total and out of the count, so it
+cannot pull a score down the way a zero would. A participant whose every fill is
+like that keeps a count of nought, and the division gives them no share at all.
+
+```
+CHIP/USD  grade F   0.0  axes 0  ->  total 0  fills 0  score 0
+KAT/USD   grade A+  1.0  axes 0  ->  total 0  fills 0  score 0
+
+score    {'address': '0xadf9793469cec8ae...', 'score': '0', 'scored_axes': 0,
+          'standing': 'no_score'}
+shares   []
+reserve  1.000000000000000000
+```
+
+### Real fills off the operator's own log, divided
+
+The platform's own trade-log reader read 1,709 fills. The real grader graded 1,668
+of them. Three of the operator's bots took four fills each, certified them, and the
+join wrote the score. The three then acted in one event, which formed the pot, and
+the pot divided on those scores. This run supplies the exchange fee at one dollar
+and names it rather than measuring it, because every fill on disk carries a fee of
+nought.
+
+```
+                    fills  grade total  score     spent    payout
+0x3ecef1619dd90c8d      4       2.2955  0.573875  0.100    0.023488715820590074
+0x48cce07b5732795f      4       3.5     0.875     0.010    0.035813768404297652
+0xca3e3124a3226b20      4       3.0     0.75      0.010    0.030697515775112273
+
+pot 0.120   return pool 0.090   paid 0.089999999999999999
+remainder 0.000000000000000001   reserve 0.030000000000000001   exact True
+```
+
+The biggest spender of the three scored worst and took the smallest payout.
+
+### A fill that names no participant earns no record
+
+Three ways a fill names nobody, each driven, with an accepted fill above them.
+
+```
+accepted             0xd43c6de9d53e88201d4a4f16dd500dada3a111da
+                     fills 1   total 1.0   score 1.0   axes 1
+
+no bot named         bot_id must be a non-empty string, got ''
+no such transaction  transaction 0xnotonthischain is not on this chain, so the
+                     fill names no participant
+no chain             bot d43c6de9d53e certified with no chain to read the sender
+                     from, so the fill names no participant
+```
+
+### A spend still cannot reach a share
+
+The division takes a pot and a list of scores. A score carries an address, a number
+and an axis count, and no record ever reaches it. This run took one participant's
+spend up a thousandfold and every payout stayed to the digit. The same division with
+that participant's score halved instead moved all three, which proves the reading
+was live.
+
+```
+spends  0.100    0.010  0.010   shares  0.0978696492  0.1492240350  0.1279063157
+spends  100.000  0.010  0.010   shares  0.0978696492  0.1492240350  0.1279063157
+
+scores  0.2869375  0.875  0.75  shares  0.0562788074  0.1716191036  0.1471020888
+```
+
+### The books balance and a second settle gets nothing
+
+This run read the three buckets before the payout and again after it. Nothing came
+into being and nothing vanished, and no bucket went negative. A second set of
+objects then read the event back off disk and asked to pay it again.
+
+```
+before  wallets 8.6755                held 0.12                  platonic 0
+        minted 8.7955  delta 0  balanced True  negative buckets 0
+after   wallets 8.765499999999999999  held 0.030000000000000001   platonic 0
+        minted 8.7955  delta 0  balanced True  negative buckets 0
+
+restart  settled_at read off disk 1789037532.1853175
+         refused: ELITE-U29 was settled at 1789037532.1853175; a second payout
+         would take Quintessence the pot no longer rests
+```
+
+### Demo mode is the same code over its own chain
+
+The redistribution takes its ledger, its store, its pot address and its chain at
+construction. A demo run is one more of the same object over the demo chain's own
+files, running the same join and the same division. No flag chooses between them.
+
+```
+live     chain 2322666782976   poa_record_store.json           paid 0.089999999999999999
+testnet  chain 2322667254944   poa_record_store_testnet.json   paid 0.089999999999999999
+```
+
+### What the join does not reach
+
+Nothing subscribes the join to the live fill event. Wiring it would mint and score
+against the operator's real ledger on every trade, and that remains his decision.
+
+The live fill payload carries no grade and no axis count, so a fill arriving that way
+today carries the record's own defaults and stays out of the score. The grades above
+came from the real grader reading the operator's trade log.
+
+No control on screen starts a payout, and none starts a join.
 
 In development.

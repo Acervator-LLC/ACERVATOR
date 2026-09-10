@@ -201,8 +201,9 @@ class SharedTestnetBridge(QObject):
     ) -> EventRedistribution:
         """Build the ``EventRedistribution`` over the pot ``action_spend`` spends into.
 
-        It takes that object's store and held address, so a demo run divides its own
-        chain's pot through the same ``settle`` path.
+        It takes that object's store and held address and this bridge's chain, so a
+        demo run divides its own chain's pot through the same ``settle`` path and
+        reads its own chain's certification senders.
         """
         from src.competition.event_redistribution import RETURN_PERCENT
         from src.competition.event_redistribution import (
@@ -210,7 +211,10 @@ class SharedTestnetBridge(QObject):
         )
 
         redistribution = _Redistribution(
-            quint_ledger, action_spend.store, action_spend.held_address
+            quint_ledger,
+            action_spend.store,
+            action_spend.held_address,
+            self._testnet,
         )
         self._event_redistribution = redistribution
         logger.info(

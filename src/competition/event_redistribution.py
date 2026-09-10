@@ -2,7 +2,9 @@
 
 ``performance_score`` reads one ``TradeGrade`` through ``grade_metrics`` and
 ``divide_pot`` normalises the scores handed to it, so no share can read a
-participant's spend. ``EventRedistribution.settle`` moves every share through
+participant's spend. ``record_certified_fill`` joins one
+``CertificationReceipt`` to the record of the participant ``certified_participant``
+names off the chain. ``EventRedistribution.settle`` moves every share through
 ``QuintessenceLedger.payout`` in one commit and the remainder stays at the pot's
 held address as the reserve.
 """
@@ -22,6 +24,7 @@ from .rpg_metrics import grade_metrics
 
 if TYPE_CHECKING:
     from .action_spend import ActionRecord, PoaRecordStore
+    from .local_testnet import LocalTestnet
     from .quintessence_ledger import QuintessenceLedger
 
 logger = logging.getLogger("acervator.event_redistribution")
@@ -183,6 +186,31 @@ def performance_score(address: str, grade: object) -> PerformanceScore:
     return PerformanceScore(wallet, _as_quantity(numeric, "grade_numeric"), axes)
 
 
+def certified_participant(receipt: object, testnet: LocalTestnet | None) -> str:
+    """Return the address that sent ``receipt``'s certification to ``testnet``.
+
+    The chain records that address as the transaction's sender, so it is the one
+    spelling of a participant's wallet; a receipt naming no bot, and one whose
+    transaction the chain does not hold, both raise.
+    """
+    bot = _as_name(getattr(receipt, "bot_id", None), "bot_id")
+    if testnet is None:
+        no_chain = (
+            f"bot {bot[:12]} certified with no chain to read the sender from, so "
+            f"the fill names no participant"
+        )
+        raise RedistributionError(no_chain)
+    tx_hash = _as_name(getattr(receipt, "tx_hash", None), "tx_hash")
+    transaction = testnet.chain.get_tx(tx_hash)
+    if transaction is None:
+        not_on_chain = (
+            f"transaction {tx_hash[:16]} is not on this chain, so the fill names "
+            f"no participant"
+        )
+        raise RedistributionError(not_on_chain)
+    return _as_name(transaction.from_addr, "from_addr")
+
+
 def scores_from_records(records: list) -> list[PerformanceScore]:
     """Return one ``PerformanceScore`` an ``ActionRecord``, reading no spend field.
 
@@ -255,9 +283,9 @@ def divide_pot(event_id: str, pot: object, scores: list) -> PotDivision:
 class EventRedistribution:
     """Divides one event's pot on performance and pays the shares out of the ledger.
 
-    The ledger, the store and the held address arrive by construction, so a demo run
-    is one ``EventRedistribution`` over another chain's ledger and store taking the
-    same ``settle`` path.
+    The ledger, the store, the held address and the chain ``record_certified_fill``
+    reads a sender off all arrive by construction, so a demo run is one
+    ``EventRedistribution`` over another chain taking the same ``settle`` path.
     """
 
     def __init__(
@@ -265,11 +293,13 @@ class EventRedistribution:
         ledger: QuintessenceLedger,
         store: PoaRecordStore,
         held_address: str,
+        testnet: LocalTestnet | None = None,
     ) -> None:
-        """Hold the ledger, the store and the held address the pot rests at."""
+        """Hold the ledger, the store, the pot's held address and the chain."""
         self._ledger = ledger
         self._store = store
         self._held_address = _as_name(held_address, "held_address")
+        self._testnet = testnet
         self._settled: dict[str, PotDivision] = {}
         self._lock = threading.RLock()
 
@@ -288,6 +318,23 @@ class EventRedistribution:
         score = performance_score(address, grade)
         return self._store.write_grade(
             event_id, score.address, score.score, score.scored_axes
+        )
+
+    def record_certified_fill(
+        self, event_id: str, receipt: object, fill: object
+    ) -> ActionRecord:
+        """Add one certified fill's grade to its participant's record in ``event_id``.
+
+        The participant is the sender of ``receipt``'s certification transaction and
+        the grade is the fill's own ``trade_grade`` and ``scored_axes``, so nothing
+        here reads a spend. A fill naming no participant raises.
+        """
+        address = certified_participant(receipt, self._testnet)
+        return self._store.add_graded_fill(
+            event_id,
+            address,
+            getattr(fill, "trade_grade", None),
+            getattr(fill, "scored_axes", None),
         )
 
     def scores(self, event_id: str) -> list[PerformanceScore]:
