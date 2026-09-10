@@ -7318,3 +7318,63 @@ The reset loads the chain it is about to clear, so a press costs one replay of
 that chain. The live chain is refused before any load, and nothing here changes
 the saved schema version.
 
+
+---
+
+## 2026-09-10 22:15 - #147 - the tab is proportioned, and the zones own it
+
+### The two zones take the tab and split it in half
+
+The tab used to divide its height into three equal rows, so the subtab panel was the
+same size as the player window and the same size as the party window. His layout gives
+the upper band the upper half and the party window the lower half, and that is what the
+tab now does. The control bar and the subtab panel are chrome: each takes the height its
+own content needs, up to a share of the tab, and scrolls past that share instead of
+pushing a zone down the page.
+
+`src/gui/web/proof_of_accumulation_tab.css` - the seven rows of the tab
+
+```css
+grid-template-rows: auto auto minmax(0, 15%) auto minmax(0, 13%) 1fr 1fr;
+```
+
+### What the player window measures now
+
+Read off the rendered page in the Electron shell at the window size the shell opens,
+and off the rendered page in the desktop window at the same page height.
+
+```
+                        before   after
+Electron shell            116      181
+desktop window           1055      182
+```
+
+The desktop window's figure moved for a second reason. Its page had no height to
+divide, so every row grew to its own content and the whole tab stood 3,506 pixels tall
+inside a 696-pixel window. The square enemy screen took its side from that height and
+left the player window 260 pixels of width; at a 900-pixel-wide window it left 18. The
+page now carries a height and the enemy screen is a 182-pixel square.
+
+### Every band inside a zone keeps its own height
+
+The bands stacked inside the two zones used to share the zone between them, so a short
+zone drew several of them at no height at all. The eight mode rows in the player window
+and the forty slots of a party page were both drawing at zero. Each band now keeps the
+height its content needs and the zone scrolls.
+
+```
+                    before   after
+mode list              0      150
+party page slots       0       88
+skill ladder          10       66
+pot division          10       49
+```
+
+### The player window still scrolls
+
+Its bands come to 410 pixels: the zone title, the event band, the two meters, the map
+button, the eight mode rows and the placeholder sentence. The zone is 181 pixels at the
+window size the shell opens and 254 at a full-screen one, so the mode rows are still
+reached by scrolling that zone. The eight event types are named twice on this screen,
+once as the event buttons in the control bar and once as the mode rows here, and
+dropping either copy is a change to what the tab says rather than to how it is sized.

@@ -9,16 +9,27 @@ body {
   height: 100%;
 }
 
-/* Three equal rows below the heading, the state line, the control bar and the
-   subtab bar: the subtab panel, the upper band, then the party window. */
+/* The desktop window's page holds the tab in this element alone, and without a
+   height here the grid below has none to divide. The shell sizes its own host. */
+body:has(> #panel-root) {
+  margin: 0;
+}
+
+body > #panel-root {
+  height: 100%;
+}
+
+/* The last two rows are the upper band and the party window, an equal half each.
+   The control bar caps at its buttons and verdict, the subtab panel at three rows. */
 .acervator-poa-tab {
   box-sizing: border-box;
   display: grid;
-  grid-template-rows: auto auto auto auto 1fr 1fr 1fr;
+  grid-template-rows: auto auto minmax(0, 15%) auto minmax(0, 13%) 1fr 1fr;
   height: 100%;
   margin: 0;
   padding: calc(var(--SPACE_M) * 1px);
   gap: calc(var(--SPACE_S) * 1px);
+  overflow-y: auto;
   background: var(--SURFACE_0);
   color: var(--TEXT_HIGH);
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
@@ -45,6 +56,8 @@ body {
   flex-wrap: wrap;
   align-items: center;
   gap: calc(var(--SPACE_XS) * 1px);
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .acervator-poa-tab [data-part="chain-label"],
@@ -338,6 +351,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: calc(var(--SPACE_S) * 1px);
+  overflow-y: auto;
+}
+
+/* Every band inside a zone keeps the height its own content needs. Without this
+   the bands share the zone and the mode list and the slot pages draw at nothing. */
+.acervator-poa-tab [data-part="player-window"] > *,
+.acervator-poa-tab [data-part="party-window"] > * {
+  flex-shrink: 0;
 }
 
 .acervator-poa-tab [data-part="zone-title"] {
@@ -391,13 +412,14 @@ body {
   font-size: calc(var(--TYPE_SMALL) * 1px);
 }
 
+/* The forty slots of one page take the zone's spare height and never less than
+   the five rows a group holds. */
 .acervator-poa-tab [data-part="party-pages"] {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   gap: calc(var(--SPACE_S) * 1px);
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 1 0 auto;
 }
 
 .acervator-poa-tab [data-part="party-group"] {
