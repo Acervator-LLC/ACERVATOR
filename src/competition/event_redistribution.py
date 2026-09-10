@@ -6,7 +6,9 @@ participant's spend. ``record_certified_fill`` joins one
 ``CertificationReceipt`` to the record of the participant ``certified_participant``
 names off the chain. ``EventRedistribution.settle`` moves every share through
 ``QuintessenceLedger.payout`` in one commit and the remainder stays at the pot's
-held address as the reserve.
+held address as the reserve. ``settle`` refuses a division carrying no share,
+because its stamp is permanent, and ``close_unpaid`` is the deliberate close for
+an event no participant earned a share in.
 """
 
 from __future__ import annotations
@@ -358,27 +360,47 @@ class EventRedistribution:
         with self._lock:
             return self._settled.get(_as_name(event_id, "event_id"))
 
+    def _require_unsettled(self, event: str) -> None:
+        """Raise while ``event`` already carries a payout stamp in the store."""
+        already = self.settled_at(event)
+        if already:
+            raise RedistributionError(
+                f"{event} was settled at {already}; a second payout would take "
+                f"Quintessence the pot no longer rests"
+            )
+
+    @staticmethod
+    def _require_exact(division: PotDivision) -> None:
+        """Raise unless ``division`` sums its paid total and reserve to its pot."""
+        if not division.is_exact:
+            raise RedistributionError(
+                f"{division.event_id} divides {amount_text(division.pot)} into "
+                f"{amount_text(division.paid_total)} paid and "
+                f"{amount_text(division.reserve)} reserve, which do not sum "
+                f"to the pot"
+            )
+
     def settle(self, event_id: str, at_epoch: float | None = None) -> PotDivision:
         """Pay every share of ``event_id``'s pot, leaving the reserve where it rests.
 
         The store is stamped before the ledger moves and unstamped when it refuses,
         so a second ``settle`` is refused across a restart as well as inside one run.
+        A division carrying no share is refused rather than stamped, because that
+        stamp is permanent and would deny a participant who scores afterwards;
+        ``close_unpaid`` is the deliberate close for an event nobody earned in.
         """
         event = _as_name(event_id, "event_id")
         with self._lock:
-            already = self.settled_at(event)
-            if already:
-                raise RedistributionError(
-                    f"{event} was settled at {already}; a second payout would take "
-                    f"Quintessence the pot no longer rests"
-                )
+            self._require_unsettled(event)
             division = self.division(event)
-            if not division.is_exact:
+            self._require_exact(division)
+            if not division.shares:
                 raise RedistributionError(
-                    f"{event} divides {amount_text(division.pot)} into "
-                    f"{amount_text(division.paid_total)} paid and "
-                    f"{amount_text(division.reserve)} reserve, which do not sum "
-                    f"to the pot"
+                    f"{event} holds {amount_text(division.pot)} Quintessence and "
+                    f"no participant carries {MIN_SCORED_AXES} scored axis, so a "
+                    f"payout would pay nobody and stamp the event settled for "
+                    f"ever; {len(division.unscored)} participant(s) stand unscored, "
+                    f"and close_unpaid is the deliberate close"
                 )
             credits = {share.address: share.amount for share in division.shares}
             stamp = time.time() if at_epoch is None else float(at_epoch)
@@ -399,6 +421,37 @@ class EventRedistribution:
             len(division.shares),
             amount_text(division.paid_total),
             amount_text(division.reserve),
+            self._held_address,
+            len(division.unscored),
+            GRADE_NOT_COMPUTED,
+        )
+        return division
+
+    def close_unpaid(self, event_id: str, at_epoch: float | None = None) -> PotDivision:
+        """Stamp ``event_id`` settled with nothing paid, for an event nobody earned in.
+
+        Refuses while any participant carries a scored axis, so ``settle`` is the only
+        way to close an event someone earned a share in, and refuses a second close
+        the same way ``settle`` does. The whole pot stays at the held address as the
+        reserve and no Quintessence moves.
+        """
+        event = _as_name(event_id, "event_id")
+        with self._lock:
+            self._require_unsettled(event)
+            division = self.division(event)
+            if division.shares:
+                raise RedistributionError(
+                    f"{event} carries {len(division.shares)} scored participant(s) "
+                    f"owed {amount_text(division.paid_total)} Quintessence; settle "
+                    f"pays them and a close would deny them"
+                )
+            stamp = time.time() if at_epoch is None else float(at_epoch)
+            self._store.write_payout(event, {}, stamp)
+            self._settled[event] = division
+        logger.info(
+            "%s closed unpaid: pot %s rests at %s as reserve, %d unscored (%s)",
+            event,
+            amount_text(division.pot),
             self._held_address,
             len(division.unscored),
             GRADE_NOT_COMPUTED,

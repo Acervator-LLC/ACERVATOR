@@ -47,12 +47,14 @@ body {
   gap: calc(var(--SPACE_XS) * 1px);
 }
 
-.acervator-poa-tab [data-part="chain-label"] {
+.acervator-poa-tab [data-part="chain-label"],
+.acervator-poa-tab [data-part="event-pick-label"] {
   color: var(--TEXT_MED);
   font-size: calc(var(--TYPE_SMALL) * 1px);
 }
 
-.acervator-poa-tab [data-part="chain-button"] {
+.acervator-poa-tab [data-part="chain-button"],
+.acervator-poa-tab [data-part="event-button"] {
   padding: calc(var(--SPACE_XS) * 1px) calc(var(--SPACE_S) * 1px);
   border: 1px solid var(--OUTLINE);
   border-radius: calc(var(--RADIUS_XS) * 1px);
@@ -61,7 +63,8 @@ body {
   font-size: calc(var(--TYPE_SMALL) * 1px);
 }
 
-.acervator-poa-tab [data-part="chain-button"][data-selected="true"] {
+.acervator-poa-tab [data-part="chain-button"][data-selected="true"],
+.acervator-poa-tab [data-part="event-button"][data-selected="true"] {
   border-color: var(--OUTLINE_STRONG);
   background: var(--SURFACE_3);
   color: var(--TEXT_MAX);

@@ -5257,7 +5257,7 @@ load buys about 125,000 records, and ten seconds buys 1.28 million.
 
 ### The save is what binds
 
-The save path rewrites the whole file every time, and the timer fires half a second
+A whole-file write costs its whole size every time, and the timer fires half a second
 after the last change.
 
 ```
@@ -5266,14 +5266,14 @@ after the last change.
 247,769,048 bytes  3,444 ms
 ```
 
-At fifteen milliseconds a megabyte a save finishes inside that half second only
+At fifteen milliseconds a megabyte such a write finishes inside that half second only
 while the chain stays under about 34 megabytes, which is roughly 85,000 actions for
-the life of the world. A ten-second load would allow 1.28 million. The current save
-path therefore stops a world at one fifteenth of what its own load time allows.
+the life of the world. A ten-second load would allow 1.28 million. A save path built
+that way therefore stops a world at one fifteenth of what its own load time allows.
 
 The shape that removes it appends each record to the log rather than rewriting the
 file, and writes a full snapshot now and then so a load reads one snapshot and a
-short tail. Neither is built.
+short tail. Both are built.
 
 In development.
 
@@ -5348,11 +5348,13 @@ layers   reaches 512 MB in       reaches 34 MB in
   20      26 turns, about a day   1.7 turns, under 2 hours
 ```
 
-A cube saturates the current save path inside two hours. Appending each record and
+A cube saturates a whole-file save path inside two hours. Appending each record and
 snapshotting now and then is the condition on the first multi-layer world running at
 all, not an improvement for later.
 
-In development.
+```python
+CHECKPOINT_RECORD_INTERVAL = 50_000
+```
 
 ### Why the two caps arrive together
 
@@ -5913,6 +5915,157 @@ No material list, no quality scale, no recipe and no skill curve for recovery. T
 split between what is kept and what is lost is handed in by the caller, so those
 later pieces decide it without this law changing again.
 
+## 2026-09-10 17:12 - #147 - the chain adds what changed, and a snapshot shortens the load
+
+### A save costs what changed, not what the chain holds
+
+The chain now keeps two files. The chain file holds a full snapshot, and a log file
+beside it takes each new record on the end. Driving 550 saves while the log grew from
+75 kilobytes to 41.6 megabytes, the platform reported its own cost every time.
+
+```
+log already holds   records added   bytes added   cost
+75 KB               202             75,319        3.5 ms
+19 MB               200             75,700        3.3 ms
+41.6 MB             200             75,638        3.5 ms
+over 550 saves      least 3.0 ms, most 14.3 ms
+```
+
+A save at a 41.6 megabyte log costs what a save at a 75 kilobyte log costs. The cost
+follows the records added and nothing else.
+
+### Where a whole-file write stops, and where this one does not
+
+The whole-file write is now only the snapshot, and it carries the same cost it always
+did. The platform reported that cost at two sizes, split into building the payload
+and writing it.
+
+```
+snapshot bytes   build      write      together   per megabyte
+18,075,873       153.8 ms   112.9 ms   266.7 ms   15.5 ms
+36,156,441       388.9 ms   241.7 ms   630.6 ms   18.3 ms
+```
+
+Fifteen milliseconds a megabyte is confirmed, and at 34.5 megabytes a whole-file
+write takes 630 milliseconds. The half-second timer is past at exactly the size the
+world budget named. An append at that same chain size takes 3.5 milliseconds.
+
+```
+34.5 MB whole-file write   630.6 ms, over the 500 ms timer
+same chain, one append     3.5 ms
+```
+
+### What makes a snapshot happen
+
+A count of records, not a clock. The load a world has to wait through is the records
+since the last snapshot, so bounding that count bounds the wait whatever the hour.
+
+```python
+CHECKPOINT_RECORD_INTERVAL = 50_000
+```
+
+At twenty layers 52,420 records fill one world turn, so this is about one snapshot an
+hour and a load that never replays more than about half a second of records. The
+world budget recommended about once a day; a day at twenty layers leaves 1.26 million
+records to replay, which is longer than the 4.9 seconds that same measurement called
+free.
+
+### A load reads the snapshot and the tail, or the whole log
+
+Both were driven on one chain of 25,196 blocks and 25,195 transactions, with a
+competition in it. The second run had the snapshot file removed.
+
+```
+load                          records replayed   cost
+snapshot and the tail         368                429 ms
+log alone, snapshot removed   50,401             663 ms
+```
+
+Every figure the platform reports about the two was the same: 25,196 blocks, 25,195
+transactions, 9 events, 1 competition, 10 ACRV to one holder, verified, nothing
+legacy and nothing altered. The saving grows with the history, because the log read
+is 3.8 milliseconds for a tail and 485.7 milliseconds for the whole log.
+
+### The log decides, and the snapshot is refused when it disagrees
+
+A snapshot names the last log record it absorbed. Chain A's snapshot was put beside
+chain B's log, and the chain that loaded was B's.
+
+```
+A snapshot + B log   loads B, competition COMP-1DA0EFC1
+A snapshot + A log   loads A, competition COMP-489CF6D4
+```
+
+A log shorter than the snapshot is a different case and is not a disagreement. It
+holds nothing the snapshot does not, so the snapshot stands and the short log is
+emptied.
+
+### A record cut part way through is refused, and every earlier one kept
+
+The log was cut by 150 bytes, which lands inside its last record. The load kept
+everything before it and dropped the rest of the file.
+
+```
+whole records read   367 of 368
+bytes dropped        218
+transactions         25,194, one fewer
+everything else      25,196 blocks, 9 events, 1 competition, 10 ACRV, verified
+```
+
+The same cut was driven twice, once with the snapshot and once without it, and both
+read 367 records. Nothing partial was taken for a real record.
+
+### A record that was changed fails its own name
+
+Every record is named by a number taken from its own contents. One digit was changed
+inside the last record, leaving a line that still reads as valid, and the load refused
+it for the name alone.
+
+```
+line length      unchanged, still valid
+whole records    367 of 368
+transactions     25,194
+```
+
+Nothing was invented to mark a record's end. A cut record fails to read, and a changed
+record fails the number its own contents give it.
+
+### His own chain loads, and a save no longer rewrites it
+
+His chain file was copied and loaded through the same install path the window uses.
+A competition was then run on it and saved.
+
+```
+loaded          3,136 blocks, 3,135 transactions, 2,565 events, 285 competitions
+                2,850 ACRV, 285 holders, verified, 3,135 legacy
+a competition   32 records added, 185,843 bytes, 4.3 ms
+his chain file  4,059,629 bytes, not rewritten
+reloaded        3,147 blocks, 3,146 transactions, 2,574 events, 286 competitions
+```
+
+The old path would have rewritten 4.2 megabytes for those 32 records. His file is not
+rewritten at all until 50,000 records have gone by, and it was still byte for byte
+what it was when the run finished.
+
+### Demo mode saves the same way
+
+Each panel takes its chain when it is built, and the chain decides which file it
+saves to. A live chain and a demo chain ran in one program through one save path, with
+no flag of any kind.
+
+```
+live      testnet_chain.json            testnet_chain.log
+testnet   testnet_chain_testnet.json    testnet_chain_testnet.log
+```
+
+Both added records and both wrote a snapshot, and each wrote only its own two files.
+
+### What this does not reach
+
+The snapshot is still a whole-file write, so the half-second stall returns once every
+50,000 records and grows with the chain. Writing it away from the drawing thread is
+not built. A log damaged below the snapshot loses the records after it, because a
+damaged log cannot be asked what it held.
 ## 2026-09-10 17:40 - #147 - the controls that drive the mechanisms
 
 Five units each reported that their mechanism works and that nothing on screen
@@ -5924,7 +6077,9 @@ Distil              mints Quintessence against a fee and a grade
 Train transfer      records one use on the skill ladder
 Send Quint          sends an amount, less the bleed to the platonic
 Spend a band        casts an action and rests its cost in the event pot
+Score the action    puts a performance score on the participant's record
 Settle the pot      divides the pot and pays every share
+Close unpaid        closes an event nobody earned a share in
 Draw loot           opens a rotation window and draws an item
 File an exclusion   excludes a market from the next season
 ```
@@ -5950,21 +6105,74 @@ pressing the same button in a different state, so no second rule decides it.
 transfer   refuses while the skill is untrained, refuses while the balance is
            short, and then sends
 spend      refuses while the wallet holds under the band's cost, and then casts
-payout     divides the pot, and refuses a second press
+payout     refuses while nobody has a score, pays the scored, and refuses a
+           second press
+close      refuses while anybody has a score, and closes an event nobody earned in
 drop       refuses while fewer than twelve markets qualify
 season     files an exclusion, and the next season is what puts it in effect
+```
+
+### A premature payout would have denied whoever scored next, for ever
+
+The payout stamps the records before the Quintessence moves, and that stamp is
+permanent by design, so a second payout cannot take Quintessence the pot no longer
+rests. There was no check that the division paid anybody. One press on an event
+before any participant had a score stamped it settled, paid nobody, and left the
+whole pot unreachable by the people who later earned it.
+
+A payout that would pay nobody is now refused, and the refusal says which condition
+it is.
+
+```
+too early   monster_smash holds 0.001 Quintessence and no participant carries 1
+            scored axis, so a payout would pay nobody and stamp the event settled
+            for ever; 1 participant(s) stand unscored, and close_unpaid is the
+            deliberate close
+already     monster_smash was settled at 1789063555.8413775; a second payout would
+            take Quintessence the pot no longer rests
+```
+
+Closing an event nobody earned in is still possible, through its own button rather
+than through a setting on the payout. Two buttons cannot be confused for one
+another, and the close refuses the moment anybody holds a score, so an earned share
+can never be closed away.
+
+```
+close refuses    monster_smash carries 1 scored participant(s) owed 0.00075
+                 Quintessence; settle pays them and a close would deny them
+close acts       dungeon_crawl closed with nothing paid: 0.001 Quint rests as
+                 reserve and 1 participant(s) stood unscored.
+```
+
+The proof that the stamp was not burned is the payout that follows. The same event
+that refused the premature press paid its share once a participant was scored.
+
+```
+monster_smash divided 0.001 Quint: 0.00075 paid over 1 share(s), 0.00025 reserve,
+0 unscored.
+```
+
+### An event picker, so every event type is reachable
+
+The tab draws one button an event type, eight of them, beside the chain buttons.
+Every control button carries the selected event in what it sends, so a spend, a
+payout and a close all act on the event on screen.
+
+```
+monster_smash, monster_smash_elite, team_monster_smash, team_monster_smash_elite,
+dungeon_crawl, dungeon_crawl_elite, raid, raid_elite
 ```
 
 ### The books balance after every press
 
 The four-bucket report sits beside the pot division and is read again after each
-control acts. It held through all eleven presses.
+control acts. It held through all nineteen presses.
 
 ```
 Buckets balance the mint   True
 Negative buckets           0
-Wallets                    0.09892
-Held                       0.001
+Wallets                    0.09867
+Held                       0.00125
 Platonic                   0.00008
 Embedded                   0
 Distilled, all time        0.1
@@ -6039,6 +6247,5 @@ The capture-bounds activation is the one place that builds a pool and opens a
 window together, and it refuses without a figure saying how much Quintessence a
 market's pool holds in a window. No unit has set that figure.
 
-The payout does not refuse an event where nobody scored. It divides the pot, pays
-nobody and rests the whole pot as reserve, which is what the record store's own
-rule says it should do.
+No button scores another participant. The Score the action button scores this node's
+own participant, so every payout proved above paid one share.

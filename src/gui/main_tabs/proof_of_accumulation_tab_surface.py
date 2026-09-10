@@ -18,7 +18,7 @@ only a mode carrying a map opens the map subtab. ``character_stats`` pairs every
 loot section beside the item classes nothing builds, ``skill_tree`` draws the
 ladder as a list over ``SKILL_NAMES``, and ``map_panel`` states that no world is
 generated.
-``controls`` serves the seven buttons that drive the mechanisms and fires the one
+``controls`` serves the nine buttons that drive the mechanisms and fires the one
 ``params`` names through ``control_result``, which calls each mechanism's own
 entry point and answers its refusal sentence unchanged. ``conservation`` reads
 ``QuintessenceLedger.conservation`` after a control acts and ``season`` reads the
@@ -47,6 +47,7 @@ from ...competition.action_spend import (
     band_cost,
 )
 from ...competition.bot_identity import BotIdentity
+from ...competition.capture_bounds import MIN_SCORED_AXES
 from ...competition.event_redistribution import (
     RETURN_PERCENT,
     EventRedistribution,
@@ -333,6 +334,8 @@ BAND_FIELD = "band"
 QUALITY_FIELD = "quality"
 FEE_USD_FIELD = "fee_usd"
 TRADE_GRADE_FIELD = "trade_grade"
+GRADE_NUMERIC_FIELD = "grade_numeric"
+SCORED_AXES_FIELD = "scored_axes"
 SYMBOL_FIELD = "symbol"
 EXCHANGE_FIELD = "exchange"
 SEASON_FIELD = "season"
@@ -341,7 +344,9 @@ DISTIL_ACTION = "distil"
 TRAIN_ACTION = "train"
 TRANSFER_ACTION = "transfer"
 SPEND_ACTION = "spend"
+GRADE_ACTION = "grade"
 PAYOUT_ACTION = "payout"
+CLOSE_ACTION = "close"
 DROP_ACTION = "drop"
 SEASON_ACTION = "season"
 
@@ -357,10 +362,17 @@ DEMO_USE_QUALITY = float(MAX_USE_QUALITY)
 #: The amount one transfer sends, the cheapest band's own cost.
 DEMO_TRANSFER_QUINT = float(band_cost(CHEAPEST_BAND))
 
+#: The top grade ``PoaRecordStore.write_grade`` accepts, whose range is nought to one.
+DEMO_GRADE_NUMERIC = 1.0
+
+#: Axes enough for a grade to be a measurement rather than a default.
+DEMO_SCORED_AXES = MIN_SCORED_AXES
+
 CONTROLS_TITLE = "Controls"
 CONTROL_IDLE_TEXT = "No control is fired."
 CHAIN_PICKER_LABEL = "Chain"
 CHAIN_LABELS = {LIVE_CHAIN: "Live", DEMO_CHAIN: "Demo TestNet"}
+EVENT_PICKER_LABEL = "Event"
 CONTROL_ACTED_WORD = "acted"
 CONTROL_REFUSED_WORD = "refused"
 
@@ -368,7 +380,9 @@ DISTIL_TITLE = "Distil"
 TRAIN_TITLE = "Train transfer"
 TRANSFER_TITLE = "Send Quint"
 SPEND_TITLE = "Spend a band"
+GRADE_TITLE = "Score the action"
 PAYOUT_TITLE = "Settle the pot"
+CLOSE_TITLE = "Close unpaid"
 DROP_TITLE = "Draw loot"
 SEASON_TITLE = "File an exclusion"
 
@@ -376,7 +390,9 @@ DISTIL_LABEL = f"Distil a {DEMO_FEE_USD} fee at grade {DEMO_TRADE_GRADE}"
 TRAIN_LABEL = f"Record one use at quality {DEMO_USE_QUALITY}"
 TRANSFER_LABEL = f"Send {DEMO_TRANSFER_QUINT} Quint"
 SPEND_LABEL = f"Cast band {CHEAPEST_BAND} at {band_cost(CHEAPEST_BAND)} Quint"
+GRADE_LABEL = f"Grade {DEMO_GRADE_NUMERIC} on {DEMO_SCORED_AXES} axis"
 PAYOUT_LABEL = f"Pay {RETURN_PERCENT}% of the pot"
+CLOSE_LABEL = "Close with nothing paid"
 DROP_LABEL = "Open the window and draw"
 SEASON_LABEL = "Exclude this market"
 
@@ -384,7 +400,15 @@ DISTIL_NOTE = "Mints at the fee times the grade, under the supply cap."
 TRAIN_NOTE = "One use of quality 0 advances nothing and the ladder refuses it."
 TRANSFER_NOTE = "Refused while the skill is untrained, and while the balance is short."
 SPEND_NOTE = "Refused while the wallet holds under the band's cost."
-PAYOUT_NOTE = "A second payout is refused; the first one stamps the records."
+GRADE_NOTE = "A grade outside nought to one is refused, and so is a part of an axis."
+PAYOUT_NOTE = (
+    "Refused while no participant carries a score, because the stamp is permanent "
+    "and would deny whoever scores next. A second payout is refused too."
+)
+CLOSE_NOTE = (
+    "Stamps an event nobody earned in, leaving the whole pot as reserve. Refused "
+    "the moment any participant carries a score."
+)
 DROP_NOTE = (
     f"A window draws only above {MIN_ELIGIBLE_POOL} eligible markets. The pool "
     f"reads the exchange scout this process polled, and asks the age rule once "
@@ -401,9 +425,14 @@ TRANSFER_DONE_TEXT = (
     "platonic."
 )
 SPEND_DONE_TEXT = "Band {band} cost {cost} Quint, resting at {held}."
+GRADE_DONE_TEXT = "{address} scores {grade} on {axes} axis in {event}."
 PAYOUT_DONE_TEXT = (
     "{event} divided {pot} Quint: {paid} paid over {shares} share(s), {reserve} "
     "reserve, {unscored} unscored."
+)
+CLOSE_DONE_TEXT = (
+    "{event} closed with nothing paid: {pot} Quint rests as reserve and "
+    "{unscored} participant(s) stood unscored."
 )
 DROP_DONE_TEXT = "{symbol} on {exchange} dropped {short} on roll {roll}."
 SEASON_DONE_TEXT = (
@@ -417,6 +446,8 @@ RECEIVED_ROW = "Received"
 BLED_ROW = "Bled to the platonic"
 COST_ROW = "Band cost"
 POT_HELD_ROW = "Resting in the pot"
+GRADE_ROW = "Score"
+SCORED_AXES_ROW = "Scored axes"
 PAID_TOTAL_ROW = "Paid out"
 ITEM_ROW = "Item"
 POOL_ROW = "Eligible markets"
@@ -1414,6 +1445,52 @@ def spend_control(chain: str, address: str, event_id: str, params: dict) -> tupl
     )
 
 
+def grade_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Put a score on the participant's record through ``PoaRecordStore.write_grade``.
+
+    A payout reads this score, so a record with none is what ``settle`` refuses on.
+    """
+    record = record_store(chain).write_grade(
+        event_id,
+        address,
+        number_of(params, GRADE_NUMERIC_FIELD, DEMO_GRADE_NUMERIC),
+        int(number_of(params, SCORED_AXES_FIELD, DEMO_SCORED_AXES)),
+    )
+    return (
+        True,
+        GRADE_DONE_TEXT.format(
+            address=record.address,
+            grade=amount_text(record.grade_numeric),
+            axes=record.scored_axes,
+            event=record.event_id,
+        ),
+        [
+            row(GRADE_ROW, amount_text(record.grade_numeric)),
+            row(SCORED_AXES_ROW, str(record.scored_axes)),
+        ],
+    )
+
+
+def close_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
+    """Close an event nobody earned in, through ``EventRedistribution.close_unpaid``."""
+    del address, params
+    division = EventRedistribution(
+        loaded_ledger(chain), record_store(chain), EVENT_POT_ADDRESS
+    ).close_unpaid(event_id)
+    return (
+        True,
+        CLOSE_DONE_TEXT.format(
+            event=division.event_id,
+            pot=amount_text(division.pot),
+            unscored=len(division.unscored),
+        ),
+        [
+            row(PAID_TOTAL_ROW, amount_text(division.paid_total)),
+            row(RESERVE_ROW, amount_text(division.reserve)),
+        ],
+    )
+
+
 def payout_control(chain: str, address: str, event_id: str, params: dict) -> tuple:
     """Pay every share of the event's pot through ``EventRedistribution.settle``."""
     del address, params
@@ -1498,7 +1575,9 @@ CONTROL_HANDLERS = {
     TRAIN_ACTION: train_control,
     TRANSFER_ACTION: transfer_control,
     SPEND_ACTION: spend_control,
+    GRADE_ACTION: grade_control,
     PAYOUT_ACTION: payout_control,
+    CLOSE_ACTION: close_control,
     DROP_ACTION: drop_control,
     SEASON_ACTION: season_control,
 }
@@ -1508,7 +1587,9 @@ CONTROL_TITLES = {
     TRAIN_ACTION: TRAIN_TITLE,
     TRANSFER_ACTION: TRANSFER_TITLE,
     SPEND_ACTION: SPEND_TITLE,
+    GRADE_ACTION: GRADE_TITLE,
     PAYOUT_ACTION: PAYOUT_TITLE,
+    CLOSE_ACTION: CLOSE_TITLE,
     DROP_ACTION: DROP_TITLE,
     SEASON_ACTION: SEASON_TITLE,
 }
@@ -1518,7 +1599,9 @@ CONTROL_LABELS = {
     TRAIN_ACTION: TRAIN_LABEL,
     TRANSFER_ACTION: TRANSFER_LABEL,
     SPEND_ACTION: SPEND_LABEL,
+    GRADE_ACTION: GRADE_LABEL,
     PAYOUT_ACTION: PAYOUT_LABEL,
+    CLOSE_ACTION: CLOSE_LABEL,
     DROP_ACTION: DROP_LABEL,
     SEASON_ACTION: SEASON_LABEL,
 }
@@ -1528,7 +1611,9 @@ CONTROL_NOTES = {
     TRAIN_ACTION: TRAIN_NOTE,
     TRANSFER_ACTION: TRANSFER_NOTE,
     SPEND_ACTION: SPEND_NOTE,
+    GRADE_ACTION: GRADE_NOTE,
     PAYOUT_ACTION: PAYOUT_NOTE,
+    CLOSE_ACTION: CLOSE_NOTE,
     DROP_ACTION: DROP_NOTE,
     SEASON_ACTION: SEASON_NOTE,
 }
@@ -1537,10 +1622,21 @@ CONTROL_NOTES = {
 CONTROL_NAMES: tuple[str, ...] = tuple(CONTROL_HANDLERS)
 
 
-def control_params(name: str, chain: str, address: str | None) -> dict:
-    """The params the button for ``name`` sends, every figure read off a mechanism."""
+def control_params(
+    name: str, chain: str, address: str | None, variant: EventVariant
+) -> dict:
+    """The params the button for ``name`` sends, every figure read off a mechanism.
+
+    ``chain``, ``variant.mode`` and ``variant.elite`` ride along, so the control acts
+    on the event the tab is drawn for.
+    """
     exchange, symbol = first_market(chain)
-    sending: dict = {CHAIN_FIELD: chain, ACTION_FIELD: name}
+    sending: dict = {
+        CHAIN_FIELD: chain,
+        MODE_FIELD: variant.mode.code,
+        ELITE_FIELD: variant.elite,
+        ACTION_FIELD: name,
+    }
     if name == DISTIL_ACTION:
         sending[FEE_USD_FIELD] = DEMO_FEE_USD
         sending[TRADE_GRADE_FIELD] = DEMO_TRADE_GRADE
@@ -1551,20 +1647,25 @@ def control_params(name: str, chain: str, address: str | None) -> dict:
         sending[RECIPIENT_FIELD] = other_participant(chain, address or "")
     if name == SPEND_ACTION:
         sending[BAND_FIELD] = CHEAPEST_BAND
+    if name == GRADE_ACTION:
+        sending[GRADE_NUMERIC_FIELD] = DEMO_GRADE_NUMERIC
+        sending[SCORED_AXES_FIELD] = DEMO_SCORED_AXES
     if name in (DROP_ACTION, SEASON_ACTION):
         sending[EXCHANGE_FIELD] = exchange
         sending[SYMBOL_FIELD] = symbol
     return sending
 
 
-def control_row(name: str, chain: str, address: str | None) -> dict:
+def control_row(
+    name: str, chain: str, address: str | None, variant: EventVariant
+) -> dict:
     """One control: its action, the label the button prints, and the params it sends."""
     return {
         "name": name,
         "title": CONTROL_TITLES[name],
         "label": CONTROL_LABELS[name],
         "note": CONTROL_NOTES[name],
-        "params": control_params(name, chain, address),
+        "params": control_params(name, chain, address, variant),
     }
 
 
@@ -1601,15 +1702,41 @@ def chain_rows(chain: str) -> list:
     ]
 
 
-def controls(chain: str, address: str | None, params: dict, event_id: str) -> dict:
-    """The row of buttons, the chain picker, and what the one ``params`` fired did."""
+def event_rows(chain: str, variant: EventVariant) -> list:
+    """One row an event type, each carrying the params that redraws the tab against it."""
+    return [
+        {
+            "name": row["code"],
+            "label": f"{row['label']} {row['variant_label']}",
+            "selected": row["code"] == variant.code,
+            "params": {
+                CHAIN_FIELD: chain,
+                MODE_FIELD: row[MODE_FIELD],
+                ELITE_FIELD: row["elite"],
+            },
+        }
+        for row in variant_rows()
+    ]
+
+
+def controls(
+    chain: str,
+    address: str | None,
+    params: dict,
+    variant: EventVariant,
+    event_id: str,
+) -> dict:
+    """The row of buttons, the chain and event pickers, and what ``params`` fired."""
     fired = control_result(params, chain, address, event_id)
     return {
         "title": CONTROLS_TITLE,
         "chain": chain,
         "chain_label": CHAIN_PICKER_LABEL,
         "chains": chain_rows(chain),
-        "rows": [control_row(name, chain, address) for name in CONTROL_NAMES],
+        "event_label": EVENT_PICKER_LABEL,
+        "event_id": event_id,
+        "events": event_rows(chain, variant),
+        "rows": [control_row(name, chain, address, variant) for name in CONTROL_NAMES],
         "result": fired,
         "verdict": CONTROL_ACTED_WORD if fired["acted"] else CONTROL_REFUSED_WORD,
     }
@@ -1687,6 +1814,7 @@ def view_model(params: dict) -> dict:
         chain,
         None if identity is None else identity.bot_id,
         params,
+        variant,
         event_id_of(params, variant),
     )
     rows = participants(chain, pick)

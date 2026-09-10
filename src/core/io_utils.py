@@ -10,6 +10,13 @@ instead of carrying its own tmp-file-then-rename idiom.
 :func:`atomic_write_json` encode onto it. Staging names come from
 ``tempfile.mkstemp``, which creates with O_EXCL, so two writers of one
 destination cannot collide on a staging path.
+
+:func:`append_json_lines` and :func:`read_json_lines` are the append-log pair a
+caller uses instead when rewriting the whole file costs too much. An append is
+not atomic, so the reader stops at the first line it cannot read whole and
+reports the byte offset where the lines it kept end. :func:`read_json_line_before`
+reads back one line from a given offset, so a caller holding a saved offset can
+check what stands there without reading the file up to it.
 """
 
 from __future__ import annotations
@@ -19,9 +26,19 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterable, Optional
 
-__all__ = ["atomic_write_bytes", "atomic_write_text", "atomic_write_json"]
+__all__ = [
+    "atomic_write_bytes",
+    "atomic_write_text",
+    "atomic_write_json",
+    "append_json_lines",
+    "read_json_lines",
+    "read_json_line_before",
+]
+
+#: How far back :func:`read_json_line_before` looks for the start of one line.
+MAX_JSON_LINE_BYTES = 1 << 20
 
 
 def _fsync_directory(directory: Path) -> None:
@@ -134,3 +151,98 @@ def atomic_write_json(
     return atomic_write_text(
         path, text, encoding=encoding, before_replace=before_replace
     )
+
+
+def append_json_lines(
+    path: os.PathLike | str,
+    payloads: Iterable[Any],
+    *,
+    default: Optional[Callable[[Any], Any]] = None,
+) -> int:
+    """Append every payload in ``payloads`` to ``path`` as one JSON line each.
+
+    Each line is compact and key-sorted, so the same payload always produces the
+    same bytes. Every payload is serialized before the file is opened, so one
+    ``json.dumps`` rejects leaves the file untouched. The lines reach disk in one
+    write followed by one fsync, so an interrupted call can only cut the tail of
+    that write and :func:`read_json_lines` then stops there. The file is opened in
+    binary mode, so a newline stays one byte on every platform. Returns the number
+    of bytes appended, which is 0 for an empty ``payloads``.
+    """
+    body = b"".join(
+        json.dumps(
+            payload,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=default,
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+        for payload in payloads
+    )
+    if not body:
+        return 0
+    dest = Path(path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with open(dest, "ab") as handle:
+        handle.write(body)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return len(body)
+
+
+def read_json_lines(
+    path: os.PathLike | str,
+    *,
+    start: int = 0,
+    accept: Optional[Callable[[Any], bool]] = None,
+) -> tuple[list[Any], int]:
+    """Read ``path`` as JSON lines from byte ``start``, and say where they end.
+
+    A line counts only when it is newline-terminated, ``json.loads`` reads it and
+    ``accept`` returns True; reading stops at the first line failing any of those,
+    and the returned offset is where a caller truncates.
+    """
+    try:
+        with open(Path(path), "rb") as handle:
+            handle.seek(start)
+            raw = handle.read()
+    except FileNotFoundError:
+        return [], start
+    payloads: list[Any] = []
+    end = start
+    for line in raw.split(b"\n")[:-1]:
+        try:
+            payload = json.loads(line)
+        except ValueError:
+            break
+        if accept is not None and not accept(payload):
+            break
+        payloads.append(payload)
+        end += len(line) + 1
+    return payloads, end
+
+
+def read_json_line_before(path: os.PathLike | str, end: int) -> Optional[Any]:
+    """Return the payload of the JSON line that ends at byte ``end`` of ``path``.
+
+    Looks back at most ``MAX_JSON_LINE_BYTES`` for where that line starts, and
+    returns ``None`` when ``end`` is not one past a newline, when no line start
+    stands inside that window, or when the line does not parse.
+    """
+    start = max(0, end - MAX_JSON_LINE_BYTES)
+    try:
+        with open(Path(path), "rb") as handle:
+            handle.seek(start)
+            window = handle.read(end - start)
+    except (OSError, ValueError):
+        return None
+    if not window.endswith(b"\n"):
+        return None
+    cut = window.rfind(b"\n", 0, len(window) - 1)
+    if cut < 0 and start > 0:
+        return None
+    try:
+        return json.loads(window[cut + 1 : -1])
+    except ValueError:
+        return None

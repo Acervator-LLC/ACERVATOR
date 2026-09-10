@@ -193,6 +193,11 @@
 
   var CHAIN_LABEL_PART = "chain-label";
   var CHAIN_BUTTON_PART = "chain-button";
+  var EVENT_PICK_LABEL_PART = "event-pick-label";
+  var EVENT_BUTTON_PART = "event-button";
+
+  // The event type a picker button selects, which its own params carry.
+  var EVENT_ATTR = "data-event";
 
   var CONTROL_BAR_PART = "control-bar";
   var CONTROL_BUTTON_PART = "control-button";
@@ -266,6 +271,7 @@
   var NO_SUCH_SUBTAB = "no subtab carries that name";
   var NO_SUCH_CONTROL = "no control carries that name";
   var NO_SUCH_CHAIN = "no chain carries that name";
+  var NO_SUCH_EVENT = "no event type carries that name";
 
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -730,22 +736,60 @@
     return element("button", buttonProps, text(entry.label));
   }
 
+  // One button an event type. Clicking it redraws the tab against that event.
+  function EventButton(props) {
+    var entry = props.entry;
+    var buttonProps = named(
+      TAB_CLASS + "-event-button",
+      EVENT_BUTTON_PART,
+      text(entry.label)
+    );
+    buttonProps[EVENT_ATTR] = text(entry.name);
+    buttonProps[SELECTED_ATTR] = String(entry.selected === true);
+    buttonProps.type = "button";
+    buttonProps.onClick = function () {
+      selectEvent(entry.name);
+    };
+    return element("button", buttonProps, text(entry.label));
+  }
+
+  function pickerRow(entries, labelPart, labelText, Button, keyPart) {
+    var children = [];
+    if (!entries.length) {
+      return children;
+    }
+    var labelProps = part(TAB_CLASS + "-" + labelPart, labelPart);
+    labelProps.key = labelPart;
+    children.push(element("span", labelProps, text(labelText)));
+    entries.filter(isPlainObject).forEach(function (entry) {
+      children.push(
+        element(Button, { key: keyPart + text(entry.name), entry: entry })
+      );
+    });
+    return children;
+  }
+
   function ControlBar(props) {
     var bar = props.controls;
     var rows = Array.isArray(bar.rows) ? bar.rows : [];
     var chains = Array.isArray(bar.chains) ? bar.chains : [];
+    var events = Array.isArray(bar.events) ? bar.events : [];
     var fired = isPlainObject(bar.result) ? bar.result : {};
-    var children = [];
-    if (chains.length) {
-      var chainLabelProps = part(TAB_CLASS + "-chain-label", CHAIN_LABEL_PART);
-      chainLabelProps.key = CHAIN_LABEL_PART;
-      children.push(element("span", chainLabelProps, text(bar.chain_label)));
-      chains.filter(isPlainObject).forEach(function (entry) {
-        children.push(
-          element(ChainButton, { key: CHAIN_BUTTON_PART + text(entry.name), entry: entry })
-        );
-      });
-    }
+    var children = pickerRow(
+      chains,
+      CHAIN_LABEL_PART,
+      bar.chain_label,
+      ChainButton,
+      CHAIN_BUTTON_PART
+    ).concat(
+      pickerRow(
+        events,
+        EVENT_PICK_LABEL_PART,
+        bar.event_label,
+        EventButton,
+        EVENT_BUTTON_PART
+      )
+    );
     rows.filter(isPlainObject).forEach(function (row) {
       children.push(element(ControlButton, { key: text(row.name), row: row }));
     });
@@ -1655,11 +1699,11 @@
     return askWith(name, row.params);
   }
 
-  function chainNamed(model, name) {
+  function pickerNamed(model, field, name) {
     var bar = isPlainObject(model) && isPlainObject(model[CONTROLS])
       ? model[CONTROLS]
       : null;
-    var entries = bar === null || !Array.isArray(bar.chains) ? [] : bar.chains;
+    var entries = bar === null || !Array.isArray(bar[field]) ? [] : bar[field];
     var found = null;
     entries.forEach(function (entry) {
       if (isPlainObject(entry) && entry.name === name) {
@@ -1670,12 +1714,24 @@
   }
 
   function selectChain(name) {
-    var entry = held === null ? null : chainNamed(held, name);
+    var entry = held === null ? null : pickerNamed(held, "chains", name);
     if (entry === null) {
       return Promise.resolve({
         name: name,
         acted: false,
         message: NO_SUCH_CHAIN
+      });
+    }
+    return askWith(name, entry.params);
+  }
+
+  function selectEvent(name) {
+    var entry = held === null ? null : pickerNamed(held, "events", name);
+    if (entry === null) {
+      return Promise.resolve({
+        name: name,
+        acted: false,
+        message: NO_SUCH_EVENT
       });
     }
     return askWith(name, entry.params);
@@ -1786,6 +1842,7 @@
     controlResult: controlResult,
     fireControl: fireControl,
     selectChain: selectChain,
+    selectEvent: selectEvent,
     renderTab: renderTab,
     forget: forget
   };
