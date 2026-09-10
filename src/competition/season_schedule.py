@@ -16,7 +16,9 @@ from typing import Optional
 TOTAL_SUPPLY_CAP = 10_000_000  # Hard cap — immutable
 GENESIS_SEASON = 1
 INITIAL_REWARD = 500_000  # season 1 pool, in ACRV tokens
-DECAY_FACTOR = 0.85
+DECAY_NUMERATOR = 17
+DECAY_DENOMINATOR = 20
+DECAY_FACTOR = DECAY_NUMERATOR / DECAY_DENOMINATOR
 MIN_SEASON_REWARD = 100
 
 
@@ -27,8 +29,11 @@ def season_reward(season: int) -> int:
     """
     if season < 1:
         raise ValueError(f"Season must be ≥ 1, got {season}")
-    raw = INITIAL_REWARD * (DECAY_FACTOR ** (season - 1))
-    return max(MIN_SEASON_REWARD, int(raw))
+    elapsed = season - 1
+    # Divided once, so the answer is the exact floor: a float DECAY_FACTOR power
+    # returns 361,249 for season 3 where INITIAL_REWARD * 17/20 twice is 361,250.
+    raw = INITIAL_REWARD * DECAY_NUMERATOR**elapsed // DECAY_DENOMINATOR**elapsed
+    return max(MIN_SEASON_REWARD, raw)
 
 
 def cumulative_supply(through_season: int) -> int:

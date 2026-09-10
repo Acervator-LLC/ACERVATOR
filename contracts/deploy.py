@@ -92,9 +92,10 @@ MISSING_ARTIFACT = """
 
 # Deployment order. ACRV takes no constructor argument, CompetitionRegistry
 # takes the token address, the trophy and Quintessence take the registry
-# address, and Governance takes the four. setRegistry and the three
-# setGovernance calls each run once. Nothing needs an address that does not
-# exist yet, so the five contracts form no cycle.
+# address, and Governance takes the four. setRegistry, setTrophy and the three
+# setGovernance calls each run once. The registry and the trophy each need the
+# other, and setTrophy is what cuts that cycle: the registry is deployed first
+# and points back at the trophy afterwards.
 DEPLOY_ARTIFACTS = {
     "ACRV": "ACRV.sol/ACRV.json",
     "CompetitionRegistry": "CompetitionRegistry.sol/CompetitionRegistry.json",
@@ -128,8 +129,9 @@ def load_artifacts(repo_root: Path) -> dict:
 def deploy(network: str, private_key: str, repo_root: Path) -> None:
     """Deploy every DEPLOY_ARTIFACTS contract in an order no immutable field forbids.
 
-    setRegistry and the three setGovernance calls are the wiring steps, each
-    read back before the next deploy and each reverting on a second call.
+    setRegistry, setTrophy and the three setGovernance calls are the wiring
+    steps, each read back before the next deploy and each reverting on a
+    second call.
     """
     # Guarded for the reason written above MISSING_EXTRA.
     try:
@@ -222,16 +224,34 @@ def deploy(network: str, private_key: str, repo_root: Path) -> None:
     # which admits the deployer only while a tier holds no art.
     trophy_addr = deploy_contract("AcervatorTrophy", reg_addr)
 
-    # STEP 5 — Quintessence, holding the registry address in an immutable
+    # STEP 5 — point the registry back at the trophy. One call, then locked,
+    # and the contract refuses any target that holds no code. Until it lands
+    # adjudicate reverts, so no award can be made without a trophy.
+    print("\n  Wiring CompetitionRegistry.setTrophy...")
+    registry = w3.eth.contract(
+        address=w3.to_checksum_address(reg_addr),
+        abi=artifacts["CompetitionRegistry"]["abi"],
+    )
+    send(
+        "CompetitionRegistry.setTrophy",
+        registry.functions.setTrophy(trophy_addr).build_transaction({}),
+    )
+    wired = registry.functions.trophy().call()
+    if wired.lower() != trophy_addr.lower():
+        message = f"CompetitionRegistry.trophy is {wired}, expected {trophy_addr}"
+        raise RuntimeError(message)
+    print(f"  Registry trophy locked to: {wired}")
+
+    # STEP 6 — Quintessence, holding the registry address in an immutable
     # field. Genesis mints nothing, so a wrong registry costs a redeployment.
     quint_addr = deploy_contract("Quintessence", reg_addr)
 
-    # STEP 6 — Governance, holding the four addresses it reads or calls.
+    # STEP 7 — Governance, holding the four addresses it reads or calls.
     gov_addr = deploy_contract(
         "Governance", quint_addr, reg_addr, trophy_addr, acrv_addr
     )
 
-    # STEP 7 — name Governance on the three contracts it gates. Until each
+    # STEP 8 — name Governance on the three contracts it gates. Until each
     # call lands no halt can reach that contract and setPriceFeed and a
     # filled tier's setTierSvg have no caller at all.
     print("\n  Wiring setGovernance...")

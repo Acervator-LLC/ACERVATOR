@@ -9,18 +9,23 @@ gitignored because it holds captured run output, which `docs/` may not hold.
 
 ## The verdict first
 
-A recorded world is affordable. The bytes and the load time are both comfortable.
-The way the chain writes itself to disk is not, and that is the single thing that
-has to change before the base and city system is built.
+A recorded world is affordable. The bytes and the load time are both comfortable,
+even as a twenty-layer cube. The way the chain writes itself to disk is not, and
+that is the single thing that has to change before the base and city system is
+built. A cube saturates that write path inside two hours.
 
 ```
 one action on the chain today            988 bytes
 one action in a chosen encoding          399 bytes
-a world instance, recommended ceiling    1 MB per one-hour world turn
-participants that buys at 4 actions      655
+recommended ceiling                      1 MB per layer per one-hour world turn
+participants a layer                     655
+squares a layer                          655
+squares per participant                  1, and it is fixed rather than chosen
+a twenty-layer world                     20 MB a world turn, 13,100 participants
 his real 3,136-block chain reloads in    65 ms
 a hundred times those records reload in  4.9 s
 the binding constraint                   the save, not the size and not the load
+the checkpoint a cube forces             about once a day at twenty layers
 ```
 
 ## How each figure was taken
@@ -235,53 +240,140 @@ In development.
 
 ## The recommended ceiling — a recommendation, not a decision
 
-**One megabyte per world instance per world turn.** Rounded from measurement in the
-safe direction both times: the per-action cost up from 399 to 400 bytes, and the
-budget down from the 1.28 megabytes a ten-second load would allow to a round one.
+**One megabyte per layer per world turn.** Rounded from measurement in the safe
+direction both times: the per-action cost up from 399 to 400 bytes, and the budget
+down from the 1.28 megabytes a ten-second load would allow to a round one.
+
+The ceiling is per layer rather than per world, and the next two sections are why.
 
 ```
 1,048,576 bytes divided by 400 = 2,621 action records a world turn
 ```
 
-What that buys in participants, at a chosen per-participant allowance:
+Maximum world size and maximum participants reach the ceiling together, so there is
+no remainder to spend on world and no trade-off between the two. One parameter moves
+and both caps arrive at the same budget point.
 
 ```
-4 actions each    655 participants    the first level's Impetus grant
-8 actions each    327 participants    that grant at its speed cap
-20 actions each   131 participants
-40 actions each    65 participants
+participants = budget records / actions per participant per world turn
+world squares = participants
 ```
 
-With participants fixed, the remainder is world change:
+At the recommended ceiling, with the first level's Impetus grant of four actions as
+the per-participant allowance:
 
 ```
-120 participants at 4 actions   480 records   192,000 bytes
-left for world-level change   2,141 records   856,576 bytes an hour
+actions each   participants   world squares   squares per participant
+      4             655            655                  1
+      8             327            327                  1
+     20             131            131                  1
+     40              65             65                  1
 ```
 
-A season of 720 world turns costs 720 megabytes for one world instance. Loading
-that is 1.89 million records, which is 14.7 seconds. A fifteen-second world load at
-the end of a season is tolerable; an hour is not, and the budget exists to keep the
-first from becoming the second.
+The pair moves along that one line and never off it. The recommended point is the
+first row: **655 participants on 655 squares, per layer.**
+
+A single layer over a season of 720 world turns costs 720 megabytes. Loading that is
+1.89 million records, which is 14.7 seconds. A fifteen-second load at the end of a
+season is tolerable; an hour is not, and the budget exists to keep the first from
+becoming the second.
+
+## A world is a cube, and the layer count multiplies the chain
+
+A world carries a third axis: the tree level. The Sephirot number ten and the Tree
+of Death inverts each of them, which reads as twenty layers. **Twenty is a reading of
+his wording and not a ruling**, so both figures are below.
+
+```
+layers   chain a world turn   participants   squares   season, 720 turns
+   1            1 MB                 655        655       720 MB
+  10           10 MB               6,550      6,550     7,200 MB
+  20           20 MB              13,100     13,100    14,400 MB
+```
+
+The cube figure is the real one. The flat figure sits there only for comparison, and
+quoting it for a world that has layers would be wrong by the layer count.
+
+## The collision with constant density, named rather than resolved
+
+Maximum world size and maximum participants cap together, which fixes area per
+participant. A third axis can honour that in two ways, and they are not equivalent.
+
+```
+density per world   the same 655 participants spread over 20 layers, so a layer
+                    holds 33 participants on 33 squares, about six by six
+density per layer   the cap applies to each layer, so every layer stays a world
+                    and the cube holds twenty times the participants and the storage
+```
+
+**These figures assume density per layer.** The ground is his own cap-together rule:
+it fixes area per participant, and applying the cap per world would hold that
+constant only by shrinking each layer to a six-by-six board, which is not a world and
+leaves a zone thirty-three participants to take a level from. Keeping every layer a
+world means the cap is per layer, and the storage multiplies.
+
+The consequence is stated plainly rather than softened: **a twenty-layer world costs
+twenty megabytes an hour, not one.**
+
+## How often a checkpoint has to be written
+
+A checkpoint is a full state snapshot beside the log, so a load reads one snapshot
+and the records since it. The cadence follows from the two ceilings already measured:
+512 megabytes is what a ten-second load allows, and 34 megabytes is where the current
+full-file save stops keeping up with its own timer.
+
+```
+layers   reaches 512 MB in      reaches 34 MB in
+   1     512 turns, 21 days     34 turns, 1.4 days
+  10      51 turns, 2.1 days     3.4 turns, 3.4 hours
+  20      26 turns, about a day   1.7 turns, under 2 hours
+```
+
+**A cube saturates the current save path inside two hours.** That settles the
+question the whole measurement was for: appending each record and checkpointing
+periodically is not an optimisation for later, it is the condition on the first
+multi-layer world running at all.
+
+In development.
 
 **The trade is his.** The figure divides world change against participant count, and
 one megabyte is a recommendation standing on the ten-second load ceiling and
 nothing else.
 
-## World size is free; world change is not
+## Why world size and participant count cap together
 
-A chain holds transitions, so the extent of a generative world costs nothing per
-turn. A thousand-square map and a ten-square map cost the same if both are produced
-from a recorded seed, and only a square that changes is billed.
+A chain holds transitions, so a square costs nothing until something changes it, and
+a square changes only where a participant acts. A square's change records are
+therefore the same records as that participant's actions, never an addition to them.
 
 ```
 the seed            one record, once
 a square unchanged  nothing
-a square changed    one action record
+a square changed    the action record of the participant who changed it
 ```
 
-The budget does not cap how large a world may be. It caps how much of it moves in
-an hour.
+A world larger than its participants can reach holds squares that never produce a
+record, and a world smaller than them crowds every square. Neither is a separate
+dial. One budget exhausts at one point, and both caps land on it.
+
+## The density constant, and where it comes from
+
+Squares per participant is fixed by two rules already set rather than chosen here.
+Base viewrange is one square, and a zone's level tracks the average character level
+of those in it.
+
+```
+base viewrange            one square
+zone level                follows the participants in that zone
+squares per participant   1
+```
+
+Above one square a participant the average square is empty, a one-square viewrange
+shows nobody, and a zone has no population to take a level from. That fixes the
+constant at one square a participant, and it is the number every later unit sizes a
+map against.
+
+A world at this density is never large and sparse, and never small and crowded.
 
 ## Bytes the chain holds against bytes a participant receives
 
@@ -289,16 +381,24 @@ Viewrange bounds sight and never storage. A chain holding only what one particip
 can see would not be a chain. The two figures are separate and both follow from the
 budget.
 
+The layer axis multiplies what the chain holds and divides what a participant
+receives, so the two figures pull apart rather than together. Higher and lower
+layers are visible only to a participant able to enter them, and viewrange bounds
+what they see on each one.
+
 ```
-the chain holds        2,621 records a world turn, every one
-a participant receives the records inside their own viewrange
+the chain holds, twenty layers         52,420 records a world turn
+one participant, one layer, base range      4 records a world turn
+one participant, all twenty layers         80 records a world turn
 ```
 
-Base viewrange is one square, and range-boosting buildings extend it. Nothing in
-`src/competition/` carries a zone, a square, a tile or a viewrange, so the number
-of squares has no value in the code and none is invented here. The relation is the
-answer: a participant receives the turn's records divided by the square count, and
-a range boost raises that share without changing what the chain stores.
+At base viewrange on one layer a participant receives one record in thirteen
+thousand. A participant cleared for every layer receives one in six hundred and
+fifty-five. A range boost multiplies a participant's share by the squares it adds
+and changes nothing about what the chain stores.
+
+Nothing in `src/competition/` carries a zone, a square, a tile, a layer or a
+viewrange, so neither figure has a consumer in the code yet.
 
 In development.
 
@@ -387,7 +487,9 @@ the envelope in bytes rather than text   an id is 66 characters of hex and an
                                          that is a change to the chain's identity
                                          model, not an encoding choice, and it was
                                          not measured
-the square count                         no grid exists, so the transmission
-                                         figure is a relation and not a number
+the square count in the code             the density constant gives the figure, and
+                                         no module carries a square to apply it to
 the world turn allowance                 nothing bounds it today
+the layer count                          twenty is a reading of his wording, not a
+                                         ruling; ten is shown beside it
 ```

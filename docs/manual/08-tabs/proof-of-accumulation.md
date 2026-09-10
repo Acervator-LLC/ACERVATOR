@@ -4838,6 +4838,297 @@ the read, not for the whole order.
 Nothing subscribes certification to the live fill event, so no live trade reaches
 an award while the platform runs. That remains a decision about real value.
 
+## 2026-09-10 13:02 - #147 - the registry mints the trophy
+
+### Nothing on the chain could mint a trophy
+
+The trophy contract admits one caller for its mint and names it the registry. The
+registry held no address for the trophy at all, so that mint had nobody able to
+call it. A competition could hand out tokens and leave no trophy behind.
+
+The two halves, as they stood
+
+```
+AcervatorTrophy.mint       admits the registry alone
+AcervatorTrophy.registry   fixed at construction, cannot be changed
+CompetitionRegistry        no trophy address, no trophy call, no NFT
+```
+
+### The registry holds the trophy in an address written once
+
+Each contract needed the other first. The trophy refuses to be built without a
+live registry address, so the registry is built first and then pointed back at
+the trophy by a single call. That call admits the deployer only, refuses a second
+call for ever, and refuses any address that holds no code, so the trophy a
+deployment mints through can never be redirected afterwards.
+
+`contracts/CompetitionRegistry.sol` - the call that cuts the cycle
+
+```solidity
+    function setTrophy(address trophyAddress) external {
+        require(msg.sender == DEPLOYER, "Registry: caller is not the deployer");
+        require(address(trophy) == address(0), "Registry: trophy already set");
+        require(trophyAddress.code.length > 0, "Registry: trophy not a contract");
+        trophy = ITrophy(trophyAddress);
+        emit TrophySet(trophyAddress);
+    }
+```
+
+### One tier ceiling, and it belongs to the contract that mints
+
+Two contracts held tier limits and neither knew about the other. The registry
+counted two tiers and the trophy counted four. The registry's two numbers and its
+two counters are gone, and awarding now runs through the trophy's mint, so the
+trophy refusing a tier at its limit undoes the token award in the same
+transaction. One set of numbers, in the contract that creates the thing counted.
+
+The four lifetime limits, all of them in the trophy
+
+```
+Gold Fold             100,000
+Bear Slayer            10,000
+Grand Accumulator       1,000
+Ekthelius                  21
+Harvest                no limit
+```
+
+### Every limit was driven to its edge and the next award refused
+
+Ekthelius was awarded twenty-one times over twenty-one competitions with nothing
+faked, and the twenty-second was refused. The other three cannot be reached by
+awarding inside a test, so their counters were moved to one below the limit, the
+award at the limit was made, and the next one was refused. A tier name outside
+the five is refused as well, and Harvest keeps awarding past every other tier's
+limit because the lowest tier has no limit at all.
+
+```
+Ekthelius           21 awarded, 22nd refused   driven, nothing faked
+Grand Accumulator   1,000 awarded, next refused
+Bear Slayer         10,000 awarded, next refused
+Gold Fold           100,000 awarded, next refused
+"Ekthelius " (a name outside the five)         refused
+Harvest above every other limit                awarded
+```
+
+### The season budget is on the chain and refuses the award past it
+
+The season pool used to exist only in the Python. The chain recorded what a season
+had paid out and checked it against nothing, so the limit held only for as long as
+the software did. The registry now works the pool out on the chain and refuses any
+award that would pass it. An award that exactly fills a season lands; one wei more
+is refused; and the next season opens with its own pool untouched.
+
+The pool each season carries, in ACRV
+
+```
+season 1     500,000
+season 2     425,000
+season 3     361,250
+season 4     307,062
+season 53        106
+season 54        100   the floor, and every season after it
+```
+
+### No award can be made before the trophy is named
+
+While the trophy address is unset, adjudicating an award is refused outright. That
+is deliberate: a token award with no trophy behind it is the defect this work
+closes, so the chain now refuses to make one. Deployment names the trophy before
+any competition can open.
+
+```
+trophy unset    adjudicate refused, "Registry: trophy not set"
+trophy named    the same award lands and mints trophy #1 to the winner
+```
+
+### What the registry's mint does not reach
+
+Rank is always first, because a competition adjudicates one winner. A field of
+runners-up earns nothing and holds no trophy.
+
+A tier whose artwork was never uploaded cannot be awarded at all, because the
+trophy refuses to mint a tier with no art. Deployment uploads all five.
+
+The season pool bounds the tokens a season pays out. It does not bound how many
+trophies a season mints, because the uncapped tier costs no tokens.
+
+## 2026-09-10 13:04 - #147 - the loot contract has forge coverage
+
+Four contract suites sat in the tree and none of them read the loot contract. Its
+rarity scale and its metadata were held by four analyzers that look for known
+weakness classes, and by nothing that drives the contract and reads what it
+returns. A fifth suite now sits beside the four.
+
+### A fifth suite reads the loot contract
+
+The suite deploys the contract, fills the art for all five tiers, and drives every
+mint through a handler that is the only address the contract admits as the dropper.
+
+```
+tests/contracts/AcervatorLoot.t.sol   14 checks, 7 of them invariants
+forge test                            5 suites, 57 checks, 0 failed
+```
+
+### The five weights add up to the draw span
+
+The scale is read back out of the contract rather than out of the source. Each
+tier's weight is asked for by name and the five are added together.
+
+```
+Calx            600
+Cauda Pavonis   250
+Flores          110
+Elixir           35
+Magisterium       5
+                ---
+total          1000   ==  WEIGHT_TOTAL_PER_MILLE
+```
+
+A total that matches is worth nothing unless the total can also miss. One tier's
+weight is moved in storage from 600 to 599 and the same reader is asked again.
+
+```
+before        total 1000, the draw span
+weight 599    total  999, reported short
+restored      total 1000, the draw span again
+```
+
+### The refusal the draw span governs
+
+The draw span is the weight total, and a mint refuses a roll that falls outside
+it. Both sides are driven on the same contract.
+
+```
+roll  999                   admitted, the holder ends with one item
+roll 1000                   "Loot: roll outside the draw span"
+roll at the largest number  "Loot: roll outside the draw span"
+the minted total afterwards  1, so a refused roll counts nothing
+```
+
+Four more refusals are driven beside it, so the roll refusal is the only reason
+the roll case can fail.
+
+```
+tier id 0 and tier id 6     "Loot: unknown tier"
+a tier holding no art       "Loot: SVG not uploaded for this tier"
+any address but the dropper "Loot: caller is not the dropper"
+the zero address            "Loot: mint to zero address"
+```
+
+### The constructor's own refusal cannot be driven from a test
+
+The deployment refuses a tier set whose weights miss the total. That refusal takes
+no input. The five weights are written by a private helper, from fixed numbers,
+inside the constructor, and the only thing a caller passes in is the dropper
+address. The compiler says so when a test tries to reach the helper.
+
+```
+Error (7576): Undeclared identifier.
+    _setTier(CALX, "Calx", "Calx", 599, 0, 20, "#C8C0B4");
+```
+
+A contract built on top of the loot contract can write a weight, and the
+deployment still succeeds, because the refusal has already run by then. The
+accepting side is therefore driven, and the refusing side is not reachable without
+editing the contract, which this unit does not do.
+
+```solidity
+    uint256 total = 0;
+    for (uint256 id = CALX; id <= TIER_COUNT; ++id) {
+        total += tiers[id].weightPerMille;
+    }
+    require(total == WEIGHT_TOTAL_PER_MILLE, "Loot: weights do not total 1000");
+```
+
+### The uri, and a token id that does not exist
+
+Every tier serves its metadata as base64 text carried inside the answer itself, so
+a reader needs no web address. The lowest tier's answer is compared against the
+JSON written out by hand below, character for character.
+
+```
+{"name":"Acervator Loot — Calx","description":"A Proof-of-Accumulation loot item
+dropped by a qualifying market. Tier 1 of 5, weight 600 of 1000. It augments a
+tournament action and no trading figure: 0 Impetus off one action's cost and 20 of
+1000 added to that action's effect.","image":"data:image/svg+xml;base64,c3Zn",
+"attributes":[{"trait_type":"Tier","value":"Calx"},{"trait_type":"Short Form",
+"value":"Calx"},{"trait_type":"Weight (per mille)","value":600},{"trait_type":
+"Impetus Relief","value":0},{"trait_type":"Effect Bonus (per mille)","value":20},
+{"trait_type":"Minted","value":0},{"trait_type":"Tier Color","value":"#C8C0B4"}]}
+```
+
+Changing one digit of that hand-written JSON, from weight 600 to 601, makes the
+comparison report, which is how the comparison is known to read the contract's
+answer rather than itself.
+
+A token id outside the five gets no metadata at all. It is refused rather than
+answered with an empty item.
+
+```
+id 1 to 5                 each serves its own answer, all five different
+id 0                      "Loot: unknown tier"
+id 6                      "Loot: unknown tier"
+the largest number        "Loot: unknown tier"
+the answer after a drop   moves, because it carries the minted count
+the answer after new art  moves, because it carries the tier's art
+```
+
+### One fuzz target, named, and forty seeds
+
+The random runner is told to drive the handler and nothing else. Without that, it
+also drives the loot contract directly and a mint can land that no counter
+recorded. Measured with the declaration removed: about 1,350 direct mints per
+campaign, and on one earlier revision one of them landed and the count check went
+red.
+
+```
+with the target named, 40 seeds        40 of 40 green, 57 checks each
+each campaign                          256 runs, 16,384 calls
+without the target, 140 seeds          all green, but ~1,350 direct mints a run
+without the target, earlier revision   1 seed of 40 red, an uncounted mint
+```
+
+One seed is not a measurement. The rare red is the reason the target is named.
+
+### What every tool printed
+
+Each tool was shown failing on a broken file and quiet on a sound one before any
+verdict here was read.
+
+| tool | broken file | sound file | the new suite |
+| --- | --- | --- | --- |
+| forge | 1 check failed | 16,384 calls, passed | 57 passed, 0 failed |
+| slither | 1 high result | 0 results | 0 results in project code |
+| solhint | 1 error | 0 errors | 0 errors, 210 warnings |
+| semgrep | 1 finding | 0 findings | 0 findings at error level |
+
+The warnings and the lint notes sit in the same classes and the same counts as the
+four suites already in the tree.
+
+```
+solhint warnings    153 to 235 across the four, 210 here, 0 errors in all five
+forge lint results   23 to  48 across the four,  37 here, 0 errors in all five
+semgrep, all levels  67 to  70 across two,       92 here, 0 at error level
+```
+
+mythril is still absent from this machine, so symbolic execution over the loot
+bytecode has not been run and nothing was put in its place.
+
+### What the forge coverage does not reach
+
+No contract changed. The loot contract is read and driven and not edited, and the
+comparison over the contract directory is empty.
+
+The refusal inside the deployment is still unproved, for the reason given above.
+Proving it would need the weights to arrive from outside the constructor, which is
+a change to the contract and a decision about what the contract is.
+
+Nothing is deployed and no network is reached. Every run here is local.
+
+No control on screen drops an item, so the operator sees nothing new today. The
+coverage protects the rarity scale and the item page a marketplace would read,
+before either reaches a chain.
+
 ## 2026-09-10 13:28 - #147 - what a world costs on the chain
 
 ### The question turns round, and then it closes
@@ -4853,11 +5144,15 @@ file size gives this.
 ```
 one action on the chain today            988 bytes
 one action in a chosen encoding          399 bytes
-recommended ceiling                      1 MB per one-hour world turn
-participants that buys, 4 actions each   655
+recommended ceiling                      1 MB per layer per one-hour world turn
+participants a layer                     655
+squares a layer                          655
+squares per participant                  1, fixed rather than chosen
+a twenty-layer world                     20 MB an hour, 13,100 participants
 his 3,136-block chain reloads in         65 ms
 a hundred times those records            4.9 s
 what binds                               the save, not the size and not the load
+the checkpoint a cube forces             about once a day at twenty layers
 ```
 
 ### His own chain, confirmed
@@ -4970,45 +5265,129 @@ In development.
 The per-action cost rounds up to 400 bytes and the budget rounds down from the 1.28
 megabytes a ten-second load would allow. Both roundings keep the bound safe.
 
+Maximum world size and maximum participants reach the ceiling together, so nothing
+is left over to spend on world and no trade-off exists between the two. One number
+moves and both caps land on the same budget point.
+
 ```
-1,048,576 / 400        = 2,621 action records a world turn
-4 actions each         =   655 participants
-8 actions each         =   327 participants
-20 actions each        =   131 participants
-120 participants at 4  =   480 records, leaving 2,141 records of world change
-a 720-turn season      =   720 MB, which reloads in 14.7 s
+1,048,576 / 400  = 2,621 action records a world turn
+
+actions each   participants   world squares   squares per participant
+      4             655            655                  1
+      8             327            327                  1
+     20             131            131                  1
+     40              65             65                  1
+
+a 720-turn season = 720 MB, which reloads in 14.7 s
 ```
 
-The trade divides world change against participant count, and one megabyte is a
-recommendation resting on the ten-second load ceiling and nothing else.
+The recommended point is the first row: 655 participants on 655 squares, per layer.
+One megabyte rests on the ten-second load ceiling and nothing else.
 
-### World size is free and world change is not
+### A world is a cube, so the layer count multiplies the chain
 
-A thousand-square map and a ten-square map cost the same when a recorded seed
-produces both. Only a square that changes costs a record.
+A world carries a third axis, the tree level. The Sephirot number ten and the Tree of
+Death inverts each of them, which reads as twenty layers. Twenty is a reading of his
+wording rather than a ruling, so ten sits beside it.
+
+```
+layers   chain an hour   participants   squares   a 720-turn season
+   1         1 MB              655        655        720 MB
+  10        10 MB            6,550      6,550      7,200 MB
+  20        20 MB           13,100     13,100     14,400 MB
+```
+
+The cube figure is the real one. The flat figure is a comparison, and quoting it for
+a world that has layers would be wrong by the layer count.
+
+### Where the cube collides with constant density
+
+Capping size and participants together fixes area per participant, and a third axis
+can honour that two ways.
+
+```
+density per world   655 participants over 20 layers, so a layer holds 33 of them
+                    on 33 squares, about six by six
+density per layer   each layer keeps the cap, so every layer stays a world and the
+                    cube holds twenty times the participants and the storage
+```
+
+These figures take the second reading. The first holds the density constant only by
+shrinking a layer to a six-by-six board, which is not a world and leaves a zone
+thirty-three participants to take a level from. Keeping every layer a world means the
+cap is per layer, and a twenty-layer world then costs twenty megabytes an hour.
+
+### How often a checkpoint has to be written
+
+A checkpoint is a full snapshot beside the log, so a load reads one snapshot and the
+records since it. The cadence follows from the two ceilings already measured: 512
+megabytes is what a ten-second load allows, and 34 megabytes is where the current
+save stops keeping up with its own timer.
+
+```
+layers   reaches 512 MB in       reaches 34 MB in
+   1     512 turns, 21 days      34 turns, 1.4 days
+  10      51 turns, 2.1 days      3.4 turns, 3.4 hours
+  20      26 turns, about a day   1.7 turns, under 2 hours
+```
+
+A cube saturates the current save path inside two hours. Appending each record and
+snapshotting now and then is the condition on the first multi-layer world running at
+all, not an improvement for later.
+
+In development.
+
+### Why the two caps arrive together
+
+A square costs nothing until something changes it, and a square changes only where a
+participant acts. A square's records are that participant's action records rather
+than an addition to them.
 
 ```
 the seed            one record, once
 a square unchanged  nothing
-a square changed    one action record
+a square changed    the action record of whoever changed it
 ```
 
-The budget caps how much of a world moves in an hour and never how large it is.
+A world larger than its participants can reach holds squares that produce nothing,
+and a smaller one crowds every square. One budget, one exhaustion point, both caps.
+
+### One square a participant, and the rule that fixes it
+
+Two rules already set decide the density rather than a choice made here. Base
+viewrange is one square, and a zone's level tracks the average character level of
+those in it.
+
+```
+base viewrange            one square
+zone level                follows the participants in that zone
+squares per participant   1
+```
+
+Above one square a participant the average square stands empty, a one-square
+viewrange shows nobody, and a zone has no population to take a level from. A world
+at this density is never large and sparse, and never small and crowded. Every later
+unit sizes a map against this number.
 
 ### Sight is bounded and storage is not
 
 Viewrange bounds what a participant sees. A chain holding only what one participant
 can see would not be a chain, so the two figures stay separate.
 
+The layer axis multiplies what the chain holds and divides what a participant gets,
+so the two figures pull apart. A participant sees a higher or lower layer only once
+able to enter it.
+
 ```
-the chain holds        every record, 2,621 a world turn
-a participant receives the records inside their own viewrange
+the chain holds, twenty layers         52,420 records a world turn
+one participant, one layer                  4 records a world turn
+one participant, all twenty layers         80 records a world turn
 ```
 
-Nothing in the competition package carries a zone, a square, a tile or a viewrange,
-so the square count has no value yet and none is invented. A participant receives
-the turn's records divided by the square count, and a range boost raises that share
-without changing what the chain stores.
+At base viewrange on one layer a participant receives one record in thirteen
+thousand. A range boost multiplies that share by the squares it adds and changes
+nothing about what the chain stores. Nothing in the competition package carries a
+zone, a square, a tile, a layer or a viewrange, so neither figure has a consumer yet.
 
 In development.
 
@@ -5057,6 +5436,7 @@ An identity on this chain is text: 66 characters for a hash and 42 for an addres
 Bytes would halve both, and that changes the chain's identity model rather than its
 encoding, so nothing here measures it.
 
-No grid exists, so the figure a participant receives stays a relation and never a
-number. Nothing bounds the actions in a world turn, so the recommended ceiling has
-no enforcement point yet.
+No grid exists, so the square count the density constant gives has nothing in the
+code to apply it to. Nothing bounds the actions in a world turn, so the recommended
+ceiling has no enforcement point yet. Twenty layers is a reading of his wording and
+not a ruling, and ten sits beside it throughout.

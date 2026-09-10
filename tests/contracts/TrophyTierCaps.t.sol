@@ -19,6 +19,10 @@
 // A counting invariant asserts its attempt counter is above zero before it reads
 // its refusal counter, so a path no sequence reached fails instead of passing on
 // an absence.
+//
+// targetContracts names TrophyCapHandler alone. Without it forge also drives the
+// trophy directly from the test address, which onlyRegistry refuses, so calls
+// that should have reached a counter were spent on reverts instead.
 // =============================================================================
 pragma solidity 0.8.36;
 
@@ -82,14 +86,14 @@ contract TrophyCapHandler {
             return;
         }
         trophy.mint(
-            _recipient(recipientSeed), tier, "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
+            _recipient(recipientSeed), tier, 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
         );
     }
 
     function mintHarvest(uint256 recipientSeed) external {
         harvestAttempts += 1;
         try trophy.mint(
-            _recipient(recipientSeed), "Harvest", "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
+            _recipient(recipientSeed), "Harvest", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
         ) {
             return;
         } catch {
@@ -100,7 +104,7 @@ contract TrophyCapHandler {
     function mintUnknownTier(uint256 recipientSeed) external {
         unknownTierAttempts += 1;
         try trophy.mint(
-            _recipient(recipientSeed), UNKNOWN_TIER, "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
+            _recipient(recipientSeed), UNKNOWN_TIER, 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
         ) {
             unknownTierSuccesses += 1;
         } catch {
@@ -129,7 +133,7 @@ contract TrophyCapHandler {
             return;
         }
         trophy.mint(
-            _recipient(recipientSeed), tier, "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
+            _recipient(recipientSeed), tier, 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
         );
     }
 
@@ -141,7 +145,7 @@ contract TrophyCapHandler {
         }
         capAttempts[index] += 1;
         try trophy.mint(
-            _recipient(recipientSeed), tier, "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
+            _recipient(recipientSeed), tier, 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
         ) {
             capSuccesses[index] += 1;
         } catch {
@@ -153,7 +157,7 @@ contract TrophyCapHandler {
     /// trophy's own refusal reason rather than the onlyRegistry one.
     function mintAs(address recipient, string calldata tier) external returns (uint256) {
         return trophy.mint(
-            recipient, tier, "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
+            recipient, tier, 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
         );
     }
 
@@ -221,6 +225,12 @@ contract TrophyTierCapsTest {
             trophy.tierMinted("Gold Fold") == parked,
             "tierMinted does not read the parked slot"
         );
+    }
+
+    /// @notice forge drives only the handler, which is the registry and the recorder.
+    function targetContracts() public view returns (address[] memory targets) {
+        targets = new address[](1);
+        targets[0] = address(handler);
     }
 
     /// @notice A failure means a capped tier minted past its declared maximum.
@@ -301,7 +311,7 @@ contract TrophyTierCapsTest {
         VM.store(address(fresh), freshHandler.tierMintedSlot("Ekthelius"), bytes32(0));
 
         try fresh.mint(
-            address(0xBEEF), "Ekthelius", "x", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
+            address(0xBEEF), "Ekthelius", 1, "COMP-0001", 1, 50, 0, "ANY", bytes32(0)
         ) {
             revert("the deployer minted a trophy");
         } catch Error(string memory reason) {

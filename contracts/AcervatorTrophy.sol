@@ -21,10 +21,10 @@
 // Four tiers carry a lifetime ceiling, enforced inside mint against a counter
 // this contract keeps per tier name. Harvest is the only uncapped tier, and a
 // tier name outside the five is refused, so no name reaches an uncounted slot.
-// mint admits registry alone. CompetitionRegistry still holds no reference to
-// this contract, so mint has no caller until that reference lands: its
-// MAX_EKTHELIUS and MAX_GRAND_ACCUMULATOR bound ACRV awards, and the constants
-// below bound these NFTs.
+// mint admits registry alone. CompetitionRegistry holds this contract in a
+// one-shot reference and calls mint inside adjudicate, so the constants below
+// are the only tier ceilings on this chain: the registry declares no tier
+// constant and keeps no tier counter.
 //
 // This contract holds no owner. setTierSvg writes a tier's art, and the write
 // splits in two: the deployer may fill a tier that holds none, which is what
@@ -95,6 +95,13 @@ contract AcervatorTrophy is ERC721, IGovernedTrophy {
 
     mapping(string => string) private _tierColor;
 
+    // ── Tier emoji (for on-chain metadata) ────────────────────────────────────
+    // One emoji per tier, so no caller can pair a tier with another tier's mark.
+    // These five match the emoji field in src/competition/season_schedule.py
+    // RARITY_TIERS.
+
+    mapping(string => string) private _tierEmoji;
+
     // ── Events ────────────────────────────────────────────────────────────────
 
     event TrophyMinted(
@@ -124,6 +131,12 @@ contract AcervatorTrophy is ERC721, IGovernedTrophy {
         _tierColor["Bear Slayer"]       = "#FF3344";
         _tierColor["Grand Accumulator"] = "#00FFEE";
         _tierColor["Ekthelius"]         = "#FF00AA";
+
+        _tierEmoji["Harvest"]           = unicode"🌾";
+        _tierEmoji["Gold Fold"]         = unicode"🪙";
+        _tierEmoji["Bear Slayer"]       = unicode"🐻";
+        _tierEmoji["Grand Accumulator"] = unicode"⚡";
+        _tierEmoji["Ekthelius"]         = unicode"∞";
     }
 
     // ── Modifiers ─────────────────────────────────────────────────────────────
@@ -189,7 +202,6 @@ contract AcervatorTrophy is ERC721, IGovernedTrophy {
     function mint(
         address         recipient,
         string calldata tier,
-        string calldata tierEmoji,
         uint256         season,
         string calldata competitionId,
         uint256         rank,
@@ -209,7 +221,7 @@ contract AcervatorTrophy is ERC721, IGovernedTrophy {
 
         trophyData[tokenId] = TrophyMetadata({
             tier:          tier,
-            tierEmoji:     tierEmoji,
+            tierEmoji:     _tierEmoji[tier],
             season:        season,
             competitionId: competitionId,
             rank:          rank,
