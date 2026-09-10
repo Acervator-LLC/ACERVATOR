@@ -23,17 +23,28 @@ from pathlib import Path
 from typing import Optional
 
 from ..core.io_utils import atomic_write_json
+from .poa_modes import base_impetus
+from .rpg_classes import ARC_LEVELS
 
 logger = logging.getLogger("acervator.world_grid")
 
-#: Participants one layer carries, measured at 1 MB a layer a world turn.
-PARTICIPANTS_PER_LAYER = 655
+#: Bytes one discovery record adds to the chain log, named fields, measured 1472.2 rounded up.
+WORLD_RECORD_BYTES = 1473
+
+#: One layer's byte ceiling for one world turn.
+TURN_BYTE_CAPACITY = 1_048_576
+
+#: Records one layer writes a world turn, each a block, a transaction and an event.
+RECORDS_PER_LAYER_TURN = TURN_BYTE_CAPACITY // WORLD_RECORD_BYTES
+
+#: Records a participant writes a world turn, the highest Impetus grant on the arc.
+RECORDS_PER_PARTICIPANT_TURN = base_impetus(ARC_LEVELS)
+
+#: Participants one layer carries, the count ``DEFAULT_GRID_WIDTH`` sizes its grid for.
+PARTICIPANTS_PER_LAYER = RECORDS_PER_LAYER_TURN // RECORDS_PER_PARTICIPANT_TURN
 
 #: Squares one layer holds, one a participant under the cap-together rule.
 BUDGETED_SQUARES_PER_LAYER = PARTICIPANTS_PER_LAYER
-
-#: Records 1 MB a layer a world turn buys at 399 bytes a record.
-RECORDS_PER_LAYER_TURN = 2621
 
 #: Spheres on the Tree, each carrying ten character levels.
 TREE_SPHERES = 10
