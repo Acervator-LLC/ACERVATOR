@@ -55,6 +55,7 @@ from .base import (
     Ticker,
 )
 from .api_logger import get_api_log
+from .market_pairs_scout import row_quote_volume_24h
 
 logger = logging.getLogger("acervator.exchange")
 
@@ -236,6 +237,9 @@ class CCXTConnector(ExchangeInterface):
         self._markets_cache: list[AssetInfo] | None = None
         self._last_request_time: float = 0.0
         self._min_request_interval: float = 0.1
+
+        # fetch_ticker serves no volume on coinbase; get_all_tickers fills this.
+        self._quote_volumes: dict[str, float] = {}
 
         self._scan_symbols: set[str] = set()
         self._history_analyses: dict = {}
@@ -862,6 +866,18 @@ class CCXTConnector(ExchangeInterface):
         self._last_request_time = time.monotonic()
 
     # -- Market data (all methods use sync CCXT via self._call_sync) ----
+    def _quote_volume_for(self, symbol: str, raw: dict) -> float:
+        """Return ``symbol``'s 24h quote volume from ``raw``, else the recorded one.
+
+        Coinbase's ``fetch_ticker`` serves neither ``quoteVolume`` nor
+        ``baseVolume``, so ``get_ticker`` falls back to what the last
+        ``get_all_tickers`` recorded for that symbol, and 0.0 before the first.
+        """
+        served = row_quote_volume_24h(raw)
+        if served > 0:
+            return served
+        return float(self._quote_volumes.get(symbol, 0.0))
+
     @_with_retry()
     async def get_ticker(self, symbol: str) -> Ticker:
         self._ensure_connected()
@@ -875,7 +891,7 @@ class CCXTConnector(ExchangeInterface):
             bid=float(raw.get("bid", 0) or 0),
             ask=float(raw.get("ask", 0) or 0),
             last=float(raw.get("last", 0) or 0),
-            volume_24h=float(raw.get("quoteVolume", 0) or 0),
+            volume_24h=self._quote_volume_for(symbol, raw),
             timestamp=float(raw.get("timestamp", 0) or 0) / 1000,
         )
         _log.record(
@@ -895,11 +911,17 @@ class CCXTConnector(ExchangeInterface):
         """Return the raw CCXT tickers dict for every symbol in one call.
 
         Not normalised into :class:`Ticker`, which does not carry the 24h
-        percentage change callers need.
+        percentage change callers need. Each row's quote volume is recorded for
+        ``get_ticker``, whose own call serves none on coinbase.
         """
         self._ensure_connected()
         await self._rate_limit()
-        return await self._call_sync(self._ex.fetch_tickers)
+        rows = await self._call_sync(self._ex.fetch_tickers)
+        for symbol, row in (rows or {}).items():
+            volume = row_quote_volume_24h(row)
+            if volume > 0:
+                self._quote_volumes[symbol] = volume
+        return rows
 
     @_with_retry()
     async def get_orderbook(self, symbol: str, limit: int = 20) -> OrderBook:

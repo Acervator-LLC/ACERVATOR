@@ -2519,3 +2519,123 @@ standing, with the count the tool printed on each side.
 ```
 tests/debug_reports/contract_repairs_second_pass.md   the full accounting
 ```
+## 2026-09-10 00:59 - #147 - the volume figure and the eight missing identifiers
+
+Two faults held the rewarding pool down. The price feed reported no trading
+volume at all for any Coinbase market, and the asset catalogue could not name
+eight of the twenty biggest markets. This unit fixed both. The pool went from
+five markets to six.
+
+`src/exchange/ccxt_connector.py` - where the volume figure now comes from
+
+```python
+def _quote_volume_for(self, symbol: str, raw: dict) -> float:
+    """Return ``symbol``'s 24h quote volume from ``raw``, else the recorded one.
+
+    Coinbase's ``fetch_ticker`` serves neither ``quoteVolume`` nor
+    ``baseVolume``, so ``get_ticker`` falls back to what the last
+    ``get_all_tickers`` recorded for that symbol, and 0.0 before the first.
+    """
+    served = row_quote_volume_24h(raw)
+    if served > 0:
+        return served
+    return float(self._quote_volumes.get(symbol, 0.0))
+```
+
+### Asking Coinbase about one market returns no volume
+
+The platform asks Coinbase for a price in two ways. A question about one market
+comes back with a price, a bid and an ask, and nothing about volume. A question
+about every market at once comes back with the dollar volume on almost every
+row. The price feed read the one-market answer, so its volume figure always held
+zero.
+
+The platform's own trading log says it, before and after:
+
+```
+before   FETCH_TICKER  Get current price for BTC/USD ... vol24h=0
+after    FETCH_TICKER  Get current price for BTC/USD ... vol24h=411256638
+```
+
+The bulk answer carried a dollar figure for 923 of the 931 markets Coinbase
+lists. The platform already sends that bulk request on a timer. The connector now
+keeps each figure as it arrives and hands it back when a caller asks about one
+market, so nothing new goes to the venue. A market the bulk request has not yet
+covered still reports zero, which is what it reported before.
+
+### Eight projects the catalogue could not name
+
+The six-month age rule looks a project up by a CoinGecko identifier held in the
+asset catalogue. Eight of the twenty biggest Coinbase markets had no entry, so
+the rule refused them without asking anything.
+
+Every one of the eight now has an entry, and nobody guessed an identifier. For
+each one, CoinGecko named which of its own coins trades that market on Coinbase
+Exchange, and the catalogue took that coin.
+
+| Market | Identifier | How the check ran |
+| ------ | ---------- | ----------------- |
+| ZEC | zcash | CoinGecko lists it trading ZEC/USD on Coinbase Exchange |
+| HYPE | hyperliquid | CoinGecko lists it trading HYPE/USD on Coinbase Exchange |
+| VVV | venice-token | CoinGecko lists it trading VVV/USD on Coinbase Exchange |
+| USELESS | useless-3 | Two coins carry this ticker; only this one trades on Coinbase |
+| PUMP | pump-fun | Two coins carry this ticker; only this one trades on Coinbase |
+| TAO | bittensor | CoinGecko lists it trading TAO/USD on Coinbase Exchange |
+| AERO | aerodrome-finance | CoinGecko lists it trading AERO/USD on Coinbase Exchange |
+| LIGHTER | lighter | CoinGecko lists it trading LIGHTER/USD, under the ticker LIT |
+
+### Matching by ticker alone fails its own check
+
+The other way to close the gap reads CoinGecko's published coin list at run time
+and matches on the ticker. The twelve markets whose identifier the catalogue
+already held, and held correctly, tested that idea.
+
+```
+twelve known-correct identifiers
+  2  resolve to exactly one coin on the published list
+ 10  are ambiguous; twelve separate coins carry the ticker BTC
+```
+
+A resolver that insists on one match refuses ten markets that work today. A
+resolver that picks among the candidates returns a real founding date for the
+wrong project, which is worse than a refusal. One of the eight is worse still:
+CoinGecko carries Lighter under the ticker LIT, so no ticker match finds it at
+all, while its record of the Coinbase market names it exactly.
+
+The catalogue grew instead, and the venue record did the confirming. A market
+whose base is still absent from the catalogue refuses with the reason
+`no_coingecko_id`, as it did before, and never passes unchecked.
+
+### Six of twenty qualify, and the floor is still twelve
+
+Driven against Coinbase's real twenty, the refusals moved from two reasons to
+one. Zcash publishes a founding date and now qualifies. The other seven newly
+named projects publish none.
+
+```
+before   5 eligible   8 refused with no identifier   7 refused with no start date
+after    6 eligible   0 refused with no identifier  14 refused with no start date
+```
+
+The program declines to open a window in its own words:
+
+```
+before   pool_below_floor: coinbase holds 5 eligible markets, under the floor
+         of 12, so it draws nothing
+after    pool_below_floor: coinbase holds 6 eligible markets, under the floor
+         of 12, so it draws nothing
+```
+
+Both runs asked CoinGecko at thirteen seconds apart and CoinGecko refused
+nothing. Twelve detail requests on the first run, fifteen on the second.
+
+### What the identifiers did not fix
+
+The earlier estimate put the pool at thirteen once the catalogue closed, which
+would clear the floor. It reached six. Seven of the eight newly named projects
+publish no founding date, so they moved from one refusal to another rather than
+becoming eligible.
+
+Coinbase still awards no Quintessence, and one reason remains: fourteen of the
+twenty biggest markets publish no founding date. The age ruling decides whether
+the economy starts.
