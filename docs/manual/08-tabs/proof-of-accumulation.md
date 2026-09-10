@@ -3095,37 +3095,69 @@ FLOCK/USD fill 0.061947 against its 24h open 0.06214
 LTC/USD awarded 1.0 Quintessence, cooldown 900s of 3 5m candles
 ```
 
-### The award reads the grade and the slippage, not the grade alone
+### A grade standing on one clamped axis earns nothing
 
-The execution axis runs out at one per cent. A fill a hundred basis points worse
+The accuracy axis runs out at one per cent. A fill a hundred basis points worse
 than its reference scores nothing, and so does one fifty per cent worse; a fill a
 hundred points better scores full marks, and so does one twelve per cent better.
-Past that distance the score is a clamp rather than a reading of the fill, so the
-award is refused instead of curved by it.
+Past that distance the score is a clamp rather than a reading of the fill.
 
-`src/competition/capture_bounds.py` — the distance the axis states
+The distance on its own decides nothing, and the operator's own trading says why.
+Across 1,560 of his fills that carry a reference price, 1,368 of them — 87.7% —
+sit more than a hundred basis points from it, and the middle fill of the set is
+552 basis points away on the favourable side.
+
+```
+fills carrying a reference        1560
+  favourable, nearer than refused 1246   79.9%
+  adverse                          299   19.2%
+
+past a hundred basis points       1368   87.7%
+  favourable                      1154   74.0%
+  adverse                          214   13.7%
+
+the signed spread, basis points
+  lowest  -5030.57    middle  -552.35    highest  3253.80
+```
+
+A Scrum sells above its earlier fills and a Fold buys below them, so a large
+favourable gap is the strategy working rather than a lucky fill. Refusing on
+distance alone would refuse seven awards in eight.
+
+What cannot be trusted is a grade with nothing else in it. When accuracy is the
+only axis that scored and it has clamped, the grade is exactly 1.0 or exactly 0.0
+and carries no reading at all, because a reference price that far from the fill is
+stale. That case is 35 of his 1,560 fills, 2.2%: twenty-eight at a flat 1.0 and
+seven at a flat 0.0.
+
+`src/competition/capture_bounds.py` — the distance, and what the measurement says
+about it
 
 ```python
 #: Basis points past which the execution axis clamps and stops reading the fill.
+#: Measured on 1,560 live fills: 87.7% sit past it, so distance alone is no bound.
 EXECUTION_READABLE_BPS = 100.0
 ```
 
-One real Coinbase market, down twelve per cent on the day, takes top marks on the
-axis and is refused anyway.
+One of his own fills, refused, and one paid.
 
 ```
-VVV/USD fill 24.3633 against its 24h open 27.6914
-  execution_score 1.0   execution_bps -1201.85   overall A+
+REFUSED  2026-09-10 05:23  KAT/USD buy at 0.0052147215059309
+         bps -1439.06   accuracy 1.0   axes 1   grade 1.0   A+
+         this grade scored execution and nothing else, and its reference price
+         sits -1439.1 basis points from the fill, past the 100 the axis reads;
+         a reference that far out is stale, so the one axis reports a clamp and
+         the grade of 1.0 rests on nothing
 
-the fill sits -1201.8 basis points from its reference price, outside the 100
-the execution axis states; past that the axis clamps and the grade carries no
-reading of this fill
+PAID     2026-09-10 03:22  KAT/USD buy at 0.005468
+         bps -1023.25   accuracy 1.0   axes 2   grade 0.5   D
+         0.5 Quintessence
 ```
 
-The cost is real and is stated rather than hidden: on a market that moves more
-than one per cent between the decision and the fill, an honest trade earns
-nothing that activation. The grade itself is unchanged, so every screen that
-reads a letter still reads the same letter.
+The second fill is further from nothing and further from a clamp: a second axis
+scored, so the grade is half rather than full marks, and the award is half. The
+grade itself is unchanged either way, so every screen that reads a letter still
+reads the same letter.
 
 ### Each bound refuses, and each one pays when it should
 

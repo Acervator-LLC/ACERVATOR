@@ -2,7 +2,8 @@
 
 Reference. Subjects: `src/competition/capture_bounds.py`,
 `src/trading/trade_grader.py`, `src/competition/__init__.py`,
-`src/gui/shared_testnet.py`, `docs/manual/08-tabs/proof-of-accumulation.md`.
+`src/exchange/history_read_contract.py`, `src/gui/shared_testnet.py`,
+`docs/manual/08-tabs/proof-of-accumulation.md`.
 
 Every run below used `python -X dev -X faulthandler` with `PYTHONWARNINGS=error`.
 No test was written. `main.py` was never launched: `main.py:812` builds an
@@ -49,6 +50,33 @@ The code matches its own docstring, so nothing lies. The consequence is that pas
 a hundred basis points the number multiplying the award is a clamp and not a
 reading of the fill.
 
+### A bound on the distance alone would have refused seven awards in eight
+
+The first repair refused any award whose `execution_bps` lay past the span, in
+either direction. That bound was never measured against the operator's own trading
+before it was written, and the measurement refutes it.
+
+`src/trading/live_log_reader.py` `live_trades` reads his `trade.log`, and
+`src/exchange/history_read_contract.py` `graded_row` grades each row the way the
+History screen does. 1,709 entries, 1,668 gradeable, 1,560 carrying a reference
+price:
+
+```
+past a hundred basis points       1368   87.69%
+  favourable                      1154   73.97%
+  adverse                          214   13.72%
+
+inside the span                    192   12.31%
+the signed spread, basis points
+  p0   -5030.57   p5  -1915.52   p25 -1064.05   p50  -552.35
+  p75    -78.69   p95   556.75   p100 3253.80
+```
+
+The reference `graded_row` builds is the median of up to five prior same-asset
+trade prices, not a decision-time quote. A Scrum sells above its earlier fills and
+a Fold buys below them, so a wide favourable gap is the strategy rather than
+slippage, and the median fill sits 552 basis points away on that side.
+
 ## Reproduction
 
 ```
@@ -85,6 +113,30 @@ docs/manual/12-adr-index-and-glossary.md    quotes grade_trade
 
 `TradeGrade(` is constructed in exactly one place, `trade_grader.py` itself, so no
 caller builds one positionally.
+
+### What the distance bound should have been, sized on the same records
+
+The grade that cannot be trusted is the one with nothing in it but a clamp. When
+accuracy is the only axis that scored and it has clamped, `overall_numeric` is
+exactly 1.0 or exactly 0.0 and no reading of the fill survives in it.
+
+```
+rows carrying an execution_bps           1560
+  clamped past the span                  1368   87.69%
+  clamped AND accuracy the only axis        35    2.24%
+    clamped at 1.0                          28
+    clamped at 0.0                           7
+
+two-axis rows past the span, which keep earning   1333   85.45%
+  their letters   D 449   A+ 428   C 219   F 131   B 81   A 25
+
+one-axis rows inside the span, which keep earning    3
+```
+
+Twenty-eight of his own fills carry a grade of exactly 1.0 derived from a single
+clamp, which is the farming route. Refusing those costs 2.24% of graded fills
+instead of 87.69%, and the 1,333 rows past the span with a second axis keep
+earning, their letters spread across all six bands.
 
 ### Why the curve was not the thing to change
 
@@ -136,10 +188,19 @@ EXECUTION_SCORE_SPAN_BPS = 100.0
 `src/competition/capture_bounds.py` holds the bounds. `activate` calls
 `MarketRotation.eligible_pool` and `open_window`, which unit 9 left without a
 caller, and sizes one pool a drawn market from the volume it carried at that
-moment. `award` then refuses in this order: no allotment, no scored axis, a fill
-off the axis's scale, a running cooldown, an allotment already taken, an amount
-above the share ceiling, an amount the pool cannot pay. The grade bounds are read
-first, so an ungraded trade never takes an allotment or opens a cooldown.
+moment. `award` then refuses in this order: no allotment, no scored axis, a grade
+resting on one clamped axis, a running cooldown, an allotment already taken, an
+amount above the share ceiling, an amount the pool cannot pay. The grade bounds are
+read first, so an ungraded trade never takes an allotment or opens a cooldown.
+
+```python
+        clamped = bps is not None and abs(float(bps)) > EXECUTION_READABLE_BPS
+        if clamped and axes == 1:
+```
+
+`src/exchange/history_read_contract.py` gained the seam the measurement read
+through. `graded_row` returns the whole `TradeGrade` and `grade_row` returns its
+letter, so the History screen and any measurement of it share one grading path.
 
 The cooldown is three candles of the awarding bot's own `ta_timeframe`, floored at
 nine hundred seconds, and a timeframe the platform does not measure is refused
@@ -212,11 +273,13 @@ a grade no axis could score
   PAID     FLOCK/USD against its 24h open: scored_axes 1, overall A+,
            LTC/USD awarded 1.0 Quintessence
 
-a fill the execution axis cannot read
-  REFUSED  the fill sits -1201.8 basis points from its reference price, outside
-           the 100 the execution axis states; past that the axis clamps and the
-           grade carries no reading of this fill
-  PAID     FLOCK/USD at -31.06 basis points, inside the axis's scale
+a grade resting on one clamped axis
+  REFUSED  this grade scored execution and nothing else, and its reference price
+           sits -967.9 basis points from the fill, past the 100 the axis reads;
+           a reference that far out is stale, so the one axis reports a clamp
+           and the grade of 1.0 rests on nothing
+  PAID     the same VVV/USD fill once a second axis scores: scored_axes 2,
+           numeric 0.8333, overall B, 0.8333 Quintessence awarded
 
 three candles, floored at fifteen minutes
   REFUSED  participant-scored has 1s left of a 900s cooldown of 3 5m candles;
@@ -255,6 +318,40 @@ a second activation of one exchange and season
 an award after the activation closed
   REFUSED  LTC/USD holds no Quintessence allotment in coinbase:1, so there is
            no pool for an award to come out of
+```
+
+### The narrower bound, driven on the operator's own fills
+
+His graded fills, put through `CaptureBounds.award`. The pool in this run is
+scaffolding so the bound is reachable; every grade, price and basis-point figure is
+his. A favourable fill earns and an adverse one is refused, and the split is the
+axis count rather than the direction.
+
+```
+one clamped axis, favourable fill
+  2026-09-10 05:23  KAT/USD buy at 0.0052147215059309
+  bps -1439.06   accuracy 1.0   axes 1   numeric 1.0   A+
+  REFUSED  sole_axis_clamped
+
+one clamped axis, adverse fill
+  2026-09-10 07:21  RE/USD sell at 0.459
+  bps +1085.65   accuracy 0.0   axes 1   numeric 0.0   F
+  REFUSED  sole_axis_clamped
+
+two axes, favourable fill past the span
+  2026-09-10 03:22  KAT/USD buy at 0.005468
+  bps -1023.25   accuracy 1.0   axes 2   numeric 0.5   D
+  PAID     0.5 Quintessence
+
+two axes, adverse fill past the span
+  2026-09-10 00:10  SPK/USD sell at 0.01987
+  bps +605.20   accuracy 0.0   axes 2   numeric 0.5   D
+  PAID     0.5 Quintessence
+
+inside the span
+  2026-09-10 00:11  BILL/USD sell at 0.01338
+  bps +0.86   accuracy 0.991411133119661   axes 1   numeric 0.9914   A+
+  PAID     0.9914 Quintessence
 ```
 
 ### Demo mode
@@ -303,3 +400,10 @@ be widened so that a fill twelve per cent from its reference scores differently
 from a perfect one. That would move `overall_numeric` and the letter on every
 graded trade the History tab shows, which is a number the operator reads, so the
 axis is unchanged and the measurement sits above.
+
+The reference `graded_row` derives is not a decision-time quote, and the figures
+above are a measurement of that derivation as much as of the fills. 87.69% of live
+fills sitting past the span says the median of five earlier trade prices is a weak
+stand-in for the price a decision was taken at. Whichever unit supplies a real
+decision price will change every number in this section, and the narrow bound will
+then refuse far fewer than 2.24% rather than more.

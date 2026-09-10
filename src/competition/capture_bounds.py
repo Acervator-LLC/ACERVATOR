@@ -5,9 +5,9 @@
 carries, so ``max_participant_share`` has a pool to take 5% of. ``award``
 refuses a second allotment inside one ``Activation``, an amount above that
 share, an award still inside the candle cooldown, an amount the allotment cannot
-pay and a grade no axis could score. Every granted award is recorded on the
-``LocalTestnet`` this object was built over, so a demo run is the same ``award``
-path over a different chain.
+pay, a grade no axis could score and a grade resting on one clamped axis. Every
+granted award is recorded on the ``LocalTestnet`` this object was built over, so
+a demo run is the same ``award`` path over a different chain.
 """
 
 from __future__ import annotations
@@ -38,6 +38,7 @@ COOLDOWN_FLOOR_S = 900
 MIN_SCORED_AXES = 1
 
 #: Basis points past which the execution axis clamps and stops reading the fill.
+#: Measured on 1,560 live fills: 87.7% sit past it, so distance alone is no bound.
 EXECUTION_READABLE_BPS = 100.0
 
 DEFAULT_CAPTURE_BOUNDS_PATH = Path.home() / ".acervator" / "capture_bounds.json"
@@ -50,7 +51,7 @@ AWARDED_EVENT = "QuintessenceAwarded"
 AWARDED = "awarded"
 NOT_ACTIVATED = "not_activated"
 GRADE_NOT_COMPUTED = "grade_not_computed"
-EXECUTION_OFF_SCALE = "execution_off_scale"
+SOLE_AXIS_CLAMPED = "sole_axis_clamped"
 UNKNOWN_TIMEFRAME = "unknown_timeframe"
 COOLDOWN_RUNNING = "cooldown_running"
 ALLOTMENT_TAKEN = "allotment_taken"
@@ -450,13 +451,15 @@ class CaptureBounds:
                 f"an award needs at least {MIN_SCORED_AXES} scored axis",
             )
         bps = request.execution_bps
-        if bps is not None and abs(float(bps)) > EXECUTION_READABLE_BPS:
+        clamped = bps is not None and abs(float(bps)) > EXECUTION_READABLE_BPS
+        if clamped and axes == 1:
             raise CaptureRefusedError(
-                EXECUTION_OFF_SCALE,
-                f"the fill sits {float(bps):+.1f} basis points from its reference "
-                f"price, outside the {EXECUTION_READABLE_BPS:.0f} the execution "
-                f"axis states; past that the axis clamps and the grade carries no "
-                f"reading of this fill",
+                SOLE_AXIS_CLAMPED,
+                f"this grade scored execution and nothing else, and its reference "
+                f"price sits {float(bps):+.1f} basis points from the fill, past "
+                f"the {EXECUTION_READABLE_BPS:.0f} the axis reads; a reference "
+                f"that far out is stale, so the one axis reports a clamp and the "
+                f"grade of {request.grade_numeric} rests on nothing",
             )
         cooldown_s = cooldown_seconds(request.ta_timeframe)
         left = self.cooldown_remaining_s(participant, request.epoch)
