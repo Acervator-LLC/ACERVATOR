@@ -25,23 +25,34 @@
 // this contract, so mint has no caller until that reference lands: its
 // MAX_EKTHELIUS and MAX_GRAND_ACCUMULATOR bound ACRV awards, and the constants
 // below bound these NFTs.
+//
+// This contract holds no owner. setTierSvg writes a tier's art, and the write
+// splits in two: the deployer may fill a tier that holds none, which is what
+// makes a deployment mintable, and every later write to a tier that already
+// holds art admits governance alone, at INTERFACE. setGovernance is the one
+// other wiring call, admitted once from the deployer.
 // =============================================================================
 pragma solidity 0.8.36;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
+import {IGovernedTrophy} from "./Governance.sol";
 
-contract AcervatorTrophy is ERC721, Ownable2Step {
+contract AcervatorTrophy is ERC721, IGovernedTrophy {
     using Strings for uint256;
 
     // ── State ─────────────────────────────────────────────────────────────────
 
     uint256 private _nextTokenId = 1;
+
+    /// The address that deployed this contract. It fills an empty tier once.
+    address public immutable DEPLOYER;
+
+    /// The Governance contract. Zero until setGovernance writes it, once.
+    address public governance;
 
     /// Only CompetitionRegistry may mint trophies.
     address public immutable registry;
@@ -85,10 +96,6 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
 
     mapping(string => string) private _tierColor;
 
-    // ── Errors ────────────────────────────────────────────────────────────────
-
-    error OwnershipCannotBeRenounced();
-
     // ── Events ────────────────────────────────────────────────────────────────
 
     event TrophyMinted(
@@ -102,15 +109,15 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
 
     event SvgUpdated(string tier);
 
+    event GovernanceSet(address indexed governance);
+
     // ── Constructor ───────────────────────────────────────────────────────────
 
-    constructor(address _registry)
-        ERC721("Acervator Trophy", "ACTROPH")
-        Ownable(msg.sender)
-    {
+    constructor(address _registry) ERC721("Acervator Trophy", "ACTROPH") {
         require(_registry != address(0), "Trophy: registry cannot be zero");
         require(_registry.code.length > 0, "Trophy: registry not a contract");
         registry = _registry;
+        DEPLOYER = msg.sender;
 
         // Tier colors (hex, for JSON attributes)
         _tierColor["Harvest"]           = "#FFCC44";
@@ -127,16 +134,39 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
         _;
     }
 
+    // ── Governance wiring, once ───────────────────────────────────────────────
+
+    /**
+     * @notice Name the Governance contract that rewrites a filled tier, permanently.
+     * @dev    Callable once, by the deployer, on an address that already holds code.
+     * @param governanceAddress The deployed Governance address
+     */
+    function setGovernance(address governanceAddress) external {
+        require(msg.sender == DEPLOYER, "Trophy: caller is not the deployer");
+        require(governance == address(0), "Trophy: governance already set");
+        require(governanceAddress.code.length > 0, "Trophy: governance not a contract");
+        governance = governanceAddress;
+        emit GovernanceSet(governanceAddress);
+    }
+
     // ── SVG management ────────────────────────────────────────────────────────
 
     /**
      * @notice Upload the base64-encoded SVG for a tier.
-     * @dev    Called during deployment (or upgrade) by the owner.
-     *         Each SVG is ~10–15KB base64 — gas cost is one-time at upload.
+     * @dev    The deployer fills a tier that holds no art, which is what makes a
+     *         deployment mintable. Rewriting a tier that already holds art is a
+     *         change to what every holder of that tier sees, so it admits
+     *         governance alone. Each SVG is ~10-15KB base64, paid once per write.
+     * @param tier      The tier name, one of the five
+     * @param svgBase64 The base64-encoded SVG
      */
-    function setTierSvg(string calldata tier, string calldata svgBase64)
-        external onlyOwner
-    {
+    function setTierSvg(string calldata tier, string calldata svgBase64) external override {
+        if (bytes(_tierSvgB64[tier]).length == 0) {
+            require(msg.sender == DEPLOYER, "Trophy: empty tier is the deployer's");
+        } else {
+            require(governance != address(0), "Trophy: governance not set");
+            require(msg.sender == governance, "Trophy: filled tier is governance's");
+        }
         _tierSvgB64[tier] = svgBase64;
         emit SvgUpdated(tier);
     }
@@ -145,14 +175,6 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
         external view returns (string memory)
     {
         return _tierSvgB64[tier];
-    }
-
-    // ── Ownership cannot be abandoned ─────────────────────────────────────────
-
-    /// @notice Refuse to abandon ownership, because setTierSvg is owner-only and
-    ///         mint reverts on a tier holding no SVG.
-    function renounceOwnership() public pure override {
-        revert OwnershipCannotBeRenounced();
     }
 
     // ── Minting ───────────────────────────────────────────────────────────────

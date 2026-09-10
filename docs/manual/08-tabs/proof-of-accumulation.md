@@ -2977,6 +2977,270 @@ No store holds a participant's weighted uses, so a level cannot survive a restar
 
 In development.
 
+## 2026-09-10 01:47 - #147 - governance, the franchise, and the halt council
+
+The vote now exists. Four issue levels decide what a change needs, a holding buys
+access to a level and never buys weight inside it, and the three owner keys the
+last piece of work left behind are answered one by one.
+
+```
+level            holding   quorum  approval  delay
+INFORMATIONAL        1 Q      10%   simple    none
+PATCH               25 Q      20%   simple    2 days
+INTERFACE           75 Q      30%      60%    7 days
+CORE               150 Q      40%      67%   30 days
+```
+
+The delay is the time a proposal stays open before anybody can run it. An
+informational vote runs the moment it has the turnout and the agreement. A change
+to a rule holders rely on waits a month, whoever proposed it.
+
+### A large holder and a small holder count the same
+
+This is the rule that could have gone wrong quietly, so it is driven rather than
+described. One holder carries ten thousand of the currency. Another carries one
+hundred and fifty, which is the bare minimum for the top level. Each adds exactly
+one to the tally.
+
+```
+holder        holds      adds to the tally
+large     10,000 Q                      1
+small        150 Q                      1
+```
+
+The proof that matters is the other direction. On a vote where the large holder is
+against and the small holder is for, the count is one against one and the vote does
+not pass. A third small holder then votes for, the count is two against one, and it
+does pass. Two small holders outvote one holder sixty-six times their size.
+
+```
+large against, small for          1 - 1   refused
+large against, two small for      2 - 1   passes
+```
+
+### Turnout counts people, not coins
+
+Turnout is a fraction of the addresses that may vote at that level. It never looks
+at how much currency exists. Three addresses qualify for the top level while ten
+thousand three hundred and seventy-five units sit behind them, and the two numbers
+have nothing to do with each other.
+
+```
+addresses at the top level        3
+units distilled          10,375 Q
+```
+
+A control proves it. Distilling a million more units to the largest holder raises
+the supply ninety-seven fold and leaves the turnout figure at three, because one
+address is one address however much it holds.
+
+### Two separate gates, and trading opens only one of them
+
+A holding decides which levels an address may vote on. Playing decides whether that
+address has a live vote at all. These are different gates and only the second one
+is about activity.
+
+```
+holdings       which levels an address may vote on
+playing        whether the vote is live at all
+```
+
+An address that certifies trades for a year and never enters an event qualifies on
+its holdings and holds no vote. Driven both ways: a trade leaves the activity clock
+exactly where it was, and one action inside an event moves it.
+
+```
+a certified trade credited          the clock does not move
+one action inside an event          the clock moves to now
+a holding with no event action      reaches no level at all
+```
+
+### The franchise is a second number, and it moves nothing
+
+Beside the balance sits a remembered maximum. It is never below the balance, for
+every address, always. Three behaviours, each driven:
+
+```
+the balance rises     the franchise follows in the same block
+the balance falls     the franchise stays where it was
+the address goes      the franchise closes the gap slowly, and reaches
+quiet                 the balance after ninety days
+```
+
+A balance of one hundred and fifty spent down to fifty leaves the franchise at one
+hundred and fifty. Ninety quiet days later nothing has changed. Forty-five days
+after that, half the gap has closed and the franchise reads one hundred. Ninety
+days after that it reads fifty, which is the balance, and it stops there.
+
+```
+day   0   balance 150   franchise 150
+day   0   spend 100     balance  50   franchise 150
+day  90   balance  50   franchise 150
+day 135   balance  50   franchise 100
+day 180   balance  50   franchise  50
+```
+
+Not one unit of currency moves while that happens. The books were read before a
+full ninety-day resynchronization and again afterwards, and all four totals are
+identical.
+
+```
+                before        after
+wallets      150.000 Q    150.000 Q
+held         100.000 Q    100.000 Q
+platonic       0.000 Q      0.000 Q
+ever minted  250.000 Q    250.000 Q
+```
+
+One action inside an event stops the slide and keeps what has already closed. An
+address that had fallen to one hundred stays at one hundred. Nothing is handed back,
+and nothing is taken.
+
+### The halt council can only halt
+
+Five addresses are elected by the same one-vote-each franchise. Three of them stop
+one named mechanism, and that is the only thing any of them can do.
+
+```
+council size                5
+signals that stop something  3
+a halt lasts           7 days
+```
+
+Driven: one signal does nothing, two signals do nothing, the third stops the award
+token and a transfer is refused. The same member then tried four other things and
+was refused every time.
+
+```
+open a proposal            refused, the member holds no currency
+set a price feed           refused, that answers to the vote
+rewrite a tier's artwork   refused, that answers to the vote
+halt the entry currency    refused, it is not a haltable mechanism
+halt the award token       allowed, and that is the whole list
+```
+
+Nothing releases a halt, because there is no release. The contract asks what time
+it is and stops answering after seven days. One second before the seventh day the
+token is still frozen; one second later a transfer goes through, and nobody called
+anything in between.
+
+```
+seven days less one second   frozen
+seven days exactly           moving again
+calls made in between        none
+```
+
+A council that has stopped something cannot stop the same thing twice. Renewing a
+halt therefore needs a vote that elects a different council, which is the point.
+
+### Migration, never a replaceable contract
+
+Nothing deployed here can be edited later. The usual way round that is a contract
+whose logic can be swapped, and that is exactly what this design refuses, because
+whoever can swap it can rewrite every rule including the cap.
+
+A change no vote can make is made by deploying a new contract and pointing a
+top-level vote at it. Holders then move themselves across.
+
+```
+what a holder who moves does   spends their balance into the migration address
+what a holder who ignores it   keeps every unit on this contract, and reaches
+loses                          nothing the new contract governs
+```
+
+That cost is real and it is stated rather than discovered. An address that never
+acts keeps its currency and is left behind. The books still balance, because the
+units a holder moves are retired rather than destroyed.
+
+### The twelve owner keys, answered
+
+The previous piece of work removed two owner powers and left twelve on record as
+waiting for the vote. Each is now answered. Three moved behind the vote, five were
+removed outright, and the remaining six run the game every season, so a vote with a
+delay measured in days would stop the game rather than govern it.
+
+```
+moved behind the vote
+  set a price feed    a new market at INTERFACE, repointing one at CORE
+  upload tier art     at INTERFACE, and the first upload per tier stays a
+                      deployment step so a deployment can mint at all
+
+removed
+  freeze the token    the halt council does this now, and it expires
+  unfreeze the token  nothing releases a halt, so no release exists
+  hand over the token key
+  hand over the registry key
+  hand over the trophy key
+                      all three addresses are now fixed at deployment and
+                      cannot move to anybody
+
+left privileged, and why
+  open a competition        runs every competition
+  activate a competition    runs every competition
+  close for submission      runs every competition
+  adjudicate                ranks submissions, which no vote can do
+  advance the season        runs every season
+  cancel a competition      the emergency stop on one competition
+```
+
+The six that stay sit on one address written at deployment that can never move, and
+the halt council can freeze all six for seven days. The plan the contract already
+names for adjudication is on-chain proof of the result, which is separate work.
+
+Repointing an existing price feed changes what every award already measured against
+that market is compared to, so it runs at the top level. Pointing a market that has
+no feed at one is an addition and runs a level lower. The contract decides which of
+the two it is rather than trusting the proposer.
+
+```
+a market with no feed      INTERFACE, 7 days
+repointing a seeded market CORE, 30 days
+a holder at INTERFACE proposing the repoint    refused
+```
+
+### What the tools reported
+
+Each of the four tools was shown reporting a planted fault in a throwaway file
+before its clean verdict was believed, and the throwaway file was deleted
+afterwards. mythril is not installed on this machine and nothing was substituted
+for it.
+
+```
+                    on the plant              on the contracts
+forge test          1 failed                  43 passed, 0 failed
+slither             1 high, 1 medium          0 high, 0 medium
+solhint             2 errors, run fails       0 errors, run passes
+semgrep             1 blocking, run fails     0 blocking, run passes
+```
+
+The fuzzing runner drove the franchise rule and the currency rule together.
+
+```
+runs       256
+calls   16,384
+the franchise never below the balance        holds
+a governance call never moves currency       holds
+the three buckets still add up               holds
+```
+
+Two findings stand, both on the governance contract and both for the same reason
+the award contracts already carry. The delays, the quiet period and the seven-day
+halt rest on eleven readings of the chain's clock; the shortest of them spans two
+days and a validator can shift the clock by seconds. Six naming complaints are a
+disagreement between two tools: the compiler's own linter requires the style the
+other tool objects to, and the tree already follows the compiler.
+
+### What governance does not reach
+
+Nothing calls the activity clock yet. The action budget that will charge for an
+action inside an event is not on the chain, so the one caller allowed to refresh an
+address's clock has no code calling it today. Until it does, a live net would see
+holdings qualify and no vote go live.
+
+The turnout figure counts addresses as of their last refresh, and any address may
+refresh any other at no cost. A roster nobody has refreshed lately gives a stale
+turnout figure rather than a wrong one, and the contract still checks every vote
+against the voter's real franchise at the moment they cast it.
 ## 2026-09-10 01:47 - #147 - the mark slot on the party row
 
 Every party row now carries one mark slot on its right-hand edge. The slot shows
