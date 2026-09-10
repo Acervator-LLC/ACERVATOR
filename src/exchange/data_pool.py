@@ -17,6 +17,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional, cast
 
+from .market_pairs_scout import row_quote_volume_24h
+
 logger = logging.getLogger("acervator.data_pool")
 
 TF_SECONDS = {
@@ -361,12 +363,12 @@ class MarketDataPool:
                 # A newer individual fetch already wrote this entry.
                 self._ticker_batch_races += 1
                 continue
-            # quoteVolume and millisecond timestamps match
+            # row_quote_volume_24h and millisecond timestamps match
             # CCXTConnector.get_ticker's own mapping.
             entry.last = last
             entry.bid = float(row.get("bid", 0) or 0)
             entry.ask = float(row.get("ask", 0) or 0)
-            entry.volume_24h = float(row.get("quoteVolume", 0) or 0)
+            entry.volume_24h = row_quote_volume_24h(row)
             entry.timestamp = float(row.get("timestamp", 0) or 0) / 1000
             entry.fetch_time = time.time()
             updated += 1

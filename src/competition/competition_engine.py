@@ -32,6 +32,9 @@ from .merkle_log import MerkleTradeLog
 from .season_schedule import classify_tier
 from .token_ledger import TokenLedger
 
+#: Where a finished competition's result file lands, outside the repository.
+DEFAULT_RESULTS_DIR = Path.home() / ".acervator" / "competition_results"
+
 
 class CompetitionStatus(str, Enum):
     REGISTRATION = "REGISTRATION"
@@ -114,7 +117,7 @@ class CompetitionEngine:
         self._result: Optional[CompetitionResult] = None
 
         self._ledger = ledger or TokenLedger()
-        self._results_dir = Path(results_dir or "competition_results")
+        self._results_dir = Path(results_dir or DEFAULT_RESULTS_DIR)
 
     # ── Registration phase ────────────────────────────────────────────────────
 

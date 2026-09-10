@@ -2226,6 +2226,419 @@ entry fee is taken, and no participant is admitted or turned away at the door.
 
 In development.
 
+## 2026-09-10 00:34 - #147 - a block and a transaction named by their own contents
+
+An identifier on this chain used to come from the clock and a random number. Two
+copies of Acervator holding the identical record gave that record two different
+names, and editing an amount in a stored record left every name in the chain
+still valid. Both identifiers are now the SHA-256 of the record's own contents.
+
+`src/competition/local_testnet.py` - what names a transaction
+
+```python
+def transaction_id(
+    from_addr: str,
+    to_addr: str,
+    function_name: str,
+    args: dict,
+    gas_used: int,
+    status: int = TX_SUCCESS,
+) -> str:
+    return content_id(
+        {
+            "from_addr": from_addr,
+            "to_addr": to_addr,
+            "function_name": function_name,
+            "args": args,
+            "gas_used": gas_used,
+            "status": status,
+        }
+    )
+```
+
+### What goes into each identifier, and what stays out
+
+A transaction is named by who sent it, who received it, the call, the amounts and
+addresses that call carried, the gas and the success flag. The block it landed in
+and the moment of recording stay out, because two machines record one
+transaction at different moments into differently numbered blocks. A block is
+named by its own number, its parent's name, its timestamp and the list of
+transactions it holds.
+
+| value | names a transaction | names a block |
+|---|---|---|
+| sender and recipient | yes | no |
+| the call and its arguments | yes | no |
+| gas | yes | no |
+| success flag | yes | no |
+| block number | no | yes |
+| timestamp | no | yes |
+| parent block's name | no | yes |
+| the transactions held | no | yes |
+
+The bytes are fixed so two machines cannot differ: keys in sorted order, no
+spaces, and a refusal for any number that is not finite. A block keeps its
+timestamp to the millisecond, so the name covers the figure written to disk
+rather than a longer one that is not.
+
+The amounts and the addresses reach the name. That was the hole: a transaction
+used to be named from its function name alone, so what it moved and who it moved
+it to had no bearing on its name.
+
+### Two machines, one name
+
+Two copies, two separate chains, two processes. Each certified one fill of its
+own, and each then held the other's record under the identical name.
+
+```
+node-952ca991e4da  sending transaction 0xc69ee5a4fa90328a9f730da334451160430c3e3c4279e8a863a83099d86d5cc0
+node-ae8a2c70bb84  sending transaction 0xc69ee5a4fa90328a9f730da334451160430c3e3c4279e8a863a83099d86d5cc0
+node-ae8a2c70bb84  sending transaction 0xaab8eefd0d4f2e481a6a7a79b3bfb730d8765846f4376c660d9534abc54ccf18
+node-952ca991e4da  sending transaction 0xaab8eefd0d4f2e481a6a7a79b3bfb730d8765846f4376c660d9534abc54ccf18
+chain verified: 3 blocks and 2 transactions carry the id of their own contents
+```
+
+The same pair of processes on the previous build gave the identical transfer two
+different names.
+
+```
+before   node_a  0x692edd3d07a1b2019b3ce1ed84a262ce9e2a033181ab24805455ee580c84965d
+         node_b  0x3d3153c056bb1bc55c4f613bebfc81d3b9ab6a7581e436c7263fb24684ac6b03
+after    node_a  0x3472b3435c6b9c843317353b681810c2f416501d6ac2f2c302ff758cdbecdb6a
+         node_b  0x3472b3435c6b9c843317353b681810c2f416501d6ac2f2c302ff758cdbecdb6a
+```
+
+### A changed record is named, and the other machine refuses it
+
+One stored record had its amount edited from 12.5 to 99.5 and its name left
+alone. The chain that loaded that file says so at load. The other machine refuses
+the record outright, and the same exchange still accepted the good record sent
+beside it.
+
+```
+chain NOT verified: 0 of 3 blocks altered [], 0 parent links broken [],
+                    1 of 2 transactions altered ['0x3472b3435c6b9c84']
+
+node-a7904d78dd27 refused record 0x3472b3435c6b9c843317353b681810c2f416501d6ac2f2c302ff758cdbecdb6a
+    calling transferQuintessence: its contents name
+    0x1a4bdf2cbbfd171da96b52a51aab69358b7fdbff4ef8c4809c904fb6b1b0a54f
+node-a7904d78dd27 synced with node-6feb24ca8462: held 2, offered 3, took 1, now holds 3
+chain verified: 4 blocks and 3 transactions carry the id of their own contents
+```
+
+The refusal sits in the code that adds a peer's records to a chain, so an altered
+record never reaches the chain at all.
+
+### The chain already on disk
+
+The saved chain on this machine loads exactly as before and nothing is lost. Its
+3,135 blocks and 3,135 transactions were named the old way, so the chain reports
+that none of them carries the name of its own contents. Every block mined from
+now on does.
+
+```
+chain restored from disk (block=3135, age=204388 min)
+chain NOT verified: 3135 of 3136 blocks altered [1, 2, 3, 4, 5],
+                    0 parent links broken [],
+                    3135 of 3135 transactions altered ['0x3f79536e53815466', ...]
+```
+
+Renaming those 3,135 records was considered and refused. The node rule already in
+place never removes a record and never reorders one, and renaming every record on
+the chain is the largest possible change of identity. A load that recomputed every
+name would also destroy the one property this work adds, because a name recomputed
+from whatever is on disk can never disagree with what is on disk.
+
+### Demo mode
+
+A demo run is the same code over a different chain and a different network name.
+The run takes no setting and no flag. The transfer carried the same name on the demo
+chain as on the live one, because the name comes from the contents and from
+nothing else.
+
+```
+PoaNodeLink installed (node=node-04b4e394a029, network=acervator-poa-testnet, listening=False)
+sending transaction 0x3472b3435c6b9c843317353b681810c2f416501d6ac2f2c302ff758cdbecdb6a calling transferQuintessence
+node-04b4e394a029 synced with node-2a283bba3115: held 3, offered 3, took 0, now holds 3
+chain verified: 4 blocks and 3 transactions carry the id of their own contents
+```
+
+### The demo competition's practice prices
+
+The demo competition trades against 120 made-up prices rather than a market. The
+generator behind them changed to the one the rest of the platform already depends
+on, so the figures that run reports are different from before. It is still seeded,
+so the same 120 prices come back on every run, and the competition still names a
+winner and mints the award.
+
+```
+participants   3
+winner tier    Harvest
+winner tokens  10
+rank 1 value   371.46   the same figure on a second run
+```
+
+### What this does not cover
+
+The first block of a chain keeps a name of all zeros. It has no parent and holds
+no transaction, so the only thing in it that a name could cover is its timestamp,
+and that timestamp is not covered.
+
+A record sent between two machines now carries seven declared fields rather than
+six. The seventh is the name the chain gave it, and the receiving side recomputes
+that name from the other six before it accepts anything.
+
+A chain file is not protected from whoever owns the machine. Editing a record and
+recomputing its name by hand produces a file that verifies. What the names buy is
+that a second machine holding the same record disagrees out loud.
+
+## 2026-09-10 00:38 - #147 - the contract repairs, and the keys that came out
+
+The audit found five things worth a decision. Three are repaired and the tool that
+reported each one is now silent on it. Two are left standing on purpose, with the
+reason written down, because repairing them would make the contracts worse.
+
+```
+repaired   34 quote errors in the trophy contract        solhint 34 -> 0
+repaired   an exact comparison on a pending transfer     slither 1 -> 0
+repaired   the trophy handed out a token before filling it
+                                                        slither 2 -> 0
+stands     reading the clock to time a transfer          the design needs it
+stands     eight writes a lint calls eventless           the lint is wrong
+```
+
+### The three repairs
+
+The trophy builds the text a wallet reads from the artwork and the award details.
+That text is full of quote marks, so it was written with the other kind of quote,
+and the linter calls that an error thirty-four times over. Thirty-four errors in
+one lane hide the thirty-fifth, so the quoting is now the style the linter asks
+for. The text a wallet displays is byte for byte what it was.
+
+```
+before  343 problems, 34 of them errors   the run fails
+after   307 problems, none of them errors the run passes
+```
+
+The second repair is one line. A holder may have only one transfer waiting at a
+time, and the check asked whether the waiting amount was exactly zero. The
+analyser objects to an exact comparison, because the record holding that amount
+also holds a clock reading. The check now asks whether an amount above zero is
+waiting, which admits exactly the same thing and reads better.
+
+```solidity
+    function _hasTransferInFlight(address sender) private view returns (bool) {
+        return pendingTransfer[sender].amount > 0;
+    }
+```
+
+### The two findings that stand
+
+A transfer takes time by design. The shortest window is one hour and it grows with
+the amount, so the contract has to read the chain's own clock to know whether a
+window has passed. A validator can shift that clock by seconds. Seconds against an
+hour is not a risk, and the chain offers no other clock, so the finding is
+recorded rather than repaired.
+
+```
+MIN_TRANSFER_SECONDS        3,600      one hour, the floor
+TRANSFER_SECONDS_PER_WHOLE    360      the window grows with the amount
+shortest window             1 hour
+a validator can shift       seconds
+```
+
+The other standing finding is a lint that says eight writes happen without an
+event. Six of the eight do emit an event in the same call, so the message is not
+describing what the rule measures. Four small test bodies settle it: the rule fires
+on any write to a value a safety check reads, event or no event. Clearing it would
+mean deleting the check that a wallet holds enough to spend, which is the wrong
+trade, so it stands.
+
+```
+write, safety check, no event    the rule fires
+write, safety check, then event  the rule fires
+event, then write, safety check  the rule fires
+write, no safety check           the rule is silent
+```
+
+### Fourteen owner keys, and what happened to each
+
+The entry currency has no owner at all. The other three contracts had fourteen
+powers only the owner could use. Two are gone from the code. Twelve stay, and each
+one is now written down as waiting for the vote, which is a separate piece of work
+and exists nowhere yet.
+
+```
+gone   the owner could mint any trophy directly
+       the trophy now admits the competition registry alone
+gone   the owner could abandon the contract
+       on the award token that would have made a freeze permanent
+```
+
+```
+waiting for the vote
+  the token      name the minter once, freeze, unfreeze, hand over ownership
+  the registry   set a price feed, open, activate, close, adjudicate,
+                 advance the season, cancel, hand over ownership
+  the trophy     upload a tier's artwork, hand over ownership
+```
+
+Removing the owner's route into the trophy mint has one consequence worth stating
+plainly. The competition registry still holds no reference to the trophy contract,
+so nothing can mint a trophy until that wiring lands. Before this change the owner
+was the only caller that ever reached it, which is the bypass the design says must
+come out.
+
+### The conservation law still holds
+
+The law is that every wallet, every held address and the platonic pool add up to
+everything ever distilled, and that the total never passes thirty-three million.
+The fuzzing runner drove it again after the repairs.
+
+```
+runs       256
+calls   16,384
+ten invariants   all pass
+```
+
+The count of refused calls inside that campaign moves from run to run, because the
+runner is not given a fixed starting seed. Three runs after the repairs gave 8,546,
+8,721 and 8,773, and the run before them gave 8,523. The two numbers the
+configuration fixes are the same before and after, and no sequence ever broke the
+law.
+
+### What the vote still has to take over
+
+No vote, no council and no delay was written here. Twelve owner powers are still
+owner powers today, exactly as they were, and the list above is the record of what
+the vote has to take over.
+
+Every finding the audit raised is accounted for in one place, each marked closed or
+standing, with the count the tool printed on each side.
+
+```
+tests/debug_reports/contract_repairs_second_pass.md   the full accounting
+```
+## 2026-09-10 00:59 - #147 - the volume figure and the eight missing identifiers
+
+Two faults held the rewarding pool down. The price feed reported no trading
+volume at all for any Coinbase market, and the asset catalogue could not name
+eight of the twenty biggest markets. This unit fixed both. The pool went from
+five markets to six.
+
+`src/exchange/ccxt_connector.py` - where the volume figure now comes from
+
+```python
+def _quote_volume_for(self, symbol: str, raw: dict) -> float:
+    """Return ``symbol``'s 24h quote volume from ``raw``, else the recorded one.
+
+    Coinbase's ``fetch_ticker`` serves neither ``quoteVolume`` nor
+    ``baseVolume``, so ``get_ticker`` falls back to what the last
+    ``get_all_tickers`` recorded for that symbol, and 0.0 before the first.
+    """
+    served = row_quote_volume_24h(raw)
+    if served > 0:
+        return served
+    return float(self._quote_volumes.get(symbol, 0.0))
+```
+
+### Asking Coinbase about one market returns no volume
+
+The platform asks Coinbase for a price in two ways. A question about one market
+comes back with a price, a bid and an ask, and nothing about volume. A question
+about every market at once comes back with the dollar volume on almost every
+row. The price feed read the one-market answer, so its volume figure always held
+zero.
+
+The platform's own trading log says it, before and after:
+
+```
+before   FETCH_TICKER  Get current price for BTC/USD ... vol24h=0
+after    FETCH_TICKER  Get current price for BTC/USD ... vol24h=411256638
+```
+
+The bulk answer carried a dollar figure for 923 of the 931 markets Coinbase
+lists. The platform already sends that bulk request on a timer. The connector now
+keeps each figure as it arrives and hands it back when a caller asks about one
+market, so nothing new goes to the venue. A market the bulk request has not yet
+covered still reports zero, which is what it reported before.
+
+### Eight projects the catalogue could not name
+
+The six-month age rule looks a project up by a CoinGecko identifier held in the
+asset catalogue. Eight of the twenty biggest Coinbase markets had no entry, so
+the rule refused them without asking anything.
+
+Every one of the eight now has an entry, and nobody guessed an identifier. For
+each one, CoinGecko named which of its own coins trades that market on Coinbase
+Exchange, and the catalogue took that coin.
+
+| Market | Identifier | How the check ran |
+| ------ | ---------- | ----------------- |
+| ZEC | zcash | CoinGecko lists it trading ZEC/USD on Coinbase Exchange |
+| HYPE | hyperliquid | CoinGecko lists it trading HYPE/USD on Coinbase Exchange |
+| VVV | venice-token | CoinGecko lists it trading VVV/USD on Coinbase Exchange |
+| USELESS | useless-3 | Two coins carry this ticker; only this one trades on Coinbase |
+| PUMP | pump-fun | Two coins carry this ticker; only this one trades on Coinbase |
+| TAO | bittensor | CoinGecko lists it trading TAO/USD on Coinbase Exchange |
+| AERO | aerodrome-finance | CoinGecko lists it trading AERO/USD on Coinbase Exchange |
+| LIGHTER | lighter | CoinGecko lists it trading LIGHTER/USD, under the ticker LIT |
+
+### Matching by ticker alone fails its own check
+
+The other way to close the gap reads CoinGecko's published coin list at run time
+and matches on the ticker. The twelve markets whose identifier the catalogue
+already held, and held correctly, tested that idea.
+
+```
+twelve known-correct identifiers
+  2  resolve to exactly one coin on the published list
+ 10  are ambiguous; twelve separate coins carry the ticker BTC
+```
+
+A resolver that insists on one match refuses ten markets that work today. A
+resolver that picks among the candidates returns a real founding date for the
+wrong project, which is worse than a refusal. One of the eight is worse still:
+CoinGecko carries Lighter under the ticker LIT, so no ticker match finds it at
+all, while its record of the Coinbase market names it exactly.
+
+The catalogue grew instead, and the venue record did the confirming. A market
+whose base is still absent from the catalogue refuses with the reason
+`no_coingecko_id`, as it did before, and never passes unchecked.
+
+### Six of twenty qualify, and the floor is still twelve
+
+Driven against Coinbase's real twenty, the refusals moved from two reasons to
+one. Zcash publishes a founding date and now qualifies. The other seven newly
+named projects publish none.
+
+```
+before   5 eligible   8 refused with no identifier   7 refused with no start date
+after    6 eligible   0 refused with no identifier  14 refused with no start date
+```
+
+The program declines to open a window in its own words:
+
+```
+before   pool_below_floor: coinbase holds 5 eligible markets, under the floor
+         of 12, so it draws nothing
+after    pool_below_floor: coinbase holds 6 eligible markets, under the floor
+         of 12, so it draws nothing
+```
+
+Both runs asked CoinGecko at thirteen seconds apart and CoinGecko refused
+nothing. Twelve detail requests on the first run, fifteen on the second.
+
+### What the identifiers did not fix
+
+The earlier estimate put the pool at thirteen once the catalogue closed, which
+would clear the floor. It reached six. Seven of the eight newly named projects
+publish no founding date, so they moved from one refusal to another rather than
+becoming eligible.
+
+Coinbase still awards no Quintessence, and one reason remains: fourteen of the
+twenty biggest markets publish no founding date. The age ruling decides whether
+the economy starts.
 
 ## 2026-09-10 01:15 - #147 - the skill ladder and the transfer skill
 

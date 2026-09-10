@@ -19,10 +19,10 @@
 // Each trophy of the same tier is visually identical; metadata differentiates them.
 //
 // Four tiers carry a lifetime ceiling, enforced inside mint against a counter
-// this contract keeps per tier name, so the owner meets the ceiling the registry
-// meets. Harvest is the only uncapped tier, and a tier name outside the five is
-// refused, so no name reaches an uncounted slot.
-// CompetitionRegistry still holds no reference to this contract: its
+// this contract keeps per tier name. Harvest is the only uncapped tier, and a
+// tier name outside the five is refused, so no name reaches an uncounted slot.
+// mint admits registry alone. CompetitionRegistry still holds no reference to
+// this contract, so mint has no caller until that reference lands: its
 // MAX_EKTHELIUS and MAX_GRAND_ACCUMULATOR bound ACRV awards, and the constants
 // below bound these NFTs.
 // =============================================================================
@@ -85,6 +85,10 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
 
     mapping(string => string) private _tierColor;
 
+    // ── Errors ────────────────────────────────────────────────────────────────
+
+    error OwnershipCannotBeRenounced();
+
     // ── Events ────────────────────────────────────────────────────────────────
 
     event TrophyMinted(
@@ -119,8 +123,7 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
     // ── Modifiers ─────────────────────────────────────────────────────────────
 
     modifier onlyRegistry() {
-        require(msg.sender == registry || msg.sender == owner(),
-                "Trophy: caller is not registry or owner");
+        require(msg.sender == registry, "Trophy: caller is not registry");
         _;
     }
 
@@ -144,14 +147,23 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
         return _tierSvgB64[tier];
     }
 
+    // ── Ownership cannot be abandoned ─────────────────────────────────────────
+
+    /// @notice Refuse to abandon ownership, because setTierSvg is owner-only and
+    ///         mint reverts on a tier holding no SVG.
+    function renounceOwnership() public pure override {
+        revert OwnershipCannotBeRenounced();
+    }
+
     // ── Minting ───────────────────────────────────────────────────────────────
 
     /**
      * @notice Mint a trophy NFT to the winning bot's wallet.
      * @dev    Called by CompetitionRegistry immediately after token award.
      *
-     *         _countTierMint runs before _safeMint, so a recipient re-entering
-     *         through onERC721Received reads the raised count.
+     *         _safeMint is the last statement. The tier count, the metadata and
+     *         the event all land first, so a recipient re-entering through
+     *         onERC721Received reads a finished token.
      */
     function mint(
         address         recipient,
@@ -173,7 +185,6 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
         _countTierMint(tier);
 
         tokenId = _nextTokenId++;
-        _safeMint(recipient, tokenId);
 
         trophyData[tokenId] = TrophyMetadata({
             tier:          tier,
@@ -191,6 +202,8 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
 
         emit TrophyMinted(tokenId, recipient, tier, season,
                           competitionId, advantageBps);
+
+        _safeMint(recipient, tokenId);
     }
 
     // ── tokenURI — fully on-chain ─────────────────────────────────────────────
@@ -208,37 +221,37 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
 
         // Build the JSON attributes array
         string memory attrs = string.concat(
-            '[',
-            _attr("Tier",           m.tier),          ',',
-            _attr("Emoji",          m.tierEmoji),      ',',
-            _attrNum("Season",      m.season),         ',',
-            _attr("Competition",    m.competitionId),  ',',
-            _attrNum("Rank",        m.rank),           ',',
-            _attrNum("Field Size",  m.fieldSize),      ',',
-            _attrSigned("Advantage (bps)", m.advantageBps), ',',
-            _attr("Market Regime",  m.marketRegime),   ',',
+            "[",
+            _attr("Tier",           m.tier),          ",",
+            _attr("Emoji",          m.tierEmoji),      ",",
+            _attrNum("Season",      m.season),         ",",
+            _attr("Competition",    m.competitionId),  ",",
+            _attrNum("Rank",        m.rank),           ",",
+            _attrNum("Field Size",  m.fieldSize),      ",",
+            _attrSigned("Advantage (bps)", m.advantageBps), ",",
+            _attr("Market Regime",  m.marketRegime),   ",",
             _attr("Tier Color",     _tierColor[m.tier]),
-            ']'
+            "]"
         );
 
         // Advantage in human-readable form (e.g. "+29.50%")
         string memory advStr = _formatBps(m.advantageBps);
 
         string memory json = string.concat(
-            '{"name":"',
-            m.tierEmoji, unicode' Acervator Trophy — ', m.tier,
-            ' #', tokenId.toString(),
-            '","description":"',
-            'A Proof-of-Accumulation trophy awarded to the bot ranked #',
+            "{\"name\":\"",
+            m.tierEmoji, unicode" Acervator Trophy — ", m.tier,
+            " #", tokenId.toString(),
+            "\",\"description\":\"",
+            "A Proof-of-Accumulation trophy awarded to the bot ranked #",
             m.rank.toString(),
-            ' in Competition ', m.competitionId,
-            ' (Season ', m.season.toString(), '). ',
-            'Advantage: ', advStr, '. ',
-            'Market: ', m.marketRegime, '. ',
-            'Merkle root: 0x', _bytes32ToHex(m.merkleRoot),
-            '","image":"data:image/svg+xml;base64,', svgB64,
-            '","attributes":', attrs,
-            '}'
+            " in Competition ", m.competitionId,
+            " (Season ", m.season.toString(), "). ",
+            "Advantage: ", advStr, ". ",
+            "Market: ", m.marketRegime, ". ",
+            "Merkle root: 0x", _bytes32ToHex(m.merkleRoot),
+            "\",\"image\":\"data:image/svg+xml;base64,", svgB64,
+            "\",\"attributes\":", attrs,
+            "}"
         );
 
         return string.concat(
@@ -301,14 +314,14 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
         internal pure returns (string memory)
     {
         return string.concat(
-            '{"trait_type":"', key, '","value":"', value, '"}');
+            "{\"trait_type\":\"", key, "\",\"value\":\"", value, "\"}");
     }
 
     function _attrNum(string memory key, uint256 value)
         internal pure returns (string memory)
     {
         return string.concat(
-            '{"trait_type":"', key, '","value":', value.toString(), '}');
+            "{\"trait_type\":\"", key, "\",\"value\":", value.toString(), "}");
     }
 
     function _attrSigned(string memory key, int256 value)
@@ -317,7 +330,7 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
         string memory v = value >= 0
             ? SafeCast.toUint256(value).toString()
             : string.concat("-", SignedMath.abs(value).toString());
-        return string.concat('{"trait_type":"', key, '","value":', v, '}');
+        return string.concat("{\"trait_type\":\"", key, "\",\"value\":", v, "}");
     }
 
     /// @dev SignedMath.abs carries the full int256 range, so the most negative
