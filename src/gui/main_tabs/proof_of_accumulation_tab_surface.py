@@ -11,7 +11,13 @@ printing what ``augment_action`` gives one action of the running turn.
 the Impetus pool it grants, with ``class_pick`` calling ``pick_class`` for the
 class ``params`` names. ``redistribution`` reads
 ``EventRedistribution.summary`` for the pot, the normalised shares and the
-reserve, and moves no Quintessence.
+reserve, and moves no Quintessence. ``subtabs`` serves the four ``SUBTABS`` the
+tab opens over its zones, and ``map_reachable`` reads ``EventMode.has_map`` so
+only a mode carrying a map opens the map subtab. ``character_stats`` pairs every
+``METRIC_SOURCES`` entry with the value one party row holds, ``gear`` serves the
+loot section beside the item classes nothing builds, ``skill_tree`` draws the
+ladder as a list over ``SKILL_NAMES``, and ``map_panel`` states that no world is
+generated.
 ``src.core.desktop_bridge`` registers this module under ``METHOD``, and
 ``chain_of`` reads ``params`` so a TestNet demo run takes this code path against
 its own ledger files.
@@ -45,6 +51,7 @@ from ...competition.loot_drop import (
 from ...competition.poa_modes import (
     IMPETUS_AT_FIRST_LEVEL,
     MODE_CODES,
+    MODES,
     EventVariant,
     impetus_grant,
     pool_for,
@@ -68,10 +75,16 @@ from ...competition.rpg_classes import (
     class_rows,
     pick_class,
 )
-from ...competition.rpg_metrics import METRIC_SOURCES, profile_metrics, read_metrics
+from ...competition.rpg_metrics import (
+    METRIC_SEAMS,
+    METRIC_SOURCES,
+    profile_metrics,
+    read_metrics,
+)
 from ...competition.skill_ladder import (
     FIRST_SKILL_LEVEL,
     MAX_SKILL_LEVEL,
+    SKILL_NAMES,
     TRANSFER_SKILL_NAME,
     LadderStep,
     SkillGateError,
@@ -284,15 +297,77 @@ ZONES: tuple[tuple[str, str, str], ...] = (
     (PARTY_WINDOW, PARTY_WINDOW_TITLE, PARTY_WINDOW_PLACEHOLDER),
 )
 
+CHARACTER_STATS = "character_stats"
+GEAR = "gear"
+SKILL_TREE = "skill_tree"
+MAP = "map"
+
+CHARACTER_STATS_TITLE = "Character Stats"
+GEAR_TITLE = "Gear"
+SKILL_TREE_TITLE = "Skill Tree"
+MAP_TITLE = "Map"
+
+SUBTABS: tuple[tuple[str, str], ...] = (
+    (CHARACTER_STATS, CHARACTER_STATS_TITLE),
+    (GEAR, GEAR_TITLE),
+    (SKILL_TREE, SKILL_TREE_TITLE),
+    (MAP, MAP_TITLE),
+)
+
+#: Every subtab name, in the order ``SUBTABS`` declares them.
+SUBTAB_NAMES: tuple[str, ...] = tuple(name for name, _ in SUBTABS)
+
+SUBTAB_FIELD = "subtab"
+
+#: The subtab a request that names none, or names an unopenable one, opens.
+DEFAULT_SUBTAB = CHARACTER_STATS
+
+#: The label of every mode whose ``EventMode.has_map`` is set.
+MAP_MODE_LABELS: tuple[str, ...] = tuple(mode.label for mode in MODES if mode.has_map)
+
+MAP_OPEN_TEXT = "Open map"
+MAP_REFUSED_TEXT = (
+    "{label} carries no map, so this subtab does not open. {with_map} do."
+)
+MAP_ABSENT_TEXT = (
+    "No world is generated. No grid, no tile and no position is held anywhere, so "
+    "this subtab draws no map."
+)
+
+STATS_VALUE_NONE = "--"
+STATS_VALUE_JOIN = ", "
+STATS_COUNT_TEXT = "Metrics carrying a value: {held} of {total}."
+STATS_NO_PARTICIPANT_TEXT = (
+    "{name} holds no bot under this chain, so every metric reads {none}."
+)
+STATS_SEAM_TEXT = "Nothing holds these, so no metric reads them: {names}."
+
+#: Item classes no module builds. Loot is the only thing the gear subtab manages.
+GEAR_ABSENT_CLASSES: tuple[str, ...] = (
+    "armour",
+    "weapons",
+    "accessories",
+    "consumables",
+)
+GEAR_ABSENT_TEXT = "Nothing builds {names}, so this subtab manages loot alone."
+
+SKILL_TREE_LIST_TEXT = (
+    "Skills on the ladder: {count}. {names}. A tree needs more than one, so this "
+    "draws a list."
+)
+
 DECLARED_FIELDS = (
     "accessible_name",
     "built",
     "chain",
+    "character_stats",
     "classes",
     "event",
+    "gear",
     "heading",
     "issue",
     "issue_text",
+    "map",
     "metric_sources",
     "method",
     "modes",
@@ -300,8 +375,11 @@ DECLARED_FIELDS = (
     "party",
     "pick_note",
     "redistribution",
+    "skill_tree",
     "skills",
     "state_text",
+    "subtab",
+    "subtabs",
     "wallet",
     "zones",
 )
@@ -871,6 +949,145 @@ def zones() -> list:
     ]
 
 
+def map_reachable(variant: EventVariant) -> bool:
+    """Whether ``variant``'s mode carries a map, read off ``EventMode.has_map``."""
+    return variant.mode.has_map
+
+
+def map_refusal(variant: EventVariant) -> str:
+    """Why ``variant`` does not open the map subtab, or "" when its mode carries one."""
+    if map_reachable(variant):
+        return ""
+    return MAP_REFUSED_TEXT.format(
+        label=variant.mode.label, with_map=" and ".join(MAP_MODE_LABELS)
+    )
+
+
+def subtab_of(params: dict, variant: EventVariant) -> str:
+    """The subtab ``params`` names, falling back to ``DEFAULT_SUBTAB``.
+
+    A request for the map under a mode whose ``has_map`` is unset answers the
+    default, so no request reaches a subtab the event does not open.
+    """
+    asked = params.get(SUBTAB_FIELD) if isinstance(params, dict) else None
+    if asked not in SUBTAB_NAMES:
+        return DEFAULT_SUBTAB
+    if asked == MAP and not map_reachable(variant):
+        return DEFAULT_SUBTAB
+    return asked
+
+
+def subtabs(variant: EventVariant) -> list:
+    """The four subtabs, each carrying whether ``variant`` opens it and why not."""
+    refusal = map_refusal(variant)
+    return [
+        {
+            "name": name,
+            "title": title,
+            "reachable": name != MAP or map_reachable(variant),
+            "refusal": refusal if name == MAP else "",
+        }
+        for name, title in SUBTABS
+    ]
+
+
+def metric_value_text(value: object) -> str:
+    """``value`` as a stats column prints it, joining the label list ``blocked`` holds."""
+    if value is None:
+        return STATS_VALUE_NONE
+    if isinstance(value, list):
+        return STATS_VALUE_JOIN.join(str(member) for member in value)
+    return str(value)
+
+
+def metric_row(name: str, source: str, metrics: dict) -> dict:
+    """One stats row: the metric, the field behind it, and the value the fleet holds."""
+    return {
+        "metric": name,
+        "source": source,
+        "value_text": metric_value_text(metrics.get(name)),
+    }
+
+
+def stats_participant(rows: list, params: dict) -> dict | None:
+    """The party row ``params`` names, else the first row, else None for an empty party."""
+    asked = params.get(PARTICIPANT_FIELD) if isinstance(params, dict) else None
+    for row in rows:
+        if row["participant"] == asked:
+            return row
+    return rows[0] if rows else None
+
+
+def metric_seam_text() -> str:
+    """The stats subtab's sentence naming every entry in ``METRIC_SEAMS``."""
+    return STATS_SEAM_TEXT.format(names=", ".join(METRIC_SEAMS))
+
+
+def character_stats(rows: list, params: dict) -> dict:
+    """Every metric in ``METRIC_SOURCES``, its field, and the value one party row holds.
+
+    The row comes from ``stats_participant``, so an empty party still draws every
+    metric and its source with no value against it.
+    """
+    chosen = stats_participant(rows, params)
+    metrics = {} if chosen is None else chosen["metrics"]
+    stat_rows = [
+        metric_row(name, source, metrics) for name, source in METRIC_SOURCES.items()
+    ]
+    held = [one for one in stat_rows if one["value_text"] != STATS_VALUE_NONE]
+    return {
+        "title": CHARACTER_STATS_TITLE,
+        "participant": "" if chosen is None else chosen["participant"],
+        "rows": stat_rows,
+        "count_text": STATS_COUNT_TEXT.format(held=len(held), total=len(stat_rows)),
+        "note": (
+            STATS_NO_PARTICIPANT_TEXT.format(name=FLEET_NAME, none=STATS_VALUE_NONE)
+            if chosen is None
+            else ""
+        ),
+        "seams": list(METRIC_SEAMS),
+        "seam_text": metric_seam_text(),
+    }
+
+
+def gear(chain: str, action_cost: int) -> dict:
+    """The loot one participant holds on ``chain``, and the item classes nothing builds."""
+    identity = participant_identity()
+    address = None if identity is None else identity.bot_id
+    loot = loot_section(chain, address, action_cost)
+    return {
+        "title": GEAR_TITLE,
+        "rows": loot["rows"],
+        "note": loot["note"],
+        "absent_classes": list(GEAR_ABSENT_CLASSES),
+        "absent_text": GEAR_ABSENT_TEXT.format(names=", ".join(GEAR_ABSENT_CLASSES)),
+    }
+
+
+def skill_tree(built: dict) -> dict:
+    """``built``'s ladder as a list, naming every skill on it and why it is no tree."""
+    return {
+        "title": SKILL_TREE_TITLE,
+        "levels": built["levels"],
+        "transfer": built["transfer"],
+        "notes": built["notes"],
+        "list_text": SKILL_TREE_LIST_TEXT.format(
+            count=len(SKILL_NAMES), names=", ".join(SKILL_NAMES)
+        ),
+    }
+
+
+def map_panel(variant: EventVariant) -> dict:
+    """The map subtab: whether ``variant`` opens it, and that no world is generated."""
+    return {
+        "title": MAP_TITLE,
+        "reachable": map_reachable(variant),
+        "open_text": MAP_OPEN_TEXT,
+        "refusal": map_refusal(variant),
+        "absent_text": MAP_ABSENT_TEXT,
+    }
+
+
 def view_model(params: dict) -> dict:
     """Bridge handler for ``proof_of_accumulation_tab.state``.
 
@@ -882,24 +1099,32 @@ def view_model(params: dict) -> dict:
     pick, pick_note = class_pick(params, variant.code)
     level = FIRST_LEVEL if pick is None else ClassProgress(pick.class_name).level
     running = event(variant, epoch_of(params), level)
+    rows = participants(chain, pick)
+    built_skills = skills(chain)
     return {
         "accessible_name": HEADING,
         "built": BUILT,
         "chain": chain,
+        "character_stats": character_stats(rows, params),
         "classes": classes(),
         "event": running,
+        "gear": gear(chain, running["impetus_granted"]),
         "heading": HEADING,
         "issue": ISSUE,
         "issue_text": ISSUE_TEXT,
+        "map": map_panel(variant),
         "metric_sources": metric_sources(),
         "method": METHOD,
         "modes": modes(),
-        "participants": participants(chain, pick),
+        "participants": rows,
         "party": party(),
         "pick_note": pick_note,
         "redistribution": redistribution(chain, event_id_of(params, variant)),
-        "skills": skills(chain),
+        "skill_tree": skill_tree(built_skills),
+        "skills": built_skills,
         "state_text": STATE_TEXT,
+        "subtab": subtab_of(params, variant),
+        "subtabs": subtabs(variant),
         "wallet": wallet(chain, running["impetus_granted"]),
         "zones": zones(),
     }
