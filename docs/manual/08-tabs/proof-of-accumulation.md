@@ -5128,3 +5128,315 @@ Nothing is deployed and no network is reached. Every run here is local.
 No control on screen drops an item, so the operator sees nothing new today. The
 coverage protects the rarity scale and the item page a marketplace would read,
 before either reaches a chain.
+
+## 2026-09-10 13:28 - #147 - what a world costs on the chain
+
+### The question turns round, and then it closes
+
+He asked how large a full world state must be. A chain keeps the transitions and
+never a copy of the state in every block, so the answer is what one action costs
+and what a budget buys. His own rule sets it that way round: a maximum world state
+size dictates the participant count and how large a generative world may be.
+
+Driving records through the chain, letting the chain save itself and reading the
+file size gives this.
+
+```
+one action on the chain today            988 bytes
+one action in a chosen encoding          399 bytes
+recommended ceiling                      1 MB per layer per one-hour world turn
+participants a layer                     655
+squares a layer                          655
+squares per participant                  1, fixed rather than chosen
+a twenty-layer world                     20 MB an hour, 13,100 participants
+his 3,136-block chain reloads in         65 ms
+a hundred times those records            4.9 s
+what binds                               the save, not the size and not the load
+the checkpoint a cube forces             about once a day at twenty layers
+```
+
+### His own chain, confirmed
+
+The platform reports its own record counts, and the file system reports the bytes.
+Both agree with the figures already recorded for this tab.
+
+```
+blocks         3,136
+transactions   3,135
+events         2,565
+file bytes 4,059,629
+```
+
+Re-saving that chain through the platform's own save path writes 3,946,745 bytes
+with every section unchanged. The 112,884-byte difference is one carriage return a
+line, left by an older build writing in Windows text mode. The per-record averages
+of 291, 369 and 322 bytes therefore run 2.86% high, and correct to 283, 359 and 313.
+
+### One action, measured eight ways
+
+One hundred grid moves were driven through the chain for each row, as a transaction
+carrying an event, a turn, the actor, the action, two squares and an Impetus cost.
+They exist to be measured and they are not a design. Each figure includes the block
+the action rides in.
+
+```
+one block per action, named fields, indented   988   what the chain does today
+one block per action, packed argument          781
+one block per action, named fields, compact    969
+one block per action, packed argument, compact 616
+one block per turn,   named fields, indented   714
+one block per turn,   packed argument          508
+one block per turn,   named fields, compact    526
+one block per turn,   packed argument, compact 399   the chosen encoding
+```
+
+### What the smaller encoding gives up
+
+Dropping the indentation saves 875,348 bytes on his chain, 22 per cent, and costs a
+file a person can read. Packing the arguments saves 207 bytes an action and leaves
+a record nothing can interpret without the code that wrote it. Sharing one block
+across a turn saves 274 bytes an action and gives up the ordering that block number
+supplies today.
+
+```
+his chain indented   3,946,745 bytes
+his chain compact    3,071,397 bytes
+```
+
+### Two clocks, and only one of them is bounded
+
+A world turn is one hour. A dungeon or raid turn is one candle. The hour divides
+exactly into both.
+
+```
+elite event turn       60 s, sixty turns an hour
+standard event turn   300 s, twelve turns an hour
+world turn           3600 s, one turn an hour
+```
+
+The Impetus pool bounds an event turn: four at the first level, one more every
+twenty levels, and a speed multiplier may at most double the level's own grant.
+The modes module holds no one-hour term at all, so nothing bounds the actions in a
+world turn. The ceiling below can be stated and not enforced until a world-turn
+allowance exists.
+
+In development.
+
+### A world rebuilds from its own history in well under a second
+
+His real chain, and then ten and a hundred times its records, were loaded through
+the platform's own load path. Each figure subtracts a control run that builds the
+same objects without loading.
+
+```
+records    file bytes       load   per record
+  8,836     4,059,629      65 ms     7.4 us
+ 65,265    26,031,824     516 ms     7.9 us
+629,565   247,769,048   4,901 ms     7.8 us
+```
+
+The cost per record stays flat across seventy-one times the history. One second of
+load buys about 125,000 records, and ten seconds buys 1.28 million.
+
+### The save is what binds
+
+The save path rewrites the whole file every time, and the timer fires half a second
+after the last change.
+
+```
+ 3,946,745 bytes      67 ms
+26,031,824 bytes     336 ms
+247,769,048 bytes  3,444 ms
+```
+
+At fifteen milliseconds a megabyte a save finishes inside that half second only
+while the chain stays under about 34 megabytes, which is roughly 85,000 actions for
+the life of the world. A ten-second load would allow 1.28 million. The current save
+path therefore stops a world at one fifteenth of what its own load time allows.
+
+The shape that removes it appends each record to the log rather than rewriting the
+file, and writes a full snapshot now and then so a load reads one snapshot and a
+short tail. Neither is built.
+
+In development.
+
+### One megabyte an hour, recommended
+
+The per-action cost rounds up to 400 bytes and the budget rounds down from the 1.28
+megabytes a ten-second load would allow. Both roundings keep the bound safe.
+
+Maximum world size and maximum participants reach the ceiling together, so nothing
+is left over to spend on world and no trade-off exists between the two. One number
+moves and both caps land on the same budget point.
+
+```
+1,048,576 / 400  = 2,621 action records a world turn
+
+actions each   participants   world squares   squares per participant
+      4             655            655                  1
+      8             327            327                  1
+     20             131            131                  1
+     40              65             65                  1
+
+a 720-turn season = 720 MB, which reloads in 14.7 s
+```
+
+The recommended point is the first row: 655 participants on 655 squares, per layer.
+One megabyte rests on the ten-second load ceiling and nothing else.
+
+### A world is a cube, so the layer count multiplies the chain
+
+A world carries a third axis, the tree level. The Sephirot number ten and the Tree of
+Death inverts each of them, which reads as twenty layers. Twenty is a reading of his
+wording rather than a ruling, so ten sits beside it.
+
+```
+layers   chain an hour   participants   squares   a 720-turn season
+   1         1 MB              655        655        720 MB
+  10        10 MB            6,550      6,550      7,200 MB
+  20        20 MB           13,100     13,100     14,400 MB
+```
+
+The cube figure is the real one. The flat figure is a comparison, and quoting it for
+a world that has layers would be wrong by the layer count.
+
+### Where the cube collides with constant density
+
+Capping size and participants together fixes area per participant, and a third axis
+can honour that two ways.
+
+```
+density per world   655 participants over 20 layers, so a layer holds 33 of them
+                    on 33 squares, about six by six
+density per layer   each layer keeps the cap, so every layer stays a world and the
+                    cube holds twenty times the participants and the storage
+```
+
+These figures take the second reading. The first holds the density constant only by
+shrinking a layer to a six-by-six board, which is not a world and leaves a zone
+thirty-three participants to take a level from. Keeping every layer a world means the
+cap is per layer, and a twenty-layer world then costs twenty megabytes an hour.
+
+### How often a checkpoint has to be written
+
+A checkpoint is a full snapshot beside the log, so a load reads one snapshot and the
+records since it. The cadence follows from the two ceilings already measured: 512
+megabytes is what a ten-second load allows, and 34 megabytes is where the current
+save stops keeping up with its own timer.
+
+```
+layers   reaches 512 MB in       reaches 34 MB in
+   1     512 turns, 21 days      34 turns, 1.4 days
+  10      51 turns, 2.1 days      3.4 turns, 3.4 hours
+  20      26 turns, about a day   1.7 turns, under 2 hours
+```
+
+A cube saturates the current save path inside two hours. Appending each record and
+snapshotting now and then is the condition on the first multi-layer world running at
+all, not an improvement for later.
+
+In development.
+
+### Why the two caps arrive together
+
+A square costs nothing until something changes it, and a square changes only where a
+participant acts. A square's records are that participant's action records rather
+than an addition to them.
+
+```
+the seed            one record, once
+a square unchanged  nothing
+a square changed    the action record of whoever changed it
+```
+
+A world larger than its participants can reach holds squares that produce nothing,
+and a smaller one crowds every square. One budget, one exhaustion point, both caps.
+
+### One square a participant, and the rule that fixes it
+
+Two rules already set decide the density rather than a choice made here. Base
+viewrange is one square, and a zone's level tracks the average character level of
+those in it.
+
+```
+base viewrange            one square
+zone level                follows the participants in that zone
+squares per participant   1
+```
+
+Above one square a participant the average square stands empty, a one-square
+viewrange shows nobody, and a zone has no population to take a level from. A world
+at this density is never large and sparse, and never small and crowded. Every later
+unit sizes a map against this number.
+
+### Sight is bounded and storage is not
+
+Viewrange bounds what a participant sees. A chain holding only what one participant
+can see would not be a chain, so the two figures stay separate.
+
+The layer axis multiplies what the chain holds and divides what a participant gets,
+so the two figures pull apart. A participant sees a higher or lower layer only once
+able to enter it.
+
+```
+the chain holds, twenty layers         52,420 records a world turn
+one participant, one layer                  4 records a world turn
+one participant, all twenty layers         80 records a world turn
+```
+
+At base viewrange on one layer a participant receives one record in thirteen
+thousand. A range boost multiplies that share by the squares it adds and changes
+nothing about what the chain stores. Nothing in the competition package carries a
+zone, a square, a tile, a layer or a viewrange, so neither figure has a consumer yet.
+
+In development.
+
+### Ordering a world turn needs a position inside the block
+
+World actions resolve in timestamp order when the block closes. The block's own id
+covers its timestamp; a transaction's id deliberately leaves its timestamp out, so
+that two nodes holding one transaction agree on its id.
+
+```
+block id        number, parent, timestamp, transaction list
+transaction id  sender, recipient, function, arguments, gas, status
+                block number and timestamp excluded
+```
+
+Two nodes can therefore hold one transaction with different timestamps, both chains
+verify, and the two order the world turn differently. The recommended direction is
+for the block to assign each transaction its position at close and for that position
+to enter the transaction's id. A position costs about ten bytes, inside the rounding
+already taken, and it changes every id on the chain, so it is a schema change of its
+own.
+
+In development.
+
+### The platform reports his own history as altered
+
+Loading his chain makes the integrity check report every record as altered.
+
+```
+chain NOT verified: 3135 of 3136 blocks altered, 0 parent links broken,
+3135 of 3135 transactions altered
+```
+
+His file was written before records took the hash of their own contents as a name,
+and the schema version did not move when that landed. The state rebuilds correctly,
+and only the records written before content addressing cannot be verified. Raising
+the schema version would make the load delete his file and 3,136 blocks with it, and
+re-assigning ids on load is the one thing a tamper check must never do. The choice
+is his.
+
+In development.
+
+### What this measurement does not reach
+
+An identity on this chain is text: 66 characters for a hash and 42 for an address.
+Bytes would halve both, and that changes the chain's identity model rather than its
+encoding, so nothing here measures it.
+
+No grid exists, so the square count the density constant gives has nothing in the
+code to apply it to. Nothing bounds the actions in a world turn, so the recommended
+ceiling has no enforcement point yet. Twenty layers is a reading of his wording and
+not a ruling, and ten sits beside it throughout.
