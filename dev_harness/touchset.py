@@ -55,12 +55,18 @@ through its published `to_dict()` contract.
 
 WHERE THE ROUTING RULE COMES FROM
 =================================
-`.claude/hooks/archetype_gate.py:_pick_archetypes` already decides which
-archetype grades which path for the PostToolUse gate. That function is
-IMPORTED here, not copied, so the two can never drift. If it cannot be
-loaded this module refuses to run rather than falling back to a private
-mapping — a silent fallback would be exactly the reimplementation the
-scope forbids.
+`dev_harness/hooks/archetype_gate.py:_pick_archetypes` already decides
+which archetype grades which path for the PostToolUse gate. That
+function is IMPORTED here, not copied, so the two can never drift. The
+file is TRACKED, so every worktree and every fresh clone carries it. A
+gitignored copy is reachable from no worktree, so no gitignored path is
+cited here.
+
+If it cannot be loaded this module refuses to run rather than falling
+back to a private mapping — a silent fallback would be exactly the
+reimplementation the scope forbids. Every refusal prints its own exit
+code in its headline: a caller reading `$?` after a pipe is handed the
+pipe's status, and the text is then the only surface left.
 
 The gate's rule routes `.py` to coding, plus gui when the source defines
 a Qt-based class, plus ta when the file looks like indicator maths; and
@@ -109,6 +115,11 @@ EXIT CODES
   2  the run could not be made — a path missing or outside the root, an
      unusable or self-inconsistent pin, routing unavailable
 
+Every command ends through `_say_verdict`, which prints `OK (exit 0)` or
+`REFUSED (exit N)` from the same value it returns. The number is in the
+text as well as the status, so a transcript that lost the status — `$?`
+read after a pipe returns the pipe's status — still says which it was.
+
 FALSIFICATION
 =============
 This module is wrong if a path that does not exist reaches an archetype
@@ -143,7 +154,7 @@ from typing import cast
 
 REPO = Path(__file__).resolve().parents[1]
 
-GATE_RELPATH = ".claude/hooks/archetype_gate.py"
+GATE_RELPATH = "dev_harness/hooks/archetype_gate.py"
 ROUTING_CITATION = f"{GATE_RELPATH}:_pick_archetypes"
 
 DEFAULT_PIN = "tools/.touchset_pin.json"
@@ -245,6 +256,19 @@ def _say(line: str = "") -> None:
     sys.stdout.write(line + "\n")
 
 
+def _say_verdict(code: int, headline: str, *detail: str) -> int:
+    """Print `headline` as `OK (exit 0)` or `REFUSED (exit N)`, return `code`.
+
+    `code` is both printed and returned, so a caller that loses the exit
+    status still reads it in the text.
+    """
+    label = "OK" if code == 0 else "REFUSED"
+    _say(f"{label} (exit {code}): {headline}")
+    for line in detail:
+        _say(line)
+    return code
+
+
 def _now() -> str:
     """Return an ISO-8601 UTC timestamp."""
     return datetime.now(timezone.utc).isoformat()
@@ -253,9 +277,9 @@ def _now() -> str:
 def sha256_bytes(data: bytes) -> str:
     """Return the SHA-256 of raw bytes, with no normalisation.
 
-    Line endings are NOT normalised here, unlike `tools/island.py`. This
-    hash is content identity for a pin, and a line-ending flip is
-    exactly one of the changes the pin exists to notice.
+    Line endings are NOT normalised. This hash is content identity for a
+    pin, and a line-ending flip is exactly one of the changes the pin
+    exists to notice.
     """
     return hashlib.sha256(data).hexdigest()
 
@@ -282,7 +306,7 @@ def git_head(root: Path) -> str | None:
 
 
 def load_gate() -> ModuleType:
-    """Import `.claude/hooks/archetype_gate.py` as a module object.
+    """Import `dev_harness/hooks/archetype_gate.py` as a module object.
 
     The hook is not on any import path, so it is loaded from its file
     location. Import-time work in that module is limited to a stdout
@@ -903,8 +927,8 @@ def resolve_paths(
 def iter_routed_files(root: Path, suffixes: frozenset[str]) -> Iterator[Path]:
     """Yield every file under `root` that an archetype could route to.
 
-    Skips caches, virtualenvs and any nested island, matching the same
-    exclusions `tools/island.py` uses when it walks a tree.
+    Skips the names in SKIP_DIR_NAMES and any directory holding
+    ISLAND_MANIFEST.
     """
     stack = [root]
     while stack:
@@ -1000,7 +1024,7 @@ def write_pin(
 ) -> None:
     """Write the machine-readable pin. The only file this module writes."""
     payload: dict[str, object] = {
-        "tool": "tools.touchset",
+        "tool": "dev_harness.touchset",
         "pin_version": PIN_VERSION,
         "created": _now(),
         "root": str(root),
@@ -1138,7 +1162,7 @@ def _say_counts(entries: list[Entry]) -> None:
 
 def _refuse_paths(problems: list[PathProblem]) -> int:
     """Print the unusable-path refusal and return its exit code."""
-    _say(f"REFUSED: {len(problems)} path(s) cannot enter a touch set.")
+    code = _say_verdict(2, f"{len(problems)} path(s) cannot enter a touch set.")
     _say("")
     for problem in problems:
         _say(f"  {problem.kind}  {problem.raw}")
@@ -1149,7 +1173,7 @@ def _refuse_paths(problems: list[PathProblem]) -> int:
     _say("A verification that scanned nothing is not a pass, so this")
     _say("refuses before any archetype runs. Fix the path and re-run.")
     _say("Nothing was measured and no pin was written.")
-    return 2
+    return code
 
 
 def baseline(
@@ -1164,10 +1188,12 @@ def baseline(
     try:
         routing = load_routing()
     except RoutingUnavailable as exc:
-        _say(f"REFUSED: {exc}")
-        _say("This module reuses the gate's routing rather than copying it,")
-        _say("so with no rule to reuse it measures nothing. Nothing written.")
-        return 2
+        return _say_verdict(
+            2,
+            str(exc),
+            "This module reuses the routing rule rather than copying it, so",
+            "with no rule to reuse it measures nothing. Nothing written.",
+        )
 
     rels, problems = resolve_paths(root, raw_paths)
     if problems:
@@ -1186,16 +1212,19 @@ def baseline(
     reasons = [reason for entry in entries for reason in entry.red_reasons()]
     if reasons:
         _say("")
-        _say(f"REFUSED: {len(reasons)} archetype verdict(s) are already red")
-        _say("on the UNMODIFIED tree, before this unit edits anything.")
-        _say("")
+        code = _say_verdict(
+            1,
+            f"{len(reasons)} archetype verdict(s) are already red on the",
+            "UNMODIFIED tree, before this unit edits anything.",
+            "",
+        )
         for reason in reasons:
             _say(f"  {reason}")
         _say("")
         _say("A unit cannot be greener than the files it lands in. Either")
         _say("DROP the file from the touch set, or fix the red first as its")
         _say("own unit. No pin was written.")
-        return 1
+        return code
 
     write_pin(pin_path, root, entries, only)
     _say("")
@@ -1208,8 +1237,7 @@ def baseline(
         _say("  to clear. This is only true if the baseline was taken BEFORE")
         _say("  the first edit — nothing here can prove that it was.")
     _say("")
-    _say(f"Pin written: {pin_path}")
-    return 0
+    return _say_verdict(0, f"pin written to {pin_path}")
 
 
 def _pinned_directives(pinned: dict[str, object]) -> tuple[int, dict[str, int]]:
@@ -1526,22 +1554,21 @@ def _check_setup(
     """Validate everything `check` needs, or return an exit code."""
     pin, refusal = load_pin(pin_path)
     if pin is None:
-        _say(f"REFUSED: {refusal}")
-        _say("Comparing against an unusable pin would compare against zero,")
-        _say("which is the mistake this command exists to prevent.")
-        return 2
+        return _say_verdict(
+            2,
+            refusal,
+            "Comparing against an unusable pin would compare against zero,",
+            "which is the mistake this command exists to prevent.",
+        )
     if not against.is_dir():
-        _say(f"REFUSED: --against {against} is not a directory.")
-        return 2
+        return _say_verdict(2, f"--against {against} is not a directory.")
     try:
         routing = load_routing()
     except RoutingUnavailable as exc:
-        _say(f"REFUSED: {exc}")
-        return 2
+        return _say_verdict(2, str(exc))
     baseline_root, root_refusal = _resolve_baseline_root(pin, options)
     if baseline_root is None:
-        _say(f"REFUSED: {root_refusal}")
-        return 2
+        return _say_verdict(2, root_refusal)
     return pin, routing, baseline_root
 
 
@@ -1558,22 +1585,29 @@ def _say_check_result(
     if notes:
         _say("")
     if failures:
-        _say(f"REFUSED: {len(failures)} check(s) fired against the pin.")
-        _say("")
+        code = _say_verdict(
+            1,
+            f"{len(failures)} check(s) fired against the pin.",
+            "",
+        )
         for line in failures:
             _say(f"  {line}")
         _say("")
         _say("Compared to the PIN, never to zero. Nothing was changed.")
-        return 1
+        return code
     if reduced:
-        _say("REFUSED: this pin is REDUCED — --only narrowed its archetype")
-        _say("set, so a pass here is not a pass over the archetypes that")
-        _say("were never run. Re-run baseline without --only, or pass")
-        _say("--accept-reduced to record that a partial result was accepted.")
-        return 1
-    _say(f"OK: {count} file(s) match the pin, and no file the pin never saw")
-    _say("    carries a suppression, a red verdict or a foreign line ending.")
-    return 0
+        return _say_verdict(
+            1,
+            "this pin is REDUCED — --only narrowed its archetype set, so a",
+            "pass here is not a pass over the archetypes that were never",
+            "run. Re-run baseline without --only, or pass --accept-reduced",
+            "to record that a partial result was accepted.",
+        )
+    return _say_verdict(
+        0,
+        f"{count} file(s) match the pin, and no file the pin never saw",
+        "    carries a suppression, a red verdict or a foreign line ending.",
+    )
 
 
 def check(pin_path: Path, against: Path, options: CheckOptions) -> int:
@@ -1646,7 +1680,7 @@ def check(pin_path: Path, against: Path, options: CheckOptions) -> int:
 def build_parser() -> argparse.ArgumentParser:
     """Return the argument parser for the two subcommands."""
     parser = argparse.ArgumentParser(
-        prog="python -m tools.touchset",
+        prog="python -m dev_harness.touchset",
         description=(
             "Baseline a touch set before the first edit, and check an "
             "island against that baseline."
@@ -1734,11 +1768,14 @@ def main(argv: list[str] | None = None) -> int:
         return _run(args)
     except ArchetypeTimeout as exc:
         _say("")
-        _say(f"REFUSED: {exc}")
-        _say("Nothing was written. Re-run, or raise --timeout deliberately.")
+        code = _say_verdict(
+            1,
+            str(exc),
+            "Nothing was written. Re-run, or raise --timeout deliberately.",
+        )
         sys.stdout.flush()
         sys.stderr.flush()
-        os._exit(1)
+        os._exit(code)
 
 
 if __name__ == "__main__":
