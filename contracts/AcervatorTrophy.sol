@@ -18,10 +18,13 @@
 // The SVG artwork is stored tier-by-tier as base64 constants set at deployment.
 // Each trophy of the same tier is visually identical; metadata differentiates them.
 //
-// Supply is unbounded on-chain. This contract declares no tier ceiling and no
-// per-tier counter, and CompetitionRegistry holds no reference to it, so its
-// Ekthelius and Grand Accumulator caps bound ACRV awards and not these NFTs.
-// The only minter reachable today is this contract's owner.
+// Four tiers carry a lifetime ceiling, enforced inside mint against a counter
+// this contract keeps per tier name, so the owner meets the ceiling the registry
+// meets. Harvest is the only uncapped tier, and a tier name outside the five is
+// refused, so no name reaches an uncounted slot.
+// CompetitionRegistry still holds no reference to this contract: its
+// MAX_EKTHELIUS and MAX_GRAND_ACCUMULATOR bound ACRV awards, and the constants
+// below bound these NFTs.
 // =============================================================================
 pragma solidity 0.8.36;
 
@@ -42,6 +45,17 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
 
     /// Only CompetitionRegistry may mint trophies.
     address public immutable registry;
+
+    // ── Tier lifetime supply caps (enforced in mint, immutable) ───────────────
+    // Harvest has no constant and no ceiling. These four match the max_ever
+    // values in src/competition/season_schedule.py RARITY_TIERS.
+
+    uint256 public constant MAX_GOLD_FOLD         = 100_000;
+    uint256 public constant MAX_BEAR_SLAYER       = 10_000;
+    uint256 public constant MAX_GRAND_ACCUMULATOR = 1_000;
+    uint256 public constant MAX_EKTHELIUS         = 21;
+
+    mapping(string => uint256) public tierMinted;
 
     // ── Trophy metadata per token ─────────────────────────────────────────────
 
@@ -135,6 +149,9 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
     /**
      * @notice Mint a trophy NFT to the winning bot's wallet.
      * @dev    Called by CompetitionRegistry immediately after token award.
+     *
+     *         _countTierMint runs before _safeMint, so a recipient re-entering
+     *         through onERC721Received reads the raised count.
      */
     function mint(
         address         recipient,
@@ -152,6 +169,8 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
         require(bytes(tier).length > 0,  "Trophy: empty tier");
         require(bytes(_tierSvgB64[tier]).length > 0,
                 "Trophy: SVG not uploaded for this tier");
+
+        _countTierMint(tier);
 
         tokenId = _nextTokenId++;
         _safeMint(recipient, tokenId);
@@ -255,6 +274,28 @@ contract AcervatorTrophy is ERC721, Ownable2Step {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// @dev Refuses a tier outside the five and a mint at a capped tier's
+    ///      ceiling, then raises that tier's counter.
+    function _countTierMint(string calldata tier) private {
+        bytes32 tierHash = keccak256(bytes(tier));
+        if (tierHash == keccak256("Ekthelius")) {
+            require(tierMinted[tier] < MAX_EKTHELIUS,
+                    "Trophy: Ekthelius supply of 21 exhausted");
+        } else if (tierHash == keccak256("Grand Accumulator")) {
+            require(tierMinted[tier] < MAX_GRAND_ACCUMULATOR,
+                    "Trophy: Grand Accumulator supply of 1,000 exhausted");
+        } else if (tierHash == keccak256("Bear Slayer")) {
+            require(tierMinted[tier] < MAX_BEAR_SLAYER,
+                    "Trophy: Bear Slayer supply of 10,000 exhausted");
+        } else if (tierHash == keccak256("Gold Fold")) {
+            require(tierMinted[tier] < MAX_GOLD_FOLD,
+                    "Trophy: Gold Fold supply of 100,000 exhausted");
+        } else {
+            require(tierHash == keccak256("Harvest"), "Trophy: unknown tier");
+        }
+        ++tierMinted[tier];
+    }
 
     function _attr(string memory key, string memory value)
         internal pure returns (string memory)

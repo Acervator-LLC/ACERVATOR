@@ -21,7 +21,8 @@
 //   • All competition results are permanently on-chain (append-only)
 //
 // Neither cap reaches AcervatorTrophy. This contract holds no reference to the
-// NFT contract and mints no NFT, so an NFT tier is uncapped on-chain.
+// NFT contract and mints no NFT. AcervatorTrophy declares its own four tier
+// constants and enforces them in its own mint.
 // =============================================================================
 pragma solidity 0.8.36;
 

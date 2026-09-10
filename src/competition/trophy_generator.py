@@ -262,7 +262,7 @@ def generate_preview_html(output_path: str = "trophy_preview.html"):
     }
     supply = {
         "Harvest": "Unlimited",
-        "Gold Fold": "Unlimited",
+        "Gold Fold": "100,000",
         "Bear Slayer": "10,000",
         "Grand Accumulator": "1,000",
         "Ekthelius": "21 ever",
