@@ -3826,3 +3826,135 @@ How much longer a large award waits than a small one is also open. Three candles
 is the floor the design gives, and the gate holds there.
 
 In development.
+
+## 2026-09-10 10:07 - #147 - the pot divides on performance, and the remainder rests
+
+An Elite Event ends and the Quintessence its participants spent is divided back to
+them. Seventy-five per cent of the pot returns. The share each one takes is their
+own performance score over every score in the event, and nothing in that sum reads
+what anybody spent.
+
+```python
+RETURN_PERCENT = 75
+BASE_UNITS_PER_QUINTESSENCE = 10**18
+
+return_pool_units = pot_units * RETURN_PERCENT // 100
+amount_units = return_pool_units * own // total_score_units
+```
+
+### The top spender performed worst and took nothing
+
+Three participants distilled four Quintessence each and acted in one event. One
+bought the dearest band eight times, one bought the cheapest band once. The real
+trade grader graded three real fills, and the grades run the other way from the
+spending.
+
+```
+                spent    actions   grade   axes   payout
+big_spender     0.800          8   F 0.0      4   0
+middle          0.030          3   C 0.5748   4   0.227485458470916941
+small_spender   0.001          1   A+ 1.0     4   0.395764541529083058
+```
+
+The participant who put 0.800 of a 0.831 pot in took nothing back. The one who put
+0.001 in took the largest payout. Dividing by spend would have paid the first one
+almost everything.
+
+### A grade the platform could not compute takes no share
+
+A fill with no surrounding price data scores no axis, and the grader answers 0.5 as
+its default. That 0.5 is not a measurement, so the division refuses it a share, the
+same refusal the capture bounds already make on an award.
+
+```
+alpha   grade 0.8008   axes 2   share 0.444691248334073745   0.103724233673922701
+beta    grade 1        axes 2   share 0.555308751665926254   0.129525766326077298
+gamma   grade 0.5      axes 0   no scored axis, so no share
+```
+
+### The books balance through the payout, and no bucket goes negative
+
+The three buckets and the supply are read before the payout and again after it.
+Quintessence moves from the pot into wallets and none is made or lost.
+
+```
+before   wallets 2.689                 held 0.311                 platonic 0
+         minted 3   delta 0   balanced True   negative buckets 0
+after    wallets 2.922249999999999999   held 0.077750000000000001   platonic 0
+         minted 3   delta 0   balanced True   negative buckets 0
+```
+
+### The pot equals the payouts plus the reserve, exactly
+
+This division does not divide evenly. The return pool is 0.23325 and the two shares
+come to one indivisible unit less. That unit is not dropped and not rounded away; it
+joins the quarter that never left and rests at the pot address as the reserve.
+
+```
+pot                   0.311
+return pool, 75%      0.23325
+paid to participants  0.233249999999999999
+division remainder    0.000000000000000001
+reserve               0.077750000000000001
+
+0.233249999999999999 + 0.077750000000000001 = 0.311
+```
+
+The reserve is also what the pot address still holds, so the figure on the screen and
+the figure on the chain are the same figure.
+
+### A settled event is refused a second payout, across a restart
+
+The store is stamped before the ledger moves. One program run paid the event and
+exited. A second run read the same files back and refused to pay again.
+
+```
+SETTLED AT live 1700000500.0
+SECOND SETTLE REFUSED live raid was settled at 1700000500.0; a second payout
+  would take Quintessence the pot no longer rests
+```
+
+### The page draws it, on both chains
+
+The Accumulation page carries a Redistribution panel under the skill ladder. The
+page was drawn and its own text read back.
+
+```
+chain live      3180 characters   Pot 0.311   reserve 0.077750000000000001
+chain testnet   3188 characters   Pot 0.311   reserve 0.077750000000000001
+
+quintessence_ledger.json           poa_record_store.json
+quintessence_ledger_testnet.json   poa_record_store_testnet.json
+```
+
+Demo mode is the same code over a different chain. The panel takes its ledger, its
+store and its pot address at construction, so the demo run is one more object over
+its own files and there is no flag anywhere in the division.
+
+### One sentence on the skills panel was corrected
+
+The panel said no field holds a use's quality. The record store now holds each use's
+quality as weighted uses, so the sentence was wrong on screen. It now reads:
+
+```
+The record store holds each use's quality as weighted uses, and this panel reads
+the participant's own. Nothing records a use yet, so the skill stands at level 0.
+```
+
+The panel also reads the participant's own standing out of the store rather than
+building a fresh one, so the level it prints is the level the store holds.
+
+### What the redistribution does not reach
+
+No control starts a payout. Nothing on screen settles a pot, and the Quint Wallet is
+where that control belongs.
+
+Nothing writes a performance score during live play. The score is the trade grade,
+read through the RPG conversion, and the writer is reached only from inside the
+redistribution itself. A certified fill carries a grade but carries no count of
+scored axes, so a live fill cannot yet say whether its grade is a measurement.
+
+No guild exists, so a treasury's spend sizes the pot under the actor's own address
+and no officer is checked.
+
+In development.

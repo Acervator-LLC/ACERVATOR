@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from src.competition.action_spend import ActionSpend
     from src.competition.capture_bounds import CaptureBounds
     from src.competition.certification_socket import CertificationSocket
+    from src.competition.event_redistribution import EventRedistribution
     from src.competition.market_rotation import MarketRotation
     from src.competition.node_link import PoaNodeLink
     from src.competition.quintessence_ledger import QuintessenceLedger
@@ -126,6 +127,7 @@ class SharedTestnetBridge(QObject):
         self._capture_bounds: Optional[CaptureBounds] = None
         self._node_link: Optional[PoaNodeLink] = None
         self._action_spend: Optional[ActionSpend] = None
+        self._event_redistribution: Optional[EventRedistribution] = None
 
         self._drain_timer = QTimer(self)
         self._drain_timer.setInterval(QUEUE_DRAIN_INTERVAL_MS)
@@ -154,8 +156,9 @@ class SharedTestnetBridge(QObject):
     ):
         """Create the shared ``LocalTestnet``, the bridge, the
         ``QuintessenceLedger``, the ``CertificationSocket``, the
-        ``MarketRotation``, the ``CaptureBounds``, the ``PoaNodeLink`` and
-        the ``ActionSpend``, and attach all eight to ``main_win``.
+        ``MarketRotation``, the ``CaptureBounds``, the ``PoaNodeLink``, the
+        ``ActionSpend`` and the ``EventRedistribution``, and attach all nine to
+        ``main_win``.
 
         A second call raises ``RuntimeError`` while ``_testnet_bridge``
         is set.
@@ -185,8 +188,45 @@ class SharedTestnetBridge(QObject):
         main_win._action_spend = bridge.install_action_spend(
             ledger, action_store_path, event_pot_address
         )
+        main_win._event_redistribution = bridge.install_event_redistribution(
+            ledger, main_win._action_spend
+        )
         logger.info("SharedTestnetBridge installed (persist=%s)", path)
         return bridge
+
+    def install_event_redistribution(
+        self,
+        quint_ledger: QuintessenceLedger,
+        action_spend: ActionSpend,
+    ) -> EventRedistribution:
+        """Build the ``EventRedistribution`` over the pot ``action_spend`` spends into.
+
+        It takes that object's store and held address, so a demo run divides its own
+        chain's pot through the same ``settle`` path.
+        """
+        from src.competition.event_redistribution import RETURN_PERCENT
+        from src.competition.event_redistribution import (
+            EventRedistribution as _Redistribution,
+        )
+
+        redistribution = _Redistribution(
+            quint_ledger, action_spend.store, action_spend.held_address
+        )
+        self._event_redistribution = redistribution
+        logger.info(
+            "EventRedistribution installed (pot=%s, return=%d%%, pot rests %s, "
+            "store=%s)",
+            redistribution.held_address,
+            RETURN_PERCENT,
+            quint_ledger.held_balance(redistribution.held_address),
+            redistribution.store.store_path,
+        )
+        return redistribution
+
+    @property
+    def event_redistribution(self) -> Optional[EventRedistribution]:
+        """Read the ``EventRedistribution`` this bridge installed."""
+        return self._event_redistribution
 
     def install_action_spend(
         self,
