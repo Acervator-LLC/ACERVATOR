@@ -3,13 +3,13 @@
 ``PoaNodeLink`` takes its ``LocalTestnet`` at construction and binds no socket
 until ``start_listening`` runs. ``announce`` writes one ``PeerEndpoint`` file into
 ``peer_dir``, ``peers`` reads the others, and ``sync_with`` trades every
-``ChainRecord`` both ways. ``apply_records`` keeps a record whose ``digest`` the
-chain does not already hold, so no record is ever dropped or reordered.
+``ChainRecord`` both ways. ``apply_records`` keeps a record whose ``tx_id`` the
+chain does not already hold, so no record is ever dropped or reordered, and
+refuses one whose ``tx_id`` is not the ``transaction_id`` of its own contents.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import socket
@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Iterable
 
 from ..core.io_utils import atomic_write_json
-from .local_testnet import LocalTestnet
+from .local_testnet import LocalTestnet, canonical_json, transaction_id
 
 logger = logging.getLogger("acervator.node_link")
 
@@ -40,22 +40,12 @@ class NodeLinkError(RuntimeError):
     """Raised when a link is not listening, or a peer is refused."""
 
 
-def _canonical_json(payload: dict | list) -> str:
-    """Return ``payload`` as JSON both nodes produce byte for byte."""
-    return json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
-
-
 @dataclass(frozen=True)
 class ChainRecord:
-    """One ``LocalChain`` transaction and the events it emitted.
+    """One ``LocalChain`` transaction, its ``tx_id`` and the events it emitted.
 
-    The six declared fields are the whole of the wire record, so ``from_payload``
-    raises ``TypeError`` for any other key, and ``digest`` covers all six.
+    The seven declared fields are the whole of the wire record, so ``from_payload``
+    raises ``TypeError`` for any other key.
     """
 
     from_addr: str
@@ -63,6 +53,7 @@ class ChainRecord:
     function_name: str
     args: dict
     gas_used: int
+    tx_id: str
     events: tuple
 
     @classmethod
@@ -86,12 +77,23 @@ class ChainRecord:
             "function_name": self.function_name,
             "args": self.args,
             "gas_used": self.gas_used,
+            "tx_id": self.tx_id,
             "events": [list(event) for event in self.events],
         }
 
-    def digest(self) -> str:
-        """Return the sha256 of this record's canonical JSON, its name on both nodes."""
-        return hashlib.sha256(_canonical_json(self.to_payload()).encode()).hexdigest()
+    def content_id(self) -> str:
+        """Return the chain's ``transaction_id`` for this record's five fields."""
+        return transaction_id(
+            self.from_addr,
+            self.to_addr,
+            self.function_name,
+            self.args,
+            self.gas_used,
+        )
+
+    def id_matches_contents(self) -> bool:
+        """Answer whether ``tx_id`` equals the ``content_id`` of this record."""
+        return self.tx_id == self.content_id()
 
 
 @dataclass(frozen=True)
@@ -163,7 +165,7 @@ class _LinkRequestHandler(socketserver.StreamRequestHandler):
         body = dict(payload)
         body["node_id"] = link.node_id
         body["network"] = link.network
-        self.wfile.write((_canonical_json(body) + "\n").encode("utf-8"))
+        self.wfile.write((canonical_json(body) + "\n").encode("utf-8"))
 
     def _refuse(self, reason: str) -> None:
         """Answer with ``reason`` and apply nothing."""
@@ -272,27 +274,33 @@ class PoaNodeLink:
                     function_name=tx.function_name,
                     args=dict(tx.args),
                     gas_used=int(tx.gas_used),
+                    tx_id=str(tx.tx_hash),
                     events=tuple(events.get(tx.tx_hash, ())),
                 )
                 for tx in chain._txs.values()
             ]
 
-    def digests(self) -> set[str]:
-        """Return the ``digest`` of every record this node's chain holds."""
-        return {record.digest() for record in self.records()}
-
     def apply_records(self, records: Iterable[ChainRecord]) -> int:
         """Mine every record this chain does not hold, and return how many were added.
 
-        A record reaches ``LocalChain.send_tx`` and ``LocalChain.emit`` only, so
-        ``function_name`` is stored and never called.
+        Refuses a record whose ``tx_id`` is not the ``content_id`` of its own fields,
+        and reaches ``LocalChain.send_tx`` and ``LocalChain.emit`` only.
         """
         added = 0
         with self._chain_lock:
-            held = self.digests()
             chain = self._testnet.chain
+            held = set(chain._txs)
             for record in records:
-                if record.digest() in held:
+                if not record.id_matches_contents():
+                    logger.warning(
+                        "node %s refused record %s calling %s: its contents name %s",
+                        self._node_id,
+                        record.tx_id,
+                        record.function_name,
+                        record.content_id(),
+                    )
+                    continue
+                if record.tx_id in held:
                     continue
                 tx = chain.send_tx(
                     record.from_addr,
@@ -303,7 +311,7 @@ class PoaNodeLink:
                 )
                 for contract, event_name, event_args in record.events:
                     chain.emit(tx.tx_hash, contract, event_name, dict(event_args))
-                held.add(record.digest())
+                held.add(record.tx_id)
                 added += 1
         return added
 
@@ -442,7 +450,7 @@ class PoaNodeLink:
         with socket.create_connection(
             (peer.host, peer.port), timeout=CONNECT_TIMEOUT_S
         ) as conn:
-            conn.sendall((_canonical_json(request) + "\n").encode("utf-8"))
+            conn.sendall((canonical_json(request) + "\n").encode("utf-8"))
             with conn.makefile("rb") as stream:
                 raw = stream.readline(MAX_MESSAGE_BYTES + 1)
         if not raw:

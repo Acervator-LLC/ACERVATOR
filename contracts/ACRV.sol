@@ -39,6 +39,10 @@ contract ACRV is ERC20, Ownable2Step, Pausable {
     /// Zero until setRegistry writes it; unchangeable after that one write.
     address public registry;
 
+    // ── Errors ────────────────────────────────────────────────────────────────
+
+    error OwnershipCannotBeRenounced();
+
     // ── Events ────────────────────────────────────────────────────────────────
 
     event TokensMinted(
@@ -139,6 +143,14 @@ contract ACRV is ERC20, Ownable2Step, Pausable {
 
     function pause()   external onlyOwner { _pause(); }
     function unpause() external onlyOwner { _unpause(); }
+
+    // ── Ownership cannot be abandoned ─────────────────────────────────────────
+
+    /// @notice Refuse to abandon ownership, because unpause is owner-only and a
+    ///         pause would then freeze every balance for good.
+    function renounceOwnership() public pure override {
+        revert OwnershipCannotBeRenounced();
+    }
 
     // ── Transfer hook — block transfers while paused ──────────────────────────
 

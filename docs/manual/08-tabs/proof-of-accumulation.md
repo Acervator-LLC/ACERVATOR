@@ -96,31 +96,31 @@ feed, or between two machines exchanging signed submissions.
 
 ## Tournaments
 
-`TournamentEngine` in `src/trading/poa_tournament.py` builds the game shapes.
-Each builder returns a tournament from a configuration, and one run method
-plays it over a candle provider to an outcome.
+`EventVariant` in `src/competition/poa_modes.py` builds the event shapes. Each
+of the four modes pairs with one Elite flag, so there are eight event types and
+no mode is written twice.
 
-| Builder | Shape |
-| ------- | ----- |
-| `build_duel` | Two participants, head to head |
-| `build_melee` | A whole field at once |
-| `build_gauntlet` | One challenger against a sequence |
+| Mode | Shape |
+| ---- | ----- |
+| `monster_smash` | One participant against low to midlevel creatures |
+| `team_monster_smash` | A certified guild, up to 120 against 1 |
+| `dungeon_crawl` | One participant, or a group of six, through a dungeon |
+| `raid` | A group of sixty, the most challenging and the most rewarding |
 
-`src/trading/poa_tournament.py` — `TournamentEngine.build_duel`
+`src/competition/poa_modes.py` — the one table the Elite flag indexes
 
 ```python
-def build_duel(
-    self,
-    a: Participant,
-    b: Participant,
-    season: Season,
-    acrv_purse: int = 10,
-    seed: Optional[int] = None,
+STANDARD_RULES = VariantRules(
+    STANDARD_SUFFIX, STANDARD_LABEL, STANDARD_TIMEFRAME, 0, 0, 0, 0
+)
+ELITE_RULES = VariantRules(ELITE_SUFFIX, ELITE_LABEL, ELITE_TIMEFRAME, 1, -1, 1, 1)
+
+VARIANT_RULES: dict[bool, VariantRules] = {False: STANDARD_RULES, True: ELITE_RULES}
 ```
 
-`DynamicEventScheduler` places market shocks, puzzle events and regime flips
-from the configuration's seed, so the same seed replays the same tournament.
-`LocalACRVAdapter` settles the award and each tournament persists as JSON.
+A turn is one candle of the market clock, and `turn_at` names the turn that
+clock is in. `ImpetusPool` holds the points one turn grants and loses what that
+turn does not spend.
 
 ## The token
 
@@ -478,8 +478,8 @@ DECAY_FACTOR = 0.85
 MIN_SEASON_REWARD = 100
 ```
 
-`TournamentEngine` in `src/trading/poa_tournament.py` builds the duel, the
-melee and the gauntlet. A local testnet module beside it simulates the whole
+`EventVariant` in `src/competition/poa_modes.py` builds the four modes and the
+Elite variant of each. A local testnet module beside it simulates the whole
 Base environment in memory, with no wallet and no network.
 
 ## 2026-09-09 19:39 - #147 - the contract repairs
@@ -1694,6 +1694,7 @@ A row prints health as a figure, not as a bar, and carries no role colour.
 Current health and wound depth need the fire-time gate reading, which arrives on
 the bus rather than in the saved file. Nothing here reads an ability, a mode or a
 turn.
+
 ## 2026-09-10 00:00 - #147 - the rotating reward set and eligibility
 
 A market pays Quintessence only while three things are true at once. It sits in
@@ -2029,6 +2030,495 @@ as much by putting business logic at its highest level. Contracts holding real
 value go to an outside firm before they reach a main network. That is a timing and
 cost decision, and it is named here so nobody discovers it late.
 
+## 2026-09-10 00:28 - #147 - the four modes, the Elite flag and the turn
+
+The tab now carries the eight event types the design names, a turn tied to the
+market's own candle, and the per-turn pool of points a participant spends inside
+it. A real bot also picks a character class for the first time.
+
+### Four modes, one Elite flag, eight event types
+
+The design carries four modes and one Elite flag, not eight modes. Difficulty,
+entry fee and both loot ranks are properties the variant answers, and one table
+is the only place the flag is read.
+
+`src/competition/poa_modes.py` — the whole Elite difference
+
+```python
+STANDARD_RULES = VariantRules(
+    STANDARD_SUFFIX, STANDARD_LABEL, STANDARD_TIMEFRAME, 0, 0, 0, 0
+)
+ELITE_RULES = VariantRules(ELITE_SUFFIX, ELITE_LABEL, ELITE_TIMEFRAME, 1, -1, 1, 1)
+```
+
+Elite is one step harder, one step cheaper to enter, and one step richer in both
+loot ranks. Those three directions are the whole of it.
+
+| Event type | Turn | Difficulty | Entry fee | Loot rarity | Loot drop |
+| ---------- | ---- | ---------- | --------- | ----------- | --------- |
+| `monster_smash` | 5m | 1 | 1 | 1 | 1 |
+| `monster_smash_elite` | 1m | 2 | 1 | 2 | 2 |
+| `team_monster_smash` | 5m | 2 | 2 | 2 | 2 |
+| `team_monster_smash_elite` | 1m | 3 | 1 | 3 | 3 |
+| `dungeon_crawl` | 5m | 3 | 3 | 3 | 3 |
+| `dungeon_crawl_elite` | 1m | 4 | 2 | 4 | 4 |
+| `raid` | 5m | 4 | 4 | 4 | 4 |
+| `raid_elite` | 1m | 5 | 3 | 5 | 5 |
+
+A rank is a place in an order, never a price. No entry fee amount and no loot
+table exist yet, so the ranks say which event is dearer and richer, not by how
+much. Unit 19 builds the loot.
+
+### The turn length follows the mode, and nothing branches on the flag
+
+An Elite turn is one 1m candle and every other turn is one 5m candle. No rule
+asks whether an event is Elite; each one reads a property instead, and that
+property reads the table above.
+
+`src/competition/poa_modes.py` — the turn's own length
+
+```python
+    @property
+    def turn_timeframe(self) -> str:
+        """The candle one turn is one of, from ``rules.timeframe``."""
+        return self.rules.timeframe
+
+    @property
+    def turn_seconds(self) -> int:
+        """The seconds in ``turn_timeframe``, read from ``TF_SECONDS``."""
+        return TF_SECONDS[self.turn_timeframe]
+```
+
+The seconds in a candle come from `TF_SECONDS`, which is the map the platform's
+own candle cache already uses. The game keeps no clock of its own.
+
+### The clock is fixed, and three refusals prove it
+
+A turn cannot be paused, extended or negotiated, because its boundary belongs to
+the market and every participant shares it. The program refuses each attempt in
+its own words.
+
+```
+a deadline past the candle close
+  turn 16666667 of the 1m candle closes at 1000000080; a deadline of
+  1000000100 would extend it by 20s, and the candle clock is fixed for
+  every participant
+
+acting after the candle closed
+  turn 16666667 of the 1m candle closed at 1000000080 and it is
+  1000000080; the 1 Impetus for this action is lost with that turn
+
+spending last turn's leftover
+  this pool granted 4 Impetus for turn 16666667 and 3 is unspent; turn
+  16666668 is a different turn, and Impetus expires with the candle that
+  granted it
+
+paying part of an action
+  this action costs 4 Impetus and 3 remains in turn 16666667; no partial
+  action exists and nobody borrows against the next turn
+```
+
+### A participant who joins midturn takes what is left of the candle
+
+Joining late does not move the deadline. Both participants below sit in the same
+turn and both lose it at the same instant.
+
+```
+joined at the candle open    deadline 1000000080   60s in hand
+joined 40s later             deadline 1000000080   20s in hand
+```
+
+### The pool is called Impetus, and level decides how much
+
+A turn grants four Impetus at level one and one more every twenty levels. The
+candle never grows, so a higher level acts more inside the same window.
+
+`src/competition/poa_modes.py` — the grant
+
+```python
+def base_impetus(level: int) -> int:
+    """Four at ``FIRST_LEVEL``, one more every ``IMPETUS_LEVELS_PER_STEP`` levels."""
+    if int(level) < FIRST_LEVEL:
+        raise PoaModeError(f"level {level} is below {FIRST_LEVEL}")
+    return IMPETUS_AT_FIRST_LEVEL + int(level) // IMPETUS_LEVELS_PER_STEP
+```
+
+| Level | Impetus a turn |
+| ----- | -------------- |
+| 1 | 4 |
+| 21 | 5 |
+| 40 | 6 |
+| 60 | 7 |
+| 80 | 8 |
+| 100 | 9 |
+
+A haste or a slow effect multiplies that grant once. The product stops at twice
+the level's own figure and never falls below one, so nobody is frozen out of a
+turn and speed cannot become the only statistic worth raising.
+
+```
+level 40 grants 6     a 1.5x haste gives 9     the cap holds it at 12
+                      a 0.5x slow gives 3      the floor holds it at 1
+```
+
+What an action costs is not here. Unit 13 prices the five bands.
+
+### A class is picked, and the pool follows the level
+
+The pick function had no caller until now. The screen passes a participant and a
+class name, the event it is for is the variant's own code, and the party row then
+carries the class, its level and the Impetus that level grants.
+
+```
+04e1cafc  RE/USD    Iron Edge   level 1   Impetus 4   health $54.19
+092428b2  BONK/USD  none        --        --          health $101.98
+```
+
+A class name outside the seven is refused and the panel prints the refusal.
+
+```
+'Iron Sword' is not a PoA class; the seven are Lead Ward, Tin Bulwark,
+Iron Edge, Solar Lance, Quicksilver Draught, Copper Conduit, Silver Mirror
+```
+
+No field under `src` holds a class level, so a fresh pick stands at level one
+and nothing saves it between asks.
+
+### The unreachable tournament module is retired
+
+The tournament module under `src/trading` held 832 lines and nothing imported
+it. None of its nine public names appeared anywhere outside its own file, the
+coding archetype refused it, and it wrote generated output into the repository.
+Its three shapes were a duel, a melee and a gauntlet, which are not the four
+modes the design names.
+
+```
+832 lines        zero importers        zero uses of its nine public names
+passed=False     8 high findings       wrote <repo>/logs/tournaments
+```
+
+Two things in it were worth keeping and both carried over. A participant is
+named by its bot id rather than by holding a bot object, and one event shape
+serves the screen as a plain row. The seeded simulation, the scorer for
+computer-run participants, the invented candles and the settlement adapter that
+paid nobody are all gone.
+
+### Demo mode answers the same event
+
+A TestNet run asks the same surface and names its own chain. The modes, the turn
+and the pool are not chain data, so both runs answer the same event.
+
+```
+chain live      38 participants   8 event types   raid_elite, 1m candle
+chain testnet    0 participants   8 event types   raid_elite, 1m candle
+```
+
+### What the modes and the turn do not reach
+
+No action exists to spend Impetus on from the screen. The pool is granted and
+refuses what it cannot pay, but nothing draws a move, an attack or a spell.
+
+A charge that spans more than one turn is not built. Whether it pays its pool at
+the start or per turn, and what an interruption does to it, are open.
+
+The event is whichever one the request names. No schedule opens an event, no
+entry fee is taken, and no participant is admitted or turned away at the door.
+
+In development.
+
+## 2026-09-10 00:34 - #147 - a block and a transaction named by their own contents
+
+An identifier on this chain used to come from the clock and a random number. Two
+copies of Acervator holding the identical record gave that record two different
+names, and editing an amount in a stored record left every name in the chain
+still valid. Both identifiers are now the SHA-256 of the record's own contents.
+
+`src/competition/local_testnet.py` - what names a transaction
+
+```python
+def transaction_id(
+    from_addr: str,
+    to_addr: str,
+    function_name: str,
+    args: dict,
+    gas_used: int,
+    status: int = TX_SUCCESS,
+) -> str:
+    return content_id(
+        {
+            "from_addr": from_addr,
+            "to_addr": to_addr,
+            "function_name": function_name,
+            "args": args,
+            "gas_used": gas_used,
+            "status": status,
+        }
+    )
+```
+
+### What goes into each identifier, and what stays out
+
+A transaction is named by who sent it, who received it, the call, the amounts and
+addresses that call carried, the gas and the success flag. The block it landed in
+and the moment of recording stay out, because two machines record one
+transaction at different moments into differently numbered blocks. A block is
+named by its own number, its parent's name, its timestamp and the list of
+transactions it holds.
+
+| value | names a transaction | names a block |
+|---|---|---|
+| sender and recipient | yes | no |
+| the call and its arguments | yes | no |
+| gas | yes | no |
+| success flag | yes | no |
+| block number | no | yes |
+| timestamp | no | yes |
+| parent block's name | no | yes |
+| the transactions held | no | yes |
+
+The bytes are fixed so two machines cannot differ: keys in sorted order, no
+spaces, and a refusal for any number that is not finite. A block keeps its
+timestamp to the millisecond, so the name covers the figure written to disk
+rather than a longer one that is not.
+
+The amounts and the addresses reach the name. That was the hole: a transaction
+used to be named from its function name alone, so what it moved and who it moved
+it to had no bearing on its name.
+
+### Two machines, one name
+
+Two copies, two separate chains, two processes. Each certified one fill of its
+own, and each then held the other's record under the identical name.
+
+```
+node-952ca991e4da  sending transaction 0xc69ee5a4fa90328a9f730da334451160430c3e3c4279e8a863a83099d86d5cc0
+node-ae8a2c70bb84  sending transaction 0xc69ee5a4fa90328a9f730da334451160430c3e3c4279e8a863a83099d86d5cc0
+node-ae8a2c70bb84  sending transaction 0xaab8eefd0d4f2e481a6a7a79b3bfb730d8765846f4376c660d9534abc54ccf18
+node-952ca991e4da  sending transaction 0xaab8eefd0d4f2e481a6a7a79b3bfb730d8765846f4376c660d9534abc54ccf18
+chain verified: 3 blocks and 2 transactions carry the id of their own contents
+```
+
+The same pair of processes on the previous build gave the identical transfer two
+different names.
+
+```
+before   node_a  0x692edd3d07a1b2019b3ce1ed84a262ce9e2a033181ab24805455ee580c84965d
+         node_b  0x3d3153c056bb1bc55c4f613bebfc81d3b9ab6a7581e436c7263fb24684ac6b03
+after    node_a  0x3472b3435c6b9c843317353b681810c2f416501d6ac2f2c302ff758cdbecdb6a
+         node_b  0x3472b3435c6b9c843317353b681810c2f416501d6ac2f2c302ff758cdbecdb6a
+```
+
+### A changed record is named, and the other machine refuses it
+
+One stored record had its amount edited from 12.5 to 99.5 and its name left
+alone. The chain that loaded that file says so at load. The other machine refuses
+the record outright, and the same exchange still accepted the good record sent
+beside it.
+
+```
+chain NOT verified: 0 of 3 blocks altered [], 0 parent links broken [],
+                    1 of 2 transactions altered ['0x3472b3435c6b9c84']
+
+node-a7904d78dd27 refused record 0x3472b3435c6b9c843317353b681810c2f416501d6ac2f2c302ff758cdbecdb6a
+    calling transferQuintessence: its contents name
+    0x1a4bdf2cbbfd171da96b52a51aab69358b7fdbff4ef8c4809c904fb6b1b0a54f
+node-a7904d78dd27 synced with node-6feb24ca8462: held 2, offered 3, took 1, now holds 3
+chain verified: 4 blocks and 3 transactions carry the id of their own contents
+```
+
+The refusal sits in the code that adds a peer's records to a chain, so an altered
+record never reaches the chain at all.
+
+### The chain already on disk
+
+The saved chain on this machine loads exactly as before and nothing is lost. Its
+3,135 blocks and 3,135 transactions were named the old way, so the chain reports
+that none of them carries the name of its own contents. Every block mined from
+now on does.
+
+```
+chain restored from disk (block=3135, age=204388 min)
+chain NOT verified: 3135 of 3136 blocks altered [1, 2, 3, 4, 5],
+                    0 parent links broken [],
+                    3135 of 3135 transactions altered ['0x3f79536e53815466', ...]
+```
+
+Renaming those 3,135 records was considered and refused. The node rule already in
+place never removes a record and never reorders one, and renaming every record on
+the chain is the largest possible change of identity. A load that recomputed every
+name would also destroy the one property this work adds, because a name recomputed
+from whatever is on disk can never disagree with what is on disk.
+
+### Demo mode
+
+A demo run is the same code over a different chain and a different network name.
+The run takes no setting and no flag. The transfer carried the same name on the demo
+chain as on the live one, because the name comes from the contents and from
+nothing else.
+
+```
+PoaNodeLink installed (node=node-04b4e394a029, network=acervator-poa-testnet, listening=False)
+sending transaction 0x3472b3435c6b9c843317353b681810c2f416501d6ac2f2c302ff758cdbecdb6a calling transferQuintessence
+node-04b4e394a029 synced with node-2a283bba3115: held 3, offered 3, took 0, now holds 3
+chain verified: 4 blocks and 3 transactions carry the id of their own contents
+```
+
+### The demo competition's practice prices
+
+The demo competition trades against 120 made-up prices rather than a market. The
+generator behind them changed to the one the rest of the platform already depends
+on, so the figures that run reports are different from before. It is still seeded,
+so the same 120 prices come back on every run, and the competition still names a
+winner and mints the award.
+
+```
+participants   3
+winner tier    Harvest
+winner tokens  10
+rank 1 value   371.46   the same figure on a second run
+```
+
+### What this does not cover
+
+The first block of a chain keeps a name of all zeros. It has no parent and holds
+no transaction, so the only thing in it that a name could cover is its timestamp,
+and that timestamp is not covered.
+
+A record sent between two machines now carries seven declared fields rather than
+six. The seventh is the name the chain gave it, and the receiving side recomputes
+that name from the other six before it accepts anything.
+
+A chain file is not protected from whoever owns the machine. Editing a record and
+recomputing its name by hand produces a file that verifies. What the names buy is
+that a second machine holding the same record disagrees out loud.
+
+## 2026-09-10 00:38 - #147 - the contract repairs, and the keys that came out
+
+The audit found five things worth a decision. Three are repaired and the tool that
+reported each one is now silent on it. Two are left standing on purpose, with the
+reason written down, because repairing them would make the contracts worse.
+
+```
+repaired   34 quote errors in the trophy contract        solhint 34 -> 0
+repaired   an exact comparison on a pending transfer     slither 1 -> 0
+repaired   the trophy handed out a token before filling it
+                                                        slither 2 -> 0
+stands     reading the clock to time a transfer          the design needs it
+stands     eight writes a lint calls eventless           the lint is wrong
+```
+
+### The three repairs
+
+The trophy builds the text a wallet reads from the artwork and the award details.
+That text is full of quote marks, so it was written with the other kind of quote,
+and the linter calls that an error thirty-four times over. Thirty-four errors in
+one lane hide the thirty-fifth, so the quoting is now the style the linter asks
+for. The text a wallet displays is byte for byte what it was.
+
+```
+before  343 problems, 34 of them errors   the run fails
+after   307 problems, none of them errors the run passes
+```
+
+The second repair is one line. A holder may have only one transfer waiting at a
+time, and the check asked whether the waiting amount was exactly zero. The
+analyser objects to an exact comparison, because the record holding that amount
+also holds a clock reading. The check now asks whether an amount above zero is
+waiting, which admits exactly the same thing and reads better.
+
+```solidity
+    function _hasTransferInFlight(address sender) private view returns (bool) {
+        return pendingTransfer[sender].amount > 0;
+    }
+```
+
+### The two findings that stand
+
+A transfer takes time by design. The shortest window is one hour and it grows with
+the amount, so the contract has to read the chain's own clock to know whether a
+window has passed. A validator can shift that clock by seconds. Seconds against an
+hour is not a risk, and the chain offers no other clock, so the finding is
+recorded rather than repaired.
+
+```
+MIN_TRANSFER_SECONDS        3,600      one hour, the floor
+TRANSFER_SECONDS_PER_WHOLE    360      the window grows with the amount
+shortest window             1 hour
+a validator can shift       seconds
+```
+
+The other standing finding is a lint that says eight writes happen without an
+event. Six of the eight do emit an event in the same call, so the message is not
+describing what the rule measures. Four small test bodies settle it: the rule fires
+on any write to a value a safety check reads, event or no event. Clearing it would
+mean deleting the check that a wallet holds enough to spend, which is the wrong
+trade, so it stands.
+
+```
+write, safety check, no event    the rule fires
+write, safety check, then event  the rule fires
+event, then write, safety check  the rule fires
+write, no safety check           the rule is silent
+```
+
+### Fourteen owner keys, and what happened to each
+
+The entry currency has no owner at all. The other three contracts had fourteen
+powers only the owner could use. Two are gone from the code. Twelve stay, and each
+one is now written down as waiting for the vote, which is a separate piece of work
+and exists nowhere yet.
+
+```
+gone   the owner could mint any trophy directly
+       the trophy now admits the competition registry alone
+gone   the owner could abandon the contract
+       on the award token that would have made a freeze permanent
+```
+
+```
+waiting for the vote
+  the token      name the minter once, freeze, unfreeze, hand over ownership
+  the registry   set a price feed, open, activate, close, adjudicate,
+                 advance the season, cancel, hand over ownership
+  the trophy     upload a tier's artwork, hand over ownership
+```
+
+Removing the owner's route into the trophy mint has one consequence worth stating
+plainly. The competition registry still holds no reference to the trophy contract,
+so nothing can mint a trophy until that wiring lands. Before this change the owner
+was the only caller that ever reached it, which is the bypass the design says must
+come out.
+
+### The conservation law still holds
+
+The law is that every wallet, every held address and the platonic pool add up to
+everything ever distilled, and that the total never passes thirty-three million.
+The fuzzing runner drove it again after the repairs.
+
+```
+runs       256
+calls   16,384
+ten invariants   all pass
+```
+
+The count of refused calls inside that campaign moves from run to run, because the
+runner is not given a fixed starting seed. Three runs after the repairs gave 8,546,
+8,721 and 8,773, and the run before them gave 8,523. The two numbers the
+configuration fixes are the same before and after, and no sequence ever broke the
+law.
+
+### What the vote still has to take over
+
+No vote, no council and no delay was written here. Twelve owner powers are still
+owner powers today, exactly as they were, and the list above is the record of what
+the vote has to take over.
+
+Every finding the audit raised is accounted for in one place, each marked closed or
+standing, with the count the tool printed on each side.
+
+```
+tests/debug_reports/contract_repairs_second_pass.md   the full accounting
+```
 ## 2026-09-10 00:59 - #147 - the volume figure and the eight missing identifiers
 
 Two faults held the rewarding pool down. The price feed reported no trading
