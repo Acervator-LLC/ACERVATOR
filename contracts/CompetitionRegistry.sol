@@ -33,13 +33,14 @@
 //   Full ZK circuit verification is a planned upgrade (see TODO below).
 //
 // Immutable guarantees:
-//   • Ekthelius tier: at most 21 ACRV awards ever carry that tier name
-//   • Grand Accumulator: at most 1,000 ACRV awards ever carry that tier name
+//   • Every tier ceiling is AcervatorTrophy's, and adjudicate mints through it,
+//     so a refused trophy undoes the ACRV award in the same transaction
+//   • A season awards at most seasonBudget(season) ACRV, checked on-chain
 //   • All competition results are permanently on-chain (append-only)
 //
-// Neither cap reaches AcervatorTrophy. This contract holds no reference to the
-// NFT contract and mints no NFT. AcervatorTrophy declares its own four tier
-// constants and enforces them in its own mint.
+// This contract holds AcervatorTrophy in a one-shot reference and mints the
+// trophy inside adjudicate. It declares no tier constant and keeps no tier
+// counter, so AcervatorTrophy's four constants are the only tier ceilings.
 // =============================================================================
 pragma solidity 0.8.36;
 
@@ -56,30 +57,43 @@ interface IACRV {
     function remainingSupply() external view returns (uint256);
 }
 
+// The trophy's own mint returns the token id it created. This interface declares
+// no return, because the token id is recorded on the trophy, not here.
+interface ITrophy {
+    function mint(address recipient,
+                  string calldata tier,
+                  uint256 season,
+                  string calldata competitionId,
+                  uint256 rank,
+                  uint256 fieldSize,
+                  int256 advantageBps,
+                  string calldata marketRegime,
+                  bytes32 merkleRoot) external;
+}
+
 contract CompetitionRegistry is ReentrancyGuard {
 
     // ── Token reference ───────────────────────────────────────────────────────
 
     IACRV public immutable acrv;
 
+    // ── Trophy reference ──────────────────────────────────────────────────────
+
+    /// The AcervatorTrophy this registry mints through. Zero until setTrophy
+    /// writes it, once. It cannot be immutable: the trophy takes this registry's
+    /// address at construction, so the registry exists first.
+    ITrophy public trophy;
+
     // ── Privileged callers ────────────────────────────────────────────────────
 
     /// Runs the season. Written at construction and unchangeable afterwards.
     address public immutable OPERATIONS;
 
-    /// The deployer, and the only caller of setGovernance.
+    /// The deployer, and the only caller of setTrophy and setGovernance.
     address public immutable DEPLOYER;
 
     /// The Governance contract. Zero until setGovernance writes it, once.
     address public governance;
-
-    // ── Tier supply caps (enforced on-chain, immutable) ───────────────────────
-
-    uint256 public constant MAX_EKTHELIUS         = 21;
-    uint256 public constant MAX_GRAND_ACCUMULATOR = 1_000;
-
-    uint256 public mintedEkthelius        = 0;
-    uint256 public mintedGrandAccumulator = 0;
 
     // ── Chainlink price feeds on Base ────────────────────────────────────────
     // Base mainnet:
@@ -96,10 +110,23 @@ contract CompetitionRegistry is ReentrancyGuard {
 
     uint256 public currentSeason = 1;
 
-    // Season reward curve: 500_000, 425_000, 361_250, ... (× 0.85 each season)
-    // Records season issuance only. No on-chain check reads seasonMinted, so
-    // the season budget is enforced off-chain by the Python engine.
+    // ACRV awarded so far in each season, in wei. adjudicate reads it against
+    // seasonBudget and refuses an award that would pass that season's ceiling.
     mapping(uint256 => uint256) public seasonMinted;
+
+    // ── Season reward curve (enforced on-chain) ───────────────────────────────
+    // 500,000 ACRV in season 1, each later season 17/20 of the one before it,
+    // with a 100 ACRV floor. These three match INITIAL_REWARD, DECAY_FACTOR and
+    // MIN_SEASON_REWARD in src/competition/season_schedule.py.
+
+    uint256 public constant INITIAL_SEASON_REWARD_TOKENS = 500_000;
+    uint256 public constant MIN_SEASON_REWARD_TOKENS     = 100;
+
+    uint256 private constant DECAY_NUMERATOR   = 17;
+    uint256 private constant DECAY_DENOMINATOR = 20;
+
+    /// adjudicate awards one winner, so the trophy it mints always ranks first.
+    uint256 private constant WINNER_RANK = 1;
 
     // ── Competition storage ───────────────────────────────────────────────────
 
@@ -158,6 +185,8 @@ contract CompetitionRegistry is ReentrancyGuard {
 
     event GovernanceSet(address indexed governance);
 
+    event TrophySet(address indexed trophy);
+
     // ── Constructor ───────────────────────────────────────────────────────────
 
     constructor(address _acrv, address _btcFeed, address _ethFeed) {
@@ -182,6 +211,26 @@ contract CompetitionRegistry is ReentrancyGuard {
         require(governance != address(0), "Registry: governance not set");
         require(msg.sender == governance, "Registry: caller is not governance");
         _;
+    }
+
+    // ── Trophy wiring, once ───────────────────────────────────────────────────
+
+    /**
+     * @notice Name the AcervatorTrophy this registry mints through, permanently.
+     * @dev    Deployment wiring, not a season call and not a vote-bearing rule.
+     *         AcervatorTrophy takes this registry's address at construction and
+     *         refuses an address holding no code, so the registry is deployed
+     *         first and this call points back afterwards. Callable once, by the
+     *         deployer, on an address that already holds code, so the trophy a
+     *         deployment mints through cannot be redirected later.
+     * @param trophyAddress The deployed AcervatorTrophy address
+     */
+    function setTrophy(address trophyAddress) external {
+        require(msg.sender == DEPLOYER, "Registry: caller is not the deployer");
+        require(address(trophy) == address(0), "Registry: trophy already set");
+        require(trophyAddress.code.length > 0, "Registry: trophy not a contract");
+        trophy = ITrophy(trophyAddress);
+        emit TrophySet(trophyAddress);
     }
 
     // ── Halt wiring, once ─────────────────────────────────────────────────────
@@ -260,6 +309,48 @@ contract CompetitionRegistry is ReentrancyGuard {
         require(answer      > 0, "Registry: price not positive");
         price     = answer;
         updatedAt = answeredAt;
+    }
+
+    // ── Season budget ─────────────────────────────────────────────────────────
+
+    /**
+     * @notice The whole ACRV a season may award in total.
+     * @dev    500,000 in season 1, then 17/20 of the season before it, with a 100
+     *         floor. The ratio is carried as a numerator and a denominator and
+     *         divided once, so the answer is the exact floor of the curve rather
+     *         than a product of rounded steps, and it equals what season_reward
+     *         returns in src/competition/season_schedule.py. The loop returns as
+     *         soon as the curve reaches the floor, which is season 53, so the
+     *         numerator never grows past 500,000 * 17^52.
+     * @param season The season number, from 1
+     * @return The season's ceiling in whole ACRV
+     */
+    function seasonBudgetTokens(uint256 season) public pure returns (uint256) {
+        require(season >= 1, "Registry: season starts at 1");
+        uint256 numerator   = INITIAL_SEASON_REWARD_TOKENS;
+        uint256 denominator = 1;
+        for (uint256 elapsed = 1; elapsed < season; ++elapsed) {
+            numerator   *= DECAY_NUMERATOR;
+            denominator *= DECAY_DENOMINATOR;
+            if (numerator / denominator <= MIN_SEASON_REWARD_TOKENS) {
+                return MIN_SEASON_REWARD_TOKENS;
+            }
+        }
+        return numerator / denominator;
+    }
+
+    /// @notice The same ceiling in wei, which is the unit tokenAmount carries.
+    function seasonBudgetWei(uint256 season) public pure returns (uint256) {
+        return seasonBudgetTokens(season) * 10**18;
+    }
+
+    /// @notice The ACRV this season may still award, in wei.
+    function remainingSeasonBudgetWei(uint256 season)
+        external view returns (uint256)
+    {
+        uint256 budget = seasonBudgetWei(season);
+        uint256 spent  = seasonMinted[season];
+        return spent >= budget ? 0 : budget - spent;
     }
 
     // ── Competition lifecycle ─────────────────────────────────────────────────
@@ -375,14 +466,18 @@ contract CompetitionRegistry is ReentrancyGuard {
 
     /**
      * @notice Adjudicate a competition and award tokens.
-     * @dev    Owner calls this after verifying all submissions off-chain.
+     * @dev    Operations calls this after verifying all submissions off-chain.
      *         Winner address and tier are determined off-chain; this function
-     *         enforces supply caps and executes the mint.
-     *         TODO: Replace owner call with on-chain ZK proof verification.
+     *         enforces the season ceiling and mints both the ACRV and the
+     *         trophy. AcervatorTrophy.mint refuses a tier at its ceiling and a
+     *         tier name outside the five, and that revert undoes the ACRV award
+     *         in the same transaction, so one tier ceiling governs both.
+     *         TODO: Replace the operations call with on-chain ZK proof verification.
      *
-     *         acrv.mint is the last statement. Every state write and both
-     *         events land before it, so a re-entering token contract finds
-     *         this competition already ADJUDICATED.
+     *         The two mints are the last statements. Every state write and both
+     *         events land before them, so a re-entering token contract or a
+     *         recipient re-entering through onERC721Received finds this
+     *         competition already ADJUDICATED.
      *
      * @param compId       Competition ID
      * @param winnerWallet Wallet address of the winning bot
@@ -399,18 +494,11 @@ contract CompetitionRegistry is ReentrancyGuard {
         require(c.status == CompStatus.SUBMISSION, "Registry: not in submission");
         require(submissions[compId][winnerWallet].submitted,
                 "Registry: winner has no submission");
+        require(address(trophy) != address(0), "Registry: trophy not set");
+        require(seasonMinted[c.season] + tokenAmount <= seasonBudgetWei(c.season),
+                "Registry: season budget exhausted");
 
-        // Tier supply cap enforcement (on-chain, immutable)
-        bytes32 tierHash = keccak256(bytes(tierName));
-        if (tierHash == keccak256("Ekthelius")) {
-            require(mintedEkthelius < MAX_EKTHELIUS,
-                    "Registry: Ekthelius supply of 21 exhausted");
-            mintedEkthelius++;
-        } else if (tierHash == keccak256("Grand Accumulator")) {
-            require(mintedGrandAccumulator < MAX_GRAND_ACCUMULATOR,
-                    "Registry: Grand Accumulator supply of 1,000 exhausted");
-            mintedGrandAccumulator++;
-        }
+        Submission storage winningRun = submissions[compId][winnerWallet];
 
         // Finalise competition state
         c.status            = CompStatus.ADJUDICATED;
@@ -424,12 +512,24 @@ contract CompetitionRegistry is ReentrancyGuard {
         emit Adjudicated(compId, winnerWallet, tierName, tokenAmount, c.season);
         emit TierMinted(tierName, winnerWallet, tokenAmount, compId);
 
-        // Interaction, last
+        // Interactions, last
         if (tokenAmount > 0) {
             require(acrv.remainingSupply() >= tokenAmount,
                     "Registry: insufficient ACRV supply remaining");
             acrv.mint(winnerWallet, tokenAmount, compId, tierName);
         }
+
+        trophy.mint(
+            winnerWallet,
+            tierName,
+            c.season,
+            compId,
+            WINNER_RANK,
+            c.participants.length,
+            winningRun.advantageBps,
+            c.marketRegime,
+            winningRun.merkleRoot
+        );
     }
 
     // ── Views ─────────────────────────────────────────────────────────────────
@@ -454,14 +554,6 @@ contract CompetitionRegistry is ReentrancyGuard {
 
     function totalCompetitions() external view returns (uint256) {
         return competitionIds.length;
-    }
-
-    function remainingEkthelius() external view returns (uint256) {
-        return MAX_EKTHELIUS - mintedEkthelius;
-    }
-
-    function remainingGrandAccumulator() external view returns (uint256) {
-        return MAX_GRAND_ACCUMULATOR - mintedGrandAccumulator;
     }
 
     // ── Season management ─────────────────────────────────────────────────────
