@@ -125,21 +125,20 @@ if _QT:
     class TestnetTab(QWidget):
         """Local testnet block explorer and competition runner."""
 
-        def __init__(self, parent=None, shared_testnet=None, bridge=None):
-            """Construct the Local Testnet tab.
-
-            If `shared_testnet` + `bridge` are provided (v3.12.0+
-            path via MainWindow), the tab uses the shared instance —
-            Nuclear-mode PoA activity will populate the display.
-
-            If not provided (legacy standalone path), falls back to
-            a private LocalTestnet for self-contained operation.
-            """
+        def __init__(self, parent=None, *, shared_testnet, bridge):
+            """Read the chain through ``shared_testnet`` and ``bridge``; neither may be None."""
             super().__init__(parent)
             self.setAccessibleName("Testnet Tab")
-            from ..competition.local_testnet import LocalTestnet
+            if shared_testnet is None or bridge is None:
+                raise ValueError(
+                    "TestnetTab needs the process-wide chain: pass the "
+                    "shared_testnet and bridge that "
+                    "SharedTestnetBridge.install_on attached to the "
+                    "MainWindow. A private LocalTestnet would diverge "
+                    "from every other reader."
+                )
 
-            self._testnet = shared_testnet or LocalTestnet()
+            self._testnet = shared_testnet
             self._bridge = bridge
             self._comp_count = 0
             self._setup_ui()
@@ -149,20 +148,14 @@ if _QT:
             self._timer.timeout.connect(self._refresh_all)
             self._timer.start(3000)
 
-            # If bridge is present, subscribe to live updates so the
-            # tab reacts instantly instead of waiting for the 3s poll
-            if self._bridge is not None:
-                try:
-                    self._bridge.chain_updated.connect(self._refresh_all)
-                    self._bridge.chain_reset.connect(
-                        lambda reason: self._msg(f"⚠ Chain reset: {reason}", "#ffaa00")
-                    )
-                except Exception:
-                    pass  # sadp: R61 ACCEPT — bridge may
-                # already have these signals connected from a prior
-                # construction. Qt raises on duplicate connect; we don't
-                # need Qt.UniqueConnection here because the tab itself
-                # is singleton (created once at main_window init).
+            # Qt raises when either signal is already connected to this slot.
+            try:
+                self._bridge.chain_updated.connect(self._refresh_all)
+                self._bridge.chain_reset.connect(
+                    lambda reason: self._msg(f"⚠ Chain reset: {reason}", "#ffaa00")
+                )
+            except Exception:
+                pass
 
         def _refresh_all(self):
             """Run every refresh method. v3.13.1 — R28 FL applied.
@@ -644,5 +637,7 @@ if _QT:
 else:
 
     class TestnetTab:
-        def __init__(self, *a, **kw):
-            pass
+        def __init__(self, parent=None, *, shared_testnet, bridge):
+            """Hold ``shared_testnet`` and ``bridge`` so the no-Qt path takes the same arguments."""
+            self._testnet = shared_testnet
+            self._bridge = bridge

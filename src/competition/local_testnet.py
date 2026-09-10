@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import hashlib
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field, asdict
@@ -204,6 +205,8 @@ class LocalACRV:
         self._allowances: Dict[str, Dict[str, int]] = {}
         self._total_supply: int = 0
         self._mint_log: List[dict] = []
+        # Every read and write of _balances and _total_supply holds this.
+        self._supply_lock = threading.RLock()
 
     def mint(
         self,
@@ -216,23 +219,25 @@ class LocalACRV:
         """Mint tokens. Only registry can call."""
         if caller and caller != self._registry and caller != "owner":
             raise PermissionError("ACRV: caller is not the registry")
-        if self._total_supply + amount_wei > MAX_SUPPLY_WEI:
-            raise OverflowError("ACRV: mint would exceed MAX_SUPPLY")
         if amount_wei <= 0:
             raise ValueError("ACRV: amount must be > 0")
 
-        self._balances[recipient] = self._balances.get(recipient, 0) + amount_wei
-        self._total_supply += amount_wei
-        self._mint_log.append(
-            {
-                "recipient": recipient,
-                "amount_tokens": amount_wei / 10**TOKEN_DECIMALS,
-                "competition": competition_id,
-                "tier": tier_name,
-                "block": self._chain.block_number,
-                "timestamp": time.time(),
-            }
-        )
+        with self._supply_lock:
+            if self._total_supply + amount_wei > MAX_SUPPLY_WEI:
+                raise OverflowError("ACRV: mint would exceed MAX_SUPPLY")
+            self._balances[recipient] = self._balances.get(recipient, 0) + amount_wei
+            self._total_supply += amount_wei
+            self._mint_log.append(
+                {
+                    "recipient": recipient,
+                    "amount_tokens": amount_wei / 10**TOKEN_DECIMALS,
+                    "competition": competition_id,
+                    "tier": tier_name,
+                    "block": self._chain.block_number,
+                    "timestamp": time.time(),
+                }
+            )
+            total_supply_after_tokens = self._total_supply / 10**TOKEN_DECIMALS
 
         tx = self._chain.send_tx(
             self._registry,
@@ -256,39 +261,44 @@ class LocalACRV:
                 "amount": amount_wei / 10**TOKEN_DECIMALS,
                 "competitionId": competition_id,
                 "tierName": tier_name,
-                "totalSupplyAfter": self._total_supply / 10**TOKEN_DECIMALS,
+                "totalSupplyAfter": total_supply_after_tokens,
             },
         )
         return tx
 
     def balance_of(self, address: str) -> float:
-        return self._balances.get(address, 0) / 10**TOKEN_DECIMALS
+        with self._supply_lock:
+            return self._balances.get(address, 0) / 10**TOKEN_DECIMALS
 
     def total_supply(self) -> float:
-        return self._total_supply / 10**TOKEN_DECIMALS
+        with self._supply_lock:
+            return self._total_supply / 10**TOKEN_DECIMALS
 
     def remaining_supply(self) -> float:
-        return (MAX_SUPPLY_WEI - self._total_supply) / 10**TOKEN_DECIMALS
+        with self._supply_lock:
+            return (MAX_SUPPLY_WEI - self._total_supply) / 10**TOKEN_DECIMALS
 
     def cap_reached(self) -> bool:
-        return self._total_supply >= MAX_SUPPLY_WEI
+        with self._supply_lock:
+            return self._total_supply >= MAX_SUPPLY_WEI
 
     def supply_summary(self) -> dict:
-        holders = {
-            a: v / 10**TOKEN_DECIMALS for a, v in self._balances.items() if v > 0
-        }
-        tier_counts: Dict[str, int] = {}
-        for m in self._mint_log:
-            tier_counts[m["tier"]] = tier_counts.get(m["tier"], 0) + 1
-        return {
-            "total_cap": TOTAL_SUPPLY_CAP,
-            "total_minted": self.total_supply(),
-            "remaining": self.remaining_supply(),
-            "pct_minted": self.total_supply() / TOTAL_SUPPLY_CAP * 100,
-            "total_holders": len(holders),
-            "tier_counts": tier_counts,
-            "mint_history": self._mint_log[-20:],
-        }
+        with self._supply_lock:
+            holders = {
+                a: v / 10**TOKEN_DECIMALS for a, v in self._balances.items() if v > 0
+            }
+            tier_counts: Dict[str, int] = {}
+            for m in self._mint_log:
+                tier_counts[m["tier"]] = tier_counts.get(m["tier"], 0) + 1
+            return {
+                "total_cap": TOTAL_SUPPLY_CAP,
+                "total_minted": self.total_supply(),
+                "remaining": self.remaining_supply(),
+                "pct_minted": self.total_supply() / TOTAL_SUPPLY_CAP * 100,
+                "total_holders": len(holders),
+                "tier_counts": tier_counts,
+                "mint_history": self._mint_log[-20:],
+            }
 
 
 # ── CompetitionRegistry simulation ───────────────────────────────────────────
